@@ -205,6 +205,15 @@ afterEach(() => {
 });
 
 describe('Plugin preview pane guardrail', () => {
+  // S3 verifier G1: the disclosure is an acceptance criterion; pin its words.
+  test('shows the disclosure, word for word', async () => {
+    const disclosure =
+      'This draft is not installed or reviewed. Running it gives its code your full access in this tab.';
+    expect(PLUGIN_DRAFT_DISCLOSURE).toBe(disclosure);
+    renderPane();
+    expect(await screen.findByText(disclosure)).toBeTruthy();
+  });
+
   test('opening the pane fetches and executes no draft code', async () => {
     renderPane();
     await screen.findByText(PLUGIN_DRAFT_DISCLOSURE);

@@ -53,4 +53,24 @@ describe('pluginTsconfig', () => {
     ]);
     expect(result.tsconfigRaw.compilerOptions).toEqual({ jsx: 'react-jsx' });
   });
+
+  test('drops paths targets that leave the plugin root and keeps the rest', () => {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), 'station-tsc-')));
+    roots.push(root);
+    mkdirSync(join(root, 'plugin'));
+    writeFileSync(
+      join(root, 'plugin', 'tsconfig.json'),
+      JSON.stringify({
+        compilerOptions: {
+          baseUrl: '.',
+          paths: { '@x/*': ['../outside/*', 'src/*'], '@y/*': ['../only/*'] },
+        },
+      }),
+    );
+    const { compilerOptions } = pluginTsconfig(
+      join(root, 'plugin'),
+    ).tsconfigRaw;
+    expect(compilerOptions.paths).toEqual({ '@x/*': ['src/*'] });
+    expect(compilerOptions.baseUrl).toBe(join(root, 'plugin'));
+  });
 });

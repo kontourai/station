@@ -455,4 +455,19 @@ describe.skipIf(process.platform === 'win32')('draft build process', () => {
     },
     TEST_TIMEOUT_MS,
   );
+
+  // S3 verifier G8: the exact key set a build child may inherit.
+  test('the child environment keeps only the allowed keys', () => {
+    expect(
+      draftBuildChildEnv({
+        PATH: 'p',
+        HOME: 'h',
+        NODE_OPTIONS: '--require x',
+        FOO: 'y',
+        TMPDIR: 't',
+        ESBUILD_BINARY_PATH: 'e',
+        ANTHROPIC_API_KEY: 'secret',
+      }),
+    ).toEqual({ PATH: 'p', TMPDIR: 't', ESBUILD_BINARY_PATH: 'e' });
+  });
 });

@@ -53,7 +53,10 @@ import { ProjectManifestStore } from '../../../services/projects/project-manifes
 import { createProjectMembershipRuntime } from '../../../services/projects/project-membership-runtime.js';
 import { ProjectService } from '../../../services/projects/project-service.js';
 import { EnvironmentSecurityService } from '../../../services/ssh/environment-security-service.js';
-import { configureRuntimeRoutes as configureRuntimeRoutesProduction } from '../runtime-routes.js';
+import {
+  configureRuntimeRoutes as configureRuntimeRoutesProduction,
+  isProjectMemberDraftLease,
+} from '../runtime-routes.js';
 
 vi.mock('../runtime-route-support.js', () => {
   const runtimeSupportStub = new Proxy({}, { get: () => () => undefined });
@@ -643,6 +646,21 @@ describe('project guest administration over the production composition', () => {
     // The restricted account-bound device surface is unchanged.
     const bound = await h.request('/api/projects/drafts/plugin-draft', guest());
     expect(bound.status).toBe(403);
+  });
+
+  // S3 verifier G9: the member exemption is exactly POST on the lease leaf.
+  test('the member draft-lease exemption admits only POST on the exact leaf', () => {
+    const lease = '/api/projects/drafts/plugin-draft/lease';
+    expect(isProjectMemberDraftLease('POST', lease)).toBe(true);
+    for (const method of ['DELETE', 'PUT', 'PATCH', 'GET'])
+      expect(isProjectMemberDraftLease(method, lease), method).toBe(false);
+    for (const path of [
+      '/api/projects/drafts/plugin-draft',
+      '/api/projects/drafts/plugin-draft/lease/extra',
+      '/api/projects/drafts/x/plugin-draft/lease',
+      '/api/projects//plugin-draft/lease',
+    ])
+      expect(isProjectMemberDraftLease('POST', path), path).toBe(false);
   });
 
   // S3 verifier G4: the production /events gate for plugin-draft revisions.

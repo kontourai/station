@@ -326,6 +326,92 @@ describe('buildPluginDraft', () => {
     BUILD_TEST_TIMEOUT_MS,
   );
 
+  test(
+    'the size cap counts CSS too: tiny JS plus oversized CSS is refused and its output removed',
+    async () => {
+      const pluginDir = writeDraft(
+        "import './big.css';\nexport const components = { pulse: () => 'x' };\n",
+      );
+      writeFileSync(
+        join(pluginDir, 'src', 'big.css'),
+        `.a{content:"${'x'.repeat(MAX_DRAFT_BUNDLE_BYTES)}"}\n`,
+      );
+      const outdir = join(tempDir('station-draft-out-'), '1');
+      const result = await buildPluginDraft({
+        pluginDir,
+        outdir,
+        registrationKey: 'k',
+        manifest: manifest(),
+      });
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.diagnostics[0].text).toContain('preview limit');
+      expect(existsSync(outdir)).toBe(false);
+    },
+    BUILD_TEST_TIMEOUT_MS,
+  );
+
+  // S3 verifier G11: esbuild parses package.json files above the plugin root
+  // on its own. A malformed one there is quoted in esbuild's error, so the
+  // build layer must replace it with a generic message.
+  test(
+    'a malformed package.json outside the plugin root is reported without its contents',
+    async () => {
+      const parent = tempDir('station-draft-parent-');
+      writeFileSync(
+        join(parent, 'package.json'),
+        '{ "name": "SENTINEL_PARENT_SECRET", broken',
+      );
+      const pluginDir = join(parent, 'plugin');
+      mkdirSync(join(pluginDir, 'src'), { recursive: true });
+      writeFileSync(
+        join(pluginDir, 'src', 'index.tsx'),
+        "export const components = { pulse: () => 'x' };\n",
+      );
+      const result = await buildPluginDraft({
+        pluginDir,
+        outdir: join(tempDir('station-draft-out-'), '1'),
+        registrationKey: 'k',
+        manifest: manifest(),
+      });
+      expect(result).toEqual({
+        ok: false,
+        diagnostics: [
+          {
+            text: 'A file outside the plugin folder could not be read or parsed while building.',
+          },
+        ],
+      });
+      expect(JSON.stringify(result)).not.toContain('SENTINEL_PARENT_SECRET');
+    },
+    BUILD_TEST_TIMEOUT_MS,
+  );
+
+  test(
+    'diagnostic text is bounded and never names the plugin root',
+    async () => {
+      const long = `missing-${'y'.repeat(2_000)}`;
+      const pluginDir = writeDraft(
+        `import a from '${long}';\nimport b from './nope';\nexport const components = { pulse: () => a + b };\n`,
+      );
+      const result = await buildPluginDraft({
+        pluginDir,
+        outdir: join(tempDir('station-draft-out-'), '1'),
+        registrationKey: 'k',
+        manifest: manifest(),
+      });
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.diagnostics.length).toBeGreaterThanOrEqual(2);
+      for (const diagnostic of result.diagnostics) {
+        expect(diagnostic.text.length).toBeLessThanOrEqual(501);
+        expect(diagnostic.text).not.toContain(pluginDir);
+      }
+      expect(result.diagnostics.some((d) => d.text.endsWith('…'))).toBe(true);
+    },
+    BUILD_TEST_TIMEOUT_MS,
+  );
+
   test('refuses an output directory inside the author folder', async () => {
     const pluginDir = writeDraft('export const components = {};\n');
     await expect(

@@ -16,11 +16,17 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { PluginDraftStatus } from '@kontourai/station-contracts/plugin-draft';
+import {
+  PLUGIN_DRAFT_LEASE_TTL_MS,
+  type PluginDraftStatus,
+} from '@kontourai/station-contracts/plugin-draft';
 import { buildPluginDraft } from '@kontourai/station-shared/build';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
-import { PluginDraftService } from '../../../services/plugins/plugin-draft-service.js';
+import {
+  PluginDraftService,
+  pluginDraftId,
+} from '../../../services/plugins/plugin-draft-service.js';
 import { createPluginDraftRoutes } from '../plugin-draft-routes.js';
 
 const TEST_TIMEOUT_MS = 60_000;
@@ -515,6 +521,139 @@ describe('plugin draft routes', () => {
     service.lease('demo', projectDir, { rebuild: true });
     await settle();
     expect(builds).toHaveLength(3);
+  });
+
+  // S3 verifier G2: both bundle routes declare their type and forbid
+  // sniffing, so a draft's bytes are never reinterpreted as another type.
+  test(
+    'js and css revisions are served with their type, nosniff and no caching',
+    async () => {
+      const h = harness();
+      writePlugin(h.projectDir);
+      writeFileSync(
+        join(h.projectDir, 'src', 'style.css'),
+        '.pulse{color:red}\n',
+      );
+      writeFileSync(
+        join(h.projectDir, 'src', 'index.tsx'),
+        "import './style.css';\nexport const components = { pulse: () => 'css' };\n",
+      );
+      await h.lease();
+      const ready = await h.waitFor((s) => s.state === 'ready');
+      expect(ready.hasCss).toBe(true);
+      for (const [file, type] of [
+        ['bundle.js', 'application/javascript'],
+        ['bundle.css', 'text/css'],
+      ] as const) {
+        const response = await h.app.request(
+          `/api/projects/demo/plugin-draft/generations/1/${ready.digest}/${file}`,
+        );
+        expect(response.status, file).toBe(200);
+        expect(response.headers.get('content-type'), file).toContain(type);
+        expect(response.headers.get('x-content-type-options'), file).toBe(
+          'nosniff',
+        );
+        expect(response.headers.get('cache-control'), file).toBe(
+          'private, no-store',
+        );
+      }
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  // S3 verifier G3: one folder under two Project slugs is two drafts.
+  test(
+    'the same folder leased under two slugs is two independent drafts',
+    async () => {
+      expect(pluginDraftId('/p', 'a')).not.toBe(pluginDraftId('/p', 'b'));
+      const projectDir = tempDir('station-draft-shared-');
+      writePlugin(projectDir);
+      const closed: string[] = [];
+      let now = Date.now();
+      const service = new PluginDraftService({
+        build: buildPluginDraft,
+        draftsRoot: join(tempDir('station-draft-home-'), 'plugin-drafts'),
+        emitRebuilt: () => {},
+        now: () => now,
+        watch: (options) => ({
+          targets: ['.'],
+          pollIntervalMs: 2_000,
+          status: () => ({
+            nativeArmed: true,
+            nativeDelivered: false,
+            nativeError: null,
+            pollingActive: true,
+            pollingError: null,
+            pollingDelivered: false,
+          }),
+          close: () => closed.push(options.cwd),
+        }),
+      });
+      cleanup.push(() => service.dispose());
+      const a = service.lease('alpha', projectDir);
+      now += 1_000;
+      const b = service.lease('beta', projectDir);
+      expect(a.draftId).toBeDefined();
+      expect(a.draftId).not.toBe(b.draftId);
+      await service.idle('alpha', projectDir);
+      await service.idle('beta', projectDir);
+      expect(service.status('alpha', projectDir)).toMatchObject({
+        projectSlug: 'alpha',
+        draftId: a.draftId,
+      });
+      expect(service.status('beta', projectDir)).toMatchObject({
+        projectSlug: 'beta',
+        draftId: b.draftId,
+      });
+      // Expire only alpha's lease: beta keeps watching.
+      now += PLUGIN_DRAFT_LEASE_TTL_MS - 500;
+      service.releaseExpired();
+      expect(service.status('alpha', projectDir).state).toBe('idle');
+      expect(service.status('beta', projectDir).state).not.toBe('idle');
+      expect(closed).toHaveLength(1);
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  // S3 verifier G7: a lease lasts one TTL from its last renewal, exactly.
+  test('a renewal extends the lease by exactly one TTL', () => {
+    let now = 5_000_000;
+    const projectDir = tempDir('station-draft-ttl-');
+    const service = new PluginDraftService({
+      draftsRoot: join(tempDir('station-draft-home-'), 'plugin-drafts'),
+      emitRebuilt: () => {},
+      now: () => now,
+      build: async () => ({ ok: false, diagnostics: [{ text: 'stub' }] }),
+      watch: () => ({
+        targets: ['.'],
+        pollIntervalMs: 2_000,
+        status: () => ({
+          nativeArmed: true,
+          nativeDelivered: false,
+          nativeError: null,
+          pollingActive: true,
+          pollingError: null,
+          pollingDelivered: false,
+        }),
+        close: () => {},
+      }),
+    });
+    cleanup.push(() => service.dispose());
+    const first = service.lease('demo', projectDir);
+    expect(first.leaseExpiresAt).toBe(
+      new Date(now + PLUGIN_DRAFT_LEASE_TTL_MS).toISOString(),
+    );
+    now += 10_000;
+    const renewed = service.lease('demo', projectDir);
+    expect(renewed.leaseExpiresAt).toBe(
+      new Date(now + PLUGIN_DRAFT_LEASE_TTL_MS).toISOString(),
+    );
+    now += PLUGIN_DRAFT_LEASE_TTL_MS - 1;
+    service.releaseExpired();
+    expect(service.status('demo', projectDir).state).not.toBe('idle');
+    now += 1;
+    service.releaseExpired();
+    expect(service.status('demo', projectDir).state).toBe('idle');
   });
 
   test('status without a lease is idle and starts nothing', async () => {
