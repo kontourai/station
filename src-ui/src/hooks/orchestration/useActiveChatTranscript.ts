@@ -8,12 +8,16 @@ import { isSessionExecutionActive } from '../../utils/execution';
 import { CHAT_ERROR_MARKER_PREFIX } from '../../utils/sessionFailure';
 import { extractUIBlocks } from '../../utils/uiBlocks';
 import { upsertToolResultBlocks } from './messageParts';
-import { withPendingRequestRow } from './pendingRequestRows';
+import {
+  type PendingApprovalRequest,
+  unansweredApprovalRequests,
+} from './pendingRequestRows';
 import { requestReplayHistory, useReplayHistory } from './replay/history';
 import { isReplayThread } from './replay/replay-registry';
 import { useSessionEventWindow } from './useSessionEventWindow';
 
 const EMPTY_MESSAGES: ChatMessage[] = [];
+const NO_PENDING_APPROVALS: PendingApprovalRequest[] = [];
 const EMPTY_CHANGED_FILES = new Map<
   string,
   NonNullable<ChatMessage['changedFiles']>
@@ -473,7 +477,7 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
     }
     // While the first bounded page is in flight, retain only local ephemeral
     // notices; persisted transcript rows never cause a full conversation read.
-    const merged = mergeTranscriptMessages(
+    return mergeTranscriptMessages(
       visibleProjected,
       handoffBoundaries,
       contextBoundaryMarkers,
@@ -488,18 +492,6 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
       const changedFiles = changedFilesByTurn.get(message.turnId);
       return changedFiles ? { ...message, changedFiles } : message;
     });
-    // #2316: every open approval stays answerable from the chat. A replay is
-    // read-only, and its cards never answer anything.
-    return replay
-      ? merged
-      : withPendingRequestRow(
-          merged,
-          window.events
-            .map((item) => item.event)
-            .filter((event): event is CanonicalRuntimeEvent =>
-              Boolean(event.eventId),
-            ),
-        );
   }, [
     enabled,
     session.messages,
@@ -509,16 +501,34 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
     session.orchestrationTurnOpen,
     session.status,
     changedFilesByTurn,
-    replay,
     window.events,
     window.sessionLineage,
     window.handoffs,
     window.contextBoundaries,
   ]);
 
+  // #2316: open approvals no rendered row can answer (a subagent's call,
+  // Codex, a turn row the streaming shell holds). The pending-approvals strip
+  // offers them; they are never transcript messages. A replay answers nothing.
+  const pendingApprovalRequests = useMemo(
+    () =>
+      enabled && !replay
+        ? unansweredApprovalRequests(
+            messages,
+            window.events
+              .map((item) => item.event)
+              .filter((event): event is CanonicalRuntimeEvent =>
+                Boolean(event.eventId),
+              ),
+          )
+        : NO_PENDING_APPROVALS,
+    [enabled, replay, messages, window.events],
+  );
+
   return {
     ...window,
     enabled,
+    pendingApprovalRequests,
     messages: enabled
       ? messages
       : EMPTY_MESSAGES === session.messages

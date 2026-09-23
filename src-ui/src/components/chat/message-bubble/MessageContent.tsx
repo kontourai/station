@@ -72,7 +72,11 @@ function MessageContentComponent({
       toolCall={part as any}
       showDetails={showToolDetails}
       onApprove={
-        isStreamingMessage && part.needsApproval
+        // #2316: a card bound to its request by the projection answers from
+        // wherever its row sits — the server verifies the exact prompt
+        // (`expectedRequestEventId`), which is what the last-row gate stood
+        // in for. A part without that binding keeps the last-row gate.
+        part.needsApproval && (isStreamingMessage || part.approvalEventId)
           ? (action) =>
               onToolApproval?.(part, action) ??
               Promise.reject(new Error('This chat cannot answer requests.'))

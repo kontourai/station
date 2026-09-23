@@ -21,6 +21,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
@@ -153,6 +154,7 @@ function TranscriptHarness({ session }: { session: ChatSession }) {
   return (
     <ChatMessageList
       activeSession={{ ...session, messages: transcript.messages }}
+      pendingApprovalRequests={transcript.pendingApprovalRequests}
       fontSize={13}
       showReasoning={false}
       showToolDetails={false}
@@ -497,7 +499,7 @@ describe('#2316 inline approval card', () => {
       ).toHaveLength(1);
     });
 
-    test('offers nothing once the request is resolved or its turn has ended', async () => {
+    test('offers nothing once the request is resolved, its turn has ended or its session exited', async () => {
       for (const settle of [
         {
           method: 'request.resolved',
@@ -505,6 +507,7 @@ describe('#2316 inline approval card', () => {
           status: 'approved',
         },
         { method: 'turn.completed', turnId: 'turn-1' },
+        { method: 'session.exited', exitCode: 0 },
       ]) {
         cleanup();
         sequence = 0;
@@ -516,7 +519,162 @@ describe('#2316 inline approval card', () => {
         renderCard();
         await screen.findByText(/Review the plugin with a subagent/);
         expect(screen.queryByRole('button', { name: 'Allow Once' })).toBeNull();
+        expect(
+          screen.queryByRole('region', { name: 'Approvals waiting on you' }),
+        ).toBeNull();
       }
+    });
+
+    test('is offered in the pending-approvals strip, never as a transcript message', async () => {
+      sequence = 0;
+      windowEvents.current = subagentBashAwaitingApproval();
+      stubFetch(() => Response.json({ success: true, data: {} }));
+      renderCard();
+
+      const strip = await screen.findByRole('region', {
+        name: 'Approvals waiting on you',
+      });
+      expect(
+        within(strip).getByRole('button', { name: 'Allow Once' }),
+      ).toBeTruthy();
+      // Not a message row: no message anchor holds it, and no transcript row
+      // was invented for it.
+      expect(strip.closest('[data-chat-message-key]')).toBeNull();
+      for (const row of document.querySelectorAll('[data-chat-message-key]')) {
+        expect(row.getAttribute('data-chat-message-key')).not.toMatch(
+          /pending/,
+        );
+      }
+    });
+
+    test('lists only requests with no answerable card, and never takes the last row’s buttons', async () => {
+      sequence = 0;
+      windowEvents.current = [
+        ...subagentBashAwaitingApproval(),
+        // The parent's own Bash call, bound to its own request.
+        runtimeEvent({
+          method: 'tool.started',
+          turnId: 'turn-1',
+          itemId: 'toolu-parent-bash',
+          toolCallId: 'toolu-parent-bash',
+          toolName: 'Bash',
+          arguments: { command: 'ls' },
+        }),
+        runtimeEvent({
+          method: 'request.opened',
+          requestId: 'req-parent',
+          requestType: 'approval',
+          title: 'Allow Bash',
+          payload: { toolName: 'Bash', toolCallId: 'toolu-parent-bash' },
+        }),
+      ];
+      const calls = stubFetch(() => Response.json({ success: true, data: {} }));
+      renderCard();
+
+      const strip = await screen.findByRole('region', {
+        name: 'Approvals waiting on you',
+      });
+      // One card in the strip: the subagent's. The parent's card stays on
+      // its own row, the last one, with its buttons.
+      expect(
+        within(strip).getAllByRole('button', { name: 'Deny' }),
+      ).toHaveLength(1);
+      expect(screen.getAllByRole('button', { name: 'Deny' })).toHaveLength(2);
+      const rowDeny = screen
+        .getAllByRole('button', { name: 'Deny' })
+        .find((button) => !strip.contains(button));
+      fireEvent.click(rowDeny!);
+      await waitFor(() => expect(calls).toHaveLength(1));
+      expect(calls[0]?.body).toMatchObject({ requestId: 'req-parent' });
+    });
+
+    test('each session in a lineage offers its own request', async () => {
+      sequence = 0;
+      windowEvents.current = [
+        runtimeEvent({
+          method: 'turn.started',
+          threadId: 'claude-child-a',
+          turnId: 'turn-a',
+          prompt: 'Earlier session',
+        }),
+        runtimeEvent({
+          method: 'request.opened',
+          threadId: 'claude-child-a',
+          requestId: 'req-same-id',
+          requestType: 'approval',
+          title: 'Allow Read',
+          payload: { toolName: 'Read', toolCallId: 'toolu-a' },
+        }),
+        runtimeEvent({
+          method: 'turn.started',
+          turnId: 'turn-b',
+          prompt: 'Current session',
+        }),
+        runtimeEvent({
+          method: 'request.opened',
+          requestId: 'req-same-id',
+          requestType: 'approval',
+          title: 'Allow Bash',
+          payload: { toolName: 'Bash', toolCallId: 'toolu-b' },
+        }),
+      ];
+      const calls = stubFetch(() => Response.json({ success: true, data: {} }));
+      renderCard();
+
+      const strip = await screen.findByRole('region', {
+        name: 'Approvals waiting on you',
+      });
+      fireEvent.click(
+        within(strip).getByRole('button', {
+          name: 'Allow Read for this session',
+        }),
+      );
+      fireEvent.click(
+        within(strip).getByRole('button', {
+          name: 'Allow Bash for this session',
+        }),
+      );
+      await waitFor(() => expect(calls).toHaveLength(2));
+      expect(calls.map((call) => call.body)).toEqual([
+        expect.objectContaining({
+          threadId: 'claude-child-a',
+          requestId: 'req-same-id',
+          expectedRequestEventId: 'evt-2',
+        }),
+        expect.objectContaining({
+          threadId: 'claude-child-b',
+          requestId: 'req-same-id',
+          expectedRequestEventId: 'evt-4',
+        }),
+      ]);
+    });
+  });
+
+  test('a bound card answers from a row that is not the last one', async () => {
+    sequence = 0;
+    windowEvents.current = [
+      ...claudeBashAwaitingApproval(),
+      // A later turn puts another row after the card's row.
+      runtimeEvent({
+        method: 'turn.started',
+        turnId: 'turn-2',
+        prompt: 'And another thing',
+      }),
+    ];
+    const calls = stubFetch(() => Response.json({ success: true, data: {} }));
+    renderCard();
+
+    await screen.findByText('And another thing');
+    // Still on its own row: nothing was moved to the strip.
+    expect(
+      screen.queryByRole('region', { name: 'Approvals waiting on you' }),
+    ).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Allow Once' }));
+    await waitFor(() => expect(calls).toHaveLength(1));
+    expect(calls[0]?.body).toMatchObject({
+      requestId: 'req-claude-b',
+      expectedRequestEventId: 'evt-3',
+      decision: 'accept',
     });
   });
 });

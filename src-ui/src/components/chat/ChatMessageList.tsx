@@ -9,6 +9,7 @@ import React, {
 import { useAgents } from '../../contexts/AgentsContext';
 import { useApiBase } from '../../contexts/ApiBaseContext';
 import type { ChatContentPart } from '../../contexts/active-chats-state';
+import type { PendingApprovalRequest } from '../../hooks/orchestration/pendingRequestRows';
 import { useSendMessage } from '../../hooks/useActiveChatSessions';
 import { useCopyToClipboardToast } from '../../hooks/useCopyToClipboardToast';
 import { useToolApproval } from '../../hooks/useToolApproval';
@@ -31,6 +32,7 @@ import {
 import { type ForkTurnSource, precedingForkSource } from './fork-turn-source';
 import { formatFormSubmission } from './formSubmission';
 import { MessageBubble, type MessageBubbleSession } from './MessageBubble';
+import { PendingApprovalStrip } from './PendingApprovalStrip';
 import { QuoteSelectionToolbar } from './QuoteSelectionToolbar';
 import { ReasoningSection } from './ReasoningSection';
 import { ScrollToBottomButton } from './ScrollToBottomButton';
@@ -89,6 +91,11 @@ interface ChatMessageListProps {
   onForkFromTurn?: (source: ForkTurnSource) => void;
   onNewChatFromMessage?: (text: string) => void;
   onQuote?: (quote: SavedAnswerQuote) => void;
+  /**
+   * #2316: open approvals no transcript row can answer, rendered as the
+   * pending-approvals strip below the transcript (never as messages).
+   */
+  pendingApprovalRequests?: readonly PendingApprovalRequest[];
 }
 
 // Stable fallback so `agent || FALLBACK_AGENT` doesn't allocate a new object
@@ -138,6 +145,7 @@ function ChatMessageListComponent({
   onForkFromTurn,
   onNewChatFromMessage,
   onQuote,
+  pendingApprovalRequests,
 }: ChatMessageListProps) {
   const agents = useAgents();
   const { apiBase } = useApiBase();
@@ -804,6 +812,22 @@ function ChatMessageListComponent({
                 </div>
               ))}
           </>
+        )}
+        {!activeSession.replay && pendingApprovalRequests && (
+          <PendingApprovalStrip
+            requests={pendingApprovalRequests}
+            onApprove={(request, action) =>
+              handleToolApproval(
+                activeSession.id,
+                activeSession.agentSlug,
+                request.approvalId ?? '',
+                request.toolName || request.name || '',
+                action,
+                request.approvalThreadId,
+                request.approvalEventId,
+              )
+            }
+          />
         )}
       </div>
       {isUserScrolledUp && (

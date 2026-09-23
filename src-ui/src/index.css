@@ -4823,6 +4823,14 @@ button.tool-call__line:hover {
   color: var(--color-text-secondary, var(--color-text));
 }
 
+/* #2316: approvals no transcript row can answer, under the transcript. */
+.pending-approvals {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 8px 0;
+}
+
 /* Collapsed tool-call batch — a muted single-line summary that replaces a
    stack of individually-expandable ToolCallDisplay cards ("three shell_exec
    cards fill the phone screen"). Tapping opens ToolCallBatchSheet, which
