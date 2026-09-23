@@ -2244,7 +2244,14 @@ describe('the root tauri script roots itself at the app directory', () => {
 });
 
 describe('merge-queue regression workflow covers the full regression', () => {
-  type Step = { run?: string; env?: Record<string, string>; uses?: string };
+  type Step = {
+    name?: string;
+    run?: string;
+    env?: Record<string, string>;
+    uses?: string;
+    if?: string;
+    'continue-on-error'?: unknown;
+  };
   type Job = {
     name?: string;
     if?: string;
@@ -2261,22 +2268,57 @@ describe('merge-queue regression workflow covers the full regression', () => {
     return entry?.document as { jobs: Record<string, Job> };
   }
 
-  // Every place a phase selection may live: a step's PHASES env, a matrix
-  // entry's `phases`, or a literal driver invocation in a run block.
-  function selections(jobs: Record<string, Job>) {
-    const found: Array<{ job: string; text: string }> = [];
+  const DRIVER = 'node scripts/run-full-regression-phases.mjs';
+  const MATRIX_PHASES = `\${{ matrix.phases }}`;
+
+  // Executed shell lines only: comment lines are dropped, and a line counts
+  // as a driver call only when it STARTS with the driver command, so an
+  // `echo` or a commented-out invocation selects nothing.
+  function executedLines(run: string | undefined) {
+    return (run ?? '')
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => line && !line.startsWith('#'));
+  }
+
+  // The phase selections the workflow actually executes. A `PHASES` env or a
+  // matrix entry counts only when its step reads it into the driver's argv;
+  // a literal driver line counts as written.
+  function driverSteps(jobs: Record<string, Job>) {
+    const found: Array<{
+      job: string;
+      step: Step;
+      texts: string[];
+      consumesPhases: boolean;
+    }> = [];
     for (const [job, definition] of Object.entries(jobs)) {
-      for (const entry of definition.strategy?.matrix?.include ?? [])
-        if (entry.phases) found.push({ job, text: entry.phases });
       for (const step of definition.steps ?? []) {
-        if (step.env?.PHASES && !step.env.PHASES.includes('${{'))
-          found.push({ job, text: step.env.PHASES });
-        for (const line of (step.run ?? '').split('\n'))
-          if (line.includes('run-full-regression-phases.mjs --phase='))
-            found.push({ job, text: line });
+        const lines = executedLines(step.run);
+        const calls = lines.filter((line) => line.startsWith(DRIVER));
+        if (calls.length === 0) continue;
+        const texts: string[] = [];
+        let consumesPhases = false;
+        for (const call of calls) {
+          if (call.startsWith(`${DRIVER} "\${phases[@]}"`)) {
+            consumesPhases = lines.includes('read -r -a phases <<< "$PHASES"');
+            if (!consumesPhases) continue;
+            const phases = step.env?.PHASES;
+            if (phases === MATRIX_PHASES)
+              for (const entry of definition.strategy?.matrix?.include ?? [])
+                texts.push(entry.phases ?? '');
+            else if (phases) texts.push(phases);
+          } else texts.push(call);
+        }
+        found.push({ job, step, texts, consumesPhases });
       }
     }
     return found;
+  }
+
+  function selections(jobs: Record<string, Job>) {
+    return driverSteps(jobs).flatMap(({ job, texts }) =>
+      texts.map((text) => ({ job, text })),
+    );
   }
 
   function phaseIds(text: string) {
@@ -2352,5 +2394,64 @@ describe('merge-queue regression workflow covers the full regression', () => {
     expect(jobs['android-viewport'].steps?.map(({ run }) => run)).toContain(
       'npm run test:android',
     );
+  });
+
+  it('keeps every driver step on the failure path: pipefail before tee, no if, no continue-on-error', () => {
+    const steps = driverSteps(document().jobs);
+    // static, 4 ordinary, 2 process-heavy, exclusive each have a Run step;
+    // the three corpus job kinds also have a prerequisite step.
+    expect(steps.filter(({ texts }) => texts.length > 0).length).toBe(
+      steps.length,
+    );
+    const runSteps = steps.filter(({ step }) =>
+      executedLines(step.run).some((line) => line.includes('| tee')),
+    );
+    expect(runSteps.map(({ job }) => job).sort()).toEqual([
+      'exclusive',
+      'ordinary',
+      'process-heavy',
+      'static',
+    ]);
+    for (const { job, step, consumesPhases } of steps) {
+      expect(step.if, `${job}: ${step.name}`).toBeUndefined();
+      expect(step['continue-on-error'], `${job}: ${step.name}`).toBeUndefined();
+      const lines = executedLines(step.run);
+      const tee = lines.findIndex((line) => line.includes('| tee'));
+      if (tee >= 0) {
+        const pipefail = lines.indexOf('set -o pipefail');
+        expect(pipefail, `${job}: pipefail`).toBeGreaterThanOrEqual(0);
+        expect(pipefail, `${job}: pipefail precedes tee`).toBeLessThan(tee);
+        expect(consumesPhases, `${job}: Run step reads PHASES`).toBe(true);
+      }
+    }
+    // The matrix jobs feed their Run step from the matrix itself.
+    for (const job of ['ordinary', 'process-heavy'])
+      expect(
+        runSteps.find((entry) => entry.job === job)?.step.env?.PHASES,
+      ).toBe(MATRIX_PHASES);
+  });
+
+  it('counts only executed driver lines as selections (parser control)', () => {
+    const jobs: Record<string, Job> = {
+      probe: {
+        steps: [
+          {
+            run: [
+              '# node scripts/run-full-regression-phases.mjs --phase=app-builds',
+              'echo node scripts/run-full-regression-phases.mjs --phase=sdk-builds',
+              'node scripts/run-full-regression-phases.mjs --phase=repo-governance',
+            ].join('\n'),
+          },
+          {
+            // A PHASES env the step never reads selects nothing.
+            env: { PHASES: '--phase=verify-static' },
+            run: `node scripts/run-full-regression-phases.mjs "\${phases[@]}"`,
+          },
+        ],
+      },
+    };
+    expect(selections(jobs).flatMap(({ text }) => phaseIds(text))).toEqual([
+      'repo-governance',
+    ]);
   });
 });

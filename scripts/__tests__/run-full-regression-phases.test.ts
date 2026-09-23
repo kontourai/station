@@ -281,6 +281,20 @@ describe('full-regression phase driver', () => {
       else process.env.STATION_VERIFICATION_HISTORY_REF = inherited;
     }
   }, 120_000);
+
+  it('exits 1 from the real CLI when a phase fails', () => {
+    // An out-of-range slice makes the real process-heavy phase exit 2 before
+    // it runs any test, so this exercises the CLI's failed-phase exit cheaply.
+    const result = spawnSync(
+      process.execPath,
+      [driver, '--phase=test-full-process-heavy', '--process-heavy-shard=3/2'],
+      { cwd: root, encoding: 'utf8', windowsHide: true, timeout: 120_000 },
+    );
+    expect(result.error).toBeUndefined();
+    expect(result.status, result.stderr).toBe(1);
+    expect(result.stdout).toContain('FAIL  test-full-process-heavy');
+    expect(result.stderr).toContain('process-heavy Vitest corpus accepts only');
+  }, 150_000);
 });
 
 describe('workspace mutation check', () => {
