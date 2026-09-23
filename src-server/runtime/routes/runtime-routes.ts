@@ -27,6 +27,10 @@ import {
   deploymentAccountPrincipal,
 } from '../../services/identity/deployment-authentication-service.js';
 import type { LoadedLocalAccounts } from '../../services/identity/local-account-runtime.js';
+import {
+  RelayEnrollmentRefusal,
+  type RelayEnrollmentService,
+} from '../../services/identity/relay-enrollment-service.js';
 import { LiveSurfaceRegistry } from '../../services/live-surface/registry.js';
 import { LocalMobileDeviceHost } from '../../services/mobile-device/mobile-device-host.js';
 import type {
@@ -578,6 +582,7 @@ export interface ConfigureRuntimeRoutesContext {
   deploymentAuthentication?: LoadedDeploymentAuthentication;
   localAccounts?: LoadedLocalAccounts;
   applicationSessions?: ApplicationSessionService;
+  relayEnrollment?: RelayEnrollmentService;
   runtimeSearch?: import('../../services/search/runtime-search.js').RuntimeSearch;
   app: HonoApp;
   logger: Logger;
@@ -1447,6 +1452,7 @@ export function configureRuntimeRoutes(
       resolvePublicIngressOrigin: publicIngressOriginResolver(context.port)
         .resolve,
       accountAuthentication: context.deploymentAuthentication?.service,
+      relayEnrollment: context.relayEnrollment,
     },
   );
   // station#1423. ONE service instance for both families: the operator mints
@@ -1647,6 +1653,7 @@ export function configureRuntimeRoutes(
           context.environmentSecurityService,
         ),
       accountAuthentication: context.deploymentAuthentication?.service,
+      relayEnrollment: context.relayEnrollment,
     },
   );
 
@@ -5521,6 +5528,7 @@ export function configureDevicePairingPublicRoutes(
      */
     resolvePublicIngressOrigin?: () => Promise<readonly string[] | undefined>;
     accountAuthentication?: DeploymentAuthenticationService;
+    relayEnrollment?: RelayEnrollmentService;
   } = {},
 ): void {
   if (options.authFailureAudit && !options.authFailureSourceId) {
@@ -5678,13 +5686,31 @@ export function configureDevicePairingPublicRoutes(
     if (!timingSafeSecretEqual(body.secret, localGrantSecret))
       return c.json({ error: 'local_grant_forbidden' }, 403);
     try {
-      if (body.action === 'list')
+      if (body.action === 'list') {
+        try {
+          await options.relayEnrollment?.cleanupExpired();
+        } catch {
+          return c.json({ error: 'pairing_unavailable' }, 503);
+        }
         return c.json({ requests: pairing.listRequests() });
+      }
       const requestId = body.requestId as string;
-      const result =
-        body.action === 'approve'
-          ? pairing.confirmRequest(requestId, { kind: 'local-grant' })
-          : pairing.denyRequest(requestId);
+      let result: DevicePairingRequest;
+      if (body.action === 'approve') {
+        result = pairing.confirmRequest(requestId, { kind: 'local-grant' });
+      } else if (pairing.isRelayEnrollmentRequest(requestId)) {
+        if (!options.relayEnrollment)
+          return c.json({ error: 'person_binding_unavailable' }, 409);
+        const request = pairing
+          .listRequests()
+          .find((item) => item.requestId === requestId);
+        if (!request) throw new DevicePairingError('request_not_found');
+        if (!(await options.relayEnrollment.denyRequest(requestId)))
+          throw new DevicePairingError('request_not_found');
+        result = { ...request, status: 'denied' };
+      } else {
+        result = pairing.denyRequest(requestId);
+      }
       options.audit?.({
         event:
           body.action === 'approve'
@@ -6344,6 +6370,17 @@ export function configureDevicePairingPublicRoutes(
       return c.json({ error: 'origin_forbidden' }, 403);
     }
     try {
+      // An enrollment-owned offer can only be finalized through the
+      // key-bound relay activation protocol. The legacy public exchange has
+      // no attempt proof or delivery ACK, so it must never mint this Device.
+      if (pairing.isRelayEnrollmentRequest(body.requestId)) {
+        deviceSessionExchanges.add(1, {
+          outcome: 'denied',
+          reason: 'relay_enrollment_finalize_required',
+        });
+        failureLimiter.finalize(admission.admission, 'pending');
+        return c.json({ error: 'relay_enrollment_finalize_required' }, 409);
+      }
       // Approval binds an account candidate to the Device, but the provider
       // session may be revoked before the requester exchanges its credential.
       // Recheck at the minting boundary so a stale approved request cannot
@@ -6569,6 +6606,7 @@ export function configureDevicePairingHostRoutes(
      */
     isRequestPrincipalCurrent: (request: Request) => boolean;
     accountAuthentication?: DeploymentAuthenticationService;
+    relayEnrollment?: RelayEnrollmentService;
   },
 ): void {
   const audit = options.audit;
@@ -6641,9 +6679,14 @@ export function configureDevicePairingHostRoutes(
       );
     }
   });
-  app.get('/api/pairing/requests', (c) =>
-    c.json({ requests: pairing.listRequests() }),
-  );
+  app.get('/api/pairing/requests', async (c) => {
+    try {
+      await options.relayEnrollment?.cleanupExpired();
+    } catch {
+      return c.json({ error: 'pairing_unavailable' }, 503);
+    }
+    return c.json({ requests: pairing.listRequests() });
+  });
   app.post('/api/pairing/requests/:requestId/confirm', async (c) => {
     const requestId = c.req.param('requestId');
     // station#1490: the ONLY caller-identity signal this handler has. The
@@ -6668,6 +6711,7 @@ export function configureDevicePairingHostRoutes(
             kind: 'verified-ingress' | 'account';
           }
         | undefined;
+      let relayConfirmation: DevicePairingRequest | undefined;
       if (c.req.raw.body !== null) {
         const body = await readPairingOfferJson(
           c.req.raw,
@@ -6731,46 +6775,82 @@ export function configureDevicePairingHostRoutes(
           ) {
             return c.json({ error: 'approval_requires_operator' }, 403);
           }
-          const candidate = pairing.accountCandidateForRequest(requestId);
-          if (!candidate || !options.accountAuthentication) {
-            return c.json({ error: 'person_binding_unavailable' }, 409);
-          }
-          const verified =
-            await options.accountAuthentication.verifySessionReference(
-              candidate.sessionId,
-              c.req.raw.signal,
-            );
-          if (
-            verified.kind !== 'authenticated' ||
-            options.accountAuthentication.describe().issuer !==
-              candidate.candidate.issuer ||
-            verified.session.subject !== candidate.candidate.subject
-          ) {
-            return c.json({ error: 'person_binding_unavailable' }, 409);
-          }
-          if (
-            options.isApprovalCurrent?.(c.req.raw) !== true ||
-            actor.authority !== 'operator-credential' ||
-            options.verifyOperatorCredential?.(actor.credential) !== true
-          ) {
-            return c.json({ error: 'approval_requires_operator' }, 403);
-          }
-          bindingApproval = {
-            principalId: resolveStationPrincipal(
+          if (pairing.isRelayEnrollmentRequest(requestId)) {
+            if (!options.relayEnrollment)
+              return c.json({ error: 'person_binding_unavailable' }, 409);
+            const principalId = resolveStationPrincipal(
               identifyIngress(c),
               'personal',
               { verifiedOperatorCredential: true },
               undefined,
-            ).id,
-            kind: 'account',
-          };
+            ).id;
+            try {
+              relayConfirmation =
+                await options.relayEnrollment.confirmOperatorBinding({
+                  requestId,
+                  approval,
+                  principalId,
+                  signal: c.req.raw.signal,
+                  isApprovalCurrent: () =>
+                    options.isApprovalCurrent?.(c.req.raw) === true &&
+                    options.verifyOperatorCredential?.(actor.credential) ===
+                      true,
+                });
+            } catch (error) {
+              if (error instanceof RelayEnrollmentRefusal) {
+                const code = error.code;
+                const status =
+                  code === 'approval_required'
+                    ? 403
+                    : code === 'expired'
+                      ? 410
+                      : code === 'invalid'
+                        ? 400
+                        : 409;
+                return c.json({ error: `relay_enrollment_${code}` }, status);
+              }
+              throw error;
+            }
+          } else {
+            const candidate = pairing.accountCandidateForRequest(requestId);
+            if (!candidate || !options.accountAuthentication) {
+              return c.json({ error: 'person_binding_unavailable' }, 409);
+            }
+            const verified =
+              await options.accountAuthentication.verifySessionReference(
+                candidate.sessionId,
+                c.req.raw.signal,
+              );
+            if (
+              verified.kind !== 'authenticated' ||
+              options.accountAuthentication.describe().issuer !==
+                candidate.candidate.issuer ||
+              verified.session.subject !== candidate.candidate.subject
+            ) {
+              return c.json({ error: 'person_binding_unavailable' }, 409);
+            }
+            if (
+              options.isApprovalCurrent?.(c.req.raw) !== true ||
+              actor.authority !== 'operator-credential' ||
+              options.verifyOperatorCredential?.(actor.credential) !== true
+            ) {
+              return c.json({ error: 'approval_requires_operator' }, 403);
+            }
+            bindingApproval = {
+              principalId: resolveStationPrincipal(
+                identifyIngress(c),
+                'personal',
+                { verifiedOperatorCredential: true },
+                undefined,
+              ).id,
+              kind: 'account',
+            };
+          }
         }
       }
-      const request = pairing.confirmRequest(
-        requestId,
-        approval,
-        bindingApproval,
-      );
+      const request =
+        relayConfirmation ??
+        pairing.confirmRequest(requestId, approval, bindingApproval);
       devicePairingRequests.add(1, {
         source: request.source,
         outcome: 'approved',
@@ -6793,7 +6873,9 @@ export function configureDevicePairingHostRoutes(
       }
       return c.json({
         ...request,
-        ...(bindingApproval ? { personBindingApproved: true } : {}),
+        ...(bindingApproval || relayConfirmation
+          ? { personBindingApproved: true }
+          : {}),
       });
     } catch (error) {
       if (
@@ -6826,9 +6908,23 @@ export function configureDevicePairingHostRoutes(
       );
     }
   });
-  app.delete('/api/pairing/requests/:requestId', (c) => {
+  app.delete('/api/pairing/requests/:requestId', async (c) => {
     try {
-      const request = pairing.denyRequest(c.req.param('requestId'));
+      const requestId = c.req.param('requestId');
+      let request: DevicePairingRequest;
+      if (pairing.isRelayEnrollmentRequest(requestId)) {
+        if (!options.relayEnrollment)
+          return c.json({ error: 'person_binding_unavailable' }, 409);
+        const pending = pairing
+          .listRequests()
+          .find((item) => item.requestId === requestId);
+        if (!pending) throw new DevicePairingError('request_not_found');
+        if (!(await options.relayEnrollment.denyRequest(requestId)))
+          throw new DevicePairingError('request_not_found');
+        request = { ...pending, status: 'denied' };
+      } else {
+        request = pairing.denyRequest(requestId);
+      }
       devicePairingRequests.add(1, {
         source: request.source,
         outcome: 'denied',
