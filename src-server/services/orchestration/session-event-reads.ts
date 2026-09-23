@@ -1,5 +1,6 @@
 import type { ConversationContextBoundaryTranscriptMarker } from '@kontourai/station-contracts/conversation-context-boundary';
 import type {
+  ConversationTurnActivity,
   OrchestrationConversationEventWindow,
   OrchestrationSessionDetail,
   OrchestrationSessionEventPage,
@@ -64,6 +65,10 @@ interface SessionEventReadsDeps {
     authority: SessionReadScope,
   ) => boolean;
   readTurnProgress: TurnProgressTracker['read'];
+  /** #2309: the conversation activity projection's read for a thread. */
+  readConversationActivity?: (
+    threadId: string,
+  ) => ConversationTurnActivity | undefined;
   observeAnswerability: (
     threadId: string,
     provider: string | undefined,
@@ -84,6 +89,13 @@ interface SessionEventReadsDeps {
  */
 export class SessionEventReads {
   constructor(private readonly deps: SessionEventReadsDeps) {}
+
+  private conversationActivityOption(threadId: string): {
+    conversationActivity?: ConversationTurnActivity;
+  } {
+    const conversationActivity = this.deps.readConversationActivity?.(threadId);
+    return conversationActivity ? { conversationActivity } : {};
+  }
 
   /**
    * archive#1284 (HIGH 2): what the PERSISTED log says about one request —
@@ -178,6 +190,7 @@ export class SessionEventReads {
           eventCount: this.deps.eventStore?.countEventsByThread(threadId),
           ...conversationDraftFactsOption(this.deps.eventStore, threadId),
           turnProgress: this.deps.readTurnProgress(threadId),
+          ...this.conversationActivityOption(threadId),
           answerability: this.deps.observeAnswerability(
             threadId,
             (loaded ?? persisted)?.provider,
@@ -238,6 +251,7 @@ export class SessionEventReads {
       eventCount: this.deps.eventStore?.countEventsByThread(threadId),
       ...conversationDraftFactsOption(this.deps.eventStore, threadId),
       turnProgress: this.deps.readTurnProgress(threadId),
+      ...this.conversationActivityOption(threadId),
       answerability: this.deps.observeAnswerability(
         threadId,
         (loaded ?? persisted)?.provider,

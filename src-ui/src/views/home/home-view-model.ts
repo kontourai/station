@@ -12,6 +12,7 @@ import {
   type ChatUIState,
 } from '../../contexts/active-chats-state';
 import type { AgentSummary } from '../../types';
+import { serverTurnLive } from '../../utils/conversation-activity';
 import type { HomeLifecycleLabel } from '../../utils/lifecycle-priority';
 import {
   LIFECYCLE_PRIORITY,
@@ -829,7 +830,12 @@ function chatLifecycleLabel(
     chat.orchestrationStatus === 'awaiting-approval'
   )
     return 'Needs attention';
-  if (chat.status === 'sending') return 'Running';
+  // #2309: the conversation's server record, when there is one, is THE
+  // running answer — the same record every device reads. A local `status:
+  // 'sending'` counts only inside this composer's unacknowledged send.
+  const serverLive = serverTurnLive(chat);
+  if (serverLive === true) return 'Running';
+  if (serverLive === undefined && chat.status === 'sending') return 'Running';
   // #765 A2: the server recorded this conversation's current session as
   // failed and no newer local activity (send/approval above) supersedes it.
   // Before this branch a chat whose client store missed the `runtime.error`
@@ -841,6 +847,7 @@ function chatLifecycleLabel(
   // cached summary predates (review H1), so it falls through to its own
   // idle/running reading instead — and `mergeHomeWorkItems` lets that win.
   if (correlated?.draft && (chat.messages?.length ?? 0) === 0) return 'Draft';
+  if (serverLive === false) return 'Recent';
   if (chat.orchestrationStatus !== 'running') return 'Recent';
   // No correlated session means no better signal than the chat store itself —
   // notably chats on non-orchestration send paths, which never have one.
@@ -885,7 +892,14 @@ export function buildActiveChatTaskItems({
   );
   for (const session of sessions) {
     const entry: ChatSessionCorrelation = {
-      hasActiveTurn: session.hasActiveTurn === true,
+      // #2309: the conversation's record answers for every lineage child;
+      // this row's own fold is the older-server path. The entry is keyed
+      // below by both this row's thread and its conversation, so the record
+      // is read per thread (its open turn is on THIS thread) for the first
+      // and per conversation for the second.
+      hasActiveTurn: session.conversationActivity
+        ? session.conversationActivity.openTurn?.threadId === session.threadId
+        : session.hasActiveTurn === true,
       failed:
         session.lifecycleState === 'failed' || isFirstSendFailure(session),
       draft: session.draft === true,
@@ -900,7 +914,16 @@ export function buildActiveChatTaskItems({
     if (session.conversationId) {
       const current = turnByThread.get(session.conversationId);
       if (!current || session.updatedAt.localeCompare(current.updatedAt) >= 0) {
-        turnByThread.set(session.conversationId, entry);
+        turnByThread.set(
+          session.conversationId,
+          session.conversationActivity
+            ? {
+                ...entry,
+                hasActiveTurn:
+                  session.conversationActivity.openTurn !== undefined,
+              }
+            : entry,
+        );
       }
     }
   }

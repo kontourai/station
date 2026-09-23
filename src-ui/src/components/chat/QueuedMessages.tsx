@@ -18,6 +18,11 @@ interface QueuedMessagesProps {
   failure?: { message: string; code?: string; at: number };
   /** Retry the head of the queue now, rather than waiting for the next turn. */
   onRetry?: () => void;
+  /**
+   * #2309: send the head now. Offered by the host only when the automatic
+   * drain will not: no turn is open, yet messages are still queued.
+   */
+  onSendNow?: () => void;
 }
 
 interface QueueRow {
@@ -32,6 +37,7 @@ export function QueuedMessages({
   onSteer,
   failure,
   onRetry,
+  onSendNow,
 }: QueuedMessagesProps) {
   const {
     editingIndex,
@@ -72,6 +78,17 @@ export function QueuedMessages({
     <div className="queued-messages">
       <div className="queued-messages__label">
         {messages.length} message{messages.length !== 1 ? 's' : ''} queued
+        {onSendNow && !failure ? (
+          <button
+            type="button"
+            onClick={onSendNow}
+            className="queued-message__btn queued-messages__send-now"
+            aria-label="Send the next queued message now"
+            title="Nothing is running that will send this for you"
+          >
+            Send now
+          </button>
+        ) : null}
       </div>
       {failure && (
         <div className="queued-messages__failure" role="status">

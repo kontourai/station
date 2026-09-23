@@ -1258,6 +1258,52 @@ describe('station#4080 slice 1: interrupted-turn boundary consumption', () => {
     ).toBeUndefined();
   });
 
+  test('#2309: the restarted process reads the dead turn open until consume() closes it, then closed', async () => {
+    const path = databasePath();
+    const eventStore = bootAfterCrash({
+      path,
+      threadId: 'thread-activity',
+      provider: 'acp',
+      agentSlug: 'demo-agent',
+      boundaryState: 'accepted',
+    });
+    stores.push(eventStore);
+    eventStore.upsertSession({
+      provider: 'acp',
+      threadId: 'thread-activity',
+      status: 'running',
+      createdAt: '2026-08-16T00:00:00.000Z',
+      updatedAt: '2026-08-16T00:00:02.000Z',
+    });
+    const service = new OrchestrationService({
+      adapterRegistry: createRegistry(),
+      eventBus: new EventBus(),
+      eventStore,
+      logger,
+      memoryAdapters: new Map([
+        [
+          'demo-agent',
+          fakeMemoryAdapter({ conventionalUserId: 'agent:demo-agent' }),
+        ],
+      ]),
+    });
+    const activity = () =>
+      (
+        service as unknown as {
+          conversationActivity: {
+            readForThread(threadId: string): { openTurn?: { turnId: string } };
+          };
+        }
+      ).conversationActivity.readForThread('thread-activity');
+
+    // Seeded from durable state in the new process: the crashed turn's
+    // `turn.started` is its last turn fact, so it reads open.
+    expect(activity().openTurn?.turnId).toBe('turn-1');
+    await (service as any).interruptedTurns.consume();
+    // The recovery `turn.aborted` reaches the live fold through the store.
+    expect(activity().openTurn).toBeUndefined();
+  });
+
   test('station#2235: an invoking boundary (no accepted turn) banners without a turn.aborted', async () => {
     const path = databasePath();
     const eventStore = bootAfterCrash({

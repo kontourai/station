@@ -2,6 +2,7 @@ import type { QueryClient } from '@tanstack/react-query';
 import type { ChatUIState } from '../../contexts/active-chats-store';
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import { backgroundTasksStore } from '../../contexts/background-tasks-store';
+import { newerConversationActivity } from '../../utils/conversation-activity';
 import {
   acknowledgesModelRequest,
   modelControlOptionsMatch,
@@ -30,6 +31,32 @@ type SnapshotChatState = Pick<
 /** Fold-absent (legacy) payloads count as open — only an explicit false demotes. */
 function turnIsOpen(session: { hasActiveTurn?: boolean }): boolean {
   return session.hasActiveTurn !== false;
+}
+
+type ConversationRecord = NonNullable<
+  OrchestrationSnapshotPayload['sessions'][number]['conversationActivity']
+>;
+
+/**
+ * #2309: is a turn open for the CONVERSATION this row belongs to? The row's
+ * `conversationActivity` answers for every lineage child, so the root row of
+ * a conversation whose child runs the turn reads open too. Rows from an older
+ * server keep the per-row fold.
+ */
+function rowTurnIsOpen(
+  session: { hasActiveTurn?: boolean },
+  record: ConversationRecord | undefined,
+): boolean {
+  return record ? record.openTurn !== undefined : turnIsOpen(session);
+}
+
+/** The explicit verdict for the legacy fold, or undefined when none was sent. */
+function rowTurnVerdict(
+  session: { hasActiveTurn?: boolean },
+  record: ConversationRecord | undefined,
+): boolean | undefined {
+  if (record) return record.openTurn !== undefined;
+  return session.hasActiveTurn;
 }
 
 /**
@@ -127,7 +154,18 @@ function snapshotRowRecency(session: SnapshotSession): string {
  * is not marked exited. Deliberate — the chat says it is a view of C, and C
  * is still live; marking it exited while C's turn runs is the defect.
  *
- * When several rows reach one chat, the row that speaks for it is:
+ * #2309 — WITH a server activity record (any row reaching the chat carries
+ * one; the newest by `asOfSequence` is the chat's record): liveness is the
+ * record's, for the chat and for every row reaching it, and it reached the
+ * chat through the store before this plan runs. The row chosen here carries
+ * only the non-liveness fields (model, provider, exit), and it is:
+ * 1. the child the record's open turn names, when a turn is open;
+ * 2. otherwise the child the chat is bound to (`currentSessionId`), so a
+ *    just-finished child's model reads, not the root's first-turn model;
+ * 3. otherwise the chat's own exact-key row, then the most recent row.
+ *
+ * WITHOUT a record (an older server) — #2303's inference, kept as the
+ * fallback — the row that speaks for the chat is:
  * 1. the one with an explicitly open turn (`hasActiveTurn === true`), latest
  *    by `lastEventAt`/`createdAt` if several — an idle sibling is not
  *    evidence that the conversation is idle, so it can never overwrite it;
@@ -143,10 +181,16 @@ function snapshotRowRecency(session: SnapshotSession): string {
  * — acknowledging a pending model request against the root would compare it
  * to a stale answer.
  */
+type SelectedSnapshotRow = {
+  row: SnapshotSession;
+  /** The chat's record (newest across its rows), when any row carries one. */
+  record: ConversationRecord | undefined;
+};
+
 function selectSnapshotRows(
   payload: OrchestrationSnapshotPayload,
   chats: Record<string, SnapshotChatState>,
-): Map<string, SnapshotSession> {
+): Map<string, SelectedSnapshotRow> {
   const keyByExecutionIdentity = new Map<string, string>();
   for (const [key, chat] of Object.entries(chats)) {
     for (const identity of [chat.currentSessionId, chat.conversationId]) {
@@ -174,20 +218,50 @@ function selectSnapshotRows(
     }
   }
 
-  const selected = new Map<string, SnapshotSession>();
+  const selected = new Map<string, SelectedSnapshotRow>();
   for (const [key, candidates] of candidatesByChat) {
     const latest = (rows: SnapshotSession[]) =>
       rows.reduce((best, row) =>
         snapshotRowRecency(row) >= snapshotRowRecency(best) ? row : best,
       );
-    const open = candidates.filter((row) => row.hasActiveTurn === true);
-    selected.set(
-      key,
-      open.length > 0
-        ? latest(open)
-        : (candidates.find((row) => row.threadId === key) ??
-            latest(candidates)),
+    // #2309: with a server activity record, liveness is the record's and
+    // already reached the chat through the store (fed before this plan runs).
+    // The row chosen here carries only the non-liveness fields (model,
+    // provider, exit), so the record names it: the child running the open
+    // turn when there is one, else the chat's own row, else the latest.
+    const record = candidates.reduce<ConversationRecord | undefined>(
+      (newest, row) =>
+        newerConversationActivity(newest, row.conversationActivity),
+      undefined,
     );
+    if (record) {
+      const running = record.openTurn
+        ? candidates.find((row) => row.threadId === record.openTurn?.threadId)
+        : undefined;
+      const bound = chats[key]?.currentSessionId;
+      selected.set(key, {
+        row:
+          running ??
+          (bound
+            ? candidates.find((row) => row.threadId === bound)
+            : undefined) ??
+          candidates.find((row) => row.threadId === key) ??
+          latest(candidates),
+        record,
+      });
+      continue;
+    }
+    // #2303, kept as the OLDER-SERVER fallback (no record): an explicitly
+    // open child wins over an idle sibling.
+    const open = candidates.filter((row) => row.hasActiveTurn === true);
+    selected.set(key, {
+      row:
+        open.length > 0
+          ? latest(open)
+          : (candidates.find((row) => row.threadId === key) ??
+            latest(candidates)),
+      record: undefined,
+    });
   }
   return selected;
 }
@@ -198,108 +272,128 @@ function planSnapshot(
 ) {
   const selected = selectSnapshotRows(payload, chats);
 
-  const sessionUpdates = [...selected].map(([chatKey, session]) => {
-    const chat = chats[chatKey];
-    // #2303: live events for the running child route through
-    // `getChatForExecutionSession`, which matches `currentSessionId`; a
-    // chat still pointing at an older child would drop every one of them.
-    // Repaired exactly the way the live `session.started` path repairs it
-    // (`handleOrchestrationEvent`), including re-proving the binding.
-    //
-    // Only an OPEN row is adopted, and only because the server guarantees an
-    // open turn marks the conversation's CURRENT child: it refuses a new
-    // continuation child while the predecessor has an active turn
-    // (`canResolveConversationContinuation` requires `hasActiveTurn !== true`;
-    // context-boundary and handoff reservations require a terminal
-    // predecessor with no active turn — conversation-lineage.ts), and a
-    // crashed turn is closed with `turn.aborted` rather than left open
-    // (interrupted-turn-recovery.ts, station#2235). The live path instead
-    // gates on the server's own binding (`conversation.currentSessionId`);
-    // the snapshot carries no such binding, so this inference is only as
-    // good as those rules. An idle winner (rule 3) is never adopted.
-    //
-    // Known limitation, shared with the live repair (eventHandlers.ts sets
-    // the same `conversationOpenPending: true`): the revalidator that clears
-    // it mounts only for the ACTIVE chat (ChatDock's
-    // `activeSession.conversationOpenPending` gate), so a background chat
-    // stays 'resolving' until opened, and `drainQueuedMessageOnTurnCompleted`
-    // (`!conversationCanMutate`) holds its queued follow-up until then.
-    const adoptsOpenChild =
-      session.hasActiveTurn === true &&
-      session.threadId !== chatKey &&
-      chat?.currentSessionId !== session.threadId;
-    return {
-      threadId: chatKey,
-      updates: {
-        provider: session.provider,
-        model: session.reportedModel ?? session.effectiveModel ?? session.model,
-        ...(acknowledgesModelRequest(
-          chat?.requestedModel,
-          chat?.defaultModel,
-          session.reportedModel ?? session.effectiveModel ?? session.model,
-        )
-          ? {
-              // The model can acknowledge independently from controls: a
-              // late B+high report must not consume a newer B+low request.
-              requestedModel: undefined,
-              requestedModelSource: undefined,
-              ...(modelControlOptionsMatch(
-                chat?.requestedProviderOptions,
-                session.effectiveModelOptions,
-              )
-                ? { requestedProviderOptions: undefined }
-                : {}),
-              ...(chat?.requestedModel !== null
-                ? {
-                    modelSource: chat?.requestedModelSource,
-                  }
-                : {}),
-            }
-          : {}),
-        ...(session.effectiveModel
-          ? {
-              providerOptions: replaceModelControlOptions(
-                chat?.providerOptions ?? {},
-                session.effectiveModelOptions,
-              ),
-            }
-          : {}),
-        orchestrationProvider: session.provider,
-        orchestrationModel:
-          session.reportedModel ?? session.effectiveModel ?? session.model,
-        orchestrationSessionStarted: true,
-        // archive#1034: the payload's `status` is the provider's process state;
-        // 'running' with no open turn (hasActiveTurn === false) must not
-        // re-strand the streaming shell after a reconnect — the exact
-        // symptom archive#1005 fixed on the live-event path.
-        orchestrationStatus:
-          session.status === 'running' && !turnIsOpen(session)
-            ? 'idle'
-            : session.status,
-        // Reseed the client turn fold only from an EXPLICIT server
-        // verdict (archive#1076) — a reconnect during an in-turn approval must
-        // let the next live 'running' state-change re-engage. A legacy
-        // payload without the field must NOT persist turnIsOpen's
-        // conservative default into the long-lived fold: nothing would
-        // ever clear it and an attach-only 'running' would re-engage the
-        // shell (closure-round). Absent field → fold untouched.
-        ...(session.hasActiveTurn === undefined
-          ? {}
-          : { orchestrationTurnOpen: session.hasActiveTurn }),
-        status:
-          session.status === 'running' && turnIsOpen(session)
-            ? 'sending'
-            : 'idle',
-        ...(adoptsOpenChild
-          ? {
-              currentSessionId: session.threadId,
-              conversationOpenPending: true,
-              conversationOpenFailed: false,
-            }
-          : {}),
-      } satisfies Partial<ChatUIState>,
-    };
-  });
+  const sessionUpdates = [...selected].map(
+    ([chatKey, { row: session, record }]) => {
+      const chat = chats[chatKey];
+      // #2303: live events for the running child route through
+      // `getChatForExecutionSession`, which matches `currentSessionId`; a
+      // chat still pointing at an older child would drop every one of them.
+      // Repaired exactly the way the live `session.started` path repairs it
+      // (`handleOrchestrationEvent`), including re-proving the binding.
+      //
+      // Only an OPEN row is adopted, and only because the server guarantees an
+      // open turn marks the conversation's CURRENT child: it refuses a new
+      // continuation child while the predecessor has an active turn
+      // (`canResolveConversationContinuation` requires `hasActiveTurn !== true`;
+      // context-boundary and handoff reservations require a terminal
+      // predecessor with no active turn — conversation-lineage.ts), and a
+      // crashed turn is closed with `turn.aborted` rather than left open
+      // (interrupted-turn-recovery.ts, station#2235). The live path instead
+      // gates on the server's own binding (`conversation.currentSessionId`);
+      // the snapshot carries no such binding, so this inference is only as
+      // good as those rules. An idle winner (rule 3) is never adopted.
+      //
+      // Known limitation, shared with the live repair (eventHandlers.ts sets
+      // the same `conversationOpenPending: true`): the revalidator that clears
+      // it mounts only for the ACTIVE chat (ChatDock's
+      // `activeSession.conversationOpenPending` gate), so a background chat
+      // stays 'resolving' until opened, and `drainQueuedMessageOnTurnCompleted`
+      // (`!conversationCanMutate`) holds its queued follow-up until then.
+      //
+      // #2309: with a server activity record the running child is not
+      // inferred from a row's `hasActiveTurn`: the record names it
+      // (`openTurn.threadId`, the conversation's CURRENT child by the server's
+      // own resolution), and that is what is adopted. The inference above
+      // remains only for an older server that sends no record.
+      // The CHAT's record (newest across every row reaching it), never only the
+      // chosen row's own: a record-less row with a stale `hasActiveTurn` must
+      // not contradict a sibling's record.
+      const runningChild = record
+        ? record.openTurn?.threadId
+        : session.hasActiveTurn === true
+          ? session.threadId
+          : undefined;
+      const adoptsOpenChild =
+        runningChild !== undefined &&
+        runningChild !== chatKey &&
+        chat?.currentSessionId !== runningChild;
+      return {
+        threadId: chatKey,
+        updates: {
+          provider: session.provider,
+          model:
+            session.reportedModel ?? session.effectiveModel ?? session.model,
+          ...(acknowledgesModelRequest(
+            chat?.requestedModel,
+            chat?.defaultModel,
+            session.reportedModel ?? session.effectiveModel ?? session.model,
+          )
+            ? {
+                // The model can acknowledge independently from controls: a
+                // late B+high report must not consume a newer B+low request.
+                requestedModel: undefined,
+                requestedModelSource: undefined,
+                ...(modelControlOptionsMatch(
+                  chat?.requestedProviderOptions,
+                  session.effectiveModelOptions,
+                )
+                  ? { requestedProviderOptions: undefined }
+                  : {}),
+                ...(chat?.requestedModel !== null
+                  ? {
+                      modelSource: chat?.requestedModelSource,
+                    }
+                  : {}),
+              }
+            : {}),
+          ...(session.effectiveModel
+            ? {
+                providerOptions: replaceModelControlOptions(
+                  chat?.providerOptions ?? {},
+                  session.effectiveModelOptions,
+                ),
+              }
+            : {}),
+          orchestrationProvider: session.provider,
+          orchestrationModel:
+            session.reportedModel ?? session.effectiveModel ?? session.model,
+          orchestrationSessionStarted: true,
+          // archive#1034: the payload's `status` is the provider's process state;
+          // 'running' with no open turn (hasActiveTurn === false) must not
+          // re-strand the streaming shell after a reconnect — the exact
+          // symptom archive#1005 fixed on the live-event path.
+          orchestrationStatus:
+            session.status === 'running' && !rowTurnIsOpen(session, record)
+              ? 'idle'
+              : session.status,
+          // Reseed the client turn fold only from an EXPLICIT server
+          // verdict (archive#1076) — a reconnect during an in-turn approval must
+          // let the next live 'running' state-change re-engage. A legacy
+          // payload without the field must NOT persist turnIsOpen's
+          // conservative default into the long-lived fold: nothing would
+          // ever clear it and an attach-only 'running' would re-engage the
+          // shell (closure-round). Absent field → fold untouched.
+          ...(rowTurnVerdict(session, record) === undefined
+            ? {}
+            : { orchestrationTurnOpen: rowTurnVerdict(session, record) }),
+          // #2309: liveness itself is the conversation's activity record
+          // (applied to the store before this plan runs); this keeps the
+          // coarse fields consistent with it for readers that still use them.
+          status:
+            session.status === 'running' && rowTurnIsOpen(session, record)
+              ? 'sending'
+              : 'idle',
+          ...(adoptsOpenChild
+            ? {
+                currentSessionId: runningChild,
+                conversationOpenPending: true,
+                conversationOpenFailed: false,
+              }
+            : {}),
+        } satisfies Partial<ChatUIState>,
+      };
+    },
+  );
 
   // A chat is exited only when NO row reached it — its own key being an idle
   // root while the live child runs elsewhere is not an exit (#2303).
@@ -314,7 +408,7 @@ function planSnapshot(
 
   const openTurnChatKeys = new Set(
     [...selected]
-      .filter(([, session]) => turnIsOpen(session))
+      .filter(([, { row, record }]) => rowTurnIsOpen(row, record))
       .map(([chatKey]) => chatKey),
   );
 
@@ -387,6 +481,16 @@ export function applyOrchestrationSnapshot(
   );
   const { plan, openTurnChatKeys } = planSnapshot(payload, snapshot);
   const isReconnectFallback = options?.isReconnectFallback === true;
+  // #2309: every row carries its conversation's activity. Feed the store
+  // first, keyed by conversation, so liveness is the server's record for
+  // every chat on the conversation whichever row speaks for it, and the
+  // plan's writes below merge onto it. A replayed snapshot never feeds the
+  // live store.
+  if (!replayId) {
+    for (const session of payload.sessions) {
+      activeChatsStore.applyConversationActivity(session.conversationActivity);
+    }
+  }
 
   for (const { threadId, updates } of plan.sessionUpdates) {
     // One write per thread. Each `updateChat` copies the whole chat map and

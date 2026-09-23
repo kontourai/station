@@ -37,6 +37,7 @@ import {
   type ChatErrorTranslation,
   translateChatError,
 } from '../utils/chatErrorTranslation';
+import { liveTurnTarget, serverTurnLive } from '../utils/conversation-activity';
 import {
   chatSessionIsLive,
   resolveSessionEngineConnectionId,
@@ -241,8 +242,13 @@ export function useSendMessage(
       // Durable outbound replay stays durable either way — it must not
       // collapse into either the in-memory queue or a live steer.
       let steerOpenTurn = false;
+      // #2309: "is a turn busy" is the server's open turn (on any device, in
+      // any lineage child) or this composer's own unacknowledged send. A
+      // server that sends no activity record keeps the legacy local status.
+      const turnBusy =
+        serverTurnLive(currentState) ?? currentState?.status === 'sending';
 
-      if (currentState?.status === 'sending') {
+      if (turnBusy && currentState) {
         if (options?.skipInMemoryQueueOnBusy) {
           return options?.dispatch
             ? ({
@@ -291,10 +297,14 @@ export function useSendMessage(
         // would start a second turn and wipe the in-flight stream.
         clearInput(sessionId);
         try {
+          // #2309: the server's open turn names the lineage child running
+          // it and the exact turn; the local stamp is the older-server path.
+          const openTurn = currentState.conversationActivity?.openTurn;
           const result = await steerOrchestrationTurn({
-            threadId: currentState.currentSessionId ?? sessionId,
+            threadId:
+              openTurn?.threadId ?? currentState.currentSessionId ?? sessionId,
             text: content,
-            turnId: currentState.openTurnId,
+            turnId: openTurn?.turnId ?? currentState.openTurnId,
             apiBase,
           });
           if (result.outcome === 'steered') {
@@ -344,6 +354,8 @@ export function useSendMessage(
       clearInput(sessionId);
       updateChat(sessionId, {
         status: 'sending',
+        // #2309: the optimistic window the server has not acknowledged yet.
+        sendAwaitingTurnStart: true,
         messages: transaction.optimisticMessages,
         abortController,
         // The window a Stop has to be held through, named (
@@ -808,6 +820,7 @@ export function useCancelMessage(apiBase?: string) {
           true;
       }
       updateChat(sessionId, { stopPending: true });
+      const target = liveTurnTarget(state, sessionId);
       let settledResult: InterruptTurnResult | undefined;
       try {
         // The browser stream is only an observer of the engine turn. Ask the
@@ -816,9 +829,11 @@ export function useCancelMessage(apiBase?: string) {
         // that continues spending tokens and can later be reported Done.
         const result = await interruptOrchestrationTurn({
           // A conversation may advance through multiple execution Sessions.
-          // Interrupt the exact receipted current Session, not its durable
-          // conversation/root identity.
-          threadId: state.currentSessionId ?? state.conversationId ?? sessionId,
+          // Interrupt the exact Session running the turn, not its durable
+          // conversation/root identity: the server's open turn names it (and
+          // the turn) when a record exists (#2309); otherwise the receipted
+          // current Session.
+          ...target,
           // Only meaningful while the engine has not started this turn: it
           // binds a held cancel to THIS dispatch
           ...(state.pendingClientTurnId
@@ -863,7 +878,13 @@ export function useCancelMessage(apiBase?: string) {
           abortController: undefined,
           stopPending: false,
           ...(turnSettled
-            ? { orchestrationTurnOpen: false, error: undefined }
+            ? {
+                orchestrationTurnOpen: false,
+                error: undefined,
+                // #2309: the same receipt closes the server-named turn for
+                // this client until the record itself moves on.
+                ...(target.turnId ? { stopSettledTurnId: target.turnId } : {}),
+              }
             : {}),
         });
       }

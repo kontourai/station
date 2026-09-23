@@ -82,8 +82,11 @@ export function watchForSqliteCorruption<T extends WatchableDatabase>(
   };
 
   return new Proxy(database, {
-    get(target, property, receiver) {
-      const value = Reflect.get(target, property, receiver);
+    get(target, property) {
+      // The target, not the proxy, is the receiver: node:sqlite's accessors
+      // (`isTransaction`, `isOpen`) are native getters that throw "Illegal
+      // invocation" on any other `this`.
+      const value = Reflect.get(target, property, target);
       if (typeof value !== 'function') return value;
       return (...args: unknown[]) => {
         try {
