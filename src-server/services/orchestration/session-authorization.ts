@@ -5,6 +5,7 @@ import {
 } from '@kontourai/station-contracts/tenancy';
 import type { ProviderSession } from '../../providers/adapter-shape.js';
 import { sessionOwnerCacheOps } from '../../telemetry/metrics.js';
+import type { StationControlCallerPrincipalSource } from '../../tools/station-control-shared.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../identity/principal-resolver.js';
 import type { EventStore } from './event-store.js';
 // Type-only import back into the service module: erased at runtime, so no
@@ -23,7 +24,7 @@ import {
 const SESSION_OWNER_CACHE_MAX_ENTRIES = 2_048;
 
 /**
- * Lane D of #90 (archive#122): the principal an agent session acts for, read
+ * Station #90 lane D (station #122): the principal an agent session acts for, read
  * from the server's own ownership record. `source` says how it was derived,
  * so a consumer can refuse a derivation it does not accept:
  *
@@ -36,13 +37,16 @@ const SESSION_OWNER_CACHE_MAX_ENTRIES = 2_048;
  *   mode, where a session with no recorded owner is the local operator's
  *   (the only account such a host has). Hosted or `deny` hosts never
  *   produce it: an ownerless session there acts for no one.
+ *
+ * Only `session-owner` is eligible for elevation (a consumer granting a
+ * Project role must require it; see `StationControlCallerPrincipal
+ * .elevationEligible`). The two operator mappings name the operator by
+ * inference, not from an authenticated start, and grant nothing beyond what
+ * the session already had.
  */
 export interface SessionActingPrincipal {
   readonly id: string;
-  readonly source:
-    | 'session-owner'
-    | 'legacy-personal-owner'
-    | 'ownerless-single-operator';
+  readonly source: StationControlCallerPrincipalSource;
 }
 
 export interface PersonalConversationAccess {

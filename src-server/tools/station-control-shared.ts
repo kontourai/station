@@ -49,52 +49,81 @@ export function withStationControlExecutionContext<T>(
 }
 
 /**
- * Lane D of #90 (archive#122): the VERIFIED identity of the agent session
- * calling a station-control tool.
+ * Station #90 lane D (station #122): the VERIFIED identity of the agent
+ * session calling a station-control tool.
  *
- * The per-session station-control MCP token (`station-control-mcp-token.ts`)
- * bounds LIFETIME, not authority, and that is unchanged: nothing here narrows
- * what an existing tool may do. This only makes the caller AVAILABLE, derived
- * from a server-minted credential and never from tool input. A `sessionId`
- * (or any other identity) in a tool's arguments is not authority and no code
- * path below reads one.
+ * Nothing here narrows what an existing tool may do; it makes the caller
+ * AVAILABLE, derived from a server-minted per-session credential and never
+ * from tool input. A `sessionId` (or any identity) in a tool's arguments is
+ * not authority and no code path below reads one.
  *
- * `sessionId` is the session the credential was minted for (Station's
- * provider `threadId`). `projectSlug` and `conversationId` come from the
- * server's own session records for that session, never from the request.
- * `tenant` is present only in-process; the REST projection omits it because
- * tenant context is never a public payload field (`tenancy.ts`).
+ * `assurance` says how far that credential can be trusted to mean "this
+ * session", from the channel it was minted for (`station-control-mcp-token.ts`
+ * `stationControlTokenAssurance`): `bound` credentials never reach a place
+ * another local process can read; `bearer-exposed` ones sit in a spawned
+ * process's argv or env, so a same-user process can copy them. Browser and
+ * other session-scoped tools accept only `bound`.
+ *
+ * Everything else (principal, project, conversation) comes from the server's
+ * own records for the credential's session. Tenant context is never part of
+ * this shape (`tenancy.ts`: it is never a public payload field); the REST side
+ * checks it internally.
  */
 export interface StationControlCaller {
   readonly sessionId: string;
+  readonly assurance: 'bound' | 'bearer-exposed';
   /**
-   * The principal the session acts for (D5: browser tools check this
-   * principal's Project role). Read from the session's ownership record,
-   * never from tool input or a request header; `source` names the
-   * derivation (see `SessionActingPrincipal` in
-   * `services/orchestration/session-authorization.ts`). Absent when the
-   * session acts for no attributable principal — a consumer that needs one
-   * must fail closed.
+   * The principal the session acts for (D5). Read from the session's
+   * ownership record, never from tool input or a request header. Absent when
+   * the session acts for no attributable principal; a consumer that needs
+   * one must fail closed.
    */
   readonly principal?: StationControlCallerPrincipal;
+  /** Station-local project identity (`ProjectConfig.id`); membership keys on it. */
+  readonly localProjectId?: string;
+  /** Display only. Slugs are local and renameable; never key authority on one. */
   readonly projectSlug?: string;
   readonly conversationId?: string;
-  readonly tenant?: TenantExecutionContext;
 }
 
-export interface StationControlCallerPrincipal {
-  readonly id: string;
-  readonly source:
-    | 'session-owner'
-    | 'legacy-personal-owner'
-    | 'ownerless-single-operator';
-}
-
-const CALLER_PRINCIPAL_SOURCES: ReadonlySet<string> = new Set([
+/**
+ * How the acting principal was derived (see `SessionActingPrincipal` in
+ * `services/orchestration/session-authorization.ts`). Declared once here; the
+ * session-authorization module derives its type from this list.
+ */
+export const STATION_CONTROL_CALLER_PRINCIPAL_SOURCES = [
   'session-owner',
   'legacy-personal-owner',
   'ownerless-single-operator',
-]);
+] as const;
+export type StationControlCallerPrincipalSource =
+  (typeof STATION_CONTROL_CALLER_PRINCIPAL_SOURCES)[number];
+
+export interface StationControlCallerPrincipal {
+  readonly id: string;
+  readonly source: StationControlCallerPrincipalSource;
+  /**
+   * True only for `session-owner`: an owner Station recorded from the
+   * authenticated caller that started the session. A legacy alias mapping
+   * and the ownerless single-operator mapping name the operator by
+   * inference, so they must never grant anything beyond what the session
+   * already had; a consumer that elevates (a Project-role check for browser
+   * tools) must require this flag.
+   */
+  readonly elevationEligible: boolean;
+}
+
+/** The one derivation of {@link StationControlCallerPrincipal.elevationEligible}. */
+export function stationControlCallerPrincipal(
+  id: string,
+  source: StationControlCallerPrincipalSource,
+): StationControlCallerPrincipal {
+  return Object.freeze({
+    id,
+    source,
+    elevationEligible: source === 'session-owner',
+  });
+}
 
 /**
  * The header a station-control tool's REST call carries its caller
@@ -106,14 +135,16 @@ const CALLER_PRINCIPAL_SOURCES: ReadonlySet<string> = new Set([
 export const STATION_CONTROL_CALLER_TOKEN_HEADER =
   'x-station-control-caller-token';
 /**
- * Marks every REST request a station-control tool makes as agent-originated
+ * Marks every REST request Station's own station-control tool code makes
  * (`isAgentOriginatedRequest`). Station's UI and a pooled station-control
  * child both reach the API as the same internal principal, so without this
  * a route cannot tell an agent's tool call from the operator's own client.
- * It is a self-declaration by Station's tool code, trusted in one direction
- * only: it can make a request look MORE agent-like (and so more
- * restricted), never grant anything. The verified identity is the caller
- * token, not this header.
+ *
+ * It is a declaration, not a proof. Its PRESENCE may only restrict (treat
+ * the request as an agent's). Its ABSENCE proves nothing: any process that
+ * holds the internal token (an agent with a shell can read it from a stdio
+ * child's env or argv) can omit it. So it must never gate a human-only
+ * action; those need a credential only a human client holds.
  */
 export const STATION_CONTROL_ORIGIN_HEADER = 'x-station-control-origin';
 export const STATION_CONTROL_ORIGIN_AGENT_TOOL = 'agent-tool';
@@ -187,20 +218,30 @@ function parseCallerProjection(value: unknown): StationControlCaller | null {
   const record = value as Record<string, unknown>;
   if (typeof record.sessionId !== 'string' || record.sessionId.length === 0)
     return null;
+  if (record.assurance !== 'bound' && record.assurance !== 'bearer-exposed')
+    return null;
   const principal = record.principal as Record<string, unknown> | undefined;
+  const source = principal?.source;
   return Object.freeze({
     sessionId: record.sessionId,
+    assurance: record.assurance,
     ...(principal &&
     typeof principal.id === 'string' &&
     principal.id.length > 0 &&
-    typeof principal.source === 'string' &&
-    CALLER_PRINCIPAL_SOURCES.has(principal.source)
+    typeof source === 'string' &&
+    (STATION_CONTROL_CALLER_PRINCIPAL_SOURCES as readonly string[]).includes(
+      source,
+    )
       ? {
-          principal: Object.freeze({
-            id: principal.id,
-            source: principal.source as StationControlCallerPrincipal['source'],
-          }),
+          // Re-derived locally: a projection cannot assert eligibility.
+          principal: stationControlCallerPrincipal(
+            principal.id,
+            source as StationControlCallerPrincipalSource,
+          ),
         }
+      : {}),
+    ...(typeof record.localProjectId === 'string'
+      ? { localProjectId: record.localProjectId }
       : {}),
     ...(typeof record.projectSlug === 'string'
       ? { projectSlug: record.projectSlug }

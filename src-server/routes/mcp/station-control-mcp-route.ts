@@ -70,6 +70,7 @@ import {
   type StationControlCallerRecordResolver,
 } from '../../runtime/mcp/station-control-caller.js';
 import {
+  STATION_CONTROL_MCP_HTTP_CHANNELS,
   STATION_CONTROL_MCP_PATH,
   verifyStationControlMcpToken,
 } from '../../runtime/mcp/station-control-mcp-token.js';
@@ -129,7 +130,7 @@ interface StationControlMcpRouteOptions {
   port: number;
   /** When configured, only registry-valid tenant-bound MCP tokens are accepted. */
   hostedTenantRegistry?: HostedTenantRegistry;
-  /** Lane D of #90: the server's own records for a verified session. */
+  /** Station #90 lane D: the server's own records for a verified session. */
   resolveCallerRecord?: StationControlCallerRecordResolver;
   /** Test seam only: production always serves the real registrations. */
   createServer?: typeof createStationControlMcpServer;
@@ -158,7 +159,12 @@ export function createStationControlMcpRoutes(
     const candidate =
       url.searchParams.get('token') ??
       extractBearerToken(c.req.header('authorization'));
-    const verified = verifyStationControlMcpToken(candidate);
+    // Station #90 lane D: only the channels this endpoint serves. A stdio
+    // env token or an in-process token presented here is a copied
+    // credential (neither channel ever dials this endpoint).
+    const verified = verifyStationControlMcpToken(candidate, {
+      channels: STATION_CONTROL_MCP_HTTP_CHANNELS,
+    });
     if (!verified) {
       stationControlMcpHttpAuth.add(1, { result: 'rejected' });
       tenantExecutionContextOutcomes.add(
@@ -224,7 +230,7 @@ export function createStationControlMcpRoutes(
       () =>
         withStationControlCallerBinding(
           callerBinding,
-          // Lane D of #90: tool callbacks learn the caller from THIS verified
+          // Station #90 lane D: tool callbacks learn the caller from THIS verified
           // token, re-derived on every read so a revocation mid-request
           // yields no caller, and forward it so Station's REST side can
           // re-verify it.
@@ -241,7 +247,9 @@ export function createStationControlMcpRoutes(
               () => handler.fetch(c.req.raw),
             ),
           () => {
-            const current = verifyStationControlMcpToken(candidate);
+            const current = verifyStationControlMcpToken(candidate, {
+              channels: STATION_CONTROL_MCP_HTTP_CHANNELS,
+            });
             return (
               current !== undefined &&
               current.sessionId === verified.sessionId &&

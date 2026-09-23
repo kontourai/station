@@ -1878,9 +1878,9 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // connected is a strict subset of what that same credential already
     // reads, so this takes the family default rather than a raised tier.
     { method: 'GET', path: '/api/orchestration/presence/summary' },
-    // Lane D of #90: the verified-caller projection for station-control
-    // stdio children. It answers `{ caller: null }` to every caller except
-    // Station's own internal principal presenting a live per-session token,
+    // Station #90 lane D: the verified-caller projection for station-control
+    // stdio children. Internal-only at the route: every non-internal
+    // principal gets a 404 whatever its scope (station-control-caller-route.ts),
     // so a paired credential at the family's read tier learns nothing.
     { method: 'GET', path: '/api/orchestration/station-control/caller' },
     // #2061 Boards: the family read/mutate split is exactly right here —

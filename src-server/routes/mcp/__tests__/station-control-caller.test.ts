@@ -1,5 +1,5 @@
 /**
- * Lane D of #90 (archive#122): a station-control tool learns its VERIFIED
+ * Station #90 lane D (station #122): a station-control tool learns its VERIFIED
  * caller, and a REST call it makes lets Station recover the same caller.
  *
  * Everything here runs through a real listening server: the production
@@ -24,11 +24,15 @@ import {
 import { z } from 'zod';
 import { configureRuntimeHttp } from '../../../runtime/bootstrap/runtime-http.js';
 import {
+  createStationControlCallerRecordResolver,
   isAgentOriginatedRequest,
   resolveStationControlCallerForRequest,
+  stationControlCallerRecordSources,
 } from '../../../runtime/mcp/station-control-caller.js';
+import { claudeInProcessStationControlOptions } from '../../../runtime/mcp/station-control-in-process.js';
 import {
   __resetStationControlMcpTokensForTests,
+  DEFAULT_TTL_MS,
   mintStationControlMcpToken,
   mintStationControlStdioCallerToken,
   revokeStationControlMcpToken,
@@ -78,23 +82,53 @@ const sessionAuthorization = new SessionAuthorization({
   ownerlessSessionAccess: 'single-user-compat',
   legacyPersonalOwner: 'released-os-alias',
 });
-const PROJECTS: Record<
-  string,
-  { projectSlug: string; conversationId: string }
-> = {
-  'session-a': { projectSlug: 'project-a', conversationId: 'conversation-a' },
-  'session-b': { projectSlug: 'project-b', conversationId: 'conversation-b' },
+// Session start metadata and projects as the production sources read them;
+// the resolver is the production composition over those sources.
+const STARTED: Record<string, Record<string, unknown>> = {
+  'session-a': { projectSlug: 'project-a' },
+  'session-b': { delegation: { projectSlug: 'project-b' }, projectSlug: 'x' },
 };
-const resolveRecord = vi.fn((sessionId: string) => {
-  const principal = sessionAuthorization.sessionActingPrincipal(sessionId);
-  return {
-    ...(principal ? { principal } : {}),
-    ...PROJECTS[sessionId],
-  };
-});
+const PROJECT_IDS: Record<string, string> = {
+  'project-a': 'local-project-a',
+  'project-b': 'local-project-b',
+};
+const CONVERSATIONS: Record<string, string> = {
+  'session-a': 'conversation-a',
+  'session-b': 'conversation-b',
+};
+const productionResolver = createStationControlCallerRecordResolver(
+  stationControlCallerRecordSources({
+    orchestrationService: {
+      resolveSessionActingPrincipal: (threadId) =>
+        sessionAuthorization.sessionActingPrincipal(threadId),
+      latestStartedMetadataOfThread: (threadId) => STARTED[threadId],
+    },
+    eventStore: {
+      conversationForSession: (sessionId) =>
+        CONVERSATIONS[sessionId]
+          ? { conversationId: CONVERSATIONS[sessionId] }
+          : undefined,
+    },
+    getProject: (slug) => {
+      const id = PROJECT_IDS[slug];
+      if (!id) throw new Error(`no project ${slug}`);
+      return { id };
+    },
+  }),
+);
+const resolveRecord = vi.fn((sessionId: string) =>
+  productionResolver(sessionId),
+);
+// A Codex-style url-token caller: its credential sits in engine argv.
 const SESSION_A = {
   sessionId: 'session-a',
-  principal: { id: 'human:test:alice', source: 'session-owner' },
+  assurance: 'bearer-exposed',
+  principal: {
+    id: 'human:test:alice',
+    source: 'session-owner',
+    elevationEligible: true,
+  },
+  localProjectId: 'local-project-a',
   projectSlug: 'project-a',
   conversationId: 'conversation-a',
 };
@@ -262,11 +296,14 @@ async function probe(token: string, args: Record<string, unknown> = {}) {
   return JSON.parse(result.result.content[0].text);
 }
 
-async function callerRoute(headers: Record<string, string>) {
+async function callerRoute(
+  headers: Record<string, string>,
+  expectedStatus = 200,
+) {
   const response = await fetch(`${baseUrl}${STATION_CONTROL_CALLER_PATH}`, {
     headers,
   });
-  expect(response.status).toBe(200);
+  expect(response.status).toBe(expectedStatus);
   return (await response.json()) as { caller: unknown };
 }
 
@@ -313,6 +350,13 @@ describe('station-control verified caller (HTTP MCP)', () => {
     });
   });
 
+  test('the MCP route refuses stdio-env and in-process tokens: neither channel ever dials it', async () => {
+    const stdio = mintStationControlStdioCallerToken('session-a');
+    expect((await mcp(stdio, 1, 'initialize')).status).toBe(401);
+    const inProcess = mintStationControlMcpToken('session-b', 'sdk-in-process');
+    expect((await mcp(inProcess.token, 1, 'initialize')).status).toBe(401);
+  });
+
   test('a revoked or expired token is refused at the MCP route', async () => {
     const { token } = mintStationControlMcpToken('session-a', 'url-token');
     revokeStationControlMcpToken('session-a');
@@ -355,7 +399,11 @@ describe('station-control verified caller (REST side)', () => {
       principal: {
         id: LOCAL_OPERATOR_PRINCIPAL_ID,
         source: 'legacy-personal-owner',
+        elevationEligible: false,
       },
+      // The delegation-scoped slug wins over the plain one.
+      localProjectId: 'local-project-b',
+      projectSlug: 'project-b',
     });
 
     const c = mintStationControlMcpToken('session-c', 'url-token');
@@ -365,9 +413,12 @@ describe('station-control verified caller (REST side)', () => {
     });
     expect(ownerless.caller).toEqual({
       sessionId: 'session-c',
+      assurance: 'bearer-exposed',
+      // Names the operator by inference only: never eligible to elevate.
       principal: {
         id: LOCAL_OPERATOR_PRINCIPAL_ID,
         source: 'ownerless-single-operator',
+        elevationEligible: false,
       },
     });
   });
@@ -381,13 +432,80 @@ describe('station-control verified caller (REST side)', () => {
     expect(response.caller).toBeNull();
   });
 
-  test('a live token presented by a non-internal principal (operator bearer) yields no caller', async () => {
+  test('the caller route is internal-only: an operator bearer gets 404 even with a live token, and resolveStationControlCallerForRequest yields no caller for it', async () => {
     const { token } = mintStationControlMcpToken('session-a', 'url-token');
+    const response = await callerRoute(
+      {
+        authorization: `Bearer ${OPERATOR_CREDENTIAL}`,
+        [STATION_CONTROL_CALLER_TOKEN_HEADER]: token,
+      },
+      404,
+    );
+    expect(response.caller).toBeUndefined();
+    // The helper itself refuses the same request (probe route has no gate).
+    const probed = await fetch(`${baseUrl}${ORIGIN_PROBE_PATH}`, {
+      headers: {
+        authorization: `Bearer ${OPERATOR_CREDENTIAL}`,
+        [STATION_CONTROL_CALLER_TOKEN_HEADER]: token,
+      },
+    });
+    expect((await probed.json()).caller).toBeNull();
+  });
+
+  test('a tenant-bound token resolves only with its own tenant header, and the public caller never carries the tenant', async () => {
+    const { token } = mintStationControlMcpToken(
+      'session-a',
+      'url-token',
+      undefined,
+      { tenantId: 'alpha' as never, source: 'request' },
+    );
+    const matching = await callerRoute({
+      ...internalHeaders(),
+      'x-station-internal-tenant': 'alpha',
+      [STATION_CONTROL_CALLER_TOKEN_HEADER]: token,
+    });
+    expect(matching.caller).toEqual(SESSION_A);
+    expect(matching.caller).not.toHaveProperty('tenant');
+    const missing = await callerRoute({
+      ...internalHeaders(),
+      [STATION_CONTROL_CALLER_TOKEN_HEADER]: token,
+    });
+    expect(missing.caller).toBeNull();
+    const wrong = await callerRoute({
+      ...internalHeaders(),
+      'x-station-internal-tenant': 'bravo',
+      [STATION_CONTROL_CALLER_TOKEN_HEADER]: token,
+    });
+    expect(wrong.caller).toBeNull();
+  });
+
+  test('a record resolver that throws yields no caller rather than a caller missing its project', async () => {
+    const { token } = mintStationControlMcpToken('session-a', 'url-token');
+    resolveRecord.mockImplementationOnce(() => {
+      throw new Error('store unavailable');
+    });
     const response = await callerRoute({
-      authorization: `Bearer ${OPERATOR_CREDENTIAL}`,
+      ...internalHeaders(),
       [STATION_CONTROL_CALLER_TOKEN_HEADER]: token,
     });
     expect(response.caller).toBeNull();
+  });
+
+  test('assurance comes from the mint channel: header and in-process tokens are bound, url and stdio tokens are bearer-exposed', async () => {
+    const cases = [
+      ['http-header-token', 'bound'],
+      ['sdk-in-process', 'bound'],
+      ['url-token', 'bearer-exposed'],
+      ['stdio-env-token', 'bearer-exposed'],
+    ] as const;
+    for (const [channel, assurance] of cases) {
+      const { token } = mintStationControlMcpToken('session-a', channel);
+      const response = await callerRoute({
+        ...internalHeaders(),
+        [STATION_CONTROL_CALLER_TOKEN_HEADER]: token,
+      });
+      expect(response.caller, channel).toMatchObject({ assurance });
+    }
   });
 
   test('a tenant header that disagrees with the token tenant yields no caller', async () => {
@@ -432,10 +550,13 @@ describe('station-control verified caller (stdio child path)', () => {
 
     await expect(requireStationControlCaller()).resolves.toEqual({
       sessionId: 'session-b',
+      assurance: 'bearer-exposed',
       principal: {
         id: LOCAL_OPERATOR_PRINCIPAL_ID,
         source: 'legacy-personal-owner',
+        elevationEligible: false,
       },
+      localProjectId: 'local-project-b',
       projectSlug: 'project-b',
       conversationId: 'conversation-b',
     });
@@ -486,5 +607,117 @@ describe('isAgentOriginatedRequest', () => {
         [STATION_CONTROL_CALLER_TOKEN_HEADER]: 'forged',
       }),
     ).toEqual({ agentOriginated: true, caller: null });
+  });
+});
+
+describe('stdio caller token lifetime', () => {
+  test('the stdio token stops resolving once its TTL has elapsed', async () => {
+    process.env.STATION_API_BASE = baseUrl;
+    const minted = Date.now();
+    const now = vi.spyOn(Date, 'now').mockReturnValue(minted);
+    try {
+      const token = mintStationControlStdioCallerToken('session-a');
+      installStationControlStdioCallerCredential({
+        [STATION_CONTROL_CALLER_TOKEN_ENV]: token,
+      });
+      now.mockReturnValue(minted + DEFAULT_TTL_MS - 1);
+      await expect(getStationControlCaller()).resolves.toMatchObject({
+        sessionId: 'session-a',
+      });
+      now.mockReturnValue(minted + DEFAULT_TTL_MS);
+      await expect(getStationControlCaller()).resolves.toBeNull();
+    } finally {
+      now.mockRestore();
+    }
+  });
+});
+
+/**
+ * The Claude Agent SDK's side of an in-process (`type: 'sdk'`) server: it
+ * calls `instance.connect(transport)` and then feeds messages into
+ * `transport.onmessage` from its own control-pipe reader, outside any
+ * Station async context. This fake does exactly that.
+ */
+function sdkSideTransport() {
+  const sent: any[] = [];
+  const transport: any = {
+    start: async () => {},
+    close: async () => {},
+    send: async (message: unknown) => {
+      sent.push(message);
+    },
+  };
+  const waitFor = async (id: number) => {
+    for (let i = 0; i < 200; i += 1) {
+      const found = sent.find((m) => m.id === id);
+      if (found) return found;
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    throw new Error(`no response for ${id}`);
+  };
+  const request = async (id: number, method: string, params = {}) => {
+    // Detached from the test's own async context, as the SDK's reader is.
+    setImmediate(() =>
+      transport.onmessage({ jsonrpc: '2.0', id, method, params }),
+    );
+    return waitFor(id);
+  };
+  return { transport, request };
+}
+
+describe('station-control verified caller (in-process Claude delivery)', () => {
+  test('a tool served in-process sees a bound caller for its session, the REST call it makes sees the same, and revoking the session removes both', async () => {
+    process.env.STATION_API_BASE = baseUrl;
+    const options = claudeInProcessStationControlOptions(
+      () => resolveRecord,
+      createProbeServer,
+    );
+    const instance = options.createInProcessStationControl('session-a');
+    const { transport, request } = sdkSideTransport();
+    await instance.connect(transport);
+
+    const init = await request(1, 'initialize', {
+      protocolVersion: '2025-06-18',
+      capabilities: {},
+      clientInfo: { name: 'claude-code', version: '2' },
+    });
+    expect(init.result.protocolVersion).toBe('2025-06-18');
+    const call = await request(2, 'tools/call', {
+      name: 'probe_caller',
+      arguments: { sessionId: 'session-b' },
+    });
+    const observed = JSON.parse(call.result.content[0].text);
+    const bound = { ...SESSION_A, assurance: 'bound' };
+    expect(observed.inProcess).toEqual(bound);
+    expect(observed.rest).toEqual(bound);
+
+    options.revokeStationControlCallerToken('session-a');
+    const after = await request(3, 'tools/call', {
+      name: 'probe_caller',
+      arguments: {},
+    });
+    const revoked = JSON.parse(after.result.content[0].text);
+    expect(revoked.inProcess).toBeNull();
+    expect(revoked.rest).toBeNull();
+  });
+
+  test('the production in-process server serves the real station-control registrations over the CLI legacy protocol', async () => {
+    const options = claudeInProcessStationControlOptions(() => resolveRecord);
+    const instance = options.createInProcessStationControl('session-c');
+    const { transport, request } = sdkSideTransport();
+    await instance.connect(transport);
+    await request(1, 'initialize', {
+      protocolVersion: '2025-06-18',
+      capabilities: {},
+      clientInfo: { name: 'claude-code', version: '2' },
+    });
+    const listed = await request(2, 'tools/list');
+    const names = listed.result.tools.map(
+      (tool: { name: string }) => tool.name,
+    );
+    expect(names).toEqual(
+      expect.arrayContaining(['list_agents', 'delegate_task']),
+    );
+    await instance.close();
   });
 });

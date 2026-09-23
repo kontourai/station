@@ -3841,7 +3841,7 @@ export class OrchestrationService {
   }
 
   /**
-   * Lane D of #90 (archive#122): the principal a session acts for, from the
+   * Station #90 lane D (station #122): the principal a session acts for, from the
    * ownership record only. See `SessionActingPrincipal` for the derivations.
    */
   resolveSessionActingPrincipal(

@@ -159,7 +159,7 @@ test('hosted reads never consult the personal sharing policy', () => {
   expect(ownerIds).not.toHaveBeenCalled();
 });
 
-describe('SessionAuthorization.sessionActingPrincipal (Lane D of #90)', () => {
+describe('SessionAuthorization.sessionActingPrincipal (Station #90 lane D)', () => {
   function actingPrincipal(
     owner: string | undefined,
     options: {

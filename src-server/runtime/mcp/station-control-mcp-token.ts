@@ -70,14 +70,50 @@ export const DEFAULT_TTL_MS = 12 * 60 * 60 * 1000;
  * `session/new` payload — and a default would silently attribute one
  * channel's mints to the other on the one metric that can tell them apart.
  */
-type StationControlMcpTokenChannel =
+export type StationControlMcpTokenChannel =
   | 'url-token'
   | 'http-header-token'
-  | 'stdio-env-token';
+  | 'stdio-env-token'
+  | 'sdk-in-process';
+
+/**
+ * Station #90 lane D: how much a token's presentation says about WHO
+ * presented it, derived from the channel it was minted for (recorded on the
+ * entry at mint, never supplied by the presenter).
+ *
+ * - `bound`: the token never appears where another local process can read
+ *   it. `sdk-in-process` never leaves Station's process at all (Claude's
+ *   in-process station-control server). `http-header-token` travels in an
+ *   ACP `session/new` payload over the agent's private stdio pipe.
+ * - `bearer-exposed`: the token sits in a spawned process's argv or env.
+ *   `url-token` is in Codex's `-c mcp_servers…url=` argv; `stdio-env-token`
+ *   is in a stdio child's env, and the Claude CLI copies child env into its
+ *   own `--mcp-config` argv. Any same-user process can read it with `ps`,
+ *   so presenting it proves possession, not session identity.
+ */
+export type StationControlCallerAssurance = 'bound' | 'bearer-exposed';
+
+export function stationControlTokenAssurance(
+  channel: StationControlMcpTokenChannel,
+): StationControlCallerAssurance {
+  return channel === 'sdk-in-process' || channel === 'http-header-token'
+    ? 'bound'
+    : 'bearer-exposed';
+}
+
+/**
+ * The channels the `/mcp/station-control` HTTP endpoint accepts. A stdio
+ * env token or an in-process token presented there is refused: neither
+ * channel ever needs the endpoint, so a presentation there is a copied
+ * credential.
+ */
+export const STATION_CONTROL_MCP_HTTP_CHANNELS: readonly StationControlMcpTokenChannel[] =
+  ['url-token', 'http-header-token'];
 
 interface StationControlMcpTokenEntry {
   sessionId: string;
   expiresAt: number;
+  channel: StationControlMcpTokenChannel;
   tenantExecutionContext?: TenantExecutionContext;
 }
 
@@ -116,6 +152,7 @@ export function mintStationControlMcpToken(
   tokensByDigest.set(tokenDigest, {
     sessionId,
     expiresAt,
+    channel,
     ...(tenantExecutionContext ? { tenantExecutionContext } : {}),
   });
   digestBySession.set(sessionId, tokenDigest);
@@ -142,8 +179,35 @@ export function mintStationControlMcpToken(
  */
 export function verifyStationControlMcpToken(
   candidate: string | undefined | null,
+  options: { channels?: readonly StationControlMcpTokenChannel[] } = {},
 ):
   | { sessionId: string; tenantExecutionContext?: TenantExecutionContext }
+  | undefined {
+  const verified = verifyStationControlMcpTokenEntry(candidate);
+  if (!verified) return undefined;
+  if (options.channels && !options.channels.includes(verified.channel))
+    return undefined;
+  return {
+    sessionId: verified.sessionId,
+    ...(verified.tenantExecutionContext
+      ? { tenantExecutionContext: verified.tenantExecutionContext }
+      : {}),
+  };
+}
+
+/**
+ * As {@link verifyStationControlMcpToken}, plus the channel the token was
+ * minted for. Station #90 lane D: the caller derivation reads the channel
+ * to report `assurance`.
+ */
+export function verifyStationControlMcpTokenEntry(
+  candidate: string | undefined | null,
+):
+  | {
+      sessionId: string;
+      channel: StationControlMcpTokenChannel;
+      tenantExecutionContext?: TenantExecutionContext;
+    }
   | undefined {
   if (typeof candidate !== 'string' || candidate.length === 0) {
     return undefined;
@@ -166,6 +230,7 @@ export function verifyStationControlMcpToken(
       }
       return {
         sessionId: entry.sessionId,
+        channel: entry.channel,
         ...(entry.tenantExecutionContext
           ? { tenantExecutionContext: entry.tenantExecutionContext }
           : {}),
@@ -238,13 +303,17 @@ export function mintStationControlMcpHeaderAuth(
 }
 
 /**
- * Lane D of #90 (archive#122): the stdio channel's mint. A per-session stdio
- * child (the Claude Agent SDK spawns station-control once per session) gets
- * this token in its spawn env so its REST calls carry a verifiable caller
- * (`STATION_CONTROL_CALLER_TOKEN_ENV`). It is the same credential the HTTP
- * channels mint, with the same per-session replacement, revocation and TTL.
- * It adds no authority to that child, which already holds the process-wide
- * `INTERNAL_API_TOKEN`; it adds identity.
+ * Station #90 lane D: the stdio channel's mint, for a per-session stdio
+ * station-control child. The child gets this token in its spawn env so its
+ * REST calls name a session (`STATION_CONTROL_CALLER_TOKEN_ENV`). Same
+ * per-session replacement, revocation and TTL as the HTTP channels.
+ *
+ * It is `bearer-exposed`: a child's env is readable by same-user processes,
+ * and the Claude CLI passes it in `--mcp-config` argv. Anyone who copies it
+ * can present it as this session, so it must never gate an action that
+ * needs `bound` assurance. Production Claude delivery uses the in-process
+ * channel instead (`station-control-in-process.ts`); this mint is the
+ * fallback when that is not wired.
  */
 export function mintStationControlStdioCallerToken(
   sessionId: string,

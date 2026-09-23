@@ -3451,7 +3451,119 @@ describe('ClaudeAdapter', () => {
       ).toEqual(['station-control', 'third-party']);
     });
 
-    test('Lane D of #90: the built-in station-control child carries a per-session caller credential that verifies to this session, and stopSession revokes it', async () => {
+    const stationControlToolServers = [
+      {
+        id: 'station-control',
+        transport: 'stdio' as const,
+        command: 'node',
+        args: [builtinStationControlServerPath()],
+      },
+      {
+        id: 'third-party',
+        transport: 'stdio' as const,
+        command: process.execPath,
+        args: ['--version'],
+      },
+    ];
+
+    test('Station #90 lane D: with in-process delivery wired, the built-in is an sdk server with no command, env or argv credential; the third-party server is untouched', async () => {
+      __resetStationControlMcpTokensForTests();
+      mockQuery.mockReturnValue(createMockQuery([]));
+      const instance = { connect: vi.fn(), close: vi.fn() };
+      const createInProcessStationControl = vi.fn(() => instance);
+      const adapter = new ClaudeAdapter({
+        createInProcessStationControl,
+        mintStationControlCallerToken: () => 'must-not-be-used',
+        revokeStationControlCallerToken: vi.fn(),
+      });
+      await adapter.startSession({
+        provider: 'claude',
+        threadId: 'thread-in-process',
+        tenantExecutionContext: {
+          tenantId: 'alpha' as never,
+          source: 'request',
+        },
+        agent: { slug: 'my-agent', toolServers: stationControlToolServers },
+      });
+
+      const queryArgs = mockQuery.mock.calls[0][0] as {
+        options: { mcpServers: Record<string, Record<string, unknown>> };
+      };
+      expect(queryArgs.options.mcpServers['station-control']).toEqual({
+        type: 'sdk',
+        name: 'station-control',
+        instance,
+      });
+      expect(createInProcessStationControl).toHaveBeenCalledWith(
+        'thread-in-process',
+        { tenantId: 'alpha', source: 'request' },
+      );
+      // Nothing credential-shaped reaches the serialized (argv) config.
+      expect(
+        JSON.stringify(queryArgs.options.mcpServers, (key, value) =>
+          key === 'instance' ? undefined : value,
+        ),
+      ).not.toMatch(/STATION_INTERNAL_API_TOKEN|STATION_CONTROL_CALLER_TOKEN/);
+      expect(queryArgs.options.mcpServers['third-party']).toEqual({
+        type: 'stdio',
+        command: process.execPath,
+        args: ['--version'],
+      });
+    });
+
+    test('Station #90 lane D: a session whose station-control id is not the canonical built-in mints nothing', async () => {
+      mockQuery.mockReturnValue(createMockQuery([]));
+      const createInProcessStationControl = vi.fn();
+      const mintStationControlCallerToken = vi.fn(() => 'token');
+      const adapter = new ClaudeAdapter({
+        createInProcessStationControl,
+        mintStationControlCallerToken,
+      });
+      await adapter.startSession({
+        provider: 'claude',
+        threadId: 'thread-impostor',
+        agent: {
+          slug: 'my-agent',
+          toolServers: [
+            {
+              id: 'station-control',
+              transport: 'stdio',
+              command: 'node',
+              args: ['/tmp/not-the-builtin.js'],
+            },
+          ],
+        },
+      });
+      expect(createInProcessStationControl).not.toHaveBeenCalled();
+      expect(mintStationControlCallerToken).not.toHaveBeenCalled();
+    });
+
+    test('Station #90 lane D: a query() that throws after minting revokes the credential', async () => {
+      __resetStationControlMcpTokensForTests();
+      mockQuery.mockImplementationOnce(() => {
+        throw new Error('sdk refused options');
+      });
+      let minted: string | undefined;
+      const adapter = new ClaudeAdapter({
+        mintStationControlCallerToken: (threadId) => {
+          minted = mintStationControlStdioCallerToken(threadId);
+          return minted;
+        },
+        revokeStationControlCallerToken: (threadId) =>
+          revokeStationControlMcpToken(threadId),
+      });
+      await expect(
+        adapter.startSession({
+          provider: 'claude',
+          threadId: 'thread-query-throws',
+          agent: { slug: 'my-agent', toolServers: stationControlToolServers },
+        }),
+      ).rejects.toThrow('sdk refused options');
+      expect(typeof minted).toBe('string');
+      expect(verifyStationControlMcpToken(minted)).toBeUndefined();
+    });
+
+    test('Station #90 lane D: the stdio fallback child carries a per-session caller credential and its tenant, and stopSession revokes it', async () => {
       __resetStationControlMcpTokensForTests();
       mockQuery.mockReturnValue(createMockQuery([]));
       const adapter = new ClaudeAdapter({
@@ -3464,23 +3576,11 @@ describe('ClaudeAdapter', () => {
       await adapter.startSession({
         provider: 'claude',
         threadId: 'thread-caller-credential',
-        agent: {
-          slug: 'my-agent',
-          toolServers: [
-            {
-              id: 'station-control',
-              transport: 'stdio',
-              command: 'node',
-              args: [builtinStationControlServerPath()],
-            },
-            {
-              id: 'third-party',
-              transport: 'stdio',
-              command: process.execPath,
-              args: ['--version'],
-            },
-          ],
+        tenantExecutionContext: {
+          tenantId: 'alpha' as never,
+          source: 'request',
         },
+        agent: { slug: 'my-agent', toolServers: stationControlToolServers },
       });
 
       const queryArgs = mockQuery.mock.calls[0][0] as {
@@ -3495,7 +3595,13 @@ describe('ClaudeAdapter', () => {
       expect(typeof token).toBe('string');
       expect(verifyStationControlMcpToken(token)).toEqual({
         sessionId: 'thread-caller-credential',
+        tenantExecutionContext: { tenantId: 'alpha', source: 'request' },
       });
+      // The child's REST calls keep the tenant the token was minted for.
+      expect(
+        queryArgs.options.mcpServers['station-control'].env
+          ?.STATION_INTERNAL_TENANT,
+      ).toBe('alpha');
       expect(queryArgs.options.mcpServers['third-party'].env).toBeUndefined();
 
       await adapter.stopSession('thread-caller-credential');

@@ -521,6 +521,10 @@ import {
 } from '../bootstrap/runtime-tenant-context.js';
 import { nativeRuntimeSpecMatches } from '../conversation/native-foreground-invocation.js';
 import {
+  createStationControlCallerRecordResolver,
+  stationControlCallerRecordSources,
+} from '../mcp/station-control-caller.js';
+import {
   createStationEngineAvailabilityReader,
   resolveBedrockConnectionAuth,
 } from '../plugins/runtime-provider-resolution.js';
@@ -1537,24 +1541,17 @@ export function configureRuntimeRoutes(
     conversationForSession: (sessionId) =>
       context.orchestrationEventStore?.conversationForSession(sessionId),
   });
-  // Lane D of #90 (archive#122): a station-control tool's verified caller
+  // Station #90 lane D (station #122): a station-control tool's verified caller
   // names a session; the principal it acts for, its project and its
   // conversation come from these records, never from the request.
-  const resolveStationControlCallerRecord = (sessionId: string) => {
-    const principal =
-      context.orchestrationService.resolveSessionActingPrincipal(sessionId);
-    const projectSlug =
-      context.orchestrationService.resolveSessionProjectSlug(sessionId);
-    const conversationId =
-      context.orchestrationEventStore?.conversationForSession(
-        sessionId,
-      )?.conversationId;
-    return {
-      ...(principal ? { principal } : {}),
-      ...(projectSlug ? { projectSlug } : {}),
-      ...(conversationId ? { conversationId } : {}),
-    };
-  };
+  const resolveStationControlCallerRecord =
+    createStationControlCallerRecordResolver(
+      stationControlCallerRecordSources({
+        orchestrationService: context.orchestrationService,
+        eventStore: context.orchestrationEventStore,
+        getProject: (slug) => context.storageAdapter.getProject(slug),
+      }),
+    );
   context.app.route(
     '',
     createStationControlMcpRoutes({

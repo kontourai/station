@@ -114,7 +114,7 @@ export function isBuiltinStationControl(
  * integration definition, while arbitrary third-party MCP servers must not
  * receive it.
  *
- * Lane D of #90: `callerToken` is the per-session caller credential for a
+ * Station #90 lane D: `callerToken` is the per-session caller credential for a
  * child that serves exactly one session. It is attached only here, only to
  * the built-in, and never inherited from `env` — a pooled child (Station's
  * own engine shares one per tenant) must not pick up a session identity

@@ -73,7 +73,7 @@ describe('withStationControlRuntimeEnv', () => {
     ).not.toHaveProperty('STATION_INTERNAL_TENANT');
   });
 
-  test('Lane D of #90: attaches a per-session caller credential to the built-in child only, and never inherits one from the parent env', () => {
+  test('Station #90 lane D: attaches a per-session caller credential to the built-in child only, and never inherits one from the parent env', () => {
     const inherited = { [STATION_CONTROL_CALLER_TOKEN_ENV]: 'parent-leak' };
 
     // Supplied by the server for this session: attached to the built-in.

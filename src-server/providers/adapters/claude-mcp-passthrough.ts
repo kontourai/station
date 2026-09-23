@@ -48,6 +48,7 @@ import type {
   CapabilityUndeliveredReason,
   ResolvedAgentToolServer,
 } from '@kontourai/station-contracts/provider';
+import type { TenantExecutionContext } from '@kontourai/station-contracts/tenancy';
 import {
   isBuiltinStationControl,
   withStationControlRuntimeEnv,
@@ -66,6 +67,27 @@ interface ResolveClaudeMcpServersResult {
 }
 
 /**
+ * Station #90 lane D (station #122): how the built-in station-control server
+ * reaches this session. Each factory runs only when an authored server IS
+ * the canonical built-in (`isBuiltinStationControl`), so nothing is minted
+ * for a session that will never use it.
+ */
+export interface ClaudeStationControlDelivery {
+  /**
+   * In-process `type: 'sdk'` server (`station-control-in-process.ts`),
+   * preferred: its caller credential is `bound` and never leaves Station.
+   */
+  inProcess?: () => unknown;
+  /**
+   * Fallback stdio child's caller token (`bearer-exposed`: the CLI copies
+   * the child's env into its argv). Used only when `inProcess` is absent.
+   */
+  callerToken?: () => string | undefined;
+  /** Passed to the stdio child so its REST calls keep their tenant. */
+  tenantExecutionContext?: TenantExecutionContext;
+}
+
+/**
  * Resolve one session's authored tool servers into the SDK's `mcpServers`
  * map, keyed by tool-server id (matching `mcp-manager.ts`'s
  * `serverConfig[toolId]` convention and ACP's `McpServer.name`).
@@ -79,8 +101,7 @@ interface ResolveClaudeMcpServersResult {
 export function resolveClaudeMcpServers(
   toolServers: ResolvedAgentToolServer[],
   stationControlEnv?: Record<string, string>,
-  /** Lane D of #90: this session's caller credential, built-in only. */
-  stationControlCallerToken?: string,
+  stationControl: ClaudeStationControlDelivery = {},
 ): ResolveClaudeMcpServersResult {
   const servers: Record<string, McpServerConfig> = {};
   const skipped: ClaudeToolServerSkip[] = [];
@@ -103,12 +124,22 @@ export function resolveClaudeMcpServers(
       // third-party server never sees STATION_API_BASE/STATION_PORT
       // either, not only the token.
       const builtin = isBuiltinStationControl(server.id, toolDef);
+      // Station #90 lane D: the built-in is served in-process when the
+      // runtime wires it, so no credential reaches the CLI's argv.
+      if (builtin && stationControl.inProcess) {
+        servers[server.id] = {
+          type: 'sdk',
+          name: server.id,
+          instance: stationControl.inProcess() as never,
+        };
+        continue;
+      }
       const env = withStationControlRuntimeEnv(
         server.id,
         toolDef,
         builtin ? stationControlEnv : undefined,
-        undefined,
-        builtin ? stationControlCallerToken : undefined,
+        builtin ? stationControl.tenantExecutionContext : undefined,
+        builtin ? stationControl.callerToken?.() : undefined,
       );
       servers[server.id] = {
         type: 'stdio',
