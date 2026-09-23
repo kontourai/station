@@ -3,6 +3,7 @@ import {
   existsSync,
   lstatSync,
   mkdirSync,
+  readdirSync,
   readFileSync,
   realpathSync,
   renameSync,
@@ -469,6 +470,18 @@ export async function buildPluginDraft(
       `The entrypoint ${manifest.entrypoint} is not a regular file, so it cannot be bundled.`,
     );
   }
+  const special = findSpecialFile(pluginRoot);
+  if (special) {
+    return {
+      ok: false,
+      diagnostics: [
+        {
+          text: 'This is not a regular file (a pipe, socket or device), so the folder cannot be bundled. Remove it or move it out of the plugin folder.',
+          file: special,
+        },
+      ],
+    };
+  }
   mkdirSync(resolvedOutdir, { recursive: true });
   const outfile = join(resolvedOutdir, 'bundle.js');
   const tsconfig = pluginTsconfig(pluginRoot);
@@ -525,6 +538,62 @@ export async function buildPluginDraft(
 }
 
 const DRAFT_BUILD_STOPPED = 'The draft build was stopped before it finished.';
+
+const SPECIAL_FILE_SWEEP_BUDGET = 5_000;
+const SPECIAL_FILE_SWEEP_SKIP = new Set(['node_modules', '.git']);
+
+/**
+ * First line of defence for a draft (S3 review round 3): esbuild's resolver
+ * reads files such as `package.json` itself, never through `onLoad`, so a
+ * FIFO there blocks inside esbuild where no check can see it. This lstat
+ * sweep refuses any pipe, socket or device under the plugin root before a
+ * build starts. It is racy by nature (the file can appear afterwards), which
+ * is why the server also runs each draft build in a disposable process that
+ * is killed at its deadline. Bounded; a tree past the budget is not swept
+ * further. Symlinks are checked by target type and never descended.
+ */
+function findSpecialFile(pluginRoot: string): string | null {
+  let budget = SPECIAL_FILE_SWEEP_BUDGET;
+  const isSpecial = (stats: ReturnType<typeof lstatSync>) =>
+    stats.isFIFO() ||
+    stats.isSocket() ||
+    stats.isCharacterDevice() ||
+    stats.isBlockDevice();
+  const visit = (dir: string): string | null => {
+    let entries: string[];
+    try {
+      entries = readdirSync(dir);
+    } catch {
+      return null;
+    }
+    for (const entry of entries) {
+      if (SPECIAL_FILE_SWEEP_SKIP.has(entry)) continue;
+      budget -= 1;
+      if (budget < 0) return null;
+      const path = join(dir, entry);
+      let stats: ReturnType<typeof lstatSync>;
+      try {
+        stats = lstatSync(path);
+        if (stats.isSymbolicLink()) {
+          const target = statSync(path);
+          if (isSpecial(target))
+            return relative(pluginRoot, path).replaceAll('\\', '/');
+          continue;
+        }
+      } catch {
+        continue;
+      }
+      if (isSpecial(stats))
+        return relative(pluginRoot, path).replaceAll('\\', '/');
+      if (stats.isDirectory()) {
+        const found = visit(path);
+        if (found) return found;
+      }
+    }
+    return null;
+  };
+  return visit(pluginRoot);
+}
 
 /**
  * Upper bound on one draft revision's js + css. The server reads a revision

@@ -156,6 +156,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Epic #2323 S3: real FIFOs (`mkfifo`) as plugin inputs, and a bounded
   // child process for the tsconfig read a regression would block.
   'packages/shared/src/__tests__/plugin-build-fifo.test.ts',
+  // Epic #2323 S3: each draft build forks a disposable process that is
+  // killed at its deadline; the test observes that process and a FIFO.
+  'src-server/services/plugins/__tests__/plugin-draft-build-process.test.ts',
   'packages/shared/src/__tests__/station-home-recovery-preflight.test.ts',
   // The CLI fixture imports child_process only to forbid every launch while
   // patching builtin exports around the real read-only dispatch seam.

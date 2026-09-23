@@ -8,10 +8,9 @@ import {
   type PluginDraftPane,
   type PluginDraftStatus,
 } from '@kontourai/station-contracts/plugin-draft';
-import {
-  buildPluginDraft,
-  type PluginDraftBuildOptions,
-  type PluginDraftBuildResult,
+import type {
+  PluginDraftBuildOptions,
+  PluginDraftBuildResult,
 } from '@kontourai/station-shared/build';
 import { readBoundedRegularFileSync } from '@kontourai/station-shared/regular-file';
 import {
@@ -19,6 +18,7 @@ import {
   type WatchHandle,
   watchWithFallback,
 } from '@kontourai/station-shared/source-watch';
+import { buildPluginDraftInChildProcess } from './plugin-draft-build-process.js';
 import { parsePluginManifestDocumentWithFormat } from './plugin-manifest-loader.js';
 
 /**
@@ -51,6 +51,7 @@ const DEFAULT_DEBOUNCE_MS = 300;
  */
 const DEFAULT_BUILD_TIMEOUT_MS = 60_000;
 const MAX_MANIFEST_BYTES = 1024 * 1024;
+const MIN_FORCED_REBUILD_INTERVAL_MS = 5_000;
 const WATCHED_EXTENSIONS = new Set([
   '.ts',
   '.tsx',
@@ -114,6 +115,7 @@ interface DraftEntry {
   pluginName?: string;
   pluginVersion?: string;
   generations: DraftGeneration[];
+  lastForcedRebuildAt?: number;
 }
 
 export function pluginDraftId(realRoot: string, projectSlug: string): string {
@@ -171,7 +173,9 @@ export class PluginDraftService {
       options.maxConcurrentBuilds ?? DEFAULT_MAX_CONCURRENT_BUILDS;
     this.maxActiveLeases = options.maxActiveLeases ?? DEFAULT_MAX_ACTIVE_LEASES;
     this.now = options.now ?? Date.now;
-    this.build = options.build ?? buildPluginDraft;
+    // Each draft build runs in a disposable process that the deadline kills
+    // (see plugin-draft-build-process.ts); never in this process's esbuild.
+    this.build = options.build ?? buildPluginDraftInChildProcess;
     this.watch = options.watch ?? watchWithFallback;
     // Drafts from a previous process have no lease and no reader; they are
     // cache, and a fresh process starts from none.
@@ -203,7 +207,7 @@ export class PluginDraftService {
     const existing = this.entries.get(draftId);
     if (existing) {
       existing.expiresAt = this.now() + this.leaseTtlMs;
-      if (rebuild) this.scheduleBuild(existing);
+      if (rebuild) this.forceRebuild(existing);
       return this.statusOf(existing);
     }
     if (this.entries.size >= this.maxActiveLeases) {
@@ -352,6 +356,24 @@ export class PluginDraftService {
       ...(latest ? { builtAt: latest.builtAt } : {}),
       leaseExpiresAt: new Date(entry.expiresAt).toISOString(),
     };
+  }
+
+  /**
+   * A manual rebuild, bounded: ignored while a build for this draft is
+   * running or queued (that build already reads the current files), and at
+   * most one per {@link MIN_FORCED_REBUILD_INTERVAL_MS}. The caller gets the
+   * current status either way.
+   */
+  private forceRebuild(entry: DraftEntry): void {
+    if (entry.building || entry.pending) return;
+    const now = this.now();
+    if (
+      entry.lastForcedRebuildAt !== undefined &&
+      now - entry.lastForcedRebuildAt < MIN_FORCED_REBUILD_INTERVAL_MS
+    )
+      return;
+    entry.lastForcedRebuildAt = now;
+    this.scheduleBuild(entry);
   }
 
   private registrationKey(entry: DraftEntry, generation: number): string {

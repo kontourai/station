@@ -17,6 +17,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { PluginDraftStatus } from '@kontourai/station-contracts/plugin-draft';
+import { buildPluginDraft } from '@kontourai/station-shared/build';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { PluginDraftService } from '../../../services/plugins/plugin-draft-service.js';
@@ -84,6 +85,9 @@ function harness(
     generation: number;
   }> = [];
   const service = new PluginDraftService({
+    // In-process builder: this file tests the service and routes; the
+    // disposable build process has its own process-heavy test.
+    build: buildPluginDraft,
     draftsRoot,
     emitRebuilt: (event) => emitted.push(event),
     pollIntervalMs: 150,
@@ -299,6 +303,9 @@ describe('plugin draft routes', () => {
       first.service.dispose();
 
       const second = new PluginDraftService({
+        // In-process builder: this file tests the service and routes; the
+        // disposable build process has its own process-heavy test.
+        build: buildPluginDraft,
         draftsRoot: join(tempDir('station-draft-home2-'), 'plugin-drafts'),
         emitRebuilt: () => {},
         pollIntervalMs: 150,
@@ -392,6 +399,9 @@ describe('plugin draft routes', () => {
       const projectDir = tempDir('station-draft-inert-');
       const emitted: number[] = [];
       const service = new PluginDraftService({
+        // In-process builder: this file tests the service and routes; the
+        // disposable build process has its own process-heavy test.
+        build: buildPluginDraft,
         draftsRoot: join(tempDir('station-draft-home-'), 'plugin-drafts'),
         emitRebuilt: (event) => emitted.push(event.generation),
         watch: inertWatch,
@@ -437,6 +447,75 @@ describe('plugin draft routes', () => {
     },
     TEST_TIMEOUT_MS,
   );
+
+  // Round 3 LOW: a forced rebuild is bounded. It is ignored while a build is
+  // running or queued, and allowed at most once per 5s.
+  test('forced rebuilds are ignored while one is in flight and rate limited', async () => {
+    let now = 1_000_000;
+    let release: (() => void) | undefined;
+    const builds: number[] = [];
+    const projectDir = tempDir('station-draft-rate-');
+    writePlugin(projectDir);
+    const service = new PluginDraftService({
+      draftsRoot: join(tempDir('station-draft-home-'), 'plugin-drafts'),
+      emitRebuilt: () => {},
+      now: () => now,
+      watch: () => ({
+        targets: ['.'],
+        pollIntervalMs: 2_000,
+        status: () => ({
+          nativeArmed: false,
+          nativeDelivered: false,
+          nativeError: null,
+          pollingActive: false,
+          pollingError: null,
+          pollingDelivered: false,
+        }),
+        close: () => {},
+      }),
+      build: async () => {
+        builds.push(now);
+        await new Promise<void>((resolvePromise) => {
+          release = resolvePromise;
+        });
+        return { ok: false, diagnostics: [{ text: 'stub' }] };
+      },
+    });
+    cleanup.push(() => service.dispose());
+    const waitForBuilds = async (count: number) => {
+      const deadline = Date.now() + 5_000;
+      while (builds.length < count && Date.now() < deadline)
+        await new Promise((resolvePromise) => setTimeout(resolvePromise, 5));
+    };
+    service.lease('demo', projectDir);
+    await waitForBuilds(1);
+    // In flight: ignored, not queued.
+    for (let i = 0; i < 5; i += 1)
+      service.lease('demo', projectDir, { rebuild: true });
+    release?.();
+    await service.idle('demo', projectDir);
+    expect(builds).toHaveLength(1);
+
+    const settle = async () => {
+      await waitForBuilds(builds.length + 1);
+      release?.();
+      await service.idle('demo', projectDir);
+    };
+    service.lease('demo', projectDir, { rebuild: true });
+    await settle();
+    expect(builds).toHaveLength(2);
+    // Within the interval: ignored.
+    now += 4_999;
+    expect(service.lease('demo', projectDir, { rebuild: true }).state).toBe(
+      'failed',
+    );
+    await new Promise((resolvePromise) => setTimeout(resolvePromise, 50));
+    expect(builds).toHaveLength(2);
+    now += 1;
+    service.lease('demo', projectDir, { rebuild: true });
+    await settle();
+    expect(builds).toHaveLength(3);
+  });
 
   test('status without a lease is idle and starts nothing', async () => {
     const h = harness();
