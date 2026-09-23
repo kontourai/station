@@ -19,6 +19,7 @@ import {
   engineConnectionId,
   engineId,
 } from '@kontourai/station-contracts/agent-identity';
+import type { ClientOrigin } from '@kontourai/station-contracts/client-origin';
 import type { OrchestrationCommand } from '@kontourai/station-contracts/orchestration';
 import { PENDING_TURN_INTERRUPT_TTL_MS } from '@kontourai/station-contracts/orchestration';
 import { humanPrincipal } from '@kontourai/station-contracts/principal';
@@ -235,6 +236,7 @@ class FakeAdapter implements ProviderAdapterShape {
         threadId: string,
         requestId: string,
         decision: 'accept' | 'acceptForSession' | 'decline' | 'cancel',
+        context?: { clientOrigin?: ClientOrigin },
       ) => Promise<void>
     >();
   readonly stopSession = vi.fn<(threadId: string) => Promise<void>>();
@@ -801,6 +803,47 @@ describe('OrchestrationService', () => {
       workflowSidecarService,
       logger: { debug: vi.fn(), warn: vi.fn() },
     });
+  });
+
+  test('respondToRequest hands the answering device to the adapter (#2344)', async () => {
+    await service.dispatch({
+      type: 'startSession',
+      input: { threadId: 'origin-respond', provider: 'claude' },
+    });
+    const origin = {
+      version: 1 as const,
+      actor: { kind: 'device' as const, deviceId: 'pixel-10' },
+      reported: { version: 1 as const, surface: 'mobile' as const, build: '1' },
+    };
+
+    await service.dispatch(
+      {
+        type: 'respondToRequest',
+        threadId: 'origin-respond',
+        requestId: 'request-1',
+        decision: 'accept',
+      },
+      { clientOrigin: origin },
+    );
+    expect(claude.respondToRequest).toHaveBeenLastCalledWith(
+      'origin-respond',
+      'request-1',
+      'accept',
+      { clientOrigin: origin },
+    );
+
+    // No known origin: the adapter is called exactly as before.
+    await service.dispatch({
+      type: 'respondToRequest',
+      threadId: 'origin-respond',
+      requestId: 'request-2',
+      decision: 'decline',
+    });
+    expect(claude.respondToRequest.mock.lastCall).toEqual([
+      'origin-respond',
+      'request-2',
+      'decline',
+    ]);
   });
 
   describe('workspace restore execution exclusion', () => {

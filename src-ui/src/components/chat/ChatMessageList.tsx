@@ -828,7 +828,9 @@ function ChatMessageListComponent({
               ))}
           </>
         )}
-        {!activeSession.replay && pendingApprovalRequests.length > 0 && (
+        {/* Mounted while empty too: its live region must exist before the
+            first request arrives (#2344). */}
+        {!activeSession.replay && (
           <PendingApprovalStrip
             requests={pendingApprovalRequests}
             onApprove={(request, action) =>
