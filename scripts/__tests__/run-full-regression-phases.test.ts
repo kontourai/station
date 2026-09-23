@@ -2,7 +2,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   parseFullRegressionPhaseArguments,
   resolveFullRegressionPhasePlan,
@@ -15,6 +15,19 @@ import { FULL_REGRESSION_PHASES } from '../verification-lanes.mjs';
 const root = resolve(import.meta.dirname, '../..');
 const driver = resolve(root, 'scripts/run-full-regression-phases.mjs');
 // A workspace that never changes, for tests about exit-status handling.
+// Collects a child's forwarded bytes instead of writing them into this
+// Vitest worker's stdout, where they would become the run's own output.
+function sinks() {
+  const bytes = { stdout: [] as Buffer[], stderr: [] as Buffer[] };
+  return {
+    bytes,
+    forward: {
+      stdout: (chunk: Buffer) => bytes.stdout.push(chunk),
+      stderr: (chunk: Buffer) => bytes.stderr.push(chunk),
+    },
+  };
+}
+
 const unchangedWorkspace = () => ({
   headSha: 'a'.repeat(40),
   workspaceDigest: 'w',
@@ -203,7 +216,7 @@ describe('full-regression phase driver', () => {
         args: ['run', 'station-no-such-script-for-driver-test'],
         timeoutMs: 60_000,
       },
-      { cwd: root },
+      { cwd: root, forward: sinks().forward },
     );
     expect(outcome.status).not.toBe(0);
     expect(outcome.status).not.toBeNull();
@@ -217,13 +230,19 @@ describe('full-regression phase driver', () => {
         args: ['exec', '--', 'node', '-e', 'setTimeout(() => {}, 120000)'],
         timeoutMs: 3_000,
       },
-      { cwd: root },
+      { cwd: root, forward: sinks().forward },
     );
     expect(outcome.error).toMatch(/exceeded its 3000 ms deadline/);
     expect(Date.now() - started).toBeLessThan(60_000);
   }, 90_000);
 
   it('fails a phase whose output is not valid UTF-8, as the canonical runner does', async () => {
+    // Regression (PR #2322 fast-checks): these bytes once went to the worker's
+    // real stdout and made the enclosing Vitest run's own output invalid
+    // UTF-8, which ci:fast records as an infrastructure error. They must reach
+    // only the injected sink.
+    const bad = sinks();
+    const write = vi.spyOn(process.stdout, 'write');
     const outcome = await runPhaseProcess(
       {
         id: 'bad-utf8',
@@ -236,7 +255,15 @@ describe('full-regression phase driver', () => {
         ],
         timeoutMs: 60_000,
       },
-      { cwd: root },
+      { cwd: root, forward: bad.forward },
+    );
+    const leaked = write.mock.calls.some(([chunk]) =>
+      Buffer.from(chunk as Uint8Array).includes(Buffer.from([0xff, 0xfe])),
+    );
+    write.mockRestore();
+    expect(leaked).toBe(false);
+    expect(Buffer.concat(bad.bytes.stdout)).toEqual(
+      Buffer.from([0x6f, 0x6b, 0xff, 0xfe]),
     );
     expect(outcome.status).toBe(0);
     expect(outcome.error).toMatch(/output was not valid UTF-8/);
@@ -246,7 +273,7 @@ describe('full-regression phase driver', () => {
         args: ['exec', '--', 'node', '-e', 'process.stdout.write("ok ✓")'],
         timeoutMs: 60_000,
       },
-      { cwd: root },
+      { cwd: root, forward: sinks().forward },
     );
     expect(control).toEqual({ status: 0, error: null });
   }, 120_000);
@@ -272,7 +299,7 @@ describe('full-regression phase driver', () => {
           ],
           timeoutMs: 60_000,
         },
-        { cwd: root },
+        { cwd: root, forward: sinks().forward },
       );
       expect(outcome).toEqual({ status: 0, error: null });
     } finally {

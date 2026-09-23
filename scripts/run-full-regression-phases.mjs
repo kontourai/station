@@ -206,6 +206,14 @@ export async function runPhaseProcess(
     cwd = repoRoot,
     signal = /** @type {AbortSignal | undefined} */ (undefined),
     spawnProcess = spawn,
+    // Where the child's bytes are forwarded. Tests pass their own sinks: a
+    // child's raw bytes written into a Vitest worker's stdout become the
+    // Vitest run's output, and a deliberately invalid UTF-8 child then makes
+    // that whole run unsafe for any capture that validates it.
+    forward = {
+      stdout: (/** @type {Buffer} */ chunk) => process.stdout.write(chunk),
+      stderr: (/** @type {Buffer} */ chunk) => process.stderr.write(chunk),
+    },
   } = {},
 ) {
   const { executable, prefix } = npmInvocation();
@@ -225,8 +233,8 @@ export async function runPhaseProcess(
   );
   // Stream the child's bytes to this job log as they arrive, and validate
   // them through the same capture the canonical runner uses.
-  execution.child.stdout?.on('data', (chunk) => process.stdout.write(chunk));
-  execution.child.stderr?.on('data', (chunk) => process.stderr.write(chunk));
+  execution.child.stdout?.on('data', (chunk) => forward.stdout(chunk));
+  execution.child.stderr?.on('data', (chunk) => forward.stderr(chunk));
   const capture = captureOwnedProcessOutput(execution);
   let timer;
   let onAbort;
