@@ -206,7 +206,7 @@ function refusalMessage(refusal: CodingGitRefusal): string {
     case 'repository-config-unreadable':
       return "git could not read this repository's configuration";
     case 'git-dir-outside-project':
-      return "That folder's .git leads outside this Project (a .git file pointing elsewhere, a symbolic link inside .git, or object alternates), so Station will not commit or push from it";
+      return `That folder's .git leads outside this Project (${refusal.reason}), so Station will not commit or push from it`;
     case 'secrets':
       return `Not committed: ${refusal.files
         .map((file) => `${file.path} (${file.reason})`)

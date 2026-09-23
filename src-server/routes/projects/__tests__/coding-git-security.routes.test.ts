@@ -706,6 +706,8 @@ describe.skipIf(process.platform === 'win32')(
         });
         expect(commit.status).toBe(403);
         expect(commit.json.code).toBe('git-dir-outside-project');
+        // The refusal names what it found.
+        expect(commit.json.error).toMatch(/\.git\/\S+ is a symbolic link/);
         const push = await post('/git/push', { projectSlug: 'acme' });
         expect(push.status).toBe(403);
         // The operator's own hooks would have run had commit or push got past
@@ -714,6 +716,34 @@ describe.skipIf(process.platform === 'win32')(
         expect(bareHead()).toBe('');
       },
     );
+
+    test('a .git/hooks link that stays inside the Project is allowed (a common layout)', async () => {
+      mkdirSync(join(project, 'scripts', 'hooks'), { recursive: true });
+      rmSync(join(project, '.git', 'hooks'), { recursive: true, force: true });
+      symlinkSync('../scripts/hooks', join(project, '.git', 'hooks'));
+      dirty();
+
+      const res = await post('/git/commit', {
+        projectSlug: 'acme',
+        message: 'hooks live in the repo',
+      });
+      expect(res.status, JSON.stringify(res.json)).toBe(200);
+    });
+
+    test('a .git/hooks link leading outside the Project is refused, and the message names it', async () => {
+      const outside = join(root, 'shared-hooks');
+      mkdirSync(outside);
+      rmSync(join(project, '.git', 'hooks'), { recursive: true, force: true });
+      symlinkSync(outside, join(project, '.git', 'hooks'));
+      dirty();
+
+      const res = await post('/git/commit', {
+        projectSlug: 'acme',
+        message: 'x',
+      });
+      expect(res.status).toBe(403);
+      expect(res.json.error).toContain('.git/hooks is a symbolic link');
+    });
 
     test.each(['alternates', 'http-alternates'])(
       'an objects/info/%s file is refused',
