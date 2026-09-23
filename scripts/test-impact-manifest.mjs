@@ -145,15 +145,19 @@ const SDK_BROAD_MODULE_EDGES = Object.freeze([
       'SDK chat HTTP error: own-behaviour suites; consumers run in the ' +
       'merge-queue full regression (#2326)',
   }),
+  // The client barrel has NO suite of its own: nothing asserts which modules
+  // it re-exports (publicBarrel.test.ts covers the PACKAGE root barrel, not
+  // this one). The portability scan only proves its import syntax stays
+  // portable. A dropped re-export is caught by the consumers that import it,
+  // which run in the merge-queue full regression — before merge, not here.
   Object.freeze({
     pattern: 'packages/sdk/src/client/index.ts',
     tests: Object.freeze([
       'packages/sdk/src/__tests__/client-entry-portability.test.ts',
-      'packages/sdk/src/__tests__/publicBarrel.test.ts',
     ]),
     reason:
-      'SDK client barrel: its export contract suites; consumers run in the ' +
-      'merge-queue full regression (#2326)',
+      'SDK client barrel: portability scan only (no own export-contract ' +
+      'suite exists); consumers run in the merge-queue full regression (#2326)',
   }),
 ]);
 

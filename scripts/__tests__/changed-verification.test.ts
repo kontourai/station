@@ -573,10 +573,7 @@ describe('changed verification selection', () => {
     ],
     [
       'packages/sdk/src/client/index.ts',
-      [
-        'packages/sdk/src/__tests__/client-entry-portability.test.ts',
-        'packages/sdk/src/__tests__/publicBarrel.test.ts',
-      ],
+      ['packages/sdk/src/__tests__/client-entry-portability.test.ts'],
     ],
   ])(
     'a broad-graph SDK module (%s) selects its own suites, not its import graph (#2326)',
