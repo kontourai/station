@@ -4,7 +4,7 @@ import { type QueryConfig, resolveApiBase, useApiQuery } from '../query-core';
 /**
  * Where a coding request acts (#2412): the Project it belongs to and the
  * folder inside it. The server refuses a folder outside the named Project's
- * working directory (or its worktrees folder beside it), so every coding
+ * working directory (or a registered worktree of its repository), so every coding
  * call carries both.
  */
 export interface CodingLocation {

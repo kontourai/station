@@ -228,11 +228,9 @@ function resolveWorktreeBaseDir(repoRoot: string, policyBaseDir?: string) {
 
 /**
  * Where Station puts a repository's session worktrees unless a policy says
- * otherwise: a `<repo>-worktrees` folder beside it. The coding read routes
- * treat this folder as part of the Project (#2412), because a worktree
- * session's Diff, Files and status live there.
+ * otherwise: a `<repo>-worktrees` folder beside it.
  */
-export function defaultWorktreeBaseDir(repoRoot: string): string {
+function defaultWorktreeBaseDir(repoRoot: string): string {
   return join(dirname(repoRoot), `${basename(repoRoot)}-worktrees`);
 }
 

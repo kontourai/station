@@ -1,8 +1,8 @@
 /**
  * #2412, owner decision: every coding route that takes a client path is
- * confined to the named Project's folder (or the `<project>-worktrees`
- * folder beside it, where Station puts a worktree session), by the realpath
- * containment commit and push already had (#2363). Real routes, real
+ * confined to the named Project's folder (or a checkout git reports as a
+ * registered worktree of its repository, verified back to it), by the
+ * realpath containment commit and push already had (#2363). Real routes, real
  * filesystem: an outside folder, a symlink inside the Project that leads
  * out, and a request naming no Project are each refused on every route,
  * and a refused edit leaves the outside folder untouched.
@@ -71,7 +71,7 @@ beforeAll(() => {
   project = join(root, 'acme');
   outside = join(root, 'elsewhere');
   worktree = join(root, 'acme-worktrees', 'session-1');
-  for (const dir of [project, outside, worktree]) {
+  for (const dir of [project, outside]) {
     mkdirSync(dir, { recursive: true });
     execGitSync(['init', '-q'], { cwd: dir });
     writeFileSync(join(dir, 'secret.txt'), `${dir}\n`);
@@ -83,6 +83,10 @@ beforeAll(() => {
   }
   linkOut = join(project, 'link-out');
   symlinkSync(outside, linkOut);
+  // A real worktree session, registered by git itself.
+  execGitSync(['worktree', 'add', '-q', '-b', 'session-1', worktree], {
+    cwd: project,
+  });
 });
 
 afterAll(() => rmSync(root, { recursive: true, force: true }));

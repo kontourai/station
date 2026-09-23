@@ -2252,7 +2252,8 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // `coding:exec` token the operator grants it by promotion; the operator
     // in person never does (`codingExecAllowed`, coding.ts). Every leaf
     // below that takes a client path names a Project and is confined to its
-    // folder (or its worktrees folder); commit and push are operator-only
+    // folder (or a registered worktree of its repository); commit and push
+    // are operator-only
     // (#2363). A scope rule cannot express "operate AND coding:exec" —
     // this table holds one required scope per rule — so the extra
     // requirement lives in the handler.
