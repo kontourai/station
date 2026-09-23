@@ -74,7 +74,7 @@ function hardeningArgs(options: PublishGitOptions): string[] {
   return settings.flatMap((setting) => ['-c', setting]);
 }
 
-export function publishGitEnv(options: PublishGitOptions): NodeJS.ProcessEnv {
+function publishGitEnv(options: PublishGitOptions): NodeJS.ProcessEnv {
   return {
     GIT_TERMINAL_PROMPT: '0',
     GIT_ASKPASS: '',
@@ -86,7 +86,7 @@ export function publishGitEnv(options: PublishGitOptions): NodeJS.ProcessEnv {
   };
 }
 
-export function publishGitArgs(
+function publishGitArgs(
   args: readonly string[],
   options: PublishGitOptions,
 ): string[] {
