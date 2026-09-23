@@ -23,8 +23,10 @@ import { assembleTurnProvenanceEnvelopes } from '@kontourai/station-shared/turn-
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { EventStore } from '../../services/orchestration/event-store.js';
 import type { ProviderAdapterShape } from '../adapter-shape.js';
+import { SendTurnRefusedError } from '../adapter-shape.js';
 import type { MuseAdapterOptions } from '../adapters/muse-adapter.js';
 import {
+  formatMuseDuration,
   MUSE_BACKGROUND_TASK_COMPLETED_OUTPUT,
   MUSE_BACKGROUND_TASK_STOP_UNCONFIRMED_OUTPUT,
   MUSE_BACKGROUND_TASK_STOPPED_OUTPUT,
@@ -41,6 +43,7 @@ import {
   MUSE_TURN_IDLE_TIMEOUT_CODE,
   MUSE_TURN_TOTAL_TIMEOUT_CODE,
   MuseAdapter,
+  MuseTurnSlotReleasingError,
   museCredentialPath,
   resolveMuseProviderOverride,
   resolveMuseSupervisionBound,
@@ -2065,9 +2068,18 @@ describe('MuseAdapter owned-child registration', () => {
 
     // The original handle remains in the slot. A replacement cannot steal the
     // forced-stop target while the old child is still alive.
-    await expect(
-      harness.adapter.sendTurn({ threadId: 'thread-survivor', input: 'again' }),
-    ).rejects.toMatchObject({ code: MUSE_TURN_SLOT_RELEASING_CODE });
+    // #2300 round 3: Station already failed to confirm this child stopped,
+    // so nothing frees the slot on its own — a definitive pre-effect
+    // refusal, never the retryable slot-releasing one.
+    const refusal = await harness.adapter
+      .sendTurn({ threadId: 'thread-survivor', input: 'again' })
+      .then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+    expect(refusal).toBeInstanceOf(SendTurnRefusedError);
+    expect(refusal).not.toBeInstanceOf(MuseTurnSlotReleasingError);
+    expect((refusal as Error).message).toContain('could not confirm');
 
     await expect(
       harness.adapter.stopSession('thread-survivor'),
@@ -3069,7 +3081,11 @@ describe('Muse turn supervision (#2269)', () => {
         threadId: 'thread-unconfirmed',
         input: 'intruder',
       }),
-    ).rejects.toMatchObject({ code: MUSE_TURN_SLOT_RELEASING_CODE });
+    ).rejects.toSatisfy(
+      (error: unknown) =>
+        error instanceof SendTurnRefusedError &&
+        !(error instanceof MuseTurnSlotReleasingError),
+    );
     expect(harness.processes).toHaveLength(1);
     expect(harness.released).toBe(0);
 
@@ -3828,6 +3844,91 @@ describe('Muse background work holds the turn (#2300)', () => {
     ]);
     expect(events[8]).toMatchObject({ severity: 'warning' });
     expect(events[8].message).toContain('still running 1 second after');
+  });
+
+  test("a child lingering after a held turn's final terminal is reaped one idle window on, and the next send spawns", async () => {
+    vi.useFakeTimers();
+    const { harness, emit } = await startTurn('bg-final-linger', {
+      turnIdleTimeoutMs: 1_000,
+    });
+    // The whole capture, then the child never exits.
+    await emit(...LINES);
+    await vi.advanceTimersByTimeAsync(900);
+    expect(harness.processes[0].killed).toBe(false);
+    await vi.advanceTimersByTimeAsync(200);
+    expect(harness.processes[0].killed).toBe(true);
+    expect(harness.released).toBe(1);
+    await expect(
+      harness.adapter.sendTurn({ threadId: 'bg-final-linger', input: 'next' }),
+    ).resolves.toMatchObject({ threadId: 'bg-final-linger' });
+    expect(harness.processes).toHaveLength(2);
+    vi.useRealTimers();
+    const events = await drain(harness.iterator, 11, 'final linger');
+    // One turn.completed, then the next turn — the reap itself is silent:
+    // nothing the finished turn knew of was still running.
+    expect(events.slice(9).map((e) => e.method)).toEqual([
+      'turn.completed',
+      'turn.started',
+    ]);
+    await harness.adapter.stopAll();
+  });
+
+  test('a clean exit of a turn held only for an unreported, already-settled task closes as before: stop, no warning', async () => {
+    const { harness, emit } = await startTurn('bg-early-exit0');
+    await emit(...LINES.slice(0, 30), TASK_COMPLETED, RUN_1_TERMINAL);
+    harness.processes[0].exit(0);
+    await flushIo();
+    const events = await drain(harness.iterator, 8, 'early exit 0');
+    expect(events.slice(5).map((e) => [e.method, e.status])).toEqual([
+      ['tool.started', undefined],
+      ['tool.completed', 'success'],
+      ['turn.completed', undefined],
+    ]);
+    expect(events[7]).toMatchObject({ finishReason: 'stop', outputText: '' });
+    await expectNoFurtherEvent(harness.iterator, 'early exit 0');
+  });
+
+  test('a non-zero exit of that same held turn still gets the warning', async () => {
+    const { harness, emit } = await startTurn('bg-early-exit1');
+    await emit(...LINES.slice(0, 30), TASK_COMPLETED, RUN_1_TERMINAL);
+    harness.processes[0].exit(1);
+    await flushIo();
+    const events = await drain(harness.iterator, 9, 'early exit 1');
+    expect(
+      events.slice(7).map((e) => [e.method, e.code ?? e.finishReason]),
+    ).toEqual([
+      ['runtime.warning', MUSE_HELD_TURN_UNFINISHED_CODE],
+      ['turn.completed', 'other'],
+    ]);
+    await expectNoFurtherEvent(harness.iterator, 'early exit 1');
+  });
+
+  test('stopSession during the settled-slot wait refuses the send cleanly, as a pre-effect refusal', async () => {
+    const { harness, emit } = await startTurn('bg-stop-during-wait');
+    await emit(...LINES);
+    const send = harness.adapter
+      .sendTurn({ threadId: 'bg-stop-during-wait', input: 'next' })
+      .then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+    await flushIo();
+    await harness.adapter.stopSession('bg-stop-during-wait');
+    const refusal = await send;
+    expect(refusal).toBeInstanceOf(SendTurnRefusedError);
+    expect((refusal as Error).message).toContain('stopped');
+    expect(harness.processes).toHaveLength(1);
+  });
+
+  test('formats Station durations exactly', () => {
+    expect(formatMuseDuration(1_000)).toBe('1 second');
+    expect(formatMuseDuration(1_500)).toBe('1.5 seconds');
+    expect(formatMuseDuration(90_000)).toBe('90 seconds');
+    expect(formatMuseDuration(60_000)).toBe('1 minute');
+    expect(formatMuseDuration(5 * 60_000)).toBe('5 minutes');
+    expect(formatMuseDuration(30 * 60_000)).toBe('30 minutes');
+    expect(formatMuseDuration(60 * 60_000)).toBe('1 hour');
+    expect(formatMuseDuration(90 * 60_000)).toBe('90 minutes');
   });
 
   test('turns that launch nothing still settle at their first run_terminal and are reaped silently if they linger', async () => {

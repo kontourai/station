@@ -136,6 +136,10 @@ holds the turn open: the task is a tool row
 task's final `task_lifecycle` phase), the follow-up run's text and tools are
 published on the same turn, and `turn.completed` fires once, at the last
 run's terminal, with the composed text. No second `turn.started` is minted.
+That Muse also follows up a task which settles before the run that launched
+it ends is unverified (the one live capture settles it afterwards), so if
+Muse instead exits cleanly with no task still pending and no follow-up
+started, the turn closes as it did before #2300 (`stop`, no warning).
 
 Neither the idle bound nor any other Station-chosen bound applies while a
 task is pending or the turn is held, whatever the turn's declared
@@ -161,6 +165,9 @@ reaped, the reap is announced as a `runtime.warning`
 arrives while the previous turn has ended but its process is still exiting
 waits up to 5 seconds for it; past that it is refused with the retryable
 code `muse_turn_slot_releasing`, which the client's queue keeps for retry.
+If Station already tried to stop that process and could not confirm it
+stopped, the send is refused definitively instead (no code): nothing frees
+that slot on its own, and stopping the session is the recovery.
 
 The shared 3-minute stall watchdog (`TurnStallWatchdog` /
 `TurnProgressTracker`) stays observe-only: its `progressSilence` marker says

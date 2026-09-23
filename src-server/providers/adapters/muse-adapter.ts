@@ -311,18 +311,18 @@ export class MuseTurnSlotReleasingError extends SendTurnRefusedError {
   }
 }
 
-/** Human form of a Station-owned duration, for user-facing warnings. */
+/**
+ * Human form of a Station-owned duration, for user-facing warnings. Exact:
+ * whole hours or whole minutes when the value is one, otherwise seconds
+ * (fractional when needed) — a 90 s limit reads "90 seconds", never a
+ * rounded "2 minutes".
+ */
 export function formatMuseDuration(ms: number): string {
-  if (ms >= 60 * 60_000 && ms % (60 * 60_000) === 0) {
-    const hours = ms / (60 * 60_000);
-    return `${hours} hour${hours === 1 ? '' : 's'}`;
-  }
-  if (ms >= 60_000) {
-    const minutes = Math.round(ms / 60_000);
-    return `${minutes} minute${minutes === 1 ? '' : 's'}`;
-  }
-  const seconds = Math.max(1, Math.round(ms / 1_000));
-  return `${seconds} second${seconds === 1 ? '' : 's'}`;
+  const unit = (value: number, name: string) =>
+    `${value} ${name}${value === 1 ? '' : 's'}`;
+  if (ms > 0 && ms % 3_600_000 === 0) return unit(ms / 3_600_000, 'hour');
+  if (ms > 0 && ms % 60_000 === 0) return unit(ms / 60_000, 'minute');
+  return unit(ms / 1_000, 'second');
 }
 
 /**
@@ -625,12 +625,20 @@ async function terminateMuseProcess(
  *   ever minted (#2324 owns provider-triggered turns).
  * - The hold lasts until every announced task has settled AND a follow-up
  *   run has reported it. Muse delivers each settled task's result in a
- *   follow-up run, including a task that settled before the run that
- *   launched it ended; the follow-up is recognised by its `command_accepted`
+ *   follow-up run; the follow-up is recognised by its `command_accepted`
  *   (client id `muse-runtime-background-terminal`), and its terminal releases
  *   the tasks it reported. If muse stops stamping that id, nothing releases
  *   the hold early: the follow-up text still lands on the turn, and the
  *   turn closes when the child exits.
+ * - UNVERIFIED muse invariant: that muse also submits a follow-up for a task
+ *   that settles BEFORE the run that launched it ends. The only live
+ *   capture settles the task after run 1's terminal. The hold for such a
+ *   task therefore still delivers a follow-up that does come, but if muse
+ *   instead exits cleanly (code 0, no signal) with no task still pending
+ *   and no follow-up started, the turn closes exactly as it did before
+ *   #2300: `turn.completed`, `stop`, the text so far, and no warning. A
+ *   non-zero or signal exit, or one with a task still pending, gets the
+ *   warning below.
  * - Neither the idle deadline nor any other Station-chosen bound applies
  *   while a task is pending or the turn is held: it runs until muse finishes
  *   or someone presses Stop, which kills the child's process group and
@@ -979,15 +987,33 @@ export class MuseAdapter implements ProviderAdapterShape {
     // terminal event, so a queued send can arrive while the previous child
     // is still exiting; that is waited out briefly, not refused.
     const previous = record.activeTurn;
-    if (previous?.settled) {
+    if (previous?.settled && !previous.terminationUnconfirmed) {
       await this.waitForSlotRelease(previous);
+      // A Stop that lands during the wait acts on the OLD turn (the one
+      // still in the slot), which is the right target; this send is then
+      // refused cleanly, as a pre-effect refusal, rather than thrown as a
+      // plain error the orchestration layer would record as indeterminate.
       if (record.stopped) {
-        throw new Error(`Muse session is stopped: ${input.threadId}`);
+        throw new SendTurnRefusedError(
+          `Muse session is stopped: ${input.threadId}`,
+        );
       }
     }
-    if (record.activeTurn) {
-      if (record.activeTurn.settled) {
+    const occupant = record.activeTurn;
+    if (occupant) {
+      // Retryable only while the previous child is merely exiting. If
+      // Station already tried to stop it and could not confirm it stopped
+      // (Stop, stopSession, or a deadline reap left it termination-
+      // unconfirmed), nothing will free the slot on its own, so a retry
+      // promise would be false: that is the definitive refusal, still a
+      // pre-effect one so the dispatch is retired cleanly.
+      if (occupant.settled && !occupant.terminationUnconfirmed) {
         throw new MuseTurnSlotReleasingError(input.threadId);
+      }
+      if (occupant.settled) {
+        throw new SendTurnRefusedError(
+          `Muse session already has an active turn whose process Station could not confirm stopped; stop the session to recover: ${input.threadId}`,
+        );
       }
       throw new Error(
         `Muse session already has an active turn: ${input.threadId}`,
@@ -1345,6 +1371,26 @@ export class MuseAdapter implements ProviderAdapterShape {
             abortReason: 'interrupted',
             // The child just exited: that much is observed.
             terminationConfirmed: true,
+          });
+        } else if (
+          turn.heldRuns > 0 &&
+          code === 0 &&
+          !turn.process.signalCode &&
+          turn.pendingBackgroundTasks.size === 0 &&
+          turn.awaitingReportTasks.size > 0
+        ) {
+          // #2300 (conservative): held ONLY because a task that already
+          // settled has not been reported by a follow-up run yet, and muse
+          // then exited cleanly without submitting one. That "muse always
+          // follows up a settled task" invariant is UNVERIFIED for a task
+          // that settles before the run that launched it ends (the one live
+          // capture settles it after), so a clean exit here is closed
+          // exactly as it was before #2300: a completed turn with the text
+          // so far, `stop`, and no warning.
+          this.settleTurn(record, turn, {
+            kind: 'completed',
+            finishReason: 'stop',
+            outputText: turn.outputText,
           });
         } else if (turn.heldRuns > 0) {
           // #2300: a held turn whose child exited without a further
@@ -1801,9 +1847,6 @@ export class MuseAdapter implements ProviderAdapterShape {
     // cancellation. A call whose task muse already reported finished keeps
     // that verdict (see below). (A task
     // that is proposed and never starts opened no row, so it needs none.)
-    // Idle was disarmed at settle only if a call was still RUNNING; calls
-    // that were merely awaiting their result left it armed.
-    const hadToolInFlight = this.hasToolInFlight(turn);
     const openToolCalls = [...turn.openToolCalls];
     const finishedPhases = new Map(turn.awaitingResultToolCalls);
     turn.openToolCalls.clear();
@@ -1871,17 +1914,19 @@ export class MuseAdapter implements ProviderAdapterShape {
     }
     // Parity with the pre-#2308 schedule for a settled turn: there, the idle
     // timer was always pending at settle, so a child that lingers after its
-    // terminal was reaped one idle window on. A turn that settles with a
-    // tool in flight — or, since #2300, with background work pending — had
-    // that timer disarmed; both are closed just above, so it is restored
-    // here, from now (the in-flight time was work, not silence). A turn
-    // holding for background work never reaches this: it is not settled.
-    // If the restored timer reaps a child whose background rows were closed
-    // here, the reap is announced (`scheduleIdleTimer`), not silent.
-    if (
-      (hadToolInFlight || pendingBackground.length > 0) &&
-      !turn.idleTimeoutHandle
-    ) {
+    // terminal was reaped one idle window on. Several things now disarm it
+    // while a turn is live — a tool in flight (#2308), background work
+    // pending, and a turn held for its follow-up run (#2300), which never
+    // arms idle at all — so the invariant is restored here directly: a turn
+    // that settles with no idle timer gets one, from now (the disarmed time
+    // was work, not silence). Keyed on the missing timer rather than on the
+    // reasons it was missing, so a future reason to disarm idle cannot
+    // silently strand a lingering child (and with it the session's slot)
+    // again. A timer that already fired (the idle deadline that caused this
+    // settle) is still set, so it is not rescheduled. If the restored timer
+    // reaps a child whose background rows were closed here, the reap is
+    // announced (`scheduleIdleTimer`), not silent.
+    if (!turn.idleTimeoutHandle) {
       this.scheduleIdleTimer(record, turn);
     }
 
@@ -2446,6 +2491,8 @@ export class MuseAdapter implements ProviderAdapterShape {
         this.options.logger?.warn?.(
           `Muse turn process termination was not confirmed: ${errorMessage(error)}`,
         );
+        // #2300: a later send must not be told this slot frees itself.
+        turn.terminationUnconfirmed = true;
         return false;
       })
       .finally(() => {

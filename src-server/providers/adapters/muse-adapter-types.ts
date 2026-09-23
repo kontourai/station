@@ -223,6 +223,12 @@ export interface MuseActiveTurn {
    * exiting waits on this, bounded, instead of being refused outright.
    */
   slotReleased: Promise<void>;
+  /**
+   * #2300: set when Station tried to stop this child and could not confirm
+   * it stopped. A send that finds the slot still held by such a turn is
+   * refused definitively, not retryably: nothing will free it on its own.
+   */
+  terminationUnconfirmed?: boolean;
   resolveSlotReleased: () => void;
   /**
    * #2300: how many completed runs this turn has held open for pending

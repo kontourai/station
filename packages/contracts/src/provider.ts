@@ -685,8 +685,12 @@ export const MUSE_HELD_TURN_UNFINISHED_CODE = 'muse-held-turn-unfinished';
  * turn had already ended but its `muse exec` process had not yet exited,
  * and did not exit within the adapter's short wait. The previous process
  * still owns the session's `--session-id`, so the send is refused rather
- * than run concurrently — retryable, not a definitive rejection: the same
- * send succeeds once the process is gone.
+ * than run concurrently — retryable, because that process is only exiting:
+ * the same send succeeds once it is gone (or once Station's idle reap stops
+ * a process that lingers). Used ONLY while Station has not already tried to
+ * stop that process and failed to confirm it; a slot held by such a process
+ * frees itself on no schedule, so that send is refused definitively instead
+ * (no code; stop the session to recover).
  */
 export const MUSE_TURN_SLOT_RELEASING_CODE = 'muse_turn_slot_releasing';
 
