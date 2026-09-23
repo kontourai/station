@@ -206,6 +206,12 @@
       "evidence": "src-ui/src/__tests__/responsive-dialog-contract.test.ts"
     },
     {
+      "path": "src-ui/src/views/plugin-management/NewPluginModal.tsx",
+      "strategy": "covered",
+      "contract": "ResponsiveDialogSurface",
+      "evidence": "src-ui/src/__tests__/responsive-dialog-contract.test.ts"
+    },
+    {
       "path": "src-ui/src/views/plugin-management/InstallPreviewModal.tsx",
       "strategy": "covered",
       "contract": "ResponsiveDialogSurface",

@@ -1,4 +1,5 @@
 import type { ConversationListItem } from '@kontourai/station-sdk';
+import type { ComponentProps } from 'react';
 import type { AgentData } from '../../contexts/AgentsContext';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import type { ProjectMetadata } from '../../contexts/ProjectsContext';
@@ -6,9 +7,8 @@ import type { ProjectChatComposerDraft } from '../../lib/projectChatEvents';
 import type { ChatSession } from '../../types';
 import type { EffectiveModelSource } from '../../utils/execution';
 import type { ReplayCaptureSource } from '../chat/ReplayCaptureControls';
-import type { CodingChatContextDraft } from '../coding-layout/chatContextDraft';
 import { LazyBoundary } from '../LazyBoundary';
-import type { NewChatModalMode } from '../modals/NewChatModal';
+import type { NewChatModal, NewChatModalMode } from '../modals/NewChatModal';
 
 /**
  * A requested composer draft, as the New Chat picker's removable context
@@ -16,7 +16,7 @@ import type { NewChatModalMode } from '../modals/NewChatModal';
  */
 export function composerDraftContext(
   draft: ProjectChatComposerDraft | undefined,
-): CodingChatContextDraft | undefined {
+): ComponentProps<typeof NewChatModal>['draftContext'] {
   if (!draft) return undefined;
   return {
     title: draft.title,

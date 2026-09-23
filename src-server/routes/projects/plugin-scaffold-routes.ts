@@ -100,13 +100,19 @@ export function createPluginScaffoldRoutes(
         throw error;
       }
 
-      let configured: string | undefined;
+      let workingDirectory: string | undefined;
       try {
-        configured = (await projectService.getProject(slug)).workingDirectory;
+        // Stored verbatim (`~/...` included), so expand at the read.
+        const configured = (
+          await projectService.getProject(slug)
+        ).workingDirectory?.trim();
+        workingDirectory = configured
+          ? resolve(expandTilde(configured))
+          : undefined;
       } catch {
         return c.json({ success: false, error: 'Project not found' }, 404);
       }
-      if (!configured?.trim()) {
+      if (!workingDirectory) {
         return c.json(
           {
             success: false,
@@ -118,7 +124,7 @@ export function createPluginScaffoldRoutes(
       }
 
       const result = await writePluginScaffold(
-        resolve(expandTilde(configured.trim())),
+        workingDirectory,
         scaffold.files,
       );
       if (!result.ok) {
