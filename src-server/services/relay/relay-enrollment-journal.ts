@@ -2,14 +2,14 @@ import { createHash } from 'node:crypto';
 import { DatabaseSync, type SQLInputValue } from 'node:sqlite';
 import { openPrivateSqlite } from '../../utils/private-sqlite.js';
 
-export const RELAY_ENROLLMENT_MAX_ACTIVE = 500;
-export const RELAY_ENROLLMENT_MAX_TOMBSTONES = 2_000;
+const RELAY_ENROLLMENT_MAX_ACTIVE = 500;
+const RELAY_ENROLLMENT_MAX_TOMBSTONES = 2_000;
 export const RELAY_ENROLLMENT_ACK_REPLAY_WINDOW_MS = 7 * 24 * 60 * 60 * 1_000;
 const MAX_RECORD_BYTES = 64 * 1024;
 const FORMAT_VERSION = 1;
 const APPLICATION_ID = 0x52454c59;
 
-export const RELAY_ENROLLMENT_STATES = [
+const RELAY_ENROLLMENT_STATES = [
   'challenge',
   'provider-pending',
   'pairing-requested',

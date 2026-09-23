@@ -53,10 +53,25 @@ function pendingProvider() {
     },
   };
   const pending = {
-    create: vi.fn(async () => result),
-    verify: vi.fn(async () => result),
-    promote: vi.fn(async () => {}),
-    discard: vi.fn(async () => {}),
+    create: vi.fn(async (_enrollmentId: string, _request: Request) => result),
+    verify: vi.fn(
+      async (_enrollmentId: string, _sessionId: string, _signal: AbortSignal) =>
+        result,
+    ),
+    promote: vi.fn(
+      async (
+        _enrollmentId: string,
+        _sessionId: string,
+        _signal: AbortSignal,
+      ) => {},
+    ),
+    discard: vi.fn(
+      async (
+        _enrollmentId: string,
+        _sessionId: string | undefined,
+        _signal: AbortSignal,
+      ) => {},
+    ),
   };
   adapter.login = {
     kind: 'username-password',
@@ -71,8 +86,13 @@ function pendingProvider() {
     },
   ];
   adapter.sessionReferences = {
-    verify: vi.fn(async () => ({ kind: 'invalid', reason: 'revoked' })),
-    revoke: vi.fn(async () => {}),
+    verify: vi.fn(
+      async (): Promise<DeploymentAuthenticationResult> => ({
+        kind: 'invalid',
+        reason: 'revoked',
+      }),
+    ),
+    revoke: vi.fn(async (_sessionId: string, _signal: AbortSignal) => {}),
     pendingEnrollment: pending,
   };
   return { adapter, pending, result };
@@ -231,18 +251,21 @@ describe('deployment authentication identity boundary', () => {
     expect(service.pendingEnrollmentCapabilities()).toEqual({
       available: true,
     });
-    const incoming = new Request('https://station.example.test/enrollment/login', {
-      method: 'POST',
-      headers: {
-        Origin: 'https://client.example.test',
-        'Content-Type': 'application/json',
-        Cookie: 'fixture_account=must-not-adopt',
-        Authorization: 'Bearer existing-device-credential',
-        'X-Station-Account-Continuation': 'existing-continuation',
-        'X-Station-Account-Proof': 'existing-proof',
+    const incoming = new Request(
+      'https://station.example.test/enrollment/login',
+      {
+        method: 'POST',
+        headers: {
+          Origin: 'https://client.example.test',
+          'Content-Type': 'application/json',
+          Cookie: 'fixture_account=must-not-adopt',
+          Authorization: 'Bearer existing-device-credential',
+          'X-Station-Account-Continuation': 'existing-continuation',
+          'X-Station-Account-Proof': 'existing-proof',
+        },
+        body: '{}',
       },
-      body: '{}',
-    });
+    );
     expect(
       await service.createPendingEnrollment('A'.repeat(43), incoming),
     ).toEqual(result);

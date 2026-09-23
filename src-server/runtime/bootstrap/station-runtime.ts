@@ -13,6 +13,7 @@ import {
   loadLocalAccounts,
   readLocalAccountConfiguration,
 } from '../../services/identity/local-account-runtime.js';
+import { createRelayEnrollmentRuntime } from '../../services/identity/relay-enrollment-service.js';
 import {
   closePluginActivationSession,
   completePluginActivationComposition,
@@ -518,6 +519,9 @@ export class StationRuntime {
   private localAccounts?: LoadedLocalAccounts;
   private applicationSessions?: ReturnType<
     typeof createApplicationSessionRuntime
+  >;
+  private relayEnrollment?: Awaited<
+    ReturnType<typeof createRelayEnrollmentRuntime>
   >;
   private readonly pluginInstallationHost: PluginInstallationHost;
   private configLoader: ConfigLoader;
@@ -3304,6 +3308,28 @@ export class StationRuntime {
           this.environmentSecurityService.identifyDevice(credential),
       );
     }
+    if (!this.relayEnrollment) {
+      const allowedClientOrigins = [
+        ...new Set([
+          ...resolveStationBrowserOrigins({ port: this.port, host: this.host }),
+          ...(this.deploymentAuthentication?.allowedBrowserOrigins ?? []),
+        ]),
+      ];
+      this.relayEnrollment = await createRelayEnrollmentRuntime({
+        home: this.configLoader.getProjectHomeDir(),
+        stationId: identity.environmentId,
+        requestOrigin:
+          this.deploymentAuthentication?.publicOrigin ??
+          allowedClientOrigins[0] ??
+          `http://localhost:${this.port}`,
+        allowedClientOrigins,
+        authentication: this.deploymentAuthentication?.service,
+        applicationSessions: this.applicationSessions,
+        pairing: this.environmentSecurityService.devicePairing,
+      });
+    } else {
+      await this.relayEnrollment.recoverBeforeAdmission();
+    }
     const packageProjections = await this.pluginInstallationHost.reconcile();
     if (packageProjections.status === 'pending')
       this.logger.warn('Plugin catalog projection remains pending', {
@@ -3900,6 +3926,7 @@ export class StationRuntime {
       deploymentAuthentication: this.deploymentAuthentication,
       localAccounts: this.localAccounts,
       applicationSessions: this.applicationSessions,
+      relayEnrollment: this.relayEnrollment,
       app,
       logger: this.logger,
       eventBus: this.eventBus,
@@ -4451,6 +4478,12 @@ export class StationRuntime {
     const mcpUiFrameServer = this.mcpUiFrameServer;
     const consentListener = this.consentListener;
     const failures: unknown[] = [];
+    try {
+      this.relayEnrollment?.close();
+      this.relayEnrollment = undefined;
+    } catch (error) {
+      failures.push(error);
+    }
     try {
       this.applicationSessions?.close();
       this.applicationSessions = undefined;

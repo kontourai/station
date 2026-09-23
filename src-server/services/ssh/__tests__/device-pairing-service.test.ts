@@ -15,8 +15,8 @@ import { join } from 'node:path';
 import {
   DEFAULT_GRANT_PAIRING_SCOPE,
   DEVICE_PAIRING_SCOPE,
-  PAIRING_SCOPE_ORCHESTRATION_READ,
   PAIRING_SCOPE_HOME_CONTROL,
+  PAIRING_SCOPE_ORCHESTRATION_READ,
   pairingScopeIncludes,
   pairingScopePresetString,
 } from '@kontourai/station-contracts';
@@ -246,12 +246,13 @@ describe('DevicePairingService', () => {
     });
 
     expect(() =>
-      service.confirmRequest(
-        pending.requestId,
-        OPERATOR_APPROVAL,
-        { principalId: 'human:deployment:operator', kind: 'account' },
-      ),
-    ).toThrowError(new DevicePairingError('relay_enrollment_finalize_required'));
+      service.confirmRequest(pending.requestId, OPERATOR_APPROVAL, {
+        principalId: 'human:deployment:operator',
+        kind: 'account',
+      }),
+    ).toThrowError(
+      new DevicePairingError('relay_enrollment_finalize_required'),
+    );
     expect(
       service
         .listRequests()
@@ -314,9 +315,9 @@ describe('DevicePairingService', () => {
       },
     });
     expect(reopened.listDevices()).toHaveLength(1);
-    expect(
-      reopened.discardRelayEnrollmentDevice(deviceId, enrollmentId),
-    ).toBe(true);
+    expect(reopened.discardRelayEnrollmentDevice(deviceId, enrollmentId)).toBe(
+      true,
+    );
     expect(reopened.identifyDevice(exchanged.credential)).toBeNull();
     expect(reopened.listDevices()).toEqual([]);
   });

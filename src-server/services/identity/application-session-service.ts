@@ -373,11 +373,13 @@ export class ApplicationSessionService {
     if (this.closed) throw new ApplicationSessionRefusal('unavailable');
     if (!/^[0-9a-f-]{36}$/i.test(authorityKey))
       throw new ApplicationSessionRefusal('invalid');
-    return this.db
-      .prepare(
-        "DELETE FROM application_sessions WHERE json_extract(record, '$.authorityKey')=?",
-      )
-      .run(authorityKey).changes;
+    return Number(
+      this.db
+        .prepare(
+          "DELETE FROM application_sessions WHERE json_extract(record, '$.authorityKey')=?",
+        )
+        .run(authorityKey).changes,
+    );
   }
   close(): void {
     if (!this.closed) {

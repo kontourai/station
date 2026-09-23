@@ -1,5 +1,5 @@
-import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
+import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pairingScopePresetString } from '@kontourai/station-contracts/environment-security';
@@ -10,8 +10,8 @@ import {
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { createApplicationSessionRoutes } from '../../../routes/system/application-session-routes.js';
-import { DevicePairingService } from '../../ssh/device-pairing-service.js';
 import { openPrivateSqlite } from '../../../utils/private-sqlite.js';
+import { DevicePairingService } from '../../ssh/device-pairing-service.js';
 import { createApplicationSessionRuntime } from '../application-session-runtime.js';
 import { loadLocalAccounts } from '../local-account-runtime.js';
 

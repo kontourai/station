@@ -1381,10 +1381,7 @@ export class DevicePairingService {
       personBindingApproval?.kind !== 'account'
     )
       throw new DevicePairingError('invalid_request');
-    if (
-      offer.relayEnrollmentId &&
-      personBindingApproval?.kind !== 'account'
-    )
+    if (offer.relayEnrollmentId && personBindingApproval?.kind !== 'account')
       throw new DevicePairingError('invalid_request');
     if (personBindingApproval) {
       if (
@@ -1747,6 +1744,16 @@ export class DevicePairingService {
   /** Remove a server-owned offer that must never be resumed by a caller. */
   discardOffer(offerId: string): void {
     this.#offers.delete(offerId);
+  }
+
+  /** Discard only the private offer belonging to one relay enrollment attempt. */
+  discardRelayEnrollmentOffer(offerId: string, enrollmentId: string): boolean {
+    const offer = this.#offers.get(offerId);
+    if (!offer) return false;
+    if (offer.relayEnrollmentId !== enrollmentId)
+      throw new DevicePairingError('invalid_request');
+    this.#offers.delete(offerId);
+    return true;
   }
 
   /** Personal-home conversation membership; grants and attribution stay per device. */
