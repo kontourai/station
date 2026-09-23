@@ -387,17 +387,47 @@ export function approvalPickUpdate(
 }
 
 /**
+ * How much a posture lets the engine do without asking. `connection-default`
+ * names no posture, so it has no rank (`undefined`): nothing can be shown to
+ * be looser than it, and the rule below treats it like a stricter report.
+ */
+const APPROVAL_PERMISSIVENESS: Partial<Record<ApprovalMode, number>> = {
+  ask: 0,
+  auto: 1,
+  never: 2,
+};
+
+/**
+ * Whether `report` is provably LOOSER than `pick` — the one case where the
+ * client may resend the pick on its own.
+ */
+function reportIsLooser(pick: ApprovalMode, report: ApprovalMode): boolean {
+  const pickRank = APPROVAL_PERMISSIVENESS[pick];
+  const reportRank = APPROVAL_PERMISSIVENESS[report];
+  return (
+    pickRank !== undefined && reportRank !== undefined && reportRank > pickRank
+  );
+}
+
+/**
  * The chat update for an engine report of the mode actually applied
  * (`session.configured` / `turn.started` metadata).
  *
  * - A pending pick settles only when the report MATCHES it. A differing
  *   report may describe a turn sent before the pick (a stale report), so it
- *   neither drops the pick nor confirms it (#2334, refuted approach 2).
- * - With nothing pending, a report that disagrees with the confirmed pick
- *   moves it back to PENDING rather than dropping it: the report can be stale
- *   too, and dropping the pick would leave the session on whatever the report
- *   named (possibly looser). Pending, it is resent and re-confirmed, the same
- *   treatment a disagreeing report gets on the pending path.
+ *   neither drops the pick nor confirms it (#2334, refuted approach 2). A pick
+ *   the engine never reports back (e.g. a Codex review-isolation turn, whose
+ *   knobs the adapter fixes) therefore stays pending and is resent on every
+ *   turn. Accepted: resending a pick the user made is harmless.
+ * - With nothing pending, a report that disagrees with the confirmed pick is
+ *   treated asymmetrically by permissiveness (ask < auto < never):
+ *   - LOOSER than the pick: move the pick back to PENDING, so it is resent
+ *     and re-confirmed. The report may be stale, and dropping the pick would
+ *     leave the session looser than the user chose.
+ *   - STRICTER (or `connection-default`, which names no posture): retire the
+ *     pick. Another device may have tightened the session, and the client
+ *     must never re-escalate on its own: re-pending a confirmed `never` over
+ *     a phone's Ask would put the session back into bypass.
  */
 export function settleApprovalPick(
   chat: ApprovalPickState | null | undefined,
@@ -409,14 +439,9 @@ export function settleApprovalPick(
       ? { pendingApprovalMode: undefined, approvalModeOverride: applied }
       : {};
   }
-  if (
-    chat.approvalModeOverride !== undefined &&
-    chat.approvalModeOverride !== applied
-  ) {
-    return {
-      approvalModeOverride: undefined,
-      pendingApprovalMode: chat.approvalModeOverride,
-    };
-  }
-  return {};
+  const confirmed = chat.approvalModeOverride;
+  if (confirmed === undefined || confirmed === applied) return {};
+  return reportIsLooser(confirmed, applied)
+    ? { approvalModeOverride: undefined, pendingApprovalMode: confirmed }
+    : { approvalModeOverride: undefined };
 }

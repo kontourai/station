@@ -120,6 +120,41 @@ export class ActiveChatsStore {
     }
   }
 
+  /**
+   * Writes a pending debounced save now. A reload inside the 300 ms window
+   * otherwise restores the state from before the last change: for an
+   * approval pick that is an OLDER, possibly looser pick (#2334).
+   */
+  flushPendingSave = () => {
+    if (!this.saveTimer) return;
+    clearTimeout(this.saveTimer);
+    this.saveTimer = null;
+    this.saveToStorage();
+  };
+
+  /**
+   * Flushes on the page lifecycle events that precede a reload, navigation
+   * or tab discard: `pagehide`, and `visibilitychange` to hidden (the last
+   * event a mobile browser reliably delivers). Returns the unsubscribe.
+   */
+  flushOnPageHide(
+    target: Pick<Window, 'addEventListener' | 'removeEventListener'>,
+    doc: Pick<
+      Document,
+      'addEventListener' | 'removeEventListener' | 'visibilityState'
+    >,
+  ): () => void {
+    const onVisibility = () => {
+      if (doc.visibilityState === 'hidden') this.flushPendingSave();
+    };
+    target.addEventListener('pagehide', this.flushPendingSave);
+    doc.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      target.removeEventListener('pagehide', this.flushPendingSave);
+      doc.removeEventListener('visibilitychange', onVisibility);
+    };
+  }
+
   private debouncedSave = () => {
     if (this.saveTimer) {
       clearTimeout(this.saveTimer);
@@ -399,3 +434,6 @@ export class ActiveChatsStore {
 }
 
 export const activeChatsStore = new ActiveChatsStore();
+if (typeof window !== 'undefined' && typeof document !== 'undefined') {
+  activeChatsStore.flushOnPageHide(window, document);
+}

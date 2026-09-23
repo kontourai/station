@@ -442,31 +442,58 @@ describe('an approval pick beside the model options (#2334)', () => {
     expect((await send())?.options ?? {}).not.toHaveProperty('approvalMode');
   });
 
-  test('with nothing pending, a report that disagrees moves the confirmed pick back to pending', async () => {
+  test('with nothing pending, a LOOSER report moves the confirmed pick back to pending', async () => {
     const { composer, step, send } = renderComposer();
     step(() => composer.result.current.handleModelSelect(modelX));
-    step(() => composer.result.current.handleApprovalModeChange('auto'));
+    step(() => composer.result.current.handleApprovalModeChange('ask'));
     await send();
-    step(() => turnStarted('t1', 'auto'));
+    step(() => turnStarted('t1', 'ask'));
     step(() => turnCompleted('t1'));
-    expect(chat().approvalModeOverride).toBe('auto');
+    expect(chat().approvalModeOverride).toBe('ask');
     // A confirmed pick is resent every turn, like the rest of the override
     // bag the adapters expect.
-    expect((await send())?.options?.approvalMode).toBe('auto');
+    expect((await send())?.options?.approvalMode).toBe('ask');
 
-    // A disagreeing report: stale, or the posture changed elsewhere. Either
-    // way it is not proof the pick is gone, so it is re-requested and must
-    // be re-confirmed rather than dropped (which would leave the session on
-    // whatever the report named).
+    // A report looser than the pick may be stale. It is not proof the pick is
+    // gone, so the pick is re-requested and must be re-confirmed rather than
+    // dropped (which would leave the session looser than the user chose).
+    step(() => turnStarted('t2', 'auto'));
+    step(() => turnCompleted('t2'));
+    expect(chat().approvalModeOverride).toBeUndefined();
+    expect(chat().pendingApprovalMode).toBe('ask');
+    expect((await send())?.options?.approvalMode).toBe('ask');
+    step(() => turnStarted('t3', 'ask'));
+    expect(chat().pendingApprovalMode).toBeUndefined();
+    expect(chat().approvalModeOverride).toBe('ask');
+  });
+
+  test('probe E: a STRICTER report (a revoke on another device) retires the pick and is never re-escalated', async () => {
+    const { composer, step, send } = renderComposer();
+    // Desktop confirms full access.
+    step(() => composer.result.current.handleModelSelect(modelX));
+    step(() => composer.result.current.handleApprovalModeChange('never'));
+    await send();
+    step(() => turnStarted('t1', 'never'));
+    step(() => turnCompleted('t1'));
+    expect(chat().approvalModeOverride).toBe('never');
+
+    // A phone's turn applies Ask on the same session.
     step(() => turnStarted('t2', 'ask'));
     step(() => turnCompleted('t2'));
     expect(chat().approvalModeOverride).toBeUndefined();
-    expect(chat().pendingApprovalMode).toBe('auto');
-    expect((await send())?.options?.approvalMode).toBe('auto');
-    step(() => turnStarted('t3', 'auto'));
     expect(chat().pendingApprovalMode).toBeUndefined();
-    expect(chat().approvalModeOverride).toBe('auto');
+
+    // The desktop's next send does not put the session back into bypass…
+    expect((await send())?.options ?? {}).not.toHaveProperty('approvalMode');
+    // …and nothing survives a reload to do it later.
+    const persisted = hydrateActiveChats(
+      serializeActiveChats(activeChatsStore.getSnapshot()),
+    )[SESSION_ID];
+    expect(persisted?.pendingApprovalMode).toBeUndefined();
+    // The pill shows the engine's receipt, not the revoked pick.
+    expect(renderPill().text).toBe('Default');
   });
+
   /** A reload: serialize to storage and hydrate back into the store. */
   function reload() {
     const rehydrated = hydrateActiveChats(
