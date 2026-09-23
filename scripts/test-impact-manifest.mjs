@@ -111,8 +111,12 @@ const SDK_TRANSPORT_EDGES = Object.freeze(
  * SDK modules is imported directly by client fetchers or re-exports them, so
  * its related graph approaches the transport's (measured by the repo's own
  * related discovery on 2026-09-23: api-error-message 744 test files,
- * chatHttpError 642, the client barrel 626, the package barrel 498, against
- * the 771 that overran the fast lane). Each gets the same shape as the
+ * chatHttpError 642, the client barrel 626, against the 771 that overran the
+ * fast lane). The package barrel (`packages/sdk/src/index.ts`, 498) is
+ * deliberately NOT here: an isolated root-barrel change keeps the conservative
+ * related selection the repo already pins, and it is the smallest of the four
+ * and unmeasured against the window. Revisit only if a barrel-only change
+ * overruns. Each module here gets the same shape as the
  * transport: the suites that exercise the module's own behaviour run in the
  * fast lane, and its consumers run in the required merge-queue full
  * regression. Tests-only edges, never a lane (see SDK_TRANSPORT_EDGES).
@@ -149,16 +153,6 @@ const SDK_BROAD_MODULE_EDGES = Object.freeze([
     ]),
     reason:
       'SDK client barrel: its export contract suites; consumers run in the ' +
-      'merge-queue full regression (#2326)',
-  }),
-  Object.freeze({
-    pattern: 'packages/sdk/src/index.ts',
-    tests: Object.freeze([
-      'packages/sdk/src/__tests__/client-entry-portability.test.ts',
-      'packages/sdk/src/__tests__/publicBarrel.test.ts',
-    ]),
-    reason:
-      'SDK package barrel: its export contract suites; consumers run in the ' +
       'merge-queue full regression (#2326)',
   }),
 ]);
