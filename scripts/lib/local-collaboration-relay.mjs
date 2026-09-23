@@ -1,6 +1,6 @@
 // Test-only TCP transport. No Station modules, identity credentials or TLS keys
 // enter this process. Same-user filesystem access is NOT a sandbox guarantee.
-import { appendFileSync, writeFileSync } from 'node:fs';
+import { appendFileSync, linkSync, unlinkSync, writeFileSync } from 'node:fs';
 import { connect, createServer } from 'node:net';
 import { join } from 'node:path';
 
@@ -80,9 +80,14 @@ process.once('SIGTERM', shutdown);
 server.on('error', () => fail('listener_error'));
 server.listen(0, '127.0.0.1', () => {
   const address = server.address();
-  writeFileSync(
-    join(directory, 'ready.json'),
-    JSON.stringify({ port: address.port }),
-    { mode: 0o600, flag: 'wx' },
-  );
+  // The parent treats the file's existence as readiness, so it must appear
+  // already complete: write a private staging file, then hard-link it into
+  // place (exclusive, like 'wx') instead of creating ready.json and filling it.
+  const staged = join(directory, 'ready.json.partial');
+  writeFileSync(staged, JSON.stringify({ port: address.port }), {
+    mode: 0o600,
+    flag: 'wx',
+  });
+  linkSync(staged, join(directory, 'ready.json'));
+  unlinkSync(staged);
 });
