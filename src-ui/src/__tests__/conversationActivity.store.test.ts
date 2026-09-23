@@ -286,6 +286,31 @@ describe('#2309 deltas never mint liveness', () => {
     );
   });
 
+  test('a turn-less REASONING delta is refused the shell and re-read, like a text delta', async () => {
+    vi.useFakeTimers();
+    const client = await loadClient();
+    client.applyOrchestrationSnapshot(reloadSnapshot(closedActivity(210)));
+    const revisionBefore = chatOf(client).orchestrationHistoryRevision ?? 0;
+
+    client.handleOrchestrationEvent(API, {
+      eventId: 'evt-no-turn-reasoning',
+      provider: 'claude',
+      threadId: CONVERSATION,
+      createdAt: '2026-09-22T19:12:41.000Z',
+      method: 'content.reasoning-delta',
+      itemId: `${CONVERSATION}:no-turn:thinking_1`,
+      delta: 'considering the background result',
+    });
+
+    const chat = chatOf(client);
+    expect(chat.streamingMessage).toBeUndefined();
+    expect(client.isTurnStreamLive(chat)).toBe(false);
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(chatOf(client).orchestrationHistoryRevision).toBe(
+      revisionBefore + 1,
+    );
+  });
+
   test('an in-turn delta builds the shell without setting status: sending', async () => {
     const client = await loadClient();
     client.applyOrchestrationSnapshot(reloadSnapshot(openActivity(300)));

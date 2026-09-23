@@ -15,6 +15,7 @@
 
 import type {
   ConversationTurnActivity,
+  InterruptTurnResult,
   OrchestrationConversationStreamBinding,
 } from '@kontourai/station-contracts/orchestration';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -31,10 +32,12 @@ import {
 } from 'vitest';
 
 const interruptOrchestrationTurn = vi.hoisted(() =>
-  vi.fn(async (input: { threadId: string }) => ({
-    outcome: 'cooperative' as const,
-    threadId: input.threadId,
-  })),
+  vi.fn(
+    async (input: { threadId: string }): Promise<InterruptTurnResult> => ({
+      outcome: 'cooperative',
+      threadId: input.threadId,
+    }),
+  ),
 );
 vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@kontourai/station-sdk')>()),
@@ -89,6 +92,10 @@ import { ChatMessageList } from '../components/chat/ChatMessageList';
 import { isTurnInFlight } from '../contexts/active-chats-state';
 import { activeChatsStore } from '../contexts/active-chats-store';
 import { handleOrchestrationEvent } from '../hooks/orchestration/eventHandlers';
+import {
+  registerReplayThread,
+  unregisterReplayThread,
+} from '../hooks/orchestration/replay/replay-registry';
 import { applyOrchestrationSnapshot } from '../hooks/orchestration/snapshotHandlers';
 import type { OrchestrationSnapshotPayload } from '../hooks/orchestration/types';
 import { useCancelMessage } from '../hooks/useActiveChatSessionMessaging';
@@ -151,7 +158,11 @@ function binding(
   };
 }
 
-function Thread() {
+function Thread({
+  silenceShownElsewhere,
+}: {
+  silenceShownElsewhere?: boolean;
+}) {
   const chat = useSyncExternalStore(
     activeChatsStore.subscribe,
     () => activeChatsStore.getSnapshot()[CONVERSATION],
@@ -165,6 +176,7 @@ function Thread() {
         fontSize={14}
         showReasoning
         showToolDetails
+        progressSilenceShownElsewhere={silenceShownElsewhere}
       />
       <ChatInputArea
         sessionId={CONVERSATION}
@@ -208,13 +220,13 @@ function Thread() {
   );
 }
 
-function renderThread() {
+function renderThread(props: { silenceShownElsewhere?: boolean } = {}) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
   return render(
     <QueryClientProvider client={queryClient}>
-      <Thread />
+      <Thread {...props} />
     </QueryClientProvider>,
   );
 }
@@ -456,5 +468,260 @@ describe('#2309 an older server that sends no activity', () => {
       screen.getByRole('button', { name: 'Stop the current turn' }),
     ).toBeTruthy();
     expect(progressText()).toBeNull();
+  });
+});
+
+// Cases ported from the independent verifier's probes (#2309 Phase B).
+
+describe('#2309 progress row reads the newest running tool', () => {
+  test('parallel calls: the most recently started (last) is named, with the count of others', () => {
+    renderThread();
+    act(() =>
+      applyOrchestrationSnapshot(
+        snapshot(
+          activity(800, {
+            runningTools: [
+              {
+                name: 'grep',
+                callId: 'c1',
+                startedAt: iso(TURN_STARTED + 5_000),
+              },
+              {
+                name: 'bash',
+                callId: 'c2',
+                startedAt: iso(TURN_STARTED + minutes(4)),
+              },
+            ],
+          }),
+        ),
+      ),
+    );
+    // now = start + 4:10, bash started at start + 4:00.
+    expect(progressText()).toBe('Running bash · 10s (+1 more)');
+  });
+
+  test('a lastTool that settled BEFORE this turn started says nothing about this turn', () => {
+    renderThread();
+    act(() =>
+      applyOrchestrationSnapshot(
+        snapshot(
+          activity(810, {
+            lastTool: {
+              name: 'bash',
+              callId: 'old',
+              outcome: 'error',
+              completedAt: iso(TURN_STARTED - 60_000),
+            },
+          }),
+        ),
+      ),
+    );
+    expect(screen.getByText(/Working for 4:10/)).toBeTruthy();
+    expect(progressText()).toBeNull();
+  });
+});
+
+describe('#2309 clock with a record but no open turn', () => {
+  test('own send not yet opened by the server: working row with NO duration, never mount time', () => {
+    renderThread();
+    act(() =>
+      applyOrchestrationSnapshot(
+        snapshot({
+          conversationId: CONVERSATION,
+          asOfSequence: 900,
+          lastActivityAt: iso(TURN_STARTED),
+        }),
+      ),
+    );
+    act(() =>
+      activeChatsStore.updateChat(CONVERSATION, {
+        status: 'sending',
+        sendAwaitingTurnStart: true,
+      }),
+    );
+    // Live (Stop offered) from the optimistic window...
+    expect(
+      screen.getByRole('button', { name: 'Stop the current turn' }),
+    ).toBeTruthy();
+    // ...but no duration is claimed.
+    expect(screen.getByText('Working…')).toBeTruthy();
+    expect(screen.queryByText(/Working for/)).toBeNull();
+    act(() => {
+      vi.advanceTimersByTime(7_000);
+    });
+    expect(screen.queryByText(/Working for/)).toBeNull();
+  });
+});
+
+describe('#2309 a settled Stop does not suppress the NEXT turn', () => {
+  test('stop turn A (settled) then the record opens turn B: Stop is offered again and targets B', async () => {
+    interruptOrchestrationTurn.mockImplementationOnce(async (input) => ({
+      outcome: 'turn-completed',
+      threadId: input.threadId,
+    }));
+    renderThread();
+    act(() => applyOrchestrationSnapshot(snapshot(activity(1000))));
+    await act(async () => {
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Stop the current turn' }),
+      );
+    });
+    expect(
+      screen.queryByRole('button', { name: 'Stop the current turn' }),
+    ).toBeNull();
+    // A new turn B opens on the same child.
+    act(() =>
+      activeChatsStore.applyConversationActivity({
+        conversationId: CONVERSATION,
+        asOfSequence: 1010,
+        openTurn: {
+          turnId: 'turn-B',
+          threadId: CHILD,
+          startedAt: iso(Date.now()),
+        },
+        lastActivityAt: iso(Date.now()),
+      }),
+    );
+    const stop = screen.getByRole('button', { name: 'Stop the current turn' });
+    interruptOrchestrationTurn.mockClear();
+    await act(async () => {
+      fireEvent.click(stop);
+    });
+    expect(interruptOrchestrationTurn.mock.calls[0]?.[0]).toMatchObject({
+      threadId: CHILD,
+      turnId: 'turn-B',
+    });
+  });
+});
+
+describe('#2309 records are scoped to their conversation', () => {
+  test("another conversation's open turn never makes this thread active", () => {
+    renderThread();
+    act(() =>
+      applyOrchestrationSnapshot(
+        snapshot({
+          conversationId: CONVERSATION,
+          asOfSequence: 50,
+          lastActivityAt: iso(TURN_STARTED),
+        }),
+      ),
+    );
+    act(() =>
+      activeChatsStore.applyConversationActivity({
+        conversationId: `${CONVERSATION}-OTHER`,
+        asOfSequence: 99_999,
+        openTurn: {
+          turnId: 'x',
+          threadId: 'other-child',
+          startedAt: iso(TURN_STARTED),
+        },
+      }),
+    );
+    expect(screen.queryByText(/Working for/)).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: 'Stop the current turn' }),
+    ).toBeNull();
+  });
+});
+
+describe('#2309 replay frames never feed the live store', () => {
+  test('a replay thread frame carrying an open-turn binding leaves the live thread idle', () => {
+    renderThread();
+    act(() =>
+      applyOrchestrationSnapshot(
+        snapshot({
+          conversationId: CONVERSATION,
+          asOfSequence: 60,
+          lastActivityAt: iso(TURN_STARTED),
+        }),
+      ),
+    );
+    const replayId = registerReplayThread();
+    try {
+      act(() =>
+        handleOrchestrationEvent(
+          API,
+          {
+            eventId: 'evt-replay',
+            provider: 'claude',
+            threadId: replayId,
+            createdAt: iso(TURN_STARTED),
+            method: 'turn.started',
+            turnId: TURN,
+          },
+          undefined,
+          binding(activity(70)),
+        ),
+      );
+    } finally {
+      unregisterReplayThread(replayId);
+    }
+    expect(
+      activeChatsStore.getSnapshot()[CONVERSATION]?.conversationActivity
+        ?.asOfSequence,
+    ).toBe(60);
+    expect(
+      screen.queryByRole('button', { name: 'Stop the current turn' }),
+    ).toBeNull();
+  });
+});
+
+describe('#2309 review F7: one clock, one silence', () => {
+  test('the progress row stops ticking once it shows no elapsed time', () => {
+    renderThread();
+    act(() =>
+      applyOrchestrationSnapshot(
+        snapshot(
+          activity(1100, {
+            runningTools: [
+              { name: 'bash', callId: 'c-tick', startedAt: iso(TURN_STARTED) },
+            ],
+          }),
+        ),
+      ),
+    );
+    const whileRunning = vi.getTimerCount();
+    const completedAt = iso(Date.now());
+    act(() =>
+      activeChatsStore.applyConversationActivity(
+        activity(1101, {
+          lastTool: {
+            name: 'bash',
+            callId: 'c-tick',
+            outcome: 'error',
+            completedAt,
+          },
+        }),
+      ),
+    );
+    expect(progressText()).toBe('Last: bash · failed');
+    // The working clock keeps its own interval; the progress row's is gone.
+    expect(vi.getTimerCount()).toBe(whileRunning - 1);
+  });
+
+  test('when the host shows the silence with its Stop action, the row does not repeat it', () => {
+    renderThread({ silenceShownElsewhere: true });
+    act(() =>
+      applyOrchestrationSnapshot(
+        snapshot(
+          activity(1200, {
+            runningTools: [
+              {
+                name: 'bash',
+                callId: 'c-silent',
+                startedAt: iso(TURN_STARTED),
+              },
+            ],
+            progressSilence: {
+              detectedAt: iso(Date.now()),
+              windowMs: minutes(3),
+              silentSinceEventAt: iso(TURN_STARTED),
+              provider: 'claude',
+            },
+          }),
+        ),
+      ),
+    );
+    expect(progressText()).toBe('Running bash · 4m 10s');
   });
 });

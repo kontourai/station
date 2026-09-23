@@ -139,6 +139,7 @@ import { shouldBindPanelProjectContext } from '../components/acp-connections/pro
 import {
   activeChatDurableId,
   hydrateActiveChats,
+  isTurnInFlight,
   serializeActiveChats,
 } from '../contexts/active-chats-state';
 import { activeChatsStore } from '../contexts/active-chats-store';
@@ -1670,6 +1671,173 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     expect(activeChatsStore.getSnapshot()[sessionId]?.queuedMessages).toEqual(
       [],
     );
+  });
+
+  describe('#2309: busy, steer and the send window come from the server record', () => {
+    const openRecord = (conversationId: string, turnId = 'server-turn') => ({
+      conversationId,
+      asOfSequence: 10,
+      openTurn: {
+        turnId,
+        threadId: `${conversationId}:child`,
+        startedAt: '2026-09-22T18:55:25.000Z',
+      },
+    });
+
+    it('steers the server-named child turn when the record shows one open, even with local status idle', async () => {
+      const conv = 'claude:steer-record-conv';
+      steerOrchestrationTurnMock.mockResolvedValueOnce({
+        outcome: 'steered',
+        threadId: `${conv}:child`,
+        turnId: 'server-turn',
+      });
+      activeChatsStore.updateChat(sessionId, {
+        status: 'idle',
+        orchestrationProvider: 'claude',
+        conversationId: conv,
+        currentSessionId: 'stale-root',
+        openTurnId: 'stale-local-turn',
+        conversationActivity: openRecord(conv),
+      });
+      const { result } = renderHook(() => useSendMessage('http://api.test'));
+      await act(async () => {
+        await result.current(sessionId, 'claude', sessionId, 'steer me');
+      });
+      expect(sendExecutionMessageMock).not.toHaveBeenCalled();
+      expect(steerOrchestrationTurnMock).toHaveBeenCalledWith({
+        threadId: `${conv}:child`,
+        text: 'steer me',
+        turnId: 'server-turn',
+        apiBase: 'http://api.test',
+      });
+    });
+
+    it('queues behind a turn only the record knows about (another device, local status idle)', async () => {
+      const conv = 'claude:queue-record-conv';
+      activeChatsStore.updateChat(sessionId, {
+        status: 'idle',
+        orchestrationProvider: 'claude',
+        conversationId: conv,
+        conversationActivity: openRecord(conv),
+      });
+      const { result } = renderHook(() => useSendMessage('http://api.test'));
+      await act(async () => {
+        await result.current(
+          sessionId,
+          'claude',
+          sessionId,
+          'after that turn',
+          undefined,
+          undefined,
+          undefined,
+          { queueOnBusy: true },
+        );
+      });
+      expect(sendExecutionMessageMock).not.toHaveBeenCalled();
+      expect(steerOrchestrationTurnMock).not.toHaveBeenCalled();
+      expect(activeChatsStore.getSnapshot()[sessionId]?.queuedMessages).toEqual(
+        ['after that turn'],
+      );
+    });
+
+    it('a stale status sending outside the send window, with a closed record, does not block a new send', async () => {
+      const conv = 'claude:stale-sending-conv';
+      activeChatsStore.updateChat(sessionId, {
+        status: 'sending',
+        orchestrationProvider: 'claude',
+        conversationId: conv,
+        conversationActivity: { conversationId: conv, asOfSequence: 20 },
+      });
+      // Premise: the window flag is not set.
+      expect(
+        activeChatsStore.getSnapshot()[sessionId]?.sendAwaitingTurnStart,
+      ).toBeUndefined();
+      const { result } = renderHook(() => useSendMessage('http://api.test'));
+      await act(async () => {
+        await result.current(sessionId, 'claude', sessionId, 'fresh turn');
+      });
+      expect(steerOrchestrationTurnMock).not.toHaveBeenCalled();
+      expect(sendExecutionMessageMock).toHaveBeenCalledTimes(1);
+      expect(activeChatsStore.getSnapshot()[sessionId]?.queuedMessages).toEqual(
+        [],
+      );
+    });
+
+    it('a real send opens the window: the turn is in flight before the server opens it, and the record opening it closes the window', async () => {
+      const conv = 'claude:window-send-conv';
+      let resolveDispatch: (value: unknown) => void = () => {};
+      sendExecutionMessageMock.mockImplementationOnce(
+        () => new Promise((resolve) => (resolveDispatch = resolve)),
+      );
+      activeChatsStore.updateChat(sessionId, {
+        status: 'idle',
+        orchestrationProvider: 'claude',
+        conversationId: conv,
+        conversationActivity: { conversationId: conv, asOfSequence: 30 },
+      });
+      const { result } = renderHook(() => useSendMessage('http://api.test'));
+      let pending: Promise<unknown> = Promise.resolve();
+      await act(async () => {
+        pending = result.current(sessionId, 'claude', sessionId, 'go');
+        await Promise.resolve();
+      });
+      const during = activeChatsStore.getSnapshot()[sessionId];
+      expect(during?.sendAwaitingTurnStart).toBe(true);
+      expect(isTurnInFlight(during)).toBe(true);
+
+      act(() =>
+        activeChatsStore.applyConversationActivity({
+          ...openRecord(conv, 'turn-from-this-send'),
+          asOfSequence: 31,
+        }),
+      );
+      expect(
+        activeChatsStore.getSnapshot()[sessionId]?.sendAwaitingTurnStart,
+      ).toBeUndefined();
+      expect(isTurnInFlight(activeChatsStore.getSnapshot()[sessionId])).toBe(
+        true,
+      );
+      await act(async () => {
+        resolveDispatch(successReceipt(conv));
+        await pending;
+      });
+    });
+
+    it('a send right after a settled Stop stays in flight while the record still names the stopped turn (review F3)', async () => {
+      const conv = 'claude:after-stop-conv';
+      let resolveDispatch: (value: unknown) => void = () => {};
+      sendExecutionMessageMock.mockImplementationOnce(
+        () => new Promise((resolve) => (resolveDispatch = resolve)),
+      );
+      // The Stop receipt settled turn T1; its turn.aborted has not landed, so
+      // the record still shows T1 open.
+      activeChatsStore.updateChat(sessionId, {
+        status: 'idle',
+        orchestrationProvider: 'claude',
+        conversationId: conv,
+        conversationActivity: openRecord(conv, 'T1'),
+        stopSettledTurnId: 'T1',
+      });
+      expect(isTurnInFlight(activeChatsStore.getSnapshot()[sessionId])).toBe(
+        false,
+      );
+      const { result } = renderHook(() => useSendMessage('http://api.test'));
+      let pending: Promise<unknown> = Promise.resolve();
+      await act(async () => {
+        pending = result.current(sessionId, 'claude', sessionId, 'next');
+        await Promise.resolve();
+      });
+      // A new turn, not a steer into the stopped one...
+      expect(steerOrchestrationTurnMock).not.toHaveBeenCalled();
+      // ...and in flight, so a second Enter queues instead of dispatching.
+      const during = activeChatsStore.getSnapshot()[sessionId];
+      expect(during?.sendAwaitingTurnStart).toBe(true);
+      expect(isTurnInFlight(during)).toBe(true);
+      await act(async () => {
+        resolveDispatch(successReceipt(conv));
+        await pending;
+      });
+    });
   });
 });
 

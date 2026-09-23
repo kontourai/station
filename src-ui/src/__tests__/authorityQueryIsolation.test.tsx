@@ -51,6 +51,7 @@ import {
   AuthorityQueryProvider,
   type FetchAuthorityObservation,
 } from '../contexts/AuthorityQueryContext';
+import { activeChatsStore } from '../contexts/active-chats-store';
 import { useScopedProjectsQuery } from '../contexts/ProjectsContext';
 import {
   AUTHORITY_CACHE_KEY_PREFIX,
@@ -510,6 +511,61 @@ describe('authority query isolation (real provider tree, mocked wire)', () => {
     );
     // Restored from A's own blob — no refetch for the return trip.
     expect(harness.projectFetches.length).toBe(fetchesAfterA + 1);
+    unmount();
+  });
+
+  it("#2309: switching Station forgets the previous Station's activity records", async () => {
+    const harness = createHarness();
+    harness.observationPlan.set('default', async () => OBS_DEFAULT);
+    const { unmount } = renderTree(harness);
+    const { id: idA, url: urlA } = await addHome('homea');
+    const { id: idB, url: urlB } = await addHome('homeb');
+    harness.observationPlan.set(urlA, async () => OBS_A);
+    harness.observationPlan.set(urlB, async () => OBS_B);
+    await switchTo(idA);
+    await waitFor(() =>
+      expect(probe().getAttribute('data-namespace')).toBe(NS_A),
+    );
+
+    const conversationId = 'claude:conv-authority-2309';
+    activeChatsStore.initChat(conversationId, {
+      agentSlug: 'dev-agent',
+      agentName: 'Dev Agent',
+      title: 'Authority',
+      conversationId,
+    });
+    // Station A's record, at A's sequence.
+    act(() =>
+      activeChatsStore.applyConversationActivity({
+        conversationId,
+        asOfSequence: 9_000,
+        openTurn: {
+          turnId: 'a-turn',
+          threadId: `${conversationId}:child`,
+          startedAt: '2026-09-22T18:55:25.000Z',
+        },
+      }),
+    );
+
+    await switchTo(idB);
+    await waitFor(() =>
+      expect(probe().getAttribute('data-namespace')).toBe(NS_B),
+    );
+    expect(
+      activeChatsStore.getSnapshot()[conversationId]?.conversationActivity,
+    ).toBeUndefined();
+    // Station B's lower sequence is accepted, not rejected as older than A's.
+    act(() =>
+      activeChatsStore.applyConversationActivity({
+        conversationId,
+        asOfSequence: 12,
+      }),
+    );
+    expect(
+      activeChatsStore.getSnapshot()[conversationId]?.conversationActivity
+        ?.asOfSequence,
+    ).toBe(12);
+    activeChatsStore.removeChat(conversationId);
     unmount();
   });
 

@@ -2038,6 +2038,29 @@ describe('#2309 Home running state reads the conversation activity record', () =
     expect(row?.lifecycleLabel).toBe('Running');
   });
 
+  test('a chat correlated by its own thread (no conversation id) reads that thread, not the conversation', () => {
+    // A tab keyed by an earlier execution session of the conversation, naming
+    // no conversation, correlates with that thread's row alone. The record's
+    // open turn is on the current child, so THIS thread is not running.
+    // (Keyed by the root thread this is unobservable: the root's thread id IS
+    // the conversation id, and the conversation entry replaces it.)
+    const oldThread = `${conversationId}:session:old`;
+    const { conversationId: _omit, ...threadChat } = chat;
+    const [row] = buildActiveChatTaskItems({
+      chats: { [oldThread]: { ...threadChat, orchestrationStatus: 'running' } },
+      agents: [],
+      sessions: [
+        {
+          ...base,
+          threadId: oldThread,
+          updatedAt: '2026-09-22T18:10:00Z',
+          conversationActivity: activity,
+        },
+      ],
+    });
+    expect(row?.lifecycleLabel).toBe('Recent');
+  });
+
   test("the chat's own record wins over a stale local sending", () => {
     const closed = {
       conversationId,
