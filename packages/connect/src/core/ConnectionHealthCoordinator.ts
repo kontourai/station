@@ -65,6 +65,15 @@ export interface ConnectionHealthCoordinatorOptions {
 const TRANSIENT_UNREACHABILITY_REASONS: ReadonlySet<ConnectionFailureReason> =
   new Set(['timeout', 'unreachable', 'busy']);
 
+/**
+ * `busy` means the Station answered its handshake but not its identity read
+ * in time. That is honest for a stall, not for an outage of the
+ * authenticated routes, so once this many consecutive probes (about 45s on
+ * the default backoff) have all been busy the reason escalates to `timeout`
+ * (station#2327).
+ */
+export const BUSY_ESCALATION_PROBES = 6;
+
 export class ConnectionHealthCoordinator {
   private options: ConnectionHealthCoordinatorOptions;
   private listeners = new Set<() => void>();
@@ -82,6 +91,7 @@ export class ConnectionHealthCoordinator {
   private inFlight = false;
   private rerunRequested = false;
   private failureCount = 0;
+  private busyStreak = 0;
 
   constructor(options: ConnectionHealthCoordinatorOptions) {
     this.options = options;
@@ -139,6 +149,7 @@ export class ConnectionHealthCoordinator {
       if (this.abortController === controller) this.abortController = null;
       if (controller.signal.aborted || this.listeners.size === 0) return;
       this.failureCount = 0;
+      this.busyStreak = 0;
       this.publish({
         status: 'connected',
         checking: false,
@@ -200,6 +211,7 @@ export class ConnectionHealthCoordinator {
     if (controller.signal.aborted || this.listeners.size === 0) return;
     if (connected) {
       this.failureCount = 0;
+      this.busyStreak = 0;
       this.options.onSuccess?.(connected, success);
       this.publish({
         status: 'connected',
@@ -212,6 +224,8 @@ export class ConnectionHealthCoordinator {
       this.schedule(this.options.pollIntervalMs ?? 10_000);
     } else {
       this.failureCount += 1;
+      this.busyStreak = reason === 'busy' ? this.busyStreak + 1 : 0;
+      if (this.busyStreak > BUSY_ESCALATION_PROBES) reason = 'timeout';
       this.options.onFailure?.(reason);
       // station#1094 R2/R4: a terminal failure (currently just
       // 'authentication-failed') stops the automatic retry ladder dead —

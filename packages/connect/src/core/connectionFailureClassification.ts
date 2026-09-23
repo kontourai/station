@@ -149,6 +149,17 @@ function nativeRefusalCode(error: unknown): string | undefined {
 }
 
 /**
+ * station#2327 — native transport codes that, AFTER the address has been seen
+ * to answer, mean "this request did not get a turn in time" rather than
+ * "nothing is there". Only meaningful with that prior observation; on its own
+ * `transport_timeout` cannot tell a stalled Station from a sleeping host.
+ */
+export function isNativeTransportSaturation(error: unknown): boolean {
+  const code = nativeRefusalCode(error);
+  return code === 'transport_capacity' || code === 'transport_timeout';
+}
+
+/**
  * station#1713 (original) / station#1818 R2 (this rewrite) — the
  * classification half of the connection-truth fix.
  *
@@ -190,17 +201,6 @@ function nativeRefusalCode(error: unknown): string | undefined {
  * fallback still applies, exactly as it did before any of these codes
  * existed.
  */
-/**
- * station#2327 — native transport codes that, AFTER the address has been seen
- * to answer, mean "this request did not get a turn in time" rather than
- * "nothing is there". Only meaningful with that prior observation; on its own
- * `transport_timeout` cannot tell a stalled Station from a sleeping host.
- */
-export function isNativeTransportSaturation(error: unknown): boolean {
-  const code = nativeRefusalCode(error);
-  return code === 'transport_capacity' || code === 'transport_timeout';
-}
-
 export function classifyNativeTransportRefusal(
   error: unknown,
 ): ConnectionFailureReason | null {

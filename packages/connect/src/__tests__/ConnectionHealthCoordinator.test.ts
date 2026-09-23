@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ConnectionHealthCoordinator } from '../core/ConnectionHealthCoordinator';
+import {
+  BUSY_ESCALATION_PROBES,
+  ConnectionHealthCoordinator,
+} from '../core/ConnectionHealthCoordinator';
 import { createAccessEndpoint } from '../core/environmentProfiles';
 
 afterEach(() => vi.useRealTimers());
@@ -139,6 +142,36 @@ describe('ConnectionHealthCoordinator', () => {
         failureStreak: 3,
       }),
     );
+    unsubscribe();
+  });
+
+  it('escalates a Station that stays busy past the escalation threshold to timeout (station#2327)', async () => {
+    // Busy is honest for a stall; an identity route that never answers is
+    // an outage and must stop reading as "waiting in line".
+    vi.useFakeTimers();
+    const endpoint = createAccessEndpoint('https://station.example.test');
+    const check = vi.fn().mockResolvedValue({ ok: false, reason: 'busy' });
+    const coordinator = new ConnectionHealthCoordinator({
+      endpoints: () => [endpoint],
+      compatibility: () => ({ clientProtocol: 'https:', online: true }),
+      check,
+      baseRetryMs: 1,
+      maxRetryMs: 1,
+      jitterRatio: 0,
+    });
+    const reasonsByStreak = new Map<number, string | null | undefined>();
+    const unsubscribe = coordinator.subscribe(() => {
+      const snapshot = coordinator.getSnapshot();
+      if (snapshot.status === 'error' && !snapshot.checking)
+        reasonsByStreak.set(snapshot.failureStreak, snapshot.reason);
+    });
+
+    await vi.waitFor(() =>
+      expect(reasonsByStreak.has(BUSY_ESCALATION_PROBES + 1)).toBe(true),
+    );
+    for (let probe = 1; probe <= BUSY_ESCALATION_PROBES; probe += 1)
+      expect(reasonsByStreak.get(probe)).toBe('busy');
+    expect(reasonsByStreak.get(BUSY_ESCALATION_PROBES + 1)).toBe('timeout');
     unsubscribe();
   });
 
