@@ -378,3 +378,35 @@ test('when no chat pane takes the request, the opening message stays to copy', a
   expect(setProjectMock).toHaveBeenCalledWith('pulse');
   expect(onClose).toHaveBeenCalled();
 });
+
+test.each([
+  ['Pane and Agent', 'full'],
+  ['Server provider', 'provider'],
+] as const)(
+  'choosing %s sends template %s to the scaffold',
+  async (label, template) => {
+    // I15.
+    createProjectMock.mockResolvedValue({ slug: 'kit', name: 'Kit' });
+    mutateJsonMock.mockResolvedValue(
+      jsonResponse(201, {
+        success: true,
+        data: { name: 'kit', template, displayName: 'Kit', files: [] },
+      }),
+    );
+    captureProjectChatRequests();
+    const onClose = renderModal();
+    fireEvent.change(screen.getByLabelText('Plugin name'), {
+      target: { value: 'kit' },
+    });
+    fireEvent.click(screen.getByRole('radio', { name: new RegExp(label) }));
+    fireEvent.click(screen.getByRole('button', { name: 'Create plugin' }));
+
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(mutateJsonMock).toHaveBeenCalledWith(
+      'http://station.test/api/projects/kit/plugin-scaffold',
+      'POST',
+      undefined,
+      { name: 'kit', template, displayName: 'Kit' },
+    );
+  },
+);

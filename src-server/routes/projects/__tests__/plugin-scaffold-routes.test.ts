@@ -198,6 +198,28 @@ describe('POST /api/projects/:slug/plugin-scaffold', () => {
         principal: 'human:deployment:member-7',
       }),
     );
+    // I5: exactly these keys. The folder path and anything found in it
+    // stay out of the log line.
+    const [[, written], [, refused]] = auditInfo.mock.calls as [
+      unknown,
+      Record<string, unknown>,
+    ][];
+    expect(Object.keys(written).sort()).toEqual([
+      'alreadyPresent',
+      'files',
+      'pluginName',
+      'principal',
+      'project',
+      'template',
+    ]);
+    expect(Object.keys(refused).sort()).toEqual([
+      'code',
+      'pluginName',
+      'principal',
+      'project',
+    ]);
+    expect(JSON.stringify(auditInfo.mock.calls)).not.toContain(folder);
+    expect(written.files).toBe(8);
   });
 
   test('refuses a folder that already holds work, counts what is there without naming it, and writes nothing', async () => {
@@ -280,6 +302,29 @@ describe('POST /api/projects/:slug/plugin-scaffold', () => {
     expect(status).toBe(409);
     expect(body.code).toBe('working-directory-not-empty');
   });
+
+  test.each([
+    ['a foreign empty directory', 'docs'],
+    ['an empty scaffold directory', 'src'],
+  ])(
+    'a folder holding only %s is not-empty, never a partial scaffold',
+    async (_label, directory) => {
+      // I12: only the scaffold's own files may count toward a partial scaffold.
+      const folder = tempDir();
+      mkdirSync(join(folder, directory));
+      const app = appFor({ alpha: { workingDirectory: folder } });
+
+      const { status, body } = await post(app, 'alpha', {
+        name: 'dirs',
+        template: 'pane',
+      });
+
+      expect(status).toBe(409);
+      expect(body.code).toBe('working-directory-not-empty');
+      expect(body.entryCount).toBe(1);
+      expect(readdirSync(folder)).toEqual([directory]);
+    },
+  );
 
   test('a partial scaffold counts the files already there and writes nothing', async () => {
     const folder = tempDir();

@@ -160,6 +160,19 @@ describe('buildPluginScaffold', () => {
       expect.arrayContaining(['plugin.mjs', 'providers/branding.js']),
     );
     expect(paths).not.toContain('src/index.tsx');
+    // I3: both are enforced at runtime; without them the provider and the
+    // server routes silently never load.
+    const station = JSON.parse(
+      scaffold.files.find((file) => file.path === 'plugin.json')!.contents,
+    ).extensions['io.kontourai.station'];
+    expect(station.permissions).toEqual([
+      'providers.register',
+      'plugin.server',
+    ]);
+    expect(station.serverModule).toBe('./plugin.mjs');
+    expect(station.providers).toEqual([
+      { type: 'branding', module: './providers/branding.js' },
+    ]);
   });
 
   test('ids derive from the plugin name and every path stays relative', () => {

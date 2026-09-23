@@ -173,3 +173,58 @@ test('an unclaimed chat request keeps the opening message on screen', async () =
     (screen.getByLabelText('Opening message') as HTMLTextAreaElement).value,
   ).toContain('`plugin-authoring`');
 });
+
+test.each([
+  ['Pane and Agent', 'full'],
+  ['Server provider', 'provider'],
+] as const)(
+  'choosing %s sends template %s, and the offer goes away after',
+  async (label, template) => {
+    // I15: the chosen template reaches the POST. I14: a successful scaffold
+    // re-reads eligibility, so the offer disappears.
+    getJsonMock
+      .mockResolvedValueOnce(
+        jsonResponse(200, { success: true, data: { eligible: true } }),
+      )
+      .mockResolvedValue(
+        jsonResponse(200, {
+          success: true,
+          data: { eligible: false, reason: 'working-directory-not-empty' },
+        }),
+      );
+    mutateJsonMock.mockResolvedValue(
+      jsonResponse(201, {
+        success: true,
+        data: { name: 'kit', template, displayName: 'Kit', files: [] },
+      }),
+    );
+    const listener = (event: Event) => event.preventDefault();
+    window.addEventListener(OPEN_PROJECT_CHATS_EVENT, listener);
+    chatListeners.push(listener);
+
+    renderCallout();
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Start a plugin' }),
+    );
+    fireEvent.change(await screen.findByLabelText('Plugin name'), {
+      target: { value: 'kit' },
+    });
+    fireEvent.click(screen.getByRole('radio', { name: new RegExp(label) }));
+    fireEvent.click(screen.getByRole('button', { name: 'Start plugin' }));
+
+    await waitFor(() =>
+      expect(mutateJsonMock).toHaveBeenCalledWith(
+        'http://station.test/api/projects/shared/plugin-scaffold',
+        'POST',
+        undefined,
+        { name: 'kit', template, displayName: 'Kit' },
+      ),
+    );
+    await waitFor(() => expect(getJsonMock).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('button', { name: 'Start a plugin' }),
+      ).toBeNull(),
+    );
+  },
+);

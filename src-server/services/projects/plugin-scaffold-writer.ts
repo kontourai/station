@@ -129,6 +129,10 @@ async function inspectOccupancy(
     if ((await readFile(absolute, 'utf8')) !== contents) return foreign;
     present.push(path);
   }
+  // Only the scaffold's own FILES make a folder "part of this scaffold".
+  // Directories alone (an empty `src/`) prove nothing about an earlier
+  // attempt, so a folder with no matching file is someone else's.
+  if (present.length === 0) return foreign;
   return { kind: 'scaffold', present: present.sort() };
 }
 

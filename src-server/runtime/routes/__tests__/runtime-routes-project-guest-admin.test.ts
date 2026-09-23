@@ -616,6 +616,14 @@ describe('project guest administration over the production composition', () => {
     // for it, and nothing is written.
     const byOutsider = await scaffold(outsider, 'outsider-plugin');
     expect(byOutsider.status).toBe(404);
+    // I4: the read twin is guarded the same way; a non-member learns
+    // nothing about the folder, not even whether it is empty.
+    const outsiderEligibility = await h.request(
+      '/api/projects/authoring/plugin-scaffold',
+      outsider(),
+    );
+    expect(outsiderEligibility.status).toBe(404);
+    expect(await outsiderEligibility.text()).not.toContain('eligible');
     expect(existsSync(join(folder, 'plugin.json'))).toBe(false);
 
     // Layer 2: the guard lets a member through this exact leaf only.
@@ -718,6 +726,19 @@ describe('project guest administration over the production composition', () => {
     });
     expect(response.status).toBe(404);
     expect(existsSync(join(folder, 'plugin.json'))).toBe(false);
+    // I4: nor may they ask whether that Project's folder is empty.
+    const eligibility = await h.request(
+      '/api/projects/private/plugin-scaffold',
+      {
+        headers: {
+          Authorization: `Bearer ${h.operatorCredential}`,
+          Cookie: 'fixture_account=guest',
+          Origin: ORIGIN,
+        },
+      },
+    );
+    expect(eligibility.status).toBe(404);
+    expect(await eligibility.text()).not.toContain('eligible');
   });
 
   test('read-only rescope over the operator endpoint: GET yes, POST no; read+operate restores POST', async () => {
