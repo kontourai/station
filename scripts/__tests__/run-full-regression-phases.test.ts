@@ -22,8 +22,8 @@ function sinks() {
   return {
     bytes,
     forward: {
-      stdout: (chunk: Buffer) => bytes.stdout.push(chunk),
-      stderr: (chunk: Buffer) => bytes.stderr.push(chunk),
+      stdout: (chunk: Buffer) => bytes.stdout.push(chunk) > 0,
+      stderr: (chunk: Buffer) => bytes.stderr.push(chunk) > 0,
     },
   };
 }
