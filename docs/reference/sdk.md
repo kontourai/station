@@ -907,6 +907,10 @@ Adds a layout from an installed plugin to a project.
 
 ### Knowledge API Functions
 
+Project Knowledge reads and writes use the active Station's authenticated
+transport. A saved encrypted broker route never sends Knowledge documents or
+rules through a direct Station HTTP request.
+
 #### `fetchKnowledgeDocs(projectSlug: string, namespace?: string): Promise<any[]>`
 
 Lists knowledge documents for a project.
