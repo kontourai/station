@@ -1,5 +1,14 @@
+import { mkdirSync, mkdtempSync, readdirSync, writeFileSync } from 'node:fs';
+import { rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { McpServer } from '@modelcontextprotocol/server';
+import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import {
+  registerPluginValidateRoutes,
+  validatePluginSource,
+} from '../../routes/plugins/plugin-validate-routes.js';
 
 /**
  * archive#167 Wave 3: characterization tests for `station-control-platform-tools.ts`'s
@@ -376,5 +385,141 @@ describe('station-control platform tools (characterization)', () => {
     expect(payload.message).toContain('station plugin install');
     // The route is never reached: nothing to refuse, nothing to roll back.
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  /**
+   * #2323 S1. The tool is driven end to end: its handler, the station-control
+   * HTTP client, and the real `/api/plugins/validate` route mounted where
+   * `plugins.ts` mounts it. Only the network hop is replaced, by handing the
+   * request to that Hono app.
+   */
+  test('validate_plugin refuses a remote, network or relative source with the route’s own result, making no request', async () => {
+    const tools = await registerTools();
+    const root = mkdtempSync(join(tmpdir(), 'station-validate-refuse-'));
+    try {
+      const home = join(root, 'home');
+      mkdirSync(join(home, 'plugins'), { recursive: true });
+      const deps = {
+        agentsDir: join(home, 'agents'),
+        logger: { debug() {}, error() {}, info() {}, warn() {} } as any,
+        pluginsDir: join(home, 'plugins'),
+        projectHomeDir: home,
+      };
+      for (const [source, code] of [
+        ['https://example.invalid/owner/plugin.git', 'remote-source-refused'],
+        ['git@example.invalid:owner/plugin.git', 'remote-source-refused'],
+        ['\\\\attacker\\share\\plugin', 'network-path-refused'],
+        ['/net/attacker/plugin', 'network-path-refused'],
+        ['./my-plugin', 'source-not-absolute'],
+      ] as const) {
+        const payload = JSON.parse(
+          (await tools.validate_plugin({ source })).content[0].text,
+        );
+        // Same codes and the same shape as the route, not a tool dialect.
+        expect(payload, source).toEqual(
+          await validatePluginSource(source, deps),
+        );
+        expect(payload.diagnostics, source).toEqual([
+          expect.objectContaining({ code }),
+        ]);
+      }
+      expect(fetchMock).not.toHaveBeenCalled();
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test('validate_plugin trims a padded source, answering exactly as the HTTP route does', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'station-validate-trim-'));
+    try {
+      const home = join(root, 'home');
+      mkdirSync(join(home, 'plugins'), { recursive: true });
+      const plugins = new Hono();
+      registerPluginValidateRoutes(plugins, {
+        agentsDir: join(home, 'agents'),
+        logger: { debug() {}, error() {}, info() {}, warn() {} } as any,
+        pluginsDir: join(home, 'plugins'),
+        projectHomeDir: home,
+      });
+      const app = new Hono().route('/api/plugins', plugins);
+      const tools = await registerTools();
+      for (const source of [
+        '  https://example.invalid/owner/plugin.git  ',
+        '\t/net/attacker/plugin\n',
+        '  ./my-plugin ',
+      ]) {
+        const viaTool = JSON.parse(
+          (await tools.validate_plugin({ source })).content[0].text,
+        );
+        const viaRoute = await (
+          await app.request('/api/plugins/validate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ source }),
+          })
+        ).json();
+        expect(viaTool, JSON.stringify(source)).toEqual(viaRoute);
+      }
+      expect(fetchMock).not.toHaveBeenCalled();
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test('validate_plugin reaches the validate route and relays its diagnostics', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'station-validate-tool-'));
+    try {
+      const home = join(root, 'home');
+      const pluginsDir = join(home, 'plugins');
+      mkdirSync(pluginsDir, { recursive: true });
+      const source = join(root, 'author', 'tool-pulse');
+      mkdirSync(join(source, 'src'), { recursive: true });
+      writeFileSync(
+        join(source, 'plugin.json'),
+        JSON.stringify({
+          $schema: 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json',
+          name: 'tool-pulse',
+          version: '1.0.0',
+          extensions: {
+            'io.kontourai.station': {
+              schemaVersion: '1.0',
+              // Missing: the tool must relay the route's refusal.
+              entrypoint: './src/missing.tsx',
+            },
+          },
+        }),
+      );
+      const plugins = new Hono();
+      registerPluginValidateRoutes(plugins, {
+        agentsDir: join(home, 'agents'),
+        logger: { debug() {}, error() {}, info() {}, warn() {} } as any,
+        pluginsDir,
+        projectHomeDir: home,
+      });
+      const app = new Hono().route('/api/plugins', plugins);
+      fetchMock.mockImplementation(async (input, init) => {
+        const url = new URL(String(input));
+        expect(url.origin).toBe(API_BASE);
+        return app.request(url.pathname, init as RequestInit);
+      });
+      const tools = await registerTools();
+
+      const result = await tools.validate_plugin({ source });
+
+      const payload = JSON.parse(result.content[0].text);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(fetchMock.mock.calls[0][0]).toBe(
+        `${API_BASE}/api/plugins/validate`,
+      );
+      expect(payload.valid).toBe(false);
+      expect(payload.plugin).toMatchObject({ name: 'tool-pulse' });
+      expect(payload.diagnostics).toEqual([
+        expect.objectContaining({ code: 'entrypoint-missing' }),
+      ]);
+      expect(payload).not.toHaveProperty('contentDigest');
+      expect(readdirSync(pluginsDir)).toEqual([]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 });

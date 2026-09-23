@@ -134,11 +134,20 @@ export function parseAgentPluginManifest(
     const station = value.extensions[STATION_AGENT_PLUGIN_EXTENSION_ID];
     if (station !== undefined) {
       if (!validators.stationExtension(station)) {
+        // Name the first failing location, as the manifest-level error above
+        // does. Without it an author learns only that the extension is off.
+        const first = validators.stationExtension.errors?.[0];
+        const detail = first
+          ? `: ${first.instancePath || 'root'} ${first.message ?? 'is invalid'}`.slice(
+              0,
+              240,
+            )
+          : '';
         report({
           level: 'warning',
           code: 'station-extension-invalid',
           component: `plugin.json#extensions.${STATION_AGENT_PLUGIN_EXTENSION_ID}`,
-          message: 'Invalid Station extension was disabled',
+          message: `Invalid Station extension was disabled${detail}`,
         });
       } else {
         stationExtension = station as StationAgentPluginExtensionV1;

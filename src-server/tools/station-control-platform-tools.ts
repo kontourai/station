@@ -8,6 +8,10 @@ import {
 } from '@kontourai/station-sdk/client';
 import { z } from 'zod';
 
+import {
+  pluginValidateResult,
+  refusePluginValidateSource,
+} from '../services/plugins/plugin-validate-source.js';
 import type { StationControlToolRegistry } from './station-control-mcp-server.js';
 import {
   api,
@@ -220,6 +224,44 @@ export function registerPlatformTools(server: StationControlToolRegistry) {
           'and answers. Open the Plugins page in Station, paste this source, and install it from the preview — ' +
           'or run `station plugin install <source>` in a terminal, which prints the same disclosure and asks there.',
       }),
+  );
+
+  server.tool(
+    'validate_plugin',
+    // #2323 S1. The authoring half of the install story: an agent that wrote
+    // a plugin can check it here before asking a person to install it. The
+    // route returns diagnostics and a contribution summary and nothing an
+    // install could consume as a decision (no content digest, no grant
+    // revision), so this does not reopen the door `install_plugin` closes.
+    // It is auto-approved as read-only, so it takes LOCAL folders only: a git
+    // URL would make it a network fetch on an agent's say-so. The route
+    // refuses those too; refusing here as well means no request is made.
+    'Check a local plugin folder for authoring errors without installing it: the manifest, its Workspace Panes, prompt-file safety, and conflicts with what is already installed. Returns diagnostics. Local folders only (an absolute path); it refuses git URLs and network paths, and it does not resolve dependencies, install, or build the bundle. A person installs from Plugins → Install plugin after reviewing the preview. Read the station-docs topic `plugin-authoring` for the format.',
+    {
+      source: z
+        .string()
+        .min(1)
+        .describe(
+          'Absolute path to the local plugin folder (the one containing plugin.json)',
+        ),
+    },
+    async ({ source }) => {
+      // The route's own refusal, applied here so a refused source makes no
+      // request at all; same codes and the same result shape either way.
+      // Trimmed first, as the route's request schema trims, so a padded
+      // source gets the route's code rather than a tool-only one.
+      const trimmed = source.trim();
+      const refused = refusePluginValidateSource(trimmed);
+      if (refused) {
+        return jsonToolResult(pluginValidateResult(trimmed, [refused]));
+      }
+      return jsonToolResult(
+        await api('/api/plugins/validate', {
+          method: 'POST',
+          body: JSON.stringify({ source: trimmed }),
+        }),
+      );
+    },
   );
 
   server.tool(

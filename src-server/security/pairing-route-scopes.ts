@@ -3037,6 +3037,18 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'POST', path: '/api/plugins/fetch' },
     { method: 'POST', path: '/api/plugins/install' },
     { method: 'POST', path: '/api/plugins/preview' },
+    // #2323 S1: `POST /validate` is an authoring check that installs nothing,
+    // but it stays on the family's operate tier rather than an explicit
+    // read override like `/api/projects/:slug/file-preview`. That override is
+    // justified there by "no caller-supplied root"; this route takes one:
+    // the body names an arbitrary absolute host path, and validate reads and
+    // returns the manifest found there. (It never fetches or clones, and it
+    // refuses UNC, device and automount paths before any filesystem call.)
+    // Its sibling
+    // `/preview`, which reads the same, is family-inherited here too. A
+    // read-only paired device gains nothing it should have from reaching it;
+    // the agent tool calls it with the local operator credential either way.
+    { method: 'POST', path: '/api/plugins/validate' },
     { method: 'POST', path: '/api/plugins/reload' },
     { method: 'DELETE', path: '/api/plugins/:name' },
     // app.all('/:name/*', ...) (plugin-public-routes.ts) forwards ANY

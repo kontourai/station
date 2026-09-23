@@ -7,3 +7,6 @@ d23831f8a93620c2266ba9851043a256eaf7f17a:packages/cli/src/commands/delegate.ts:g
 # RFC 6455's sample Sec-WebSocket-Key nonce ("the sample nonce") in a raw-upgrade
 # test at one historical location; the test now generates the nonce at runtime.
 67086ef492b45368588e82c21bf2934a4110e86b:src-server/services/terminal/__tests__/terminal-ws-server.test.ts:generic-api-key:676
+# A test sentinel string (asserted absent from validate responses), not a credential.
+# Renamed in the next commit; this pins only that historical location.
+94b245af0e00bcd41b8688ae89c4735ffdf2053e:src-server/routes/plugins/__tests__/plugin-validate-routes.test.ts:generic-api-key:466

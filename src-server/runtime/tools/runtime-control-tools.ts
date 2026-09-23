@@ -46,6 +46,10 @@ const SC_READ_ONLY_TOOL_NAMES = [
   'get_config',
   'list_plugins',
   'check_plugin_updates',
+  // #2323 S1: reads a local plugin folder in place and writes nothing (no
+  // staging copy, no build); no Station state changes and nothing it
+  // returns can authorize an install.
+  'validate_plugin',
   'get_usage',
   'get_achievements',
   // archive#1880: semantic search over the K3 knowledge index — embeds the
@@ -146,6 +150,10 @@ const SC_MUTATING_TOOL_NAMES = [
 const SC_TOOL_NAME_PREFIXES = ['station-control_', 'stationControl_'];
 
 export const SC_READ_ONLY_TOOLS = SC_READ_ONLY_TOOL_NAMES.map(
+  (toolName) => `station-control_${toolName}`,
+);
+
+export const SC_MUTATING_TOOLS = SC_MUTATING_TOOL_NAMES.map(
   (toolName) => `station-control_${toolName}`,
 );
 

@@ -41,6 +41,7 @@ import { registerPluginInstallRoutes } from './plugin-install-routes.js';
 import { registerPluginLifecycleRoutes } from './plugin-lifecycle-routes.js';
 import { preparePluginProviders } from './plugin-loader.js';
 import { registerPluginPublicRoutes } from './plugin-public-routes.js';
+import { registerPluginValidateRoutes } from './plugin-validate-routes.js';
 import {
   type PluginVisibilityRouteDeps,
   registerPluginVisibilityRoutes,
@@ -315,6 +316,14 @@ export function createPluginRoutes(
       ? (plugin) => runtime.quiesceEventSubscriptions!(plugin)
       : undefined,
     projectVisiblePlugins,
+  });
+  // #2323 S1: an authoring check. Stages outside `pluginsDir`, builds
+  // nothing, and returns no consent basis — see the route file's header.
+  registerPluginValidateRoutes(app, {
+    agentsDir,
+    logger,
+    pluginsDir,
+    projectHomeDir,
   });
   registerPluginHostApprovalRoutes(app, {
     packageMcpJournal: runtime?.packageMcpJournal,
