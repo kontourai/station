@@ -577,7 +577,18 @@ export interface TerminalAttribution {
     | 'runtime_error'
     | 'timeout'
     | 'no_output'
-    | 'exit';
+    | 'exit'
+    /**
+     * #2310 review M1/F2: the conversation's only sends did not take and no
+     * activity has been recorded since. Derived from `sendTurn` command
+     * receipts, since a send that does not take publishes no runtime event.
+     * `send_refused`: Station refused a send before it started (an
+     * execution-phase refusal; authorization refusals never count).
+     * `send_failed`: a send failed without that certainty — it may have
+     * reached the provider — and nothing has been recorded since.
+     */
+    | 'send_refused'
+    | 'send_failed';
   detail?: string;
 }
 
@@ -711,6 +722,42 @@ export interface OrchestrationSessionSummary extends ProviderSession {
    * silently kill an in-flight External-agent subprocess.
    */
   hasActiveTurn?: boolean;
+  /**
+   * #2310: true when this session is a **Draft** — it exists, but no turn has
+   * started and no send was attempted anywhere in its CONVERSATION's lineage
+   * (the root Session and every continuation/handoff child), and nothing in
+   * that lineage produced turn, content or tool events. A session that
+   * carries history from elsewhere is never a Draft: read-only attached, an
+   * adopted continuation, a Station-dispatched delegation (its prompt exists
+   * by construction), or a fork target (it carries copied messages).
+   *
+   * A send that was attempted and did not take is not a Draft either: with
+   * no activity recorded since, that session carries
+   * `terminalAttribution.kind` `send_refused` or `send_failed` with the same
+   * reason in `blockedReason`, and reads Failed through `isFirstSendFailure`
+   * (`@kontourai/station-contracts/session-attention`). `lifecycleState`
+   * is NOT rewritten — it stays the event fold, because control paths
+   * (continuation, manual transitions) read it as runtime truth; a consumer
+   * must not test `lifecycleState === 'failed'` for this case. A send
+   * refused for authorization or ownership (a caller who cannot act on the
+   * session) changes nothing.
+   *
+   * Lineage-aware on purpose: a continuation child minted for the NEXT turn,
+   * or a root whose turns all ran in children, has no activity of its own and
+   * is not a Draft.
+   *
+   * `false` is a derived "not a draft". ABSENT means the reader that built
+   * this summary did not consult the lineage, so no draft claim is made — a
+   * consumer must test `=== true`, never `!== false`.
+   *
+   * Freshness: a client learns that a Draft ended only by re-reading the
+   * summary. The sending device re-reads on its own send; other devices depend
+   * on the event stream refreshing the session read-model, which is not wired
+   * in production until #2307 lands (and is superseded by #2309 Phase B).
+   *
+   * Unrelated to composer draft text (unsent input kept per device).
+   */
+  draft?: boolean;
 }
 
 export interface OrchestrationSessionDetail {

@@ -228,8 +228,11 @@ export function useHomeViewModel(onNavigate: (view: NavigationView) => void) {
     startIdentity: data.defaultSelection.agent
       ? `${data.defaultSelection.agent.name} · ${data.defaultSelection.effectiveModel.label}`
       : 'No agent is ready yet',
+    // #2310 review M3: "Continue most recent work" must name work. A Draft
+    // has none — nothing was ever sent — and stays reachable in its lane.
     primaryWorkItem: data.workItems.find(
-      (task) => task.kind !== 'remote-session',
+      (task) =>
+        task.kind !== 'remote-session' && task.lifecycleLabel !== 'Draft',
     ),
     continueWork: createContinueWork(
       onNavigate,
