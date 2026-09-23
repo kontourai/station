@@ -188,48 +188,46 @@ describe('HeaderActions — self-describing connection surface', () => {
     pendingApprovalRecord = null;
   });
 
-  /**
-   * #1536 F: the ONE state that stopped being visible text. Connected, a
-   * single known Station, no sidecar qualification — nothing here changes
-   * while you work, and the chip was 203px of the row that runs out of width
-   * first. The words survive in the accessible name AND the tooltip, which is
-   * the only channel a dot leaves for the identity.
-   */
-  test('collapses the connected single-Station chip to its dot, keeping every word in the name and tooltip', () => {
+  test('keeps the healthy Station chip compact and visibly names its saved profile', () => {
     const button = renderConnButton();
 
     expect(button.querySelector('.app-toolbar__conn-state')).toBeNull();
     expect(button.querySelector('.app-toolbar__conn-name')).toBeNull();
-    expect(button.textContent).toBe('');
+    expect(button.querySelector('.app-toolbar__conn-label')?.textContent).toBe(
+      'Station · Default',
+    );
     expect(button.classList).toContain('app-toolbar__conn--compact');
     // No 'Default'-name special-casing: identity is always named.
     expect(button.getAttribute('aria-label')).toBe(
-      'Manage Stations — Connected · Default',
+      'Manage Stations — Connected · Station · Default',
     );
-    expect(button.title).toBe('Manage Stations — Connected · Default');
+    expect(button.title).toBe(
+      'Manage Stations — Connected · Station · Default',
+    );
     // The dot is still the state channel that survives a device with no hover.
     expect(screen.getByTestId('connection-status').dataset.state).toBe(
       'connected',
     );
   });
 
-  test('a second known Station keeps the full chip — the identity is what says which one', () => {
+  test('a second known Station keeps the active saved profile visible in the compact chip', () => {
     savedConnections = [
       SAVED_STATION,
       { ...SAVED_STATION, id: 'c2', name: 'Laptop' },
     ];
     const button = renderConnButton();
 
-    expect(button.classList).not.toContain('app-toolbar__conn--compact');
-    expect(button.textContent).toContain('Connected');
-    expect(button.textContent).toContain('Default');
+    expect(button.classList).toContain('app-toolbar__conn--compact');
+    expect(button.textContent).toContain('Station · Default');
+    expect(button.getAttribute('aria-label')).toContain('Connected');
   });
 
-  test('a healthy sidecar keeps lifetime in its accessible name without permanent chrome', () => {
+  test('does not put local sidecar lifetime in the active connection header', () => {
     bundledStatus = { ownership: 'sidecar' };
     const button = renderConnButton();
     expect(button.classList).toContain('app-toolbar__conn--compact');
-    expect(button.getAttribute('aria-label')).toContain('App only');
+    expect(button.textContent).toBe('Station · Default');
+    expect(button.getAttribute('aria-label')).not.toContain('App only');
     expect(screen.queryByTestId('desktop-sidecar-indicator')).toBeNull();
   });
 
@@ -308,12 +306,12 @@ describe('HeaderActions — a rejected credential is distinguishable without hov
     // archive#3311 put the state and identity in the accessible name, so the
     // name is no longer the bare string. It is the NAME the E2E selectors key
     // on (`/^Manage Stations/`, tests/connect-modal.spec.ts), not the title —
-    // and #1536 F's collapsed chip needs the tooltip for the identity its
-    // visible text no longer carries, so the bare archive#3297 string is what
-    // every still-labelled state keeps (see the `needs-credential` case
-    // below).
+    // and the healthy compact chip now keeps its saved label in visible text
+    // and the name for assistive technology.
     const button = screen.getByRole('button', { name: /^Manage Stations/ });
-    expect(button.title).toBe('Manage Stations — Connected · Default');
+    expect(button.title).toBe(
+      'Manage Stations — Connected · Station · Default',
+    );
     expect(screen.getByTestId('connection-status').dataset.state).toBe(
       'connected',
     );
@@ -494,13 +492,13 @@ describe('HeaderActions — desktop sidecar state', () => {
     pendingApprovalRecord = null;
   });
 
-  test('keeps sidecar lifetime and connection identity available in the compact tooltip', () => {
+  test('keeps the connection identity in the compact tooltip without sidecar lifetime chrome', () => {
     savedConnections = [{ ...SAVED_STATION, name: 'Kontour' }];
     bundledStatus = { ownership: 'sidecar' };
     const button = renderConnButton();
     expect(screen.queryByTestId('desktop-sidecar-indicator')).toBeNull();
     expect(button.getAttribute('aria-label')).toBe(
-      'Manage Stations — Connected · Kontour · App only',
+      'Manage Stations — Connected · Station · Kontour',
     );
     expect(button.title).toBe(button.getAttribute('aria-label'));
   });

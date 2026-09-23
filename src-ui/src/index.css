@@ -6546,13 +6546,12 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
     white-space: nowrap;
   }
 
-  /* Drop the (potentially long) connection name and the bundled-server note
-     on mobile — the status dot stays. The action cluster's own right-anchor
-     and shrink behaviour live with the rest of `.app-toolbar__actions` in
-     `components/chat/chat.css` (station#3766: two same-specificity rules here
-     and there contradicted each other). */
+  /* Hide the full state and identity spans on mobile. The compact healthy
+     chip keeps its bounded `Station · <saved name>` label in chat.css; the
+     action cluster's right-anchor and shrink behavior live there too
+     (station#3766). */
   .app-toolbar__conn-name,
-  .app-toolbar__conn-note {
+  .app-toolbar__conn-state {
     display: none;
   }
 
@@ -9036,6 +9035,18 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   max-width: 44px;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.chat-dock__mobile-conn--details {
+  max-width: 100%;
+  justify-content: flex-start;
+}
+
+.chat-dock__mobile-conn--details .chat-dock__mobile-conn-label {
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
 }
 
 /* The gesture-free dock toggle (archive#1052 follow-up): one glyph, flipped when the
