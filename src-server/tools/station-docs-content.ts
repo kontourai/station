@@ -65,7 +65,7 @@ export const STATION_DOCS_TOPICS: readonly StationDocsTopic[] = [
     body: [
       "You are reading `station-docs`, a built-in MCP tool server that serves Station's own shipped documentation. It is static content compiled into Station and versioned with it. It never reads files from disk at request time, never makes network calls, and needs no credential of any kind.",
       'That design has a consequence worth being blunt about. These docs describe Station in general. They do NOT describe the Station you are connected to. Nothing here can tell you which agents exist, what is currently running, what a particular job did, what a setting is set to, or what is in a project. If you are asked any of those questions, say plainly that you can explain how Station works but cannot read this Station.',
-      'Operating a Station — creating agents, running jobs, changing settings, installing plugins — is done through a different built-in server, `station-control`. That one talks to the Station API and therefore needs a credential, which means it can only be delivered to engines that have a reviewed, non-secret-crossing way to receive it. Some engines can receive it; others cannot.',
+      'Operating a Station — creating agents, running jobs, changing settings, listing plugins and checking them for updates — is done through a different built-in server, `station-control`. Installing a plugin is not among those operations: it needs a person to approve the install preview, on the Plugins page or with `station plugin install <source>`, so no agent can install one. That one talks to the Station API and therefore needs a credential, which means it can only be delivered to engines that have a reviewed, non-secret-crossing way to receive it. Some engines can receive it; others cannot.',
       'So the capability split is real and it is asymmetric: docs go to every engine, control does not. An engine with docs and no `station-control` can explain Station, answer questions about it, and help you plan the work — and cannot perform it. Do not answer as if you had acted. Say what you can do, and say what you cannot.',
     ].join('\n\n'),
     tags: [
@@ -154,7 +154,8 @@ export const STATION_DOCS_TOPICS: readonly StationDocsTopic[] = [
     summary:
       'The built-in assistant is the agent that operates Station for you; it needs the station-control tool server, which only engines with a reviewed delivery mechanism can receive.',
     body: [
-      'Station ships one default, non-deletable agent whose job is to operate Station itself: create agents, run jobs, change settings, install plugins, and generally reshape the workspace the way the UI does.',
+      'Station ships one default, non-deletable agent whose job is to operate Station itself: create agents, run jobs, change settings, list plugins and check them for updates, and generally reshape the workspace the way the UI does.',
+      'It cannot install a plugin. An install is approved by a person who has read its preview — its permissions and the parts that run in Station’s own page — on the Plugins page or with `station plugin install <source>`. Asked to install one, the assistant says so and points there.',
       "That capability comes entirely from the `station-control` MCP tool server. `station-control` calls Station's own API, so it needs a credential for this running instance. A credential can only be handed to an engine over a channel that has been reviewed as not crossing the secret boundary.",
       'The consequence: not every connected engine can run the built-in assistant. An engine without a reviewed delivery mechanism for `station-control` can still chat, and it still receives `station-docs` — so it can explain Station, answer questions about it, and help you plan — but it cannot create agents, run jobs, or change settings.',
       'Station states this rather than hiding it. If no connected engine can run the built-in assistant, the engine picker says so, names what the connected engines can still do, and names which engines can run it today. An assistant that answers confidently while silently unable to act is exactly the failure this honesty is meant to prevent.',
@@ -234,7 +235,7 @@ export const STATION_DOCS_TOPICS: readonly StationDocsTopic[] = [
       'A skill is a reusable bundle of instructions and behavior that an agent adopts — a way to give several agents the same competence without duplicating a prompt.',
       'Skills are a capability Station owns for agents it runs. For an agent bound to an external engine, whether the skill reaches the engine depends on that engine having a delivery channel for skills. Some engines do; others do not.',
       'When an engine has no channel for an authored skill, Station records that as undelivered rather than silently dropping it, and the agent editor shows the authored content read-only with a diagnostic naming the engine that cannot deliver it.',
-      'Skills are installed and browsed from the registry alongside agents, tool servers, and plugins.',
+      'Skills are installed and browsed from the registry, like agents and tool servers.',
       'A skill can also declare itself runnable as a slash command, which is how a reusable instruction sequence is invoked directly in a chat or assigned to a task. There is one authored concept here, not two.',
     ].join('\n\n'),
     tags: [
@@ -331,7 +332,7 @@ export const STATION_DOCS_TOPICS: readonly StationDocsTopic[] = [
     body: [
       "Station's core is deliberately foundational: runtime, streaming, routing, and a provider registry, with no domain logic. The domain surfaces are plugins.",
       'A plugin is manifest-driven and can contribute layouts, agents, MCP integrations, providers, knowledge namespaces, engine connections, branding, and settings. Plugin authors get the same primitives core gets — if core can do it, a plugin can do it.',
-      'The registry is the unified place to browse and install agents, skills, integrations, and plugins, with an install lifecycle that includes updates and removal. Installs can route through approval, because installing something is a platform mutation like any other.',
+      'The registry is the unified place to browse and install agents, skills, integrations, and plugins (a plugin only with a person’s approval of its preview), with an install lifecycle that includes updates and removal. Installs can route through approval, because installing something is a platform mutation like any other.',
       'Where open standards exist, Station adopts them rather than inventing an equivalent: MCP for tools, the Agent Client Protocol for reaching external engines, OpenTelemetry for observability, and MCP-UI for rendered tool resources.',
     ].join('\n\n'),
     tags: [

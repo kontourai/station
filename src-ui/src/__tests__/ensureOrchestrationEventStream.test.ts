@@ -27,7 +27,10 @@ vi.mock('../hooks/orchestration/eventHandlers', () => ({
   settleSemanticDeliveryBuffer,
 }));
 
-import { ensureOrchestrationEventStream } from '../hooks/orchestration/ensureOrchestrationEventStream';
+import {
+  ensureOrchestrationEventStream,
+  resetSessionReadModelRefreshForTests,
+} from '../hooks/orchestration/ensureOrchestrationEventStream';
 
 const APP_ORIGIN = 'https://ensure-orchestration-orphan-case.example.test';
 
@@ -195,9 +198,18 @@ describe('ensureOrchestrationEventStream — turn provenance sibling (station#14
 // read-model, whose cached copy still said `lifecycleState: 'running'` because
 // nothing invalidated it when the session failed. The chip and the reason were
 // reading two different sources.
-describe('ensureOrchestrationEventStream — session read-model freshness', () => {
+// HELPER-LEVEL (#2310 review H2): every test below injects a QueryClient.
+// No production caller passes one until #2307 lands — `ChatDock.tsx` calls
+// `ensureOrchestrationEventStream(apiBase)` with none — so these prove the
+// refresh logic, not that production refreshes today.
+describe('ensureOrchestrationEventStream — session read-model refresh (helper-level, injected QueryClient)', () => {
   beforeEach(() => {
     handleOrchestrationEvent.mockReset();
+    // The throttle and client binding are module-global; each test starts
+    // from a quiet window with nothing bound (review L3), on fake clocks so
+    // the window is advanced rather than waited out.
+    resetSessionReadModelRefreshForTests();
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
   });
   afterEach(() => {
     vi.useRealTimers();
@@ -284,9 +296,6 @@ describe('ensureOrchestrationEventStream — session read-model freshness', () =
         invalidateQueries,
       } as never,
     );
-    // The refresh is throttled to at most once a second; the preceding test
-    // fired one, so wait past that window rather than racing it.
-    await new Promise((resolve) => setTimeout(resolve, 1100));
     vi.stubGlobal(
       'fetch',
       vi
@@ -329,5 +338,66 @@ describe('ensureOrchestrationEventStream — session read-model freshness', () =
       expect(handleOrchestrationEvent).toHaveBeenCalledTimes(1),
     );
     expect(invalidateQueries).not.toHaveBeenCalled();
+  });
+
+  // #2310: a Draft (nothing ever sent) sits outside "Active now". Its first
+  // `turn.started` is the only moment that changes, so it must re-read the
+  // projection — and a first turn that lands inside the throttle window of
+  // some other session's terminal event must be deferred, not dropped, or the
+  // promotion stays unseen until an unrelated refetch.
+  it('re-reads the read-model on turn.started, deferring one that lands inside the window', async () => {
+    const invalidateQueries = vi.fn();
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValueOnce(
+          openSseResponseWithOneFrame(
+            terminalFrame('evt-other-session-done', 'turn.completed') +
+              terminalFrame('evt-first-turn', 'turn.started'),
+          ),
+        ),
+    );
+
+    ensureOrchestrationEventStream(
+      'https://ensure-orchestration-readmodel-first-turn.example.test',
+      { invalidateQueries } as never,
+    );
+    await vi.waitFor(() =>
+      expect(handleOrchestrationEvent).toHaveBeenCalledTimes(2),
+    );
+    // The terminal event refreshed immediately; the turn.started fell inside
+    // its window...
+    expect(invalidateQueries).toHaveBeenCalledTimes(1);
+    // ...and is deferred, not dropped: it fires once the window closes.
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(invalidateQueries).toHaveBeenCalledTimes(2);
+    expect(invalidateQueries).toHaveBeenLastCalledWith({
+      queryKey: ['orchestration-sessions'],
+    });
+  });
+
+  it('re-reads the read-model on a lone turn.started', async () => {
+    const invalidateQueries = vi.fn();
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValueOnce(
+          openSseResponseWithOneFrame(
+            terminalFrame('evt-lone-first-turn', 'turn.started'),
+          ),
+        ),
+    );
+
+    ensureOrchestrationEventStream(
+      'https://ensure-orchestration-readmodel-lone-turn.example.test',
+      { invalidateQueries } as never,
+    );
+    await vi.waitFor(() =>
+      expect(invalidateQueries).toHaveBeenCalledWith({
+        queryKey: ['orchestration-sessions'],
+      }),
+    );
   });
 });

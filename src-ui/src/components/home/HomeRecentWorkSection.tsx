@@ -314,6 +314,17 @@ function HomeWorkLanesContent({
           </ul>
         </details>
       ) : null}
+      {controller.lanes.drafts?.length ? (
+        <details className="home-view__settled-tail">
+          <summary>Drafts ({controller.lanes.drafts.length})</summary>
+          <p>Sessions nothing has been sent to yet.</p>
+          <ul className="home-view__task-list">
+            {controller.lanes.drafts.map((task) =>
+              renderHomeWorkRow({ task, isWoken: false, agents, onOpen }),
+            )}
+          </ul>
+        </details>
+      ) : null}
       <HomeSnoozeMenu controller={controller} />
       <HomeSnoozedShelf controller={controller} />
       <HomeSettledTail

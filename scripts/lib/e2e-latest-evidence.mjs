@@ -235,6 +235,10 @@ function processStartIdentity(pid) {
         // env-independent (#3049). Inert for the powershell branch.
         env: { ...process.env, LC_ALL: 'C', TZ: 'UTC' },
         stdio: ['ignore', 'pipe', 'ignore'],
+        windowsHide: true,
+        // A timeout returns null, which keeps a live owner's lock (only a
+        // dead pid or a KNOWN start mismatch reclaims it), so a cold
+        // PowerShell start costs a wait, never a wrongly broken lock.
         timeout: 2_000,
       }).trim() || null
     );

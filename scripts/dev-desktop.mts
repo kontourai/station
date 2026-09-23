@@ -100,6 +100,18 @@ export function desktopDevEnvironment(
     STATION_DESKTOP_PORT: String(contract.serverPort),
     STATION_SERVER_PORT: String(contract.serverPort),
     STATION_UI_PORT: String(contract.uiPort),
+    // The dev webview loads `devUrl` and opens the terminal and voice
+    // WebSockets directly, so the server must treat that origin as Station's
+    // own. Inherited entries are kept.
+    ALLOWED_ORIGINS: [
+      ...new Set([
+        ...(env.ALLOWED_ORIGINS ?? '')
+          .split(',')
+          .map((origin) => origin.trim())
+          .filter(Boolean),
+        new URL(contract.devUrl).origin,
+      ]),
+    ].join(','),
   };
   // Set or REMOVED, never merged: spreading an object that omits the key
   // leaves whatever `...env` contributed, so an inherited `undefined` would
