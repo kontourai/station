@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
 use tauri::AppHandle;
 
-const RELAY_GRANT_INDEX_ACCOUNT: &str = "relay-client-grant:index:v1";
+const RELAY_GRANT_INDEX_ACCOUNT_PREFIX: &str = "relay-client-grant:index:v1:";
 static RELAY_GRANT_VAULT_LOCK: Mutex<()> = Mutex::new(());
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
@@ -243,7 +243,7 @@ fn store_grant(
     };
     let encoded = serde_json::to_string(&payload)
         .map_err(|_| "could not encode relay grant for the OS credential store".to_string())?;
-    add_to_index(backend, &binding)?;
+    add_to_index(backend, &binding.owner.channel, &binding)?;
     backend.set(&account, &encoded)?;
     Ok(metadata_from(binding, grant))
 }
@@ -287,13 +287,24 @@ fn revoke_grant(
     binding: &RelayGrantBinding,
 ) -> Result<(), String> {
     backend.delete(&account_for(binding)?)?;
-    let mut index = read_index(backend)?;
+    let mut index = read_index(backend, &binding.owner.channel)?;
     index.retain(|entry| entry != binding);
-    write_index(backend, &index)
+    write_index(backend, &binding.owner.channel, &index)
 }
 
-fn read_index(backend: &mut impl RelayGrantBackend) -> Result<Vec<RelayGrantBinding>, String> {
-    let Some(encoded) = backend.get(RELAY_GRANT_INDEX_ACCOUNT)? else {
+fn index_account(channel: &str) -> Result<String, String> {
+    if !matches!(channel, "dev" | "stable" | "beta" | "nightly") {
+        return Err("invalid relay grant channel".to_string());
+    }
+    Ok(format!("{RELAY_GRANT_INDEX_ACCOUNT_PREFIX}{channel}"))
+}
+
+fn read_index(
+    backend: &mut impl RelayGrantBackend,
+    channel: &str,
+) -> Result<Vec<RelayGrantBinding>, String> {
+    let account = index_account(channel)?;
+    let Some(encoded) = backend.get(&account)? else {
         return Ok(Vec::new());
     };
     let bindings: Vec<RelayGrantBinding> = serde_json::from_str(&encoded)
@@ -303,24 +314,36 @@ fn read_index(backend: &mut impl RelayGrantBackend) -> Result<Vec<RelayGrantBind
     }
     for binding in &bindings {
         validate_binding(binding)?;
+        if binding.owner.channel != channel {
+            return Err("relay grant index contains another channel's binding".to_string());
+        }
     }
     Ok(bindings)
 }
 
 fn write_index(
     backend: &mut impl RelayGrantBackend,
+    channel: &str,
     bindings: &[RelayGrantBinding],
 ) -> Result<(), String> {
+    let account = index_account(channel)?;
+    if bindings
+        .iter()
+        .any(|binding| binding.owner.channel != channel)
+    {
+        return Err("refusing to write another channel's relay grant binding".to_string());
+    }
     let encoded = serde_json::to_string(bindings)
         .map_err(|_| "could not encode relay grant metadata index".to_string())?;
-    backend.set(RELAY_GRANT_INDEX_ACCOUNT, &encoded)
+    backend.set(&account, &encoded)
 }
 
 fn add_to_index(
     backend: &mut impl RelayGrantBackend,
+    channel: &str,
     binding: &RelayGrantBinding,
 ) -> Result<(), String> {
-    let mut index = read_index(backend)?;
+    let mut index = read_index(backend, channel)?;
     if !index.contains(binding) {
         if index.len() >= 10_000 {
             return Err(
@@ -328,7 +351,7 @@ fn add_to_index(
             );
         }
         index.push(binding.clone());
-        write_index(backend, &index)?;
+        write_index(backend, channel, &index)?;
     }
     Ok(())
 }
@@ -369,14 +392,15 @@ pub(crate) fn invalidate_removed_routes(
     let _guard = RELAY_GRANT_VAULT_LOCK
         .lock()
         .map_err(|_| "native relay grant vault is unavailable".to_string())?;
-    invalidate_route_bindings(&mut OsKeyring, &removed)
+    invalidate_route_bindings(&mut OsKeyring, channel, &removed)
 }
 
 fn invalidate_route_bindings(
     backend: &mut impl RelayGrantBackend,
+    channel: &str,
     removed: &[(super::NativeStationRelayRoute, RelayGrantOwner)],
 ) -> Result<(), String> {
-    let mut index = read_index(backend)?;
+    let mut index = read_index(backend, channel)?;
     let targets: Vec<_> = index
         .iter()
         .filter(|binding| {
@@ -393,7 +417,7 @@ fn invalidate_route_bindings(
         backend.delete(&account_for(binding)?)?;
     }
     index.retain(|binding| !targets.contains(binding));
-    write_index(backend, &index)
+    write_index(backend, channel, &index)
 }
 
 struct OsKeyring;
@@ -672,7 +696,10 @@ mod tests {
             .unwrap();
         assert!(stored.contains(&"R".repeat(43)));
         assert!(!stored.contains(&"O".repeat(43)));
-        let index = keyring.get(RELAY_GRANT_INDEX_ACCOUNT).unwrap().unwrap();
+        let index = keyring
+            .get(&index_account("stable").unwrap())
+            .unwrap()
+            .unwrap();
         assert!(!index.contains(&"R".repeat(43)));
         revoke_grant(&mut keyring, &binding).unwrap();
         assert!(read_metadata(&mut keyring, &binding, 1_002)
@@ -748,7 +775,7 @@ mod tests {
             .set("profile:station-bearer:unchanged", "station-token")
             .unwrap();
 
-        invalidate_route_bindings(&mut keyring, &[(profile_route(), stable)]).unwrap();
+        invalidate_route_bindings(&mut keyring, "stable", &[(profile_route(), stable)]).unwrap();
         assert!(read_metadata(&mut keyring, &current_binding, 1_001)
             .unwrap()
             .is_none());
@@ -776,5 +803,26 @@ mod tests {
             keyring.get("profile:station-bearer:unchanged").unwrap(),
             Some("station-token".to_string())
         );
+    }
+
+    #[test]
+    fn stable_and_nightly_index_writes_do_not_overwrite_each_other() {
+        let mut keyring = MemoryKeyring::default();
+        let stable = binding("stable", "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
+        let nightly = binding("nightly", "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
+
+        // Model two processes taking their initial index snapshots before
+        // either publishes its new binding. Separate channel accounts keep
+        // both writes even when this process-local mutex cannot coordinate
+        // them.
+        let stable_snapshot = read_index(&mut keyring, "stable").unwrap();
+        let nightly_snapshot = read_index(&mut keyring, "nightly").unwrap();
+        write_index(&mut keyring, "stable", &[stable.clone()]).unwrap();
+        write_index(&mut keyring, "nightly", &[nightly.clone()]).unwrap();
+
+        assert_eq!(read_index(&mut keyring, "stable").unwrap(), vec![stable]);
+        assert_eq!(read_index(&mut keyring, "nightly").unwrap(), vec![nightly]);
+        assert!(stable_snapshot.is_empty());
+        assert!(nightly_snapshot.is_empty());
     }
 }
