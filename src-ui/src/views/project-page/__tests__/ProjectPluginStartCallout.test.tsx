@@ -33,9 +33,9 @@ vi.mock('../../../contexts/NavigationContext', () => ({
   }),
 }));
 
-const { ProjectPluginStartCallout } = await import(
-  '../ProjectPluginStartCallout'
-);
+// The gate, as the Project page mounts it: the eligibility query is eager,
+// the callout and its dialog load only when eligible.
+const { ProjectPluginStartGate } = await import('../ProjectPluginStartGate');
 
 beforeAll(() => {
   Object.defineProperty(window, 'matchMedia', {
@@ -71,7 +71,7 @@ function renderCallout() {
   });
   render(
     <QueryClientProvider client={queryClient}>
-      <ProjectPluginStartCallout project={{ slug: 'shared', name: 'Shared' }} />
+      <ProjectPluginStartGate project={{ slug: 'shared', name: 'Shared' }} />
     </QueryClientProvider>,
   );
 }

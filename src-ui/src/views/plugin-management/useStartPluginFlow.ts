@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { type FormEvent, useState } from 'react';
 import { useApiBase } from '../../contexts/ApiBaseContext';
 import { useNavigation } from '../../contexts/NavigationContext';
+import { pluginScaffoldEligibilityKey } from '../project-page/ProjectPluginStartGate';
 import {
   buildPluginAuthoringPrimer,
   startPluginAuthoringChat,
@@ -11,11 +12,6 @@ import {
   scaffoldProjectPlugin,
 } from './plugin-scaffold-client';
 import { defaultPluginTitle, pluginNameProblem } from './useNewPluginFlow';
-
-export const pluginScaffoldEligibilityKey = (
-  apiBase: string,
-  projectSlug: string,
-) => ['plugin-scaffold-eligibility', apiBase, projectSlug] as const;
 
 /**
  * "Start a plugin in this folder" on an existing Project. Any Project member

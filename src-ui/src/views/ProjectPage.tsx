@@ -15,6 +15,7 @@ import { useMemo, useReducer, useState } from 'react';
 import { selectChatReadyAgents } from '../components/agent-selection-policy';
 import { Button } from '../components/Button';
 import { BranchGlyph } from '../components/icons/Glyph';
+import { LazyBoundary } from '../components/LazyBoundary';
 import { PageCallout, PageCalloutStack } from '../components/PageCallout';
 import { ErrorState, SkeletonBlock } from '../components/state';
 import { useAgents } from '../contexts/AgentsContext';
@@ -40,12 +41,18 @@ import {
 } from './project-page/ProjectLayoutsSection';
 import { ProjectLiveWorkSection } from './project-page/ProjectLiveWorkSection';
 import { ProjectPageHeader } from './project-page/ProjectPageHeader';
-import { ProjectPluginStartCallout } from './project-page/ProjectPluginStartCallout';
 import { ProjectTasksSection } from './project-page/ProjectTasksSection';
 import { projectChatCta } from './project-page/projectChatCta';
 import type { AvailableLayout, ConversationRecord } from './project-page/types';
 import './project-page-frame.css';
 import './ProjectPage.css';
+
+// Epic #2323 S2: the plugin-start offer (its eligibility query included)
+// loads after first paint, off the entry bundle.
+const loadProjectPluginStartGate = () =>
+  import('./project-page/ProjectPluginStartGate').then((module) => ({
+    default: module.ProjectPluginStartGate,
+  }));
 
 export function ProjectPage({ slug }: { slug: string }) {
   const { setLayout, setConversation, navigate, setDockState } =
@@ -285,8 +292,12 @@ export function ProjectPage({ slug }: { slug: string }) {
         {/* Epic #2323 S2: renders only when the server says this Project's
             folder is empty and could take a starter plugin. */}
         {!navigator.webdriver && (
-          <ProjectPluginStartCallout
-            project={{ slug, name: project.name || slug }}
+          <LazyBoundary
+            load={loadProjectPluginStartGate}
+            componentProps={{
+              project: { slug, name: project.name || slug },
+            }}
+            pending={null}
           />
         )}
 

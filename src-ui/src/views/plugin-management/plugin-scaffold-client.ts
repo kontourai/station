@@ -1,4 +1,4 @@
-import { getJson, mutateJson } from '@kontourai/station-sdk';
+import { mutateJson } from '@kontourai/station-sdk';
 
 export type PluginScaffoldTemplateChoice = 'pane' | 'full' | 'provider';
 
@@ -69,35 +69,6 @@ export async function scaffoldProjectPlugin(
   }
   if (!response.ok || !envelope.success || !envelope.data) {
     throw new Error(refusalMessage(envelope, response.status));
-  }
-  return envelope.data;
-}
-
-export type PluginScaffoldEligibility =
-  | { eligible: true }
-  | { eligible: false; reason: string };
-
-/**
- * `GET /api/projects/:slug/plugin-scaffold`: whether a plugin could be
- * scaffolded into this Project's folder now. Read-only.
- */
-export async function fetchPluginScaffoldEligibility(
-  apiBase: string,
-  projectSlug: string,
-): Promise<PluginScaffoldEligibility> {
-  const response = await getJson(
-    `${apiBase}/api/projects/${encodeURIComponent(projectSlug)}/plugin-scaffold`,
-  );
-  const envelope = (await response.json()) as {
-    success?: boolean;
-    error?: string;
-    data?: PluginScaffoldEligibility;
-  };
-  if (!response.ok || !envelope.success || !envelope.data) {
-    throw new Error(
-      envelope.error ||
-        `Station could not check this folder (${response.status})`,
-    );
   }
   return envelope.data;
 }
