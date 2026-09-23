@@ -2645,7 +2645,8 @@ describe('Station Control canonical Environment + Agent execution', () => {
       },
       service as never,
     );
-    const [command, context] = service.startSessionInternal.mock.calls[0] as [
+    const [command, context] = service.startSessionInternal.mock
+      .calls[0] as unknown as [
       { input: { threadId: string } },
       Record<string, unknown>,
     ];

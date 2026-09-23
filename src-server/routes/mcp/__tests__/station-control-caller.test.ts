@@ -580,7 +580,7 @@ describe('station-control verified caller (REST side)', () => {
         [STATION_CONTROL_CALLER_TOKEN_HEADER]: token,
       },
     });
-    expect((await probed.json()).caller).toBeNull();
+    expect(((await probed.json()) as { caller: unknown }).caller).toBeNull();
   });
 
   test('a tenant-bound token resolves only with its own tenant header, and the public caller never carries the tenant', async () => {
