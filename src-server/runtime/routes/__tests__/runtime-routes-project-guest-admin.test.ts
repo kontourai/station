@@ -34,7 +34,13 @@
  * No paid models, no mail: invitations are single-use links (`email:
  * null`), acceptance travels the real `accept-invitation` route.
  */
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve, sep } from 'node:path';
 import { resolveStationRoot } from '@kontourai/station-shared/runtime-path-resolver';
@@ -553,6 +559,51 @@ describe('project guest administration over the production composition', () => {
       }),
     );
     expect(transfer.status).toBe(403);
+  });
+
+  test('plugin scaffold: the operator writes into the Project folder; shared members and non-members are refused before any write', async () => {
+    // epic #2323 S2. The leaf opens no member write path of its own. A
+    // shared member reaches this Station only through an account-bound
+    // device, whose route allowlist does not include it, and behind that
+    // the Project guard bans member mutation as it does for every sibling.
+    const h = await setup();
+    const { guest } = await h.shareWithGuestAdmin('authoring', 'Authoring');
+    const folder = h.projectService.getProject('authoring').workingDirectory!;
+    expect(folder).toBeTruthy();
+    const scaffold = (headers: RequestInit) =>
+      h.request('/api/projects/authoring/plugin-scaffold', {
+        ...headers,
+        method: 'POST',
+        headers: {
+          ...(headers.headers as Record<string, string>),
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ name: 'guest-plugin' }),
+      });
+    const refusal = { error: { code: 'account_bound_device_route_forbidden' } };
+
+    // An admin member of this Project.
+    const byGuest = await scaffold(guest());
+    expect(byGuest.status).toBe(403);
+    expect(await readJson(byGuest)).toEqual(refusal);
+    expect(existsSync(join(folder, 'plugin.json'))).toBe(false);
+
+    // A signed-in account that is not a member at all.
+    const { credential: peerCredential } = h.pairAccountBound(
+      'peer-kiosk',
+      GUEST_GRANT,
+      PEER_SUBJECT,
+    );
+    const byPeer = await scaffold(
+      h.guestHeaders(peerCredential, 'fixture_account=peer')(),
+    );
+    expect(byPeer.status).toBe(403);
+    expect(await readJson(byPeer)).toEqual(refusal);
+    expect(existsSync(join(folder, 'plugin.json'))).toBe(false);
+
+    const byOperator = await scaffold(h.operatorHeaders());
+    expect(byOperator.status, await byOperator.clone().text()).toBe(201);
+    expect(existsSync(join(folder, 'plugin.json'))).toBe(true);
   });
 
   test('read-only rescope over the operator endpoint: GET yes, POST no; read+operate restores POST', async () => {

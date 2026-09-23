@@ -166,35 +166,42 @@ published contract.
 Use the template that matches the job:
 
 ```bash
-station plugin create hello-layout --template=layout
+station plugin create hello-pane --template=pane
 station plugin create provider-kit --template=provider
 station plugin create full-workspace --template=full
 ```
 
-- `layout` creates a UI-focused plugin with a layout manifest and entrypoint.
+- `pane` creates a UI plugin with one Workspace Pane, its entrypoint and CSS.
 - `provider` creates a server-side plugin with `plugin.mjs`, a `serverModule`, and a sample provider file.
-- `full` creates the combined starter: layout, agent, build config, and README.
+- `full` creates the combined starter: two Panes, an Agent, build config, and README.
+- `layout` is an alias for `pane`.
+
+Every template writes an Agent Plugins 1.0 `plugin.json`. Station can also
+create the same scaffold from **Plugins → New plugin**, which makes the
+Project for you.
 
 `station plugin init` still works, but it is now just a compatibility alias for the `full` template.
 
-## Start With a Layout Plugin
+## Start With a Pane Plugin
 
-Run `station plugin create hello-layout --template=layout` from the directory
+Run `station plugin create hello-pane --template=pane` from the directory
 where you want the plugin scaffolded. The plugin command family resolves
 `plugin.json` and other paths from the directory where you invoke it:
 
 ```bash
-cd hello-layout
+cd hello-pane
 npm install
 npm run build                              # tsx build.ts → dist/bundle.js
-station plugin dev 4300                    # watching preview server
 ```
 
 The scaffold's `npm run build` runs its own `build.ts`, which calls
 `buildPlugin()` from `@kontourai/station-shared` — the same call
 `station plugin build` wraps.
-`plugin dev` is the CLI-only part: it adds watching, hot rebuilds, the preview
-shell, and the mock host surface described below.
+
+`station plugin dev` previews legacy layout tabs only; it does not render
+`workspacePanes` yet, so install the plugin to see its Pane. For a legacy
+layout plugin, `station plugin dev 4300` adds watching, hot rebuilds, the
+preview shell, and the mock host surface described below.
 
 Open `http://127.0.0.1:4300` and keep the dev server running. The dev server binds only to IPv4 loopback; direct `--host`/non-loopback exposure is unavailable. For a remote development host, forward the loopback listener with `ssh -N -L 4300:127.0.0.1:4300 user@dev-host` and open the same local URL. The dev server:
 
@@ -205,19 +212,17 @@ Open `http://127.0.0.1:4300` and keep the dev server running. The dev server bin
 
 The fetch proxy permits public HTTP(S) only, validates all DNS answers and each redirect, strips credential and hop-by-hop headers, forces identity encoding (encoded upstream responses are rejected), and rejects private/loopback/link-local/metadata targets. JSON requests are limited to 1 MiB, identity fetch responses to 10 MiB, each DNS-through-response hop to 10 seconds and five redirects, and reload streaming to 32 clients.
 
-Edit `src/index.tsx` and `layout.json`, then confirm the preview reloads cleanly.
-
 ## Install It Into Station
 
-Install from either the parent directory of `hello-layout` or the plugin directory itself:
+Install from either the parent directory of `hello-pane` or the plugin directory itself:
 
 ```bash
-station plugin install ./hello-layout
-# Or, from inside hello-layout:
+station plugin install ./hello-pane
+# Or, from inside hello-pane:
 station plugin install .
 ```
 
-Local paths are resolved from the directory where Station was invoked. Use `./hello-layout` from its parent or bare `.` from inside the plugin directory.
+Local paths are resolved from the directory where Station was invoked. Use `./hello-pane` from its parent or bare `.` from inside the plugin directory.
 
 If you are working from a Station checkout and want to test the repository's
 registry fixture too, point its source launcher at the bundled local manifest:

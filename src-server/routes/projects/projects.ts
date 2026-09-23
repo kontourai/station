@@ -119,6 +119,7 @@ import {
   withDerivedWorkingDirectory,
   withoutPersistedWorkingDirectory,
 } from './layout-working-directory.js';
+import { createPluginScaffoldRoutes } from './plugin-scaffold-routes.js';
 import { createProjectIdentityRoutes } from './project-identity-routes.js';
 import { admitProjectLayoutWrite } from './project-layout-admission.js';
 import { createWorkspacePanePreviewRoutes } from './workspace-pane-previews.js';
@@ -646,6 +647,14 @@ export function createProjectRoutes(
   app.route(
     '/:slug/file-preview',
     createWorkspacePanePreviewRoutes(projectService),
+  );
+
+  // Writes a starter plugin into the Project's own (empty) folder. Separate
+  // for the same reason: its filesystem authority stays bound to that one
+  // folder and never reaches layout persistence.
+  app.route(
+    '/:slug/plugin-scaffold',
+    createPluginScaffoldRoutes(projectService),
   );
 
   // List all projects

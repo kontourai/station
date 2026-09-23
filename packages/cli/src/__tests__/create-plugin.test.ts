@@ -20,7 +20,11 @@ async function importCommands() {
 }
 
 describe('createPlugin', () => {
-  test('creates the default full template scaffold', async () => {
+  test('creates the default full template as an Agent Plugins manifest', async () => {
+    // The legacy scaffold wrote root `entrypoint`/`layout` fields plus a
+    // `layout.json`; the shared parser now refuses `layout` outright, so a
+    // fresh scaffold could not install. The same builder backs the in-app
+    // "New plugin" action.
     const root = mkdtempSync(join(tmpdir(), 'station-create-plugin-'));
     cleanupDirs.push(root);
 
@@ -31,17 +35,28 @@ describe('createPlugin', () => {
     const manifest = JSON.parse(
       readFileSync(join(pluginDir, 'plugin.json'), 'utf-8'),
     );
-    const layout = JSON.parse(
-      readFileSync(join(pluginDir, 'layout.json'), 'utf-8'),
-    );
+    const station = manifest.extensions['io.kontourai.station'];
 
+    expect(manifest.$schema).toBe(
+      'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json',
+    );
+    expect(manifest.layout).toBeUndefined();
+    expect(manifest.entrypoint).toBeUndefined();
+    expect(existsSync(join(pluginDir, 'layout.json'))).toBe(false);
     expect(existsSync(join(pluginDir, 'src', 'index.tsx'))).toBe(true);
     expect(
       existsSync(join(pluginDir, 'agents', 'assistant', 'agent.json')),
     ).toBe(true);
-    expect(manifest.entrypoint).toBe('src/index.tsx');
-    expect(manifest.layout.slug).toBe('alpha-plugin');
-    expect(layout.defaultAgent).toBe('alpha-plugin:assistant');
+    expect(station.entrypoint).toBe('./src/index.tsx');
+    expect(station.agents).toEqual([
+      { slug: 'assistant', source: './agents/assistant/agent.json' },
+    ]);
+    expect(
+      station.workspacePanes.map((pane: { id: string }) => pane.id),
+    ).toEqual([
+      'pane:plugin%3Aalpha-plugin:main:workspace',
+      'pane:plugin%3Aalpha-plugin:main:notes',
+    ]);
   });
 
   test('scaffolds a build an author outside this repo can run', async () => {
@@ -117,23 +132,33 @@ describe('createPlugin', () => {
     expect(shared.files).toContain('src');
   });
 
-  test('creates a layout template without agent scaffolding', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'station-create-plugin-'));
-    cleanupDirs.push(root);
+  test.each(['pane', 'layout'] as const)(
+    'the %s template creates one Workspace Pane without agent scaffolding',
+    async (template) => {
+      const root = mkdtempSync(join(tmpdir(), 'station-create-plugin-'));
+      cleanupDirs.push(root);
 
-    const { createPlugin } = await importCommands();
-    createPlugin('layout-only', { cwd: root, template: 'layout' });
+      const { createPlugin } = await importCommands();
+      createPlugin('layout-only', { cwd: root, template });
 
-    const pluginDir = join(root, 'layout-only');
-    const manifest = JSON.parse(
-      readFileSync(join(pluginDir, 'plugin.json'), 'utf-8'),
-    );
+      const pluginDir = join(root, 'layout-only');
+      const manifest = JSON.parse(
+        readFileSync(join(pluginDir, 'plugin.json'), 'utf-8'),
+      );
+      const station = manifest.extensions['io.kontourai.station'];
 
-    expect(existsSync(join(pluginDir, 'layout.json'))).toBe(true);
-    expect(existsSync(join(pluginDir, 'agents'))).toBe(false);
-    expect(manifest.agents).toBeUndefined();
-    expect(manifest.entrypoint).toBe('src/index.tsx');
-  });
+      expect(existsSync(join(pluginDir, 'layout.json'))).toBe(false);
+      expect(existsSync(join(pluginDir, 'src', 'pane.css'))).toBe(true);
+      expect(existsSync(join(pluginDir, 'agents'))).toBe(false);
+      expect(station.agents).toBeUndefined();
+      expect(station.entrypoint).toBe('./src/index.tsx');
+      expect(station.workspacePanes).toHaveLength(1);
+      expect(station.workspacePanes[0].renderer).toEqual({
+        kind: 'plugin-component',
+        name: 'workspace',
+      });
+    },
+  );
 
   test('creates a provider template with a server module and provider files', async () => {
     const root = mkdtempSync(join(tmpdir(), 'station-create-plugin-'));
@@ -150,7 +175,36 @@ describe('createPlugin', () => {
     expect(existsSync(join(pluginDir, 'plugin.mjs'))).toBe(true);
     expect(existsSync(join(pluginDir, 'providers', 'branding.js'))).toBe(true);
     expect(existsSync(join(pluginDir, 'src', 'index.tsx'))).toBe(false);
-    expect(manifest.serverModule).toBe('plugin.mjs');
-    expect(manifest.providers[0].type).toBe('branding');
+    const station = manifest.extensions['io.kontourai.station'];
+    expect(station.serverModule).toBe('./plugin.mjs');
+    expect(station.providers[0].type).toBe('branding');
+    // Enforced at runtime; without them the provider never loads.
+    expect(station.permissions).toEqual([
+      'providers.register',
+      'plugin.server',
+    ]);
+  });
+
+  test('refuses a name outside the Agent Plugins grammar before writing anything', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'station-create-plugin-'));
+    cleanupDirs.push(root);
+    const exit = vi.spyOn(process, 'exit').mockImplementation(((
+      code?: number,
+    ) => {
+      throw new Error(`exit ${code}`);
+    }) as never);
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    try {
+      const { createPlugin } = await importCommands();
+      expect(() => createPlugin('My Plugin', { cwd: root })).toThrow('exit 1');
+      expect(error).toHaveBeenCalledWith(
+        expect.stringContaining('Plugin name must be'),
+      );
+      expect(existsSync(join(root, 'My Plugin'))).toBe(false);
+    } finally {
+      exit.mockRestore();
+      error.mockRestore();
+    }
   });
 });
