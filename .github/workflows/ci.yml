@@ -41,6 +41,7 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: .nvmrc
+          package-manager-cache: false
 
       - id: classify
         name: Classify the complete before..sha diff
@@ -115,6 +116,7 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: .nvmrc
+          package-manager-cache: false
 
       - name: Install pinned actionlint
         timeout-minutes: 5
@@ -252,6 +254,7 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: .nvmrc
+          package-manager-cache: false
 
       - name: Install pinned actionlint
         env:
@@ -312,6 +315,7 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: .nvmrc
+          package-manager-cache: false
 
       - run: npm run dependencies:ci
       - run: npm run build:sdk && npm run build:connect
