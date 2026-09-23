@@ -56,18 +56,32 @@ but a local change can still miss a sibling entry point or the user journey.
 
 Veritas rules `session-lifecycle-recovery-contract` and
 `bounded-background-work-contract` route the two highest-risk reviews to
-affected files at `Guide` level. They check artifact presence and provide
-just-in-time instructions **when `veritas explain` is run**. Neither Veritas nor
-`gate:for` currently forces that command. A content edit to a still-present
-module can pass both rules without executing a behavioral test; these rules
-**do not** prove the behavior. The behavioral
-gates remain `npm run test:focused -- <selected files>`,
+affected files at `Require` level. For a changed named file, `evidenceCheckIds`
+selects the corresponding focused suite in the same readiness run. Missing,
+skipped, failed, or unbound results block. `gate:for` presents matching
+`explain` guidance before edits; the installed Claude Code hook does so for
+path-bearing edit tools. Codex has no native PreToolUse hook, and no tool can
+prove that an agent read or followed guidance. These checks prove their named
+tests ran and passed, not every behavior suggested by the rule text. Other
+behavioral gates remain `npm run test:focused -- <selected files>`,
 `npm run test:connected-agents`, relevant browser journeys, and `npm run
 ci:fast`, followed by the hosted completion gate when a promotion requires it.
-Use `npm run gate:for -- <paths>` to select the lane. Do not promote either
-rule to `Require` until a deletion catch or other direct rule catch justifies
-the exact blocking semantics; see
+Use `npm run gate:for -- <paths>` to select the lane. Further expansion of the
+blocking scope needs catch evidence under
 [the proof-family promotion workflow](../strategy/veritas/proof-family-promotion-workflow.md).
+
+### Catch evidence for the scoped rules
+
+At base revision `cba7bc608`, the session boundary and operational delivery
+tests passed (44 tests across two files). Replacing the rejected provider
+start's `indeterminate` transition with `started` made the previous session
+suite stay green. A new restart/replay test caught the unsafe transition
+(one failing assertion out of 20 tests); restoring production code returned
+all 20 to green. Changing the delivery attempt ceiling from five to one made
+four of 25 delivery tests fail; restoring it returned all 25 to green. These
+mutations prove the focused commands catch those representative regressions.
+They do not establish long-duration memory bounds, physical-device behavior,
+or every provider adapter's lifecycle.
 
 ### Veritas contract improvement to pursue upstream
 
@@ -77,29 +91,20 @@ declarative way for a rule to say, "when this source path changes, this named
 behavioral check must execute at this revision and prove this claim." Propose
 an opt-in rule-to-evidence link with these semantics:
 
-Veritas has a Claude Code `PreToolUse` policy hook, but its allowed-edit result
-does not present matching `explain` guidance. The current Codex integration
+Veritas 1.7.0 has a Claude Code `PreToolUse` policy hook that presents matching
+`explain` guidance. The current Codex integration
 has Stop/session feedback hooks and no `PreToolUse` hook. Station has neither
 runtime hook installed. Flow Agents defines an optional governance adapter;
 its contract delegates rule meaning to Veritas but does not require a path
-briefing before edits. Make the path briefing a Veritas-owned product contract
-that those runtimes can consume, rather than duplicating rule selection in
-each agent pack.
+briefing before edits. The path briefing and rule-linked Evidence Check
+selection now live in Veritas rather than being duplicated in each agent pack.
 
-1. A rule declares path scope, claim scope, and one or more existing
-   `evidenceCheckIds`. Veritas validates that every referenced check exists and
-   is reachable for each changed path; an unreachable or skipped check is a
-   visible `NOT_VERIFIED` result, never a `PASS`.
-2. Readiness binds each check receipt to the exact source revision, command,
-   test selection, and outcome. A passing unrelated suite or an older receipt
-   cannot satisfy the rule. `Guide` reports a gap; `Require` blocks only after
-   catch evidence and owner approval.
-3. A pre-edit runtime hook or task-admission adapter requests a machine-readable
-   `explain` result for the exact intended paths and presents the matching
-   `mustDo` guidance. A command or patch with unknown paths must first declare
-   its scope. The result includes rule ID and standards hash; a missing hook is
-   reported as an integration gap. `veritas explain` remains the detailed view.
-   A guidance receipt must not masquerade as test evidence.
-4. Prove the contract with one known-bad mutation that the selected test
-   catches, plus a negative control showing that an unrelated change does not
-   run the expensive check. Start with the session transition matrix above.
+The first three contract pieces are implemented upstream: structured
+`explain --json`, matching guidance through the installed Claude Code edit
+hook, and `evidenceCheckIds` whose selected check is bound to the current
+readiness run. The Veritas test suite proves a baseline pass, injected failure,
+restored pass, skipped-check refusal, and unrelated-path negative control.
+Remaining product work is a native pre-edit hook for Codex and an explicit
+Flow Agents task-admission adapter that invokes the structured briefing.
+Until those runtimes expose and install those seams, the Station `gate:for`
+route is the required pre-edit briefing for this repository.

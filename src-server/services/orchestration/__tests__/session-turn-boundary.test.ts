@@ -403,6 +403,44 @@ describe('SessionTurnBoundaryAuthority', () => {
     }
   });
 
+  test('a rejected provider start retains possible effect and refuses replay after restart', async () => {
+    const path = databasePath();
+    const first = new EventStore(path);
+    try {
+      await expect(
+        runSessionStartWithBoundary(
+          first.sessionTurnBoundaryAuthority(),
+          'possibly-started',
+          async () => {
+            throw new Error('connection lost after provider accepted');
+          },
+        ),
+      ).rejects.toMatchObject({ code: SESSION_START_INDETERMINATE_CODE });
+      expect(
+        first
+          .sessionTurnBoundaryAuthority()
+          .hasPossibleEffect('possibly-started'),
+      ).toEqual({ kind: 'available', active: true });
+    } finally {
+      expect(first.close()).toEqual({ kind: 'closed' });
+    }
+    const restarted = new EventStore(path);
+    try {
+      expect(
+        restarted
+          .sessionTurnBoundaryAuthority()
+          .hasPossibleEffect('possibly-started'),
+      ).toEqual({ kind: 'available', active: true });
+      expect(
+        restarted
+          .sessionTurnBoundaryAuthority()
+          .claimSessionStart('possibly-started', '2026-09-05T00:05:00.000Z'),
+      ).toEqual({ kind: 'busy' });
+    } finally {
+      expect(restarted.close()).toEqual({ kind: 'closed' });
+    }
+  });
+
   test('reconciles a dead invoking owner to indeterminate and never replays it after restart', () => {
     const path = databasePath();
     const first = new EventStore(path);

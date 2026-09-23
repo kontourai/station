@@ -295,12 +295,13 @@
       "id": "session-lifecycle-recovery-contract",
       "kind": "required-artifacts",
       "classification": "promotable-policy",
-      "enforcementLevel": "Guide",
+      "enforcementLevel": "Require",
+      "evidenceCheckIds": ["session-transition-contract"],
       "message": "Session, provider, and reconnect changes need one explicit transition and recovery proof across every affected entry point.",
       "owner": "station-runtime",
       "rollback_switch": null,
       "explain": {
-        "summary": "Session bugs cluster at boundaries: Stop during startup, late provider completion, interrupted replacement, restart, and reconnect. This advisory routes existing lifecycle evidence and the prevention plan to changes at those seams. Artifact presence is all Veritas checks here; behavioral claims require the selected integration and browser tests.",
+        "summary": "Session bugs cluster at boundaries: Stop during startup, late provider completion, interrupted replacement, restart, and reconnect. For changed named files, Veritas now requires the focused session transition check. That check proves its named transitions, not every provider or browser recovery path; broader integration and device claims still need their own evidence.",
         "mustDo": [
           "Name the pre-state, command, durable outcome, provider effect certainty, and UI state for each changed transition; include a late or duplicate outcome and a restart or reconnect case.",
           "Exercise the canonical Session command and EventStore path, then assert the route or UI consumer that shows Stop, progress, or failure.",
@@ -334,12 +335,13 @@
       "id": "bounded-background-work-contract",
       "kind": "required-artifacts",
       "classification": "promotable-policy",
-      "enforcementLevel": "Guide",
+      "enforcementLevel": "Require",
+      "evidenceCheckIds": ["bounded-work-contract"],
       "message": "Background work needs explicit input, concurrency, retry, retention, and shutdown bounds with an observable failure state.",
       "owner": "station-runtime",
       "rollback_switch": null,
       "explain": {
-        "summary": "Repeated failed work and accumulated events can turn a local defect into sustained CPU, disk, or memory growth. This advisory names the review dimensions for queue, delivery, and projection changes. Veritas only checks that its routed artifacts remain present; the plan identifies the fault and load tests to make this behavior executable.",
+        "summary": "Repeated failed work and accumulated events can turn a local defect into sustained CPU, disk, or memory growth. For changed named files, Veritas now requires the focused bounded work check. It proves retry, queue, and stall cases in those suites; other background paths still need inventory, measurement, and their own checks.",
         "mustDo": [
           "State the maximum payload, queue depth, concurrent workers, retry attempts or backoff, retention window, and cancellation or shutdown owner for changed background work.",
           "Prove a permanent failure stops retrying, a transient failure recovers within the bound, and a slow consumer cannot grow memory or disk without limit.",

@@ -47,15 +47,18 @@ They were authored at `enforcementLevel: Guide` (advisory) per `.veritas/authori
 
 ## Issue-class prevention guidance
 
-Two advisory Repo Standards rules route recurring failure-boundary review:
+Two scoped Repo Standards rules route recurring failure-boundary review:
 `session-lifecycle-recovery-contract` covers session commands, durable turn
 boundaries, and recovery; `bounded-background-work-contract` covers delivery,
-queues, large projections, and stalled turns. Both are `Guide`, and their
-artifact checks are presence checks. The behavioral work and exit criteria live
+queues, large projections, and stalled turns. Both are `Require`: a change to
+one of their named files selects a focused Evidence Check through
+`evidenceCheckIds`, and a missing, skipped, or failed check blocks readiness.
+Their artifact checks still prove only presence. The remaining behavioral work and exit criteria live
 in [the issue-class prevention plan](../docs/plans/issue-class-prevention.md).
 Use `veritas explain --file <path>` before editing a routed seam.
-Current Station hooks do not invoke `explain` automatically; the plan records
-the path-briefing and behavioral-evidence contract needed to close that gap.
+The pre-edit `gate:for` route presents matching guidance; Codex has no native
+PreToolUse hook, so a tool call that bypasses that route is still a visibility
+gap. The plan records the stronger host-hook contract.
 
 ## Brownfield Rule
 

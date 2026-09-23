@@ -297,17 +297,23 @@ describe('veritas repo map (1.5)', () => {
     }
   });
 
-  it('routes issue-class guidance to existing lifecycle and resource evidence without implying a behavior gate', () => {
-    for (const id of [
-      'session-lifecycle-recovery-contract',
-      'bounded-background-work-contract',
+  it('binds scoped issue-class rules to focused behavioral evidence', () => {
+    for (const [id, checkId] of [
+      ['session-lifecycle-recovery-contract', 'session-transition-contract'],
+      ['bounded-background-work-contract', 'bounded-work-contract'],
     ]) {
       const rule = standards.rules.find(
         (candidate: { id: string }) => candidate.id === id,
       );
       expect(rule, `missing advisory rule ${id}`).toBeDefined();
-      expect(rule.enforcementLevel).toBe('Guide');
+      expect(rule.enforcementLevel).toBe('Require');
       expect(rule.kind).toBe('required-artifacts');
+      expect(rule.evidenceCheckIds).toEqual([checkId]);
+      expect(
+        repoMap.evidence.evidenceChecks.some(
+          (check: { id: string }) => check.id === checkId,
+        ),
+      ).toBe(true);
       expect(rule.explain.contextLinks).toContain(
         'docs/plans/issue-class-prevention.md',
       );
