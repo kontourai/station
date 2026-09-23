@@ -198,6 +198,13 @@ function exactSameProvenance(
  * Telemetry consent may appear after bootstrap navigation. A locator handler
  * runs before each following UI action, so fixture provisioning cannot race a
  * late modal and accidentally exercise the Home page instead of the Task room.
+ *
+ * Two surfaces carry this dialog name. The standalone disclosure offers "Not
+ * now"; Home's first-run chapter, whose disclosure step has the same title,
+ * offers only its header's "Close setup" — both defer. Clicking "Not now"
+ * alone waited forever on the chapter, blocking every later action until the
+ * branch-label wait expired and the context closed under the handler
+ * (Windows reference run 35624233388).
  */
 async function installTelemetryDialogDismissal(
   page: Page,
@@ -206,7 +213,9 @@ async function installTelemetryDialogDismissal(
   await page.addLocatorHandler(
     dialog,
     async () => {
-      await dialog.getByRole('button', { name: 'Not now' }).click();
+      await dialog
+        .getByRole('button', { name: /^(Not now|Close setup)$/ })
+        .click();
     },
     { noWaitAfter: true },
   );
@@ -258,7 +267,18 @@ async function runFixtureTarget(input: {
   );
   let succeeded = false;
   try {
+    // Await the app's own bootstrap exchange before any authenticated API
+    // call: `goto` resolves on load, and a request that beats the exchange's
+    // session cookie is refused 401 (Linux smoke-live run 35449087505, second
+    // fixture: POST /api/projects answered authentication_required).
+    const exchange = page.waitForResponse(
+      (response) =>
+        response.url().endsWith('/pairing/ui-bootstrap') &&
+        response.request().method() === 'POST',
+      { timeout: 30_000 },
+    );
     await page.goto(`${live.ui}/#station-ui-bootstrap=${bootstrapToken}`);
+    expect((await exchange).status()).toBe(200);
     await page.evaluate(() =>
       localStorage.setItem('station:onboarding-setup-dismissed', '1'),
     );

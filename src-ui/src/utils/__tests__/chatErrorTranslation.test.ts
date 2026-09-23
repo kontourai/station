@@ -1,5 +1,9 @@
 // @vitest-environment jsdom
 import { PRINCIPAL_UNRESOLVED_CODE } from '@kontourai/station-contracts/principal';
+import {
+  MUSE_TURN_IDLE_TIMEOUT_CODE,
+  MUSE_TURN_TOTAL_TIMEOUT_CODE,
+} from '@kontourai/station-contracts/provider';
 import { describe, expect, it } from 'vitest';
 import {
   formatChatErrorDisplay,
@@ -12,6 +16,31 @@ import {
 // planning, so these are representative, pattern-matched fixtures —
 // (archive#196) is where the live text gets confirmed against these patterns.
 describe('translateChatError', () => {
+  // #2269: a Station-owned deadline is not a transient engine failure, so
+  // the fallback's retry hint must not appear, and the headline names the
+  // deadline rather than a generic "Error". The codes come from the same
+  // contract the Muse adapter publishes them from.
+  it.each([
+    [
+      MUSE_TURN_IDLE_TIMEOUT_CODE,
+      'Muse turn was idle for 1800000ms with no verified protocol activity and no tool running (last activity at 2026-09-22T18:05:05.000Z), so Station stopped it.',
+      /going quiet/i,
+    ],
+    [
+      MUSE_TURN_TOTAL_TIMEOUT_CODE,
+      'Muse did not finish the turn within the 3600000ms turn budget declared for it, so Station stopped it.',
+      /time budget/i,
+    ],
+  ])('names a %s deadline without a retry claim', (code, message, title) => {
+    const result = translateChatError({ code, message });
+    expect(result.title).toMatch(title);
+    expect(result.hint).toBeUndefined();
+    expect(formatChatErrorDisplay(result)).not.toMatch(/retrying may help/i);
+    expect(result.disclosureRaw).toBe(true);
+    // The same message without the code still reaches the honest fallback.
+    expect(translateChatError({ message }).hint).toMatch(/retrying may help/i);
+  });
+
   it('classifies an ended-session refusal by backend code as a Station-side end, not an error', () => {
     const result = translateChatError({
       code: 'session_ended',

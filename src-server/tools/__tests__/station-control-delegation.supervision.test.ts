@@ -84,7 +84,7 @@ describe('delegation supervision projection (#2269)', () => {
             createdAt: '2026-09-20T22:30:01.000Z',
             code: 'muse-turn-idle-timeout',
             message:
-              'Muse turn was idle for 1800000ms with no verified protocol activity (last activity at 2026-09-20T22:00:00.000Z; no progress observed — the turn may have been working quietly) and was terminated.',
+              'Muse turn was idle for 1800000ms with no verified protocol activity and no tool running (last activity at 2026-09-20T22:00:00.000Z), so Station stopped it.',
             retriable: false,
           },
         ],
@@ -130,7 +130,7 @@ describe('delegation supervision projection (#2269)', () => {
             createdAt: '2026-09-21T00:00:01.000Z',
             code: 'muse-turn-timeout',
             message:
-              'Muse did not finish the turn within 7200000ms (absolute turn budget) and was terminated.',
+              'Muse did not finish the turn within the 7200000ms turn budget declared for it, so Station stopped it.',
             retriable: false,
           },
         ],
@@ -141,6 +141,45 @@ describe('delegation supervision projection (#2269)', () => {
       code: 'muse-turn-timeout',
       detail: 'The turn ended at its absolute turn budget.',
     });
+  });
+
+  test('a Muse turn with no declared budget reports its live idle window and no deadline', () => {
+    // Owner direction on #2269: with no `turnTimeoutMs` the Muse adapter
+    // declares only `idleLimitMs`. The idle deadline can still end the turn,
+    // so the projection forwards it — and invents no deadline or total.
+    const {
+      deadlineAt: _deadline,
+      totalLimitMs: _total,
+      ...idleOnly
+    } = museDeclaration('turn-1');
+    const snapshot = snapshotFor({
+      target: TARGET,
+      detail: {
+        session: { ...observingSession('turn-1'), provider: 'muse' },
+        events: [turnStartedEvent('turn-1', idleOnly)],
+      },
+      metadata: METADATA,
+    });
+    expect(snapshot.supervision).toEqual({
+      provider: 'muse',
+      turnId: 'turn-1',
+      elapsedMs: expect.any(Number),
+      idleLimitMs: 30 * 60_000,
+      lastProgressEventAt: '2026-09-20T22:10:00.000Z',
+    });
+  });
+
+  test('a declaration carrying only half of a total budget is dropped, not repaired', () => {
+    for (const drop of ['totalLimitMs', 'deadlineAt'] as const) {
+      const declaration: Record<string, unknown> = museDeclaration('turn-1');
+      delete declaration[drop];
+      expect(
+        delegatedTurnSupervision(
+          { ...observingSession('turn-1'), provider: 'muse' },
+          [turnStartedEvent('turn-1', declaration)],
+        ),
+      ).toBeUndefined();
+    }
   });
 
   test('time-expiry clamps remaining to zero instead of going negative', () => {
