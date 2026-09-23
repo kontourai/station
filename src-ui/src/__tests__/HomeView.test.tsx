@@ -581,6 +581,53 @@ describe('HomeView', () => {
     });
   });
 
+  // #2310 (verifier finding): the partition routes a Draft ONLY to `drafts`,
+  // so if Home stopped rendering that section the row would vanish from Home
+  // with every other test green. Render it and find the row inside it.
+  test('Home lists a Draft under its own Drafts section, and not under Active now', () => {
+    fixtures.agents = [];
+    fixtures.defaultAgent = undefined;
+    fixtures.defaultModelLabel = 'Model not reported';
+    const base = {
+      provider: '',
+      status: 'ready' as const,
+      isLoaded: true,
+      isPersisted: true,
+      answerability: { answerable: true as const },
+      eventCount: 0,
+      hasActiveTurn: false,
+      createdAt: '2026-07-14T00:00:00Z',
+      updatedAt: '2026-07-14T00:00:00Z',
+    };
+    fixtures.sessions = [
+      {
+        ...base,
+        threadId: 'worked-thread',
+        displayTitle: 'Worked session title',
+        lifecycleState: 'running',
+        draft: false,
+      },
+      {
+        ...base,
+        threadId: 'draft-thread',
+        displayTitle: 'Never prompted title',
+        lifecycleState: 'queued',
+        draft: true,
+      },
+    ];
+    renderHomeView({ continuation: null, onNavigate: vi.fn() });
+
+    const summary = screen.getByText('Drafts (1)');
+    const drafts = summary.closest('details');
+    expect(drafts).not.toBeNull();
+    expect(
+      within(drafts as HTMLElement).getByText('Never prompted title'),
+    ).toBeTruthy();
+    const active = screen.getByRole('region', { name: /Active now/ });
+    expect(within(active).queryByText('Never prompted title')).toBeNull();
+    expect(within(active).getByText('Worked session title')).toBeTruthy();
+  });
+
   // archive#1297: an orchestration row Station CAN rehydrate (a real
   // `agentSlug`, not `read-only-attached`) should reopen into the chat
   // overlay via the shared focus action instead of always jumping to the

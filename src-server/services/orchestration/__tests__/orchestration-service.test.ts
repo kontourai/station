@@ -12731,6 +12731,20 @@ describe('OrchestrationService', () => {
       }),
     ).rejects.toThrow('did not advertise image attachment support');
 
+    // Checked FIRST: the retry must continue this session, not a fresh
+    // continuation child. Round 1 rewrote the fold to 'failed', which routed
+    // exactly this retry to a new child.
+    await expect(
+      service.resolveConversationContinuation(
+        'thread-refused-first',
+        INTERNAL_SESSION_READ_SCOPE,
+        { provider: 'claude' },
+      ),
+    ).resolves.toMatchObject({
+      sessionId: 'thread-refused-first',
+      startRequired: false,
+    });
+
     const refused = (await service.listSessionReadModel()).find(
       (session) => session.threadId === 'thread-refused-first',
     );
@@ -12746,17 +12760,6 @@ describe('OrchestrationService', () => {
     expect(buildSessionFailedItem(refused!).body).toBe(
       'Station refused the send before it started.',
     );
-
-    await expect(
-      service.resolveConversationContinuation(
-        'thread-refused-first',
-        INTERNAL_SESSION_READ_SCOPE,
-        { provider: 'claude' },
-      ),
-    ).resolves.toMatchObject({
-      sessionId: 'thread-refused-first',
-      startRequired: false,
-    });
   });
 
   describe('station#1885 — station-agent image attachments', () => {

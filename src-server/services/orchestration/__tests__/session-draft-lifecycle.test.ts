@@ -537,6 +537,28 @@ describe('Draft lifecycle derivation (#2310)', () => {
     });
   });
 
+  // Verifier LOW: pin the turn.completed half of the turn facts. A log with a
+  // turn.completed and no turn.started does not occur in real data today, so
+  // this is a unit pin on both halves of the derivation: the thread's own
+  // events, and the lineage read.
+  test('a turn.completed alone is activity, on the thread and across the lineage', () => {
+    const root = upsert(ROOT);
+    seedNeverPrompted(ROOT);
+    append({ threadId: ROOT, method: 'turn.completed', turnId: 'orphan' });
+    const child = `${ROOT}:session:11111111-2222-4333-8444-555555555555`;
+    store.reserveNextConversationSession({
+      conversationId: ROOT,
+      predecessorSessionId: ROOT,
+      proposedSessionId: child,
+      createdAt: at(5_000),
+    });
+    const childSession = upsert(child, { createdAt: at(5_000) });
+    seedNeverPrompted(child, ROOT);
+
+    expect(summaryFor(ROOT, root).draft).toBe(false);
+    expect(summaryFor(child, childSession).draft).toBe(false);
+  });
+
   test('a fork target carries copied messages and is never a Draft (review M2)', () => {
     const target = 'human:local:operator:fork:0123456789abcdef01234567';
     const session = upsert(target);
@@ -650,5 +672,24 @@ describe('Draft lifecycle derivation (#2310)', () => {
       INTERNAL_SESSION_READ_SCOPE,
     );
     expect(freshDetail?.session.draft).toBe(true);
+
+    // The event-window and event-page reads (session-event-reads.ts) carry
+    // the same lineage-aware answer — the child has no activity of its own.
+    const childWindow = await instance.readSessionEventWindow(child, {
+      turnLimit: 5,
+      authority: INTERNAL_SESSION_READ_SCOPE,
+    });
+    expect(childWindow?.session.draft).toBe(false);
+    const freshWindow = await instance.readSessionEventWindow(fresh, {
+      turnLimit: 5,
+      authority: INTERNAL_SESSION_READ_SCOPE,
+    });
+    expect(freshWindow?.session.draft).toBe(true);
+    const childPage = await instance.readSessionEventPage(child, {
+      afterSequence: 0,
+      limit: 5,
+      authority: INTERNAL_SESSION_READ_SCOPE,
+    });
+    expect(childPage?.session.draft).toBe(false);
   });
 });
