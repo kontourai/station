@@ -211,6 +211,15 @@ export interface ClaudeMessageState {
    */
   activeTasks?: Map<string, ClaudeActiveTask>;
   /**
+   * #2316: called when no subagent/background task is live any more (the last
+   * tracked task settled, or the main turn completed with none live). The
+   * adapter settles every pending permission request a subagent raised: with
+   * no task live, no subagent can still be waiting on one, and leaving it
+   * answerable would let a late "Allow <tool> for this session" mint a grant
+   * for a call that never ran.
+   */
+  onNoLiveTasks?: () => void;
+  /**
    * station#1892: tasks this process already settled, retained so a SECOND
    * terminal for the same `task_id` is recognised as a duplicate rather than
    * misread as a task started before Station attached.
@@ -333,7 +342,7 @@ function claudeContentItemId(
   return `${message.session_id}:${turnKey}:${record.contentMessageKey}:${blockIndex}`;
 }
 
-interface ClaudeActiveTask {
+export interface ClaudeActiveTask {
   taskId: string;
   toolCallId: string;
   toolName: string;
@@ -894,6 +903,7 @@ export function mapClaudeSdkMessage({
           ? { metadata: reportedModelMetadata(record.lastReportedModel) }
           : {}),
       });
+      if (!record.activeTasks?.size) record.onNoLiveTasks?.();
     } else {
       // A result can arrive while sendTurn has allocated an ID but not yet
       // queued its prompt, or after a previous result cleared that marker.
@@ -1322,6 +1332,7 @@ function settleClaudeTask(params: {
     usage,
   } = params;
   record.activeTasks?.delete(task.taskId);
+  if (!record.activeTasks?.size) record.onNoLiveTasks?.();
   // station#1892: remember what this settle published so a second terminal
   // for the same task can enrich it exactly once instead of arriving as an
   // identity-less "untracked" settle.

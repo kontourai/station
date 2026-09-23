@@ -447,6 +447,158 @@ const BASE_CONTROLLED_PR_WORKFLOWS = new Set([
   '.github/workflows/security-analysis.yml',
   '.github/workflows/windows-pr-verification.yml',
 ]);
+/**
+ * The ONLY shared-cache access a pull-request or merge-queue workflow may have:
+ * a SHA-pinned restore in a named job. Untrusted candidate code runs in those
+ * workflows, so a save there would let a pull request poison an entry that
+ * later runs restore. The writer is a trusted main-only warmer
+ * (ios-rust-cache-warm.yml). GitHub also issues pull_request_target a
+ * read-only cache token by default (changelog 2026-06-26), but a workflow- or
+ * job-level `cache-mode` can widen that again, so it is refused outright.
+ */
+export const REVIEWED_CACHE_RESTORE_ACTION =
+  'actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9';
+const CACHE_RESTORE_JOBS = Object.freeze({
+  '.github/workflows/build-ios.yml': new Set(['build-ios-verification']),
+});
+const UNTRUSTED_CACHE_TRIGGERS = [
+  PULL_REQUEST_TARGET,
+  'pull_request',
+  MERGE_GROUP,
+];
+const CACHE_WRITE_MESSAGE =
+  'pull-request and merge-queue workflows must not write a shared cache';
+const CACHE_MODE_MESSAGE =
+  'pull-request and merge-queue workflows must not declare cache-mode';
+const CALLEE_CACHE_MODE_MESSAGE =
+  'reusable workflows must not declare cache-mode';
+const CACHE_RESTORE_MESSAGE =
+  'shared-cache restore in a pull-request or merge-queue workflow must be the reviewed pinned actions/cache/restore in a listed job';
+const SETUP_NODE_AUTO_CACHE_MESSAGE =
+  'setup-node in a pull-request or merge-queue workflow must set package-manager-cache: false';
+const CODEQL_TRAP_CACHE_MESSAGE =
+  'CodeQL init in a pull-request or merge-queue workflow must turn trap-caching off, at least under pull_request_target';
+/**
+ * The only TRAP-caching value besides `false` allowed in these workflows.
+ * pull_request_target is the one untrusted event whose GITHUB_REF is the base
+ * branch, which CodeQL reads as default-branch analysis and so uploads from.
+ * Under merge_group and pull_request the ref is a queue or PR ref, and
+ * codeql-action (trap-caching.ts at cdf488f) uploads only from the default
+ * branch, so there it only restores main's cache.
+ */
+const CODEQL_TRAP_CACHING_OFF_FOR_PR_TARGET =
+  // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+  "${{ github.event_name != 'pull_request_target' }}";
+const UNREVIEWED_CACHE_ACTION_MESSAGE =
+  'pull-request and merge-queue workflows may only use actions and reusable workflows whose cache behavior is reviewed in UNTRUSTED_ACTION_CACHE_POLICY';
+const MISSING_CALLEE_MESSAGE =
+  'reusable workflow called from a pull-request or merge-queue job was not found';
+/**
+ * Every action a pull-request or merge-queue workflow (or a local reusable
+ * workflow such a job can reach) may use, keyed by lower-cased owner/repo[/path]
+ * because GitHub resolves those case-insensitively. This is an allowlist: an
+ * action missing from it is refused until someone checks whether it touches
+ * the Actions cache. Each value returns the cache findings for one step; an
+ * action whose check returns [] never touches the cache.
+ *
+ * Reviewed for cache behavior at the pins these workflows use:
+ * - checkout, upload-artifact, dependency-review-action, rust-toolchain and
+ *   codeql-action/analyze have no cache input and no cache step of their own.
+ *   (analyze uploads the TRAP/overlay caches that init configured; see the
+ *   init rule below.)
+ * - setup-node saves in its post step when `cache:` is set, and v7 defaults
+ *   `package-manager-cache: true`, which turns that on by itself when
+ *   package.json's packageManager names npm. These jobs check the candidate
+ *   out before setup-node, so a pull request could flip it on.
+ * - codeql-action/init enables TRAP caching by default on hosted runners and,
+ *   under pull_request_target, treats the run as default-branch analysis
+ *   (GITHUB_REF is the base branch), so it tries to upload a TRAP cache built
+ *   from the candidate: security-analysis run 35824349214 logged "Uploading
+ *   TRAP cache ... codeql-trap-1-2.26.4-javascript-<main sha>" and only
+ *   GitHub's read-only token stopped it. Overlay caching needs no switch:
+ *   init picks restore-only Overlay mode whenever the event payload has a
+ *   pull_request (checked before the default branch), saves only in
+ *   OverlayBase mode, and merge_group gets neither.
+ * - pnpm/setup restores and saves a lockfile-verification log on every run,
+ *   independently of its `cache` input, with no opt-out (dist at 703c526: the
+ *   post step calls the save unconditionally). That save is NOT safe on its
+ *   own merits: the key is the hash of the checked-out (candidate) lockfile,
+ *   the pre-upload check only confirms earlier records survived (appended
+ *   forged records pass, and a cold key uploads anything), and main's jobs
+ *   restore by that same hash once the lockfile merges, so a forged verdict
+ *   could skip minimumReleaseAge there. It is allowed only because nothing
+ *   at the workflow level could stop it anyway; see the note below.
+ *
+ * What actually prevents cache writes from these workflows: their jobs run
+ * candidate code, which can rewrite later post-step action code under
+ * _actions/ and write any key the token permits, so no workflow input or
+ * allowlist entry can guarantee the absence of a write. The sole control is
+ * GitHub's read-only cache token for pull_request_target (run 35851364104:
+ * "Cache save skipped: the effective cache-mode 'read' does not permit
+ * writes."). Refusing `cache-mode`, which could widen that token, is
+ * therefore the most important rule in untrustedCacheFindings; the rest is
+ * defense in depth that keeps reviewed workflows from asking for writes.
+ * pnpm/setup is pinned so a bump re-opens this review.
+ */
+const UNTRUSTED_ACTION_CACHE_POLICY = Object.freeze({
+  'actions/checkout': noCacheFindings,
+  'actions/upload-artifact': noCacheFindings,
+  'actions/dependency-review-action': noCacheFindings,
+  'dtolnay/rust-toolchain': noCacheFindings,
+  'github/codeql-action/analyze': noCacheFindings,
+  'github/codeql-action/init': (step) => [
+    ...(isDisabledInput(step?.with?.['trap-caching']) ||
+    step?.with?.['trap-caching'] === CODEQL_TRAP_CACHING_OFF_FOR_PR_TARGET
+      ? []
+      : [CODEQL_TRAP_CACHE_MESSAGE]),
+    ...(isUnsetInput(step?.with?.['dependency-caching']) ||
+    // 'restore' only reads; codeql-action's CachingKind.Restore never stores.
+    ['false', 'none', 'restore'].includes(
+      String(step.with['dependency-caching']).trim().toLowerCase(),
+    )
+      ? []
+      : [CACHE_WRITE_MESSAGE]),
+  ],
+  'actions/setup-node': (step) => [
+    ...(isUnsetOrDisabledInput(step?.with?.cache) ? [] : [CACHE_WRITE_MESSAGE]),
+    ...(isDisabledInput(step?.with?.['package-manager-cache'])
+      ? []
+      : [SETUP_NODE_AUTO_CACHE_MESSAGE]),
+  ],
+  'pnpm/setup': (step) =>
+    String(step?.uses).toLowerCase() !== PNPM_SETUP_ACTION.toLowerCase()
+      ? [UNREVIEWED_CACHE_ACTION_MESSAGE]
+      : isUnsetOrDisabledInput(step?.with?.cache)
+        ? []
+        : [CACHE_WRITE_MESSAGE],
+  // Cache-capable setup actions no untrusted workflow uses today, reviewed so
+  // adopting one without its cache switched off is refused as a write rather
+  // than as merely unreviewed. setup-go caches by default; the others opt in.
+  'actions/setup-go': (step) =>
+    isDisabledInput(step?.with?.cache) ? [] : [CACHE_WRITE_MESSAGE],
+  'actions/setup-python': (step) =>
+    isUnsetOrDisabledInput(step?.with?.cache) ? [] : [CACHE_WRITE_MESSAGE],
+  'actions/setup-java': (step) =>
+    isUnsetOrDisabledInput(step?.with?.cache) ? [] : [CACHE_WRITE_MESSAGE],
+  'actions/setup-dotnet': (step) =>
+    isUnsetOrDisabledInput(step?.with?.cache) ? [] : [CACHE_WRITE_MESSAGE],
+  'ruby/setup-ruby': (step) =>
+    isUnsetOrDisabledInput(step?.with?.['bundler-cache'])
+      ? []
+      : [CACHE_WRITE_MESSAGE],
+  'swatinem/rust-cache': () => [CACHE_WRITE_MESSAGE],
+  // actions/cache/* subactions are judged in untrustedStepCacheMessages.
+  'actions/cache': () => [CACHE_WRITE_MESSAGE],
+});
+/**
+ * Remote reusable workflows a pull-request or merge-queue job may call. The
+ * gate cannot read them offline, so each is reviewed at its pinned SHA:
+ * kontourai/.github secret-scan.yml@28deabb uses only actions/checkout, the
+ * physical-host-capacity action and run steps (no cache).
+ */
+const UNTRUSTED_REVIEWED_REMOTE_WORKFLOWS = new Set([
+  SECRET_SCAN_REUSABLE_WORKFLOW,
+]);
 const MERGE_QUEUE_WORKFLOWS = new Set([
   '.github/workflows/build-ios.yml',
   '.github/workflows/ci.yml',
@@ -990,6 +1142,9 @@ function skipsAutomaticPullRequest(condition) {
 
 export function persistentRunnerPolicyFindings(workflows) {
   const findings = [];
+  const workflowsByFile = new Map(
+    workflows.map(({ file, document }) => [file, document]),
+  );
   for (const { file, document } of workflows) {
     for (const [jobId, job] of Object.entries(document?.jobs ?? {})) {
       if (typeof job?.uses === 'string') {
@@ -1003,6 +1158,7 @@ export function persistentRunnerPolicyFindings(workflows) {
     findings.push(...fullRegressionActionlintFindings(file, document));
     findings.push(...baseControlledPrWorkflowFindings(file, document));
     findings.push(...mergeQueueWorkflowFindings(file, document));
+    findings.push(...untrustedCacheFindings(file, document, workflowsByFile));
   }
   return findings;
 }
@@ -1227,8 +1383,12 @@ function hasExactSecurityAnalysisSteps(job) {
     base.with.path === SECURITY_BASE_CHECKOUT_PATH &&
     hasExactKeys(setupNode, ['uses', 'with']) &&
     setupNode?.uses === SETUP_NODE_ACTION &&
-    hasExactKeys(setupNode?.with, ['node-version-file']) &&
+    hasExactKeys(setupNode?.with, [
+      'node-version-file',
+      'package-manager-cache',
+    ]) &&
     setupNode.with?.['node-version-file'] === 'base-policy/.nvmrc' &&
+    setupNode.with?.['package-manager-cache'] === false &&
     hasExactKeys(isolateBasePolicy, ['name', 'env', 'run']) &&
     isolateBasePolicy?.name === 'Isolate base policy outside candidate scan' &&
     hasExactKeys(isolateBasePolicy?.env, ['BASE_POLICY_DIRECTORY']) &&
@@ -1259,7 +1419,9 @@ function hasExactSecurityAnalysisSteps(job) {
       'queries',
       'source-root',
       'config',
+      'trap-caching',
     ]) &&
+    init.with?.['trap-caching'] === CODEQL_TRAP_CACHING_OFF_FOR_PR_TARGET &&
     init.with?.languages === 'javascript-typescript' &&
     init.with?.['build-mode'] === 'none' &&
     init.with?.queries === 'security-extended' &&
@@ -1979,6 +2141,7 @@ function baseControlledPrWorkflowFindings(file, document) {
           step.uses.startsWith('actions/upload-artifact@')
         ) &&
         !isExactWindowsPrEvidenceUpload(file, jobId, step) &&
+        !isReviewedCacheRestore(file, jobId, step) &&
         !(
           file === SECURITY_ANALYSIS_WORKFLOW &&
           jobId === SECURITY_ANALYSIS_CODEQL_JOB &&
@@ -1996,21 +2159,233 @@ function baseControlledPrWorkflowFindings(file, document) {
           message:
             'base-controlled PR workflows must not add unreviewed custom actions or reusable execution',
         });
-      if (
-        (typeof step?.uses === 'string' &&
-          step.uses.startsWith('actions/cache@')) ||
-        (typeof step?.uses === 'string' &&
-          step.uses.startsWith('actions/setup-node@') &&
-          step?.with?.cache)
-      )
-        findings.push({
-          file,
-          jobId,
-          message: 'base-controlled PR workflows must not use shared caches',
-        });
     }
   }
   return findings;
+}
+
+function isReviewedCacheRestore(file, jobId, step) {
+  return (
+    step?.uses === REVIEWED_CACHE_RESTORE_ACTION &&
+    CACHE_RESTORE_JOBS[file]?.has(jobId) === true
+  );
+}
+
+/**
+ * Shared-cache policy for every workflow a pull request or the merge queue can
+ * trigger, and for every local reusable workflow such a job can reach.
+ * Restores are allowed only through isReviewedCacheRestore; each step must use
+ * an action listed in UNTRUSTED_ACTION_CACHE_POLICY and pass its check; and a
+ * `cache-mode` key, which could re-grant write access to a low-trust event, is
+ * refused in these workflows and in every workflow_call callee. ci.yml is
+ * included: it is excluded from baseControlledPrWorkflowFindings, not from
+ * this rule.
+ */
+function untrustedCacheFindings(file, document, workflowsByFile) {
+  const findings = [];
+  const events = new Set(
+    UNTRUSTED_CACHE_TRIGGERS.filter((trigger) =>
+      workflowHasTrigger(document, trigger),
+    ),
+  );
+  const isCallee = workflowHasTrigger(document, 'workflow_call');
+  if (events.size > 0 || isCallee) {
+    const message =
+      events.size > 0 ? CACHE_MODE_MESSAGE : CALLEE_CACHE_MODE_MESSAGE;
+    if (document && Object.hasOwn(document, 'cache-mode'))
+      findings.push({ file, jobId: 'workflow', message });
+    for (const [jobId, job] of Object.entries(document?.jobs ?? {}))
+      if (job && Object.hasOwn(job, 'cache-mode'))
+        findings.push({ file, jobId, message });
+  }
+  if (events.size === 0) return findings;
+  findings.push(
+    ...untrustedJobCacheFindings(file, document, events, workflowsByFile, {
+      via: '',
+      visiting: new Set([file]),
+    }),
+  );
+  return findings;
+}
+
+/**
+ * Step and call findings for every job of `document`, which runs under one of
+ * `events`. Steps are checked in every job regardless of its `if:` (a wrong
+ * reachability proof must not weaken the rule for the workflow itself). A
+ * local reusable-workflow call is followed unless its `if:` provably excludes
+ * every event in `events`; the callee inherits the caller's github.event_name.
+ */
+function untrustedJobCacheFindings(
+  file,
+  document,
+  events,
+  workflowsByFile,
+  context,
+) {
+  const findings = [];
+  for (const [ownJobId, job] of Object.entries(document?.jobs ?? {})) {
+    const jobId = context.via
+      ? `${ownJobId} (called from ${context.via})`
+      : ownJobId;
+    for (const step of job?.steps ?? [])
+      if (typeof step?.uses === 'string')
+        for (const message of untrustedStepCacheMessages(file, ownJobId, step))
+          findings.push({ file, jobId, message });
+    if (typeof job?.uses === 'string')
+      findings.push(
+        ...untrustedCallCacheFindings(
+          file,
+          jobId,
+          job,
+          events,
+          workflowsByFile,
+          context,
+        ),
+      );
+  }
+  return findings;
+}
+
+function untrustedCallCacheFindings(
+  file,
+  jobId,
+  job,
+  events,
+  workflowsByFile,
+  { visiting },
+) {
+  const localCallee = localReusableWorkflowFile(job.uses);
+  if (!localCallee)
+    return UNTRUSTED_REVIEWED_REMOTE_WORKFLOWS.has(job.uses)
+      ? []
+      : [{ file, jobId, message: UNREVIEWED_CACHE_ACTION_MESSAGE }];
+  const reachable = restrictEventsByCondition(events, job.if);
+  if (reachable.size === 0 || visiting.has(localCallee)) return [];
+  const callee = workflowsByFile?.get(localCallee);
+  if (!callee) return [{ file, jobId, message: MISSING_CALLEE_MESSAGE }];
+  return untrustedJobCacheFindings(
+    localCallee,
+    callee,
+    reachable,
+    workflowsByFile,
+    {
+      via: `${file} job '${jobId}'`,
+      visiting: new Set([...visiting, localCallee]),
+    },
+  );
+}
+
+function untrustedStepCacheMessages(file, jobId, step) {
+  const action = step.uses.split('@')[0].toLowerCase();
+  if (action.startsWith('actions/cache/'))
+    return isReviewedCacheRestore(file, jobId, step)
+      ? []
+      : action === 'actions/cache/save'
+        ? [CACHE_WRITE_MESSAGE]
+        : [CACHE_RESTORE_MESSAGE];
+  const policy = Object.hasOwn(UNTRUSTED_ACTION_CACHE_POLICY, action)
+    ? UNTRUSTED_ACTION_CACHE_POLICY[action]
+    : undefined;
+  return policy ? policy(step) : [UNREVIEWED_CACHE_ACTION_MESSAGE];
+}
+
+function localReusableWorkflowFile(uses) {
+  const match = /^\.\/(\.github\/workflows\/[^@/]+\.ya?ml)$/.exec(uses);
+  return match ? match[1] : undefined;
+}
+
+/**
+ * The subset of `events` under which `condition` can be true, proven only
+ * from top-level `github.event_name == 'x'` / `!= 'x'` conjuncts. Anything it
+ * cannot read — a top-level `||`, a negation, a template string — is treated
+ * as satisfiable, so the result only ever errs toward "reachable". Dropping a
+ * conjunct of an `&&` chain can only widen the set, which keeps it sound.
+ */
+function restrictEventsByCondition(events, condition) {
+  if (condition === undefined || condition === null) return new Set(events);
+  if (condition === false) return new Set();
+  if (typeof condition !== 'string') return new Set(events);
+  let expression = condition.trim();
+  const wrapped = /^\$\{\{([\s\S]*)\}\}$/.exec(expression);
+  if (wrapped && !wrapped[1].includes('}}')) expression = wrapped[1].trim();
+  else if (expression.includes('${{')) return new Set(events);
+  const conjuncts = splitTopLevelConjuncts(expression);
+  if (!conjuncts) return new Set(events);
+  let reachable = new Set(events);
+  for (const conjunct of conjuncts) {
+    const inner = /^\(([\s\S]*)\)$/.exec(conjunct);
+    if (inner && splitTopLevelConjuncts(inner[1]) !== undefined) {
+      reachable = restrictEventsByCondition(reachable, inner[1]);
+      continue;
+    }
+    const comparison = /^github\.event_name\s*(==|!=)\s*'([^']*)'$/i.exec(
+      conjunct,
+    );
+    if (!comparison) continue;
+    const value = comparison[2].toLowerCase();
+    reachable = new Set(
+      [...reachable].filter((event) =>
+        comparison[1] === '==' ? event === value : event !== value,
+      ),
+    );
+  }
+  return reachable;
+}
+
+/**
+ * Splits an expression on `&&` outside parentheses and single-quoted strings.
+ * Returns undefined when a top-level `||` makes the expression a disjunction,
+ * or when its parentheses or quotes do not balance.
+ */
+function splitTopLevelConjuncts(expression) {
+  const parts = [];
+  let depth = 0;
+  let quoted = false;
+  let start = 0;
+  for (let index = 0; index < expression.length; index += 1) {
+    const char = expression[index];
+    if (quoted) {
+      if (char === "'") {
+        if (expression[index + 1] === "'") index += 1;
+        else quoted = false;
+      }
+      continue;
+    }
+    if (char === "'") quoted = true;
+    else if (char === '(') depth += 1;
+    else if (char === ')') {
+      depth -= 1;
+      if (depth < 0) return undefined;
+    } else if (depth === 0 && expression.startsWith('||', index))
+      return undefined;
+    else if (depth === 0 && expression.startsWith('&&', index)) {
+      parts.push(expression.slice(start, index).trim());
+      start = index + 2;
+      index += 1;
+    }
+  }
+  if (quoted || depth !== 0) return undefined;
+  parts.push(expression.slice(start).trim());
+  return parts;
+}
+
+function noCacheFindings() {
+  return [];
+}
+
+function isUnsetInput(value) {
+  return value === undefined || value === null || value === '';
+}
+
+function isDisabledInput(value) {
+  return (
+    value === false ||
+    (typeof value === 'string' && value.trim().toLowerCase() === 'false')
+  );
+}
+
+function isUnsetOrDisabledInput(value) {
+  return isUnsetInput(value) || isDisabledInput(value);
 }
 
 function isExactReviewedDispatchSecretStep(file, jobId, step) {

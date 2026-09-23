@@ -242,8 +242,14 @@ export function scanPluginPromptGeneration(
 export function scanPluginPromptFileSafety(
   pluginDir: string,
   pluginName: string,
+  capturedManifest?: Pick<PluginManifest, 'prompts'>,
 ): BlockedPluginPromptFile[] {
-  return collectPluginPromptFiles(pluginDir, pluginName).blockedFiles;
+  return collectPluginPromptFiles(
+    pluginDir,
+    pluginName,
+    undefined,
+    capturedManifest,
+  ).blockedFiles;
 }
 
 /**

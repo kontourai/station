@@ -1126,6 +1126,43 @@ describe('pairing-route-scopes: table-driven lookups', () => {
     );
   });
 
+  test('#2323 S5: plugin proposals read on the read tier and are created or dismissed on the operate tier', () => {
+    expect(requiredPairingScope('GET', '/api/plugin-proposals')).toBe(
+      'orchestration:read',
+    );
+    expect(requiredPairingScope('GET', '/api/plugin-proposals/p1')).toBe(
+      'orchestration:read',
+    );
+    expect(requiredPairingScope('POST', '/api/plugin-proposals')).toBe(
+      'orchestration:operate',
+    );
+    expect(
+      requiredPairingScope('POST', '/api/plugin-proposals/p1/dismiss'),
+    ).toBe('orchestration:operate');
+  });
+
+  test('#2323 S4: local plugin source status is a read-tier leaf of its own family', () => {
+    expect(requiredPairingScope('GET', '/api/plugin-sources')).toBe(
+      'orchestration:read',
+    );
+    // The reinstall it offers stays on the operate tier.
+    expect(requiredPairingScope('POST', '/api/plugins/install')).toBe(
+      'orchestration:operate',
+    );
+  });
+
+  test('#2323 S1: plugin validation is not a read-tier route, because its body names a host path', () => {
+    // Validation installs nothing, which reads like a case for the read
+    // tier. It is not one: the caller supplies an arbitrary host path whose
+    // manifest is read back. Same tier as `/preview`, which reads the same.
+    expect(requiredPairingScope('POST', '/api/plugins/validate')).toBe(
+      'orchestration:operate',
+    );
+    expect(requiredPairingScope('POST', '/api/plugins/validate')).toBe(
+      requiredPairingScope('POST', '/api/plugins/preview'),
+    );
+  });
+
   test('station#3677 PR 2 review (BLOCKING): Home role requests require access:manage, not the family default', () => {
     // Request creation RETURNS the transaction-bound decision-session cookie,
     // and fetch-metadata headers only constrain browsers — so on the family

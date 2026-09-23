@@ -5,11 +5,15 @@ import {
   compareToBaseline,
   FAST_CHECKS_JOB_TIMEOUT_MINUTES,
   findingKey,
+  PNPM_SETUP_ACTION,
   parseFindings,
   persistentRunnerPolicyFindings,
+  REVIEWED_CACHE_RESTORE_ACTION,
   REVIEWED_CAPACITY_REUSABLE_WORKFLOW_REF,
   REVIEWED_PHYSICAL_HOST_CAPACITY_ACTION_SHA,
   readWorkflowDocuments,
+  SECRET_SCAN_REUSABLE_WORKFLOW,
+  SETUP_NODE_ACTION,
   WINDOWS_PR_EVIDENCE_UPLOAD_ACTION,
 } from '../actionlint-gate.mjs';
 
@@ -2890,7 +2894,8 @@ describe('merge-queue regression workflow policy', () => {
     ).toContainEqual({
       file,
       jobId: 'ordinary',
-      message: 'base-controlled PR workflows must not use shared caches',
+      message:
+        'pull-request and merge-queue workflows must not write a shared cache',
     });
   });
 });
@@ -2954,5 +2959,773 @@ describe('trusted Rust caches stay out of pull-request workflows', () => {
       message:
         'base-controlled PR workflows must not add unreviewed custom actions or reusable execution',
     });
+  });
+});
+
+describe('pull-request and merge-queue workflows restore shared caches only', () => {
+  const IOS = '.github/workflows/build-ios.yml';
+  const IOS_JOB = 'build-ios-verification';
+  const WARMER = '.github/workflows/ios-rust-cache-warm.yml';
+  const WRITE =
+    'pull-request and merge-queue workflows must not write a shared cache';
+  const CACHE_MODE =
+    'pull-request and merge-queue workflows must not declare cache-mode';
+  const RESTORE =
+    'shared-cache restore in a pull-request or merge-queue workflow must be the reviewed pinned actions/cache/restore in a listed job';
+  const SAVE_ACTION =
+    'actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9';
+  type Doc = {
+    [key: string]: unknown;
+    on: Record<string, unknown>;
+    jobs: Record<
+      string,
+      { steps: Array<Record<string, unknown>>; [key: string]: unknown }
+    >;
+  };
+  function doc(file: string) {
+    const workflow = readWorkflowDocuments().find(
+      (candidate) => candidate.file === file,
+    );
+    if (!workflow) throw new Error(`Expected ${file}.`);
+    return structuredClone(workflow.document) as Doc;
+  }
+  function cacheFindings(file: string, document: Doc) {
+    return persistentRunnerPolicyFindings([{ file, document }]).filter(
+      ({ message }) => [WRITE, CACHE_MODE, RESTORE].includes(message),
+    );
+  }
+  function iosRestoreStep(document: Doc) {
+    const step = document.jobs[IOS_JOB].steps.find(
+      (candidate) => candidate.uses === REVIEWED_CACHE_RESTORE_ACTION,
+    );
+    if (!step) throw new Error('Expected the reviewed iOS cache restore.');
+    return step;
+  }
+
+  test('the reviewed iOS restore and the trusted warmer pass unchanged (false-positive control)', () => {
+    // The restore is really there: without this, a deleted restore would make
+    // the empty-findings assertion below vacuous.
+    expect(iosRestoreStep(doc(IOS)).with).toBeTruthy();
+    expect(
+      persistentRunnerPolicyFindings([{ file: IOS, document: doc(IOS) }]),
+    ).toEqual([]);
+    const warmer = doc(WARMER);
+    expect(Object.keys(warmer.on).sort()).toEqual([
+      'push',
+      'schedule',
+      'workflow_dispatch',
+    ]);
+    expect(
+      warmer.jobs.warm.steps.some((step) => step.uses === SAVE_ACTION),
+    ).toBe(true);
+    expect(
+      persistentRunnerPolicyFindings([{ file: WARMER, document: warmer }]),
+    ).toEqual([]);
+  });
+
+  test.each([
+    ['a save subaction', { uses: SAVE_ACTION, with: { path: 'x', key: 'k' } }],
+    [
+      'the combined restore+save action',
+      {
+        uses: 'actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9',
+        with: { path: 'x', key: 'k' },
+      },
+    ],
+    [
+      'setup-node cache',
+      {
+        uses: 'actions/setup-node@820762786026740c76f36085b0efc47a31fe5020',
+        with: { 'node-version-file': '.nvmrc', cache: 'pnpm' },
+      },
+    ],
+    [
+      'rust-cache',
+      {
+        uses: 'Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6',
+      },
+    ],
+  ])('rejects %s in the listed iOS job', (_name, step) => {
+    const document = doc(IOS);
+    document.jobs[IOS_JOB].steps.push(structuredClone(step));
+    expect(cacheFindings(IOS, document)).toEqual([
+      { file: IOS, jobId: IOS_JOB, message: WRITE },
+    ]);
+  });
+
+  test('rejects a cache save in a merge-queue-only workflow outside the base-controlled set', () => {
+    const document: Doc = {
+      on: { merge_group: { types: ['checks_requested'] } },
+      permissions: { contents: 'read' },
+      jobs: {
+        build: {
+          'runs-on': 'ubuntu-22.04',
+          steps: [{ uses: SAVE_ACTION, with: { path: 'x', key: 'k' } }],
+        },
+      },
+    };
+    expect(cacheFindings('.github/workflows/queue-only.yml', document)).toEqual(
+      [
+        {
+          file: '.github/workflows/queue-only.yml',
+          jobId: 'build',
+          message: WRITE,
+        },
+      ],
+    );
+  });
+
+  test.each([
+    [
+      'workflow',
+      (document: Doc) => {
+        document['cache-mode'] = 'write';
+      },
+    ],
+    [
+      'job',
+      (document: Doc) => {
+        document.jobs[IOS_JOB]['cache-mode'] = 'read';
+      },
+    ],
+  ])(
+    'rejects a %s-level cache-mode key, whatever its value',
+    (level, mutate) => {
+      const document = doc(IOS);
+      mutate(document);
+      expect(cacheFindings(IOS, document)).toEqual([
+        {
+          file: IOS,
+          jobId: level === 'workflow' ? 'workflow' : IOS_JOB,
+          message: CACHE_MODE,
+        },
+      ]);
+    },
+  );
+
+  test('rejects the reviewed restore in an unlisted pull-request workflow', () => {
+    const file = '.github/workflows/windows-pr-verification.yml';
+    const document = doc(file);
+    const restore = iosRestoreStep(doc(IOS));
+    const [jobId, job] = Object.entries(document.jobs).find(([, candidate]) =>
+      JSON.stringify(candidate).includes('actions/checkout@'),
+    ) as [string, Doc['jobs'][string]];
+    expect(cacheFindings(file, document)).toEqual([]);
+    job.steps.push(structuredClone(restore));
+    expect(cacheFindings(file, document)).toEqual([
+      { file, jobId, message: RESTORE },
+    ]);
+  });
+
+  test('rejects the reviewed restore in an unlisted job of the listed workflow', () => {
+    const document = doc(IOS);
+    document.jobs.classify.steps.push(
+      structuredClone(iosRestoreStep(document)),
+    );
+    expect(cacheFindings(IOS, document)).toEqual([
+      { file: IOS, jobId: 'classify', message: RESTORE },
+    ]);
+  });
+
+  test.each([
+    'actions/cache/restore@v6',
+    'actions/cache/restore@0c45773b623bea8c8e75f6e6b6b1926af01a47e3',
+  ])('rejects a restore not pinned to the reviewed SHA (%s)', (uses) => {
+    const document = doc(IOS);
+    iosRestoreStep(document).uses = uses;
+    expect(cacheFindings(IOS, document)).toEqual([
+      { file: IOS, jobId: IOS_JOB, message: RESTORE },
+    ]);
+  });
+});
+
+describe('untrusted-workflow cache policy follows callees and allowlists actions (#2365)', () => {
+  const CI = '.github/workflows/ci.yml';
+  const FULL = '.github/workflows/full-regression.yml';
+  const IOS = '.github/workflows/build-ios.yml';
+  const SECURITY = '.github/workflows/security-analysis.yml';
+  const WRITE =
+    'pull-request and merge-queue workflows must not write a shared cache';
+  const CACHE_MODE =
+    'pull-request and merge-queue workflows must not declare cache-mode';
+  const CALLEE_CACHE_MODE = 'reusable workflows must not declare cache-mode';
+  const RESTORE =
+    'shared-cache restore in a pull-request or merge-queue workflow must be the reviewed pinned actions/cache/restore in a listed job';
+  const AUTO_CACHE =
+    'setup-node in a pull-request or merge-queue workflow must set package-manager-cache: false';
+  const TRAP =
+    'CodeQL init in a pull-request or merge-queue workflow must turn trap-caching off, at least under pull_request_target';
+  const UNREVIEWED =
+    'pull-request and merge-queue workflows may only use actions and reusable workflows whose cache behavior is reviewed in UNTRUSTED_ACTION_CACHE_POLICY';
+  const MISSING_CALLEE =
+    'reusable workflow called from a pull-request or merge-queue job was not found';
+  const CACHE_MESSAGES = [
+    WRITE,
+    CACHE_MODE,
+    CALLEE_CACHE_MODE,
+    RESTORE,
+    AUTO_CACHE,
+    TRAP,
+    UNREVIEWED,
+    MISSING_CALLEE,
+  ];
+  const UNTRUSTED = ['pull_request', 'pull_request_target', 'merge_group'];
+  const expr = (inner: string) => `\${{ ${inner} }}`;
+  const SHA = '0123456789abcdef0123456789abcdef01234567';
+  const SAVE = {
+    uses: `actions/cache/save@${SHA}`,
+    with: { path: 'x', key: 'k' },
+  };
+  type Step = Record<string, unknown> & {
+    uses?: string;
+    with?: Record<string, unknown>;
+    env?: Record<string, unknown>;
+  };
+  type Job = Record<string, unknown> & { steps?: Step[]; uses?: string };
+  type Doc = Record<string, unknown> & {
+    on: unknown;
+    jobs: Record<string, Job>;
+  };
+  type Workflow = { file: string; document: Doc };
+
+  let parsed: Workflow[] | undefined;
+  const real = () => {
+    parsed ??= readWorkflowDocuments() as unknown as Workflow[];
+    return structuredClone(parsed);
+  };
+  const docOf = (workflows: Workflow[], file: string) => {
+    const found = workflows.find((workflow) => workflow.file === file);
+    if (!found) throw new Error(`Expected ${file}.`);
+    return found.document;
+  };
+  const cacheFindings = (workflows: Workflow[]) =>
+    persistentRunnerPolicyFindings(workflows).filter(
+      ({ message }: { message: string }) => CACHE_MESSAGES.includes(message),
+    );
+  const triggersOf = (document: Doc) =>
+    typeof document.on === 'string'
+      ? [document.on]
+      : Array.isArray(document.on)
+        ? document.on
+        : Object.keys((document.on as object) ?? {});
+  const isUntrusted = (document: Doc) =>
+    triggersOf(document).some((trigger) => UNTRUSTED.includes(trigger));
+  const oneStepWorkflow = (
+    on: unknown,
+    step: Step,
+    file = 'synthetic.yml',
+  ) => ({
+    file: `.github/workflows/${file}`,
+    document: {
+      on,
+      jobs: { build: { 'runs-on': 'ubuntu-22.04', steps: [step] } },
+    } as Doc,
+  });
+
+  test('the real workflows produce no cache findings (false-positive control)', () => {
+    const workflows = real();
+    expect(cacheFindings(workflows)).toEqual([]);
+    // Non-vacuity: the corpus still exercises every rule below.
+    const untrustedSteps = workflows
+      .filter(({ document }) => isUntrusted(document))
+      .flatMap(({ document }) =>
+        Object.values(document.jobs).flatMap((job) => job.steps ?? []),
+      );
+    const uses = (prefix: string) =>
+      untrustedSteps.filter((step) => String(step.uses).startsWith(prefix));
+    expect(uses('actions/setup-node@').length).toBeGreaterThanOrEqual(17);
+    expect(uses('pnpm/setup@').length).toBeGreaterThan(0);
+    expect(uses('github/codeql-action/init@')).toHaveLength(1);
+    expect(uses('actions/cache/restore@')).toHaveLength(1);
+    // The one live untrusted -> reusable-workflow edge, and the cache it would
+    // reach if its guard ever stopped excluding untrusted events.
+    expect(docOf(workflows, CI).jobs['full-regression'].uses).toBe(`./${FULL}`);
+    expect(
+      docOf(workflows, FULL).jobs['full-regression'].steps?.find((step) =>
+        String(step.uses).startsWith('actions/setup-node@'),
+      )?.with?.cache,
+    ).toBe('pnpm');
+  });
+
+  describe('reusable-workflow callees', () => {
+    const calledFrom = (callerFile: string, callerJob: string, job: string) =>
+      `${job} (called from ${callerFile} job '${callerJob}')`;
+
+    test('ci.yml -> full-regression.yml is unreachable from untrusted events, and the gate proves it from the if:', () => {
+      const workflows = real();
+      const caller = docOf(workflows, CI).jobs['full-regression'];
+      expect(caller.if).toBe(
+        expr(
+          "always() && !cancelled() && github.event_name != 'pull_request_target' && github.event_name == 'workflow_dispatch'",
+        ),
+      );
+      expect(cacheFindings(workflows)).toEqual([]);
+      // Drop the conjunct that excludes merge_group and the callee's cache
+      // becomes reachable: the cache: pnpm write and the automatic cache.
+      caller.if = expr(
+        "always() && !cancelled() && github.event_name != 'pull_request_target'",
+      );
+      const jobId = calledFrom(CI, 'full-regression', 'full-regression');
+      expect(cacheFindings(workflows)).toEqual([
+        { file: FULL, jobId, message: WRITE },
+        { file: FULL, jobId, message: AUTO_CACHE },
+      ]);
+    });
+
+    test.each([
+      ['no if', undefined, ['pull_request_target'], true],
+      ['boolean false', false, ['pull_request_target'], false],
+      [
+        'wrapped equality',
+        expr("github.event_name == 'workflow_dispatch'"),
+        ['pull_request_target', 'merge_group'],
+        false,
+      ],
+      [
+        'bare equality',
+        "github.event_name == 'workflow_dispatch'",
+        ['pull_request_target'],
+        false,
+      ],
+      [
+        'case-insensitive comparison',
+        expr("github.event_name == 'Workflow_Dispatch'"),
+        ['pull_request_target'],
+        false,
+      ],
+      [
+        // GitHub compares strings case-insensitively, so this IS reachable;
+        // a case-sensitive reading would wrongly prove it unreachable.
+        'case-variant equality that still matches',
+        expr("github.event_name == 'Merge_Group'"),
+        ['merge_group'],
+        true,
+      ],
+      [
+        'inequality that excludes the only untrusted trigger',
+        expr("always() && github.event_name != 'pull_request_target'"),
+        ['pull_request_target'],
+        false,
+      ],
+      [
+        'inequality that leaves merge_group',
+        expr("always() && github.event_name != 'pull_request_target'"),
+        ['pull_request_target', 'merge_group'],
+        true,
+      ],
+      [
+        'parenthesized conjunction',
+        expr("(always() && github.event_name == 'workflow_dispatch')"),
+        ['merge_group'],
+        false,
+      ],
+      [
+        'top-level disjunction',
+        expr(
+          "github.event_name == 'workflow_dispatch' || github.event_name == 'merge_group'",
+        ),
+        ['merge_group'],
+        true,
+      ],
+      [
+        'disjunction after a conjunction',
+        expr("github.event_name == 'workflow_dispatch' && always() || true"),
+        ['merge_group'],
+        true,
+      ],
+      [
+        'negation it cannot read',
+        expr("!(github.event_name == 'merge_group')"),
+        ['merge_group'],
+        true,
+      ],
+      [
+        'function it cannot read',
+        expr("contains(github.event_name, 'dispatch')"),
+        ['merge_group'],
+        true,
+      ],
+      [
+        'template string',
+        `x ${expr("github.event_name == 'workflow_dispatch'")}`,
+        ['merge_group'],
+        true,
+      ],
+      [
+        // Two expressions with text between them are one truthy template
+        // string to GitHub, not a conjunction.
+        'two expressions joined by literal text',
+        `${expr('always()')} && github.event_name == 'workflow_dispatch' && ${expr('true')}`,
+        ['merge_group'],
+        true,
+      ],
+      [
+        'operators inside a string literal',
+        expr(
+          "github.event_name == 'a || b' && github.event_name == 'workflow_dispatch'",
+        ),
+        ['merge_group'],
+        false,
+      ],
+    ])('callee reachability: %s', (_name, condition, triggers, reachable) => {
+      const caller = {
+        file: '.github/workflows/caller.yml',
+        document: {
+          on: Object.fromEntries(triggers.map((trigger) => [trigger, {}])),
+          jobs: {
+            call: {
+              ...(condition === undefined ? {} : { if: condition }),
+              uses: './.github/workflows/callee.yml',
+            },
+          },
+        } as Doc,
+      };
+      const callee = oneStepWorkflow({ workflow_call: {} }, SAVE, 'callee.yml');
+      expect(cacheFindings([caller, callee])).toEqual(
+        reachable
+          ? [
+              {
+                file: callee.file,
+                jobId: calledFrom(caller.file, 'call', 'build'),
+                message: WRITE,
+              },
+            ]
+          : [],
+      );
+    });
+
+    test('a nested call is judged against the events its caller narrowed to', () => {
+      // outer narrows merge_group+pull_request_target to merge_group; inner
+      // excludes merge_group, so nothing reaches the leaf. Passing the
+      // caller's full set instead would leave pull_request_target reachable.
+      const caller = {
+        file: '.github/workflows/caller.yml',
+        document: {
+          on: { merge_group: {}, pull_request_target: {} },
+          jobs: {
+            outer: {
+              if: expr("github.event_name == 'merge_group'"),
+              uses: './.github/workflows/middle.yml',
+            },
+          },
+        } as Doc,
+      };
+      const middle = {
+        file: '.github/workflows/middle.yml',
+        document: {
+          on: { workflow_call: {} },
+          jobs: {
+            inner: {
+              if: expr("github.event_name != 'merge_group'"),
+              uses: './.github/workflows/leaf.yml',
+            },
+          },
+        } as Doc,
+      };
+      const leaf = oneStepWorkflow({ workflow_call: {} }, SAVE, 'leaf.yml');
+      expect(cacheFindings([caller, middle, leaf])).toEqual([]);
+      middle.document.jobs.inner.if = undefined;
+      expect(cacheFindings([caller, middle, leaf])).toHaveLength(1);
+    });
+
+    test('follows a callee of a callee, carrying the caller chain', () => {
+      const caller = {
+        file: '.github/workflows/caller.yml',
+        document: {
+          on: { merge_group: {} },
+          jobs: { outer: { uses: './.github/workflows/middle.yml' } },
+        } as Doc,
+      };
+      const middle = {
+        file: '.github/workflows/middle.yml',
+        document: {
+          on: { workflow_call: {} },
+          jobs: { inner: { uses: './.github/workflows/leaf.yml' } },
+        } as Doc,
+      };
+      const leaf = oneStepWorkflow({ workflow_call: {} }, SAVE, 'leaf.yml');
+      const middleJob = calledFrom(caller.file, 'outer', 'inner');
+      expect(cacheFindings([caller, middle, leaf])).toEqual([
+        {
+          file: leaf.file,
+          jobId: calledFrom(middle.file, middleJob, 'build'),
+          message: WRITE,
+        },
+      ]);
+    });
+
+    test('refuses even the reviewed restore inside a callee', () => {
+      const workflows = real();
+      const restore = docOf(workflows, IOS).jobs[
+        'build-ios-verification'
+      ].steps?.find((step) => step.uses === REVIEWED_CACHE_RESTORE_ACTION);
+      expect(restore).toBeTruthy();
+      docOf(workflows, CI).jobs['full-regression'].if = undefined;
+      docOf(workflows, FULL).jobs['full-regression'].steps = [
+        structuredClone(restore) as Step,
+      ];
+      expect(cacheFindings(workflows)).toContainEqual({
+        file: FULL,
+        jobId: calledFrom(CI, 'full-regression', 'full-regression'),
+        message: RESTORE,
+      });
+    });
+
+    test('fails closed when a reachable callee is missing', () => {
+      const workflows = real().filter(({ file }) => file !== FULL);
+      expect(cacheFindings(workflows)).toEqual([]);
+      docOf(workflows, CI).jobs['full-regression'].if = undefined;
+      expect(cacheFindings(workflows)).toEqual([
+        { file: CI, jobId: 'full-regression', message: MISSING_CALLEE },
+      ]);
+    });
+
+    test.each(['workflow', 'job'])(
+      'rejects a %s-level cache-mode in any workflow_call callee, called or not',
+      (level) => {
+        const workflows = real();
+        const full = docOf(workflows, FULL);
+        expect(cacheFindings(workflows)).toEqual([]);
+        if (level === 'workflow') full['cache-mode'] = 'write';
+        else full.jobs['full-regression']['cache-mode'] = 'write';
+        expect(cacheFindings(workflows)).toEqual([
+          {
+            file: FULL,
+            jobId: level === 'workflow' ? 'workflow' : 'full-regression',
+            message: CALLEE_CACHE_MODE,
+          },
+        ]);
+      },
+    );
+
+    test('allows only the reviewed remote reusable workflow', () => {
+      const reviewed = {
+        file: '.github/workflows/scan.yml',
+        document: {
+          on: { pull_request: {} },
+          jobs: { scan: { uses: SECRET_SCAN_REUSABLE_WORKFLOW } },
+        } as Doc,
+      };
+      expect(cacheFindings([reviewed])).toEqual([]);
+      reviewed.document.jobs.scan.uses = `kontourai/.github/.github/workflows/other.yml@${SHA}`;
+      expect(cacheFindings([reviewed])).toEqual([
+        { file: reviewed.file, jobId: 'scan', message: UNREVIEWED },
+      ]);
+    });
+  });
+
+  test('every real untrusted setup-node step must turn off package-manager-cache', () => {
+    const workflows = real();
+    let checked = 0;
+    for (const { file, document } of workflows) {
+      if (!isUntrusted(document)) continue;
+      for (const [jobId, job] of Object.entries(document.jobs)) {
+        for (const step of job.steps ?? []) {
+          if (!String(step.uses).startsWith('actions/setup-node@')) continue;
+          checked += 1;
+          expect(step.with?.['package-manager-cache'], `${file} ${jobId}`).toBe(
+            false,
+          );
+          for (const value of [undefined, true, 'true']) {
+            const mutated = real();
+            const target = docOf(mutated, file).jobs[jobId].steps?.find(
+              (candidate) =>
+                String(candidate.uses).startsWith('actions/setup-node@'),
+            ) as Step;
+            if (value === undefined)
+              delete target.with?.['package-manager-cache'];
+            else
+              (target.with as Record<string, unknown>)[
+                'package-manager-cache'
+              ] = value;
+            expect(cacheFindings(mutated), `${file} ${jobId} ${value}`).toEqual(
+              [{ file, jobId, message: AUTO_CACHE }],
+            );
+          }
+        }
+      }
+    }
+    expect(checked).toBeGreaterThanOrEqual(17);
+    const quoted = oneStepWorkflow(
+      { merge_group: {} },
+      { uses: SETUP_NODE_ACTION, with: { 'package-manager-cache': 'false' } },
+    );
+    expect(cacheFindings([quoted])).toEqual([]);
+  });
+
+  describe('cache-capable actions are allowlisted, case-insensitively', () => {
+    const noAutoCache = { 'package-manager-cache': false };
+    test.each([
+      [
+        'Actions/Cache (restore+save)',
+        { uses: `Actions/Cache@${SHA}` },
+        [WRITE],
+      ],
+      ['ACTIONS/CACHE/SAVE', { uses: `ACTIONS/CACHE/SAVE@${SHA}` }, [WRITE]],
+      ['swatinem/Rust-Cache', { uses: `swatinem/Rust-Cache@${SHA}` }, [WRITE]],
+      [
+        'a case-variant of the reviewed restore',
+        { uses: REVIEWED_CACHE_RESTORE_ACTION.replace('actions/', 'Actions/') },
+        [RESTORE],
+      ],
+      [
+        'Actions/Setup-Node cache',
+        {
+          uses: SETUP_NODE_ACTION.replace(
+            'actions/setup-node',
+            'Actions/Setup-Node',
+          ),
+          with: { cache: 'npm', ...noAutoCache },
+        },
+        [WRITE],
+      ],
+      [
+        'setup-go with its default cache',
+        { uses: `actions/setup-go@${SHA}` },
+        [WRITE],
+      ],
+      [
+        'setup-go with cache: false',
+        { uses: `actions/setup-go@${SHA}`, with: { cache: false } },
+        [],
+      ],
+      [
+        'setup-python cache',
+        { uses: `actions/setup-python@${SHA}`, with: { cache: 'pip' } },
+        [WRITE],
+      ],
+      [
+        'setup-python without cache',
+        { uses: `actions/setup-python@${SHA}` },
+        [],
+      ],
+      [
+        'setup-java cache',
+        { uses: `Actions/Setup-Java@${SHA}`, with: { cache: 'gradle' } },
+        [WRITE],
+      ],
+      [
+        'setup-dotnet cache',
+        { uses: `actions/setup-dotnet@${SHA}`, with: { cache: true } },
+        [WRITE],
+      ],
+      [
+        'ruby/setup-ruby bundler-cache',
+        { uses: `Ruby/Setup-Ruby@${SHA}`, with: { 'bundler-cache': true } },
+        [WRITE],
+      ],
+      [
+        'ruby/setup-ruby without bundler-cache',
+        { uses: `ruby/setup-ruby@${SHA}` },
+        [],
+      ],
+      [
+        'pnpm/setup cache',
+        { uses: PNPM_SETUP_ACTION, with: { install: false, cache: true } },
+        [WRITE],
+      ],
+      [
+        'pnpm/setup at an unreviewed pin',
+        { uses: `pnpm/setup@${SHA}`, with: { install: false } },
+        [UNREVIEWED],
+      ],
+      [
+        'pnpm/setup at the reviewed pin, any case',
+        { uses: PNPM_SETUP_ACTION.toUpperCase(), with: { install: false } },
+        [],
+      ],
+      [
+        'an unreviewed cache-capable action',
+        { uses: `astral-sh/setup-uv@${SHA}` },
+        [UNREVIEWED],
+      ],
+      ['a local action', { uses: './.github/actions/anything' }, [UNREVIEWED]],
+      ['a docker action', { uses: 'docker://alpine:3' }, [UNREVIEWED]],
+      [
+        'CodeQL dependency caching',
+        {
+          uses: `github/codeql-action/init@${SHA}`,
+          with: { 'trap-caching': false, 'dependency-caching': 'full' },
+        },
+        [WRITE],
+      ],
+      [
+        'CodeQL restore-only dependency caching',
+        {
+          uses: `github/codeql-action/init@${SHA}`,
+          with: { 'trap-caching': false, 'dependency-caching': 'restore' },
+        },
+        [],
+      ],
+    ])('%s', (_name, step, messages) => {
+      const [file, document] = [
+        '.github/workflows/synthetic.yml',
+        oneStepWorkflow({ pull_request_target: {} }, step as Step).document,
+      ];
+      expect(cacheFindings([{ file, document }])).toEqual(
+        messages.map((message) => ({ file, jobId: 'build', message })),
+      );
+    });
+
+    const setTrap = (value: unknown) => (init: Step) => {
+      (init.with as Record<string, unknown>)['trap-caching'] = value;
+    };
+    test.each([
+      [
+        'trap-caching removed',
+        (init: Step) => delete init.with?.['trap-caching'],
+      ],
+      ['trap-caching: true', setTrap(true)],
+      ['an always-true expression', setTrap(expr('true'))],
+      [
+        'a different event expression',
+        setTrap(expr("github.event_name == 'push'")),
+      ],
+    ])('the real CodeQL init is refused with %s', (_name, mutate) => {
+      const workflows = real();
+      const init = docOf(workflows, SECURITY).jobs.codeql.steps?.find((step) =>
+        String(step.uses).startsWith('github/codeql-action/init@'),
+      ) as Step;
+      expect(init.with?.['trap-caching']).toBe(
+        expr("github.event_name != 'pull_request_target'"),
+      );
+      mutate(init);
+      expect(cacheFindings(workflows)).toEqual([
+        { file: SECURITY, jobId: 'codeql', message: TRAP },
+      ]);
+    });
+
+    test('CodeQL init may turn trap-caching off outright', () => {
+      const workflows = real();
+      const init = docOf(workflows, SECURITY).jobs.codeql.steps?.find((step) =>
+        String(step.uses).startsWith('github/codeql-action/init@'),
+      ) as Step;
+      setTrap(false)(init);
+      expect(cacheFindings(workflows)).toEqual([]);
+    });
+  });
+
+  describe('every untrusted trigger is covered', () => {
+    test.each(
+      UNTRUSTED.flatMap((trigger) => [
+        [trigger, 'string', trigger],
+        [trigger, 'array', ['push', trigger]],
+        [trigger, 'map', { push: {}, [trigger]: {} }],
+      ]),
+    )('a cache save under %s (%s form) is refused', (_trigger, _form, on) => {
+      const workflow = oneStepWorkflow(on, SAVE);
+      expect(cacheFindings([workflow])).toEqual([
+        { file: workflow.file, jobId: 'build', message: WRITE },
+      ]);
+    });
+
+    test.each(['push', 'schedule', 'workflow_dispatch'])(
+      "the same save under %s alone is not this rule's concern (control)",
+      (trigger) => {
+        expect(
+          cacheFindings([oneStepWorkflow({ [trigger]: {} }, SAVE)]),
+        ).toEqual([]);
+      },
+    );
   });
 });

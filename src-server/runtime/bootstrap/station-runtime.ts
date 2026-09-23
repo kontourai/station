@@ -13,6 +13,7 @@ import {
   loadLocalAccounts,
   readLocalAccountConfiguration,
 } from '../../services/identity/local-account-runtime.js';
+import { createRelayEnrollmentRuntime } from '../../services/identity/relay-enrollment-service.js';
 import {
   closePluginActivationSession,
   completePluginActivationComposition,
@@ -397,6 +398,11 @@ import { StrandsFramework } from '../frameworks/strands-adapter.js';
 import { releaseAllNativeStationControlClients } from '../frameworks/strands-tool-loader.js';
 import { VoltAgentFramework } from '../frameworks/voltagent-adapter.js';
 import {
+  createStationControlCallerRecordResolver,
+  stationControlCallerRecordSources,
+} from '../mcp/station-control-caller.js';
+import { claudeInProcessStationControlOptions } from '../mcp/station-control-in-process.js';
+import {
   buildStationControlMcpUrl,
   mintStationControlMcpToken,
   revokeStationControlMcpToken,
@@ -442,6 +448,7 @@ import {
   checkOllamaAvailability,
   getActiveRuntimeProjectSlug,
 } from './runtime-startup.js';
+import { readVerifiedPionApplicationRequest } from './self-hosted-broker-pion-runtime.js';
 import {
   BUILTIN_STATION_DOCS_TOOL_SERVER_ID,
   stationControlRuntimeIdentity,
@@ -518,6 +525,9 @@ export class StationRuntime {
   private localAccounts?: LoadedLocalAccounts;
   private applicationSessions?: ReturnType<
     typeof createApplicationSessionRuntime
+  >;
+  private relayEnrollment?: Awaited<
+    ReturnType<typeof createRelayEnrollmentRuntime>
   >;
   private readonly pluginInstallationHost: PluginInstallationHost;
   private configLoader: ConfigLoader;
@@ -680,6 +690,8 @@ export class StationRuntime {
   private projectTaskRoomRuntime?: ProjectTaskRoomRuntime;
   /** #90 Browser pane (personal hosts only); its Chromium processes stop with us. */
   private browserService?: BrowserService;
+  /** Epic #2323 S3: draft watchers and built drafts, released on shutdown. */
+  private pluginDraftService?: { dispose(): void };
   private taskRoomAcceptanceControl?: TaskRoomAcceptanceControl;
   private metricsLog: Array<{
     timestamp: number;
@@ -793,6 +805,31 @@ export class StationRuntime {
     // this closure is only invoked at `startSession` time, well after
     // construction completes.
     getStationControlEnv: () => stationControlSpawnEnv(this.port),
+    // Station #90 lane D (station #122): station-control runs IN-PROCESS for
+    // Claude (`station-control-in-process.ts`), so neither the internal API
+    // token nor a caller token ever reaches the CLI's `--mcp-config` argv.
+    // The record resolver is read lazily: the orchestration service is
+    // assigned after this field initializer runs.
+    ...claudeInProcessStationControlOptions(() =>
+      this.orchestrationService
+        ? createStationControlCallerRecordResolver(
+            stationControlCallerRecordSources({
+              orchestrationService: {
+                resolveSessionActingPrincipal: (threadId) =>
+                  this.orchestrationService.resolveSessionActingPrincipal(
+                    threadId,
+                  ),
+                firstStartedMetadataOfThread: (threadId) =>
+                  this.orchestrationService.firstStartedMetadataOfThread(
+                    threadId,
+                  ),
+              },
+              eventStore: this.orchestrationEventStore,
+              getProject: (slug) => this.storageAdapter.getProject(slug),
+            }),
+          )
+        : undefined,
+    ),
     // `this.logger` is not assigned until later in the constructor body
     // (field initializers run first) — wrap it in a lazily-evaluated shim
     // rather than capturing `this.logger` (which would freeze in as
@@ -3219,6 +3256,7 @@ export class StationRuntime {
     const virtualApplication = this.virtualApplicationConfiguration
       ? new VirtualApplicationIngress(
           this.virtualApplicationConfiguration.origin,
+          readVerifiedPionApplicationRequest,
         )
       : undefined;
     this.virtualApplication = virtualApplication;
@@ -3233,7 +3271,15 @@ export class StationRuntime {
         if (this.selfHostedBrokerConfiguration) {
           const broker = this.selfHostedBrokerConfiguration.create(application);
           this.selfHostedBroker = broker;
-          await broker.start();
+          // The broker is optional connectivity. Keep local Station ready
+          // while its registration retries; shutdown joins this exact owner.
+          void broker.start().catch(() => {
+            if (this.selfHostedBrokerShutdown || application.signal.aborted)
+              return;
+            // The broker status observer owns a fixed-code reason. Raw
+            // transport/provider errors must not enter a shared log.
+            this.logger?.warn?.('Optional broker connector failed');
+          });
         }
       }
     } catch (error) {
@@ -3302,7 +3348,35 @@ export class StationRuntime {
         this.deploymentAuthentication,
         (credential) =>
           this.environmentSecurityService.identifyDevice(credential),
+        this.environmentSecurityService.devicePairing.resolvePendingRelayDevice.bind(
+          this.environmentSecurityService.devicePairing,
+        ),
+        this.environmentSecurityService.devicePairing.resolveActiveRelayEnrollmentDevice.bind(
+          this.environmentSecurityService.devicePairing,
+        ),
       );
+    }
+    if (!this.relayEnrollment) {
+      const allowedClientOrigins = [
+        ...new Set([
+          ...resolveStationBrowserOrigins({ port: this.port, host: this.host }),
+          ...(this.deploymentAuthentication?.allowedBrowserOrigins ?? []),
+        ]),
+      ];
+      this.relayEnrollment = await createRelayEnrollmentRuntime({
+        home: this.configLoader.getProjectHomeDir(),
+        stationId: identity.environmentId,
+        requestOrigin:
+          this.deploymentAuthentication?.publicOrigin ??
+          allowedClientOrigins[0] ??
+          `http://localhost:${this.port}`,
+        allowedClientOrigins,
+        authentication: this.deploymentAuthentication?.service,
+        applicationSessions: this.applicationSessions,
+        pairing: this.environmentSecurityService.devicePairing,
+      });
+    } else {
+      await this.relayEnrollment.recoverBeforeAdmission();
     }
     const packageProjections = await this.pluginInstallationHost.reconcile();
     if (packageProjections.status === 'pending')
@@ -3636,6 +3710,8 @@ export class StationRuntime {
     await attempt(() => this.retireFailedSearch());
     await attempt(() => this.sshEnvironmentService.shutdown());
     await attempt(() => this.discordGatewayService.stop());
+    await attempt(() => this.pluginDraftService?.dispose());
+    this.pluginDraftService = undefined;
     await attempt(() => this.taskRoomAcceptanceControl?.close());
     this.taskRoomAcceptanceControl = undefined;
     const scheduler = this.schedulerService;
@@ -3894,12 +3970,14 @@ export class StationRuntime {
       kitLifecycleReady,
       projectTaskRoomRuntime,
       browserService,
+      pluginDraftService,
     } = configureRuntimeRoutes({
       projectMembership: this.projectMembership?.service,
       projectSharedTasks: this.projectMembership?.sharedTasks,
       deploymentAuthentication: this.deploymentAuthentication,
       localAccounts: this.localAccounts,
       applicationSessions: this.applicationSessions,
+      relayEnrollment: this.relayEnrollment,
       app,
       logger: this.logger,
       eventBus: this.eventBus,
@@ -4001,6 +4079,7 @@ export class StationRuntime {
     this.kitLifecycleReady = kitLifecycleReady;
     this.projectTaskRoomRuntime = projectTaskRoomRuntime;
     this.browserService = browserService;
+    this.pluginDraftService = pluginDraftService;
   }
 
   /**
@@ -4452,6 +4531,12 @@ export class StationRuntime {
     const consentListener = this.consentListener;
     const failures: unknown[] = [];
     try {
+      this.relayEnrollment?.close();
+      this.relayEnrollment = undefined;
+    } catch (error) {
+      failures.push(error);
+    }
+    try {
       this.applicationSessions?.close();
       this.applicationSessions = undefined;
     } catch (error) {
@@ -4483,6 +4568,12 @@ export class StationRuntime {
     }
     try {
       await this.discordGatewayService?.stop();
+    } catch (error) {
+      failures.push(error);
+    }
+    try {
+      this.pluginDraftService?.dispose();
+      this.pluginDraftService = undefined;
     } catch (error) {
       failures.push(error);
     }

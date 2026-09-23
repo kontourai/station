@@ -61,6 +61,7 @@ import {
   resolveBootAccentColor,
   resolveBootTheme,
 } from './lib/device-settings-store';
+import { stationQueryDefaults } from './lib/queryDefaults';
 import {
   PlatformBootstrap,
   usePlatformProfile,
@@ -171,15 +172,7 @@ const bootstrapQueryClient = new QueryClient({
         console.error(`[query:${query.queryKey}]`, error);
     },
   }),
-  defaultOptions: {
-    queries: {
-      staleTime: 5 * 60 * 1000, // 5 minutes
-      gcTime: 10 * 60 * 1000, // 10 minutes (renamed from cacheTime in v5)
-      refetchOnWindowFocus: false,
-      refetchOnMount: false, // Prevent StrictMode double-fetch — if data is in cache, don't refetch on mount
-      retry: 1,
-    },
-  },
+  defaultOptions: { queries: stationQueryDefaults() },
 });
 
 // Debug: Track all hash changes globally with more detail

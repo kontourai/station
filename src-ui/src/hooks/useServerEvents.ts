@@ -5,7 +5,6 @@
 
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { fetchSSE } from '@kontourai/station-sdk';
-import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef } from 'react';
 import {
@@ -16,6 +15,7 @@ import { navigationStore } from '../contexts/NavigationContext';
 import { toastStore } from '../contexts/ToastContext';
 import { deviceSettingsStore } from '../lib/device-settings-store';
 import { playDeliveredNotificationSound } from '../lib/notification-sounds';
+import { CLIENT_DOCUMENT_SESSION_ID } from './clientDocumentSession';
 
 type EventHandler = (data: Record<string, unknown>) => void;
 
@@ -156,6 +156,11 @@ const EVENT_HANDLERS: Record<string, (queryClient: any) => void> = {
   },
   [SERVER_EVENTS.SYSTEM_STATUS_CHANGED]: (qc) =>
     qc.invalidateQueries({ queryKey: ['system-status'] }),
+  // Epic #2323 S3: a Project's plugin draft built a new revision. Only the
+  // status is refreshed; a Plugin preview pane shows "Revision N ready" and
+  // never runs it without the viewer's click.
+  [SERVER_EVENTS.PLUGIN_DRAFTS_REBUILT]: (qc) =>
+    qc.invalidateQueries({ queryKey: ['plugin-draft'] }),
   [SERVER_EVENTS.PLUGINS_INSTALLED]: (qc) => {
     qc.invalidateQueries({ queryKey: ['projects'] });
     qc.invalidateQueries({ queryKey: ['plugins'] });
@@ -199,10 +204,6 @@ const EVENT_HANDLERS: Record<string, (queryClient: any) => void> = {
   [SERVER_EVENTS.UI_NAVIGATE]: () => {},
 };
 
-// One UUID per browser document. Do not use sessionStorage: a window opened
-// from another can clone its tab state and collapse two live tabs into one.
-const serverEventClientSessionId = randomCorrelationId();
-
 function invalidateInboxQueries(queryClient: {
   invalidateQueries: (options: { queryKey: string[] }) => unknown;
 }) {
@@ -242,7 +243,7 @@ export function useServerEvents(handlers?: Record<string, EventHandler>) {
     const url = `${apiBase}/events`;
     const authenticatedStream = fetchSSE(url, {
       authentication: 'required',
-      headers: { 'X-Station-Client-Session': serverEventClientSessionId },
+      headers: { 'X-Station-Client-Session': CLIENT_DOCUMENT_SESSION_ID },
       // archive#1848: see `ensureOrchestrationEventStream.ts` — a ceiling
       // equal to the initial delay is a fixed poll, not a ladder.
       retryDelayMs: 3000,

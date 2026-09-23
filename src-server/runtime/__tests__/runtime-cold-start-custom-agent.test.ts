@@ -54,7 +54,9 @@ import {
   UnattendedGrantStore,
 } from '../../services/agents/unattended-grant-store.js';
 import { EventStore } from '../../services/orchestration/event-store.js';
+import { openRelayEnrollmentJournal } from '../../services/relay/relay-enrollment-journal.js';
 import type { RuntimeSearch } from '../../services/search/runtime-search.js';
+import { EnvironmentSecurityService } from '../../services/ssh/environment-security-service.js';
 import { USAGE_TELEMETRY_INVENTORY_REVISION } from '../../services/usage-telemetry-inventory.js';
 import { installSignedStartupProvider } from './fixtures/signed-provider-startup.js';
 
@@ -524,6 +526,72 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
     ).toThrow(/STATION_HOME_RESET_REQUIRED/);
     expect(existsSync(join(home, 'monitoring'))).toBe(false);
     expect(existsSync(join(home, 'config', 'agent-registry.json'))).toBe(false);
+  });
+
+  it('refuses listener and VirtualApplication admission when relay recovery cannot revoke a pending provider session', async () => {
+    home = await createSchemaHome('station-relay-recovery-failure-');
+    const stationIdentity = await new EnvironmentSecurityService({
+      homeDir: home,
+    }).initialize();
+    const journal = openRelayEnrollmentJournal({
+      dbPath: join(home, 'authentication', 'relay-enrollment.sqlite'),
+      stationId: stationIdentity.environmentId,
+    });
+    const enrollmentId = 'R'.repeat(43);
+    journal.reserveChallenge({
+      enrollmentId,
+      stationId: stationIdentity.environmentId,
+      clientOrigin: 'https://station.example.test',
+      keyThumbprint: 'T'.repeat(43),
+      publicKey: {
+        kty: 'EC',
+        crv: 'P-256',
+        x: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
+        y: 'BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB',
+      },
+      nonce: 'N'.repeat(43),
+      expiresAt: Date.now() + 60_000,
+    });
+    journal.transition({
+      enrollmentId,
+      expectedStates: ['challenge'],
+      nextState: 'provider-creating',
+      patch: {
+        issuer: 'https://identity.example.test',
+        loginJti: 'L'.repeat(22),
+      },
+    });
+    journal.transition({
+      enrollmentId,
+      expectedStates: ['provider-creating'],
+      nextState: 'provider-pending',
+      patch: {
+        providerSessionId: 'session-from-removed-provider',
+        issuer: 'https://identity.example.test',
+        subject: 'pending-subject',
+      },
+    });
+    journal.close();
+
+    const virtualReady = vi.fn();
+    const terminal = replaceTerminalListener(
+      (runtime = new StationRuntime({
+        projectHomeDir: home,
+        port: TEST_PORT,
+        virtualApplication: {
+          origin: 'https://virtual.example.test',
+          ready: virtualReady,
+        },
+      })),
+    );
+    routeMocks.deferServerFactory = true;
+
+    await expect(runtime.initialize()).rejects.toThrow(
+      'Relay enrollment cleanup is unconfirmed',
+    );
+    expect(terminal.start).not.toHaveBeenCalled();
+    expect(routeMocks.configureRuntimeRoutes).not.toHaveBeenCalled();
+    expect(virtualReady).not.toHaveBeenCalled();
   });
 
   it('shutdown during boot settles the in-flight initialize (#1019)', async () => {

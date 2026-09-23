@@ -34,6 +34,7 @@ import {
   SYSTEM_PROMPT_CAPABILITY_ID,
 } from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import type { TenantExecutionContext } from '@kontourai/station-contracts/tenancy';
 import type {
   ModelOption,
   ModelOptionCapabilities,
@@ -88,6 +89,7 @@ import { snapshotSessionSourceAffinity } from '../sessions/session-source-affini
 import { resolveConfigHomeAffinity } from '../sessions/transcript-file-io.js';
 import { mergeCapabilityDeliveryMetadata } from './capability-delivery-metadata.js';
 import {
+  type ClaudeActiveTask,
   type ClaudeMessageState,
   mapClaudeDecisionToPermissionResult,
   mapClaudeSdkMessage,
@@ -128,6 +130,8 @@ type PendingRequest = {
   suggestions?: PermissionUpdate[];
   toolInput: Record<string, unknown>;
   toolName: string;
+  /** The SDK agent id when a subagent, not the main thread, asked (#2316). */
+  agentId?: string;
 };
 
 /** The command Station resolves on PATH for this engine. */
@@ -540,11 +544,11 @@ type ClaudeSessionRecord = {
   /** Mirrors `ClaudeMessageState.interruptedResultObserved`. */
   interruptedResultObserved?: boolean;
   /**
-   * Mirrors `ClaudeMessageState.activeTasks`; same object at runtime. Only
-   * membership is read here (`stopProviderTask`), so the value stays opaque
-   * rather than importing the events module's own task shape.
+   * Mirrors `ClaudeMessageState.activeTasks`; same object at runtime.
    */
-  activeTasks?: Map<string, unknown>;
+  activeTasks?: Map<string, ClaudeActiveTask>;
+  /** Mirrors `ClaudeMessageState.onNoLiveTasks` (#2316). */
+  onNoLiveTasks?: () => void;
   lastSessionState: 'idle' | 'running' | 'requires_action';
   streamTask: Promise<void>;
   /** Tracks the live SDK permission mode so sendTurn only calls
@@ -727,6 +731,33 @@ export interface ClaudeAdapterOptions {
    * internal token, just not STATION_API_BASE/STATION_PORT.
    */
   getStationControlEnv?: () => Record<string, string> | undefined;
+  /**
+   * Station #90 lane D (station #122): serves the built-in station-control
+   * server IN-PROCESS for this session (`station-control-in-process.ts`) as
+   * an SDK `type: 'sdk'` server. Preferred over the stdio child: the SDK
+   * copies a stdio server's env into the CLI's `--mcp-config` argv, where
+   * any same-user process can read it; an in-process server has no argv and
+   * its caller credential is `bound`. Called only when an authored tool
+   * server is the canonical built-in.
+   */
+  createInProcessStationControl?: (
+    threadId: string,
+    tenantExecutionContext?: TenantExecutionContext,
+  ) => unknown;
+  /**
+   * Fallback when {@link createInProcessStationControl} is absent: mints a
+   * `bearer-exposed` caller token for the stdio child's env. Absent (most
+   * unit tests), the child runs exactly as before and reports no caller.
+   */
+  mintStationControlCallerToken?: (
+    threadId: string,
+    tenantExecutionContext?: TenantExecutionContext,
+  ) => string;
+  /**
+   * Revokes whichever station-control credential the session was given
+   * (in-process or stdio). Called when the session stops or fails to start.
+   */
+  revokeStationControlCallerToken?: (threadId: string) => void;
   /**
    * Resolves Station's shared staged pre-tool evaluator for a real resolved
    * agent. It is intentionally absent for agent-less/synthetic sessions;
@@ -1221,21 +1252,27 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     const permissionMode = this.resolvePermissionMode(input.modelOptions);
     const appHome: 'profile' | 'global' = appHomeEnv ? 'profile' : 'global';
     const toolServers = this.resolveAgentToolServers(input);
-    const sdkQuery = query({
-      prompt: promptQueue,
-      options: this.buildOptions(
-        input,
-        persistSession,
-        permissionMode,
-        appHomeEnv,
-        connectionEnv,
-        toolServers.mcpServers,
-        skillsOverlayDir,
-        augmentedEnv,
-        preToolPolicy,
-        claudeExecutable,
-      ),
-    });
+    let sdkQuery: ReturnType<typeof query>;
+    try {
+      sdkQuery = query({
+        prompt: promptQueue,
+        options: this.buildOptions(
+          input,
+          persistSession,
+          permissionMode,
+          appHomeEnv,
+          connectionEnv,
+          toolServers.mcpServers,
+          skillsOverlayDir,
+          augmentedEnv,
+          preToolPolicy,
+          claudeExecutable,
+        ),
+      });
+    } catch (error) {
+      this.options.revokeStationControlCallerToken?.(input.threadId);
+      throw error;
+    }
 
     const session: ProviderSession = {
       provider: this.provider,
@@ -1264,6 +1301,12 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       currentModelOptions: claudeAppliedModelOptions(input.modelOptions),
       skillsOverlayDir,
     };
+    // #2316: with no subagent task live, no subagent can still be waiting on
+    // a permission request; settle any it left behind.
+    record.onNoLiveTasks = () =>
+      this.cancelPendingRequests(record, input.threadId, {
+        subagentsOnly: true,
+      });
     record.streamTask = this.consumeMessages(record);
     this.sessions.set(input.threadId, record);
 
@@ -1603,6 +1646,51 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     return { outcome: 'stopped', taskId };
   }
 
+  /**
+   * Settle one open permission request as cancelled and publish its
+   * `request.resolved`. #2316: a request whose call can no longer run must
+   * leave `pendingRequests`, or a later answer "succeeds" against a dead
+   * promise — and "Allow <tool> for this session" mints a real session-wide
+   * grant for a call that never ran. `respondToRequest` refuses an id that is
+   * not pending before it grants anything.
+   */
+  private cancelPendingRequest(
+    record: ClaudeSessionRecord,
+    threadId: string,
+    requestId: string,
+  ): void {
+    const pending = record.pendingRequests.get(requestId);
+    if (!pending) return;
+    record.pendingRequests.delete(requestId);
+    pending.resolve(
+      mapClaudeDecisionToPermissionResult(
+        'cancel',
+        pending.toolInput,
+        pending.suggestions,
+      ),
+    );
+    this.publish({
+      eventId: crypto.randomUUID(),
+      provider: this.provider,
+      threadId,
+      createdAt: new Date().toISOString(),
+      requestId,
+      method: 'request.resolved',
+      status: 'cancelled',
+    });
+  }
+
+  private cancelPendingRequests(
+    record: ClaudeSessionRecord,
+    threadId: string,
+    options: { subagentsOnly?: boolean } = {},
+  ): void {
+    for (const [requestId, pending] of [...record.pendingRequests]) {
+      if (options.subagentsOnly && !pending.agentId) continue;
+      this.cancelPendingRequest(record, threadId, requestId);
+    }
+  }
+
   async interruptTurn(threadId: string, turnId?: string) {
     const record = this.requireSession(threadId);
     if (!record.activeTurnId) return { outcome: 'no-active-turn' } as const;
@@ -1617,6 +1705,16 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     // `is_error` result before `interrupt()` resolves. The mapper consumes
     // this marker only for this exact dispatched turn.
     record.interruptingTurnId = targetTurnId;
+    // #2316: the interrupted turn's open approvals can never run their call.
+    // Settle them (request.resolved, cancelled) BEFORE turn.aborted, so no
+    // later answer lands on them and no grant is minted for them.
+    //
+    // Every request, a subagent's included. A background subagent may
+    // survive the interrupt (`perTaskStopAffordance`), and then loses only
+    // that one call (it is denied); sparing its request instead would leave
+    // it answerable after its subagent ends, and a late "Allow <tool> for
+    // this session" would mint a grant for a call that never ran.
+    this.cancelPendingRequests(record, threadId);
     // A rejected control promise does not prove the engine ignored the
     // interrupt. Keep the exact-turn marker armed until the SDK result stream
     // confirms what happened; a second Stop must not clear the first one's
@@ -1708,30 +1806,16 @@ export class ClaudeAdapter implements ProviderAdapterShape {
   }
 
   async stopSession(threadId: string): Promise<void> {
+    // Station #90 lane D: the session's caller credential ends with it, even
+    // when the session record is already gone (a start that failed after
+    // minting, or a second stop). Revocation is id-tolerant.
+    this.options.revokeStationControlCallerToken?.(threadId);
     const record = this.sessions.get(threadId);
     if (!record) return;
     this.sessions.delete(threadId);
     // Settle outstanding canUseTool promises before teardown so the SDK
     // callback never hangs on a stopped session (mirrors acp-adapter, archive#148).
-    for (const [requestId, pending] of record.pendingRequests) {
-      pending.resolve(
-        mapClaudeDecisionToPermissionResult(
-          'cancel',
-          pending.toolInput,
-          pending.suggestions,
-        ),
-      );
-      this.publish({
-        eventId: crypto.randomUUID(),
-        provider: this.provider,
-        threadId,
-        createdAt: new Date().toISOString(),
-        requestId,
-        method: 'request.resolved',
-        status: 'cancelled',
-      });
-    }
-    record.pendingRequests.clear();
+    this.cancelPendingRequests(record, threadId);
     record.promptQueue.close();
     record.query.close();
     // station#1558: the session is ending, so any `tool_use` still open can
@@ -2104,12 +2188,37 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     const toolServers = input.agent?.toolServers;
     if (toolServers === undefined) return {};
 
-    const { servers, skipped } = resolveClaudeMcpServers(toolServers, {
-      ...this.options.getStationControlEnv?.(),
-      ...(input.tenantExecutionContext
-        ? { STATION_INTERNAL_TENANT: input.tenantExecutionContext.tenantId }
-        : {}),
-    });
+    const tenantExecutionContext = input.tenantExecutionContext;
+    const { servers, skipped } = resolveClaudeMcpServers(
+      toolServers,
+      {
+        ...this.options.getStationControlEnv?.(),
+        ...(tenantExecutionContext
+          ? { STATION_INTERNAL_TENANT: tenantExecutionContext.tenantId }
+          : {}),
+      },
+      {
+        ...(this.options.createInProcessStationControl
+          ? {
+              inProcess: () =>
+                this.options.createInProcessStationControl!(
+                  input.threadId,
+                  tenantExecutionContext,
+                ),
+            }
+          : {}),
+        ...(this.options.mintStationControlCallerToken
+          ? {
+              callerToken: () =>
+                this.options.mintStationControlCallerToken!(
+                  input.threadId,
+                  tenantExecutionContext,
+                ),
+            }
+          : {}),
+        ...(tenantExecutionContext ? { tenantExecutionContext } : {}),
+      },
+    );
     const undelivered: CapabilityUndelivered[] = skipped.map(
       (skip: ClaudeToolServerSkip) => ({
         capability: 'toolServers',
@@ -2307,6 +2416,11 @@ export class ClaudeAdapter implements ProviderAdapterShape {
           description: options.description,
           payload: {
             toolName,
+            // #2316: the SDK's id for this exact tool_use block — the same id
+            // `tool.started` carries as `toolCallId` — so the transcript binds
+            // the approval to the call it gates rather than to the newest
+            // call that happens to share the tool's name.
+            ...(options.toolUseID ? { toolCallId: options.toolUseID } : {}),
             toolInput,
             blockedPath: options.blockedPath,
             displayName: options.displayName,
@@ -2325,7 +2439,17 @@ export class ClaudeAdapter implements ProviderAdapterShape {
             suggestions: options.suggestions,
             toolInput,
             toolName,
+            ...(options.agentID ? { agentId: options.agentID } : {}),
           });
+          // #2316: the SDK aborts this callback when the call it gates is
+          // abandoned; the request is then settled, never left answerable.
+          options.signal?.addEventListener(
+            'abort',
+            () => this.cancelPendingRequest(record, input.threadId, requestId),
+            { once: true },
+          );
+          if (options.signal?.aborted)
+            this.cancelPendingRequest(record, input.threadId, requestId);
         });
       },
       ...(preToolPolicy && input.agent

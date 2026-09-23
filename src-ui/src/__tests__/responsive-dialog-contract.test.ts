@@ -37,7 +37,7 @@ describe('responsive dialog source contract', () => {
     },
   );
 
-  test('the plugin stack routes both inline surfaces through the contract', () => {
+  test('the plugin stack routes its inline surfaces through the contract', () => {
     const source = readFileSync(
       join(
         process.cwd(),
@@ -45,7 +45,12 @@ describe('responsive dialog source contract', () => {
       ),
       'utf8',
     );
-    expect(source.match(/<ResponsiveDialogSurface/g)).toHaveLength(2);
+    // The installing card, and the person-confirmed remove and update
+    // (#2323 S5: an update, like a remove, needs a person).
+    expect(source.match(/<ResponsiveDialogSurface/g)).toHaveLength(3);
+    expect(source).toContain('ariaLabel="Installing plugin"');
+    expect(source).toContain('ariaLabelledBy="remove-plugin-title"');
+    expect(source).toContain('ariaLabelledBy="update-plugin-title"');
     expect(source).toContain('layer="system"');
     expect(source).toContain('dismissible={false}');
   });

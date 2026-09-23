@@ -18,6 +18,7 @@ import {
   PhoneGlyph,
   PinGlyph,
   PlayGlyph,
+  PlugGlyph,
   ShieldGlyph,
   TargetGlyph,
   TerminalGlyph,
@@ -57,6 +58,7 @@ const BUILTIN_PANE_GLYPHS = {
   'workspace-trust': ShieldGlyph,
   'workspace-browser-preview': GlobeGlyph,
   'workspace-file-preview': DocumentGlyph,
+  'workspace-plugin-draft': PlugGlyph,
   // A branch, not the Diff pane's glyph: a pull-request pane and the Diff
   // pane are two tiles a reader chooses between (#2049).
   'workspace-pull-request': BranchGlyph,

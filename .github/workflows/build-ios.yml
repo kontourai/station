@@ -98,9 +98,29 @@ jobs:
         with: { install: false }
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with: { node-version-file: .nvmrc }
-      - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+        with: { node-version-file: .nvmrc, package-manager-cache: false }
+      - id: rust
+        uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
         with: { targets: aarch64-apple-ios-sim }
+      # Restore-only. The cold `tauri ios build` recompiled every dependency
+      # crate for aarch64-apple-ios-sim on each run (~8-12 min of the job).
+      # Only ios-rust-cache-warm.yml, on trusted main events, writes this key;
+      # this job can never save (no actions/cache or actions/cache/save, and
+      # scripts/actionlint-gate.mjs refuses one), and GitHub issues
+      # pull_request_target a read-only cache token regardless. A miss or a
+      # stale restore-keys match only costs compile time: cargo's fingerprints
+      # still decide what is rebuilt. Keep the key in lockstep with the warmer.
+      - name: Restore iOS Rust build cache (read-only)
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            src-desktop/target
+          key: ios-rust-${{ runner.os }}-${{ runner.arch }}-${{ steps.rust.outputs.cachekey }}-aarch64-apple-ios-sim-${{ hashFiles('src-desktop/Cargo.lock') }}
+          restore-keys: |
+            ios-rust-${{ runner.os }}-${{ runner.arch }}-${{ steps.rust.outputs.cachekey }}-aarch64-apple-ios-sim-
       - name: Select the reviewed Xcode and iOS simulator image
         run: |
           sudo xcode-select -s /Applications/Xcode_26.6.app/Contents/Developer

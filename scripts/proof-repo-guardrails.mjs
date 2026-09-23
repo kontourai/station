@@ -4343,7 +4343,7 @@ const orchestrationDirChecks = [
   [
     '../src-ui/src/hooks/orchestration/ensureOrchestrationEventStream.ts',
     [
-      'const activeSources = new Map<string, FetchSseConnection>();',
+      'const activeSources = new Map<string, OwnedStream>();',
       'export function ensureOrchestrationEventStream',
     ],
   ],

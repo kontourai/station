@@ -378,7 +378,7 @@ export function useSystemStatusQuery(
 ) {
   return useQuery({
     queryKey: ['system-status'],
-    queryFn: () => requestSystemStatus(),
+    queryFn: ({ signal }) => requestSystemStatus(undefined, signal),
     refetchInterval: (query) =>
       resolveSystemStatusRefetchInterval(query, pollInterval),
     staleTime: config?.staleTime ?? 10_000,
@@ -396,7 +396,7 @@ export function useSystemStatusQuery(
 }
 
 export function useAuthStatusQuery(config?: QueryConfig<AuthStatusData>) {
-  return useApiQuery(['auth-status'], () => fetchAuthStatus(), {
+  return useApiQuery(['auth-status'], (signal) => fetchAuthStatus(signal), {
     staleTime: config?.staleTime ?? 30_000,
     gcTime: config?.gcTime,
     enabled: config?.enabled ?? true,
@@ -558,7 +558,7 @@ export function useMonitoringStatsQuery(
 ) {
   return useQuery({
     queryKey: ['monitoring-stats'],
-    queryFn: () => fetchMonitoringStats(),
+    queryFn: ({ signal }) => fetchMonitoringStats(signal),
     refetchInterval: (query) => resolveMonitoringStatsRefetchInterval(query),
     // The interval above already re-polls transient failures on its own
     // cadence; per-attempt retry would pile extra requests on top of that
@@ -576,7 +576,7 @@ export function useMonitoringMetricsQuery(
 ) {
   return useQuery({
     queryKey: ['monitoring-metrics', range],
-    queryFn: () => fetchMonitoringMetrics(range),
+    queryFn: ({ signal }) => fetchMonitoringMetrics(range, signal),
     refetchInterval: 30_000,
     staleTime: config?.staleTime,
     gcTime: config?.gcTime,
@@ -619,7 +619,7 @@ export function useFleetRoutingReceiptsQuery(
 ) {
   return useQuery({
     queryKey: ['fleet-routing-receipts', limit ?? null],
-    queryFn: () => fetchFleetRoutingReceiptsForStation(limit),
+    queryFn: ({ signal }) => fetchFleetRoutingReceiptsForStation(limit, signal),
     refetchInterval: (query) => resolveFleetReceiptsRefetchInterval(query),
     retry: false,
     staleTime: config?.staleTime,
@@ -635,7 +635,7 @@ export function useFleetServeReceiptsQuery(
 ) {
   return useQuery({
     queryKey: ['fleet-serve-receipts', limit ?? null],
-    queryFn: () => fetchFleetServeReceiptsForStation(limit),
+    queryFn: ({ signal }) => fetchFleetServeReceiptsForStation(limit, signal),
     refetchInterval: (query) => resolveFleetReceiptsRefetchInterval(query),
     retry: false,
     staleTime: config?.staleTime,
@@ -645,7 +645,7 @@ export function useFleetServeReceiptsQuery(
 }
 
 export function useBrandingQuery(config?: QueryConfig<BrandingData>) {
-  return useApiQuery(['branding'], () => fetchBranding(), {
+  return useApiQuery(['branding'], (signal) => fetchBranding(signal), {
     staleTime: config?.staleTime ?? 5 * 60 * 1000,
     gcTime: config?.gcTime,
     enabled: config?.enabled ?? true,
@@ -715,7 +715,7 @@ export function useServerCapabilitiesQuery(
 ) {
   return useApiQuery(
     ['system-capabilities'],
-    () => fetchServerCapabilities(),
+    (signal) => fetchServerCapabilities(signal),
     config,
   );
 }

@@ -19,7 +19,7 @@
  * per-connection coordinator, not a second poller.
  */
 import { useConnectionStatus } from '@kontourai/station-connect';
-import { useQueryClient } from '@tanstack/react-query';
+import { useIsRestoring, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef } from 'react';
 import { invalidatePersistedQueries } from '../lib/queryPersistence';
 import { checkServerHealth, probeServerConnection } from '../lib/serverHealth';
@@ -31,9 +31,23 @@ export function useQueryCacheReconnectSync(): void {
     pollInterval: 10_000,
   });
   const queryClient = useQueryClient();
-  const previousStatusRef = useRef(status);
+  const isRestoring = useIsRestoring();
+  // #2319: `null` until the first observation, NOT the status at mount. App
+  // mounts beneath the authority gate, which only verifies after the server
+  // has answered, so the shared connection coordinator is usually already
+  // `connected` here. Seeding the ref with that status made the cold-boot
+  // connect a non-transition: the restored cache — arbitrarily old, e.g. a
+  // pane catalog from before a CLI `station plugin install` — was never
+  // invalidated. `useOutboundQueueFlush` handles the same shape with its own
+  // on-mount pass.
+  const previousStatusRef = useRef<typeof status | null>(null);
 
   useEffect(() => {
+    // Invalidating during the persisted-cache restore reaches an empty cache,
+    // and the restore then lands the old snapshot untouched. Defer until the
+    // restore settles; `isRestoring` is a dependency, so this re-runs then.
+    // The ref is not advanced, so a connect seen mid-restore still counts.
+    if (isRestoring) return;
     const previousStatus = previousStatusRef.current;
     previousStatusRef.current = status;
     if (previousStatus !== 'connected' && status === 'connected') {
@@ -66,5 +80,5 @@ export function useQueryCacheReconnectSync(): void {
         predicate: (query) => query.state.status === 'error',
       });
     }
-  }, [status, queryClient]);
+  }, [status, isRestoring, queryClient]);
 }
