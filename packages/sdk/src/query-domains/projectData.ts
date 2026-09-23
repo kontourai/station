@@ -1,4 +1,9 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  type QueryClient,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
 import {
   _getApiBase,
   bulkDeleteKnowledgeDocs,
@@ -146,6 +151,29 @@ export function useKnowledgeSearchQuery(
   });
 }
 
+/**
+ * Every knowledge-document write refreshes the same views: the document list,
+ * the namespace tree and filtered listings. When it names documents, it also
+ * refreshes their cached bodies. A write that refreshed only the list left a
+ * created note out of the tree and a deleted one in it (#2343).
+ */
+function invalidateKnowledgeDocumentViews(
+  queryClient: QueryClient,
+  projectSlug: string,
+  docIds: readonly string[] = [],
+): void {
+  for (const view of ['docs', 'tree', 'filtered']) {
+    queryClient.invalidateQueries({
+      queryKey: ['knowledge', view, projectSlug],
+    });
+  }
+  for (const docId of docIds) {
+    queryClient.invalidateQueries({
+      queryKey: ['knowledge', 'doc-content', projectSlug, docId],
+    });
+  }
+}
+
 export function useKnowledgeSaveMutation(
   projectSlug: string,
   namespace?: string,
@@ -161,11 +189,7 @@ export function useKnowledgeSaveMutation(
       content: string;
       metadata?: Record<string, any>;
     }) => uploadKnowledge(projectSlug, filename, content, namespace, metadata),
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ['knowledge', 'docs', projectSlug],
-      });
-    },
+    onSuccess: () => invalidateKnowledgeDocumentViews(queryClient, projectSlug),
   });
 }
 
@@ -177,11 +201,8 @@ export function useKnowledgeDeleteMutation(
   return useMutation({
     mutationFn: async (docId: string) =>
       deleteKnowledgeDoc(projectSlug, docId, namespace),
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ['knowledge', 'docs', projectSlug],
-      });
-    },
+    onSuccess: (_data, docId) =>
+      invalidateKnowledgeDocumentViews(queryClient, projectSlug, [docId]),
   });
 }
 
@@ -193,11 +214,8 @@ export function useKnowledgeBulkDeleteMutation(
   return useMutation({
     mutationFn: async (ids: string[]) =>
       bulkDeleteKnowledgeDocs(projectSlug, ids, namespace),
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ['knowledge', 'docs', projectSlug],
-      });
-    },
+    onSuccess: (_data, ids) =>
+      invalidateKnowledgeDocumentViews(queryClient, projectSlug, ids),
   });
 }
 
@@ -288,17 +306,8 @@ export function useKnowledgeUpdateMutation(
       metadata?: Record<string, any>;
     }) =>
       updateKnowledgeDoc(projectSlug, docId, { content, metadata }, namespace),
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ['knowledge', 'docs', projectSlug],
-      });
-      queryClient.invalidateQueries({
-        queryKey: ['knowledge', 'tree', projectSlug],
-      });
-      queryClient.invalidateQueries({
-        queryKey: ['knowledge', 'filtered', projectSlug],
-      });
-    },
+    onSuccess: (_data, { docId }) =>
+      invalidateKnowledgeDocumentViews(queryClient, projectSlug, [docId]),
   });
 }
 
