@@ -179,9 +179,34 @@ export function handleTurnStartedEvent(
       });
     }
   }
+  // station#2305: a send that failed client-side (e.g. `transport_timeout`
+  // expiring before response headers arrive) may still have landed
+  // server-side. When its `turn.started` arrives late, the failure claim is
+  // disproved — reconcile the failure artifacts it left behind, and only in
+  // the shape that proves this turn IS the failed send: `status === 'error'`
+  // means no newer local send intervened, the Retry-action ephemeral is only
+  // ever written by the send-failure path, and the held draft still equaling
+  // the started turn's prompt ties them together. An edited composer, an
+  // unechoed prompt, or another client's turn all fail closed to today's
+  // behavior.
+  const ephemerals = currentChat?.ephemeralMessages ?? [];
+  const reconciledEphemerals = ephemerals.filter(
+    (message) => message.action?.label !== 'Retry',
+  );
+  const lateAfterFailedSend =
+    currentChat?.status === 'error' &&
+    reconciledEphemerals.length < ephemerals.length &&
+    (currentChat?.input ?? '') === event.prompt;
   store.updateChat(event.threadId, {
     ...(userMessages !== currentChat?.messages
       ? { messages: userMessages }
+      : {}),
+    ...(lateAfterFailedSend
+      ? {
+          error: undefined,
+          input: '',
+          ephemeralMessages: reconciledEphemerals,
+        }
       : {}),
     // The dispatch this turn came from has started; the pre-start cancel
     // window it named is over

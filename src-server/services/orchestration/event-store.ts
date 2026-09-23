@@ -1,4 +1,5 @@
 import {
+  createHash,
   createHmac,
   randomBytes,
   randomUUID,
@@ -180,7 +181,10 @@ import {
   releaseNativeInvocationOwner,
 } from './native-invocation-runs.js';
 import {
+  type ConversationDraftFacts,
   clientOriginIdentity,
+  DRAFT_ENDING_METHOD_PREFIXES,
+  DRAFT_ENDING_TURN_METHODS,
   projectionFactKeysForEvent,
 } from './orchestration-session-state.js';
 import {
@@ -1025,7 +1029,23 @@ const SESSION_EVENT_WINDOW_MAX_EVENTS = 150;
  */
 const ATTACHMENT_CANDIDATE_THREAD_LIMIT = 4;
 const SNAPSHOT_TOOL_OUTPUT_MAX_CHARS = 84;
-const SNAPSHOT_EVENT_MAX_SERIALIZED_BYTES = 4_096;
+/**
+ * Per-event ceiling for a window read. Sized to clear the 16 KiB transcript
+ * chunks the session sources persist (`MAX_TEXT_CHUNK_BYTES` in
+ * `claude-transcript-session-source.ts` / `codex-rollout-session-source.ts`):
+ * at 4 KiB every one of those deltas stripped to identity fields and any
+ * turn whose text lived only in them vanished from the transcript while its
+ * short user prompt survived. The window-wide
+ * `SESSION_EVENT_WINDOW_MAX_SERIALIZED_BYTES` budget still bounds each page;
+ * this ceiling only decides when a single event stops being an event.
+ */
+const SNAPSHOT_EVENT_MAX_SERIALIZED_BYTES = 24_576;
+/**
+ * A `turn.completed` carries the turn's full reply text, so it gets the same
+ * headroom on every window path (the newest-first path always allowed it;
+ * the turn and conversation paths did not, and dropped long replies there).
+ */
+const TURN_COMPLETED_SNAPSHOT_MAX_BYTES = 48_000;
 const SESSION_EVENT_WINDOW_MAX_SERIALIZED_BYTES = 56_000;
 /** Hard complete JSON response budget for one authenticated event window. */
 export const SESSION_EVENT_WINDOW_MAX_RESPONSE_BYTES = 64_000;
@@ -1070,6 +1090,77 @@ interface EventWindowCursor {
   newestTurnId?: string;
 }
 
+/**
+ * A lineage pin names the immutable lineage prefix a cursor was minted
+ * against WITHOUT embedding every session id: the cursor grows with the
+ * lineage otherwise (one ~36-char id per continued session), and past ~7
+ * sessions the route's 512-char cursor cap rejects the server's own cursor
+ * with `Invalid event window` on the next page. `size` is the pinned prefix
+ * length; `hash` authenticates it against the live lineage at decode time,
+ * so a cursor minted for one conversation can never page another's prefix.
+ */
+interface LineagePin {
+  lineageSize: number;
+  lineageHash: string;
+}
+
+/** 128-bit lineage authenticator: collision-infeasible, cursor-compact. */
+const LINEAGE_HASH_HEX_CHARS = 32;
+
+function hashLineageThreadIds(threadIds: readonly string[]): string {
+  return createHash('sha256')
+    .update(threadIds.join('\0'), 'utf8')
+    .digest('hex')
+    .slice(0, LINEAGE_HASH_HEX_CHARS);
+}
+
+function pinLineageThreadIds(threadIds: readonly string[]): LineagePin {
+  return {
+    lineageSize: threadIds.length,
+    lineageHash: hashLineageThreadIds(threadIds),
+  };
+}
+
+/**
+ * Resolve the immutable lineage prefix a cursor pins: cursors minted before
+ * the pin carry the ids themselves (accepted unchanged); newer ones carry
+ * the pin and resolve against the live lineage. Either way the result is
+ * the pinned prefix, or the cursor is invalid. A continuation that appended
+ * a child since the cursor was minted keeps paging the pinned prefix; the
+ * next head reload discovers the child separately.
+ */
+function resolvePinnedLineagePrefix(
+  parsed: Record<string, unknown>,
+  threadIds: readonly string[],
+): string[] | undefined {
+  if (parsed.threadIds !== undefined) {
+    if (
+      !Array.isArray(parsed.threadIds) ||
+      parsed.threadIds.length === 0 ||
+      !parsed.threadIds.every((id: unknown) => typeof id === 'string') ||
+      parsed.threadIds.length > threadIds.length ||
+      (parsed.threadIds as string[]).some(
+        (id: string, index: number) => id !== threadIds[index],
+      )
+    ) {
+      return undefined;
+    }
+    return [...(parsed.threadIds as string[])];
+  }
+  if (
+    !Number.isSafeInteger(parsed.lineageSize) ||
+    typeof parsed.lineageHash !== 'string' ||
+    (parsed.lineageSize as number) < 1 ||
+    (parsed.lineageSize as number) > threadIds.length ||
+    (parsed.lineageHash as string).length !== LINEAGE_HASH_HEX_CHARS
+  ) {
+    return undefined;
+  }
+  const prefix = threadIds.slice(0, parsed.lineageSize as number);
+  if (hashLineageThreadIds(prefix) !== parsed.lineageHash) return undefined;
+  return [...prefix];
+}
+
 /** Opaque global-sequence cursor for an ordered conversation lineage window. */
 interface ConversationEventWindowCursor {
   threadIds: string[];
@@ -1084,7 +1175,11 @@ interface ConversationEventWindowCursor {
 function encodeConversationEventWindowCursor(
   cursor: ConversationEventWindowCursor,
 ): string {
-  return Buffer.from(JSON.stringify(cursor), 'utf8').toString('base64url');
+  const { threadIds, ...rest } = cursor;
+  return Buffer.from(
+    JSON.stringify({ ...rest, ...pinLineageThreadIds(threadIds) }),
+    'utf8',
+  ).toString('base64url');
 }
 
 function decodeConversationEventWindowCursor(
@@ -1097,24 +1192,37 @@ function decodeConversationEventWindowCursor(
     if (
       !parsed ||
       typeof parsed !== 'object' ||
-      !Array.isArray(parsed.threadIds) ||
-      parsed.threadIds.length === 0 ||
-      !parsed.threadIds.every((id: unknown) => typeof id === 'string') ||
       !Number.isSafeInteger(parsed.beforeGlobalSequence) ||
       !Number.isSafeInteger(parsed.watermark) ||
       parsed.beforeGlobalSequence < 1 ||
       parsed.watermark < parsed.beforeGlobalSequence ||
-      parsed.threadIds.length > threadIds.length ||
-      parsed.threadIds.some(
-        (id: string, index: number) => id !== threadIds[index],
-      ) ||
       (parsed.olderTurnsRemain !== undefined &&
         typeof parsed.olderTurnsRemain !== 'boolean') ||
       !validConversationRangeCursor(parsed)
     ) {
       throw new Error('invalid');
     }
-    return parsed as ConversationEventWindowCursor;
+    const pinned = resolvePinnedLineagePrefix(
+      parsed as Record<string, unknown>,
+      threadIds,
+    );
+    if (!pinned) throw new Error('invalid');
+    // Rebuild explicitly: the pin fields and any other unknown members of
+    // the opaque token must not ride along into the reader.
+    const cursor: ConversationEventWindowCursor = {
+      threadIds: pinned,
+      beforeGlobalSequence: parsed.beforeGlobalSequence,
+      watermark: parsed.watermark,
+    };
+    if (parsed.rangeStartGlobalSequence !== undefined)
+      cursor.rangeStartGlobalSequence = parsed.rangeStartGlobalSequence;
+    if (parsed.rangeEndExclusive !== undefined)
+      cursor.rangeEndExclusive = parsed.rangeEndExclusive;
+    if (parsed.afterGlobalSequence !== undefined)
+      cursor.afterGlobalSequence = parsed.afterGlobalSequence;
+    if (parsed.olderTurnsRemain !== undefined)
+      cursor.olderTurnsRemain = parsed.olderTurnsRemain;
+    return cursor;
   } catch {
     throw new Error('Conversation event window cursor is invalid');
   }
@@ -1199,9 +1307,10 @@ function sliceSnapshotText(value: unknown): { text: string; cut: boolean } {
 /**
  * Bounds one event for a window read, and — archive#3386 — SAYS SO when it
  * bounded it. Both budgets here used to be silent: a `tool.completed` came
- * back cut to 84 characters with no mark, and any payload over the 4 KB
- * ceiling came back as identity fields alone, which is how a pasted image
- * over ~3 KB lost both its prompt and its chip on restore (archive#3374).
+ * back cut to 84 characters with no mark, and any payload over the
+ * per-event ceiling came back as identity fields alone, which is how a
+ * pasted image over ~3 KB lost both its prompt and its chip on restore
+ * (archive#3374).
  * From the client, a stripped payload and a payload that never had those
  * fields are the same bytes.
  */
@@ -1451,6 +1560,12 @@ export class VoiceTurnStartupUnavailableError extends Error {
  * constructor whose migration dies on a corrupt store translates that verdict
  * into this error, with the raw SQLite failure as `cause`.
  */
+/**
+ * #2310 review F3: the phase that refused a `rejected` command. Server-
+ * internal (persisted, never returned on a receipt).
+ */
+export type CommandRefusalPhase = 'authorization' | 'execution';
+
 export class EventStoreIntegrityError extends Error {
   readonly code = 'STATION_EVENT_STORE_CORRUPT';
 
@@ -6246,26 +6361,29 @@ export class EventStore {
   ): PersistedRuntimeEventWindow {
     type Cursor = {
       kind: 'newest-event-window-v1';
-      threadIds: string[];
       watermark: number;
       before: number;
       rangeStart?: number;
       olderTurnsRemain?: boolean;
     };
     let cursor: Cursor | undefined;
+    let ids: string[];
     if (options.cursor) {
       const value = JSON.parse(
         Buffer.from(options.cursor, 'base64url').toString('utf8'),
       );
+      // Cursors minted before the lineage pin carry the ids themselves;
+      // newer ones resolve the pinned prefix against the live lineage.
+      const pinned =
+        value && typeof value === 'object'
+          ? resolvePinnedLineagePrefix(
+              value as Record<string, unknown>,
+              threadIds,
+            )
+          : undefined;
       if (
-        !value ||
-        value.kind !== 'newest-event-window-v1' ||
-        !Array.isArray(value.threadIds) ||
-        !value.threadIds.length ||
-        !value.threadIds.every(
-          (id: unknown, index: number) =>
-            typeof id === 'string' && id === threadIds[index],
-        ) ||
+        value?.kind !== 'newest-event-window-v1' ||
+        !pinned ||
         !Number.isSafeInteger(value.watermark) ||
         value.watermark < 0 ||
         !Number.isSafeInteger(value.before) ||
@@ -6279,9 +6397,21 @@ export class EventStore {
           typeof value.olderTurnsRemain !== 'boolean')
       )
         throw new Error('Invalid newest event window cursor');
-      cursor = value;
+      cursor = {
+        kind: 'newest-event-window-v1',
+        watermark: value.watermark,
+        before: value.before,
+        ...(value.rangeStart !== undefined
+          ? { rangeStart: value.rangeStart }
+          : {}),
+        ...(value.olderTurnsRemain !== undefined
+          ? { olderTurnsRemain: value.olderTurnsRemain }
+          : {}),
+      };
+      ids = pinned;
+    } else {
+      ids = [...threadIds];
     }
-    const ids = cursor?.threadIds ?? [...threadIds];
     if (!ids.length || new Set(ids).size !== ids.length)
       throw new Error('Invalid event window lineage');
     const placeholders = ids.map(() => '?').join(', ');
@@ -6340,7 +6470,7 @@ export class EventStore {
         const event = snapshotEvent(
           mapPersistedEventRow(row),
           row.method === 'turn.completed'
-            ? 48_000
+            ? TURN_COMPLETED_SNAPSHOT_MAX_BYTES
             : SNAPSHOT_EVENT_MAX_SERIALIZED_BYTES,
         );
         const size = Buffer.byteLength(
@@ -6381,11 +6511,11 @@ export class EventStore {
         if (anchor) events.push(snapshotEvent(mapPersistedEventRow(anchor)));
       }
       const hasMore = moreInRange || olderTurnsRemain;
-      const next: Cursor | undefined =
+      const nextCursorValue =
         hasMore && oldest
           ? {
-              kind: 'newest-event-window-v1',
-              threadIds: ids,
+              kind: 'newest-event-window-v1' as const,
+              ...pinLineageThreadIds(ids),
               watermark,
               before: moreInRange ? oldest.globalSequence : rangeStart,
               ...(moreInRange ? { rangeStart, olderTurnsRemain } : {}),
@@ -6394,9 +6524,9 @@ export class EventStore {
       const result = {
         events: events.reverse(),
         hasMore,
-        ...(next
+        ...(nextCursorValue
           ? {
-              nextCursor: Buffer.from(JSON.stringify(next)).toString(
+              nextCursor: Buffer.from(JSON.stringify(nextCursorValue)).toString(
                 'base64url',
               ),
             }
@@ -6518,11 +6648,18 @@ export class EventStore {
         )
         // Deliberately NOT `mapEventRow`: this window is byte-budgeted, and
         // rehydrating an attachment here would push its `turn.started` past
-        // `snapshotEvent`'s 4 KB ceiling — which strips the payload down to
-        // its identity fields, taking the prompt and the attachment with it.
-        // Handing on the reference is what lets the transcript keep rendering
-        // the chip (archive#3374).
-        .map((row) => snapshotEvent(mapPersistedEventRow(row)));
+        // `snapshotEvent`'s per-event ceiling — which strips the payload down
+        // to its identity fields, taking the prompt and the attachment with
+        // it. Handing on the reference is what lets the transcript keep
+        // rendering the chip (archive#3374).
+        .map((row) =>
+          snapshotEvent(
+            mapPersistedEventRow(row),
+            row.method === 'turn.completed'
+              ? TURN_COMPLETED_SNAPSHOT_MAX_BYTES
+              : SNAPSHOT_EVENT_MAX_SERIALIZED_BYTES,
+          ),
+        );
       const completed = new Set(
         raw
           .filter((item) => item.method === 'tool.completed')
@@ -6727,7 +6864,12 @@ export class EventStore {
         // Reuse the same attachment-safe snapshot projection as the
         // session-window reader. A conversation aggregate must not turn an
         // attachment reference back into an oversized inline payload.
-        const event = snapshotEvent(mapPersistedEventRow(row));
+        const event = snapshotEvent(
+          mapPersistedEventRow(row),
+          row.method === 'turn.completed'
+            ? TURN_COMPLETED_SNAPSHOT_MAX_BYTES
+            : SNAPSHOT_EVENT_MAX_SERIALIZED_BYTES,
+        );
         const eventBytes = Buffer.byteLength(
           JSON.stringify({
             sequence: event.globalSequence,
@@ -7219,6 +7361,162 @@ export class EventStore {
       if (event) result.set(threadId, event);
     }
     return result;
+  }
+
+  /**
+   * #2310: what the store knows about each thread's whole CONVERSATION that
+   * the thread's own events cannot say — the lineage half of the Draft
+   * derivation (`deriveSessionDraft`). Over every Session of the conversation
+   * (the root and every continuation/handoff child):
+   *
+   * - `activityObserved`: any turn fact, or any `content.*`/`tool.*` event;
+   * - `sendAccepted` / `sendRejected` / `sendFailed`: the `sendTurn` command
+   *   receipts, which are the only record of a send that did not take (a
+   *   refused send publishes no event). Only EXECUTION-phase rejections
+   *   count (`refusal_phase = 'execution'`); an authorization or ownership
+   *   refusal says nothing about the session (#2310 review F3);
+   * - `hasCopiedHistory`: the conversation is the target of a
+   *   `conversation.forked` fact, so it carries copied messages.
+   *
+   * A child minted for the next turn, or a root whose turns all ran in
+   * children, therefore still reads as having activity.
+   *
+   * Every thread asked about gets an entry. A thread with no lineage row is
+   * its own conversation (the store registers every persisted Session as the
+   * root of one — `upsertSession`/`markSessionClosed`). Chunked like
+   * {@link conversationRootFirstPromptedTurnForThreads}, and for the same
+   * reason: the caller is the batched session-list read.
+   *
+   * Cost, per `EXPLAIN QUERY PLAN` on a copy of a real home (#2310 review
+   * F6), per chunk:
+   * - activity: one SEEK on `thread_id` per lineage member through the
+   *   covering index `idx_events_history_projection`; the method predicate
+   *   (turn facts plus the `content.`/`tool.` ranges) is FILTERED over that
+   *   member's index entries, not sought. `EXISTS` stops at the first hit, so
+   *   a member with activity costs little; a quiet member costs its (small)
+   *   event count.
+   * - receipts: `orchestration_command_receipts` has no thread index, so the
+   *   `sendTurn` rows are SCANNED and grouped once (materialized), then probed
+   *   per member through an automatic index. The scan grows by one row per
+   *   command.
+   * - forks: a SEEK on `idx_events_method` for `conversation.forked`.
+   * Measured: 6.2 ms warm, 40.7 ms cold, over 276 threads.
+   */
+  conversationDraftFactsForThreads(
+    threadIds: readonly string[],
+  ): Map<string, ConversationDraftFacts> {
+    const unique = [...new Set(threadIds)];
+    const result = new Map<string, ConversationDraftFacts>(
+      unique.map((threadId) => [
+        threadId,
+        {
+          activityObserved: false,
+          sendAccepted: false,
+          sendRejected: false,
+          sendFailed: false,
+          hasCopiedHistory: false,
+        },
+      ]),
+    );
+    const turnMethods = DRAFT_ENDING_TURN_METHODS.map(() => '?').join(', ');
+    // A half-open range per prefix ('content.' <= m < 'content/'), not LIKE:
+    // it is exact regardless of case_sensitive_like. The plan filters it over
+    // the member's index entries rather than seeking (see the docblock).
+    const prefixRanges = DRAFT_ENDING_METHOD_PREFIXES.map(
+      () => '(event.method >= ? AND event.method < ?)',
+    ).join(' OR ');
+    const prefixBounds = DRAFT_ENDING_METHOD_PREFIXES.flatMap((prefix) => [
+      prefix,
+      `${prefix.slice(0, -1)}/`,
+    ]);
+    for (const chunk of this.chunkArray(unique, EVENT_STORE_BATCH_CHUNK_SIZE)) {
+      const rows = this.db
+        .prepare(
+          `WITH asked(thread_id, conversation_id) AS (
+             SELECT candidate.value,
+                    COALESCE(lineage.conversation_id, candidate.value)
+             FROM json_each(?) candidate
+             LEFT JOIN orchestration_conversation_sessions lineage
+               ON lineage.session_id = candidate.value
+           ),
+           member(thread_id, session_id) AS (
+             SELECT thread_id, thread_id FROM asked
+             UNION
+             SELECT thread_id, conversation_id FROM asked
+             UNION
+             SELECT asked.thread_id, sibling.session_id
+             FROM asked
+             INNER JOIN orchestration_conversation_sessions sibling
+               ON sibling.conversation_id = asked.conversation_id
+           ),
+           sends(thread_id, accepted, rejected, failed) AS (
+             SELECT thread_id,
+                    MAX(status = 'accepted'),
+                    MAX(status = 'rejected' AND refusal_phase = 'execution'),
+                    MAX(status = 'failed')
+             FROM orchestration_command_receipts
+             WHERE command_type = 'sendTurn'
+             GROUP BY thread_id
+           )
+           SELECT asked.thread_id AS thread_id,
+             EXISTS (
+               SELECT 1 FROM member
+               INNER JOIN orchestration_events event
+                 ON event.thread_id = member.session_id
+               WHERE member.thread_id = asked.thread_id
+                 AND (event.method IN (${turnMethods}) OR ${prefixRanges})
+             ) AS activity_observed,
+             COALESCE((
+               SELECT MAX(sends.accepted) FROM member
+               INNER JOIN sends ON sends.thread_id = member.session_id
+               WHERE member.thread_id = asked.thread_id
+             ), 0) AS send_accepted,
+             COALESCE((
+               SELECT MAX(sends.rejected) FROM member
+               INNER JOIN sends ON sends.thread_id = member.session_id
+               WHERE member.thread_id = asked.thread_id
+             ), 0) AS send_rejected,
+             COALESCE((
+               SELECT MAX(sends.failed) FROM member
+               INNER JOIN sends ON sends.thread_id = member.session_id
+               WHERE member.thread_id = asked.thread_id
+             ), 0) AS send_failed,
+             EXISTS (
+               SELECT 1 FROM orchestration_events fork
+               WHERE fork.method = 'conversation.forked'
+                 AND json_extract(fork.payload, '$.targetConversationId')
+                   = asked.conversation_id
+             ) AS has_copied_history
+           FROM asked`,
+        )
+        .all(
+          JSON.stringify(chunk),
+          ...DRAFT_ENDING_TURN_METHODS,
+          ...prefixBounds,
+        ) as Array<{
+        thread_id: string;
+        activity_observed: number;
+        send_accepted: number;
+        send_rejected: number;
+        send_failed: number;
+        has_copied_history: number;
+      }>;
+      for (const row of rows) {
+        result.set(row.thread_id, {
+          activityObserved: row.activity_observed === 1,
+          sendAccepted: row.send_accepted === 1,
+          sendRejected: row.send_rejected === 1,
+          sendFailed: row.send_failed === 1,
+          hasCopiedHistory: row.has_copied_history === 1,
+        });
+      }
+    }
+    return result;
+  }
+
+  /** Single-thread {@link conversationDraftFactsForThreads}. */
+  conversationDraftFacts(threadId: string): ConversationDraftFacts {
+    return this.conversationDraftFactsForThreads([threadId]).get(threadId)!;
   }
 
   reserveNextConversationSession(input: {
@@ -9471,12 +9769,22 @@ export class EventStore {
     });
   }
 
-  appendCommandReceipt(receipt: OrchestrationCommandReceipt): void {
+  /**
+   * `refusalPhase` (#2310 review F3) is server-internal and never read back
+   * onto the public receipt: it records whether a `rejected` command was
+   * refused at the authorization gate or after it, so a derivation that
+   * reads receipts as evidence about a session (`conversationDraftFacts`)
+   * can ignore refusals that say nothing about the session itself.
+   */
+  appendCommandReceipt(
+    receipt: OrchestrationCommandReceipt,
+    options: { refusalPhase?: CommandRefusalPhase } = {},
+  ): void {
     this.db
       .prepare(
         `INSERT OR REPLACE INTO orchestration_command_receipts
-          (command_id, thread_id, command_type, status, created_at, client_origin)
-         VALUES (?, ?, ?, ?, ?, ?)`,
+          (command_id, thread_id, command_type, status, created_at, client_origin, refusal_phase)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         receipt.commandId,
@@ -9485,6 +9793,7 @@ export class EventStore {
         receipt.status,
         receipt.createdAt,
         receipt.clientOrigin ? JSON.stringify(receipt.clientOrigin) : null,
+        receipt.status === 'rejected' ? (options.refusalPhase ?? null) : null,
       );
   }
 

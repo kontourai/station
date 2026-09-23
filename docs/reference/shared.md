@@ -78,14 +78,16 @@ interface PluginPreview {
 }
 
 interface PluginComponent {
-  type: 'agent' | 'workspace' | 'provider' | 'tool';
+  type: 'agent' | 'layout' | 'pane' | 'provider' | 'tool';
   id: string;
+  name?: string; // declared display name, e.g. a Pane's `name`
   detail?: string;
   conflict?: ConflictInfo;
+  skippable?: boolean; // false when the package cannot install without it
 }
 
 interface ConflictInfo {
-  type: 'agent' | 'workspace' | 'provider' | 'tool';
+  type: 'agent' | 'layout' | 'pane' | 'provider' | 'tool';
   id: string;
   existingSource?: string;
 }

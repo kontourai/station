@@ -26,6 +26,8 @@ import {
   sanitizeLookupDiagnostic,
   validateAndroidBuildRun,
 } from '../resolve-android-build-run.mjs';
+import { VITEST_CORPUS_GROUP_NAMES } from '../run-vitest-corpus.mjs';
+import { FULL_REGRESSION_PHASES } from '../verification-lanes.mjs';
 
 const root = resolve(import.meta.dirname, '../..');
 
@@ -257,9 +259,7 @@ describe('CI verification workflow contracts', () => {
     const intendedTargetFiles = [
       '.github/workflows/nightly.yml',
       '.github/workflows/container-smoke.yml',
-      '.github/workflows/windows-verification.yml',
       '.github/workflows/secret-scan.yml',
-      '.github/workflows/backlog-priority-policy.yml',
       '.github/workflows/android-test.yml',
       '.github/workflows/dependency-advisory.yml',
     ];
@@ -727,8 +727,6 @@ describe('CI verification workflow contracts', () => {
         'publishes released packages from merged main; nothing to pre-verify',
       '.github/workflows/source-availability.yml':
         'reports on merged main and files issues; observational, not a build',
-      '.github/workflows/windows-verification.yml':
-        'windows-pr-verification.yml runs the reduced portable floor on pull requests',
       '.github/workflows/container-smoke.yml':
         'no pull-request signal today; unfiltered on every main push (#1331 covers its host contention)',
       '.github/workflows/build-android.yml':
@@ -789,9 +787,6 @@ describe('CI verification workflow contracts', () => {
       // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
       'group: hosted-full-regression-${{ inputs.source_sha }}',
     );
-    expect(ci).toContain(
-      `group: ci-browser-smoke-\${{ github.event_name }}-\${{ github.ref }}`,
-    );
     expect(containerSmoke).toContain(
       `group: container-smoke-\${{ github.ref }}`,
     );
@@ -846,21 +841,7 @@ describe('CI verification workflow contracts', () => {
     expect(Number.isInteger(smokeWaitSeconds)).toBe(true);
     expect(Number.isInteger(smokeBudgetMinutes)).toBe(true);
 
-    // (1) The smoke's weight leaves no room for the floor beside it, so its
-    // admission waits for a floor run to finish — the wait must cover the
-    // floor's whole budget, not a typical duration.
-    const floor = job('windows-verification.yml', 'portable-floor');
-    const floorCapacity = capacityStep(floor);
-    const units = Number(smokeCapacity.with?.['capacity-units']);
-    expect(
-      Number(smokeCapacity.with?.['lease-weight']) +
-        Number(floorCapacity.with?.['lease-weight']),
-    ).toBeGreaterThan(units);
-    expect(smokeWaitSeconds).toBeGreaterThanOrEqual(
-      Number(floor['timeout-minutes']) * 60,
-    );
-
-    // (2) Whatever the wait is, the job must keep the smoke's own running
+    // (1) Whatever the wait is, the job must keep the smoke's own running
     // time after it: raising the wait alone moves the red from the reserve
     // step to the job timeout. 25 minutes is the observed smoke duration
     // (af2ae065: 03:45 -> 04:06) with margin.
@@ -868,7 +849,7 @@ describe('CI verification workflow contracts', () => {
       25 * 60,
     );
 
-    // (3) The Docker-state cleanup is conditional on the isolate step having
+    // (2) The Docker-state cleanup is conditional on the isolate step having
     // run. With a bare `always()` it refused the empty DOCKER_CONFIG after a
     // failed reservation and reported that refusal as the job's last error.
     const isolate = smoke.steps?.find(
@@ -893,11 +874,6 @@ describe('CI verification workflow contracts', () => {
     expect(performance.match(/owner-lifetime-seconds: "7800"/g)).toHaveLength(
       3,
     );
-    expect(
-      workflow('windows-verification.yml').match(
-        new RegExp(`physical-host-capacity@${reviewedSha}`, 'g'),
-      ),
-    ).toHaveLength(1);
     expect(
       workflow('windows-vitest-diagnostic.yml').match(
         new RegExp(`physical-host-capacity@${reviewedSha}`, 'g'),
@@ -939,7 +915,7 @@ describe('CI verification workflow contracts', () => {
     expect(emulatorSmoke).toContain('timeout-minutes: 90');
   });
 
-  it('keeps CI Extended as the weekly and manual full-browser surface without rerunning ci:fast', () => {
+  it('keeps CI Extended as the dispatch-only full-browser surface without rerunning ci:fast', () => {
     const ci = workflow('ci.yml');
     const extended = workflow('ci-extended.yml');
     const coverage = extended.slice(
@@ -951,14 +927,17 @@ describe('CI verification workflow contracts', () => {
     );
 
     expect(ci).not.toContain('playwright-full:');
-    expect(ci).toContain('browser-smoke:');
+    // The PR smoke lives in fast-checks; the post-completion duplicate that
+    // could only ever run on dispatch is gone (200 of 200 push runs skipped).
+    expect(ci).not.toContain('  browser-smoke:');
     expect(extended).toContain('coverage:');
     expect(extended).toContain('playwright-full:');
     expect(extended).not.toContain('run: npm run ci:extended');
     expect(extended).not.toContain('run: npm run ci:fast');
     expect(extended).toContain('run: npm run test:coverage');
     expect(extended).toContain('run: npm run verify:e2e:full');
-    expect(extended).toContain("- cron: '30 11 * * 6'");
+    // Dispatch only until a run is green; a scheduled red nobody acts on is noise.
+    expect(extended).not.toContain('schedule:');
     expect(extended).toMatch(/^ {2}workflow_dispatch:$/m);
     expect(coverage).toContain('needs: playwright-full');
     expect(coverage).toContain(
@@ -1129,19 +1108,18 @@ describe('CI verification workflow contracts', () => {
     expect(suite).toContain('STATION_E2E_SUPPRESS_NATIVE_ENGINE_ADOPTION');
   });
 
-  it('runs browser smoke only after the full completion gate releases capacity', () => {
+  it('runs browser smoke once, inside fast-checks, on every event', () => {
+    // A second smoke job gated on full-regression (without always()) was
+    // skipped on every push and merge_group run and only repeated this step
+    // on dispatch. fast-checks runs on dispatch too, so dispatch keeps it.
     const ci = workflow('ci.yml');
-    const browserSmoke = ci.slice(ci.indexOf('  browser-smoke:'));
-
-    expect(browserSmoke).toContain('needs: [classify, full-regression]');
-    expect(browserSmoke).toContain(
-      "if: github.event_name != 'pull_request_target'",
-    );
-    expect(browserSmoke).toContain(
-      'Start browser smoke only after the completion gate',
-    );
-    expect(browserSmoke).toContain(
-      'GitHub skips failed dependencies by default',
+    const jobs = (load(ci) as { jobs: Record<string, unknown> }).jobs;
+    const smokeJobs = Object.entries(jobs)
+      .filter(([, job]) => JSON.stringify(job).includes('test:e2e:pr-smoke'))
+      .map(([id]) => id);
+    expect(smokeJobs).toEqual(['fast-checks']);
+    expect(String((jobs['fast-checks'] as { if?: string }).if)).toContain(
+      "github.event_name == 'workflow_dispatch'",
     );
   });
 
@@ -1153,7 +1131,7 @@ describe('CI verification workflow contracts', () => {
     );
     const fullRegression = ci.slice(
       ci.indexOf('  full-regression:'),
-      ci.indexOf('  browser-smoke:'),
+      ci.indexOf('  manual-completion-diagnostics:'),
     );
 
     expect(fastChecks).toContain('timeout-minutes: 45');
@@ -1196,7 +1174,6 @@ describe('CI verification workflow contracts', () => {
     expect(fullRegression).not.toContain('physical-host-capacity@');
     const desktopWinLeaseWeights = [
       'interactive-workspace-performance.yml',
-      'windows-verification.yml',
       'windows-vitest-diagnostic.yml',
       'container-smoke.yml',
     ].flatMap((name) =>
@@ -1204,7 +1181,7 @@ describe('CI verification workflow contracts', () => {
         ([, weight]) => Number(weight),
       ),
     );
-    expect(desktopWinLeaseWeights).toEqual([6, 6, 6, 5, 9, 9]);
+    expect(desktopWinLeaseWeights).toEqual([6, 6, 6, 9, 9]);
     expect(Math.max(...desktopWinLeaseWeights)).toBeLessThanOrEqual(9);
     expect(workflow('secret-scan.yml')).not.toContain('capacity-lease-weight:');
     expect(fullRegression).not.toContain('run: npm run full:regression');
@@ -1300,11 +1277,7 @@ describe('CI verification workflow contracts', () => {
   });
 
   it('keeps coordinated lane receipts and failure artifacts downloadable', () => {
-    for (const name of [
-      'ci.yml',
-      'ci-extended.yml',
-      'windows-verification.yml',
-    ]) {
+    for (const name of ['ci.yml', 'ci-extended.yml']) {
       const source = workflow(name);
       expect(source, name).toContain('if: always()');
       expect(source, name).toContain('if-no-files-found: ignore');
@@ -1336,7 +1309,10 @@ describe('CI verification workflow contracts', () => {
 
     const ci = workflow('ci.yml');
     const fullRegression = workflow('full-regression.yml');
-    const browserSmoke = ci.slice(ci.indexOf('  browser-smoke:'));
+    const fastChecks = ci.slice(
+      ci.indexOf('  fast-checks:'),
+      ci.indexOf('  fork-smoke:'),
+    );
     const extended = workflow('ci-extended.yml');
     const coverage = extended.slice(
       extended.indexOf('  coverage:'),
@@ -1426,13 +1402,13 @@ describe('CI verification workflow contracts', () => {
       expect(npmCiIndex, name).toBeLessThan(jobRunBody.indexOf(envExport));
     }
 
-    // browser-smoke already used this convention before this change and is
-    // unaffected by it — asserted here so a future edit that regresses it
-    // back toward node_modules is caught by the same test.
-    const browserSmokeRunBody = extractRunBodies(browserSmoke);
-    expect(browserSmokeRunBody).toContain(envExport);
-    expect(browserSmoke).toContain(envExport);
-    expect(browserSmokeRunBody).not.toMatch(inNodeModulesPathZero);
+    // fast-checks (which now owns the only PR browser smoke) uses the same
+    // convention — asserted here so a future edit that regresses it back
+    // toward node_modules is caught by the same test.
+    const fastChecksRunBody = extractRunBodies(fastChecks);
+    expect(fastChecksRunBody).toContain(envExport);
+    expect(fastChecks).toContain(envExport);
+    expect(fastChecksRunBody).not.toMatch(inNodeModulesPathZero);
     // coverage (ci-extended.yml) installs no browsers at all. Its run
     // bodies are non-empty (`npm run dependencies:ci`, `npm run test:coverage`) so this
     // absence check has something real to check against, not a body
@@ -1447,7 +1423,7 @@ describe('CI verification workflow contracts', () => {
     const ci = workflow('ci.yml');
     const fastChecks = ci.slice(
       ci.indexOf('  fast-checks:'),
-      ci.indexOf('  browser-smoke:'),
+      ci.indexOf('  fork-smoke:'),
     );
 
     expect(fastChecks).toContain('fetch-depth: 0');
@@ -1527,9 +1503,6 @@ describe('CI verification workflow contracts', () => {
 
     const performance = workflow('interactive-workspace-performance.yml');
     expect(performance).toContain(
-      'runs-on: [self-hosted, Windows, X64, kontour-windows, native]',
-    );
-    expect(workflow('windows-verification.yml')).toContain(
       'runs-on: [self-hosted, Windows, X64, kontour-windows, native]',
     );
     expect(workflow('container-smoke.yml')).toContain(
@@ -1929,27 +1902,6 @@ describe('CI verification workflow contracts', () => {
     expect(ios.step.run).toContain('fail_closed');
   });
 
-  it('provides the supported post-merge Windows fallback without pretending E2E is covered', () => {
-    const windows = workflow('windows-verification.yml');
-
-    expect(windows).toContain('workflow_dispatch:');
-    expect(windows).toContain('push:');
-    expect(windows).toContain('branches: [main]');
-    expect(windows).not.toContain('pull_request:');
-    expect(windows).toContain('paths:');
-    expect(windows).toContain(
-      'runs-on: [self-hosted, Windows, X64, kontour-windows, native]',
-    );
-    expect(windows).toContain('run: npm run verification:policy:gate');
-    expect(windows).toContain('run: npm run typecheck');
-    expect(windows).toContain('run: npm run test:windows:portable');
-    expect(windows).toContain('no full Vitest/E2E');
-    expect(windows).toContain('#1420');
-    expect(windows).not.toContain('run: npm run test:full');
-    expect(windows).not.toContain('verify:e2e:full');
-    expect(windows).not.toContain('test:android');
-  });
-
   it('runs the bounded Windows floor on every PR head from base-controlled hosted policy', () => {
     const windows = workflow('windows-pr-verification.yml');
     const document = load(windows) as {
@@ -1960,6 +1912,7 @@ describe('CI verification workflow contracts', () => {
             name?: string;
             if?: string;
             uses?: string;
+            run?: string;
             with?: Record<string, unknown>;
           }>;
         }
@@ -1988,7 +1941,56 @@ describe('CI verification workflow contracts', () => {
     expect(windows).toContain(
       'cargo test --manifest-path src-desktop/Cargo.toml --no-run',
     );
-    expect(windows).toContain('run: npm run typecheck');
+    // tsc's verdict is OS-independent and ci:fast's typecheck aggregate owns
+    // it; repeating it here only lengthened the required check. The policy
+    // gate above stays: it is the only Windows run of the policy scripts.
+    const windowsRuns = document.jobs['windows-pr-portable'].steps.map((step) =>
+      String(step.run ?? ''),
+    );
+    expect(windowsRuns.filter((run) => /\btypecheck\b/.test(run))).toEqual([]);
+    expect(windows).toContain(
+      'run: npm run gate:naming && npm run gate:ui-contracts',
+    );
+    // The cargo compile is skipped only on an exact base-controlled `false`.
+    // The job itself has no condition: a skipped job would leave the required
+    // `Windows PR portable floor` check to GitHub's skipped-counts-as-success.
+    const floorJob = document.jobs['windows-pr-portable'] as {
+      if?: string;
+      steps: Array<{ id?: string; name?: string; if?: string; run?: string }>;
+    };
+    expect(floorJob.if).toBeUndefined();
+    const relevance = floorJob.steps.find(
+      (step) => step.id === 'rust_relevance',
+    );
+    expect(relevance?.run).toContain(
+      '$BASE_SHA:scripts/classify-ci-change.mjs',
+    );
+    expect(relevance?.run).toContain('--scope desktop-rust --mode candidate');
+    expect(relevance?.run).toContain('fail_closed');
+    const compile = floorJob.steps.find(
+      (step) => step.name === 'Compile desktop Rust tests',
+    );
+    expect(compile?.if).toBe(
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+      "${{ steps.rust_relevance.outputs.relevant != 'false' }}",
+    );
+    const relevanceIndex = floorJob.steps.findIndex(
+      (step) => step.id === 'rust_relevance',
+    );
+    // Before ANY candidate code: an earlier `npm run` can rewrite
+    // $GITHUB_PATH/$GITHUB_ENV and hand this "base-controlled" classifier a
+    // fake node or git that prints whatever the candidate wants.
+    const firstCandidateRun = floorJob.steps.findIndex((step) =>
+      /\bnpm run\b|\bcargo\b/.test(String(step.run ?? '')),
+    );
+    expect(relevanceIndex).toBeGreaterThan(-1);
+    expect(firstCandidateRun).toBeGreaterThan(-1);
+    expect(relevanceIndex).toBeLessThan(firstCandidateRun);
+    expect(relevanceIndex).toBeLessThan(
+      floorJob.steps.findIndex(
+        (step) => step.name === 'Compile desktop Rust tests',
+      ),
+    );
     const upload = document.jobs['windows-pr-portable'].steps.find(
       (step) => step.name === 'Upload Windows portable verification evidence',
     );
@@ -2169,6 +2171,17 @@ describe('iOS verification proves packaged runtime readiness', () => {
   it('emits a stable check while reserving macOS for affected pull requests', () => {
     expect(ios).toContain('pull_request_target:');
     expect(ios).toContain('merge_group:');
+    // The queue fast-forwards main to the candidate it built (merge_group run
+    // 35778933116 and push run 35781390232 built the same SHA), so a push
+    // trigger only repeats a finished macOS build. Dispatch covers the rest.
+    const triggers = Object.keys(
+      (load(ios) as { on: Record<string, unknown> }).on,
+    ).sort();
+    expect(triggers).toEqual([
+      'merge_group',
+      'pull_request_target',
+      'workflow_dispatch',
+    ]);
     expect(classifier).toContain("'src-desktop/'");
     expect(classifier).toContain("'src-ui/'");
     expect(classifier).toContain("'packages/connect/'");
@@ -2192,6 +2205,49 @@ describe('iOS verification proves packaged runtime readiness', () => {
     expect(ios).toContain(
       `--source-sha "\${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.event_name == 'merge_group' && github.event.merge_group.head_sha || github.sha }}"`,
     );
+  });
+
+  it('starts the simulator booting before the build without trusting that boot', () => {
+    const document = load(ios) as {
+      jobs: Record<
+        string,
+        {
+          steps: Array<{
+            name?: string;
+            run?: string;
+            'continue-on-error'?: boolean;
+            'working-directory'?: string;
+          }>;
+        }
+      >;
+    };
+    const steps = document.jobs['build-ios-verification'].steps;
+    const preboot = steps.findIndex((step) =>
+      String(step.run ?? '').includes('--preboot'),
+    );
+    const xcode = steps.findIndex((step) =>
+      String(step.run ?? '').includes('xcode-select -s'),
+    );
+    const build = steps.findIndex((step) =>
+      String(step.run ?? '').includes('npx tauri ios build'),
+    );
+    const smoke = steps.findIndex((step) =>
+      String(step.run ?? '').includes('npm run test:ios-runtime-smoke --'),
+    );
+    // After the Xcode selection (simctl must be the reviewed Xcode's), before
+    // the build it overlaps, and before the smoke that waits on it.
+    expect(xcode).toBeGreaterThan(-1);
+    expect(preboot).toBeGreaterThan(xcode);
+    expect(preboot).toBeLessThan(build);
+    expect(build).toBeLessThan(smoke);
+    // A failed pre-boot must not fail the job on its own: the smoke's own
+    // boot path is the fallback, and it fails the run if it cannot boot.
+    expect(steps[preboot]['continue-on-error']).toBe(true);
+    // Same exact device: neither invocation overrides the smoke's defaults.
+    for (const index of [preboot, smoke]) {
+      expect(steps[index].run).not.toContain('--device');
+      expect(steps[index].run).not.toContain('--runtime');
+    }
   });
 
   it('runs the native accessibility smoke and always retains its evidence', () => {
@@ -2238,5 +2294,218 @@ describe('the root tauri script roots itself at the app directory', () => {
     );
     expect(buildTask).toContain('"run"');
     expect(buildTask).toContain('"tauri"');
+  });
+});
+
+describe('merge-queue regression workflow covers the full regression', () => {
+  type Step = {
+    name?: string;
+    run?: string;
+    env?: Record<string, string>;
+    uses?: string;
+    if?: string;
+    'continue-on-error'?: unknown;
+  };
+  type Job = {
+    name?: string;
+    if?: string;
+    needs?: string[];
+    strategy?: { matrix?: { include?: Array<Record<string, string>> } };
+    steps?: Step[];
+  };
+  function document() {
+    const entry = readWorkflowDocuments().find(
+      (candidate) =>
+        candidate.file === '.github/workflows/merge-queue-regression.yml',
+    );
+    expect(entry, 'merge-queue-regression.yml must exist').toBeDefined();
+    return entry?.document as { jobs: Record<string, Job> };
+  }
+
+  const DRIVER = 'node scripts/run-full-regression-phases.mjs';
+  const MATRIX_PHASES = `\${{ matrix.phases }}`;
+
+  // Executed shell lines only: comment lines are dropped, and a line counts
+  // as a driver call only when it STARTS with the driver command, so an
+  // `echo` or a commented-out invocation selects nothing.
+  function executedLines(run: string | undefined) {
+    return (run ?? '')
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => line && !line.startsWith('#'));
+  }
+
+  // The phase selections the workflow actually executes. A `PHASES` env or a
+  // matrix entry counts only when its step reads it into the driver's argv;
+  // a literal driver line counts as written.
+  function driverSteps(jobs: Record<string, Job>) {
+    const found: Array<{
+      job: string;
+      step: Step;
+      texts: string[];
+      consumesPhases: boolean;
+    }> = [];
+    for (const [job, definition] of Object.entries(jobs)) {
+      for (const step of definition.steps ?? []) {
+        const lines = executedLines(step.run);
+        const calls = lines.filter((line) => line.startsWith(DRIVER));
+        if (calls.length === 0) continue;
+        const texts: string[] = [];
+        let consumesPhases = false;
+        for (const call of calls) {
+          if (call.startsWith(`${DRIVER} "\${phases[@]}"`)) {
+            consumesPhases = lines.includes('read -r -a phases <<< "$PHASES"');
+            if (!consumesPhases) continue;
+            const phases = step.env?.PHASES;
+            if (phases === MATRIX_PHASES)
+              for (const entry of definition.strategy?.matrix?.include ?? [])
+                texts.push(entry.phases ?? '');
+            else if (phases) texts.push(phases);
+          } else texts.push(call);
+        }
+        found.push({ job, step, texts, consumesPhases });
+      }
+    }
+    return found;
+  }
+
+  function selections(jobs: Record<string, Job>) {
+    return driverSteps(jobs).flatMap(({ job, texts }) =>
+      texts.map((text) => ({ job, text })),
+    );
+  }
+
+  function phaseIds(text: string) {
+    return [...text.matchAll(/--phase=([A-Za-z0-9-]+)/g)].map(
+      (match) => match[1],
+    );
+  }
+
+  it('selects exactly the FULL_REGRESSION_PHASES ids, so a new phase fails until the queue runs it', () => {
+    const covered = new Set(
+      selections(document().jobs).flatMap(({ text }) => phaseIds(text)),
+    );
+    expect([...covered].sort()).toEqual(
+      FULL_REGRESSION_PHASES.map(({ id }) => id).sort(),
+    );
+    // Every resource class in the corpus runner reaches the queue through a
+    // phase: the ordinary shards and each serialized group.
+    for (const group of VITEST_CORPUS_GROUP_NAMES)
+      expect(
+        [...covered].some(
+          (id) =>
+            id === `test-full-${group}` || id.startsWith(`test-full-${group}-`),
+        ),
+        `corpus group ${group}`,
+      ).toBe(true);
+  });
+
+  it('runs every ordinary shard exactly once', () => {
+    const ordinary = selections(document().jobs)
+      .flatMap(({ text }) => phaseIds(text))
+      .filter((id) => id.startsWith('test-full-ordinary-'));
+    const expected = FULL_REGRESSION_PHASES.map(({ id }) => id).filter((id) =>
+      id.startsWith('test-full-ordinary-'),
+    );
+    expect(expected).toHaveLength(8);
+    expect([...ordinary].sort()).toEqual([...expected].sort());
+  });
+
+  it('splits process-heavy into slices that cover the group exactly once', () => {
+    const heavy = selections(document().jobs).filter(({ text }) =>
+      phaseIds(text).includes('test-full-process-heavy'),
+    );
+    const shards = heavy.map(({ text }) => {
+      const match = /--process-heavy-shard=(\d+)\/(\d+)/.exec(text);
+      expect(match, `process-heavy without a slice: ${text}`).not.toBeNull();
+      return { index: Number(match?.[1]), count: Number(match?.[2]) };
+    });
+    expect(shards.length).toBeGreaterThanOrEqual(2);
+    const counts = new Set(shards.map(({ count }) => count));
+    expect(counts.size).toBe(1);
+    expect(shards.map(({ index }) => index).sort((a, b) => a - b)).toEqual(
+      Array.from({ length: shards[0].count }, (_, index) => index + 1),
+    );
+  });
+
+  it('runs phases only through the driver and gates on one aggregate check', () => {
+    const { jobs } = document();
+    const text = workflow('merge-queue-regression.yml');
+    expect(text).not.toMatch(/:raw\b/);
+    const aggregate = jobs['merge-queue-regression'];
+    expect(aggregate.name).toBe('Merge-queue regression');
+    expect(aggregate.if).toBe(
+      "always() && github.event_name != 'pull_request_target'",
+    );
+    const testJobs = Object.keys(jobs).filter(
+      (job) => job !== 'merge-queue-regression',
+    );
+    expect([...(aggregate.needs ?? [])].sort()).toEqual([...testJobs].sort());
+    for (const job of testJobs)
+      expect(jobs[job].if, job).toBe(
+        "github.event_name != 'pull_request_target'",
+      );
+    expect(jobs['android-viewport'].steps?.map(({ run }) => run)).toContain(
+      'npm run test:android',
+    );
+  });
+
+  it('keeps every driver step on the failure path: pipefail before tee, no if, no continue-on-error', () => {
+    const steps = driverSteps(document().jobs);
+    // static, 4 ordinary, 2 process-heavy, exclusive each have a Run step;
+    // the three corpus job kinds also have a prerequisite step.
+    expect(steps.filter(({ texts }) => texts.length > 0).length).toBe(
+      steps.length,
+    );
+    const runSteps = steps.filter(({ step }) =>
+      executedLines(step.run).some((line) => line.includes('| tee')),
+    );
+    expect(runSteps.map(({ job }) => job).sort()).toEqual([
+      'exclusive',
+      'ordinary',
+      'process-heavy',
+      'static',
+    ]);
+    for (const { job, step, consumesPhases } of steps) {
+      expect(step.if, `${job}: ${step.name}`).toBeUndefined();
+      expect(step['continue-on-error'], `${job}: ${step.name}`).toBeUndefined();
+      const lines = executedLines(step.run);
+      const tee = lines.findIndex((line) => line.includes('| tee'));
+      if (tee >= 0) {
+        const pipefail = lines.indexOf('set -o pipefail');
+        expect(pipefail, `${job}: pipefail`).toBeGreaterThanOrEqual(0);
+        expect(pipefail, `${job}: pipefail precedes tee`).toBeLessThan(tee);
+        expect(consumesPhases, `${job}: Run step reads PHASES`).toBe(true);
+      }
+    }
+    // The matrix jobs feed their Run step from the matrix itself.
+    for (const job of ['ordinary', 'process-heavy'])
+      expect(
+        runSteps.find((entry) => entry.job === job)?.step.env?.PHASES,
+      ).toBe(MATRIX_PHASES);
+  });
+
+  it('counts only executed driver lines as selections (parser control)', () => {
+    const jobs: Record<string, Job> = {
+      probe: {
+        steps: [
+          {
+            run: [
+              '# node scripts/run-full-regression-phases.mjs --phase=app-builds',
+              'echo node scripts/run-full-regression-phases.mjs --phase=sdk-builds',
+              'node scripts/run-full-regression-phases.mjs --phase=repo-governance',
+            ].join('\n'),
+          },
+          {
+            // A PHASES env the step never reads selects nothing.
+            env: { PHASES: '--phase=verify-static' },
+            run: `node scripts/run-full-regression-phases.mjs "\${phases[@]}"`,
+          },
+        ],
+      },
+    };
+    expect(selections(jobs).flatMap(({ text }) => phaseIds(text))).toEqual([
+      'repo-governance',
+    ]);
   });
 });

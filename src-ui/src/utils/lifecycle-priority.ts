@@ -30,6 +30,7 @@ export const HOME_LIFECYCLE_LABELS = [
   'Current',
   'Ready',
   'Recent',
+  'Draft',
   'Unanswerable',
   'Completed',
 ] as const;
@@ -65,6 +66,11 @@ export const LIFECYCLE_PRIORITY: Record<HomeLifecycleLabel, number> = {
   Current: 4,
   Ready: 3,
   Recent: 2,
+  // #2310: a session no turn has ever started in. Below every label that
+  // records activity, so a local send (`Running`) or an offline-queued first
+  // message (`Needs attention`) always wins a merge against the server's
+  // Draft answer for the same conversation.
+  Draft: 1.5,
   Unanswerable: 1,
   Completed: 0,
 };
@@ -113,4 +119,7 @@ export const LIFECYCLE_CHIP_LABELS = new Set<HomeLifecycleLabel>([
   // different hat. The chip renders in the neutral treatment, not a fourth
   // colour meaning: nothing is broken and nothing needs acting on.
   'Unanswerable',
+  // #2310: chipped because a Draft sits outside "Active now", and a row that
+  // moved without saying why reads as lost work. Neutral treatment again.
+  'Draft',
 ]);

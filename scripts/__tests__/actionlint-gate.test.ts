@@ -912,6 +912,7 @@ describe('persistent runner policy', () => {
       '.github/workflows/desktop-rust.yml',
       '.github/workflows/ecosystem-packaging.yml',
       '.github/workflows/install-smoke.yml',
+      '.github/workflows/merge-queue-regression.yml',
       '.github/workflows/security-analysis.yml',
     ];
     for (const file of expected) {
@@ -955,6 +956,35 @@ describe('persistent runner policy', () => {
       'extra reusable step',
       (steps: Array<Record<string, unknown>>) =>
         steps.push({ uses: 'example/reusable@full-sha' }),
+    ],
+    // The test-code ignore list is the one CodeQL config accepted. Anything
+    // that could hide production code from the scan must be refused.
+    [
+      'CodeQL ignore list widened to production code',
+      (steps: Array<Record<string, unknown>>) => {
+        const init = steps[4].with as Record<string, unknown>;
+        init.config = `${String(init.config)}  - 'src-server/**'\n`;
+      },
+    ],
+    [
+      'CodeQL config moved to a candidate-controlled file',
+      (steps: Array<Record<string, unknown>>) => {
+        const init = steps[4].with as Record<string, unknown>;
+        delete init.config;
+        init['config-file'] = './candidate/.github/codeql/codeql-config.yml';
+      },
+    ],
+    [
+      'CodeQL config dropped',
+      (steps: Array<Record<string, unknown>>) => {
+        delete (steps[4].with as Record<string, unknown>).config;
+      },
+    ],
+    [
+      'CodeQL queries narrowed from security-extended',
+      (steps: Array<Record<string, unknown>>) => {
+        (steps[4].with as Record<string, unknown>).queries = 'default';
+      },
     ],
   ])('rejects security-analysis %s', (_name, mutate) => {
     const document = securityAnalysisWorkflowDocument();
@@ -1280,6 +1310,7 @@ describe('persistent runner policy', () => {
     '.github/workflows/security-analysis.yml',
     '.github/workflows/windows-pr-verification.yml',
     '.github/workflows/build-ios.yml',
+    '.github/workflows/merge-queue-regression.yml',
   ])('rejects %s without merge_group queue evaluation', (file) => {
     const workflow = readWorkflowDocuments().find(
       (candidate) => candidate.file === file,
@@ -2755,7 +2786,7 @@ describe('the real workflow corpus', () => {
     // `main` went red on this line, not on the change that tripped it. A bare
     // count names whoever gates next rather than whoever moved it; the
     // contributing files are listed below so the next removal says which one.
-    expect(directCapacityJobs).toBe(8);
+    expect(directCapacityJobs).toBe(7);
     expect(capacityFiles.sort()).toEqual([
       '.github/workflows/ci-extended.yml#coverage',
       '.github/workflows/ci-extended.yml#playwright-full',
@@ -2763,10 +2794,165 @@ describe('the real workflow corpus', () => {
       '.github/workflows/interactive-workspace-performance.yml#one-hour-collaboration-reference',
       '.github/workflows/interactive-workspace-performance.yml#one-hour-work-board-reference',
       '.github/workflows/interactive-workspace-performance.yml#reference-performance',
-      '.github/workflows/windows-verification.yml#portable-floor',
       '.github/workflows/windows-vitest-diagnostic.yml#diagnostic',
     ]);
     expect(recoveryJobs).toBe(2);
     expect(reusableCapacityJobs).toBe(0);
+  });
+});
+
+describe('merge-queue regression workflow policy', () => {
+  const file = '.github/workflows/merge-queue-regression.yml';
+  function mergeQueueRegressionDocument() {
+    const workflow = readWorkflowDocuments().find(
+      (candidate) => candidate.file === file,
+    );
+    expect(workflow).toBeTruthy();
+    return structuredClone(workflow?.document) as {
+      jobs: Record<
+        string,
+        { steps: Array<Record<string, unknown>>; [key: string]: unknown }
+      >;
+      [key: string]: unknown;
+    };
+  }
+
+  test('accepts the checked-in workflow (false-positive control)', () => {
+    expect(
+      persistentRunnerPolicyFindings([
+        { file, document: mergeQueueRegressionDocument() },
+      ]),
+    ).toEqual([]);
+  });
+
+  test.each([
+    [
+      'an aggregate that runs an action',
+      (steps: Array<Record<string, unknown>>) =>
+        steps.push({ uses: 'example/reusable@full-sha' }),
+    ],
+    [
+      'an aggregate that runs repository code',
+      (steps: Array<Record<string, unknown>>) => {
+        steps[0].run = 'node scripts/anything.mjs';
+      },
+    ],
+    [
+      'an aggregate with a second shell step',
+      (steps: Array<Record<string, unknown>>) =>
+        steps.push({ run: 'echo more' }),
+    ],
+  ])('removes the checkout exemption from %s', (_name, mutate) => {
+    const document = mergeQueueRegressionDocument();
+    mutate(document.jobs['merge-queue-regression'].steps);
+    expect(persistentRunnerPolicyFindings([{ file, document }])).toContainEqual(
+      expect.objectContaining({
+        file,
+        jobId: 'merge-queue-regression',
+      }),
+    );
+  });
+
+  test('rejects a test job that stops checking out the explicit candidate', () => {
+    const document = mergeQueueRegressionDocument();
+    const checkout = document.jobs.static.steps.find((step) =>
+      String(step.uses).startsWith('actions/checkout@'),
+    ) as { with: Record<string, unknown> };
+    delete checkout.with.ref;
+    expect(persistentRunnerPolicyFindings([{ file, document }])).toContainEqual(
+      {
+        file,
+        jobId: 'static',
+        message:
+          'base-controlled PR jobs must explicitly check out the pull-request head repository and SHA',
+      },
+    );
+  });
+
+  test('rejects write permissions and shared caches', () => {
+    const widened = mergeQueueRegressionDocument();
+    (widened.permissions as Record<string, string>).contents = 'write';
+    expect(
+      persistentRunnerPolicyFindings([{ file, document: widened }]),
+    ).toContainEqual({
+      file,
+      jobId: 'workflow',
+      message:
+        'base-controlled PR workflows must declare only permissions: { contents: read }',
+    });
+    const cached = mergeQueueRegressionDocument();
+    const setupNode = cached.jobs.ordinary.steps.find((step) =>
+      String(step.uses).startsWith('actions/setup-node@'),
+    ) as { with: Record<string, unknown> };
+    setupNode.with.cache = 'pnpm';
+    expect(
+      persistentRunnerPolicyFindings([{ file, document: cached }]),
+    ).toContainEqual({
+      file,
+      jobId: 'ordinary',
+      message: 'base-controlled PR workflows must not use shared caches',
+    });
+  });
+});
+
+describe('trusted Rust caches stay out of pull-request workflows', () => {
+  const RUST_CACHE_PREFIX = 'Swatinem/rust-cache@';
+  type WorkflowDocument = {
+    on: Record<string, unknown>;
+    jobs: Record<string, { steps: Array<Record<string, unknown>> }>;
+  };
+  function workflowDocument(file: string) {
+    const workflow = readWorkflowDocuments().find(
+      (candidate) => candidate.file === file,
+    );
+    expect(workflow, file).toBeTruthy();
+    return structuredClone(workflow?.document) as WorkflowDocument;
+  }
+
+  test('the push-only Android build caches Rust dependencies from main only', () => {
+    const file = '.github/workflows/build-android.yml';
+    const android = workflowDocument(file);
+    expect(Object.keys(android.on).sort()).toEqual([
+      'push',
+      'workflow_dispatch',
+    ]);
+    const cache = android.jobs['build-android-verification'].steps.find(
+      (step) => String(step.uses).startsWith(RUST_CACHE_PREFIX),
+    );
+    expect(cache?.uses).toMatch(/^Swatinem\/rust-cache@[0-9a-f]{40}$/);
+    expect(
+      (cache?.with as Record<string, unknown> | undefined)?.['save-if'],
+    ).toBe(
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+      "${{ github.ref == 'refs/heads/main' }}",
+    );
+    expect(
+      persistentRunnerPolicyFindings([{ file, document: android }]),
+    ).toEqual([]);
+  });
+
+  test.each([
+    '.github/workflows/desktop-rust.yml',
+    '.github/workflows/windows-pr-verification.yml',
+    '.github/workflows/build-ios.yml',
+  ])('rejects the same Rust cache in the pull-request workflow %s', (file) => {
+    const document = workflowDocument(file);
+    const android = workflowDocument('.github/workflows/build-android.yml');
+    const cache = android.jobs['build-android-verification'].steps.find(
+      (step) => String(step.uses).startsWith(RUST_CACHE_PREFIX),
+    );
+    const [jobId, job] = Object.entries(document.jobs).find(([, candidate]) =>
+      JSON.stringify(candidate).includes('actions/checkout@'),
+    ) as [string, { steps: Array<Record<string, unknown>> }];
+    const before = persistentRunnerPolicyFindings([{ file, document }]);
+    job.steps.push(structuredClone(cache) as Record<string, unknown>);
+    const after = persistentRunnerPolicyFindings([{ file, document }]);
+    expect(before.filter((finding) => finding.jobId === jobId)).toEqual([]);
+    expect(after).toContainEqual({
+      file,
+      jobId,
+      message:
+        'base-controlled PR workflows must not add unreviewed custom actions or reusable execution',
+    });
   });
 });

@@ -2,6 +2,8 @@ import { PRINCIPAL_UNRESOLVED_CODE } from '@kontourai/station-contracts/principa
 import {
   ENGINE_SESSION_BINDING_DEAD_CODE,
   ENGINE_TURN_FAILED_CODE,
+  MUSE_TURN_IDLE_TIMEOUT_CODE,
+  MUSE_TURN_TOTAL_TIMEOUT_CODE,
 } from '@kontourai/station-contracts/provider';
 import { SESSION_ENDED_REJECTION_CODE } from '@kontourai/station-contracts/session-lifecycle';
 
@@ -247,6 +249,11 @@ const CONTINUATION_WORKSPACE_CODES = new Set([
  * function so a future prose pattern can never preempt a backend-supplied
  * `code` by accident, not just "review confirmed none of today's prose
  * patterns collide."
+ *   -4. `code` is a Muse deadline code (#2269: `MUSE_TURN_IDLE_TIMEOUT_CODE`
+ *       / `MUSE_TURN_TOTAL_TIMEOUT_CODE`) -> Station stopped the turn at an
+ *       idle window or a declared budget; not an engine or connection
+ *       failure, so no retry hint. Checked right after the session-ended
+ *       refusal.
  *   -3. `code === PRINCIPAL_UNRESOLVED_CODE` (archive#4518) -> the request's
  *       caller could not be resolved to a principal — a deterministic authz
  *       failure, never a temporary one, so the hint never claims retrying
@@ -304,6 +311,25 @@ export function translateChatError(
         'This session has already ended, so it cannot take another message.',
       hint: 'Start a new chat to continue.',
       terminalSession: true,
+    };
+  }
+
+  // #2269: a Station-owned deadline ended the turn. Neither code is an
+  // engine or connection failure, so the fallback's "Retrying may help if
+  // this was a temporary failure" would misstate the cause. The raw message
+  // (with the window/budget in ms) stays behind Details.
+  if (code === MUSE_TURN_IDLE_TIMEOUT_CODE) {
+    return {
+      title: 'Turn stopped after going quiet',
+      body: 'Station stopped this turn after a full idle window with no output and no tool reported running.',
+      disclosureRaw: true,
+    };
+  }
+  if (code === MUSE_TURN_TOTAL_TIMEOUT_CODE) {
+    return {
+      title: 'Turn stopped at its time budget',
+      body: 'Station stopped this turn when it reached the time budget declared for it.',
+      disclosureRaw: true,
     };
   }
 
