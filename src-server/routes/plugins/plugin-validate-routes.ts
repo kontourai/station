@@ -3,30 +3,37 @@
  * installed (#2323 S1).
  *
  * An agent writing a plugin needs to know whether Station will accept it
- * before a person is asked to install it. This route answers with the same
- * checks the install preview runs (manifest read and format dispatch, the
+ * before a person is asked to install it. This route runs a SUBSET of the
+ * install preview's checks — manifest read and format dispatch, the
  * prompt-file safety scan, contribution conflicts, Workspace Pane catalog
- * conflicts), reported as diagnostics an author can act on.
+ * conflicts — and reports them as diagnostics an author can act on. It does
+ * NOT resolve dependencies (that reaches registry providers) and does not
+ * derive the consent basis; a manifest that declares dependencies gets a
+ * `dependencies-not-checked` warning rather than a silent pass.
  *
- * Three properties matter, and each is structural rather than a convention:
+ * Four properties matter, and each is structural rather than a convention:
  *
- * 1. **It cannot become the first half of an install.** `POST /install`
+ * 1. **Local folders only.** The source must be an absolute path to a folder
+ *    on this host. A git or other URL is refused before anything is fetched:
+ *    the agent tool that calls this is auto-approved as read-only, and a
+ *    clone would be network egress (with the user's SSH keys) on an agent's
+ *    say-so. A person checks a git source with the install preview.
+ * 2. **It cannot become the first half of an install.** `POST /install`
  *    takes the operator's decision about specific bytes: a content digest, a
  *    grant revision, the permission set. This response carries no digest, no
  *    grant or registry revision, and no installation revision, so nothing it
  *    returns can be echoed into `/install` as a decision nobody made (the
  *    reason `install_plugin` refuses: `station-control-platform-tools.ts`).
- * 2. **It writes nothing under the plugins directory.** The source is staged
- *    in a fresh directory under the OS temp root, never `<home>/plugins`, and
- *    that directory is removed on every exit path. `/preview` stages inside
- *    `<home>/plugins`; this route deliberately does not.
- * 3. **It never builds.** A build runs `npm install` and writes `dist/`
- *    inside the tree it builds. Doing that to the author's own folder is a
- *    side effect nobody asked for, and doing it to the staged copy needs the
- *    network. The response says so (`bundle.checked: false`) instead of
- *    implying the bundle was proved. It does check the declared entrypoint
- *    exists inside the package, because the install build fails on a
- *    missing one before esbuild runs.
+ * 3. **It writes nothing.** The folder is read in place: no staging copy,
+ *    nothing under `<home>/plugins`. `plugin.json` must be a regular file
+ *    (not a symlink, FIFO or device) and is read with a byte cap, so the
+ *    route can neither echo a file the manifest points at nor block on one.
+ * 4. **It never builds.** A build runs `npm install` and writes `dist/`
+ *    inside the tree it builds, which is a side effect on the author's own
+ *    folder nobody asked for. The response says so (`bundle.checked: false`)
+ *    instead of implying the bundle was proved. It does check that the
+ *    declared entrypoint resolves (after symlinks) to a file inside the
+ *    package, because the install build fails on a missing one.
  *
  * It is also deliberately stricter than `/preview` in one place: an Agent
  * Plugins manifest whose `io.kontourai.station` extension fails its schema
@@ -35,10 +42,17 @@
  * For an author, a pane that silently never appears is the defect, so it is
  * an error here.
  */
-import { existsSync, readFileSync, statSync } from 'node:fs';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join, relative, resolve, sep } from 'node:path';
+import {
+  closeSync,
+  existsSync,
+  fstatSync,
+  lstatSync,
+  openSync,
+  readSync,
+  realpathSync,
+  statSync,
+} from 'node:fs';
+import { isAbsolute, join, relative, sep } from 'node:path';
 import type {
   ConflictInfo,
   PluginComponent,
@@ -53,7 +67,7 @@ import { isContextSafetyError } from '../../services/orchestration/context-safet
 import { scanPluginPromptFileSafety } from '../../services/plugins/plugin-command-skill-source.js';
 import {
   PluginManifestValidationError,
-  readPluginManifestFileWithFormat,
+  parsePluginManifestDocumentWithFormat,
 } from '../../services/plugins/plugin-manifest-loader.js';
 import {
   getPermissionTier,
@@ -62,7 +76,6 @@ import {
 import {
   detectPluginConflicts,
   detectWorkspacePaneCatalogConflicts,
-  fetchPluginSource,
 } from '../../services/plugins/plugin-source.js';
 import type { Logger } from '../../utils/logger.js';
 import {
@@ -71,6 +84,9 @@ import {
   pluginValidateSchema,
   validate,
 } from '../schemas/schemas.js';
+
+/** Far above any real manifest; low enough that a hostile file cannot stall the route. */
+export const PLUGIN_VALIDATE_MANIFEST_MAX_BYTES = 1024 * 1024;
 
 export interface PluginValidateDiagnostic {
   level: 'error' | 'warning';
@@ -115,15 +131,16 @@ interface PluginValidateRouteDeps {
   logger: Logger;
   pluginsDir: string;
   projectHomeDir: string;
-  /** Test seam: where staging directories are created. Defaults to the OS temp root. */
-  stagingRoot?: () => string;
 }
 
 const BUNDLE_NOT_CHECKED =
   'Validation does not build. Station builds the bundle when a person installs the plugin; a build error is reported then.';
 
 const VALIDATE_NOTE =
-  'Validation only. Nothing was installed, staged under Station, or built. A person installs a plugin from Plugins → Install plugin (or `station plugin install <source>`) after reviewing its preview and permissions.';
+  'Validation only. Nothing was installed, copied, or built, and dependencies were not resolved. A person installs a plugin from Plugins → Install plugin (or `station plugin install <source>`) after reviewing its preview and permissions.';
+
+const REMOTE_SOURCE_REFUSED =
+  'validate checks local folders; to check a git source, a person can run the install preview (Plugins → Install plugin).';
 
 export function registerPluginValidateRoutes(
   app: Hono,
@@ -134,6 +151,90 @@ export function registerPluginValidateRoutes(
     const result = await validatePluginSource(source, deps);
     return c.json(result);
   });
+}
+
+/**
+ * A URL, an scp-style `user@host:path`, or anything else that names a
+ * remote. Checked before the path test so the refusal says why.
+ */
+function looksRemote(source: string): boolean {
+  return (
+    /^[a-z][a-z0-9+.-]*:\/\//i.test(source) ||
+    /^[^/\\\s]+@[^/\\\s]+:/.test(source)
+  );
+}
+
+type ManifestRead =
+  | { ok: true; raw: string }
+  | { ok: false; diagnostic: PluginValidateDiagnostic };
+
+/**
+ * Reads `plugin.json` only if it is a regular file, never following a
+ * symlink, and never more than the cap. A symlink could point at any file
+ * this user can read (and the loader would echo its fields back); a FIFO
+ * would block the read forever; a device could stream without end.
+ */
+function readManifestBounded(dir: string): ManifestRead {
+  const path = join(dir, 'plugin.json');
+  const refuse = (code: string, message: string): ManifestRead => ({
+    ok: false,
+    diagnostic: { level: 'error', code, component: 'plugin.json', message },
+  });
+  let info: ReturnType<typeof lstatSync>;
+  try {
+    info = lstatSync(path);
+  } catch {
+    return refuse(
+      'manifest-missing',
+      'Not a valid plugin: plugin.json not found in the folder.',
+    );
+  }
+  if (info.isSymbolicLink()) {
+    return refuse(
+      'manifest-not-regular-file',
+      'plugin.json is a symlink. Station reads the manifest from the plugin folder itself; replace the link with the file.',
+    );
+  }
+  if (!info.isFile()) {
+    return refuse(
+      'manifest-not-regular-file',
+      'plugin.json is not a regular file.',
+    );
+  }
+  if (info.size > PLUGIN_VALIDATE_MANIFEST_MAX_BYTES) {
+    return refuse(
+      'manifest-too-large',
+      `plugin.json is larger than ${PLUGIN_VALIDATE_MANIFEST_MAX_BYTES} bytes.`,
+    );
+  }
+  // Read through the descriptor and re-check what was opened, so a swap
+  // between lstat and open cannot turn this into a read of something else,
+  // and cap the read itself rather than trusting the size.
+  const fd = openSync(path, 'r');
+  try {
+    if (!fstatSync(fd).isFile()) {
+      return refuse(
+        'manifest-not-regular-file',
+        'plugin.json is not a regular file.',
+      );
+    }
+    const buffer = Buffer.alloc(PLUGIN_VALIDATE_MANIFEST_MAX_BYTES + 1);
+    let length = 0;
+    for (;;) {
+      const read = readSync(fd, buffer, length, buffer.length - length, null);
+      if (read === 0) break;
+      length += read;
+      if (length > PLUGIN_VALIDATE_MANIFEST_MAX_BYTES) {
+        return refuse(
+          'manifest-too-large',
+          `plugin.json is larger than ${PLUGIN_VALIDATE_MANIFEST_MAX_BYTES} bytes.`,
+        );
+      }
+    }
+    return { ok: true, raw: buffer.subarray(0, length).toString('utf8') };
+  } finally {
+    closeSync(fd);
+  }
 }
 
 export async function validatePluginSource(
@@ -157,50 +258,72 @@ export async function validatePluginSource(
     valid: !diagnostics.some((entry) => entry.level === 'error'),
   });
 
-  // Outside `pluginsDir` by construction: a fresh private directory under
-  // the OS temp root. `fetchPluginSource` names its own randomised child
-  // inside whatever root it is handed.
-  const stagingRoot = await mkdtemp(
-    join(deps.stagingRoot?.() ?? tmpdir(), 'station-plugin-validate-'),
-  );
+  if (looksRemote(source)) {
+    diagnostics.push({
+      level: 'error',
+      code: 'remote-source-refused',
+      message: REMOTE_SOURCE_REFUSED,
+    });
+    return finish();
+  }
+  if (!isAbsolute(source)) {
+    diagnostics.push({
+      level: 'error',
+      code: 'source-not-absolute',
+      message:
+        'Pass the absolute path of the plugin folder (the folder that contains plugin.json).',
+    });
+    return finish();
+  }
+  let isDirectory = false;
   try {
-    const fetched = await fetchPluginSource(source, stagingRoot, deps.logger);
-    if ('error' in fetched) {
-      diagnostics.push({
-        level: 'error',
-        code: 'source-unavailable',
-        message: fetched.error,
-      });
+    isDirectory = statSync(source).isDirectory();
+  } catch {}
+  if (!isDirectory) {
+    diagnostics.push({
+      level: 'error',
+      code: 'source-unavailable',
+      message: `Source not found or not a folder: ${source}`,
+    });
+    return finish();
+  }
+
+  try {
+    const pluginDir = source;
+    // Loader messages name the file they read; show the author a
+    // package-relative path instead.
+    const tidy = (message: string) =>
+      message.replaceAll(pluginDir, '<plugin root>');
+
+    const read = readManifestBounded(pluginDir);
+    if (!read.ok) {
+      diagnostics.push(read.diagnostic);
       return finish();
     }
-    const stagedDir = fetched.tempDir;
-    // Loader messages name the file they read, which is the staged copy.
-    // Rewrite that to a package-relative path so the author sees their own
-    // layout rather than a temp directory.
-    const tidy = (message: string) =>
-      message.replaceAll(stagedDir, '<plugin root>');
 
-    let loaded: Awaited<ReturnType<typeof readPluginManifestFileWithFormat>>;
+    let loaded: ReturnType<typeof parsePluginManifestDocumentWithFormat>;
     try {
-      loaded = await readPluginManifestFileWithFormat(
-        join(stagedDir, 'plugin.json'),
+      loaded = parsePluginManifestDocumentWithFormat(
+        read.raw,
+        join(pluginDir, 'plugin.json'),
       );
     } catch (error) {
-      const thrown = manifestErrorDiagnostic(error, tidy);
+      // The loader throws only the first Agent Plugins report, and path
+      // redaction can rewrite its text, so a text comparison cannot dedupe
+      // it. When the parser's own reports carry an error, they are the same
+      // failure with its location: use them instead of the thrown message.
+      const reports = agentPluginReports(read.raw);
       diagnostics.push(
-        thrown,
-        // The loader throws only the first report; keep the rest (and the
-        // warnings) without repeating the one it already carried.
-        ...agentPluginReports(stagedDir).filter(
-          (report) => !thrown.message.includes(report.message),
-        ),
+        ...(reports.some((report) => report.level === 'error')
+          ? reports
+          : [manifestErrorDiagnostic(error, tidy), ...reports]),
       );
       return finish();
     }
     const { manifest, format } = loaded;
 
     const reports =
-      format === 'agent-plugin-1.0' ? agentPluginReports(stagedDir) : [];
+      format === 'agent-plugin-1.0' ? agentPluginReports(read.raw) : [];
     if (loaded.stationExtension?.status === 'disabled') {
       // The loader's reason for a schema failure is generic; the parser's
       // report names the failing location. Fold both into one error.
@@ -220,7 +343,7 @@ export async function validatePluginSource(
       ),
     );
 
-    const blocked = scanPluginPromptFileSafety(stagedDir, manifest.name);
+    const blocked = scanPluginPromptFileSafety(pluginDir, manifest.name);
     for (const file of blocked) {
       diagnostics.push({
         level: 'error',
@@ -258,9 +381,17 @@ export async function validatePluginSource(
       );
     }
     diagnostics.push(...paneAuthoringWarnings(manifest));
+    if (manifest.dependencies?.length) {
+      diagnostics.push({
+        level: 'warning',
+        code: 'dependencies-not-checked',
+        component: 'plugin.json#dependencies',
+        message: `This plugin declares dependencies (${manifest.dependencies.map((dependency) => dependency.id).join(', ')}). Validation does not resolve them; the install preview does, and refuses one it cannot find.`,
+      });
+    }
 
     const entrypoint = manifest.entrypoint
-      ? checkEntrypoint(stagedDir, manifest.entrypoint)
+      ? checkEntrypoint(pluginDir, manifest.entrypoint)
       : undefined;
     if (entrypoint && !entrypoint.present) {
       diagnostics.push({
@@ -276,7 +407,7 @@ export async function validatePluginSource(
     if (
       !manifest.entrypoint &&
       manifest.workspacePanes?.length &&
-      !existsSync(join(stagedDir, 'dist', 'bundle.js'))
+      !existsSync(join(pluginDir, 'dist', 'bundle.js'))
     ) {
       const componentPanes = manifest.workspacePanes.filter(
         (pane) => pane.renderer.kind === 'plugin-component',
@@ -332,8 +463,6 @@ export async function validatePluginSource(
           },
     );
     return finish();
-  } finally {
-    await rm(stagingRoot, { recursive: true, force: true });
   }
 }
 
@@ -380,12 +509,10 @@ function manifestErrorDiagnostic(
  * "disabled" reason; the reports carry the location, and warnings (unknown
  * root fields) the loader never surfaces at all.
  */
-function agentPluginReports(stagedDir: string): PluginValidateDiagnostic[] {
+function agentPluginReports(raw: string): PluginValidateDiagnostic[] {
   let candidate: unknown;
   try {
-    candidate = JSON.parse(
-      readFileSync(join(stagedDir, 'plugin.json'), 'utf8'),
-    );
+    candidate = JSON.parse(raw);
   } catch {
     return [];
   }
@@ -410,17 +537,31 @@ function agentPluginReports(stagedDir: string): PluginValidateDiagnostic[] {
 }
 
 function checkEntrypoint(
-  stagedDir: string,
+  pluginDir: string,
   entrypoint: string,
 ): { path: string; present: boolean } {
-  const root = resolve(stagedDir);
-  const target = resolve(root, entrypoint);
+  // Containment is decided on real paths, as the install build's
+  // `assertRealPathInside` decides it: an entrypoint that is a symlink to a
+  // file outside the package reads as present to a lexical check and then
+  // fails the build.
+  const root = realpathSync(pluginDir);
+  const lexical = join(root, entrypoint);
+  const lexicalInside = lexical.startsWith(`${root}${sep}`);
+  const shown = lexicalInside
+    ? relative(root, lexical).split(sep).join('/')
+    : entrypoint;
+  let target: string;
+  try {
+    target = realpathSync(lexical);
+  } catch {
+    return { path: shown, present: false };
+  }
   const inside = target !== root && target.startsWith(`${root}${sep}`);
-  const present = inside && existsSync(target) && statSync(target).isFile();
-  return {
-    path: inside ? relative(root, target).split(sep).join('/') : entrypoint,
-    present,
-  };
+  let present = false;
+  try {
+    present = inside && statSync(target).isFile();
+  } catch {}
+  return { path: shown, present };
 }
 
 /**

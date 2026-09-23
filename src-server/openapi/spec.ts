@@ -271,7 +271,7 @@ const FIRST_PASS_PATHS: Record<
       operationId: 'validatePlugin',
       requestBodySchema: pluginValidateSchema,
       summary:
-        'Check a plugin source for authoring errors without installing, staging under Station, or building it',
+        'Check a local plugin folder for authoring errors without installing, copying, or building it (local absolute paths only)',
       tags: ['plugins'],
     },
   },

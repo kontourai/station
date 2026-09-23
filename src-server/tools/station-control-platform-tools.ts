@@ -1,3 +1,4 @@
+import { isAbsolute } from 'node:path';
 import {
   createIntegration,
   deleteIntegration,
@@ -229,22 +230,38 @@ export function registerPlatformTools(server: StationControlToolRegistry) {
     // route returns diagnostics and a contribution summary and nothing an
     // install could consume as a decision (no content digest, no grant
     // revision), so this does not reopen the door `install_plugin` closes.
-    'Check a plugin folder or git URL for authoring errors without installing it: the manifest, its Workspace Panes, prompt-file safety, and conflicts with what is already installed. Returns diagnostics. It does not install, and it does not build the bundle; a person installs from Plugins → Install plugin after reviewing the preview. Read the station-docs topic `plugin-authoring` for the format.',
+    // It is auto-approved as read-only, so it takes LOCAL folders only: a git
+    // URL would make it a network fetch on an agent's say-so. The route
+    // refuses those too; refusing here as well means no request is made.
+    'Check a local plugin folder for authoring errors without installing it: the manifest, its Workspace Panes, prompt-file safety, and conflicts with what is already installed. Returns diagnostics. Local folders only (an absolute path); it does not fetch git sources, resolve dependencies, install, or build the bundle. A person installs from Plugins → Install plugin after reviewing the preview. Read the station-docs topic `plugin-authoring` for the format.',
     {
       source: z
         .string()
         .min(1)
         .describe(
-          'Absolute path to the plugin folder (the one containing plugin.json), or an HTTPS git URL',
+          'Absolute path to the local plugin folder (the one containing plugin.json)',
         ),
     },
     async ({ source }) =>
-      jsonToolResult(
-        await api('/api/plugins/validate', {
-          method: 'POST',
-          body: JSON.stringify({ source }),
-        }),
-      ),
+      isAbsolute(source)
+        ? jsonToolResult(
+            await api('/api/plugins/validate', {
+              method: 'POST',
+              body: JSON.stringify({ source }),
+            }),
+          )
+        : jsonToolResult({
+            valid: false,
+            source,
+            diagnostics: [
+              {
+                level: 'error',
+                code: 'local-folder-required',
+                message:
+                  'validate checks local folders by absolute path; to check a git source, a person can run the install preview (Plugins → Install plugin).',
+              },
+            ],
+          }),
   );
 
   server.tool(

@@ -1,17 +1,50 @@
+import { execFileSync } from 'node:child_process';
 import {
   chmodSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Hono } from 'hono';
-import { afterEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { readJson } from '../../../__test-utils__/read-json.js';
-import { registerPluginValidateRoutes } from '../plugin-validate-routes.js';
+import {
+  PLUGIN_VALIDATE_MANIFEST_MAX_BYTES,
+  registerPluginValidateRoutes,
+} from '../plugin-validate-routes.js';
+
+// Every git process Station starts goes through `execGit`, and the preview's
+// fetcher is `fetchPluginSource`. Both are spied so a remote source can be
+// shown to reach neither: no clone, no network attempt.
+const execGit = vi.hoisted(() => vi.fn());
+const fetchPluginSource = vi.hoisted(() => vi.fn());
+vi.mock('../../../utils/git-exec.js', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('../../../utils/git-exec.js')>();
+  execGit.mockImplementation(actual.execGit);
+  return { ...actual, execGit };
+});
+vi.mock(
+  '../../../services/plugins/plugin-source.js',
+  async (importOriginal) => {
+    const actual =
+      await importOriginal<
+        typeof import('../../../services/plugins/plugin-source.js')
+      >();
+    fetchPluginSource.mockImplementation(actual.fetchPluginSource);
+    return { ...actual, fetchPluginSource };
+  },
+);
+
+beforeEach(() => {
+  execGit.mockClear();
+  fetchPluginSource.mockClear();
+});
 
 /**
  * #2323 S1. `POST /validate` is an authoring check: the diagnostics must be
@@ -41,13 +74,11 @@ function makeHome() {
   cleanupDirs.push(root);
   const home = join(root, 'home');
   const pluginsDir = join(home, 'plugins');
-  const stagingRoot = join(root, 'staging');
   mkdirSync(pluginsDir, { recursive: true });
-  mkdirSync(stagingRoot, { recursive: true });
-  return { root, home, pluginsDir, stagingRoot };
+  return { root, home, pluginsDir };
 }
 
-function createApp(home: string, stagingRoot: string) {
+function createApp(home: string) {
   const app = new Hono();
   registerPluginValidateRoutes(app, {
     agentsDir: join(home, 'agents'),
@@ -59,7 +90,6 @@ function createApp(home: string, stagingRoot: string) {
     } as any,
     pluginsDir: join(home, 'plugins'),
     projectHomeDir: home,
-    stagingRoot: () => stagingRoot,
   });
   return app;
 }
@@ -137,16 +167,13 @@ function tree(dir: string): string[] {
 
 describe('POST /api/plugins/validate', () => {
   test('a valid Agent Plugin reports its contributions and returns no consent basis', async () => {
-    const { root, home, stagingRoot } = makeHome();
+    const { root, home } = makeHome();
     const source = writePlugin(
       join(root, 'author', 'my-pulse'),
       agentPluginManifest('my-pulse'),
     );
 
-    const { status, body } = await validateSource(
-      createApp(home, stagingRoot),
-      source,
-    );
+    const { status, body } = await validateSource(createApp(home), source);
 
     expect(status).toBe(200);
     expect(body).toMatchObject({
@@ -186,8 +213,8 @@ describe('POST /api/plugins/validate', () => {
     expect(serialized).not.toMatch(/sha256:[0-9a-f]{64}/);
   });
 
-  test('writes nothing under the plugins directory and cleans its own staging', async () => {
-    const { root, home, pluginsDir, stagingRoot } = makeHome();
+  test('writes nothing under the plugins directory or into the author folder', async () => {
+    const { root, home, pluginsDir } = makeHome();
     writePlugin(join(pluginsDir, 'already-installed'), {
       name: 'already-installed',
       version: '1.0.0',
@@ -201,28 +228,24 @@ describe('POST /api/plugins/validate', () => {
       agentPluginManifest('my-pulse'),
     );
 
-    const { body } = await validateSource(createApp(home, stagingRoot), source);
+    const { body } = await validateSource(createApp(home), source);
 
     expect(body.diagnostics).toEqual([]);
     expect(body.valid).toBe(true);
     chmodSync(pluginsDir, 0o755);
     expect(tree(pluginsDir)).toEqual(before);
-    expect(readdirSync(stagingRoot)).toEqual([]);
-    // The author's folder is not built in place either.
+    // The author's folder is read in place and not built in either.
     expect(readdirSync(source).sort()).toEqual(['plugin.json', 'src']);
   });
 
   test('an invalid Station extension is an error, with the failing location', async () => {
-    const { root, home, stagingRoot } = makeHome();
+    const { root, home } = makeHome();
     const source = writePlugin(
       join(root, 'author', 'shouty'),
       agentPluginManifest('shouty', { permissions: ['Navigation.Dock'] }),
     );
 
-    const { status, body } = await validateSource(
-      createApp(home, stagingRoot),
-      source,
-    );
+    const { status, body } = await validateSource(createApp(home), source);
 
     expect(status).toBe(200);
     expect(body.valid).toBe(false);
@@ -236,14 +259,14 @@ describe('POST /api/plugins/validate', () => {
     expect(body.components).toEqual([]);
   });
 
-  test('a manifest the loader rejects is reported with its code, and no staging path leaks', async () => {
-    const { root, home, stagingRoot } = makeHome();
+  test('a manifest the loader rejects is reported with its code, and no source path leaks', async () => {
+    const { root, home } = makeHome();
     const source = writePlugin(join(root, 'author', 'bad-name'), {
       name: 'Bad Name',
       version: '1.0.0',
     });
 
-    const { body } = await validateSource(createApp(home, stagingRoot), source);
+    const { body } = await validateSource(createApp(home), source);
 
     expect(body.valid).toBe(false);
     expect(body.diagnostics).toEqual([
@@ -253,18 +276,21 @@ describe('POST /api/plugins/validate', () => {
         component: 'plugin.json',
       }),
     ]);
-    expect(JSON.stringify(body)).not.toContain(stagingRoot);
+    expect(JSON.stringify(body.diagnostics)).not.toContain(source);
+    // One diagnostic for one failure: the thrown loader error and the
+    // parser's report are the same problem.
+    expect(body.diagnostics).toHaveLength(1);
   });
 
   test('a missing entrypoint is an error the install build would hit', async () => {
-    const { root, home, stagingRoot } = makeHome();
+    const { root, home } = makeHome();
     const source = writePlugin(
       join(root, 'author', 'no-entry'),
       agentPluginManifest('no-entry'),
       { entrypoint: false },
     );
 
-    const { body } = await validateSource(createApp(home, stagingRoot), source);
+    const { body } = await validateSource(createApp(home), source);
 
     expect(body.valid).toBe(false);
     expect(body.entrypoint).toEqual({
@@ -277,7 +303,7 @@ describe('POST /api/plugins/validate', () => {
   });
 
   test('a plugin-component pane with no entrypoint and no prebuilt bundle is an error', async () => {
-    const { root, home, stagingRoot } = makeHome();
+    const { root, home } = makeHome();
     const station = agentPluginManifest('bundleless');
     const extension = (station.extensions as Record<string, any>)[
       'io.kontourai.station'
@@ -287,7 +313,7 @@ describe('POST /api/plugins/validate', () => {
       entrypoint: false,
     });
 
-    const { body } = await validateSource(createApp(home, stagingRoot), source);
+    const { body } = await validateSource(createApp(home), source);
 
     expect(body.valid).toBe(false);
     expect(body.diagnostics).toEqual([
@@ -297,12 +323,12 @@ describe('POST /api/plugins/validate', () => {
     // A package that ships its own bundle needs no entrypoint.
     mkdirSync(join(source, 'dist'));
     writeFileSync(join(source, 'dist', 'bundle.js'), '');
-    const prebuilt = await validateSource(createApp(home, stagingRoot), source);
+    const prebuilt = await validateSource(createApp(home), source);
     expect(prebuilt.body.diagnostics).toEqual([]);
   });
 
   test('a pane id another installed plugin owns is an error, as install would refuse it', async () => {
-    const { root, home, pluginsDir, stagingRoot } = makeHome();
+    const { root, home, pluginsDir } = makeHome();
     const paneId = 'pane:plugin%3Ashared:pulse:workspace';
     writePlugin(join(pluginsDir, 'owner-plugin'), {
       name: 'owner-plugin',
@@ -314,7 +340,7 @@ describe('POST /api/plugins/validate', () => {
     });
     const source = writePlugin(join(root, 'author', 'newcomer'), manifest);
 
-    const { body } = await validateSource(createApp(home, stagingRoot), source);
+    const { body } = await validateSource(createApp(home), source);
 
     expect(body.valid).toBe(false);
     expect(body.conflicts).toEqual([
@@ -332,7 +358,7 @@ describe('POST /api/plugins/validate', () => {
   });
 
   test('a reused rendererId is a warning, not a refusal', async () => {
-    const { root, home, stagingRoot } = makeHome();
+    const { root, home } = makeHome();
     const first = paneDescriptor('twins', 'pane:plugin%3Atwins:a:workspace');
     const second = {
       ...paneDescriptor('twins', 'pane:plugin%3Atwins:b:workspace'),
@@ -343,7 +369,7 @@ describe('POST /api/plugins/validate', () => {
       agentPluginManifest('twins', { workspacePanes: [first, second] }),
     );
 
-    const { body } = await validateSource(createApp(home, stagingRoot), source);
+    const { body } = await validateSource(createApp(home), source);
 
     expect(body.valid).toBe(true);
     expect(body.diagnostics).toEqual([
@@ -355,10 +381,10 @@ describe('POST /api/plugins/validate', () => {
   });
 
   test('a source that does not exist is an error, not a server failure', async () => {
-    const { root, home, stagingRoot } = makeHome();
+    const { root, home } = makeHome();
 
     const { status, body } = await validateSource(
-      createApp(home, stagingRoot),
+      createApp(home),
       join(root, 'nowhere'),
     );
 
@@ -367,12 +393,11 @@ describe('POST /api/plugins/validate', () => {
     expect(body.diagnostics).toEqual([
       expect.objectContaining({ level: 'error', code: 'source-unavailable' }),
     ]);
-    expect(readdirSync(stagingRoot)).toEqual([]);
   });
 
   test('refuses a body with install fields rather than ignoring them', async () => {
-    const { home, stagingRoot } = makeHome();
-    const response = await createApp(home, stagingRoot).request('/validate', {
+    const { home } = makeHome();
+    const response = await createApp(home).request('/validate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -381,5 +406,190 @@ describe('POST /api/plugins/validate', () => {
       }),
     });
     expect(response.status).toBe(400);
+  });
+  test.each([
+    ['https git URL', 'https://example.invalid/owner/plugin.git'],
+    [
+      'https git URL with a branch',
+      'https://example.invalid/owner/plugin.git#main',
+    ],
+    ['ssh URL', 'ssh://git@example.invalid/owner/plugin.git'],
+    ['scp-style git remote', 'git@example.invalid:owner/plugin.git'],
+    ['file URL', 'file:///tmp/plugin'],
+  ])(
+    'a remote source (%s) is refused before any fetch or git process',
+    async (_label, source) => {
+      const { home } = makeHome();
+      const { status, body } = await validateSource(createApp(home), source);
+
+      expect(status).toBe(200);
+      expect(body.valid).toBe(false);
+      expect(body.diagnostics).toEqual([
+        expect.objectContaining({
+          level: 'error',
+          code: 'remote-source-refused',
+          message: expect.stringContaining('validate checks local folders'),
+        }),
+      ]);
+      expect(fetchPluginSource).not.toHaveBeenCalled();
+      expect(execGit).not.toHaveBeenCalled();
+    },
+  );
+
+  test('a relative path is refused rather than resolved against the server', async () => {
+    const { home } = makeHome();
+    const { body } = await validateSource(createApp(home), '.');
+    expect(body.diagnostics).toEqual([
+      expect.objectContaining({ code: 'source-not-absolute' }),
+    ]);
+    expect(fetchPluginSource).not.toHaveBeenCalled();
+  });
+
+  test('the spies are live: the preview fetcher really does reach git for a URL', async () => {
+    // Control for the refusal test above. If the mocks were not wired, a
+    // "not called" assertion would pass for any implementation.
+    const { root } = makeHome();
+    execGit.mockRejectedValueOnce(new Error('no network in tests'));
+    execGit.mockRejectedValueOnce(new Error('no network in tests'));
+    const { fetchPluginSource: fetchThroughModule } = await import(
+      '../../../services/plugins/plugin-source.js'
+    );
+    await fetchThroughModule(
+      'https://example.invalid/owner/plugin.git',
+      join(root, 'staging-control'),
+      { debug: vi.fn() } as any,
+    );
+    expect(execGit).toHaveBeenCalled();
+  });
+
+  describe('a plugin.json that is not a plain file is refused, promptly, without echoing anything', () => {
+    const SECRET = 'AKIA-TEST-SECRET-9f3c';
+
+    async function refusedWithin(source: string, home: string) {
+      const outcome = await Promise.race([
+        validateSource(createApp(home), source),
+        new Promise<'timed out'>((resolve) =>
+          setTimeout(() => resolve('timed out'), 3_000),
+        ),
+      ]);
+      expect(outcome, 'validation blocked on plugin.json').not.toBe(
+        'timed out',
+      );
+      const { body } = outcome as Awaited<ReturnType<typeof validateSource>>;
+      expect(body.valid).toBe(false);
+      expect(body.diagnostics).toEqual([
+        expect.objectContaining({
+          level: 'error',
+          code: 'manifest-not-regular-file',
+        }),
+      ]);
+      expect(JSON.stringify(body)).not.toContain(SECRET);
+      return body;
+    }
+
+    test('a symlink to a text file', async () => {
+      const { root, home } = makeHome();
+      writeFileSync(join(root, 'secret.txt'), `${SECRET} not json`);
+      const dir = join(root, 'author', 'sym-text');
+      mkdirSync(dir, { recursive: true });
+      symlinkSync(join(root, 'secret.txt'), join(dir, 'plugin.json'));
+      await refusedWithin(dir, home);
+    });
+
+    test('a symlink to a JSON file', async () => {
+      const { root, home } = makeHome();
+      writeFileSync(
+        join(root, 'secret.json'),
+        JSON.stringify({ name: 'leak', version: '1.0.0', token: SECRET }),
+      );
+      const dir = join(root, 'author', 'sym-json');
+      mkdirSync(dir, { recursive: true });
+      symlinkSync(join(root, 'secret.json'), join(dir, 'plugin.json'));
+      const body = await refusedWithin(dir, home);
+      expect(body.plugin).toBeUndefined();
+    });
+
+    test('a symlink to a FIFO', async () => {
+      const { root, home } = makeHome();
+      const fifo = join(root, 'fifo');
+      execFileSync('mkfifo', [fifo]);
+      const dir = join(root, 'author', 'sym-fifo');
+      mkdirSync(dir, { recursive: true });
+      symlinkSync(fifo, join(dir, 'plugin.json'));
+      await refusedWithin(dir, home);
+    });
+
+    test('a FIFO in place of the file', async () => {
+      const { root, home } = makeHome();
+      const dir = join(root, 'author', 'fifo');
+      mkdirSync(dir, { recursive: true });
+      execFileSync('mkfifo', [join(dir, 'plugin.json')]);
+      await refusedWithin(dir, home);
+    });
+  });
+
+  test('a plugin.json over the byte cap is refused without being parsed', async () => {
+    const { root, home } = makeHome();
+    const dir = join(root, 'author', 'huge');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      join(dir, 'plugin.json'),
+      `{"name":"huge","version":"1.0.0","pad":"${'x'.repeat(PLUGIN_VALIDATE_MANIFEST_MAX_BYTES)}"}`,
+    );
+    const { body } = await validateSource(createApp(home), dir);
+    expect(body.diagnostics).toEqual([
+      expect.objectContaining({ code: 'manifest-too-large' }),
+    ]);
+    expect(body.plugin).toBeUndefined();
+  });
+
+  test('declared dependencies are reported as not checked', async () => {
+    const { root, home } = makeHome();
+    const source = writePlugin(
+      join(root, 'author', 'with-deps'),
+      agentPluginManifest('with-deps', {
+        dependencies: [{ name: 'some-other-plugin', version: '1.0.0' }],
+      }),
+    );
+    const { body } = await validateSource(createApp(home), source);
+    expect(body.valid).toBe(true);
+    expect(body.diagnostics).toEqual([
+      expect.objectContaining({
+        level: 'warning',
+        code: 'dependencies-not-checked',
+        message: expect.stringContaining('some-other-plugin'),
+      }),
+    ]);
+  });
+
+  test('an entrypoint symlinked to a file outside the plugin is not present', async () => {
+    const { root, home } = makeHome();
+    writeFileSync(join(root, 'outside.tsx'), 'export const components = {};\n');
+    const source = writePlugin(
+      join(root, 'author', 'escape'),
+      agentPluginManifest('escape'),
+      { entrypoint: false },
+    );
+    symlinkSync(join(root, 'outside.tsx'), join(source, 'src', 'index.tsx'));
+    const { body } = await validateSource(createApp(home), source);
+    expect(body.entrypoint).toEqual({ path: 'src/index.tsx', present: false });
+    expect(body.diagnostics).toEqual([
+      expect.objectContaining({ level: 'error', code: 'entrypoint-missing' }),
+    ]);
+  });
+
+  test('an Agent Plugins manifest failure is reported once, with its location', async () => {
+    const { root, home } = makeHome();
+    const manifest = agentPluginManifest('a--b');
+    const source = writePlugin(join(root, 'author', 'double-hyphen'), manifest);
+    const { body } = await validateSource(createApp(home), source);
+    expect(body.valid).toBe(false);
+    expect(body.diagnostics).toEqual([
+      expect.objectContaining({
+        level: 'error',
+        code: 'manifest-invalid',
+        message: expect.stringContaining('/name'),
+      }),
+    ]);
   });
 });

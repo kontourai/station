@@ -3015,14 +3015,13 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // #2323 S1: `POST /validate` is an authoring check that installs nothing,
     // but it stays on the family's operate tier rather than an explicit
     // read override like `/api/projects/:slug/file-preview`. That override is
-    // justified there by "no caller-supplied root"; this route takes one.
-    // The body names an arbitrary host path (validate reads and returns the
-    // manifest found there) or an HTTPS git URL (validate clones it from this
-    // Station, the outbound attempt that keeps `/api/environments/ssh/probe`
-    // on operate). It also has the same reach as its sibling `/preview`,
-    // which is family-inherited here. A read-only paired device gains
-    // nothing it should have from reaching it; the agent tool calls it with
-    // the local operator credential either way.
+    // justified there by "no caller-supplied root"; this route takes one:
+    // the body names an arbitrary absolute host path, and validate reads and
+    // returns the manifest found there. (It refuses git and other remote
+    // sources outright, so it makes no outbound request.) Its sibling
+    // `/preview`, which reads the same, is family-inherited here too. A
+    // read-only paired device gains nothing it should have from reaching it;
+    // the agent tool calls it with the local operator credential either way.
     { method: 'POST', path: '/api/plugins/validate' },
     { method: 'POST', path: '/api/plugins/reload' },
     { method: 'DELETE', path: '/api/plugins/:name' },

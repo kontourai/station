@@ -390,6 +390,24 @@ describe('station-control platform tools (characterization)', () => {
    * `plugins.ts` mounts it. Only the network hop is replaced, by handing the
    * request to that Hono app.
    */
+  test('validate_plugin refuses a git or relative source without making any request', async () => {
+    const tools = await registerTools();
+    for (const source of [
+      'https://example.invalid/owner/plugin.git',
+      'git@example.invalid:owner/plugin.git',
+      './my-plugin',
+    ]) {
+      const payload = JSON.parse(
+        (await tools.validate_plugin({ source })).content[0].text,
+      );
+      expect(payload.valid, source).toBe(false);
+      expect(payload.diagnostics, source).toEqual([
+        expect.objectContaining({ code: 'local-folder-required' }),
+      ]);
+    }
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   test('validate_plugin reaches the validate route and relays its diagnostics', async () => {
     const root = mkdtempSync(join(tmpdir(), 'station-validate-tool-'));
     try {

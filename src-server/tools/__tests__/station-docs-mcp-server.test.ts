@@ -1,7 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { PERMISSION_TIERS } from '@kontourai/station-contracts/plugin';
+import { WORKSPACE_PANE_REGIONS } from '@kontourai/station-contracts/workspace-pane';
 import { describe, expect, test } from 'vitest';
-
 import packageJson from '../../../package.json' with { type: 'json' };
 import { parsePluginManifestDocumentWithFormat } from '../../services/plugins/plugin-manifest-loader.js';
 import { STATION_DOCS_TOPICS } from '../station-docs-content.js';
@@ -123,14 +124,45 @@ describe('station-docs plugin-authoring topic', () => {
     expect(found, 'plugin-authoring topic is missing').toBeDefined();
     return found!;
   };
+  const paragraphs = () => topic().body.split('\n\n');
 
   /** The paragraph that starts with `heading`, as written in the body. */
   const paragraph = (heading: string) => {
-    const match = topic()
-      .body.split('\n\n')
-      .find((block) => block.startsWith(heading));
+    const match = paragraphs().find((block) => block.startsWith(heading));
     expect(match, `no paragraph starting '${heading}'`).toBeDefined();
     return match!;
+  };
+
+  /** A line inside `block` starting with `prefix`. */
+  const line = (block: string, prefix: string) => {
+    const match = block.split('\n').find((entry) => entry.startsWith(prefix));
+    expect(match, `no line starting '${prefix}'`).toBeDefined();
+    return match!;
+  };
+
+  const quoted = (text: string) =>
+    [...text.matchAll(/"([^"]+)"/g)].map((match) => match[1]!);
+
+  const exampleManifests = () =>
+    paragraphs()
+      .filter((block) => block.startsWith('A complete minimal manifest'))
+      .map((block) => JSON.parse(block.slice(block.indexOf('\n{') + 1)));
+
+  const load = (manifest: unknown) =>
+    parsePluginManifestDocumentWithFormat(
+      JSON.stringify(manifest),
+      '/docs/plugin.json',
+    );
+
+  /** The plugin-component example with one pane field replaced. */
+  const withPane = (patch: Record<string, unknown>) => {
+    const [example] = exampleManifests();
+    const copy = JSON.parse(JSON.stringify(example));
+    Object.assign(
+      copy.extensions['io.kontourai.station'].workspacePanes[0],
+      patch,
+    );
+    return load(copy);
   };
 
   test('every SDK hook the topic names is a real export of @kontourai/station-sdk', async () => {
@@ -162,37 +194,105 @@ describe('station-docs plugin-authoring topic', () => {
     ).toEqual([]);
   }, 60_000);
 
-  test('the example manifest loads through the real loader with its pane intact', () => {
-    const block = paragraph('A complete minimal manifest');
-    const json = block.slice(block.indexOf('\n{') + 1);
-    const { manifest, format, stationExtension } =
-      parsePluginManifestDocumentWithFormat(json, '/docs/plugin.json');
-    expect(format).toBe('agent-plugin-1.0');
-    // `disabled` would mean Station drops every pane the example declares
-    // while still reporting a successful load.
-    expect(stationExtension).toEqual({ status: 'validated' });
+  test('there is one example manifest per documented renderer kind, and each loads with its pane intact', () => {
+    const documentedKinds = [
+      ...paragraph('RENDERER KINDS').matchAll(/Use "([a-z-]+)"/g),
+    ].map((match) => match[1]!);
+    expect(documentedKinds.sort()).toEqual(['mcp-tool-ui', 'plugin-component']);
+
+    const examples = exampleManifests();
+    const covered: string[] = [];
+    for (const example of examples) {
+      const { manifest, format, stationExtension } = load(example);
+      expect(format, example.name).toBe('agent-plugin-1.0');
+      // `disabled` would mean Station drops every pane the example declares
+      // while still reporting a successful load.
+      expect(stationExtension, example.name).toEqual({ status: 'validated' });
+      expect(manifest.workspacePanes, example.name).toHaveLength(1);
+      covered.push(manifest.workspacePanes![0]!.renderer.kind);
+    }
+    expect(covered.sort()).toEqual(documentedKinds);
+  });
+
+  test('the plugin-component example declares the entrypoint and renderer name its code exports', () => {
+    const [example] = exampleManifests();
+    const { manifest } = load(example);
     expect(manifest.entrypoint).toBe('./src/index.tsx');
-    expect(manifest.permissions).toEqual(['navigation.dock']);
-    expect(manifest.workspacePanes).toHaveLength(1);
     expect(manifest.workspacePanes?.[0]?.renderer).toEqual({
       kind: 'plugin-component',
       name: 'my-pulse-workspace',
     });
-  });
-
-  test('the example entrypoint exports the renderer name the example manifest declares', () => {
-    const code = paragraph('THE ENTRYPOINT AND THE COMPONENTS EXPORT');
-    expect(code).toContain(
+    expect(paragraph('THE ENTRYPOINT AND THE COMPONENTS EXPORT')).toContain(
       'export const components = { "my-pulse-workspace": MyPulse };',
     );
   });
 
-  test('it says an agent cannot install, and names the tool that validates', () => {
+  test('the permission list is exactly Station’s permission vocabulary, in the right tiers', () => {
+    const block = paragraph('PERMISSIONS.');
+    for (const tier of ['passive', 'active', 'trusted'] as const) {
+      const documented = quoted(line(block, `- ${tier} `)).sort();
+      const actual = Object.entries(PERMISSION_TIERS)
+        .filter(([, value]) => value === tier)
+        .map(([permission]) => permission)
+        .sort();
+      expect(documented, `${tier} permissions`).toEqual(actual);
+    }
+  });
+
+  test('the documented regions are exactly the contract’s regions', () => {
+    const regions = line(
+      paragraph('WORKSPACE PANE FIELDS'),
+      '- placement.supportedRegions',
+    ).split('.')[1]!;
+    expect(quoted(regions).sort()).toEqual([...WORKSPACE_PANE_REGIONS].sort());
+  });
+
+  test('every documented lifecycle stage and context key is accepted by the loader', () => {
+    const fields = paragraph('WORKSPACE PANE FIELDS');
+    const stages = quoted(line(fields, '- lifecycle.stage'));
+    expect(stages.length).toBeGreaterThan(0);
+    for (const stage of stages) {
+      expect(
+        withPane({ lifecycle: { stage } }).stationExtension,
+        stage,
+      ).toEqual({ status: 'validated' });
+    }
+    // The control: the substitution really reaches the parser.
+    expect(
+      withPane({ lifecycle: { stage: 'beta' } }).stationExtension?.status,
+    ).toBe('disabled');
+
+    const modes = line(fields, '- modes');
+    const keys = quoted(
+      modes.slice(modes.indexOf('these keys'), modes.indexOf('"default"')),
+    );
+    expect(keys).toEqual(
+      expect.arrayContaining(['project', 'task', 'session']),
+    );
+    for (const key of keys) {
+      const { manifest, stationExtension } = withPane({
+        modes: [{ id: 'default', contextRequirement: { [key]: true } }],
+      });
+      expect(stationExtension, key).toEqual({ status: 'validated' });
+      // Unknown keys are dropped rather than refused, so presence in the
+      // parsed mode is the proof the loader knows the key.
+      expect(
+        manifest.workspacePanes?.[0]?.modes[0]?.contextRequirement,
+        key,
+      ).toEqual({ [key]: true });
+    }
+  });
+
+  test('it says agents must not install, and names the validate tool and the person’s paths', () => {
     const body = topic().body;
     expect(body).toContain('validate_plugin');
-    expect(body).toMatch(/agent cannot install a plugin/i);
+    expect(body).toMatch(/agents must not install plugins/i);
     expect(body).toContain('Plugins → Install plugin');
     expect(body).toContain('station plugin install');
+    expect(body).toContain('--yes');
+    // Validation is a subset of the preview; the prose must not say otherwise.
+    expect(body).not.toMatch(/same checks/i);
+    expect(body).toContain('dependencies-not-checked');
     // The #2321 mistake: the hook returns the function itself.
     expect(body).toContain('const sendToChat = useSendToChat(');
     expect(body).not.toMatch(
@@ -200,11 +300,19 @@ describe('station-docs plugin-authoring topic', () => {
     );
   });
 
-  test('no other topic claims station-control installs plugins', () => {
+  test('no topic claims station-control or an agent installs plugins', () => {
+    // Any sentence about installing a plugin must, in the same sentence,
+    // either refuse it or name the person as the one who installs. Catches
+    // "install plugins", "installs plugins", "installing plugins" and
+    // "install a plugin".
+    const install = /\binstall(?:s|ing)?\s+(?:a\s+|the\s+)?plugins?\b/i;
+    const refusal = /\b(?:not|never|refuses?|cannot|person)\b/i;
     for (const entry of STATION_DOCS_TOPICS) {
-      expect(entry.body, entry.id).not.toMatch(
-        /(?<!cannot )(?<!not )install(?:ing)? plugins\b/i,
-      );
+      for (const sentence of entry.body.split(/(?<=[.:])\s+/)) {
+        if (install.test(sentence)) {
+          expect(sentence, entry.id).toMatch(refusal);
+        }
+      }
     }
   });
 });
