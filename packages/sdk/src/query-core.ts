@@ -1,7 +1,6 @@
 import {
   hashKey,
   keepPreviousData,
-  type Query,
   useMutation,
   useQuery,
   useQueryClient,
@@ -38,32 +37,6 @@ import { _getApiBase } from './api';
  */
 export const PERSISTED_QUERY_GC_TIME_MS = 24 * 60 * 60 * 1000;
 
-/**
- * `refetchOnMount` policy for catalog reads whose contents change OUTSIDE this
- * client — a plugin installed from the CLI, another tab or device, an agent.
- *
- * Station's client default is `refetchOnMount: false`, and TanStack applies it
- * even to an invalidated query. So `invalidateQueries` reaches only a query
- * observed at that moment: a plugin lifecycle event, an in-tab install, or the
- * reconnect sync that lands while the catalog is unmounted marks it
- * invalidated, and the next mount then serves the old answer anyway, with
- * nothing left to refetch it.
- *
- * Returning `true` for an invalidated query means "refetch if stale", and an
- * invalidated query is always stale. A remount of an untouched answer does
- * not refetch; it keeps the cache-first default.
- *
- * An invalidated answer that fails to refetch (the route dropped after the
- * invalidation) keeps its data and reports `isError`. Consumers must render
- * that data rather than an error screen; only a catalog with no data is an
- * error state.
- */
-export function refetchOnMountWhenInvalidated(
-  query: Query<any, any, any, any>,
-): boolean {
-  return query.state.isInvalidated;
-}
-
 export interface QueryConfig<_T> {
   staleTime?: number;
   gcTime?: number;
@@ -73,10 +46,7 @@ export interface QueryConfig<_T> {
    * Most Station reads may use the app's cache-first default; capability-like
    * answer references may not survive an authority change in that cache.
    */
-  refetchOnMount?:
-    | boolean
-    | 'always'
-    | ((query: Query<any, any, any, any>) => boolean | 'always');
+  refetchOnMount?: boolean | 'always';
   /** Polling interval in ms. Station globally disables refetch-on-focus and
    * refetch-on-mount, so for data that can change outside this client's own
    * mutations, polling is the only refresh path — pass this explicitly. */
