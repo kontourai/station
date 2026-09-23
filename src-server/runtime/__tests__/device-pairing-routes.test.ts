@@ -735,6 +735,75 @@ describe('public pairing abuse hardening (station#2001)', () => {
 });
 
 describe('device pairing routes', () => {
+  test('pending relay Device stays hidden from operator inventory and refused by bearer, cookie and legacy exchange routes', async () => {
+    const harness = createHarness();
+    const existing = await pairDevice(harness, 'Existing device');
+    const enrollmentId = 'V'.repeat(43);
+    const candidate = {
+      issuer: 'https://identity.example.test',
+      subject: 'relay-person',
+      displayName: 'Relay person',
+    };
+    const pending = harness.pairing.requestRelayEnrollmentAccess({
+      enrollmentId,
+      endpoint: 'https://station.example.test',
+      candidate,
+      sessionId: 'relay-provider-session',
+    });
+    harness.pairing.confirmRelayEnrollmentRequest(
+      pending.requestId,
+      { kind: 'presented-credential' },
+      'human:deployment:operator',
+      {
+        enrollmentId,
+        sessionId: 'relay-provider-session',
+        issuer: candidate.issuer,
+        subject: candidate.subject,
+      },
+    );
+    const reservedId = 'bbbbbbbb-cccc-4ddd-8eee-ffffffffffff';
+    const pendingDevice = harness.pairing.exchangeRelayEnrollment({
+      offerId: pending.offerId,
+      proof: pending.proof,
+      requestId: pending.requestId,
+      enrollmentId,
+      deviceId: reservedId,
+    });
+
+    const devices = await harness.request('/api/pairing/devices', {
+      headers: { Authorization: `Bearer ${MASTER_CREDENTIAL}` },
+    });
+    expect(devices.status).toBe(200);
+    expect(await devices.json()).toMatchObject({
+      devices: [{ id: existing.device.id }],
+    });
+    expect(harness.pairing.listKnownPrincipals()).not.toContainEqual(
+      expect.objectContaining({ id: `human:device:${reservedId}` }),
+    );
+    expect(harness.pairing.listPushSubscriptions()).toEqual([]);
+
+    for (const headers of [
+      { Authorization: `Bearer ${pendingDevice.credential}` },
+      { Cookie: `station-device=${pendingDevice.credential}` },
+    ]) {
+      const protectedRead = await harness.request('/api/projects', { headers });
+      expect(protectedRead.status).not.toBe(200);
+    }
+    const legacyExchange = await harness.request(
+      '/.well-known/station/v1/pairing/exchange',
+      harness.json({
+        offerId: pending.offerId,
+        proof: pending.proof,
+        requestId: pending.requestId,
+      }),
+    );
+    expect(legacyExchange.status).toBe(409);
+    expect(await legacyExchange.json()).toEqual({
+      error: 'relay_enrollment_finalize_required',
+    });
+    expect(harness.pairing.identifyDevice(existing.credential)).not.toBeNull();
+  });
+
   test('station#1123 slice 1: POST /api/pairing/offers accepts kind and rejects an unknown one', async () => {
     const harness = createHarness();
 

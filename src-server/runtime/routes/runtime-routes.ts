@@ -6110,6 +6110,20 @@ export function configureDevicePairingPublicRoutes(
       return c.json({ error: 'origin_forbidden' }, 403);
     }
     try {
+      // An enrollment-owned offer can only be finalized through the
+      // key-bound relay activation protocol. The legacy public exchange has
+      // no attempt proof or delivery ACK, so it must never mint this Device.
+      if (pairing.isRelayEnrollmentRequest(body.requestId)) {
+        deviceSessionExchanges.add(1, {
+          outcome: 'denied',
+          reason: 'relay_enrollment_finalize_required',
+        });
+        failureLimiter.finalize(admission.admission, 'pending');
+        return c.json(
+          { error: 'relay_enrollment_finalize_required' },
+          409,
+        );
+      }
       const { replacement, ...result } = pairing.exchange({
         offerId: body.offerId,
         proof: body.proof,

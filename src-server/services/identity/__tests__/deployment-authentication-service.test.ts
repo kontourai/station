@@ -40,6 +40,43 @@ function provider(
     handle: vi.fn(async () => new Response(null, { status: 204 })),
   };
 }
+function pendingProvider() {
+  const adapter = provider();
+  const result = {
+    kind: 'pending' as const,
+    session: {
+      enrollmentId: 'A'.repeat(43),
+      sessionId: 'pending-session-record',
+      subject: 'opaque-person',
+      displayName: 'Example Person',
+      expiresAt: '2026-09-12T12:05:00.000Z',
+    },
+  };
+  const pending = {
+    create: vi.fn(async () => result),
+    verify: vi.fn(async () => result),
+    promote: vi.fn(async () => {}),
+    discard: vi.fn(async () => {}),
+  };
+  adapter.login = {
+    kind: 'username-password',
+    signInPath: '/sign-in/username',
+  };
+  adapter.endpoints = [
+    ...adapter.endpoints,
+    {
+      path: '/sign-in/username',
+      methods: ['POST'],
+      operation: 'begin-login',
+    },
+  ];
+  adapter.sessionReferences = {
+    verify: vi.fn(async () => ({ kind: 'invalid', reason: 'revoked' })),
+    revoke: vi.fn(async () => {}),
+    pendingEnrollment: pending,
+  };
+  return { adapter, pending, result };
+}
 const request = (cookie = 'fixture_account=valid') =>
   new Request('https://station.example.test/api/account/session', {
     headers: cookie ? { Cookie: cookie } : {},
@@ -186,6 +223,127 @@ describe('deployment authentication identity boundary', () => {
       reason: 'expired',
     });
     expect(adapter.authenticate).toHaveBeenCalledTimes(3);
+  });
+
+  test('pending enrollment stays outside generic request authentication and verifies the exact provider attempt', async () => {
+    const { adapter, pending, result } = pendingProvider();
+    const service = new DeploymentAuthenticationService(adapter, () => now);
+    expect(service.pendingEnrollmentCapabilities()).toEqual({
+      available: true,
+    });
+    const incoming = new Request('https://station.example.test/enrollment/login', {
+      method: 'POST',
+      headers: {
+        Origin: 'https://client.example.test',
+        'Content-Type': 'application/json',
+        Cookie: 'fixture_account=must-not-adopt',
+        Authorization: 'Bearer existing-device-credential',
+        'X-Station-Account-Continuation': 'existing-continuation',
+        'X-Station-Account-Proof': 'existing-proof',
+      },
+      body: '{}',
+    });
+    expect(
+      await service.createPendingEnrollment('A'.repeat(43), incoming),
+    ).toEqual(result);
+    const createRequest = vi.mocked(pending.create).mock.calls[0]?.[1];
+    expect(createRequest?.headers.get('Cookie')).toBeNull();
+    expect(createRequest?.headers.get('Authorization')).toBeNull();
+    expect(createRequest?.headers.get('Origin')).toBe(
+      'https://client.example.test',
+    );
+    expect(
+      createRequest?.headers.get('X-Station-Account-Continuation'),
+    ).toBeNull();
+    expect(createRequest?.headers.get('X-Station-Account-Proof')).toBeNull();
+    expect(adapter.authenticate).not.toHaveBeenCalled();
+    expect(adapter.sessionReferences?.verify).not.toHaveBeenCalled();
+    expect(service.current(request())).toBeUndefined();
+    expect(
+      await service.verifyPendingEnrollment(
+        'A'.repeat(43),
+        'pending-session-record',
+        new AbortController().signal,
+      ),
+    ).toEqual(result);
+    expect(pending.verify).toHaveBeenCalledWith(
+      'A'.repeat(43),
+      'pending-session-record',
+      expect.any(AbortSignal),
+    );
+
+    vi.mocked(pending.verify).mockResolvedValueOnce({
+      ...result,
+      session: { ...result.session, enrollmentId: 'B'.repeat(43) },
+    });
+    expect(
+      await service.verifyPendingEnrollment(
+        'A'.repeat(43),
+        'pending-session-record',
+        new AbortController().signal,
+      ),
+    ).toEqual({ kind: 'invalid', reason: 'conflicting-identity' });
+  });
+
+  test('pending-session promotion reports a commit that settles after caller abort', async () => {
+    const { adapter, pending } = pendingProvider();
+    const service = new DeploymentAuthenticationService(adapter, () => now);
+    let committed!: () => void;
+    const promotion = new Promise<void>((resolve) => {
+      committed = resolve;
+    });
+    vi.mocked(pending.promote).mockReturnValue(promotion);
+    const controller = new AbortController();
+    const result = service.promotePendingEnrollment(
+      'A'.repeat(43),
+      'pending-session-record',
+      controller.signal,
+    );
+    await Promise.resolve();
+    controller.abort();
+    committed();
+    await expect(result).resolves.toBeUndefined();
+  });
+
+  test('pending-session discard reports settled cleanup after caller abort', async () => {
+    const { adapter, pending } = pendingProvider();
+    const service = new DeploymentAuthenticationService(adapter, () => now);
+    let committed!: () => void;
+    const cleanup = new Promise<void>((resolve) => {
+      committed = resolve;
+    });
+    vi.mocked(pending.discard).mockReturnValue(cleanup);
+    const controller = new AbortController();
+    const result = service.discardPendingEnrollment(
+      'A'.repeat(43),
+      'pending-session-record',
+      controller.signal,
+    );
+    await Promise.resolve();
+    controller.abort();
+    committed();
+    await expect(result).resolves.toBeUndefined();
+  });
+
+  test('generic session revocation reports provider commit after caller abort', async () => {
+    const { adapter } = pendingProvider();
+    const revoke = vi.fn();
+    adapter.sessionReferences!.revoke = revoke;
+    const service = new DeploymentAuthenticationService(adapter, () => now);
+    let committed!: () => void;
+    const revocation = new Promise<void>((resolve) => {
+      committed = resolve;
+    });
+    vi.mocked(revoke).mockReturnValue(revocation);
+    const controller = new AbortController();
+    const result = service.revokeSessionReference(
+      'pending-session-record',
+      controller.signal,
+    );
+    await Promise.resolve();
+    controller.abort();
+    committed();
+    await expect(result).resolves.toBeUndefined();
   });
 
   test('treats provider exceptions, malformed results and authority-bearing claims as unavailable', async () => {
