@@ -1,6 +1,7 @@
 import { parseEngineId } from '@kontourai/station-contracts/agent-identity';
 import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import { unanswerableRequestNotice } from '@kontourai/station-contracts/orchestration';
+import { isFirstSendFailure } from '@kontourai/station-contracts/session-attention';
 import type {
   OrchestrationSessionSummary,
   SessionControlMode,
@@ -536,13 +537,23 @@ function mergeHomeWorkItems(
     // even if the server execution has not caught up. Otherwise the newest
     // execution owns this conversation's status: predecessor sessions must
     // not keep a completed/failed chip after a later handoff child runs.
-    const mergedLifecycleLabel =
+    const serverOrNewestLabel =
       chat && isLocalActionableLifecycle(chat)
         ? moreImportantLifecycle(
             chat.lifecycleLabel,
             orchestration?.lifecycleLabel ?? newest.lifecycleLabel,
           )
         : (orchestration?.lifecycleLabel ?? newest.lifecycleLabel);
+    // #2310 review H1: the server says Draft (nothing was ever sent) but this
+    // device's chat does not agree. `chatLifecycleLabel` reads a correlated
+    // Draft as 'Draft' ONLY while the chat holds no transcript message, so any
+    // other chat label here is first-hand evidence that a turn was sent, and
+    // the server's Draft is a summary fetched before it. The chat's own label
+    // is the honest answer until the server re-reads.
+    const mergedLifecycleLabel =
+      serverOrNewestLabel === 'Draft' && chat && chat.lifecycleLabel !== 'Draft'
+        ? chat.lifecycleLabel
+        : serverOrNewestLabel;
     // archive#3724: the notice's iff contract must survive the
     // merge. The spread carried the CHAT side's notice regardless of which
     // side's label won — an errored chat under a winning 'Needs attention'
@@ -789,6 +800,8 @@ function chatFailureNotice(chat: ChatUIState): string | null {
 interface ChatSessionCorrelation {
   hasActiveTurn: boolean;
   failed: boolean;
+  /** #2310: the server's lineage-aware Draft fold for this conversation. */
+  draft: boolean;
   updatedAt: string;
 }
 
@@ -823,6 +836,11 @@ function chatLifecycleLabel(
   // (dropped SSE, other device, reload) stayed on the local-state fallbacks
   // below and read "Active" while the server said failed.
   if (correlated?.failed) return 'Failed';
+  // #2310: the server says nothing was ever sent, and this chat holds no
+  // transcript message to contradict it. A chat WITH one has sent a turn the
+  // cached summary predates (review H1), so it falls through to its own
+  // idle/running reading instead — and `mergeHomeWorkItems` lets that win.
+  if (correlated?.draft && (chat.messages?.length ?? 0) === 0) return 'Draft';
   if (chat.orchestrationStatus !== 'running') return 'Recent';
   // No correlated session means no better signal than the chat store itself —
   // notably chats on non-orchestration send paths, which never have one.
@@ -868,7 +886,9 @@ export function buildActiveChatTaskItems({
   for (const session of sessions) {
     const entry: ChatSessionCorrelation = {
       hasActiveTurn: session.hasActiveTurn === true,
-      failed: session.lifecycleState === 'failed',
+      failed:
+        session.lifecycleState === 'failed' || isFirstSendFailure(session),
+      draft: session.draft === true,
       updatedAt: session.updatedAt,
     };
     turnByThread.set(session.threadId, entry);
