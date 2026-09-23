@@ -299,18 +299,22 @@ const NATIVE_HTTP_PER_ORIGIN_STREAM_LIMIT: usize = 12;
 /// A cancel releases its admission slot at once even while the blocking
 /// network call (resolve, connect, request send, response headers) is still in
 /// flight; the call finishes on a worker thread and its late result is
-/// discarded. How long an orphan lives is bounded only by the agent's phase
-/// timeouts (see `native_http_agent_config`): at most
+/// discarded. How long an orphan lives is bounded only by the phase timeouts
+/// (see `native_http_agent_config` and `native_http_send_body_budget`): at most
 /// resolve 10s + connect 15s (+ up to 15s more for a TLS handshake whose peer
 /// goes silent) + request headers 15s + response headers 20s = 75s for a
-/// bodiless request, plus request body 120s (and ureq's 1s `Expect:
-/// 100-continue` wait) for one with a body — 196s in all.
+/// bodiless request. A request with a body adds its send-body budget,
+/// `max(120s, body_len / 32 KiB/s)`, plus ureq's 1s `Expect: 100-continue`
+/// wait: 196s up to 3.75 MiB, rising to about 14 minutes (75s + 768s + 1s)
+/// for the 24 MiB `NATIVE_HTTP_BODY_LIMIT`.
 ///
-/// Each orphan still holds a socket, so orphans are capped. At the cap a cancel
-/// keeps its slot until its call returns (the pre-fix behaviour), so a client
-/// that aborts in a loop meets the ordinary admission limits instead of
-/// opening unbounded sockets: per origin, at most this many orphans plus the
-/// active allowances.
+/// Each orphan still holds a socket, so orphans are capped by count. At the
+/// cap a cancel keeps its slot until its call returns (the pre-fix
+/// behaviour), so a client that aborts in a loop meets the ordinary admission
+/// limits instead of opening unbounded sockets: per origin, at most this many
+/// orphans plus one liveness orphan plus the active allowances; across all
+/// origins, at most `NATIVE_HTTP_GLOBAL_ORPHAN_LIMIT` ordinary and stream
+/// orphans plus one liveness orphan per authorized origin.
 const NATIVE_HTTP_PER_ORIGIN_ORPHAN_LIMIT: usize = NATIVE_HTTP_PER_ORIGIN_REQUEST_LIMIT;
 const NATIVE_HTTP_GLOBAL_ORPHAN_LIMIT: usize = NATIVE_HTTP_GLOBAL_REQUEST_LIMIT;
 /// Orphans of the reserved liveness slot, counted outside the two limits
@@ -2411,14 +2415,15 @@ fn native_http_capacity_refusal(message: String) -> NativeCommandError {
 
 /// Reserve a request slot before opening the response channel. This small seam
 /// keeps the invoke-boundary error coding testable without needing a Tauri app
-/// handle or OS credential setup.
+/// handle or OS credential setup. The slot comes back as the guard that
+/// releases it, so an admission without its release is unwritable.
 fn reserve_native_http_request(
     cancellations: &NativeHttpCancellation,
     request_id: &str,
     origin: &str,
     is_stream_request: bool,
     cancel: std::sync::Arc<std::sync::atomic::AtomicBool>,
-) -> Result<(), NativeCommandError> {
+) -> Result<NativeHttpSlot, NativeCommandError> {
     use std::sync::atomic::Ordering;
 
     let (state_lock, changed) = &*cancellations.0;
@@ -2437,6 +2442,7 @@ fn reserve_native_http_request(
     }
     if is_stream_request {
         return admit_native_http_request(&mut state.active, request_id, origin, true, cancel)
+            .map(|()| NativeHttpSlot::admitted(cancellations, request_id))
             .map_err(native_http_capacity_refusal);
     }
 
@@ -2481,7 +2487,7 @@ fn reserve_native_http_request(
                 },
             );
             changed.notify_all();
-            return Ok(());
+            return Ok(NativeHttpSlot::admitted(cancellations, request_id));
         }
         state = changed
             .wait(state)
@@ -2525,7 +2531,7 @@ fn reserve_native_http_liveness_probe(
     request_id: &str,
     origin: &str,
     cancel: std::sync::Arc<std::sync::atomic::AtomicBool>,
-) -> Result<(), NativeCommandError> {
+) -> Result<NativeHttpSlot, NativeCommandError> {
     let (state_lock, _) = &*cancellations.0;
     let mut state = state_lock
         .lock()
@@ -2553,7 +2559,7 @@ fn reserve_native_http_liveness_probe(
             liveness: true,
         },
     );
-    Ok(())
+    Ok(NativeHttpSlot::admitted(cancellations, request_id))
 }
 
 /// Test-side release of a slot a test reserved directly. Production requests
@@ -2604,8 +2610,19 @@ struct NativeHttpSlot {
     held: bool,
 }
 
+impl std::fmt::Debug for NativeHttpSlot {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("NativeHttpSlot")
+            .field("request_id", &self.request_id)
+            .field("held", &self.held)
+            .finish()
+    }
+}
+
 impl NativeHttpSlot {
-    /// Takes ownership of a slot the caller has just reserved.
+    /// Wraps a slot just inserted into `active`. Only the reserve functions
+    /// call this in production.
     fn admitted(cancellations: &NativeHttpCancellation, request_id: &str) -> Self {
         Self {
             cancellations: cancellations.clone(),
@@ -2833,10 +2850,39 @@ const NATIVE_HTTP_RESOLVE_TIMEOUT: Duration = Duration::from_secs(10);
 /// by at most one more such wait; a peer that trickles bytes is not.
 const NATIVE_HTTP_CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
 const NATIVE_HTTP_SEND_REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
-/// Total budget for sending a request body. Sized for the 24 MiB
-/// `NATIVE_HTTP_BODY_LIMIT` at roughly 1.6 Mbit/s, so a large upload to a
-/// Station that stopped reading cannot hold a socket forever.
-const NATIVE_HTTP_SEND_BODY_TIMEOUT: Duration = Duration::from_secs(120);
+/// Floor of a request's send-body budget, and the agent-level default for
+/// callers that do not set a per-request budget.
+const NATIVE_HTTP_SEND_BODY_MIN_TIMEOUT: Duration = Duration::from_secs(120);
+/// The slowest sustained upload (32 KiB/s, about 256 kbit/s — a weak cellular
+/// or relayed link) that a large body is still given time to finish at.
+const NATIVE_HTTP_SEND_BODY_MIN_RATE_BYTES_PER_SEC: u64 = 32 * 1024;
+
+/// ureq's send-body timeout is a TOTAL deadline for the whole body, so one
+/// flat value either fails a slow large upload mid-body or lets a small
+/// stalled one hold a socket for minutes. The budget therefore scales with
+/// the body: `max(floor, body_len / min_rate)`, rounded up to the millisecond.
+/// 24 MiB at 32 KiB/s is 768s.
+fn native_http_send_body_budget(body_len: usize, floor: Duration, min_rate: u64) -> Duration {
+    let at_min_rate_ms = (body_len as u64)
+        .saturating_mul(1000)
+        .div_ceil(min_rate.max(1));
+    floor.max(Duration::from_millis(at_min_rate_ms))
+}
+
+/// Applies the per-request send-body budget through ureq's request-level
+/// configuration; every other timeout stays the agent's.
+fn native_http_request_with_send_body_budget(
+    agent: &ureq::Agent,
+    request: ureq::http::Request<Vec<u8>>,
+    floor: Duration,
+    min_rate: u64,
+) -> ureq::http::Request<Vec<u8>> {
+    let budget = native_http_send_body_budget(request.body().len(), floor, min_rate);
+    agent
+        .configure_request(request)
+        .timeout_send_body(Some(budget))
+        .build()
+}
 const NATIVE_HTTP_RECV_RESPONSE_TIMEOUT: Duration = Duration::from_secs(20);
 
 fn native_http_agent_config() -> ureq::config::ConfigBuilder<ureq::typestate::AgentScope> {
@@ -2861,7 +2907,7 @@ fn native_http_agent_config() -> ureq::config::ConfigBuilder<ureq::typestate::Ag
         .timeout_resolve(Some(NATIVE_HTTP_RESOLVE_TIMEOUT))
         .timeout_connect(Some(NATIVE_HTTP_CONNECT_TIMEOUT))
         .timeout_send_request(Some(NATIVE_HTTP_SEND_REQUEST_TIMEOUT))
-        .timeout_send_body(Some(NATIVE_HTTP_SEND_BODY_TIMEOUT))
+        .timeout_send_body(Some(NATIVE_HTTP_SEND_BODY_MIN_TIMEOUT))
         .timeout_recv_response(Some(NATIVE_HTTP_RECV_RESPONSE_TIMEOUT))
         .timeout_recv_body(None)
         .http_status_as_error(false)
@@ -3123,13 +3169,16 @@ fn station_native_http_request_blocking(
         validate_native_liveness_probe(&method, is_stream_request, &parsed_url)?;
     }
     let cancel = Arc::new(AtomicBool::new(false));
-    if request.liveness_probe {
+    // The slot guard owns the admission from here on: moved into the exchange
+    // below and released exactly once on every path, including a panic
+    // (station#2327).
+    let slot = if request.liveness_probe {
         reserve_native_http_liveness_probe(
             &cancellations,
             &request_id,
             &origin,
             Arc::clone(&cancel),
-        )?;
+        )?
     } else {
         reserve_native_http_request(
             &cancellations,
@@ -3137,11 +3186,8 @@ fn station_native_http_request_blocking(
             &origin,
             is_stream_request,
             Arc::clone(&cancel),
-        )?;
-    }
-    // Owns the admission slot from here on: moved into the exchange below and
-    // released exactly once on every path, including a panic (station#2327).
-    let slot = NativeHttpSlot::admitted(&cancellations, &request_id);
+        )?
+    };
     let result = (|| -> Result<(), NativeHttpBrokerFailure> {
         // Scoped callers enter the capacity queue before we resolve their
         // receipt. That makes an A -> B switch while queued fail closed rather
@@ -3177,6 +3223,12 @@ fn station_native_http_request_blocking(
         revalidate_native_http_profile(&app, &authority, expected_binding_id, &origin, &reference)
             .map_err(|error| NativeHttpBrokerFailure::coded(error.code))?;
         let agent = native_http_agent();
+        let request = native_http_request_with_send_body_budget(
+            &agent,
+            request,
+            NATIVE_HTTP_SEND_BODY_MIN_TIMEOUT,
+            NATIVE_HTTP_SEND_BODY_MIN_RATE_BYTES_PER_SEC,
+        );
         run_admitted_native_http_exchange(
             slot,
             &cancel,
@@ -13049,7 +13101,7 @@ mod tests {
         let cancellations = NativeHttpCancellation::default();
         let cancel = || std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
 
-        reserve_native_http_request(
+        let _first = reserve_native_http_request(
             &cancellations,
             "request-1",
             "https://station.example.test",
@@ -13113,7 +13165,7 @@ mod tests {
         let first_cancellations = cancellations.clone();
         let first_tx = admitted_tx.clone();
         let first = std::thread::spawn(move || {
-            reserve_native_http_request(
+            let slot = reserve_native_http_request(
                 &first_cancellations,
                 "queued-first",
                 origin,
@@ -13122,12 +13174,13 @@ mod tests {
             )
             .unwrap();
             first_tx.send("queued-first").unwrap();
+            slot
         });
         wait_for_pending_native_reads(&cancellations, 1);
 
         let second_cancellations = cancellations.clone();
         let second = std::thread::spawn(move || {
-            reserve_native_http_request(
+            let slot = reserve_native_http_request(
                 &second_cancellations,
                 "queued-second",
                 origin,
@@ -13136,6 +13189,7 @@ mod tests {
             )
             .unwrap();
             admitted_tx.send("queued-second").unwrap();
+            slot
         });
         wait_for_pending_native_reads(&cancellations, 2);
 
@@ -13148,14 +13202,17 @@ mod tests {
             admitted_rx.try_recv().is_err(),
             "the second read must not barge"
         );
-        release_native_http_request(&cancellations, "queued-first").unwrap();
+        // Dropping the admitted read's slot guard is its release.
+        drop(first.join().unwrap());
         assert_eq!(
             admitted_rx.recv_timeout(Duration::from_secs(2)).unwrap(),
             "queued-second"
         );
-        release_native_http_request(&cancellations, "queued-second").unwrap();
-        first.join().unwrap();
-        second.join().unwrap();
+        drop(second.join().unwrap());
+        let (state_lock, _) = &*cancellations.0;
+        let state = state_lock.lock().unwrap();
+        assert!(!state.active.contains_key("queued-first"));
+        assert!(!state.active.contains_key("queued-second"));
     }
 
     /// Spawns an ordinary read that waits in the FIFO; returns its join handle
@@ -13165,13 +13222,13 @@ mod tests {
         origin: &'static str,
         request_id: &'static str,
     ) -> (
-        std::thread::JoinHandle<()>,
+        std::thread::JoinHandle<NativeHttpSlot>,
         std::sync::mpsc::Receiver<&'static str>,
     ) {
         let (admitted_tx, admitted_rx) = std::sync::mpsc::channel();
         let queued_cancellations = cancellations.clone();
         let handle = std::thread::spawn(move || {
-            reserve_native_http_request(
+            let slot = reserve_native_http_request(
                 &queued_cancellations,
                 request_id,
                 origin,
@@ -13180,6 +13237,7 @@ mod tests {
             )
             .unwrap();
             admitted_tx.send(request_id).unwrap();
+            slot
         });
         (handle, admitted_rx)
     }
@@ -13195,7 +13253,7 @@ mod tests {
         let (queued, _admitted) = spawn_queued_native_read(&cancellations, origin, "queued-read");
         wait_for_pending_native_reads(&cancellations, 1);
 
-        reserve_native_http_liveness_probe(
+        let liveness = reserve_native_http_liveness_probe(
             &cancellations,
             "liveness-1",
             origin,
@@ -13213,10 +13271,13 @@ mod tests {
             );
         }
 
-        release_native_http_request(&cancellations, "liveness-1").unwrap();
+        drop(liveness);
         release_native_http_request(&cancellations, "seed-0").unwrap();
-        queued.join().unwrap();
-        release_native_http_request(&cancellations, "queued-read").unwrap();
+        drop(queued.join().unwrap());
+        let (state_lock, _) = &*cancellations.0;
+        let state = state_lock.lock().unwrap();
+        assert!(!state.active.contains_key("liveness-1"));
+        assert!(!state.active.contains_key("queued-read"));
     }
 
     #[test]
@@ -13226,8 +13287,9 @@ mod tests {
         fill_native_read_allowance(&cancellations, origin);
         let cancel = || std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
 
-        reserve_native_http_liveness_probe(&cancellations, "liveness-1", origin, cancel())
-            .expect("the first liveness read is admitted");
+        let first =
+            reserve_native_http_liveness_probe(&cancellations, "liveness-1", origin, cancel())
+                .expect("the first liveness read is admitted");
         let refusal =
             reserve_native_http_liveness_probe(&cancellations, "liveness-2", origin, cancel())
                 .expect_err("only one liveness read per origin at a time");
@@ -13242,16 +13304,17 @@ mod tests {
         }
 
         // The slot is per origin, and it frees on release.
-        reserve_native_http_liveness_probe(
+        let _other_origin = reserve_native_http_liveness_probe(
             &cancellations,
             "liveness-other-origin",
             "https://other.example.test",
             cancel(),
         )
         .expect("another origin has its own slot");
-        release_native_http_request(&cancellations, "liveness-1").unwrap();
-        reserve_native_http_liveness_probe(&cancellations, "liveness-3", origin, cancel())
-            .expect("a released slot can be taken again");
+        drop(first);
+        let _third =
+            reserve_native_http_liveness_probe(&cancellations, "liveness-3", origin, cancel())
+                .expect("a released slot can be taken again");
     }
 
     #[test]
@@ -13269,14 +13332,14 @@ mod tests {
             "an ordinary read was admitted into the reserved slot"
         );
         // Taking and releasing the slot wakes the queue; it must still wait.
-        reserve_native_http_liveness_probe(
+        let liveness = reserve_native_http_liveness_probe(
             &cancellations,
             "liveness-1",
             origin,
             std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
         )
         .unwrap();
-        release_native_http_request(&cancellations, "liveness-1").unwrap();
+        drop(liveness);
         assert!(
             admitted.recv_timeout(Duration::from_millis(100)).is_err(),
             "releasing the liveness slot admitted an ordinary read"
@@ -13288,8 +13351,7 @@ mod tests {
             admitted.recv_timeout(Duration::from_secs(2)).unwrap(),
             "queued-read"
         );
-        queued.join().unwrap();
-        release_native_http_request(&cancellations, "queued-read").unwrap();
+        drop(queued.join().unwrap());
     }
 
     #[test]
@@ -13298,7 +13360,7 @@ mod tests {
         let origin = "https://station.example.test";
         fill_native_read_allowance(&cancellations, origin);
         release_native_http_request(&cancellations, "seed-0").unwrap();
-        reserve_native_http_liveness_probe(
+        let _liveness = reserve_native_http_liveness_probe(
             &cancellations,
             "liveness-1",
             origin,
@@ -13393,8 +13455,7 @@ mod tests {
     /// Runs `call` under the cancellable seam on its own thread, as the
     /// request task does, and returns a receiver for the seam's outcome.
     fn spawn_cancellable_native_call<F>(
-        cancellations: &NativeHttpCancellation,
-        request_id: &'static str,
+        mut slot: NativeHttpSlot,
         cancel: std::sync::Arc<std::sync::atomic::AtomicBool>,
         call: F,
     ) -> std::sync::mpsc::Receiver<Result<Option<&'static str>, String>>
@@ -13402,7 +13463,6 @@ mod tests {
         F: FnOnce() -> &'static str + Send + 'static,
     {
         let (outcome_tx, outcome_rx) = std::sync::mpsc::channel();
-        let mut slot = NativeHttpSlot::admitted(cancellations, request_id);
         std::thread::spawn(move || {
             let outcome =
                 run_native_http_call_cancellable(&mut slot, &cancel, call).map(|outcome| {
@@ -13455,7 +13515,7 @@ mod tests {
         request_id: &'static str,
         origin: &'static str,
         cancel: std::sync::Arc<std::sync::atomic::AtomicBool>,
-    ) {
+    ) -> NativeHttpSlot {
         let (admitted_tx, admitted_rx) = std::sync::mpsc::channel();
         let task_cancellations = cancellations.clone();
         std::thread::spawn(move || {
@@ -13470,7 +13530,7 @@ mod tests {
         admitted_rx
             .recv_timeout(Duration::from_secs(2))
             .unwrap_or_else(|_| panic!("{request_id} was not admitted: its slot is still held"))
-            .unwrap();
+            .unwrap()
     }
 
     #[test]
@@ -13488,8 +13548,7 @@ mod tests {
         };
         let (release_call, call) = blocked_native_call();
         let outcome = spawn_cancellable_native_call(
-            &cancellations,
-            "seed-0",
+            NativeHttpSlot::admitted(&cancellations, "seed-0"),
             std::sync::Arc::clone(&blocked_cancel),
             call,
         );
@@ -13522,16 +13581,16 @@ mod tests {
 
         release_call.send(()).unwrap();
         wait_for_native_orphans(&cancellations, 0);
-        waiter.join().unwrap();
+        drop(waiter.join().unwrap());
     }
 
     #[test]
     fn native_http_uncancelled_call_returns_its_result_and_keeps_its_slot() {
         let cancellations = NativeHttpCancellation::default();
         let origin = "https://station.example.test";
-        reserve_native_http_request(&cancellations, "read", origin, false, new_cancel_flag())
-            .unwrap();
-        let mut slot = NativeHttpSlot::admitted(&cancellations, "read");
+        let mut slot =
+            reserve_native_http_request(&cancellations, "read", origin, false, new_cancel_flag())
+                .unwrap();
         let outcome =
             run_native_http_call_cancellable(&mut slot, &new_cancel_flag(), || "response").unwrap();
         assert!(matches!(
@@ -13560,14 +13619,14 @@ mod tests {
         for index in 0..NATIVE_HTTP_PER_ORIGIN_ORPHAN_LIMIT {
             let request_id: &'static str = Box::leak(format!("orphan-{index}").into_boxed_str());
             let cancel = new_cancel_flag();
-            reserve_native_read_promptly(
+            let slot_to_run = reserve_native_read_promptly(
                 &cancellations,
                 request_id,
                 origin,
                 std::sync::Arc::clone(&cancel),
             );
             let (release_call, call) = blocked_native_call();
-            let outcome = spawn_cancellable_native_call(&cancellations, request_id, cancel, call);
+            let outcome = spawn_cancellable_native_call(slot_to_run, cancel, call);
             cancel_native_http_request(&cancellations, request_id).unwrap();
             assert_eq!(
                 outcome.recv_timeout(Duration::from_secs(1)).unwrap(),
@@ -13583,15 +13642,14 @@ mod tests {
         // One more abandoned call at the cap keeps its slot instead of
         // opening another orphaned socket.
         let over_cancel = new_cancel_flag();
-        reserve_native_read_promptly(
+        let slot_to_run = reserve_native_read_promptly(
             &cancellations,
             "over-cap",
             origin,
             std::sync::Arc::clone(&over_cancel),
         );
         let (release_over, over_call) = blocked_native_call();
-        let over_outcome =
-            spawn_cancellable_native_call(&cancellations, "over-cap", over_cancel, over_call);
+        let over_outcome = spawn_cancellable_native_call(slot_to_run, over_cancel, over_call);
         cancel_native_http_request(&cancellations, "over-cap").unwrap();
         assert!(
             over_outcome
@@ -13611,15 +13669,14 @@ mod tests {
 
         // A different origin has its own orphan allowance.
         let other_cancel = new_cancel_flag();
-        reserve_native_read_promptly(
+        let slot_to_run = reserve_native_read_promptly(
             &cancellations,
             "other-origin",
             "https://other.example.test",
             std::sync::Arc::clone(&other_cancel),
         );
         let (release_other, other_call) = blocked_native_call();
-        let other_outcome =
-            spawn_cancellable_native_call(&cancellations, "other-origin", other_cancel, other_call);
+        let other_outcome = spawn_cancellable_native_call(slot_to_run, other_cancel, other_call);
         cancel_native_http_request(&cancellations, "other-origin").unwrap();
         assert_eq!(
             other_outcome.recv_timeout(Duration::from_secs(1)).unwrap(),
@@ -13650,14 +13707,14 @@ mod tests {
         let cancellations = NativeHttpCancellation::default();
         let origin = "https://station.example.test";
         let cancel = new_cancel_flag();
-        reserve_native_read_promptly(
+        let slot_to_run = reserve_native_read_promptly(
             &cancellations,
             "reused-id",
             origin,
             std::sync::Arc::clone(&cancel),
         );
         let (release_call, call) = blocked_native_call();
-        let outcome = spawn_cancellable_native_call(&cancellations, "reused-id", cancel, call);
+        let outcome = spawn_cancellable_native_call(slot_to_run, cancel, call);
         cancel_native_http_request(&cancellations, "reused-id").unwrap();
         assert_eq!(
             outcome.recv_timeout(Duration::from_secs(1)).unwrap(),
@@ -13666,17 +13723,17 @@ mod tests {
 
         // A later request reuses the id and another origin's call is orphaned
         // too; the first orphan's late completion must disturb neither.
-        reserve_native_read_promptly(&cancellations, "reused-id", origin, new_cancel_flag());
+        let reused =
+            reserve_native_read_promptly(&cancellations, "reused-id", origin, new_cancel_flag());
         let other_cancel = new_cancel_flag();
-        reserve_native_read_promptly(
+        let slot_to_run = reserve_native_read_promptly(
             &cancellations,
             "other",
             "https://other.example.test",
             std::sync::Arc::clone(&other_cancel),
         );
         let (release_other, other_call) = blocked_native_call();
-        let other_outcome =
-            spawn_cancellable_native_call(&cancellations, "other", other_cancel, other_call);
+        let other_outcome = spawn_cancellable_native_call(slot_to_run, other_cancel, other_call);
         cancel_native_http_request(&cancellations, "other").unwrap();
         assert_eq!(
             other_outcome.recv_timeout(Duration::from_secs(1)).unwrap(),
@@ -13704,7 +13761,7 @@ mod tests {
         }
         release_other.send(()).unwrap();
         wait_for_native_orphans(&cancellations, 0);
-        release_native_http_request(&cancellations, "reused-id").unwrap();
+        drop(reused);
         let (state_lock, _) = &*cancellations.0;
         assert!(state_lock.lock().unwrap().active.is_empty());
     }
@@ -13714,7 +13771,7 @@ mod tests {
         let cancellations = NativeHttpCancellation::default();
         let origin = "https://station.example.test";
         let cancel = new_cancel_flag();
-        reserve_native_http_liveness_probe(
+        let slot_to_run = reserve_native_http_liveness_probe(
             &cancellations,
             "liveness-1",
             origin,
@@ -13722,17 +13779,22 @@ mod tests {
         )
         .unwrap();
         let (release_call, call) = blocked_native_call();
-        let outcome = spawn_cancellable_native_call(&cancellations, "liveness-1", cancel, call);
+        let outcome = spawn_cancellable_native_call(slot_to_run, cancel, call);
         cancel_native_http_request(&cancellations, "liveness-1").unwrap();
         assert_eq!(
             outcome.recv_timeout(Duration::from_secs(1)).unwrap(),
             Ok(None)
         );
-        reserve_native_http_liveness_probe(&cancellations, "liveness-2", origin, new_cancel_flag())
-            .expect("the next probe takes the slot the cancelled probe released");
+        let next_probe = reserve_native_http_liveness_probe(
+            &cancellations,
+            "liveness-2",
+            origin,
+            new_cancel_flag(),
+        )
+        .expect("the next probe takes the slot the cancelled probe released");
         release_call.send(()).unwrap();
         wait_for_native_orphans(&cancellations, 0);
-        release_native_http_request(&cancellations, "liveness-2").unwrap();
+        drop(next_probe);
     }
 
     #[test]
@@ -13750,7 +13812,7 @@ mod tests {
         let cancellations = NativeHttpCancellation::default();
         let origin = format!("http://{address}");
         let cancel = new_cancel_flag();
-        reserve_native_http_request(
+        let slot = reserve_native_http_request(
             &cancellations,
             "silent",
             &origin,
@@ -13767,7 +13829,6 @@ mod tests {
         // environment that could route this loopback call elsewhere.
         let agent = native_http_agent_with(native_http_agent_config().proxy(None).build());
         let (outcome_tx, outcome_rx) = std::sync::mpsc::channel();
-        let slot = NativeHttpSlot::admitted(&cancellations, "silent");
         let task_cancel = std::sync::Arc::clone(&cancel);
         std::thread::spawn(move || {
             let outcome = run_admitted_native_http_exchange(
@@ -13813,14 +13874,14 @@ mod tests {
             let request_id: &'static str =
                 Box::leak(format!("{origin}-orphan-{index}").into_boxed_str());
             let cancel = new_cancel_flag();
-            reserve_native_read_promptly(
+            let slot_to_run = reserve_native_read_promptly(
                 cancellations,
                 request_id,
                 origin,
                 std::sync::Arc::clone(&cancel),
             );
             let (release_call, call) = blocked_native_call();
-            let outcome = spawn_cancellable_native_call(cancellations, request_id, cancel, call);
+            let outcome = spawn_cancellable_native_call(slot_to_run, cancel, call);
             cancel_native_http_request(cancellations, request_id).unwrap();
             assert_eq!(
                 outcome.recv_timeout(Duration::from_secs(1)).unwrap(),
@@ -13844,7 +13905,7 @@ mod tests {
         );
 
         let cancel = new_cancel_flag();
-        reserve_native_http_liveness_probe(
+        let slot_to_run = reserve_native_http_liveness_probe(
             &cancellations,
             "liveness-1",
             origin,
@@ -13852,16 +13913,20 @@ mod tests {
         )
         .unwrap();
         let (release_probe, probe_call) = blocked_native_call();
-        let outcome =
-            spawn_cancellable_native_call(&cancellations, "liveness-1", cancel, probe_call);
+        let outcome = spawn_cancellable_native_call(slot_to_run, cancel, probe_call);
         cancel_native_http_request(&cancellations, "liveness-1").unwrap();
         assert_eq!(
             outcome.recv_timeout(Duration::from_secs(1)).unwrap(),
             Ok(None),
             "a cancelled probe is abandoned even with the shared allowance full"
         );
-        reserve_native_http_liveness_probe(&cancellations, "liveness-2", origin, new_cancel_flag())
-            .expect("the next probe takes the slot the cancelled probe released");
+        let second_slot = reserve_native_http_liveness_probe(
+            &cancellations,
+            "liveness-2",
+            origin,
+            new_cancel_flag(),
+        )
+        .expect("the next probe takes the slot the cancelled probe released");
 
         // The liveness allowance is one per origin: a second abandoned probe
         // waits for its call rather than opening another orphaned socket.
@@ -13870,8 +13935,7 @@ mod tests {
             std::sync::Arc::clone(&state_lock.lock().unwrap().active["liveness-2"].cancel)
         };
         let (release_second, second_call) = blocked_native_call();
-        let second =
-            spawn_cancellable_native_call(&cancellations, "liveness-2", second_cancel, second_call);
+        let second = spawn_cancellable_native_call(second_slot, second_cancel, second_call);
         cancel_native_http_request(&cancellations, "liveness-2").unwrap();
         assert!(
             second.recv_timeout(Duration::from_millis(300)).is_err(),
@@ -13894,11 +13958,12 @@ mod tests {
     fn native_http_exchange_releases_a_completed_slot_once() {
         let cancellations = NativeHttpCancellation::default();
         let origin = "https://station.example.test";
-        reserve_native_http_request(&cancellations, "done", origin, false, new_cancel_flag())
-            .unwrap();
+        let slot =
+            reserve_native_http_request(&cancellations, "done", origin, false, new_cancel_flag())
+                .unwrap();
         let handled = std::cell::Cell::new(false);
         run_admitted_native_http_exchange(
-            NativeHttpSlot::admitted(&cancellations, "done"),
+            slot,
             &new_cancel_flag(),
             || "response",
             |response| {
@@ -13919,7 +13984,7 @@ mod tests {
         let cancellations = NativeHttpCancellation::default();
         let origin = "https://station.example.test";
         let cancel = new_cancel_flag();
-        reserve_native_http_request(
+        let slot = reserve_native_http_request(
             &cancellations,
             "abandoned",
             origin,
@@ -13929,7 +13994,6 @@ mod tests {
         .unwrap();
         let (release_call, call) = blocked_native_call();
         let (code_tx, code_rx) = std::sync::mpsc::channel();
-        let slot = NativeHttpSlot::admitted(&cancellations, "abandoned");
         let task_cancel = std::sync::Arc::clone(&cancel);
         std::thread::spawn(move || {
             let code = run_admitted_native_http_exchange(slot, &task_cancel, call, |_| {
@@ -13958,7 +14022,7 @@ mod tests {
     fn native_http_exchange_releases_the_slot_when_the_call_or_handler_panics() {
         let cancellations = NativeHttpCancellation::default();
         let origin = "https://station.example.test";
-        reserve_native_http_request(
+        let slot = reserve_native_http_request(
             &cancellations,
             "call-panics",
             origin,
@@ -13967,7 +14031,7 @@ mod tests {
         )
         .unwrap();
         let failure = run_admitted_native_http_exchange(
-            NativeHttpSlot::admitted(&cancellations, "call-panics"),
+            slot,
             &new_cancel_flag(),
             || -> &'static str { panic!("network call panicked") },
             |_| Ok(()),
@@ -13981,7 +14045,7 @@ mod tests {
             .is_some_and(|detail| detail.contains("network worker ended without a result")));
         assert_eq!(native_slot_releases(&cancellations), 1);
 
-        reserve_native_http_request(
+        let slot = reserve_native_http_request(
             &cancellations,
             "handler-panics",
             origin,
@@ -13989,10 +14053,9 @@ mod tests {
             new_cancel_flag(),
         )
         .unwrap();
-        let task_cancellations = cancellations.clone();
         let panicked = std::thread::spawn(move || {
             let _ = run_admitted_native_http_exchange(
-                NativeHttpSlot::admitted(&task_cancellations, "handler-panics"),
+                slot,
                 &new_cancel_flag(),
                 || "response",
                 |_| panic!("response handling panicked"),
@@ -14018,7 +14081,7 @@ mod tests {
             NATIVE_HTTP_PER_ORIGIN_ORPHAN_LIMIT,
         );
         let cancel = new_cancel_flag();
-        reserve_native_read_promptly(
+        let slot_to_run = reserve_native_read_promptly(
             &cancellations,
             "capped",
             origin,
@@ -14026,7 +14089,7 @@ mod tests {
         );
         let (release_call, call) = blocked_native_call();
         let (code_tx, code_rx) = std::sync::mpsc::channel();
-        let slot = NativeHttpSlot::admitted(&cancellations, "capped");
+        let slot = slot_to_run;
         let task_cancel = std::sync::Arc::clone(&cancel);
         std::thread::spawn(move || {
             let code = run_admitted_native_http_exchange(slot, &task_cancel, call, |_| Ok(()))
@@ -14052,6 +14115,122 @@ mod tests {
     }
 
     #[test]
+    fn native_http_send_body_budget_scales_with_the_body() {
+        let budget = |body_len| {
+            native_http_send_body_budget(
+                body_len,
+                NATIVE_HTTP_SEND_BODY_MIN_TIMEOUT,
+                NATIVE_HTTP_SEND_BODY_MIN_RATE_BYTES_PER_SEC,
+            )
+        };
+        // Small bodies get the floor.
+        assert_eq!(budget(0), Duration::from_secs(120));
+        assert_eq!(budget(1024), Duration::from_secs(120));
+        // The floor holds exactly up to 120s worth of body at 32 KiB/s ...
+        assert_eq!(budget(32 * 1024 * 120), Duration::from_secs(120));
+        // ... and one byte more is given its own time, rounded up.
+        assert_eq!(budget(32 * 1024 * 120 + 1), Duration::from_millis(120_001));
+        // The largest body the broker accepts: 24 MiB at 32 KiB/s.
+        assert_eq!(budget(NATIVE_HTTP_BODY_LIMIT), Duration::from_secs(768));
+    }
+
+    /// A loopback Station that reads its request body slowly (`chunk` bytes
+    /// every `pause`), then answers 204. Returns the listener's origin.
+    fn spawn_slow_reading_station(
+        chunk: usize,
+        pause: Duration,
+    ) -> (String, std::thread::JoinHandle<()>) {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let origin = format!("http://{}", listener.local_addr().unwrap());
+        let server = std::thread::spawn(move || {
+            let (mut connection, _) = listener.accept().unwrap();
+            let mut received = Vec::new();
+            let mut buffer = vec![0_u8; chunk];
+            let mut body_start = None;
+            let mut body_len = None;
+            loop {
+                match connection.read(&mut buffer) {
+                    Ok(0) | Err(_) => return,
+                    Ok(read) => received.extend_from_slice(&buffer[..read]),
+                }
+                if body_start.is_none() {
+                    if let Some(end) = received.windows(4).position(|w| w == b"\r\n\r\n") {
+                        let head = String::from_utf8_lossy(&received[..end]).to_ascii_lowercase();
+                        body_len = head.lines().find_map(|line| {
+                            line.strip_prefix("content-length:")
+                                .and_then(|value| value.trim().parse::<usize>().ok())
+                        });
+                        body_start = Some(end + 4);
+                    }
+                }
+                if let (Some(start), Some(len)) = (body_start, body_len) {
+                    if received.len() - start >= len {
+                        let _ = connection
+                            .write_all(b"HTTP/1.1 204 No Content\r\nconnection: close\r\n\r\n");
+                        return;
+                    }
+                }
+                std::thread::sleep(pause);
+            }
+        });
+        (origin, server)
+    }
+
+    /// Uploads `body_len` bytes to a slow-reading loopback Station with the
+    /// production per-request send-body budget, computed from `floor` and
+    /// `min_rate` instead of the production constants so it runs in seconds.
+    fn upload_to_slow_station(
+        body_len: usize,
+        floor: Duration,
+        min_rate: u64,
+    ) -> Result<u16, ureq::Error> {
+        // About 6 MiB/s: 16 MiB takes roughly 2.6s to drain, far longer than
+        // loopback socket buffers can absorb.
+        let (origin, server) = spawn_slow_reading_station(64 * 1024, Duration::from_millis(10));
+        let agent = native_http_agent_with(native_http_agent_config().proxy(None).build());
+        let request = ureq::http::Request::builder()
+            .method("POST")
+            .uri(format!("{origin}/api/uploads"))
+            .body(vec![0_u8; body_len])
+            .unwrap();
+        let request = native_http_request_with_send_body_budget(&agent, request, floor, min_rate);
+        let result = agent
+            .run(request)
+            .map(|response| response.status().as_u16());
+        drop(agent);
+        server.join().unwrap();
+        result
+    }
+
+    #[test]
+    fn native_http_slow_upload_within_its_body_budget_completes() {
+        // 16 MiB at a 1 MiB/s floor rate is a 16s budget; the Station drains
+        // it in about 3s (generous headroom for a loaded host). A flat budget
+        // of the 100ms floor would fail it.
+        let status =
+            upload_to_slow_station(16 * 1024 * 1024, Duration::from_millis(100), 1024 * 1024)
+                .expect("an upload slower than the floor but within its budget completes");
+        assert_eq!(status, 204);
+    }
+
+    #[test]
+    fn native_http_slow_upload_past_its_body_budget_times_out() {
+        // 16 MiB at a 1 GiB/s floor rate is under the 200ms floor, so the
+        // budget is 200ms; the Station cannot drain the body that fast.
+        let error = upload_to_slow_station(
+            16 * 1024 * 1024,
+            Duration::from_millis(200),
+            1024 * 1024 * 1024,
+        )
+        .expect_err("an upload that outlives its budget fails");
+        assert!(
+            matches!(error, ureq::Error::Timeout(ureq::Timeout::SendBody)),
+            "expected a send-body timeout, got {error:?}"
+        );
+    }
+
+    #[test]
     fn native_http_agent_bounds_every_phase_before_the_body() {
         // An abandoned call lives until it returns, so each phase before the
         // body needs a bound; the body itself must stay open-ended for SSE.
@@ -14062,7 +14241,7 @@ mod tests {
             timeouts.send_request,
             Some(NATIVE_HTTP_SEND_REQUEST_TIMEOUT)
         );
-        assert_eq!(timeouts.send_body, Some(NATIVE_HTTP_SEND_BODY_TIMEOUT));
+        assert_eq!(timeouts.send_body, Some(NATIVE_HTTP_SEND_BODY_MIN_TIMEOUT));
         assert_eq!(
             timeouts.recv_response,
             Some(NATIVE_HTTP_RECV_RESPONSE_TIMEOUT)
@@ -14121,8 +14300,13 @@ mod tests {
         });
         wait_for_pending_native_reads(&cancellations, 1);
         release_native_http_request(&cancellations, "global-0").unwrap();
-        waiter.join().unwrap().unwrap();
-        release_native_http_request(&cancellations, "queued-global").unwrap();
+        drop(waiter.join().unwrap().unwrap());
+        let (state_lock, _) = &*cancellations.0;
+        assert!(!state_lock
+            .lock()
+            .unwrap()
+            .active
+            .contains_key("queued-global"));
     }
 
     #[test]
@@ -14506,7 +14690,7 @@ mod tests {
 
         authorize_active_profile_in_state(&mut authority, &store, "B").unwrap();
         release_native_http_request(&cancellations, "seed-0").unwrap();
-        queued.join().unwrap().unwrap();
+        let queued_slot = queued.join().unwrap().unwrap();
         let stale = scoped_profile_for_origin_in_store(
             &authority,
             &store,
@@ -14515,7 +14699,7 @@ mod tests {
         )
         .unwrap_err();
         assert_eq!(stale.code, "request_binding_stale");
-        release_native_http_request(&cancellations, "basis-queued").unwrap();
+        drop(queued_slot);
         let (state_lock, _) = &*cancellations.0;
         assert!(!state_lock
             .lock()
