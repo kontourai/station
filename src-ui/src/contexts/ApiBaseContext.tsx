@@ -27,6 +27,12 @@ import {
   useRef,
 } from 'react';
 import {
+  captureBrowserRelayRoute,
+  prepareBrowserRelayRoute,
+  retireBrowserRelayRoute,
+} from '../lib/browserRelayRouteRuntime';
+import { setStationHealthRouteResolver } from '../lib/serverHealth';
+import {
   nativeProfileRepository,
   useNativeProfileSelection,
   useNativeProfileStoreEpoch,
@@ -182,7 +188,21 @@ export function ApiBaseProvider({ children }: { children: ReactNode }) {
           : undefined
       }
       prepareActiveConnection={
-        profile.isTauri ? prepareNativeActiveConnection : undefined
+        profile.isTauri
+          ? prepareNativeActiveConnection
+          : async (_id, connection, selectionEpoch, isSelectionCurrent) => {
+              if (!connection) throw new Error('Saved Station not found.');
+              await prepareBrowserRelayRoute(
+                connection,
+                selectionEpoch,
+                isSelectionCurrent,
+              );
+            }
+      }
+      retirePreparedConnection={
+        profile.isTauri
+          ? undefined
+          : (id, selectionEpoch) => retireBrowserRelayRoute(id, selectionEpoch)
       }
       // archive#1286: `packages/connect` is platform-blind, so the already-
       // resolved platform profile (awaited past any capability-report race)
@@ -248,6 +268,14 @@ function StationCredentialBridge({ children }: { children: ReactNode }) {
       // another's origin.
       const evidence = captureCredentialEvidence();
       const credential = profile.isTauri ? undefined : evidence?.credential;
+      const browserRoute =
+        !profile.isTauri && evidence?.brokerRoute
+          ? captureBrowserRelayRoute(
+              evidence.connectionId,
+              evidence.origin,
+              evidence.brokerRoute,
+            )
+          : null;
       const nativeBinding =
         profile.isTauri && evidence
           ? nativeProfileRepository().captureNativeRequestBinding(
@@ -291,6 +319,20 @@ function StationCredentialBridge({ children }: { children: ReactNode }) {
                 : lazyNativeAuthenticatedTransport,
             }
           : {}),
+        ...(!profile.isTauri && evidence?.brokerRoute
+          ? {
+              // A missing or retired route must refuse at the SDK boundary.
+              // Omitting transport here would silently use direct HTTP.
+              transport:
+                browserRoute?.transport ??
+                (async () => {
+                  throw new Error('Station broker route is not ready');
+                }),
+              transportBindingIsCurrent: () =>
+                isCredentialEvidenceCurrent(evidence) &&
+                Boolean(browserRoute?.isCurrent()),
+            }
+          : {}),
         ...(requestAuthority ? { requestAuthority } : {}),
         ...(profile.isTauri && nativeBinding
           ? { transportBindingIsCurrent: nativeBindingIsCurrent }
@@ -305,7 +347,7 @@ function StationCredentialBridge({ children }: { children: ReactNode }) {
         // applies this inside a lock callback; without the hand-back, code
         // that awaited the request could read the state the 401 replaced.
         onUnauthorized: () =>
-          evidence
+          evidence && !evidence.brokerRoute
             ? markCredentialRequired(
                 evidence.connectionId,
                 evidence.credential,
@@ -329,7 +371,7 @@ function StationCredentialBridge({ children }: { children: ReactNode }) {
         // the recovery whenever the failure was recorded after this closure
         // was installed — the normal cold-boot ordering) is not needed either.
         onAuthenticated: (url) =>
-          evidence
+          evidence && !evidence.brokerRoute
             ? recordAuthenticatedSuccess(
                 evidence.connectionId,
                 url,
@@ -353,6 +395,35 @@ function StationCredentialBridge({ children }: { children: ReactNode }) {
     profile.isTauri,
     recordAuthenticatedSuccess,
   ]);
+
+  useInsertionEffect(() => {
+    if (profile.isTauri) return;
+    setStationHealthRouteResolver((origin, brokerRoute) => {
+      const evidence = captureCredentialEvidence();
+      if (
+        brokerRoute &&
+        (!evidence?.brokerRoute ||
+          JSON.stringify(evidence.brokerRoute) !== JSON.stringify(brokerRoute))
+      )
+        return { kind: 'reject' };
+      if (!evidence?.brokerRoute) return null;
+      if (origin !== evidence.origin) return { kind: 'reject' };
+      const binding = captureBrowserRelayRoute(
+        evidence.connectionId,
+        evidence.origin,
+        evidence.brokerRoute,
+      );
+      return binding
+        ? {
+            kind: 'relay',
+            ...binding,
+            clientOrigin: evidence.brokerRoute.scope.browserOrigin,
+            ...(evidence.credential ? { credential: evidence.credential } : {}),
+          }
+        : { kind: 'reject' };
+    });
+    return () => setStationHealthRouteResolver(undefined);
+  }, [captureCredentialEvidence, profile.isTauri]);
 
   // archive#1094 (closing the SSE-stream half of the hot-loop-on-401 fix):
   // wake every `fetchSSE` stream currently blocked on a terminal auth

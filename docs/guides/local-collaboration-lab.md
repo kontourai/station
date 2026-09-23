@@ -523,8 +523,11 @@ private output path. The request is:
 The CLI writes a mode-0600 typed invitation file under a private directory;
 the one-use secret never enters a query string or CLI output. The browser
 contract can encode it into a `/connections/computers#relay-invite=...`
-fragment, but the ordinary Connections UI does not consume that link yet. Do
-not distribute it as a working in-app invitation. Invitations
+fragment. The browser's Broker routes form accepts that link or the CLI's
+private JSON invitation after
+that browser already has independently approved Station-key trust; it does not
+auto-consume an incoming fragment or establish that trust. Keep the CLI's JSON
+file private and deliver it through an operator-approved channel. Invitations
 expire within five minutes. A redeemed grant lasts at most 30 days and permits
 broker signaling only; expiry, a lost successful redemption response, or lost
 local custody requires a newly issued invitation. `grants` lists secret-free
@@ -537,7 +540,9 @@ The Station operator must separately list each recipient Origin in
 bounded maximum of 16). Broker issuance cannot expand Station application
 authority. The current desktop saved-route UI remains a metadata/trust readout;
 native grant custody does not by itself make a route selectable or prove a real
-Tauri connection. Browser and native onboarding UI/runtime evidence are tracked
+Tauri connection. The browser route picker currently uses local ICE host
+candidates and has no remote TURN setup or ordinary account/Device ceremony.
+Browser and native onboarding UI/runtime evidence are tracked
 separately under [#2388](https://github.com/kontourai/station/issues/2388).
 
 The broker receives signaling only. The separate TURN recording relay observes

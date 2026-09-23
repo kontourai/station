@@ -4,6 +4,7 @@ import {
   checkServerHealth,
   checkServerHealthDetailed,
   probeServerConnection,
+  setStationHealthRouteResolver,
 } from '../lib/serverHealth';
 
 const handshake = {
@@ -18,7 +19,10 @@ const handshake = {
   },
 };
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  setStationHealthRouteResolver(undefined);
+  vi.restoreAllMocks();
+});
 
 describe('checkServerHealth', () => {
   it('propagates a caller-owned abort signal to the status request', async () => {
@@ -40,6 +44,71 @@ describe('checkServerHealth', () => {
 });
 
 describe('probeServerConnection', () => {
+  const brokerRoute = {
+    brokerOrigin: 'https://broker.example.test',
+    scope: {
+      stationId: '11111111-1111-4111-8111-111111111111',
+      enrollmentId: '22222222-2222-4222-8222-222222222222',
+      routingGeneration: 1,
+      browserOrigin: 'https://client.example.test',
+    },
+  };
+
+  it('sends both public and protected health requests through the selected encrypted route', async () => {
+    const direct = vi
+      .spyOn(globalThis, 'fetch')
+      .mockRejectedValue(new Error('direct Station HTTP must not be used'));
+    const transport = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(Response.json(handshake))
+      .mockResolvedValueOnce(Response.json({ bootId: 'broker-boot' }));
+    setStationHealthRouteResolver((_origin, route) =>
+      route === brokerRoute
+        ? {
+            kind: 'relay',
+            transport,
+            isCurrent: () => true,
+            clientOrigin: brokerRoute.scope.browserOrigin,
+            credential: 'approved-device-credential',
+          }
+        : { kind: 'reject' },
+    );
+    await expect(
+      probeServerConnection(
+        'https://station.example.test',
+        undefined,
+        null,
+        new AbortController().signal,
+        brokerRoute,
+      ),
+    ).resolves.toEqual({ ok: true, bootId: 'broker-boot' });
+    expect(transport).toHaveBeenCalledTimes(2);
+    expect(
+      new Headers(transport.mock.calls[0]?.[1]?.headers).has('Authorization'),
+    ).toBe(false);
+    expect(
+      new Headers(transport.mock.calls[0]?.[1]?.headers).get('Origin'),
+    ).toBe(brokerRoute.scope.browserOrigin);
+    expect(
+      new Headers(transport.mock.calls[1]?.[1]?.headers).get('Authorization'),
+    ).toBe('Bearer approved-device-credential');
+    expect(direct).not.toHaveBeenCalled();
+  });
+
+  it('refuses a broker probe without a current route resolver', async () => {
+    const direct = vi.spyOn(globalThis, 'fetch');
+    await expect(
+      probeServerConnection(
+        'https://station.example.test',
+        undefined,
+        null,
+        new AbortController().signal,
+        brokerRoute,
+      ),
+    ).resolves.toEqual({ ok: false, reason: 'unreachable' });
+    expect(direct).not.toHaveBeenCalled();
+  });
+
   it('returns verified boot identity after an authenticated handshake', async () => {
     vi.spyOn(globalThis, 'fetch')
       .mockResolvedValueOnce(Response.json(handshake))
