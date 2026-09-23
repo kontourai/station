@@ -807,7 +807,10 @@ describe('lifecycle instance state', () => {
     }) as typeof process.kill);
     vi.stubGlobal('fetch', vi.fn(readyLifecycleFetch));
     const previous = process.env.STATION_SUPERVISOR_PID;
+    const previousStdoutLogs = process.env.STATION_STDOUT_LOGS;
     process.env.STATION_SUPERVISOR_PID = 'stale-supervisor';
+    // #2327: addressed to the desktop's own sidecar only.
+    process.env.STATION_STDOUT_LOGS = '0';
     try {
       const { lifecycle } = await loadLifecycleModule({
         childProcessMock: { execSync: vi.fn(), spawn },
@@ -823,9 +826,15 @@ describe('lifecycle instance state', () => {
       expect(spawn.mock.calls[0][2].env).not.toHaveProperty(
         'STATION_SUPERVISOR_PID',
       );
+      expect(spawn.mock.calls[0][2].env).not.toHaveProperty(
+        'STATION_STDOUT_LOGS',
+      );
     } finally {
       if (previous === undefined) delete process.env.STATION_SUPERVISOR_PID;
       else process.env.STATION_SUPERVISOR_PID = previous;
+      if (previousStdoutLogs === undefined)
+        delete process.env.STATION_STDOUT_LOGS;
+      else process.env.STATION_STDOUT_LOGS = previousStdoutLogs;
     }
   });
 

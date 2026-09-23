@@ -3,7 +3,11 @@ import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { engineId } from '@kontourai/station-contracts/agent-identity';
-import { FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY } from '@kontourai/station-contracts/provider';
+import {
+  FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY,
+  MUSE_TURN_IDLE_TIMEOUT_CODE,
+  MUSE_TURN_TOTAL_TIMEOUT_CODE,
+} from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import type { Prerequisite } from '@kontourai/station-contracts/tool';
 import { redactSecrets } from '@kontourai/station-shared/redaction';
@@ -43,6 +47,7 @@ import {
 import { projectBoundedToolOutput } from '../tool-output-projection.js';
 import {
   buildMuseExecArgs,
+  observeMuseToolTask,
   parseMuseLine,
   splitMuseLines,
   translateMuseRecord,
@@ -59,6 +64,7 @@ import {
   MUSE_MODEL_LAUNCH,
   MUSE_PROVIDER_MODES,
 } from './muse-adapter-types.js';
+import { UNRESOLVED_TURN_TOOL_OUTPUT } from './unresolved-tool-output.js';
 
 /**
  * Only `warn`/`info` are used, so the option is typed to exactly that slice —
@@ -101,49 +107,54 @@ export interface MuseAdapterOptions {
     signal?: AbortSignal,
   ) => Promise<CliCommandResult | null>;
   /**
-   * Absolute per-turn budget in milliseconds. `muse exec` has no timeout of
-   * its own, so a wedged child would otherwise hold the turn (and
-   * `hasOpenTurn`) open forever. An explicit positive finite value is an
-   * ABSOLUTE total override (wall-clock from turn start; activity and
-   * approval never move it). Absent/invalid means the fixed total default
-   * below. Never read from request/child/user metadata — server-owned only.
+   * Declared absolute per-turn budget in milliseconds (wall-clock from turn
+   * start; activity never moves it). Absent means NO total budget: Station
+   * does not end a live turn on a schedule of its own choosing. A declared
+   * value outside (0, 24 h] also means no total budget, and is reported once
+   * as a warning on the first turn. Never read from request/child/user
+   * metadata — server-owned only.
    */
   turnTimeoutMs?: number;
   /**
    * Idle limit in milliseconds: a full window with no verified protocol
-   * activity (non-empty streamed text, or a newly identified tool result)
-   * ends the turn. Absent/invalid means the idle default below.
-   * Server-owned only, like `turnTimeoutMs`.
+   * activity (non-empty streamed text, a newly started tool, or a newly
+   * identified tool result) AND no tool in flight ends the turn.
+   * Absent/invalid means the idle default below. Server-owned only.
    */
   turnIdleTimeoutMs?: number;
 }
 
 /**
- * #2269: two finite bounds, distinct owners/semantics.
+ * #2269 (owner direction 2026-09-22: Station does not kill live work on its
+ * own schedule). Two bounds with distinct owners:
  *
  * - IDLE (default 30 min): a full window with no VERIFIED protocol activity
- *   (non-empty streamed text, or a newly identified tool result) ends the
- *   turn. Active work survives past the old 30-minute wall-clock cutoff by
- *   this declared policy: each verified activity reschedules the idle timer.
- * - TOTAL (default 2 h, fixed): absolute wall-clock ceiling from turn start.
- *   Neither activity nor approval moves it, so endless heartbeats/noops still
- *   stop. An explicit positive finite `turnTimeoutMs` remains an ABSOLUTE
- *   total override (it is never reinterpreted as idle).
+ *   (non-empty streamed text, a newly started tool, or a newly identified
+ *   tool result) ends the turn — but never while a tool is in flight (a
+ *   `tool.started` whose muse task has not finished, #2308): that is known
+ *   in-progress work, not silence. Each verified activity reschedules the
+ *   window, and the tool's task finishing (completed/failed/cancelled) or
+ *   its result re-arms it. Invalid values fall back to this default
+ *   (fail-closed, mirroring `resolveTurnStallWindowMs`).
+ * - TOTAL: there is NO default. An absolute wall-clock ceiling applies only
+ *   when a server-owned caller declares one (`turnTimeoutMs`). No production
+ *   caller does today — `station-runtime.ts` constructs this adapter without
+ *   it — so in production Muse turns have no total budget; tests and any
+ *   future caller use it. Its expiry is attributed to that declared budget
+ *   (`MUSE_TURN_TOTAL_TIMEOUT_CODE`). A fixed 2 h default used to apply here
+ *   and killed a healthy turn whose bash tool completed every ~5 minutes.
  *
- * Invalid (absent/zero/negative/NaN/Infinity/out-of-range) never disables a
- * bound — each falls back to its bounded default (fail-closed, mirroring
- * `resolveTurnStallWindowMs`). No request/child/user metadata can choose or
- * extend either bound. Both are capped at 24 h (well inside Node's
- * setTimeout range); anything above resolves to the default, not the cap.
+ * No request/child/user metadata can choose or extend either bound. Both are
+ * capped at 24 h (well inside Node's setTimeout range).
  */
 export const MUSE_DEFAULT_IDLE_TIMEOUT_MS = 30 * 60_000;
-export const MUSE_DEFAULT_TOTAL_TIMEOUT_MS = 2 * 60 * 60_000;
 export const MUSE_MAX_SUPERVISION_TIMEOUT_MS = 24 * 60 * 60_000;
 /**
- * Fail-closed resolution of one supervision bound: a positive finite number
- * within the 24 h cap is honored; anything else (absent, zero, negative,
- * NaN, Infinity, above the cap) resolves to the documented default — never
- * to "no bound". Exported for unit tests.
+ * Resolution of the IDLE bound: a positive finite number within the 24 h cap
+ * is honored; anything else (absent, zero, negative, NaN, Infinity, above
+ * the cap) resolves to the given default — never to "no bound". Exported for
+ * unit tests. The TOTAL bound deliberately does not use this: it has no
+ * default to fall back to (see {@link resolveMuseTurnBudget}).
  */
 export function resolveMuseSupervisionBound(
   value: number | undefined,
@@ -160,14 +171,38 @@ export function resolveMuseSupervisionBound(
   return defaultMs;
 }
 
-/** Terminal error code when a turn exhausts its idle window with no verified activity. */
-export const MUSE_TURN_IDLE_TIMEOUT_CODE = 'muse-turn-idle-timeout';
 /**
- * Terminal error code when a turn exhausts its absolute budget. Kept as the
- * pre-#2269 `muse-turn-timeout` string so existing timeout attribution keeps
- * matching; the idle code above is the distinct new one.
+ * The declared TOTAL budget, or `undefined` for none. Absent -> none. A
+ * declared value that is not a positive finite number within the 24 h cap
+ * also resolves to none (reported as `invalid`), rather than to a substitute
+ * budget nobody declared: the only choices for a malformed declaration are
+ * inventing a budget or applying none, and inventing one is the failure this
+ * policy exists to remove. The caller warns once so the misconfiguration is
+ * visible.
  */
-export const MUSE_TURN_TOTAL_TIMEOUT_CODE = 'muse-turn-timeout';
+export function resolveMuseTurnBudget(value: number | undefined): {
+  budgetMs: number | undefined;
+  invalid: boolean;
+} {
+  if (value === undefined) return { budgetMs: undefined, invalid: false };
+  if (
+    typeof value === 'number' &&
+    Number.isFinite(value) &&
+    value > 0 &&
+    value <= MUSE_MAX_SUPERVISION_TIMEOUT_MS
+  ) {
+    return { budgetMs: value, invalid: false };
+  }
+  return { budgetMs: undefined, invalid: true };
+}
+
+/**
+ * Terminal codes for an idle expiry and for a DECLARED absolute budget's
+ * expiry. Defined in the provider contract so the UI reads the same values;
+ * re-exported here for the adapter's existing importers.
+ * `station-control-delegation.ts`'s budget reasons match these strings.
+ */
+export { MUSE_TURN_IDLE_TIMEOUT_CODE, MUSE_TURN_TOTAL_TIMEOUT_CODE };
 
 /**
  * Cap on the unterminated stdout tail carried across chunk boundaries. muse
@@ -184,9 +219,23 @@ export const MUSE_STDOUT_BUFFER_MAX_CHARS = 1_048_576;
  * window; the ids are remembered so a replay reads as a replay. The queue
  * evicts oldest-first past this cap — an evicted id replaying reads as new,
  * which only reschedules idle on what is still a protocol frame the child
- * actually emitted (and the absolute total still bounds the turn).
+ * actually emitted (and a declared total budget, if any, still bounds it).
  */
 const MUSE_SEEN_TOOL_CALL_IDS_MAX = 500;
+
+/**
+ * Outputs for a call whose muse task reached `completed` / `failed` but
+ * whose `tool_result` never arrived before the turn settled. The status
+ * follows muse's reported phase; the sentence says the result is missing.
+ */
+export const MUSE_FINISHED_NO_RESULT_OUTPUT =
+  'Muse reported the tool finished but sent no result.';
+export const MUSE_FAILED_NO_RESULT_OUTPUT =
+  'Muse reported the tool failed but sent no result.';
+
+/** Output for a tool call muse cancelled before reporting a result. */
+export const MUSE_CANCELLED_TOOL_OUTPUT =
+  'Muse cancelled this tool call before it reported a result.';
 
 /**
  * Where the muse CLI stores its credential, honoring XDG. Presence only —
@@ -394,6 +443,13 @@ type MuseTurnSettleOutcome =
       kind: 'error';
       error: { message: string; code: string };
       /**
+       * True for a Station-owned deadline. The deadline, not anything muse
+       * wrote, is why the turn ended, and muse writes unrelated warnings to
+       * stderr on every run (workspace banner, rules-file truncation), so
+       * appending the stderr tail would present those as the cause.
+       */
+      omitStderr?: boolean;
+      /**
        * Turn text muse had produced or reported before the failure. Never
        * published as `turn.completed.outputText` (this outcome never
        * publishes `turn.completed`) — folded, bounded, into
@@ -496,7 +552,10 @@ export class MuseAdapter implements ProviderAdapterShape {
   private readonly env: NodeJS.ProcessEnv;
   private readonly credentialFileExists: (path: string) => boolean;
   private readonly findBinary: (command: string) => string | null;
-  private readonly turnTimeoutMs: number;
+  private readonly turnTimeoutMs: number | undefined;
+  /** A declared `turnTimeoutMs` that was refused; reported on the first turn. */
+  private readonly refusedTurnTimeoutMs: unknown;
+  private refusedTurnTimeoutReported = false;
   private readonly turnIdleTimeoutMs: number;
   /**
    * Resolved ONCE, at construction, from {@link MUSE_PROVIDER_OVERRIDE_ENV}:
@@ -527,13 +586,16 @@ export class MuseAdapter implements ProviderAdapterShape {
     this.env = options.env ?? process.env;
     this.credentialFileExists = options.credentialFileExists ?? existsSync;
     this.findBinary = options.findBinary ?? findCliBinary;
-    // #2269 correction: invalid values fail CLOSED to the bounded defaults —
-    // the old `Number.isFinite(...) || <= 0 → return (no timer)` shape
-    // silently disabled the bound on 0/NaN/negative/Infinity.
-    this.turnTimeoutMs = resolveMuseSupervisionBound(
-      options.turnTimeoutMs,
-      MUSE_DEFAULT_TOTAL_TIMEOUT_MS,
-    );
+    // The total budget has no default (see MUSE_DEFAULT_IDLE_TIMEOUT_MS's
+    // doc); a malformed declaration is kept to be reported, not replaced.
+    const budget = resolveMuseTurnBudget(options.turnTimeoutMs);
+    this.turnTimeoutMs = budget.budgetMs;
+    this.refusedTurnTimeoutMs = budget.invalid
+      ? options.turnTimeoutMs
+      : undefined;
+    // The idle bound still fails CLOSED to its default: the old
+    // `Number.isFinite(...) || <= 0 → return (no timer)` shape silently
+    // disabled it on 0/NaN/negative/Infinity.
     this.turnIdleTimeoutMs = resolveMuseSupervisionBound(
       options.turnIdleTimeoutMs,
       MUSE_DEFAULT_IDLE_TIMEOUT_MS,
@@ -557,6 +619,22 @@ export class MuseAdapter implements ProviderAdapterShape {
    */
   private appliedModelId(modelId: string | undefined): string | undefined {
     return this.providerOverride === 'echo' ? undefined : modelId;
+  }
+
+  /**
+   * Reports a refused `turnTimeoutMs` declaration once, on the first turn —
+   * deferred for the same reason as {@link reportProviderNoticeOnce}: this
+   * adapter is built before the runtime's logger is wired.
+   */
+  private reportRefusedTurnBudgetOnce(): void {
+    if (this.refusedTurnTimeoutReported) return;
+    if (this.refusedTurnTimeoutMs === undefined) return;
+    const logger = this.options.logger;
+    if (!logger?.warn) return;
+    logger.warn(
+      `Ignoring Muse turnTimeoutMs=${String(this.refusedTurnTimeoutMs)}: not a positive number of milliseconds up to ${MUSE_MAX_SUPERVISION_TIMEOUT_MS}. Muse turns run with no total budget.`,
+    );
+    this.refusedTurnTimeoutReported = true;
   }
 
   /**
@@ -756,6 +834,7 @@ export class MuseAdapter implements ProviderAdapterShape {
       );
     }
     this.reportProviderNoticeOnce();
+    this.reportRefusedTurnBudgetOnce();
     const turnId = crypto.randomUUID();
     const modelId = input.modelId ?? record.modelId;
     const decoded = decodeChatAttachments(input.attachments);
@@ -822,6 +901,9 @@ export class MuseAdapter implements ProviderAdapterShape {
       totalLimitMs: this.turnTimeoutMs,
       lastProgressAt: turnStartedAt,
       seenToolCallIds: [],
+      toolTasks: new Map(),
+      openToolCalls: new Map(),
+      awaitingResultToolCalls: new Map(),
       outputText: '',
       settled: false,
       interrupted: false,
@@ -870,9 +952,17 @@ export class MuseAdapter implements ProviderAdapterShape {
         provider: this.provider,
         turnId,
         startedAt: turnStartedAtIso,
-        deadlineAt: new Date(turnStartedAt + this.turnTimeoutMs).toISOString(),
+        // No declared budget -> no deadline and no total to declare; the
+        // delegation projection then forwards an idle-only supervision.
+        ...(this.turnTimeoutMs === undefined
+          ? {}
+          : {
+              deadlineAt: new Date(
+                turnStartedAt + this.turnTimeoutMs,
+              ).toISOString(),
+              totalLimitMs: this.turnTimeoutMs,
+            }),
         idleLimitMs: this.turnIdleTimeoutMs,
-        totalLimitMs: this.turnTimeoutMs,
       },
     };
     this.publish({
@@ -1146,16 +1236,87 @@ export class MuseAdapter implements ProviderAdapterShape {
       });
       // `translateMuseRecord` already drops empty deltas, so reaching here is
       // verified protocol activity — never a heartbeat. Reschedules IDLE only;
-      // the absolute total never moves.
+      // a declared total never moves.
+      this.noteVerifiedActivity(record, turn);
+      return;
+    }
+
+    if (effect.kind === 'task-lifecycle') {
+      // #2308: muse 1.3 names the tool and its `call_id` on the tool task's
+      // lifecycle records, so a start can be opened under the SAME id its
+      // `tool_result` later closes (see `observeMuseToolTask`).
+      const observed = observeMuseToolTask(
+        turn.toolTasks,
+        effect,
+        MUSE_SEEN_TOOL_CALL_IDS_MAX,
+      );
+      if (!observed) return;
+      if (observed.kind === 'cancelled') {
+        this.closeCancelledTool(record, turn, observed);
+        return;
+      }
+      if (observed.kind === 'finished') {
+        // The task ended; its result is still owed and still pairs, but the
+        // tool is no longer running, so it stops holding idle disarmed. A
+        // result that never arrives is closed as unresolved at settle.
+        if (
+          turn.openToolCalls.has(observed.toolCallId) &&
+          !turn.awaitingResultToolCalls.has(observed.toolCallId)
+        ) {
+          turn.awaitingResultToolCalls.set(
+            observed.toolCallId,
+            observed.outcome,
+          );
+          this.noteVerifiedActivity(record, turn);
+        }
+        return;
+      }
+      const start = observed;
+      // At most one start per call id, and never a start for a call whose
+      // result already arrived: that would reopen a finished row.
+      if (
+        turn.openToolCalls.has(start.toolCallId) ||
+        turn.seenToolCallIds.includes(start.toolCallId)
+      ) {
+        return;
+      }
+      turn.openToolCalls.set(start.toolCallId, start.toolName);
+      this.publish({
+        eventId: crypto.randomUUID(),
+        provider: this.provider,
+        threadId: record.externalThreadId,
+        createdAt: this.now().toISOString(),
+        method: 'tool.started',
+        turnId: turn.turnId,
+        itemId: `tool:${start.toolCallId}`,
+        toolCallId: start.toolCallId,
+        toolName: start.toolName,
+      });
+      // A newly started tool is verified activity, counted once per call id
+      // exactly like a newly identified result.
       this.noteVerifiedActivity(record, turn);
       return;
     }
 
     if (effect.kind === 'tool-completed') {
-      // Only `tool.completed` — the live stream emits `call_id` exactly once,
-      // on the result, so there is no honest id to open a `tool.started` with
-      // (see muse-adapter-events.ts). Its own itemId keeps the tool row
-      // distinct from the assistant text item.
+      // A result that omits `correlation_facts.tool_name` still pairs with
+      // the start this turn opened under its `call_id`, which named the tool
+      // from muse's own `task_kind`. With no such start there is nothing to
+      // name it by, so it is dropped rather than published under a guess.
+      const toolName =
+        effect.toolName ?? turn.openToolCalls.get(effect.toolCallId);
+      if (!toolName) return;
+      // At most one `tool.completed` per call id per turn: a result for a
+      // call already closed (by an earlier result, or by its task reporting
+      // `cancelled`) is dropped, so a replayed or late receipt cannot add a
+      // second outcome row. `seenToolCallIds` is bounded (oldest-first), so
+      // a call evicted from it reads as new again — the same disclosed
+      // bound its idle bookkeeping has.
+      if (turn.seenToolCallIds.includes(effect.toolCallId)) return;
+      // Its own itemId keeps the tool row distinct from the assistant text
+      // item, and matches the `tool.started` itemId for the same call.
+      turn.openToolCalls.delete(effect.toolCallId);
+      turn.awaitingResultToolCalls.delete(effect.toolCallId);
       const isNewToolResult = !turn.seenToolCallIds.includes(effect.toolCallId);
       const preview = projectBoundedToolOutput(effect.output);
       this.publish({
@@ -1167,7 +1328,7 @@ export class MuseAdapter implements ProviderAdapterShape {
         turnId: turn.turnId,
         itemId: `tool:${effect.toolCallId}`,
         toolCallId: effect.toolCallId,
-        toolName: effect.toolName,
+        toolName,
         status: effect.status,
         ...(effect.output === null ? {} : { output: preview.value }),
         ...(preview.receipt ? { outputReceipt: preview.receipt } : {}),
@@ -1357,6 +1518,56 @@ export class MuseAdapter implements ProviderAdapterShape {
     turn.settled = true;
     const nowIso = this.now().toISOString();
 
+    // #2308: a tool this turn started but never reported a result for is
+    // closed BEFORE the turn's terminal. Muse's engine run is one process
+    // per turn, and once the turn settles this adapter reads nothing more
+    // from it, so no result can ever reach Station for these calls. The
+    // projection deliberately carries an open call past its turn
+    // (station#1558), so without this the row would read "running" forever.
+    // For a call still RUNNING, `unresolved` with the turn-scoped sentence
+    // says exactly that: no result, fate unknown — not a failure and not a
+    // cancellation. A call whose task muse already reported finished keeps
+    // that verdict (see below). (A task
+    // that is proposed and never starts opened no row, so it needs none.)
+    // Idle was disarmed at settle only if a call was still RUNNING; calls
+    // that were merely awaiting their result left it armed.
+    const hadToolInFlight = this.hasToolInFlight(turn);
+    const openToolCalls = [...turn.openToolCalls];
+    const finishedPhases = new Map(turn.awaitingResultToolCalls);
+    turn.openToolCalls.clear();
+    turn.awaitingResultToolCalls.clear();
+    for (const [toolCallId, toolName] of openToolCalls) {
+      // A call whose task muse reported finished keeps muse's verdict; only
+      // a call still RUNNING at settle has an unknown fate.
+      const phase = finishedPhases.get(toolCallId);
+      this.publish({
+        eventId: crypto.randomUUID(),
+        provider: this.provider,
+        threadId: record.externalThreadId,
+        createdAt: nowIso,
+        method: 'tool.completed',
+        turnId: turn.turnId,
+        itemId: `tool:${toolCallId}`,
+        toolCallId,
+        toolName,
+        ...(phase === 'completed'
+          ? { status: 'success', output: MUSE_FINISHED_NO_RESULT_OUTPUT }
+          : phase === 'failed'
+            ? { status: 'error', output: MUSE_FAILED_NO_RESULT_OUTPUT }
+            : { status: 'unresolved', output: UNRESOLVED_TURN_TOOL_OUTPUT }),
+      });
+    }
+    // Parity with the pre-#2308 schedule for a settled turn: there, the idle
+    // timer was always pending at settle, so a child that lingers after its
+    // terminal was reaped one idle window on. A turn that settles with a
+    // tool in flight had that timer disarmed; the tools are closed just
+    // above, so it is restored here — from now, the same rule a tool's
+    // result follows (the in-flight time was work, not silence). What the
+    // timer does after settle is unchanged and belongs to #2300.
+    if (hadToolInFlight && !turn.idleTimeoutHandle) {
+      this.scheduleIdleTimer(record, turn);
+    }
+
     switch (outcome.kind) {
       case 'aborted':
         this.publish({
@@ -1382,7 +1593,7 @@ export class MuseAdapter implements ProviderAdapterShape {
           // rather than a warning of their own: for a turn that died on an
           // expired key or an unknown model, this message is the ONLY
           // diagnosis the user gets, and an exit code alone names nothing.
-          message: `${outcome.error.message}${this.outputTextDetail(outcome.outputText)}${this.stderrDetail(turn)}`,
+          message: `${outcome.error.message}${this.outputTextDetail(outcome.outputText)}${outcome.omitStderr ? '' : this.stderrDetail(turn)}`,
           code: outcome.error.code,
           retriable: false,
         });
@@ -1456,19 +1667,19 @@ export class MuseAdapter implements ProviderAdapterShape {
   }
 
   /**
-   * Arms both per-turn deadlines. `muse exec` has no timeout of its own, so
-   * a child that hangs (or one that emits `run_terminal` and then never
-   * exits) is the last remaining way a turn can stay open forever.
+   * Arms the per-turn deadlines.
    *
-   * - TOTAL is armed once and never rescheduled: activity, approval, and
-   *   progress never move it. An explicit `turnTimeoutMs` override is this
-   *   same absolute timer with a different value.
+   * - TOTAL is armed only when the server declared a budget
+   *   (`turnTimeoutMs`), once, and never rescheduled. With no declaration a
+   *   live turn is never ended on a Station-chosen schedule; a wedged child
+   *   is visible as silence and stopped by the user.
    * - IDLE is rescheduled by verified protocol activity alone
-   *   (`noteVerifiedActivity`). Malformed/unknown/heartbeat/stderr frames and
-   *   duplicate completion receipts never touch it.
+   *   (`noteVerifiedActivity`) and is not armed while a tool is in flight.
+   *   Malformed/unknown/heartbeat/stderr frames and duplicate completion
+   *   receipts never touch it.
    *
    * Both settle with a terminal event FIRST — so the reason the user sees is
-   * the timeout, not a downstream "exited before reporting a terminal
+   * the deadline, not a downstream "exited before reporting a terminal
    * result" — and the child is then terminated and the slot freed, in the
    * same settle→terminate→finish order as before.
    */
@@ -1515,19 +1726,23 @@ export class MuseAdapter implements ProviderAdapterShape {
     record: MuseSessionRecord,
     turn: MuseActiveTurn,
   ): void {
-    const totalHandle = setTimeout(() => {
-      this.settleTimeoutTurn(record, turn, {
-        kind: 'error',
-        outputText: turn.outputText.length > 0 ? turn.outputText : undefined,
-        error: {
-          message: `Muse did not finish the turn within ${turn.totalLimitMs}ms (absolute turn budget) and was terminated.`,
-          code: MUSE_TURN_TOTAL_TIMEOUT_CODE,
-        },
-      });
-    }, turn.totalLimitMs);
-    // A pending backstop must never be the reason the process stays alive.
-    totalHandle.unref?.();
-    turn.totalTimeoutHandle = totalHandle;
+    const totalLimitMs = turn.totalLimitMs;
+    if (totalLimitMs !== undefined) {
+      const totalHandle = setTimeout(() => {
+        this.settleTimeoutTurn(record, turn, {
+          kind: 'error',
+          outputText: turn.outputText.length > 0 ? turn.outputText : undefined,
+          omitStderr: true,
+          error: {
+            message: `Muse did not finish the turn within the ${totalLimitMs}ms turn budget declared for it, so Station stopped it.`,
+            code: MUSE_TURN_TOTAL_TIMEOUT_CODE,
+          },
+        });
+      }, totalLimitMs);
+      // A pending deadline must never be the reason the process stays alive.
+      totalHandle.unref?.();
+      turn.totalTimeoutHandle = totalHandle;
+    }
     this.armIdleDeadline(record, turn);
   }
 
@@ -1536,6 +1751,11 @@ export class MuseAdapter implements ProviderAdapterShape {
    * start and again on every verified protocol activity. Never called for
    * anything else — notably never for approval state (muse has no approval
    * channel) and never by the total path.
+   *
+   * While a tool is in flight (an open call whose muse task has not reached
+   * `completed`/`failed`/`cancelled`) the deadline is cleared and NOT
+   * re-armed: a running tool is known work, however long it runs. The task
+   * finishing, or its result, is verified activity and re-arms it.
    */
   private armIdleDeadline(
     record: MuseSessionRecord,
@@ -1546,14 +1766,33 @@ export class MuseAdapter implements ProviderAdapterShape {
       turn.idleTimeoutHandle = undefined;
     }
     if (turn.settled) return;
+    if (this.hasToolInFlight(turn)) return;
+    this.scheduleIdleTimer(record, turn);
+  }
+
+  /** True while any open call's muse task has not yet finished. */
+  private hasToolInFlight(turn: MuseActiveTurn): boolean {
+    return turn.openToolCalls.size > turn.awaitingResultToolCalls.size;
+  }
+
+  /**
+   * Starts the idle timer `idleLimitMs` from now. Only `armIdleDeadline`
+   * (live turns) and `settleTurn` (the tool-in-flight restoration below)
+   * call it; neither changes what the callback does.
+   */
+  private scheduleIdleTimer(
+    record: MuseSessionRecord,
+    turn: MuseActiveTurn,
+  ): void {
     const idleLimitMs = turn.idleLimitMs;
     const handle = setTimeout(() => {
       const lastActivityIso = new Date(turn.lastProgressAt).toISOString();
       this.settleTimeoutTurn(record, turn, {
         kind: 'error',
         outputText: turn.outputText.length > 0 ? turn.outputText : undefined,
+        omitStderr: true,
         error: {
-          message: `Muse turn was idle for ${idleLimitMs}ms with no verified protocol activity (last activity at ${lastActivityIso}; no progress observed — the turn may have been working quietly) and was terminated.`,
+          message: `Muse turn was idle for ${idleLimitMs}ms with no verified protocol activity and no tool reported running (last activity at ${lastActivityIso}), so Station stopped it.`,
           code: MUSE_TURN_IDLE_TIMEOUT_CODE,
         },
       });
@@ -1563,10 +1802,49 @@ export class MuseAdapter implements ProviderAdapterShape {
   }
 
   /**
+   * Closes a started tool whose muse task reported `cancelled` (see
+   * `observeMuseToolTask`). Published as `cancelled` because that is the
+   * outcome muse itself reported — not a failure nothing observed, and not
+   * `unresolved`, which asserts that no verdict arrived. The call leaves
+   * `openToolCalls`, so the idle deadline re-arms once nothing else is in
+   * flight; the cancel is itself verified activity. It is also recorded as
+   * seen, so a later start for the same `call_id` cannot reopen the row.
+   */
+  private closeCancelledTool(
+    record: MuseSessionRecord,
+    turn: MuseActiveTurn,
+    tool: { toolName: string; toolCallId: string },
+  ): void {
+    if (!turn.openToolCalls.delete(tool.toolCallId)) return;
+    turn.awaitingResultToolCalls.delete(tool.toolCallId);
+    this.publish({
+      eventId: crypto.randomUUID(),
+      provider: this.provider,
+      threadId: record.externalThreadId,
+      createdAt: this.now().toISOString(),
+      method: 'tool.completed',
+      turnId: turn.turnId,
+      itemId: `tool:${tool.toolCallId}`,
+      toolCallId: tool.toolCallId,
+      toolName: tool.toolName,
+      status: 'cancelled',
+      output: MUSE_CANCELLED_TOOL_OUTPUT,
+    });
+    if (!turn.seenToolCallIds.includes(tool.toolCallId)) {
+      if (turn.seenToolCallIds.length >= MUSE_SEEN_TOOL_CALL_IDS_MAX) {
+        turn.seenToolCallIds.shift();
+      }
+      turn.seenToolCallIds.push(tool.toolCallId);
+    }
+    this.noteVerifiedActivity(record, turn);
+  }
+
+  /**
    * Records verified protocol activity and reschedules the IDLE deadline
-   * only. Callers are `handleStdoutLine`'s text-delta and new-tool-result
-   * branches — i.e. facts the child actually emitted — never stderr noise,
-   * malformed lines, heartbeats, or duplicate receipts.
+   * only. Callers are `handleStdoutLine`'s text-delta, new-tool-start,
+   * tool-task-finished and new-tool-result branches, and `closeCancelledTool`
+   * — i.e. facts the child actually emitted — never stderr noise, malformed
+   * lines, heartbeats, or duplicate receipts.
    */
   private noteVerifiedActivity(
     record: MuseSessionRecord,
