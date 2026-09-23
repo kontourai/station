@@ -1246,7 +1246,9 @@ export async function installPluginDependency(
             }
             // The staged tree has been through a build that runs the
             // dependency's own install scripts, so it is plugin-writable.
-            await copyPluginTree(tempDir, targetDir, { recursive: true });
+            await copyPluginTree(tempDir, targetDir, {
+              skipSpecialFiles: true,
+            });
             try {
               await validateAndBuildInstalledDependency(
                 pluginsDir,

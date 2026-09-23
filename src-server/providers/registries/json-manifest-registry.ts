@@ -9,7 +9,10 @@ import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import type { ToolDef } from '@kontourai/station-contracts/tool';
 import { createStationTempDirSync } from '@kontourai/station-shared/temp-dir';
 import { scanInstalledPluginInventory } from '../../services/plugins/installed-plugin-inventory.js';
-import { copyPluginTree } from '../../services/plugins/plugin-content-integrity.js';
+import {
+  copyPluginTree,
+  PLUGIN_TREE_COPY,
+} from '../../services/plugins/plugin-content-integrity.js';
 import { readUntrustedPluginManifestSyncWithFormat } from '../../services/plugins/plugin-manifest-bounded-read.js';
 import { assertPluginIdentityAvailable } from '../../services/plugins/reserved-plugin-identities.js';
 import { errorMessage } from '../../utils/error-message.js';
@@ -440,7 +443,9 @@ export class JsonManifestRegistryProvider
 
         rmSync(targetDir, { recursive: true, force: true });
         mkdirSync(pluginsDir, { recursive: true });
-        cpSync(stagedSourceDir, targetDir, { recursive: true });
+        // Verbatim: the staged tree is deleted next, so a relative link
+        // rewritten to an absolute staged path would dangle (#2342 review).
+        cpSync(stagedSourceDir, targetDir, PLUGIN_TREE_COPY);
         rmSync(stagedSourceDir, { recursive: true, force: true });
         const installedAlias = {
           pluginName,

@@ -680,7 +680,9 @@ export function registerPluginLifecycleRoutes(
               const backupDir = join(backupRoot, 'plugin');
               // The installed tree is plugin-writable (its build runs
               // install scripts); `cpSync` aborts on an unreadable directory.
-              await copyPluginTree(pluginDir, backupDir);
+              await copyPluginTree(pluginDir, backupDir, {
+                skipSpecialFiles: true,
+              });
               const {
                 manifest: originalManifest,
                 format: originalManifestFormat,

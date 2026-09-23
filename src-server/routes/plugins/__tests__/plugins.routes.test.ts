@@ -1143,7 +1143,13 @@ describe('Plugin Routes', () => {
       // `PLUGIN_TREE_COPY`. Without it the backup resolves relative symlinks
       // to absolute paths, so restoring it produces a tree with a different
       // content digest and a rolled-back update strips every permission.
-      { recursive: true, verbatimSymlinks: true },
+      // A plugin's own tree may hold sockets or pipes its server created;
+      // the backup skips them rather than refusing the update (#2342 review).
+      expect.objectContaining({
+        recursive: true,
+        verbatimSymlinks: true,
+        filter: expect.any(Function),
+      }),
     );
     expect(pluginRegistryProvider.update).toHaveBeenCalledWith(
       'registry-plugin',

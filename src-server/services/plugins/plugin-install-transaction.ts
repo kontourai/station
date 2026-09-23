@@ -1522,7 +1522,9 @@ async function removeOwnedDependencyLifecycles(options: {
             'Dependency uninstall backup',
           );
           mkdirSync(dirname(backupDir), { recursive: true });
-          await copyPluginTree(dependencyDir, backupDir);
+          await copyPluginTree(dependencyDir, backupDir, {
+            skipSpecialFiles: true,
+          });
           const grantScope = createPluginGrantMutationScope(
             options.projectHomeDir,
             dependency.id,
@@ -3670,7 +3672,10 @@ async function installPluginFromSourceUnderContext(
           const backupDir = join(installBackupRoot, 'plugin');
           // Installed trees are plugin-writable; `cpSync` aborts the process
           // on an unreadable directory (see `copyPluginTree`).
-          if (!isAgentPlugin) await copyPluginTree(pluginDir, backupDir);
+          if (!isAgentPlugin)
+            await copyPluginTree(pluginDir, backupDir, {
+              skipSpecialFiles: true,
+            });
           backupPluginOwnedIntegrations(
             join(projectHomeDir, 'integrations'),
             pluginName,
@@ -3911,7 +3916,9 @@ async function installPluginFromSourceUnderContext(
           if (existsSync(pluginDir) && pluginDir !== tempDir)
             rmSync(pluginDir, { recursive: true, force: true });
           if (tempDir !== pluginDir)
-            await copyPluginTree(tempDir, pluginDir, { recursive: true });
+            await copyPluginTree(tempDir, pluginDir, {
+              skipSpecialFiles: true,
+            });
         }
         // The tree just changed. The lock's release forgets the memoized
         // digest, but reads happen INSIDE this span (`hasGrant` below, and
@@ -4740,7 +4747,10 @@ async function uninstallPluginUnderPublication(
   try {
     backupRoot = recovery?.root ?? createStationTempDirSync('plugin-uninstall');
     if (recovery) mkdirSync(backupRoot, { recursive: true });
-    if (!managed) await copyPluginTree(pluginDir, join(backupRoot, 'plugin'));
+    if (!managed)
+      await copyPluginTree(pluginDir, join(backupRoot, 'plugin'), {
+        skipSpecialFiles: true,
+      });
     backupPluginOwnedIntegrations(
       join(projectHomeDir, 'integrations'),
       pluginName,

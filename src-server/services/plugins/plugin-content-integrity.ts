@@ -26,6 +26,7 @@
  *    holding this lock across both closes it.
  */
 import { AsyncLocalStorage } from 'node:async_hooks';
+import { lstatSync } from 'node:fs';
 import { cp } from 'node:fs/promises';
 import { basename, join, resolve } from 'node:path';
 import { setImmediate } from 'node:timers/promises';
@@ -145,24 +146,38 @@ export const PLUGIN_TREE_COPY = {
 } as const;
 
 /**
- * Copies a tree a plugin or an untrusted source can shape (#2342 review).
+ * Copies a tree a plugin or an untrusted source can shape (#2342 review),
+ * always with {@link PLUGIN_TREE_COPY} (symlinks verbatim).
  *
  * `fs.cpSync` walks a directory with a native iterator that ABORTS the whole
  * Node process (libc++abi `filesystem_error`, exit 134) on an unreadable
  * directory, so no catch above it can turn that into an error. The async
- * `fs.promises.cp` raises a catchable EACCES instead. (`cpSync` with a
- * `filter` takes the JS path but throws ERR_INTERNAL_ASSERTION on a FIFO.)
+ * `fs.promises.cp` raises a catchable EACCES instead.
  *
- * The async copy refuses special files (`ERR_FS_CP_FIFO_PIPE`,
- * `ERR_FS_CP_SOCKET`, `ERR_FS_CP_UNKNOWN`) where `cpSync` skipped them;
- * {@link isSpecialFileCopyRefusal} names that case for callers.
+ * Special files (FIFO, socket, device) are a choice per call site:
+ * - by default the copy REFUSES them (`ERR_FS_CP_FIFO_PIPE`,
+ *   `ERR_FS_CP_SOCKET`, `ERR_FS_CP_UNKNOWN`; see
+ *   {@link isSpecialFileCopyRefusal}). That is right at ingress, where the
+ *   tree is a source someone is asking Station to admit.
+ * - `skipSpecialFiles` leaves them out, as `cpSync` did. That is right for
+ *   backups and post-build copies of a plugin's own tree: a plugin whose
+ *   server creates `run.sock` in its directory must still be updatable and
+ *   removable, and a socket or pipe carries no content to restore.
  */
 export async function copyPluginTree(
   source: string,
   target: string,
-  options: Parameters<typeof cp>[2] = PLUGIN_TREE_COPY,
+  options: { skipSpecialFiles?: boolean } = {},
 ): Promise<void> {
-  await cp(source, target, options);
+  await cp(source, target, {
+    ...PLUGIN_TREE_COPY,
+    ...(options.skipSpecialFiles ? { filter: isCopyableTreeEntry } : {}),
+  });
+}
+
+function isCopyableTreeEntry(path: string): boolean {
+  const entry = lstatSync(path);
+  return entry.isFile() || entry.isDirectory() || entry.isSymbolicLink();
 }
 
 /** A copy refused because the tree holds a FIFO, socket or device. */
