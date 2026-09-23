@@ -536,6 +536,20 @@ describe('dependency lifecycle policy', () => {
       expect(exec).toHaveBeenCalledTimes(2);
     });
 
+    it('never retries a timeout after the ready marker arrived', () => {
+      // The marker proves the process started and the PTY carried output; a
+      // missing ack or exit after it is a protocol defect, not a slow start.
+      const { error, exec } = run([
+        () => ({
+          stderr: 'node-pty handshake timed out (marker seen: true) phases={}',
+          status: 1,
+        }),
+        PASS,
+      ]);
+      expect(exec).toHaveBeenCalledTimes(1);
+      expect(String(error)).toContain('marker seen: true');
+    });
+
     it('fails closed when every attempt times out', () => {
       const { error, exec, logs } = run([
         outerTimeout,

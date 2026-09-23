@@ -53,9 +53,10 @@ export const PTY_HANDSHAKE_TIMEOUT_MS = 8_000;
  */
 const PTY_HANDSHAKE_STARTUP_ALLOWANCE_MS = 12_000;
 /**
- * A timeout is the one environmental outcome: a saturated host can stall any
- * process start. Every other failure (no marker, unnatural exit, unparseable
- * outcome, native crash) is a verdict about the module and is never retried.
+ * A timeout before the ready marker is the one environmental outcome: a
+ * saturated host can stall any process start. Every other failure (a timeout
+ * after the marker, no marker, unnatural exit, unparseable outcome, native
+ * crash) is a verdict about the module and is never retried.
  * A deterministic hang still fails every attempt, so this stays fail-closed.
  */
 const PTY_HANDSHAKE_ATTEMPTS = 3;
@@ -186,7 +187,7 @@ const timeout = setTimeout(() => {
       });
     } catch (error) {
       const failure = describePtyHandshakeFailure(error);
-      if (!isPtyHandshakeTimeout(error) || attempt >= attempts) {
+      if (!isPreMarkerHandshakeTimeout(error) || attempt >= attempts) {
         if (attempt > 1)
           log(
             `[dependency-lifecycle] node-pty real PTY handshake failed on attempt ${attempt}/${attempts} after ${Date.now() - startedAt}ms`,
@@ -222,15 +223,22 @@ function describePtyPhases(output) {
 }
 
 /**
- * Only a timeout is retryable: the outer spawn's own ETIMEDOUT, or the child's
- * handshake timer (which kills the PTY before reporting). A child that exits
- * without the marker, or crashes, is not a timeout.
+ * Only a stall BEFORE the ready marker is retryable: that is a slow process
+ * start or native load. Once the marker has arrived, a missing ack or exit is
+ * a PTY protocol defect and fails at once. The child's own timer reports which
+ * side of the marker it stopped on. An outer ETIMEDOUT carries no marker state
+ * (the child reports only when it settles); the 12s startup allowance means
+ * the outer kill wins only when boot and load alone overran it, which is the
+ * pre-marker case. A child that exits without the marker, or crashes, is not
+ * a timeout at all.
  * @param {any} error
  */
-function isPtyHandshakeTimeout(error) {
+function isPreMarkerHandshakeTimeout(error) {
   if (error == null || typeof error !== 'object') return false;
+  const stderr = String(error.stderr ?? '');
+  if (stderr.includes('marker seen: true')) return false;
   if (error.code === 'ETIMEDOUT') return true;
-  return String(error.stderr ?? '').includes('node-pty handshake timed out');
+  return stderr.includes('node-pty handshake timed out (marker seen: false)');
 }
 
 /** @param {any} error */
