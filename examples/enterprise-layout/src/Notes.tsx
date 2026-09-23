@@ -98,6 +98,11 @@ export function Notes() {
     setFrontmatter(selected.frontmatter);
   }
 
+  // Until the selected note's body has loaded, the editor holds nothing of
+  // that note's. Editing it then would be overwritten when the body arrives,
+  // and saving it would write over the note.
+  const bodyLoading = !!selected && !isNew && loadedDocId !== selected.docId;
+
   function handleNew() {
     if (dirty && !window.confirm('You have unsaved changes. Discard?')) return;
     setSelected(null);
@@ -108,16 +113,19 @@ export function Notes() {
   }
 
   function handleContentChange(v: string) {
+    if (bodyLoading) return;
     setContent(v);
     setDirty(true);
   }
 
   function handleFrontmatterChange(fm: NoteFrontmatter) {
+    if (bodyLoading) return;
     setFrontmatter(fm);
     setDirty(true);
   }
 
   const handleSave = useCallback(async () => {
+    if (bodyLoading) return;
     const title = frontmatter.title || 'Untitled';
     try {
       if (isNew || !selected) {
@@ -144,7 +152,16 @@ export function Notes() {
     } catch {
       showToast('Failed to save note', 'error');
     }
-  }, [selected, isNew, content, frontmatter, saveNote, updateNote, showToast]);
+  }, [
+    bodyLoading,
+    selected,
+    isNew,
+    content,
+    frontmatter,
+    saveNote,
+    updateNote,
+    showToast,
+  ]);
 
   const handleEnhance = useCallback(async () => {
     try {
@@ -253,7 +270,7 @@ export function Notes() {
           hasNote={hasNote}
           dirty={dirty}
           saving={saveNote.isPending || updateNote.isPending}
-          enhancing={enhanceNote.isPending}
+          enhancing={enhanceNote.isPending || bodyLoading}
           vaulting={vaultSave.isPending}
           onNew={handleNew}
           onSave={handleSave}
@@ -267,6 +284,7 @@ export function Notes() {
             frontmatter={frontmatter}
             onChange={handleContentChange}
             onFrontmatterChange={handleFrontmatterChange}
+            readOnly={bodyLoading}
           />
         ) : (
           <div className="notes-editor-empty">

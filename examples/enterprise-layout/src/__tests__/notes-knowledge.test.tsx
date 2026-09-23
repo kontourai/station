@@ -90,7 +90,10 @@ function editor() {
   return document.getElementById('note-editor-textarea') as HTMLTextAreaElement;
 }
 
-afterEach(() => vi.clearAllMocks());
+afterEach(() => {
+  vi.clearAllMocks();
+  delete BODIES['doc-new'];
+});
 
 describe('Notes over the knowledge API', () => {
   test('lists notes by their metadata title and opens one by document id', () => {
@@ -155,5 +158,54 @@ describe('Notes over the knowledge API', () => {
     });
     expect(screen.getByText('Beta kickoff')).toBeTruthy();
     expect(screen.queryByText('Alpha review')).toBeNull();
+  });
+
+  test('keeps the editor read-only until the selected note body arrives', () => {
+    const view = renderNotes();
+    let delivered = false;
+    sdk.content.mockImplementation((_slug: string, docId: string | null) => ({
+      data: delivered && docId ? BODIES[docId] : undefined,
+    }));
+
+    fireEvent.click(screen.getByText('Beta kickoff'));
+    expect(editor().readOnly).toBe(true);
+    fireEvent.change(editor(), { target: { value: 'typed too early' } });
+    expect(editor().value).toBe('');
+
+    delivered = true;
+    view.rerender(<Notes />);
+
+    expect(editor().readOnly).toBe(false);
+    expect(editor().value).toBe('# Beta body');
+  });
+
+  test('keeps the text of a note it just created when the new body arrives', async () => {
+    renderNotes();
+    sdk.save.mutateAsync.mockResolvedValue({
+      ...alpha,
+      id: 'doc-new',
+      filename: 'new.md',
+      path: 'new.md',
+      metadata: {},
+    });
+    // What the server serves for the new document differs from the editor,
+    // as a normalized or not-yet-indexed body would.
+    BODIES['doc-new'] = 'server copy';
+
+    fireEvent.click(screen.getByTitle('New note'));
+    fireEvent.change(editor(), { target: { value: '# Fresh note' } });
+    await act(async () => {
+      fireEvent.click(screen.getByTitle('Save note'));
+    });
+
+    expect(sdk.save.mutateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({ content: '# Fresh note' }),
+    );
+    expect(sdk.content).toHaveBeenLastCalledWith(
+      'enterprise',
+      'doc-new',
+      'enterprise-notes',
+    );
+    expect(editor().value).toBe('# Fresh note');
   });
 });
