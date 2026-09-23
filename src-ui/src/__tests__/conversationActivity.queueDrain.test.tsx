@@ -353,6 +353,93 @@ describe('#2309 the queue drains on the turn END event, routed by the frame bind
   });
 });
 
+describe('#2309 the binding-routed drain acts only for an unrouted current child', () => {
+  function runtimeError(provider: 'claude' | 'codex', retriable: boolean) {
+    const failed: OrchestrationEvent = {
+      eventId: `evt-error-${index}-${provider}-${retriable}`,
+      provider,
+      threadId: CHILD,
+      createdAt: '2026-09-22T18:57:44.000Z',
+      method: 'runtime.error',
+      turnId: TURN,
+      severity: 'error',
+      message: 'engine failed',
+      retriable,
+    };
+    return failed;
+  }
+
+  test('a terminal of a child that is no longer current drains nothing', async () => {
+    chatWithQueue(['not for a retired child']);
+    connect(API, open(90));
+    const conversation: OrchestrationConversationStreamBinding = {
+      conversationId: CONVERSATION,
+      // A newer child is current; this frame's child is retired.
+      currentSessionId: `${CONVERSATION}:session:newer`,
+      activity: closed(91),
+    };
+    deliver(API, {
+      event: SERVER_EVENTS.ORCHESTRATION_EVENT,
+      data: JSON.stringify({ event: turnCompleted(), conversation }),
+    });
+    await vi.advanceTimersByTimeAsync(500);
+    expect(mocks.dispatchForeground).not.toHaveBeenCalled();
+    expect(chat().queuedMessages).toEqual(['not for a retired child']);
+  });
+
+  test('a definitive runtime.error on the unrouted current child drains once; a deferred-retriable one does not', async () => {
+    chatWithQueue(['after the failure']);
+    connect(API, open(100));
+    deliverEvent(API, runtimeError('codex', true), closed(101));
+    await vi.advanceTimersByTimeAsync(500);
+    expect(mocks.dispatchForeground).not.toHaveBeenCalled();
+
+    deliverEvent(API, runtimeError('claude', false), closed(102));
+    await vi.advanceTimersByTimeAsync(500);
+    expect(mocks.dispatchForeground).toHaveBeenCalledTimes(1);
+    expect(mocks.dispatchForeground.mock.calls[0]?.[0]).toMatchObject({
+      message: 'after the failure',
+      apiBase: API,
+    });
+  });
+
+  test('a chat the terminal routes to is left to its own handler: the head is taken only after the answer is committed', async () => {
+    chatWithQueue(['B1', 'B2'], CHILD);
+    connect(API, open(110));
+    act(() =>
+      activeChatsStore.updateChat(CONVERSATION, {
+        orchestrationTurnOpen: true,
+        openTurnId: TURN,
+      }),
+    );
+    // The order the store sees, write by write: when the answer lands in the
+    // transcript and when the queue head leaves the queue.
+    const order: string[] = [];
+    const unsubscribe = activeChatsStore.subscribe(() => {
+      const current = activeChatsStore.getSnapshot()[CONVERSATION];
+      if (
+        !order.includes('answer') &&
+        (current?.messages ?? []).some(
+          (message) =>
+            message.role === 'assistant' &&
+            message.content.includes('Answer to the running turn.'),
+        )
+      )
+        order.push('answer');
+      if (!order.includes('head-taken') && current?.queuedMessages[0] !== 'B1')
+        order.push('head-taken');
+    });
+    try {
+      deliverEvent(API, turnCompleted(), closed(111));
+    } finally {
+      unsubscribe();
+    }
+    expect(order).toEqual(['answer', 'head-taken']);
+    await vi.advanceTimersByTimeAsync(500);
+    expect(mocks.dispatchForeground).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('#2309 "Send now" when the automatic drain will not come', () => {
   test('a Stop on another device, seen after a reconnect: nothing is sent, "Send now" is offered, and one click sends exactly one', async () => {
     chatWithQueue(['after the stop', 'and this later'], CHILD);

@@ -94,8 +94,11 @@ function userSendBlockedReason(
   chat: ReturnType<typeof activeChatsStore.getSnapshot>[string] | undefined,
 ): string | undefined {
   if (!chat?.queuedMessages?.length) return undefined;
-  if (chat.queueDrainSettling || chat.sendAwaitingTurnStart)
-    return 'A queued message is already being sent.';
+  if (chat.queueDrainSettling) return 'A queued message is already being sent.';
+  // Any send of this chat's that the server has not started yet: a queued
+  // follow-up the drain dispatched, or a message sent from the composer.
+  if (chat.sendAwaitingTurnStart)
+    return 'A message is already on its way; the queue waits until it has started.';
   if (chat.isEditingQueue)
     return 'Finish editing the queued message first, then send it.';
   if (!conversationCanMutate(chat))
