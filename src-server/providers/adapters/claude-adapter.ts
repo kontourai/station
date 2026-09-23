@@ -34,6 +34,7 @@ import {
   SYSTEM_PROMPT_CAPABILITY_ID,
 } from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import type { TenantExecutionContext } from '@kontourai/station-contracts/tenancy';
 import type {
   ModelOption,
   ModelOptionCapabilities,
@@ -731,6 +732,33 @@ export interface ClaudeAdapterOptions {
    */
   getStationControlEnv?: () => Record<string, string> | undefined;
   /**
+   * Station #90 lane D (station #122): serves the built-in station-control
+   * server IN-PROCESS for this session (`station-control-in-process.ts`) as
+   * an SDK `type: 'sdk'` server. Preferred over the stdio child: the SDK
+   * copies a stdio server's env into the CLI's `--mcp-config` argv, where
+   * any same-user process can read it; an in-process server has no argv and
+   * its caller credential is `bound`. Called only when an authored tool
+   * server is the canonical built-in.
+   */
+  createInProcessStationControl?: (
+    threadId: string,
+    tenantExecutionContext?: TenantExecutionContext,
+  ) => unknown;
+  /**
+   * Fallback when {@link createInProcessStationControl} is absent: mints a
+   * `bearer-exposed` caller token for the stdio child's env. Absent (most
+   * unit tests), the child runs exactly as before and reports no caller.
+   */
+  mintStationControlCallerToken?: (
+    threadId: string,
+    tenantExecutionContext?: TenantExecutionContext,
+  ) => string;
+  /**
+   * Revokes whichever station-control credential the session was given
+   * (in-process or stdio). Called when the session stops or fails to start.
+   */
+  revokeStationControlCallerToken?: (threadId: string) => void;
+  /**
    * Resolves Station's shared staged pre-tool evaluator for a real resolved
    * agent. It is intentionally absent for agent-less/synthetic sessions;
    * those retain the SDK's native permission behavior.
@@ -1224,21 +1252,27 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     const permissionMode = this.resolvePermissionMode(input.modelOptions);
     const appHome: 'profile' | 'global' = appHomeEnv ? 'profile' : 'global';
     const toolServers = this.resolveAgentToolServers(input);
-    const sdkQuery = query({
-      prompt: promptQueue,
-      options: this.buildOptions(
-        input,
-        persistSession,
-        permissionMode,
-        appHomeEnv,
-        connectionEnv,
-        toolServers.mcpServers,
-        skillsOverlayDir,
-        augmentedEnv,
-        preToolPolicy,
-        claudeExecutable,
-      ),
-    });
+    let sdkQuery: ReturnType<typeof query>;
+    try {
+      sdkQuery = query({
+        prompt: promptQueue,
+        options: this.buildOptions(
+          input,
+          persistSession,
+          permissionMode,
+          appHomeEnv,
+          connectionEnv,
+          toolServers.mcpServers,
+          skillsOverlayDir,
+          augmentedEnv,
+          preToolPolicy,
+          claudeExecutable,
+        ),
+      });
+    } catch (error) {
+      this.options.revokeStationControlCallerToken?.(input.threadId);
+      throw error;
+    }
 
     const session: ProviderSession = {
       provider: this.provider,
@@ -1772,6 +1806,10 @@ export class ClaudeAdapter implements ProviderAdapterShape {
   }
 
   async stopSession(threadId: string): Promise<void> {
+    // Station #90 lane D: the session's caller credential ends with it, even
+    // when the session record is already gone (a start that failed after
+    // minting, or a second stop). Revocation is id-tolerant.
+    this.options.revokeStationControlCallerToken?.(threadId);
     const record = this.sessions.get(threadId);
     if (!record) return;
     this.sessions.delete(threadId);
@@ -2150,12 +2188,37 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     const toolServers = input.agent?.toolServers;
     if (toolServers === undefined) return {};
 
-    const { servers, skipped } = resolveClaudeMcpServers(toolServers, {
-      ...this.options.getStationControlEnv?.(),
-      ...(input.tenantExecutionContext
-        ? { STATION_INTERNAL_TENANT: input.tenantExecutionContext.tenantId }
-        : {}),
-    });
+    const tenantExecutionContext = input.tenantExecutionContext;
+    const { servers, skipped } = resolveClaudeMcpServers(
+      toolServers,
+      {
+        ...this.options.getStationControlEnv?.(),
+        ...(tenantExecutionContext
+          ? { STATION_INTERNAL_TENANT: tenantExecutionContext.tenantId }
+          : {}),
+      },
+      {
+        ...(this.options.createInProcessStationControl
+          ? {
+              inProcess: () =>
+                this.options.createInProcessStationControl!(
+                  input.threadId,
+                  tenantExecutionContext,
+                ),
+            }
+          : {}),
+        ...(this.options.mintStationControlCallerToken
+          ? {
+              callerToken: () =>
+                this.options.mintStationControlCallerToken!(
+                  input.threadId,
+                  tenantExecutionContext,
+                ),
+            }
+          : {}),
+        ...(tenantExecutionContext ? { tenantExecutionContext } : {}),
+      },
+    );
     const undelivered: CapabilityUndelivered[] = skipped.map(
       (skip: ClaudeToolServerSkip) => ({
         capability: 'toolServers',

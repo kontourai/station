@@ -48,7 +48,8 @@ queue is part of it. What that means in practice:
   Several PRs waiting is the queue working, not the queue stuck. Its
   check-response timeout is 120 minutes.
 - **Required checks**: `fast-checks`, `CodeQL JavaScript and TypeScript`,
-  `Dependency review`, `Windows PR portable floor`, `build-ios-verification`
+  `Dependency review`, `Windows PR portable floor`, `build-ios-verification`,
+  `Merge-queue regression`
   (the ruleset is the authority: `gh api repos/kontourai/station/rules/branches/main`).
   Branches are NOT required
   to be up to date (`strict: false`), so you do not have to rebase onto every
