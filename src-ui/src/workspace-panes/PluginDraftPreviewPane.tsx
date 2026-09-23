@@ -48,7 +48,7 @@ export const PLUGIN_DRAFT_DISCLOSURE =
 /** One lease refresh well inside the server's lease TTL. */
 const LEASE_REFRESH_MS = Math.floor(PLUGIN_DRAFT_LEASE_TTL_MS / 3);
 
-export const pluginDraftQueryKey = (apiBase: string, projectSlug: string) =>
+const pluginDraftQueryKey = (apiBase: string, projectSlug: string) =>
   ['plugin-draft', apiBase, projectSlug] as const;
 
 /**

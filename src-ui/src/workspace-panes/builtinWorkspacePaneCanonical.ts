@@ -367,7 +367,7 @@ export function isCanonicalBuiltinReadinessDescriptor(
   return sameBuiltinDescriptor(descriptor, WORKSPACE_READINESS_PANE_DESCRIPTOR);
 }
 
-export function isCanonicalBuiltinPluginDraftDescriptor(
+function isCanonicalBuiltinPluginDraftDescriptor(
   descriptor: WorkspacePaneDescriptor,
 ): boolean {
   return sameBuiltinDescriptor(

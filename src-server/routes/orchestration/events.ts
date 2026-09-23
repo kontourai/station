@@ -348,8 +348,8 @@ export function isApprovalEvent(event: string): boolean {
   );
 }
 
-/** Exported for the scoped-channel coverage test, like its siblings. */
-export function isPluginDraftEvent(event: string): boolean {
+/** The plugin-draft revision channel (epic #2323 S3), gated by Project read. */
+function isPluginDraftEvent(event: string): boolean {
   return event === SERVER_EVENTS.PLUGIN_DRAFTS_REBUILT;
 }
 
