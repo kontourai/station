@@ -21,7 +21,7 @@ function isSaturatedTransportError(error: unknown): boolean {
  * `retry: 1` semantics — one retry after the first failure — except for a
  * saturated transport, which is not retried at all.
  */
-export function stationDefaultQueryRetry(
+function stationDefaultQueryRetry(
   failureCount: number,
   error: unknown,
 ): boolean {

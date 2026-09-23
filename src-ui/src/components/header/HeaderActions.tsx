@@ -125,6 +125,7 @@ export function HeaderActions({
   const {
     status: connStatus,
     reason: connReason,
+    failureStreak: connFailureStreak,
     recheck: connRecheck,
   } = useConnectionStatus({
     checkHealth: checkServerHealth,
@@ -145,6 +146,7 @@ export function HeaderActions({
     status: connStatus,
     reason: connReason,
     pendingApproval: pendingApproval !== null,
+    failureStreak: connFailureStreak,
   });
   const { data: attention } = useAttentionQuery(apiBase);
   const notificationDestination = APP_DESTINATION_REGISTRY.get('notifications');

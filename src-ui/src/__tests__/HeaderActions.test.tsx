@@ -8,6 +8,7 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 let pendingCount = 0;
 let connectionStatus: 'connected' | 'connecting' | 'error' = 'connected';
 let connectionReason: string | null = null;
+let connectionFailureStreak = 0;
 let bundledStatus: { ownership: 'sidecar' | 'service' | 'none' } | null = null;
 // archive#4512 — null unless a test arms a locally-tracked pending access
 // request; `usePendingPairingApproval` is otherwise stubbed to whatever this
@@ -36,6 +37,7 @@ vi.mock('@kontourai/station-connect', async (importOriginal) => ({
   useConnectionStatus: () => ({
     status: connectionStatus,
     reason: connectionReason,
+    failureStreak: connectionFailureStreak,
     recheck,
   }),
   useConnections: () => ({
@@ -265,6 +267,24 @@ describe('HeaderActions — self-describing connection surface', () => {
       expect(button!.getAttribute('aria-label')).toContain(visible);
     },
   );
+
+  // station#2327: the header hands the coordinator's streak to the
+  // indicator, so a Station that has stayed busy for about a minute stops
+  // reading as merely busy.
+  test('a Station busy past the outage streak reads as not connecting', () => {
+    connectionStatus = 'error';
+    connectionReason = 'busy';
+    connectionFailureStreak = 7;
+    try {
+      renderHeader();
+      const state = document.querySelector(
+        '.app-toolbar__conn .app-toolbar__conn-state',
+      );
+      expect(state?.textContent).toBe("Can't connect");
+    } finally {
+      connectionFailureStreak = 0;
+    }
+  });
 });
 
 /**
