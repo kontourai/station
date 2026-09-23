@@ -757,7 +757,11 @@ describe('OrchestrationService', () => {
   let adoptionLedger: AdoptionLedger;
   let flowRunService: FlowRunService;
   let workflowSidecarService: WorkflowSidecarService;
-  let configuredProjects: Array<{ slug: string; workingDirectory?: string }>;
+  let configuredProjects: Array<{
+    slug: string;
+    workingDirectory?: string;
+    id?: string;
+  }>;
   let tmp: string;
 
   beforeEach(() => {
@@ -799,6 +803,97 @@ describe('OrchestrationService', () => {
       }),
       workflowSidecarService,
       logger: { debug: vi.fn(), warn: vi.fn() },
+    });
+  });
+
+  // Station #90 lane D (D5/D7): the real start path through the service and
+  // the SQLite event store. The fake adapter publishes `session.started`
+  // with the start input's metadata, as every real adapter does.
+  describe('station-control caller records written at session start', () => {
+    function publishStarts() {
+      claude.startSession.mockImplementation(async (input) => {
+        const now = new Date().toISOString();
+        claude.events.push({
+          provider: 'claude',
+          threadId: input.threadId,
+          eventId: `evt-${input.threadId}-started`,
+          createdAt: now,
+          method: 'session.started',
+          sessionId: input.threadId,
+          metadata: input.metadata,
+        } as never);
+        return {
+          provider: 'claude' as const,
+          threadId: input.threadId,
+          status: 'ready' as const,
+          cwd: input.cwd,
+          createdAt: now,
+          updatedAt: now,
+        };
+      });
+    }
+
+    async function started(
+      threadId: string,
+      metadata: Record<string, unknown>,
+    ) {
+      const result = await service.sessionCommands.execute(
+        {
+          type: 'start-session',
+          input: { threadId, provider: 'claude', cwd: tmp, metadata },
+        },
+        { userId: 'human:test:alice' },
+      );
+      expect(result.status).toBe('accepted');
+      await waitFor(
+        () => eventStore.findSessionOwnerAttribution(threadId),
+        (attribution) => attribution.ownerUserId !== undefined,
+        5000,
+      );
+    }
+
+    test('a session an agent started unattributed acts for no one; an ordinary one acts for its recorded owner', async () => {
+      publishStarts();
+      await started('agent-child', {
+        userId: 'human:test:alice',
+        ownerAttribution: 'unattributed-agent',
+      });
+      await started('owned-session', { userId: 'human:test:alice' });
+
+      expect(
+        service.resolveSessionActingPrincipal('agent-child'),
+      ).toBeUndefined();
+      expect(service.resolveSessionActingPrincipal('owned-session')).toEqual({
+        id: 'human:test:alice',
+        source: 'session-owner',
+      });
+    });
+
+    test("the start records the Project's local id from Station's own list, and a caller-supplied id never survives", async () => {
+      publishStarts();
+      configuredProjects.push({
+        slug: 'alpha',
+        workingDirectory: tmp,
+        id: 'project-alpha-id',
+      });
+      await started('project-session', {
+        userId: 'human:test:alice',
+        projectSlug: 'alpha',
+        localProjectId: 'forged-id',
+      });
+      await started('slugless-session', {
+        userId: 'human:test:alice',
+        localProjectId: 'forged-id',
+      });
+      expect(
+        service.latestStartedMetadataOfThread('project-session'),
+      ).toMatchObject({
+        projectSlug: 'alpha',
+        localProjectId: 'project-alpha-id',
+      });
+      expect(
+        service.latestStartedMetadataOfThread('slugless-session'),
+      ).not.toHaveProperty('localProjectId');
     });
   });
 

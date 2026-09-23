@@ -81,24 +81,39 @@ export type StationControlMcpTokenChannel =
  * presented it, derived from the channel it was minted for (recorded on the
  * entry at mint, never supplied by the presenter).
  *
- * - `bound`: the token never appears where another local process can read
- *   it. `sdk-in-process` never leaves Station's process at all (Claude's
- *   in-process station-control server). `http-header-token` travels in an
- *   ACP `session/new` payload over the agent's private stdio pipe.
+ * - `bound`: `sdk-in-process` only. The token never leaves Station's own
+ *   process (Claude's in-process station-control server), so presenting it
+ *   proves the call came through that session's MCP connection.
+ * - `delegated-custody`: `http-header-token`. Station hands the token to an
+ *   ACP agent app in `session/new` over a private pipe, but what the app does
+ *   with it next is the app's business: a third-party agent may write it to
+ *   its own config, argv or logs. Station cannot prove it stayed private.
  * - `bearer-exposed`: the token sits in a spawned process's argv or env.
  *   `url-token` is in Codex's `-c mcp_servers…url=` argv; `stdio-env-token`
- *   is in a stdio child's env, and the Claude CLI copies child env into its
- *   own `--mcp-config` argv. Any same-user process can read it with `ps`,
- *   so presenting it proves possession, not session identity.
+ *   is in a stdio child's env, which the Claude CLI copies into its own
+ *   `--mcp-config` argv. Any same-user process can read it with `ps`, so
+ *   presenting it proves possession, not session identity.
+ *
+ * Only `bound` may gate an action that must be attributable to the session
+ * (a session-scoped browser tool, an owned child session).
  */
-export type StationControlCallerAssurance = 'bound' | 'bearer-exposed';
+export type StationControlCallerAssurance =
+  | 'bound'
+  | 'delegated-custody'
+  | 'bearer-exposed';
 
 export function stationControlTokenAssurance(
   channel: StationControlMcpTokenChannel,
 ): StationControlCallerAssurance {
-  return channel === 'sdk-in-process' || channel === 'http-header-token'
-    ? 'bound'
-    : 'bearer-exposed';
+  switch (channel) {
+    case 'sdk-in-process':
+      return 'bound';
+    case 'http-header-token':
+      return 'delegated-custody';
+    case 'url-token':
+    case 'stdio-env-token':
+      return 'bearer-exposed';
+  }
 }
 
 /**

@@ -16,10 +16,6 @@ import {
   type OrchestrationStreamPresenceSubject,
   orchestrationStreamPresenceSubjectForSession,
 } from './orchestration-stream-presence.js';
-import {
-  SESSION_OWNER_ATTRIBUTION_METADATA_KEY,
-  UNATTRIBUTED_AGENT_OWNER_ATTRIBUTION,
-} from './session-owner-attribution.js';
 
 // archive#1120: bounded per-thread `threadId -> ownerUserId` cache backing
 // `sessionOwnerUserId()` (the /events SSE route's per-event authorization
@@ -302,18 +298,13 @@ export class SessionAuthorization {
   /** See {@link SessionActingPrincipal}. Never reads request input. */
   sessionActingPrincipal(threadId: string): SessionActingPrincipal | undefined {
     // B2: a session an agent started without a verified acting principal
-    // acts for no one, whatever owner its record carries.
-    const startMetadata = this.deps.eventStore?.firstEventByMethod?.(
-      threadId,
-      'session.started',
-    )?.payload as { metadata?: Record<string, unknown> } | undefined;
-    if (
-      startMetadata?.metadata?.[SESSION_OWNER_ATTRIBUTION_METADATA_KEY] ===
-      UNATTRIBUTED_AGENT_OWNER_ATTRIBUTION
-    )
-      return undefined;
+    // acts for no one, whatever owner its record carries. Owner and marker
+    // come from one statement so they describe the same store state.
+    const attribution =
+      this.deps.eventStore?.findSessionOwnerAttribution?.(threadId);
+    if (!attribution || attribution.unattributedAgent) return undefined;
     const hosted = this.deps.requireTenantExecutionContext?.() === true;
-    const owner = this.sessionOwnerUserId(threadId);
+    const owner = attribution.ownerUserId;
     if (owner !== undefined) {
       if (
         this.deps.legacyPersonalOwner !== undefined &&

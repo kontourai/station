@@ -458,6 +458,12 @@ export interface DelegatedTaskEventsInput extends DelegatedTaskReferenceInput {
 export interface ContinueDelegatedTaskInput
   extends DelegatedTaskReferenceInput {
   message: string;
+  /**
+   * Station #90 lane D (D2): route-set only. A follow-up can start a new
+   * child session of the task's conversation, which must carry the same
+   * owner attribution as a fresh delegation (session-owner-attribution.ts).
+   */
+  ownerAttribution?: SessionOwnerAttribution;
   model?: string;
   /** archive#978: per-invocation settings passthrough on a follow-up turn. */
   modelOptions?: Record<string, unknown>;
@@ -3785,6 +3791,9 @@ export async function continueDelegatedTask(
       conversationId: snapshot.conversationId,
       message: input.message,
       userId: readAuthority.userId,
+      ...(input.ownerAttribution
+        ? { ownerAttribution: input.ownerAttribution }
+        : {}),
       // The fresh admission rides to the adapter start/sendTurn
       // effects; ordinary follow-ups carry none.
       ...(followUpAdmission ? { receiverAdmission: followUpAdmission } : {}),

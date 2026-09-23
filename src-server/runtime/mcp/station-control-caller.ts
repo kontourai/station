@@ -22,6 +22,7 @@
 import type { TenantExecutionContext } from '@kontourai/station-contracts/tenancy';
 import { getRuntimeAuthenticatedRequestPrincipal } from '../../security/runtime-request-security.js';
 import type { SessionActingPrincipal } from '../../services/orchestration/session-authorization.js';
+import { SESSION_LOCAL_PROJECT_ID_METADATA_KEY } from '../../services/orchestration/session-project-identity.js';
 import {
   STATION_CONTROL_CALLER_TOKEN_HEADER,
   STATION_CONTROL_ORIGIN_AGENT_TOOL,
@@ -38,6 +39,7 @@ import {
 export interface StationControlCallerRecord {
   readonly principal?: SessionActingPrincipal;
   readonly localProjectId?: string;
+  readonly projectIdSource?: 'session-record' | 'slug-lookup';
   readonly projectSlug?: string;
   readonly conversationId?: string;
 }
@@ -66,12 +68,14 @@ export interface StationControlCallerRecordSources {
  * Builds the production record resolver. It reads one session's own latest
  * start metadata (a keyed lookup, not a scan of every session) for its
  * project binding, preferring the delegation-scoped slug the way
- * `resolveSessionProjectSlug` does, then maps the slug to the local project
- * id.
+ * `resolveSessionProjectSlug` does.
  *
- * `localProjectId` is resolved from the recorded slug at read time: the slug
- * is the only project binding a session records today. A project whose slug
- * no longer exists resolves to no id, never to a different project.
+ * `localProjectId` comes from the id Station recorded at session start
+ * (`SESSION_LOCAL_PROJECT_ID_METADATA_KEY`, `projectIdSource:
+ * 'session-record'`). A session that predates that stamp falls back to
+ * looking its slug up now (`projectIdSource: 'slug-lookup'`). The fallback
+ * is wrong when a slug has been reused by a different project since, so
+ * anything that grants Project authority must refuse `slug-lookup`.
  */
 export function createStationControlCallerRecordResolver(
   sources: StationControlCallerRecordSources,
@@ -88,13 +92,25 @@ export function createStationControlCallerRecordResolver(
         : metadata?.projectSlug;
     const projectSlug =
       typeof rawSlug === 'string' && rawSlug ? rawSlug : undefined;
-    const localProjectId = projectSlug
-      ? sources.localProjectId(projectSlug)
-      : undefined;
+    const recordedId = metadata?.[SESSION_LOCAL_PROJECT_ID_METADATA_KEY];
+    const recorded =
+      typeof recordedId === 'string' && recordedId ? recordedId : undefined;
+    const looked =
+      !recorded && projectSlug
+        ? sources.localProjectId(projectSlug)
+        : undefined;
+    const localProjectId = recorded ?? looked;
     const conversationId = sources.conversationId(sessionId);
     return {
       ...(principal ? { principal } : {}),
-      ...(localProjectId ? { localProjectId } : {}),
+      ...(localProjectId
+        ? {
+            localProjectId,
+            projectIdSource: recorded
+              ? ('session-record' as const)
+              : ('slug-lookup' as const),
+          }
+        : {}),
       ...(projectSlug ? { projectSlug } : {}),
       ...(conversationId ? { conversationId } : {}),
     };
@@ -178,7 +194,10 @@ export function resolveVerifiedStationControlCaller(
         }
       : {}),
     ...(typeof record?.localProjectId === 'string' && record.localProjectId
-      ? { localProjectId: record.localProjectId }
+      ? {
+          localProjectId: record.localProjectId,
+          projectIdSource: record.projectIdSource ?? 'slug-lookup',
+        }
       : {}),
     ...(typeof record?.projectSlug === 'string' && record.projectSlug
       ? { projectSlug: record.projectSlug }
@@ -264,15 +283,23 @@ export function isAgentOriginatedRequest(request: Request): boolean {
 }
 
 /**
- * Station #90 lane D, security review B2: the production
+ * Station #90 lane D, security review B2 / D1 / D3: the production
  * `resolveAgentDispatchActor` for the orchestration dispatch routes
  * (`routes/orchestration/orchestration.ts` `resolveDispatchActor`).
  *
- * An agent-originated request whose verified caller acts for an
- * authenticated session owner (`elevationEligible`) dispatches as that
- * owner; any other agent-originated request (no caller, a forged or revoked
- * credential, or an inferred principal) is `unattributed`. A request that
- * is not agent-originated is left to the ordinary principal resolver.
+ * Keyed on the authenticated principal, not on headers: every request the
+ * runtime boundary accepted as Station's internal principal (the per-boot
+ * internal token) is agent-capable, whether or not it carries the origin
+ * marker, because any holder of that token can omit the marker.
+ *
+ * - `verified` only for a `bound` caller (the in-process channel) whose
+ *   acting principal is an authenticated session owner. A
+ *   `delegated-custody` or `bearer-exposed` token may have been copied, so
+ *   it never launders its session's owner into a child.
+ * - `unattributed` for every other internal request: no caller, a forged,
+ *   revoked or copied-channel credential, or an inferred principal.
+ * - `undefined` (ordinary resolution) for a non-internal principal: an
+ *   operator or device credential is its own attributable caller.
  */
 export function createAgentDispatchActorResolver(
   resolveRecord?: StationControlCallerRecordResolver,
@@ -283,12 +310,13 @@ export function createAgentDispatchActorResolver(
   | { readonly kind: 'unattributed' }
   | undefined {
   return (request) => {
-    if (!isAgentOriginatedRequest(request)) return undefined;
+    if (getRuntimeAuthenticatedRequestPrincipal(request)?.kind !== 'internal')
+      return undefined;
     const caller = resolveStationControlCallerForRequest(
       request,
       resolveRecord,
     );
-    return caller?.principal?.elevationEligible
+    return caller?.assurance === 'bound' && caller.principal?.elevationEligible
       ? { kind: 'verified', principalId: caller.principal.id }
       : { kind: 'unattributed' };
   };

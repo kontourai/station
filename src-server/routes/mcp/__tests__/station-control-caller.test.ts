@@ -72,6 +72,12 @@ const DELEGATION_BODY = {
   target: { environment: { kind: 'current' }, agent: 'planner' },
   userId: 'human:test:mallory',
 };
+const continueDelegatedTask = vi.fn(async () => ({
+  taskId: 'task:1',
+  sessionId: 'task:1',
+  status: 'dispatched',
+  resumable: true,
+}));
 const delegateTask = vi.fn(async () => ({
   taskId: 'task:1',
   sessionId: 'task:1',
@@ -90,7 +96,10 @@ const OWNERS: Record<string, string | undefined> = {
 };
 const sessionAuthorization = new SessionAuthorization({
   eventStore: {
-    findSessionOwnerUserId: (threadId: string) => OWNERS[threadId],
+    findSessionOwnerAttribution: (threadId: string) => ({
+      ...(OWNERS[threadId] ? { ownerUserId: OWNERS[threadId] } : {}),
+      unattributedAgent: false,
+    }),
   } as never,
   ownerlessSessionAccess: 'single-user-compat',
   legacyPersonalOwner: 'released-os-alias',
@@ -98,7 +107,8 @@ const sessionAuthorization = new SessionAuthorization({
 // Session start metadata and projects as the production sources read them;
 // the resolver is the production composition over those sources.
 const STARTED: Record<string, Record<string, unknown>> = {
-  'session-a': { projectSlug: 'project-a' },
+  // Stamped at start (`session-record`); session-b predates the stamp.
+  'session-a': { projectSlug: 'project-a', localProjectId: 'local-project-a' },
   'session-b': { delegation: { projectSlug: 'project-b' }, projectSlug: 'x' },
 };
 const PROJECT_IDS: Record<string, string> = {
@@ -142,6 +152,7 @@ const SESSION_A = {
     elevationEligible: true,
   },
   localProjectId: 'local-project-a',
+  projectIdSource: 'session-record',
   projectSlug: 'project-a',
   conversationId: 'conversation-a',
 };
@@ -159,9 +170,17 @@ function createProbeServer(): McpServer {
         principal: z.string().optional(),
         revokeSessionFirst: z.string().optional(),
         delegate: z.boolean().optional(),
+        continueTask: z.boolean().optional(),
       }),
     },
     async (args) => {
+      if (args.continueTask) {
+        const continued = await api(
+          '/api/orchestration/delegations/task:1/continue',
+          { method: 'POST', body: JSON.stringify({ message: 'follow up' }) },
+        );
+        return jsonToolResult({ continued });
+      }
       if (args.delegate) {
         // An agent-started child session, through the REAL dispatch route.
         const delegated = await api('/api/orchestration/delegations', {
@@ -273,6 +292,7 @@ beforeAll(async () => {
         },
         getUserId: () => LOCAL_OPERATOR_PRINCIPAL_ID,
         delegateTask,
+        continueDelegatedTask,
         resolveAgentDispatchActor:
           createAgentDispatchActorResolver(resolveRecord),
       } as never,
@@ -298,6 +318,7 @@ beforeEach(() => {
   __resetStationControlStdioCallerCredentialForTests();
   resolveRecord.mockClear();
   delegateTask.mockClear();
+  continueDelegatedTask.mockClear();
 });
 
 async function readJsonRpc(response: Response): Promise<any> {
@@ -448,6 +469,7 @@ describe('station-control verified caller (REST side)', () => {
       },
       // The delegation-scoped slug wins over the plain one.
       localProjectId: 'local-project-b',
+      projectIdSource: 'slug-lookup',
       projectSlug: 'project-b',
     });
 
@@ -538,7 +560,7 @@ describe('station-control verified caller (REST side)', () => {
 
   test('assurance comes from the mint channel: header and in-process tokens are bound, url and stdio tokens are bearer-exposed', async () => {
     const cases = [
-      ['http-header-token', 'bound'],
+      ['http-header-token', 'delegated-custody'],
       ['sdk-in-process', 'bound'],
       ['url-token', 'bearer-exposed'],
       ['stdio-env-token', 'bearer-exposed'],
@@ -602,6 +624,7 @@ describe('station-control verified caller (stdio child path)', () => {
         elevationEligible: false,
       },
       localProjectId: 'local-project-b',
+      projectIdSource: 'slug-lookup',
       projectSlug: 'project-b',
       conversationId: 'conversation-b',
     });
@@ -746,6 +769,51 @@ describe('station-control verified caller (in-process Claude delivery)', () => {
     expect(revoked.rest).toBeNull();
   });
 
+  test('two in-process sessions with interleaved tool calls each see only their own caller, in-process and over REST', async () => {
+    process.env.STATION_API_BASE = baseUrl;
+    const options = claudeInProcessStationControlOptions(
+      () => resolveRecord,
+      createProbeServer,
+    );
+    const a = sdkSideTransport();
+    const b = sdkSideTransport();
+    await options
+      .createInProcessStationControl('session-a')
+      .connect(a.transport);
+    await options
+      .createInProcessStationControl('session-b')
+      .connect(b.transport);
+    const init = {
+      protocolVersion: '2025-06-18',
+      capabilities: {},
+      clientInfo: { name: 'claude-code', version: '2' },
+    };
+    await Promise.all([
+      a.request(1, 'initialize', init),
+      b.request(1, 'initialize', init),
+    ]);
+    // Fired together: each tool awaits its own REST round trip, so the two
+    // callbacks interleave on the event loop.
+    const calls = await Promise.all(
+      [a, b, a, b].map((side, index) =>
+        side.request(10 + index, 'tools/call', {
+          name: 'probe_caller',
+          arguments: {},
+        }),
+      ),
+    );
+    const seen = calls.map((call) => JSON.parse(call.result.content[0].text));
+    for (const [index, expected] of [
+      'session-a',
+      'session-b',
+      'session-a',
+      'session-b',
+    ].entries()) {
+      expect(seen[index].inProcess.sessionId, `call ${index}`).toBe(expected);
+      expect(seen[index].rest.sessionId, `call ${index}`).toBe(expected);
+    }
+  });
+
   test('the production in-process server serves the real station-control registrations over the CLI legacy protocol', async () => {
     const options = claudeInProcessStationControlOptions(() => resolveRecord);
     const instance = options.createInProcessStationControl('session-c');
@@ -767,23 +835,82 @@ describe('station-control verified caller (in-process Claude delivery)', () => {
   });
 });
 
-describe('agent-started child sessions (security review B2)', () => {
+describe('agent-started child sessions (security review B2, D1, D2, D3)', () => {
   const delegatedInput = () =>
     (delegateTask.mock.calls[0] as unknown as [Record<string, unknown>])[0];
+  const continuedInput = () =>
+    (
+      continueDelegatedTask.mock.calls[0] as unknown as [
+        Record<string, unknown>,
+      ]
+    )[0];
 
-  test('a verified caller acting for its session owner dispatches as that owner, not the operator the internal token resolves to; a forged body userId is ignored', async () => {
-    const { token } = mintStationControlMcpToken('session-a', 'url-token');
-    await probe(token, { delegate: true });
+  async function inProcessCall(
+    sessionId: string,
+    args: Record<string, unknown>,
+  ) {
+    process.env.STATION_API_BASE = baseUrl;
+    const instance = claudeInProcessStationControlOptions(
+      () => resolveRecord,
+      createProbeServer,
+    ).createInProcessStationControl(sessionId);
+    const { transport, request } = sdkSideTransport();
+    await instance.connect(transport);
+    await request(1, 'initialize', {
+      protocolVersion: '2025-06-18',
+      capabilities: {},
+      clientInfo: { name: 'claude-code', version: '2' },
+    });
+    const call = await request(2, 'tools/call', {
+      name: 'probe_caller',
+      arguments: args,
+    });
+    return JSON.parse(call.result.content[0].text);
+  }
+
+  test("a BOUND (in-process) caller acting for its session owner dispatches as that owner with that owner's PrincipalRef; a forged body userId is ignored", async () => {
+    await inProcessCall('session-a', { delegate: true });
     expect(delegateTask).toHaveBeenCalledTimes(1);
-    expect(delegatedInput()).toMatchObject({ userId: 'human:test:alice' });
-    expect(delegatedInput()).not.toHaveProperty('ownerAttribution');
-    // No operator PrincipalRef rides a turn the operator did not dispatch.
-    expect(delegatedInput().principal).toBeUndefined();
+    expect(delegatedInput()).toMatchObject({
+      userId: 'human:test:alice',
+      principal: { id: 'human:test:alice', kind: 'human' },
+    });
+    expect(delegatedInput().ownerAttribution).toBeUndefined();
   });
 
-  test('a caller whose principal is only inferred (ownerless session) marks the child unattributed', async () => {
-    const { token } = mintStationControlMcpToken('session-c', 'url-token');
-    await probe(token, { delegate: true });
+  test.each([
+    ['url-token (Codex argv)', 'url-token'],
+    ['http-header-token (ACP delegated custody)', 'http-header-token'],
+  ] as const)(
+    'D1: a %s caller for the same owner is NOT trusted to own a child: unattributed',
+    async (_name, channel) => {
+      const { token } = mintStationControlMcpToken('session-a', channel);
+      await probe(token, { delegate: true });
+      expect(delegatedInput()).toMatchObject({
+        userId: LOCAL_OPERATOR_PRINCIPAL_ID,
+        ownerAttribution: 'unattributed-agent',
+      });
+    },
+  );
+
+  test('D1: a stdio-env-token caller for the same owner is unattributed', async () => {
+    process.env.STATION_API_BASE = baseUrl;
+    installStationControlStdioCallerCredential({
+      [STATION_CONTROL_CALLER_TOKEN_ENV]:
+        mintStationControlStdioCallerToken('session-a'),
+    });
+    await api('/api/orchestration/delegations', {
+      method: 'POST',
+      body: JSON.stringify(DELEGATION_BODY),
+    });
+    expect(delegatedInput()).toMatchObject({
+      userId: LOCAL_OPERATOR_PRINCIPAL_ID,
+      ownerAttribution: 'unattributed-agent',
+    });
+  });
+
+  test('a bound caller whose principal is only inferred (ownerless session) is unattributed', async () => {
+    await inProcessCall('session-c', { delegate: true });
     expect(delegatedInput()).toMatchObject({
       userId: LOCAL_OPERATOR_PRINCIPAL_ID,
       ownerAttribution: 'unattributed-agent',
@@ -812,7 +939,7 @@ describe('agent-started child sessions (security review B2)', () => {
       });
   });
 
-  test("the operator's own client (no marker, no credential) dispatches exactly as before", async () => {
+  test('D3: an internal-token request with NO station-control headers at all is still unattributed (headers prove nothing)', async () => {
     const response = await fetch(`${baseUrl}/api/orchestration/delegations`, {
       method: 'POST',
       headers: { ...internalHeaders(), 'content-type': 'application/json' },
@@ -821,7 +948,40 @@ describe('agent-started child sessions (security review B2)', () => {
     expect(response.status).toBe(200);
     expect(delegatedInput()).toMatchObject({
       userId: LOCAL_OPERATOR_PRINCIPAL_ID,
+      ownerAttribution: 'unattributed-agent',
     });
-    expect(delegatedInput()).not.toHaveProperty('ownerAttribution');
+  });
+
+  test('an operator credential (not the internal principal) dispatches exactly as before: no marker', async () => {
+    const response = await fetch(`${baseUrl}/api/orchestration/delegations`, {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${OPERATOR_CREDENTIAL}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify(DELEGATION_BODY),
+    });
+    expect(response.status).toBe(200);
+    expect(delegatedInput()).toMatchObject({
+      userId: LOCAL_OPERATOR_PRINCIPAL_ID,
+    });
+    expect(delegatedInput().ownerAttribution).toBeUndefined();
+  });
+
+  test('D2: a delegated-task follow-up carries the same attribution: unattributed for a url-token caller, owner for a bound one', async () => {
+    const { token } = mintStationControlMcpToken('session-a', 'url-token');
+    await probe(token, { continueTask: true });
+    expect(continuedInput()).toMatchObject({
+      taskId: 'task:1',
+      userId: LOCAL_OPERATOR_PRINCIPAL_ID,
+      ownerAttribution: 'unattributed-agent',
+    });
+    continueDelegatedTask.mockClear();
+    await inProcessCall('session-a', { continueTask: true });
+    expect(continuedInput()).toMatchObject({
+      taskId: 'task:1',
+      userId: 'human:test:alice',
+    });
+    expect(continuedInput().ownerAttribution).toBeUndefined();
   });
 });

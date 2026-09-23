@@ -36,7 +36,10 @@ import {
   type OrchestrationQuoteSource,
   QUOTE_SOURCE_MAX_BYTES,
 } from '@kontourai/station-contracts/orchestration';
-import type { PrincipalRef } from '@kontourai/station-contracts/principal';
+import {
+  humanPrincipal,
+  type PrincipalRef,
+} from '@kontourai/station-contracts/principal';
 import {
   ORCHESTRATION_STREAM_CAUGHT_UP_EVENT,
   SERVER_EVENTS,
@@ -654,8 +657,13 @@ interface DelegateTaskRequest {
   parentTaskId?: string;
   userId: string;
   principal?: PrincipalRef;
-  /** Station #90 lane D (B2): see `resolveDispatchActor`. */
-  ownerAttribution?: SessionOwnerAttribution;
+  /**
+   * Station #90 lane D (B2/D2): REQUIRED so every construction of a
+   * session-starting request names its owner attribution explicitly (the
+   * compiler enumerates them). `undefined` means "not an agent dispatch";
+   * see `resolveDispatchActor`.
+   */
+  ownerAttribution: SessionOwnerAttribution | undefined;
   clientOrigin?: ClientOrigin;
   /**
    * #484 controller/receiver split: for a `project-portable` workspace
@@ -714,8 +722,13 @@ interface ForegroundMessageRequest {
    * on the legacy test-only `getUserId` path (see `resolveActorPrincipal`).
    */
   principal?: PrincipalRef;
-  /** Station #90 lane D (B2): see `resolveDispatchActor`. */
-  ownerAttribution?: SessionOwnerAttribution;
+  /**
+   * Station #90 lane D (B2/D2): REQUIRED so every construction of a
+   * session-starting request names its owner attribution explicitly (the
+   * compiler enumerates them). `undefined` means "not an agent dispatch";
+   * see `resolveDispatchActor`.
+   */
+  ownerAttribution: SessionOwnerAttribution | undefined;
   clientOrigin?: ClientOrigin;
 }
 
@@ -730,8 +743,13 @@ interface ContinueForegroundMessageRequest {
   userId: string;
   /** archive#4075 stage 2 review round 1 (F1) — see ForegroundMessageRequest.principal. */
   principal?: PrincipalRef;
-  /** Station #90 lane D (B2): see `resolveDispatchActor`. */
-  ownerAttribution?: SessionOwnerAttribution;
+  /**
+   * Station #90 lane D (B2/D2): REQUIRED so every construction of a
+   * session-starting request names its owner attribution explicitly (the
+   * compiler enumerates them). `undefined` means "not an agent dispatch";
+   * see `resolveDispatchActor`.
+   */
+  ownerAttribution: SessionOwnerAttribution | undefined;
   clientOrigin?: ClientOrigin;
 }
 
@@ -746,8 +764,13 @@ interface ConversationHandoffRequest
   userId: string;
   /** archive#4075 stage 2 review round 1 (F1) — see ForegroundMessageRequest.principal. */
   principal?: PrincipalRef;
-  /** Station #90 lane D (B2): see `resolveDispatchActor`. */
-  ownerAttribution?: SessionOwnerAttribution;
+  /**
+   * Station #90 lane D (B2/D2): REQUIRED so every construction of a
+   * session-starting request names its owner attribution explicitly (the
+   * compiler enumerates them). `undefined` means "not an agent dispatch";
+   * see `resolveDispatchActor`.
+   */
+  ownerAttribution: SessionOwnerAttribution | undefined;
   clientOrigin?: ClientOrigin;
 }
 
@@ -784,6 +807,8 @@ type ContinueDelegatedTaskRequest = z.infer<
   taskId: string;
   userId: string;
   principal?: PrincipalRef;
+  /** Station #90 lane D (B2/D2): REQUIRED; see `resolveDispatchActor`. */
+  ownerAttribution: SessionOwnerAttribution | undefined;
   clientOrigin?: ClientOrigin;
 };
 
@@ -793,6 +818,8 @@ type RespondToDelegatedTaskRequest = z.infer<
   taskId: string;
   userId: string;
   principal?: PrincipalRef;
+  /** Station #90 lane D (B2/D2): REQUIRED; see `resolveDispatchActor`. */
+  ownerAttribution: SessionOwnerAttribution | undefined;
   clientOrigin?: ClientOrigin;
 };
 
@@ -802,6 +829,8 @@ type InterruptDelegatedTaskRequest = z.infer<
   taskId: string;
   userId: string;
   principal?: PrincipalRef;
+  /** Station #90 lane D (B2/D2): REQUIRED; see `resolveDispatchActor`. */
+  ownerAttribution: SessionOwnerAttribution | undefined;
   clientOrigin?: ClientOrigin;
 };
 
@@ -948,16 +977,41 @@ function resolveActorPrincipal(
  * an agent-started session as the operator's. `deps.resolveAgentDispatchActor`
  * (runtime composition; server facts only) says instead:
  *
- * - `verified`: the request carries a verified caller whose acting
- *   principal is an authenticated session owner. The dispatch acts, and
- *   the new session is owned, as that principal. `principal` (the ingress
- *   PrincipalRef) is dropped unless it names the same id, so a turn is not
- *   attributed to an operator who did not dispatch it.
- * - `unattributed`: agent-originated with no such principal (a pooled
- *   child, or a session whose principal is only inferred). Authority stays
- *   as today; the new session is marked so it acts for no one.
- * - `undefined`: not an agent tool call. Unchanged.
+ * - `verified`: a `bound` caller whose acting principal is an
+ *   authenticated session owner. The dispatch acts, and the new session is
+ *   owned, as that principal. The turn's PrincipalRef is the caller's
+ *   (`principalRefForSessionOwner`), never the operator's ingress one.
+ * - `unattributed`: any other request authenticated as Station's internal
+ *   principal (D3: headers prove nothing, so this is the default for that
+ *   principal). Authority stays as today; the new session is marked so it
+ *   acts for no one.
+ * - `undefined`: an operator or device credential. Unchanged.
  */
+/**
+ * Station #90 lane D (D6): the PrincipalRef for a verified caller's session
+ * owner. Station has no principal store to look an id up in; the owner id
+ * was itself minted by a `humanPrincipal` constructor at the start seam, so
+ * it is rebuilt through the same constructor (which validates it). The
+ * display is the subject, the only label the id carries. Any id the
+ * constructor refuses (a reserved or malformed id) yields `undefined`.
+ *
+ * Downstream need, checked: `principal` is optional on every dispatch input;
+ * it feeds turn attribution (`dispatchContextForAuthority` →
+ * `clientOriginTurns`) and staged-attachment hydration, which an agent tool
+ * never uses (it has no staged references, and the route refuses staging
+ * without a principal). `isInboundDelegationPeer` ignores it and
+ * `authorizeReceiverExecution` reads request currency, not the principal.
+ */
+function principalRefForSessionOwner(id: string): PrincipalRef | undefined {
+  const match = /^human:([^:]+):(.+)$/.exec(id);
+  if (!match) return undefined;
+  try {
+    return humanPrincipal(match[1]!, match[2]!, match[2]!);
+  } catch {
+    return undefined;
+  }
+}
+
 export type AgentDispatchActor =
   | { readonly kind: 'verified'; readonly principalId: string }
   | { readonly kind: 'unattributed' };
@@ -982,7 +1036,9 @@ function resolveDispatchActor(
   if (agent.kind === 'verified')
     return {
       principal:
-        actor.principal?.id === agent.principalId ? actor.principal : undefined,
+        actor.principal?.id === agent.principalId
+          ? actor.principal
+          : principalRefForSessionOwner(agent.principalId),
       userId: agent.principalId,
     };
   return { ...actor, ownerAttribution: UNATTRIBUTED_AGENT_OWNER_ATTRIBUTION };
@@ -1513,7 +1569,7 @@ export function createOrchestrationRoutes(
         // which stamps it into the dispatch context so the resulting
         // `turn.started` carries the dispatching principal at emit time.
         principal,
-        ...(ownerAttribution ? { ownerAttribution } : {}),
+        ownerAttribution,
         clientOrigin: resolveClientOriginForRequest(c.req.raw),
       } as ForegroundMessageRequest;
       const data = await deps.executeForegroundMessage(foregroundRequest);
@@ -1651,7 +1707,7 @@ export function createOrchestrationRoutes(
           // `input.principal` seam, so an explicit engine/Agent handoff's
           // turn.started is attributed at emit time too.
           principal,
-          ...(ownerAttribution ? { ownerAttribution } : {}),
+          ownerAttribution,
           clientOrigin: resolveClientOriginForRequest(c.req.raw),
         });
         if (!isForegroundDispatchHandle(data)) {
@@ -1846,7 +1902,7 @@ export function createOrchestrationRoutes(
           // `continueExecutionTargetMessage`).
           principal,
           // A continuation may start a new child session of the conversation.
-          ...(ownerAttribution ? { ownerAttribution } : {}),
+          ownerAttribution,
           clientOrigin: resolveClientOriginForRequest(c.req.raw),
         });
         if (!isForegroundDispatchHandle(data)) {
@@ -1970,7 +2026,7 @@ export function createOrchestrationRoutes(
         target: normalizeExecutionTarget(body.target),
         userId,
         principal,
-        ...(ownerAttribution ? { ownerAttribution } : {}),
+        ownerAttribution,
         clientOrigin,
         ...(body.attemptId ? { delegationAttemptId: body.attemptId } : {}),
         // The tool keys claims by `deviceId`: project the verified grant's
@@ -2286,7 +2342,10 @@ export function createOrchestrationRoutes(
         );
       }
       try {
-        const { principal, userId } = resolveDispatchActor(deps, c);
+        const { principal, userId, ownerAttribution } = resolveDispatchActor(
+          deps,
+          c,
+        );
         // #484 continuation: the trusted route-bound mint factory for a
         // portable follow-up — captured before any await, bound to the
         // CURRENT request credential. The tool mints through it ONLY when
@@ -2310,6 +2369,7 @@ export function createOrchestrationRoutes(
           taskId: param(c, 'taskId'),
           userId,
           principal,
+          ownerAttribution,
           clientOrigin: resolveClientOriginForRequest(c.req.raw),
           ...(authorizeReceiverExecution ? { authorizeReceiverExecution } : {}),
           // No-onward-hop + sender authority, from the verified
@@ -2361,7 +2421,10 @@ export function createOrchestrationRoutes(
         );
       }
       try {
-        const { principal, userId } = resolveDispatchActor(deps, c);
+        const { principal, userId, ownerAttribution } = resolveDispatchActor(
+          deps,
+          c,
+        );
         // Same trusted mint factory as the continue route.
         const authorizeReceiverExecution = deps.authorizeReceiverExecution
           ? (workspace: { portableProjectId: string; resourceId: string }) =>
@@ -2375,6 +2438,7 @@ export function createOrchestrationRoutes(
           taskId: param(c, 'taskId'),
           userId,
           principal,
+          ownerAttribution,
           clientOrigin: resolveClientOriginForRequest(c.req.raw),
           ...(authorizeReceiverExecution ? { authorizeReceiverExecution } : {}),
           // Same verified-caller composition as the continue route.
@@ -2421,12 +2485,16 @@ export function createOrchestrationRoutes(
         );
       }
       try {
-        const { principal, userId } = resolveDispatchActor(deps, c);
+        const { principal, userId, ownerAttribution } = resolveDispatchActor(
+          deps,
+          c,
+        );
         const data = await deps.interruptDelegatedTask({
           ...getBody(c),
           taskId: param(c, 'taskId'),
           userId,
           principal,
+          ownerAttribution,
           clientOrigin: resolveClientOriginForRequest(c.req.raw),
         });
         return c.json({ success: true, data });

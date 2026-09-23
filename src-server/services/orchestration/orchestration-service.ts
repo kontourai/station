@@ -323,6 +323,7 @@ import {
   createSessionOutputsModule,
   type SessionOutputsModule,
 } from './session-outputs-module.js';
+import { SESSION_LOCAL_PROJECT_ID_METADATA_KEY } from './session-project-identity.js';
 import {
   createSessionQueryModule,
   MAX_ASSISTANT_TURN_EVENTS,
@@ -1107,6 +1108,34 @@ function isWithinDirectory(root: string, candidate: string): boolean {
  * never consulted. See `project-resource-shadow.ts` for why the migration is
  * shadowed before it is flipped.
  */
+/**
+ * Replaces any caller-supplied `localProjectId` with the id of the project
+ * `metadata.projectSlug` names in this Station's own list, or removes it
+ * when the slug names none. A caller can therefore never assert one.
+ */
+function withSessionLocalProjectId(
+  input: ProviderSessionStartInput,
+  listProjects?: () => AttachedProjectRoot[],
+): ProviderSessionStartInput {
+  const metadata = input.metadata;
+  if (!metadata) return input;
+  const { [SESSION_LOCAL_PROJECT_ID_METADATA_KEY]: _untrusted, ...rest } =
+    metadata;
+  const slug =
+    typeof metadata.projectSlug === 'string' && metadata.projectSlug
+      ? metadata.projectSlug
+      : undefined;
+  const id = slug
+    ? listProjects?.().find((project) => project.slug === slug)?.id
+    : undefined;
+  if (typeof id === 'string' && id)
+    return {
+      ...input,
+      metadata: { ...rest, [SESSION_LOCAL_PROJECT_ID_METADATA_KEY]: id },
+    };
+  return _untrusted === undefined ? input : { ...input, metadata: rest };
+}
+
 // Runtime composition resolves the current local resource before containment and
 // engine invocation. Embedded consumers without that callback retain legacy cwd
 // behavior; recovered sessions with a persisted cwd retain their original path.
@@ -4644,6 +4673,12 @@ export class OrchestrationService {
               readExecutionWorkspaceBinding(internal?.executionWorkspace) ??
               internal?.receiverExecutionAdmission?.admitted,
             this.options.resolveProjectSessionDirectory,
+          );
+          // Station #90 lane D (D5): record the Project's local id beside its
+          // slug, from this Station's own project list, never from input.
+          startInput = withSessionLocalProjectId(
+            startInput,
+            this.options.listProjects,
           );
           if (internal?.reviewIsolation) {
             startInput = {

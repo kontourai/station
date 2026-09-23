@@ -168,7 +168,12 @@ describe('SessionAuthorization.sessionActingPrincipal (Station #90 lane D)', () 
     } = {},
   ) {
     return new SessionAuthorization({
-      eventStore: { findSessionOwnerUserId: () => owner } as never,
+      eventStore: {
+        findSessionOwnerAttribution: () => ({
+          ...(owner ? { ownerUserId: owner } : {}),
+          unattributedAgent: false,
+        }),
+      } as never,
       legacyPersonalOwner: 'released-os-alias',
       ownerlessSessionAccess: options.ownerless ?? 'single-user-compat',
       requireTenantExecutionContext: () => options.hosted === true,
@@ -191,19 +196,18 @@ describe('SessionAuthorization.sessionActingPrincipal (Station #90 lane D)', () 
   });
 
   test('a session an agent started without a verified principal acts for no one, whatever owner it records (B2)', () => {
-    const authz = (metadata: Record<string, unknown>) =>
+    const authz = (unattributedAgent: boolean) =>
       new SessionAuthorization({
         eventStore: {
-          findSessionOwnerUserId: () => LOCAL_OPERATOR_PRINCIPAL_ID,
-          firstEventByMethod: (_threadId: string, method: string) =>
-            method === 'session.started'
-              ? { payload: { metadata } }
-              : undefined,
+          findSessionOwnerAttribution: () => ({
+            ownerUserId: LOCAL_OPERATOR_PRINCIPAL_ID,
+            unattributedAgent,
+          }),
         } as never,
         ownerlessSessionAccess: 'single-user-compat',
       }).sessionActingPrincipal('child');
-    expect(authz({ ownerAttribution: 'unattributed-agent' })).toBeUndefined();
-    expect(authz({})).toEqual({
+    expect(authz(true)).toBeUndefined();
+    expect(authz(false)).toEqual({
       id: LOCAL_OPERATOR_PRINCIPAL_ID,
       source: 'session-owner',
     });

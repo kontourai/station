@@ -59,10 +59,11 @@ export function withStationControlExecutionContext<T>(
  *
  * `assurance` says how far that credential can be trusted to mean "this
  * session", from the channel it was minted for (`station-control-mcp-token.ts`
- * `stationControlTokenAssurance`): `bound` credentials never reach a place
- * another local process can read; `bearer-exposed` ones sit in a spawned
- * process's argv or env, so a same-user process can copy them. Browser and
- * other session-scoped tools accept only `bound`.
+ * `stationControlTokenAssurance`): `bound` credentials never leave Station's
+ * process; `delegated-custody` ones were handed to a third-party agent app
+ * whose handling Station cannot prove; `bearer-exposed` ones sit in a
+ * spawned process's argv or env, so a same-user process can copy them.
+ * Browser and other session-scoped tools accept only `bound`.
  *
  * Everything else (principal, project, conversation) comes from the server's
  * own records for the credential's session. Tenant context is never part of
@@ -71,7 +72,7 @@ export function withStationControlExecutionContext<T>(
  */
 export interface StationControlCaller {
   readonly sessionId: string;
-  readonly assurance: 'bound' | 'bearer-exposed';
+  readonly assurance: StationControlCallerAssurance;
   /**
    * The principal the session acts for (D5). Read from the session's
    * ownership record, never from tool input or a request header. Absent when
@@ -81,10 +82,29 @@ export interface StationControlCaller {
   readonly principal?: StationControlCallerPrincipal;
   /** Station-local project identity (`ProjectConfig.id`); membership keys on it. */
   readonly localProjectId?: string;
+  /**
+   * Present with `localProjectId`. `session-record`: stamped by Station when
+   * the session started. `slug-lookup`: an older session's slug looked up
+   * now, which is wrong if the slug was reused; refuse it for authority.
+   */
+  readonly projectIdSource?: 'session-record' | 'slug-lookup';
   /** Display only. Slugs are local and renameable; never key authority on one. */
   readonly projectSlug?: string;
   readonly conversationId?: string;
 }
+
+/**
+ * Mirrors `StationControlCallerAssurance` in `station-control-mcp-token.ts`
+ * (kept here so the stdio child bundle need not import the token registry).
+ * Only `bound` may gate a session-attributable action.
+ */
+export const STATION_CONTROL_CALLER_ASSURANCES = [
+  'bound',
+  'delegated-custody',
+  'bearer-exposed',
+] as const;
+export type StationControlCallerAssurance =
+  (typeof STATION_CONTROL_CALLER_ASSURANCES)[number];
 
 /**
  * How the acting principal was derived (see `SessionActingPrincipal` in
@@ -218,13 +238,18 @@ function parseCallerProjection(value: unknown): StationControlCaller | null {
   const record = value as Record<string, unknown>;
   if (typeof record.sessionId !== 'string' || record.sessionId.length === 0)
     return null;
-  if (record.assurance !== 'bound' && record.assurance !== 'bearer-exposed')
+  if (
+    typeof record.assurance !== 'string' ||
+    !(STATION_CONTROL_CALLER_ASSURANCES as readonly string[]).includes(
+      record.assurance,
+    )
+  )
     return null;
   const principal = record.principal as Record<string, unknown> | undefined;
   const source = principal?.source;
   return Object.freeze({
     sessionId: record.sessionId,
-    assurance: record.assurance,
+    assurance: record.assurance as StationControlCallerAssurance,
     ...(principal &&
     typeof principal.id === 'string' &&
     principal.id.length > 0 &&
@@ -241,7 +266,14 @@ function parseCallerProjection(value: unknown): StationControlCaller | null {
         }
       : {}),
     ...(typeof record.localProjectId === 'string'
-      ? { localProjectId: record.localProjectId }
+      ? {
+          localProjectId: record.localProjectId,
+          // Unknown or missing provenance is treated as the weaker source.
+          projectIdSource:
+            record.projectIdSource === 'session-record'
+              ? ('session-record' as const)
+              : ('slug-lookup' as const),
+        }
       : {}),
     ...(typeof record.projectSlug === 'string'
       ? { projectSlug: record.projectSlug }
