@@ -20,7 +20,7 @@ export const BOOT_INTERNAL_SECRET_ENV_KEYS = [
  * or test run inside a desktop terminal would silently empty that process's
  * stdout log (#2327).
  */
-export const SUPERVISOR_CHANNEL_ENV_KEYS = ['STATION_STDOUT_LOGS'] as const;
+const SUPERVISOR_CHANNEL_ENV_KEYS = ['STATION_STDOUT_LOGS'] as const;
 
 /** Removes the boot-internal secrets and, despite the name, the
  * supervisor-channel settings above: every caller that must not leak one
