@@ -300,7 +300,6 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
     sendInput([input]);
   };
 
-  /** The gesture was taken away (cancel, lost capture): release what's held. */
   /**
    * This client is about to stop seeing its own input's release (focus
    * left, the page was hidden or is being unloaded): release everything it
@@ -345,6 +344,7 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
     };
   }, []);
 
+  /** The gesture was taken away (cancel, lost capture): release what's held. */
   const releaseHeld = () => {
     const point = lastPointRef.current;
     if (!point || heldRef.current.size === 0) return;
