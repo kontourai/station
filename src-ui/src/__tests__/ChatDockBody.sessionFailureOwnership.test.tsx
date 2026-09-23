@@ -125,7 +125,25 @@ vi.mock('../components/chat/ChatInputArea', () => ({
 }));
 
 vi.mock('../components/chat/QueuedMessages', () => ({
-  QueuedMessages: () => null,
+  QueuedMessages: (props: { onSendNow?: () => void; onRetry?: () => void }) => (
+    <div data-testid="queued-messages">
+      {props.onSendNow ? (
+        <button type="button" onClick={props.onSendNow}>
+          Send now
+        </button>
+      ) : null}
+      {props.onRetry ? (
+        <button type="button" onClick={props.onRetry}>
+          Retry
+        </button>
+      ) : null}
+    </div>
+  ),
+}));
+
+const drainQueuedMessageOnTurnCompleted = vi.hoisted(() => vi.fn());
+vi.mock('../hooks/orchestration/queueDrain', () => ({
+  drainQueuedMessageOnTurnCompleted,
 }));
 
 import type { OrchestrationSessionSummary } from '@kontourai/station-sdk';
@@ -525,5 +543,56 @@ describe('ChatDockBody turn-stall notice (#765)', () => {
     const session = buildSession({ status: 'sending' });
     renderDock(session, summary);
     expect(screen.queryByTestId('chat-dock-turn-stall-notice')).toBeNull();
+  });
+});
+
+describe('#2309 the dock queue: "Send now" and Retry are explicit sends', () => {
+  const conversationId = 'conv-2309-queue';
+  const openTurn = {
+    turnId: 't-queue',
+    threadId: `${conversationId}:child`,
+    startedAt: '2026-08-29T11:59:00.000Z',
+  };
+
+  test('with no turn open and messages still queued, "Send now" sends the head as an explicit request', async () => {
+    drainQueuedMessageOnTurnCompleted.mockClear();
+    renderDock(
+      buildSession({
+        status: 'idle',
+        conversationId,
+        queuedMessages: ['still waiting'],
+        conversationActivity: { conversationId, asOfSequence: 9 },
+      }),
+      null,
+    );
+    fireEvent.click(await screen.findByRole('button', { name: 'Send now' }));
+    expect(drainQueuedMessageOnTurnCompleted).toHaveBeenCalledWith(
+      expect.any(String),
+      'failure-ownership-session',
+      true,
+      true,
+    );
+  });
+
+  test('a healthy open turn offers no "Send now"; Retry still goes as an explicit request', async () => {
+    drainQueuedMessageOnTurnCompleted.mockClear();
+    renderDock(
+      buildSession({
+        status: 'idle',
+        conversationId,
+        queuedMessages: ['behind the turn'],
+        queuedMessageFailure: { message: 'engine paused', at: 1 },
+        conversationActivity: { conversationId, asOfSequence: 10, openTurn },
+      }),
+      null,
+    );
+    fireEvent.click(await screen.findByRole('button', { name: 'Retry' }));
+    expect(screen.queryByRole('button', { name: 'Send now' })).toBeNull();
+    expect(drainQueuedMessageOnTurnCompleted).toHaveBeenCalledWith(
+      expect.any(String),
+      'failure-ownership-session',
+      true,
+      true,
+    );
   });
 });

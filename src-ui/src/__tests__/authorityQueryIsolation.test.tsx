@@ -569,6 +569,64 @@ describe('authority query isolation (real provider tree, mocked wire)', () => {
     unmount();
   });
 
+  it('#2309: a re-verify of the SAME Station (a transient unverified gap) keeps the activity records', async () => {
+    const harness = createHarness();
+    harness.observationPlan.set('default', async () => OBS_DEFAULT);
+    const { unmount } = renderTree(harness);
+    const { id: idA, url: urlA } = await addHome('homea');
+    const reverified = deferred<AuthorityObservation>();
+    let rotated = false;
+    harness.observationPlan.set(urlA, async () =>
+      rotated ? reverified.promise : OBS_A,
+    );
+    await switchTo(idA);
+    await waitFor(() =>
+      expect(probe().getAttribute('data-namespace')).toBe(NS_A),
+    );
+    const conversationId = 'claude:conv-reverify-2309';
+    activeChatsStore.initChat(conversationId, {
+      agentSlug: 'dev-agent',
+      agentName: 'Dev Agent',
+      title: 'Reverify',
+      conversationId,
+    });
+    act(() =>
+      activeChatsStore.applyConversationActivity({
+        conversationId,
+        asOfSequence: 77,
+        openTurn: {
+          turnId: 'still-running',
+          threadId: `${conversationId}:child`,
+          startedAt: '2026-09-22T18:55:25.000Z',
+        },
+      }),
+    );
+
+    rotated = true;
+    await act(async () => {
+      connections?.setCredential(idA, 'cred-rotated-same-principal');
+    });
+    // The gap: nothing verified.
+    await waitFor(() => expect(screen.queryByTestId('probe')).toBeNull());
+    expect(
+      activeChatsStore.getSnapshot()[conversationId]?.conversationActivity
+        ?.asOfSequence,
+    ).toBe(77);
+    await act(async () => {
+      reverified.resolve(OBS_A);
+    });
+    await waitFor(() =>
+      expect(probe().getAttribute('data-namespace')).toBe(NS_A),
+    );
+    // Same Station: its sequences still compare, so the record stays.
+    expect(
+      activeChatsStore.getSnapshot()[conversationId]?.conversationActivity
+        ?.asOfSequence,
+    ).toBe(77);
+    activeChatsStore.removeChat(conversationId);
+    unmount();
+  });
+
   it('same observed home, different principals partition (endpoint text is not identity)', async () => {
     // NOTE: the store normalizes endpoint paths away, so two rows cannot
     // share one origin through the product API at all — the closest
