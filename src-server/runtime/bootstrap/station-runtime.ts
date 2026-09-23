@@ -3235,12 +3235,12 @@ export class StationRuntime {
           this.selfHostedBroker = broker;
           // The broker is optional connectivity. Keep local Station ready
           // while its registration retries; shutdown joins this exact owner.
-          void broker.start().catch((error: unknown) => {
+          void broker.start().catch(() => {
             if (this.selfHostedBrokerShutdown || application.signal.aborted)
               return;
-            this.logger?.warn?.('Optional broker connector failed', {
-              reason: error instanceof Error ? error.message : 'unknown',
-            });
+            // The broker status observer owns a fixed-code reason. Raw
+            // transport/provider errors must not enter a shared log.
+            this.logger?.warn?.('Optional broker connector failed');
           });
         }
       }

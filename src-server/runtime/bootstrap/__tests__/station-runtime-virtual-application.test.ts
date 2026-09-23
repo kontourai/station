@@ -125,6 +125,34 @@ describe('StationRuntime virtual application publication', () => {
     expect(register).toHaveBeenCalledOnce();
     expect(warn).not.toHaveBeenCalled();
   });
+  test('permanent broker failure leaves local access ready without logging private detail', async () => {
+    const fixture = runtimeFixture();
+    const warn = vi.fn();
+    Object.assign(fixture.runtime, {
+      logger: { warn },
+      selfHostedBrokerConfiguration: {
+        create: () => ({
+          start: async () => {
+            throw new Error('private broker response detail');
+          },
+          shutdown: async () => {},
+        }),
+      },
+    });
+    const initialized = fixture.runtime.initialize();
+    fixture.finish();
+    await initialized;
+    expect(
+      (
+        await fixture
+          .ready()!
+          .fetch(new Request('https://station.example/api/projects'))
+      ).status,
+    ).toBe(200);
+    await vi.waitFor(() => expect(warn).toHaveBeenCalledOnce());
+    expect(JSON.stringify(warn.mock.calls)).not.toContain('private broker');
+    await fixture.runtime.shutdown();
+  });
   test('starts the opt-in broker after application activation and stops it before ingress retirement', async () => {
     const fixture = runtimeFixture();
     const start = vi.fn(async () => {});
