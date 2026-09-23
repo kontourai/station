@@ -1156,15 +1156,17 @@ describe('#2323 S5: the proposal digest is the preview digest', () => {
     const big = join(source, 'big.bin');
     writeFileSync(big, '');
     truncateSync(big, LOCAL_SOURCE_DIGEST_MAX_BYTES + 1);
-    const { request } = createHarness(home);
+    const { request, stored } = createHarness(home);
     observeTree.mockClear();
-    const { proposal } = await readJson(
+    // A non-operator create is answered with id and status only (S5), so the
+    // recorded digest outcome is read from the store.
+    const proposal = (await stored(
       await request('internal', 'POST', '/api/plugin-proposals', {
         kind: 'install',
         source,
         rationale: 'Heavy.',
       }),
-    );
+    ))!;
     expect(proposal).not.toHaveProperty('proposedContentDigest');
     expect(proposal.proposedContentDigestUnavailable).toBe('too-large');
     expect(observeTree).not.toHaveBeenCalled();
