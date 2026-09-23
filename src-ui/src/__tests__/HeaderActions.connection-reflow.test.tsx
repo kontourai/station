@@ -464,7 +464,10 @@ describe.skipIf(!chromiumAvailable)(
         await page.close();
       }
       expect(collapsed).toBeGreaterThan(sibling);
-      expect(collapsed).toBeLessThan(widest - 80);
+      // Font metrics differ between macOS and Linux. Require the compact
+      // control to save at least a quarter of the wide attention state's
+      // width, rather than baking one host's pixel difference into CI.
+      expect(collapsed).toBeLessThan(widest * 0.75);
     });
 
     test.each(['dark', 'light'] as const)(
