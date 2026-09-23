@@ -29,11 +29,13 @@
 import { useState } from 'react';
 import { Dialog } from '../../components/Dialog';
 import { openConnectionsModal } from '../../lib/connectionModalEvents';
+import { usePlatformProfile } from '../../platform/PlatformProfileContext';
 import './AddMachineModal.css';
+import { RelayRouteProfileDialog } from './RelayRouteProfileDialog';
 import { SshComputerCreatorDialog } from './SshComputerCreatorDialog';
 import { StationAddressDialog } from './StationAddressDialog';
 
-export type AddMachineGoal = 'control' | 'station' | 'delegate';
+export type AddMachineGoal = 'control' | 'station' | 'delegate' | 'relay';
 
 interface AddMachineGoalOption {
   goal: AddMachineGoal;
@@ -89,6 +91,7 @@ export function AddMachineModal({
   returnFocusTarget,
 }: AddMachineModalProps) {
   const [goal, setGoal] = useState<AddMachineGoal | null>(null);
+  const { isTauri } = usePlatformProfile();
 
   function close() {
     setGoal(null);
@@ -114,6 +117,10 @@ export function AddMachineModal({
 
   if (goal === 'station') {
     return <StationAddressDialog onClose={close} />;
+  }
+
+  if (goal === 'relay') {
+    return <RelayRouteProfileDialog onClose={close} />;
   }
 
   if (goal === 'delegate') {
@@ -153,6 +160,25 @@ export function AddMachineModal({
               </span>
             </button>
           ))}
+          {isTauri && (
+            <button
+              type="button"
+              className="add-machine-modal__option"
+              onClick={() => chooseGoal('relay')}
+            >
+              <span className="add-machine-modal__option-title">
+                Save an encrypted broker route
+              </span>
+              <span className="add-machine-modal__option-detail">
+                Save where the Station is reached and which separately trusted
+                Station identity it must use.
+              </span>
+              <span className="add-machine-modal__option-unlocks">
+                The route stays unconnected until its transport and account
+                setup are available.
+              </span>
+            </button>
+          )}
         </div>
         <a
           className="add-machine-modal__learn-more tap-target"

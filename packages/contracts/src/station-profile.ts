@@ -34,6 +34,17 @@ export interface StationProfileLocalService {
   uiPort: number;
 }
 
+/**
+ * Secret-free description of a broker route. The Station signing key is
+ * approved and retained separately in the device connection-trust store;
+ * broker discovery must never populate or replace that trust record.
+ */
+export interface StationProfileRelayRoute {
+  brokerOrigin: string;
+  stationId: string;
+  enrollmentId: string;
+}
+
 /** Owner-controlled project directory identity mapped to a saved Station. */
 export type StationProjectProfileSelections = Record<string, string>;
 
@@ -49,6 +60,8 @@ export interface StationProfile {
   /** Optional server-owned Environment identity learned during pairing. */
   environmentId?: string;
   localService?: StationProfileLocalService;
+  /** Saved routing intent only. It does not imply trust, connection, or login. */
+  relayRoute?: StationProfileRelayRoute;
   setupSource: StationProfileSetupSource;
   configurationState: StationProfileConfigurationState;
   createdAt: number;
@@ -102,80 +115,195 @@ const CONFIGURATION_STATES = new Set<StationProfileConfigurationState>([
  */
 const CLIENT_INSTANCE_ID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const STATION_PROFILE_FIELDS = new Set([
+  'schemaVersion',
+  'name',
+  'endpoint',
+  'credentialRef',
+  'environmentId',
+  'localService',
+  'setupSource',
+  'configurationState',
+  'createdAt',
+  'updatedAt',
+  'clientInstanceId',
+  'developmentHttpOrigin',
+  'relayRoute',
+]);
+const RELAY_ROUTE_FIELDS = new Set([
+  'brokerOrigin',
+  'stationId',
+  'enrollmentId',
+]);
+const LOCAL_SERVICE_FIELDS = new Set([
+  'instanceId',
+  'baseDir',
+  'serverPort',
+  'uiPort',
+]);
+const CREDENTIAL_REF_FIELDS = new Set(['kind', 'id']);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 
-/** Strict structural validation; corrupt or future metadata fails closed. */
-export function isStationProfile(value: unknown): value is StationProfile {
-  if (!isRecord(value)) return false;
-  const allowed = new Set([
-    'schemaVersion',
-    'name',
-    'endpoint',
-    'credentialRef',
-    'environmentId',
-    'localService',
-    'setupSource',
-    'configurationState',
-    'createdAt',
-    'updatedAt',
-    'clientInstanceId',
-    'developmentHttpOrigin',
-  ]);
-  if (Object.keys(value).some((key) => !allowed.has(key))) return false;
-  const credentialRef = value.credentialRef;
+function isSafeStationOrigin(value: unknown): value is string {
+  if (typeof value !== 'string' || value.length === 0 || value.length > 2048)
+    return false;
+  try {
+    const url = new URL(value);
+    const strictLoopbackHttp =
+      url.protocol === 'http:' &&
+      (url.hostname === '[::1]' ||
+        url.hostname === '::1' ||
+        /^127(?:\.\d{1,3}){3}$/.test(url.hostname));
+    return (
+      (url.protocol === 'https:' || strictLoopbackHttp) &&
+      url.origin === value &&
+      !url.username &&
+      !url.password
+    );
+  } catch {
+    return false;
+  }
+}
+
+function isSafeRelayIdentifier(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(
+      value,
+    )
+  );
+}
+
+function hasOnlyFields(
+  value: Record<string, unknown>,
+  allowedFields: ReadonlySet<string>,
+): boolean {
+  return Object.keys(value).every((key) => allowedFields.has(key));
+}
+
+function isValidCredentialRef(value: unknown): boolean {
+  return (
+    value === undefined ||
+    (isRecord(value) &&
+      hasOnlyFields(value, CREDENTIAL_REF_FIELDS) &&
+      value.kind === 'station-bearer' &&
+      typeof value.id === 'string' &&
+      value.id.length > 0)
+  );
+}
+
+function isNonEmptyString(value: unknown): boolean {
+  return typeof value === 'string' && value.length > 0;
+}
+
+function isValidStationPort(value: unknown): boolean {
+  return (
+    typeof value === 'number' &&
+    Number.isInteger(value) &&
+    value >= 1 &&
+    value <= 65_535
+  );
+}
+
+function isValidLocalService(value: unknown): boolean {
+  if (value === undefined) return true;
+  if (!isRecord(value) || !hasOnlyFields(value, LOCAL_SERVICE_FIELDS))
+    return false;
+  return (
+    isNonEmptyString(value.instanceId) &&
+    isNonEmptyString(value.baseDir) &&
+    isValidStationPort(value.serverPort) &&
+    isValidStationPort(value.uiPort)
+  );
+}
+
+function isValidRelayRoute(value: unknown): boolean {
+  if (value === undefined) return true;
+  return (
+    isRecord(value) &&
+    hasOnlyFields(value, RELAY_ROUTE_FIELDS) &&
+    isSafeStationOrigin(value.brokerOrigin) &&
+    isSafeRelayIdentifier(value.stationId) &&
+    isSafeRelayIdentifier(value.enrollmentId)
+  );
+}
+
+function isValidRelayProfileState(value: Record<string, unknown>): boolean {
+  if (value.relayRoute === undefined) return true;
+  return (
+    value.credentialRef === undefined &&
+    value.setupSource === 'manual' &&
+    value.configurationState === 'unconfigured' &&
+    isSafeStationOrigin(value.endpoint)
+  );
+}
+
+function isValidProfileCore(value: Record<string, unknown>): boolean {
   return (
     value.schemaVersion === STATION_PROFILE_SCHEMA_VERSION &&
     typeof value.name === 'string' &&
     value.name.length > 0 &&
     typeof value.endpoint === 'string' &&
-    value.endpoint.length > 0 &&
-    (value.developmentHttpOrigin === undefined ||
-      (typeof value.developmentHttpOrigin === 'string' &&
-        value.developmentHttpOrigin === value.endpoint &&
-        value.developmentHttpOrigin.startsWith('http://'))) &&
-    (credentialRef === undefined ||
-      (isRecord(credentialRef) &&
-        Object.keys(credentialRef).every(
-          (key) => key === 'kind' || key === 'id',
-        ) &&
-        credentialRef.kind === 'station-bearer' &&
-        typeof credentialRef.id === 'string' &&
-        credentialRef.id.length > 0)) &&
-    (value.environmentId === undefined ||
-      typeof value.environmentId === 'string') &&
-    (value.localService === undefined ||
-      (isRecord(value.localService) &&
-        Object.keys(value.localService).every((key) =>
-          ['instanceId', 'baseDir', 'serverPort', 'uiPort'].includes(key),
-        ) &&
-        typeof value.localService.instanceId === 'string' &&
-        value.localService.instanceId.length > 0 &&
-        typeof value.localService.baseDir === 'string' &&
-        value.localService.baseDir.length > 0 &&
-        typeof value.localService.serverPort === 'number' &&
-        Number.isInteger(value.localService.serverPort) &&
-        value.localService.serverPort >= 1 &&
-        value.localService.serverPort <= 65_535 &&
-        typeof value.localService.uiPort === 'number' &&
-        Number.isInteger(value.localService.uiPort) &&
-        value.localService.uiPort >= 1 &&
-        value.localService.uiPort <= 65_535)) &&
+    value.endpoint.length > 0
+  );
+}
+
+function isValidDevelopmentOrigin(value: Record<string, unknown>): boolean {
+  return (
+    value.developmentHttpOrigin === undefined ||
+    (typeof value.developmentHttpOrigin === 'string' &&
+      value.developmentHttpOrigin === value.endpoint &&
+      value.developmentHttpOrigin.startsWith('http://'))
+  );
+}
+
+function isValidProfileSetup(value: Record<string, unknown>): boolean {
+  return (
     typeof value.setupSource === 'string' &&
     SETUP_SOURCES.has(value.setupSource as StationProfileSetupSource) &&
     typeof value.configurationState === 'string' &&
     CONFIGURATION_STATES.has(
       value.configurationState as StationProfileConfigurationState,
-    ) &&
+    )
+  );
+}
+
+function isValidProfileTimestamps(value: Record<string, unknown>): boolean {
+  return (
     typeof value.createdAt === 'number' &&
     Number.isFinite(value.createdAt) &&
     typeof value.updatedAt === 'number' &&
-    Number.isFinite(value.updatedAt) &&
-    (value.clientInstanceId === undefined ||
-      (typeof value.clientInstanceId === 'string' &&
-        CLIENT_INSTANCE_ID_PATTERN.test(value.clientInstanceId)))
+    Number.isFinite(value.updatedAt)
+  );
+}
+
+function isValidClientInstanceId(value: Record<string, unknown>): boolean {
+  return (
+    value.clientInstanceId === undefined ||
+    (typeof value.clientInstanceId === 'string' &&
+      CLIENT_INSTANCE_ID_PATTERN.test(value.clientInstanceId))
+  );
+}
+
+/** Strict structural validation; corrupt or future metadata fails closed. */
+export function isStationProfile(value: unknown): value is StationProfile {
+  if (!isRecord(value) || !hasOnlyFields(value, STATION_PROFILE_FIELDS))
+    return false;
+  return (
+    isValidProfileCore(value) &&
+    isValidDevelopmentOrigin(value) &&
+    isValidCredentialRef(value.credentialRef) &&
+    (value.environmentId === undefined ||
+      typeof value.environmentId === 'string') &&
+    isValidLocalService(value.localService) &&
+    isValidRelayRoute(value.relayRoute) &&
+    isValidRelayProfileState(value) &&
+    isValidProfileSetup(value) &&
+    isValidProfileTimestamps(value) &&
+    isValidClientInstanceId(value)
   );
 }
 
@@ -224,13 +352,17 @@ export function isStationProfileStore(
     if (names.has(key)) return false;
     names.add(key);
   }
-  const hasProfile = (name: string) =>
+  const isSelectableProfile = (name: string) =>
     profiles.some(
-      (profile) => profile.name.toLowerCase() === name.toLowerCase(),
+      (profile) =>
+        profile.name.toLowerCase() === name.toLowerCase() &&
+        profile.relayRoute === undefined,
     );
   return (
-    (defaultProfile === null || hasProfile(defaultProfile)) &&
-    Object.values(projectProfiles).every((profile) => hasProfile(profile))
+    (defaultProfile === null || isSelectableProfile(defaultProfile)) &&
+    Object.values(projectProfiles).every((profile) =>
+      isSelectableProfile(profile),
+    )
   );
 }
 

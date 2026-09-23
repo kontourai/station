@@ -394,6 +394,10 @@ struct CredentialProfile {
     _environment_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     local_service: Option<NativeLocalService>,
+    /// Secret-free routing intent. The browser's independently approved
+    /// Station signing key lives in its device trust store, never here.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    relay_route: Option<NativeStationRelayRoute>,
     setup_source: String,
     configuration_state: String,
     created_at: f64,
@@ -407,6 +411,15 @@ struct CredentialProfile {
     /// which never sets it) still parses under `deny_unknown_fields`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     client_instance_id: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
+struct NativeStationRelayRoute {
+    broker_origin: String,
+    station_id: String,
+    enrollment_id: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -746,6 +759,7 @@ fn parse_station_profile_store(contents: &str) -> Result<CredentialProfileStore,
         return Err("saved Station revision exceeds the shared safe-integer range".to_string());
     }
     let mut names = std::collections::HashSet::new();
+    let mut selectable_names = std::collections::HashSet::new();
     let mut references = std::collections::HashSet::new();
     for profile in &store.profiles {
         if profile.schema_version != 1
@@ -766,6 +780,34 @@ fn parse_station_profile_store(contents: &str) -> Result<CredentialProfileStore,
         }
         if !names.insert(profile.name.to_lowercase()) {
             return Err("Station names must be unique".to_string());
+        }
+        if let Some(route) = &profile.relay_route {
+            let safe_origin = |value: &str| {
+                exact_origin(value).ok().as_deref() == Some(value)
+                    && credential_endpoint_uses_secure_transport(value)
+            };
+            let safe_identifier = |value: &str| {
+                let bytes = value.as_bytes();
+                bytes.len() == 36
+                    && [8, 13, 18, 23].iter().all(|index| bytes[*index] == b'-')
+                    && bytes.iter().enumerate().all(|(index, byte)| {
+                        [8, 13, 18, 23].contains(&index) || byte.is_ascii_hexdigit()
+                    })
+                    && matches!(bytes[14].to_ascii_lowercase(), b'1'..=b'8')
+                    && matches!(bytes[19].to_ascii_lowercase(), b'8' | b'9' | b'a' | b'b')
+            };
+            if profile.credential_ref.is_some()
+                || profile.configuration_state != "unconfigured"
+                || profile.setup_source != "manual"
+                || !safe_origin(&profile.endpoint)
+                || !safe_origin(&route.broker_origin)
+                || !safe_identifier(&route.station_id)
+                || !safe_identifier(&route.enrollment_id)
+            {
+                return Err("invalid or configured Station relay profile".to_string());
+            }
+        } else {
+            selectable_names.insert(profile.name.to_lowercase());
         }
         if let Some(service) = &profile.local_service {
             if service.instance_id.is_empty()
@@ -795,12 +837,14 @@ fn parse_station_profile_store(contents: &str) -> Result<CredentialProfileStore,
     if store
         .default_profile
         .as_ref()
-        .is_some_and(|name| !names.contains(&name.to_lowercase()))
+        .is_some_and(|name| !selectable_names.contains(&name.to_lowercase()))
     {
         return Err("the default Station is missing from saved Station metadata".to_string());
     }
     if store.project_profiles.iter().any(|(project, profile)| {
-        project.is_empty() || profile.is_empty() || !names.contains(&profile.to_lowercase())
+        project.is_empty()
+            || profile.is_empty()
+            || !selectable_names.contains(&profile.to_lowercase())
     }) {
         return Err("the project Station selection is invalid".to_string());
     }
@@ -4846,6 +4890,7 @@ fn reconciled_bundled_local_profile_store(
                 server_port,
                 ui_port,
             }),
+            relay_route: None,
             setup_source: "local".to_string(),
             configuration_state: "configured".to_string(),
             created_at: now_ms,
@@ -13311,6 +13356,40 @@ mod tests {
           "schemaVersion":1,"revision":9007199254740992,"defaultProfile":null,"projectProfiles":{},"profiles":[]
         }"#;
         assert!(parse_station_profile_store(unsafe_revision).is_err());
+    }
+
+    #[test]
+    fn relay_route_profiles_round_trip_without_keys_and_cannot_be_selected() {
+        let contents = r#"{
+          "schemaVersion":1,"revision":1,"defaultProfile":null,"projectProfiles":{},
+          "profiles":[{"schemaVersion":1,"name":"relay-home","endpoint":"https://station.example","relayRoute":{"brokerOrigin":"https://broker.example","stationId":"11111111-1111-4111-8111-111111111111","enrollmentId":"22222222-2222-4222-8222-222222222222"},"setupSource":"manual","configurationState":"unconfigured","createdAt":1,"updatedAt":2}]
+        }"#;
+        let parsed = parse_station_profile_store(contents).unwrap();
+        let encoded = serde_json::to_string(&parsed).unwrap();
+        assert!(encoded.contains("\"relayRoute\""));
+        assert!(encoded.contains("\"brokerOrigin\":\"https://broker.example\""));
+        assert!(!encoded.contains("signingKey"));
+        assert!(parse_station_profile_store(&encoded).is_ok());
+
+        let selected_as_default = contents.replace(
+            "\"defaultProfile\":null",
+            "\"defaultProfile\":\"relay-home\"",
+        );
+        assert!(parse_station_profile_store(&selected_as_default)
+            .unwrap_err()
+            .contains("default Station is missing"));
+
+        let insecure_public_broker = contents.replace(
+            "https://broker.example",
+            "http://broker.example",
+        );
+        assert!(parse_station_profile_store(&insecure_public_broker).is_err());
+
+        let embedded_key = contents.replace(
+            "\"stationId\":\"11111111-1111-4111-8111-111111111111\"",
+            "\"stationId\":\"11111111-1111-4111-8111-111111111111\",\"signingKey\":{\"kty\":\"EC\"}",
+        );
+        assert!(parse_station_profile_store(&embedded_key).is_err());
     }
 
     #[test]
