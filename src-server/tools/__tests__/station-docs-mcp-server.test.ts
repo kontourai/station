@@ -58,24 +58,6 @@ function readSource(file: string): string {
   );
 }
 
-/**
- * Sentences that pair an install verb with "plugin(s)" without a negation or
- * a person's-consent marker. Plugin installs need a person to approve a
- * preview, so any sentence that talks about installing plugins must say so or
- * say who cannot.
- */
-function unqualifiedPluginInstallClaims(text: string): string[] {
-  const installsPlugin = (sentence: string) =>
-    /\binstall(s|ing|ed)?\b/i.test(sentence) && /\bplugins?\b/i.test(sentence);
-  const qualified = (sentence: string) =>
-    /\b(not|cannot|can['’]t|no agent|must not|a person|approv\w*|consent\w*)\b/i.test(
-      sentence,
-    );
-  return text
-    .split(/(?<=[.!?])\s+|\n+/)
-    .filter((sentence) => installsPlugin(sentence) && !qualified(sentence));
-}
-
 describe('station-docs content', () => {
   test('every topic is complete and its id is a stable kebab-case key', () => {
     expect(STATION_DOCS_TOPICS.length).toBeGreaterThanOrEqual(8);
@@ -119,35 +101,15 @@ describe('station-docs content', () => {
     expect(body.toLowerCase()).toMatch(/explain/);
   });
 
-  test('no topic claims an agent can install plugins, and the install topics name where a person approves one', () => {
+  test('the install topics name where a person approves a plugin install', () => {
     // station-control's install_plugin refuses with operator-approval-required
-    // (station-control-platform-tools.ts). Docs claiming the default agent
-    // installs plugins send an engine to promise an action it cannot take.
-    for (const topic of STATION_DOCS_TOPICS) {
-      const text = [topic.title, topic.summary, topic.body].join('\n');
-      expect(unqualifiedPluginInstallClaims(text), topic.id).toEqual([]);
-    }
+    // (station-control-platform-tools.ts). Which sentences may pair install with
+    // plugin at all is the explicit allow-list in the plugin-authoring block.
     for (const id of ['station-docs', 'builtin-assistant']) {
       const body = findStationDocsTopic(id)?.body ?? '';
       expect(body, id).toContain('station plugin install');
       expect(body, id).toContain('Plugins page');
     }
-  });
-
-  test('the plugin-install guard catches claims phrased other ways', () => {
-    expect(
-      unqualifiedPluginInstallClaims(
-        'The assistant can create agents and install a plugin for you.',
-      ),
-    ).toHaveLength(1);
-    expect(
-      unqualifiedPluginInstallClaims('The default agent installs plugins.'),
-    ).toHaveLength(1);
-    expect(
-      unqualifiedPluginInstallClaims(
-        'It cannot install a plugin. A person must approve the preview.',
-      ),
-    ).toEqual([]);
   });
 
   test('no topic claims to describe the reader’s own Station', () => {
@@ -390,19 +352,16 @@ describe('station-docs plugin-authoring topic', () => {
     const PERMITTED = [
       [
         'station-docs',
-        'Installing a plugin is not among them: a person approves every install (see the `plugin-authoring` topic).',
+        'Installing a plugin is not among those operations: it needs a person to approve the install preview, on the Plugins page or with `station plugin install <source>`, so no agent can install one (see the `plugin-authoring` topic).',
       ],
+      ['builtin-assistant', 'It cannot install a plugin.'],
       [
         'builtin-assistant',
-        'It does not install plugins: `install_plugin` refuses, because a person approves every install, on a preview, in the Plugins view or the `station` CLI.',
-      ],
-      [
-        'skills',
-        'Skills are installed and browsed from the registry alongside agents, tool servers, and plugins.',
+        'An install is approved by a person who has read its preview — its permissions and the parts that run in Station’s own page — on the Plugins page or with `station plugin install <source>`.',
       ],
       [
         'plugins',
-        'The registry is the unified place to browse and install agents, skills, integrations, and plugins, with an install lifecycle that includes updates and removal.',
+        'The registry is the unified place to browse and install agents, skills, integrations, and plugins (a plugin only with a person’s approval of its preview), with an install lifecycle that includes updates and removal.',
       ],
       [
         'plugin-authoring',

@@ -2554,6 +2554,23 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // this entry.
     { method: 'POST', path: '/api/projects/:slug/bind' },
     { method: 'GET', path: '/api/projects/:slug/conversations' },
+    // Epic #2323 S3: plugin draft preview. Status and a retained revision's
+    // bytes are reads of this Project's own draft (read tier). Starting a
+    // lease runs builds on this host, so it stays at the family's operate
+    // tier: a read-only paired device can look at a draft another client is
+    // already watching, but cannot make this host build one. None of these
+    // runs the draft; that happens only in a viewer's tab after that viewer
+    // explicitly chooses to.
+    { method: 'GET', path: '/api/projects/:slug/plugin-draft' },
+    { method: 'POST', path: '/api/projects/:slug/plugin-draft/lease' },
+    {
+      method: 'GET',
+      path: '/api/projects/:slug/plugin-draft/generations/:generation/:digest/bundle.js',
+    },
+    {
+      method: 'GET',
+      path: '/api/projects/:slug/plugin-draft/generations/:generation/:digest/bundle.css',
+    },
     { method: 'GET', path: '/api/projects/:slug/diff-comments' },
     { method: 'POST', path: '/api/projects/:slug/diff-comments' },
     { method: 'DELETE', path: '/api/projects/:slug/diff-comments/:id' },
