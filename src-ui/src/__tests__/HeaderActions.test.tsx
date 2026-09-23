@@ -248,6 +248,8 @@ describe('HeaderActions — self-describing connection surface', () => {
     // that stopped answering — it gets its own remedy word, not the generic
     // "Can't connect" a genuinely unreachable host produces.
     ['error', 'identity-mismatch', 'Needs re-pairing'],
+    // station#2327: a Station answering slowly is not an unreachable one.
+    ['error', 'busy', 'Station is busy'],
   ] as const)(
     'the visible label for %s/%s is inside the accessible name',
     (status, reason, visible) => {

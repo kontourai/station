@@ -32,7 +32,16 @@ export type ConnectionIndicatorState =
    * state rather than the generic `error` a genuinely unreachable host also
    * produces.
    */
-  | 'needs-repair';
+  | 'needs-repair'
+  /**
+   * station#2327 — the Station has this device's requests waiting in line
+   * (`busy`). Still a failed check — the coordinator's status stays `error`
+   * and nothing about the gate changes — but "Can't connect" is the wrong
+   * sentence for a Station that is answering slowly, and it sends the reader
+   * to check a network that is fine. No decision is needed, so it gets no
+   * action word and no alert treatment.
+   */
+  | 'busy';
 
 /**
  * The single derivation behind the indicator's state.
@@ -84,6 +93,9 @@ export function connectionIndicatorState(input: {
   if (input.status === 'error' && input.reason === 'identity-mismatch') {
     return 'needs-repair';
   }
+  if (input.status === 'error' && input.reason === 'busy') {
+    return 'busy';
+  }
   return input.status === 'error' && input.reason === 'authentication-failed'
     ? 'needs-credential'
     : input.status;
@@ -112,6 +124,8 @@ function connectionIndicatorStateLabel(
       return 'Awaiting approval';
     case 'needs-repair':
       return 'Needs re-pairing';
+    case 'busy':
+      return 'Station is busy';
   }
 }
 

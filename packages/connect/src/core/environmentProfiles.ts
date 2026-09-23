@@ -141,6 +141,13 @@ const FAILURE_COPY: Record<
     summary: `${host}'s server is down or recovering.`,
     action: 'The Station UI is still available and will keep trying.',
   }),
+  // station#2327. Names no network condition: this reason is produced only
+  // when requests are queued behind a slow Station, or after the address
+  // answered and the next read did not get a turn in time.
+  busy: (host) => ({
+    summary: `${host} is busy.`,
+    action: 'Requests to it are waiting in line. Trying again shortly.',
+  }),
   // station#3297. Says what was observed (it answered, and said no) and points
   // at the only place the answer can change — the host's own allow-list. It
   // must not offer pairing: no credential this device can obtain affects it.

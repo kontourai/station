@@ -60,8 +60,10 @@ export interface ConnectionHealthCoordinatorOptions {
   random?: () => number;
 }
 
+// station#2327: `busy` joins the set because a stalled Station flaps between
+// it and `timeout` from probe to probe; that is one outage, not several.
 const TRANSIENT_UNREACHABILITY_REASONS: ReadonlySet<ConnectionFailureReason> =
-  new Set(['timeout', 'unreachable']);
+  new Set(['timeout', 'unreachable', 'busy']);
 
 export class ConnectionHealthCoordinator {
   private options: ConnectionHealthCoordinatorOptions;

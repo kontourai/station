@@ -133,6 +133,7 @@ describe('environment endpoint profiles', () => {
       'origin-not-allowed',
       'unexpected-response',
       'undetermined',
+      'busy',
     ];
     expect([...DETERMINISTIC_FAILURE_REASONS].sort()).toEqual(
       [...expected].sort(),
