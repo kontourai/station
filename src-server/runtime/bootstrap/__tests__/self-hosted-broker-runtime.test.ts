@@ -1,5 +1,6 @@
 import { describe, expect, type Mock, test, vi } from 'vitest';
 import { BrokerTransientRequestError } from '../../../services/connections/self-hosted-broker-client.js';
+import { BrokerOfferReadTransientError } from '../../../services/connections/self-hosted-broker-connector.js';
 import {
   type BrokerConnectorLifecycle,
   SelfHostedBrokerRuntime,
@@ -31,6 +32,15 @@ function fixture() {
     },
   };
 }
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((accept) => {
+    resolve = accept;
+  });
+  return { promise, resolve };
+}
+
 describe('self-hosted broker runtime lifecycle', () => {
   test('is explicit, idempotent and withdraws once after owned work settles', async () => {
     const f = fixture();
@@ -135,6 +145,146 @@ describe('self-hosted broker runtime lifecycle', () => {
     await expect(runtime.shutdown()).resolves.toBeUndefined();
     expect(f.connector.register).toHaveBeenCalledOnce();
     expect(f.connector.withdraw).toHaveBeenCalledOnce();
+  });
+  test('keeps the aggregate reconnecting while heartbeat and offer polling recover concurrently', async () => {
+    const f = fixture();
+    const statuses: Array<{ state: string; phase: string }> = [];
+    const heartbeatRetry = deferred<unknown>();
+    const offerRetry = deferred<unknown>();
+    let registrations = 0;
+    let polls = 0;
+    f.connector.register.mockImplementation(async () => {
+      registrations++;
+      if (registrations === 1)
+        return { expiresAt: Date.now() + 60_000 } as never;
+      if (registrations === 2)
+        throw new BrokerTransientRequestError(new TypeError('temporary'));
+      return heartbeatRetry.promise as never;
+    });
+    f.connector.poll.mockImplementation(async () => {
+      polls++;
+      if (polls === 1)
+        throw new BrokerOfferReadTransientError(new TypeError('temporary'));
+      return offerRetry.promise as never;
+    });
+    const runtime = new SelfHostedBrokerRuntime({
+      ...f.options,
+      heartbeatMs: 1_000,
+      renewMs: 60_000,
+      pollMs: 60_000,
+      retryDelayMs: 1,
+      observeStatus: ({ state, phase }) => statuses.push({ state, phase }),
+    });
+    await runtime.start();
+    await vi.waitFor(
+      () => {
+        expect(statuses).toContainEqual({
+          state: 'reconnecting',
+          phase: 'offer_poll',
+        });
+        expect(statuses).toContainEqual({
+          state: 'reconnecting',
+          phase: 'heartbeat',
+        });
+        expect(registrations).toBe(3);
+        expect(polls).toBe(2);
+      },
+      { timeout: 5_000 },
+    );
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(
+      statuses.slice(statuses.findIndex((s) => s.state === 'reconnecting')),
+    ).not.toContainEqual({ state: 'registered', phase: 'heartbeat' });
+    expect(
+      statuses.slice(statuses.findIndex((s) => s.state === 'reconnecting')),
+    ).not.toContainEqual({ state: 'registered', phase: 'offer_poll' });
+
+    heartbeatRetry.resolve({ expiresAt: Date.now() + 60_000 });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(
+      statuses.slice(statuses.findIndex((s) => s.state === 'reconnecting')),
+    ).not.toContainEqual({ state: 'registered', phase: 'heartbeat' });
+    offerRetry.resolve(undefined);
+    await vi.waitFor(
+      () =>
+        expect(statuses).toContainEqual({
+          state: 'registered',
+          phase: 'offer_poll',
+        }),
+      { timeout: 5_000 },
+    );
+    await runtime.shutdown();
+  });
+  test('emits recovered status after heartbeat retry even while offer polling sleeps', async () => {
+    const f = fixture();
+    const statuses: Array<{ state: string; phase: string }> = [];
+    let registrations = 0;
+    f.connector.register.mockImplementation(async () => {
+      registrations++;
+      if (registrations === 2)
+        throw new BrokerTransientRequestError(new TypeError('temporary'));
+      return { expiresAt: Date.now() + 60_000 } as never;
+    });
+    const runtime = new SelfHostedBrokerRuntime({
+      ...f.options,
+      heartbeatMs: 1_000,
+      renewMs: 60_000,
+      pollMs: 60_000,
+      retryDelayMs: 1,
+      observeStatus: ({ state, phase }) => statuses.push({ state, phase }),
+    });
+    await runtime.start();
+    await vi.waitFor(
+      () =>
+        expect(statuses).toContainEqual({
+          state: 'reconnecting',
+          phase: 'heartbeat',
+        }),
+      { timeout: 5_000 },
+    );
+    await vi.waitFor(
+      () =>
+        expect(statuses.slice(-1)[0]).toEqual({
+          state: 'registered',
+          phase: 'heartbeat',
+        }),
+      { timeout: 5_000 },
+    );
+    expect(f.connector.poll).toHaveBeenCalledOnce();
+    await runtime.shutdown();
+  });
+  test('reports permanent heartbeat failure with its actual operation phase', async () => {
+    const f = fixture();
+    const statuses: Array<{ state: string; phase: string; reason?: string }> =
+      [];
+    f.connector.register
+      .mockResolvedValueOnce({ expiresAt: Date.now() + 60_000 })
+      .mockRejectedValueOnce(new Error('broker_request_refused_401'));
+    const runtime = new SelfHostedBrokerRuntime({
+      ...f.options,
+      heartbeatMs: 1_000,
+      renewMs: 60_000,
+      pollMs: 60_000,
+      observeStatus: (status) => statuses.push(status),
+    });
+    await runtime.start();
+    await vi.waitFor(
+      () => expect(f.connector.withdraw).toHaveBeenCalledOnce(),
+      {
+        timeout: 5_000,
+      },
+    );
+    expect(statuses).toContainEqual({
+      state: 'failed',
+      phase: 'heartbeat',
+      reason: 'operation_failed',
+    });
+    expect(statuses).not.toContainEqual(
+      expect.objectContaining({ state: 'failed', phase: 'renewal' }),
+    );
+    await expect(runtime.shutdown()).rejects.toThrow(
+      'broker_request_refused_401',
+    );
   });
   test('does not retry a permanent registration refusal', async () => {
     const f = fixture();
