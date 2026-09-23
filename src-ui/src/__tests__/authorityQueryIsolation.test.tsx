@@ -168,6 +168,8 @@ interface Harness {
     promise: Promise<unknown>;
     resolve: (value: unknown) => void;
   } | null;
+  /** The client the Probe last rendered under (the live verified shelf). */
+  activeClient: QueryClient | null;
 }
 
 let homeCounter = 0;
@@ -203,6 +205,7 @@ function createHarness(): Harness {
     mountReloadProbe: false,
     mountUserProbe: false,
     userGate: null,
+    activeClient: null,
     fetchObservation: async (request) => {
       harness.observationCalls.push({
         apiBase: request.apiBase,
@@ -228,6 +231,7 @@ function Probe() {
   const { status, namespace } = useAuthorityPersistence();
   const client = useQueryClient();
   const harness = (Probe as unknown as { harness: Harness }).harness;
+  harness.activeClient = client;
   const projects = useQuery({
     queryKey: ['projects'],
     queryFn: async () => {
@@ -1277,6 +1281,14 @@ describe('authority query isolation (real provider tree, mocked wire)', () => {
 
     await act(async () => {
       connections?.updateConnection(idA, { name: 'Renamed HomeA' });
+    });
+    // The persister writes only on a cache event, so without one after the
+    // churn a forked key would never reach storage and the check below
+    // could not see it.
+    const shelf = harness.activeClient;
+    if (!shelf) throw new Error('Probe never rendered under a client');
+    await act(async () => {
+      shelf.setQueryData(['churn-probe'], 1);
     });
     await new Promise((resolve) => setTimeout(resolve, 30));
     expect(probe().getAttribute('data-namespace')).toBe(NS_A);
