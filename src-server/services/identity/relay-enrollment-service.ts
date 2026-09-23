@@ -1,4 +1,4 @@
-import { randomBytes, randomUUID } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import {
@@ -11,13 +11,17 @@ import {
   PAIRING_SCOPE_ORCHESTRATION_READ,
 } from '@kontourai/station-contracts/environment-security';
 import {
+  RELAY_ENROLLMENT_ACTIVATE_PATH,
   RELAY_ENROLLMENT_BEGIN_PATH,
+  RELAY_ENROLLMENT_FINALIZE_PATH,
   RELAY_ENROLLMENT_LOGIN_PATH,
   RELAY_ENROLLMENT_PROOF_AUDIENCE,
   RELAY_ENROLLMENT_PROOF_TYPE,
   RELAY_ENROLLMENT_VERSION,
+  type RelayEnrollmentActivatedResponse,
   type RelayEnrollmentBeginRequest,
   type RelayEnrollmentChallenge,
+  type RelayEnrollmentFinalizeResponse,
   type RelayEnrollmentPendingResponse,
 } from '@kontourai/station-contracts/relay-enrollment';
 import {
@@ -53,6 +57,8 @@ const MAX_CREDENTIAL_BYTES = 128;
 const ANONYMOUS_WINDOW_MS = 60_000;
 const MAX_ANONYMOUS_BEGIN_PER_WINDOW = 120;
 const MAX_ANONYMOUS_LOGIN_PER_WINDOW = 30;
+const MAX_ANONYMOUS_FINALIZE_PER_WINDOW = 60;
+const MAX_ANONYMOUS_ACTIVATE_PER_WINDOW = 60;
 const STRICT_P256_JWK_KEYS = ['crv', 'kty', 'x', 'y'];
 const PROOF_CLAIM_KEYS = [
   'aud',
@@ -97,6 +103,22 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value);
 }
 
+function canonicalRelayJson(value: unknown): string {
+  const normalize = (input: unknown): unknown => {
+    if (Array.isArray(input)) return input.map(normalize);
+    if (!input || typeof input !== 'object') return input;
+    return Object.fromEntries(
+      Object.keys(input)
+        .sort()
+        .map((key) => [
+          key,
+          normalize((input as Record<string, unknown>)[key]),
+        ]),
+    );
+  };
+  return JSON.stringify(normalize(value));
+}
+
 export class RelayEnrollmentRefusal extends Error {
   constructor(
     readonly code:
@@ -133,6 +155,8 @@ export class RelayEnrollmentService {
   private anonymousWindowStartedAt = 0;
   private anonymousBeginCount = 0;
   private anonymousLoginCount = 0;
+  private anonymousFinalizeCount = 0;
+  private anonymousActivateCount = 0;
 
   constructor(private readonly options: RelayEnrollmentServiceOptions) {
     this.now = options.now ?? Date.now;
@@ -157,10 +181,12 @@ export class RelayEnrollmentService {
   /** Allocate a key-bound challenge without contacting the account provider. */
   async beginFreshClient(request: Request): Promise<RelayEnrollmentChallenge> {
     this.ensureOpen();
-    const facts = this.requireVerifiedIngress(
-      request,
-      RELAY_ENROLLMENT_BEGIN_PATH,
-    );
+    let facts: NonNullable<
+      ReturnType<typeof readVerifiedVirtualApplicationRequest>
+    >;
+    facts = this.requireVerifiedIngress(request, RELAY_ENROLLMENT_BEGIN_PATH);
+    if (!this.options.authentication?.pendingEnrollmentCapabilities().available)
+      throw new RelayEnrollmentRefusal('unsupported');
     this.reserveAnonymousBudget('begin');
     this.requireJsonPost(request);
     const bounded = await readBoundedRequestBody(request, MAX_BEGIN_BODY_BYTES);
@@ -630,6 +656,483 @@ export class RelayEnrollmentService {
     }
   }
 
+  /** Persist one inert continuation under the exact reserved pending Device. */
+  async issuePendingContinuation(
+    enrollmentId: string,
+    signal: AbortSignal,
+  ): Promise<
+    Awaited<
+      ReturnType<ApplicationSessionService['issuePendingRelayContinuation']>
+    >
+  > {
+    this.ensureOpen();
+    const entry = this.options.journal.get(enrollmentId);
+    if (
+      !entry ||
+      !('enrollmentId' in entry) ||
+      entry.state !== 'device-pending' ||
+      entry.expiresAt <= this.now() ||
+      !entry.deviceId ||
+      !entry.providerSessionId ||
+      !entry.issuer ||
+      !entry.subject ||
+      !entry.requestOrigin ||
+      !entry.approvalId ||
+      !entry.approvalPrincipalId ||
+      entry.issuedScope?.length !== 1 ||
+      entry.issuedScope[0] !== PAIRING_SCOPE_ORCHESTRATION_READ ||
+      !this.isTrustedOrigin(entry.clientOrigin)
+    )
+      throw new RelayEnrollmentRefusal('invalid');
+    if (signal.aborted) throw new RelayEnrollmentRefusal('unavailable');
+    const applicationSessions = this.options.applicationSessions;
+    if (!applicationSessions) throw new RelayEnrollmentRefusal('unsupported');
+    const authorityKey = randomUUID();
+    const reserved = this.options.journal.transition({
+      enrollmentId,
+      expectedStates: ['device-pending'],
+      nextState: 'continuation-pending',
+      patch: { authorityKey },
+    });
+    if (!reserved) throw new RelayEnrollmentRefusal('unavailable');
+    try {
+      const continuation =
+        await applicationSessions.issuePendingRelayContinuation({
+          enrollmentId,
+          deviceId: reserved.deviceId!,
+          providerSessionId: reserved.providerSessionId!,
+          issuer: reserved.issuer!,
+          subject: reserved.subject!,
+          approvalId: reserved.approvalId!,
+          approvedBy: reserved.approvalPrincipalId!,
+          authorityKey,
+          stationId: reserved.stationId,
+          clientOrigin: reserved.clientOrigin,
+          key: reserved.publicKey,
+          keyThumbprint: reserved.keyThumbprint,
+          nonce: reserved.nonce,
+          expiresAt: reserved.expiresAt,
+          signal,
+        });
+      if (signal.aborted) throw new RelayEnrollmentRefusal('unavailable');
+      return continuation;
+    } catch (error) {
+      await this.cleanupRecord(reserved, 'failed', 'recovery-required');
+      throw error instanceof RelayEnrollmentRefusal
+        ? error
+        : new RelayEnrollmentRefusal('unavailable');
+    }
+  }
+
+  /** Exchange only after operator approval, then deliver an inert secret bundle once. */
+  async finalizeFreshClient(
+    request: Request,
+  ): Promise<RelayEnrollmentFinalizeResponse> {
+    this.ensureOpen();
+    const facts = this.requireVerifiedIngress(
+      request,
+      RELAY_ENROLLMENT_FINALIZE_PATH,
+    );
+    this.reserveAnonymousBudget('finalize');
+    this.requireJsonPost(request);
+    const bounded = await readBoundedRequestBody(request, 2 * 1024);
+    this.requireFactsCurrent(request, facts);
+    if (bounded.status !== 'ok') throw new RelayEnrollmentRefusal('invalid');
+    let body: unknown;
+    try {
+      body = JSON.parse(bounded.body);
+    } catch {
+      throw new RelayEnrollmentRefusal('invalid');
+    }
+    if (
+      !isRecord(body) ||
+      Object.keys(body).sort().join(',') !== 'enrollmentId,proof' ||
+      typeof body.enrollmentId !== 'string' ||
+      !/^[A-Za-z0-9_-]{43}$/.test(body.enrollmentId) ||
+      typeof body.proof !== 'string' ||
+      body.proof.length > 4096
+    )
+      throw new RelayEnrollmentRefusal('invalid');
+    const entry = this.options.journal.get(body.enrollmentId);
+    if (!entry || !('enrollmentId' in entry))
+      throw new RelayEnrollmentRefusal('expired');
+    if (entry.expiresAt <= this.now()) {
+      await this.cleanupRecord(entry, 'expired', 'expired');
+      throw new RelayEnrollmentRefusal('expired');
+    }
+    if (!this.entryMatchesIngress(entry, facts))
+      throw new RelayEnrollmentRefusal('invalid');
+    const proof = await this.verifyFreshPurposeProof(
+      request,
+      facts,
+      entry,
+      body.proof,
+      'finalize',
+      entry.nonce,
+      RELAY_ENROLLMENT_FINALIZE_PATH,
+      {},
+    );
+    if (!proof) throw new RelayEnrollmentRefusal('invalid');
+    this.requireFactsCurrent(request, facts);
+    if (entry.state === 'pairing-requested')
+      return {
+        version: RELAY_ENROLLMENT_VERSION,
+        state: 'pending',
+        enrollmentId: entry.enrollmentId,
+        expiresAt: new Date(entry.expiresAt).toISOString(),
+      };
+    if (entry.state === 'awaiting-ack') {
+      // The delivery secret is intentionally not stored for redelivery. A
+      // repeated finalize means the previous bundle may have been lost; revoke
+      // this inert attempt and require a new one instead of guessing whether
+      // its secret reached the browser.
+      await this.cleanupRecord(entry, 'failed', 'recovery-required');
+      throw new RelayEnrollmentRefusal('unavailable');
+    }
+    if (entry.state !== 'approved')
+      throw new RelayEnrollmentRefusal('unavailable');
+
+    let exchanged: ReturnType<DevicePairingService['exchangeRelayEnrollment']>;
+    try {
+      exchanged = await this.exchangeApprovedDevice(
+        entry.enrollmentId,
+        request.signal,
+      );
+      this.requireFactsCurrent(request, facts);
+    } catch (error) {
+      await this.cleanupCurrentAttempt(
+        entry.enrollmentId,
+        'failed',
+        'recovery-required',
+      );
+      throw error instanceof RelayEnrollmentRefusal
+        ? error
+        : new RelayEnrollmentRefusal('unavailable');
+    }
+
+    let continuation: Awaited<
+      ReturnType<ApplicationSessionService['issuePendingRelayContinuation']>
+    >;
+    try {
+      continuation = await this.issuePendingContinuation(
+        entry.enrollmentId,
+        request.signal,
+      );
+      this.requireFactsCurrent(request, facts);
+      const current = this.options.journal.get(entry.enrollmentId);
+      if (
+        !current ||
+        !('enrollmentId' in current) ||
+        current.state !== 'continuation-pending'
+      )
+        throw new RelayEnrollmentRefusal('unavailable');
+      await this.requireCurrentPendingProvider(current, request.signal);
+      this.requirePendingDeviceBinding(current);
+      if (
+        !this.options.applicationSessions?.verifyPendingRelayContinuation({
+          authorityKey: continuation.authorityKey,
+          enrollmentId: current.enrollmentId,
+          deviceId: current.deviceId!,
+          issuer: current.issuer!,
+          subject: current.subject!,
+          approvalId: current.approvalId!,
+          approvedBy: current.approvalPrincipalId!,
+          clientOrigin: current.clientOrigin,
+          keyThumbprint: current.keyThumbprint,
+        })
+      )
+        throw new RelayEnrollmentRefusal('unavailable');
+    } catch (error) {
+      await this.cleanupCurrentAttempt(
+        entry.enrollmentId,
+        'failed',
+        'recovery-required',
+      );
+      throw error instanceof RelayEnrollmentRefusal
+        ? error
+        : new RelayEnrollmentRefusal('unavailable');
+    }
+
+    const latest = this.options.journal.get(entry.enrollmentId);
+    if (
+      !latest ||
+      !('enrollmentId' in latest) ||
+      latest.state !== 'continuation-pending' ||
+      latest.deviceId !== exchanged.device.id ||
+      latest.authorityKey !== continuation.authorityKey
+    ) {
+      await this.cleanupCurrentAttempt(
+        entry.enrollmentId,
+        'failed',
+        'recovery-required',
+      );
+      throw new RelayEnrollmentRefusal('unavailable');
+    }
+    const bundle = {
+      stationId: latest.stationId,
+      deviceId: exchanged.device.id,
+      deviceCredential: exchanged.credential,
+      continuation,
+    };
+    const bundleDigest = createHash('sha256')
+      .update(canonicalRelayJson(bundle), 'utf8')
+      .digest('base64url');
+    const activationNonce = encodeOpaque(randomBytes(32));
+    const expiresAt = Math.min(
+      latest.expiresAt,
+      Date.parse(continuation.expiresAt),
+    );
+    if (expiresAt <= this.now()) {
+      await this.cleanupRecord(latest, 'expired', 'expired');
+      throw new RelayEnrollmentRefusal('expired');
+    }
+    const awaiting = this.options.journal.transition({
+      enrollmentId: entry.enrollmentId,
+      expectedStates: ['continuation-pending'],
+      nextState: 'awaiting-ack',
+      patch: { activationNonce, bundleDigest },
+    });
+    if (!awaiting) {
+      await this.cleanupCurrentAttempt(
+        entry.enrollmentId,
+        'failed',
+        'recovery-required',
+      );
+      throw new RelayEnrollmentRefusal('unavailable');
+    }
+    try {
+      this.requireFactsCurrent(request, facts);
+      request.signal.throwIfAborted();
+    } catch {
+      await this.cleanupRecord(awaiting, 'failed', 'recovery-required');
+      throw new RelayEnrollmentRefusal('unavailable');
+    }
+    return {
+      version: RELAY_ENROLLMENT_VERSION,
+      state: 'delivered',
+      enrollmentId: awaiting.enrollmentId,
+      activationNonce,
+      bundleDigest,
+      bundle,
+      expiresAt: new Date(expiresAt).toISOString(),
+    };
+  }
+
+  /** A signed receipt activates the exact provider, continuation and pending Device. */
+  async activateFreshClient(
+    request: Request,
+  ): Promise<RelayEnrollmentActivatedResponse> {
+    this.ensureOpen();
+    const facts = this.requireVerifiedIngress(
+      request,
+      RELAY_ENROLLMENT_ACTIVATE_PATH,
+    );
+    this.reserveAnonymousBudget('activate');
+    this.requireJsonPost(request);
+    const bounded = await readBoundedRequestBody(request, 3 * 1024);
+    this.requireFactsCurrent(request, facts);
+    if (bounded.status !== 'ok') throw new RelayEnrollmentRefusal('invalid');
+    let body: unknown;
+    try {
+      body = JSON.parse(bounded.body);
+    } catch {
+      throw new RelayEnrollmentRefusal('invalid');
+    }
+    if (
+      !isRecord(body) ||
+      Object.keys(body).sort().join(',') !==
+        'activationNonce,authorityKey,bundleDigest,deviceId,enrollmentId,proof' ||
+      typeof body.enrollmentId !== 'string' ||
+      !/^[A-Za-z0-9_-]{43}$/.test(body.enrollmentId) ||
+      typeof body.activationNonce !== 'string' ||
+      !/^[A-Za-z0-9_-]{43}$/.test(body.activationNonce) ||
+      typeof body.deviceId !== 'string' ||
+      !/^[0-9a-f-]{36}$/i.test(body.deviceId) ||
+      typeof body.authorityKey !== 'string' ||
+      !/^[0-9a-f-]{36}$/i.test(body.authorityKey) ||
+      typeof body.bundleDigest !== 'string' ||
+      !/^[A-Za-z0-9_-]{43}$/.test(body.bundleDigest) ||
+      typeof body.proof !== 'string' ||
+      body.proof.length > 4096
+    )
+      throw new RelayEnrollmentRefusal('invalid');
+    const entry = this.options.journal.get(body.enrollmentId);
+    if (!entry || !('enrollmentId' in entry))
+      throw new RelayEnrollmentRefusal('expired');
+    if (entry.expiresAt <= this.now()) {
+      await this.cleanupRecord(entry, 'expired', 'expired');
+      throw new RelayEnrollmentRefusal('expired');
+    }
+    if (!this.entryMatchesIngress(entry, facts))
+      throw new RelayEnrollmentRefusal('invalid');
+    const proof = await this.verifyFreshPurposeProof(
+      request,
+      facts,
+      entry,
+      body.proof,
+      'activate',
+      body.activationNonce,
+      RELAY_ENROLLMENT_ACTIVATE_PATH,
+      {
+        deviceId: body.deviceId,
+        authorityKey: body.authorityKey,
+        bundleDigest: body.bundleDigest,
+      },
+    );
+    if (!proof) throw new RelayEnrollmentRefusal('invalid');
+    const receiptDigest = createHash('sha256')
+      .update(body.proof, 'utf8')
+      .digest('base64url');
+    if (entry.state === 'committed') {
+      if (
+        entry.deviceId !== body.deviceId ||
+        entry.activationNonce !== body.activationNonce ||
+        entry.bundleDigest !== body.bundleDigest ||
+        entry.ackJti !== proof.jti ||
+        entry.receiptDigest !== receiptDigest
+      )
+        throw new RelayEnrollmentRefusal('invalid');
+      const activeDevice =
+        this.options.pairing.resolveActiveRelayEnrollmentDevice(
+          entry.deviceId,
+          entry.enrollmentId,
+        );
+      if (
+        activeDevice?.scope.length !== 1 ||
+        activeDevice.scope[0] !== PAIRING_SCOPE_ORCHESTRATION_READ
+      )
+        throw new RelayEnrollmentRefusal('unavailable');
+      if (
+        !(await this.options.applicationSessions?.verifyActiveRelayContinuation(
+          {
+            authorityKey: body.authorityKey,
+            enrollmentId: entry.enrollmentId,
+            deviceId: entry.deviceId,
+            clientOrigin: entry.clientOrigin,
+            keyThumbprint: entry.keyThumbprint,
+            signal: request.signal,
+          },
+        ))
+      )
+        throw new RelayEnrollmentRefusal('unavailable');
+      this.requireFactsCurrent(request, facts);
+      request.signal.throwIfAborted();
+      return this.activationReceipt(entry);
+    }
+    if (entry.state === 'activating')
+      throw new RelayEnrollmentRefusal('unavailable');
+    if (
+      entry.state !== 'awaiting-ack' ||
+      entry.deviceId !== body.deviceId ||
+      entry.authorityKey !== body.authorityKey ||
+      entry.activationNonce !== body.activationNonce ||
+      entry.bundleDigest !== body.bundleDigest
+    )
+      throw new RelayEnrollmentRefusal('invalid');
+    const activating = this.options.journal.transition({
+      enrollmentId: entry.enrollmentId,
+      expectedStates: ['awaiting-ack'],
+      nextState: 'activating',
+      patch: { ackJti: proof.jti, receiptDigest },
+    });
+    if (!activating) {
+      const latest = this.options.journal.get(entry.enrollmentId);
+      if (
+        latest &&
+        'enrollmentId' in latest &&
+        latest.state === 'committed' &&
+        latest.ackJti === proof.jti &&
+        latest.receiptDigest === receiptDigest
+      )
+        return this.activationReceipt(latest);
+      throw new RelayEnrollmentRefusal('unavailable');
+    }
+
+    try {
+      await this.requireCurrentPendingProvider(activating, request.signal);
+      this.requirePendingDeviceBinding(activating);
+      if (
+        !this.options.applicationSessions?.verifyPendingRelayContinuation({
+          authorityKey: activating.authorityKey!,
+          enrollmentId: activating.enrollmentId,
+          deviceId: activating.deviceId!,
+          issuer: activating.issuer!,
+          subject: activating.subject!,
+          approvalId: activating.approvalId!,
+          approvedBy: activating.approvalPrincipalId!,
+          clientOrigin: activating.clientOrigin,
+          keyThumbprint: activating.keyThumbprint,
+        })
+      )
+        throw new RelayEnrollmentRefusal('unavailable');
+      this.requireFactsCurrent(request, facts);
+      request.signal.throwIfAborted();
+      await this.options.authentication!.promotePendingEnrollment(
+        activating.enrollmentId,
+        activating.providerSessionId!,
+        request.signal,
+      );
+      this.requireFactsCurrent(request, facts);
+      request.signal.throwIfAborted();
+      const active = await this.options.authentication!.verifySessionReference(
+        activating.providerSessionId!,
+        request.signal,
+      );
+      if (
+        active.kind !== 'authenticated' ||
+        active.issuer !== activating.issuer ||
+        active.session.subject !== activating.subject
+      )
+        throw new RelayEnrollmentRefusal('unavailable');
+      this.requirePendingDeviceBinding(activating);
+      if (
+        !this.options.applicationSessions?.verifyPendingRelayContinuation({
+          authorityKey: activating.authorityKey!,
+          enrollmentId: activating.enrollmentId,
+          deviceId: activating.deviceId!,
+          issuer: activating.issuer!,
+          subject: activating.subject!,
+          approvalId: activating.approvalId!,
+          approvedBy: activating.approvalPrincipalId!,
+          clientOrigin: activating.clientOrigin,
+          keyThumbprint: activating.keyThumbprint,
+        })
+      )
+        throw new RelayEnrollmentRefusal('unavailable');
+      this.requireFactsCurrent(request, facts);
+      request.signal.throwIfAborted();
+      const activeDevice = this.options.pairing.activateRelayEnrollmentDevice(
+        activating.deviceId!,
+        activating.enrollmentId,
+      );
+      const binding = activeDevice.principalBinding;
+      if (
+        activeDevice.id !== activating.deviceId ||
+        activeDevice.scope !== PAIRING_SCOPE_ORCHESTRATION_READ ||
+        !binding ||
+        !('kind' in binding) ||
+        binding.kind !== 'account' ||
+        binding.issuer !== activating.issuer ||
+        binding.subject !== activating.subject ||
+        binding.approvalId !== activating.approvalId ||
+        binding.approvedBy !== activating.approvalPrincipalId
+      )
+        throw new RelayEnrollmentRefusal('unavailable');
+      const committed = this.options.journal.transition({
+        enrollmentId: activating.enrollmentId,
+        expectedStates: ['activating'],
+        nextState: 'committed',
+      });
+      if (!committed) throw new RelayEnrollmentRefusal('unavailable');
+      return this.activationReceipt(committed);
+    } catch (error) {
+      await this.cleanupRecord(activating, 'failed', 'activation-failed');
+      throw error instanceof RelayEnrollmentRefusal
+        ? error
+        : new RelayEnrollmentRefusal('unavailable');
+    }
+  }
+
   /** Denial of an enrollment-owned request cleans the exact provider attempt. */
   async denyRequest(requestId: string): Promise<boolean> {
     this.ensureOpen();
@@ -716,7 +1219,9 @@ export class RelayEnrollmentService {
       throw new RelayEnrollmentRefusal('invalid');
   }
 
-  private reserveAnonymousBudget(kind: 'begin' | 'login'): void {
+  private reserveAnonymousBudget(
+    kind: 'begin' | 'login' | 'finalize' | 'activate',
+  ): void {
     const now = this.now();
     if (
       now < this.anonymousWindowStartedAt ||
@@ -725,16 +1230,136 @@ export class RelayEnrollmentService {
       this.anonymousWindowStartedAt = now;
       this.anonymousBeginCount = 0;
       this.anonymousLoginCount = 0;
+      this.anonymousFinalizeCount = 0;
+      this.anonymousActivateCount = 0;
     }
     if (kind === 'begin') {
       if (this.anonymousBeginCount >= MAX_ANONYMOUS_BEGIN_PER_WINDOW)
         throw new RelayEnrollmentRefusal('rate_limited');
       this.anonymousBeginCount += 1;
-    } else {
+    } else if (kind === 'login') {
       if (this.anonymousLoginCount >= MAX_ANONYMOUS_LOGIN_PER_WINDOW)
         throw new RelayEnrollmentRefusal('rate_limited');
       this.anonymousLoginCount += 1;
+    } else if (kind === 'finalize') {
+      if (this.anonymousFinalizeCount >= MAX_ANONYMOUS_FINALIZE_PER_WINDOW)
+        throw new RelayEnrollmentRefusal('rate_limited');
+      this.anonymousFinalizeCount += 1;
+    } else {
+      if (this.anonymousActivateCount >= MAX_ANONYMOUS_ACTIVATE_PER_WINDOW)
+        throw new RelayEnrollmentRefusal('rate_limited');
+      this.anonymousActivateCount += 1;
     }
+  }
+
+  private entryMatchesIngress(
+    entry: RelayEnrollmentRecord,
+    facts: NonNullable<
+      ReturnType<typeof readVerifiedVirtualApplicationRequest>
+    >,
+  ): boolean {
+    return (
+      entry.stationId === facts.stationId &&
+      entry.requestOrigin === facts.requestOrigin &&
+      entry.clientOrigin === facts.clientOrigin &&
+      (entry.connectionEnrollmentId === undefined ||
+        entry.connectionEnrollmentId === facts.connectionEnrollmentId) &&
+      (entry.routingGeneration === undefined ||
+        entry.routingGeneration === facts.routingGeneration) &&
+      (entry.connectionId === undefined ||
+        entry.connectionId === facts.connectionId)
+    );
+  }
+
+  private async requireCurrentPendingProvider(
+    entry: RelayEnrollmentRecord,
+    signal: AbortSignal,
+  ): Promise<void> {
+    const authentication = this.options.authentication;
+    if (!authentication?.pendingEnrollmentCapabilities().available)
+      throw new RelayEnrollmentRefusal('unsupported');
+    if (!entry.providerSessionId || !entry.issuer || !entry.subject)
+      throw new RelayEnrollmentRefusal('invalid');
+    const verified = await authentication.verifyPendingEnrollment(
+      entry.enrollmentId,
+      entry.providerSessionId,
+      signal,
+    );
+    if (verified.kind === 'unavailable')
+      throw new RelayEnrollmentRefusal('unavailable');
+    if (
+      verified.kind !== 'pending' ||
+      verified.session.enrollmentId !== entry.enrollmentId ||
+      verified.session.sessionId !== entry.providerSessionId ||
+      verified.session.subject !== entry.subject ||
+      authentication.describe().issuer !== entry.issuer
+    )
+      throw new RelayEnrollmentRefusal('invalid');
+  }
+
+  private requirePendingDeviceBinding(entry: RelayEnrollmentRecord): void {
+    if (
+      !entry.deviceId ||
+      !entry.issuer ||
+      !entry.subject ||
+      !entry.approvalId ||
+      !entry.approvalPrincipalId ||
+      entry.issuedScope?.length !== 1 ||
+      entry.issuedScope[0] !== PAIRING_SCOPE_ORCHESTRATION_READ
+    )
+      throw new RelayEnrollmentRefusal('invalid');
+    const assertion = this.options.pairing.resolvePendingRelayDevice(
+      entry.deviceId,
+      entry.enrollmentId,
+    );
+    if (
+      !assertion ||
+      assertion.deviceId !== entry.deviceId ||
+      assertion.enrollmentId !== entry.enrollmentId ||
+      assertion.issuer !== entry.issuer ||
+      assertion.subject !== entry.subject ||
+      assertion.approvalId !== entry.approvalId ||
+      assertion.approvedBy !== entry.approvalPrincipalId ||
+      assertion.scope.length !== 1 ||
+      assertion.scope[0] !== PAIRING_SCOPE_ORCHESTRATION_READ
+    )
+      throw new RelayEnrollmentRefusal('invalid');
+  }
+
+  private async cleanupCurrentAttempt(
+    enrollmentId: string,
+    terminalState: RelayEnrollmentTerminalState,
+    reason:
+      | 'expired'
+      | 'recovery-required'
+      | 'provider-rejected'
+      | 'provider-unavailable'
+      | 'login-proof-rejected'
+      | 'activation-failed',
+  ): Promise<void> {
+    const latest = this.options.journal.get(enrollmentId);
+    if (!latest || !('enrollmentId' in latest)) return;
+    await this.cleanupRecord(latest, terminalState, reason);
+  }
+
+  private activationReceipt(
+    record: RelayEnrollmentRecord,
+  ): RelayEnrollmentActivatedResponse {
+    if (
+      record.state !== 'committed' ||
+      !record.deviceId ||
+      !record.receiptDigest ||
+      !record.receiptExpiresAt
+    )
+      throw new RelayEnrollmentRefusal('unavailable');
+    return {
+      version: RELAY_ENROLLMENT_VERSION,
+      state: 'active',
+      enrollmentId: record.enrollmentId,
+      deviceId: record.deviceId,
+      receiptDigest: record.receiptDigest,
+      receiptExpiresAt: new Date(record.receiptExpiresAt).toISOString(),
+    };
   }
 
   private async verifyFreshLoginProof(
@@ -745,8 +1370,34 @@ export class RelayEnrollmentService {
     entry: RelayEnrollmentRecord,
     token: string,
   ): Promise<{ jti: string } | undefined> {
+    const verified = await this.verifyFreshPurposeProof(
+      request,
+      facts,
+      entry,
+      token,
+      'login',
+      entry.nonce,
+      RELAY_ENROLLMENT_LOGIN_PATH,
+      {},
+    );
+    return verified ? { jti: verified.jti } : undefined;
+  }
+
+  private async verifyFreshPurposeProof(
+    request: Request,
+    facts: NonNullable<
+      ReturnType<typeof readVerifiedVirtualApplicationRequest>
+    >,
+    entry: RelayEnrollmentRecord,
+    token: string,
+    purpose: 'login' | 'finalize' | 'activate',
+    nonce: string,
+    path: string,
+    bindings: Record<string, string>,
+  ): Promise<{ jti: string; payload: JWTPayload } | undefined> {
     try {
-      if (token.split('.').length !== 3) return undefined;
+      if (token.length > 4096 || token.split('.').length !== 3)
+        return undefined;
       const key = await importJWK(entry.publicKey, 'ES256');
       const verified = await jwtVerify(token, key, {
         algorithms: ['ES256'],
@@ -756,21 +1407,23 @@ export class RelayEnrollmentService {
       this.requireFactsCurrent(request, facts);
       const header = verified.protectedHeader;
       const payload: JWTPayload = verified.payload;
+      const expectedClaimNames = [...PROOF_CLAIM_KEYS, ...Object.keys(bindings)]
+        .sort()
+        .join(',');
       if (
         header.alg !== 'ES256' ||
         header.typ !== RELAY_ENROLLMENT_PROOF_TYPE ||
-        Object.keys(payload).sort().join(',') !== PROOF_CLAIM_KEYS.join(',') ||
+        Object.keys(payload).sort().join(',') !== expectedClaimNames ||
         payload.aud !== RELAY_ENROLLMENT_PROOF_AUDIENCE ||
         payload.v !== RELAY_ENROLLMENT_VERSION ||
         payload.stationId !== entry.stationId ||
         payload.enrollmentId !== entry.enrollmentId ||
         payload.clientOrigin !== entry.clientOrigin ||
         payload.keyThumbprint !== entry.keyThumbprint ||
-        payload.nonce !== entry.nonce ||
-        payload.purpose !== 'login' ||
+        payload.nonce !== nonce ||
+        payload.purpose !== purpose ||
         payload.htm !== 'POST' ||
-        payload.htu !==
-          `${facts.requestOrigin}${RELAY_ENROLLMENT_LOGIN_PATH}` ||
+        payload.htu !== `${facts.requestOrigin}${path}` ||
         typeof payload.jti !== 'string' ||
         !/^[A-Za-z0-9_-]{22}$/.test(payload.jti) ||
         typeof payload.iat !== 'number' ||
@@ -779,6 +1432,8 @@ export class RelayEnrollmentService {
         !Number.isSafeInteger(payload.exp)
       )
         return undefined;
+      for (const [name, value] of Object.entries(bindings))
+        if (payload[name] !== value) return undefined;
       const nowSeconds = Math.floor(this.now() / 1000);
       if (
         payload.iat > nowSeconds + 5 ||
@@ -793,7 +1448,7 @@ export class RelayEnrollmentService {
         (await calculateJwkThumbprint(entry.publicKey)) !== entry.keyThumbprint
       )
         return undefined;
-      return { jti: payload.jti };
+      return { jti: payload.jti, payload };
     } catch {
       return undefined;
     }
@@ -840,7 +1495,8 @@ export class RelayEnrollmentService {
       | 'approval-denied'
       | 'provider-rejected'
       | 'provider-unavailable'
-      | 'login-proof-rejected',
+      | 'login-proof-rejected'
+      | 'activation-failed',
   ): Promise<void> {
     const cleaning = this.enterCleaning(record.enrollmentId, reason);
     if (!cleaning) return;
@@ -917,6 +1573,7 @@ export class RelayEnrollmentService {
           throw new RelayEnrollmentRefusal('unavailable');
         this.options.applicationSessions.discardUncommittedAuthority(
           record.authorityKey,
+          record.enrollmentId,
         );
       } catch (error) {
         errors.push(error);

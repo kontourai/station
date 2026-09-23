@@ -1,5 +1,7 @@
 import {
+  RELAY_ENROLLMENT_ACTIVATE_PATH,
   RELAY_ENROLLMENT_BEGIN_PATH,
+  RELAY_ENROLLMENT_FINALIZE_PATH,
   RELAY_ENROLLMENT_LOGIN_PATH,
 } from '@kontourai/station-contracts/relay-enrollment';
 import { Hono } from 'hono';
@@ -9,16 +11,16 @@ import {
 } from '../../services/identity/relay-enrollment-service.js';
 
 /**
- * Internal-only handler factory for the relay fresh-client ceremony.
- * StationRuntime intentionally does not mount this surface until finalize and
- * signed activation ACK are complete.
+ * Handler factory for the relay fresh-client ceremony. The runtime mounts its
+ * four exact leaves only when the private relay enrollment runtime exists;
+ * every handler still requires VAI-owned verified Pion facts and a key proof.
  */
 export function createRelayEnrollmentRoutes(service: RelayEnrollmentService) {
   const app = new Hono();
   const run = async (
     operation: (request: Request) => Promise<unknown>,
     request: Request,
-    status: 201 | 202,
+    status: 200 | 201 | 202,
   ) => {
     try {
       return Response.json(await operation(request), {
@@ -54,6 +56,12 @@ export function createRelayEnrollmentRoutes(service: RelayEnrollmentService) {
   );
   app.post(RELAY_ENROLLMENT_LOGIN_PATH, (c) =>
     run((request) => service.loginFreshClient(request), c.req.raw, 202),
+  );
+  app.post(RELAY_ENROLLMENT_FINALIZE_PATH, (c) =>
+    run((request) => service.finalizeFreshClient(request), c.req.raw, 200),
+  );
+  app.post(RELAY_ENROLLMENT_ACTIVATE_PATH, (c) =>
+    run((request) => service.activateFreshClient(request), c.req.raw, 200),
   );
   return app;
 }

@@ -17,6 +17,20 @@ export function createApplicationSessionRuntime(
     enrollmentId: string;
     issuer: string;
     subject: string;
+    approvalId: string;
+    approvedBy: string;
+    scope: readonly string[];
+  } | null,
+  resolveActiveRelayDevice?: (
+    deviceId: string,
+    enrollmentId: string,
+  ) => {
+    deviceId: string;
+    enrollmentId: string;
+    issuer: string;
+    subject: string;
+    approvalId: string;
+    approvedBy: string;
     scope: readonly string[];
   } | null,
 ) {
@@ -36,6 +50,7 @@ export function createApplicationSessionRuntime(
       authentication.allowedBrowserOrigins,
       Date.now,
       resolvePendingRelayDevice,
+      resolveActiveRelayDevice,
     );
     authentication.service.installContinuationResolver(service);
     return service;

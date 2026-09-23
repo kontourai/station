@@ -296,11 +296,16 @@ describe('DevicePairingService', () => {
     expect(service.verifyCredential(exchanged.credential)).toBe(false);
     expect(service.listDevices()).toEqual([]);
     expect(service.listKnownPrincipals()).toEqual([]);
+    const pendingBinding = exchanged.device.principalBinding;
+    if (!pendingBinding || !('kind' in pendingBinding))
+      throw new Error('relay exchange did not retain account approval');
     expect(service.resolvePendingRelayDevice(deviceId, enrollmentId)).toEqual({
       deviceId,
       enrollmentId,
       issuer: candidate.issuer,
       subject: candidate.subject,
+      approvalId: pendingBinding.approvalId,
+      approvedBy: pendingBinding.approvedBy,
       scope: [PAIRING_SCOPE_ORCHESTRATION_READ],
     });
     expect(

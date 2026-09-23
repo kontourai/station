@@ -1,10 +1,14 @@
 import {
+  RELAY_ENROLLMENT_ACTIVATE_PATH,
   RELAY_ENROLLMENT_BEGIN_PATH,
+  RELAY_ENROLLMENT_FINALIZE_PATH,
   RELAY_ENROLLMENT_LOGIN_PATH,
   RELAY_ENROLLMENT_PROOF_AUDIENCE,
   RELAY_ENROLLMENT_PROOF_TYPE,
   RELAY_ENROLLMENT_VERSION,
   type RelayEnrollmentChallenge,
+  type RelayEnrollmentContinuationBundle,
+  type RelayEnrollmentDeliveredResponse,
   type RelayEnrollmentProofClaims,
   type RelayEnrollmentPublicKey,
 } from '@kontourai/station-contracts/relay-enrollment';
@@ -197,8 +201,157 @@ export async function createRelayEnrollmentLoginProof(
   return `${signingInput}.${base64url(signature)}`;
 }
 
+async function createPurposeProof(
+  signer: RelayEnrollmentSigner,
+  challenge: RelayEnrollmentChallenge,
+  request: { method: string; url: string; clientOrigin: string },
+  purpose: 'finalize' | 'activate',
+  nonce: string,
+  bindings: Record<string, string>,
+  nowMs: number,
+): Promise<string> {
+  const key = parsePublicKey(signer.publicKey);
+  const target = new URL(request.url);
+  if (
+    challenge.version !== RELAY_ENROLLMENT_VERSION ||
+    !OPAQUE.test(challenge.enrollmentId) ||
+    !OPAQUE.test(challenge.keyThumbprint) ||
+    !OPAQUE.test(nonce) ||
+    !canonicalBrowserOrigin(challenge.clientOrigin) ||
+    request.clientOrigin !== challenge.clientOrigin ||
+    target.origin !== challenge.requestOrigin ||
+    target.search ||
+    target.hash ||
+    request.method.toUpperCase() !== 'POST' ||
+    (purpose === 'finalize' &&
+      target.pathname !== RELAY_ENROLLMENT_FINALIZE_PATH) ||
+    (purpose === 'activate' &&
+      target.pathname !== RELAY_ENROLLMENT_ACTIVATE_PATH)
+  )
+    throw new Error(
+      'Relay enrollment proof target does not match its binding.',
+    );
+  const expiresAtMs = Date.parse(challenge.expiresAt);
+  const iat = Math.floor(nowMs / 1000);
+  const exp = Math.min(iat + 30, Math.floor(expiresAtMs / 1000));
+  if (!Number.isFinite(expiresAtMs) || expiresAtMs <= nowMs || exp <= iat)
+    throw new Error('Relay enrollment challenge has expired.');
+  if ((await thumbprint(key)) !== challenge.keyThumbprint)
+    throw new Error('Relay enrollment key does not match its challenge.');
+  if (
+    Object.values(bindings).some(
+      (value) => !OPAQUE.test(value) && value.length > 128,
+    )
+  )
+    throw new Error('Invalid relay enrollment proof binding.');
+  const header = encode({ alg: 'ES256', typ: RELAY_ENROLLMENT_PROOF_TYPE });
+  const claims = {
+    v: RELAY_ENROLLMENT_VERSION,
+    aud: RELAY_ENROLLMENT_PROOF_AUDIENCE,
+    stationId: challenge.stationId,
+    enrollmentId: challenge.enrollmentId,
+    clientOrigin: challenge.clientOrigin,
+    keyThumbprint: challenge.keyThumbprint,
+    nonce,
+    purpose,
+    htm: 'POST' as const,
+    htu: challenge.requestOrigin + target.pathname,
+    jti: base64url(crypto.getRandomValues(new Uint8Array(16))),
+    iat,
+    exp,
+    ...bindings,
+  };
+  const signingInput = `${header}.${encode(claims)}`;
+  const signature = await signer.sign(new TextEncoder().encode(signingInput));
+  if (signature.byteLength !== 64)
+    throw new Error(
+      'Relay enrollment signer returned an incompatible signature.',
+    );
+  return `${signingInput}.${base64url(signature)}`;
+}
+
+/** Proof for approval polling/finalize. A pending response contains no credentials. */
+export function createRelayEnrollmentFinalizeProof(
+  signer: RelayEnrollmentSigner,
+  challenge: RelayEnrollmentChallenge,
+  request: { method: string; url: string; clientOrigin: string },
+  nowMs: number = Date.now(),
+): Promise<string> {
+  return createPurposeProof(
+    signer,
+    challenge,
+    request,
+    'finalize',
+    challenge.nonce,
+    {},
+    nowMs,
+  );
+}
+
+/** Canonical digest binds the exact delivered Device and continuation secret bundle. */
+export async function digestRelayEnrollmentBundle(
+  bundle: RelayEnrollmentContinuationBundle,
+): Promise<string> {
+  const canonical = (value: unknown): unknown => {
+    if (Array.isArray(value)) return value.map(canonical);
+    if (!value || typeof value !== 'object') return value;
+    return Object.fromEntries(
+      Object.keys(value)
+        .sort()
+        .map((key) => [
+          key,
+          canonical((value as Record<string, unknown>)[key]),
+        ]),
+    );
+  };
+  return base64url(
+    new Uint8Array(
+      await crypto.subtle.digest(
+        'SHA-256',
+        new TextEncoder().encode(JSON.stringify(canonical(bundle))),
+      ),
+    ),
+  );
+}
+
+/** ACK proof binds receipt of the exact delivered secrets to their Device and authority IDs. */
+export async function createRelayEnrollmentActivationProof(
+  signer: RelayEnrollmentSigner,
+  challenge: RelayEnrollmentChallenge,
+  delivery: RelayEnrollmentDeliveredResponse,
+  request: { method: string; url: string; clientOrigin: string },
+  nowMs: number = Date.now(),
+): Promise<string> {
+  if (
+    delivery.version !== RELAY_ENROLLMENT_VERSION ||
+    delivery.state !== 'delivered' ||
+    delivery.enrollmentId !== challenge.enrollmentId ||
+    delivery.bundle.deviceId !== delivery.bundle.continuation.deviceId ||
+    delivery.bundle.stationId !== challenge.stationId ||
+    delivery.bundle.continuation.clientOrigin !== challenge.clientOrigin ||
+    (await digestRelayEnrollmentBundle(delivery.bundle)) !==
+      delivery.bundleDigest
+  )
+    throw new Error('Relay enrollment delivery does not match its challenge.');
+  return createPurposeProof(
+    signer,
+    challenge,
+    request,
+    'activate',
+    delivery.activationNonce,
+    {
+      deviceId: delivery.bundle.deviceId,
+      authorityKey: delivery.bundle.continuation.authorityKey,
+      bundleDigest: delivery.bundleDigest,
+    },
+    nowMs,
+  );
+}
+
 /** Public path constant for callers that transport the proof over an existing relay channel. */
 export const RELAY_ENROLLMENT_CLIENT_PATHS = Object.freeze({
   begin: RELAY_ENROLLMENT_BEGIN_PATH,
   login: RELAY_ENROLLMENT_LOGIN_PATH,
+  finalize: RELAY_ENROLLMENT_FINALIZE_PATH,
+  activate: RELAY_ENROLLMENT_ACTIVATE_PATH,
 });

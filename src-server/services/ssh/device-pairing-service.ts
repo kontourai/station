@@ -256,6 +256,8 @@ export interface PendingRelayDeviceAssertion {
   readonly enrollmentId: string;
   readonly issuer: string;
   readonly subject: string;
+  readonly approvalId: string;
+  readonly approvedBy: string;
   readonly scope: readonly string[];
 }
 
@@ -1754,6 +1756,44 @@ export class DevicePairingService {
       enrollmentId,
       issuer: binding.issuer,
       subject: binding.subject,
+      approvalId: binding.approvalId,
+      approvedBy: binding.approvedBy,
+      scope: Object.freeze([PAIRING_SCOPE_ORCHESTRATION_READ]),
+    });
+  }
+
+  /** Resolve only an active relay Device retained by this exact committed attempt. */
+  resolveActiveRelayEnrollmentDevice(
+    deviceId: string,
+    enrollmentId: string,
+  ): PendingRelayDeviceAssertion | null {
+    if (
+      !CLIENT_INSTANCE_ID_PATTERN.test(deviceId) ||
+      !RELAY_ENROLLMENT_ID_PATTERN.test(enrollmentId)
+    )
+      return null;
+    const device = this.#registry.devices.find(
+      (candidate) => candidate.id === deviceId,
+    );
+    const binding = device?.principalBinding;
+    if (
+      device?.kind !== 'device' ||
+      device.revokedAt !== null ||
+      device.relayEnrollmentId !== enrollmentId ||
+      device.pendingEnrollmentId !== undefined ||
+      device.scope !== PAIRING_SCOPE_ORCHESTRATION_READ ||
+      !binding ||
+      !('kind' in binding) ||
+      binding.kind !== 'account'
+    )
+      return null;
+    return Object.freeze({
+      deviceId: device.id,
+      enrollmentId,
+      issuer: binding.issuer,
+      subject: binding.subject,
+      approvalId: binding.approvalId,
+      approvedBy: binding.approvedBy,
       scope: Object.freeze([PAIRING_SCOPE_ORCHESTRATION_READ]),
     });
   }

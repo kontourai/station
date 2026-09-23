@@ -69,10 +69,14 @@ async function harness() {
       enrollmentId: string;
       issuer: string;
       subject: string;
+      approvalId: string;
+      approvedBy: string;
       scope: readonly string[];
     } | null;
   const resolvePending = (deviceId: string, enrollmentId: string) =>
     resolvePendingRelayDevice(deviceId, enrollmentId);
+  const resolveActive = (deviceId: string, enrollmentId: string) =>
+    pairing.resolveActiveRelayEnrollmentDevice(deviceId, enrollmentId);
   let accounts = await loadLocalAccounts(configuration, host, enrollment);
   let sessions = createApplicationSessionRuntime(
     home,
@@ -80,6 +84,7 @@ async function harness() {
     accounts,
     (value) => pairing.identifyDevice(value),
     resolvePending,
+    resolveActive,
   )!;
   const app = () => {
     const result = new Hono();
@@ -156,6 +161,7 @@ async function harness() {
         accounts,
         (value) => pairing.identifyDevice(value),
         resolvePending,
+        resolveActive,
       )!;
       currentApp = app();
     },
@@ -222,7 +228,7 @@ describe('Device-bound continuation persistence and negative admission', () => {
       },
       sessionId: pending.session.sessionId,
     });
-    h.pairing.confirmRelayEnrollmentRequest(
+    const relayConfirmation = h.pairing.confirmRelayEnrollmentRequest(
       relayOffer.requestId,
       { kind: 'presented-credential' },
       'human:deployment:operator',
@@ -233,6 +239,13 @@ describe('Device-bound continuation persistence and negative admission', () => {
         subject: pending.session.subject,
       },
     );
+    const relayBinding = relayConfirmation.principalBinding;
+    if (
+      !relayBinding ||
+      !('kind' in relayBinding) ||
+      relayBinding.kind !== 'account'
+    )
+      throw new Error('operator confirmation did not bind an account');
     const device = h.pairing.exchangeRelayEnrollment({
       offerId: relayOffer.offerId,
       proof: relayOffer.proof,
@@ -252,6 +265,8 @@ describe('Device-bound continuation persistence and negative admission', () => {
             enrollmentId,
             issuer,
             subject: pending.session.subject,
+            approvalId: relayBinding.approvalId,
+            approvedBy: relayBinding.approvedBy,
             scope: [PAIRING_SCOPE_ORCHESTRATION_READ],
           }
         : null;
@@ -262,6 +277,8 @@ describe('Device-bound continuation persistence and negative admission', () => {
       providerSessionId: pending.session.sessionId,
       issuer,
       subject: pending.session.subject,
+      approvalId: relayBinding.approvalId,
+      approvedBy: relayBinding.approvedBy,
       authorityKey,
       stationId,
       clientOrigin: origin,
@@ -316,6 +333,8 @@ describe('Device-bound continuation persistence and negative admission', () => {
       enrollmentId,
       issuer: `${issuer}-foreign`,
       subject: pending.session.subject,
+      approvalId: relayBinding.approvalId,
+      approvedBy: relayBinding.approvedBy,
       scope: [PAIRING_SCOPE_ORCHESTRATION_READ],
     }));
     await expect(
@@ -326,6 +345,8 @@ describe('Device-bound continuation persistence and negative admission', () => {
       enrollmentId,
       issuer,
       subject: `${pending.session.subject}-foreign`,
+      approvalId: relayBinding.approvalId,
+      approvedBy: relayBinding.approvedBy,
       scope: [PAIRING_SCOPE_ORCHESTRATION_READ],
     }));
     await expect(
@@ -336,7 +357,33 @@ describe('Device-bound continuation persistence and negative admission', () => {
       enrollmentId,
       issuer,
       subject: pending.session.subject,
+      approvalId: relayBinding.approvalId,
+      approvedBy: relayBinding.approvedBy,
       scope: [],
+    }));
+    await expect(
+      h.sessions().issuePendingRelayContinuation(issueInput),
+    ).rejects.toThrow();
+    h.setPendingRelayDeviceResolver(() => ({
+      deviceId: device.device.id,
+      enrollmentId,
+      issuer,
+      subject: pending.session.subject,
+      approvalId: randomUUID(),
+      approvedBy: relayBinding.approvedBy,
+      scope: [PAIRING_SCOPE_ORCHESTRATION_READ],
+    }));
+    await expect(
+      h.sessions().issuePendingRelayContinuation(issueInput),
+    ).rejects.toThrow();
+    h.setPendingRelayDeviceResolver(() => ({
+      deviceId: device.device.id,
+      enrollmentId,
+      issuer,
+      subject: pending.session.subject,
+      approvalId: relayBinding.approvalId,
+      approvedBy: `${relayBinding.approvedBy}-changed`,
+      scope: [PAIRING_SCOPE_ORCHESTRATION_READ],
     }));
     await expect(
       h.sessions().issuePendingRelayContinuation(issueInput),
@@ -379,6 +426,19 @@ describe('Device-bound continuation persistence and negative admission', () => {
     const continuation = await h
       .sessions()
       .issuePendingRelayContinuation(issueInput);
+    expect(h.sessions().verifyPendingRelayContinuation(issueInput)).toBe(true);
+    expect(
+      h.sessions().verifyPendingRelayContinuation({
+        ...issueInput,
+        approvalId: randomUUID(),
+      }),
+    ).toBe(false);
+    expect(
+      h.sessions().verifyPendingRelayContinuation({
+        ...issueInput,
+        approvedBy: `${issueInput.approvedBy}-changed`,
+      }),
+    ).toBe(false);
     await expect(
       h.sessions().issuePendingRelayContinuation({
         ...issueInput,
@@ -437,6 +497,9 @@ describe('Device-bound continuation persistence and negative admission', () => {
         Authorization: `Bearer ${device.credential}`,
       },
     });
+    expect(await h.sessions().verifyActiveRelayContinuation(issueInput)).toBe(
+      true,
+    );
     expect(admitted.status).toBe(200);
     expect(await admitted.json()).toMatchObject({
       principal: continuation.principal,

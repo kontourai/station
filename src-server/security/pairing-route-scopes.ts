@@ -84,6 +84,12 @@ import {
   PUBLIC_STATION_PROOF_PATH,
 } from '@kontourai/station-contracts/environment-security';
 import { FLEET_INFERENCE_ROUTE_PREFIX } from '@kontourai/station-contracts/fleet-inference';
+import {
+  RELAY_ENROLLMENT_ACTIVATE_PATH,
+  RELAY_ENROLLMENT_BEGIN_PATH,
+  RELAY_ENROLLMENT_FINALIZE_PATH,
+  RELAY_ENROLLMENT_LOGIN_PATH,
+} from '@kontourai/station-contracts/relay-enrollment';
 
 const READ_METHODS = ['GET', 'HEAD'] as const;
 const MUTATING_METHODS = ['POST', 'PUT', 'PATCH', 'DELETE'] as const;
@@ -1371,6 +1377,46 @@ export const EXTERNAL_SURFACE_CAPABILITY_TABLE: readonly ExternalSurfaceCapabili
       match: 'exact',
       capability: 'public',
       reason: 'public challenge proof',
+    },
+    {
+      id: 'public:relay-enrollment-begin',
+      transport: 'http',
+      method: 'POST',
+      prefix: RELAY_ENROLLMENT_BEGIN_PATH,
+      match: 'exact',
+      capability: 'public',
+      reason:
+        'fresh relay challenge; handler requires verified Pion/VAI provenance and a bounded P-256 public key',
+    },
+    {
+      id: 'public:relay-enrollment-login',
+      transport: 'http',
+      method: 'POST',
+      prefix: RELAY_ENROLLMENT_LOGIN_PATH,
+      match: 'exact',
+      capability: 'public',
+      reason:
+        'fresh relay provider login; handler verifies a one-time key proof before pending provider creation',
+    },
+    {
+      id: 'public:relay-enrollment-finalize',
+      transport: 'http',
+      method: 'POST',
+      prefix: RELAY_ENROLLMENT_FINALIZE_PATH,
+      match: 'exact',
+      capability: 'public',
+      reason:
+        'operator-approved relay Device and continuation delivery; handler requires verified Pion/VAI provenance and key proof',
+    },
+    {
+      id: 'public:relay-enrollment-activate',
+      transport: 'http',
+      method: 'POST',
+      prefix: RELAY_ENROLLMENT_ACTIVATE_PATH,
+      match: 'exact',
+      capability: 'public',
+      reason:
+        'key-bound activation acknowledgment; handler rechecks provider, approval, continuation and pending Device state',
     },
     {
       id: 'public:pairing-local-access',

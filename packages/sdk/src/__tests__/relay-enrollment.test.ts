@@ -1,14 +1,23 @@
+import { APPLICATION_SESSION_VERSION } from '@kontourai/station-contracts/application-session';
+import { humanPrincipal } from '@kontourai/station-contracts/principal';
 import {
+  RELAY_ENROLLMENT_ACTIVATE_PATH,
+  RELAY_ENROLLMENT_FINALIZE_PATH,
   RELAY_ENROLLMENT_LOGIN_PATH,
   RELAY_ENROLLMENT_PROOF_AUDIENCE,
   RELAY_ENROLLMENT_PROOF_TYPE,
   RELAY_ENROLLMENT_VERSION,
   type RelayEnrollmentChallenge,
+  type RelayEnrollmentDeliveredResponse,
 } from '@kontourai/station-contracts/relay-enrollment';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
+  createRelayEnrollmentActivationProof,
+  createRelayEnrollmentFinalizeProof,
   createRelayEnrollmentKey,
   createRelayEnrollmentLoginProof,
+  digestRelayEnrollmentBundle,
+  RELAY_ENROLLMENT_CLIENT_PATHS,
   restoreRelayEnrollmentKey,
 } from '../client/relay-enrollment.js';
 
@@ -160,5 +169,90 @@ describe('fresh relay enrollment proof', () => {
     expect(() =>
       restoreRelayEnrollmentKey(extractable.privateKey, key.publicKey),
     ).toThrow('non-extractable');
+  });
+
+  test('finalize and activation proofs use purpose-specific paths and bind the delivered bundle', async () => {
+    const key = await createRelayEnrollmentKey();
+    const binding = { ...challenge(key), keyThumbprint: await thumbprint(key) };
+    expect(RELAY_ENROLLMENT_CLIENT_PATHS.finalize).toBe(
+      RELAY_ENROLLMENT_FINALIZE_PATH,
+    );
+    expect(RELAY_ENROLLMENT_CLIENT_PATHS.activate).toBe(
+      RELAY_ENROLLMENT_ACTIVATE_PATH,
+    );
+    const finalize = await createRelayEnrollmentFinalizeProof(key, binding, {
+      method: 'POST',
+      url: `${requestOrigin}${RELAY_ENROLLMENT_FINALIZE_PATH}`,
+      clientOrigin,
+    });
+    expect(decode(finalize.split('.')[1]!)).toMatchObject({
+      purpose: 'finalize',
+      nonce: binding.nonce,
+      htu: `${requestOrigin}${RELAY_ENROLLMENT_FINALIZE_PATH}`,
+    });
+
+    const deviceId = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
+    const bundle: RelayEnrollmentDeliveredResponse['bundle'] = {
+      stationId: binding.stationId,
+      deviceId,
+      deviceCredential: 'D'.repeat(43),
+      continuation: {
+        version: APPLICATION_SESSION_VERSION,
+        credential: 'C'.repeat(43),
+        authorityKey: 'bbbbbbbb-cccc-4ddd-8eee-ffffffffffff',
+        stationId: binding.stationId,
+        deviceId,
+        principal: humanPrincipal(
+          'deployment',
+          'subject-hash',
+          'Relay account',
+        ),
+        requestOrigin,
+        clientOrigin,
+        keyThumbprint: binding.keyThumbprint,
+        nonce: 'Z'.repeat(43),
+        expiresAt: binding.expiresAt,
+      },
+    };
+    const bundleDigest = await digestRelayEnrollmentBundle(bundle);
+    const delivery: RelayEnrollmentDeliveredResponse = {
+      version: RELAY_ENROLLMENT_VERSION,
+      state: 'delivered',
+      enrollmentId: binding.enrollmentId,
+      activationNonce: 'A'.repeat(43),
+      bundleDigest,
+      bundle,
+      expiresAt: binding.expiresAt,
+    };
+    const activation = await createRelayEnrollmentActivationProof(
+      key,
+      binding,
+      delivery,
+      {
+        method: 'POST',
+        url: `${requestOrigin}${RELAY_ENROLLMENT_ACTIVATE_PATH}`,
+        clientOrigin,
+      },
+    );
+    expect(decode(activation.split('.')[1]!)).toMatchObject({
+      purpose: 'activate',
+      nonce: delivery.activationNonce,
+      deviceId,
+      authorityKey: bundle.continuation.authorityKey,
+      bundleDigest,
+      htu: `${requestOrigin}${RELAY_ENROLLMENT_ACTIVATE_PATH}`,
+    });
+    await expect(
+      createRelayEnrollmentActivationProof(
+        key,
+        binding,
+        { ...delivery, bundleDigest: 'X'.repeat(43) },
+        {
+          method: 'POST',
+          url: `${requestOrigin}${RELAY_ENROLLMENT_ACTIVATE_PATH}`,
+          clientOrigin,
+        },
+      ),
+    ).rejects.toThrow('does not match');
   });
 });

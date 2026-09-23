@@ -1059,8 +1059,10 @@ for expiry, origin, replay and revocation behavior.
 ### Fresh relay enrollment proof helpers
 
 `@kontourai/station-sdk/relay-enrollment` exposes `createRelayEnrollmentKey`,
-`restoreRelayEnrollmentKey`, and `createRelayEnrollmentLoginProof` for the
-versioned fresh relay-account ceremony. The signing key is non-extractable
+`restoreRelayEnrollmentKey`, `createRelayEnrollmentLoginProof`,
+`createRelayEnrollmentFinalizeProof`, `digestRelayEnrollmentBundle`, and
+`createRelayEnrollmentActivationProof` for the versioned fresh relay-account
+ceremony. The signing key is non-extractable
 P-256 custody, and the proof binds the Station, configured client Origin,
 enrollment attempt, key thumbprint, nonce, method, path, purpose, and short
 expiry. Keep the key in platform credential custody. The login proof authorizes
@@ -1086,7 +1088,11 @@ const proof = await createRelayEnrollmentLoginProof(key, challenge, {
 The enrollment wire shapes live in
 `@kontourai/station-contracts/relay-enrollment`. This proof is distinct from
 application-session proof and cannot establish an ordinary authenticated
-account session.
+account session. If finalize delivery is uncertain, do not retry finalize or
+expect the same secret bundle to be returned: Station discards that inert
+attempt and the client starts a fresh enrollment. Activation ACK may be retried
+only with the same signed proof; Station returns the stored receipt only when
+its digest matches the committed ACK.
 
 `listProjectViews(apiBase, options)` and `getProjectView(apiBase, slug, options)`
 from `@kontourai/station-sdk/client` return either the personal/operator Project

@@ -49,6 +49,9 @@ const continuationRecord = challengeRecord
     principalId: z.string(),
     authorityKey: z.string(),
     relayEnrollmentId: z.string().optional(),
+    relayApprovalId: z.string().optional(),
+    relayApprovedBy: z.string().optional(),
+    relaySubject: z.string().optional(),
   })
   .strict();
 type Continuation = z.infer<typeof continuationRecord>;
@@ -64,6 +67,8 @@ interface PendingRelayDeviceAssertion {
   enrollmentId: string;
   issuer: string;
   subject: string;
+  approvalId: string;
+  approvedBy: string;
   scope: readonly string[];
 }
 
@@ -97,6 +102,10 @@ export class ApplicationSessionService {
     private readonly origins: readonly string[] = [requestOrigin],
     private readonly now: () => number = Date.now,
     private readonly resolvePendingRelayDevice?: (
+      deviceId: string,
+      enrollmentId: string,
+    ) => PendingRelayDeviceAssertion | null,
+    private readonly resolveActiveRelayDevice?: (
       deviceId: string,
       enrollmentId: string,
     ) => PendingRelayDeviceAssertion | null,
@@ -278,6 +287,8 @@ export class ApplicationSessionService {
     providerSessionId: string;
     issuer: string;
     subject: string;
+    approvalId: string;
+    approvedBy: string;
     authorityKey: string;
     stationId: string;
     clientOrigin: string;
@@ -294,6 +305,8 @@ export class ApplicationSessionService {
     const authorityKey = z.string().uuid().parse(input.authorityKey);
     const issuerAssertion = z.string().min(1).max(512).parse(input.issuer);
     const subjectAssertion = z.string().min(1).max(2048).parse(input.subject);
+    const approvalId = z.string().uuid().parse(input.approvalId);
+    const approvedBy = z.string().min(1).max(512).parse(input.approvedBy);
     const station = z.string().min(1).parse(input.stationId);
     const origin = z.string().url().parse(input.clientOrigin);
     const key = publicKey.parse(input.key);
@@ -352,6 +365,9 @@ export class ApplicationSessionService {
       ).id,
       authorityKey,
       relayEnrollmentId: enrollmentId,
+      relayApprovalId: approvalId,
+      relayApprovedBy: approvedBy,
+      relaySubject: pending.session.subject,
     };
     const assertion = this.resolvePendingRelayDevice?.(deviceId, enrollmentId);
     this.assertPendingRelayDevice(
@@ -360,6 +376,8 @@ export class ApplicationSessionService {
       enrollmentId,
       providerIssuer,
       pending.session.subject,
+      approvalId,
+      approvedBy,
     );
     const credential = randomBytes(32).toString('base64url');
     this.transaction(() => {
@@ -371,6 +389,8 @@ export class ApplicationSessionService {
         enrollmentId,
         providerIssuer,
         pending.session.subject,
+        approvalId,
+        approvedBy,
       );
       if (
         this.db
@@ -557,6 +577,173 @@ export class ApplicationSessionService {
         .run(authorityKey, relayEnrollmentId.parse(enrollmentId)).changes,
     );
   }
+
+  /** Verify one inert continuation still matches a pending Device and approval. */
+  verifyPendingRelayContinuation(input: {
+    authorityKey: string;
+    enrollmentId: string;
+    deviceId: string;
+    issuer: string;
+    subject: string;
+    approvalId: string;
+    approvedBy: string;
+    clientOrigin: string;
+    keyThumbprint: string;
+  }): boolean {
+    return this.verifyRelayContinuation(input, this.resolvePendingRelayDevice);
+  }
+
+  /** Verify the same continuation and grant after the exact Device activates. */
+  async verifyActiveRelayContinuation(input: {
+    authorityKey: string;
+    enrollmentId: string;
+    deviceId: string;
+    clientOrigin: string;
+    keyThumbprint: string;
+    signal: AbortSignal;
+  }): Promise<boolean> {
+    if (this.closed || input.signal.aborted) return false;
+    const parsed = z
+      .object({
+        authorityKey: z.string().uuid(),
+        enrollmentId: relayEnrollmentId,
+        deviceId: z.string().uuid(),
+        clientOrigin: z.string().url(),
+        keyThumbprint: opaque,
+      })
+      .safeParse(input);
+    if (!parsed.success) return false;
+    const row = this.db
+      .prepare(
+        "SELECT record FROM application_sessions WHERE json_extract(record, '$.authorityKey')=? AND json_extract(record, '$.relayEnrollmentId')=?",
+      )
+      .get(input.authorityKey, input.enrollmentId);
+    if (typeof row?.record !== 'string') return false;
+    let raw: unknown;
+    try {
+      raw = JSON.parse(row.record);
+    } catch {
+      return false;
+    }
+    const continuation = continuationRecord.safeParse(raw);
+    if (
+      !continuation.success ||
+      continuation.data.expiresAt <= this.now() ||
+      continuation.data.authorityKey !== parsed.data.authorityKey ||
+      continuation.data.relayEnrollmentId !== parsed.data.enrollmentId ||
+      continuation.data.deviceId !== parsed.data.deviceId ||
+      continuation.data.origin !== parsed.data.clientOrigin ||
+      continuation.data.keyThumbprint !== parsed.data.keyThumbprint ||
+      !continuation.data.relayApprovalId ||
+      !continuation.data.relayApprovedBy
+    )
+      return false;
+    const assertion = this.resolveActiveRelayDevice?.(
+      parsed.data.deviceId,
+      parsed.data.enrollmentId,
+    );
+    try {
+      this.assertPendingRelayDevice(
+        assertion,
+        parsed.data.deviceId,
+        parsed.data.enrollmentId,
+        continuation.data.issuer,
+        continuation.data.relaySubject!,
+        continuation.data.relayApprovalId,
+        continuation.data.relayApprovedBy,
+      );
+    } catch {
+      return false;
+    }
+    const active = await this.authentication.verifySessionReference(
+      continuation.data.sessionId,
+      input.signal,
+    );
+    return (
+      active.kind === 'authenticated' &&
+      active.issuer === continuation.data.issuer &&
+      active.session.subject === continuation.data.relaySubject &&
+      !input.signal.aborted
+    );
+  }
+
+  private verifyRelayContinuation(
+    input: {
+      authorityKey: string;
+      enrollmentId: string;
+      deviceId: string;
+      issuer: string;
+      subject: string;
+      approvalId: string;
+      approvedBy: string;
+      clientOrigin: string;
+      keyThumbprint: string;
+    },
+    resolveDevice:
+      | ApplicationSessionService['resolvePendingRelayDevice']
+      | ApplicationSessionService['resolveActiveRelayDevice'],
+  ): boolean {
+    if (this.closed) return false;
+    const parsed = z
+      .object({
+        authorityKey: z.string().uuid(),
+        enrollmentId: relayEnrollmentId,
+        deviceId: z.string().uuid(),
+        issuer: z.string().min(1).max(512),
+        subject: z.string().min(1).max(2048),
+        approvalId: z.string().uuid(),
+        approvedBy: z.string().min(1).max(512),
+        clientOrigin: z.string().url(),
+        keyThumbprint: opaque,
+      })
+      .safeParse(input);
+    if (!parsed.success) return false;
+    const row = this.db
+      .prepare(
+        "SELECT record FROM application_sessions WHERE json_extract(record, '$.authorityKey')=? AND json_extract(record, '$.relayEnrollmentId')=?",
+      )
+      .get(parsed.data.authorityKey, parsed.data.enrollmentId);
+    if (typeof row?.record !== 'string') return false;
+    let raw: unknown;
+    try {
+      raw = JSON.parse(row.record);
+    } catch {
+      return false;
+    }
+    const continuation = continuationRecord.safeParse(raw);
+    if (
+      !continuation.success ||
+      continuation.data.expiresAt <= this.now() ||
+      continuation.data.authorityKey !== parsed.data.authorityKey ||
+      continuation.data.relayEnrollmentId !== parsed.data.enrollmentId ||
+      continuation.data.deviceId !== parsed.data.deviceId ||
+      continuation.data.issuer !== parsed.data.issuer ||
+      continuation.data.relaySubject !== parsed.data.subject ||
+      continuation.data.relayApprovalId !== parsed.data.approvalId ||
+      continuation.data.relayApprovedBy !== parsed.data.approvedBy ||
+      continuation.data.origin !== parsed.data.clientOrigin ||
+      continuation.data.keyThumbprint !== parsed.data.keyThumbprint
+    )
+      return false;
+    const assertion = resolveDevice?.(
+      parsed.data.deviceId,
+      parsed.data.enrollmentId,
+    );
+    try {
+      this.assertPendingRelayDevice(
+        assertion,
+        parsed.data.deviceId,
+        parsed.data.enrollmentId,
+        parsed.data.issuer,
+        parsed.data.subject,
+        parsed.data.approvalId,
+        parsed.data.approvedBy,
+      );
+      return true;
+    } catch {
+      return false;
+    }
+  }
   close(): void {
     if (!this.closed) {
       this.closed = true;
@@ -731,6 +918,8 @@ export class ApplicationSessionService {
     enrollmentId: string,
     issuer: string,
     subject: string,
+    approvalId: string,
+    approvedBy: string,
   ): asserts assertion is PendingRelayDeviceAssertion {
     if (
       !assertion ||
@@ -738,6 +927,8 @@ export class ApplicationSessionService {
       assertion.enrollmentId !== enrollmentId ||
       assertion.issuer !== issuer ||
       assertion.subject !== subject ||
+      assertion.approvalId !== approvalId ||
+      assertion.approvedBy !== approvedBy ||
       assertion.scope.length !== 1 ||
       assertion.scope[0] !== PAIRING_SCOPE_ORCHESTRATION_READ
     )

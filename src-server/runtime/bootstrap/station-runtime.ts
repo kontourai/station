@@ -3308,6 +3308,12 @@ export class StationRuntime {
         this.deploymentAuthentication,
         (credential) =>
           this.environmentSecurityService.identifyDevice(credential),
+        this.environmentSecurityService.devicePairing.resolvePendingRelayDevice.bind(
+          this.environmentSecurityService.devicePairing,
+        ),
+        this.environmentSecurityService.devicePairing.resolveActiveRelayEnrollmentDevice.bind(
+          this.environmentSecurityService.devicePairing,
+        ),
       );
     }
     if (!this.relayEnrollment) {

@@ -1,7 +1,9 @@
 import { APPLICATION_SESSION_BASE_PATH } from '@kontourai/station-contracts/application-session';
 import { DEPLOYMENT_AUTHENTICATION_BASE_PATH } from '@kontourai/station-contracts/deployment-authentication';
 import {
+  RELAY_ENROLLMENT_ACTIVATE_PATH,
   RELAY_ENROLLMENT_BEGIN_PATH,
+  RELAY_ENROLLMENT_FINALIZE_PATH,
   RELAY_ENROLLMENT_LOGIN_PATH,
 } from '@kontourai/station-contracts/relay-enrollment';
 
@@ -170,8 +172,17 @@ export class VirtualApplicationIngress {
       ) &&
       !(
         input.method === 'POST' &&
-        [RELAY_ENROLLMENT_BEGIN_PATH, RELAY_ENROLLMENT_LOGIN_PATH].includes(
-          url.pathname as typeof RELAY_ENROLLMENT_BEGIN_PATH,
+        [
+          RELAY_ENROLLMENT_BEGIN_PATH,
+          RELAY_ENROLLMENT_LOGIN_PATH,
+          RELAY_ENROLLMENT_FINALIZE_PATH,
+          RELAY_ENROLLMENT_ACTIVATE_PATH,
+        ].includes(
+          url.pathname as
+            | typeof RELAY_ENROLLMENT_BEGIN_PATH
+            | typeof RELAY_ENROLLMENT_LOGIN_PATH
+            | typeof RELAY_ENROLLMENT_FINALIZE_PATH
+            | typeof RELAY_ENROLLMENT_ACTIVATE_PATH,
         )
       )
     )
