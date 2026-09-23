@@ -51,14 +51,14 @@ export const PTY_HANDSHAKE_TIMEOUT_MS = 8_000;
  * old 2s margin was below one observed cold start. Twelve seconds is three
  * times that observation.
  */
-export const PTY_HANDSHAKE_STARTUP_ALLOWANCE_MS = 12_000;
+const PTY_HANDSHAKE_STARTUP_ALLOWANCE_MS = 12_000;
 /**
  * A timeout is the one environmental outcome: a saturated host can stall any
  * process start. Every other failure (no marker, unnatural exit, unparseable
  * outcome, native crash) is a verdict about the module and is never retried.
  * A deterministic hang still fails every attempt, so this stays fail-closed.
  */
-export const PTY_HANDSHAKE_ATTEMPTS = 3;
+const PTY_HANDSHAKE_ATTEMPTS = 3;
 const PTY_HANDSHAKE_RETRY_PAUSE_MS = 2_000;
 
 /**
