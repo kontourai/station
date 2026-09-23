@@ -65,10 +65,11 @@ export function Notes() {
   const hasVault = useHasVault(projectSlug ?? undefined);
   const vaultSave = useVaultSave(projectSlug ?? '', 'enterprise-notes');
 
-  // Sync loaded note into editor. The content route returns the body only;
-  // frontmatter comes from the selected document's metadata.
-  const loadedContent = noteContent.data ?? '';
-  const loadedFm = selected?.frontmatter ?? EMPTY_FM;
+  // The document whose body the editor currently holds. The editor loads a
+  // body once per selection and then owns the text: re-syncing whenever the
+  // fetched body differed from the editor would overwrite a just-saved edit
+  // with a stale cached body, and the next save would write from that base.
+  const [loadedDocId, setLoadedDocId] = useState<string | null>(null);
 
   function handleSelectNote(note: NoteSummary) {
     if (dirty) {
@@ -76,6 +77,7 @@ export function Notes() {
       if (!window.confirm('You have unsaved changes. Discard?')) return;
     }
     setSelected(note);
+    setLoadedDocId(null);
     setIsNew(false);
     setDirty(false);
     // Content will be loaded by useNoteContent
@@ -83,15 +85,17 @@ export function Notes() {
     setFrontmatter(EMPTY_FM);
   }
 
-  // Once note content loads, populate editor
+  // Once the selected note's body arrives, load it into the editor. The
+  // content route returns the body only; frontmatter is the metadata.
   if (
-    !dirty &&
+    selected &&
     !isNew &&
-    noteContent.data !== undefined &&
-    content !== loadedContent
+    loadedDocId !== selected.docId &&
+    noteContent.data !== undefined
   ) {
-    setContent(loadedContent);
-    setFrontmatter(loadedFm);
+    setLoadedDocId(selected.docId);
+    setContent(noteContent.data);
+    setFrontmatter(selected.frontmatter);
   }
 
   function handleNew() {
@@ -123,7 +127,9 @@ export function Notes() {
           content,
           metadata: frontmatter,
         });
+        // The editor already holds what was just written.
         setSelected(toNoteSummary(created));
+        setLoadedDocId(created.id);
         setIsNew(false);
       } else {
         await updateNote.mutateAsync({

@@ -9,7 +9,7 @@
  * SDK knowledge hooks are stubbed with the shapes their fetchers return; the
  * Notes pane, its notes-hooks adapter and its child components are real.
  */
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 
 const alpha = {
@@ -120,7 +120,10 @@ describe('Notes over the knowledge API', () => {
     fireEvent.click(screen.getByText('Alpha review'));
 
     fireEvent.change(editor(), { target: { value: '# Alpha, revised' } });
-    fireEvent.click(screen.getByTitle('Save note'));
+    // Resolve the save and flush the state updates that follow it.
+    await act(async () => {
+      fireEvent.click(screen.getByTitle('Save note'));
+    });
 
     expect(sdk.update.mutateAsync).toHaveBeenCalledWith({
       docId: 'doc-alpha',
@@ -128,6 +131,10 @@ describe('Notes over the knowledge API', () => {
       metadata: { title: 'Alpha review', territory: 'West' },
     });
     expect(sdk.save.mutateAsync).not.toHaveBeenCalled();
+    // The stubbed body is still the pre-edit text, as a cached query would
+    // be. The saved edit must stay in the editor, or the next save writes
+    // from the stale base.
+    expect(editor().value).toBe('# Alpha, revised');
   });
 
   test('filters frontmatter fields server-side and free text locally', () => {
