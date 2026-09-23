@@ -61,6 +61,25 @@ describe('Android native credential bootstrap', () => {
       expect(manifest).toContain(
         'android:name="android.hardware.camera.any" android:required="false"',
       );
+      expect(manifest).toContain('android:allowBackup="false"');
+      expect(manifest).toContain('android:fullBackupContent="false"');
+      expect(manifest).toContain(
+        'android:dataExtractionRules="@xml/data_extraction_rules"',
+      );
+      expect(
+        readFileSync(
+          join(
+            root,
+            'src-desktop/gen/android/app/src/main/res/xml/data_extraction_rules.xml',
+          ),
+          'utf8',
+        ),
+      ).toBe(
+        readFileSync(
+          'scripts/templates/android/data_extraction_rules.xml',
+          'utf8',
+        ),
+      );
       expect(manifest).toContain('android.permission.RECORD_AUDIO');
       expect(manifest).toContain('android.permission.MODIFY_AUDIO_SETTINGS');
       expect(manifest).toContain(
@@ -163,4 +182,15 @@ describe('camera manifest restoration', () => {
       ),
     ).toThrow(/restricted/);
   });
+});
+
+it('keeps generated Android extraction rules aligned with the reviewed seed', () => {
+  expect(
+    readFileSync('scripts/templates/android/data_extraction_rules.xml', 'utf8'),
+  ).toBe(
+    readFileSync(
+      'src-desktop/gen/android/app/src/main/res/xml/data_extraction_rules.xml',
+      'utf8',
+    ),
+  );
 });

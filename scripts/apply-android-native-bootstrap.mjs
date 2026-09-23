@@ -121,6 +121,18 @@ export function manifestWithMediaPermissions(source) {
       '<uses-feature android:name="android.hardware.camera.any" android:required="false" />',
     ],
   ];
+  // CAMERA implies rear-camera and autofocus requirements in Play unless
+  // each is explicitly optional; camera.any alone does not override them.
+  for (const feature of [
+    'android.hardware.camera',
+    'android.hardware.camera.autofocus',
+  ]) {
+    declarations.push([
+      'uses-feature',
+      feature,
+      `<uses-feature android:name="${feature}" android:required="false" />`,
+    ]);
+  }
   for (const [tag, name, declaration] of declarations) {
     const tags = next.match(new RegExp(`<${tag}\\b[^>]*>`, 'g')) ?? [];
     const matches = tags.filter((entry) =>
@@ -147,13 +159,57 @@ export function manifestWithMediaPermissions(source) {
   return next;
 }
 
+function manifestWithBackupExclusions(source) {
+  return source.replace(/<application\b[^>]*>/, (application) => {
+    for (const [attribute, value] of [
+      ['allowBackup', 'false'],
+      ['fullBackupContent', 'false'],
+      ['dataExtractionRules', '@xml/data_extraction_rules'],
+    ]) {
+      const pattern = new RegExp(
+        `android:${attribute}\\s*=\\s*["'][^"']*["']`,
+        'g',
+      );
+      const matches = application.match(pattern) ?? [];
+      if (matches.length > 1)
+        throw new Error(`Duplicate Android attribute: ${attribute}`);
+      const declaration = `android:${attribute}="${value}"`;
+      application = matches.length
+        ? application.replace(pattern, declaration)
+        : application.replace('<application', `<application ${declaration}`);
+    }
+    return application;
+  });
+}
+
 export function applyAndroidNativeBootstrap({ root = ROOT } = {}) {
   const appRoot = join(root, GENERATED_ANDROID);
   const manifestPath = join(appRoot, 'src', 'main', 'AndroidManifest.xml');
   const manifest = readFileSync(manifestPath, 'utf8');
-  const patchedManifest = manifestWithMediaPermissions(manifest);
+  const patchedManifest = manifestWithBackupExclusions(
+    manifestWithMediaPermissions(manifest),
+  );
   if (patchedManifest !== manifest)
     writeFileSync(manifestPath, patchedManifest);
+  const extractionPath = join(
+    appRoot,
+    'src',
+    'main',
+    'res',
+    'xml',
+    'data_extraction_rules.xml',
+  );
+  const extractionRules = readFileSync(
+    join(ROOT, 'scripts', 'templates', 'android', 'data_extraction_rules.xml'),
+    'utf8',
+  );
+  mkdirSync(dirname(extractionPath), { recursive: true });
+  if (
+    !existsSync(extractionPath) ||
+    readFileSync(extractionPath, 'utf8') !== extractionRules
+  ) {
+    writeFileSync(extractionPath, extractionRules);
+  }
   const buildGradle = readFileSync(join(appRoot, 'build.gradle.kts'), 'utf8');
   const namespace = androidNamespace(buildGradle);
   const javaRoot = join(appRoot, 'src', 'main', 'java');
