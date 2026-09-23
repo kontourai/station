@@ -25,6 +25,8 @@ export type {
 export type {
   KnowledgeDocumentMeta,
   KnowledgeNamespaceConfig,
+  KnowledgeSearchFilter,
+  KnowledgeTreeNode,
 } from '@kontourai/station-contracts/knowledge';
 export type {
   LayoutDefinition,
@@ -81,6 +83,8 @@ export interface AgentSummary {
   tools?: import('@kontourai/station-contracts/agent').AgentTools;
   ui?: import('@kontourai/station-contracts/agent').AgentUIConfig;
   unavailableFix?: import('@kontourai/station-contracts/enriched-agent').EnrichedAgentProjection['unavailableFix'];
+  /** The installed plugin that contributed this Agent; absent for any other. */
+  plugin?: string;
 }
 
 export interface Agent extends AgentSummary {}

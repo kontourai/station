@@ -200,9 +200,13 @@ sendToChat('Summarize this account');
 
 ### Navigation Hooks
 
-#### `useNavigation(): NavigationState & { setDockState, setActiveChat, selectedWorkspace, ... }`
+#### `useNavigation(): SDKNavigation`
 
-Returns the full navigation state and setters.
+Returns the navigation a plugin may read and drive: `pathname`,
+`selectedProject`, `selectedProjectLayout`, `selectedAgent`,
+`activeConversation`, `activeChat`, `activeTab`, `isDockOpen` and
+`isDockMaximized`, plus `navigate`, `setProject`, `setLayout`, `setLayoutTab`,
+`setConversation`, `setActiveChat` and `setDockState`.
 
 #### `useDockState(): { isOpen: boolean; setOpen: (v: boolean) => void; toggle: () => void }`
 
@@ -216,15 +220,15 @@ const { isOpen, toggle } = useDockState();
 
 ### Auth & Config Hooks
 
-#### `useAuth()`
+#### `useAuth(): SDKAuthState`
 
 Returns the current auth state.
 
 ```ts
 {
-  status: 'authenticated' | 'unauthenticated' | 'missing';
-  user: { id: string; name: string; email: string } | null;
-  expiresAt: number | null;
+  status: 'valid' | 'expiring' | 'expired' | 'missing' | 'not-configured' | 'loading';
+  user: { alias: string; name?: string; title?: string; email?: string; profileUrl?: string } | null;
+  expiresAt: Date | null;
   provider: string;
   renew: () => Promise<void>;
   isRenewing: boolean;
@@ -319,15 +323,16 @@ Returns models available for the current user/layout.
 
 ### Knowledge Hooks
 
-#### `useKnowledgeDocs(projectSlug: string, namespace?: string): KnowledgeDoc[]`
+#### `useKnowledgeDocs(projectSlug: string, namespace?: string)`
 
-Returns knowledge documents for a project, optionally filtered by namespace.
+Returns a query whose `data` is the project's `KnowledgeDocumentMeta[]`,
+optionally filtered by namespace.
 
-#### `useKnowledgeNamespaces(projectSlug: string): KnowledgeNamespace[]`
+#### `useKnowledgeNamespaces(projectSlug: string)`
 
-Returns knowledge namespaces for a project.
+Returns a query whose `data` is the project's `KnowledgeNamespaceConfig[]`.
 
-#### `useKnowledgeSearch(projectSlug: string, query: string, namespace?: string): SearchResult[]`
+#### `useKnowledgeSearch(projectSlug: string, query: string, namespace?: string)`
 
 Returns semantic search results from a project's knowledge base.
 
@@ -335,9 +340,24 @@ Returns semantic search results from a project's knowledge base.
 
 ### Notification Hooks
 
-#### `useToast()`
+#### `useToast(): SDKToast`
 
-Returns `{ showToast(message, type, duration?) }`. Types: `'info' | 'success' | 'warning' | 'error'`.
+Returns `{ showToast, dismissToast }`. `showToast` takes either spelling and
+returns the toast id:
+
+```tsx
+const { showToast } = useToast();
+showToast('Saved', 'success');
+showToast({
+  message: 'Saved',
+  type: 'success',
+  duration: 8000,
+  actions: [{ label: 'View', onClick: openNotes }],
+});
+```
+
+Types: `'info' | 'success' | 'warning' | 'error'`. The object form takes one
+`action`, several `actions`, or both.
 
 #### `useNotifications()`
 
@@ -692,7 +712,17 @@ Fetches knowledge namespaces for a project.
 
 ### `useKnowledgeDocContentQuery(projectSlug, docId, namespace?, config?)`
 
-Fetches the content of a specific knowledge document. Disabled when `docId` is null.
+Fetches the content of a specific knowledge document as a `string`. Disabled when `docId` is null.
+
+### `useKnowledgeTreeQuery(projectSlug, namespace, config?)`
+
+Fetches a namespace's directory tree as one root `KnowledgeTreeNode`; its
+`children` are the top-level entries.
+
+### `useKnowledgeFilteredQuery(projectSlug, namespace, filters, config?)`
+
+Fetches the namespace's `KnowledgeDocumentMeta[]` matching `filters`, such as
+`{ metadata: { status: 'draft' } }`.
 
 ### `useKnowledgeScanMutation(projectSlug)`
 
@@ -2328,6 +2358,8 @@ interface AgentSummary {
   guardrails?: AgentGuardrails;
   tools?: AgentTools;
   ui?: AgentUIConfig;
+  /** The installed plugin that contributed this Agent; absent for any other. */
+  plugin?: string;
 }
 
 interface Agent extends AgentSummary {}

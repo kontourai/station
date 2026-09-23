@@ -319,6 +319,20 @@ export {
   // Workflows
   useWorkflows,
 } from './hooks';
+// Contracts for the host context slots the hooks below read (#2399)
+export type {
+  SDKAgentsContext,
+  SDKAuthContext,
+  SDKAuthState,
+  SDKAuthUser,
+  SDKNavigation,
+  SDKNavigationContext,
+  SDKToast,
+  SDKToastContext,
+  ToastAction,
+  ToastRequest,
+  ToastType,
+} from './host-contexts';
 // Re-export layout utilities
 export { createLayoutContext } from './layout/context';
 export type { ProviderMetadata } from './layoutProviders';
@@ -337,6 +351,7 @@ export {
   LayoutNavigationProvider,
   LayoutProvider,
   SDKContext,
+  type SDKContextValue,
   SDKProvider,
   useLayoutNavigation,
 } from './providers';

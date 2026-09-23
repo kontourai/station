@@ -1,3 +1,8 @@
+import type {
+  KnowledgeDocumentMeta,
+  KnowledgeNamespaceConfig,
+  KnowledgeTreeNode,
+} from '@kontourai/station-contracts/knowledge';
 import {
   type QueryClient,
   useMutation,
@@ -117,7 +122,7 @@ export function useGitLogQuery(
 
 export function useKnowledgeNamespacesQuery(
   projectSlug: string,
-  config?: QueryConfig<any>,
+  config?: QueryConfig<KnowledgeNamespaceConfig[]>,
 ) {
   return useQuery({
     ...knowledgeQueries.namespaces(projectSlug),
@@ -129,7 +134,7 @@ export function useKnowledgeNamespacesQuery(
 export function useKnowledgeDocsQuery(
   projectSlug: string,
   namespace?: string,
-  config?: QueryConfig<any>,
+  config?: QueryConfig<KnowledgeDocumentMeta[]>,
 ) {
   return useQuery({
     ...knowledgeQueries.list(projectSlug, namespace),
@@ -289,7 +294,7 @@ export function useKnowledgeScanMutation(projectSlug: string) {
 export function useKnowledgeTreeQuery(
   projectSlug: string,
   namespace: string,
-  config?: QueryConfig<any>,
+  config?: QueryConfig<KnowledgeTreeNode>,
 ) {
   return useQuery({
     ...knowledgeQueries.tree(projectSlug, namespace),
@@ -302,7 +307,7 @@ export function useKnowledgeFilteredQuery(
   projectSlug: string,
   namespace: string,
   filters: Record<string, any>,
-  config?: QueryConfig<any>,
+  config?: QueryConfig<KnowledgeDocumentMeta[]>,
 ) {
   return useQuery({
     ...knowledgeQueries.filtered(projectSlug, namespace, filters),

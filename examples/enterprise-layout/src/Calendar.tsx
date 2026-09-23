@@ -1,6 +1,7 @@
 import {
   callTool,
   invoke,
+  type ToastAction,
   useKnowledgeSaveMutation,
   useNotifications,
   useSendToChat,
@@ -2024,7 +2025,7 @@ export function Calendar(_props: CalendarProps) {
                                     },
                                   });
                                   const diskPath = (result as any)?.storagePath;
-                                  const actions: any[] = [
+                                  const actions: ToastAction[] = [
                                     {
                                       label: 'View',
                                       variant: 'primary',
@@ -2052,14 +2053,13 @@ export function Calendar(_props: CalendarProps) {
                                         );
                                       },
                                     });
-                                  showToast(
-                                    diskPath
+                                  showToast({
+                                    message: diskPath
                                       ? `Saved → ${diskPath}`
                                       : 'Notes saved to knowledge base',
-                                    undefined,
-                                    8000,
+                                    duration: 8000,
                                     actions,
-                                  );
+                                  });
                                   setSavedEventIds((prev) =>
                                     new Set(prev).add(selectedEventId!),
                                   );

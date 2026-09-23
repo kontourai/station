@@ -2,7 +2,12 @@ import type { LayoutDefinition } from '@kontourai/station-contracts/layout';
 import {
   _setApiBase,
   _setProviderFunctions,
+  type SDKContextValue,
   SDKProvider,
+  type SDKToast,
+  type ToastAction,
+  type ToastRequest,
+  type ToastType,
   useProjectLayoutQuery,
   useProjectLayoutsQuery,
 } from '@kontourai/station-sdk';
@@ -28,6 +33,15 @@ import {
   hasProvider,
   registerProvider,
 } from './layoutProviders';
+
+/** Every button a toast request names, `action` first; none is `undefined`. */
+function toastActions(request: ToastRequest): ToastAction[] | undefined {
+  const actions = [
+    ...(request.action ? [request.action] : []),
+    ...(request.actions ?? []),
+  ];
+  return actions.length > 0 ? actions : undefined;
+}
 
 interface SDKAdapterProps {
   children: ReactNode;
@@ -116,18 +130,11 @@ export function SDKAdapter({
   // silently turns a public toast type into attribution and renders an object
   // as `[object Object]`. Normalize both public spellings at the ONE adapter
   // seam instead of teaching plugin panes about shell storage.
-  const sdkToast = {
+  const sdkToast: SDKToast = {
     ...toast,
     showToast: (
-      request:
-        | string
-        | {
-            message: string;
-            type?: 'info' | 'success' | 'warning' | 'error';
-            duration?: number;
-            action?: { label: string; onClick: () => void };
-          },
-      type: 'info' | 'success' | 'warning' | 'error' = 'info',
+      request: string | ToastRequest,
+      type: ToastType = 'info',
       duration?: number,
     ) =>
       typeof request === 'string'
@@ -136,7 +143,7 @@ export function SDKAdapter({
             request.message,
             undefined,
             request.duration,
-            request.action ? [request.action] : undefined,
+            toastActions(request),
             request.type ?? 'info',
           ),
   };
@@ -147,7 +154,9 @@ export function SDKAdapter({
   const launchChat = useLaunchChat(apiBase);
   const auth = useAuth();
 
-  // Create SDK context value with injected contexts
+  // Create SDK context value with injected contexts. The agents, navigation,
+  // toast and auth slots are the SDK's published contracts (#2399), so this
+  // object is where the host is checked against them.
   const sdkValue = {
     apiBase,
     ...(pluginApiIdentity ? { pluginApiIdentity } : {}),
@@ -179,5 +188,9 @@ export function SDKAdapter({
     data: activeLayout?.config ?? layout,
   });
 
-  return <SDKProvider value={sdkValue as any}>{children as any}</SDKProvider>;
+  return (
+    <SDKProvider value={sdkValue satisfies SDKContextValue}>
+      {children}
+    </SDKProvider>
+  );
 }

@@ -8,6 +8,12 @@ import {
   useState,
 } from 'react';
 import type { PluginApiIdentity } from './api-core';
+import type {
+  SDKAgentsContext,
+  SDKAuthContext,
+  SDKNavigationContext,
+  SDKToastContext,
+} from './host-contexts';
 
 /**
  * SDK Context - Provides access to all core app contexts and hooks
@@ -23,16 +29,16 @@ export interface SDKContextValue {
 
   // Core contexts (injected by core app)
   contexts: {
-    agents?: any;
+    agents?: SDKAgentsContext;
     layouts?: any;
     conversations?: any;
     activeChats?: any;
     models?: any;
     config?: any;
-    navigation?: any;
-    toast?: any;
+    navigation?: SDKNavigationContext;
+    toast?: SDKToastContext;
     stats?: any;
-    auth?: any;
+    auth?: SDKAuthContext;
     keyboardShortcuts?: any;
     workflows?: any;
   };
