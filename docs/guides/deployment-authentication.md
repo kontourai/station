@@ -315,7 +315,15 @@ app is installed or that a device has been approved.
 `@kontourai/station-contracts/application-session` defines
 `station.application-session/v1`. The SDK implementation is
 `@kontourai/station-sdk/application-session`. Ordinary HTTPS keeps native
-HttpOnly cookies. A virtual transport uses a separate Station-issued continuation
+HttpOnly cookies. A same-origin HTTPS browser can explicitly adopt its current
+`__Host-station-device` cookie and provider account cookie into a read-only alias
+for that same approved Device plus an exact alias-bound continuation. The SDK's
+`ApplicationSessionClient.adoptCookies()` sends them only through the browser's
+same-origin cookie handling; cookie values are never read by JavaScript or
+returned in JSON. The provider must verify the current exact session reference
+before and after issuance. No new Device grant is created.
+
+A virtual transport uses a separate Station-issued continuation
 and a non-extractable P-256 signing key; it does not process `Set-Cookie` or extract
 provider cookies into JavaScript. The existing approved Device credential remains
 independently required. Transport/Station connection proof grants neither one.
@@ -347,23 +355,30 @@ request profile, not a claim that a DataChannel is HTTPS or implements OAuth DPo
 The encrypted transport still owns message/body integrity. Do not prebuffer a
 response outside its authorized delivery boundary or rewrite its target/query.
 
-`GET /api/account-auth/continuations` advertises cookie exchange and virtual login
-separately. The remaining operations are POST:
+`GET /api/account-auth/continuations` advertises cookie exchange, cookie adoption
+and virtual login separately. The operations are POST:
 
 | Path suffix | Input and effect |
 | --- | --- |
 | `/challenge` | Public P-256 JWK; checks the Device and origin, returns a nonce/challenge valid for two minutes |
 | `/exchange` | Challenge id and proof; requires the current HTTPS account cookie |
 | `/login` | Challenge id, proof and provider credentials; uses a provider-native server login without exporting cookies |
+| `/adopt-cookie/challenge` | Same-origin HTTPS only; reads the existing secure Device cookie and current provider account cookie, then binds the challenge to both identities and the key |
+| `/adopt-cookie/complete` | Challenge id and proof; rechecks the same Device and exact provider session, then atomically records the continuation with its bounded Device alias |
 | `/renew` | Current continuation/proof headers; rechecks the source session and Device, retains the authority key |
 | `/revoke` | Current continuation/proof headers; revokes the provider session and its continuation renewal family |
+| `/adopt-cookie/revoke-alias` | Current alias and exact continuation/proof; revokes only that alias, not the provider account session or parent Device |
 
 Controls have a 16 KiB body limit. Login attempts are bounded per Device credential.
 Continuations last at most 15 minutes and never outlive their provider session.
 Renew before expiry; an expired continuation requires fresh login or cookie
 exchange. Older renewed credentials remain bounded by their original expiry,
 and source-session logout invalidates all of them. Challenges, continuations and
-consumed proof ids are bounded and stored privately in SQLite. Repeated verification
+consumed proof ids are bounded and stored privately in SQLite. Alias issuance
+uses a durable private journal: startup revokes an alias if issuance was
+interrupted before the continuation's first successful request; a continuation
+already used remains valid across restart. The alias is limited by the pairing
+store to eight active aliases per Device and thirty days. Repeated verification
 of the same admitted server Request rechecks live authority without consuming the
 proof twice; a new request replay is refused, including after process restart.
 

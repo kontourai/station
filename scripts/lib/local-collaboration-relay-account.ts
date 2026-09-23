@@ -440,6 +440,56 @@ export async function provisionRelayAccountStation<
         wrongPassword,
         invitation: invitation.token,
         privateName,
+        signInPath: descriptor.login.signInPath,
+        sessionCookies: descriptor.sessionCookies,
+      },
+      async createBrowserCookieOffer() {
+        const result = await http<DevicePairingOffer>(
+          '/api/pairing/offers',
+          {
+            endpoint: current.base,
+            scope: pairingScopePresetString('read-only'),
+          },
+          true,
+        );
+        assert.equal(result.status, 201);
+        return {
+          offerId: result.body.offerId,
+          proof: result.body.challenge,
+        };
+      },
+      async confirmBrowserCookieRequest(requestId: string) {
+        const result = await http(
+          `/api/pairing/requests/${requestId}/confirm`,
+          {},
+          true,
+        );
+        assert.equal(result.status, 200);
+      },
+      async deviceCount() {
+        const result = await http<{ devices: Array<{ id: string }> }>(
+          '/api/pairing/devices',
+          undefined,
+          true,
+        );
+        assert.equal(result.status, 200);
+        return result.body.devices.length;
+      },
+      async revokeDeviceId(deviceId: string) {
+        const response = await fetch(
+          `${current.base}/api/pairing/devices/${encodeURIComponent(deviceId)}`,
+          {
+            method: 'DELETE',
+            headers: {
+              Origin: current.base,
+              Authorization: `Bearer ${current.operator.credential}`,
+            },
+            signal: AbortSignal.any([signal, AbortSignal.timeout(15000)]),
+            redirect: 'error',
+          },
+        );
+        assert.equal(response.status, 200);
+        await response.arrayBuffer();
       },
       async createBoundDeviceOffer() {
         const result = await http<DevicePairingOffer>(
@@ -611,6 +661,10 @@ export async function startRelayAccountStation(
     port?: number;
     prepareSelfHostedBrokerConfig?: (stationOrigin: string) => string;
     ownedBrokerTcpPort?: number;
+    publicOrigin?: string;
+    onStationReady?: (
+      station: Awaited<ReturnType<typeof startAccountLabStation>>,
+    ) => void;
   } = {},
 ) {
   const release = await acquireAccountLabPorts();
@@ -627,6 +681,7 @@ export async function startRelayAccountStation(
   });
   let station: Awaited<ReturnType<typeof startAccountLabStation>> | undefined;
   let stopped: Promise<void> | undefined;
+  let restoreFetch: (() => void) | undefined;
   const stop = () =>
     (stopped ??= (async () => {
       const results = await Promise.allSettled([
@@ -634,6 +689,7 @@ export async function startRelayAccountStation(
         close(allowed),
         close(blocked),
       ]);
+      restoreFetch?.();
       await release();
       for (const result of results)
         if (result.status === 'rejected') throw result.reason;
@@ -649,11 +705,51 @@ export async function startRelayAccountStation(
         probeNonce: nonce,
         virtualApplicationOrigin: browserOrigin,
         port: options.port,
+        ...(options.publicOrigin ? { publicOrigin: options.publicOrigin } : {}),
         prepareSelfHostedBrokerConfig: options.prepareSelfHostedBrokerConfig,
         ownedBrokerTcpPort: options.ownedBrokerTcpPort,
       },
       signal,
     );
+    options.onStationReady?.(station);
+    if (station.listenerBase && station.base !== station.listenerBase) {
+      const originalFetch = globalThis.fetch;
+      const proxyFetch: typeof fetch = (input, init) => {
+        const rawUrl = input instanceof Request ? input.url : String(input);
+        const target = new URL(rawUrl);
+        if (target.origin !== station!.base) return originalFetch(input, init);
+        const headers = new Headers(
+          init?.headers ??
+            (input instanceof Request ? input.headers : undefined),
+        );
+        if (!headers.has('Origin')) headers.set('Origin', station!.base);
+        const rewritten = new URL(
+          `${target.pathname}${target.search}${target.hash}`,
+          station!.listenerBase,
+        );
+        return originalFetch(rewritten, {
+          ...(input instanceof Request
+            ? {
+                method: init?.method ?? input.method,
+                ...(init?.body !== undefined
+                  ? { body: init.body }
+                  : input.body
+                    ? { body: input.body, duplex: 'half' as const }
+                    : {}),
+                ...((init?.signal ?? input.signal)
+                  ? { signal: init?.signal ?? input.signal }
+                  : {}),
+              }
+            : {}),
+          ...init,
+          headers,
+        });
+      };
+      globalThis.fetch = proxyFetch;
+      restoreFetch = () => {
+        if (globalThis.fetch === proxyFetch) globalThis.fetch = originalFetch;
+      };
+    }
     assert.equal(allowedHits, 1);
     assert.equal(blockedHits, 0);
     const current = station;

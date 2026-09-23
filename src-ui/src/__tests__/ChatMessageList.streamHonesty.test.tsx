@@ -51,10 +51,14 @@ vi.mock('../hooks/useActiveChatSessions', () => ({
 }));
 
 vi.mock('../components/chat/StreamingMessage', () => ({
-  StreamingMessage: (props: { statusLabel?: string }) => (
+  StreamingMessage: (props: {
+    statusLabel?: string;
+    turnStartedAt?: number;
+  }) => (
     <div
       data-testid="streaming-message"
       data-status-label={props.statusLabel ?? ''}
+      data-turn-started-at={props.turnStartedAt ?? ''}
     >
       Streaming
     </div>
@@ -164,6 +168,25 @@ describe('station#3300 — settled turn stays settled on resume', () => {
     );
 
     expect(screen.getByTestId('streaming-message')).toBeTruthy();
+  });
+
+  test("#2304: the streaming row counts from the open turn's server start", () => {
+    const serverStart = Date.parse('2026-09-22T12:00:00.000Z');
+    renderList(
+      managedSession({
+        orchestrationStatus: 'running',
+        orchestrationTurnOpen: true,
+        openTurnId: 'turn-2',
+        openTurnStartedAt: serverStart,
+        status: 'sending',
+      }),
+    );
+
+    expect(
+      screen
+        .getByTestId('streaming-message')
+        .getAttribute('data-turn-started-at'),
+    ).toBe(String(serverStart));
   });
 
   test('the optimistic local-send window (submit before turn.started) still renders the streaming row', () => {

@@ -31,6 +31,7 @@ import {
 import { createProjectMembershipRuntime } from '../../services/projects/project-membership-runtime.js';
 import { awaitSettlementWithin } from '../../utils/bounded-async.js';
 import { errorMessage } from '../../utils/error-message.js';
+import { parseSecureDeviceSessionCookie } from './runtime-http.js';
 /**
  * VoltAgent runtime integration for Station
  * Handles dynamic agent loading, switching, and MCP tool management
@@ -3354,6 +3355,29 @@ export class StationRuntime {
         this.environmentSecurityService.devicePairing.resolveActiveRelayEnrollmentDevice.bind(
           this.environmentSecurityService.devicePairing,
         ),
+        Date.now,
+        (credential) =>
+          this.environmentSecurityService.devicePairing.credentialAliasId(
+            credential,
+          ),
+        {
+          readSecureDeviceCookie: (request) =>
+            parseSecureDeviceSessionCookie(
+              request.headers.get('cookie') ?? undefined,
+            ),
+          issueAlias: (parentCredential, deviceId, aliasId) =>
+            this.environmentSecurityService.devicePairing.issueRelayCredentialAlias(
+              parentCredential,
+              deviceId,
+              undefined,
+              aliasId,
+            ),
+          revokeAlias: (deviceId, aliasId) =>
+            this.environmentSecurityService.devicePairing.revokeRelayCredentialAlias(
+              deviceId,
+              aliasId,
+            ),
+        },
       );
     }
     if (!this.relayEnrollment) {

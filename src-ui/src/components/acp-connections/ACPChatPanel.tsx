@@ -85,7 +85,8 @@ const EMPTY_STRING_LIST: string[] = [];
  * namespaced under the literal "undefined". Only the fields the transcript
  * actually reads (id, agentSlug, agentName, conversationId, messages,
  * status/orchestrationStatus, isProcessingStep, pendingApprovals, and the
- * #2309 activity record with its send/stop window) come from
+ * #2309 activity record with its send/stop window, and the older-server
+ * open-turn start for the working clock) come from
  * live state; everything else the type requires but the transcript ignores
  * is a stable constant so an unrelated composer update (e.g. `input`) can't
  * change this object's shallow-equality outcome.
@@ -122,6 +123,10 @@ export function buildTranscriptSession(
     conversationActivity: state.conversationActivity,
     sendAwaitingTurnStart: state.sendAwaitingTurnStart,
     stopSettledTurnId: state.stopSettledTurnId,
+    // #2304: without a record (an older server) the clock falls back to the
+    // start `turn.started` stamped; ACP has no window seed, so after a reload
+    // on such a server the row states no duration.
+    openTurnStartedAt: state.openTurnStartedAt,
   };
 }
 

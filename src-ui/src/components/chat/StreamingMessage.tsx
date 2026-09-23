@@ -44,10 +44,16 @@ export type StreamingMessageProps = {
    * working count is the open turn's duration by the SERVER's start (on this
    * client's clock, so skew shows up in it), and the row below shows what the
    * turn is doing. With a record but no open turn yet (this composer's send,
-   * before the server opens it) the row states no duration at all. Absent (an
-   * older server), the count runs from this row's mount, as before.
+   * before the server opens it) the row states no duration at all.
    */
   conversationActivity?: ConversationTurnActivity;
+  /**
+   * #2304: the open turn's start as this client last witnessed it
+   * (`ChatUIState.openTurnStartedAt`), used ONLY when there is no activity
+   * record (an older server). Unknown there too, and the row states no
+   * duration at all: it never guesses from its own mount.
+   */
+  turnStartedAt?: number;
   suppressActivity?: boolean;
   /** #2309: see `ChatMessageList`'s `progressSilenceShownElsewhere`. */
   hideProgressSilence?: boolean;
@@ -99,6 +105,7 @@ export function StreamingMessageView({
   activityHint,
   elapsedMs,
   conversationActivity,
+  turnStartedAt,
   suppressActivity,
   hideProgressSilence,
   statusLabel,
@@ -115,12 +122,18 @@ export function StreamingMessageView({
   contentRevision: number;
 }) {
   const isMobile = useIsMobile();
-  // The status-labelled wait's clock, and the working clock on a server with
-  // no activity record: this row's mount, exactly as before #2309.
+  // The status-labelled wait's clock: this row's mount, exactly as before
+  // #2304. It is not the wait's own start — nothing resets it when the status
+  // arrives — a pre-existing limitation, deliberately left alone.
   const [mountedAt] = useState(Date.now);
+  // ONE working clock (#2309 over #2304): the server record's open-turn start
+  // when a record exists, the witnessed `turn.started` start only on a server
+  // without one. When neither is known — before the server opens the turn, a
+  // remount before a seed, a reconnect catch-up awaiting its refetch — the row
+  // states no duration rather than guess one.
   const workingStartedAt = conversationActivity
     ? openTurnStartedAtMs(conversationActivity)
-    : mountedAt;
+    : turnStartedAt;
   useStreamingHaptics(sessionId, streamingText.length);
   const progressSummary = deriveToolProgressSummary(contentParts);
   const hasReasoningPart = contentParts.some(

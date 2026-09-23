@@ -8,7 +8,8 @@ import {
   rmSync,
   writeFileSync,
 } from 'node:fs';
-import { createServer } from 'node:http';
+import { createServer, request as httpRequest } from 'node:http';
+import { createServer as createHttpsServer } from 'node:https';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { inspect } from 'node:util';
@@ -26,7 +27,10 @@ import type { createStationConnectionProofIssuer } from '../src-server/services/
 import { ConnectionSigningKeyStore } from '../src-server/services/ssh/connection-signing-key-store.js';
 import { EnvironmentSecurityService } from '../src-server/services/ssh/environment-security-service.js';
 import { bridgeApplicationChannels } from './lib/application-ipc.js';
-import { runBrowserAccountScenario } from './lib/browser-account-scenario.js';
+import {
+  runBrowserAccountScenario,
+  runBrowserCookieAdoptionScenario,
+} from './lib/browser-account-scenario.js';
 import {
   browserApplicationAccountPrincipal,
   browserApplicationAccountRequest,
@@ -116,6 +120,9 @@ let brokerLab:
   | Awaited<ReturnType<typeof startSelfHostedBrokerProcess>>
   | undefined;
 let accountReport: Record<string, unknown> | undefined;
+let cookieAdoptionReport: Record<string, unknown> | undefined;
+let cookieAdoptionSecrets: string[] = [];
+const applicationObservations: Array<Record<string, unknown>> = [];
 let freshRelayReport: Record<string, unknown> | undefined;
 let freshRelayJourney:
   | Awaited<ReturnType<typeof runFreshRelayScenario>>
@@ -170,7 +177,12 @@ let clientProofScript = '';
 let connectionTrust: ApprovedStationConnectionTrust;
 let proofIssuer: ReturnType<typeof createStationConnectionProofIssuer>;
 const admittedConnections = new Set<string>();
-const server = createServer((request, response) => {
+let securePageServer: ReturnType<typeof createHttpsServer> | undefined;
+let stationUpstreamPort: number | undefined;
+function serveBrowserDocument(
+  request: import('node:http').IncomingMessage,
+  response: import('node:http').ServerResponse,
+) {
   if (request.url === '/connection-proof.js') {
     response.writeHead(200, { 'Content-Type': 'text/javascript' });
     response.end(clientProofScript);
@@ -180,7 +192,8 @@ const server = createServer((request, response) => {
   response.end(
     '<!doctype html><title>Station browser transport fixture</title><script src="/connection-proof.js"></script>',
   );
-});
+}
+const server = createServer(serveBrowserDocument);
 
 async function runFreshRelayScenario(input: {
   approvedPage: Page;
@@ -497,6 +510,8 @@ async function identity(name: string) {
       '1',
       '-subj',
       `/CN=${name}`,
+      '-addext',
+      'subjectAltName=IP:127.0.0.1,DNS:localhost',
       '-keyout',
       key,
       '-out',
@@ -778,11 +793,68 @@ try {
   );
   const approved = await identity('approved-station');
   const substituted = await identity('unapproved-station');
-  server.listen(0, '127.0.0.1');
-  await once(server, 'listening');
-  const address = server.address();
-  assert(address && typeof address !== 'string');
-  const pageOrigin = `http://127.0.0.1:${address.port}`;
+  let address: import('node:net').AddressInfo;
+  let pageOrigin: string;
+  if (selfHostedBroker) {
+    securePageServer = createHttpsServer(
+      {
+        cert: readFileSync(approved.cert),
+        key: readFileSync(approved.key),
+        minVersion: 'TLSv1.3',
+        maxVersion: 'TLSv1.3',
+      },
+      (request, response) => {
+        if (request.url === '/' || request.url === '/connection-proof.js') {
+          serveBrowserDocument(request, response);
+          return;
+        }
+        if (!stationUpstreamPort) {
+          response.writeHead(503).end();
+          return;
+        }
+        const headers = {
+          ...request.headers,
+          host: `127.0.0.1:${stationUpstreamPort}`,
+        };
+        delete headers.connection;
+        delete headers.upgrade;
+        const upstream = httpRequest(
+          {
+            hostname: '127.0.0.1',
+            port: stationUpstreamPort,
+            path: request.url ?? '/',
+            method: request.method,
+            headers,
+          },
+          (upstreamResponse) => {
+            response.writeHead(
+              upstreamResponse.statusCode ?? 502,
+              upstreamResponse.headers,
+            );
+            upstreamResponse.pipe(response);
+          },
+        );
+        upstream.on('error', () => {
+          if (!response.headersSent) response.writeHead(502);
+          response.end();
+        });
+        request.pipe(upstream);
+      },
+    );
+    securePageServer.listen(0, '127.0.0.1');
+    await once(securePageServer, 'listening');
+    const secureAddress = securePageServer.address();
+    assert(secureAddress && typeof secureAddress !== 'string');
+    address = secureAddress;
+    pageOrigin = `https://127.0.0.1:${address.port}`;
+  } else {
+    server.listen(0, '127.0.0.1');
+    await once(server, 'listening');
+    const plainAddress = server.address();
+    assert(plainAddress && typeof plainAddress !== 'string');
+    address = plainAddress;
+    pageOrigin = `http://127.0.0.1:${address.port}`;
+  }
   let prepareStationConnectorConfig:
     | ((stationOrigin: string) => string)
     | undefined;
@@ -870,6 +942,14 @@ try {
       {
         prepareSelfHostedBrokerConfig: prepareStationConnectorConfig,
         ownedBrokerTcpPort: brokerPort,
+        ...(selfHostedBroker
+          ? {
+              publicOrigin: pageOrigin,
+              onStationReady: (station) => {
+                stationUpstreamPort = station.port;
+              },
+            }
+          : {}),
       },
     );
   if (accountStation)
@@ -878,11 +958,24 @@ try {
       connectionTrust.stationId,
       'Application and transport must be the same Station',
     );
-  browser = await chromium.launch({ headless: true });
+  const stationSpki = createHash('sha256')
+    .update(
+      new X509Certificate(readFileSync(approved.cert)).publicKey.export({
+        format: 'der',
+        type: 'spki',
+      }),
+    )
+    .digest('base64');
+  browser = await chromium.launch({
+    headless: true,
+    ...(selfHostedBroker
+      ? { args: [`--ignore-certificate-errors-spki-list=${stationSpki}`] }
+      : {}),
+  });
   abort.signal.throwIfAborted();
   const context = await browser.newContext();
   const page = await context.newPage();
-  await page.goto(`http://127.0.0.1:${address.port}`);
+  await page.goto(pageOrigin);
   let brokerJourney: Record<string, unknown> | undefined;
   let brokerLeaseBefore = 0;
   let brokerReconnectForJourney:
@@ -1008,6 +1101,68 @@ try {
           );
           await page.evaluate(browserBrokerAdmitApplicationTransport);
           await page.evaluate(browserBrokerAdoptApplicationTransport);
+          await page.exposeBinding(
+            '__stationBrokerObservation',
+            (_source, observation) => {
+              applicationObservations.push(
+                observation as Record<string, unknown>,
+              );
+            },
+          );
+          await page.evaluate(() => {
+            const browserGlobal = globalThis as unknown as Record<string, any>;
+            const admitted = browserGlobal.stationBrokerLabTransport;
+            if (!admitted) throw new Error('Missing admitted broker transport');
+            const raw = admitted.transport;
+            const state: {
+              expectedAliasCredential?: string;
+              observationCalls: number;
+            } = {
+              expectedAliasCredential: undefined,
+              observationCalls: 0,
+            };
+            const observed = { ...admitted };
+            observed.transport = async (input: any, init: any = {}) => {
+              state.observationCalls++;
+              // Chromium removes Origin from a constructed Request because
+              // normal HTTP would add it later. The encrypted SDK carries
+              // the explicit header in init, so inspect that source too.
+              const suppliedHeaders = new Headers(
+                init.headers ??
+                  (input instanceof Request ? input.headers : undefined),
+              );
+              const request =
+                input instanceof Request ? input : new Request(input, init);
+              const authorization = request.headers.get('Authorization');
+              const response = await raw(input, init);
+              const observation = {
+                path: new URL(request.url).pathname,
+                method: request.method,
+                status: response.status,
+                cookieHeader:
+                  suppliedHeaders.has('Cookie') ||
+                  request.headers.has('Cookie'),
+                setCookieHeader:
+                  response.headers.has('Set-Cookie') ||
+                  response.headers.has('Set-Cookie2'),
+                continuationHeader: request.headers.has(
+                  'X-Station-Account-Continuation',
+                ),
+                proofHeader: request.headers.has('X-Station-Account-Proof'),
+                aliasCredential:
+                  state.expectedAliasCredential !== undefined &&
+                  authorization === `Bearer ${state.expectedAliasCredential}`,
+                origin: suppliedHeaders.get('Origin'),
+              };
+              await browserGlobal.__stationBrokerObservation(observation);
+              return response;
+            };
+            // The production transport descriptor is frozen. Publish a
+            // fixture wrapper for the next SDK resolver instead of trying to
+            // mutate that descriptor (which silently left observations empty).
+            browserGlobal.stationBrokerLabTransport = observed;
+            browserGlobal.stationBrokerLabObservations = state;
+          });
           const reconnectPair = await page.evaluate(
             browserBrokerSelectedCandidatePair,
           );
@@ -1031,6 +1186,28 @@ try {
         }
       },
     );
+    if (selfHostedBroker) {
+      const observer = {
+        setExpectedAliasCredential: async (value: string) =>
+          page.evaluate((credential) => {
+            (
+              globalThis as unknown as {
+                stationBrokerLabObservations: {
+                  expectedAliasCredential?: string;
+                };
+              }
+            ).stationBrokerLabObservations.expectedAliasCredential = credential;
+          }, value),
+        applicationObservations: () => applicationObservations,
+      };
+      const cookieAdoption = await runBrowserCookieAdoptionScenario(
+        page,
+        accountStation,
+        observer as never,
+      );
+      cookieAdoptionReport = cookieAdoption.report;
+      cookieAdoptionSecrets = cookieAdoption.privateSecrets;
+    }
   }
   if (freshRelayJourney) {
     const freshDeviceProjectRead = await freshRelayJourney.readFreshProject();
@@ -1063,7 +1240,7 @@ try {
       }),
       'broker CORS and credential refusal',
     );
-    assert.equal(cors.pageOrigin, `http://127.0.0.1:${address.port}`);
+    assert.equal(cors.pageOrigin, pageOrigin);
     assert.equal(cors.status, 200);
     assert.equal((cors.statusBody as { state: string }).state, 'online');
     // The browser's successful cross-origin fetch is the CORS control. This
@@ -1133,7 +1310,7 @@ try {
     // then require the next broker admission to refuse before SDP acceptance.
     const brokerRevokePage = await context.newPage();
     try {
-      await brokerRevokePage.goto(`http://127.0.0.1:${address.port}`);
+      await brokerRevokePage.goto(pageOrigin);
       await brokerRevokePage.evaluate(
         browserRevokeConnectionTrust,
         connectionTrust.stationId,
@@ -1175,7 +1352,7 @@ try {
   if (!selfHostedBroker) {
     const reconnectContext = await browser.newContext();
     const reconnectPage = await reconnectContext.newPage();
-    await reconnectPage.goto(`http://127.0.0.1:${address.port}`);
+    await reconnectPage.goto(pageOrigin);
     const reconnected = await exchange(
       reconnectPage,
       approved,
@@ -1204,7 +1381,7 @@ try {
 
     const revokedContext = await browser.newContext();
     const revokedPage = await revokedContext.newPage();
-    await revokedPage.goto(`http://127.0.0.1:${address.port}`);
+    await revokedPage.goto(pageOrigin);
     const revokedPeer = await exchange(
       revokedPage,
       approved,
@@ -1219,7 +1396,7 @@ try {
 
     const replacementContext = await browser.newContext();
     const replacementPage = await replacementContext.newPage();
-    await replacementPage.goto(`http://127.0.0.1:${address.port}`);
+    await replacementPage.goto(pageOrigin);
     await assert.rejects(
       exchange(replacementPage, substituted, approved.fingerprint),
       /station_fingerprint_not_approved/,
@@ -1228,7 +1405,7 @@ try {
 
     const hostileContext = await browser.newContext();
     const hostilePage = await hostileContext.newPage();
-    await hostilePage.goto(`http://127.0.0.1:${address.port}`);
+    await hostilePage.goto(pageOrigin);
     const hostile = await exchange(
       hostilePage,
       substituted,
@@ -1258,6 +1435,7 @@ try {
       accountStation.browser.invitation,
       accountStation.sharedWork.sharedTask.messageMarker,
       accountStation.sharedWork.sharedTask.documentMarker,
+      ...cookieAdoptionSecrets,
     ])
       assert.equal(captured.includes(Buffer.from(secret)), false);
   }
@@ -1292,6 +1470,7 @@ try {
     sourceWorktreeClean,
     pionExecutableSha256,
     applicationAccounts: accountReport ?? { status: 'not-run' },
+    cookieAdoption: cookieAdoptionReport ?? { status: 'not-run' },
     freshRelayEnrollment: freshRelayReport ?? { status: 'not-run' },
     applicationProtocol: applicationProtocol
       ? {
@@ -1382,6 +1561,10 @@ try {
   server.closeAllConnections();
   if (server.listening)
     await new Promise<void>((resolve) => server.close(() => resolve()));
+  if (securePageServer?.listening)
+    await new Promise<void>((resolve) =>
+      securePageServer!.close(() => resolve()),
+    );
   datachannel.cleanup();
   process.off('SIGINT', interrupt);
   process.off('SIGTERM', interrupt);

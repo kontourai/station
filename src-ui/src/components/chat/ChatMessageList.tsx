@@ -771,6 +771,7 @@ function ChatMessageListComponent({
                   activityHint={activeSession.activityHint}
                   elapsedMs={activeSession.replay?.elapsedMs}
                   conversationActivity={activeSession.conversationActivity}
+                  turnStartedAt={activeSession.openTurnStartedAt}
                   suppressActivity={suppressActivity}
                   hideProgressSilence={progressSilenceShownElsewhere}
                   statusLabel={

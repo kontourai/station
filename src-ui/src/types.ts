@@ -330,6 +330,8 @@ export interface ChatSession {
   queueDrainSettling?: boolean;
   /** #2309: see ChatUIState.stopSettledTurnId (active-chats-state.ts). */
   stopSettledTurnId?: string;
+  /** See ChatUIState.openTurnStartedAt (active-chats-state.ts). */
+  openTurnStartedAt?: number;
   /** Incremented only when bounded persisted history must reconcile. */
   orchestrationHistoryRevision?: number;
   inputHistory: string[];

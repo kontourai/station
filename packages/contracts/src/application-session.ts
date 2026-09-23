@@ -43,9 +43,18 @@ export interface ApplicationSessionContinuation {
   nonce: string;
   expiresAt: string;
 }
+/** Browser cookie adoption result; raw cookies are never copied into the body. */
+export interface ApplicationSessionCookieAdoption {
+  version: typeof APPLICATION_SESSION_VERSION;
+  aliasCredential: string;
+  aliasId: string;
+  aliasExpiresAt: string;
+  continuation: ApplicationSessionContinuation;
+}
 export interface ApplicationSessionCapabilities {
   version: typeof APPLICATION_SESSION_VERSION;
   cookieExchange: boolean;
+  cookieAdoption: boolean;
   virtualLogin: boolean;
   proofAlgorithm: 'ES256';
   stationId: string;

@@ -75,6 +75,15 @@ export function createApplicationSessionRoutes(
       return owner.challenge(c.req.raw, body.publicKey);
     }),
   );
+  app.post('/adopt-cookie/challenge', (c) =>
+    run(c, async (owner) => {
+      const body = z
+        .object({ publicKey: z.unknown() })
+        .strict()
+        .parse(await input(c));
+      return owner.cookieAdoptionChallenge(c.req.raw, body.publicKey);
+    }),
+  );
   app.post('/exchange', (c) =>
     run(c, async (owner) => {
       const body = z
@@ -82,6 +91,15 @@ export function createApplicationSessionRoutes(
         .strict()
         .parse(await input(c));
       return owner.establish(c.req.raw, body);
+    }),
+  );
+  app.post('/adopt-cookie/complete', (c) =>
+    run(c, async (owner) => {
+      const body = z
+        .object({ challengeId: z.string(), proof: z.string().max(4096) })
+        .strict()
+        .parse(await input(c));
+      return owner.completeCookieAdoption(c.req.raw, body);
     }),
   );
   app.post('/login', (c) =>
@@ -121,6 +139,9 @@ export function createApplicationSessionRoutes(
       await owner.revoke(c.req.raw);
       return { revoked: true };
     }),
+  );
+  app.post('/adopt-cookie/revoke-alias', (c) =>
+    run(c, (owner) => owner.revokeAlias(c.req.raw)),
   );
   return app;
 }
