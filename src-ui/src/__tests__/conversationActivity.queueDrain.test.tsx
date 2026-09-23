@@ -13,12 +13,20 @@
  * with only the SSE transport and the dispatch network call mocked).
  */
 
+import { agentId } from '@kontourai/station-contracts/agent-identity';
 import type {
+  ConversationOpenResolution,
   ConversationTurnActivity,
   OrchestrationConversationStreamBinding,
 } from '@kontourai/station-contracts/orchestration';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import { useSyncExternalStore } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type {
@@ -50,6 +58,12 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
     };
   },
 }));
+const resolveConversationOpen = vi.hoisted(() =>
+  vi.fn<(...args: unknown[]) => Promise<ConversationOpenResolution>>(),
+);
+vi.mock('@kontourai/station-sdk/conversation-open', () => ({
+  resolveConversationOpen,
+}));
 vi.mock('../lib/foregroundMessageDispatch', () => ({
   dispatchForeground: mocks.dispatchForeground,
 }));
@@ -72,6 +86,7 @@ vi.mock('../contexts/ActiveChatsContext', async (importOriginal) => {
 });
 
 import { QueuedMessages } from '../components/chat/QueuedMessages';
+import { ConversationOpenRevalidator } from '../components/chat-dock/ConversationOpenRevalidator';
 import { activeChatsStore } from '../contexts/active-chats-store';
 import { ensureOrchestrationEventStream } from '../hooks/orchestration/ensureOrchestrationEventStream';
 import { drainQueuedMessageOnTurnCompleted } from '../hooks/orchestration/queueDrain';
@@ -363,6 +378,72 @@ describe('#2309 the queue drains on the turn END event, routed by the frame bind
     );
     expect(answerAt).toBeGreaterThanOrEqual(0);
     expect(b1At).toBeGreaterThan(answerAt);
+  });
+});
+
+describe('#2309 a reload that adopts the running child: the turn end waits for the re-proved binding, then sends once', () => {
+  test('the snapshot adopts the child; its turn.completed holds the follow-up; the revalidation sends it exactly once', async () => {
+    chatWithQueue(['after the reload']);
+    // The snapshot names the running child through the record; the chat
+    // adopts it and re-proves the binding (conversationOpenPending).
+    connect(API, open(120));
+    expect(chat().currentSessionId).toBe(CHILD);
+    expect(chat().conversationOpenPending).toBe(true);
+
+    // The child's turn ends: it routes to the chat now, and cannot send yet.
+    deliverEvent(API, turnCompleted(), closed(121));
+    await vi.advanceTimersByTimeAsync(500);
+    expect(mocks.dispatchForeground).not.toHaveBeenCalled();
+    expect(chat().queuedMessages).toEqual(['after the reload']);
+    expect(chat().queueDrainHeldForOpen).toBe(true);
+
+    const resolution: ConversationOpenResolution = {
+      status: 'resolved',
+      conversation: {
+        id: CONVERSATION,
+        source: 'runtime',
+        agentSlug: agentId('dev-agent'),
+        title: 'Queue behind a turn',
+        createdAt: '2026-09-22T18:00:00.000Z',
+        updatedAt: '2026-09-22T18:57:44.000Z',
+        messageCount: 3,
+        mutable: true,
+        answerability: { answerable: true },
+      },
+      currentSessionId: CHILD,
+      execution: {
+        sessionId: CHILD,
+        agentId: agentId('dev-agent'),
+        provider: 'claude',
+      },
+      transcript: { available: true, owner: 'runtime', messageCount: 3 },
+      canContinue: true,
+      answerability: { answerable: true },
+      recoveryActions: [],
+    };
+    resolveConversationOpen.mockResolvedValue(resolution);
+    render(
+      <ConversationOpenRevalidator
+        sessionId={CONVERSATION}
+        conversationId={CONVERSATION}
+        apiBase={API}
+        updateChat={(id, patch) => activeChatsStore.updateChat(id, patch)}
+      />,
+    );
+    // The revalidation's own module load and read are real async work.
+    vi.useRealTimers();
+    await waitFor(() => expect(chat().conversationOpenPending).toBe(false));
+    await waitFor(() =>
+      expect(mocks.dispatchForeground).toHaveBeenCalledTimes(1),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 300));
+
+    expect(mocks.dispatchForeground).toHaveBeenCalledTimes(1);
+    expect(mocks.dispatchForeground.mock.calls[0]?.[0]).toMatchObject({
+      message: 'after the reload',
+      apiBase: API,
+    });
+    expect(chat().queueDrainHeldForOpen).toBeUndefined();
   });
 });
 

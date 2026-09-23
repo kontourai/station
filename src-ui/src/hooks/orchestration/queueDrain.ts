@@ -111,6 +111,19 @@ function userSendBlockedReason(
   return undefined;
 }
 
+/**
+ * #2309: send the queue head a turn end left held while the chat's binding
+ * was being re-proved (see the hold in `drainQueuedMessageOnTurnCompleted`).
+ * Called by the revalidation once it has settled; a no-op when nothing is
+ * held or the chat is still not writable.
+ */
+export function resumeHeldQueueDrain(apiBase: string, chatKey: string): void {
+  const chat = activeChatsStore.getSnapshot()[chatKey];
+  if (!chat?.queueDrainHeldForOpen || !conversationCanMutate(chat)) return;
+  activeChatsStore.updateChat(chatKey, { queueDrainHeldForOpen: undefined });
+  drainQueuedMessageOnTurnCompleted(apiBase, chatKey);
+}
+
 export function drainQueuedMessageOnTurnCompleted(
   apiBase: string,
   threadId: string,
@@ -134,6 +147,22 @@ export function drainQueuedMessageOnTurnCompleted(
       });
       return;
     }
+  }
+  // #2309: a turn end that arrives while the chat's binding is being
+  // re-proved (a snapshot adopted the running child and set
+  // `conversationOpenPending`) cannot send yet, and nothing else would fire
+  // for that turn end. Hold it, so the revalidation that makes the chat
+  // writable again sends it (`resumeHeldQueueDrain`), exactly once.
+  if (
+    !userInitiated &&
+    chat?.queuedMessages?.length &&
+    !chat.queueDrainSettling &&
+    serverTurnLive(chat) !== true &&
+    !conversationCanMutate(chat)
+  ) {
+    if (!chat.queueDrainHeldForOpen)
+      activeChatsStore.updateChat(threadId, { queueDrainHeldForOpen: true });
+    return;
   }
   if (
     // A popped head that has not been dispatched yet: a second request in
@@ -172,6 +201,7 @@ export function drainQueuedMessageOnTurnCompleted(
     queuedMessages: remainingQueue,
     queuedMessageFailure: undefined,
     queueDrainSettling: true,
+    queueDrainHeldForOpen: undefined,
   });
 
   setTimeout(async () => {

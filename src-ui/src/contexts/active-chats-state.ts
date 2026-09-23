@@ -336,6 +336,12 @@ export type ChatUIState = {
    * pop the next one meanwhile. Session-scoped, not persisted.
    */
   queueDrainSettling?: boolean;
+  /**
+   * #2309: a turn end found this chat's binding being re-proved and could not
+   * send its queued follow-up; the revalidation sends it when it settles
+   * (`resumeHeldQueueDrain`). Session-scoped, not persisted.
+   */
+  queueDrainHeldForOpen?: boolean;
   /** #2309: see `ConversationActivityCarrier.stopSettledTurnId`. Not persisted. */
   stopSettledTurnId?: string;
   /**

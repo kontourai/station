@@ -867,6 +867,36 @@ describe('#2309: with an activity record, the record names the running child (th
     expect(chat.orchestrationStatus).not.toBe('exited');
   });
 
+  test("an idle record and a chat bound to a later child: that child's row speaks (its model, not the root's)", () => {
+    chats[ROOT] = { ...chats[ROOT], currentSessionId: LIVE_CHILD };
+    applyOrchestrationSnapshot(
+      { sessions: [rootRow(closedRecord), childRow(closedRecord, false)] },
+      { apiBase: 'http://api' },
+    );
+    expect(chats[ROOT].model).toBe('model-child');
+    expect(chats[ROOT].orchestrationTurnOpen).toBe(false);
+  });
+
+  test("mixed rows: a record-less root row with a stale open fold cannot contradict the child's idle record", () => {
+    const staleRoot = {
+      ...rootRow(closedRecord),
+      hasActiveTurn: true,
+      conversationActivity: undefined,
+    };
+    applyOrchestrationSnapshot(
+      { sessions: [staleRoot, childRow(closedRecord, false)] },
+      { apiBase: 'http://api', isReconnectFallback: true },
+    );
+    const chat = chats[ROOT];
+    // The chat's own (root) row speaks for an idle conversation, but the
+    // verdict is the CHAT's record: not open, not adopted, not handed to the
+    // projection as an open turn.
+    expect(chat.orchestrationTurnOpen).toBe(false);
+    expect(chat.status).toBe('idle');
+    expect(chat.currentSessionId).toBe(ROOT);
+    expect(chat.openTurnShellSuperseded).toBeUndefined();
+  });
+
   test('a stale open row cannot open a conversation the record shows idle, nor be adopted', () => {
     applyOrchestrationSnapshot(
       { sessions: [rootRow(closedRecord), childRow(closedRecord, true)] },
