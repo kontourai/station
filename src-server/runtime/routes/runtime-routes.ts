@@ -3296,7 +3296,10 @@ export function configureRuntimeRoutes(
         restricted &&
         c.req.method !== 'GET' &&
         c.req.method !== 'HEAD' &&
-        !isProjectMemberPluginScaffold(c.req.method, c.req.path)
+        !isProjectMemberPluginScaffold(
+          c.req.method,
+          new URL(c.req.raw.url).pathname,
+        )
       ) {
         return c.json(
           { success: false, error: 'Project mutation is forbidden' },
