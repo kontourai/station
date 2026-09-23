@@ -3233,7 +3233,15 @@ export class StationRuntime {
         if (this.selfHostedBrokerConfiguration) {
           const broker = this.selfHostedBrokerConfiguration.create(application);
           this.selfHostedBroker = broker;
-          await broker.start();
+          // The broker is optional connectivity. Keep local Station ready
+          // while its registration retries; shutdown joins this exact owner.
+          void broker.start().catch((error: unknown) => {
+            if (this.selfHostedBrokerShutdown || application.signal.aborted)
+              return;
+            this.logger?.warn?.('Optional broker connector failed', {
+              reason: error instanceof Error ? error.message : 'unknown',
+            });
+          });
         }
       }
     } catch (error) {
