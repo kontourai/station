@@ -207,9 +207,11 @@ describe('runLane (child-process seam, mocked)', () => {
 // `spawn(bin, args, { shell: false })` throws a SYNCHRONOUS `spawn EINVAL`
 // for a `.cmd`/`.bat` target since Node's CVE-2024-27980 hardening, which
 // `runLane`'s own try/catch swallowed into `{ ok: false, spawnError: true }`
-// -- every lane failed on Windows regardless of whether the code compiled,
-// and `.github/workflows/windows-pr-verification.yml` runs `npm run typecheck`
-// on Windows as a required step. There is no Windows
+// -- every lane failed on Windows regardless of whether the code compiled.
+// CI no longer runs the aggregate on a Windows host at all (tsc's verdict is
+// OS-independent, so ci:fast owns it on Linux), which leaves these tests as
+// the only CI proof of the win32 spawn shape a Windows contributor's
+// pre-push typecheck depends on. There is no Windows
 // host in this test loop, so these tests inject `platform` directly rather
 // than reasoning about the spawn shape only from source -- a reasoned-about
 // spawn shape is exactly what shipped broken here.

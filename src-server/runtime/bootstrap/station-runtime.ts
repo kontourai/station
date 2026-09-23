@@ -103,6 +103,7 @@ import {
 import { BedrockModelCatalog } from '../../providers/llm/bedrock-models.js';
 import { disposeRetainedPreparedPluginProviders } from '../../providers/registries/registry.js';
 import type { BuildProvenanceSnapshot } from '../../routes/system/build-provenance.js';
+import { resolveStationBrowserOrigins } from '../../security/station-browser-origins.js';
 import type { ACPManager } from '../../services/acp/acp-bridge.js';
 import { getAgentPolicyService } from '../../services/agents/agent-policy-service.js';
 import type { AgentService } from '../../services/agents/agent-service.js';
@@ -369,6 +370,7 @@ interface AgentConfigurationGeneration {
 }
 
 import { getCachedUser } from '../../routes/system/auth.js';
+import type { BrowserService } from '../../services/browser/browser-service.js';
 import { DiscordGatewayService } from '../../services/discord/discord-gateway-service.js';
 import {
   ActionOperationService,
@@ -676,6 +678,8 @@ export class StationRuntime {
   private kitLifecycleReady: Promise<void> = Promise.resolve();
   private notificationService?: NotificationService;
   private projectTaskRoomRuntime?: ProjectTaskRoomRuntime;
+  /** #90 Browser pane (personal hosts only); its Chromium processes stop with us. */
+  private browserService?: BrowserService;
   private taskRoomAcceptanceControl?: TaskRoomAcceptanceControl;
   private metricsLog: Array<{
     timestamp: number;
@@ -3310,7 +3314,12 @@ export class StationRuntime {
     // binding. A hosted tenant-isolated runtime must not bind the separate
     // terminal port until that transport has tenant authorization.
     if (!this.terminalWsStarted && !isHostedTenantExecutionRequired()) {
-      this.terminalWsServer.start(this.port + 1, this.host);
+      this.terminalWsServer.start(this.port + 1, this.host, {
+        allowedBrowserOrigins: resolveStationBrowserOrigins({
+          port: this.port,
+          host: this.host,
+        }),
+      });
       this.terminalWsStarted = true;
     }
     let initialized: Awaited<ReturnType<typeof initializeRuntime>>;
@@ -3884,6 +3893,7 @@ export class StationRuntime {
       notificationService,
       kitLifecycleReady,
       projectTaskRoomRuntime,
+      browserService,
     } = configureRuntimeRoutes({
       projectMembership: this.projectMembership?.service,
       projectSharedTasks: this.projectMembership?.sharedTasks,
@@ -3990,6 +4000,7 @@ export class StationRuntime {
     this.notificationService = notificationService;
     this.kitLifecycleReady = kitLifecycleReady;
     this.projectTaskRoomRuntime = projectTaskRoomRuntime;
+    this.browserService = browserService;
   }
 
   /**
@@ -4463,6 +4474,12 @@ export class StationRuntime {
       const retirement = await this.runtimeSearch.close();
       if (retirement.state !== 'closed')
         failures.push(new Error('Task search reader shutdown pending'));
+    }
+    try {
+      await this.browserService?.shutdown();
+      this.browserService = undefined;
+    } catch (error) {
+      failures.push(error);
     }
     try {
       await this.discordGatewayService?.stop();

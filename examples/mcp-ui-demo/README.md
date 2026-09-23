@@ -7,8 +7,7 @@ exposes one tool (`status_panel`) whose `_meta.ui.resourceUri` points at a
 helpers on the MCP TypeScript SDK.
 
 Use it to validate the host end-to-end (resolve → resource-read → sandboxed
-render) against a real server rather than mocks, and as the soak before flipping
-the `mcpUiHost` flag default on.
+render) against a real server rather than mocks.
 
 ## Run
 
@@ -50,11 +49,11 @@ node examples/mcp-ui-demo/server.mjs   # speaks MCP over stdio
    }
    ```
 
-3. **Enable the host flag.** Set `mcpUiHost: true` in Settings (or `config/app`).
-   With it off, a resolved MCP UI shows the inert "unsupported" state.
-
-4. Open the layout tab — the panel renders in a sandboxed iframe
-   (`sandbox="allow-scripts"`, no `allow-same-origin`, deny-all CSP).
+3. Open the layout tab — the panel renders in a sandboxed frame (see
+   [Browser isolation](../../docs/design/mcp-ui-host.md#browser-isolation)).
+   The host is on by default. If the panel shows the inert "unsupported"
+   state instead, check that the **MCP UI host** setting (`mcpUiHost`) has not
+   been turned off.
 
 ## Verify the server path directly
 

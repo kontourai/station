@@ -318,6 +318,7 @@ function executeCapturedPtyChild({
       },
     },
     clearTimeout() {},
+    performance: { now: () => 0 },
     setTimeout() {
       return timer;
     },
@@ -438,6 +439,163 @@ describe('dependency lifecycle policy', () => {
     });
     expect(detail).toContain('status=1');
     expect(detail).not.toContain('[object Object]');
+  });
+
+  // #2315: a saturated hosted Windows runner stalled the handshake's process
+  // start. A timeout is the one environmental outcome and is retried, each
+  // attempt reported; every completed or crashed child stays a verdict.
+  describe('bounded retry of an environmental handshake timeout', () => {
+    const PASS = JSON.stringify({
+      marker: 'STATION_NODE_PTY_READY_4296',
+      exitCode: 0,
+      signal: 0,
+      phases: { loadedMs: 180, markerMs: 420, settledMs: 510 },
+    });
+    const outerTimeout = () =>
+      Object.assign(new Error('spawnSync node.exe ETIMEDOUT'), {
+        code: 'ETIMEDOUT',
+        signal: 'SIGTERM',
+        stderr: '',
+      });
+    function run(outcomes: Array<string | (() => unknown)>) {
+      const logs: string[] = [];
+      const pause = vi.fn();
+      const exec = vi.fn(
+        (_command: string, _args: readonly string[], _options: unknown) => {
+          const next = outcomes.shift();
+          if (typeof next === 'function') throw next();
+          return next ?? PASS;
+        },
+      );
+      let error: unknown;
+      try {
+        verifyNodePtyHandshake('/fixture/node-pty', {
+          exec,
+          pause,
+          log: (line: string) => logs.push(line),
+        });
+      } catch (failure) {
+        error = failure;
+      }
+      return { error, exec, logs, pause };
+    }
+
+    it('reports attempts on stderr so a JSON-on-stdout caller stays parseable', () => {
+      // verify-node-pty-prebuild.mjs calls the handshake with its defaults and
+      // then prints its report as JSON alone on stdout, which CI tees into
+      // proof.json. Drive the real default logger in a real process.
+      const moduleUrl = new URL(
+        '../lib/dependency-lifecycle-policy.mjs',
+        import.meta.url,
+      ).href;
+      const script = `
+        const { verifyNodePtyHandshake } = await import(${JSON.stringify(moduleUrl)});
+        const pass = ${JSON.stringify(PASS)};
+        let calls = 0;
+        verifyNodePtyHandshake('/fixture/node-pty', {
+          pause: () => {},
+          exec: () => {
+            calls += 1;
+            if (calls === 1) throw Object.assign(new Error('ETIMEDOUT'), { code: 'ETIMEDOUT', stderr: '' });
+            return pass;
+          },
+        });
+        console.log(JSON.stringify({ package: 'node-pty' }, null, 2));
+      `;
+      const result = spawnSync(
+        process.execPath,
+        ['--input-type=module', '-e', script],
+        { encoding: 'utf8', timeout: 20_000, windowsHide: true },
+      );
+      expect(result.status, result.stderr).toBe(0);
+      expect(JSON.parse(result.stdout)).toEqual({ package: 'node-pty' });
+      expect(result.stderr).toMatch(/attempt 1\/3 timed out/);
+      expect(result.stderr).toMatch(/passed on attempt 2\/3/);
+    });
+
+    it('retries an outer spawn timeout and reports each attempt', () => {
+      const { error, exec, logs, pause } = run([outerTimeout, PASS]);
+      expect(error).toBeUndefined();
+      expect(exec).toHaveBeenCalledTimes(2);
+      expect(pause).toHaveBeenCalledTimes(1);
+      expect(logs[0]).toMatch(/attempt 1\/3 timed out after \d+ms; retrying/);
+      expect(logs[0]).toContain('code=ETIMEDOUT');
+      expect(logs[1]).toMatch(/passed on attempt 2\/3/);
+      expect(logs[1]).toContain('"markerMs":420');
+    });
+
+    it("retries the child's own handshake timer", () => {
+      const { error, exec } = run([
+        () => ({
+          stderr: 'node-pty handshake timed out (marker seen: false) phases={}',
+          status: 1,
+        }),
+        PASS,
+      ]);
+      expect(error).toBeUndefined();
+      expect(exec).toHaveBeenCalledTimes(2);
+    });
+
+    it('never retries a timeout after the ready marker arrived', () => {
+      // The marker proves the process started and the PTY carried output; a
+      // missing ack or exit after it is a protocol defect, not a slow start.
+      const { error, exec } = run([
+        () => ({
+          stderr: 'node-pty handshake timed out (marker seen: true) phases={}',
+          status: 1,
+        }),
+        PASS,
+      ]);
+      expect(exec).toHaveBeenCalledTimes(1);
+      expect(String(error)).toContain('marker seen: true');
+    });
+
+    it('fails closed when every attempt times out', () => {
+      const { error, exec, logs } = run([
+        outerTimeout,
+        outerTimeout,
+        outerTimeout,
+        PASS,
+      ]);
+      expect(exec).toHaveBeenCalledTimes(3);
+      expect(String(error)).toContain('node-pty real PTY handshake failed');
+      expect(String(error)).toContain('code=ETIMEDOUT');
+      expect(logs.at(-1)).toMatch(/failed on attempt 3\/3/);
+    });
+
+    it('never retries a child that exited without the marker', () => {
+      const { error, exec } = run([
+        () => ({
+          stderr: 'node-pty child exited without ready marker: ',
+          status: 1,
+        }),
+        PASS,
+      ]);
+      expect(exec).toHaveBeenCalledTimes(1);
+      expect(String(error)).toContain('exited without ready marker');
+    });
+
+    it('never retries a completed child whose outcome lacks the marker', () => {
+      const { error, exec } = run([
+        JSON.stringify({ marker: 'wrong', exitCode: 0, signal: 0 }),
+        PASS,
+      ]);
+      expect(exec).toHaveBeenCalledTimes(1);
+      expect(String(error)).toContain('never observed its ready marker');
+    });
+
+    it('lets the child report its own timeout before the outer bound kills it', () => {
+      const { exec } = run([PASS]);
+      const options = exec.mock.calls[0]![2] as unknown as {
+        timeout: number;
+        env: Record<string, string>;
+      };
+      // The hosted log for #2315 records a first cold Node child at 3965ms;
+      // the outer bound must leave more than that above the child's timer.
+      expect(
+        options.timeout - Number(options.env.STATION_PTY_TIMEOUT_MS),
+      ).toBeGreaterThan(3965);
+    });
   });
 
   it('requires the marker/ack/natural-exit protocol instead of immediate PTY teardown', () => {
