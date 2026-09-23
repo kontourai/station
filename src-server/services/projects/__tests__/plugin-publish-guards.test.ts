@@ -66,6 +66,23 @@ describe('validatePluginPublishRemoteUrl', () => {
     ['https://github.com/', 'malformed'],
     ['github.com:acme/../pulse.git', 'malformed'],
     ['c:repo', 'malformed'],
+    // review L3: this machine, local-only, and numeric forms of them
+    ['https://localhost/a/b', 'local-host'],
+    ['https://api.localhost/a/b', 'local-host'],
+    ['https://127.0.0.1/a/b', 'local-host'],
+    ['https://2130706433/a/b', 'local-host'],
+    ['https://169.254.169.254/a/b', 'local-host'],
+    ['https://0.0.0.0/a/b', 'local-host'],
+    ['https://[::1]/a/b', 'local-host'],
+    ['git@127.0.0.1:a/b.git', 'local-host'],
+    ['git@localhost:a/b.git', 'local-host'],
+    // review NIT: an ssh user or path that git or ssh would read as an option
+    ['ssh://-oProxyCommand=id@github.com/a/b', 'malformed'],
+    ['ssh://-lx@github.com/a/b', 'malformed'],
+    ['git@github.com:-u/b', 'malformed'],
+    // encoded separators and non-ASCII
+    ['https://github.com/a%2F..%2Fb', 'malformed'],
+    ['https://github.com/a/b\u200b', 'malformed'],
   ])('refuses %j as %s', (url, code) => {
     expect(validatePluginPublishRemoteUrl(url)).toEqual({ ok: false, code });
   });
@@ -85,6 +102,13 @@ describe('redactRemoteUrl', () => {
     expect(redactRemoteUrl('git@github.com:a/b.git')).toBe(
       'git@github.com:a/b.git',
     );
+    // review L4: a token can ride in the query or fragment too.
+    expect(redactRemoteUrl('https://github.com/a/b?access_token=abc')).toBe(
+      'https://github.com/a/b',
+    );
+    expect(redactRemoteUrl('https://github.com/a/b#tok')).toBe(
+      'https://github.com/a/b',
+    );
   });
 });
 
@@ -100,6 +124,14 @@ describe('secretLookingPathReason', () => {
     ['.npmrc', 'credentials file'],
     ['.git-credentials', 'credentials file'],
     ['aws/credentials', 'credentials file'],
+    // review L1
+    ['secrets.json', 'credentials file'],
+    ['infra/terraform.tfstate', 'Terraform state'],
+    ['terraform.tfstate.backup', 'Terraform state'],
+    ['.kube/config', 'Kubernetes config'],
+    ['service-account-prod.json', 'service account key'],
+    ['id_ed25519_sk', 'SSH private key'],
+    ['prod.env', 'environment file'],
   ])('flags %s', (path, reason) => {
     expect(secretLookingPathReason(path)).toBe(reason);
   });

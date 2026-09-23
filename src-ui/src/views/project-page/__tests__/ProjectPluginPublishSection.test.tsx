@@ -29,6 +29,7 @@ const { ProjectPluginPublishSection } = await import(
 );
 
 const ENDPOINT = 'http://station.test/api/projects/pulse/plugin-publish';
+const SUMMARY = `${ENDPOINT}?view=summary`;
 const REMOTE = 'https://github.com/acme/pulse.git';
 
 beforeAll(() => {
@@ -70,12 +71,24 @@ function inspection(overrides: Record<string, unknown> = {}) {
   };
 }
 
+/** Answers the summary (asked on mount) from the same fixture as the full
+ * inspection (asked when the dialog opens), the way the server derives
+ * both from one folder. */
 function answerInspection(data: unknown, status = 200) {
-  getJsonMock.mockImplementation(async () =>
-    status === 200
-      ? jsonResponse(200, { success: true, data })
-      : jsonResponse(status, { success: false, error: 'refused' }),
-  );
+  getJsonMock.mockImplementation(async (url: string) => {
+    if (status !== 200) {
+      return jsonResponse(status, { success: false, error: 'refused' });
+    }
+    if (url === SUMMARY) {
+      const plugin = (data as { plugin: unknown }).plugin;
+      return jsonResponse(200, {
+        success: true,
+        data: plugin ? { plugin } : data,
+      });
+    }
+    if (url === ENDPOINT) return jsonResponse(200, { success: true, data });
+    throw new Error(`unexpected request ${url}`);
+  });
 }
 
 function renderSection() {
@@ -87,13 +100,13 @@ function renderSection() {
       <ProjectPluginPublishSection slug="pulse" />
     </QueryClientProvider>,
   );
-  /** Waits until the inspection query has SETTLED, so an assertion that
+  /** Waits until the summary query has SETTLED, so an assertion that
    * nothing rendered is about the answer, not about a pending request. */
   const settled = (status: 'error' | 'success') =>
     waitFor(() =>
       expect(
         queryClient.getQueryState([
-          'plugin-publish',
+          'plugin-publish-summary',
           'http://station.test',
           'pulse',
         ])?.status,
@@ -106,15 +119,57 @@ async function openDialog() {
   fireEvent.click(
     await screen.findByRole('button', { name: 'Publish to git…' }),
   );
-  return screen.findByRole('dialog');
+  // The inspection dialog, not the "Checking the folder" one before it.
+  await screen.findByRole('button', { name: 'Commit and push' });
+  return screen.getByRole('dialog');
 }
 
 test('a caller the server refuses (not the operator) is offered nothing', async () => {
   answerInspection(null, 403);
   const { container, settled } = renderSection();
   await settled('error');
-  expect(getJsonMock).toHaveBeenCalledWith(ENDPOINT);
+  expect(getJsonMock).toHaveBeenCalledWith(SUMMARY);
   expect(container.innerHTML).toBe('');
+});
+
+test('viewing the Project asks only the summary; git status runs when the dialog opens', async () => {
+  answerInspection(inspection());
+  const { settled } = renderSection();
+  await settled('success');
+  await screen.findByRole('button', { name: 'Publish to git…' });
+  // The full inspection runs git in the folder. It must not run on view.
+  expect(getJsonMock.mock.calls.map(([url]) => url)).toEqual([SUMMARY]);
+  await openDialog();
+  expect(getJsonMock.mock.calls.map(([url]) => url)).toEqual([
+    SUMMARY,
+    ENDPOINT,
+  ]);
+});
+
+test('a repository whose config Station refuses explains why and cannot publish', async () => {
+  answerInspection(
+    inspection({
+      repository: {
+        state: 'refused',
+        code: 'repository-config-refused',
+        keys: ['core.fsmonitor'],
+      },
+      changes: [],
+    }),
+  );
+  renderSection();
+  await openDialog();
+  expect(screen.getByText(/core\.fsmonitor/)).toBeTruthy();
+  fireEvent.change(screen.getByLabelText('Repository address'), {
+    target: { value: REMOTE },
+  });
+  expect(
+    (
+      screen.getByRole('button', {
+        name: 'Commit and push',
+      }) as HTMLButtonElement
+    ).disabled,
+  ).toBe(true);
 });
 
 test('a folder without a plugin is offered nothing', async () => {

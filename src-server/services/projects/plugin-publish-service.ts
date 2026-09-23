@@ -4,17 +4,25 @@
  * an ordinary `station plugin install <url>` source, and installs made from
  * it update by pulling, as every git-backed install already does.
  *
- * Every git call goes through `execGit` (no shell, sanitized environment)
- * with a timeout and `GIT_TERMINAL_PROMPT=0`, so a remote asking for a
- * password fails instead of hanging the request. Nothing here force-pushes:
- * the only refspec it builds is `refs/heads/<branch>:refs/heads/<branch>`.
+ * Every git call goes through `plugin-publish-git.ts`: no shell, a timeout,
+ * and overrides that keep the folder's own `.git` from running code as the
+ * operator or reaching any transport but https/ssh (read that file's header
+ * for the full list and why). Nothing here force-pushes: the only refspec it
+ * builds is `refs/heads/<branch>:refs/heads/<branch>`.
  */
 import { lstat, mkdtemp, readFile, realpath, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { execGit } from '../../utils/git-exec.js';
 import type { Logger } from '../../utils/logger.js';
 import { readPluginManifestFile } from '../plugins/plugin-manifest-loader.js';
+import {
+  checkRepositoryConfig,
+  type PublishGitOptions,
+  type RepositoryConfigRefusal,
+  readOperatorCredentialHelpers,
+  runPublishGit,
+  streamPublishStatus,
+} from './plugin-publish-git.js';
 import {
   type PluginPublishRemoteRefusal,
   privateKeyInContent,
@@ -33,7 +41,13 @@ const MAX_CONTENT_SCAN_BYTES = 512 * 1024;
 const REMOTE_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 const MAX_COMMIT_MESSAGE_LENGTH = 5000;
 
-const GIT_ENV = { GIT_TERMINAL_PROMPT: '0' } as const;
+/** Knobs for the service. `allowFileProtocol` is test-only (see
+ * `PublishGitOptions`); the limits exist so tests can reach the cap and the
+ * timeout without writing thousands of files. */
+export interface PluginPublishServiceOptions {
+  allowFileProtocol?: boolean;
+  limits?: { maxPaths?: number; statusTimeoutMs?: number };
+}
 
 export interface PluginPublishChange {
   path: string;
@@ -60,11 +74,28 @@ export type PluginPublishRepository =
   | { state: 'none' }
   | { state: 'nested' }
   | {
+      /** Station will not run git in this folder; nothing was run. */
+      state: 'refused';
+      code: RepositoryRefusalCode;
+      /** For `repository-config-refused`: the offending config keys. */
+      keys?: string[];
+    }
+  | {
       state: 'root';
       branch: string | null;
       hasCommits: boolean;
       remotes: PluginPublishRemote[];
     };
+
+export type RepositoryRefusalCode =
+  | RepositoryConfigRefusal['code']
+  | 'repository-unreadable';
+
+/** The cheap answer the Project page asks for on mount: whether this folder
+ * is a plugin at all. Reads `plugin.json`; runs no git. */
+export type PluginPublishSummary =
+  | { plugin: null; reason: 'not-a-plugin' | 'invalid-manifest' }
+  | { plugin: { name: string; version: string } };
 
 export type PluginPublishInspection =
   | { plugin: null; reason: 'not-a-plugin' | 'invalid-manifest' }
@@ -87,6 +118,7 @@ export type PluginPublishRefusalCode =
   | 'not-a-plugin'
   | 'invalid-manifest'
   | 'nested-repository'
+  | RepositoryRefusalCode
   | 'detached-head'
   | 'invalid-remote-name'
   | 'invalid-message'
@@ -105,6 +137,7 @@ export type PluginPublishRefusalCode =
 export interface PluginPublishRefusal {
   code: PluginPublishRefusalCode;
   secrets?: PluginPublishSecret[];
+  keys?: string[];
 }
 
 export interface PluginPublishSuccess {
@@ -131,27 +164,26 @@ function refuse(
   throw new PublishRefused({ code, ...extra });
 }
 
-async function git(
-  cwd: string,
-  args: string[],
-  timeout = GIT_READ_TIMEOUT_MS,
-): Promise<string> {
-  const { stdout } = await execGit(args, {
-    cwd,
-    encoding: 'utf-8',
-    timeout,
-    maxBuffer: 8 * 1024 * 1024,
-    env: GIT_ENV,
-  });
-  return stdout;
+interface GitRunner {
+  run(cwd: string, args: string[], timeout?: number): Promise<string>;
+  ok(cwd: string, args: string[]): Promise<string | null>;
+  options: PublishGitOptions;
 }
 
-async function gitOk(cwd: string, args: string[]): Promise<string | null> {
-  try {
-    return await git(cwd, args);
-  } catch {
-    return null;
-  }
+function gitRunner(options: PublishGitOptions): GitRunner {
+  const run = (cwd: string, args: string[], timeout = GIT_READ_TIMEOUT_MS) =>
+    runPublishGit(cwd, args, options, timeout);
+  return {
+    run,
+    ok: async (cwd, args) => {
+      try {
+        return await run(cwd, args);
+      } catch {
+        return null;
+      }
+    },
+    options,
+  };
 }
 
 async function readPlugin(
@@ -174,61 +206,72 @@ async function readPlugin(
   }
 }
 
+/**
+ * Where the folder stands, checked BEFORE any other git call runs in it.
+ * `none` only when git says the folder is not in any repository (review
+ * M2): any other failure is refused, because `git init` on a misread
+ * answer would nest a repository inside an existing one.
+ */
 async function repositoryState(
   folder: string,
-): Promise<'none' | 'nested' | 'root'> {
-  const top = await gitOk(folder, ['rev-parse', '--show-toplevel']);
-  if (top === null) return 'none';
-  const [a, b] = await Promise.all([realpath(top.trim()), realpath(folder)]);
-  return a === b ? 'root' : 'nested';
-}
-
-/** Parses `git status --porcelain=v1 -z`. A rename's source path is kept
- * as its own entry so staging it records the deletion too. */
-function parsePorcelain(output: string): PluginPublishChange[] {
-  const tokens = output.split('\0');
-  const changes: PluginPublishChange[] = [];
-  for (let index = 0; index < tokens.length; index += 1) {
-    const token = tokens[index];
-    if (token.length < 4) continue;
-    const status = token.slice(0, 2);
-    changes.push({ status, path: token.slice(3) });
-    if (status[0] === 'R' || status[0] === 'C') {
-      const source = tokens[index + 1];
-      index += 1;
-      if (source && status[0] === 'R')
-        changes.push({ status: 'D ', path: source });
-    }
+  git: GitRunner,
+): Promise<
+  'none' | 'nested' | 'root' | { code: RepositoryRefusalCode; keys?: string[] }
+> {
+  let config: Awaited<ReturnType<typeof checkRepositoryConfig>>;
+  try {
+    config = await checkRepositoryConfig(folder);
+  } catch {
+    // An unparseable `.git/config` is not one git should be pointed at.
+    return { code: 'repository-config-refused', keys: [] };
   }
-  return changes;
+  if (config !== 'absent' && config !== 'ok') return config;
+  let top: string;
+  try {
+    top = await git.run(folder, ['rev-parse', '--show-toplevel']);
+  } catch (error) {
+    const stderr = String((error as { stderr?: unknown }).stderr ?? '');
+    // A `.git` git does not recognise (no HEAD, a corrupt one) is not an
+    // empty folder: `git init` there would re-initialise it.
+    if (config === 'absent' && /not a git repository/i.test(stderr)) {
+      return 'none';
+    }
+    return { code: 'repository-unreadable' };
+  }
+  const [a, b] = await Promise.all([realpath(top.trim()), realpath(folder)]);
+  if (a !== b) return 'nested';
+  // Git found a repository at this folder, so its `.git` must be the one
+  // just checked; anything else is a layout this code does not vouch for.
+  return config === 'ok' ? 'root' : { code: 'repository-unreadable' };
 }
 
 /**
- * What `git add -A` would stage. For a folder that is not a repository yet
- * this runs against a throwaway git directory in the system temp folder, so
- * the answer honours the folder's `.gitignore` without initialising
- * anything in it before the person has confirmed.
+ * What `git add -A` would stage, capped. For a folder that is not a
+ * repository yet this runs against a throwaway git directory in the system
+ * temp folder, so the answer honours the folder's `.gitignore` without
+ * initialising anything in it before the person has confirmed.
  */
 async function pendingChanges(
   folder: string,
   state: 'none' | 'root',
-): Promise<PluginPublishChange[]> {
-  const statusArgs = [
-    'status',
-    '--porcelain=v1',
-    '-z',
-    '--untracked-files=all',
-  ];
-  if (state === 'root') return parsePorcelain(await git(folder, statusArgs));
+  git: GitRunner,
+  limits: PluginPublishServiceOptions['limits'],
+): Promise<{ changes: PluginPublishChange[]; tooMany: boolean }> {
+  const caps = {
+    maxPaths: limits?.maxPaths ?? MAX_PUBLISH_PATHS,
+    timeoutMs: limits?.statusTimeoutMs ?? GIT_READ_TIMEOUT_MS,
+  };
+  if (state === 'root') {
+    return streamPublishStatus(folder, [], git.options, caps);
+  }
   const scratch = await mkdtemp(join(tmpdir(), 'station-plugin-publish-'));
   try {
-    await git(scratch, ['init', '--quiet', scratch]);
-    return parsePorcelain(
-      await git(folder, [
-        `--git-dir=${join(scratch, '.git')}`,
-        `--work-tree=${folder}`,
-        ...statusArgs,
-      ]),
+    await git.run(scratch, ['init', '--quiet', scratch]);
+    return await streamPublishStatus(
+      folder,
+      [`--git-dir=${join(scratch, '.git')}`, `--work-tree=${folder}`],
+      git.options,
+      caps,
     );
   } finally {
     await rm(scratch, { recursive: true, force: true });
@@ -272,6 +315,7 @@ async function findSecrets(
 async function remoteUrls(
   folder: string,
   name: string,
+  git: GitRunner,
 ): Promise<{ fetch: string; push: string[] } | null> {
   const lines = (output: string | null) =>
     (output ?? '')
@@ -279,11 +323,11 @@ async function remoteUrls(
       .map((line) => line.trim())
       .filter(Boolean);
   const fetch = lines(
-    await gitOk(folder, ['config', '--get-all', `remote.${name}.url`]),
+    await git.ok(folder, ['config', '--get-all', `remote.${name}.url`]),
   );
   if (fetch.length === 0) return null;
   const push = lines(
-    await gitOk(folder, ['config', '--get-all', `remote.${name}.pushurl`]),
+    await git.ok(folder, ['config', '--get-all', `remote.${name}.pushurl`]),
   );
   // Without a pushurl, git pushes to every `url`.
   return { fetch: fetch[0], push: push.length > 0 ? push : fetch };
@@ -313,21 +357,27 @@ function describeRemote(
   };
 }
 
-async function listRemotes(folder: string): Promise<PluginPublishRemote[]> {
-  const names = ((await gitOk(folder, ['remote'])) ?? '')
+async function listRemotes(
+  folder: string,
+  git: GitRunner,
+): Promise<PluginPublishRemote[]> {
+  const names = ((await git.ok(folder, ['remote'])) ?? '')
     .split('\n')
     .map((line) => line.trim())
     .filter(Boolean);
   const remotes: PluginPublishRemote[] = [];
   for (const name of names) {
-    const urls = await remoteUrls(folder, name);
+    const urls = await remoteUrls(folder, name, git);
     if (urls) remotes.push(describeRemote(name, urls));
   }
   return remotes;
 }
 
-async function currentBranch(folder: string): Promise<string | null> {
-  const branch = await gitOk(folder, [
+async function currentBranch(
+  folder: string,
+  git: GitRunner,
+): Promise<string | null> {
+  const branch = await git.ok(folder, [
     'symbolic-ref',
     '--quiet',
     '--short',
@@ -336,46 +386,57 @@ async function currentBranch(folder: string): Promise<string | null> {
   return branch?.trim() || null;
 }
 
-async function hasCommits(folder: string): Promise<boolean> {
+async function hasCommits(folder: string, git: GitRunner): Promise<boolean> {
   return (
-    (await gitOk(folder, ['rev-parse', '--verify', '--quiet', 'HEAD'])) !== null
+    (await git.ok(folder, ['rev-parse', '--verify', '--quiet', 'HEAD'])) !==
+    null
   );
+}
+
+export async function summarizePluginPublish(
+  folder: string,
+): Promise<PluginPublishSummary> {
+  const plugin = await readPlugin(folder);
+  return typeof plugin === 'string'
+    ? { plugin: null, reason: plugin }
+    : { plugin };
 }
 
 export async function inspectPluginPublish(
   folder: string,
+  options: PluginPublishServiceOptions = {},
 ): Promise<PluginPublishInspection> {
   const plugin = await readPlugin(folder);
   if (typeof plugin === 'string') return { plugin: null, reason: plugin };
-  const state = await repositoryState(folder);
-  if (state === 'nested') {
+  const git = gitRunner({ allowFileProtocol: options.allowFileProtocol });
+  const state = await repositoryState(folder, git);
+  if (typeof state === 'object' || state === 'nested') {
     return {
       plugin,
-      repository: { state },
+      repository:
+        state === 'nested' ? { state } : { state: 'refused', ...state },
       changes: [],
       secrets: [],
       tooManyChanges: false,
     };
   }
-  const changes = await pendingChanges(folder, state);
-  const tooManyChanges = changes.length > MAX_PUBLISH_PATHS;
-  const secrets = tooManyChanges ? [] : await findSecrets(folder, changes);
+  const { changes, tooMany } = await pendingChanges(
+    folder,
+    state,
+    git,
+    options.limits,
+  );
+  const secrets = tooMany ? [] : await findSecrets(folder, changes);
   const repository: PluginPublishRepository =
     state === 'none'
       ? { state }
       : {
           state,
-          branch: await currentBranch(folder),
-          hasCommits: await hasCommits(folder),
-          remotes: await listRemotes(folder),
+          branch: await currentBranch(folder, git),
+          hasCommits: await hasCommits(folder, git),
+          remotes: await listRemotes(folder, git),
         };
-  return {
-    plugin,
-    repository,
-    changes: tooManyChanges ? changes.slice(0, MAX_PUBLISH_PATHS) : changes,
-    secrets,
-    tooManyChanges,
-  };
+  return { plugin, repository, changes, secrets, tooManyChanges: tooMany };
 }
 
 function gitFailureCode(error: unknown): PluginPublishRefusalCode {
@@ -433,14 +494,17 @@ function serialized<T>(folder: string, run: () => Promise<T>): Promise<T> {
 export function publishPlugin(
   folder: string,
   request: PluginPublishRequest,
-  options: { logger?: Logger } = {},
+  options: PluginPublishServiceOptions & { logger?: Logger } = {},
 ): Promise<
   | { ok: true; result: PluginPublishSuccess }
   | { ok: false; refusal: PluginPublishRefusal }
 > {
   return serialized(folder, async () => {
     try {
-      return { ok: true as const, result: await publishOnce(folder, request) };
+      return {
+        ok: true as const,
+        result: await publishOnce(folder, request, options),
+      };
     } catch (error) {
       if (error instanceof PublishRefused) {
         return { ok: false as const, refusal: error.refusal };
@@ -461,7 +525,9 @@ export function publishPlugin(
 async function publishOnce(
   folder: string,
   request: PluginPublishRequest,
+  options: PluginPublishServiceOptions,
 ): Promise<PluginPublishSuccess> {
+  const git = gitRunner({ allowFileProtocol: options.allowFileProtocol });
   const message = request.message.trim();
   if (message === '' || message.length > MAX_COMMIT_MESSAGE_LENGTH) {
     refuse('invalid-message');
@@ -470,13 +536,14 @@ async function publishOnce(
 
   const plugin = await readPlugin(folder);
   if (typeof plugin === 'string') refuse(plugin);
-  const state = await repositoryState(folder);
+  const state = await repositoryState(folder, git);
+  if (typeof state === 'object') refuse(state.code, { keys: state.keys });
   if (state === 'nested') refuse('nested-repository');
 
   // The remote: an existing one must pass the guard on every address it
   // holds; a new one must pass it on the address the person typed.
   const existing =
-    state === 'root' ? await remoteUrls(folder, request.remoteName) : null;
+    state === 'root' ? await remoteUrls(folder, request.remoteName, git) : null;
   let newRemoteUrl: string | null = null;
   let urls: { fetch: string; push: string[] };
   if (existing) {
@@ -497,27 +564,32 @@ async function publishOnce(
     refuse(remote.refusal ?? 'unsupported-transport');
   }
 
-  const changes = await pendingChanges(folder, state);
-  if (changes.length > MAX_PUBLISH_PATHS) refuse('too-many-changes');
+  const { changes, tooMany } = await pendingChanges(
+    folder,
+    state,
+    git,
+    options.limits,
+  );
+  if (tooMany) refuse('too-many-changes');
   const secrets = await findSecrets(folder, changes);
   if (secrets.length > 0) refuse('secrets', { secrets });
   if (
     changes.length === 0 &&
-    (state === 'none' || !(await hasCommits(folder)))
+    (state === 'none' || !(await hasCommits(folder, git)))
   ) {
     refuse('nothing-to-publish');
   }
 
-  if (state === 'root' && (await currentBranch(folder)) === null) {
+  if (state === 'root' && (await currentBranch(folder, git)) === null) {
     refuse('detached-head');
   }
 
   // ---- Everything below changes the folder or the remote. ----
   if (state === 'none') {
-    await git(folder, ['init', '--quiet', '--initial-branch=main']);
+    await git.run(folder, ['init', '--quiet', '--initial-branch=main']);
   }
   if (newRemoteUrl !== null) {
-    await git(folder, [
+    await git.run(folder, [
       'remote',
       'add',
       '--',
@@ -525,29 +597,49 @@ async function publishOnce(
       newRemoteUrl,
     ]);
   }
-  const branch = await currentBranch(folder);
+  const branch = await currentBranch(folder, git);
   if (branch === null) refuse('detached-head');
 
   let commit: string | null = null;
   if (changes.length > 0) {
     // Exactly the paths that were checked: a file created after the check
     // is not swept into the commit.
-    await git(folder, [
+    await git.run(folder, [
       '--literal-pathspecs',
       'add',
       '--all',
       '--',
       ...changes.map((change) => change.path),
     ]);
-    await git(
+    await git.run(
       folder,
       ['commit', '--quiet', '-m', message],
       GIT_COMMIT_TIMEOUT_MS,
     );
-    commit = (await git(folder, ['rev-parse', 'HEAD'])).trim();
+    commit = (await git.run(folder, ['rev-parse', 'HEAD'])).trim();
   }
 
-  await git(
+  // Checked once more right before the push: the folder is writable by
+  // others while this runs, and this is the call that carries credentials.
+  const beforePush = await checkRepositoryConfig(folder).catch(
+    (): RepositoryConfigRefusal => ({
+      code: 'repository-config-refused',
+      keys: [],
+    }),
+  );
+  if (beforePush === 'absent') refuse('repository-unreadable');
+  if (beforePush !== 'ok') {
+    refuse(
+      beforePush.code,
+      'keys' in beforePush ? { keys: beforePush.keys } : {},
+    );
+  }
+  // Only the push needs credentials; only it gets the operator's helpers.
+  const pushGit = gitRunner({
+    ...git.options,
+    credentialHelpers: await readOperatorCredentialHelpers(),
+  });
+  await pushGit.run(
     folder,
     [
       'push',

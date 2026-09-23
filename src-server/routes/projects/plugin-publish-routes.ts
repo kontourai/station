@@ -6,6 +6,7 @@ import {
   inspectPluginPublish,
   type PluginPublishRefusalCode,
   publishPlugin,
+  summarizePluginPublish,
 } from '../../services/projects/plugin-publish-service.js';
 import { createLogger } from '../../utils/logger.js';
 import {
@@ -31,6 +32,14 @@ const REFUSAL_MESSAGES: Record<PluginPublishRefusalCode, string> = {
     "The Project's plugin.json is not a valid plugin manifest. Fix it before publishing",
   'nested-repository':
     "The Project's folder is inside another git repository. Publishing would push that whole repository, so move the plugin into a folder of its own first",
+  'git-dir-not-directory':
+    "The folder's .git is not a plain directory (it is a file or link, or it redirects to another git directory). Station only publishes a folder that is its own repository",
+  'repository-config-refused':
+    "The folder's .git/config sets options Station will not run git with, because a Project's folder can be written by others and publishing runs with this computer's credentials. Remove them (keys are listed), then publish again",
+  'repository-unreadable':
+    'git could not read this folder as a repository. Check it with git from this computer',
+  'local-host':
+    'That remote is on this computer or a local-only address. Publish to a git host other people can reach',
   'detached-head':
     'The folder is not on a branch (detached HEAD). Check out a branch, then publish',
   'invalid-remote-name':
@@ -70,6 +79,7 @@ const CLIENT_REFUSALS = new Set<PluginPublishRefusalCode>([
   'unsupported-transport',
   'credentials-in-url',
   'malformed',
+  'local-host',
 ]);
 
 const logger = createLogger({ name: 'plugin-publish-routes' });
@@ -82,6 +92,12 @@ export interface PluginPublishRouteDeps {
    * refuse (`operatorOnly`'s contract).
    */
   visibility?: PluginPrincipalResolution;
+  /**
+   * TEST ONLY: let git use its `file` transport, so a test's global
+   * `insteadOf` can route an https remote to a bare repository on disk.
+   * Construction throws outside Vitest, so production cannot enable it.
+   */
+  testOnlyAllowFileTransport?: true;
 }
 
 /**
@@ -97,6 +113,14 @@ export interface PluginPublishRouteDeps {
  * this at another path.
  */
 export function createPluginPublishRoutes(deps: PluginPublishRouteDeps) {
+  if (deps.testOnlyAllowFileTransport && process.env.VITEST !== 'true') {
+    throw new Error(
+      'testOnlyAllowFileTransport is for tests and cannot be enabled here',
+    );
+  }
+  const serviceOptions = {
+    allowFileProtocol: deps.testOnlyAllowFileTransport === true,
+  };
   const app = new Hono();
   // The operator check runs before body validation so a non-operator learns
   // nothing about the request shape either.
@@ -140,10 +164,14 @@ export function createPluginPublishRoutes(deps: PluginPublishRouteDeps) {
       const folder = folderFor(c);
       if (folder instanceof Response) return folder;
       try {
-        return c.json({
-          success: true,
-          data: await inspectPluginPublish(folder),
-        });
+        // `?view=summary` is what the Project page asks on mount: is this
+        // folder a plugin? It reads plugin.json and runs no git, so viewing
+        // a Project never runs git in a folder someone else can write.
+        const data =
+          c.req.query('view') === 'summary'
+            ? await summarizePluginPublish(folder)
+            : await inspectPluginPublish(folder, serviceOptions);
+        return c.json({ success: true, data });
       } catch (error) {
         logger.warn('Plugin publish inspection failed', {
           project: param(c, 'slug'),
@@ -169,9 +197,12 @@ export function createPluginPublishRoutes(deps: PluginPublishRouteDeps) {
       const folder = folderFor(c);
       if (folder instanceof Response) return folder;
       const body = getBody(c) as z.infer<typeof publishRequestSchema>;
-      const outcome = await publishPlugin(folder, body, { logger });
+      const outcome = await publishPlugin(folder, body, {
+        logger,
+        ...serviceOptions,
+      });
       if (!outcome.ok) {
-        const { code, secrets } = outcome.refusal;
+        const { code, secrets, keys } = outcome.refusal;
         logger.info('Plugin publish refused', {
           project: param(c, 'slug'),
           code,
@@ -182,6 +213,7 @@ export function createPluginPublishRoutes(deps: PluginPublishRouteDeps) {
             error: REFUSAL_MESSAGES[code],
             code,
             ...(secrets ? { secrets } : {}),
+            ...(keys ? { keys } : {}),
           },
           CLIENT_REFUSALS.has(code) ? 400 : 409,
         );

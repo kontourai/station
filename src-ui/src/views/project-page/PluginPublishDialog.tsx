@@ -24,6 +24,7 @@ const REMOTE_REFUSALS: Record<string, string> = {
   'credentials-in-url': 'its address holds a password or token',
   'unsupported-transport': 'it is not an https or SSH address',
   malformed: 'Station does not recognise its address',
+  'local-host': 'it points at this computer or a local-only address',
   empty: 'it has no address',
 };
 
@@ -94,6 +95,20 @@ function Published({ result }: { result: PluginPublishResult }) {
   );
 }
 
+function refusedRepositoryMessage(repository: {
+  code: string;
+  keys?: string[];
+}): string {
+  if (repository.code === 'repository-config-refused') {
+    const keys = repository.keys ?? [];
+    return `This folder's .git/config sets options Station will not run git with, because others can write to this folder and publishing uses this computer's credentials${keys.length > 0 ? `: ${keys.join(', ')}` : ''}. Remove them, then check again.`;
+  }
+  if (repository.code === 'git-dir-not-directory') {
+    return "This folder's .git is a file or link, or redirects to another git directory. Station only publishes a folder that is its own repository.";
+  }
+  return 'git could not read this folder as a repository. Check it with git from this computer.';
+}
+
 export function PluginPublishDialog({
   apiBase,
   projectSlug,
@@ -141,13 +156,15 @@ export function PluginPublishDialog({
   });
 
   const blocker =
-    repository.state === 'nested'
-      ? 'This folder is inside another git repository. Publishing would push that whole repository, so move the plugin into a folder of its own first.'
-      : repository.state === 'root' && repository.branch === null
-        ? 'This folder is not on a branch (detached HEAD). Check out a branch, then publish.'
-        : tooManyChanges
-          ? 'More than 1000 files would be committed. Add build output and dependencies (such as node_modules) to .gitignore.'
-          : null;
+    repository.state === 'refused'
+      ? refusedRepositoryMessage(repository)
+      : repository.state === 'nested'
+        ? 'This folder is inside another git repository. Publishing would push that whole repository, so move the plugin into a folder of its own first.'
+        : repository.state === 'root' && repository.branch === null
+          ? 'This folder is not on a branch (detached HEAD). Check out a branch, then publish.'
+          : tooManyChanges
+            ? 'More than 1000 files would be committed. Add build output and dependencies (such as node_modules) to .gitignore.'
+            : null;
   const failure =
     publish.error instanceof PluginPublishError ? publish.error : null;
   const flagged = secrets.length > 0 ? secrets : (failure?.secrets ?? []);
@@ -263,6 +280,11 @@ export function PluginPublishDialog({
               )}
             </ul>
           )}
+          <p className="editor-hint">
+            Station checks file names (.env, keys, credential files) and looks
+            for private-key blocks. It is not an exhaustive secret scan: read
+            the list above before you publish.
+          </p>
         </section>
 
         <fieldset className="plugin-publish__remotes">

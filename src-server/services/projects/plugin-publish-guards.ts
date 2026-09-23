@@ -11,6 +11,7 @@ export type PluginPublishRemoteRefusal =
   | 'empty'
   | 'unsupported-transport'
   | 'credentials-in-url'
+  | 'local-host'
   | 'malformed';
 
 export type PluginPublishRemoteVerdict =
@@ -30,7 +31,8 @@ export type PluginPublishRemoteVerdict =
   | { ok: false; code: PluginPublishRemoteRefusal };
 
 const MAX_REMOTE_URL_LENGTH = 2048;
-const SSH_USER = /^[A-Za-z0-9._-]+$/;
+// Never starting with `-`: ssh would read `-oProxyCommand=…` as an option.
+const SSH_USER = /^[A-Za-z0-9_][A-Za-z0-9._-]*$/;
 // A DNS name or IPv4 address. Deliberately no single-label one-letter host:
 // `c:path` is a Windows drive, not an scp-style remote.
 const HOST =
@@ -45,9 +47,43 @@ function withGitSuffix(path: string): string {
 function validRepositoryPath(path: string): boolean {
   const trimmed = path.replace(/^\/+/, '').replace(/\/+$/, '');
   if (trimmed === '' || trimmed === '.git') return false;
-  return trimmed
-    .split('/')
-    .every((segment) => segment !== '' && segment !== '.' && segment !== '..');
+  return trimmed.split('/').every(
+    (segment) =>
+      segment !== '' &&
+      segment !== '.' &&
+      segment !== '..' &&
+      // An option-looking segment, or an encoded separator that could
+      // reassemble into `..` on the far side.
+      !segment.startsWith('-') &&
+      !/%(?:2f|5c|2e)/i.test(segment),
+  );
+}
+
+/**
+ * Loopback, link-local, unspecified and numeric-only hosts. Publishing is
+ * pushing to somewhere else; a push to this machine, or to a cloud
+ * metadata address, is not that. `hostname` must already be normalized
+ * (WHATWG URL does that: `2130706433` and `0x7f.1` become `127.0.0.1`).
+ */
+function isLocalHost(hostname: string): boolean {
+  const host = hostname.toLowerCase().replace(/\.$/, '');
+  return (
+    host === 'localhost' ||
+    host.endsWith('.localhost') ||
+    host === '0.0.0.0' ||
+    /^127\./.test(host) ||
+    /^169\.254\./.test(host) ||
+    /^0\./.test(host) ||
+    host.startsWith('[')
+  );
+}
+
+function normalizedHostname(host: string): string | null {
+  try {
+    return new URL(`ssh://${host}/`).hostname;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -69,12 +105,17 @@ export function validatePluginPublishRemoteUrl(
   if (url === '') return { ok: false, code: 'empty' };
   if (
     url.length > MAX_REMOTE_URL_LENGTH ||
-    // biome-ignore lint/suspicious/noControlCharactersInRegex: refusing control characters is the point
-    /[\s\u0000-\u001f\u007f]/.test(url)
+    // Printable ASCII only: no whitespace, no control characters, and no
+    // look-alike or zero-width characters that render as a different
+    // address than the one git receives.
+    /[^\x21-\x7e]/.test(url)
   ) {
     return { ok: false, code: 'malformed' };
   }
-  if (url.startsWith('-') || url.includes('::')) {
+  // `<transport>::<address>` is how git names a remote helper (`ext::` runs
+  // a command). Git recognises it only as a prefix, which is what this
+  // matches; any other `::` (an IPv6 literal) is judged below.
+  if (url.startsWith('-') || /^[A-Za-z0-9+.-]+::/.test(url)) {
     return { ok: false, code: 'unsupported-transport' };
   }
 
@@ -99,6 +140,7 @@ export function validatePluginPublishRemoteUrl(
         return { ok: false, code: 'malformed' };
       }
     }
+    if (isLocalHost(parsed.hostname)) return { ok: false, code: 'local-host' };
     if (
       !HOST.test(parsed.hostname) ||
       parsed.search !== '' ||
@@ -139,6 +181,9 @@ export function validatePluginPublishRemoteUrl(
   if (!HOST.test(host) || host.length < 2 || !validRepositoryPath(path)) {
     return { ok: false, code: 'malformed' };
   }
+  const normalized = normalizedHostname(host);
+  if (normalized === null) return { ok: false, code: 'malformed' };
+  if (isLocalHost(normalized)) return { ok: false, code: 'local-host' };
   return {
     ok: true,
     transport: 'ssh',
@@ -153,7 +198,9 @@ export function validatePluginPublishRemoteUrl(
  * them it will not be used.
  */
 export function redactRemoteUrl(raw: string): string {
-  const url = raw.trim();
+  // A query or fragment can carry a token (`?access_token=`) as well as
+  // userinfo can; neither is part of a repository's address.
+  const url = raw.trim().replace(/[?#].*$/s, '');
   if (/^[A-Za-z][A-Za-z0-9+.-]*:\/\//.test(url)) {
     try {
       const parsed = new URL(url);
@@ -189,6 +236,8 @@ const SSH_PRIVATE_KEY_NAMES = new Set([
   'id_dsa',
   'id_ecdsa',
   'id_ed25519',
+  'id_ecdsa_sk',
+  'id_ed25519_sk',
 ]);
 const CREDENTIAL_FILE_NAMES = new Set([
   '.npmrc',
@@ -200,6 +249,7 @@ const CREDENTIAL_FILE_NAMES = new Set([
   '.htpasswd',
   'credentials',
   'credentials.json',
+  'secrets.json',
 ]);
 
 /**
@@ -214,10 +264,23 @@ export function secretLookingPathReason(path: string): string | null {
     return 'inside an .ssh folder';
   }
   if (
-    (name === '.env' || name.startsWith('.env.')) &&
+    (name === '.env' || name.startsWith('.env.') || name.endsWith('.env')) &&
     !ENV_FILE_TEMPLATES.has(name)
   ) {
     return 'environment file';
+  }
+  if (
+    segments.length >= 2 &&
+    segments.at(-2) === '.kube' &&
+    name === 'config'
+  ) {
+    return 'Kubernetes config';
+  }
+  if (name.endsWith('.tfstate') || name.endsWith('.tfstate.backup')) {
+    return 'Terraform state';
+  }
+  if (name.startsWith('service-account') && name.endsWith('.json')) {
+    return 'service account key';
   }
   if (SSH_PRIVATE_KEY_NAMES.has(name)) return 'SSH private key';
   if (KEY_FILE_EXTENSIONS.some((extension) => name.endsWith(extension))) {

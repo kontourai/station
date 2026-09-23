@@ -18,6 +18,7 @@ export type PluginPublishInspection =
       repository:
         | { state: 'none' }
         | { state: 'nested' }
+        | { state: 'refused'; code: string; keys?: string[] }
         | {
             state: 'root';
             branch: string | null;
@@ -28,6 +29,10 @@ export type PluginPublishInspection =
       secrets: Array<{ path: string; reason: string }>;
       tooManyChanges: boolean;
     };
+
+export type PluginPublishSummary =
+  | { plugin: null; reason: string }
+  | { plugin: { name: string; version: string } };
 
 export interface PluginPublishRequest {
   message: string;
@@ -78,8 +83,29 @@ async function readEnvelope<T>(response: Response): Promise<Envelope<T>> {
   }
 }
 
-/** `GET`: what publishing this Project's folder would do. Operator-only, so
- * anyone else gets an error and the Project page offers nothing. */
+/** `GET ?view=summary`: whether this Project's folder is a plugin. Runs no
+ * git on the server. Operator-only, so anyone else gets an error and the
+ * Project page offers nothing. */
+export async function fetchPluginPublishSummary(
+  apiBase: string,
+  projectSlug: string,
+): Promise<PluginPublishSummary> {
+  const response = await getJson(
+    `${endpoint(apiBase, projectSlug)}?view=summary`,
+  );
+  const envelope = await readEnvelope<PluginPublishSummary>(response);
+  if (!response.ok || !envelope.success || !envelope.data) {
+    throw new PluginPublishError(
+      envelope.error ||
+        `Station could not inspect this folder (${response.status})`,
+      envelope.code,
+    );
+  }
+  return envelope.data;
+}
+
+/** `GET`: what publishing this Project's folder would do (git status,
+ * remotes, secrets). Asked only once the person opens the dialog. */
 export async function fetchPluginPublishInspection(
   apiBase: string,
   projectSlug: string,
@@ -125,4 +151,8 @@ export function pluginPublishInspectionKey(
   projectSlug: string,
 ) {
   return ['plugin-publish', apiBase, projectSlug] as const;
+}
+
+export function pluginPublishSummaryKey(apiBase: string, projectSlug: string) {
+  return ['plugin-publish-summary', apiBase, projectSlug] as const;
 }

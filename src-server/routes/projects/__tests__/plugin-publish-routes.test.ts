@@ -102,6 +102,8 @@ function appFor(caller: PrincipalRef, workspace = () => folder) {
     createPluginPublishRoutes({
       getWorkspacePath: () => workspace(),
       visibility: { resolvePrincipal: () => caller },
+      // The fixture's "remote" is a bare repository on disk.
+      testOnlyAllowFileTransport: true,
     }),
   );
   return app;
@@ -384,5 +386,136 @@ describe('publishing', () => {
     });
     expect(refused.body.code).toBe('not-a-plugin');
     expect(existsSync(join(folder, '.git'))).toBe(false);
+  });
+});
+
+describe('the folder cannot run code as the operator (review H1/H2)', () => {
+  function marker(name: string): string {
+    return join(root, `${name}-ran`);
+  }
+
+  test('viewing (summary) and inspecting a folder with core.fsmonitor runs nothing, and names the key', async () => {
+    run(folder, ['init', '--quiet']);
+    run(folder, ['config', 'core.fsmonitor', `touch '${marker('fsmonitor')}'`]);
+    const summary = await appFor(OPERATOR).request(
+      '/api/projects/pulse/plugin-publish?view=summary',
+    );
+    expect(((await summary.json()) as any).data).toEqual({
+      plugin: { name: 'pulse', version: '1.0.0' },
+    });
+    const view = await inspect();
+    expect(view.body.data.repository).toEqual({
+      state: 'refused',
+      code: 'repository-config-refused',
+      keys: ['core.fsmonitor'],
+    });
+    expect(existsSync(marker('fsmonitor'))).toBe(false);
+  });
+
+  test('publishing refuses a repo-local url.insteadOf to ext:: and runs nothing', async () => {
+    const script = join(root, 'ext.sh');
+    writeFileSync(script, `#!/bin/sh\ntouch '${marker('ext')}'\n`, {
+      mode: 0o755,
+    });
+    run(folder, ['init', '--quiet']);
+    run(folder, ['config', `url.ext::sh ${script} .insteadOf`, REMOTE_URL]);
+    run(folder, ['config', 'protocol.ext.allow', 'always']);
+    run(folder, ['remote', 'add', 'origin', REMOTE_URL]);
+    const refused = await publish({ message: 'Publish', remoteName: 'origin' });
+    expect(refused.status).toBe(409);
+    expect(refused.body.code).toBe('repository-config-refused');
+    expect(refused.body.keys).toEqual([
+      'protocol.ext.allow',
+      `url.ext::sh ${script} .insteadof`,
+    ]);
+    expect(existsSync(marker('ext'))).toBe(false);
+    expect(bareHeads()).toBe('');
+  });
+
+  test('publishing with a repo-local core.sshCommand is refused and runs nothing', async () => {
+    run(folder, ['init', '--quiet']);
+    run(folder, ['config', 'core.sshCommand', `touch '${marker('ssh')}'`]);
+    const refused = await publish({
+      message: 'Publish',
+      remoteName: 'origin',
+      remoteUrl: 'git@github.com:acme/pulse.git',
+    });
+    expect(refused.body.code).toBe('repository-config-refused');
+    expect(existsSync(marker('ssh'))).toBe(false);
+  });
+
+  test('hooks planted in .git/hooks do not run when publishing', async () => {
+    run(folder, ['init', '--quiet']);
+    for (const hook of [
+      'pre-commit',
+      'commit-msg',
+      'post-commit',
+      'pre-push',
+    ]) {
+      writeFileSync(
+        join(folder, '.git', 'hooks', hook),
+        `#!/bin/sh\ntouch '${marker(hook)}'\n`,
+        { mode: 0o755 },
+      );
+    }
+    const published = await publish({
+      message: 'Publish',
+      remoteName: 'origin',
+      remoteUrl: REMOTE_URL,
+    });
+    expect(published.status).toBe(201);
+    for (const hook of [
+      'pre-commit',
+      'commit-msg',
+      'post-commit',
+      'pre-push',
+    ]) {
+      expect(existsSync(marker(hook))).toBe(false);
+    }
+  });
+
+  test('a .git file pointing elsewhere is refused before git runs', async () => {
+    const elsewhere = join(root, 'elsewhere');
+    run(root, ['init', '--quiet', elsewhere]);
+    writeFileSync(join(folder, '.git'), `gitdir: ${join(elsewhere, '.git')}\n`);
+    expect((await inspect()).body.data.repository).toEqual({
+      state: 'refused',
+      code: 'git-dir-not-directory',
+    });
+    const refused = await publish({
+      message: 'Publish',
+      remoteName: 'origin',
+      remoteUrl: REMOTE_URL,
+    });
+    expect(refused.body.code).toBe('git-dir-not-directory');
+  });
+
+  test('a .git git cannot read is refused, never re-initialised (review M2)', async () => {
+    mkdirSync(join(folder, '.git'));
+    writeFileSync(
+      join(folder, '.git', 'config'),
+      '[core]\n\trepositoryformatversion = 0\n',
+    );
+    expect((await inspect()).body.data.repository).toEqual({
+      state: 'refused',
+      code: 'repository-unreadable',
+    });
+    const refused = await publish({
+      message: 'Publish',
+      remoteName: 'origin',
+      remoteUrl: REMOTE_URL,
+    });
+    expect(refused.body.code).toBe('repository-unreadable');
+    expect(existsSync(join(folder, '.git', 'HEAD'))).toBe(false);
+  });
+
+  test('the file-transport allowance cannot be switched on outside tests', () => {
+    vi.stubEnv('VITEST', '');
+    expect(() =>
+      createPluginPublishRoutes({
+        getWorkspacePath: () => folder,
+        testOnlyAllowFileTransport: true,
+      }),
+    ).toThrow(/for tests/);
   });
 });
