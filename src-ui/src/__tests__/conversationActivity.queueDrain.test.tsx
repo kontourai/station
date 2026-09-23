@@ -274,6 +274,15 @@ describe('#2309 the queue drains on the turn END event, routed by the frame bind
     });
   });
 
+  test("a lineage child's turn.aborted (a Stop elsewhere) does not drain through the binding either", async () => {
+    chatWithQueue(['held after the stop']);
+    connect(API, open(12));
+    deliverEvent(API, turnAborted(), closed(13));
+    await vi.advanceTimersByTimeAsync(500);
+    expect(mocks.dispatchForeground).not.toHaveBeenCalled();
+    expect(chat().queuedMessages).toEqual(['held after the stop']);
+  });
+
   test('Station A, then B, then A: the drain goes through the Station that delivered the turn end', async () => {
     const stationA = API;
     const stationB = `${API}-b`;
