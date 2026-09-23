@@ -62,14 +62,27 @@ describe('probeServerConnection', () => {
       .fn<typeof fetch>()
       .mockResolvedValueOnce(Response.json(handshake))
       .mockResolvedValueOnce(Response.json({ bootId: 'broker-boot' }));
-    setStationHealthRouteResolver((_origin, route) =>
+    setStationHealthRouteResolver((_origin, route, authenticated) =>
       route === brokerRoute
         ? {
             kind: 'relay',
             transport,
             isCurrent: () => true,
             clientOrigin: brokerRoute.scope.browserOrigin,
-            credential: 'approved-device-credential',
+            ...(authenticated
+              ? {
+                  identityTransport: (url, init) =>
+                    transport(url, {
+                      ...init,
+                      headers: {
+                        ...Object.fromEntries(new Headers(init?.headers)),
+                        Authorization: 'Bearer approved-device-credential',
+                        'X-Station-Account-Continuation': 'continuation',
+                        'X-Station-Account-Proof': 'fresh-proof',
+                      },
+                    }),
+                }
+              : {}),
           }
         : { kind: 'reject' },
     );
@@ -92,6 +105,11 @@ describe('probeServerConnection', () => {
     expect(
       new Headers(transport.mock.calls[1]?.[1]?.headers).get('Authorization'),
     ).toBe('Bearer approved-device-credential');
+    expect(
+      new Headers(transport.mock.calls[1]?.[1]?.headers).get(
+        'X-Station-Account-Proof',
+      ),
+    ).toBe('fresh-proof');
     expect(direct).not.toHaveBeenCalled();
   });
 
@@ -106,6 +124,36 @@ describe('probeServerConnection', () => {
         brokerRoute,
       ),
     ).resolves.toEqual({ ok: false, reason: 'unreachable' });
+    expect(direct).not.toHaveBeenCalled();
+  });
+
+  it('reports missing application authority as authentication failure after the public relay handshake', async () => {
+    const direct = vi
+      .spyOn(globalThis, 'fetch')
+      .mockRejectedValue(new Error('direct Station HTTP must not be used'));
+    const transport = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(Response.json(handshake));
+    setStationHealthRouteResolver((_origin, route) =>
+      route === brokerRoute
+        ? {
+            kind: 'relay',
+            transport,
+            isCurrent: () => true,
+            clientOrigin: brokerRoute.scope.browserOrigin,
+          }
+        : { kind: 'reject' },
+    );
+    await expect(
+      probeServerConnection(
+        'https://station.example.test',
+        undefined,
+        null,
+        new AbortController().signal,
+        brokerRoute,
+      ),
+    ).resolves.toEqual({ ok: false, reason: 'authentication-failed' });
+    expect(transport).toHaveBeenCalledTimes(1);
     expect(direct).not.toHaveBeenCalled();
   });
 

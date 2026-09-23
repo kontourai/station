@@ -18,6 +18,7 @@ import {
   notifyCredentialChanged,
   setClientCredentialResolver,
 } from '@kontourai/station-sdk';
+import type { ClientCredential } from '@kontourai/station-sdk/client';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import {
   type ReactNode,
@@ -260,7 +261,7 @@ function StationCredentialBridge({ children }: { children: ReactNode }) {
   // children's layout effects, which let the first native request escape to
   // raw fetch and terminal-stop on 401 even though the keyring was healthy.
   useInsertionEffect(() => {
-    setClientCredentialResolver(() => {
+    setClientCredentialResolver(async () => {
       // The resolver body runs when a request is ABOUT TO BE ISSUED, so this
       // ONE live read is the connection, address, credential and generation
       // that request is actually authenticated against. `activeConnection` and
@@ -309,6 +310,21 @@ function StationCredentialBridge({ children }: { children: ReactNode }) {
             }
           : undefined
         : undefined;
+      let relayCredential: ClientCredential | undefined;
+      if (!profile.isTauri && evidence?.brokerRoute && browserRoute) {
+        const { createBrowserRelayApplicationCredential } = await import(
+          '../lib/browserRelayApplicationAuthority'
+        );
+        relayCredential = await createBrowserRelayApplicationCredential({
+          connectionId: evidence.connectionId,
+          applicationOrigin: evidence.origin,
+          route: evidence.brokerRoute,
+          transport: browserRoute.transport,
+          routeIsCurrent: () =>
+            isCredentialEvidenceCurrent(evidence) &&
+            Boolean(browserRoute.isCurrent()),
+        });
+      }
       return {
         credential,
         origin: evidence?.origin ?? apiBase,
@@ -326,14 +342,18 @@ function StationCredentialBridge({ children }: { children: ReactNode }) {
           ? {
               // A missing or retired route must refuse at the SDK boundary.
               // Omitting transport here would silently use direct HTTP.
+              ...(relayCredential ? relayCredential : {}),
               transport:
-                browserRoute?.transport ??
+                relayCredential?.transport ??
                 (async () => {
-                  throw new Error('Station broker route is not ready');
+                  throw new Error(
+                    'Approved Device and account continuation authority is required for this Station route.',
+                  );
                 }),
               transportBindingIsCurrent: () =>
                 isCredentialEvidenceCurrent(evidence) &&
-                Boolean(browserRoute?.isCurrent()),
+                Boolean(browserRoute?.isCurrent()) &&
+                (relayCredential?.transportBindingIsCurrent?.() ?? true),
             }
           : {}),
         ...(requestAuthority ? { requestAuthority } : {}),
@@ -350,12 +370,14 @@ function StationCredentialBridge({ children }: { children: ReactNode }) {
         // applies this inside a lock callback; without the hand-back, code
         // that awaited the request could read the state the 401 replaced.
         onUnauthorized: () =>
-          evidence && !evidence.brokerRoute
-            ? markCredentialRequired(
-                evidence.connectionId,
-                evidence.credential,
-                evidence.generation,
-              )
+          evidence
+            ? evidence.brokerRoute
+              ? relayCredential?.onUnauthorized?.()
+              : markCredentialRequired(
+                  evidence.connectionId,
+                  evidence.credential,
+                  evidence.generation,
+                )
             : undefined,
         // A previous request's failure is evidence, not a local authority to
         // reject a new write. Let the Station answer the attempt; an accepted
@@ -401,32 +423,52 @@ function StationCredentialBridge({ children }: { children: ReactNode }) {
 
   useInsertionEffect(() => {
     if (profile.isTauri) return;
-    setStationHealthRouteResolver((origin, brokerRoute) => {
-      const evidence = captureCredentialEvidence();
-      if (
-        brokerRoute &&
-        (!evidence?.brokerRoute ||
-          JSON.stringify(evidence.brokerRoute) !== JSON.stringify(brokerRoute))
-      )
-        return { kind: 'reject' };
-      if (!evidence?.brokerRoute) return null;
-      if (origin !== evidence.origin) return { kind: 'reject' };
-      const binding = captureBrowserRelayRoute(
-        evidence.connectionId,
-        evidence.origin,
-        evidence.brokerRoute,
-      );
-      return binding
-        ? {
+    setStationHealthRouteResolver(
+      async (origin, brokerRoute, authenticated) => {
+        const evidence = captureCredentialEvidence();
+        if (
+          brokerRoute &&
+          (!evidence?.brokerRoute ||
+            JSON.stringify(evidence.brokerRoute) !==
+              JSON.stringify(brokerRoute))
+        )
+          return { kind: 'reject' };
+        if (!evidence?.brokerRoute) return null;
+        if (origin !== evidence.origin) return { kind: 'reject' };
+        const binding = captureBrowserRelayRoute(
+          evidence.connectionId,
+          evidence.origin,
+          evidence.brokerRoute,
+        );
+        if (!binding) return { kind: 'reject' };
+        if (!authenticated)
+          return {
             kind: 'relay',
             ...binding,
             clientOrigin: evidence.brokerRoute.scope.browserOrigin,
-            ...(evidence.credential ? { credential: evidence.credential } : {}),
-          }
-        : { kind: 'reject' };
-    });
+          };
+        const { createBrowserRelayApplicationCredential } = await import(
+          '../lib/browserRelayApplicationAuthority'
+        );
+        const authority = await createBrowserRelayApplicationCredential({
+          connectionId: evidence.connectionId,
+          applicationOrigin: evidence.origin,
+          route: evidence.brokerRoute,
+          transport: binding.transport,
+          routeIsCurrent: () =>
+            isCredentialEvidenceCurrent(evidence) &&
+            Boolean(binding.isCurrent()),
+        });
+        return {
+          kind: 'relay',
+          ...binding,
+          clientOrigin: evidence.brokerRoute.scope.browserOrigin,
+          identityTransport: authority.transport,
+        };
+      },
+    );
     return () => setStationHealthRouteResolver(undefined);
-  }, [captureCredentialEvidence, profile.isTauri]);
+  }, [captureCredentialEvidence, isCredentialEvidenceCurrent, profile.isTauri]);
 
   // archive#1094 (closing the SSE-stream half of the hot-loop-on-401 fix):
   // wake every `fetchSSE` stream currently blocked on a terminal auth
