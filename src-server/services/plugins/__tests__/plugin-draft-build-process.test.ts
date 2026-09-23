@@ -103,6 +103,22 @@ function descendantsOf(pid: number): number[] {
   return found;
 }
 
+/** SIGKILL only PIDs this test recorded spawning (or that descend from them). */
+function killRecorded(pids: readonly number[]): void {
+  for (const pid of pids) {
+    try {
+      if (alive(pid)) process.kill(pid, 'SIGKILL');
+    } catch {}
+  }
+}
+
+/** SIGKILL the process group led by a recorded pid, if it still exists. */
+function killRecordedGroup(pid: number): void {
+  try {
+    if (alive(pid, true)) process.kill(-pid, 'SIGKILL');
+  } catch {}
+}
+
 async function waitFor(check: () => boolean, ms = 5_000) {
   const deadline = Date.now() + ms;
   while (!check() && Date.now() < deadline)
@@ -311,6 +327,8 @@ describe.skipIf(process.platform === 'win32')('draft build process', () => {
         },
       );
       const parentPid = parent.pid as number;
+      let recordedChild: number | undefined;
+      let recordedGrandchildren: number[] = [];
       try {
         const childPid = await new Promise<number>((resolvePromise, reject) => {
           const timer = setTimeout(
@@ -333,6 +351,8 @@ describe.skipIf(process.platform === 'win32')('draft build process', () => {
         ).toBe(true);
         await new Promise((resolvePromise) => setTimeout(resolvePromise, 500));
         const grandchildren = descendantsOf(childPid);
+        recordedChild = childPid;
+        recordedGrandchildren = grandchildren;
         expect(alive(childPid)).toBe(true);
 
         process.kill(parentPid, 'SIGKILL');
@@ -342,7 +362,10 @@ describe.skipIf(process.platform === 'win32')('draft build process', () => {
           await waitFor(() => grandchildren.every((pid) => !alive(pid)), 5_000),
         ).toBe(true);
       } finally {
-        if (alive(parentPid)) process.kill(parentPid, 'SIGKILL');
+        // Clean up only what this test recorded spawning, if a regression
+        // left it running (the child leads its own group).
+        killRecorded([parentPid, ...recordedGrandchildren]);
+        if (recordedChild !== undefined) killRecordedGroup(recordedChild);
       }
     },
     TEST_TIMEOUT_MS,
@@ -371,11 +394,16 @@ describe.skipIf(process.platform === 'win32')('draft build process', () => {
         (pid) => !before.has(pid),
       );
       const started = Date.now();
-      service.dispose();
-      expect(
-        await waitFor(() => spawned.every((pid) => !alive(pid)), 5_000),
-      ).toBe(true);
-      expect(Date.now() - started).toBeLessThan(5_000);
+      try {
+        service.dispose();
+        expect(
+          await waitFor(() => spawned.every((pid) => !alive(pid)), 5_000),
+        ).toBe(true);
+        expect(Date.now() - started).toBeLessThan(5_000);
+      } finally {
+        for (const pid of spawned) killRecordedGroup(pid);
+        killRecorded(spawned);
+      }
     },
     TEST_TIMEOUT_MS,
   );
