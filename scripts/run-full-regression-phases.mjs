@@ -13,7 +13,13 @@
  * continues past a failed phase so one run names every red phase it owns,
  * then exits non-zero if any phase failed.
  *
- * A phase passes here only when the canonical lane would also pass it:
+ * `--exclude-quarantined` forwards the corpus runner's flag of the same name
+ * to every `test-full-*` phase, dropping the files listed in
+ * QUARANTINED_VITEST_FILES (scripts/vitest-resource-manifest.mjs). That is the
+ * one deliberate difference from the canonical lane, which never passes it:
+ * Nightly still runs quarantined files.
+ *
+ * Apart from quarantined files, a phase passes here only when the canonical lane would also pass it:
  * - exit status 0, no runner error, no surviving owned process tree;
  * - output that is valid UTF-8 and within the canonical per-stream capture
  *   cap (the canonical runner captures through the same
@@ -45,9 +51,12 @@ import { bindVerificationRequestEnvironment } from './lib/verification-request-e
 import { FULL_REGRESSION_PHASES } from './verification-lanes.mjs';
 
 const PROCESS_HEAVY_PHASE_ID = 'test-full-process-heavy';
+// Vitest corpus phases: the only phases a quarantine can apply to.
+const CORPUS_PHASE_PREFIX = 'test-full-';
+const EXCLUDE_QUARANTINED = '--exclude-quarantined';
 const SETTLEMENT_MS = 5_000;
 const USAGE =
-  'usage: node scripts/run-full-regression-phases.mjs --phase=<id> [--phase=<id>...] [--process-heavy-shard=<k>/<n>]';
+  'usage: node scripts/run-full-regression-phases.mjs --phase=<id> [--phase=<id>...] [--process-heavy-shard=<k>/<n>] [--exclude-quarantined]';
 
 const repoRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const GIT_STATUS_MAX_BUFFER = 64 * 1024 * 1024;
@@ -126,7 +135,12 @@ export function parseFullRegressionPhaseArguments(
 ) {
   const phaseIds = [];
   let processHeavyShard = null;
+  let excludeQuarantined = false;
   for (const argument of args) {
+    if (argument === EXCLUDE_QUARANTINED && !excludeQuarantined) {
+      excludeQuarantined = true;
+      continue;
+    }
     const phase = /^--phase=(.+)$/.exec(argument);
     const shard = /^--process-heavy-shard=(.+)$/.exec(argument);
     if (phase) {
@@ -150,7 +164,14 @@ export function parseFullRegressionPhaseArguments(
     throw new Error(
       `--process-heavy-shard requires --phase=${PROCESS_HEAVY_PHASE_ID}`,
     );
-  return { phaseIds, processHeavyShard };
+  if (
+    excludeQuarantined &&
+    !phaseIds.some((id) => id.startsWith(CORPUS_PHASE_PREFIX))
+  )
+    throw new Error(
+      `${EXCLUDE_QUARANTINED} requires at least one ${CORPUS_PHASE_PREFIX}* phase`,
+    );
+  return { phaseIds, processHeavyShard, excludeQuarantined };
 }
 
 /**
@@ -161,7 +182,7 @@ export function parseFullRegressionPhaseArguments(
  * anything runs.
  */
 export function resolveFullRegressionPhasePlan(
-  { phaseIds, processHeavyShard },
+  { phaseIds, processHeavyShard, excludeQuarantined = false },
   { phases = FULL_REGRESSION_PHASES, scripts = readPackageScripts() } = {},
 ) {
   return phases
@@ -171,10 +192,15 @@ export function resolveFullRegressionPhasePlan(
         throw new Error(
           `phase '${phase.id}' names package script '${phase.privateScript}', which package.json does not define`,
         );
-      const extra =
-        phase.id === PROCESS_HEAVY_PHASE_ID && processHeavyShard
-          ? ['--', `--shard=${processHeavyShard}`]
-          : [];
+      const forwarded = [
+        ...(phase.id === PROCESS_HEAVY_PHASE_ID && processHeavyShard
+          ? [`--shard=${processHeavyShard}`]
+          : []),
+        ...(excludeQuarantined && phase.id.startsWith(CORPUS_PHASE_PREFIX)
+          ? [EXCLUDE_QUARANTINED]
+          : []),
+      ];
+      const extra = forwarded.length > 0 ? ['--', ...forwarded] : [];
       return Object.freeze({
         id: phase.id,
         script: phase.privateScript,

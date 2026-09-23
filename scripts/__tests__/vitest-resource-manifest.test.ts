@@ -19,7 +19,12 @@ import {
   ordinaryVitestExcludes,
   PROCESS_EXCLUSIVE_VITEST_FILES,
   PROCESS_HEAVY_VITEST_FILES,
+  QUARANTINE_MAX_DAYS,
+  QUARANTINE_MAX_ENTRIES,
+  QUARANTINED_VITEST_FILES,
+  quarantinedVitestFiles,
   SHARED_OUTPUT_VITEST_FILES,
+  vitestQuarantineErrors,
 } from '../vitest-resource-manifest.mjs';
 
 const temporaryRoots: string[] = [];
@@ -379,5 +384,119 @@ describe('Vitest resource manifest', () => {
     expect(isDogfoodReconcileFile('scripts/__tests__/ordinary.test.ts')).toBe(
       false,
     );
+  });
+});
+
+describe('test quarantine policy', () => {
+  const now = new Date('2026-09-22T15:30:00Z');
+  const SHA = '8e40e858a1b2c3d4e5f60718293a4b5c6d7e8f90';
+  function entry(overrides: Record<string, unknown> = {}) {
+    return {
+      file: 'scripts/__tests__/flaky-example.test.ts',
+      issue: 'https://github.com/kontourai/station/issues/2400',
+      expires: '2026-10-06',
+      evidence: `commit ${SHA} passed in https://github.com/kontourai/station/actions/runs/35756143372 and failed in run 35756143999`,
+      ...overrides,
+    };
+  }
+  const tracked = [
+    'scripts/__tests__/flaky-example.test.ts',
+    ...Array.from(
+      { length: 6 },
+      (_, index) => `scripts/__tests__/flaky-${index}.test.ts`,
+    ),
+  ];
+  const errors = (entries: unknown[]) =>
+    vitestQuarantineErrors(entries, { now, trackedFiles: tracked });
+
+  it('accepts the checked-in list and a fully evidenced entry (false-positive control)', () => {
+    expect(vitestQuarantineErrors(QUARANTINED_VITEST_FILES, { now })).toEqual(
+      [],
+    );
+    expect(QUARANTINE_MAX_DAYS).toBe(14);
+    expect(QUARANTINE_MAX_ENTRIES).toBe(5);
+    // Fourteen days out is the furthest allowed expiry.
+    expect(errors([entry({ expires: '2026-10-06' })])).toEqual([]);
+    expect(errors([entry({ expires: '2026-09-23' })])).toEqual([]);
+    expect(quarantinedVitestFiles([entry()])).toEqual([
+      'scripts/__tests__/flaky-example.test.ts',
+    ]);
+  });
+
+  it('turns red from the expiry date onward', () => {
+    expect(errors([entry({ expires: '2026-09-22' })])).toEqual([
+      expect.stringMatching(/quarantine expired on 2026-09-22/),
+    ]);
+    expect(errors([entry({ expires: '2026-08-01' })])).toEqual([
+      expect.stringMatching(/quarantine expired on 2026-08-01/),
+    ]);
+  });
+
+  it('refuses an expiry more than fourteen days out or not a calendar date', () => {
+    expect(errors([entry({ expires: '2026-10-07' })])).toEqual([
+      expect.stringMatching(/2026-10-07 is more than 14 days away/),
+    ]);
+    for (const expires of ['2026-02-30', '2026-9-30', 'next week', 20261001])
+      expect(errors([entry({ expires })]), String(expires)).toEqual([
+        expect.stringMatching(/expires must be a calendar date/),
+      ]);
+  });
+
+  it('requires the full URL of a station issue', () => {
+    for (const issue of [
+      '#2400',
+      '2400',
+      'https://github.com/kontourai/station-archive/issues/2400',
+      'http://github.com/kontourai/station/issues/2400',
+      'https://github.com/kontourai/station/pull/2400',
+      undefined,
+    ])
+      expect(errors([entry({ issue })]), String(issue)).toEqual([
+        expect.stringMatching(
+          /issue must be the URL of the open 'flaky' issue/,
+        ),
+      ]);
+  });
+
+  it('requires evidence of a same-commit disagreement: one SHA and two distinct runs', () => {
+    for (const evidence of [
+      'flaky on CI',
+      `commit ${SHA} failed in run 35756143372`,
+      `commit ${SHA} run 35756143372 and run 35756143372 disagreed`,
+      'run 35756143372 passed and run 35756143999 failed',
+      `commit ${SHA.slice(0, 12)} run 35756143372 run 35756143999`,
+      undefined,
+    ])
+      expect(errors([entry({ evidence })]), String(evidence)).toEqual([
+        expect.stringMatching(/evidence must cite the commit SHA/),
+      ]);
+  });
+
+  it('bounds the list and rejects malformed, duplicate, or untracked files', () => {
+    const six = Array.from({ length: 6 }, (_, index) =>
+      entry({ file: `scripts/__tests__/flaky-${index}.test.ts` }),
+    );
+    expect(errors(six)).toEqual([
+      'quarantine holds 6 entries; at most 5 are allowed',
+    ]);
+    expect(errors(six.slice(0, 5))).toEqual([]);
+    expect(errors([entry(), entry()])).toEqual([
+      expect.stringMatching(/file is quarantined twice/),
+    ]);
+    expect(errors([entry({ file: 'scripts/__tests__/gone.test.ts' })])).toEqual(
+      [expect.stringMatching(/not a tracked Vitest test file/)],
+    );
+    for (const file of ['../escape.test.ts', '/abs.test.ts', 'README.md'])
+      expect(errors([entry({ file })]), file).toEqual([
+        expect.stringMatching(/file must be a repository-relative test path/),
+      ]);
+    expect(errors([entry({ owner: 'someone' })])).toEqual([
+      expect.stringMatching(/must have exactly the keys/),
+    ]);
+    const { evidence: _omitted, ...missing } = entry();
+    expect(errors([missing])[0]).toMatch(/must have exactly the keys/);
+    expect(vitestQuarantineErrors({} as never)).toEqual([
+      'quarantine must be an array',
+    ]);
   });
 });

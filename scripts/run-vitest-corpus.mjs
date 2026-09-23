@@ -20,6 +20,7 @@ import {
   discoverVitestResourceGroups,
   ORDINARY_MAX_WORKERS,
   ordinaryVitestExcludes,
+  quarantinedVitestFiles,
 } from './vitest-resource-manifest.mjs';
 
 const OUTPUT_LIMIT_BYTES = 2 * 1024 * 1024;
@@ -185,6 +186,30 @@ export function groupFiles(groups, name) {
   return groups[keys[name]];
 }
 
+/**
+ * Merge-queue only (`--exclude-quarantined`): the resource groups with every
+ * quarantined file removed. The canonical lane never calls this, so Nightly
+ * still runs quarantined files. A quarantined path missing from the groups
+ * fails closed: an entry that excludes nothing is a stale record.
+ */
+export function withoutQuarantinedFiles(groups, quarantined) {
+  const excluded = new Set(quarantined);
+  const present = new Set(Object.values(groups).flat());
+  for (const file of excluded)
+    if (!present.has(file))
+      throw new Error(
+        `quarantined file is not in the discovered Vitest corpus: ${file}`,
+      );
+  return Object.freeze(
+    Object.fromEntries(
+      Object.entries(groups).map(([name, files]) => [
+        name,
+        Object.freeze(files.filter((file) => !excluded.has(file))),
+      ]),
+    ),
+  );
+}
+
 export function buildVitestCommand(
   group,
   files,
@@ -336,6 +361,7 @@ export async function runVitestGroup(
     waitForSettlement = waitForSuiteSettlement,
     spawnProcess = spawn,
     signal,
+    ordinaryExcludes,
   } = {},
 ) {
   const resultName = group.resultName ?? group.name;
@@ -345,7 +371,10 @@ export async function runVitestGroup(
       `Vitest corpus cancelled: ${signal.reason ?? 'aborted'}`,
     );
   }
-  const args = buildVitestCommand(group, files, { root });
+  const args = buildVitestCommand(group, files, {
+    root,
+    ...(ordinaryExcludes ? { ordinaryExcludes } : {}),
+  });
   const label = `Vitest corpus ${resultName}`;
   let execution;
   try {
@@ -478,6 +507,8 @@ export function emitResult(result) {
     process.stdout.write(
       `[vitest-corpus] ${result.name}: no test results were produced — the run did not complete, so the capture below is a partial transcript and names no failing test.\n`,
     );
+  if (result.skipped)
+    process.stdout.write(`[vitest-corpus] ${result.name}: ${result.skipped}\n`);
   if (!result.passed) {
     process.stderr.write(
       `[vitest-corpus] ${result.name}: ${result.error ?? 'non-zero Vitest status'}\n`,
@@ -503,6 +534,8 @@ export async function runVitestCorpus({
   groupName,
   shard,
   keepGoing = false,
+  excludeQuarantined = false,
+  quarantined = quarantinedVitestFiles(),
 } = {}) {
   if (signal?.aborted) {
     const result = terminalFailure(
@@ -513,7 +546,23 @@ export async function runVitestCorpus({
     onResult?.(result);
     return { passed: false, results: [result] };
   }
-  const resolvedGroups = groups ?? discoverVitestResourceGroups({ root });
+  if (excludeQuarantined && platform === 'win32')
+    throw new Error(
+      '--exclude-quarantined is supported only by the owned (non-Windows) runner',
+    );
+  const discoveredGroups = groups ?? discoverVitestResourceGroups({ root });
+  const resolvedGroups = excludeQuarantined
+    ? withoutQuarantinedFiles(discoveredGroups, quarantined)
+    : discoveredGroups;
+  const quarantineOptions =
+    excludeQuarantined && quarantined.length > 0
+      ? {
+          ordinaryExcludes: Object.freeze([
+            ...ordinaryVitestExcludes(),
+            ...quarantined,
+          ]),
+        }
+      : {};
   const descriptors = corpusDescriptors(groupName, shard);
   const results = [];
   for (const descriptor of descriptors) {
@@ -526,6 +575,29 @@ export async function runVitestCorpus({
       results.push(result);
       onResult?.(result);
       return { passed: false, results };
+    }
+    if (
+      excludeQuarantined &&
+      (groupFiles(resolvedGroups, descriptor.name) ?? []).length === 0 &&
+      (groupFiles(discoveredGroups, descriptor.name) ?? []).length > 0
+    ) {
+      const result = {
+        name: descriptor.resultName ?? descriptor.name,
+        status: 0,
+        passed: true,
+        error: null,
+        skipped:
+          'every file in this group is quarantined; Nightly still runs them',
+        stdout: '',
+        stderr: '',
+        output: '',
+        stdoutBytes: 0,
+        stderrBytes: 0,
+        outputBytes: 0,
+      };
+      results.push(result);
+      onResult?.(result);
+      continue;
     }
     const files = descriptorFiles(resolvedGroups, descriptor);
     // A process-heavy slice has no phase of its own, so each slice gets the
@@ -567,6 +639,7 @@ export async function runVitestCorpus({
           : await runGroup(descriptor, files, {
               root,
               signal: groupController?.signal ?? signal,
+              ...quarantineOptions,
             });
     } finally {
       if (timer !== null) clearTimeout(timer);
@@ -590,6 +663,19 @@ export async function runVitestCorpus({
 }
 
 export function parseVitestCorpusArguments(args) {
+  if (args.includes('--exclude-quarantined')) {
+    if (
+      args.filter((argument) => argument === '--exclude-quarantined').length !==
+      1
+    )
+      throw new Error('usage: --exclude-quarantined may be supplied once');
+    const rest = parseVitestCorpusArguments(
+      args.filter((argument) => argument !== '--exclude-quarantined'),
+    );
+    if (!rest.groupName)
+      throw new Error('--exclude-quarantined requires --group=<name>');
+    return { ...rest, excludeQuarantined: true };
+  }
   if (args.includes('--keep-going')) {
     if (args.filter((argument) => argument === '--keep-going').length !== 1)
       throw new Error('usage: --keep-going may be supplied once');

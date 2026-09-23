@@ -13,6 +13,7 @@ import {
   runVitestGroup,
   runWindowsSerializedCorpus,
   VITEST_CORPUS_GROUPS,
+  withoutQuarantinedFiles,
 } from '../run-vitest-corpus.mjs';
 
 const GROUPS = {
@@ -799,5 +800,178 @@ describe('process-heavy sharding across machines', () => {
     });
     expect(result.passed).toBe(true);
     expect(result.name).toBe('process-heavy-2-of-2');
+  });
+});
+
+describe('merge-queue quarantine exclusion', () => {
+  const groups = {
+    ordinary: ['ordinary.test.ts', 'flaky-ordinary.test.ts'],
+    processHeavy: ['a.test.ts', 'flaky-heavy.test.ts', 'b.test.ts'],
+    processExclusive: ['exclusive.test.ts'],
+    coordinatorExclusive: ['flaky-coordinator.test.ts'],
+    credentialLedgerExclusive: ['ledger.test.ts'],
+    sharedOutput: ['shared.test.ts'],
+    dogfoodReconcile: ['scripts/__tests__/station-dogfood-reconcile.test.ts'],
+  };
+  const quarantined = [
+    'flaky-ordinary.test.ts',
+    'flaky-heavy.test.ts',
+    'flaky-coordinator.test.ts',
+  ];
+
+  type Seen = {
+    name: string;
+    files: string[];
+    options: Record<string, unknown>;
+  };
+  async function run(options: Record<string, unknown>) {
+    const seen: Seen[] = [];
+    const results: Array<Record<string, unknown>> = [];
+    const outcome = await runVitestCorpus({
+      groups,
+      platform: 'linux',
+      quarantined,
+      onResult: (result) => results.push(result),
+      runGroup: async (group, files, runOptions) => {
+        seen.push({
+          name: group.resultName ?? group.name,
+          files,
+          options: runOptions,
+        });
+        return {
+          name: group.resultName ?? group.name,
+          passed: true,
+          status: 0,
+        };
+      },
+      ...options,
+    });
+    return { outcome, seen, results };
+  }
+
+  it('drops quarantined files from every queue group, ordinary through its excludes', async () => {
+    const heavy = await run({
+      groupName: 'process-heavy',
+      excludeQuarantined: true,
+    });
+    expect(heavy.seen.map(({ files }) => files)).toEqual([
+      ['a.test.ts', 'b.test.ts'],
+    ]);
+    // A slice is dealt from the group AFTER exclusion, so the two slices
+    // still cover exactly the non-quarantined files.
+    const slices = await Promise.all(
+      ['1/2', '2/2'].map((shard) =>
+        run({ groupName: 'process-heavy', shard, excludeQuarantined: true }),
+      ),
+    );
+    expect(slices.flatMap(({ seen }) => seen[0].files).sort()).toEqual([
+      'a.test.ts',
+      'b.test.ts',
+    ]);
+
+    // Vitest selects the ordinary shard itself, so exclusion must reach its
+    // --exclude argv, not just the file list the runner holds.
+    const ordinary = await run({
+      groupName: 'ordinary',
+      shard: '1/8',
+      excludeQuarantined: true,
+    });
+    const excludes = ordinary.seen[0].options.ordinaryExcludes as string[];
+    expect(excludes).toContain('flaky-ordinary.test.ts');
+    const command = buildVitestCommand(
+      ORDINARY_SHARD_DESCRIPTORS[0],
+      ordinary.seen[0].files,
+      { ordinaryExcludes: excludes },
+    );
+    expect(command).toContain('--exclude=flaky-ordinary.test.ts');
+    expect(command).toContain('--shard=1/8');
+  });
+
+  it('threads the queue excludes into the real ordinary Vitest argv', async () => {
+    let argv: string[] = [];
+    await runVitestGroup(ORDINARY_SHARD_DESCRIPTORS[0], ['ordinary.test.ts'], {
+      execute: (_executable, args) => {
+        argv = args;
+        return completedExecution();
+      },
+      capture: () => ({
+        finish: () => ({
+          stdout: { text: '', sourceBytes: 0 },
+          stderr: { text: '', sourceBytes: 0 },
+          truncated: false,
+        }),
+      }),
+      ordinaryExcludes: ['flaky-ordinary.test.ts'],
+    });
+    expect(argv).toContain('--exclude=flaky-ordinary.test.ts');
+  });
+
+  it('keeps the canonical lane unchanged: without the flag every quarantined file runs', async () => {
+    for (const [groupName, shard, file] of [
+      ['ordinary', '1/8', null],
+      ['process-heavy', undefined, 'flaky-heavy.test.ts'],
+      ['coordinator-exclusive', undefined, 'flaky-coordinator.test.ts'],
+    ] as const) {
+      const { seen } = await run({ groupName, shard });
+      expect(seen, groupName).toHaveLength(1);
+      // No queue-only option reaches the runner at all.
+      expect(Object.keys(seen[0].options).sort(), groupName).toEqual([
+        'root',
+        'signal',
+      ]);
+      if (file) expect(seen[0].files, groupName).toContain(file);
+    }
+    // The canonical ordinary argv excludes no quarantined file.
+    expect(
+      buildVitestCommand(ORDINARY_SHARD_DESCRIPTORS[0], ['ordinary.test.ts']),
+    ).not.toContain('--exclude=flaky-ordinary.test.ts');
+  });
+
+  it('reports a group whose every file is quarantined as skipped, not run', async () => {
+    const { seen, results, outcome } = await run({
+      groupName: 'coordinator-exclusive',
+      excludeQuarantined: true,
+    });
+    expect(seen).toEqual([]);
+    expect(outcome.passed).toBe(true);
+    expect(results[0]).toMatchObject({
+      name: 'coordinator-exclusive',
+      passed: true,
+      skipped: expect.stringContaining('Nightly still runs them'),
+    });
+  });
+
+  it('fails closed on a stale entry, an unsupported platform, and a group-less flag', async () => {
+    expect(() =>
+      withoutQuarantinedFiles(groups, ['renamed-away.test.ts']),
+    ).toThrow(/not in the discovered Vitest corpus: renamed-away.test.ts/);
+    await expect(
+      run({
+        groupName: 'shared-output',
+        excludeQuarantined: true,
+        platform: 'win32',
+      }),
+    ).rejects.toThrow(/owned \(non-Windows\) runner/);
+    expect(
+      parseVitestCorpusArguments([
+        '--group=process-heavy',
+        '--shard=1/2',
+        '--exclude-quarantined',
+      ]),
+    ).toEqual({
+      groupName: 'process-heavy',
+      shard: '1/2',
+      excludeQuarantined: true,
+    });
+    expect(() => parseVitestCorpusArguments(['--exclude-quarantined'])).toThrow(
+      /requires --group/,
+    );
+    expect(() =>
+      parseVitestCorpusArguments([
+        '--group=shared-output',
+        '--exclude-quarantined',
+        '--exclude-quarantined',
+      ]),
+    ).toThrow(/may be supplied once/);
   });
 });

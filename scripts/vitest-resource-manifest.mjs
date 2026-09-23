@@ -1227,3 +1227,160 @@ export function discoverVitestResourceGroups(options = {}) {
   assertOrdinaryVitestSelection(groups, options);
   return groups;
 }
+
+/**
+ * Test quarantine (the merge-queue regression gate's escape valve).
+ *
+ * A quarantine entry names a test file that is flaky, not broken: the same
+ * commit both passed and failed it. Quarantined files are EXCLUDED from the
+ * merge-queue regression shards only (`run-vitest-corpus.mjs
+ * --exclude-quarantined`, passed by `run-full-regression-phases.mjs`). They
+ * STILL run in Nightly's canonical `full:regression`, which never reads this
+ * list — so Nightly stays exposed to the flake while the queue stops holding
+ * unrelated PRs hostage to it.
+ *
+ * This is an overlay, not a partition member: a quarantined file keeps its
+ * resource group above (`partitionVitestResourceSubset` and
+ * `buildVitestResourceGroups` do not read `quarantine`), so the
+ * every-file-in-exactly-one-group invariant is unchanged and the canonical
+ * lane's selection is byte-identical whatever this list holds. Moving the
+ * file into a group of its own would have forced the canonical lane to grow a
+ * phase for it and would have dropped the file's resource isolation.
+ *
+ * Each entry is `{ file, issue, expires, evidence }`, validated by
+ * `vitestQuarantineErrors` from `verification:policy:gate`:
+ * - `issue`: the full URL of the OPEN station issue labelled `flaky` that
+ *   tracks the fix. The gate checks the format only; it never calls GitHub.
+ * - `expires`: `YYYY-MM-DD`, at most QUARANTINE_MAX_DAYS after the day the
+ *   gate runs. From that date on the gate is RED: an expired quarantine is a
+ *   failure of every pull request until the entry is removed (fixed) or
+ *   renewed in a reviewed change with fresh evidence.
+ * - `evidence`: the same-commit disagreement — the commit SHA (40 hex) and at
+ *   least two distinct run ids (`actions/runs/<id>` or `run <id>`).
+ * At most QUARANTINE_MAX_ENTRIES entries. See docs/guides/testing.md.
+ */
+export const QUARANTINE_MAX_ENTRIES = 5;
+export const QUARANTINE_MAX_DAYS = 14;
+export const QUARANTINED_VITEST_FILES = Object.freeze([]);
+
+const QUARANTINE_ENTRY_KEYS = Object.freeze([
+  'evidence',
+  'expires',
+  'file',
+  'issue',
+]);
+const QUARANTINE_ISSUE_PATTERN =
+  /^https:\/\/github\.com\/kontourai\/station\/issues\/[1-9][0-9]*$/;
+const QUARANTINE_COMMIT_PATTERN = /(?:^|[^0-9a-f])([0-9a-f]{40})(?![0-9a-f])/i;
+const QUARANTINE_RUN_PATTERN = /(?:actions\/runs\/|\brun\s+)([0-9]{6,})\b/gi;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function utcDay(date) {
+  return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
+}
+
+function parseQuarantineDate(value) {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value))
+    return null;
+  const parsed = new Date(`${value}T00:00:00Z`);
+  return Number.isNaN(parsed.getTime()) ||
+    parsed.toISOString().slice(0, 10) !== value
+    ? null
+    : parsed.getTime();
+}
+
+/**
+ * Policy errors for a quarantine list. `now` is the gate's clock; tests pass
+ * a fixed one. `trackedFiles`, when given, is the tracked Vitest corpus a
+ * quarantined file must belong to.
+ */
+function quarantineKeysError(entry) {
+  const keys = Object.keys(entry).sort();
+  const exact =
+    keys.length === QUARANTINE_ENTRY_KEYS.length &&
+    keys.every((key, position) => key === QUARANTINE_ENTRY_KEYS[position]);
+  return exact
+    ? null
+    : `must have exactly the keys ${QUARANTINE_ENTRY_KEYS.join(', ')}; found ${keys.join(', ') || '<none>'}`;
+}
+
+function quarantineFileError(file, seen, tracked) {
+  if (!isSafeRelativeFile(file))
+    return 'file must be a repository-relative test path';
+  if (seen.has(file)) return 'file is quarantined twice';
+  if (tracked && !tracked.has(file))
+    return 'file is not a tracked Vitest test file';
+  return null;
+}
+
+function quarantineIssueError(issue) {
+  return typeof issue === 'string' && QUARANTINE_ISSUE_PATTERN.test(issue)
+    ? null
+    : "issue must be the URL of the open 'flaky' issue, https://github.com/kontourai/station/issues/<number>";
+}
+
+function quarantineExpiryError(expires, today) {
+  const expiry = parseQuarantineDate(expires);
+  if (expiry === null) return 'expires must be a calendar date YYYY-MM-DD';
+  if (expiry <= today)
+    return `quarantine expired on ${expires}; fix the test and remove the entry, or renew it with new evidence`;
+  if (expiry > today + QUARANTINE_MAX_DAYS * DAY_MS)
+    return `expires ${expires} is more than ${QUARANTINE_MAX_DAYS} days away`;
+  return null;
+}
+
+function quarantineEvidenceError(evidence) {
+  const text = typeof evidence === 'string' ? evidence : '';
+  const runs = new Set(
+    [...text.matchAll(QUARANTINE_RUN_PATTERN)].map((match) => match[1]),
+  );
+  return QUARANTINE_COMMIT_PATTERN.test(text) && runs.size >= 2
+    ? null
+    : 'evidence must cite the commit SHA (40 hex) and two distinct run ids that disagreed on it';
+}
+
+/**
+ * Policy errors for a quarantine list. `now` is the gate's clock; tests pass
+ * a fixed one. `trackedFiles`, when given, is the tracked Vitest corpus a
+ * quarantined file must belong to.
+ */
+export function vitestQuarantineErrors(
+  entries = QUARANTINED_VITEST_FILES,
+  { now = new Date(), trackedFiles } = {},
+) {
+  if (!Array.isArray(entries)) return ['quarantine must be an array'];
+  const errors = [];
+  if (entries.length > QUARANTINE_MAX_ENTRIES)
+    errors.push(
+      `quarantine holds ${entries.length} entries; at most ${QUARANTINE_MAX_ENTRIES} are allowed`,
+    );
+  const today = utcDay(now);
+  const tracked = trackedFiles ? new Set(trackedFiles) : null;
+  const seen = new Set();
+  for (const [index, entry] of entries.entries()) {
+    const label = `quarantine entry ${index + 1}`;
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+      errors.push(`${label} must be an object`);
+      continue;
+    }
+    const keysError = quarantineKeysError(entry);
+    if (keysError) errors.push(`${label} ${keysError}`);
+    const { file, issue, expires, evidence } = entry;
+    const name = typeof file === 'string' ? `${label} (${file})` : label;
+    const fieldErrors = [
+      quarantineFileError(file, seen, tracked),
+      quarantineIssueError(issue),
+      quarantineExpiryError(expires, today),
+      quarantineEvidenceError(evidence),
+    ];
+    if (typeof file === 'string') seen.add(file);
+    for (const error of fieldErrors)
+      if (error) errors.push(`${name}: ${error}`);
+  }
+  return errors;
+}
+
+/** The files the merge-queue regression shards exclude. */
+export function quarantinedVitestFiles(entries = QUARANTINED_VITEST_FILES) {
+  return Object.freeze(entries.map((entry) => entry.file));
+}

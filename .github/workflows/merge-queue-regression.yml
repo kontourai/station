@@ -13,6 +13,11 @@ name: Merge-queue regression
 # completion receipt: `npm run full:regression` and the promotion workflows
 # are unchanged.
 #
+# Every corpus selection passes --exclude-quarantined, which drops the files
+# in QUARANTINED_VITEST_FILES (scripts/vitest-resource-manifest.mjs) from the
+# queue only. Nightly's canonical full:regression still runs them; see
+# "Test quarantine" in docs/guides/testing.md.
+#
 # pull_request_target exists only so the aggregate check reports (as skipped)
 # on every PR once the ruleset requires it. Every job is skipped for that
 # event, so no candidate code runs under pull_request_target.
@@ -101,13 +106,13 @@ jobs:
       matrix:
         include:
           - slice: 1-2 of 8
-            phases: --phase=test-full-ordinary-1-of-8 --phase=test-full-ordinary-2-of-8
+            phases: --phase=test-full-ordinary-1-of-8 --phase=test-full-ordinary-2-of-8 --exclude-quarantined
           - slice: 3-4 of 8
-            phases: --phase=test-full-ordinary-3-of-8 --phase=test-full-ordinary-4-of-8
+            phases: --phase=test-full-ordinary-3-of-8 --phase=test-full-ordinary-4-of-8 --exclude-quarantined
           - slice: 5-6 of 8
-            phases: --phase=test-full-ordinary-5-of-8 --phase=test-full-ordinary-6-of-8
+            phases: --phase=test-full-ordinary-5-of-8 --phase=test-full-ordinary-6-of-8 --exclude-quarantined
           - slice: 7-8 of 8
-            phases: --phase=test-full-ordinary-7-of-8 --phase=test-full-ordinary-8-of-8
+            phases: --phase=test-full-ordinary-7-of-8 --phase=test-full-ordinary-8-of-8 --exclude-quarantined
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -198,9 +203,9 @@ jobs:
       matrix:
         include:
           - slice: 1 of 2
-            phases: --phase=test-full-process-heavy --process-heavy-shard=1/2
+            phases: --phase=test-full-process-heavy --process-heavy-shard=1/2 --exclude-quarantined
           - slice: 2 of 2
-            phases: --phase=test-full-process-heavy --process-heavy-shard=2/2
+            phases: --phase=test-full-process-heavy --process-heavy-shard=2/2 --exclude-quarantined
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -338,7 +343,7 @@ jobs:
       # These groups serialize against themselves; they run in order here.
       - name: Run full-regression phases
         env:
-          PHASES: --phase=test-full-process-exclusive --phase=test-full-coordinator-exclusive --phase=test-full-credential-ledger-exclusive --phase=test-full-shared-output --phase=test-full-dogfood-reconcile
+          PHASES: --phase=test-full-process-exclusive --phase=test-full-coordinator-exclusive --phase=test-full-credential-ledger-exclusive --phase=test-full-shared-output --phase=test-full-dogfood-reconcile --exclude-quarantined
         run: |
           set -o pipefail
           read -r -a phases <<< "$PHASES"

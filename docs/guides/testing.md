@@ -910,6 +910,53 @@ enforces that partition for any persistent Linux job. See
 [the private-runner partition guide](private-runner-partition.md) before
 changing fleet labels or adding a capacity-leased workflow.
 
+### Test quarantine
+
+The merge-queue regression gate (`.github/workflows/merge-queue-regression.yml`)
+runs the full-regression phases on every queued candidate. One flaky test
+would otherwise hold every queued pull request, so the queue has a bounded
+escape valve: `QUARANTINED_VITEST_FILES` in `scripts/vitest-resource-manifest.mjs`.
+
+**When to quarantine.** Only a test that is flaky, not broken: the *same
+commit* both passed and failed it. A test that fails every time is a defect to
+fix or revert, never a quarantine entry. Diagnose first; quarantine is for the
+window between a diagnosed flake and its fix, not for a red lane nobody has
+read.
+
+**What it does.** The merge-queue shards pass `--exclude-quarantined`, which
+drops the listed files from every queue corpus group. Nightly's canonical
+`full:regression` never passes that flag, so quarantined files still run every
+night and Nightly stays exposed to the flake. A quarantined file keeps its
+resource group; quarantine is an overlay on the partition, not a group of its
+own.
+
+**How to add an entry.** Open (or reuse) an issue in this repository labelled
+`flaky` that records the diagnosis, then append to the list:
+
+```js
+export const QUARANTINED_VITEST_FILES = Object.freeze([
+  {
+    file: 'scripts/__tests__/example.test.ts',
+    issue: 'https://github.com/kontourai/station/issues/<number>',
+    expires: 'YYYY-MM-DD', // at most 14 days from today
+    evidence:
+      'commit <40-hex sha> passed in actions/runs/<id> and failed in actions/runs/<id>',
+  },
+]);
+```
+
+`verification:policy:gate` (part of `ci:fast`, so every pull request) checks each entry
+offline, without calling GitHub: the file is a tracked Vitest test file; `issue`
+is the full URL of a station issue (that it is open and labelled `flaky` is a
+reviewer's check); `expires` is a real date no more than 14 days after the day
+the gate runs; `evidence` names the commit SHA and two distinct run ids that
+disagreed on it; and the list holds at most 5 entries.
+
+**Expiry makes the gate red.** From the `expires` date onward the entry fails
+`verification:policy:gate`, and with it every pull request. Remove the entry
+when the fix lands, or renew it in a reviewed change with fresh same-commit
+evidence. Renewal is a deliberate decision, never an automatic extension.
+
 ### Opt-in load reliability evidence
 
 `npm run test:load-reliability` is deliberately dry by default. It prints the
