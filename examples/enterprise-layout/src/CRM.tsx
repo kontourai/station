@@ -25,7 +25,7 @@ type SidebarMode = 'my' | 'search';
 
 export function CRM() {
   const _nav = useNavigation();
-  const { sendToChat } = useSendToChat(AGENT_SLUG);
+  const sendToChat = useSendToChat(AGENT_SLUG);
 
   // Sidebar mode: my accounts vs search
   const [sidebarMode, setSidebarMode] = useState<SidebarMode>('my');

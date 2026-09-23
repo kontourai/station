@@ -134,6 +134,7 @@ describe('plugin-install-routes', () => {
         expect.objectContaining({
           id: 'preview-review',
           type: 'pane',
+          name: 'Preview Review',
           detail: 'plugin-component:preview-plugin.review',
         }),
       ],

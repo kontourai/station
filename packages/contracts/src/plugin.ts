@@ -295,6 +295,11 @@ export interface ConflictInfo {
 export interface PluginComponent {
   type: 'agent' | 'layout' | 'pane' | 'provider' | 'tool';
   id: string;
+  /**
+   * Human-readable name the manifest declares for this component (a Pane's
+   * `name`). Presentation only; absent when the component declares none.
+   */
+  name?: string;
   detail?: string;
   conflict?: ConflictInfo;
   /** False when omission would change the installed package truth. */
