@@ -10,6 +10,7 @@ import {
   type ApplicationSessionContinuation,
 } from '@kontourai/station-contracts/application-session';
 import type { PairedDevice } from '@kontourai/station-contracts/environment-security';
+import { PAIRING_SCOPE_ORCHESTRATION_READ } from '@kontourai/station-contracts/environment-security';
 import { humanPrincipal } from '@kontourai/station-contracts/principal';
 import { calculateJwkThumbprint, importJWK, jwtVerify } from 'jose';
 import { z } from 'zod/v3';
@@ -47,6 +48,7 @@ const continuationRecord = challengeRecord
     sessionId: z.string(),
     principalId: z.string(),
     authorityKey: z.string(),
+    relayEnrollmentId: z.string().optional(),
   })
   .strict();
 type Continuation = z.infer<typeof continuationRecord>;
@@ -55,6 +57,17 @@ type Authenticated = Extract<
   ResolvedDeploymentAuthentication,
   { kind: 'authenticated' }
 >;
+
+/** Private, read-only assertion returned only for one reserved relay Device. */
+interface PendingRelayDeviceAssertion {
+  deviceId: string;
+  enrollmentId: string;
+  issuer: string;
+  subject: string;
+  scope: readonly string[];
+}
+
+const relayEnrollmentId = z.string().regex(/^[A-Za-z0-9_-]{43}$/);
 
 export class ApplicationSessionRefusal extends Error {
   constructor(
@@ -83,6 +96,10 @@ export class ApplicationSessionService {
     ) => PairedDevice | null,
     private readonly origins: readonly string[] = [requestOrigin],
     private readonly now: () => number = Date.now,
+    private readonly resolvePendingRelayDevice?: (
+      deviceId: string,
+      enrollmentId: string,
+    ) => PendingRelayDeviceAssertion | null,
   ) {
     if (!stationId.trim() || new URL(requestOrigin).origin !== requestOrigin)
       throw new ApplicationSessionRefusal('unavailable');
@@ -122,6 +139,12 @@ export class ApplicationSessionService {
         CREATE INDEX IF NOT EXISTS application_challenge_expiry ON application_session_challenges(expires_at);
         CREATE INDEX IF NOT EXISTS application_session_expiry ON application_sessions(expires_at);
         CREATE INDEX IF NOT EXISTS application_proof_expiry ON application_session_proofs(expires_at);`);
+      db.exec(
+        "CREATE UNIQUE INDEX IF NOT EXISTS application_session_relay_authority ON application_sessions(json_extract(record, '$.authorityKey')) WHERE json_extract(record, '$.relayEnrollmentId') IS NOT NULL",
+      );
+      db.exec(
+        "CREATE UNIQUE INDEX IF NOT EXISTS application_session_relay_enrollment ON application_sessions(json_extract(record, '$.relayEnrollmentId')) WHERE json_extract(record, '$.relayEnrollmentId') IS NOT NULL",
+      );
       const row = db
         .prepare(
           'SELECT version, station_id FROM application_session_authority WHERE singleton=1',
@@ -242,6 +265,156 @@ export class ApplicationSessionService {
       throw new ApplicationSessionRefusal('invalid');
     this.device(request, challenge.deviceId, current.principal.id);
     return this.issue(challenge, current);
+  }
+
+  /**
+   * Trusted relay coordinator only. Pending provider identity and the exact
+   * reserved Device are independently rechecked before one proof-bound
+   * continuation is persisted. This method has no route adapter.
+   */
+  async issuePendingRelayContinuation(input: {
+    enrollmentId: string;
+    deviceId: string;
+    providerSessionId: string;
+    issuer: string;
+    subject: string;
+    authorityKey: string;
+    stationId: string;
+    clientOrigin: string;
+    key: unknown;
+    keyThumbprint: string;
+    nonce: string;
+    expiresAt: number;
+    signal: AbortSignal;
+  }): Promise<ApplicationSessionContinuation> {
+    if (this.closed || input.signal.aborted)
+      throw new ApplicationSessionRefusal('unavailable');
+    const enrollmentId = relayEnrollmentId.parse(input.enrollmentId);
+    const deviceId = z.string().uuid().parse(input.deviceId);
+    const authorityKey = z.string().uuid().parse(input.authorityKey);
+    const issuerAssertion = z.string().min(1).max(512).parse(input.issuer);
+    const subjectAssertion = z.string().min(1).max(2048).parse(input.subject);
+    const station = z.string().min(1).parse(input.stationId);
+    const origin = z.string().url().parse(input.clientOrigin);
+    const key = publicKey.parse(input.key);
+    const keyThumbprint = await calculateJwkThumbprint(key);
+    if (
+      station !== this.stationId ||
+      new URL(origin).origin !== origin ||
+      !this.origins.includes(origin) ||
+      keyThumbprint !== opaque.parse(input.keyThumbprint) ||
+      !Number.isFinite(input.expiresAt) ||
+      input.expiresAt <= this.now()
+    )
+      throw new ApplicationSessionRefusal('invalid');
+    await importJWK(key, 'ES256');
+
+    const authentication = this.authentication;
+    if (!authentication.pendingEnrollmentCapabilities().available)
+      throw new ApplicationSessionRefusal('unsupported');
+    const pending = await authentication.verifyPendingEnrollment(
+      enrollmentId,
+      input.providerSessionId,
+      input.signal,
+    );
+    if (pending.kind === 'unavailable')
+      throw new ApplicationSessionRefusal('unavailable');
+    const providerIssuer = authentication.describe().issuer;
+    if (
+      pending.kind !== 'pending' ||
+      pending.session.enrollmentId !== enrollmentId ||
+      pending.session.sessionId !== input.providerSessionId ||
+      pending.session.subject !== subjectAssertion ||
+      providerIssuer !== issuerAssertion
+    )
+      throw new ApplicationSessionRefusal('invalid');
+
+    const expiresAt = Math.min(
+      input.expiresAt,
+      Date.parse(pending.session.expiresAt),
+      this.now() + 15 * 60_000,
+    );
+    if (!Number.isFinite(expiresAt) || expiresAt <= this.now())
+      throw new ApplicationSessionRefusal('invalid');
+    const record: Continuation = {
+      deviceId,
+      origin,
+      key,
+      keyThumbprint,
+      nonce: opaque.parse(input.nonce),
+      expiresAt,
+      issuer: providerIssuer,
+      sessionId: pending.session.sessionId,
+      principalId: deploymentAccountPrincipal(
+        providerIssuer,
+        pending.session.subject,
+        pending.session.displayName,
+      ).id,
+      authorityKey,
+      relayEnrollmentId: enrollmentId,
+    };
+    const assertion = this.resolvePendingRelayDevice?.(deviceId, enrollmentId);
+    this.assertPendingRelayDevice(
+      assertion,
+      deviceId,
+      enrollmentId,
+      providerIssuer,
+      pending.session.subject,
+    );
+    const credential = randomBytes(32).toString('base64url');
+    this.transaction(() => {
+      if (input.signal.aborted || this.closed)
+        throw new ApplicationSessionRefusal('unavailable');
+      this.assertPendingRelayDevice(
+        this.resolvePendingRelayDevice?.(deviceId, enrollmentId),
+        deviceId,
+        enrollmentId,
+        providerIssuer,
+        pending.session.subject,
+      );
+      if (
+        this.db
+          .prepare(
+            "SELECT 1 FROM application_sessions WHERE json_extract(record, '$.authorityKey')=?",
+          )
+          .get(authorityKey)
+      )
+        throw new ApplicationSessionRefusal('invalid');
+      if (
+        this.db
+          .prepare(
+            "SELECT 1 FROM application_sessions WHERE json_extract(record, '$.relayEnrollmentId')=?",
+          )
+          .get(enrollmentId)
+      )
+        throw new ApplicationSessionRefusal('invalid');
+      this.prune();
+      const count = this.db
+        .prepare('SELECT count(*) AS n FROM application_sessions')
+        .get()?.n;
+      if (typeof count !== 'number' || count >= 10_000)
+        throw new ApplicationSessionRefusal('unavailable');
+      this.db
+        .prepare('INSERT INTO application_sessions VALUES (?,?,?)')
+        .run(digest(credential), expiresAt, JSON.stringify(record));
+    });
+    return {
+      version: APPLICATION_SESSION_VERSION,
+      credential,
+      authorityKey,
+      stationId: this.stationId,
+      deviceId,
+      principal: deploymentAccountPrincipal(
+        providerIssuer,
+        pending.session.subject,
+        pending.session.displayName,
+      ),
+      requestOrigin: this.requestOrigin,
+      clientOrigin: origin,
+      keyThumbprint,
+      nonce: record.nonce,
+      expiresAt: new Date(expiresAt).toISOString(),
+    };
   }
   async authenticate(
     request: Request,
@@ -369,16 +542,19 @@ export class ApplicationSessionService {
       .run(record.authorityKey);
   }
   /** Server recovery only: remove one never-committed relay continuation authority. */
-  discardUncommittedAuthority(authorityKey: string): number {
+  discardUncommittedAuthority(
+    authorityKey: string,
+    enrollmentId: string,
+  ): number {
     if (this.closed) throw new ApplicationSessionRefusal('unavailable');
     if (!/^[0-9a-f-]{36}$/i.test(authorityKey))
       throw new ApplicationSessionRefusal('invalid');
     return Number(
       this.db
         .prepare(
-          "DELETE FROM application_sessions WHERE json_extract(record, '$.authorityKey')=?",
+          "DELETE FROM application_sessions WHERE json_extract(record, '$.authorityKey')=? AND json_extract(record, '$.relayEnrollmentId')=?",
         )
-        .run(authorityKey).changes,
+        .run(authorityKey, relayEnrollmentId.parse(enrollmentId)).changes,
     );
   }
   close(): void {
@@ -548,6 +724,24 @@ export class ApplicationSessionService {
         value.kind === 'unavailable' ? 'unavailable' : 'invalid',
       );
     return value;
+  }
+  private assertPendingRelayDevice(
+    assertion: PendingRelayDeviceAssertion | null | undefined,
+    deviceId: string,
+    enrollmentId: string,
+    issuer: string,
+    subject: string,
+  ): asserts assertion is PendingRelayDeviceAssertion {
+    if (
+      !assertion ||
+      assertion.deviceId !== deviceId ||
+      assertion.enrollmentId !== enrollmentId ||
+      assertion.issuer !== issuer ||
+      assertion.subject !== subject ||
+      assertion.scope.length !== 1 ||
+      assertion.scope[0] !== PAIRING_SCOPE_ORCHESTRATION_READ
+    )
+      throw new ApplicationSessionRefusal('invalid');
   }
   private parse<T extends z.ZodTypeAny>(value: unknown, schema: T): z.infer<T> {
     if (value === undefined) throw new ApplicationSessionRefusal('invalid');

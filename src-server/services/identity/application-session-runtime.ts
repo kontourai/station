@@ -9,6 +9,16 @@ export function createApplicationSessionRuntime(
   stationId: string,
   authentication: LoadedDeploymentAuthentication,
   identifyDevice: (credential: string) => PairedDevice | null,
+  resolvePendingRelayDevice?: (
+    deviceId: string,
+    enrollmentId: string,
+  ) => {
+    deviceId: string;
+    enrollmentId: string;
+    issuer: string;
+    subject: string;
+    scope: readonly string[];
+  } | null,
 ) {
   if (!authentication.service.sessionReferenceCapabilities().verify)
     return undefined;
@@ -24,6 +34,8 @@ export function createApplicationSessionRuntime(
       authentication.publicOrigin,
       identifyDevice,
       authentication.allowedBrowserOrigins,
+      Date.now,
+      resolvePendingRelayDevice,
     );
     authentication.service.installContinuationResolver(service);
     return service;
