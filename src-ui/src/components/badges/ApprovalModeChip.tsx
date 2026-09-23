@@ -57,6 +57,15 @@ interface ApprovalModeChipProps {
    * server-side" (archive#727).
    */
   lastAppliedApprovalMode?: unknown;
+  /**
+   * Whether `sessionOverride` is a pick the engine has not confirmed yet
+   * (#2334). Only used to say so when that pick is STRICTER than the full
+   * access the engine last reported: until the next turn applies it, the
+   * engine still runs with full access, so a bare "Ask" would overclaim in
+   * the dangerous direction. Every other unconfirmed pick keeps the plain
+   * label (station#1933).
+   */
+  sessionOverridePending?: boolean;
   onChange: (mode: ApprovalMode) => void;
 }
 
@@ -100,6 +109,7 @@ export function ApprovalModeChip({
   connectionDefault,
   stationDefault,
   lastAppliedApprovalMode,
+  sessionOverridePending,
   onChange,
 }: ApprovalModeChipProps) {
   const [isSheetOpen, setIsSheetOpen] = useState(false);
@@ -131,19 +141,30 @@ export function ApprovalModeChip({
     : (appliedMode ?? effective.mode);
   const isPendingApply =
     isOverride && effective.mode === 'never' && appliedMode !== 'never';
+  // The reverse gap (#2334): a stricter pick is in flight while the engine
+  // still reports full access.
+  const isPendingRestrict =
+    isOverride &&
+    sessionOverridePending === true &&
+    effective.mode !== 'never' &&
+    appliedMode === 'never';
 
   // Full text for assistive tech and hover; the pill itself shows the short
   // form so it stops clipping at 390px (archive#1010).
   const selectedLabel = isPendingApply
     ? `${approvalModeLabel('never')} — full access requested for the next turn`
-    : !isOverride && appliedMode
-      ? approvalModeLabel(appliedMode)
-      : effective.label;
+    : isPendingRestrict
+      ? `${effective.label} — requested; full access applies until the next turn`
+      : !isOverride && appliedMode
+        ? approvalModeLabel(appliedMode)
+        : effective.label;
   const chipText = isPendingApply
     ? `${approvalModeChipLabel('never')} · pending`
-    : isOverride
-      ? approvalModeChipLabel(displayedMode)
-      : 'Default';
+    : isPendingRestrict
+      ? `${approvalModeChipLabel(displayedMode)} · pending`
+      : isOverride
+        ? approvalModeChipLabel(displayedMode)
+        : 'Default';
   const accessibleLabel = isOverride
     ? selectedLabel
     : `Default — ${selectedLabel}`;
@@ -154,7 +175,7 @@ export function ApprovalModeChip({
         ref={triggerRef}
         type="button"
         className={`choice-trigger chat-input__approval-chip ${
-          isPendingApply
+          isPendingApply || isPendingRestrict
             ? 'chat-input__approval-chip--pending'
             : isOverride
               ? 'chat-input__approval-chip--override'
@@ -170,7 +191,9 @@ export function ApprovalModeChip({
         aria-label={
           isPendingApply
             ? `Approval mode: ${chipText} — takes effect next turn. Engine approval control. ${policyDisclosure}`
-            : `Approval mode: ${accessibleLabel}. Engine approval control. ${policyDisclosure}`
+            : isPendingRestrict
+              ? `Approval mode: ${chipText} — full access applies until the next turn. Engine approval control. ${policyDisclosure}`
+              : `Approval mode: ${accessibleLabel}. Engine approval control. ${policyDisclosure}`
         }
         title={`Approval mode: ${selectedLabel}. ${policyDisclosure}`}
         onClick={() => setIsSheetOpen((open) => !open)}

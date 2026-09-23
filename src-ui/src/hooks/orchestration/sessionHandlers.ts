@@ -4,6 +4,7 @@ import {
   activeChatsStore,
 } from '../../contexts/active-chats-store';
 import { toastStore } from '../../contexts/ToastContext';
+import { settleApprovalPick } from '../../utils/approvalMode';
 import {
   acknowledgesModelRequest,
   modelControlOptionsMatch,
@@ -46,6 +47,8 @@ export function handleSessionLifecycleEvent(
     orchestrationProvider: event.provider,
     orchestrationSessionStarted: true,
     ...(approvalMode ? { lastAppliedApprovalMode: approvalMode } : {}),
+    // A report settles the pending approval pick only when it matches (#2334).
+    ...settleApprovalPick(currentChat, approvalMode),
     ...(event.method === 'session.configured' &&
     typeof event.metadata?.acpSessionMode === 'string'
       ? { currentModeId: event.metadata.acpSessionMode }

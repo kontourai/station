@@ -66,6 +66,8 @@ export function useOutboundQueueFlush(apiBase: string): void {
                 executionSnapshot: {
                   requestedModel: turn.requestedModel,
                   requestedProviderOptions: turn.requestedProviderOptions,
+                  pendingApprovalMode: turn.pendingApprovalMode,
+                  approvalModeOverride: turn.approvalModeOverride,
                   model: turn.model,
                   providerOptions: turn.providerOptions,
                 },

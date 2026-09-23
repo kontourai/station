@@ -345,6 +345,18 @@ export type ChatUIState = {
    * chip can show a pending state instead of overclaiming.
    */
   lastAppliedApprovalMode?: ApprovalMode;
+  /**
+   * An approval pick the engine has not confirmed yet (#2334). Kept out of
+   * `requestedProviderOptions` on purpose — see `ApprovalPickState`
+   * (utils/approvalMode.ts). Persisted: it is a request, like the bag.
+   */
+  pendingApprovalMode?: ApprovalMode;
+  /**
+   * An approval pick the engine confirmed applying on this chat's session
+   * (#2334). Not persisted: like `lastAppliedApprovalMode` it is a receipt
+   * about a live session, and a reload cannot re-verify it.
+   */
+  approvalModeOverride?: ApprovalMode;
   orchestrationSessionStarted?: boolean;
   orchestrationProvider?: EngineId;
   orchestrationModel?: string;
@@ -528,6 +540,8 @@ export type PersistedActiveChat = {
   requestedModel?: string | null;
   requestedModelSource?: EffectiveModelSource;
   requestedProviderOptions?: Record<string, unknown>;
+  /** See ChatUIState.pendingApprovalMode (#2334). */
+  pendingApprovalMode?: ApprovalMode;
   defaultModel?: string;
   defaultModelSource?: EffectiveModelSource;
   projectSlug?: string;
@@ -698,6 +712,9 @@ export function hydrateActiveChats(
       requestedModel: session.requestedModel,
       requestedModelSource: session.requestedModelSource,
       requestedProviderOptions: session.requestedProviderOptions,
+      ...(session.pendingApprovalMode
+        ? { pendingApprovalMode: session.pendingApprovalMode }
+        : {}),
       defaultModel: session.defaultModel,
       defaultModelSource: session.defaultModelSource,
       projectSlug: session.projectSlug,
@@ -836,6 +853,9 @@ export function serializeActiveChats(
       requestedModel: chat.requestedModel,
       requestedModelSource: chat.requestedModelSource,
       requestedProviderOptions: chat.requestedProviderOptions,
+      ...(chat.pendingApprovalMode
+        ? { pendingApprovalMode: chat.pendingApprovalMode }
+        : {}),
       defaultModel: chat.defaultModel,
       defaultModelSource: chat.defaultModelSource,
       projectSlug: chat.projectSlug,
@@ -936,6 +956,7 @@ export function mergeChatUpdates(
     'requestedModel' in nextUpdates ||
     'requestedModelSource' in nextUpdates ||
     'requestedProviderOptions' in nextUpdates ||
+    'pendingApprovalMode' in nextUpdates ||
     'defaultModel' in nextUpdates ||
     'defaultModelSource' in nextUpdates ||
     'provider' in nextUpdates ||

@@ -476,6 +476,45 @@ describe('ApprovalModeChip', () => {
     ).toBeTruthy();
   });
 
+  // #2334 decision on the #1933 pin: an unconfirmed pick STRICTER than the
+  // full access the engine last reported says so, because the engine keeps
+  // running with full access until the next turn applies it. The test above
+  // (a confirmed override, a stale receipt) keeps the plain label.
+  test('an unconfirmed stricter pick while the engine reports full access shows pending', () => {
+    render(
+      <ApprovalModeChip
+        engineConnectionId="codex"
+        sessionOverride="auto"
+        sessionOverridePending
+        lastAppliedApprovalMode="never"
+        onChange={vi.fn()}
+      />,
+    );
+
+    const chip = screen.getByRole('button', {
+      name: /^Approval mode: Auto · pending — full access applies until the next turn\./,
+    });
+    expect(chip.className).toContain('chat-input__approval-chip--pending');
+    expect(chipValue()).toBe('Auto · pending');
+  });
+
+  test('an unconfirmed pick that is not stricter than the receipt keeps the plain label (station#1933)', () => {
+    render(
+      <ApprovalModeChip
+        engineConnectionId="codex"
+        sessionOverride="auto"
+        sessionOverridePending
+        lastAppliedApprovalMode="ask"
+        onChange={vi.fn()}
+      />,
+    );
+
+    expect(chipValue()).toBe('Auto');
+    expect(trigger().className).toContain(
+      'chat-input__approval-chip--override',
+    );
+  });
+
   test('#727 review item 4: auto is provider-aware in its description, and never mentions "safe"', async () => {
     render(
       <ApprovalModeChip
@@ -602,16 +641,20 @@ describe('ApprovalModeChip', () => {
   // pending" was not a substring of "Never ask (full access) — pending next
   // turn" — and no assertion noticed, because every test pinned one string or
   // the other rather than their relationship.
-  for (const [name, sessionOverride] of [
-    ['default', undefined],
-    ['override', 'auto'],
-    ['pending', 'never'],
+  for (const [name, sessionOverride, applied] of [
+    ['default', undefined, undefined],
+    ['override', 'auto', undefined],
+    ['pending', 'never', undefined],
+    // #2334: a stricter pick in flight while the engine reports full access.
+    ['pending-restrict', 'ask', 'never'],
   ] as const) {
     test(`the ${name} chip's visible text is contained in its accessible name`, () => {
       render(
         <ApprovalModeChip
           engineConnectionId="claude"
           sessionOverride={sessionOverride}
+          sessionOverridePending={name === 'pending-restrict'}
+          lastAppliedApprovalMode={applied}
           connectionDefault={undefined}
           onChange={vi.fn()}
         />,

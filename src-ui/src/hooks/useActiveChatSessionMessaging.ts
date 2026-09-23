@@ -32,7 +32,11 @@ import type {
   OutboundDispatchTransportResult,
 } from '../lib/outboundQueue';
 import type { ComposerAttachmentStageSnapshot, FileAttachment } from '../types';
-import { approvalModeForDispatch } from '../utils/approvalMode';
+import {
+  type ApprovalMode,
+  approvalModeForDispatch,
+  sessionApprovalOverride,
+} from '../utils/approvalMode';
 import {
   type ChatErrorTranslation,
   translateChatError,
@@ -228,6 +232,8 @@ export function useSendMessage(
           requestedProviderOptions?: Record<string, unknown>;
           model?: string;
           providerOptions?: Record<string, unknown>;
+          pendingApprovalMode?: ApprovalMode;
+          approvalModeOverride?: ApprovalMode;
         };
       },
     ) => {
@@ -366,11 +372,11 @@ export function useSendMessage(
             (agent) => agent.slug === agentSlug,
           )?.execution?.agentConnectionId,
         });
-        const dispatchedProviderOptions = options?.executionSnapshot
-          ? (options.executionSnapshot.requestedProviderOptions ??
-            options.executionSnapshot.providerOptions)
-          : (currentState?.requestedProviderOptions ??
-            currentState?.providerOptions);
+        // The approval pick travels beside the model options (#2334); a
+        // replayed turn carries the pick it was queued with.
+        const dispatchedApprovalOverride = sessionApprovalOverride(
+          options?.executionSnapshot ?? currentState,
+        )?.mode;
         const receipt = await dispatchForeground({
           apiBase,
           sessionId,
@@ -388,12 +394,13 @@ export function useSendMessage(
             // outlives its session, and a reopened conversation is marked
             // started whether or not anything is running (round 3 F1).
             sessionAlreadyStarted: chatSessionIsLive(currentState),
-            sessionOverride: dispatchedProviderOptions?.approvalMode,
+            sessionOverride: dispatchedApprovalOverride,
             connectionDefault: agentConnections.find(
               (connection) => connection.id === sessionEngineConnectionId,
             )?.config.approvalMode,
             stationDefault: stationApprovalModeDefault,
           }),
+          approvalModeOverride: dispatchedApprovalOverride,
           requestedModel: options?.executionSnapshot
             ? options.executionSnapshot.requestedModel
             : currentState?.requestedModel,
@@ -525,6 +532,8 @@ export function useSendMessage(
                 requestedModel: currentState?.requestedModel,
                 requestedProviderOptions:
                   currentState?.requestedProviderOptions,
+                pendingApprovalMode: currentState?.pendingApprovalMode,
+                approvalModeOverride: currentState?.approvalModeOverride,
                 model: currentState?.model,
                 providerOptions: currentState?.providerOptions,
               },

@@ -175,6 +175,10 @@ export function conversationOpenPatch(
               pendingApprovals: [],
               approvalToasts: new Map(),
               lastAppliedApprovalMode: undefined,
+              // A confirmed pick is a receipt about the predecessor's
+              // session. A pending one is the user's next-turn request and
+              // stays (#2334).
+              approvalModeOverride: undefined,
               currentModeId: null,
               planArtifact: null,
               flowRun: null,
@@ -228,6 +232,8 @@ export function conversationOpenPatch(
           requestedModel: null,
           requestedProviderOptions: {},
           providerOptions: {},
+          pendingApprovalMode: undefined,
+          approvalModeOverride: undefined,
           error:
             'The current Session execution binding is unavailable. Retry opening this conversation before sending.',
         }

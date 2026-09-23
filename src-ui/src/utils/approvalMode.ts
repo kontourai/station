@@ -273,7 +273,7 @@ export function resolveEffectiveApprovalMode({
  *   fallback at all and is deliberately left that way: a queued message is
  *   never the message that starts a session;
  * - the resolution came from that session override, which the dispatcher
- *   already carries in `requestedProviderOptions`;
+ *   already carries as `approvalModeOverride` (#2334);
  * - nothing concrete resolved (`'connection-default'`), which is Station
  *   deliberately stating no posture.
  */
@@ -297,4 +297,122 @@ export function approvalModeForDispatch(input: {
   if (resolved.source === 'session override') return undefined;
   if (resolved.mode === 'connection-default') return undefined;
   return resolved.mode;
+}
+
+/**
+ * A session approval override as the composer holds it (#2334): the user's
+ * pick, and whether the engine has confirmed applying it yet.
+ */
+export interface SessionApprovalOverride {
+  mode: ApprovalMode;
+  /** True until a report's applied mode matches (`settleApprovalPick`). */
+  pending: boolean;
+}
+
+/**
+ * The approval-pick fields of a chat. They live OUTSIDE the model-options
+ * request bag (#2334): that bag is cleared whenever a report acknowledges the
+ * requested model, and every reader treats `requested ?? confirmed` as the
+ * whole send, so an approval pick stored inside it was either discarded with
+ * the bag or, when kept alone, displaced the model controls.
+ */
+export interface ApprovalPickState {
+  /**
+   * A pick the engine has not confirmed. Sent alongside the model options on
+   * every turn until it settles. Never `'connection-default'`: clearing an
+   * override has nothing for the engine to confirm, so it settles at once.
+   */
+  pendingApprovalMode?: ApprovalMode;
+  /** A pick the engine has confirmed applying on this chat's session. */
+  approvalModeOverride?: ApprovalMode;
+  requestedProviderOptions?: Record<string, unknown>;
+  providerOptions?: Record<string, unknown>;
+}
+
+/**
+ * What the composer chip shows and the next send carries as the session
+ * override: the pending pick, else the confirmed one. The last fallback is an
+ * `approvalMode` already sitting in the options bag, which only chat state
+ * persisted before #2334 still holds; the dispatcher sends that bag as-is, so
+ * the chip has to name it too.
+ */
+export function sessionApprovalOverride(
+  chat: ApprovalPickState | null | undefined,
+): SessionApprovalOverride | undefined {
+  if (!chat) return undefined;
+  if (isApprovalMode(chat.pendingApprovalMode)) {
+    return { mode: chat.pendingApprovalMode, pending: true };
+  }
+  if (isApprovalMode(chat.approvalModeOverride)) {
+    return { mode: chat.approvalModeOverride, pending: false };
+  }
+  const legacy = (chat.requestedProviderOptions ?? chat.providerOptions)
+    ?.approvalMode;
+  return isApprovalMode(legacy) ? { mode: legacy, pending: false } : undefined;
+}
+
+/**
+ * The chat update for a newly picked approval mode. A concrete pick waits
+ * for the engine; `'connection-default'` clears the override immediately.
+ * Any `approvalMode` left in either options bag by pre-#2334 state is
+ * removed, so it can neither be resent nor outrank the pick.
+ */
+export function approvalPickUpdate(
+  chat: ApprovalPickState | null | undefined,
+  mode: ApprovalMode,
+): Partial<ApprovalPickState> {
+  const withoutLegacy = (
+    bag: Record<string, unknown> | undefined,
+  ): Record<string, unknown> | undefined => {
+    if (!bag || !('approvalMode' in bag)) return bag;
+    const { approvalMode: _dropped, ...rest } = bag;
+    return rest;
+  };
+  return {
+    ...(chat?.requestedProviderOptions &&
+    'approvalMode' in chat.requestedProviderOptions
+      ? {
+          requestedProviderOptions: withoutLegacy(
+            chat.requestedProviderOptions,
+          ),
+        }
+      : {}),
+    ...(chat?.providerOptions && 'approvalMode' in chat.providerOptions
+      ? { providerOptions: withoutLegacy(chat.providerOptions) }
+      : {}),
+    ...(mode === 'connection-default'
+      ? { pendingApprovalMode: undefined, approvalModeOverride: undefined }
+      : { pendingApprovalMode: mode }),
+  };
+}
+
+/**
+ * The chat update for an engine report of the mode actually applied
+ * (`session.configured` / `turn.started` metadata).
+ *
+ * - A pending pick settles only when the report MATCHES it. A differing
+ *   report may describe a turn sent before the pick (a stale report), so it
+ *   neither drops the pick nor confirms it (#2334, refuted approach 2).
+ * - With nothing pending, a report that disagrees with the confirmed pick
+ *   means the posture changed elsewhere; the confirmed pick is no longer true
+ *   and is dropped, so the chip falls back to the receipt and the next send
+ *   does not quietly change it back.
+ */
+export function settleApprovalPick(
+  chat: ApprovalPickState | null | undefined,
+  applied: ApprovalMode | undefined,
+): Partial<ApprovalPickState> {
+  if (!chat || !applied) return {};
+  if (chat.pendingApprovalMode !== undefined) {
+    return chat.pendingApprovalMode === applied
+      ? { pendingApprovalMode: undefined, approvalModeOverride: applied }
+      : {};
+  }
+  if (
+    chat.approvalModeOverride !== undefined &&
+    chat.approvalModeOverride !== applied
+  ) {
+    return { approvalModeOverride: undefined };
+  }
+  return {};
 }

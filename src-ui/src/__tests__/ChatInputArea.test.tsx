@@ -1230,7 +1230,7 @@ describe('ChatInputArea', () => {
           sessionId: 'session-a',
           executionMode: 'external',
           agentConnectionId: 'codex',
-          modelRuntimeOptions: { approvalMode: 'ask' },
+          approvalModeOverride: { mode: 'ask', pending: false },
           onApprovalModeChange,
         })}
       />,
@@ -1256,7 +1256,7 @@ describe('ChatInputArea', () => {
           sessionId: 'session-b',
           executionMode: 'external',
           agentConnectionId: 'codex',
-          modelRuntimeOptions: { approvalMode: 'ask' },
+          approvalModeOverride: { mode: 'ask', pending: false },
           onApprovalModeChange,
         })}
       />,

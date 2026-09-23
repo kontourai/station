@@ -39,6 +39,7 @@ import { openConnectionsModal } from '../../lib/connectionModalEvents';
 import { isWorkspaceRefusedTurn } from '../../lib/workspaceRefusal';
 import type { ChatMessage, ChatSession, FileAttachment } from '../../types';
 import { advertisedAcpSessionModesFromConnection } from '../../utils/acpSessionMode';
+import { sessionApprovalOverride } from '../../utils/approvalMode';
 import { ambientContextForSend } from '../../utils/chatAmbientContext';
 import {
   formatChatErrorDisplay,
@@ -1393,6 +1394,7 @@ export function ChatDockBody({
             approvalModeStationDefault={stationApprovalModeDefault}
             toolPolicyDelivery={toolPolicyDelivery}
             lastAppliedApprovalMode={activeSession.lastAppliedApprovalMode}
+            approvalModeOverride={sessionApprovalOverride(activeSession)}
             acpSessionModes={advertisedAcpSession.modes}
             acpCurrentModeId={
               activeSession.currentModeId ?? advertisedAcpSession.currentModeId

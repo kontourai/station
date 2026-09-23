@@ -30,6 +30,7 @@ import { useChatInput } from '../../hooks/useChatInput';
 import { useMobileVisualViewport } from '../../hooks/useMobileVisualViewport';
 import type { ChatMessage, ChatSession, FileAttachment } from '../../types';
 import { advertisedAcpSessionModesFromConnection } from '../../utils/acpSessionMode';
+import { sessionApprovalOverride } from '../../utils/approvalMode';
 import { sessionAdapterSupportsSteering } from '../../utils/execution';
 import {
   accountableHumanFromUser,
@@ -347,6 +348,7 @@ export function ACPChatPanel({
             : undefined
         }
         lastAppliedApprovalMode={activeSession.lastAppliedApprovalMode}
+        approvalModeOverride={sessionApprovalOverride(activeSession)}
         acpSessionModes={advertisedAcpSession.modes}
         acpCurrentModeId={
           activeSession.currentModeId ?? advertisedAcpSession.currentModeId

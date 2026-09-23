@@ -33,7 +33,11 @@ import {
   type SavedAnswerQuote,
 } from '../utils/answer-quotes';
 import type { ApprovalMode } from '../utils/approvalMode';
-import { approvalModeLabel } from '../utils/approvalMode';
+import {
+  approvalModeLabel,
+  approvalPickUpdate,
+  sessionApprovalOverride,
+} from '../utils/approvalMode';
 import {
   type BindingStatus,
   type EffectiveModelSource,
@@ -71,6 +75,8 @@ type ComposerChatSlice = Pick<
   | 'requestedModel'
   | 'requestedModelSource'
   | 'requestedProviderOptions'
+  | 'pendingApprovalMode'
+  | 'approvalModeOverride'
   | 'agentConnectionId'
   | 'currentModeId'
   | 'providerOptions'
@@ -96,6 +102,8 @@ function selectComposerSlice(
     requestedModel: state.requestedModel,
     requestedModelSource: state.requestedModelSource,
     requestedProviderOptions: state.requestedProviderOptions,
+    pendingApprovalMode: state.pendingApprovalMode,
+    approvalModeOverride: state.approvalModeOverride,
     agentConnectionId: state.agentConnectionId,
     currentModeId: state.currentModeId,
     providerOptions: state.providerOptions,
@@ -855,31 +863,17 @@ export function useChatInput({
   const handleApprovalModeChange = useCallback(
     (mode: ApprovalMode) => {
       if (!sessionId) return;
-      const previousMode =
-        activeChatState?.requestedProviderOptions?.approvalMode ??
-        activeChatState?.providerOptions?.approvalMode;
-      if (previousMode === mode) return;
-      updateChat(sessionId, {
-        requestedProviderOptions: {
-          ...(activeChatState?.requestedProviderOptions ??
-            activeChatState?.providerOptions ??
-            {}),
-          approvalMode: mode,
-        },
-      });
+      // The pick lives in its own field, never in the model-options request
+      // bag (#2334): a report acknowledging the model clears that bag, and
+      // every reader of it treats it as the whole send.
+      if (sessionApprovalOverride(activeChatState)?.mode === mode) return;
+      updateChat(sessionId, approvalPickUpdate(activeChatState, mode));
       addEphemeralMessage(sessionId, {
         role: 'system',
         content: `Approval mode changed to **${approvalModeLabel(mode)}**`,
       });
     },
-    [
-      activeChatState?.providerOptions,
-      activeChatState?.requestedProviderOptions,
-      activeChatState?.requestedProviderOptions?.approvalMode,
-      sessionId,
-      updateChat,
-      addEphemeralMessage,
-    ],
+    [activeChatState, sessionId, updateChat, addEphemeralMessage],
   );
 
   const handleAcpSessionModeChange = useCallback(
