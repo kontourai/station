@@ -1104,6 +1104,8 @@ describe('InstallPreviewModal', () => {
     ).toBe(true);
     expect(screen.getByText(/Required package declaration/)).toBeTruthy();
     expect(screen.getByText(/conflict \(builtin\)/)).toBeTruthy();
+    // A conflicted row carries the blocking copy, not the neutral tag.
+    expect(screen.queryByText('Required')).toBeNull();
   });
 
   test('marks a required Pane without a conflict as required, not conflicted, and shows its declared name', () => {
