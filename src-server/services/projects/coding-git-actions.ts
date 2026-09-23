@@ -243,7 +243,7 @@ export type CodingGitOutcome<T> =
   | { ok: false; refusal: CodingGitRefusal };
 
 /** A git command that ran and failed (a hook, a rejected push, …). */
-export class CodingGitCommandError extends Error {
+class CodingGitCommandError extends Error {
   constructor(
     readonly command: string,
     readonly detail: string,
