@@ -33,8 +33,8 @@ export function useSortableTable<T extends Record<string, any>>(
       );
     }
     items.sort((a, b) => {
-      const av = a[sortKey],
-        bv = b[sortKey];
+      const av: unknown = a[sortKey];
+      const bv: unknown = b[sortKey];
       if (av == null && bv == null) return 0;
       if (av == null) return 1;
       if (bv == null) return -1;
@@ -52,7 +52,7 @@ export function useSortableTable<T extends Record<string, any>>(
   return { sorted, sortKey, sortDir, toggle, filterText, setFilterText };
 }
 
-export function SortHeader({
+export function SortHeader<K extends string>({
   label,
   sortKey,
   active,
@@ -61,10 +61,10 @@ export function SortHeader({
   style,
 }: {
   label: string;
-  sortKey: string;
+  sortKey: K;
   active: boolean;
   dir: SortDir;
-  onClick: (key: string) => void;
+  onClick: (key: K) => void;
   style?: React.CSSProperties;
 }) {
   return (

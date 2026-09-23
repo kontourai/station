@@ -8,12 +8,7 @@
  * Child panels are stubbed: this test is about the chat wiring in CRM.tsx.
  */
 import { fireEvent, render, screen } from '@testing-library/react';
-import * as React from 'react';
 import { expect, test, vi } from 'vitest';
-
-// Same local JSX-runtime compatibility as enterprise-modal-a11y.test.tsx:
-// the enterprise example has no TypeScript project of its own.
-Object.assign(globalThis, { React });
 
 const sendToChat = vi.hoisted(() => vi.fn());
 

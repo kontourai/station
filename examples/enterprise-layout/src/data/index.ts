@@ -27,11 +27,17 @@ import type {
   CreateOpportunityInput,
   UpdateEventInput,
 } from './providers';
+import type { ProviderType, ProviderTypeMap } from './providerTypes';
 import type { TaskVM } from './viewmodels';
 
 export { sortByAccessFrequency };
 
 const WORKSPACE = 'enterprise';
+
+/** The active provider of one type, typed by ProviderTypeMap. */
+function provider<K extends ProviderType>(type: K): ProviderTypeMap[K] {
+  return getProvider<ProviderTypeMap[K]>(WORKSPACE, type);
+}
 
 let _bgRefreshActive = false;
 
@@ -41,7 +47,7 @@ export function useCalendarEvents(date: Date, enabled = true) {
   const pid = getActiveProviderId(WORKSPACE, 'calendar');
   return useQuery({
     queryKey: ['calendar', 'events', date.toISOString().split('T')[0], pid],
-    queryFn: () => getProvider(WORKSPACE, 'calendar').getEvents(date),
+    queryFn: () => provider('calendar').getEvents(date),
     enabled: enabled && hasProvider(WORKSPACE, 'calendar'),
   });
 }
@@ -54,10 +60,7 @@ export function useMeetingDetails(
   return useQuery({
     queryKey: ['calendar', 'meeting', meetingId, pid],
     queryFn: () =>
-      getProvider(WORKSPACE, 'calendar').getMeetingDetails(
-        meetingId!,
-        changeKey,
-      ),
+      provider('calendar').getMeetingDetails(meetingId!, changeKey),
     enabled: !!meetingId && hasProvider(WORKSPACE, 'calendar'),
   });
 }
@@ -66,7 +69,7 @@ export function useCreateEvent() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (input: CreateEventInput) =>
-      getProvider(WORKSPACE, 'calendar').createEvent(input),
+      provider('calendar').createEvent(input),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['calendar'] }),
   });
 }
@@ -75,7 +78,7 @@ export function useUpdateEvent() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (input: UpdateEventInput) =>
-      getProvider(WORKSPACE, 'calendar').updateEvent(input),
+      provider('calendar').updateEvent(input),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['calendar'] }),
   });
 }
@@ -84,7 +87,7 @@ export function useDeleteEvent() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (meetingId: string) =>
-      getProvider(WORKSPACE, 'calendar').deleteEvent(meetingId),
+      provider('calendar').deleteEvent(meetingId),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['calendar'] }),
   });
 }
@@ -93,7 +96,7 @@ export function useContactSearch(query: string) {
   const pid = getActiveProviderId(WORKSPACE, 'calendar');
   return useQuery({
     queryKey: ['calendar', 'contacts', query, pid],
-    queryFn: () => getProvider(WORKSPACE, 'calendar').searchContacts(query),
+    queryFn: () => provider('calendar').searchContacts(query),
     enabled: query.length >= 2 && hasProvider(WORKSPACE, 'calendar'),
   });
 }
@@ -104,7 +107,7 @@ export function useUserProfile() {
   const pid = getActiveProviderId(WORKSPACE, 'user');
   return useQuery({
     queryKey: ['user', 'profile', pid],
-    queryFn: () => getProvider(WORKSPACE, 'user').getMyProfile(),
+    queryFn: () => provider('user').getMyProfile(),
     enabled: hasProvider(WORKSPACE, 'user'),
     staleTime: 5 * 60 * 1000,
   });
@@ -117,8 +120,7 @@ export function useMyAccounts() {
   const profile = useUserProfile();
   return useQuery({
     queryKey: ['crm', 'myAccounts', profile.data?.id, pid],
-    queryFn: () =>
-      getProvider(WORKSPACE, 'crm').getMyAccounts(profile.data!.id),
+    queryFn: () => provider('crm').getMyAccounts(profile.data!.id),
     enabled: !!profile.data?.id && hasProvider(WORKSPACE, 'crm'),
   });
 }
@@ -128,8 +130,7 @@ export function useMyTerritories() {
   const profile = useUserProfile();
   return useQuery({
     queryKey: ['crm', 'myTerritories', profile.data?.id, pid],
-    queryFn: () =>
-      getProvider(WORKSPACE, 'crm').getMyTerritories(profile.data!.id),
+    queryFn: () => provider('crm').getMyTerritories(profile.data!.id),
     enabled: !!profile.data?.id && hasProvider(WORKSPACE, 'crm'),
   });
 }
@@ -138,8 +139,7 @@ export function useTerritoryAccounts(territoryId: string | null) {
   const pid = getActiveProviderId(WORKSPACE, 'crm');
   return useQuery({
     queryKey: ['crm', 'territoryAccounts', territoryId, pid],
-    queryFn: () =>
-      getProvider(WORKSPACE, 'crm').getTerritoryAccounts(territoryId!),
+    queryFn: () => provider('crm').getTerritoryAccounts(territoryId!),
     enabled: !!territoryId && hasProvider(WORKSPACE, 'crm'),
   });
 }
@@ -149,7 +149,7 @@ export function useSearchAccounts(query: string) {
   return useQuery({
     queryKey: ['crm', 'searchAccounts', query, pid],
     queryFn: () =>
-      getProvider(WORKSPACE, 'crm').searchAccounts({
+      provider('crm').searchAccounts({
         field: 'name',
         operator: 'CONTAINS',
         value: query,
@@ -162,7 +162,7 @@ export function useAccountDetails(accountId: string | null) {
   const pid = getActiveProviderId(WORKSPACE, 'crm');
   return useQuery({
     queryKey: ['crm', 'accountDetails', accountId, pid],
-    queryFn: () => getProvider(WORKSPACE, 'crm').getAccountDetails(accountId!),
+    queryFn: () => provider('crm').getAccountDetails(accountId!),
     enabled: !!accountId && hasProvider(WORKSPACE, 'crm'),
   });
 }
@@ -171,8 +171,7 @@ export function useAccountOpportunities(accountId: string | null) {
   const pid = getActiveProviderId(WORKSPACE, 'crm');
   return useQuery({
     queryKey: ['crm', 'accountOpportunities', accountId, pid],
-    queryFn: () =>
-      getProvider(WORKSPACE, 'crm').getAccountOpportunities(accountId!),
+    queryFn: () => provider('crm').getAccountOpportunities(accountId!),
     enabled: !!accountId && hasProvider(WORKSPACE, 'crm'),
   });
 }
@@ -182,7 +181,7 @@ export function useSearchOpportunities(query: string) {
   return useQuery({
     queryKey: ['crm', 'searchOpportunities', query, pid],
     queryFn: () =>
-      getProvider(WORKSPACE, 'crm').searchOpportunities({
+      provider('crm').searchOpportunities({
         field: 'name',
         operator: 'CONTAINS',
         value: query,
@@ -196,8 +195,7 @@ export function useMyOpportunities() {
   const profile = useUserProfile();
   return useQuery({
     queryKey: ['crm', 'myOpportunities', profile.data?.id, pid],
-    queryFn: () =>
-      getProvider(WORKSPACE, 'crm').getMyOpportunities(profile.data!.id),
+    queryFn: () => provider('crm').getMyOpportunities(profile.data!.id),
     enabled: !!profile.data?.id && hasProvider(WORKSPACE, 'crm'),
   });
 }
@@ -206,7 +204,7 @@ export function useCreateOpportunity() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (data: CreateOpportunityInput) =>
-      getProvider(WORKSPACE, 'crm').createOpportunity(data),
+      provider('crm').createOpportunity(data),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['crm'] }),
   });
 }
@@ -218,8 +216,7 @@ export function useUserTasks(filters?: { limit?: number }) {
   const profile = useUserProfile();
   return useQuery({
     queryKey: ['crm', 'userTasks', profile.data?.id, filters, pid],
-    queryFn: () =>
-      getProvider(WORKSPACE, 'crm').getUserTasks(profile.data!.id, filters),
+    queryFn: () => provider('crm').getUserTasks(profile.data!.id, filters),
     enabled: !!profile.data?.id && hasProvider(WORKSPACE, 'crm'),
   });
 }
@@ -229,7 +226,7 @@ export function useMyTasks() {
   const profile = useUserProfile();
   return useQuery({
     queryKey: ['crm', 'myTasks', profile.data?.id, pid],
-    queryFn: () => getProvider(WORKSPACE, 'crm').getMyTasks(profile.data!.id),
+    queryFn: () => provider('crm').getMyTasks(profile.data!.id),
     enabled: !!profile.data?.id && hasProvider(WORKSPACE, 'crm'),
   });
 }
@@ -238,7 +235,7 @@ export function useTaskDetails(taskId: string | null) {
   const pid = getActiveProviderId(WORKSPACE, 'crm');
   return useQuery({
     queryKey: ['crm', 'taskDetails', taskId, pid],
-    queryFn: () => getProvider(WORKSPACE, 'crm').getTaskDetails(taskId!),
+    queryFn: () => provider('crm').getTaskDetails(taskId!),
     enabled: !!taskId && hasProvider(WORKSPACE, 'crm'),
   });
 }
@@ -246,8 +243,7 @@ export function useTaskDetails(taskId: string | null) {
 export function useCreateTask() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (data: Omit<TaskVM, 'id'>) =>
-      getProvider(WORKSPACE, 'crm').createTask(data),
+    mutationFn: (data: Omit<TaskVM, 'id'>) => provider('crm').createTask(data),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['crm'] }),
   });
 }
@@ -256,7 +252,7 @@ export function useUpdateTask() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ taskId, data }: { taskId: string; data: Partial<TaskVM> }) =>
-      getProvider(WORKSPACE, 'crm').updateTask(taskId, data),
+      provider('crm').updateTask(taskId, data),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['crm'] }),
   });
 }
@@ -267,7 +263,7 @@ export function useEmailInbox(options?: { count?: number; filter?: string }) {
   const pid = getActiveProviderId(WORKSPACE, 'email');
   return useQuery({
     queryKey: ['email', 'inbox', options, pid],
-    queryFn: () => getProvider(WORKSPACE, 'email').getInbox(options),
+    queryFn: () => provider('email').getInbox(options),
     enabled: hasProvider(WORKSPACE, 'email'),
   });
 }
@@ -276,7 +272,7 @@ export function useSearchEmails(query: string) {
   const pid = getActiveProviderId(WORKSPACE, 'email');
   return useQuery({
     queryKey: ['email', 'search', query, pid],
-    queryFn: () => getProvider(WORKSPACE, 'email').searchEmails(query),
+    queryFn: () => provider('email').searchEmails(query),
     enabled: query.length >= 2 && hasProvider(WORKSPACE, 'email'),
   });
 }
@@ -285,7 +281,7 @@ export function useReadEmail(id: string | null) {
   const pid = getActiveProviderId(WORKSPACE, 'email');
   return useQuery({
     queryKey: ['email', 'read', id, pid],
-    queryFn: () => getProvider(WORKSPACE, 'email').readEmail(id!),
+    queryFn: () => provider('email').readEmail(id!),
     enabled: !!id && hasProvider(WORKSPACE, 'email'),
   });
 }
@@ -296,7 +292,7 @@ export function usePersonLookup(alias: string | null) {
   const pid = getActiveProviderId(WORKSPACE, 'internal');
   return useQuery({
     queryKey: ['internal', 'person', alias, pid],
-    queryFn: () => getProvider(WORKSPACE, 'internal').lookupPerson(alias!),
+    queryFn: () => provider('internal').lookupPerson(alias!),
     enabled: !!alias && hasProvider(WORKSPACE, 'internal'),
   });
 }
@@ -305,7 +301,7 @@ export function usePeopleSearch(query: string) {
   const pid = getActiveProviderId(WORKSPACE, 'internal');
   return useQuery({
     queryKey: ['internal', 'people', query, pid],
-    queryFn: () => getProvider(WORKSPACE, 'internal').searchPeople(query),
+    queryFn: () => provider('internal').searchPeople(query),
     enabled: query.length >= 2 && hasProvider(WORKSPACE, 'internal'),
   });
 }
