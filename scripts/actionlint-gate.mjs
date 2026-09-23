@@ -519,13 +519,26 @@ const MISSING_CALLEE_MESSAGE =
  *   init picks restore-only Overlay mode whenever the event payload has a
  *   pull_request (checked before the default branch), saves only in
  *   OverlayBase mode, and merge_group gets neither.
- * - pnpm/setup restores and saves a sub-kilobyte lockfile-verification log on
- *   every run, independently of its `cache` input, with no opt-out (dist at
- *   703c526: the post step calls the save unconditionally). That write is
- *   accepted: its key is the lockfile's content hash, so a poisoned entry is
- *   only ever restored for the identical lockfile, and pnpm re-verifies
- *   whenever the recorded policy is looser than the configured one. Only the
- *   reviewed pin is allowed so a bump re-opens this review.
+ * - pnpm/setup restores and saves a lockfile-verification log on every run,
+ *   independently of its `cache` input, with no opt-out (dist at 703c526: the
+ *   post step calls the save unconditionally). That save is NOT safe on its
+ *   own merits: the key is the hash of the checked-out (candidate) lockfile,
+ *   the pre-upload check only confirms earlier records survived (appended
+ *   forged records pass, and a cold key uploads anything), and main's jobs
+ *   restore by that same hash once the lockfile merges, so a forged verdict
+ *   could skip minimumReleaseAge there. It is allowed only because nothing
+ *   at the workflow level could stop it anyway; see the note below.
+ *
+ * What actually prevents cache writes from these workflows: their jobs run
+ * candidate code, which can rewrite later post-step action code under
+ * _actions/ and write any key the token permits, so no workflow input or
+ * allowlist entry can guarantee the absence of a write. The sole control is
+ * GitHub's read-only cache token for pull_request_target (run 35851364104:
+ * "Cache save skipped: the effective cache-mode 'read' does not permit
+ * writes."). Refusing `cache-mode`, which could widen that token, is
+ * therefore the most important rule in untrustedCacheFindings; the rest is
+ * defense in depth that keeps reviewed workflows from asking for writes.
+ * pnpm/setup is pinned so a bump re-opens this review.
  */
 const UNTRUSTED_ACTION_CACHE_POLICY = Object.freeze({
   'actions/checkout': noCacheFindings,

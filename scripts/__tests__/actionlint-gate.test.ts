@@ -3352,6 +3352,14 @@ describe('untrusted-workflow cache policy follows callees and allowlists actions
         true,
       ],
       [
+        // Two expressions with text between them are one truthy template
+        // string to GitHub, not a conjunction.
+        'two expressions joined by literal text',
+        `${expr('always()')} && github.event_name == 'workflow_dispatch' && ${expr('true')}`,
+        ['merge_group'],
+        true,
+      ],
+      [
         'operators inside a string literal',
         expr(
           "github.event_name == 'a || b' && github.event_name == 'workflow_dispatch'",
@@ -3384,6 +3392,40 @@ describe('untrusted-workflow cache policy follows callees and allowlists actions
             ]
           : [],
       );
+    });
+
+    test('a nested call is judged against the events its caller narrowed to', () => {
+      // outer narrows merge_group+pull_request_target to merge_group; inner
+      // excludes merge_group, so nothing reaches the leaf. Passing the
+      // caller's full set instead would leave pull_request_target reachable.
+      const caller = {
+        file: '.github/workflows/caller.yml',
+        document: {
+          on: { merge_group: {}, pull_request_target: {} },
+          jobs: {
+            outer: {
+              if: expr("github.event_name == 'merge_group'"),
+              uses: './.github/workflows/middle.yml',
+            },
+          },
+        } as Doc,
+      };
+      const middle = {
+        file: '.github/workflows/middle.yml',
+        document: {
+          on: { workflow_call: {} },
+          jobs: {
+            inner: {
+              if: expr("github.event_name != 'merge_group'"),
+              uses: './.github/workflows/leaf.yml',
+            },
+          },
+        } as Doc,
+      };
+      const leaf = oneStepWorkflow({ workflow_call: {} }, SAVE, 'leaf.yml');
+      expect(cacheFindings([caller, middle, leaf])).toEqual([]);
+      middle.document.jobs.inner.if = undefined;
+      expect(cacheFindings([caller, middle, leaf])).toHaveLength(1);
     });
 
     test('follows a callee of a callee, carrying the caller chain', () => {
