@@ -447,7 +447,7 @@ export function approvalModeToSend(
  * looser than main's defaults. Ask and auto are, because they are at least
  * as strict as what main would send.
  */
-export function confirmedPickIsReasserted(mode: ApprovalMode): boolean {
+function confirmedPickIsReasserted(mode: ApprovalMode): boolean {
   return mode !== 'never' && mode !== 'connection-default';
 }
 
