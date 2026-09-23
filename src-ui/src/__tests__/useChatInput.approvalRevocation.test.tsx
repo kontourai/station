@@ -148,13 +148,20 @@ describe('a revoked full-access choice stays revoked (#2321)', () => {
   });
 
   test('never → send → Default → switch model does not bring full access back', () => {
-    const { result } = renderComposer();
+    const { result, rerender } = renderComposer();
+    // The mocked selector reads the store at render time and does not
+    // subscribe, so re-render after every store write: each handler must see
+    // the chat state the user would see at that moment.
+    const step = (fn: () => void) => {
+      act(fn);
+      rerender();
+    };
 
-    act(() => result.current.handleModelSelect(modelX));
-    act(() => result.current.handleApprovalModeChange('never'));
+    step(() => result.current.handleModelSelect(modelX));
+    step(() => result.current.handleApprovalModeChange('never'));
 
     // The first turn starts and acknowledges model X: the request is consumed.
-    act(() => {
+    step(() => {
       handleOrchestrationEvent('http://station.test', {
         provider: 'codex',
         threadId: SESSION_ID,
@@ -170,8 +177,20 @@ describe('a revoked full-access choice stays revoked (#2321)', () => {
     });
     expect(effectiveOptions()?.approvalMode).toBe('never');
 
-    act(() => result.current.handleApprovalModeChange('connection-default'));
-    act(() => result.current.handleModelSelect(modelY));
+    step(() => result.current.handleApprovalModeChange('connection-default'));
+    // The confirmed bag no longer holds the superseded posture, so no later
+    // rebuild from it can restore full access.
+    expect(
+      activeChatsStore.getSnapshot()[SESSION_ID].providerOptions?.approvalMode,
+    ).toBeUndefined();
+
+    step(() => result.current.handleModelSelect(modelY));
+    // The model switch keeps the user's pending choice rather than rebuilding
+    // from the confirmed bag.
+    expect(
+      activeChatsStore.getSnapshot()[SESSION_ID].requestedProviderOptions
+        ?.approvalMode,
+    ).toBe('connection-default');
 
     expect(effectiveOptions()?.approvalMode).not.toBe('never');
     expect(renderPillText()).not.toMatch(/Full access/);
