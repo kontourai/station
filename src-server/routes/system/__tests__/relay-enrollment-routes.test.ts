@@ -39,7 +39,7 @@ function fixture(
       enrollmentId: string,
       request: Request,
     ) => Promise<unknown>;
-    requestRelay?: (input: unknown) => unknown;
+    requestRelay?: (input: unknown, retire: () => void) => unknown;
   } = {},
 ) {
   const directory = mkdtempSync(join(tmpdir(), 'station-relay-stage-a-'));
@@ -63,15 +63,21 @@ function fixture(
       })),
   );
   const discardPending = vi.fn(async () => {});
+  let current = true;
   const pairing = {
-    requestRelayEnrollmentAccess:
-      options.requestRelay ??
-      vi.fn(() => ({
-        offerId: 'private-offer-1',
-        proof: 'private-pairing-proof',
-        requestId: 'operator-request-1',
-        expiresAt: Date.now() + 60_000,
-      })),
+    requestRelayEnrollmentAccess: vi.fn((input: unknown) =>
+      options.requestRelay
+        ? options.requestRelay(input, () => {
+            current = false;
+          })
+        : {
+            offerId: 'private-offer-1',
+            proof: 'private-pairing-proof',
+            requestId: 'operator-request-1',
+            expiresAt: Date.now() + 60_000,
+          },
+    ),
+    discardRelayEnrollmentOffer: vi.fn(),
   } as unknown as DevicePairingService;
   const service = new RelayEnrollmentService({
     stationId,
@@ -90,7 +96,6 @@ function fixture(
     pairing,
     journal,
   });
-  let current = true;
   const routes = createRelayEnrollmentRoutes(service);
   const ingress = new VirtualApplicationIngress(stationOrigin, () => ({
     stationId,
@@ -394,6 +399,64 @@ describe('unmounted relay enrollment handler', () => {
     expect(h.journal.get(challenge.enrollmentId)).toMatchObject({
       state: 'failed',
       terminalReason: 'provider-unavailable',
+    });
+  });
+
+  test('peer retirement after private pairing creation immediately cleans the provider and offer', async () => {
+    const h = fixture({
+      requestRelay: (_input, retire) => {
+        retire();
+        return {
+          offerId: 'private-offer-after-retire',
+          proof: 'private-pairing-proof',
+          requestId: 'operator-request-after-retire',
+          expiresAt: Date.now() + 60_000,
+        };
+      },
+    });
+    const pair = await generateKeyPair('ES256');
+    const jwk = await exportJWK(pair.publicKey);
+    const begun = await h.application.fetch(
+      post(RELAY_ENROLLMENT_BEGIN_PATH, {
+        publicKey: { kty: jwk.kty, crv: jwk.crv, x: jwk.x, y: jwk.y },
+      }),
+    );
+    const challenge = (await begun.json()) as RelayEnrollmentChallenge;
+    const proof = await new SignJWT({
+      v: RELAY_ENROLLMENT_VERSION,
+      stationId,
+      enrollmentId: challenge.enrollmentId,
+      clientOrigin,
+      keyThumbprint: challenge.keyThumbprint,
+      nonce: challenge.nonce,
+      purpose: 'login',
+      htm: 'POST',
+      htu: `${stationOrigin}${RELAY_ENROLLMENT_LOGIN_PATH}`,
+    })
+      .setProtectedHeader({ alg: 'ES256', typ: RELAY_ENROLLMENT_PROOF_TYPE })
+      .setAudience(RELAY_ENROLLMENT_PROOF_AUDIENCE)
+      .setJti('K'.repeat(22))
+      .setIssuedAt()
+      .setExpirationTime('30s')
+      .sign(pair.privateKey);
+    const response = await h.application.fetch(
+      post(RELAY_ENROLLMENT_LOGIN_PATH, {
+        enrollmentId: challenge.enrollmentId,
+        proof,
+        credentials: { username: 'alice', password: 'correct horse battery' },
+      }),
+    );
+    expect(response.status).toBe(503);
+    await vi.waitFor(() =>
+      expect(h.discardPending).toHaveBeenCalledWith(
+        challenge.enrollmentId,
+        'pending-session-ref',
+        expect.any(AbortSignal),
+      ),
+    );
+    expect(h.journal.get(challenge.enrollmentId)).toMatchObject({
+      state: 'failed',
+      terminalReason: 'recovery-required',
     });
   });
 });

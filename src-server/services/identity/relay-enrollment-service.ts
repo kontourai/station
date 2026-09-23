@@ -419,7 +419,12 @@ export class RelayEnrollmentService {
       await this.cleanupRecord(pending, 'failed', 'recovery-required');
       throw new RelayEnrollmentRefusal('unavailable');
     }
-    this.requireFactsCurrent(request, facts);
+    try {
+      this.requireFactsCurrent(request, facts);
+    } catch {
+      await this.cleanupRecord(requested, 'failed', 'recovery-required');
+      throw new RelayEnrollmentRefusal('unavailable');
+    }
     return {
       version: RELAY_ENROLLMENT_VERSION,
       state: 'pending',
