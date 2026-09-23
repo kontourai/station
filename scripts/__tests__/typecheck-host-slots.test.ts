@@ -6,6 +6,8 @@ import {
   readdirSync,
   readFileSync,
   rmSync,
+  statSync,
+  symlinkSync,
   utimesSync,
   writeFileSync,
 } from 'node:fs';
@@ -16,17 +18,20 @@ import { afterEach, describe, expect, test } from 'vitest';
 import {
   acquireTypecheckSlot,
   CORRUPT_RECORD_STALE_MS,
+  describeSlotSource,
   holderIsLive,
   isTransientContention,
   ownBirthFingerprint,
+  prepareSlotDirectory,
   reclaimStaleSlot,
   resolveSlotCount,
+  resolveSlotDirectory,
   SLOT_HELD_ENV,
   slotPath,
   UNVERIFIED_HOLDER_STALE_MS,
 } from '../lib/typecheck-host-slots.mjs';
 import { compileProject } from '../scripts-typecheck-coverage.mjs';
-import { planTscArgs, projectConfigPath } from '../tsc-slot.mjs';
+import { needsSlot, planTscArgs, projectConfigPath } from '../tsc-slot.mjs';
 import {
   TYPECHECK_LANES,
   typecheckConcurrency,
@@ -70,11 +75,24 @@ function writeRecord(dir: string, index: number, record: object): void {
 const noEnv = {} as NodeJS.ProcessEnv;
 
 describe('resolveSlotCount', () => {
-  test('defaults to one slot per 8 GiB, between 1 and 4', () => {
+  test('defaults to one slot per 8 GiB, rounded, between 1 and 4', () => {
+    // A hosted "16 GB" runner reports ~15.6 GiB. Flooring gave it 1 slot
+    // and serialized CI's typecheck lane; it must get 2.
+    expect(resolveSlotCount({ env: noEnv, totalmem: 15.6 * GIB })).toBe(2);
+    expect(resolveSlotCount({ env: noEnv, totalmem: 8 * GIB })).toBe(1);
     expect(resolveSlotCount({ env: noEnv, totalmem: 48 * GIB })).toBe(4);
-    expect(resolveSlotCount({ env: noEnv, totalmem: 16 * GIB })).toBe(2);
+    expect(resolveSlotCount({ env: noEnv, totalmem: 11 * GIB })).toBe(1);
     expect(resolveSlotCount({ env: noEnv, totalmem: 4 * GIB })).toBe(1);
     expect(resolveSlotCount({ env: noEnv, totalmem: 512 * GIB })).toBe(4);
+  });
+
+  test('the aggregate log names the resolved count and where it came from', () => {
+    expect(describeSlotSource({ env: noEnv, totalmem: 15.6 * GIB })).toBe(
+      '15.6 GiB RAM, one per 8 GiB rounded, max 4',
+    );
+    expect(describeSlotSource({ env: { STATION_TYPECHECK_SLOTS: '3' } })).toBe(
+      'STATION_TYPECHECK_SLOTS=3',
+    );
   });
 
   test('honours a valid override and refuses an invalid one', () => {
@@ -92,6 +110,75 @@ describe('resolveSlotCount', () => {
         }),
       ).toThrow(/STATION_TYPECHECK_SLOTS/);
   });
+});
+
+describe('slot directory', () => {
+  test('on POSIX it is a fixed uid-scoped /tmp path, whatever TMPDIR says', () => {
+    // Every caller must resolve the SAME directory: a sandbox or sudo with
+    // its own TMPDIR would otherwise form a second pool with its own N.
+    for (const tmp of [
+      '/var/folders/xy/T',
+      '/tmp/codex-sandbox',
+      '/run/private',
+    ])
+      expect(
+        resolveSlotDirectory({
+          env: { TMPDIR: tmp },
+          platform: 'darwin',
+          uid: 501,
+          tmpdir: tmp,
+        }),
+      ).toBe('/tmp/station-typecheck-slots-501');
+    expect(
+      resolveSlotDirectory({ env: noEnv, platform: 'linux', uid: 1001 }),
+    ).toBe('/tmp/station-typecheck-slots-1001');
+  });
+
+  test('Windows uses its per-user temp dir, and the override wins everywhere', () => {
+    expect(
+      resolveSlotDirectory({
+        env: noEnv,
+        platform: 'win32',
+        tmpdir: 'C:\\Users\\u\\AppData\\Local\\Temp',
+      }),
+    ).toBe(
+      join('C:\\Users\\u\\AppData\\Local\\Temp', 'station-typecheck-slots'),
+    );
+    for (const platform of ['darwin', 'win32'])
+      expect(
+        resolveSlotDirectory({
+          env: { STATION_TYPECHECK_SLOT_DIR: '/shared/slots' },
+          platform,
+          uid: 501,
+        }),
+      ).toBe('/shared/slots');
+  });
+
+  test.skipIf(process.platform === 'win32')(
+    'is created private, tightened if loose, and refused when owned by another user or a symlink',
+    () => {
+      const uid = process.getuid?.() as number;
+      const parent = tempDir('tc-slots-dir-');
+      const dir = join(parent, 'slots');
+      prepareSlotDirectory(dir, { platform: 'darwin', uid });
+      expect(statSync(dir).mode & 0o777).toBe(0o700);
+
+      const loose = join(parent, 'loose');
+      mkdirSync(loose, { mode: 0o777 });
+      prepareSlotDirectory(loose, { platform: 'darwin', uid });
+      expect(statSync(loose).mode & 0o077).toBe(0);
+
+      expect(() =>
+        prepareSlotDirectory(dir, { platform: 'darwin', uid: uid + 1 }),
+      ).toThrow(/owned by uid \d+, not \d+/);
+
+      const link = join(parent, 'link');
+      symlinkSync(dir, link, 'dir');
+      expect(() =>
+        prepareSlotDirectory(link, { platform: 'darwin', uid }),
+      ).toThrow(/is not a real directory/);
+    },
+  );
 });
 
 describe('holderIsLive', () => {
@@ -134,6 +221,25 @@ describe('holderIsLive', () => {
         { now, pidAlive: alive },
       ),
     ).toBe(false);
+  });
+
+  test('an unverified holder is not trusted past about one bounded wait (61 minutes, a literal)', () => {
+    // Pinned to a literal, not the constant: widening the constant must fail
+    // here. A recycled pid must not pin a slot longer than a waiter's 45-minute
+    // wait plus margin.
+    const now = Date.now();
+    expect(
+      holderIsLive(
+        { pid: 4242, start: null, acquiredAt: now - 61 * 60_000 },
+        { now, pidAlive: () => true },
+      ),
+    ).toBe(false);
+    expect(
+      holderIsLive(
+        { pid: 4242, start: null, acquiredAt: now - 50 * 60_000 },
+        { now, pidAlive: () => true },
+      ),
+    ).toBe(true);
   });
 
   test('Windows records carry no birth fingerprint (no PowerShell per compile)', () => {
@@ -602,6 +708,56 @@ describe('tsc-slot runner', () => {
         concurrency: 3,
       }),
     ).toBe(3);
+  });
+
+  test('watch, help, version and other non-compiling modes take no slot', () => {
+    for (const args of [
+      ['--watch', '-p', 'x.json'],
+      ['-w'],
+      ['--help'],
+      ['-h'],
+      ['--version'],
+      ['-v'],
+      ['--init'],
+      ['--showConfig', '-p', 'x.json'],
+    ])
+      expect(needsSlot(args), args.join(' ')).toBe(false);
+    for (const args of [
+      ['-p', 'x.json', '--noEmit'],
+      ['--build', 'x.json'],
+      ['--noEmit', '--listFiles'],
+    ])
+      expect(needsSlot(args), args.join(' ')).toBe(true);
+  });
+
+  test('`--version` runs even while every slot is held', {
+    timeout: 60_000,
+  }, () => {
+    const slotDir = tempDir('tc-slots-version-');
+    writeRecord(slotDir, 0, {
+      pid: process.pid,
+      start: null,
+      nonce: 'the-test-process',
+      acquiredAt: Date.now(),
+    });
+    const result = spawnSync(
+      process.execPath,
+      [join(REPO_ROOT, 'scripts', 'tsc-slot.mjs'), '--version'],
+      {
+        encoding: 'utf8',
+        windowsHide: true,
+        env: {
+          ...process.env,
+          STATION_TYPECHECK_SLOT_DIR: slotDir,
+          STATION_TYPECHECK_SLOTS: '1',
+          STATION_TYPECHECK_SLOT_WAIT_MS: '0',
+          [SLOT_HELD_ENV]: '',
+        },
+      },
+    );
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toMatch(/^Version \d+\.\d+\.\d+/);
+    expect(result.stderr).not.toMatch(/typecheck slot/);
   });
 
   test('the runner does not start the compiler while every slot is held', {

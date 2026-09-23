@@ -46,8 +46,10 @@
  */
 import { randomUUID } from 'node:crypto';
 import {
+  chmodSync,
   closeSync,
   linkSync,
+  lstatSync,
   mkdirSync,
   openSync,
   readFileSync,
@@ -72,17 +74,25 @@ export const SLOT_HELD_ENV = 'STATION_TYPECHECK_SLOT_HELD';
 
 const GIB = 1024 ** 3;
 /**
- * One slot per 8 GiB of RAM, between 1 and 4. The largest project
+ * One slot per 8 GiB of RAM, ROUNDED, between 1 and 4. The largest project
  * (`tsconfig.tests.json`) peaks at ~3 GB RSS, so 4 slots on the 48 GB
- * development host bound typecheck memory near 12 GB; a 16 GB CI runner
- * gets 2, which keeps its typecheck lane from serializing completely.
+ * development host bound typecheck memory near 12 GB. Rounding rather than
+ * flooring matters on hosted CI: a "16 GB" runner reports ~15.6 GiB, which
+ * floors to 1 and serialized the whole typecheck lane (fast-checks went from
+ * 4m29s to 7m42s); rounded it gets 2.
  */
 const BYTES_PER_SLOT = 8 * GIB;
 const MAX_DEFAULT_SLOTS = 4;
 const MAX_CONFIGURED_SLOTS = 64;
 /** A full aggregate on a contended host legitimately queues for minutes. */
 const DEFAULT_WAIT_MS = 45 * 60_000;
-export const UNVERIFIED_HOLDER_STALE_MS = 6 * 60 * 60_000;
+/**
+ * How long a live pid with no birth fingerprint (Windows) is trusted as the
+ * holder. Far longer than any single compile (the largest takes about a
+ * minute), yet close to DEFAULT_WAIT_MS (45 minutes), so a recycled pid
+ * pinning a slot clears within about one wait instead of outlasting several.
+ */
+export const UNVERIFIED_HOLDER_STALE_MS = 60 * 60_000;
 /** A record that cannot be parsed is durable corruption once this old. */
 export const CORRUPT_RECORD_STALE_MS = 60_000;
 const BIRTH_RECHECK_MS = 30_000;
@@ -108,13 +118,75 @@ export function resolveSlotCount({
   }
   return Math.max(
     1,
-    Math.min(MAX_DEFAULT_SLOTS, Math.floor(totalmem / BYTES_PER_SLOT)),
+    Math.min(MAX_DEFAULT_SLOTS, Math.round(totalmem / BYTES_PER_SLOT)),
   );
 }
 
-function resolveSlotDirectory({ env = process.env, tmpdir = osTmpdir() } = {}) {
+/**
+ * The ONE directory every caller on this host must agree on: a second
+ * directory is a second pool, and the cap silently becomes N per pool.
+ *
+ * On POSIX that is a fixed, uid-scoped path under `/tmp`, deliberately NOT
+ * `os.tmpdir()`: `TMPDIR` differs between a login shell, sudo, a sandboxed
+ * agent (Codex), and a systemd PrivateTmp unit, and each would otherwise form
+ * its own pool. Windows has no shared `/tmp`; its per-user `os.tmpdir()` is
+ * the stable choice there. `STATION_TYPECHECK_SLOT_DIR` overrides both, and a
+ * caller who sets it must set the same value everywhere.
+ *
+ * @param {{ env?: NodeJS.ProcessEnv, platform?: string, uid?: number, tmpdir?: string }} [options]
+ */
+export function resolveSlotDirectory({
+  env = process.env,
+  platform = process.platform,
+  uid = typeof process.getuid === 'function' ? process.getuid() : -1,
+  tmpdir = osTmpdir(),
+} = {}) {
   const override = env[SLOT_DIR_ENV];
-  return override ? override : join(tmpdir, 'station-typecheck-slots');
+  if (override) return override;
+  if (platform === 'win32') return join(tmpdir, 'station-typecheck-slots');
+  return `/tmp/station-typecheck-slots-${uid}`;
+}
+
+/**
+ * Create the slot directory private to this user, and refuse one that is a
+ * symlink or owned by someone else: another user able to write it could
+ * forge holder records and starve (or over-admit) this user's compilers.
+ *
+ * @param {string} dir
+ * @param {{ platform?: string, uid?: number }} [options]
+ */
+export function prepareSlotDirectory(
+  dir,
+  {
+    platform = process.platform,
+    uid = typeof process.getuid === 'function' ? process.getuid() : -1,
+  } = {},
+) {
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  if (platform === 'win32' || uid < 0) return;
+  const stat = lstatSync(dir);
+  if (!stat.isDirectory() || stat.isSymbolicLink())
+    throw new Error(
+      `FAIL: typecheck slot directory ${dir} is not a real directory; remove it or set ${SLOT_DIR_ENV}.`,
+    );
+  if (stat.uid !== uid)
+    throw new Error(
+      `FAIL: typecheck slot directory ${dir} is owned by uid ${stat.uid}, not ${uid}; remove it or set ${SLOT_DIR_ENV}.`,
+    );
+  if ((stat.mode & 0o077) !== 0) chmodSync(dir, 0o700);
+}
+
+/**
+ * Where the slot count came from, for the aggregate's one-line log.
+ *
+ * @param {{ env?: NodeJS.ProcessEnv, totalmem?: number }} [options]
+ */
+export function describeSlotSource({
+  env = process.env,
+  totalmem = osTotalmem(),
+} = {}) {
+  if (env[SLOT_COUNT_ENV]) return `${SLOT_COUNT_ENV}=${env[SLOT_COUNT_ENV]}`;
+  return `${(totalmem / GIB).toFixed(1)} GiB RAM, one per 8 GiB rounded, max ${MAX_DEFAULT_SLOTS}`;
 }
 
 function resolveWaitMs({ env = process.env } = {}) {
@@ -424,7 +496,7 @@ export async function acquireTypecheckSlot({
   if (env[SLOT_HELD_ENV]) {
     return { index: -1, dir, slots, reentrant: true, release: () => {} };
   }
-  mkdirSync(dir, { recursive: true });
+  prepareSlotDirectory(dir);
   const record = {
     pid,
     start: start === undefined ? ownBirthFingerprint({ pid }) : start,

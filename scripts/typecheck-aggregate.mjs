@@ -26,7 +26,10 @@
  */
 import { invokedDirectly } from './lib/module-entry.mjs';
 import { runLanesToCompletion } from './lib/npm-lane-aggregate.mjs';
-import { resolveSlotCount } from './lib/typecheck-host-slots.mjs';
+import {
+  describeSlotSource,
+  resolveSlotCount,
+} from './lib/typecheck-host-slots.mjs';
 
 /**
  * The same 12 independent projects `typecheck`'s old `&&` chain named, in the
@@ -70,14 +73,19 @@ export function typecheckConcurrency({ env = process.env, concurrency } = {}) {
 }
 
 export async function runTypecheckAggregate(options = {}) {
+  const concurrency = typecheckConcurrency({
+    env: options.env,
+    concurrency: options.concurrency,
+  });
+  // Printed once per run so CI output shows the cap it actually ran under.
+  (options.log ?? console.log)(
+    `typecheck: ${resolveSlotCount({ env: options.env })} host typecheck slot(s) (${describeSlotSource({ env: options.env })}); running up to ${concurrency} lane(s) at once.`,
+  );
   return runLanesToCompletion({
     lanes: TYPECHECK_LANES,
     label: 'typecheck',
     ...options,
-    concurrency: typecheckConcurrency({
-      env: options.env,
-      concurrency: options.concurrency,
-    }),
+    concurrency,
   });
 }
 

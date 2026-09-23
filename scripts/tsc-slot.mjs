@@ -57,6 +57,28 @@ const NON_COMPILE_FLAGS = new Set([
   '--listFilesOnly',
 ]);
 
+/**
+ * Modes that compile nothing (help, version, init, showConfig) or never
+ * exit (watch). They run without a slot: a watcher holding one would pin it
+ * for as long as the terminal stays open.
+ */
+const SLOTLESS_FLAGS = new Set([
+  '--watch',
+  '-w',
+  '--init',
+  '--help',
+  '-h',
+  '--all',
+  '--version',
+  '-v',
+  '--showConfig',
+]);
+
+/** @param {string[]} args */
+export function needsSlot(args) {
+  return !args.some((arg) => SLOTLESS_FLAGS.has(flagName(arg)));
+}
+
 const CALLER_INCREMENTAL_FLAGS = new Set([
   '--incremental',
   '-i',
@@ -152,18 +174,20 @@ async function main(argv = process.argv.slice(2)) {
   if (!existsSync(compiler))
     throw new Error(`TypeScript not found: ${compiler}`);
 
-  let slot;
-  try {
-    slot = await acquireTypecheckSlot({ label: describeProject(argv, cwd) });
-  } catch (error) {
-    process.stderr.write(`${error?.message ?? error}\n`);
-    process.exitCode = 1;
-    return;
+  if (needsSlot(argv)) {
+    let slot;
+    try {
+      slot = await acquireTypecheckSlot({ label: describeProject(argv, cwd) });
+    } catch (error) {
+      process.stderr.write(`${error?.message ?? error}\n`);
+      process.exitCode = 1;
+      return;
+    }
+    // tsc ends with process.exit(); the `exit` event is the one hook that
+    // runs on that path, and on an uncaught exception too.
+    process.once('exit', slot.release);
+    process.env[SLOT_HELD_ENV] = `${slot.dir}#${slot.index}`;
   }
-  // tsc ends with process.exit(); the `exit` event is the one hook that runs
-  // on that path, and on an uncaught exception too.
-  process.once('exit', slot.release);
-  process.env[SLOT_HELD_ENV] = `${slot.dir}#${slot.index}`;
   process.argv = [process.argv[0], compiler, ...plan.args];
   require(compiler);
 }
