@@ -968,6 +968,10 @@ export function configureRuntimeRoutes(
           : undefined,
     resolveCredentialDeviceId: (credential: string) =>
       context.environmentSecurityService.identifyDevice(credential)?.id,
+    resolveCredentialAliasId: (credential: string) =>
+      context.environmentSecurityService.devicePairing.credentialAliasId(
+        credential,
+      ),
     // #2323 S5: person-only plugin lifecycle routes refuse delegation grants.
     resolveCredentialDeviceKind: (credential: string) => {
       const kind =

@@ -175,6 +175,53 @@ describe('device pairing persistence faults (portable seam, station#3277/#3324)'
     expect(restarted.verifyCredential(paired.credential)).toBe(false);
   });
 
+  test('alias mint and revocation faults leave both credential states unapplied until durable retry', () => {
+    const paired = pair('Cookie-paired browser').result;
+    renameFault.armed = true;
+    try {
+      expect(() =>
+        service.issueRelayCredentialAlias(paired.credential, paired.device.id),
+      ).toThrow(/EACCES/);
+    } finally {
+      renameFault.armed = false;
+    }
+    expect(service.verifyCredential(paired.credential)).toBe(true);
+    expect(
+      JSON.parse(registryContents()).devices[0].credentialAliases ?? [],
+    ).toEqual([]);
+
+    const alias = service.issueRelayCredentialAlias(
+      paired.credential,
+      paired.device.id,
+    );
+    renameFault.armed = true;
+    try {
+      expect(() =>
+        service.revokeRelayCredentialAlias(paired.device.id, alias.aliasId),
+      ).toThrow(/EACCES/);
+    } finally {
+      renameFault.armed = false;
+    }
+    expect(service.verifyCredential(alias.credential)).toBe(true);
+    expect(service.verifyCredential(paired.credential)).toBe(true);
+    expect(
+      JSON.parse(registryContents()).devices[0].credentialAliases[0].revokedAt,
+    ).toBeNull();
+
+    expect(
+      service.revokeRelayCredentialAlias(paired.device.id, alias.aliasId),
+    ).toBe(true);
+    expect(service.verifyCredential(alias.credential)).toBe(false);
+    expect(service.verifyCredential(paired.credential)).toBe(true);
+    const restarted = new DevicePairingService({
+      homeDir,
+      environmentId: ENVIRONMENT_ID,
+      now: () => clock,
+    });
+    expect(restarted.verifyCredential(alias.credential)).toBe(false);
+    expect(restarted.verifyCredential(paired.credential)).toBe(true);
+  });
+
   test('persists activity before changing live state, so failure, retry, and restart agree', () => {
     const paired = pair('Brian phone').result;
 
