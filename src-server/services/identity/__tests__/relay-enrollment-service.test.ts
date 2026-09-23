@@ -3,9 +3,12 @@ import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { humanPrincipal } from '@kontourai/station-contracts/principal';
+import { RELAY_ENROLLMENT_BEGIN_PATH } from '@kontourai/station-contracts/relay-enrollment';
 import { calculateJwkThumbprint, exportJWK, generateKeyPair } from 'jose';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { createRelayEnrollmentRoutes } from '../../../routes/system/relay-enrollment-routes.js';
 import { openPrivateSqlite } from '../../../utils/private-sqlite.js';
+import { VirtualApplicationIngress } from '../../connections/virtual-application.js';
 import { openRelayEnrollmentJournal } from '../../relay/relay-enrollment-journal.js';
 import { DevicePairingService } from '../../ssh/device-pairing-service.js';
 import { ApplicationSessionService } from '../application-session-service.js';
@@ -79,6 +82,71 @@ function markProviderPending(
 }
 
 describe('RelayEnrollmentService startup recovery', () => {
+  test('a fresh begin can reclaim expired anonymous capacity without operator polling', async () => {
+    const home = await createHome();
+    let now = 100;
+    const journal = openRelayEnrollmentJournal({
+      dbPath: join(home, 'authentication', 'relay-enrollment.sqlite'),
+      stationId,
+      now: () => now,
+      maxActiveAttempts: 1,
+    });
+    const service = new RelayEnrollmentService({
+      stationId,
+      requestOrigin: origin,
+      allowedClientOrigins: [origin],
+      authentication: {
+        pendingEnrollmentCapabilities: () => ({ available: true }),
+      } as never,
+      pairing: {} as never,
+      journal,
+      now: () => now,
+    });
+    const ingress = new VirtualApplicationIngress(origin, () => ({
+      stationId,
+      connectionEnrollmentId: 'enroll-12345678',
+      routingGeneration: 1,
+      connectionId: 'client-12345678',
+      stationOrigin: origin,
+      browserOrigin: origin,
+      signal: new AbortController().signal,
+      isCurrent: () => true,
+    }));
+    ingress.bind(createRelayEnrollmentRoutes(service));
+    const application = ingress.activate();
+    const publicKey = await exportJWK(
+      (await generateKeyPair('ES256')).publicKey,
+    );
+    const begin = () =>
+      application.fetch(
+        new Request(`${origin}${RELAY_ENROLLMENT_BEGIN_PATH}`, {
+          method: 'POST',
+          headers: { Origin: origin, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            publicKey: {
+              kty: publicKey.kty,
+              crv: publicKey.crv,
+              x: publicKey.x,
+              y: publicKey.y,
+            },
+          }),
+        }),
+      );
+    try {
+      const first = await begin();
+      expect(first.status).toBe(201);
+      const firstId = ((await first.json()) as { enrollmentId: string })
+        .enrollmentId;
+      expect((await begin()).status).toBe(503);
+      now += 5 * 60_000;
+      expect((await begin()).status).toBe(201);
+      expect(journal.get(firstId)).toBeUndefined();
+    } finally {
+      ingress.stop();
+      service.close();
+    }
+  });
+
   test('cleans a challenge-only record when no enrollment provider is configured', async () => {
     const home = await createHome();
     const journal = journalAt(home);
