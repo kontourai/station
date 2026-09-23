@@ -760,7 +760,9 @@ function BuiltinCodingLayoutHost({
   if (catalog.isLoading) {
     return <SkeletonList count={1} label="Loading coding workspace panes" />;
   }
-  if (catalog.isError) {
+  // #2319: a failed background revalidation keeps the answer it had; only a
+  // catalog that never loaded is an error screen.
+  if (catalog.isError && catalog.data === undefined) {
     return (
       <ErrorState
         title="Could not load coding workspace"

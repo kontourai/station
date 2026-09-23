@@ -88,6 +88,7 @@ import { snapshotSessionSourceAffinity } from '../sessions/session-source-affini
 import { resolveConfigHomeAffinity } from '../sessions/transcript-file-io.js';
 import { mergeCapabilityDeliveryMetadata } from './capability-delivery-metadata.js';
 import {
+  type ClaudeActiveTask,
   type ClaudeMessageState,
   mapClaudeDecisionToPermissionResult,
   mapClaudeSdkMessage,
@@ -128,6 +129,8 @@ type PendingRequest = {
   suggestions?: PermissionUpdate[];
   toolInput: Record<string, unknown>;
   toolName: string;
+  /** The SDK agent id when a subagent, not the main thread, asked (#2316). */
+  agentId?: string;
 };
 
 /** The command Station resolves on PATH for this engine. */
@@ -540,11 +543,11 @@ type ClaudeSessionRecord = {
   /** Mirrors `ClaudeMessageState.interruptedResultObserved`. */
   interruptedResultObserved?: boolean;
   /**
-   * Mirrors `ClaudeMessageState.activeTasks`; same object at runtime. Only
-   * membership is read here (`stopProviderTask`), so the value stays opaque
-   * rather than importing the events module's own task shape.
+   * Mirrors `ClaudeMessageState.activeTasks`; same object at runtime.
    */
-  activeTasks?: Map<string, unknown>;
+  activeTasks?: Map<string, ClaudeActiveTask>;
+  /** Mirrors `ClaudeMessageState.onNoLiveTasks` (#2316). */
+  onNoLiveTasks?: () => void;
   lastSessionState: 'idle' | 'running' | 'requires_action';
   streamTask: Promise<void>;
   /** Tracks the live SDK permission mode so sendTurn only calls
@@ -1264,6 +1267,12 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       currentModelOptions: claudeAppliedModelOptions(input.modelOptions),
       skillsOverlayDir,
     };
+    // #2316: with no subagent task live, no subagent can still be waiting on
+    // a permission request; settle any it left behind.
+    record.onNoLiveTasks = () =>
+      this.cancelPendingRequests(record, input.threadId, {
+        subagentsOnly: true,
+      });
     record.streamTask = this.consumeMessages(record);
     this.sessions.set(input.threadId, record);
 
@@ -1603,6 +1612,51 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     return { outcome: 'stopped', taskId };
   }
 
+  /**
+   * Settle one open permission request as cancelled and publish its
+   * `request.resolved`. #2316: a request whose call can no longer run must
+   * leave `pendingRequests`, or a later answer "succeeds" against a dead
+   * promise — and "Allow <tool> for this session" mints a real session-wide
+   * grant for a call that never ran. `respondToRequest` refuses an id that is
+   * not pending before it grants anything.
+   */
+  private cancelPendingRequest(
+    record: ClaudeSessionRecord,
+    threadId: string,
+    requestId: string,
+  ): void {
+    const pending = record.pendingRequests.get(requestId);
+    if (!pending) return;
+    record.pendingRequests.delete(requestId);
+    pending.resolve(
+      mapClaudeDecisionToPermissionResult(
+        'cancel',
+        pending.toolInput,
+        pending.suggestions,
+      ),
+    );
+    this.publish({
+      eventId: crypto.randomUUID(),
+      provider: this.provider,
+      threadId,
+      createdAt: new Date().toISOString(),
+      requestId,
+      method: 'request.resolved',
+      status: 'cancelled',
+    });
+  }
+
+  private cancelPendingRequests(
+    record: ClaudeSessionRecord,
+    threadId: string,
+    options: { subagentsOnly?: boolean } = {},
+  ): void {
+    for (const [requestId, pending] of [...record.pendingRequests]) {
+      if (options.subagentsOnly && !pending.agentId) continue;
+      this.cancelPendingRequest(record, threadId, requestId);
+    }
+  }
+
   async interruptTurn(threadId: string, turnId?: string) {
     const record = this.requireSession(threadId);
     if (!record.activeTurnId) return { outcome: 'no-active-turn' } as const;
@@ -1617,6 +1671,16 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     // `is_error` result before `interrupt()` resolves. The mapper consumes
     // this marker only for this exact dispatched turn.
     record.interruptingTurnId = targetTurnId;
+    // #2316: the interrupted turn's open approvals can never run their call.
+    // Settle them (request.resolved, cancelled) BEFORE turn.aborted, so no
+    // later answer lands on them and no grant is minted for them.
+    //
+    // Every request, a subagent's included. A background subagent may
+    // survive the interrupt (`perTaskStopAffordance`), and then loses only
+    // that one call (it is denied); sparing its request instead would leave
+    // it answerable after its subagent ends, and a late "Allow <tool> for
+    // this session" would mint a grant for a call that never ran.
+    this.cancelPendingRequests(record, threadId);
     // A rejected control promise does not prove the engine ignored the
     // interrupt. Keep the exact-turn marker armed until the SDK result stream
     // confirms what happened; a second Stop must not clear the first one's
@@ -1713,25 +1777,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     this.sessions.delete(threadId);
     // Settle outstanding canUseTool promises before teardown so the SDK
     // callback never hangs on a stopped session (mirrors acp-adapter, archive#148).
-    for (const [requestId, pending] of record.pendingRequests) {
-      pending.resolve(
-        mapClaudeDecisionToPermissionResult(
-          'cancel',
-          pending.toolInput,
-          pending.suggestions,
-        ),
-      );
-      this.publish({
-        eventId: crypto.randomUUID(),
-        provider: this.provider,
-        threadId,
-        createdAt: new Date().toISOString(),
-        requestId,
-        method: 'request.resolved',
-        status: 'cancelled',
-      });
-    }
-    record.pendingRequests.clear();
+    this.cancelPendingRequests(record, threadId);
     record.promptQueue.close();
     record.query.close();
     // station#1558: the session is ending, so any `tool_use` still open can
@@ -2307,6 +2353,11 @@ export class ClaudeAdapter implements ProviderAdapterShape {
           description: options.description,
           payload: {
             toolName,
+            // #2316: the SDK's id for this exact tool_use block — the same id
+            // `tool.started` carries as `toolCallId` — so the transcript binds
+            // the approval to the call it gates rather than to the newest
+            // call that happens to share the tool's name.
+            ...(options.toolUseID ? { toolCallId: options.toolUseID } : {}),
             toolInput,
             blockedPath: options.blockedPath,
             displayName: options.displayName,
@@ -2325,7 +2376,17 @@ export class ClaudeAdapter implements ProviderAdapterShape {
             suggestions: options.suggestions,
             toolInput,
             toolName,
+            ...(options.agentID ? { agentId: options.agentID } : {}),
           });
+          // #2316: the SDK aborts this callback when the call it gates is
+          // abandoned; the request is then settled, never left answerable.
+          options.signal?.addEventListener(
+            'abort',
+            () => this.cancelPendingRequest(record, input.threadId, requestId),
+            { once: true },
+          );
+          if (options.signal?.aborted)
+            this.cancelPendingRequest(record, input.threadId, requestId);
         });
       },
       ...(preToolPolicy && input.agent

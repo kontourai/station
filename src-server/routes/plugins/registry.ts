@@ -71,6 +71,10 @@ import {
   type PluginPrincipalResolution,
   projectLayoutCatalogItems,
 } from './plugin-identity-enumeration.js';
+import {
+  personOnly,
+  refuseInternalControlCaller,
+} from './plugin-person-approval.js';
 
 interface RegistryRouteDeps {
   /**
@@ -356,6 +360,11 @@ export function createRegistryRoutes(
         });
         return c.json({ success: true, data: removed });
       }
+      // #2323 S5 review M1: removing a plugin-provided layout uninstalls the
+      // plugin, so it is the same person-only verb as removing the plugin
+      // itself. Built-in layouts (above) install no code.
+      const refused = refuseInternalControlCaller(c, 'remove a plugin');
+      if (refused) return refused;
       if (!pluginInstallDeps || !item.plugin) {
         return c.json(
           {
@@ -470,6 +479,10 @@ export function createRegistryRoutes(
         return c.json({ success: false, message: errorMessage(error) }, 500);
       }
       if (registryPlugin) {
+        // #2323 S5: removing a registry PLUGIN is the same person-only verb
+        // as removing the plugin itself, whichever catalog face routed it.
+        const refused = refuseInternalControlCaller(c, 'remove a plugin');
+        if (refused) return refused;
         try {
           const mutation = await captureConfigurationMutation(
             deps?.applyConfigurationMutation,
@@ -773,6 +786,10 @@ export function createRegistryRoutes(
       };
     },
   ) => {
+    // #2323 S5: the plugin install path for both catalog faces, so the
+    // person-only refusal lives here rather than on each route.
+    const refused = refuseInternalControlCaller(c, 'install a plugin');
+    if (refused) return refused;
     const requestGrantRevisions = observePluginGrantRevisions(projectHomeDir);
     const {
       id,
@@ -952,7 +969,7 @@ export function createRegistryRoutes(
     },
   );
 
-  app.delete('/plugins/:id', async (c) => {
+  app.delete('/plugins/:id', personOnly('remove a plugin'), async (c) => {
     const id = param(c, 'id');
     registryOps.add(1, { operation: 'uninstall-plugin', item: id });
     if (!pluginInstallDeps) {

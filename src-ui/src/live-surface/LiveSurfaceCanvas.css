@@ -92,10 +92,12 @@
 }
 
 .live-surface__status {
-  background: var(--bg-overlay, rgb(0 0 0 / 0.6));
+  /* Remote pixels vary independently of the app theme; keep this caption
+     readable over any image instead of inheriting a theme overlay. */
+  background: rgb(0 0 0 / 0.6);
   border-radius: var(--radius-sm, 4px);
   bottom: var(--space-2, 8px);
-  color: var(--text-inverse, #fff);
+  color: #fff;
   font-size: 0.8125rem;
   left: var(--space-2, 8px);
   margin: 0;

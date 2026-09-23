@@ -1,5 +1,5 @@
 import type { SessionReadAuthority } from '@kontourai/station-contracts/tenancy';
-import { Hono } from 'hono';
+import { type Context, Hono } from 'hono';
 import type { AttentionProjectionService } from '../../services/projects/attention-projection.js';
 import { param } from '../schemas/schemas.js';
 
@@ -25,6 +25,12 @@ export function createAttentionRoutes(
      * guess. Absent (non-runtime compositions) fails closed to `false`.
      */
     viewerMayDecidePairingRequests?: (request: Request) => boolean;
+    /**
+     * #2323 S5: whether THIS request's caller is the Station operator, the
+     * one person plugin lifecycle proposals are addressed to. Absent fails
+     * closed: no proposal items.
+     */
+    viewerIsOperator?: (c: Context) => boolean;
   } = {},
 ) {
   const app = new Hono();
@@ -34,6 +40,7 @@ export function createAttentionRoutes(
       data: await attention.list(options.readAuthorityForRequest?.(c.req.raw), {
         mayDecidePairingRequests:
           options.viewerMayDecidePairingRequests?.(c.req.raw) ?? false,
+        isOperator: options.viewerIsOperator?.(c) ?? false,
       }),
     }),
   );

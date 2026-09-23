@@ -85,6 +85,7 @@ import type { IEmbeddingProvider } from '@kontourai/station-contracts/knowledge-
 import type { LaunchableModelInventory } from '@kontourai/station-contracts/model-inventory';
 import type { AdoptedSessionResult } from '@kontourai/station-contracts/orchestration';
 import type { PrincipalRef } from '@kontourai/station-contracts/principal';
+import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { parseStationTaskBasisCollection } from '@kontourai/station-contracts/task-basis';
 import {
   INTERNAL_SESSION_READ_SCOPE,
@@ -220,12 +221,17 @@ import {
 } from '../../routes/orchestration/tasks.js';
 import { createWorkItemRoutes } from '../../routes/orchestration/work-items.js';
 import { createWorkspacePaneHostActionRoutes } from '../../routes/orchestration/workspace-pane-host-actions.js';
+import { createPluginDraftRoutes } from '../../routes/plugins/plugin-draft-routes.js';
 import { canRelayPluginIdentityEvent } from '../../routes/plugins/plugin-identity-enumeration.js';
+import { isNonPersonCaller } from '../../routes/plugins/plugin-person-approval.js';
+import { createPluginProposalRoutes } from '../../routes/plugins/plugin-proposal-routes.js';
+import { createPluginSourceStatusRoutes } from '../../routes/plugins/plugin-source-status-routes.js';
 import { createPluginRoutes } from '../../routes/plugins/plugins.js';
 import { createRegistryRoutes } from '../../routes/plugins/registry.js';
 import { createCodingRoutes } from '../../routes/projects/coding.js';
 import { createFsRoutes } from '../../routes/projects/fs.js';
 import { createWorkflowRoutes } from '../../routes/projects/layouts.js';
+import { createPluginScaffoldRoutes } from '../../routes/projects/plugin-scaffold-routes.js';
 import {
   createProjectContributionRoutes,
   delegationContributionQueryAuthorized,
@@ -358,6 +364,7 @@ import {
 } from '../../services/flow/survey-flow-review-service.js';
 import { identifyIngress } from '../../services/identity/identity-source.js';
 import {
+  LOCAL_OPERATOR_PRINCIPAL_ID,
   PrincipalUnresolvedError,
   resolvePrincipal as resolveStationPrincipal,
 } from '../../services/identity/principal-resolver.js';
@@ -402,7 +409,9 @@ import {
   isMcpUiRenderRevoked,
   setMcpUiRenderAllowed,
 } from '../../services/plugins/mcp-ui-permissions.js';
+import { PluginDraftService } from '../../services/plugins/plugin-draft-service.js';
 import type { PluginInstallationHost } from '../../services/plugins/plugin-installation-service.js';
+import { PluginLifecycleProposalService } from '../../services/plugins/plugin-lifecycle-proposals.js';
 import { PluginVisibilityService } from '../../services/plugins/plugin-visibility-service.js';
 import { createLocalRegistryTrustPolicyAuthority } from '../../services/plugins/registry-trust-policy.js';
 import type { AttentionProjectionService } from '../../services/projects/attention-projection.js';
@@ -718,6 +727,8 @@ interface ConfigureRuntimeRoutesResult {
   liveSurfaceRegistry?: LiveSurfaceRegistry;
   /** Personal hosts only; the runtime shuts it down on stop. */
   browserService?: BrowserService;
+  /** Epic #2323 S3: stops draft watchers and removes built drafts on shutdown. */
+  pluginDraftService?: Pick<PluginDraftService, 'dispose'>;
 }
 
 /**
@@ -874,6 +885,38 @@ export {
   isRuntimeRequestPrincipalCurrent,
 } from '../../security/runtime-request-security.js';
 
+/**
+ * Epic #2323 S2 (owner decision: any Project member may author a plugin).
+ * The Project read guard refuses every non-GET from a deployment account
+ * that is only a member, because Project routes mutate the Project. The
+ * plugin scaffold is the one write a member may make: it writes only into
+ * the folder the Project already names, only while that folder is empty,
+ * never overwrites, and installs nothing. Matched on the exact leaf so no
+ * sibling path, trailing slash or deeper segment rides on it. The route
+ * itself still validates the slug.
+ */
+export function isProjectMemberPluginScaffold(method: string, path: string) {
+  return (
+    method === 'POST' && /^\/api\/projects\/[^/]+\/plugin-scaffold$/.test(path)
+  );
+}
+
+/**
+ * Epic #2323 S3 (owner decision: any Project member may author and preview a
+ * plugin draft). The Project read guard refuses every non-GET from a
+ * deployment account that is only a member, because project routes mutate the
+ * Project. Starting a draft lease does not: it reads the Project folder and
+ * writes a build into host-owned storage, never into the Project. It is the
+ * one POST a member may make here, matched exactly so no sibling leaf can
+ * ride on it.
+ */
+export function isProjectMemberDraftLease(method: string, path: string) {
+  return (
+    method === 'POST' &&
+    /^\/api\/projects\/[^/]+\/plugin-draft\/lease$/.test(path)
+  );
+}
+
 export function configureRuntimeRoutes(
   context: ConfigureRuntimeRoutesContext,
 ): ConfigureRuntimeRoutesResult {
@@ -881,6 +924,7 @@ export function configureRuntimeRoutes(
     record: (op) => connectedClientPresenceOps.add(1, { op }),
   });
   let projectTaskRoomRuntime: ProjectTaskRoomRuntime | undefined;
+  let pluginDraftService: PluginDraftService | undefined;
   let projectTaskRoomLifecycleReady: Promise<void> = Promise.resolve();
   let liveSurfaceRegistry: LiveSurfaceRegistry | undefined;
   let browserService: BrowserService | undefined;
@@ -909,6 +953,12 @@ export function configureRuntimeRoutes(
           : undefined,
     resolveCredentialDeviceId: (credential: string) =>
       context.environmentSecurityService.identifyDevice(credential)?.id,
+    // #2323 S5: person-only plugin lifecycle routes refuse delegation grants.
+    resolveCredentialDeviceKind: (credential: string) => {
+      const kind =
+        context.environmentSecurityService.identifyDevice(credential)?.kind;
+      return kind === 'delegation' || kind === 'device' ? kind : undefined;
+    },
     resolvePairingSource: (credential: string) =>
       context.environmentSecurityService.identifyDevice(credential)?.source,
     resolveCredentialLocality: (credential: string) =>
@@ -1699,6 +1749,17 @@ export function configureRuntimeRoutes(
     ),
   );
   context.app.route('/api/users', createUserRoutes());
+  // One instance for the plugin routes (which complete proposals) and the
+  // proposal routes (which create and dismiss them). The attention
+  // projection reads the same file through its own instance; the store is
+  // stateless per call, so they agree.
+  const pluginLifecycleProposals = new PluginLifecycleProposalService(
+    context.configLoader.getProjectHomeDir(),
+  );
+  // One installation journal for the plugin routes and the source status
+  // routes below, so both read the same selections.
+  const packageMcpJournal =
+    context.orchestrationEventStore?.createPackageMcpAdmissionJournal();
   context.app.route(
     '/api/plugins',
     createPluginRoutes(
@@ -1707,8 +1768,7 @@ export function configureRuntimeRoutes(
       context.eventBus,
       {
         consentChannel: context.consentChannel,
-        packageMcpJournal:
-          context.orchestrationEventStore?.createPackageMcpAdmissionJournal(),
+        packageMcpJournal,
         registryTrustPolicyAuthority: context.orchestrationEventStore
           ? createLocalRegistryTrustPolicyAuthority(
               context.configLoader.getProjectHomeDir(),
@@ -1766,8 +1826,33 @@ export function configureRuntimeRoutes(
             }
           },
         },
+        proposals: pluginLifecycleProposals,
       },
     ),
+  );
+  // #2323 S5: agent-authored plugin lifecycle asks. Its own family, not a
+  // `/api/plugins` leaf: `DELETE /api/plugins/:name` would otherwise own
+  // any path segment a proposal route used.
+  context.app.route(
+    '/api/plugin-proposals',
+    createPluginProposalRoutes({
+      proposals: pluginLifecycleProposals,
+      pluginsDir: join(context.configLoader.getProjectHomeDir(), 'plugins'),
+      logger: context.logger,
+      resolvePrincipal: resolveOrchestrationRequestPrincipal,
+    }),
+  );
+  // #2323 S4: whether a Project folder still holds an installed local
+  // plugin's code. Its own family for the same reason as the proposals.
+  context.app.route(
+    '/api/plugin-sources',
+    createPluginSourceStatusRoutes({
+      projectHomeDir: context.configLoader.getProjectHomeDir(),
+      journal: packageMcpJournal ?? null,
+      listProjects: () => context.projectService.listProjects(),
+      resolvePrincipal: resolveOrchestrationRequestPrincipal,
+      logger: context.logger,
+    }),
   );
   context.app.route('/api/fs', createFsRoutes());
   context.app.route(
@@ -3393,7 +3478,12 @@ export function configureRuntimeRoutes(
   };
   const projectReadGuard = async (
     c: Parameters<typeof resolveOrchestrationRequestPrincipal>[0] & {
-      req: { method: string; param(name: string): string; raw: Request };
+      req: {
+        method: string;
+        path: string;
+        param(name: string): string;
+        raw: Request;
+      };
       json: (body: unknown, status: 403 | 404) => Response;
       res: Response;
     },
@@ -3408,7 +3498,16 @@ export function configureRuntimeRoutes(
         c.req.raw,
         c.req.param('slug'),
       );
-      if (restricted && c.req.method !== 'GET' && c.req.method !== 'HEAD') {
+      if (
+        restricted &&
+        c.req.method !== 'GET' &&
+        c.req.method !== 'HEAD' &&
+        !isProjectMemberPluginScaffold(
+          c.req.method,
+          new URL(c.req.raw.url).pathname,
+        ) &&
+        !isProjectMemberDraftLease(c.req.method, c.req.path)
+      ) {
         return c.json(
           { success: false, error: 'Project mutation is forbidden' },
           403,
@@ -3439,6 +3538,28 @@ export function configureRuntimeRoutes(
   };
   context.app.use('/api/projects/:slug', projectReadGuard);
   context.app.use('/api/projects/:slug/*', projectReadGuard);
+  // Epic #2323 S3: plugin draft preview. Personal hosts only — the draft runs
+  // in-process in a viewer's tab, which is the loopback plugin runtime, and a
+  // shared tenant host has no such runtime. Mounted behind the Project read
+  // guard above, so a deployment account must be a member of the Project.
+  if (!hostedTenantRegistry && !isHostedTenantExecutionRequired()) {
+    pluginDraftService = new PluginDraftService({
+      draftsRoot: join(
+        context.configLoader.getProjectHomeDir(),
+        'plugin-drafts',
+      ),
+      emitRebuilt: (event) =>
+        context.eventBus.emit(SERVER_EVENTS.PLUGIN_DRAFTS_REBUILT, event),
+      logger: context.logger,
+    });
+    context.app.route(
+      '/api/projects',
+      createPluginDraftRoutes({
+        service: pluginDraftService,
+        resolveProjectDirectory: (slug) => resolveWorkspacePath(slug),
+      }),
+    );
+  }
   // #2061: the personal scope. Ownership comes from
   // `resolveOrchestrationRequestPrincipal` — the SAME memoized, fail-closed
   // resolver every other identity-bearing route in this file reads — so no
@@ -3573,6 +3694,15 @@ export function configureRuntimeRoutes(
         },
       },
     ),
+  );
+  // Epic #2323 S2. Mounted here, after the Project read guard above and
+  // under its `/api/projects/:slug/*` prefix, so that guard (with its one
+  // exact member exemption) and the pairing scope table both apply.
+  context.app.route(
+    '/api/projects/:slug/plugin-scaffold',
+    createPluginScaffoldRoutes(context.projectService, {
+      requestPrincipalId: (c) => resolveOrchestrationRequestPrincipal(c).id,
+    }),
   );
   context.app.route(
     '/api/providers',
@@ -4620,6 +4750,36 @@ export function configureRuntimeRoutes(
             }
           },
         }),
+      // Epic #2323 S3: a draft revision event names a Project, so it reaches
+      // only subscribers who may read that Project — the same membership
+      // check the Project read guard applies to the draft routes themselves.
+      // A caller with no deployment account is the operator or a paired
+      // device, which that guard also admits for every Project.
+      canReadPluginDraftEvent: async (data, c) => {
+        const projectSlug = (data as { projectSlug?: unknown } | undefined)
+          ?.projectSlug;
+        if (typeof projectSlug !== 'string' || !projectSlug) return false;
+        try {
+          const request = c.req.raw;
+          // The membership authority compares the account against this
+          // request's resolved principal, which the /api/projects/* guards
+          // record before they run. /events has no such guard, so record
+          // it here; without it every member was refused (S3 verifier G4).
+          roomRequestPrincipals.set(
+            request,
+            resolveOrchestrationRequestPrincipal(c),
+          );
+          const authority = await authenticatedProjectMember(request);
+          if (!authority) return true;
+          await context.projectMembership!.requireProjectRead(
+            projectSlug,
+            authority,
+          );
+          return true;
+        } catch {
+          return false;
+        }
+      },
       canReadNotificationEvent: (_event, data, authority) => {
         const record = data as Record<string, unknown> | undefined;
         const sessionId = notificationSessionIdentity(record);
@@ -4714,6 +4874,21 @@ export function configureRuntimeRoutes(
     '/api/attention',
     createAttentionRoutes(attentionProjection, {
       readAuthorityForRequest,
+      // #2323 S5 review M6: plugin proposals are addressed to the operator,
+      // decided by the same resolver `/api/plugin-proposals` reads.
+      // Station's own agents resolve as the operator too; they see none
+      // (#2323 S5 delta review).
+      viewerIsOperator: (c) => {
+        if (isNonPersonCaller(c.req.raw)) return false;
+        try {
+          return (
+            resolveOrchestrationRequestPrincipal(c).id ===
+            LOCAL_OPERATOR_PRINCIPAL_ID
+          );
+        } catch {
+          return false;
+        }
+      },
       // #765 D5: derive the device-pairing items' `viewerCanDecide` from the
       // SAME two gates the middleware applies to an approve/deny request, in
       // the same order: the pairing family's authority boundary
@@ -4813,6 +4988,7 @@ export function configureRuntimeRoutes(
     projectTaskRoomRuntime,
     liveSurfaceRegistry,
     browserService,
+    ...(pluginDraftService ? { pluginDraftService } : {}),
   };
 }
 
