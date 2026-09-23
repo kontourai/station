@@ -112,7 +112,7 @@ function renderInbox(
   return render(
     <ChatDockInboxPanel
       items={items}
-      activeChatSessionId={undefined}
+      activeChatSessionId={null}
       openChatSessionIds={[CONVERSATION]}
       onFocusChat={vi.fn()}
       onOpenConversation={vi.fn()}

@@ -33,9 +33,13 @@ import {
 
 const interruptOrchestrationTurn = vi.hoisted(() =>
   vi.fn(
-    async (input: { threadId: string }): Promise<InterruptTurnResult> => ({
+    async (input: {
+      threadId: string;
+      turnId?: string;
+    }): Promise<InterruptTurnResult> => ({
       outcome: 'cooperative',
       threadId: input.threadId,
+      turnId: input.turnId ?? 'unnamed-turn',
     }),
   ),
 );
@@ -558,6 +562,7 @@ describe('#2309 a settled Stop does not suppress the NEXT turn', () => {
     interruptOrchestrationTurn.mockImplementationOnce(async (input) => ({
       outcome: 'turn-completed',
       threadId: input.threadId,
+      turnId: input.turnId ?? 'unnamed-turn',
     }));
     renderThread();
     act(() => applyOrchestrationSnapshot(snapshot(activity(1000))));

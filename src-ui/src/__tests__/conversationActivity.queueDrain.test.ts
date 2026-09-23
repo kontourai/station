@@ -28,7 +28,7 @@ const mocks = vi.hoisted(() => ({
     string,
     (raw: { event: string; data: string; id?: string }) => void
   >(),
-  dispatchForeground: vi.fn(async () => ({})),
+  dispatchForeground: vi.fn(async (_input: Record<string, unknown>) => ({})),
 }));
 vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@kontourai/station-sdk')>()),
