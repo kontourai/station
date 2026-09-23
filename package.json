@@ -256,7 +256,7 @@
     "hooks:install": "node scripts/install-git-hooks.mjs",
     "lockfile-sync:gate": "node scripts/lockfile-sync-gate.mjs",
     "build:android:arm64": "node scripts/write-native-client-build-manifest.mjs --refresh && node scripts/apply-android-channel-icons.mjs dev && node scripts/apply-android-native-bootstrap.mjs && node scripts/apply-android-pairing-scheme.mjs dev && node scripts/write-android-build-manifest.mjs && STATION_CLIENT_BUILD_REUSE=1 RUSTFLAGS=\"-C link-arg=-Wl,-z,max-page-size=16384 -C link-arg=-Wl,-z,common-page-size=16384\" tauri android build -t aarch64 --debug --apk --config src-desktop/tauri.android.dev.conf.json",
-    "gate:workflows": "node scripts/actionlint-gate.mjs && node scripts/dependency-lifecycle-workflow-gate.mjs",
+    "gate:workflows": "node scripts/actionlint-gate.mjs && node scripts/dependency-lifecycle-workflow-gate.mjs && node scripts/test-path-import-gate.mjs",
     "gate:evidence-check-execution": "node scripts/evidence-check-execution-gate.mjs",
     "gate:test-import-existence": "node scripts/test-import-existence-gate.mjs",
     "gate:ci-change-classifier": "vitest run scripts/__tests__/classify-ci-change.test.ts scripts/__tests__/ci-workflow-contract.test.ts",
