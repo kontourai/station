@@ -297,6 +297,32 @@ describe('veritas repo map (1.5)', () => {
     }
   });
 
+  it('routes issue-class guidance to existing lifecycle and resource evidence without implying a behavior gate', () => {
+    for (const id of [
+      'session-lifecycle-recovery-contract',
+      'bounded-background-work-contract',
+    ]) {
+      const rule = standards.rules.find(
+        (candidate: { id: string }) => candidate.id === id,
+      );
+      expect(rule, `missing advisory rule ${id}`).toBeDefined();
+      expect(rule.enforcementLevel).toBe('Guide');
+      expect(rule.kind).toBe('required-artifacts');
+      expect(rule.explain.contextLinks).toContain(
+        'docs/plans/issue-class-prevention.md',
+      );
+      expect(rule.match.artifacts.length).toBeGreaterThan(0);
+      for (const artifact of rule.match.artifacts) {
+        expect(
+          existsSync(resolve(rootDir, artifact)),
+          `${id} references missing artifact ${artifact}`,
+        ).toBe(true);
+      }
+    }
+    expect(veritasReadme).toContain('session-lifecycle-recovery-contract');
+    expect(veritasReadme).toContain('bounded-background-work-contract');
+  });
+
   it('keeps the delivery-conduct standards routable, and blocking only where attested', () => {
     // Enforcement level per rule is a human decision recorded by
     // `veritas attest policy-change`; this pins the current decision so a

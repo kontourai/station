@@ -45,6 +45,18 @@ These add **no new gate**. Each rule's deterministic part is the existence of th
 
 They were authored at `enforcementLevel: Guide` (advisory) per `.veritas/authority` (`new_rule_stage: recommend`). Two have since been promoted to `Require` on catch evidence under the Promotion Rule below (#1480): `trust-surfaces-name-their-gaps`, and `verification-conduct-sentinels-and-fault-injection` after its artifact list was narrowed to entries a plausible change could remove silently. **`Require` buys exactly one thing here — a deleted pinned artifact is a readiness `FAIL` (exit 1) instead of a `WARN` (exit 0). It does not make a rule detect the conduct it is named for**; that gap is the subject of #1762. The remaining two graduate on evidence rather than a date: their `explain.summary` names the catch-log classes that trigger an assessment, and `evidence-claims-anchor-to-executed-commands`'s trigger has already fired (#1763).
 
+## Issue-class prevention guidance
+
+Two advisory Repo Standards rules route recurring failure-boundary review:
+`session-lifecycle-recovery-contract` covers session commands, durable turn
+boundaries, and recovery; `bounded-background-work-contract` covers delivery,
+queues, large projections, and stalled turns. Both are `Guide`, and their
+artifact checks are presence checks. The behavioral work and exit criteria live
+in [the issue-class prevention plan](../docs/plans/issue-class-prevention.md).
+Use `veritas explain --file <path>` before editing a routed seam.
+Current Station hooks do not invoke `explain` automatically; the plan records
+the path-briefing and behavioral-evidence contract needed to close that gap.
+
 ## Brownfield Rule
 
 If Veritas does not support a real Station verification need cleanly, record it in `docs/strategy/veritas/brownfield-gap-log.md` instead of hiding it in a one-off workaround.
