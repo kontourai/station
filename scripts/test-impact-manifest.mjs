@@ -61,13 +61,12 @@ const SCOPED_INSTRUCTION_EDGES = Object.freeze(
  * So each gets an explicit boundary instead of the related graph: the suites
  * that exercise the transport's OWN behaviour — streams, authentication and
  * native transport order, credential wake, timeouts, origin headers, failure
- * mapping, request authority, portability. As with every explicit-boundary
- * edge in this manifest, the transport's CONSUMERS' unit and component
- * suites are then covered by full-regression (the required completion gate
- * for promotions), not before merge. Before merge they are still covered at
- * the type level (the typecheck lanes) and by the browser journeys in
- * fast-checks' `test:e2e:pr-smoke`. That is the trade: stated here, not
- * hidden.
+ * mapping, request authority, portability. The transport's CONSUMERS' unit
+ * and component suites leave the fast lane — and still run before merge:
+ * the required `Merge-queue regression` check runs the full-regression
+ * corpus on every merge-queue candidate (since 2026-09-23). Fast feedback
+ * covers the module's own behaviour; the queue covers everything that
+ * imports it.
  *
  * Deliberately NOT a `test-full` lane. Any lane switches the whole diff to
  * deferred execution (`executionSelection` in `run-changed-verification.mjs`):
@@ -101,10 +100,66 @@ const SDK_TRANSPORT_EDGES = Object.freeze(
       tests: SDK_TRANSPORT_TESTS,
       reason:
         'SDK transport: own-behaviour suites; its import graph is too broad ' +
-        'for the fast lane, so consumers are covered by full-regression (#2301)',
+        'for the fast lane, so consumers are covered by the merge-queue ' +
+        'full regression (#2301)',
     }),
   ),
 );
+
+/**
+ * station#2326: the same overflow class, one layer out. Each of these single
+ * SDK modules is imported directly by client fetchers or re-exports them, so
+ * its related graph approaches the transport's (measured by the repo's own
+ * related discovery on 2026-09-23: api-error-message 744 test files,
+ * chatHttpError 642, the client barrel 626, against the 771 that overran the
+ * fast lane). The package barrel (`packages/sdk/src/index.ts`, 498) is
+ * deliberately NOT here: an isolated root-barrel change keeps the conservative
+ * related selection the repo already pins, and it is the smallest of the four
+ * and unmeasured against the window. Revisit only if a barrel-only change
+ * overruns. Each module here gets the same shape as the
+ * transport: the suites that exercise the module's own behaviour run in the
+ * fast lane, and its consumers run in the required merge-queue full
+ * regression. Tests-only edges, never a lane (see SDK_TRANSPORT_EDGES).
+ */
+const SDK_BROAD_MODULE_EDGES = Object.freeze([
+  Object.freeze({
+    pattern: 'packages/sdk/src/client/api-error-message.ts',
+    tests: Object.freeze([
+      'packages/sdk/src/__tests__/api-error-message.test.ts',
+      'packages/sdk/src/__tests__/client-entry-portability.test.ts',
+      'packages/sdk/src/__tests__/client-fetchers-failure-paths.test.ts',
+    ]),
+    reason:
+      'SDK error-message mapping: own-behaviour suites; consumers run in ' +
+      'the merge-queue full regression (#2326)',
+  }),
+  Object.freeze({
+    pattern: 'packages/sdk/src/client/chatHttpError.ts',
+    tests: Object.freeze([
+      'packages/sdk/src/__tests__/chatRuntimeStream.test.ts',
+      'packages/sdk/src/__tests__/client-entry-portability.test.ts',
+      'packages/sdk/src/__tests__/client-execution.test.ts',
+      'src-ui/src/hooks/orchestration/__tests__/queueDrain.test.ts',
+    ]),
+    reason:
+      'SDK chat HTTP error: own-behaviour suites; consumers run in the ' +
+      'merge-queue full regression (#2326)',
+  }),
+  // The client barrel has NO suite of its own: nothing asserts which modules
+  // it re-exports (publicBarrel.test.ts covers the PACKAGE root barrel, not
+  // this one). The portability scan only proves its import syntax stays
+  // portable. A dropped re-export is caught by the consumers that import it,
+  // which run in the merge-queue full regression — before merge, not here.
+  Object.freeze({
+    pattern: 'packages/sdk/src/client/index.ts',
+    tests: Object.freeze([
+      'packages/sdk/src/__tests__/client-entry-portability.test.ts',
+    ]),
+    reason:
+      'SDK client barrel: portability scan only (no own export-contract ' +
+      'suite exists); consumers run in the merge-queue full regression (#2326)',
+  }),
+]);
 
 /** Repository data readers and explicit runtime seams supplementing import analysis. */
 export const GOVERNED_REPO_DATA_EDGES = Object.freeze([
@@ -163,14 +218,21 @@ export const GOVERNED_REPO_DATA_EDGES = Object.freeze([
   },
   {
     pattern: 'packages/sdk/src/client/**',
-    // The transport modules have their own edges: see SDK_TRANSPORT_EDGES.
-    except: SDK_TRANSPORT_PATHS,
+    // The transport and broad-graph modules have their own edges: see
+    // SDK_TRANSPORT_EDGES and SDK_BROAD_MODULE_EDGES.
+    except: [
+      ...SDK_TRANSPORT_PATHS,
+      'packages/sdk/src/client/api-error-message.ts',
+      'packages/sdk/src/client/chatHttpError.ts',
+      'packages/sdk/src/client/index.ts',
+    ],
     related: true,
     tests: ['packages/sdk/src/__tests__/client-entry-portability.test.ts'],
     reason:
       'portable client dependency scan reads source outside the import graph',
   },
   ...SDK_TRANSPORT_EDGES,
+  ...SDK_BROAD_MODULE_EDGES,
   {
     pattern: 'packages/cli/src/commands/session-client.ts',
     related: true,

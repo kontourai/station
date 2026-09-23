@@ -172,8 +172,27 @@ export function createBrowserPionConnection(input: {
     const attemptGeneration = ++generation;
     const isOwned = () =>
       attemptController === owned && attemptGeneration === generation;
+    const assertGrantBinding = () => {
+      const assertion = broker.assertCredentialBoundToTrust;
+      // Direct broker stubs are the legacy fixture/lab path. Production
+      // routing grants always expose the binding guard through the client.
+      return typeof assertion === 'function'
+        ? assertion.call(broker, trustRecord)
+        : Promise.resolve(undefined);
+    };
     let peer: RTCPeerConnection | undefined;
     try {
+      const trustedAtStart = await raceOwnedLifetime(
+        trustStore.isCurrent(trustRecord),
+        lifetime,
+      );
+      if (!trustedAtStart) throw new Error('browser_transport_trust_retired');
+      const grantBoundAtStart = await raceOwnedLifetime(
+        assertGrantBinding(),
+        lifetime,
+      );
+      if (grantBoundAtStart === false)
+        throw new Error('browser_transport_grant_trust_retired');
       const ice = iceProvider.capture();
       if (!ice.isCurrent()) throw new Error('browser_ice_configuration_stale');
       const iceAtCapture = ice;
@@ -231,6 +250,22 @@ export function createBrowserPionConnection(input: {
           if (!connectionId)
             throw new Error('browser_relay_secure_context_required');
           const nonce = base64url(crypto.getRandomValues(new Uint8Array(32)));
+          // A grant is bound to the Station's independently approved signing
+          // key and generation. Re-read trust immediately before spending the
+          // routing credential, then compare the grant after that async hop.
+          if (
+            !(await raceOwnedLifetime(
+              trustStore.isCurrent(trustRecord),
+              lifetime,
+            ))
+          )
+            throw new Error('browser_transport_trust_retired');
+          const grantBound = await raceOwnedLifetime(
+            assertGrantBinding(),
+            lifetime,
+          );
+          if (grantBound === false)
+            throw new Error('browser_transport_grant_trust_retired');
           const opened = await raceOwnedLifetime(
             broker.open({ clientId: connectionId, nonce, offerSdp }, lifetime),
             lifetime,
@@ -249,6 +284,12 @@ export function createBrowserPionConnection(input: {
             )
               throw new Error('browser_transport_trust_retired');
             if (!isOwned()) throw new Error('browser_transport_stale');
+            const grantStillBound = await raceOwnedLifetime(
+              assertGrantBinding(),
+              lifetime,
+            );
+            if (grantStillBound === false)
+              throw new Error('browser_transport_grant_trust_retired');
             const value = await raceOwnedLifetime(
               broker.read({ clientId: connectionId, nonce }, lifetime),
               lifetime,

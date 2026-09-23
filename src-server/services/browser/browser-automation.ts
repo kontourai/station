@@ -555,7 +555,7 @@ const MOUSE_BUTTONS = new Set(['left', 'middle', 'right']);
  * DOM read Station decides on goes through the interface's own getter.
  */
 const PROTO_GET = (iface: string, name: string) =>
-  `Object.getOwnPropertyDescriptor(${iface}.prototype, ${JSON.stringify(name)}).get`;
+  `Object.getOwnPropertyDescriptor(${iface}.prototype, ${jsStringLiteral(name)}).get`;
 
 /**
  * `function (hit)`: whether `hit` is this node or inside it, crossing shadow

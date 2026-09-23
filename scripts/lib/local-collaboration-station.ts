@@ -64,6 +64,8 @@ interface StationInput {
   /** Public HTTPS origin when a test-owned TLS proxy fronts the HTTP listener. */
   publicOrigin?: string;
   virtualApplicationOrigin?: string;
+  /** Other test-owned client Origins explicitly admitted by the Station. */
+  additionalVirtualApplicationOrigins?: readonly string[];
   prepareSelfHostedBrokerConfig?: (stationOrigin: string) => string;
   ownedBrokerTcpPort?: number;
 }
@@ -252,13 +254,22 @@ export async function startAccountLabStation(
           STATION_LOCAL_ACCOUNTS: '1',
           STATION_PROJECT_SHARING: '1',
           STATION_AUTHENTICATION_ORIGIN: base,
-          ALLOWED_ORIGINS: input.virtualApplicationOrigin
-            ? `${base},${input.virtualApplicationOrigin}`
-            : base,
-          ...(input.virtualApplicationOrigin
+          ALLOWED_ORIGINS: [
+            base,
+            ...(input.virtualApplicationOrigin
+              ? [input.virtualApplicationOrigin]
+              : []),
+            ...(input.additionalVirtualApplicationOrigins ?? []),
+          ].join(','),
+          ...(input.virtualApplicationOrigin ||
+          input.additionalVirtualApplicationOrigins?.length
             ? {
-                STATION_AUTHENTICATION_BROWSER_ORIGINS:
-                  input.virtualApplicationOrigin,
+                STATION_AUTHENTICATION_BROWSER_ORIGINS: [
+                  ...(input.virtualApplicationOrigin
+                    ? [input.virtualApplicationOrigin]
+                    : []),
+                  ...(input.additionalVirtualApplicationOrigins ?? []),
+                ].join(','),
               }
             : {}),
           ...(selfHostedBrokerConfigPath

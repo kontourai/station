@@ -1994,6 +1994,9 @@ describe('NativeStationProfileStorage', () => {
         configurationState: 'unconfigured',
         relayRoute: relayInput.relayRoute,
       });
+      expect(profile.clientInstanceId).toMatch(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+      );
       expect(storage.getRelayRouteProfiles()).toHaveLength(1);
       expect(changed).toHaveBeenCalled();
       expect(
@@ -2036,6 +2039,9 @@ describe('NativeStationProfileStorage', () => {
         relayRoute: relayInput.relayRoute,
         configurationState: 'unconfigured',
       });
+      expect(currentStore().profiles.at(-1)?.clientInstanceId).toBe(
+        original.clientInstanceId,
+      );
       await expect(
         storage.saveRelayRouteProfile({
           ...relayInput,

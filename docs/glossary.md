@@ -9,8 +9,8 @@ The canonical vocabulary for Station. This document is the source of truth — w
 
 ## Station, device, client
 
-Three nouns for three things. They are easy to blur and the product already
-distinguishes them, so keep them distinct.
+Keep the destination, the connecting Device, its access route, and the agent app
+running on a Station distinct.
 
 - **Station** — what you connect *to*. A host instance, addressable and
   countable: `station.example.ts.net`, `laptop.example.ts.net`. Take
@@ -20,6 +20,13 @@ distinguishes them, so keep them distinct.
   transient, pairs and unpairs. This is the pairing domain's established word:
   `deviceName`, `/api/pairing/devices`, `paired-devices.json`, "Pair this
   device".
+- **Broker** — an optional service that helps a Device reach a Station when a
+  direct path is unavailable. One broker may serve many Stations and Devices;
+  it handles bounded routing/signaling metadata, not Project data or agent work.
+- **Route grant** — a separately issued, revocable broker credential kept by a
+  Device to reach one Station enrollment. Its client-Origin binding is not
+  proof of a person's or Device's identity. It does not approve the Station
+  signing key, pair the Device, sign a person in, or grant Project access.
 - **Client** — an agent app a Station runs: Claude Code, Codex, opencode,
   cursor-agent. See `bin/clients/`, `station_require_dogfood_client`,
   `client-preflight.sh`.

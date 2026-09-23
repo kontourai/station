@@ -15,6 +15,7 @@ export interface BrokerOffer {
   nonce: string;
   offerSdp: string;
   expiresAt: number;
+  browserOrigin: string;
 }
 function canonicalBase(input: string) {
   const url = new URL(input);
@@ -213,7 +214,19 @@ export class SelfHostedBrokerClient {
     if (!Array.isArray(value.offers) || value.offers.length > 1)
       throw new Error('broker_response_invalid');
     return value.offers.map((item) => {
-      const offer = exact(item, ['clientId', 'nonce', 'offerSdp', 'expiresAt']);
+      const offer = exact(item, [
+        'clientId',
+        'nonce',
+        'offerSdp',
+        'expiresAt',
+        'browserOrigin',
+      ]);
+      let browserOrigin: string;
+      try {
+        browserOrigin = canonicalBase(String(offer.browserOrigin));
+      } catch {
+        throw new Error('broker_response_invalid');
+      }
       if (
         typeof offer.clientId !== 'string' ||
         !ID.test(offer.clientId) ||
@@ -223,7 +236,8 @@ export class SelfHostedBrokerClient {
         offer.offerSdp.length === 0 ||
         Buffer.byteLength(offer.offerSdp) > SDP_LIMIT ||
         !Number.isSafeInteger(offer.expiresAt) ||
-        (offer.expiresAt as number) <= this.now()
+        (offer.expiresAt as number) <= this.now() ||
+        browserOrigin !== offer.browserOrigin
       )
         throw new Error('broker_response_invalid');
       return offer as unknown as BrokerOffer;

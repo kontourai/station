@@ -357,9 +357,10 @@ export interface ApplyOrchestrationSnapshotOptions {
    * `toolMappings` cache-lookup fallback the mount-time rehydrate path has
    * (`conversationsStore.fetchMessages`'s `['agentTools', agentSlug]`
    * lookup) — dropping it would silently regress persisted tool-call parts
-   * back to raw internal names. Threaded down from `useOrchestration`'s
-   * `useQueryClient` call via `ensureOrchestrationEventStream`, since
-   * neither that module nor this one is a hook.
+   * back to raw internal names. #2307: `ensureOrchestrationEventStream`
+   * passes the client currently registered for this apiBase — `ChatDock`'s
+   * `useQueryClient()`, i.e. the active authority's — resolved when the
+   * snapshot arrives, since neither that module nor this one is a hook.
    */
   queryClient?: QueryClient;
 }
