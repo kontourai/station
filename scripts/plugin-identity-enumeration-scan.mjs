@@ -119,6 +119,8 @@ const SCAN_EXCLUSIONS = {
     'Same: a mutation naming its own target. The `plugins/` signal is the install destination, not a listing.',
   'POST /acp/registry/:id/install':
     'A mutation naming its own target: it installs the engine connection the caller named and returns that connection, never a listing. The `agent` receipt names the Agent this same mutation created or adopted for THAT connection id — a fact the projected agents list (`GET /api/agents`, the New Chat picker\u2019s own source) already carries — and names no other engine or plugin.',
+  'POST /api/plugin-proposals':
+    'A mutation naming its own target (#2323 S5). For an update or remove proposal, a caller other than the operator or Station\u2019s own agents gets one identical 404 whether or not the plugin is installed (review M6), so a collaborator learns nothing; the operator and Station\u2019s agents can already list what is installed. Reading proposals back is operator-only.',
   'DELETE /api/registry/plugins/:id':
     'A mutation addressed by id. The `plugins/` signal is the removal path.',
   'POST /api/plugins/home-role/requests':
