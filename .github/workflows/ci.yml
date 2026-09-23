@@ -283,9 +283,11 @@ jobs:
 
   # No separate browser-smoke job. It needed full-regression without
   # `always()`, and full-regression runs only on workflow_dispatch, so on push
-  # and merge_group it was skipped every time (40 of the last 40 push runs,
-  # none executed); on dispatch it repeated `npm run test:e2e:pr-smoke`, which
-  # fast-checks already runs on every event, including dispatch.
+  # and merge_group it never executed (skipped in 200 of the last 200 push
+  # runs back to 2026-09-13, and in 39 of the last 40 merge_group runs, the
+  # 40th not having reached it); on dispatch it repeated
+  # `npm run test:e2e:pr-smoke`, which fast-checks already runs on every
+  # event, including dispatch.
   manual-completion-diagnostics:
     # Existing manual-only adjuncts remain available without becoming a second
     # promotion contract. The canonical command already includes the complete
