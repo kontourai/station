@@ -5,6 +5,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { createInterface } from 'node:readline/promises';
+import { lookupProcessBirthFingerprint } from '@kontourai/station-shared/process-identity';
 import { resolveStationRuntimeContext } from '@kontourai/station-shared/runtime-path-resolver';
 
 export const IS_WINDOWS = process.platform === 'win32';
@@ -27,6 +28,9 @@ type StableFingerprintOptions = {
 
 type InspectFingerprintDependencies = {
   exec?: typeof execFileSync;
+  platform?: NodeJS.Platform;
+  /** Linux birth token; defaults to the shared `/proc`-derived probe. */
+  birth?: (pid: number) => string | null;
 };
 
 /**
@@ -44,7 +48,63 @@ type InspectFingerprintDependencies = {
 const C_LOCALE_LSTART_COMMAND =
   /^([A-Z][a-z]{2} [A-Z][a-z]{2} [ \d]\d \d{2}:\d{2}:\d{2} \d{4})\s+([\s\S]+)$/;
 
+/**
+ * On Linux the start token is `/proc/<pid>/stat` field 22 plus the boot id —
+ * the same authority `process-identity.mjs` uses — NOT `ps -o lstart=`.
+ *
+ * procps renders lstart as `btime + starttime`, and `btime` is recomputed
+ * from the wall clock on every read. Under WSL2 the guest clock is stepped
+ * back into line with the Windows host continuously, so the SAME live
+ * process's lstart walks backwards: measured on the self-hosted fleet host,
+ * five seconds of drift in 85 seconds while field 22 never changed. A token
+ * recorded at `station start` then mismatched at `station stop`, and
+ * stopRecord refused to signal every E2E daemon on that host ("process
+ * fingerprint mismatch"), failing every Playwright bucket's cleanup.
+ */
 export function inspectProcessFingerprint(
+  pid: number,
+  dependencies: InspectFingerprintDependencies = {},
+): ProcessFingerprint | null {
+  if (!Number.isInteger(pid) || pid < 1) return null;
+  if ((dependencies.platform ?? process.platform) === 'linux')
+    return inspectLinuxProcessFingerprint(pid, dependencies);
+  return inspectLstartProcessFingerprint(pid, dependencies);
+}
+
+function inspectLinuxProcessFingerprint(
+  pid: number,
+  dependencies: InspectFingerprintDependencies,
+): ProcessFingerprint | null {
+  const exec = dependencies.exec ?? execFileSync;
+  const birth =
+    dependencies.birth ??
+    ((target: number) =>
+      lookupProcessBirthFingerprint(target, { platform: 'linux' }));
+  const before = birth(pid);
+  if (!before) return null;
+  let command: string;
+  try {
+    command = exec('ps', ['-o', 'command=', '-p', String(pid)], {
+      encoding: 'utf8',
+      env: { ...process.env, LC_ALL: 'C', TZ: 'UTC' },
+      stdio: ['ignore', 'pipe', 'ignore'],
+      windowsHide: true,
+    }).trim();
+  } catch {
+    return null;
+  }
+  // The command must belong to the process whose birth was read: a pid that
+  // exited and was reused between the two reads fails closed.
+  if (!command || birth(pid) !== before) return null;
+  return {
+    pid,
+    startToken: before,
+    commandDigest: createHash('sha256').update(command).digest('hex'),
+  };
+}
+
+/** The pinned `ps -o lstart=` probe: every non-Linux POSIX host. */
+function inspectLstartProcessFingerprint(
   pid: number,
   dependencies: InspectFingerprintDependencies = {},
 ): ProcessFingerprint | null {
@@ -130,6 +190,7 @@ function sameProcessFingerprint(
 
 type FingerprintMatchDependencies = {
   legacyInspect?: (pid: number) => ProcessFingerprint | null;
+  pinnedLstartInspect?: (pid: number) => ProcessFingerprint | null;
 };
 
 /**
@@ -151,6 +212,19 @@ export function fingerprintMatchesRecorded(
 ): boolean {
   if (sameProcessFingerprint(actual, expected)) return true;
   if (actual === null || expected === null) return false;
+  // A Linux record written before the `/proc` token carries a pinned lstart
+  // token. Observe the same pid through that lens once, so upgrading the CLI
+  // does not strand an instance started by the previous one. (Where lstart
+  // itself drifts, as under WSL2, such an instance was already unstoppable.)
+  const pinnedInspect =
+    dependencies.pinnedLstartInspect ?? inspectLstartProcessFingerprint;
+  if (
+    actual.startToken !== expected.startToken &&
+    !expected.startToken.startsWith('linux:') &&
+    actual.startToken.startsWith('linux:') &&
+    sameProcessFingerprint(pinnedInspect(actual.pid), expected)
+  )
+    return true;
   const legacyInspect =
     dependencies.legacyInspect ?? inspectProcessFingerprintLegacyEnv;
   return sameProcessFingerprint(legacyInspect(actual.pid), expected);
