@@ -716,10 +716,15 @@ describe('turn checkpoints in a repository that defines a filter (#2410)', () =>
         turnId,
       });
     }
-    await vi.waitFor(() =>
-      expect(
-        indexStore.readTurn('thread-filter', 'turn-2')?.settle,
-      ).toBeDefined(),
+    // Generous: were capture to run (a regression), four real `add -A`
+    // captures on a loaded host must still finish, so the assertions below
+    // fail for the reason they name rather than on this wait.
+    await vi.waitFor(
+      () =>
+        expect(
+          indexStore.readTurn('thread-filter', 'turn-2')?.settle,
+        ).toBeDefined(),
+      { timeout: 30_000 },
     );
     unsubscribe();
 
