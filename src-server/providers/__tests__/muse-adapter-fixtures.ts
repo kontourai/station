@@ -5,6 +5,9 @@
  * that passes here is a test against a shape muse actually emits.
  */
 
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+
 /** `--provider echo`, prompt "say hello". */
 export const MUSE_ECHO_COMMAND_ACCEPTED =
   '{"schema_version":1,"id":"018f0000-0000-7000-8000-00000000c350","stream":{"kind":"session","id":"de67bd1d-949a-4552-8362-30c06b1991d0"},"sequence":1,"recorded_at":1780531400000000,"record_type":"reconciliation","durability":"durable","causation_id":"109b6f40-7261-430b-ad17-bed7b80c7ebe","payload_type":"runtime.command.accepted","payload_schema_version":1,"payload":{"kind":"command_accepted","command_id":"109b6f40-7261-430b-ad17-bed7b80c7ebe","client_id":null,"command_kind":"turn.submit"}}';
@@ -47,3 +50,23 @@ export const MUSE_META_FULL_TEXT = 'hi — what can I help with?';
  */
 export const MUSE_TOOL_RESULT =
   '{"schema_version":1,"id":"018f0000-0000-7000-8000-00000000c382","stream":{"kind":"session","id":"00000000-0000-4000-8000-000000000001"},"sequence":27,"recorded_at":1780531400000050,"record_type":"event","durability":"durable","causation_id":"a41cc0bf-db1b-4e0c-b949-d914073121a1","payload_type":"tool.result","payload_schema_version":1,"payload":{"kind":"tool_result","command_id":"a41cc0bf-db1b-4e0c-b949-d914073121a1","run_stream":{"kind":"run","id":"a41cc0bf-db1b-4e0c-b949-d914073121a1"},"call_id":"call_019feab717fd75639b5a008d7b2c3e09","text":"Read text file `probe.txt`.\\n1|hello from probe","correlation_facts":{"tool_name":"read_file","outcome":"success"}}}';
+
+/**
+ * #2308: a complete, unedited `muse exec --json` stream from muse
+ * 1.3.0-R3401.1 (meta provider) for the prompt "Run exactly one bash command:
+ * sleep 2 && echo done. Then reply with the single word ok." — one per line,
+ * in emission order. It contains no machine or workspace paths. It is
+ * the evidence that 1.3 names a tool task's tool (`task_kind: tool.bash`) and
+ * `call_id` (`idempotency_key: tool:<call_id>`) before its `tool_result`.
+ */
+export const MUSE_13_BASH_TOOL_TURN_LINES: readonly string[] = readFileSync(
+  fileURLToPath(
+    new URL('./fixtures/muse-1.3-bash-tool-turn.jsonl', import.meta.url),
+  ),
+  'utf8',
+)
+  .split('\n')
+  .filter((line) => line.length > 0);
+
+/** The one tool call in {@link MUSE_13_BASH_TOOL_TURN_LINES}. */
+export const MUSE_13_BASH_CALL_ID = 'call_01a0cab25b8574738854e0ab29288aac';
