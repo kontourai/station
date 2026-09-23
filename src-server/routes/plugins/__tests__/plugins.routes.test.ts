@@ -437,6 +437,44 @@ function setup(runtime?: {
   );
 }
 
+/** A valid stored update proposal, as the store would hand it back. */
+const LEGACY_UPDATE_PROPOSAL = {
+  id: '11111111-1111-4111-8111-111111111111',
+  kind: 'update' as const,
+  pluginName: 'test-plugin',
+  rationale: 'New version.',
+  author: { principal: 'agent' as const },
+  createdAt: '2026-09-22T00:00:00.000Z',
+  updatedAt: '2026-09-22T00:00:00.000Z',
+  status: 'open' as const,
+};
+
+/**
+ * #2323 S5: the legacy (git or registry checkout) update route with a
+ * proposal store double. `node:fs` is a fixture in this file, so the store's
+ * own matching is pinned in `plugin-lifecycle-proposals.test.ts` and, over a
+ * real store, on the installation-host path in
+ * `plugin-installation.integration.test.ts`.
+ */
+function legacyUpdateApp(
+  proposals: { complete: (...args: any[]) => unknown },
+  activation: 'applied' | 'pending',
+) {
+  return createPluginRoutes(
+    '/tmp/project',
+    logger as any,
+    eventBus as any,
+    {
+      applyConfigurationMutation: vi.fn(async (operation) =>
+        operation(vi.fn(), { status: activation }),
+      ),
+      settleProviderAdapterRetirements: vi.fn().mockResolvedValue(undefined),
+      visibility: operatorPluginVisibility('/tmp/project'),
+      proposals,
+    } as any,
+  );
+}
+
 describe('Plugin Routes', () => {
   // Reset the shared overrides store between tests — the PUT /overrides test
   // mutates this module-level object, which leaked into GET /providers (the
@@ -582,29 +620,16 @@ describe('Plugin Routes', () => {
    * `plugin-installation.integration.test.ts`; `node:fs` is a fixture here.
    */
   test('#2323 S5: a legacy update that names its proposal completes it for the plugin it updated', async () => {
-    const proposalId = '11111111-1111-4111-8111-111111111111';
     const complete = vi.fn(async () => ({
       status: 'completed' as const,
-      proposal: {},
+      proposal: { ...LEGACY_UPDATE_PROPOSAL, status: 'completed' as const },
     }));
-    const app = createPluginRoutes(
-      '/tmp/project',
-      logger as any,
-      eventBus as any,
-      {
-        applyConfigurationMutation: vi.fn(async (operation) =>
-          operation(vi.fn(), { status: 'applied' }),
-        ),
-        settleProviderAdapterRetirements: vi.fn().mockResolvedValue(undefined),
-        visibility: operatorPluginVisibility('/tmp/project'),
-        proposals: { complete },
-      } as any,
-    );
+    const app = legacyUpdateApp({ complete }, 'applied');
 
     const response = await app.request('/test-plugin/update', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ proposalId }),
+      body: JSON.stringify({ proposalId: LEGACY_UPDATE_PROPOSAL.id }),
     });
     const body = await json(response);
 
@@ -613,11 +638,53 @@ describe('Plugin Routes', () => {
       ['pull', '--ff-only'],
       expect.anything(),
     );
-    expect(complete).toHaveBeenCalledWith(proposalId, {
+    expect(complete).toHaveBeenCalledWith(LEGACY_UPDATE_PROPOSAL.id, {
       kind: 'update',
       pluginName: 'test-plugin',
     });
-    expect(body.proposal).toEqual({ id: proposalId, status: 'completed' });
+    expect(body.proposal).toEqual({
+      id: LEGACY_UPDATE_PROPOSAL.id,
+      status: 'completed',
+    });
+  });
+
+  test('#2323 S5: a legacy update whose activation is still pending leaves its proposal open', async () => {
+    const complete = vi.fn();
+    const app = legacyUpdateApp({ complete }, 'pending');
+
+    const response = await app.request('/test-plugin/update', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ proposalId: LEGACY_UPDATE_PROPOSAL.id }),
+    });
+    const body = await json(response);
+
+    expect(response.status).toBe(202);
+    expect(complete).not.toHaveBeenCalled();
+    expect(body.proposal).toEqual({
+      id: LEGACY_UPDATE_PROPOSAL.id,
+      status: 'open',
+    });
+  });
+
+  test('#2323 S5: a legacy update whose pull fails does not complete its proposal', async () => {
+    const complete = vi.fn();
+    execGit.mockRejectedValueOnce(new Error('pull failed: not fast-forward'));
+    const app = legacyUpdateApp({ complete }, 'applied');
+
+    const response = await app.request('/test-plugin/update', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ proposalId: LEGACY_UPDATE_PROPOSAL.id }),
+    });
+    const body = await json(response);
+
+    expect(response.status).toBe(500);
+    expect(body.error).toContain('pull failed');
+    expect(complete).not.toHaveBeenCalled();
+    // A thrown update answers with its error alone: it names no proposal
+    // outcome, so nothing reads as completed.
+    expect(body).not.toHaveProperty('proposal');
   });
 
   test('captures each update rollback snapshot only after its configuration lease starts', async () => {

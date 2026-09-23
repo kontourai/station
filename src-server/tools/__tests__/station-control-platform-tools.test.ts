@@ -460,7 +460,8 @@ describe('station-control platform tools (characterization)', () => {
             proposals,
             pluginsDir,
             logger,
-            // station-control's internal caller resolves as the operator.
+            // station-control's internal caller resolves as the operator,
+            // and is still answered as an agent (delta review HIGH).
             resolvePrincipal: () => ({
               id: LOCAL_OPERATOR_PRINCIPAL_ID,
               kind: 'human',
@@ -509,19 +510,25 @@ describe('station-control platform tools (characterization)', () => {
 
         const payload = JSON.parse(result.content[0].text);
         expect(requestedPaths()).toEqual([['POST', '/api/plugin-proposals']]);
+        // The agent is answered with the id and status alone (delta review
+        // HIGH); what was recorded is read from the store.
         expect(payload).toMatchObject({
           installed: false,
           success: true,
           deduplicated: false,
-          proposal: {
-            kind: 'install',
-            source,
-            status: 'open',
-            author: {
-              principal: 'agent',
-              agentSlug: 'station',
-              conversationId: 'conv-9',
-            },
+        });
+        expect(payload.proposal).toStrictEqual({
+          id: expect.any(String),
+          status: 'open',
+        });
+        expect(proposals.get(payload.proposal.id)).toMatchObject({
+          kind: 'install',
+          source,
+          status: 'open',
+          author: {
+            principal: 'agent',
+            agentSlug: 'station',
+            conversationId: 'conv-9',
           },
         });
         expect(payload.message).toMatch(/nothing was changed/);
@@ -562,17 +569,16 @@ describe('station-control platform tools (characterization)', () => {
           ['POST', '/api/plugin-proposals'],
           ['POST', '/api/plugin-proposals'],
         ]);
-        expect(update).toMatchObject({
-          updated: false,
-          proposal: { kind: 'update', pluginName: 'installed-plugin' },
+        expect(update).toMatchObject({ updated: false, success: true });
+        expect(remove).toMatchObject({ removed: false, success: true });
+        expect(proposals.get(update.proposal.id)).toMatchObject({
+          kind: 'update',
+          pluginName: 'installed-plugin',
         });
-        expect(remove).toMatchObject({
-          removed: false,
-          proposal: {
-            kind: 'remove',
-            pluginName: 'installed-plugin',
-            rationale: 'An agent asked to remove this plugin.',
-          },
+        expect(proposals.get(remove.proposal.id)).toMatchObject({
+          kind: 'remove',
+          pluginName: 'installed-plugin',
+          rationale: 'An agent asked to remove this plugin.',
         });
         expect(
           proposals

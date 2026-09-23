@@ -166,6 +166,29 @@ function isOperatorPerson(deps: PluginProposalRouteDeps, c: Context): boolean {
   return !isNonPersonCaller(c.req.raw) && isOperator(deps, c);
 }
 
+/**
+ * What a create request hands back about a stored proposal (#2323 S5 delta
+ * review HIGH). The operator, as a person, gets the record: proposals are
+ * addressed to them, and `GET /` would show it anyway. Every other caller
+ * gets only `{ id, status }`, whether the proposal is new or a duplicate.
+ *
+ * Why not "the whole record when the caller is its author"? A duplicate is
+ * usually someone else's ask (dedupe is by target, whoever asked), and
+ * authorship is not a check this route can make well for agents: every agent
+ * tool call arrives as the one internal caller, and its conversation is a
+ * report. An id and a status is all the agent tool reads (whether it was
+ * already proposed), and it names nothing the caller did not send.
+ */
+function proposalAnswer(
+  deps: PluginProposalRouteDeps,
+  c: Context,
+  proposal: PluginLifecycleProposal,
+): PluginLifecycleProposal | Pick<PluginLifecycleProposal, 'id' | 'status'> {
+  return isOperatorPerson(deps, c)
+    ? proposal
+    : { id: proposal.id, status: proposal.status };
+}
+
 function authorFor(
   deps: PluginProposalRouteDeps,
   c: Context,
@@ -272,7 +295,7 @@ export function createPluginProposalRoutes(deps: PluginProposalRouteDeps) {
           return c.json({
             success: true,
             deduplicated: true,
-            proposal: admission.existing,
+            proposal: proposalAnswer(deps, c, admission.existing),
           });
         }
         let digest:
@@ -289,7 +312,11 @@ export function createPluginProposalRoutes(deps: PluginProposalRouteDeps) {
           ...digest,
         });
         return c.json(
-          { success: true, deduplicated, proposal },
+          {
+            success: true,
+            deduplicated,
+            proposal: proposalAnswer(deps, c, proposal),
+          },
           deduplicated ? 200 : 201,
         );
       }
@@ -317,7 +344,11 @@ export function createPluginProposalRoutes(deps: PluginProposalRouteDeps) {
         author,
       });
       return c.json(
-        { success: true, deduplicated, proposal },
+        {
+          success: true,
+          deduplicated,
+          proposal: proposalAnswer(deps, c, proposal),
+        },
         deduplicated ? 200 : 201,
       );
     } catch (error) {
