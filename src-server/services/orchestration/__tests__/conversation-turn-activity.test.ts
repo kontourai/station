@@ -169,7 +169,6 @@ describe('ConversationTurnActivityProjection (#2309)', () => {
       turnId: 'turn-a',
       threadId: ROOT,
       startedAt: started.createdAt,
-      trigger: 'dispatched',
     });
     append(ROOT, {
       method: 'turn.started',
@@ -283,7 +282,7 @@ describe('ConversationTurnActivityProjection (#2309)', () => {
     expect(projection.readForThread(ROOT)?.openTurn?.turnId).toBe('turn-c');
   });
 
-  test("a conversation reports the open turn of whichever child runs it, from any child's thread", () => {
+  test("a conversation reports its current child's open turn, read from any child's thread", () => {
     append(ROOT, { method: 'turn.started', turnId: 'root-turn' });
     append(ROOT, { method: 'turn.completed', turnId: 'root-turn' });
     for (const [predecessor, child] of [
@@ -308,7 +307,6 @@ describe('ConversationTurnActivityProjection (#2309)', () => {
       turnId: 'child-turn',
       threadId: CHILD_2,
       startedAt: started.createdAt,
-      trigger: 'dispatched',
     };
     expect(projection.readConversation(ROOT).openTurn).toEqual(expected);
     // Read from the ROOT's thread (a snapshot row for the root session).
@@ -318,16 +316,52 @@ describe('ConversationTurnActivityProjection (#2309)', () => {
     expect(freshProjection().readForThread(ROOT)?.openTurn).toEqual(expected);
   });
 
-  test('a provider-triggered turn carries its trigger through the live fold and a fresh seed', () => {
-    append(ROOT, {
-      method: 'turn.started',
-      turnId: 'provider:abc',
-      metadata: { trigger: 'provider' },
+  test('a stuck open turn on a retired child never reads running; it is counted once', () => {
+    // The no-op OTel meter shares one counter instance across every metric,
+    // so the count is read from the breach's own log line, which the same
+    // once-per-(thread, turn) guard emits beside the counter increment.
+    logger.warn.mockClear();
+    const breaches = () =>
+      logger.warn.mock.calls.filter(
+        ([message]) =>
+          message ===
+          'Conversation activity ignored an open turn on a non-current child',
+      );
+    // The root crashed mid-turn with no boundary row: its turn.started is its
+    // last turn fact, so the root's own fold reads that turn open forever.
+    append(ROOT, { method: 'turn.started', turnId: 'stuck-turn' });
+    store.reserveNextConversationSession({
+      conversationId: ROOT,
+      predecessorSessionId: ROOT,
+      proposedSessionId: CHILD_1,
+      createdAt: at(),
     });
-    expect(projection.readForThread(ROOT)?.openTurn?.trigger).toBe('provider');
-    expect(freshProjection().readForThread(ROOT)?.openTurn?.trigger).toBe(
-      'provider',
-    );
+    session(CHILD_1);
+    append(CHILD_1, { method: 'turn.started', turnId: 'current-turn' });
+    append(CHILD_1, { method: 'turn.completed', turnId: 'current-turn' });
+
+    for (let read = 0; read < 5; read += 1) {
+      expect(projection.readConversation(ROOT).openTurn).toBeUndefined();
+      expect(projection.readForThread(ROOT)?.openTurn).toBeUndefined();
+      expect(
+        projection.streamBinding({
+          threadId: CHILD_1,
+          method: 'turn.completed',
+        })?.activity?.openTurn,
+      ).toBeUndefined();
+    }
+    expect(freshProjection().readConversation(ROOT).openTurn).toBeUndefined();
+    // Once per (thread, turn) per projection: the live one and the fresh one.
+    expect(breaches()).toEqual([
+      [
+        'Conversation activity ignored an open turn on a non-current child',
+        { threadId: ROOT, turnId: 'stuck-turn' },
+      ],
+      [
+        'Conversation activity ignored an open turn on a non-current child',
+        { threadId: ROOT, turnId: 'stuck-turn' },
+      ],
+    ]);
   });
 
   test('background activity outside a turn moves lastActivityAt and lastTool, never opens a turn', () => {

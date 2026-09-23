@@ -1150,6 +1150,24 @@ describe('OrchestrationService', () => {
         snapshot.find((session) => session.threadId === threadId)
           ?.conversationActivity,
       ).toEqual(lastA?.activity);
+    // The bounded hydration carriers read the same projection.
+    const page = await service.readSessionEventPage(root, {
+      afterSequence: 0,
+      limit: 10,
+    });
+    expect(page?.session.conversationActivity).toEqual(lastA?.activity);
+    const window = await service.readSessionEventWindow(child, {
+      turnLimit: 1,
+      authority: INTERNAL_SESSION_READ_SCOPE,
+    });
+    expect(window?.session.conversationActivity).toEqual(lastA?.activity);
+    // The inventory's summary-fold path (the suite proxy supplies the
+    // internal scope, not a request authority, so it does not take the
+    // indexed history reader) carries it and derives hasActiveTurn from it.
+    const inventory = await service.listAllSessionConversations();
+    const row = inventory.find((item) => item.id === root);
+    expect(row?.activity).toEqual(lastA?.activity);
+    expect(row?.hasActiveTurn).toBe(true);
     // So does a process that never saw the live events (a restart).
     const restarted = new OrchestrationService({
       adapterRegistry: createRegistry([]),

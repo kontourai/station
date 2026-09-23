@@ -912,17 +912,18 @@ export const orchestrationTurnStallDetections = meter.createCounter(
 );
 
 /**
- * #2309: conversation activity reads that found more than one execution child
- * of one conversation with an open turn. Lineage admits at most one live
- * child, so any count here is an invariant breach worth investigating; the
- * read reports the most recently started turn.
+ * #2309: open turns found on a conversation child that is no longer the
+ * conversation's current one. Continuation refuses while the predecessor has
+ * an active turn, so each count is a stuck turn (an invariant breach), never
+ * reported as the conversation running. Counted once per (child, turn), not
+ * per read.
  */
-export const orchestrationConversationActivityMultipleOpenChildren =
+export const orchestrationConversationActivityStuckChildTurns =
   meter.createCounter(
-    'station.orchestration.conversation_activity.multiple_open_children',
+    'station.orchestration.conversation_activity.stuck_child_open_turns',
     {
       description:
-        'Conversation activity reads that observed more than one child with an open turn',
+        'Open turns observed on non-current conversation children (each counted once)',
     },
   );
 

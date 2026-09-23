@@ -209,10 +209,9 @@ test('#2309: an open resolution carries the conversation activity read with the 
   store.appendEvent({
     eventId: 'activity-open-turn',
     threadId,
-    turnId: 'provider:open-turn',
+    turnId: 'open-turn',
     provider: 'claude',
     method: 'turn.started',
-    metadata: { trigger: 'provider' },
     createdAt: '2026-09-01T00:00:02Z',
   });
   const authority = sessionReadAuthorityFromRequest(
@@ -224,10 +223,9 @@ test('#2309: an open resolution carries the conversation activity read with the 
   expect(resolved?.status).toBe('resolved');
   if (resolved?.status !== 'resolved') return;
   expect(resolved.activity?.openTurn).toEqual({
-    turnId: 'provider:open-turn',
+    turnId: 'open-turn',
     threadId,
     startedAt: '2026-09-01T00:00:02Z',
-    trigger: 'provider',
   });
   expect(resolved.activity?.asOfSequence).toBe(store.headGlobalSequence());
 });

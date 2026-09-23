@@ -1641,7 +1641,7 @@ export interface EventStoreCommitObserver {
 /** #2309: see {@link EventStore.readTurnActivitySeed}. */
 export interface TurnActivitySeed {
   head?: { globalSequence: number; createdAt: string };
-  openTurn?: { startedAt: string; trigger?: string };
+  openTurn?: { startedAt: string };
   tools: Array<{
     method: 'tool.started' | 'tool.completed';
     callId: string;
@@ -5530,8 +5530,7 @@ export class EventStore {
 
   /**
    * #2309: the FIRST `turn.started` of `turnId` (a steer re-emits
-   * `turn.started` under the same id and must not move the start), with its
-   * trigger marker, and the tool starts/terminals after it in order, bounded
+   * `turn.started` under the same id and must not move the start), and the tool starts/terminals after it in order, bounded
    * by `toolLimit` (`toolsTruncated` says the bound fired).
    */
   readOpenTurnActivitySeed(
@@ -5541,14 +5540,13 @@ export class EventStore {
   ): Pick<TurnActivitySeed, 'openTurn' | 'tools' | 'toolsTruncated'> {
     const started = this.db
       .prepare(
-        `SELECT sequence, created_at,
-                json_extract(payload, '$.metadata.trigger') AS trigger
+        `SELECT sequence, created_at
          FROM orchestration_events
          WHERE thread_id = ? AND turn_id = ? AND method = 'turn.started'
          ORDER BY sequence ASC LIMIT 1`,
       )
       .get(threadId, turnId) as
-      | { sequence: number; created_at: string; trigger: unknown }
+      | { sequence: number; created_at: string }
       | undefined;
     if (!started) return { tools: [], toolsTruncated: false };
     const rows = this.db
@@ -5583,12 +5581,7 @@ export class EventStore {
       });
     }
     return {
-      openTurn: {
-        startedAt: started.created_at,
-        ...(typeof started.trigger === 'string'
-          ? { trigger: started.trigger }
-          : {}),
-      },
+      openTurn: { startedAt: started.created_at },
       tools,
       toolsTruncated: rows.length > toolLimit,
     };

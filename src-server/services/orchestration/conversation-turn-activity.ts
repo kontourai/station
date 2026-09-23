@@ -4,7 +4,7 @@ import type {
   TurnProgressObservation,
 } from '@kontourai/station-contracts/orchestration';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
-import { orchestrationConversationActivityMultipleOpenChildren } from '../../telemetry/metrics.js';
+import { orchestrationConversationActivityStuckChildTurns } from '../../telemetry/metrics.js';
 import type {
   EventStore,
   EventStoreCommitObserver,
@@ -64,11 +64,7 @@ type ActivityStore = Pick<
 >;
 
 interface ThreadActivity {
-  openTurn?: {
-    turnId: string;
-    startedAt: string;
-    trigger: 'dispatched' | 'provider';
-  };
+  openTurn?: { turnId: string; startedAt: string };
   /** Insertion order is start order: the most recently started is last. */
   runningTools: Map<string, { name: string; startedAt: string }>;
   lastTool?: NonNullable<ConversationTurnActivity['lastTool']>;
@@ -83,15 +79,6 @@ export interface ConversationTurnActivityProjectionDeps {
   ) => (TurnProgressObservation & { turnId: string }) | undefined;
   logger: { warn: (message: string, meta?: Record<string, unknown>) => void };
   now?: () => number;
-}
-
-function triggerOf(event: CanonicalRuntimeEvent): 'dispatched' | 'provider' {
-  const metadata = (event as { metadata?: unknown }).metadata;
-  return metadata &&
-    typeof metadata === 'object' &&
-    (metadata as { trigger?: unknown }).trigger === 'provider'
-    ? 'provider'
-    : 'dispatched';
 }
 
 /** `undefined` for a status outside the contract: no outcome is claimed. */
@@ -137,6 +124,11 @@ export class ConversationTurnActivityProjection {
     string,
     { globalSequence: number; at: number }
   >();
+  /**
+   * `threadId\u0000turnId` of stuck non-current children already counted, so
+   * the metric counts each breach once rather than once per read or frame.
+   */
+  private readonly countedStuckChildren = new Set<string>();
   private readonly unsubscribe: () => void;
   private readonly now: () => number;
 
@@ -251,12 +243,16 @@ export class ConversationTurnActivityProjection {
   }
 
   readConversation(conversationId: string): ConversationTurnActivity {
-    const open: Array<{ threadId: string; state: ThreadActivity }> = [];
+    const children = this.children(conversationId);
+    const currentThreadId = children.at(-1) ?? conversationId;
     let asOfSequence = 0;
     let lastActivityAt: string | undefined;
     let lastTool: ThreadActivity['lastTool'];
-    for (const threadId of this.children(conversationId)) {
+    let current: ThreadActivity | undefined;
+    for (const threadId of children) {
       const state = this.thread(threadId);
+      if (threadId === currentThreadId) current = state;
+      else if (state.openTurn) this.countStuckChild(threadId, state.openTurn);
       asOfSequence = Math.max(asOfSequence, state.asOfSequence);
       if (state.lastActivityAt)
         lastActivityAt = later(lastActivityAt, state.lastActivityAt);
@@ -265,28 +261,13 @@ export class ConversationTurnActivityProjection {
         (!lastTool || state.lastTool.completedAt > lastTool.completedAt)
       )
         lastTool = state.lastTool;
-      if (state.openTurn) open.push({ threadId, state });
     }
-    if (open.length > 1) {
-      orchestrationConversationActivityMultipleOpenChildren.add(1);
-      open.sort((left, right) =>
-        left.state.openTurn!.startedAt.localeCompare(
-          right.state.openTurn!.startedAt,
-        ),
-      );
-    }
-    const current = open.at(-1);
     const activity: ConversationTurnActivity = { conversationId, asOfSequence };
-    if (current?.state.openTurn) {
-      const { turnId, startedAt, trigger } = current.state.openTurn;
-      activity.openTurn = {
-        turnId,
-        threadId: current.threadId,
-        startedAt,
-        trigger,
-      };
-      if (current.state.runningTools.size > 0) {
-        activity.runningTools = [...current.state.runningTools].map(
+    if (current?.openTurn) {
+      const { turnId, startedAt } = current.openTurn;
+      activity.openTurn = { turnId, threadId: currentThreadId, startedAt };
+      if (current.runningTools.size > 0) {
+        activity.runningTools = [...current.runningTools].map(
           ([callId, tool]) => ({
             name: tool.name,
             callId,
@@ -294,7 +275,7 @@ export class ConversationTurnActivityProjection {
           }),
         );
       }
-      const progress = this.deps.readTurnProgress(current.threadId);
+      const progress = this.deps.readTurnProgress(currentThreadId);
       if (progress?.turnId === turnId && progress.progressSilence)
         activity.progressSilence = progress.progressSilence;
     }
@@ -334,6 +315,25 @@ export class ConversationTurnActivityProjection {
       currentSessionId: this.currentSessionId(conversationId),
       activity: this.readConversation(conversationId),
     };
+  }
+
+  /**
+   * An open turn on a child that is no longer the conversation's current one.
+   * Continuation, handoff and context boundaries all refuse while the
+   * predecessor has an active turn, so this is a stuck state by construction
+   * (typically a retired child whose crash left no boundary row to recover):
+   * it must not make the conversation read as running. Counted once per
+   * (thread, turn).
+   */
+  private countStuckChild(threadId: string, openTurn: { turnId: string }) {
+    const key = `${threadId}\u0000${openTurn.turnId}`;
+    if (this.countedStuckChildren.has(key)) return;
+    this.countedStuckChildren.add(key);
+    orchestrationConversationActivityStuckChildTurns.add(1);
+    this.deps.logger.warn(
+      'Conversation activity ignored an open turn on a non-current child',
+      { threadId, turnId: openTurn.turnId },
+    );
   }
 
   /** Same answer as `ConversationLineage.currentConversationSessionId`. */
@@ -394,8 +394,6 @@ export class ConversationTurnActivityProjection {
       state.openTurn = {
         turnId: openTurnId,
         startedAt: seed.openTurn.startedAt,
-        trigger:
-          seed.openTurn.trigger === 'provider' ? 'provider' : 'dispatched',
       };
       for (const tool of seed.tools) {
         if (tool.method === 'tool.started')
@@ -420,11 +418,7 @@ export class ConversationTurnActivityProjection {
           event.payload.turnId === openTurnId,
       );
       if (started) {
-        state.openTurn = {
-          turnId: openTurnId,
-          startedAt: started.createdAt,
-          trigger: triggerOf(started.payload),
-        };
+        state.openTurn = { turnId: openTurnId, startedAt: started.createdAt };
       }
     }
     this.threads.set(threadId, state);
@@ -455,11 +449,7 @@ export class ConversationTurnActivityProjection {
       state.openTurn =
         next === undefined
           ? undefined
-          : {
-              turnId: next,
-              startedAt: event.createdAt,
-              trigger: triggerOf(event),
-            };
+          : { turnId: next, startedAt: event.createdAt };
     }
     if (event.method === 'tool.started' && state.openTurn) {
       state.runningTools.delete(event.toolCallId);

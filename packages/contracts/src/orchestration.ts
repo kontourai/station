@@ -551,20 +551,18 @@ export interface ConversationTurnActivity {
    * `asOfSequence` and discards older ones.
    */
   asOfSequence: number;
-  /** Absent when no execution child of the conversation has an open turn. */
+  /**
+   * The open turn of the conversation's CURRENT execution child (the one the
+   * server continues), absent when it has none. An open turn left on an
+   * earlier, retired child is a stuck state — continuation refuses while a
+   * predecessor's turn is active — and is never reported here.
+   */
   openTurn?: {
     turnId: string;
     /** The execution child (orchestration thread) running the turn. */
     threadId: string;
     /** `createdAt` of the turn's first `turn.started`; a steer keeps it. */
     startedAt: string;
-    /**
-     * `provider` when the engine opened the turn itself (a reply nobody
-     * dispatched, marked by the adapter with `metadata.trigger:
-     * 'provider'`); `dispatched` for every turn Station sent. Derived from
-     * that marker only — never from the prompt or the adapter kind.
-     */
-    trigger: 'dispatched' | 'provider';
   };
   /** `createdAt` of the newest committed event on any child. */
   lastActivityAt?: string;
@@ -831,10 +829,15 @@ export interface OrchestrationConversationStreamBinding {
   conversationId: string;
   currentSessionId: string;
   /**
-   * #2309: the conversation's activity after this frame's event was
-   * committed. Present on turn/tool/terminal and session start frames and,
+   * #2309: the conversation's activity AS OF DELIVERY — the fold's current
+   * value when the frame is written, not a snapshot taken at this frame's
+   * own commit, so a replayed or buffered frame can carry a newer value than
+   * its event. Present on turn/tool/terminal and session start frames and,
    * at most once per second per execution child, on other frames (content
-   * deltas, tool progress). Keep the value with the highest `asOfSequence`.
+   * deltas, tool progress). That coalescing keeps the first frame of each
+   * window and drops the trailing edge, so `lastActivityAt` delivered here
+   * can lag the newest committed event by up to a second until the next
+   * activity-bearing frame. Keep the value with the highest `asOfSequence`.
    */
   activity?: ConversationTurnActivity;
 }
