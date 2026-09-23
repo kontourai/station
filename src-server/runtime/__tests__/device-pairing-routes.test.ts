@@ -52,6 +52,44 @@ import {
   type PairingAuthFailureAuditRecord,
 } from '../routes/runtime-routes.js';
 
+/**
+ * #2315: on Windows every local-grant configure hardens its directory and its
+ * temporary file through PowerShell, and each start is a cold start on a
+ * loaded hosted runner. Twenty-odd harnesses here repeated that product seam
+ * without asserting anything about it, and one start past its timeout failed
+ * the required Windows check. Route tests therefore skip the ACL step; the one
+ * test that owns the local-grant file boundary opts back into the real
+ * implementation, which on Windows sets and reads back both ACLs (and throws
+ * if either is not current-user protected).
+ */
+const windowsTrust = vi.hoisted(() => ({ real: false, hardened: 0 }));
+vi.mock(
+  '@kontourai/station-shared/windows-path-trust',
+  async (importOriginal) => {
+    const actual =
+      await importOriginal<
+        typeof import('@kontourai/station-shared/windows-path-trust')
+      >();
+    return {
+      ...actual,
+      ensureWindowsDirectoriesTrusted: (
+        ...args: Parameters<typeof actual.ensureWindowsDirectoriesTrusted>
+      ) => {
+        if (!windowsTrust.real) return;
+        windowsTrust.hardened += 1;
+        actual.ensureWindowsDirectoriesTrusted(...args);
+      },
+      hardenWindowsPathsTrusted: (
+        ...args: Parameters<typeof actual.hardenWindowsPathsTrusted>
+      ) => {
+        if (!windowsTrust.real) return;
+        windowsTrust.hardened += 1;
+        actual.hardenWindowsPathsTrusted(...args);
+      },
+    };
+  },
+);
+
 const MASTER_CREDENTIAL = 'master-credential';
 const ENVIRONMENT_ID = '11111111-1111-4111-8111-111111111111';
 const REMOTE_PEER = '100.96.12.7';
@@ -2631,14 +2669,24 @@ describe('local self-authorization grant exchange (station#1715)', () => {
   });
 
   test('writes the secret file 0600 and mints a different value on every configure (boot)', async () => {
-    const first = createHarness({ localGrant: true });
+    windowsTrust.real = true;
+    windowsTrust.hardened = 0;
+    let first: ReturnType<typeof createHarness>;
+    let second: ReturnType<typeof createHarness>;
+    try {
+      first = createHarness({ localGrant: true });
+      second = createHarness({ localGrant: true });
+    } finally {
+      windowsTrust.real = false;
+    }
+    // Directory and temporary file, per configure: the real boundary ran.
+    expect(windowsTrust.hardened).toBe(4);
     const firstSecret = first.readLocalGrantSecret();
     if (process.platform !== 'win32') {
       const mode = statSync(first.localGrantSecretPath).mode & 0o777;
       expect(mode).toBe(0o600);
     }
 
-    const second = createHarness({ localGrant: true });
     const secondSecret = second.readLocalGrantSecret();
     expect(secondSecret).not.toBe(firstSecret);
 

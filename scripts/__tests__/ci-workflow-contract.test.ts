@@ -26,6 +26,8 @@ import {
   sanitizeLookupDiagnostic,
   validateAndroidBuildRun,
 } from '../resolve-android-build-run.mjs';
+import { VITEST_CORPUS_GROUP_NAMES } from '../run-vitest-corpus.mjs';
+import { FULL_REGRESSION_PHASES } from '../verification-lanes.mjs';
 
 const root = resolve(import.meta.dirname, '../..');
 
@@ -729,6 +731,8 @@ describe('CI verification workflow contracts', () => {
         'no pull-request signal today; unfiltered on every main push (#1331 covers its host contention)',
       '.github/workflows/build-android.yml':
         'desktop-rust.yml type-checks the Android target on pull requests; full APK assembly stays post-merge',
+      '.github/workflows/ios-rust-cache-warm.yml':
+        'writes the iOS Rust cache from trusted main only; build-ios.yml is the pull-request and merge-queue signal and only restores it',
     };
 
     const pushOnly = readWorkflowDocuments()
@@ -2098,6 +2102,7 @@ describe('every Tauri invocation is rooted at the app directory', () => {
   const DISCOVERY_EXPOSED = [
     'build-android.yml',
     'build-ios.yml',
+    'ios-rust-cache-warm.yml',
     'nightly-native-stage.yml',
     'release.yml',
   ];
@@ -2257,6 +2262,134 @@ describe('iOS verification proves packaged runtime readiness', () => {
   });
 });
 
+describe('the iOS Rust cache is written by main and only restored by PRs', () => {
+  type Step = {
+    id?: string;
+    if?: string;
+    uses?: string;
+    run?: string;
+    with?: Record<string, unknown>;
+    'working-directory'?: string;
+  };
+  type Doc = {
+    on: Record<string, unknown>;
+    permissions: Record<string, string>;
+    jobs: Record<string, { 'runs-on': string; steps: Step[] }>;
+  };
+  const ios = load(workflow('build-ios.yml')) as Doc;
+  const warmer = load(workflow('ios-rust-cache-warm.yml')) as Doc;
+  const iosSteps = ios.jobs['build-ios-verification'].steps;
+  const warmSteps = warmer.jobs.warm.steps;
+  const CACHE_PREFIX = 'actions/cache';
+  const byUses = (steps: Step[], prefix: string) =>
+    steps.filter((step) => String(step.uses ?? '').startsWith(prefix));
+  const runOf = (steps: Step[], needle: string) =>
+    steps.filter((step) => String(step.run ?? '').includes(needle));
+
+  it('never saves from the pull-request / merge-queue workflow', () => {
+    const cacheSteps = byUses(iosSteps, CACHE_PREFIX);
+    expect(cacheSteps.map((step) => step.uses)).toEqual([
+      'actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9',
+    ]);
+    // Parsed, not grepped: the workflow's own comments name what it refuses.
+    for (const [jobId, job] of Object.entries(ios.jobs)) {
+      expect(Object.hasOwn(job, 'cache-mode'), jobId).toBe(false);
+      const writers = job.steps.filter((step) => {
+        const uses = String(step.uses ?? '');
+        return (
+          (uses.startsWith(CACHE_PREFIX) &&
+            !uses.startsWith('actions/cache/restore@')) ||
+          (uses.startsWith('actions/setup-node@') &&
+            step.with?.cache !== undefined)
+        );
+      });
+      expect(writers, jobId).toEqual([]);
+    }
+    expect(Object.hasOwn(ios, 'cache-mode')).toBe(false);
+  });
+
+  it('saves only from trusted main events, after a lookup that skips warm keys', () => {
+    expect(Object.keys(warmer.on).sort()).toEqual([
+      'push',
+      'schedule',
+      'workflow_dispatch',
+    ]);
+    expect((warmer.on.push as { branches: string[] }).branches).toEqual([
+      'main',
+    ]);
+    expect(warmer.permissions).toEqual({ contents: 'read' });
+    expect(warmer.jobs.warm['runs-on']).toBe(
+      ios.jobs['build-ios-verification']['runs-on'],
+    );
+    const saves = byUses(warmSteps, 'actions/cache/save@');
+    expect(saves).toHaveLength(1);
+    expect(saves[0].if).toBe(
+      "github.ref == 'refs/heads/main' && steps.lookup.outputs.cache-hit != 'true'",
+    );
+    const lookup = warmSteps.find((step) => step.id === 'lookup');
+    expect(lookup?.with?.['lookup-only']).toBe(true);
+  });
+
+  it('keys and paths the restore exactly as the warmer saves them', () => {
+    const [restore] = byUses(iosSteps, 'actions/cache/restore@');
+    const lookup = warmSteps.find((step) => step.id === 'lookup');
+    const [save] = byUses(warmSteps, 'actions/cache/save@');
+    expect(restore.with?.key).toBe(lookup?.with?.key);
+    expect(save.with?.key).toBe(
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+      '${{ steps.lookup.outputs.cache-primary-key }}',
+    );
+    expect(restore.with?.path).toBe(lookup?.with?.path);
+    expect(save.with?.path).toBe(restore.with?.path);
+    const key = String(restore.with?.key);
+    for (const part of [
+      'runner.os',
+      'runner.arch',
+      'steps.rust.outputs.cachekey',
+      'aarch64-apple-ios-sim',
+      "hashFiles('src-desktop/Cargo.lock')",
+    ])
+      expect(key).toContain(part);
+    expect(String(restore.with?.['restore-keys']).trim()).toBe(
+      key.slice(0, key.indexOf('${{ hashFiles')),
+    );
+  });
+
+  it('builds with the same toolchain, Xcode and commands the restore serves', () => {
+    // Cargo fingerprints include target, profile, env and paths: an entry
+    // from a different invocation restores but rebuilds everything.
+    const toolchain = (steps: Step[]) =>
+      byUses(steps, 'dtolnay/rust-toolchain@').map((step) => [
+        step.id,
+        step.uses,
+        step.with,
+      ]);
+    expect(toolchain(warmSteps)).toEqual(toolchain(iosSteps));
+    expect(toolchain(iosSteps)).toHaveLength(1);
+    for (const needle of [
+      'sudo xcode-select -s /Applications/Xcode_26.6.app/Contents/Developer',
+      'brew install xcodegen',
+      'npm run dependencies:ci && npm run build:native-client',
+      'npx tauri ios init',
+      'node scripts/write-ios-build-manifest.mjs',
+      'npx tauri ios build',
+    ]) {
+      const iosRuns = runOf(iosSteps, needle);
+      const warmRuns = runOf(warmSteps, needle);
+      expect(iosRuns, needle).toHaveLength(1);
+      expect(warmRuns, needle).toHaveLength(1);
+      const line = (step: Step) =>
+        String(step.run)
+          .split('\n')
+          .find((candidate) => candidate.includes(needle));
+      expect(line(warmRuns[0]), needle).toBe(line(iosRuns[0]));
+      expect(warmRuns[0]['working-directory'], needle).toBe(
+        iosRuns[0]['working-directory'],
+      );
+    }
+  });
+});
+
 /**
  * Gradle's generated BuildTask.kt re-invokes the CLI as
  * `npm run -- tauri android android-studio-script`, and npm runs a script from
@@ -2292,5 +2425,218 @@ describe('the root tauri script roots itself at the app directory', () => {
     );
     expect(buildTask).toContain('"run"');
     expect(buildTask).toContain('"tauri"');
+  });
+});
+
+describe('merge-queue regression workflow covers the full regression', () => {
+  type Step = {
+    name?: string;
+    run?: string;
+    env?: Record<string, string>;
+    uses?: string;
+    if?: string;
+    'continue-on-error'?: unknown;
+  };
+  type Job = {
+    name?: string;
+    if?: string;
+    needs?: string[];
+    strategy?: { matrix?: { include?: Array<Record<string, string>> } };
+    steps?: Step[];
+  };
+  function document() {
+    const entry = readWorkflowDocuments().find(
+      (candidate) =>
+        candidate.file === '.github/workflows/merge-queue-regression.yml',
+    );
+    expect(entry, 'merge-queue-regression.yml must exist').toBeDefined();
+    return entry?.document as { jobs: Record<string, Job> };
+  }
+
+  const DRIVER = 'node scripts/run-full-regression-phases.mjs';
+  const MATRIX_PHASES = `\${{ matrix.phases }}`;
+
+  // Executed shell lines only: comment lines are dropped, and a line counts
+  // as a driver call only when it STARTS with the driver command, so an
+  // `echo` or a commented-out invocation selects nothing.
+  function executedLines(run: string | undefined) {
+    return (run ?? '')
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => line && !line.startsWith('#'));
+  }
+
+  // The phase selections the workflow actually executes. A `PHASES` env or a
+  // matrix entry counts only when its step reads it into the driver's argv;
+  // a literal driver line counts as written.
+  function driverSteps(jobs: Record<string, Job>) {
+    const found: Array<{
+      job: string;
+      step: Step;
+      texts: string[];
+      consumesPhases: boolean;
+    }> = [];
+    for (const [job, definition] of Object.entries(jobs)) {
+      for (const step of definition.steps ?? []) {
+        const lines = executedLines(step.run);
+        const calls = lines.filter((line) => line.startsWith(DRIVER));
+        if (calls.length === 0) continue;
+        const texts: string[] = [];
+        let consumesPhases = false;
+        for (const call of calls) {
+          if (call.startsWith(`${DRIVER} "\${phases[@]}"`)) {
+            consumesPhases = lines.includes('read -r -a phases <<< "$PHASES"');
+            if (!consumesPhases) continue;
+            const phases = step.env?.PHASES;
+            if (phases === MATRIX_PHASES)
+              for (const entry of definition.strategy?.matrix?.include ?? [])
+                texts.push(entry.phases ?? '');
+            else if (phases) texts.push(phases);
+          } else texts.push(call);
+        }
+        found.push({ job, step, texts, consumesPhases });
+      }
+    }
+    return found;
+  }
+
+  function selections(jobs: Record<string, Job>) {
+    return driverSteps(jobs).flatMap(({ job, texts }) =>
+      texts.map((text) => ({ job, text })),
+    );
+  }
+
+  function phaseIds(text: string) {
+    return [...text.matchAll(/--phase=([A-Za-z0-9-]+)/g)].map(
+      (match) => match[1],
+    );
+  }
+
+  it('selects exactly the FULL_REGRESSION_PHASES ids, so a new phase fails until the queue runs it', () => {
+    const covered = new Set(
+      selections(document().jobs).flatMap(({ text }) => phaseIds(text)),
+    );
+    expect([...covered].sort()).toEqual(
+      FULL_REGRESSION_PHASES.map(({ id }) => id).sort(),
+    );
+    // Every resource class in the corpus runner reaches the queue through a
+    // phase: the ordinary shards and each serialized group.
+    for (const group of VITEST_CORPUS_GROUP_NAMES)
+      expect(
+        [...covered].some(
+          (id) =>
+            id === `test-full-${group}` || id.startsWith(`test-full-${group}-`),
+        ),
+        `corpus group ${group}`,
+      ).toBe(true);
+  });
+
+  it('runs every ordinary shard exactly once', () => {
+    const ordinary = selections(document().jobs)
+      .flatMap(({ text }) => phaseIds(text))
+      .filter((id) => id.startsWith('test-full-ordinary-'));
+    const expected = FULL_REGRESSION_PHASES.map(({ id }) => id).filter((id) =>
+      id.startsWith('test-full-ordinary-'),
+    );
+    expect(expected).toHaveLength(8);
+    expect([...ordinary].sort()).toEqual([...expected].sort());
+  });
+
+  it('splits process-heavy into slices that cover the group exactly once', () => {
+    const heavy = selections(document().jobs).filter(({ text }) =>
+      phaseIds(text).includes('test-full-process-heavy'),
+    );
+    const shards = heavy.map(({ text }) => {
+      const match = /--process-heavy-shard=(\d+)\/(\d+)/.exec(text);
+      expect(match, `process-heavy without a slice: ${text}`).not.toBeNull();
+      return { index: Number(match?.[1]), count: Number(match?.[2]) };
+    });
+    expect(shards.length).toBeGreaterThanOrEqual(2);
+    const counts = new Set(shards.map(({ count }) => count));
+    expect(counts.size).toBe(1);
+    expect(shards.map(({ index }) => index).sort((a, b) => a - b)).toEqual(
+      Array.from({ length: shards[0].count }, (_, index) => index + 1),
+    );
+  });
+
+  it('runs phases only through the driver and gates on one aggregate check', () => {
+    const { jobs } = document();
+    const text = workflow('merge-queue-regression.yml');
+    expect(text).not.toMatch(/:raw\b/);
+    const aggregate = jobs['merge-queue-regression'];
+    expect(aggregate.name).toBe('Merge-queue regression');
+    expect(aggregate.if).toBe(
+      "always() && github.event_name != 'pull_request_target'",
+    );
+    const testJobs = Object.keys(jobs).filter(
+      (job) => job !== 'merge-queue-regression',
+    );
+    expect([...(aggregate.needs ?? [])].sort()).toEqual([...testJobs].sort());
+    for (const job of testJobs)
+      expect(jobs[job].if, job).toBe(
+        "github.event_name != 'pull_request_target'",
+      );
+    expect(jobs['android-viewport'].steps?.map(({ run }) => run)).toContain(
+      'npm run test:android',
+    );
+  });
+
+  it('keeps every driver step on the failure path: pipefail before tee, no if, no continue-on-error', () => {
+    const steps = driverSteps(document().jobs);
+    // static, 4 ordinary, 2 process-heavy, exclusive each have a Run step;
+    // the three corpus job kinds also have a prerequisite step.
+    expect(steps.filter(({ texts }) => texts.length > 0).length).toBe(
+      steps.length,
+    );
+    const runSteps = steps.filter(({ step }) =>
+      executedLines(step.run).some((line) => line.includes('| tee')),
+    );
+    expect(runSteps.map(({ job }) => job).sort()).toEqual([
+      'exclusive',
+      'ordinary',
+      'process-heavy',
+      'static',
+    ]);
+    for (const { job, step, consumesPhases } of steps) {
+      expect(step.if, `${job}: ${step.name}`).toBeUndefined();
+      expect(step['continue-on-error'], `${job}: ${step.name}`).toBeUndefined();
+      const lines = executedLines(step.run);
+      const tee = lines.findIndex((line) => line.includes('| tee'));
+      if (tee >= 0) {
+        const pipefail = lines.indexOf('set -o pipefail');
+        expect(pipefail, `${job}: pipefail`).toBeGreaterThanOrEqual(0);
+        expect(pipefail, `${job}: pipefail precedes tee`).toBeLessThan(tee);
+        expect(consumesPhases, `${job}: Run step reads PHASES`).toBe(true);
+      }
+    }
+    // The matrix jobs feed their Run step from the matrix itself.
+    for (const job of ['ordinary', 'process-heavy'])
+      expect(
+        runSteps.find((entry) => entry.job === job)?.step.env?.PHASES,
+      ).toBe(MATRIX_PHASES);
+  });
+
+  it('counts only executed driver lines as selections (parser control)', () => {
+    const jobs: Record<string, Job> = {
+      probe: {
+        steps: [
+          {
+            run: [
+              '# node scripts/run-full-regression-phases.mjs --phase=app-builds',
+              'echo node scripts/run-full-regression-phases.mjs --phase=sdk-builds',
+              'node scripts/run-full-regression-phases.mjs --phase=repo-governance',
+            ].join('\n'),
+          },
+          {
+            // A PHASES env the step never reads selects nothing.
+            env: { PHASES: '--phase=verify-static' },
+            run: `node scripts/run-full-regression-phases.mjs "\${phases[@]}"`,
+          },
+        ],
+      },
+    };
+    expect(selections(jobs).flatMap(({ text }) => phaseIds(text))).toEqual([
+      'repo-governance',
+    ]);
   });
 });

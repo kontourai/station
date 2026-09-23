@@ -443,15 +443,61 @@ const BASE_CONTROLLED_PR_WORKFLOWS = new Set([
   '.github/workflows/desktop-rust.yml',
   '.github/workflows/ecosystem-packaging.yml',
   '.github/workflows/install-smoke.yml',
+  '.github/workflows/merge-queue-regression.yml',
   '.github/workflows/security-analysis.yml',
   '.github/workflows/windows-pr-verification.yml',
 ]);
+/**
+ * The ONLY shared-cache access a pull-request or merge-queue workflow may have:
+ * a SHA-pinned restore in a named job. Untrusted candidate code runs in those
+ * workflows, so a save there would let a pull request poison an entry that
+ * later runs restore. The writer is a trusted main-only warmer
+ * (ios-rust-cache-warm.yml). GitHub also issues pull_request_target a
+ * read-only cache token by default (changelog 2026-06-26), but a workflow- or
+ * job-level `cache-mode` can widen that again, so it is refused outright.
+ */
+export const REVIEWED_CACHE_RESTORE_ACTION =
+  'actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9';
+const CACHE_RESTORE_JOBS = Object.freeze({
+  '.github/workflows/build-ios.yml': new Set(['build-ios-verification']),
+});
+const UNTRUSTED_CACHE_TRIGGERS = [
+  PULL_REQUEST_TARGET,
+  'pull_request',
+  MERGE_GROUP,
+];
 const MERGE_QUEUE_WORKFLOWS = new Set([
   '.github/workflows/build-ios.yml',
   '.github/workflows/ci.yml',
+  '.github/workflows/merge-queue-regression.yml',
   '.github/workflows/security-analysis.yml',
   '.github/workflows/windows-pr-verification.yml',
 ]);
+const MERGE_QUEUE_REGRESSION_WORKFLOW =
+  '.github/workflows/merge-queue-regression.yml';
+const MERGE_QUEUE_REGRESSION_AGGREGATE_JOB = 'merge-queue-regression';
+const MERGE_QUEUE_REGRESSION_AGGREGATE_RUN = `echo "$NEEDS" | jq -r 'to_entries[] | "\\(.key): \\(.value.result)"'
+echo "$NEEDS" | jq -e 'length > 0 and (to_entries | all(.value.result == "success"))' > /dev/null
+`;
+
+/**
+ * The merge-queue regression aggregate reads only its needed jobs' results. It
+ * checks out nothing and runs no repository code, so it is the one job in a
+ * base-controlled workflow allowed to omit the candidate checkout; any other
+ * shape (an action, a second step, a different command) loses the exemption.
+ */
+function isExactMergeQueueRegressionAggregate(file, jobId, job) {
+  const steps = job?.steps ?? [];
+  return (
+    file === MERGE_QUEUE_REGRESSION_WORKFLOW &&
+    jobId === MERGE_QUEUE_REGRESSION_AGGREGATE_JOB &&
+    steps.length === 1 &&
+    steps[0]?.uses === undefined &&
+    hasExactKeys(steps[0]?.env, ['NEEDS']) &&
+    steps[0].env.NEEDS === `\${{ toJSON(needs) }}` &&
+    steps[0]?.run === MERGE_QUEUE_REGRESSION_AGGREGATE_RUN
+  );
+}
 
 function hasRequiredCapacityOwnerLifetime(value) {
   return String(value) === String(CAPACITY_OWNER_LIFETIME_SECONDS);
@@ -976,6 +1022,7 @@ export function persistentRunnerPolicyFindings(workflows) {
     findings.push(...fullRegressionActionlintFindings(file, document));
     findings.push(...baseControlledPrWorkflowFindings(file, document));
     findings.push(...mergeQueueWorkflowFindings(file, document));
+    findings.push(...untrustedCacheFindings(file, document));
   }
   return findings;
 }
@@ -1902,7 +1949,8 @@ function baseControlledPrWorkflowFindings(file, document) {
           ? hasExactDependencyReviewSteps(job)
           : file === SECURITY_ANALYSIS_WORKFLOW
             ? false
-            : hasExplicitCheckout(
+            : isExactMergeQueueRegressionAggregate(file, jobId, job) ||
+              hasExplicitCheckout(
                 job,
                 FAST_CHECKOUT_REPOSITORY,
                 FAST_CHECKOUT_REF,
@@ -1946,10 +1994,12 @@ function baseControlledPrWorkflowFindings(file, document) {
           'dtolnay/rust-toolchain@',
         ].some((prefix) => step.uses.startsWith(prefix)) &&
         !(
-          file === '.github/workflows/build-ios.yml' &&
+          (file === '.github/workflows/build-ios.yml' ||
+            file === MERGE_QUEUE_REGRESSION_WORKFLOW) &&
           step.uses.startsWith('actions/upload-artifact@')
         ) &&
         !isExactWindowsPrEvidenceUpload(file, jobId, step) &&
+        !isReviewedCacheRestore(file, jobId, step) &&
         !(
           file === SECURITY_ANALYSIS_WORKFLOW &&
           jobId === SECURITY_ANALYSIS_CODEQL_JOB &&
@@ -1967,17 +2017,74 @@ function baseControlledPrWorkflowFindings(file, document) {
           message:
             'base-controlled PR workflows must not add unreviewed custom actions or reusable execution',
         });
-      if (
-        (typeof step?.uses === 'string' &&
-          step.uses.startsWith('actions/cache@')) ||
-        (typeof step?.uses === 'string' &&
-          step.uses.startsWith('actions/setup-node@') &&
-          step?.with?.cache)
+    }
+  }
+  return findings;
+}
+
+function isReviewedCacheRestore(file, jobId, step) {
+  return (
+    step?.uses === REVIEWED_CACHE_RESTORE_ACTION &&
+    CACHE_RESTORE_JOBS[file]?.has(jobId) === true
+  );
+}
+
+/**
+ * Shared-cache policy for every workflow a pull request or the merge queue can
+ * trigger. Restores are allowed only through isReviewedCacheRestore; every
+ * cache write path is refused: actions/cache (restore+save), its save
+ * subaction, any other action under actions/cache/, Swatinem/rust-cache
+ * (saves by default), setup-node's `cache:` (saves in its post step), and a
+ * `cache-mode` key that could re-grant write access to a low-trust event.
+ * ci.yml is included: it is excluded from baseControlledPrWorkflowFindings,
+ * not from this rule.
+ */
+function untrustedCacheFindings(file, document) {
+  if (
+    !UNTRUSTED_CACHE_TRIGGERS.some((trigger) =>
+      workflowHasTrigger(document, trigger),
+    )
+  )
+    return [];
+  const findings = [];
+  if (document && Object.hasOwn(document, 'cache-mode'))
+    findings.push({
+      file,
+      jobId: 'workflow',
+      message:
+        'pull-request and merge-queue workflows must not declare cache-mode',
+    });
+  for (const [jobId, job] of Object.entries(document?.jobs ?? {})) {
+    if (job && Object.hasOwn(job, 'cache-mode'))
+      findings.push({
+        file,
+        jobId,
+        message:
+          'pull-request and merge-queue workflows must not declare cache-mode',
+      });
+    for (const step of job?.steps ?? []) {
+      const uses = typeof step?.uses === 'string' ? step.uses : '';
+      const writesCache =
+        uses.startsWith('actions/cache@') ||
+        uses.startsWith('actions/cache/save@') ||
+        uses.toLowerCase().startsWith('swatinem/rust-cache@') ||
+        (uses.startsWith('actions/setup-node@') && Boolean(step?.with?.cache));
+      if (writesCache)
+        findings.push({
+          file,
+          jobId,
+          message:
+            'pull-request and merge-queue workflows must not write a shared cache',
+        });
+      else if (
+        uses.startsWith('actions/cache/') &&
+        !isReviewedCacheRestore(file, jobId, step)
       )
         findings.push({
           file,
           jobId,
-          message: 'base-controlled PR workflows must not use shared caches',
+          message:
+            'shared-cache restore in a pull-request or merge-queue workflow must be the reviewed pinned actions/cache/restore in a listed job',
         });
     }
   }
