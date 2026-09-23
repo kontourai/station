@@ -239,6 +239,33 @@ describe.skipIf(!posix)('transfer baseline pruning (#2355)', () => {
     },
   );
 
+  test('liveness is re-probed before each removal, so a tree taken into use mid-loop is kept', () => {
+    const f = fixture();
+    const first = f.addDetached(f.baselinePath(f.old1), f.old1);
+    const second = f.addDetached(f.baselinePath(f.old2), f.old2);
+    const probes: string[][] = [];
+    const outcome = pruneStaleTransferBaselines({
+      repoRoot: f.primary,
+      keepShas: [f.tip],
+      env: {},
+      log: () => {},
+      // Nothing is in use at the first probe; by the second, a session has
+      // started using the second tree.
+      pathsInUse: (paths: string[]) => {
+        probes.push(paths);
+        return new Map(
+          probes.length > 1 ? paths.map((p) => [p, 'started meanwhile']) : [],
+        );
+      },
+    });
+    expect(probes).toEqual([[first], [second]]);
+    expect(outcome.pruned).toEqual([first]);
+    expect(outcome.kept).toEqual([
+      { path: second, reason: 'started meanwhile' },
+    ]);
+    expect(registered(f.primary)).toContain(second);
+  });
+
   test(`${TRANSFER_BASELINE_PRUNE_ENV}=0 opts out: nothing is removed`, () => {
     const f = fixture();
     const stale = f.addDetached(f.baselinePath(f.old1), f.old1);

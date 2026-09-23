@@ -374,15 +374,18 @@ export function pruneStaleTransferBaselines({
     excludePaths,
   });
   if (stale.length === 0) return outcome;
-  const inUse = pathsInUse(stale.map((worktree) => worktree.path));
-  if (inUse === null) {
-    outcome.skipped = 'could not read live process state';
-    log(
-      'Skipped pruning stale transfer baselines: could not read live process state.',
-    );
-    return outcome;
-  }
   for (const worktree of stale) {
+    // Probe immediately before EACH removal, not once for the loop: a
+    // removal takes seconds, and a session can start using the next tree in
+    // that time. One lsof costs ~0.15-0.4s.
+    const inUse = pathsInUse([worktree.path]);
+    if (inUse === null) {
+      outcome.skipped = 'could not read live process state';
+      log(
+        'Stopped pruning stale transfer baselines: could not read live process state.',
+      );
+      break;
+    }
     const reason = inUse.get(worktree.path);
     if (reason) {
       outcome.kept.push({ path: worktree.path, reason });
