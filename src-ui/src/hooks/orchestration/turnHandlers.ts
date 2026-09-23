@@ -612,6 +612,7 @@ export function handleRuntimeWarningEvent(
             pendingApprovalMode: undefined,
             pendingApprovalPickedAt: undefined,
             pendingApprovalBehindTurn: undefined,
+            pendingApprovalAppliedAtPick: undefined,
           }
         : {}),
       ...(isApprovalMode(revertTo) && revertTo !== 'connection-default'

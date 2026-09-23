@@ -313,14 +313,20 @@ export function approvalModeForDispatch(input: {
  *   engine has not shown applying. It is sent with every turn until a report
  *   settles it. It records the latest server stream position this client had
  *   seen when the user picked (`pendingApprovalPickedAt`), and the dispatch
- *   that was already in flight (`pendingApprovalBehindTurn`), so a report
- *   can be ordered against it:
+ *   that was already in flight (`pendingApprovalBehindTurn`), and the posture
+ *   the engine last reported at that moment (`pendingApprovalAppliedAtPick`),
+ *   so a report can be ordered against it:
  *   - a report that MATCHES confirms it;
  *   - a report from BEFORE the pick (at or under the recorded position, or
  *     the report of the dispatch that was already in flight) is stale and is
  *     ignored, so the pick stays pending (refuted approach 2);
- *   - a report from AFTER the pick that differs means someone decided later,
- *     and retires the pick, in either direction: the latest decision wins.
+ *   - a report from AFTER the pick whose posture CHANGED since the pick means
+ *     someone decided later, and retires the pick, in either direction: the
+ *     latest decision wins. A later report of the SAME posture as at the pick
+ *     is not a decision (a report says what applied, not that anyone chose
+ *     it: another device's ordinary message reports the posture it found),
+ *     so the pick stays pending. With no posture known at the pick, any
+ *     differing later report counts as a decision.
  * - Any report that differs from a confirmed pick retires it: the posture
  *   changed after it was confirmed.
  *
@@ -355,6 +361,8 @@ export interface ApprovalPickState {
   pendingApprovalPickedAt?: number;
   /** The dispatch already in flight at the pick; its report predates it. */
   pendingApprovalBehindTurn?: string;
+  /** The posture the engine last reported when the user picked. */
+  pendingApprovalAppliedAtPick?: ApprovalMode;
   /** A pick a report showed the engine applying. */
   approvalModeOverride?: ApprovalMode;
   lastAppliedApprovalMode?: ApprovalMode;
@@ -408,6 +416,13 @@ export function approvalModeToSend(
   return undefined;
 }
 
+const CLEAR_PENDING = {
+  pendingApprovalMode: undefined,
+  pendingApprovalPickedAt: undefined,
+  pendingApprovalBehindTurn: undefined,
+  pendingApprovalAppliedAtPick: undefined,
+} as const;
+
 /**
  * The chat update for a newly picked approval mode, or `undefined` when the
  * pick changes nothing (it is already pending, or confirmed and reported
@@ -453,24 +468,17 @@ export function approvalPickUpdate(
       : {}),
     ...(mode === 'connection-default'
       ? {
-          pendingApprovalMode: undefined,
-          pendingApprovalPickedAt: undefined,
-          pendingApprovalBehindTurn: undefined,
+          ...CLEAR_PENDING,
           approvalModeOverride: undefined,
         }
       : {
           pendingApprovalMode: mode,
           pendingApprovalPickedAt: stamp.pickedAt,
           pendingApprovalBehindTurn: stamp.behindTurn,
+          pendingApprovalAppliedAtPick: chat?.lastAppliedApprovalMode,
         }),
   };
 }
-
-const CLEAR_PENDING = {
-  pendingApprovalMode: undefined,
-  pendingApprovalPickedAt: undefined,
-  pendingApprovalBehindTurn: undefined,
-} as const;
 
 /**
  * The chat update for an engine report of the mode actually applied
@@ -502,7 +510,8 @@ export function settleApprovalPick(
       position !== undefined &&
       (chat.pendingApprovalPickedAt === undefined ||
         position > chat.pendingApprovalPickedAt);
-    return afterPick && !fromDispatchBeforePick
+    const postureChanged = applied !== chat.pendingApprovalAppliedAtPick;
+    return afterPick && !fromDispatchBeforePick && postureChanged
       ? { ...CLEAR_PENDING, approvalModeOverride: undefined }
       : {};
   }

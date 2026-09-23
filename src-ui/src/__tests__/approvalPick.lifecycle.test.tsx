@@ -386,6 +386,43 @@ describe('an approval pick beside the model options (#2334)', () => {
     expect(renderPill().text).toBe('Default');
   });
 
+  test("probe I: another device's turn that CHANGES nothing does not retire a pending pick", async () => {
+    const { composer, step, send } = renderComposer();
+    step(() => composer.result.current.handleModelSelect(modelX));
+    step(() => composer.result.current.handleApprovalModeChange('never'));
+    await send();
+    step(() => turnStarted('t1', 'never'));
+    step(() => turnCompleted('t1'));
+    // The desktop tightens but does not send yet.
+    step(() => composer.result.current.handleApprovalModeChange('ask'));
+    // The phone sends an ordinary message: its turn reports the posture the
+    // session already had. A report says what applied, not that anyone
+    // decided anything, so this is not a later decision.
+    step(() => otherDeviceTurn('phone-1', 'never'));
+
+    expect(chat().pendingApprovalMode).toBe('ask');
+    expect((await send())?.options?.approvalMode).toBe('ask');
+  });
+
+  test('probe I across a reload: the posture known at the pick survives with the pending pick', () => {
+    const { composer, step } = renderComposer();
+    step(() => composer.result.current.handleModelSelect(modelX));
+    step(() => otherDeviceTurn('t0', 'never'));
+    step(() => composer.result.current.handleApprovalModeChange('ask'));
+    composer.unmount();
+
+    expect(reload()).toMatchObject({
+      pendingApprovalMode: 'ask',
+      pendingApprovalAppliedAtPick: 'never',
+    });
+    // An ordinary turn elsewhere, same posture: still not a decision.
+    otherDeviceTurn('phone-1', 'never');
+    expect(chat().pendingApprovalMode).toBe('ask');
+    // A change of posture elsewhere is.
+    otherDeviceTurn('phone-2', 'auto');
+    expect(chat().pendingApprovalMode).toBeUndefined();
+  });
+
   test('probe E: a revoke on another device retires the confirmed pick; nothing re-escalates', async () => {
     const { composer, step, send } = renderComposer();
     step(() => composer.result.current.handleModelSelect(modelX));

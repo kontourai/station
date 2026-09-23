@@ -358,6 +358,8 @@ export type ChatUIState = {
    * survive a reload.
    */
   pendingApprovalBehindTurn?: string;
+  /** See `ApprovalPickState`. Persisted with the pending pick. */
+  pendingApprovalAppliedAtPick?: ApprovalMode;
   /**
    * An approval pick a report showed the engine applying (#2334). Persisted
    * as confirmed: it is never resent to a live session, only used to start a
@@ -551,6 +553,7 @@ export type PersistedActiveChat = {
   /** See ChatUIState.pendingApprovalMode (#2334). */
   pendingApprovalMode?: ApprovalMode;
   pendingApprovalPickedAt?: number;
+  pendingApprovalAppliedAtPick?: ApprovalMode;
   approvalModeOverride?: ApprovalMode;
   defaultModel?: string;
   defaultModelSource?: EffectiveModelSource;
@@ -728,6 +731,12 @@ export function hydrateActiveChats(
             ...(session.pendingApprovalPickedAt !== undefined
               ? { pendingApprovalPickedAt: session.pendingApprovalPickedAt }
               : {}),
+            ...(session.pendingApprovalAppliedAtPick
+              ? {
+                  pendingApprovalAppliedAtPick:
+                    session.pendingApprovalAppliedAtPick,
+                }
+              : {}),
           }
         : {}),
       ...(session.approvalModeOverride
@@ -880,6 +889,12 @@ export function serializeActiveChats(
             pendingApprovalMode: chat.pendingApprovalMode,
             ...(chat.pendingApprovalPickedAt !== undefined
               ? { pendingApprovalPickedAt: chat.pendingApprovalPickedAt }
+              : {}),
+            ...(chat.pendingApprovalAppliedAtPick
+              ? {
+                  pendingApprovalAppliedAtPick:
+                    chat.pendingApprovalAppliedAtPick,
+                }
               : {}),
           }
         : {}),
