@@ -97,7 +97,7 @@ interface ChatMessageListProps {
    * row can answer are derived from them here and rendered as the
    * pending-approvals strip below the transcript (never as messages).
    */
-  approvalEvents?: readonly CanonicalRuntimeEvent[];
+  approvalEvents?: readonly { event: CanonicalRuntimeEvent }[];
 }
 
 // Stable fallback so `agent || FALLBACK_AGENT` doesn't allocate a new object
@@ -156,10 +156,15 @@ function ChatMessageListComponent({
   const handleToolApproval = useToolApproval(apiBase);
   const pendingApprovalRequests = useMemo(
     () =>
-      approvalEvents && approvalEvents.length > 0
-        ? unansweredApprovalRequests(activeSession.messages, approvalEvents)
+      approvalEvents && approvalEvents.length > 0 && !activeSession.replay
+        ? unansweredApprovalRequests(
+            activeSession.messages,
+            approvalEvents
+              .map((item) => item.event)
+              .filter((event) => Boolean(event.eventId)),
+          )
         : NO_PENDING_APPROVALS,
-    [activeSession.messages, approvalEvents],
+    [activeSession.messages, activeSession.replay, approvalEvents],
   );
   const sendMessage = useSendMessage(apiBase);
   // The store is already live at the shell; reading its scalar snapshot here

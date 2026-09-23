@@ -13,7 +13,6 @@ import { isReplayThread } from './replay/replay-registry';
 import { useSessionEventWindow } from './useSessionEventWindow';
 
 const EMPTY_MESSAGES: ChatMessage[] = [];
-const NO_APPROVAL_EVENTS: CanonicalRuntimeEvent[] = [];
 const EMPTY_CHANGED_FILES = new Map<
   string,
   NonNullable<ChatMessage['changedFiles']>
@@ -503,27 +502,9 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
     window.contextBoundaries,
   ]);
 
-  // #2316: the window's events for the pending-approvals strip, which offers
-  // open approvals no rendered row can answer (a subagent's call, Codex, a
-  // turn row the streaming shell holds). The strip derives them inside the
-  // lazily loaded message list, keeping that logic off the entry chunk. A
-  // replay answers nothing.
-  const approvalEvents = useMemo(
-    () =>
-      enabled && !replay
-        ? window.events
-            .map((item) => item.event)
-            .filter((event): event is CanonicalRuntimeEvent =>
-              Boolean(event.eventId),
-            )
-        : NO_APPROVAL_EVENTS,
-    [enabled, replay, window.events],
-  );
-
   return {
     ...window,
     enabled,
-    approvalEvents,
     messages: enabled
       ? messages
       : EMPTY_MESSAGES === session.messages

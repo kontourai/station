@@ -155,7 +155,7 @@ function TranscriptHarness({ session }: { session: ChatSession }) {
   return (
     <ChatMessageList
       activeSession={{ ...session, messages: transcript.messages }}
-      approvalEvents={transcript.approvalEvents}
+      approvalEvents={transcript.enabled ? transcript.events : undefined}
       fontSize={13}
       showReasoning={false}
       showToolDetails={false}
