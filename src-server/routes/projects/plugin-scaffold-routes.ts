@@ -28,6 +28,14 @@ const pluginScaffoldRequestSchema = z
   })
   .strict();
 
+const INPUT_REFUSAL_MESSAGES: Record<PluginScaffoldInputError['code'], string> =
+  {
+    'invalid-name':
+      'Plugin name must be 1-64 lowercase letters, digits, hyphens or periods, starting and ending with a letter or digit',
+    'invalid-template': `Unknown plugin template; expected ${PLUGIN_SCAFFOLD_TEMPLATES.join(', ')}`,
+    'invalid-display-name': 'Plugin title must be at most 128 characters',
+  };
+
 const REFUSAL_MESSAGES: Record<PluginScaffoldWriteRefusal['code'], string> = {
   'working-directory-missing': "The Project's folder does not exist",
   'working-directory-not-a-directory': "The Project's folder is not a folder",
@@ -78,8 +86,14 @@ export function createPluginScaffoldRoutes(
         });
       } catch (error) {
         if (error instanceof PluginScaffoldInputError) {
+          // A fixed sentence per code, never the thrown text: a route answer
+          // states only what this module wrote down.
           return c.json(
-            { success: false, error: error.message, code: error.code },
+            {
+              success: false,
+              error: INPUT_REFUSAL_MESSAGES[error.code],
+              code: error.code,
+            },
             400,
           );
         }
