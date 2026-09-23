@@ -24,6 +24,7 @@ import { join } from 'node:path';
 import { buildPluginDraft } from '@kontourai/station-shared/build';
 import { afterEach, describe, expect, test } from 'vitest';
 import { buildPluginDraftInChildProcess } from '../plugin-draft-build-process.js';
+import { PluginDraftService } from '../plugin-draft-service.js';
 
 const TEST_TIMEOUT_MS = 60_000;
 const roots: string[] = [];
@@ -217,6 +218,56 @@ describe.skipIf(process.platform === 'win32')('draft build process', () => {
         ok: false,
         diagnostics: [{ file: 'src/package.json' }],
       });
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  // The service's default builder is the disposable process, not this
+  // process's esbuild: while a blocked draft builds, a build child exists,
+  // and after the deadline none does.
+  test(
+    'the draft service builds in a disposable process by default',
+    async () => {
+      const dir = plugin();
+      writeFileSync(
+        join(dir, 'src', 'index.tsx'),
+        "import value from 'blocking-package';\nexport const components = { pulse: () => value };\n",
+      );
+      mkdirSync(join(dir, 'node_modules', 'blocking-package'), {
+        recursive: true,
+      });
+      execFileSync(
+        'mkfifo',
+        [join(dir, 'node_modules', 'blocking-package', 'package.json')],
+        { windowsHide: true, timeout: 10_000 },
+      );
+      const service = new PluginDraftService({
+        draftsRoot: join(tempDir('station-draft-proc-home-'), 'plugin-drafts'),
+        emitRebuilt: () => {},
+        buildTimeoutMs: 3_000,
+        pollIntervalMs: 60_000,
+      });
+      try {
+        const before = new Set(descendantsOf(process.pid));
+        service.lease('proc', dir);
+        const spawned = await waitFor(
+          () => descendantsOf(process.pid).some((pid) => !before.has(pid)),
+          2_500,
+        );
+        expect(spawned).toBe(true);
+        const children = descendantsOf(process.pid).filter(
+          (pid) => !before.has(pid),
+        );
+        await service.idle('proc', dir);
+        expect(service.status('proc', dir).diagnostics[0].text).toContain(
+          'did not finish within',
+        );
+        expect(await waitFor(() => children.every((pid) => !alive(pid)))).toBe(
+          true,
+        );
+      } finally {
+        service.dispose();
+      }
     },
     TEST_TIMEOUT_MS,
   );

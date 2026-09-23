@@ -472,7 +472,9 @@ export class PluginDraftService {
         build,
         new Promise<PluginDraftBuildResult>((resolveTimeout) => {
           deadline = setTimeout(() => {
-            controller.abort();
+            // Settle the race first, then abort: an aborted build resolves
+            // with a generic "stopped" result synchronously, which would
+            // otherwise win and hide why it was stopped.
             resolveTimeout({
               ok: false,
               diagnostics: [
@@ -481,6 +483,7 @@ export class PluginDraftService {
                 },
               ],
             });
+            controller.abort();
           }, timeoutMs);
           deadline.unref?.();
         }),
