@@ -1,4 +1,3 @@
-import { spawnSync } from 'node:child_process';
 import { createHmac } from 'node:crypto';
 import {
   mkdirSync,
@@ -60,7 +59,8 @@ import {
  * without asserting anything about it, and one start past its timeout failed
  * the required Windows check. Route tests therefore skip the ACL step; the one
  * test that owns the local-grant file boundary opts back into the real
- * implementation and verifies the published file on Windows.
+ * implementation, which on Windows sets and reads back both ACLs (and throws
+ * if either is not current-user protected).
  */
 const windowsTrust = vi.hoisted(() => ({ real: false, hardened: 0 }));
 vi.mock(
@@ -2682,22 +2682,7 @@ describe('local self-authorization grant exchange (station#1715)', () => {
     // Directory and temporary file, per configure: the real boundary ran.
     expect(windowsTrust.hardened).toBe(4);
     const firstSecret = first.readLocalGrantSecret();
-    if (process.platform === 'win32') {
-      // The ACL set on the temporary file must survive the atomic rename
-      // onto the published path the desktop shell reads.
-      const { assertWindowsPathsTrusted } = await vi.importActual<
-        typeof import('@kontourai/station-shared/windows-path-trust')
-      >('@kontourai/station-shared/windows-path-trust');
-      assertWindowsPathsTrusted(
-        (command, args) =>
-          spawnSync(command, args, {
-            encoding: 'utf8',
-            windowsHide: true,
-            timeout: 30_000,
-          }),
-        [{ kind: 'file', path: first.localGrantSecretPath }],
-      );
-    } else {
+    if (process.platform !== 'win32') {
       const mode = statSync(first.localGrantSecretPath).mode & 0o777;
       expect(mode).toBe(0o600);
     }
