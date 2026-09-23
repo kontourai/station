@@ -3777,12 +3777,13 @@ describe('Muse background work holds the turn (#2300)', () => {
     expect(rows.at(-1)?.toolCallId).toBe(
       `muse-task:task-${MUSE_PENDING_BACKGROUND_TASKS_MAX - 1}`,
     );
+    // The drain count above is exact: no row for the task past the cap.
+    await expectNoFurtherEvent(harness.iterator, 'cap');
     expect(harness.logger.warn).toHaveBeenCalledWith(
       expect.stringContaining(
         `more than ${MUSE_PENDING_BACKGROUND_TASKS_MAX} background tasks`,
       ),
     );
-    await harness.adapter.stopAll();
   });
 
   test('a queued send waits out the previous child exiting instead of being refused', async () => {
