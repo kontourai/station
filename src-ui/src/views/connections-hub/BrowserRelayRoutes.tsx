@@ -1,4 +1,7 @@
-import { useConnections } from '@kontourai/station-connect';
+import {
+  type SavedConnection,
+  useConnections,
+} from '@kontourai/station-connect';
 import { openDeviceConnectionTrustStore } from '@kontourai/station-connect/connection-trust';
 import {
   BrowserRoutingGrantCustody,
@@ -6,12 +9,17 @@ import {
   redeemBrokerRouteInvitation,
 } from '@kontourai/station-connect/self-hosted-browser';
 import type { SelfHostedBrokerRouteInvitationV1 } from '@kontourai/station-contracts/self-hosted-broker';
-import { useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
 import { PageRow } from '../../components/PageRow';
 import { retireBrowserRelayRoute } from '../../lib/browserRelayRouteBinding';
 import { usePlatformProfile } from '../../platform/PlatformProfileContext';
 import { BrowserStationTrustApproval } from './BrowserStationTrustApproval';
+
+const BrowserRelayEnrollmentDialog = lazy(async () => {
+  const module = await import('./BrowserRelayEnrollmentDialog');
+  return { default: module.BrowserRelayEnrollmentDialog };
+});
 
 /** Browser-only route custody. A route grant never enters SavedConnection. */
 export function BrowserRelayRoutes() {
@@ -28,6 +36,7 @@ export function BrowserRelayRoutes() {
   const [invitationText, setInvitationText] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [enrolling, setEnrolling] = useState<SavedConnection | null>(null);
   const enrollment = useRef<{
     controller: AbortController;
     custody: BrowserRoutingGrantCustody;
@@ -44,6 +53,10 @@ export function BrowserRelayRoutes() {
     },
     [],
   );
+
+  useEffect(() => {
+    if (enrolling && activeConnection?.id !== enrolling.id) setEnrolling(null);
+  }, [activeConnection?.id, enrolling]);
 
   if (isTauri) return null;
 
@@ -225,6 +238,15 @@ export function BrowserRelayRoutes() {
             </Button>
           }
         >
+          {activeConnection?.id === connection.id && (
+            <Button
+              size="sm"
+              disabled={busy}
+              onClick={() => setEnrolling(connection)}
+            >
+              Verify account and Device
+            </Button>
+          )}
           <Button
             size="sm"
             disabled={busy}
@@ -275,6 +297,14 @@ export function BrowserRelayRoutes() {
         <p className="connections-computers__alert" role="alert">
           {error}
         </p>
+      )}
+      {enrolling && (
+        <Suspense fallback={<p role="status">Opening account verification…</p>}>
+          <BrowserRelayEnrollmentDialog
+            connection={enrolling}
+            onClose={() => setEnrolling(null)}
+          />
+        </Suspense>
       )}
     </section>
   );

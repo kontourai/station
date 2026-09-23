@@ -547,7 +547,9 @@ bounded maximum of 16). Broker issuance cannot expand Station application
 authority. The current desktop saved-route UI remains a metadata/trust readout;
 native grant custody does not by itself make a route selectable or prove a real
 Tauri connection. The browser route picker currently uses local ICE host
-candidates and has no remote TURN setup or ordinary account/Device ceremony.
+candidates and has no remote TURN setup. Its source-level fresh-account Device
+ceremony requires provider support and explicit operator approval, but the
+positive joined ordinary-UI browser journey has not yet passed this lab.
 Browser and native onboarding UI/runtime evidence are tracked
 separately under [#2388](https://github.com/kontourai/station/issues/2388).
 

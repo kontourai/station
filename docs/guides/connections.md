@@ -70,9 +70,14 @@ origin separately, then select the saved route. The routing grant stays in
 browser IndexedDB, outside the saved Station entry. A selected route uses an
 encrypted browser channel for the Station handshake and application requests;
 a missing grant, retired key or failed peer connection refuses instead of
-falling back to direct HTTP. This pilot uses local ICE host candidates. Remote
-TURN configuration, account/Device onboarding and native route selection are
-still separate work; the screen must not call a routing grant a login. Browser
+falling back to direct HTTP. After selecting the route, **Verify account and
+Device** offers a fresh username/password account flow where the Station's
+provider supports pending Device enrollment. The Station operator must approve
+that Device; only a signed activation completes the account continuation.
+Unsupported providers refuse, and Project access remains a separate grant.
+This source pilot uses local ICE host candidates. Remote TURN configuration,
+cookie-session adoption and native route selection remain separate work; the
+ordinary positive browser journey is not yet verified in the local lab. Browser
 broker routes also disable attachment staging uploads, interactive terminal
 WebSockets and Nova voice sockets for now: those features still require direct
 browser XHR, fetch or WebSocket access, so Station reports them unavailable
