@@ -304,15 +304,22 @@ describe('shared saved Station store', () => {
         stderr[index] += String(chunk);
       });
     });
-    const statuses = await Promise.all(
-      workers.map(
-        (worker) =>
-          new Promise<number | null>((resolve, reject) => {
-            worker.once('error', reject);
-            worker.once('close', resolve);
-          }),
-      ),
-    );
+    let statuses: (number | null)[];
+    try {
+      statuses = await Promise.all(
+        workers.map(
+          (worker) =>
+            new Promise<number | null>((resolve, reject) => {
+              worker.once('error', reject);
+              worker.once('close', resolve);
+            }),
+        ),
+      );
+    } finally {
+      for (const worker of workers)
+        if (worker.exitCode === null && worker.signalCode === null)
+          worker.kill();
+    }
     expect(statuses, stderr.join('\n---\n')).toEqual([0, 0, 0]);
     const store = readProfileStore();
     expect(store.revision).toBe(3);
@@ -322,17 +329,17 @@ describe('shared saved Station store', () => {
       'stable-local',
     ]);
     expect(JSON.stringify(store)).not.toContain('credentialRef');
-  });
+  }, 60_000);
 
   test('a cold start waits for a live sibling genesis that outlasts the old attempt budget', async () => {
-    // The genesis winner publishes with two fsyncs. On a loaded runner that
-    // outlasted the loser's old wait (100 naps of 10ms, about one second), so
+    // The genesis winner publishes with several fsyncs. On a loaded runner
+    // that can outlast the loser's old wait (100 naps of 10ms), so
     // the loser failed with "genesis is busy" and a healthy three-channel
     // cold start went red. Hold a LIVE (not stale) genesis lock for 5s, the
     // way a slow winner would, and require the waiting channel to succeed.
     // 5s because the attempt budget's length depended on the host: each nap
-    // also ran a stale-lock check, which is a /proc read on Linux (~1s total)
-    // but a `ps` spawn on macOS (~3s measured). 5s outlasts both and leaves
+    // also ran a stale-lock check, which is a /proc read on Linux (estimated
+    // ~1s total) but a `ps` spawn on macOS (~3s measured). 5s outlasts both and leaves
     // 5s of the 10s wall-clock wait unused.
     const genesisLock = join(
       dirname(home),
@@ -387,6 +394,10 @@ describe('shared saved Station store', () => {
       .poll(() => existsSync(waiting), { timeout: 30_000 })
       .toBe(true);
     await new Promise((resolve) => setTimeout(resolve, 5_000));
+    // Still waiting, and the live lock still ours: a waiter that stole the
+    // lock or gave up would have finished by now.
+    expect(worker.exitCode, stderr).toBeNull();
+    expect(existsSync(genesisLock)).toBe(true);
     unlinkSync(genesisLock);
     const [status] = await exited;
     rmSync(waiting, { force: true });

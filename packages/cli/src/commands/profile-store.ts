@@ -68,9 +68,11 @@ export const MAX_PROFILE_NAME_LENGTH = 64;
 const PROFILE_NAME_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/;
 const PROFILE_STORE_LOCK_STALE_MS = 5 * 60 * 1_000;
 // How long a cold start waits for a LIVE sibling's genesis. Wall-clock, not an
-// attempt count: the winner's publication is two fsyncs, which on a busy or
-// slow disk can outlast any fixed number of 10ms naps (100 of them gave a
-// loaded CI runner about one second, and the losing channel failed).
+// attempt count: the winner's publication is several file and directory
+// fsyncs, which on a busy or slow disk can outlast any fixed number of 10ms
+// naps. 100 of them lasted about 3s on macOS (measured), where each nap also
+// spawns `ps` for the stale-lock check, and less on Linux, where that check
+// is a /proc read.
 const PROFILE_STORE_GENESIS_WAIT_MS = 10_000;
 // This root-scoped record survives a missing/moved config directory. Both the
 // CLI and the native desktop check the same bytes before ever recreating the
