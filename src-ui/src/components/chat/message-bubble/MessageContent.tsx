@@ -10,7 +10,7 @@ import { LazyMarkdown } from '../LazyMarkdown';
 import { ReasoningSection } from '../ReasoningSection';
 import { ChatErrorDetails } from '../SystemEventMessage';
 import { ToolCallBatchBoundary } from '../ToolCallBatchBoundary';
-import { ToolCallDisplay } from '../ToolCallDisplay';
+import { type ToolApprovalOutcome, ToolCallDisplay } from '../ToolCallDisplay';
 import { splitToolCallRuns } from '../tool-call-runs';
 import { UIBlockRenderer } from '../UIBlockRenderer';
 
@@ -36,7 +36,7 @@ interface MessageContentProps {
   onToolApproval?: (
     part: MessageContentPart,
     action: 'once' | 'trust' | 'deny',
-  ) => Promise<void>;
+  ) => Promise<ToolApprovalOutcome>;
 }
 
 function MessageContentComponent({
@@ -73,7 +73,9 @@ function MessageContentComponent({
       showDetails={showToolDetails}
       onApprove={
         isStreamingMessage && part.needsApproval
-          ? (action) => onToolApproval?.(part, action) ?? Promise.resolve()
+          ? (action) =>
+              onToolApproval?.(part, action) ??
+              Promise.reject(new Error('This chat cannot answer requests.'))
           : undefined
       }
     />

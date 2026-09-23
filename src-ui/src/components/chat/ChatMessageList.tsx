@@ -625,6 +625,7 @@ function ChatMessageListComponent({
                   part.toolName || part.name || '',
                   action,
                   part.approvalThreadId,
+                  part.approvalEventId,
                 )
             : undefined
         }

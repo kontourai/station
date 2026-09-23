@@ -4803,15 +4803,24 @@ button.tool-call__line:hover {
 
 /* #2316: a decision Station did not accept is named on the card itself,
    on its own line beneath the buttons. */
-.tool-call__actions:has(.tool-call__approve-error) {
+.tool-call__actions:has(.tool-call__approve-error),
+.tool-call__actions:has(.tool-call__approve-status) {
   flex-wrap: wrap;
 }
 
-.tool-call__approve-error {
+.tool-call__approve-error,
+.tool-call__approve-status {
   flex-basis: 100%;
   margin: 2px 0 0;
   font-size: 0.75em;
+}
+
+.tool-call__approve-error {
   color: var(--error-text);
+}
+
+.tool-call__approve-status {
+  color: var(--color-text-secondary, var(--color-text));
 }
 
 /* Collapsed tool-call batch — a muted single-line summary that replaces a

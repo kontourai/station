@@ -8,6 +8,7 @@ import { isSessionExecutionActive } from '../../utils/execution';
 import { CHAT_ERROR_MARKER_PREFIX } from '../../utils/sessionFailure';
 import { extractUIBlocks } from '../../utils/uiBlocks';
 import { upsertToolResultBlocks } from './messageParts';
+import { withPendingRequestRow } from './pendingRequestRows';
 import { requestReplayHistory, useReplayHistory } from './replay/history';
 import { isReplayThread } from './replay/replay-registry';
 import { useSessionEventWindow } from './useSessionEventWindow';
@@ -279,6 +280,7 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
             needsApproval: part.needsApproval,
             approvalId: part.approvalId,
             approvalThreadId: part.approvalThreadId,
+            approvalEventId: part.approvalEventId,
             approvalStatus: part.approvalStatus,
           };
           // Preserve the same tool-result identity and sanitized blocks as
@@ -471,7 +473,7 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
     }
     // While the first bounded page is in flight, retain only local ephemeral
     // notices; persisted transcript rows never cause a full conversation read.
-    return mergeTranscriptMessages(
+    const merged = mergeTranscriptMessages(
       visibleProjected,
       handoffBoundaries,
       contextBoundaryMarkers,
@@ -486,6 +488,18 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
       const changedFiles = changedFilesByTurn.get(message.turnId);
       return changedFiles ? { ...message, changedFiles } : message;
     });
+    // #2316: every open approval stays answerable from the chat. A replay is
+    // read-only, and its cards never answer anything.
+    return replay
+      ? merged
+      : withPendingRequestRow(
+          merged,
+          window.events
+            .map((item) => item.event)
+            .filter((event): event is CanonicalRuntimeEvent =>
+              Boolean(event.eventId),
+            ),
+        );
   }, [
     enabled,
     session.messages,
@@ -495,6 +509,7 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
     session.orchestrationTurnOpen,
     session.status,
     changedFilesByTurn,
+    replay,
     window.events,
     window.sessionLineage,
     window.handoffs,

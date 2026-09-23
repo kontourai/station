@@ -1,3 +1,4 @@
+import { toolRequestGrantLabel } from '@kontourai/station-shared/tool-request-preview';
 import { memo, useMemo, useState } from 'react';
 import { useRevealOnce } from '../../hooks/useRevealOnce';
 import {
@@ -56,13 +57,25 @@ export interface ToolCallData {
     | 'policy-denied';
 }
 
+/**
+ * #2316: how an approval decision landed. `already-settled` means Station
+ * refused it because the request had ALREADY been answered (e.g. from the
+ * toast) — verified against the request itself, not inferred from an error.
+ */
+export type ToolApprovalOutcome = 'answered' | 'already-settled';
+
+type ToolApprovalHandler = (
+  action: 'once' | 'trust' | 'deny',
+) => void | Promise<ToolApprovalOutcome | void>;
+
 interface ToolCallDisplayProps {
   toolCall: ToolCallData;
   /**
-   * #2316: resolves when Station accepted the decision, rejects when it did
-   * not. The card stays actionable and says so on rejection.
+   * #2316: resolves when Station accepted the decision (or found it already
+   * settled), rejects when it did not. The card stays actionable and says so
+   * on rejection.
    */
-  onApprove?: (action: 'once' | 'trust' | 'deny') => void | Promise<void>;
+  onApprove?: ToolApprovalHandler;
   showDetails?: boolean;
 }
 
@@ -250,7 +263,10 @@ function ToolCallDisplayComponent({
         )}
         {awaitingApproval && onApprove && (
           <div className="tool-call__actions">
-            <ToolApprovalButtons onApprove={onApprove} />
+            <ToolApprovalButtons
+              onApprove={onApprove}
+              toolName={toolCall.toolName}
+            />
           </div>
         )}
       </div>
@@ -289,10 +305,14 @@ function ToolCallDisplayComponent({
  */
 function ToolApprovalButtons({
   onApprove,
+  toolName,
 }: {
-  onApprove: (action: 'once' | 'trust' | 'deny') => void | Promise<void>;
+  onApprove: ToolApprovalHandler;
+  toolName?: string;
 }) {
-  const [phase, setPhase] = useState<'idle' | 'sending' | 'sent'>('idle');
+  const [phase, setPhase] = useState<
+    'idle' | 'sending' | 'sent' | 'already-settled'
+  >('idle');
   const [failure, setFailure] = useState<string | null>(null);
   const decide = (action: 'once' | 'trust' | 'deny') => {
     if (phase !== 'idle') return;
@@ -300,14 +320,15 @@ function ToolApprovalButtons({
     setFailure(null);
     // Invoked synchronously, in the click, so the decision is dispatched
     // before this handler returns; only its outcome is awaited.
-    let sent: void | Promise<void>;
+    let sent: ReturnType<ToolApprovalHandler>;
     try {
       sent = onApprove(action);
     } catch (error) {
       sent = Promise.reject(error);
     }
     Promise.resolve(sent).then(
-      () => setPhase('sent'),
+      (outcome) =>
+        setPhase(outcome === 'already-settled' ? 'already-settled' : 'sent'),
       (error: unknown) => {
         setPhase('idle');
         setFailure(
@@ -335,7 +356,9 @@ function ToolApprovalButtons({
         disabled={busy}
         className="tool-call__approve-btn tool-call__approve-btn--secondary"
       >
-        Always Allow
+        {/* #2316: the same words as the toast for the same grant — every
+            later call to this tool in this session, not "always". */}
+        {toolRequestGrantLabel(toolName)}
       </button>
       <button
         type="button"
@@ -345,6 +368,11 @@ function ToolApprovalButtons({
       >
         Deny
       </button>
+      {phase === 'already-settled' && (
+        <p className="tool-call__approve-status" role="status">
+          This request was already answered.
+        </p>
+      )}
       {failure && (
         <p className="tool-call__approve-error" role="alert">
           Your decision was not delivered: {failure}

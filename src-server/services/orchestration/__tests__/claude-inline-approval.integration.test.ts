@@ -174,6 +174,64 @@ describe('#2316 inline approval card → Claude adapter', () => {
     ).resolves.toMatchObject({ status: 'approved' });
   });
 
+  test('the card binds its answer to the exact prompt: the request event id is verified, a second answer finds it resolved', async () => {
+    const { permission, opened } = await openBashRequest();
+
+    // A decision naming a different prompt is refused before the adapter.
+    await expect(
+      service.dispatch({
+        type: 'respondToRequest',
+        threadId: opened.threadId,
+        requestId: opened.requestId,
+        expectedRequestEventId: 'not-the-prompt-the-user-saw',
+        decision: 'accept',
+      }),
+    ).rejects.toThrow(/changed/);
+    const settledEarly = await Promise.race([
+      permission.then(() => 'settled'),
+      new Promise((resolve) => setTimeout(() => resolve('pending'), 50)),
+    ]);
+    expect(settledEarly).toBe('pending');
+
+    // The exact prompt is accepted: the live Claude request is open and
+    // answerable, so every guard the event id turns on passes.
+    await service.dispatch({
+      type: 'respondToRequest',
+      threadId: opened.threadId,
+      requestId: opened.requestId,
+      expectedRequestEventId: opened.eventId,
+      decision: 'accept',
+    });
+    await expect(permission).resolves.toMatchObject({ behavior: 'allow' });
+
+    // What the card reads when a second answer (toast + card) is refused:
+    // the request itself says it is already resolved.
+    await eventually(() =>
+      eventStore
+        .listEvents('claude-inline')
+        .find((persisted) => persisted.payload.method === 'request.resolved'),
+    );
+    await expect(
+      service.dispatch({
+        type: 'respondToRequest',
+        threadId: opened.threadId,
+        requestId: opened.requestId,
+        expectedRequestEventId: opened.eventId,
+        decision: 'accept',
+      }),
+    ).rejects.toThrow();
+    expect(
+      service.inspectAttentionRequest(
+        {
+          threadId: opened.threadId,
+          requestId: opened.requestId,
+          requestEventId: opened.eventId,
+        },
+        INTERNAL_SESSION_READ_SCOPE,
+      ),
+    ).toMatchObject({ state: 'resolved' });
+  });
+
   test('a decline through the same command denies the tool', async () => {
     const { permission, opened } = await openBashRequest();
     await service.dispatch({

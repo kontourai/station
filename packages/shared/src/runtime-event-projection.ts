@@ -788,6 +788,7 @@ export function projectRuntimeEventsToMessages(
           target.needsApproval = true;
           target.approvalId = ev.requestId;
           target.approvalThreadId = ev.threadId;
+          target.approvalEventId = ev.eventId;
           target.state = 'awaiting-approval';
           approvalTargets.set(ev.requestId, target);
         }

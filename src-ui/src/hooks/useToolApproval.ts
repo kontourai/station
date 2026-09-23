@@ -1,8 +1,10 @@
 import {
+  inspectAttentionRequest,
   resolveOrchestrationRequest,
   submitToolApproval,
 } from '@kontourai/station-sdk';
 import { useCallback } from 'react';
+import type { ToolApprovalOutcome } from '../components/chat/ToolCallDisplay';
 import {
   activeChatsStore,
   useActiveChatActions,
@@ -15,8 +17,9 @@ export type ToolApprovalAction = 'once' | 'trust' | 'deny';
 export function orchestrationDecisionForToolApproval(
   action: ToolApprovalAction,
 ): 'accept' | 'acceptForSession' | 'decline' {
-  // Same mapping the approval toast uses (`approvalHandlers.ts`): "Always
-  // Allow" is the adapter's session grant for this tool, not a local list.
+  // Same mapping the approval toast uses (`approvalHandlers.ts`): the "Allow
+  // <tool> for this session" grant is the adapter's session grant for this
+  // tool, not a local list.
   return action === 'once'
     ? 'accept'
     : action === 'trust'
@@ -38,11 +41,19 @@ export function orchestrationDecisionForToolApproval(
  * the discriminator: present → orchestration; absent → the registry route,
  * kept only for a part that does not carry the field.
  *
+ * `approvalEventId` (the `request.opened` event id) rides along as
+ * `expectedRequestEventId`, so the server answers only the exact prompt the
+ * user saw, after verifying it is still open and answerable.
+ *
  * Resolves only when the server accepted the decision and REJECTS otherwise
  * (HTTP error, network failure, `success: false`), so the card can say the
- * decision did not land instead of pretending it did. Local bookkeeping
- * (toast, pending list, streaming row) changes only after success; the card
- * itself clears when the durable `request.resolved` arrives.
+ * decision did not land instead of pretending it did. One refusal is not a
+ * failure: when the request was ALREADY answered (e.g. from the toast), the
+ * request itself says so, and the call resolves `already-settled`. That is
+ * read from the request's current state, never guessed from the error text.
+ * Local bookkeeping (toast, pending list, streaming row) changes only after
+ * success; the card itself clears when the durable `request.resolved`
+ * arrives.
  */
 export function useToolApproval(apiBase: string) {
   const { updateChat } = useActiveChatActions();
@@ -56,16 +67,34 @@ export function useToolApproval(apiBase: string) {
       toolName: string,
       action: ToolApprovalAction,
       approvalThreadId?: string,
-    ): Promise<void> => {
+      approvalEventId?: string,
+    ): Promise<ToolApprovalOutcome> => {
       const approved = action !== 'deny';
+      let outcome: ToolApprovalOutcome = 'answered';
 
       if (approvalThreadId) {
-        await resolveOrchestrationRequest({
-          apiBase,
-          threadId: approvalThreadId,
-          requestId: approvalId,
-          decision: orchestrationDecisionForToolApproval(action),
-        });
+        try {
+          await resolveOrchestrationRequest({
+            apiBase,
+            threadId: approvalThreadId,
+            requestId: approvalId,
+            ...(approvalEventId
+              ? { expectedRequestEventId: approvalEventId }
+              : {}),
+            decision: orchestrationDecisionForToolApproval(action),
+          });
+        } catch (error) {
+          if (
+            !approvalEventId ||
+            !(await requestAlreadyResolved(apiBase, {
+              threadId: approvalThreadId,
+              requestId: approvalId,
+              requestEventId: approvalEventId,
+            }))
+          )
+            throw error;
+          outcome = 'already-settled';
+        }
       } else {
         const result = await submitToolApproval(approvalId, approved);
         if (!result?.success) {
@@ -76,7 +105,7 @@ export function useToolApproval(apiBase: string) {
       }
 
       const state = activeChatsStore.getSnapshot()[sessionId];
-      if (!state) return;
+      if (!state) return outcome;
 
       // Dismiss the toast for this approval
       const toastId = state.approvalToasts?.get(approvalId);
@@ -91,6 +120,16 @@ export function useToolApproval(apiBase: string) {
         updateChat(sessionId, { approvalToasts: newApprovalToasts });
       }
 
+      // Remove from pending approvals
+      const pendingApprovals = (state.pendingApprovals || []).filter(
+        (id) => id !== approvalId,
+      );
+      updateChat(sessionId, { pendingApprovals });
+
+      // Which decision settled an already-answered request is not ours to
+      // claim; the durable `request.resolved` carries it.
+      if (outcome === 'already-settled') return outcome;
+
       // For 'trust', add tool to session-specific autoApprove list
       if (action === 'trust') {
         const sessionAutoApprove = [...(state.sessionAutoApprove || [])];
@@ -99,12 +138,6 @@ export function useToolApproval(apiBase: string) {
         }
         updateChat(sessionId, { sessionAutoApprove });
       }
-
-      // Remove from pending approvals
-      const pendingApprovals = (state.pendingApprovals || []).filter(
-        (id) => id !== approvalId,
-      );
-      updateChat(sessionId, { pendingApprovals });
 
       // Update tool call state in streaming message if present
       if (state.streamingMessage?.contentParts) {
@@ -137,7 +170,25 @@ export function useToolApproval(apiBase: string) {
           },
         });
       }
+      return outcome;
     },
     [apiBase, updateChat, dismissToast],
   );
+}
+
+/**
+ * Whether a refused answer was refused because the request is already
+ * answered. Any doubt (the read fails, the request changed, it is still open)
+ * is `false`, so a genuine failure stays loud.
+ */
+async function requestAlreadyResolved(
+  apiBase: string,
+  reference: { threadId: string; requestId: string; requestEventId: string },
+): Promise<boolean> {
+  try {
+    const inspected = await inspectAttentionRequest(apiBase, reference);
+    return inspected.state === 'resolved';
+  } catch {
+    return false;
+  }
 }

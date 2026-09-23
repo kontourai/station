@@ -83,6 +83,13 @@ export interface MessagePart {
    */
   approvalThreadId?: string;
   /**
+   * #2316: the `eventId` of that `request.opened`. The card sends it as the
+   * respond command's `expectedRequestEventId`, so the server answers only the
+   * exact prompt the user saw (and verifies it is still open and answerable).
+   * Set only next to `approvalThreadId`.
+   */
+  approvalEventId?: string;
+  /**
    * station#3117: `'policy-denied'` is set only from the runtime event's own
    * `policyDenied` marker (see `runtime-event-projection.ts`'s `tool.completed`
    * case) — never inferred from `state === 'error'` alone, so a rehydrated

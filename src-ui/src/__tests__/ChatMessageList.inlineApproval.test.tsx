@@ -215,7 +215,9 @@ describe('#2316 inline approval card', () => {
 
   test.each([
     ['Allow Once', 'accept'],
-    ['Always Allow', 'acceptForSession'],
+    // #2316 review: the same words as the toast for the same grant — every
+    // later Bash call in this session, not "always".
+    ['Allow Bash for this session', 'acceptForSession'],
     ['Deny', 'decline'],
   ] as const)(
     '%s answers the Claude session’s request through orchestration respondToRequest (%s)',
@@ -235,6 +237,8 @@ describe('#2316 inline approval card', () => {
           type: 'respondToRequest',
           threadId: 'claude-child-b',
           requestId: 'req-claude-b',
+          // The exact prompt the user saw (the request.opened event id).
+          expectedRequestEventId: 'evt-3',
           decision,
         },
       });
@@ -283,7 +287,11 @@ describe('#2316 inline approval card', () => {
       expect(alert.getAttribute('role')).toBe('alert');
       expect(alert.textContent).toMatch(reason);
       // The request is still open: the card must not pretend it is settled.
-      for (const name of ['Allow Once', 'Always Allow', 'Deny']) {
+      for (const name of [
+        'Allow Once',
+        'Allow Bash for this session',
+        'Deny',
+      ]) {
         expect(
           (screen.getByRole('button', { name }) as HTMLButtonElement).disabled,
         ).toBe(false);
@@ -340,6 +348,175 @@ describe('#2316 inline approval card', () => {
       url: `${API_BASE}/tool-approval/registry-approval-1`,
       method: 'POST',
       body: { approved: true },
+    });
+  });
+
+  test('the session grant is labelled with its tool and its session scope, never "Always Allow"', async () => {
+    stubFetch(() => Response.json({ success: true, data: {} }));
+    renderCard();
+    const grant = await screen.findByRole('button', {
+      name: 'Allow Bash for this session',
+    });
+    expect(grant.textContent).toBe('Allow Bash for this session');
+    expect(screen.queryByRole('button', { name: /Always Allow/ })).toBeNull();
+  });
+
+  describe('a second answer for a request that is already settled', () => {
+    const refusedAsResolved = (call: WireCall) =>
+      call.method === 'POST'
+        ? Response.json(
+            {
+              success: false,
+              error: 'This request has already been resolved.',
+              code: 'request_event_changed',
+            },
+            { status: 409 },
+          )
+        : null;
+
+    test('reads settled, not failed, when the request itself says it was answered', async () => {
+      const calls = stubFetch(
+        (call) =>
+          refusedAsResolved(call) ??
+          Response.json({
+            success: true,
+            data: {
+              state: 'resolved',
+              reference: {
+                threadId: 'claude-child-b',
+                requestId: 'req-claude-b',
+                requestEventId: 'evt-3',
+              },
+              message: 'This request has already been resolved.',
+            },
+          }),
+      );
+      renderCard();
+
+      fireEvent.click(
+        await screen.findByRole('button', { name: 'Allow Once' }),
+      );
+
+      const status = await screen.findByText(
+        'This request was already answered.',
+      );
+      expect(status.getAttribute('role')).toBe('status');
+      expect(screen.queryByText(/Your decision was not delivered/)).toBeNull();
+      // Settledness is read from the exact request, not guessed from the
+      // refusal text.
+      expect(calls[1]).toMatchObject({
+        method: 'GET',
+        url: `${API_BASE}/api/orchestration/sessions/claude-child-b/requests/req-claude-b?eventId=evt-3`,
+      });
+    });
+
+    test('stays a loud failure when the request is still open', async () => {
+      stubFetch(
+        (call) =>
+          refusedAsResolved(call) ??
+          Response.json({
+            success: true,
+            data: {
+              state: 'changed',
+              reference: {
+                threadId: 'claude-child-b',
+                requestId: 'req-claude-b',
+                requestEventId: 'evt-3',
+              },
+              message: 'This request changed.',
+            },
+          }),
+      );
+      renderCard();
+
+      fireEvent.click(
+        await screen.findByRole('button', { name: 'Allow Once' }),
+      );
+
+      const alert = await screen.findByText(/Your decision was not delivered/);
+      expect(alert.getAttribute('role')).toBe('alert');
+      expect(
+        screen.queryByText('This request was already answered.'),
+      ).toBeNull();
+    });
+  });
+
+  describe('an approval with no card of its own (e.g. a Claude subagent call)', () => {
+    /** After a reload: the window alone, no live toast or streaming shell. */
+    function subagentBashAwaitingApproval() {
+      return [
+        runtimeEvent({
+          method: 'turn.started',
+          turnId: 'turn-1',
+          prompt: 'Review the plugin with a subagent',
+        }),
+        runtimeEvent({
+          method: 'tool.started',
+          turnId: 'turn-1',
+          itemId: 'toolu-task',
+          toolCallId: 'toolu-task',
+          toolName: 'Task',
+          arguments: { description: 'Review' },
+        }),
+        // The subagent's own Bash tool_use never enters the main transcript,
+        // so this request's exact call id binds to no row.
+        runtimeEvent({
+          method: 'request.opened',
+          requestId: 'req-subagent',
+          requestType: 'approval',
+          title: 'Allow Bash',
+          payload: {
+            toolName: 'Bash',
+            toolCallId: 'toolu-subagent-bash',
+            toolInput: { command: 'npm test' },
+            agentId: 'agent-1',
+          },
+        }),
+      ];
+    }
+
+    test('stays answerable from the chat after a reload, naming its own request', async () => {
+      sequence = 0;
+      windowEvents.current = subagentBashAwaitingApproval();
+      const calls = stubFetch(() => Response.json({ success: true, data: {} }));
+      renderCard();
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Deny' }));
+
+      await waitFor(() => expect(calls).toHaveLength(1));
+      expect(calls[0]?.body).toEqual({
+        type: 'respondToRequest',
+        threadId: 'claude-child-b',
+        requestId: 'req-subagent',
+        expectedRequestEventId: 'evt-3',
+        decision: 'decline',
+      });
+      // It was not re-bound onto the parent's same-turn call.
+      expect(
+        screen.getAllByRole('button', { name: 'Allow Bash for this session' }),
+      ).toHaveLength(1);
+    });
+
+    test('offers nothing once the request is resolved or its turn has ended', async () => {
+      for (const settle of [
+        {
+          method: 'request.resolved',
+          requestId: 'req-subagent',
+          status: 'approved',
+        },
+        { method: 'turn.completed', turnId: 'turn-1' },
+      ]) {
+        cleanup();
+        sequence = 0;
+        windowEvents.current = [
+          ...subagentBashAwaitingApproval(),
+          runtimeEvent(settle),
+        ];
+        stubFetch(() => Response.json({ success: true, data: {} }));
+        renderCard();
+        await screen.findByText(/Review the plugin with a subagent/);
+        expect(screen.queryByRole('button', { name: 'Allow Once' })).toBeNull();
+      }
     });
   });
 });

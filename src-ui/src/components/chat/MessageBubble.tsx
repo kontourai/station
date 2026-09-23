@@ -25,6 +25,7 @@ import {
   resolveTurnModelIdentity,
   turnCompletedNormally,
 } from './message-bubble/utils';
+import type { ToolApprovalOutcome } from './ToolCallDisplay';
 import './chat.css';
 
 // The Task picker owns SDK queries, mutations, dialog primitives, and its own
@@ -118,7 +119,8 @@ interface MessageBubbleProps {
     toolName: string,
     action: 'once' | 'trust' | 'deny',
     approvalThreadId?: string,
-  ) => Promise<void>;
+    approvalEventId?: string,
+  ) => Promise<ToolApprovalOutcome>;
   anchorKey?: string;
   /**
    * "via <Station>" row attribution (archive#2585), resolved by callers from
@@ -158,10 +160,13 @@ function MessageBubbleComponent({
   // reason (e.g. a sibling message's isThinking flag flipping).
   const handleContentToolApproval = useCallback(
     (part: MessageContentPart, action: 'once' | 'trust' | 'deny') => {
-      if (!onToolApproval) return Promise.resolve();
+      if (!onToolApproval)
+        return Promise.reject(new Error('This chat cannot answer requests.'));
       const toolName = part.toolName || part.name;
       if (!part.approvalId || !toolName) {
-        return Promise.resolve();
+        return Promise.reject(
+          new Error('This request is missing its identity.'),
+        );
       }
       return onToolApproval(
         activeSession.id,
@@ -170,6 +175,7 @@ function MessageBubbleComponent({
         toolName,
         action,
         part.approvalThreadId,
+        part.approvalEventId,
       );
     },
     [onToolApproval, activeSession.id, activeSession.agentSlug],
