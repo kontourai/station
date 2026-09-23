@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { createHash, randomInt } from 'node:crypto';
+import { randomInt } from 'node:crypto';
 import {
   mkdirSync,
   mkdtempSync,
@@ -127,20 +127,17 @@ afterEach(async () => {
   );
 });
 
+/**
+ * The fingerprint `station start` would record for `pid`, taken through the
+ * CLI's own recorder rather than a test-local `ps -o lstart=` probe. On Linux
+ * the recorder (and the health probe) use the shared `/proc` birth token, so
+ * an lstart-built fixture would read as a stale identity on every Linux
+ * runner and the healthy baseline below could never pass there.
+ */
 function currentProcessFingerprint(pid = process.pid) {
-  const output = execFileSync(
-    'ps',
-    ['-o', 'lstart=', '-o', 'command=', '-p', String(pid)],
-    // Same pin as the production probe (#3049): tokens are env-independent.
-    { encoding: 'utf8', env: { ...process.env, LC_ALL: 'C', TZ: 'UTC' } },
-  ).trim();
-  const match = output.match(/^(.{24})\s+([\s\S]+)$/);
-  if (!match) throw new Error('test process fingerprint unavailable');
-  return {
-    pid,
-    startToken: match[1].trim(),
-    commandDigest: createHash('sha256').update(match[2].trim()).digest('hex'),
-  };
+  const fingerprint = recordProcessFingerprint(pid);
+  if (!fingerprint) throw new Error('test process fingerprint unavailable');
+  return fingerprint;
 }
 
 describe('dogfood authenticated health', () => {
