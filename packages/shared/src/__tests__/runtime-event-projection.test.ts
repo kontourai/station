@@ -115,7 +115,7 @@ describe('projectRuntimeEventsToMessages', () => {
         itemId: 't1:no-turn:msg_1',
         delta: 'finished.',
       }),
-      ev({ method: 'token-usage.updated', usage: { outputTokens: 4 } }),
+      ev({ method: 'token-usage.updated', completionTokens: 4 }),
     ]);
     const texts = messages
       .filter((message) => message.role === 'assistant')
