@@ -330,6 +330,20 @@ describe('#2309 a reload in the middle of a turn running in a lineage child', ()
     ).toBeNull();
   });
 
+  test('ONE clock: with a record, its open-turn start wins over a locally stamped start', () => {
+    renderThread();
+    act(() => applyOrchestrationSnapshot(snapshot(activity(520))));
+    // A later local stamp (say, a start this client witnessed for another
+    // attempt) must not replace the record's start for the open turn.
+    act(() =>
+      activeChatsStore.updateChat(CONVERSATION, {
+        openTurnStartedAt: Date.now() - 10_000,
+      }),
+    );
+    expect(screen.getByText(/Working for 4:10/)).toBeTruthy();
+    expect(screen.queryByText(/Working for 0:10/)).toBeNull();
+  });
+
   test('the clock keeps the server start as time passes, not this view mount', () => {
     renderThread();
     act(() => applyOrchestrationSnapshot(snapshot(activity(500))));
@@ -455,7 +469,7 @@ describe('#2309 what the turn is doing', () => {
 });
 
 describe('#2309 an older server that sends no activity', () => {
-  test('keeps the legacy fold: the local turn state still shows work and Stop, timed from this view', () => {
+  test('keeps the legacy fold for liveness and Stop; the clock reads only a witnessed start, never this view', () => {
     renderThread();
     act(() => applyOrchestrationSnapshot(snapshot(undefined)));
     act(() =>
@@ -467,11 +481,27 @@ describe('#2309 an older server that sends no activity', () => {
     expect(
       activeChatsStore.getSnapshot()[CONVERSATION]?.conversationActivity,
     ).toBeUndefined();
-    expect(screen.getByText(/Working for 0:00/)).toBeTruthy();
+    // No start known: the row works, with no duration and no mount guess.
+    expect(screen.getByText('Working…')).toBeTruthy();
+    expect(screen.queryByText(/Working for/)).toBeNull();
     expect(
       screen.getByRole('button', { name: 'Stop the current turn' }),
     ).toBeTruthy();
     expect(progressText()).toBeNull();
+
+    // The turn's own start arrives (an older server's turn.started, no
+    // binding): the clock is the turn's duration by that start.
+    act(() =>
+      handleOrchestrationEvent(API, {
+        eventId: 'evt-legacy-start',
+        provider: 'claude',
+        threadId: CONVERSATION,
+        createdAt: iso(TURN_STARTED),
+        method: 'turn.started',
+        turnId: TURN,
+      }),
+    );
+    expect(screen.getByText(/Working for 4:10/)).toBeTruthy();
   });
 });
 
