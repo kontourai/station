@@ -33,8 +33,13 @@ export function resolveStationBrowserOrigins(input: {
   origins.add(`http://[::1]:${input.port}`);
   for (const origin of STATION_NATIVE_SHELL_ORIGINS) origins.add(origin);
   if (input.host && input.host !== '0.0.0.0' && input.host !== '::') {
-    origins.add(`http://${input.host}:${input.port}`);
-    origins.add(`https://${input.host}:${input.port}`);
+    // An IPv6 literal appears bracketed in a browser Origin.
+    const authority =
+      input.host.includes(':') && !input.host.startsWith('[')
+        ? `[${input.host}]`
+        : input.host;
+    origins.add(`http://${authority}:${input.port}`);
+    origins.add(`https://${authority}:${input.port}`);
   }
   return [...origins];
 }
@@ -51,10 +56,11 @@ export const WEBSOCKET_ORIGIN_FORBIDDEN = {
  *
  * Browsers let any page open a cross-origin WebSocket to a loopback port, and
  * a loopback peer is admitted without a credential, so an upgrade that carries
- * an `Origin` header on that path must name one of Station's own UI origins.
- * An upgrade with NO `Origin` header comes from a non-browser client (the CLI,
- * the native shell's Rust bridge, a local script); that caller is already a
- * local process with the operator's privileges, so it keeps today's loopback
+ * an `Origin` header (or `Sec-WebSocket-Origin`, which protocol-version-8
+ * clients send) on that path must name one of Station's own UI origins. An
+ * upgrade with neither header comes from a non-browser client (the CLI, the
+ * native shell's Rust bridge, a local script); that caller is already a local
+ * process with the operator's privileges, so it keeps today's loopback
  * admission. Peers that must present a credential are left to the
  * credential handshake: the origin check adds nothing there.
  */
@@ -66,8 +72,15 @@ export function createCredentialFreeOriginVerifier(options: {
   onRejected?: (peerClass: RuntimePeerClass) => void;
 }): VerifyClientCallbackAsync<IncomingMessage> {
   const allowed = new Set(options.allowedOrigins);
-  return ({ origin, req }, callback) => {
-    if (!origin) {
+  return ({ req }, callback) => {
+    // `ws` reports only one of these as `info.origin` depending on the
+    // client's Sec-WebSocket-Version, so read both headers directly: an
+    // upgrade presenting either one is a browser-shaped caller.
+    const presented = [
+      req.headers.origin,
+      req.headers['sec-websocket-origin'],
+    ].flatMap((value) => (value === undefined ? [] : [value].flat()));
+    if (presented.length === 0) {
       callback(true);
       return;
     }
@@ -78,7 +91,8 @@ export function createCredentialFreeOriginVerifier(options: {
       callback(true);
       return;
     }
-    if (allowed.has(origin)) {
+    // Exact, case-sensitive match, as the HTTP API's origin gate does.
+    if (presented.every((origin) => allowed.has(origin))) {
       callback(true);
       return;
     }

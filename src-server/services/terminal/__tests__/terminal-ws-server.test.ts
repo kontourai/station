@@ -1,4 +1,5 @@
 import { once } from 'node:events';
+import { request } from 'node:http';
 import { terminalPtyUnavailableReason } from '@kontourai/station-shared/terminal-capability';
 import { describe, expect, it, vi } from 'vitest';
 import { WebSocket } from 'ws';
@@ -655,6 +656,40 @@ describe('terminal websocket remote authentication', () => {
   });
 });
 
+/**
+ * Sends a hand-built upgrade so the test controls headers `ws`'s client
+ * cannot: `Sec-WebSocket-Version: 8` and its `Sec-WebSocket-Origin`. Resolves
+ * with the HTTP status the listener answers (101 when it upgrades).
+ */
+async function rawUpgradeStatus(
+  port: number,
+  headers: Record<string, string>,
+): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const req = request({
+      host: '127.0.0.1',
+      port,
+      path: '/',
+      headers: {
+        Connection: 'Upgrade',
+        Upgrade: 'websocket',
+        'Sec-WebSocket-Key': 'dGhlIHNhbXBsZSBub25jZQ==',
+        ...headers,
+      },
+    });
+    req.once('upgrade', (response, socket) => {
+      socket.destroy();
+      resolve(response.statusCode ?? 0);
+    });
+    req.once('response', (response) => {
+      response.resume();
+      resolve(response.statusCode ?? 0);
+    });
+    req.once('error', reject);
+    req.end();
+  });
+}
+
 describe('terminal websocket browser origin on the credential-free loopback path', () => {
   const SERVER_PORT = 47_100;
   const UI_ORIGIN = 'http://127.0.0.1:47200';
@@ -807,6 +842,74 @@ describe('terminal websocket browser origin on the credential-free loopback path
     if (!closed) await once(ws, 'close');
     await closeServer(terminal, wss);
     expect(closed).toBe(true);
+    expect(service.open).not.toHaveBeenCalled();
+  });
+  it('refuses an origin that differs from a Station origin only in case', async () => {
+    const { service, terminal } = loopbackHarness();
+    const { port, wss } = await startWithOrigins(terminal);
+    const outcome = await refusedUpgradeOutcome(
+      port,
+      `HTTP://127.0.0.1:${SERVER_PORT}`,
+    );
+    await closeServer(terminal, wss);
+    expect(outcome).toBe('Unexpected server response: 403');
+    expect(service.open).not.toHaveBeenCalled();
+  });
+
+  it('reads Sec-WebSocket-Origin from a protocol-version-8 upgrade', async () => {
+    const { service, audit, terminal } = loopbackHarness();
+    const { port, wss, connection } = await startWithOrigins(terminal);
+    const foreign = await rawUpgradeStatus(port, {
+      'Sec-WebSocket-Version': '8',
+      'Sec-WebSocket-Origin': 'https://evil.example',
+    });
+    const station = await rawUpgradeStatus(port, {
+      'Sec-WebSocket-Version': '8',
+      'Sec-WebSocket-Origin': UI_ORIGIN,
+    });
+    // Version 8 makes `ws` ignore `Origin`; a foreign one must still refuse.
+    const foreignOriginHeader = await rawUpgradeStatus(port, {
+      'Sec-WebSocket-Version': '8',
+      'Sec-WebSocket-Origin': UI_ORIGIN,
+      Origin: 'https://evil.example',
+    });
+    // And version 13 makes it ignore `Sec-WebSocket-Origin`.
+    const foreignLegacyHeader = await rawUpgradeStatus(port, {
+      'Sec-WebSocket-Version': '13',
+      Origin: UI_ORIGIN,
+      'Sec-WebSocket-Origin': 'https://evil.example',
+    });
+    await closeServer(terminal, wss);
+    expect({
+      foreign,
+      station,
+      foreignOriginHeader,
+      foreignLegacyHeader,
+    }).toEqual({
+      foreign: 403,
+      station: 101,
+      foreignOriginHeader: 403,
+      foreignLegacyHeader: 403,
+    });
+    expect(connection).toHaveBeenCalledTimes(1);
+    expect(service.open).not.toHaveBeenCalled();
+    expect(audit).toHaveBeenCalledTimes(3);
+  });
+
+  it('refuses a foreign origin on a listener that runs without authentication', async () => {
+    // With no credential configured every peer is admitted without one, so
+    // the origin check covers every peer, not only loopback.
+    const service = {
+      subscribe: vi.fn(() => vi.fn()),
+      open: vi.fn(),
+      close: vi.fn(),
+    };
+    const terminal = new TerminalWebSocketServer(service as any);
+    const { port, wss, connection } = await startWithOrigins(terminal);
+    const outcome = await refusedUpgradeOutcome(port, 'https://evil.example');
+    await closeServer(terminal, wss);
+    expect(outcome).toBe('Unexpected server response: 403');
+    expect(connection).not.toHaveBeenCalled();
     expect(service.open).not.toHaveBeenCalled();
   });
 });
