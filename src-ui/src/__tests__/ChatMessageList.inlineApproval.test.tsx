@@ -52,7 +52,11 @@ vi.mock('../components/icons/UserIcon', () => ({
 }));
 
 const { windowEvents } = vi.hoisted(() => ({
-  windowEvents: { current: [] as Array<{ sequence: number; event: unknown }> },
+  windowEvents: {
+    current: [] as Array<{ sequence: number; event: unknown }>,
+    // The real window starts EMPTY and unsettled, then loads (#2344).
+    settled: true,
+  },
 }));
 // The bounded REST window is transport; the projection that turns its events
 // into the card is the real one.
@@ -65,8 +69,8 @@ vi.mock('../hooks/orchestration/useSessionEventWindow', () => ({
     loadOlder: () => undefined,
     reload: () => undefined,
     upgradeRequired: false,
-    loading: false,
-    settled: true,
+    loading: !windowEvents.settled,
+    settled: windowEvents.settled,
     error: undefined,
   }),
 }));
@@ -156,6 +160,7 @@ function TranscriptHarness({ session }: { session: ChatSession }) {
     <ChatMessageList
       activeSession={{ ...session, messages: transcript.messages }}
       approvalEvents={transcript.enabled ? transcript.events : undefined}
+      approvalEventsSettled={transcript.settled}
       fontSize={13}
       showReasoning={false}
       showToolDetails={false}
@@ -194,14 +199,16 @@ function stubFetch(
 }
 
 function renderCard(session = chatSession()) {
-  const tree = () => (
+  const tree = (current: ChatSession) => (
     <ActiveChatsProvider>
-      <TranscriptHarness session={session} />
+      <TranscriptHarness session={current} />
     </ActiveChatsProvider>
   );
-  const rendered = render(tree());
+  const rendered = render(tree(session));
   // Re-renders the SAME mount (the window's events are read at render).
-  return { rerender: () => rendered.rerender(tree()) };
+  return {
+    rerender: (next: ChatSession = session) => rendered.rerender(tree(next)),
+  };
 }
 
 describe('#2316 inline approval card', () => {
@@ -215,6 +222,7 @@ describe('#2316 inline approval card', () => {
 
   afterEach(() => {
     cleanup();
+    windowEvents.settled = true;
     vi.unstubAllGlobals();
     _setApiBase('');
   });
@@ -752,16 +760,88 @@ describe('#2316 inline approval card', () => {
       );
     });
 
-    test('opening a chat whose requests are already waiting announces nothing', async () => {
+    /** The polite region's current text. */
+    const announced = () =>
+      screen.getByRole('status', { name: 'Approval announcements' })
+        .textContent;
+
+    test('opening a chat whose request was already waiting announces nothing, though history loads after mount', async () => {
+      // As the real window does: unsettled at first render, with no request
+      // yet. (One turn is shown so the list renders at all; the dock mounts
+      // it only once there is a message.)
+      sequence = 0;
+      const [firstTurn, ...rest] = subagentBashAwaitingApproval();
+      windowEvents.current = [firstTurn!];
+      windowEvents.settled = false;
+      stubFetch(() => Response.json({ success: true, data: {} }));
+      const card = renderCard();
+      await screen.findByText(/Review the plugin with a subagent/);
+      expect(announced()).toBe('');
+
+      // …then history arrives, carrying a request that was waiting all
+      // along, in the same render that settles the window.
+      windowEvents.current = [firstTurn!, ...rest];
+      windowEvents.settled = true;
+      card.rerender();
+      await screen.findByRole('region', { name: 'Approvals waiting on you' });
+      expect(announced()).toBe('');
+
+      // A request that arrives AFTER the window settled is news.
+      windowEvents.current = [
+        ...windowEvents.current,
+        runtimeEvent({
+          method: 'request.opened',
+          requestId: 'req-late',
+          requestType: 'approval',
+          title: 'Allow Write',
+          payload: {
+            toolName: 'Write',
+            toolCallId: 'toolu-late',
+            agentId: 'agent-1',
+          },
+        }),
+      ];
+      card.rerender();
+      await waitFor(() => expect(announced()).toBe('Approval needed: Write'));
+    });
+
+    test('the replay-to-live flip announces nothing already waiting, and a later request is announced', async () => {
       sequence = 0;
       windowEvents.current = subagentBashAwaitingApproval();
       stubFetch(() => Response.json({ success: true, data: {} }));
-      renderCard();
-      await screen.findByRole('region', { name: 'Approvals waiting on you' });
+      const replaying = chatSession({
+        replay: {
+          mode: 'timeline',
+          sourceThreadId: 'claude-child-b',
+          tapeEventCount: 0,
+        },
+      });
+      const card = renderCard(replaying);
+      await screen.findByText(/Review the plugin with a subagent/);
       expect(
-        screen.getByRole('status', { name: 'Approval announcements' })
-          .textContent,
-      ).toBe('');
+        screen.queryByRole('region', { name: 'Approvals waiting on you' }),
+      ).toBeNull();
+
+      card.rerender(chatSession());
+      await screen.findByRole('region', { name: 'Approvals waiting on you' });
+      expect(announced()).toBe('');
+
+      windowEvents.current = [
+        ...windowEvents.current,
+        runtimeEvent({
+          method: 'request.opened',
+          requestId: 'req-after-flip',
+          requestType: 'approval',
+          title: 'Allow Edit',
+          payload: {
+            toolName: 'Edit',
+            toolCallId: 'toolu-after-flip',
+            agentId: 'agent-1',
+          },
+        }),
+      ];
+      card.rerender(chatSession());
+      await waitFor(() => expect(announced()).toBe('Approval needed: Edit'));
     });
 
     test('lists only requests with no answerable card, and never takes the last row’s buttons', async () => {

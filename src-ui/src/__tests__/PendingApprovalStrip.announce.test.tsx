@@ -122,4 +122,33 @@ describe('PendingApprovalStrip announcements (#2344)', () => {
     );
     expect(liveRegion().textContent).toBe('Approval needed: Edit');
   });
+
+  test('requests the event window loads before it settles are not announced', () => {
+    const settle = (requests: PendingApprovalRequest[], settled: boolean) => (
+      <PendingApprovalStrip
+        requests={requests}
+        settled={settled}
+        onApprove={onApprove}
+      />
+    );
+    const { rerender } = render(settle([], false));
+    rerender(settle([request('req-1', 'Bash')], false));
+    expect(liveRegion().textContent).toBe('');
+    // The render that settles the window still carries history.
+    rerender(
+      settle([request('req-1', 'Bash'), request('req-2', 'Write')], true),
+    );
+    expect(liveRegion().textContent).toBe('');
+    rerender(
+      settle(
+        [
+          request('req-1', 'Bash'),
+          request('req-2', 'Write'),
+          request('req-3', 'Edit'),
+        ],
+        true,
+      ),
+    );
+    expect(liveRegion().textContent).toBe('Approval needed: Edit');
+  });
 });

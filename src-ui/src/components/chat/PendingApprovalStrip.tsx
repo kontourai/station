@@ -8,22 +8,31 @@ const requestKey = (request: PendingApprovalRequest) =>
 
 /**
  * #2344: what a screen reader hears when a request joins the strip. Each
- * request is announced once, when it ARRIVES while the strip is mounted: a
- * re-render with the same requests changes nothing, and a request that has
- * been announced is never announced again while it waits. Requests already
- * waiting when the strip mounts (opening a chat, loading history, a remount)
- * are not announced: they are not news, and announcing them on every open
- * would bury the one that is. The text sits in a new keyed node per
- * announcement, so two requests for the same tool in a row are both heard
- * (an unchanged text node would not be).
+ * request is announced once, when it ARRIVES: a re-render with the same
+ * requests changes nothing, and a request that has been announced is never
+ * announced again while it waits. Requests already waiting when the chat
+ * opens are not news, and announcing them on every open would bury the one
+ * that is. "Already waiting" means present at mount (a remount, the replay
+ * to live flip) OR present by the time the event window first SETTLES: the
+ * window starts empty and loads history asynchronously, so a request that
+ * was waiting all along first appears after mount.
+ *
+ * The text sits in a new keyed node per announcement, so two requests for
+ * the same tool in a row are both heard (an unchanged text node would not
+ * be).
  */
 function useNewApprovalAnnouncement(
   requests: readonly PendingApprovalRequest[],
+  settled: boolean,
 ) {
   // Seeded from the FIRST render's requests, so a mount announces nothing.
   const announced = useRef<Set<string> | null>(null);
   if (announced.current === null)
     announced.current = new Set(requests.map(requestKey));
+  // Whether the window had ALREADY settled before this render. History and
+  // the settle land together, so the render that flips `settled` still
+  // carries history, not news.
+  const settledBefore = useRef(settled);
   const [announcement, setAnnouncement] = useState({ id: 0, text: '' });
   const keys = requests.map(requestKey).join('\u0001');
   // biome-ignore lint/correctness/useExhaustiveDependencies: `keys` is the identity of `requests`; a new array with the same requests must not re-run this.
@@ -33,7 +42,11 @@ function useNewApprovalAnnouncement(
     );
     // Forget the ones that left, so the set stays the size of the strip.
     announced.current = new Set(requests.map(requestKey));
-    if (fresh.length === 0) return;
+    const wasSettled = settledBefore.current;
+    settledBefore.current = settled;
+    // Still loading history, or the render that finished loading it:
+    // whatever it brings was already waiting.
+    if (!settled || !wasSettled || fresh.length === 0) return;
     const names = fresh.map(
       (request) =>
         toolRequestDisplayName(request.toolName || request.name) || 'a tool',
@@ -45,7 +58,7 @@ function useNewApprovalAnnouncement(
           ? `Approval needed: ${names[0]}`
           : `${fresh.length} approvals needed: ${names.join(', ')}`,
     }));
-  }, [keys]);
+  }, [keys, settled]);
   return announcement;
 }
 
@@ -65,15 +78,21 @@ function useNewApprovalAnnouncement(
  */
 export function PendingApprovalStrip({
   requests,
+  settled = true,
   onApprove,
 }: {
   requests: readonly PendingApprovalRequest[];
+  /**
+   * Whether the event window's first read has finished. Until it has, every
+   * request is history arriving, not a new one (#2344).
+   */
+  settled?: boolean;
   onApprove: (
     request: PendingApprovalRequest,
     action: 'once' | 'trust' | 'deny',
   ) => Promise<ToolApprovalOutcome>;
 }) {
-  const announcement = useNewApprovalAnnouncement(requests);
+  const announcement = useNewApprovalAnnouncement(requests, settled);
   return (
     <>
       <div
