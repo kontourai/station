@@ -7,6 +7,7 @@
  * verifier's production-path probe; the sending-device case (AC2) failed on
  * 088a2b359 and passes after the review H1 fix.
  */
+import { agentId } from '@kontourai/station-contracts/agent-identity';
 import type { OrchestrationSessionSummary } from '@kontourai/station-contracts/orchestration';
 import { render, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -36,8 +37,7 @@ const SERVER_DRAFT: OrchestrationSessionSummary = {
   eventCount: 34,
   lifecycleState: 'queued',
   pendingReview: false,
-  assignedAgentSlug:
-    'grok-build' as OrchestrationSessionSummary['assignedAgentSlug'],
+  assignedAgentSlug: agentId('grok-build'),
   projectSlug: 'example-project',
   conversationId: THREAD,
   environmentId: 'env-test',
@@ -45,15 +45,14 @@ const SERVER_DRAFT: OrchestrationSessionSummary = {
   lastEventMethod: 'policy.hooks-attached',
   hasActiveTurn: false,
   draft: true,
-} as OrchestrationSessionSummary;
+};
 
 const HISTORY: OrchestrationSessionSummary = {
   ...SERVER_DRAFT,
   threadId: 'claude:1790000000000',
   conversationId: 'claude:1790000000000',
   provider: 'claude',
-  assignedAgentSlug:
-    'claude-code' as OrchestrationSessionSummary['assignedAgentSlug'],
+  assignedAgentSlug: agentId('claude-code'),
   lifecycleState: 'running',
   lastEventMethod: 'turn.completed',
   draft: false,

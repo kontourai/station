@@ -285,6 +285,11 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // proven. Two bounded single-shot children; the real 82s aggregate never
   // starts.
   'scripts/__tests__/prepush-typecheck.test.ts',
+  // Host typecheck slots: spawns fleets of six short-lived fake compilers
+  // against a PRIVATE slot directory (never the host's), SIGKILLs one holder
+  // to prove reclaim, and runs one real `tsc` on a two-file temp project
+  // three times to prove a warm incremental run still reports errors.
+  'scripts/__tests__/typecheck-host-slots.test.ts',
   // Asks git (`check-ignore`, `ls-files`) whether the generated Basis MCP app
   // bundles are ignored and untracked, because .gitignore's text cannot say
   // whether a rule still matches or a file was force-added. Two single-shot

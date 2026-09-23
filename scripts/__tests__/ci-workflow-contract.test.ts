@@ -731,6 +731,8 @@ describe('CI verification workflow contracts', () => {
         'no pull-request signal today; unfiltered on every main push (#1331 covers its host contention)',
       '.github/workflows/build-android.yml':
         'desktop-rust.yml type-checks the Android target on pull requests; full APK assembly stays post-merge',
+      '.github/workflows/ios-rust-cache-warm.yml':
+        'writes the iOS Rust cache from trusted main only; build-ios.yml is the pull-request and merge-queue signal and only restores it',
     };
 
     const pushOnly = readWorkflowDocuments()
@@ -2100,6 +2102,7 @@ describe('every Tauri invocation is rooted at the app directory', () => {
   const DISCOVERY_EXPOSED = [
     'build-android.yml',
     'build-ios.yml',
+    'ios-rust-cache-warm.yml',
     'nightly-native-stage.yml',
     'release.yml',
   ];
@@ -2256,6 +2259,134 @@ describe('iOS verification proves packaged runtime readiness', () => {
     const evidence = ios.indexOf('name: Upload iOS runtime evidence');
     expect(evidence).toBeGreaterThan(-1);
     expect(ios.slice(evidence - 120, evidence + 500)).toContain('if: always()');
+  });
+});
+
+describe('the iOS Rust cache is written by main and only restored by PRs', () => {
+  type Step = {
+    id?: string;
+    if?: string;
+    uses?: string;
+    run?: string;
+    with?: Record<string, unknown>;
+    'working-directory'?: string;
+  };
+  type Doc = {
+    on: Record<string, unknown>;
+    permissions: Record<string, string>;
+    jobs: Record<string, { 'runs-on': string; steps: Step[] }>;
+  };
+  const ios = load(workflow('build-ios.yml')) as Doc;
+  const warmer = load(workflow('ios-rust-cache-warm.yml')) as Doc;
+  const iosSteps = ios.jobs['build-ios-verification'].steps;
+  const warmSteps = warmer.jobs.warm.steps;
+  const CACHE_PREFIX = 'actions/cache';
+  const byUses = (steps: Step[], prefix: string) =>
+    steps.filter((step) => String(step.uses ?? '').startsWith(prefix));
+  const runOf = (steps: Step[], needle: string) =>
+    steps.filter((step) => String(step.run ?? '').includes(needle));
+
+  it('never saves from the pull-request / merge-queue workflow', () => {
+    const cacheSteps = byUses(iosSteps, CACHE_PREFIX);
+    expect(cacheSteps.map((step) => step.uses)).toEqual([
+      'actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9',
+    ]);
+    // Parsed, not grepped: the workflow's own comments name what it refuses.
+    for (const [jobId, job] of Object.entries(ios.jobs)) {
+      expect(Object.hasOwn(job, 'cache-mode'), jobId).toBe(false);
+      const writers = job.steps.filter((step) => {
+        const uses = String(step.uses ?? '');
+        return (
+          (uses.startsWith(CACHE_PREFIX) &&
+            !uses.startsWith('actions/cache/restore@')) ||
+          (uses.startsWith('actions/setup-node@') &&
+            step.with?.cache !== undefined)
+        );
+      });
+      expect(writers, jobId).toEqual([]);
+    }
+    expect(Object.hasOwn(ios, 'cache-mode')).toBe(false);
+  });
+
+  it('saves only from trusted main events, after a lookup that skips warm keys', () => {
+    expect(Object.keys(warmer.on).sort()).toEqual([
+      'push',
+      'schedule',
+      'workflow_dispatch',
+    ]);
+    expect((warmer.on.push as { branches: string[] }).branches).toEqual([
+      'main',
+    ]);
+    expect(warmer.permissions).toEqual({ contents: 'read' });
+    expect(warmer.jobs.warm['runs-on']).toBe(
+      ios.jobs['build-ios-verification']['runs-on'],
+    );
+    const saves = byUses(warmSteps, 'actions/cache/save@');
+    expect(saves).toHaveLength(1);
+    expect(saves[0].if).toBe(
+      "github.ref == 'refs/heads/main' && steps.lookup.outputs.cache-hit != 'true'",
+    );
+    const lookup = warmSteps.find((step) => step.id === 'lookup');
+    expect(lookup?.with?.['lookup-only']).toBe(true);
+  });
+
+  it('keys and paths the restore exactly as the warmer saves them', () => {
+    const [restore] = byUses(iosSteps, 'actions/cache/restore@');
+    const lookup = warmSteps.find((step) => step.id === 'lookup');
+    const [save] = byUses(warmSteps, 'actions/cache/save@');
+    expect(restore.with?.key).toBe(lookup?.with?.key);
+    expect(save.with?.key).toBe(
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+      '${{ steps.lookup.outputs.cache-primary-key }}',
+    );
+    expect(restore.with?.path).toBe(lookup?.with?.path);
+    expect(save.with?.path).toBe(restore.with?.path);
+    const key = String(restore.with?.key);
+    for (const part of [
+      'runner.os',
+      'runner.arch',
+      'steps.rust.outputs.cachekey',
+      'aarch64-apple-ios-sim',
+      "hashFiles('src-desktop/Cargo.lock')",
+    ])
+      expect(key).toContain(part);
+    expect(String(restore.with?.['restore-keys']).trim()).toBe(
+      key.slice(0, key.indexOf('${{ hashFiles')),
+    );
+  });
+
+  it('builds with the same toolchain, Xcode and commands the restore serves', () => {
+    // Cargo fingerprints include target, profile, env and paths: an entry
+    // from a different invocation restores but rebuilds everything.
+    const toolchain = (steps: Step[]) =>
+      byUses(steps, 'dtolnay/rust-toolchain@').map((step) => [
+        step.id,
+        step.uses,
+        step.with,
+      ]);
+    expect(toolchain(warmSteps)).toEqual(toolchain(iosSteps));
+    expect(toolchain(iosSteps)).toHaveLength(1);
+    for (const needle of [
+      'sudo xcode-select -s /Applications/Xcode_26.6.app/Contents/Developer',
+      'brew install xcodegen',
+      'npm run dependencies:ci && npm run build:native-client',
+      'npx tauri ios init',
+      'node scripts/write-ios-build-manifest.mjs',
+      'npx tauri ios build',
+    ]) {
+      const iosRuns = runOf(iosSteps, needle);
+      const warmRuns = runOf(warmSteps, needle);
+      expect(iosRuns, needle).toHaveLength(1);
+      expect(warmRuns, needle).toHaveLength(1);
+      const line = (step: Step) =>
+        String(step.run)
+          .split('\n')
+          .find((candidate) => candidate.includes(needle));
+      expect(line(warmRuns[0]), needle).toBe(line(iosRuns[0]));
+      expect(warmRuns[0]['working-directory'], needle).toBe(
+        iosRuns[0]['working-directory'],
+      );
+    }
   });
 });
 
