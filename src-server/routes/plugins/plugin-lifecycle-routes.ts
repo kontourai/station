@@ -25,6 +25,7 @@ import { isContextSafetyError } from '../../services/orchestration/context-safet
 import type { PackageMcpAdmissionJournal } from '../../services/plugins/package-mcp-admission.js';
 import { scanPluginPromptGeneration } from '../../services/plugins/plugin-command-skill-source.js';
 import {
+  copyPluginTree,
   forgetPluginContentDigest,
   PLUGIN_TREE_COPY,
   withPluginContentLock,
@@ -47,6 +48,10 @@ import {
 import type { PluginInstallationHost } from '../../services/plugins/plugin-installation-service.js';
 import { PluginInstallationPending } from '../../services/plugins/plugin-installation-service.js';
 import type { PluginLifecycleProposalService } from '../../services/plugins/plugin-lifecycle-proposals.js';
+import {
+  PluginManifestReadRefusedError,
+  readUntrustedPluginManifestSyncWithFormat,
+} from '../../services/plugins/plugin-manifest-bounded-read.js';
 import { readPluginManifestFileWithFormat } from '../../services/plugins/plugin-manifest-loader.js';
 import {
   createPluginGrantMutationScope,
@@ -673,7 +678,11 @@ export function registerPluginLifecycleRoutes(
                 );
               backupRoot = createStationTempDirSync('plugin-update');
               const backupDir = join(backupRoot, 'plugin');
-              cpSync(pluginDir, backupDir, PLUGIN_TREE_COPY);
+              // The installed tree is plugin-writable (its build runs
+              // install scripts); `cpSync` aborts on an unreadable directory.
+              await copyPluginTree(pluginDir, backupDir, {
+                skipSpecialFiles: true,
+              });
               const {
                 manifest: originalManifest,
                 format: originalManifestFormat,
@@ -734,9 +743,22 @@ export function registerPluginLifecycleRoutes(
                     );
                   }
 
+                  // Pulled or re-fetched content is unvetted: the bounded
+                  // reader refuses a symlinked, special or oversized
+                  // plugin.json (#2342 review).
                   const manifestPath = join(pluginDir, 'plugin.json');
-                  const { manifest, format: manifestFormat } =
-                    await readPluginManifestFileWithFormat(manifestPath);
+                  let pulled: ReturnType<
+                    typeof readUntrustedPluginManifestSyncWithFormat
+                  >;
+                  try {
+                    pulled =
+                      readUntrustedPluginManifestSyncWithFormat(manifestPath);
+                  } catch (error) {
+                    if (error instanceof PluginManifestReadRefusedError)
+                      throw new PluginUpdateRejectedError(error.message);
+                    throw error;
+                  }
+                  const { manifest, format: manifestFormat } = pulled;
                   updatedManifest = manifest;
                   if (manifestFormat !== originalManifestFormat)
                     throw new PluginUpdateRejectedError(

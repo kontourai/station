@@ -9,6 +9,7 @@ import type { ReactNode } from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { _setApiBase } from '../api-core';
 import { setClientCredentialResolver } from '../client/http';
+import { useAgentsQuery } from '../query-domains/agentAdmin';
 import {
   useAvailableProjectLayoutsQuery,
   useProjectLayoutsQuery,
@@ -458,6 +459,143 @@ describe('pane catalog revalidates on mount after an unobserved invalidation (#2
     });
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(result.current.data).toEqual([]);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  test('a failed mount refetch keeps the cached catalog and reports isRefetchError (#2345)', async () => {
+    _setApiBase('https://station.example.test');
+    const fetchMock = vi.fn().mockRejectedValue(new TypeError('offline'));
+    vi.stubGlobal('fetch', fetchMock);
+    const client = stationDefaultsClient();
+    client.setQueryData(
+      ['projects', 'alpha', 'panes'],
+      paneCatalog(['builtin-files']),
+    );
+    await client.invalidateQueries({ queryKey: ['projects'] });
+
+    const { result } = renderHook(
+      () => useProjectWorkspacePanesQuery('alpha'),
+      { wrapper: wrapperFor(client) },
+    );
+
+    // What `WorkspacePaneRouteView` and the pane picker branch on: the old
+    // answer is still `data`, and the failure is a REFETCH error, not a load
+    // error.
+    await waitFor(() => expect(result.current.isRefetchError).toBe(true));
+    expect(result.current.isLoadingError).toBe(false);
+    expect(descriptorIds(result.current.data)).toEqual(['builtin-files']);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  // #2345: the same policy on the two other reads whose contents change
+  // outside this client. Each seeds the answer the tab already held, lands
+  // the invalidation with no observer, and then mounts.
+  test('the available-layouts catalog invalidated while unmounted refetches on the next mount (#2345)', async () => {
+    _setApiBase('https://station.example.test');
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        catalogResponse([layout('builtin:chat'), layout('builtin:plugin')]),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+    const client = stationDefaultsClient();
+    client.setQueryData(
+      ['projects', 'layouts', 'available'],
+      [layout('builtin:chat')],
+    );
+    await client.invalidateQueries({ queryKey: ['projects'] });
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    const { result } = renderHook(() => useAvailableProjectLayoutsQuery(), {
+      wrapper: wrapperFor(client),
+    });
+
+    await waitFor(() =>
+      expect(result.current.data?.map((item) => item.id)).toEqual([
+        'builtin:chat',
+        'builtin:plugin',
+      ]),
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(String(fetchMock.mock.calls[0]?.[0])).toBe(
+      'https://station.example.test/api/projects/layouts/available',
+    );
+  });
+
+  test('an untouched available-layouts catalog does not refetch on remount (#2345)', async () => {
+    _setApiBase('https://station.example.test');
+    const fetchMock = vi.fn().mockResolvedValue(catalogResponse([]));
+    vi.stubGlobal('fetch', fetchMock);
+    const client = stationDefaultsClient();
+    client.setQueryData(
+      ['projects', 'layouts', 'available'],
+      [layout('builtin:chat')],
+      { updatedAt: Date.now() - 60 * 60 * 1000 },
+    );
+    const view = renderHook(() => useAvailableProjectLayoutsQuery(), {
+      wrapper: wrapperFor(client),
+    });
+    view.unmount();
+    renderHook(() => useAvailableProjectLayoutsQuery(), {
+      wrapper: wrapperFor(client),
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  test('the agents catalog invalidated while unmounted refetches on the next mount (#2345)', async () => {
+    _setApiBase('https://station.example.test');
+    const fetchMock = vi.fn().mockResolvedValue(
+      catalogResponse([
+        { slug: 'default', name: 'Default' },
+        { slug: 'plugin-agent', name: 'Plugin agent' },
+      ]),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const client = stationDefaultsClient();
+    client.setQueryData(['agents'], {
+      agents: [{ slug: 'default', name: 'Default' }],
+    });
+    await client.invalidateQueries({ queryKey: ['agents'] });
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    const { result } = renderHook(() => useAgentsQuery(), {
+      wrapper: wrapperFor(client),
+    });
+
+    await waitFor(() =>
+      expect(result.current.data?.map((agent) => agent.slug)).toEqual([
+        'default',
+        'plugin-agent',
+      ]),
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(String(fetchMock.mock.calls[0]?.[0])).toBe(
+      'https://station.example.test/api/agents',
+    );
+  });
+
+  test('an untouched agents catalog does not refetch on remount (#2345)', async () => {
+    _setApiBase('https://station.example.test');
+    const fetchMock = vi.fn().mockResolvedValue(catalogResponse([]));
+    vi.stubGlobal('fetch', fetchMock);
+    const client = stationDefaultsClient();
+    client.setQueryData(
+      ['agents'],
+      { agents: [{ slug: 'default', name: 'Default' }] },
+      { updatedAt: Date.now() - 60 * 60 * 1000 },
+    );
+    const view = renderHook(() => useAgentsQuery(), {
+      wrapper: wrapperFor(client),
+    });
+    view.unmount();
+    const again = renderHook(() => useAgentsQuery(), {
+      wrapper: wrapperFor(client),
+    });
+    expect(again.result.current.data?.map((agent) => agent.slug)).toEqual([
+      'default',
+    ]);
+    await new Promise((resolve) => setTimeout(resolve, 0));
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });
