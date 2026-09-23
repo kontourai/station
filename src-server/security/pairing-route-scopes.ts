@@ -2771,6 +2771,18 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // account-bound device allowlist is unchanged and does not include it.
     // Its read twin answers only whether scaffolding is possible here
     // (eligible, or a reason code): no path, no file names. A family read.
+    // #2374 (epic #2323 S6). Publishes the plugin in the Project's own
+    // folder to a git remote: exports the folder's files as one commit and
+    // pushes it with this computer's git credentials. Family operate tier as
+    // a recorded decision: it is the same act as `POST /api/coding/git/push`,
+    // already at this tier, narrowed to one folder with the remote address
+    // and the published files checked. The real gate is inside the handler,
+    // which refuses every caller but the Station operator (`operatorOnly`),
+    // so a paired device at this tier that resolves to a collaborator is
+    // still refused. Its read twin (family read) reports the plugin and the
+    // file list for that act, and is operator-only for the same reason.
+    { method: 'GET', path: '/api/projects/:slug/plugin-publish' },
+    { method: 'POST', path: '/api/projects/:slug/plugin-publish' },
     { method: 'GET', path: '/api/projects/:slug/plugin-scaffold' },
     { method: 'POST', path: '/api/projects/:slug/plugin-scaffold' },
     { method: 'GET', path: '/api/projects/:slug/readiness' },
