@@ -6,6 +6,7 @@ import {
   activityWithNativeCredentialBootstrap,
   androidNamespace,
   applyAndroidNativeBootstrap,
+  manifestWithCameraPermission,
 } from '../apply-android-native-bootstrap.mjs';
 
 function fixture(namespace: string, activity: string) {
@@ -23,6 +24,10 @@ function fixture(namespace: string, activity: string) {
   writeFileSync(
     join(app, 'build.gradle.kts'),
     `android { namespace = "${namespace}" }`,
+  );
+  writeFileSync(
+    join(app, 'src', 'main', 'AndroidManifest.xml'),
+    '<manifest xmlns:android="http://schemas.android.com/apk/res/android"><uses-permission android:name="android.permission.INTERNET" /><application /></manifest>',
   );
   writeFileSync(activityPath, activity);
   return { root, activityPath };
@@ -45,6 +50,19 @@ describe('Android native credential bootstrap', () => {
       const activity = readFileSync(activityPath, 'utf8');
       const bridge = readFileSync(result.bridgePath, 'utf8');
 
+      const manifestPath = join(
+        root,
+        'src-desktop/gen/android/app/src/main/AndroidManifest.xml',
+      );
+      const manifest = readFileSync(manifestPath, 'utf8');
+      expect(manifest).toContain(
+        '<uses-permission android:name="android.permission.CAMERA" />',
+      );
+      expect(manifest).toContain(
+        'android:name="android.hardware.camera.any" android:required="false"',
+      );
+      applyAndroidNativeBootstrap({ root });
+      expect(readFileSync(manifestPath, 'utf8')).toBe(manifest);
       expect(result.namespace).toBe(namespace);
       expect(activity).toContain('import io.crates.keyring.Keyring');
       expect(
@@ -123,4 +141,21 @@ class MainActivity : TauriActivity() {
       ).toBeLessThan(command.indexOf('tauri android build'));
     },
   );
+});
+
+describe('camera manifest restoration', () => {
+  it('preserves the checked-in manifest without duplicating permission', () => {
+    const source = readFileSync(
+      'src-desktop/gen/android/app/src/main/AndroidManifest.xml',
+      'utf8',
+    );
+    expect(manifestWithCameraPermission(source)).toBe(source);
+  });
+  it('refuses a restricted camera permission rather than reporting a repair', () => {
+    expect(() =>
+      manifestWithCameraPermission(
+        '<manifest><uses-permission android:name="android.permission.CAMERA" android:maxSdkVersion="28" /><application /></manifest>',
+      ),
+    ).toThrow(/restricted/);
+  });
 });
