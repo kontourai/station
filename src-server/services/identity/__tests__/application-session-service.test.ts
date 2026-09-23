@@ -522,6 +522,34 @@ describe('Device-bound continuation persistence and negative admission', () => {
     expect(
       h.sessions().discardUncommittedAuthority(authorityKey, 'O'.repeat(43)),
     ).toBe(0);
+    let providerVerificationEntered!: () => void;
+    let releaseProviderVerification!: () => void;
+    const entered = new Promise<void>((resolve) => {
+      providerVerificationEntered = resolve;
+    });
+    const providerGate = new Promise<void>((resolve) => {
+      releaseProviderVerification = resolve;
+    });
+    const originalVerify = h
+      .accounts()
+      .service.verifySessionReference.bind(h.accounts().service);
+    const verifySpy = vi
+      .spyOn(h.accounts().service, 'verifySessionReference')
+      .mockImplementation(async (...args) => {
+        providerVerificationEntered();
+        await providerGate;
+        return originalVerify(...args);
+      });
+    try {
+      const checking = h.sessions().verifyActiveRelayContinuation(issueInput);
+      await entered;
+      h.pairing.revokeDevice(device.device.id, 'operator-credential');
+      releaseProviderVerification();
+      await expect(checking).resolves.toBe(false);
+    } finally {
+      releaseProviderVerification();
+      verifySpy.mockRestore();
+    }
     expect(
       h.sessions().discardUncommittedAuthority(authorityKey, enrollmentId),
     ).toBe(1);

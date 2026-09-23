@@ -992,32 +992,12 @@ export class RelayEnrollmentService {
         entry.receiptDigest !== receiptDigest
       )
         throw new RelayEnrollmentRefusal('invalid');
-      const activeDevice =
-        this.options.pairing.resolveActiveRelayEnrollmentDevice(
-          entry.deviceId,
-          entry.enrollmentId,
-        );
-      if (
-        activeDevice?.scope.length !== 1 ||
-        activeDevice.scope[0] !== PAIRING_SCOPE_ORCHESTRATION_READ
-      )
-        throw new RelayEnrollmentRefusal('unavailable');
-      if (
-        !(await this.options.applicationSessions?.verifyActiveRelayContinuation(
-          {
-            authorityKey: body.authorityKey,
-            enrollmentId: entry.enrollmentId,
-            deviceId: entry.deviceId,
-            clientOrigin: entry.clientOrigin,
-            keyThumbprint: entry.keyThumbprint,
-            signal: request.signal,
-          },
-        ))
-      )
-        throw new RelayEnrollmentRefusal('unavailable');
-      this.requireFactsCurrent(request, facts);
-      request.signal.throwIfAborted();
-      return this.activationReceipt(entry);
+      return this.currentCommittedActivationReceipt(
+        entry,
+        body.authorityKey,
+        request,
+        facts,
+      );
     }
     if (entry.state === 'activating')
       throw new RelayEnrollmentRefusal('unavailable');
@@ -1041,10 +1021,19 @@ export class RelayEnrollmentService {
         latest &&
         'enrollmentId' in latest &&
         latest.state === 'committed' &&
+        latest.deviceId === body.deviceId &&
+        latest.activationNonce === body.activationNonce &&
+        latest.bundleDigest === body.bundleDigest &&
         latest.ackJti === proof.jti &&
         latest.receiptDigest === receiptDigest
       )
-        return this.activationReceipt(latest);
+        // Committed journal receipts scrub authorityKey; the signed body key is revalidated against the active continuation.
+        return this.currentCommittedActivationReceipt(
+          latest,
+          body.authorityKey,
+          request,
+          facts,
+        );
       throw new RelayEnrollmentRefusal('unavailable');
     }
 
@@ -1360,6 +1349,53 @@ export class RelayEnrollmentService {
       receiptDigest: record.receiptDigest,
       receiptExpiresAt: new Date(record.receiptExpiresAt).toISOString(),
     };
+  }
+
+  private async currentCommittedActivationReceipt(
+    record: RelayEnrollmentRecord,
+    authorityKey: string,
+    request: Request,
+    facts: NonNullable<
+      ReturnType<typeof readVerifiedVirtualApplicationRequest>
+    >,
+  ): Promise<RelayEnrollmentActivatedResponse> {
+    if (!record.deviceId || !/^[0-9a-f-]{36}$/i.test(authorityKey))
+      throw new RelayEnrollmentRefusal('unavailable');
+    const activeDevice =
+      this.options.pairing.resolveActiveRelayEnrollmentDevice(
+        record.deviceId,
+        record.enrollmentId,
+      );
+    if (
+      activeDevice?.scope.length !== 1 ||
+      activeDevice.scope[0] !== PAIRING_SCOPE_ORCHESTRATION_READ
+    )
+      throw new RelayEnrollmentRefusal('unavailable');
+    const current =
+      await this.options.applicationSessions?.verifyActiveRelayContinuation({
+        authorityKey,
+        enrollmentId: record.enrollmentId,
+        deviceId: record.deviceId,
+        clientOrigin: record.clientOrigin,
+        keyThumbprint: record.keyThumbprint,
+        signal: request.signal,
+      });
+    if (!current) throw new RelayEnrollmentRefusal('unavailable');
+    this.requireFactsCurrent(request, facts);
+    request.signal.throwIfAborted();
+    const latest = this.options.journal.get(record.enrollmentId);
+    if (
+      !latest ||
+      !('enrollmentId' in latest) ||
+      latest.state !== 'committed' ||
+      latest.deviceId !== record.deviceId ||
+      latest.activationNonce !== record.activationNonce ||
+      latest.bundleDigest !== record.bundleDigest ||
+      latest.ackJti !== record.ackJti ||
+      latest.receiptDigest !== record.receiptDigest
+    )
+      throw new RelayEnrollmentRefusal('unavailable');
+    return this.activationReceipt(latest);
   }
 
   private async verifyFreshLoginProof(

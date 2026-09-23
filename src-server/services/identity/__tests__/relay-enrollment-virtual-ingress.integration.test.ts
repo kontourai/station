@@ -1,7 +1,11 @@
 import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { APPLICATION_SESSION_VERSION } from '@kontourai/station-contracts/application-session';
+import {
+  APPLICATION_SESSION_BASE_PATH,
+  APPLICATION_SESSION_VERSION,
+  type ApplicationSessionContinuation,
+} from '@kontourai/station-contracts/application-session';
 import { PAIRING_SCOPE_ORCHESTRATION_READ } from '@kontourai/station-contracts/environment-security';
 import { humanPrincipal } from '@kontourai/station-contracts/principal';
 import {
@@ -30,6 +34,7 @@ import {
   EXTERNAL_SURFACE_CAPABILITY_TABLE,
   findUnclassifiedRuntimeHttpRoutes,
 } from '../../../security/pairing-route-scopes.js';
+import { openPrivateSqlite } from '../../../utils/private-sqlite.js';
 import { VirtualApplicationIngress } from '../../connections/virtual-application.js';
 import { DevicePairingService } from '../../ssh/device-pairing-service.js';
 import { createApplicationSessionRuntime } from '../application-session-runtime.js';
@@ -56,6 +61,23 @@ function post(path: string, body: unknown) {
     headers: { Origin: clientOrigin, 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
+}
+
+async function within<T>(promise: Promise<T>, label: string): Promise<T> {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        timeout = setTimeout(
+          () => reject(new Error(`${label} exceeded the test bound`)),
+          10_000,
+        );
+      }),
+    ]);
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 describe('fresh relay enrollment over verified virtual ingress', () => {
@@ -363,6 +385,245 @@ describe('fresh relay enrollment over verified virtual ingress', () => {
     expect(await admitted.json()).toMatchObject({
       principal: delivery.bundle.continuation.principal,
     });
+    const renewalUrl = `${stationOrigin}${APPLICATION_SESSION_BASE_PATH}/renew`;
+    const renew = async (continuation: ApplicationSessionContinuation) => {
+      const headers = await accountClient.headers(continuation, {
+        method: 'POST',
+        url: renewalUrl,
+      });
+      return channel.fetch(
+        new Request(renewalUrl, {
+          method: 'POST',
+          headers: {
+            ...headers,
+            Authorization: `Bearer ${delivery.bundle.deviceCredential}`,
+            'Content-Type': 'application/json',
+          },
+          body: '{}',
+        }),
+      );
+    };
+    const applicationSessionDatabase = openPrivateSqlite(
+      join(home, 'authentication', 'application-sessions.sqlite'),
+      'Relay renewal rollback fixture',
+    );
+    try {
+      const previousContinuation = applicationSessionDatabase
+        .prepare(
+          "SELECT record FROM application_sessions WHERE json_extract(record, '$.authorityKey')=?",
+        )
+        .get(delivery.bundle.continuation.authorityKey)?.record;
+      expect(JSON.parse(previousContinuation as string)).toMatchObject({
+        relayEnrollmentId: challenge.enrollmentId,
+      });
+      applicationSessionDatabase.exec(`CREATE TRIGGER fail_relay_renewal_insert
+        BEFORE INSERT ON application_sessions
+        WHEN json_extract(NEW.record, '$.relayEnrollmentId') IS NOT NULL
+        BEGIN SELECT RAISE(ABORT, 'injected relay renewal insert fault'); END;`);
+      const failedRenewal = await within(
+        renew(delivery.bundle.continuation),
+        'fault-injected relay renewal',
+      );
+      expect(
+        failedRenewal.status,
+        JSON.stringify(await failedRenewal.clone().json()),
+      ).toBe(503);
+      const originalStillWorksHeaders = await accountClient.headers(
+        delivery.bundle.continuation,
+        {
+          method: 'GET',
+          url: `${stationOrigin}/api/system/relay-resource`,
+        },
+      );
+      const originalStillWorks = await channel.fetch(
+        new Request(`${stationOrigin}/api/system/relay-resource`, {
+          headers: {
+            ...originalStillWorksHeaders,
+            Authorization: `Bearer ${delivery.bundle.deviceCredential}`,
+          },
+        }),
+      );
+      expect(originalStillWorks.status).toBe(200);
+    } finally {
+      applicationSessionDatabase.exec(
+        'DROP TRIGGER IF EXISTS fail_relay_renewal_insert',
+      );
+      applicationSessionDatabase.close();
+    }
+
+    const responses = await within(
+      Promise.all([
+        renew(delivery.bundle.continuation),
+        renew(delivery.bundle.continuation),
+      ]),
+      'concurrent relay renewals',
+    );
+    const acceptedRenewals = responses.filter(
+      (response) => response.status === 200,
+    );
+    expect(acceptedRenewals).toHaveLength(1);
+    const payload = (await acceptedRenewals[0]!.json()) as {
+      data: ApplicationSessionContinuation;
+    };
+    const rotated = payload.data;
+    expect(rotated).toMatchObject({
+      authorityKey: delivery.bundle.continuation.authorityKey,
+      deviceId: delivery.bundle.deviceId,
+      principal: delivery.bundle.continuation.principal,
+      keyThumbprint: delivery.bundle.continuation.keyThumbprint,
+    });
+    expect(rotated).toBeDefined();
+    const staleHeaders = await accountClient.headers(
+      delivery.bundle.continuation,
+      { method: 'GET', url: `${stationOrigin}/api/system/relay-resource` },
+    );
+    const staleAccess = await channel.fetch(
+      new Request(`${stationOrigin}/api/system/relay-resource`, {
+        headers: {
+          ...staleHeaders,
+          Authorization: `Bearer ${delivery.bundle.deviceCredential}`,
+        },
+      }),
+    );
+    expect(staleAccess.status).toBe(401);
+    const rotatedHeaders = await accountClient.headers(rotated!, {
+      method: 'GET',
+      url: `${stationOrigin}/api/system/relay-resource`,
+    });
+    const rotatedAccess = await channel.fetch(
+      new Request(`${stationOrigin}/api/system/relay-resource`, {
+        headers: {
+          ...rotatedHeaders,
+          Authorization: `Bearer ${delivery.bundle.deviceCredential}`,
+        },
+      }),
+    );
+    expect(rotatedAccess.status).toBe(200);
+    expect(
+      await applicationSessions!.verifyActiveRelayContinuation({
+        authorityKey: delivery.bundle.continuation.authorityKey,
+        enrollmentId: challenge.enrollmentId,
+        deviceId: delivery.bundle.deviceId,
+        clientOrigin,
+        keyThumbprint: delivery.bundle.continuation.keyThumbprint,
+        signal: new AbortController().signal,
+      }),
+    ).toBe(true);
+
+    const activeContinuationSpy = vi.spyOn(
+      applicationSessions!,
+      'verifyActiveRelayContinuation',
+    );
+    const activeVerificationsBeforeReplay =
+      activeContinuationSpy.mock.results.length;
+    const committedReplay = await channel.fetch(
+      post(RELAY_ENROLLMENT_ACTIVATE_PATH, activationBody),
+    );
+    const activeReplayResults = await Promise.all(
+      activeContinuationSpy.mock.results
+        .slice(activeVerificationsBeforeReplay)
+        .map((result) => result.value),
+    );
+    expect(activeReplayResults).toEqual([true]);
+    activeContinuationSpy.mockClear();
+    expect(
+      committedReplay.status,
+      JSON.stringify(await committedReplay.clone().json()),
+    ).toBe(200);
+    expect(await committedReplay.json()).toMatchObject({
+      state: 'active',
+      deviceId: delivery.bundle.deviceId,
+    });
+
+    let releaseReplay!: () => void;
+    let replayVerificationEntered!: () => void;
+    let replayTimeout: ReturnType<typeof setTimeout> | undefined;
+    const replayGate = new Promise<void>((resolve) => {
+      releaseReplay = resolve;
+    });
+    const replayEntered = new Promise<
+      { kind: 'provider-verification' } | { kind: 'timeout' }
+    >((resolve) => {
+      replayTimeout = setTimeout(() => resolve({ kind: 'timeout' }), 10_000);
+      replayVerificationEntered = () => {
+        clearTimeout(replayTimeout);
+        resolve({ kind: 'provider-verification' });
+      };
+    });
+    const replaySessionVerification =
+      accounts.service.verifySessionReference.bind(accounts.service);
+    const replayVerificationSpy = vi
+      .spyOn(accounts.service, 'verifySessionReference')
+      .mockImplementation(async (...args) => {
+        replayVerificationEntered();
+        await replayGate;
+        return replaySessionVerification(...args);
+      });
+    const enrollmentJournal = (
+      relayEnrollment as unknown as {
+        options: {
+          journal: {
+            get(id: string): unknown;
+          };
+        };
+      }
+    ).options.journal;
+    const originalJournalGet = enrollmentJournal.get.bind(enrollmentJournal);
+    let useStaleAwaitingAck = true;
+    enrollmentJournal.get = (id: string) => {
+      const record = originalJournalGet(id);
+      if (
+        useStaleAwaitingAck &&
+        record &&
+        typeof record === 'object' &&
+        'state' in record &&
+        record.state === 'committed'
+      ) {
+        useStaleAwaitingAck = false;
+        return {
+          ...record,
+          state: 'awaiting-ack',
+          authorityKey: delivery.bundle.continuation.authorityKey,
+        };
+      }
+      return record;
+    };
+    try {
+      const replay = channel.fetch(
+        post(RELAY_ENROLLMENT_ACTIVATE_PATH, activationBody),
+      );
+      const replayProgress = await Promise.race([
+        replayEntered,
+        replay.then(async (response) => ({
+          kind: 'completed' as const,
+          status: response.status,
+          body: await response.text(),
+        })),
+      ]);
+      if (replayProgress.kind === 'timeout')
+        throw new Error('Committed ACK replay missed provider verification');
+      if (replayProgress.kind === 'completed')
+        throw new Error(
+          `Committed ACK replay completed before provider verification: ${replayProgress.status} ${replayProgress.body}`,
+        );
+      expect(useStaleAwaitingAck).toBe(false);
+      expect(replayProgress.kind).toBe('provider-verification');
+      expect(
+        applicationSessions!.discardUncommittedAuthority(
+          delivery.bundle.continuation.authorityKey,
+          challenge.enrollmentId,
+        ),
+      ).toBe(1);
+      releaseReplay();
+      clearTimeout(replayTimeout);
+      const replayResult = await within(replay, 'committed ACK replay');
+      expect(replayResult.status).not.toBe(200);
+    } finally {
+      enrollmentJournal.get = originalJournalGet;
+      releaseReplay();
+      replayVerificationSpy.mockRestore();
+      activeContinuationSpy.mockRestore();
+    }
     expect(peerCurrent).toBe(true);
     const wrongOrigin = await channel.fetch(
       new Request(`${stationOrigin}${RELAY_ENROLLMENT_ACTIVATE_PATH}`, {

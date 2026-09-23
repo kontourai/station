@@ -538,14 +538,19 @@ export class ApplicationSessionService {
         request.signal,
       ),
     );
-    this.read(hash);
-    this.device(request, current.deviceId, account.principal.id);
+    const live = this.read(hash);
+    this.device(request, live.deviceId, account.principal.id);
     if (
-      source.principal.id !== current.principalId ||
-      source.issuer !== current.issuer
+      source.principal.id !== live.principalId ||
+      source.issuer !== live.issuer
     )
       throw new ApplicationSessionRefusal('invalid');
-    return this.issue(current, source, current.authorityKey);
+    return this.issue(
+      live,
+      source,
+      live.authorityKey,
+      live.relayEnrollmentId ? hash : undefined,
+    );
   }
   async revoke(request: Request): Promise<void> {
     const account = this.account(await this.authenticate(request));
@@ -619,9 +624,10 @@ export class ApplicationSessionService {
       )
       .get(input.authorityKey, input.enrollmentId);
     if (typeof row?.record !== 'string') return false;
+    const persistedRecord = row.record;
     let raw: unknown;
     try {
-      raw = JSON.parse(row.record);
+      raw = JSON.parse(persistedRecord);
     } catch {
       return false;
     }
@@ -659,12 +665,37 @@ export class ApplicationSessionService {
       continuation.data.sessionId,
       input.signal,
     );
-    return (
-      active.kind === 'authenticated' &&
-      active.issuer === continuation.data.issuer &&
-      active.session.subject === continuation.data.relaySubject &&
-      !input.signal.aborted
+    if (this.closed || input.signal.aborted || active.kind !== 'authenticated')
+      return false;
+    if (
+      active.issuer !== continuation.data.issuer ||
+      active.session.subject !== continuation.data.relaySubject
+    )
+      return false;
+    const currentRow = this.db
+      .prepare(
+        "SELECT record FROM application_sessions WHERE json_extract(record, '$.authorityKey')=? AND json_extract(record, '$.relayEnrollmentId')=?",
+      )
+      .get(parsed.data.authorityKey, parsed.data.enrollmentId);
+    if (currentRow?.record !== persistedRecord) return false;
+    const currentDevice = this.resolveActiveRelayDevice?.(
+      parsed.data.deviceId,
+      parsed.data.enrollmentId,
     );
+    try {
+      this.assertPendingRelayDevice(
+        currentDevice,
+        parsed.data.deviceId,
+        parsed.data.enrollmentId,
+        continuation.data.issuer,
+        continuation.data.relaySubject!,
+        continuation.data.relayApprovalId,
+        continuation.data.relayApprovedBy,
+      );
+    } catch {
+      return false;
+    }
+    return !this.closed && !input.signal.aborted;
   }
 
   private verifyRelayContinuation(
@@ -751,10 +782,17 @@ export class ApplicationSessionService {
     }
   }
   private async issue(
-    challenge: Challenge,
+    challenge: Challenge | Continuation,
     account: Authenticated,
     authorityKey: string = randomUUID(),
+    rotateRelayTokenHash?: string,
   ): Promise<ApplicationSessionContinuation> {
+    const relayEnrollmentId =
+      'relayEnrollmentId' in challenge
+        ? challenge.relayEnrollmentId
+        : undefined;
+    if (!!relayEnrollmentId !== !!rotateRelayTokenHash)
+      throw new ApplicationSessionRefusal('invalid');
     const credential = randomBytes(32).toString('base64url');
     const keyThumbprint = challenge.keyThumbprint;
     const expiresAt = Math.min(
@@ -773,6 +811,41 @@ export class ApplicationSessionService {
     };
     this.transaction(() => {
       this.prune();
+      if (rotateRelayTokenHash && relayEnrollmentId) {
+        const previousRow = this.db
+          .prepare(
+            'SELECT record FROM application_sessions WHERE token_hash=? AND expires_at>? ',
+          )
+          .get(rotateRelayTokenHash, this.now());
+        const previous = this.parse(previousRow?.record, continuationRecord);
+        if (
+          previous.relayEnrollmentId !== relayEnrollmentId ||
+          previous.authorityKey !== authorityKey ||
+          previous.deviceId !== record.deviceId ||
+          previous.issuer !== record.issuer ||
+          previous.principalId !== record.principalId ||
+          // verifySessionReference refuses a changed sessionId as a conflicting identity.
+          previous.sessionId !== record.sessionId ||
+          previous.keyThumbprint !== record.keyThumbprint ||
+          previous.nonce !== challenge.nonce ||
+          previous.relayApprovalId !== record.relayApprovalId ||
+          previous.relayApprovedBy !== record.relayApprovedBy ||
+          previous.relaySubject !== record.relaySubject
+        )
+          throw new ApplicationSessionRefusal('invalid');
+        if (
+          this.db
+            .prepare(
+              "DELETE FROM application_sessions WHERE token_hash=? AND json_extract(record, '$.authorityKey')=? AND json_extract(record, '$.relayEnrollmentId')=?",
+            )
+            .run(rotateRelayTokenHash, authorityKey, relayEnrollmentId)
+            .changes !== 1
+        )
+          throw new ApplicationSessionRefusal('invalid');
+        this.db
+          .prepare('DELETE FROM application_session_proofs WHERE token_hash=?')
+          .run(rotateRelayTokenHash);
+      }
       const count = this.db
         .prepare('SELECT count(*) AS n FROM application_sessions')
         .get()?.n;
