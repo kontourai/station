@@ -1,5 +1,22 @@
 # Browser Preview Pane MVP (Station #1375)
 
+**Status (2026-09-22):** This is the archive#1375 MVP. It describes the
+shipped `1.0` Browser Preview pane and is superseded in part by
+[ADR 0019](../adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md),
+which is not yet implemented.
+
+- Browser pane state `2.0` will persist a reference to a server-owned browser
+  session instead of a loopback address.
+- Targets widen to any `http(s)` URL on personal hosts, except Station's own
+  listeners, for the operator and Project admins and owners.
+- Browser automation comes into scope.
+- The streamed pane renders in Web/PWA, Android and iOS. That supersedes the
+  closing statement "Web/PWA and Android/iOS remain unavailable".
+
+The "Not included" list below is superseded for remote targets,
+automation, and Web/PWA and Android/iOS availability. This record keeps describing `1.0` until the migration
+ships.
+
 Browser Preview is a Project-scoped Workspace Pane for a user-selected local
 HTTP(S) address. Its durable state contains only the canonical Project ID, a
 normalized loopback address, viewport preference, and update timestamp.

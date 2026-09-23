@@ -87,7 +87,7 @@ export function ChatDockMobileConnection({
 }) {
   const { activeConnection } = useConnections();
   const { apiBase } = useApiBase();
-  const { status, reason, recheck } = useConnectionStatus({
+  const { status, reason, failureStreak, recheck } = useConnectionStatus({
     checkHealth: checkServerHealth,
     probeEndpoint: probeServerConnection,
     pollInterval: 10_000,
@@ -99,6 +99,7 @@ export function ChatDockMobileConnection({
     status,
     reason,
     pendingApproval: pendingApproval !== null,
+    failureStreak,
   });
   const actionLabel = SHORT_ACTION_LABEL[state] ?? null;
 

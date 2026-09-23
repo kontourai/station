@@ -8,9 +8,18 @@ import {
   createStationConnectionProofVerifier,
   signStationConnectionProof,
 } from '@kontourai/station-shared/connection-proof';
+import { Hono } from 'hono';
 import { exportJWK, generateKeyPair } from 'jose';
 import { afterEach, describe, expect, test, vi } from 'vitest';
-import { createSelfHostedBrokerPionRuntime } from '../self-hosted-broker-pion-runtime.js';
+import {
+  readVerifiedVirtualApplicationRequest,
+  type VirtualApplication,
+  VirtualApplicationIngress,
+} from '../../../services/connections/virtual-application.js';
+import {
+  createSelfHostedBrokerPionRuntime,
+  readVerifiedPionApplicationRequest,
+} from '../self-hosted-broker-pion-runtime.js';
 
 vi.mock('@kontourai/station-connect/application-channel', () => {
   const captured: Array<{
@@ -21,17 +30,29 @@ vi.mock('@kontourai/station-connect/application-channel', () => {
     };
     inbound: Array<(v: unknown) => void>;
     closeCalls: number;
+    application: {
+      signal: AbortSignal;
+      fetch(request: Request): Promise<Response>;
+    };
   }> = [];
   return {
-    serveApplicationChannel: (channel: {
-      send(m: string): void;
-      close(): void;
-      subscribe(a: (v: unknown) => void, b: () => void): () => void;
-    }) => {
+    serveApplicationChannel: (
+      channel: {
+        send(m: string): void;
+        close(): void;
+        subscribe(a: (v: unknown) => void, b: () => void): () => void;
+      },
+      _origin: string,
+      application: {
+        signal: AbortSignal;
+        fetch(request: Request): Promise<Response>;
+      },
+    ) => {
       const entry = {
         channel,
         inbound: [] as Array<(v: unknown) => void>,
         closeCalls: 0,
+        application,
       };
       captured.push(entry);
       const delivered: unknown[] = [];
@@ -102,7 +123,16 @@ interface Harness {
 }
 
 async function harness(
-  options: { maxPeers?: number; wrongIssuer?: boolean } = {},
+  options: {
+    maxPeers?: number;
+    wrongIssuer?: boolean;
+    application?: VirtualApplication;
+    observeStatus?: (status: {
+      state: string;
+      phase: string;
+      reason?: string;
+    }) => void;
+  } = {},
 ) {
   const pair = await keys();
   const wrong = options.wrongIssuer ? await keys() : null;
@@ -225,7 +255,7 @@ async function harness(
         now: Math.floor(Date.now() / 1000),
       }),
   };
-  const application = {
+  const application = options.application ?? {
     signal: new AbortController().signal,
     fetch: async (_request: Request) => new Response('app'),
   };
@@ -246,6 +276,7 @@ async function harness(
       pollMs: 1_000,
       maxPeerLifetimeMs: 60_000,
       maxPeers: options.maxPeers ?? 4,
+      observeStatus: options.observeStatus,
     },
     application as never,
     { startAdapter: startAdapter as never },
@@ -279,6 +310,22 @@ async function waitFor(
 }
 
 describe('self-hosted broker pion factory', () => {
+  test('forwards lifecycle status through Pion composition without implying application readiness', async () => {
+    const statuses: Array<{ state: string; phase: string }> = [];
+    const { runtime } = await harness({
+      observeStatus: ({ state, phase }) => statuses.push({ state, phase }),
+    });
+    await runtime.start();
+    expect(statuses.slice(0, 2)).toEqual([
+      { state: 'starting', phase: 'registration' },
+      { state: 'registered', phase: 'registration' },
+    ]);
+    await runtime.shutdown();
+    expect(statuses.at(-1)).toEqual({
+      state: 'withdrawn',
+      phase: 'withdrawal',
+    });
+  });
   test('admits with fresh-clone trust and publishes a cryptographically valid proof', async () => {
     const { h, runtime } = await harness();
     await runtime.start();
@@ -307,6 +354,131 @@ describe('self-hosted broker pion factory', () => {
       await runtime.shutdown();
     }
     expect(h.closeCalls).toBe(1);
+  });
+
+  test('copies only an admitted Pion peer fact onto VAI fresh requests and aborts it on retirement', async () => {
+    const app = new Hono();
+    let sawFacts: ReturnType<typeof readVerifiedVirtualApplicationRequest>;
+    let requestSignal: AbortSignal | undefined;
+    let unblock!: () => void;
+    const blocked = new Promise<void>((resolve) => {
+      unblock = resolve;
+    });
+    app.post('/relay-enrollment-test', async (c) => {
+      sawFacts = readVerifiedVirtualApplicationRequest(c.req.raw);
+      if (sawFacts) {
+        requestSignal = c.req.raw.signal;
+        await blocked;
+      }
+      return c.json({ admitted: !!sawFacts });
+    });
+    const owner = new VirtualApplicationIngress(
+      'https://station.example',
+      readVerifiedPionApplicationRequest,
+    );
+    owner.bind({ fetch: (request) => app.fetch(request) });
+    const application = owner.activate();
+    const { h, runtime } = await harness({ application });
+    await runtime.start();
+    try {
+      await waitFor(() => h.capturedProof !== undefined);
+      const rawChannel = {
+        send: vi.fn(),
+        close: vi.fn(),
+        subscribe: () => () => undefined,
+      };
+      h.acceptCallback!(rawChannel as never);
+      const mod = (await import(
+        '@kontourai/station-connect/application-channel'
+      )) as unknown as {
+        __captured: Array<{
+          application: {
+            fetch(request: Request): Promise<Response>;
+          };
+        }>;
+      };
+      await waitFor(() => mod.__captured.length > 0);
+      const dispatch = mod.__captured.at(-1)!.application.fetch;
+      const request = new Request(
+        'https://station.example/relay-enrollment-test',
+        {
+          method: 'POST',
+          headers: { Origin: 'https://browser.example' },
+          body: '{}',
+        },
+      );
+      const pending = dispatch(request);
+      await waitFor(() => requestSignal !== undefined);
+      expect(readVerifiedPionApplicationRequest(request)).toMatchObject({
+        stationId: h.trust.stationId,
+        connectionEnrollmentId: h.trust.enrollmentId,
+        routingGeneration: h.trust.generation,
+        connectionId: CLIENT_ID,
+        browserOrigin: 'https://browser.example',
+      });
+      expect(readVerifiedVirtualApplicationRequest(request)).toBeUndefined();
+      expect(sawFacts).toMatchObject({
+        stationId: h.trust.stationId,
+        connectionEnrollmentId: h.trust.enrollmentId,
+        routingGeneration: h.trust.generation,
+        connectionId: CLIENT_ID,
+        clientOrigin: 'https://browser.example',
+        requestOrigin: 'https://station.example',
+      });
+
+      const direct = await app.fetch(
+        new Request('https://station.example/relay-enrollment-test', {
+          method: 'POST',
+          headers: {
+            Origin: 'https://browser.example',
+            'X-Pion-Verified': 'true',
+          },
+          body: '{}',
+        }),
+      );
+      expect(direct.status).toBe(200);
+      expect(((await direct.json()) as { admitted: boolean }).admitted).toBe(
+        false,
+      );
+      const genericVirtual = await application.fetch(
+        new Request('https://station.example/relay-enrollment-test', {
+          method: 'POST',
+          headers: { Origin: 'https://browser.example' },
+          body: '{}',
+        }),
+      );
+      expect(genericVirtual.status).toBe(200);
+      expect(
+        ((await genericVirtual.json()) as { admitted: boolean }).admitted,
+      ).toBe(false);
+
+      const wrongOrigin = await dispatch(
+        new Request('https://station.example/relay-enrollment-test', {
+          method: 'POST',
+          headers: { Origin: 'https://attacker.example' },
+          body: '{}',
+        }),
+      );
+      expect(wrongOrigin.status).toBe(403);
+
+      h.current = null;
+      const stale = await dispatch(
+        new Request('https://station.example/relay-enrollment-test', {
+          method: 'POST',
+          headers: { Origin: 'https://browser.example' },
+          body: '{}',
+        }),
+      );
+      expect(stale.status).toBe(503);
+      await expect(pending).rejects.toThrow();
+      expect(requestSignal?.aborted).toBe(true);
+      unblock();
+    } finally {
+      unblock();
+      h.live = false;
+      await runtime.shutdown().catch(() => undefined);
+      owner.stop();
+    }
   });
 
   test('wrong-issuer proof fails publication and releases capacity', async () => {
@@ -343,7 +515,6 @@ describe('self-hosted broker pion factory', () => {
           return () => undefined;
         },
       };
-      h.acceptCallback!(raw as never);
       const mod = (await import(
         '@kontourai/station-connect/application-channel'
       )) as unknown as {
@@ -353,8 +524,11 @@ describe('self-hosted broker pion factory', () => {
           delivered?: unknown[];
         }>;
       };
-      await waitFor(() => mod.__captured.length >= 1);
-      const gated = mod.__captured[0]!.channel;
+      const base = mod.__captured.length;
+      h.acceptCallback!(raw as never);
+      await waitFor(() => mod.__captured.length > base);
+      const entry = mod.__captured[base]!;
+      const gated = entry.channel;
       // Outgoing before retirement passes through to the raw channel.
       gated.send('hello');
       expect(raw.send).toHaveBeenCalledWith('hello');
@@ -365,12 +539,12 @@ describe('self-hosted broker pion factory', () => {
       // Inbound path: deliver through the raw channel's subscriber; the gate
       // must drop it instead of forwarding to the app handler.
       const deliveredBefore =
-        (mod.__captured[0] as { delivered?: unknown[] }).delivered ?? [];
+        (entry as { delivered?: unknown[] }).delivered ?? [];
       const countBefore = deliveredBefore.length;
       rawInbound!({ late: true });
       await new Promise((resolve) => setTimeout(resolve, 50));
       const deliveredAfter =
-        (mod.__captured[0] as { delivered?: unknown[] }).delivered ?? [];
+        (entry as { delivered?: unknown[] }).delivered ?? [];
       expect(deliveredAfter.length).toBe(countBefore);
       void received;
     } finally {

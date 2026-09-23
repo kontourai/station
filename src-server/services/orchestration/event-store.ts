@@ -220,6 +220,10 @@ import {
   type RecoveryTransition,
   releaseRecoveryLedgerOwner,
 } from './recovery-ledger.js';
+import {
+  SESSION_OWNER_ATTRIBUTION_METADATA_KEY,
+  UNATTRIBUTED_AGENT_OWNER_ATTRIBUTION,
+} from './session-owner-attribution.js';
 import type {
   SessionBasisTurnDescriptorEvent,
   SessionBasisTurnDescriptorWindow,
@@ -6200,6 +6204,45 @@ export class EventStore {
 
   findSessionOwnerUserId(threadId: string): string | undefined {
     return querySessionOwner(this.db, threadId);
+  }
+
+  /**
+   * Station #90 lane D (B2): the session owner AND whether any
+   * ownership-shaped event marks the session as started by an
+   * unattributed agent (`session-owner-attribution.ts`), in ONE statement,
+   * so the acting-principal derivation cannot read the two facts from
+   * different store states. The owner half is the exact predicate and
+   * ordering of `querySessionOwner`.
+   */
+  findSessionOwnerAttribution(threadId: string): {
+    ownerUserId?: string;
+    unattributedAgent: boolean;
+  } {
+    const row = this.db
+      .prepare(
+        `SELECT
+           (SELECT json_extract(payload, '$.metadata.userId')
+              FROM orchestration_events
+             WHERE thread_id = ?1
+               AND json_valid(payload)
+               AND json_type(payload, '$.metadata.userId') = 'text'
+               AND method IN ('session.started', 'session.configured')
+             ORDER BY created_at DESC, sequence DESC
+             LIMIT 1) AS user_id,
+           EXISTS (SELECT 1
+              FROM orchestration_events
+             WHERE thread_id = ?1
+               AND json_valid(payload)
+               AND json_extract(payload, '$.metadata.${SESSION_OWNER_ATTRIBUTION_METADATA_KEY}') = '${UNATTRIBUTED_AGENT_OWNER_ATTRIBUTION}'
+               AND method IN ('session.started', 'session.configured')) AS unattributed`,
+      )
+      .get(threadId) as
+      | { user_id?: unknown; unattributed?: number }
+      | undefined;
+    return {
+      ...(typeof row?.user_id === 'string' ? { ownerUserId: row.user_id } : {}),
+      unattributedAgent: row?.unattributed === 1,
+    };
   }
 
   sessionAgentPresentation(
