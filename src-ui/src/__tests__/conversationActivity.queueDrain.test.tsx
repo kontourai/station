@@ -277,7 +277,8 @@ describe('#2309 the queue drains on the turn END event, routed by the frame bind
   test('Station A, then B, then A: the drain goes through the Station that delivered the turn end', async () => {
     const stationA = API;
     const stationB = `${API}-b`;
-    chatWithQueue(['for station A'], CHILD);
+    // The chat names the root, so it is the binding-routed path that drains.
+    chatWithQueue(['for station A']);
     connect(stationA, open(20));
     ensureOrchestrationEventStream(stationB);
     ensureOrchestrationEventStream(stationA);
