@@ -22,6 +22,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { installNodeHttpCompatibility } from '../packages/shared/src/node-http-compat.mjs';
+import { lookupProcessBirthFingerprint } from '../packages/shared/src/process-identity.mjs';
 import {
   getProductE2EExecutionPhases,
   getSpecsForSuite,
@@ -566,9 +567,26 @@ function readLeaseAt(path) {
   }
 }
 
-export function processIdentity(pid, runPs = spawnSync) {
-  if (!Number.isInteger(pid) || pid < 1 || process.platform === 'win32')
-    return null;
+/**
+ * On Linux, `processStart` is the `/proc` birth (field 22 + boot id), not
+ * `ps -o lstart=`: under WSL2 the same live process's lstart walks backwards
+ * as the guest clock is stepped (5s in 85s measured on the self-hosted
+ * fleet host), which made a live daemon read as a different — or absent —
+ * process. The birth is read on both sides of the `ps` snapshot so a pid
+ * reused in between fails closed.
+ */
+export function processIdentity(
+  pid,
+  runPs = spawnSync,
+  {
+    platform = process.platform,
+    birth = (target) =>
+      lookupProcessBirthFingerprint(target, { platform: 'linux' }),
+  } = {},
+) {
+  if (!Number.isInteger(pid) || pid < 1 || platform === 'win32') return null;
+  const linuxBirth = platform === 'linux' ? birth(pid) : undefined;
+  if (linuxBirth === null) return null;
   const observed = runPs(
     'ps',
     ['-o', 'lstart=,pgid=,stat=', '-p', String(pid)],
@@ -587,9 +605,10 @@ export function processIdentity(pid, runPs = spawnSync) {
   if (!identity || identity[3].startsWith('Z')) return null;
   const pgid = Number(identity[2]);
   if (!Number.isInteger(pgid) || pgid <= 0) return null;
+  if (linuxBirth !== undefined && birth(pid) !== linuxBirth) return null;
   return {
     pid,
-    processStart: identity[1].trim(),
+    processStart: linuxBirth ?? identity[1].trim(),
     pgid,
   };
 }
