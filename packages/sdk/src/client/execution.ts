@@ -42,6 +42,8 @@ export interface ForegroundMessageInput {
    * receipt, before the turn applies.
    */
   setApprovalMode?: import('@kontourai/station-contracts/provider').ApprovalMode;
+  /** Compare-and-set basis for `setApprovalMode` (`null`: none seen). */
+  setApprovalModeBasedOn?: number | null;
 }
 
 export interface ForegroundMessageReceipt {
@@ -52,6 +54,12 @@ export interface ForegroundMessageReceipt {
   target: { kind: 'agent'; id: AgentId };
   resolution: ExecutionResolutionReceipt;
   handoff?: ConversationHandoffReceipt;
+  /**
+   * #2436: what became of the approval pick the send carried. Absent when it
+   * carried none, or the Station that ran it predates the command; a client
+   * must then treat the pick as not yet received.
+   */
+  approvalMode?: import('@kontourai/station-contracts/orchestration').SetApprovalModeResult;
 }
 
 export interface ConversationHandoffReceipt {
@@ -189,7 +197,7 @@ export async function sendExecutionMessage(
 
 export type ContinueForegroundMessageInput = Omit<
   ForegroundMessageInput,
-  'target' | 'conversationId' | 'setApprovalMode'
+  'target' | 'conversationId' | 'setApprovalMode' | 'setApprovalModeBasedOn'
 > & { environment?: EnvironmentRef; model?: ExecutionModelRequest };
 
 /** Continue an existing conversation through its server-verified Agent binding. */

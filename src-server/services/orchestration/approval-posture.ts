@@ -3,7 +3,6 @@ import {
   type EngineId,
   isApprovalMode,
   PROVIDER_MODEL_OPTION_SUPPORT,
-  readApprovalMode,
 } from '@kontourai/station-contracts/provider';
 
 /**
@@ -45,6 +44,12 @@ export interface ApprovalPostureDecision {
   sequence: number;
 }
 
+function concrete(mode: unknown): ApprovalMode | undefined {
+  return isApprovalMode(mode) && mode !== 'connection-default'
+    ? mode
+    : undefined;
+}
+
 export class ApprovalPosture {
   /**
    * Threads to which Station itself passed a concrete posture (a start or a
@@ -58,14 +63,12 @@ export class ApprovalPosture {
   constructor(
     private readonly deps: {
       store?: ApprovalPostureStore;
-      /**
-       * The engine connection's own `approvalMode`, else this Station's
-       * `AppConfig.defaultApprovalMode`. Loaded per call.
-       */
-      resolveStationDefault?: (input: {
-        connectionId?: string;
-        provider: EngineId;
-      }) => Promise<ApprovalMode | undefined>;
+      /** This Station's `AppConfig.defaultApprovalMode`. Loaded per call. */
+      resolveStationDefault?: () => Promise<ApprovalMode | undefined>;
+      /** The Agent's own default (`AgentSpec.execution.approvalMode`). */
+      resolveAgentDefault?: (
+        agentSlug: string,
+      ) => Promise<ApprovalMode | undefined>;
     },
   ) {}
 
@@ -95,40 +98,77 @@ export class ApprovalPosture {
   }
 
   /**
+   * Compare-and-set (#2436 MEDIUM-1): the decision that stands against a pick
+   * made having seen `basedOnSequence` (`null`: having seen none), or
+   * `undefined` when the pick may be recorded. A pick made without knowing a
+   * newer decision does not overwrite it, whatever order the two reach the
+   * server in. `basedOnSequence === undefined` is an unconditional caller.
+   */
+  supersedingDecision(
+    threadId: string,
+    basedOnSequence: number | null | undefined,
+  ): ApprovalPostureDecision | undefined {
+    if (basedOnSequence === undefined) return undefined;
+    const standing = this.decision(threadId);
+    if (!standing) return undefined;
+    return basedOnSequence === null || standing.sequence > basedOnSequence
+      ? standing
+      : undefined;
+  }
+
+  /**
+   * The defaults below a decision: the Agent's own, then this Station's.
+   * An engine connection's `config.approvalMode` is not a layer here: no
+   * writer persists it (`sanitizeRuntimeConfig` keeps only named keys).
+   */
+  private async defaultPosture(
+    agentSlug: string | undefined,
+  ): Promise<ApprovalMode | undefined> {
+    const agent = agentSlug
+      ? concrete(await this.deps.resolveAgentDefault?.(agentSlug))
+      : undefined;
+    if (agent) return agent;
+    return concrete(await this.deps.resolveStationDefault?.());
+  }
+
+  /**
    * The `modelOptions` a start or turn on `threadId` must carry to the
    * adapter. An engine with no knob gets its options untouched: a posture is
    * a request nothing there can honour, and sending it would be refused as an
    * unsupported option.
+   *
+   * - A recorded decision wins. A recorded Default resolves through
+   *   `resolveDefaultPick`.
+   * - Otherwise a posture the start or turn carries (`station chat
+   *   --approval-mode`, an older remote client) applies as sent.
+   * - Otherwise, at a session START only, the defaults apply (Agent, then
+   *   Station). A turn on a live session sends nothing: a default is the
+   *   posture a session starts in, and re-requesting it would let an edit of
+   *   the setting reconfigure a running chat (#2144 slice 6).
    */
   async resolve(input: {
     threadId: string;
     provider: EngineId;
-    connectionId?: string;
+    phase: 'start' | 'turn';
+    agentSlug?: string;
     modelOptions?: Record<string, unknown>;
-    /**
-     * A decision this start carries that cannot be recorded yet (the session
-     * does not exist until the start succeeds). It is the newest decision by
-     * construction — the server has only just received it — so it outranks
-     * anything recorded. The turn that follows records it.
-     */
-    carriedDecision?: ApprovalMode;
   }): Promise<Record<string, unknown> | undefined> {
     if (!approvalKnobSupported(input.provider)) return input.modelOptions;
-    const decision = input.carriedDecision
-      ? { approvalMode: input.carriedDecision }
-      : this.decision(input.threadId);
+    const decision = this.decision(input.threadId);
+    const { approvalMode: carried, ...rest } = input.modelOptions ?? {};
     let mode: ApprovalMode | undefined;
-    if (!decision) {
-      mode = readApprovalMode(input.modelOptions);
-      if (mode && mode !== 'connection-default')
-        this.stationApplied.add(input.threadId);
-      return input.modelOptions;
+    if (decision) {
+      mode =
+        decision.approvalMode === 'connection-default'
+          ? await this.resolveDefaultPick(input)
+          : decision.approvalMode;
+    } else {
+      mode =
+        concrete(carried) ??
+        (input.phase === 'start'
+          ? await this.defaultPosture(input.agentSlug)
+          : undefined);
     }
-    mode =
-      decision.approvalMode === 'connection-default'
-        ? await this.resolveDefaultPick(input)
-        : decision.approvalMode;
-    const { approvalMode: _carried, ...rest } = input.modelOptions ?? {};
     if (!mode) return Object.keys(rest).length > 0 ? rest : undefined;
     this.stationApplied.add(input.threadId);
     return { ...rest, approvalMode: mode };
@@ -141,7 +181,7 @@ export class ApprovalPosture {
    * so sending nothing would leave a session Station put at full access
    * there, while the chat claimed Default.
    *
-   * 1. The connection's own default, then this Station's default.
+   * 1. The Agent's own default, then this Station's default.
    * 2. Else, on a thread Station set a posture on: `ask`, each engine's own
    *    standard mode (Claude `default`; Codex `untrusted`/`workspace-write`).
    *    The engine's configured default cannot be observed once Station has
@@ -152,14 +192,10 @@ export class ApprovalPosture {
    */
   private async resolveDefaultPick(input: {
     threadId: string;
-    provider: EngineId;
-    connectionId?: string;
+    agentSlug?: string;
   }): Promise<ApprovalMode | undefined> {
-    const configured = await this.deps.resolveStationDefault?.({
-      ...(input.connectionId ? { connectionId: input.connectionId } : {}),
-      provider: input.provider,
-    });
-    if (configured && configured !== 'connection-default') return configured;
+    const configured = await this.defaultPosture(input.agentSlug);
+    if (configured) return configured;
     return this.stationApplied.has(input.threadId) ? 'ask' : undefined;
   }
 

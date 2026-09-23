@@ -16,6 +16,7 @@ import type {
 import {
   FOREGROUND_MESSAGE_INDETERMINATE_CODE,
   type ForegroundMessageIndeterminate,
+  type SetApprovalModeResult,
 } from '@kontourai/station-contracts/orchestration';
 import type { PrincipalRef } from '@kontourai/station-contracts/principal';
 import type {
@@ -79,11 +80,13 @@ export interface ForegroundMessageInput {
   clientTurnId?: string;
   /**
    * #2436: an approval-posture decision this send carries (made before the
-   * chat had a session, or while its client was offline). It rides the
-   * session start, which spawns in it, and the turn, which records it on
-   * receipt before applying it.
+   * chat had a session, or while its client was offline). It is recorded
+   * BEFORE this send's session start and turn, so the spawn is already in it,
+   * compare-and-set against `setApprovalModeBasedOn` (see
+   * `SetApprovalModeCommand.basedOnSequence`).
    */
   setApprovalMode?: ApprovalMode;
+  setApprovalModeBasedOn?: number | null;
   /** Opaque, expiring capability returned by a critical admission challenge. */
   /** Server-owned fixed-route identity for durable automatic queue replay. */
   automaticBackground?: true;
@@ -198,6 +201,12 @@ export interface ForegroundMessageHandle {
     carried: readonly string[];
     reset: readonly string[];
   };
+  /**
+   * #2436: what became of the approval pick this send carried: recorded, or
+   * dropped because a newer decision stands (`recorded: false`). Absent when
+   * the send carried none, or the Station that ran it predates the command.
+   */
+  approvalMode?: SetApprovalModeResult;
 }
 
 /**
@@ -292,16 +301,33 @@ export interface ExecutionTargetExecutionDependencies
   ) => Promise<ExecutionSessionBinding | null>;
   startSession: (
     access: EnvironmentAccess,
-    input: ProviderSessionStartInput & { setApprovalMode?: ApprovalMode },
+    input: ProviderSessionStartInput,
     context?: {
       resourceAdmissionIntent?: 'queued_background';
     },
   ) => Promise<{ commandId: string; sessionId: string } | undefined>;
   sendTurn: (
     access: EnvironmentAccess,
-    input: ProviderSendTurnInput & { setApprovalMode?: ApprovalMode },
+    input: ProviderSendTurnInput,
     context?: { clientOrigin?: ClientOrigin; principal?: PrincipalRef },
   ) => Promise<{ turnId: string }>;
+  /**
+   * #2436: record the approval pick a send carries on the session it is
+   * about to start or continue, before either happens. Absent: a Station
+   * seam that does not speak the command (the pick is then not recorded,
+   * and no result is reported).
+   */
+  recordApprovalMode?: (
+    access: EnvironmentAccess,
+    input: {
+      threadId: string;
+      provider: EngineId;
+      approvalMode: ApprovalMode;
+      basedOnSequence?: number | null;
+      clientOrigin?: ClientOrigin;
+      principal?: PrincipalRef;
+    },
+  ) => SetApprovalModeResult | undefined;
   /**
    * Server-owned durable conversation/session resolution. It is optional for
    * remote compatibility until every Station speaks lineage, but the current
@@ -573,6 +599,21 @@ export async function executeForegroundMessage(
         )
       : undefined;
   const sessionId = continuation?.sessionId ?? conversationId;
+  // #2436 MEDIUM-1: a carried pick is recorded before anything starts, so the
+  // session this send starts (or continues) is already in it, and it is
+  // ordered by this receipt against every other decision (compare-and-set).
+  const approvalMode = input.setApprovalMode
+    ? deps.recordApprovalMode?.(resolved.access, {
+        threadId: sessionId,
+        provider: resolved.provider,
+        approvalMode: input.setApprovalMode,
+        ...(input.setApprovalModeBasedOn !== undefined
+          ? { basedOnSequence: input.setApprovalModeBasedOn }
+          : {}),
+        ...(input.clientOrigin ? { clientOrigin: input.clientOrigin } : {}),
+        ...(input.principal ? { principal: input.principal } : {}),
+      })
+    : undefined;
   const resumeModel =
     continuation && 'resumeModel' in continuation
       ? continuation.resumeModel
@@ -641,12 +682,7 @@ export async function executeForegroundMessage(
       throw new Error('Worktree provisioning did not return a workspace path');
     }
     try {
-      const sessionStartInput: ProviderSessionStartInput & {
-        setApprovalMode?: ApprovalMode;
-      } = {
-        ...(input.setApprovalMode
-          ? { setApprovalMode: input.setApprovalMode }
-          : {}),
+      const sessionStartInput: ProviderSessionStartInput = {
         threadId: sessionId,
         provider: resolved.provider,
         ...(worktree
@@ -893,9 +929,6 @@ export async function executeForegroundMessage(
       ...(resolved.modelOptions
         ? { modelOptions: { ...resolved.modelOptions } }
         : {}),
-      ...(input.setApprovalMode
-        ? { setApprovalMode: input.setApprovalMode }
-        : {}),
     },
     input.clientOrigin || input.principal
       ? {
@@ -915,6 +948,7 @@ export async function executeForegroundMessage(
     providerTurnId: turn.turnId,
     target: { kind: 'agent', id: resolved.agentId },
     resolution: resolved.receipt,
+    ...(approvalMode ? { approvalMode } : {}),
     ...(preparedHandoff
       ? {
           handoff: {

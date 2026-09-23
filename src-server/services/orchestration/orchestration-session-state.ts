@@ -1317,7 +1317,6 @@ export interface RecoveredSessionStartOptions {
   applyApprovalPosture?: (
     adapter: ProviderAdapterShape,
     input: ProviderSessionStartInput,
-    connectionId: string | undefined,
   ) => Promise<ProviderSessionStartInput>;
   /**
    * archive#3549 review round 4 (independent, Codex), HIGH: recovery applied
@@ -1437,11 +1436,7 @@ export async function startRecoveredOrchestrationSession(options: {
         : undefined;
     await deps.assertAdapterReady(adapter, recoveredConnectionId);
     if (deps.applyApprovalPosture) {
-      startInput = await deps.applyApprovalPosture(
-        adapter,
-        startInput,
-        recoveredConnectionId,
-      );
+      startInput = await deps.applyApprovalPosture(adapter, startInput);
     }
     if (deps.resolveSessionAgent) {
       try {

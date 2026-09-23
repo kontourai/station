@@ -239,6 +239,8 @@ async function createHarness(roots: string[], stationDefault?: ApprovalMode) {
         throw new Error('dispatch returned no turn id');
       return { turnId: dispatched.result.turnId };
     },
+    recordApprovalMode: (_access, pick) =>
+      service.recordApprovalModeDecision(pick),
     createConversationId: () => CONVERSATION,
   };
   const execute = (input: {
@@ -246,6 +248,7 @@ async function createHarness(roots: string[], stationDefault?: ApprovalMode) {
     conversationId?: string;
     model?: { options?: Record<string, unknown> };
     setApprovalMode?: ApprovalMode;
+    setApprovalModeBasedOn?: number | null;
   }) =>
     executeForegroundMessage(
       {
@@ -259,7 +262,10 @@ async function createHarness(roots: string[], stationDefault?: ApprovalMode) {
           ...(input.model ? { model: input.model } : {}),
         },
         ...(input.setApprovalMode
-          ? { setApprovalMode: input.setApprovalMode }
+          ? {
+              setApprovalMode: input.setApprovalMode,
+              setApprovalModeBasedOn: input.setApprovalModeBasedOn,
+            }
           : {}),
         userId: OWNER,
       },
@@ -301,43 +307,56 @@ async function createHarness(roots: string[], stationDefault?: ApprovalMode) {
   const currentThread = () =>
     store.conversationSessions(CONVERSATION).at(-1)?.sessionId;
 
+  /**
+   * The desktop's client: the latest decision sequence it has folded. It
+   * learns sequences only from its own sends' results, never from the
+   * phone's decisions (the probes model it missing them).
+   */
+  let seen: number | null = null;
+  const composerSend = async (
+    body: Record<string, unknown>,
+    carried?: ApprovalMode,
+    defaultChannel?: ApprovalMode,
+  ) => {
+    const response = await post('/api/orchestration/chat', {
+      ...body,
+      target: {
+        environment: { kind: 'current' },
+        agent: 'claude',
+        ...(defaultChannel
+          ? { model: { options: { approvalMode: defaultChannel } } }
+          : {}),
+      },
+      ...(carried
+        ? { setApprovalMode: carried, setApprovalModeBasedOn: seen }
+        : {}),
+    });
+    const text = await response.text();
+    expect(response.status, text).toBe(200);
+    const recorded = (
+      JSON.parse(text) as {
+        data?: { approvalMode?: { sequence: number; recorded: boolean } };
+      }
+    ).data?.approvalMode;
+    if (recorded) seen = recorded.sequence;
+    await turnsSettled();
+    return recorded;
+  };
+
   return {
     store,
     service,
     adapter,
     /** The composer's first send: `/chat`, optionally carrying a pick. */
-    async firstSend(carried?: ApprovalMode, defaultChannel?: ApprovalMode) {
-      const response = await post('/api/orchestration/chat', {
-        message: 'first',
-        target: {
-          environment: { kind: 'current' },
-          agent: 'claude',
-          ...(defaultChannel
-            ? { model: { options: { approvalMode: defaultChannel } } }
-            : {}),
-        },
-        ...(carried ? { setApprovalMode: carried } : {}),
-      });
-      expect(response.status, await response.text()).toBe(200);
-      await turnsSettled();
-    },
+    firstSend: (carried?: ApprovalMode, defaultChannel?: ApprovalMode) =>
+      composerSend({ message: 'first' }, carried, defaultChannel),
     /** A composer send on the existing conversation, maybe carrying a pick. */
-    async send(carried?: ApprovalMode, defaultChannel?: ApprovalMode) {
-      const response = await post('/api/orchestration/chat', {
-        message: 'again',
-        conversationId: CONVERSATION,
-        target: {
-          environment: { kind: 'current' },
-          agent: 'claude',
-          ...(defaultChannel
-            ? { model: { options: { approvalMode: defaultChannel } } }
-            : {}),
-        },
-        ...(carried ? { setApprovalMode: carried } : {}),
-      });
-      expect(response.status, await response.text()).toBe(200);
-      await turnsSettled();
-    },
+    send: (carried?: ApprovalMode, defaultChannel?: ApprovalMode) =>
+      composerSend(
+        { message: 'again', conversationId: CONVERSATION },
+        carried,
+        defaultChannel,
+      ),
     /**
      * A turn from outside the composer (#2418): attention replies, the
      * delegated-task coordinator and the session-detail composer continue
@@ -459,13 +478,13 @@ describe('approval posture probe table under server order (#2436)', () => {
     },
     {
       probe:
-        'G-off: the desktop picks never offline, the phone decides Ask, the desktop reconnects and sends (received last)',
+        'G-off: the desktop picks never offline, the phone decides Ask, the desktop reconnects and sends: the pick it made without seeing Ask is dropped (compare-and-set)',
       steps: [
         { kind: 'first' },
         { kind: 'decide', mode: 'ask' },
         { kind: 'send', carried: 'never' },
       ],
-      expected: 'never',
+      expected: 'ask',
     },
     {
       probe: 'R: the desktop decides Ask, then the phone decides never',

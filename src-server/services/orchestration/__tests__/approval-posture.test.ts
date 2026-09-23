@@ -52,6 +52,17 @@ class RecordingAdapter implements ProviderAdapterShape {
   ): Promise<ProviderSession> {
     this.starts.push(input);
     const now = new Date().toISOString();
+    // Like every real adapter: the start's metadata (the Agent slug the
+    // server reads for the Agent's default) rides `session.started`.
+    this.events.push({
+      eventId: `${input.threadId}:started:${this.starts.length}`,
+      provider: this.provider,
+      threadId: input.threadId,
+      createdAt: now,
+      method: 'session.started',
+      sessionId: input.threadId,
+      metadata: input.metadata,
+    } as CanonicalRuntimeEvent);
     const session: ProviderSession = {
       provider: this.provider,
       threadId: input.threadId,
@@ -124,6 +135,7 @@ describe('server-ordered approval posture (#2436)', () => {
   let codex: RecordingAdapter;
   let acp: RecordingAdapter;
   let stationDefault: ApprovalMode | undefined;
+  let agentDefaults: Record<string, ApprovalMode | undefined>;
   let service: OrchestrationService;
 
   function createService(): OrchestrationService {
@@ -132,6 +144,14 @@ describe('server-ordered approval posture (#2436)', () => {
       eventBus: bus,
       eventStore: store,
       resolveStationDefaultApprovalMode: async () => stationDefault,
+      // The authored-Agent start gate (resolveSessionAgent) is satisfied the
+      // way production resolves a defined Agent.
+      resolveSessionAgent: async (input) => ({
+        ...input,
+        agent: { slug: String(input.metadata?.agentSlug ?? 'claude') },
+      }),
+      loadAgentExecutionConfig: async (slug) =>
+        agentDefaults[slug] ? { approvalMode: agentDefaults[slug] } : undefined,
       logger: { debug: vi.fn(), warn: vi.fn() },
       ownerlessSessionAccess: 'single-user-compat',
     });
@@ -145,6 +165,7 @@ describe('server-ordered approval posture (#2436)', () => {
     codex = new RecordingAdapter('codex');
     acp = new RecordingAdapter('acp');
     stationDefault = undefined;
+    agentDefaults = {};
     service = createService();
   });
 
@@ -158,6 +179,7 @@ describe('server-ordered approval posture (#2436)', () => {
     threadId: string,
     provider: 'claude' | 'codex' | 'acp' = 'claude',
     approvalMode?: ApprovalMode,
+    agentSlug?: string,
   ) {
     await service.dispatch({
       type: 'startSession',
@@ -165,17 +187,33 @@ describe('server-ordered approval posture (#2436)', () => {
         threadId,
         provider,
         ...(approvalMode ? { modelOptions: { approvalMode } } : {}),
+        ...(agentSlug ? { metadata: { agentSlug } } : {}),
       },
     });
+    const deadline = Date.now() + 2000;
+    while (
+      !store
+        .listEvents(threadId)
+        .some((row) => row.payload.method === 'session.started')
+    ) {
+      if (Date.now() > deadline) throw new Error('session.started not seen');
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
   }
 
   async function decide(
     threadId: string,
     approvalMode: ApprovalMode,
     clientOrigin?: ClientOrigin,
+    basedOnSequence?: number | null,
   ): Promise<SetApprovalModeResult> {
     return (await service.dispatch(
-      { type: 'setApprovalMode', threadId, approvalMode },
+      {
+        type: 'setApprovalMode',
+        threadId,
+        approvalMode,
+        ...(basedOnSequence !== undefined ? { basedOnSequence } : {}),
+      },
       clientOrigin ? { clientOrigin } : undefined,
     )) as SetApprovalModeResult;
   }
@@ -183,9 +221,7 @@ describe('server-ordered approval posture (#2436)', () => {
   /** A turn with no posture on it: every #2418 surface sends exactly this. */
   async function turn(
     threadId: string,
-    extra: Partial<ProviderSendTurnInput> & {
-      setApprovalMode?: ApprovalMode;
-    } = {},
+    extra: Partial<ProviderSendTurnInput> = {},
   ) {
     await service.dispatch({
       type: 'sendTurn',
@@ -213,6 +249,7 @@ describe('server-ordered approval posture (#2436)', () => {
     });
     expect(recorded).toEqual({
       threadId: 't-record',
+      recorded: true,
       approvalMode: 'ask',
       sequence: persisted?.globalSequence,
     });
@@ -277,23 +314,77 @@ describe('server-ordered approval posture (#2436)', () => {
     expect(claude.lastTurnMode()).toBe('ask');
   });
 
-  test('a decision a turn carries (an offline pick) is ordered by its receipt, after decisions already recorded', async () => {
-    await start('t-carried');
-    // The phone tightens while the desktop is offline with never picked.
-    await decide('t-carried', 'ask', phone);
-    // The desktop reconnects: its pick reaches the server now, with its turn.
-    await turn('t-carried', { setApprovalMode: 'never' });
-    expect(claude.lastTurnMode()).toBe('never');
-    const decisions = store
-      .listEvents('t-carried')
-      .filter((row) => row.payload.method === 'session.approval-mode-set')
-      .map((row) => (row.payload as { approvalMode: string }).approvalMode);
-    expect(decisions).toEqual(['ask', 'never']);
-    // It is never forwarded to the adapter as a field of its own.
-    expect(claude.turns.at(-1)).not.toHaveProperty('setApprovalMode');
-    // And the next turn, which carries nothing, keeps it.
-    await turn('t-carried');
-    expect(claude.lastTurnMode()).toBe('never');
+  describe('compare-and-set (#2436 MEDIUM-1)', () => {
+    test('G-off: an offline pick made before a decision it never saw is dropped; the newer decision stands', async () => {
+      await start('t-goff');
+      const seen = await decide('t-goff', 'auto', desktop);
+      // The desktop goes offline having seen `auto`, and picks never.
+      // Meanwhile the phone tightens to Ask.
+      const phoneAsk = await decide('t-goff', 'ask', phone);
+      // The desktop reconnects: its pick names the decision it had seen.
+      const late = await decide('t-goff', 'never', desktop, seen.sequence);
+      expect(late).toEqual({
+        threadId: 't-goff',
+        recorded: false,
+        approvalMode: 'ask',
+        sequence: phoneAsk.sequence,
+      });
+      await turn('t-goff');
+      expect(claude.lastTurnMode()).toBe('ask');
+      expect(
+        store
+          .listEvents('t-goff')
+          .filter((row) => row.payload.method === 'session.approval-mode-set'),
+      ).toHaveLength(2);
+    });
+
+    test('a pick made on the latest decision is recorded', async () => {
+      await start('t-cas-ok');
+      const seen = await decide('t-cas-ok', 'ask', phone);
+      const pick = await decide('t-cas-ok', 'never', desktop, seen.sequence);
+      expect(pick.recorded).toBe(true);
+      await turn('t-cas-ok');
+      expect(claude.lastTurnMode()).toBe('never');
+    });
+
+    test('a pick made having seen no decision loses to one that exists', async () => {
+      await start('t-cas-null');
+      await decide('t-cas-null', 'ask', phone);
+      const pick = await decide('t-cas-null', 'never', desktop, null);
+      expect(pick).toMatchObject({ recorded: false, approvalMode: 'ask' });
+      // With none recorded, the same pick is recorded.
+      await start('t-cas-null-empty');
+      expect(
+        (await decide('t-cas-null-empty', 'never', desktop, null)).recorded,
+      ).toBe(true);
+    });
+
+    test('the duplicate-carry race: the same pick sent twice on one basis is recorded once', async () => {
+      await start('t-dup');
+      const seen = await decide('t-dup', 'auto', desktop);
+      // The command and a send carrying the same queued pick both arrive.
+      const first = await decide('t-dup', 'ask', desktop, seen.sequence);
+      const second = await decide('t-dup', 'ask', desktop, seen.sequence);
+      expect(first.recorded).toBe(true);
+      expect(second).toEqual({
+        threadId: 't-dup',
+        recorded: false,
+        approvalMode: 'ask',
+        sequence: first.sequence,
+      });
+    });
+
+    test('the spawn window: a pick recorded before its session exists is the posture the session spawns in', async () => {
+      const recorded = service.recordApprovalModeDecision({
+        threadId: 't-spawn-window',
+        provider: 'claude',
+        approvalMode: 'never',
+        basedOnSequence: null,
+      });
+      expect(recorded.recorded).toBe(true);
+      await start('t-spawn-window');
+      expect(claude.starts.at(-1)?.modelOptions?.approvalMode).toBe('never');
+    });
   });
 
   test('M1: a device that missed a tightening cannot resend a looser posture, because it sends none', async () => {
@@ -307,19 +398,6 @@ describe('server-ordered approval posture (#2436)', () => {
     // confirmed posture on its turns, so there is nothing to resend.
     await turn('t-m1');
     expect(claude.lastTurnMode()).toBe('ask');
-  });
-
-  test('a session starts in a decision its starting send carries (Claude grants full access only at spawn)', async () => {
-    await service.dispatch({
-      type: 'startSession',
-      input: {
-        threadId: 't-spawn',
-        provider: 'claude',
-        setApprovalMode: 'never',
-      },
-    });
-    expect(claude.starts.at(-1)?.modelOptions?.approvalMode).toBe('never');
-    expect(claude.starts.at(-1)).not.toHaveProperty('setApprovalMode');
   });
 
   test('a restored dormant session respawns in its recorded posture', async () => {
@@ -367,6 +445,70 @@ describe('server-ordered approval posture (#2436)', () => {
     await expect(decide('t-missing', 'ask')).rejects.toThrow(
       'Session not found',
     );
+  });
+
+  describe("an Agent's default posture (#2436 owner request)", () => {
+    test("a session of an Agent whose default is never starts at never, and a member's turn runs at it", async () => {
+      agentDefaults.builder = 'never';
+      await start('t-agent', 'claude', undefined, 'builder');
+      expect(claude.starts.at(-1)?.modelOptions?.approvalMode).toBe('never');
+    });
+
+    test('a member can tighten below it, and a Default pick returns to it', async () => {
+      agentDefaults.builder = 'never';
+      await start('t-agent-member', 'claude', undefined, 'builder');
+      await decide('t-agent-member', 'ask', phone);
+      await turn('t-agent-member');
+      expect(claude.lastTurnMode()).toBe('ask');
+      await decide('t-agent-member', 'connection-default', phone);
+      await turn('t-agent-member');
+      expect(claude.lastTurnMode()).toBe('never');
+    });
+
+    test("the Agent's default outranks the Station default, and a recorded decision outranks both", async () => {
+      agentDefaults.builder = 'auto';
+      stationDefault = 'never';
+      await start('t-agent-precedence', 'claude', undefined, 'builder');
+      expect(claude.starts.at(-1)?.modelOptions?.approvalMode).toBe('auto');
+      await start('t-no-agent-default', 'claude', undefined, 'other');
+      expect(claude.starts.at(-1)?.modelOptions?.approvalMode).toBe('never');
+    });
+
+    test('a live session is not reconfigured by a default: a turn with nothing recorded sends no posture', async () => {
+      agentDefaults.builder = 'never';
+      await start('t-agent-turn', 'claude', undefined, 'builder');
+      await turn('t-agent-turn');
+      expect(claude.turns.at(-1)?.modelOptions).toBeUndefined();
+    });
+  });
+
+  test('HIGH-2: a credential-profile recovery replay runs at the recorded posture, not the source turn', async () => {
+    await start('t-recovery', 'claude', 'never');
+    // The source turn ran at full access and failed on credentials. The
+    // user then tightens.
+    await decide('t-recovery', 'ask', phone);
+    claude.starts.length = 0;
+    await (
+      service as unknown as {
+        restartCredentialProfileRecoverySession(input: {
+          threadId: string;
+          input: string;
+          modelOptions?: Record<string, string>;
+          recoveryCorrelationId: string;
+          signal: AbortSignal;
+          credentialProfileRef?: string;
+        }): Promise<unknown>;
+      }
+    ).restartCredentialProfileRecoverySession({
+      threadId: 't-recovery',
+      input: 'retry',
+      modelOptions: { approvalMode: 'never' },
+      recoveryCorrelationId: 'posture-recovery',
+      signal: new AbortController().signal,
+      credentialProfileRef: 'backup',
+    });
+    expect(claude.starts.at(-1)?.modelOptions?.approvalMode).toBe('ask');
+    expect(claude.lastTurnMode()).toBe('ask');
   });
 
   describe('a Default pick (#2409)', () => {

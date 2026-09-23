@@ -353,6 +353,9 @@ const setApprovalModeCommandSchema = z.object({
   type: z.literal('setApprovalMode'),
   threadId: z.string().min(1).max(512),
   approvalMode: approvalModeSchema,
+  // Compare-and-set: the latest decision's sequence the client had folded
+  // when the user picked (`null`: none). Absent records unconditionally.
+  basedOnSequence: z.number().int().nonnegative().nullable().optional(),
 });
 
 const sessionTransitionSchema = z.object({
@@ -528,6 +531,7 @@ export const foregroundMessageObjectSchema = z.object({
   // #2436: a posture decision this send carries (a pick made before the chat
   // had a session, or while offline). Recorded on receipt, before the turn.
   setApprovalMode: approvalModeSchema.optional(),
+  setApprovalModeBasedOn: z.number().int().nonnegative().nullable().optional(),
 });
 
 const agentDelegationContextSchema = z.object({
@@ -588,9 +592,6 @@ export const continueForegroundMessageSchema = foregroundMessageObjectSchema
   .omit({
     target: true,
     conversationId: true,
-    // The continuation seam does not carry a posture decision; a turn it
-    // sends applies the recorded posture like every other (#2418).
-    setApprovalMode: true,
   })
   .extend({
     // A continuation is remote-capable. Never silently strip a current-host
@@ -739,6 +740,7 @@ interface ForegroundMessageRequest {
   clientTurnId?: string;
   /** #2436: see `ForegroundMessageInput.setApprovalMode`. */
   setApprovalMode?: ApprovalMode;
+  setApprovalModeBasedOn?: number | null;
   userId: string;
   /**
    * archive#4075 stage 2: the dispatching caller's resolved `PrincipalRef`,
@@ -761,6 +763,9 @@ interface ContinueForegroundMessageRequest {
   conversationId: string;
   environment?: EnvironmentRef;
   model?: ExecutionModelRequest;
+  /** #2436: see `ForegroundMessageInput.setApprovalMode`. */
+  setApprovalMode?: ApprovalMode;
+  setApprovalModeBasedOn?: number | null;
   message: string;
   attachments?: ChatAttachmentInput[];
   ambientContext?: string;

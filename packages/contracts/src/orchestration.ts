@@ -40,14 +40,6 @@ export interface OrchestrationSendTurnInput
   ambientContext?: string;
   /** Read-only constraint checked again at actual adapter invocation. */
   expectedInputRequest?: AttentionRequestReference;
-  /**
-   * #2436: an approval-posture decision this send carries (a pick made before
-   * the chat had a session, or while this client was offline). The service
-   * records it as a `session.approval-mode-set` when it RECEIVES the turn,
-   * before applying the turn, so it is ordered by server receipt like any
-   * `setApprovalMode` command. Never forwarded to an adapter.
-   */
-  setApprovalMode?: ApprovalMode;
 }
 
 /**
@@ -58,15 +50,7 @@ export interface OrchestrationSendTurnInput
 export type OrchestrationStartSessionInput = Omit<
   ProviderSessionStartInput,
   'credentialProfileRef' | 'reviewIsolation'
-> & {
-  /**
-   * #2436: an approval-posture decision carried by the send that starts this
-   * session. The session spawns in it (Claude's full-access grant exists
-   * only at spawn) and the service records it once the session exists. See
-   * {@link OrchestrationSendTurnInput.setApprovalMode}.
-   */
-  setApprovalMode?: ApprovalMode;
-};
+>;
 
 export type OrchestrationCommand =
   | { type: 'startSession'; input: OrchestrationStartSessionInput }
@@ -108,18 +92,39 @@ export type OrchestrationCommand =
       type: 'setApprovalMode';
       threadId: string;
       approvalMode: ApprovalMode;
+      /**
+       * Compare-and-set: the sequence of the latest decision the caller had
+       * seen when the user picked, or `null` when it had seen none. The pick
+       * is recorded only if no newer decision exists for the conversation;
+       * otherwise nothing is recorded and the result names the posture that
+       * stands. Absent records unconditionally (API and CLI callers).
+       */
+      basedOnSequence?: number | null;
     };
 
 /** What a `setApprovalMode` command recorded, and where it sits in order. */
 export interface SetApprovalModeResult {
   threadId: string;
+  /**
+   * `false` when a newer decision had already been recorded (compare-and-set
+   * lost): the pick was dropped, and `approvalMode`/`sequence` name the
+   * decision that stands.
+   */
+  recorded: boolean;
   approvalMode: ApprovalMode;
   /**
-   * The recorded event's server global sequence: the SSE `id` its frame
+   * The standing decision's server global sequence: the SSE `id` its frame
    * carries. Clients order posture decisions by it, never by arrival.
    */
   sequence: number;
 }
+
+/**
+ * #2436: the stable refusal for recording full access (or saving it as an
+ * Agent's default) without the operator in person or `approval:full-access`.
+ */
+export const APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE =
+  'approval-full-access-not-granted' as const;
 
 /**
  * How long the orchestration service waits for the engine to acknowledge a

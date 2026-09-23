@@ -646,10 +646,7 @@ interface OrchestrationServiceOptions {
    * connection's own `approvalMode`, else `AppConfig.defaultApprovalMode`.
    * Loaded per call, like the workspace default above.
    */
-  resolveStationDefaultApprovalMode?: (input: {
-    connectionId?: string;
-    provider: EngineId;
-  }) => Promise<ApprovalMode | undefined>;
+  resolveStationDefaultApprovalMode?: () => Promise<ApprovalMode | undefined>;
   /** Private exact PR point read; it never shares the public route's branch resolver. */
   nativeDeclaredPullRequestResolver?: {
     read(input: {
@@ -1626,6 +1623,10 @@ export class OrchestrationService {
     this.approvalPosture = new ApprovalPosture({
       store: options.eventStore,
       resolveStationDefault: options.resolveStationDefaultApprovalMode,
+      // #2436: the Agent's own default, from the same execution-config read
+      // the credential-profile pin uses (`loadAgentExecutionConfig`).
+      resolveAgentDefault: async (agentSlug) =>
+        (await options.loadAgentExecutionConfig?.(agentSlug))?.approvalMode,
     });
     this.nativeOutputDeclarations = createNativeOutputDeclarationOperation({
       authority: this.nativeOutputGrants,
@@ -2151,6 +2152,8 @@ export class OrchestrationService {
         this.restartCredentialProfileProviderSession(input),
       reportRedispatchFailed: (threadId, turnId, provider) =>
         this.internalStops.reportRedispatchFailed(threadId, turnId, provider),
+      replayModelOptions: (threadId, provider, modelOptions) =>
+        this.replayModelOptionsWithPosture(threadId, provider, modelOptions),
       onTurnDispatched: (input) =>
         this.monitoringBridge.onTurnDispatched(input),
       forgetCoalescedThread: (threadId) =>
@@ -2562,6 +2565,7 @@ export class OrchestrationService {
     threadId: string;
     signal: AbortSignal;
     modelId?: string;
+    modelOptions?: Record<string, unknown>;
     credentialProfileRef?: string;
   }): Promise<{
     adapter: ProviderAdapterShape;
@@ -2688,6 +2692,13 @@ export class OrchestrationService {
       // recovery, this path immediately replays a turn; a resolver failure must
       // keep the replay fail-closed so no engine runs it without its authored
       // policy context (for Claude, that context is PreToolUse).
+      // #2436 HIGH-2: the restart spawns in the conversation's posture (the
+      // replay's own is the source turn's), so a recorded full access gets
+      // Claude's spawn-only grant and a recorded tightening is not undone.
+      startInput = await this.withApprovalPostureForStart(adapter.provider, {
+        ...startInput,
+        ...(input.modelOptions ? { modelOptions: input.modelOptions } : {}),
+      });
       startInput = await this.resolveSessionAgentForStart(startInput);
       throwIfAborted(startInput.signal);
       const admissionLease = await admitEngineStartForIntent(
@@ -4723,25 +4734,24 @@ export class OrchestrationService {
           latestStartedMetadata: (threadId) =>
             this.latestStartedMetadataOfThread(threadId),
         },
-        prepareStart: async (carriedInput, context, internal, adapter) => {
+        prepareStart: async (postureInput, context, internal, adapter) => {
           // #2436: the session starts in the conversation's recorded posture
-          // (a continuation child, a handoff), or in a decision the starting
-          // send carries — Claude's full-access grant exists only at spawn.
-          // The send's turn records that decision once the session exists.
-          const { setApprovalMode: startDecision, ...uncarriedInput } =
-            carriedInput;
+          // (a continuation child, a handoff, or a pick its first send
+          // carried, recorded before this start), else in the defaults
+          // (Agent, then Station). Claude's full-access grant exists only at
+          // spawn, so this is where it has to be right.
           const startModelOptions = await this.approvalPosture.resolve({
-            threadId: uncarriedInput.threadId,
+            threadId: postureInput.threadId,
             provider: adapter.provider,
-            ...(typeof uncarriedInput.metadata?.connectionId === 'string'
-              ? { connectionId: uncarriedInput.metadata.connectionId }
+            phase: 'start',
+            ...(typeof postureInput.metadata?.agentSlug === 'string'
+              ? { agentSlug: postureInput.metadata.agentSlug }
               : {}),
-            modelOptions: uncarriedInput.modelOptions,
-            ...(startDecision ? { carriedDecision: startDecision } : {}),
+            modelOptions: postureInput.modelOptions,
           });
           const { modelOptions: _startOptions, ...startWithoutOptions } =
-            uncarriedInput;
-          const input: typeof uncarriedInput = startModelOptions
+            postureInput;
+          const input: typeof postureInput = startModelOptions
             ? { ...startWithoutOptions, modelOptions: startModelOptions }
             : startWithoutOptions;
           // #484 correction: a handoff-reserved child of a portable-marked
@@ -5402,12 +5412,10 @@ export class OrchestrationService {
           const {
             reviewIsolation: _untrustedReviewIsolation,
             expectedInputRequest: _expectedInputRequest,
-            setApprovalMode: carriedApprovalDecision,
             ...publicTurnInput
           } = command.input as ProviderSendTurnInput & {
             expectedInputRequest?: AttentionRequestReference;
             ambientContext?: string;
-            setApprovalMode?: ApprovalMode;
           };
           // archive#895 wave C: an engine with no native systemPrompt
           // channel gets its authored prompt delivered by prepending it
@@ -5480,27 +5488,18 @@ export class OrchestrationService {
               adapter,
               turnInput,
             );
-          // #2436: a decision this turn carries is recorded on RECEIPT,
-          // before the turn applies, so it is ordered exactly like a
-          // `setApprovalMode` command. Then the conversation's latest
-          // recorded posture replaces whatever the turn carried — on every
-          // path that sends a turn (#2418), not only the composer's.
-          if (
-            carriedApprovalDecision &&
-            approvalKnobSupported(adapter.provider)
-          ) {
-            this.recordApprovalMode(
-              turnInput.threadId,
-              adapter.provider,
-              carriedApprovalDecision,
-              context,
-            );
-          }
+          // #2436: the conversation's latest recorded posture replaces
+          // whatever the turn carried — on every path that sends a turn
+          // (#2418), not only the composer's.
           {
+            const agentSlug = this.readLatestSessionStartMetadata(
+              turnInput.threadId,
+            )?.agentSlug;
             const modelOptions = await this.approvalPosture.resolve({
               threadId: turnInput.threadId,
               provider: adapter.provider,
-              connectionId: this.sessionConnectionIds.get(turnInput.threadId),
+              phase: 'turn',
+              ...(typeof agentSlug === 'string' ? { agentSlug } : {}),
               modelOptions: turnInput.modelOptions,
             });
             const { modelOptions: _previous, ...withoutOptions } = turnInput;
@@ -6676,12 +6675,16 @@ export class OrchestrationService {
               'This engine has no approval control.',
             );
           }
-          const result = this.recordApprovalMode(
-            command.threadId,
+          const result = this.recordApprovalModeDecision({
+            threadId: command.threadId,
             provider,
-            command.approvalMode,
-            context,
-          );
+            approvalMode: command.approvalMode,
+            basedOnSequence: command.basedOnSequence,
+            ...(context?.clientOrigin
+              ? { clientOrigin: context.clientOrigin }
+              : {}),
+            ...(context?.principal ? { principal: context.principal } : {}),
+          });
           this.persistReceipt(receipt);
           return { receipt, result };
         }
@@ -7490,34 +7493,107 @@ export class OrchestrationService {
    * `session.approval-mode-set` event. The event store assigns its global
    * sequence, which is the order every client folds and the order
    * `ApprovalPosture.resolve` applies.
+   *
+   * Compare-and-set: with `basedOnSequence` given, the pick is recorded only
+   * if no newer decision exists for the conversation; otherwise nothing is
+   * written and the result names the decision that stands. The check and the
+   * append run in one synchronous step, so no other decision can land
+   * between them.
+   *
+   * The thread need not have a session yet: the foreground executor records a
+   * pick its first send carries BEFORE that session starts, so the spawn is
+   * already in it. Authorization belongs to the caller (the command route
+   * and the executor's own authorized entry points).
    */
-  private recordApprovalMode(
-    threadId: string,
-    provider: EngineId,
-    approvalMode: ApprovalMode,
-    context?: { clientOrigin?: ClientOrigin; principal?: PrincipalRef },
-  ): SetApprovalModeResult {
+  recordApprovalModeDecision(input: {
+    threadId: string;
+    provider: EngineId;
+    approvalMode: ApprovalMode;
+    basedOnSequence?: number | null;
+    clientOrigin?: ClientOrigin;
+    principal?: PrincipalRef;
+  }): SetApprovalModeResult {
+    const standing = this.approvalPosture.supersedingDecision(
+      input.threadId,
+      input.basedOnSequence,
+    );
+    if (standing) {
+      return {
+        threadId: input.threadId,
+        recorded: false,
+        approvalMode: standing.approvalMode,
+        sequence: standing.sequence,
+      };
+    }
     const eventId = crypto.randomUUID();
     this.projectAndPublishEvent(
       withClientOrigin<SessionApprovalModeSetEvent>(
         {
           eventId,
-          provider,
-          threadId,
+          provider: input.provider,
+          threadId: input.threadId,
           createdAt: new Date().toISOString(),
           method: 'session.approval-mode-set',
-          sessionId: threadId,
-          approvalMode,
-          ...(context?.principal ? { principal: context.principal } : {}),
+          sessionId: input.threadId,
+          approvalMode: input.approvalMode,
+          ...(input.principal ? { principal: input.principal } : {}),
         },
-        context?.clientOrigin,
+        input.clientOrigin,
       ),
     );
     const sequence = this.readEventGlobalSequence(eventId);
     if (sequence === undefined) {
       throw new Error('The approval mode could not be recorded.');
     }
-    return { threadId, approvalMode, sequence };
+    return {
+      threadId: input.threadId,
+      recorded: true,
+      approvalMode: input.approvalMode,
+      sequence,
+    };
+  }
+
+  /**
+   * #2436: a (re)spawn's start input in the conversation's posture, for the
+   * paths that start an engine without `prepareStart`: a dormant session's
+   * respawn and a credential-profile restart.
+   */
+  private async withApprovalPostureForStart(
+    provider: EngineId,
+    input: ProviderSessionStartInput,
+  ): Promise<ProviderSessionStartInput> {
+    const modelOptions = await this.approvalPosture.resolve({
+      threadId: input.threadId,
+      provider,
+      phase: 'start',
+      ...(typeof input.metadata?.agentSlug === 'string'
+        ? { agentSlug: input.metadata.agentSlug }
+        : {}),
+      modelOptions: input.modelOptions,
+    });
+    const { modelOptions: _previous, ...withoutOptions } = input;
+    return modelOptions ? { ...withoutOptions, modelOptions } : withoutOptions;
+  }
+
+  /**
+   * #2436 HIGH-2: the `modelOptions` a credential-profile recovery replay
+   * sends. The replay reuses the SOURCE turn's posture, which is a turn the
+   * user may have tightened since; the conversation's recorded posture
+   * replaces it exactly as it does on an ordinary turn.
+   */
+  private async replayModelOptionsWithPosture(
+    threadId: string,
+    provider: EngineId,
+    modelOptions: Record<string, unknown> | undefined,
+  ): Promise<Record<string, unknown> | undefined> {
+    const agentSlug = this.readLatestSessionStartMetadata(threadId)?.agentSlug;
+    return this.approvalPosture.resolve({
+      threadId,
+      provider,
+      phase: 'turn',
+      ...(typeof agentSlug === 'string' ? { agentSlug } : {}),
+      modelOptions,
+    });
   }
 
   private commandProvider(command: OrchestrationCommand): EngineId | null {
@@ -8122,18 +8198,8 @@ export class OrchestrationService {
         this.trackSession(session, adapter),
       logger: this.options.logger,
       resolveSessionAgent: this.options.resolveSessionAgent,
-      applyApprovalPosture: async (adapter, input, connectionId) => {
-        const modelOptions = await this.approvalPosture.resolve({
-          threadId: input.threadId,
-          provider: adapter.provider,
-          ...(connectionId ? { connectionId } : {}),
-          modelOptions: input.modelOptions,
-        });
-        const { modelOptions: _previous, ...withoutOptions } = input;
-        return modelOptions
-          ? { ...withoutOptions, modelOptions }
-          : withoutOptions;
-      },
+      applyApprovalPosture: (adapter, input) =>
+        this.withApprovalPostureForStart(adapter.provider, input),
       // Round 4 (Codex): recovery bypassed the credential pin entirely, so a
       // restarted session ran a pinned agent on the connection's account.
       applyCredentialProfile: (input) =>

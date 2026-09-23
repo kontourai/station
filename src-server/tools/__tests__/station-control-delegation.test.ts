@@ -1459,6 +1459,101 @@ describe('Station Control canonical Environment + Agent execution', () => {
     });
   });
 
+  /**
+   * #2436 HIGH-1: a Station that predates the approval command validates the
+   * body with a schema that has no `setApprovalMode`, and zod strips unknown
+   * keys. The pick must still reach such a Station through the channel it
+   * has always applied: `model.options.approvalMode`.
+   */
+  describe('an approval pick sent to another Station', () => {
+    async function olderRemoteSees(
+      path:
+        | '/api/orchestration/chat'
+        | '/api/orchestration/chat/conversation-1/continue',
+    ) {
+      const { continueForegroundMessageSchema, foregroundMessageObjectSchema } =
+        await import('../../routes/orchestration/orchestration.js');
+      const call = fetchMock.mock.calls.find(
+        ([url]) => String(url) === `${REMOTE_API}${path}`,
+      );
+      const body = bodyOf(call!);
+      // The pre-#2436 schemas: the same objects without the new keys.
+      const older =
+        path === '/api/orchestration/chat'
+          ? foregroundMessageObjectSchema.omit({
+              setApprovalMode: true,
+              setApprovalModeBasedOn: true,
+            })
+          : continueForegroundMessageSchema;
+      return { sent: body, parsed: older.parse(body) as Record<string, any> };
+    }
+
+    test('a /chat send carries it both as the command and on the options an older Station applies', async () => {
+      installRemoteStationFetch('/api/orchestration/chat', foregroundHandle());
+      const { executeExecutionTargetMessage } = await import(
+        '../station-control-delegation.js'
+      );
+      await executeExecutionTargetMessage({
+        target: savedTarget(),
+        message: 'Tighten this',
+        conversationId: 'conversation-1',
+        setApprovalMode: 'ask',
+        setApprovalModeBasedOn: 7,
+      });
+      const { sent, parsed } = await olderRemoteSees('/api/orchestration/chat');
+      expect(sent).toMatchObject({
+        setApprovalMode: 'ask',
+        setApprovalModeBasedOn: 7,
+      });
+      expect(parsed).not.toHaveProperty('setApprovalMode');
+      expect(parsed.target.model.options.approvalMode).toBe('ask');
+    });
+
+    test('a continue forwards it too, on both channels', async () => {
+      installRemoteStationFetch(
+        '/api/orchestration/chat/conversation-1/continue',
+        foregroundHandle(),
+        {
+          workingDirectory: '/srv/station',
+          existingSessionCwd: '/srv/station',
+        },
+      );
+      const { continueExecutionTargetMessage } = await import(
+        '../station-control-delegation.js'
+      );
+      await continueExecutionTargetMessage({
+        conversationId: 'conversation-1',
+        environment: { kind: 'saved', id: environmentId('environment-remote') },
+        message: 'Continue tighter',
+        setApprovalMode: 'ask',
+        model: { options: { effort: 'low' } },
+      });
+      const { sent, parsed } = await olderRemoteSees(
+        '/api/orchestration/chat/conversation-1/continue',
+      );
+      expect(sent).toMatchObject({ setApprovalMode: 'ask' });
+      expect(parsed.model.options).toEqual({
+        effort: 'low',
+        approvalMode: 'ask',
+      });
+    });
+
+    test('a send with no pick adds no posture', async () => {
+      installRemoteStationFetch('/api/orchestration/chat', foregroundHandle());
+      const { executeExecutionTargetMessage } = await import(
+        '../station-control-delegation.js'
+      );
+      await executeExecutionTargetMessage({
+        target: savedTarget(),
+        message: 'No pick',
+        conversationId: 'conversation-1',
+      });
+      const { sent } = await olderRemoteSees('/api/orchestration/chat');
+      expect(sent).not.toHaveProperty('setApprovalMode');
+      expect(sent.target).not.toHaveProperty('model');
+    });
+  });
+
   test('refuses a saved remote Environment before any handoff transport effect', async () => {
     const { handoffExecutionTargetMessage } = await import(
       '../station-control-delegation.js'

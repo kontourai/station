@@ -898,6 +898,13 @@ export async function interruptOrchestrationTurn(input: {
 export async function setOrchestrationApprovalMode(input: {
   threadId: string;
   approvalMode: import('@kontourai/station-contracts/provider').ApprovalMode;
+  /**
+   * The sequence of the latest decision this client had folded when the
+   * user picked (`null`: none). The server records the pick only if no newer
+   * decision exists; otherwise the result has `recorded: false` and names
+   * the decision that stands.
+   */
+  basedOnSequence: number | null;
   apiBase?: string;
 }): Promise<
   import('@kontourai/station-contracts/orchestration').SetApprovalModeResult
@@ -907,6 +914,7 @@ export async function setOrchestrationApprovalMode(input: {
       type: 'setApprovalMode',
       threadId: input.threadId,
       approvalMode: input.approvalMode,
+      basedOnSequence: input.basedOnSequence,
     },
     input.apiBase,
   );
