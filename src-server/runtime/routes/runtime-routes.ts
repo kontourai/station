@@ -6031,6 +6031,47 @@ export function configureDevicePairingPublicRoutes(
       return c.json({ error: 'origin_forbidden' }, 403);
     }
     try {
+      // Approval binds an account candidate to the Device, but the provider
+      // session may be revoked before the requester exchanges its credential.
+      // Recheck at the minting boundary so a stale approved request cannot
+      // create an account-bound Device after logout or provider revocation.
+      const candidate = pairing.approvedAccountBindingForRequest(
+        body.requestId,
+      );
+      if (candidate) {
+        const authentication = options.accountAuthentication;
+        const verified = authentication
+          ? await authentication.verifySessionReference(
+              candidate.sessionId,
+              c.req.raw.signal,
+            )
+          : { kind: 'unavailable' as const };
+        const currentCandidate = pairing.approvedAccountBindingForRequest(
+          body.requestId,
+        );
+        if (
+          verified.kind !== 'authenticated' ||
+          verified.issuer !== candidate.candidate.issuer ||
+          verified.session.subject !== candidate.candidate.subject ||
+          authentication?.describe().issuer !== candidate.candidate.issuer ||
+          currentCandidate === undefined ||
+          currentCandidate.sessionId !== candidate.sessionId ||
+          currentCandidate.candidate.issuer !== candidate.candidate.issuer ||
+          currentCandidate.candidate.subject !== candidate.candidate.subject
+        ) {
+          deviceSessionExchanges.add(1, {
+            outcome: 'denied',
+            reason: 'account_session_unavailable',
+          });
+          // A revoked or changed account session is a failed credential
+          // exchange, so it consumes the existing source failure budget.
+          failureLimiter.finalize(admission.admission, 'failure');
+          return c.json({ error: 'person_binding_unavailable' }, 409);
+        }
+      }
+      // Provider adapters can ignore AbortSignal and finish after the caller
+      // disconnects. Never mint a Device that the requester cannot receive.
+      c.req.raw.signal.throwIfAborted();
       const { replacement, ...result } = pairing.exchange({
         offerId: body.offerId,
         proof: body.proof,

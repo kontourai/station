@@ -49,6 +49,7 @@ import { loadLocalAccounts } from '../../../services/identity/local-account-runt
 import { ProjectManifestStore } from '../../../services/projects/project-manifest-store.js';
 import { createProjectMembershipRuntime } from '../../../services/projects/project-membership-runtime.js';
 import { ProjectService } from '../../../services/projects/project-service.js';
+import { DevicePairingError } from '../../../services/ssh/device-pairing-service.js';
 import { EnvironmentSecurityService } from '../../../services/ssh/environment-security-service.js';
 import { configureRuntimeRoutes as configureRuntimeRoutesProduction } from '../runtime-routes.js';
 
@@ -131,10 +132,23 @@ export async function createStationAuthenticationProvider(host) {
       const subject = subjectOf(request);
       if (!subject || revoked.has(subject)) return {kind:'invalid',reason:'revoked'};
       return {kind:'authenticated',session:{
-        subject,displayName:subject,sessionId:'non-secret-record',
+        subject,displayName:subject,sessionId:'session-' + subject,
         authenticatedAt:new Date(Date.now()-1000).toISOString(),
         expiresAt:new Date(Date.now()+60000).toISOString(),contacts:[]
       }};
+    },
+    sessionReferences: {
+      async verify(sessionId) {
+        const subject = sessionId.slice('session-'.length);
+        if (!sessionId.startsWith('session-') || revoked.has(subject))
+          return {kind:'invalid',reason:'revoked'};
+        return {kind:'authenticated',session:{
+          subject,displayName:subject,sessionId,
+          authenticatedAt:new Date(Date.now()-1000).toISOString(),
+          expiresAt:new Date(Date.now()+60000).toISOString(),contacts:[]
+        }};
+      },
+      async revoke(sessionId) { revoked.add(sessionId.slice('session-'.length)); }
     },
     async handle(request) {
       const url = new URL(request.url);
@@ -428,6 +442,7 @@ describe('project guest administration over the production composition', () => {
       app,
       request,
       security,
+      authentication,
       operatorCredential,
       projectService,
       membership,
@@ -504,6 +519,290 @@ describe('project guest administration over the production composition', () => {
     );
     // Self-demotion admin -> contributor still acknowledges.
     expect(changed.status, await changed.clone().text()).toBe(200);
+  });
+
+  test('account-bound pairing exchange refuses a provider session revoked after approval', async () => {
+    const h = await setup();
+    const pairing = h.security.devicePairing;
+    const offer = pairing.createOffer({ endpoint: ORIGIN });
+    const pending = pairing.requestPairing({
+      offerId: offer.offerId,
+      proof: offer.challenge,
+      deviceName: 'revoked-session-device',
+      requesterPosition: 'unproven',
+      accountCandidate: {
+        issuer: PROVIDER_ISSUER,
+        subject: GUEST_SUBJECT,
+        displayName: 'Guest Person',
+      },
+      accountCandidateSessionId: `session-${GUEST_SUBJECT}`,
+      requireAccountBinding: true,
+    });
+    const approved = await h.request(
+      `/api/pairing/requests/${pending.requestId}/confirm`,
+      h.operatorHeaders({
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bindAccountIdentity: true }),
+      }),
+    );
+    expect(approved.status, await approved.clone().text()).toBe(200);
+
+    await h.authentication.service.revokeSessionReference(
+      `session-${GUEST_SUBJECT}`,
+      new AbortController().signal,
+    );
+    const before = pairing.listDevices().length;
+    const exchange = await h.request(
+      '/.well-known/station/v1/pairing/exchange',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          offerId: offer.offerId,
+          proof: offer.challenge,
+          requestId: pending.requestId,
+        }),
+      },
+    );
+    expect(exchange.status, await exchange.clone().text()).toBe(409);
+    expect(await exchange.json()).toMatchObject({
+      error: 'person_binding_unavailable',
+    });
+    expect(pairing.listDevices()).toHaveLength(before);
+  });
+
+  test('account-bound pairing exchange succeeds while the approved provider session remains current', async () => {
+    const h = await setup();
+    const pairing = h.security.devicePairing;
+    const offer = pairing.createOffer({ endpoint: ORIGIN });
+    const pending = pairing.requestPairing({
+      offerId: offer.offerId,
+      proof: offer.challenge,
+      deviceName: 'current-session-device',
+      requesterPosition: 'unproven',
+      accountCandidate: {
+        issuer: PROVIDER_ISSUER,
+        subject: GUEST_SUBJECT,
+        displayName: 'Guest Person',
+      },
+      accountCandidateSessionId: `session-${GUEST_SUBJECT}`,
+      requireAccountBinding: true,
+    });
+    const approved = await h.request(
+      `/api/pairing/requests/${pending.requestId}/confirm`,
+      h.operatorHeaders({
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bindAccountIdentity: true }),
+      }),
+    );
+    expect(approved.status, await approved.clone().text()).toBe(200);
+
+    const exchange = await h.request(
+      '/.well-known/station/v1/pairing/exchange',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          offerId: offer.offerId,
+          proof: offer.challenge,
+          requestId: pending.requestId,
+        }),
+      },
+    );
+    expect(exchange.status, await exchange.clone().text()).toBe(200);
+    expect(await exchange.json()).toMatchObject({
+      credential: expect.any(String),
+      device: {
+        principalBinding: {
+          kind: 'account',
+          issuer: PROVIDER_ISSUER,
+          subject: GUEST_SUBJECT,
+        },
+      },
+    });
+  });
+
+  test('ordinary Device approval does not inherit a request-only account candidate recheck', async () => {
+    const h = await setup();
+    const pairing = h.security.devicePairing;
+    const offer = pairing.createOffer({ endpoint: ORIGIN });
+    const pending = pairing.requestPairing({
+      offerId: offer.offerId,
+      proof: offer.challenge,
+      deviceName: 'device-only-approved-candidate',
+      requesterPosition: 'unproven',
+      accountCandidate: {
+        issuer: PROVIDER_ISSUER,
+        subject: GUEST_SUBJECT,
+        displayName: 'Guest Person',
+      },
+      accountCandidateSessionId: `session-${GUEST_SUBJECT}`,
+    });
+    const approved = await h.request(
+      `/api/pairing/requests/${pending.requestId}/confirm`,
+      h.operatorHeaders({ method: 'POST' }),
+    );
+    expect(approved.status, await approved.clone().text()).toBe(200);
+
+    // Account evidence can accompany a pairing-code request without the
+    // operator choosing account binding. Its later revocation must not turn
+    // the ordinary Device-only approval into an account-bound one.
+    await h.authentication.service.revokeSessionReference(
+      `session-${GUEST_SUBJECT}`,
+      new AbortController().signal,
+    );
+    const exchange = await h.request(
+      '/.well-known/station/v1/pairing/exchange',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          offerId: offer.offerId,
+          proof: offer.challenge,
+          requestId: pending.requestId,
+        }),
+      },
+    );
+    expect(exchange.status, await exchange.clone().text()).toBe(200);
+    const exchanged = await readJson<{
+      credential: string;
+      device: Record<string, unknown>;
+    }>(exchange);
+    expect(exchanged.credential).toEqual(expect.any(String));
+    expect(exchanged.device).not.toHaveProperty('principalBinding');
+  });
+
+  test('account-bound exchange fails closed when its approval evidence is unavailable', async () => {
+    const h = await setup();
+    const pairing = h.security.devicePairing;
+    const offer = pairing.createOffer({ endpoint: ORIGIN });
+    const pending = pairing.requestPairing({
+      offerId: offer.offerId,
+      proof: offer.challenge,
+      deviceName: 'missing-account-evidence-device',
+      requesterPosition: 'unproven',
+      accountCandidate: {
+        issuer: PROVIDER_ISSUER,
+        subject: GUEST_SUBJECT,
+        displayName: 'Guest Person',
+      },
+      accountCandidateSessionId: `session-${GUEST_SUBJECT}`,
+      requireAccountBinding: true,
+    });
+    const approved = await h.request(
+      `/api/pairing/requests/${pending.requestId}/confirm`,
+      h.operatorHeaders({
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bindAccountIdentity: true }),
+      }),
+    );
+    expect(approved.status, await approved.clone().text()).toBe(200);
+    vi.spyOn(pairing, 'approvedAccountBindingForRequest').mockImplementation(
+      () => {
+        throw new DevicePairingError('invalid_request');
+      },
+    );
+
+    const before = pairing.listDevices().length;
+    const exchange = await h.request(
+      '/.well-known/station/v1/pairing/exchange',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          offerId: offer.offerId,
+          proof: offer.challenge,
+          requestId: pending.requestId,
+        }),
+      },
+    );
+    expect(exchange.status, await exchange.clone().text()).toBe(400);
+    expect(pairing.listDevices()).toHaveLength(before);
+  });
+
+  test('aborted account-bound exchange does not mint after an uncooperative provider finishes', async () => {
+    const h = await setup();
+    const pairing = h.security.devicePairing;
+    const offer = pairing.createOffer({ endpoint: ORIGIN });
+    const pending = pairing.requestPairing({
+      offerId: offer.offerId,
+      proof: offer.challenge,
+      deviceName: 'aborted-account-exchange-device',
+      requesterPosition: 'unproven',
+      accountCandidate: {
+        issuer: PROVIDER_ISSUER,
+        subject: GUEST_SUBJECT,
+        displayName: 'Guest Person',
+      },
+      accountCandidateSessionId: `session-${GUEST_SUBJECT}`,
+      requireAccountBinding: true,
+    });
+    const approved = await h.request(
+      `/api/pairing/requests/${pending.requestId}/confirm`,
+      h.operatorHeaders({
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bindAccountIdentity: true }),
+      }),
+    );
+    expect(approved.status, await approved.clone().text()).toBe(200);
+
+    const verified = await h.authentication.service.verifySessionReference(
+      `session-${GUEST_SUBJECT}`,
+      new AbortController().signal,
+    );
+    expect(verified.kind).toBe('authenticated');
+    let providerStarted!: () => void;
+    const started = new Promise<void>((resolve) => {
+      providerStarted = resolve;
+    });
+    let finishProvider!: (value: typeof verified) => void;
+    const delayed = new Promise<typeof verified>((resolve) => {
+      finishProvider = resolve;
+    });
+    vi.spyOn(
+      h.authentication.service,
+      'verifySessionReference',
+    ).mockImplementation(async () => {
+      providerStarted();
+      // Deliberately ignore AbortSignal to model a slow provider adapter.
+      return delayed;
+    });
+
+    const controller = new AbortController();
+    const before = pairing.listDevices().length;
+    const response = h.request('/.well-known/station/v1/pairing/exchange', {
+      method: 'POST',
+      signal: controller.signal,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        offerId: offer.offerId,
+        proof: offer.challenge,
+        requestId: pending.requestId,
+      }),
+    });
+    await started;
+    controller.abort();
+    finishProvider(verified);
+
+    let responseStatus: number | undefined;
+    let rejection: unknown;
+    try {
+      responseStatus = (await response).status;
+    } catch (error) {
+      rejection = error;
+    }
+    if (responseStatus !== undefined) {
+      expect(responseStatus).not.toBe(200);
+    } else {
+      // A canceled caller may stop receiving the response, but the rejection
+      // must be the cancellation itself rather than a swallowed assertion.
+      expect(rejection).toMatchObject({ name: 'AbortError' });
+    }
+    expect(pairing.listDevices()).toHaveLength(before);
   });
 
   test('enable-sharing stays operator-only and generic project mutation stays banned', async () => {
