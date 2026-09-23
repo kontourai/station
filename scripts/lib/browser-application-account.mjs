@@ -327,25 +327,6 @@ export async function browserSignInForCookieAdoption(input) {
   };
 }
 
-export async function browserAcceptCookieInvitation(input) {
-  const response = await fetch(
-    `${input.apiBase}/api/account-auth/accept-invitation`,
-    {
-      method: 'POST',
-      credentials: 'same-origin',
-      mode: 'same-origin',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token: input.invitation }),
-      redirect: 'error',
-    },
-  );
-  const body = await response.json();
-  return {
-    status: response.status,
-    grantsDeviceAccess: body.data?.grantsDeviceAccess,
-  };
-}
-
 export async function browserAdoptCookieSessions(input) {
   if (!window.isSecureContext || location.origin !== input.apiBase)
     throw new Error('Cookie adoption requires the same secure Station origin');
