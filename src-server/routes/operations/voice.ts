@@ -10,6 +10,7 @@ import {
   RuntimeAuthFailureLimiter,
   type RuntimePeerClass,
 } from '../../security/runtime-request-security.js';
+import { createCredentialFreeOriginVerifier } from '../../security/station-browser-origins.js';
 import {
   authenticatedWebSocketAck,
   decodeWebSocketAuthFrame,
@@ -89,6 +90,12 @@ export interface VoiceWebSocketAuthOptions {
   maxPayloadBytes?: number;
   maxUnauthenticatedConnections?: number;
   maxUnauthenticatedConnectionsPerPeer?: number;
+  /**
+   * Station's UI origin set (`resolveStationBrowserOrigins`). A browser
+   * upgrade on the credential-free loopback path must carry one of them;
+   * omitting it refuses every browser upgrade on that path.
+   */
+  allowedBrowserOrigins?: readonly string[];
   now?: () => number;
   audit?: (record: {
     event: 'station.auth.failure' | 'station.auth.rate_limited';
@@ -265,6 +272,14 @@ export function attachVoiceWebSocket(
     port,
     maxPayload: Math.max(1, auth?.maxPayloadBytes ?? DEFAULT_MAX_PAYLOAD_BYTES),
     ...(host ? { host } : {}),
+    verifyClient: createCredentialFreeOriginVerifier({
+      allowedOrigins: auth?.allowedBrowserOrigins ?? [],
+      credentialRequired: auth !== undefined,
+      classifyPeer: auth?.classifyPeer,
+      onRejected: (peerClass) => {
+        if (auth) auditVoiceFailure(auth, peerClass, 'origin_forbidden');
+      },
+    }),
   });
   const unauthenticatedConnections = new UnauthenticatedVoiceConnections(
     Math.max(
