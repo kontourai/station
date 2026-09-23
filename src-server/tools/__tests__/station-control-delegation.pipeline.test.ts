@@ -339,7 +339,7 @@ describe('delegation supervision producer pipeline (#2269)', () => {
           (driven.fold.terminalAttribution as { detail?: unknown })?.detail ??
             '',
         ),
-      ).toContain('was terminated');
+      ).toContain('so Station stopped it');
 
       const session = sessionFromPipeline(driven, 'pipe-idle');
       expect(session.turnProgress).toMatchObject({ turnId });
@@ -364,7 +364,7 @@ describe('delegation supervision producer pipeline (#2269)', () => {
         detail:
           'The turn ended after a full window with no verified protocol activity.',
       });
-      expect(JSON.stringify(snapshot)).not.toContain('was terminated');
+      expect(JSON.stringify(snapshot)).not.toContain('so Station stopped it');
     } finally {
       await stopDriven(driven);
     }
@@ -810,7 +810,7 @@ describe('delegation supervision producer pipeline (#2269)', () => {
         detail:
           'The turn ended after a full window with no verified protocol activity.',
       });
-      expect(JSON.stringify(snapshot)).not.toContain('was terminated');
+      expect(JSON.stringify(snapshot)).not.toContain('so Station stopped it');
       expect(service.readCurrentConversationSession).toHaveBeenCalledWith(
         'task-pipeline',
         expect.anything(),
