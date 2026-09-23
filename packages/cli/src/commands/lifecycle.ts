@@ -879,8 +879,9 @@ export function uiRequestHandler(deps: UiServerDeps) {
         response.setEncoding('utf8');
         response.on('data', (chunk) => (raw += chunk));
         // A backend that dies mid-answer is a failed connection, not a slow
-        // one: settle now rather than at the deadline as 'degraded'.
-        response.once('error', () => finish('unavailable'));
+        // one: settle now rather than at the deadline as 'degraded'. `close`
+        // alone covers it — it follows every abort, errored or not — and a
+        // second `error` listener would only be redundant, untestable cover.
         response.once('close', () => {
           if (!response.complete) finish('unavailable');
         });
