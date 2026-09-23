@@ -782,15 +782,9 @@ export function useChatInput({
               provider: model.providerType,
             }
           : {}),
-        // Start from the pending request when there is one: it holds the
-        // user's latest choices (an approval change made since the last
-        // turn). Rebuilding from the confirmed bag alone resurrected a
-        // posture the user had already revoked (#2321).
         requestedProviderOptions: sanitizeRuntimeOptionsForModel(
           model,
-          activeChatState?.requestedProviderOptions ??
-            activeChatState?.providerOptions ??
-            {},
+          activeChatState?.providerOptions ?? {},
         ),
       });
 
@@ -807,7 +801,6 @@ export function useChatInput({
       currentModel,
       agentDefaultModel,
       activeChatState?.providerOptions,
-      activeChatState?.requestedProviderOptions,
       activeChatState?.executionMode,
       activeChatState?.providerId,
       activeChatState?.defaultProviderId,
@@ -866,13 +859,6 @@ export function useChatInput({
         activeChatState?.requestedProviderOptions?.approvalMode ??
         activeChatState?.providerOptions?.approvalMode;
       if (previousMode === mode) return;
-      // The confirmed bag must not keep a posture this choice supersedes:
-      // any later rebuild from it (a model switch, a consumed request) would
-      // otherwise bring a revoked full access back (#2321).
-      const {
-        approvalMode: _supersededApprovalMode,
-        ...confirmedWithoutApproval
-      } = activeChatState?.providerOptions ?? {};
       updateChat(sessionId, {
         requestedProviderOptions: {
           ...(activeChatState?.requestedProviderOptions ??
@@ -880,10 +866,6 @@ export function useChatInput({
             {}),
           approvalMode: mode,
         },
-        ...(activeChatState?.providerOptions &&
-        'approvalMode' in activeChatState.providerOptions
-          ? { providerOptions: confirmedWithoutApproval }
-          : {}),
       });
       addEphemeralMessage(sessionId, {
         role: 'system',
@@ -948,17 +930,7 @@ export function useChatInput({
       // runtime-reported model/options at the send seam.
       requestedModel: null,
       requestedModelSource: defaultModelSource ?? 'agent default',
-      // Resetting the model resets model controls, not the approval posture:
-      // a pending approval pick survives in a bag of its own (#2321), because
-      // choosing it already removed the superseded confirmed posture.
-      requestedProviderOptions:
-        activeChatState?.requestedProviderOptions &&
-        'approvalMode' in activeChatState.requestedProviderOptions
-          ? {
-              approvalMode:
-                activeChatState.requestedProviderOptions.approvalMode,
-            }
-          : undefined,
+      requestedProviderOptions: undefined,
       ...(defaultProviderId
         ? {
             providerId: defaultProviderId,
@@ -1004,7 +976,6 @@ export function useChatInput({
     activeChatState?.defaultProviderId,
     activeChatState?.provider,
     activeChatState?.executionMode,
-    activeChatState?.requestedProviderOptions,
     agentDefaultModel,
     availableModels,
     currentAgent,

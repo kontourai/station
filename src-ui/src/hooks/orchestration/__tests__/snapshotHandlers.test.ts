@@ -450,42 +450,6 @@ describe('station#1301 slice 1: OrchestrationSnapshotPayload widening is behavio
     });
   });
 
-  test('consuming the request bag keeps the approval posture it carried, with or without a controls report (#2321)', () => {
-    for (const effectiveModel of ['B', undefined]) {
-      chats['thread-1'] = {
-        ...chats['thread-1'],
-        requestedModel: 'B',
-        requestedModelSource: 'session override',
-        requestedProviderOptions: { approvalMode: 'never' },
-        providerOptions: { effort: 'high' },
-      };
-      const plan = buildOrchestrationSnapshotSyncPlan(
-        {
-          sessions: [
-            {
-              provider: 'codex',
-              threadId: 'thread-1',
-              status: 'idle',
-              reportedModel: 'B',
-              ...(effectiveModel
-                ? { effectiveModel, effectiveModelOptions: {} }
-                : {}),
-            },
-          ],
-        },
-        chats,
-      );
-      const updates = plan.sessionUpdates[0]?.updates;
-      expect(updates, String(effectiveModel)).toMatchObject({
-        requestedProviderOptions: undefined,
-      });
-      expect(
-        updates?.providerOptions?.approvalMode,
-        String(effectiveModel),
-      ).toBe('never');
-    }
-  });
-
   test('an authoritative default report collapses an explicit default request', () => {
     chats['thread-1'] = {
       ...chats['thread-1'],

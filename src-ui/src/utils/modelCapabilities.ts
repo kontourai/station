@@ -184,68 +184,6 @@ export function replaceModelControlOptions(
 }
 
 /**
- * Settles the approval posture a request bag carried when a model report
- * CONSUMES that bag. A report acknowledges only model controls; the approval
- * posture has its own confirmation, the applied mode the same event reports.
- * Dropping it with the bag made an explicit "Never ask (full access)" vanish
- * the moment the session started: the composer chip, which reads
- * `requestedProviderOptions ?? providerOptions`, found no session override and
- * read "Default" while the session ran with full access (#2321).
- *
- * - No applied mode reported: the requested posture becomes the confirmed
- *   session override (the report cannot contradict it).
- * - Applied mode matches: confirmed, same as above.
- * - Applied mode differs: the request stays PENDING in its own bag and the
- *   confirmed bag is left as it was. A later report that matches it settles
- *   it, even when that report acknowledges no model request. A differing report is either stale (it
- *   describes the turn sent before a newer pick) or a refusal, and the two are
- *   indistinguishable here. Keeping it pending sends it again on the next turn
- *   and lets that turn's report settle it; a refusal is reverted by the
- *   adapter's `approval-escalation-requires-restart` warning. Dropping it
- *   instead silently discarded a newer, stricter pick.
- *
- * Only `approvalMode` is carried. An ACP session `mode` is not: a respawned
- * session may no longer advertise it, and every send would then be refused.
- */
-export function settleRequestedApprovalMode(input: {
-  current: Record<string, unknown> | undefined;
-  requested: Record<string, unknown> | undefined;
-  appliedApprovalMode?: unknown;
-  /** True when a model report consumes the whole request bag. */
-  consumesRequest: boolean;
-}):
-  | {
-      confirmed: Record<string, unknown>;
-      requested: Record<string, unknown> | undefined;
-    }
-  | undefined {
-  const { current, requested, appliedApprovalMode, consumesRequest } = input;
-  const confirmed = { ...(current ?? {}) };
-  const hasRequestedMode = !!requested && 'approvalMode' in requested;
-  const requestedMode = requested?.approvalMode;
-  const reportMatches =
-    appliedApprovalMode !== undefined && appliedApprovalMode === requestedMode;
-  if (!consumesRequest) {
-    // The model part of the request is still open; settle only the posture,
-    // and only when this report confirms exactly what was asked for.
-    if (!hasRequestedMode || !reportMatches) return undefined;
-    const { approvalMode: _settled, ...stillRequested } = requested ?? {};
-    confirmed.approvalMode = requestedMode;
-    return {
-      confirmed,
-      requested:
-        Object.keys(stillRequested).length > 0 ? stillRequested : undefined,
-    };
-  }
-  if (!hasRequestedMode) return { confirmed, requested: undefined };
-  if (appliedApprovalMode !== undefined && !reportMatches) {
-    return { confirmed, requested: { approvalMode: requestedMode } };
-  }
-  confirmed.approvalMode = requestedMode;
-  return { confirmed, requested: undefined };
-}
-
-/**
  * A report can acknowledge picker-owned controls only when every meaningful
  * model control agrees. Non-model options (for example approval posture) are
  * deliberately excluded: they have their own confirmation path.

@@ -6,7 +6,6 @@ import {
   acknowledgesModelRequest,
   modelControlOptionsMatch,
   replaceModelControlOptions,
-  settleRequestedApprovalMode,
 } from '../../utils/modelCapabilities';
 import { rehydrateChatSession } from './rehydrateChatSession';
 import { isReplayThread } from './replay/replay-registry';
@@ -94,47 +93,33 @@ export function buildOrchestrationSnapshotSyncPlan(
 
   const sessionUpdates = payload.sessions
     .map((session) => {
-      const chat = chats[session.threadId];
-      if (!chat) return null;
-      const acknowledgesRequest = acknowledgesModelRequest(
-        chat.requestedModel,
-        chat.defaultModel,
-        session.reportedModel ?? session.effectiveModel ?? session.model,
-      );
-      const consumesRequestedOptions =
-        acknowledgesRequest &&
-        modelControlOptionsMatch(
-          chat.requestedProviderOptions,
-          session.effectiveModelOptions,
-        );
-      // Consuming the request bag must not drop the approval posture it
-      // carried, whether or not this snapshot reports model controls (#2321).
-      // A snapshot reports no applied posture, so nothing overrides it here.
-      const confirmedOptions = consumesRequestedOptions
-        ? (settleRequestedApprovalMode({
-            current: chat.providerOptions,
-            requested: chat.requestedProviderOptions,
-            consumesRequest: true,
-          })?.confirmed ?? {})
-        : (chat.providerOptions ?? {});
+      if (!chats[session.threadId]) return null;
       return {
         threadId: session.threadId,
         updates: {
           provider: session.provider,
           model:
             session.reportedModel ?? session.effectiveModel ?? session.model,
-          ...(acknowledgesRequest
+          ...(acknowledgesModelRequest(
+            chats[session.threadId]?.requestedModel,
+            chats[session.threadId]?.defaultModel,
+            session.reportedModel ?? session.effectiveModel ?? session.model,
+          )
             ? {
                 // The model can acknowledge independently from controls: a
                 // late B+high report must not consume a newer B+low request.
                 requestedModel: undefined,
                 requestedModelSource: undefined,
-                ...(consumesRequestedOptions
+                ...(modelControlOptionsMatch(
+                  chats[session.threadId]?.requestedProviderOptions,
+                  session.effectiveModelOptions,
+                )
                   ? { requestedProviderOptions: undefined }
                   : {}),
-                ...(chat.requestedModel !== null
+                ...(chats[session.threadId]?.requestedModel !== null
                   ? {
-                      modelSource: chat.requestedModelSource,
+                      modelSource:
+                        chats[session.threadId]?.requestedModelSource,
                     }
                   : {}),
               }
@@ -142,13 +127,11 @@ export function buildOrchestrationSnapshotSyncPlan(
           ...(session.effectiveModel
             ? {
                 providerOptions: replaceModelControlOptions(
-                  confirmedOptions,
+                  chats[session.threadId]?.providerOptions ?? {},
                   session.effectiveModelOptions,
                 ),
               }
-            : consumesRequestedOptions
-              ? { providerOptions: confirmedOptions }
-              : {}),
+            : {}),
           orchestrationProvider: session.provider,
           orchestrationModel:
             session.reportedModel ?? session.effectiveModel ?? session.model,

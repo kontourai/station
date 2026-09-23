@@ -8,7 +8,6 @@ import {
   acknowledgesModelRequest,
   modelControlOptionsMatch,
   replaceModelControlOptions,
-  settleRequestedApprovalMode,
 } from '../../utils/modelCapabilities';
 import { finalizeAssistantTurn } from './assistantTurn';
 import type { OrchestrationEvent } from './types';
@@ -42,23 +41,6 @@ export function handleSessionLifecycleEvent(
   const currentChat = activeChatsStore.getChatForExecutionSession(
     event.threadId,
   );
-  const acknowledgesRequest = acknowledgesModelRequest(
-    currentChat?.requestedModel,
-    currentChat?.defaultModel,
-    effectiveModel,
-  );
-  const consumesRequestedOptions =
-    acknowledgesRequest &&
-    modelControlOptionsMatch(
-      currentChat?.requestedProviderOptions,
-      effectiveModelOptions,
-    );
-  const settledApproval = settleRequestedApprovalMode({
-    current: currentChat?.providerOptions,
-    requested: currentChat?.requestedProviderOptions,
-    appliedApprovalMode: approvalMode,
-    consumesRequest: consumesRequestedOptions,
-  });
   activeChatsStore.updateChat(event.threadId, {
     provider: event.provider,
     orchestrationProvider: event.provider,
@@ -71,11 +53,20 @@ export function handleSessionLifecycleEvent(
     ...(effectiveModel
       ? { model: effectiveModel, orchestrationModel: effectiveModel }
       : {}),
-    ...(acknowledgesRequest
+    ...(acknowledgesModelRequest(
+      currentChat?.requestedModel,
+      currentChat?.defaultModel,
+      effectiveModel,
+    )
       ? {
           requestedModel: undefined,
           requestedModelSource: undefined,
-
+          ...(modelControlOptionsMatch(
+            currentChat?.requestedProviderOptions,
+            effectiveModelOptions,
+          )
+            ? { requestedProviderOptions: undefined }
+            : {}),
           ...(currentChat?.requestedModel !== null
             ? { modelSource: currentChat?.requestedModelSource }
             : {}),
@@ -84,15 +75,10 @@ export function handleSessionLifecycleEvent(
     ...(effectiveModel
       ? {
           providerOptions: replaceModelControlOptions(
-            settledApproval?.confirmed ?? currentChat?.providerOptions ?? {},
+            currentChat?.providerOptions ?? {},
             effectiveModelOptions,
           ),
         }
-      : settledApproval
-        ? { providerOptions: settledApproval.confirmed }
-        : {}),
-    ...(settledApproval
-      ? { requestedProviderOptions: settledApproval.requested }
       : {}),
   });
 }
