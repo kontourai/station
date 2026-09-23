@@ -1,7 +1,8 @@
 # Issue class prevention
 
-**Status:** proposed execution plan, 2026-09-22. The named modules and tests are
-current at this revision; GitHub issues own live priority and delivery state.
+**Status:** active execution plan, 2026-09-23. The scoped governance routes
+are implemented; the broader runtime, browser, platform, and resource exit
+checks below remain open. GitHub issues own live priority and delivery state.
 This plan does not claim that an existing test proves a desktop, mobile, or
 provider behavior it does not execute.
 
@@ -59,11 +60,16 @@ Veritas rules `session-lifecycle-recovery-contract` and
 affected files at `Require` level. For a changed named file, `evidenceCheckIds`
 selects the corresponding focused suite in the same readiness run. Missing,
 skipped, failed, or unbound results block. `gate:for` presents matching
-`explain` guidance before edits; the installed Claude Code hook does so for
-path-bearing edit tools. Codex has no native PreToolUse hook, and no tool can
-prove that an agent read or followed guidance. These checks prove their named
-tests ran and passed, not every behavior suggested by the rule text. Other
-behavioral gates remain `npm run test:focused -- <selected files>`,
+`explain` guidance before edits. The Veritas Governance Kit declares a Codex
+`PreToolUse` hook; Flow Agents provisions it through Conduit, preserving other
+handlers and recording the installed bytes. Codex must trust the project hook
+before it executes. The first matching edit in a host session gets full
+guidance; repeat edits with the same path guidance and policy hashes still run
+the decision but do not repeat the prose. A missing session ID or cache error
+repeats the briefing. Hook delivery cannot prove that an agent followed the
+guidance, and tools outside the host's hook coverage still require post-change
+readiness. These checks prove their named tests ran and passed, not every
+behavior suggested by the rule text. Other behavioral gates remain `npm run test:focused -- <selected files>`,
 `npm run test:connected-agents`, relevant browser journeys, and `npm run
 ci:fast`, followed by the hosted completion gate when a promotion requires it.
 Use `npm run gate:for -- <paths>` to select the lane. Further expansion of the
@@ -83,28 +89,19 @@ mutations prove the focused commands catch those representative regressions.
 They do not establish long-duration memory bounds, physical-device behavior,
 or every provider adapter's lifecycle.
 
-### Veritas contract improvement to pursue upstream
+### Route contract and installation evidence
 
-The current Repo Standards schema binds `required-artifacts` to existence,
-while the Repo Map routes evidence checks by broad work area. This leaves no
-declarative way for a rule to say, "when this source path changes, this named
-behavioral check must execute at this revision and prove this claim." Propose
-an opt-in rule-to-evidence link with these semantics:
+The Repo Map schema names routed graph nodes with `nodeIds`. Veritas runtime
+must use that same field to select checks; the Station Repo Map test calls the
+published routing function and fails if a changed server file no longer selects
+`connected-agents`. Legacy `componentIds` remains a compatibility input in
+Veritas, but new Repo Maps use the schema field. This runtime and schema
+agreement is separate from the rule-linked required Evidence Checks above.
 
-Veritas 1.7.0 has a Claude Code `PreToolUse` policy hook that presents matching
-`explain` guidance. The current Codex integration
-has Stop/session feedback hooks and no `PreToolUse` hook. Station has neither
-runtime hook installed. Flow Agents defines an optional governance adapter;
-its contract delegates rule meaning to Veritas but does not require a path
-briefing before edits. The path briefing and rule-linked Evidence Check
-selection now live in Veritas rather than being duplicated in each agent pack.
-
-The first three contract pieces are implemented upstream: structured
-`explain --json`, matching guidance through the installed Claude Code edit
-hook, and `evidenceCheckIds` whose selected check is bound to the current
-readiness run. The Veritas test suite proves a baseline pass, injected failure,
-restored pass, skipped-check refusal, and unrelated-path negative control.
-Remaining product work is a native pre-edit hook for Codex and an explicit
-Flow Agents task-admission adapter that invokes the structured briefing.
-Until those runtimes expose and install those seams, the Station `gate:for`
-route is the required pre-edit briefing for this repository.
+Structured `explain --json`, the Codex and Claude pre-edit hooks, and
+rule-linked Evidence Checks live in Veritas. Flow Agents owns Kit activation
+and provisioning; Conduit owns host capability and installation receipts.
+An installed hook config proves only the projected bytes. A host trust review
+and a real hook invocation are separate observations. The independent
+`veritas readiness` gate catches changes made through uncovered tools or
+sessions that never ran a pre-edit hook.

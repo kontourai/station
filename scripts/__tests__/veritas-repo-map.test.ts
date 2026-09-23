@@ -1,5 +1,5 @@
 /**
- * Repo Map contract test (Veritas 1.5).
+ * Repo Map contract test (Veritas 1.7).
  *
  * Replaces the retired scripts/veritas-report.mjs test. Its load-bearing
  * protection is route selection: runtime/server changes must keep selecting
@@ -39,7 +39,6 @@ const veritasReadme = readFileSync(
 
 interface EvidenceCheckRoute {
   nodeIds: string[];
-  componentIds?: string[];
   evidenceCheckIds: string[];
 }
 
@@ -47,11 +46,9 @@ function routes(): EvidenceCheckRoute[] {
   return repoMap.evidence.evidenceCheckRoutes ?? [];
 }
 
-// 0.5.0 runtime matches routes on componentIds while the published schema
-// documents nodeIds; the repo-map carries both. Route on the runtime key.
 function routedCheckIdsFor(nodeId: string): string[] {
   return routes()
-    .filter((route) => (route.componentIds ?? []).includes(nodeId))
+    .filter((route) => route.nodeIds.includes(nodeId))
     .flatMap((route) => route.evidenceCheckIds);
 }
 
@@ -182,9 +179,19 @@ describe('veritas repo map (1.5)', () => {
     }
   });
 
-  it('routes runtime server changes to connected-agents as replacement proof', () => {
+  it('routes runtime server changes to connected-agents as replacement proof', async () => {
     const routed = routedCheckIdsFor('product.src-server');
     expect(routed).toEqual(['connected-agents']);
+    // @ts-expect-error -- @kontourai/veritas ships untyped ESM
+    const veritas = await import('@kontourai/veritas');
+    const runtimePlan = veritas.resolveEvidenceCheckCommands({
+      repoMapPath: resolve(rootDir, '.veritas/repo-map.json'),
+      files: ['src-server/services/orchestration/session-lifecycle-module.ts'],
+      rootDir,
+    });
+    expect(
+      runtimePlan.evidenceChecks.map((check: { id: string }) => check.id),
+    ).toContain('connected-agents');
   });
 
   it('keeps assertion-free proof families out of readiness routing', () => {
@@ -199,7 +206,6 @@ describe('veritas repo map (1.5)', () => {
   it('rejects a fault-injected assertion-free proof-family route', () => {
     const nonConformantRoute: EvidenceCheckRoute = {
       nodeIds: ['package.sdk'],
-      componentIds: ['package.sdk'],
       evidenceCheckIds: ['architecture-boundaries'],
     };
 
@@ -230,9 +236,10 @@ describe('veritas repo map (1.5)', () => {
     );
   });
 
-  it('keeps schema nodeIds and runtime componentIds in sync on every route', () => {
+  it('uses only schema nodeIds on every route', () => {
     for (const route of routes()) {
-      expect(route.componentIds).toEqual(route.nodeIds);
+      expect(route).not.toHaveProperty('componentIds');
+      expect(route.nodeIds.length).toBeGreaterThan(0);
     }
   });
 

@@ -27,6 +27,7 @@ allowBuilds:
   ssh2@1.17.0: false
 minimumReleaseAge: 1440
 minimumReleaseAgeExclude:
+  - '@kontourai/conduit'
   - '@kontourai/veritas'
 pmOnFail: ignore
 overrides:

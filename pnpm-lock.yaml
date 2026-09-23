@@ -89,8 +89,8 @@ importers:
         specifier: ^0.2.0
         version: 0.2.0(playwright@1.62.1)
       '@kontourai/conduit':
-        specifier: 0.6.0
-        version: 0.6.0
+        specifier: 0.7.1
+        version: 0.7.1
       '@kontourai/console-core':
         specifier: ^0.3.0
         version: 0.3.0
@@ -155,8 +155,8 @@ importers:
         specifier: ^1.12.0
         version: 1.12.0(react@19.2.8)
       '@kontourai/veritas':
-        specifier: 1.7.0
-        version: 1.7.0(supports-color@7.2.0)(zod@4.5.4)
+        specifier: 1.7.2
+        version: 1.7.2(supports-color@7.2.0)(zod@4.5.4)
       '@modelcontextprotocol/client':
         specifier: ^2.0.0
         version: 2.0.0
@@ -2143,8 +2143,8 @@ packages:
     resolution: {integrity: sha512-xhMLtE89WRoa7/MU8C9/Bl676hPKT+niKmp/fj26gW5aL6QVfaBx/ywlgyoEAmmLxkMpjk4PVKLksvslXyzM+A==}
     engines: {node: '>=22'}
 
-  '@kontourai/conduit@0.6.0':
-    resolution: {integrity: sha512-LbXDbEILAZ1USlekWC+aVBW6hEtfoaXp5+l3p8AZa4DZrHJL3/bmRekXmBuGe97v3tlTCu7t8ac0BMYwGpv5jQ==}
+  '@kontourai/conduit@0.7.1':
+    resolution: {integrity: sha512-EiAd0KYVnysVy6I1lvW6vHoGTocLmG81HotMDsqJTIcqhMBImFAyojMs1qPqXrBnH/HpjrLI+yBlUSOzKtJwjw==}
     engines: {node: '>=22'}
 
   '@kontourai/console-core@0.3.0':
@@ -2396,8 +2396,8 @@ packages:
     peerDependencies:
       react: ^19.0.0
 
-  '@kontourai/veritas@1.7.0':
-    resolution: {integrity: sha512-v7VQtEBQi47VART+0dBUbzU3APuWRWUH/45J6R5elC0ihrtbfv3RAHYDuO8+7y6I0aiQcrK323txl2BWX/7H+w==}
+  '@kontourai/veritas@1.7.2':
+    resolution: {integrity: sha512-/UgGqyvLPNKlVT/joyTuGZnk6+/rZNTqvJK60QqNesshjAPSaBicvxmRqU5/CdB4uSaVr9imEVWEzTMnyU4ZFg==}
     engines: {node: '>=22'}
     hasBin: true
 
@@ -9046,7 +9046,7 @@ snapshots:
 
   '@kontourai/conduit@0.2.1': {}
 
-  '@kontourai/conduit@0.6.0': {}
+  '@kontourai/conduit@0.7.1': {}
 
   '@kontourai/console-core@0.3.0': {}
 
@@ -9417,7 +9417,7 @@ snapshots:
     dependencies:
       react: 19.2.8
 
-  '@kontourai/veritas@1.7.0(supports-color@7.2.0)(zod@4.5.4)':
+  '@kontourai/veritas@1.7.2(supports-color@7.2.0)(zod@4.5.4)':
     dependencies:
       '@kontourai/surface': 2.18.0(supports-color@7.2.0)
       '@modelcontextprotocol/sdk': 1.30.0(supports-color@7.2.0)(zod@4.5.4)

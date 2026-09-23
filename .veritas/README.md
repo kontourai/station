@@ -1,6 +1,6 @@
 # Veritas For Station
 
-Station is governed by `@kontourai/veritas` 1.5: a Repo Map (`repo-map.json`) describing work areas and evidence checks, Repo Standards (`repo-standards/default.repo-standards.json`) as executable requirements, authority settings, and attestations for Protected Standards. Durable governance remains under `.veritas/`; generated evidence, claim inputs, standards feedback, recommendations, and conformance output live under `.kontourai/veritas/`. The current contract inventory is in `docs/strategy/veritas/migration-1.5-record.md`; the 0.3-to-0.5 history remains in `migration-0.5-record.md` beside it.
+Station is governed by `@kontourai/veritas`: a Repo Map (`repo-map.json`) describing work areas and evidence checks, Repo Standards (`repo-standards/default.repo-standards.json`) as executable requirements, authority settings, and attestations for Protected Standards. Durable governance remains under `.veritas/`; generated evidence, claim inputs, standards feedback, recommendations, and conformance output live under `.kontourai/veritas/`. The baseline contract inventory is in `docs/strategy/veritas/migration-1.5-record.md`; the 0.3-to-0.5 history remains in `migration-0.5-record.md` beside it.
 
 ## Gate
 
@@ -56,9 +56,11 @@ one of their named files selects a focused Evidence Check through
 Their artifact checks still prove only presence. The remaining behavioral work and exit criteria live
 in [the issue-class prevention plan](../docs/plans/issue-class-prevention.md).
 Use `veritas explain --file <path>` before editing a routed seam.
-The pre-edit `gate:for` route presents matching guidance; Codex has no native
-PreToolUse hook, so a tool call that bypasses that route is still a visibility
-gap. The plan records the stronger host-hook contract.
+The pre-edit `gate:for` route presents matching guidance. The Veritas Governance
+Kit also declares a Codex `PreToolUse` hook, provisioned through Flow Agents
+and Conduit; Codex trust review and actual invocation require separate proof.
+Readiness remains required for edits outside the host hook's coverage. The plan
+records the installation and coverage contract.
 
 ## Brownfield Rule
 
