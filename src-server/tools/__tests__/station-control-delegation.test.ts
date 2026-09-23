@@ -2629,6 +2629,31 @@ describe('Station Control canonical Environment + Agent execution', () => {
     );
   });
 
+  // Station #90 lane D (D2): the child a follow-up starts carries the
+  // route-set owner attribution, like a fresh delegation.
+  test('a follow-up child Session carries the unattributed-agent marker the route set', async () => {
+    installCurrentStationFetch();
+    const authority = hostedAuthority('alpha');
+    const service = localDelegatedTaskService('completed');
+    const { continueDelegatedTask } = await import(
+      '../station-control-delegation.js'
+    );
+    await continueDelegatedTask(
+      {
+        taskId: 'task-alpha',
+        message: 'One more thing',
+        readAuthority: authority,
+        ownerAttribution: 'unattributed-agent',
+      },
+      service as never,
+    );
+    const started = service.startSessionInternal.mock.calls[0]?.[0] as {
+      input: { threadId: string; metadata: Record<string, unknown> };
+    };
+    expect(started.input.threadId).toBe('task-alpha:session:child-1');
+    expect(started.input.metadata.ownerAttribution).toBe('unattributed-agent');
+  });
+
   test('a marked portable task refuses continuation without a fresh offer admission', async () => {
     installCurrentStationFetch();
     const authority = hostedAuthority('alpha');
