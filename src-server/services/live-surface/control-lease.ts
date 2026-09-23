@@ -106,6 +106,9 @@ export class LiveSurfaceControlLeaseState implements LiveSurfaceLeaseReader {
   private lastHolder: LiveSurfaceController | null = null;
   private expiresAt: number | null = null;
   private expiryTimer: ReturnType<typeof setTimeout> | null = null;
+  private disposed = false;
+  /** Whether the holder has anything pressed right now (the registry). */
+  private holding: () => boolean = () => false;
   private readonly listeners = new Set<
     (lease: LiveSurfaceControlLease) => void
   >();
@@ -172,6 +175,8 @@ export class LiveSurfaceControlLeaseState implements LiveSurfaceLeaseReader {
     human: HumanController,
     observedEpoch: number,
   ): FencedLeaseResult {
+    if (this.disposed)
+      return { ok: false, code: 'surface-closed', lease: this.view() };
     this.expireIfDue();
     if (observedEpoch !== this.epoch)
       return { ok: false, code: 'stale-epoch', lease: this.view() };
@@ -180,6 +185,8 @@ export class LiveSurfaceControlLeaseState implements LiveSurfaceLeaseReader {
 
   /** An explicit human claim (the "take control" button): no epoch needed. */
   claimHuman(human: HumanController): FencedLeaseResult {
+    if (this.disposed)
+      return { ok: false, code: 'surface-closed', lease: this.view() };
     this.expireIfDue();
     this.setHolder({ ...human }, this.now() + this.humanHoldMs);
     return { ok: true, lease: this.view() };
@@ -191,6 +198,8 @@ export class LiveSurfaceControlLeaseState implements LiveSurfaceLeaseReader {
    * the registry's `claimAgentControl`, which authorizes first.
    */
   claimForAgent(principal: string, sessionId: string): FencedLeaseResult {
+    if (this.disposed)
+      return { ok: false, code: 'surface-closed', lease: this.view() };
     this.expireIfDue();
     const controller: AgentController = { kind: 'agent', principal, sessionId };
     if (!sameController(controller, this.holder)) {
@@ -262,7 +271,7 @@ export class LiveSurfaceControlLeaseState implements LiveSurfaceLeaseReader {
   private scheduleExpiry(): void {
     if (this.expiryTimer) clearTimeout(this.expiryTimer);
     this.expiryTimer = null;
-    if (this.expiresAt === null) return;
+    if (this.disposed || this.expiresAt === null) return;
     const delay = Math.max(0, this.expiresAt - this.now());
     this.expiryTimer = setTimeout(() => {
       this.expiryTimer = null;
@@ -272,15 +281,32 @@ export class LiveSurfaceControlLeaseState implements LiveSurfaceLeaseReader {
     this.expiryTimer.unref?.();
   }
 
-  /** Stop the expiry timer (registry unregister/dispose). */
+  /**
+   * Whether the current holder has anything pressed. A human holding a
+   * button or key is live however long the hold lasts: the lease never
+   * lapses mid-drag or mid-long-press.
+   */
+  setHoldProbe(probe: () => boolean): void {
+    this.holding = probe;
+  }
+
+  /** Stop the expiry timer and refuse further claims (unregister/dispose). */
   dispose(): void {
+    this.disposed = true;
     if (this.expiryTimer) clearTimeout(this.expiryTimer);
     this.expiryTimer = null;
   }
 
   private expireIfDue(): void {
-    if (this.holder && this.expiresAt !== null && this.now() >= this.expiresAt)
-      this.setHolder(null, null);
+    if (!this.holder || this.expiresAt === null || this.now() < this.expiresAt)
+      return;
+    if (this.holder.kind === 'human' && this.holding()) {
+      // Still pressing: still live. Extend rather than lapse.
+      this.expiresAt = this.now() + this.humanHoldMs;
+      this.scheduleExpiry();
+      return;
+    }
+    this.setHolder(null, null);
   }
 
   private view(): FencedLease {

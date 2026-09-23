@@ -189,6 +189,8 @@ export type LiveSurfaceLeaseRefusalCode =
   | 'held-by-other'
   /** The surface's authorizer refused the principal this action. */
   | 'not-authorized'
+  /** The surface was unregistered; its lease accepts no further claims. */
+  | 'surface-closed'
   /** The caller is not the current holder (release/renew/dispatch). */
   | 'not-holder';
 

@@ -247,4 +247,38 @@ describe('live surface control lease', () => {
       }),
     ).toMatchObject({ ok: false, code: 'not-holder' });
   });
+  test('a human with something pressed stays live past the hold time (N1)', () => {
+    const { state, clock } = lease();
+    let pressing = true;
+    state.setHoldProbe(() => pressing);
+    state.claimForHumanInput(alice, 0);
+    clock.t = 5_000; // long past humanHoldMs, but still holding
+    expect(state.snapshot()).toMatchObject({ holder: alice });
+    expect(state.claimForAgent(agent.principal, agent.sessionId)).toMatchObject(
+      {
+        ok: false,
+        code: 'human-controlling',
+      },
+    );
+    pressing = false; // released: the hold runs from here and then lapses
+    clock.t = 5_999;
+    expect(state.snapshot()).toMatchObject({ holder: alice });
+    clock.t = 6_000;
+    expect(state.snapshot()).toMatchObject({ holder: null });
+  });
+
+  test('a disposed lease refuses every claim with a typed code (N2)', () => {
+    const { state } = lease();
+    state.dispose();
+    for (const result of [
+      state.claimHuman(alice),
+      state.claimForHumanInput(alice, 0),
+      state.claimForAgent(agent.principal, agent.sessionId),
+    ])
+      expect(result).toMatchObject({
+        ok: false,
+        code: 'surface-closed',
+        lease: { holder: null, expiresAt: null },
+      });
+  });
 });

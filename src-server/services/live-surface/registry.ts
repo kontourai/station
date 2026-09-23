@@ -87,7 +87,11 @@ const DEFAULT_DISPATCH_TIMEOUT_MS = 10_000;
  * (never completed; see `cancelHeld`).
  */
 class PressedInput {
-  private readonly buttons = new Set<LiveSurfacePointerButton>();
+  /** Each held button, with the pointer type its down was dispatched as. */
+  private readonly buttons = new Map<
+    LiveSurfacePointerButton,
+    LiveSurfacePointerType
+  >();
   private readonly keys = new Map<string, { key: string; code: string }>();
   private pointer = { x: 0, y: 0 };
   private pointerType: LiveSurfacePointerType = 'mouse';
@@ -97,7 +101,8 @@ class PressedInput {
       this.pointer = { x: event.x, y: event.y };
       if (event.type === 'down')
         this.pointerType = event.pointerType ?? 'mouse';
-      if (event.type === 'down' && event.button) this.buttons.add(event.button);
+      if (event.type === 'down' && event.button)
+        this.buttons.set(event.button, event.pointerType ?? 'mouse');
       if (event.type === 'up' && event.button)
         this.buttons.delete(event.button);
     } else if (event.kind === 'key') {
@@ -108,14 +113,19 @@ class PressedInput {
     }
   }
 
+  hasAny(): boolean {
+    return this.buttons.size > 0 || this.keys.size > 0;
+  }
+
   /** Everything held, then forget it; null when nothing is held. */
   take(): LiveSurfaceHeldInput | null {
     if (this.buttons.size === 0 && this.keys.size === 0) return null;
     const held: LiveSurfaceHeldInput = {
-      buttons: [...this.buttons],
+      buttons: [...this.buttons.keys()],
       keys: [...this.keys.values()],
       pointer: { ...this.pointer },
       pointerType: this.pointerType,
+      buttonPointerTypes: Object.fromEntries(this.buttons),
     };
     this.buttons.clear();
     this.keys.clear();
@@ -129,15 +139,15 @@ const NEUTRAL_POINT = { x: -1, y: -1 };
 function neutralCancelEvents(held: LiveSurfaceHeldInput): LiveSurfaceInput[] {
   const events: LiveSurfaceInput[] = [];
   if (held.buttons.length > 0) {
-    // A touch keeps its pointer type, so a producer can map it to a touch
-    // cancel rather than a lift.
-    const pointerType =
-      held.pointerType === 'mouse' ? {} : { pointerType: held.pointerType };
+    // Each release keeps the modality its down was dispatched in, so a
+    // producer can map a touch to a touch cancel rather than a lift.
+    const typeOf = (type: LiveSurfacePointerType | undefined) =>
+      !type || type === 'mouse' ? {} : { pointerType: type };
     events.push({
       kind: 'pointer',
       type: 'move',
       ...NEUTRAL_POINT,
-      ...pointerType,
+      ...typeOf(held.pointerType),
     });
     for (const button of held.buttons)
       events.push({
@@ -146,7 +156,7 @@ function neutralCancelEvents(held: LiveSurfaceHeldInput): LiveSurfaceInput[] {
         ...NEUTRAL_POINT,
         button,
         clickCount: 1,
-        ...pointerType,
+        ...typeOf(held.buttonPointerTypes[button] ?? held.pointerType),
       });
   }
   for (const { key, code } of held.keys)
@@ -233,6 +243,8 @@ export class LiveSurfaceRegistry {
     // synchronously at the claim: AHEAD of the new controller's first batch
     // and behind the old controller's current one.
     lease.onHandoff(() => cancelHeld(entry));
+    // A human who is still pressing something stays live (never lapses).
+    lease.setHoldProbe(() => own.pressed.hasAny());
     // Control lapsing to NOBODY — release or expiry — cancels held input too.
     lease.onChange((next) => {
       if (next.holder === null) cancelHeld(entry);

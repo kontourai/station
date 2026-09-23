@@ -39,12 +39,17 @@ import {
  *   typed terminal state, not something to hammer.
  * - Input is coalesced (consecutive moves collapse to the latest) and sent
  *   one POST at a time, each bounded to fit one relay chunk. A batch
- *   refused as `stale-epoch` is DROPPED, not replayed: it was aimed at a view
+ *   refused as `stale-epoch` or `stale-fence` (control changed hands before
+ *   or during the batch) is DROPPED, not replayed: it was aimed at a view
  *   that changed hands, and replaying clicks onto a page someone else has
  *   since changed is exactly what the epoch exists to prevent. Anything this
  *   client held down when that happened was already released by the server
  *   at the handoff, so its eventual button/key UP is swallowed here: sending
  *   it would be fresh human input, and would take control straight back.
+ * - Remote input goes through a hand-rolled single-flight queue, not React
+ *   Query's `useMutation`: the queue coalesces moves, keeps one POST in
+ *   flight, and drops everything on a stale refusal — state a per-request
+ *   mutation does not own (N4).
  * - The epoch this client acts on only moves forward (it is the max of every
  *   epoch it has seen), so a frame published before a handoff can never
  *   walk it back behind a state record that already announced the handoff.
@@ -397,7 +402,11 @@ export function useLiveSurface(
       if (nextLease) adoptLease(nextLease);
       if (result?.ok) {
         setInputNotice(null);
-      } else if (result && !result.ok && result.code === 'stale-epoch') {
+      } else if (
+        result &&
+        !result.ok &&
+        (result.code === 'stale-epoch' || result.code === 'stale-fence')
+      ) {
         queueRef.current = [];
         for (const id of pressedRef.current) orphanedRef.current.add(id);
         pressedRef.current.clear();

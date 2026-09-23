@@ -153,6 +153,7 @@ describe('live surface registry', () => {
         keys: [{ key: 'shift', code: 'KeySHIFT' }],
         pointer: { x: 5, y: 6 },
         pointerType: 'mouse',
+        buttonPointerTypes: { left: 'mouse' },
       },
     ]);
     expect(keysOf(producer.dispatched)).toEqual([
@@ -359,11 +360,15 @@ describe('live surface registry', () => {
       for (const action of ['view', 'input', 'control'] as const)
         expect(await registry.get(id)!.authorize(OPERATOR, action)).toBe(false);
   });
-  test('a lease that expires while input is held cancels it, even with nobody reading the lease (W2)', async () => {
+  test("an agent's lease that expires while it holds input cancels it, with nobody reading the lease (W2)", async () => {
+    // (A HUMAN who is pressing never expires — see N1. An agent does.)
     const { producer, entry } = setup(() => true, {
-      lease: { humanHoldMs: 30 },
+      lease: { agentTtlMs: 30 },
     });
-    await dispatchHumanInput(entry, human, 0, [press('down', 7, 8)]);
+    const fence = await agentFence(entry);
+    await dispatchAgentInput(entry, agent, OPERATOR, fence, [
+      press('down', 7, 8),
+    ]);
     // Nobody watches or drives the surface: the expiry timer must fire.
     await sleep(80);
     await settleChain();
@@ -457,5 +462,67 @@ describe('live surface registry', () => {
       state: { wedged: false, wedgedSince: null },
     });
     viewer.close();
+  });
+  test('a long press or drag does not lapse the lease; releasing lets it lapse (N1)', async () => {
+    const { producer, entry } = setup(() => true, {
+      lease: { humanHoldMs: 30 },
+    });
+    await dispatchHumanInput(entry, human, 0, [press('down', 7, 8)]);
+    await sleep(90); // three hold periods, button still down
+    expect(entry.lease.snapshot().holder).toMatchObject(human);
+    expect(producer.dispatched).toHaveLength(1); // nothing cancelled it
+    await dispatchHumanInput(entry, human, 1, [press('up', 7, 8)]);
+    await sleep(90);
+    expect(entry.lease.snapshot().holder).toBeNull();
+  });
+
+  test('an unregistered surface refuses claims (N2)', async () => {
+    const registry = new LiveSurfaceRegistry();
+    const unregister = registry.register(
+      new SyntheticLiveSurfaceProducer('closing'),
+      { authorize: () => true },
+    );
+    const entry = registry.get('closing')!;
+    await unregister();
+    expect(await claimAgentControl(entry, agent, OPERATOR)).toMatchObject({
+      ok: false,
+      code: 'surface-closed',
+    });
+    expect(await dispatchHumanInput(entry, human, 0, [move(1)])).toMatchObject({
+      ok: false,
+      code: 'surface-closed',
+    });
+  });
+
+  test('each held button is cancelled in the modality its down used (N3)', async () => {
+    const { producer, entry } = setup();
+    const fence = await agentFence(entry);
+    await dispatchAgentInput(entry, agent, OPERATOR, fence, [
+      { ...press('down', 5, 6), pointerType: 'touch' },
+      { kind: 'pointer', type: 'down', x: 5, y: 6, button: 'right' },
+    ]);
+    await dispatchHumanInput(entry, human, 1, [move(9)]);
+    const ups = producer.dispatched.filter(
+      (event) => event.kind === 'pointer' && event.type === 'up',
+    );
+    expect(ups).toEqual([
+      {
+        kind: 'pointer',
+        type: 'up',
+        x: -1,
+        y: -1,
+        button: 'left',
+        clickCount: 1,
+        pointerType: 'touch',
+      },
+      {
+        kind: 'pointer',
+        type: 'up',
+        x: -1,
+        y: -1,
+        button: 'right',
+        clickCount: 1,
+      },
+    ]);
   });
 });

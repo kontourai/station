@@ -666,6 +666,49 @@ describe('LiveSurfaceCanvas', () => {
     expect(screen.queryByText(notice)).toBeNull();
   });
 
+  test('a stale-fence refusal is a control change too: dropped, noticed, and its release swallowed (F1)', async () => {
+    const h = harness({
+      inputReply: (body) => ({
+        success: false,
+        data: {
+          ok: false,
+          code: 'stale-fence',
+          accepted: 0,
+          lease: lease(body.epoch + 1, {
+            kind: 'agent',
+            principal: 'agent:coder',
+            sessionId: 's',
+          }),
+        },
+      }),
+    });
+    await renderLive(h);
+    layoutCanvas({ left: 0, top: 0, width: 640, height: 400 });
+    const canvas = screen.getByTestId('live-surface-canvas');
+    fireEvent.pointerDown(canvas, {
+      clientX: 10,
+      clientY: 10,
+      button: 0,
+      pointerId: 1,
+    });
+    await flush();
+    expect(
+      screen.getByText(
+        'Control changed before your input arrived, so it was not sent.',
+      ),
+    ).toBeTruthy();
+    // The server cancelled the press at the handoff: this release would be
+    // fresh input that takes control back, so it is not sent.
+    fireEvent.pointerUp(canvas, {
+      clientX: 10,
+      clientY: 10,
+      button: 0,
+      pointerId: 1,
+    });
+    await flush();
+    expect(h.inputs).toHaveLength(1);
+  });
+
   test('a 404 is a terminal "not available" state with no reconnect', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     try {

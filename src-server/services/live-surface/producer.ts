@@ -15,8 +15,12 @@ export interface LiveSurfaceHeldInput {
   buttons: LiveSurfacePointerButton[];
   keys: { key: string; code: string }[];
   pointer: { x: number; y: number };
-  /** The type of the pointer that pressed: a touch must be cancelled as one. */
+  /** The type of the most recent pointer down. */
   pointerType: LiveSurfacePointerType;
+  /** The pointer type each held button's down was dispatched as. */
+  buttonPointerTypes: Partial<
+    Record<LiveSurfacePointerButton, LiveSurfacePointerType>
+  >;
 }
 
 /**
@@ -80,7 +84,10 @@ export interface LiveSurfaceProducer {
    *
    * Without this hook the registry dispatches a neutral cancel: a pointer
    * move to (-1, -1), outside every viewport, then each button's `up` there,
-   * then each key's `up`. A CDP producer should do better: for a touch
+   * then each key's `up`. Cancel each held input in the SAME modality its
+   * down was dispatched in (`buttonPointerTypes`): a touch is cancelled as
+   * a touch, a mouse button as a mouse button. A CDP producer should do
+   * better than the default: for a touch
    * (`held.pointerType === 'touch'`) dispatch `Input.dispatchTouchEvent`
    * with `type: 'touchCancel'`, which ends the gesture without a tap.
    */
