@@ -81,6 +81,20 @@ function sameKey(
   );
 }
 
+function sameReviewedTrust(
+  reviewed: DeviceConnectionTrustRecord | null,
+  current: DeviceConnectionTrustRecord | null,
+) {
+  if (!reviewed || !current) return reviewed === current;
+  return (
+    reviewed.revision === current.revision &&
+    reviewed.status === current.status &&
+    reviewed.trust.stationId === current.trust.stationId &&
+    reviewed.trust.enrollmentId === current.trust.enrollmentId &&
+    sameKey(reviewed.trust, current.trust)
+  );
+}
+
 function decideTrust(
   record: DeviceConnectionTrustRecord | null,
   candidate: ApprovedStationConnectionTrust,
@@ -231,11 +245,16 @@ export function BrowserStationTrustApproval() {
     try {
       store = await openDeviceConnectionTrustStore();
       const latest = await store.read(candidate.trust.stationId);
-      const decision = decideTrust(latest, candidate.trust);
+      if (!sameReviewedTrust(record, latest)) {
+        setRecord(latest);
+        setConfirmedKeyId(null);
+        throw new Error('device_trust_conflict');
+      }
+      const decision = decideTrust(record, candidate.trust);
       if (!decision.canApprove) throw new Error('device_trust_conflict');
       const approved = await store.approve(
         candidate.trust,
-        latest?.revision ?? null,
+        record?.revision ?? null,
         candidate.keyId,
       );
       setRecord(approved);

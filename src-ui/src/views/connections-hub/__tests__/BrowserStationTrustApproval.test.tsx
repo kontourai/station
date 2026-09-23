@@ -165,6 +165,42 @@ describe('browser Station signing-key approval', () => {
     expect(mocks.approve).toHaveBeenCalledWith(trust(2), 7, KEY_ID);
   });
 
+  it('refuses approval if another tab revoked the key after the user reviewed it', async () => {
+    mocks.current = {
+      schemaVersion: 1,
+      revision: 7,
+      status: 'approved',
+      trust: trust(
+        1,
+        ENROLLMENT_ID,
+        'CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC',
+      ),
+    };
+    render(<BrowserStationTrustApproval />);
+    enterReport(report(2));
+    expect(
+      await screen.findByText('A newer Station key needs approval'),
+    ).toBeTruthy();
+    confirmComparison();
+    mocks.current = { ...mocks.current, revision: 8, status: 'revoked' };
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Approve Station key' }),
+    );
+    expect(
+      await screen.findByText(
+        /Station trust changed while you were reviewing it/,
+      ),
+    ).toBeTruthy();
+    expect(mocks.approve).not.toHaveBeenCalled();
+    expect(
+      (
+        screen.getByLabelText(
+          /I compared this full key ID with the Station operator/,
+        ) as HTMLInputElement
+      ).checked,
+    ).toBe(false);
+  });
+
   it('does not restore revoked trust with the same generation and revokes with the observed revision', async () => {
     mocks.current = {
       schemaVersion: 1,
