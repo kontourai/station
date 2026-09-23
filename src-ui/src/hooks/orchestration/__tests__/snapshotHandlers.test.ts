@@ -580,6 +580,8 @@ describe('#2303: a turn running in a lineage child reseeds its conversation chat
         currentSessionId: OLD_CHILD,
         orchestrationSessionStarted: true,
         status: 'idle',
+        // #2304: a start stamped by an earlier turn, before the gap.
+        openTurnStartedAt: Date.parse('2026-09-22T17:10:00.000Z'),
       },
     };
   });
@@ -611,6 +613,15 @@ describe('#2303: a turn running in a lineage child reseeds its conversation chat
         // The catch-up hands the OPEN turn to the projection — keyed by the
         // conversation chat, not by the child row's thread id.
         expect(chat.openTurnShellSuperseded).toBe(true);
+        // #2303 + #2304 together: the catch-up drops the pre-gap start on
+        // the CONVERSATION chat too, so the working clock re-derives it
+        // rather than counting the previous turn's time.
+        expect(chat.openTurnStartedAt).toBeUndefined();
+      } else {
+        // An ordinary snapshot is not a catch-up; it leaves the start alone.
+        expect(chat.openTurnStartedAt).toBe(
+          Date.parse('2026-09-22T17:10:00.000Z'),
+        );
       }
     });
   }
