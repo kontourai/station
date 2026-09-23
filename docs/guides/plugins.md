@@ -506,7 +506,8 @@ Import everything from `@kontourai/station-sdk`. Key hooks:
 - `useAgents()` lists every available Agent; `useAgent(slug)` reads one.
 - `useSendToChat(agent)` sends a message to chat as a specific Agent and opens
   the dock. Name your own plugin's Agent as `'<plugin>:<agent>'`; the hook
-  derives the Agent's identity from it.
+  derives the Agent's identity from it and sends only when the named plugin
+  contributed that Agent.
 - `useSendMessage()` sends to the active conversation; `useCreateChatSession()`
   and `useOpenConversation()` start or reopen one in the chat dock.
 - `useConversations()`, `useConversation(id)` and
@@ -518,8 +519,8 @@ import { useAgentInvokeMutation, useSendToChat } from '@kontourai/station-sdk';
 
 export function SummarizeActions() {
   // Send a message to an Agent your plugin contributes. The qualified form
-  // names the plugin too, so a same-named Agent from another plugin is never
-  // the one that answers.
+  // names the plugin too, and sends only when the named plugin contributed
+  // that Agent.
   const sendToChat = useSendToChat('my-plugin:assistant');
 
   // Invoke an Agent programmatically (no chat UI), by its Agent id.

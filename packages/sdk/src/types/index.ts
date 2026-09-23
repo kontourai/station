@@ -140,14 +140,13 @@ export interface Conversation {
   lastMessage?: string;
 }
 
-export interface NavigationState {
-  currentView: string;
-  selectedLayout?: string;
-  selectedAgent?: string;
-  dockState: boolean;
-  dockHeight: number;
-  dockMaximized: boolean;
-}
+/**
+ * @deprecated Use `SDKNavigation`, what `useNavigation()` returns. This name
+ * once described fields (`dockState`, `currentView`, `dockHeight`) the host
+ * never provided, which is how `useDockState` came to read a missing field
+ * (#2399). It is now an alias of `SDKNavigation`.
+ */
+export type NavigationState = import('../host-contexts').SDKNavigation;
 
 export interface Toast {
   id: string;

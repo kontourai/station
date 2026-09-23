@@ -192,8 +192,8 @@ Returns the current state of a specific chat session (loading, messages, etc.).
 Convenience hook. Returns a function that creates a session, opens the dock, and sends a message — all in one call.
 
 Name an Agent your plugin contributes as `'<plugin>:<agent>'`. The hook derives
-the Agent's identity from it and matches only the Agent that plugin
-contributed, never a same-named Agent from elsewhere. A clean Agent id from
+the Agent's identity from it and sends only when the named plugin contributed
+that Agent; a reference naming another plugin is refused. A clean Agent id from
 `agentId()` in `@kontourai/station-contracts/agent-identity` also works. When
 no Agent matches, the function warns and sends nothing.
 
@@ -2405,14 +2405,8 @@ interface Conversation {
   lastMessage?: string;
 }
 
-interface NavigationState {
-  currentView: string;
-  selectedLayout?: string;
-  selectedAgent?: string;
-  dockState: boolean;
-  dockHeight: number;
-  dockMaximized: boolean;
-}
+/** @deprecated Alias of `SDKNavigation`, what `useNavigation()` returns. */
+type NavigationState = SDKNavigation;
 
 interface InvokeOptions {
   conversationId?: string;

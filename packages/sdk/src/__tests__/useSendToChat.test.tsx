@@ -13,9 +13,11 @@ import { useSendToChat } from '../hooks/operations';
 import { SDKProvider } from '../providers';
 import type { AgentSummary } from '../types';
 
+// Slugs are globally unique: the installer refuses a second Agent with a slug
+// that already exists, so the catalog never holds two rows with one slug.
 const agents: AgentSummary[] = [
-  { slug: 'assistant', name: 'Other Plugin Assistant', plugin: 'other-plugin' },
   { slug: 'assistant', name: 'My Plugin Assistant', plugin: 'my-plugin' },
+  { slug: 'reviewer', name: 'Other Plugin Reviewer', plugin: 'other-plugin' },
   { slug: 'station', name: 'Station' },
 ];
 
@@ -52,14 +54,21 @@ describe('useSendToChat', () => {
     );
   });
 
-  it('never launches a same-named Agent another plugin contributed', () => {
+  it('refuses a reference naming a plugin that did not contribute the Agent', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const { send, launchChat } = mount('third-plugin:assistant');
+    const { send, launchChat } = mount('other-plugin:assistant');
     send('Hello');
     expect(launchChat).not.toHaveBeenCalled();
     expect(warn).toHaveBeenCalledWith(
-      "[useSendToChat] Agent 'third-plugin:assistant' not found",
+      "[useSendToChat] Agent 'other-plugin:assistant' not found",
     );
+  });
+
+  it('refuses a qualified reference to an Agent from no plugin', () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { send, launchChat } = mount('my-plugin:station');
+    send('Hello');
+    expect(launchChat).not.toHaveBeenCalled();
   });
 
   it('refuses a qualified reference whose Agent half is not a clean identity', () => {

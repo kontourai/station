@@ -8,8 +8,8 @@ import { useAgentInvokeMutation, useSendToChat } from '@kontourai/station-sdk';
 
 export function SummarizeActions() {
   // Send a message to an Agent your plugin contributes. The qualified form
-  // names the plugin too, so a same-named Agent from another plugin is never
-  // the one that answers.
+  // names the plugin too, and sends only when the named plugin contributed
+  // that Agent.
   const sendToChat = useSendToChat('my-plugin:assistant');
 
   // Invoke an Agent programmatically (no chat UI), by its Agent id.

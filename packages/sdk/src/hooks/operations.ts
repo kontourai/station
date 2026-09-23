@@ -60,9 +60,11 @@ export function useNotifications() {
 /**
  * The catalog row `useSendToChat` launches, or `undefined` when none matches.
  *
- * A plugin-qualified reference matches only the Agent that plugin contributed:
- * the catalog carries the contributing plugin as `plugin`, and a same-named
- * Agent from anywhere else is not a match. A bare id matches by slug alone.
+ * Agent slugs are globally unique (the installer refuses a duplicate), so a
+ * plugin-qualified reference cannot choose between Agents. It sends only when
+ * the named plugin contributed that Agent: the catalog carries the
+ * contributing plugin as `plugin`, and a reference naming any other plugin is
+ * refused. A bare id matches by slug alone.
  */
 function sendToChatTarget(
   agent: AgentId | QualifiedPluginAgentId,
@@ -82,8 +84,8 @@ function sendToChatTarget(
  * Plugins MUST name the Agent - there is no default.
  *
  * @param agent - The Agent to send messages to (required). Either
- *                plugin-qualified, `'<plugin>:<agent>'`, which matches only the
- *                Agent that plugin contributed, or a clean Agent id made with
+ *                plugin-qualified, `'<plugin>:<agent>'`, which sends only when
+ *                the named plugin contributed that Agent, or a clean Agent id made with
  *                `agentId('station')` from `@kontourai/station-contracts/agent-identity`.
  *                The hook derives the Agent's identity from the qualified form
  *                itself; a Layout or Pane never supplies a prefix.
