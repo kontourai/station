@@ -2526,51 +2526,106 @@ describe('merge-queue regression workflow covers the full regression', () => {
     ['exit 0', /(^|[;&|]\s*)exit\s+0\b/],
   ];
 
-  function runSwallows(run: string | undefined, gateEveryLine: boolean) {
+  // Quoted text and trailing comments are data, not control flow: an
+  // `echo "a || b"` or a jq filter must not read as an `||`.
+  function shellCode(line: string) {
+    let code = '';
+    let quote: string | null = null;
+    for (let index = 0; index < line.length; index += 1) {
+      const char = line[index];
+      if (quote) {
+        if (quote === '"' && char === '\\') index += 1;
+        else if (char === quote) quote = null;
+        continue;
+      }
+      if (char === '"' || char === "'") {
+        quote = char;
+        code += ' ';
+      } else if (char === '#' && (index === 0 || /\s/.test(line[index - 1])))
+        break;
+      else code += char;
+    }
+    return code;
+  }
+
+  // The one accepted `||`: a fallback that still fails the step,
+  // `|| exit N` or `|| { ...; exit N; }` with N non-zero.
+  const FAIL_LOUD =
+    /^\s*(?:exit\s+[1-9][0-9]*|\{[^{}]*;\s*exit\s+[1-9][0-9]*\s*;?\s*\})\s*$/;
+
+  function swallowingOr(line: string) {
+    const segments = shellCode(line).split('||');
+    return segments.slice(1).some((segment) => !FAIL_LOUD.test(segment));
+  }
+
+  function runSwallows(run: string | undefined) {
     const lines = logicalLines(run);
     const found = SWALLOWS.filter(([, pattern]) =>
       lines.some((line) => pattern.test(line)),
     ).map(([label]) => label);
-    // `||` is gated on the driver's own logical line; in the aggregate,
-    // whose every line is the verdict, on any line.
     for (const line of lines)
-      if ((gateEveryLine || line.startsWith(DRIVER)) && line.includes('||'))
-        found.push(`'||' on a gated line: ${line}`);
+      if (swallowingOr(line)) found.push(`'||' swallows a failure: ${line}`);
     return found;
   }
 
+  // The only steps exempt from the gate rules: `if: failure()` diagnostics.
+  // They run only after the job has already failed, so they cannot make it
+  // green -- unless the gate's own test command is moved into one, where it
+  // would never run at all.
+  // A test command: the phase driver, or an `npm run test:*` suite.
+  const GATE_COMMAND = new RegExp(
+    `(^|\\s)(${DRIVER.replaceAll('.', '\\.')}|npm run test:)`,
+  );
+  function isFailureDiagnostic(step: Step) {
+    return step.if === 'failure()';
+  }
+
   /**
-   * Every way a gate job could report success for a failed driver. The
-   * aggregate's `needs` are the gate jobs; the aggregate itself is one too.
+   * Every way a gate job could report success without its tests passing.
+   * The aggregate's `needs` are the gate jobs; the aggregate itself is one
+   * too. Every step in them is gated except `if: failure()` diagnostics.
    */
   function swallowedFailures(workflowDocument: Workflow) {
     const { jobs } = workflowDocument;
     const violations: string[] = [];
     const aggregateName = 'merge-queue-regression';
     const aggregate = jobs[aggregateName];
-    const driverStepSet = new Set(
-      driverSteps(jobs).map(({ step }) => step as Step),
-    );
     for (const name of [...(aggregate?.needs ?? []), aggregateName]) {
       const job = jobs[name];
       if (!job) continue;
       if (job['continue-on-error'] !== undefined)
         violations.push(`${name}: job-level continue-on-error`);
-      const isAggregate = name === aggregateName;
+      let gatedTestCommands = 0;
       for (const step of job.steps ?? []) {
-        if (!isAggregate && !driverStepSet.has(step)) continue;
-        const where = `${name}: ${step.name ?? step.run?.split('\n')[0]}`;
+        const where = `${name}: ${step.name ?? step.uses ?? step.run?.split('\n')[0]}`;
+        const lines = logicalLines(step.run);
+        const runsGateCommand = lines.some((line) =>
+          GATE_COMMAND.test(shellCode(line)),
+        );
+        if (isFailureDiagnostic(step)) {
+          if (runsGateCommand)
+            violations.push(
+              `${where}: a gate command in an if: failure() step`,
+            );
+          continue;
+        }
+        if (runsGateCommand) gatedTestCommands += 1;
+        if (step['continue-on-error'] !== undefined)
+          violations.push(`${where}: continue-on-error`);
+        if (step.if !== undefined)
+          violations.push(`${where}: if: ${step.if} can skip a gated step`);
+        if (step.run === undefined) continue;
         const shell =
           step.shell ??
           job.defaults?.run?.shell ??
           workflowDocument.defaults?.run?.shell;
         if (!shellKeepsFailures(shell))
           violations.push(`${where}: shell '${shell}' drops -e or pipefail`);
-        if (isAggregate && step['continue-on-error'])
-          violations.push(`${where}: continue-on-error`);
-        for (const swallow of runSwallows(step.run, isAggregate))
+        for (const swallow of runSwallows(step.run))
           violations.push(`${where}: ${swallow}`);
       }
+      if (name !== aggregateName && gatedTestCommands === 0)
+        violations.push(`${name}: no gated step runs a test command`);
     }
     // The aggregate's verdict is jq's exit status; without `-e` jq exits 0
     // for a `false` result.
@@ -2590,6 +2645,18 @@ describe('merge-queue regression workflow covers the full regression', () => {
       run: { shell: 'bash --noprofile --norc -eo pipefail {0}' },
     };
     expect(swallowedFailures(explicit)).toEqual([]);
+    // A fallback that still fails the step is not a swallow, and `||` inside
+    // quotes or a comment is not control flow.
+    const loud = structuredClone(document());
+    const prepare = loud.jobs.ordinary.steps?.find(
+      ({ name }) => name === 'Prepare the corpus prerequisites',
+    ) as Step;
+    prepare.run = [
+      'npm run prepare:verify-static || { echo "::error::prepare failed || stop"; exit 1; }',
+      'npm run dependencies:verify || exit 2',
+      "echo 'a || b' # || true",
+    ].join('\n');
+    expect(swallowedFailures(loud)).toEqual([]);
   });
 
   it('catches every known way to swallow a driver failure (known-bad controls)', () => {
@@ -2600,6 +2667,10 @@ describe('merge-queue regression workflow covers the full regression', () => {
       expect(step, job).toBeDefined();
       return step as Step;
     };
+    const androidStep = (workflowDocument: Workflow) =>
+      workflowDocument.jobs['android-viewport'].steps?.find(
+        ({ run }) => run === 'npm run test:android',
+      ) as Step;
     const mutated = (mutate: (workflowDocument: Workflow) => void) => {
       const copy = structuredClone(document());
       mutate(copy);
@@ -2614,8 +2685,8 @@ describe('merge-queue regression workflow covers the full regression', () => {
     };
     const cases: Array<[string, (workflowDocument: Workflow) => void, RegExp]> =
       [
-        ['|| true', onTee(' || true'), /ordinary: .*'\|\|' on a gated line/],
-        ['|| :', onTee(' || :'), /ordinary: .*'\|\|' on a gated line/],
+        ['|| true', onTee(' || true'), /ordinary: .*'\|\|' swallows/],
+        ['|| :', onTee(' || :'), /ordinary: .*'\|\|' swallows/],
         ['; exit 0', onTee('; exit 0'), /ordinary: .*exit 0/],
         [
           'set +e',
@@ -2703,7 +2774,7 @@ describe('merge-queue regression workflow covers the full regression', () => {
               workflowDocument.jobs['merge-queue-regression'].steps ?? [];
             step.run = step.run?.replace('> /dev/null', '> /dev/null || true');
           },
-          /merge-queue-regression: .*'\|\|' on a gated line/,
+          /merge-queue-regression: .*'\|\|' swallows/,
         ],
         [
           'an aggregate verdict without jq -e',
@@ -2713,6 +2784,67 @@ describe('merge-queue regression workflow covers the full regression', () => {
             step.run = step.run?.replace('jq -e', 'jq');
           },
           /^merge-queue-regression: no jq -e verdict$/,
+        ],
+        [
+          'continue-on-error on the android viewport step',
+          (workflowDocument) => {
+            androidStep(workflowDocument)['continue-on-error'] = true;
+          },
+          /^android-viewport: Run Android viewport tests: continue-on-error$/,
+        ],
+        [
+          'if: always() on the android viewport step',
+          (workflowDocument) => {
+            androidStep(workflowDocument).if = 'always()';
+          },
+          /^android-viewport: Run Android viewport tests: if: always\(\)/,
+        ],
+        [
+          'shell sh on the android viewport step',
+          (workflowDocument) => {
+            androidStep(workflowDocument).shell = 'sh {0}';
+          },
+          /^android-viewport: Run Android viewport tests: shell 'sh \{0\}'/,
+        ],
+        [
+          'the android test moved into an if: failure() step',
+          (workflowDocument) => {
+            androidStep(workflowDocument).if = 'failure()';
+          },
+          /android-viewport: .*gate command in an if: failure\(\) step/,
+        ],
+        [
+          '|| true on a prepare line',
+          (workflowDocument) => {
+            const step = workflowDocument.jobs.ordinary.steps?.find(
+              ({ name }) => name === 'Prepare the corpus prerequisites',
+            ) as Step;
+            step.run = step.run?.replace(
+              'npm run prepare:verify-static',
+              'npm run prepare:verify-static || true',
+            );
+          },
+          /^ordinary: Prepare the corpus prerequisites: '\|\|' swallows/,
+        ],
+        [
+          'a gate job with its test step removed',
+          (workflowDocument) => {
+            const job = workflowDocument.jobs['android-viewport'];
+            job.steps = job.steps?.filter(
+              ({ run }) => run !== 'npm run test:android',
+            );
+          },
+          /^android-viewport: no gated step runs a test command$/,
+        ],
+        [
+          'continue-on-error on a setup step',
+          (workflowDocument) => {
+            const step = workflowDocument.jobs.static.steps?.find(
+              ({ run }) => run === 'npm run dependencies:ci',
+            ) as Step;
+            step['continue-on-error'] = true;
+          },
+          /^static: npm run dependencies:ci: continue-on-error$/,
         ],
         [
           'continue-on-error on the aggregate step',

@@ -148,16 +148,20 @@ jobs:
         timeout-minutes: 20
         run: |
           echo "PLAYWRIGHT_BROWSERS_PATH=$HOME/.cache/ms-playwright" >> "$GITHUB_ENV"
+          installed=false
           for attempt in 1 2 3; do
             echo "Playwright install attempt $attempt"
             if PLAYWRIGHT_BROWSERS_PATH="$HOME/.cache/ms-playwright" timeout 360 npx playwright install chromium; then
-              exit 0
+              installed=true
+              break
             fi
             echo "::warning::Playwright install attempt $attempt timed out or failed; retrying"
             sleep 15
           done
-          echo "::error::Playwright install failed after 3 attempts"
-          exit 1
+          if [[ "$installed" != true ]]; then
+            echo "::error::Playwright install failed after 3 attempts"
+            exit 1
+          fi
 
       # The canonical lane runs these phases, then verify-static (whose
       # prepare step builds connect and the CLI bundle), before any corpus.
@@ -241,16 +245,20 @@ jobs:
         timeout-minutes: 20
         run: |
           echo "PLAYWRIGHT_BROWSERS_PATH=$HOME/.cache/ms-playwright" >> "$GITHUB_ENV"
+          installed=false
           for attempt in 1 2 3; do
             echo "Playwright install attempt $attempt"
             if PLAYWRIGHT_BROWSERS_PATH="$HOME/.cache/ms-playwright" timeout 360 npx playwright install chromium; then
-              exit 0
+              installed=true
+              break
             fi
             echo "::warning::Playwright install attempt $attempt timed out or failed; retrying"
             sleep 15
           done
-          echo "::error::Playwright install failed after 3 attempts"
-          exit 1
+          if [[ "$installed" != true ]]; then
+            echo "::error::Playwright install failed after 3 attempts"
+            exit 1
+          fi
 
       - name: Prepare the corpus prerequisites
         run: |
@@ -324,16 +332,20 @@ jobs:
         timeout-minutes: 20
         run: |
           echo "PLAYWRIGHT_BROWSERS_PATH=$HOME/.cache/ms-playwright" >> "$GITHUB_ENV"
+          installed=false
           for attempt in 1 2 3; do
             echo "Playwright install attempt $attempt"
             if PLAYWRIGHT_BROWSERS_PATH="$HOME/.cache/ms-playwright" timeout 360 npx playwright install chromium; then
-              exit 0
+              installed=true
+              break
             fi
             echo "::warning::Playwright install attempt $attempt timed out or failed; retrying"
             sleep 15
           done
-          echo "::error::Playwright install failed after 3 attempts"
-          exit 1
+          if [[ "$installed" != true ]]; then
+            echo "::error::Playwright install failed after 3 attempts"
+            exit 1
+          fi
 
       - name: Prepare the corpus prerequisites
         run: |
@@ -400,16 +412,20 @@ jobs:
         timeout-minutes: 20
         run: |
           echo "PLAYWRIGHT_BROWSERS_PATH=$HOME/.cache/ms-playwright" >> "$GITHUB_ENV"
+          installed=false
           for attempt in 1 2 3; do
             echo "Playwright install attempt $attempt"
             if PLAYWRIGHT_BROWSERS_PATH="$HOME/.cache/ms-playwright" timeout 360 npx playwright install chromium; then
-              exit 0
+              installed=true
+              break
             fi
             echo "::warning::Playwright install attempt $attempt timed out or failed; retrying"
             sleep 15
           done
-          echo "::error::Playwright install failed after 3 attempts"
-          exit 1
+          if [[ "$installed" != true ]]; then
+            echo "::error::Playwright install failed after 3 attempts"
+            exit 1
+          fi
 
       - name: Run Android viewport tests
         env:
