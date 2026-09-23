@@ -13,6 +13,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { shutdownRuntimeServices } from '../../runtime/bootstrap/runtime-shutdown.js';
 import { CheckpointRefStore } from '../../services/checkpoints/checkpoint-ref-store.js';
 import { GitHubPullRequestProvider } from '../../services/pull-requests/github-pull-request-provider.js';
 import { GitLabPullRequestProvider } from '../../services/pull-requests/gitlab-pull-request-provider.js';
@@ -844,6 +845,114 @@ describe.skipIf(process.platform === 'win32')(
         await new Promise((resolve) => setTimeout(resolve, 1_500));
         const child = readPid(pidFile);
         expect(alive(child), `tool child ${child} outlived the deadline`).toBe(
+          false,
+        );
+      } finally {
+        killIfAlive(pidFile);
+      }
+    });
+
+    test.each([
+      [0, 'resolves as success'],
+      [1, 'rejects with the exit code, not as killed'],
+    ])(
+      'a leader that exits %i while a child it backgrounded holds the output %s, promptly',
+      async (exitCode) => {
+        const pidFile = join(sandbox(), 'escaped.pid');
+        const tool = join(sandbox(), 'gh');
+        writeFileSync(
+          tool,
+          `#!/bin/sh\nsleep 30 &\necho $! > '${pidFile}'\necho done\nexit ${exitCode}\n`,
+        );
+        chmodSync(tool, 0o755);
+        try {
+          const started = Date.now();
+          const outcome = await settledWithin(
+            execGitContextCommand(tool, [], { timeout: 20_000 }),
+          );
+          expect(outcome, 'the call answered').not.toBe('hung');
+          expect(Date.now() - started).toBeLessThan(5_000);
+          if (exitCode === 0) {
+            expect(outcome).toEqual({ stdout: 'done\n', stderr: '' });
+          } else {
+            expect(outcome).toMatchObject({ code: 1, killed: false });
+          }
+        } finally {
+          killIfAlive(pidFile);
+        }
+      },
+    );
+
+    test("the operator's commit succeeds promptly when a post-commit hook backgrounds a job", async () => {
+      const repo = initRepo();
+      const pidFile = join(sandbox(), 'post-commit.pid');
+      const hook = join(repo, '.git', 'hooks', 'post-commit');
+      writeFileSync(hook, `#!/bin/sh\nsleep 30 &\necho $! > '${pidFile}'\n`);
+      chmodSync(hook, 0o755);
+      try {
+        const started = Date.now();
+        const outcome = await settledWithin(
+          execGit(
+            [
+              '-c',
+              'user.name=a',
+              '-c',
+              'user.email=a@b',
+              'commit',
+              '-q',
+              '--allow-empty',
+              '-m',
+              'landed',
+            ],
+            { cwd: repo, timeout: 20_000, hardening: { operatorHooks: true } },
+          ),
+        );
+        expect(outcome, 'the call answered').not.toBe('hung');
+        expect(outcome).not.toBeInstanceOf(Error);
+        expect(Date.now() - started).toBeLessThan(5_000);
+        expect(plainGit(repo, ['log', '-1', '--format=%s']).trim()).toBe(
+          'landed',
+        );
+      } finally {
+        killIfAlive(pidFile);
+      }
+    });
+
+    test('server shutdown stops a running git, gh or glab process group', async () => {
+      const pidFile = join(sandbox(), 'running.pid');
+      const tool = join(sandbox(), 'gh');
+      writeFileSync(
+        tool,
+        `#!/bin/sh\nsleep 300 &\necho $! > '${pidFile}'\nwait\n`,
+      );
+      chmodSync(tool, 0o755);
+      const running = execGitContextCommand(tool, [], { timeout: 60_000 }).then(
+        () => 'resolved',
+        (error: unknown) => error,
+      );
+      try {
+        for (let i = 0; i < 50 && readPid(pidFile) === 0; i += 1) {
+          await new Promise((resolve) => setTimeout(resolve, 100));
+        }
+        const child = readPid(pidFile);
+        expect(alive(child), 'fixture: the group is running').toBe(true);
+
+        await shutdownRuntimeServices({
+          logger: { info: vi.fn(), error: vi.fn(), warn: vi.fn() },
+          timers: [],
+          mcpConfigs: new Map(),
+          activeAgents: new Map(),
+          acpBridge: { shutdown: vi.fn(async () => {}) },
+          feedbackService: { stop: vi.fn() },
+          voiceService: { stop: vi.fn(async () => {}) },
+          terminalWsServer: { stop: vi.fn() },
+          terminalService: { dispose: vi.fn(async () => {}) },
+          configLoader: { dispose: vi.fn(async () => {}) },
+        });
+        const outcome = await settledWithin(running);
+        expect(outcome, 'the stopped call answered').not.toBe('hung');
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        expect(alive(child), `group child ${child} outlived shutdown`).toBe(
           false,
         );
       } finally {

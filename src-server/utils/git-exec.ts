@@ -111,7 +111,6 @@
  * - The operator's OWN global configuration applies, by design.
  */
 import {
-  type ExecFileOptions,
   type ExecFileSyncOptions,
   execFileSync,
   type SpawnOptions,
@@ -157,6 +156,33 @@ export function killGitProcessTree(
   }
 }
 
+/** Group leaders Station started that have not exited yet. */
+const liveGroups = new Set<ReturnType<typeof spawn>>();
+
+function trackGroup<T extends ReturnType<typeof spawn>>(child: T): T {
+  if (!OWN_PROCESS_GROUP || child.pid === undefined) return child;
+  liveGroups.add(child);
+  child.once('exit', () => liveGroups.delete(child));
+  child.once('error', () => liveGroups.delete(child));
+  return child;
+}
+
+/**
+ * SIGTERMs every process group Station started that is still running (git,
+ * gh, glab, and whatever they started), for server shutdown. They are
+ * detached into their own groups, so they would otherwise outlive Station.
+ * Returns how many groups were signalled.
+ */
+export function stopLiveGitProcessGroups(): number {
+  let signalled = 0;
+  for (const child of liveGroups) {
+    killGitProcessTree(child, 'SIGTERM');
+    signalled += 1;
+  }
+  liveGroups.clear();
+  return signalled;
+}
+
 /** SIGTERM the group, then SIGKILL it if the leader has not closed. */
 function stopGitProcessTree(child: ReturnType<typeof spawn>): void {
   killGitProcessTree(child, 'SIGTERM');
@@ -199,21 +225,28 @@ function runInProcessGroup(
   options: GroupRunOptions,
 ): Promise<{ stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
-    const child = spawn(file, [...args], {
-      cwd: options.cwd,
-      env: options.env,
-      detached: OWN_PROCESS_GROUP,
-      stdio: ['ignore', 'pipe', 'pipe'],
-      windowsHide: true,
-    });
+    const child = trackGroup(
+      spawn(file, [...args], {
+        cwd: options.cwd,
+        env: options.env,
+        detached: OWN_PROCESS_GROUP,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        windowsHide: true,
+      }),
+    );
     const maxBuffer = options.maxBuffer ?? DEFAULT_MAX_BUFFER;
-    let stdout = '';
-    let stderr = '';
+    // Collected as bytes, so `maxBuffer` bounds bytes (as execFile's does).
+    const stdout: Buffer[] = [];
+    const stderr: Buffer[] = [];
+    let stdoutBytes = 0;
+    let stderrBytes = 0;
     let killed = false;
     let overflow = false;
     let settled = false;
+    let exited: { code: number | null; signal: NodeJS.Signals | null } | null =
+      null;
     const stop = () => {
-      if (killed) return;
+      if (killed || exited) return;
       killed = true;
       stopGitProcessTree(child);
     };
@@ -221,18 +254,18 @@ function runInProcessGroup(
       options.timeout && options.timeout > 0
         ? setTimeout(stop, options.timeout)
         : undefined;
-    child.stdout?.setEncoding('utf8');
-    child.stderr?.setEncoding('utf8');
-    child.stdout?.on('data', (chunk: string) => {
-      stdout += chunk;
-      if (stdout.length > maxBuffer) {
+    child.stdout?.on('data', (chunk: Buffer) => {
+      stdout.push(chunk);
+      stdoutBytes += chunk.length;
+      if (stdoutBytes > maxBuffer) {
         overflow = true;
         stop();
       }
     });
-    child.stderr?.on('data', (chunk: string) => {
-      stderr += chunk;
-      if (stderr.length > maxBuffer) {
+    child.stderr?.on('data', (chunk: Buffer) => {
+      stderr.push(chunk);
+      stderrBytes += chunk.length;
+      if (stderrBytes > maxBuffer) {
         overflow = true;
         stop();
       }
@@ -243,33 +276,41 @@ function runInProcessGroup(
       if (timer) clearTimeout(timer);
       reject(error);
     });
-    // A process that left the group (setsid) can hold our pipes open, so
-    // 'close' never comes: once a killed leader has exited, stop waiting.
-    child.on('exit', () => {
-      if (!killed) return;
+    // The LEADER's exit is the command's outcome. A process it started that
+    // left the group (setsid), or one it backgrounded (a post-commit hook's
+    // job), can hold our pipes open long after, so 'close' may be late or
+    // never come: once the leader has exited, the deadline no longer
+    // applies, and after a short grace the pipes are closed from our side.
+    child.on('exit', (code, signal) => {
+      exited = { code, signal };
+      if (timer) clearTimeout(timer);
       setTimeout(() => {
         child.stdout?.destroy();
         child.stderr?.destroy();
       }, GROUP_KILL_GRACE_MS * 2).unref();
     });
-    child.on('close', (code, signal) => {
+    child.on('close', (closeCode, closeSignal) => {
       if (settled) return;
       settled = true;
       if (timer) clearTimeout(timer);
+      const code = exited ? exited.code : closeCode;
+      const signal = exited ? exited.signal : closeSignal;
+      const out = Buffer.concat(stdout).toString('utf8');
+      const err = Buffer.concat(stderr).toString('utf8');
       if (code === 0 && !killed) {
-        resolve({ stdout, stderr });
+        resolve({ stdout: out, stderr: err });
         return;
       }
       const error: GroupRunError = new Error(
         overflow
           ? `${file} output exceeded maxBuffer`
-          : `Command failed: ${[file, ...args].join(' ')}\n${stderr}`,
+          : `Command failed: ${[file, ...args].join(' ')}\n${err}`,
       );
       error.code = overflow ? 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER' : code;
       error.killed = killed;
       error.signal = killed ? (signal ?? 'SIGTERM') : signal;
-      error.stdout = stdout;
-      error.stderr = stderr;
+      error.stdout = out;
+      error.stderr = err;
       error.cmd = [file, ...args].join(' ');
       reject(error);
     });
@@ -678,6 +719,22 @@ function mergeEnv(...layers: NodeJS.ProcessEnv[]): NodeJS.ProcessEnv {
 
 type Hardened<T> = T & { hardening?: GitHardeningOptions };
 
+/**
+ * What `execGit` and `execGitContextCommand` honour. Deliberately narrow:
+ * the process-group runner decodes output as UTF-8, has no stdin, and
+ * stops a call only by its own deadline, so `encoding` other than UTF-8,
+ * `input`, `killSignal` and an `AbortSignal` are not accepted rather than
+ * silently ignored. `maxBuffer` bounds bytes on each of stdout and stderr.
+ */
+export interface GitRunOptions {
+  cwd?: string | URL;
+  env?: NodeJS.ProcessEnv;
+  timeout?: number;
+  maxBuffer?: number;
+  encoding?: 'utf8' | 'utf-8';
+  windowsHide?: boolean;
+}
+
 function splitHardening<T extends object>(
   opts: Hardened<T>,
 ): [T, GitHardeningOptions] {
@@ -688,7 +745,7 @@ function splitHardening<T extends object>(
 /** Promisified `execFile('git', …)`, scrubbed and hardened (see header). */
 export async function execGit(
   args: string[],
-  opts: Hardened<ExecFileOptions & { encoding?: BufferEncoding }> = {},
+  opts: Hardened<GitRunOptions> = {},
 ): Promise<{ stdout: string; stderr: string }> {
   const [execOptions, hardening] = splitHardening(opts);
   const operator = needsOperatorSettings(args)
@@ -724,7 +781,7 @@ export async function execGit(
 export async function execGitContextCommand(
   command: string,
   args: string[],
-  opts: Omit<ExecFileOptions, 'cwd'> & { encoding?: BufferEncoding } = {},
+  opts: Omit<GitRunOptions, 'cwd'> = {},
 ): Promise<{ stdout: string; stderr: string }> {
   const neutral = await mkdtemp(join(tmpdir(), 'station-git-tool-'));
   try {
@@ -769,18 +826,20 @@ export function spawnGit(args: string[], opts: Hardened<SpawnOptions> = {}) {
     : null;
   // Its own process group, so a caller that stops it can stop everything
   // under it (`killGitProcessTree`).
-  return spawn('git', hardenedArgs(args, hardening), {
-    detached: OWN_PROCESS_GROUP,
-    ...spawnOptions,
-    env: appendConfigPairs(
-      mergeEnv(
-        hardenedGitEnv(spawnOptions.env, hardening),
-        networkEnv(operator),
+  return trackGroup(
+    spawn('git', hardenedArgs(args, hardening), {
+      detached: OWN_PROCESS_GROUP,
+      ...spawnOptions,
+      env: appendConfigPairs(
+        mergeEnv(
+          hardenedGitEnv(spawnOptions.env, hardening),
+          networkEnv(operator),
+        ),
+        credentialSettings(operator),
       ),
-      credentialSettings(operator),
-    ),
-    windowsHide: true,
-  });
+      windowsHide: true,
+    }),
+  );
 }
 
 /**
