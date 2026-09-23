@@ -990,6 +990,15 @@ export function openRelayEnrollmentJournal(
         );
       return transaction(() => {
         validateAllRows();
+        // A challenge has no provider session, offer, Device or continuation:
+        // login must durably leave this state before contacting the provider.
+        // Reap only these expired, authority-free rows at admission so an
+        // abandoned anonymous browser cannot exhaust the active-attempt cap
+        // until an operator happens to poll. Provider-backed states still
+        // require the coordinator's exact-resource cleanup.
+        db.prepare(
+          `DELETE FROM relay_enrollment_journal WHERE is_tombstone=0 AND state='challenge' AND expires_at<=?`,
+        ).run(timestamp);
         db.prepare(
           `DELETE FROM relay_enrollment_journal WHERE is_tombstone=1 AND updated_at + ? <= ?`,
         ).run(RELAY_ENROLLMENT_ACK_REPLAY_WINDOW_MS, timestamp);

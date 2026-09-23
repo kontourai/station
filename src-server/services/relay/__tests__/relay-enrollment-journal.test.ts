@@ -675,6 +675,53 @@ describe('RelayEnrollmentJournal', () => {
     }
   });
 
+  test('expired challenge-only attempts release admission capacity without operator polling', () => {
+    let now = 100;
+    let failReserve = false;
+    const { journal } = setup({
+      now: () => now,
+      maxActiveAttempts: 1,
+      faultInjector: (operation: string) => {
+        if (operation === 'reserve' && failReserve)
+          throw new Error('injected reservation failure');
+      },
+    });
+    try {
+      journal.reserveChallenge(challenge('abandoned', { expiresAt: 200 }));
+      expect(() =>
+        journal.reserveChallenge(challenge('early', { expiresAt: 300 })),
+      ).toThrow(RelayEnrollmentCapacityError);
+
+      now = 200;
+      failReserve = true;
+      expect(() =>
+        journal.reserveChallenge(challenge('replacement', { expiresAt: 300 })),
+      ).toThrow('injected reservation failure');
+      expect(journal.get(makeId('abandoned'))?.state).toBe('challenge');
+      failReserve = false;
+      journal.reserveChallenge(challenge('replacement', { expiresAt: 300 }));
+      expect(journal.get(makeId('abandoned'))).toBeUndefined();
+      expect(journal.get(makeId('replacement'))?.state).toBe('challenge');
+
+      transitionProviderPending(journal, makeId('replacement'), {
+        providerSessionId: 'provider-session',
+        issuer: 'https://issuer.example',
+        subject: 'account-subject',
+      });
+      now = 300;
+      expect(() =>
+        journal.reserveChallenge(
+          challenge('not-yet-cleaned', { expiresAt: 400 }),
+        ),
+      ).toThrow(RelayEnrollmentCapacityError);
+      expect(journal.get(makeId('replacement'))?.state).toBe(
+        'provider-pending',
+      );
+    } finally {
+      journal.close();
+    }
+  });
+
   test('allows cleanup but refuses forward CAS at the exact expiry boundary', () => {
     let now = 100;
     const { journal } = setup({ now: () => now });
