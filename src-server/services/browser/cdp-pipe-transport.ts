@@ -18,7 +18,7 @@
 import type { CdpTransport } from './browser-host.js';
 
 /** Default incoming frame bound. Screencast JPEG frames are well under this. */
-export const DEFAULT_CDP_MAX_MESSAGE_BYTES = 64 * 1024 * 1024;
+const DEFAULT_CDP_MAX_MESSAGE_BYTES = 64 * 1024 * 1024;
 
 export interface CdpPipeWritable {
   write(chunk: Buffer): unknown;

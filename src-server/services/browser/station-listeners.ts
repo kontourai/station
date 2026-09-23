@@ -101,7 +101,7 @@ export function isLocalAddress(
 }
 
 /** Loopback spellings Chromium connects to this machine without DNS. */
-export function isLoopbackHostname(hostname: string): boolean {
+function isLoopbackHostname(hostname: string): boolean {
   const host = hostname
     .trim()
     .toLowerCase()

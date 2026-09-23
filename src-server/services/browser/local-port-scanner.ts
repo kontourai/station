@@ -77,7 +77,7 @@ const LOOPBACK_LISTEN = new Set([
   'localhost',
 ]);
 
-export function runCommand(
+function runCommand(
   command: string,
   args: string[],
   timeoutMs: number,
@@ -170,7 +170,7 @@ export function parseWindowsListeners(
 }
 
 /** True when an HTTP GET to the loopback port answers HTML or a redirect. */
-export function probeWebPort(port: number): Promise<boolean> {
+function probeWebPort(port: number): Promise<boolean> {
   return new Promise((resolve) => {
     const req = httpRequest(
       {
@@ -197,7 +197,7 @@ export function probeWebPort(port: number): Promise<boolean> {
   });
 }
 
-export function defaultPortScannerDeps(): PortScannerDeps {
+function defaultPortScannerDeps(): PortScannerDeps {
   return {
     platform: process.platform,
     run: runCommand,

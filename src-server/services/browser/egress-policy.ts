@@ -75,7 +75,7 @@ function matchesTarget(
  * `localhost` or a `*.localhost` name (all resolved locally, not by DNS the
  * page's owner controls).
  */
-export function isLocalSpellingHost(requestedHost: string): boolean {
+function isLocalSpellingHost(requestedHost: string): boolean {
   const host = requestedHost
     .trim()
     .toLowerCase()

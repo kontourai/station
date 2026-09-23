@@ -152,7 +152,7 @@ const PAGE_SESSION_CDP_ALLOWED = new Set(PAGE_SESSION_CDP_ALLOWLIST);
  * - `Page.reload.scriptToEvaluateOnLoad` is script evaluation by another
  *   name; the D4 eval tool will get its own gated path.
  */
-export function refusedCdpParam(
+function refusedCdpParam(
   method: string,
   params: object | undefined,
 ): string | undefined {
@@ -313,7 +313,7 @@ export function decidePausedRequest(
 }
 
 /** A main-frame URL that may stay committed. */
-export function isAllowedCommittedUrl(url: string): boolean {
+function isAllowedCommittedUrl(url: string): boolean {
   return url === CHROME_ERROR_PAGE || isAllowedBrowserUrl(url);
 }
 
@@ -324,7 +324,7 @@ export function isAllowedCommittedUrl(url: string): boolean {
  * commits — it is not blocked before load, so its document can run briefly.
  * Those schemes never reach the network, so no earlier layer can see them.
  */
-export function isAllowedSubframeUrl(url: string): boolean {
+function isAllowedSubframeUrl(url: string): boolean {
   return url === 'about:srcdoc' || isAllowedCommittedUrl(url);
 }
 

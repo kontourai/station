@@ -134,7 +134,7 @@ export interface BrowserSessionSummary
 }
 
 export const BROWSER_SESSION_HISTORY_LIMIT = 200;
-export const BROWSER_SESSION_SUMMARY_ACTIONS = 5;
+const BROWSER_SESSION_SUMMARY_ACTIONS = 5;
 const SYSTEM: BrowserSessionActor = { kind: 'system' };
 
 export type BrowserSessionErrorCode =
@@ -161,13 +161,13 @@ export class BrowserSessionError extends Error {
   }
 }
 
-export const DEFAULT_BROWSER_VIEWPORT: BrowserViewport = {
+const DEFAULT_BROWSER_VIEWPORT: BrowserViewport = {
   width: 1280,
   height: 800,
   deviceScaleFactor: 1,
 };
 
-export const DEFAULT_BROWSER_IDLE_SHUTDOWN_MS = 60_000;
+const DEFAULT_BROWSER_IDLE_SHUTDOWN_MS = 60_000;
 
 const STORE_VERSION = 2;
 const MAX_STORED_SESSIONS = 500;
@@ -203,9 +203,7 @@ export function isValidBrowserProjectId(
 }
 
 /** The profile principal for an actor; undefined when it may own none. */
-export function principalKeyFor(
-  actor: BrowserSessionActor,
-): string | undefined {
+function principalKeyFor(actor: BrowserSessionActor): string | undefined {
   switch (actor.kind) {
     case 'operator':
       return 'operator';

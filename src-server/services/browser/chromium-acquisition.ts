@@ -196,7 +196,7 @@ export interface ChromiumAcquisitionDeps {
 
 const MARKER_FILE = 'station-chromium.json';
 
-export function chromeForTestingPlatform(
+function chromeForTestingPlatform(
   platform: NodeJS.Platform,
   arch: string,
 ): ChromeForTestingPlatform | undefined {
@@ -267,7 +267,7 @@ export function chromiumInstallRoot(stationHome: string): string {
   return join(stationHome, 'browser', 'chromium');
 }
 
-export function defaultIsExecutableFile(path: string): boolean {
+function defaultIsExecutableFile(path: string): boolean {
   try {
     if (!statSync(path).isFile()) return false;
     if (process.platform !== 'win32') accessSync(path, fsConstants.X_OK);
@@ -305,7 +305,7 @@ function runArchiveTool(
   });
 }
 
-export function defaultExtract(
+function defaultExtract(
   platform: NodeJS.Platform,
 ): (zipPath: string, destDir: string) => Promise<void> {
   const timeoutMs = 10 * 60 * 1000;
@@ -327,7 +327,7 @@ export function defaultExtract(
     runArchiveTool('unzip', ['-q', zip, '-d', dest], timeoutMs);
 }
 
-export function defaultListEntries(
+function defaultListEntries(
   platform: NodeJS.Platform,
 ): (zipPath: string) => Promise<string[]> {
   const timeoutMs = 2 * 60 * 1000;
@@ -362,7 +362,7 @@ export function defaultListEntries(
  * a `..` segment could land outside the install directory. Refused before
  * extraction.
  */
-export function unsafeArchiveEntry(name: string): boolean {
+function unsafeArchiveEntry(name: string): boolean {
   if (name.includes('\0')) return true;
   const normalized = name.replace(/\\/g, '/');
   if (normalized.startsWith('/') || /^[A-Za-z]:/.test(normalized)) return true;
@@ -374,7 +374,7 @@ export function unsafeArchiveEntry(name: string): boolean {
  * inside the extraction root (the app bundle's own relative symlinks do).
  * Returns the first escaping path, or undefined.
  */
-export function findEscapingEntry(root: string): string | undefined {
+function findEscapingEntry(root: string): string | undefined {
   const realRoot = realpathSync(root);
   const within = (candidate: string) => {
     const rel = relative(realRoot, candidate);
