@@ -583,9 +583,20 @@ describe.skipIf(process.platform === 'win32')(
     ])('a linked .git/%s is refused', async (entry) => {
       const other = otherRepository();
       const target = join(project, '.git', entry);
+      // Link to the other repository's SAME entry where it has one, so git
+      // keeps working through the link and only the containment check can
+      // refuse it. `commondir` names that repository (then the common-dir
+      // check refuses it too).
+      let linkTo = join(other, '.git', entry);
+      if (entry === 'commondir') {
+        linkTo = join(other, 'commondir-target');
+        writeFileSync(linkTo, `${join(other, '.git')}\n`);
+      } else if (!existsSync(linkTo)) {
+        linkTo = join(other, '.git', 'description');
+      }
       rmSync(target, { recursive: true, force: true });
       mkdirSync(join(target, '..'), { recursive: true });
-      symlinkSync(join(other, '.git', 'HEAD'), target);
+      symlinkSync(linkTo, target);
       dirty();
 
       const res = await post('/git/commit', {
