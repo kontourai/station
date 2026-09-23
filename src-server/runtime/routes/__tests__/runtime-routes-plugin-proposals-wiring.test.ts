@@ -37,6 +37,11 @@ import { PluginLifecycleProposalService } from '../../../services/plugins/plugin
 import { ProjectManifestStore } from '../../../services/projects/project-manifest-store.js';
 import { ProjectService } from '../../../services/projects/project-service.js';
 import { EnvironmentSecurityService } from '../../../services/ssh/environment-security-service.js';
+import {
+  getInternalApiToken,
+  INTERNAL_API_TOKEN_HEADER,
+  INTERNAL_PROXY_CALLER_HEADER,
+} from '../../../utils/internal-api-token.js';
 import { configureRuntimeRoutes as configureRuntimeRoutesProduction } from '../runtime-routes.js';
 
 vi.mock('../runtime-route-support.js', async () => {
@@ -101,6 +106,8 @@ function deepStub<T extends object>(overrides: T): T {
 }
 
 const ORIGIN = 'https://station.example.test';
+/** Stands for Station's own agent caller in `request` below. */
+const INTERNAL_CALLER = '<station-internal-caller>';
 const operatorApproval = { kind: 'presented-credential' } as const;
 
 function ownedTempRoot(prefix: string): string {
@@ -236,13 +243,29 @@ describe('#2323 S5 plugin proposal gates over the production composition', () =>
       path: string,
       init: RequestInit = {},
     ) =>
-      app.request(`${ORIGIN}${path}`, {
-        ...init,
-        headers: {
-          ...(init.headers ?? {}),
-          Authorization: `Bearer ${credential}`,
-        },
-      });
+      credential === INTERNAL_CALLER
+        ? // Station's own agent caller: the per-boot internal token, the
+          // `local` marker, a direct loopback socket and no credential,
+          // exactly what station-control sends.
+          app.request(
+            `http://127.0.0.1:4321${path}`,
+            {
+              ...init,
+              headers: {
+                ...(init.headers ?? {}),
+                [INTERNAL_API_TOKEN_HEADER]: getInternalApiToken(),
+                [INTERNAL_PROXY_CALLER_HEADER]: 'local',
+              },
+            },
+            { incoming: { socket: { remoteAddress: '127.0.0.1' } } } as never,
+          )
+        : app.request(`${ORIGIN}${path}`, {
+            ...init,
+            headers: {
+              ...(init.headers ?? {}),
+              Authorization: `Bearer ${credential}`,
+            },
+          });
     return {
       homeDir,
       operatorCredential,
@@ -292,7 +315,7 @@ describe('#2323 S5 plugin proposal gates over the production composition', () =>
     }
   });
 
-  test('proposal reads and proposal attention are the operator’s: a paired person gets 404 and no item', async () => {
+  test('proposal reads and proposal attention are the operator’s: a paired person, a delegated Station and Station’s own agents get 404 and no item', async () => {
     const { pair, request, operatorCredential, proposals } = await setup();
     const { proposal } = await proposals.propose({
       kind: 'install',
@@ -301,13 +324,27 @@ describe('#2323 S5 plugin proposal gates over the production composition', () =>
       author: { principal: 'agent' },
     });
     const person = pair('Phone', 'device', 'standard');
+    const delegation = pair('Peer: box-b', 'delegation', 'delegation');
+    // Station's own agent caller resolves as the operator (home possession),
+    // and still reads nothing (#2323 S5 delta review).
+    const nonOperators = [
+      ['person', person],
+      ['delegation', delegation],
+      ['internal', INTERNAL_CALLER],
+    ] as const;
 
-    for (const path of [
-      '/api/plugin-proposals',
-      `/api/plugin-proposals/${proposal.id}`,
-    ]) {
-      const hidden = await request(person, path);
-      expect({ path, status: hidden.status }).toEqual({ path, status: 404 });
+    for (const [caller, credential] of nonOperators) {
+      for (const path of [
+        '/api/plugin-proposals',
+        `/api/plugin-proposals/${proposal.id}`,
+      ]) {
+        const hidden = await request(credential, path);
+        expect({ caller, path, status: hidden.status }).toEqual({
+          caller,
+          path,
+          status: 404,
+        });
+      }
     }
     const listed = await request(operatorCredential, '/api/plugin-proposals');
     expect(listed.status).toBe(200);
@@ -331,7 +368,12 @@ describe('#2323 S5 plugin proposal gates over the production composition', () =>
         }>(response)
       ).data.items.filter((item) => item.kind === 'plugin-lifecycle-proposal');
     };
-    expect(await inbox(person)).toEqual([]);
+    for (const [caller, credential] of nonOperators) {
+      expect({ caller, items: await inbox(credential) }).toEqual({
+        caller,
+        items: [],
+      });
+    }
     expect(await inbox(operatorCredential)).toEqual([
       expect.objectContaining({
         id: `plugin-lifecycle-proposal:${proposal.id}`,

@@ -7,6 +7,8 @@
  * - `GET /` lists open proposals; `GET /:id` reads one (the Plugins view
  *   loads it from the attention deep link). Operator-only: proposals are
  *   addressed to the operator, and a non-operator gets 404 (review M6).
+ *   Station's own agents and delegated Stations get 404 too, though the
+ *   internal caller resolves as the operator (delta review).
  * - `POST /:id/dismiss` closes one without acting. Person-only: an agent that
  *   could dismiss asks would be able to empty the person's inbox.
  *
@@ -42,7 +44,10 @@ import {
   PluginProposalNotOpenError,
   resolvePluginProposalSource,
 } from '../../services/plugins/plugin-lifecycle-proposals.js';
-import { verifyProposalSourceContext } from '../../services/plugins/plugin-proposal-provenance.js';
+import {
+  type AttestedProposalSubject,
+  verifyProposalSourceContext,
+} from '../../services/plugins/plugin-proposal-provenance.js';
 import type { Logger } from '../../utils/logger.js';
 import {
   errorMessage,
@@ -53,6 +58,7 @@ import {
 } from '../schemas/schemas.js';
 import {
   isInternalControlCaller,
+  isNonPersonCaller,
   personOnly,
 } from './plugin-person-approval.js';
 
@@ -192,10 +198,22 @@ function isOperator(deps: PluginProposalRouteDeps, c: Context): boolean {
   return resolveCaller(deps, c)?.id === LOCAL_OPERATOR_PRINCIPAL_ID;
 }
 
+/**
+ * Who may read proposals: the operator, as a person. Station's internal
+ * caller also resolves as the operator (home possession), so it is excluded
+ * by name: an agent needs only the answer to its own create request, never
+ * other conversations' rationales or people's principal ids (#2323 S5 delta
+ * review).
+ */
+function isOperatorPerson(deps: PluginProposalRouteDeps, c: Context): boolean {
+  return !isNonPersonCaller(c.req.raw) && isOperator(deps, c);
+}
+
 function authorFor(
   deps: PluginProposalRouteDeps,
   c: Context,
   reported: ReportedContext | undefined,
+  subject: AttestedProposalSubject,
 ): PluginLifecycleProposalAuthor {
   if (!isInternalControlCaller(c.req.raw)) {
     const principalId = resolveCaller(deps, c)?.id;
@@ -210,7 +228,7 @@ function authorFor(
       : {}),
     ...(hasReport
       ? {
-          reportedBy: verifyProposalSourceContext(reported ?? {})
+          reportedBy: verifyProposalSourceContext(reported ?? {}, subject)
             ? ('runtime' as const)
             : ('caller' as const),
         }
@@ -256,20 +274,32 @@ export function createPluginProposalRoutes(deps: PluginProposalRouteDeps) {
   const { proposals, pluginsDir } = deps;
 
   app.get('/', (c) =>
-    isOperator(deps, c)
+    isOperatorPerson(deps, c)
       ? c.json({ proposals: proposals.listOpen() })
       : c.json(NOT_FOUND, 404),
   );
 
   app.get('/:id', (c) => {
-    const proposal = isOperator(deps, c) ? proposals.get(param(c, 'id')) : null;
+    const proposal = isOperatorPerson(deps, c)
+      ? proposals.get(param(c, 'id'))
+      : null;
     if (!proposal) return c.json(NOT_FOUND, 404);
     return c.json({ proposal });
   });
 
   app.post('/', validate(pluginProposalCreateSchema), async (c) => {
     const body = getBody(c) as ProposalCreateBody;
-    const author = authorFor(deps, c, body._sourceContext);
+    // The attestation is bound to what this request asks for, as the body
+    // states it (the schema has trimmed both), so it vouches for this
+    // proposal and no other (#2323 S5 delta review).
+    const author = authorFor(
+      deps,
+      c,
+      body._sourceContext,
+      body.kind === 'install'
+        ? { kind: 'install', target: body.source }
+        : { kind: body.kind, target: body.pluginName },
+    );
     try {
       if (body.kind === 'install') {
         const resolved = resolvePluginProposalSource(body.source);

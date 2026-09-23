@@ -210,6 +210,7 @@ import {
 import { createWorkItemRoutes } from '../../routes/orchestration/work-items.js';
 import { createWorkspacePaneHostActionRoutes } from '../../routes/orchestration/workspace-pane-host-actions.js';
 import { canRelayPluginIdentityEvent } from '../../routes/plugins/plugin-identity-enumeration.js';
+import { isNonPersonCaller } from '../../routes/plugins/plugin-person-approval.js';
 import { createPluginProposalRoutes } from '../../routes/plugins/plugin-proposal-routes.js';
 import { createPluginRoutes } from '../../routes/plugins/plugins.js';
 import { createRegistryRoutes } from '../../routes/plugins/registry.js';
@@ -4612,7 +4613,10 @@ export function configureRuntimeRoutes(
       readAuthorityForRequest,
       // #2323 S5 review M6: plugin proposals are addressed to the operator,
       // decided by the same resolver `/api/plugin-proposals` reads.
+      // Station's own agents resolve as the operator too; they see none
+      // (#2323 S5 delta review).
       viewerIsOperator: (c) => {
+        if (isNonPersonCaller(c.req.raw)) return false;
         try {
           return (
             resolveOrchestrationRequestPrincipal(c).id ===

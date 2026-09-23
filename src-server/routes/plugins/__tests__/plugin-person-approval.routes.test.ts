@@ -76,6 +76,12 @@ const OPERATOR = 'operator-credential-for-s5';
 const DELEGATION = 'delegation-device-credential-for-s5';
 /** A person's paired device that is not the operator (review M6). */
 const MEMBER_DEVICE = 'member-device-credential-for-s5';
+/**
+ * A paired device whose kind the auth boundary could not resolve (a
+ * composition without `resolveCredentialDeviceKind`, or a registry read that
+ * raced a revocation). Fails closed: not a person (delta review).
+ */
+const UNKINDED_DEVICE = 'unkinded-device-credential-for-s5';
 
 const CREDENTIALS: Record<
   string,
@@ -95,6 +101,10 @@ const CREDENTIALS: Record<
     authority: 'device-credential',
     deviceId: 'device-member',
     deviceKind: 'device',
+  },
+  [UNKINDED_DEVICE]: {
+    authority: 'device-credential',
+    deviceId: 'device-unkinded',
   },
 };
 
@@ -238,7 +248,7 @@ function createHarness(home: string) {
     }),
   );
   const request = (
-    caller: 'internal' | 'person' | 'delegation' | 'member',
+    caller: 'internal' | 'person' | 'delegation' | 'member' | 'unkinded',
     method: string,
     path: string,
     body?: unknown,
@@ -260,7 +270,9 @@ function createHarness(home: string) {
                     ? DELEGATION
                     : caller === 'member'
                       ? MEMBER_DEVICE
-                      : OPERATOR
+                      : caller === 'unkinded'
+                        ? UNKINDED_DEVICE
+                        : OPERATOR
                 }`,
               }),
         },
@@ -450,7 +462,7 @@ describe('#2323 S5: plugin lifecycle routes refuse Station’s agent caller', ()
    * refused on every verb exactly as Station's own agent caller is, while a
    * person's paired device reaches the handler.
    */
-  test('a delegated Station is refused on install, recover, update and remove; a person’s device is not', async () => {
+  test('a delegated Station, and a device whose kind is unresolved, is refused on install, recover, update and remove; a person’s device is not', async () => {
     const { home, pluginsDir, root } = makeHome();
     const source = join(root, 'src-plugin');
     writePlugin(source, 'proposed-plugin');
@@ -469,12 +481,18 @@ describe('#2323 S5: plugin lifecycle routes refuse Station’s agent caller', ()
       ['POST', '/api/plugins/installed-plugin/update', undefined],
       ['DELETE', '/api/plugins/installed-plugin', undefined],
     ] as const;
-    for (const [method, path, body] of cases) {
-      const refused = await request('delegation', method, path, body);
-      expect({ path, status: refused.status }).toEqual({ path, status: 403 });
-      expect((await readJson(refused)).code).toBe(
-        PLUGIN_PERSON_APPROVAL_REQUIRED,
-      );
+    for (const caller of ['delegation', 'unkinded'] as const) {
+      for (const [method, path, body] of cases) {
+        const refused = await request(caller, method, path, body);
+        expect({ caller, path, status: refused.status }).toEqual({
+          caller,
+          path,
+          status: 403,
+        });
+        expect((await readJson(refused)).code).toBe(
+          PLUGIN_PERSON_APPROVAL_REQUIRED,
+        );
+      }
     }
     expect(installPluginFromSource).not.toHaveBeenCalled();
     expect(recoverInstalledPlugin).not.toHaveBeenCalled();
@@ -497,40 +515,99 @@ describe('#2323 S5: plugin lifecycle routes refuse Station’s agent caller', ()
     for (const name of ['plugin-a', 'plugin-b', 'plugin-c'])
       writePlugin(join(pluginsDir, name), name);
     const { request } = createHarness(home);
-    const propose = async (pluginName: string, context: object) =>
+    const propose = async (
+      kind: 'update' | 'remove',
+      pluginName: string,
+      context: object,
+    ) =>
       (
         await readJson(
           await request('internal', 'POST', '/api/plugin-proposals', {
-            kind: 'update',
+            kind,
             pluginName,
             rationale: 'r',
             _sourceContext: context,
           }),
         )
       ).proposal.author;
+    const attestA = attestProposalSourceContext('station', 'c1', {
+      kind: 'update',
+      target: 'plugin-a',
+    });
 
     expect(
-      await propose('plugin-a', {
+      await propose('update', 'plugin-a', {
         agentSlug: 'station',
         conversationId: 'c1',
-        attestation: attestProposalSourceContext('station', 'c1'),
+        attestation: attestA,
       }),
     ).toMatchObject({ agentSlug: 'station', reportedBy: 'runtime' });
     // An attestation for a different agent does not vouch for this one.
     expect(
-      await propose('plugin-b', {
+      await propose('update', 'plugin-b', {
         agentSlug: 'impostor',
         conversationId: 'c1',
-        attestation: attestProposalSourceContext('station', 'c1'),
+        attestation: attestProposalSourceContext('station', 'c1', {
+          kind: 'update',
+          target: 'plugin-b',
+        }),
       }),
     ).toMatchObject({ agentSlug: 'impostor', reportedBy: 'caller' });
     expect(
-      await propose('plugin-c', {
+      await propose('update', 'plugin-c', {
         agentSlug: 'station',
         conversationId: 'c1',
         attestation: 'x'.repeat(43),
       }),
     ).toMatchObject({ reportedBy: 'caller' });
+  });
+
+  /**
+   * Delta review: the attestation is bound to the proposal it stamps. The
+   * same agent and conversation's attestation for proposal A does not vouch
+   * for a proposal of another plugin, or of another kind.
+   */
+  test('an attestation for one proposal does not vouch for another from the same conversation', async () => {
+    const { home, pluginsDir } = makeHome();
+    for (const name of ['plugin-a', 'plugin-b'])
+      writePlugin(join(pluginsDir, name), name);
+    const { request } = createHarness(home);
+    const attestA = attestProposalSourceContext('station', 'c1', {
+      kind: 'update',
+      target: 'plugin-a',
+    });
+    const author = async (body: object) =>
+      (
+        await readJson(
+          await request('internal', 'POST', '/api/plugin-proposals', {
+            rationale: 'r',
+            _sourceContext: {
+              agentSlug: 'station',
+              conversationId: 'c1',
+              attestation: attestA,
+            },
+            ...body,
+          }),
+        )
+      ).proposal.author;
+
+    expect(
+      await author({ kind: 'update', pluginName: 'plugin-b' }),
+    ).toMatchObject({ agentSlug: 'station', reportedBy: 'caller' });
+    expect(
+      await author({ kind: 'remove', pluginName: 'plugin-a' }),
+    ).toMatchObject({ agentSlug: 'station', reportedBy: 'caller' });
+    expect(
+      await author({
+        kind: 'install',
+        source: 'https://github.com/org/plugin-a',
+      }),
+    ).toMatchObject({ agentSlug: 'station', reportedBy: 'caller' });
+    // The one it was minted for, padded as a model might send it: the
+    // schema trims, and so does the binding.
+    expect(
+      await author({ kind: 'update', pluginName: ' plugin-a ' }),
+    ).toMatchObject({ agentSlug: 'station', reportedBy: 'runtime' });
   });
 });
 
@@ -553,12 +630,26 @@ describe('#2323 S5: proposals are the operator’s', () => {
       }),
     );
 
-    for (const path of [
-      '/api/plugin-proposals',
-      `/api/plugin-proposals/${proposal.id}`,
-    ]) {
-      const hidden = await request('member', 'GET', path);
-      expect({ path, status: hidden.status }).toEqual({ path, status: 404 });
+    // Station's own agents resolve as the operator, and still read nothing:
+    // an agent needs only the answer to its own create request (delta
+    // review). Nor does a delegated Station or an unresolved device.
+    for (const caller of [
+      'member',
+      'internal',
+      'delegation',
+      'unkinded',
+    ] as const) {
+      for (const path of [
+        '/api/plugin-proposals',
+        `/api/plugin-proposals/${proposal.id}`,
+      ]) {
+        const hidden = await request(caller, 'GET', path);
+        expect({ caller, path, status: hidden.status }).toEqual({
+          caller,
+          path,
+          status: 404,
+        });
+      }
     }
     const dismiss = await request(
       'member',

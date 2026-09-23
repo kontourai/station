@@ -19,8 +19,10 @@
  *   `x-station-proxy-caller: local` and presented no bearer or device-session
  *   credential. That is station-control (stdio child or in-process HTTP),
  *   Station's own agent adapter, and the CLI's identity probe.
- * - `principal.deviceKind === 'delegation'`: another Station's delegation
- *   grant. Another Station is not a person (#2323 S5 review M5).
+ * - a paired-device credential whose `principal.deviceKind` is not
+ *   `'device'`: another Station's delegation grant (another Station is not
+ *   a person, #2323 S5 review M5), or a device whose kind the boundary did
+ *   not resolve, which fails closed.
  *
  * Who is not refused: the browser (Station's UI proxy always sends
  * `x-station-proxy-caller: remote` and forwards the browser's own
@@ -53,19 +55,31 @@ export function isInternalControlCaller(request: Request): boolean {
   return getRuntimeAuthenticatedRequestPrincipal(request)?.kind === 'internal';
 }
 
-/** Another Station's delegation grant, as the auth boundary resolved it. */
-function isDelegationDeviceCaller(request: Request): boolean {
+/**
+ * A paired-device credential that the auth boundary did not bind as a
+ * person's device. Fails CLOSED (#2323 S5 delta review): a delegation grant
+ * is refused, and so is a device whose kind the boundary could not resolve
+ * (a composition without `resolveCredentialDeviceKind`, or a registry read
+ * that raced a revocation). Only `deviceKind === 'device'` is a person.
+ */
+function isUnconfirmedPersonDeviceCaller(request: Request): boolean {
   const principal = getRuntimeAuthenticatedRequestPrincipal(request);
-  return (
-    principal?.authority === 'device-credential' &&
-    !!principal.deviceId &&
-    principal.deviceKind === 'delegation'
-  );
+  if (!principal) return false;
+  const isDevice =
+    principal.authority === 'device-credential' || !!principal.deviceId;
+  return isDevice && principal.deviceKind !== 'device';
 }
 
-/** The callers these verbs refuse: never a person. */
-function isNonPersonCaller(request: Request): boolean {
-  return isInternalControlCaller(request) || isDelegationDeviceCaller(request);
+/**
+ * The callers these verbs refuse: never a person. Also what keeps proposal
+ * reads from Station's own agents and delegated Stations (#2323 S5 delta
+ * review): the internal caller resolves as the operator, and a proposal
+ * carries other conversations' rationales and people's principal ids.
+ */
+export function isNonPersonCaller(request: Request): boolean {
+  return (
+    isInternalControlCaller(request) || isUnconfirmedPersonDeviceCaller(request)
+  );
 }
 
 function personApprovalRequiredBody(what: string) {

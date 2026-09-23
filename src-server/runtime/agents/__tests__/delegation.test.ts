@@ -311,9 +311,13 @@ describe('delegation helpers', () => {
     });
   });
 
-  test.each(['propose_plugin_install', 'update_plugin', 'remove_plugin'])(
+  test.each([
+    ['propose_plugin_install', { source: '/tmp/pulse' }, 'install'],
+    ['update_plugin', { name: 'pulse' }, 'update'],
+    ['remove_plugin', { name: 'pulse' }, 'remove'],
+  ] as const)(
     '#2323 S5: %s carries the proposing agent and conversation, overwriting a model-written value',
-    async (toolName) => {
+    async (toolName, toolArgs, kind) => {
       const execute = async (args: Record<string, unknown>) => args;
       const [wrapped] = wrapDelegationAwareTools(
         [
@@ -333,20 +337,25 @@ describe('delegation helpers', () => {
 
       const result = await wrapped.execute?.(
         {
-          name: 'pulse',
+          ...toolArgs,
           _sourceContext: { agentSlug: 'someone-else', conversationId: 'fake' },
         },
         { conversationId: 'conv-parent' },
       );
 
+      const target = 'source' in toolArgs ? toolArgs.source : toolArgs.name;
       expect(result).toEqual({
-        name: 'pulse',
+        ...toolArgs,
         _sourceContext: {
           agentSlug: 'planner',
           conversationId: 'conv-parent',
           // #2323 S5 review M3: the route verifies this to record the
-          // report as Station's own rather than the caller's.
-          attestation: attestProposalSourceContext('planner', 'conv-parent'),
+          // report as Station's own rather than the caller's. Bound to this
+          // call's kind and target (delta review).
+          attestation: attestProposalSourceContext('planner', 'conv-parent', {
+            kind,
+            target,
+          }),
         },
       });
     },
