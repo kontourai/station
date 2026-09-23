@@ -388,6 +388,29 @@ describe('Plugin preview pane guardrail', () => {
     },
   );
 
+  // Coming BACK to the Project a revision was chosen in is a new visit: the
+  // earlier choice does not survive the round trip and re-run on its own.
+  test('switching away and back does not resume a revision without a click', async () => {
+    const view = renderPane();
+    const run = await screen.findByRole('button', { name: 'Run revision 1' });
+    await waitFor(() =>
+      expect((run as HTMLButtonElement).disabled).toBe(false),
+    );
+    fireEvent.click(run);
+    await completeDraftLoad(1, 'draft pulse 1');
+    await screen.findByText('draft pulse 1');
+
+    view.rerenderWith('other');
+    await screen.findByText(PLUGIN_DRAFT_DISCLOSURE);
+    view.rerenderWith('demo');
+    await screen.findByText(PLUGIN_DRAFT_DISCLOSURE);
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+    expect(screen.queryByRole('button', { name: 'Stop' })).toBeNull();
+    expect(draftScripts()).toEqual([]);
+  });
+
   // S3 review MEDIUM-1: after a server restart the counter starts over. The
   // pane compares the whole revision identity, so a new lifetime's revision 1
   // is offered as new (not hidden behind "1 < 2") and still needs a click.
