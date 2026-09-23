@@ -1266,6 +1266,13 @@ describe('authority query isolation (real provider tree, mocked wire)', () => {
     await waitFor(() =>
       expect(probe().getAttribute('data-namespace')).toBe(NS_A),
     );
+    // A's shelf is on disk before the churn, so "exactly A's key" below
+    // cannot pass merely because the first write had not landed yet.
+    await waitFor(() =>
+      expect(harness.asyncStorage.data.has(authorityPersistenceKey(NS_A))).toBe(
+        true,
+      ),
+    );
     const callsAfterVerify = harness.observationCalls.length;
 
     await act(async () => {
@@ -1274,10 +1281,16 @@ describe('authority query isolation (real provider tree, mocked wire)', () => {
     await new Promise((resolve) => setTimeout(resolve, 30));
     expect(probe().getAttribute('data-namespace')).toBe(NS_A);
     expect(harness.observationCalls).toHaveLength(callsAfterVerify);
-    const persistKeys = [...harness.asyncStorage.data.keys()].filter((key) =>
-      key.startsWith(`${AUTHORITY_CACHE_KEY_PREFIX}::`),
+    // The seeded Default row verifies too, and its own shelf is written
+    // whenever its throttled persist lands before the switch to A retires
+    // it — a scheduling race, legitimately persisted either way (#2440).
+    // A fork is a SECOND key for this home, so exclude only Default's.
+    const persistKeys = [...harness.asyncStorage.data.keys()].filter(
+      (key) =>
+        key.startsWith(`${AUTHORITY_CACHE_KEY_PREFIX}::`) &&
+        key !== authorityPersistenceKey(buildAuthorityNamespace(OBS_DEFAULT)),
     );
-    expect(persistKeys).toHaveLength(1);
+    expect(persistKeys).toEqual([authorityPersistenceKey(NS_A)]);
     unmount();
   });
 
