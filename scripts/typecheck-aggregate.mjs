@@ -32,15 +32,25 @@ import {
 } from './lib/typecheck-host-slots.mjs';
 
 /**
- * The same 12 independent projects `typecheck`'s old `&&` chain named, in the
- * same order, each pointing at the SAME unmodified npm script.
+ * The independent projects `typecheck`'s old `&&` chain named, in the same
+ * order, each pointing at the SAME unmodified npm script, less the production
+ * server program its tests program already contains (see below).
  * `scripts/__tests__/guardrail-known-bad-fixtures.test.ts` asserts
  * `typecheck:scripts` (station#1805's exhaustiveness gate) is a member of
  * this catalog and unchanged, rather than grepping `package.json`'s
  * `typecheck` field for it now that the field itself is a single command.
  */
 export const TYPECHECK_LANES = [
-  { id: 'typecheck:server', script: 'typecheck:server' },
+  // No `typecheck:server` (`tsc -p tsconfig.json`). tsconfig.tests.json
+  // extends it without overriding a single compiler option and includes a
+  // strict superset of its files (it drops only the `**/*.test.ts` exclude),
+  // so every diagnostic the production program can report on those files is
+  // reported by `typecheck:server-tests` too, and the lane spent ~62s of a
+  // hosted runner's CPU (fast-checks run 35784946947) re-deriving it.
+  // typecheck-aggregate.test.ts pins that premise; if it breaks, restore the
+  // lane. What the superset cannot see: a production file that only compiles
+  // because a test file declares a global or a module augmentation. No test
+  // under src-server/ or src-shared/ does today.
   { id: 'typecheck:server-tests', script: 'typecheck:server-tests' },
   { id: 'typecheck:scripts', script: 'typecheck:scripts' },
   { id: 'typecheck:cli', script: 'typecheck:cli' },

@@ -669,8 +669,9 @@ describe('tsc-slot runner', () => {
         buildInfo.push(plan.buildInfoFile as string);
       }
     }
-    // 12 single-project lanes + typecheck:examples' four projects.
-    expect(buildInfo).toHaveLength(15);
+    // The single-project lanes (typecheck:server was removed as a strict
+    // subset of typecheck:server-tests) + typecheck:examples' four projects.
+    expect(buildInfo).toHaveLength(14);
     expect(new Set(buildInfo).size).toBe(buildInfo.length);
   });
 
