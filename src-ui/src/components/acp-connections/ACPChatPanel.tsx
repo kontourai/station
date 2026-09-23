@@ -84,7 +84,8 @@ const EMPTY_STRING_LIST: string[] = [];
  * so passing it through `as any` (the old code) left every message key
  * namespaced under the literal "undefined". Only the fields the transcript
  * actually reads (id, agentSlug, agentName, conversationId, messages,
- * status/orchestrationStatus, isProcessingStep, pendingApprovals) come from
+ * status/orchestrationStatus, isProcessingStep, pendingApprovals, and the
+ * open turn's start for the working clock) come from
  * live state; everything else the type requires but the transcript ignores
  * is a stable constant so an unrelated composer update (e.g. `input`) can't
  * change this object's shallow-equality outcome.
@@ -115,6 +116,10 @@ export function buildTranscriptSession(
     orchestrationStatus: state.orchestrationStatus,
     pendingApprovals: state.pendingApprovals,
     isProcessingStep: state.isProcessingStep,
+    // #2304: the streaming row's working clock reads the server start. ACP
+    // has no window seed, so after a reload or catch-up it shows no duration
+    // for that turn until #2309's server-projected start supplies one.
+    openTurnStartedAt: state.openTurnStartedAt,
   };
 }
 

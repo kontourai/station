@@ -3,7 +3,7 @@
  */
 
 import { act, render, renderHook, screen } from '@testing-library/react';
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 const useStreamingContent = vi.fn();
 const mobile = vi.hoisted(() => ({ current: false }));
@@ -20,6 +20,8 @@ import {
   useSmoothRevealText,
 } from '../components/chat/SmoothStreamingMessage';
 import { StreamingMessage } from '../components/chat/StreamingMessage';
+import { activeChatsStore } from '../contexts/active-chats-store';
+import { handleTurnStartedEvent } from '../hooks/orchestration/turnHandlers';
 
 describe('StreamingMessage', () => {
   beforeEach(() => {
@@ -42,6 +44,7 @@ describe('StreamingMessage', () => {
         agentIconStyle={{}}
         fontSize={14}
         attributionAgent={{ name: 'Codex' }}
+        turnStartedAt={Date.now()}
       />,
     );
     expect(
@@ -402,5 +405,206 @@ describe('station#585 smooth reveal cursor', () => {
     });
     expect(hook.result.current.revision).toBe(1);
     expect(hook.result.current.text.length).toBe(1);
+  });
+});
+
+/**
+ * #2304: "Working for MM:SS" used to count from the streaming row's MOUNT, so
+ * any remount (navigating away and back, dock teardown, a virtualizer drop)
+ * restarted a 12-minute turn at 0:00. The count now derives from the
+ * server's `turn.started.createdAt`, stamped by the real turn handler. The
+ * server start is deliberately 12 minutes BEFORE the fake clock's "now" (the
+ * mount time): a test seeding the start from the component's own clock could
+ * not tell the two derivations apart.
+ */
+describe('working clock reads the turn start, not the mount (#2304)', () => {
+  const chatId = 'working-clock-2304';
+  const now = Date.parse('2026-09-22T12:12:00.000Z');
+  const serverStart = '2026-09-22T12:00:00.000Z';
+
+  beforeEach(() => {
+    vi.useFakeTimers({ now });
+    useStreamingContent.mockReset();
+    mobile.current = false;
+    useStreamingContent.mockReturnValue({
+      streamingText: '',
+      hasContent: false,
+      contentRevision: 0,
+      contentParts: [],
+    });
+    activeChatsStore.initChat(chatId, {
+      agentSlug: 'codex',
+      agentName: 'Codex',
+      title: 'Working clock',
+    });
+  });
+
+  afterEach(() => {
+    activeChatsStore.removeChat(chatId);
+    vi.useRealTimers();
+  });
+
+  function row(turnStartedAt: number | undefined, statusLabel?: string) {
+    return (
+      <StreamingMessage
+        sessionId={chatId}
+        agentIcon={<div />}
+        agentIconStyle={{}}
+        fontSize={14}
+        turnStartedAt={turnStartedAt}
+        statusLabel={statusLabel}
+      />
+    );
+  }
+
+  function renderRow(turnStartedAt: number | undefined, statusLabel?: string) {
+    return render(row(turnStartedAt, statusLabel));
+  }
+
+  /** The working line with no duration: the label, and no m:ss anywhere. */
+  function expectNoDuration(view: { container: HTMLElement }) {
+    expect(view.container.textContent).toContain('Working…');
+    expect(view.container.textContent).not.toMatch(/\d+:\d\d/u);
+  }
+
+  function stampTurn() {
+    handleTurnStartedEvent({
+      eventId: 'turn-started-2304',
+      method: 'turn.started',
+      provider: 'codex',
+      threadId: chatId,
+      turnId: 'turn-2304',
+      createdAt: serverStart,
+      prompt: 'why did you stop?',
+    });
+    return activeChatsStore.getSnapshot()[chatId]?.openTurnStartedAt;
+  }
+
+  test('a row mounted 12 minutes into the turn reads 12:00, and a remount keeps counting', () => {
+    const turnStartedAt = stampTurn();
+    expect(turnStartedAt).toBe(Date.parse(serverStart));
+
+    const first = renderRow(turnStartedAt);
+    expect(first.container.textContent).toContain('Working for 12:00');
+    act(() => {
+      vi.advanceTimersByTime(3_000);
+    });
+    expect(first.container.textContent).toContain('Working for 12:03');
+    first.unmount();
+
+    act(() => {
+      vi.advanceTimersByTime(2_000);
+    });
+    const remounted = renderRow(
+      activeChatsStore.getSnapshot()[chatId]?.openTurnStartedAt,
+    );
+    expect(remounted.container.textContent).toContain('Working for 12:05');
+    expect(remounted.container.textContent).not.toContain('0:00');
+    remounted.unmount();
+  });
+
+  test('closing the turn fold clears the start, so the next turn cannot inherit it', () => {
+    expect(stampTurn()).toBe(Date.parse(serverStart));
+    activeChatsStore.updateChat(chatId, { orchestrationTurnOpen: false });
+    expect(
+      activeChatsStore.getSnapshot()[chatId]?.openTurnStartedAt,
+    ).toBeUndefined();
+  });
+
+  test('a server start ahead of this clock reads 0:00, never negative time', () => {
+    const view = renderRow(now + 30_000);
+    expect(view.container.textContent).toContain('Working for 0:00');
+    expect(view.container.textContent).not.toContain('-');
+    view.unmount();
+  });
+
+  test("a status-labelled wait reads the row's mount clock, not the turn duration (pre-existing limitation)", () => {
+    const view = renderRow(Date.parse(serverStart), 'Waiting for approval');
+    expect(view.container.textContent).toContain('Waiting for approval · 0:00');
+    act(() => {
+      vi.advanceTimersByTime(4_000);
+    });
+    // Mount-relative: four seconds since this row mounted, not 12:04 since
+    // the turn started, and not since any approval request.
+    expect(view.container.textContent).toContain('Waiting for approval · 0:04');
+    view.unmount();
+  });
+
+  test('rule 3: a row with no known start states no duration', () => {
+    const view = renderRow(undefined);
+    expectNoDuration(view);
+    act(() => {
+      vi.advanceTimersByTime(30_000);
+    });
+    expectNoDuration(view);
+    view.unmount();
+  });
+
+  test('rule 3: a cleared start shows no duration until one returns, then the true duration', () => {
+    // F2's shape: the row mounted an hour into turn 1.
+    const view = renderRow(now - 3_600_000);
+    expect(view.container.textContent).toContain('Working for 60:00');
+    act(() => {
+      vi.advanceTimersByTime(60_000);
+    });
+    // A catch-up clears the start; the row cannot tell whether turn 1 is
+    // still running or turn 2 started in the gap.
+    view.rerender(row(undefined));
+    expectNoDuration(view);
+    act(() => {
+      vi.advanceTimersByTime(30_000);
+    });
+    expectNoDuration(view);
+    // The reseed says the SAME turn is still running: its true duration.
+    view.rerender(row(now - 3_600_000));
+    expect(view.container.textContent).toContain('Working for 61:30');
+    view.rerender(row(undefined));
+    // … or a different turn started 35s ago: that turn's duration.
+    view.rerender(row(Date.now() - 35_000));
+    expect(view.container.textContent).toContain('Working for 0:35');
+    view.unmount();
+  });
+
+  test("rule 1: a mounted row that sees the next turn's start reads that turn", () => {
+    const view = renderRow(Date.parse(serverStart));
+    expect(view.container.textContent).toContain('Working for 12:00');
+    act(() => {
+      vi.advanceTimersByTime(600_000);
+    });
+    view.rerender(row(Date.now() - 5_000));
+    expect(view.container.textContent).toContain('Working for 0:05');
+    view.unmount();
+  });
+
+  test("the sender's row states no duration before turn.started, then counts from the server start", () => {
+    // Mounted at send: no start exists yet, so no count exists to jump back.
+    const view = renderRow(undefined);
+    act(() => {
+      vi.advanceTimersByTime(30_000);
+    });
+    expectNoDuration(view);
+    // turn.started lands with the server's start: counting begins there.
+    view.rerender(row(Date.now()));
+    expect(view.container.textContent).toContain('Working for 0:00');
+    act(() => {
+      vi.advanceTimersByTime(2_000);
+    });
+    expect(view.container.textContent).toContain('Working for 0:02');
+    view.unmount();
+  });
+
+  test("the status-labelled wait keeps main's row-mount clock across a same-turn reconnect", () => {
+    const view = renderRow(Date.parse(serverStart), 'Waiting for approval');
+    act(() => {
+      vi.advanceTimersByTime(300_000);
+    });
+    expect(view.container.textContent).toContain('Waiting for approval · 5:00');
+    view.rerender(row(undefined, 'Waiting for approval'));
+    view.rerender(row(Date.parse(serverStart), 'Waiting for approval'));
+    act(() => {
+      vi.advanceTimersByTime(2_000);
+    });
+    expect(view.container.textContent).toContain('Waiting for approval · 5:02');
+    view.unmount();
   });
 });

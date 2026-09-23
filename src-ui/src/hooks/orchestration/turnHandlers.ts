@@ -53,6 +53,15 @@ function reconcileDurableTurn(sessionId: string, providerTurnId: string): void {
     });
 }
 
+/** Epoch ms of a `turn.started.createdAt`, or undefined when unparseable. */
+export function parseTurnStartedAt(
+  createdAt: string | undefined,
+): number | undefined {
+  if (!createdAt) return undefined;
+  const ms = Date.parse(createdAt);
+  return Number.isNaN(ms) ? undefined : ms;
+}
+
 export function handleTurnStartedEvent(
   event: Extract<OrchestrationEvent, { method: 'turn.started' }>,
   store: Pick<
@@ -212,6 +221,10 @@ export function handleTurnStartedEvent(
     // is authoritative again — a reconnect catch-up for the PREVIOUS turn must
     // not leave the projection rendering this one alongside it.
     openTurnShellSuperseded: false,
+    // #2304: the turn's clock reads the server's start, not this client's
+    // first render of the streaming row. Unparseable → undefined, and the
+    // row shows no working duration until a parseable start arrives.
+    openTurnStartedAt: parseTurnStartedAt(event.createdAt),
     isProcessingStep: false,
     // Optimistic: the turn has started, so the session is running. Without
     // this, a stale `orchestrationStatus: 'idle'` from the previous turn

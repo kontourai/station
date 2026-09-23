@@ -228,6 +228,22 @@ describe('useDerivedSessions — ChatDock identity stability (station#726)', () 
     expect(sessionBAfter).toBe(sessionBBefore);
   });
 
+  test("#2304: the open turn's server start reaches the derived session the chat list renders", () => {
+    const { result } = renderHook(() => useDerivedSessions('', null, null));
+    const serverStart = Date.parse('2026-09-22T12:00:00.000Z');
+
+    act(() => {
+      activeChatsStore.updateChat(SESSION_A, {
+        orchestrationTurnOpen: true,
+        openTurnStartedAt: serverStart,
+      });
+    });
+
+    expect(
+      result.current.find((s) => s.id === SESSION_A)?.openTurnStartedAt,
+    ).toBe(serverStart);
+  });
+
   test('the top-level sessions array identity is stable when no session changed', () => {
     const { result } = renderHook(() => useDerivedSessions('', null, null));
 

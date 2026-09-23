@@ -36,6 +36,15 @@ export type StreamingMessageProps = {
   /** Transient provider activity signal (thinking/compacting/…). */
   activityHint?: ChatActivityHint;
   elapsedMs?: number;
+  /**
+   * #2304: when the open turn started, from the server's `turn.started`
+   * (`ChatUIState.openTurnStartedAt`). When known, the working count is the
+   * turn's duration by the server's start (on this client's clock, so skew
+   * shows up in it). Unknown — before `turn.started`, a fresh mount before
+   * the window seeds it, or a reconnect catch-up that cleared it — and the
+   * row shows no duration at all.
+   */
+  turnStartedAt?: number;
   suppressActivity?: boolean;
   statusLabel?: string;
   /**
@@ -84,6 +93,7 @@ export function StreamingMessageView({
   renderReasoning,
   activityHint,
   elapsedMs,
+  turnStartedAt,
   suppressActivity,
   statusLabel,
   attributionAgent,
@@ -99,7 +109,15 @@ export function StreamingMessageView({
   contentRevision: number;
 }) {
   const isMobile = useIsMobile();
-  const [waitingSince] = useState(Date.now);
+  // The status-labelled wait's clock: this row's mount, exactly as before
+  // #2304. It is not the wait's own start — nothing resets it when the status
+  // arrives — a pre-existing limitation, deliberately left alone.
+  const [mountedAt] = useState(Date.now);
+  // #2304: the working count is shown only when the turn's server start is
+  // known. Without it (before `turn.started`, a remount before the seed, a
+  // reconnect catch-up awaiting its refetch) the row cannot tell how long
+  // this turn has run — or, after a gap, which turn is running — so it
+  // states no duration rather than guess one.
   useStreamingHaptics(sessionId, streamingText.length);
   const progressSummary = deriveToolProgressSummary(contentParts);
   const hasReasoningPart = contentParts.some(
@@ -114,6 +132,8 @@ export function StreamingMessageView({
       (part) => part.type === 'text' && Boolean(part.content?.trim()),
     );
   const activityLabel = deriveActivityLabel(activityHint, hasReasoningPart);
+  const workingLabel =
+    progressSummary && !renderToolCall ? progressSummary.label : activityLabel;
   // Consecutive tool-call parts collapse into one batch while the turn is
   // still streaming too — classification (inside the lazy ToolCallBatch
   // chunk) marks a batch in-progress (latest-call headline) whenever one
@@ -217,15 +237,23 @@ export function StreamingMessageView({
               title={progressSummary?.toolName}
             >
               {!statusLabel && <LoadingDots />}
-              <ElapsedWait
-                label={
-                  statusLabel ??
-                  `${(progressSummary && !renderToolCall ? progressSummary.label : activityLabel).replace(/[.\u2026]+$/u, '')} for`
-                }
-                separator={statusLabel ? ' · ' : ' '}
-                startedAt={waitingSince}
-                elapsedMs={elapsedMs}
-              />
+              {statusLabel ||
+              elapsedMs !== undefined ||
+              turnStartedAt !== undefined ? (
+                <ElapsedWait
+                  label={
+                    statusLabel ??
+                    `${workingLabel.replace(/[.\u2026]+$/u, '')} for`
+                  }
+                  separator={statusLabel ? ' · ' : ' '}
+                  startedAt={statusLabel ? mountedAt : turnStartedAt}
+                  elapsedMs={elapsedMs}
+                />
+              ) : (
+                <span className="elapsed-wait" aria-live="off">
+                  {workingLabel}
+                </span>
+              )}
             </div>
           )}
       </div>

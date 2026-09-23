@@ -288,6 +288,7 @@ function deriveSession(
     orchestrationTurnOpen: chatState.orchestrationTurnOpen,
     openTurnId: chatState.openTurnId,
     openTurnShellSuperseded: chatState.openTurnShellSuperseded,
+    openTurnStartedAt: chatState.openTurnStartedAt,
     orchestrationHistoryRevision: chatState.orchestrationHistoryRevision,
     projectSlug: chatState.projectSlug,
     projectName: chatState.projectName,
