@@ -128,6 +128,7 @@ async function harness() {
     pairing,
     password,
     accounts: () => accounts,
+    sessions: () => sessions,
     request: (path: string, init: RequestInit) =>
       currentApp.request(origin + path, init),
     async restart() {
@@ -146,6 +147,33 @@ async function harness() {
 }
 
 describe('Device-bound continuation persistence and negative admission', () => {
+  test('startup cleanup can discard one uncommitted continuation authority by reserved key', async () => {
+    const h = await harness();
+    const continuation = await h.client.establish({
+      username: 'alice',
+      password: h.password,
+    });
+    const headers = {
+      ...(await h.client.headers(continuation, {
+        method: 'GET',
+        url: `${origin}/resource`,
+      })),
+      Authorization: `Bearer ${h.device.credential}`,
+    };
+    const before = await h.request('/resource', { method: 'GET', headers });
+    expect(before.status).toBe(200);
+
+    expect(
+      h.sessions().discardUncommittedAuthority(continuation.authorityKey),
+    ).toBe(1);
+    expect(
+      h.sessions().discardUncommittedAuthority(continuation.authorityKey),
+    ).toBe(0);
+    const after = await h.request('/resource', { method: 'GET', headers });
+    expect(after.status).toBe(401);
+    expect(await after.json()).toEqual({ kind: 'invalid' });
+  });
+
   test('a continuation bound to a relay Device stays blocked until that exact Device activates', async () => {
     const h = await harness();
     const continuation = await h.client.establish({
