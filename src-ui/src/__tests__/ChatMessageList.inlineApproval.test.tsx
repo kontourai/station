@@ -713,6 +713,38 @@ describe('#2316 inline approval card', () => {
       }
     });
 
+    // #2344: the strip's live region is mounted before any request waits —
+    // a region created together with its first message is often not read.
+    test('announces a waiting request through a polite region that was already there', async () => {
+      sequence = 0;
+      windowEvents.current = [
+        runtimeEvent({
+          method: 'turn.started',
+          turnId: 'turn-1',
+          prompt: 'Nothing to approve yet',
+        }),
+      ];
+      stubFetch(() => Response.json({ success: true, data: {} }));
+      renderCard();
+      await screen.findByText('Nothing to approve yet');
+      const region = screen.getByRole('status', {
+        name: 'Approval announcements',
+      });
+      expect(region.getAttribute('aria-live')).toBe('polite');
+      expect(region.textContent).toBe('');
+
+      cleanup();
+      sequence = 0;
+      windowEvents.current = subagentBashAwaitingApproval();
+      renderCard();
+      await waitFor(() =>
+        expect(
+          screen.getByRole('status', { name: 'Approval announcements' })
+            .textContent,
+        ).toBe('Approval needed: Bash'),
+      );
+    });
+
     test('lists only requests with no answerable card, and never takes the last row’s buttons', async () => {
       sequence = 0;
       windowEvents.current = [

@@ -35,7 +35,9 @@ function strip(requests: PendingApprovalRequest[]) {
 
 /** The polite live region, which must be in the DOM before anything waits. */
 function liveRegion() {
-  const region = screen.getByRole('status');
+  const region = screen.getByRole('status', {
+    name: 'Approval announcements',
+  });
   expect(region.getAttribute('aria-live')).toBe('polite');
   return region;
 }

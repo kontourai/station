@@ -70,7 +70,12 @@ export function PendingApprovalStrip({
   const announcement = useNewApprovalAnnouncement(requests);
   return (
     <>
-      <div className="sr-only" role="status" aria-live="polite">
+      <div
+        className="sr-only"
+        role="status"
+        aria-live="polite"
+        aria-label="Approval announcements"
+      >
         {announcement.text ? (
           <span key={announcement.id}>{announcement.text}</span>
         ) : null}
