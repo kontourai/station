@@ -182,6 +182,11 @@ async function buildDesktopResourceFixture(root: string) {
   expect(
     existsSync(join(serverOutput, 'project-task-room-working-state-worker.js')),
   ).toBe(true);
+  // Epic #2323 S3: plugin draft builds fork this entry, resolved beside the
+  // server bundle by import.meta.url like the workers above.
+  expect(existsSync(join(serverOutput, 'plugin-draft-build-child.js'))).toBe(
+    true,
+  );
   // Execute the shipped Task worker from an unrelated cwd with the real
   // staged runtime dependencies. Presence alone would not prove resolution.
   const taskReaderProbe = join(serverOutput, 'task-search-reader-probe.mjs');
