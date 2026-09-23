@@ -115,6 +115,7 @@ import { useActiveChatTranscript } from '../hooks/orchestration/useActiveChatTra
 import { buildOutgoingUserMessage } from '../hooks/useActiveChatSessions.helpers';
 import { useDerivedSessions } from '../hooks/useDerivedSessions';
 import { deviceSettingsStore } from '../lib/device-settings-store';
+import { senderSentAt } from '../utils/senderSentAt';
 
 const API = 'http://station.test';
 const BUFFERED_RECONNECT_API = 'http://station-buffered-reconnect.test';
@@ -150,7 +151,8 @@ function useDockTranscript() {
  * #2304: the dock's working clock — the real derived session and transcript
  * reader (which seeds the turn start), feeding a mounted streaming row that
  * stays mounted across the reconnect, as `ChatMessageList`'s does while the
- * turn fold stays open.
+ * turn fold stays open. Its `sentAt` is derived from the store session, as
+ * `ChatDockBody` does.
  */
 function DockClock({ statusLabel }: { statusLabel?: string }) {
   const sessions = useDerivedSessions('', null, null);
@@ -163,6 +165,7 @@ function DockClock({ statusLabel }: { statusLabel?: string }) {
       agentIconStyle={{}}
       fontSize={14}
       turnStartedAt={session.openTurnStartedAt}
+      sentAt={senderSentAt(session)}
       statusLabel={statusLabel}
     />
   );
@@ -544,6 +547,9 @@ describe('station#3352: a reconnect gap ends with the missed text on screen', ()
         reconnectFallbackSnapshot(true);
       });
       await waitFor(() => expect(fetchWindow).toHaveBeenCalledTimes(2));
+      // Refetch in flight: no start is known, so no duration is stated.
+      expect(view.container.textContent).toContain('Working…');
+      expect(view.container.textContent).not.toMatch(/\d+:\d\d/u);
       await act(async () => {
         deliverAfterGap?.({
           protocolVersion: 1,
@@ -583,20 +589,15 @@ describe('station#3352: a reconnect gap ends with the missed text on screen', ()
   });
 
   /**
-   * #2304 delta LOW. No stamp existed when the catch-up landed — the live
-   * `turn.started` had an unparseable time, and the pre-gap page's open turn
-   * was a different one, which the `openTurnId` check refused. The catch-up
-   * turns that check off; the pre-gap page must still not be read.
-   */
-  /**
-   * #2304 round 3. A catch-up clears the stamp on EVERY open-turn reconnect,
-   * and the usual case is a short drop with the SAME turn still running. The
-   * mounted row must neither restart nor flash 0:00 while the refetch is in
-   * flight, must keep counting if the reseed never lands, and must not reset
-   * a status-labelled wait.
+   * #2304 round 4. A catch-up clears the stamp on EVERY open-turn reconnect,
+   * and the usual case is a short drop with the SAME turn still running.
+   * While the refetch is in flight the working row cannot know that, so it
+   * states no duration (never 0:00, never a guess), and the reseed restores
+   * the true duration. The status-labelled wait counts from the row's mount,
+   * exactly as main does, and a reconnect does not touch it.
    */
   for (const statusLabel of [undefined, 'Waiting for approval']) {
-    test(`a short drop with the same turn running keeps the ${statusLabel ? 'status-labelled' : 'working'} clock counting`, async () => {
+    test(`a short drop with the same turn running: ${statusLabel ? "the status-labelled wait keeps main's mount clock" : 'no working duration until the reseed, then the true one'}`, async () => {
       const t0 = Date.parse('2026-08-19T00:00:02.000Z');
       const label = statusLabel ? `${statusLabel} · ` : 'Working for ';
       vi.useFakeTimers({ toFake: ['Date'], now: t0 });
@@ -633,13 +634,17 @@ describe('station#3352: a reconnect gap ends with the missed text on screen', ()
         expect(
           activeChatsStore.getSnapshot()[THREAD]?.openTurnStartedAt,
         ).toBeUndefined();
-        // Stamp cleared, refetch in flight (it may never land): the clock
-        // keeps the turn's count rather than restarting from the reconnect.
+        // Stamp cleared, refetch in flight (it may never land).
         vi.setSystemTime(t0 + 305_000);
-        await waitFor(
-          () => expect(view.container.textContent).toContain(`${label}5:05`),
-          { timeout: 3_000 },
-        );
+        if (statusLabel) {
+          await waitFor(
+            () => expect(view.container.textContent).toContain(`${label}5:05`),
+            { timeout: 3_000 },
+          );
+        } else {
+          expect(view.container.textContent).toContain('Working…');
+          expect(view.container.textContent).not.toMatch(/\d+:\d\d/u);
+        }
 
         await act(async () => {
           deliverAfterDrop?.(sameTurnPage);
@@ -660,6 +665,137 @@ describe('station#3352: a reconnect gap ends with the missed text on screen', ()
       }
     });
   }
+
+  /**
+   * #2304 round 4, F2. The row mounted an hour into turn 1; the gap swallowed
+   * turn 1's end AND turn 2's start, and the refetch fails, so no reseed ever
+   * lands. The row must not assert a duration for a turn it cannot identify
+   * (round 3 showed "61:30" thirty seconds into turn 2). When turn 2's start
+   * does arrive, it reads turn 2's duration.
+   */
+  test('a catch-up whose refetch fails states no duration until a start arrives', async () => {
+    const t0 = Date.parse('2026-08-19T01:00:00.000Z');
+    vi.useFakeTimers({ toFake: ['Date'], now: t0 });
+    try {
+      fetchWindow.mockResolvedValueOnce({
+        protocolVersion: 1,
+        watermark: 1,
+        hasMore: false,
+        events: [],
+      });
+      fetchWindow.mockRejectedValueOnce(new Error('network unavailable'));
+      activeChatsStore.initChat(THREAD, {
+        agentSlug: 'agent-one',
+        agentName: 'Agent One',
+        title: 'Session',
+      });
+      activeChatsStore.updateChat(THREAD, {
+        provider: 'claude',
+        orchestrationSessionStarted: true,
+        orchestrationStatus: 'running',
+      });
+      handleTurnStartedEvent({
+        method: 'turn.started',
+        threadId: THREAD,
+        turnId: TURN,
+        createdAt: new Date(t0 - 3_600_000).toISOString(),
+      } as never);
+      const view = render(<DockClock />);
+      await waitFor(() => expect(fetchWindow).toHaveBeenCalledTimes(1));
+      await waitFor(
+        () => expect(view.container.textContent).toContain('Working for 60:00'),
+        { timeout: 3_000 },
+      );
+      vi.setSystemTime(t0 + 60_000);
+
+      await act(async () => {
+        reconnectFallbackSnapshot(true);
+      });
+      await waitFor(() => expect(fetchWindow).toHaveBeenCalledTimes(2));
+      vi.setSystemTime(t0 + 90_000);
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 1_200));
+      });
+      expect(view.container.textContent).toContain('Working…');
+      expect(view.container.textContent).not.toMatch(/\d+:\d\d/u);
+
+      await act(async () => {
+        handleTurnStartedEvent({
+          method: 'turn.started',
+          threadId: THREAD,
+          turnId: 'turn-two',
+          createdAt: new Date(t0 + 55_000).toISOString(),
+        } as never);
+      });
+      await waitFor(
+        () => expect(view.container.textContent).toContain('Working for 0:35'),
+        { timeout: 3_000 },
+      );
+      view.unmount();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  /**
+   * #2304 round 4, rule 2 through the real store. The sender's row counts
+   * from its send before `turn.started`, and does not jump back when the
+   * server's later start lands.
+   */
+  test("the sender's working clock counts from the send and stays continuous when turn.started lands", async () => {
+    const t0 = Date.parse('2026-08-19T00:00:02.000Z');
+    vi.useFakeTimers({ toFake: ['Date'], now: t0 });
+    try {
+      fetchWindow.mockResolvedValue({
+        protocolVersion: 1,
+        watermark: 1,
+        hasMore: false,
+        events: [],
+      });
+      activeChatsStore.initChat(THREAD, {
+        agentSlug: 'agent-one',
+        agentName: 'Agent One',
+        title: 'Session',
+      });
+      const outgoing = buildOutgoingUserMessage([], 'Long job');
+      activeChatsStore.updateChat(THREAD, {
+        provider: 'claude',
+        orchestrationSessionStarted: true,
+        messages: outgoing.messages,
+        pendingClientTurnId: 'client-turn',
+        status: 'sending',
+      });
+      const view = render(<DockClock />);
+      await waitFor(() => expect(fetchWindow).toHaveBeenCalledTimes(1));
+      expect(view.container.textContent).toContain('Working for 0:00');
+      vi.setSystemTime(t0 + 30_000);
+      await waitFor(
+        () => expect(view.container.textContent).toContain('Working for 0:30'),
+        { timeout: 3_000 },
+      );
+      await act(async () => {
+        handleTurnStartedEvent({
+          method: 'turn.started',
+          threadId: THREAD,
+          turnId: TURN,
+          createdAt: new Date(t0 + 20_000).toISOString(),
+          prompt: 'Long job',
+        } as never);
+      });
+      expect(activeChatsStore.getSnapshot()[THREAD]?.openTurnStartedAt).toBe(
+        t0 + 20_000,
+      );
+      expect(view.container.textContent).toContain('Working for 0:30');
+      vi.setSystemTime(t0 + 32_000);
+      await waitFor(
+        () => expect(view.container.textContent).toContain('Working for 0:32'),
+        { timeout: 3_000 },
+      );
+      view.unmount();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 
   /**
    * #2304 round 3, MEDIUM 3. The sender's `turn.started` fell in the gap, so
@@ -755,6 +891,12 @@ describe('station#3352: a reconnect gap ends with the missed text on screen', ()
     ]);
   });
 
+  /**
+   * #2304 delta LOW. No stamp existed when the catch-up landed — the live
+   * `turn.started` had an unparseable time, and the pre-gap page's open turn
+   * was a different one, which the `openTurnId` check refused. The catch-up
+   * turns that check off; the pre-gap page must still not be read.
+   */
   test('a catch-up with no stamp to clear still does not seed from the pre-gap page', async () => {
     fetchWindow.mockResolvedValueOnce({
       protocolVersion: 1,

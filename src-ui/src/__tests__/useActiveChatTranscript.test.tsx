@@ -1436,6 +1436,87 @@ describe('useActiveChatTranscript', () => {
     }
   });
 
+  /**
+   * #2304 round 4, MEDIUM 2. Two local unstamped "continue" sends (both
+   * `turn.started` lost in gaps): only the CURRENT one may claim the open
+   * turn's prompt row. An older one used to take it, hiding its own older
+   * prompt and leaving the current send below its activity.
+   */
+  test("only the current pending send claims the open turn's prompt row", async () => {
+    const id = 'thread-1';
+    activeChatsStore.initChat(id, {
+      agentSlug: 'codex',
+      agentName: 'Codex',
+      title: 'Two continues',
+      orchestrationSessionStarted: true,
+    });
+    try {
+      activeChatsStore.updateChat(id, {
+        messages: [
+          {
+            role: 'user',
+            content: 'continue',
+            clientId: 'older-continue',
+            timestamp: Date.parse('2026-08-09T00:00:03.500Z'),
+          },
+          {
+            role: 'assistant',
+            content: 'A2',
+            timestamp: Date.parse('2026-08-09T00:00:04.000Z'),
+          },
+          {
+            role: 'user',
+            content: 'continue',
+            clientId: 'current-continue',
+            timestamp: Date.parse('2026-08-09T00:00:09.000Z'),
+          },
+        ],
+        status: 'sending',
+        orchestrationTurnOpen: true,
+        openTurnShellSuperseded: true,
+      });
+      fetchWindow.mockResolvedValue({
+        protocolVersion: 1,
+        watermark: 6,
+        hasMore: false,
+        events: [
+          event('e3', 'turn.started', { turnId: 'turn-2', prompt: 'continue' }),
+          event('e4', 'turn.completed', { turnId: 'turn-2', outputText: 'A2' }),
+          event('e5', 'turn.started', { turnId: 'turn-3', prompt: 'continue' }),
+          event('e6', 'content.text-delta', {
+            turnId: 'turn-3',
+            delta: 'turn3 work',
+          }),
+        ],
+      });
+      const session = {
+        ...baseSession,
+        ...activeChatsStore.getSnapshot()[id],
+        id,
+      } as unknown as ChatSession;
+      const { result } = renderHook(() =>
+        useActiveChatTranscript('http://station.test', session),
+      );
+      await waitFor(() =>
+        expect(
+          result.current.messages.some(
+            (message) => message.content === 'turn3 work',
+          ),
+        ).toBe(true),
+      );
+      expect(
+        result.current.messages.map((message) => [message.id, message.content]),
+      ).toEqual([
+        ['e3:user', 'continue'],
+        ['e3:assistant', 'A2'],
+        ['current-continue', 'continue'],
+        ['e5:assistant', 'turn3 work'],
+      ]);
+    } finally {
+      activeChatsStore.removeChat(id);
+    }
+  });
+
   describe('#2304 seeding guards', () => {
     const id = 'thread-1';
     const started = (turnId: string, fields = {}) =>

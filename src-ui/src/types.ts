@@ -320,6 +320,12 @@ export interface ChatSession {
   openTurnShellSuperseded?: boolean;
   /** See ChatUIState.openTurnStartedAt (active-chats-state.ts). */
   openTurnStartedAt?: number;
+  /**
+   * #2304: the sender's own send time for the open turn (`senderSentAt`),
+   * derived by the surface from the STORE's messages: the rendered transcript
+   * may have given that prompt row the server's timestamp.
+   */
+  senderSentAt?: number;
   /** Incremented only when bounded persisted history must reconcile. */
   orchestrationHistoryRevision?: number;
   inputHistory: string[];

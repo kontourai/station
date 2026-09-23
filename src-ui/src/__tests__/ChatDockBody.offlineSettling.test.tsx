@@ -105,7 +105,10 @@ vi.mock('../components/chat/ChatMessageList', () => ({
       transcriptMounts();
     }, []);
     return (
-      <div data-testid="transcript">
+      <div
+        data-testid="transcript"
+        data-sender-sent-at={activeSession.senderSentAt ?? ''}
+      >
         {activeSession.messages
           .map((message: any) => message.content)
           .join('\n')}
@@ -347,6 +350,65 @@ describe('ChatDockBody offline settling (station#2605)', () => {
       expect(queuedMessagesProps).toHaveBeenLastCalledWith(
         expect.objectContaining({ canSteer: true }),
       ),
+    );
+  });
+
+  /**
+   * #2304 round 4, rule 2. Once the window holds the sender's turn, the
+   * rendered transcript gives the matched prompt row the SERVER's time, so a
+   * send time read from the rendered rows would be the server start and the
+   * sender's clock would jump back. The dock derives it from the store's
+   * rows instead.
+   */
+  test("the transcript receives the sender's send time from the store, not the server-timed rendered row", async () => {
+    fetchConversationWindow.mockReset();
+    fetchCapability.mockResolvedValue(true);
+    const sendAt = Date.parse('2026-08-13T00:00:00.000Z');
+    fetchConversationWindow.mockResolvedValue({
+      protocolVersion: 1,
+      conversationId: 'offline-thread',
+      currentSessionId: 'offline-thread',
+      watermark: 1,
+      hasMore: false,
+      events: [
+        {
+          sequence: 1,
+          event: {
+            eventId: 'turn-2-start',
+            method: 'turn.started',
+            provider: 'codex',
+            threadId: 'offline-thread',
+            turnId: 'turn-2',
+            createdAt: '2026-08-13T00:00:20.000Z',
+            prompt: 'Long job',
+          },
+        },
+      ],
+    });
+    const sending = session(0);
+    sending.outboundQueuedTurns = [];
+    sending.status = 'sending';
+    sending.orchestrationTurnOpen = true;
+    sending.openTurnId = 'turn-2';
+    sending.messages = [
+      {
+        role: 'user',
+        content: 'Long job',
+        clientId: 'composer-row',
+        turnId: 'turn-2',
+        timestamp: sendAt,
+      },
+    ];
+    render(dock(sending));
+    await waitFor(() =>
+      expect(screen.getByTestId('transcript').textContent).toContain(
+        'Long job',
+      ),
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByTestId('transcript').getAttribute('data-sender-sent-at'),
+      ).toBe(String(sendAt)),
     );
   });
 });

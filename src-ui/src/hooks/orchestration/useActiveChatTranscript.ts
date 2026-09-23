@@ -454,10 +454,34 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
     const windowOpenTurnId = active
       ? openTurnInWindow(window.events, executionSessionId)?.turnId
       : undefined;
+    const unclaimedUser = (candidate: ChatMessage, index: number) =>
+      !claimedProjectedUsers.has(index) && candidate.role === 'user';
+    // Only the CURRENT pending send can be the open turn's prompt, and it is
+    // resolved FIRST: an older unstamped local row with the same text would
+    // otherwise claim the open turn's row (hiding its own older prompt and
+    // duplicating this one). Like the live `turn.started` handler
+    // (`turnHandlers.ts`), this adopts an identical-text open turn even if
+    // another client sent it.
+    const currentPending = session.messages.find(
+      (message) =>
+        message.role === 'user' &&
+        message.clientId !== undefined &&
+        message.clientId === currentPendingClientId &&
+        !message.turnId,
+    );
+    const openTurnPromptMatch =
+      currentPending && windowOpenTurnId
+        ? projected.findIndex(
+            (candidate, index) =>
+              unclaimedUser(candidate, index) &&
+              candidate.turnId === windowOpenTurnId &&
+              candidate.content === currentPending.content,
+          )
+        : -1;
+    if (openTurnPromptMatch >= 0)
+      claimedProjectedUsers.add(openTurnPromptMatch);
     const pendingUsers = session.messages.filter((message) => {
       if (message.role !== 'user' || !message.clientId) return false;
-      const unclaimedUser = (candidate: ChatMessage, index: number) =>
-        !claimedProjectedUsers.has(index) && candidate.role === 'user';
       let match = message.turnId
         ? projected.findIndex(
             (candidate, index) =>
@@ -466,14 +490,9 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
           )
         : -1;
       let ownTurn = match >= 0;
-      if (!message.turnId && windowOpenTurnId) {
-        match = projected.findIndex(
-          (candidate, index) =>
-            unclaimedUser(candidate, index) &&
-            candidate.turnId === windowOpenTurnId &&
-            candidate.content === message.content,
-        );
-        ownTurn = match >= 0;
+      if (message === currentPending && openTurnPromptMatch >= 0) {
+        match = openTurnPromptMatch;
+        ownTurn = true;
       }
       if (!message.turnId && match < 0) {
         match = projected.findIndex(

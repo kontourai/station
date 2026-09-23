@@ -29,6 +29,29 @@ function baseState(overrides: Partial<ChatUIState> = {}): ChatUIState {
 }
 
 describe('buildTranscriptSession', () => {
+  test("#2304: carries what the working clock reads — the turn start and the sender's send time", () => {
+    const session = buildTranscriptSession(
+      'acp-session-42',
+      'codex',
+      baseState({
+        status: 'sending',
+        openTurnId: 'turn-1',
+        openTurnStartedAt: 2_000,
+        messages: [
+          {
+            role: 'user',
+            content: 'go',
+            clientId: 'composer-row',
+            turnId: 'turn-1',
+            timestamp: 1_000,
+          },
+        ],
+      }),
+    );
+    expect(session.openTurnStartedAt).toBe(2_000);
+    expect(session.senderSentAt).toBe(1_000);
+  });
+
   test('id is the real sessionId, not undefined', () => {
     const session = buildTranscriptSession(
       'acp-session-42',

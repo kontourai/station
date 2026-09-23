@@ -38,17 +38,21 @@ export type StreamingMessageProps = {
   elapsedMs?: number;
   /**
    * #2304: when the open turn started, from the server's `turn.started`
-   * (`ChatUIState.openTurnStartedAt`). The working count reads from the
-   * EARLIER of the last start the row saw and its own clock (its mount,
-   * reset when a different start replaces that one; a clear keeps the last
-   * start): a row remounted mid-turn reads the turn's real
-   * duration, while the sender's row — mounted at send, before the server's
-   * start — keeps counting without jumping back when `turn.started` lands.
-   * Until a start arrives, the row counts from its own clock. The
-   * server start is compared against this client's clock, so skew between
-   * the two shows up in the count.
+   * (`ChatUIState.openTurnStartedAt`). When known, the working count is the
+   * turn's duration by the server's start (on this client's clock, so skew
+   * shows up in it). Unknown — a fresh mount before the window seeds it, or a
+   * reconnect catch-up that cleared it — and the row shows no duration at
+   * all, unless `sentAt` applies.
    */
   turnStartedAt?: number;
+  /**
+   * #2304: when THIS client sent the prompt of the turn this row stands for,
+   * set only for the sender's own pending send. Before `turn.started` it is
+   * the only real start there is ("since you sent"); after, the count reads
+   * from the EARLIER of it and the server start, so it does not jump back
+   * when the first stamp lands.
+   */
+  sentAt?: number;
   suppressActivity?: boolean;
   statusLabel?: string;
   /**
@@ -98,6 +102,7 @@ export function StreamingMessageView({
   activityHint,
   elapsedMs,
   turnStartedAt,
+  sentAt,
   suppressActivity,
   statusLabel,
   attributionAgent,
@@ -113,38 +118,22 @@ export function StreamingMessageView({
   contentRevision: number;
 }) {
   const isMobile = useIsMobile();
-  // The row's own clock (#2304): `since` is when it mounted, reset only when
-  // a DIFFERENT turn start replaces the last one it saw. The row can stay
-  // mounted across turns (a reconnect catch-up reseeds the turn fold open
-  // without closing it; a new turn's `turn.started` can land while the
-  // previous turn's row is still up), so its mount alone is not "since this
-  // turn". What is NOT a boundary:
-  // - a clear (defined → undefined). A catch-up clears the stamp on every
-  //   open-turn reconnect, usually with the SAME turn still running, so the
-  //   row keeps its last start (`lastStamp`) and keeps counting from it
-  //   until the refetched page says otherwise;
-  // - that same start coming back after a clear;
-  // - the FIRST start (none seen → defined): the sender's `turn.started`
-  //   landing after send, for the turn this row already represents.
-  // Adjusted during render, React's pattern for state derived from a prop.
-  const [rowClock, setRowClock] = useState(() => ({
-    prop: turnStartedAt,
-    lastStamp: turnStartedAt,
-    since: Date.now(),
-  }));
-  if (rowClock.prop !== turnStartedAt) {
-    const replaced =
-      turnStartedAt !== undefined &&
-      rowClock.lastStamp !== undefined &&
-      turnStartedAt !== rowClock.lastStamp;
-    setRowClock({
-      prop: turnStartedAt,
-      lastStamp: turnStartedAt ?? rowClock.lastStamp,
-      since: replaced ? Date.now() : rowClock.since,
-    });
-  }
-  const waitingSince = rowClock.since;
-  const lastTurnStartedAt = rowClock.lastStamp;
+  // The status-labelled wait's clock: this row's mount, exactly as before
+  // #2304. It is not the wait's own start — nothing resets it when the status
+  // arrives — a pre-existing limitation, deliberately left alone.
+  const [mountedAt] = useState(Date.now);
+  // #2304: the working count is shown only when a start is actually known:
+  // the server's turn start, or this client's own send time for the sender's
+  // pending turn. While neither is known (a remount before the seed, a
+  // reconnect catch-up awaiting its refetch) the row cannot tell "same turn
+  // still running" from "a different turn started in the gap", so it states
+  // no duration rather than guess one.
+  const workingSince =
+    turnStartedAt === undefined
+      ? sentAt
+      : sentAt === undefined
+        ? turnStartedAt
+        : Math.min(turnStartedAt, sentAt);
   useStreamingHaptics(sessionId, streamingText.length);
   const progressSummary = deriveToolProgressSummary(contentParts);
   const hasReasoningPart = contentParts.some(
@@ -159,6 +148,8 @@ export function StreamingMessageView({
       (part) => part.type === 'text' && Boolean(part.content?.trim()),
     );
   const activityLabel = deriveActivityLabel(activityHint, hasReasoningPart);
+  const workingLabel =
+    progressSummary && !renderToolCall ? progressSummary.label : activityLabel;
   // Consecutive tool-call parts collapse into one batch while the turn is
   // still streaming too — classification (inside the lazy ToolCallBatch
   // chunk) marks a batch in-progress (latest-call headline) whenever one
@@ -262,25 +253,23 @@ export function StreamingMessageView({
               title={progressSummary?.toolName}
             >
               {!statusLabel && <LoadingDots />}
-              <ElapsedWait
-                label={
-                  statusLabel ??
-                  `${(progressSummary && !renderToolCall ? progressSummary.label : activityLabel).replace(/[.\u2026]+$/u, '')} for`
-                }
-                separator={statusLabel ? ' · ' : ' '}
-                // A status-labelled wait ("Waiting for approval") counts from
-                // the row's own clock: its mount, as before #2304, reset only
-                // when a different turn start replaces the last one. That is
-                // not the wait's own start: nothing resets the clock when the
-                // status arrives — a pre-existing limitation, deliberately
-                // left alone here.
-                startedAt={
-                  statusLabel || lastTurnStartedAt === undefined
-                    ? waitingSince
-                    : Math.min(lastTurnStartedAt, waitingSince)
-                }
-                elapsedMs={elapsedMs}
-              />
+              {statusLabel ||
+              elapsedMs !== undefined ||
+              workingSince !== undefined ? (
+                <ElapsedWait
+                  label={
+                    statusLabel ??
+                    `${workingLabel.replace(/[.\u2026]+$/u, '')} for`
+                  }
+                  separator={statusLabel ? ' · ' : ' '}
+                  startedAt={statusLabel ? mountedAt : workingSince}
+                  elapsedMs={elapsedMs}
+                />
+              ) : (
+                <span className="elapsed-wait" aria-live="off">
+                  {workingLabel}
+                </span>
+              )}
             </div>
           )}
       </div>

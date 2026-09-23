@@ -741,6 +741,7 @@ function ChatMessageListComponent({
                   activityHint={activeSession.activityHint}
                   elapsedMs={activeSession.replay?.elapsedMs}
                   turnStartedAt={activeSession.openTurnStartedAt}
+                  sentAt={activeSession.senderSentAt}
                   suppressActivity={suppressActivity}
                   statusLabel={
                     activeSession.orchestrationStatus === 'awaiting-approval'

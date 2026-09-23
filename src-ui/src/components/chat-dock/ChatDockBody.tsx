@@ -60,6 +60,7 @@ import {
   accountableHumanFromUser,
   ownerAttributionFromStation,
 } from '../../utils/ownerAttribution';
+import { senderSentAt } from '../../utils/senderSentAt';
 import {
   sessionFailureText,
   transcriptCarriesFailureText,
@@ -356,10 +357,13 @@ export function ChatDockBody({
       ? undefined
       : onForkFromTurn;
   const renderedSession = useMemo(
-    () =>
-      transcript.enabled
-        ? { ...activeSession, messages: transcript.messages }
-        : activeSession,
+    () => ({
+      ...activeSession,
+      // #2304: read from the store's rows, before the transcript lends the
+      // matched prompt row the server's timestamp.
+      senderSentAt: senderSentAt(activeSession),
+      ...(transcript.enabled ? { messages: transcript.messages } : {}),
+    }),
     [activeSession, transcript.enabled, transcript.messages],
   );
   /**

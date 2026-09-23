@@ -69,7 +69,9 @@ function turnIsOpen(session: { hasActiveTurn?: boolean }): boolean {
  * `hasActiveTurn` without ever passing through `false`, so a turn that
  * completed inside the gap, followed by the next one starting, would
  * otherwise leave the finished turn's start on the "Working for" clock.
- * `useActiveChatTranscript` re-derives it from the refetched window.
+ * `useActiveChatTranscript` re-derives it from the refetched window. Until it
+ * does, the streaming row states no working duration: it cannot tell the
+ * same turn still running from a different turn started in the gap.
  */
 function reconnectCatchUpUpdates(
   chat: Pick<ChatUIState, 'orchestrationHistoryRevision'> | undefined,
