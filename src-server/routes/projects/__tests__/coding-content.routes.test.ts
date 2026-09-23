@@ -19,7 +19,17 @@ import { createCodingRoutes } from '../coding.js';
  * corrupt paths like `<cwd>/~/dev/...`.
  */
 
-const app = createCodingRoutes(new FileTreeService());
+// #2412: every read names its Project. `r` is the git project; `h` is the
+// project under $HOME, configured tilde-literal the way the UI stores it.
+let repo: string;
+let homeProject: string; // lives under $HOME, to exercise `~` expansion
+const resolveProjectFolder = (slug: string) =>
+  slug === 'r'
+    ? repo
+    : slug === 'h'
+      ? `~/${relative(homedir(), homeProject)}`
+      : undefined;
+const app = createCodingRoutes(new FileTreeService(), { resolveProjectFolder });
 
 async function get(path: string) {
   const res = await app.request(path);
@@ -27,9 +37,6 @@ async function get(path: string) {
 }
 
 describe('coding content routes — real git project (no mocks)', () => {
-  let repo: string;
-  let homeProject: string; // lives under $HOME, to exercise `~` expansion
-
   beforeAll(() => {
     repo = mkdtempSync(join(tmpdir(), 'station-coding-repo-'));
     const g = (...args: string[]) => execGitSync(args, { cwd: repo });
@@ -55,7 +62,9 @@ describe('coding content routes — real git project (no mocks)', () => {
   });
 
   test('lists the file tree of a real project', async () => {
-    const res = await get(`/files?path=${encodeURIComponent(repo)}`);
+    const res = await get(
+      `/files?projectSlug=r&path=${encodeURIComponent(repo)}`,
+    );
     expect(res.status).toBe(200);
     expect(res.json.success).toBe(true);
     const tree = JSON.stringify(res.json.data);
@@ -69,7 +78,7 @@ describe('coding content routes — real git project (no mocks)', () => {
     // would blank out if the endpoint resolved against the server cwd (the bug
     // that made the previewer render nothing).
     const res = await get(
-      `/files/content?path=${encodeURIComponent(repo)}&file=README.md`,
+      `/files/content?projectSlug=r&path=${encodeURIComponent(repo)}&file=README.md`,
     );
     expect(res.status).toBe(200);
     expect(res.json.data.content).toContain('Hello Station');
@@ -78,21 +87,23 @@ describe('coding content routes — real git project (no mocks)', () => {
 
   test('reads a nested workspace-relative path', async () => {
     const res = await get(
-      `/files/content?path=${encodeURIComponent(repo)}&file=${encodeURIComponent('src/index.ts')}`,
+      `/files/content?projectSlug=r&path=${encodeURIComponent(repo)}&file=${encodeURIComponent('src/index.ts')}`,
     );
     expect(res.status).toBe(200);
     expect(res.json.data.content).toContain('export const x = 1');
   });
 
   test('requires the relative file param', async () => {
-    const res = await get(`/files/content?path=${encodeURIComponent(repo)}`);
+    const res = await get(
+      `/files/content?projectSlug=r&path=${encodeURIComponent(repo)}`,
+    );
     expect(res.status).toBe(400);
     expect(res.json.success).toBe(false);
   });
 
   test('rejects a file path that escapes the workspace', async () => {
     const res = await get(
-      `/files/content?path=${encodeURIComponent(repo)}&file=${encodeURIComponent('../../../../etc/passwd')}`,
+      `/files/content?projectSlug=r&path=${encodeURIComponent(repo)}&file=${encodeURIComponent('../../../../etc/passwd')}`,
     );
     expect(res.status).toBe(500);
     expect(res.json.success).toBe(false);
@@ -104,7 +115,7 @@ describe('coding content routes — real git project (no mocks)', () => {
     symlinkSync(outside, join(repo, 'outside-link.txt'));
 
     const res = await get(
-      `/files/content?path=${encodeURIComponent(repo)}&file=outside-link.txt`,
+      `/files/content?projectSlug=r&path=${encodeURIComponent(repo)}&file=outside-link.txt`,
     );
     expect(res.status).toBe(500);
     expect(res.json.success).toBe(false);
@@ -113,7 +124,9 @@ describe('coding content routes — real git project (no mocks)', () => {
   });
 
   test('reports real git status (branch + dirty file)', async () => {
-    const res = await get(`/git/status?path=${encodeURIComponent(repo)}`);
+    const res = await get(
+      `/git/status?projectSlug=r&path=${encodeURIComponent(repo)}`,
+    );
     expect(res.status).toBe(200);
     expect(res.json.data.isRepo).toBe(true);
     expect(res.json.data.branch).toBeTruthy();
@@ -125,13 +138,17 @@ describe('coding content routes — real git project (no mocks)', () => {
    * nowhere to push and the only way to find that out was to press it.
    */
   test('observes whether the checkout has a remote to push to', async () => {
-    const before = await get(`/git/status?path=${encodeURIComponent(repo)}`);
+    const before = await get(
+      `/git/status?projectSlug=r&path=${encodeURIComponent(repo)}`,
+    );
     expect(before.json.data.remote).toBe('absent');
 
     execGitSync(['remote', 'add', 'origin', 'https://example.test/a/b.git'], {
       cwd: repo,
     });
-    const after = await get(`/git/status?path=${encodeURIComponent(repo)}`);
+    const after = await get(
+      `/git/status?projectSlug=r&path=${encodeURIComponent(repo)}`,
+    );
     expect(after.json.data.remote).toBe('present');
 
     execGitSync(['remote', 'remove', 'origin'], { cwd: repo });
@@ -152,13 +169,14 @@ describe('coding content routes — real git project (no mocks)', () => {
    */
   test('reports a refused remote read as unknown, never absent', async () => {
     const refusing = createCodingRoutes(new FileTreeService(), {
+      resolveProjectFolder,
       readRemotes: async () => ({
         ok: false as const,
         reason: 'git could not be run',
       }),
     });
     const res = await refusing.request(
-      `/git/status?path=${encodeURIComponent(repo)}`,
+      `/git/status?projectSlug=r&path=${encodeURIComponent(repo)}`,
     );
     const json = (await res.json()) as any;
 
@@ -169,10 +187,11 @@ describe('coding content routes — real git project (no mocks)', () => {
 
   test('a successful read of zero remotes is absent, not unknown', async () => {
     const empty = createCodingRoutes(new FileTreeService(), {
+      resolveProjectFolder,
       readRemotes: async () => ({ ok: true as const, remotes: [] }),
     });
     const res = await empty.request(
-      `/git/status?path=${encodeURIComponent(repo)}`,
+      `/git/status?projectSlug=r&path=${encodeURIComponent(repo)}`,
     );
     const json = (await res.json()) as any;
 
@@ -181,9 +200,12 @@ describe('coding content routes — real git project (no mocks)', () => {
 
   test('REGRESSION: a `~` path expands to $HOME, not `<cwd>/~/...`', async () => {
     const tilde = `~/${relative(homedir(), homeProject)}`;
-    const res = await get(`/files?path=${encodeURIComponent(tilde)}`);
-    // If `~` were not expanded, validatePath would resolve to `<cwd>/~/...`,
-    // which doesn't exist, and the request would 400.
+    const res = await get(
+      `/files?projectSlug=h&path=${encodeURIComponent(tilde)}`,
+    );
+    // If `~` were not expanded (in the request path or the Project's stored
+    // folder), it would resolve to `<cwd>/~/...`, which doesn't exist, and
+    // the request would be refused.
     expect(res.status).toBe(200);
     expect(res.json.success).toBe(true);
     expect(JSON.stringify(res.json.data)).toContain('marker.txt');
@@ -191,8 +213,10 @@ describe('coding content routes — real git project (no mocks)', () => {
 
   test('the corrupt `<cwd>/~/...` path (old bug output) is rejected', async () => {
     const corrupt = `${process.cwd()}/~/dev/does-not-exist`;
-    const res = await get(`/files?path=${encodeURIComponent(corrupt)}`);
-    expect(res.status).toBe(400);
+    const res = await get(
+      `/files?projectSlug=r&path=${encodeURIComponent(corrupt)}`,
+    );
+    expect(res.status).toBe(409);
     expect(res.json.success).toBe(false);
   });
 });

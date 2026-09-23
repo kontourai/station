@@ -6,7 +6,19 @@ const exec = promisify(execCb);
 import { existsSync, realpathSync } from 'node:fs';
 import { readdir } from 'node:fs/promises';
 import { basename, join, relative, resolve, sep } from 'node:path';
+import {
+  PAIRING_SCOPE_CODING_EXEC,
+  pairingScopeIncludes,
+} from '@kontourai/station-contracts/environment-security';
 import { type Context, Hono, type Next } from 'hono';
+import {
+  grantedPairingScope,
+  type PairingScopeContextStore,
+} from '../../security/pairing-route-scopes.js';
+import {
+  getRuntimeAuthenticatedRequestPrincipal,
+  isBoundRuntimeLocalOperator,
+} from '../../security/runtime-request-security.js';
 import {
   type CheckoutRemoteReader,
   readCheckoutRemotes,
@@ -18,6 +30,7 @@ import {
 } from '../../services/projects/coding-git-actions.js';
 import type { FileTreeService } from '../../services/projects/file-tree-service.js';
 import { checkRepositoryConfig } from '../../services/projects/git-repository-config.js';
+import { defaultWorktreeBaseDir } from '../../services/projects/worktree-provisioning-service.js';
 import { codingOps } from '../../telemetry/metrics.js';
 import { execGit } from '../../utils/git-exec.js';
 import { expandTilde } from '../../utils/paths.js';
@@ -38,13 +51,47 @@ import {
   validate,
 } from '../schemas/schemas.js';
 
-function validatePath(raw: string | undefined): string {
-  if (!raw) throw new Error('path required');
-  const resolved = resolve(expandTilde(raw));
-  if (!existsSync(resolved))
-    throw new Error(`Directory not found: ${resolved}`);
-  return resolved;
+/**
+ * #2412: the operator in person, as opposed to a paired device. True for
+ * the operator credential and for a credential minted by proving possession
+ * of this Station's home (the desktop app's local grant, the host browser's
+ * bootstrap, Station's own internal token), which the auth boundary binds
+ * once per request. A paired device, a LAN browser admitted through an
+ * access request, and a collaborator's browser are all NOT in person, and
+ * neither is a request no auth boundary saw.
+ */
+export function isOperatorInPerson(request: Request): boolean {
+  const principal = getRuntimeAuthenticatedRequestPrincipal(request);
+  if (!principal) return false;
+  return (
+    principal.authority === 'operator-credential' ||
+    isBoundRuntimeLocalOperator(request)
+  );
 }
+
+/**
+ * #2412, owner decision: `POST /exec` stays at the operate tier, and a
+ * paired device additionally needs `coding:exec`, which the operator grants
+ * once per device (the device access editor, `operator-promotion`) and can
+ * take away there. The operator in person is always allowed.
+ */
+export function codingExecAllowed(c: Context): boolean {
+  if (isOperatorInPerson(c.req.raw)) return true;
+  if (!getRuntimeAuthenticatedRequestPrincipal(c.req.raw)) return false;
+  const scope = grantedPairingScope(c as unknown as PairingScopeContextStore);
+  return (
+    scope !== undefined &&
+    pairingScopeIncludes(scope, PAIRING_SCOPE_CODING_EXEC)
+  );
+}
+
+/** The stable refusal a device without the exec grant receives. */
+export const CODING_EXEC_NOT_GRANTED = {
+  success: false as const,
+  code: 'coding-exec-not-granted' as const,
+  error:
+    "This device is not allowed to run commands on this Station's computer. The Station's operator can allow it: Devices, this device's access, Run commands.",
+};
 
 /**
  * Bounds on every git call these routes make (#2363 review round 2). A
@@ -316,16 +363,36 @@ export function createCodingRoutes(
       })(c);
 
   /**
-   * The repository a commit or push acts on: the Project's folder, or a
-   * repository INSIDE it that the toolbar selected (a multi-repo
-   * workspace). Resolved through symlinks on both sides, so a link inside
-   * the Project cannot lead outside it. Anything else is refused.
+   * The folder a coding request acts on (#2363 commit/push, #2412 every
+   * route that takes a client path): the Project's own folder or a folder
+   * INSIDE it, resolved through symlinks on both sides, so neither `..` nor
+   * a link inside the Project leads outside it. `includeWorktrees` also
+   * admits the `<project>-worktrees` folder beside it, where Station puts
+   * a worktree session's checkout (`defaultWorktreeBaseDir`); that path is
+   * derived from the Project's folder, never from anything the request or
+   * the repository says. Anything else is refused.
+   *
+   * What this does NOT stop: a caller who may edit the Project may point
+   * its working directory somewhere else, and the containment follows. It
+   * binds a read to a Project the caller names, not to a folder the
+   * operator approved.
    */
-  const projectRepository = (
+  const projectLocation = (
     c: Context,
-    slug: string,
+    slug: string | undefined,
     requested: string | undefined,
-  ): { root: string; projectRoot: string } | Response => {
+    options: { includeWorktrees: boolean },
+  ): { target: string; projectRoot: string } | Response => {
+    if (!slug) {
+      return c.json(
+        {
+          success: false,
+          error: 'Name the Project this request is for (projectSlug)',
+          code: 'project-required',
+        },
+        400,
+      );
+    }
     const configured = deps.resolveProjectFolder?.(slug)?.trim();
     if (!configured) {
       return c.json(
@@ -354,7 +421,12 @@ export function createCodingRoutes(
         409,
       );
     }
-    if (target !== projectRoot && !target.startsWith(projectRoot + sep)) {
+    const within = (root: string) =>
+      target === root || target.startsWith(root + sep);
+    if (
+      !within(projectRoot) &&
+      !(options.includeWorktrees && within(defaultWorktreeBaseDir(projectRoot)))
+    ) {
       return c.json(
         {
           success: false,
@@ -364,7 +436,32 @@ export function createCodingRoutes(
         403,
       );
     }
-    if (!existsSync(join(target, '.git'))) {
+    return { target, projectRoot };
+  };
+
+  /** A coding read or edit: the Project's folder or one of its worktrees. */
+  const readLocation = (
+    c: Context,
+    slug: string | undefined,
+    requested: string | undefined,
+  ) => projectLocation(c, slug, requested, { includeWorktrees: true });
+
+  /**
+   * The repository a commit or push acts on: the Project's folder, or a
+   * repository INSIDE it that the toolbar selected (a multi-repo
+   * workspace). Not a worktree beside it: commit and push stay where they
+   * were confined by #2363.
+   */
+  const projectRepository = (
+    c: Context,
+    slug: string,
+    requested: string | undefined,
+  ): { root: string; projectRoot: string } | Response => {
+    const location = projectLocation(c, slug, requested, {
+      includeWorktrees: false,
+    });
+    if (location instanceof Response) return location;
+    if (!existsSync(join(location.target, '.git'))) {
       return c.json(
         {
           success: false,
@@ -375,7 +472,7 @@ export function createCodingRoutes(
       );
     }
     // Where its `.git` leads is checked by the actions themselves.
-    return { root: target, projectRoot };
+    return { root: location.target, projectRoot: location.projectRoot };
   };
 
   // git's own output (a hook's refusal, a rejected push) reaches the operator
@@ -386,7 +483,13 @@ export function createCodingRoutes(
   app.get('/files', (c) => {
     codingOps.add(1, { operation: 'files' });
     try {
-      const dir = validatePath(c.req.query('path'));
+      const location = readLocation(
+        c,
+        c.req.query('projectSlug'),
+        c.req.query('path'),
+      );
+      if (location instanceof Response) return location;
+      const dir = location.target;
       const depth = c.req.query('depth')
         ? Number(c.req.query('depth'))
         : undefined;
@@ -403,7 +506,13 @@ export function createCodingRoutes(
   app.get('/files/search', async (c) => {
     codingOps.add(1, { operation: 'search' });
     try {
-      const dir = validatePath(c.req.query('path'));
+      const location = readLocation(
+        c,
+        c.req.query('projectSlug'),
+        c.req.query('path'),
+      );
+      if (location instanceof Response) return location;
+      const dir = location.target;
       const query = c.req.query('query');
       if (query === undefined)
         return c.json({ success: false, error: 'query required' }, 400);
@@ -431,8 +540,13 @@ export function createCodingRoutes(
       // emits workspace-relative paths, so resolving against the root (not the
       // server cwd) is what makes the preview/attach actually read the right
       // file — and keeps the read inside the workspace.
-      const root = validatePath(c.req.query('path'));
-      const content = fileTreeService.readFileWithin(root, file);
+      const location = readLocation(
+        c,
+        c.req.query('projectSlug'),
+        c.req.query('path'),
+      );
+      if (location instanceof Response) return location;
+      const content = fileTreeService.readFileWithin(location.target, file);
       return c.json({ success: true, data: { path: file, content } });
     } catch (e: unknown) {
       return c.json({ success: false, error: errorMessage(e) }, 500);
@@ -442,9 +556,10 @@ export function createCodingRoutes(
   app.post('/files/create', validate(fileCreateSchema), (c) => {
     codingOps.add(1, { operation: 'file-create' });
     try {
-      const { path, target, type } = getBody(c);
-      const root = validatePath(path);
-      const entry = fileTreeService.createEntry(root, target, type);
+      const { projectSlug, path, target, type } = getBody(c);
+      const location = readLocation(c, projectSlug, path);
+      if (location instanceof Response) return location;
+      const entry = fileTreeService.createEntry(location.target, target, type);
       return c.json({ success: true, data: entry });
     } catch (e: unknown) {
       return c.json({ success: false, error: errorMessage(e) }, 400);
@@ -454,9 +569,10 @@ export function createCodingRoutes(
   app.post('/files/rename', validate(fileRenameSchema), (c) => {
     codingOps.add(1, { operation: 'file-rename' });
     try {
-      const { path, from, to } = getBody(c);
-      const root = validatePath(path);
-      const entry = fileTreeService.renameEntry(root, from, to);
+      const { projectSlug, path, from, to } = getBody(c);
+      const location = readLocation(c, projectSlug, path);
+      if (location instanceof Response) return location;
+      const entry = fileTreeService.renameEntry(location.target, from, to);
       return c.json({ success: true, data: entry });
     } catch (e: unknown) {
       return c.json({ success: false, error: errorMessage(e) }, 400);
@@ -466,9 +582,10 @@ export function createCodingRoutes(
   app.post('/files/delete', validate(fileDeleteSchema), (c) => {
     codingOps.add(1, { operation: 'file-delete' });
     try {
-      const { path, target } = getBody(c);
-      const root = validatePath(path);
-      fileTreeService.deleteEntry(root, target);
+      const { projectSlug, path, target } = getBody(c);
+      const location = readLocation(c, projectSlug, path);
+      if (location instanceof Response) return location;
+      fileTreeService.deleteEntry(location.target, target);
       return c.json({ success: true });
     } catch (e: unknown) {
       return c.json({ success: false, error: errorMessage(e) }, 400);
@@ -478,7 +595,13 @@ export function createCodingRoutes(
   app.get('/git/status', async (c) => {
     codingOps.add(1, { operation: 'git-status' });
     try {
-      const dir = validatePath(c.req.query('path'));
+      const location = readLocation(
+        c,
+        c.req.query('projectSlug'),
+        c.req.query('path'),
+      );
+      if (location instanceof Response) return location;
+      const dir = location.target;
 
       if (!(await isInsideWorkTree(dir))) {
         return c.json({ success: true, data: { isRepo: false } });
@@ -588,7 +711,13 @@ export function createCodingRoutes(
 
   app.get('/git/log', async (c) => {
     try {
-      const dir = validatePath(c.req.query('path'));
+      const location = readLocation(
+        c,
+        c.req.query('projectSlug'),
+        c.req.query('path'),
+      );
+      if (location instanceof Response) return location;
+      const dir = location.target;
 
       if (!(await isInsideWorkTree(dir))) {
         // Non-repo: no commits. git/status drives the "not a git repository"
@@ -624,7 +753,13 @@ export function createCodingRoutes(
 
   app.get('/git/diff', async (c) => {
     try {
-      const dir = validatePath(c.req.query('path'));
+      const location = readLocation(
+        c,
+        c.req.query('projectSlug'),
+        c.req.query('path'),
+      );
+      if (location instanceof Response) return location;
+      const dir = location.target;
       // A multi-repo workspace root isn't itself a repo; return an empty diff
       // instead of letting `git diff` fail with "not a git repository".
       if (!(await isInsideWorkTree(dir))) {
@@ -648,7 +783,13 @@ export function createCodingRoutes(
 
   app.get('/git/branches', async (c) => {
     try {
-      const dir = validatePath(c.req.query('path'));
+      const location = readLocation(
+        c,
+        c.req.query('projectSlug'),
+        c.req.query('path'),
+      );
+      if (location instanceof Response) return location;
+      const dir = location.target;
       if (!(await isInsideWorkTree(dir))) {
         return c.json({ success: true, data: [] });
       }
@@ -685,7 +826,33 @@ export function createCodingRoutes(
     try {
       // realpath so discovered roots line up with git's --show-toplevel (which
       // resolves symlinks); lets the UI match the active file's repo to a row.
-      const workspace = realpathSync(validatePath(c.req.query('path')));
+      // #2412: confined like every read. The one exception is the New
+      // Project form, which asks whether a folder it is ABOUT to make a
+      // Project holds repositories: that question has no Project to name,
+      // and is answered for the operator in person only.
+      const slug = c.req.query('projectSlug');
+      let workspace: string;
+      if (!slug && isOperatorInPerson(c.req.raw)) {
+        const raw = c.req.query('path');
+        if (!raw)
+          return c.json({ success: false, error: 'path required' }, 400);
+        try {
+          workspace = realpathSync(resolve(expandTilde(raw)));
+        } catch {
+          return c.json(
+            {
+              success: false,
+              error: 'That folder does not exist',
+              code: 'folder-missing',
+            },
+            409,
+          );
+        }
+      } else {
+        const location = readLocation(c, slug, c.req.query('path'));
+        if (location instanceof Response) return location;
+        workspace = location.target;
+      }
       const roots = await discoverRepos(workspace);
       const repos = await Promise.all(
         roots.map(async (root) => {
@@ -723,8 +890,10 @@ export function createCodingRoutes(
   app.post('/git/checkout', validate(gitCheckoutSchema), async (c) => {
     codingOps.add(1, { operation: 'git-checkout' });
     try {
-      const { path, branch, create } = getBody(c);
-      const dir = validatePath(path);
+      const { projectSlug, path, branch, create } = getBody(c);
+      const location = readLocation(c, projectSlug, path);
+      if (location instanceof Response) return location;
+      const dir = location.target;
       // #2363: a branch name only. `.` would discard every change, and `-f`
       // or `--orphan=…` would be read as options.
       if (!(await isBranchName(dir, branch))) {
@@ -812,11 +981,26 @@ export function createCodingRoutes(
     },
   );
 
+  /**
+   * Runs a shell command as the operator (#2412). Threat model: whoever
+   * reaches this runs anything this computer's account can, with its keys.
+   * So besides the operate tier, a paired device needs the `coding:exec`
+   * grant the operator gives it once (checked BEFORE the body is read, so a
+   * refused caller learns nothing about the request shape), and the command
+   * runs in the named Project's folder or one of its worktrees.
+   */
+  app.post('/exec', async (c, next) => {
+    if (codingExecAllowed(c)) return next();
+    codingOps.add(1, { operation: 'exec-refused' });
+    return c.json(CODING_EXEC_NOT_GRANTED, 403);
+  });
   app.post('/exec', validate(execCommandSchema), async (c) => {
     codingOps.add(1, { operation: 'exec' });
     try {
-      const { command, cwd } = getBody(c);
-      const dir = validatePath(cwd);
+      const { projectSlug, command, cwd } = getBody(c);
+      const location = readLocation(c, projectSlug, cwd);
+      if (location instanceof Response) return location;
+      const dir = location.target;
       const result = await exec(command, {
         cwd: dir,
         encoding: 'utf-8',

@@ -1079,7 +1079,10 @@ export {
   usePinBoardWidget,
   useUnpinBoardWidget,
 } from './query-domains/board.js';
-export type { CodingFileMentionCandidates } from './query-domains/chatRuntimeCoding.js';
+export type {
+  CodingFileMentionCandidates,
+  CodingLocation,
+} from './query-domains/chatRuntimeCoding.js';
 export {
   fetchCodingFileMentionCandidates,
   useCodingFileMentionCandidatesQuery,
@@ -1125,7 +1128,10 @@ export {
 // System tab, so re-exporting it here would pull it into every eager importer
 // of this barrel for no first-paint benefit. Published
 // exclusively via `@kontourai/station-sdk/resource-posture`.
-export type { GitStatusResult } from './query-domains/projectData.js';
+export type {
+  GitReadLocation,
+  GitStatusResult,
+} from './query-domains/projectData.js';
 export {
   adoptCommittedProjectTaskRoomDocument,
   appendProjectTaskRoomHumanMessage,

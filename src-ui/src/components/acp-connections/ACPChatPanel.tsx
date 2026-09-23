@@ -312,6 +312,7 @@ export function ACPChatPanel({
         isSending={activeSession.status === 'sending'}
         turnInFlight={isTurnInFlight(activeSession)}
         workingDirectory={sessionProject?.workingDirectory}
+        mentionProjectSlug={sessionProject?.slug}
         mentionRequestScope={mentionRequestScope}
         mentionAuthority={mentionAuthority}
         busyFollowUp={

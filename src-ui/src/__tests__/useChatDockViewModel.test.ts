@@ -39,7 +39,11 @@ vi.mock('../contexts/ProjectsContext', () => ({
   useProject: () => ({ project: queryState.project }),
 }));
 vi.mock('../hooks/useGitStatus', () => ({
-  useGitStatus: (workingDirectory: string | null | undefined) => {
+  // #2412: git reads name the Project first; this records the folder.
+  useGitStatus: (
+    _projectSlug: string | null | undefined,
+    workingDirectory: string | null | undefined,
+  ) => {
     queryState.gitStatusArgs.push(workingDirectory);
     return { data: undefined };
   },

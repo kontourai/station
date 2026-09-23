@@ -1,5 +1,6 @@
 import {
   type CodingFileEntry,
+  type CodingLocation,
   useCodingFileMentionCandidatesQuery,
 } from '@kontourai/station-sdk/coding-file-mentions-query';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -9,7 +10,7 @@ function flatten(entries: readonly CodingFileEntry[]): CodingFileEntry[] {
 }
 
 export function FileMentionAutocomplete({
-  workingDirectory,
+  location,
   requestScope,
   query,
   listboxId,
@@ -17,7 +18,8 @@ export function FileMentionAutocomplete({
   onActiveDescendantChange,
   onSelect,
 }: {
-  workingDirectory: string;
+  /** The Project and folder the lookup reads in (#2412). */
+  location: CodingLocation;
   requestScope: {
     apiBase: string;
     authorityKey: string;
@@ -44,7 +46,7 @@ export function FileMentionAutocomplete({
   }, [query]);
   const querySettling = debouncedQuery !== query;
   const { data, isLoading, isError } = useCodingFileMentionCandidatesQuery(
-    workingDirectory,
+    location,
     debouncedQuery,
     requestScope,
   );

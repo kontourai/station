@@ -293,6 +293,49 @@ and stream state but is denied every mutation and the terminal route with
 scoping and is treated as carrying every scope — it is not itself a pairing
 grant.
 
+### Coding routes: command execution and client paths (#2412)
+
+`/api/coding/**` runs git, reads files and runs shell commands in a Project's
+folder as the Station OS user, with that user's keys. Its family tiers
+(`orchestration:read`/`orchestration:operate`) are necessary but not
+sufficient, so the handlers narrow further (owner decision, 2026-09-23):
+
+- **`POST /api/coding/exec` needs a per-device grant.** It stays at
+  `orchestration:operate`, and a paired device ALSO needs `coding:exec`, an
+  `operator-promotion` token: in no preset and never in the default grant, so
+  no `standard`, `delegation`, collaborator-management or migrated credential
+  gains it on upgrade, and older peers keep parsing every scope string they
+  are issued. The operator grants it once, per device, with the device access
+  editor's **Run commands** switch (`POST /api/pairing/devices/:id/scope`,
+  operator-only), and revokes it by turning the switch off; the grant is
+  stored on the device's record in the pairing registry, like every other
+  promoted token. The operator in person never needs it: the operator
+  credential, and credentials minted by proving possession of this Station's
+  home (the desktop app's local grant, the host browser's bootstrap, Station's
+  own internal token). A refused request is `403` with code
+  `coding-exec-not-granted` and a sentence naming where the operator turns it
+  on; it is refused before the body is read, and nothing runs.
+- **Every route that takes a client path is confined to a Project.** The
+  request names `projectSlug`; the path (and `/exec`'s `cwd`) must resolve,
+  through symlinks on both sides, to the Project's folder, a folder inside it,
+  or the `<project>-worktrees` folder beside it where Station provisions
+  worktree sessions. Anything else is `403 outside-project`, a request naming
+  no Project is `400 project-required`. The one exception is `GET
+  /api/coding/repos` without a Project, which the New Project form uses to ask
+  about a folder that is not a Project yet: it answers the operator in person
+  only.
+
+What this does not close, stated so nobody assumes it does:
+
+- `terminal:operate` (in `standard`) already opens an interactive terminal on
+  this host. The exec grant narrows the one-shot command route; it does not
+  take the terminal away from a device that has it.
+- Confinement binds a request to the Project it names, not to a folder the
+  operator approved. A caller who may edit a Project may point its working
+  directory elsewhere, and the containment follows.
+- Changes to a device's scope are recorded only as the device record's
+  current scope; there is no separate history of who granted or revoked what.
+
 ### Cross-station reads
 
 An SSH environment's local tunnel (`GET /api/environments/ssh/sessions`,

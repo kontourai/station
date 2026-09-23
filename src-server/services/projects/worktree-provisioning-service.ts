@@ -222,11 +222,18 @@ function resolveWorktreeBaseDir(repoRoot: string, policyBaseDir?: string) {
   // itself already expanded upstream — but expanding both is simpler than a
   // conditional and cannot drift if the default ever changes.
   return resolve(
-    expandTilde(
-      policyBaseDir ??
-        join(dirname(repoRoot), `${basename(repoRoot)}-worktrees`),
-    ),
+    expandTilde(policyBaseDir ?? defaultWorktreeBaseDir(repoRoot)),
   );
+}
+
+/**
+ * Where Station puts a repository's session worktrees unless a policy says
+ * otherwise: a `<repo>-worktrees` folder beside it. The coding read routes
+ * treat this folder as part of the Project (#2412), because a worktree
+ * session's Diff, Files and status live there.
+ */
+export function defaultWorktreeBaseDir(repoRoot: string): string {
+  return join(dirname(repoRoot), `${basename(repoRoot)}-worktrees`);
 }
 
 function assertContainedPath(

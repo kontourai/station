@@ -229,6 +229,33 @@ export const PAIRING_SCOPE_HOME_CONTROL = 'home:control' as const;
  */
 export const PAIRING_SCOPE_ENGINE_LOGIN = 'engine:login' as const;
 
+/**
+ * Run a shell command on this Station's host through
+ * `POST /api/coding/exec` (#2412, owner decision 2026-09-23). That route
+ * stays at the `orchestration:operate` tier and ALSO requires this token of
+ * a paired device; the operator in person (the operator credential, or a
+ * credential minted by proving possession of this home: the desktop app,
+ * the host browser, Station's own processes) never needs it.
+ *
+ * WHY A TOKEN, AND WHY OPERATOR PROMOTION. The command runs as the operator,
+ * with the operator's keys, so "may operate this Station" is not the same
+ * decision as "may run anything on this computer". Operate is carried by
+ * every `standard`, `delegation` and collaborator-management grant, and by
+ * the frozen default grant, so gating on it granted command execution to
+ * every one of them without anyone choosing it. This token is in no preset
+ * and never in the default grant, for the same two reasons as
+ * {@link PAIRING_SCOPE_ENGINE_LOGIN}: pairing time is when a device is least
+ * known, and adding it to `standard` would make every newly issued standard
+ * grant unparseable to peers built before it. The operator grants it once,
+ * per device, from that device's access editor, and revokes it there.
+ *
+ * What it does NOT cover: `terminal:operate` (in `standard`) already opens
+ * an interactive terminal on this host. This token narrows the one-shot
+ * command route; it does not take the terminal away from a device that has
+ * it.
+ */
+export const PAIRING_SCOPE_CODING_EXEC = 'coding:exec' as const;
+
 export const PAIRING_SCOPES = [
   PAIRING_SCOPE_ORCHESTRATION_READ,
   PAIRING_SCOPE_ORCHESTRATION_OPERATE,
@@ -240,6 +267,7 @@ export const PAIRING_SCOPES = [
   PAIRING_SCOPE_HOME_TRANSFER,
   PAIRING_SCOPE_HOME_CONTROL,
   PAIRING_SCOPE_ENGINE_LOGIN,
+  PAIRING_SCOPE_CODING_EXEC,
 ] as const;
 
 export type PairingScope = (typeof PAIRING_SCOPES)[number];
@@ -417,6 +445,8 @@ export const PAIRING_SCOPE_GRANT_PATHS: Record<
   // instead of it, so promotion after pairing is the only shape that is both
   // additive and backward-compatible.
   [PAIRING_SCOPE_ENGINE_LOGIN]: ['operator-promotion'],
+  // #2412: operator promotion only, for the reasons on its docblock.
+  [PAIRING_SCOPE_CODING_EXEC]: ['operator-promotion'],
 };
 
 export const DEFAULT_PAIRING_SCOPE_PRESET: PairingScopePreset = 'standard';

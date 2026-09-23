@@ -160,7 +160,9 @@ function renderRow(item: HomeWorkItem, cwd?: string) {
         isOpenChat={false}
         now={NOW}
         onActivate={vi.fn()}
-        cwd={cwd}
+        gitLocation={
+          cwd ? { projectSlug: 'station', workingDirectory: cwd } : undefined
+        }
       />
     </QueryClientProvider>,
   );
@@ -277,9 +279,11 @@ describe('inbox hover card metadata sections', () => {
       error: null,
     } as never);
     await openCard(workItem(), '/repo/station');
-    expect(vi.mocked(useGitStatusQuery).mock.calls[0]![0]).toBe(
-      '/repo/station',
-    );
+    // #2412: the read names the row's Project alongside its folder.
+    expect(vi.mocked(useGitStatusQuery).mock.calls[0]![0]).toEqual({
+      projectSlug: 'station',
+      workingDirectory: '/repo/station',
+    });
     const card = screen.getByTestId('inbox-row-hover-card');
     expect(card.textContent).toContain('main');
     expect(card.textContent).toContain('3 changes');

@@ -1339,6 +1339,7 @@ export function ChatDockBody({
             activeConversationId={activeSession.conversationId}
             input={chatInput.input}
             workingDirectory={workingDirectory}
+            mentionProjectSlug={activeSession.projectSlug}
             mentionRequestScope={mentionRequestScope}
             mentionAuthority={mentionAuthority}
             attachments={chatInput.attachments}

@@ -218,10 +218,16 @@ describe('describeDeviceScope', () => {
     // "Every token" is the whole current vocabulary. access:approve joined
     // PAIRING_SCOPES in #1887 slice 1 and consent:decide in #3677;
     // home:transfer brought the set to eight tokens, and home:control and
-    // engine:login (#2035) to ten, so each earlier full set is now Custom.
+    // engine:login (#2035) to ten, and coding:exec (#2412) to eleven, so
+    // each earlier full set is now Custom.
     expect(
       describeDeviceScope(
         'orchestration:read orchestration:operate terminal:operate access:manage inference:invoke access:approve consent:decide home:transfer engine:login',
+      ),
+    ).toBe('Custom access');
+    expect(
+      describeDeviceScope(
+        'engine:login home:control home:transfer consent:decide access:approve inference:invoke access:manage terminal:operate orchestration:operate orchestration:read',
       ),
     ).toBe('Custom access');
     // Neither nine-token set is every token.
@@ -233,7 +239,7 @@ describe('describeDeviceScope', () => {
     // Order-independent, like every other preset match.
     expect(
       describeDeviceScope(
-        'engine:login home:control home:transfer consent:decide access:approve inference:invoke access:manage terminal:operate orchestration:operate orchestration:read',
+        'coding:exec engine:login home:control home:transfer consent:decide access:approve inference:invoke access:manage terminal:operate orchestration:operate orchestration:read',
       ),
     ).toBe('Full access');
     // A scope missing any single token (here consent:decide) is not Full.

@@ -101,8 +101,8 @@ export function ProjectPage({ slug }: { slug: string }) {
       ),
     [agentConnections, agents, project?.agents, slug],
   );
-  const { data: gitStatus } = useGitStatus(project?.workingDirectory);
-  const { data: gitLog = [] } = useGitLog(project?.workingDirectory, 5);
+  const { data: gitStatus } = useGitStatus(slug, project?.workingDirectory);
+  const { data: gitLog = [] } = useGitLog(slug, project?.workingDirectory, 5);
   const {
     data: docs = [],
     isError: docsError,
