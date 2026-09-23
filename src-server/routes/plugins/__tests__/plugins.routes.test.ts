@@ -574,6 +574,52 @@ describe('Plugin Routes', () => {
     expect(settleProviderAdapterRetirements).toHaveBeenCalledOnce();
   });
 
+  /**
+   * #2323 S5: the legacy (git or registry checkout) update path hands the
+   * proposal store what it actually updated, and reports the store's answer.
+   * The store's own matching is pinned in `plugin-lifecycle-proposals.test.ts`
+   * and, over a real store, on the installation-host path in
+   * `plugin-installation.integration.test.ts`; `node:fs` is a fixture here.
+   */
+  test('#2323 S5: a legacy update that names its proposal completes it for the plugin it updated', async () => {
+    const proposalId = '11111111-1111-4111-8111-111111111111';
+    const complete = vi.fn(async () => ({
+      status: 'completed' as const,
+      proposal: {},
+    }));
+    const app = createPluginRoutes(
+      '/tmp/project',
+      logger as any,
+      eventBus as any,
+      {
+        applyConfigurationMutation: vi.fn(async (operation) =>
+          operation(vi.fn(), { status: 'applied' }),
+        ),
+        settleProviderAdapterRetirements: vi.fn().mockResolvedValue(undefined),
+        visibility: operatorPluginVisibility('/tmp/project'),
+        proposals: { complete },
+      } as any,
+    );
+
+    const response = await app.request('/test-plugin/update', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ proposalId }),
+    });
+    const body = await json(response);
+
+    expect(response.status).toBe(200);
+    expect(execGit).toHaveBeenCalledWith(
+      ['pull', '--ff-only'],
+      expect.anything(),
+    );
+    expect(complete).toHaveBeenCalledWith(proposalId, {
+      kind: 'update',
+      pluginName: 'test-plugin',
+    });
+    expect(body.proposal).toEqual({ id: proposalId, status: 'completed' });
+  });
+
   test('captures each update rollback snapshot only after its configuration lease starts', async () => {
     let releasePull!: () => void;
     const blockedPull = new Promise<void>((resolve) => {

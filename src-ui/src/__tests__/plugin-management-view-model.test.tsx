@@ -910,6 +910,28 @@ describe('usePluginManagementViewModel', () => {
       );
     });
 
+    test('confirming the removal of a DIFFERENT plugin than the remove proposal names does not complete it', async () => {
+      window.history.replaceState(null, '', '/plugins?proposal=proposal-3');
+      mocks.proposal = {
+        ...installProposal,
+        id: 'proposal-3',
+        kind: 'remove',
+        source: undefined,
+        pluginName: 'network-kit',
+      };
+      const { result } = renderHook(() => usePluginManagementViewModel());
+      await waitFor(() =>
+        expect(result.current.removeConfirm).toBe('network-kit'),
+      );
+
+      act(() => result.current.remove('other-kit'));
+      // A bare name: the server is told of no proposal.
+      expect(mocks.removeMutate).toHaveBeenCalledWith(
+        'other-kit',
+        expect.any(Object),
+      );
+    });
+
     test('a proposal that is no longer open opens nothing and says so', async () => {
       window.history.replaceState(null, '', '/plugins?proposal=proposal-1');
       mocks.proposal = { ...installProposal, status: 'dismissed' };

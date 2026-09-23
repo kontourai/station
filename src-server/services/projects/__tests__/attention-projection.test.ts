@@ -3216,6 +3216,24 @@ describe('#2323 S5 plugin lifecycle proposal attention', () => {
     ).toEqual([]);
   });
 
+  test('a person’s proposal names only that a person asked, never which one', async () => {
+    const store = proposalStore();
+    await store.propose({
+      kind: 'remove',
+      pluginName: 'pulse',
+      rationale: 'Unused.',
+      author: { principal: 'person', principalId: 'human:device:phone-1' },
+    });
+    const projection = makeService({ pluginProposals: store });
+    const item = (await projection.list(undefined, OPERATOR)).items.find(
+      (candidate) => candidate.kind === 'plugin-lifecycle-proposal',
+    );
+    // Strict: no principal id rides along into the inbox.
+    expect(item && 'author' in item ? item.author : undefined).toStrictEqual({
+      principal: 'person',
+    });
+  });
+
   test('review M6: proposals project for the operator only', async () => {
     const store = proposalStore();
     await store.propose({

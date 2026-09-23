@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
 import { rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -103,6 +103,99 @@ describe('#2323 S5 plugin lifecycle proposal store', () => {
         author: agent('conv-cap'),
       }),
     ).resolves.toMatchObject({ deduplicated: false });
+  });
+
+  test('completing a proposal frees its cap and lets the same ask be proposed again', async () => {
+    const { proposals } = service();
+    const ids: string[] = [];
+    for (let index = 0; index < MAX_OPEN_PROPOSALS_PER_AUTHOR; index++) {
+      const { proposal } = await proposals.propose({
+        kind: 'install',
+        source: `/tmp/plugins/c${index}`,
+        rationale: 'r',
+        author: agent('conv-complete'),
+      });
+      ids.push(proposal.id);
+    }
+    const next = {
+      kind: 'install' as const,
+      source: '/tmp/plugins/after-complete',
+      rationale: 'r',
+      author: agent('conv-complete'),
+    };
+    await expect(proposals.propose(next)).rejects.toBeInstanceOf(
+      PluginProposalLimitError,
+    );
+    expect(
+      await proposals.complete(ids[0]!, {
+        kind: 'install',
+        source: '/tmp/plugins/c0',
+      }),
+    ).toMatchObject({ status: 'completed' });
+    await expect(proposals.propose(next)).resolves.toMatchObject({
+      deduplicated: false,
+    });
+
+    // The completed install's source, asked again: a new open proposal,
+    // not the completed record.
+    const again = await proposals.propose({
+      kind: 'install',
+      source: '/tmp/plugins/c0',
+      rationale: 'Again.',
+      author: agent('conv-again'),
+    });
+    expect(again.deduplicated).toBe(false);
+    expect(again.proposal.id).not.toBe(ids[0]);
+    expect(again.proposal.status).toBe('open');
+    expect(proposals.get(ids[0]!)?.status).toBe('completed');
+  });
+
+  test('every mutation holds the store lock around its write; a lock that fails writes nothing', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'station-s5-proposals-lock-'));
+    cleanup.push(home);
+    const file = join(home, PLUGIN_LIFECYCLE_PROPOSALS_FILE);
+    const events: string[] = [];
+    const locked = new PluginLifecycleProposalService(home, {
+      acquireMutationLock: async (lockPath) => {
+        events.push(`acquire:${lockPath}`);
+        return async () => {
+          // What is on disk when the lock is released: the write happened
+          // inside it.
+          events.push(`release:written=${existsSync(file)}`);
+        };
+      },
+    });
+    await locked.propose({
+      kind: 'update',
+      pluginName: 'pulse',
+      rationale: 'r',
+      author: agent('c'),
+    });
+    expect(events).toEqual([
+      `acquire:${file}.mutation`,
+      'release:written=true',
+    ]);
+
+    const failingHome = mkdtempSync(
+      join(tmpdir(), 'station-s5-proposals-lockfail-'),
+    );
+    cleanup.push(failingHome);
+    const failing = new PluginLifecycleProposalService(failingHome, {
+      acquireMutationLock: async () => {
+        throw new Error('lock unavailable');
+      },
+    });
+    await expect(
+      failing.propose({
+        kind: 'update',
+        pluginName: 'pulse',
+        rationale: 'r',
+        author: agent('c'),
+      }),
+    ).rejects.toThrow('lock unavailable');
+    expect(existsSync(join(failingHome, PLUGIN_LIFECYCLE_PROPOSALS_FILE))).toBe(
+      false,
+    );
   });
 
   test('completion closes only a matching open proposal', async () => {
@@ -344,6 +437,32 @@ describe('#2323 S5 install proposal sources', () => {
     expect(
       resolvePluginProposalSource('git@evil.com:github.com/kontourai/x'),
     ).toMatchObject({ host: 'evil.com', path: 'github.com/kontourai/x' });
+  });
+
+  test('a git path keeps its case; case-distinct paths are distinct keys', () => {
+    expect(
+      resolvePluginProposalSource('https://gitlab.example.com/Org/My-Plugin'),
+    ).toEqual({
+      kind: 'git',
+      source: 'https://gitlab.example.com/Org/My-Plugin',
+      host: 'gitlab.example.com',
+      path: 'Org/My-Plugin',
+    });
+    expect(
+      pluginProposalSourceKey('https://gitlab.example.com/Org/My-Plugin'),
+    ).not.toBe(
+      pluginProposalSourceKey('https://gitlab.example.com/org/my-plugin'),
+    );
+  });
+
+  test('a source with a leading byte-order mark is refused, not trimmed away', () => {
+    try {
+      resolvePluginProposalSource('\uFEFF/tmp/plugins/pulse');
+      expect.unreachable('a BOM-prefixed source was accepted');
+    } catch (error) {
+      expect(error).toBeInstanceOf(PluginProposalInvalidError);
+      expect((error as PluginProposalInvalidError).code).toBe('source-invalid');
+    }
   });
 
   test('the same repository in different spellings is one key', () => {

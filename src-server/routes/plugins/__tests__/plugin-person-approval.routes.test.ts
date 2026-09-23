@@ -201,7 +201,10 @@ function writePlugin(dir: string, name: string) {
   );
 }
 
-function createHarness(home: string) {
+function createHarness(
+  home: string,
+  options: { applyConfigurationMutation?: unknown } = {},
+) {
   const app = new Hono<{ Bindings: TestBindings }>();
   configureRuntimeHttp({
     app: app as never,
@@ -228,6 +231,9 @@ function createHarness(home: string) {
     pluginsDir: join(home, 'plugins'),
     projectHomeDir: home,
     proposals,
+    ...(options.applyConfigurationMutation
+      ? { applyConfigurationMutation: options.applyConfigurationMutation }
+      : {}),
   };
   registerPluginLifecycleRoutes(plugins, {
     ...deps,
@@ -571,7 +577,7 @@ describe('#2323 S5: plugin lifecycle routes refuse Station’s agent caller', ()
     const { home, pluginsDir } = makeHome();
     for (const name of ['plugin-a', 'plugin-b'])
       writePlugin(join(pluginsDir, name), name);
-    const { request } = createHarness(home);
+    const { request, proposals } = createHarness(home);
     const attestA = attestProposalSourceContext('station', 'c1', {
       kind: 'update',
       target: 'plugin-a',
@@ -608,6 +614,32 @@ describe('#2323 S5: plugin lifecycle routes refuse Station’s agent caller', ()
     expect(
       await author({ kind: 'update', pluginName: ' plugin-a ' }),
     ).toMatchObject({ agentSlug: 'station', reportedBy: 'runtime' });
+    // The same proposal, reported from another conversation, once the
+    // attested one is closed (an open one would deduplicate).
+    const attested = proposals
+      .listOpen()
+      .find((open) => open.pluginName === 'plugin-a' && open.kind === 'update');
+    await proposals.dismiss(attested!.id);
+    expect(
+      (
+        await readJson(
+          await request('internal', 'POST', '/api/plugin-proposals', {
+            kind: 'update',
+            pluginName: 'plugin-a',
+            rationale: 'r',
+            _sourceContext: {
+              agentSlug: 'station',
+              conversationId: 'c2',
+              attestation: attestA,
+            },
+          }),
+        )
+      ).proposal.author,
+    ).toMatchObject({
+      agentSlug: 'station',
+      conversationId: 'c2',
+      reportedBy: 'caller',
+    });
   });
 });
 
@@ -792,6 +824,69 @@ describe('#2323 S5: completing a proposal through the ordinary routes', () => {
       status: 'open',
     });
     expect(proposals.get(proposal.id)?.status).toBe('open');
+  });
+
+  /**
+   * A change the runtime accepted but has not activated yet (202, activation
+   * `pending`) has not happened as far as the person can see: the proposal
+   * stays open, in the response and in the store.
+   */
+  test('an install or removal whose activation is still pending leaves the proposal open', async () => {
+    const { home, root, pluginsDir } = makeHome();
+    const source = join(root, 'src-plugin');
+    writePlugin(source, 'proposed-plugin');
+    writePlugin(join(pluginsDir, 'installed-plugin'), 'installed-plugin');
+    const applyConfigurationMutation = vi.fn(
+      async (operation: (begin: () => void, activation: unknown) => unknown) =>
+        operation(() => {}, { status: 'pending', reason: 'queued' }),
+    );
+    const { request, proposals } = createHarness(home, {
+      applyConfigurationMutation,
+    });
+    const install = (
+      await readJson(
+        await request('internal', 'POST', '/api/plugin-proposals', {
+          kind: 'install',
+          source,
+          rationale: 'Adds the pane.',
+        }),
+      )
+    ).proposal;
+    const remove = (
+      await readJson(
+        await request('internal', 'POST', '/api/plugin-proposals', {
+          kind: 'remove',
+          pluginName: 'installed-plugin',
+          rationale: 'Unused.',
+        }),
+      )
+    ).proposal;
+
+    const installed = await request('person', 'POST', '/api/plugins/install', {
+      source,
+      consent: CONSENT,
+      proposalId: install.id,
+    });
+    expect(installed.status).toBe(202);
+    expect((await readJson(installed)).proposal).toEqual({
+      id: install.id,
+      status: 'open',
+    });
+    const removed = await request(
+      'person',
+      'DELETE',
+      '/api/plugins/installed-plugin',
+      { proposalId: remove.id },
+    );
+    expect(removed.status).toBe(202);
+    expect((await readJson(removed)).proposal).toEqual({
+      id: remove.id,
+      status: 'open',
+    });
+    expect(installPluginFromSource).toHaveBeenCalledTimes(1);
+    expect(uninstallInstalledPlugin).toHaveBeenCalledTimes(1);
+    expect(proposals.get(install.id)?.status).toBe('open');
+    expect(proposals.get(remove.id)?.status).toBe('open');
   });
 
   test('review L3: a removal names its proposal in the JSON body, as install does', async () => {
