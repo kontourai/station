@@ -226,9 +226,22 @@ export interface MuseActiveTurn {
   /**
    * #2300: set when Station tried to stop this child and could not confirm
    * it stopped. A send that finds the slot still held by such a turn is
-   * refused definitively, not retryably: nothing will free it on its own.
+   * refused definitively, not retryably: the slot frees only if the process
+   * exits on its own or the idle reap, one window later, confirms stopping
+   * it — no prompt retry will succeed.
    */
   terminationUnconfirmed?: boolean;
+  /**
+   * #2300: tasks that settled while no run had yet been held, i.e. before
+   * the run that launched them ended. Only a clean exit held for such tasks
+   * alone is closed without a warning (the unverified-invariant case).
+   */
+  settledBeforeHold: Set<string>;
+  /**
+   * #2300: true once muse's follow-up `command_accepted` arrived during the
+   * current hold; reset by each new hold.
+   */
+  followUpAccepted?: boolean;
   resolveSlotReleased: () => void;
   /**
    * #2300: how many completed runs this turn has held open for pending

@@ -1246,9 +1246,17 @@ describe('MuseAdapter', () => {
     // Without a `stopped` guard the exit handler has already re-opened the
     // turn slot, so this spawns a second `muse exec` that bills tokens and
     // publishes `content.text-delta`/`turn.completed` AFTER `session.exited`.
-    await expect(
-      harness.adapter.sendTurn({ threadId: 'thread-stop-race', input: 'two' }),
-    ).rejects.toThrow('stopped');
+    // #2300 round 4: a pre-effect refusal, so the orchestration layer
+    // retires the dispatch cleanly instead of recording it indeterminate.
+    const refusal = await harness.adapter
+      .sendTurn({ threadId: 'thread-stop-race', input: 'two' })
+      .then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+    expect(refusal).toBeInstanceOf(SendTurnRefusedError);
+    expect((refusal as Error).message).toContain('stopped');
+    expect((refusal as Error).message).not.toContain('thread-stop-race');
     expect(harness.processes).toHaveLength(1);
 
     releaseTermination();
@@ -3892,6 +3900,51 @@ describe('Muse background work holds the turn (#2300)', () => {
     ]);
     expect(events[7]).toMatchObject({ finishReason: 'stop', outputText: '' });
     await expectNoFurtherEvent(harness.iterator, 'early exit 0');
+  });
+
+  test("a clean exit after a task that was pending at run 1's terminal settled gets the warning", async () => {
+    // The verified shape (muse follows up such a task), going wrong.
+    const { harness, emit } = await startTurn('bg-verified-exit0');
+    await emit(...THROUGH_RUN_1, TASK_COMPLETED);
+    harness.processes[0].exit(0);
+    await flushIo();
+    const events = await drain(harness.iterator, 9, 'verified exit 0');
+    expect(
+      events.slice(7).map((e) => [e.method, e.code ?? e.finishReason]),
+    ).toEqual([
+      ['runtime.warning', MUSE_HELD_TURN_UNFINISHED_CODE],
+      ['turn.completed', 'other'],
+    ]);
+    await expectNoFurtherEvent(harness.iterator, 'verified exit 0');
+  });
+
+  test('a clean exit that cuts off a started follow-up gets the warning, even if another task settled during it', async () => {
+    const { harness, emit } = await startTurn('bg-cut-follow-up');
+    const settleOf = (taskId: string) =>
+      TASK_COMPLETED.split(MUSE_13_BACKGROUND_TASK_ID).join(taskId);
+    // Two tasks launched; the capture's settles before run 1 ends, the
+    // second is still pending at run 1's terminal.
+    await emit(
+      ...LINES.slice(0, 29),
+      launchOf('call_b', 'task-b'),
+      LINES[29]!,
+      TASK_COMPLETED,
+      RUN_1_TERMINAL,
+      // The follow-up for the first starts and streams...
+      ...FOLLOW_UP.slice(0, 20),
+      // ...the second settles during it, and muse exits cleanly.
+      settleOf('task-b'),
+    );
+    harness.processes[0].exit(0);
+    await flushIo();
+    const events = await drain(harness.iterator, 14, 'cut-off follow-up');
+    expect(
+      events.slice(-2).map((e) => [e.method, e.code ?? e.finishReason]),
+    ).toEqual([
+      ['runtime.warning', MUSE_HELD_TURN_UNFINISHED_CODE],
+      ['turn.completed', 'other'],
+    ]);
+    await expectNoFurtherEvent(harness.iterator, 'cut-off follow-up');
   });
 
   test('a non-zero exit of that same held turn still gets the warning', async () => {

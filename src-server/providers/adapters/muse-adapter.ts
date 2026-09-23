@@ -303,9 +303,13 @@ export const MUSE_SETTLED_CHILD_EXIT_WAIT_MS = 5_000;
 export class MuseTurnSlotReleasingError extends SendTurnRefusedError {
   readonly code = MUSE_TURN_SLOT_RELEASING_CODE;
   readonly retryable = true;
-  constructor(threadId: string) {
+  /**
+   * Kept off the message: a client queue shows the refusal text to the user
+   * verbatim, and a thread id there is noise. `sendTurn` logs it.
+   */
+  constructor(readonly threadId: string) {
     super(
-      `Muse is still closing the previous turn's process; try again in a moment: ${threadId}`,
+      "Muse is still closing the previous turn's process; try again in a moment.",
     );
     this.name = 'MuseTurnSlotReleasingError';
   }
@@ -979,7 +983,10 @@ export class MuseAdapter implements ProviderAdapterShape {
     // tokens, and publish `content.text-delta`/`turn.completed` AFTER
     // `session.exited`.
     if (record.stopped) {
-      throw new Error(`Muse session is stopped: ${input.threadId}`);
+      throw this.refuseSend(
+        input.threadId,
+        new SendTurnRefusedError('This Muse session is stopped.'),
+      );
     }
     // The slot is held until the child EXITS, not until the turn settles: two
     // `muse exec` processes must never run concurrently against one
@@ -994,8 +1001,9 @@ export class MuseAdapter implements ProviderAdapterShape {
       // refused cleanly, as a pre-effect refusal, rather than thrown as a
       // plain error the orchestration layer would record as indeterminate.
       if (record.stopped) {
-        throw new SendTurnRefusedError(
-          `Muse session is stopped: ${input.threadId}`,
+        throw this.refuseSend(
+          input.threadId,
+          new SendTurnRefusedError('This Muse session is stopped.'),
         );
       }
     }
@@ -1004,15 +1012,22 @@ export class MuseAdapter implements ProviderAdapterShape {
       // Retryable only while the previous child is merely exiting. If
       // Station already tried to stop it and could not confirm it stopped
       // (Stop, stopSession, or a deadline reap left it termination-
-      // unconfirmed), nothing will free the slot on its own, so a retry
-      // promise would be false: that is the definitive refusal, still a
+      // unconfirmed), no prompt retry will succeed: the slot frees only if
+      // the process exits on its own or the idle reap, one window later,
+      // confirms stopping it. That is the definitive refusal, still a
       // pre-effect one so the dispatch is retired cleanly.
       if (occupant.settled && !occupant.terminationUnconfirmed) {
-        throw new MuseTurnSlotReleasingError(input.threadId);
+        throw this.refuseSend(
+          input.threadId,
+          new MuseTurnSlotReleasingError(input.threadId),
+        );
       }
       if (occupant.settled) {
-        throw new SendTurnRefusedError(
-          `Muse session already has an active turn whose process Station could not confirm stopped; stop the session to recover: ${input.threadId}`,
+        throw this.refuseSend(
+          input.threadId,
+          new SendTurnRefusedError(
+            'Station could not confirm that the previous Muse process stopped. It will try stopping it again; this message can be sent again after that.',
+          ),
         );
       }
       throw new Error(
@@ -1096,6 +1111,7 @@ export class MuseAdapter implements ProviderAdapterShape {
       awaitingResultToolCalls: new Map(),
       pendingBackgroundTasks: new Map(),
       awaitingReportTasks: new Set(),
+      settledBeforeHold: new Set(),
       slotReleased,
       resolveSlotReleased,
       heldRuns: 0,
@@ -1376,17 +1392,24 @@ export class MuseAdapter implements ProviderAdapterShape {
           turn.heldRuns > 0 &&
           code === 0 &&
           !turn.process.signalCode &&
+          !turn.followUpAccepted &&
           turn.pendingBackgroundTasks.size === 0 &&
-          turn.awaitingReportTasks.size > 0
+          turn.awaitingReportTasks.size > 0 &&
+          [...turn.awaitingReportTasks].every((taskId) =>
+            turn.settledBeforeHold.has(taskId),
+          )
         ) {
-          // #2300 (conservative): held ONLY because a task that already
-          // settled has not been reported by a follow-up run yet, and muse
-          // then exited cleanly without submitting one. That "muse always
-          // follows up a settled task" invariant is UNVERIFIED for a task
-          // that settles before the run that launched it ends (the one live
-          // capture settles it after), so a clean exit here is closed
-          // exactly as it was before #2300: a completed turn with the text
-          // so far, `stop`, and no warning.
+          // #2300 (conservative), for exactly the UNVERIFIED case: every
+          // task the turn is held for settled BEFORE the turn was first held
+          // (i.e. before the run that launched it ended), no follow-up run
+          // was accepted in this hold, and muse then exited cleanly. The one
+          // live capture shows muse following up a task that settles AFTER
+          // that terminal, never one that settled before it — so this exit
+          // is closed exactly as before #2300: a completed turn with the
+          // text so far, `stop`, and no warning. Any other clean exit while
+          // held (a task pending at the first terminal that then settled, or
+          // a follow-up that started and was cut off) is the verified shape
+          // going wrong, and gets the warning below.
           this.settleTurn(record, turn, {
             kind: 'completed',
             finishReason: 'stop',
@@ -1494,6 +1517,7 @@ export class MuseAdapter implements ProviderAdapterShape {
     }
 
     if (effect.kind === 'background-follow-up') {
+      turn.followUpAccepted = true;
       // #2300: muse submitted the run that reports every background task
       // settled so far, so the turn no longer owes their report; its
       // terminal can release the hold. A task that settles DURING this run
@@ -2204,6 +2228,7 @@ export class MuseAdapter implements ProviderAdapterShape {
       turn.idleTimeoutHandle = undefined;
     }
     turn.heldRuns += 1;
+    turn.followUpAccepted = false;
     turn.itemId = undefined;
     turn.runStreamedText = false;
     turn.runSeparatorPending = turn.outputText.length > 0;
@@ -2283,6 +2308,18 @@ export class MuseAdapter implements ProviderAdapterShape {
         this.clearTurnTimers(turn);
       }
     });
+  }
+
+  /**
+   * #2300: logs a send refusal with its thread id — kept out of the error
+   * text, which a client queue shows to the user verbatim — and returns
+   * the error for the caller to throw.
+   */
+  private refuseSend(threadId: string, error: Error): Error {
+    this.options.logger?.warn?.(
+      `Muse refused a send for thread ${threadId}: ${error.message}`,
+    );
+    return error;
   }
 
   /**
@@ -2395,6 +2432,7 @@ export class MuseAdapter implements ProviderAdapterShape {
     // Muse reports every settled task in a follow-up run; until one has,
     // the turn is still owed that report (`owesBackgroundReport`).
     turn.awaitingReportTasks.add(taskId);
+    if (turn.heldRuns === 0) turn.settledBeforeHold.add(taskId);
     const rowId = museBackgroundTaskRowId(taskId);
     this.rememberSettledRow(turn, rowId);
     this.publish({
