@@ -88,9 +88,28 @@ export function typecheckedProjects(command) {
 // The whole segment is the slot runner, bare flags and one `-p <tsconfig>`,
 // and nothing else: `… -p x || true`, a pipe or a `;` would let the compile
 // fail without failing the chain. A flag that takes a value does not match;
-// the chain uses none.
-const TSC_SEGMENT =
-  /^node scripts\/tsc-slot\.mjs((?:\s+--?[\w-]+)*\s+-p\s+[^\s|;&]+(?:\s+--?[\w-]+)*)$/;
+// the chain uses none. Checked token by token rather than with one regex,
+// which CodeQL flags as exponential backtracking (js/redos).
+const FLAG = /^--?[\w-]+$/;
+const PROJECT_PATH = /^[^-|;&][^|;&]*$/;
+
+function segmentArgs(raw) {
+  const tokens = raw.trim().split(/\s+/);
+  if (tokens[0] !== 'node' || tokens[1] !== 'scripts/tsc-slot.mjs') return null;
+  const args = tokens.slice(2);
+  let project = null;
+  for (let i = 0; i < args.length; i += 1) {
+    if (args[i] === '-p') {
+      if (project !== null || !PROJECT_PATH.test(args[i + 1] ?? ''))
+        return null;
+      project = args[i + 1];
+      i += 1;
+    } else if (!FLAG.test(args[i])) {
+      return null;
+    }
+  }
+  return project === null ? null : { project, args };
+}
 
 /**
  * The compiler runs `typecheck:examples` performs: `&&`-joined segments that
@@ -101,12 +120,8 @@ const TSC_SEGMENT =
 export function typecheckSegments(command) {
   const segments = [];
   for (const raw of (command ?? '').split('&&')) {
-    const match = TSC_SEGMENT.exec(raw.trim());
-    if (!match) continue;
-    const args = match[1].trim().split(/\s+/);
-    const at = args.indexOf('-p');
-    if (at === -1 || !args[at + 1]) continue;
-    segments.push({ project: args[at + 1], args });
+    const segment = segmentArgs(raw);
+    if (segment) segments.push(segment);
   }
   return segments;
 }
