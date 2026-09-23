@@ -5,16 +5,267 @@ import type { Page } from '@playwright/test';
 import {
   browserAcceptApplicationInvitation,
   browserAdoptBoundApplicationDevice,
+  browserAdoptCookieSessions,
   browserApplicationAccountRequest,
+  browserCookieAdoptionOriginState,
+  browserCookieAdoptionSecrets,
+  browserExchangeCookieDevice,
   browserLoginApplicationAccountAgain,
+  browserReadAliasOnlyDirect,
+  browserReadCookieAccountAndParent,
+  browserReauthenticateCookieAlias,
   browserRejectWrongBoundAccount,
   browserRenewApplicationAccount,
   browserRequestBoundApplicationDevice,
+  browserRequestCookieDevice,
   browserRevokeApplicationContinuation,
+  browserRevokeCookieAlias,
+  browserSelectCookieAdoption,
+  browserSignInForCookieAdoption,
   browserStartApplicationAccount,
   browserStopApplicationAccount,
 } from './browser-application-account.mjs';
 import type { provisionRelayAccountStation } from './local-collaboration-relay-account.js';
+
+export async function runBrowserCookieAdoptionScenario(
+  page: Page,
+  station: Awaited<ReturnType<typeof provisionRelayAccountStation>>,
+  broker: {
+    setExpectedAliasCredential(value: string): Promise<void>;
+    applicationObservations(): Array<{
+      path: string;
+      method: string;
+      status: number;
+      cookieHeader: boolean;
+      setCookieHeader: boolean;
+      continuationHeader: boolean;
+      proofHeader: boolean;
+      aliasCredential: boolean;
+      origin: string | null;
+    }>;
+  },
+) {
+  const apiBase = station.station.base;
+  const browserInput = station.browser;
+  const originState = await page.evaluate(browserCookieAdoptionOriginState);
+  assert.equal(originState.secureContext, true);
+  assert.equal(new URL(apiBase).protocol, 'https:');
+  assert.equal(originState.origin, apiBase);
+
+  const countBeforePair = await station.deviceCount();
+  const offer = await station.createBrowserCookieOffer();
+  const request = await page.evaluate(browserRequestCookieDevice, {
+    apiBase,
+    requestPath: '/.well-known/station/v1/pairing/request',
+    ...offer,
+  });
+  await station.confirmBrowserCookieRequest(request.requestId);
+  const exchange = await page.evaluate(browserExchangeCookieDevice, {
+    apiBase,
+    exchangePath: '/.well-known/station/v1/pairing/exchange',
+    ...offer,
+    requestId: request.requestId,
+  });
+  assert.equal(exchange.delivery, 'browser-cookie');
+  assert.equal(exchange.setCookieVisibleToJavascript, false);
+  assert.equal(exchange.deviceCookieVisibleToJavascript, false);
+  const countAfterPair = await station.deviceCount();
+  assert.equal(countAfterPair, countBeforePair + 1);
+
+  const deviceCookie = (await page.context().cookies(apiBase)).find(
+    (cookie) => cookie.name === '__Host-station-device',
+  );
+  assert(deviceCookie, 'Station must install its real secure Device cookie');
+  assert.equal(deviceCookie.httpOnly, true);
+  assert.equal(deviceCookie.secure, true);
+  assert.equal(deviceCookie.sameSite, 'Strict');
+  const accountLogin = await page.evaluate(browserSignInForCookieAdoption, {
+    apiBase,
+    username: browserInput.username,
+    password: browserInput.password,
+    signInPath: browserInput.signInPath,
+    sessionCookies: browserInput.sessionCookies,
+  });
+  assert.equal(accountLogin.setCookieVisibleToJavascript, false);
+  assert.equal(accountLogin.accountCookieVisibleToJavascript, false);
+  const accountCookie = (await page.context().cookies(apiBase)).find((cookie) =>
+    browserInput.sessionCookies.includes(cookie.name),
+  );
+  assert(accountCookie, 'Provider must install its real account cookie');
+  assert.equal(accountCookie.httpOnly, true);
+  assert.equal(accountCookie.secure, true);
+
+  const first = await page.evaluate(browserAdoptCookieSessions, {
+    apiBase,
+    stationId: browserInput.stationId,
+    invitation: browserInput.invitation,
+    username: browserInput.username,
+    sessionCookies: browserInput.sessionCookies,
+  });
+  const second = await page.evaluate(browserAdoptCookieSessions, {
+    apiBase,
+    stationId: browserInput.stationId,
+    invitation: browserInput.invitation,
+    username: browserInput.username,
+    sessionCookies: browserInput.sessionCookies,
+  });
+  assert.equal(first.keyExtractable, false);
+  assert.equal(second.keyExtractable, false);
+  assert.equal(first.stationId, browserInput.stationId);
+  assert.equal(first.clientOrigin, apiBase);
+  assert.equal(second.deviceId, first.deviceId);
+  assert.equal(await station.deviceCount(), countAfterPair);
+  const deviceCookieAfter = (await page.context().cookies(apiBase)).find(
+    (cookie) => cookie.name === '__Host-station-device',
+  );
+  assert.equal(deviceCookieAfter?.value, deviceCookie.value);
+
+  const cookieIdentity = await page.evaluate(
+    browserReadCookieAccountAndParent,
+    {
+      apiBase,
+      deviceId: first.deviceId,
+      sessionCookies: browserInput.sessionCookies,
+    },
+  );
+  assert.equal(cookieIdentity.account.status, 200);
+  assert.equal(cookieIdentity.parent.status, 200);
+  assert.equal(cookieIdentity.parent.containsDevice, true);
+  assert.equal(cookieIdentity.deviceCookieVisibleToJavascript, false);
+  assert.equal(cookieIdentity.accountCookieVisibleToJavascript, false);
+
+  const aliasOnlyDirect = await page.evaluate(browserReadAliasOnlyDirect, {
+    index: 1,
+    path: '/api/projects/relay-private',
+  });
+  assert.equal(aliasOnlyDirect.status, 401);
+  await page.evaluate(browserSelectCookieAdoption, { index: 1 });
+  const reauthenticatedAlias = await page.evaluate(
+    browserReauthenticateCookieAlias,
+    { index: 1 },
+  );
+  assert.equal(reauthenticatedAlias.deviceId, first.deviceId);
+  assert.equal(reauthenticatedAlias.stationId, browserInput.stationId);
+  const expectedAlias = (await page.evaluate(browserCookieAdoptionSecrets))[1]!;
+  await broker.setExpectedAliasCredential(expectedAlias);
+  await page.route(`${apiBase}/**`, async (route) =>
+    route.abort('blockedbyclient'),
+  );
+  const sharedRead = await page.evaluate(browserApplicationAccountRequest, {
+    path: '/api/account-auth/session',
+  });
+  assert.equal(sharedRead.status, 200, sharedRead.body);
+  assert.equal(
+    JSON.parse(sharedRead.body).data.principal.id,
+    cookieIdentity.account.principalId,
+  );
+  const vaiRead = broker
+    .applicationObservations()
+    .slice()
+    .reverse()
+    .find((item) => item.path === '/api/account-auth/session');
+  assert(
+    vaiRead,
+    `Station VAI must observe the real browser account request; observed ${JSON.stringify(broker.applicationObservations().map(({ path, status }) => ({ path, status })))}; wrapper calls ${await page.evaluate(() => (globalThis as unknown as { stationBrokerLabObservations?: { observationCalls?: number } }).stationBrokerLabObservations?.observationCalls)}`,
+  );
+  assert.equal(vaiRead.status, 200);
+  assert.equal(vaiRead.cookieHeader, false);
+  assert.equal(vaiRead.setCookieHeader, false);
+  assert.equal(vaiRead.continuationHeader, true);
+  assert.equal(vaiRead.proofHeader, true);
+  assert.equal(vaiRead.aliasCredential, true);
+  assert.equal(vaiRead.origin, apiBase);
+
+  await page.unroute(`${apiBase}/**`);
+  await page.evaluate(browserRevokeCookieAlias, { index: 0 });
+  const parentStillWorks = await page.evaluate(
+    browserReadCookieAccountAndParent,
+    {
+      apiBase,
+      deviceId: first.deviceId,
+      sessionCookies: browserInput.sessionCookies,
+    },
+  );
+  assert.equal(parentStillWorks.account.status, 200);
+  assert.equal(
+    parentStillWorks.account.principalId,
+    cookieIdentity.account.principalId,
+  );
+  assert.equal(parentStillWorks.parent.status, 200);
+  assert.equal(parentStillWorks.parent.containsDevice, true);
+  assert.equal(parentStillWorks.deviceCookieVisibleToJavascript, false);
+  assert.equal(parentStillWorks.accountCookieVisibleToJavascript, false);
+  await page.route(`${apiBase}/**`, async (route) =>
+    route.abort('blockedbyclient'),
+  );
+
+  await page.evaluate(browserSelectCookieAdoption, { index: 0 });
+  const revokedAliasRead = await page.evaluate(
+    browserApplicationAccountRequest,
+    {
+      path: '/api/projects/relay-shared',
+    },
+  );
+  assert.equal(revokedAliasRead.status, 401);
+  await page.evaluate(browserSelectCookieAdoption, { index: 1 });
+  await station.revokeDeviceId(first.deviceId);
+  const parentRevokedRead = await page.evaluate(
+    browserApplicationAccountRequest,
+    {
+      path: '/api/projects/relay-shared',
+    },
+  );
+  assert.equal(parentRevokedRead.status, 401);
+  await page.unroute(`${apiBase}/**`);
+  const afterParentRevocation = await page.evaluate(
+    browserReadCookieAccountAndParent,
+    {
+      apiBase,
+      deviceId: first.deviceId,
+      sessionCookies: browserInput.sessionCookies,
+    },
+  );
+  assert.equal(afterParentRevocation.account.status, 200);
+  assert.equal(afterParentRevocation.parent.status, 401);
+
+  return {
+    report: {
+      status: 'passed',
+      origin: apiBase,
+      secureContext: true,
+      deviceCookieHttpOnlySecureStrict:
+        deviceCookie.httpOnly &&
+        deviceCookie.secure &&
+        deviceCookie.sameSite === 'Strict',
+      accountCookieHttpOnlySecure:
+        accountCookie.httpOnly && accountCookie.secure,
+      cookieValuesVisibleToJavascript: false,
+      adoptedDeviceId: first.deviceId,
+      deviceCountBeforeAdoption: countAfterPair,
+      deviceCountAfterAdoption: await station.deviceCount(),
+      vaiAliasRequest: {
+        status: vaiRead.status,
+        cookieHeader: vaiRead.cookieHeader,
+        setCookieHeader: vaiRead.setCookieHeader,
+        continuationHeader: vaiRead.continuationHeader,
+        proofHeader: vaiRead.proofHeader,
+        aliasCredential: vaiRead.aliasCredential,
+      },
+      sameOriginCookieReauthenticationPreservedAlias: true,
+      aliasOnlyDirectStatus: aliasOnlyDirect.status,
+      aliasOnlyRevocationPreservedParentAndAccount: true,
+      aliasRevocationStatus: revokedAliasRead.status,
+      parentRevocationStatus: parentRevokedRead.status,
+      parentCookieAfterDeviceRevocationStatus:
+        afterParentRevocation.parent.status,
+    },
+    privateSecrets: [
+      deviceCookie.value,
+      accountCookie.value,
+      ...(await page.evaluate(browserCookieAdoptionSecrets)),
+    ],
+  };
+}
 
 /** Same protected API journey for local and genuinely remote Station fixtures. */
 export async function runBrowserAccountScenario(
@@ -392,6 +643,9 @@ export async function runBrowserAccountScenario(
     0,
     'Account traffic must not bypass the encrypted channel',
   );
+  // The next owned scenario deliberately adopts an HTTPS cookie at this same
+  // Station origin. Retire only this account scenario's direct-request block.
+  await page.unroute(`${accountStation.station.base}/**`);
   const accountReport = {
     status: privateRefused ? 'passed' : 'failed',
     directApplicationAttempts,
