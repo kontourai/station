@@ -5,7 +5,7 @@ import {
   execFileSync,
   spawn,
 } from 'node:child_process';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import {
@@ -225,6 +225,48 @@ export function withoutQuarantinedFiles(
       ]),
     ),
   );
+}
+
+function escapeWorkflowCommandData(text) {
+  return String(text)
+    .replaceAll('%', '%25')
+    .replaceAll('\r', '%0D')
+    .replaceAll('\n', '%0A');
+}
+
+/**
+ * What one queue run excluded, as GitHub annotations (one `::notice::` per
+ * file, visible on the run page) and step-summary lines. A skipped test must
+ * never be silent: a partially quarantined group otherwise passes with no
+ * sign that part of it did not run.
+ */
+export function quarantineExclusionReport(runName, entries) {
+  return {
+    annotations: entries.map(
+      ({ file, issue, expires }) =>
+        `::notice title=Quarantined test excluded::${escapeWorkflowCommandData(
+          `${file} was excluded from merge-queue run ${runName} (quarantined until ${expires}, ${issue}); Nightly still runs it.`,
+        )}`,
+    ),
+    summary: entries.map(
+      ({ file, issue, expires }) =>
+        `- \`${file}\` excluded from \`${runName}\` (quarantined until ${expires}, ${issue}); Nightly still runs it.`,
+    ),
+  };
+}
+
+/** Default reporter: annotations to stdout, lines to the job step summary. */
+export function reportQuarantineExclusions(
+  report,
+  {
+    env = process.env,
+    write = (text) => process.stdout.write(text),
+    append = appendFileSync,
+  } = {},
+) {
+  for (const annotation of report.annotations) write(`${annotation}\n`);
+  if (env.GITHUB_STEP_SUMMARY && report.summary.length > 0)
+    append(env.GITHUB_STEP_SUMMARY, `${report.summary.join('\n')}\n`);
 }
 
 export function buildVitestCommand(
@@ -554,6 +596,7 @@ export async function runVitestCorpus({
   excludeQuarantined = false,
   quarantine = QUARANTINED_VITEST_FILES,
   now = new Date(),
+  reportExclusions = reportQuarantineExclusions,
 } = {}) {
   if (signal?.aborted) {
     const result = terminalFailure(
@@ -594,6 +637,21 @@ export async function runVitestCorpus({
       results.push(result);
       onResult?.(result);
       return { passed: false, results };
+    }
+    if (excludeQuarantined) {
+      const excludedHere = new Set(
+        groupFiles(discoveredGroups, descriptor.name),
+      );
+      const excludedEntries = quarantine.filter(({ file }) =>
+        excludedHere.has(file),
+      );
+      if (excludedEntries.length > 0)
+        reportExclusions(
+          quarantineExclusionReport(
+            descriptor.resultName ?? descriptor.name,
+            excludedEntries,
+          ),
+        );
     }
     if (
       excludeQuarantined &&

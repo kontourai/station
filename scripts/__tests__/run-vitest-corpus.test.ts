@@ -9,6 +9,8 @@ import {
   ORDINARY_SHARD_DESCRIPTORS,
   parseVitestCorpusArguments,
   partitionShardFiles,
+  quarantineExclusionReport,
+  reportQuarantineExclusions,
   runVitestCorpus,
   runVitestGroup,
   runWindowsSerializedCorpus,
@@ -835,11 +837,13 @@ describe('merge-queue quarantine exclusion', () => {
   async function run(options: Record<string, unknown>) {
     const seen: Seen[] = [];
     const results: Array<Record<string, unknown>> = [];
+    const reports: Array<{ annotations: string[]; summary: string[] }> = [];
     const outcome = await runVitestCorpus({
       groups,
       platform: 'linux',
       quarantine,
       now,
+      reportExclusions: (report) => reports.push(report),
       onResult: (result) => results.push(result),
       runGroup: async (group, files, runOptions) => {
         seen.push({
@@ -855,8 +859,71 @@ describe('merge-queue quarantine exclusion', () => {
       },
       ...options,
     });
-    return { outcome, seen, results };
+    return { outcome, seen, results, reports };
   }
+
+  it('announces every excluded file per run, and nothing for an untouched group or the canonical lane', async () => {
+    const heavy = await run({
+      groupName: 'process-heavy',
+      shard: '2/2',
+      excludeQuarantined: true,
+    });
+    expect(heavy.reports).toHaveLength(1);
+    expect(heavy.reports[0].annotations).toEqual([
+      '::notice title=Quarantined test excluded::flaky-heavy.test.ts was excluded from merge-queue run process-heavy-2-of-2 (quarantined until 2026-09-30, https://github.com/kontourai/station/issues/2400); Nightly still runs it.',
+    ]);
+    expect(heavy.reports[0].summary).toEqual([
+      '- `flaky-heavy.test.ts` excluded from `process-heavy-2-of-2` (quarantined until 2026-09-30, https://github.com/kontourai/station/issues/2400); Nightly still runs it.',
+    ]);
+    const ordinary = await run({
+      groupName: 'ordinary',
+      shard: '3/8',
+      excludeQuarantined: true,
+    });
+    expect(ordinary.reports.flatMap(({ annotations }) => annotations)).toEqual([
+      expect.stringContaining(
+        'flaky-ordinary.test.ts was excluded from merge-queue run ordinary-3-of-8',
+      ),
+    ]);
+    // A fully quarantined group is announced as well as reported skipped.
+    const coordinator = await run({
+      groupName: 'coordinator-exclusive',
+      excludeQuarantined: true,
+    });
+    expect(coordinator.reports[0].annotations).toEqual([
+      expect.stringContaining('flaky-coordinator.test.ts'),
+    ]);
+    expect(
+      (await run({ groupName: 'shared-output', excludeQuarantined: true }))
+        .reports,
+    ).toEqual([]);
+    expect((await run({ groupName: 'process-heavy' })).reports).toEqual([]);
+  });
+
+  it('writes annotations to the log and appends the step summary', () => {
+    const report = quarantineExclusionReport('ordinary-1-of-8', [
+      { ...quarantine[0], file: 'odd%name.test.ts' },
+    ]);
+    const written: string[] = [];
+    const appended: Array<[string, string]> = [];
+    reportQuarantineExclusions(report, {
+      env: { GITHUB_STEP_SUMMARY: '/summary.md' },
+      write: (text) => written.push(text),
+      append: (path, text) => appended.push([path, text]),
+    });
+    // `%` is escaped so the workflow command cannot be misparsed.
+    expect(written).toEqual([expect.stringContaining('odd%25name.test.ts')]);
+    expect(appended).toEqual([
+      ['/summary.md', expect.stringContaining('`odd%name.test.ts` excluded')],
+    ]);
+    const outside: Array<[string, string]> = [];
+    reportQuarantineExclusions(report, {
+      env: {},
+      write: () => {},
+      append: (path, text) => outside.push([path, text]),
+    });
+    expect(outside).toEqual([]);
+  });
 
   it('drops quarantined files from every queue group, ordinary through its excludes', async () => {
     const heavy = await run({
