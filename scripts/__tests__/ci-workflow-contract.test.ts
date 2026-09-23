@@ -2519,11 +2519,17 @@ describe('merge-queue regression workflow covers the full regression', () => {
     );
   }
 
-  // Shell text that turns a failed command into a green step.
+  // Shell code (quotes and comments removed, see shellCode) that can turn a
+  // failed command into a green step: disabling errexit/pipefail, an
+  // explicit success exit anywhere, a trap that can rewrite the exit status,
+  // and a backgrounded command whose status the step never collects.
+  // Redirections (`2>&1`, `&>`, `>&2`) and `&&` are not backgrounding.
   const SWALLOWS: Array<[string, RegExp]> = [
     ['set +e', /\bset\s+\+[a-z]*e/],
     ['set +o errexit/pipefail', /\bset\s+\+o\s+(errexit|pipefail)\b/],
-    ['exit 0', /(^|[;&|]\s*)exit\s+0\b/],
+    ['exit 0', /\bexit\s+0\b/],
+    ['trap', /(^|[\s;&|(])trap\b/],
+    ['backgrounded command (&)', /(^|[^&>|<])&(?![&>])/],
   ];
 
   // Quoted text and trailing comments are data, not control flow: an
@@ -2561,7 +2567,7 @@ describe('merge-queue regression workflow covers the full regression', () => {
   function runSwallows(run: string | undefined) {
     const lines = logicalLines(run);
     const found = SWALLOWS.filter(([, pattern]) =>
-      lines.some((line) => pattern.test(line)),
+      lines.some((line) => pattern.test(shellCode(line))),
     ).map(([label]) => label);
     for (const line of lines)
       if (swallowingOr(line)) found.push(`'||' swallows a failure: ${line}`);
@@ -2655,6 +2661,10 @@ describe('merge-queue regression workflow covers the full regression', () => {
       'npm run prepare:verify-static || { echo "::error::prepare failed || stop"; exit 1; }',
       'npm run dependencies:verify || exit 2',
       "echo 'a || b' # || true",
+      // Quoted or commented swallow text is data, and redirections are not
+      // backgrounding.
+      'echo "never exit 0 here; trap nothing &" >&2 # exit 0',
+      'npm run dependencies:verify 2>&1 &>/dev/null && echo ok',
     ].join('\n');
     expect(swallowedFailures(loud)).toEqual([]);
   });
@@ -2825,6 +2835,40 @@ describe('merge-queue regression workflow covers the full regression', () => {
             );
           },
           /^ordinary: Prepare the corpus prerequisites: '\|\|' swallows/,
+        ],
+        [
+          'an exit 0 mid-line, inside a compound command',
+          (workflowDocument) => {
+            const step = runStep(workflowDocument, 'static');
+            step.run = `${step.run}\nif true; then exit 0; fi`;
+          },
+          /^static: Run full-regression phases: exit 0$/,
+        ],
+        [
+          'a trap that rewrites the exit status',
+          (workflowDocument) => {
+            const step = runStep(workflowDocument, 'ordinary');
+            step.run = `trap 'exit 0' EXIT\n${step.run}`;
+          },
+          /^ordinary: Run full-regression phases: trap$/,
+        ],
+        [
+          'a backgrounded driver',
+          (workflowDocument) => {
+            const step = runStep(workflowDocument, 'process-heavy');
+            step.run = step.run?.replace(
+              '| tee "$RUNNER_TEMP/merge-queue-regression.log"',
+              '| tee "$RUNNER_TEMP/merge-queue-regression.log" &',
+            );
+          },
+          /^process-heavy: Run full-regression phases: backgrounded command/,
+        ],
+        [
+          'a backgrounded android suite',
+          (workflowDocument) => {
+            androidStep(workflowDocument).run = 'npm run test:android &';
+          },
+          /^android-viewport: .*backgrounded command/,
         ],
         [
           'a gate job with its test step removed',
