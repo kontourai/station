@@ -3297,6 +3297,14 @@ describe('untrusted-workflow cache policy follows callees and allowlists actions
         false,
       ],
       [
+        // GitHub compares strings case-insensitively, so this IS reachable;
+        // a case-sensitive reading would wrongly prove it unreachable.
+        'case-variant equality that still matches',
+        expr("github.event_name == 'Merge_Group'"),
+        ['merge_group'],
+        true,
+      ],
+      [
         'inequality that excludes the only untrusted trigger',
         expr("always() && github.event_name != 'pull_request_target'"),
         ['pull_request_target'],
