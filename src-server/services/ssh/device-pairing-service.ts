@@ -1261,6 +1261,12 @@ export class DevicePairingService {
     offerId: string;
     proof: string;
     requestId: string;
+    /**
+     * Optional server-selected narrowing for the issued Device session.
+     * Public exchange routes do not accept this value; absent it, the session
+     * receives the full scope granted by the approved offer.
+     */
+    sessionScope?: string;
     clientInstanceId?: string;
     /**
      * Server-only mint stamp. Written solely by the local-grant route and
@@ -1328,12 +1334,11 @@ export class DevicePairingService {
     ) {
       throw new DevicePairingError('invalid_request');
     }
-    // R1 invariant: the session (device) scope can never exceed the grant
-    // (offer) scope it was exchanged from. Today the two are always equal by
-    // construction (the line below copies offer.scope verbatim), but this
-    // stays an explicit, tested check rather than a silent assumption so a
-    // future narrower-session exchange cannot regress it unnoticed.
-    if (!isPairingScopeSubset(offer.scope, offer.scope)) {
+    // The issued Device scope can be narrower than the approved grant, but
+    // must never carry authority the offer did not grant. Ordinary exchanges
+    // retain the offer scope; server-owned callers may explicitly narrow it.
+    const sessionScope = input.sessionScope ?? offer.scope;
+    if (!isPairingScopeSubset(sessionScope, offer.scope)) {
       throw new DevicePairingError('invalid_request');
     }
     if (
@@ -1412,7 +1417,7 @@ export class DevicePairingService {
     const device: StoredDevice = {
       id: randomUUID(),
       name: request.deviceName,
-      scope: offer.scope,
+      scope: sessionScope,
       kind: offer.kind,
       createdAt: issuedAt,
       activityTracking: 'tracked-since-issued',
