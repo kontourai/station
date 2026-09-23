@@ -4,6 +4,7 @@
   "private": true,
   "license": "Apache-2.0",
   "dependencies": {
+    "@kontourai/station-contracts": "*",
     "@kontourai/station-sdk": "*",
     "@kontourai/station-shared": "*",
     "react": "^19.0.0",
