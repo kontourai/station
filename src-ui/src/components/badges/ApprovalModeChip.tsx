@@ -135,10 +135,9 @@ export function ApprovalModeChip({
   const displayedMode = isOverride
     ? effective.mode
     : (appliedMode ?? effective.mode);
-  // An unconfirmed pick is sent only when a new session starts after the old
-  // one is known to have ended, and never if it is full access
-  // (`approvalModeToSend`); never to a session that is live or of unknown
-  // liveness. So "takes effect next turn" would be false.
+  // An unconfirmed full access is never reasserted (`approvalModeToSend`), so
+  // "takes effect next turn" would be false for it; an unconfirmed Ask/Auto
+  // is reasserted on the next send, which its note says.
   const isUnconfirmed = isOverride && sessionOverrideState === 'unconfirmed';
   const isPendingApply =
     isOverride &&
@@ -152,10 +151,9 @@ export function ApprovalModeChip({
   // pick (e.g. a pending Ask against an applied `auto`) keeps the plain
   // visible label #1933 pins; its accessible name still says it is not
   // confirmed (`pendingNote` below). An UNCONFIRMED pick is shown as such
-  // visibly ("· unconfirmed"): it is not sent to the current session (only a
-  // session known to have ended gets it), and another device may have set
-  // that session to anything, including full access, so a bare label could
-  // overclaim in the dangerous direction.
+  // visibly ("· unconfirmed"): until a report shows it applied, another
+  // device may have set the session to anything, including full access, so
+  // a bare label could overclaim in the dangerous direction.
   const isPendingRestrict =
     isOverride &&
     sessionOverrideState === 'requested' &&
@@ -169,8 +167,8 @@ export function ApprovalModeChip({
     ? 'the engine still reports full access'
     : isUnconfirmed
       ? effective.mode === 'never'
-        ? 'not confirmed for this session; a new session starts at the default'
-        : 'not confirmed for this session'
+        ? 'not confirmed for this session; full access is not reasserted, and a new session starts at the default'
+        : 'not confirmed for this session; the next send reasserts it'
       : isOverride && sessionOverrideState === 'requested' && !isPendingApply
         ? 'requested, not yet confirmed by the engine'
         : undefined;

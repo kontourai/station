@@ -309,16 +309,15 @@ export function approvalModeForDispatch(input: {
  * decision made elsewhere is not overridden from here.
  *
  * - A CONFIRMED pick (`approvalModeOverride`) is one a report showed the
- *   engine applying. It labels the chip, and is sent only when this send
- *   starts a session known to have ended or never started
- *   (`chatSessionKnownEnded`), and only if it is not full access
- *   (`confirmedPickCarriesToNewSession`): a confirmed `never` lets the new
- *   session start at the defaults, exactly as on main. It is never sent while the session is live or
- *   its liveness is unknown (e.g. after a reload mid-turn, before the
- *   reconnect snapshot). It survives a reload as confirmed.
+ *   engine applying. It labels the chip. A confirmed Ask or Auto is
+ *   reasserted on every send (live session, unknown liveness, or a new
+ *   one), as main's request bag does; a confirmed full access is never
+ *   reasserted, so a new session starts at the defaults (main's outcome)
+ *   and a live one keeps whatever it holds (`approvalModeToSend`). It
+ *   survives a reload as confirmed.
  *   - A STRICTER differing report retires it (someone tightened).
  *   - A LOOSER differing report keeps it, shown as unconfirmed for this
- *     session: it stays the posture a new session starts in.
+ *     session; an Ask/Auto is then sent back on the next send.
  * - A PENDING pick (`pendingApprovalMode`) is one this client made and the
  *   engine has not shown applying. It is sent with every turn until a report
  *   settles it. It records the latest server stream position this client had
@@ -346,11 +345,9 @@ export interface SessionApprovalOverride {
   /**
    * - `requested`: a pending pick; the next send carries it.
    * - `unconfirmed`: a confirmed pick with no report of it applying to THIS
-   *   session yet (restored after a reload, or a looser posture reported
-   *   since). It is sent only when a send starts a session known to have
-   *   ended or never started, and only if it is not full access; never while
-   *   the session is live or its liveness is unknown, so nothing makes it
-   *   true for the current session.
+   *   session (restored after a reload, a looser posture reported since, or
+   *   the session ended). An Ask/Auto is reasserted on the next send; a full
+   *   access is never reasserted.
    * - `confirmed`: the engine's latest report shows it applied.
    */
   state: 'requested' | 'unconfirmed' | 'confirmed';
@@ -419,50 +416,54 @@ export function sessionApprovalOverride(
 }
 
 /**
- * The approval mode a send puts on the wire as the session's own pick: the
- * pending pick always; the confirmed pick only when the session is KNOWN to
- * have ended or never started (`sessionKnownEnded`, from
- * `chatSessionKnownEnded`). See the model above.
+ * The approval mode a send puts on the wire as the session's own pick:
+ * - the pending pick, always;
+ * - a confirmed Ask or Auto, on EVERY send, to a live session, one of unknown
+ *   liveness, or a new one. This is main's behaviour (its request bag
+ *   resends the pick), so a looser posture another device applied is
+ *   tightened back, exactly as on main (#2334 probe Q);
+ * - a confirmed full access, NEVER: it is not reasserted over whatever a
+ *   live session now holds (probes E, E2, E3), and a new session starts at
+ *   the defaults, as on main (probe N).
+ * See the model on `SessionApprovalOverride`.
  */
 export function approvalModeToSend(
   chat: ApprovalPickState | null | undefined,
-  sessionKnownEnded: boolean,
 ): ApprovalMode | undefined {
   if (!chat) return undefined;
   if (isApprovalMode(chat.pendingApprovalMode)) return chat.pendingApprovalMode;
   if (
-    sessionKnownEnded &&
     isApprovalMode(chat.approvalModeOverride) &&
-    confirmedPickCarriesToNewSession(chat.approvalModeOverride)
+    confirmedPickIsReasserted(chat.approvalModeOverride)
   )
     return chat.approvalModeOverride;
   return undefined;
 }
 
 /**
- * Whether a confirmed pick becomes the posture of a NEW session this chat
- * starts. Full access does not: the bar is "never looser than main", and on
- * main a confirmed pick does not outlive its session, so a new one starts at
- * the defaults (connection, then Station). Ask and auto carry, because they
- * are at least as strict as whatever main would start in.
+ * Whether a confirmed pick is put back on the wire with each send. Full
+ * access is not: the bar is "never looser than main", and reasserting it
+ * could loosen a session another device tightened, or start a new session
+ * looser than main's defaults. Ask and auto are, because they are at least
+ * as strict as what main would send.
  */
-export function confirmedPickCarriesToNewSession(mode: ApprovalMode): boolean {
+export function confirmedPickIsReasserted(mode: ApprovalMode): boolean {
   return mode !== 'never' && mode !== 'connection-default';
 }
 
 /**
  * The session pick the defaults below it must yield to
- * (`approvalModeForDispatch`'s `sessionOverride`). A pick that is sent, or
- * one withheld only because liveness is unknown, outranks the defaults, so a
- * default is never sent in its place. A confirmed pick that does not carry to
- * a new session (full access) yields: that session starts exactly as it
- * would on main.
+ * (`approvalModeForDispatch`'s `sessionOverride`). A pick that is sent
+ * outranks them. A confirmed full access (never sent) still outranks them
+ * while the session may be live, so a default is not sent in its place; at
+ * a session known to have ended it yields, and the new session starts
+ * exactly as on main.
  */
 export function approvalPickOverridingDefaults(
   chat: ApprovalPickState | null | undefined,
   sessionKnownEnded: boolean,
 ): ApprovalMode | undefined {
-  const sent = approvalModeToSend(chat, sessionKnownEnded);
+  const sent = approvalModeToSend(chat);
   if (sent) return sent;
   return sessionKnownEnded ? undefined : sessionApprovalOverride(chat)?.mode;
 }

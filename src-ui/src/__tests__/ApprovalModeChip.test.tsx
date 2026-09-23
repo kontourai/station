@@ -526,7 +526,7 @@ describe('ApprovalModeChip', () => {
     );
     expect(chipValue()).toBe('Full access · unconfirmed');
     expect(trigger().getAttribute('aria-label')).toMatch(
-      /^Approval mode: Full access · unconfirmed — not confirmed for this session; a new session starts at the default\./,
+      /^Approval mode: Full access · unconfirmed — not confirmed for this session; full access is not reasserted, and a new session starts at the default\./,
     );
     expect(trigger().getAttribute('aria-label')).not.toMatch(/next turn/);
   });

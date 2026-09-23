@@ -280,8 +280,10 @@ function renderPill() {
  * | R     | desktop picks Ask unsent; phone's never lands    | Ask (review)      | Ask             |
  * | T1    | Ask picked offline; looser reports replayed      | Ask (review)      | Ask             |
  * | S1    | confirmed Ask; phone loosens; session ends       | Ask (review)      | Ask             |
+ * | Q     | confirmed Ask live; phone applies never; send    | Ask (review)      | Ask             |
+ * | S1b   | Q, with liveness unknown (reload mid-turn)       | Ask (review)      | Ask             |
  * | S2    | confirmed auto; phone tightens to Ask            | nothing*          | nothing (Ask)   |
- * | T3    | confirmed Ask; reload mid-turn; default never    | never*            | nothing         |
+ * | T3    | confirmed Ask; reload mid-turn; default never    | never*            | Ask             |
  * | H     | Default picked                                   | nothing*          | nothing         |
  * | I     | confirmed never; Ask picked; phone's turn = never| nothing* (never)  | Ask             |
  * | N     | confirmed never; session ends; next send          | the defaults      | the defaults    |
@@ -342,7 +344,7 @@ describe('an approval pick beside the model options (#2334)', () => {
     expect(renderPill().text).toBe('Full access');
   });
 
-  test('a confirmed pick is NOT resent to a live session', async () => {
+  test('a confirmed Auto IS reasserted to a live session on each send, as main does', async () => {
     const { composer, step, send } = renderComposer();
     step(() => composer.result.current.handleModelSelect(modelX));
     step(() => composer.result.current.handleApprovalModeChange('auto'));
@@ -352,10 +354,54 @@ describe('an approval pick beside the model options (#2334)', () => {
     expect(chat().approvalModeOverride).toBe('auto');
     expect(chatSessionIsLive(chat())).toBe(true);
 
-    // The engine holds its own posture; re-asserting it could override a
-    // newer decision made elsewhere.
-    expect((await send())?.options ?? {}).not.toHaveProperty('approvalMode');
+    expect((await send())?.options?.approvalMode).toBe('auto');
     expect(renderPill().text).toBe('Auto');
+  });
+
+  test('a confirmed full access is NOT reasserted to a live session', async () => {
+    const { composer, step, send } = renderComposer();
+    step(() => composer.result.current.handleModelSelect(modelX));
+    step(() => composer.result.current.handleApprovalModeChange('never'));
+    await send();
+    step(() => turnStarted('t1', 'never'));
+    step(() => turnCompleted('t1'));
+    expect(chatSessionIsLive(chat())).toBe(true);
+
+    expect((await send())?.options ?? {}).not.toHaveProperty('approvalMode');
+  });
+
+  test('probe Q: a confirmed Ask is reasserted over a looser posture another device applied, as main does', async () => {
+    const { composer, step, send } = renderComposer();
+    step(() => composer.result.current.handleModelSelect(modelX));
+    step(() => composer.result.current.handleApprovalModeChange('ask'));
+    await send();
+    step(() => turnStarted('t1', 'ask'));
+    step(() => turnCompleted('t1'));
+    // The phone applies full access on the live session.
+    step(() => otherDeviceTurn('phone-1', 'never'));
+
+    expect(chat().approvalModeOverride).toBe('ask');
+    expect(renderPill().text).toBe('Ask · unconfirmed');
+    // The desktop's send tightens it back, exactly as main's bag does.
+    expect((await send())?.options?.approvalMode).toBe('ask');
+  });
+
+  test('probe S1b: the same, when liveness is unknown after a reload mid-turn', async () => {
+    const { composer, step, send } = renderComposer();
+    step(() => composer.result.current.handleModelSelect(modelX));
+    step(() => composer.result.current.handleApprovalModeChange('ask'));
+    await send();
+    step(() => turnStarted('t1', 'ask'));
+    step(() => turnCompleted('t1'));
+    // The phone's full-access turn is still running when the desktop reloads.
+    step(() => turnStarted('phone-1', 'never'));
+    composer.unmount();
+
+    reload();
+    expect(chatSessionIsLive(chat())).toBe(false);
+    expect(chat().orchestrationSessionStarted).toBe(true);
+    const fresh = renderComposer();
+    expect((await fresh.send())?.options?.approvalMode).toBe('ask');
   });
 
   test('probe B: a report of the dispatch already in flight when the user picked is stale, and keeps the pick', async () => {
@@ -492,8 +538,8 @@ describe('an approval pick beside the model options (#2334)', () => {
       expect(chat().approvalModeOverride).toBe('ask');
       const pill = renderPill();
       expect(pill.text).toBe('Ask · unconfirmed');
-      // Not sent to the live session: the phone's choice stands there.
-      expect((await send())?.options ?? {}).not.toHaveProperty('approvalMode');
+      // Reasserted on the live session, as main does (probe Q).
+      expect((await send())?.options?.approvalMode).toBe('ask');
       // The session ends; the next one starts in the user's Ask, not in the
       // Station default of never.
       step(() => fold({ method: 'session.exited', exitCode: 0 }));
@@ -542,7 +588,7 @@ describe('an approval pick beside the model options (#2334)', () => {
     expect((await send())?.options ?? {}).not.toHaveProperty('approvalMode');
   });
 
-  test('probe T3: after a reload mid-turn (liveness unknown) neither the confirmed pick nor the Station default is sent', async () => {
+  test('probe T3: after a reload mid-turn (liveness unknown) the confirmed Ask is reasserted, and the Station default is not sent in its place', async () => {
     stationConfig.current = { defaultApprovalMode: 'never' };
     try {
       const { composer, step, send } = renderComposer();
@@ -558,9 +604,7 @@ describe('an approval pick beside the model options (#2334)', () => {
       expect(chatSessionIsLive(chat())).toBe(false);
       expect(chat().orchestrationSessionStarted).toBe(true);
       const fresh = renderComposer();
-      expect((await fresh.send())?.options ?? {}).not.toHaveProperty(
-        'approvalMode',
-      );
+      expect((await fresh.send())?.options?.approvalMode).toBe('ask');
     } finally {
       stationConfig.current = undefined;
     }
@@ -649,7 +693,7 @@ describe('an approval pick beside the model options (#2334)', () => {
       const pill = renderPill();
       expect(pill.text).toBe('Ask · unconfirmed');
       expect(pill.name).toMatch(
-        /^Approval mode: Ask · unconfirmed — not confirmed for this session\./,
+        /^Approval mode: Ask · unconfirmed — not confirmed for this session; the next send reasserts it\./,
       );
       expect((await fresh.send())?.options?.approvalMode).toBe('ask');
     } finally {

@@ -374,19 +374,15 @@ export function useSendMessage(
         // The approval pick travels beside the model options (#2334). It is
         // session posture, not message content: a replayed turn sends the
         // chat's CURRENT pick, never the one it was queued with. A confirmed
-        // pick goes only to a session known to have ended or never started
-        // (see `approvalModeToSend`).
-        const sessionKnownEnded = chatSessionKnownEnded(currentState);
-        const dispatchedApprovalOverride = approvalModeToSend(
-          currentState,
-          sessionKnownEnded,
-        );
-        // The pick the defaults below must yield to: a confirmed pick
-        // withheld because liveness is unknown still suppresses the Station
-        // default; a confirmed full access at a new session does not.
+        // Ask/Auto is reasserted on every send; a confirmed full access never
+        // is (see `approvalModeToSend`).
+        const dispatchedApprovalOverride = approvalModeToSend(currentState);
+        // The pick the defaults below must yield to: a withheld confirmed
+        // full access still suppresses the Station default while the session
+        // may be live; at a session known to have ended it does not.
         const sessionApprovalPick = approvalPickOverridingDefaults(
           currentState,
-          sessionKnownEnded,
+          chatSessionKnownEnded(currentState),
         );
         const receipt = await dispatchForeground({
           apiBase,
