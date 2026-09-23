@@ -27,7 +27,7 @@ impl Resolver for AndroidSystemResolver {
         &self,
         uri: &Uri,
         _config: &Config,
-        _timeout: NextTimeout,
+        timeout: NextTimeout,
     ) -> Result<ResolvedSocketAddrs, Error> {
         let authority = uri.authority().ok_or(Error::HostNotFound)?;
         let port = authority.port_u16().or_else(|| match uri.scheme_str() {
@@ -42,7 +42,24 @@ impl Resolver for AndroidSystemResolver {
             return Ok(result);
         }
 
-        android_network_addresses(authority.host(), port).ok_or(Error::HostNotFound)
+        // station#2327: honour the agent's resolve timeout the way ureq's own
+        // resolver does — a lookup that outlives it is left to finish on its
+        // thread while the call fails with `Timeout`. Without this a stalled
+        // system resolver held an abandoned native call (and its orphan slot)
+        // for as long as the lookup blocked.
+        let Some(after) = timeout.not_zero() else {
+            return android_network_addresses(authority.host(), port).ok_or(Error::HostNotFound);
+        };
+        let host = authority.host().to_string();
+        let (result_tx, result_rx) = std::sync::mpsc::sync_channel(1);
+        std::thread::spawn(move || {
+            let _ = result_tx.send(android_network_addresses(&host, port));
+        });
+        match result_rx.recv_timeout(*after) {
+            Ok(addresses) => addresses.ok_or(Error::HostNotFound),
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => Err(Error::Timeout(timeout.reason)),
+            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => Err(Error::HostNotFound),
+        }
     }
 }
 

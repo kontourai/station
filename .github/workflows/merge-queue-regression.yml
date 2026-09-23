@@ -59,6 +59,7 @@ jobs:
         timeout-minutes: 5
         with:
           node-version-file: .nvmrc
+          package-manager-cache: false
 
       # verify-static runs gate:workflows, which exits 2 without actionlint.
       - name: Install pinned actionlint
@@ -129,6 +130,7 @@ jobs:
         timeout-minutes: 5
         with:
           node-version-file: .nvmrc
+          package-manager-cache: false
 
       - run: npm run dependencies:ci
         timeout-minutes: 15
@@ -226,6 +228,7 @@ jobs:
         timeout-minutes: 5
         with:
           node-version-file: .nvmrc
+          package-manager-cache: false
 
       - run: npm run dependencies:ci
         timeout-minutes: 15
@@ -313,6 +316,7 @@ jobs:
         timeout-minutes: 5
         with:
           node-version-file: .nvmrc
+          package-manager-cache: false
 
       - run: npm run dependencies:ci
         timeout-minutes: 15
@@ -402,6 +406,7 @@ jobs:
         timeout-minutes: 5
         with:
           node-version-file: .nvmrc
+          package-manager-cache: false
 
       - run: npm run dependencies:ci
         timeout-minutes: 15

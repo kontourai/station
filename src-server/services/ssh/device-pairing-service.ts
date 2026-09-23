@@ -250,6 +250,17 @@ export interface VerifiedRelayEnrollmentCandidate {
   subject: string;
 }
 
+/** Minimal assertion over one exact reserved pending Device for continuation issuance. */
+export interface PendingRelayDeviceAssertion {
+  readonly deviceId: string;
+  readonly enrollmentId: string;
+  readonly issuer: string;
+  readonly subject: string;
+  readonly approvalId: string;
+  readonly approvedBy: string;
+  readonly scope: readonly string[];
+}
+
 interface DevicePairingExchangeResult {
   environmentId: string;
   device: PairedDevice;
@@ -1735,6 +1746,77 @@ export class DevicePairingService {
     return publicDevice(device);
   }
 
+  /** Resolve only a pending relay Device owned by this exact enrollment attempt. */
+  resolvePendingRelayDevice(
+    deviceId: string,
+    enrollmentId: string,
+  ): PendingRelayDeviceAssertion | null {
+    if (
+      !CLIENT_INSTANCE_ID_PATTERN.test(deviceId) ||
+      !RELAY_ENROLLMENT_ID_PATTERN.test(enrollmentId)
+    )
+      return null;
+    const device = this.#registry.devices.find(
+      (candidate) => candidate.id === deviceId,
+    );
+    const binding = device?.principalBinding;
+    if (
+      device?.kind !== 'device' ||
+      device.revokedAt !== null ||
+      device.relayEnrollmentId !== enrollmentId ||
+      device.pendingEnrollmentId !== enrollmentId ||
+      device.scope !== PAIRING_SCOPE_ORCHESTRATION_READ ||
+      !binding ||
+      !('kind' in binding) ||
+      binding.kind !== 'account'
+    )
+      return null;
+    return Object.freeze({
+      deviceId: device.id,
+      enrollmentId,
+      issuer: binding.issuer,
+      subject: binding.subject,
+      approvalId: binding.approvalId,
+      approvedBy: binding.approvedBy,
+      scope: Object.freeze([PAIRING_SCOPE_ORCHESTRATION_READ]),
+    });
+  }
+
+  /** Resolve only an active relay Device retained by this exact committed attempt. */
+  resolveActiveRelayEnrollmentDevice(
+    deviceId: string,
+    enrollmentId: string,
+  ): PendingRelayDeviceAssertion | null {
+    if (
+      !CLIENT_INSTANCE_ID_PATTERN.test(deviceId) ||
+      !RELAY_ENROLLMENT_ID_PATTERN.test(enrollmentId)
+    )
+      return null;
+    const device = this.#registry.devices.find(
+      (candidate) => candidate.id === deviceId,
+    );
+    const binding = device?.principalBinding;
+    if (
+      device?.kind !== 'device' ||
+      device.revokedAt !== null ||
+      device.relayEnrollmentId !== enrollmentId ||
+      device.pendingEnrollmentId !== undefined ||
+      device.scope !== PAIRING_SCOPE_ORCHESTRATION_READ ||
+      !binding ||
+      !('kind' in binding) ||
+      binding.kind !== 'account'
+    )
+      return null;
+    return Object.freeze({
+      deviceId: device.id,
+      enrollmentId,
+      issuer: binding.issuer,
+      subject: binding.subject,
+      approvalId: binding.approvalId,
+      approvedBy: binding.approvedBy,
+      scope: Object.freeze([PAIRING_SCOPE_ORCHESTRATION_READ]),
+    });
+  }
   /** Roll back only the uncommitted Device owned by this exact enrollment. */
   discardRelayEnrollmentDevice(
     deviceId: string,

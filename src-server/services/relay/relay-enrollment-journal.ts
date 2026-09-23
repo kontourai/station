@@ -11,6 +11,7 @@ const APPLICATION_ID = 0x52454c59;
 
 const RELAY_ENROLLMENT_STATES = [
   'challenge',
+  'provider-creating',
   'provider-pending',
   'pairing-requested',
   'approved',
@@ -33,6 +34,12 @@ export interface RelayEnrollmentRecord {
   enrollmentId: string;
   stationId: string;
   clientOrigin: string;
+  /** Canonical Station URL the signed method/path targets. */
+  requestOrigin?: string;
+  /** Immutable transport binding from an already verified Pion connection. */
+  connectionEnrollmentId?: string;
+  routingGeneration?: number;
+  connectionId?: string;
   keyThumbprint: string;
   publicKey: { kty: 'EC'; crv: 'P-256'; x: string; y: string };
   nonce: string;
@@ -42,6 +49,7 @@ export interface RelayEnrollmentRecord {
   createdAt: number;
   updatedAt: number;
   providerSessionId?: string;
+  loginJti?: string;
   issuer?: string;
   subject?: string;
   displayName?: string;
@@ -86,6 +94,10 @@ type MutableRelayEnrollmentField = Exclude<
   | 'enrollmentId'
   | 'stationId'
   | 'clientOrigin'
+  | 'requestOrigin'
+  | 'connectionEnrollmentId'
+  | 'routingGeneration'
+  | 'connectionId'
   | 'keyThumbprint'
   | 'publicKey'
   | 'nonce'
@@ -126,6 +138,10 @@ export interface RelayEnrollmentJournal {
       | 'enrollmentId'
       | 'stationId'
       | 'clientOrigin'
+      | 'requestOrigin'
+      | 'connectionEnrollmentId'
+      | 'routingGeneration'
+      | 'connectionId'
       | 'keyThumbprint'
       | 'publicKey'
       | 'nonce'
@@ -166,6 +182,10 @@ const recordKeys = new Set<string>([
   'enrollmentId',
   'stationId',
   'clientOrigin',
+  'requestOrigin',
+  'connectionEnrollmentId',
+  'routingGeneration',
+  'connectionId',
   'keyThumbprint',
   'publicKey',
   'nonce',
@@ -175,6 +195,7 @@ const recordKeys = new Set<string>([
   'createdAt',
   'updatedAt',
   'providerSessionId',
+  'loginJti',
   'issuer',
   'subject',
   'displayName',
@@ -202,6 +223,10 @@ const patchKeys = new Set<string>(
         'enrollmentId',
         'stationId',
         'clientOrigin',
+        'requestOrigin',
+        'connectionEnrollmentId',
+        'routingGeneration',
+        'connectionId',
         'keyThumbprint',
         'publicKey',
         'nonce',
@@ -226,6 +251,7 @@ const terminalReasonCodes = new Set([
   'expired',
   'cancelled',
   'provider-rejected',
+  'login-proof-rejected',
   'provider-unavailable',
   'pairing-timeout',
   'approval-denied',
@@ -237,6 +263,7 @@ const terminalReasonCodes = new Set([
 ]);
 const writeOnceFields = [
   'providerSessionId',
+  'loginJti',
   'issuer',
   'subject',
   'displayName',
@@ -257,6 +284,7 @@ const writeOnceFields = [
 const requiredByState: Partial<
   Record<RelayEnrollmentState, readonly string[]>
 > = {
+  'provider-creating': ['issuer', 'loginJti'],
   'provider-pending': ['providerSessionId', 'issuer', 'subject'],
   'pairing-requested': [
     'providerSessionId',
@@ -344,7 +372,8 @@ const requiredByState: Partial<
 const allowedTransitions: Readonly<
   Record<RelayEnrollmentState, ReadonlySet<RelayEnrollmentState>>
 > = {
-  challenge: new Set(['provider-pending', 'cleaning']),
+  challenge: new Set(['provider-creating', 'cleaning']),
+  'provider-creating': new Set(['provider-pending', 'cleaning']),
   'provider-pending': new Set(['pairing-requested', 'cleaning']),
   'pairing-requested': new Set(['approved', 'cleaning']),
   approved: new Set(['device-pending', 'cleaning']),
@@ -414,6 +443,38 @@ function validateRecord(
     throw new Error('Invalid relay enrollment enrollment id.');
   assertText(record.stationId, 'Station id', 512);
   assertText(record.clientOrigin, 'client origin', 2048);
+  if (record.requestOrigin !== undefined) {
+    assertText(record.requestOrigin, 'request origin', 2048);
+    try {
+      const requestOrigin = new URL(record.requestOrigin as string);
+      if (
+        requestOrigin.origin !== record.requestOrigin ||
+        !['https:', 'http:'].includes(requestOrigin.protocol) ||
+        (requestOrigin.protocol === 'http:' &&
+          !['localhost', '127.0.0.1', '[::1]'].includes(requestOrigin.hostname))
+      )
+        throw new Error();
+    } catch {
+      throw new Error('Invalid relay enrollment canonical request origin.');
+    }
+  }
+  const transportFields = [
+    record.connectionEnrollmentId,
+    record.routingGeneration,
+    record.connectionId,
+  ];
+  if (transportFields.some((field) => field !== undefined)) {
+    assertText(record.connectionEnrollmentId, 'connection enrollment id', 128);
+    assertText(record.connectionId, 'Pion connection id', 128);
+    if (
+      !Number.isSafeInteger(record.routingGeneration) ||
+      (record.routingGeneration as number) < 1 ||
+      !/^[A-Za-z0-9_-]{8,128}$/.test(record.connectionEnrollmentId as string) ||
+      !/^[A-Za-z0-9_-]{8,128}$/.test(record.connectionId as string) ||
+      record.requestOrigin === undefined
+    )
+      throw new Error('Invalid relay enrollment Pion transport binding.');
+  }
   assertText(record.keyThumbprint, 'key thumbprint', 256);
   if (
     record.keyThumbprint.length !== 43 ||
@@ -461,6 +522,7 @@ function validateRecord(
     throw new Error('Invalid relay enrollment timestamps.');
   for (const key of [
     'providerSessionId',
+    'loginJti',
     'issuer',
     'subject',
     'displayName',
@@ -556,6 +618,7 @@ function validateRecord(
     record.state === 'committed' &&
     [
       'providerSessionId',
+      'loginJti',
       'issuer',
       'subject',
       'displayName',
@@ -893,6 +956,10 @@ export function openRelayEnrollmentJournal(
         'enrollmentId',
         'stationId',
         'clientOrigin',
+        'requestOrigin',
+        'connectionEnrollmentId',
+        'routingGeneration',
+        'connectionId',
         'keyThumbprint',
         'publicKey',
         'nonce',
@@ -923,6 +990,15 @@ export function openRelayEnrollmentJournal(
         );
       return transaction(() => {
         validateAllRows();
+        // A challenge has no provider session, offer, Device or continuation:
+        // login must durably leave this state before contacting the provider.
+        // Reap only these expired, authority-free rows at admission so an
+        // abandoned anonymous browser cannot exhaust the active-attempt cap
+        // until an operator happens to poll. Provider-backed states still
+        // require the coordinator's exact-resource cleanup.
+        db.prepare(
+          `DELETE FROM relay_enrollment_journal WHERE is_tombstone=0 AND state='challenge' AND expires_at<=?`,
+        ).run(timestamp);
         db.prepare(
           `DELETE FROM relay_enrollment_journal WHERE is_tombstone=1 AND updated_at + ? <= ?`,
         ).run(RELAY_ENROLLMENT_ACK_REPLAY_WINDOW_MS, timestamp);
@@ -1023,6 +1099,10 @@ export function openRelayEnrollmentJournal(
             enrollmentId: candidate.enrollmentId,
             stationId: candidate.stationId,
             clientOrigin: candidate.clientOrigin,
+            requestOrigin: candidate.requestOrigin,
+            connectionEnrollmentId: candidate.connectionEnrollmentId,
+            routingGeneration: candidate.routingGeneration,
+            connectionId: candidate.connectionId,
             keyThumbprint: candidate.keyThumbprint,
             publicKey: candidate.publicKey,
             nonce: candidate.nonce,
