@@ -293,6 +293,20 @@ const NATIVE_HTTP_PENDING_READ_LIMIT: usize = 64;
 const NATIVE_HTTP_PER_ORIGIN_REQUEST_LIMIT: usize = 8;
 /// Long-lived event streams per origin, budgeted separately from the above.
 const NATIVE_HTTP_PER_ORIGIN_STREAM_LIMIT: usize = 12;
+/// station#2327 — abandoned-but-still-running network calls per origin.
+///
+/// A cancel releases its admission slot at once even while the blocking
+/// connect/response-header wait is still in flight; the call itself finishes on
+/// a worker thread (bounded by `native_http_agent`'s connect and response
+/// timeouts) and its late result is discarded. Each such orphan still holds a
+/// socket, so orphans are capped. At the cap a cancel keeps its slot until its
+/// call returns (the pre-fix behaviour), so a client that aborts in a loop
+/// meets the ordinary admission limits instead of opening unbounded sockets:
+/// per origin, at most this many orphans plus the active allowances.
+const NATIVE_HTTP_PER_ORIGIN_ORPHAN_LIMIT: usize = NATIVE_HTTP_PER_ORIGIN_REQUEST_LIMIT;
+const NATIVE_HTTP_GLOBAL_ORPHAN_LIMIT: usize = NATIVE_HTTP_GLOBAL_REQUEST_LIMIT;
+/// How often a request waiting on its network call re-reads its cancel flag.
+const NATIVE_HTTP_CANCEL_POLL_INTERVAL: Duration = Duration::from_millis(20);
 const NATIVE_PAIRING_EXCHANGE_GLOBAL_REQUEST_LIMIT: usize = 8;
 const NATIVE_PAIRING_EXCHANGE_PER_ORIGIN_REQUEST_LIMIT: usize = 2;
 const NATIVE_PAIRING_EXCHANGE_BODY_LIMIT: usize = 1024 * 1024;
@@ -626,6 +640,11 @@ struct NativeHttpCancellation(
 struct NativeHttpAdmissionState {
     active: std::collections::HashMap<String, NativeActiveHttpRequest>,
     pending_reads: std::collections::VecDeque<NativePendingHttpRequest>,
+    /// station#2327 — network calls whose request was cancelled and whose
+    /// admission slot was already released, keyed by a per-call token (never
+    /// the request id, which a later request may reuse) with the call's origin.
+    orphaned_calls: std::collections::HashMap<u64, String>,
+    next_call_token: u64,
 }
 
 struct NativePendingHttpRequest {
@@ -2550,6 +2569,140 @@ fn cancel_native_http_request(
     Ok(())
 }
 
+/// Outcome of a network call run under `run_native_http_call_cancellable`.
+enum NativeHttpCallOutcome<T> {
+    Completed(T),
+    /// The request was cancelled while its call was still blocked. Its
+    /// admission slot has already been released; the caller must not release
+    /// it again and should report `cancelled`.
+    Abandoned,
+}
+
+/// Removes a call's orphan entry when its worker thread ends, including by
+/// panic. Keyed by the call token, so a second removal is a no-op and a late
+/// completion can never touch another request's accounting.
+struct NativeHttpOrphanGuard {
+    cancellations: NativeHttpCancellation,
+    token: u64,
+}
+
+impl Drop for NativeHttpOrphanGuard {
+    fn drop(&mut self) {
+        let (state_lock, changed) = &*self.cancellations.0;
+        let mut state = state_lock
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if state.orphaned_calls.remove(&self.token).is_some() {
+            changed.notify_all();
+        }
+    }
+}
+
+/// station#2327 — runs an admitted request's blocking network call (connect
+/// and response headers) on a worker thread so a cancel can release the
+/// admission slot promptly instead of after `native_http_agent`'s connect and
+/// response timeouts (up to ~35s). The cancel flag is otherwise only observed
+/// between body reads, so during a server stall every abandoned request kept
+/// its slot, starving new reads and pinning the reserved liveness slot.
+///
+/// On cancel, the slot is released and the call becomes an orphan only while
+/// the origin and global orphan caps have room; at the cap the request keeps
+/// its slot and waits for the call as before. The orphan's late result is
+/// dropped by its worker (closing the connection) without touching admission
+/// state beyond its own orphan entry.
+fn run_native_http_call_cancellable<T, F>(
+    cancellations: &NativeHttpCancellation,
+    request_id: &str,
+    cancel: &std::sync::atomic::AtomicBool,
+    call: F,
+) -> Result<NativeHttpCallOutcome<T>, String>
+where
+    T: Send + 'static,
+    F: FnOnce() -> T + Send + 'static,
+{
+    use std::sync::atomic::Ordering;
+    use std::sync::mpsc::RecvTimeoutError;
+
+    let (state_lock, changed) = &*cancellations.0;
+    let token = {
+        let mut state = state_lock
+            .lock()
+            .map_err(|_| "native request cancellation state unavailable".to_string())?;
+        state.next_call_token = state.next_call_token.wrapping_add(1);
+        state.next_call_token
+    };
+    // Capacity 1: the worker's single send never blocks, so it can happen
+    // under the state lock and race-free against the orphan decision below.
+    let (result_tx, result_rx) = std::sync::mpsc::sync_channel::<T>(1);
+    let guard = NativeHttpOrphanGuard {
+        cancellations: cancellations.clone(),
+        token,
+    };
+    std::thread::Builder::new()
+        .name("station-native-http".to_string())
+        .spawn(move || {
+            let result = call();
+            let late_result = {
+                let (state_lock, _) = &*guard.cancellations.0;
+                let state = state_lock
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner());
+                if state.orphaned_calls.contains_key(&guard.token) {
+                    Some(result)
+                } else {
+                    result_tx.send(result).err().map(|error| error.0)
+                }
+            };
+            // Close an abandoned connection outside the state lock; the guard
+            // then retires the orphan entry.
+            drop(late_result);
+            drop(guard);
+        })
+        .map_err(|error| format!("native Station request worker failed to start: {error}"))?;
+
+    loop {
+        match result_rx.recv_timeout(NATIVE_HTTP_CANCEL_POLL_INTERVAL) {
+            Ok(result) => return Ok(NativeHttpCallOutcome::Completed(result)),
+            Err(RecvTimeoutError::Timeout) => {}
+            Err(RecvTimeoutError::Disconnected) => {
+                return Err("native Station request worker ended without a result".to_string())
+            }
+        }
+        if !cancel.load(Ordering::SeqCst) {
+            continue;
+        }
+        let mut state = state_lock
+            .lock()
+            .map_err(|_| "native request cancellation state unavailable".to_string())?;
+        // The worker delivers under this lock, so a result that has already
+        // arrived is seen here and the call is never orphaned after the fact.
+        if let Ok(result) = result_rx.try_recv() {
+            return Ok(NativeHttpCallOutcome::Completed(result));
+        }
+        let Some(origin) = state
+            .active
+            .get(request_id)
+            .map(|active| active.origin.clone())
+        else {
+            continue;
+        };
+        let orphans_for_origin = state
+            .orphaned_calls
+            .values()
+            .filter(|orphan_origin| **orphan_origin == origin)
+            .count();
+        if orphans_for_origin < NATIVE_HTTP_PER_ORIGIN_ORPHAN_LIMIT
+            && state.orphaned_calls.len() < NATIVE_HTTP_GLOBAL_ORPHAN_LIMIT
+        {
+            state.active.remove(request_id);
+            state.orphaned_calls.insert(token, origin);
+            changed.notify_all();
+            return Ok(NativeHttpCallOutcome::Abandoned);
+        }
+        // Orphan cap reached: keep the slot until the call returns.
+    }
+}
+
 pub(crate) fn native_http_agent() -> ureq::Agent {
     let config = ureq::Agent::config_builder()
         .max_redirects(0)
@@ -2837,6 +2990,10 @@ fn station_native_http_request_blocking(
             Arc::clone(&cancel),
         )?;
     }
+    // Set when a cancel already released the slot while the network call was
+    // still in flight; releasing again could drop a later request that reused
+    // this request id.
+    let mut slot_released = false;
     let result = (|| -> Result<(), NativeHttpBrokerFailure> {
         // Scoped callers enter the capacity queue before we resolve their
         // receipt. That makes an A -> B switch while queued fail closed rather
@@ -2872,9 +3029,20 @@ fn station_native_http_request_blocking(
         revalidate_native_http_profile(&app, &authority, expected_binding_id, &origin, &reference)
             .map_err(|error| NativeHttpBrokerFailure::coded(error.code))?;
         let agent = native_http_agent();
-        let mut response = agent.run(request).map_err(|error| {
-            NativeHttpBrokerFailure::transport(native_request_transport_detail(&error))
-        })?;
+        let outcome =
+            run_native_http_call_cancellable(&cancellations, &request_id, &cancel, move || {
+                agent.run(request)
+            })
+            .map_err(|_| NativeHttpBrokerFailure::coded("transport"))?;
+        let mut response = match outcome {
+            NativeHttpCallOutcome::Completed(result) => result.map_err(|error| {
+                NativeHttpBrokerFailure::transport(native_request_transport_detail(&error))
+            })?,
+            NativeHttpCallOutcome::Abandoned => {
+                slot_released = true;
+                return Err(NativeHttpBrokerFailure::coded("cancelled"));
+            }
+        };
         revalidate_native_http_profile(&app, &authority, expected_binding_id, &origin, &reference)
             .map_err(|error| NativeHttpBrokerFailure::coded(error.code))?;
         let open_stream = native_response_is_open_stream(response.headers());
@@ -2943,7 +3111,9 @@ fn station_native_http_request_blocking(
             .map_err(|_| NativeHttpBrokerFailure::coded("cancelled"))?;
         Ok(())
     })();
-    release_native_http_request(&cancellations, &request_id)?;
+    if !slot_released {
+        release_native_http_request(&cancellations, &request_id)?;
+    }
     if let Err(failure) = result {
         let _ = channel.send(NativeHttpMessage::Error {
             code: failure.code,
@@ -13052,6 +13222,407 @@ mod tests {
         let state = state_lock.lock().unwrap();
         assert!(state.pending_reads.is_empty());
         assert!(!state.active.contains_key("queued-cancelled"));
+    }
+
+    /// A network call that blocks until the test releases it, standing in for
+    /// `agent.run` stuck in connect / response headers on a stalled Station.
+    fn blocked_native_call() -> (
+        std::sync::mpsc::Sender<()>,
+        impl FnOnce() -> &'static str + Send,
+    ) {
+        let (release_tx, release_rx) = std::sync::mpsc::channel::<()>();
+        (release_tx, move || {
+            let _ = release_rx.recv();
+            "late response"
+        })
+    }
+
+    /// Runs `call` under the cancellable seam on its own thread, as the
+    /// request task does, and returns a receiver for the seam's outcome.
+    fn spawn_cancellable_native_call<F>(
+        cancellations: &NativeHttpCancellation,
+        request_id: &'static str,
+        cancel: std::sync::Arc<std::sync::atomic::AtomicBool>,
+        call: F,
+    ) -> std::sync::mpsc::Receiver<Result<Option<&'static str>, String>>
+    where
+        F: FnOnce() -> &'static str + Send + 'static,
+    {
+        let (outcome_tx, outcome_rx) = std::sync::mpsc::channel();
+        let task_cancellations = cancellations.clone();
+        std::thread::spawn(move || {
+            let outcome =
+                run_native_http_call_cancellable(&task_cancellations, request_id, &cancel, call)
+                    .map(|outcome| match outcome {
+                        NativeHttpCallOutcome::Completed(value) => Some(value),
+                        NativeHttpCallOutcome::Abandoned => None,
+                    });
+            let _ = outcome_tx.send(outcome);
+        });
+        outcome_rx
+    }
+
+    fn native_orphan_count(cancellations: &NativeHttpCancellation) -> usize {
+        let (state_lock, _) = &*cancellations.0;
+        state_lock.lock().unwrap().orphaned_calls.len()
+    }
+
+    fn wait_for_native_orphans(cancellations: &NativeHttpCancellation, expected: usize) {
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        loop {
+            let observed = native_orphan_count(cancellations);
+            if observed == expected {
+                return;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "expected {expected} orphaned native calls, observed {observed}"
+            );
+            std::thread::sleep(Duration::from_millis(5));
+        }
+    }
+
+    fn new_cancel_flag() -> std::sync::Arc<std::sync::atomic::AtomicBool> {
+        std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false))
+    }
+
+    #[test]
+    fn native_http_cancel_releases_a_slot_blocked_in_its_network_call() {
+        // station#2327: the cancel flag was only read between body reads, so a
+        // request stuck in connect/headers kept its slot for up to ~35s after
+        // the webview aborted it, and a stalled Station pinned every slot.
+        let cancellations = NativeHttpCancellation::default();
+        let origin = "https://station.example.test";
+        fill_native_read_allowance(&cancellations, origin);
+        // `seed-0` is the admitted request whose call is blocked.
+        let blocked_cancel = {
+            let (state_lock, _) = &*cancellations.0;
+            std::sync::Arc::clone(&state_lock.lock().unwrap().active["seed-0"].cancel)
+        };
+        let (release_call, call) = blocked_native_call();
+        let outcome = spawn_cancellable_native_call(
+            &cancellations,
+            "seed-0",
+            std::sync::Arc::clone(&blocked_cancel),
+            call,
+        );
+        let (waiter, admitted) = spawn_queued_native_read(&cancellations, origin, "queued-read");
+        wait_for_pending_native_reads(&cancellations, 1);
+        assert!(
+            outcome.recv_timeout(Duration::from_millis(100)).is_err(),
+            "an uncancelled call keeps waiting for its response"
+        );
+
+        let cancelled_at = std::time::Instant::now();
+        cancel_native_http_request(&cancellations, "seed-0").unwrap();
+        assert_eq!(
+            outcome.recv_timeout(Duration::from_secs(1)).unwrap(),
+            Ok(None),
+            "the cancelled request is abandoned while its call is still blocked"
+        );
+        assert_eq!(
+            admitted.recv_timeout(Duration::from_secs(1)).unwrap(),
+            "queued-read",
+            "the freed slot admits the next FIFO waiter"
+        );
+        assert!(cancelled_at.elapsed() < Duration::from_secs(1));
+        {
+            let (state_lock, _) = &*cancellations.0;
+            let state = state_lock.lock().unwrap();
+            assert!(!state.active.contains_key("seed-0"));
+            assert_eq!(state.orphaned_calls.len(), 1);
+        }
+
+        release_call.send(()).unwrap();
+        wait_for_native_orphans(&cancellations, 0);
+        waiter.join().unwrap();
+    }
+
+    #[test]
+    fn native_http_uncancelled_call_returns_its_result_and_keeps_its_slot() {
+        let cancellations = NativeHttpCancellation::default();
+        let origin = "https://station.example.test";
+        reserve_native_http_request(&cancellations, "read", origin, false, new_cancel_flag())
+            .unwrap();
+        let (release_call, call) = blocked_native_call();
+        let outcome =
+            spawn_cancellable_native_call(&cancellations, "read", new_cancel_flag(), call);
+        release_call.send(()).unwrap();
+        assert_eq!(
+            outcome.recv_timeout(Duration::from_secs(2)).unwrap(),
+            Ok(Some("late response"))
+        );
+        let (state_lock, _) = &*cancellations.0;
+        let state = state_lock.lock().unwrap();
+        assert!(
+            state.active.contains_key("read"),
+            "the caller still owns the slot"
+        );
+        assert!(state.orphaned_calls.is_empty());
+    }
+
+    #[test]
+    fn native_http_orphan_cap_bounds_abandoned_calls_per_origin() {
+        let cancellations = NativeHttpCancellation::default();
+        let origin = "https://station.example.test";
+        let mut releases = Vec::new();
+        for index in 0..NATIVE_HTTP_PER_ORIGIN_ORPHAN_LIMIT {
+            let request_id: &'static str = Box::leak(format!("orphan-{index}").into_boxed_str());
+            let cancel = new_cancel_flag();
+            reserve_native_http_request(
+                &cancellations,
+                request_id,
+                origin,
+                false,
+                std::sync::Arc::clone(&cancel),
+            )
+            .unwrap();
+            let (release_call, call) = blocked_native_call();
+            let outcome = spawn_cancellable_native_call(&cancellations, request_id, cancel, call);
+            cancel_native_http_request(&cancellations, request_id).unwrap();
+            assert_eq!(
+                outcome.recv_timeout(Duration::from_secs(1)).unwrap(),
+                Ok(None)
+            );
+            releases.push(release_call);
+        }
+        assert_eq!(
+            native_orphan_count(&cancellations),
+            NATIVE_HTTP_PER_ORIGIN_ORPHAN_LIMIT
+        );
+
+        // One more abandoned call at the cap keeps its slot instead of
+        // opening another orphaned socket.
+        let over_cancel = new_cancel_flag();
+        reserve_native_http_request(
+            &cancellations,
+            "over-cap",
+            origin,
+            false,
+            std::sync::Arc::clone(&over_cancel),
+        )
+        .unwrap();
+        let (release_over, over_call) = blocked_native_call();
+        let over_outcome =
+            spawn_cancellable_native_call(&cancellations, "over-cap", over_cancel, over_call);
+        cancel_native_http_request(&cancellations, "over-cap").unwrap();
+        assert!(
+            over_outcome
+                .recv_timeout(Duration::from_millis(300))
+                .is_err(),
+            "at the orphan cap a cancelled call must not be abandoned"
+        );
+        {
+            let (state_lock, _) = &*cancellations.0;
+            let state = state_lock.lock().unwrap();
+            assert!(state.active.contains_key("over-cap"));
+            assert_eq!(
+                state.orphaned_calls.len(),
+                NATIVE_HTTP_PER_ORIGIN_ORPHAN_LIMIT
+            );
+        }
+
+        // A different origin has its own orphan allowance.
+        let other_cancel = new_cancel_flag();
+        reserve_native_http_request(
+            &cancellations,
+            "other-origin",
+            "https://other.example.test",
+            false,
+            std::sync::Arc::clone(&other_cancel),
+        )
+        .unwrap();
+        let (release_other, other_call) = blocked_native_call();
+        let other_outcome =
+            spawn_cancellable_native_call(&cancellations, "other-origin", other_cancel, other_call);
+        cancel_native_http_request(&cancellations, "other-origin").unwrap();
+        assert_eq!(
+            other_outcome.recv_timeout(Duration::from_secs(1)).unwrap(),
+            Ok(None)
+        );
+
+        // Once an orphan retires, the waiting cancel is abandoned too.
+        releases.pop().unwrap().send(()).unwrap();
+        assert_eq!(
+            over_outcome.recv_timeout(Duration::from_secs(2)).unwrap(),
+            Ok(None)
+        );
+        {
+            let (state_lock, _) = &*cancellations.0;
+            assert!(!state_lock.lock().unwrap().active.contains_key("over-cap"));
+        }
+
+        for release in releases {
+            release.send(()).unwrap();
+        }
+        release_over.send(()).unwrap();
+        release_other.send(()).unwrap();
+        wait_for_native_orphans(&cancellations, 0);
+    }
+
+    #[test]
+    fn native_http_late_orphan_completion_touches_only_its_own_entry() {
+        let cancellations = NativeHttpCancellation::default();
+        let origin = "https://station.example.test";
+        let cancel = new_cancel_flag();
+        reserve_native_http_request(
+            &cancellations,
+            "reused-id",
+            origin,
+            false,
+            std::sync::Arc::clone(&cancel),
+        )
+        .unwrap();
+        let (release_call, call) = blocked_native_call();
+        let outcome = spawn_cancellable_native_call(&cancellations, "reused-id", cancel, call);
+        cancel_native_http_request(&cancellations, "reused-id").unwrap();
+        assert_eq!(
+            outcome.recv_timeout(Duration::from_secs(1)).unwrap(),
+            Ok(None)
+        );
+
+        // A later request reuses the id and another origin's call is orphaned
+        // too; the first orphan's late completion must disturb neither.
+        reserve_native_http_request(
+            &cancellations,
+            "reused-id",
+            origin,
+            false,
+            new_cancel_flag(),
+        )
+        .unwrap();
+        let other_cancel = new_cancel_flag();
+        reserve_native_http_request(
+            &cancellations,
+            "other",
+            "https://other.example.test",
+            false,
+            std::sync::Arc::clone(&other_cancel),
+        )
+        .unwrap();
+        let (release_other, other_call) = blocked_native_call();
+        let other_outcome =
+            spawn_cancellable_native_call(&cancellations, "other", other_cancel, other_call);
+        cancel_native_http_request(&cancellations, "other").unwrap();
+        assert_eq!(
+            other_outcome.recv_timeout(Duration::from_secs(1)).unwrap(),
+            Ok(None)
+        );
+        assert_eq!(native_orphan_count(&cancellations), 2);
+
+        release_call.send(()).unwrap();
+        wait_for_native_orphans(&cancellations, 1);
+        {
+            let (state_lock, _) = &*cancellations.0;
+            let state = state_lock.lock().unwrap();
+            assert!(
+                state.active.contains_key("reused-id"),
+                "the late completion must not release the request that reused its id"
+            );
+            assert_eq!(
+                state.orphaned_calls.values().collect::<Vec<_>>(),
+                vec!["https://other.example.test"]
+            );
+        }
+        release_other.send(()).unwrap();
+        wait_for_native_orphans(&cancellations, 0);
+        release_native_http_request(&cancellations, "reused-id").unwrap();
+        let (state_lock, _) = &*cancellations.0;
+        assert!(state_lock.lock().unwrap().active.is_empty());
+    }
+
+    #[test]
+    fn native_http_cancelled_liveness_probe_frees_the_liveness_slot() {
+        let cancellations = NativeHttpCancellation::default();
+        let origin = "https://station.example.test";
+        let cancel = new_cancel_flag();
+        reserve_native_http_liveness_probe(
+            &cancellations,
+            "liveness-1",
+            origin,
+            std::sync::Arc::clone(&cancel),
+        )
+        .unwrap();
+        let (release_call, call) = blocked_native_call();
+        let outcome = spawn_cancellable_native_call(&cancellations, "liveness-1", cancel, call);
+        cancel_native_http_request(&cancellations, "liveness-1").unwrap();
+        assert_eq!(
+            outcome.recv_timeout(Duration::from_secs(1)).unwrap(),
+            Ok(None)
+        );
+        reserve_native_http_liveness_probe(&cancellations, "liveness-2", origin, new_cancel_flag())
+            .expect("the next probe takes the slot the cancelled probe released");
+        release_call.send(()).unwrap();
+        wait_for_native_orphans(&cancellations, 0);
+        release_native_http_request(&cancellations, "liveness-2").unwrap();
+    }
+
+    #[test]
+    fn native_http_cancel_abandons_a_real_request_to_a_silent_station() {
+        // A listener that accepts and never answers: `agent.run` blocks in
+        // the response-header wait exactly as it does on a stalled Station.
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let (close_tx, close_rx) = std::sync::mpsc::channel::<()>();
+        let server = std::thread::spawn(move || {
+            let (connection, _) = listener.accept().unwrap();
+            let _ = close_rx.recv_timeout(Duration::from_secs(30));
+            drop(connection);
+        });
+        let cancellations = NativeHttpCancellation::default();
+        let origin = format!("http://{address}");
+        let cancel = new_cancel_flag();
+        reserve_native_http_request(
+            &cancellations,
+            "silent",
+            &origin,
+            false,
+            std::sync::Arc::clone(&cancel),
+        )
+        .unwrap();
+        let request = ureq::http::Request::builder()
+            .method("GET")
+            .uri(format!("{origin}/api/system/status"))
+            .body(Vec::<u8>::new())
+            .unwrap();
+        let agent = native_http_agent();
+        let (outcome_tx, outcome_rx) = std::sync::mpsc::channel();
+        let task_cancellations = cancellations.clone();
+        let task_cancel = std::sync::Arc::clone(&cancel);
+        std::thread::spawn(move || {
+            let outcome = run_native_http_call_cancellable(
+                &task_cancellations,
+                "silent",
+                &task_cancel,
+                move || {
+                    agent
+                        .run(request)
+                        .map(|_| ())
+                        .map_err(|error| error.to_string())
+                },
+            )
+            .map(|outcome| matches!(outcome, NativeHttpCallOutcome::Abandoned));
+            let _ = outcome_tx.send(outcome);
+        });
+        assert!(
+            outcome_rx.recv_timeout(Duration::from_millis(300)).is_err(),
+            "the silent Station has not answered"
+        );
+        cancel_native_http_request(&cancellations, "silent").unwrap();
+        assert_eq!(
+            outcome_rx.recv_timeout(Duration::from_secs(1)).unwrap(),
+            Ok(true),
+            "cancel abandons the real blocked call"
+        );
+        {
+            let (state_lock, _) = &*cancellations.0;
+            let state = state_lock.lock().unwrap();
+            assert!(!state.active.contains_key("silent"));
+            assert_eq!(state.orphaned_calls.len(), 1);
+        }
+        close_tx.send(()).unwrap();
+        server.join().unwrap();
+        wait_for_native_orphans(&cancellations, 0);
     }
 
     #[test]
