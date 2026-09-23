@@ -573,6 +573,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // child process" shape as builder-delivery-viewer-import-gate.test.ts and
   // prepush-static-gates.test.ts above.
   'scripts/__tests__/test-import-existence-gate.test.ts',
+  // #2333: runs the test-path import gate as a real child process against
+  // throwaway git repos (known-bad fixtures and false-positive controls) and
+  // against this repository, same shape as the entry above.
+  'scripts/__tests__/test-path-import-gate.test.ts',
   'scripts/__tests__/trust-reconcile-manifest.test.ts',
   // station#3465 review (second pass): one assertion shells a real `git
   // ls-files` child process as an independent oracle for packages/connect's
