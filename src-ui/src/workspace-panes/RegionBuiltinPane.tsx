@@ -1,4 +1,5 @@
 import { WORKSPACE_AGENTS_PANE_DESCRIPTOR } from '@kontourai/station-contracts/workspace-agents-pane';
+import { WORKSPACE_BROWSER_PREVIEW_PANE_DESCRIPTOR } from '@kontourai/station-contracts/workspace-browser-preview';
 import {
   WORKSPACE_CODING_DIFF_PANE_DESCRIPTOR,
   WORKSPACE_CODING_FILE_BROWSER_PANE_DESCRIPTOR,
@@ -19,25 +20,29 @@ import { getBuiltinWorkspacePaneRenderer } from './builtinWorkspacePaneRegistry'
  * (#2047): the coding panes, and since #2049 the two instance-keyed panes a
  * chat link opens — one pull request, one file preview — by descriptor id,
  * since #2050 the Agents pane, since #1969 the Device pane, and since #2157
- * the Layout pane (one Board or project Layout, instance-keyed). Chat and
+ * the Layout pane (one Board or project Layout, instance-keyed), and since
+ * #90 D9 the Browser pane (one session, instance-keyed). Chat and
  * Activity are not here — their renderers are handed to `RegionPaneHost` by its caller so the
  * host chunk imports neither render graph — and neither is anything the
  * pane inventory does not name (`REGION_SURFACE_PANES`; an instance reaches
  * this component only after that inventory admitted it).
  */
-const REGION_BUILTIN_DESCRIPTORS: ReadonlyMap<string, WorkspacePaneDescriptor> =
-  new Map(
-    [
-      WORKSPACE_CODING_TERMINAL_PANE_DESCRIPTOR,
-      WORKSPACE_CODING_DIFF_PANE_DESCRIPTOR,
-      WORKSPACE_CODING_FILE_BROWSER_PANE_DESCRIPTOR,
-      WORKSPACE_PULL_REQUEST_PANE_DESCRIPTOR,
-      WORKSPACE_FILE_PREVIEW_PANE_DESCRIPTOR,
-      WORKSPACE_AGENTS_PANE_DESCRIPTOR,
-      WORKSPACE_DEVICE_PANE_DESCRIPTOR,
-      WORKSPACE_LAYOUT_PANE_DESCRIPTOR,
-    ].map((descriptor) => [descriptor.id, descriptor]),
-  );
+export const REGION_BUILTIN_DESCRIPTORS: ReadonlyMap<
+  string,
+  WorkspacePaneDescriptor
+> = new Map(
+  [
+    WORKSPACE_CODING_TERMINAL_PANE_DESCRIPTOR,
+    WORKSPACE_CODING_DIFF_PANE_DESCRIPTOR,
+    WORKSPACE_CODING_FILE_BROWSER_PANE_DESCRIPTOR,
+    WORKSPACE_PULL_REQUEST_PANE_DESCRIPTOR,
+    WORKSPACE_FILE_PREVIEW_PANE_DESCRIPTOR,
+    WORKSPACE_AGENTS_PANE_DESCRIPTOR,
+    WORKSPACE_DEVICE_PANE_DESCRIPTOR,
+    WORKSPACE_LAYOUT_PANE_DESCRIPTOR,
+    WORKSPACE_BROWSER_PREVIEW_PANE_DESCRIPTOR,
+  ].map((descriptor) => [descriptor.id, descriptor]),
+);
 
 /**
  * A docked built-in pane rendered through `getBuiltinWorkspacePaneRenderer`

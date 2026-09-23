@@ -8,7 +8,10 @@ import {
   DOCK_REGION_IDS,
   REGION_SURFACE_REGISTRY,
 } from '../regions/region-model';
-import { REGION_SURFACE_PANES } from '../regions/region-surface-panes';
+import {
+  REGION_SURFACE_PANES,
+  REGION_SURFACE_SOURCE_FILES,
+} from '../regions/region-surface-panes';
 
 describe('registered surface region boundary', () => {
   /**
@@ -51,11 +54,16 @@ describe('registered surface region boundary', () => {
   });
   test('registered surface renderers never read region state directly', () => {
     // Renderers must not read region state; the state-free useShowSurface command hook is permitted.
+    // Every registered surface names its renderer, and no source names a
+    // surface that is gone (the table lives outside the entry-chunk
+    // registry, #90 D9, so the two are pinned to each other here).
+    expect(Object.keys(REGION_SURFACE_SOURCE_FILES).sort()).toEqual(
+      [...REGION_SURFACE_REGISTRY.keys()].sort(),
+    );
     for (const surface of REGION_SURFACE_REGISTRY.values()) {
-      const source = readFileSync(
-        resolve(process.cwd(), surface.sourceFile),
-        'utf8',
-      );
+      const sourceFile = REGION_SURFACE_SOURCE_FILES[surface.id];
+      if (!sourceFile) throw new Error(`${surface.id} names no renderer`);
+      const source = readFileSync(resolve(process.cwd(), sourceFile), 'utf8');
       expect(source, surface.id).not.toMatch(
         /from ['"][^'"]*(?:RegionModelContext|regions\/region-model)['"]|useRegionModel(?:Optional)?\s*\(/,
       );

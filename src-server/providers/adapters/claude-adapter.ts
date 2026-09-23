@@ -54,6 +54,7 @@ import {
   claudeSkillsMaterializedSessions,
   providerOps,
 } from '../../telemetry/metrics.js';
+import { STATION_BROWSER_MCP_SERVER_ID } from '../../tools/station-browser-policy.js';
 import {
   childProcessEnvironment,
   scrubBootInternalSecrets,
@@ -745,6 +746,15 @@ export interface ClaudeAdapterOptions {
     tenantExecutionContext?: TenantExecutionContext,
   ) => unknown;
   /**
+   * #90 D14: serves the built-in browser tools (`station-browser`) IN-PROCESS
+   * for this session, bound like station-control. Delivered by default to a
+   * resolved agent unless it switched them off (`browserTools: false`).
+   */
+  createInProcessStationBrowser?: (
+    threadId: string,
+    tenantExecutionContext?: TenantExecutionContext,
+  ) => unknown;
+  /**
    * Fallback when {@link createInProcessStationControl} is absent: mints a
    * `bearer-exposed` caller token for the stdio child's env. Absent (most
    * unit tests), the child runs exactly as before and reports no caller.
@@ -1254,6 +1264,8 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     const toolServers = this.resolveAgentToolServers(input);
     let sdkQuery: ReturnType<typeof query>;
     try {
+      // After station-control, so the browser server reuses its credential.
+      const builtinServers = this.resolveStationBrowser(input);
       sdkQuery = query({
         prompt: promptQueue,
         options: this.buildOptions(
@@ -1267,6 +1279,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
           augmentedEnv,
           preToolPolicy,
           claudeExecutable,
+          builtinServers,
         ),
       });
     } catch (error) {
@@ -2246,6 +2259,26 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     };
   }
 
+  /**
+   * #90 D14: the built-in `station-browser` server for a resolved agent,
+   * unless the agent switched it off or this runtime cannot serve it bound.
+   * An authored tool server that reuses the id is replaced, never merged.
+   */
+  private resolveStationBrowser(
+    input: ProviderSessionStartInput,
+  ): Record<string, McpServerConfig> | undefined {
+    const create = this.options.createInProcessStationBrowser;
+    if (!create || !input.agent || input.agent.browserTools === false)
+      return undefined;
+    return {
+      [STATION_BROWSER_MCP_SERVER_ID]: {
+        type: 'sdk',
+        name: STATION_BROWSER_MCP_SERVER_ID,
+        instance: create(input.threadId, input.tenantExecutionContext) as never,
+      },
+    };
+  }
+
   private buildOptions(
     input: ProviderSessionStartInput,
     persistSession = false,
@@ -2257,6 +2290,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     augmentedEnv?: Record<string, string | undefined>,
     preToolPolicy?: StagedPreToolPolicyEvaluator,
     claudeExecutable?: string | null,
+    builtinServers?: Record<string, McpServerConfig>,
   ): Options {
     const modelOptions = claudeAppliedModelOptions(input.modelOptions);
     return {
@@ -2310,8 +2344,16 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       // strictMcpConfig the SDK would still auto-discover the connection's
       // own local MCP config underneath it.
       ...(mcpServers !== undefined
-        ? { mcpServers, strictMcpConfig: true }
-        : {}),
+        ? {
+            mcpServers: { ...mcpServers, ...builtinServers },
+            strictMcpConfig: true,
+          }
+        : builtinServers !== undefined
+          ? // #90 D14: Station's own built-ins alone never switch the SDK
+            // to strict mode: an agent that authored no tool servers keeps
+            // Claude's own MCP discovery exactly as before.
+            { mcpServers: builtinServers }
+          : {}),
       // archive#895 wave B (agent-engine-unification.md §4.1 System-prompt row,
       // channel 'flag'): deliver the agent's authored prompt as an APPEND to
       // the engine's own claude_code preset prompt — the engine owns its

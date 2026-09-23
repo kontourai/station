@@ -1,5 +1,6 @@
 import { humanPrincipal as deploymentHumanPrincipal } from '@kontourai/station-contracts/principal';
 import { createBrowserRoutes } from '../../routes/browser.js';
+import { createBrowserAgentRoutes } from '../../routes/browser-agent.js';
 import { createHomeTransferRoomRoutes } from '../../routes/environments/home-transfer-room-routes.js';
 import { createLiveSurfaceRoutes } from '../../routes/live-surface.js';
 import { createMobileDeviceRoutes } from '../../routes/mobile-device.js';
@@ -12,9 +13,17 @@ import { createRelayEnrollmentRoutes } from '../../routes/system/relay-enrollmen
 import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
 import { writeLocalGrantSecretFile } from '../../security/local-grant-file.js';
 import {
+  type BrowserProjectAuthorizer,
   createBrowserOperatorAuthorizer,
   createBrowserProjectAuthorizer,
 } from '../../services/browser/browser-access.js';
+import { createBrowserPrincipalAuthorizer } from '../../services/browser/browser-agent-authority.js';
+import { BrowserAutomation } from '../../services/browser/browser-automation.js';
+import { loadLocatorEngineInstallExpression } from '../../services/browser/browser-locator-engine.js';
+import {
+  isStationInternalRequest,
+  mayBeAgentRequest,
+} from '../../services/browser/browser-request-origin.js';
 import {
   type BrowserService,
   configuredConsentPort,
@@ -549,6 +558,7 @@ import { nativeRuntimeSpecMatches } from '../conversation/native-foreground-invo
 import {
   createAgentDispatchActorResolver,
   createStationControlCallerRecordResolver,
+  resolveStationControlCallerForRequest,
   stationControlCallerRecordSources,
 } from '../mcp/station-control-caller.js';
 import {
@@ -742,6 +752,13 @@ interface ConfigureRuntimeRoutesResult {
   liveSurfaceRegistry?: LiveSurfaceRegistry;
   /** Personal hosts only; the runtime shuts it down on stop. */
   browserService?: BrowserService;
+  /**
+   * The D5 Project authorizer the browser routes and browser surfaces use
+   * (personal hosts only). Returned so the composition's own request
+   * pipeline — principal capture, operator locality — can be tested end to
+   * end without a real browser.
+   */
+  browserProjectAuthorizer?: BrowserProjectAuthorizer;
   /** Epic #2323 S3: stops draft watchers and removes built drafts on shutdown. */
   pluginDraftService?: Pick<PluginDraftService, 'dispose'>;
 }
@@ -943,6 +960,7 @@ export function configureRuntimeRoutes(
   let projectTaskRoomLifecycleReady: Promise<void> = Promise.resolve();
   let liveSurfaceRegistry: LiveSurfaceRegistry | undefined;
   let browserService: BrowserService | undefined;
+  let browserProjectAuthorizer: BrowserProjectAuthorizer | undefined;
   const allowedOrigins = resolveConfiguredRuntimeOrigins(context);
   const runtimeSecurity = {
     deploymentAuthentication: context.deploymentAuthentication?.service,
@@ -2229,6 +2247,19 @@ export function configureRuntimeRoutes(
           }),
       },
     });
+    // A browser surface's authorizer resolves Project membership for the
+    // request (D5), which reads the captured request principal.
+    context.app.use('/api/live-surfaces/*', async (c, next) => {
+      try {
+        roomRequestPrincipals.set(
+          c.req.raw,
+          resolveOrchestrationRequestPrincipal(c),
+        );
+      } catch {
+        // Unattributable: membership then refuses; the route decides.
+      }
+      await next();
+    });
     context.app.route(
       '/api/live-surfaces',
       createLiveSurfaceRoutes(liveSurfaceRegistry, {
@@ -3376,12 +3407,6 @@ export function configureRuntimeRoutes(
   // #90 Browser pane: personal hosts only (same gate as the device routes),
   // and every request is authorized per Project (operator or Project admin).
   if (isPersonalHost) {
-    browserService = createBrowserService({
-      stationHome: context.configLoader.getProjectHomeDir(),
-      serverPort: context.port,
-      consentPort: configuredConsentPort(),
-      configuredOrigins: allowedOrigins,
-    });
     const browserMembership = context.projectMembership;
     const browserAccess = {
       operator: (request: Request) =>
@@ -3389,6 +3414,23 @@ export function configureRuntimeRoutes(
       authority: projectMembershipAuthority,
       ...(browserMembership ? { membership: browserMembership } : {}),
     };
+    const authorizeBrowserProject =
+      createBrowserProjectAuthorizer(browserAccess);
+    browserProjectAuthorizer = authorizeBrowserProject;
+    browserService = createBrowserService({
+      stationHome: context.configLoader.getProjectHomeDir(),
+      serverPort: context.port,
+      consentPort: configuredConsentPort(),
+      configuredOrigins: allowedOrigins,
+      ...(liveSurfaceRegistry
+        ? {
+            liveSurfaces: {
+              registry: liveSurfaceRegistry,
+              authorizeProject: authorizeBrowserProject,
+            },
+          }
+        : {}),
+    });
     context.app.use('/api/browser/*', async (c, next) => {
       roomRequestPrincipals.set(
         c.req.raw,
@@ -3401,9 +3443,21 @@ export function configureRuntimeRoutes(
       createBrowserRoutes({
         registry: browserService.registry,
         acquisition: browserService.acquisition,
-        authorizeProject: createBrowserProjectAuthorizer(browserAccess),
+        surfaceIdFor: browserService.surfaceIdFor,
+        authorizeProject: authorizeBrowserProject,
         authorizeOperator: createBrowserOperatorAuthorizer(browserAccess),
         localTargets: browserService.localTargets,
+        projectSettings: browserService.projectSettings,
+        // Station's internal principal (every station-control child), an
+        // agent-tool marker, or a delegation device may be an agent: none of
+        // them may change a permission that constrains agents (D4).
+        isAgentRequest: (request) =>
+          mayBeAgentRequest(request, (credential) =>
+            context.environmentSecurityService.identifyDevice(credential),
+          ),
+        // S4: the pane's routes are for people; Station's internal token
+        // (home possession, readable by any same-user process) is refused.
+        isStationInternalRequest,
         listeners: browserService.listeners,
         suggestLocalTargets: async (project) => {
           const service = browserService!;
@@ -3431,6 +3485,56 @@ export function configureRuntimeRoutes(
           };
         },
         isRequestPrincipalCurrent,
+      }),
+    );
+    // #90 #122/#123 browser tools: the REST side of the station-control
+    // browser_* tools. The caller is re-derived from the forwarded
+    // credential on every request; D5 runs on the principal Station
+    // recorded for that session, never on the internal token's own standing.
+    const browserMembershipService = context.projectMembership;
+    const browserAutomation = new BrowserAutomation({
+      sessions: browserService.registry,
+      surfaces: liveSurfaceRegistry ?? { get: () => undefined },
+      surfaceIdFor: browserService.surfaceIdFor,
+      settings: browserService.projectSettings,
+      locatorEngine: loadLocatorEngineInstallExpression,
+    });
+    const browserAcquisition = browserService.acquisition;
+    context.app.route(
+      '/api/browser-agent',
+      createBrowserAgentRoutes({
+        isInternalRequest: isStationInternalRequest,
+        resolveCaller: (request) =>
+          resolveStationControlCallerForRequest(
+            request,
+            resolveStationControlCallerRecord,
+          ),
+        authorizePrincipal: createBrowserPrincipalAuthorizer({
+          // On a personal host the operator is the local operator principal.
+          isOperatorPrincipal: (principalId) =>
+            principalId === LOCAL_OPERATOR_PRINCIPAL_ID,
+          ...(browserMembershipService
+            ? {
+                membership: {
+                  admissionsForResolvedPrincipal: (principalId: string) =>
+                    browserMembershipService.admissionsForResolvedPrincipal(
+                      principalId,
+                    ),
+                },
+              }
+            : {}),
+        }),
+        automation: browserAutomation,
+        settings: browserService.projectSettings,
+        browserReady: () => {
+          const state = browserAcquisition.status().state;
+          return state === 'found-system' || state === 'downloaded';
+        },
+        projectSlug: (projectId) =>
+          context.projectService
+            .listProjects()
+            .find((candidate) => candidate.id === projectId)?.slug,
+        surfaceIdFor: browserService.surfaceIdFor,
       }),
     );
   }
@@ -3712,6 +3816,11 @@ export function configureRuntimeRoutes(
         // verdict the host renders a placeholder from, and apply,
         // from-plugin and the layout list answer the same way.
         canSeePlugin: canSeePluginForRequest,
+        // #90: the same gate that mounts `/api/browser` below.
+        browserPaneDeployment:
+          !hostedTenantRegistry && !isHostedTenantExecutionRequired()
+            ? 'supported'
+            : 'unsupported',
         memberProjectAdmissions: async (c) => {
           roomRequestPrincipals.set(
             c.req.raw,
@@ -5057,6 +5166,7 @@ export function configureRuntimeRoutes(
     projectTaskRoomRuntime,
     liveSurfaceRegistry,
     browserService,
+    browserProjectAuthorizer,
     ...(pluginDraftService ? { pluginDraftService } : {}),
   };
 }

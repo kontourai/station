@@ -519,24 +519,27 @@ describe('current Workspace Pane catalog adapter', () => {
         reason: { code: 'renderer-unknown', source: 'renderer' },
       },
     });
-    const browserPreviewEntry = knownEntries.find(
+    // #90 wave 2: the Browser pane has a catalogue occurrence (the grid's
+    // Open path) and requires the server-derived `browser-pane` deployment
+    // fact. With no fact supplied (this composition has no host), it is
+    // refused on deployment grounds — never offered by default.
+    const browserPreviewEntry = snapshot.availability.find(
       (entry) =>
         entry.descriptorId === WORKSPACE_BROWSER_PREVIEW_PANE_DESCRIPTOR.id,
+    );
+    expect(browserPreviewEntry?.instanceId).toMatch(
+      /^browser-preview:[0-9a-f]{32}$/,
     );
     expect(browserPreviewEntry).toMatchObject({
       input: {
         rollout: 'available',
         distribution: 'enabled',
-        renderer: 'unknown',
         context: { project: 'present' },
-        requirements: {
-          hostCapabilities: ['local-browser-preview'],
-          configuration: true,
-        },
+        requirements: { deploymentCapabilities: ['browser-pane'] },
       },
       availability: {
         state: 'unsupported',
-        reason: { code: 'host-capability-unknown', source: 'native-host' },
+        reason: { source: 'deployment' },
       },
     });
     expect(

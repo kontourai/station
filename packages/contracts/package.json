@@ -159,6 +159,7 @@
     "./work-reference": "./src/work-reference.ts",
     "./starter-work": "./src/starter-work.ts",
     "./surface-deep-link": "./src/surface-deep-link.ts",
+    "./workspace-browser-pane": "./src/workspace-browser-pane.ts",
     "./workspace-browser-preview": "./src/workspace-browser-preview.ts",
     "./workspace-plugin-draft-pane": "./src/workspace-plugin-draft-pane.ts",
     "./workspace-activity-pane": "./src/workspace-activity-pane.ts",

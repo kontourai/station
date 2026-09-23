@@ -504,8 +504,9 @@ describe('settings catalog completeness', () => {
     // was their only surface (chat-show-reasoning, chat-show-tool-details,
     // chat-dock-auto-hide, diff-style, diff-wrap). The two Appearance rows
     // that MOVED into the new chat section are not a change to this count:
-    // the same ids, in a different `view`.
-    expect(SETTINGS_CATALOG).toHaveLength(54);
+    // the same ids, in a different `view`. #90 D9: +1
+    // (chat-auto-float-browser, the float-over-chat's auto-show preference).
+    expect(SETTINGS_CATALOG).toHaveLength(55);
   });
 
   /**

@@ -89,6 +89,7 @@ export * from './work-reference.js';
 export * from './workflow.js';
 export * from './workspace-activity-pane.js';
 export * from './workspace-agents-pane.js';
+export * from './workspace-browser-pane.js';
 export * from './workspace-browser-preview.js';
 export * from './workspace-chat-pane.js';
 export * from './workspace-coding-diff-composition.js';

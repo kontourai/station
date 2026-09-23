@@ -1,0 +1,236 @@
+/*
+ * Browser pane v2 (#90). Co-located so it rides the pane's lazy chunk, not
+ * the eager `index.css`. Every control keeps a 44px target on every width.
+ */
+
+.browser-pane {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+  height: 100%;
+  min-height: 0;
+  padding: var(--space-2, 8px);
+}
+
+.browser-pane__nav,
+.browser-pane__bar {
+  align-items: center;
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  gap: var(--space-2, 8px);
+}
+
+.browser-pane__control {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+.browser-pane__address {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-md, 6px);
+  color: var(--text-primary);
+  flex: 1 1 12rem;
+  font: inherit;
+  min-height: 44px;
+  min-width: 0;
+  padding: 0 var(--space-2, 8px);
+}
+
+.browser-pane__viewport {
+  align-items: center;
+  display: flex;
+  gap: var(--space-1, 4px);
+}
+
+.browser-pane__viewport {
+  position: relative;
+}
+
+/* The shared value-picker look (`.choice-trigger` + `.choice-caret`) on a
+   native select: the platform arrow gives way to the shared caret. */
+.browser-pane__select {
+  appearance: none;
+  min-height: 44px;
+  padding-right: calc(var(--space-4, 16px) + 14px);
+}
+
+.browser-pane__caret {
+  pointer-events: none;
+  position: absolute;
+  right: var(--space-2, 8px);
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.browser-pane__notices {
+  bottom: var(--space-2, 8px);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+  left: var(--space-2, 8px);
+  position: absolute;
+  right: var(--space-2, 8px);
+  z-index: 1;
+}
+
+.browser-pane__overlay-notice {
+  align-items: center;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-md, 6px);
+  box-shadow: var(--shadow-md, 0 2px 8px rgb(0 0 0 / 0.2));
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2, 8px);
+  padding: var(--space-2, 8px);
+}
+
+.browser-pane__overlay-notice .browser-pane__notice {
+  flex: 1 1 12rem;
+}
+
+/* Contain the live view within the pane's HEIGHT as well as its width: a
+   tall device preset in a wide pane is letterboxed, never drawn below the
+   fold (the canvas keeps object-fit: contain, so input mapping holds). */
+.browser-pane .live-surface__canvas {
+  max-height: calc(100dvh - 12rem);
+}
+
+.browser-pane__notice,
+.browser-pane__warning {
+  font-size: 0.8125rem;
+  margin: 0;
+}
+
+.browser-pane__warning {
+  color: var(--accent-warning, var(--text-primary));
+}
+
+.browser-pane__panel {
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-md, 6px);
+  flex: 0 1 auto;
+  max-height: 45%;
+  overflow: auto;
+  padding: var(--space-2, 8px);
+}
+
+.browser-pane__panel h3,
+.browser-pane__panel h4 {
+  font-size: 0.875rem;
+  margin: 0 0 var(--space-2, 8px);
+}
+
+.browser-pane__hint {
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.browser-pane__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+  list-style: none;
+  margin: 0 0 var(--space-2, 8px);
+  padding: 0;
+}
+
+.browser-pane__list-item {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2, 8px);
+  justify-content: space-between;
+}
+
+.browser-pane__session,
+.browser-pane__suggestion {
+  border-top: 1px solid var(--border-primary);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1, 4px);
+  padding-top: var(--space-2, 8px);
+}
+
+.browser-pane__session-url {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.browser-pane__badge {
+  border: 1px solid var(--border-primary);
+  border-radius: 999px;
+  font-size: 0.75rem;
+  margin-left: var(--space-1, 4px);
+  padding: 0 var(--space-1, 4px);
+}
+
+.browser-pane__history {
+  font-size: 0.8125rem;
+  /* Each entry starts with its own time; a clipped ordinal marker added
+     nothing but "0." and "I1." at two digits. */
+  list-style: none;
+  margin: 0;
+  overflow-wrap: anywhere;
+  padding-left: 0;
+}
+
+.browser-pane__acquisition {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+}
+
+.browser-pane__acquisition p {
+  margin: 0;
+}
+
+.browser-pane__stage {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  position: relative;
+}
+
+/* #2425: the Agent access switch. The shared track (border-primary) is well
+   under 3:1 against this panel, and on/off differed mainly by colour. Off is
+   an outlined track with a muted thumb on the left; on is a filled accent
+   track with the thumb on the right; the word beside it says which. Tokens
+   only: text-tertiary is a text colour, so it clears the 3:1 non-text
+   minimum against the panel in both themes. */
+.browser-pane__switch {
+  align-items: center;
+  display: inline-flex;
+  flex-shrink: 0;
+  gap: var(--space-2, 8px);
+}
+
+.browser-pane__switch .station-toggle {
+  background: transparent;
+  box-shadow: inset 0 0 0 2px var(--text-tertiary);
+}
+
+.browser-pane__switch .station-toggle .station-toggle__thumb {
+  background: var(--text-tertiary);
+  box-shadow: none;
+}
+
+.browser-pane__switch .station-toggle--on {
+  background: var(--accent-primary);
+  box-shadow: none;
+}
+
+.browser-pane__switch .station-toggle--on .station-toggle__thumb {
+  background: var(--bg-secondary);
+}
+
+.browser-pane__switch-state {
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+  min-width: 2ch;
+}

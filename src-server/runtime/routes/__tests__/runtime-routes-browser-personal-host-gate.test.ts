@@ -71,18 +71,25 @@ describe('runtime routes: Browser pane personal-host gate', () => {
     ).toBe('!hostedTenantRegistry && !isHostedTenantExecutionRequired()');
   });
 
-  test('every /api/browser mount, its middleware and the Chromium service are inside the gate', () => {
+  test('every /api/browser and /api/browser-agent mount, its middleware and the Chromium service are inside the gate', () => {
     const guarded = [
       ...callsWith('context.app.route', '/api/browser'),
       ...callsWith('context.app.use', '/api/browser/*'),
       ...callsWith('createBrowserService'),
       ...callsWith('createBrowserRoutes'),
+      // #90 #122/#123: the browser tools' REST side.
+      ...callsWith('context.app.route', '/api/browser-agent'),
+      ...callsWith('createBrowserAgentRoutes'),
     ];
-    // All four exist (a rename must not make this vacuous).
+    // All of them exist (a rename must not make this vacuous).
     expect(callsWith('context.app.route', '/api/browser')).toHaveLength(1);
     expect(callsWith('context.app.use', '/api/browser/*')).toHaveLength(1);
     expect(callsWith('createBrowserService')).toHaveLength(1);
     expect(callsWith('createBrowserRoutes')).toHaveLength(1);
+    expect(callsWith('context.app.route', '/api/browser-agent')).toHaveLength(
+      1,
+    );
+    expect(callsWith('createBrowserAgentRoutes')).toHaveLength(1);
     const outside = guarded
       .filter((call) => !isInsidePersonalHostGate(call))
       .map((call) => {
@@ -102,6 +109,7 @@ describe('runtime routes: Browser pane personal-host gate', () => {
     });
     expect([...new Set(mounts)].sort()).toEqual([
       '/api/browser',
+      '/api/browser-agent',
       '/api/browser/*',
     ]);
   });

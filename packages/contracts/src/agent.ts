@@ -80,6 +80,12 @@ export interface AgentTools {
   mcpServers: string[];
   available?: string[];
   autoApprove?: string[];
+  /**
+   * #90 D14: the built-in browser tools (`station-browser`). Absent means
+   * the default: ON for engines Station can deliver them to bound (Claude).
+   * `false` is the operator switching them off for this agent.
+   */
+  browser?: boolean;
 }
 
 export interface SlashCommand {
