@@ -24,6 +24,7 @@ import { observePluginTreeAsync } from '@kontourai/station-shared/plugin-tree-di
 /** The bounds of the in-place digest walk (#2323 S5 review M4). */
 export const LOCAL_SOURCE_DIGEST_MAX_ENTRIES = 5000;
 const LOCAL_SOURCE_DIGEST_MAX_BYTES = 64 * 1024 * 1024;
+const STAT_BATCH = 64;
 
 /**
  * Counts a folder's entries and file bytes WITHOUT reading file contents or
@@ -38,18 +39,26 @@ async function withinDigestBounds(root: string): Promise<boolean | null> {
   let entries = 0;
   let bytes = 0;
   const walk = async (dir: string, top: boolean): Promise<boolean> => {
-    for (const entry of await readdir(dir, { withFileTypes: true })) {
-      if (top && entry.name === '.git') continue;
-      entries += 1;
-      if (entries > LOCAL_SOURCE_DIGEST_MAX_ENTRIES) return false;
-      const path = join(dir, entry.name);
-      if (entry.isDirectory()) {
-        if (!(await walk(path, false))) return false;
-      } else if (entry.isFile()) {
-        bytes += (await lstat(path)).size;
-        if (bytes > LOCAL_SOURCE_DIGEST_MAX_BYTES) return false;
-      }
+    const listed = (await readdir(dir, { withFileTypes: true })).filter(
+      (entry) => !(top && entry.name === '.git'),
+    );
+    entries += listed.length;
+    if (entries > LOCAL_SOURCE_DIGEST_MAX_ENTRIES) return false;
+    const files = listed.filter((entry) => entry.isFile());
+    // Sizes in bounded batches: one await per file made the pre-walk several
+    // times slower than the digest it guards.
+    for (let index = 0; index < files.length; index += STAT_BATCH) {
+      const sizes = await Promise.all(
+        files
+          .slice(index, index + STAT_BATCH)
+          .map(async (entry) => (await lstat(join(dir, entry.name))).size),
+      );
+      for (const size of sizes) bytes += size;
+      if (bytes > LOCAL_SOURCE_DIGEST_MAX_BYTES) return false;
     }
+    for (const entry of listed)
+      if (entry.isDirectory() && !(await walk(join(dir, entry.name), false)))
+        return false;
     return true;
   };
   try {
