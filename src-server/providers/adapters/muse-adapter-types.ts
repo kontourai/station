@@ -237,11 +237,6 @@ export interface MuseActiveTurn {
    * alone is closed without a warning (the unverified-invariant case).
    */
   settledBeforeHold: Set<string>;
-  /**
-   * #2300: true once muse's follow-up `command_accepted` arrived during the
-   * current hold; reset by each new hold.
-   */
-  followUpAccepted?: boolean;
   resolveSlotReleased: () => void;
   /**
    * #2300: how many completed runs this turn has held open for pending

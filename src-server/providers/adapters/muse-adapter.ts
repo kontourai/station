@@ -1392,7 +1392,6 @@ export class MuseAdapter implements ProviderAdapterShape {
           turn.heldRuns > 0 &&
           code === 0 &&
           !turn.process.signalCode &&
-          !turn.followUpAccepted &&
           turn.pendingBackgroundTasks.size === 0 &&
           turn.awaitingReportTasks.size > 0 &&
           [...turn.awaitingReportTasks].every((taskId) =>
@@ -1517,7 +1516,6 @@ export class MuseAdapter implements ProviderAdapterShape {
     }
 
     if (effect.kind === 'background-follow-up') {
-      turn.followUpAccepted = true;
       // #2300: muse submitted the run that reports every background task
       // settled so far, so the turn no longer owes their report; its
       // terminal can release the hold. A task that settles DURING this run
@@ -2228,7 +2226,6 @@ export class MuseAdapter implements ProviderAdapterShape {
       turn.idleTimeoutHandle = undefined;
     }
     turn.heldRuns += 1;
-    turn.followUpAccepted = false;
     turn.itemId = undefined;
     turn.runStreamedText = false;
     turn.runSeparatorPending = turn.outputText.length > 0;
