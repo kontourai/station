@@ -948,7 +948,17 @@ export function useChatInput({
       // runtime-reported model/options at the send seam.
       requestedModel: null,
       requestedModelSource: defaultModelSource ?? 'agent default',
-      requestedProviderOptions: undefined,
+      // Resetting the model resets model controls, not the approval posture:
+      // a pending approval pick survives in a bag of its own (#2321), because
+      // choosing it already removed the superseded confirmed posture.
+      requestedProviderOptions:
+        activeChatState?.requestedProviderOptions &&
+        'approvalMode' in activeChatState.requestedProviderOptions
+          ? {
+              approvalMode:
+                activeChatState.requestedProviderOptions.approvalMode,
+            }
+          : undefined,
       ...(defaultProviderId
         ? {
             providerId: defaultProviderId,
@@ -994,6 +1004,7 @@ export function useChatInput({
     activeChatState?.defaultProviderId,
     activeChatState?.provider,
     activeChatState?.executionMode,
+    activeChatState?.requestedProviderOptions,
     agentDefaultModel,
     availableModels,
     currentAgent,

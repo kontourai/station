@@ -8,7 +8,7 @@ import {
   acknowledgesModelRequest,
   modelControlOptionsMatch,
   replaceModelControlOptions,
-  retainRequestedApprovalMode,
+  settleRequestedApprovalMode,
 } from '../../utils/modelCapabilities';
 import { finalizeAssistantTurn } from './assistantTurn';
 import type { OrchestrationEvent } from './types';
@@ -53,6 +53,12 @@ export function handleSessionLifecycleEvent(
       currentChat?.requestedProviderOptions,
       effectiveModelOptions,
     );
+  const settledApproval = settleRequestedApprovalMode({
+    current: currentChat?.providerOptions,
+    requested: currentChat?.requestedProviderOptions,
+    appliedApprovalMode: approvalMode,
+    consumesRequest: consumesRequestedOptions,
+  });
   activeChatsStore.updateChat(event.threadId, {
     provider: event.provider,
     orchestrationProvider: event.provider,
@@ -69,9 +75,7 @@ export function handleSessionLifecycleEvent(
       ? {
           requestedModel: undefined,
           requestedModelSource: undefined,
-          ...(consumesRequestedOptions
-            ? { requestedProviderOptions: undefined }
-            : {}),
+
           ...(currentChat?.requestedModel !== null
             ? { modelSource: currentChat?.requestedModelSource }
             : {}),
@@ -80,16 +84,15 @@ export function handleSessionLifecycleEvent(
     ...(effectiveModel
       ? {
           providerOptions: replaceModelControlOptions(
-            consumesRequestedOptions
-              ? retainRequestedApprovalMode(
-                  currentChat?.providerOptions,
-                  currentChat?.requestedProviderOptions,
-                  approvalMode,
-                )
-              : (currentChat?.providerOptions ?? {}),
+            settledApproval?.confirmed ?? currentChat?.providerOptions ?? {},
             effectiveModelOptions,
           ),
         }
+      : settledApproval
+        ? { providerOptions: settledApproval.confirmed }
+        : {}),
+    ...(settledApproval
+      ? { requestedProviderOptions: settledApproval.requested }
       : {}),
   });
 }

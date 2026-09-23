@@ -17,7 +17,7 @@ import {
   acknowledgesModelRequest,
   modelControlOptionsMatch,
   replaceModelControlOptions,
-  retainRequestedApprovalMode,
+  settleRequestedApprovalMode,
 } from '../../utils/modelCapabilities';
 import {
   isChatErrorMarker,
@@ -89,6 +89,12 @@ export function handleTurnStartedEvent(
       currentChat?.requestedProviderOptions,
       effectiveModelOptions,
     );
+  const settledApproval = settleRequestedApprovalMode({
+    current: currentChat?.providerOptions,
+    requested: currentChat?.requestedProviderOptions,
+    appliedApprovalMode: approvalMode,
+    consumesRequest: consumesRequestedOptions,
+  });
   const acceptedNewChatChoice =
     currentChat?.modelSource === 'session override' &&
     currentChat.model === effectiveModel;
@@ -242,9 +248,7 @@ export function handleTurnStartedEvent(
       ? {
           requestedModel: undefined,
           requestedModelSource: undefined,
-          ...(consumesRequestedOptions
-            ? { requestedProviderOptions: undefined }
-            : {}),
+
           ...(currentChat?.requestedModel !== null
             ? { modelSource: currentChat?.requestedModelSource }
             : {}),
@@ -253,16 +257,15 @@ export function handleTurnStartedEvent(
     ...(effectiveModel
       ? {
           providerOptions: replaceModelControlOptions(
-            consumesRequestedOptions
-              ? retainRequestedApprovalMode(
-                  currentChat?.providerOptions,
-                  currentChat?.requestedProviderOptions,
-                  approvalMode,
-                )
-              : (currentChat?.providerOptions ?? {}),
+            settledApproval?.confirmed ?? currentChat?.providerOptions ?? {},
             effectiveModelOptions,
           ),
         }
+      : settledApproval
+        ? { providerOptions: settledApproval.confirmed }
+        : {}),
+    ...(settledApproval
+      ? { requestedProviderOptions: settledApproval.requested }
       : {}),
   });
 }

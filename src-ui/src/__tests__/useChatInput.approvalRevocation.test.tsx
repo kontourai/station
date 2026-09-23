@@ -58,6 +58,20 @@ vi.mock('../contexts/ActiveChatsContext', async () => {
   };
 });
 
+const sendExecutionMessage = vi.hoisted(() =>
+  vi.fn(
+    async (
+      _apiBase: string,
+      _input: { target: Record<string, unknown> },
+      _options?: unknown,
+    ) => ({}) as unknown,
+  ),
+);
+vi.mock('@kontourai/station-sdk/client', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@kontourai/station-sdk/client')>()),
+  sendExecutionMessage,
+}));
+
 vi.mock('../hooks/useActiveChatSessions', () => ({
   useSendMessage: () => vi.fn(),
   useCancelMessage: () => vi.fn(),
@@ -67,6 +81,8 @@ import { ApprovalModeChip } from '../components/badges/ApprovalModeChip';
 import { activeChatsStore } from '../contexts/active-chats-store';
 import { handleOrchestrationEvent } from '../hooks/orchestration/eventHandlers';
 import { useChatInput } from '../hooks/useChatInput';
+import { dispatchForeground } from '../lib/foregroundMessageDispatch';
+import { approvalModeForDispatch } from '../utils/approvalMode';
 import type { SelectableModel } from '../utils/modelCapabilities';
 
 const SESSION_ID = 'approval-revocation-session';
@@ -194,5 +210,110 @@ describe('a revoked full-access choice stays revoked (#2321)', () => {
 
     expect(effectiveOptions()?.approvalMode).not.toBe('never');
     expect(renderPillText()).not.toMatch(/Full access/);
+  });
+
+  /** A turn.started for model X reporting the posture actually applied. */
+  function turnStarted(turnId: string, applied: string) {
+    handleOrchestrationEvent('http://station.test', {
+      provider: 'codex',
+      threadId: SESSION_ID,
+      createdAt: `2026-09-22T00:00:0${turnId.length}.000Z`,
+      method: 'turn.started',
+      turnId,
+      metadata: {
+        approvalMode: applied,
+        effectiveModel: 'model-x',
+        effectiveModelOptions: {},
+      },
+    } as Parameters<typeof handleOrchestrationEvent>[1]);
+  }
+
+  /**
+   * The model options the next send puts on the wire, through the real
+   * dispatcher and the same inputs useActiveChatSessionMessaging.ts passes
+   * (a live session, so the fallback layer is suppressed).
+   */
+  async function nextTurnOptions() {
+    const chat = activeChatsStore.getSnapshot()[SESSION_ID];
+    sendExecutionMessage.mockClear();
+    await dispatchForeground({
+      apiBase: 'http://station.test',
+      sessionId: SESSION_ID,
+      agentSlug: 'codex',
+      message: 'next',
+      clientTurnId: 'next-turn',
+      approvalModeFallback: approvalModeForDispatch({
+        engineConnectionId: 'codex',
+        executionMode: chat.executionMode,
+        sessionAlreadyStarted: true,
+        sessionOverride: (chat.requestedProviderOptions ?? chat.providerOptions)
+          ?.approvalMode,
+      }),
+      requestedModel: chat.requestedModel,
+      requestedProviderOptions: chat.requestedProviderOptions,
+      model: chat.model,
+      providerOptions: chat.providerOptions,
+    });
+    const target = sendExecutionMessage.mock.calls[0]?.[1].target as {
+      model?: { options?: Record<string, unknown> };
+    };
+    return target.model?.options;
+  }
+
+  test('a stricter pick made before a stale report arrives survives it and is sent next turn', async () => {
+    const { result, rerender } = renderComposer();
+    const step = (fn: () => void) => {
+      act(fn);
+      rerender();
+    };
+
+    step(() => result.current.handleModelSelect(modelX));
+    step(() => result.current.handleApprovalModeChange('never'));
+    // Turn 1 is sent with 'never'. Before its turn.started arrives, the user
+    // tightens the posture.
+    step(() => result.current.handleApprovalModeChange('ask'));
+    // The report describes turn 1: model X acknowledged, 'never' applied.
+    step(() => turnStarted('t1', 'never'));
+
+    const chat = activeChatsStore.getSnapshot()[SESSION_ID];
+    expect(chat.requestedProviderOptions).toEqual({ approvalMode: 'ask' });
+    // Not confirmed: the confirmed bag holds no posture the engine has not
+    // reported applying.
+    expect(chat.providerOptions?.approvalMode).toBeUndefined();
+    expect(chat.lastAppliedApprovalMode).toBe('never');
+    // The pill follows the pending request (station#1933), not Default.
+    expect(renderPillText()).toBe('ApprovalAsk');
+    // And the next turn actually asks for it.
+    expect((await nextTurnOptions())?.approvalMode).toBe('ask');
+
+    // That turn's report settles it.
+    step(() => turnStarted('t22', 'ask'));
+    const settled = activeChatsStore.getSnapshot()[SESSION_ID];
+    expect(settled.requestedProviderOptions).toBeUndefined();
+    expect(settled.providerOptions?.approvalMode).toBe('ask');
+  });
+
+  test('a model reset keeps a pending approval pick and still sends it', async () => {
+    const { result, rerender } = renderComposer();
+    const step = (fn: () => void) => {
+      act(fn);
+      rerender();
+    };
+
+    step(() => result.current.handleModelSelect(modelX));
+    step(() => result.current.handleApprovalModeChange('never'));
+    step(() => turnStarted('t1', 'never'));
+    expect(
+      activeChatsStore.getSnapshot()[SESSION_ID].providerOptions?.approvalMode,
+    ).toBe('never');
+
+    step(() => result.current.handleApprovalModeChange('ask'));
+    step(() => result.current.handleModelReset());
+
+    const chat = activeChatsStore.getSnapshot()[SESSION_ID];
+    expect(chat.requestedModel).toBeNull();
+    expect(chat.requestedProviderOptions).toEqual({ approvalMode: 'ask' });
+    expect(renderPillText()).not.toMatch(/Full access|Default/);
+    expect(await nextTurnOptions()).toEqual({ approvalMode: 'ask' });
   });
 });

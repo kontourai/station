@@ -43,8 +43,14 @@ export async function dispatchForeground(input: {
   const resolved = resolveTurnModel(input);
   const defaultRequested = resolved.kind === 'engine-selected';
   const modelOptions = ((): Record<string, unknown> | undefined => {
+    // An engine-selected turn claims no model, so it sends no model
+    // controls, but it must still carry an approval posture the user picked
+    // (a model reset keeps that pick pending, #2321).
+    const pendingApproval = input.requestedProviderOptions?.approvalMode;
     const requested = defaultRequested
-      ? undefined
+      ? typeof pendingApproval === 'string'
+        ? { approvalMode: pendingApproval }
+        : undefined
       : (input.requestedProviderOptions ?? input.providerOptions);
     if (!input.approvalModeFallback) return requested;
     // A session override travels in the options bag itself and wins; the

@@ -6,7 +6,7 @@ import {
   acknowledgesModelRequest,
   modelControlOptionsMatch,
   replaceModelControlOptions,
-  retainRequestedApprovalMode,
+  settleRequestedApprovalMode,
 } from '../../utils/modelCapabilities';
 import { rehydrateChatSession } from './rehydrateChatSession';
 import { isReplayThread } from './replay/replay-registry';
@@ -111,10 +111,11 @@ export function buildOrchestrationSnapshotSyncPlan(
       // carried, whether or not this snapshot reports model controls (#2321).
       // A snapshot reports no applied posture, so nothing overrides it here.
       const confirmedOptions = consumesRequestedOptions
-        ? retainRequestedApprovalMode(
-            chat.providerOptions,
-            chat.requestedProviderOptions,
-          )
+        ? (settleRequestedApprovalMode({
+            current: chat.providerOptions,
+            requested: chat.requestedProviderOptions,
+            consumesRequest: true,
+          })?.confirmed ?? {})
         : (chat.providerOptions ?? {});
       return {
         threadId: session.threadId,

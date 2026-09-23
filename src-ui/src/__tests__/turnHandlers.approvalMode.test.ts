@@ -436,7 +436,7 @@ describe('an explicit approval choice survives the model report that consumes th
     ['session.configured', { sessionId: CHOICE_THREAD_ID }],
     ['turn.started', { turnId: 'turn-1' }],
   ])(
-    'when %s reports a different applied posture, server truth wins: no retained override, no endless pending',
+    'when %s reports a different applied posture, the pick stays pending and is not claimed as applied',
     (method, extra) => {
       handleOrchestrationEvent('http://localhost', {
         provider: 'codex',
@@ -452,16 +452,41 @@ describe('an explicit approval choice survives the model report that consumes th
       } as Parameters<typeof handleOrchestrationEvent>[1]);
 
       const chat = activeChatsStore.getSnapshot()[CHOICE_THREAD_ID];
-      expect(chat.requestedProviderOptions).toBeUndefined();
+      // The model part is consumed; the unconfirmed posture stays pending so
+      // the next turn sends it again and that turn's report settles it.
+      expect(chat.requestedModel).toBeUndefined();
+      expect(chat.requestedProviderOptions).toEqual({ approvalMode: 'never' });
       expect(chat.lastAppliedApprovalMode).toBe('ask');
-      // The refused 'never' is not kept as the session override, so the next
-      // turn does not re-request it and the pill does not sit on "pending".
+      // Never written into the confirmed bag as if it had applied.
       expect(chat.providerOptions?.approvalMode).toBeUndefined();
       const pill = renderComposerPill();
-      expect(pill.textContent).not.toMatch(/Full access|pending/);
-      expect(pill.getAttribute('aria-label')).toMatch(/Ask first/);
+      expect(pill.textContent).toBe('ApprovalFull access · pending');
     },
   );
+
+  test('a later report that confirms the pending pick settles it', () => {
+    for (const [at, applied] of [
+      ['2026-09-22T00:00:01.000Z', 'ask'],
+      ['2026-09-22T00:00:02.000Z', 'never'],
+    ] as const) {
+      handleOrchestrationEvent('http://localhost', {
+        provider: 'codex',
+        threadId: CHOICE_THREAD_ID,
+        createdAt: at,
+        method: 'turn.started',
+        turnId: at,
+        metadata: {
+          approvalMode: applied,
+          effectiveModel: 'gpt-5-codex',
+          effectiveModelOptions: {},
+        },
+      } as Parameters<typeof handleOrchestrationEvent>[1]);
+    }
+    const chat = activeChatsStore.getSnapshot()[CHOICE_THREAD_ID];
+    expect(chat.requestedProviderOptions).toBeUndefined();
+    expect(chat.providerOptions?.approvalMode).toBe('never');
+    expect(renderComposerPill().textContent).toBe('ApprovalFull access');
+  });
 
   test('the escalation-refused warning still surfaces and reverts after the request was consumed', () => {
     handleOrchestrationEvent('http://localhost', {
@@ -491,5 +516,34 @@ describe('an explicit approval choice survives the model report that consumes th
       activeChatsStore.getSnapshot()[CHOICE_THREAD_ID].providerOptions
         ?.approvalMode,
     ).toBe('ask');
+  });
+
+  test('a refused pick left pending is reverted by the escalation warning, not re-requested forever', () => {
+    handleOrchestrationEvent('http://localhost', {
+      provider: 'codex',
+      threadId: CHOICE_THREAD_ID,
+      createdAt: '2026-09-22T00:00:04.000Z',
+      method: 'turn.started',
+      turnId: 'turn-1',
+      metadata: {
+        approvalMode: 'ask',
+        effectiveModel: 'gpt-5-codex',
+        effectiveModelOptions: {},
+      },
+    } as Parameters<typeof handleOrchestrationEvent>[1]);
+    handleOrchestrationEvent('http://localhost', {
+      provider: 'codex',
+      threadId: CHOICE_THREAD_ID,
+      createdAt: '2026-09-22T00:00:05.000Z',
+      method: 'runtime.warning',
+      severity: 'warning',
+      message:
+        'Full-access mode requires restarting the session with that mode enabled from the start. Approval mode was not changed.',
+      code: 'approval-escalation-requires-restart',
+      details: { requestedApprovalMode: 'never', revertToApprovalMode: 'ask' },
+    });
+    const chat = activeChatsStore.getSnapshot()[CHOICE_THREAD_ID];
+    expect(chat.requestedProviderOptions).toEqual({ approvalMode: 'ask' });
+    expect(renderComposerPill().textContent).not.toMatch(/Full access/);
   });
 });
