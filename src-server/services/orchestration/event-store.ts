@@ -1029,7 +1029,23 @@ const SESSION_EVENT_WINDOW_MAX_EVENTS = 150;
  */
 const ATTACHMENT_CANDIDATE_THREAD_LIMIT = 4;
 const SNAPSHOT_TOOL_OUTPUT_MAX_CHARS = 84;
-const SNAPSHOT_EVENT_MAX_SERIALIZED_BYTES = 4_096;
+/**
+ * Per-event ceiling for a window read. Sized to clear the 16 KiB transcript
+ * chunks the session sources persist (`MAX_TEXT_CHUNK_BYTES` in
+ * `claude-transcript-session-source.ts` / `codex-rollout-session-source.ts`):
+ * at 4 KiB every one of those deltas stripped to identity fields and any
+ * turn whose text lived only in them vanished from the transcript while its
+ * short user prompt survived. The window-wide
+ * `SESSION_EVENT_WINDOW_MAX_SERIALIZED_BYTES` budget still bounds each page;
+ * this ceiling only decides when a single event stops being an event.
+ */
+const SNAPSHOT_EVENT_MAX_SERIALIZED_BYTES = 24_576;
+/**
+ * A `turn.completed` carries the turn's full reply text, so it gets the same
+ * headroom on every window path (the newest-first path always allowed it;
+ * the turn and conversation paths did not, and dropped long replies there).
+ */
+const TURN_COMPLETED_SNAPSHOT_MAX_BYTES = 48_000;
 const SESSION_EVENT_WINDOW_MAX_SERIALIZED_BYTES = 56_000;
 /** Hard complete JSON response budget for one authenticated event window. */
 export const SESSION_EVENT_WINDOW_MAX_RESPONSE_BYTES = 64_000;
@@ -1291,9 +1307,10 @@ function sliceSnapshotText(value: unknown): { text: string; cut: boolean } {
 /**
  * Bounds one event for a window read, and — archive#3386 — SAYS SO when it
  * bounded it. Both budgets here used to be silent: a `tool.completed` came
- * back cut to 84 characters with no mark, and any payload over the 4 KB
- * ceiling came back as identity fields alone, which is how a pasted image
- * over ~3 KB lost both its prompt and its chip on restore (archive#3374).
+ * back cut to 84 characters with no mark, and any payload over the
+ * per-event ceiling came back as identity fields alone, which is how a
+ * pasted image over ~3 KB lost both its prompt and its chip on restore
+ * (archive#3374).
  * From the client, a stripped payload and a payload that never had those
  * fields are the same bytes.
  */
@@ -6453,7 +6470,7 @@ export class EventStore {
         const event = snapshotEvent(
           mapPersistedEventRow(row),
           row.method === 'turn.completed'
-            ? 48_000
+            ? TURN_COMPLETED_SNAPSHOT_MAX_BYTES
             : SNAPSHOT_EVENT_MAX_SERIALIZED_BYTES,
         );
         const size = Buffer.byteLength(
@@ -6631,11 +6648,18 @@ export class EventStore {
         )
         // Deliberately NOT `mapEventRow`: this window is byte-budgeted, and
         // rehydrating an attachment here would push its `turn.started` past
-        // `snapshotEvent`'s 4 KB ceiling — which strips the payload down to
-        // its identity fields, taking the prompt and the attachment with it.
-        // Handing on the reference is what lets the transcript keep rendering
-        // the chip (archive#3374).
-        .map((row) => snapshotEvent(mapPersistedEventRow(row)));
+        // `snapshotEvent`'s per-event ceiling — which strips the payload down
+        // to its identity fields, taking the prompt and the attachment with
+        // it. Handing on the reference is what lets the transcript keep
+        // rendering the chip (archive#3374).
+        .map((row) =>
+          snapshotEvent(
+            mapPersistedEventRow(row),
+            row.method === 'turn.completed'
+              ? TURN_COMPLETED_SNAPSHOT_MAX_BYTES
+              : SNAPSHOT_EVENT_MAX_SERIALIZED_BYTES,
+          ),
+        );
       const completed = new Set(
         raw
           .filter((item) => item.method === 'tool.completed')
@@ -6840,7 +6864,12 @@ export class EventStore {
         // Reuse the same attachment-safe snapshot projection as the
         // session-window reader. A conversation aggregate must not turn an
         // attachment reference back into an oversized inline payload.
-        const event = snapshotEvent(mapPersistedEventRow(row));
+        const event = snapshotEvent(
+          mapPersistedEventRow(row),
+          row.method === 'turn.completed'
+            ? TURN_COMPLETED_SNAPSHOT_MAX_BYTES
+            : SNAPSHOT_EVENT_MAX_SERIALIZED_BYTES,
+        );
         const eventBytes = Buffer.byteLength(
           JSON.stringify({
             sequence: event.globalSequence,

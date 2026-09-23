@@ -21026,8 +21026,8 @@ describe('OrchestrationService', () => {
       eventId: 'window-elided-turn',
       createdAt: '2026-08-19T00:00:01.000Z',
       method: 'turn.started',
-      // Past `snapshotEvent`'s serialized ceiling.
-      prompt: 'p'.repeat(8_000),
+      // Past `snapshotEvent`'s serialized ceiling (24 KiB).
+      prompt: 'p'.repeat(32_000),
     } as never);
     eventStore.appendEvent({
       provider: 'claude',

@@ -208,8 +208,8 @@ describe('runLane (child-process seam, mocked)', () => {
 // for a `.cmd`/`.bat` target since Node's CVE-2024-27980 hardening, which
 // `runLane`'s own try/catch swallowed into `{ ok: false, spawnError: true }`
 // -- every lane failed on Windows regardless of whether the code compiled,
-// and `.github/workflows/windows-verification.yml` runs `npm run typecheck`
-// on that exact self-hosted runner as a required step. There is no Windows
+// and `.github/workflows/windows-pr-verification.yml` runs `npm run typecheck`
+// on Windows as a required step. There is no Windows
 // host in this test loop, so these tests inject `platform` directly rather
 // than reasoning about the spawn shape only from source -- a reasoned-about
 // spawn shape is exactly what shipped broken here.
