@@ -77,7 +77,12 @@ function seedConnection(
 test.describe('Connection Manager Modal', () => {
   test.beforeEach(async ({ page }) => {
     await page.route('**/api/**', async (route) => {
-      if (await fulfillStationShellRead(route)) return;
+      if (
+        await fulfillStationShellRead(route, {
+          environmentId: 'env-connect-modal-suite',
+        })
+      )
+        return;
       await route.fallback();
     });
     await page.addInitScript(seedConnection());
