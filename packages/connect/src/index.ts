@@ -40,6 +40,7 @@ export {
   classifyHttpFailureResponse,
   classifyNativeTransportRefusal,
   connectionFailureNeedsDecision,
+  isNativeTransportSaturation,
 } from './core/connectionFailureClassification';
 export type { ConnectionIndicatorState } from './core/connectionIndicator';
 export {
