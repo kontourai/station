@@ -719,13 +719,14 @@ describe('Station Control canonical Environment + Agent execution', () => {
     },
   );
 
-  // Station #90 lane D (B2): the delegated start carries the route-set
-  // unattributed-agent marker beside userId, and only when set.
+  // Station #90 lane D (B2/R1): the delegated start hands the route-set
+  // owner attribution to the service's start choke point in its dispatch
+  // context, and only when set.
   test.each([
     ['marked', 'unattributed-agent' as const],
     ['plain', undefined],
   ])(
-    'a %s delegated start stamps the owner-attribution marker exactly when the route set it',
+    'a %s delegated start carries the owner attribution in its start context exactly when the route set it',
     async (_name, ownerAttribution) => {
       installCurrentStationFetch();
       const service = localService();
@@ -739,15 +740,12 @@ describe('Station Control canonical Environment + Agent execution', () => {
         },
         service as never,
       );
-      const metadata = (
-        service.sessionCommands.execute.mock.calls[0][0] as {
-          input: { metadata: Record<string, unknown> };
-        }
-      ).input.metadata;
-      expect(metadata.userId).toBe('shared-user');
+      const context = service.sessionCommands.execute.mock
+        .calls[0][1] as Record<string, unknown>;
+      expect(context.userId).toBe('shared-user');
       if (ownerAttribution)
-        expect(metadata.ownerAttribution).toBe(ownerAttribution);
-      else expect(metadata).not.toHaveProperty('ownerAttribution');
+        expect(context.ownerAttribution).toBe(ownerAttribution);
+      else expect(context).not.toHaveProperty('ownerAttribution');
     },
   );
 
@@ -2647,11 +2645,33 @@ describe('Station Control canonical Environment + Agent execution', () => {
       },
       service as never,
     );
-    const started = service.startSessionInternal.mock.calls[0]?.[0] as {
-      input: { threadId: string; metadata: Record<string, unknown> };
-    };
-    expect(started.input.threadId).toBe('task-alpha:session:child-1');
-    expect(started.input.metadata.ownerAttribution).toBe('unattributed-agent');
+    const [command, context] = service.startSessionInternal.mock.calls[0] as [
+      { input: { threadId: string } },
+      Record<string, unknown>,
+    ];
+    expect(command.input.threadId).toBe('task-alpha:session:child-1');
+    expect(context.ownerAttribution).toBe('unattributed-agent');
+  });
+
+  test('a foreground start carries the owner attribution in its start context', async () => {
+    installCurrentStationFetch();
+    const service = localService();
+    const { executeExecutionTargetMessage } = await import(
+      '../station-control-delegation.js'
+    );
+    await executeExecutionTargetMessage(
+      {
+        target: currentTarget(),
+        message: 'agent-started foreground',
+        userId: 'shared-user',
+        ownerAttribution: 'unattributed-agent',
+      },
+      service as never,
+    );
+    const context = service.startSessionInternal.mock.calls[0]?.[1] as
+      | Record<string, unknown>
+      | undefined;
+    expect(context?.ownerAttribution).toBe('unattributed-agent');
   });
 
   test('a marked portable task refuses continuation without a fresh offer admission', async () => {

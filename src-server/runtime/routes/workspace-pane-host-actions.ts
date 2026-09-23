@@ -40,6 +40,9 @@ export function createRuntimeWorkspacePaneHostActions(input: {
           principal: actor.principal,
           clientOrigin: actor.clientOrigin,
           readAuthority: actor.readAuthority,
+          ...(actor.ownerAttribution
+            ? { ownerAttribution: actor.ownerAttribution }
+            : {}),
         },
         input.orchestration,
         admission,

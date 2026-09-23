@@ -808,8 +808,8 @@ export class StationRuntime {
                   this.orchestrationService.resolveSessionActingPrincipal(
                     threadId,
                   ),
-                latestStartedMetadataOfThread: (threadId) =>
-                  this.orchestrationService.latestStartedMetadataOfThread(
+                firstStartedMetadataOfThread: (threadId) =>
+                  this.orchestrationService.firstStartedMetadataOfThread(
                     threadId,
                   ),
               },

@@ -70,6 +70,10 @@ import {
   readAuthorizedTurnCorrelationHandoff,
 } from '../../../runtime/conversation/authorized-turn-correlation.js';
 import {
+  createStationControlCallerRecordResolver,
+  stationControlCallerRecordSources,
+} from '../../../runtime/mcp/station-control-caller.js';
+import {
   adapterTurnDuration,
   attachedSessionMutationRejected,
   chatAttachmentBytesDispatched,
@@ -810,17 +814,36 @@ describe('OrchestrationService', () => {
   // the SQLite event store. The fake adapter publishes `session.started`
   // with the start input's metadata, as every real adapter does.
   describe('station-control caller records written at session start', () => {
+    // The fake adapter publishes what real adapters publish: `session.started`
+    // and `session.configured` with the start metadata, then (like Claude's
+    // CLI init, or Codex/Bedrock/Ollama after model application) a later
+    // sparse `session.configured` that carries none of it.
     function publishStarts() {
       claude.startSession.mockImplementation(async (input) => {
         const now = new Date().toISOString();
-        claude.events.push({
-          provider: 'claude',
+        const base = {
+          provider: 'claude' as const,
           threadId: input.threadId,
-          eventId: `evt-${input.threadId}-started`,
-          createdAt: now,
-          method: 'session.started',
           sessionId: input.threadId,
+          createdAt: now,
+        };
+        claude.events.push({
+          ...base,
+          eventId: `evt-${input.threadId}-started`,
+          method: 'session.started',
           metadata: input.metadata,
+        } as never);
+        claude.events.push({
+          ...base,
+          eventId: `evt-${input.threadId}-configured`,
+          method: 'session.configured',
+          metadata: input.metadata,
+        } as never);
+        claude.events.push({
+          ...base,
+          eventId: `evt-${input.threadId}-cli-init`,
+          method: 'session.configured',
+          metadata: { permissionMode: 'default', approvalMode: 'ask' },
         } as never);
         return {
           provider: 'claude' as const,
@@ -836,30 +859,53 @@ describe('OrchestrationService', () => {
     async function started(
       threadId: string,
       metadata: Record<string, unknown>,
+      context: { userId: string; ownerAttribution?: 'unattributed-agent' } = {
+        userId: 'human:test:alice',
+      },
     ) {
       const result = await service.sessionCommands.execute(
         {
           type: 'start-session',
           input: { threadId, provider: 'claude', cwd: tmp, metadata },
         },
-        { userId: 'human:test:alice' },
+        context,
       );
       expect(result.status).toBe('accepted');
       await waitFor(
-        () => eventStore.findSessionOwnerAttribution(threadId),
-        (attribution) => attribution.ownerUserId !== undefined,
+        () => service.latestStartedMetadataOfThread(threadId),
+        (latest) => latest?.approvalMode === 'ask',
         5000,
       );
     }
 
-    test('a session an agent started unattributed acts for no one; an ordinary one acts for its recorded owner', async () => {
+    const callerRecord = createStationControlCallerRecordResolver(
+      stationControlCallerRecordSources({
+        orchestrationService: {
+          resolveSessionActingPrincipal: (threadId) =>
+            service.resolveSessionActingPrincipal(threadId),
+          firstStartedMetadataOfThread: (threadId) =>
+            service.firstStartedMetadataOfThread(threadId),
+        },
+        getProject: (slug) => {
+          const project = configuredProjects.find((p) => p.slug === slug);
+          if (!project?.id) throw new Error('no project');
+          return { id: project.id };
+        },
+      }),
+    );
+
+    test('R1: a start whose dispatch context marks it unattributed acts for no one, stamped by the service itself; an ordinary one acts for its owner', async () => {
       publishStarts();
-      await started('agent-child', {
-        userId: 'human:test:alice',
-        ownerAttribution: 'unattributed-agent',
-      });
+      await started(
+        'agent-child',
+        { userId: 'human:test:alice' },
+        { userId: 'human:test:alice', ownerAttribution: 'unattributed-agent' },
+      );
       await started('owned-session', { userId: 'human:test:alice' });
 
+      expect(service.firstStartedMetadataOfThread('agent-child')).toMatchObject(
+        { ownerAttribution: 'unattributed-agent' },
+      );
       expect(
         service.resolveSessionActingPrincipal('agent-child'),
       ).toBeUndefined();
@@ -869,7 +915,7 @@ describe('OrchestrationService', () => {
       });
     });
 
-    test("the start records the Project's local id from Station's own list, and a caller-supplied id never survives", async () => {
+    test('R2: the caller keeps its stamped project after a sparse CLI-init session.configured, and a caller-supplied id never survives', async () => {
       publishStarts();
       configuredProjects.push({
         slug: 'alpha',
@@ -881,19 +927,43 @@ describe('OrchestrationService', () => {
         projectSlug: 'alpha',
         localProjectId: 'forged-id',
       });
+      // The latest configured event really is the sparse one.
+      expect(
+        service.latestStartedMetadataOfThread('project-session'),
+      ).not.toHaveProperty('projectSlug');
+      expect(callerRecord('project-session')).toMatchObject({
+        projectSlug: 'alpha',
+        localProjectId: 'project-alpha-id',
+        projectIdSource: 'session-record',
+      });
+
       await started('slugless-session', {
         userId: 'human:test:alice',
         localProjectId: 'forged-id',
       });
-      expect(
-        service.latestStartedMetadataOfThread('project-session'),
-      ).toMatchObject({
-        projectSlug: 'alpha',
-        localProjectId: 'project-alpha-id',
+      expect(callerRecord('slugless-session')).not.toHaveProperty(
+        'localProjectId',
+      );
+    });
+
+    test('R3: a Project named at start whose directory does not contain the start cwd gets no recorded id', async () => {
+      publishStarts();
+      // No working directory: the start runs in the caller's cwd, which the
+      // Project cannot be shown to contain.
+      configuredProjects.push({ slug: 'dirless', id: 'project-dirless-id' });
+      await started('dirless-session', {
+        userId: 'human:test:alice',
+        projectSlug: 'dirless',
       });
       expect(
-        service.latestStartedMetadataOfThread('slugless-session'),
+        service.firstStartedMetadataOfThread('dirless-session'),
       ).not.toHaveProperty('localProjectId');
+      // A reader falls back to a slug lookup, which is marked so authority
+      // can refuse it.
+      expect(callerRecord('dirless-session')).toMatchObject({
+        localProjectId: 'project-dirless-id',
+        projectIdSource: 'slug-lookup',
+      });
     });
   });
 
@@ -15148,6 +15218,45 @@ describe('OrchestrationService', () => {
       service.dispatch({ type: 'adoptSession', sourceThreadId }),
     ).rejects.toThrow(/configured as more than one project \(alpha, beta\)/);
     expect(claude.adoptSession).not.toHaveBeenCalled();
+  });
+
+  // Station #90 lane D (R1): an adoption an unverified agent requested
+  // starts its child marked, like every other start.
+  test('an adoption whose dispatch context marks it unattributed stamps the child start', async () => {
+    const sourceThreadId = 'external:claude:agent-source';
+    const projectRoot = join(tmp, 'agent-project');
+    mkdirSync(projectRoot, { recursive: true });
+    configuredProjects.push({
+      slug: 'agent-project',
+      workingDirectory: projectRoot,
+    });
+    eventStore.upsertSession({
+      provider: 'claude',
+      threadId: sourceThreadId,
+      status: 'ready',
+      cwd: projectRoot,
+      controlMode: 'read-only-attached',
+      attachedSource: {
+        kind: 'claude-transcript',
+        externalSessionId: 'vendor-agent-source',
+        affinity: { kind: 'test', ref: 'fixture' },
+      },
+      createdAt: '2026-07-22T00:00:00.000Z',
+      updatedAt: '2026-07-22T00:00:00.000Z',
+    });
+    await service.dispatch(
+      { type: 'adoptSession', sourceThreadId },
+      { ownerAttribution: 'unattributed-agent' },
+    );
+    expect(claude.adoptSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          adoptedFromThreadId: sourceThreadId,
+          ownerAttribution: 'unattributed-agent',
+        }),
+      }),
+      expect.anything(),
+    );
   });
 
   test('adopts an attached source into a new writable child without mutating the source', async () => {

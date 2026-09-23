@@ -989,11 +989,14 @@ function resolveActorPrincipal(
  */
 /**
  * Station #90 lane D (D6): the PrincipalRef for a verified caller's session
- * owner. Station has no principal store to look an id up in; the owner id
- * was itself minted by a `humanPrincipal` constructor at the start seam, so
- * it is rebuilt through the same constructor (which validates it). The
- * display is the subject, the only label the id carries. Any id the
- * constructor refuses (a reserved or malformed id) yields `undefined`.
+ * owner. Station has no principal store to look an id up in (checked: the
+ * only principal sources are the per-request resolvers, which hold no
+ * record of other principals), so the owner id is rebuilt through the
+ * `humanPrincipal` constructor that minted it, which validates it, and the
+ * rebuilt id must equal the recorded one. The display is the subject, the
+ * only label the id carries; a human's chosen display name is not
+ * recoverable here. Any id the constructor refuses (a reserved or
+ * malformed id) yields `undefined`.
  *
  * Downstream need, checked: `principal` is optional on every dispatch input;
  * it feeds turn attribution (`dispatchContextForAuthority` →
@@ -1006,7 +1009,10 @@ function principalRefForSessionOwner(id: string): PrincipalRef | undefined {
   const match = /^human:([^:]+):(.+)$/.exec(id);
   if (!match) return undefined;
   try {
-    return humanPrincipal(match[1]!, match[2]!, match[2]!);
+    const rebuilt = humanPrincipal(match[1]!, match[2]!, match[2]!);
+    // The constructor normalizes nothing today; this keeps a future change
+    // from silently attributing the turn to a different id.
+    return rebuilt.id === id ? rebuilt : undefined;
   } catch {
     return undefined;
   }
@@ -3648,7 +3654,13 @@ export function createOrchestrationRoutes(
       // dispatch context further down, rather than calling
       // `readAuthorityFor(c)` a second time — `resolveActorPrincipal` is the
       // single fail-closed resolution point (archive#4075 stage 2).
-      const { principal, userId: actorUserId } = resolveActorPrincipal(deps, c);
+      // Station #90 lane D (R1): a start or adoption this request causes
+      // carries the same agent owner attribution as the dispatch routes.
+      const {
+        principal,
+        userId: actorUserId,
+        ownerAttribution,
+      } = resolveDispatchActor(deps, c);
       const readAuthority = sessionReadAuthorityFromRequest(
         actorUserId,
         getTenantRequestContext(c.req.raw),
@@ -3705,6 +3717,7 @@ export function createOrchestrationRoutes(
         });
         const result = await orchestrationService.dispatchWithReceipt(command, {
           userId: actorUserId,
+          ...(ownerAttribution ? { ownerAttribution } : {}),
           ...(command.type === 'respondToRequest' &&
           command.expectedRequestEventId !== undefined
             ? {

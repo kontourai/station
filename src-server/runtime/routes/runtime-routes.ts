@@ -1553,15 +1553,16 @@ export function configureRuntimeRoutes(
             context.orchestrationService.resolveSessionActingPrincipal(
               threadId,
             ),
-          latestStartedMetadataOfThread: (threadId) =>
-            context.orchestrationService.latestStartedMetadataOfThread(
-              threadId,
-            ),
+          firstStartedMetadataOfThread: (threadId) =>
+            context.orchestrationService.firstStartedMetadataOfThread(threadId),
         },
         eventStore: context.orchestrationEventStore,
         getProject: (slug) => context.storageAdapter.getProject(slug),
       }),
     );
+  const resolveAgentDispatchActor = createAgentDispatchActorResolver(
+    resolveStationControlCallerRecord,
+  );
   context.app.route(
     '',
     createStationControlMcpRoutes({
@@ -2724,11 +2725,15 @@ export function configureRuntimeRoutes(
       service: paneHostActions,
       actorFor: (c) => {
         const principal = resolveOrchestrationRequestPrincipal(c);
+        // Station #90 lane D (R1): a Pane action an internal-token caller
+        // triggers starts an unattributed session, like every dispatch.
+        const agent = resolveAgentDispatchActor(c.req.raw);
         return {
           principal,
           readAuthority: readAuthorityForExecution(principal.id),
           clientOrigin: resolveClientOriginForRequest(c.req.raw),
           isCurrent: () => isRequestPrincipalCurrent(c.req.raw),
+          ...(agent ? { ownerAttribution: 'unattributed-agent' as const } : {}),
         };
       },
     }),
@@ -2774,9 +2779,7 @@ export function configureRuntimeRoutes(
       // Station #90 lane D (B2): an agent tool's dispatch acts for its
       // verified session's owner, or is marked unattributed; never silently
       // as the operator the internal token resolves to.
-      resolveAgentDispatchActor: createAgentDispatchActorResolver(
-        resolveStationControlCallerRecord,
-      ),
+      resolveAgentDispatchActor,
       isRequestPrincipalCurrent,
       answerAssessmentModule,
       answerNarrativeBindingModule,

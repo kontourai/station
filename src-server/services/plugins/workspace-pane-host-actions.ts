@@ -19,6 +19,7 @@ import type { IStorageAdapter } from '../../domain/storage-adapter.js';
 import { assertConnectionReady } from '../execution-target/execution-target-resolver.js';
 import type { ForegroundInvocationAdmission } from '../orchestration/foreground-invocation-admission.js';
 import { ForegroundInvocationUnavailableError } from '../orchestration/foreground-invocation-admission.js';
+import type { SessionOwnerAttribution } from '../orchestration/session-owner-attribution.js';
 import { scanInstalledPluginInventory } from './installed-plugin-inventory.js';
 import type { PackageMcpAdmissionJournal } from './package-mcp-admission.js';
 import {
@@ -37,6 +38,11 @@ export interface WorkspacePaneHostActionActor {
   clientOrigin?: ClientOrigin;
   /** Fresh request credential/currentness, supplied by verified ingress only. */
   isCurrent(): boolean;
+  /**
+   * Station #90 lane D (R1): set by runtime composition when an internal-token
+   * (agent) request triggers the action; the started session acts for no one.
+   */
+  ownerAttribution?: SessionOwnerAttribution;
 }
 
 const MAX_TICKETS = 128;

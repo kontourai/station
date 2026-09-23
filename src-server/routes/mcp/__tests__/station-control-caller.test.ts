@@ -78,6 +78,15 @@ const continueDelegatedTask = vi.fn(async () => ({
   status: 'dispatched',
   resumable: true,
 }));
+// `/commands` reaches the service's dispatch seam; record its context.
+const dispatchWithReceipt = vi.fn(async () => ({
+  receipt: { commandId: 'command-1' },
+  result: { threadId: 'commands-child', status: 'ready' },
+}));
+const orchestrationServiceFake = {
+  dispatchWithReceipt,
+  canUserReadSession: () => true,
+};
 const delegateTask = vi.fn(async () => ({
   taskId: 'task:1',
   sessionId: 'task:1',
@@ -124,7 +133,7 @@ const productionResolver = createStationControlCallerRecordResolver(
     orchestrationService: {
       resolveSessionActingPrincipal: (threadId) =>
         sessionAuthorization.sessionActingPrincipal(threadId),
-      latestStartedMetadataOfThread: (threadId) => STARTED[threadId],
+      firstStartedMetadataOfThread: (threadId) => STARTED[threadId],
     },
     eventStore: {
       conversationForSession: (sessionId) =>
@@ -281,7 +290,7 @@ beforeAll(async () => {
   app.route(
     '/api/orchestration',
     createOrchestrationRoutes(
-      {} as never,
+      orchestrationServiceFake as never,
       {
         eventBus: new EventBus(),
         logger: {
@@ -319,6 +328,7 @@ beforeEach(() => {
   resolveRecord.mockClear();
   delegateTask.mockClear();
   continueDelegatedTask.mockClear();
+  dispatchWithReceipt.mockClear();
 });
 
 async function readJsonRpc(response: Response): Promise<any> {
@@ -983,5 +993,47 @@ describe('agent-started child sessions (security review B2, D1, D2, D3)', () => 
       userId: 'human:test:alice',
     });
     expect(continuedInput().ownerAttribution).toBeUndefined();
+  });
+});
+
+// The public `/commands` schema admits no startSession; adoptSession is the
+// session-creating command it carries.
+describe('/commands adoptSession (review R1)', () => {
+  const startCommand = {
+    type: 'adoptSession',
+    sourceThreadId: 'attached-source',
+  };
+  const dispatchContext = () =>
+    (
+      dispatchWithReceipt.mock.calls[0] as unknown as [
+        unknown,
+        Record<string, unknown>,
+      ]
+    )[1];
+
+  test('an internal-token /commands adoptSession carries unattributed-agent to the service', async () => {
+    const response = await fetch(`${baseUrl}/api/orchestration/commands`, {
+      method: 'POST',
+      headers: { ...internalHeaders(), 'content-type': 'application/json' },
+      body: JSON.stringify(startCommand),
+    });
+    expect(response.status).toBe(200);
+    expect(dispatchContext()).toMatchObject({
+      userId: LOCAL_OPERATOR_PRINCIPAL_ID,
+      ownerAttribution: 'unattributed-agent',
+    });
+  });
+
+  test('an operator-credential /commands adoptSession carries no marker', async () => {
+    const response = await fetch(`${baseUrl}/api/orchestration/commands`, {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${OPERATOR_CREDENTIAL}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify(startCommand),
+    });
+    expect(response.status).toBe(200);
+    expect(dispatchContext()).not.toHaveProperty('ownerAttribution');
   });
 });

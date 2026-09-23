@@ -86,10 +86,7 @@ import {
   ForegroundInvocationUnavailableError,
 } from '../services/orchestration/foreground-invocation-admission.js';
 import type { OrchestrationService } from '../services/orchestration/orchestration-service.js';
-import {
-  type SessionOwnerAttribution,
-  sessionOwnerAttributionMetadata,
-} from '../services/orchestration/session-owner-attribution.js';
+import type { SessionOwnerAttribution } from '../services/orchestration/session-owner-attribution.js';
 import { SessionStartIndeterminateError } from '../services/orchestration/session-turn-boundary.js';
 import {
   type PortableExecutionConsentIdentity,
@@ -1188,11 +1185,16 @@ function dispatchContextForAuthority(
   // the HTTP seam (`orchestration.ts`'s `resolveActorPrincipal`) and passed
   // in by callers that have one.
   principal?: PrincipalRef,
+  // Station #90 lane D (R1): route-derived owner attribution for a start.
+  // The service stamps it on the new session (`prepareStart`), the one
+  // place every start passes.
+  ownerAttribution?: SessionOwnerAttribution,
 ): {
   userId: string;
   tenantExecutionContext?: SessionReadAuthority['tenantExecutionContext'];
   clientOrigin?: ClientOrigin;
   principal?: PrincipalRef;
+  ownerAttribution?: SessionOwnerAttribution;
 } {
   return {
     userId: authority.userId,
@@ -1201,6 +1203,7 @@ function dispatchContextForAuthority(
       : {}),
     ...(clientOrigin ? { clientOrigin } : {}),
     ...(principal ? { principal } : {}),
+    ...(ownerAttribution ? { ownerAttribution } : {}),
   };
 }
 
@@ -4677,7 +4680,6 @@ export async function delegateTask(
                 : {}),
               ...(input.delegation ? { delegation: input.delegation } : {}),
               ...(readAuthority.userId ? { userId: readAuthority.userId } : {}),
-              ...sessionOwnerAttributionMetadata(input.ownerAttribution),
               // #484 phase A: server-minted portable consent marker. The
               // service re-stamps this same identity after the reserved-key
               // strip, so the persisted session binding carries the exact
@@ -4699,6 +4701,7 @@ export async function delegateTask(
           readAuthority,
           input.clientOrigin,
           input.principal,
+          input.ownerAttribution,
         ),
         {
           conversationIdentity: {
@@ -5306,6 +5309,7 @@ export async function executeExecutionTargetMessage(
           readAuthority,
           input.clientOrigin,
           input.principal,
+          input.ownerAttribution,
         ),
         {
           ...(executionWorkspace ? { executionWorkspace } : {}),

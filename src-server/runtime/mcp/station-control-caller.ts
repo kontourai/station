@@ -58,7 +58,11 @@ export type StationControlCallerRecordResolver = (
 export interface StationControlCallerRecordSources {
   /** Ownership-record principal (`OrchestrationService.resolveSessionActingPrincipal`). */
   actingPrincipal(sessionId: string): SessionActingPrincipal | undefined;
-  /** The session's own latest `session.configured`/`session.started` metadata. */
+  /**
+   * The metadata the session STARTED with (its first `session.started`).
+   * Never the latest `session.configured`: engines publish sparse later
+   * configured events that drop the project binding.
+   */
   startedMetadata(sessionId: string): Record<string, unknown> | undefined;
   /** `ProjectConfig.id` for a local slug, or undefined when there is none. */
   localProjectId(slug: string): string | undefined;
@@ -66,7 +70,7 @@ export interface StationControlCallerRecordSources {
 }
 
 /**
- * Builds the production record resolver. It reads one session's own latest
+ * Builds the production record resolver. It reads one session's own FIRST
  * start metadata (a keyed lookup, not a scan of every session) for its
  * project binding, preferring the delegation-scoped slug the way
  * `resolveSessionProjectSlug` does.
@@ -127,7 +131,7 @@ export function createStationControlCallerRecordResolver(
 export function stationControlCallerRecordSources(runtime: {
   orchestrationService: Pick<
     OrchestrationService,
-    'resolveSessionActingPrincipal' | 'latestStartedMetadataOfThread'
+    'resolveSessionActingPrincipal' | 'firstStartedMetadataOfThread'
   >;
   eventStore?: {
     conversationForSession(
@@ -140,7 +144,7 @@ export function stationControlCallerRecordSources(runtime: {
     actingPrincipal: (sessionId) =>
       runtime.orchestrationService.resolveSessionActingPrincipal(sessionId),
     startedMetadata: (sessionId) =>
-      runtime.orchestrationService.latestStartedMetadataOfThread(sessionId),
+      runtime.orchestrationService.firstStartedMetadataOfThread(sessionId),
     localProjectId: (slug) => {
       try {
         const id = runtime.getProject(slug).id;

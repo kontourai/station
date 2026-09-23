@@ -22,6 +22,7 @@ import {
 } from '../projects/project-contribution-service.js';
 import type { ExecutionWorkspaceBinding } from './execution-workspace-binding.js';
 import type { ForegroundInvocationAdmission } from './foreground-invocation-admission.js';
+import type { SessionOwnerAttribution } from './session-owner-attribution.js';
 import {
   type SessionStartBoundaryClaim,
   SessionStartIndeterminateError,
@@ -36,6 +37,13 @@ export type SessionCommand = {
 export type SessionCommandContext = {
   userId?: string;
   tenantExecutionContext?: TenantExecutionContext;
+  /**
+   * Station #90 lane D (R1): derived by the HTTP seam from server facts
+   * (never request JSON). `prepareStart` stamps it on the new session, the
+   * one place every start passes, so any start an unverified agent caused
+   * acts for no one.
+   */
+  ownerAttribution?: SessionOwnerAttribution;
 };
 
 export type SessionCommandOutcome =
