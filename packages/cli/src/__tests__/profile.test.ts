@@ -288,21 +288,27 @@ describe('shared saved Station store', () => {
             STATION_ROOT: home,
             STATION_PROFILE_WORKER: `${name}:${port}`,
           },
-          stdio: 'ignore',
+          stdio: ['ignore', 'ignore', 'pipe'],
           windowsHide: true,
         },
       );
+    });
+    const stderr = workers.map(() => '');
+    workers.forEach((worker, index) => {
+      worker.stderr?.on('data', (chunk) => {
+        stderr[index] += String(chunk);
+      });
     });
     const statuses = await Promise.all(
       workers.map(
         (worker) =>
           new Promise<number | null>((resolve, reject) => {
             worker.once('error', reject);
-            worker.once('exit', resolve);
+            worker.once('close', resolve);
           }),
       ),
     );
-    expect(statuses).toEqual([0, 0, 0]);
+    expect(statuses, stderr.join('\n---\n')).toEqual([0, 0, 0]);
     const store = readProfileStore();
     expect(store.revision).toBe(3);
     expect(store.profiles.map((profile) => profile.name).sort()).toEqual([
