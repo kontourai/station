@@ -130,11 +130,13 @@ const DEFAULT_MAX_BUFFER = 1024 * 1024;
 const OWN_PROCESS_GROUP = process.platform !== 'win32';
 
 /**
- * Signals `child`'s whole process group: git and everything under it. On
- * macOS `/usr/bin/git` is an xcrun shim, so signalling the child alone
- * reached only the shim and orphaned the real git (blocked on a FIFO
- * include, #2363 review round 3); hooks and filters are further children.
- * Falls back to the child itself where there are no process groups.
+ * Signals `child`'s whole process group: git and everything under it
+ * (#2363 review round 3). Signalling the child alone stops git itself but
+ * orphans what git started: a hook's shell and its children, a filter, the
+ * processes a tool such as gh runs. (Checked on macOS: `/usr/bin/git`'s
+ * xcrun shim EXECs the real git, so the pid is git's; the orphans are
+ * further down the chain.) Falls back to the child itself where there are
+ * no process groups.
  */
 export function killGitProcessTree(
   child: { pid?: number; kill(signal?: NodeJS.Signals): boolean },

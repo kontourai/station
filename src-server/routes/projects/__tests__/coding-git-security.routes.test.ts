@@ -450,8 +450,7 @@ describe.skipIf(process.platform === 'win32')(
           expect(json.code, route).toBe('git-timeout');
           expect(Date.now() - started, route).toBeLessThan(25_000);
         }
-        // The deadline killed git's whole process group, not only the
-        // xcrun shim in front of it: nothing is left working in the repo.
+        // The deadline stopped git: nothing is left working in the repo.
         await new Promise((resolve) => setTimeout(resolve, 1_500));
         expect(processesInside(root)).toEqual([]);
       } finally {

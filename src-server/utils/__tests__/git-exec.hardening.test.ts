@@ -71,6 +71,16 @@ function plainGit(cwd: string, args: string[], input?: string): string {
   }
 }
 
+/** Whether a process exists (signal 0 checks without signalling). */
+function alive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function initRepo(): string {
   const repo = sandbox();
   plainGit(repo, ['init', '-q', '-b', 'main']);
@@ -737,6 +747,71 @@ describe.skipIf(process.platform === 'win32')(
         }
       },
     );
+
+    test('a deadline stops the whole process group: a hook git started does not outlive it', async () => {
+      const repo = initRepo();
+      const pidFile = join(sandbox(), 'hook-child.pid');
+      const hook = join(repo, '.git', 'hooks', 'pre-commit');
+      // The hook's shell starts a long child and waits on it.
+      writeFileSync(
+        hook,
+        `#!/bin/sh\nsleep 300 &\necho $! > '${pidFile}'\nwait\n`,
+      );
+      chmodSync(hook, 0o755);
+
+      const failure = await execGit(
+        [
+          '-c',
+          'user.name=a',
+          '-c',
+          'user.email=a@b',
+          'commit',
+          '-q',
+          '--allow-empty',
+          '-m',
+          'x',
+        ],
+        { cwd: repo, timeout: 1_500, hardening: { operatorHooks: true } },
+      ).then(
+        () => null,
+        (error: { killed?: boolean }) => error,
+      );
+      expect(failure?.killed).toBe(true);
+      const child = Number(readFileSync(pidFile, 'utf-8').trim());
+      await new Promise((resolve) => setTimeout(resolve, 1_500));
+      try {
+        expect(alive(child), `hook child ${child} outlived the deadline`).toBe(
+          false,
+        );
+      } finally {
+        if (alive(child)) process.kill(child, 'SIGKILL');
+      }
+    });
+
+    test('a deadline stops a tool (gh, glab) and everything it started', async () => {
+      const pidFile = join(sandbox(), 'tool-child.pid');
+      const tool = join(sandbox(), 'gh');
+      writeFileSync(
+        tool,
+        `#!/bin/sh\nsleep 300 &\necho $! > '${pidFile}'\nwait\n`,
+      );
+      chmodSync(tool, 0o755);
+
+      await expect(
+        execGitContextCommand(tool, [], { timeout: 1_500 }),
+      ).rejects.toMatchObject({
+        killed: true,
+      });
+      const child = Number(readFileSync(pidFile, 'utf-8').trim());
+      await new Promise((resolve) => setTimeout(resolve, 1_500));
+      try {
+        expect(alive(child), `tool child ${child} outlived the deadline`).toBe(
+          false,
+        );
+      } finally {
+        if (alive(child)) process.kill(child, 'SIGKILL');
+      }
+    });
 
     test('inherited GIT_INDEX_FILE and GIT_CONFIG_PARAMETERS do not reach git; a caller-supplied index does', async () => {
       const repo = initRepo();
