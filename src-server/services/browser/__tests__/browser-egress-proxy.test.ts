@@ -442,6 +442,8 @@ describe('BrowserEgressProxy', () => {
   test('nit: localhost and *.localhost map to loopback in the proxy, never via the resolver', async () => {
     const asked: string[] = [];
     const h = await harness({
+      // A wrongly dialed public answer fails fast instead of hanging.
+      connectTimeoutMs: 300,
       lookup: async (hostname) => {
         asked.push(hostname);
         // A resolver that forwards .localhost upstream, to a page owner's DNS.
