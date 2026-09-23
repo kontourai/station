@@ -288,6 +288,9 @@ export function resolveWorkspacePaneCatalogPresentation(
 export function useResolvedWorkspacePaneCatalog(projectSlug: string) {
   const query = useProjectWorkspacePanesQuery(projectSlug, {
     enabled: Boolean(projectSlug),
+    // Never hold the previous Project's catalog across a slug change: its
+    // panes would read as this Project's.
+    keepPreviousData: false,
   });
   const profile = usePlatformProfile();
   const config = useConfig();

@@ -139,8 +139,12 @@ executable must be owned by the current user or root, executable, and not writab
 by a group or others. Windows connector custody is currently unsupported and
 refused. Invalid configuration fails startup using closed error codes.
 
-Station awaits connector registration during startup. Shutdown withdraws the
-registration and joins peer cleanup before releasing the home lease. A changed
+Station starts its local application service while the optional connector
+registers. Transient registration failures retry with capped backoff and report
+`reconnecting`; a permanent broker refusal reports `failed` without making the
+local Station unavailable. Invalid private connector configuration still fails
+startup before listeners open. Shutdown cancels registration, attempts
+withdrawal, and joins peer cleanup before releasing the home lease. A changed
 signing key retires already admitted peers; client trust approval remains an
 independent operation. Withdrawn routing credentials require deliberate
 reprovisioning as described above.

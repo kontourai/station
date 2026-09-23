@@ -23,6 +23,8 @@ const NOTIFICATION_LABELS: Readonly<Record<string, string>> = {
   // review is READ, and neither is an "approval request".
   'proposed-change': 'Change pending',
   'gate-review': 'Gate review',
+  // #2323 S5: an agent asked a person to install, update or remove a plugin.
+  'plugin-lifecycle-proposal': 'Plugin proposal',
 };
 
 export function notificationCategoryLabel(category: string): string {

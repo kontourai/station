@@ -719,6 +719,36 @@ describe('Station Control canonical Environment + Agent execution', () => {
     },
   );
 
+  // Station #90 lane D (B2/R1): the delegated start hands the route-set
+  // owner attribution to the service's start choke point in its dispatch
+  // context, and only when set.
+  test.each([
+    ['marked', 'unattributed-agent' as const],
+    ['plain', undefined],
+  ])(
+    'a %s delegated start carries the owner attribution in its start context exactly when the route set it',
+    async (_name, ownerAttribution) => {
+      installCurrentStationFetch();
+      const service = localService();
+      const { delegateTask } = await import('../station-control-delegation.js');
+      await delegateTask(
+        {
+          prompt: 'Delegated by an agent',
+          target: currentTarget(),
+          userId: 'shared-user',
+          ...(ownerAttribution ? { ownerAttribution } : {}),
+        },
+        service as never,
+      );
+      const context = service.sessionCommands.execute.mock
+        .calls[0][1] as Record<string, unknown>;
+      expect(context.userId).toBe('shared-user');
+      if (ownerAttribution)
+        expect(context.ownerAttribution).toBe(ownerAttribution);
+      else expect(context).not.toHaveProperty('ownerAttribution');
+    },
+  );
+
   test.each(['foreground', 'delegation'] as const)(
     '%s uses receiver binding resolution before constructing a start',
     async (kind) => {
@@ -2595,6 +2625,54 @@ describe('Station Control canonical Environment + Agent execution', () => {
       expect.anything(),
       expect.objectContaining({ nativeMemoryReadAuthority: authority }),
     );
+  });
+
+  // Station #90 lane D (D2): the child a follow-up starts carries the
+  // route-set owner attribution, like a fresh delegation.
+  test('a follow-up child Session carries the unattributed-agent marker the route set', async () => {
+    installCurrentStationFetch();
+    const authority = hostedAuthority('alpha');
+    const service = localDelegatedTaskService('completed');
+    const { continueDelegatedTask } = await import(
+      '../station-control-delegation.js'
+    );
+    await continueDelegatedTask(
+      {
+        taskId: 'task-alpha',
+        message: 'One more thing',
+        readAuthority: authority,
+        ownerAttribution: 'unattributed-agent',
+      },
+      service as never,
+    );
+    const [command, context] = service.startSessionInternal.mock
+      .calls[0] as unknown as [
+      { input: { threadId: string } },
+      Record<string, unknown>,
+    ];
+    expect(command.input.threadId).toBe('task-alpha:session:child-1');
+    expect(context.ownerAttribution).toBe('unattributed-agent');
+  });
+
+  test('a foreground start carries the owner attribution in its start context', async () => {
+    installCurrentStationFetch();
+    const service = localService();
+    const { executeExecutionTargetMessage } = await import(
+      '../station-control-delegation.js'
+    );
+    await executeExecutionTargetMessage(
+      {
+        target: currentTarget(),
+        message: 'agent-started foreground',
+        userId: 'shared-user',
+        ownerAttribution: 'unattributed-agent',
+      },
+      service as never,
+    );
+    const context = service.startSessionInternal.mock.calls[0]?.[1] as
+      | Record<string, unknown>
+      | undefined;
+    expect(context?.ownerAttribution).toBe('unattributed-agent');
   });
 
   test('a marked portable task refuses continuation without a fresh offer admission', async () => {

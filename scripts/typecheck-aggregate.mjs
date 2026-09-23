@@ -26,6 +26,10 @@
  */
 import { invokedDirectly } from './lib/module-entry.mjs';
 import { runLanesToCompletion } from './lib/npm-lane-aggregate.mjs';
+import {
+  describeSlotSource,
+  resolveSlotCount,
+} from './lib/typecheck-host-slots.mjs';
 
 /**
  * The independent projects `typecheck`'s old `&&` chain named, in the same
@@ -61,11 +65,37 @@ export const TYPECHECK_LANES = [
   { id: 'typecheck:examples', script: 'typecheck:examples' },
 ];
 
+/**
+ * Every lane's compiler takes a host-wide slot (`scripts/tsc-slot.mjs`), so
+ * starting more lanes than there are slots only adds idle npm/node processes
+ * queued behind them. The per-invocation concurrency is capped at the slot
+ * count; the slots themselves bound the total across worktrees.
+ *
+ * @param {{ env?: NodeJS.ProcessEnv, concurrency?: number }} [options]
+ *   Annotated because `tsconfig.scripts.json` runs with checkJs:false, where
+ *   an undefaulted destructured property is dropped from the inferred type.
+ */
+export function typecheckConcurrency({ env = process.env, concurrency } = {}) {
+  const slots = resolveSlotCount({ env });
+  return Number.isInteger(concurrency) && concurrency > 0
+    ? Math.min(concurrency, slots)
+    : slots;
+}
+
 export async function runTypecheckAggregate(options = {}) {
+  const concurrency = typecheckConcurrency({
+    env: options.env,
+    concurrency: options.concurrency,
+  });
+  // Printed once per run so CI output shows the cap it actually ran under.
+  (options.log ?? console.log)(
+    `typecheck: ${resolveSlotCount({ env: options.env })} host typecheck slot(s) (${describeSlotSource({ env: options.env })}); running up to ${concurrency} lane(s) at once.`,
+  );
   return runLanesToCompletion({
     lanes: TYPECHECK_LANES,
     label: 'typecheck',
     ...options,
+    concurrency,
   });
 }
 

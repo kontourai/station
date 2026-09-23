@@ -1,5 +1,11 @@
 import { APPLICATION_SESSION_BASE_PATH } from '@kontourai/station-contracts/application-session';
 import { DEPLOYMENT_AUTHENTICATION_BASE_PATH } from '@kontourai/station-contracts/deployment-authentication';
+import {
+  RELAY_ENROLLMENT_ACTIVATE_PATH,
+  RELAY_ENROLLMENT_BEGIN_PATH,
+  RELAY_ENROLLMENT_FINALIZE_PATH,
+  RELAY_ENROLLMENT_LOGIN_PATH,
+} from '@kontourai/station-contracts/relay-enrollment';
 
 /** Trusted process composition only. This is not an authentication provider. */
 export interface VirtualApplication {
@@ -8,6 +14,49 @@ export interface VirtualApplication {
 }
 
 type Application = { fetch(request: Request): Response | Promise<Response> };
+
+/** Verified by the admitted Pion peer, then copied only onto VAI's fresh Request. */
+export interface VerifiedPionApplicationRequestFacts {
+  readonly stationId: string;
+  readonly connectionEnrollmentId: string;
+  readonly routingGeneration: number;
+  readonly connectionId: string;
+  readonly stationOrigin: string;
+  readonly browserOrigin: string;
+  readonly signal: AbortSignal;
+  isCurrent(): boolean;
+}
+export type ReadPionApplicationRequestFacts = (
+  request: Request,
+) => VerifiedPionApplicationRequestFacts | undefined;
+
+export interface VerifiedVirtualApplicationRequestFacts
+  extends VerifiedPionApplicationRequestFacts {
+  readonly requestOrigin: string;
+  readonly clientOrigin: string;
+}
+
+const verifiedVirtualRequests = new WeakMap<
+  Request,
+  VerifiedVirtualApplicationRequestFacts
+>();
+
+/** Read-only authority seam for internal relay-enrollment routes. */
+export function readVerifiedVirtualApplicationRequest(
+  request: Request,
+): VerifiedVirtualApplicationRequestFacts | undefined {
+  const facts = verifiedVirtualRequests.get(request);
+  if (
+    !facts ||
+    request.signal.aborted ||
+    facts.signal.aborted ||
+    !facts.isCurrent() ||
+    request.headers.get('origin') !== facts.clientOrigin ||
+    new URL(request.url).origin !== facts.requestOrigin
+  )
+    return undefined;
+  return facts;
+}
 const methods = new Set([
   'GET',
   'HEAD',
@@ -64,7 +113,10 @@ export class VirtualApplicationIngress {
   private application?: Application;
   private active = false;
   private readonly pending = new Set<AbortController>();
-  constructor(private readonly origin: string) {
+  constructor(
+    private readonly origin: string,
+    private readonly readPionFacts?: ReadPionApplicationRequestFacts,
+  ) {
     const url = new URL(origin);
     if (!['http:', 'https:'].includes(url.protocol) || url.origin !== origin)
       throw new Error(
@@ -117,16 +169,45 @@ export class VirtualApplicationIngress {
         input.method === 'POST' &&
         url.pathname ===
           `${DEPLOYMENT_AUTHENTICATION_BASE_PATH}/accept-invitation`
+      ) &&
+      !(
+        input.method === 'POST' &&
+        [
+          RELAY_ENROLLMENT_BEGIN_PATH,
+          RELAY_ENROLLMENT_LOGIN_PATH,
+          RELAY_ENROLLMENT_FINALIZE_PATH,
+          RELAY_ENROLLMENT_ACTIVATE_PATH,
+        ].includes(
+          url.pathname as
+            | typeof RELAY_ENROLLMENT_BEGIN_PATH
+            | typeof RELAY_ENROLLMENT_LOGIN_PATH
+            | typeof RELAY_ENROLLMENT_FINALIZE_PATH
+            | typeof RELAY_ENROLLMENT_ACTIVATE_PATH,
+        )
       )
     )
       return refusal(400, 'virtual_cookie_operation_unsupported');
     for (const [name] of input.headers)
       if (forbiddenHeader(name))
         return refusal(400, 'virtual_header_forbidden');
+    const pionFacts = this.readPionFacts?.(input);
+    if (
+      pionFacts &&
+      (!pionFacts.isCurrent() ||
+        pionFacts.signal.aborted ||
+        pionFacts.stationOrigin !== this.origin ||
+        url.origin !== pionFacts.stationOrigin ||
+        input.headers.get('origin') !== pionFacts.browserOrigin)
+    )
+      return refusal(403, 'virtual_pion_provenance_invalid');
     if (this.pending.size >= 32)
       return refusal(429, 'virtual_capacity_exhausted');
     const controller = new AbortController();
-    const signal = AbortSignal.any([input.signal, controller.signal]);
+    const signal = AbortSignal.any([
+      input.signal,
+      controller.signal,
+      ...(pionFacts ? [pionFacts.signal] : []),
+    ]);
     signal.throwIfAborted();
     this.pending.add(controller);
     let handlerStarted = false;
@@ -146,6 +227,19 @@ export class VirtualApplicationIngress {
         credentials: 'omit',
         ...(input.body ? { duplex: 'half' as const } : {}),
       });
+      if (pionFacts) {
+        const facts = Object.freeze({
+          ...pionFacts,
+          signal,
+          requestOrigin: this.origin,
+          clientOrigin: pionFacts.browserOrigin,
+          isCurrent: () =>
+            !signal.aborted &&
+            pionFacts.isCurrent() &&
+            new URL(request.url).origin === pionFacts.stationOrigin,
+        });
+        verifiedVirtualRequests.set(request, facts);
+      }
       handlerStarted = true;
       response = await this.awaitResponse(this.application, request, () => {
         handlerSettled = true;

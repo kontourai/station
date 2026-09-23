@@ -154,8 +154,14 @@ export function ConnectionBannerSource() {
    * itself — the sustained streak is what stops it firing on a dev server that
    * is merely restarting.
    */
+  // station#2327: never for `busy` — that reason means the address answered,
+  // so "use the host's IP instead of localhost" would be advice against a
+  // problem that was just disproved.
   const loopbackFromElsewhere =
-    isLoopbackEndpoint(endpoint) && !isDesktop && failureStreak >= 3;
+    isLoopbackEndpoint(endpoint) &&
+    !isDesktop &&
+    failureStreak >= 3 &&
+    reason !== 'busy';
 
   /**
    * archive#3297 — a banner requires a decision.

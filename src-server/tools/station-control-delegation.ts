@@ -86,6 +86,7 @@ import {
   ForegroundInvocationUnavailableError,
 } from '../services/orchestration/foreground-invocation-admission.js';
 import type { OrchestrationService } from '../services/orchestration/orchestration-service.js';
+import type { StartOwnerAttribution } from '../services/orchestration/session-owner-attribution.js';
 import { SessionStartIndeterminateError } from '../services/orchestration/session-turn-boundary.js';
 import {
   type PortableExecutionConsentIdentity,
@@ -215,6 +216,8 @@ export interface DelegateTaskInput {
   parentTaskId?: string;
   delegation?: AgentDelegationContext;
   userId?: string;
+  /** Station #90 lane D (B2): route-set only; see session-owner-attribution.ts. */
+  ownerAttribution?: StartOwnerAttribution;
   /** Trusted request authority supplied only by runtime composition. */
   readAuthority?: SessionReadAuthority;
   /** Resolved at the authenticated request seam; never accepted as tool input. */
@@ -452,6 +455,12 @@ export interface DelegatedTaskEventsInput extends DelegatedTaskReferenceInput {
 export interface ContinueDelegatedTaskInput
   extends DelegatedTaskReferenceInput {
   message: string;
+  /**
+   * Station #90 lane D (D2): route-set only. A follow-up can start a new
+   * child session of the task's conversation, which must carry the same
+   * owner attribution as a fresh delegation (session-owner-attribution.ts).
+   */
+  ownerAttribution?: StartOwnerAttribution;
   model?: string;
   /** archive#978: per-invocation settings passthrough on a follow-up turn. */
   modelOptions?: Record<string, unknown>;
@@ -1206,11 +1215,16 @@ function dispatchContextForAuthority(
   // the HTTP seam (`orchestration.ts`'s `resolveActorPrincipal`) and passed
   // in by callers that have one.
   principal?: PrincipalRef,
+  // Station #90 lane D (R1): route-derived owner attribution for a start.
+  // The service stamps it on the new session (`prepareStart`), the one
+  // place every start passes.
+  ownerAttribution?: StartOwnerAttribution,
 ): {
   userId: string;
   tenantExecutionContext?: SessionReadAuthority['tenantExecutionContext'];
   clientOrigin?: ClientOrigin;
   principal?: PrincipalRef;
+  ownerAttribution?: StartOwnerAttribution;
 } {
   return {
     userId: authority.userId,
@@ -1219,6 +1233,7 @@ function dispatchContextForAuthority(
       : {}),
     ...(clientOrigin ? { clientOrigin } : {}),
     ...(principal ? { principal } : {}),
+    ...(ownerAttribution ? { ownerAttribution } : {}),
   };
 }
 
@@ -3809,6 +3824,9 @@ export async function continueDelegatedTask(
       conversationId: snapshot.conversationId,
       message: input.message,
       userId: readAuthority.userId,
+      ...(input.ownerAttribution
+        ? { ownerAttribution: input.ownerAttribution }
+        : {}),
       // The fresh admission rides to the adapter start/sendTurn
       // effects; ordinary follow-ups carry none.
       ...(followUpAdmission ? { receiverAdmission: followUpAdmission } : {}),
@@ -4713,6 +4731,7 @@ export async function delegateTask(
           readAuthority,
           input.clientOrigin,
           input.principal,
+          input.ownerAttribution,
         ),
         {
           conversationIdentity: {
@@ -5320,6 +5339,7 @@ export async function executeExecutionTargetMessage(
           readAuthority,
           input.clientOrigin,
           input.principal,
+          input.ownerAttribution,
         ),
         {
           ...(executionWorkspace ? { executionWorkspace } : {}),

@@ -71,6 +71,7 @@ import { useKeyboardShortcut } from '../../hooks/useKeyboardShortcut';
 import {
   OPEN_PROJECT_CHATS_EVENT,
   type OpenProjectChatsDetail,
+  type ProjectChatComposerDraft,
   UNNAMED_PROJECT_CHAT_ENTRY_SOURCE,
 } from '../../lib/projectChatEvents';
 import type { ChatSession, DockMode, FileAttachment } from '../../types';
@@ -125,6 +126,7 @@ import {
   shouldRouteScopedChatProject,
 } from './chat-dock-utils';
 import { submitCommandLauncherIntent } from './command-launcher-model';
+import { claimComposerDraftRequest } from './composerDraftRequest';
 import type { ConversationOpenRecovery } from './conversationOpenController';
 import { commitForkOpenBoundary } from './forkOpenBoundary';
 import { MobileSheetPending } from './MobileSheetPending';
@@ -485,6 +487,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   const [newChatProjectOverride, setNewChatProjectOverride] = useState<{
     slug: string;
     name: string;
+    composerDraft?: ProjectChatComposerDraft;
   } | null>(null);
   // Scope is a dock presentation filter over the active tabs, not a separate
   // inventory. Keep the unfiltered source for a new sidebar request: React
@@ -1773,9 +1776,38 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     const openProjectChats = (event: Event) => {
       const detail = (event as CustomEvent<OpenProjectChatsDetail>).detail;
       if (!detail?.projectSlug) return;
+      const projectName = detail.projectName || detail.projectSlug;
+      // A composer draft is for a NEW chat. Focusing an existing chat, or
+      // routing to a scoped layout's own pane, would drop the text the
+      // requester asked to offer, so the claiming pane opens its picker
+      // directly. Only one pane claims (and a pane bound to another Project
+      // never does), so exactly one picker opens and its chat starts in the
+      // requested Project. The draft reaches the composer only after the
+      // person picks an Agent, and nothing is sent.
+      if (detail.composerDraft) {
+        const claimed = claimComposerDraftRequest(event, {
+          hasImmutableProjectScope,
+          projectSlug,
+        });
+        if (!claimed) return;
+        setProjectFilter(detail.projectSlug);
+        setActiveSessionId(null);
+        setActiveChat(null);
+        setNewChatProjectOverride({
+          slug: detail.projectSlug,
+          name: projectName,
+          composerDraft: detail.composerDraft,
+        });
+        setShowNewChatModal(true);
+        telemetry.track('ui.chat.entry', {
+          source: detail.source ?? UNNAMED_PROJECT_CHAT_ENTRY_SOURCE,
+          outcome: 'new-chat',
+          projectScoped: 1,
+        });
+        return;
+      }
       if (routeToScopedChatProject(detail.projectSlug)) return;
 
-      const projectName = detail.projectName || detail.projectSlug;
       setProjectFilter(detail.projectSlug);
       if (isFullscreenPlacement) {
         const session = allSessions.find(
@@ -1834,7 +1866,9 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     applyDockSnap,
     allSessions,
     focusSessionInPane,
+    hasImmutableProjectScope,
     isFullscreenPlacement,
+    projectSlug,
     routeToScopedChatProject,
     setActiveChat,
     setActiveSessionId,

@@ -1,3 +1,4 @@
+import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import React, {
   useCallback,
   useEffect,
@@ -9,6 +10,7 @@ import React, {
 import { useAgents } from '../../contexts/AgentsContext';
 import { useApiBase } from '../../contexts/ApiBaseContext';
 import type { ChatContentPart } from '../../contexts/active-chats-state';
+import { unansweredApprovalRequests } from '../../hooks/orchestration/pendingRequestRows';
 import { useSendMessage } from '../../hooks/useActiveChatSessions';
 import { useCopyToClipboardToast } from '../../hooks/useCopyToClipboardToast';
 import { useToolApproval } from '../../hooks/useToolApproval';
@@ -31,6 +33,7 @@ import {
 import { type ForkTurnSource, precedingForkSource } from './fork-turn-source';
 import { formatFormSubmission } from './formSubmission';
 import { MessageBubble, type MessageBubbleSession } from './MessageBubble';
+import { PendingApprovalStrip } from './PendingApprovalStrip';
 import { QuoteSelectionToolbar } from './QuoteSelectionToolbar';
 import { ReasoningSection } from './ReasoningSection';
 import { ScrollToBottomButton } from './ScrollToBottomButton';
@@ -95,6 +98,12 @@ interface ChatMessageListProps {
   onForkFromTurn?: (source: ForkTurnSource) => void;
   onNewChatFromMessage?: (text: string) => void;
   onQuote?: (quote: SavedAnswerQuote) => void;
+  /**
+   * #2316: the transcript window's runtime events. Open approvals no rendered
+   * row can answer are derived from them here and rendered as the
+   * pending-approvals strip below the transcript (never as messages).
+   */
+  approvalEvents?: readonly { event: CanonicalRuntimeEvent }[];
 }
 
 // Stable fallback so `agent || FALLBACK_AGENT` doesn't allocate a new object
@@ -124,6 +133,7 @@ function backgroundTasksLabel(
 const RESIZE_REANCHOR_THRESHOLD_PX = 4;
 const VIRTUALIZE_AFTER_MESSAGE_COUNT = 40;
 const EMPTY_MESSAGES: ChatMessage[] = [];
+const NO_PENDING_APPROVALS: ReturnType<typeof unansweredApprovalRequests> = [];
 function ChatMessageListComponent({
   activeSession,
   fontSize,
@@ -145,11 +155,24 @@ function ChatMessageListComponent({
   onForkFromTurn,
   onNewChatFromMessage,
   onQuote,
+  approvalEvents,
 }: ChatMessageListProps) {
   const agents = useAgents();
   const { apiBase } = useApiBase();
   const handleCopy = useCopyToClipboardToast();
   const handleToolApproval = useToolApproval(apiBase);
+  const pendingApprovalRequests = useMemo(
+    () =>
+      approvalEvents && approvalEvents.length > 0 && !activeSession.replay
+        ? unansweredApprovalRequests(
+            activeSession.messages,
+            approvalEvents
+              .map((item) => item.event)
+              .filter((event) => Boolean(event.eventId)),
+          )
+        : NO_PENDING_APPROVALS,
+    [activeSession.messages, activeSession.replay, approvalEvents],
+  );
   const sendMessage = useSendMessage(apiBase);
   // The store is already live at the shell; reading its scalar snapshot here
   // avoids adding a second subscription/allocation to every streaming row.
@@ -538,9 +561,7 @@ function ChatMessageListComponent({
       onNewChatFromMessage={
         msg.role === 'user' ? onNewChatFromMessage : undefined
       }
-      onToolApproval={
-        activeSession.replay ? undefined : (handleToolApproval as any)
-      }
+      onToolApproval={activeSession.replay ? undefined : handleToolApproval}
       anchorKey={messageAnchorKey(msg)}
       owner={owner}
       accountableHuman={accountableHuman}
@@ -633,6 +654,8 @@ function ChatMessageListComponent({
                   part.approvalId!,
                   part.toolName || part.name || '',
                   action,
+                  part.approvalThreadId,
+                  part.approvalEventId,
                 )
             : undefined
         }
@@ -813,6 +836,22 @@ function ChatMessageListComponent({
                 </div>
               ))}
           </>
+        )}
+        {!activeSession.replay && pendingApprovalRequests.length > 0 && (
+          <PendingApprovalStrip
+            requests={pendingApprovalRequests}
+            onApprove={(request, action) =>
+              handleToolApproval(
+                activeSession.id,
+                activeSession.agentSlug,
+                request.approvalId ?? '',
+                request.toolName || request.name || '',
+                action,
+                request.approvalThreadId,
+                request.approvalEventId,
+              )
+            }
+          />
         )}
       </div>
       {isUserScrolledUp && (

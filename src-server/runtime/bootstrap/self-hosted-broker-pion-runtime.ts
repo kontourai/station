@@ -15,8 +15,14 @@ import { startPionApplicationAdapter } from '../../services/connections/pion-app
 import { SelfHostedBrokerClient } from '../../services/connections/self-hosted-broker-client.js';
 import { SelfHostedBrokerConnector } from '../../services/connections/self-hosted-broker-connector.js';
 import type { BrokerCredential } from '../../services/connections/self-hosted-broker-service.js';
-import type { VirtualApplication } from '../../services/connections/virtual-application.js';
-import { SelfHostedBrokerRuntime } from './self-hosted-broker-runtime.js';
+import type {
+  VerifiedPionApplicationRequestFacts,
+  VirtualApplication,
+} from '../../services/connections/virtual-application.js';
+import {
+  SelfHostedBrokerRuntime,
+  type SelfHostedBrokerStatus,
+} from './self-hosted-broker-runtime.js';
 
 function fingerprint(sdp: string) {
   const values = [...sdp.matchAll(/^a=fingerprint:sha-256 (.+)$/gm)].map(
@@ -64,6 +70,7 @@ export interface SelfHostedBrokerPionRuntimeInput {
   pollMs: number;
   maxPeerLifetimeMs: number;
   maxPeers: number;
+  observeStatus?: (status: SelfHostedBrokerStatus) => void;
 }
 export interface SelfHostedBrokerPionRuntimeDependencies {
   startAdapter: typeof startPionApplicationAdapter;
@@ -74,12 +81,26 @@ interface PeerEntry {
   adapter: Adapter;
   /** This peer's captured descriptor — never the latest global trust. */
   descriptor: ApprovedStationConnectionTrust;
+  connectionId: string;
+  readonly lifetime: AbortController;
   /** Confirmed resource cleanup (adapter-owned receipt settled). */
   cleanupConfirmed: boolean;
   cleanupError?: unknown;
   operationalError?: unknown;
   serverCloses: Set<() => void>;
   retireTask?: Promise<void>;
+}
+
+const verifiedPionRequests = new WeakMap<
+  Request,
+  VerifiedPionApplicationRequestFacts
+>();
+
+/** Read-only side of the Pion peer's per-Request provenance marker. */
+export function readVerifiedPionApplicationRequest(
+  request: Request,
+): VerifiedPionApplicationRequestFacts | undefined {
+  return verifiedPionRequests.get(request);
 }
 
 export function createSelfHostedBrokerPionRuntime(
@@ -140,6 +161,8 @@ export function createSelfHostedBrokerPionRuntime(
   // completion) join one close/join task instead of launching duplicates.
   // Rejects on unconfirmed cleanup; only confirmed peers release capacity.
   function retireTaskFor(entry: PeerEntry): Promise<void> {
+    if (!entry.lifetime.signal.aborted)
+      entry.lifetime.abort(new Error('broker_runtime_peer_retired'));
     entry.retireTask ??= Promise.resolve().then(async () => {
       for (const closeServer of [...entry.serverCloses]) {
         entry.serverCloses.delete(closeServer);
@@ -224,13 +247,42 @@ export function createSelfHostedBrokerPionRuntime(
     return Object.freeze({
       signal: applicationSignal,
       fetch: async (request: Request) => {
-        if (!trustOwner.isCurrent(entry.descriptor)) {
+        if (
+          entry.lifetime.signal.aborted ||
+          applicationSignal.aborted ||
+          !trustOwner.isCurrent(entry.descriptor)
+        ) {
           retirePeer(entry);
           return Response.json(
             { error: { code: 'broker_trust_retired' } },
             { status: 503, headers: { 'Cache-Control': 'no-store' } },
           );
         }
+        if (
+          request.signal.aborted ||
+          new URL(request.url).origin !== applicationOrigin ||
+          request.headers.get('origin') !== scope.browserOrigin
+        )
+          return Response.json(
+            { error: { code: 'broker_application_origin_forbidden' } },
+            { status: 403, headers: { 'Cache-Control': 'no-store' } },
+          );
+        verifiedPionRequests.set(
+          request,
+          Object.freeze({
+            stationId: entry.descriptor.stationId,
+            connectionEnrollmentId: entry.descriptor.enrollmentId,
+            routingGeneration: entry.descriptor.generation,
+            connectionId: entry.connectionId,
+            stationOrigin: applicationOrigin,
+            browserOrigin: scope.browserOrigin,
+            signal: entry.lifetime.signal,
+            isCurrent: () =>
+              !entry.lifetime.signal.aborted &&
+              !applicationSignal.aborted &&
+              trustOwner.isCurrent(entry.descriptor),
+          }),
+        );
         return applicationFetch(request);
       },
     });
@@ -361,6 +413,8 @@ export function createSelfHostedBrokerPionRuntime(
         const entry: PeerEntry = {
           adapter,
           descriptor: captured,
+          connectionId: offer.clientId,
+          lifetime: new AbortController(),
           cleanupConfirmed: false,
           serverCloses: new Set(),
         };
@@ -398,6 +452,8 @@ export function createSelfHostedBrokerPionRuntime(
           const entry: PeerEntry = {
             adapter,
             descriptor: captured,
+            connectionId: offer.clientId,
+            lifetime: new AbortController(),
             cleanupConfirmed: false,
             serverCloses: new Set(),
           };
@@ -455,5 +511,6 @@ export function createSelfHostedBrokerPionRuntime(
     heartbeatMs,
     renewMs,
     pollMs,
+    observeStatus: input.observeStatus,
   });
 }

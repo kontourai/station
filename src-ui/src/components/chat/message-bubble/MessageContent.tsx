@@ -10,7 +10,7 @@ import { LazyMarkdown } from '../LazyMarkdown';
 import { ReasoningSection } from '../ReasoningSection';
 import { ChatErrorDetails } from '../SystemEventMessage';
 import { ToolCallBatchBoundary } from '../ToolCallBatchBoundary';
-import { ToolCallDisplay } from '../ToolCallDisplay';
+import { type ToolApprovalOutcome, ToolCallDisplay } from '../ToolCallDisplay';
 import { splitToolCallRuns } from '../tool-call-runs';
 import { UIBlockRenderer } from '../UIBlockRenderer';
 
@@ -36,7 +36,7 @@ interface MessageContentProps {
   onToolApproval?: (
     part: MessageContentPart,
     action: 'once' | 'trust' | 'deny',
-  ) => void;
+  ) => Promise<ToolApprovalOutcome>;
 }
 
 function MessageContentComponent({
@@ -72,8 +72,14 @@ function MessageContentComponent({
       toolCall={part as any}
       showDetails={showToolDetails}
       onApprove={
-        isStreamingMessage && part.needsApproval
-          ? (action) => onToolApproval?.(part, action)
+        // #2316: a card bound to its request by the projection answers from
+        // wherever its row sits — the server verifies the exact prompt
+        // (`expectedRequestEventId`), which is what the last-row gate stood
+        // in for. A part without that binding keeps the last-row gate.
+        part.needsApproval && (isStreamingMessage || part.approvalEventId)
+          ? (action) =>
+              onToolApproval?.(part, action) ??
+              Promise.reject(new Error('This chat cannot answer requests.'))
           : undefined
       }
     />

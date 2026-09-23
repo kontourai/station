@@ -119,12 +119,16 @@ const SCAN_EXCLUSIONS = {
     'Same: a mutation naming its own target. The `plugins/` signal is the install destination, not a listing.',
   'POST /acp/registry/:id/install':
     'A mutation naming its own target: it installs the engine connection the caller named and returns that connection, never a listing. The `agent` receipt names the Agent this same mutation created or adopted for THAT connection id — a fact the projected agents list (`GET /api/agents`, the New Chat picker\u2019s own source) already carries — and names no other engine or plugin.',
+  'POST /api/plugin-proposals':
+    'A mutation naming its own target (#2323 S5). Anyone but the operator, as a person, is answered with the proposal id and status alone, new or deduplicated, so a duplicate never hands back another author\u2019s record; it discloses only that an open ask for that target exists, and its id. For an update or remove proposal, a caller other than the operator or Station\u2019s own agents gets one identical 404 whether or not the plugin is installed (review M6); the operator and Station\u2019s agents can already list what is installed. For an install proposal of a local folder, 201 against 400 `manifest-missing` discloses whether that path holds a plugin.json, the same fact `POST /api/plugins/validate` already answers at the same tier. Reading proposals back (`GET /api/plugin-proposals` and `/:id`) is operator-person-only.',
   'DELETE /api/registry/plugins/:id':
     'A mutation addressed by id. The `plugins/` signal is the removal path.',
   'POST /api/plugins/home-role/requests':
     'A mutation: it creates a grant request for a pane the caller named, and returns the transaction, not a catalog. The candidate LIST it is paired with is the enumerator, and that one is projected.',
   'POST /api/plugins/host-approvals':
     'A mutation naming its own target; it returns the approval transaction. The `installed+name` signal is the approval record it writes, not a listing of other plugins.',
+  'POST /api/projects/:slug/plugin-scaffold':
+    'Epic #2323 S2. A mutation naming its own target: it writes a starter plugin under the name the CALLER supplied into that Project\u2019s empty folder, and answers with that same name and the relative files it wrote. It reads no installed plugin, and a member cannot learn the inventory from it: the name it echoes is the one they sent. Its refusals report what is already in the folder only as counts (entryCount, presentCount), never entry names, so it cannot list the operator\u2019s folder either. The `pluginName` signal is its audit log field.',
   'POST /api/projects/:slug/layouts/from-plugin':
     'A mutation applying a plugin layout the caller named to a project. Its lookup is now projected through `projectLayoutCatalogItems` (#2103) — it used to search `listLayouts()` unprojected and answer 404-by-name, which is an existence oracle for a caller guessing names; a hidden plugin and an uninstalled one now get the identical 404. Kept here rather than in the inventory because it is a POST whose 404-vs-201 the inventory test (which drives a bare GET and asserts 200) cannot express.',
   'GET /api/plugins/:name/bundle.js':

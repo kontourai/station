@@ -58,6 +58,7 @@ function openedModals() {
 beforeEach(() => {
   connectionStatus.status = 'connected';
   connectionStatus.reason = null;
+  connectionStatus.failureStreak = 0;
   connectionStatus.recheck.mockClear();
 });
 
@@ -171,6 +172,25 @@ describe('ChatDockMobileConnection', () => {
     expect(button.dataset.connectionState).toBe('error');
     expect(button.textContent).not.toContain('Pair');
     expect(button.querySelector('svg')).toBeNull();
+  });
+
+  // station#2327: the dock hands the coordinator's streak to the indicator,
+  // so a Station busy for about a minute stops reading as merely busy.
+  it('shows a Station busy past the outage streak as an error, not busy', () => {
+    connectionStatus.status = 'error';
+    connectionStatus.reason = 'busy';
+    connectionStatus.failureStreak = 6;
+    const { unmount } = render(<ChatDockMobileConnection />);
+    expect(
+      screen.getByTestId('chat-dock-mobile-connection').dataset.connectionState,
+    ).toBe('busy');
+    unmount();
+
+    connectionStatus.failureStreak = 7;
+    render(<ChatDockMobileConnection />);
+    expect(
+      screen.getByTestId('chat-dock-mobile-connection').dataset.connectionState,
+    ).toBe('error');
   });
 
   it('stays present and quiet while the connection is healthy', () => {
