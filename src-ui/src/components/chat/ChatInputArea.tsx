@@ -669,7 +669,7 @@ export function ChatInputArea({
               engineConnectionId={agentConnectionId}
               toolPolicyDelivery={toolPolicyDelivery}
               sessionOverride={approvalModeOverride?.mode}
-              sessionOverridePending={approvalModeOverride?.pending}
+              sessionOverrideState={approvalModeOverride?.state}
               connectionDefault={approvalModeConnectionDefault}
               stationDefault={approvalModeStationDefault}
               lastAppliedApprovalMode={lastAppliedApprovalMode}

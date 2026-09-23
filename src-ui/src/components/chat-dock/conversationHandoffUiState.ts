@@ -89,6 +89,8 @@ export function acceptConversationHandoffUiState(
     pendingClientTurnId: undefined,
     lastAppliedApprovalMode: undefined,
     pendingApprovalMode: undefined,
+    pendingApprovalPickedAt: undefined,
+    pendingApprovalBehindTurn: undefined,
     approvalModeOverride: undefined,
     isProcessingStep: false,
     error: null,

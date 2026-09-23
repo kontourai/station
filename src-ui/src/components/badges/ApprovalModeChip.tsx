@@ -58,14 +58,10 @@ interface ApprovalModeChipProps {
    */
   lastAppliedApprovalMode?: unknown;
   /**
-   * Whether `sessionOverride` is a pick the engine has not confirmed yet
-   * (#2334). Only used to say so when that pick is STRICTER than the full
-   * access the engine last reported: until the next turn applies it, the
-   * engine still runs with full access, so a bare "Ask" would overclaim in
-   * the dangerous direction. Every other unconfirmed pick keeps the plain
-   * label (station#1933).
+   * How far the engine has shown `sessionOverride` applied (#2334,
+   * `SessionApprovalOverride.state`). Absent keeps the pre-#2334 behaviour.
    */
-  sessionOverridePending?: boolean;
+  sessionOverrideState?: 'requested' | 'unconfirmed' | 'confirmed';
   onChange: (mode: ApprovalMode) => void;
 }
 
@@ -109,7 +105,7 @@ export function ApprovalModeChip({
   connectionDefault,
   stationDefault,
   lastAppliedApprovalMode,
-  sessionOverridePending,
+  sessionOverrideState,
   onChange,
 }: ApprovalModeChipProps) {
   const [isSheetOpen, setIsSheetOpen] = useState(false);
@@ -139,18 +135,27 @@ export function ApprovalModeChip({
   const displayedMode = isOverride
     ? effective.mode
     : (appliedMode ?? effective.mode);
+  // A restored pick with no report for this session is not sent to it
+  // (`approvalModeToSend`), so "takes effect next turn" would be false.
+  const isUnconfirmed = isOverride && sessionOverrideState === 'unconfirmed';
   const isPendingApply =
-    isOverride && effective.mode === 'never' && appliedMode !== 'never';
+    isOverride &&
+    !isUnconfirmed &&
+    effective.mode === 'never' &&
+    appliedMode !== 'never';
   // The reverse gap (#2334): a stricter pick is in flight while the engine
   // still reports full access. Decision recorded against the #1933 pin: ONLY
-  // this case gets a visible "· pending", because a bare "Ask" there would
-  // overclaim in the dangerous direction. Every other unconfirmed pick (e.g.
-  // a pending Ask against an applied `auto`, or a pick reloaded from storage
-  // with no receipt yet) keeps the plain visible label #1933 pins; its
-  // accessible name still says it is not confirmed (`pendingNote` below).
+  // this requested case gets a visible "· pending", because a bare "Ask"
+  // there would overclaim in the dangerous direction. Every other requested
+  // pick (e.g. a pending Ask against an applied `auto`) keeps the plain
+  // visible label #1933 pins; its accessible name still says it is not
+  // confirmed (`pendingNote` below). An UNCONFIRMED pick is shown as such
+  // visibly ("· unconfirmed"): it is never resent to a live session, and
+  // another device may have set that session to anything, including full
+  // access, so a bare label could overclaim in the dangerous direction.
   const isPendingRestrict =
     isOverride &&
-    sessionOverridePending === true &&
+    sessionOverrideState === 'requested' &&
     effective.mode !== 'never' &&
     appliedMode === 'never';
   // What is true of an unconfirmed pick on every send path. Not "until the
@@ -159,9 +164,11 @@ export function ApprovalModeChip({
   // when the pick applied.
   const pendingNote = isPendingRestrict
     ? 'the engine still reports full access'
-    : isOverride && sessionOverridePending === true && !isPendingApply
-      ? 'requested, not yet confirmed by the engine'
-      : undefined;
+    : isUnconfirmed
+      ? 'not confirmed for this session'
+      : isOverride && sessionOverrideState === 'requested' && !isPendingApply
+        ? 'requested, not yet confirmed by the engine'
+        : undefined;
 
   // Full text for assistive tech and hover; the pill itself shows the short
   // form so it stops clipping at 390px (archive#1010).
@@ -174,8 +181,8 @@ export function ApprovalModeChip({
         : effective.label;
   const chipText = isPendingApply
     ? `${approvalModeChipLabel('never')} · pending`
-    : isPendingRestrict
-      ? `${approvalModeChipLabel(displayedMode)} · pending`
+    : isPendingRestrict || isUnconfirmed
+      ? `${approvalModeChipLabel(displayedMode)} · ${isUnconfirmed ? 'unconfirmed' : 'pending'}`
       : isOverride
         ? approvalModeChipLabel(displayedMode)
         : 'Default';
@@ -189,7 +196,7 @@ export function ApprovalModeChip({
         ref={triggerRef}
         type="button"
         className={`choice-trigger chat-input__approval-chip ${
-          isPendingApply || isPendingRestrict
+          isPendingApply || isPendingRestrict || isUnconfirmed
             ? 'chat-input__approval-chip--pending'
             : isOverride
               ? 'chat-input__approval-chip--override'
@@ -205,7 +212,7 @@ export function ApprovalModeChip({
         aria-label={
           isPendingApply
             ? `Approval mode: ${chipText} — takes effect next turn. Engine approval control. ${policyDisclosure}`
-            : `Approval mode: ${isPendingRestrict ? `${chipText} — ${pendingNote}` : accessibleLabel}. Engine approval control. ${policyDisclosure}`
+            : `Approval mode: ${isPendingRestrict || isUnconfirmed ? `${chipText} — ${pendingNote}` : accessibleLabel}. Engine approval control. ${policyDisclosure}`
         }
         title={`Approval mode: ${selectedLabel}. ${policyDisclosure}`}
         onClick={() => setIsSheetOpen((open) => !open)}

@@ -11,6 +11,7 @@ import {
   replaceModelControlOptions,
 } from '../../utils/modelCapabilities';
 import { finalizeAssistantTurn } from './assistantTurn';
+import { eventStreamPosition } from './streamPosition';
 import type { OrchestrationEvent } from './types';
 
 export function handleSessionLifecycleEvent(
@@ -48,7 +49,11 @@ export function handleSessionLifecycleEvent(
     orchestrationSessionStarted: true,
     ...(approvalMode ? { lastAppliedApprovalMode: approvalMode } : {}),
     // A report settles the pending approval pick only when it matches (#2334).
-    ...settleApprovalPick(currentChat, approvalMode),
+    ...settleApprovalPick(
+      currentChat,
+      approvalMode,
+      eventStreamPosition(event),
+    ),
     ...(event.method === 'session.configured' &&
     typeof event.metadata?.acpSessionMode === 'string'
       ? { currentModeId: event.metadata.acpSessionMode }

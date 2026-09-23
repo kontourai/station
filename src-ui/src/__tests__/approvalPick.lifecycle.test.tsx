@@ -109,6 +109,7 @@ import { handleOrchestrationEvent } from '../hooks/orchestration/eventHandlers';
 import { useSendMessage } from '../hooks/useActiveChatSessionMessaging';
 import { useChatInput } from '../hooks/useChatInput';
 import { sessionApprovalOverride } from '../utils/approvalMode';
+import { chatSessionIsLive } from '../utils/execution';
 import type { SelectableModel } from '../utils/modelCapabilities';
 
 const SESSION_ID = 'approval-pick-session';
@@ -125,33 +126,61 @@ const modelY: SelectableModel = {
 
 type OrchestrationEventInput = Parameters<typeof handleOrchestrationEvent>[1];
 let clock = 0;
+/**
+ * The server's stream sequence, as the SSE frame id carries it. Never reset:
+ * the client's latest-seen position is per Station and outlives a test.
+ */
+let streamSeq = 1000;
 
-function fold(event: Record<string, unknown>) {
+/**
+ * Folds one event as the stream delivers it: with the next server position,
+ * unless the test names one (a report delivered out of order).
+ */
+function fold(event: Record<string, unknown>, position = ++streamSeq) {
   clock += 1;
-  handleOrchestrationEvent('http://station.test', {
-    provider: 'codex',
-    threadId: SESSION_ID,
-    createdAt: new Date(Date.UTC(2026, 8, 22, 0, 0, clock)).toISOString(),
-    ...event,
-  } as OrchestrationEventInput);
+  handleOrchestrationEvent(
+    'http://station.test',
+    {
+      provider: 'codex',
+      threadId: SESSION_ID,
+      createdAt: new Date(Date.UTC(2026, 8, 22, 0, 0, clock)).toISOString(),
+      ...event,
+    } as OrchestrationEventInput,
+    undefined,
+    undefined,
+    position,
+  );
 }
 
-/** A turn.started reporting the model and the approval posture applied. */
+/**
+ * A turn.started reporting the model and the approval posture applied
+ * (`undefined`: the engine reported no posture).
+ */
 function turnStarted(
   turnId: string,
-  applied: string,
+  applied: string | undefined,
   effectiveModelOptions: Record<string, unknown> = {},
   effectiveModel = 'model-x',
+  position?: number,
 ) {
-  fold({
-    method: 'turn.started',
-    turnId,
-    metadata: {
-      approvalMode: applied,
-      effectiveModel,
-      effectiveModelOptions,
+  fold(
+    {
+      method: 'turn.started',
+      turnId,
+      metadata: {
+        ...(applied ? { approvalMode: applied } : {}),
+        effectiveModel,
+        effectiveModelOptions,
+      },
     },
-  });
+    position,
+  );
+}
+
+/** Another device's turn on the same session, reporting its posture. */
+function otherDeviceTurn(turnId: string, applied: string) {
+  turnStarted(turnId, applied);
+  turnCompleted(turnId);
 }
 
 function turnCompleted(turnId: string) {
@@ -218,7 +247,7 @@ function renderPill() {
     <ApprovalModeChip
       engineConnectionId="codex"
       sessionOverride={override?.mode}
-      sessionOverridePending={override?.pending}
+      sessionOverrideState={override?.state}
       lastAppliedApprovalMode={current.lastAppliedApprovalMode}
       onChange={vi.fn()}
     />,
@@ -261,7 +290,7 @@ describe('an approval pick beside the model options (#2334)', () => {
     vi.clearAllMocks();
   });
 
-  test('the reported symptom: a confirmed Never ask reads Full access, not Default', async () => {
+  test('probe A, the reported symptom: a confirmed Never ask reads Full access, not Default', async () => {
     const { composer, step, send } = renderComposer();
     // Model X is picked first so the turn.started below ACKNOWLEDGES the
     // request and clears the request bag: the step that used to discard the
@@ -277,7 +306,228 @@ describe('an approval pick beside the model options (#2334)', () => {
     expect(renderPill().text).toBe('Full access');
   });
 
-  test('revoke, then switch model: full access is not resent', async () => {
+  test('a confirmed pick is NOT resent to a live session', async () => {
+    const { composer, step, send } = renderComposer();
+    step(() => composer.result.current.handleModelSelect(modelX));
+    step(() => composer.result.current.handleApprovalModeChange('auto'));
+    expect((await send())?.options?.approvalMode).toBe('auto');
+    step(() => turnStarted('t1', 'auto'));
+    step(() => turnCompleted('t1'));
+    expect(chat().approvalModeOverride).toBe('auto');
+    expect(chatSessionIsLive(chat())).toBe(true);
+
+    // The engine holds its own posture; re-asserting it could override a
+    // newer decision made elsewhere.
+    expect((await send())?.options ?? {}).not.toHaveProperty('approvalMode');
+    expect(renderPill().text).toBe('Auto');
+  });
+
+  test('probe B: a report of the dispatch already in flight when the user picked is stale, and keeps the pick', async () => {
+    const { composer, step, send } = renderComposer();
+    step(() => composer.result.current.handleModelSelect(modelX));
+    step(() => composer.result.current.handleApprovalModeChange('never'));
+    await send();
+    // Turn 1 is in flight (no turn.started yet) when the user tightens.
+    expect(chat().pendingClientTurnId).toBeDefined();
+    step(() => composer.result.current.handleApprovalModeChange('ask'));
+    // Turn 1's report arrives AFTER the pick on the stream, but describes
+    // the send made before it.
+    step(() => turnStarted('t1', 'never'));
+
+    expect(chat().pendingApprovalMode).toBe('ask');
+    expect(chat().approvalModeOverride).toBeUndefined();
+    const pending = renderPill();
+    expect(pending.text).toBe('Ask · pending');
+    expect(pending.name).toMatch(/the engine still reports full access/);
+
+    step(() => turnCompleted('t1'));
+    expect((await send())?.options?.approvalMode).toBe('ask');
+    step(() => turnStarted('t2', 'ask'));
+    expect(chat().pendingApprovalMode).toBeUndefined();
+    expect(chat().approvalModeOverride).toBe('ask');
+    expect(renderPill().text).toBe('Ask');
+  });
+
+  test('a report from an older stream position than the pick is stale, and keeps the pick', async () => {
+    const { composer, step } = renderComposer();
+    step(() => composer.result.current.handleModelSelect(modelX));
+    otherDeviceTurn('t0', 'auto');
+    const seenAtPick = streamSeq;
+    step(() => composer.result.current.handleApprovalModeChange('never'));
+    expect(chat().pendingApprovalPickedAt).toBe(seenAtPick);
+    // Delivered late (e.g. held by the delivery buffer), from before the pick.
+    step(() => turnStarted('t-old', 'ask', {}, 'model-x', seenAtPick - 1));
+    expect(chat().pendingApprovalMode).toBe('never');
+  });
+
+  test('probe G: a newer differing report retires a pending pick (the phone decided later)', async () => {
+    const { composer, step, send } = renderComposer();
+    step(() => composer.result.current.handleModelSelect(modelX));
+    // The desktop picks full access but does not send.
+    step(() => composer.result.current.handleApprovalModeChange('never'));
+    // The phone then applies Ask on the same session.
+    step(() => otherDeviceTurn('phone-1', 'ask'));
+
+    expect(chat().pendingApprovalMode).toBeUndefined();
+    expect(chat().approvalModeOverride).toBeUndefined();
+    // The desktop's next send does not override the newer decision.
+    expect((await send())?.options ?? {}).not.toHaveProperty('approvalMode');
+  });
+
+  test('a newer differing report retires a pending pick in the other direction too', async () => {
+    const { composer, step, send } = renderComposer();
+    step(() => composer.result.current.handleModelSelect(modelX));
+    step(() => composer.result.current.handleApprovalModeChange('ask'));
+    step(() => otherDeviceTurn('phone-1', 'never'));
+
+    expect(chat().pendingApprovalMode).toBeUndefined();
+    // Latest wins: the phone's later full access is not reverted from here.
+    expect((await send())?.options ?? {}).not.toHaveProperty('approvalMode');
+    expect(renderPill().text).toBe('Default');
+  });
+
+  test('probe E: a revoke on another device retires the confirmed pick; nothing re-escalates', async () => {
+    const { composer, step, send } = renderComposer();
+    step(() => composer.result.current.handleModelSelect(modelX));
+    step(() => composer.result.current.handleApprovalModeChange('never'));
+    await send();
+    step(() => turnStarted('t1', 'never'));
+    step(() => turnCompleted('t1'));
+    expect(chat().approvalModeOverride).toBe('never');
+
+    step(() => otherDeviceTurn('phone-1', 'ask'));
+    expect(chat().approvalModeOverride).toBeUndefined();
+    expect(chat().pendingApprovalMode).toBeUndefined();
+    expect((await send())?.options ?? {}).not.toHaveProperty('approvalMode');
+    expect(reload()).not.toHaveProperty('approvalModeOverride');
+    expect(renderPill().text).toBe('Default');
+  });
+
+  test('probe E2: confirmed never, reload, then the phone applies Ask: the desktop does not resend never', async () => {
+    const { composer, step, send } = renderComposer();
+    step(() => composer.result.current.handleModelSelect(modelX));
+    step(() => composer.result.current.handleApprovalModeChange('never'));
+    await send();
+    step(() => turnStarted('t1', 'never'));
+    step(() => turnCompleted('t1'));
+    composer.unmount();
+
+    // Persisted as confirmed, not as a pending request.
+    expect(reload()).toMatchObject({ approvalModeOverride: 'never' });
+    expect(chat().pendingApprovalMode).toBeUndefined();
+    markSessionLive();
+    const fresh = renderComposer();
+    fresh.step(() => otherDeviceTurn('phone-1', 'ask'));
+    expect(chat().approvalModeOverride).toBeUndefined();
+    expect((await fresh.send())?.options ?? {}).not.toHaveProperty(
+      'approvalMode',
+    );
+  });
+
+  test('probe E3: after a reload with no report yet, a live session is not sent the confirmed pick', async () => {
+    const { composer, step, send } = renderComposer();
+    step(() => composer.result.current.handleModelSelect(modelX));
+    step(() => composer.result.current.handleApprovalModeChange('never'));
+    await send();
+    step(() => turnStarted('t1', 'never'));
+    step(() => turnCompleted('t1'));
+    composer.unmount();
+
+    reload();
+    // The phone tightened while this tab was closed; this client never saw
+    // that report. The reconnect snapshot says the session is live.
+    markSessionLive();
+    const fresh = renderComposer();
+    fresh.step(() => {});
+    expect((await fresh.send())?.options ?? {}).not.toHaveProperty(
+      'approvalMode',
+    );
+    // The chip says the pick is not confirmed for this session, visibly: the
+    // engine may be anywhere, including stricter or looser.
+    const pill = renderPill();
+    expect(pill.text).toBe('Full access · unconfirmed');
+    expect(pill.name).toMatch(/not confirmed for this session/);
+  });
+
+  test('a confirmed pick IS applied when a new session starts after a reload (Station default never)', async () => {
+    // The old session ended; the reloaded chat's next send starts a new one.
+    stationConfig.current = { defaultApprovalMode: 'never' };
+    try {
+      const { composer, step, send } = renderComposer();
+      step(() => composer.result.current.handleModelSelect(modelX));
+      step(() => composer.result.current.handleApprovalModeChange('ask'));
+      await send();
+      step(() => turnStarted('t1', 'ask'));
+      step(() => turnCompleted('t1'));
+      step(() => fold({ method: 'session.exited', exitCode: 0 }));
+      composer.unmount();
+
+      reload();
+      expect(chatSessionIsLive(chat())).toBe(false);
+      const fresh = renderComposer();
+      fresh.step(() => {});
+      const pill = renderPill();
+      expect(pill.text).toBe('Ask · unconfirmed');
+      expect(pill.name).toMatch(
+        /^Approval mode: Ask · unconfirmed — not confirmed for this session\./,
+      );
+      expect((await fresh.send())?.options?.approvalMode).toBe('ask');
+    } finally {
+      stationConfig.current = undefined;
+    }
+  });
+
+  test('control: with no pick, that fresh session starts at the Station default', async () => {
+    stationConfig.current = { defaultApprovalMode: 'never' };
+    try {
+      const { send } = renderComposer();
+      expect((await send())?.options?.approvalMode).toBe('never');
+    } finally {
+      stationConfig.current = undefined;
+    }
+  });
+
+  test('a pending pick survives a reload with its stream position, and a later report still retires it', () => {
+    const { composer, step } = renderComposer();
+    step(() => composer.result.current.handleModelSelect(modelX));
+    step(() => composer.result.current.handleApprovalModeChange('never'));
+    const pickedAt = chat().pendingApprovalPickedAt;
+    expect(pickedAt).toBeDefined();
+    composer.unmount();
+
+    expect(reload()).toMatchObject({
+      pendingApprovalMode: 'never',
+      pendingApprovalPickedAt: pickedAt,
+    });
+    otherDeviceTurn('phone-1', 'ask');
+    expect(chat().pendingApprovalMode).toBeUndefined();
+  });
+
+  test('probe H: a genuine Default pick clears the pick; neither a live nor a new session is sent one', async () => {
+    const { composer, step, send } = renderComposer();
+    step(() => composer.result.current.handleModelSelect(modelX));
+    step(() => composer.result.current.handleApprovalModeChange('auto'));
+    await send();
+    step(() => turnStarted('t1', 'auto'));
+    step(() => turnCompleted('t1'));
+    step(() =>
+      composer.result.current.handleApprovalModeChange('connection-default'),
+    );
+    expect(chat().approvalModeOverride).toBeUndefined();
+    expect(chat().pendingApprovalMode).toBeUndefined();
+    // Live session: no posture sent. On Claude that leaves the engine where
+    // it is (#2409); this pins only that no pick is asserted.
+    expect((await send())?.options ?? {}).not.toHaveProperty('approvalMode');
+    composer.unmount();
+
+    reload();
+    const fresh = renderComposer();
+    expect((await fresh.send())?.options ?? {}).not.toHaveProperty(
+      'approvalMode',
+    );
+  });
+
+  test('probe C: revoke, then switch model: full access is not resent', async () => {
     const { composer, step, send } = renderComposer();
     step(() => composer.result.current.handleModelSelect(modelX));
     step(() => composer.result.current.handleApprovalModeChange('never'));
@@ -311,40 +561,9 @@ describe('an approval pick beside the model options (#2334)', () => {
     expect(pill.name).toMatch(/^Approval mode: Default — /);
   });
 
-  test('a stale report after a stricter pick neither drops nor confirms it', async () => {
+  test('a Default pick of a pending pick settles immediately and sends no posture', async () => {
     const { composer, step, send } = renderComposer();
     step(() => composer.result.current.handleModelSelect(modelX));
-    step(() => composer.result.current.handleApprovalModeChange('never'));
-    await send();
-    // Before turn 1's report lands, the user tightens the posture.
-    step(() => composer.result.current.handleApprovalModeChange('ask'));
-    // The report describes turn 1: model X acknowledged, 'never' applied.
-    step(() => turnStarted('t1', 'never'));
-
-    expect(chat().requestedProviderOptions).toBeUndefined();
-    expect(chat().pendingApprovalMode).toBe('ask');
-    expect(chat().approvalModeOverride).toBeUndefined();
-    expect(chat().lastAppliedApprovalMode).toBe('never');
-    // The engine still runs with full access; the pill says the stricter
-    // pick is not in effect yet (the #2334 decision on the #1933 pin).
-    const pending = renderPill();
-    expect(pending.text).toBe('Ask · pending');
-    expect(pending.name).toMatch(/the engine still reports full access/);
-
-    step(() => turnCompleted('t1'));
-    expect((await send())?.options?.approvalMode).toBe('ask');
-
-    // That turn's report settles it.
-    step(() => turnStarted('t2', 'ask'));
-    expect(chat().pendingApprovalMode).toBeUndefined();
-    expect(chat().approvalModeOverride).toBe('ask');
-    expect(renderPill().text).toBe('Ask');
-  });
-
-  test('a Default pick settles immediately and sends no posture', async () => {
-    const { composer, step, send } = renderComposer();
-    step(() => composer.result.current.handleModelSelect(modelX));
-    // A pending pick that is then withdrawn before any turn confirms it.
     step(() => composer.result.current.handleApprovalModeChange('auto'));
     expect(chat().pendingApprovalMode).toBe('auto');
     step(() =>
@@ -352,15 +571,9 @@ describe('an approval pick beside the model options (#2334)', () => {
     );
     expect(chat().pendingApprovalMode).toBeUndefined();
     expect(chat().approvalModeOverride).toBeUndefined();
-
-    // Nothing is left to settle, and the send carries the model request
-    // without inventing a posture (no Station/connection default here).
     const wire = await send();
     expect(wire?.override).toBe('model-x');
     expect(wire?.options ?? {}).not.toHaveProperty('approvalMode');
-    step(() => turnStarted('t1', 'ask'));
-    expect(chat().requestedModel).toBeUndefined();
-    expect(chat().pendingApprovalMode).toBeUndefined();
     expect(renderPill().text).toBe('Default');
   });
 
@@ -379,16 +592,13 @@ describe('an approval pick beside the model options (#2334)', () => {
       approvalMode: 'never',
     });
 
-    // The report acknowledges the model and its controls but not the pick
-    // (a refusal-free engine that has not applied it yet).
-    step(() => turnStarted('t1', 'ask', { effort: 'high' }));
+    // The report acknowledges the model and its controls, and reports no
+    // posture, so the pick is still pending.
+    step(() => turnStarted('t1', undefined, { effort: 'high' }));
     step(() => turnCompleted('t1'));
     expect(chat().requestedProviderOptions).toBeUndefined();
     expect(chat().providerOptions).toEqual({ effort: 'high' });
     expect(chat().pendingApprovalMode).toBe('never');
-
-    // The next send still carries both: the effort from the confirmed bag,
-    // the pick from its own field.
     expect((await send())?.options).toEqual({
       effort: 'high',
       approvalMode: 'never',
@@ -405,8 +615,6 @@ describe('an approval pick beside the model options (#2334)', () => {
     expect(chat().requestedProviderOptions).toBeUndefined();
     expect(chat().pendingApprovalMode).toBe('ask');
     expect(renderPill().text).toBe('Ask');
-
-    // The default-model send drops every model override but keeps the pick.
     const wire = await send();
     expect(wire?.override).toBeUndefined();
     expect(wire?.options).toEqual({ approvalMode: 'ask' });
@@ -440,124 +648,6 @@ describe('an approval pick beside the model options (#2334)', () => {
     expect(chat().providerOptions?.approvalMode).toBeUndefined();
     expect(renderPill().text).toBe('Default');
     expect((await send())?.options ?? {}).not.toHaveProperty('approvalMode');
-  });
-
-  test('with nothing pending, a LOOSER report moves the confirmed pick back to pending', async () => {
-    const { composer, step, send } = renderComposer();
-    step(() => composer.result.current.handleModelSelect(modelX));
-    step(() => composer.result.current.handleApprovalModeChange('ask'));
-    await send();
-    step(() => turnStarted('t1', 'ask'));
-    step(() => turnCompleted('t1'));
-    expect(chat().approvalModeOverride).toBe('ask');
-    // A confirmed pick is resent every turn, like the rest of the override
-    // bag the adapters expect.
-    expect((await send())?.options?.approvalMode).toBe('ask');
-
-    // A report looser than the pick may be stale. It is not proof the pick is
-    // gone, so the pick is re-requested and must be re-confirmed rather than
-    // dropped (which would leave the session looser than the user chose).
-    step(() => turnStarted('t2', 'auto'));
-    step(() => turnCompleted('t2'));
-    expect(chat().approvalModeOverride).toBeUndefined();
-    expect(chat().pendingApprovalMode).toBe('ask');
-    expect((await send())?.options?.approvalMode).toBe('ask');
-    step(() => turnStarted('t3', 'ask'));
-    expect(chat().pendingApprovalMode).toBeUndefined();
-    expect(chat().approvalModeOverride).toBe('ask');
-  });
-
-  test('probe E: a STRICTER report (a revoke on another device) retires the pick and is never re-escalated', async () => {
-    const { composer, step, send } = renderComposer();
-    // Desktop confirms full access.
-    step(() => composer.result.current.handleModelSelect(modelX));
-    step(() => composer.result.current.handleApprovalModeChange('never'));
-    await send();
-    step(() => turnStarted('t1', 'never'));
-    step(() => turnCompleted('t1'));
-    expect(chat().approvalModeOverride).toBe('never');
-
-    // A phone's turn applies Ask on the same session.
-    step(() => turnStarted('t2', 'ask'));
-    step(() => turnCompleted('t2'));
-    expect(chat().approvalModeOverride).toBeUndefined();
-    expect(chat().pendingApprovalMode).toBeUndefined();
-
-    // The desktop's next send does not put the session back into bypass…
-    expect((await send())?.options ?? {}).not.toHaveProperty('approvalMode');
-    // …and nothing survives a reload to do it later.
-    const persisted = hydrateActiveChats(
-      serializeActiveChats(activeChatsStore.getSnapshot()),
-    )[SESSION_ID];
-    expect(persisted?.pendingApprovalMode).toBeUndefined();
-    // The pill shows the engine's receipt, not the revoked pick.
-    expect(renderPill().text).toBe('Default');
-  });
-
-  /** A reload: serialize to storage and hydrate back into the store. */
-  function reload() {
-    const rehydrated = hydrateActiveChats(
-      serializeActiveChats(activeChatsStore.getSnapshot()),
-    )[SESSION_ID];
-    activeChatsStore.removeChat(SESSION_ID);
-    activeChatsStore.initChat(SESSION_ID, {
-      agentSlug: 'codex',
-      agentName: 'Codex',
-      title: 'Approval pick chat',
-    });
-    activeChatsStore.updateChat(SESSION_ID, rehydrated!);
-    return rehydrated!;
-  }
-
-  test('a reload turns a confirmed pick into a pending one; a pending one stays pending', () => {
-    activeChatsStore.updateChat(SESSION_ID, { approvalModeOverride: 'ask' });
-    expect(reload()).toMatchObject({ pendingApprovalMode: 'ask' });
-    expect(chat().approvalModeOverride).toBeUndefined();
-
-    activeChatsStore.updateChat(SESSION_ID, {
-      pendingApprovalMode: 'auto',
-      approvalModeOverride: 'ask',
-    });
-    expect(reload()).toMatchObject({ pendingApprovalMode: 'auto' });
-  });
-
-  test('a confirmed Ask survives a reload under a Station default of never, and the next send carries Ask', async () => {
-    stationConfig.current = { defaultApprovalMode: 'never' };
-    try {
-      const { composer, step, send } = renderComposer();
-      step(() => composer.result.current.handleModelSelect(modelX));
-      step(() => composer.result.current.handleApprovalModeChange('ask'));
-      await send();
-      step(() => turnStarted('t1', 'ask'));
-      step(() => turnCompleted('t1'));
-      expect(chat().approvalModeOverride).toBe('ask');
-      composer.unmount();
-
-      reload();
-      // Nothing about the fresh session is known yet.
-      expect(chat().lastAppliedApprovalMode).toBeUndefined();
-      const fresh = renderComposer();
-      fresh.step(() => {});
-      // The chip names the pick, and does not claim it applied.
-      const pill = renderPill();
-      expect(pill.text).toBe('Ask');
-      expect(pill.name).toMatch(
-        /^Approval mode: Ask first — requested, not yet confirmed by the engine\./,
-      );
-      expect((await fresh.send())?.options?.approvalMode).toBe('ask');
-    } finally {
-      stationConfig.current = undefined;
-    }
-  });
-
-  test('control: with no pick, that fresh session starts at the Station default', async () => {
-    stationConfig.current = { defaultApprovalMode: 'never' };
-    try {
-      const { send } = renderComposer();
-      expect((await send())?.options?.approvalMode).toBe('never');
-    } finally {
-      stationConfig.current = undefined;
-    }
   });
 
   /**
@@ -610,11 +700,8 @@ describe('an approval pick beside the model options (#2334)', () => {
     );
     step(() => composer.result.current.handleApprovalModeChange('never'));
     const snapshot = queuedSnapshot();
-    // Offline, the user tightens the posture before the queue flushes.
     step(() => composer.result.current.handleApprovalModeChange('ask'));
 
-    // The message content (model, controls) is the snapshot's; the posture
-    // is the chat's current one.
     expect(await replay(sender.result, snapshot)).toEqual({
       effort: 'low',
       approvalMode: 'ask',
@@ -631,7 +718,7 @@ describe('an approval pick beside the model options (#2334)', () => {
     expect((await replay(sender.result, snapshot))?.approvalMode).toBe('auto');
   });
 
-  test('a queued follow-up drained after the turn carries the stricter pick', async () => {
+  test('probe D: a queued follow-up drained after the turn carries the stricter pick', async () => {
     const { composer, step, sender } = renderComposer();
     step(() => composer.result.current.handleModelSelect(modelX));
     step(() => composer.result.current.handleApprovalModeChange('never'));
@@ -661,5 +748,34 @@ describe('an approval pick beside the model options (#2334)', () => {
     };
     expect(target.message).toBe('follow-up');
     expect(target.target.model?.options?.approvalMode).toBe('ask');
+    // The drained follow-up is marked in flight, so a pick made now knows
+    // its report predates the pick.
+    expect(chat().pendingClientTurnId).toBeDefined();
   });
+
+  /** A reload: serialize to storage and hydrate back into the store. */
+  function reload() {
+    const rehydrated = hydrateActiveChats(
+      serializeActiveChats(activeChatsStore.getSnapshot()),
+    )[SESSION_ID];
+    activeChatsStore.removeChat(SESSION_ID);
+    activeChatsStore.initChat(SESSION_ID, {
+      agentSlug: 'codex',
+      agentName: 'Codex',
+      title: 'Approval pick chat',
+    });
+    activeChatsStore.updateChat(SESSION_ID, rehydrated!);
+    return rehydrated!;
+  }
+
+  /** What the reconnect snapshot establishes: the session is running. */
+  function markSessionLive() {
+    fold({
+      method: 'session.state-changed',
+      sessionId: SESSION_ID,
+      from: 'starting',
+      to: 'idle',
+    });
+    expect(chatSessionIsLive(chat())).toBe(true);
+  }
 });

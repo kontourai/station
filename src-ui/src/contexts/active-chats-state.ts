@@ -351,11 +351,18 @@ export type ChatUIState = {
    * (utils/approvalMode.ts). Persisted: it is a request, like the bag.
    */
   pendingApprovalMode?: ApprovalMode;
+  /** See `ApprovalPickState` (utils/approvalMode.ts, #2334). Persisted. */
+  pendingApprovalPickedAt?: number;
   /**
-   * An approval pick the engine confirmed applying on this chat's session
-   * (#2334). Persisted only as a PENDING pick (`serializeActiveChats`): like
-   * `lastAppliedApprovalMode` it is a receipt about a live session that a
-   * reload cannot re-verify, so it comes back as a request to re-confirm.
+   * See `ApprovalPickState`. Not persisted: the dispatch it names does not
+   * survive a reload.
+   */
+  pendingApprovalBehindTurn?: string;
+  /**
+   * An approval pick a report showed the engine applying (#2334). Persisted
+   * as confirmed: it is never resent to a live session, only used to start a
+   * new one (`approvalModeToSend`), so restoring it cannot override a newer
+   * decision made on another device.
    */
   approvalModeOverride?: ApprovalMode;
   orchestrationSessionStarted?: boolean;
@@ -543,6 +550,8 @@ export type PersistedActiveChat = {
   requestedProviderOptions?: Record<string, unknown>;
   /** See ChatUIState.pendingApprovalMode (#2334). */
   pendingApprovalMode?: ApprovalMode;
+  pendingApprovalPickedAt?: number;
+  approvalModeOverride?: ApprovalMode;
   defaultModel?: string;
   defaultModelSource?: EffectiveModelSource;
   projectSlug?: string;
@@ -714,7 +723,15 @@ export function hydrateActiveChats(
       requestedModelSource: session.requestedModelSource,
       requestedProviderOptions: session.requestedProviderOptions,
       ...(session.pendingApprovalMode
-        ? { pendingApprovalMode: session.pendingApprovalMode }
+        ? {
+            pendingApprovalMode: session.pendingApprovalMode,
+            ...(session.pendingApprovalPickedAt !== undefined
+              ? { pendingApprovalPickedAt: session.pendingApprovalPickedAt }
+              : {}),
+          }
+        : {}),
+      ...(session.approvalModeOverride
+        ? { approvalModeOverride: session.approvalModeOverride }
         : {}),
       defaultModel: session.defaultModel,
       defaultModelSource: session.defaultModelSource,
@@ -854,16 +871,20 @@ export function serializeActiveChats(
       requestedModel: chat.requestedModel,
       requestedModelSource: chat.requestedModelSource,
       requestedProviderOptions: chat.requestedProviderOptions,
-      // #2334: a confirmed pick is a receipt about THIS process's session;
-      // a reload cannot re-verify it. It is persisted as a pending pick
-      // instead, so the next send re-requests it and a report re-confirms
-      // it. Dropping it would let a fresh session start at the default,
-      // which may be looser (e.g. a Station default of `never`).
-      ...((chat.pendingApprovalMode ?? chat.approvalModeOverride)
+      // #2334: both picks survive a reload as what they are. The confirmed
+      // one starts a fresh session in the user's posture (never resent to a
+      // live one); the pending one keeps its stream position, so a report
+      // made after it still retires it.
+      ...(chat.pendingApprovalMode
         ? {
-            pendingApprovalMode:
-              chat.pendingApprovalMode ?? chat.approvalModeOverride,
+            pendingApprovalMode: chat.pendingApprovalMode,
+            ...(chat.pendingApprovalPickedAt !== undefined
+              ? { pendingApprovalPickedAt: chat.pendingApprovalPickedAt }
+              : {}),
           }
+        : {}),
+      ...(chat.approvalModeOverride
+        ? { approvalModeOverride: chat.approvalModeOverride }
         : {}),
       defaultModel: chat.defaultModel,
       defaultModelSource: chat.defaultModelSource,
@@ -967,6 +988,7 @@ export function mergeChatUpdates(
     'requestedProviderOptions' in nextUpdates ||
     'pendingApprovalMode' in nextUpdates ||
     'approvalModeOverride' in nextUpdates ||
+    'pendingApprovalPickedAt' in nextUpdates ||
     'defaultModel' in nextUpdates ||
     'defaultModelSource' in nextUpdates ||
     'provider' in nextUpdates ||

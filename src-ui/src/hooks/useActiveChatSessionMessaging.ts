@@ -34,7 +34,7 @@ import type {
 import type { ComposerAttachmentStageSnapshot, FileAttachment } from '../types';
 import {
   approvalModeForDispatch,
-  sessionApprovalOverride,
+  approvalModeToSend,
 } from '../utils/approvalMode';
 import {
   type ChatErrorTranslation,
@@ -371,11 +371,13 @@ export function useSendMessage(
         });
         // The approval pick travels beside the model options (#2334). It is
         // session posture, not message content: a replayed turn sends the
-        // chat's CURRENT pick, never the one it was queued with, so a
-        // stricter pick made while offline is never overtaken by an older,
-        // looser one (the user's latest wish wins either way).
-        const dispatchedApprovalOverride =
-          sessionApprovalOverride(currentState)?.mode;
+        // chat's CURRENT pick, never the one it was queued with. A confirmed
+        // pick goes only to a session this send starts; a live session holds
+        // its own posture (see `approvalModeToSend`).
+        const dispatchedApprovalOverride = approvalModeToSend(
+          currentState,
+          chatSessionIsLive(currentState),
+        );
         const receipt = await dispatchForeground({
           apiBase,
           sessionId,

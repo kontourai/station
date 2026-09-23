@@ -173,6 +173,26 @@ describe('ensureOrchestrationEventStream — turn provenance sibling (station#14
     expect(passedProvenance).toEqual(provenance);
   });
 
+  it('passes the frame id as the event stream position (#2334)', async () => {
+    // The approval-pick model orders a report against the user's pick by
+    // this server sequence, never by a clock.
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        openSseResponseWithOneFrame(orchestrationEventFrame('41')),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+
+    ensureOrchestrationEventStream(
+      'https://ensure-orchestration-position.example.test',
+    );
+    await vi.waitFor(() =>
+      expect(handleOrchestrationEvent).toHaveBeenCalledTimes(1),
+    );
+
+    expect(handleOrchestrationEvent.mock.calls[0]?.[4]).toBe(41);
+  });
+
   it('passes undefined when the frame carries no sibling', async () => {
     const fetchMock = vi
       .fn()

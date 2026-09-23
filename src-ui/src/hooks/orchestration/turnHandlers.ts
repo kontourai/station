@@ -27,6 +27,7 @@ import { finalizeAssistantTurn } from './assistantTurn';
 import { createAssistantStreamingMessage } from './messageParts';
 import { drainQueuedMessageOnTurnCompleted } from './queueDrain';
 import { isReplayThread } from './replay/replay-registry';
+import { eventStreamPosition } from './streamPosition';
 import type { OrchestrationEvent } from './types';
 
 function repeatedErrorText(message: string, count: number) {
@@ -231,7 +232,11 @@ export function handleTurnStartedEvent(
     ...(approvalMode ? { lastAppliedApprovalMode: approvalMode } : {}),
     // A report settles the pending approval pick only when it matches: a
     // differing one may describe a turn sent before the pick (#2334).
-    ...settleApprovalPick(currentChat, approvalMode),
+    ...settleApprovalPick(
+      currentChat,
+      approvalMode,
+      eventStreamPosition(event),
+    ),
     ...(effectiveModel
       ? { model: effectiveModel, orchestrationModel: effectiveModel }
       : {}),
@@ -602,7 +607,13 @@ export function handleRuntimeWarningEvent(
     const nextRequested = revertBag(chat?.requestedProviderOptions);
     const nextConfirmed = revertBag(chat?.providerOptions);
     activeChatsStore.updateChat(event.threadId, {
-      ...(refusedPick ? { pendingApprovalMode: undefined } : {}),
+      ...(refusedPick
+        ? {
+            pendingApprovalMode: undefined,
+            pendingApprovalPickedAt: undefined,
+            pendingApprovalBehindTurn: undefined,
+          }
+        : {}),
       ...(isApprovalMode(revertTo) && revertTo !== 'connection-default'
         ? { lastAppliedApprovalMode: revertTo }
         : {}),

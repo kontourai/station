@@ -485,7 +485,7 @@ describe('ApprovalModeChip', () => {
       <ApprovalModeChip
         engineConnectionId="codex"
         sessionOverride="auto"
-        sessionOverridePending
+        sessionOverrideState="requested"
         lastAppliedApprovalMode="never"
         onChange={vi.fn()}
       />,
@@ -503,7 +503,7 @@ describe('ApprovalModeChip', () => {
       <ApprovalModeChip
         engineConnectionId="codex"
         sessionOverride="auto"
-        sessionOverridePending
+        sessionOverrideState="requested"
         lastAppliedApprovalMode="ask"
         onChange={vi.fn()}
       />,
@@ -513,6 +513,22 @@ describe('ApprovalModeChip', () => {
     expect(trigger().className).toContain(
       'chat-input__approval-chip--override',
     );
+  });
+
+  test('an unconfirmed pick (restored, never resent to the live session) says so visibly, and never promises the next turn', () => {
+    render(
+      <ApprovalModeChip
+        engineConnectionId="claude"
+        sessionOverride="never"
+        sessionOverrideState="unconfirmed"
+        onChange={vi.fn()}
+      />,
+    );
+    expect(chipValue()).toBe('Full access · unconfirmed');
+    expect(trigger().getAttribute('aria-label')).toMatch(
+      /^Approval mode: Full access · unconfirmed — not confirmed for this session\./,
+    );
+    expect(trigger().getAttribute('aria-label')).not.toMatch(/next turn/);
   });
 
   test('#727 review item 4: auto is provider-aware in its description, and never mentions "safe"', async () => {
@@ -647,13 +663,20 @@ describe('ApprovalModeChip', () => {
     ['pending', 'never', undefined],
     // #2334: a stricter pick in flight while the engine reports full access.
     ['pending-restrict', 'ask', 'never'],
+    ['unconfirmed', 'auto', undefined],
   ] as const) {
     test(`the ${name} chip's visible text is contained in its accessible name`, () => {
       render(
         <ApprovalModeChip
           engineConnectionId="claude"
           sessionOverride={sessionOverride}
-          sessionOverridePending={name === 'pending-restrict'}
+          sessionOverrideState={
+            name === 'pending-restrict'
+              ? 'requested'
+              : name === 'unconfirmed'
+                ? 'unconfirmed'
+                : undefined
+          }
           lastAppliedApprovalMode={applied}
           connectionDefault={undefined}
           onChange={vi.fn()}

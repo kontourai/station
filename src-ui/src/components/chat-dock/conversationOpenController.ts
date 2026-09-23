@@ -233,6 +233,8 @@ export function conversationOpenPatch(
           requestedProviderOptions: {},
           providerOptions: {},
           pendingApprovalMode: undefined,
+          pendingApprovalPickedAt: undefined,
+          pendingApprovalBehindTurn: undefined,
           approvalModeOverride: undefined,
           error:
             'The current Session execution binding is unavailable. Retry opening this conversation before sending.',
