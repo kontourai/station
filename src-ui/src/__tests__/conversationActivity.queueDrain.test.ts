@@ -54,8 +54,8 @@ vi.mock('../lib/foregroundMessageDispatch', () => ({
 import { activeChatsStore } from '../contexts/active-chats-store';
 import { ensureOrchestrationEventStream } from '../hooks/orchestration/ensureOrchestrationEventStream';
 
-const TURN = 'turn-child-queue';
 let index = 0;
+let TURN = '';
 let API = '';
 let CONVERSATION = '';
 let CHILD = '';
@@ -148,6 +148,7 @@ beforeEach(() => {
   API = `http://station-queue-${index}.test`;
   CONVERSATION = `claude:conv-queue-${index}`;
   CHILD = `${CONVERSATION}:session:child`;
+  TURN = `turn-child-queue-${index}`;
   sequence = 0;
   mocks.dispatchForeground.mockClear();
   vi.useFakeTimers();
@@ -230,7 +231,12 @@ describe('#2309 F1: the queue drains when the record closes the open turn', () =
     );
     await vi.advanceTimersByTimeAsync(500);
 
+    // Earlier cases in this file connected other Stations' streams; the one
+    // follow-up goes through this (the newest) Station, and only once.
     expect(mocks.dispatchForeground).toHaveBeenCalledTimes(1);
+    expect(mocks.dispatchForeground.mock.calls[0]?.[0]).toMatchObject({
+      apiBase: API,
+    });
     expect(
       activeChatsStore.getSnapshot()[CONVERSATION]?.queuedMessages,
     ).toEqual(['second follow-up']);
