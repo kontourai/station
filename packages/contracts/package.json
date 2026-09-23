@@ -84,6 +84,7 @@
     "./learning-review": "./src/learning-review.ts",
     "./layout": "./src/layout.ts",
     "./live-activity": "./src/live-activity.ts",
+    "./live-surface": "./src/live-surface.ts",
     "./managed-model-binding": "./src/managed-model-binding.ts",
     "./mcp-app-display-mode": "./src/mcp-app-display-mode.ts",
     "./model-inventory": "./src/model-inventory.ts",

@@ -1,6 +1,7 @@
 import { humanPrincipal as deploymentHumanPrincipal } from '@kontourai/station-contracts/principal';
 import { createBrowserRoutes } from '../../routes/browser.js';
 import { createHomeTransferRoomRoutes } from '../../routes/environments/home-transfer-room-routes.js';
+import { createLiveSurfaceRoutes } from '../../routes/live-surface.js';
 import { createMobileDeviceRoutes } from '../../routes/mobile-device.js';
 import { createProjectMembershipRoutes } from '../../routes/projects/project-membership-routes.js';
 import { createProjectSharedTaskRoutes } from '../../routes/projects/project-shared-tasks.js';
@@ -26,6 +27,7 @@ import {
   deploymentAccountPrincipal,
 } from '../../services/identity/deployment-authentication-service.js';
 import type { LoadedLocalAccounts } from '../../services/identity/local-account-runtime.js';
+import { LiveSurfaceRegistry } from '../../services/live-surface/registry.js';
 import { LocalMobileDeviceHost } from '../../services/mobile-device/mobile-device-host.js';
 import type {
   ProjectMembershipAuthority,
@@ -43,6 +45,7 @@ export {
 
 import {
   createHash,
+  createHmac,
   randomBytes,
   randomUUID,
   timingSafeEqual,
@@ -708,6 +711,11 @@ interface ConfigureRuntimeRoutesResult {
   webPushService: WebPushService;
   kitLifecycleReady: Promise<void>;
   projectTaskRoomRuntime?: ProjectTaskRoomRuntime;
+  /**
+   * Where live-surface producers register (#90). Undefined on hosted or
+   * multi-tenant deployments, where the routes are not mounted at all.
+   */
+  liveSurfaceRegistry?: LiveSurfaceRegistry;
   /** Personal hosts only; the runtime shuts it down on stop. */
   browserService?: BrowserService;
 }
@@ -874,6 +882,7 @@ export function configureRuntimeRoutes(
   });
   let projectTaskRoomRuntime: ProjectTaskRoomRuntime | undefined;
   let projectTaskRoomLifecycleReady: Promise<void> = Promise.resolve();
+  let liveSurfaceRegistry: LiveSurfaceRegistry | undefined;
   let browserService: BrowserService | undefined;
   const allowedOrigins = resolveConfiguredRuntimeOrigins(context);
   const runtimeSecurity = {
@@ -2054,6 +2063,54 @@ export function configureRuntimeRoutes(
         }),
         { isRequestPrincipalCurrent },
       ),
+    );
+  }
+  // Live surfaces (#90) stream a server-side screen (Chromium now, a device
+  // later) and accept its input: personal operator hosts only, like the
+  // device routes above. With no producer registered the routes are inert.
+  if (!hostedTenantRegistry && !isHostedTenantExecutionRequired()) {
+    const liveSurfaceCallerKey = randomBytes(32);
+    liveSurfaceRegistry = new LiveSurfaceRegistry({
+      hub: {
+        onError: (message, error) =>
+          context.logger.warn(message, {
+            error: error instanceof Error ? error.message : String(error),
+          }),
+      },
+    });
+    context.app.route(
+      '/api/live-surfaces',
+      createLiveSurfaceRoutes(liveSurfaceRegistry, {
+        isRequestPrincipalCurrent,
+        // Only a HUMAN may drive a surface over HTTP; agents claim through
+        // the registry with their verified session. In personal mode every
+        // credential — including the per-boot internal token the
+        // station-control MCP child presents — resolves to the operator's
+        // human principal, so the principal kind alone refuses nothing:
+        // refuse agent-originated credentials explicitly.
+        // TODO(#122): replace these two checks with the first-class
+        // `isAgentOriginatedRequest` once it lands.
+        resolveHumanCaller: (c) => {
+          const runtime = getRuntimeAuthenticatedRequestPrincipal(c.req.raw);
+          if (!runtime || runtime.kind === 'internal') return null;
+          if (
+            resolveInboundDeviceKindForRequest(c.req.raw, (credential) =>
+              context.environmentSecurityService.identifyDevice(credential),
+            ) === 'delegation'
+          )
+            return null;
+          const principal = resolveSubscriberPrincipal(c as never);
+          if (principal?.kind !== 'human') return null;
+          // The client the human acts from: the paired device, else the one
+          // credential — as an HMAC under a key minted for this boot, so the
+          // id broadcast to other viewers is not a stable digest of a secret
+          // (an unsalted hash is an offline-checkable fingerprint of it).
+          const device = runtime.deviceId
+            ? `device:${runtime.deviceId}`
+            : `credential:${createHmac('sha256', liveSurfaceCallerKey).update(runtime.credential).digest('base64url').slice(0, 22)}`;
+          return { principal: principal.id, device };
+        },
+      }),
     );
   }
   context.app.route(
@@ -4754,6 +4811,7 @@ export function configureRuntimeRoutes(
     webPushService,
     kitLifecycleReady,
     projectTaskRoomRuntime,
+    liveSurfaceRegistry,
     browserService,
   };
 }
