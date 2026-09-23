@@ -62,6 +62,40 @@ per-client stream to the main origin would be the point at which this decision
 needs revisiting — that, and not host load or throughput, is the forcing
 function to watch.
 
+**Browser pane frame streams (added 2026-09-22, ADR 0019).** Frames from the
+planned server-hosted Browser pane
+([ADR 0019](0019-host-the-browser-pane-server-side-behind-a-host-adapter.md))
+do not use SSE. They travel as a length-prefixed binary `fetch` stream.
+
+- **Why not SSE.** SSE's `Last-Event-ID` resume is worthless for frames,
+  because a stale frame is dropped, never replayed. On a direct connection,
+  SSE's text framing would also force base64 onto binary frames. The remote
+  relay base64-encodes every chunk anyway, so there that point does not
+  differ between the two.
+- **Scope.** This leaves the decision above unchanged, because that decision
+  covers event streams where resume matters.
+- **Budget.** A frame stream draws on the same per-origin connection pool, as
+  a **view-scoped** stream. It is open only while a Browser pane is visible,
+  and closes at zero viewers. The plan is **one frame stream per client**,
+  multiplexing every visible Browser pane, so extra panes add no connections.
+- **Input** (pointer, key, lease claims) is ordinary requests. Those requests
+  share the same per-origin pool as every stream above. **Interrupt latency
+  therefore depends on a free connection slot.** Input must never queue
+  behind frames, so the frame stream stays a single connection and never
+  fans out to one per pane.
+- **The trigger.** The revisit trigger above counts *always-on* streams. The
+  frame stream is view-scoped, so it does not trip that trigger formally. It
+  does shrink the slack left for input and for the other view-scoped streams,
+  so an input-latency regression is a reason to revisit too.
+- **The single-stream rule is not enough on its own.** In the worst case, 2
+  always-on streams, 3 view-scoped streams and 1 frame stream fill the
+  ~6-connection pool. An input request would then queue anyway. When the
+  pool is full, the client must fall back: either send input over a separate
+  path that does not draw on the main origin's pool, or yield a view-scoped
+  stream while a Browser pane has focus.
+
+This is a design constraint. None of it is implemented or measured yet.
+
 **Host resource pressure is not a reason to revisit this.** Station's admission
 controls act on starting engine processes, never on connections; no SSE route
 consults them, an open stream is never torn down by them, and resume is a pure
