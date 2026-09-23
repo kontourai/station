@@ -59,33 +59,27 @@ function transferBaselinePruneEnabled(env = process.env) {
  */
 function parseWorktreePorcelain(porcelain) {
   const entries = [];
-  let current = null;
   for (const line of porcelain.split(porcelain.includes('\0') ? '\0' : '\n')) {
-    if (line.startsWith('worktree ')) {
-      if (current) entries.push(current);
-      current = {
-        path: line.slice('worktree '.length),
-        head: null,
-        branch: null,
-        detached: false,
-        locked: false,
-        prunable: false,
-      };
-    } else if (!current) {
-    } else if (line.startsWith('HEAD ')) {
-      current.head = line.slice('HEAD '.length).trim();
-    } else if (line.startsWith('branch ')) {
-      current.branch = line.slice('branch '.length);
-    } else if (line === 'detached') {
-      current.detached = true;
-    } else if (line === 'locked' || line.startsWith('locked ')) {
-      current.locked = true;
-    } else if (line === 'prunable' || line.startsWith('prunable ')) {
-      current.prunable = true;
-    }
+    const space = line.indexOf(' ');
+    const key = space === -1 ? line : line.slice(0, space);
+    const value = space === -1 ? '' : line.slice(space + 1);
+    if (key === 'worktree')
+      entries.push({ path: value, head: null, branch: null });
+    const current = entries.at(-1);
+    if (!current || key === 'worktree') continue;
+    if (key === 'HEAD') current.head = value.trim();
+    else if (key === 'branch') current.branch = value;
+    // `detached`, `locked [reason]`, `prunable [reason]`: presence is the fact.
+    else if (['detached', 'locked', 'prunable'].includes(key))
+      current[key] = true;
   }
-  if (current) entries.push(current);
-  return entries.map((entry, index) => ({ ...entry, isPrimary: index === 0 }));
+  return entries.map((entry, index) => ({
+    detached: false,
+    locked: false,
+    prunable: false,
+    ...entry,
+    isPrimary: index === 0,
+  }));
 }
 
 function gitSync(root, args) {
@@ -152,11 +146,7 @@ export function findReusableBaseline({ worktrees, baseSha, verify, log }) {
 }
 
 /** Owned baselines whose HEAD is outside `keepShas`, excluding given paths. */
-function selectStaleBaselines({
-  worktrees,
-  keepShas,
-  excludePaths = [],
-}) {
+function selectStaleBaselines({ worktrees, keepShas, excludePaths = [] }) {
   const keep = new Set(keepShas.filter(Boolean));
   const excluded = new Set(excludePaths.map(realOrSelf));
   return worktrees.filter(
@@ -180,18 +170,24 @@ function within(path, root) {
  * lists only each process's cwd and so avoids `lsof +D`'s full tree walk.
  */
 function readProcessCwds({ platform = process.platform } = {}) {
-  if (platform === 'linux' && existsSync('/proc')) {
-    const cwds = [];
-    for (const pid of readdirSync('/proc')) {
-      if (!/^\d+$/.test(pid)) continue;
-      try {
-        cwds.push({ pid: Number(pid), path: readlinkSync(`/proc/${pid}/cwd`) });
-      } catch {
-        // Another user's process or one that just exited: not observable.
-      }
+  return platform === 'linux' && existsSync('/proc')
+    ? readProcCwds()
+    : readLsofCwds();
+}
+
+function readProcCwds() {
+  const cwds = [];
+  for (const pid of readdirSync('/proc').filter((name) => /^\d+$/.test(name))) {
+    try {
+      cwds.push({ pid: Number(pid), path: readlinkSync(`/proc/${pid}/cwd`) });
+    } catch {
+      // Another user's process or one that just exited: not observable.
     }
-    return cwds;
   }
+  return cwds;
+}
+
+function readLsofCwds() {
   const result = spawnSync('lsof', ['-n', '-P', '-d', 'cwd', '-F', 'pn'], {
     encoding: 'utf8',
     maxBuffer: 64 * 1024 * 1024,
