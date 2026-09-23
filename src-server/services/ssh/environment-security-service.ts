@@ -524,7 +524,19 @@ export class EnvironmentSecurityService {
       return false;
     }
     if (request.path.startsWith('/api/pairing')) {
-      // archive#1887: the family stays operator-only, with ONE narrow
+      // Native desktop credentials prove home possession at local-grant mint
+      // time. They are the desktop operator's authority for this family,
+      // unlike ordinary paired devices (even those carrying access:manage).
+      // The HTTP scope gate still checks the current grant for each route.
+      if (this.#devicePairingService?.isLocalGrantMintedCredential(candidate)) {
+        return request.activity
+          ? this.#devicePairingService.recordCredentialActivity(
+              candidate,
+              request.activity.lastSeenFrom,
+            )
+          : true;
+      }
+      // archive#1887: other device grants have ONE narrow
       // exception. A device the operator explicitly promoted (scope carries
       // `access:approve`) may act on PENDING REQUESTS — list, confirm, deny —
       // and nothing else here: not creating offers, not revoking devices, not
@@ -573,7 +585,11 @@ export class EnvironmentSecurityService {
    * is not the caller acting.
    */
   credentialMayDecidePairingRequests(candidate: string): boolean {
-    if (this.verifyOperatorCredential(candidate)) return true;
+    if (
+      this.verifyOperatorCredential(candidate) ||
+      this.#devicePairingService?.isLocalGrantMintedCredential(candidate)
+    )
+      return true;
     return (
       this.#devicePairingService?.credentialMayApprovePairing(candidate) ??
       false
