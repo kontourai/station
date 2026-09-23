@@ -18,6 +18,8 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { WebSocketServer } from 'ws';
+import { inspectProcessFingerprint as recordProcessFingerprint } from '../../packages/cli/src/commands/platform.js';
+import { lookupProcessBirthFingerprint } from '../../packages/shared/src/process-identity.mjs';
 import { attachVoiceWebSocket } from '../../src-server/routes/operations/voice.js';
 import { TerminalWebSocketServer } from '../../src-server/services/terminal/terminal-ws-server.js';
 import {
@@ -172,7 +174,14 @@ describe('dogfood authenticated health', () => {
       .mockReturnValue(
         '  41 Mon Jul 13 10:00:00 2026 node server.js\n  42 Mon Jul 13 10:00:01 2026 node ui.js\n',
       );
-    const fingerprints = inspectProcessFingerprints([41, 42, 41], deadline, ps);
+    const fingerprints = inspectProcessFingerprints(
+      [41, 42, 41],
+      deadline,
+      ps,
+      // The lstart-shaped fixture is the non-Linux probe; the Linux probe
+      // (next test) observes birth through /proc and would not parse it.
+      { platform: 'darwin' },
+    );
 
     expect(ps).toHaveBeenCalledTimes(1);
     expect(ps.mock.calls[0]?.[1]).toContain('41,42');
@@ -197,6 +206,89 @@ describe('dogfood authenticated health', () => {
     expect([...owners.get(3141)!]).toEqual([41]);
     expect([...owners.get(3142)!]).toEqual([41]);
     expect([...owners.get(3000)!]).toEqual([42]);
+  });
+
+  it('observes a Linux pid through the /proc birth token the CLI records (#2332)', () => {
+    // #2325 moved `station start`'s Linux fingerprint to the shared /proc
+    // birth token. The health probe kept `ps -o lstart=`, which can never
+    // equal it, so every Linux probe reported `process` / `ownership-post`.
+    // Record through the CLI's own recorder and observe through the probe,
+    // with the same injected /proc and `ps`, and require identical output.
+    const births = new Map([
+      [41, ['linux:boot-a:1000']],
+      [42, ['linux:boot-a:2000']],
+    ]);
+    const birth = (pid: number) => births.get(pid)?.[0] ?? null;
+    const commands = new Map([
+      [41, 'node dist-server/server.js --instance=stagephone'],
+      [42, 'node dist-server/ui-proxy.js --instance=stagephone'],
+    ]);
+    const cliExec = ((_: string, args: readonly string[]) =>
+      commands.get(Number(args.at(-1))) ?? '') as typeof execFileSync;
+    const recorded = [41, 42].map((pid) =>
+      recordProcessFingerprint(pid, {
+        platform: 'linux',
+        birth,
+        exec: cliExec,
+      }),
+    );
+    expect(recorded[0]?.startToken).toBe('linux:boot-a:1000');
+
+    const ps = vi.fn(
+      () =>
+        `   41 ${commands.get(41)}\n   42 ${commands.get(42)}\n   43 not asked\n`,
+    );
+    const observed = inspectProcessFingerprints(
+      [41, 42, 41, 44],
+      Date.now() + 1_000,
+      ps,
+      { platform: 'linux', birth },
+    );
+
+    expect(observed.get(41)).toEqual(recorded[0]);
+    expect(observed.get(42)).toEqual(recorded[1]);
+    // No birth for 44 (no /proc entry): it is not asked for, and not observed.
+    expect(ps).toHaveBeenCalledTimes(1);
+    expect(ps.mock.calls[0]?.[1]).toEqual([
+      '-o',
+      'pid=',
+      '-o',
+      'command=',
+      '-p',
+      '41,42',
+    ]);
+    expect(observed.has(44)).toBe(false);
+    expect(observed.has(43)).toBe(false);
+  });
+
+  it('leaves a Linux pid unobserved when it is reused between the birth and command reads', () => {
+    let reads = 0;
+    const birth = () =>
+      reads++ === 0 ? 'linux:boot-a:1000' : 'linux:boot-a:9999';
+    const observed = inspectProcessFingerprints(
+      [41],
+      Date.now() + 1_000,
+      () => '   41 node something-else.js\n',
+      { platform: 'linux', birth },
+    );
+    expect(observed.has(41)).toBe(false);
+  });
+
+  it('agrees with the CLI recorder on a live process on this host', () => {
+    // Real probes, no injection: whichever platform runs this, the token the
+    // health probe observes must be the token `station start` records. On a
+    // Linux runner this is the /proc path, on macOS the pinned lstart path.
+    const recorded = recordProcessFingerprint(process.pid);
+    expect(recorded).not.toBeNull();
+    const observed = inspectProcessFingerprints(
+      [process.pid],
+      Date.now() + 5_000,
+    );
+    expect(observed.get(process.pid)).toEqual(recorded);
+    // ...and it is the shared identity authority's birth token.
+    expect(observed.get(process.pid)?.startToken).toBe(
+      lookupProcessBirthFingerprint(process.pid),
+    );
   });
 
   it('falls back to ss listener ownership when lsof is unavailable', () => {
