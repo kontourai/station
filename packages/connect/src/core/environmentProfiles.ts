@@ -143,10 +143,13 @@ const FAILURE_COPY: Record<
   }),
   // station#2327. Names no network condition: this reason is produced only
   // when requests are queued behind a slow Station, or after the address
-  // answered and the next read did not get a turn in time.
+  // answered and the next read did not get a turn in time. The reason can
+  // persist for a whole outage, so the copy makes no promise about when it
+  // clears and says what to do if it does not.
   busy: (host) => ({
-    summary: `${host} is busy.`,
-    action: 'Requests to it are waiting in line. Trying again shortly.',
+    summary: `${host} is answering, but not keeping up.`,
+    action:
+      'Still retrying. If this lasts, the Station may be overloaded or need a restart.',
   }),
   // station#3297. Says what was observed (it answered, and said no) and points
   // at the only place the answer can change — the host's own allow-list. It

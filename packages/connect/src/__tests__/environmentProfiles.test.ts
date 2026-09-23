@@ -304,6 +304,18 @@ describe('environment endpoint profiles', () => {
     expect(`${copy.summary} ${copy.action}`).not.toMatch(/pair/i);
   });
 
+  // station#2327: `busy` can hold for a whole outage — the home route and the
+  // Manage Stations card show it for as long as it lasts — so its copy must
+  // not promise the wait is short, and must say what to do if it is not.
+  it('makes no time promise for a busy Station and names a next step', () => {
+    const copy = connectionFailureCopy('busy', 'Living Room Mac');
+    expect(copy.summary).toBe(
+      'Living Room Mac is answering, but not keeping up.',
+    );
+    expect(`${copy.summary} ${copy.action}`).not.toMatch(/shortly|in line/i);
+    expect(copy.action).toMatch(/restart/i);
+  });
+
   it('asserts no cause at all for a failure nothing determined', () => {
     const copy = connectionFailureCopy('undetermined', 'Living Room Mac');
     expect(copy.summary).toBe(

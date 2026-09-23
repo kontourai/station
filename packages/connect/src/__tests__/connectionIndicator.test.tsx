@@ -49,7 +49,6 @@ describe('connectionIndicatorState', () => {
     ).toBe('needs-repair');
   });
 
-  // station#2327 — a Station answering slowly is not "Can't connect".
   // station#2327: busy is honest for a stall, not for a Station that has
   // not answered for about a minute. The reason stays busy; only the
   // indicator's claim escalates. The boundary is pinned literally.
@@ -70,6 +69,7 @@ describe('connectionIndicatorState', () => {
     ).toBe('error');
   });
 
+  // station#2327 — a Station answering slowly is not "Can't connect".
   it('names a busy Station as busy, not a plain error', () => {
     expect(connectionIndicatorState({ status: 'error', reason: 'busy' })).toBe(
       'busy',

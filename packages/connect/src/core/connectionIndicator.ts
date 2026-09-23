@@ -44,6 +44,18 @@ export type ConnectionIndicatorState =
   | 'busy';
 
 /**
+ * `busy` is honest for a stall: the Station answered its handshake but not
+ * its identity read in time. Past this many consecutive failed probes (about
+ * a minute on the coordinator's default backoff) a Station that still has not
+ * answered is shown as not connecting instead. The failure REASON stays
+ * `busy`, so surfaces that act on "the address answered" (loopback advice)
+ * stay correct; only the indicator's claim escalates. `failureStreak` counts
+ * busy, timeout and unreachable as one outage, so a stall alternating between
+ * them escalates on the same schedule (station#2327).
+ */
+const BUSY_INDICATOR_MAX_STREAK = 6;
+
+/**
  * The single derivation behind the indicator's state.
  *
  * Deliberately keyed on the observed failure REASON, not on the coordinator's
@@ -79,18 +91,6 @@ export type ConnectionIndicatorState =
  * `ConnectionFailureReason`'s vocabulary already calls the same thing — the
  * identical-name-unwired trap this closes.
  */
-/**
- * `busy` is honest for a stall: the Station answered its handshake but not
- * its identity read in time. Past this many consecutive failed probes (about
- * a minute on the coordinator's default backoff) a Station that still has not
- * answered is shown as not connecting instead. The failure REASON stays
- * `busy`, so surfaces that act on "the address answered" (loopback advice)
- * stay correct; only the indicator's claim escalates. `failureStreak` counts
- * busy, timeout and unreachable as one outage, so a stall alternating between
- * them escalates on the same schedule (station#2327).
- */
-const BUSY_INDICATOR_MAX_STREAK = 6;
-
 export function connectionIndicatorState(input: {
   status: ConnectionStatus;
   reason: ConnectionFailureReason | null;
