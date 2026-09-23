@@ -40,6 +40,13 @@ export const REVIEWED_DIRECT_ROUTE_MESSAGE_EGRESS = new Set([
   'src-server/routes/plugins/plugin-config-routes.ts :: route GET /:name/settings :: error.message :: 1',
   'src-server/routes/plugins/plugin-config-routes.ts :: route GET /:name/providers :: error.message :: 1',
   'src-server/routes/plugins/plugin-install-routes.ts :: route POST /preview :: error.message :: 1',
+  // #2342. Occurrence 1 is now the bounded manifest read's refusal
+  // (`PluginManifestReadRefusedError`), whose messages are fixed sentences
+  // authored in `plugin-manifest-bounded-read.ts` (plugin.json missing, a
+  // symlink, not a regular file, or too large); none quotes file bytes or a
+  // path. That read now sits earlier in this route, so the previously
+  // reviewed context-safety message became occurrence 2.
+  'src-server/routes/plugins/plugin-install-routes.ts :: route POST /preview :: error.message :: 2',
   'src-server/routes/plugins/plugin-install-routes.ts :: route POST /install :: error.message :: 1',
   'src-server/routes/plugins/plugin-lifecycle-routes.ts :: route POST /:name/update :: registryOwner.message :: 1',
   'src-server/routes/plugins/plugin-lifecycle-routes.ts :: route POST /:name/update :: registryOwner.message :: 2',

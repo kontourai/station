@@ -12,7 +12,6 @@ import {
   readCheckoutRemotes,
 } from '../../services/projects/checkout-remote-reader.js';
 import {
-  CodingGitCommandError,
   type CodingGitRefusal,
   commitRepository,
   pushRepository,
@@ -60,11 +59,12 @@ const GIT_READ_TIMEOUT_MS = 20_000;
 const GIT_DIFF_TIMEOUT_MS = 30_000;
 const GIT_CHECKOUT_TIMEOUT_MS = 60_000;
 
+const GIT_TIMEOUT_MESSAGE =
+  'git did not answer in time and was stopped. The repository may be very large, or its configuration names something that never answers (such as an include of a pipe)';
+
 class GitTimeoutError extends Error {
   constructor() {
-    super(
-      'git did not answer in time and was stopped. The repository may be very large, or its configuration names something that never answers (such as an include of a pipe)',
-    );
+    super(GIT_TIMEOUT_MESSAGE);
     this.name = 'GitTimeoutError';
   }
 }
@@ -81,7 +81,7 @@ function gitFailure(c: Context, error: unknown): Response {
     return c.json(
       {
         success: false,
-        error: new GitTimeoutError().message,
+        error: GIT_TIMEOUT_MESSAGE,
         code: 'git-timeout',
       },
       504,
@@ -378,17 +378,10 @@ export function createCodingRoutes(
     return { root: target, projectRoot };
   };
 
+  // git's own output (a hook's refusal, a rejected push) reaches the operator
+  // through the route-seam sanitizer, as every route-catch message does.
   const commandFailure = (c: Context, error: unknown) =>
-    c.json(
-      {
-        success: false,
-        error:
-          error instanceof CodingGitCommandError
-            ? error.message
-            : errorMessage(error),
-      },
-      400,
-    );
+    c.json({ success: false, error: errorMessage(error) }, 400);
 
   app.get('/files', (c) => {
     codingOps.add(1, { operation: 'files' });
