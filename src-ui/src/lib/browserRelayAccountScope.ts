@@ -14,18 +14,6 @@ const CHANNEL_NAME = 'station-browser-relay-account-scope-v1';
 const STORAGE_EVENT_KEY = 'station-browser-relay-account-scope-event-v1';
 let channel: BroadcastChannel | null = null;
 
-function sameScope(
-  left: NonNullable<SavedConnection['brokerRoute']>['scope'],
-  right: NonNullable<SavedConnection['brokerRoute']>['scope'],
-) {
-  return (
-    left.stationId === right.stationId &&
-    left.enrollmentId === right.enrollmentId &&
-    left.routingGeneration === right.routingGeneration &&
-    left.browserOrigin === right.browserOrigin
-  );
-}
-
 /** Stable route identity shared by the light React scope and async credential custody. */
 export function browserRelayAccountScopeKey(input: {
   connectionId: string;
@@ -175,17 +163,4 @@ export function publishBrowserRelayAccountScope(
   snapshots.set(scopeKey, next);
   for (const listener of listeners) listener();
   if (shouldAnnounce) announce(scopeKey, next);
-}
-
-/** Verifies that UI scope and saved-route scope still refer to the same Station. */
-export function browserRelayAccountScopeMatches(
-  left: NonNullable<SavedConnection['brokerRoute']> | undefined,
-  right: NonNullable<SavedConnection['brokerRoute']> | undefined,
-) {
-  return Boolean(
-    left &&
-      right &&
-      left.brokerOrigin === right.brokerOrigin &&
-      sameScope(left.scope, right.scope),
-  );
 }
