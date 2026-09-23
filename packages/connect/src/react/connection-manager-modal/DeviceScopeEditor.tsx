@@ -1,6 +1,7 @@
 import {
   PAIRING_SCOPE_ACCESS_APPROVE,
   PAIRING_SCOPE_ACCESS_MANAGE,
+  PAIRING_SCOPE_APPROVAL_FULL_ACCESS,
   PAIRING_SCOPE_CODING_EXEC,
   PAIRING_SCOPE_CONSENT_DECIDE,
   PAIRING_SCOPE_ENGINE_LOGIN,
@@ -154,6 +155,13 @@ const ELEVATED_GRANTS: ReadonlyArray<{
     label: 'Run commands',
     detail:
       "Can run one-off shell commands on this Station's computer (the Coding terminal's command box), as you and with your keys. Without it the device still reads and edits the Project's files.",
+    elevated: true,
+  },
+  {
+    token: PAIRING_SCOPE_APPROVAL_FULL_ACCESS,
+    label: 'Allow full access',
+    detail:
+      "Can put a chat, or an Agent's default, at full access: the agent runs with no sandbox and no approval prompts, as you. Without it the device can still tighten a chat to Ask or Auto, or pick Default.",
     elevated: true,
   },
 ];

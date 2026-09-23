@@ -76,6 +76,10 @@ import {
 } from '../../services/projects/task-tool-result-reference-read-adapter.js';
 import { taskTurnReferenceResolutionTotal } from '../../telemetry/metrics.js';
 import { errorMessage, getBody, param, validate } from '../schemas/schemas.js';
+import {
+  refuseUngrantedFullAccess,
+  requestedApprovalMode,
+} from './approval-authority.js';
 
 const taskCreateSchema = z.object({
   projectId: z.string().min(1),
@@ -1909,6 +1913,15 @@ export function createTaskRoutes(
   });
 
   app.post('/:taskId/dispatch', validate(taskDispatchSchema), async (c) => {
+    // #2436: a dispatch that asks for full access needs the operator in
+    // person or a device holding `approval:full-access`.
+    const fullAccessRefused = refuseUngrantedFullAccess(c, [
+      requestedApprovalMode(
+        (getBody(c) as z.infer<typeof taskDispatchSchema>).runtimeConfig
+          ?.modelOptions,
+      ),
+    ]);
+    if (fullAccessRefused) return fullAccessRefused;
     try {
       const dispatcher = dispatcherForRequest(c.req.raw);
       if (!dispatcher) return hostedNotFound(c);

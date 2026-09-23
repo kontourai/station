@@ -256,6 +256,26 @@ export const PAIRING_SCOPE_ENGINE_LOGIN = 'engine:login' as const;
  */
 export const PAIRING_SCOPE_CODING_EXEC = 'coding:exec' as const;
 
+/**
+ * Put a session, or an Agent's default, at full access: approval posture
+ * `never` (#2436, owner decision 2026-09-23). The approval-posture routes
+ * stay at `orchestration:operate`, so any operate device may still tighten a
+ * session to Ask or Auto, or pick Default; recording `never`, carrying it on
+ * a send, or saving it as an Agent's default ALSO requires this token of a
+ * paired device. The operator in person (the operator credential, or a
+ * credential minted by proving possession of this home) never needs it.
+ *
+ * Operator promotion only, in no preset and never in the default grant, for
+ * the same two reasons as {@link PAIRING_SCOPE_ENGINE_LOGIN} and
+ * {@link PAIRING_SCOPE_CODING_EXEC}: pairing time is when a device is least
+ * known, and adding it to a preset would make newly issued grants
+ * unparseable to older peers. Full access runs the agent with no sandbox and
+ * no approval prompt, as the operator; "may operate this Station" is not
+ * that decision.
+ */
+export const PAIRING_SCOPE_APPROVAL_FULL_ACCESS =
+  'approval:full-access' as const;
+
 export const PAIRING_SCOPES = [
   PAIRING_SCOPE_ORCHESTRATION_READ,
   PAIRING_SCOPE_ORCHESTRATION_OPERATE,
@@ -268,6 +288,7 @@ export const PAIRING_SCOPES = [
   PAIRING_SCOPE_HOME_CONTROL,
   PAIRING_SCOPE_ENGINE_LOGIN,
   PAIRING_SCOPE_CODING_EXEC,
+  PAIRING_SCOPE_APPROVAL_FULL_ACCESS,
 ] as const;
 
 export type PairingScope = (typeof PAIRING_SCOPES)[number];
@@ -447,6 +468,8 @@ export const PAIRING_SCOPE_GRANT_PATHS: Record<
   [PAIRING_SCOPE_ENGINE_LOGIN]: ['operator-promotion'],
   // #2412: operator promotion only, for the reasons on its docblock.
   [PAIRING_SCOPE_CODING_EXEC]: ['operator-promotion'],
+  // #2436: operator promotion only, for the reasons on its docblock.
+  [PAIRING_SCOPE_APPROVAL_FULL_ACCESS]: ['operator-promotion'],
 };
 
 export const DEFAULT_PAIRING_SCOPE_PRESET: PairingScopePreset = 'standard';

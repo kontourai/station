@@ -7,6 +7,7 @@
  * different things in two places.
  */
 import {
+  PAIRING_SCOPE_APPROVAL_FULL_ACCESS,
   PAIRING_SCOPE_CODING_EXEC,
   pairingScopeIncludes,
 } from '@kontourai/station-contracts/environment-security';
@@ -48,5 +49,24 @@ export function mayRunCommandsOnHost(
   return (
     grantedScope !== undefined &&
     pairingScopeIncludes(grantedScope, PAIRING_SCOPE_CODING_EXEC)
+  );
+}
+
+/**
+ * #2436 (owner decision 2026-09-23): whether this request may put a session,
+ * or an Agent's default, at full access (approval posture `never`). The
+ * operator in person, or a caller the auth boundary accepted whose granted
+ * scope carries `approval:full-access` (a device the operator allowed, once,
+ * from its access editor). Tightening, and a Default pick, need neither.
+ */
+export function mayGrantFullAccess(
+  request: Request,
+  grantedScope: string | undefined,
+): boolean {
+  if (isOperatorInPerson(request)) return true;
+  if (!getRuntimeAuthenticatedRequestPrincipal(request)) return false;
+  return (
+    grantedScope !== undefined &&
+    pairingScopeIncludes(grantedScope, PAIRING_SCOPE_APPROVAL_FULL_ACCESS)
   );
 }

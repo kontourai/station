@@ -38,6 +38,7 @@ import {
   GateTestAdapter,
 } from '../../../__test-utils__/orchestration-gate-test-harness.js';
 import type { ProviderAdapterMetadata } from '../../../providers/adapter-shape.js';
+import { setRuntimeAuthenticatedRequestPrincipal } from '../../../security/runtime-request-security.js';
 import {
   type ExecutionSessionBinding,
   type ExecutionTargetExecutionDependencies,
@@ -280,6 +281,17 @@ async function createHarness(roots: string[], stationDefault?: ApprovalMode) {
       execute({ message: input.message, conversationId: input.conversationId }),
   });
   const app = new Hono();
+  // Every device in these probes acts as the operator in person (the
+  // operator credential), which may put a session at full access (#2436
+  // escalation authority is pinned in approval-full-access-authority).
+  app.use('*', async (c, next) => {
+    setRuntimeAuthenticatedRequestPrincipal(c.req.raw, {
+      credential: 'operator-credential-fixture',
+      authority: 'operator-credential',
+      source: 'bearer',
+    });
+    await next();
+  });
   app.route('/api/orchestration', routes);
 
   const post = async (path: string, body: unknown) => {

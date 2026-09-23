@@ -9,6 +9,7 @@ import {
   isPairingScopeSubset,
   PAIRING_SCOPE_ACCESS_APPROVE,
   PAIRING_SCOPE_ACCESS_MANAGE,
+  PAIRING_SCOPE_APPROVAL_FULL_ACCESS,
   PAIRING_SCOPE_CODING_EXEC,
   PAIRING_SCOPE_CONSENT_DECIDE,
   PAIRING_SCOPE_ENGINE_LOGIN,
@@ -214,7 +215,7 @@ describe('handshake capability flags (station#1095, AC1: two-way fixture decode)
 });
 
 describe('scoped pairing (station#1098)', () => {
-  test('defines exactly the eleven-token vocabulary, including distinct home transfer, home control, engine login, and command execution authorities', () => {
+  test('defines exactly the twelve-token vocabulary, including distinct home transfer, home control, engine login, command execution, and full-access approval authorities', () => {
     expect(PAIRING_SCOPES).toEqual([
       'orchestration:read',
       'orchestration:operate',
@@ -227,6 +228,7 @@ describe('scoped pairing (station#1098)', () => {
       'home:control',
       'engine:login',
       'coding:exec',
+      'approval:full-access',
     ]);
   });
 
@@ -261,6 +263,20 @@ describe('scoped pairing (station#1098)', () => {
    */
   // #2412: the per-device command-execution grant, same posture and the
   // same backward-compatibility reason as engine:login below.
+  // #2436: the per-device full-access approval grant, same posture and the
+  // same backward-compatibility reason as coding:exec and engine:login.
+  test('approval:full-access reaches a device only by operator promotion', () => {
+    expect(
+      PAIRING_SCOPE_GRANT_PATHS[PAIRING_SCOPE_APPROVAL_FULL_ACCESS],
+    ).toEqual(['operator-promotion']);
+    for (const preset of Object.values(PAIRING_SCOPE_PRESETS)) {
+      expect(preset).not.toContain(PAIRING_SCOPE_APPROVAL_FULL_ACCESS);
+    }
+    expect(DEFAULT_GRANT_PAIRING_SCOPE.split(' ')).not.toContain(
+      PAIRING_SCOPE_APPROVAL_FULL_ACCESS,
+    );
+  });
+
   test('coding:exec reaches a device only by operator promotion', () => {
     expect(PAIRING_SCOPE_GRANT_PATHS[PAIRING_SCOPE_CODING_EXEC]).toEqual([
       'operator-promotion',
@@ -353,17 +369,19 @@ describe('scoped pairing (station#1098)', () => {
     expect(DEFAULT_GRANT_PAIRING_SCOPE).not.toBe(PAIRING_SCOPES.join(' '));
     // station#1887 grew this to six, station#3677 to seven, home transfer
     // to eight, home control to nine, engine login to ten, and command
-    // execution (#2412) to eleven. The default
+    // execution (#2412) to eleven, and full-access approval (#2436) to
+    // twelve. The default
     // grant is unchanged and still four tokens — which is the whole point of
     // the decoupling: a vocabulary addition must not reach a single live
     // credential.
-    expect(PAIRING_SCOPES).toHaveLength(11);
+    expect(PAIRING_SCOPES).toHaveLength(12);
     expect(granted).not.toContain(PAIRING_SCOPE_ACCESS_APPROVE);
     expect(granted).not.toContain(PAIRING_SCOPE_CONSENT_DECIDE);
     expect(granted).not.toContain(PAIRING_SCOPE_HOME_TRANSFER);
     expect(granted).not.toContain(PAIRING_SCOPE_HOME_CONTROL);
     expect(granted).not.toContain(PAIRING_SCOPE_ENGINE_LOGIN);
     expect(granted).not.toContain(PAIRING_SCOPE_CODING_EXEC);
+    expect(granted).not.toContain(PAIRING_SCOPE_APPROVAL_FULL_ACCESS);
   });
 
   // station#1883: the trip-wire for the defect that produced `access:manage`'s

@@ -138,6 +138,10 @@ import { sessionCorrelationBindings } from '../../utils/logger-correlation.js';
 import { assertBoundedJsonResponse } from '../chat/bounded-response.js';
 import { errorMessage, getBody, param, validate } from '../schemas/schemas.js';
 import { sseKeepalive, streamSSE } from '../sse-response.js';
+import {
+  refuseUngrantedFullAccess,
+  requestedApprovalMode,
+} from './approval-authority.js';
 
 // These are intentional public projections. The typed code/outcome and, when
 // available, the receipt/session below give callers evidence to observe; a
@@ -1571,6 +1575,13 @@ export function createOrchestrationRoutes(
         delegation?: z.infer<typeof agentDelegationContextSchema>;
         automaticBackground?: true;
       };
+      // #2436: full access needs the operator in person or a granted device,
+      // whether the send carries it as a pick or asks for it on the options.
+      const fullAccessRefused = refuseUngrantedFullAccess(c, [
+        body.setApprovalMode,
+        requestedApprovalMode(body.target.model?.options),
+      ]);
+      if (fullAccessRefused) return fullAccessRefused;
       const { principal, userId, ownerAttribution } = resolveDispatchActor(
         deps,
         c,
@@ -1773,6 +1784,11 @@ export function createOrchestrationRoutes(
       }
       try {
         const body = getBody(c);
+        const fullAccessRefused = refuseUngrantedFullAccess(c, [
+          (body as { setApprovalMode?: unknown }).setApprovalMode,
+          requestedApprovalMode(body.target.model?.options),
+        ]);
+        if (fullAccessRefused) return fullAccessRefused;
         const { principal, userId, ownerAttribution } = resolveDispatchActor(
           deps,
           c,
@@ -1957,6 +1973,11 @@ export function createOrchestrationRoutes(
       }
       try {
         const body = getBody(c);
+        const fullAccessRefused = refuseUngrantedFullAccess(c, [
+          body.setApprovalMode,
+          requestedApprovalMode(body.model?.options),
+        ]);
+        if (fullAccessRefused) return fullAccessRefused;
         const { principal, userId, ownerAttribution } = resolveDispatchActor(
           deps,
           c,
@@ -2060,6 +2081,13 @@ export function createOrchestrationRoutes(
     }
     try {
       const body = getBody(c);
+      const fullAccessRefused = refuseUngrantedFullAccess(c, [
+        requestedApprovalMode(
+          (body as { target?: { model?: { options?: unknown } } }).target?.model
+            ?.options,
+        ),
+      ]);
+      if (fullAccessRefused) return fullAccessRefused;
       const { principal, userId, ownerAttribution } = resolveDispatchActor(
         deps,
         c,
@@ -2426,6 +2454,12 @@ export function createOrchestrationRoutes(
         );
       }
       try {
+        const fullAccessRefused = refuseUngrantedFullAccess(c, [
+          requestedApprovalMode(
+            (getBody(c) as { modelOptions?: unknown }).modelOptions,
+          ),
+        ]);
+        if (fullAccessRefused) return fullAccessRefused;
         const { principal, userId, ownerAttribution } = resolveDispatchActor(
           deps,
           c,
@@ -3728,6 +3762,11 @@ export function createOrchestrationRoutes(
     }),
     async (c) => {
       const command = getBody(c);
+      // #2436: full access needs the operator in person or a granted device.
+      if (command.type === 'setApprovalMode') {
+        const refused = refuseUngrantedFullAccess(c, [command.approvalMode]);
+        if (refused) return refused;
+      }
       // Resolved once and reused for both the read authority below and the
       // dispatch context further down, rather than calling
       // `readAuthorityFor(c)` a second time — `resolveActorPrincipal` is the
