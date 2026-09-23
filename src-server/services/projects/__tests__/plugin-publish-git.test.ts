@@ -92,10 +92,18 @@ test('a repo-local core.sshCommand does not run on push', async () => {
   git(repo, ['remote', 'add', 'origin', 'ssh://git@example.invalid/x/y.git']);
   git(repo, ['add', '--all']);
   git(repo, ['commit', '--quiet', '-m', 'x']);
-  await expect(
-    runPublishGit(repo, ['push', 'origin', 'main'], {}, 30_000),
-  ).rejects.toThrow();
+  const failure = await runPublishGit(
+    repo,
+    ['push', 'origin', 'main'],
+    {},
+    30_000,
+  ).then(
+    () => null,
+    (error: unknown) => error,
+  );
   expect(existsSync(marker)).toBe(false);
+  // It failed for the ssh reason (no such host), not because it never ran.
+  expect(failure).not.toBeNull();
 });
 
 test('a repo-local insteadOf to ext:: (with protocol.ext.allow) does not run on push', async () => {
@@ -110,10 +118,20 @@ test('a repo-local insteadOf to ext:: (with protocol.ext.allow) does not run on 
   git(repo, ['remote', 'add', 'origin', 'https://evil.example/x/y.git']);
   git(repo, ['add', '--all']);
   git(repo, ['commit', '--quiet', '-m', 'x']);
-  await expect(
-    runPublishGit(repo, ['push', 'origin', 'main'], {}, 30_000),
-  ).rejects.toThrow(/not allowed/);
+  const failure = await runPublishGit(
+    repo,
+    ['push', 'origin', 'main'],
+    {},
+    30_000,
+  ).then(
+    () => null,
+    (error: unknown) => error,
+  );
+  // The property first: the helper never ran. Then why the push failed.
   expect(existsSync(marker)).toBe(false);
+  expect(String((failure as { stderr?: unknown })?.stderr)).toMatch(
+    /transport 'ext' not allowed/,
+  );
 });
 
 test('status stops at the path cap and reports too many', async () => {
