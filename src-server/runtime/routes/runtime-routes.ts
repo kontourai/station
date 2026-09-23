@@ -212,6 +212,7 @@ import { createRegistryRoutes } from '../../routes/plugins/registry.js';
 import { createCodingRoutes } from '../../routes/projects/coding.js';
 import { createFsRoutes } from '../../routes/projects/fs.js';
 import { createWorkflowRoutes } from '../../routes/projects/layouts.js';
+import { createPluginPublishRoutes } from '../../routes/projects/plugin-publish-routes.js';
 import {
   createProjectContributionRoutes,
   delegationContributionQueryAuthorized,
@@ -3934,6 +3935,16 @@ export function configureRuntimeRoutes(
         getSessionReadAuthority: readAuthorityForExecution,
         isHostedExecution: () => hostedTenantRegistry !== undefined,
       },
+    }),
+  );
+  // Epic #2323 S6: publish a plugin Project to a git remote. Mounted under
+  // the Project read guard like its siblings; the routes themselves are
+  // operator-only, because the push uses this computer's git credentials.
+  context.app.route(
+    '/api/projects/:slug/plugin-publish',
+    createPluginPublishRoutes({
+      getWorkspacePath: resolveWorkspacePath,
+      visibility: { resolvePrincipal: resolveOrchestrationRequestPrincipal },
     }),
   );
   context.app.route(

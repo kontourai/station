@@ -125,6 +125,8 @@ const SCAN_EXCLUSIONS = {
     'A mutation: it creates a grant request for a pane the caller named, and returns the transaction, not a catalog. The candidate LIST it is paired with is the enumerator, and that one is projected.',
   'POST /api/plugins/host-approvals':
     'A mutation naming its own target; it returns the approval transaction. The `installed+name` signal is the approval record it writes, not a listing of other plugins.',
+  'POST /api/projects/:slug/plugin-publish':
+    'Epic #2323 S6. Operator-only (`operatorOnly` refuses every other caller before the body is read), and it reads no installed plugin: it publishes the manifest in the Project\u2019s own folder and answers with that manifest\u2019s name. A collaborator cannot reach it, and the operator already sees the whole inventory. The `pluginName` signal is its audit log field.',
   'POST /api/projects/:slug/layouts/from-plugin':
     'A mutation applying a plugin layout the caller named to a project. Its lookup is now projected through `projectLayoutCatalogItems` (#2103) — it used to search `listLayouts()` unprojected and answer 404-by-name, which is an existence oracle for a caller guessing names; a hidden plugin and an uninstalled one now get the identical 404. Kept here rather than in the inventory because it is a POST whose 404-vs-201 the inventory test (which drives a bare GET and asserts 200) cannot express.',
   'GET /api/plugins/:name/bundle.js':

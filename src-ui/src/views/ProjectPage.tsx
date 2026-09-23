@@ -40,6 +40,7 @@ import {
 } from './project-page/ProjectLayoutsSection';
 import { ProjectLiveWorkSection } from './project-page/ProjectLiveWorkSection';
 import { ProjectPageHeader } from './project-page/ProjectPageHeader';
+import { ProjectPluginPublishSection } from './project-page/ProjectPluginPublishSection';
 import { ProjectTasksSection } from './project-page/ProjectTasksSection';
 import { projectChatCta } from './project-page/projectChatCta';
 import type { AvailableLayout, ConversationRecord } from './project-page/types';
@@ -363,6 +364,8 @@ export function ProjectPage({ slug }: { slug: string }) {
             )}
           </div>
         )}
+
+        <ProjectPluginPublishSection slug={slug} />
 
         <section
           className="project-page__layouts"
