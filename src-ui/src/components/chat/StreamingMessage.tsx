@@ -1,3 +1,4 @@
+import type { ConversationTurnActivity } from '@kontourai/station-contracts/orchestration';
 import { memo, useEffect, useMemo, useState } from 'react';
 import type {
   ChatActivityHint,
@@ -7,6 +8,7 @@ import { useIsMobile } from '../../hooks/useIsMobile';
 import { useStreamingContent } from '../../hooks/useStreamingContent';
 import { useStreamingHaptics } from '../../hooks/useStreamingHaptics';
 import { deriveToolProgressSummary } from '../../utils/chat-progress';
+import { openTurnStartedAtMs } from '../../utils/conversation-activity';
 import type { OwnerAttribution } from '../../utils/ownerAttribution';
 import { ElapsedWait } from '../ElapsedWait';
 import { LoadingDots } from '../LoadingDots';
@@ -14,6 +16,7 @@ import { MessageAttribution } from './message-bubble/MessageAttribution';
 import { INLINE_RUN_LIMIT } from './message-bubble/MessageContent';
 import { StreamingMarkdown } from './StreamingMarkdown';
 import { ToolCallBatchBoundary } from './ToolCallBatchBoundary';
+import { TurnActivityProgress } from './TurnActivityProgress';
 import { splitToolCallRuns } from './tool-call-runs';
 import { UIBlockRenderer } from './UIBlockRenderer';
 
@@ -36,6 +39,15 @@ export type StreamingMessageProps = {
   /** Transient provider activity signal (thinking/compacting/…). */
   activityHint?: ChatActivityHint;
   elapsedMs?: number;
+  /**
+   * #2309: the conversation's server activity record. When present, the
+   * working count is the open turn's duration by the SERVER's start (on this
+   * client's clock, so skew shows up in it), and the row below shows what the
+   * turn is doing. With a record but no open turn yet (this composer's send,
+   * before the server opens it) the row states no duration at all. Absent (an
+   * older server), the count runs from this row's mount, as before.
+   */
+  conversationActivity?: ConversationTurnActivity;
   suppressActivity?: boolean;
   statusLabel?: string;
   /**
@@ -84,6 +96,7 @@ export function StreamingMessageView({
   renderReasoning,
   activityHint,
   elapsedMs,
+  conversationActivity,
   suppressActivity,
   statusLabel,
   attributionAgent,
@@ -99,7 +112,12 @@ export function StreamingMessageView({
   contentRevision: number;
 }) {
   const isMobile = useIsMobile();
-  const [waitingSince] = useState(Date.now);
+  // The status-labelled wait's clock, and the working clock on a server with
+  // no activity record: this row's mount, exactly as before #2309.
+  const [mountedAt] = useState(Date.now);
+  const workingStartedAt = conversationActivity
+    ? openTurnStartedAtMs(conversationActivity)
+    : mountedAt;
   useStreamingHaptics(sessionId, streamingText.length);
   const progressSummary = deriveToolProgressSummary(contentParts);
   const hasReasoningPart = contentParts.some(
@@ -114,6 +132,8 @@ export function StreamingMessageView({
       (part) => part.type === 'text' && Boolean(part.content?.trim()),
     );
   const activityLabel = deriveActivityLabel(activityHint, hasReasoningPart);
+  const workingLabel =
+    progressSummary && !renderToolCall ? progressSummary.label : activityLabel;
   // Consecutive tool-call parts collapse into one batch while the turn is
   // still streaming too — classification (inside the lazy ToolCallBatch
   // chunk) marks a batch in-progress (latest-call headline) whenever one
@@ -217,17 +237,28 @@ export function StreamingMessageView({
               title={progressSummary?.toolName}
             >
               {!statusLabel && <LoadingDots />}
-              <ElapsedWait
-                label={
-                  statusLabel ??
-                  `${(progressSummary && !renderToolCall ? progressSummary.label : activityLabel).replace(/[.\u2026]+$/u, '')} for`
-                }
-                separator={statusLabel ? ' · ' : ' '}
-                startedAt={waitingSince}
-                elapsedMs={elapsedMs}
-              />
+              {statusLabel ||
+              elapsedMs !== undefined ||
+              workingStartedAt !== undefined ? (
+                <ElapsedWait
+                  label={
+                    statusLabel ??
+                    `${workingLabel.replace(/[.\u2026]+$/u, '')} for`
+                  }
+                  separator={statusLabel ? ' · ' : ' '}
+                  startedAt={statusLabel ? mountedAt : workingStartedAt}
+                  elapsedMs={elapsedMs}
+                />
+              ) : (
+                <span className="elapsed-wait" aria-live="off">
+                  {workingLabel}
+                </span>
+              )}
             </div>
           )}
+        {!suppressActivity && (
+          <TurnActivityProgress activity={conversationActivity} />
+        )}
       </div>
     </div>
   );
