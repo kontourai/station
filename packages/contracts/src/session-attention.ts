@@ -22,7 +22,8 @@ import type { SessionLifecycleState } from './session-lifecycle.js';
  * The ORDER is the contract, and it is the client fold's order because each
  * step of it is a fixed defect:
  *
- * 1. `failed` outranks everything — `status` (transport state) and
+ * 1. `failed` outranks everything — including a first send that did not
+ *    take (`isFirstSendFailure`, #2310). `status` (transport state) and
  *    `lifecycleState` (event-fold outcome) are independent, so a runtime that
  *    crashes and then has its connection torn down (`status: 'closed'`) must
  *    read Failed, never Completed (station#1296 review).
@@ -57,6 +58,24 @@ export interface SessionAttentionSubject {
   lifecycleState?: SessionLifecycleState;
   status?: ProviderSession['status'];
   pendingReview?: boolean;
+  /** Only `kind` is read — see {@link isFirstSendFailure}. */
+  terminalAttribution?: { kind: string };
+}
+
+/**
+ * #2310: the conversation's only sends did not take and no activity has been
+ * recorded since (`terminalAttribution.kind` `send_refused`/`send_failed`,
+ * derived by the server from command receipts). The session's
+ * `lifecycleState` is left as the event fold — control paths such as
+ * conversation continuation treat it as runtime truth — so every surface
+ * that asks "did this fail?" must ask this too. {@link
+ * sessionAttentionDisposition} does.
+ */
+export function isFirstSendFailure(
+  subject: Pick<SessionAttentionSubject, 'terminalAttribution'>,
+): boolean {
+  const kind = subject.terminalAttribution?.kind;
+  return kind === 'send_refused' || kind === 'send_failed';
 }
 
 /** Which door an `awaiting` session came through — and, server-side, which attention kind it projects. */
@@ -71,7 +90,9 @@ export type SessionAttentionDisposition =
 export function sessionAttentionDisposition(
   subject: SessionAttentionSubject,
 ): SessionAttentionDisposition {
-  if (subject.lifecycleState === 'failed') return { state: 'failed' };
+  if (subject.lifecycleState === 'failed' || isFirstSendFailure(subject)) {
+    return { state: 'failed' };
+  }
   if (
     subject.lifecycleState === 'completed' ||
     subject.lifecycleState === 'canceled' ||

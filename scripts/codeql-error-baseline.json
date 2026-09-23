@@ -3,11 +3,6 @@
   "findings": [
     {
       "rule": "js/bad-code-sanitization",
-      "path": "scripts/__tests__/verification-coordinator.test.ts",
-      "lineHash": "35621f6192dacac7:1"
-    },
-    {
-      "rule": "js/bad-code-sanitization",
       "path": "src-ui/src/components/plugins/PluginFrameHost.tsx",
       "lineHash": "5fe76efc0d552cb2:1"
     },
@@ -25,11 +20,6 @@
       "rule": "js/path-injection",
       "path": "scripts/phone-ui-server.mjs",
       "lineHash": "a228b11458c465d9:1"
-    },
-    {
-      "rule": "js/redos",
-      "path": "scripts/__tests__/container-release.test.ts",
-      "lineHash": "32bf712b61a35f1c:1"
     },
     {
       "rule": "js/regex-injection",

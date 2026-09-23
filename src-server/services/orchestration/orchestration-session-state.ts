@@ -11,6 +11,7 @@ import type {
   ConversationTurnActivity,
   OrchestrationDelegationContext,
   OrchestrationSessionSummary,
+  TerminalAttribution,
   TurnProgressObservation,
 } from '@kontourai/station-contracts/orchestration';
 import type {
@@ -108,6 +109,184 @@ const DISPLAY_TITLE_MAX_LENGTH = 120;
  */
 function hasOpenTurn(events: CanonicalRuntimeEvent[]): boolean {
   return activeTurnIdForEvents(events) !== undefined;
+}
+
+/**
+ * Event families that mean a conversation has had ACTIVITY and so cannot be a
+ * Draft (#2310). Turn facts, because the conversation history's own message
+ * count (`EventStore.projectConversationHistoryEvent`) counts exactly
+ * `turn.started`/`turn.completed`, and "has messages" must not be decided two
+ * ways. Content and tool events too (review L4): the nightly home holds a
+ * continuation child that streamed text and started a tool with no
+ * `turn.started` of its own, and output is not what a Draft looks like.
+ */
+export const DRAFT_ENDING_TURN_METHODS = [
+  'turn.started',
+  'turn.completed',
+] as const;
+export const DRAFT_ENDING_METHOD_PREFIXES = ['content.', 'tool.'] as const;
+
+function isDraftEndingActivity(method: string): boolean {
+  return (
+    (DRAFT_ENDING_TURN_METHODS as readonly string[]).includes(method) ||
+    DRAFT_ENDING_METHOD_PREFIXES.some((prefix) => method.startsWith(prefix))
+  );
+}
+
+/**
+ * What the store knows about a thread's whole CONVERSATION that its own
+ * events cannot say (`EventStore.conversationDraftFactsForThreads`).
+ */
+export interface ConversationDraftFacts {
+  /** Any Session of the lineage recorded turn, content or tool activity. */
+  activityObserved: boolean;
+  /** Any `sendTurn` receipt in the lineage was accepted. */
+  sendAccepted: boolean;
+  /**
+   * Any `sendTurn` receipt in the lineage was `rejected` by an EXECUTION-
+   * phase refusal — the session's authorized caller was refused after the
+   * authorization gate (e.g. an adapter pre-send refusal, #2302). A receipt
+   * written for an authorization or ownership refusal (tenant mismatch, a
+   * caller who cannot read the session, quarantine, a peer-delegation
+   * record, a read-only attached session) never counts: a caller who cannot
+   * act on the session must not be able to change its owner's view of it
+   * (#2310 review F3). Receipts written before that phase was recorded are
+   * not counted either, because they cannot be told apart.
+   */
+  sendRejected: boolean;
+  /**
+   * Any `sendTurn` receipt in the lineage `failed`. Only the post-
+   * authorization dispatch path writes that status. It covers a genuinely
+   * indeterminate send (the provider may have accepted it —
+   * `SessionTurnStartIndeterminateError`) as well as a pre-#2302 refusal, so
+   * it is worded as "no activity recorded since", never "nothing ran".
+   */
+  sendFailed: boolean;
+  /** The conversation is a fork target: it carries copied messages. */
+  hasCopiedHistory: boolean;
+}
+
+/** How the only sends in a conversation ended, when none took (review F2). */
+export type FirstSendOutcome = 'refused' | 'failed';
+
+export interface SessionDraftVerdict {
+  /**
+   * `true` Draft, `false` not a Draft, `undefined` no claim (the lineage was
+   * not read and the thread's own events do not settle it).
+   */
+  draft: boolean | undefined;
+  /**
+   * Review M1 (owner decision): a send was attempted, did not take, and no
+   * activity has been recorded since. That is not a Draft — it is a failure
+   * the user must see. `refused` when Station refused a send before it
+   * started; `failed` when a send failed without that certainty.
+   */
+  firstSendOutcome?: FirstSendOutcome;
+}
+
+/**
+ * #2310: whether a session is a Draft — see `OrchestrationSessionSummary.draft`.
+ *
+ * `facts` is the LINEAGE answer. Omitted means the caller did not read it,
+ * and the verdict is then "no claim" unless the thread's own events already
+ * settle it — a missing lineage read must never become a Draft claim, because
+ * a continuation child with no activity of its own is exactly the shape that
+ * would be mislabelled.
+ */
+function deriveSessionDraft(input: {
+  events: readonly CanonicalRuntimeEvent[];
+  session: Pick<
+    ProviderSession,
+    'controlMode' | 'attachedSource' | 'continuationSourceThreadId'
+  >;
+  delegated: boolean;
+  facts?: ConversationDraftFacts;
+}): SessionDraftVerdict {
+  const notDraft = { draft: false } as const;
+  // History that did not arrive through a local turn: followed from another
+  // app, adopted from one, or dispatched by Station with its prompt in hand.
+  if (
+    input.session.controlMode === 'read-only-attached' ||
+    input.session.attachedSource !== undefined ||
+    input.session.continuationSourceThreadId !== undefined ||
+    input.delegated
+  ) {
+    return notDraft;
+  }
+  if (input.events.some((event) => isDraftEndingActivity(event.method))) {
+    return notDraft;
+  }
+  const facts = input.facts;
+  if (!facts) return { draft: undefined };
+  if (facts.activityObserved || facts.hasCopiedHistory) return notDraft;
+  if (facts.sendAccepted) return notDraft;
+  // A certain refusal outranks an uncertain failure for the wording.
+  if (facts.sendRejected) return { draft: false, firstSendOutcome: 'refused' };
+  if (facts.sendFailed) return { draft: false, firstSendOutcome: 'failed' };
+  return { draft: true };
+}
+
+/**
+ * The attribution each first-send outcome carries into its Failed row
+ * (review F2). Two kinds rather than one kind with two details, so a reader
+ * can tell a certain refusal from an uncertain failure without parsing prose.
+ * Neither detail says "nothing ran": a `failed` send may have reached the
+ * provider.
+ */
+const FIRST_SEND_ATTRIBUTION = {
+  refused: {
+    kind: 'send_refused',
+    detail: 'Station refused the send before it started.',
+  },
+  failed: {
+    kind: 'send_failed',
+    detail: 'The send failed and no activity has been recorded since.',
+  },
+} as const satisfies Record<FirstSendOutcome, TerminalAttribution>;
+
+/**
+ * Review M1/F1: a conversation whose only sends did not take reads Failed,
+ * with the reason on every surface that reads one — `terminalAttribution` for
+ * the row notice, and `blockedReason` for the dock banner, the session detail
+ * pane (`sessionFailureText`) and the bell item (`buildSessionFailedItem`).
+ * The event fold cannot see it: a send that does not take publishes no event,
+ * only a command receipt.
+ *
+ * `lifecycleState` is deliberately NOT rewritten. It is the event fold, and
+ * control paths read it as runtime truth: conversation continuation reserves
+ * a NEW child session for a stopped (failed) current session, and manual
+ * lifecycle transitions validate from it. Rewriting it made a display fact
+ * re-route the user's retry. Instead the shared attention fold
+ * (`sessionAttentionDisposition`, `isFirstSendFailure` in
+ * `@kontourai/station-contracts/session-attention`) reads the `send_refused`
+ * / `send_failed` attribution as Failed, so the row label, the bell and the
+ * failure surfaces agree while `lifecycleState`, `previousLifecycleState` and
+ * the transition fields keep describing the last event, consistently.
+ *
+ * An outcome the fold already recorded — failed, completed, canceled — is
+ * left exactly as it is.
+ */
+function foldFirstSendOutcome<
+  L extends {
+    lifecycleState: SessionLifecycleState;
+    blockedReason?: string;
+    terminalAttribution?: TerminalAttribution;
+  },
+>(folded: L, outcome: FirstSendOutcome | undefined): L {
+  if (
+    !outcome ||
+    folded.lifecycleState === 'failed' ||
+    folded.lifecycleState === 'completed' ||
+    folded.lifecycleState === 'canceled'
+  ) {
+    return folded;
+  }
+  const attribution = FIRST_SEND_ATTRIBUTION[outcome];
+  return {
+    ...folded,
+    blockedReason: attribution.detail,
+    terminalAttribution: { kind: attribution.kind, detail: attribution.detail },
+  };
 }
 
 export function trackOrchestrationSession(options: {
@@ -298,6 +477,13 @@ export function buildOrchestrationSessionSummary(options: {
    * same prompt two different ways.
    */
   conversationFirstPromptedTurn?: CanonicalRuntimeEvent;
+  /**
+   * #2310: what the store knows about this thread's whole conversation
+   * (`EventStore.conversationDraftFactsForThreads`). Omitted means the lineage
+   * was not consulted, and the summary then makes no Draft claim (`draft`
+   * stays absent unless the thread's own events rule it out).
+   */
+  conversationDraftFacts?: ConversationDraftFacts;
 }): OrchestrationSessionSummary {
   const base = options.loaded ?? options.persisted;
   if (!base) {
@@ -306,7 +492,7 @@ export function buildOrchestrationSessionSummary(options: {
 
   const events = options.events ?? [];
   const lastEvent = events.at(-1);
-  const lifecycle = projectSessionLifecycle({ session: base, events });
+  const foldedLifecycle = projectSessionLifecycle({ session: base, events });
   const delegation = extractDelegationContext(events);
   const inputOrigin = delegation
     ? {
@@ -328,6 +514,15 @@ export function buildOrchestrationSessionSummary(options: {
     delegation?.title;
   const turnOrigin = extractTurnOrigin(events);
   const controlMode = base.controlMode ?? 'station-owned';
+  const { draft, firstSendOutcome } = deriveSessionDraft({
+    events,
+    session: { ...base, controlMode },
+    delegated: delegation !== undefined,
+    ...(options.conversationDraftFacts
+      ? { facts: options.conversationDraftFacts }
+      : {}),
+  });
+  const lifecycle = foldFirstSendOutcome(foldedLifecycle, firstSendOutcome);
   const {
     projectSlug: lifecycleProjectSlug,
     assignedAgentSlug,
@@ -432,6 +627,7 @@ export function buildOrchestrationSessionSummary(options: {
     ...(modelLaunchPlan ? { modelLaunchPlan } : {}),
     ...(reportedModel ? { reportedModel } : {}),
     hasActiveTurn: hasOpenTurn(events),
+    ...(draft !== undefined ? { draft } : {}),
   };
 }
 

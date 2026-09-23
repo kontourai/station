@@ -18,10 +18,15 @@ const { useState } = React;
 // the focused regression instead of declaring the entire example type-safe.
 Object.assign(globalThis, { React });
 
+// `useSendToChat` returns the send function itself (packages/sdk
+// src/hooks/operations.ts), not an object holding it. The mock mirrors that
+// shape so a component that destructures the result gets `undefined` here too.
+const sendToChat = vi.hoisted(() => vi.fn());
+
 vi.mock('@kontourai/station-sdk', () => ({
   useToast: () => ({ showToast: vi.fn() }),
   useNavigation: () => ({ setLayoutTab: vi.fn() }),
-  useSendToChat: () => ({ sendToChat: vi.fn() }),
+  useSendToChat: () => sendToChat,
 }));
 
 vi.mock('../hooks/useProjectSlug', () => ({
@@ -384,5 +389,18 @@ describe('topmost dialog keyboard behavior', () => {
 
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(document.activeElement).toBe(opener);
+  });
+});
+
+describe('Portfolio chat actions', () => {
+  test('Portfolio quick actions send their prompt through useSendToChat', () => {
+    sendToChat.mockClear();
+    render(<Portfolio />);
+    fireEvent.click(
+      screen.getByRole('button', { name: /Account health check/ }),
+    );
+    expect(sendToChat).toHaveBeenCalledWith(
+      'Review my accounts and flag any that need attention.',
+    );
   });
 });

@@ -37,6 +37,10 @@ const LANE_VOCABULARY: Record<SessionLaneId, ReadonlySet<string>> = {
   activeNow: new Set(['Running', 'Ready', 'Queued', "Can't answer here"]),
   // Over. The refinement is which ending.
   recentlyFinished: new Set(['Completed', 'Stopped', 'Failed']),
+  // #2310: nothing has been sent. Not "Queued" or "Running" — the raw state
+  // of a never-prompted session is a transport fact, and either word would
+  // claim work exists.
+  drafts: new Set(['Draft']),
   earlier: new Set(['Completed', 'Stopped', 'Failed']),
 };
 
@@ -117,6 +121,21 @@ const MIXED_FIXTURE: OrchestrationSessionSummary[] = [
     lifecycleState: 'queued',
     hasActiveTurn: true,
   }),
+  // #2310: the server's lineage fold says nothing has ever been sent. The
+  // two raw states a never-prompted session actually carries: `queued` once
+  // the engine reports ready, `running` once `session.configured` attaches.
+  session({
+    threadId: 'draft-engine-ready',
+    lifecycleState: 'queued',
+    hasActiveTurn: false,
+    draft: true,
+  }),
+  session({
+    threadId: 'draft-attached',
+    lifecycleState: 'running',
+    hasActiveTurn: false,
+    draft: true,
+  }),
   session({ threadId: 'just-completed', lifecycleState: 'completed' }),
   session({ threadId: 'just-failed', lifecycleState: 'failed' }),
   session({ threadId: 'just-canceled', lifecycleState: 'canceled' }),
@@ -146,6 +165,7 @@ describe('a row word can never contradict its lane heading', () => {
     // green while checking nothing — the "unreachable fixture" failure mode.
     expect(lanes.map((lane) => lane.id).sort()).toEqual([
       'activeNow',
+      'drafts',
       'earlier',
       'needsYou',
       'recentlyFinished',
