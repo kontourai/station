@@ -176,10 +176,6 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Hono routes composed with the real Task and transcript worker owners.
   'src-server/services/search/__tests__/runtime-search.test.ts',
   'src-server/services/orchestration/__tests__/isolated-transcript-search.test.ts',
-  // Epic #2323 S6: real `git` init/commit/push into a temp bare repository,
-  // through the production publish route and its execGit calls.
-  'src-server/routes/projects/__tests__/plugin-publish-routes.test.ts',
-  'src-server/services/projects/__tests__/plugin-publish-git.test.ts',
   // Creates and observes real Git checkouts through the portable identity owner.
   'src-server/services/projects/__tests__/project-identity-service.test.ts',
   // Owns real CPU-blocking worker_threads and canonical TaskGraph file fixtures.
