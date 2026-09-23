@@ -8,16 +8,12 @@ import { isSessionExecutionActive } from '../../utils/execution';
 import { CHAT_ERROR_MARKER_PREFIX } from '../../utils/sessionFailure';
 import { extractUIBlocks } from '../../utils/uiBlocks';
 import { upsertToolResultBlocks } from './messageParts';
-import {
-  type PendingApprovalRequest,
-  unansweredApprovalRequests,
-} from './pendingRequestRows';
 import { requestReplayHistory, useReplayHistory } from './replay/history';
 import { isReplayThread } from './replay/replay-registry';
 import { useSessionEventWindow } from './useSessionEventWindow';
 
 const EMPTY_MESSAGES: ChatMessage[] = [];
-const NO_PENDING_APPROVALS: PendingApprovalRequest[] = [];
+const NO_APPROVAL_EVENTS: CanonicalRuntimeEvent[] = [];
 const EMPTY_CHANGED_FILES = new Map<
   string,
   NonNullable<ChatMessage['changedFiles']>
@@ -507,28 +503,27 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
     window.contextBoundaries,
   ]);
 
-  // #2316: open approvals no rendered row can answer (a subagent's call,
-  // Codex, a turn row the streaming shell holds). The pending-approvals strip
-  // offers them; they are never transcript messages. A replay answers nothing.
-  const pendingApprovalRequests = useMemo(
+  // #2316: the window's events for the pending-approvals strip, which offers
+  // open approvals no rendered row can answer (a subagent's call, Codex, a
+  // turn row the streaming shell holds). The strip derives them inside the
+  // lazily loaded message list, keeping that logic off the entry chunk. A
+  // replay answers nothing.
+  const approvalEvents = useMemo(
     () =>
       enabled && !replay
-        ? unansweredApprovalRequests(
-            messages,
-            window.events
-              .map((item) => item.event)
-              .filter((event): event is CanonicalRuntimeEvent =>
-                Boolean(event.eventId),
-              ),
-          )
-        : NO_PENDING_APPROVALS,
-    [enabled, replay, messages, window.events],
+        ? window.events
+            .map((item) => item.event)
+            .filter((event): event is CanonicalRuntimeEvent =>
+              Boolean(event.eventId),
+            )
+        : NO_APPROVAL_EVENTS,
+    [enabled, replay, window.events],
   );
 
   return {
     ...window,
     enabled,
-    pendingApprovalRequests,
+    approvalEvents,
     messages: enabled
       ? messages
       : EMPTY_MESSAGES === session.messages

@@ -1,3 +1,4 @@
+import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import React, {
   useCallback,
   useEffect,
@@ -9,7 +10,7 @@ import React, {
 import { useAgents } from '../../contexts/AgentsContext';
 import { useApiBase } from '../../contexts/ApiBaseContext';
 import type { ChatContentPart } from '../../contexts/active-chats-state';
-import type { PendingApprovalRequest } from '../../hooks/orchestration/pendingRequestRows';
+import { unansweredApprovalRequests } from '../../hooks/orchestration/pendingRequestRows';
 import { useSendMessage } from '../../hooks/useActiveChatSessions';
 import { useCopyToClipboardToast } from '../../hooks/useCopyToClipboardToast';
 import { useToolApproval } from '../../hooks/useToolApproval';
@@ -92,10 +93,11 @@ interface ChatMessageListProps {
   onNewChatFromMessage?: (text: string) => void;
   onQuote?: (quote: SavedAnswerQuote) => void;
   /**
-   * #2316: open approvals no transcript row can answer, rendered as the
+   * #2316: the transcript window's runtime events. Open approvals no rendered
+   * row can answer are derived from them here and rendered as the
    * pending-approvals strip below the transcript (never as messages).
    */
-  pendingApprovalRequests?: readonly PendingApprovalRequest[];
+  approvalEvents?: readonly CanonicalRuntimeEvent[];
 }
 
 // Stable fallback so `agent || FALLBACK_AGENT` doesn't allocate a new object
@@ -125,6 +127,7 @@ function backgroundTasksLabel(
 const RESIZE_REANCHOR_THRESHOLD_PX = 4;
 const VIRTUALIZE_AFTER_MESSAGE_COUNT = 40;
 const EMPTY_MESSAGES: ChatMessage[] = [];
+const NO_PENDING_APPROVALS: ReturnType<typeof unansweredApprovalRequests> = [];
 function ChatMessageListComponent({
   activeSession,
   fontSize,
@@ -145,12 +148,19 @@ function ChatMessageListComponent({
   onForkFromTurn,
   onNewChatFromMessage,
   onQuote,
-  pendingApprovalRequests,
+  approvalEvents,
 }: ChatMessageListProps) {
   const agents = useAgents();
   const { apiBase } = useApiBase();
   const handleCopy = useCopyToClipboardToast();
   const handleToolApproval = useToolApproval(apiBase);
+  const pendingApprovalRequests = useMemo(
+    () =>
+      approvalEvents && approvalEvents.length > 0
+        ? unansweredApprovalRequests(activeSession.messages, approvalEvents)
+        : NO_PENDING_APPROVALS,
+    [activeSession.messages, approvalEvents],
+  );
   const sendMessage = useSendMessage(apiBase);
   // The store is already live at the shell; reading its scalar snapshot here
   // avoids adding a second subscription/allocation to every streaming row.
@@ -813,7 +823,7 @@ function ChatMessageListComponent({
               ))}
           </>
         )}
-        {!activeSession.replay && pendingApprovalRequests && (
+        {!activeSession.replay && pendingApprovalRequests.length > 0 && (
           <PendingApprovalStrip
             requests={pendingApprovalRequests}
             onApprove={(request, action) =>

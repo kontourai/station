@@ -155,7 +155,7 @@ function TranscriptHarness({ session }: { session: ChatSession }) {
   return (
     <ChatMessageList
       activeSession={{ ...session, messages: transcript.messages }}
-      pendingApprovalRequests={transcript.pendingApprovalRequests}
+      approvalEvents={transcript.approvalEvents}
       fontSize={13}
       showReasoning={false}
       showToolDetails={false}

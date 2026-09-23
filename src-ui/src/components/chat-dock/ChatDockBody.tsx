@@ -935,7 +935,7 @@ export function ChatDockBody({
             emptyState: historyFailureNotice,
             historyNotice: historyElisionNotice,
             hasOlderMessages: transcript.enabled && transcript.hasMore,
-            pendingApprovalRequests: transcript.pendingApprovalRequests,
+            approvalEvents: transcript.approvalEvents,
             historyLoading: transcript.loading,
             suppressActivity: Boolean(streamStatus),
             onLoadOlder: transcript.loadOlder,
