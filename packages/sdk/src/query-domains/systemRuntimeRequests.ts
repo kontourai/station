@@ -28,13 +28,23 @@ async function resolveApiBase(apiBaseOverride?: string): Promise<string> {
   return apiBaseOverride ?? (await _getApiBase());
 }
 
+/**
+ * station#2327 — the optional init for a read that forwards react-query's
+ * signal. Spread rather than passed as `undefined`: `authenticatedFetch`
+ * carries the caller's arity through to `fetch`, and a read with no signal
+ * must keep calling `fetch(url)` exactly as before.
+ */
+function signalInit(signal?: AbortSignal): [] | [RequestInit] {
+  return signal ? [{ signal }] : [];
+}
+
 export async function fetchAuthStatus(
   signal?: AbortSignal,
 ): Promise<AuthStatusData> {
   const apiBase = await resolveApiBase();
   const response = await authenticatedFetch(
     `${apiBase}/api/auth/status`,
-    signal ? { signal } : undefined,
+    ...signalInit(signal),
   );
   if (!response.ok) {
     throw new Error('Failed to fetch auth status');
@@ -121,7 +131,7 @@ export async function fetchMonitoringStats(
   const apiBase = await resolveApiBase();
   const response = await authenticatedFetch(
     `${apiBase}/monitoring/stats`,
-    signal ? { signal } : undefined,
+    ...signalInit(signal),
   );
   if (!response.ok) {
     // A non-2xx status is what `resolveMonitoringStatsRefetchInterval` reads
@@ -147,7 +157,7 @@ export async function fetchMonitoringMetrics(
   const apiBase = await resolveApiBase();
   const response = await authenticatedFetch(
     `${apiBase}/monitoring/metrics?range=${range}`,
-    signal ? { signal } : undefined,
+    ...signalInit(signal),
   );
   const result = (await response.json()) as {
     success: boolean;
@@ -174,7 +184,7 @@ export async function fetchFleetRoutingReceiptsForStation(
   const query = typeof limit === 'number' ? `?limit=${limit}` : '';
   const response = await authenticatedFetch(
     `${apiBase}/monitoring/fleet-routing-receipts${query}`,
-    signal ? { signal } : undefined,
+    ...signalInit(signal),
   );
   // Read the body BEFORE branching on status (fix-round HIGH-1): a rejected
   // response still carries a body the route author wrote on purpose — e.g.
@@ -229,7 +239,7 @@ export async function fetchFleetServeReceiptsForStation(
   const query = typeof limit === 'number' ? `?limit=${limit}` : '';
   const response = await authenticatedFetch(
     `${apiBase}/monitoring/fleet-serve-receipts${query}`,
-    signal ? { signal } : undefined,
+    ...signalInit(signal),
   );
   // See the routing-receipt sibling above (fix-round HIGH-1): read the body
   // before branching on status so a route-authored error sentence — e.g.
@@ -396,7 +406,7 @@ export async function fetchBranding(
   const apiBase = await resolveApiBase();
   const response = await authenticatedFetch(
     `${apiBase}/api/branding`,
-    signal ? { signal } : undefined,
+    ...signalInit(signal),
   );
   const result = (await response.json()) as {
     success: boolean;
@@ -513,7 +523,7 @@ export async function fetchServerCapabilities(
   const apiBase = await resolveApiBase();
   const response = await authenticatedFetch(
     `${apiBase}/api/system/capabilities`,
-    signal ? { signal } : undefined,
+    ...signalInit(signal),
   );
   if (!response.ok) {
     throw new Error('Failed to fetch server capabilities');
