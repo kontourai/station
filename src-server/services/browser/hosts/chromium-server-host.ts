@@ -985,9 +985,20 @@ export class ChromiumServerHost implements BrowserHost {
     return {
       async send<R = unknown>(
         method: string,
-        params?: object,
+        rawParams?: object,
         sessionId?: string,
       ): Promise<R> {
+        // Check and send ONE plain copy: a getter or proxy must not show the
+        // checks one value and Chromium another.
+        let params: object | undefined;
+        try {
+          params =
+            rawParams === undefined
+              ? undefined
+              : (JSON.parse(JSON.stringify(rawParams)) as object);
+        } catch {
+          return refuse(method, 'param-not-allowed');
+        }
         if (!PAGE_SESSION_CDP_ALLOWED.has(method))
           return refuse(method, 'host-owned-method');
         if (refusedCdpParam(method, params) !== undefined)

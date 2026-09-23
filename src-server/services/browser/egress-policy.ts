@@ -79,7 +79,8 @@ export function isLocalSpellingHost(requestedHost: string): boolean {
   const host = requestedHost
     .trim()
     .toLowerCase()
-    .replace(/^\[|\]$/g, '');
+    .replace(/^\[|\]$/g, '')
+    .replace(/\.$/, '');
   if (host === 'localhost' || host.endsWith('.localhost')) return true;
   return canonicalIp(host) !== undefined;
 }

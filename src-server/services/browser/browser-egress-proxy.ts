@@ -218,8 +218,14 @@ export class BrowserEgressProxy {
     if (host === '' || !Number.isInteger(port) || port < 1 || port > 65_535)
       return { ok: false, refusal: 'invalid-target' };
     let addresses: string[];
+    const bareName = host.toLowerCase().replace(/\.$/, '');
     if (isIP(host) !== 0) {
       addresses = [host];
+    } else if (bareName === 'localhost' || bareName.endsWith('.localhost')) {
+      // RFC 6761: `localhost` and `*.localhost` are loopback, decided here as
+      // Chromium does, never by a resolver (some Linux resolvers forward
+      // `*.localhost` to upstream DNS, which a page's owner may control).
+      addresses = ['127.0.0.1', '::1'];
     } else {
       try {
         addresses = (await this.lookup(host)).map((entry) => entry.address);

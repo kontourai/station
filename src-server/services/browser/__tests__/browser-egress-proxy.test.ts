@@ -34,6 +34,7 @@ async function harness(
     listeners?: () => StationListeners;
     reach?: EgressReach;
     lookup?: EgressLookup;
+    connectTimeoutMs?: number;
   } = {},
 ) {
   const stationHits: string[] = [];
@@ -87,6 +88,9 @@ async function harness(
         throw new Error('ENOTFOUND');
       }),
     onRefused: (event) => refused.push(event),
+    ...(options.connectTimeoutMs
+      ? { connectTimeoutMs: options.connectTimeoutMs }
+      : {}),
   });
   const proxyPort = await proxy.start();
   cleanups.push(() => proxy.close());
@@ -328,26 +332,22 @@ describe('BrowserEgressProxy', () => {
   });
 
   test('review M2: the proxy dials the address it checked, never a re-resolution', async () => {
+    // localhost names never reach the resolver, so this uses an ordinary
+    // name. The checked (first) answer is a public, unroutable TEST-NET
+    // address; a re-resolution would get loopback and reach the dev server.
     let calls = 0;
     const h = await harness({
+      connectTimeoutMs: 300,
       lookup: async () => {
         calls += 1;
-        // First answer (the one checked) is loopback; any later answer
-        // points at an unroutable TEST-NET address.
-        return [{ address: calls === 1 ? '127.0.0.1' : '192.0.2.1' }];
+        return [{ address: calls === 1 ? '192.0.2.1' : '127.0.0.1' }];
       },
     });
-    const allowed = await tunnel(h.proxyPort, `flip.localhost:${h.devPort}`);
-    expect(allowed.status).toBe('HTTP/1.1 200 Connection Established');
-    const reply = await new Promise<string>((resolve) => {
-      allowed.socket.once('data', (chunk) => resolve(chunk.toString()));
-      allowed.socket.write(
-        'GET /flip HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n',
-      );
-    });
-    allowed.socket.destroy();
-    expect(reply).toContain('dev GET /flip');
+    const result = await tunnel(h.proxyPort, `flip.test:${h.devPort}`);
+    result.socket.destroy();
+    expect(result.status).toBe('HTTP/1.1 502 Bad Gateway');
     expect(calls).toBe(1);
+    expect(h.devHits).toEqual([]);
   });
 
   test('review H1: the CONNECTED address is re-checked before a byte is written', async () => {
@@ -437,5 +437,30 @@ describe('BrowserEgressProxy', () => {
         .status,
     ).toBe(403);
     expect(h.devHits).toEqual(['http /ok']);
+  });
+
+  test('nit: localhost and *.localhost map to loopback in the proxy, never via the resolver', async () => {
+    const asked: string[] = [];
+    const h = await harness({
+      lookup: async (hostname) => {
+        asked.push(hostname);
+        // A resolver that forwards .localhost upstream, to a page owner's DNS.
+        return [{ address: '93.184.216.34' }];
+      },
+    });
+    for (const host of [
+      'x.localhost',
+      'localhost',
+      'localhost.',
+      'x.localhost.',
+    ]) {
+      const response = await viaProxy(
+        h.proxyPort,
+        `http://${host}:${h.devPort}/lh`,
+      );
+      expect(response.status, host).toBe(200);
+    }
+    expect(asked).toEqual([]);
+    expect(h.devHits).toEqual(['http /lh', 'http /lh', 'http /lh', 'http /lh']);
   });
 });

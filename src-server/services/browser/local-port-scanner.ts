@@ -376,6 +376,48 @@ const STATION_PROCESS =
 const PROXYING_PROCESS =
   /\b(?:vite|webpack(?:-dev-server)?|next|nuxt|astro|remix|parcel|http-proxy|proxy|nginx|caddy|traefik)\b/i;
 
+const SECRET_FLAG =
+  /(?:token|secret|key|passw(?:or)?d|pwd|auth|credential|bearer|cookie|session)/i;
+
+function looksHighEntropy(value: string): boolean {
+  if (value.length < 24 || /[/\\]/.test(value)) return false;
+  const classes = [/[a-z]/, /[A-Z]/, /\d/, /[-_+=.]/].filter((re) =>
+    re.test(value),
+  ).length;
+  return classes >= 3 && new Set(value).size >= 12;
+}
+
+/**
+ * Mask secret-looking values before a command line is shown: the value of any
+ * flag named like a token/secret/key/password/auth (`--api-key=v`,
+ * `--token v`, `PASSWORD=v`), and any long high-entropy argument.
+ */
+export function maskCommandLine(commandLine: string): string {
+  let maskNext = false;
+  return commandLine
+    .split(/(\s+)/)
+    .map((word) => {
+      if (word === '' || /^\s+$/.test(word)) return word;
+      if (maskNext) {
+        maskNext = false;
+        if (!word.startsWith('-')) return '***';
+      }
+      const assign = /^(-{0,2}[A-Za-z0-9_.-]+)=(.*)$/.exec(word);
+      if (assign) {
+        const [, name = '', value = ''] = assign;
+        return SECRET_FLAG.test(name) || looksHighEntropy(value)
+          ? `${name}=***`
+          : word;
+      }
+      if (/^-{1,2}[A-Za-z0-9_.-]+$/.test(word) && SECRET_FLAG.test(word)) {
+        maskNext = true;
+        return word;
+      }
+      return looksHighEntropy(word) ? '***' : word;
+    })
+    .join('');
+}
+
 /** Pure: the warnings for one listening process. */
 export function suggestionWarnings(port: {
   processName: string | null;
@@ -446,7 +488,8 @@ export async function suggestLocalTargets(
         : `:${port.port}`,
       pid: port.pid,
       processName: port.processName,
-      commandLine: port.commandLine,
+      commandLine:
+        port.commandLine === null ? null : maskCommandLine(port.commandLine),
       cwd: port.cwd,
       selected: false,
       warnings: suggestionWarnings(port),

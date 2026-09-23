@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
   LocalPortScanner,
+  maskCommandLine,
   type PortScannerDeps,
   parseLsofListeners,
   parseWindowsListeners,
@@ -328,5 +329,61 @@ describe('round 2: suggestion safety', () => {
     ],
   ])('warnings for %j', (port, expected) => {
     expect(suggestionWarnings(port)).toEqual(expected);
+  });
+});
+
+describe('nit: secrets are masked in suggestion command lines', () => {
+  test.each([
+    [
+      'node server.js --api-key=sk_live_abc --port 5173',
+      'node server.js --api-key=*** --port 5173',
+    ],
+    [
+      'node server.js --token abc123 --port 5173',
+      'node server.js --token *** --port 5173',
+    ],
+    [
+      'env PASSWORD=hunter2 DB_AUTH=x node app.js',
+      'env PASSWORD=*** DB_AUTH=*** node app.js',
+    ],
+    ['app --client-secret s3cr3t', 'app --client-secret ***'],
+    ['app ghp_A1b2C3d4E5f6G7h8I9j0K1l2M3n4', 'app ***'],
+    ['app --url=eyJhbGciOiJIUzI1NiJ9xAbc123DEF456', 'app --url=***'],
+    [
+      'node /Users/me/dev/project/node_modules/.bin/vite --port 5173',
+      'node /Users/me/dev/project/node_modules/.bin/vite --port 5173',
+    ],
+    ['app --token --verbose', 'app --token --verbose'],
+  ])('%s', (input, expected) => {
+    expect(maskCommandLine(input)).toBe(expected);
+  });
+
+  test('the suggestion payload carries the masked command line', async () => {
+    const workspace = mkdtempSync(join(tmpdir(), 'station-browser-ws-'));
+    roots.push(workspace);
+    const scanner = new LocalPortScanner(
+      () => [],
+      deps({
+        readCwd: vi.fn(async () => workspace),
+        readCommandLine: vi.fn(
+          async () => 'node dev.js --auth-token=supersecret',
+        ),
+      }),
+    );
+    const result = await suggestLocalTargets(
+      await scanner.scan(),
+      { workspaceRoot: workspace, registered: [] },
+      deriveStationListeners({ serverPort: 4100, configuredOrigins: [] }),
+    );
+    expect(result.state === 'ok' && result.suggestions.length).toBeGreaterThan(
+      0,
+    );
+    expect(
+      result.state === 'ok' &&
+        result.suggestions.every(
+          (s) => s.commandLine === 'node dev.js --auth-token=***',
+        ),
+    ).toBe(true);
+    expect(JSON.stringify(result)).not.toContain('supersecret');
   });
 });

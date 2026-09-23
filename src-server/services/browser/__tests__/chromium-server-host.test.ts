@@ -751,6 +751,33 @@ describe('ChromiumServerHost with a fake browser', () => {
     ]);
   });
 
+  test('nit: params are checked and sent as one plain copy (getters cannot switch values)', async () => {
+    const { host, profileDir, calls } = harness();
+    await host.openTarget({ profileDir, viewport: VIEWPORT });
+    let reads = 0;
+    const tricky = {
+      get url() {
+        reads += 1;
+        return reads === 1 ? 'https://ok.example/' : 'file:///etc/passwd';
+      },
+    };
+    await host.cdp().send('Page.navigate', tricky, 'S-T1');
+    expect(calls.at(-1)).toEqual({
+      method: 'Page.navigate',
+      params: { url: 'https://ok.example/' },
+      sessionId: 'S-T1',
+    });
+    const circular: Record<string, unknown> = {};
+    circular.self = circular;
+    const before = calls.length;
+    await expect(
+      host.cdp().send('Runtime.evaluate', circular, 'S-T1'),
+    ).rejects.toMatchObject({
+      code: 'param-not-allowed',
+    });
+    expect(calls.length).toBe(before);
+  });
+
   test('round 2: a popup reported with only openerFrameId still folds into its opener', async () => {
     const { host, profileDir, emit, calls } = harness();
     await host.openTarget({ profileDir, viewport: VIEWPORT });
