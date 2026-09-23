@@ -2253,6 +2253,9 @@ with the existing 500 ms failure bound; later reads observe the latest configure
 base. Best-effort SDK telemetry retains at most 1,000 events per flush interval
 and drops additional events in that interval. Flushes are single-flight with a
 five-second request timeout. It is not an accounting ledger.
+Events captured under a different selected Station or account authority are
+dropped rather than retargeted at flush time. Browser broker routes currently
+drop optional telemetry; they never send it by direct Station HTTP.
 
 ## Telemetry
 
