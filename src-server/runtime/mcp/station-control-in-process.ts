@@ -62,7 +62,7 @@ export interface InProcessStationControlServer {
  * caller revokes the token with `revokeStationControlMcpToken(sessionId)`
  * when the session stops, exactly as for every other channel.
  */
-export function createInProcessStationControlServer(input: {
+function createInProcessStationControlServer(input: {
   sessionId: string;
   tenantExecutionContext?: TenantExecutionContext;
   resolveRecord?: StationControlCallerRecordResolver;

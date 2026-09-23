@@ -21,6 +21,7 @@
  */
 import type { TenantExecutionContext } from '@kontourai/station-contracts/tenancy';
 import { getRuntimeAuthenticatedRequestPrincipal } from '../../security/runtime-request-security.js';
+import type { OrchestrationService } from '../../services/orchestration/orchestration-service.js';
 import type { SessionActingPrincipal } from '../../services/orchestration/session-authorization.js';
 import { SESSION_LOCAL_PROJECT_ID_METADATA_KEY } from '../../services/orchestration/session-project-identity.js';
 import {
@@ -124,14 +125,10 @@ export function createStationControlCallerRecordResolver(
  * principal or project differently.
  */
 export function stationControlCallerRecordSources(runtime: {
-  orchestrationService: {
-    resolveSessionActingPrincipal(
-      threadId: string,
-    ): SessionActingPrincipal | undefined;
-    latestStartedMetadataOfThread(
-      threadId: string,
-    ): Record<string, unknown> | undefined;
-  };
+  orchestrationService: Pick<
+    OrchestrationService,
+    'resolveSessionActingPrincipal' | 'latestStartedMetadataOfThread'
+  >;
   eventStore?: {
     conversationForSession(
       sessionId: string,
@@ -170,7 +167,7 @@ export interface VerifiedStationControlCaller {
  * with its project silently missing would read as "no project" to a tool
  * that scopes by project.
  */
-export function resolveVerifiedStationControlCaller(
+function resolveVerifiedStationControlCaller(
   token: string | undefined | null,
   resolveRecord?: StationControlCallerRecordResolver,
 ): VerifiedStationControlCaller | null {

@@ -98,7 +98,7 @@ export interface StationControlCaller {
  * (kept here so the stdio child bundle need not import the token registry).
  * Only `bound` may gate a session-attributable action.
  */
-export const STATION_CONTROL_CALLER_ASSURANCES = [
+const STATION_CONTROL_CALLER_ASSURANCES = [
   'bound',
   'delegated-custody',
   'bearer-exposed',
@@ -111,7 +111,7 @@ export type StationControlCallerAssurance =
  * `services/orchestration/session-authorization.ts`). Declared once here; the
  * session-authorization module derives its type from this list.
  */
-export const STATION_CONTROL_CALLER_PRINCIPAL_SOURCES = [
+const STATION_CONTROL_CALLER_PRINCIPAL_SOURCES = [
   'session-owner',
   'legacy-personal-owner',
   'ownerless-single-operator',
