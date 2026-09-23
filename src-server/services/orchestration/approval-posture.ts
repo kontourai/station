@@ -44,6 +44,13 @@ export interface ApprovalPostureDecision {
   sequence: number;
 }
 
+/** A plugin-contributed Agent's default, with full access not applied. */
+function withoutPluginFullAccess(
+  mode: ApprovalMode | undefined,
+): ApprovalMode | undefined {
+  return mode === 'never' ? undefined : mode;
+}
+
 function concrete(mode: unknown): ApprovalMode | undefined {
   return isApprovalMode(mode) && mode !== 'connection-default'
     ? mode
@@ -69,6 +76,13 @@ export class ApprovalPosture {
       resolveAgentDefault?: (
         agentSlug: string,
       ) => Promise<ApprovalMode | undefined>;
+      /**
+       * Whether the Agent's definition is contributed by a plugin. A plugin
+       * is installed at the ordinary operate tier, so a full-access default
+       * it ships would be full access no one with that authority chose
+       * (#2436 escalation authority): it is not applied.
+       */
+      isPluginOwnedAgent?: (agentSlug: string) => boolean;
     },
   ) {}
 
@@ -121,12 +135,26 @@ export class ApprovalPosture {
    * An engine connection's `config.approvalMode` is not a layer here: no
    * writer persists it (`sanitizeRuntimeConfig` keeps only named keys).
    */
-  private async defaultPosture(
-    agentSlug: string | undefined,
-  ): Promise<ApprovalMode | undefined> {
-    const agent = agentSlug
-      ? concrete(await this.deps.resolveAgentDefault?.(agentSlug))
-      : undefined;
+  private async defaultPosture(input: {
+    agentSlug?: string;
+    capturedAgent?: { approvalMode?: ApprovalMode };
+  }): Promise<ApprovalMode | undefined> {
+    // A foreground invocation admission captured the Agent's definition when
+    // it was admitted; the start must consume that, never reread the store
+    // (a reread could see a definition the admission did not). A read that
+    // fails is not "no default": it propagates and fails the start, like the
+    // credential-profile pin read beside it.
+    const agent = input.capturedAgent
+      ? // Only plugin Workspace Pane actions capture an Agent, and its
+        // definition is the plugin's own.
+        withoutPluginFullAccess(concrete(input.capturedAgent.approvalMode))
+      : input.agentSlug
+        ? this.deps.isPluginOwnedAgent?.(input.agentSlug)
+          ? withoutPluginFullAccess(
+              concrete(await this.deps.resolveAgentDefault?.(input.agentSlug)),
+            )
+          : concrete(await this.deps.resolveAgentDefault?.(input.agentSlug))
+        : undefined;
     if (agent) return agent;
     return concrete(await this.deps.resolveStationDefault?.());
   }
@@ -151,6 +179,8 @@ export class ApprovalPosture {
     provider: EngineId;
     phase: 'start' | 'turn';
     agentSlug?: string;
+    /** The Agent execution config a foreground admission captured. */
+    capturedAgent?: { approvalMode?: ApprovalMode };
     modelOptions?: Record<string, unknown>;
   }): Promise<Record<string, unknown> | undefined> {
     if (!approvalKnobSupported(input.provider)) return input.modelOptions;
@@ -166,7 +196,7 @@ export class ApprovalPosture {
       mode =
         concrete(carried) ??
         (input.phase === 'start'
-          ? await this.defaultPosture(input.agentSlug)
+          ? await this.defaultPosture(input)
           : undefined);
     }
     if (!mode) return Object.keys(rest).length > 0 ? rest : undefined;
@@ -193,8 +223,9 @@ export class ApprovalPosture {
   private async resolveDefaultPick(input: {
     threadId: string;
     agentSlug?: string;
+    capturedAgent?: { approvalMode?: ApprovalMode };
   }): Promise<ApprovalMode | undefined> {
-    const configured = await this.defaultPosture(input.agentSlug);
+    const configured = await this.defaultPosture(input);
     if (configured) return configured;
     return this.stationApplied.has(input.threadId) ? 'ask' : undefined;
   }

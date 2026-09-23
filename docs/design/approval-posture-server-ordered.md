@@ -390,6 +390,19 @@ A session spawned before this change has nothing recorded.
 - **Display.** The chip shows the Agent's default. The Agent editor's Engine
   section has the "Default approval mode" field, and it names what full access
   means.
+- **Schema.** `schemas/agent.schema.json` admits `execution.approvalMode`.
+  Before this change its closed `execution` object rejected the field, so a
+  saved default made the Agent unloadable.
+- **Plugin-contributed Agents.** Their full-access default is not applied.
+  - A plugin is installed at the ordinary operate tier, so a `never` it ships
+    is full access that no one with the authority chose.
+  - Their stricter defaults (Ask, Auto) apply.
+  - A Workspace Pane action's admission captures the plugin Agent's
+    definition. The start consumes that captured value and never rereads the
+    store.
+- **A failed read fails the start.** If the Agent's execution config cannot be
+  read, the start fails, exactly as the credential-profile pin read beside it
+  does. An unreadable default is not the same as no default.
 
 ## 5. Migration of persisted chats
 
@@ -500,9 +513,11 @@ leaves the engine more permissive than that decision.
   on `modelOptions.approvalMode` from a stale client applies, exactly as on
   `main`. Once anything is recorded, the recorded decision outranks it. A
   `never` there is subject to §4.8 like any other.
-- **Not gated:** plugin-contributed Agent definitions, and Agent files edited
-  on disk. Both are same-user, operator-installed channels, and neither goes
-  through the Agent write routes.
+- **Agent files edited on disk are not gated.** That is a same-user channel,
+  and it does not go through the Agent write routes.
+  - A plugin-contributed Agent's `never` default is not applied (§4.9).
+  - Neither is a `never` the operator saves on a plugin-owned Agent: the next
+    plugin update would re-copy the Agent anyway.
 - **The posture is not added to the session-summary snapshot.** A client that
   reconnects through a snapshot folds the posture from the next event or from
   its own result. The engine is correct either way, because the server applies

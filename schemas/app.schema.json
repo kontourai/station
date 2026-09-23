@@ -82,7 +82,7 @@
     "defaultApprovalMode": {
       "type": "string",
       "enum": ["connection-default", "ask", "auto", "never"],
-      "description": "Approval posture a new chat starts in when neither the chat nor its engine connection names one. \"connection-default\" states no posture. Default: connection-default",
+      "description": "Approval posture a new chat starts in when neither the chat nor its Agent names one; applied by the server when a session starts. \"connection-default\" states no posture. Default: connection-default",
       "default": "connection-default"
     },
     "defaultWorkspaceIsolation": {

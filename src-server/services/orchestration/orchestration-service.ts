@@ -647,6 +647,11 @@ interface OrchestrationServiceOptions {
    * Loaded per call, like the workspace default above.
    */
   resolveStationDefaultApprovalMode?: () => Promise<ApprovalMode | undefined>;
+  /**
+   * #2436: whether an Agent's definition is plugin-contributed; such an
+   * Agent's full-access default is not applied (`approval-posture.ts`).
+   */
+  isPluginOwnedAgent?: (agentSlug: string) => boolean;
   /** Private exact PR point read; it never shares the public route's branch resolver. */
   nativeDeclaredPullRequestResolver?: {
     read(input: {
@@ -1627,6 +1632,9 @@ export class OrchestrationService {
       // the credential-profile pin uses (`loadAgentExecutionConfig`).
       resolveAgentDefault: async (agentSlug) =>
         (await options.loadAgentExecutionConfig?.(agentSlug))?.approvalMode,
+      ...(options.isPluginOwnedAgent
+        ? { isPluginOwnedAgent: options.isPluginOwnedAgent }
+        : {}),
     });
     this.nativeOutputDeclarations = createNativeOutputDeclarationOperation({
       authority: this.nativeOutputGrants,
@@ -4747,6 +4755,15 @@ export class OrchestrationService {
             ...(typeof postureInput.metadata?.agentSlug === 'string'
               ? { agentSlug: postureInput.metadata.agentSlug }
               : {}),
+            ...(internal?.foregroundInvocationAdmission
+              ? {
+                  capturedAgent: {
+                    approvalMode:
+                      internal.foregroundInvocationAdmission.agentSpec.execution
+                        ?.approvalMode,
+                  },
+                }
+              : {}),
             modelOptions: postureInput.modelOptions,
           });
           const { modelOptions: _startOptions, ...startWithoutOptions } =
@@ -5500,6 +5517,15 @@ export class OrchestrationService {
               provider: adapter.provider,
               phase: 'turn',
               ...(typeof agentSlug === 'string' ? { agentSlug } : {}),
+              ...(internal?.foregroundInvocationAdmission
+                ? {
+                    capturedAgent: {
+                      approvalMode:
+                        internal.foregroundInvocationAdmission.agentSpec
+                          .execution?.approvalMode,
+                    },
+                  }
+                : {}),
               modelOptions: turnInput.modelOptions,
             });
             const { modelOptions: _previous, ...withoutOptions } = turnInput;
