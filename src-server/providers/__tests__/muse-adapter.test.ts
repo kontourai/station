@@ -3472,6 +3472,26 @@ describe('Muse background work holds the turn (#2300)', () => {
     });
   });
 
+  test('a turn held only for an already-settled task also has no idle bound', async () => {
+    vi.useFakeTimers();
+    const { harness, emit } = await startTurn('bg-early-no-budget', {
+      turnIdleTimeoutMs: 1_000,
+    });
+    // The task settles (arming idle, with nothing pending) before run 1
+    // ends; the hold must disarm that timer.
+    await emit(...LINES.slice(0, 30), TASK_COMPLETED, RUN_1_TERMINAL);
+    await vi.advanceTimersByTimeAsync(24 * 60 * 60_000);
+    expect(harness.processes[0].killed).toBe(false);
+    await emit(...FOLLOW_UP);
+    vi.useRealTimers();
+    const events = await drain(harness.iterator, 10, 'early, held a day');
+    expect(events.map((e) => e.method)).not.toContain('runtime.error');
+    expect(events.at(-1)).toMatchObject({
+      method: 'turn.completed',
+      outputText: MUSE_13_BACKGROUND_FOLLOW_UP_TEXT,
+    });
+  });
+
   test('a declared turn budget closes a held turn with a warning, never runtime.error', async () => {
     vi.useFakeTimers();
     const { harness, emit } = await startTurn('bg-budget', {
