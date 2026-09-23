@@ -375,6 +375,14 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // through `execFileSync` on purpose — its oracle has to be what git actually
   // returns for a pathspec, not a fixture that would pin the bug instead.
   'scripts/__tests__/gate-scope.test.ts',
+  // #90 lane C: launches a REAL installed Chrome/Edge (headless, pipe CDP,
+  // its own temporary profile and loopback fixture servers) to prove the
+  // server browser host's enforcement end to end: scheme blocking, download
+  // denial, popup folding, the Station-listener egress deny (HTTP, WebSocket,
+  // worker, service worker, rebinding) and crash detection. One browser for
+  // the whole file; every case reports an explicit skip when no browser is
+  // installed. Never downloads Chromium.
+  'src-server/services/browser/__tests__/chromium-server-host.real.test.ts',
   // station#1649: runs the glyph-coverage ratchet as a real child process
   // against a throwaway git repository, because the thing under test is the
   // gate's EXIT STATUS on a rejection — a guardrail whose failure branch has
