@@ -538,6 +538,14 @@ describe('writePluginScaffold containment', () => {
       ),
     ).toBe(false);
     expect(readdirSync(outside)).toEqual([]);
+
+    // A link that stays INSIDE the folder is refused too: realpath
+    // containment alone would pass it, and a scaffold never needs a link.
+    symlinkSync(join(folder, 'src'), join(folder, 'alias'), 'dir');
+    expect(
+      await ensureContainedDirectory(folder, join(folder, 'alias', 'nested')),
+    ).toBe(false);
+    expect(existsSync(join(folder, 'src', 'nested'))).toBe(false);
   });
 
   test('refuses an absolute file path', async () => {
