@@ -51,7 +51,7 @@ export const TRANSFER_BASELINE_PRUNE_ENV = 'STATION_TRANSFER_BASELINE_PRUNE';
  * install, so 30 minutes leaves wide margin while still reclaiming the
  * baselines that pile up over a day.
  */
-export const TRANSFER_BASELINE_RECENT_USE_MS = 30 * 60_000;
+const TRANSFER_BASELINE_RECENT_USE_MS = 30 * 60_000;
 
 const LAST_USED_MARKER = 'station-transfer-gate-last-used';
 
