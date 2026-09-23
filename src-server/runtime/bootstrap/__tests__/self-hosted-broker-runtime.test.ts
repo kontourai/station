@@ -1,4 +1,5 @@
 import { describe, expect, type Mock, test, vi } from 'vitest';
+import { BrokerTransientRequestError } from '../../../services/connections/self-hosted-broker-client.js';
 import {
   type BrokerConnectorLifecycle,
   SelfHostedBrokerRuntime,
@@ -73,6 +74,77 @@ describe('self-hosted broker runtime lifecycle', () => {
     await expect(runtime.start()).rejects.toThrow('registration failed');
     expect(f.connector.withdraw).toHaveBeenCalledOnce();
   });
+  test('recovers a transient startup request before retiring the lease', async () => {
+    const f = fixture();
+    f.connector.register
+      .mockRejectedValueOnce(
+        new BrokerTransientRequestError(new TypeError('offline')),
+      )
+      .mockResolvedValueOnce({ expiresAt: Date.now() + 60_000 });
+    const runtime = new SelfHostedBrokerRuntime({
+      ...f.options,
+      retryDelayMs: 1,
+    });
+    await runtime.start();
+    expect(f.connector.register).toHaveBeenCalledTimes(2);
+    expect(f.connector.withdraw).not.toHaveBeenCalled();
+    await runtime.shutdown();
+    expect(f.connector.withdraw).toHaveBeenCalledOnce();
+  });
+  test('does not retry a permanent registration refusal', async () => {
+    const f = fixture();
+    f.connector.register.mockRejectedValueOnce(
+      new Error('broker_request_refused_401'),
+    );
+    const runtime = new SelfHostedBrokerRuntime({
+      ...f.options,
+      retryDelayMs: 1,
+    });
+    await expect(runtime.start()).rejects.toThrow('broker_request_refused_401');
+    expect(f.connector.register).toHaveBeenCalledOnce();
+    expect(f.connector.withdraw).toHaveBeenCalledOnce();
+  });
+  test('shutdown during recovery backoff cancels later requests and withdraws once', async () => {
+    const f = fixture();
+    f.connector.register.mockRejectedValue(
+      new BrokerTransientRequestError(new TypeError('offline')),
+    );
+    const runtime = new SelfHostedBrokerRuntime({
+      ...f.options,
+      retryDelayMs: 1_000,
+    });
+    const started = runtime.start();
+    await vi.waitFor(() => expect(f.connector.register).toHaveBeenCalledOnce());
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    await expect(runtime.shutdown()).resolves.toBeUndefined();
+    await expect(started).rejects.toThrow('broker_runtime_shutdown');
+    expect(f.connector.register).toHaveBeenCalledOnce();
+    expect(f.connector.withdraw).toHaveBeenCalledOnce();
+  });
+  test('shutdown preserves a distinct transient operation failure during abort settlement', async () => {
+    const f = fixture();
+    const failure = new BrokerTransientRequestError(
+      new TypeError('lost response'),
+    );
+    let rejectOperation!: (error: unknown) => void;
+    f.connector.register.mockImplementationOnce(
+      () =>
+        new Promise((_resolve, reject) => {
+          rejectOperation = reject;
+        }),
+    );
+    const runtime = new SelfHostedBrokerRuntime({
+      ...f.options,
+      retryDelayMs: 1,
+    });
+    const started = runtime.start();
+    await vi.waitFor(() => expect(f.connector.register).toHaveBeenCalledOnce());
+    const shuttingDown = runtime.shutdown();
+    rejectOperation(failure);
+    await expect(started).rejects.toBe(failure);
+    await expect(shuttingDown).rejects.toBe(failure);
+    expect(f.connector.register).toHaveBeenCalledOnce();
+  });
   test('records background poll failure and still withdraws before reporting it', async () => {
     const f = fixture();
     f.connector.poll.mockRejectedValueOnce(new Error('poll failed'));
@@ -84,6 +156,22 @@ describe('self-hosted broker runtime lifecycle', () => {
     await vi.waitFor(() => expect(f.connector.poll).toHaveBeenCalled());
     await expect(runtime.shutdown()).rejects.toThrow('poll failed');
     expect(f.connector.withdraw).toHaveBeenCalledOnce();
+  });
+  test('does not replay an uncertain answer publication as an offer read', async () => {
+    const f = fixture();
+    f.connector.poll.mockRejectedValueOnce(
+      new BrokerTransientRequestError(new TypeError('lost answer reply')),
+    );
+    const runtime = new SelfHostedBrokerRuntime({
+      ...f.options,
+      retryDelayMs: 1,
+    });
+    await runtime.start();
+    await vi.waitFor(() => expect(f.connector.withdraw).toHaveBeenCalledOnce());
+    await expect(runtime.shutdown()).rejects.toThrow(
+      'broker_request_transient',
+    );
+    expect(f.connector.poll).toHaveBeenCalledOnce();
   });
   test('shutdown during a blocked registration fails with unsettled instead of resolving', async () => {
     const f = fixture();
