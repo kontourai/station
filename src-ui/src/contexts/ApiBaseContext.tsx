@@ -28,9 +28,8 @@ import {
 } from 'react';
 import {
   captureBrowserRelayRoute,
-  prepareBrowserRelayRoute,
   retireBrowserRelayRoute,
-} from '../lib/browserRelayRouteRuntime';
+} from '../lib/browserRelayRouteBinding';
 import { setStationHealthRouteResolver } from '../lib/serverHealth';
 import {
   nativeProfileRepository,
@@ -192,6 +191,10 @@ export function ApiBaseProvider({ children }: { children: ReactNode }) {
           ? prepareNativeActiveConnection
           : async (_id, connection, selectionEpoch, isSelectionCurrent) => {
               if (!connection) throw new Error('Saved Station not found.');
+              if (!connection.brokerRoute) return;
+              const { prepareBrowserRelayRoute } = await import(
+                '../lib/browserRelayRouteRuntime'
+              );
               await prepareBrowserRelayRoute(
                 connection,
                 selectionEpoch,

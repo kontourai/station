@@ -39,9 +39,9 @@ vi.mock('@kontourai/station-connect/self-hosted-browser', () => ({
 
 import {
   captureBrowserRelayRoute,
-  prepareBrowserRelayRoute,
   retireBrowserRelayRoute,
-} from '../browserRelayRouteRuntime';
+} from '../browserRelayRouteBinding';
+import { prepareBrowserRelayRoute } from '../browserRelayRouteRuntime';
 
 const scope = {
   stationId: '11111111-1111-4111-8111-111111111111',

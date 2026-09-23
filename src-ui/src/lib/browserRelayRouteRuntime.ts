@@ -6,33 +6,13 @@ import {
   createSelfHostedApplicationTransport,
   SelfHostedBrokerBrowserClient,
 } from '@kontourai/station-connect/self-hosted-browser';
-
-type RouteBinding = {
-  connectionId: string;
-  selectionEpoch: number;
-  route: NonNullable<SavedConnection['brokerRoute']>;
-  applicationOrigin: string;
-  transport: typeof fetch;
-  isCurrent(): boolean;
-  close(): void;
-};
-
-let prepared: RouteBinding | null = null;
-let preparing: { controller: AbortController; selectionEpoch: number } | null =
-  null;
-
-function sameRoute(
-  left: NonNullable<SavedConnection['brokerRoute']>,
-  right: NonNullable<SavedConnection['brokerRoute']>,
-) {
-  return (
-    left.brokerOrigin === right.brokerOrigin &&
-    left.scope.stationId === right.scope.stationId &&
-    left.scope.enrollmentId === right.scope.enrollmentId &&
-    left.scope.routingGeneration === right.scope.routingGeneration &&
-    left.scope.browserOrigin === right.scope.browserOrigin
-  );
-}
+import {
+  beginBrowserRelayPreparation,
+  browserRelayBindingIsPublished,
+  finishBrowserRelayPreparation,
+  publishBrowserRelayBinding,
+  type RouteBinding,
+} from './browserRelayRouteBinding';
 
 /** Broker preparation has no direct-HTTP fallback and never persists a bearer. */
 export async function prepareBrowserRelayRoute(
@@ -42,17 +22,12 @@ export async function prepareBrowserRelayRoute(
 ): Promise<void> {
   const route = connection.brokerRoute;
   if (!route) return;
-  // A failed replacement must leave the previously selected route usable.
-  // Retire only an older *pending* attempt; the successful candidate takes
-  // ownership after its trust, grant and peer checks have all passed.
-  preparing?.controller.abort(new Error('Station broker route superseded'));
-  preparing = null;
   if (route.scope.browserOrigin !== window.location.origin)
     throw new Error(
       'This Station route belongs to a different browser origin.',
     );
-  const lifetime = new AbortController();
-  preparing = { controller: lifetime, selectionEpoch };
+  // A failed candidate leaves the selected route usable.
+  const lifetime = beginBrowserRelayPreparation(selectionEpoch);
   const trustStore = await openDeviceConnectionTrustStore();
   const custody = new BrowserRoutingGrantCustody();
   let owner: ReturnType<typeof createBrowserPionConnection> | null = null;
@@ -120,7 +95,9 @@ export async function prepareBrowserRelayRoute(
       transport: currentTransport.transport as unknown as typeof fetch,
       isCurrent: () =>
         !lifetime.signal.aborted &&
-        prepared?.transport === currentTransport.transport &&
+        browserRelayBindingIsPublished(
+          currentTransport.transport as unknown as typeof fetch,
+        ) &&
         currentTransport.transportBindingIsCurrent(),
       close: () => {
         lifetime.abort(new Error('Station broker route retired'));
@@ -132,55 +109,15 @@ export async function prepareBrowserRelayRoute(
     };
     if (!isSelectionCurrent())
       throw new Error('Station route selection was superseded');
-    const previous = prepared;
-    prepared = next;
-    previous?.close();
-    if (preparing?.controller === lifetime) preparing = null;
+    publishBrowserRelayBinding(next);
+    finishBrowserRelayPreparation(lifetime);
   } catch (error) {
     lifetime.abort(error);
     transport?.close();
     owner?.close();
     custody.invalidate();
     trustStore.close();
-    if (preparing?.controller === lifetime) preparing = null;
+    finishBrowserRelayPreparation(lifetime);
     throw error;
   }
-}
-
-export function retireBrowserRelayRoute(
-  connectionId?: string,
-  selectionEpoch?: number,
-): void {
-  if (
-    preparing &&
-    (selectionEpoch === undefined ||
-      preparing.selectionEpoch === selectionEpoch)
-  ) {
-    preparing.controller.abort(new Error('Station broker route retired'));
-    preparing = null;
-  }
-  if (
-    prepared &&
-    (!connectionId || prepared.connectionId === connectionId) &&
-    (selectionEpoch === undefined || prepared.selectionEpoch === selectionEpoch)
-  ) {
-    const old = prepared;
-    prepared = null;
-    old.close();
-  }
-}
-
-export function captureBrowserRelayRoute(
-  connectionId: string,
-  applicationOrigin: string,
-  route: NonNullable<SavedConnection['brokerRoute']>,
-): Pick<RouteBinding, 'transport' | 'isCurrent'> | null {
-  const current = prepared;
-  return current &&
-    current.connectionId === connectionId &&
-    current.applicationOrigin === applicationOrigin &&
-    sameRoute(current.route, route) &&
-    current.isCurrent()
-    ? current
-    : null;
 }
