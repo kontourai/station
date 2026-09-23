@@ -113,15 +113,157 @@
 import {
   type ExecFileOptions,
   type ExecFileSyncOptions,
-  execFile as execFileCb,
   execFileSync,
   type SpawnOptions,
   spawn,
 } from 'node:child_process';
-import { promisify } from 'node:util';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { scrubBootInternalSecrets } from './child-process-environment.js';
 
-const execFileAsync = promisify(execFileCb);
+/** SIGTERM first; SIGKILL the group if anything is still there after this. */
+const GROUP_KILL_GRACE_MS = 1000;
+const DEFAULT_MAX_BUFFER = 1024 * 1024;
+
+/** A child started in its own process group (POSIX). */
+const OWN_PROCESS_GROUP = process.platform !== 'win32';
+
+/**
+ * Signals `child`'s whole process group: git and everything under it. On
+ * macOS `/usr/bin/git` is an xcrun shim, so signalling the child alone
+ * reached only the shim and orphaned the real git (blocked on a FIFO
+ * include, #2363 review round 3); hooks and filters are further children.
+ * Falls back to the child itself where there are no process groups.
+ */
+export function killGitProcessTree(
+  child: { pid?: number; kill(signal?: NodeJS.Signals): boolean },
+  signal: NodeJS.Signals = 'SIGTERM',
+): void {
+  if (OWN_PROCESS_GROUP && child.pid !== undefined) {
+    try {
+      process.kill(-child.pid, signal);
+      return;
+    } catch {
+      // The group is already gone.
+    }
+  }
+  try {
+    child.kill(signal);
+  } catch {
+    // Already exited.
+  }
+}
+
+/** SIGTERM the group, then SIGKILL it if the leader has not closed. */
+function stopGitProcessTree(child: ReturnType<typeof spawn>): void {
+  killGitProcessTree(child, 'SIGTERM');
+  const escalate = setTimeout(() => {
+    killGitProcessTree(child, 'SIGKILL');
+  }, GROUP_KILL_GRACE_MS);
+  escalate.unref();
+  child.once('close', () => {
+    // Anything the leader left behind in the group still goes.
+    killGitProcessTree(child, 'SIGKILL');
+    clearTimeout(escalate);
+  });
+}
+
+interface GroupRunOptions {
+  cwd?: string | URL;
+  env: NodeJS.ProcessEnv;
+  timeout?: number;
+  maxBuffer?: number;
+}
+
+type GroupRunError = Error & {
+  code?: number | string | null;
+  killed?: boolean;
+  signal?: NodeJS.Signals | null;
+  stdout?: string;
+  stderr?: string;
+  cmd?: string;
+};
+
+/**
+ * `execFile`'s promise contract (resolves `{ stdout, stderr }` as strings;
+ * rejects with `code`, `killed`, `signal`, `stdout`, `stderr`), but the
+ * child runs in its own process group and a deadline or an overflowing
+ * output kills the GROUP. See `killGitProcessTree`.
+ */
+function runInProcessGroup(
+  file: string,
+  args: readonly string[],
+  options: GroupRunOptions,
+): Promise<{ stdout: string; stderr: string }> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(file, [...args], {
+      cwd: options.cwd,
+      env: options.env,
+      detached: OWN_PROCESS_GROUP,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true,
+    });
+    const maxBuffer = options.maxBuffer ?? DEFAULT_MAX_BUFFER;
+    let stdout = '';
+    let stderr = '';
+    let killed = false;
+    let overflow = false;
+    let settled = false;
+    const stop = () => {
+      if (killed) return;
+      killed = true;
+      stopGitProcessTree(child);
+    };
+    const timer =
+      options.timeout && options.timeout > 0
+        ? setTimeout(stop, options.timeout)
+        : undefined;
+    child.stdout?.setEncoding('utf8');
+    child.stderr?.setEncoding('utf8');
+    child.stdout?.on('data', (chunk: string) => {
+      stdout += chunk;
+      if (stdout.length > maxBuffer) {
+        overflow = true;
+        stop();
+      }
+    });
+    child.stderr?.on('data', (chunk: string) => {
+      stderr += chunk;
+      if (stderr.length > maxBuffer) {
+        overflow = true;
+        stop();
+      }
+    });
+    child.on('error', (error) => {
+      if (settled) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      reject(error);
+    });
+    child.on('close', (code, signal) => {
+      if (settled) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      if (code === 0 && !killed) {
+        resolve({ stdout, stderr });
+        return;
+      }
+      const error: GroupRunError = new Error(
+        overflow
+          ? `${file} output exceeded maxBuffer`
+          : `Command failed: ${[file, ...args].join(' ')}\n${stderr}`,
+      );
+      error.code = overflow ? 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER' : code;
+      error.killed = killed;
+      error.signal = killed ? (signal ?? 'SIGTERM') : signal;
+      error.stdout = stdout;
+      error.stderr = stderr;
+      error.cmd = [file, ...args].join(' ');
+      reject(error);
+    });
+  });
+}
 
 /**
  * Inherited variables that would retarget or reconfigure a spawned git, or
@@ -374,12 +516,10 @@ async function readOperatorSettings(
   cwd: string | URL | undefined,
 ): Promise<OperatorNetworkSettings> {
   try {
-    const { stdout } = await execFileAsync('git', operatorReadArgs(args), {
+    const { stdout } = await runInProcessGroup('git', operatorReadArgs(args), {
       cwd,
       env: hardenedGitEnv(),
-      encoding: 'utf-8',
       timeout: 5000,
-      windowsHide: true,
     });
     return parseOperatorSettings(stdout);
   } catch {
@@ -543,8 +683,10 @@ export async function execGit(
   const operator = needsOperatorSettings(args)
     ? await readOperatorSettings(args, execOptions.cwd)
     : null;
-  return execFileAsync('git', hardenedArgs(args, hardening), {
-    ...execOptions,
+  return runInProcessGroup('git', hardenedArgs(args, hardening), {
+    cwd: execOptions.cwd,
+    timeout: execOptions.timeout,
+    maxBuffer: execOptions.maxBuffer,
     env: appendConfigPairs(
       mergeEnv(
         hardenedGitEnv(execOptions.env, hardening),
@@ -552,30 +694,38 @@ export async function execGit(
       ),
       credentialSettings(operator),
     ),
-    windowsHide: true,
-  }) as Promise<{ stdout: string; stderr: string }>;
+  });
 }
 
 /**
- * Promisified command execution for tools (such as `gh` and `glab`) which
- * run git themselves (`gh pr create` runs `git status` in the repository).
- * Every git such a tool spawns inherits the scrubbed environment, the
- * hardening variables, AND the hardening settings, carried as
- * `GIT_CONFIG_COUNT` pairs (git reads them like `-c`). What it cannot
- * carry: the `--ignore-submodules` flag the runner adds to git's own
- * argv; `diff.ignoreSubmodules` is set, which a `.gitmodules`
- * `ignore = none` can override for a submodule. Hooks stay off regardless.
+ * Command execution for tools (such as `gh` and `glab`) which run git
+ * themselves. Two defences:
+ * - The tool runs in a FRESH EMPTY directory, removed afterwards, never in
+ *   a Project folder: every call names its repository (`--repo`) and the
+ *   branch it means (`--head`), so the tool has no reason to inspect a
+ *   checkout, and none to inspect. (`gh pr create` without `--head` runs its
+ *   own `git status` in its cwd, which a submodule's config can steer.)
+ * - Any git it does spawn inherits the scrubbed environment, the hardening
+ *   variables, and the hardening settings as `GIT_CONFIG_COUNT` pairs (git
+ *   reads them like `-c`), appended after pairs the caller passed.
+ * The tool runs in its own process group, killed as a group on the deadline.
  */
-export function execGitContextCommand(
+export async function execGitContextCommand(
   command: string,
   args: string[],
-  opts: ExecFileOptions & { encoding?: BufferEncoding } = {},
+  opts: Omit<ExecFileOptions, 'cwd'> & { encoding?: BufferEncoding } = {},
 ): Promise<{ stdout: string; stderr: string }> {
-  return execFileAsync(command, args, {
-    ...opts,
-    env: appendConfigPairs(hardenedGitEnv(opts.env), hardeningSettings({})),
-    windowsHide: true,
-  }) as Promise<{ stdout: string; stderr: string }>;
+  const neutral = await mkdtemp(join(tmpdir(), 'station-git-tool-'));
+  try {
+    return await runInProcessGroup(command, args, {
+      cwd: neutral,
+      timeout: opts.timeout,
+      maxBuffer: opts.maxBuffer,
+      env: appendConfigPairs(hardenedGitEnv(opts.env), hardeningSettings({})),
+    });
+  } finally {
+    await rm(neutral, { recursive: true, force: true });
+  }
 }
 
 /** `execFileSync('git', …)`, scrubbed and hardened (see header). */
@@ -606,7 +756,10 @@ export function spawnGit(args: string[], opts: Hardened<SpawnOptions> = {}) {
   const operator = needsOperatorSettings(args)
     ? readOperatorSettingsSync(args, spawnOptions.cwd)
     : null;
+  // Its own process group, so a caller that stops it can stop everything
+  // under it (`killGitProcessTree`).
   return spawn('git', hardenedArgs(args, hardening), {
+    detached: OWN_PROCESS_GROUP,
     ...spawnOptions,
     env: appendConfigPairs(
       mergeEnv(

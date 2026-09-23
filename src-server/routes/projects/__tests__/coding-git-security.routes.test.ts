@@ -151,6 +151,40 @@ function stir(file: string): void {
   );
 }
 
+/**
+ * Processes whose working directory is inside `dir`, by `lsof` (macOS and
+ * Linux). A git blocked on a FIFO include sits in the repository.
+ */
+function processesInside(dir: string): number[] {
+  let output = '';
+  try {
+    output = execFileSync('lsof', ['-a', '-d', 'cwd', '-F', 'pn', '+c', '0'], {
+      encoding: 'utf-8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+      maxBuffer: 64 * 1024 * 1024,
+    });
+  } catch (error) {
+    output = (error as { stdout?: string }).stdout ?? '';
+  }
+  const pids: number[] = [];
+  let pid = 0;
+  for (const line of output.split('\n')) {
+    if (line.startsWith('p')) pid = Number(line.slice(1));
+    else if (
+      line.startsWith('n') &&
+      (line.slice(1) === dir || line.slice(1).startsWith(`${dir}/`))
+    )
+      pids.push(pid);
+  }
+  return pids.filter((candidate) => candidate !== process.pid);
+}
+
+/** Replaces `path` with a symbolic link to `target`. */
+function swapForLink(path: string, target: string): void {
+  rmSync(path, { force: true });
+  symlinkSync(target, path);
+}
+
 /** The operator's other repository, outside the Project. */
 function otherRepository(): string {
   const other = join(root, 'operator-other');
@@ -400,20 +434,35 @@ describe.skipIf(process.platform === 'win32')(
       expect(plain(project, ['branch', '--show-current'])).toBe('main');
     });
 
-    test('an include of a named pipe answers 504 on status, log and branches instead of hanging', async () => {
+    test('an include of a named pipe answers 504 on status, log and branches, and leaves no git behind', async () => {
       const fifo = join(root, 'never.gitconfig');
       execFileSync('mkfifo', [fifo]);
       plain(project, ['config', 'include.path', fifo]);
       const app = makeApp();
-      for (const route of ['status', 'log', 'branches']) {
-        const started = Date.now();
-        const res = await app.request(
-          `/git/${route}?path=${encodeURIComponent(project)}`,
-        );
-        const json = (await res.json()) as { code?: string };
-        expect(res.status, route).toBe(504);
-        expect(json.code, route).toBe('git-timeout');
-        expect(Date.now() - started, route).toBeLessThan(25_000);
+      try {
+        for (const route of ['status', 'log', 'branches']) {
+          const started = Date.now();
+          const res = await app.request(
+            `/git/${route}?path=${encodeURIComponent(project)}`,
+          );
+          const json = (await res.json()) as { code?: string };
+          expect(res.status, route).toBe(504);
+          expect(json.code, route).toBe('git-timeout');
+          expect(Date.now() - started, route).toBeLessThan(25_000);
+        }
+        // The deadline killed git's whole process group, not only the
+        // xcrun shim in front of it: nothing is left working in the repo.
+        await new Promise((resolve) => setTimeout(resolve, 1_500));
+        expect(processesInside(root)).toEqual([]);
+      } finally {
+        for (const pid of processesInside(root)) {
+          try {
+            process.kill(pid, 'SIGKILL');
+          } catch {
+            // already gone
+          }
+        }
+        rmSync(fifo, { force: true });
       }
     }, 120_000);
 
@@ -606,6 +655,66 @@ describe.skipIf(process.platform === 'win32')(
       expect(res.status).toBe(403);
       expect(res.json.code).toBe('git-dir-outside-project');
     });
+
+    test.each([
+      [
+        "a loose ref (refs/heads/main) linked to another repository's branch",
+        (other: string) =>
+          swapForLink(
+            join(project, '.git', 'refs', 'heads', 'main'),
+            join(other, '.git', 'refs', 'heads', 'main'),
+          ),
+      ],
+      [
+        'a linked pack file in a real objects/pack',
+        (other: string) =>
+          symlinkSync(
+            join(other, '.git', 'description'),
+            join(
+              project,
+              '.git',
+              'objects',
+              'pack',
+              'pack-0000000000000000000000000000000000000000.pack',
+            ),
+          ),
+      ],
+      [
+        'a linked fan-out directory in a real objects',
+        (other: string) =>
+          symlinkSync(
+            join(other, '.git', 'objects'),
+            join(project, '.git', 'objects', 'ab'),
+          ),
+      ],
+      [
+        'a legacy symbolic-link HEAD (core.preferSymlinkRefs) into its own refs',
+        () => swapForLink(join(project, '.git', 'HEAD'), 'refs/heads/main'),
+      ],
+    ])(
+      '%s is refused, and commit and push run no git past the check',
+      async (_name, plantLink) => {
+        const other = otherRepository();
+        for (const hook of ['pre-commit', 'pre-push']) {
+          installHook(join(project, '.git', 'hooks'), hook);
+        }
+        plantLink(other);
+        dirty();
+
+        const commit = await post('/git/commit', {
+          projectSlug: 'acme',
+          message: 'x',
+        });
+        expect(commit.status).toBe(403);
+        expect(commit.json.code).toBe('git-dir-outside-project');
+        const push = await post('/git/push', { projectSlug: 'acme' });
+        expect(push.status).toBe(403);
+        // The operator's own hooks would have run had commit or push got past
+        // the check; neither did, and nothing reached the remote.
+        expect(ran()).toEqual([]);
+        expect(bareHead()).toBe('');
+      },
+    );
 
     test.each(['alternates', 'http-alternates'])(
       'an objects/info/%s file is refused',

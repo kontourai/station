@@ -1,4 +1,3 @@
-import { resolve } from 'node:path';
 import type {
   IPullRequestProvider,
   PullRequest,
@@ -14,7 +13,6 @@ import type {
   PullRequestWriteAdmission,
 } from '@kontourai/station-contracts/pull-request-provider';
 import { execGitContextCommand } from '../../utils/git-exec.js';
-import { expandTilde } from '../../utils/paths.js';
 import {
   readPullRequestReview,
   writePullRequestReview,
@@ -24,20 +22,15 @@ type PullRequestProviderRequestContext =
   | PullRequestRepositoryContext
   | PullRequestRepositoryIdentityContext;
 
-function hasWorkingDirectory(
-  context: PullRequestProviderRequestContext,
-): context is PullRequestRepositoryContext {
-  return Object.hasOwn(context, 'workingDirectory');
-}
-
+/**
+ * glab runs in a fresh empty directory, never the checkout (#2363): every
+ * call names `--repo`, and `mr create` names `--source-branch`.
+ */
 const defaultGitLabTransport = (
   args: string[],
-  context: PullRequestProviderRequestContext,
+  _context: PullRequestProviderRequestContext,
 ) =>
   execGitContextCommand('glab', args, {
-    ...(hasWorkingDirectory(context)
-      ? { cwd: resolve(expandTilde(context.workingDirectory)) }
-      : {}),
     timeout: 10_000,
     encoding: 'utf8',
     windowsHide: true,
@@ -466,7 +459,10 @@ export class GitLabPullRequestProvider implements IPullRequestProvider {
       input.title,
       ...(input.body ? ['--description', input.body] : []),
       ...(input.base ? ['--target-branch', input.base] : []),
-      ...(input.head ? ['--source-branch', input.head] : []),
+      // The branch Station resolved with its own hardened git; glab would
+      // otherwise read it from a checkout in its cwd.
+      '--source-branch',
+      input.head ?? c.branch,
       '--yes',
     ]);
   }

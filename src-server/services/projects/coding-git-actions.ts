@@ -27,11 +27,13 @@
  * window is accepted, and even then the push can only reach https or ssh
  * (`GIT_ALLOW_PROTOCOL`).
  */
-import { lstat, open, readFile, realpath } from 'node:fs/promises';
+import type { Dirent } from 'node:fs';
+import { lstat, open, readdir, readFile, realpath } from 'node:fs/promises';
 import { dirname, join, sep } from 'node:path';
 import {
   execGit,
   type GitHardeningOptions,
+  killGitProcessTree,
   spawnGit,
 } from '../../utils/git-exec.js';
 import {
@@ -121,55 +123,66 @@ export async function gitDirectoryInsideProject(
 }
 
 /**
- * Entries of a git directory that git reads or writes as part of the
- * repository. A symlink in place of any of them makes a real `.git`
- * directory act on another repository: review round 2 made `project/.git`
- * a real directory holding its own HEAD and config with `objects`, `refs`
- * and `index` linked to the operator's other repository, and Commit
- * created a commit on that repository's `main`.
+ * The most directory entries the symlink walk will examine in one git
+ * directory before giving up. A repository past it is refused as
+ * unverifiable rather than walked without bound; loose refs are normally
+ * few (git packs them), so an ordinary repository is far below it.
  */
-const GIT_DIR_ENTRIES = [
-  'objects',
-  'refs',
-  'packed-refs',
-  'index',
-  'HEAD',
-  'logs',
-  'config',
-  'config.worktree',
-  'commondir',
-  'gitdir',
-  'worktrees',
-  'info',
-  'hooks',
-  'shallow',
-  'modules',
-  // One level down, where a real top-level directory can still hold a
-  // link: the ref namespaces a commit or push writes, and the object
-  // store's own metadata.
-  'refs/heads',
-  'refs/remotes',
-  'refs/tags',
-  'objects/info',
-  'objects/pack',
-];
+const MAX_WALKED_ENTRIES = 50_000;
+
+class WalkLimitExceeded extends Error {}
 
 /**
- * True when `gitDir` borrows another repository's storage: one of
- * `GIT_DIR_ENTRIES` is a symbolic link, or the object store names
- * alternates (`objects/info/alternates`, `http-alternates`), which make
- * git read, and build commits on, another repository's objects. Stated
- * limit: individual loose refs and object fan-out directories are not
- * walked; git replaces a ref file by rename rather than writing through
- * it, and a linked fan-out directory can only add objects elsewhere.
+ * True when `gitDir` borrows another repository's storage (#2363 review
+ * rounds 2 and 3). Git never creates a symbolic link in a repository it
+ * made (the legacy `core.preferSymlinkRefs` HEAD aside, which is refused
+ * too), and it READS through one: a linked loose ref resolves a branch to
+ * another repository's commit, a linked pack or fan-out directory serves
+ * another repository's objects, and a push then sends them. So, rather
+ * than naming the dangerous entries, ANY symbolic link is refused among:
+ * - the git directory's top-level entries (HEAD, index, config, …);
+ * - everything under `refs/` and `logs/`, recursively;
+ * - `objects/`'s own entries (each fan-out directory by its own lstat,
+ *   without descending into loose objects), and every entry of
+ *   `objects/pack/` and `objects/info/`.
+ * Alternates (`objects/info/alternates`, `http-alternates`) are refused
+ * outright: they make git read another repository's objects.
  */
 async function redirectedGitEntry(gitDir: string): Promise<boolean> {
-  for (const entry of GIT_DIR_ENTRIES) {
+  let walked = 0;
+  // Entries of `dir` by `readdir`'s own type (an lstat: a link is a link).
+  const entries = async (dir: string) => {
+    let list: Dirent[];
     try {
-      if ((await lstat(join(gitDir, entry))).isSymbolicLink()) return true;
+      list = await readdir(dir, { withFileTypes: true });
     } catch {
-      // Absent: nothing to follow.
+      return [];
     }
+    walked += list.length;
+    if (walked > MAX_WALKED_ENTRIES) throw new WalkLimitExceeded();
+    return list;
+  };
+  const anyLinkBelow = async (dir: string): Promise<boolean> => {
+    for (const entry of await entries(dir)) {
+      if (entry.isSymbolicLink()) return true;
+      if (entry.isDirectory() && (await anyLinkBelow(join(dir, entry.name)))) {
+        return true;
+      }
+    }
+    return false;
+  };
+  const anyLinkIn = async (dir: string) =>
+    (await entries(dir)).some((entry) => entry.isSymbolicLink());
+  try {
+    if (await anyLinkIn(gitDir)) return true;
+    if (await anyLinkBelow(join(gitDir, 'refs'))) return true;
+    if (await anyLinkBelow(join(gitDir, 'logs'))) return true;
+    if (await anyLinkIn(join(gitDir, 'objects'))) return true;
+    if (await anyLinkIn(join(gitDir, 'objects', 'pack'))) return true;
+    if (await anyLinkIn(join(gitDir, 'objects', 'info'))) return true;
+  } catch (error) {
+    if (error instanceof WalkLimitExceeded) return true;
+    throw error;
   }
   for (const alternates of ['alternates', 'http-alternates']) {
     try {
@@ -372,7 +385,7 @@ function addPaths(root: string, paths: readonly string[]): Promise<void> {
     // returns must not hold the request open.
     const timer = setTimeout(() => {
       killed = true;
-      child.kill();
+      killGitProcessTree(child, 'SIGKILL');
     }, 120_000);
     child.stderr?.setEncoding('utf8');
     child.stderr?.on('data', (chunk: string) => {

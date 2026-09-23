@@ -14,6 +14,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { CheckpointRefStore } from '../../services/checkpoints/checkpoint-ref-store.js';
+import { GitHubPullRequestProvider } from '../../services/pull-requests/github-pull-request-provider.js';
+import { GitLabPullRequestProvider } from '../../services/pull-requests/gitlab-pull-request-provider.js';
 import {
   execGit,
   execGitContextCommand,
@@ -648,32 +650,36 @@ describe.skipIf(process.platform === 'win32')(
       expect(existsSync(repoMarker)).toBe(false);
     });
 
-    test("a tool that runs git (gh, glab) passes the hardening to it, merged with the caller's own config pairs", async () => {
+    test("a tool that runs git (gh, glab) runs in a fresh empty directory, and any git it spawns gets the hardening merged with the caller's pairs", async () => {
       const repo = initRepo();
       const marker = join(sandbox(), 'gh-fsmonitor-ran');
+      const log = join(sandbox(), 'tool.log');
       plainGit(repo, [
         'config',
         'core.fsmonitor',
         markerScript(sandbox(), marker),
       ]);
-      // A stand-in for `gh pr create`, which runs `git status` in the repo.
+      // A stand-in for a tool that runs git on a repository it was told
+      // about, and records where it was started.
       const tool = join(sandbox(), 'gh');
       writeFileSync(
         tool,
-        '#!/bin/sh\ngit status --porcelain >/dev/null\ngit rev-parse --short HEAD\n',
+        `#!/bin/sh\npwd -P > '${log}'\ngit -C "$STATION_TEST_REPO" status --porcelain >/dev/null\ngit -C "$STATION_TEST_REPO" rev-parse --short HEAD\n`,
       );
       chmodSync(tool, 0o755);
-      execFileSync(tool, [], { cwd: repo, env: plainEnv() });
+      execFileSync(tool, [], {
+        cwd: repo,
+        env: { ...plainEnv(), STATION_TEST_REPO: repo },
+      });
       expect(existsSync(marker), 'control: plain env lets the plant run').toBe(
         true,
       );
       rmSync(marker);
 
       const { stdout } = await execGitContextCommand(tool, [], {
-        cwd: repo,
-        encoding: 'utf-8',
         env: {
           ...process.env,
+          STATION_TEST_REPO: repo,
           GIT_CONFIG_COUNT: '1',
           GIT_CONFIG_KEY_0: 'core.abbrev',
           GIT_CONFIG_VALUE_0: '12',
@@ -682,7 +688,55 @@ describe.skipIf(process.platform === 'win32')(
       expect(existsSync(marker)).toBe(false);
       // The caller's own pair survived the merge.
       expect(stdout.trim()).toHaveLength(12);
+      const cwd = readFileSync(log, 'utf-8').trim();
+      expect(cwd).not.toBe(repo);
+      expect(cwd).toContain('station-git-tool-');
+      expect(existsSync(cwd), 'the neutral directory is removed').toBe(false);
     });
+
+    test.each([
+      ['gh', 'pr create', '--head'],
+      ['glab', 'mr create', '--source-branch'],
+    ])(
+      '%s %s names the branch Station resolved and runs outside the checkout',
+      async (binary, _verb, flag) => {
+        const bin = sandbox();
+        const log = join(bin, 'calls.log');
+        writeFileSync(
+          join(bin, binary),
+          `#!/bin/sh\necho "$(pwd -P)|$*" >> '${log}'\necho '{}'\n`,
+        );
+        chmodSync(join(bin, binary), 0o755);
+        vi.stubEnv('PATH', `${bin}:${process.env.PATH ?? ''}`);
+        const checkout = initRepo();
+        const host = binary === 'gh' ? 'github.com' : 'gitlab.com';
+        const context = {
+          repository: {
+            owner: 'acme',
+            name: 'pulse',
+            remote: `https://${host}/acme/pulse.git`,
+          },
+          workingDirectory: checkout,
+          branch: 'feature/x',
+          baseRef: 'main',
+        };
+        const provider =
+          binary === 'gh'
+            ? new GitHubPullRequestProvider()
+            : new GitLabPullRequestProvider();
+        await provider.openPullRequest(context, { title: 'Title' });
+
+        const calls = readFileSync(log, 'utf-8').trim().split('\n');
+        const create = calls.find((line) => line.includes(' create '));
+        expect(create, calls.join('\n')).toBeDefined();
+        expect(create).toContain(`${flag} feature/x`);
+        for (const line of calls) {
+          const cwd = line.slice(0, line.indexOf('|'));
+          expect(cwd).not.toBe(checkout);
+          expect(cwd).toContain('station-git-tool-');
+        }
+      },
+    );
 
     test('inherited GIT_INDEX_FILE and GIT_CONFIG_PARAMETERS do not reach git; a caller-supplied index does', async () => {
       const repo = initRepo();
