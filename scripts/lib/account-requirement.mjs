@@ -90,7 +90,7 @@ export function appendStepSummary(markdown, env = process.env) {
  * One line per disabled E2E spec, printed by the suite runner and folded by
  * the coverage coordinator into its summary and the latest-evidence manifest.
  */
-export const E2E_DISABLED_LINE_PREFIX = '[e2e-disabled] ';
+const E2E_DISABLED_LINE_PREFIX = '[e2e-disabled] ';
 
 export function formatE2EDisabledLine(suite, entry) {
   return `${E2E_DISABLED_LINE_PREFIX}${JSON.stringify({
