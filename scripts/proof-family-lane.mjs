@@ -398,6 +398,35 @@ export function codexPreEditHookFindings(config) {
   return [];
 }
 
+export function codexHookFeatureFindings(configText) {
+  let inFeatures = false;
+  let featureSections = 0;
+  const hookValues = [];
+  for (const line of typeof configText === 'string'
+    ? configText.split(/\r?\n/)
+    : []) {
+    const section = line.match(/^\s*\[([A-Za-z0-9_.-]+)\]\s*(?:#.*)?$/);
+    if (section) {
+      inFeatures = section[1] === 'features';
+      if (inFeatures) featureSections += 1;
+      continue;
+    }
+    if (!inFeatures) continue;
+    const hookFlag = line.match(/^\s*hooks\s*=\s*([^#]*?)(?:\s*#.*)?$/);
+    if (hookFlag) hookValues.push(hookFlag[1].trim());
+  }
+  if (
+    featureSections !== 1 ||
+    hookValues.length !== 1 ||
+    hookValues[0] !== 'true'
+  ) {
+    return [
+      '.codex/config.toml must enable the reviewed project hooks feature.',
+    ];
+  }
+  return [];
+}
+
 function readInstalledCodexHooks() {
   try {
     return JSON.parse(
@@ -408,17 +437,33 @@ function readInstalledCodexHooks() {
   }
 }
 
+function readInstalledCodexConfig() {
+  try {
+    return readFileSync(resolve(rootDir, '.codex/config.toml'), 'utf8');
+  } catch {
+    return null;
+  }
+}
+
 export function runRepoGovernanceChecks({
   routeErrorEgressCheck = () => collectRouteErrorEgressFindings({ rootDir }),
   repoMap = readJson(repoMapPath),
   proofFamilyManifest = readJson(manifestPath),
   codexHookConfig = readInstalledCodexHooks(),
+  codexConfigToml = readInstalledCodexConfig(),
 } = {}) {
   const findings = [];
 
   for (const message of codexPreEditHookFindings(codexHookConfig)) {
     findings.push({
       id: 'veritas-codex-preedit-hook',
+      message,
+      severity: 'block',
+    });
+  }
+  for (const message of codexHookFeatureFindings(codexConfigToml)) {
+    findings.push({
+      id: 'codex-project-hooks-enabled',
       message,
       severity: 'block',
     });

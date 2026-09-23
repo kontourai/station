@@ -108,6 +108,9 @@ sessions that never ran a pre-edit hook.
 
 On this branch, Flow Agents 6.3.0 installed the Veritas v1.7.2 Governance Kit
 from its Git tag and provisioned `.codex/hooks.json` through Conduit 0.7.1.
+Tracked `.codex/config.toml` sets `features.hooks = true`; `codex features list`
+reported the hooks feature enabled from this worktree. Repo governance rejects
+a missing or disabled feature setting and a missing or duplicate Veritas hook.
 The tracked config has one Veritas `PreToolUse` command; a repeated provision
 kept one command and the same receipt digest
 `sha256:0b4b8164d668905f799f658696343d1b34bf7570a81a336165eab50770443bb8`.
@@ -115,5 +118,9 @@ An installed-command probe returned 2,269 guidance characters on the first
 matching edit and zero on a repeat while evaluating both edits; a pathless
 patch was denied. Station declares no strict Work Area boundary, so an
 untrusted actor's otherwise valid edit was advisory rather than denied.
-Normal Codex project-hook trust and UI status-message noise remain
-`NOT_VERIFIED` until the host's hook review and live invocation are observed.
+An ordinary Codex `/hooks` view in this worktree reported zero installed and
+active handlers despite the feature flag reading `true`: host activation is
+`FAIL` pending project and exact-hook trust review. A one-off
+`--dangerously-bypass-hook-trust` smoke did not establish hook invocation.
+UI status-message noise remains `NOT_VERIFIED` until a normally trusted host
+invocation is observed.

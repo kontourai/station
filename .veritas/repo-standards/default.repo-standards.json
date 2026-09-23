@@ -36,6 +36,7 @@
           ".veritas/authority/default.authority-settings.json",
           ".veritas/proof-families/repo-guardrails.families.json",
           ".codex/hooks.json",
+          ".codex/config.toml",
           "veritas.claims.json",
           "docs/reference/contracts.md",
           "SECURITY.md",

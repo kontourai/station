@@ -13,6 +13,7 @@ import { resolve } from 'node:path';
 import { classifyNodes } from '@kontourai/veritas';
 import { describe, expect, it } from 'vitest';
 import {
+  codexHookFeatureFindings,
   codexPreEditHookFindings,
   findUnexecutableRoutedProofFamilyIds,
   runRepoGovernanceChecks,
@@ -217,6 +218,33 @@ describe('veritas repo map (1.5)', () => {
       expect.arrayContaining([
         expect.objectContaining({
           id: 'veritas-codex-preedit-hook',
+          severity: 'block',
+        }),
+      ]),
+    );
+  });
+
+  it('enables Codex project hooks through the tracked project config', () => {
+    const config = readFileSync(resolve(rootDir, '.codex/config.toml'), 'utf8');
+    expect(codexHookFeatureFindings(config)).toEqual([]);
+    expect(
+      codexHookFeatureFindings(`${config}\n[tools]\nview_image = true\n`),
+    ).toEqual([]);
+    expect(
+      codexHookFeatureFindings('[features]\nhooks = false\n'),
+    ).toHaveLength(1);
+    expect(
+      codexHookFeatureFindings('[features]\nhooks = true\nhooks = false\n'),
+    ).toHaveLength(1);
+    expect(
+      runRepoGovernanceChecks({
+        codexConfigToml: '[features]\nhooks = false\n',
+        routeErrorEgressCheck: () => [],
+      }),
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'codex-project-hooks-enabled',
           severity: 'block',
         }),
       ]),
