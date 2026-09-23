@@ -85,7 +85,7 @@ import {
   type PluginValidateDiagnostic,
   type PluginValidateResult,
   pluginValidateResult,
-  refusePluginValidateSource,
+  resolvePluginValidateSource,
 } from '../../services/plugins/plugin-validate-source.js';
 import type { Logger } from '../../utils/logger.js';
 import {
@@ -212,15 +212,17 @@ export async function validatePluginSource(
   ): PluginValidateResult => pluginValidateResult(source, diagnostics, extra);
 
   // String checks only, before any filesystem call: a stat of a UNC or
-  // automount path is itself a network connection.
-  const refused = refusePluginValidateSource(source);
-  if (refused) {
-    diagnostics.push(refused);
+  // automount path is itself a network connection. Every filesystem call
+  // below uses the NORMALIZED path the check approved, never the raw string.
+  const resolution = resolvePluginValidateSource(source);
+  if (!resolution.ok) {
+    diagnostics.push(resolution.diagnostic);
     return finish();
   }
+  const pluginDir = resolution.path;
   let isDirectory = false;
   try {
-    isDirectory = statSync(source).isDirectory();
+    isDirectory = statSync(pluginDir).isDirectory();
   } catch {}
   if (!isDirectory) {
     diagnostics.push({
@@ -232,7 +234,6 @@ export async function validatePluginSource(
   }
 
   try {
-    const pluginDir = source;
     // Loader messages name the file they read; show the author a
     // package-relative path instead.
     const tidy = (message: string) =>
@@ -286,12 +287,15 @@ export async function validatePluginSource(
       ),
     );
 
-    // Hand the scan the manifest already read under the bounds above; left
-    // to itself it re-opens plugin.json unbounded and following links.
+    // The scan reads `prompts` from the RAW document root, as `/preview` and
+    // install do; handing it the normalized manifest would scan a different
+    // field (the extension's) and disagree with the installer. It gets the
+    // raw document parsed from the bounded read, so it never re-opens
+    // plugin.json either.
     const blocked = scanPluginPromptFileSafety(
       pluginDir,
       manifest.name,
-      manifest,
+      JSON.parse(read.raw) as Pick<PluginManifest, 'prompts'>,
     );
     for (const file of blocked) {
       diagnostics.push({

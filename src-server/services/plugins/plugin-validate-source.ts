@@ -16,7 +16,7 @@
  * a symlink into one. The claim is narrower: validation never fetches or
  * clones, and the network-path forms a caller can name directly are refused.
  */
-import { isAbsolute } from 'node:path';
+import { isAbsolute, resolve } from 'node:path';
 import type {
   ConflictInfo,
   PluginComponent,
@@ -83,43 +83,72 @@ function looksLikeRemoteUrl(source: string): boolean {
 }
 
 /**
- * Paths whose resolution itself can open a network connection:
+ * Prefixes whose resolution itself can open a network connection or reach
+ * the Windows object namespace, checked on the RAW string because
+ * `path.resolve` would otherwise fold them into something ordinary:
  * - two leading separators in any mix (`\\host\share`, `//host/share`),
  *   which covers UNC and the `\\?\UNC\…` and `\\.\…` device prefixes;
- * - macOS automount roots `/net/` and `/Network/`.
+ * - a backslash followed by `?` or `.` (`\??\UNC\…`, the NT object prefix).
  */
-function looksLikeNetworkPath(source: string): boolean {
-  if (/^[\\/]{2}/.test(source)) return true;
-  return /^\/(?:net|Network)(?:\/|$)/.test(source);
+function hasNetworkOrDevicePrefix(path: string): boolean {
+  return /^[\\/]{2}/.test(path) || /^\\[?.]/.test(path);
 }
 
-/** The refusal for `source`, or null when it is a local absolute path. */
+/**
+ * macOS automount roots, matched on the NORMALIZED path and ignoring case
+ * (the default macOS filesystem is case-insensitive, so `/NET/h` is `/net/h`).
+ */
+function isAutomountPath(normalized: string): boolean {
+  return /^\/(?:net|network)(?:\/|$)/i.test(normalized);
+}
+
+export type PluginValidateSourceResolution =
+  | { ok: true; path: string }
+  | { ok: false; diagnostic: PluginValidateDiagnostic };
+
+/**
+ * Decides whether `source` may be validated, and returns the NORMALIZED
+ * path every later filesystem call must use. Normalizing first matters:
+ * the kernel resolves `/./net/h`, `/tmp/../net/h` and `/NET/h` to the
+ * automount root even though none of them starts with `/net/` as written.
+ * No filesystem call happens here.
+ */
+export function resolvePluginValidateSource(
+  raw: string,
+): PluginValidateSourceResolution {
+  const source = raw.trim();
+  const refuse = (
+    code: string,
+    message: string,
+  ): PluginValidateSourceResolution => ({
+    ok: false,
+    diagnostic: { level: 'error', code, message },
+  });
+  if (looksLikeRemoteUrl(source)) {
+    return refuse('remote-source-refused', REMOTE_SOURCE_REFUSED);
+  }
+  if (hasNetworkOrDevicePrefix(source)) {
+    return refuse('network-path-refused', NETWORK_PATH_REFUSED);
+  }
+  if (!isAbsolute(source)) {
+    return refuse(
+      'source-not-absolute',
+      'Pass the absolute path of the plugin folder (the folder that contains plugin.json).',
+    );
+  }
+  const normalized = resolve(source);
+  if (hasNetworkOrDevicePrefix(normalized) || isAutomountPath(normalized)) {
+    return refuse('network-path-refused', NETWORK_PATH_REFUSED);
+  }
+  return { ok: true, path: normalized };
+}
+
+/** The refusal for `source`, or null when it may be validated. */
 export function refusePluginValidateSource(
   source: string,
 ): PluginValidateDiagnostic | null {
-  if (looksLikeRemoteUrl(source)) {
-    return {
-      level: 'error',
-      code: 'remote-source-refused',
-      message: REMOTE_SOURCE_REFUSED,
-    };
-  }
-  if (looksLikeNetworkPath(source)) {
-    return {
-      level: 'error',
-      code: 'network-path-refused',
-      message: NETWORK_PATH_REFUSED,
-    };
-  }
-  if (!isAbsolute(source)) {
-    return {
-      level: 'error',
-      code: 'source-not-absolute',
-      message:
-        'Pass the absolute path of the plugin folder (the folder that contains plugin.json).',
-    };
-  }
-  return null;
+  const resolution = resolvePluginValidateSource(source);
+  return resolution.ok ? null : resolution.diagnostic;
 }
 
 /** A complete {@link PluginValidateResult} carrying only `diagnostics`. */

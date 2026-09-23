@@ -125,8 +125,15 @@ describe('station-docs plugin-authoring topic', () => {
     return found!;
   };
   const paragraphs = () => topic().body.split('\n\n');
-  /** install/installs/installing/installed/installation … plugin(s), one clause. */
-  const install = /\binstall(?:s|ing|ed|ation)?\b[^.;:\n]*?\bplugins?\b/i;
+  /**
+   * An install or set-up verb and a plugin (or "it for them/you/the person")
+   * in one clause, whatever the subject. Subject-agnostic on purpose: rather
+   * than guess which subjects are agents, every match must be pinned below.
+   * Known limit: a pronoun that refers to a plugin across sentences ("Write
+   * the plugin. Then install it.") is not caught.
+   */
+  const install =
+    /\b(?:install(?:s|ing|ed|ation)?|set(?:s|ting)?\s+up)\b[^.;:\n]*?\b(?:plugins?|it\s+for\s+(?:them|you|the\s+person))\b/i;
 
   /** The paragraph that starts with `heading`, as written in the body. */
   const paragraph = (heading: string) => {
@@ -363,6 +370,9 @@ describe('station-docs plugin-authoring topic', () => {
       'It can install plugins, not just list them.',
       'Ask the agent to install your plugin.',
       'The agent installed the new plugin.',
+      'The assistant sets up plugins for you.',
+      'Write it, then install it for them.',
+      'Setting up your plugin is automatic.',
     ]) {
       expect(install.test(claim), claim).toBe(true);
     }

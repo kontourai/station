@@ -429,6 +429,43 @@ describe('station-control platform tools (characterization)', () => {
     }
   });
 
+  test('validate_plugin trims a padded source, answering exactly as the HTTP route does', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'station-validate-trim-'));
+    try {
+      const home = join(root, 'home');
+      mkdirSync(join(home, 'plugins'), { recursive: true });
+      const plugins = new Hono();
+      registerPluginValidateRoutes(plugins, {
+        agentsDir: join(home, 'agents'),
+        logger: { debug() {}, error() {}, info() {}, warn() {} } as any,
+        pluginsDir: join(home, 'plugins'),
+        projectHomeDir: home,
+      });
+      const app = new Hono().route('/api/plugins', plugins);
+      const tools = await registerTools();
+      for (const source of [
+        '  https://example.invalid/owner/plugin.git  ',
+        '\t/net/attacker/plugin\n',
+        '  ./my-plugin ',
+      ]) {
+        const viaTool = JSON.parse(
+          (await tools.validate_plugin({ source })).content[0].text,
+        );
+        const viaRoute = await (
+          await app.request('/api/plugins/validate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ source }),
+          })
+        ).json();
+        expect(viaTool, JSON.stringify(source)).toEqual(viaRoute);
+      }
+      expect(fetchMock).not.toHaveBeenCalled();
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   test('validate_plugin reaches the validate route and relays its diagnostics', async () => {
     const root = mkdtempSync(join(tmpdir(), 'station-validate-tool-'));
     try {

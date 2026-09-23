@@ -248,14 +248,17 @@ export function registerPlatformTools(server: StationControlToolRegistry) {
     async ({ source }) => {
       // The route's own refusal, applied here so a refused source makes no
       // request at all; same codes and the same result shape either way.
-      const refused = refusePluginValidateSource(source);
+      // Trimmed first, as the route's request schema trims, so a padded
+      // source gets the route's code rather than a tool-only one.
+      const trimmed = source.trim();
+      const refused = refusePluginValidateSource(trimmed);
       if (refused) {
-        return jsonToolResult(pluginValidateResult(source, [refused]));
+        return jsonToolResult(pluginValidateResult(trimmed, [refused]));
       }
       return jsonToolResult(
         await api('/api/plugins/validate', {
           method: 'POST',
-          body: JSON.stringify({ source }),
+          body: JSON.stringify({ source: trimmed }),
         }),
       );
     },
