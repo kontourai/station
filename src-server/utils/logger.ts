@@ -178,7 +178,15 @@ function buildBaseBindings(): Record<string, unknown> {
   return base;
 }
 
+/** A supervisor that reads stdout only for its handshake line sets
+ * `STATION_STDOUT_LOGS=0` (the desktop sidecar does). Formatting lines nobody
+ * reads costs CPU on every log call, and pino-pretty's exit hook blocks in a
+ * synchronous flush retry loop when that pipe is left full after the
+ * supervisor dies, so the process can never finish exiting (#2327). */
+const DISCARDED_STDOUT: pino.DestinationStream = { write: () => undefined };
+
 function buildDestination(level: ConfigurableLogLevel): pino.DestinationStream {
+  if (process.env.STATION_STDOUT_LOGS === '0') return DISCARDED_STDOUT;
   const isProduction = process.env.NODE_ENV === 'production';
   const stdoutStream: NodeJS.WritableStream = isProduction
     ? // NODE_ENV=production is not set by anything in this codebase today

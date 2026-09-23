@@ -11,6 +11,7 @@ import {
   RuntimeAuthFailureLimiter,
   type RuntimePeerClass,
 } from '../../security/runtime-request-security.js';
+import { createCredentialFreeOriginVerifier } from '../../security/station-browser-origins.js';
 import {
   authenticatedWebSocketAck,
   decodeWebSocketAuthFrame,
@@ -84,7 +85,17 @@ export class TerminalWebSocketServer {
       this.authLimiter = auth.limiter ?? new RuntimeAuthFailureLimiter();
   }
 
-  start(port: number, host?: string): WebSocketServer {
+  /**
+   * `allowedBrowserOrigins` is Station's UI origin set
+   * (`resolveStationBrowserOrigins`). A browser upgrade on the credential-free
+   * loopback path must carry one of them; omitting the set refuses every
+   * browser upgrade on that path while non-browser clients keep working.
+   */
+  start(
+    port: number,
+    host?: string,
+    options: { allowedBrowserOrigins?: readonly string[] } = {},
+  ): WebSocketServer {
     this.wss = new WebSocketServer({
       port,
       maxPayload: Math.max(
@@ -92,6 +103,13 @@ export class TerminalWebSocketServer {
         this.auth?.maxPayloadBytes ?? DEFAULT_MAX_PAYLOAD_BYTES,
       ),
       ...(host ? { host } : {}),
+      verifyClient: createCredentialFreeOriginVerifier({
+        allowedOrigins: options.allowedBrowserOrigins ?? [],
+        credentialRequired: this.auth !== undefined,
+        classifyPeer: this.auth?.classifyPeer,
+        onRejected: (peerClass) =>
+          this.auditFailure('origin_forbidden', peerClass),
+      }),
     });
 
     this.wss.on('connection', (ws: WebSocket, req) => {

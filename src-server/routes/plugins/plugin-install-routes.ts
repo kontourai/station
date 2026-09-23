@@ -540,6 +540,7 @@ export function registerPluginInstallRoutes(
           components.push({
             type: 'pane',
             id: pane.id,
+            name: pane.name,
             detail: `${pane.renderer.kind}:${pane.rendererId}`,
             conflict,
             skippable: false,
