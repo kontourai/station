@@ -32,10 +32,13 @@ import { SkeletonList } from '../state';
  * reflects the new repository state.
  */
 export function BranchToolbar({
+  projectSlug,
   workingDir,
   activeFile,
   onActiveRepoChange,
 }: {
+  /** The Project whose folder commit and push act on (#2363). */
+  projectSlug: string;
   workingDir: string;
   activeFile?: string | null;
   // Reports the resolved active-repo root upward so sibling panels (e.g. the
@@ -73,8 +76,8 @@ export function BranchToolbar({
   const status = useGitStatus(repoRoot);
   const branchesQuery = useGitBranchesQuery(repoRoot);
   const checkout = useGitCheckoutMutation(repoRoot ?? '');
-  const commit = useGitCommitMutation(repoRoot ?? '');
-  const push = useGitPushMutation(repoRoot ?? '');
+  const commit = useGitCommitMutation(projectSlug, repoRoot ?? '');
+  const push = useGitPushMutation(projectSlug, repoRoot ?? '');
 
   const gitStatus = status.data?.isRepo ? status.data : null;
   const currentBranch = gitStatus?.branch ?? activeRepo?.branch ?? null;

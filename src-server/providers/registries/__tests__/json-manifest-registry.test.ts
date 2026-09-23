@@ -655,8 +655,12 @@ describe('JsonManifestRegistryProvider registry manifest proof', () => {
     execGitSync(['config', 'user.name', 'Station Test'], { cwd: sourceRepo });
     execGitSync(['add', 'plugin.json'], { cwd: sourceRepo });
     execGitSync(['commit', '-m', 'initial plugin'], { cwd: sourceRepo });
+    // Fixture setup: a local-path clone needs the `file` transport opt-in
+    // (#2363). The provider's own clone of `./registry-demo.git` below opts
+    // in by itself, because the source is a local path.
     execGitSync(['clone', '--bare', sourceRepo, bareRepo], {
       cwd: projectHome,
+      hardening: { allowFileProtocol: true },
     });
     writeFileSync(
       join(installedPluginDir, 'plugin.json'),
@@ -845,6 +849,36 @@ describe('JsonManifestRegistryProvider registry manifest proof', () => {
     expect(
       JSON.parse(readFileSync(resolve(victimPluginDir, 'plugin.json'), 'utf8')),
     ).toEqual(victimManifest);
+  });
+
+  test('refuses a plain http:// git source by name, before git runs (#2363)', async () => {
+    const projectHome = await makeProjectHome();
+    const manifestPath = resolve(projectHome, 'registry.json');
+    writeFileSync(
+      manifestPath,
+      JSON.stringify({
+        version: 1,
+        plugins: [
+          {
+            id: 'registry-demo',
+            displayName: 'Registry Demo',
+            description: 'Registry copy',
+            version: '1.0.0',
+            source: 'http://git.example.test/acme/plugin.git',
+          },
+        ],
+        tools: [],
+      }),
+    );
+    const provider = new JsonManifestRegistryProvider(
+      manifestPath,
+      projectHome,
+    );
+
+    await expect(provider.install('registry-demo')).resolves.toMatchObject({
+      success: false,
+      message: expect.stringContaining('Use an https:// address'),
+    });
   });
 
   test('rejects same-id registry installs without prior registry ownership', async () => {

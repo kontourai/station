@@ -16,7 +16,7 @@ import {
 import { readUntrustedPluginManifestSyncWithFormat } from '../../services/plugins/plugin-manifest-bounded-read.js';
 import { assertPluginIdentityAvailable } from '../../services/plugins/reserved-plugin-identities.js';
 import { errorMessage } from '../../utils/error-message.js';
-import { execGitSync } from '../../utils/git-exec.js';
+import { execGitSync, isLocalGitSource } from '../../utils/git-exec.js';
 import type { Logger } from '../../utils/logger.js';
 import type { InstallResult, RegistryItem } from '../provider-contracts.js';
 import type {
@@ -267,11 +267,24 @@ export class JsonManifestRegistryProvider
     try {
       if (isGitSource(resolvedSource)) {
         const [url, branch] = resolvedSource.split('#');
+        // #2363: Station's git allows only https and ssh. Refused here, by
+        // name, rather than as a transport error deep inside git: code
+        // fetched over plain http can be altered in transit.
+        if (/^http:\/\//i.test(url)) {
+          throw new Error(
+            `Plugin source ${url} uses plain http://. Use an https:// address: code installed over http can be tampered with in transit.`,
+          );
+        }
         const cloneArgs = ['clone', '--depth', '1'];
         if (branch) cloneArgs.push('--branch', branch);
         cloneArgs.push(url, tempDir);
 
-        execGitSync(cloneArgs, { timeout: 30000 });
+        // A registry may name a local git path; git clones one over its
+        // `file` transport, allowed for exactly that case (#2363).
+        execGitSync(cloneArgs, {
+          timeout: 30000,
+          hardening: { allowFileProtocol: isLocalGitSource(url) },
+        });
       } else {
         if (!existsSync(resolvedSource)) {
           throw new Error(`Source not found: ${resolvedSource}`);

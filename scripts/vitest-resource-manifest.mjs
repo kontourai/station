@@ -722,6 +722,12 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-server/utils/__tests__/sqlite-wal.process.test.ts',
   // Shells out to `git grep` for the projection source guard.
   'src-server/services/agents/__tests__/agent-binding-projection.test.ts',
+  // #2363: plants repo-local git config and runs plain git beside Station's
+  // hardened runner against real temp repositories.
+  'src-server/utils/__tests__/git-exec.hardening.test.ts',
+  // #2363: the coding git routes over real repositories, a real bare remote
+  // and plain git as the control for every planted config.
+  'src-server/routes/projects/__tests__/coding-git-security.routes.test.ts',
   // station#3278: builds the real watchdog bundle and spawns it through
   // symlinked paths to prove the entrypoint guard fires; the esbuild step and
   // child spawns keep it out of ordinary workers.
