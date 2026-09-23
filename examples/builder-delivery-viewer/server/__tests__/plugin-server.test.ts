@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, it } from 'vitest';
+// @ts-expect-error Plain ESM plugin module without declarations.
 import { register } from '../plugin.mjs';
 
 const dirs: string[] = [];
