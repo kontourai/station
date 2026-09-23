@@ -174,11 +174,11 @@ export function conversationOpenPatch(
               sessionAutoApprove: [],
               pendingApprovals: [],
               approvalToasts: new Map(),
+              // Engine reports about the predecessor's session. The
+              // recorded posture is the CONVERSATION's and stays, as does a
+              // queued pick (#2436).
               lastAppliedApprovalMode: undefined,
-              // A confirmed pick is a receipt about the predecessor's
-              // session. A pending one is the user's next-turn request and
-              // stays (#2334).
-              approvalModeOverride: undefined,
+              approvalEscalationRejected: undefined,
               currentModeId: null,
               planArtifact: null,
               flowRun: null,
@@ -232,11 +232,9 @@ export function conversationOpenPatch(
           requestedModel: null,
           requestedProviderOptions: {},
           providerOptions: {},
-          pendingApprovalMode: undefined,
-          pendingApprovalPickedAt: undefined,
-          pendingApprovalBehindTurn: undefined,
-          pendingApprovalAppliedAtPick: undefined,
-          approvalModeOverride: undefined,
+          queuedApprovalMode: undefined,
+          approvalPosture: undefined,
+          approvalPostureSequence: undefined,
           error:
             'The current Session execution binding is unavailable. Retry opening this conversation before sending.',
         }

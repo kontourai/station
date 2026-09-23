@@ -2,9 +2,10 @@ import type {
   ConversationHandoffProjection,
   ConversationOpenResolution,
 } from '@kontourai/station-contracts/orchestration';
-import type {
-  ApprovalMode,
-  EngineId,
+import {
+  type ApprovalMode,
+  type EngineId,
+  isApprovalMode,
 } from '@kontourai/station-contracts/provider';
 import type { FlowRunFreshness } from '@kontourai/station-contracts/runtime-events';
 import { type ExecutionMode } from '@kontourai/station-contracts/tool';
@@ -18,6 +19,10 @@ import type {
 
 export type { UnsentMessageRecord } from '../types';
 
+import {
+  migratedApprovalPick,
+  withoutLegacyApprovalMode,
+} from '../utils/approvalMode';
 import type { EffectiveModelSource } from '../utils/execution';
 import type { PlanArtifact } from '../utils/planArtifacts';
 
@@ -346,27 +351,24 @@ export type ChatUIState = {
    */
   lastAppliedApprovalMode?: ApprovalMode;
   /**
-   * An approval pick the engine has not confirmed yet (#2334). Kept out of
-   * `requestedProviderOptions` on purpose — see `ApprovalPickState`
-   * (utils/approvalMode.ts). Persisted: it is a request, like the bag.
+   * Whether the engine refused the recorded full access on its latest turn
+   * (`turn.started` metadata `approvalEscalationRejected`). Not persisted,
+   * like the report above.
    */
-  pendingApprovalMode?: ApprovalMode;
-  /** See `ApprovalPickState` (utils/approvalMode.ts, #2334). Persisted. */
-  pendingApprovalPickedAt?: number;
+  approvalEscalationRejected?: boolean;
   /**
-   * See `ApprovalPickState`. Not persisted: the dispatch it names does not
-   * survive a reload.
+   * #2436: a pick the server has not received yet (see
+   * `ApprovalPostureState`, utils/approvalMode.ts). Persisted: an offline
+   * pick survives a reload and rides the next send.
    */
-  pendingApprovalBehindTurn?: string;
-  /** See `ApprovalPickState`. Persisted with the pending pick. */
-  pendingApprovalAppliedAtPick?: ApprovalMode;
+  queuedApprovalMode?: ApprovalMode;
   /**
-   * An approval pick a report showed the engine applying (#2334). Persisted
-   * as confirmed. An Ask/Auto is reasserted on each send, as main's request
-   * bag does; a full access never is (`approvalModeToSend`), so restoring it
-   * cannot loosen a session another device tightened.
+   * #2436: the latest server-recorded posture decision this client has
+   * folded, and its server global sequence. Persisted as a cache of the
+   * server's record; a newer recorded event always replaces it.
    */
-  approvalModeOverride?: ApprovalMode;
+  approvalPosture?: ApprovalMode;
+  approvalPostureSequence?: number;
   orchestrationSessionStarted?: boolean;
   orchestrationProvider?: EngineId;
   orchestrationModel?: string;
@@ -568,11 +570,16 @@ export type PersistedActiveChat = {
   requestedModel?: string | null;
   requestedModelSource?: EffectiveModelSource;
   requestedProviderOptions?: Record<string, unknown>;
-  /** See ChatUIState.pendingApprovalMode (#2334). */
-  pendingApprovalMode?: ApprovalMode;
-  pendingApprovalPickedAt?: number;
-  pendingApprovalAppliedAtPick?: ApprovalMode;
-  approvalModeOverride?: ApprovalMode;
+  /** See ChatUIState.queuedApprovalMode (#2436). */
+  queuedApprovalMode?: ApprovalMode;
+  approvalPosture?: ApprovalMode;
+  approvalPostureSequence?: number;
+  /**
+   * #2436 migration only: the unreleased #2334 fields. Read once by
+   * `hydrateActiveChats` (`migratedApprovalPick`), never written.
+   */
+  pendingApprovalMode?: unknown;
+  approvalModeOverride?: unknown;
   defaultModel?: string;
   defaultModelSource?: EffectiveModelSource;
   projectSlug?: string;
@@ -742,23 +749,25 @@ export function hydrateActiveChats(
       modelSource: session.modelSource,
       requestedModel: session.requestedModel,
       requestedModelSource: session.requestedModelSource,
-      requestedProviderOptions: session.requestedProviderOptions,
-      ...(session.pendingApprovalMode
+      // #2436: an approval posture never rides the model-options bags. A
+      // pick persisted there (or in the unreleased #2334 fields) becomes a
+      // queued pick the server records on the next send.
+      requestedProviderOptions: withoutLegacyApprovalMode(
+        session.requestedProviderOptions,
+      ),
+      ...(() => {
+        const queued = isApprovalMode(session.queuedApprovalMode)
+          ? session.queuedApprovalMode
+          : migratedApprovalPick(session);
+        return queued ? { queuedApprovalMode: queued } : {};
+      })(),
+      ...(isApprovalMode(session.approvalPosture)
         ? {
-            pendingApprovalMode: session.pendingApprovalMode,
-            ...(session.pendingApprovalPickedAt !== undefined
-              ? { pendingApprovalPickedAt: session.pendingApprovalPickedAt }
-              : {}),
-            ...(session.pendingApprovalAppliedAtPick
-              ? {
-                  pendingApprovalAppliedAtPick:
-                    session.pendingApprovalAppliedAtPick,
-                }
+            approvalPosture: session.approvalPosture,
+            ...(typeof session.approvalPostureSequence === 'number'
+              ? { approvalPostureSequence: session.approvalPostureSequence }
               : {}),
           }
-        : {}),
-      ...(session.approvalModeOverride
-        ? { approvalModeOverride: session.approvalModeOverride }
         : {}),
       defaultModel: session.defaultModel,
       defaultModelSource: session.defaultModelSource,
@@ -770,7 +779,7 @@ export function hydrateActiveChats(
       providerId: session.providerId,
       defaultProviderId: session.defaultProviderId,
       provider: session.provider,
-      providerOptions: session.providerOptions || {},
+      providerOptions: withoutLegacyApprovalMode(session.providerOptions) || {},
       orchestrationSessionStarted: session.orchestrationSessionStarted || false,
       orchestrationProvider: session.orchestrationProvider,
       orchestrationModel: session.orchestrationModel,
@@ -898,26 +907,19 @@ export function serializeActiveChats(
       requestedModel: chat.requestedModel,
       requestedModelSource: chat.requestedModelSource,
       requestedProviderOptions: chat.requestedProviderOptions,
-      // #2334: both picks survive a reload as what they are. The confirmed
-      // one (Ask/Auto) is reasserted on the next send; the pending one keeps
-      // its stream position and the posture known at the pick, so a later
-      // stricter report still retires it.
-      ...(chat.pendingApprovalMode
+      // #2436: a queued pick survives a reload and rides the next send; the
+      // folded posture is a cache of the server's record, ordered by its
+      // sequence, so a newer recorded event replaces it.
+      ...(chat.queuedApprovalMode
+        ? { queuedApprovalMode: chat.queuedApprovalMode }
+        : {}),
+      ...(chat.approvalPosture
         ? {
-            pendingApprovalMode: chat.pendingApprovalMode,
-            ...(chat.pendingApprovalPickedAt !== undefined
-              ? { pendingApprovalPickedAt: chat.pendingApprovalPickedAt }
-              : {}),
-            ...(chat.pendingApprovalAppliedAtPick
-              ? {
-                  pendingApprovalAppliedAtPick:
-                    chat.pendingApprovalAppliedAtPick,
-                }
+            approvalPosture: chat.approvalPosture,
+            ...(chat.approvalPostureSequence !== undefined
+              ? { approvalPostureSequence: chat.approvalPostureSequence }
               : {}),
           }
-        : {}),
-      ...(chat.approvalModeOverride
-        ? { approvalModeOverride: chat.approvalModeOverride }
         : {}),
       defaultModel: chat.defaultModel,
       defaultModelSource: chat.defaultModelSource,
@@ -1027,9 +1029,8 @@ export function mergeChatUpdates(
     'requestedModel' in nextUpdates ||
     'requestedModelSource' in nextUpdates ||
     'requestedProviderOptions' in nextUpdates ||
-    'pendingApprovalMode' in nextUpdates ||
-    'approvalModeOverride' in nextUpdates ||
-    'pendingApprovalPickedAt' in nextUpdates ||
+    'queuedApprovalMode' in nextUpdates ||
+    'approvalPosture' in nextUpdates ||
     'defaultModel' in nextUpdates ||
     'defaultModelSource' in nextUpdates ||
     'provider' in nextUpdates ||

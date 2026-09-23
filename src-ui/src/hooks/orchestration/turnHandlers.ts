@@ -9,7 +9,6 @@ import {
   activeChatsStore,
 } from '../../contexts/active-chats-store';
 import { toastStore } from '../../contexts/ToastContext';
-import { settleApprovalPick } from '../../utils/approvalMode';
 import {
   formatChatErrorDisplay,
   translateChatError,
@@ -27,7 +26,6 @@ import { finalizeAssistantTurn } from './assistantTurn';
 import { createAssistantStreamingMessage } from './messageParts';
 import { drainQueuedMessageOnTurnCompleted } from './queueDrain';
 import { isReplayThread } from './replay/replay-registry';
-import { eventStreamPosition } from './streamPosition';
 import type { OrchestrationEvent } from './types';
 
 function repeatedErrorText(message: string, count: number) {
@@ -242,14 +240,16 @@ export function handleTurnStartedEvent(
       content: '',
       contentParts: [],
     },
-    ...(approvalMode ? { lastAppliedApprovalMode: approvalMode } : {}),
-    // A report settles the pending approval pick only when it matches: a
-    // differing one may describe a turn sent before the pick (#2334).
-    ...settleApprovalPick(
-      currentChat,
-      approvalMode,
-      eventStreamPosition(event),
-    ),
+    ...(approvalMode
+      ? {
+          lastAppliedApprovalMode: approvalMode,
+          // #2436: the server applies the recorded posture at every turn
+          // start, so a refused full access is refused again each turn; the
+          // chip says it needs a restart rather than "next turn".
+          approvalEscalationRejected:
+            event.metadata?.approvalEscalationRejected === true,
+        }
+      : {}),
     ...(effectiveModel
       ? { model: effectiveModel, orchestrationModel: effectiveModel }
       : {}),
@@ -598,41 +598,18 @@ export function handleRuntimeWarningEvent(
   // that the adapter rejected (no allowDangerouslySkipPermissions granted
   // at spawn) must not leave the composer chip showing a posture that
   // never actually applied. The adapter reports which mode IS actually in
-  // effect; revert the client's stored override to match reality.
+  // effect.
   if (event.code === APPROVAL_ESCALATION_REQUIRES_RESTART_CODE) {
+    // The refusal is the engine's report of what still applies (#2436). The
+    // recorded full access stays the conversation's decision — the server
+    // will apply it to the next session that spawns — so the chip shows it
+    // refused, not reverted.
     const revertTo = event.details?.revertToApprovalMode;
-    const requested = event.details?.requestedApprovalMode;
-    const chat = activeChatsStore.getChatForExecutionSession(event.threadId);
-    // The refusal settles the pick it refused (#2334): the pending 'never'
-    // is dropped, so the chip returns to the confirmed pick or the receipt,
-    // and the next send does not ask for it again. A newer, different pick is
-    // not what was refused and stays pending.
-    const refusedPick =
-      chat?.pendingApprovalMode !== undefined &&
-      (requested === undefined || chat.pendingApprovalMode === requested);
-    // Pre-#2334 chat state can still hold the posture in an options bag;
-    // correct it there only where it already is, so no bag gains an
-    // `approvalMode` that a later send would carry.
-    const revertBag = (bag: Record<string, unknown> | undefined) =>
-      bag && 'approvalMode' in bag && isApprovalMode(revertTo)
-        ? { ...bag, approvalMode: revertTo }
-        : undefined;
-    const nextRequested = revertBag(chat?.requestedProviderOptions);
-    const nextConfirmed = revertBag(chat?.providerOptions);
     activeChatsStore.updateChat(event.threadId, {
-      ...(refusedPick
-        ? {
-            pendingApprovalMode: undefined,
-            pendingApprovalPickedAt: undefined,
-            pendingApprovalBehindTurn: undefined,
-            pendingApprovalAppliedAtPick: undefined,
-          }
-        : {}),
+      approvalEscalationRejected: true,
       ...(isApprovalMode(revertTo) && revertTo !== 'connection-default'
         ? { lastAppliedApprovalMode: revertTo }
         : {}),
-      ...(nextRequested ? { requestedProviderOptions: nextRequested } : {}),
-      ...(nextConfirmed ? { providerOptions: nextConfirmed } : {}),
     });
   }
 }

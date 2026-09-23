@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  *
- * #2334: a reload inside the store's 300 ms save debounce restored the state
+ * #2334/#2436: a reload inside the store's 300 ms save debounce restored the state
  * from before the last change. For an approval pick that is an older,
  * possibly looser pick. The app's store flushes its pending save on the page
  * lifecycle events that precede a reload.
@@ -15,9 +15,9 @@ const SESSION_ID = 'pagehide-flush-chat';
 function persistedPick() {
   const stored = JSON.parse(
     window.sessionStorage.getItem('activeChats') ?? '[]',
-  ) as Array<{ sessionId: string; pendingApprovalMode?: string }>;
+  ) as Array<{ sessionId: string; queuedApprovalMode?: string }>;
   return stored.find((chat) => chat.sessionId === SESSION_ID)
-    ?.pendingApprovalMode;
+    ?.queuedApprovalMode;
 }
 
 function setVisibility(state: DocumentVisibilityState) {
@@ -42,12 +42,12 @@ describe('the app store flushes its pending save before the page goes away', () 
     });
     activeChatsStore.updateChat(SESSION_ID, {
       conversationId: 'conv-flush',
-      pendingApprovalMode: 'never',
+      queuedApprovalMode: 'never',
     });
     activeChatsStore.flushPendingSave();
     expect(persistedPick()).toBe('never');
     // The user tightens the pick; the write is still debounced.
-    activeChatsStore.updateChat(SESSION_ID, { pendingApprovalMode: 'ask' });
+    activeChatsStore.updateChat(SESSION_ID, { queuedApprovalMode: 'ask' });
     expect(persistedPick()).toBe('never');
   }
 

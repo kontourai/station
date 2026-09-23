@@ -302,10 +302,13 @@ export interface ChatSession {
   providerOptions?: Record<string, unknown>;
   /** See ChatUIState.lastAppliedApprovalMode (active-chats-state.ts) — not persisted. */
   lastAppliedApprovalMode?: ApprovalMode;
-  /** See ChatUIState.pendingApprovalMode (active-chats-state.ts, #2334). */
-  pendingApprovalMode?: ApprovalMode;
-  /** See ChatUIState.approvalModeOverride (active-chats-state.ts, #2334). */
-  approvalModeOverride?: ApprovalMode;
+  /** See ChatUIState.approvalEscalationRejected (active-chats-state.ts, #2436). */
+  approvalEscalationRejected?: boolean;
+  /** See ChatUIState.queuedApprovalMode (active-chats-state.ts, #2436). */
+  queuedApprovalMode?: ApprovalMode;
+  /** See ChatUIState.approvalPosture (active-chats-state.ts, #2436). */
+  approvalPosture?: ApprovalMode;
+  approvalPostureSequence?: number;
   /** See ChatUIState.stopPending (active-chats-state.ts) — not persisted. */
   stopPending?: boolean;
   model?: string;

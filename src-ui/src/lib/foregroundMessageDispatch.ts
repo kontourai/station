@@ -33,12 +33,14 @@ export async function dispatchForeground(input: {
    */
   approvalModeFallback?: string;
   /**
-   * The session approval override: the pending pick, else the confirmed one
-   * (`sessionApprovalOverride`, #2334). It travels ALONGSIDE the model
-   * options, never in place of them, and survives the `engine-selected`
-   * branch below: resetting the model does not withdraw an approval pick.
+   * #2436: an approval pick the server has not received yet (the chat's
+   * `queuedApprovalMode`). It is a server-ordered decision, not a model
+   * option: it travels as the message's own `setApprovalMode`, which the
+   * server records on receipt before the turn, and it survives the
+   * `engine-selected` branch below — resetting the model does not withdraw
+   * an approval pick.
    */
-  approvalModeOverride?: string;
+  setApprovalMode?: import('@kontourai/station-contracts/provider').ApprovalMode;
   message: string;
   attachments?: FileAttachment[];
   attachmentStages?: ComposerAttachmentStageSnapshot[];
@@ -53,21 +55,16 @@ export async function dispatchForeground(input: {
     const modelControls = defaultRequested
       ? undefined
       : (input.requestedProviderOptions ?? input.providerOptions);
-    const requested = input.approvalModeOverride
-      ? { ...(modelControls ?? {}), approvalMode: input.approvalModeOverride }
-      : modelControls;
-    if (!input.approvalModeFallback) return requested;
-    // A session override travels in the options bag itself and wins; the
-    // fallback fills only the gap. `'connection-default'` in the bag is the
-    // user CLEARING their override, so the layer below it applies.
-    const override = requested?.approvalMode;
-    if (typeof override === 'string' && override !== 'connection-default') {
-      return requested;
-    }
-    // Deliberately survives the `engine-selected` branch above: dropping the
-    // whole bag with no model override is about not claiming a model, and
-    // must not silently drop the posture the Station does state.
-    return { ...(requested ?? {}), approvalMode: input.approvalModeFallback };
+    if (!input.approvalModeFallback) return modelControls;
+    // The default channel: applied by the server only while the
+    // conversation has no recorded posture (#2436). Deliberately survives
+    // the `engine-selected` branch above: dropping the whole bag with no
+    // model override is about not claiming a model, and must not silently
+    // drop the posture the Station does state.
+    return {
+      ...(modelControls ?? {}),
+      approvalMode: input.approvalModeFallback,
+    };
   })();
   const requestedModel = defaultRequested ? undefined : resolved.modelId;
   const attachments = input.attachments ?? [];
@@ -158,6 +155,9 @@ export async function dispatchForeground(input: {
       ambientContext: input.ambientContext,
       clientTurnId: input.clientTurnId,
       automaticBackground: input.automaticBackground,
+      ...(input.setApprovalMode
+        ? { setApprovalMode: input.setApprovalMode }
+        : {}),
     },
     { signal: input.signal },
   );

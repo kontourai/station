@@ -24,6 +24,7 @@ import { drainQueuedMessageOnTurnCompleted } from './queueDrain';
 import { recordReplayRuntime } from './replay/capture-tap';
 import { isReplayThread } from './replay/replay-registry';
 import {
+  handleApprovalModeSetEvent,
   handleSessionExitedEvent,
   handleSessionLifecycleEvent,
   handleSessionStateChangedEvent,
@@ -92,12 +93,12 @@ export function handleOrchestrationEvent(
   provenance?: unknown,
   conversation?: OrchestrationConversationStreamBinding,
   /**
-   * #2334: the server's stream sequence for this frame (the SSE id). Lets an
-   * approval report be ordered against the user's pick.
+   * The server's global sequence for this frame (the SSE id). A recorded
+   * approval-posture decision is folded by it, never by arrival (#2436).
    */
   position?: number,
 ) {
-  recordEventPosition(apiBase, event, position);
+  recordEventPosition(event, position);
   if (
     conversation?.currentSessionId === event.threadId &&
     (event.method === 'session.started' ||
@@ -242,6 +243,9 @@ function dispatchProjectedOrchestrationEvent(
       return;
     case 'session.stop-settled':
       handleSessionStopSettledEvent(event);
+      return;
+    case 'session.approval-mode-set':
+      handleApprovalModeSetEvent(event);
       return;
     case 'policy.hooks-attached':
       handlePolicyHooksAttachedEvent(event);

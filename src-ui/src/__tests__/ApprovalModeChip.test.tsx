@@ -476,11 +476,11 @@ describe('ApprovalModeChip', () => {
     ).toBeTruthy();
   });
 
-  // #2334 decision on the #1933 pin: an unconfirmed pick STRICTER than the
+  // #2334 decision on the #1933 pin: a requested pick STRICTER than the
   // full access the engine last reported says so, because the engine keeps
   // running with full access until the next turn applies it. The test above
   // (a confirmed override, a stale receipt) keeps the plain label.
-  test('an unconfirmed stricter pick while the engine reports full access shows pending', () => {
+  test('a requested stricter pick while the engine reports full access shows pending', () => {
     render(
       <ApprovalModeChip
         engineConnectionId="codex"
@@ -492,13 +492,13 @@ describe('ApprovalModeChip', () => {
     );
 
     const chip = screen.getByRole('button', {
-      name: /^Approval mode: Auto · pending — the engine still reports full access\./,
+      name: /^Approval mode: Auto · pending — the engine still reports full access; takes effect next turn\./,
     });
     expect(chip.className).toContain('chat-input__approval-chip--pending');
     expect(chipValue()).toBe('Auto · pending');
   });
 
-  test('an unconfirmed pick that is not stricter than the receipt keeps the plain label (station#1933)', () => {
+  test('a requested pick that is not stricter than the receipt keeps the plain label (station#1933)', () => {
     render(
       <ApprovalModeChip
         engineConnectionId="codex"
@@ -515,20 +515,40 @@ describe('ApprovalModeChip', () => {
     );
   });
 
-  test('an unconfirmed pick (restored, never resent to the live session) says so visibly, and never promises the next turn', () => {
+  // #2436: the server applies a recorded full access at every turn start,
+  // and Claude refuses it on a session not spawned with it. "Takes effect
+  // next turn" would promise an escalation that is not going to happen.
+  test('a refused full access says it needs a restart, and never promises the next turn', () => {
     render(
       <ApprovalModeChip
         engineConnectionId="claude"
         sessionOverride="never"
-        sessionOverrideState="unconfirmed"
+        sessionOverrideState="refused"
+        lastAppliedApprovalMode="ask"
         onChange={vi.fn()}
       />,
     );
-    expect(chipValue()).toBe('Full access · unconfirmed');
+    expect(chipValue()).toBe('Full access · needs restart');
     expect(trigger().getAttribute('aria-label')).toMatch(
-      /^Approval mode: Full access · unconfirmed — not confirmed for this session; full access is not reasserted, and a new session starts at the default\./,
+      /^Approval mode: Full access · needs restart — the engine refused it because this session did not start with full access; it applies when the session restarts\./,
     );
     expect(trigger().getAttribute('aria-label')).not.toMatch(/next turn/);
+  });
+
+  test('a requested full access still promises the next turn, which the server now keeps on every send path', () => {
+    render(
+      <ApprovalModeChip
+        engineConnectionId="claude"
+        sessionOverride="never"
+        sessionOverrideState="requested"
+        lastAppliedApprovalMode="ask"
+        onChange={vi.fn()}
+      />,
+    );
+    expect(chipValue()).toBe('Full access · pending');
+    expect(trigger().getAttribute('aria-label')).toMatch(
+      /takes effect next turn/,
+    );
   });
 
   test('#727 review item 4: auto is provider-aware in its description, and never mentions "safe"', async () => {
@@ -663,7 +683,7 @@ describe('ApprovalModeChip', () => {
     ['pending', 'never', undefined],
     // #2334: a stricter pick in flight while the engine reports full access.
     ['pending-restrict', 'ask', 'never'],
-    ['unconfirmed', 'auto', undefined],
+    ['refused', 'never', 'ask'],
   ] as const) {
     test(`the ${name} chip's visible text is contained in its accessible name`, () => {
       render(
@@ -673,8 +693,8 @@ describe('ApprovalModeChip', () => {
           sessionOverrideState={
             name === 'pending-restrict'
               ? 'requested'
-              : name === 'unconfirmed'
-                ? 'unconfirmed'
+              : name === 'refused'
+                ? 'refused'
                 : undefined
           }
           lastAppliedApprovalMode={applied}

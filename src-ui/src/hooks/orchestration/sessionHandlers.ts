@@ -4,7 +4,7 @@ import {
   activeChatsStore,
 } from '../../contexts/active-chats-store';
 import { toastStore } from '../../contexts/ToastContext';
-import { settleApprovalPick } from '../../utils/approvalMode';
+import { foldApprovalPosture } from '../../utils/approvalMode';
 import {
   acknowledgesModelRequest,
   modelControlOptionsMatch,
@@ -48,12 +48,6 @@ export function handleSessionLifecycleEvent(
     orchestrationProvider: event.provider,
     orchestrationSessionStarted: true,
     ...(approvalMode ? { lastAppliedApprovalMode: approvalMode } : {}),
-    // A report settles the pending approval pick only when it matches (#2334).
-    ...settleApprovalPick(
-      currentChat,
-      approvalMode,
-      eventStreamPosition(event),
-    ),
     ...(event.method === 'session.configured' &&
     typeof event.metadata?.acpSessionMode === 'string'
       ? { currentModeId: event.metadata.acpSessionMode }
@@ -193,6 +187,22 @@ export function handleSessionExitedEvent(
     activityHint: undefined,
     backgroundTasks: undefined,
   });
+}
+
+/**
+ * #2436: a recorded approval-posture decision, from any device. Folded by
+ * the server's own order (the frame's global sequence), never by arrival.
+ */
+export function handleApprovalModeSetEvent(
+  event: Extract<OrchestrationEvent, { method: 'session.approval-mode-set' }>,
+) {
+  const update = foldApprovalPosture(
+    activeChatsStore.getChatForExecutionSession(event.threadId),
+    event.approvalMode,
+    eventStreamPosition(event),
+  );
+  if (Object.keys(update).length > 0)
+    activeChatsStore.updateChat(event.threadId, update);
 }
 
 export function handleSessionStopSettledEvent(

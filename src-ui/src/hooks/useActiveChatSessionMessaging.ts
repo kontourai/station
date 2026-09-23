@@ -34,8 +34,8 @@ import type {
 import type { ComposerAttachmentStageSnapshot, FileAttachment } from '../types';
 import {
   approvalModeForDispatch,
-  approvalModeToSend,
-  approvalPickOverridingDefaults,
+  approvalPickReceived,
+  sessionApprovalOverride,
 } from '../utils/approvalMode';
 import {
   type ChatErrorTranslation,
@@ -43,7 +43,6 @@ import {
 } from '../utils/chatErrorTranslation';
 import {
   chatSessionIsLive,
-  chatSessionKnownEnded,
   resolveSessionEngineConnectionId,
   sessionAdapterSupportsSteering,
 } from '../utils/execution';
@@ -371,19 +370,12 @@ export function useSendMessage(
             (agent) => agent.slug === agentSlug,
           )?.execution?.agentConnectionId,
         });
-        // The approval pick travels beside the model options (#2334). It is
-        // session posture, not message content: a replayed turn sends the
-        // chat's CURRENT pick, never the one it was queued with. A confirmed
-        // Ask/Auto is reasserted on every send; a confirmed full access never
-        // is (see `approvalModeToSend`).
-        const dispatchedApprovalOverride = approvalModeToSend(currentState);
-        // The pick the defaults below must yield to: a withheld confirmed
-        // full access still suppresses the Station default while the session
-        // may be live; at a session known to have ended it does not.
-        const sessionApprovalPick = approvalPickOverridingDefaults(
-          currentState,
-          chatSessionKnownEnded(currentState),
-        );
+        // #2436: the server applies the conversation's recorded posture to
+        // this turn. The only posture this send carries is a pick the server
+        // has not received yet (no session yet, or picked offline); it is
+        // recorded on receipt, before the turn. A replayed turn carries the
+        // chat's CURRENT queued pick, never one captured when it was queued.
+        const carriedApprovalPick = currentState?.queuedApprovalMode;
         const receipt = await dispatchForeground({
           apiBase,
           sessionId,
@@ -401,13 +393,13 @@ export function useSendMessage(
             // outlives its session, and a reopened conversation is marked
             // started whether or not anything is running (round 3 F1).
             sessionAlreadyStarted: chatSessionIsLive(currentState),
-            sessionOverride: sessionApprovalPick,
+            sessionOverride: sessionApprovalOverride(currentState)?.mode,
             connectionDefault: agentConnections.find(
               (connection) => connection.id === sessionEngineConnectionId,
             )?.config.approvalMode,
             stationDefault: stationApprovalModeDefault,
           }),
-          approvalModeOverride: dispatchedApprovalOverride,
+          setApprovalMode: carriedApprovalPick,
           requestedModel: options?.executionSnapshot
             ? options.executionSnapshot.requestedModel
             : currentState?.requestedModel,
@@ -442,6 +434,13 @@ export function useSendMessage(
           // durable tab keyed by its conversation while routing subsequent
           // live controls/events to the server-receipted child identity.
           currentSessionId: receipt.sessionId,
+          // An accepted send has had its carried pick recorded (#2436).
+          ...(carriedApprovalPick
+            ? approvalPickReceived(
+                activeChatsStore.getSnapshot()[sessionId],
+                carriedApprovalPick,
+              )
+            : {}),
         });
         // The send above can bring either the conversation's root Session or
         // a later continuation Session into existence. A newly current child
