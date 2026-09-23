@@ -66,15 +66,31 @@ function CatalogContents({
     );
   }
   return (
-    <WorkspacePaneAvailabilityList
-      entries={entries}
-      aria-label="Workspace panes"
-      onSelect={onSelect}
-      onAction={onAction}
-      canExecuteAction={canExecuteAction}
-      isOpen={isOpen}
-      onReviewInRegistry={onReviewInRegistry}
-    />
+    <>
+      {/* #2345: `error` with entries on screen is a failed background
+          refresh over a cached list (#2319 keeps the old answer). The list
+          stays usable; this says it may be out of date. */}
+      {error ? (
+        <PageCallout
+          calloutId="workspace-pane-catalog-refresh-failed"
+          tone="info"
+          role="status"
+          ariaLabel="Pane list not refreshed"
+          action={<Button onClick={onRetry}>Retry</Button>}
+        >
+          Couldn’t refresh the pane list. It may be out of date.
+        </PageCallout>
+      ) : null}
+      <WorkspacePaneAvailabilityList
+        entries={entries}
+        aria-label="Workspace panes"
+        onSelect={onSelect}
+        onAction={onAction}
+        canExecuteAction={canExecuteAction}
+        isOpen={isOpen}
+        onReviewInRegistry={onReviewInRegistry}
+      />
+    </>
   );
 }
 

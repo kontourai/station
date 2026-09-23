@@ -119,3 +119,48 @@ test('Cancel closes the picker', () => {
   fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
   expect(onClose).toHaveBeenCalledTimes(1);
 });
+
+function renderCatalog(error: boolean, onRetry = vi.fn()) {
+  render(
+    <ProjectWorkspacePaneModal
+      show
+      onClose={vi.fn()}
+      entries={entries}
+      loading={false}
+      error={error}
+      onRetry={onRetry}
+      onSelect={vi.fn()}
+      onAction={vi.fn(() => '')}
+      canExecuteAction={vi.fn(() => false)}
+    />,
+  );
+  return onRetry;
+}
+
+test('marks a cached list whose background refresh failed, with Retry, and keeps the list usable (#2345)', () => {
+  const onRetry = renderCatalog(true);
+  const dialog = screen.getByRole('dialog', { name: 'Add workspace pane' });
+  const marker = within(dialog).getByRole('status', {
+    name: 'Pane list not refreshed',
+  });
+  expect(marker.getAttribute('data-callout-id')).toBe(
+    'workspace-pane-catalog-refresh-failed',
+  );
+  expect(marker.textContent).toContain('Couldn’t refresh the pane list');
+  // The cached answer is still the list, not an error screen.
+  expect(
+    within(dialog).getByRole('list', { name: 'Workspace panes' }),
+  ).toBeTruthy();
+  expect(
+    within(dialog).queryByText('Could not load workspace panes'),
+  ).toBeNull();
+  fireEvent.click(within(marker).getByRole('button', { name: 'Retry' }));
+  expect(onRetry).toHaveBeenCalledTimes(1);
+});
+
+test('shows no refresh marker when the list is current (#2345)', () => {
+  renderCatalog(false);
+  expect(
+    screen.queryByRole('status', { name: 'Pane list not refreshed' }),
+  ).toBeNull();
+});

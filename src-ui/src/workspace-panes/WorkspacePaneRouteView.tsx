@@ -159,6 +159,23 @@ export function WorkspacePaneRouteView({
       />
     );
   }
+  // #2345: "doesn't have that pane" is a claim about the CURRENT catalog.
+  // When the refresh just failed, the cached one cannot support it (a plugin
+  // installed elsewhere while the route was down is exactly the pane a deep
+  // link would name), so say what is actually known.
+  if (!entry && catalog.isRefetchError) {
+    return (
+      <ErrorState
+        title="Could not refresh workspace panes"
+        description="Station couldn’t check this Project’s current panes, so it can’t tell whether this one exists."
+        action={
+          <button type="button" onClick={() => void catalog.refetch()}>
+            Retry
+          </button>
+        }
+      />
+    );
+  }
   if (!entry) {
     return (
       <ErrorState
