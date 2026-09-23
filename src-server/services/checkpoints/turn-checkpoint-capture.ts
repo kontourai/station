@@ -83,6 +83,7 @@ function withPhase(
  */
 export class TurnCheckpointCaptureCoordinator {
   private readonly tails = new Map<string, Promise<void>>();
+  private readonly refusalLogged = new Set<string>();
 
   constructor(private readonly deps: TurnCheckpointCaptureCoordinatorDeps) {}
 
@@ -207,6 +208,18 @@ export class TurnCheckpointCaptureCoordinator {
         );
         this.recordOutcome({ threadId, turnId, phase, outcome: 'captured' });
       } else {
+        if (
+          result.reason === 'repository_config_refused' &&
+          !this.refusalLogged.has(threadId)
+        ) {
+          // #2410: said once per thread, not on every boundary. The turn's
+          // record carries the reason, and the chat shows it per turn.
+          this.refusalLogged.add(threadId);
+          this.deps.logger.warn(
+            'turn-checkpoint: not capturing; the repository config defines programs git would run',
+            { threadId, repoDir, detail: result.detail },
+          );
+        }
         this.safeRecord(threadId, turnId, phase, () =>
           withPhase(phase, {
             status: 'skipped',

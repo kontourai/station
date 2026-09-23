@@ -134,7 +134,10 @@ export function useChatDockViewModel({
     null;
   // station#1146: git stays bound to the PROJECT's directory, deliberately —
   // see `sessionDisplayCwd` below for the split and its reasoning.
-  const { data: gitStatus } = useGitStatus(sessionWorkingDir);
+  const { data: gitStatus } = useGitStatus(
+    sessionProjectSlug,
+    sessionWorkingDir,
+  );
   // station#1146: the dock reports on a session that has ALREADY started, so
   // the directory it names must be the one that session was started in, not
   // the one this project would hand a NEW chat. A chat on an engine

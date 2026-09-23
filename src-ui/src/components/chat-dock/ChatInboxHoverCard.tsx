@@ -1,5 +1,5 @@
 import { buildSessionInventoryViewModel } from '@kontourai/station-basis-pane/session-inventory-view';
-import type { GitStatusResult } from '@kontourai/station-sdk';
+import type { GitReadLocation, GitStatusResult } from '@kontourai/station-sdk';
 import { useGitStatusQuery } from '@kontourai/station-sdk';
 import { getConversationPullRequestLinks } from '@kontourai/station-sdk/conversation-pull-request-links';
 import { useSessionInventoryQuery } from '@kontourai/station-sdk/session-inventory';
@@ -70,7 +70,7 @@ function sourceLabel(source: 'explicit' | 'branch-derived' | 'task-declared') {
 export function ChatInboxHoverCard({
   item,
   now,
-  cwd,
+  gitLocation,
   anchor,
   onClose,
   id,
@@ -78,15 +78,16 @@ export function ChatInboxHoverCard({
   item: HomeWorkItem;
   now: number;
   /**
-   * The row's local session working directory, resolved by the host from its
-   * own session records — never carried on `HomeWorkItem` (that type is the
+   * The row's local session working directory and its Project (#2412: git
+   * reads name the Project), resolved by the host from its own session
+   * records — never carried on `HomeWorkItem` (that type is the
    * workspace-home projection surface, and widening it invalidates grants).
    * Absent means "no local workspace known": the git section renders only
    * when the host could resolve a directory, which also structurally keeps
    * remote rows (which never carry a local `orchestrationThreadId`) from
    * being answered by this machine's git.
    */
-  cwd?: string;
+  gitLocation?: GitReadLocation;
   /** The row element the card anchors beside (measured once on mount). */
   anchor: HTMLElement;
   onClose: () => void;
@@ -105,7 +106,7 @@ export function ChatInboxHoverCard({
 
   // Git facts resolve against the row's LOCAL working directory, supplied by
   // the host (see the prop docblock).
-  const git = useGitStatusQuery(cwd ?? null);
+  const git = useGitStatusQuery(gitLocation ?? null);
   // The owner's rule for this surface: pull requests are listed for projects
   // that have Git. A checkout the endpoint positively reported as a non-repo
   // suppresses the section; "unknown yet" does not (explicit and Task-kept
@@ -196,7 +197,8 @@ export function ChatInboxHoverCard({
   // silence. The heading appears only while a read is in flight (named gap),
   // after a failed read (named gap), or over real facts.
   const gitSectionVisible =
-    !!cwd && (git.isLoading || !!git.error || git.data?.isRepo === true);
+    !!gitLocation &&
+    (git.isLoading || !!git.error || git.data?.isRepo === true);
   const gitSection = gitSectionVisible ? (
     <section
       className="chat-dock-inbox-hover-card__section"

@@ -154,6 +154,8 @@ const CHECKPOINT_RESTORE_REASONS = new Set([
   'checkpoint_missing',
   'checkpoint_pruned',
   'preview_invalid',
+  'repository_config_refused',
+  'repository_config_unreadable',
   'restore_verification_failed',
   'workspace_changed',
   'workspace_checkpoint_unsupported',

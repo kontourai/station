@@ -124,14 +124,14 @@ async function post(
 
 async function status(path = project) {
   const res = await makeApp().request(
-    `/git/status?path=${encodeURIComponent(path)}`,
+    `/git/status?projectSlug=acme&path=${encodeURIComponent(path)}`,
   );
   return { status: res.status, json: (await res.json()) as any };
 }
 
 async function read(route: 'diff' | 'status', path = project) {
   const res = await makeApp().request(
-    `/git/${route}?path=${encodeURIComponent(path)}`,
+    `/git/${route}?projectSlug=acme&path=${encodeURIComponent(path)}`,
   );
   return { status: res.status, json: (await res.json()) as any };
 }
@@ -413,7 +413,12 @@ describe.skipIf(process.platform === 'win32')(
     test('checkout runs no planted post-checkout hook, and refuses a name that is not a branch', async () => {
       installHook(join(project, '.git', 'hooks'), 'post-checkout');
       const checkout = (branch: string, create?: boolean) =>
-        post('/git/checkout', { path: project, branch, create });
+        post('/git/checkout', {
+          projectSlug: 'acme',
+          path: project,
+          branch,
+          create,
+        });
 
       const created = await checkout('feature', true);
       expect(created.status, JSON.stringify(created.json)).toBe(200);
@@ -443,7 +448,7 @@ describe.skipIf(process.platform === 'win32')(
         for (const route of ['status', 'log', 'branches']) {
           const started = Date.now();
           const res = await app.request(
-            `/git/${route}?path=${encodeURIComponent(project)}`,
+            `/git/${route}?projectSlug=acme&path=${encodeURIComponent(project)}`,
           );
           const json = (await res.json()) as { code?: string };
           expect(res.status, route).toBe(504);

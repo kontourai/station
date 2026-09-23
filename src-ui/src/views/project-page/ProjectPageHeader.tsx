@@ -15,6 +15,7 @@ export function ProjectPageHeader({
   dirDraft,
   setDirDraft,
   updateWorkingDirectory,
+  workingDirectoryError,
   navigateToSettings,
 }: {
   project: {
@@ -29,6 +30,13 @@ export function ProjectPageHeader({
   dirDraft: string;
   setDirDraft: (value: string) => void;
   updateWorkingDirectory: (value: string) => void;
+  /**
+   * Why the last folder change was not saved (#2412: only the operator, or a
+   * device allowed to run commands, may choose a Project's folder). The
+   * editor stays open with the refusal under it rather than closing as if
+   * the change had landed.
+   */
+  workingDirectoryError?: string | null;
   navigateToSettings: () => void;
 }) {
   // "Copied" is only ever shown for a clipboard write that resolved. Station is
@@ -186,6 +194,11 @@ export function ProjectPageHeader({
             placeholder="/path/to/project"
             className="project-page__dir-input"
           />
+          {workingDirectoryError && (
+            <p role="alert" className="project-page__dir-error">
+              {workingDirectoryError}
+            </p>
+          )}
         </div>
       )}
     </>

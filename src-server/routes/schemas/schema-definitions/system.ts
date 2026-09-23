@@ -67,12 +67,18 @@ export const answerShareMintSchema = z.object({
 });
 
 // Coding
+// #2412: every coding route that takes a client path names the Project it
+// acts in; the route refuses a path outside that Project's folder.
+const codingProjectSlug = z.string().min(1).max(200);
+
 export const execCommandSchema = z.object({
+  projectSlug: codingProjectSlug,
   command: z.string().min(1),
   cwd: z.string().optional(),
 });
 
 export const gitCheckoutSchema = z.object({
+  projectSlug: codingProjectSlug,
   path: z.string().min(1),
   branch: z.string().min(1),
   create: z.boolean().optional(),
@@ -393,18 +399,21 @@ export const skillCreateSchema = z.object({
 // are paths relative to it. The service enforces that they resolve inside the
 // root (no traversal) before touching disk.
 export const fileCreateSchema = z.object({
+  projectSlug: codingProjectSlug,
   path: z.string().min(1),
   target: z.string().min(1),
   type: z.enum(['file', 'directory']),
 });
 
 export const fileRenameSchema = z.object({
+  projectSlug: codingProjectSlug,
   path: z.string().min(1),
   from: z.string().min(1),
   to: z.string().min(1),
 });
 
 export const fileDeleteSchema = z.object({
+  projectSlug: codingProjectSlug,
   path: z.string().min(1),
   target: z.string().min(1),
 });

@@ -293,6 +293,67 @@ and stream state but is denied every mutation and the terminal route with
 scoping and is treated as carrying every scope — it is not itself a pairing
 grant.
 
+### Coding routes: command execution and client paths (#2412)
+
+`/api/coding/**` runs git, reads files and runs shell commands in a Project's
+folder as the Station OS user, with that user's keys. Its family tiers
+(`orchestration:read`/`orchestration:operate`) are necessary but not
+sufficient, so the handlers narrow further (owner decision, 2026-09-23):
+
+- **`POST /api/coding/exec` needs a per-device grant.** It stays at
+  `orchestration:operate`, and a paired device ALSO needs `coding:exec`, an
+  `operator-promotion` token: in no preset and never in the default grant, so
+  no `standard`, `delegation`, collaborator-management or migrated credential
+  gains it on upgrade, and older peers keep parsing every scope string they
+  are issued. The operator grants it once, per device, with the device access
+  editor's **Run commands** switch (`POST /api/pairing/devices/:id/scope`,
+  operator-only), and revokes it by turning the switch off; the grant is
+  stored on the device's record in the pairing registry, like every other
+  promoted token. The operator in person never needs it: the operator
+  credential, and credentials minted by proving possession of this Station's
+  home (the desktop app's local grant, the host browser's bootstrap, Station's
+  own internal token). A refused request is `403` with code
+  `coding-exec-not-granted` and a sentence naming where the operator turns it
+  on; it is refused before the body is read, and nothing runs.
+- **Every route that takes a client path is confined to a Project.** The
+  request names `projectSlug`; the path (and `/exec`'s `cwd`) must resolve,
+  through symlinks on both sides, to the Project's folder or a folder inside
+  it, or to a checkout git reports as a registered worktree of the Project's
+  repository (a worktree session, wherever its policy put it). A listed
+  worktree counts only when its own `.git` leads back to that repository, so
+  a repository cannot claim an arbitrary folder by writing
+  `.git/worktrees/<x>/gitdir`. When the Project is one folder of a larger
+  repository, the checkout that contains it from above is admitted for reads
+  only (listings, file reads, status, log, diff, branches): git already
+  reports that whole repository's status and diff from inside the Project,
+  and a Task's workspace names the repository root. File edits, checkout and
+  `/exec` are refused above the Project. Anything else is `403
+  outside-project`, a request naming no Project is `400 project-required`.
+  The one exception is `GET /api/coding/repos` without a Project, which the
+  New Project form uses to ask about a folder that is not a Project yet: it
+  answers the operator in person only.
+- **Choosing a Project's folder takes the same authority as running
+  commands.** The folder is what every route above is confined to, so setting
+  `workingDirectory` on `POST /api/projects` or changing it on `PUT
+  /api/projects/:slug` is allowed only for the operator in person or a device
+  holding `coding:exec` (one derivation, `src-server/security/coding-authority.ts`,
+  read by both gates). Anyone else gets `403 working-directory-not-granted`
+  and nothing is saved; an update that sends the folder the Project already
+  has is not a change, and every other Project edit keeps its operate tier.
+
+What this does not close, stated so nobody assumes it does:
+
+- `terminal:operate` (in the `standard` preset) already opens an interactive
+  shell on this host. A `standard` device therefore runs commands whatever the
+  Run commands switch says: the switch narrows only devices without the
+  terminal, such as `delegation` peers and collaborator-management browsers.
+  It does not take the terminal away from a device that has it.
+- Confinement binds a request to the Project it names. A device allowed to
+  run commands may point a Project's folder anywhere, and the containment
+  follows; that device could already reach anywhere through `/exec`.
+- Changes to a device's scope are recorded only as the device record's
+  current scope; there is no separate history of who granted or revoked what.
+
 ### Cross-station reads
 
 An SSH environment's local tunnel (`GET /api/environments/ssh/sessions`,

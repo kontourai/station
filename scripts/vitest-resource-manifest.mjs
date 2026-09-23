@@ -648,6 +648,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-server/services/checkpoints/__tests__/checkpoint-restore.test.ts',
   'src-server/services/checkpoints/__tests__/checkpoint-read.test.ts',
   'src-server/services/checkpoints/__tests__/checkpoint-retention.test.ts',
+  // #2410: drives the real capture through the EventBus against a fixture
+  // repository whose own config plants a clean filter (execFileSync git).
+  'src-server/services/checkpoints/__tests__/turn-checkpoint-capture.test.ts',
   'packages/cli/src/__tests__/checkpoints-command.test.ts',
   // These ACP integration tests do not import child_process directly, but
   // exercise shared discovery/process startup and exceeded their 5s contract
