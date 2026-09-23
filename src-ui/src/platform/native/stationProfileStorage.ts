@@ -15,6 +15,7 @@ import {
   type StationProfileRelayRoute,
   type StationProfileStore,
 } from '@kontourai/station-contracts';
+import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { invokeTauri } from './tauriInvoke';
 
 const CONNECTIONS_KEY = 'station-connect-connections';
@@ -165,9 +166,15 @@ function normalizeRelayRouteProfileInput(
   );
   if (!hasUniqueProfileName(profiles, name, existing))
     throw new Error('Choose a unique Station name.');
+  // Native route-grant custody binds to this stable, secret-free local owner.
+  // An older saved route gains one on its next deliberate edit. Never fall
+  // back to Math.random for a keyring account namespace.
+  if (!existing?.clientInstanceId && !globalThis.crypto?.getRandomValues)
+    throw new Error('Secure local identity is unavailable for this route.');
   return {
     name,
     endpoint,
+    clientInstanceId: existing?.clientInstanceId ?? randomCorrelationId(),
     relayRoute: {
       brokerOrigin,
       stationId: input.relayRoute.stationId,

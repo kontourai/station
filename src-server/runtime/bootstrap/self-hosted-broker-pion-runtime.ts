@@ -82,6 +82,8 @@ interface PeerEntry {
   /** This peer's captured descriptor — never the latest global trust. */
   descriptor: ApprovedStationConnectionTrust;
   connectionId: string;
+  /** Bound to this authenticated broker offer, never the connector's legacy Origin. */
+  browserOrigin: string;
   readonly lifetime: AbortController;
   /** Confirmed resource cleanup (adapter-owned receipt settled). */
   cleanupConfirmed: boolean;
@@ -261,7 +263,7 @@ export function createSelfHostedBrokerPionRuntime(
         if (
           request.signal.aborted ||
           new URL(request.url).origin !== applicationOrigin ||
-          request.headers.get('origin') !== scope.browserOrigin
+          request.headers.get('origin') !== entry.browserOrigin
         )
           return Response.json(
             { error: { code: 'broker_application_origin_forbidden' } },
@@ -275,7 +277,7 @@ export function createSelfHostedBrokerPionRuntime(
             routingGeneration: entry.descriptor.generation,
             connectionId: entry.connectionId,
             stationOrigin: applicationOrigin,
-            browserOrigin: scope.browserOrigin,
+            browserOrigin: entry.browserOrigin,
             signal: entry.lifetime.signal,
             isCurrent: () =>
               !entry.lifetime.signal.aborted &&
@@ -414,6 +416,7 @@ export function createSelfHostedBrokerPionRuntime(
           adapter,
           descriptor: captured,
           connectionId: offer.clientId,
+          browserOrigin: offer.browserOrigin,
           lifetime: new AbortController(),
           cleanupConfirmed: false,
           serverCloses: new Set(),
@@ -453,6 +456,7 @@ export function createSelfHostedBrokerPionRuntime(
             adapter,
             descriptor: captured,
             connectionId: offer.clientId,
+            browserOrigin: offer.browserOrigin,
             lifetime: new AbortController(),
             cleanupConfirmed: false,
             serverCloses: new Set(),

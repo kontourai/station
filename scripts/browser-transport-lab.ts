@@ -178,6 +178,7 @@ let connectionTrust: ApprovedStationConnectionTrust;
 let proofIssuer: ReturnType<typeof createStationConnectionProofIssuer>;
 const admittedConnections = new Set<string>();
 let securePageServer: ReturnType<typeof createHttpsServer> | undefined;
+let secondarySecurePageServer: ReturnType<typeof createHttpsServer> | undefined;
 let stationUpstreamPort: number | undefined;
 function serveBrowserDocument(
   request: import('node:http').IncomingMessage,
@@ -200,7 +201,9 @@ async function runFreshRelayScenario(input: {
   pageOrigin: string;
 }): Promise<{
   report: Record<string, unknown>;
+  routingGrantId: string;
   readFreshProject(): Promise<number>;
+  readRouteStatus(): Promise<unknown>;
   close(): Promise<void>;
 }> {
   assert(accountStation && brokerLab && relay && browser);
@@ -220,6 +223,11 @@ async function runFreshRelayScenario(input: {
   };
   try {
     await freshPage.goto(input.pageOrigin);
+    assert.notEqual(
+      new URL(input.approvedPage.url()).origin,
+      new URL(freshPage.url()).origin,
+      'Fresh client must use a different HTTPS Origin',
+    );
     const directStationHttpAttempts: string[] = [];
     freshPage.on('request', (request) => {
       try {
@@ -236,12 +244,16 @@ async function runFreshRelayScenario(input: {
     const turnPort =
       browserTransport === 'udp' ? turnUdpPort : activeRelay.port;
     assert(turnPort);
+    const invitation = broker.issueInvitation({
+      clientOrigin: input.pageOrigin,
+      stationSigningKeyId: await stationConnectionSigningKeyId(connectionTrust),
+      stationSigningGeneration: connectionTrust.generation,
+    });
     const connected = await bounded(
       freshPage.evaluate(browserBrokerConnect, {
         brokerOrigin: broker.brokerOrigin,
-        scope: broker.scope,
-        routingId: broker.bundle.routing.id,
-        routingSecret: broker.bundle.routing.secret,
+        scope: invitation.scope,
+        invitation,
         applicationOrigin: station.station.base,
         port: turnPort,
         username,
@@ -249,6 +261,20 @@ async function runFreshRelayScenario(input: {
         transport: browserTransport,
       }),
       'fresh-device relay broker connect',
+    );
+    const previousGrantId = await input.approvedPage.evaluate(
+      () =>
+        (
+          globalThis as unknown as {
+            stationBrokerLab?: { credentials: { capture(): { id: string } } };
+          }
+        ).stationBrokerLab?.credentials.capture().id,
+    );
+    assert(previousGrantId);
+    assert.notEqual(
+      connected.routingGrantId,
+      previousGrantId,
+      'Independent browser profiles must receive distinct routing grants',
     );
     await freshPage.evaluate(browserBrokerAdmitApplicationTransport);
     const freshBrowserState = await freshPage.evaluate(
@@ -333,6 +359,8 @@ async function runFreshRelayScenario(input: {
     const report: Record<string, unknown> = {
       status: 'passed',
       transport: 'Chromium -> self-hosted broker -> StationRuntime Pion -> VAI',
+      distinctClientOrigins: true,
+      distinctRoutingGrants: true,
       connectionId: connected.connectionId,
       enrollmentId: activated.enrollmentId,
       deviceId: activated.deviceId,
@@ -377,12 +405,14 @@ async function runFreshRelayScenario(input: {
     };
     return {
       report,
+      routingGrantId: connected.routingGrantId,
       async readFreshProject() {
         const result = await freshPage.evaluate(browserFreshRelayProjectRead, {
           path: '/api/projects/relay-shared',
         });
         return result.status;
       },
+      readRouteStatus: () => freshPage.evaluate(browserBrokerReadStatus),
       close,
     };
   } catch (error) {
@@ -765,8 +795,8 @@ try {
     window.stationRelayEnrollment = relayEnrollment;
     ${
       selfHostedBroker
-        ? `import {SelfHostedBrokerBrowserClient, createBrowserPionConnection, createSelfHostedApplicationTransport} from './packages/connect/src/core/selfHostedBrowser.ts';
-    window.stationSelfHostedBroker = {SelfHostedBrokerBrowserClient, createBrowserPionConnection, createSelfHostedApplicationTransport};`
+        ? `import {SelfHostedBrokerBrowserClient, createBrowserPionConnection, createSelfHostedApplicationTransport, BrowserRoutingGrantCustody, redeemBrokerRouteInvitation} from './packages/connect/src/core/selfHostedBrowser.ts';
+    window.stationSelfHostedBroker = {SelfHostedBrokerBrowserClient, createBrowserPionConnection, createSelfHostedApplicationTransport, BrowserRoutingGrantCustody, redeemBrokerRouteInvitation};`
         : ''
     }
   `,
@@ -795,58 +825,71 @@ try {
   const substituted = await identity('unapproved-station');
   let address: import('node:net').AddressInfo;
   let pageOrigin: string;
+  let secondaryPageOrigin: string | undefined;
   if (selfHostedBroker) {
-    securePageServer = createHttpsServer(
-      {
-        cert: readFileSync(approved.cert),
-        key: readFileSync(approved.key),
-        minVersion: 'TLSv1.3',
-        maxVersion: 'TLSv1.3',
-      },
-      (request, response) => {
-        if (request.url === '/' || request.url === '/connection-proof.js') {
-          serveBrowserDocument(request, response);
-          return;
-        }
-        if (!stationUpstreamPort) {
-          response.writeHead(503).end();
-          return;
-        }
-        const headers = {
-          ...request.headers,
-          host: `127.0.0.1:${stationUpstreamPort}`,
-        };
-        delete headers.connection;
-        delete headers.upgrade;
-        const upstream = httpRequest(
-          {
-            hostname: '127.0.0.1',
-            port: stationUpstreamPort,
-            path: request.url ?? '/',
-            method: request.method,
-            headers,
-          },
-          (upstreamResponse) => {
-            response.writeHead(
-              upstreamResponse.statusCode ?? 502,
-              upstreamResponse.headers,
-            );
-            upstreamResponse.pipe(response);
-          },
-        );
-        upstream.on('error', () => {
-          if (!response.headersSent) response.writeHead(502);
-          response.end();
-        });
-        request.pipe(upstream);
-      },
-    );
+    const tlsOptions = {
+      cert: readFileSync(approved.cert),
+      key: readFileSync(approved.key),
+      minVersion: 'TLSv1.3' as const,
+      maxVersion: 'TLSv1.3' as const,
+    };
+    const securePageHandler = (
+      request: import('node:http').IncomingMessage,
+      response: import('node:http').ServerResponse,
+    ) => {
+      if (request.url === '/' || request.url === '/connection-proof.js') {
+        serveBrowserDocument(request, response);
+        return;
+      }
+      if (!stationUpstreamPort) {
+        response.writeHead(503).end();
+        return;
+      }
+      const headers = {
+        ...request.headers,
+        host: `127.0.0.1:${stationUpstreamPort}`,
+      };
+      delete headers.connection;
+      delete headers.upgrade;
+      const upstream = httpRequest(
+        {
+          hostname: '127.0.0.1',
+          port: stationUpstreamPort,
+          path: request.url ?? '/',
+          method: request.method,
+          headers,
+        },
+        (upstreamResponse) => {
+          response.writeHead(
+            upstreamResponse.statusCode ?? 502,
+            upstreamResponse.headers,
+          );
+          upstreamResponse.pipe(response);
+        },
+      );
+      upstream.on('error', () => {
+        if (!response.headersSent) response.writeHead(502);
+        response.end();
+      });
+      request.pipe(upstream);
+    };
+    securePageServer = createHttpsServer(tlsOptions, securePageHandler);
     securePageServer.listen(0, '127.0.0.1');
     await once(securePageServer, 'listening');
     const secureAddress = securePageServer.address();
     assert(secureAddress && typeof secureAddress !== 'string');
     address = secureAddress;
     pageOrigin = `https://127.0.0.1:${address.port}`;
+    secondarySecurePageServer = createHttpsServer(
+      tlsOptions,
+      securePageHandler,
+    );
+    secondarySecurePageServer.listen(0, '127.0.0.1');
+    await once(secondarySecurePageServer, 'listening');
+    const secondaryAddress = secondarySecurePageServer.address();
+    assert(secondaryAddress && typeof secondaryAddress !== 'string');
+    secondaryPageOrigin = `https://127.0.0.1:${secondaryAddress.port}`;
+    assert.notEqual(secondaryPageOrigin, pageOrigin);
   } else {
     server.listen(0, '127.0.0.1');
     await once(server, 'listening');
@@ -945,6 +988,9 @@ try {
         ...(selfHostedBroker
           ? {
               publicOrigin: pageOrigin,
+              additionalBrowserOrigins: secondaryPageOrigin
+                ? [secondaryPageOrigin]
+                : [],
               onStationReady: (station) => {
                 stationUpstreamPort = station.port;
               },
@@ -1014,12 +1060,16 @@ try {
     const brokerBrowserPort =
       browserTransport === 'udp' ? turnUdpPort : relay.port;
     assert(brokerBrowserPort);
+    const invitation = brokerLab.issueInvitation({
+      clientOrigin: pageOrigin,
+      stationSigningKeyId: await stationConnectionSigningKeyId(connectionTrust),
+      stationSigningGeneration: connectionTrust.generation,
+    });
     const connected = await bounded(
       page.evaluate(browserBrokerConnect, {
         brokerOrigin: brokerLab.brokerOrigin,
-        scope: brokerLab.scope,
-        routingId: brokerLab.bundle.routing.id,
-        routingSecret: brokerLab.bundle.routing.secret,
+        scope: invitation.scope,
+        invitation,
         applicationOrigin: accountStation.station.base,
         port: brokerBrowserPort,
         username,
@@ -1029,6 +1079,11 @@ try {
       'broker Pion connect',
     );
     assert.match(connected.connectionId, /^[a-f0-9-]{36}$/);
+    assert.notEqual(
+      connected.routingGrantId,
+      brokerLab.bundle.routing.id,
+      'Browser must use a client grant, never the operator routing credential',
+    );
     await page.evaluate(browserBrokerAdmitApplicationTransport);
     brokerLeaseBefore = (await brokerLab.readLease()).expiresAt;
     const stationPionPair = await page.evaluate(
@@ -1180,7 +1235,7 @@ try {
           brokerReconnectForJourney = reconnected;
           freshRelayJourney = await runFreshRelayScenario({
             approvedPage: page,
-            pageOrigin,
+            pageOrigin: secondaryPageOrigin ?? pageOrigin,
           });
           freshRelayReport = freshRelayJourney.report;
         }
@@ -1216,9 +1271,20 @@ try {
       200,
       'Fresh Device must retain Project access after the previous Device is revoked',
     );
+    assert(brokerLab);
+    brokerLab.revokeClientGrant(freshRelayJourney.routingGrantId);
+    await assert.rejects(
+      freshRelayJourney.readRouteStatus(),
+      /broker_request_refused_401|Failed to fetch/,
+    );
+    assert.equal(
+      (await page.evaluate(browserBrokerReadStatus)).state,
+      'online',
+    );
     freshRelayReport = {
       ...freshRelayJourney.report,
       previousDeviceRevokedFreshDeviceProjectRead: freshDeviceProjectRead,
+      independentRoutingGrantRevocation: true,
     };
     await freshRelayJourney.close();
     freshRelayJourney = undefined;
@@ -1234,9 +1300,7 @@ try {
     const cors = await bounded(
       page.evaluate(browserBrokerProbeOrigin, {
         brokerOrigin: lab.brokerOrigin,
-        scope: lab.scope,
-        routingId: lab.bundle.routing.id,
-        routingSecret: lab.bundle.routing.secret,
+        scope: { ...lab.scope, browserOrigin: pageOrigin },
       }),
       'broker CORS and credential refusal',
     );
@@ -1286,10 +1350,18 @@ try {
     assert.equal(selectedPair.localType, 'relay');
     assert.equal(selectedPair.remoteType, 'relay');
     assert(brokerReconnectForJourney);
+    assert.equal(
+      freshRelayReport?.independentRoutingGrantRevocation,
+      true,
+      'Broker lab must prove independent client-grant revocation',
+    );
     const reconnected = brokerReconnectForJourney;
     brokerJourney = {
       status: 'passed',
       connectionId: reconnected.connectionId,
+      clientGrantDistinctFromOperator: true,
+      independentRoutingGrantRevocation:
+        freshRelayReport?.independentRoutingGrantRevocation === true,
       leaseRenewed: leaseAfter > brokerLeaseBefore,
       cors: {
         status: cors.status,
@@ -1303,7 +1375,7 @@ try {
       stationRuntimeOwnsPionAndVirtualIngress: true,
       stationPeerRelaySelected: selectedPair,
       scope:
-        'same Station/enrollment plus browser origin; separate routing and connector credentials',
+        'same Station/enrollment with per-client Origin and independently revocable routing grants; connector and Station authority remain separate',
     };
     // Trust retirement refusal: revoke the admitted Device trust in the SAME
     // profile (a fresh context has isolated storage and no trust to revoke),
@@ -1494,7 +1566,10 @@ try {
     checks: selfHostedBroker
       ? [
           'separate broker CLI process serves metadata and signaling',
-          'actual browser CORS and routing-credential refusal',
+          'one-time client invitation and distinct broker grant used in the browser',
+          'actual browser CORS and client-grant credential refusal',
+          'one client grant revoked while the other and Station connector remain live',
+          'two explicitly allowed HTTPS client Origins share one Station allocation without sharing grants',
           'production Pion and browser transport carry authenticated Station application traffic',
           'TURN relay candidates selected at both ends',
           'broker lease renewed while application traffic continues',
@@ -1564,6 +1639,10 @@ try {
   if (securePageServer?.listening)
     await new Promise<void>((resolve) =>
       securePageServer!.close(() => resolve()),
+    );
+  if (secondarySecurePageServer?.listening)
+    await new Promise<void>((resolve) =>
+      secondarySecurePageServer!.close(() => resolve()),
     );
   datachannel.cleanup();
   process.off('SIGINT', interrupt);
