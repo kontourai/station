@@ -12,6 +12,7 @@ import {
 } from 'node:fs';
 import http from 'node:http';
 import { pathToFileURL } from 'node:url';
+import { lookupProcessBirthFingerprint } from '../packages/shared/src/process-identity.mjs';
 
 function readInstanceRecord(file, { allowWildcardHost = false } = {}) {
   const fd = openSync(file, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
@@ -59,11 +60,29 @@ function remainingMs(deadline) {
   return remaining;
 }
 
+/**
+ * Observe the `{ pid, startToken, commandDigest }` identity `station start`
+ * recorded for each pid, through the SAME authority the CLI recorded it with
+ * (`inspectProcessFingerprint` in packages/cli/src/commands/platform.ts).
+ *
+ * On Linux the start token is the shared `/proc` birth fingerprint
+ * (`linux:<boot_id>:<field 22>`, process-identity.mjs), not `ps -o lstart=`:
+ * since #2325 the CLI records that token on Linux, and an lstart observation
+ * can never equal it, so every Linux health probe reported `process` /
+ * `ownership-post` failures and reconcile never converged (#2332 item 1).
+ * Every other POSIX host keeps the pinned lstart probe, whose token is
+ * byte-identical to the shared lookup's.
+ */
 export function inspectProcessFingerprints(
   pids,
   deadline,
   runSync = execFileSync,
+  options = {},
 ) {
+  const platform = options.platform ?? process.platform;
+  if (platform === 'linux') {
+    return inspectLinuxProcessFingerprints(pids, deadline, runSync, options);
+  }
   try {
     const output = runSync(
       'ps',
@@ -104,6 +123,52 @@ export function inspectProcessFingerprints(
   } catch {
     return new Map();
   }
+}
+
+function inspectLinuxProcessFingerprints(pids, deadline, runSync, options) {
+  const birth =
+    options.birth ??
+    ((pid) => lookupProcessBirthFingerprint(pid, { platform: 'linux' }));
+  const uniquePids = [...new Set(pids)];
+  const births = new Map();
+  for (const pid of uniquePids) {
+    const token = birth(pid);
+    if (token) births.set(pid, token);
+  }
+  const fingerprints = new Map();
+  if (births.size === 0) return fingerprints;
+  let output;
+  try {
+    output = runSync(
+      'ps',
+      ['-o', 'pid=', '-o', 'command=', '-p', [...births.keys()].join(',')],
+      {
+        encoding: 'utf8',
+        env: { ...process.env, LC_ALL: 'C', TZ: 'UTC' },
+        stdio: ['ignore', 'pipe', 'ignore'],
+        timeout: remainingMs(deadline),
+        windowsHide: true,
+      },
+    ).trim();
+  } catch {
+    return fingerprints;
+  }
+  for (const line of output.split('\n')) {
+    const match = line.match(/^\s*(\d+)\s+(.+)$/);
+    if (!match) continue;
+    const pid = Number.parseInt(match[1], 10);
+    const before = births.get(pid);
+    // The command must belong to the process whose birth was read: a pid
+    // that exited and was reused between the two reads is left unobserved
+    // (a mismatch), exactly as the CLI's recorder fails closed.
+    if (!before || birth(pid) !== before) continue;
+    fingerprints.set(pid, {
+      pid,
+      startToken: before,
+      commandDigest: createHash('sha256').update(match[2].trim()).digest('hex'),
+    });
+  }
+  return fingerprints;
 }
 
 function assertProcessOwnership(record, deadline) {
@@ -328,7 +393,9 @@ function processFingerprintMatches(actual, expectedFingerprint) {
   // instance beats carrying a third copy of the legacy-lens machinery in a
   // path where a false "unhealthy" is recoverable by design (unlike the
   // stop path, where a false mismatch blocks the stop, or lock liveness,
-  // where it reclaims a live holder's lock).
+  // where it reclaims a live holder's lock). The same accepted cost covers a
+  // Linux record written by a pre-#2325 CLI (an lstart token): one supervised
+  // restart re-records it with the `/proc` token this probe now observes.
   return (
     actual?.pid === expectedFingerprint.pid &&
     actual?.startToken === expectedFingerprint.startToken &&

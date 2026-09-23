@@ -51,7 +51,7 @@ describe('the server tests program contains the production server program', () =
     const ids = TYPECHECK_LANES.map((lane) => lane.id);
     expect(ids).toContain('typecheck:server-tests');
     expect(scripts['typecheck:server-tests']).toBe(
-      'tsc -p tsconfig.tests.json --noEmit',
+      'node scripts/tsc-slot.mjs -p tsconfig.tests.json --noEmit',
     );
     expect(ids).not.toContain('typecheck:server');
   });

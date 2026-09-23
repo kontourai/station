@@ -64,13 +64,16 @@ import { spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import {
   mkdirSync,
+  mkdtempSync,
   readdirSync,
   readFileSync,
+  rmSync,
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DOCS_TRUTH_GATE_LANES } from '../docs-truth-gate-aggregate.mjs';
 import {
   entryPointSpecifiers,
@@ -1202,6 +1205,19 @@ describe('typecheck:scripts refuses a scripts/ tree it does not fully account fo
 }, () => {
   const SCRIPT = 'scripts-typecheck-coverage.mjs';
 
+  // The scratch compiles are real `tsc` runs through `scripts/tsc-slot.mjs`.
+  // A private slot directory keeps them from queueing behind (or counting
+  // against) whatever else is typechecking on this host.
+  let slotDir = '';
+  beforeEach(() => {
+    slotDir = mkdtempSync(join(tmpdir(), 'station-typecheck-slots-scratch-'));
+    vi.stubEnv('STATION_TYPECHECK_SLOT_DIR', slotDir);
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    rmSync(slotDir, { recursive: true, force: true });
+  });
+
   /**
    * The gate resolves TypeScript from the repo root it is checking, so the
    * scratch repo is given a real one by symlink. It is the installed compiler
@@ -1238,7 +1254,11 @@ describe('typecheck:scripts refuses a scripts/ tree it does not fully account fo
   }: TreeOptions = {}): string {
     const dir = scratchRepo({
       script: SCRIPT,
-      libs: ['module-entry.mjs'],
+      // The gate compiles through the same slot runner every typecheck lane
+      // uses, so the scratch tree carries it and its dependencies verbatim.
+      extraScripts: ['tsc-slot.mjs'],
+      libs: ['module-entry.mjs', 'typecheck-host-slots.mjs'],
+      productionFiles: ['packages/shared/src/process-identity.mjs'],
       files: {
         'package.json': `${JSON.stringify({ name: 'scratch', private: true }, null, 2)}\n`,
         'tsconfig.scripts.json': `${JSON.stringify(

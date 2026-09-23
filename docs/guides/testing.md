@@ -765,6 +765,32 @@ reported separately from test failures.
 Use `npm run test:prepush:repeat` to measure 20 consecutive attempts. This tier
 is diagnostic and does not replace the final `npm run full:regression` receipt.
 
+### Host typecheck slots and incremental compiles
+
+Every `typecheck:*` lane compiles through `scripts/tsc-slot.mjs`, which holds
+one of N host-wide slots for the life of the compiler and adds `--incremental`
+with a per-project build info file under the ignored
+`node_modules/.cache/station-tsbuildinfo/`. The slots are lock files in
+`/tmp/station-typecheck-slots-<uid>` on macOS and Linux (a fixed path, not
+`$TMPDIR`, so sandboxes and sudo join the same pool; private to the user and
+refused if another user owns it) and in the per-user temp directory on Windows.
+Every caller must resolve the same directory: a second directory is a second
+pool with its own N. N is one slot per 8 GiB of RAM, rounded, between 1 and 4
+(2 on a ~15.6 GiB hosted runner, 4 on a 48 GB workstation); the `typecheck`
+aggregate prints it once per run and never runs more lanes at once than there
+are slots. `--watch`, `--help`, `--version` and similar non-compiling modes take
+no slot. A crashed or killed compiler's slot is reclaimed from its dead pid.
+Overrides: `STATION_TYPECHECK_SLOTS` (count), `STATION_TYPECHECK_SLOT_WAIT_MS`
+(bounded wait, default 45 minutes, then the lane fails naming the holders),
+`STATION_TYPECHECK_SLOT_DIR` (set it identically for every caller), and
+`STATION_TYPECHECK_INCREMENTAL=0` for a cold compile. A warm run reports the
+same diagnostics as a cold one: TypeScript checks every input's content hash
+and replays stored errors for unchanged files.
+
+The pre-push hook and pull-request CI own the full typecheck. Locally, iterate
+with `npm run gate:for` evidence and a single `typecheck:<lane>`; do not start
+the full aggregate or `ci:fast` in the background and poll for its result.
+
 ### Shared Vitest worker policy
 
 Ordinary and focused Vitest invocations inherit the checked-in four-worker

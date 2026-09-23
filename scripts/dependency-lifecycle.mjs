@@ -29,6 +29,7 @@ import {
   readLifecycleImporters,
   readLifecycleLocks,
   readNodePtyPrebuildManifest,
+  runColdStartProbe,
   stageNodePtyPrebuild,
   validateAllowlist,
   verifyArtifact,
@@ -175,6 +176,9 @@ export function pnpmInvocation({
   node = process.execPath,
   platform = process.platform,
   exec = execWithInvocationName,
+  // Retry seams for the version probe; undefined keeps the probe defaults.
+  log,
+  pause,
 } = {}) {
   const manifest = JSON.parse(
     readFileSync(resolve(cwd, 'package.json'), 'utf8'),
@@ -243,14 +247,25 @@ export function pnpmInvocation({
     }
     let version;
     try {
-      version = exec(invocation.command, [...invocation.args, '--version'], {
-        cwd,
-        env: { ...env, COREPACK_ENABLE_NETWORK: '0' },
-        encoding: 'utf8',
-        timeout: 10_000,
-        windowsHide: true,
-        ...(invocation.argv0 !== undefined ? { argv0: invocation.argv0 } : {}),
-      }).trim();
+      // #2315: a starved hosted runner stalled this probe past a fixed 10s
+      // before pnpm printed anything; runColdStartProbe owns the evidence,
+      // the allowance and the silent-timeout-only retry. A wrong version and
+      // a failing exit are verdicts and are never retried.
+      version = runColdStartProbe(
+        'pnpm --version',
+        (timeout) =>
+          exec(invocation.command, [...invocation.args, '--version'], {
+            cwd,
+            env: { ...env, COREPACK_ENABLE_NETWORK: '0' },
+            encoding: 'utf8',
+            timeout,
+            windowsHide: true,
+            ...(invocation.argv0 !== undefined
+              ? { argv0: invocation.argv0 }
+              : {}),
+          }),
+        { log, pause },
+      ).trim();
     } catch (error) {
       // A Corepack shim can exist without the pinned manager installed.
       // Keep its network disabled and bootstrap the explicit pin via npm.

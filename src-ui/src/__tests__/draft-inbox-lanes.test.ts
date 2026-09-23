@@ -1,3 +1,4 @@
+import { agentId } from '@kontourai/station-contracts/agent-identity';
 import type { OrchestrationSessionSummary } from '@kontourai/station-contracts/orchestration';
 import { describe, expect, test } from 'vitest';
 import { groupMobileActivity } from '../components/chat-dock/mobile-activity-groups';
@@ -38,8 +39,7 @@ const SERVER_DRAFT: OrchestrationSessionSummary = {
   eventCount: 3,
   lifecycleState: 'queued',
   pendingReview: false,
-  assignedAgentSlug:
-    'grok-build' as OrchestrationSessionSummary['assignedAgentSlug'],
+  assignedAgentSlug: agentId('grok-build'),
   projectSlug: 'example-project',
   conversationId: THREAD,
   environmentId: 'env-test',

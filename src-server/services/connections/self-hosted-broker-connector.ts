@@ -4,6 +4,14 @@ import type {
   BrokerOffer,
   SelfHostedBrokerClient,
 } from './self-hosted-broker-client.js';
+import { BrokerTransientRequestError } from './self-hosted-broker-client.js';
+
+/** Only the read-only offer fetch may be replayed after an uncertain result. */
+export class BrokerOfferReadTransientError extends Error {
+  constructor(cause: unknown) {
+    super('broker_offer_read_transient', { cause });
+  }
+}
 
 type Answer = {
   answerSdp: string;
@@ -126,7 +134,14 @@ export class SelfHostedBrokerConnector {
       let observed = 0,
         answered = 0;
       while (observed < 32) {
-        const offers = await this.client.offers(currentSignal);
+        let offers: BrokerOffer[];
+        try {
+          offers = await this.client.offers(currentSignal);
+        } catch (error) {
+          if (error instanceof BrokerTransientRequestError)
+            throw new BrokerOfferReadTransientError(error);
+          throw error;
+        }
         current();
         if (!offers.length) break;
         const offer = offers[0]!;
