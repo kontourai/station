@@ -102,7 +102,7 @@ function rustSource() {
 
 function plist(channel) {
   const ports = CHANNEL_PORTS[channel];
-  return `<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n<plist version="1.0"><dict><key>CFBundleIdentifier</key><string>${channel === 'stable' ? 'io.kontourai.station' : `io.kontourai.station.${channel}`}</string><key>StationChannel</key><string>${channel}</string><key>StationServerPort</key><integer>${ports.serverPort}</integer><key>LSEnvironment</key><dict><key>STATION_DESKTOP_CHANNEL</key><string>${channel}</string><key>STATION_DESKTOP_PORT</key><string>${ports.serverPort}</string></dict></dict></plist>\n`;
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n<plist version="1.0"><dict><key>CFBundleIdentifier</key><string>${channel === 'stable' ? 'io.kontourai.station' : `io.kontourai.station.${channel}`}</string><key>NSCameraUsageDescription</key><string>Station uses the camera to scan pairing codes from another device.</string><key>NSMicrophoneUsageDescription</key><string>Station uses the microphone for voice conversations with your agents.</string><key>NSLocalNetworkUsageDescription</key><string>Station connects to Station hosts on your local network.</string><key>StationChannel</key><string>${channel}</string><key>StationServerPort</key><integer>${ports.serverPort}</integer><key>LSEnvironment</key><dict><key>STATION_DESKTOP_CHANNEL</key><string>${channel}</string><key>STATION_DESKTOP_PORT</key><string>${ports.serverPort}</string></dict></dict></plist>\n`;
 }
 
 export function syncGeneratedChannelPorts() {

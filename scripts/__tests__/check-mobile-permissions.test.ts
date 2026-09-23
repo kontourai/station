@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, test } from 'vitest';
 import { auditMobilePermissions } from '../check-mobile-permissions.mjs';
 
@@ -117,4 +118,21 @@ describe('mobile permission audit', () => {
       }),
     ).toThrow(/sharedpref domain/);
   });
+});
+
+test('release iOS configuration uses durable privacy descriptions outside gen/apple', () => {
+  const config = JSON.parse(
+    readFileSync('src-desktop/tauri.conf.json', 'utf8'),
+  );
+  expect(config.bundle.iOS.infoPlist).toBe('Info.ios.plist');
+  expect(() =>
+    auditMobilePermissions({
+      androidManifest,
+      androidDataExtractionRules,
+      iosInfo: readFileSync(
+        `src-desktop/${config.bundle.iOS.infoPlist}`,
+        'utf8',
+      ),
+    }),
+  ).not.toThrow();
 });

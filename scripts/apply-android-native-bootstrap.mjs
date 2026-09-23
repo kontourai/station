@@ -85,8 +85,8 @@ export function activityWithNativeCredentialBootstrap(source, packageName) {
   );
 }
 
-/** Restore the scanner contract after Tauri regenerates AndroidManifest.xml. */
-export function manifestWithCameraPermission(source) {
+/** Restore camera and voice declarations after Tauri regenerates AndroidManifest.xml. */
+export function manifestWithMediaPermissions(source) {
   if (
     (source.match(/<manifest\b/g) ?? []).length !== 1 ||
     (source.match(/<application\b/g) ?? []).length !== 1
@@ -99,6 +99,21 @@ export function manifestWithCameraPermission(source) {
       'uses-permission',
       'android.permission.CAMERA',
       '<uses-permission android:name="android.permission.CAMERA" />',
+    ],
+    [
+      'uses-permission',
+      'android.permission.RECORD_AUDIO',
+      '<uses-permission android:name="android.permission.RECORD_AUDIO" />',
+    ],
+    [
+      'uses-permission',
+      'android.permission.MODIFY_AUDIO_SETTINGS',
+      '<uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />',
+    ],
+    [
+      'uses-feature',
+      'android.hardware.microphone',
+      '<uses-feature android:name="android.hardware.microphone" android:required="false" />',
     ],
     [
       'uses-feature',
@@ -121,12 +136,12 @@ export function manifestWithCameraPermission(source) {
       tag === 'uses-permission' &&
       /android:maxSdkVersion|tools:node/.test(matches[0])
     ) {
-      throw new Error('Camera permission must not be restricted or removed.');
+      throw new Error(`${name} must not be restricted or removed.`);
     } else if (
       tag === 'uses-feature' &&
       !/android:required=["']false["']/.test(matches[0])
     ) {
-      throw new Error('Camera hardware must remain optional.');
+      throw new Error(`${name} hardware must remain optional.`);
     }
   }
   return next;
@@ -136,7 +151,7 @@ export function applyAndroidNativeBootstrap({ root = ROOT } = {}) {
   const appRoot = join(root, GENERATED_ANDROID);
   const manifestPath = join(appRoot, 'src', 'main', 'AndroidManifest.xml');
   const manifest = readFileSync(manifestPath, 'utf8');
-  const patchedManifest = manifestWithCameraPermission(manifest);
+  const patchedManifest = manifestWithMediaPermissions(manifest);
   if (patchedManifest !== manifest)
     writeFileSync(manifestPath, patchedManifest);
   const buildGradle = readFileSync(join(appRoot, 'build.gradle.kts'), 'utf8');

@@ -6,7 +6,7 @@ import {
   activityWithNativeCredentialBootstrap,
   androidNamespace,
   applyAndroidNativeBootstrap,
-  manifestWithCameraPermission,
+  manifestWithMediaPermissions,
 } from '../apply-android-native-bootstrap.mjs';
 
 function fixture(namespace: string, activity: string) {
@@ -60,6 +60,11 @@ describe('Android native credential bootstrap', () => {
       );
       expect(manifest).toContain(
         'android:name="android.hardware.camera.any" android:required="false"',
+      );
+      expect(manifest).toContain('android.permission.RECORD_AUDIO');
+      expect(manifest).toContain('android.permission.MODIFY_AUDIO_SETTINGS');
+      expect(manifest).toContain(
+        'android:name="android.hardware.microphone" android:required="false"',
       );
       applyAndroidNativeBootstrap({ root });
       expect(readFileSync(manifestPath, 'utf8')).toBe(manifest);
@@ -149,11 +154,11 @@ describe('camera manifest restoration', () => {
       'src-desktop/gen/android/app/src/main/AndroidManifest.xml',
       'utf8',
     );
-    expect(manifestWithCameraPermission(source)).toBe(source);
+    expect(manifestWithMediaPermissions(source)).toBe(source);
   });
   it('refuses a restricted camera permission rather than reporting a repair', () => {
     expect(() =>
-      manifestWithCameraPermission(
+      manifestWithMediaPermissions(
         '<manifest><uses-permission android:name="android.permission.CAMERA" android:maxSdkVersion="28" /><application /></manifest>',
       ),
     ).toThrow(/restricted/);

@@ -21,11 +21,11 @@ The `gen/android/` directory contains a tracked seed, but channel initialization
 can replace it. Put durable native customization in the owning configuration,
 template, or post-init script, and verify that a regenerated project retains it.
 
-`apply-android-native-bootstrap.mjs` restores the Camera permission and optional
-camera feature after initialization for every channel. The in-app QR scanner
+`apply-android-native-bootstrap.mjs` restores the camera/voice permissions and optional
+camera/microphone features after initialization for every channel. The in-app QR scanner
 uses WebView `getUserMedia`; Android cannot show its runtime permission prompt
 unless the packaged manifest declares Camera. The Nightly staging job checks
-the resulting APK’s permission list before publication. Editing only the
+the resulting APK’s camera and microphone permission list before publication. Editing only the
 tracked seed does not repair generated release builds.
 
 ## CI Pipeline
