@@ -7,10 +7,19 @@ import {
   realpathSync,
   renameSync,
   rmSync,
+  statSync,
   symlinkSync,
   unlinkSync,
 } from 'node:fs';
-import { dirname, join, matchesGlob, relative, resolve, sep } from 'node:path';
+import {
+  dirname,
+  isAbsolute,
+  join,
+  matchesGlob,
+  relative,
+  resolve,
+  sep,
+} from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { PluginManifest } from '@kontourai/station-contracts/plugin';
 import { MS_PER_MINUTE } from '@kontourai/station-contracts/time';
@@ -20,6 +29,7 @@ import {
   parseAgentPluginManifest,
 } from './agent-plugin-manifest.js';
 import { readPluginManifest } from './parsers.js';
+import { pluginTsconfigRaw } from './plugin-tsconfig.js';
 
 const sharedDirectory = dirname(fileURLToPath(import.meta.url));
 
@@ -218,6 +228,7 @@ async function buildLayoutPlugin(
 
   await esbuild(
     pluginBundleOptions({
+      pluginRoot,
       entrypoint,
       outfile,
       isDev,
@@ -241,31 +252,40 @@ async function buildLayoutPlugin(
  * (externals, shim, containment) identical to what an install would produce.
  */
 function pluginBundleOptions({
+  pluginRoot,
   entrypoint,
   outfile,
   isDev,
   footer,
   allowedRoots,
   logLevel = 'info',
-  absWorkingDir,
+  sourcemap = isDev,
 }: {
+  /** Real path of the plugin folder. */
+  pluginRoot: string;
   entrypoint: string;
   outfile: string;
   isDev: boolean;
   footer: string;
   allowedRoots: string[];
   logLevel?: 'info' | 'silent';
-  absWorkingDir?: string;
+  sourcemap?: boolean;
 }): Parameters<typeof EsbuildBuild>[0] {
   return {
-    ...(absWorkingDir ? { absWorkingDir } : {}),
+    // Relative paths in diagnostics and `baseUrl` resolve against the plugin.
+    absWorkingDir: pluginRoot,
+    // Never let esbuild read a tsconfig from disk: it searches parent
+    // directories and follows `extends` anywhere on the host, outside every
+    // containment check below (S3 review HIGH-2). The plugin's own tsconfig
+    // is read, contained and filtered by `pluginTsconfigRaw` instead.
+    tsconfigRaw: pluginTsconfigRaw(pluginRoot),
     entryPoints: [entrypoint],
     bundle: true,
     format: 'iife',
     globalName: '__plugin',
     outfile,
     jsx: 'automatic',
-    sourcemap: isDev ? 'inline' : false,
+    sourcemap: sourcemap ? 'inline' : false,
     banner: { js: RUNTIME_SHIM },
     footer: { js: footer },
     define: {
@@ -407,26 +427,42 @@ export async function buildPluginDraft(
   try {
     await esbuild(
       pluginBundleOptions({
+        pluginRoot,
         entrypoint,
         outfile,
         isDev: true,
         footer: draftRegistrationFooter(registrationKey),
         allowedRoots,
         logLevel: 'silent',
-        // Diagnostic locations are then relative to the plugin folder.
-        absWorkingDir: pluginRoot,
+        // An inline map's `sources` are relative to the host-owned outdir,
+        // so they would publish Station's storage layout to every member.
+        sourcemap: false,
       }),
     );
   } catch (error) {
     return { ok: false, diagnostics: draftDiagnostics(error, pluginRoot) };
   }
   const cssPath = join(resolvedOutdir, 'bundle.css');
+  const hasCss = existsSync(cssPath);
+  const size = statSync(outfile).size + (hasCss ? statSync(cssPath).size : 0);
+  if (size > MAX_DRAFT_BUNDLE_BYTES) {
+    rmSync(resolvedOutdir, { recursive: true, force: true });
+    return fail(
+      `The draft bundle is ${Math.ceil(size / 1024 / 1024)} MB, over the ${MAX_DRAFT_BUNDLE_BYTES / 1024 / 1024} MB preview limit.`,
+    );
+  }
   return {
     ok: true,
     bundlePath: outfile,
-    ...(existsSync(cssPath) ? { cssPath } : {}),
+    ...(hasCss ? { cssPath } : {}),
   };
 }
+
+/**
+ * Upper bound on one draft revision's js + css. The server reads a revision
+ * into memory to digest and serve it, so the builder is where it is bounded.
+ */
+export const MAX_DRAFT_BUNDLE_BYTES = 8 * 1024 * 1024;
 
 function draftDiagnostics(
   error: unknown,
@@ -465,9 +501,18 @@ function draftDiagnostics(
     const file = rawFile
       ? relative(pluginRoot, resolve(pluginRoot, rawFile)).replaceAll('\\', '/')
       : undefined;
+    // A message located in a file outside the plugin folder is esbuild
+    // quoting a file the author does not own (a parent package.json, a
+    // dependency). Its text can carry that file's contents, so it is never
+    // echoed; only that it happened.
+    if (file && (file.startsWith('..') || isAbsolute(file))) {
+      return {
+        text: 'A file outside the plugin folder could not be read or parsed while building.',
+      };
+    }
     return {
       text: bound(scrub(text)),
-      ...(file && !file.startsWith('..') ? { file } : {}),
+      ...(file ? { file } : {}),
       ...(typeof location?.line === 'number' ? { line: location.line } : {}),
       ...(typeof location?.column === 'number'
         ? { column: location.column }

@@ -12,7 +12,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { runInNewContext } from 'node:vm';
 import { afterEach, describe, expect, test } from 'vitest';
-import { buildPluginDraft } from '../build.js';
+import { buildPluginDraft, MAX_DRAFT_BUNDLE_BYTES } from '../build.js';
 
 // esbuild startup can exceed the default budget on a loaded shared host.
 const BUILD_TEST_TIMEOUT_MS = 30_000;
@@ -152,6 +152,137 @@ describe('buildPluginDraft', () => {
       const text = result.diagnostics.map((d) => d.text).join('\n');
       expect(text).toContain('outside the plugin folder');
       expect(text).not.toContain(outside);
+    },
+    BUILD_TEST_TIMEOUT_MS,
+  );
+
+  // S3 review HIGH-2: esbuild used to read tsconfig.json itself and follow
+  // `extends` anywhere on the host, echoing the first token of a non-JSON
+  // file in the build error that every Project member can read.
+  test.each([
+    ['a non-JSON host file', 'TOPSECRET_token_value = 1\n'],
+    ['a JSON host file', '{"compilerOptions":{"jsxFactory":"TOPSECRET"}}'],
+  ])(
+    'an extends outside the plugin folder (%s) is never read into diagnostics or the bundle',
+    async (_label, secret) => {
+      const outside = tempDir('station-draft-secret-');
+      const secretFile = join(outside, 'secret.cfg');
+      writeFileSync(secretFile, secret);
+      const pluginDir = writeDraft(
+        "export const components = { pulse: () => 'draft' };\n",
+      );
+      writeFileSync(
+        join(pluginDir, 'tsconfig.json'),
+        JSON.stringify({ extends: secretFile }),
+      );
+      const result = await buildPluginDraft({
+        pluginDir,
+        outdir: join(tempDir('station-draft-out-'), '1'),
+        registrationKey: 'k',
+        manifest: manifest(),
+      });
+      const observable = result.ok
+        ? readFileSync(result.bundlePath, 'utf8')
+        : JSON.stringify(result.diagnostics);
+      expect(observable).not.toContain('TOPSECRET');
+      expect(result.ok).toBe(true);
+    },
+    BUILD_TEST_TIMEOUT_MS,
+  );
+
+  test(
+    'honors the author tsconfig inside the folder, including a contained extends and paths, and drops paths that leave it',
+    async () => {
+      const outside = tempDir('station-draft-outside-src-');
+      writeFileSync(join(outside, 'leak.ts'), "export default 'leaked';\n");
+      const pluginDir = writeDraft(
+        "import value from '@lib/value';\nexport const components = { pulse: () => value };\n",
+      );
+      mkdirSync(join(pluginDir, 'src', 'lib'), { recursive: true });
+      writeFileSync(
+        join(pluginDir, 'src', 'lib', 'value.ts'),
+        "export default 'aliased';\n",
+      );
+      writeFileSync(
+        join(pluginDir, 'tsconfig.base.json'),
+        // Comments and a trailing comma, as tsconfig allows.
+        '{\n  // shared\n  "compilerOptions": { "baseUrl": ".", "paths": { "@lib/*": ["src/lib/*"], }, },\n}\n',
+      );
+      writeFileSync(
+        join(pluginDir, 'tsconfig.json'),
+        JSON.stringify({ extends: './tsconfig.base.json' }),
+      );
+      const ok = await buildPluginDraft({
+        pluginDir,
+        outdir: join(tempDir('station-draft-out-'), '1'),
+        registrationKey: 'k',
+        manifest: manifest(),
+      });
+      if (!ok.ok) throw new Error(JSON.stringify(ok.diagnostics));
+      expect(readFileSync(ok.bundlePath, 'utf8')).toContain('aliased');
+
+      writeFileSync(
+        join(pluginDir, 'tsconfig.json'),
+        JSON.stringify({
+          compilerOptions: {
+            baseUrl: '.',
+            paths: { '@lib/*': [`${outside}/*`] },
+          },
+        }),
+      );
+      writeFileSync(
+        join(pluginDir, 'src', 'index.tsx'),
+        "import value from '@lib/leak';\nexport const components = { pulse: () => value };\n",
+      );
+      const refused = await buildPluginDraft({
+        pluginDir,
+        outdir: join(tempDir('station-draft-out-'), '2'),
+        registrationKey: 'k',
+        manifest: manifest(),
+      });
+      expect(refused.ok).toBe(false);
+      expect(JSON.stringify(refused)).not.toContain('leaked');
+    },
+    BUILD_TEST_TIMEOUT_MS,
+  );
+
+  test(
+    'ships no source map, whose sources would reveal host storage layout',
+    async () => {
+      const pluginDir = writeDraft(
+        "export const components = { pulse: () => 'draft' };\n",
+      );
+      const result = await buildPluginDraft({
+        pluginDir,
+        outdir: join(tempDir('station-draft-out-'), '1'),
+        registrationKey: 'k',
+        manifest: manifest(),
+      });
+      if (!result.ok) throw new Error(JSON.stringify(result.diagnostics));
+      expect(readFileSync(result.bundlePath, 'utf8')).not.toContain(
+        'sourceMappingURL',
+      );
+    },
+    BUILD_TEST_TIMEOUT_MS,
+  );
+
+  test(
+    'refuses a revision over the size cap with a diagnostic',
+    async () => {
+      const pluginDir = writeDraft(
+        `export const components = { pulse: () => ${JSON.stringify('x'.repeat(MAX_DRAFT_BUNDLE_BYTES + 1))} };\n`,
+      );
+      const outdir = join(tempDir('station-draft-out-'), '1');
+      const result = await buildPluginDraft({
+        pluginDir,
+        outdir,
+        registrationKey: 'k',
+        manifest: manifest(),
+      });
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.diagnostics[0].text).toContain('preview limit');
+      expect(existsSync(outdir)).toBe(false);
     },
     BUILD_TEST_TIMEOUT_MS,
   );
