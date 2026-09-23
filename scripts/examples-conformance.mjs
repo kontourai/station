@@ -85,7 +85,12 @@ export function typecheckedProjects(command) {
   return typecheckSegments(command).map((segment) => segment.project);
 }
 
-const TSC_SEGMENT = /^node scripts\/tsc-slot\.mjs\s+(.*)$/;
+// The whole segment is the slot runner, bare flags and one `-p <tsconfig>`,
+// and nothing else: `… -p x || true`, a pipe or a `;` would let the compile
+// fail without failing the chain. A flag that takes a value does not match;
+// the chain uses none.
+const TSC_SEGMENT =
+  /^node scripts\/tsc-slot\.mjs((?:\s+--?[\w-]+)*\s+-p\s+[^\s|;&]+(?:\s+--?[\w-]+)*)$/;
 
 /**
  * The compiler runs `typecheck:examples` performs: `&&`-joined segments that
@@ -98,7 +103,7 @@ export function typecheckSegments(command) {
   for (const raw of (command ?? '').split('&&')) {
     const match = TSC_SEGMENT.exec(raw.trim());
     if (!match) continue;
-    const args = match[1].split(/\s+/);
+    const args = match[1].trim().split(/\s+/);
     const at = args.indexOf('-p');
     if (at === -1 || !args[at + 1]) continue;
     segments.push({ project: args[at + 1], args });

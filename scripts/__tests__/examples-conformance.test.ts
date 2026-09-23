@@ -293,6 +293,31 @@ describe('typecheckCoverageProblems', () => {
     ]);
   });
 
+  it('does not count a segment whose failure the chain swallows', () => {
+    const root = makeRepo({
+      'examples/demo/tsconfig.json': SRC_TSCONFIG,
+      'examples/demo/src/index.tsx': 'export {};',
+    });
+    for (const command of [
+      `${CHECK_DEMO} || true`,
+      `${CHECK_DEMO} | cat`,
+      `${CHECK_DEMO}; true`,
+    ]) {
+      expect(
+        typecheckCoverageProblems({
+          root,
+          typecheckCommand: command,
+          excluded: new Map(),
+        }),
+        command,
+      ).toEqual([
+        expect.stringContaining(
+          'examples/demo/src/index.tsx is TypeScript that no typecheck:examples project compiles',
+        ),
+      ]);
+    }
+  });
+
   it('flags a covered source that switches checking off with @ts-nocheck', () => {
     const root = makeRepo({
       'examples/demo/tsconfig.json': SRC_TSCONFIG,
