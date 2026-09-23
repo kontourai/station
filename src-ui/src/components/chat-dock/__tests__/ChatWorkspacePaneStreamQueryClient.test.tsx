@@ -188,7 +188,7 @@ function sessionReadModelInvalidations(
   spy: ReturnType<typeof vi.spyOn>,
 ): number {
   return spy.mock.calls.filter(
-    ([filters]) =>
+    ([filters]: unknown[]) =>
       JSON.stringify((filters as { queryKey?: unknown })?.queryKey) ===
       JSON.stringify(SESSIONS_KEY.queryKey),
   ).length;
