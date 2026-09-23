@@ -592,6 +592,66 @@ describe('tsc-slot runner', () => {
     ).toBe(3);
   });
 
+  test('the runner does not start the compiler while every slot is held', {
+    timeout: 60_000,
+  }, () => {
+    // Without this, a runner that skipped acquisition would pass every other
+    // runner test: they only look at what it compiled.
+    const project = tempDir('tc-slots-held-project-');
+    const slotDir = tempDir('tc-slots-held-');
+    const cache = tempDir('tc-slots-held-cache-');
+    writeFileSync(
+      join(project, 'tsconfig.json'),
+      JSON.stringify({
+        compilerOptions: { strict: true, noEmit: true, types: [] },
+        files: ['a.ts'],
+      }),
+    );
+    writeFileSync(join(project, 'a.ts'), 'export const a: number = "x";\n');
+    writeRecord(slotDir, 0, {
+      pid: process.pid,
+      start: null,
+      nonce: 'the-test-process',
+      acquiredAt: Date.now(),
+    });
+    const result = spawnSync(
+      process.execPath,
+      [
+        join(REPO_ROOT, 'scripts', 'tsc-slot.mjs'),
+        '-p',
+        join(project, 'tsconfig.json'),
+      ],
+      {
+        cwd: project,
+        encoding: 'utf8',
+        windowsHide: true,
+        env: {
+          ...process.env,
+          STATION_TSBUILDINFO_DIR: cache,
+          STATION_TYPECHECK_SLOT_DIR: slotDir,
+          STATION_TYPECHECK_SLOTS: '1',
+          STATION_TYPECHECK_SLOT_WAIT_MS: '0',
+          [SLOT_HELD_ENV]: '',
+        },
+      },
+    );
+    expect(result.status).toBe(1);
+    expect(result.stderr).toMatch(
+      new RegExp(
+        `^FAIL: waited 0s for a host typecheck slot for .*all 1 are held: pid ${process.pid}`,
+        'm',
+      ),
+    );
+    // The compiler never ran: no diagnostic for the ill-typed file, and no
+    // build info written.
+    expect(result.stdout).not.toMatch(/error TS/);
+    expect(readdirSync(cache)).toEqual([]);
+    // The held record is untouched.
+    expect(JSON.parse(readFileSync(slotPath(slotDir, 0), 'utf8')).nonce).toBe(
+      'the-test-process',
+    );
+  });
+
   test('a warm incremental run still reports an unchanged type error, and releases its slot', {
     timeout: 90_000,
   }, () => {
