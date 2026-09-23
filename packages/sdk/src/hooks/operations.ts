@@ -1,8 +1,13 @@
-import type { AgentId } from '@kontourai/station-contracts/agent-identity';
+import {
+  type AgentId,
+  parseQualifiedPluginAgentId,
+  type QualifiedPluginAgentId,
+} from '@kontourai/station-contracts/agent-identity';
 import { useCallback, useContext, useEffect, useState } from 'react';
 import { _getApiBase, _getPluginName } from '../api';
 import { apiErrorMessage } from '../api-core';
 import { SDKContext } from '../providers';
+import type { AgentSummary } from '../types';
 import { useAgents, useLaunchChat, useToast } from './context';
 export function useNotifications() {
   const toast = useToast();
@@ -53,34 +58,58 @@ export function useNotifications() {
 }
 
 /**
- * Hook to send a message to chat and open the dock.
- * Plugins MUST specify the agent slug - there is no default.
+ * The catalog row `useSendToChat` launches, or `undefined` when none matches.
  *
- * @param agentSlug - The agent to send messages to (required). Can be short name (e.g., 'my-agent')
- *                    which will be resolved using current layout context, or fully qualified
- *                    (e.g., 'sa-agent:station-agent').
- * @returns Function to send a message and open chat
+ * A plugin-qualified reference matches only the Agent that plugin contributed:
+ * the catalog carries the contributing plugin as `plugin`, and a same-named
+ * Agent from anywhere else is not a match. A bare id matches by slug alone.
+ */
+function sendToChatTarget(
+  agent: AgentId | QualifiedPluginAgentId,
+  agents: readonly AgentSummary[],
+): AgentSummary | undefined {
+  if (!agent.includes(':')) return agents.find((row) => row.slug === agent);
+  const reference = parseQualifiedPluginAgentId(agent);
+  if (!reference) return undefined;
+  return agents.find(
+    (row) =>
+      row.slug === reference.agentId && row.plugin === reference.pluginId,
+  );
+}
+
+/**
+ * Hook to send a message to chat and open the dock.
+ * Plugins MUST name the Agent - there is no default.
+ *
+ * @param agent - The Agent to send messages to (required). Either
+ *                plugin-qualified, `'<plugin>:<agent>'`, which matches only the
+ *                Agent that plugin contributed, or a clean Agent id made with
+ *                `agentId('station')` from `@kontourai/station-contracts/agent-identity`.
+ *                The hook derives the Agent's identity from the qualified form
+ *                itself; a Layout or Pane never supplies a prefix.
+ * @returns Function to send a message and open chat. When no Agent matches, it
+ *          warns and sends nothing.
  *
  * @example
  * ```typescript
- * const sendToChat = useSendToChat('my-agent');
+ * const sendToChat = useSendToChat('my-plugin:assistant');
  * sendToChat('Summarize this account');
  * ```
  */
-export function useSendToChat(agentSlug: AgentId) {
+export function useSendToChat(agent: AgentId | QualifiedPluginAgentId) {
   const agents = useAgents();
   const launchChat = useLaunchChat();
 
   return useCallback(
     (message: string) => {
-      const agent = agents.find((a: any) => a.slug === agentSlug);
-      if (!agent) {
-        console.warn(`[useSendToChat] Agent '${agentSlug}' not found`);
+      const target = sendToChatTarget(agent, agents);
+      if (!target) {
+        console.warn(`[useSendToChat] Agent '${agent}' not found`);
         return;
       }
-      launchChat(agentSlug, agent.name, message);
+      launchChat(target.slug, target.name, message);
     },
-    [agents, agentSlug, launchChat],
+    [agents, agent, launchChat],
   );
 }
 

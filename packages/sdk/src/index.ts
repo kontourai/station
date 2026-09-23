@@ -122,6 +122,11 @@ export async function getAnswerBasis(
 ) {
   return (await import('./client/answer-basis.js')).getAnswerBasis(...args);
 }
+// The Agent references `useSendToChat` accepts (#2400)
+export type {
+  AgentId,
+  QualifiedPluginAgentId,
+} from '@kontourai/station-contracts/agent-identity';
 export * from './answer-support';
 export type { InvokeOptions } from './api';
 // Re-export utility functions

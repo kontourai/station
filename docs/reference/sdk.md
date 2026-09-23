@@ -187,12 +187,18 @@ Returns actions for a specific chat session (stop, clear, etc.).
 
 Returns the current state of a specific chat session (loading, messages, etc.).
 
-#### `useSendToChat(agentSlug: string): (message: string) => void`
+#### `useSendToChat(agent: QualifiedPluginAgentId | AgentId): (message: string) => void`
 
-Convenience hook. Returns a function that creates a session, opens the dock, and sends a message — all in one call. Resolves short agent names via layout context.
+Convenience hook. Returns a function that creates a session, opens the dock, and sends a message — all in one call.
+
+Name an Agent your plugin contributes as `'<plugin>:<agent>'`. The hook derives
+the Agent's identity from it and matches only the Agent that plugin
+contributed, never a same-named Agent from elsewhere. A clean Agent id from
+`agentId()` in `@kontourai/station-contracts/agent-identity` also works. When
+no Agent matches, the function warns and sends nothing.
 
 ```tsx
-const sendToChat = useSendToChat('my-agent');
+const sendToChat = useSendToChat('my-plugin:assistant');
 sendToChat('Summarize this account');
 ```
 
