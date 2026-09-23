@@ -33,6 +33,7 @@ let mono: string;
 let monoProject: string;
 let monoWorktree: string;
 let forged: string;
+let foreignWorktree: string;
 
 function git(cwd: string, ...args: string[]) {
   return execGitSync(args, { cwd, encoding: 'utf-8' }) as string;
@@ -135,6 +136,21 @@ beforeAll(() => {
   writeFileSync(join(entry, 'gitdir'), `${join(forged, '.git')}\n`);
   writeFileSync(join(entry, 'HEAD'), 'ref: refs/heads/main\n');
   writeFileSync(join(entry, 'commondir'), '../..\n');
+
+  // The same forgery naming a LINKED checkout: a real worktree, but of a
+  // different repository, so its `.git` file leads there, not back here.
+  const foreign = join(root, 'foreign');
+  initRepo(foreign);
+  foreignWorktree = join(root, 'foreign-wt');
+  git(foreign, 'worktree', 'add', '-q', '-b', 'f', foreignWorktree);
+  const linkedEntry = join(simpleProject, '.git', 'worktrees', 'forged-linked');
+  mkdirSync(linkedEntry, { recursive: true });
+  writeFileSync(
+    join(linkedEntry, 'gitdir'),
+    `${join(foreignWorktree, '.git')}\n`,
+  );
+  writeFileSync(join(linkedEntry, 'HEAD'), 'ref: refs/heads/main\n');
+  writeFileSync(join(linkedEntry, 'commondir'), '../..\n');
 });
 
 afterAll(() => rmSync(root, { recursive: true, force: true }));
@@ -171,6 +187,13 @@ describe('registered worktrees of the Project repository', () => {
       forged,
     );
     expect((await read('simple', forged)).status).toBe(403);
+  });
+
+  test('a registration naming a linked checkout of ANOTHER repository is refused', async () => {
+    expect(git(simpleProject, 'worktree', 'list', '--porcelain')).toContain(
+      foreignWorktree,
+    );
+    expect((await read('simple', foreignWorktree)).status).toBe(403);
   });
 });
 
