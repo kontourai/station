@@ -292,6 +292,9 @@ function makeDirectoriesWritable(path) {
   );
 }
 
+/** @typedef {(repoRoot: string, path: string) => { status: number | null, stderr?: string }} GitRemove */
+
+/** @type {GitRemove} */
 function gitWorktreeRemove(repoRoot, path) {
   return spawnSync(
     'git',
@@ -311,6 +314,11 @@ function gitWorktreeRemove(repoRoot, path) {
  * knows. The path was already proven an owned, stale, unused baseline, so
  * finish the job once git has let go of it; while git still lists it, report
  * the failure instead.
+ */
+/**
+ * @param {string} repoRoot
+ * @param {string} path
+ * @param {GitRemove} [runGitRemove]
  */
 function removeWorktree(repoRoot, path, runGitRemove = gitWorktreeRemove) {
   makeDirectoriesWritable(path);
@@ -339,10 +347,11 @@ export function pruneStaleTransferBaselines({
   log = (line) => console.log(line),
   listWorktrees = () => listRegisteredWorktrees(repoRoot),
   pathsInUse = findPathsInUse,
-  runGitRemove = gitWorktreeRemove,
+  runGitRemove = /** @type {GitRemove} */ (gitWorktreeRemove),
   remove = (path) => removeWorktree(repoRoot, path, runGitRemove),
   prune = () => gitSync(repoRoot, ['worktree', 'prune']),
 }) {
+  /** @type {{ pruned: string[], kept: { path: string, reason: string }[], failed: { path: string, error: string }[], skipped: string | null }} */
   const outcome = { pruned: [], kept: [], failed: [], skipped: null };
   if (!transferBaselinePruneEnabled(env)) {
     outcome.skipped = `${TRANSFER_BASELINE_PRUNE_ENV} disables pruning`;
