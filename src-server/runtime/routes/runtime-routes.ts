@@ -37,7 +37,6 @@ import {
   timingSafeEqual,
 } from 'node:crypto';
 import { join, resolve } from 'node:path';
-import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import {
   type DevicePairingRequest,
   parseTaskTurnReference,
@@ -72,6 +71,7 @@ import type { IEmbeddingProvider } from '@kontourai/station-contracts/knowledge-
 import type { LaunchableModelInventory } from '@kontourai/station-contracts/model-inventory';
 import type { AdoptedSessionResult } from '@kontourai/station-contracts/orchestration';
 import type { PrincipalRef } from '@kontourai/station-contracts/principal';
+import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { parseStationTaskBasisCollection } from '@kontourai/station-contracts/task-basis';
 import {
   INTERNAL_SESSION_READ_SCOPE,
@@ -210,6 +210,7 @@ import {
 } from '../../routes/orchestration/tasks.js';
 import { createWorkItemRoutes } from '../../routes/orchestration/work-items.js';
 import { createWorkspacePaneHostActionRoutes } from '../../routes/orchestration/workspace-pane-host-actions.js';
+import { createPluginDraftRoutes } from '../../routes/plugins/plugin-draft-routes.js';
 import { canRelayPluginIdentityEvent } from '../../routes/plugins/plugin-identity-enumeration.js';
 import { createPluginRoutes } from '../../routes/plugins/plugins.js';
 import { createRegistryRoutes } from '../../routes/plugins/registry.js';
@@ -391,6 +392,7 @@ import {
   isMcpUiRenderRevoked,
   setMcpUiRenderAllowed,
 } from '../../services/plugins/mcp-ui-permissions.js';
+import { PluginDraftService } from '../../services/plugins/plugin-draft-service.js';
 import type { PluginInstallationHost } from '../../services/plugins/plugin-installation-service.js';
 import { PluginVisibilityService } from '../../services/plugins/plugin-visibility-service.js';
 import { createLocalRegistryTrustPolicyAuthority } from '../../services/plugins/registry-trust-policy.js';
@@ -498,8 +500,6 @@ import {
   sanitizedTransportError,
 } from '../../utils/outward-error.js';
 import { expandTilde } from '../../utils/paths.js';
-import { createPluginDraftRoutes } from '../../routes/plugins/plugin-draft-routes.js';
-import { PluginDraftService } from '../../services/plugins/plugin-draft-service.js';
 import { installAccountBoundDeviceGate } from '../bootstrap/account-bound-device-gate.js';
 import { createOrchestrationRequestPrincipalResolver } from '../bootstrap/orchestration-request-principal.js';
 import {
@@ -702,6 +702,8 @@ interface ConfigureRuntimeRoutesResult {
   webPushService: WebPushService;
   kitLifecycleReady: Promise<void>;
   projectTaskRoomRuntime?: ProjectTaskRoomRuntime;
+  /** Epic #2323 S3: stops draft watchers and removes built drafts on shutdown. */
+  pluginDraftService?: Pick<PluginDraftService, 'dispose'>;
 }
 
 /**
@@ -869,7 +871,8 @@ export {
  */
 export function isProjectMemberDraftLease(method: string, path: string) {
   return (
-    method === 'POST' && /^\/api\/projects\/[^/]+\/plugin-draft\/lease$/.test(path)
+    method === 'POST' &&
+    /^\/api\/projects\/[^/]+\/plugin-draft\/lease$/.test(path)
   );
 }
 
@@ -880,6 +883,7 @@ export function configureRuntimeRoutes(
     record: (op) => connectedClientPresenceOps.add(1, { op }),
   });
   let projectTaskRoomRuntime: ProjectTaskRoomRuntime | undefined;
+  let pluginDraftService: PluginDraftService | undefined;
   let projectTaskRoomLifecycleReady: Promise<void> = Promise.resolve();
   const allowedOrigins = resolveConfiguredRuntimeOrigins(context);
   const runtimeSecurity = {
@@ -3339,8 +3343,11 @@ export function configureRuntimeRoutes(
   // shared tenant host has no such runtime. Mounted behind the Project read
   // guard above, so a deployment account must be a member of the Project.
   if (!hostedTenantRegistry && !isHostedTenantExecutionRequired()) {
-    const pluginDraftService = new PluginDraftService({
-      draftsRoot: join(context.configLoader.getProjectHomeDir(), 'plugin-drafts'),
+    pluginDraftService = new PluginDraftService({
+      draftsRoot: join(
+        context.configLoader.getProjectHomeDir(),
+        'plugin-drafts',
+      ),
       emitRebuilt: (event) =>
         context.eventBus.emit(SERVER_EVENTS.PLUGIN_DRAFTS_REBUILT, event),
       logger: context.logger,
@@ -4746,6 +4753,7 @@ export function configureRuntimeRoutes(
     webPushService,
     kitLifecycleReady,
     projectTaskRoomRuntime,
+    ...(pluginDraftService ? { pluginDraftService } : {}),
   };
 }
 

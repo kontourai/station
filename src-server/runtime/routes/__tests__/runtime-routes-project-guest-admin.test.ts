@@ -596,7 +596,10 @@ describe('project guest administration over the production composition', () => {
     for (const [method, path] of [
       ['POST', '/api/projects/drafts/plugin-draft/lease'],
       ['GET', '/api/projects/drafts/plugin-draft'],
-      ['GET', '/api/projects/drafts/plugin-draft/generations/1/bundle.js'],
+      [
+        'GET',
+        `/api/projects/drafts/plugin-draft/generations/1/${'0'.repeat(32)}/bundle.js`,
+      ],
     ] as const) {
       const refused = await h.request(path, outsider({ method }));
       expect(refused.status, `${method} ${path}`).toBe(404);
@@ -631,10 +634,7 @@ describe('project guest administration over the production composition', () => {
     expect(rename.status).toBe(403);
 
     // The restricted account-bound device surface is unchanged.
-    const bound = await h.request(
-      '/api/projects/drafts/plugin-draft',
-      guest(),
-    );
+    const bound = await h.request('/api/projects/drafts/plugin-draft', guest());
     expect(bound.status).toBe(403);
   });
 

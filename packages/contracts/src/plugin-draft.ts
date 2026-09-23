@@ -48,8 +48,18 @@ export interface PluginDraftStatus {
   readonly draftId?: string;
   /** The latest successfully built revision, or null when none exists. */
   readonly generation: number | null;
-  /** The key that revision registers under. Present with `generation`. */
+  /**
+   * The key that revision registers under. Present with `generation`. It
+   * embeds a per-process-lifetime nonce, so the same generation number in a
+   * later server lifetime is a different key.
+   */
   readonly registrationKey?: string;
+  /**
+   * Content digest of that revision's bytes. Part of the bundle URL: a request
+   * whose digest does not match the retained revision is refused, so what a
+   * viewer chose to run is exactly what is served.
+   */
+  readonly digest?: string;
   readonly hasCss: boolean;
   readonly pluginName?: string;
   readonly pluginVersion?: string;
@@ -66,3 +76,6 @@ export interface PluginDraftRebuiltEvent {
   readonly draftId: string;
   readonly generation: number;
 }
+
+/** Shape of a revision digest in a bundle URL. */
+export const PLUGIN_DRAFT_DIGEST_PATTERN = /^[0-9a-f]{32}$/;

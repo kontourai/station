@@ -1,4 +1,5 @@
 import { readFile } from 'node:fs/promises';
+import { PLUGIN_DRAFT_DIGEST_PATTERN } from '@kontourai/station-contracts/plugin-draft';
 import { Hono } from 'hono';
 import type { PluginDraftService } from '../../services/plugins/plugin-draft-service.js';
 
@@ -12,8 +13,9 @@ import type { PluginDraftService } from '../../services/plugins/plugin-draft-ser
  *   build for the Project folder. It never writes into that folder.
  * - `GET /:slug/plugin-draft` reads status and diagnostics without starting
  *   anything.
- * - `GET /:slug/plugin-draft/generations/:generation/bundle.(js|css)` serves
- *   one retained revision's bytes. Serving is not running: the bytes execute
+ * - `GET /:slug/plugin-draft/generations/:generation/:digest/bundle.(js|css)`
+ *   serves one retained revision's bytes, and only when `digest` matches
+ *   them: a URL names content, not just a counter that restarts. Serving is not running: the bytes execute
  *   only when a viewer's tab chooses to load them, after the pane's
  *   disclosure.
  */
@@ -63,12 +65,16 @@ export function createPluginDraftRoutes({
   const serve = (kind: 'js' | 'css') => async (c: any) => {
     const slug = c.req.param('slug');
     const generation = c.req.param('generation');
-    if (!GENERATION_PATTERN.test(generation)) {
+    const digest = c.req.param('digest');
+    if (
+      !GENERATION_PATTERN.test(generation) ||
+      !PLUGIN_DRAFT_DIGEST_PATTERN.test(digest)
+    ) {
       return c.text('Invalid revision', 400);
     }
     const dir = projectDirectory(slug);
     const file = dir
-      ? service.bundleFile(slug, dir, Number(generation), kind)
+      ? service.bundleFile(slug, dir, Number(generation), digest, kind)
       : undefined;
     if (!file) return c.text('Draft revision not found', 404);
     let body: string;
@@ -89,9 +95,12 @@ export function createPluginDraftRoutes({
     return c.body(body);
   };
 
-  app.get('/:slug/plugin-draft/generations/:generation/bundle.js', serve('js'));
   app.get(
-    '/:slug/plugin-draft/generations/:generation/bundle.css',
+    '/:slug/plugin-draft/generations/:generation/:digest/bundle.js',
+    serve('js'),
+  );
+  app.get(
+    '/:slug/plugin-draft/generations/:generation/:digest/bundle.css',
     serve('css'),
   );
 

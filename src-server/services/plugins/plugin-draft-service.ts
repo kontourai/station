@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { existsSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { extname, join, sep } from 'node:path';
 import type { PluginManifest } from '@kontourai/station-contracts/plugin';
@@ -130,10 +130,21 @@ function idleStatus(projectSlug: string): PluginDraftStatus {
 }
 
 function unavailable(projectSlug: string, text: string): PluginDraftStatus {
-  return { ...idleStatus(projectSlug), state: 'unavailable', diagnostics: [{ text }] };
+  return {
+    ...idleStatus(projectSlug),
+    state: 'unavailable',
+    diagnostics: [{ text }],
+  };
 }
 
 export class PluginDraftService {
+  /**
+   * Distinguishes this process's revisions from a previous lifetime's. The
+   * generation counter restarts at 1 whenever a lease is recreated, so a
+   * generation number alone would let "revision 2" name different bytes
+   * before and after a restart.
+   */
+  private readonly lifetime = randomBytes(6).toString('hex');
   private readonly entries = new Map<string, DraftEntry>();
   private readonly buildQueue: Array<() => void> = [];
   private activeBuilds = 0;
@@ -205,7 +216,8 @@ export class PluginDraftService {
         const segments = relativePath.split(/[\\/]/);
         if (
           segments.some(
-            (segment) => SKIPPED_SEGMENTS.has(segment) || segment.startsWith('.'),
+            (segment) =>
+              SKIPPED_SEGMENTS.has(segment) || segment.startsWith('.'),
           )
         )
           return false;
@@ -235,11 +247,13 @@ export class PluginDraftService {
     projectSlug: string,
     projectDir: string,
     generation: number,
+    digest: string,
     kind: 'js' | 'css',
   ): string | undefined {
     const entry = this.entryFor(projectSlug, projectDir);
     const retained = entry?.generations.find(
-      (candidate) => candidate.generation === generation,
+      (candidate) =>
+        candidate.generation === generation && candidate.digest === digest,
     );
     if (!retained) return undefined;
     if (kind === 'css' && !retained.hasCss) return undefined;
@@ -306,7 +320,10 @@ export class PluginDraftService {
       state: entry.state,
       generation: latest?.generation ?? null,
       ...(latest
-        ? { registrationKey: `${entry.draftId}:${latest.generation}` }
+        ? {
+            registrationKey: this.registrationKey(entry, latest.generation),
+            digest: latest.digest,
+          }
         : {}),
       hasCss: latest?.hasCss ?? false,
       ...(entry.pluginName ? { pluginName: entry.pluginName } : {}),
@@ -316,6 +333,10 @@ export class PluginDraftService {
       ...(latest ? { builtAt: latest.builtAt } : {}),
       leaseExpiresAt: new Date(entry.expiresAt).toISOString(),
     };
+  }
+
+  private registrationKey(entry: DraftEntry, generation: number): string {
+    return `${entry.draftId}:${this.lifetime}:${generation}`;
   }
 
   private scheduleBuild(entry: DraftEntry): void {
@@ -374,14 +395,18 @@ export class PluginDraftService {
     entry.panes = draftPanes(manifest);
     const previous = entry.generations.at(-1);
     const generation = (previous?.generation ?? 0) + 1;
-    const dir = join(this.options.draftsRoot, entry.draftId, String(generation));
+    const dir = join(
+      this.options.draftsRoot,
+      entry.draftId,
+      String(generation),
+    );
     rmSync(dir, { recursive: true, force: true });
     let result: PluginDraftBuildResult;
     try {
       result = await this.build({
         pluginDir: entry.root,
         outdir: dir,
-        registrationKey: `${entry.draftId}:${generation}`,
+        registrationKey: this.registrationKey(entry, generation),
         manifest,
       });
     } catch (error) {
@@ -401,7 +426,7 @@ export class PluginDraftService {
       return;
     }
     const hasCss = Boolean(result.cssPath);
-    const registrationKey = `${entry.draftId}:${generation}`;
+    const registrationKey = this.registrationKey(entry, generation);
     const digest = normalizedDigest(
       result.bundlePath,
       hasCss ? result.cssPath : undefined,
@@ -451,11 +476,16 @@ function normalizedDigest(
     .update(js.join('"<key>"'))
     .update('\0')
     .update(cssPath ? readFileSync(cssPath) : '')
-    .digest('hex');
+    .digest('hex')
+    .slice(0, 32);
 }
 
 function scrubRoot(text: string, root: string): string {
-  return text.split(root + sep).join('').split(root).join('.');
+  return text
+    .split(root + sep)
+    .join('')
+    .split(root)
+    .join('.');
 }
 
 function draftPanes(manifest: PluginManifest): PluginDraftPane[] {

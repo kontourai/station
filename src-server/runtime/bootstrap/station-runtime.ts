@@ -676,6 +676,8 @@ export class StationRuntime {
   private kitLifecycleReady: Promise<void> = Promise.resolve();
   private notificationService?: NotificationService;
   private projectTaskRoomRuntime?: ProjectTaskRoomRuntime;
+  /** Epic #2323 S3: draft watchers and built drafts, released on shutdown. */
+  private pluginDraftService?: { dispose(): void };
   private taskRoomAcceptanceControl?: TaskRoomAcceptanceControl;
   private metricsLog: Array<{
     timestamp: number;
@@ -3627,6 +3629,8 @@ export class StationRuntime {
     await attempt(() => this.retireFailedSearch());
     await attempt(() => this.sshEnvironmentService.shutdown());
     await attempt(() => this.discordGatewayService.stop());
+    await attempt(() => this.pluginDraftService?.dispose());
+    this.pluginDraftService = undefined;
     await attempt(() => this.taskRoomAcceptanceControl?.close());
     this.taskRoomAcceptanceControl = undefined;
     const scheduler = this.schedulerService;
@@ -3884,6 +3888,7 @@ export class StationRuntime {
       notificationService,
       kitLifecycleReady,
       projectTaskRoomRuntime,
+      pluginDraftService,
     } = configureRuntimeRoutes({
       projectMembership: this.projectMembership?.service,
       projectSharedTasks: this.projectMembership?.sharedTasks,
@@ -3990,6 +3995,7 @@ export class StationRuntime {
     this.notificationService = notificationService;
     this.kitLifecycleReady = kitLifecycleReady;
     this.projectTaskRoomRuntime = projectTaskRoomRuntime;
+    this.pluginDraftService = pluginDraftService;
   }
 
   /**
@@ -4466,6 +4472,12 @@ export class StationRuntime {
     }
     try {
       await this.discordGatewayService?.stop();
+    } catch (error) {
+      failures.push(error);
+    }
+    try {
+      this.pluginDraftService?.dispose();
+      this.pluginDraftService = undefined;
     } catch (error) {
       failures.push(error);
     }

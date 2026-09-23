@@ -173,12 +173,10 @@ function unloadDraftBundle(registrationKey: string): void {
     | Record<string, unknown>
     | undefined;
   if (drafts) delete drafts[registrationKey];
-  document
-    .querySelectorAll(`[${DRAFT_NODE_ATTRIBUTE}]`)
-    .forEach((node) => {
-      if (node.getAttribute(DRAFT_NODE_ATTRIBUTE) === registrationKey)
-        node.remove();
-    });
+  document.querySelectorAll(`[${DRAFT_NODE_ATTRIBUTE}]`).forEach((node) => {
+    if (node.getAttribute(DRAFT_NODE_ATTRIBUTE) === registrationKey)
+      node.remove();
+  });
 }
 
 function isLoopbackPluginOrigin(apiBase: string): boolean {
@@ -721,7 +719,9 @@ export class PluginRegistry {
    * the same decision `initialize` makes for installed bundles, answered
    * without loading anything. A draft preview (epic #2323 S3) runs in the
    * installed loopback plugin runtime and nowhere else, so where installed
-   * plugins would be isolated or refused, a draft is refused.
+   * plugins would be isolated or refused, this client refuses to run a draft.
+   * That is a client decision, not a server guarantee: the server serves a
+   * draft's bytes to any reader of its Project, and serving is not executing.
    */
   async executesBundlesInProcess(): Promise<boolean> {
     const apiBase = this.apiBase;

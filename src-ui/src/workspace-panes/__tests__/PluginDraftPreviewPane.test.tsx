@@ -34,6 +34,7 @@ const SAME_ORIGIN = 'http://localhost:3000';
 
 const mocks = vi.hoisted(() => ({
   boundaryIdentities: [] as Array<Record<string, unknown>>,
+  apiBase: 'http://localhost:3000',
 }));
 
 vi.mock('../../platform/native', () => ({
@@ -41,7 +42,7 @@ vi.mock('../../platform/native', () => ({
 }));
 
 vi.mock('../../contexts/ApiBaseContext', () => ({
-  useApiBase: () => ({ apiBase: 'http://localhost:3000' }),
+  useApiBase: () => ({ apiBase: mocks.apiBase }),
 }));
 
 vi.mock('../PluginWorkspacePaneSDKBoundary', () => ({
@@ -71,14 +72,31 @@ import {
 } from '../PluginDraftPreviewPane';
 
 const DRAFT_ID = 'draft_0123456789abcdef0123456789abcdef';
+const LIFETIME = 'a1b2c3d4e5f6';
 
-function status(generation: number | null): PluginDraftStatus {
+function digestFor(generation: number, lifetime = LIFETIME): string {
+  return `${lifetime}${String(generation).padStart(4, '0')}`.padEnd(32, 'f');
+}
+
+function keyFor(generation: number, lifetime = LIFETIME): string {
+  return `${DRAFT_ID}:${lifetime}:${generation}`;
+}
+
+function status(
+  generation: number | null,
+  lifetime = LIFETIME,
+): PluginDraftStatus {
   return {
     projectSlug: 'demo',
     draftId: DRAFT_ID,
     state: 'ready',
     generation,
-    ...(generation ? { registrationKey: `${DRAFT_ID}:${generation}` } : {}),
+    ...(generation
+      ? {
+          registrationKey: keyFor(generation, lifetime),
+          digest: digestFor(generation, lifetime),
+        }
+      : {}),
     hasCss: false,
     pluginName: 'connected-pulse',
     pluginVersion: '1.0.0',
@@ -109,8 +127,13 @@ function draftScripts(): HTMLScriptElement[] {
 }
 
 /** The browser's part of a same-origin script load, stood in for. */
-async function completeDraftLoad(generation: number, label: string) {
-  const key = `${DRAFT_ID}:${generation}`;
+async function completeDraftLoad(
+  generation: number,
+  label: string,
+  lifetime = LIFETIME,
+  project = 'demo',
+) {
+  const key = keyFor(generation, lifetime);
   let script: HTMLScriptElement | undefined;
   await waitFor(() => {
     script = draftScripts().find(
@@ -119,7 +142,7 @@ async function completeDraftLoad(generation: number, label: string) {
     expect(script).toBeDefined();
   });
   expect(script!.getAttribute('src')).toBe(
-    `${SAME_ORIGIN}/api/projects/demo/plugin-draft/generations/${generation}/bundle.js`,
+    `${SAME_ORIGIN}/api/projects/${project}/plugin-draft/generations/${generation}/${digestFor(generation, lifetime)}/bundle.js`,
   );
   (window as any).__station_ai_plugin_drafts ??= {};
   (window as any).__station_ai_plugin_drafts[key] = {
@@ -130,24 +153,41 @@ async function completeDraftLoad(generation: number, label: string) {
   });
 }
 
-function renderPane(client = new QueryClient()) {
+function renderPane(client = new QueryClient(), projectSlug = 'demo') {
+  const view = render(
+    <QueryClientProvider client={client}>
+      <PluginDraftPreviewPane projectSlug={projectSlug} />
+    </QueryClientProvider>,
+  );
   return {
     client,
-    ...render(
-      <QueryClientProvider client={client}>
-        <PluginDraftPreviewPane projectSlug="demo" />
-      </QueryClientProvider>,
-    ),
+    ...view,
+    rerenderWith: (slug: string) =>
+      view.rerender(
+        <QueryClientProvider client={client}>
+          <PluginDraftPreviewPane projectSlug={slug} />
+        </QueryClientProvider>,
+      ),
   };
 }
 
+let leaseRefused = false;
+
 beforeEach(() => {
   currentStatus = status(1);
+  leaseRefused = false;
+  mocks.apiBase = SAME_ORIGIN;
   mocks.boundaryIdentities.length = 0;
   pluginRegistry.setApiBase(SAME_ORIGIN);
   fetchMock = vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input);
     if (url.endsWith('/plugin-draft/lease'))
+      return leaseRefused
+        ? new Response('{"error":{"code":"insufficient_scope"}}', {
+            status: 403,
+          })
+        : new Response(JSON.stringify(currentStatus));
+    if (url.endsWith('/plugin-draft'))
       return new Response(JSON.stringify(currentStatus));
     return new Response('unexpected', { status: 404 });
   });
@@ -169,7 +209,9 @@ describe('Plugin preview pane guardrail', () => {
     renderPane();
     await screen.findByText(PLUGIN_DRAFT_DISCLOSURE);
     const run = await screen.findByRole('button', { name: 'Run revision 1' });
-    await waitFor(() => expect((run as HTMLButtonElement).disabled).toBe(false));
+    await waitFor(() =>
+      expect((run as HTMLButtonElement).disabled).toBe(false),
+    );
     // Give any eager loader every chance to misbehave.
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 50));
@@ -184,7 +226,9 @@ describe('Plugin preview pane guardrail', () => {
     (window as any).__station_ai_plugins = { 'connected-pulse': installed };
     renderPane();
     const run = await screen.findByRole('button', { name: 'Run revision 1' });
-    await waitFor(() => expect((run as HTMLButtonElement).disabled).toBe(false));
+    await waitFor(() =>
+      expect((run as HTMLButtonElement).disabled).toBe(false),
+    );
     fireEvent.click(run);
     await completeDraftLoad(1, 'draft pulse 1');
 
@@ -203,7 +247,9 @@ describe('Plugin preview pane guardrail', () => {
   test('a new revision shows a one-click bar and does not run on its own', async () => {
     const { client } = renderPane();
     const run = await screen.findByRole('button', { name: 'Run revision 1' });
-    await waitFor(() => expect((run as HTMLButtonElement).disabled).toBe(false));
+    await waitFor(() =>
+      expect((run as HTMLButtonElement).disabled).toBe(false),
+    );
     fireEvent.click(run);
     await completeDraftLoad(1, 'draft pulse 1');
     await screen.findByText('draft pulse 1');
@@ -233,20 +279,22 @@ describe('Plugin preview pane guardrail', () => {
     expect(screen.queryByText('draft pulse 1')).toBeNull();
     // Replacing a revision unloads the previous one's registration and nodes.
     expect(
-      (window as any).__station_ai_plugin_drafts[`${DRAFT_ID}:1`],
+      (window as any).__station_ai_plugin_drafts[keyFor(1)],
     ).toBeUndefined();
     expect(
       draftScripts().map((node) =>
         node.getAttribute('data-station-plugin-draft'),
       ),
-    ).toEqual([`${DRAFT_ID}:2`]);
+    ).toEqual([keyFor(2)]);
   });
 
   test('another viewer or tab starts inert, and the opt-in is stored nowhere', async () => {
     const setItem = vi.spyOn(Storage.prototype, 'setItem');
     const first = renderPane();
     const run = await screen.findByRole('button', { name: 'Run revision 1' });
-    await waitFor(() => expect((run as HTMLButtonElement).disabled).toBe(false));
+    await waitFor(() =>
+      expect((run as HTMLButtonElement).disabled).toBe(false),
+    );
     fireEvent.click(run);
     await completeDraftLoad(1, 'draft pulse 1');
     await screen.findByText('draft pulse 1');
@@ -278,7 +326,9 @@ describe('Plugin preview pane guardrail', () => {
   test('stopping unloads the revision', async () => {
     renderPane();
     const run = await screen.findByRole('button', { name: 'Run revision 1' });
-    await waitFor(() => expect((run as HTMLButtonElement).disabled).toBe(false));
+    await waitFor(() =>
+      expect((run as HTMLButtonElement).disabled).toBe(false),
+    );
     fireEvent.click(run);
     await completeDraftLoad(1, 'draft pulse 1');
     await screen.findByText('draft pulse 1');
@@ -287,7 +337,98 @@ describe('Plugin preview pane guardrail', () => {
     expect(screen.queryByText('draft pulse 1')).toBeNull();
     expect(draftScripts()).toEqual([]);
     expect(
-      (window as any).__station_ai_plugin_drafts[`${DRAFT_ID}:1`],
+      (window as any).__station_ai_plugin_drafts[keyFor(1)],
     ).toBeUndefined();
+  });
+
+  // S3 review HIGH-3: the pane's occurrence id is the same in every Project,
+  // so a host may re-render it for another Project. A choice made in one
+  // Project must never become a load of another Project's bundle.
+  test.each([
+    ['another Project', () => ({ slug: 'other' })],
+    [
+      'another Station connection',
+      () => ({ apiBase: 'http://127.0.0.1:3999' }),
+    ],
+  ])(
+    'a pane re-rendered for %s starts inert and injects nothing',
+    async (_label, change) => {
+      const view = renderPane();
+      const run = await screen.findByRole('button', { name: 'Run revision 1' });
+      await waitFor(() =>
+        expect((run as HTMLButtonElement).disabled).toBe(false),
+      );
+      fireEvent.click(run);
+      await completeDraftLoad(1, 'draft pulse 1');
+      await screen.findByText('draft pulse 1');
+      const scriptsBefore = draftScripts().length;
+
+      const next = change() as { slug?: string; apiBase?: string };
+      if (next.apiBase) {
+        mocks.apiBase = next.apiBase;
+        pluginRegistry.setApiBase(next.apiBase);
+      }
+      view.rerenderWith(next.slug ?? 'demo');
+      await screen.findByText(PLUGIN_DRAFT_DISCLOSURE);
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      });
+      expect(screen.queryByText('draft pulse 1')).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Stop' })).toBeNull();
+      // Nothing new was injected, and the previous revision was unloaded.
+      expect(draftScripts().length).toBeLessThanOrEqual(scriptsBefore);
+      expect(
+        draftScripts().some(
+          (node) =>
+            node.getAttribute('src')?.includes('/projects/other/') ||
+            !node.getAttribute('src')?.startsWith(SAME_ORIGIN),
+        ),
+      ).toBe(false);
+      expect(draftScripts()).toEqual([]);
+    },
+  );
+
+  // S3 review MEDIUM-1: after a server restart the counter starts over. The
+  // pane compares the whole revision identity, so a new lifetime's revision 1
+  // is offered as new (not hidden behind "1 < 2") and still needs a click.
+  test('a revision from a new server lifetime is offered, not hidden or auto-run', async () => {
+    currentStatus = status(2);
+    const { client } = renderPane();
+    const run = await screen.findByRole('button', { name: 'Run revision 2' });
+    await waitFor(() =>
+      expect((run as HTMLButtonElement).disabled).toBe(false),
+    );
+    fireEvent.click(run);
+    await completeDraftLoad(2, 'old lifetime 2');
+    await screen.findByText('old lifetime 2');
+
+    currentStatus = status(1, 'ffeeddccbbaa');
+    await act(async () => {
+      await client.invalidateQueries({ queryKey: ['plugin-draft'] });
+    });
+    expect(
+      await screen.findByRole('button', { name: 'Run revision 1' }),
+    ).toBeTruthy();
+    expect(screen.getByText('old lifetime 2')).toBeTruthy();
+    expect(
+      draftScripts().some((node) =>
+        node.getAttribute('src')?.includes('/generations/1/'),
+      ),
+    ).toBe(false);
+  });
+
+  // S3 review LOW (d): a read-only paired device cannot start a lease (it
+  // makes the host build). It reads status instead and says why.
+  test('a device that cannot start a lease reads status and explains', async () => {
+    leaseRefused = true;
+    renderPane();
+    expect(
+      await screen.findByText(/can’t start a preview from this device/),
+    ).toBeTruthy();
+    expect(screen.getByText(PLUGIN_DRAFT_DISCLOSURE)).toBeTruthy();
+    expect(requestedUrls()).toContain(
+      `${SAME_ORIGIN}/api/projects/demo/plugin-draft`,
+    );
+    expect(draftScripts()).toEqual([]);
   });
 });

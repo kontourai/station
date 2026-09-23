@@ -1,19 +1,17 @@
-import type { LayoutComponent } from '@kontourai/station-sdk';
 import {
   PLUGIN_DRAFT_LEASE_TTL_MS,
   type PluginDraftStatus,
 } from '@kontourai/station-contracts/plugin-draft';
+import type { LayoutComponent } from '@kontourai/station-sdk';
 import { authenticatedFetch } from '@kontourai/station-sdk';
 import { useQuery } from '@tanstack/react-query';
-import {
-  Component,
-  type ReactNode,
-  useEffect,
-  useMemo,
-  useState,
-} from 'react';
+import { Component, type ReactNode, useEffect, useMemo, useState } from 'react';
 import { Button } from '../components/Button';
-import { describeReadFailure, ErrorState, SkeletonBlock } from '../components/state';
+import {
+  describeReadFailure,
+  ErrorState,
+  SkeletonBlock,
+} from '../components/state';
 import { useApiBase } from '../contexts/ApiBaseContext';
 import {
   type PluginBundleExports,
@@ -53,37 +51,104 @@ const LEASE_REFRESH_MS = Math.floor(PLUGIN_DRAFT_LEASE_TTL_MS / 3);
 export const pluginDraftQueryKey = (apiBase: string, projectSlug: string) =>
   ['plugin-draft', apiBase, projectSlug] as const;
 
+/**
+ * Everything a viewer's click chose, captured AT the click. The host that
+ * executes a revision reads only this, never the live pane props: a pane
+ * re-rendered for another Project or another Station must not turn one
+ * viewer's choice into a load of somebody else's bytes (S3 review HIGH-3).
+ */
 interface RunningRevision {
+  readonly apiBase: string;
+  readonly projectSlug: string;
+  /** The draft path at the moment of the click. */
+  readonly draftPath: string;
+  readonly draftId: string;
   readonly generation: number;
+  /** Embeds the server lifetime, so a restarted counter is a new key. */
   readonly registrationKey: string;
+  /** Part of the bundle URL; the server refuses any other bytes. */
+  readonly digest: string;
   readonly hasCss: boolean;
 }
 
+function sameRevision(a: RunningRevision, b: RunningRevision): boolean {
+  return (
+    a.apiBase === b.apiBase &&
+    a.projectSlug === b.projectSlug &&
+    a.draftId === b.draftId &&
+    a.registrationKey === b.registrationKey &&
+    a.digest === b.digest
+  );
+}
+
+/**
+ * The pane occurrence id is the same constant in every Project, so a host may
+ * keep this component mounted while the Project (or the connection) under it
+ * changes. Keying the body by that identity discards every piece of state —
+ * above all a viewer's opt-in — the moment it no longer describes what is on
+ * screen.
+ */
 export function PluginDraftPreviewPane({
   projectSlug,
 }: {
   projectSlug: string;
 }) {
   const { apiBase } = useApiBase();
+  return (
+    <PluginDraftPreviewBody
+      key={`${apiBase}\u0000${projectSlug}`}
+      apiBase={apiBase}
+      projectSlug={projectSlug}
+    />
+  );
+}
+
+type DraftStatusRead = PluginDraftStatus & {
+  /** False when this device may read a draft but not start watching one. */
+  readonly canLease: boolean;
+};
+
+function PluginDraftPreviewBody({
+  apiBase,
+  projectSlug,
+}: {
+  apiBase: string;
+  projectSlug: string;
+}) {
   const draftPath = `${apiBase}/api/projects/${encodeURIComponent(projectSlug)}/plugin-draft`;
   // The lease IS the status read: refreshing it keeps the server watching
   // this folder while the pane is open, and answers with the latest status.
-  // The server's rebuilt event invalidates this key (useServerEvents).
+  // The server's rebuilt event invalidates this key (useServerEvents). A
+  // device whose pairing only grants reads cannot start a lease (it makes
+  // the host build); it falls back to reading whatever status exists.
   const status = useQuery({
     queryKey: pluginDraftQueryKey(apiBase, projectSlug),
-    queryFn: async ({ signal }): Promise<PluginDraftStatus> => {
+    queryFn: async ({ signal }): Promise<DraftStatusRead> => {
       const response = await authenticatedFetch(`${draftPath}/lease`, {
         method: 'POST',
         signal,
       });
+      if (response.status === 403) {
+        const read = await authenticatedFetch(draftPath, { signal });
+        if (!read.ok) {
+          throw new Error(`Plugin preview is unavailable (${read.status}).`);
+        }
+        return {
+          ...((await read.json()) as PluginDraftStatus),
+          canLease: false,
+        };
+      }
       if (!response.ok) {
         throw new Error(`Plugin preview is unavailable (${response.status}).`);
       }
-      return (await response.json()) as PluginDraftStatus;
+      return {
+        ...((await response.json()) as PluginDraftStatus),
+        canLease: true,
+      };
     },
     refetchInterval: LEASE_REFRESH_MS,
   });
-  const [running, setRunning] = useState<RunningRevision | null>(null);
+  const [chosen, setChosen] = useState<RunningRevision | null>(null);
   const [selectedComponent, setSelectedComponent] = useState<string>();
   const [inProcess, setInProcess] = useState<boolean | undefined>();
 
@@ -96,14 +161,30 @@ export function PluginDraftPreviewPane({
     return () => {
       current = false;
     };
-  }, [apiBase]);
+  }, []);
+
+  // Defence in depth behind the key above: a choice made for another
+  // connection or Project is never honored, even for one render.
+  const running =
+    chosen &&
+    chosen.apiBase === apiBase &&
+    chosen.projectSlug === projectSlug &&
+    chosen.draftPath === draftPath
+      ? chosen
+      : null;
+  const setRunning = setChosen;
 
   const draft = status.data;
   const latest: RunningRevision | null =
-    draft?.generation && draft.registrationKey
+    draft?.generation && draft.registrationKey && draft.digest && draft.draftId
       ? {
+          apiBase,
+          projectSlug,
+          draftPath,
+          draftId: draft.draftId,
           generation: draft.generation,
           registrationKey: draft.registrationKey,
+          digest: draft.digest,
           hasCss: draft.hasCss,
         }
       : null;
@@ -131,8 +212,11 @@ export function PluginDraftPreviewPane({
   }
   if (!draft) return null;
 
+  // Any revision that is not exactly the running one is "new", including a
+  // lower number from a restarted server: the identity is compared, not the
+  // counter.
   const newerRevision =
-    running && latest && latest.generation > running.generation ? latest : null;
+    running && latest && !sameRevision(latest, running) ? latest : null;
 
   return (
     <section className="plugin-draft-pane" aria-label="Plugin preview">
@@ -214,9 +298,7 @@ export function PluginDraftPreviewPane({
           <DraftRevisionHost
             // A new revision is a new tree: nothing from the previous
             // revision's components or state can survive into it.
-            key={running.registrationKey}
-            draftPath={draftPath}
-            projectSlug={projectSlug}
+            key={`${running.registrationKey}:${running.digest}`}
             revision={running}
             componentName={component}
           />
@@ -226,6 +308,12 @@ export function PluginDraftPreviewPane({
           <p className="plugin-draft-pane__disclosure">
             {PLUGIN_DRAFT_DISCLOSURE}
           </p>
+          {draft.canLease ? null : (
+            <p className="plugin-draft-pane__note">
+              You can’t start a preview from this device: its pairing allows
+              reading only. A preview another device started is shown here.
+            </p>
+          )}
           {inProcess === false ? (
             <p className="plugin-draft-pane__note">
               Draft previews run only on a local Station connection, where
@@ -282,22 +370,19 @@ type RevisionLoad =
  * the pane) unloads the revision's registration, nodes and activation.
  */
 function DraftRevisionHost({
-  draftPath,
-  projectSlug,
   revision,
   componentName,
 }: {
-  draftPath: string;
-  projectSlug: string;
   revision: RunningRevision;
   componentName: string | undefined;
 }) {
+  const { projectSlug } = revision;
   const [load, setLoad] = useState<RevisionLoad>({ state: 'loading' });
 
   useEffect(() => {
     const controller = new AbortController();
     let unload: (() => void) | undefined;
-    const base = `${draftPath}/generations/${revision.generation}`;
+    const base = `${revision.draftPath}/generations/${revision.generation}/${revision.digest}`;
     pluginRegistry
       .loadDraftBundle({
         bundleUrl: `${base}/bundle.js`,
@@ -329,7 +414,7 @@ function DraftRevisionHost({
       controller.abort();
       unload?.();
     };
-  }, [draftPath, revision]);
+  }, [revision]);
 
   const Draft = useMemo(
     () =>
@@ -362,7 +447,10 @@ function DraftRevisionHost({
   const tab = {
     id: `plugin-draft:${revision.registrationKey}`,
     label: componentName ?? 'Draft',
-    component: { kind: 'plugin-component' as const, name: componentName ?? 'default' },
+    component: {
+      kind: 'plugin-component' as const,
+      name: componentName ?? 'default',
+    },
   };
   const layout = { name: 'Plugin preview', slug: tab.id, tabs: [tab] };
   return (

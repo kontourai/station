@@ -72,11 +72,17 @@ function writeSource(dir: string, label: string) {
   );
 }
 
-function harness(options: { maxActiveLeases?: number; now?: () => number } = {}) {
+function harness(
+  options: { maxActiveLeases?: number; now?: () => number } = {},
+) {
   const projectDir = tempDir('station-draft-project-');
   const otherDir = tempDir('station-draft-other-');
   const draftsRoot = join(tempDir('station-draft-home-'), 'plugin-drafts');
-  const emitted: Array<{ projectSlug: string; draftId: string; generation: number }> = [];
+  const emitted: Array<{
+    projectSlug: string;
+    draftId: string;
+    generation: number;
+  }> = [];
   const service = new PluginDraftService({
     draftsRoot,
     emitRebuilt: (event) => emitted.push(event),
@@ -121,7 +127,17 @@ function harness(options: { maxActiveLeases?: number; now?: () => number } = {})
       await new Promise((resolve) => setTimeout(resolve, 50));
     }
   };
-  return { app, service, projectDir, otherDir, draftsRoot, emitted, status, lease, waitFor };
+  return {
+    app,
+    service,
+    projectDir,
+    otherDir,
+    draftsRoot,
+    emitted,
+    status,
+    lease,
+    waitFor,
+  };
 }
 
 describe('plugin draft routes', () => {
@@ -135,7 +151,10 @@ describe('plugin draft routes', () => {
       const ready = await h.waitFor((s) => s.state === 'ready');
       expect(ready.generation).toBe(1);
       expect(ready.draftId).toMatch(/^draft_[0-9a-f]{32}$/);
-      expect(ready.registrationKey).toBe(`${ready.draftId}:1`);
+      expect(ready.registrationKey).toMatch(
+        new RegExp(`^${ready.draftId}:[0-9a-f]{12}:1$`),
+      );
+      expect(ready.digest).toMatch(/^[0-9a-f]{32}$/);
       expect(ready.pluginName).toBe('connected-pulse');
       expect(ready.panes).toEqual([
         {
@@ -150,7 +169,7 @@ describe('plugin draft routes', () => {
       expect(existsSync(join(h.projectDir, 'node_modules'))).toBe(false);
 
       const bundle = await h.app.request(
-        '/api/projects/demo/plugin-draft/generations/1/bundle.js',
+        `/api/projects/demo/plugin-draft/generations/1/${ready.digest}/bundle.js`,
       );
       expect(bundle.status).toBe(200);
       expect(bundle.headers.get('content-type')).toContain(
@@ -165,14 +184,22 @@ describe('plugin draft routes', () => {
       expect(
         (
           await h.app.request(
-            '/api/projects/demo/plugin-draft/generations/2/bundle.js',
+            `/api/projects/demo/plugin-draft/generations/2/${ready.digest}/bundle.js`,
+          )
+        ).status,
+      ).toBe(404);
+      // The right generation with any other digest is not that revision.
+      expect(
+        (
+          await h.app.request(
+            '/api/projects/demo/plugin-draft/generations/1/00000000000000000000000000000000/bundle.js',
           )
         ).status,
       ).toBe(404);
       expect(
         (
           await h.app.request(
-            '/api/projects/demo/plugin-draft/generations/..%2F1/bundle.js',
+            `/api/projects/demo/plugin-draft/generations/..%2F1/${ready.digest}/bundle.js`,
           )
         ).status,
       ).toBe(400);
@@ -231,7 +258,10 @@ describe('plugin draft routes', () => {
       const second = await h.waitFor(
         (s) => s.state === 'ready' && s.generation === 2,
       );
-      expect(second.registrationKey).toBe(`${first.draftId}:2`);
+      expect(second.registrationKey).toBe(
+        first.registrationKey?.replace(/:1$/, ':2'),
+      );
+      expect(second.digest).not.toBe(first.digest);
       expect(h.emitted.at(-1)).toEqual({
         projectSlug: 'demo',
         draftId: first.draftId,
@@ -239,7 +269,7 @@ describe('plugin draft routes', () => {
       });
       const bundle = await (
         await h.app.request(
-          '/api/projects/demo/plugin-draft/generations/2/bundle.js',
+          `/api/projects/demo/plugin-draft/generations/2/${second.digest}/bundle.js`,
         )
       ).text();
       expect(bundle).toContain('second');
@@ -255,6 +285,47 @@ describe('plugin draft routes', () => {
     TEST_TIMEOUT_MS,
   );
 
+  // S3 review MEDIUM-1: the generation counter restarts with each server
+  // lifetime, so a revision is named by a per-lifetime key and its digest.
+  // A viewer who chose "revision 1" in one lifetime can neither be served a
+  // later lifetime's revision 1 nor mistake it for the one they chose.
+  test(
+    'a revision from a previous server lifetime is neither the same key nor served',
+    async () => {
+      const first = harness();
+      writePlugin(first.projectDir, 'first lifetime');
+      await first.lease();
+      const before = await first.waitFor((s) => s.state === 'ready');
+      first.service.dispose();
+
+      const second = new PluginDraftService({
+        draftsRoot: join(tempDir('station-draft-home2-'), 'plugin-drafts'),
+        emitRebuilt: () => {},
+        pollIntervalMs: 150,
+        debounceMs: 50,
+      });
+      cleanup.push(() => second.dispose());
+      writeSource(first.projectDir, 'second lifetime');
+      second.lease('demo', first.projectDir);
+      await second.idle('demo', first.projectDir);
+      const after = second.status('demo', first.projectDir);
+      expect(after.generation).toBe(before.generation);
+      expect(after.draftId).toBe(before.draftId);
+      expect(after.registrationKey).not.toBe(before.registrationKey);
+      expect(after.digest).not.toBe(before.digest);
+      expect(
+        second.bundleFile(
+          'demo',
+          first.projectDir,
+          before.generation as number,
+          before.digest as string,
+          'js',
+        ),
+      ).toBeUndefined();
+    },
+    TEST_TIMEOUT_MS,
+  );
+
   test('status without a lease is idle and starts nothing', async () => {
     const h = harness();
     writePlugin(h.projectDir);
@@ -264,7 +335,7 @@ describe('plugin draft routes', () => {
     expect(
       (
         await h.app.request(
-          '/api/projects/demo/plugin-draft/generations/1/bundle.js',
+          '/api/projects/demo/plugin-draft/generations/1/00000000000000000000000000000000/bundle.js',
         )
       ).status,
     ).toBe(404);

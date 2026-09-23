@@ -2540,11 +2540,11 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'POST', path: '/api/projects/:slug/plugin-draft/lease' },
     {
       method: 'GET',
-      path: '/api/projects/:slug/plugin-draft/generations/:generation/bundle.js',
+      path: '/api/projects/:slug/plugin-draft/generations/:generation/:digest/bundle.js',
     },
     {
       method: 'GET',
-      path: '/api/projects/:slug/plugin-draft/generations/:generation/bundle.css',
+      path: '/api/projects/:slug/plugin-draft/generations/:generation/:digest/bundle.css',
     },
     { method: 'GET', path: '/api/projects/:slug/diff-comments' },
     { method: 'POST', path: '/api/projects/:slug/diff-comments' },
