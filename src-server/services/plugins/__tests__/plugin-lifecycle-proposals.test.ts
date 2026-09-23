@@ -315,6 +315,29 @@ describe('#2323 S5 install proposal sources', () => {
     expect((caught as PluginProposalInvalidError).code).toBe(code);
   });
 
+  test('a refused credential, query or fragment is named as such, so the agent learns what to drop', () => {
+    // The host and path rules would also refuse these, with a sentence about
+    // hosts and paths; the specific sentence is what tells an agent to remove
+    // the token rather than retype the host.
+    const message = (source: string) => {
+      try {
+        resolvePluginProposalSource(source);
+      } catch (error) {
+        return (error as Error).message;
+      }
+      return 'accepted';
+    };
+    expect(message('https://:ghp_SECRET@github.com/kontourai/x')).toBe(
+      'A git URL must not carry a user name or password.',
+    );
+    expect(message('https://github.com/kontourai/x?token=ghp_SECRET')).toBe(
+      'A git URL must not carry a query or fragment.',
+    );
+    expect(message('https://github.com/kontourai/x#access_token=abc')).toBe(
+      'A git URL must not carry a query or fragment.',
+    );
+  });
+
   test('a git@host:path host that looks like a path is judged on its host alone', () => {
     // `git@evil.com:github.com/kontourai/x` is evil.com; the review shows the
     // host by itself, so it is accepted here and displayed as evil.com.
