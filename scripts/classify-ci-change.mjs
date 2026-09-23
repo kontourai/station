@@ -225,22 +225,31 @@ export function changedPathsForGitRange({
 }
 
 /**
- * Test-only sources under the JavaScript roots the iOS app bundles. The app is
- * built from src-ui's and the packages' import graphs, and no non-test module
- * imports one of these, so a change confined to them cannot alter the
- * simulator build or the packaged runtime the XCUITest drives. Deliberately
- * narrow: only src-ui/ and packages/ (never src-desktop/, the smoke's own
- * tests/ios-runtime-smoke/, or the explicitly listed smoke test), and only
- * the `__tests__/` directory and `*.test`/`*.spec` TypeScript names. Test
- * helpers named anything else still count.
+ * Test-only sources the iOS app's build never compiles, so a change confined
+ * to them cannot alter the simulator build or the runtime the XCUITest drives.
+ * The two roots are exempt for different reasons, and each is only as wide as
+ * its reason:
+ *
+ * - src-ui/ reaches the app through `vite build`, which follows imports from
+ *   the entry, and no non-test module imports a test file. So `__tests__/`
+ *   directories and `*.test`/`*.spec` TypeScript names anywhere under it.
+ * - packages/ reaches it through `build:native-client`'s `build:sdk` and
+ *   `build:connect`, which run `tsc` over every file under `src/` minus each
+ *   tsconfig's `exclude`. Those exclude only the top-level `src/__tests__`,
+ *   so a co-located `src/foo.test.ts` or a nested `src/x/__tests__/` IS
+ *   compiled (and fails without Vitest globals). Only a package's top-level
+ *   `src/__tests__/` is exempt.
+ *
+ * Never src-desktop/, the smoke's own tests/ios-runtime-smoke/, or the listed
+ * smoke test. Test helpers named anything else still count.
  */
-const IOS_TEST_ONLY_ROOTS = Object.freeze(['src-ui/', 'packages/']);
-const TEST_ONLY_SOURCE = /(^|\/)__tests__\/|\.(test|spec)\.tsx?$/;
+const SRC_UI_TEST_ONLY_SOURCE =
+  /^src-ui\/(?:.*\/)?(?:__tests__\/|[^/]+\.(test|spec)\.tsx?$)/;
+const PACKAGE_EXCLUDED_TESTS = /^packages\/[^/]+\/src\/__tests__\//;
 
 function isIosTestOnlyPath(path) {
   return (
-    IOS_TEST_ONLY_ROOTS.some((root) => path.startsWith(root)) &&
-    TEST_ONLY_SOURCE.test(path)
+    SRC_UI_TEST_ONLY_SOURCE.test(path) || PACKAGE_EXCLUDED_TESTS.test(path)
   );
 }
 

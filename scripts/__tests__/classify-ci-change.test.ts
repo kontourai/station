@@ -657,8 +657,8 @@ describe('iOS relevance ignores test-only JavaScript sources', () => {
     'src-ui/src/lib/format.spec.ts',
     'src-ui/src/__tests__/fixtures/session.json',
     'packages/sdk/src/__tests__/client.test.ts',
-    'packages/connect/src/pairing.test.ts',
-    'packages/contracts/src/schema.spec.tsx',
+    'packages/connect/src/__tests__/pairing.test.ts',
+    'packages/contracts/src/__tests__/fixtures/schema.json',
   ])('skips the macOS build for %s', (changedPath) => {
     expect(classifyIosChangedPaths([changedPath]).relevant).toBe(false);
   });
@@ -692,6 +692,11 @@ describe('iOS relevance ignores test-only JavaScript sources', () => {
     'src-desktop/src/__tests__/lib.test.ts',
     'tests/ios-runtime-smoke/StationRuntimeSmokeTests.swift',
     'scripts/__tests__/ios-simulator-runtime-smoke.test.ts',
+    // Package builds (`tsc` in build:sdk/build:connect) exclude only the
+    // top-level src/__tests__, so these are compiled into the iOS build.
+    'packages/connect/src/pairing.test.ts',
+    'packages/sdk/src/client/__tests__/client.test.ts',
+    'packages/contracts/src/schema.spec.tsx',
   ])('keeps %s relevant', (changedPath) => {
     expect(classifyIosChangedPaths([changedPath]).relevant).toBe(true);
   });
@@ -705,4 +710,34 @@ describe('iOS relevance ignores test-only JavaScript sources', () => {
     });
     expect(classifyIosChangedPaths(testOnly).relevant).toBe(false);
   });
+});
+
+describe('package test exemptions match what the package builds exclude', () => {
+  // S5's packages/ exemption is only safe for paths the tsc builds in
+  // build:native-client never compile. Read their tsconfigs rather than trust
+  // the classifier's comment: if a build starts compiling src/__tests__, the
+  // exemption must shrink with it.
+  test.each(['sdk', 'connect'])(
+    'packages/%s excludes its top-level src/__tests__ from the build',
+    (name) => {
+      const tsconfig = JSON.parse(
+        readFileSync(
+          resolve(import.meta.dirname, `../../packages/${name}/tsconfig.json`),
+          'utf8',
+        ),
+      ) as { exclude?: string[] };
+      expect(
+        (tsconfig.exclude ?? []).some((pattern) =>
+          ['src/__tests__', 'src/__tests__/**'].includes(pattern),
+        ),
+      ).toBe(true);
+      expect(
+        classifyIosChangedPaths([`packages/${name}/src/__tests__/x.test.ts`])
+          .relevant,
+      ).toBe(false);
+      expect(
+        classifyIosChangedPaths([`packages/${name}/src/x.test.ts`]).relevant,
+      ).toBe(true);
+    },
+  );
 });
