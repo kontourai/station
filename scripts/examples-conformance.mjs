@@ -22,8 +22,9 @@
  *     TYPECHECK_EXCLUDED with a README note saying so (station#2343: thirteen
  *     examples had TS sources no compiler ever saw, and 76 errors hid in one).
  *
- * That every manifest declares only fields the runtime reads is proven by
- * src-server/services/plugins/__tests__/example-manifests-conformance.test.ts,
+ * That every manifest declares only fields the PluginManifest contract
+ * defines is checked by
+ * src-server/services/plugins/__tests__/example-manifest-fields.test.ts,
  * which loads each one through the install preview's own reader (#2401).
  *
  * Live build/run proof is a separate lane: see `--build`. Examples that need

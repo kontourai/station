@@ -1,6 +1,10 @@
 /**
  * Every example manifest loads through the reader the install preview uses,
- * and declares only fields the runtime reads (#2401).
+ * and declares only fields the PluginManifest contract defines (#2401). For a
+ * legacy manifest that is the contract's own key set; for an Agent Plugins
+ * manifest it is what the reader accepts without a warning or disabling the
+ * Station extension. The contract is what the runtime can read; whether each
+ * field is read for a given example is not something this test proves.
  *
  * Two examples declared `clientBundle`, `toolbarActions` and `providerTypes`,
  * which nothing reads, so a toolbar action that could never mount looked
@@ -66,7 +70,7 @@ const LEGACY_MANIFEST_FIELDS = {
 } satisfies Record<keyof PluginManifest, true>;
 
 /**
- * Fields an example still declares although no runtime reads them, each with
+ * Fields an example still declares outside the contract, each with
  * why it has not been ported yet. An entry is honoured only while the field is
  * present, so a stale one fails.
  */
@@ -108,7 +112,7 @@ function exampleManifests(): Array<{ name: string; path: string }> {
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
-/** The fields no runtime reads, for one example's manifest. */
+/** The fields outside the PluginManifest contract, for one example's manifest. */
 async function unreadFields(name: string, path: string): Promise<string[]> {
   const loaded = readUntrustedPluginManifestSyncWithFormat(path);
   const document = JSON.parse(await readFile(path, 'utf8')) as Record<
@@ -142,13 +146,13 @@ describe('example plugin manifests', () => {
 
   // Pinned independently of the directory scan, which cannot notice the two
   // examples #2401 ported disappearing.
-  it('covers the examples that declared fields no runtime reads', () => {
+  it('covers the examples that declared fields outside the contract', () => {
     const names = manifests.map(({ name }) => name);
     expect(names).toContain('meeting-transcription');
     expect(names).toContain('nova-sonic-voice');
   });
 
-  it('declares only fields the runtime reads', async () => {
+  it('declares only fields the PluginManifest contract defines', async () => {
     const problems: string[] = [];
     for (const { name, path } of manifests) {
       for (const field of await unreadFields(name, path))
