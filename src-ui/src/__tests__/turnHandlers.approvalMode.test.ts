@@ -358,11 +358,19 @@ describe('an explicit approval choice survives the model report that consumes th
     activeChatsStore.updateChat(CHOICE_THREAD_ID, {
       requestedModel: 'gpt-5-codex',
       requestedModelSource: 'session override',
-      requestedProviderOptions: { approvalMode: 'never' },
+      requestedProviderOptions: { approvalMode: 'never', mode: 'plan' },
     });
   });
 
-  /** The composer pill, fed exactly as ChatDockBody feeds it. */
+  /**
+   * The composer pill, fed exactly as the app feeds it. Mirrors
+   * src-ui/src/components/chat-dock/ChatDockBody.tsx:1370-1373
+   * (`modelRuntimeOptions={activeSession.requestedProviderOptions ??
+   * activeSession.providerOptions}`) and
+   * src-ui/src/components/chat/ChatInputArea.tsx:663
+   * (`sessionOverride={modelRuntimeOptions?.approvalMode}`). If either
+   * changes, this fixture must change with it.
+   */
   function renderComposerPill() {
     const chat = activeChatsStore.getSnapshot()[CHOICE_THREAD_ID];
     render(
@@ -417,7 +425,71 @@ describe('an explicit approval choice survives the model report that consumes th
       expect(chat.requestedProviderOptions).toBeUndefined();
       // …and the approval choice moved to the confirmed bag instead of vanishing.
       expect(chat.providerOptions?.approvalMode).toBe('never');
+      // Only the approval posture is carried: a retained ACP `mode` can be one
+      // a respawned session no longer advertises, refusing every send.
+      expect(chat.providerOptions).not.toHaveProperty('mode');
       expect(renderComposerPill().textContent).toBe('ApprovalFull access');
     },
   );
+
+  test.each([
+    ['session.configured', { sessionId: CHOICE_THREAD_ID }],
+    ['turn.started', { turnId: 'turn-1' }],
+  ])(
+    'when %s reports a different applied posture, server truth wins: no retained override, no endless pending',
+    (method, extra) => {
+      handleOrchestrationEvent('http://localhost', {
+        provider: 'codex',
+        threadId: CHOICE_THREAD_ID,
+        createdAt: '2026-09-22T00:00:01.000Z',
+        method,
+        ...extra,
+        metadata: {
+          approvalMode: 'ask',
+          effectiveModel: 'gpt-5-codex',
+          effectiveModelOptions: {},
+        },
+      } as Parameters<typeof handleOrchestrationEvent>[1]);
+
+      const chat = activeChatsStore.getSnapshot()[CHOICE_THREAD_ID];
+      expect(chat.requestedProviderOptions).toBeUndefined();
+      expect(chat.lastAppliedApprovalMode).toBe('ask');
+      // The refused 'never' is not kept as the session override, so the next
+      // turn does not re-request it and the pill does not sit on "pending".
+      expect(chat.providerOptions?.approvalMode).toBeUndefined();
+      const pill = renderComposerPill();
+      expect(pill.textContent).not.toMatch(/Full access|pending/);
+      expect(pill.getAttribute('aria-label')).toMatch(/Ask first/);
+    },
+  );
+
+  test('the escalation-refused warning still surfaces and reverts after the request was consumed', () => {
+    handleOrchestrationEvent('http://localhost', {
+      provider: 'codex',
+      threadId: CHOICE_THREAD_ID,
+      createdAt: '2026-09-22T00:00:02.000Z',
+      method: 'turn.started',
+      turnId: 'turn-1',
+      metadata: {
+        approvalMode: 'never',
+        effectiveModel: 'gpt-5-codex',
+        effectiveModelOptions: {},
+      },
+    } as Parameters<typeof handleOrchestrationEvent>[1]);
+    handleOrchestrationEvent('http://localhost', {
+      provider: 'codex',
+      threadId: CHOICE_THREAD_ID,
+      createdAt: '2026-09-22T00:00:03.000Z',
+      method: 'runtime.warning',
+      severity: 'warning',
+      message:
+        'Full-access mode requires restarting the session with that mode enabled from the start. Approval mode was not changed.',
+      code: 'approval-escalation-requires-restart',
+      details: { requestedApprovalMode: 'never', revertToApprovalMode: 'ask' },
+    });
+    expect(
+      activeChatsStore.getSnapshot()[CHOICE_THREAD_ID].providerOptions
+        ?.approvalMode,
+    ).toBe('ask');
+  });
 });

@@ -186,21 +186,39 @@ export function replaceModelControlOptions(
 /**
  * The confirmed option bag once a model report CONSUMES the request bag
  * (`requestedProviderOptions: undefined`). A report acknowledges only model
- * controls, but the request bag also carries choices with their own
- * confirmation path — the approval posture, an ACP session mode. Dropping the
- * bag without carrying those over made an explicit "Never ask (full access)"
- * vanish from the chat the moment the session started: the composer chip,
- * which reads `requestedProviderOptions ?? providerOptions`, then found no
- * session override and read "Default" while the session ran with full access
- * (#2321). Model controls are left to `replaceModelControlOptions`.
+ * controls, but the request bag may also carry the approval posture, which has
+ * its own confirmation path. Dropping the bag without carrying it over made an
+ * explicit "Never ask (full access)" vanish from the chat the moment the
+ * session started: the composer chip, which reads
+ * `requestedProviderOptions ?? providerOptions`, then found no session
+ * override and read "Default" while the session ran with full access (#2321).
+ *
+ * Only `approvalMode` is carried. Other non-model keys (an ACP session `mode`)
+ * are deliberately not: a retained ACP mode can be one a respawned session no
+ * longer advertises, and every send would then be refused.
+ *
+ * Server truth wins: when the consuming event reports the posture it actually
+ * applied (`appliedApprovalMode`) and that differs from the requested one, the
+ * request is not retained, and the confirmed bag holds no approval override at
+ * all. Retaining it would paint "pending" forever and re-request it every turn.
  */
-export function retainRequestedNonModelOptions(
+export function retainRequestedApprovalMode(
   current: Record<string, unknown> | undefined,
   requested: Record<string, unknown> | undefined,
+  appliedApprovalMode?: unknown,
 ): Record<string, unknown> {
-  const retained: Record<string, unknown> = { ...(requested ?? {}) };
-  for (const key of MODEL_CONTROL_KEYS) delete retained[key];
-  return { ...(current ?? {}), ...retained };
+  const next = { ...(current ?? {}) };
+  if (!requested || !('approvalMode' in requested)) return next;
+  const requestedMode = requested.approvalMode;
+  if (
+    appliedApprovalMode !== undefined &&
+    appliedApprovalMode !== requestedMode
+  ) {
+    delete next.approvalMode;
+    return next;
+  }
+  next.approvalMode = requestedMode;
+  return next;
 }
 
 /**

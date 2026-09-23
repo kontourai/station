@@ -782,9 +782,15 @@ export function useChatInput({
               provider: model.providerType,
             }
           : {}),
+        // Start from the pending request when there is one: it holds the
+        // user's latest choices (an approval change made since the last
+        // turn). Rebuilding from the confirmed bag alone resurrected a
+        // posture the user had already revoked (#2321).
         requestedProviderOptions: sanitizeRuntimeOptionsForModel(
           model,
-          activeChatState?.providerOptions ?? {},
+          activeChatState?.requestedProviderOptions ??
+            activeChatState?.providerOptions ??
+            {},
         ),
       });
 
@@ -801,6 +807,7 @@ export function useChatInput({
       currentModel,
       agentDefaultModel,
       activeChatState?.providerOptions,
+      activeChatState?.requestedProviderOptions,
       activeChatState?.executionMode,
       activeChatState?.providerId,
       activeChatState?.defaultProviderId,
@@ -859,6 +866,13 @@ export function useChatInput({
         activeChatState?.requestedProviderOptions?.approvalMode ??
         activeChatState?.providerOptions?.approvalMode;
       if (previousMode === mode) return;
+      // The confirmed bag must not keep a posture this choice supersedes:
+      // any later rebuild from it (a model switch, a consumed request) would
+      // otherwise bring a revoked full access back (#2321).
+      const {
+        approvalMode: _supersededApprovalMode,
+        ...confirmedWithoutApproval
+      } = activeChatState?.providerOptions ?? {};
       updateChat(sessionId, {
         requestedProviderOptions: {
           ...(activeChatState?.requestedProviderOptions ??
@@ -866,6 +880,10 @@ export function useChatInput({
             {}),
           approvalMode: mode,
         },
+        ...(activeChatState?.providerOptions &&
+        'approvalMode' in activeChatState.providerOptions
+          ? { providerOptions: confirmedWithoutApproval }
+          : {}),
       });
       addEphemeralMessage(sessionId, {
         role: 'system',

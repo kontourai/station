@@ -8,7 +8,7 @@ import {
   acknowledgesModelRequest,
   modelControlOptionsMatch,
   replaceModelControlOptions,
-  retainRequestedNonModelOptions,
+  retainRequestedApprovalMode,
 } from '../../utils/modelCapabilities';
 import { finalizeAssistantTurn } from './assistantTurn';
 import type { OrchestrationEvent } from './types';
@@ -81,9 +81,10 @@ export function handleSessionLifecycleEvent(
       ? {
           providerOptions: replaceModelControlOptions(
             consumesRequestedOptions
-              ? retainRequestedNonModelOptions(
+              ? retainRequestedApprovalMode(
                   currentChat?.providerOptions,
                   currentChat?.requestedProviderOptions,
+                  approvalMode,
                 )
               : (currentChat?.providerOptions ?? {}),
             effectiveModelOptions,

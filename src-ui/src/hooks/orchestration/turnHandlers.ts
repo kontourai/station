@@ -17,7 +17,7 @@ import {
   acknowledgesModelRequest,
   modelControlOptionsMatch,
   replaceModelControlOptions,
-  retainRequestedNonModelOptions,
+  retainRequestedApprovalMode,
 } from '../../utils/modelCapabilities';
 import {
   isChatErrorMarker,
@@ -254,9 +254,10 @@ export function handleTurnStartedEvent(
       ? {
           providerOptions: replaceModelControlOptions(
             consumesRequestedOptions
-              ? retainRequestedNonModelOptions(
+              ? retainRequestedApprovalMode(
                   currentChat?.providerOptions,
                   currentChat?.requestedProviderOptions,
+                  approvalMode,
                 )
               : (currentChat?.providerOptions ?? {}),
             effectiveModelOptions,

@@ -6,7 +6,7 @@ import {
   acknowledgesModelRequest,
   modelControlOptionsMatch,
   replaceModelControlOptions,
-  retainRequestedNonModelOptions,
+  retainRequestedApprovalMode,
 } from '../../utils/modelCapabilities';
 import { rehydrateChatSession } from './rehydrateChatSession';
 import { isReplayThread } from './replay/replay-registry';
@@ -107,11 +107,11 @@ export function buildOrchestrationSnapshotSyncPlan(
           chat.requestedProviderOptions,
           session.effectiveModelOptions,
         );
-      // Consuming the request bag must not drop the non-model choices it
-      // carried (approval posture), whether or not this snapshot reports
-      // model controls (#2321).
+      // Consuming the request bag must not drop the approval posture it
+      // carried, whether or not this snapshot reports model controls (#2321).
+      // A snapshot reports no applied posture, so nothing overrides it here.
       const confirmedOptions = consumesRequestedOptions
-        ? retainRequestedNonModelOptions(
+        ? retainRequestedApprovalMode(
             chat.providerOptions,
             chat.requestedProviderOptions,
           )
