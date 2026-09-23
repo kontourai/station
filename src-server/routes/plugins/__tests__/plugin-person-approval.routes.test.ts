@@ -289,7 +289,14 @@ function createHarness(
       },
       { incoming: { socket: { remoteAddress: '127.0.0.1' } } } as TestBindings,
     );
-  return { request, proposals };
+  /**
+   * The stored record a create response names. A create answers any caller
+   * but the operator person with `{ id, status }` alone (delta review HIGH),
+   * so the record's fields are read from the store.
+   */
+  const stored = async (response: Response) =>
+    proposals.get((await readJson(response)).proposal.id);
+  return { request, proposals, stored };
 }
 
 const CONSENT = {
@@ -422,9 +429,11 @@ describe('#2323 S5: plugin lifecycle routes refuse Station’s agent caller', ()
     });
     expect(created.status).toBe(201);
     const { proposal } = await readJson(created);
+    // The agent is answered with the id and status alone.
+    expect(proposal).toStrictEqual({ id: expect.any(String), status: 'open' });
     // The principal is derived from the request, the rest is the report,
     // and a report with no runtime attestation is marked as the caller's.
-    expect(proposal.author).toEqual({
+    expect(proposals.get(proposal.id)?.author).toEqual({
       principal: 'agent',
       agentSlug: 'station',
       conversationId: 'conv-1',
@@ -523,14 +532,14 @@ describe('#2323 S5: plugin lifecycle routes refuse Station’s agent caller', ()
     const { home, pluginsDir } = makeHome();
     for (const name of ['plugin-a', 'plugin-b', 'plugin-c'])
       writePlugin(join(pluginsDir, name), name);
-    const { request } = createHarness(home);
+    const { request, stored } = createHarness(home);
     const propose = async (
       kind: 'update' | 'remove',
       pluginName: string,
       context: object,
     ) =>
       (
-        await readJson(
+        await stored(
           await request('internal', 'POST', '/api/plugin-proposals', {
             kind,
             pluginName,
@@ -538,7 +547,7 @@ describe('#2323 S5: plugin lifecycle routes refuse Station’s agent caller', ()
             _sourceContext: context,
           }),
         )
-      ).proposal.author;
+      )?.author;
     const attestA = attestProposalSourceContext('station', 'c1', {
       kind: 'update',
       target: 'plugin-a',
@@ -580,14 +589,14 @@ describe('#2323 S5: plugin lifecycle routes refuse Station’s agent caller', ()
     const { home, pluginsDir } = makeHome();
     for (const name of ['plugin-a', 'plugin-b'])
       writePlugin(join(pluginsDir, name), name);
-    const { request, proposals } = createHarness(home);
+    const { request, proposals, stored } = createHarness(home);
     const attestA = attestProposalSourceContext('station', 'c1', {
       kind: 'update',
       target: 'plugin-a',
     });
     const author = async (body: object) =>
       (
-        await readJson(
+        await stored(
           await request('internal', 'POST', '/api/plugin-proposals', {
             rationale: 'r',
             _sourceContext: {
@@ -598,7 +607,7 @@ describe('#2323 S5: plugin lifecycle routes refuse Station’s agent caller', ()
             ...body,
           }),
         )
-      ).proposal.author;
+      )?.author;
 
     expect(
       await author({ kind: 'update', pluginName: 'plugin-b' }),
@@ -625,7 +634,7 @@ describe('#2323 S5: plugin lifecycle routes refuse Station’s agent caller', ()
     await proposals.dismiss(attested!.id);
     expect(
       (
-        await readJson(
+        await stored(
           await request('internal', 'POST', '/api/plugin-proposals', {
             kind: 'update',
             pluginName: 'plugin-a',
@@ -637,7 +646,7 @@ describe('#2323 S5: plugin lifecycle routes refuse Station’s agent caller', ()
             },
           }),
         )
-      ).proposal.author,
+      )?.author,
     ).toMatchObject({
       agentSlug: 'station',
       conversationId: 'c2',
@@ -710,6 +719,117 @@ describe('#2323 S5: proposals are the operator’s', () => {
         )
       ).proposal.id,
     ).toBe(proposal.id);
+  });
+
+  /**
+   * Delta review HIGH: a create answers with a stored record, and a
+   * duplicate is usually someone else's. Anyone but the operator, as a
+   * person, gets its id and status alone — never another author's rationale
+   * or principal id — whether the proposal is new or deduplicated.
+   */
+  test('a create answers anyone but the operator person with the id and status alone, new or deduplicated', async () => {
+    const { home, root, pluginsDir } = makeHome();
+    const source = join(root, 'src-plugin');
+    writePlugin(source, 'proposed-plugin');
+    writePlugin(join(pluginsDir, 'installed-plugin'), 'installed-plugin');
+    const { request, proposals } = createHarness(home);
+    const phone = {
+      principal: 'person' as const,
+      principalId: 'human:device:phone-2',
+    };
+    const install = (
+      await proposals.propose({
+        kind: 'install',
+        source,
+        rationale: 'A private reason from phone-2.',
+        author: phone,
+      })
+    ).proposal;
+    const update = (
+      await proposals.propose({
+        kind: 'update',
+        pluginName: 'installed-plugin',
+        rationale: 'Another private reason.',
+        author: phone,
+      })
+    ).proposal;
+    const answer = async (
+      caller: 'member' | 'internal',
+      body: object,
+    ): Promise<{ status: number; body: unknown }> => {
+      const response = await request(caller, 'POST', '/api/plugin-proposals', {
+        rationale: 'Mine.',
+        ...body,
+      });
+      return { status: response.status, body: await readJson(response) };
+    };
+
+    // Deduplicated: the stored record is phone-2's.
+    for (const caller of ['member', 'internal'] as const) {
+      expect(await answer(caller, { kind: 'install', source })).toStrictEqual({
+        status: 200,
+        body: {
+          success: true,
+          deduplicated: true,
+          proposal: { id: install.id, status: 'open' },
+        },
+      });
+    }
+    expect(
+      await answer('internal', {
+        kind: 'update',
+        pluginName: 'installed-plugin',
+      }),
+    ).toStrictEqual({
+      status: 200,
+      body: {
+        success: true,
+        deduplicated: true,
+        proposal: { id: update.id, status: 'open' },
+      },
+    });
+
+    // New: the same shape, so the answer does not depend on who asked first.
+    for (const [caller, repo] of [
+      ['member', 'https://github.com/org/member-plugin'],
+      ['internal', 'https://github.com/org/agent-plugin'],
+    ] as const) {
+      expect(
+        await answer(caller, { kind: 'install', source: repo }),
+      ).toStrictEqual({
+        status: 201,
+        body: {
+          success: true,
+          deduplicated: false,
+          proposal: { id: expect.any(String), status: 'open' },
+        },
+      });
+    }
+    expect(
+      await answer('internal', {
+        kind: 'remove',
+        pluginName: 'installed-plugin',
+      }),
+    ).toStrictEqual({
+      status: 201,
+      body: {
+        success: true,
+        deduplicated: false,
+        proposal: { id: expect.any(String), status: 'open' },
+      },
+    });
+
+    // The operator, as a person, gets the record they would list anyway.
+    const operator = await request('person', 'POST', '/api/plugin-proposals', {
+      kind: 'install',
+      source,
+      rationale: 'Mine.',
+    });
+    expect((await readJson(operator)).proposal).toMatchObject({
+      id: install.id,
+      rationale: 'A private reason from phone-2.',
+      author: phone,
+    });
   });
 
   test('a non-operator’s update or remove proposal answers identically for installed and absent plugins', async () => {
@@ -947,15 +1067,15 @@ describe('#2323 S5: the proposal digest is the preview digest', () => {
     const source = join(root, 'src-plugin');
     writePlugin(source, 'digest-plugin');
     writeFileSync(join(source, 'index.js'), 'export const version = 1;\n');
-    const { request } = createHarness(home);
+    const { request, stored } = createHarness(home);
 
-    const { proposal } = await readJson(
+    const proposal = (await stored(
       await request('internal', 'POST', '/api/plugin-proposals', {
         kind: 'install',
         source,
         rationale: 'Digest parity.',
       }),
-    );
+    ))!;
     expect(proposal.proposedContentDigest).toMatch(/^sha256:[0-9a-f]{64}$/);
 
     const preview = await readJson(
@@ -974,16 +1094,17 @@ describe('#2323 S5: the proposal digest is the preview digest', () => {
 
   test('a git install proposal records no digest, and a folder without plugin.json is refused', async () => {
     const { home, root } = makeHome();
-    const { request } = createHarness(home);
-    const git = await readJson(
+    const { request, stored } = createHarness(home);
+    const git = (await stored(
       await request('internal', 'POST', '/api/plugin-proposals', {
         kind: 'install',
         source: 'https://github.com/example/plugin.git',
         rationale: 'Remote.',
       }),
-    );
-    expect(git.proposal.kind).toBe('install');
-    expect(git.proposal).not.toHaveProperty('proposedContentDigest');
+    ))!;
+    expect(git.kind).toBe('install');
+    expect(git).not.toHaveProperty('proposedContentDigest');
+    expect(git.proposedContentDigestUnavailable).toBe('remote-source');
 
     mkdirSync(join(root, 'not-a-plugin'));
     const refused = await request('internal', 'POST', '/api/plugin-proposals', {
@@ -1008,14 +1129,14 @@ describe('#2323 S5: the proposal digest is the preview digest', () => {
     mkdirSync(join(source, 'many'));
     for (let index = 0; index <= PROPOSAL_DIGEST_MAX_ENTRIES; index++)
       writeFileSync(join(source, 'many', `f${index}`), '');
-    const { request } = createHarness(home);
-    const { proposal } = await readJson(
+    const { request, stored } = createHarness(home);
+    const proposal = (await stored(
       await request('internal', 'POST', '/api/plugin-proposals', {
         kind: 'install',
         source,
         rationale: 'Big.',
       }),
-    );
+    ))!;
     expect(proposal).not.toHaveProperty('proposedContentDigest');
     expect(proposal.proposedContentDigestUnavailable).toBe('too-large');
   });
