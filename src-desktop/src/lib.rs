@@ -5027,7 +5027,7 @@ fn station_profile_store_write_internal(
         }
     }
     #[cfg(not(mobile))]
-    relay_grant_vault::invalidate_removed_routes(&current_store, &next_store)?;
+    relay_grant_vault::invalidate_removed_routes(app, &current_store, &next_store)?;
     let temporary = path.with_extension(format!(
         "{}.{}.tmp",
         std::process::id(),
