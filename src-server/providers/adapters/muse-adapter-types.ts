@@ -140,21 +140,24 @@ export interface MuseActiveTurn {
   stdoutOverflowed: boolean;
   terminationPromise?: Promise<boolean>;
   /**
-   * #2269: two per-turn deadlines, both cleared only when the slot is freed,
-   * so a child that emits `run_terminal` and then wedges is still killed
-   * and reaped.
+   * #2269: per-turn deadlines, both cleared only when the slot is freed.
    *
-   * - `totalTimeoutHandle`: absolute budget from turn start; armed once,
-   *   never rescheduled by activity or approval.
+   * - `totalTimeoutHandle`: armed ONLY when the server declared a turn budget
+   *   (`turnTimeoutMs`); absolute from turn start, never rescheduled.
    * - `idleTimeoutHandle`: full silence window with no verified protocol
-   *   activity; rescheduled by `noteVerifiedActivity` alone.
+   *   activity AND no tool in flight; rescheduled by `noteVerifiedActivity`,
+   *   and not armed at all while a tool is in flight (an open call not yet in
+   *   `awaitingResultToolCalls`).
    */
   totalTimeoutHandle?: ReturnType<typeof setTimeout>;
   idleTimeoutHandle?: ReturnType<typeof setTimeout>;
   /** Resolved idle window for this turn (server-owned config). */
   idleLimitMs: number;
-  /** Resolved absolute budget for this turn (server-owned config). */
-  totalLimitMs: number;
+  /**
+   * Declared absolute budget for this turn (server-owned config), or
+   * `undefined` when none was declared — the default: no total timer.
+   */
+  totalLimitMs: number | undefined;
   /** Wall-clock of the last verified protocol activity (turn start initially). */
   lastProgressAt: number;
   /**
@@ -163,6 +166,42 @@ export interface MuseActiveTurn {
    * (the transcript is a fact) but never reschedules idle.
    */
   seenToolCallIds: string[];
+  /**
+   * #2308: what each muse task has revealed about itself so far, keyed by
+   * `task_id` (see `observeMuseToolTask`). Bounded by the same cap as
+   * `seenToolCallIds`; a task is dropped at its final lifecycle phase.
+   */
+  toolTasks: Map<string, MuseToolTaskBinding>;
+  /**
+   * Tool calls this turn published `tool.started` for and has not yet seen a
+   * result for (`call_id` -> tool name). Whatever remains when the turn
+   * settles is closed as `unresolved`.
+   */
+  openToolCalls: Map<string, string>;
+  /**
+   * Open calls whose muse task already reached `completed`/`failed`, keyed
+   * by `call_id` to that phase: still awaiting (and pairable with) their
+   * `tool_result`, but no longer running, so they do not hold the idle
+   * deadline disarmed. If the result never arrives, settle reports the
+   * phase muse gave rather than `unresolved`. Keys are always a subset of
+   * `openToolCalls`. Tracked per call id: two tasks sharing one `call_id`
+   * share this entry (a disclosed limit — the first task finishing re-arms
+   * idle even if the second is still running).
+   */
+  awaitingResultToolCalls: Map<string, 'completed' | 'failed'>;
+}
+
+/**
+ * What `observeMuseToolTask` has learned about one muse task so far. A task
+ * only becomes a tool start once BOTH identities and `started` have been
+ * observed for the same `task_id`.
+ */
+export interface MuseToolTaskBinding {
+  toolName?: string;
+  toolCallId?: string;
+  started: boolean;
+  /** True once this binding has produced its start. */
+  emitted?: boolean;
 }
 
 export interface MuseSessionRecord {
