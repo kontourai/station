@@ -1972,9 +1972,19 @@ describe('CI verification workflow contracts', () => {
       // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
       "${{ steps.rust_relevance.outputs.relevant != 'false' }}",
     );
-    expect(
-      floorJob.steps.findIndex((step) => step.id === 'rust_relevance'),
-    ).toBeLessThan(
+    const relevanceIndex = floorJob.steps.findIndex(
+      (step) => step.id === 'rust_relevance',
+    );
+    // Before ANY candidate code: an earlier `npm run` can rewrite
+    // $GITHUB_PATH/$GITHUB_ENV and hand this "base-controlled" classifier a
+    // fake node or git that prints whatever the candidate wants.
+    const firstCandidateRun = floorJob.steps.findIndex((step) =>
+      /\bnpm run\b|\bcargo\b/.test(String(step.run ?? '')),
+    );
+    expect(relevanceIndex).toBeGreaterThan(-1);
+    expect(firstCandidateRun).toBeGreaterThan(-1);
+    expect(relevanceIndex).toBeLessThan(firstCandidateRun);
+    expect(relevanceIndex).toBeLessThan(
       floorJob.steps.findIndex(
         (step) => step.name === 'Compile desktop Rust tests',
       ),
