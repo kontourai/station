@@ -3295,6 +3295,8 @@ describe('Muse background work holds the turn (#2300)', () => {
     expect(harness.processes[0].killed).toBe(false);
     expect(harness.released).toBe(0);
     await emit(TASK_COMPLETED, ...FOLLOW_UP);
+    // Everything is queued; real timers let `drain`'s own timeout work.
+    vi.useRealTimers();
     const events = await drain(harness.iterator, 10, 'held a day');
     expect(events.map((e) => e.method)).toEqual([
       'session.started',
@@ -3388,6 +3390,45 @@ describe('Muse background work holds the turn (#2300)', () => {
     await expectNoFurtherEvent(harness.iterator, 'run 2 cancelled');
   });
 
+  test('run 1 text and the follow-up are separate items joined by a paragraph break, and project as one text', async () => {
+    const { harness, turn, emit } = await startTurn('bg-two-texts');
+    const run1Delta = FOLLOW_UP[18]!.replace(
+      '"text":"Workflow completed: sleep"',
+      '"text":"Launched it."',
+    );
+    expect(run1Delta).toContain('"kind":"run_output_delta"');
+    await emit(
+      ...THROUGH_RUN_1.slice(0, 30),
+      run1Delta,
+      THROUGH_RUN_1[30]!,
+      TASK_COMPLETED,
+      ...FOLLOW_UP,
+    );
+    harness.processes[0].exit(0);
+    await flushIo();
+    const events = await drain(harness.iterator, 11, 'two texts');
+    const deltas = events.filter((e) => e.method === 'content.text-delta');
+    expect(deltas.map((e) => e.delta)).toEqual([
+      'Launched it.',
+      '\n\nWorkflow completed: sleep',
+      ' 60 && echo done > workflow-finished.txt finished with exit 0.',
+    ]);
+    expect(deltas[0].itemId).not.toBe(deltas[1].itemId);
+    expect(deltas[1].itemId).toBe(deltas[2].itemId);
+    const composed = `Launched it.\n\n${MUSE_13_BACKGROUND_FOLLOW_UP_TEXT}`;
+    expect(events.at(-1)).toMatchObject({
+      method: 'turn.completed',
+      turnId: turn.turnId,
+      finishReason: 'stop',
+      outputText: composed,
+    });
+    const assistant = projectRuntimeEventsToMessages(events).at(-1)!;
+    expect(
+      assistant.parts.filter((p) => p.type === 'text').map((p) => p.text),
+    ).toEqual([composed]);
+    await expectNoFurtherEvent(harness.iterator, 'two texts');
+  });
+
   test('a launch result that is not a well-formed launch announces nothing; the turn settles at its terminal', async () => {
     const launch = JSON.parse(LINES[28]!);
     const variants: Record<string, string> = {
@@ -3437,6 +3478,7 @@ describe('Muse background work holds the turn (#2300)', () => {
     expect(harness.processes[0].killed).toBe(false);
     await vi.advanceTimersByTimeAsync(200);
     expect(harness.processes[0].killed).toBe(true);
+    vi.useRealTimers();
     const events = await drain(harness.iterator, 9, 'reap warning');
     expect(events.slice(5).map((e) => [e.method, e.status ?? e.code])).toEqual([
       ['tool.started', undefined],
