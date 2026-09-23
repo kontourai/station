@@ -8,6 +8,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useId, useState } from 'react';
 import { Button } from '../../components/Button';
 import { Dialog } from '../../components/Dialog';
+import { SkeletonBlock } from '../../components/state';
 import { nativeProfileRepository } from '../../platform/PlatformProfileContext';
 
 const RELAY_ID =
@@ -18,42 +19,40 @@ type RelayTrustStatus =
   | 'checking'
   | 'unavailable';
 
-const TRUST_COPY: Record<RelayTrustStatus, { label: string; detail: string }> =
-  {
-    invalid: {
-      label: 'Station identifiers invalid',
-      detail:
-        'Station ID and enrollment ID must be the UUIDs supplied for this Station enrollment.',
-    },
-    checking: {
-      label: 'Checking Station trust',
-      detail: 'Checking this device’s separately stored Station trust…',
-    },
-    unavailable: {
-      label: 'Trust unavailable',
-      detail:
-        'This device’s trust store is unavailable. The route remains untrusted.',
-    },
-    untrusted: {
-      label: 'Station not trusted',
-      detail:
-        'No approved Station key is stored for this ID on this device. The route remains untrusted.',
-    },
-    revoked: {
-      label: 'Trust revoked',
-      detail:
-        'This device has revoked trust for the selected Station enrollment.',
-    },
-    mismatch: {
-      label: 'Station identity mismatch',
-      detail: 'The approved Station key belongs to a different enrollment.',
-    },
-    approved: {
-      label: 'Station trust approved',
-      detail:
-        'This exact Station enrollment has an independently approved key on this device.',
-    },
-  };
+const TRUST_COPY: Record<
+  Exclude<RelayTrustStatus, 'checking'>,
+  { label: string; detail: string }
+> = {
+  invalid: {
+    label: 'Station identifiers invalid',
+    detail:
+      'Station ID and enrollment ID must be the UUIDs supplied for this Station enrollment.',
+  },
+  unavailable: {
+    label: 'Trust unavailable',
+    detail:
+      'This device’s trust store is unavailable. The route remains untrusted.',
+  },
+  untrusted: {
+    label: 'Station not trusted',
+    detail:
+      'No approved Station key is stored for this ID on this device. The route remains untrusted.',
+  },
+  revoked: {
+    label: 'Trust revoked',
+    detail:
+      'This device has revoked trust for the selected Station enrollment.',
+  },
+  mismatch: {
+    label: 'Station identity mismatch',
+    detail: 'The approved Station key belongs to a different enrollment.',
+  },
+  approved: {
+    label: 'Station trust approved',
+    detail:
+      'This exact Station enrollment has an independently approved key on this device.',
+  },
+};
 
 function routeTrustStatus(
   validIds: boolean,
@@ -102,7 +101,10 @@ function useRouteTrust(stationId: string, enrollmentId: string) {
       stationId: stationId.trim(),
       enrollmentId: enrollmentId.trim(),
     });
-  return { status, detail: TRUST_COPY[status].detail };
+  return {
+    status,
+    detail: status === 'checking' ? '' : TRUST_COPY[status].detail,
+  };
 }
 
 export function RelayRouteTrustReadout({
@@ -113,6 +115,14 @@ export function RelayRouteTrustReadout({
   enrollmentId: string;
 }) {
   const { status, detail } = useRouteTrust(stationId, enrollmentId);
+  if (status === 'checking')
+    return (
+      <SkeletonBlock
+        count={1}
+        label="Checking Station trust"
+        className="relay-route-trust relay-route-trust--checking"
+      />
+    );
   return (
     <div
       className={`relay-route-trust relay-route-trust--${status}`}
