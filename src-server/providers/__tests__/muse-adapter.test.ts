@@ -1422,7 +1422,7 @@ describe('Muse startup-provider override', () => {
     return harness.spawnArgs[0];
   }
 
-  test('unset: the argv is Station\'s default build, with no --provider', async () => {
+  test("unset: the argv is Station's default build, with no --provider", async () => {
     // The literal, not a subset — the claim is that the default path did not
     // move, so a `--provider` appearing anywhere fails here.
     expect(await argvForEnv({})).toEqual([
