@@ -38,6 +38,7 @@ import {
 import { localPluginInstallationState } from '../../services/plugins/plugin-installation-local.js';
 import type { PluginInstallationHost } from '../../services/plugins/plugin-installation-service.js';
 import { PluginInstallationPending } from '../../services/plugins/plugin-installation-service.js';
+import type { PluginLifecycleProposalService } from '../../services/plugins/plugin-lifecycle-proposals.js';
 import { readPluginManifestFileWithFormat } from '../../services/plugins/plugin-manifest-loader.js';
 import {
   describePluginGrantState,
@@ -79,6 +80,8 @@ import {
 } from '../system/configuration-activation.js';
 import { buildPlugin } from './plugin-bundles.js';
 import { capturePluginConfigurationMutation } from './plugin-configuration-activation.js';
+import { personOnly } from './plugin-person-approval.js';
+import { recordProposalCompletion } from './plugin-proposal-routes.js';
 
 interface PluginInstallRouteDeps {
   installationHost?: PluginInstallationHost;
@@ -125,6 +128,12 @@ interface PluginInstallRouteDeps {
   projectVisiblePlugins(
     c: Context,
   ): (installed: readonly string[]) => readonly string[];
+  /**
+   * #2323 S5: the proposal store `POST /install` completes when the request
+   * names a `proposalId`. Optional: a composition without it installs
+   * exactly as before and reports the proposal as still open.
+   */
+  proposals?: PluginLifecycleProposalService;
 }
 
 export function registerPluginInstallRoutes(
@@ -364,49 +373,54 @@ export function registerPluginInstallRoutes(
       );
     }
   });
-  app.post('/:name/recover', validate(pluginRecoverySchema), async (c) => {
-    try {
-      const body = getBody(c);
-      const mutation = await capturePluginConfigurationMutation(
-        applyConfigurationMutation,
-        async (beginMutation, _activation, activationSession) =>
-          recoverInstalledPlugin(
-            param(c, 'name'),
-            {
-              ...recoveryDependencies,
-              beginConfigurationMutation: beginMutation,
-              activationSession,
-            },
-            {
-              recoveryRevision: body.recoveryRevision,
-              consent: {
-                ...body.consent,
-                kind: 'operator-decision',
-                dependencies: body.consent.dependencies ?? [],
+  app.post(
+    '/:name/recover',
+    personOnly('recover a plugin'),
+    validate(pluginRecoverySchema),
+    async (c) => {
+      try {
+        const body = getBody(c);
+        const mutation = await capturePluginConfigurationMutation(
+          applyConfigurationMutation,
+          async (beginMutation, _activation, activationSession) =>
+            recoverInstalledPlugin(
+              param(c, 'name'),
+              {
+                ...recoveryDependencies,
+                beginConfigurationMutation: beginMutation,
+                activationSession,
               },
-            },
-          ),
-        { rediscoverSkills: true },
-      );
-      return c.json(
-        {
-          ...mutation.value,
-          success: mutation.activation?.status !== 'pending',
-          ...configurationActivationPayload(mutation.activation),
-        },
-        configurationMutationStatus(mutation.activation, 200),
-      );
-    } catch (error) {
-      return c.json(
-        { success: false, error: errorMessage(error) },
-        error instanceof PluginGrantsUnavailableError
-          ? 503
-          : error instanceof AggregateError
-            ? 500
-            : 409,
-      );
-    }
-  });
+              {
+                recoveryRevision: body.recoveryRevision,
+                consent: {
+                  ...body.consent,
+                  kind: 'operator-decision',
+                  dependencies: body.consent.dependencies ?? [],
+                },
+              },
+            ),
+          { rediscoverSkills: true },
+        );
+        return c.json(
+          {
+            ...mutation.value,
+            success: mutation.activation?.status !== 'pending',
+            ...configurationActivationPayload(mutation.activation),
+          },
+          configurationMutationStatus(mutation.activation, 200),
+        );
+      } catch (error) {
+        return c.json(
+          { success: false, error: errorMessage(error) },
+          error instanceof PluginGrantsUnavailableError
+            ? 503
+            : error instanceof AggregateError
+              ? 500
+              : 409,
+        );
+      }
+    },
+  );
 
   app.post('/preview', validate(pluginPreviewSchema), async (c) => {
     try {
@@ -795,176 +809,199 @@ export function registerPluginInstallRoutes(
     }
   });
 
-  app.post('/install', validate(pluginInstallSchema), async (c) => {
-    try {
-      const { source, skip, consent, dataPolicy, expectedInstallation } =
-        getBody(c);
-      // archive#4288. Refused before the source is even staged: this route is
-      // how an operator admits a plugin's code into the shell's own document,
-      // and the permission derivation cannot see the contributions that run
-      // there (`layout`, `workspacePanes`, `entrypoint`, `agents` — eight of
-      // eleven). So the decision is required unconditionally rather than only
-      // when the derivation happens to produce something, and what it binds is
-      // the DIGEST of the reviewed bytes, which covers every contribution.
-      if (!consent) {
+  app.post(
+    '/install',
+    personOnly('install a plugin'),
+    validate(pluginInstallSchema),
+    async (c) => {
+      try {
+        const {
+          source,
+          skip,
+          consent,
+          dataPolicy,
+          expectedInstallation,
+          proposalId,
+        } = getBody(c);
+        // archive#4288. Refused before the source is even staged: this route is
+        // how an operator admits a plugin's code into the shell's own document,
+        // and the permission derivation cannot see the contributions that run
+        // there (`layout`, `workspacePanes`, `entrypoint`, `agents` — eight of
+        // eleven). So the decision is required unconditionally rather than only
+        // when the derivation happens to produce something, and what it binds is
+        // the DIGEST of the reviewed bytes, which covers every contribution.
+        if (!consent) {
+          return c.json(
+            {
+              success: false,
+              error:
+                'Plugin installs need an approval taken before anything is written. Preview the plugin, then install it from that preview.',
+              consent: { reason: 'missing' },
+            },
+            400,
+          );
+        }
+        const operatorDecision: PluginInstallConsent = {
+          kind: 'operator-decision',
+          registryTrustRevision: consent.registryTrustRevision,
+          grantRevision: consent.grantRevision,
+          permissions: consent.permissions,
+          contentDigest: consent.contentDigest,
+          dependencies: consent.dependencies ?? [],
+          ...(consent.dependencyApprovals
+            ? { dependencyApprovals: consent.dependencyApprovals }
+            : {}),
+        };
+        const mutation = await capturePluginConfigurationMutation(
+          applyConfigurationMutation,
+          async (beginMutation, _activation, activationSession) => {
+            const installed = await installPluginFromSource(
+              source,
+              skip,
+              {
+                agentsDir,
+                registryTrustPolicyAuthority: deps.registryTrustPolicyAuthority,
+                packageMcpJournal: deps.packageMcpJournal,
+                installationHost: deps.installationHost,
+                beginConfigurationMutation: beginMutation,
+                buildPlugin: (pluginDir, name, manifest) =>
+                  buildPlugin(pluginDir, name, logger, manifest),
+                eventBus,
+                logger,
+                pluginsDir,
+                projectHomeDir,
+                settleProviderAdapterRetirements,
+                reconcileEngineConnections,
+                quiesceEventSubscriptions,
+              },
+              {
+                consent: operatorDecision,
+                dataPolicy,
+                expectedInstallation,
+                activationSession,
+              },
+            );
+            return installed;
+          },
+          { rediscoverSkills: true },
+        );
+        if (mutation.value.success) {
+          try {
+            refreshKitObservability?.();
+          } catch (error: unknown) {
+            logger.warn(
+              'Kit observability refresh failed after plugin install',
+              {
+                error: errorMessage(error),
+              },
+            );
+          }
+        }
+        const proposalOutcome = await recordProposalCompletion(
+          deps.proposals,
+          proposalId,
+          mutation.value.success === true &&
+            mutation.activation?.status !== 'pending',
+          { kind: 'install', source },
+          logger,
+        );
         return c.json(
           {
-            success: false,
-            error:
-              'Plugin installs need an approval taken before anything is written. Preview the plugin, then install it from that preview.',
-            consent: { reason: 'missing' },
+            ...mutation.value,
+            success: mutation.activation?.status !== 'pending',
+            ...configurationActivationPayload(mutation.activation),
+            ...proposalOutcome,
           },
-          400,
+          configurationMutationStatus(mutation.activation, 200),
         );
-      }
-      const operatorDecision: PluginInstallConsent = {
-        kind: 'operator-decision',
-        registryTrustRevision: consent.registryTrustRevision,
-        grantRevision: consent.grantRevision,
-        permissions: consent.permissions,
-        contentDigest: consent.contentDigest,
-        dependencies: consent.dependencies ?? [],
-        ...(consent.dependencyApprovals
-          ? { dependencyApprovals: consent.dependencyApprovals }
-          : {}),
-      };
-      const mutation = await capturePluginConfigurationMutation(
-        applyConfigurationMutation,
-        async (beginMutation, _activation, activationSession) => {
-          const installed = await installPluginFromSource(
-            source,
-            skip,
+      } catch (error: unknown) {
+        if (isRegistryAcquisitionRefusal(error))
+          return c.json(
             {
-              agentsDir,
-              registryTrustPolicyAuthority: deps.registryTrustPolicyAuthority,
-              packageMcpJournal: deps.packageMcpJournal,
-              installationHost: deps.installationHost,
-              beginConfigurationMutation: beginMutation,
-              buildPlugin: (pluginDir, name, manifest) =>
-                buildPlugin(pluginDir, name, logger, manifest),
-              eventBus,
-              logger,
-              pluginsDir,
-              projectHomeDir,
-              settleProviderAdapterRetirements,
-              reconcileEngineConnections,
-              quiesceEventSubscriptions,
+              success: false,
+              ...registryAcquisitionRefusalDetails(error),
             },
+            409,
+          );
+        if (error instanceof PluginInstallationPending)
+          return c.json(
             {
-              consent: operatorDecision,
-              dataPolicy,
-              expectedInstallation,
-              activationSession,
+              success: false,
+              error: errorMessage(error),
+              lifecycle: {
+                status: 'pending',
+                selected: error.selected,
+                code: error.code,
+              },
+            },
+            202,
+          );
+
+        if (isContextSafetyError(error)) {
+          return c.json(
+            {
+              success: false,
+              error: error.message,
+              findings: error.findings,
+            },
+            400,
+          );
+        }
+        if (isPluginConsentRefusedError(error)) {
+          // 400 and not 500: the request and the plugin disagree about what was
+          // approved. Earlier dependency effects may already have been rolled
+          // back. A 400 does not claim the request performed no earlier writes.
+          // Failed rollback remains an aggregate and must not be reported as 400.
+          logger.warn(
+            'Plugin install refused: consent did not cover the source',
+            {
+              plugin: error.pluginName,
+              reason: error.reason,
             },
           );
-          return installed;
-        },
-        { rediscoverSkills: true },
-      );
-      if (mutation.value.success) {
-        try {
-          refreshKitObservability?.();
-        } catch (error: unknown) {
-          logger.warn('Kit observability refresh failed after plugin install', {
-            error: errorMessage(error),
-          });
+          return c.json(
+            {
+              success: false,
+              // Through the route-catch sanitizer like every other outward
+              // message here, not raw: this sentence names the plugin, and a
+              // plugin's name comes from its own manifest.
+              error: errorMessage(error),
+              consent: {
+                reason: error.reason,
+                required: error.required,
+                consented: error.consented,
+              },
+            },
+            400,
+          );
         }
-      }
-      return c.json(
-        {
-          ...mutation.value,
-          success: mutation.activation?.status !== 'pending',
-          ...configurationActivationPayload(mutation.activation),
-        },
-        configurationMutationStatus(mutation.activation, 200),
-      );
-    } catch (error: unknown) {
-      if (isRegistryAcquisitionRefusal(error))
-        return c.json(
-          {
-            success: false,
-            ...registryAcquisitionRefusalDetails(error),
-          },
-          409,
-        );
-      if (error instanceof PluginInstallationPending)
-        return c.json(
-          {
-            success: false,
-            error: errorMessage(error),
-            lifecycle: {
-              status: 'pending',
-              selected: error.selected,
-              code: error.code,
+        const lockCycle = findPluginContentLockCycleError(error);
+        if (lockCycle) {
+          // 409, not 500: this is refused concurrency, not a broken install.
+          // Another plugin operation holds a content lock this one needs, and
+          // the acquisition was refused rather than allowed to deadlock, so
+          // retrying once that operation finishes is the right move. It says
+          // nothing about what this request had already done before the
+          // refusal — dependencies installed ahead of it are rolled back by the
+          // install's own failure path, which is changed and reverted, not
+          // untouched. A 500 with the sentence buried in it tells the operator
+          // none of that.
+          logger.warn('Plugin install refused: plugin content lock cycle', {
+            plugins: lockCycle.plugins,
+            cycle: lockCycle.cycle,
+          });
+          return c.json(
+            {
+              success: false,
+              error: pluginContentLockCycleMessage(lockCycle),
+              lockCycle: lockCycle.plugins,
             },
-          },
-          202,
-        );
-
-      if (isContextSafetyError(error)) {
-        return c.json(
-          {
-            success: false,
-            error: error.message,
-            findings: error.findings,
-          },
-          400,
-        );
+            409,
+          );
+        }
+        logger.error('Plugin install failed', { error: errorMessage(error) });
+        return c.json({ success: false, error: errorMessage(error) }, 500);
       }
-      if (isPluginConsentRefusedError(error)) {
-        // 400 and not 500: the request and the plugin disagree about what was
-        // approved. Earlier dependency effects may already have been rolled
-        // back. A 400 does not claim the request performed no earlier writes.
-        // Failed rollback remains an aggregate and must not be reported as 400.
-        logger.warn(
-          'Plugin install refused: consent did not cover the source',
-          {
-            plugin: error.pluginName,
-            reason: error.reason,
-          },
-        );
-        return c.json(
-          {
-            success: false,
-            // Through the route-catch sanitizer like every other outward
-            // message here, not raw: this sentence names the plugin, and a
-            // plugin's name comes from its own manifest.
-            error: errorMessage(error),
-            consent: {
-              reason: error.reason,
-              required: error.required,
-              consented: error.consented,
-            },
-          },
-          400,
-        );
-      }
-      const lockCycle = findPluginContentLockCycleError(error);
-      if (lockCycle) {
-        // 409, not 500: this is refused concurrency, not a broken install.
-        // Another plugin operation holds a content lock this one needs, and
-        // the acquisition was refused rather than allowed to deadlock, so
-        // retrying once that operation finishes is the right move. It says
-        // nothing about what this request had already done before the
-        // refusal — dependencies installed ahead of it are rolled back by the
-        // install's own failure path, which is changed and reverted, not
-        // untouched. A 500 with the sentence buried in it tells the operator
-        // none of that.
-        logger.warn('Plugin install refused: plugin content lock cycle', {
-          plugins: lockCycle.plugins,
-          cycle: lockCycle.cycle,
-        });
-        return c.json(
-          {
-            success: false,
-            error: pluginContentLockCycleMessage(lockCycle),
-            lockCycle: lockCycle.plugins,
-          },
-          409,
-        );
-      }
-      logger.error('Plugin install failed', { error: errorMessage(error) });
-      return c.json({ success: false, error: errorMessage(error) }, 500);
-    }
-  });
+    },
+  );
 }

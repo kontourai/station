@@ -8,6 +8,7 @@ import type {
   GateReviewAttentionItem,
   GateRouteBackAttentionItem,
   NeedsInputAttentionItem,
+  PluginLifecycleProposalAttentionItem,
   ProposedChangeAttentionItem,
   ReviewPendingAttentionItem,
   SessionFailedAttentionItem,
@@ -21,6 +22,7 @@ import {
   useConfirmDevicePairingRequestMutation,
   useDenyDevicePairingRequestMutation,
   useDismissNotificationMutation,
+  useDismissPluginLifecycleProposalMutation,
   useNotificationActionMutation,
   useQueryClient,
 } from '@kontourai/station-sdk';
@@ -43,6 +45,7 @@ import {
   navigateToAttentionTarget,
 } from '../../utils/attentionOpen';
 import { formatNotificationTime } from '../../utils/notifications';
+import { describeProposalAuthor } from '../../utils/pluginProposal';
 import { LazyBoundary } from '../LazyBoundary';
 import { SkeletonList } from '../state';
 import './AttentionCard.css';
@@ -176,6 +179,9 @@ function AttentionAction({ item }: { item: AttentionItem }) {
       return <ProposedChangeActions item={item} />;
     case 'gate-review':
       return <GateReviewAction item={item} />;
+    // #2323 S5: an agent asked for a plugin change it cannot make itself.
+    case 'plugin-lifecycle-proposal':
+      return <PluginProposalActions item={item} />;
     // #1536 D8: the requirement's own route out. No secondary action —
     // the item resolves by configuring a connection, not by answering here.
     case 'setup-incomplete':
@@ -403,6 +409,50 @@ function ProposedChangeActions({
         Open in Review
       </a>
       <MutationError error={decision.error} />
+    </>
+  );
+}
+
+/**
+ * #2323 S5: an agent proposed installing, updating or removing a plugin.
+ *
+ * Nothing on this row decides the change. "Open in Plugins" lands on the
+ * ordinary flow — the install preview with its consent, or the update or
+ * remove confirmation — and that is where the person decides. Dismiss closes
+ * the proposal through `POST /api/plugin-proposals/:id/dismiss`, the one
+ * resolution besides completing it.
+ */
+function PluginProposalActions({
+  item,
+}: {
+  item: PluginLifecycleProposalAttentionItem;
+}) {
+  const dismiss = useDismissPluginLifecycleProposalMutation();
+  return (
+    <>
+      <div
+        className="attention-item__detail"
+        data-testid="attention-plugin-proposal-author"
+      >
+        {describeProposalAuthor(item.author)}
+      </div>
+      <div className="attention-item__actions">
+        <a
+          className="attention-item__action attention-item__action--primary"
+          href={item.openHref}
+        >
+          Open in Plugins
+        </a>
+        <button
+          type="button"
+          className="attention-item__action attention-item__action--ghost"
+          disabled={dismiss.isPending}
+          onClick={() => dismiss.mutate(item.source.proposalId)}
+        >
+          Dismiss
+        </button>
+      </div>
+      <MutationError error={dismiss.error} />
     </>
   );
 }

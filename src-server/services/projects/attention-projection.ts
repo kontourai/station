@@ -8,6 +8,7 @@ import {
   isAcknowledgeableAttentionKind,
   isPendingAttentionItem,
   isStandingAttentionKind,
+  type PluginLifecycleProposalAttentionItem,
   type ProposedChangeAttentionItem,
   type SessionFailedAttentionItem,
   type SetupIncompleteAttentionItem,
@@ -16,6 +17,7 @@ import type { DevicePairingRequest } from '@kontourai/station-contracts/environm
 import { projectReviewLayoutHref } from '@kontourai/station-contracts/layout';
 import type { Notification } from '@kontourai/station-contracts/notification';
 import type { OrchestrationSessionSummary } from '@kontourai/station-contracts/orchestration';
+import { pluginProposalHref } from '@kontourai/station-contracts/plugin';
 import type { RequestOpenedEvent } from '@kontourai/station-contracts/runtime-events';
 import {
   type SessionAwaitingVia,
@@ -56,6 +58,7 @@ import {
   presentOpenRequest,
   truncateRequestText as truncate,
 } from '../orchestration/request-presentation.js';
+import type { PluginLifecycleProposalService } from '../plugins/plugin-lifecycle-proposals.js';
 import { DEVICE_PAIRING_NOTIFICATION_SOURCE } from '../ssh/device-pairing-notifications.js';
 import type { ProposedChangeService } from './proposed-change-service.js';
 
@@ -263,6 +266,16 @@ export class AttentionProjectionService {
      * Optional for the same reason as above.
      */
     private readonly listGateReviews?: () => Promise<PausedGateReviewAggregate>,
+    /**
+     * #2323 S5: open plugin lifecycle proposals, read through the store's own
+     * `listOpen` on every projection — completing or dismissing one stops it
+     * projecting on the next read. Optional so every existing caller/test
+     * keeps compiling with proposal attention simply unavailable.
+     */
+    private readonly pluginProposals?: Pick<
+      PluginLifecycleProposalService,
+      'listOpen'
+    > | null,
   ) {}
 
   /**
@@ -389,6 +402,7 @@ export class AttentionProjectionService {
     const setupItems = await this.projectSetupRequirement(readAuthority);
 
     const proposedChangeItems = this.projectProposedChanges(readAuthority);
+    const pluginProposalItems = this.projectPluginProposals(readAuthority);
     const gateReviews = await this.projectGateReviews(readAuthority);
 
     const undecorated = [
@@ -396,6 +410,7 @@ export class AttentionProjectionService {
       ...lifecycle,
       ...gateItems,
       ...proposedChangeItems,
+      ...pluginProposalItems,
       ...gateReviews.items,
       ...pairingItems,
       ...setupItems,
@@ -991,6 +1006,59 @@ export class AttentionProjectionService {
       }),
       source: { proposedChangeId: change.id, projectSlug: change.projectId },
     }));
+  }
+
+  /**
+   * #2323 S5: open plugin lifecycle proposals — an agent asked a person to
+   * install, update or remove a plugin, because it cannot do so itself.
+   *
+   * Hosted reads project nothing, for the same reason proposed changes do
+   * not: the store is this host's, with no tenancy predicate. `openHref`
+   * opens Plugins on the proposal, where the ordinary flow takes the
+   * decision; nothing on this row decides anything.
+   */
+  private projectPluginProposals(
+    authority: SessionReadAuthority,
+  ): PluginLifecycleProposalAttentionItem[] {
+    if (!this.pluginProposals) return [];
+    if (isHostedSessionReadAuthority(authority)) return [];
+    return this.pluginProposals.listOpen().map((proposal) => {
+      const subject =
+        proposal.kind === 'install'
+          ? (proposal.source ?? '')
+          : (proposal.pluginName ?? '');
+      const verb =
+        proposal.kind === 'install'
+          ? 'Install plugin'
+          : proposal.kind === 'update'
+            ? 'Update plugin'
+            : 'Remove plugin';
+      return {
+        id: `plugin-lifecycle-proposal:${proposal.id}`,
+        kind: 'plugin-lifecycle-proposal' as const,
+        title: `${verb}: ${subject}`,
+        body: proposal.rationale,
+        createdAt: proposal.createdAt,
+        updatedAt: proposal.updatedAt,
+        // No `sessionId`: the conversation is the tool call's report, and a
+        // session-derived item is filtered and suppressed as one elsewhere.
+        proposalKind: proposal.kind,
+        ...(proposal.kind === 'install'
+          ? { pluginSource: proposal.source }
+          : { pluginName: proposal.pluginName }),
+        author: {
+          principal: proposal.author.principal,
+          ...(proposal.author.agentSlug
+            ? { agentSlug: proposal.author.agentSlug }
+            : {}),
+          ...(proposal.author.conversationId
+            ? { conversationId: proposal.author.conversationId }
+            : {}),
+        },
+        openHref: pluginProposalHref(proposal.id),
+        source: { proposalId: proposal.id },
+      };
+    });
   }
 
   /**

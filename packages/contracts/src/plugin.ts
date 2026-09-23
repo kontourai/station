@@ -325,3 +325,74 @@ export type PluginInstallationReadiness =
   | { readonly state: 'ready' }
   | { readonly state: 'pending'; readonly recovery: 'review' }
   | { readonly state: 'unavailable' };
+
+/**
+ * A plugin lifecycle change an agent asked a person to make (#2323 S5).
+ *
+ * Station's agent tools cannot install, update or remove a plugin: those
+ * routes refuse the internal caller class station-control uses. What an agent
+ * can do is leave a proposal, which a person opens from Needs attention and
+ * completes through the ordinary Plugins flow (preview, consent, install; or
+ * the ordinary update or remove confirmation).
+ *
+ * A proposal carries NO decision authority. Nothing in it is a consent basis:
+ * `/install` still requires the preview-derived decision the person gives on
+ * the preview, and `proposedContentDigest` is only a comparison point for the
+ * "changed since proposed" warning, never an input to the install.
+ */
+export type PluginLifecycleProposalKind = 'install' | 'update' | 'remove';
+
+export type PluginLifecycleProposalStatus = 'open' | 'completed' | 'dismissed';
+
+export interface PluginLifecycleProposalAuthor {
+  /**
+   * What the server observed about the caller: `agent` for Station's own
+   * internal caller class (station-control, Station's agent adapter),
+   * `person` for any credentialed caller. Derived from the request's
+   * authenticated principal, never from the body.
+   */
+  readonly principal: 'agent' | 'person';
+  /**
+   * The agent and conversation the proposing tool call reported. Station's
+   * own agent runtime stamps these on the tool call (`mcp-manager.ts`); an
+   * external engine's tool call can supply or omit them. Display provenance
+   * only: it names who asked, it authorizes nothing.
+   */
+  readonly agentSlug?: string;
+  readonly conversationId?: string;
+}
+
+export interface PluginLifecycleProposal {
+  readonly id: string;
+  readonly kind: PluginLifecycleProposalKind;
+  /** Install only: the local folder (absolute, normalized) or git URL. */
+  readonly source?: string;
+  /** Update and remove only: the installed plugin's name. */
+  readonly pluginName?: string;
+  readonly rationale: string;
+  readonly author: PluginLifecycleProposalAuthor;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+  /**
+   * Install of a LOCAL folder only: the plugin tree digest Station observed
+   * when the proposal was made, in the same encoding the install preview's
+   * `contentDigest` uses. Absent for a git source (proposing does not clone)
+   * and when the folder could not be digested; the review then has nothing
+   * to compare against and says so rather than implying the bytes held.
+   */
+  readonly proposedContentDigest?: string;
+  readonly status: PluginLifecycleProposalStatus;
+  /** When the status left `open`. */
+  readonly resolvedAt?: string;
+}
+
+/**
+ * The Plugins view's query key for opening a proposal (#2323 S5): the
+ * attention item links to `/plugins?proposal=<id>`, and the view reads the
+ * same key. One declaration, so the link and the reader cannot drift.
+ */
+export const PLUGIN_PROPOSAL_QUERY_KEY = 'proposal';
+
+export function pluginProposalHref(proposalId: string): string {
+  return `/plugins?${PLUGIN_PROPOSAL_QUERY_KEY}=${encodeURIComponent(proposalId)}`;
+}

@@ -14,7 +14,10 @@ export function InstallPluginModal({
   onBrowse,
   onInstall,
   onClose,
+  proposalNote,
 }: {
+  /** #2323 S5: who proposed this install and why, when it came from a proposal. */
+  proposalNote?: string;
   installSource: string;
   installMessage: { type: 'success' | 'error'; text: string } | null;
   installPending: boolean;
@@ -82,9 +85,19 @@ export function InstallPluginModal({
                 : 'Install'}
           </button>
         </div>
-        <p className="plugins__install-hint">
-          Paste a git URL or local path to a Station plugin.
-        </p>
+        {proposalNote ? (
+          <p
+            className="plugins__install-hint"
+            data-testid="install-plugin-proposal"
+          >
+            {proposalNote}. Install previews it first; nothing is installed
+            until you confirm.
+          </p>
+        ) : (
+          <p className="plugins__install-hint">
+            Paste a git URL or local path to a Station plugin.
+          </p>
+        )}
       </div>
     </ResponsiveDialogSurface>
   );

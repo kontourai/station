@@ -1455,6 +1455,10 @@
             },
             "required": ["permissions", "contentDigest"],
             "additionalProperties": false
+          },
+          "proposalId": {
+            "type": "string",
+            "format": "uuid"
           }
         },
         "required": ["source"],

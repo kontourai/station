@@ -64,6 +64,13 @@ const mocks = vi.hoisted(() => ({
   projects: [] as Array<{ slug: string; name: string }>,
   addLayoutFromPlugin: vi.fn(),
   setLayout: vi.fn(),
+  // #2323 S5: the proposal deep link.
+  updateParams: vi.fn(),
+  proposal: null as unknown,
+  proposalError: null as unknown,
+  proposalQueryIds: [] as Array<string | null | undefined>,
+  updateMutate: vi.fn(),
+  removeMutate: vi.fn(),
 }));
 
 vi.mock('@tanstack/react-query', () => ({
@@ -75,7 +82,10 @@ vi.mock('../contexts/ApiBaseContext', () => ({
 }));
 
 vi.mock('../contexts/NavigationContext', () => ({
-  useNavigation: () => ({ setLayout: mocks.setLayout }),
+  useNavigation: () => ({
+    setLayout: mocks.setLayout,
+    updateParams: mocks.updateParams,
+  }),
 }));
 
 vi.mock('../contexts/ProjectsContext', () => ({
@@ -117,7 +127,13 @@ vi.mock('@kontourai/station-sdk', () => ({
   }),
   usePluginProvidersQuery: () => ({ data: undefined, isLoading: false }),
   usePluginProviderToggleMutation: () => ({ mutate: vi.fn() }),
-  usePluginRemoveMutation: () => ({ mutate: vi.fn() }),
+  usePluginRemoveMutation: () => ({ mutate: mocks.removeMutate }),
+  usePluginLifecycleProposalQuery: (id: string | null | undefined) => {
+    mocks.proposalQueryIds.push(id);
+    return id
+      ? { data: mocks.proposal ?? undefined, error: mocks.proposalError }
+      : { data: undefined, error: null };
+  },
   usePluginSettingsMutation: () => ({ mutate: vi.fn() }),
   usePluginSettingsQuery: () => ({ data: undefined }),
   usePluginsQuery: () => ({
@@ -126,7 +142,7 @@ vi.mock('@kontourai/station-sdk', () => ({
     isLoading: false,
     refetch: mocks.refetchPlugins,
   }),
-  usePluginUpdateMutation: () => ({ mutate: vi.fn() }),
+  usePluginUpdateMutation: () => ({ mutate: mocks.updateMutate }),
   usePluginUpdatesQuery: () => ({ data: [] }),
   reloadPlugins: mocks.reloadPlugins,
   useReloadPluginsMutation: () => ({
@@ -174,6 +190,13 @@ describe('usePluginManagementViewModel', () => {
       .mockReset()
       .mockResolvedValue({ slug: 'getting-started' });
     mocks.setLayout.mockReset();
+    mocks.updateParams.mockReset();
+    mocks.proposal = null;
+    mocks.proposalError = null;
+    mocks.proposalQueryIds = [];
+    mocks.updateMutate.mockReset();
+    mocks.removeMutate.mockReset();
+    window.history.replaceState(null, '', '/plugins');
   });
 
   /**
@@ -763,6 +786,143 @@ describe('usePluginManagementViewModel', () => {
       mocks.previewOnSuccess?.(preview);
     });
   }
+
+  /**
+   * #2323 S5: the Needs attention row links to `/plugins?proposal=<id>`.
+   * The view opens the ORDINARY flow prefilled — the same preview, the same
+   * consent — and only tells the server which proposal the change completes.
+   */
+  describe('opening an agent proposal', () => {
+    const installProposal = {
+      id: 'proposal-1',
+      kind: 'install',
+      source: '/tmp/network-kit',
+      rationale: 'Adds the network pane.',
+      author: { principal: 'agent', agentSlug: 'station' },
+      createdAt: '2026-09-22T00:00:00.000Z',
+      updatedAt: '2026-09-22T00:00:00.000Z',
+      status: 'open',
+    };
+
+    test('an install proposal opens the install modal prefilled, and the install it leads to names the proposal', async () => {
+      window.history.replaceState(null, '', '/plugins?proposal=proposal-1');
+      mocks.proposal = installProposal;
+      mocks.requestInstallConsent.mockResolvedValue(true);
+      const { result } = renderHook(() => usePluginManagementViewModel());
+
+      await waitFor(() => expect(result.current.showInstallModal).toBe(true));
+      expect(mocks.proposalQueryIds).toContain('proposal-1');
+      expect(result.current.installSource).toBe('/tmp/network-kit');
+      expect(result.current.activeProposal).toMatchObject({ id: 'proposal-1' });
+      // The link is consumed: a reload does not reopen the dialog.
+      expect(mocks.updateParams).toHaveBeenCalledWith({ proposal: null });
+      // Nothing was installed or previewed on arrival.
+      expect(mocks.installMutate).not.toHaveBeenCalled();
+      expect(mocks.previewMutate).not.toHaveBeenCalled();
+
+      // The ordinary preview → consent → install.
+      await act(async () => {
+        await result.current.install();
+      });
+      act(() => {
+        mocks.previewOnSuccess?.(PREVIEW);
+      });
+      await act(async () => {
+        await result.current.install([]);
+      });
+      expect(mocks.requestInstallConsent).toHaveBeenCalledTimes(1);
+      expect(mocks.installMutate).toHaveBeenCalledTimes(1);
+      expect(mocks.installMutate.mock.calls[0][0]).toMatchObject({
+        source: '/tmp/network-kit',
+        proposalId: 'proposal-1',
+        consent: { contentDigest: 'sha256:reviewed' },
+      });
+    });
+
+    test('editing the source means the install no longer completes the proposal', async () => {
+      window.history.replaceState(null, '', '/plugins?proposal=proposal-1');
+      mocks.proposal = installProposal;
+      mocks.requestInstallConsent.mockResolvedValue(true);
+      const { result } = renderHook(() => usePluginManagementViewModel());
+      await waitFor(() => expect(result.current.showInstallModal).toBe(true));
+
+      act(() => {
+        result.current.setInstallSourceAndReset('/tmp/something-else');
+      });
+      expect(result.current.activeProposal).toBeNull();
+      await act(async () => {
+        await result.current.install();
+      });
+      act(() => {
+        mocks.previewOnSuccess?.(PREVIEW);
+      });
+      await act(async () => {
+        await result.current.install([]);
+      });
+      expect(mocks.installMutate.mock.calls[0][0]).not.toHaveProperty(
+        'proposalId',
+      );
+    });
+
+    test('an update proposal asks for confirmation, and the update names the proposal', async () => {
+      window.history.replaceState(null, '', '/plugins?proposal=proposal-2');
+      mocks.proposal = {
+        ...installProposal,
+        id: 'proposal-2',
+        kind: 'update',
+        source: undefined,
+        pluginName: 'network-kit',
+      };
+      const { result } = renderHook(() => usePluginManagementViewModel());
+      await waitFor(() =>
+        expect(result.current.updateConfirm).toMatchObject({
+          id: 'proposal-2',
+        }),
+      );
+      expect(mocks.updateMutate).not.toHaveBeenCalled();
+
+      act(() => result.current.confirmProposedUpdate());
+      expect(mocks.updateMutate).toHaveBeenCalledWith(
+        { name: 'network-kit', proposalId: 'proposal-2' },
+        expect.any(Object),
+      );
+    });
+
+    test('a remove proposal opens the ordinary removal confirmation, and the removal names the proposal', async () => {
+      window.history.replaceState(null, '', '/plugins?proposal=proposal-3');
+      mocks.proposal = {
+        ...installProposal,
+        id: 'proposal-3',
+        kind: 'remove',
+        source: undefined,
+        pluginName: 'network-kit',
+      };
+      const { result } = renderHook(() => usePluginManagementViewModel());
+      await waitFor(() =>
+        expect(result.current.removeConfirm).toBe('network-kit'),
+      );
+      expect(mocks.removeMutate).not.toHaveBeenCalled();
+
+      act(() => result.current.remove('network-kit'));
+      expect(mocks.removeMutate).toHaveBeenCalledWith(
+        { name: 'network-kit', proposalId: 'proposal-3' },
+        expect.any(Object),
+      );
+    });
+
+    test('a proposal that is no longer open opens nothing and says so', async () => {
+      window.history.replaceState(null, '', '/plugins?proposal=proposal-1');
+      mocks.proposal = { ...installProposal, status: 'dismissed' };
+      const { result } = renderHook(() => usePluginManagementViewModel());
+      await waitFor(() =>
+        expect(result.current.message?.text).toBe(
+          'That plugin proposal was already dismissed.',
+        ),
+      );
+      expect(result.current.showInstallModal).toBe(false);
+      expect(result.current.activeProposal).toBeNull();
+    });
+  });
 
   test('missing installed plugin details remain unknown and cannot prompt from preview identity', async () => {
     mocks.requestInstallConsent.mockResolvedValue(true);

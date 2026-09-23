@@ -810,6 +810,17 @@ export function getNormalizedToolName(
   return resolveNormalizedToolName(originalName, toolNameReverseMapping);
 }
 
+/**
+ * #2323 S5: station-control tools that record a plugin lifecycle proposal
+ * for a person. They carry `_sourceContext` so the review can say which
+ * agent in which conversation asked.
+ */
+const PLUGIN_PROPOSAL_TOOL_NAMES: ReadonlySet<string> = new Set([
+  'propose_plugin_install',
+  'update_plugin',
+  'remove_plugin',
+]);
+
 export function wrapDelegationAwareTools(
   tools: Tool<any>[],
   options: {
@@ -836,7 +847,8 @@ export function wrapDelegationAwareTools(
       controlName !== 'continue_task' &&
       controlName !== 'respond_to_task_request' &&
       controlName !== 'interrupt_task' &&
-      controlName !== 'update_skill'
+      controlName !== 'update_skill' &&
+      !PLUGIN_PROPOSAL_TOOL_NAMES.has(controlName)
     ) {
       return tool;
     }
@@ -882,6 +894,17 @@ export function wrapDelegationAwareTools(
         if (controlName === 'update_skill' && !nextArgs._sourceContext) {
           nextArgs._sourceContext = {
             kind: 'agent',
+            agentSlug: options.agentSlug,
+            ...(parentConversationId
+              ? { conversationId: parentConversationId }
+              : {}),
+          };
+        }
+        if (PLUGIN_PROPOSAL_TOOL_NAMES.has(controlName)) {
+          // #2323 S5: who proposed, for the person reviewing it. Always
+          // overwritten, never `??=`: this runtime knows the agent and
+          // conversation, and a model-written value is not that fact.
+          nextArgs._sourceContext = {
             agentSlug: options.agentSlug,
             ...(parentConversationId
               ? { conversationId: parentConversationId }

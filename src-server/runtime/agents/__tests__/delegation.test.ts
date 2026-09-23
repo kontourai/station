@@ -309,4 +309,39 @@ describe('delegation helpers', () => {
       },
     });
   });
+
+  test.each(['propose_plugin_install', 'update_plugin', 'remove_plugin'])(
+    '#2323 S5: %s carries the proposing agent and conversation, overwriting a model-written value',
+    async (toolName) => {
+      const execute = async (args: Record<string, unknown>) => args;
+      const [wrapped] = wrapDelegationAwareTools(
+        [
+          {
+            name: `station-control_${toolName}`,
+            description: 'Propose a plugin change',
+            parameters: {},
+            execute,
+          } as any,
+        ],
+        {
+          agentSlug: 'planner',
+          toolId: 'station-control',
+          spec: { name: 'Planner', prompt: 'Plan well' },
+        },
+      );
+
+      const result = await wrapped.execute?.(
+        {
+          name: 'pulse',
+          _sourceContext: { agentSlug: 'someone-else', conversationId: 'fake' },
+        },
+        { conversationId: 'conv-parent' },
+      );
+
+      expect(result).toEqual({
+        name: 'pulse',
+        _sourceContext: { agentSlug: 'planner', conversationId: 'conv-parent' },
+      });
+    },
+  );
 });

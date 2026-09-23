@@ -1,3 +1,4 @@
+import type { PluginLifecycleProposal } from '@kontourai/station-contracts/plugin';
 import { useState } from 'react';
 import { Checkbox } from '../../components/Checkbox';
 import { CheckGlyph, WarningGlyph } from '../../components/icons/Glyph';
@@ -6,6 +7,10 @@ import {
   ResponsiveDialogSurface,
   ResponsiveSurfaceActions,
 } from '../../components/ResponsiveDialogSurface';
+import {
+  compareProposalDigest,
+  describeProposalAuthor,
+} from '../../utils/pluginProposal';
 import type { PreviewData } from './types';
 
 export function InstallPreviewModal({
@@ -15,7 +20,13 @@ export function InstallPreviewModal({
   onClose,
   onToggleSkip,
   onConfirm,
+  proposal = null,
 }: {
+  /**
+   * #2323 S5: the agent proposal this preview reviews, when the person came
+   * from one. Provenance only: the confirm button below is the decision.
+   */
+  proposal?: PluginLifecycleProposal | null;
   previewData: PreviewData;
   previewSkips: Set<string>;
   installPending: boolean;
@@ -63,6 +74,12 @@ export function InstallPreviewModal({
             </div>
           )}
         </div>
+        {proposal && (
+          <ProposalProvenance
+            proposal={proposal}
+            previewDigest={previewData.contentDigest}
+          />
+        )}
         {previewData.conflicts.length > 0 && (
           <div className="plugins__modal-message plugins__message--error plugins__preview-conflicts">
             {previewData.conflicts.length} conflict
@@ -208,5 +225,40 @@ export function InstallPreviewModal({
         </ResponsiveSurfaceActions>
       </div>
     </ResponsiveDialogSurface>
+  );
+}
+
+function ProposalProvenance({
+  proposal,
+  previewDigest,
+}: {
+  proposal: PluginLifecycleProposal;
+  previewDigest: string | undefined;
+}) {
+  const comparison = compareProposalDigest(proposal, previewDigest);
+  return (
+    <div
+      className="plugins__modal-message plugins__preview-proposal"
+      data-testid="install-preview-proposal"
+    >
+      <div>{describeProposalAuthor(proposal.author)}</div>
+      <div className="plugins__card-desc">{proposal.rationale}</div>
+      {comparison === 'changed' && (
+        <div
+          className="plugins__message--warning"
+          role="alert"
+          data-testid="install-preview-proposal-changed"
+        >
+          <WarningGlyph /> Changed since proposed: these files are not the ones
+          the agent proposed. Review what is here now before installing.
+        </div>
+      )}
+      {comparison === 'not-recorded' && (
+        <div data-testid="install-preview-proposal-unrecorded">
+          Station did not record the files when this was proposed, so it cannot
+          tell whether they changed since.
+        </div>
+      )}
+    </div>
   );
 }

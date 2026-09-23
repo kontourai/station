@@ -133,6 +133,11 @@ const PAIRING_SCOPE_DOMAIN_PREFIXES: readonly string[] = [
   '/api/auth',
   '/api/users',
   '/api/plugins',
+  // #2323 S5: agent-authored plugin lifecycle proposals. Read tier lists and
+  // reads them; operate tier creates and dismisses. A proposal installs,
+  // updates and removes nothing: the change is taken later on the
+  // `/api/plugins` routes, which refuse Station's internal agent caller.
+  '/api/plugin-proposals',
   '/api/fs',
   '/api/registry',
   '/agents',
@@ -3026,6 +3031,17 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'POST', path: '/api/plugins/validate' },
     { method: 'POST', path: '/api/plugins/reload' },
     { method: 'DELETE', path: '/api/plugins/:name' },
+    // #2323 S5: the proposal leaves (`plugin-proposal-routes.ts`). Plain
+    // family inheritance, reviewed per leaf: GET lists and reads open asks
+    // (a source path or plugin name, a rationale, the reporting agent);
+    // POST / records an ask and changes nothing a plugin runs; POST
+    // /:id/dismiss closes an ask and is additionally refused in-handler to
+    // Station's internal agent caller. None mints decision authority: a
+    // proposal is never read as consent by `/api/plugins/install`.
+    { method: 'GET', path: '/api/plugin-proposals' },
+    { method: 'POST', path: '/api/plugin-proposals' },
+    { method: 'GET', path: '/api/plugin-proposals/:id' },
+    { method: 'POST', path: '/api/plugin-proposals/:id/dismiss' },
     // app.all('/:name/*', ...) (plugin-public-routes.ts) forwards ANY
     // method into a plugin's OWN registered server module — genuinely
     // method-agnostic (Station's "GET is safe" assumption does not hold

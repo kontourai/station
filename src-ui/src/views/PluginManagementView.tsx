@@ -1,3 +1,4 @@
+import { pluginLifecycleTargetName } from '@kontourai/station-sdk';
 import { Button } from '../components/Button';
 import { PlugGlyph } from '../components/icons/Glyph';
 import { SplitPaneLayout } from '../components/SplitPaneLayout';
@@ -21,6 +22,12 @@ export function PluginManagementView({
   onNavigate: (view: NavigationView) => void;
 }) {
   const {
+    activeProposal,
+    cancelProposedUpdate,
+    cancelRemove,
+    closeInstallModal,
+    confirmProposedUpdate,
+    updateConfirm,
     addLayoutToProjects,
     addPluginLayout,
     assigningLayout,
@@ -148,7 +155,11 @@ export function PluginManagementView({
             loadingProviderDetails={loadingProviderDetails}
             changelogExpanded={changelogExpanded}
             updatePending={updateMutation.isPending}
-            updateTarget={updateMutation.variables}
+            updateTarget={
+              updateMutation.variables === undefined
+                ? undefined
+                : pluginLifecycleTargetName(updateMutation.variables)
+            }
             onUpdate={updatePlugin}
             onCheckUpdates={() =>
               queryClient.invalidateQueries({
@@ -253,7 +264,7 @@ export function PluginManagementView({
         }}
         onBrowse={() => setShowFolderPicker(true)}
         onInstall={() => install()}
-        onCloseInstall={() => setShowInstallModal(false)}
+        onCloseInstall={closeInstallModal}
         onSelectFolder={setInstallSourceAndReset}
         onCloseFolderPicker={() => setShowFolderPicker(false)}
         onClosePreview={() => setPreviewData(null)}
@@ -261,12 +272,16 @@ export function PluginManagementView({
         onConfirmInstall={(dataPolicy) =>
           install(Array.from(previewSkips), dataPolicy)
         }
-        onCancelRemove={() => setRemoveConfirm(null)}
+        onCancelRemove={cancelRemove}
         onConfirmRemove={remove}
         onCloseLayoutAssignment={() => setLayoutAssignment(null)}
         onToggleProject={toggleProjectSelection}
         onCreateProject={createProjectForLayout}
         onAddToProjects={addLayoutToProjects}
+        proposal={activeProposal}
+        updateConfirm={updateConfirm}
+        onConfirmUpdate={confirmProposedUpdate}
+        onCancelUpdate={cancelProposedUpdate}
       />
     </>
   );

@@ -210,6 +210,7 @@ import {
 import { createWorkItemRoutes } from '../../routes/orchestration/work-items.js';
 import { createWorkspacePaneHostActionRoutes } from '../../routes/orchestration/workspace-pane-host-actions.js';
 import { canRelayPluginIdentityEvent } from '../../routes/plugins/plugin-identity-enumeration.js';
+import { createPluginProposalRoutes } from '../../routes/plugins/plugin-proposal-routes.js';
 import { createPluginRoutes } from '../../routes/plugins/plugins.js';
 import { createRegistryRoutes } from '../../routes/plugins/registry.js';
 import { createCodingRoutes } from '../../routes/projects/coding.js';
@@ -391,6 +392,7 @@ import {
   setMcpUiRenderAllowed,
 } from '../../services/plugins/mcp-ui-permissions.js';
 import type { PluginInstallationHost } from '../../services/plugins/plugin-installation-service.js';
+import { PluginLifecycleProposalService } from '../../services/plugins/plugin-lifecycle-proposals.js';
 import { PluginVisibilityService } from '../../services/plugins/plugin-visibility-service.js';
 import { createLocalRegistryTrustPolicyAuthority } from '../../services/plugins/registry-trust-policy.js';
 import type { AttentionProjectionService } from '../../services/projects/attention-projection.js';
@@ -1678,6 +1680,13 @@ export function configureRuntimeRoutes(
     ),
   );
   context.app.route('/api/users', createUserRoutes());
+  // One instance for the plugin routes (which complete proposals) and the
+  // proposal routes (which create and dismiss them). The attention
+  // projection reads the same file through its own instance; the store is
+  // stateless per call, so they agree.
+  const pluginLifecycleProposals = new PluginLifecycleProposalService(
+    context.configLoader.getProjectHomeDir(),
+  );
   context.app.route(
     '/api/plugins',
     createPluginRoutes(
@@ -1745,8 +1754,20 @@ export function configureRuntimeRoutes(
             }
           },
         },
+        proposals: pluginLifecycleProposals,
       },
     ),
+  );
+  // #2323 S5: agent-authored plugin lifecycle asks. Its own family, not a
+  // `/api/plugins` leaf: `DELETE /api/plugins/:name` would otherwise own
+  // any path segment a proposal route used.
+  context.app.route(
+    '/api/plugin-proposals',
+    createPluginProposalRoutes({
+      proposals: pluginLifecycleProposals,
+      pluginsDir: join(context.configLoader.getProjectHomeDir(), 'plugins'),
+      logger: context.logger,
+    }),
   );
   context.app.route('/api/fs', createFsRoutes());
   context.app.route(

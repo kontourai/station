@@ -1,9 +1,11 @@
+import type { PluginLifecycleProposal } from '@kontourai/station-contracts/plugin';
 import { createPortal } from 'react-dom';
 import { FolderBrowserModal } from '../../components/modals/FolderBrowserModal';
 import {
   ResponsiveDialogSurface,
   ResponsiveSurfaceActions,
 } from '../../components/ResponsiveDialogSurface';
+import { describeProposalAuthor } from '../../utils/pluginProposal';
 import { InstallPluginModal } from './InstallPluginModal';
 import { InstallPreviewModal } from './InstallPreviewModal';
 import { LayoutAssignmentModal } from './LayoutAssignmentModal';
@@ -41,7 +43,17 @@ export function PluginModalStack({
   onToggleProject,
   onCreateProject,
   onAddToProjects,
+  proposal = null,
+  updateConfirm = null,
+  onConfirmUpdate = () => undefined,
+  onCancelUpdate = () => undefined,
 }: {
+  /** #2323 S5: the agent proposal being completed, for provenance only. */
+  proposal?: PluginLifecycleProposal | null;
+  /** #2323 S5: an open update proposal awaiting the person's confirmation. */
+  updateConfirm?: PluginLifecycleProposal | null;
+  onConfirmUpdate?: () => void;
+  onCancelUpdate?: () => void;
   showInstallModal: boolean;
   showFolderPicker: boolean;
   previewData: PreviewData | null;
@@ -112,6 +124,11 @@ export function PluginModalStack({
           onBrowse={onBrowse}
           onInstall={onInstall}
           onClose={onCloseInstall}
+          proposalNote={
+            proposal?.kind === 'install'
+              ? `${describeProposalAuthor(proposal.author)}: ${proposal.rationale}`
+              : undefined
+          }
         />
       )}
 
@@ -147,6 +164,7 @@ export function PluginModalStack({
           onClose={onClosePreview}
           onToggleSkip={onToggleSkip}
           onConfirm={onConfirmInstall}
+          proposal={proposal?.kind === 'install' ? proposal : null}
         />
       )}
 
@@ -181,6 +199,12 @@ export function PluginModalStack({
               ? ' Its stored data and code versions will be retained.'
               : ' This cannot be undone.'}
           </p>
+          {proposal?.kind === 'remove' &&
+            proposal.pluginName === removeConfirm && (
+              <p data-testid="remove-plugin-proposal">
+                {describeProposalAuthor(proposal.author)}: {proposal.rationale}
+              </p>
+            )}
           <ResponsiveSurfaceActions className="plugins__confirm-actions">
             <button
               type="button"
@@ -195,6 +219,42 @@ export function PluginModalStack({
               onClick={() => onConfirmRemove(removeConfirm)}
             >
               Remove
+            </button>
+          </ResponsiveSurfaceActions>
+        </ResponsiveDialogSurface>
+      )}
+
+      {updateConfirm && (
+        <ResponsiveDialogSurface
+          layer="dialog"
+          onClose={onCancelUpdate}
+          ariaLabelledBy="update-plugin-title"
+          overlayClassName="plugins__confirm-overlay"
+          panelClassName="plugins__confirm"
+        >
+          <h3 id="update-plugin-title">Update Plugin</h3>
+          <p>
+            Update &ldquo;{updateConfirm.pluginName}&rdquo;? Station pulls the
+            plugin&rsquo;s latest code from its source.
+          </p>
+          <p data-testid="update-plugin-proposal">
+            {describeProposalAuthor(updateConfirm.author)}:{' '}
+            {updateConfirm.rationale}
+          </p>
+          <ResponsiveSurfaceActions className="plugins__confirm-actions">
+            <button
+              type="button"
+              className="plugins__confirm-cancel"
+              onClick={onCancelUpdate}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="plugins__install-btn"
+              onClick={onConfirmUpdate}
+            >
+              Update
             </button>
           </ResponsiveSurfaceActions>
         </ResponsiveDialogSurface>

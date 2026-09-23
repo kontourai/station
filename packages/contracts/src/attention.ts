@@ -391,8 +391,42 @@ export interface GateReviewAttentionItem extends AttentionItemBase {
   openHref: string;
 }
 
+/**
+ * #2323 S5: an agent asked a person to install, update or remove a plugin.
+ * Station's agent tools cannot perform those changes (the routes refuse
+ * their caller class), so this row is where the ask lands.
+ *
+ * Projected from the open records of the plugin lifecycle proposal store, so
+ * completing the change through Plugins, or dismissing the proposal, stops
+ * it projecting on the next read. The item carries NO decision authority:
+ * `openHref` opens Plugins with the ordinary preview → consent → install
+ * flow (or the ordinary update / remove confirmation), and the person's
+ * answer there is the decision.
+ */
+export interface PluginLifecycleProposalAttentionItem
+  extends AttentionItemBase {
+  kind: 'plugin-lifecycle-proposal';
+  source: { proposalId: string };
+  proposalKind: 'install' | 'update' | 'remove';
+  /** Install: the proposed source. Update/remove: absent. */
+  pluginSource?: string;
+  /** Update/remove: the installed plugin's name. Install: absent. */
+  pluginName?: string;
+  /**
+   * The proposal's recorded author: `principal` is server-derived; the agent
+   * and conversation are the tool call's report (display provenance only).
+   */
+  author: {
+    principal: 'agent' | 'person';
+    agentSlug?: string;
+    conversationId?: string;
+  };
+  openHref: string;
+}
+
 export type AttentionItem =
   | ApprovalAttentionItem
+  | PluginLifecycleProposalAttentionItem
   | SetupIncompleteAttentionItem
   | NeedsInputAttentionItem
   | ReviewPendingAttentionItem
@@ -453,7 +487,12 @@ export function isStandingAttentionKind(kind: AttentionItem['kind']): boolean {
  */
 export const DECISION_RESOLVED_ATTENTION_KINDS: ReadonlySet<
   AttentionItem['kind']
-> = new Set<AttentionItem['kind']>(['proposed-change', 'gate-review']);
+> = new Set<AttentionItem['kind']>([
+  'proposed-change',
+  'gate-review',
+  // #2323 S5: resolved by completing the change or dismissing the proposal.
+  'plugin-lifecycle-proposal',
+]);
 
 /**
  * Whether this item can be acknowledged away — the ONE predicate the server's

@@ -1126,6 +1126,21 @@ describe('pairing-route-scopes: table-driven lookups', () => {
     );
   });
 
+  test('#2323 S5: plugin proposals read on the read tier and are created or dismissed on the operate tier', () => {
+    expect(requiredPairingScope('GET', '/api/plugin-proposals')).toBe(
+      'orchestration:read',
+    );
+    expect(requiredPairingScope('GET', '/api/plugin-proposals/p1')).toBe(
+      'orchestration:read',
+    );
+    expect(requiredPairingScope('POST', '/api/plugin-proposals')).toBe(
+      'orchestration:operate',
+    );
+    expect(
+      requiredPairingScope('POST', '/api/plugin-proposals/p1/dismiss'),
+    ).toBe('orchestration:operate');
+  });
+
   test('#2323 S1: plugin validation is not a read-tier route, because its body names a host path', () => {
     // Validation installs nothing, which reads like a case for the read
     // tier. It is not one: the caller supplies an arbitrary host path whose

@@ -13,6 +13,17 @@ function invalidatePluginQueries(
   queryClient.invalidateQueries({ queryKey: ['plugin-updates'] });
 }
 
+/**
+ * #2323 S5: completing or dismissing a proposal removes an attention row, so
+ * a lifecycle change that named one refreshes the inbox as well as Plugins.
+ */
+function invalidatePluginProposalQueries(
+  queryClient: ReturnType<typeof useQueryClient>,
+) {
+  queryClient.invalidateQueries({ queryKey: ['plugin-proposals'] });
+  queryClient.invalidateQueries({ queryKey: ['attention'] });
+}
+
 function invalidatePluginGraphQueries(
   queryClient: ReturnType<typeof useQueryClient>,
 ) {
@@ -57,12 +68,15 @@ export function usePluginInstallMutation() {
       consent,
       dataPolicy,
       expectedInstallation,
+      proposalId,
     }: {
       source: string;
       skip?: string[];
       consent: PluginInstallConsent;
       dataPolicy?: 'preserve' | 'retain-and-reset';
       expectedInstallation?: PluginInstallationRevision | null;
+      /** #2323 S5: the proposal this install completes, if any. */
+      proposalId?: string;
     }): Promise<PluginInstallResult> => {
       const apiBase = await _getApiBase();
       const response = await authenticatedFetch(
@@ -76,6 +90,7 @@ export function usePluginInstallMutation() {
             consent,
             dataPolicy,
             expectedInstallation,
+            ...(proposalId ? { proposalId } : {}),
           }),
         },
       );
@@ -84,9 +99,10 @@ export function usePluginInstallMutation() {
         throw new Error(apiErrorMessage(result, 'Install failed'));
       return result;
     },
-    onSuccess: () => {
+    onSuccess: (_result, variables) => {
       invalidatePluginQueries(queryClient);
       invalidatePluginGraphQueries(queryClient);
+      if (variables.proposalId) invalidatePluginProposalQueries(queryClient);
     },
   });
 }
@@ -133,13 +149,34 @@ export function usePluginRegistryPreviewMutation() {
   });
 }
 
+/**
+ * A plugin name, or (#2323 S5) a name with the proposal the change
+ * completes. The plain string form is unchanged for every existing caller.
+ */
+export type PluginLifecycleTarget =
+  | string
+  | { name: string; proposalId?: string };
+
+export function pluginLifecycleTargetName(
+  target: PluginLifecycleTarget,
+): string {
+  return typeof target === 'string' ? target : target.name;
+}
+
+function proposalQuery(target: PluginLifecycleTarget): string {
+  return typeof target === 'string' || !target.proposalId
+    ? ''
+    : `?proposalId=${encodeURIComponent(target.proposalId)}`;
+}
+
 export function usePluginUpdateMutation() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (name: string) => {
+    mutationFn: async (target: PluginLifecycleTarget) => {
+      const name = pluginLifecycleTargetName(target);
       const apiBase = await _getApiBase();
       const response = await authenticatedFetch(
-        `${apiBase}/api/plugins/${encodeURIComponent(name)}/update`,
+        `${apiBase}/api/plugins/${encodeURIComponent(name)}/update${proposalQuery(target)}`,
         { method: 'POST' },
       );
       const result = await response.json();
@@ -147,8 +184,10 @@ export function usePluginUpdateMutation() {
         throw new Error(apiErrorMessage(result, 'Update failed'));
       return result;
     },
-    onSuccess: () => {
+    onSuccess: (_result, target) => {
       invalidatePluginQueries(queryClient);
+      if (typeof target !== 'string' && target.proposalId)
+        invalidatePluginProposalQueries(queryClient);
     },
   });
 }
@@ -156,10 +195,11 @@ export function usePluginUpdateMutation() {
 export function usePluginRemoveMutation() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (name: string) => {
+    mutationFn: async (target: PluginLifecycleTarget) => {
+      const name = pluginLifecycleTargetName(target);
       const apiBase = await _getApiBase();
       const response = await authenticatedFetch(
-        `${apiBase}/api/plugins/${encodeURIComponent(name)}`,
+        `${apiBase}/api/plugins/${encodeURIComponent(name)}${proposalQuery(target)}`,
         { method: 'DELETE' },
       );
       const result = await response.json();
@@ -167,10 +207,32 @@ export function usePluginRemoveMutation() {
         throw new Error(apiErrorMessage(result, 'Remove failed'));
       return result;
     },
-    onSuccess: () => {
+    onSuccess: (_result, target) => {
       queryClient.invalidateQueries({ queryKey: ['plugins'] });
       queryClient.invalidateQueries({ queryKey: ['layouts'] });
+      if (typeof target !== 'string' && target.proposalId)
+        invalidatePluginProposalQueries(queryClient);
     },
+  });
+}
+
+/** #2323 S5: close a plugin lifecycle proposal without acting on it. */
+export function useDismissPluginLifecycleProposalMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const apiBase = await _getApiBase();
+      const response = await authenticatedFetch(
+        `${apiBase}/api/plugin-proposals/${encodeURIComponent(id)}/dismiss`,
+        { method: 'POST' },
+      );
+      const result = await response.json();
+      if (!result.success)
+        throw new Error(apiErrorMessage(result, 'Dismiss failed'));
+      return result as { success: true };
+    },
+    onSuccess: () => invalidatePluginProposalQueries(queryClient),
+    retry: false,
   });
 }
 
