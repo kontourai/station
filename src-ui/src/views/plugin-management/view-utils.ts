@@ -184,7 +184,8 @@ export interface ReinstallPermissionChange {
  *
  * "Code" compares the preview's digest with the source digest the
  * installation recorded; with no recorded digest it is `unknown`, never
- * `unchanged`. A preview that reported no permissions has no permission
+ * `unchanged`. A dependency the install would add, reported with no
+ * permissions, is listed as unknown. A preview that reported no permissions has no permission
  * delta (`null`), rather than one claiming every grant was dropped.
  */
 export function reinstallDelta(
@@ -197,6 +198,11 @@ export function reinstallDelta(
   permissions: {
     added: ReinstallPermissionChange[];
     removed: ReinstallPermissionChange[];
+    /**
+     * Dependencies the install would add whose permissions the preview did
+     * not report. Their permissions are unknown here, never "no change".
+     */
+    unknownDependencies: string[];
   } | null;
   code: 'changed' | 'unchanged' | 'unknown';
 } {
@@ -213,7 +219,12 @@ export function reinstallDelta(
     .filter((entry) => !granted.has(entry))
     .sort()
     .map((permission) => ({ permission }));
+  const unknownDependencies: string[] = [];
   for (const dependency of preview.dependencies ?? []) {
+    if (!dependency.consent && dependency.status !== 'installed') {
+      unknownDependencies.push(dependency.id);
+      continue;
+    }
     const held = new Set(installed.installedGrants[dependency.id] ?? []);
     for (const permission of [
       ...new Set(dependency.consent?.permissions ?? []),
@@ -228,6 +239,7 @@ export function reinstallDelta(
         .filter((entry) => !required.has(entry))
         .sort()
         .map((permission) => ({ permission })),
+      unknownDependencies,
     },
     code,
   };

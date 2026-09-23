@@ -23,7 +23,7 @@ import { observePluginTreeAsync } from '@kontourai/station-shared/plugin-tree-di
 
 /** The bounds of the in-place digest walk (#2323 S5 review M4). */
 export const LOCAL_SOURCE_DIGEST_MAX_ENTRIES = 5000;
-const LOCAL_SOURCE_DIGEST_MAX_BYTES = 64 * 1024 * 1024;
+export const LOCAL_SOURCE_DIGEST_MAX_BYTES = 64 * 1024 * 1024;
 const STAT_BATCH = 64;
 
 /**

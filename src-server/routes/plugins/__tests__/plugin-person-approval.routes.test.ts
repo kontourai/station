@@ -12,7 +12,13 @@
  * installer never being reached, not only by a status code.
  */
 
-import { mkdirSync, mkdtempSync, readdirSync, writeFileSync } from 'node:fs';
+import {
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  truncateSync,
+  writeFileSync,
+} from 'node:fs';
 import { rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -30,7 +36,10 @@ import {
 import type { EventBus } from '../../../services/orchestration/event-bus.js';
 import { PluginLifecycleProposalService } from '../../../services/plugins/plugin-lifecycle-proposals.js';
 import { attestProposalSourceContext } from '../../../services/plugins/plugin-proposal-provenance.js';
-import { LOCAL_SOURCE_DIGEST_MAX_ENTRIES as PROPOSAL_DIGEST_MAX_ENTRIES } from '../../../services/plugins/plugin-source-digest.js';
+import {
+  LOCAL_SOURCE_DIGEST_MAX_BYTES,
+  LOCAL_SOURCE_DIGEST_MAX_ENTRIES as PROPOSAL_DIGEST_MAX_ENTRIES,
+} from '../../../services/plugins/plugin-source-digest.js';
 import {
   getInternalApiToken,
   INTERNAL_API_TOKEN_HEADER,
@@ -828,6 +837,28 @@ describe('#2323 S5: the proposal digest is the preview digest', () => {
     );
     expect(proposal).not.toHaveProperty('proposedContentDigest');
     expect(proposal.proposedContentDigestUnavailable).toBe('too-large');
+  });
+
+  test('#2323 S4 review: a folder over the byte bound records too-large without a digest walk', async () => {
+    const { home, root } = makeHome();
+    const source = join(root, 'heavy-plugin');
+    writePlugin(source, 'heavy-plugin');
+    // Sparse: crosses the byte bound without writing the bytes.
+    const big = join(source, 'big.bin');
+    writeFileSync(big, '');
+    truncateSync(big, LOCAL_SOURCE_DIGEST_MAX_BYTES + 1);
+    const { request } = createHarness(home);
+    observeTree.mockClear();
+    const { proposal } = await readJson(
+      await request('internal', 'POST', '/api/plugin-proposals', {
+        kind: 'install',
+        source,
+        rationale: 'Heavy.',
+      }),
+    );
+    expect(proposal).not.toHaveProperty('proposedContentDigest');
+    expect(proposal.proposedContentDigestUnavailable).toBe('too-large');
+    expect(observeTree).not.toHaveBeenCalled();
   });
 
   test('review M4: a duplicate or capped proposal is answered before any digest walk', async () => {

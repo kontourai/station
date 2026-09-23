@@ -20,6 +20,7 @@ import {
   realpathSync,
   rmSync,
   symlinkSync,
+  truncateSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -40,7 +41,10 @@ import {
   LOCAL_SOURCE_STATUS_MAX_FOLDERS,
   observeLocalPluginSourceStatuses,
 } from '../../../services/plugins/plugin-local-source-status.js';
-import { LOCAL_SOURCE_DIGEST_MAX_ENTRIES } from '../../../services/plugins/plugin-source-digest.js';
+import {
+  LOCAL_SOURCE_DIGEST_MAX_BYTES,
+  LOCAL_SOURCE_DIGEST_MAX_ENTRIES,
+} from '../../../services/plugins/plugin-source-digest.js';
 import { registerPluginInstallRoutes } from '../plugin-install-routes.js';
 import { createPluginSourceStatusRoutes } from '../plugin-source-status-routes.js';
 
@@ -310,6 +314,20 @@ describe('#2323 S4 GET /api/plugin-sources', () => {
     expect(status).not.toHaveProperty('currentSourceDigest');
   });
 
+  test('a folder over the byte bound reads unknown / too-large without being digested', async () => {
+    const f = fixture();
+    await f.previewAndInstall(f.source);
+    // A sparse file: its size crosses the bound without writing the bytes.
+    const big = join(f.source, 'big.bin');
+    writeFileSync(big, '');
+    truncateSync(big, LOCAL_SOURCE_DIGEST_MAX_BYTES + 1);
+    observeTree.mockClear();
+    const [status] = await f.sources();
+    expect(status).toMatchObject({ status: 'unknown', reason: 'too-large' });
+    expect(status).not.toHaveProperty('currentSourceDigest');
+    expect(observeTree).not.toHaveBeenCalled();
+  });
+
   test('the body names plugins and Projects, never a host path', async () => {
     const f = fixture();
     await f.previewAndInstall(f.source);
@@ -447,6 +465,20 @@ describe('#2323 S4 review: the walk is bounded by folders, not by Projects', () 
     expect(walksOf(f.source)).toBe(1);
     // Nothing is cached once the walk settles: a later read walks again.
     await f.sources();
+    expect(walksOf(f.source)).toBe(2);
+  });
+
+  test('a walk that fails is not remembered: the next read walks again and succeeds', async () => {
+    const f = fixture();
+    await f.previewAndInstall(f.source);
+    observeTree.mockClear();
+    observeTree.mockImplementationOnce(async () => {
+      throw new Error('disk went away');
+    });
+    const failed = await f.statuses();
+    expect(failed.response.status).toBe(500);
+    const [status] = await f.sources();
+    expect(status).toMatchObject({ status: 'unchanged' });
     expect(walksOf(f.source)).toBe(2);
   });
 
