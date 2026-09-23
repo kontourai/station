@@ -270,17 +270,23 @@ describe('dispatchForeground target', () => {
       ).not.toHaveProperty('override');
     });
 
-    test('never outranks the session override already in the bag', async () => {
+    test('a pick travels as the message own setApprovalMode, never inside the options (#2436)', async () => {
+      // The server records the pick on receipt and it outranks the default
+      // channel there; the fallback stays what it is, a default.
       await dispatchForeground(
         baseInput({
           requestedModel: 'claude-sonnet-4-20250514',
-          requestedProviderOptions: { approvalMode: 'ask' },
+          requestedProviderOptions: { effort: 'high' },
           approvalModeFallback: 'never',
+          setApprovalMode: 'ask',
         }),
       );
 
       expect(dispatchedTarget()).toMatchObject({
-        model: { options: { approvalMode: 'ask' } },
+        model: { options: { effort: 'high', approvalMode: 'never' } },
+      });
+      expect(sendExecutionMessage.mock.calls[0]?.[1]).toMatchObject({
+        setApprovalMode: 'ask',
       });
     });
 

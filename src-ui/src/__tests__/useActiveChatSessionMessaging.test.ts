@@ -360,20 +360,20 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
       ).toMatchObject({ approvalMode: 'never' });
     });
 
-    it('lets the session override win over the Station default', async () => {
+    it('lets the session pick win over the Station default: it rides as setApprovalMode, and no default is sent (#2436)', async () => {
       stationAppConfig.current = { defaultApprovalMode: 'never' };
-      activeChatsStore.updateChat(sessionId, {
-        requestedProviderOptions: { approvalMode: 'ask' },
-      });
+      activeChatsStore.updateChat(sessionId, { queuedApprovalMode: 'ask' });
       const { result } = renderHook(() => useSendMessage('http://api.test'));
 
       await act(async () => {
         await result.current(sessionId, 'codex', undefined, 'go');
       });
 
-      expect(
-        sendExecutionMessageMock.mock.calls[0][1].target.model.options,
-      ).toMatchObject({ approvalMode: 'ask' });
+      const body = sendExecutionMessageMock.mock.calls[0][1];
+      expect(body.setApprovalMode).toBe('ask');
+      expect(body.target.model?.options ?? {}).not.toHaveProperty(
+        'approvalMode',
+      );
     });
 
     it("lets the connection's own default win over the Station default", async () => {
