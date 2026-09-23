@@ -324,12 +324,16 @@ describe('shared saved Station store', () => {
     expect(JSON.stringify(store)).not.toContain('credentialRef');
   });
 
-  test('a cold start waits for a live sibling genesis that takes longer than a second', async () => {
+  test('a cold start waits for a live sibling genesis that outlasts the old attempt budget', async () => {
     // The genesis winner publishes with two fsyncs. On a loaded runner that
     // outlasted the loser's old wait (100 naps of 10ms, about one second), so
     // the loser failed with "genesis is busy" and a healthy three-channel
-    // cold start went red. Hold a LIVE (not stale) genesis lock for 1.5s, the
+    // cold start went red. Hold a LIVE (not stale) genesis lock for 5s, the
     // way a slow winner would, and require the waiting channel to succeed.
+    // 5s because the attempt budget's length depended on the host: each nap
+    // also ran a stale-lock check, which is a /proc read on Linux (~1s total)
+    // but a `ps` spawn on macOS (~3s measured). 5s outlasts both and leaves
+    // 5s of the 10s wall-clock wait unused.
     const genesisLock = join(
       dirname(home),
       `.${basename(home)}.station-profile-store-genesis.json.lock`,
@@ -382,7 +386,7 @@ describe('shared saved Station store', () => {
     await expect
       .poll(() => existsSync(waiting), { timeout: 30_000 })
       .toBe(true);
-    await new Promise((resolve) => setTimeout(resolve, 1_500));
+    await new Promise((resolve) => setTimeout(resolve, 5_000));
     unlinkSync(genesisLock);
     const [status] = await exited;
     rmSync(waiting, { force: true });
