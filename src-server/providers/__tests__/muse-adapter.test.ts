@@ -2043,7 +2043,9 @@ describe('MuseAdapter owned-child registration', () => {
   test('retries the original survivor during forced stop and retains session ownership when termination remains unconfirmed', async () => {
     let terminationAttempts = 0;
     const harness = createHarness({
-      settledChildExitWaitMs: 20,
+      // Long on purpose: a refusal for an unconfirmed-stopped child must not
+      // wait for an exit nothing will produce (asserted below).
+      settledChildExitWaitMs: 60_000,
       // Termination that never confirms: the child is still alive afterwards.
       terminateProcess: async () => {
         terminationAttempts += 1;
@@ -2071,12 +2073,16 @@ describe('MuseAdapter owned-child registration', () => {
     // #2300 round 3: Station already failed to confirm this child stopped,
     // so nothing frees the slot on its own — a definitive pre-effect
     // refusal, never the retryable slot-releasing one.
-    const refusal = await harness.adapter
-      .sendTurn({ threadId: 'thread-survivor', input: 'again' })
-      .then(
-        () => undefined,
-        (error: unknown) => error,
-      );
+    const refusal = await Promise.race([
+      harness.adapter
+        .sendTurn({ threadId: 'thread-survivor', input: 'again' })
+        .then(
+          () => undefined,
+          (error: unknown) => error,
+        ),
+      new Promise((resolve) => setTimeout(() => resolve('still waiting'), 500)),
+    ]);
+    expect(refusal).not.toBe('still waiting');
     expect(refusal).toBeInstanceOf(SendTurnRefusedError);
     expect(refusal).not.toBeInstanceOf(MuseTurnSlotReleasingError);
     expect((refusal as Error).message).toContain('could not confirm');
