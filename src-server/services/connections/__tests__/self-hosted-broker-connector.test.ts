@@ -299,6 +299,42 @@ describe.runIf(process.platform !== 'win32')(
         await vi.waitFor(() => expect(cancelled).toHaveBeenCalledOnce());
       }
     });
+    test('retries a valid lease that appears expired until the local clock recovers', async () => {
+      let localNow = 30_001;
+      const request = vi.fn(async () =>
+        Response.json({ registeredAt: 1, revision: 0, expiresAt: 30_000 }),
+      );
+      const client = new SelfHostedBrokerClient(
+        'https://broker.example',
+        scope,
+        { id: 'credential-12345678', secret: 's'.repeat(43) },
+        request,
+        () => localNow,
+      );
+      await expect(
+        client.register(new AbortController().signal),
+      ).rejects.toBeInstanceOf(BrokerTransientRequestError);
+      localNow = 1_000;
+      await expect(
+        client.register(new AbortController().signal),
+      ).resolves.toMatchObject({ expiresAt: 30_000 });
+      expect(request).toHaveBeenCalledTimes(2);
+      const renewal = new SelfHostedBrokerClient(
+        'https://broker.example',
+        scope,
+        { id: 'credential-12345678', secret: 's'.repeat(43) },
+        async () => Response.json({ revision: 1, expiresAt: 30_000 }),
+        () => localNow,
+      );
+      localNow = 30_001;
+      await expect(
+        renewal.renew(0, new AbortController().signal),
+      ).rejects.toBeInstanceOf(BrokerTransientRequestError);
+      localNow = 1_000;
+      await expect(
+        renewal.renew(0, new AbortController().signal),
+      ).resolves.toMatchObject({ revision: 1, expiresAt: 30_000 });
+    });
     test('snapshots routing authority and combines caller cancellation with its request', async () => {
       const mutableScope = { ...scope };
       const mutableCredential = {

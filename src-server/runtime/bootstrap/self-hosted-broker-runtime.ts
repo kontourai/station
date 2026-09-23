@@ -265,10 +265,10 @@ export class SelfHostedBrokerRuntime {
         if (this.#abort.signal.aborted) throw error;
         if (!(error instanceof BrokerTransientRequestError)) throw error;
         this.#reportReconnecting(phase, 'transient_request');
-        // Before the first successful registration there is no trusted lease
-        // deadline. Keep startup attempts finite instead of retrying forever.
+        // An optional connector must recover when a transient startup outage
+        // clears. With no lease yet, retries remain bounded by cancellation
+        // and backoff rather than an arbitrary attempt count.
         attempts++;
-        if (expiry === undefined && attempts >= 3) throw error;
         await this.#retryWait(attempts, expiry);
       }
     }
