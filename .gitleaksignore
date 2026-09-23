@@ -10,3 +10,7 @@ d23831f8a93620c2266ba9851043a256eaf7f17a:packages/cli/src/commands/delegate.ts:g
 # A test sentinel string (asserted absent from validate responses), not a credential.
 # Renamed in the next commit; this pins only that historical location.
 94b245af0e00bcd41b8688ae89c4735ffdf2053e:src-server/routes/plugins/__tests__/plugin-validate-routes.test.ts:generic-api-key:466
+# A PEM header fixture ("-----BEGIN OPENSSH PRIVATE KEY-----" with body "abc") in
+# a secret-detector test from the withdrawn plugin-publish slice (#2374). The
+# slice was reverted, but its commit remains in this branch's history.
+9a03386390acaffb06db1584939917a232872b30:src-server/services/projects/__tests__/plugin-publish-guards.test.ts:private-key:121
