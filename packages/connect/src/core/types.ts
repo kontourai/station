@@ -238,6 +238,16 @@ export type ConnectionFailureReason =
    */
   | 'undetermined'
   /**
+   * station#2327 — the Station has requests from this device waiting in line
+   * and did not give the health check a turn in time. Reached two ways: the
+   * desktop broker refused a request because its per-Station queue was full
+   * (`transport_capacity`), or the probe's public handshake ANSWERED and the
+   * authenticated identity read that follows it then timed out. Neither is a
+   * network claim — the second proves the address answered seconds earlier —
+   * so it must not read as "Can't connect". Transient; never a decision.
+   */
+  | 'busy'
+  /**
    * station#1713 — a healthy host that is simply waiting on a human to
    * approve this device (a native Station mid-authorization, or an access
    * request nothing has confirmed yet). Deliberately excluded from

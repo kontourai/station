@@ -9,6 +9,11 @@ export interface CodingChatContextDraft {
   title: string;
   description: string;
   items: CodingChatContextItem[];
+  /**
+   * `verbatim` places the selected items' text in the composer as written
+   * (a prepared prompt). The default frames them as coding context.
+   */
+  framing?: 'coding-context' | 'verbatim';
 }
 
 export function buildCodingChatContextDraft({
@@ -68,9 +73,13 @@ export function buildCodingChatContextDraft({
 
 export function buildCodingChatInitialMessage(
   items: CodingChatContextItem[],
+  framing: CodingChatContextDraft['framing'] = 'coding-context',
 ): string {
   if (items.length === 0) {
     return '';
+  }
+  if (framing === 'verbatim') {
+    return items.map((item) => item.messageLine).join('\n\n');
   }
 
   return [

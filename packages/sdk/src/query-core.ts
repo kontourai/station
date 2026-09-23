@@ -147,8 +147,15 @@ export function useApiQuery<T = any>(
       ? {}
       : { refetchOnMount: config.refetchOnMount }),
     refetchInterval: config?.refetchInterval,
-    retry: config?.retry,
-    retryDelay: config?.retryDelay,
+    // station#2327: only when the caller chose one. query-core merges
+    // `{ ...defaults, ...options }`, so an explicit `retry: undefined` erased
+    // the QueryClient's own default and its retryer fell back to THREE
+    // retries — every unconfigured read quadrupled its traffic against a
+    // Station that was already failing to answer.
+    ...(config?.retry === undefined ? {} : { retry: config.retry }),
+    ...(config?.retryDelay === undefined
+      ? {}
+      : { retryDelay: config.retryDelay }),
     placeholderData: config?.keepPreviousData ? keepPreviousData : undefined,
   });
 

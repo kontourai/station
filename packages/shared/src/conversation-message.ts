@@ -74,6 +74,22 @@ export interface MessagePart {
   needsApproval?: boolean;
   approvalId?: string;
   /**
+   * #2316: the execution session (`threadId`) of the `request.opened` that set
+   * `approvalId`. A request id is only meaningful to the adapter session that
+   * minted it, so the inline approval card answers through orchestration
+   * `respondToRequest` on exactly this thread — never the chat tab's id, which
+   * names a conversation, not the child session holding the request. Set only
+   * by `runtime-event-projection.ts`, only next to `approvalId`.
+   */
+  approvalThreadId?: string;
+  /**
+   * #2316: the `eventId` of that `request.opened`. The card sends it as the
+   * respond command's `expectedRequestEventId`, so the server answers only the
+   * exact prompt the user saw (and verifies it is still open and answerable).
+   * Set only next to `approvalThreadId`.
+   */
+  approvalEventId?: string;
+  /**
    * station#3117: `'policy-denied'` is set only from the runtime event's own
    * `policyDenied` marker (see `runtime-event-projection.ts`'s `tool.completed`
    * case) — never inferred from `state === 'error'` alone, so a rehydrated

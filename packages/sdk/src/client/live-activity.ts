@@ -14,8 +14,15 @@ export class LiveActivityProtocolError extends Error {
 
 export async function fetchLiveActivity(
   apiBase: string,
+  signal?: AbortSignal,
 ): Promise<LiveActivityProjection | undefined> {
-  const response = await authenticatedFetch(`${apiBase}/api/live-activity`);
+  // Spread, not `undefined`: `authenticatedFetch` preserves the caller's
+  // arity through to `fetch`, so a signal-less read still calls `fetch(url)`.
+  const init: [] | [RequestInit] = signal ? [{ signal }] : [];
+  const response = await authenticatedFetch(
+    `${apiBase}/api/live-activity`,
+    ...init,
+  );
   if (response.status === 404) return undefined;
   let body: unknown;
   try {

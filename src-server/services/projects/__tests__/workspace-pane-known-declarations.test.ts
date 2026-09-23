@@ -189,6 +189,13 @@ describe('known Workspace Pane declarations', () => {
           configuration: true,
         },
       },
+      // Epic #2323 S3: Plugin preview. Opening it runs nothing, so it carries
+      // no requirement beyond a Project.
+      {
+        rollout: 'available',
+        distribution: 'enabled',
+        context: { project: 'present' },
+      },
       {
         rollout: 'available',
         distribution: 'enabled',

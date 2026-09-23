@@ -531,8 +531,20 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
   },
   {
     pattern: 'scripts/orchestration-transfer-gate.mjs',
-    tests: ['scripts/__tests__/orchestration-transfer-gate.test.ts'],
+    tests: [
+      'scripts/__tests__/orchestration-transfer-gate.test.ts',
+      'scripts/__tests__/transfer-baselines.test.ts',
+    ],
     reason: 'exact-main transfer comparison gate',
+  },
+  {
+    pattern: 'scripts/lib/transfer-baselines.mjs',
+    tests: [
+      'scripts/__tests__/transfer-baselines.test.ts',
+      'scripts/__tests__/orchestration-transfer-gate.test.ts',
+      'scripts/__tests__/worktree-hygiene.test.ts',
+    ],
+    reason: 'transfer baseline naming, reuse, and pruning',
   },
   {
     pattern: 'scripts/check-prepush-orchestration-transfer.mjs',

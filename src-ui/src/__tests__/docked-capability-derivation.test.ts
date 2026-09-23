@@ -73,6 +73,7 @@ const EXPECTED_BUILTIN_DESCRIPTOR_EXPORTS = [
   '@kontourai/station-contracts:WORKSPACE_HOME_PANE_DESCRIPTOR',
   '@kontourai/station-contracts:WORKSPACE_LAYOUT_PANE_DESCRIPTOR',
   '@kontourai/station-contracts:WORKSPACE_PLAN_PANE_DESCRIPTOR',
+  '@kontourai/station-contracts:WORKSPACE_PLUGIN_DRAFT_PANE_DESCRIPTOR',
   '@kontourai/station-contracts:WORKSPACE_PULL_REQUEST_PANE_DESCRIPTOR',
   '@kontourai/station-contracts:WORKSPACE_READINESS_PANE_DESCRIPTOR',
   '@kontourai/station-contracts:WORKSPACE_SPATIAL_BOARD_PANE_DESCRIPTOR',

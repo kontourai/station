@@ -855,12 +855,13 @@ function buildProgram(
         // while reporting success.
         if (
           template !== undefined &&
+          template !== 'pane' &&
           template !== 'provider' &&
           template !== 'layout' &&
           template !== 'full'
         ) {
           console.error(
-            `Unknown plugin template "${template}"; expected provider, layout, or full.`,
+            `Unknown plugin template "${template}"; expected pane, full, provider, or layout.`,
           );
           process.exitCode = 1;
           break;
