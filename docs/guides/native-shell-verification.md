@@ -205,3 +205,21 @@ the normal shell log explains it.
 | Android/iOS startup recovery | No equivalent desktop readiness harness | Real device and a defined mobile recovery contract | **NOT_VERIFIED** |
 | In-shell hostile plugin IPC denial | Browser Playwright only | Tauri-WebView harness observing hostile IPC denial | **NOT_VERIFIED** (#2495) |
 | Renderer death, boot-crash reload cap, EPIPE | No implementation-level proof | Native kill/boot-crash/closed-pipe evidence and bounded recovery assertions | **NOT_VERIFIED** (#2006) |
+
+
+## Camera and microphone declarations
+
+The QR scanner and voice input use WebView media capture. Android's post-init
+bootstrap restores `CAMERA`, `RECORD_AUDIO`, and `MODIFY_AUDIO_SETTINGS`, with
+camera and microphone hardware optional. Check the packaged APK permission
+list; the tracked generated-project seed alone is not delivery evidence.
+
+iOS release channels use `src-desktop/Info.ios.plist` for camera, microphone,
+and local-network purpose strings; the Dev overlay retains equivalent strings.
+macOS channel plists carry the same purpose strings, and `Entitlements.plist`
+grants only camera and audio-input access under hardened runtime. The Nightly
+installer passes that file to the final signature and verifies both entitlements
+from the signed candidate before replacing the installed app.
+
+Declarations enable the OS prompt; they do not grant consent. Physical camera
+frames, microphone capture, and persistence still require runtime acceptance.

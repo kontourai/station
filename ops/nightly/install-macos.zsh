@@ -279,8 +279,16 @@ node "$build_root/ops/nightly/macos-embedded-signing.mjs" "$candidate" "$signing
 # The selective helper seals only reviewed embedded Mach-O code. The final
 # bundle seal adds hardened runtime and timestamp without treating every
 # resource as executable or replacing an entitlement contract.
-codesign --force --sign "$signing_identity" --options runtime --timestamp "$candidate"
+codesign --force --sign "$signing_identity" --options runtime --entitlements "$build_root/src-desktop/Entitlements.plist" --timestamp "$candidate"
 codesign --verify --deep --strict --verbose=2 "$candidate"
+signed_entitlements="$lock_root/candidate-entitlements.plist"
+codesign -d --entitlements - "$candidate" > "$signed_entitlements" 2>/dev/null
+for entitlement in com.apple.security.device.camera com.apple.security.device.audio-input; do
+  if [[ "$(/usr/libexec/PlistBuddy -c "Print :$entitlement" "$signed_entitlements")" != true ]]; then
+    print -u2 "Nightly is missing its signed $entitlement entitlement; refusing the atomic swap."
+    exit 1
+  fi
+done
 runtime_details="$(codesign -d --verbose=4 "$candidate" 2>&1)"
 if [[ "$runtime_details" != *'flags=0x10000(runtime)'* ]]; then
   print -u2 'Station Nightly signing did not enable the hardened runtime; refusing the atomic swap.'
