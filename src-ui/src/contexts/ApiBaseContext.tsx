@@ -17,6 +17,7 @@ import {
   _setApiBase,
   notifyCredentialChanged,
   setClientCredentialResolver,
+  setClientRawEgressPolicyResolver,
 } from '@kontourai/station-sdk';
 import type { ClientCredential } from '@kontourai/station-sdk/client';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
@@ -267,6 +268,24 @@ function StationCredentialBridge({ children }: { children: ReactNode }) {
   // children's layout effects, which let the first native request escape to
   // raw fetch and terminal-stop on 401 even though the keyring was healthy.
   useInsertionEffect(() => {
+    setClientRawEgressPolicyResolver(() => {
+      const evidence = captureCredentialEvidence();
+      if (!evidence) return undefined;
+      return {
+        kind: !profile.isTauri && evidence.brokerRoute ? 'broker' : 'direct',
+        apiBase: evidence.origin,
+        connectionId: evidence.connectionId,
+        activationEpoch: evidence.activationEpoch,
+        ...(!profile.isTauri
+          ? {
+              authorityKey:
+                requestAuthorityScopeFromCredentialEvidence(evidence)
+                  .authorityKey,
+            }
+          : {}),
+        isCurrent: () => isCredentialEvidenceCurrent(evidence),
+      };
+    });
     setClientCredentialResolver(async () => {
       // The resolver body runs when a request is ABOUT TO BE ISSUED, so this
       // ONE live read is the connection, address, credential and generation
@@ -422,6 +441,7 @@ function StationCredentialBridge({ children }: { children: ReactNode }) {
     );
     return () => {
       setClientCredentialResolver(undefined);
+      setClientRawEgressPolicyResolver(undefined);
       setNativePairingExchangeTransport(undefined);
     };
   }, [
@@ -533,6 +553,7 @@ export function useApiBase() {
   } = useConnections();
   return {
     apiBase,
+    connectionId: activeConnection?.id,
     setApiBase,
     resetToDefault,
     isCustom,

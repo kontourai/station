@@ -2424,6 +2424,25 @@ It is intentionally separate from `requestAuthority`: a valid authenticated
 recovery may advance credential generation while its host binding remains live.
 Ordinary unscoped SDK calls do not gain a host binding requirement.
 
+### Selected-route raw browser egress
+
+Browser hosts that have features using direct XHR, fetch or WebSocket outside
+the SDK transport can install `setClientRawEgressPolicyResolver` from the
+`@kontourai/station-sdk/client` entry. The resolver returns the current
+`ClientRawEgressPolicy`: `kind` is explicitly `direct` or `broker`, and the
+policy carries the selected API base, connection id, activation epoch and an
+`isCurrent()` check. `getClientRawEgressPolicy()` exposes that snapshot to
+host-owned features such as telemetry. Do not infer route kind from whether a
+transport callback is present.
+
+Call `assertClientRawEgressAllowed(apiBase, channel, expectedBinding)` directly
+before raw content dispatch and after any asynchronous setup. It throws
+`StationRawEgressUnavailableError` for a broker route and
+`StationRequestAuthorityError` when the captured connection or request scope
+has changed. Normal SDK requests continue through their configured transport;
+this guard exists for browser features that cannot use it. Clear the resolver
+when the host connection provider is disposed.
+
 ### Package host actions
 
 Import `useWorkspacePaneHostActionsQuery` and `useWorkspacePaneHostActionMutation`

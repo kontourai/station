@@ -645,6 +645,7 @@ export function useChatInput({
     sendBlockedReason,
   } = useComposerAttachments({
     apiBase,
+    requestScope: mentionRequestScope,
     ownerKey: sessionId ?? '',
     attachments,
     stages: attachmentStages,

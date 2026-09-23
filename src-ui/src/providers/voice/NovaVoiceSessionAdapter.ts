@@ -1,7 +1,10 @@
 import {
+  assertClientRawEgressAllowed,
   createVoiceSession,
   fetchVoicePort,
   ListenerManager,
+  StationRawEgressUnavailableError,
+  StationRequestAuthorityError,
   telemetry,
 } from '@kontourai/station-sdk';
 import {
@@ -53,6 +56,7 @@ type AuthGate = Pick<BrowserWebSocketAuthGate, 'open' | 'consume'>;
 
 export interface NovaVoiceSessionAdapterDependencies {
   readonly apiBase: string;
+  readonly connectionId?: string;
   readonly credentialProvider: WebSocketCredentialResolver;
   readonly pageHref: () => string;
   readonly createSocket: (url: string) => WebSocket;
@@ -83,9 +87,11 @@ export interface NovaVoiceSessionAdapterDependencies {
 export function createNovaVoiceSessionAdapterDependencies(
   apiBase: string,
   credentialProvider: WebSocketCredentialResolver,
+  connectionId?: string,
 ): NovaVoiceSessionAdapterDependencies {
   return {
     apiBase,
+    connectionId,
     credentialProvider,
     pageHref: () => window.location.href,
     createSocket: (url) => new WebSocket(url),
@@ -229,10 +235,22 @@ export class NovaVoiceSessionAdapter
     generation: number,
   ): Promise<VoiceSessionOperationResult> {
     try {
+      assertClientRawEgressAllowed(
+        this.dependencies.apiBase,
+        'voice',
+        this.dependencies.connectionId,
+      );
       const voicePort = await this.dependencies.fetchVoicePort(
         this.dependencies.apiBase,
       );
       if (!this.isCurrent(generation)) return this.unavailable('start');
+      // Port lookup is asynchronous; do not let a newly selected broker route
+      // inherit this direct WebSocket dispatch.
+      assertClientRawEgressAllowed(
+        this.dependencies.apiBase,
+        'voice',
+        this.dependencies.connectionId,
+      );
 
       const pageHref = this.dependencies.pageHref();
       const socket = this.dependencies.createSocket(
@@ -255,7 +273,25 @@ export class NovaVoiceSessionAdapter
           void this.fail(generation, 'Authentication failed', 'auth_failed'),
       );
 
-      socket.onopen = () => authGate.open(socket);
+      socket.onopen = () => {
+        try {
+          assertClientRawEgressAllowed(
+            this.dependencies.apiBase,
+            'voice',
+            this.dependencies.connectionId,
+          );
+        } catch (error) {
+          void this.fail(
+            generation,
+            error instanceof Error
+              ? error.message
+              : 'Voice is unavailable for the selected Station.',
+            'provider_failed',
+          );
+          return;
+        }
+        authGate.open(socket);
+      };
       socket.onmessage = (event) =>
         this.receiveMessage(generation, authGate, event);
       socket.onerror = () =>
@@ -276,7 +312,12 @@ export class NovaVoiceSessionAdapter
       return await new Promise<VoiceSessionOperationResult>((resolve) => {
         this.pendingStart = { generation, resolve };
       });
-    } catch {
+    } catch (error) {
+      if (
+        error instanceof StationRawEgressUnavailableError ||
+        error instanceof StationRequestAuthorityError
+      )
+        return this.unavailable('start', error.message);
       return this.fail(generation, 'Connection failed', 'provider_failed');
     }
   }
@@ -380,6 +421,22 @@ export class NovaVoiceSessionAdapter
     samples: Float32Array,
   ): void {
     if (!this.isCurrent(generation)) return;
+    try {
+      assertClientRawEgressAllowed(
+        this.dependencies.apiBase,
+        'voice',
+        this.dependencies.connectionId,
+      );
+    } catch (error) {
+      void this.fail(
+        generation,
+        error instanceof Error
+          ? error.message
+          : 'Voice is unavailable for the selected Station.',
+        'provider_failed',
+      );
+      return;
+    }
     let sum = 0;
     for (let index = 0; index < samples.length; index += 1) {
       sum += samples[index] * samples[index];
@@ -582,14 +639,13 @@ export class NovaVoiceSessionAdapter
     return { ok: true, snapshot };
   }
 
-  private unavailable(operation: 'start' | 'stop' | 'interrupt') {
+  private unavailable(
+    operation: 'start' | 'stop' | 'interrupt',
+    message = 'Voice session is no longer active.',
+  ) {
     return {
       ok: false as const,
-      error: new VoiceSessionError(
-        'unavailable',
-        'Voice session is no longer active.',
-        operation,
-      ),
+      error: new VoiceSessionError('unavailable', message, operation),
     };
   }
 

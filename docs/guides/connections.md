@@ -72,7 +72,11 @@ encrypted browser channel for the Station handshake and application requests;
 a missing grant, retired key or failed peer connection refuses instead of
 falling back to direct HTTP. This pilot uses local ICE host candidates. Remote
 TURN configuration, account/Device onboarding and native route selection are
-still separate work; the screen must not call a routing grant a login.
+still separate work; the screen must not call a routing grant a login. Browser
+broker routes also disable attachment staging uploads, interactive terminal
+WebSockets and Nova voice sockets for now: those features still require direct
+browser XHR, fetch or WebSocket access, so Station reports them unavailable
+before sending attachment bytes, upload grants, terminal input or voice audio.
 
 One broker can serve several Stations, and one Station can be reached through
 more than one route. A broker route belongs beneath the Station it reaches; it
