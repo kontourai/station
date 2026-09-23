@@ -118,7 +118,7 @@ it('clears the password while waiting for operator Device approval and cancels o
   expect((screen.getByLabelText('Password') as HTMLInputElement).value).toBe(
     '',
   );
-  fireEvent.click(screen.getByRole('button', { name: 'Close', exact: true }));
+  fireEvent.click(screen.getByRole('button', { name: /^Close$/ }));
   await waitFor(() => expect(mocks.signal?.aborted).toBe(true));
   expect(mocks.close).toHaveBeenCalledOnce();
 });
