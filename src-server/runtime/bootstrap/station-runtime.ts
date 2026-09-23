@@ -448,6 +448,7 @@ import {
   checkOllamaAvailability,
   getActiveRuntimeProjectSlug,
 } from './runtime-startup.js';
+import { readVerifiedPionApplicationRequest } from './self-hosted-broker-pion-runtime.js';
 import {
   BUILTIN_STATION_DOCS_TOOL_SERVER_ID,
   stationControlRuntimeIdentity,
@@ -3255,6 +3256,7 @@ export class StationRuntime {
     const virtualApplication = this.virtualApplicationConfiguration
       ? new VirtualApplicationIngress(
           this.virtualApplicationConfiguration.origin,
+          readVerifiedPionApplicationRequest,
         )
       : undefined;
     this.virtualApplication = virtualApplication;
@@ -3346,6 +3348,12 @@ export class StationRuntime {
         this.deploymentAuthentication,
         (credential) =>
           this.environmentSecurityService.identifyDevice(credential),
+        this.environmentSecurityService.devicePairing.resolvePendingRelayDevice.bind(
+          this.environmentSecurityService.devicePairing,
+        ),
+        this.environmentSecurityService.devicePairing.resolveActiveRelayEnrollmentDevice.bind(
+          this.environmentSecurityService.devicePairing,
+        ),
       );
     }
     if (!this.relayEnrollment) {

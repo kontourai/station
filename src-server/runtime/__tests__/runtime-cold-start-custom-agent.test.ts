@@ -555,6 +555,15 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
     journal.transition({
       enrollmentId,
       expectedStates: ['challenge'],
+      nextState: 'provider-creating',
+      patch: {
+        issuer: 'https://identity.example.test',
+        loginJti: 'L'.repeat(22),
+      },
+    });
+    journal.transition({
+      enrollmentId,
+      expectedStates: ['provider-creating'],
       nextState: 'provider-pending',
       patch: {
         providerSessionId: 'session-from-removed-provider',
