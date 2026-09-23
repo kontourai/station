@@ -498,7 +498,7 @@ function unknownSourceReason(
     case 'unreadable':
       return 'the folder could not be read.';
     case 'too-many-sources':
-      return 'too many Project folders are plugin sources to compare them all at once.';
+      return 'more Project folders are installed plugins’ sources than Station compares in one check, so this one was not compared.';
     case 'not-recorded':
       return 'the installation has no record of its source to compare with.';
     case 'source-path-not-absolute':

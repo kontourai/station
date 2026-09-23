@@ -59,10 +59,12 @@ export class PluginInstallationsUnavailableError extends Error {
 export const LOCAL_SOURCE_STATUS_MAX_FOLDERS = 16;
 
 /**
- * Walks in flight, by canonical folder, shared across requests: concurrent
- * status reads of one folder share one walk. Entries leave when the walk
- * settles, so nothing here is a cache; a later read walks again and sees
- * later edits.
+ * Walks in flight, by canonical folder, shared across requests: a read that
+ * starts while a walk of the same folder is in flight joins that walk, and
+ * so answers from the folder as that walk read it (an edit made after the
+ * walk began may be missed by the joiner). Entries leave when the walk
+ * settles, whether it resolves or rejects, so nothing here is a cache: a
+ * read that starts after a walk settles walks again.
  */
 const inFlightWalks = new Map<string, Promise<LocalSourceDigestObservation>>();
 

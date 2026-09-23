@@ -536,6 +536,18 @@ describe('#2323 S4 Reinstall from source on the plugin detail', () => {
     ).toBeNull();
   });
 
+  test('too-many-sources says the source was not compared, without suggesting a retry helps', () => {
+    renderWith({ ...status('unknown'), reason: 'too-many-sources' });
+    const note = screen.getByTestId('plugin-local-source-note').textContent;
+    expect(note).toContain(
+      'more Project folders are installed plugins’ sources than Station compares in one check, so this one was not compared.',
+    );
+    expect(note).not.toMatch(/at once|try again|retry/i);
+    expect(
+      screen.queryByRole('button', { name: 'Reinstall from source' }),
+    ).toBeNull();
+  });
+
   test('an unknown source says why Station cannot tell, and an unchanged one says nothing', () => {
     renderWith(status('unknown'));
     expect(

@@ -154,6 +154,31 @@ describe('#2323 S4 reinstall delta', () => {
     expect(screen.queryByTestId('reinstall-delta-removed')).toBeNull();
   });
 
+  test('a dependency the install would add with no reported permissions reads unknown, not "No permission changes"', () => {
+    renderModal(
+      preview({
+        contentDigest: 'sha256:installed',
+        permissions: {
+          required: ['navigation.dock', 'network.fetch'],
+          autoGranted: ['navigation.dock'],
+          pendingConsent: [],
+        },
+        dependencies: [
+          { id: 'mystery-lib', status: 'will-install' },
+          // An installed dependency with no consent block is unchanged.
+          { id: 'shared-lib', status: 'installed' },
+        ],
+      }),
+    );
+    expect(
+      screen.queryByTestId('reinstall-delta-permissions-unchanged'),
+    ).toBeNull();
+    const unknown = screen.getAllByTestId('reinstall-delta-dependency-unknown');
+    expect(unknown).toHaveLength(1);
+    expect(unknown[0]!.textContent).toContain('Dependency mystery-lib');
+    expect(unknown[0]!.textContent).toContain('did not report its');
+  });
+
   test('with no recorded installed digest the code comparison is unknown, never unchanged', () => {
     const { installedSourceDigest: _omitted, ...withoutDigest } = reinstall;
     renderModal(preview(), withoutDigest);

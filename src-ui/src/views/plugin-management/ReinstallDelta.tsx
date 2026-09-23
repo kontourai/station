@@ -34,7 +34,9 @@ export function ReinstallDelta({
             : 'Station has no record of the installed code to compare with.'}
       </p>
       {delta.permissions === null ? null : delta.permissions.added.length ===
-          0 && delta.permissions.removed.length === 0 ? (
+          0 &&
+        delta.permissions.removed.length === 0 &&
+        delta.permissions.unknownDependencies.length === 0 ? (
         <p data-testid="reinstall-delta-permissions-unchanged">
           No permission changes.
         </p>
@@ -50,6 +52,13 @@ export function ReinstallDelta({
             permissions={delta.permissions.removed}
             testId="reinstall-delta-removed"
           />
+          {delta.permissions.unknownDependencies.map((id) => (
+            <p key={id} data-testid="reinstall-delta-dependency-unknown">
+              Dependency {id} will be installed, and Station did not report its
+              permissions, so this list cannot say what it will be allowed to
+              do.
+            </p>
+          ))}
         </>
       )}
     </div>
