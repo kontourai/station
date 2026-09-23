@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -495,6 +495,194 @@ describe('Device-bound continuation persistence and negative admission', () => {
         )
       ).kind,
     ).toBe('authenticated');
+  });
+
+  test('reauthentication after continuation expiry keeps the exact adoption link through restart and alias revocation', async () => {
+    const h = await harness();
+    const login = await h.accounts().service.handle(
+      new Request(`${origin}/api/account-auth/sign-in/username`, {
+        method: 'POST',
+        headers: { Origin: origin, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: 'alice', password: h.password }),
+      }),
+      '/sign-in/username',
+    );
+    const accountCookie = login.headers.getSetCookie()[0]!.split(';')[0]!;
+    h.setBrowserCookieJar(
+      `__Host-station-device=${h.device.credential}; ${accountCookie}`,
+    );
+    const firstKey = await createApplicationSessionKey();
+    const secondKey = await createApplicationSessionKey();
+    const firstAdopter = new ApplicationSessionClient(
+      origin,
+      stationId,
+      origin,
+      {},
+      firstKey,
+    );
+    const secondAdopter = new ApplicationSessionClient(
+      origin,
+      stationId,
+      origin,
+      {},
+      secondKey,
+    );
+    const first = await firstAdopter.adoptCookies();
+    const second = await secondAdopter.adoptCookies();
+    expect(first.continuation.deviceId).toBe(h.device.device.id);
+    expect(second.continuation.deviceId).toBe(first.continuation.deviceId);
+
+    const firstRelay = new ApplicationSessionClient(
+      origin,
+      stationId,
+      origin,
+      {
+        credential: first.aliasCredential,
+        credentialOrigin: origin,
+        headers: { Cookie: accountCookie },
+      },
+      firstKey,
+    );
+    const secondRelay = new ApplicationSessionClient(
+      origin,
+      stationId,
+      origin,
+      {
+        credential: second.aliasCredential,
+        credentialOrigin: origin,
+        headers: { Cookie: accountCookie },
+      },
+      secondKey,
+    );
+    const resourceHeaders = async (
+      client: ApplicationSessionClient,
+      continuation: Awaited<ReturnType<ApplicationSessionClient['establish']>>,
+      aliasCredential: string,
+    ) => ({
+      ...(await client.headers(continuation, {
+        method: 'GET',
+        url: `${origin}/resource`,
+      })),
+      Authorization: `Bearer ${aliasCredential}`,
+    });
+    expect(
+      (
+        await h.request('/resource', {
+          headers: await resourceHeaders(
+            firstRelay,
+            first.continuation,
+            first.aliasCredential,
+          ),
+        })
+      ).status,
+    ).toBe(200);
+    expect(
+      (
+        await h.request('/resource', {
+          headers: await resourceHeaders(
+            secondRelay,
+            second.continuation,
+            second.aliasCredential,
+          ),
+        })
+      ).status,
+    ).toBe(200);
+    expect(
+      (
+        await h.request('/resource', {
+          headers: {
+            ...(await resourceHeaders(
+              firstRelay,
+              first.continuation,
+              first.aliasCredential,
+            )),
+            Authorization: `Bearer ${second.aliasCredential}`,
+          },
+        })
+      ).status,
+    ).toBe(401);
+
+    const sessions = new DatabaseSync(
+      join(h.home, 'authentication', 'application-sessions.sqlite'),
+    );
+    const firstHash = createHash('sha256')
+      .update(first.continuation.credential)
+      .digest('base64url');
+    const expired = Date.now() - 1;
+    const session = sessions
+      .prepare('SELECT record FROM application_sessions WHERE token_hash=?')
+      .get(firstHash);
+    expect(typeof session?.record).toBe('string');
+    const record = JSON.parse(session!.record as string) as {
+      expiresAt: number;
+    };
+    record.expiresAt = expired;
+    expect(
+      sessions
+        .prepare(
+          'UPDATE application_sessions SET expires_at=?, record=? WHERE token_hash=?',
+        )
+        .run(expired, JSON.stringify(record), firstHash).changes,
+    ).toBe(1);
+    sessions.close();
+    expect(
+      (
+        await h.request('/resource', {
+          headers: await resourceHeaders(
+            firstRelay,
+            first.continuation,
+            first.aliasCredential,
+          ),
+        })
+      ).status,
+    ).toBe(401);
+
+    await h.restart();
+    const reauthenticated = await firstRelay.establish();
+    expect(reauthenticated).toMatchObject({
+      stationId,
+      deviceId: h.device.device.id,
+      principal: first.continuation.principal,
+    });
+    expect(
+      (
+        await h.request('/resource', {
+          headers: await resourceHeaders(
+            firstRelay,
+            reauthenticated,
+            first.aliasCredential,
+          ),
+        })
+      ).status,
+    ).toBe(200);
+
+    await firstRelay.revokeAlias(first.aliasCredential, reauthenticated);
+    expect(h.pairing.credentialAliasId(first.aliasCredential)).toBeUndefined();
+    await expect(firstRelay.establish()).rejects.toMatchObject({ status: 401 });
+    expect(h.pairing.credentialAliasId(second.aliasCredential)).toBe(
+      second.aliasId,
+    );
+    expect(h.pairing.verifyCredential(h.device.credential)).toBe(true);
+    expect(
+      (
+        await h.accounts().service.authenticate(
+          new Request(`${origin}/api/account-auth/session`, {
+            headers: { Cookie: accountCookie },
+          }),
+        )
+      ).kind,
+    ).toBe('authenticated');
+    expect(
+      (
+        await h.request('/resource', {
+          headers: await resourceHeaders(
+            secondRelay,
+            second.continuation,
+            second.aliasCredential,
+          ),
+        })
+      ).status,
+    ).toBe(200);
   });
 
   test('an alias continuation is bound to its exact alias and alias bearers alone are denied over HTTP and VAI', async () => {

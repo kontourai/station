@@ -13,6 +13,7 @@ import {
   browserLoginApplicationAccountAgain,
   browserReadAliasOnlyDirect,
   browserReadCookieAccountAndParent,
+  browserReauthenticateCookieAlias,
   browserRejectWrongBoundAccount,
   browserRenewApplicationAccount,
   browserRequestBoundApplicationDevice,
@@ -139,6 +140,12 @@ export async function runBrowserCookieAdoptionScenario(
   });
   assert.equal(aliasOnlyDirect.status, 401);
   await page.evaluate(browserSelectCookieAdoption, { index: 1 });
+  const reauthenticatedAlias = await page.evaluate(
+    browserReauthenticateCookieAlias,
+    { index: 1 },
+  );
+  assert.equal(reauthenticatedAlias.deviceId, first.deviceId);
+  assert.equal(reauthenticatedAlias.stationId, browserInput.stationId);
   const expectedAlias = (await page.evaluate(browserCookieAdoptionSecrets))[1]!;
   broker.setExpectedAliasCredential(expectedAlias);
   await page.route(`${apiBase}/**`, async (route) =>
@@ -239,6 +246,7 @@ export async function runBrowserCookieAdoptionScenario(
       proofHeader: vaiRead.proofHeader,
       aliasCredential: vaiRead.aliasCredential,
     },
+    sameOriginCookieReauthenticationPreservedAlias: true,
     aliasOnlyDirectStatus: aliasOnlyDirect.status,
     aliasOnlyRevocationPreservedParentAndAccount: true,
     aliasRevocationStatus: revokedAliasRead.status,

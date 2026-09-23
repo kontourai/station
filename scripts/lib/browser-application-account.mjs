@@ -361,6 +361,37 @@ export async function browserAdoptCookieSessions(input) {
   };
 }
 
+/** Reauthenticate an adopted alias through its existing same-origin HttpOnly provider cookie. */
+export async function browserReauthenticateCookieAlias(input) {
+  const state = window.stationCookieAdoptions?.[input.index];
+  if (!state) throw new Error('Missing cookie adoption');
+  const api = window.stationApplicationChannel;
+  const client = new api.ApplicationSessionClient(
+    state.input.apiBase,
+    state.continuation.stationId,
+    location.origin,
+    {
+      credential: state.aliasCredential,
+      credentialOrigin: state.input.apiBase,
+    },
+    state.key,
+  );
+  const continuation = await client.establish();
+  if (
+    continuation.stationId !== state.continuation.stationId ||
+    continuation.deviceId !== state.continuation.deviceId ||
+    continuation.principal.id !== state.continuation.principal.id
+  )
+    throw new Error('Cookie reauthentication changed adoption identity');
+  state.client = client;
+  state.continuation = continuation;
+  return {
+    stationId: continuation.stationId,
+    deviceId: continuation.deviceId,
+    principalId: continuation.principal.id,
+  };
+}
+
 export function browserSelectCookieAdoption(input) {
   const state = window.stationCookieAdoptions?.[input.index];
   const transport = window.stationBrokerLabTransport;

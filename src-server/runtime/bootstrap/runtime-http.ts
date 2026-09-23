@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import {
   ACCOUNT_AUTHENTICATION_FAILURE_HEADER,
+  APPLICATION_SESSION_BASE_PATH,
   APPLICATION_SESSION_HEADER,
   APPLICATION_SESSION_PROOF_HEADER,
 } from '@kontourai/station-contracts/application-session';
@@ -73,6 +74,11 @@ export const SECURE_DEVICE_SESSION_COOKIE = '__Host-station-device';
 export const LOOPBACK_DEVICE_SESSION_COOKIE = 'station-device';
 const DEVICE_CREDENTIAL_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 const SAFE_HTTP_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
+const ALIAS_SESSION_CONTROL_PATHS = new Set([
+  `${APPLICATION_SESSION_BASE_PATH}/challenge`,
+  `${APPLICATION_SESSION_BASE_PATH}/exchange`,
+  `${APPLICATION_SESSION_BASE_PATH}/login`,
+]);
 const RUNTIME_ROUTE_CAPABILITY_VAR = 'stationRuntimeRouteCapability';
 
 type RuntimeRouteLabeler = (path: string) => string;
@@ -676,10 +682,17 @@ function configureRuntimeSecurity(
       }));
     if (valid) {
       const aliasId = security.resolveCredentialAliasId?.(credential!);
+      const proofBoundContinuation =
+        c.req.raw.headers.has(APPLICATION_SESSION_HEADER) &&
+        c.req.raw.headers.has(APPLICATION_SESSION_PROOF_HEADER);
+      const aliasAccountControl =
+        accountOperation &&
+        c.req.method === 'POST' &&
+        ALIAS_SESSION_CONTROL_PATHS.has(c.req.path);
       if (
         aliasId !== undefined &&
-        (!c.req.raw.headers.has(APPLICATION_SESSION_HEADER) ||
-          !c.req.raw.headers.has(APPLICATION_SESSION_PROOF_HEADER) ||
+        !aliasAccountControl &&
+        (!proofBoundContinuation ||
           (!accountOperation &&
             security.deploymentAuthentication?.current(c.req.raw)?.kind !==
               'authenticated'))

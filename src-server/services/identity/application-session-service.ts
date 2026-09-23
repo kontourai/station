@@ -197,15 +197,18 @@ export class ApplicationSessionService {
       throw new ApplicationSessionRefusal('unsupported');
     const device = this.device(request);
     const aliasId = this.currentAliasId(request);
+    const adoptionId = this.activeAdoptionId(device.id, aliasId);
     const origin = this.origin(request);
     const parsed = publicKey.parse(key);
     await importJWK(parsed, 'ES256');
     const keyThumbprint = await calculateJwkThumbprint(parsed);
     this.device(request, device.id);
+    this.assertAdoptionBinding(device.id, aliasId, adoptionId);
     const challengeId = randomBytes(32).toString('base64url');
     const value: Challenge = {
       deviceId: device.id,
       ...(aliasId ? { aliasId } : {}),
+      ...(adoptionId ? { adoptionId } : {}),
       origin,
       key: parsed,
       keyThumbprint,
@@ -352,6 +355,11 @@ export class ApplicationSessionService {
       throw new ApplicationSessionRefusal('invalid');
     this.device(request, challenge.deviceId, current.principal.id);
     this.assertAlias(request, challenge.aliasId);
+    this.assertAdoptionBinding(
+      challenge.deviceId,
+      challenge.aliasId,
+      challenge.adoptionId,
+    );
     return this.issue(challenge, current);
   }
   async completeCookieAdoption(
@@ -916,6 +924,29 @@ export class ApplicationSessionService {
   }
   private assertAlias(request: Request, expected?: string): void {
     if (this.currentAliasId(request) !== expected)
+      throw new ApplicationSessionRefusal('invalid');
+  }
+  private activeAdoptionId(
+    deviceId: string,
+    aliasId?: string,
+  ): string | undefined {
+    if (!aliasId || !this.adoption) return undefined;
+    const row = this.db
+      .prepare(
+        "SELECT id FROM application_session_adoptions WHERE device_id=? AND alias_id=? AND state IN ('issued','active') AND expires_at>?",
+      )
+      .get(deviceId, aliasId, this.now());
+    if (row === undefined) return undefined;
+    if (typeof row.id !== 'string')
+      throw new ApplicationSessionRefusal('unavailable');
+    return row.id;
+  }
+  private assertAdoptionBinding(
+    deviceId: string,
+    aliasId: string | undefined,
+    expectedAdoptionId: string | undefined,
+  ): void {
+    if (this.activeAdoptionId(deviceId, aliasId) !== expectedAdoptionId)
       throw new ApplicationSessionRefusal('invalid');
   }
   private origin(request: Request): string {
