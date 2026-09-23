@@ -143,6 +143,7 @@ describe('macOS nightly lane', () => {
     expect(installer).toContain(
       'codesign --force --sign "$signing_identity" --options runtime --entitlements "$build_root/src-desktop/Entitlements.plist" --timestamp "$candidate"',
     );
+    expect(installer).toContain('codesign -d --entitlements :- "$candidate"');
     expect(installer).not.toContain(
       'codesign --force --deep --sign "$signing_identity" --options runtime',
     );
