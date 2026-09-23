@@ -202,6 +202,9 @@ interface GroupRunOptions {
   env: NodeJS.ProcessEnv;
   timeout?: number;
   maxBuffer?: number;
+  /** Written to the child's stdin, which is then closed. Without it the
+   * child's stdin is the null device. */
+  input?: Buffer | string;
 }
 
 type GroupRunError = Error & {
@@ -230,10 +233,20 @@ function runInProcessGroup(
         cwd: options.cwd,
         env: options.env,
         detached: OWN_PROCESS_GROUP,
-        stdio: ['ignore', 'pipe', 'pipe'],
+        stdio: [
+          options.input === undefined ? 'ignore' : 'pipe',
+          'pipe',
+          'pipe',
+        ],
         windowsHide: true,
       }),
     );
+    if (options.input !== undefined && child.stdin) {
+      // A child that exits without reading all of it closes the pipe; the
+      // exit status, not the write, is the command's outcome.
+      child.stdin.on('error', () => undefined);
+      child.stdin.end(options.input);
+    }
     const maxBuffer = options.maxBuffer ?? DEFAULT_MAX_BUFFER;
     // Collected as bytes, so `maxBuffer` bounds bytes (as execFile's does).
     const stdout: Buffer[] = [];
@@ -721,16 +734,18 @@ type Hardened<T> = T & { hardening?: GitHardeningOptions };
 
 /**
  * What `execGit` and `execGitContextCommand` honour. Deliberately narrow:
- * the process-group runner decodes output as UTF-8, has no stdin, and
- * stops a call only by its own deadline, so `encoding` other than UTF-8,
- * `input`, `killSignal` and an `AbortSignal` are not accepted rather than
- * silently ignored. `maxBuffer` bounds bytes on each of stdout and stderr.
+ * the process-group runner decodes output as UTF-8 and stops a call only by
+ * its own deadline, so `encoding` other than UTF-8, `killSignal` and an
+ * `AbortSignal` are not accepted rather than silently ignored. `maxBuffer`
+ * bounds bytes on each of stdout and stderr. `input` is written to stdin
+ * (only `execGit` accepts it); without it stdin is the null device.
  */
 export interface GitRunOptions {
   cwd?: string | URL;
   env?: NodeJS.ProcessEnv;
   timeout?: number;
   maxBuffer?: number;
+  input?: Buffer | string;
   encoding?: 'utf8' | 'utf-8';
   windowsHide?: boolean;
 }
@@ -755,6 +770,7 @@ export async function execGit(
     cwd: execOptions.cwd,
     timeout: execOptions.timeout,
     maxBuffer: execOptions.maxBuffer,
+    input: execOptions.input,
     env: appendConfigPairs(
       mergeEnv(
         hardenedGitEnv(execOptions.env, hardening),
@@ -781,7 +797,7 @@ export async function execGit(
 export async function execGitContextCommand(
   command: string,
   args: string[],
-  opts: Omit<GitRunOptions, 'cwd'> = {},
+  opts: Omit<GitRunOptions, 'cwd' | 'input'> = {},
 ): Promise<{ stdout: string; stderr: string }> {
   const neutral = await mkdtemp(join(tmpdir(), 'station-git-tool-'));
   try {
