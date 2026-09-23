@@ -117,6 +117,24 @@ export function gateReport({ changedPaths, baseSha }) {
   return lines.join('\n');
 }
 
+function addGuidanceRule(selected, rule, filePath) {
+  const existing = selected.get(rule.id);
+  if (existing) existing.paths.add(filePath);
+  else selected.set(rule.id, { rule, paths: new Set([filePath]) });
+}
+
+function guidanceLinesForRule({ rule, paths }) {
+  const lines = [
+    `  ${rule.id} (${rule.enforcementLevel}) — ${[...paths].join(', ')}`,
+    `    ${rule.summary}`,
+  ];
+  if (rule.evidenceCheckIds.length > 0)
+    lines.push(`    Evidence checks: ${rule.evidenceCheckIds.join(', ')}`);
+  for (const item of rule.mustDo) lines.push(`    Do: ${item}`);
+  for (const item of rule.mustNotDo) lines.push(`    Do not: ${item}`);
+  return lines;
+}
+
 /** Present the exact Veritas path guidance during Station's required pre-edit route. */
 export function veritasGuidanceForPaths(changedPaths, rootDir = process.cwd()) {
   if (changedPaths.length === 0)
@@ -133,26 +151,15 @@ export function veritasGuidanceForPaths(changedPaths, rootDir = process.cwd()) {
       repoStandards,
       filePath,
     });
-    for (const rule of guidance.rules) {
-      const existing = selected.get(rule.id);
-      if (existing) existing.paths.add(filePath);
-      else selected.set(rule.id, { rule, paths: new Set([filePath]) });
-    }
+    for (const rule of guidance.rules)
+      addGuidanceRule(selected, rule, filePath);
   }
   if (selected.size === 0)
     return 'Veritas guidance: no matching rules for these paths.';
-  const lines = ['Veritas guidance for the intended paths:'];
-  for (const { rule, paths } of selected.values()) {
-    lines.push(
-      `  ${rule.id} (${rule.enforcementLevel}) — ${[...paths].join(', ')}`,
-    );
-    lines.push(`    ${rule.summary}`);
-    if (rule.evidenceCheckIds.length > 0)
-      lines.push(`    Evidence checks: ${rule.evidenceCheckIds.join(', ')}`);
-    for (const item of rule.mustDo) lines.push(`    Do: ${item}`);
-    for (const item of rule.mustNotDo) lines.push(`    Do not: ${item}`);
-  }
-  return lines.join('\n');
+  return [
+    'Veritas guidance for the intended paths:',
+    ...[...selected.values()].flatMap(guidanceLinesForRule),
+  ].join('\n');
 }
 
 function writeBriefedReport(changedPaths, baseSha) {

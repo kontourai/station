@@ -13,6 +13,7 @@ import { resolve } from 'node:path';
 import { classifyNodes } from '@kontourai/veritas';
 import { describe, expect, it } from 'vitest';
 import {
+  codexPreEditHookFindings,
   findUnexecutableRoutedProofFamilyIds,
   runRepoGovernanceChecks,
 } from '../proof-family-lane.mjs';
@@ -192,6 +193,34 @@ describe('veritas repo map (1.5)', () => {
     expect(
       runtimePlan.evidenceChecks.map((check: { id: string }) => check.id),
     ).toContain('connected-agents');
+  });
+
+  it('keeps the installed Veritas edit hook singular and scoped while allowing other handlers', () => {
+    const installed = readJson('.codex/hooks.json');
+    expect(codexPreEditHookFindings(installed)).toEqual([]);
+    const withUserHandler = structuredClone(installed);
+    withUserHandler.hooks.PostToolUse = [
+      { hooks: [{ type: 'command', command: 'user-owned-hook' }] },
+    ];
+    expect(codexPreEditHookFindings(withUserHandler)).toEqual([]);
+
+    const duplicate = structuredClone(installed);
+    duplicate.hooks.PreToolUse.push(duplicate.hooks.PreToolUse[0]);
+    expect(codexPreEditHookFindings(duplicate)).toHaveLength(1);
+    expect(codexPreEditHookFindings({ hooks: {} })).toHaveLength(1);
+    expect(
+      runRepoGovernanceChecks({
+        codexHookConfig: duplicate,
+        routeErrorEgressCheck: () => [],
+      }),
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'veritas-codex-preedit-hook',
+          severity: 'block',
+        }),
+      ]),
+    );
   });
 
   it('keeps assertion-free proof families out of readiness routing', () => {

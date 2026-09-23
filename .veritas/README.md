@@ -56,11 +56,15 @@ one of their named files selects a focused Evidence Check through
 Their artifact checks still prove only presence. The remaining behavioral work and exit criteria live
 in [the issue-class prevention plan](../docs/plans/issue-class-prevention.md).
 Use `veritas explain --file <path>` before editing a routed seam.
-The pre-edit `gate:for` route presents matching guidance. The Veritas Governance
-Kit also declares a Codex `PreToolUse` hook, provisioned through Flow Agents
-and Conduit; Codex trust review and actual invocation require separate proof.
-Readiness remains required for edits outside the host hook's coverage. The plan
-records the installation and coverage contract.
+The pre-edit `gate:for` route presents matching guidance. Station's tracked
+`.codex/hooks.json` contains the Veritas Governance Kit's Codex `PreToolUse`
+hook, provisioned with Flow Agents 6.3.0 through Conduit 0.7.1 from Veritas
+v1.7.2. The required governance artifact rule rejects a missing hook file;
+`proof:repo-governance` rejects a missing, duplicated, or misplaced Veritas
+handler. A Conduit receipt proves installed bytes, while Codex project-hook
+trust and normal host execution require separate observation. Readiness remains
+required for edits outside the host hook's coverage. The plan records the
+installation and coverage contract.
 
 ## Brownfield Rule
 

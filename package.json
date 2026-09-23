@@ -296,7 +296,7 @@
     "@kontourai/ferry": "0.6.0",
     "@kontourai/fieldwork": "0.10.0",
     "@kontourai/flow": "5.1.1",
-    "@kontourai/flow-agents": "6.2.0",
+    "@kontourai/flow-agents": "6.3.0",
     "@kontourai/forage": "^0.7.0",
     "@kontourai/relay": "0.6.0",
     "@kontourai/station-basis-pane": "^0.3.0",

@@ -24,6 +24,9 @@ const repoStandardsPath = resolve(
   rootDir,
   '.veritas/repo-standards/default.repo-standards.json',
 );
+const CODEX_VERITAS_HOOK_COMMAND =
+  'npm exec -- veritas hooks codex pre-tool-use';
+const CODEX_VERITAS_HOOK_MATCHER = 'apply_patch|Edit|Write';
 const generatedEvidenceRoot = resolve(
   rootDir,
   '.kontourai/veritas/evidence/proof-families',
@@ -364,12 +367,62 @@ export function findingsForRepoGovernanceResult(ruleId, result) {
   return [safeGovernanceBlock(ruleId, GENERIC_POLICY_FAILURE_MESSAGE)];
 }
 
+export function codexPreEditHookFindings(config) {
+  const hooks = config?.hooks;
+  if (!hooks || typeof hooks !== 'object' || Array.isArray(hooks)) {
+    return ['.codex/hooks.json must declare a hooks object.'];
+  }
+  const matches = Object.entries(hooks).flatMap(([event, groups]) =>
+    Array.isArray(groups)
+      ? groups.flatMap((group) =>
+          Array.isArray(group?.hooks)
+            ? group.hooks
+                .filter(
+                  (handler) => handler?.command === CODEX_VERITAS_HOOK_COMMAND,
+                )
+                .map((handler) => ({ event, matcher: group.matcher, handler }))
+            : [],
+        )
+      : [],
+  );
+  if (
+    matches.length !== 1 ||
+    matches[0].event !== 'PreToolUse' ||
+    matches[0].matcher !== CODEX_VERITAS_HOOK_MATCHER ||
+    matches[0].handler.type !== 'command'
+  ) {
+    return [
+      '.codex/hooks.json must contain exactly one Veritas PreToolUse command for apply_patch, Edit, and Write.',
+    ];
+  }
+  return [];
+}
+
+function readInstalledCodexHooks() {
+  try {
+    return JSON.parse(
+      readFileSync(resolve(rootDir, '.codex/hooks.json'), 'utf8'),
+    );
+  } catch {
+    return null;
+  }
+}
+
 export function runRepoGovernanceChecks({
   routeErrorEgressCheck = () => collectRouteErrorEgressFindings({ rootDir }),
   repoMap = readJson(repoMapPath),
   proofFamilyManifest = readJson(manifestPath),
+  codexHookConfig = readInstalledCodexHooks(),
 } = {}) {
   const findings = [];
+
+  for (const message of codexPreEditHookFindings(codexHookConfig)) {
+    findings.push({
+      id: 'veritas-codex-preedit-hook',
+      message,
+      severity: 'block',
+    });
+  }
 
   for (const checkId of findUnexecutableRoutedProofFamilyIds(
     repoMap,

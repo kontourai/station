@@ -105,3 +105,15 @@ An installed hook config proves only the projected bytes. A host trust review
 and a real hook invocation are separate observations. The independent
 `veritas readiness` gate catches changes made through uncovered tools or
 sessions that never ran a pre-edit hook.
+
+On this branch, Flow Agents 6.3.0 installed the Veritas v1.7.2 Governance Kit
+from its Git tag and provisioned `.codex/hooks.json` through Conduit 0.7.1.
+The tracked config has one Veritas `PreToolUse` command; a repeated provision
+kept one command and the same receipt digest
+`sha256:0b4b8164d668905f799f658696343d1b34bf7570a81a336165eab50770443bb8`.
+An installed-command probe returned 2,269 guidance characters on the first
+matching edit and zero on a repeat while evaluating both edits; a pathless
+patch was denied. Station declares no strict Work Area boundary, so an
+untrusted actor's otherwise valid edit was advisory rather than denied.
+Normal Codex project-hook trust and UI status-message noise remain
+`NOT_VERIFIED` until the host's hook review and live invocation are observed.
