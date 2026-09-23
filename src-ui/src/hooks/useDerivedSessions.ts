@@ -291,6 +291,7 @@ function deriveSession(
     conversationActivity: chatState.conversationActivity,
     sendAwaitingTurnStart: chatState.sendAwaitingTurnStart,
     stopSettledTurnId: chatState.stopSettledTurnId,
+    queueDrainSettling: chatState.queueDrainSettling,
     orchestrationHistoryRevision: chatState.orchestrationHistoryRevision,
     projectSlug: chatState.projectSlug,
     projectName: chatState.projectName,

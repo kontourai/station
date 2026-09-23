@@ -322,6 +322,8 @@ export interface ChatSession {
   conversationActivity?: import('@kontourai/station-contracts/orchestration').ConversationTurnActivity;
   /** #2309: see ChatUIState.sendAwaitingTurnStart (active-chats-state.ts). */
   sendAwaitingTurnStart?: boolean;
+  /** #2309: see ChatUIState.queueDrainSettling (active-chats-state.ts). */
+  queueDrainSettling?: boolean;
   /** #2309: see ChatUIState.stopSettledTurnId (active-chats-state.ts). */
   stopSettledTurnId?: string;
   /** Incremented only when bounded persisted history must reconcile. */

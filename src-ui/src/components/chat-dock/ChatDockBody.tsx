@@ -44,6 +44,7 @@ import {
   formatChatErrorDisplay,
   translateChatError,
 } from '../../utils/chatErrorTranslation';
+import { queueSendNowOffered } from '../../utils/conversation-activity';
 import {
   elidedHistoryNoticeText,
   summarizeElidedReasons,
@@ -1016,7 +1017,18 @@ export function ChatDockBody({
                 apiBase,
                 activeSession.id,
                 true,
+                // #2309: an explicit request; not held back by the record.
+                true,
               ),
+            onSendNow: queueSendNowOffered(activeSession)
+              ? () =>
+                  drainQueuedMessageOnTurnCompleted(
+                    apiBase,
+                    activeSession.id,
+                    true,
+                    true,
+                  )
+              : undefined,
             canSteer:
               isExecutionActive &&
               !!activeSession.orchestrationProvider &&
