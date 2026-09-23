@@ -46,7 +46,7 @@ export function ReinstallDelta({
             testId="reinstall-delta-added"
           />
           <PermissionList
-            title="No longer requests"
+            title="Stops requesting"
             permissions={delta.permissions.removed}
             testId="reinstall-delta-removed"
           />
