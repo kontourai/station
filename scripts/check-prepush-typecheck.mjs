@@ -11,7 +11,7 @@
  * the bundle ceiling, the UI-contract ratchets and the SDK barrel.
  *
  * Unlike those three, this one is NOT seconds-scale. Measured end to end on
- * this host, preconditions included: 51s wall for all thirteen lanes, which
+ * this host, preconditions included: 51s wall for every lane, which
  * the aggregate runs with bounded concurrency (447% CPU) rather than in
  * sequence; station#4273 recorded 82s for the aggregate alone on a quieter
  * host. Either figure is an order of magnitude above everything else in the
@@ -68,6 +68,10 @@ const TYPECHECK_INPUT_FILES = Object.freeze([
   // verdict without changing a source file.
   'scripts/typecheck-aggregate.mjs',
   'scripts/lib/npm-lane-aggregate.mjs',
+  // Every lane compiles through the slot runner, which also chooses the
+  // incremental flags.
+  'scripts/tsc-slot.mjs',
+  'scripts/lib/typecheck-host-slots.mjs',
 ]);
 
 export const TYPECHECK_INPUT_PREFIXES = Object.freeze(['patches/']);
@@ -145,7 +149,7 @@ export const TYPECHECK_PREPUSH_COMMANDS = Object.freeze([
 
 /**
  * Stops at the first failing command and returns its status, so a broken
- * `build:connect` reports as a build failure instead of as thirteen lanes of
+ * `build:connect` reports as a build failure instead of as a dozen lanes of
  * `Cannot find module`. `spawn` is a parameter so the short-circuit is
  * provable without paying 82 seconds for the real aggregate.
  */
@@ -172,7 +176,7 @@ export const TYPECHECK_FAILURE_NOTE = [
   '',
   'FAIL: at least one `typecheck:*` lane did not pass, so this push is refused.',
   '',
-  'Every failing lane is named above; the aggregate runs all thirteen rather',
+  'Every failing lane is named above; the aggregate runs every lane rather',
   'than stopping at the first, so that list is complete. Reproduce exactly',
   'what the hook ran with:',
   '',
@@ -181,7 +185,7 @@ export const TYPECHECK_FAILURE_NOTE = [
   '  node scripts/typecheck-aggregate.mjs',
   '',
   'A single lane is faster to iterate on: `npm run typecheck:server-tests`',
-  'is the only one of the thirteen that needs no build.',
+  'is the only lane that needs no build.',
   '',
 ].join('\n');
 

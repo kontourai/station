@@ -70,11 +70,65 @@ export const DEFAULT_TTL_MS = 12 * 60 * 60 * 1000;
  * `session/new` payload — and a default would silently attribute one
  * channel's mints to the other on the one metric that can tell them apart.
  */
-type StationControlMcpTokenChannel = 'url-token' | 'http-header-token';
+export type StationControlMcpTokenChannel =
+  | 'url-token'
+  | 'http-header-token'
+  | 'stdio-env-token'
+  | 'sdk-in-process';
+
+/**
+ * Station #90 lane D: how much a token's presentation says about WHO
+ * presented it, derived from the channel it was minted for (recorded on the
+ * entry at mint, never supplied by the presenter).
+ *
+ * - `bound`: `sdk-in-process` only. The token never leaves Station's own
+ *   process (Claude's in-process station-control server), so presenting it
+ *   proves the call came through that session's MCP connection.
+ * - `delegated-custody`: `http-header-token`. Station hands the token to an
+ *   ACP agent app in `session/new` over a private pipe, but what the app does
+ *   with it next is the app's business: a third-party agent may write it to
+ *   its own config, argv or logs. Station cannot prove it stayed private.
+ * - `bearer-exposed`: the token sits in a spawned process's argv or env.
+ *   `url-token` is in Codex's `-c mcp_servers…url=` argv; `stdio-env-token`
+ *   is in a stdio child's env, which the Claude CLI copies into its own
+ *   `--mcp-config` argv. Any same-user process can read it with `ps`, so
+ *   presenting it proves possession, not session identity.
+ *
+ * Only `bound` may gate an action that must be attributable to the session
+ * (a session-scoped browser tool, an owned child session).
+ */
+export type StationControlCallerAssurance =
+  | 'bound'
+  | 'delegated-custody'
+  | 'bearer-exposed';
+
+export function stationControlTokenAssurance(
+  channel: StationControlMcpTokenChannel,
+): StationControlCallerAssurance {
+  switch (channel) {
+    case 'sdk-in-process':
+      return 'bound';
+    case 'http-header-token':
+      return 'delegated-custody';
+    case 'url-token':
+    case 'stdio-env-token':
+      return 'bearer-exposed';
+  }
+}
+
+/**
+ * The channels the `/mcp/station-control` HTTP endpoint accepts. A stdio
+ * env token or an in-process token presented there is refused: neither
+ * channel ever needs the endpoint, so a presentation there is a copied
+ * credential.
+ */
+export const STATION_CONTROL_MCP_HTTP_CHANNELS: readonly StationControlMcpTokenChannel[] =
+  ['url-token', 'http-header-token'];
 
 interface StationControlMcpTokenEntry {
   sessionId: string;
   expiresAt: number;
+  channel: StationControlMcpTokenChannel;
   tenantExecutionContext?: TenantExecutionContext;
 }
 
@@ -113,6 +167,7 @@ export function mintStationControlMcpToken(
   tokensByDigest.set(tokenDigest, {
     sessionId,
     expiresAt,
+    channel,
     ...(tenantExecutionContext ? { tenantExecutionContext } : {}),
   });
   digestBySession.set(sessionId, tokenDigest);
@@ -139,8 +194,35 @@ export function mintStationControlMcpToken(
  */
 export function verifyStationControlMcpToken(
   candidate: string | undefined | null,
+  options: { channels?: readonly StationControlMcpTokenChannel[] } = {},
 ):
   | { sessionId: string; tenantExecutionContext?: TenantExecutionContext }
+  | undefined {
+  const verified = verifyStationControlMcpTokenEntry(candidate);
+  if (!verified) return undefined;
+  if (options.channels && !options.channels.includes(verified.channel))
+    return undefined;
+  return {
+    sessionId: verified.sessionId,
+    ...(verified.tenantExecutionContext
+      ? { tenantExecutionContext: verified.tenantExecutionContext }
+      : {}),
+  };
+}
+
+/**
+ * As {@link verifyStationControlMcpToken}, plus the channel the token was
+ * minted for. Station #90 lane D: the caller derivation reads the channel
+ * to report `assurance`.
+ */
+export function verifyStationControlMcpTokenEntry(
+  candidate: string | undefined | null,
+):
+  | {
+      sessionId: string;
+      channel: StationControlMcpTokenChannel;
+      tenantExecutionContext?: TenantExecutionContext;
+    }
   | undefined {
   if (typeof candidate !== 'string' || candidate.length === 0) {
     return undefined;
@@ -163,6 +245,7 @@ export function verifyStationControlMcpToken(
       }
       return {
         sessionId: entry.sessionId,
+        channel: entry.channel,
         ...(entry.tenantExecutionContext
           ? { tenantExecutionContext: entry.tenantExecutionContext }
           : {}),
@@ -232,6 +315,31 @@ export function mintStationControlMcpHeaderAuth(
     tenantExecutionContext,
   );
   return { url: buildStationControlMcpHeaderUrl(port), token };
+}
+
+/**
+ * Station #90 lane D: the stdio channel's mint, for a per-session stdio
+ * station-control child. The child gets this token in its spawn env so its
+ * REST calls name a session (`STATION_CONTROL_CALLER_TOKEN_ENV`). Same
+ * per-session replacement, revocation and TTL as the HTTP channels.
+ *
+ * It is `bearer-exposed`: a child's env is readable by same-user processes,
+ * and the Claude CLI passes it in `--mcp-config` argv. Anyone who copies it
+ * can present it as this session, so it must never gate an action that
+ * needs `bound` assurance. Production Claude delivery uses the in-process
+ * channel instead (`station-control-in-process.ts`); this mint is the
+ * fallback when that is not wired.
+ */
+export function mintStationControlStdioCallerToken(
+  sessionId: string,
+  tenantExecutionContext?: TenantExecutionContext,
+): string {
+  return mintStationControlMcpToken(
+    sessionId,
+    'stdio-env-token',
+    undefined,
+    tenantExecutionContext,
+  ).token;
 }
 
 /** Test-only reset so suites don't leak state across test files. */

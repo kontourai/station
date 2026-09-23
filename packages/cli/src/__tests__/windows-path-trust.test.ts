@@ -1,7 +1,10 @@
-import { describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
   buildWindowsTrustCommand,
+  ensureWindowsDirectoriesTrusted,
+  hardenWindowsPathsTrusted,
   parseWindowsTrustResult,
+  type WindowsTrustCommandRunner,
   windowsSystemUtilityPath,
 } from '../commands/windows-path-trust.js';
 
@@ -61,6 +64,95 @@ describe('Windows current-user path trust', () => {
       'ChangePermissions',
       'TakeOwnership',
     ]);
+  });
+
+  // #2315: every PowerShell start is a cold start that has exceeded its
+  // timeout on a loaded hosted Windows runner, so an ensure no longer spawns a
+  // second process to verify. The ensure program itself must therefore read
+  // every ACL back through the same assertion `verify` runs, after all
+  // targets are set, before it prints the trusted result.
+  test('an ensure program asserts every ACL it set before reporting trust', () => {
+    const program = decodeProgram(
+      buildWindowsTrustCommand('ensure', [
+        { kind: 'directory', path: 'C:\\Users\\Ada\\runtime' },
+      ]),
+    );
+    const setLoop = program.indexOf('Set-CurrentUserDacl $path $directory');
+    const readback = program.indexOf(
+      "Assert-CurrentUserDacl ([string]$target.path) ([string]$target.kind -eq 'directory') ([string]$target.policy -eq 'execution-safe')",
+    );
+    const verdict = program.indexOf(`[Console]::Out.Write('{"trusted":true}')`);
+    expect(setLoop).toBeGreaterThan(0);
+    expect(readback).toBeGreaterThan(setLoop);
+    expect(verdict).toBeGreaterThan(readback);
+    expect(
+      program.slice(
+        program.lastIndexOf("if ($operation -eq 'ensure')"),
+        verdict,
+      ),
+    ).toContain('Assert-CurrentUserDacl');
+  });
+
+  describe('on Windows', () => {
+    afterEach(() => vi.unstubAllGlobals());
+    function onWindows() {
+      vi.stubGlobal('process', { ...process, platform: 'win32' });
+    }
+
+    test('hardening directories starts exactly one ensure-and-readback process', () => {
+      onWindows();
+      const run = vi.fn<WindowsTrustCommandRunner>(() => ({
+        status: 0,
+        stdout: '{"trusted":true}',
+      }));
+      ensureWindowsDirectoriesTrusted(run, ['C:\\runtime']);
+      expect(run.mock.calls).toEqual([
+        [
+          windowsSystemUtilityPath('powershell'),
+          buildWindowsTrustCommand('ensure', [
+            { kind: 'directory', path: 'C:\\runtime' },
+          ]),
+        ],
+      ]);
+    });
+
+    test('hardening a file starts exactly one ensure-and-readback process', () => {
+      onWindows();
+      const run = vi.fn<WindowsTrustCommandRunner>(() => ({
+        status: 0,
+        stdout: '{"trusted":true}',
+      }));
+      const targets = [
+        { kind: 'file' as const, path: 'C:\\runtime\\grant.tmp' },
+      ];
+      hardenWindowsPathsTrusted(run, targets);
+      expect(run.mock.calls).toEqual([
+        [
+          windowsSystemUtilityPath('powershell'),
+          buildWindowsTrustCommand('ensure', targets),
+        ],
+      ]);
+    });
+
+    test('a hardening process that does not confirm the readback fails closed', () => {
+      onWindows();
+      const run = vi.fn<WindowsTrustCommandRunner>(() => ({
+        status: 0,
+        stdout: '{"trusted":false}',
+      }));
+      expect(() =>
+        ensureWindowsDirectoriesTrusted(run, ['C:\\runtime']),
+      ).toThrow(/did not confirm/);
+      const timedOut = vi.fn<WindowsTrustCommandRunner>(() => ({
+        status: null,
+        error: new Error('spawnSync powershell.exe ETIMEDOUT'),
+      }));
+      expect(() =>
+        hardenWindowsPathsTrusted(timedOut, [
+          { kind: 'file', path: 'C:\\runtime\\grant.tmp' },
+        ]),
+      ).toThrow(/ETIMEDOUT/);
+    });
   });
 
   test('accepts only the structured positive ACL verification result', () => {

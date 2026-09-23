@@ -1,6 +1,8 @@
 /** @vitest-environment jsdom */
 
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook } from '@testing-library/react';
+import { createElement, type ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const sendExecutionMessageMock = vi.fn();
@@ -63,6 +65,10 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => {
     interruptOrchestrationTurn: vi.fn(),
     steerOrchestrationTurn: vi.fn(),
     isProvablyNotSent: actual.isProvablyNotSent,
+    // #2338: the send path reads the cached session list through the real
+    // hook, so it needs a real QueryClient (see renderSendMessage) rather
+    // than a stub that would answer every cache read with a fixed value.
+    useQueryClient: actual.useQueryClient,
   };
 });
 
@@ -76,6 +82,14 @@ import { handleTurnStartedEvent } from '../hooks/orchestration/turnHandlers';
 import { useSendMessage } from '../hooks/useActiveChatSessionMessaging';
 
 const sessionId = 'timeout-late-answer-chat';
+
+/** useSendMessage under a real, empty QueryClient, as production mounts it. */
+function renderSendMessage() {
+  const queryClient = new QueryClient();
+  const wrapper = ({ children }: { children: ReactNode }) =>
+    createElement(QueryClientProvider, { client: queryClient }, children);
+  return renderHook(() => useSendMessage('http://api.test'), { wrapper });
+}
 
 /**
  * The exact error shape the native transport produces when the 20s
@@ -119,7 +133,7 @@ describe('transport_timeout followed by the late answer', () => {
   });
 
   it('holds the draft with a Retry notice while the turn actually started server-side', async () => {
-    const { result } = renderHook(() => useSendMessage('http://api.test'));
+    const { result } = renderSendMessage();
 
     await act(async () => {
       await result.current(sessionId, 'codex', undefined, 'run the full suite');
@@ -137,7 +151,7 @@ describe('transport_timeout followed by the late answer', () => {
   });
 
   it('releases the failed-turn state when the timed-out turn starts late', async () => {
-    const { result } = renderHook(() => useSendMessage('http://api.test'));
+    const { result } = renderSendMessage();
 
     await act(async () => {
       await result.current(sessionId, 'codex', undefined, 'run the full suite');
@@ -166,7 +180,7 @@ describe('transport_timeout followed by the late answer', () => {
   });
 
   it('never clobbers a composer the user edited after the failure', async () => {
-    const { result } = renderHook(() => useSendMessage('http://api.test'));
+    const { result } = renderSendMessage();
 
     await act(async () => {
       await result.current(sessionId, 'codex', undefined, 'run the full suite');

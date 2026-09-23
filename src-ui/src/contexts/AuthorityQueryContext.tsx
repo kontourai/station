@@ -132,6 +132,7 @@ import {
   buildAuthorityNamespace,
 } from '../lib/authorityNamespace';
 import { resolveLocalUiSession } from '../lib/local-ui-bootstrap';
+import { stationQueryDefaults } from '../lib/queryDefaults';
 import {
   applyPersistedQueryGcTimeDefaults,
   buildPersistOptions,
@@ -188,17 +189,9 @@ interface ActiveAuthorityClient {
   queryClient: QueryClient;
 }
 
-function createAuthorityClient(): QueryClient {
+export function createAuthorityClient(): QueryClient {
   const queryClient = new QueryClient({
-    defaultOptions: {
-      queries: {
-        staleTime: 5 * 60 * 1000,
-        gcTime: 10 * 60 * 1000,
-        refetchOnWindowFocus: false,
-        refetchOnMount: false,
-        retry: 1,
-      },
-    },
+    defaultOptions: { queries: stationQueryDefaults() },
   });
   applyPersistedQueryGcTimeDefaults(queryClient);
   return queryClient;

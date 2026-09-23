@@ -84,6 +84,12 @@ import {
   PUBLIC_STATION_PROOF_PATH,
 } from '@kontourai/station-contracts/environment-security';
 import { FLEET_INFERENCE_ROUTE_PREFIX } from '@kontourai/station-contracts/fleet-inference';
+import {
+  RELAY_ENROLLMENT_ACTIVATE_PATH,
+  RELAY_ENROLLMENT_BEGIN_PATH,
+  RELAY_ENROLLMENT_FINALIZE_PATH,
+  RELAY_ENROLLMENT_LOGIN_PATH,
+} from '@kontourai/station-contracts/relay-enrollment';
 
 const READ_METHODS = ['GET', 'HEAD'] as const;
 const MUTATING_METHODS = ['POST', 'PUT', 'PATCH', 'DELETE'] as const;
@@ -133,6 +139,14 @@ const PAIRING_SCOPE_DOMAIN_PREFIXES: readonly string[] = [
   '/api/auth',
   '/api/users',
   '/api/plugins',
+  // #2323 S5: agent-authored plugin lifecycle proposals. Read tier lists and
+  // reads them; operate tier creates and dismisses. A proposal installs,
+  // updates and removes nothing: the change is taken later on the
+  // `/api/plugins` routes, which refuse Station's internal agent caller.
+  '/api/plugin-proposals',
+  // #2323 S4: local plugin source status. A read the handler answers only
+  // for the operator; it installs nothing.
+  '/api/plugin-sources',
   '/api/fs',
   '/api/registry',
   '/agents',
@@ -467,6 +481,44 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     scope: PAIRING_SCOPE_TERMINAL_OPERATE,
     origin: 'explicit',
   },
+  // Live surfaces (#90) stream a server-side screen (a Chromium page, later a
+  // device) and inject pointer/key/text input into it. Watching exposes the
+  // same private screen data as a device capture, and input is remote control
+  // of a browser running as the operator — so every present and future leaf,
+  // reads included, sits on the terminal authority. No leaf inherits the
+  // ordinary read/operate family split.
+  {
+    id: '/api/live-surfaces:terminal-operate',
+    method: '*',
+    prefix: '/api/live-surfaces',
+    scope: PAIRING_SCOPE_TERMINAL_OPERATE,
+    origin: 'explicit',
+  },
+  // #90 Browser pane (personal hosts only). Reads — Chromium acquisition
+  // status, the session list with its action history, one session — sit at
+  // read. Every mutation either drives a browser that runs ON the Station host
+  // (network reach from this machine, the same standing as a terminal) or
+  // installs a browser build onto it, so all of them require the terminal
+  // authority rather than the ordinary operate tier. The routes additionally
+  // authorize every request per Project (operator or Project admin, D5).
+  ...READ_METHODS.map(
+    (method): PairingScopeRouteRule => ({
+      id: '/api/browser:read',
+      method,
+      prefix: '/api/browser',
+      scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+      origin: 'explicit',
+    }),
+  ),
+  ...MUTATING_METHODS.map(
+    (method): PairingScopeRouteRule => ({
+      id: '/api/browser:terminal-operate',
+      method,
+      prefix: '/api/browser',
+      scope: PAIRING_SCOPE_TERMINAL_OPERATE,
+      origin: 'explicit',
+    }),
+  ),
   // Terminal termination kills a PTY process. It must match the dedicated
   // terminal WebSocket's `terminal:operate` authority rather than silently
   // inheriting the broader project mutation tier.
@@ -1348,6 +1400,46 @@ export const EXTERNAL_SURFACE_CAPABILITY_TABLE: readonly ExternalSurfaceCapabili
       reason: 'public challenge proof',
     },
     {
+      id: 'public:relay-enrollment-begin',
+      transport: 'http',
+      method: 'POST',
+      prefix: RELAY_ENROLLMENT_BEGIN_PATH,
+      match: 'exact',
+      capability: 'public',
+      reason:
+        'fresh relay challenge; handler requires verified Pion/VAI provenance and a bounded P-256 public key',
+    },
+    {
+      id: 'public:relay-enrollment-login',
+      transport: 'http',
+      method: 'POST',
+      prefix: RELAY_ENROLLMENT_LOGIN_PATH,
+      match: 'exact',
+      capability: 'public',
+      reason:
+        'fresh relay provider login; handler verifies a one-time key proof before pending provider creation',
+    },
+    {
+      id: 'public:relay-enrollment-finalize',
+      transport: 'http',
+      method: 'POST',
+      prefix: RELAY_ENROLLMENT_FINALIZE_PATH,
+      match: 'exact',
+      capability: 'public',
+      reason:
+        'operator-approved relay Device and continuation delivery; handler requires verified Pion/VAI provenance and key proof',
+    },
+    {
+      id: 'public:relay-enrollment-activate',
+      transport: 'http',
+      method: 'POST',
+      prefix: RELAY_ENROLLMENT_ACTIVATE_PATH,
+      match: 'exact',
+      capability: 'public',
+      reason:
+        'key-bound activation acknowledgment; handler rechecks provider, approval, continuation and pending Device state',
+    },
+    {
       id: 'public:pairing-local-access',
       transport: 'http',
       method: 'POST',
@@ -1878,6 +1970,11 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // connected is a strict subset of what that same credential already
     // reads, so this takes the family default rather than a raised tier.
     { method: 'GET', path: '/api/orchestration/presence/summary' },
+    // Station #90 lane D: the verified-caller projection for station-control
+    // stdio children. Internal-only at the route: every non-internal
+    // principal gets a 404 whatever its scope (station-control-caller-route.ts),
+    // so a paired credential at the family's read tier learns nothing.
+    { method: 'GET', path: '/api/orchestration/station-control/caller' },
     // #2061 Boards: the family read/mutate split is exactly right here —
     // every leaf resolves its owner from the request principal and can reach
     // no other principal's records, so none is more sensitive than the family.
@@ -2529,6 +2626,23 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // this entry.
     { method: 'POST', path: '/api/projects/:slug/bind' },
     { method: 'GET', path: '/api/projects/:slug/conversations' },
+    // Epic #2323 S3: plugin draft preview. Status and a retained revision's
+    // bytes are reads of this Project's own draft (read tier). Starting a
+    // lease runs builds on this host, so it stays at the family's operate
+    // tier: a read-only paired device can look at a draft another client is
+    // already watching, but cannot make this host build one. None of these
+    // runs the draft; that happens only in a viewer's tab after that viewer
+    // explicitly chooses to.
+    { method: 'GET', path: '/api/projects/:slug/plugin-draft' },
+    { method: 'POST', path: '/api/projects/:slug/plugin-draft/lease' },
+    {
+      method: 'GET',
+      path: '/api/projects/:slug/plugin-draft/generations/:generation/:digest/bundle.js',
+    },
+    {
+      method: 'GET',
+      path: '/api/projects/:slug/plugin-draft/generations/:generation/:digest/bundle.css',
+    },
     { method: 'GET', path: '/api/projects/:slug/diff-comments' },
     { method: 'POST', path: '/api/projects/:slug/diff-comments' },
     { method: 'DELETE', path: '/api/projects/:slug/diff-comments/:id' },
@@ -2645,6 +2759,20 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
       path: '/api/projects/:slug/operating-state/availability',
     },
     { method: 'POST', path: '/api/projects/:slug/operating-state/intent' },
+    // epic #2323 S2. Writes a starter plugin into the folder the Project
+    // already names, and only when that folder is empty; it never
+    // overwrites and never installs. It takes the family's operate tier as a
+    // recorded decision: `PUT /api/projects/:slug`, at this same tier,
+    // already sets that folder, and any Agent this tier can start writes
+    // files there. It returns only relative file paths about THIS Station's
+    // own Project, so it needs no override. It is the one Project write a
+    // shared member may make (owner decision): the runtime's Project guard
+    // exempts exactly this leaf (`isProjectMemberPluginScaffold`). The
+    // account-bound device allowlist is unchanged and does not include it.
+    // Its read twin answers only whether scaffolding is possible here
+    // (eligible, or a reason code): no path, no file names. A family read.
+    { method: 'GET', path: '/api/projects/:slug/plugin-scaffold' },
+    { method: 'POST', path: '/api/projects/:slug/plugin-scaffold' },
     { method: 'GET', path: '/api/projects/:slug/readiness' },
     { method: 'POST', path: '/api/projects/:slug/readiness/init' },
     // archive#1502 — see the `POST /api/projects/:slug/bind` note
@@ -3012,8 +3140,38 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'POST', path: '/api/plugins/fetch' },
     { method: 'POST', path: '/api/plugins/install' },
     { method: 'POST', path: '/api/plugins/preview' },
+    // #2323 S1: `POST /validate` is an authoring check that installs nothing,
+    // but it stays on the family's operate tier rather than an explicit
+    // read override like `/api/projects/:slug/file-preview`. That override is
+    // justified there by "no caller-supplied root"; this route takes one:
+    // the body names an arbitrary absolute host path, and validate reads and
+    // returns the manifest found there. (It never fetches or clones, and it
+    // refuses UNC, device and automount paths before any filesystem call.)
+    // Its sibling
+    // `/preview`, which reads the same, is family-inherited here too. A
+    // read-only paired device gains nothing it should have from reaching it;
+    // the agent tool calls it with the local operator credential either way.
+    { method: 'POST', path: '/api/plugins/validate' },
     { method: 'POST', path: '/api/plugins/reload' },
     { method: 'DELETE', path: '/api/plugins/:name' },
+    // #2323 S5: the proposal leaves (`plugin-proposal-routes.ts`). Plain
+    // family inheritance, reviewed per leaf: GET lists and reads open asks
+    // (a source path or plugin name, a rationale, the reporting agent);
+    // POST / records an ask and changes nothing a plugin runs; POST
+    // /:id/dismiss closes an ask and is additionally refused in-handler to
+    // Station's internal agent caller. None mints decision authority: a
+    // proposal is never read as consent by `/api/plugins/install`.
+    { method: 'GET', path: '/api/plugin-proposals' },
+    { method: 'POST', path: '/api/plugin-proposals' },
+    { method: 'GET', path: '/api/plugin-proposals/:id' },
+    { method: 'POST', path: '/api/plugin-proposals/:id/dismiss' },
+    // #2323 S4: `GET /api/plugin-sources` (plugin-source-status-routes.ts).
+    // Plain family inheritance on the read tier: it lists which installed
+    // plugin each Project folder is the source of and whether that folder
+    // changed, and the handler answers only the operator (404 otherwise).
+    // It changes nothing; the reinstall it leads to is `/api/plugins/
+    // preview` and `/install`, which keep their own tiers and person gates.
+    { method: 'GET', path: '/api/plugin-sources' },
     // app.all('/:name/*', ...) (plugin-public-routes.ts) forwards ANY
     // method into a plugin's OWN registered server module — genuinely
     // method-agnostic (Station's "GET is safe" assumption does not hold

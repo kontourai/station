@@ -4,3 +4,13 @@
 c48f31f8ce965ee706327a33ffba6cc69638cb87:packages/cli/src/commands/delegate.ts:generic-api-key:1330
 6036d762eee2f8adec304242c93d24f215616a40:.gitleaksignore:generic-api-key:1
 d23831f8a93620c2266ba9851043a256eaf7f17a:packages/cli/src/commands/delegate.ts:generic-api-key:1034
+# RFC 6455's sample Sec-WebSocket-Key nonce ("the sample nonce") in a raw-upgrade
+# test at one historical location; the test now generates the nonce at runtime.
+67086ef492b45368588e82c21bf2934a4110e86b:src-server/services/terminal/__tests__/terminal-ws-server.test.ts:generic-api-key:676
+# A test sentinel string (asserted absent from validate responses), not a credential.
+# Renamed in the next commit; this pins only that historical location.
+94b245af0e00bcd41b8688ae89c4735ffdf2053e:src-server/routes/plugins/__tests__/plugin-validate-routes.test.ts:generic-api-key:466
+# A PEM header fixture ("-----BEGIN OPENSSH PRIVATE KEY-----" with body "abc") in
+# a secret-detector test from the withdrawn plugin-publish slice (#2374). The
+# slice was reverted, but its commit remains in this branch's history.
+9a03386390acaffb06db1584939917a232872b30:src-server/services/projects/__tests__/plugin-publish-guards.test.ts:private-key:121

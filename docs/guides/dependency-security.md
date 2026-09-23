@@ -85,7 +85,9 @@ changing the audit outcome.
 ## Local CodeQL SARIF policy
 
 The hosted security-analysis workflow is a JavaScript/TypeScript source scan
-with `security-extended` queries and no build. It writes the action's documented
+with `security-extended` queries and no build. It skips test code only
+(`**/__tests__/**`, `tests/**`, `**/*.test.*`, `**/*.spec.*`), through an
+inline config the workflow gate pins, so a candidate cannot widen it. It writes the action's documented
 `javascript.sarif` output into job-temporary storage, requires exactly one such
 file, then uses the checker read from the exact base commit—not the candidate
 checkout—to bounded-read, strict-parse, and atomically canonicalize it before

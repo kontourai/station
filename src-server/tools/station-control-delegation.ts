@@ -86,6 +86,7 @@ import {
   ForegroundInvocationUnavailableError,
 } from '../services/orchestration/foreground-invocation-admission.js';
 import type { OrchestrationService } from '../services/orchestration/orchestration-service.js';
+import type { StartOwnerAttribution } from '../services/orchestration/session-owner-attribution.js';
 import { SessionStartIndeterminateError } from '../services/orchestration/session-turn-boundary.js';
 import {
   type PortableExecutionConsentIdentity,
@@ -215,6 +216,8 @@ export interface DelegateTaskInput {
   parentTaskId?: string;
   delegation?: AgentDelegationContext;
   userId?: string;
+  /** Station #90 lane D (B2): route-set only; see session-owner-attribution.ts. */
+  ownerAttribution?: StartOwnerAttribution;
   /** Trusted request authority supplied only by runtime composition. */
   readAuthority?: SessionReadAuthority;
   /** Resolved at the authenticated request seam; never accepted as tool input. */
@@ -452,6 +455,12 @@ export interface DelegatedTaskEventsInput extends DelegatedTaskReferenceInput {
 export interface ContinueDelegatedTaskInput
   extends DelegatedTaskReferenceInput {
   message: string;
+  /**
+   * Station #90 lane D (D2): route-set only. A follow-up can start a new
+   * child session of the task's conversation, which must carry the same
+   * owner attribution as a fresh delegation (session-owner-attribution.ts).
+   */
+  ownerAttribution?: StartOwnerAttribution;
   model?: string;
   /** archive#978: per-invocation settings passthrough on a follow-up turn. */
   modelOptions?: Record<string, unknown>;
@@ -723,22 +732,32 @@ export function delegatedCapabilityDelivery(
  * adapter's host-authored `turn.started` supervision declaration, joined to
  * the live watchdog observation (`turnProgress`) so a stale prior turn's
  * facts are never presented as current. Request/child/user metadata is
- * never a source. Adapters without a declared hard budget omit this
- * entirely — consumers render "no declared budget", never an invention.
+ * never a source. Adapters that declare no supervision omit this entirely.
+ * A declaration with an idle window but no total budget (Muse's default:
+ * no caller declares `turnTimeoutMs` today) is forwarded as exactly that —
+ * `idleLimitMs` with no `deadlineAt`/`remainingMs`/`totalLimitMs` —
+ * because the idle deadline is live and can still end the turn.
  */
 export interface DelegatedTurnSupervision {
   provider: string;
   turnId: string;
-  /** Absolute wall-clock ceiling for the turn (ISO timestamp). */
-  deadlineAt: string;
   /** Milliseconds elapsed since turn start at read time (>= 0). */
   elapsedMs: number;
-  /** Milliseconds until the absolute deadline at read time (>= 0). */
-  remainingMs: number;
-  /** Idle window: a full silence of verified activity this long ends the turn. */
+  /**
+   * Idle window: a full silence of verified activity (with no tool reported
+   * running) this long ends the turn.
+   */
   idleLimitMs: number;
-  /** Absolute turn budget; neither activity nor approval moves it. */
-  totalLimitMs: number;
+  /**
+   * Absolute wall-clock ceiling for the turn (ISO timestamp). Present only
+   * with a declared total budget, together with `remainingMs` and
+   * `totalLimitMs`.
+   */
+  deadlineAt?: string;
+  /** Milliseconds until the absolute deadline at read time (>= 0). */
+  remainingMs?: number;
+  /** Declared absolute turn budget; activity never moves it. */
+  totalLimitMs?: number;
   /** Last verified protocol activity the watchdog observed, when known. */
   lastProgressEventAt?: string;
 }
@@ -782,9 +801,10 @@ function optionalIsoTimestamp(value: unknown): string | undefined {
  * rather than repaired. A declaration whose provider disagrees with the
  * session's own projected provider is dropped too: the session projection
  * is Station-authored while event metadata from a non-owning adapter may
- * repeat caller input. Returns `undefined` for "no declared budget"
- * (honest unknown) — including when the status event window no longer
- * contains the turn's start event after a long history.
+ * repeat caller input. Returns `undefined` when there is no usable
+ * declaration (honest unknown) — including when the status event window no
+ * longer contains the turn's start event after a long history. An idle-only
+ * declaration (no total budget) is returned as idle-only.
  */
 export function delegatedTurnSupervision(
   session: Record<string, unknown>,
@@ -823,16 +843,26 @@ export function delegatedTurnSupervision(
     }, undefined);
   if (!supervision) return undefined;
   const idleLimitMs = optionalPositiveBoundedMs(supervision.idleLimitMs);
-  const totalLimitMs = optionalPositiveBoundedMs(supervision.totalLimitMs);
   const startedAt = optionalIsoTimestamp(supervision.startedAt);
-  const deadlineAt = optionalIsoTimestamp(supervision.deadlineAt);
   if (
     idleLimitMs === undefined ||
-    totalLimitMs === undefined ||
     startedAt === undefined ||
-    deadlineAt === undefined ||
     typeof supervision.provider !== 'string' ||
     !supervision.provider
+  ) {
+    return undefined;
+  }
+  // The total budget is optional, but all-or-nothing: a declaration that
+  // carries either half must carry both, valid, or it is malformed and
+  // dropped rather than repaired into an idle-only one.
+  const declaresTotal =
+    supervision.totalLimitMs !== undefined ||
+    supervision.deadlineAt !== undefined;
+  const totalLimitMs = optionalPositiveBoundedMs(supervision.totalLimitMs);
+  const deadlineAt = optionalIsoTimestamp(supervision.deadlineAt);
+  if (
+    declaresTotal &&
+    (totalLimitMs === undefined || deadlineAt === undefined)
   ) {
     return undefined;
   }
@@ -848,16 +878,25 @@ export function delegatedTurnSupervision(
     return undefined;
   }
   const startedMs = Date.parse(startedAt);
-  const deadlineMs = Date.parse(deadlineAt);
-  if (!(deadlineMs > startedMs)) return undefined;
+  let total: Pick<
+    DelegatedTurnSupervision,
+    'deadlineAt' | 'remainingMs' | 'totalLimitMs'
+  > = {};
+  if (deadlineAt !== undefined && totalLimitMs !== undefined) {
+    const deadlineMs = Date.parse(deadlineAt);
+    if (!(deadlineMs > startedMs)) return undefined;
+    total = {
+      deadlineAt,
+      remainingMs: Math.max(0, deadlineMs - nowMs),
+      totalLimitMs,
+    };
+  }
   return {
     provider: supervision.provider,
     turnId: observedTurnId,
-    deadlineAt,
     elapsedMs: Math.max(0, nowMs - startedMs),
-    remainingMs: Math.max(0, deadlineMs - nowMs),
     idleLimitMs,
-    totalLimitMs,
+    ...total,
     ...(lastProgressEventAt ? { lastProgressEventAt } : {}),
   };
 }
@@ -1176,11 +1215,16 @@ function dispatchContextForAuthority(
   // the HTTP seam (`orchestration.ts`'s `resolveActorPrincipal`) and passed
   // in by callers that have one.
   principal?: PrincipalRef,
+  // Station #90 lane D (R1): route-derived owner attribution for a start.
+  // The service stamps it on the new session (`prepareStart`), the one
+  // place every start passes.
+  ownerAttribution?: StartOwnerAttribution,
 ): {
   userId: string;
   tenantExecutionContext?: SessionReadAuthority['tenantExecutionContext'];
   clientOrigin?: ClientOrigin;
   principal?: PrincipalRef;
+  ownerAttribution?: StartOwnerAttribution;
 } {
   return {
     userId: authority.userId,
@@ -1189,6 +1233,7 @@ function dispatchContextForAuthority(
       : {}),
     ...(clientOrigin ? { clientOrigin } : {}),
     ...(principal ? { principal } : {}),
+    ...(ownerAttribution ? { ownerAttribution } : {}),
   };
 }
 
@@ -3779,6 +3824,9 @@ export async function continueDelegatedTask(
       conversationId: snapshot.conversationId,
       message: input.message,
       userId: readAuthority.userId,
+      ...(input.ownerAttribution
+        ? { ownerAttribution: input.ownerAttribution }
+        : {}),
       // The fresh admission rides to the adapter start/sendTurn
       // effects; ordinary follow-ups carry none.
       ...(followUpAdmission ? { receiverAdmission: followUpAdmission } : {}),
@@ -4683,6 +4731,7 @@ export async function delegateTask(
           readAuthority,
           input.clientOrigin,
           input.principal,
+          input.ownerAttribution,
         ),
         {
           conversationIdentity: {
@@ -5290,6 +5339,7 @@ export async function executeExecutionTargetMessage(
           readAuthority,
           input.clientOrigin,
           input.principal,
+          input.ownerAttribution,
         ),
         {
           ...(executionWorkspace ? { executionWorkspace } : {}),

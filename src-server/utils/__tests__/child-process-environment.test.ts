@@ -29,6 +29,14 @@ describe('childProcessEnvironment', () => {
     ]);
   });
 
+  it('does not pass the supervisor-only STATION_STDOUT_LOGS to a child (#2327)', () => {
+    const env = childProcessEnvironment({ STATION_STDOUT_LOGS: '0' });
+    expect(env).not.toHaveProperty('STATION_STDOUT_LOGS');
+    expect(
+      scrubBootInternalSecrets({ STATION_STDOUT_LOGS: '0', KEEP: 'yes' }),
+    ).toEqual({ KEEP: 'yes' });
+  });
+
   it('scrubs the internal API token and UI-bootstrap token from a copy', () => {
     process.env[INTERNAL_API_TOKEN_ENV] = 'server-internal-token';
     process.env[UI_BOOTSTRAP_TOKEN_ENV] = 'server-bootstrap-token';

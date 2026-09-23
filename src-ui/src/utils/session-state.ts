@@ -93,6 +93,7 @@ export type SessionStateLabel =
   | 'Stopped'
   | 'Running'
   | 'Ready'
+  | 'Draft'
   | 'Unanswerable'
   | 'Completed';
 
@@ -107,7 +108,7 @@ export type SessionStateLabel =
  * the heading it sat under. It takes only an `OrchestrationSessionSummary`,
  * which is what every one of those surfaces already holds.
  *
- * It deliberately OVERRIDES `lifecycleState` in four places; each override is
+ * It deliberately OVERRIDES `lifecycleState` in five places; each override is
  * a fixed defect, and each is a divergence the row label used to reintroduce:
  *
  * | shape | `lifecycleState` says | this says |
@@ -116,6 +117,7 @@ export type SessionStateLabel =
  * | `pendingReview`, `running` | Running | **Needs attention** |
  * | `status: 'closed'`, `running` | Running | **Completed** (archive#1296) |
  * | `needs_input`, `answerable: false` | Waiting on you | **Unanswerable** (archive#1783) |
+ * | `queued`/`running`, `hasActiveTurn: false`, `draft: true` | Queued/Running | **Draft** (#2310) |
  */
 /**
  * archive#4052: the ONE applicability gate for the
@@ -177,7 +179,15 @@ export function orchestrationLifecycleLabel(
         ? 'Needs attention'
         : 'Unanswerable';
     case 'active':
-      return session.hasActiveTurn ? 'Running' : 'Ready';
+      // #2310: `draft` is the SERVER's lineage-aware fold (no turn anywhere
+      // in the conversation, no history from elsewhere) — read, never
+      // re-derived from this summary's own events, which cannot see a
+      // conversation's other Sessions. `=== true` because absent means the
+      // reader did not consult the lineage, not "is a draft". Only the
+      // active arm refines to it: a never-prompted session that failed,
+      // finished or is waiting on the user keeps that more specific word.
+      if (session.hasActiveTurn) return 'Running';
+      return session.draft === true ? 'Draft' : 'Ready';
   }
 }
 
@@ -225,6 +235,10 @@ const SESSION_STATE_REFINEMENTS: Record<
   Running: new Set(['Running']),
   // The lane says idle; the row may say it has never started.
   Ready: new Set(['Queued']),
+  // Nothing refines Draft: the raw state of a never-prompted session
+  // (`queued` after the engine reports ready, `running` once it attaches) is
+  // a transport fact, and "Queued"/"Running" would each claim work exists.
+  Draft: new Set(),
 };
 
 /**

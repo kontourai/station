@@ -677,6 +677,9 @@ function configureRuntimeSecurity(
     if (valid) {
       const authority = security.resolveCredentialAuthority?.(credential!);
       const deviceId = security.resolveCredentialDeviceId?.(credential!);
+      const deviceKind = deviceId
+        ? security.resolveCredentialDeviceKind?.(credential!)
+        : undefined;
       const pairingSource = security.resolvePairingSource?.(credential!);
       const locality = security.resolveCredentialLocality?.(credential!);
       const mintKind = security.resolveCredentialMintKind?.(credential!);
@@ -685,6 +688,7 @@ function configureRuntimeSecurity(
         credential: credential!,
         authority,
         ...(deviceId ? { deviceId } : {}),
+        ...(deviceId && deviceKind ? { deviceKind } : {}),
         source: cookieCredential !== undefined ? 'session' : 'bearer',
         ...(pairingSource ? { pairingSource } : {}),
         ...(locality ? { locality } : {}),

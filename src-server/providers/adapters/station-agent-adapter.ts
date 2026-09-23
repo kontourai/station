@@ -1184,9 +1184,6 @@ export class StationAgentAdapter implements ProviderAdapterShape {
     if (!pending) {
       throw new Error(`Unknown Station agent approval request: ${requestId}`);
     }
-    if (decision === 'acceptForSession' && pending.toolName) {
-      record.approvedTools.add(pending.toolName);
-    }
     this.resolutionOverrides.set(
       requestId,
       decision === 'accept' || decision === 'acceptForSession'
@@ -1203,6 +1200,12 @@ export class StationAgentAdapter implements ProviderAdapterShape {
       record.pendingRequests.delete(requestId);
       this.resolutionOverrides.delete(requestId);
       throw new Error(`Stale Station agent approval request: ${requestId}`);
+    }
+    // #2316: the session grant is minted only by a decision that actually
+    // resolved its request. A stale entry refuses above without widening
+    // what this session auto-approves.
+    if (decision === 'acceptForSession' && pending.toolName) {
+      record.approvedTools.add(pending.toolName);
     }
   }
 

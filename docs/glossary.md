@@ -110,6 +110,7 @@ distinction:
 - **Task workspace** — the `/tasks/:taskId` surface for one durable Task. It keeps identity, files, diffs, artifacts, receipts, and exact Session correlation in context.
 - **Task experience** — a working mode inside one Task workspace. **Direct** is Station-owned; **Deliver** is Builder Kit-owned; **Learn** is Knowledge Kit-owned; **Operate** is Console-owned. The labels are provisional while #495 is experimental.
 - **Session** — one bounded execution episode. A Task may have no Session or correlate an exact Session; a Session is not itself a durable Task.
+- **Draft** (session state) — a Session that nothing has been sent to: no turn has started and no send was attempted anywhere in its conversation's lineage, nothing in that lineage produced output, and it carries no history from elsewhere (attached, adopted, a Station-dispatched delegation, or a fork, which carries copied messages). The server derives it (`OrchestrationSessionSummary.draft`, #2310) so every device computes the same answer from the same read; a Draft is listed under **Drafts**, never under "Active now". A send that was attempted and did not take, with no activity since, is not a Draft either — that Session reads **Failed** with the reason ("Station refused the send before it started", or "The send failed and no activity has been recorded since", since a failed send may still have reached the engine); activity landing later clears it, and a send refused because the caller may not act on the Session changes nothing. The first turn ends a Draft: the sending device re-reads at once, other devices on their next session-list read (live push to other devices depends on #2307 and #2309 Phase B). Not the same thing as a composer draft — unsent text in a chat's input, kept per device.
 - **Agent run** — one agent working through a request from start to stop: the thing a step limit counts steps of, an output-token ceiling bounds, and a workspace is chosen for. It is the vocabulary the product already uses in its own settings help ("Station stops an agent run once it has taken this many steps",
   `defaultMaxTurns` in `packages/contracts/src/settings-registry.ts`), and #2182 makes the Settings card that holds those controls say it too — **Agent runs**, not "Defaults". A run is carried by a **Session**, and where the two could both be said, Session names the execution episode Station records and Agent run names what the agent is doing inside it. **"Profile" never names this** (see Saved Stations, above), and neither does **"Agents"** — that word is the entity list at `/agents`, and a Settings strip cannot carry two rows reading "Agents" that go to different places.
 - **Direct chat** — an immediate conversation entry point. Starting a direct chat does not silently create or infer a Task.
@@ -304,6 +305,32 @@ retired names.
 > a surface or a layout holds a **pane host**; a pane host holds **panes** in
 > tab groups and splits; a pane or page may hold **panels**. The user's choices
 > across all of that are the **arrangement**.
+
+## Browser pane, live surface, control lease
+
+Decided in [ADR 0019](adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md).
+None of it is implemented yet.
+
+- **Browser pane** — the Workspace Pane that shows a web page rendered by a
+  browser on the Station host, streamed to every client. The Station operator
+  and the admins and owners of the session's Project, and their agents, can
+  operate it.
+  It supersedes the loopback-only
+  **Browser Preview** pane (`packages/contracts/src/workspace-browser-preview.ts`),
+  which remains the shipped `1.0` pane until the `2.0` migration lands.
+- **Live surface** — the host-neutral primitive behind a streamed pane: one
+  producer's frames fanned out to any number of viewers, a typed input
+  channel, and a control lease. It is shared by the Browser pane and, later,
+  the Device pane. It is a developer-contract term. Always write it as the
+  two-word phrase. It is **not** a placement **Surface** (a thing that
+  occupies a region) and it is not the Kontour product Surface. Never shorten
+  it to "surface".
+- **Control lease** — the right to send input to a live surface. At most one
+  holder (a human or an agent session) at a time; watching needs no lease.
+  Every claim increments the lease's **epoch**. Human input claims it
+  automatically, which interrupts an agent operation already in flight. An
+  agent claim never preempts a human holder. The right to view and the right
+  to hold the lease are authorized separately.
 
 ## User-facing labels
 

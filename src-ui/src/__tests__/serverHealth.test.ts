@@ -114,6 +114,85 @@ describe('probeServerConnection', () => {
   });
 
   /**
+   * station#2327 — the handshake answered, so the address is proven to
+   * respond; the authenticated identity read that follows it then waited in
+   * the desktop broker's queue behind a stalled Station. That is "busy", not
+   * "Can't connect".
+   */
+  describe('a Station that answered the handshake but not the identity read is busy (station#2327)', () => {
+    it('reads the probe deadline on the identity step as busy', async () => {
+      vi.useFakeTimers();
+      try {
+        vi.spyOn(globalThis, 'fetch')
+          .mockResolvedValueOnce(Response.json(handshake))
+          .mockImplementationOnce(
+            (_input, init?: RequestInit) =>
+              new Promise((_resolve, reject) => {
+                init?.signal?.addEventListener('abort', () =>
+                  reject(
+                    Object.assign(
+                      new Error('Native Station request failed: cancelled'),
+                      { code: 'cancelled' },
+                    ),
+                  ),
+                );
+              }),
+          );
+        const pending = probeServerConnection(
+          'https://station.example.test',
+          'fixture-credential',
+          'environment-1',
+          new AbortController().signal,
+        );
+        await vi.advanceTimersByTimeAsync(HEALTH_PROBE_TIMEOUT_MS);
+        await expect(pending).resolves.toEqual({ ok: false, reason: 'busy' });
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it.each(['transport_capacity', 'transport_timeout'])(
+      'reads a %s refusal of the identity read as busy',
+      async (code) => {
+        vi.spyOn(globalThis, 'fetch')
+          .mockResolvedValueOnce(Response.json(handshake))
+          .mockRejectedValueOnce(
+            Object.assign(new Error(`Native Station request failed: ${code}`), {
+              code,
+            }),
+          );
+        await expect(
+          probeServerConnection(
+            'https://station.example.test',
+            'fixture-credential',
+            'environment-1',
+            new AbortController().signal,
+          ),
+        ).resolves.toEqual({ ok: false, reason: 'busy' });
+      },
+    );
+
+    it('keeps a transport_timeout on the handshake itself as unreachable', async () => {
+      // No answer was ever observed, so a timeout here cannot be told apart
+      // from a host that is off or asleep.
+      vi.spyOn(globalThis, 'fetch').mockRejectedValueOnce(
+        Object.assign(
+          new Error('Native Station request failed: transport_timeout'),
+          { code: 'transport_timeout' },
+        ),
+      );
+      await expect(
+        probeServerConnection(
+          'https://station.example.test',
+          'fixture-credential',
+          'environment-1',
+          new AbortController().signal,
+        ),
+      ).resolves.toEqual({ ok: false, reason: 'unreachable' });
+    });
+  });
+
+  /**
    * archive#3297, the reported defect. A phone measured, at the moment of
    * failure: handshake 200, `/api/system/status` 401, `/health` 403 — and was
    * told "Can't reach station. It may be off, asleep, or on another network."
@@ -571,6 +650,27 @@ describe('checkServerHealthDetailed (401 must not read as unreachable)', () => {
     await expect(
       checkServerHealthDetailed('http://station.example:3141'),
     ).resolves.toEqual({ ok: false, reason: 'unreachable' });
+  });
+
+  // station#2327: a full desktop request queue is busy; a native timeout with
+  // no prior answer is not distinguishable from a sleeping host and stays
+  // unreachable.
+  it.each([
+    ['transport_capacity', 'busy'],
+    ['transport_timeout', 'unreachable'],
+  ] as const)('reads a native %s refusal as %s', async (code, reason) => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw Object.assign(
+          new Error(`Native Station request failed: ${code}`),
+          { code },
+        );
+      }),
+    );
+    await expect(
+      checkServerHealthDetailed('http://station.example:3141'),
+    ).resolves.toEqual({ ok: false, reason });
   });
 
   /**

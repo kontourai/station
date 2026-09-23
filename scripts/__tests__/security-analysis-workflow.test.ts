@@ -1,9 +1,11 @@
 import { readFileSync } from 'node:fs';
+import { load } from 'js-yaml';
 import { describe, expect, test } from 'vitest';
 import {
   CODEQL_ANALYZE_ACTION,
   CODEQL_INIT_ACTION,
   DEPENDENCY_REVIEW_ACTION,
+  SECURITY_CODEQL_CONFIG,
 } from '../actionlint-gate.mjs';
 
 const workflow = readFileSync(
@@ -139,5 +141,90 @@ describe('security analysis workflow', () => {
     expect(workflow).not.toContain('npm run codeql:sarif:check');
     expect(workflow).not.toContain('git fetch');
     expect(workflow).not.toContain('git show');
+  });
+});
+
+/** CodeQL paths-ignore globs: `**` spans segments, `*` stays inside one. */
+function ignoredByCodeql(patterns: string[], path: string) {
+  return patterns.some((pattern) => {
+    const source = pattern
+      .split('**/')
+      .map((part) =>
+        part
+          .split('/**')
+          .map((piece) =>
+            piece.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '[^/]*'),
+          )
+          .join('/.*'),
+      )
+      .join('(?:.*/)?');
+    return new RegExp(`^${source}$`).test(path);
+  });
+}
+
+describe('CodeQL skips test code only', () => {
+  const init = (
+    load(workflow) as {
+      jobs: {
+        codeql: {
+          steps: Array<{ name?: string; with?: Record<string, unknown> }>;
+        };
+      };
+    }
+  ).jobs.codeql.steps.find((step) => step.name === 'Initialize CodeQL');
+  const patterns = (
+    load(SECURITY_CODEQL_CONFIG) as { 'paths-ignore': string[] }
+  )['paths-ignore'];
+
+  test('passes exactly the reviewed ignore list inline, keeping security-extended', () => {
+    expect(init?.with?.config).toBe(SECURITY_CODEQL_CONFIG);
+    expect(init?.with).not.toHaveProperty('config-file');
+    expect(init?.with?.queries).toBe('security-extended');
+    expect(patterns).toEqual([
+      '**/__tests__/**',
+      'tests/**',
+      '**/*.test.*',
+      '**/*.spec.*',
+    ]);
+  });
+
+  test.each([
+    'scripts/__tests__/verification-coordinator.test.ts',
+    'src-ui/src/components/__tests__/fixtures/data.json',
+    '__tests__/root.ts',
+    'tests/e2e-manifest.mjs',
+    'src-server/routes/foo.test.ts',
+    'src-ui/src/App.test.tsx',
+    'tests/toolbar-reachability.spec.ts',
+    'packages/sdk/src/client.spec.ts',
+  ])('ignores test path %s', (path) => {
+    expect(ignoredByCodeql(patterns, path)).toBe(true);
+  });
+
+  test.each([
+    'src-server/routes/foo.ts',
+    'src-ui/src/components/plugins/PluginFrameHost.tsx',
+    'scripts/phone-ui-server.mjs',
+    'src-ui/src/lib/test-utils.ts',
+    'src-server/services/attestation.ts',
+    'vitest.config.ts',
+    'packages/tests-helper/src/index.ts',
+    'src-ui/src/contest/latest.ts',
+  ])('still scans production path %s', (path) => {
+    expect(ignoredByCodeql(patterns, path)).toBe(false);
+  });
+
+  // push-to-main fails on a baseline entry that matches no result. An entry
+  // on an ignored path can never match again, so none may remain.
+  test('keeps no grandfathered finding on a path the scan now ignores', () => {
+    const baseline = JSON.parse(
+      readFileSync('scripts/codeql-error-baseline.json', 'utf8'),
+    ) as { findings: Array<{ path: string }> };
+    expect(baseline.findings.length).toBeGreaterThan(0);
+    expect(
+      baseline.findings
+        .map((finding) => finding.path)
+        .filter((path) => ignoredByCodeql(patterns, path)),
+    ).toEqual([]);
   });
 });

@@ -36,7 +36,10 @@ describe('inspectProcessFingerprint (station#3049)', () => {
     const exec = vi.fn(
       () => 'Mon Aug 17 13:00:00 2026 /usr/bin/node dist-server/main.js\n',
     );
-    const result = inspectProcessFingerprint(41, { exec: exec as never });
+    const result = inspectProcessFingerprint(41, {
+      exec: exec as never,
+      platform: 'darwin',
+    });
     expect(result?.startToken).toBe('Mon Aug 17 13:00:00 2026');
     expect(psOptions(exec).env.LC_ALL).toBe('C');
     expect(psOptions(exec).env.TZ).toBe('UTC');
@@ -44,7 +47,10 @@ describe('inspectProcessFingerprint (station#3049)', () => {
 
   it('parses a space-padded day-of-month', () => {
     const exec = vi.fn(() => 'Mon Aug  7 03:04:05 2026 node server.js\n');
-    const result = inspectProcessFingerprint(41, { exec: exec as never });
+    const result = inspectProcessFingerprint(41, {
+      exec: exec as never,
+      platform: 'darwin',
+    });
     expect(result?.startToken).toBe('Mon Aug  7 03:04:05 2026');
   });
 
@@ -53,7 +59,12 @@ describe('inspectProcessFingerprint (station#3049)', () => {
     // reject THIS shape (no whitespace lands at the 24-char boundary) — the
     // discriminating case is the next test.
     const exec = vi.fn(() => 'Mo 17 Aug 13:00:00 2026 node server.js\n');
-    expect(inspectProcessFingerprint(41, { exec: exec as never })).toBeNull();
+    expect(
+      inspectProcessFingerprint(41, {
+        exec: exec as never,
+        platform: 'darwin',
+      }),
+    ).toBeNull();
   });
 
   it('fails closed even when a localized shape satisfies the fixed-width slice', () => {
@@ -63,16 +74,70 @@ describe('inspectProcessFingerprint (station#3049)', () => {
     // The field parse recognizes it is not a C-locale shape and returns
     // null — the discriminating case injection C proved missing.
     const exec = vi.fn(() => 'Mo 17 Aug 13:00:00 2026  node server.js\n');
-    expect(inspectProcessFingerprint(41, { exec: exec as never })).toBeNull();
+    expect(
+      inspectProcessFingerprint(41, {
+        exec: exec as never,
+        platform: 'darwin',
+      }),
+    ).toBeNull();
   });
 
-  it('real self-probe: C-format token, stable across reads', () => {
+  it('real self-probe: platform-shaped token, stable across reads', () => {
     const first = inspectProcessFingerprint(process.pid);
     const second = inspectProcessFingerprint(process.pid);
     expect(first?.startToken).toMatch(
-      /^[A-Z][a-z]{2} [A-Z][a-z]{2} [ \d]\d \d{2}:\d{2}:\d{2} \d{4}$/,
+      process.platform === 'linux'
+        ? /^linux:[0-9a-f-]+:\d+$/
+        : /^[A-Z][a-z]{2} [A-Z][a-z]{2} [ \d]\d \d{2}:\d{2}:\d{2} \d{4}$/,
     );
     expect(second).toEqual(first);
+  });
+});
+
+describe('inspectProcessFingerprint on Linux (WSL2 lstart drift)', () => {
+  const psCommand = vi.fn(
+    (_file: string, _args: string[]) => '/usr/bin/node dist-server/main.js\n',
+  );
+
+  it('takes the start token from the /proc birth, never from lstart', () => {
+    // The defect: under WSL2 `ps -o lstart=` for one live process walks
+    // backwards as the guest clock is stepped (5s in 85s on the fleet host),
+    // so a token recorded at start mismatched at stop. The /proc birth
+    // (field 22 + boot id) does not move; lstart must not be consulted.
+    const birth = vi.fn(() => 'linux:boot-id:68452148');
+    const first = inspectProcessFingerprint(41, {
+      exec: psCommand as never,
+      platform: 'linux',
+      birth,
+    });
+    expect(first).toEqual({
+      pid: 41,
+      startToken: 'linux:boot-id:68452148',
+      commandDigest: expect.stringMatching(/^[0-9a-f]{64}$/),
+    });
+    const psArgs = psCommand.mock.calls.map((call) => call[1]);
+    expect(psArgs).toEqual([['-o', 'command=', '-p', '41']]);
+  });
+
+  it('fails closed when the pid is reused between the birth and command reads', () => {
+    const births = ['linux:boot-id:100', 'linux:boot-id:200'];
+    expect(
+      inspectProcessFingerprint(41, {
+        exec: psCommand as never,
+        platform: 'linux',
+        birth: () => births.shift() ?? null,
+      }),
+    ).toBeNull();
+  });
+
+  it('fails closed when the process has no birth record', () => {
+    expect(
+      inspectProcessFingerprint(41, {
+        exec: psCommand as never,
+        platform: 'linux',
+        birth: () => null,
+      }),
+    ).toBeNull();
   });
 });
 
@@ -126,6 +191,33 @@ describe('fingerprintMatchesRecorded (station#3049)', () => {
         legacyInspect,
       }),
     ).toBe(false);
+  });
+
+  it('accepts a Linux record written with a pinned lstart token (upgrade path)', () => {
+    const lstartRecord = { ...recorded };
+    const procObservation = { ...recorded, startToken: 'linux:boot:123' };
+    const pinnedLstartInspect = vi.fn(() => ({ ...recorded }));
+    const legacyInspect = vi.fn(() => null);
+    expect(
+      fingerprintMatchesRecorded(procObservation, lstartRecord, {
+        pinnedLstartInspect,
+        legacyInspect,
+      }),
+    ).toBe(true);
+    expect(pinnedLstartInspect).toHaveBeenCalledWith(41);
+  });
+
+  it('never re-reads a /proc record through the drifting lstart lens', () => {
+    const procRecord = { ...recorded, startToken: 'linux:boot:123' };
+    const reused = { ...recorded, startToken: 'linux:boot:999' };
+    const pinnedLstartInspect = vi.fn(() => ({ ...procRecord }));
+    expect(
+      fingerprintMatchesRecorded(reused, procRecord, {
+        pinnedLstartInspect,
+        legacyInspect: () => null,
+      }),
+    ).toBe(false);
+    expect(pinnedLstartInspect).not.toHaveBeenCalled();
   });
 
   it('never matches through null observations', () => {

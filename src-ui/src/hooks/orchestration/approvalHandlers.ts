@@ -2,6 +2,7 @@ import { resolveOrchestrationRequest } from '@kontourai/station-sdk';
 import {
   toolRequestDisplayName,
   toolRequestFromPayload,
+  toolRequestGrantLabel,
   toolRequestPreviewFromPayload,
 } from '@kontourai/station-shared/tool-request-preview';
 import { toolPurposeView } from '../../components/chat/tool-display-view';
@@ -14,12 +15,15 @@ async function resolveApproval(
   apiBase: string,
   threadId: string,
   requestId: string,
+  requestEventId: string | undefined,
   decision: 'accept' | 'acceptForSession' | 'decline',
 ) {
   await resolveOrchestrationRequest({
     apiBase,
     threadId,
     requestId,
+    // #2316: answer only the exact prompt this toast shows.
+    ...(requestEventId ? { expectedRequestEventId: requestEventId } : {}),
     decision,
   });
 }
@@ -64,9 +68,8 @@ export function handleRequestOpenedEvent(
   // one. The `event.title` fallback is adapter display text — for Codex it is
   // the literal shell command — and "Allow <a whole command line> for this
   // session" would both mislead about the grant's scope and swamp the button.
-  const grantLabel = displayName
-    ? `Allow ${displayName} for this session`
-    : 'Allow this tool for this session';
+  // The inline card uses the same helper (#2316).
+  const grantLabel = toolRequestGrantLabel(payloadToolName);
   if (isReplayThread(event.threadId)) return;
 
   const toastId = toastStore.showToolApproval({
@@ -84,6 +87,7 @@ export function handleRequestOpenedEvent(
             apiBase,
             event.threadId,
             event.requestId,
+            event.eventId,
             'accept',
           );
         },
@@ -99,6 +103,7 @@ export function handleRequestOpenedEvent(
             apiBase,
             event.threadId,
             event.requestId,
+            event.eventId,
             'acceptForSession',
           );
         },
@@ -111,6 +116,7 @@ export function handleRequestOpenedEvent(
             apiBase,
             event.threadId,
             event.requestId,
+            event.eventId,
             'decline',
           );
         },

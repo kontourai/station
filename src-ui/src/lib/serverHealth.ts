@@ -4,6 +4,7 @@ import {
   classifyHttpFailureResponse,
   classifyNativeTransportRefusal,
   HEALTH_PROBE_TIMEOUT_MS,
+  isNativeTransportSaturation,
 } from '@kontourai/station-connect';
 import { PUBLIC_STATION_HANDSHAKE_PATH } from '@kontourai/station-contracts/environment-security';
 import { authenticatedFetch } from '@kontourai/station-sdk';
@@ -141,6 +142,11 @@ export async function probeServerConnection(
   );
   const abort = () => controller.abort(parentSignal.reason);
   parentSignal.addEventListener('abort', abort, { once: true });
+  // station#2327: set once the public handshake has answered as the expected
+  // Station. From then on, a deadline or a saturated native queue on the
+  // identity read is a Station that is slow to give this device a turn — the
+  // address demonstrably answers — not one that cannot be reached.
+  let handshakeAnswered = false;
   try {
     const handshakeResponse = await fetch(
       new URL(PUBLIC_STATION_HANDSHAKE_PATH, url),
@@ -202,10 +208,18 @@ export async function probeServerConnection(
     ) {
       return { ok: false, reason: 'identity-mismatch' };
     }
+    handshakeAnswered = true;
     const identityResponse = await stationAuthenticatedFetch(
       new URL('/api/system/identity', url),
       credential,
-      { signal: controller.signal },
+      // station#2327: on desktop this read would otherwise wait in the native
+      // broker's ordinary-read queue behind every background poll, which is
+      // exactly where it timed out on a stalled Station. `livenessProbe`
+      // takes the broker's one reserved slot instead (or is refused at once).
+      // It is carried as an untyped init field on purpose: the native
+      // transport reads it (`authenticatedTransport.ts`), and nothing else is
+      // meant to set it. Plain `fetch` ignores unknown init members.
+      { signal: controller.signal, livenessProbe: true } as RequestInit,
     );
     if (!identityResponse.ok) {
       return {
@@ -224,6 +238,13 @@ export async function probeServerConnection(
     // other transport failure here.
     const nativeRefusal = classifyNativeTransportRefusal(error);
     if (nativeRefusal) return { ok: false, reason: nativeRefusal };
+    if (
+      handshakeAnswered &&
+      (controller.signal.reason === 'timeout' ||
+        isNativeTransportSaturation(error))
+    ) {
+      return { ok: false, reason: 'busy' };
+    }
     return {
       ok: false,
       reason:

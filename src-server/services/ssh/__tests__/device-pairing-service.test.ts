@@ -16,6 +16,7 @@ import {
   DEFAULT_GRANT_PAIRING_SCOPE,
   DEVICE_PAIRING_SCOPE,
   PAIRING_SCOPE_HOME_CONTROL,
+  PAIRING_SCOPE_ORCHESTRATION_READ,
   pairingScopeIncludes,
   pairingScopePresetString,
 } from '@kontourai/station-contracts';
@@ -210,6 +211,174 @@ afterEach(() => {
 });
 
 describe('DevicePairingService', () => {
+  test('relay enrollment uses a private proof, account-only approval and an inadmissible reserved Device until activation', () => {
+    const { service, homeDir } = harness();
+    const enrollmentId = 'E'.repeat(43);
+    const candidate = {
+      issuer: 'https://identity.example.test',
+      subject: 'provider-subject-123',
+      displayName: 'Relay account',
+    };
+    const pending = service.requestRelayEnrollmentAccess({
+      enrollmentId,
+      endpoint: 'https://station.example.test',
+      candidate,
+      sessionId: 'provider-session-record-123',
+    });
+    const publicRequest = service
+      .listRequests()
+      .find((request) => request.requestId === pending.requestId)!;
+    expect(publicRequest).toMatchObject({
+      accountCandidate: candidate,
+      requireAccountBinding: true,
+      scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+      status: 'pending',
+    });
+    expect(publicRequest).not.toHaveProperty('relayEnrollmentId');
+    expect(publicRequest).not.toHaveProperty('accountCandidateSessionId');
+    expect(service.isRelayEnrollmentRequest(pending.requestId)).toBe(true);
+    expect(service.relayEnrollmentForRequest(pending.requestId)).toMatchObject({
+      enrollmentId,
+      offerId: pending.offerId,
+      proof: pending.proof,
+      sessionId: 'provider-session-record-123',
+      candidate,
+    });
+
+    expect(() =>
+      service.confirmRequest(pending.requestId, OPERATOR_APPROVAL, {
+        principalId: 'human:deployment:operator',
+        kind: 'account',
+      }),
+    ).toThrowError(
+      new DevicePairingError('relay_enrollment_finalize_required'),
+    );
+    expect(
+      service
+        .listRequests()
+        .find((request) => request.requestId === pending.requestId)?.status,
+    ).toBe('pending');
+
+    service.confirmRelayEnrollmentRequest(
+      pending.requestId,
+      OPERATOR_APPROVAL,
+      'human:deployment:operator',
+      {
+        enrollmentId,
+        sessionId: 'provider-session-record-123',
+        issuer: candidate.issuer,
+        subject: candidate.subject,
+      },
+    );
+    expect(() =>
+      service.exchange({
+        offerId: pending.offerId,
+        proof: pending.proof,
+        requestId: pending.requestId,
+      }),
+    ).toThrowError(
+      new DevicePairingError('relay_enrollment_finalize_required'),
+    );
+
+    const deviceId = '11111111-2222-4333-8444-555555555555';
+    const exchanged = service.exchangeRelayEnrollment({
+      offerId: pending.offerId,
+      proof: pending.proof,
+      requestId: pending.requestId,
+      enrollmentId,
+      deviceId,
+    });
+    expect(exchanged.device.id).toBe(deviceId);
+    expect(exchanged.device.scope).toBe(PAIRING_SCOPE_ORCHESTRATION_READ);
+    expect(exchanged.device).not.toHaveProperty('relayEnrollmentId');
+    expect(exchanged.device).not.toHaveProperty('pendingEnrollmentId');
+    expect(service.identifyDevice(exchanged.credential)).toBeNull();
+    expect(service.verifyCredential(exchanged.credential)).toBe(false);
+    expect(service.listDevices()).toEqual([]);
+    expect(service.listKnownPrincipals()).toEqual([]);
+    const pendingBinding = exchanged.device.principalBinding;
+    if (!pendingBinding || !('kind' in pendingBinding))
+      throw new Error('relay exchange did not retain account approval');
+    expect(service.resolvePendingRelayDevice(deviceId, enrollmentId)).toEqual({
+      deviceId,
+      enrollmentId,
+      issuer: candidate.issuer,
+      subject: candidate.subject,
+      approvalId: pendingBinding.approvalId,
+      approvedBy: pendingBinding.approvedBy,
+      scope: [PAIRING_SCOPE_ORCHESTRATION_READ],
+    });
+    expect(
+      service.resolvePendingRelayDevice(deviceId, 'F'.repeat(43)),
+    ).toBeNull();
+
+    const reopened = new DevicePairingService({
+      homeDir,
+      environmentId: ENVIRONMENT_ID,
+    });
+    expect(reopened.identifyDevice(exchanged.credential)).toBeNull();
+    expect(reopened.verifyCredential(exchanged.credential)).toBe(false);
+    expect(reopened.listDevices()).toEqual([]);
+
+    reopened.activateRelayEnrollmentDevice(deviceId, enrollmentId);
+    expect(
+      reopened.resolvePendingRelayDevice(deviceId, enrollmentId),
+    ).toBeNull();
+    expect(reopened.identifyDevice(exchanged.credential)).toMatchObject({
+      id: deviceId,
+      principalBinding: {
+        kind: 'account',
+        issuer: candidate.issuer,
+        subject: candidate.subject,
+      },
+    });
+    expect(reopened.listDevices()).toHaveLength(1);
+    expect(reopened.discardRelayEnrollmentDevice(deviceId, enrollmentId)).toBe(
+      true,
+    );
+    expect(reopened.identifyDevice(exchanged.credential)).toBeNull();
+    expect(reopened.listDevices()).toEqual([]);
+  });
+
+  test('relay enrollment refuses a caller-selected or reused Device ID without consuming its offer', () => {
+    const { service } = harness();
+    const existing = pair(service, 'Existing device').result;
+    const pending = service.requestRelayEnrollmentAccess({
+      enrollmentId: 'R'.repeat(43),
+      endpoint: 'https://station.example.test',
+      candidate: {
+        issuer: 'https://identity.example.test',
+        subject: 'relay-person',
+        displayName: 'Relay person',
+      },
+      sessionId: 'pending-session-record',
+    });
+    service.confirmRelayEnrollmentRequest(
+      pending.requestId,
+      OPERATOR_APPROVAL,
+      'human:deployment:operator',
+      {
+        enrollmentId: 'R'.repeat(43),
+        sessionId: 'pending-session-record',
+        issuer: 'https://identity.example.test',
+        subject: 'relay-person',
+      },
+    );
+    expect(() =>
+      service.exchangeRelayEnrollment({
+        offerId: pending.offerId,
+        proof: pending.proof,
+        requestId: pending.requestId,
+        enrollmentId: 'R'.repeat(43),
+        deviceId: existing.device.id,
+      }),
+    ).toThrowError(new DevicePairingError('invalid_request'));
+    expect(service.identifyDevice(existing.credential)?.id).toBe(
+      existing.device.id,
+    );
+    expect(service.isRelayEnrollmentRequest(pending.requestId)).toBe(true);
+  });
+
   test('approved personal devices share conversation owners without merging device identities', () => {
     const { service } = harness();
     const first = pair(service, 'Phone').result;
@@ -1944,6 +2113,38 @@ describe('DevicePairingService', () => {
       expect(
         pairingScopeIncludes(result.device.scope, 'orchestration:operate'),
       ).toBe(false);
+    });
+
+    test('rejects a wider issued session scope and leaves the confirmed offer usable', () => {
+      const { service } = harness();
+      const readOnlyScope = pairingScopePresetString('read-only');
+      const offer = service.createOffer({
+        endpoint: 'https://station.example.test',
+        scope: readOnlyScope,
+      });
+      const request = service.requestPairing({
+        requesterPosition: 'off-box',
+        offerId: offer.offerId,
+        proof: offer.challenge,
+        deviceName: 'Read-only phone',
+      });
+      service.confirmRequest(request.requestId, OPERATOR_APPROVAL);
+
+      expect(() =>
+        service.exchange({
+          offerId: offer.offerId,
+          proof: offer.challenge,
+          requestId: request.requestId,
+          sessionScope: DEFAULT_GRANT_PAIRING_SCOPE,
+        }),
+      ).toThrowError(new DevicePairingError('invalid_request'));
+
+      const result = service.exchange({
+        offerId: offer.offerId,
+        proof: offer.challenge,
+        requestId: request.requestId,
+      });
+      expect(result.device.scope).toBe(readOnlyScope);
     });
 
     test('the standard preset excludes access:manage even though it grants terminal:operate', () => {

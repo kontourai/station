@@ -143,6 +143,33 @@ describe('native authenticated transport', () => {
     );
   });
 
+  // station#2327: the reserved liveness slot is opt-in per request, and an
+  // ordinary request must never carry the flag by default.
+  test('forwards the liveness-probe flag only when the caller set it', async () => {
+    bridge.invoke.mockImplementation(async (command: string) => {
+      if (command === 'station_native_http_request') {
+        queueMicrotask(() => {
+          emit({ type: 'response', status: 200, headers: {} });
+          emit({ type: 'end' });
+        });
+      }
+    });
+    await nativeAuthenticatedTransport(
+      'https://station.example.test/api/system/identity',
+      { livenessProbe: true } as RequestInit,
+    );
+    await nativeAuthenticatedTransport(
+      'https://station.example.test/api/system/capabilities',
+    );
+    const requests = bridge.invoke.mock.calls
+      .filter(([command]) => command === 'station_native_http_request')
+      .map(
+        ([, args]) => (args as { request: Record<string, unknown> }).request,
+      );
+    expect(requests[0]?.livenessProbe).toBe(true);
+    expect(requests[1]).not.toHaveProperty('livenessProbe');
+  });
+
   test('forwards the shared client-origin header through the native broker without a renderer credential', async () => {
     bridge.invoke.mockImplementation(async (command: string) => {
       if (command === 'station_native_http_request') {

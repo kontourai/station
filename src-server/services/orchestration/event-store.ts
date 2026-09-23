@@ -181,7 +181,10 @@ import {
   releaseNativeInvocationOwner,
 } from './native-invocation-runs.js';
 import {
+  type ConversationDraftFacts,
   clientOriginIdentity,
+  DRAFT_ENDING_METHOD_PREFIXES,
+  DRAFT_ENDING_TURN_METHODS,
   projectionFactKeysForEvent,
 } from './orchestration-session-state.js';
 import {
@@ -217,6 +220,10 @@ import {
   type RecoveryTransition,
   releaseRecoveryLedgerOwner,
 } from './recovery-ledger.js';
+import {
+  SESSION_OWNER_ATTRIBUTION_METADATA_KEY,
+  UNATTRIBUTED_AGENT_OWNER_ATTRIBUTION,
+} from './session-owner-attribution.js';
 import type {
   SessionBasisTurnDescriptorEvent,
   SessionBasisTurnDescriptorWindow,
@@ -1557,6 +1564,12 @@ export class VoiceTurnStartupUnavailableError extends Error {
  * constructor whose migration dies on a corrupt store translates that verdict
  * into this error, with the raw SQLite failure as `cause`.
  */
+/**
+ * #2310 review F3: the phase that refused a `rejected` command. Server-
+ * internal (persisted, never returned on a receipt).
+ */
+export type CommandRefusalPhase = 'authorization' | 'execution';
+
 export class EventStoreIntegrityError extends Error {
   readonly code = 'STATION_EVENT_STORE_CORRUPT';
 
@@ -6193,6 +6206,45 @@ export class EventStore {
     return querySessionOwner(this.db, threadId);
   }
 
+  /**
+   * Station #90 lane D (B2): the session owner AND whether any
+   * ownership-shaped event marks the session as started by an
+   * unattributed agent (`session-owner-attribution.ts`), in ONE statement,
+   * so the acting-principal derivation cannot read the two facts from
+   * different store states. The owner half is the exact predicate and
+   * ordering of `querySessionOwner`.
+   */
+  findSessionOwnerAttribution(threadId: string): {
+    ownerUserId?: string;
+    unattributedAgent: boolean;
+  } {
+    const row = this.db
+      .prepare(
+        `SELECT
+           (SELECT json_extract(payload, '$.metadata.userId')
+              FROM orchestration_events
+             WHERE thread_id = ?1
+               AND json_valid(payload)
+               AND json_type(payload, '$.metadata.userId') = 'text'
+               AND method IN ('session.started', 'session.configured')
+             ORDER BY created_at DESC, sequence DESC
+             LIMIT 1) AS user_id,
+           EXISTS (SELECT 1
+              FROM orchestration_events
+             WHERE thread_id = ?1
+               AND json_valid(payload)
+               AND json_extract(payload, '$.metadata.${SESSION_OWNER_ATTRIBUTION_METADATA_KEY}') = '${UNATTRIBUTED_AGENT_OWNER_ATTRIBUTION}'
+               AND method IN ('session.started', 'session.configured')) AS unattributed`,
+      )
+      .get(threadId) as
+      | { user_id?: unknown; unattributed?: number }
+      | undefined;
+    return {
+      ...(typeof row?.user_id === 'string' ? { ownerUserId: row.user_id } : {}),
+      unattributedAgent: row?.unattributed === 1,
+    };
+  }
+
   sessionAgentPresentation(
     threadId: string,
   ): { agentDisplayName?: string; agentIcon?: string } | undefined {
@@ -7352,6 +7404,162 @@ export class EventStore {
       if (event) result.set(threadId, event);
     }
     return result;
+  }
+
+  /**
+   * #2310: what the store knows about each thread's whole CONVERSATION that
+   * the thread's own events cannot say — the lineage half of the Draft
+   * derivation (`deriveSessionDraft`). Over every Session of the conversation
+   * (the root and every continuation/handoff child):
+   *
+   * - `activityObserved`: any turn fact, or any `content.*`/`tool.*` event;
+   * - `sendAccepted` / `sendRejected` / `sendFailed`: the `sendTurn` command
+   *   receipts, which are the only record of a send that did not take (a
+   *   refused send publishes no event). Only EXECUTION-phase rejections
+   *   count (`refusal_phase = 'execution'`); an authorization or ownership
+   *   refusal says nothing about the session (#2310 review F3);
+   * - `hasCopiedHistory`: the conversation is the target of a
+   *   `conversation.forked` fact, so it carries copied messages.
+   *
+   * A child minted for the next turn, or a root whose turns all ran in
+   * children, therefore still reads as having activity.
+   *
+   * Every thread asked about gets an entry. A thread with no lineage row is
+   * its own conversation (the store registers every persisted Session as the
+   * root of one — `upsertSession`/`markSessionClosed`). Chunked like
+   * {@link conversationRootFirstPromptedTurnForThreads}, and for the same
+   * reason: the caller is the batched session-list read.
+   *
+   * Cost, per `EXPLAIN QUERY PLAN` on a copy of a real home (#2310 review
+   * F6), per chunk:
+   * - activity: one SEEK on `thread_id` per lineage member through the
+   *   covering index `idx_events_history_projection`; the method predicate
+   *   (turn facts plus the `content.`/`tool.` ranges) is FILTERED over that
+   *   member's index entries, not sought. `EXISTS` stops at the first hit, so
+   *   a member with activity costs little; a quiet member costs its (small)
+   *   event count.
+   * - receipts: `orchestration_command_receipts` has no thread index, so the
+   *   `sendTurn` rows are SCANNED and grouped once (materialized), then probed
+   *   per member through an automatic index. The scan grows by one row per
+   *   command.
+   * - forks: a SEEK on `idx_events_method` for `conversation.forked`.
+   * Measured: 6.2 ms warm, 40.7 ms cold, over 276 threads.
+   */
+  conversationDraftFactsForThreads(
+    threadIds: readonly string[],
+  ): Map<string, ConversationDraftFacts> {
+    const unique = [...new Set(threadIds)];
+    const result = new Map<string, ConversationDraftFacts>(
+      unique.map((threadId) => [
+        threadId,
+        {
+          activityObserved: false,
+          sendAccepted: false,
+          sendRejected: false,
+          sendFailed: false,
+          hasCopiedHistory: false,
+        },
+      ]),
+    );
+    const turnMethods = DRAFT_ENDING_TURN_METHODS.map(() => '?').join(', ');
+    // A half-open range per prefix ('content.' <= m < 'content/'), not LIKE:
+    // it is exact regardless of case_sensitive_like. The plan filters it over
+    // the member's index entries rather than seeking (see the docblock).
+    const prefixRanges = DRAFT_ENDING_METHOD_PREFIXES.map(
+      () => '(event.method >= ? AND event.method < ?)',
+    ).join(' OR ');
+    const prefixBounds = DRAFT_ENDING_METHOD_PREFIXES.flatMap((prefix) => [
+      prefix,
+      `${prefix.slice(0, -1)}/`,
+    ]);
+    for (const chunk of this.chunkArray(unique, EVENT_STORE_BATCH_CHUNK_SIZE)) {
+      const rows = this.db
+        .prepare(
+          `WITH asked(thread_id, conversation_id) AS (
+             SELECT candidate.value,
+                    COALESCE(lineage.conversation_id, candidate.value)
+             FROM json_each(?) candidate
+             LEFT JOIN orchestration_conversation_sessions lineage
+               ON lineage.session_id = candidate.value
+           ),
+           member(thread_id, session_id) AS (
+             SELECT thread_id, thread_id FROM asked
+             UNION
+             SELECT thread_id, conversation_id FROM asked
+             UNION
+             SELECT asked.thread_id, sibling.session_id
+             FROM asked
+             INNER JOIN orchestration_conversation_sessions sibling
+               ON sibling.conversation_id = asked.conversation_id
+           ),
+           sends(thread_id, accepted, rejected, failed) AS (
+             SELECT thread_id,
+                    MAX(status = 'accepted'),
+                    MAX(status = 'rejected' AND refusal_phase = 'execution'),
+                    MAX(status = 'failed')
+             FROM orchestration_command_receipts
+             WHERE command_type = 'sendTurn'
+             GROUP BY thread_id
+           )
+           SELECT asked.thread_id AS thread_id,
+             EXISTS (
+               SELECT 1 FROM member
+               INNER JOIN orchestration_events event
+                 ON event.thread_id = member.session_id
+               WHERE member.thread_id = asked.thread_id
+                 AND (event.method IN (${turnMethods}) OR ${prefixRanges})
+             ) AS activity_observed,
+             COALESCE((
+               SELECT MAX(sends.accepted) FROM member
+               INNER JOIN sends ON sends.thread_id = member.session_id
+               WHERE member.thread_id = asked.thread_id
+             ), 0) AS send_accepted,
+             COALESCE((
+               SELECT MAX(sends.rejected) FROM member
+               INNER JOIN sends ON sends.thread_id = member.session_id
+               WHERE member.thread_id = asked.thread_id
+             ), 0) AS send_rejected,
+             COALESCE((
+               SELECT MAX(sends.failed) FROM member
+               INNER JOIN sends ON sends.thread_id = member.session_id
+               WHERE member.thread_id = asked.thread_id
+             ), 0) AS send_failed,
+             EXISTS (
+               SELECT 1 FROM orchestration_events fork
+               WHERE fork.method = 'conversation.forked'
+                 AND json_extract(fork.payload, '$.targetConversationId')
+                   = asked.conversation_id
+             ) AS has_copied_history
+           FROM asked`,
+        )
+        .all(
+          JSON.stringify(chunk),
+          ...DRAFT_ENDING_TURN_METHODS,
+          ...prefixBounds,
+        ) as Array<{
+        thread_id: string;
+        activity_observed: number;
+        send_accepted: number;
+        send_rejected: number;
+        send_failed: number;
+        has_copied_history: number;
+      }>;
+      for (const row of rows) {
+        result.set(row.thread_id, {
+          activityObserved: row.activity_observed === 1,
+          sendAccepted: row.send_accepted === 1,
+          sendRejected: row.send_rejected === 1,
+          sendFailed: row.send_failed === 1,
+          hasCopiedHistory: row.has_copied_history === 1,
+        });
+      }
+    }
+    return result;
+  }
+
+  /** Single-thread {@link conversationDraftFactsForThreads}. */
+  conversationDraftFacts(threadId: string): ConversationDraftFacts {
+    return this.conversationDraftFactsForThreads([threadId]).get(threadId)!;
   }
 
   reserveNextConversationSession(input: {
@@ -9604,12 +9812,22 @@ export class EventStore {
     });
   }
 
-  appendCommandReceipt(receipt: OrchestrationCommandReceipt): void {
+  /**
+   * `refusalPhase` (#2310 review F3) is server-internal and never read back
+   * onto the public receipt: it records whether a `rejected` command was
+   * refused at the authorization gate or after it, so a derivation that
+   * reads receipts as evidence about a session (`conversationDraftFacts`)
+   * can ignore refusals that say nothing about the session itself.
+   */
+  appendCommandReceipt(
+    receipt: OrchestrationCommandReceipt,
+    options: { refusalPhase?: CommandRefusalPhase } = {},
+  ): void {
     this.db
       .prepare(
         `INSERT OR REPLACE INTO orchestration_command_receipts
-          (command_id, thread_id, command_type, status, created_at, client_origin)
-         VALUES (?, ?, ?, ?, ?, ?)`,
+          (command_id, thread_id, command_type, status, created_at, client_origin, refusal_phase)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         receipt.commandId,
@@ -9618,6 +9836,7 @@ export class EventStore {
         receipt.status,
         receipt.createdAt,
         receipt.clientOrigin ? JSON.stringify(receipt.clientOrigin) : null,
+        receipt.status === 'rejected' ? (options.refusalPhase ?? null) : null,
       );
   }
 

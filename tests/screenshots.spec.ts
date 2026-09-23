@@ -2613,6 +2613,24 @@ test('build gallery — capture key screens', async ({ page }) => {
     if (envelope.values) delete envelope.values.regionArrangement;
     localStorage.setItem(key, JSON.stringify(envelope));
   });
+  // Each navigation also starts with no persisted query cache. Since #2278
+  // every verified authority restores its whitelisted queries (`projects`
+  // among them) from IndexedDB with `refetchOnMount: false` and a 5-minute
+  // `staleTime`, so a screen inherits whatever an EARLIER screen's real
+  // backend returned and never issues the request its own `page.route`
+  // fixture answers. That is what emptied the project switcher on
+  // `overlay-dock-project-bound`, `overlay-dock-project-mismatch` and
+  // `overlay-project-switcher-populated`: they passed alone and failed after
+  // `home`. Which earlier writes had flushed is also timing-dependent (the
+  // persister throttles), so the restored state was not even stable run to
+  // run. Deleting the database here is ordered, not raced: an `open` for the
+  // same name waits for a pending `deleteDatabase` to finish, so the app's
+  // first read always sees an empty store. The name mirrors
+  // `IDB_DATABASE_NAME` in `src-ui/src/lib/queryPersistence.ts`.
+  await page.addInitScript(() => {
+    if (typeof indexedDB !== 'undefined')
+      indexedDB.deleteDatabase('station-query-cache');
+  });
   await page.route('**/.well-known/station/v1', fulfillGalleryStationHandshake);
   await page.route('**/api/system/identity', fulfillGalleryStationIdentity);
 

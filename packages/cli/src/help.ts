@@ -465,7 +465,7 @@ const VERBS: Record<string, VerbSpec> = {
       'station plugin list|build',
       'station plugin remove|info|update <name>',
       'station plugin init [name]',
-      'station plugin create [name] [--template=<full|layout|provider>]',
+      'station plugin create [name] [--template=<pane|full|provider>]',
       'station plugin dev [--port=<n>] [flags]',
     ],
     actions: [
@@ -497,7 +497,7 @@ const VERBS: Record<string, VerbSpec> = {
       '  --skip=<components>   install: skip components (comma-separated)',
       '  --yes                 install: approve the printed disclosure without',
       '                        prompting (required when stdin is not a TTY)',
-      '  --template=<name>     create: full, layout, or provider',
+      '  --template=<name>     create: pane, full, or provider (layout = pane)',
       '  --port=<n>            dev: preview server port (default: 4200).',
       '                        A bare positional port still works.',
       '  --no-mcp              dev: disable MCP tool connections',

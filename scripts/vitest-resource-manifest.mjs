@@ -122,6 +122,8 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 // has measured — and the branch that reds is then whichever one happened to
 // add the next spawn, not the design that made the deadline fragile.
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
+  // Creates FIFOs with mkfifo to prove plugin validation refuses them without blocking.
+  'src-server/routes/plugins/__tests__/plugin-validate-routes.test.ts',
   // Resolves real Git roots through bounded child processes in temporary repositories.
   'src-server/services/orchestration/__tests__/workspace-identity.test.ts',
   // Runs the source CLI twice against one private SQLite root to prove init recovery.
@@ -153,6 +155,12 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'packages/cli/src/__tests__/desktop-companion.test.ts',
   // The shared observer fixture also creates real POSIX FIFOs and runs two
   // bounded Node children to prove the exact open-boundary blocking race.
+  // Epic #2323 S3: real FIFOs (`mkfifo`) as plugin inputs, and a bounded
+  // child process for the tsconfig read a regression would block.
+  'packages/shared/src/__tests__/plugin-build-fifo.test.ts',
+  // Epic #2323 S3: each draft build forks a disposable process that is
+  // killed at its deadline; the test observes that process and a FIFO.
+  'src-server/services/plugins/__tests__/plugin-draft-build-process.test.ts',
   'packages/shared/src/__tests__/station-home-recovery-preflight.test.ts',
   // The CLI fixture imports child_process only to forbid every launch while
   // patching builtin exports around the real read-only dispatch seam.
@@ -210,6 +218,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Creates two disposable Git roots and invokes the transfer gate's real Git
   // provenance/capture boundary under a hostile hook environment.
   'scripts/__tests__/orchestration-transfer-gate.test.ts',
+  // #2355: creates real linked worktrees, removes them with `git worktree
+  // remove`, and holds one open with a live child process whose cwd is inside
+  // it, because the in-use probe (lsof/proc/ps) is the behavior under test.
+  'scripts/__tests__/transfer-baselines.test.ts',
   // station#4294: owns a real loopback listener, fresh HTTP sockets, a
   // streaming SDK transport, and a temporary SQLite EventStore.  The test's
   // barriers are stream facts, never a wall-clock budget, but the host
@@ -285,6 +297,11 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // proven. Two bounded single-shot children; the real 82s aggregate never
   // starts.
   'scripts/__tests__/prepush-typecheck.test.ts',
+  // Host typecheck slots: spawns fleets of six short-lived fake compilers
+  // against a PRIVATE slot directory (never the host's), SIGKILLs one holder
+  // to prove reclaim, and runs one real `tsc` on a two-file temp project
+  // three times to prove a warm incremental run still reports errors.
+  'scripts/__tests__/typecheck-host-slots.test.ts',
   // Asks git (`check-ignore`, `ls-files`) whether the generated Basis MCP app
   // bundles are ignored and untracked, because .gitignore's text cannot say
   // whether a rule still matches or a file was force-added. Two single-shot
@@ -375,6 +392,14 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // through `execFileSync` on purpose — its oracle has to be what git actually
   // returns for a pathspec, not a fixture that would pin the bug instead.
   'scripts/__tests__/gate-scope.test.ts',
+  // #90 lane C: launches a REAL installed Chrome/Edge (headless, pipe CDP,
+  // its own temporary profile and loopback fixture servers) to prove the
+  // server browser host's enforcement end to end: scheme blocking, download
+  // denial, popup folding, the Station-listener egress deny (HTTP, WebSocket,
+  // worker, service worker, rebinding) and crash detection. One browser for
+  // the whole file; every case reports an explicit skip when no browser is
+  // installed. Never downloads Chromium.
+  'src-server/services/browser/__tests__/chromium-server-host.real.test.ts',
   // station#1649: runs the glyph-coverage ratchet as a real child process
   // against a throwaway git repository, because the thing under test is the
   // gate's EXIT STATUS on a rejection — a guardrail whose failure branch has
@@ -560,6 +585,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // child process" shape as builder-delivery-viewer-import-gate.test.ts and
   // prepush-static-gates.test.ts above.
   'scripts/__tests__/test-import-existence-gate.test.ts',
+  // #2333: runs the test-path import gate as a real child process against
+  // throwaway git repos (known-bad fixtures and false-positive controls) and
+  // against this repository, same shape as the entry above.
+  'scripts/__tests__/test-path-import-gate.test.ts',
   'scripts/__tests__/trust-reconcile-manifest.test.ts',
   // station#3465 review (second pass): one assertion shells a real `git
   // ls-files` child process as an independent oracle for packages/connect's
@@ -880,6 +909,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // declares. jsdom computes no layout and would report the pre-fix
   // edge-to-edge frame and the fixed one identically.
   'src-ui/src/workspace-panes/__tests__/WorkspacePaneRouteView.frame.test.tsx',
+  // Runs the full-regression phase driver CLI and real npm children, including
+  // one it must kill at a deadline.
+  'scripts/__tests__/run-full-regression-phases.test.ts',
 ]);
 
 export const DOGFOOD_RECONCILE_PREFIX =
@@ -1215,4 +1247,167 @@ export function discoverVitestResourceGroups(options = {}) {
   );
   assertOrdinaryVitestSelection(groups, options);
   return groups;
+}
+
+/**
+ * Test quarantine (the merge-queue regression gate's escape valve).
+ *
+ * A quarantine entry names a test file that is flaky, not broken: the same
+ * commit both passed and failed it. Quarantined files are EXCLUDED from the
+ * merge-queue regression shards only (`run-vitest-corpus.mjs
+ * --exclude-quarantined`, passed by `run-full-regression-phases.mjs`). They
+ * STILL run in Nightly's canonical `full:regression`, which never reads this
+ * list — so Nightly stays exposed to the flake while the queue stops holding
+ * unrelated PRs hostage to it.
+ *
+ * This is an overlay, not a partition member: a quarantined file keeps its
+ * resource group above (`partitionVitestResourceSubset` and
+ * `buildVitestResourceGroups` do not read `quarantine`), so the
+ * every-file-in-exactly-one-group invariant is unchanged and the canonical
+ * lane's selection is byte-identical whatever this list holds. Moving the
+ * file into a group of its own would have forced the canonical lane to grow a
+ * phase for it and would have dropped the file's resource isolation.
+ *
+ * Each entry is `{ file, issue, expires, evidence }`, validated by
+ * `vitestQuarantineErrors` from `verification:policy:gate`:
+ * - `issue`: the full URL of the OPEN station issue labelled `flaky` that
+ *   tracks the fix. The gate checks the format only; it never calls GitHub.
+ * - `expires`: `YYYY-MM-DD`, at most QUARANTINE_MAX_DAYS after the day the
+ *   gate runs. From that date on the gate is RED: an expired quarantine is a
+ *   failure of every pull request until the entry is removed (fixed) or
+ *   renewed in a reviewed change with fresh evidence.
+ * - `evidence`: the same-commit disagreement — the commit SHA (40 hex) and at
+ *   least two distinct run ids (`actions/runs/<id>` or `run <id>`).
+ * At most QUARANTINE_MAX_ENTRIES entries. See docs/guides/testing.md.
+ */
+export const QUARANTINE_MAX_ENTRIES = 5;
+export const QUARANTINE_MAX_DAYS = 14;
+export const QUARANTINED_VITEST_FILES = Object.freeze([]);
+
+const QUARANTINE_ENTRY_KEYS = Object.freeze([
+  'evidence',
+  'expires',
+  'file',
+  'issue',
+]);
+const QUARANTINE_ISSUE_PATTERN =
+  /^https:\/\/github\.com\/kontourai\/station\/issues\/[1-9][0-9]*$/;
+const QUARANTINE_COMMIT_PATTERN = /(?:^|[^0-9a-f])([0-9a-f]{40})(?![0-9a-f])/i;
+const QUARANTINE_RUN_PATTERN = /(?:actions\/runs\/|\brun\s+)([0-9]{6,})\b/gi;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function utcDay(date) {
+  return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
+}
+
+function parseQuarantineDate(value) {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value))
+    return null;
+  const parsed = new Date(`${value}T00:00:00Z`);
+  return Number.isNaN(parsed.getTime()) ||
+    parsed.toISOString().slice(0, 10) !== value
+    ? null
+    : parsed.getTime();
+}
+
+/**
+ * Policy errors for a quarantine list. `now` is the gate's clock; tests pass
+ * a fixed one. `trackedFiles`, when given, is the tracked Vitest corpus a
+ * quarantined file must belong to.
+ */
+function quarantineKeysError(entry) {
+  const keys = Object.keys(entry).sort();
+  const exact =
+    keys.length === QUARANTINE_ENTRY_KEYS.length &&
+    keys.every((key, position) => key === QUARANTINE_ENTRY_KEYS[position]);
+  return exact
+    ? null
+    : `must have exactly the keys ${QUARANTINE_ENTRY_KEYS.join(', ')}; found ${keys.join(', ') || '<none>'}`;
+}
+
+// A quarantined path becomes a Vitest `--exclude` pattern, so a glob
+// metacharacter would widen one entry into many excluded files.
+const GLOB_METACHARACTERS = /[[\]{}()*?!]/;
+
+function quarantineFileError(file, seen, tracked) {
+  if (!isSafeRelativeFile(file))
+    return 'file must be a repository-relative test path';
+  if (GLOB_METACHARACTERS.test(file))
+    return 'file must be a literal path, without glob metacharacters [ ] { } ( ) * ? !';
+  if (seen.has(file)) return 'file is quarantined twice';
+  if (tracked && !tracked.has(file))
+    return 'file is not a tracked Vitest test file';
+  return null;
+}
+
+function quarantineIssueError(issue) {
+  return typeof issue === 'string' && QUARANTINE_ISSUE_PATTERN.test(issue)
+    ? null
+    : "issue must be the URL of the open 'flaky' issue, https://github.com/kontourai/station/issues/<number>";
+}
+
+function quarantineExpiryError(expires, today) {
+  const expiry = parseQuarantineDate(expires);
+  if (expiry === null) return 'expires must be a calendar date YYYY-MM-DD';
+  if (expiry <= today)
+    return `quarantine expired on ${expires}; fix the test and remove the entry, or renew it with new evidence`;
+  if (expiry > today + QUARANTINE_MAX_DAYS * DAY_MS)
+    return `expires ${expires} is more than ${QUARANTINE_MAX_DAYS} days away`;
+  return null;
+}
+
+function quarantineEvidenceError(evidence) {
+  const text = typeof evidence === 'string' ? evidence : '';
+  const runs = new Set(
+    [...text.matchAll(QUARANTINE_RUN_PATTERN)].map((match) => match[1]),
+  );
+  return QUARANTINE_COMMIT_PATTERN.test(text) && runs.size >= 2
+    ? null
+    : 'evidence must cite the commit SHA (40 hex) and two distinct run ids that disagreed on it';
+}
+
+/**
+ * Policy errors for a quarantine list. `now` is the gate's clock; tests pass
+ * a fixed one. `trackedFiles`, when given, is the tracked Vitest corpus a
+ * quarantined file must belong to.
+ */
+export function vitestQuarantineErrors(
+  entries = QUARANTINED_VITEST_FILES,
+  { now = new Date(), trackedFiles } = {},
+) {
+  if (!Array.isArray(entries)) return ['quarantine must be an array'];
+  const errors = [];
+  if (entries.length > QUARANTINE_MAX_ENTRIES)
+    errors.push(
+      `quarantine holds ${entries.length} entries; at most ${QUARANTINE_MAX_ENTRIES} are allowed`,
+    );
+  const today = utcDay(now);
+  const tracked = trackedFiles ? new Set(trackedFiles) : null;
+  const seen = new Set();
+  for (const [index, entry] of entries.entries()) {
+    const label = `quarantine entry ${index + 1}`;
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+      errors.push(`${label} must be an object`);
+      continue;
+    }
+    const keysError = quarantineKeysError(entry);
+    if (keysError) errors.push(`${label} ${keysError}`);
+    const { file, issue, expires, evidence } = entry;
+    const name = typeof file === 'string' ? `${label} (${file})` : label;
+    const fieldErrors = [
+      quarantineFileError(file, seen, tracked),
+      quarantineIssueError(issue),
+      quarantineExpiryError(expires, today),
+      quarantineEvidenceError(evidence),
+    ];
+    if (typeof file === 'string') seen.add(file);
+    for (const error of fieldErrors)
+      if (error) errors.push(`${name}: ${error}`);
+  }
+  return errors;
+}
+
+/** The files the merge-queue regression shards exclude. */
+export function quarantinedVitestFiles(entries = QUARANTINED_VITEST_FILES) {
+  return Object.freeze(entries.map((entry) => entry.file));
 }

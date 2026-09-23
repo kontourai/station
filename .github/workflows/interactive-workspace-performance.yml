@@ -1,8 +1,9 @@
 name: Interactive Workspace Performance
 
 on:
-  schedule:
-    - cron: '0 10 * * 1'
+  # Dispatch only. The weekly schedule never produced a green run (0 of 12
+  # runs through 2026-09-21), so it reported nothing. Restore the cron once a
+  # dispatched run on the reference host is green.
   workflow_dispatch:
 
 permissions:
@@ -82,7 +83,11 @@ jobs:
         continue-on-error: true
         with:
           name: interactive-workspace-performance-${{ github.run_id }}
-          path: .kontourai/performance/
+          # test-results/ holds the failure screenshot, trace and page snapshot;
+          # without them run 35624233388's red was diagnosable only by inference.
+          path: |
+            .kontourai/performance/
+            test-results/
           if-no-files-found: ignore
           retention-days: 30
 

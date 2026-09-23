@@ -462,6 +462,18 @@ export async function provisionRelayAccountStation<
         assert.equal(confirmation.status, 200);
         assert.equal(confirmation.body.principalBinding.kind, 'account');
       },
+      async confirmFreshRelayRequest(requestId: string) {
+        const confirmation = await http<{
+          principalBinding: { kind: string; approvalId: string };
+        }>(
+          `/api/pairing/requests/${requestId}/confirm`,
+          { bindAccountIdentity: true },
+          true,
+        );
+        assert.equal(confirmation.status, 200);
+        assert.equal(confirmation.body.principalBinding.kind, 'account');
+        assert(confirmation.body.principalBinding.approvalId);
+      },
       async exchangeBoundDevice(offer: DevicePairingOffer, requestId: string) {
         const response = await transport(
           current.base + PUBLIC_DEVICE_PAIRING_EXCHANGE_PATH,
@@ -595,6 +607,11 @@ export async function startRelayAccountStation(
   directory: string,
   browserOrigin: string,
   signal: AbortSignal,
+  options: {
+    port?: number;
+    prepareSelfHostedBrokerConfig?: (stationOrigin: string) => string;
+    ownedBrokerTcpPort?: number;
+  } = {},
 ) {
   const release = await acquireAccountLabPorts();
   const nonce = randomBytes(32).toString('hex');
@@ -631,6 +648,9 @@ export async function startRelayAccountStation(
         blockedProbePort: await listen(blocked),
         probeNonce: nonce,
         virtualApplicationOrigin: browserOrigin,
+        port: options.port,
+        prepareSelfHostedBrokerConfig: options.prepareSelfHostedBrokerConfig,
+        ownedBrokerTcpPort: options.ownedBrokerTcpPort,
       },
       signal,
     );
