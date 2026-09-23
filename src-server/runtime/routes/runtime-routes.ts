@@ -220,6 +220,8 @@ import { createWorkItemRoutes } from '../../routes/orchestration/work-items.js';
 import { createWorkspacePaneHostActionRoutes } from '../../routes/orchestration/workspace-pane-host-actions.js';
 import { createPluginDraftRoutes } from '../../routes/plugins/plugin-draft-routes.js';
 import { canRelayPluginIdentityEvent } from '../../routes/plugins/plugin-identity-enumeration.js';
+import { isNonPersonCaller } from '../../routes/plugins/plugin-person-approval.js';
+import { createPluginProposalRoutes } from '../../routes/plugins/plugin-proposal-routes.js';
 import { createPluginRoutes } from '../../routes/plugins/plugins.js';
 import { createRegistryRoutes } from '../../routes/plugins/registry.js';
 import { createCodingRoutes } from '../../routes/projects/coding.js';
@@ -358,6 +360,7 @@ import {
 } from '../../services/flow/survey-flow-review-service.js';
 import { identifyIngress } from '../../services/identity/identity-source.js';
 import {
+  LOCAL_OPERATOR_PRINCIPAL_ID,
   PrincipalUnresolvedError,
   resolvePrincipal as resolveStationPrincipal,
 } from '../../services/identity/principal-resolver.js';
@@ -404,6 +407,7 @@ import {
 } from '../../services/plugins/mcp-ui-permissions.js';
 import { PluginDraftService } from '../../services/plugins/plugin-draft-service.js';
 import type { PluginInstallationHost } from '../../services/plugins/plugin-installation-service.js';
+import { PluginLifecycleProposalService } from '../../services/plugins/plugin-lifecycle-proposals.js';
 import { PluginVisibilityService } from '../../services/plugins/plugin-visibility-service.js';
 import { createLocalRegistryTrustPolicyAuthority } from '../../services/plugins/registry-trust-policy.js';
 import type { AttentionProjectionService } from '../../services/projects/attention-projection.js';
@@ -939,6 +943,12 @@ export function configureRuntimeRoutes(
           : undefined,
     resolveCredentialDeviceId: (credential: string) =>
       context.environmentSecurityService.identifyDevice(credential)?.id,
+    // #2323 S5: person-only plugin lifecycle routes refuse delegation grants.
+    resolveCredentialDeviceKind: (credential: string) => {
+      const kind =
+        context.environmentSecurityService.identifyDevice(credential)?.kind;
+      return kind === 'delegation' || kind === 'device' ? kind : undefined;
+    },
     resolvePairingSource: (credential: string) =>
       context.environmentSecurityService.identifyDevice(credential)?.source,
     resolveCredentialLocality: (credential: string) =>
@@ -1729,6 +1739,13 @@ export function configureRuntimeRoutes(
     ),
   );
   context.app.route('/api/users', createUserRoutes());
+  // One instance for the plugin routes (which complete proposals) and the
+  // proposal routes (which create and dismiss them). The attention
+  // projection reads the same file through its own instance; the store is
+  // stateless per call, so they agree.
+  const pluginLifecycleProposals = new PluginLifecycleProposalService(
+    context.configLoader.getProjectHomeDir(),
+  );
   context.app.route(
     '/api/plugins',
     createPluginRoutes(
@@ -1796,8 +1813,21 @@ export function configureRuntimeRoutes(
             }
           },
         },
+        proposals: pluginLifecycleProposals,
       },
     ),
+  );
+  // #2323 S5: agent-authored plugin lifecycle asks. Its own family, not a
+  // `/api/plugins` leaf: `DELETE /api/plugins/:name` would otherwise own
+  // any path segment a proposal route used.
+  context.app.route(
+    '/api/plugin-proposals',
+    createPluginProposalRoutes({
+      proposals: pluginLifecycleProposals,
+      pluginsDir: join(context.configLoader.getProjectHomeDir(), 'plugins'),
+      logger: context.logger,
+      resolvePrincipal: resolveOrchestrationRequestPrincipal,
+    }),
   );
   context.app.route('/api/fs', createFsRoutes());
   context.app.route(
@@ -4771,6 +4801,21 @@ export function configureRuntimeRoutes(
     '/api/attention',
     createAttentionRoutes(attentionProjection, {
       readAuthorityForRequest,
+      // #2323 S5 review M6: plugin proposals are addressed to the operator,
+      // decided by the same resolver `/api/plugin-proposals` reads.
+      // Station's own agents resolve as the operator too; they see none
+      // (#2323 S5 delta review).
+      viewerIsOperator: (c) => {
+        if (isNonPersonCaller(c.req.raw)) return false;
+        try {
+          return (
+            resolveOrchestrationRequestPrincipal(c).id ===
+            LOCAL_OPERATOR_PRINCIPAL_ID
+          );
+        } catch {
+          return false;
+        }
+      },
       // #765 D5: derive the device-pairing items' `viewerCanDecide` from the
       // SAME two gates the middleware applies to an approve/deny request, in
       // the same order: the pairing family's authority boundary

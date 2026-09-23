@@ -341,6 +341,31 @@ describe('station-docs plugin-authoring topic', () => {
     );
   });
 
+  test('#2323 S5: it tells an agent to propose, and describes what the person sees', () => {
+    const block = paragraph("INSTALL IS A PERSON'S DECISION.");
+    // The tool names are the ones station-control registers; the platform
+    // tools test pins those registrations.
+    expect(block).toContain('`propose_plugin_install`');
+    expect(block).toContain(
+      '`update_plugin` and `remove_plugin` record proposals',
+    );
+    // What the review shows, as the preview renders it.
+    expect(block).toMatch(/names the agent that proposed it/);
+    expect(block).toMatch(
+      /warns when the folder changed after you proposed it/,
+    );
+    // A proposal is not an install, and the prose must not blur that.
+    expect(block).toContain('changes nothing else');
+    expect(block).not.toMatch(/propos\w*[^.]*\binstalls?\b[^.]*\bfor\b/i);
+    // Review H1: the refusals are scoped to Station's agent tools, and the
+    // same-user shell limit is said plainly rather than implied away.
+    expect(block).toContain("Those refusals cover Station's agent tools only.");
+    expect(block).toMatch(/not a sandbox/);
+    expect(block).toMatch(/same operating-system user/);
+    const assistant = findStationDocsTopic('builtin-assistant')!.body;
+    expect(assistant).toContain('It proposes instead');
+  });
+
   test('every sentence pairing install with plugin is one a person approved, word for word', () => {
     // An explicit allow-list, not a heuristic. Any sentence that pairs
     // install/installs/installing/installed/installation with plugin(s) in

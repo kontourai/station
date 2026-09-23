@@ -96,6 +96,13 @@ const SC_MUTATING_TOOL_NAMES = [
   'install_registry_integration',
   'create_provider',
   'install_plugin',
+  // #2323 S5: these three RECORD a proposal and change nothing a plugin
+  // runs. Still mutating, deliberately: each writes a durable record and an
+  // inbox row, which is what this list means, and the cost is bounded — the
+  // platform-mutation gate applies only in policy-opted workspaces, where the
+  // owner chose to approve every write. Auto-approving them as read-only
+  // would call a writer a reader.
+  'propose_plugin_install',
   'update_plugin',
   'remove_plugin',
   // scheduler

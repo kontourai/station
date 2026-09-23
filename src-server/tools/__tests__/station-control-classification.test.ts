@@ -65,6 +65,11 @@ describe('station-control tool classification', () => {
         'install_skill',
         'install_registry_integration',
         'install_plugin',
+        // #2323 S5: they record a proposal (a durable write), so they are
+        // not auto-approved as readers.
+        'propose_plugin_install',
+        'update_plugin',
+        'remove_plugin',
         'add_job',
         'run_job',
         'update_config',

@@ -1,11 +1,14 @@
+import type { PluginLifecycleProposal } from '@kontourai/station-contracts/plugin';
 import { useState } from 'react';
 import { Checkbox } from '../../components/Checkbox';
 import { CheckGlyph, WarningGlyph } from '../../components/icons/Glyph';
+import { PluginProposalSummary } from '../../components/plugins/PluginProposalSummary';
 import {
   ResponsiveDialogCloseButton,
   ResponsiveDialogSurface,
   ResponsiveSurfaceActions,
 } from '../../components/ResponsiveDialogSurface';
+import { compareProposalDigest } from '../../utils/pluginProposal';
 import type { PreviewData } from './types';
 
 export function InstallPreviewModal({
@@ -15,7 +18,13 @@ export function InstallPreviewModal({
   onClose,
   onToggleSkip,
   onConfirm,
+  proposal = null,
 }: {
+  /**
+   * #2323 S5: the agent proposal this preview reviews, when the person came
+   * from one. Provenance only: the confirm button below is the decision.
+   */
+  proposal?: PluginLifecycleProposal | null;
   previewData: PreviewData;
   previewSkips: Set<string>;
   installPending: boolean;
@@ -63,6 +72,12 @@ export function InstallPreviewModal({
             </div>
           )}
         </div>
+        {proposal && (
+          <ProposalProvenance
+            proposal={proposal}
+            previewDigest={previewData.contentDigest}
+          />
+        )}
         {previewData.conflicts.length > 0 && (
           <div className="plugins__modal-message plugins__message--error plugins__preview-conflicts">
             {previewData.conflicts.length} conflict
@@ -222,4 +237,54 @@ export function InstallPreviewModal({
       </div>
     </ResponsiveDialogSurface>
   );
+}
+
+function ProposalProvenance({
+  proposal,
+  previewDigest,
+}: {
+  proposal: PluginLifecycleProposal;
+  previewDigest: string | undefined;
+}) {
+  const comparison = compareProposalDigest(proposal, previewDigest);
+  return (
+    <div
+      className="plugins__modal-message plugins__preview-proposal"
+      data-testid="install-preview-proposal"
+    >
+      <PluginProposalSummary
+        author={proposal.author}
+        source={proposal.source}
+        rationale={proposal.rationale}
+        testId="install-preview-proposal-summary"
+      />
+      {comparison === 'changed' && (
+        <div
+          className="plugins__message--warning"
+          role="alert"
+          data-testid="install-preview-proposal-changed"
+        >
+          <WarningGlyph /> Changed since proposed: these files are not the ones
+          the agent proposed. Review what is here now before installing.
+        </div>
+      )}
+      {comparison === 'not-recorded' && (
+        <div data-testid="install-preview-proposal-unrecorded">
+          {unrecordedDigestSentence(proposal)}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Why there is nothing to compare, in the words the recorded reason allows. */
+function unrecordedDigestSentence(proposal: PluginLifecycleProposal): string {
+  switch (proposal.proposedContentDigestUnavailable) {
+    case 'remote-source':
+      return 'This is a git source. Station did not fetch it when it was proposed, so it cannot tell whether it changed since; review what the preview shows now.';
+    case 'too-large':
+      return 'The folder was too large for Station to record when it was proposed, so it cannot tell whether the files changed since.';
+    default:
+      return 'Station did not record the files when this was proposed, so it cannot tell whether they changed since.';
+  }
 }

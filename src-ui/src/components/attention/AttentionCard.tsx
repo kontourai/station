@@ -55,6 +55,11 @@ import {
 /** Recorded on a decision taken from the inbox. See `proposedChangeDecision`. */
 const INBOX_DECISION_SURFACE = 'notifications';
 
+const loadPluginProposalActions = () =>
+  import('./PluginProposalAttentionActions').then((module) => ({
+    default: module.PluginProposalAttentionActions,
+  }));
+
 const loadNeedsInputReply = () =>
   import('./NeedsInputReply').then((module) => ({
     default: module.NeedsInputReply,
@@ -176,6 +181,16 @@ function AttentionAction({ item }: { item: AttentionItem }) {
       return <ProposedChangeActions item={item} />;
     case 'gate-review':
       return <GateReviewAction item={item} />;
+    // #2323 S5: an agent asked for a plugin change it cannot make itself.
+    // Loaded on demand: the summary stays off the first paint.
+    case 'plugin-lifecycle-proposal':
+      return (
+        <LazyBoundary
+          load={loadPluginProposalActions}
+          componentProps={{ item }}
+          pending={<SkeletonList count={1} label="Loading plugin proposal" />}
+        />
+      );
     // #1536 D8: the requirement's own route out. No secondary action —
     // the item resolves by configuring a connection, not by answering here.
     case 'setup-incomplete':
