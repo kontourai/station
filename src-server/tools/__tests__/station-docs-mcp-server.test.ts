@@ -150,10 +150,11 @@ describe('station-docs plugin-authoring topic', () => {
         'useToast',
       ]),
     );
-    const sdk = (await import('@kontourai/station-sdk')) as Record<
-      string,
-      unknown
-    >;
+    // A non-literal specifier keeps the SDK's React sources out of the
+    // server-tests `tsc` program (no JSX there); vitest still loads the real
+    // public barrel at runtime.
+    const sdkSpecifier: string = '@kontourai/station-sdk';
+    const sdk = (await import(sdkSpecifier)) as Record<string, unknown>;
     const missing = named.filter((hook) => typeof sdk[hook] !== 'function');
     expect(
       missing,
