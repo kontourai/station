@@ -17,6 +17,7 @@ const connectionStatus = {
   failureWindows: [],
   recheck: vi.fn(),
 };
+let activeConnection: { id: string; name: string; url: string } | null = null;
 
 vi.mock('@kontourai/station-connect', async (importOriginal) => {
   // The real indicator derivation, labels and dot are kept — only the health
@@ -27,10 +28,9 @@ vi.mock('@kontourai/station-connect', async (importOriginal) => {
   return {
     ...actual,
     useConnectionStatus: () => connectionStatus,
-    // No active connection, no saved endpoint — `usePendingPairingApproval`
-    // reads real (empty, per-file jsdom) localStorage and stays null unless
-    // a test explicitly seeds a pending record.
-    useConnections: () => ({ activeConnection: null, connections: [] }),
+    // `usePendingPairingApproval` reads real (empty, per-file jsdom)
+    // localStorage and stays null unless a test explicitly seeds a record.
+    useConnections: () => ({ activeConnection, connections: [] }),
   };
 });
 
@@ -56,6 +56,7 @@ function openedModals() {
 }
 
 beforeEach(() => {
+  activeConnection = null;
   connectionStatus.status = 'connected';
   connectionStatus.reason = null;
   connectionStatus.failureStreak = 0;
@@ -78,7 +79,9 @@ describe('ChatDockMobileConnection', () => {
     // Channel 1: a visible word. Survives a colour-blind reader.
     expect(button.textContent).toContain('Pair');
     // Channel 2: the accessible name, which also names the action.
-    expect(button.getAttribute('aria-label')).toBe('Pair this device again');
+    expect(button.getAttribute('aria-label')).toBe(
+      'Pair this device again · Station',
+    );
     // Channel 3: a different mark, not a recoloured dot.
     expect(button.querySelector('svg path')).not.toBeNull();
     // Channel 4: the amber attention background (archive#4512 —
@@ -198,7 +201,38 @@ describe('ChatDockMobileConnection', () => {
 
     const button = screen.getByTestId('chat-dock-mobile-connection');
     expect(button.dataset.connectionState).toBe('connected');
-    expect(button.textContent).toBe('');
+    expect(button.textContent).toBe('Station');
+    expect(button.getAttribute('aria-label')).toContain('Connected');
+    expect(button.getAttribute('aria-label')).toContain('Station');
+  });
+
+  it('labels the healthy control with the active Station identity when available', () => {
+    activeConnection = {
+      id: 'saved-station',
+      name: 'Kontour',
+      url: 'https://station.test',
+    };
+    render(<ChatDockMobileConnection />);
+
+    const button = screen.getByTestId('chat-dock-mobile-connection');
+    expect(button.textContent).toBe('Station · Kontour');
+    expect(button.getAttribute('aria-label')).toBe(
+      'Manage Stations — Connected · Station · Kontour',
+    );
+  });
+
+  it('shows the saved Station label and status in the expanded mobile connection sheet', () => {
+    activeConnection = {
+      id: 'saved-station',
+      name: 'Kontour',
+      url: 'https://station.test',
+    };
+    render(<ChatDockMobileConnection showLabel />);
+
+    const button = screen.getByTestId('chat-dock-mobile-connection');
+    expect(button.textContent).toBe('Station · Kontour · Connected');
+    expect(button.className).toContain('chat-dock__mobile-conn--details');
+    expect(button.getAttribute('aria-label')).toContain('Connected');
   });
 
   it('opens re-pairing directly — one tap, no list to navigate', () => {

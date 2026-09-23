@@ -863,6 +863,11 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
             ? handleRestartBundledServer
             : undefined
         }
+        localStationOwnerId={
+          bundledStatus?.ownership === 'sidecar'
+            ? (bundledStatus.instanceId ?? undefined)
+            : undefined
+        }
         onPairingSucceeded={() => {
           triggerHaptic('success');
           // Same first-connection prime as the reconciler path above: the
