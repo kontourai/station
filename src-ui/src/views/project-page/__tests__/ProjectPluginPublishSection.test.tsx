@@ -82,11 +82,24 @@ function renderSection() {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
-  return render(
+  const rendered = render(
     <QueryClientProvider client={queryClient}>
       <ProjectPluginPublishSection slug="pulse" />
     </QueryClientProvider>,
   );
+  /** Waits until the inspection query has SETTLED, so an assertion that
+   * nothing rendered is about the answer, not about a pending request. */
+  const settled = (status: 'error' | 'success') =>
+    waitFor(() =>
+      expect(
+        queryClient.getQueryState([
+          'plugin-publish',
+          'http://station.test',
+          'pulse',
+        ])?.status,
+      ).toBe(status),
+    );
+  return { ...rendered, settled };
 }
 
 async function openDialog() {
@@ -98,15 +111,16 @@ async function openDialog() {
 
 test('a caller the server refuses (not the operator) is offered nothing', async () => {
   answerInspection(null, 403);
-  const { container } = renderSection();
-  await waitFor(() => expect(getJsonMock).toHaveBeenCalledWith(ENDPOINT));
+  const { container, settled } = renderSection();
+  await settled('error');
+  expect(getJsonMock).toHaveBeenCalledWith(ENDPOINT);
   expect(container.innerHTML).toBe('');
 });
 
 test('a folder without a plugin is offered nothing', async () => {
   answerInspection({ plugin: null, reason: 'not-a-plugin' });
-  const { container } = renderSection();
-  await waitFor(() => expect(getJsonMock).toHaveBeenCalled());
+  const { container, settled } = renderSection();
+  await settled('success');
   expect(container.innerHTML).toBe('');
 });
 
