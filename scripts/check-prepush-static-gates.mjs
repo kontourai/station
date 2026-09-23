@@ -92,6 +92,10 @@ export const PREPUSH_STATIC_GATES = Object.freeze([
   // It also runs in `gate:workflows` (ci:fast); listed here so a pre-push and
   // `gate:for` surface it on the change that breaks it.
   'test-path-import-gate',
+  // #2343: ~0.3s, no build. Every example that ships TypeScript must be in a
+  // project `typecheck:examples` compiles. It ran only in `gate:platform`,
+  // so an uncovered example was found in the merge queue.
+  'examples-conformance',
   'a11y-ratchet',
 ]);
 
@@ -112,10 +116,18 @@ export const STATIC_GATE_INPUT_PREFIXES = Object.freeze([
   'schemas/agent-plugins/',
 ]);
 
+/**
+ * Single files these gates read. The root manifest names the
+ * `typecheck:examples` chain that examples-conformance checks coverage
+ * against, so editing it alone can uncover an example.
+ */
+export const STATIC_GATE_INPUT_FILES = Object.freeze(['package.json']);
+
 /** Does one repo-relative path feed any of these gates? */
 export function isStaticGateInput(path) {
   const normalized = String(path).replaceAll('\\', '/');
   if (!normalized) return false;
+  if (STATIC_GATE_INPUT_FILES.includes(normalized)) return true;
   // Trailing slashes are load-bearing: `src-ui/` must not match `src-uix/`.
   return STATIC_GATE_INPUT_PREFIXES.some((prefix) =>
     normalized.startsWith(prefix),
