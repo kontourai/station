@@ -16,8 +16,9 @@
  *   `add`/`checkout` run filters by design. These are the READ refusals,
  *   applied wherever the coding routes run one of those commands.
  * - A key that redirects where a push goes or what runs during one
- *   (`url.*.insteadOf`, `remote.*.receivepack`, a proxy command, `include`
- *   of more configuration, …). These are refused, together with the read
+ *   (`url.*.insteadOf`, `remote.*.receivepack`, a remote NAMED by an
+ *   address, a proxy command, `include` of more configuration, …). These
+ *   are refused, together with the read
  *   refusals, before the operator's COMMIT or PUSH, which run with the
  *   operator's credentials and signing.
  *
@@ -50,6 +51,11 @@ const WRITE_REFUSED = [
   /^core\.(?:sshcommand|askpass|gitproxy|alternaterefscommand)$/,
   /^http\.(?:.+\.)?proxy$/,
   /^remote\..+\.(?:proxy|vcs|receivepack|uploadpack)$/,
+  // A remote whose NAME is an address (`remote."https://host/x.git".url`):
+  // `git push -- <that address>` reads it as that remote, so its
+  // `url`/`pushurl` would redirect a push to an address Station validated.
+  // A remote nickname never contains `/` or `:`.
+  /^remote\.[^\n]*[/:][^\n]*\.[^.]+$/,
   /^gpg\./,
 ];
 

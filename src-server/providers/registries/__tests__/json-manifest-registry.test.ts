@@ -844,6 +844,36 @@ describe('JsonManifestRegistryProvider registry manifest proof', () => {
     ).toEqual(victimManifest);
   });
 
+  test('refuses a plain http:// git source by name, before git runs (#2363)', async () => {
+    const projectHome = await makeProjectHome();
+    const manifestPath = resolve(projectHome, 'registry.json');
+    writeFileSync(
+      manifestPath,
+      JSON.stringify({
+        version: 1,
+        plugins: [
+          {
+            id: 'registry-demo',
+            displayName: 'Registry Demo',
+            description: 'Registry copy',
+            version: '1.0.0',
+            source: 'http://git.example.test/acme/plugin.git',
+          },
+        ],
+        tools: [],
+      }),
+    );
+    const provider = new JsonManifestRegistryProvider(
+      manifestPath,
+      projectHome,
+    );
+
+    await expect(provider.install('registry-demo')).resolves.toMatchObject({
+      success: false,
+      message: expect.stringContaining('Use an https:// address'),
+    });
+  });
+
   test('rejects same-id registry installs without prior registry ownership', async () => {
     const projectHome = await makeProjectHome();
     const registrySource = resolve(projectHome, 'registry-demo-source');

@@ -263,6 +263,14 @@ export class JsonManifestRegistryProvider
     try {
       if (isGitSource(resolvedSource)) {
         const [url, branch] = resolvedSource.split('#');
+        // #2363: Station's git allows only https and ssh. Refused here, by
+        // name, rather than as a transport error deep inside git: code
+        // fetched over plain http can be altered in transit.
+        if (/^http:\/\//i.test(url)) {
+          throw new Error(
+            `Plugin source ${url} uses plain http://. Use an https:// address: code installed over http can be tampered with in transit.`,
+          );
+        }
         const cloneArgs = ['clone', '--depth', '1'];
         if (branch) cloneArgs.push('--branch', branch);
         cloneArgs.push(url, tempDir);

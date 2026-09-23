@@ -12,17 +12,23 @@
  * Commit refuses secret-looking files (by name, or a PEM private-key block
  * in their content) among everything it would commit, and then adds exactly
  * the paths it inspected rather than `git add -A` over whatever is there by
- * then. Repository hooks run, as they would for `git commit` in the
- * operator's terminal (owner decision on #2363).
+ * then. Its `add` and `commit` run the repository's hooks, as they would
+ * in the operator's terminal (owner decision on #2363); every other git
+ * call here runs with hooks off (`utils/git-exec.ts`).
  *
- * Push resolves the remote the way git would, validates its URL (https or
- * ssh to a host other than this machine, no credentials in the address),
- * and pushes one commit to THAT URL rather than to the remote's name, so a
- * config rewrite between the check and the push cannot repoint it at
- * another remote entry.
+ * Push resolves the remote the way git would, validates its configured URL
+ * (https or ssh to a host other than this machine, no credentials in the
+ * address), and pushes one commit to that URL rather than to the remote's
+ * name, so repointing the NAMED remote between the check and the push has
+ * no effect, and runs `pre-push` as a terminal push would. What it does
+ * not survive: the repository's config rewritten between the check and the
+ * push to add a URL rewrite (`insteadOf`) or a remote named by the
+ * validated address. Both are refused before the push; a race inside that
+ * window is accepted, and even then the push can only reach https or ssh
+ * (`GIT_ALLOW_PROTOCOL`).
  */
-import { lstat, open } from 'node:fs/promises';
-import { join } from 'node:path';
+import { lstat, open, readFile, realpath } from 'node:fs/promises';
+import { dirname, join, sep } from 'node:path';
 import {
   execGit,
   type GitHardeningOptions,
@@ -40,6 +46,7 @@ import { checkRepositoryConfig } from './git-repository-config.js';
 export type CodingGitRefusal =
   | { code: 'repository-config-refused'; keys: string[] }
   | { code: 'repository-config-unreadable' }
+  | { code: 'git-dir-outside-project' }
   | { code: 'secrets'; files: Array<{ path: string; reason: string }> }
   | { code: 'nothing-to-commit' }
   | { code: 'too-many-changes' }
@@ -48,6 +55,64 @@ export type CodingGitRefusal =
   | { code: 'invalid-remote-name' }
   | { code: 'remote-missing'; remote: string }
   | { code: `remote-${GitRemoteRefusal}`; remote: string; url: string };
+
+/**
+ * Whether `target`'s git directory is the Project's own (#2363). A `.git`
+ * FILE can point anywhere, and `--git-dir=<target>/.git` follows it, so a
+ * member could otherwise make Commit or Push act on another repository of
+ * the operator's. Both the git directory and the common directory must lie
+ * inside `projectRoot` (both already symlink-resolved), except for a
+ * genuine linked worktree: its git directory is `<common>/worktrees/<name>`
+ * OUTSIDE the Project, whose `gitdir` back-pointer names `<target>/.git`.
+ * A member cannot write that file, so they cannot forge the exception.
+ * A symlinked `.git` is refused outright.
+ */
+export async function gitDirectoryInsideProject(
+  target: string,
+  projectRoot: string,
+): Promise<'inside' | 'linked-worktree' | 'outside'> {
+  const dotGit = join(target, '.git');
+  try {
+    if ((await lstat(dotGit)).isSymbolicLink()) return 'outside';
+  } catch {
+    return 'outside';
+  }
+  let gitDir: string;
+  let commonDir: string;
+  try {
+    const { stdout } = await execGit(
+      [
+        ...repositoryArgs(target),
+        'rev-parse',
+        '--path-format=absolute',
+        '--git-dir',
+        '--git-common-dir',
+      ],
+      { cwd: target, encoding: 'utf-8', timeout: 10_000 },
+    );
+    const [rawGitDir, rawCommonDir] = stdout.trim().split('\n');
+    gitDir = await realpath(rawGitDir ?? '');
+    commonDir = await realpath(rawCommonDir ?? '');
+  } catch {
+    return 'outside';
+  }
+  const inside = (path: string) =>
+    path === projectRoot || path.startsWith(projectRoot + sep);
+  if (inside(gitDir) && inside(commonDir)) return 'inside';
+  if (inside(gitDir) || dirname(dirname(gitDir)) !== commonDir) {
+    return 'outside';
+  }
+  try {
+    const backPointer = (
+      await readFile(join(gitDir, 'gitdir'), 'utf-8')
+    ).trim();
+    return (await realpath(backPointer)) === (await realpath(dotGit))
+      ? 'linked-worktree'
+      : 'outside';
+  } catch {
+    return 'outside';
+  }
+}
 
 export type CodingGitOutcome<T> =
   | { ok: true; value: T }
@@ -227,6 +292,9 @@ function addPaths(root: string, paths: readonly string[]): Promise<void> {
         cwd: root,
         env: { GIT_LITERAL_PATHSPECS: '1' },
         stdio: ['pipe', 'ignore', 'pipe'],
+        // Part of the operator's Commit: `git add` runs the index hook in a
+        // terminal too.
+        hardening: { operatorHooks: true },
       },
     );
     let stderr = '';
@@ -243,7 +311,21 @@ function addPaths(root: string, paths: readonly string[]): Promise<void> {
   });
 }
 
-async function refuseByConfig(root: string): Promise<CodingGitRefusal | null> {
+/**
+ * The refusals both actions make before running anything: a git directory
+ * outside the Project (a `.git` file pointing elsewhere), then repository
+ * config Station will not run git with.
+ */
+async function refuseByConfig(
+  root: string,
+  projectRoot: string | undefined,
+): Promise<CodingGitRefusal | null> {
+  if (
+    typeof projectRoot !== 'string' ||
+    (await gitDirectoryInsideProject(root, projectRoot)) === 'outside'
+  ) {
+    return { code: 'git-dir-outside-project' };
+  }
   const verdict = await checkRepositoryConfig(
     root,
     'write',
@@ -262,8 +344,10 @@ async function refuseByConfig(root: string): Promise<CodingGitRefusal | null> {
 export async function commitRepository(
   root: string,
   message: string,
+  /** The Project's folder, symlink-resolved; `root` is it or inside it. */
+  scope: { projectRoot: string },
 ): Promise<CodingGitOutcome<{ sha: string }>> {
-  const configRefusal = await refuseByConfig(root);
+  const configRefusal = await refuseByConfig(root, scope?.projectRoot);
   if (configRefusal) return { ok: false, refusal: configRefusal };
 
   const changes = await changedPaths(root);
@@ -284,9 +368,10 @@ export async function commitRepository(
   );
   await git(root, ['commit', '-q', '-m', message], {
     timeout: 120_000,
-    // The operator's own signing configuration applies, as in a terminal;
-    // `gpg.*` in the repository's config was refused above.
-    hardening: { operatorSigning: true },
+    // As in the operator's terminal: the repository's hooks run, and the
+    // operator's own signing applies (`gpg.*` in the repository's config
+    // was refused above).
+    hardening: { operatorSigning: true, operatorHooks: true },
   });
   const sha = (await git(root, ['rev-parse', 'HEAD'])).trim();
   return { ok: true, value: { sha } };
@@ -305,11 +390,15 @@ export interface PushRequest {
 export async function pushRepository(
   root: string,
   request: PushRequest,
-  /** TEST ONLY (see `createCodingRoutes`): a validated https address that a
-   * test's global `insteadOf` routes to a bare repository on disk. */
-  options: { allowFileProtocol?: boolean } = {},
+  options: {
+    /** The Project's folder, symlink-resolved; `root` is it or inside it. */
+    projectRoot: string;
+    /** TEST ONLY (see `createCodingRoutes`): a validated https address
+     * that a test's global `insteadOf` routes to a bare repository on disk. */
+    allowFileProtocol?: boolean;
+  },
 ): Promise<CodingGitOutcome<{ output: string; remote: string }>> {
-  const configRefusal = await refuseByConfig(root);
+  const configRefusal = await refuseByConfig(root, options?.projectRoot);
   if (configRefusal) return { ok: false, refusal: configRefusal };
 
   let branch = request.branch;
@@ -376,9 +465,13 @@ export async function pushRepository(
     ['push', '--porcelain', '--', url, `${commit}:refs/heads/${branch}`],
     {
       timeout: 120_000,
-      ...(options.allowFileProtocol
-        ? { hardening: { allowFileProtocol: true } }
-        : {}),
+      // The operator's Push runs `pre-push` as in a terminal.
+      hardening: {
+        operatorHooks: true,
+        ...(options.allowFileProtocol === true
+          ? { allowFileProtocol: true }
+          : {}),
+      },
     },
   );
 

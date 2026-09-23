@@ -118,7 +118,6 @@ async function post(
     headers: { 'content-type': 'application/json', 'x-test-caller': caller },
     body: JSON.stringify(body),
   });
-  // biome-ignore lint/suspicious/noExplicitAny: route envelopes vary per case.
   return { status: res.status, json: (await res.json()) as any };
 }
 
@@ -126,8 +125,29 @@ async function status(path = project) {
   const res = await makeApp().request(
     `/git/status?path=${encodeURIComponent(path)}`,
   );
-  // biome-ignore lint/suspicious/noExplicitAny: route envelope.
   return { status: res.status, json: (await res.json()) as any };
+}
+
+async function read(route: 'diff' | 'status', path = project) {
+  const res = await makeApp().request(
+    `/git/${route}?path=${encodeURIComponent(path)}`,
+  );
+  return { status: res.status, json: (await res.json()) as any };
+}
+
+function installHook(dir: string, name: string): void {
+  const target = join(dir, name);
+  writeFileSync(target, readFileSync(plant(name)));
+  chmodSync(target, 0o755);
+}
+
+/** New mtime, same content: git must refresh (and may rewrite) the index. */
+function stir(file: string): void {
+  utimesSync(
+    file,
+    new Date(),
+    new Date(Date.now() + 5_000 + Math.random() * 60_000),
+  );
 }
 
 /** A repository whose working tree is dirty, ready to commit. */
@@ -280,7 +300,7 @@ describe.skipIf(process.platform === 'win32')(
       expect(res.status).toBe(409);
       expect(res.json.code).toBe('repository-config-refused');
       expect(res.json.keys).toEqual([
-        'url.ext::sh -c echo% ext% >>% ' + `${marker}% #.insteadof`,
+        `url.ext::sh -c echo% ext% >>% ${marker}% #.insteadof`,
       ]);
       expect(ran()).toEqual([]);
       expect(bareHead()).toBe('');
@@ -295,6 +315,76 @@ describe.skipIf(process.platform === 'win32')(
       expect(res.json.keys).toEqual(['core.sshcommand', 'credential.helper']);
       expect(ran()).toEqual([]);
       expect(bareHead()).toBe('');
+    });
+
+    test('the diff the Diff panel reads on mount runs no planted index hook', async () => {
+      installHook(join(project, '.git', 'hooks'), 'post-index-change');
+      stir(join(project, 'README.md'));
+      plain(project, ['diff']);
+      expect(ran(), 'control: plain git diff runs the plant').toEqual([
+        'post-index-change',
+      ]);
+      clearMarker();
+
+      stir(join(project, 'README.md'));
+      const res = await read('diff');
+      expect(res.status).toBe(200);
+      expect(ran()).toEqual([]);
+    });
+
+    test("a nested repository's own clean filter does not run on status or diff", async () => {
+      const sub = join(project, 'sub');
+      mkdirSync(sub);
+      plain(sub, ['init', '-q', '-b', 'main']);
+      writeFileSync(join(sub, '.gitattributes'), '* filter=evil\n');
+      writeFileSync(join(sub, 's'), 'x\n');
+      plain(sub, ['add', '.']);
+      plain(sub, ['commit', '-q', '-m', 'sub']);
+      plain(sub, [
+        'config',
+        'filter.evil.clean',
+        `sh -c 'echo nested >> ${marker}; cat'`,
+      ]);
+      plain(project, ['add', 'sub']);
+      plain(project, ['commit', '-q', '-m', 'gitlink']);
+      stir(join(sub, 's'));
+      plain(project, ['status', '--porcelain']);
+      expect(
+        ran(),
+        'control: plain git status enters the nested repo',
+      ).toContain('nested');
+      clearMarker();
+
+      for (const route of ['status', 'diff'] as const) {
+        stir(join(sub, 's'));
+        const res = await read(route);
+        expect(res.status, route).toBe(200);
+        expect(ran(), route).toEqual([]);
+      }
+    });
+
+    test('checkout runs no planted post-checkout hook, and refuses a name that is not a branch', async () => {
+      installHook(join(project, '.git', 'hooks'), 'post-checkout');
+      const checkout = (branch: string, create?: boolean) =>
+        post('/git/checkout', { path: project, branch, create });
+
+      const created = await checkout('feature', true);
+      expect(created.status, JSON.stringify(created.json)).toBe(200);
+      const back = await checkout('main');
+      expect(back.status).toBe(200);
+      expect(plain(project, ['branch', '--show-current'])).toBe('main');
+      expect(ran()).toEqual([]);
+
+      dirty('README.md', '# unsaved edit\n');
+      for (const name of ['.', '-f', '--orphan=x', 'a..b', '@{-1}']) {
+        const res = await checkout(name);
+        expect(res.status, name).toBe(400);
+        expect(res.json.code).toBe('invalid-branch');
+      }
+      expect(readFileSync(join(project, 'README.md'), 'utf-8')).toBe(
+        '# unsaved edit\n',
+      );
+      expect(plain(project, ['branch', '--show-current'])).toBe('main');
     });
 
     test('ordinary repositories pass: gh-cloned, husky, VS Code and branch settings', async () => {
@@ -356,6 +446,57 @@ describe.skipIf(process.platform === 'win32')(
       expect(res.status).toBe(200);
       expect(res.json.data.sha).toBe(head());
       expect(ran()).toEqual(['pre-commit']);
+    });
+
+    test('a .git file pointing at a repository outside the Project is refused for commit and push, and nothing is written there', async () => {
+      const other = join(root, 'operator-other');
+      mkdirSync(other);
+      plain(other, ['init', '-q', '-b', 'main']);
+      writeFileSync(join(other, 'work.txt'), 'operator work\n');
+      plain(other, ['add', '.']);
+      plain(other, ['commit', '-q', '-m', 'operator work']);
+      plain(other, ['remote', 'add', 'origin', REMOTE_URL]);
+      const otherHead = head(other);
+      rmSync(join(project, '.git'), { recursive: true, force: true });
+      writeFileSync(join(project, '.git'), `gitdir: ${join(other, '.git')}\n`);
+      writeFileSync(join(project, 'member.txt'), 'member payload\n');
+
+      const commit = await post('/git/commit', {
+        projectSlug: 'acme',
+        message: 'routine commit',
+      });
+      expect(commit.status).toBe(403);
+      expect(commit.json.code).toBe('git-dir-outside-project');
+      const push = await post('/git/push', { projectSlug: 'acme' });
+      expect(push.status).toBe(403);
+      expect(head(other)).toBe(otherHead);
+      expect(plain(other, ['status', '--porcelain'])).toBe('');
+      expect(bareHead()).toBe('');
+    });
+
+    test('a genuine linked worktree as the Project folder is accepted', async () => {
+      const main = join(root, 'main-checkout');
+      plain(root, [
+        'clone',
+        '-q',
+        '--no-local',
+        '-c',
+        'protocol.file.allow=always',
+        project,
+        main,
+      ]);
+      rmSync(project, { recursive: true, force: true });
+      plain(main, ['worktree', 'add', '-q', '-b', 'lane', project]);
+      dirty();
+
+      const res = await post('/git/commit', {
+        projectSlug: 'acme',
+        message: 'in a worktree',
+      });
+      expect(res.status, JSON.stringify(res.json)).toBe(200);
+      expect(plain(main, ['log', '-1', '--format=%s', 'lane'])).toBe(
+        'in a worktree',
+      );
     });
 
     test('commits the Project folder, and a repository inside it the toolbar selected', async () => {
@@ -529,6 +670,32 @@ describe.skipIf(process.platform === 'win32')(
         expect(bareHead()).toBe('');
       },
     );
+
+    test('the pre-push hook runs on the operator push (as in a terminal)', async () => {
+      installHook(join(project, '.git', 'hooks'), 'pre-push');
+      const res = await post('/git/push', { projectSlug: 'acme' });
+      expect(res.status, JSON.stringify(res.json)).toBe(200);
+      expect(ran()).toEqual(['pre-push']);
+      expect(bareHead()).toBe(head());
+    });
+
+    test('a remote NAMED by the validated address cannot redirect the push', async () => {
+      const evil = join(root, 'evil.git');
+      plain(root, ['init', '-q', '--bare', evil]);
+      plain(project, [
+        'config',
+        `remote.${REMOTE_URL}.pushurl`,
+        `file://${evil}`,
+      ]);
+
+      const res = await post('/git/push', { projectSlug: 'acme' });
+      expect(res.status).toBe(409);
+      expect(res.json.keys).toEqual([`remote.${REMOTE_URL}.pushurl`]);
+      expect(
+        plain(evil, ['rev-parse', '--verify', '--quiet', 'refs/heads/main']),
+      ).toBe('');
+      expect(bareHead()).toBe('');
+    });
 
     test('an option-looking remote name or branch is refused as a bad request', async () => {
       const name = await post('/git/push', {

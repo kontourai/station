@@ -110,6 +110,23 @@ async function discoverRepos(
   return roots;
 }
 
+/** Letters, digits, `.`, `_`, `-` and `/`, not starting with `-` or `.`,
+ * and a valid ref by git's own rules (no `..`, no `.lock`, …). */
+const BRANCH_NAME = /^[A-Za-z0-9_][A-Za-z0-9._/-]*$/;
+
+async function isBranchName(dir: string, branch: string): Promise<boolean> {
+  if (!BRANCH_NAME.test(branch)) return false;
+  try {
+    await execGit(['check-ref-format', `refs/heads/${branch}`], {
+      cwd: dir,
+      encoding: 'utf-8',
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 const CONFIG_REFUSED_MESSAGE =
   "This repository's own .git/config sets options that run programs or redirect a push, and Station runs git here with this computer's credentials. Remove them (listed in `keys`), or use git from a terminal";
 
@@ -142,6 +159,8 @@ function refusalMessage(refusal: CodingGitRefusal): string {
       return CONFIG_REFUSED_MESSAGE;
     case 'repository-config-unreadable':
       return "git could not read this repository's configuration";
+    case 'git-dir-outside-project':
+      return "That folder's .git points at a repository outside this Project, so Station will not commit or push from it";
     case 'secrets':
       return `Not committed: ${refusal.files
         .map((file) => `${file.path} (${file.reason})`)
@@ -179,6 +198,12 @@ const REQUEST_REFUSALS = new Set<CodingGitRefusal['code']>([
 
 function refusalResponse(c: Context, refusal: CodingGitRefusal): Response {
   const { code } = refusal;
+  const status =
+    code === 'git-dir-outside-project'
+      ? 403
+      : REQUEST_REFUSALS.has(code)
+        ? 400
+        : 409;
   return c.json(
     {
       success: false,
@@ -187,7 +212,7 @@ function refusalResponse(c: Context, refusal: CodingGitRefusal): Response {
       ...('keys' in refusal ? { keys: refusal.keys } : {}),
       ...('files' in refusal ? { files: refusal.files } : {}),
     },
-    REQUEST_REFUSALS.has(code) ? 400 : 409,
+    status,
   );
 }
 
@@ -254,7 +279,7 @@ export function createCodingRoutes(
     c: Context,
     slug: string,
     requested: string | undefined,
-  ): string | Response => {
+  ): { root: string; projectRoot: string } | Response => {
     const configured = deps.resolveProjectFolder?.(slug)?.trim();
     if (!configured) {
       return c.json(
@@ -303,7 +328,8 @@ export function createCodingRoutes(
         409,
       );
     }
-    return target;
+    // Where its `.git` leads is checked by the actions themselves.
+    return { root: target, projectRoot };
   };
 
   const commandFailure = (c: Context, error: unknown) =>
@@ -657,12 +683,26 @@ export function createCodingRoutes(
     try {
       const { path, branch, create } = getBody(c);
       const dir = validatePath(path);
+      // #2363: a branch name only. `.` would discard every change, and `-f`
+      // or `--orphan=…` would be read as options.
+      if (!(await isBranchName(dir, branch))) {
+        return c.json(
+          {
+            success: false,
+            error: 'That is not a valid branch name',
+            code: 'invalid-branch',
+          },
+          400,
+        );
+      }
       // #2363: `checkout` runs repository-defined smudge filters.
       const refusal = await readRefusal(dir);
       if (refusal) return c.json(refusal, 409);
       const opts = { cwd: dir, encoding: 'utf-8' as const, windowsHide: true };
       await execGit(
-        create ? ['checkout', '-b', branch] : ['checkout', branch],
+        create
+          ? ['checkout', '-b', branch, '--end-of-options']
+          : ['checkout', '--end-of-options', branch, '--'],
         opts,
       );
       const { stdout } = await execGit(
@@ -685,7 +725,9 @@ export function createCodingRoutes(
       const repository = projectRepository(c, projectSlug, path);
       if (repository instanceof Response) return repository;
       try {
-        const outcome = await commitRepository(repository, message);
+        const outcome = await commitRepository(repository.root, message, {
+          projectRoot: repository.projectRoot,
+        });
         if (!outcome.ok) return refusalResponse(c, outcome.refusal);
         return c.json({ success: true, data: outcome.value });
       } catch (e: unknown) {
@@ -705,9 +747,12 @@ export function createCodingRoutes(
       if (repository instanceof Response) return repository;
       try {
         const outcome = await pushRepository(
-          repository,
+          repository.root,
           { remote, branch, setUpstream },
-          { allowFileProtocol: deps.testOnlyAllowFileTransport === true },
+          {
+            projectRoot: repository.projectRoot,
+            allowFileProtocol: deps.testOnlyAllowFileTransport === true,
+          },
         );
         if (!outcome.ok) return refusalResponse(c, outcome.refusal);
         return c.json({
