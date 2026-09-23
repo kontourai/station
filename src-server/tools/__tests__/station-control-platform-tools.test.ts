@@ -445,6 +445,12 @@ describe('station-control platform tools (characterization)', () => {
           },
         } as never);
         const proposals = new PluginLifecycleProposalService(home);
+        // A request to any other route (a lifecycle route, say) answers in
+        // JSON, so a tool that reached one fails on WHICH path it asked for,
+        // not on a parse error.
+        app.notFound((c) =>
+          c.json({ success: false, error: 'not mounted in this test' }, 404),
+        );
         app.route(
           '/api/plugin-proposals',
           createPluginProposalRoutes({ proposals, pluginsDir, logger }),
