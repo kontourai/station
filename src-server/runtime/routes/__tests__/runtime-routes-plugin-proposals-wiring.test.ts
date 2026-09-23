@@ -33,6 +33,7 @@ import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { readJson } from '../../../__test-utils__/read-json.js';
 import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
+import { EventStore } from '../../../services/orchestration/event-store.js';
 import { PluginLifecycleProposalService } from '../../../services/plugins/plugin-lifecycle-proposals.js';
 import { ProjectManifestStore } from '../../../services/projects/project-manifest-store.js';
 import { ProjectService } from '../../../services/projects/project-service.js';
@@ -125,6 +126,7 @@ function ownedTempRoot(prefix: string): string {
 
 describe('#2323 S5 plugin proposal gates over the production composition', () => {
   const directories: string[] = [];
+  const stores: EventStore[] = [];
   const ambientHome = process.env.STATION_HOME;
   const ambientRoot = process.env.STATION_ROOT;
   const ambientOrigins = process.env.ALLOWED_ORIGINS;
@@ -146,6 +148,7 @@ describe('#2323 S5 plugin proposal gates over the production composition', () =>
     if (ambientOrigins === undefined) delete process.env.ALLOWED_ORIGINS;
     else process.env.ALLOWED_ORIGINS = ambientOrigins;
     vi.restoreAllMocks();
+    for (const store of stores.splice(0)) store.close();
     for (const directory of directories.splice(0))
       rmSync(directory, { recursive: true, force: true });
   });
@@ -160,6 +163,8 @@ describe('#2323 S5 plugin proposal gates over the production composition', () =>
     const storage = new FileStorageAdapter(homeDir);
     const manifests = new ProjectManifestStore(homeDir, storage);
     const projectService = new ProjectService(storage, manifests);
+    const eventStore = new EventStore(join(homeDir, 'events.sqlite'));
+    stores.push(eventStore);
 
     const app = new Hono();
     const context = deepStub({
@@ -192,6 +197,10 @@ describe('#2323 S5 plugin proposal gates over the production composition', () =>
       monitoringEvents: [],
       orchestrationEventStore: new Proxy(
         {
+          // #2323 S4: a real installation journal on this home, so the
+          // source status route reads real (empty) selections.
+          createPackageMcpAdmissionJournal: () =>
+            eventStore.createPackageMcpAdmissionJournal(),
           sessionTurnBoundaryAuthority: () => ({
             reconcile: () => ({ kind: 'available', interrupted: [] }),
           }),
@@ -267,6 +276,7 @@ describe('#2323 S5 plugin proposal gates over the production composition', () =>
             },
           });
     return {
+      app,
       homeDir,
       operatorCredential,
       pair,
@@ -379,5 +389,34 @@ describe('#2323 S5 plugin proposal gates over the production composition', () =>
         id: `plugin-lifecycle-proposal:${proposal.id}`,
       }),
     ]);
+  });
+  test('#2323 S4: plugin source status is mounted and scoped: a paired person and Station’s internal caller get 404, the operator gets the list', async () => {
+    const { pair, request, operatorCredential, app } = await setup();
+    const person = pair('Phone', 'device', 'standard');
+    const hidden = await request(person, '/api/plugin-sources');
+    // 404 from the handler, not a pairing-scope refusal: an unmapped family
+    // would answer 403 before the handler ran.
+    expect(hidden.status).toBe(404);
+
+    // Station's own agent caller, as station-control sends it: the per-boot
+    // internal token from a direct loopback socket, no credential. The real
+    // auth boundary binds it as `internal`, and the handler refuses it.
+    const internal = await app.request(
+      `${ORIGIN}/api/plugin-sources`,
+      {
+        headers: {
+          [INTERNAL_PROXY_CALLER_HEADER]: 'local',
+          [INTERNAL_API_TOKEN_HEADER]: getInternalApiToken(),
+        },
+      },
+      { incoming: { socket: { remoteAddress: '127.0.0.1' } } } as never,
+    );
+    expect(internal.status).toBe(404);
+
+    const operator = await request(operatorCredential, '/api/plugin-sources');
+    expect(operator.status).toBe(200);
+    expect(await readJson<{ sources: unknown[] }>(operator)).toEqual({
+      sources: [],
+    });
   });
 });

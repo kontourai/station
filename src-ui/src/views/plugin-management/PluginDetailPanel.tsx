@@ -1,4 +1,7 @@
-import { permissionTier } from '@kontourai/station-contracts/plugin';
+import {
+  type PluginLocalSourceStatus,
+  permissionTier,
+} from '@kontourai/station-contracts/plugin';
 import type {
   PluginProviderDetail,
   PluginSettingField,
@@ -69,7 +72,20 @@ export function PluginDetailPanel({
   layoutTargetProjectName,
   onAddLayout,
   addLayoutPending,
+  localSource,
+  localSourceProjectName,
+  onReinstallFromSource,
+  reinstallPending = false,
 }: {
+  /**
+   * #2323 S4: whether the Project folder this plugin was installed from
+   * still holds the installed code. Absent when the plugin has no Project
+   * folder as its source, or the viewer is not the operator.
+   */
+  localSource?: PluginLocalSourceStatus;
+  localSourceProjectName?: string;
+  onReinstallFromSource?: () => void;
+  reinstallPending?: boolean;
   selected: Plugin;
   updates: PluginUpdateSummary[];
   message: PluginMessage | null;
@@ -213,6 +229,16 @@ export function PluginDetailPanel({
             Check for Updates
           </button>
         )}
+        {localSource?.status === 'changed' && onReinstallFromSource && (
+          <button
+            type="button"
+            className="editor-btn editor-btn--primary"
+            onClick={onReinstallFromSource}
+            disabled={reinstallPending}
+          >
+            {reinstallPending ? 'Checking source…' : 'Reinstall from source'}
+          </button>
+        )}
         <button
           type="button"
           className="editor-btn editor-btn--danger"
@@ -221,6 +247,12 @@ export function PluginDetailPanel({
           Remove
         </button>
       </DetailHeader>
+      {localSource && (
+        <LocalSourceNote
+          status={localSource}
+          projectName={localSourceProjectName ?? localSource.projectSlug}
+        />
+      )}
       {selected.retainedOnRemoval && (
         <p>
           Updates preserve stored data. Removing this plugin retains its data
@@ -427,4 +459,51 @@ export function PluginDetailPanel({
       </div>
     </div>
   );
+}
+
+/**
+ * #2323 S4: what Station knows about the Project folder this plugin was
+ * installed from. Nothing is said for `unchanged`: there is nothing to act on.
+ */
+function LocalSourceNote({
+  status,
+  projectName,
+}: {
+  status: PluginLocalSourceStatus;
+  projectName: string;
+}) {
+  if (status.status === 'unchanged') return null;
+  if (status.status === 'changed')
+    return (
+      <p data-testid="plugin-local-source-note">
+        The {projectName} folder has changed since this plugin was installed.
+        Reinstalling shows what changed before anything is replaced, and keeps
+        the plugin&rsquo;s data.
+      </p>
+    );
+  return (
+    <p data-testid="plugin-local-source-note">
+      This plugin was installed from the {projectName} folder, but Station
+      cannot tell whether it changed: {unknownSourceReason(status.reason)}
+    </p>
+  );
+}
+
+function unknownSourceReason(
+  reason: PluginLocalSourceStatus['reason'],
+): string {
+  switch (reason) {
+    case 'too-large':
+      return 'the folder is too large to compare.';
+    case 'unreadable':
+      return 'the folder could not be read.';
+    case 'too-many-sources':
+      return 'too many Project folders are plugin sources to compare them all at once.';
+    case 'not-recorded':
+      return 'the installation has no record of its source to compare with.';
+    case 'source-path-not-absolute':
+      return 'the Project stores its folder as a ~ path. Set an absolute folder path on the Project to reinstall from it.';
+    default:
+      return 'no reason was reported.';
+  }
 }

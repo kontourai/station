@@ -419,3 +419,54 @@ export const PLUGIN_PROPOSAL_QUERY_KEY = 'proposal';
 export function pluginProposalHref(proposalId: string): string {
   return `/plugins?${PLUGIN_PROPOSAL_QUERY_KEY}=${encodeURIComponent(proposalId)}`;
 }
+
+/**
+ * #2323 S4: whether a Project's folder still holds the code an installed
+ * local-folder plugin was installed from.
+ *
+ * - `unchanged`: the folder's plugin tree digest equals the source digest
+ *   the installation recorded when a person consented to it.
+ * - `changed`: the digests differ. Reinstalling from the folder would run
+ *   code nobody has reviewed yet; the UI offers "Reinstall from source",
+ *   which is the ordinary preview and consent, not a shortcut past it.
+ * - `unknown`: the folder is that plugin's source, but Station cannot say
+ *   whether it changed ({@link PluginLocalSourceUnknownReason}).
+ *
+ * The match is DERIVED, not stored: an installation records only a hash of
+ * its acquisition source, and the server recomputes that hash from each
+ * Project folder. No host path appears in this record.
+ */
+export type PluginLocalSourceState = 'unchanged' | 'changed' | 'unknown';
+
+export type PluginLocalSourceUnknownReason =
+  /** The folder exceeded the bounded digest walk (file count or bytes). */
+  | 'too-large'
+  /** The folder could not be read. */
+  | 'unreadable'
+  /**
+   * More distinct source folders matched than one status read walks; this
+   * one was not compared.
+   */
+  | 'too-many-sources'
+  /** The installation carries no recorded source digest to compare with. */
+  | 'not-recorded'
+  /**
+   * The Project stores its folder as a `~`-relative path. The install
+   * preview reads the path it is given literally, so Station cannot offer a
+   * reinstall from it; set the Project's folder to an absolute path.
+   */
+  | 'source-path-not-absolute';
+
+export interface PluginLocalSourceStatus {
+  /** The installed plugin whose acquisition source is this Project's folder. */
+  readonly pluginName: string;
+  /** The Project whose working directory is that source. */
+  readonly projectSlug: string;
+  readonly status: PluginLocalSourceState;
+  /** Present when `status` is `unknown`. */
+  readonly reason?: PluginLocalSourceUnknownReason;
+  /** The source digest the installation recorded at consent, when it did. */
+  readonly installedSourceDigest?: string;
+  /** The folder's digest now, when Station could compute it. */
+  readonly currentSourceDigest?: string;
+}

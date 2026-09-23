@@ -222,6 +222,7 @@ import { createPluginDraftRoutes } from '../../routes/plugins/plugin-draft-route
 import { canRelayPluginIdentityEvent } from '../../routes/plugins/plugin-identity-enumeration.js';
 import { isNonPersonCaller } from '../../routes/plugins/plugin-person-approval.js';
 import { createPluginProposalRoutes } from '../../routes/plugins/plugin-proposal-routes.js';
+import { createPluginSourceStatusRoutes } from '../../routes/plugins/plugin-source-status-routes.js';
 import { createPluginRoutes } from '../../routes/plugins/plugins.js';
 import { createRegistryRoutes } from '../../routes/plugins/registry.js';
 import { createCodingRoutes } from '../../routes/projects/coding.js';
@@ -1746,6 +1747,10 @@ export function configureRuntimeRoutes(
   const pluginLifecycleProposals = new PluginLifecycleProposalService(
     context.configLoader.getProjectHomeDir(),
   );
+  // One installation journal for the plugin routes and the source status
+  // routes below, so both read the same selections.
+  const packageMcpJournal =
+    context.orchestrationEventStore?.createPackageMcpAdmissionJournal();
   context.app.route(
     '/api/plugins',
     createPluginRoutes(
@@ -1754,8 +1759,7 @@ export function configureRuntimeRoutes(
       context.eventBus,
       {
         consentChannel: context.consentChannel,
-        packageMcpJournal:
-          context.orchestrationEventStore?.createPackageMcpAdmissionJournal(),
+        packageMcpJournal,
         registryTrustPolicyAuthority: context.orchestrationEventStore
           ? createLocalRegistryTrustPolicyAuthority(
               context.configLoader.getProjectHomeDir(),
@@ -1827,6 +1831,18 @@ export function configureRuntimeRoutes(
       pluginsDir: join(context.configLoader.getProjectHomeDir(), 'plugins'),
       logger: context.logger,
       resolvePrincipal: resolveOrchestrationRequestPrincipal,
+    }),
+  );
+  // #2323 S4: whether a Project folder still holds an installed local
+  // plugin's code. Its own family for the same reason as the proposals.
+  context.app.route(
+    '/api/plugin-sources',
+    createPluginSourceStatusRoutes({
+      projectHomeDir: context.configLoader.getProjectHomeDir(),
+      journal: packageMcpJournal ?? null,
+      listProjects: () => context.projectService.listProjects(),
+      resolvePrincipal: resolveOrchestrationRequestPrincipal,
+      logger: context.logger,
     }),
   );
   context.app.route('/api/fs', createFsRoutes());

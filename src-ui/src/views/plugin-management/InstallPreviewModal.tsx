@@ -9,7 +9,8 @@ import {
   ResponsiveSurfaceActions,
 } from '../../components/ResponsiveDialogSurface';
 import { compareProposalDigest } from '../../utils/pluginProposal';
-import type { PreviewData } from './types';
+import { ReinstallDelta } from './ReinstallDelta';
+import type { PreviewData, ReinstallFromSource } from './types';
 
 export function InstallPreviewModal({
   previewData,
@@ -19,7 +20,14 @@ export function InstallPreviewModal({
   onToggleSkip,
   onConfirm,
   proposal = null,
+  reinstall = null,
 }: {
+  /**
+   * #2323 S4: the installed plugin this preview reinstalls from its source
+   * folder, when the person chose "Reinstall from source". Adds the delta
+   * against the installed plugin; the confirm and consent are unchanged.
+   */
+  reinstall?: ReinstallFromSource | null;
   /**
    * #2323 S5: the agent proposal this preview reviews, when the person came
    * from one. Provenance only: the confirm button below is the decision.
@@ -46,7 +54,7 @@ export function InstallPreviewModal({
     >
       <div className="plugins__modal-header">
         <h3 id="install-preview-title" className="plugins__modal-title">
-          Install Preview
+          {reinstall ? 'Reinstall from source' : 'Install Preview'}
         </h3>
         <ResponsiveDialogCloseButton
           onClick={onClose}
@@ -72,6 +80,9 @@ export function InstallPreviewModal({
             </div>
           )}
         </div>
+        {reinstall && (
+          <ReinstallDelta reinstall={reinstall} previewData={previewData} />
+        )}
         {proposal && (
           <ProposalProvenance
             proposal={proposal}
@@ -227,11 +238,17 @@ export function InstallPreviewModal({
             }
             disabled={installPending || hasBlockingConflict}
           >
-            {installPending
-              ? 'Installing...'
-              : resetData
-                ? 'Confirm Install with New Data'
-                : 'Confirm Install'}
+            {reinstall
+              ? installPending
+                ? 'Reinstalling...'
+                : resetData
+                  ? 'Reinstall with New Data'
+                  : 'Reinstall'
+              : installPending
+                ? 'Installing...'
+                : resetData
+                  ? 'Confirm Install with New Data'
+                  : 'Confirm Install'}
           </button>
         </ResponsiveSurfaceActions>
       </div>

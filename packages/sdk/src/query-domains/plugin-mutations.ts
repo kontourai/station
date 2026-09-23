@@ -11,6 +11,9 @@ function invalidatePluginQueries(
 ) {
   queryClient.invalidateQueries({ queryKey: ['plugins'] });
   queryClient.invalidateQueries({ queryKey: ['plugin-updates'] });
+  // #2323 S4: an install, update or removal changes which source digest a
+  // Project folder is compared with.
+  queryClient.invalidateQueries({ queryKey: ['plugin-sources'] });
 }
 
 /**

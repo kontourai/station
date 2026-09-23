@@ -9,7 +9,7 @@ import {
 import { InstallPluginModal } from './InstallPluginModal';
 import { InstallPreviewModal } from './InstallPreviewModal';
 import { LayoutAssignmentModal } from './LayoutAssignmentModal';
-import type { PluginMessage, PreviewData } from './types';
+import type { PluginMessage, PreviewData, ReinstallFromSource } from './types';
 
 export function PluginModalStack({
   showInstallModal,
@@ -47,7 +47,10 @@ export function PluginModalStack({
   updateConfirm = null,
   onConfirmUpdate = () => undefined,
   onCancelUpdate = () => undefined,
+  reinstall = null,
 }: {
+  /** #2323 S4: the installed plugin a "Reinstall from source" preview is for. */
+  reinstall?: ReinstallFromSource | null;
   /** #2323 S5: the agent proposal being completed, for provenance only. */
   proposal?: PluginLifecycleProposal | null;
   /** #2323 S5: an open update proposal awaiting the person's confirmation. */
@@ -161,6 +164,7 @@ export function PluginModalStack({
           onToggleSkip={onToggleSkip}
           onConfirm={onConfirmInstall}
           proposal={proposal?.kind === 'install' ? proposal : null}
+          reinstall={reinstall}
         />
       )}
 

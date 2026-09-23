@@ -166,3 +166,23 @@ export function installedDependencyPermissions(result: unknown):
     return undefined;
   return rows;
 }
+
+/**
+ * #2323 S4: the installed plugin a "Reinstall from source" preview is
+ * compared against. Captured when the person starts the reinstall, from what
+ * the server reported about the installation: its version, its current
+ * grants and the source digest it recorded at consent.
+ */
+export interface ReinstallFromSource {
+  pluginName: string;
+  projectName: string;
+  installedVersion: string;
+  grantedPermissions: string[];
+  /**
+   * Current grants of each INSTALLED plugin, by id, so a dependency's
+   * requested permissions can be compared with what it holds now. A
+   * dependency absent here is not installed: everything it requests is new.
+   */
+  installedGrants: Record<string, string[]>;
+  installedSourceDigest?: string;
+}
