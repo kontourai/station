@@ -677,7 +677,11 @@ export class ApplicationSessionService {
         "SELECT record FROM application_sessions WHERE json_extract(record, '$.authorityKey')=? AND json_extract(record, '$.relayEnrollmentId')=?",
       )
       .get(parsed.data.authorityKey, parsed.data.enrollmentId);
-    if (currentRow?.record !== persistedRecord) return false;
+    if (
+      currentRow?.record !== persistedRecord ||
+      continuation.data.expiresAt <= this.now()
+    )
+      return false;
     const currentDevice = this.resolveActiveRelayDevice?.(
       parsed.data.deviceId,
       parsed.data.enrollmentId,

@@ -28,7 +28,7 @@ afterEach(async () => {
   for (const close of cleanup.splice(0)) await close();
 });
 
-async function harness() {
+async function harness(options: { now?: () => number } = {}) {
   const home = await mkdtemp(join(tmpdir(), 'station-application-session-'));
   await mkdir(join(home, 'security'), { mode: 0o700 });
   const pairing = new DevicePairingService({
@@ -85,6 +85,7 @@ async function harness() {
     (value) => pairing.identifyDevice(value),
     resolvePending,
     resolveActive,
+    options.now,
   )!;
   const app = () => {
     const result = new Hono();
@@ -162,6 +163,7 @@ async function harness() {
         (value) => pairing.identifyDevice(value),
         resolvePending,
         resolveActive,
+        options.now,
       )!;
       currentApp = app();
     },
@@ -204,7 +206,8 @@ describe('Device-bound continuation persistence and negative admission', () => {
   });
 
   test('pending relay continuation stays inert until its exact Device activates and provider session is promoted', async () => {
-    const h = await harness();
+    let sessionNow = Date.now();
+    const h = await harness({ now: () => sessionNow });
     const enrollmentId = 'N'.repeat(43);
     const pending = await h.accounts().service.createPendingEnrollment(
       enrollmentId,
@@ -519,6 +522,35 @@ describe('Device-bound continuation persistence and negative admission', () => {
     expect(await afterRestart.json()).toMatchObject({
       principal: continuation.principal,
     });
+    let expirationVerificationEntered!: () => void;
+    let releaseExpirationVerification!: () => void;
+    const expirationEntered = new Promise<void>((resolve) => {
+      expirationVerificationEntered = resolve;
+    });
+    const expirationGate = new Promise<void>((resolve) => {
+      releaseExpirationVerification = resolve;
+    });
+    const verifyBeforeExpiry = h
+      .accounts()
+      .service.verifySessionReference.bind(h.accounts().service);
+    const expirationSpy = vi
+      .spyOn(h.accounts().service, 'verifySessionReference')
+      .mockImplementation(async (...args) => {
+        expirationVerificationEntered();
+        await expirationGate;
+        return verifyBeforeExpiry(...args);
+      });
+    try {
+      const checking = h.sessions().verifyActiveRelayContinuation(issueInput);
+      await expirationEntered;
+      sessionNow = Date.parse(continuation.expiresAt) + 1;
+      releaseExpirationVerification();
+      await expect(checking).resolves.toBe(false);
+    } finally {
+      releaseExpirationVerification();
+      expirationSpy.mockRestore();
+      sessionNow = Date.now();
+    }
     expect(
       h.sessions().discardUncommittedAuthority(authorityKey, 'O'.repeat(43)),
     ).toBe(0);

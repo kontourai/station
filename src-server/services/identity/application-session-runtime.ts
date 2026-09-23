@@ -33,6 +33,7 @@ export function createApplicationSessionRuntime(
     approvedBy: string;
     scope: readonly string[];
   } | null,
+  now: () => number = Date.now,
 ) {
   if (!authentication.service.sessionReferenceCapabilities().verify)
     return undefined;
@@ -48,7 +49,7 @@ export function createApplicationSessionRuntime(
       authentication.publicOrigin,
       identifyDevice,
       authentication.allowedBrowserOrigins,
-      Date.now,
+      now,
       resolvePendingRelayDevice,
       resolveActiveRelayDevice,
     );
