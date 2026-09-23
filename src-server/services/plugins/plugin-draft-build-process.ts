@@ -1,4 +1,5 @@
-import { type ChildProcess, fork } from 'node:child_process';
+import { type ChildProcess, spawn } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import type {
   PluginDraftBuildOptions,
   PluginDraftBuildResult,
@@ -91,14 +92,23 @@ export function buildPluginDraftInChildProcess(
   });
   if (signal?.aborted) return Promise.resolve(stopped());
   return new Promise((resolve) => {
-    const child = fork(CHILD_ENTRY, [], {
-      execArgv: CHILD_ENTRY.pathname.endsWith('.ts') ? ['--import', 'tsx'] : [],
-      detached: process.platform !== 'win32',
-      stdio: ['ignore', 'ignore', 'ignore', 'ipc'],
-      serialization: 'json',
-      windowsHide: true,
-      env: draftBuildChildEnv(),
-    });
+    // `spawn` with an 'ipc' stdio slot, not `fork`: it is the same IPC
+    // channel, and unlike ForkOptions its options carry `windowsHide`, which
+    // every process this server launches sets.
+    const child = spawn(
+      process.execPath,
+      [
+        ...(CHILD_ENTRY.pathname.endsWith('.ts') ? ['--import', 'tsx'] : []),
+        fileURLToPath(CHILD_ENTRY),
+      ],
+      {
+        detached: process.platform !== 'win32',
+        stdio: ['ignore', 'ignore', 'ignore', 'ipc'],
+        serialization: 'json',
+        windowsHide: true,
+        env: draftBuildChildEnv(),
+      },
+    );
     let settled = false;
     const settle = (result: PluginDraftBuildResult) => {
       if (settled) return;

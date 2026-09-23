@@ -10,7 +10,7 @@
  * Spawns processes (`mkfifo`, the build child), so it is classified
  * process-heavy in `scripts/vitest-resource-manifest.mjs`.
  */
-import { execFileSync, fork } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import {
   existsSync,
   mkdirSync,
@@ -21,6 +21,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { buildPluginDraft } from '@kontourai/station-shared/build';
 import { afterEach, describe, expect, test } from 'vitest';
 import {
@@ -317,11 +318,17 @@ describe.skipIf(process.platform === 'win32')('draft build process', () => {
     'a build child and its esbuild service exit when the server that started them dies',
     async () => {
       const dir = blockingPlugin();
-      const parent = fork(
-        new URL('./fixtures/plugin-draft-build-parent.ts', import.meta.url),
-        [],
+      // spawn with an 'ipc' slot (not fork) so the launch can set windowsHide.
+      const parent = spawn(
+        process.execPath,
+        [
+          '--import',
+          'tsx',
+          fileURLToPath(
+            new URL('./fixtures/plugin-draft-build-parent.ts', import.meta.url),
+          ),
+        ],
         {
-          execArgv: ['--import', 'tsx'],
           stdio: ['ignore', 'ignore', 'ignore', 'ipc'],
           windowsHide: true,
         },

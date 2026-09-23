@@ -8,6 +8,7 @@ import {
   realpathSync,
   renameSync,
   rmSync,
+  type Stats,
   statSync,
   symlinkSync,
   unlinkSync,
@@ -554,7 +555,7 @@ const SPECIAL_FILE_SWEEP_SKIP = new Set(['node_modules', '.git']);
  */
 function findSpecialFile(pluginRoot: string): string | null {
   let budget = SPECIAL_FILE_SWEEP_BUDGET;
-  const isSpecial = (stats: ReturnType<typeof lstatSync>) =>
+  const isSpecial = (stats: Stats) =>
     stats.isFIFO() ||
     stats.isSocket() ||
     stats.isCharacterDevice() ||
@@ -571,7 +572,7 @@ function findSpecialFile(pluginRoot: string): string | null {
       budget -= 1;
       if (budget < 0) return null;
       const path = join(dir, entry);
-      let stats: ReturnType<typeof lstatSync>;
+      let stats: Stats;
       try {
         stats = lstatSync(path);
         if (stats.isSymbolicLink()) {

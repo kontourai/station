@@ -606,10 +606,9 @@ describe('Event Routes (SSE)', () => {
   // the gate has had time to settle.
   describe('PLUGIN_DRAFTS_REBUILT relays only through the Project-read gate', () => {
     async function relayWith(
-      canReadPluginDraftEvent?: (
-        data: unknown,
-        request: Request,
-      ) => boolean | Promise<boolean>,
+      canReadPluginDraftEvent?: Parameters<
+        typeof createEventRoutes
+      >[0]['canReadPluginDraftEvent'],
     ) {
       const bus = new EventBus();
       const app = createEventRoutes({
