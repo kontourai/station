@@ -894,7 +894,9 @@ const LazyPluginDraftPreviewPane = lazy(() =>
   })),
 );
 
-function PluginDraftWorkspacePaneEntry({ instance }: BuiltinWorkspacePaneProps) {
+function PluginDraftWorkspacePaneEntry({
+  instance,
+}: BuiltinWorkspacePaneProps) {
   const identity = useResolvedPaneIdentity(instance, false);
   if (identity.state !== 'resolved')
     return <WorkspacePaneBindingUnavailable identity={identity} />;

@@ -31,12 +31,12 @@ import type {
   WorkspacePaneDescriptor,
   WorkspacePaneInstance,
 } from '@kontourai/station-contracts/workspace-pane';
-import { WORKSPACE_PLUGIN_DRAFT_PANE_DESCRIPTOR } from '@kontourai/station-contracts/workspace-plugin-draft-pane';
 import {
   isRegisteredBuiltinWorkspacePaneRendererName,
   BUILTIN_WORKSPACE_PANE_RENDERER_NAMES as SHARED_BUILTIN_WORKSPACE_PANE_RENDERER_NAMES,
 } from '@kontourai/station-contracts/workspace-pane-builtin-renderers';
 import { paneAdaptationFromLayoutTab } from '@kontourai/station-contracts/workspace-pane-layout-adapter';
+import { WORKSPACE_PLUGIN_DRAFT_PANE_DESCRIPTOR } from '@kontourai/station-contracts/workspace-plugin-draft-pane';
 import { WORKSPACE_PULL_REQUEST_PANE_DESCRIPTOR } from '@kontourai/station-contracts/workspace-pull-request-pane';
 import { WORKSPACE_SPATIAL_BOARD_PANE_DESCRIPTOR } from '@kontourai/station-contracts/workspace-spatial-board';
 import {

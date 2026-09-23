@@ -26,10 +26,6 @@ import {
 } from '@kontourai/station-contracts/workspace-evidence-panels';
 import { WORKSPACE_FILE_PREVIEW_PANE_DESCRIPTOR } from '@kontourai/station-contracts/workspace-file-preview';
 import {
-  createWorkspacePluginDraftPaneInstance,
-  WORKSPACE_PLUGIN_DRAFT_PANE_DESCRIPTOR,
-} from '@kontourai/station-contracts/workspace-plugin-draft-pane';
-import {
   parseWorkspacePaneDescriptor,
   WORKSPACE_PANE_CONTRACT_VERSION,
   type WorkspacePaneDescriptor,
@@ -40,6 +36,10 @@ import {
   createWorkspacePaneCatalog,
   type WorkspacePaneCatalog,
 } from '@kontourai/station-contracts/workspace-pane-layout-adapter';
+import {
+  createWorkspacePluginDraftPaneInstance,
+  WORKSPACE_PLUGIN_DRAFT_PANE_DESCRIPTOR,
+} from '@kontourai/station-contracts/workspace-plugin-draft-pane';
 import {
   createWorkspaceSpatialBoardPaneInstance,
   WORKSPACE_SPATIAL_BOARD_PANE_DESCRIPTOR,

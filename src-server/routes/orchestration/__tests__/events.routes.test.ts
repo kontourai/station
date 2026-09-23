@@ -636,7 +636,9 @@ describe('Event Routes (SSE)', () => {
     test('relays to a subscriber the gate admits, including an asynchronous yes', async () => {
       const gate = vi.fn(async (data: unknown) => {
         await new Promise((resolve) => setTimeout(resolve, 5));
-        return (data as { projectSlug?: string }).projectSlug === 'secret-project';
+        return (
+          (data as { projectSlug?: string }).projectSlug === 'secret-project'
+        );
       });
       const payload = await relayWith(gate);
       expect(payload).toContain('event: plugin-drafts:rebuilt');
