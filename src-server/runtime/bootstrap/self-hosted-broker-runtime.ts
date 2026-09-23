@@ -1,3 +1,5 @@
+import { BrokerTransientRequestError } from '../../services/connections/self-hosted-broker-client.js';
+import { BrokerOfferReadTransientError } from '../../services/connections/self-hosted-broker-connector.js';
 import type { VirtualApplication } from '../../services/connections/virtual-application.js';
 import {
   awaitSettlementWithin,
@@ -20,6 +22,7 @@ export interface SelfHostedBrokerRuntimeOptions {
   pollMs: number;
   withdrawTimeoutMs?: number;
   operationSettleMs?: number;
+  retryDelayMs?: number;
 }
 
 const DEFAULT_WITHDRAW_TIMEOUT_MS = 5_000;
@@ -44,6 +47,7 @@ export class SelfHostedBrokerRuntime {
   readonly #abort = new AbortController();
   readonly #withdrawTimeoutMs: number;
   readonly #operationSettleMs: number;
+  readonly #retryDelayMs: number;
   #start: Promise<void> | undefined;
   #shutdown: Promise<void> | undefined;
   #loops: Promise<void>[] = [];
@@ -65,7 +69,11 @@ export class SelfHostedBrokerRuntime {
         throw new Error('broker_runtime_interval_invalid');
     if (options.heartbeatMs > 30_000)
       throw new Error('broker_runtime_heartbeat_too_slow');
-    for (const value of [options.withdrawTimeoutMs, options.operationSettleMs])
+    for (const value of [
+      options.withdrawTimeoutMs,
+      options.operationSettleMs,
+      options.retryDelayMs,
+    ])
       if (
         value !== undefined &&
         (!Number.isSafeInteger(value) || value < 1 || value > 86_400_000)
@@ -77,19 +85,14 @@ export class SelfHostedBrokerRuntime {
       options.withdrawTimeoutMs ?? DEFAULT_WITHDRAW_TIMEOUT_MS;
     this.#operationSettleMs =
       options.operationSettleMs ?? DEFAULT_OPERATION_SETTLE_MS;
+    this.#retryDelayMs = options.retryDelayMs ?? 250;
   }
   start() {
     return (this.#start ??= (async () => {
       if (this.#shutdownRequested) throw this.#abortReason();
       this.#linkApplicationAbort();
       try {
-        const registration = this.options.connector.register(
-          this.#abort.signal,
-        );
-        const started = await this.#joinAbortable(
-          registration,
-          'broker_runtime_register_unsettled',
-        );
+        const started = await this.#registerWithRecovery();
         if (this.#abort.signal.aborted) throw this.#abortReason();
         // Observed lease expiry bounds every future deadline: never renew
         // after a known expiry.
@@ -126,12 +129,12 @@ export class SelfHostedBrokerRuntime {
             },
           );
         // Independent heartbeat/renew control loop and single poll loop; a
-        // failure in either stops both (abort) and both are settled before
-        // withdrawal. No retries: any operation failure ends the loops.
+        // unrecoverable failure in either stops both (abort) and both are
+        // settled before withdrawal. Control recovery remains lease-bounded.
         const control = settleLoop(
           this.#runControl(() => knownExpiry, onExpiry),
         );
-        const poller = settleLoop(this.#runPoll());
+        const poller = settleLoop(this.#runPoll(() => knownExpiry));
         this.#loops = [control, poller];
         this.#loopsDone = Promise.allSettled(this.#loops).then(() => undefined);
         void this.#loopsDone;
@@ -163,10 +166,7 @@ export class SelfHostedBrokerRuntime {
       if (expiry !== undefined && now >= expiry)
         throw new Error('broker_runtime_lease_expired');
       if (now >= heartbeat) {
-        const result = await this.#joinAbortable(
-          this.options.connector.register(this.#abort.signal),
-          'broker_runtime_heartbeat_unsettled',
-        );
+        const result = await this.#registerWithRecovery(knownExpiry);
         onExpiry(result);
         heartbeat = Date.now() + this.options.heartbeatMs;
       }
@@ -174,10 +174,7 @@ export class SelfHostedBrokerRuntime {
         const expiryNow = knownExpiry();
         if (expiryNow !== undefined && Date.now() >= expiryNow)
           throw new Error('broker_runtime_lease_expired');
-        const result = await this.#joinAbortable(
-          this.options.connector.renew(this.#abort.signal),
-          'broker_runtime_renew_unsettled',
-        );
+        const result = await this.#renewWithRecovery(knownExpiry, onExpiry);
         onExpiry(result);
         renew = Date.now() + this.options.renewMs;
       }
@@ -188,7 +185,76 @@ export class SelfHostedBrokerRuntime {
       );
     }
   }
-  async #runPoll() {
+  async #registerWithRecovery(
+    knownExpiry?: () => number | undefined,
+  ): Promise<unknown> {
+    let attempts = 0;
+    while (true) {
+      if (this.#abort.signal.aborted) throw this.#abortReason();
+      const expiry = knownExpiry?.();
+      if (expiry !== undefined && Date.now() >= expiry)
+        throw new Error('broker_runtime_lease_expired');
+      try {
+        return await this.#joinAbortable(
+          this.options.connector.register(this.#abort.signal),
+          'broker_runtime_register_unsettled',
+        );
+      } catch (error) {
+        if (this.#abort.signal.aborted) throw error;
+        if (!(error instanceof BrokerTransientRequestError)) throw error;
+        // Before the first successful registration there is no trusted lease
+        // deadline. Keep startup attempts finite instead of retrying forever.
+        attempts++;
+        if (expiry === undefined && attempts >= 3) throw error;
+        await this.#retryWait(attempts, expiry);
+      }
+    }
+  }
+  async #renewWithRecovery(
+    knownExpiry: () => number | undefined,
+    onExpiry: (value: unknown) => void,
+  ): Promise<unknown> {
+    let attempts = 0;
+    while (true) {
+      if (this.#abort.signal.aborted) throw this.#abortReason();
+      const expiry = knownExpiry();
+      if (expiry !== undefined && Date.now() >= expiry)
+        throw new Error('broker_runtime_lease_expired');
+      try {
+        return await this.#joinAbortable(
+          this.options.connector.renew(this.#abort.signal),
+          'broker_runtime_renew_unsettled',
+        );
+      } catch (error) {
+        if (this.#abort.signal.aborted) throw error;
+        // A renewal can commit before its response is lost. Re-read the
+        // authenticated lease revision through register before another CAS.
+        if (
+          !(error instanceof BrokerTransientRequestError) &&
+          !(
+            error instanceof Error &&
+            error.message === 'broker_request_refused_409'
+          )
+        )
+          throw error;
+        attempts++;
+        if (expiry === undefined && attempts >= 3) throw error;
+        await this.#retryWait(attempts, expiry);
+        onExpiry(await this.#registerWithRecovery(knownExpiry));
+      }
+    }
+  }
+  async #retryWait(attempts: number, expiry?: number): Promise<void> {
+    const backoff = Math.min(
+      this.#retryDelayMs * 2 ** Math.min(attempts, 5),
+      5_000,
+    );
+    if (expiry !== undefined && Date.now() + backoff >= expiry)
+      throw new Error('broker_runtime_lease_expired');
+    await this.#sleep(backoff);
+    if (this.#abort.signal.aborted) throw this.#abortReason();
+  }
+  async #runPoll(knownExpiry: () => number | undefined) {
     let poll = 0;
     while (
       !this.#abort.signal.aborted &&
@@ -196,10 +262,23 @@ export class SelfHostedBrokerRuntime {
     ) {
       const now = Date.now();
       if (now >= poll) {
-        await this.#joinAbortable(
-          this.options.connector.poll(this.#abort.signal),
-          'broker_runtime_poll_unsettled',
-        );
+        let attempts = 0;
+        while (true) {
+          try {
+            await this.#joinAbortable(
+              this.options.connector.poll(this.#abort.signal),
+              'broker_runtime_poll_unsettled',
+            );
+            break;
+          } catch (error) {
+            if (this.#abort.signal.aborted) throw error;
+            if (!(error instanceof BrokerOfferReadTransientError)) throw error;
+            attempts++;
+            const expiry = knownExpiry();
+            if (expiry === undefined && attempts >= 3) throw error;
+            await this.#retryWait(attempts, expiry);
+          }
+        }
         poll = Date.now() + this.options.pollMs;
       }
       if (this.#abort.signal.aborted || this.options.application.signal.aborted)

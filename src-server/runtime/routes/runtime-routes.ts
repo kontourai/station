@@ -1,6 +1,7 @@
 import { humanPrincipal as deploymentHumanPrincipal } from '@kontourai/station-contracts/principal';
 import { createBrowserRoutes } from '../../routes/browser.js';
 import { createHomeTransferRoomRoutes } from '../../routes/environments/home-transfer-room-routes.js';
+import { createLiveSurfaceRoutes } from '../../routes/live-surface.js';
 import { createMobileDeviceRoutes } from '../../routes/mobile-device.js';
 import { createProjectMembershipRoutes } from '../../routes/projects/project-membership-routes.js';
 import { createProjectSharedTaskRoutes } from '../../routes/projects/project-shared-tasks.js';
@@ -26,6 +27,7 @@ import {
   deploymentAccountPrincipal,
 } from '../../services/identity/deployment-authentication-service.js';
 import type { LoadedLocalAccounts } from '../../services/identity/local-account-runtime.js';
+import { LiveSurfaceRegistry } from '../../services/live-surface/registry.js';
 import { LocalMobileDeviceHost } from '../../services/mobile-device/mobile-device-host.js';
 import type {
   ProjectMembershipAuthority,
@@ -43,6 +45,7 @@ export {
 
 import {
   createHash,
+  createHmac,
   randomBytes,
   randomUUID,
   timingSafeEqual,
@@ -717,6 +720,11 @@ interface ConfigureRuntimeRoutesResult {
   webPushService: WebPushService;
   kitLifecycleReady: Promise<void>;
   projectTaskRoomRuntime?: ProjectTaskRoomRuntime;
+  /**
+   * Where live-surface producers register (#90). Undefined on hosted or
+   * multi-tenant deployments, where the routes are not mounted at all.
+   */
+  liveSurfaceRegistry?: LiveSurfaceRegistry;
   /** Personal hosts only; the runtime shuts it down on stop. */
   browserService?: BrowserService;
   /** Epic #2323 S3: stops draft watchers and removes built drafts on shutdown. */
@@ -918,6 +926,7 @@ export function configureRuntimeRoutes(
   let projectTaskRoomRuntime: ProjectTaskRoomRuntime | undefined;
   let pluginDraftService: PluginDraftService | undefined;
   let projectTaskRoomLifecycleReady: Promise<void> = Promise.resolve();
+  let liveSurfaceRegistry: LiveSurfaceRegistry | undefined;
   let browserService: BrowserService | undefined;
   const allowedOrigins = resolveConfiguredRuntimeOrigins(context);
   const runtimeSecurity = {
@@ -2139,6 +2148,54 @@ export function configureRuntimeRoutes(
         }),
         { isRequestPrincipalCurrent },
       ),
+    );
+  }
+  // Live surfaces (#90) stream a server-side screen (Chromium now, a device
+  // later) and accept its input: personal operator hosts only, like the
+  // device routes above. With no producer registered the routes are inert.
+  if (!hostedTenantRegistry && !isHostedTenantExecutionRequired()) {
+    const liveSurfaceCallerKey = randomBytes(32);
+    liveSurfaceRegistry = new LiveSurfaceRegistry({
+      hub: {
+        onError: (message, error) =>
+          context.logger.warn(message, {
+            error: error instanceof Error ? error.message : String(error),
+          }),
+      },
+    });
+    context.app.route(
+      '/api/live-surfaces',
+      createLiveSurfaceRoutes(liveSurfaceRegistry, {
+        isRequestPrincipalCurrent,
+        // Only a HUMAN may drive a surface over HTTP; agents claim through
+        // the registry with their verified session. In personal mode every
+        // credential — including the per-boot internal token the
+        // station-control MCP child presents — resolves to the operator's
+        // human principal, so the principal kind alone refuses nothing:
+        // refuse agent-originated credentials explicitly.
+        // TODO(#122): replace these two checks with the first-class
+        // `isAgentOriginatedRequest` once it lands.
+        resolveHumanCaller: (c) => {
+          const runtime = getRuntimeAuthenticatedRequestPrincipal(c.req.raw);
+          if (!runtime || runtime.kind === 'internal') return null;
+          if (
+            resolveInboundDeviceKindForRequest(c.req.raw, (credential) =>
+              context.environmentSecurityService.identifyDevice(credential),
+            ) === 'delegation'
+          )
+            return null;
+          const principal = resolveSubscriberPrincipal(c as never);
+          if (principal?.kind !== 'human') return null;
+          // The client the human acts from: the paired device, else the one
+          // credential — as an HMAC under a key minted for this boot, so the
+          // id broadcast to other viewers is not a stable digest of a secret
+          // (an unsalted hash is an offline-checkable fingerprint of it).
+          const device = runtime.deviceId
+            ? `device:${runtime.deviceId}`
+            : `credential:${createHmac('sha256', liveSurfaceCallerKey).update(runtime.credential).digest('base64url').slice(0, 22)}`;
+          return { principal: principal.id, device };
+        },
+      }),
     );
   }
   context.app.route(
@@ -4929,6 +4986,7 @@ export function configureRuntimeRoutes(
     webPushService,
     kitLifecycleReady,
     projectTaskRoomRuntime,
+    liveSurfaceRegistry,
     browserService,
     ...(pluginDraftService ? { pluginDraftService } : {}),
   };
@@ -6286,6 +6344,47 @@ export function configureDevicePairingPublicRoutes(
       return c.json({ error: 'origin_forbidden' }, 403);
     }
     try {
+      // Approval binds an account candidate to the Device, but the provider
+      // session may be revoked before the requester exchanges its credential.
+      // Recheck at the minting boundary so a stale approved request cannot
+      // create an account-bound Device after logout or provider revocation.
+      const candidate = pairing.approvedAccountBindingForRequest(
+        body.requestId,
+      );
+      if (candidate) {
+        const authentication = options.accountAuthentication;
+        const verified = authentication
+          ? await authentication.verifySessionReference(
+              candidate.sessionId,
+              c.req.raw.signal,
+            )
+          : { kind: 'unavailable' as const };
+        const currentCandidate = pairing.approvedAccountBindingForRequest(
+          body.requestId,
+        );
+        if (
+          verified.kind !== 'authenticated' ||
+          verified.issuer !== candidate.candidate.issuer ||
+          verified.session.subject !== candidate.candidate.subject ||
+          authentication?.describe().issuer !== candidate.candidate.issuer ||
+          currentCandidate === undefined ||
+          currentCandidate.sessionId !== candidate.sessionId ||
+          currentCandidate.candidate.issuer !== candidate.candidate.issuer ||
+          currentCandidate.candidate.subject !== candidate.candidate.subject
+        ) {
+          deviceSessionExchanges.add(1, {
+            outcome: 'denied',
+            reason: 'account_session_unavailable',
+          });
+          // A revoked or changed account session is a failed credential
+          // exchange, so it consumes the existing source failure budget.
+          failureLimiter.finalize(admission.admission, 'failure');
+          return c.json({ error: 'person_binding_unavailable' }, 409);
+        }
+      }
+      // Provider adapters can ignore AbortSignal and finish after the caller
+      // disconnects. Never mint a Device that the requester cannot receive.
+      c.req.raw.signal.throwIfAborted();
       const { replacement, ...result } = pairing.exchange({
         offerId: body.offerId,
         proof: body.proof,

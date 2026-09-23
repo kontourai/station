@@ -19,6 +19,9 @@ const COLOR: Record<ConnectionIndicatorState, string> = {
   // connection, not one that stopped answering.
   'awaiting-approval': '#f59e0b',
   'needs-repair': '#f59e0b',
+  // station#2327 — the "still trying" yellow, not the error red: the Station
+  // is answering, just slowly, and nothing here needs the reader.
+  busy: '#eab308',
 };
 
 export interface ConnectionStatusDotProps {

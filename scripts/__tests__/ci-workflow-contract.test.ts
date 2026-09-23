@@ -28,6 +28,7 @@ import {
 } from '../resolve-android-build-run.mjs';
 import { VITEST_CORPUS_GROUP_NAMES } from '../run-vitest-corpus.mjs';
 import { FULL_REGRESSION_PHASES } from '../verification-lanes.mjs';
+import { QUARANTINED_VITEST_FILES } from '../vitest-resource-manifest.mjs';
 
 const root = resolve(import.meta.dirname, '../..');
 
@@ -731,6 +732,8 @@ describe('CI verification workflow contracts', () => {
         'no pull-request signal today; unfiltered on every main push (#1331 covers its host contention)',
       '.github/workflows/build-android.yml':
         'desktop-rust.yml type-checks the Android target on pull requests; full APK assembly stays post-merge',
+      '.github/workflows/ios-rust-cache-warm.yml':
+        'writes the iOS Rust cache from trusted main only; build-ios.yml is the pull-request and merge-queue signal and only restores it',
     };
 
     const pushOnly = readWorkflowDocuments()
@@ -2100,6 +2103,7 @@ describe('every Tauri invocation is rooted at the app directory', () => {
   const DISCOVERY_EXPOSED = [
     'build-android.yml',
     'build-ios.yml',
+    'ios-rust-cache-warm.yml',
     'nightly-native-stage.yml',
     'release.yml',
   ];
@@ -2259,6 +2263,134 @@ describe('iOS verification proves packaged runtime readiness', () => {
   });
 });
 
+describe('the iOS Rust cache is written by main and only restored by PRs', () => {
+  type Step = {
+    id?: string;
+    if?: string;
+    uses?: string;
+    run?: string;
+    with?: Record<string, unknown>;
+    'working-directory'?: string;
+  };
+  type Doc = {
+    on: Record<string, unknown>;
+    permissions: Record<string, string>;
+    jobs: Record<string, { 'runs-on': string; steps: Step[] }>;
+  };
+  const ios = load(workflow('build-ios.yml')) as Doc;
+  const warmer = load(workflow('ios-rust-cache-warm.yml')) as Doc;
+  const iosSteps = ios.jobs['build-ios-verification'].steps;
+  const warmSteps = warmer.jobs.warm.steps;
+  const CACHE_PREFIX = 'actions/cache';
+  const byUses = (steps: Step[], prefix: string) =>
+    steps.filter((step) => String(step.uses ?? '').startsWith(prefix));
+  const runOf = (steps: Step[], needle: string) =>
+    steps.filter((step) => String(step.run ?? '').includes(needle));
+
+  it('never saves from the pull-request / merge-queue workflow', () => {
+    const cacheSteps = byUses(iosSteps, CACHE_PREFIX);
+    expect(cacheSteps.map((step) => step.uses)).toEqual([
+      'actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9',
+    ]);
+    // Parsed, not grepped: the workflow's own comments name what it refuses.
+    for (const [jobId, job] of Object.entries(ios.jobs)) {
+      expect(Object.hasOwn(job, 'cache-mode'), jobId).toBe(false);
+      const writers = job.steps.filter((step) => {
+        const uses = String(step.uses ?? '');
+        return (
+          (uses.startsWith(CACHE_PREFIX) &&
+            !uses.startsWith('actions/cache/restore@')) ||
+          (uses.startsWith('actions/setup-node@') &&
+            step.with?.cache !== undefined)
+        );
+      });
+      expect(writers, jobId).toEqual([]);
+    }
+    expect(Object.hasOwn(ios, 'cache-mode')).toBe(false);
+  });
+
+  it('saves only from trusted main events, after a lookup that skips warm keys', () => {
+    expect(Object.keys(warmer.on).sort()).toEqual([
+      'push',
+      'schedule',
+      'workflow_dispatch',
+    ]);
+    expect((warmer.on.push as { branches: string[] }).branches).toEqual([
+      'main',
+    ]);
+    expect(warmer.permissions).toEqual({ contents: 'read' });
+    expect(warmer.jobs.warm['runs-on']).toBe(
+      ios.jobs['build-ios-verification']['runs-on'],
+    );
+    const saves = byUses(warmSteps, 'actions/cache/save@');
+    expect(saves).toHaveLength(1);
+    expect(saves[0].if).toBe(
+      "github.ref == 'refs/heads/main' && steps.lookup.outputs.cache-hit != 'true'",
+    );
+    const lookup = warmSteps.find((step) => step.id === 'lookup');
+    expect(lookup?.with?.['lookup-only']).toBe(true);
+  });
+
+  it('keys and paths the restore exactly as the warmer saves them', () => {
+    const [restore] = byUses(iosSteps, 'actions/cache/restore@');
+    const lookup = warmSteps.find((step) => step.id === 'lookup');
+    const [save] = byUses(warmSteps, 'actions/cache/save@');
+    expect(restore.with?.key).toBe(lookup?.with?.key);
+    expect(save.with?.key).toBe(
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+      '${{ steps.lookup.outputs.cache-primary-key }}',
+    );
+    expect(restore.with?.path).toBe(lookup?.with?.path);
+    expect(save.with?.path).toBe(restore.with?.path);
+    const key = String(restore.with?.key);
+    for (const part of [
+      'runner.os',
+      'runner.arch',
+      'steps.rust.outputs.cachekey',
+      'aarch64-apple-ios-sim',
+      "hashFiles('src-desktop/Cargo.lock')",
+    ])
+      expect(key).toContain(part);
+    expect(String(restore.with?.['restore-keys']).trim()).toBe(
+      key.slice(0, key.indexOf('${{ hashFiles')),
+    );
+  });
+
+  it('builds with the same toolchain, Xcode and commands the restore serves', () => {
+    // Cargo fingerprints include target, profile, env and paths: an entry
+    // from a different invocation restores but rebuilds everything.
+    const toolchain = (steps: Step[]) =>
+      byUses(steps, 'dtolnay/rust-toolchain@').map((step) => [
+        step.id,
+        step.uses,
+        step.with,
+      ]);
+    expect(toolchain(warmSteps)).toEqual(toolchain(iosSteps));
+    expect(toolchain(iosSteps)).toHaveLength(1);
+    for (const needle of [
+      'sudo xcode-select -s /Applications/Xcode_26.6.app/Contents/Developer',
+      'brew install xcodegen',
+      'npm run dependencies:ci && npm run build:native-client',
+      'npx tauri ios init',
+      'node scripts/write-ios-build-manifest.mjs',
+      'npx tauri ios build',
+    ]) {
+      const iosRuns = runOf(iosSteps, needle);
+      const warmRuns = runOf(warmSteps, needle);
+      expect(iosRuns, needle).toHaveLength(1);
+      expect(warmRuns, needle).toHaveLength(1);
+      const line = (step: Step) =>
+        String(step.run)
+          .split('\n')
+          .find((candidate) => candidate.includes(needle));
+      expect(line(warmRuns[0]), needle).toBe(line(iosRuns[0]));
+      expect(warmRuns[0]['working-directory'], needle).toBe(
+        iosRuns[0]['working-directory'],
+      );
+    }
+  });
+});
+
 /**
  * Gradle's generated BuildTask.kt re-invokes the CLI as
  * `npm run -- tauri android android-studio-script`, and npm runs a script from
@@ -2304,22 +2436,27 @@ describe('merge-queue regression workflow covers the full regression', () => {
     env?: Record<string, string>;
     uses?: string;
     if?: string;
+    shell?: string;
     'continue-on-error'?: unknown;
   };
+  type Defaults = { run?: { shell?: string } };
   type Job = {
     name?: string;
     if?: string;
     needs?: string[];
+    defaults?: Defaults;
     strategy?: { matrix?: { include?: Array<Record<string, string>> } };
     steps?: Step[];
+    'continue-on-error'?: unknown;
   };
+  type Workflow = { defaults?: Defaults; jobs: Record<string, Job> };
   function document() {
     const entry = readWorkflowDocuments().find(
       (candidate) =>
         candidate.file === '.github/workflows/merge-queue-regression.yml',
     );
     expect(entry, 'merge-queue-regression.yml must exist').toBeDefined();
-    return entry?.document as { jobs: Record<string, Job> };
+    return entry?.document as Workflow;
   }
 
   const DRIVER = 'node scripts/run-full-regression-phases.mjs';
@@ -2483,6 +2620,480 @@ describe('merge-queue regression workflow covers the full regression', () => {
       expect(
         runSteps.find((entry) => entry.job === job)?.step.env?.PHASES,
       ).toBe(MATRIX_PHASES);
+  });
+
+  // Shell lines with `\` continuations joined, so a swallow written on the
+  // `| tee` continuation still belongs to the driver line it continues.
+  function logicalLines(run: string | undefined) {
+    const joined: string[] = [];
+    let pending = '';
+    for (const line of executedLines(run)) {
+      if (line.endsWith('\\')) pending += `${line.slice(0, -1).trim()} `;
+      else {
+        joined.push(`${pending}${line}`);
+        pending = '';
+      }
+    }
+    if (pending) joined.push(pending.trim());
+    return joined;
+  }
+
+  // GitHub's `bash` keyword runs `bash --noprofile --norc -eo pipefail {0}`;
+  // an unset shell is `bash -e {0}`. Any other override must keep both
+  // errexit and pipefail, or a failed driver can exit its step green.
+  function shellKeepsFailures(shell: string | undefined) {
+    if (shell === undefined || shell === 'bash') return true;
+    return (
+      /(^|\s)bash(\s|$)/.test(shell) &&
+      /(^|\s)-[a-z]*e[a-z]*(\s|$)/.test(shell) &&
+      /\bpipefail\b/.test(shell)
+    );
+  }
+
+  // Shell code (quotes and comments removed, see shellCode) that can turn a
+  // failed command into a green step: disabling errexit/pipefail, an
+  // explicit success exit anywhere, a trap that can rewrite the exit status,
+  // and a backgrounded command whose status the step never collects.
+  // Redirections (`2>&1`, `&>`, `>&2`) and `&&` are not backgrounding.
+  const SWALLOWS: Array<[string, RegExp]> = [
+    ['set +e', /\bset\s+\+[a-z]*e/],
+    ['set +o errexit/pipefail', /\bset\s+\+o\s+(errexit|pipefail)\b/],
+    ['exit 0', /\bexit\s+0\b/],
+    ['trap', /(^|[\s;&|(])trap\b/],
+    ['backgrounded command (&)', /(^|[^&>|<])&(?![&>])/],
+  ];
+
+  // Quoted text and trailing comments are data, not control flow: an
+  // `echo "a || b"` or a jq filter must not read as an `||`.
+  function shellCode(line: string) {
+    let code = '';
+    let quote: string | null = null;
+    for (let index = 0; index < line.length; index += 1) {
+      const char = line[index];
+      if (quote) {
+        if (quote === '"' && char === '\\') index += 1;
+        else if (char === quote) quote = null;
+        continue;
+      }
+      if (char === '"' || char === "'") {
+        quote = char;
+        code += ' ';
+      } else if (char === '#' && (index === 0 || /\s/.test(line[index - 1])))
+        break;
+      else code += char;
+    }
+    return code;
+  }
+
+  // The one accepted `||`: a fallback that still fails the step,
+  // `|| exit N` or `|| { ...; exit N; }` with N non-zero.
+  const FAIL_LOUD =
+    /^\s*(?:exit\s+[1-9][0-9]*|\{[^{}]*;\s*exit\s+[1-9][0-9]*\s*;?\s*\})\s*$/;
+
+  function swallowingOr(line: string) {
+    const segments = shellCode(line).split('||');
+    return segments.slice(1).some((segment) => !FAIL_LOUD.test(segment));
+  }
+
+  function runSwallows(run: string | undefined) {
+    const lines = logicalLines(run);
+    const found = SWALLOWS.filter(([, pattern]) =>
+      lines.some((line) => pattern.test(shellCode(line))),
+    ).map(([label]) => label);
+    for (const line of lines)
+      if (swallowingOr(line)) found.push(`'||' swallows a failure: ${line}`);
+    return found;
+  }
+
+  // The only steps exempt from the gate rules: `if: failure()` diagnostics.
+  // They run only after the job has already failed, so they cannot make it
+  // green -- unless the gate's own test command is moved into one, where it
+  // would never run at all.
+  // A test command: the phase driver, or an `npm run test:*` suite.
+  const GATE_COMMAND = new RegExp(
+    `(^|\\s)(${DRIVER.replaceAll('.', '\\.')}|npm run test:)`,
+  );
+  function isFailureDiagnostic(step: Step) {
+    return step.if === 'failure()';
+  }
+
+  // One step's gate violations, and whether it runs a test command.
+  function stepViolations(
+    step: Step,
+    where: string,
+    inheritedShell: string | undefined,
+  ) {
+    const runsGateCommand = logicalLines(step.run).some((line) =>
+      GATE_COMMAND.test(shellCode(line)),
+    );
+    if (isFailureDiagnostic(step))
+      return {
+        runsGateCommand: false,
+        violations: runsGateCommand
+          ? [`${where}: a gate command in an if: failure() step`]
+          : [],
+      };
+    const violations: string[] = [];
+    if (step['continue-on-error'] !== undefined)
+      violations.push(`${where}: continue-on-error`);
+    if (step.if !== undefined)
+      violations.push(`${where}: if: ${step.if} can skip a gated step`);
+    if (step.run !== undefined) {
+      const shell = step.shell ?? inheritedShell;
+      if (!shellKeepsFailures(shell))
+        violations.push(`${where}: shell '${shell}' drops -e or pipefail`);
+      for (const swallow of runSwallows(step.run))
+        violations.push(`${where}: ${swallow}`);
+    }
+    return { runsGateCommand, violations };
+  }
+
+  /**
+   * Every way a gate job could report success without its tests passing.
+   * The aggregate's `needs` are the gate jobs; the aggregate itself is one
+   * too. Every step in them is gated except `if: failure()` diagnostics.
+   */
+  function swallowedFailures(workflowDocument: Workflow) {
+    const { jobs } = workflowDocument;
+    const violations: string[] = [];
+    const aggregateName = 'merge-queue-regression';
+    const aggregate = jobs[aggregateName];
+    for (const name of [...(aggregate?.needs ?? []), aggregateName]) {
+      const job = jobs[name];
+      if (!job) continue;
+      if (job['continue-on-error'] !== undefined)
+        violations.push(`${name}: job-level continue-on-error`);
+      const inheritedShell =
+        job.defaults?.run?.shell ?? workflowDocument.defaults?.run?.shell;
+      let gatedTestCommands = 0;
+      for (const step of job.steps ?? []) {
+        const where = `${name}: ${step.name ?? step.uses ?? step.run?.split('\n')[0]}`;
+        const result = stepViolations(step, where, inheritedShell);
+        if (result.runsGateCommand) gatedTestCommands += 1;
+        violations.push(...result.violations);
+      }
+      if (name !== aggregateName && gatedTestCommands === 0)
+        violations.push(`${name}: no gated step runs a test command`);
+    }
+    // The aggregate's verdict is jq's exit status; without `-e` jq exits 0
+    // for a `false` result.
+    const verdict = (aggregate?.steps ?? []).map(({ run }) => run ?? '');
+    if (!verdict.some((run) => /\bjq -e\b/.test(run)))
+      violations.push('merge-queue-regression: no jq -e verdict');
+    return violations;
+  }
+
+  it('lets no gate job swallow a failed driver (false-positive control on the real workflow)', () => {
+    expect(swallowedFailures(document())).toEqual([]);
+    // An explicit shell that keeps errexit and pipefail is not a swallow.
+    const explicit = structuredClone(document());
+    for (const job of Object.values(explicit.jobs))
+      for (const step of job.steps ?? []) step.shell = 'bash';
+    explicit.jobs.static.defaults = {
+      run: { shell: 'bash --noprofile --norc -eo pipefail {0}' },
+    };
+    expect(swallowedFailures(explicit)).toEqual([]);
+    // A fallback that still fails the step is not a swallow, and `||` inside
+    // quotes or a comment is not control flow.
+    const loud = structuredClone(document());
+    const prepare = loud.jobs.ordinary.steps?.find(
+      ({ name }) => name === 'Prepare the corpus prerequisites',
+    ) as Step;
+    prepare.run = [
+      'npm run prepare:verify-static || { echo "::error::prepare failed || stop"; exit 1; }',
+      'npm run dependencies:verify || exit 2',
+      "echo 'a || b' # || true",
+      // Quoted or commented swallow text is data, and redirections are not
+      // backgrounding.
+      'echo "never exit 0 here; trap nothing &" >&2 # exit 0',
+      'npm run dependencies:verify 2>&1 &>/dev/null && echo ok',
+    ].join('\n');
+    expect(swallowedFailures(loud)).toEqual([]);
+  });
+
+  it('catches every known way to swallow a driver failure (known-bad controls)', () => {
+    const runStep = (workflowDocument: Workflow, job: string) => {
+      const step = workflowDocument.jobs[job].steps?.find(
+        ({ name }) => name === 'Run full-regression phases',
+      );
+      expect(step, job).toBeDefined();
+      return step as Step;
+    };
+    const androidStep = (workflowDocument: Workflow) =>
+      workflowDocument.jobs['android-viewport'].steps?.find(
+        ({ run }) => run === 'npm run test:android',
+      ) as Step;
+    const mutated = (mutate: (workflowDocument: Workflow) => void) => {
+      const copy = structuredClone(document());
+      mutate(copy);
+      return swallowedFailures(copy);
+    };
+    const onTee = (suffix: string) => (workflowDocument: Workflow) => {
+      const step = runStep(workflowDocument, 'ordinary');
+      step.run = step.run?.replace(
+        '| tee "$RUNNER_TEMP/merge-queue-regression.log"',
+        `| tee "$RUNNER_TEMP/merge-queue-regression.log"${suffix}`,
+      );
+    };
+    const cases: Array<[string, (workflowDocument: Workflow) => void, RegExp]> =
+      [
+        ['|| true', onTee(' || true'), /ordinary: .*'\|\|' swallows/],
+        ['|| :', onTee(' || :'), /ordinary: .*'\|\|' swallows/],
+        ['; exit 0', onTee('; exit 0'), /ordinary: .*exit 0/],
+        [
+          'set +e',
+          (workflowDocument) => {
+            const step = runStep(workflowDocument, 'static');
+            step.run = `set +e\n${step.run}`;
+          },
+          /static: .*set \+e/,
+        ],
+        [
+          'set +o pipefail',
+          (workflowDocument) => {
+            const step = runStep(workflowDocument, 'exclusive');
+            step.run = `${step.run}\nset +o pipefail`;
+          },
+          /exclusive: .*set \+o errexit\/pipefail/,
+        ],
+        [
+          'a trailing exit 0 line',
+          (workflowDocument) => {
+            const step = runStep(workflowDocument, 'process-heavy');
+            step.run = `${step.run}\nexit 0`;
+          },
+          /process-heavy: .*exit 0/,
+        ],
+        [
+          'shell sh',
+          (workflowDocument) => {
+            runStep(workflowDocument, 'static').shell = 'sh {0}';
+          },
+          /static: .*shell 'sh \{0\}' drops/,
+        ],
+        [
+          'shell without -e',
+          (workflowDocument) => {
+            runStep(workflowDocument, 'static').shell =
+              'bash --noprofile --norc -o pipefail {0}';
+          },
+          /static: .*drops -e or pipefail/,
+        ],
+        [
+          'shell without pipefail',
+          (workflowDocument) => {
+            runStep(workflowDocument, 'static').shell = 'bash -e {0}';
+          },
+          /static: .*drops -e or pipefail/,
+        ],
+        [
+          'job defaults shell',
+          (workflowDocument) => {
+            workflowDocument.jobs.exclusive.defaults = {
+              run: { shell: 'bash {0}' },
+            };
+          },
+          /exclusive: .*shell 'bash \{0\}'/,
+        ],
+        [
+          'workflow defaults shell',
+          (workflowDocument) => {
+            workflowDocument.defaults = { run: { shell: 'sh {0}' } };
+          },
+          /merge-queue-regression: .*shell 'sh \{0\}'/,
+        ],
+        [
+          'job-level continue-on-error on a gate job',
+          (workflowDocument) => {
+            workflowDocument.jobs.ordinary['continue-on-error'] =
+              `\${{ matrix.experimental }}`;
+          },
+          /^ordinary: job-level continue-on-error$/,
+        ],
+        [
+          'continue-on-error on the aggregate job',
+          (workflowDocument) => {
+            workflowDocument.jobs['merge-queue-regression'][
+              'continue-on-error'
+            ] = true;
+          },
+          /^merge-queue-regression: job-level continue-on-error$/,
+        ],
+        [
+          'a swallowed aggregate verdict',
+          (workflowDocument) => {
+            const [step] =
+              workflowDocument.jobs['merge-queue-regression'].steps ?? [];
+            step.run = step.run?.replace('> /dev/null', '> /dev/null || true');
+          },
+          /merge-queue-regression: .*'\|\|' swallows/,
+        ],
+        [
+          'an aggregate verdict without jq -e',
+          (workflowDocument) => {
+            const [step] =
+              workflowDocument.jobs['merge-queue-regression'].steps ?? [];
+            step.run = step.run?.replace('jq -e', 'jq');
+          },
+          /^merge-queue-regression: no jq -e verdict$/,
+        ],
+        [
+          'continue-on-error on the android viewport step',
+          (workflowDocument) => {
+            androidStep(workflowDocument)['continue-on-error'] = true;
+          },
+          /^android-viewport: Run Android viewport tests: continue-on-error$/,
+        ],
+        [
+          'if: always() on the android viewport step',
+          (workflowDocument) => {
+            androidStep(workflowDocument).if = 'always()';
+          },
+          /^android-viewport: Run Android viewport tests: if: always\(\)/,
+        ],
+        [
+          'shell sh on the android viewport step',
+          (workflowDocument) => {
+            androidStep(workflowDocument).shell = 'sh {0}';
+          },
+          /^android-viewport: Run Android viewport tests: shell 'sh \{0\}'/,
+        ],
+        [
+          'the android test moved into an if: failure() step',
+          (workflowDocument) => {
+            androidStep(workflowDocument).if = 'failure()';
+          },
+          /android-viewport: .*gate command in an if: failure\(\) step/,
+        ],
+        [
+          '|| true on a prepare line',
+          (workflowDocument) => {
+            const step = workflowDocument.jobs.ordinary.steps?.find(
+              ({ name }) => name === 'Prepare the corpus prerequisites',
+            ) as Step;
+            step.run = step.run?.replace(
+              'npm run prepare:verify-static',
+              'npm run prepare:verify-static || true',
+            );
+          },
+          /^ordinary: Prepare the corpus prerequisites: '\|\|' swallows/,
+        ],
+        [
+          'an exit 0 mid-line, inside a compound command',
+          (workflowDocument) => {
+            const step = runStep(workflowDocument, 'static');
+            step.run = `${step.run}\nif true; then exit 0; fi`;
+          },
+          /^static: Run full-regression phases: exit 0$/,
+        ],
+        [
+          'a trap that rewrites the exit status',
+          (workflowDocument) => {
+            const step = runStep(workflowDocument, 'ordinary');
+            step.run = `trap 'exit 0' EXIT\n${step.run}`;
+          },
+          /^ordinary: Run full-regression phases: trap$/,
+        ],
+        [
+          'a backgrounded driver',
+          (workflowDocument) => {
+            const step = runStep(workflowDocument, 'process-heavy');
+            step.run = step.run?.replace(
+              '| tee "$RUNNER_TEMP/merge-queue-regression.log"',
+              '| tee "$RUNNER_TEMP/merge-queue-regression.log" &',
+            );
+          },
+          /^process-heavy: Run full-regression phases: backgrounded command/,
+        ],
+        [
+          'a backgrounded android suite',
+          (workflowDocument) => {
+            androidStep(workflowDocument).run = 'npm run test:android &';
+          },
+          /^android-viewport: .*backgrounded command/,
+        ],
+        [
+          'a gate job with its test step removed',
+          (workflowDocument) => {
+            const job = workflowDocument.jobs['android-viewport'];
+            job.steps = job.steps?.filter(
+              ({ run }) => run !== 'npm run test:android',
+            );
+          },
+          /^android-viewport: no gated step runs a test command$/,
+        ],
+        [
+          'continue-on-error on a setup step',
+          (workflowDocument) => {
+            const step = workflowDocument.jobs.static.steps?.find(
+              ({ run }) => run === 'npm run dependencies:ci',
+            ) as Step;
+            step['continue-on-error'] = true;
+          },
+          /^static: npm run dependencies:ci: continue-on-error$/,
+        ],
+        [
+          'continue-on-error on the aggregate step',
+          (workflowDocument) => {
+            const [step] =
+              workflowDocument.jobs['merge-queue-regression'].steps ?? [];
+            step['continue-on-error'] = true;
+          },
+          /merge-queue-regression: .*: continue-on-error$/,
+        ],
+      ];
+    for (const [label, mutate, expected] of cases) {
+      const violations = mutated(mutate);
+      expect(
+        violations.some((violation) => expected.test(violation)),
+        `${label}: ${JSON.stringify(violations)}`,
+      ).toBe(true);
+    }
+  });
+
+  it('excludes quarantined files from every queue corpus selection, and nowhere else', () => {
+    const corpus = (text: string) =>
+      phaseIds(text).some((id) => id.startsWith('test-full-'));
+    const all = selections(document().jobs);
+    const corpusSelections = all.filter(({ text }) => corpus(text));
+    // Four ordinary slices, two process-heavy slices, the exclusive groups.
+    expect(corpusSelections).toHaveLength(7);
+    for (const { job, text } of corpusSelections)
+      expect(text, `${job}: ${text}`).toMatch(
+        /(^|\s)--exclude-quarantined(\s|$)/,
+      );
+    for (const { job, text } of all.filter(({ text }) => !corpus(text)))
+      expect(text, `${job}: ${text}`).not.toContain('--exclude-quarantined');
+    // So a quarantined file is never counted as covered by the queue: every
+    // group the queue reaches (asserted above) reaches it minus the list.
+    expect(Array.isArray(QUARANTINED_VITEST_FILES)).toBe(true);
+  });
+
+  it('leaves Nightly canonical: full:regression never excludes quarantined files', () => {
+    // Nightly calls the hosted full-regression workflow, which runs the
+    // canonical `npm run full:regression`; that resolves to the package
+    // scripts behind FULL_REGRESSION_PHASES. None of them may carry the
+    // queue-only flag, so a quarantined file still runs every night.
+    expect(workflow('nightly.yml')).toContain(
+      'uses: ./.github/workflows/full-regression.yml',
+    );
+    const hosted = workflow('full-regression.yml');
+    expect(extractRunBodies(hosted)).toContain('npm run full:regression');
+    expect(hosted).not.toContain('quarantine');
+    const scripts = JSON.parse(
+      readFileSync(resolve(root, 'package.json'), 'utf8'),
+    ).scripts as Record<string, string>;
+    for (const name of [
+      'full:regression',
+      'full:regression:raw',
+      'test:full:raw',
+      ...FULL_REGRESSION_PHASES.map(({ privateScript }) => privateScript),
+    ]) {
+      expect(scripts[name], name).toBeDefined();
+      expect(scripts[name], name).not.toContain('quarantine');
+    }
+    for (const phase of FULL_REGRESSION_PHASES)
+      expect(phase.command, phase.id).not.toContain('quarantine');
   });
 
   it('counts only executed driver lines as selections (parser control)', () => {
