@@ -25,12 +25,14 @@ vi.mock('../contexts/AgentsContext', () => ({
   useAgents: () => STABLE_AGENTS,
 }));
 
+import { isTurnInFlight } from '../contexts/active-chats-state';
 import { activeChatsStore } from '../contexts/active-chats-store';
 import { conversationsStore } from '../contexts/ConversationsContext';
 import {
   dedupeOptimisticMessages,
   useDerivedSessions,
 } from '../hooks/useDerivedSessions';
+import { isTurnStreamLive } from '../utils/execution';
 
 const SESSION_A = 'session-a';
 const SESSION_B = 'session-b';
@@ -183,6 +185,31 @@ describe('useDerivedSessions — ChatDock identity stability (station#726)', () 
     expect(sessionAAfter).not.toBe(sessionABefore);
     expect(sessionAAfter.status).toBe('sending');
     expect(sessionBAfter).toBe(sessionBBefore);
+  });
+
+  test('#2309: a server activity record reaches the dock session, and the dock reads the turn live from it', () => {
+    activeChatsStore.assignConversationId(SESSION_A, 'conv-derived-2309');
+    const { result } = renderHook(() => useDerivedSessions('', null, null));
+    act(() => {
+      activeChatsStore.applyConversationActivity({
+        conversationId: 'conv-derived-2309',
+        asOfSequence: 7,
+        openTurn: {
+          turnId: 'turn-derived',
+          threadId: 'conv-derived-2309:session:child',
+          startedAt: '2026-09-22T18:55:25.000Z',
+        },
+      });
+    });
+    const sessionA = result.current.find((s) => s.id === SESSION_A)!;
+    expect(sessionA.conversationActivity?.openTurn?.turnId).toBe(
+      'turn-derived',
+    );
+    expect(isTurnInFlight(sessionA)).toBe(true);
+    expect(isTurnStreamLive(sessionA)).toBe(true);
+    // Session B names no conversation and gains nothing.
+    const sessionB = result.current.find((s) => s.id === SESSION_B)!;
+    expect(sessionB.conversationActivity).toBeUndefined();
   });
 
   test('(c) a pendingApprovals change produces a new identity for only that session', () => {
