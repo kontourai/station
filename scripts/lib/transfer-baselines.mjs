@@ -1,5 +1,11 @@
 import { execFileSync, spawnSync } from 'node:child_process';
-import { existsSync, readdirSync, readlinkSync, realpathSync } from 'node:fs';
+import {
+  existsSync,
+  readdirSync,
+  readlinkSync,
+  realpathSync,
+  rmSync,
+} from 'node:fs';
 import { basename, sep } from 'node:path';
 import { sanitizedGitEnvironment } from './git-environment.mjs';
 
@@ -286,9 +292,8 @@ function makeDirectoriesWritable(path) {
   );
 }
 
-function removeWorktree(repoRoot, path) {
-  makeDirectoriesWritable(path);
-  const result = spawnSync(
+function gitWorktreeRemove(repoRoot, path) {
+  return spawnSync(
     'git',
     ['-C', repoRoot, 'worktree', 'remove', '--force', path],
     {
@@ -297,8 +302,27 @@ function removeWorktree(repoRoot, path) {
       windowsHide: true,
     },
   );
-  if (result.status !== 0)
+}
+
+/**
+ * `git worktree remove` can unregister a tree and then fail on its last
+ * `rmdir` when something writes into it mid-removal (macOS Finder recreating
+ * `.DS_Store` was observed live), leaving an orphan directory git no longer
+ * knows. The path was already proven an owned, stale, unused baseline, so
+ * finish the job once git has let go of it; while git still lists it, report
+ * the failure instead.
+ */
+function removeWorktree(repoRoot, path, runGitRemove = gitWorktreeRemove) {
+  makeDirectoriesWritable(path);
+  const result = runGitRemove(repoRoot, path);
+  if (result.status === 0) return;
+  const stillRegistered = listRegisteredWorktrees(repoRoot).some(
+    (entry) => realOrSelf(entry.path) === realOrSelf(path),
+  );
+  if (stillRegistered || !existsSync(path))
     throw new Error((result.stderr || `git exited ${result.status}`).trim());
+  makeDirectoriesWritable(path);
+  rmSync(path, { recursive: true, force: true, maxRetries: 3 });
 }
 
 /**
@@ -315,7 +339,8 @@ export function pruneStaleTransferBaselines({
   log = (line) => console.log(line),
   listWorktrees = () => listRegisteredWorktrees(repoRoot),
   pathsInUse = findPathsInUse,
-  remove = (path) => removeWorktree(repoRoot, path),
+  runGitRemove = gitWorktreeRemove,
+  remove = (path) => removeWorktree(repoRoot, path, runGitRemove),
   prune = () => gitSync(repoRoot, ['worktree', 'prune']),
 }) {
   const outcome = { pruned: [], kept: [], failed: [], skipped: null };

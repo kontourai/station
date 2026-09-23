@@ -171,6 +171,51 @@ describe.skipIf(!posix)('transfer baseline pruning (#2355)', () => {
     expect(inUse?.get(stale)).toBe(`process ${child.pid} names it`);
   });
 
+  test('finishes a removal git abandoned after unregistering the tree (a file written mid-removal)', () => {
+    const f = fixture();
+    const stale = f.addDetached(f.baselinePath(f.old1), f.old1);
+    const keep = f.addDetached(f.baselinePath(f.old2), f.old2);
+    const outcome = pruneStaleTransferBaselines({
+      repoRoot: f.primary,
+      keepShas: [f.tip, f.old2],
+      env: {},
+      log: () => {},
+      // Real git removal, then the observed macOS race: Finder recreates
+      // .DS_Store, so git's final rmdir fails after it unregistered the tree.
+      runGitRemove: (repoRoot: string, path: string) => {
+        git(repoRoot, ['worktree', 'remove', '--force', path]);
+        mkdirSync(path, { recursive: true });
+        writeFileSync(join(path, '.DS_Store'), 'x');
+        return {
+          status: 128,
+          stderr: `error: failed to delete '${path}': Directory not empty`,
+        };
+      },
+    });
+    expect(outcome.failed).toEqual([]);
+    expect(outcome.pruned).toEqual([stale]);
+    expect(existsSync(stale)).toBe(false);
+    expect(registered(f.primary)).toContain(keep);
+  });
+
+  test('a failed removal of a tree git still lists is reported, not forced', () => {
+    const f = fixture();
+    const stale = f.addDetached(f.baselinePath(f.old1), f.old1);
+    const outcome = pruneStaleTransferBaselines({
+      repoRoot: f.primary,
+      keepShas: [f.tip],
+      env: {},
+      log: () => {},
+      runGitRemove: () => ({ status: 128, stderr: 'error: simulated' }),
+    });
+    expect(outcome.pruned).toEqual([]);
+    expect(outcome.failed).toEqual([
+      { path: stale, error: 'error: simulated' },
+    ]);
+    expect(existsSync(join(stale, 'subject.txt'))).toBe(true);
+    expect(registered(f.primary)).toContain(stale);
+  });
+
   test(`${TRANSFER_BASELINE_PRUNE_ENV}=0 opts out: nothing is removed`, () => {
     const f = fixture();
     const stale = f.addDetached(f.baselinePath(f.old1), f.old1);
