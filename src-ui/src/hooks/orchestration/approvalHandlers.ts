@@ -7,7 +7,6 @@ import {
 import { toolPurposeView } from '../../components/chat/tool-display-view';
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import { toastStore } from '../../contexts/ToastContext';
-import { answerOrchestrationRequest } from './answerRequest';
 import { isReplayThread } from './replay/replay-registry';
 import type { OrchestrationEvent } from './types';
 
@@ -125,6 +124,11 @@ async function answerFromToast(
   decision: 'accept' | 'acceptForSession' | 'decline',
 ) {
   try {
+    // Loaded on demand: the answer path runs only after a click, so it stays
+    // out of the entry chunk (same precedent as queueDrain's dispatcher). A
+    // failed load is a decision that did not land, and takes the same
+    // report-and-re-offer path below.
+    const { answerOrchestrationRequest } = await import('./answerRequest');
     const outcome = await answerOrchestrationRequest(apiBase, {
       threadId: event.threadId,
       requestId: event.requestId,

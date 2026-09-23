@@ -8,22 +8,28 @@ const requestKey = (request: PendingApprovalRequest) =>
 
 /**
  * #2344: what a screen reader hears when a request joins the strip. Each
- * request is announced once, when it first appears: a re-render with the same
- * requests changes nothing, and a request that has been announced is never
- * announced again while it waits. The text sits in a new keyed node per
+ * request is announced once, when it ARRIVES while the strip is mounted: a
+ * re-render with the same requests changes nothing, and a request that has
+ * been announced is never announced again while it waits. Requests already
+ * waiting when the strip mounts (opening a chat, loading history, a remount)
+ * are not announced: they are not news, and announcing them on every open
+ * would bury the one that is. The text sits in a new keyed node per
  * announcement, so two requests for the same tool in a row are both heard
  * (an unchanged text node would not be).
  */
 function useNewApprovalAnnouncement(
   requests: readonly PendingApprovalRequest[],
 ) {
-  const announced = useRef(new Set<string>());
+  // Seeded from the FIRST render's requests, so a mount announces nothing.
+  const announced = useRef<Set<string> | null>(null);
+  if (announced.current === null)
+    announced.current = new Set(requests.map(requestKey));
   const [announcement, setAnnouncement] = useState({ id: 0, text: '' });
   const keys = requests.map(requestKey).join('\u0001');
   // biome-ignore lint/correctness/useExhaustiveDependencies: `keys` is the identity of `requests`; a new array with the same requests must not re-run this.
   useEffect(() => {
     const fresh = requests.filter(
-      (request) => !announced.current.has(requestKey(request)),
+      (request) => !announced.current?.has(requestKey(request)),
     );
     // Forget the ones that left, so the set stays the size of the strip.
     announced.current = new Set(requests.map(requestKey));

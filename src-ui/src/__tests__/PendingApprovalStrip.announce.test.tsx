@@ -102,4 +102,24 @@ describe('PendingApprovalStrip announcements (#2344)', () => {
     );
     expect(liveRegion().textContent).toBe('2 approvals needed: Bash, rm -rf x');
   });
+
+  test('requests already waiting when the strip mounts are not announced', () => {
+    // Opening a chat, loading history, or a remount: nothing new arrived.
+    const { rerender } = render(
+      strip([request('req-1', 'Bash'), request('req-2', 'Write')]),
+    );
+    expect(liveRegion().textContent).toBe('');
+    rerender(strip([request('req-1', 'Bash'), request('req-2', 'Write')]));
+    expect(liveRegion().textContent).toBe('');
+
+    // One that arrives after the mount is.
+    rerender(
+      strip([
+        request('req-1', 'Bash'),
+        request('req-2', 'Write'),
+        request('req-3', 'Edit'),
+      ]),
+    );
+    expect(liveRegion().textContent).toBe('Approval needed: Edit');
+  });
 });

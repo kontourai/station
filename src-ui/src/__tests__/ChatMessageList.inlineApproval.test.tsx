@@ -194,11 +194,14 @@ function stubFetch(
 }
 
 function renderCard(session = chatSession()) {
-  render(
+  const tree = () => (
     <ActiveChatsProvider>
       <TranscriptHarness session={session} />
-    </ActiveChatsProvider>,
+    </ActiveChatsProvider>
   );
+  const rendered = render(tree());
+  // Re-renders the SAME mount (the window's events are read at render).
+  return { rerender: () => rendered.rerender(tree()) };
 }
 
 describe('#2316 inline approval card', () => {
@@ -725,7 +728,7 @@ describe('#2316 inline approval card', () => {
         }),
       ];
       stubFetch(() => Response.json({ success: true, data: {} }));
-      renderCard();
+      const card = renderCard();
       await screen.findByText('Nothing to approve yet');
       const region = screen.getByRole('status', {
         name: 'Approval announcements',
@@ -733,16 +736,32 @@ describe('#2316 inline approval card', () => {
       expect(region.getAttribute('aria-live')).toBe('polite');
       expect(region.textContent).toBe('');
 
-      cleanup();
+      // The request arrives on the SAME mount, into the region that was
+      // already there.
       sequence = 0;
       windowEvents.current = subagentBashAwaitingApproval();
-      renderCard();
+      card.rerender();
+      expect(
+        screen.getByRole('status', { name: 'Approval announcements' }),
+      ).toBe(region);
       await waitFor(() =>
         expect(
           screen.getByRole('status', { name: 'Approval announcements' })
             .textContent,
         ).toBe('Approval needed: Bash'),
       );
+    });
+
+    test('opening a chat whose requests are already waiting announces nothing', async () => {
+      sequence = 0;
+      windowEvents.current = subagentBashAwaitingApproval();
+      stubFetch(() => Response.json({ success: true, data: {} }));
+      renderCard();
+      await screen.findByRole('region', { name: 'Approvals waiting on you' });
+      expect(
+        screen.getByRole('status', { name: 'Approval announcements' })
+          .textContent,
+      ).toBe('');
     });
 
     test('lists only requests with no answerable card, and never takes the last row’s buttons', async () => {

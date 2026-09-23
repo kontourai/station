@@ -226,12 +226,16 @@ describe('#2316: the toast answers the exact prompt it shows', () => {
     [2, 'decline'],
   ] as const)(
     'action %i sends %s bound to the request event id',
-    (index, decision) => {
+    async (index, decision) => {
       handleRequestOpenedEvent(
         'http://localhost:1',
         requestOpened({ toolName: 'Bash', toolInput: { command: 'ls' } }),
       );
       approvalToast().actions[index]?.onClick();
+      // The answer path loads on demand, so the call lands a tick later.
+      await vi.waitFor(() =>
+        expect(resolveOrchestrationRequest).toHaveBeenCalled(),
+      );
       expect(resolveOrchestrationRequest).toHaveBeenCalledWith({
         apiBase: 'http://localhost:1',
         threadId: 'thread-1',
@@ -362,6 +366,42 @@ describe('#2344: the toast reports what happened to its answer', () => {
     });
     expect(showToast).toHaveBeenCalledTimes(1);
     expect(showToolApproval).toHaveBeenCalledTimes(1);
+  });
+
+  test('a failed load of the answer path is reported like any undelivered decision', async () => {
+    // The answer path is loaded on demand; a chunk that cannot load (an
+    // update while the tab was open, a dropped connection) must not swallow
+    // the click.
+    vi.doMock('../answerRequest', () => {
+      throw new Error('Failed to fetch dynamically imported module');
+    });
+    try {
+      handleRequestOpenedEvent(
+        'http://localhost:1',
+        requestOpened({ toolName: 'Bash', toolInput: { command: 'ls' } }),
+      );
+      showToolApproval.mock.calls
+        .at(-1)?.[0]
+        .actions.find((action) => action.label === 'Deny')
+        ?.onClick();
+
+      await vi.waitFor(() =>
+        expect(showToast).toHaveBeenCalledWith(
+          // vitest wraps a throwing mock factory's error in its own text.
+          expect.stringMatching(/^Your decision on Bash was not delivered: ./),
+          'thread-1',
+          9000,
+          undefined,
+          undefined,
+          'error',
+        ),
+      );
+      // Nothing reached Station, and the request is offered again.
+      expect(resolveOrchestrationRequest).not.toHaveBeenCalled();
+      expect(showToolApproval).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.doUnmock('../answerRequest');
+    }
   });
 
   test('an accepted decision adds no notice of its own', async () => {

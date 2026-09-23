@@ -6,7 +6,6 @@ import {
   useActiveChatActions,
 } from '../contexts/ActiveChatsContext';
 import { useToast } from '../contexts/ToastContext';
-import { answerOrchestrationRequest } from './orchestration/answerRequest';
 
 export type ToolApprovalAction = 'once' | 'trust' | 'deny';
 
@@ -70,6 +69,11 @@ export function useToolApproval(apiBase: string) {
       let outcome: ToolApprovalOutcome = 'answered';
 
       if (approvalThreadId) {
+        // Loaded on demand (entry-chunk budget); a failed load rejects, which
+        // the card reports as a decision that did not land.
+        const { answerOrchestrationRequest } = await import(
+          './orchestration/answerRequest'
+        );
         outcome = await answerOrchestrationRequest(apiBase, {
           threadId: approvalThreadId,
           requestId: approvalId,
