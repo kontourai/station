@@ -625,54 +625,59 @@ export class BrowserRoutingGrantCustody
     trustRecord: DeviceConnectionTrustRecord;
     trustStore: BrokerRouteTrustStore;
   }): Promise<boolean> {
-    this.invalidate();
-    const restoreEpoch = this.epoch;
     const trustRecord = copyTrustRecord(input.trustRecord);
     const browserOrigin = actualBrowserOrigin();
     const brokerOrigin = canonicalOrigin(input.brokerOrigin, 'broker_origin');
     const scope = validScope(input.scope, browserOrigin);
-    const key = [
-      brokerOrigin,
-      scope.stationId,
-      scope.enrollmentId,
-      browserOrigin,
-    ].join('\n');
-    const stored = await this.serialize(() => this.storage.read(key));
-    if (this.epoch !== restoreEpoch) return false;
-    if (stored === null) return false;
-    let grant: SelfHostedBrokerClientGrantV1;
+    const key = routeStorageKey(brokerOrigin, scope, browserOrigin);
+    const operation = this.beginOperation(key);
     try {
-      grant = validateGrant(stored, browserOrigin, this.now());
-    } catch {
-      return false;
-    }
-    const trustCurrent = await approvedTrustIsCurrent(
-      trustRecord,
-      input.trustStore,
-      {
-        stationId: grant.scope.stationId,
-        enrollmentId: grant.scope.enrollmentId,
-        stationSigningKeyId: grant.stationSigningKeyId,
-        stationSigningGeneration: grant.stationSigningGeneration,
-      },
-    );
-    if (this.epoch !== restoreEpoch) return false;
-    if (
-      grant.brokerOrigin !== brokerOrigin ||
-      !sameScope(grant.scope, scope) ||
-      !trustCurrent
-    ) {
-      await this.serialize(() =>
-        this.storage.removeIfCredentialId(key, grant.credential.id),
+      const stored = await readWithOperation(
+        this.serialize(() => this.storage.read(key)),
+        operation,
       );
-      return false;
+      this.assertEnrollmentCurrent(operation);
+      if (stored === null) return false;
+      let grant: SelfHostedBrokerClientGrantV1;
+      try {
+        grant = validateGrant(stored, browserOrigin, this.now());
+      } catch {
+        return false;
+      }
+      const trustCurrent = await readWithOperation(
+        approvedTrustIsCurrent(trustRecord, input.trustStore, {
+          stationId: grant.scope.stationId,
+          enrollmentId: grant.scope.enrollmentId,
+          stationSigningKeyId: grant.stationSigningKeyId,
+          stationSigningGeneration: grant.stationSigningGeneration,
+        }),
+        operation,
+      );
+      this.assertEnrollmentCurrent(operation);
+      if (
+        grant.brokerOrigin !== brokerOrigin ||
+        !sameScope(grant.scope, scope) ||
+        !trustCurrent
+      ) {
+        await this.serialize(() =>
+          this.storage.removeIfCredentialId(key, grant.credential.id),
+        );
+        return false;
+      }
+      this.assertEnrollmentCurrent(operation);
+      this.grant = grant;
+      this.boundTrust = trustRecord;
+      this.boundTrustStore = input.trustStore;
+      this.activeOperation = null;
+      this.operationController = null;
+      this.epoch += 1;
+      return true;
+    } catch (error) {
+      if (!this.isEnrollmentCurrent(operation)) return false;
+      throw error;
+    } finally {
+      this.cancelEnrollment(operation);
     }
-    if (this.epoch !== restoreEpoch) return false;
-    this.grant = grant;
-    this.boundTrust = trustRecord;
-    this.boundTrustStore = input.trustStore;
-    this.epoch += 1;
-    return true;
   }
 
   /** Install a verified redeemed grant as this route's sole current grant. */

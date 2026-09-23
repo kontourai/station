@@ -575,4 +575,44 @@ describe('broker route invitation enrollment and custody', () => {
     expect(storage.entries.size).toBe(0);
     expect(() => custody.capture()).toThrow('broker_credential_unavailable');
   });
+
+  test('route cleanup cancels restore waiting on its trust read', async () => {
+    const { trust, trustRecord } = await trustFixture();
+    const invitation = await invitationFor(trust);
+    const storedGrant = grantFor(invitation, 'client-grant-pending-restore');
+    const storage = new MemoryGrantStorage();
+    await storage.write(
+      [BROKER_ORIGIN, trust.stationId, trust.enrollmentId, BROWSER_ORIGIN].join(
+        '\n',
+      ),
+      storedGrant,
+    );
+    const custody = new BrowserRoutingGrantCustody({ storage });
+    const trustRead = deferred<DeviceConnectionTrustRecord | null>();
+    let trustReadStarted!: () => void;
+    const started = new Promise<void>(
+      (resolve) => (trustReadStarted = resolve),
+    );
+    const restore = custody.restore({
+      brokerOrigin: BROKER_ORIGIN,
+      scope: invitation.scope,
+      trustRecord,
+      trustStore: {
+        read: async () => {
+          trustReadStarted();
+          return trustRead.promise;
+        },
+      },
+    });
+    await started;
+
+    await custody.forgetRoute({
+      brokerOrigin: BROKER_ORIGIN,
+      scope: invitation.scope,
+    });
+    trustRead.resolve(trustRecord);
+    await expect(restore).resolves.toBe(false);
+    expect(storage.entries.size).toBe(0);
+    expect(() => custody.capture()).toThrow('broker_credential_unavailable');
+  });
 });
