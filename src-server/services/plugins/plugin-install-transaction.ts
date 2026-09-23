@@ -69,6 +69,7 @@ import {
   assertPathInside,
 } from '../../utils/path-containment.js';
 import type { PackageMcpAdmissionJournal } from './package-mcp-admission.js';
+import { pluginAcquisitionOrigin } from './plugin-acquisition-origin.js';
 import {
   closePluginActivationSession,
   completePluginActivationComposition,
@@ -3691,25 +3692,16 @@ async function installPluginFromSourceUnderContext(
             throw new Error(
               'Preview the current installation before starting with new data',
             );
-          // Acquisition-owner scoped continuity, not a signature/publisher claim.
-          // Native canonicalization prevents alternate local spellings changing identity.
-          const acquisitionSource = existsSync(source)
-            ? realpathSync.native(source)
-            : source;
           if (recovery && !recovery.current())
             throw new Error('Retained recovery changed; preview again');
           const origin =
             recovery?.origin ??
-            createHash('sha256')
-              .update(
-                JSON.stringify({
-                  owner: realpathSync.native(projectHomeDir),
-                  registryId: options?.registryId ?? null,
-                  registryKey: options?.registryKey ?? null,
-                  source: acquisitionSource,
-                }),
-              )
-              .digest('hex');
+            pluginAcquisitionOrigin({
+              projectHomeDir,
+              source,
+              registryId: options?.registryId,
+              registryKey: options?.registryKey,
+            });
           const activationPlan: PluginActivationPlan | undefined = isAgentPlugin
             ? {
                 version: 1,

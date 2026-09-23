@@ -9,7 +9,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { acquireFileMutationLock } from '@kontourai/station-shared/lifecycle-events';
-import { describe, expect, test, vi } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
   createStationInstanceReconciler,
   type ObservedInstanceState,
@@ -86,7 +86,35 @@ function platform(
   };
 }
 
+/**
+ * The reconciler reads both its deadline timer and `performance.now()`, so a
+ * wall-clock deadline races host scheduling: on a loaded runner a 1ms budget
+ * can lapse before `start` is ever issued, turning an after-action `partial`
+ * into a before-action `timed-out`. Tests that assert which side of the action
+ * the deadline falls on freeze both clocks and move time explicitly.
+ */
+function useControlledClock(): void {
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] });
+}
+
+/**
+ * A promise settled when the adapter reaches a step. `vi.waitFor` is not used
+ * for this under the controlled clock: each failed poll advances fake time,
+ * which would lapse the deadline before the step it is waiting for.
+ */
+function reachable(): { reached: Promise<void>; reach: () => void } {
+  let reach!: () => void;
+  const reached = new Promise<void>((resolve) => {
+    reach = resolve;
+  });
+  return { reached, reach };
+}
+
 describe('StationInstanceReconciler Interface', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   test('is idempotent for already-running and already-stopped desired state', async () => {
     for (const [desired, state] of [
       [
@@ -116,6 +144,7 @@ describe('StationInstanceReconciler Interface', () => {
   });
 
   test('converges start only after observed supervisor and identity agree', async () => {
+    useControlledClock();
     const adapter = platform([
       observed(),
       observed({
@@ -138,16 +167,28 @@ describe('StationInstanceReconciler Interface', () => {
     );
   });
 
-  test('returns timed-out rather than claiming convergence when readiness expires', async () => {
+  test('returns partial rather than claiming convergence when readiness reports not running before the deadline', async () => {
+    // Readiness answers `false` while the deadline still has budget: start was
+    // issued, so the outcome is partial (never converged, never the
+    // before-action timed-out). The expiry path is pinned by the hung
+    // readiness test below.
+    useControlledClock();
     const adapter = platform([observed()]);
     adapter.waitForRunning = vi.fn(async () => false);
     await expect(
       createStationInstanceReconciler(adapter).reconcile({
-        instance,
+        instance: { ...instance, instanceId: 'readiness-refused' },
         desired: { version: STATION_INSTANCE_STATE_VERSION, kind: 'running' },
         deadlineMs: 1,
       }),
-    ).resolves.toMatchObject({ kind: 'partial' });
+    ).resolves.toEqual({
+      kind: 'partial',
+      reason: 'Station service did not become identity healthy after start',
+    });
+    expect(adapter.start).toHaveBeenCalledOnce();
+    expect(adapter.waitForRunning).toHaveBeenCalledOnce();
+    // No post-action inspection is consulted to upgrade the outcome.
+    expect(adapter.inspect).toHaveBeenCalledOnce();
   });
 
   test('maps platform throws and post-action disagreement to total failed or partial outcomes', async () => {
@@ -265,8 +306,11 @@ describe('StationInstanceReconciler Interface', () => {
         ready: true,
       }),
     ]);
+    // The action itself consumes the budget: time moves only inside start, so
+    // the deadline cannot lapse before the action is issued.
+    useControlledClock();
     adapter.start = vi.fn(() => {
-      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20);
+      vi.advanceTimersByTime(20);
       return Promise.resolve();
     });
     await expect(
@@ -275,7 +319,11 @@ describe('StationInstanceReconciler Interface', () => {
         desired: { version: STATION_INSTANCE_STATE_VERSION, kind: 'running' },
         deadlineMs: 1,
       }),
-    ).resolves.toMatchObject({ kind: 'partial' });
+    ).resolves.toEqual({
+      kind: 'partial',
+      reason: 'Reconciliation deadline expired after action may have acted',
+    });
+    expect(adapter.start).toHaveBeenCalledOnce();
   });
 
   test('gives a same-desired coalesced caller its own deadline without cancelling the owner', async () => {
@@ -385,23 +433,28 @@ describe('StationInstanceReconciler Interface', () => {
     let seenSignal: AbortSignal | undefined;
     let settleFinal!: (state: ObservedInstanceState) => void;
     const release = vi.fn();
+    const finalInspection = reachable();
     const adapter = platform([]);
     adapter.acquireInstanceLock = vi.fn(() => release);
     adapter.inspect = vi.fn((_ref, signal) => {
       inspections += 1;
       if (inspections === 1) return Promise.resolve(observed());
       seenSignal = signal;
+      finalInspection.reach();
       return new Promise<ObservedInstanceState>((resolve) => {
         settleFinal = resolve;
       });
     });
-    await expect(
-      createStationInstanceReconciler(adapter).reconcile({
-        instance: timedInstance,
-        desired: { version: STATION_INSTANCE_STATE_VERSION, kind: 'running' },
-        deadlineMs: 10,
-      }),
-    ).resolves.toMatchObject({ kind: 'partial' });
+    useControlledClock();
+    const pending = createStationInstanceReconciler(adapter).reconcile({
+      instance: timedInstance,
+      desired: { version: STATION_INSTANCE_STATE_VERSION, kind: 'running' },
+      deadlineMs: 10,
+    });
+    await finalInspection.reached;
+    expect(seenSignal?.aborted).toBe(false);
+    await vi.advanceTimersByTimeAsync(10);
+    await expect(pending).resolves.toMatchObject({ kind: 'partial' });
     expect(seenSignal?.aborted).toBe(true);
     expect(release).not.toHaveBeenCalled();
     settleFinal(observed());
@@ -436,17 +489,25 @@ describe('StationInstanceReconciler Interface', () => {
     expect(JSON.parse(child.stdout)).toMatchObject({ kind: 'timed-out' });
   });
 
-  test('returns partial when readiness hangs after start may have acted', async () => {
+  test('returns partial when the readiness wait expires at the deadline after start', async () => {
     const timedInstance = { ...instance, instanceId: 'hung-readiness' };
+    const readiness = reachable();
     const adapter = platform([observed()]);
-    adapter.waitForRunning = vi.fn(() => new Promise<boolean>(() => {}));
-    await expect(
-      createStationInstanceReconciler(adapter).reconcile({
-        instance: timedInstance,
-        desired: { version: STATION_INSTANCE_STATE_VERSION, kind: 'running' },
-        deadlineMs: 10,
-      }),
-    ).resolves.toMatchObject({
+    adapter.waitForRunning = vi.fn(() => {
+      readiness.reach();
+      return new Promise<boolean>(() => {});
+    });
+    useControlledClock();
+    const pending = createStationInstanceReconciler(adapter).reconcile({
+      instance: timedInstance,
+      desired: { version: STATION_INSTANCE_STATE_VERSION, kind: 'running' },
+      deadlineMs: 10,
+    });
+    // The deadline lapses only once readiness is being awaited, after start.
+    await readiness.reached;
+    expect(adapter.start).toHaveBeenCalledOnce();
+    await vi.advanceTimersByTimeAsync(10);
+    await expect(pending).resolves.toMatchObject({
       kind: 'partial',
       reason: 'Station service did not become identity healthy after start',
     });
@@ -454,21 +515,27 @@ describe('StationInstanceReconciler Interface', () => {
 
   test('returns partial when post-action inspection hangs', async () => {
     const timedInstance = { ...instance, instanceId: 'hung-post-inspect' };
+    const finalInspection = reachable();
     const adapter = platform([]);
     let inspections = 0;
     adapter.inspect = vi.fn(() => {
       inspections += 1;
-      return inspections === 1
-        ? Promise.resolve(observed())
-        : new Promise<ObservedInstanceState>(() => {});
+      if (inspections === 1) return Promise.resolve(observed());
+      finalInspection.reach();
+      return new Promise<ObservedInstanceState>(() => {});
     });
-    await expect(
-      createStationInstanceReconciler(adapter).reconcile({
-        instance: timedInstance,
-        desired: { version: STATION_INSTANCE_STATE_VERSION, kind: 'running' },
-        deadlineMs: 10,
-      }),
-    ).resolves.toMatchObject({ kind: 'partial' });
+    useControlledClock();
+    const pending = createStationInstanceReconciler(adapter).reconcile({
+      instance: timedInstance,
+      desired: { version: STATION_INSTANCE_STATE_VERSION, kind: 'running' },
+      deadlineMs: 10,
+    });
+    await finalInspection.reached;
+    await vi.advanceTimersByTimeAsync(10);
+    await expect(pending).resolves.toEqual({
+      kind: 'partial',
+      reason: 'Reconciliation deadline expired after action may have acted',
+    });
   });
 
   test('holds the production per-instance lock through a timed-out action settlement', async () => {

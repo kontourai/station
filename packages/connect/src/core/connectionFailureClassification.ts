@@ -13,7 +13,7 @@ import type { ConnectionFailureReason } from './types';
  * single out as the hot-loop risk) is terminal today. Every other reason
  * ('offline', 'mixed-content', 'invalid-endpoint', 'identity-mismatch',
  * 'access-method-mismatch', 'unsupported-capability-version', 'timeout',
- * 'unreachable', 'server-restarted', 'host-unavailable',
+ * 'unreachable', 'server-restarted', 'host-unavailable', 'busy',
  * 'awaiting-approval') stays transient:
  * they are either genuinely retriable (network/timeout/server-restarted), a
  * healthy host simply waiting on a human (`awaiting-approval` — station#1713;
@@ -37,7 +37,7 @@ export function classifyConnectionFailure(
  *
  * The banner slot is for exactly these. Everything else is either a transient
  * reachability blip the retry ladder is already handling ('timeout',
- * 'unreachable', 'server-restarted', 'host-unavailable'), a device-local
+ * 'unreachable', 'server-restarted', 'host-unavailable', 'busy'), a device-local
  * condition that heals when the network returns ('offline'), a bounded wait
  * ('awaiting-approval'), or a failure this client could not attribute at all
  * ('undetermined') — and a paragraph of prose with an address in it is the
@@ -149,6 +149,17 @@ function nativeRefusalCode(error: unknown): string | undefined {
 }
 
 /**
+ * station#2327 — native transport codes that, AFTER the address has been seen
+ * to answer, mean "this request did not get a turn in time" rather than
+ * "nothing is there". Only meaningful with that prior observation; on its own
+ * `transport_timeout` cannot tell a stalled Station from a sleeping host.
+ */
+export function isNativeTransportSaturation(error: unknown): boolean {
+  const code = nativeRefusalCode(error);
+  return code === 'transport_capacity' || code === 'transport_timeout';
+}
+
+/**
  * station#1713 (original) / station#1818 R2 (this rewrite) — the
  * classification half of the connection-truth fix.
  *
@@ -220,6 +231,15 @@ export function classifyNativeTransportRefusal(
     case 'credential_missing':
     case 'credential_store_unreadable':
       return 'authentication-failed';
+    // station#2327 — the desktop broker's own per-Station request queue is
+    // full. The request was refused locally, immediately, and never reached
+    // the network, so it is neither a failed address nor a failed
+    // credential. `transport_timeout` is deliberately NOT here: it also
+    // covers a CONNECT timeout to a host that is off or asleep, which is
+    // real unreachability. `probeServerConnection` reads it as busy only
+    // after the same probe's handshake proved the address answers.
+    case 'transport_capacity':
+      return 'busy';
     default:
       // An unrecognized code — a future refusal this classifier has not
       // been taught, or (narrow compatibility path) an error surfaced by a

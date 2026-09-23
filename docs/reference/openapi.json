@@ -678,6 +678,34 @@
         }
       }
     },
+    "/api/plugins/validate": {
+      "post": {
+        "operationId": "validatePlugin",
+        "summary": "Check a local plugin folder for authoring errors without installing, copying, or building it (local absolute paths only)",
+        "tags": ["plugins"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PluginValidate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation or request error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
     "/api/plugins/install": {
       "post": {
         "operationId": "installPlugin",
@@ -1427,6 +1455,10 @@
             },
             "required": ["permissions", "contentDigest"],
             "additionalProperties": false
+          },
+          "proposalId": {
+            "type": "string",
+            "format": "uuid"
           }
         },
         "required": ["source"],
@@ -1546,6 +1578,19 @@
           }
         },
         "required": ["recoveryRevision", "consent"],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "PluginValidate": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4096
+          }
+        },
+        "required": ["source"],
         "additionalProperties": false,
         "$schema": "http://json-schema.org/draft-07/schema#"
       },

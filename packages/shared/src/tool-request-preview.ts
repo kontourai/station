@@ -235,6 +235,22 @@ export function toolRequestDisplayName(
 const MCP_TOOL_NAME = /^mcp__(.+?)__(.+)$/;
 
 /**
+ * The label of the session-grant decision (`acceptForSession`), shared by the
+ * approval toast and the inline card (#2316). The grant is a standing grant
+ * for EVERY later call to the same tool in this session (#2299), so the label
+ * names both the tool and the session scope: "Always Allow" overstated its
+ * duration and hid its breadth. Name the tool only when the request reported
+ * one — adapter display text (Codex's is a whole command line) would mislead
+ * about the grant's scope.
+ */
+export function toolRequestGrantLabel(toolName: string | undefined): string {
+  const displayName = toolRequestDisplayName(toolName);
+  return displayName
+    ? `Allow ${displayName} for this session`
+    : 'Allow this tool for this session';
+}
+
+/**
  * The field that says what the call will DO, per tool family, most specific
  * first. Field names and tool names are both stored canonicalized (lower case,
  * separators removed) and looked up that way, so one entry covers

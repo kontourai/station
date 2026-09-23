@@ -38,53 +38,64 @@ mkdir src
 `tsx` is required, not optional: both packages ship TypeScript source, and Node
 will not strip types for files under `node_modules`.
 
-Write the manifest Station reads, `plugin.json`:
+Write the manifest Station reads, `plugin.json`. It is an
+[Agent Plugins 1.0](https://agent-plugins.org) manifest; Station's own fields
+live under `extensions["io.kontourai.station"]`, and the UI is one Workspace
+Pane:
 
 ```json
 {
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "hello-station",
   "version": "1.0.0",
-  "sdkVersion": "^0.7.0",
-  "displayName": "Hello Station",
-  "description": "A Station layout plugin",
-  "entrypoint": "src/index.tsx",
-  "capabilities": ["navigation"],
-  "permissions": ["navigation.dock"],
-  "layout": { "slug": "hello-station", "source": "./layout.json" }
+  "description": "A Station Workspace Pane",
+  "extensions": {
+    "io.kontourai.station": {
+      "schemaVersion": "1.0",
+      "title": "Hello Station",
+      "sdkVersion": "^0.7.0",
+      "entrypoint": "./src/index.tsx",
+      "capabilities": ["navigation"],
+      "permissions": ["navigation.dock"],
+      "workspacePanes": [
+        {
+          "version": "1.0",
+          "id": "pane:plugin%3Ahello-station:main:workspace",
+          "name": "Hello Station",
+          "rendererId": "renderer:plugin%3Ahello-station:plugin-component:workspace",
+          "renderer": { "kind": "plugin-component", "name": "hello-station-workspace" },
+          "placement": { "supportedRegions": ["primary"], "preferredRegion": "primary" },
+          "modes": [{ "id": "default", "contextRequirement": { "project": true } }],
+          "provenance": { "origin": "plugin", "pluginId": "hello-station" },
+          "lifecycle": { "stage": "stable" }
+        }
+      ]
+    }
+  }
 }
 ```
 
-The layout it points at, `layout.json`:
-
-```json
-{
-  "name": "Hello Station",
-  "slug": "hello-station",
-  "icon": "👋",
-  "tabs": [{ "id": "home", "label": "Home", "component": "hello-station-home" }]
-}
-```
-
-The entrypoint, `src/index.tsx`. Export a `components` map keyed by the tab
-`component` ids in `layout.json`:
+The entrypoint, `src/index.tsx`. Export a `components` map keyed by each
+Pane's `renderer.name`. Every plugin's components share one host registry,
+so prefix the keys with the plugin name:
 
 ```tsx
-import { type LayoutComponentProps, useNavigation } from '@kontourai/station-sdk';
+import { useNavigation } from '@kontourai/station-sdk';
 
-function Home({ onShowChat }: LayoutComponentProps) {
+function Workspace() {
   const { setDockState } = useNavigation();
   return (
     <section style={{ padding: '1.5rem' }}>
       <h1>Hello Station</h1>
-      <button type="button" onClick={() => { setDockState(true); onShowChat?.(); }}>
+      <button type="button" onClick={() => setDockState(true)}>
         Open Chat
       </button>
     </section>
   );
 }
 
-export const components = { 'hello-station-home': Home };
-export default Home;
+export const components = { 'hello-station-workspace': Workspace };
+export default Workspace;
 ```
 
 And the build, `build.ts`. `buildPlugin()` is the same function the Station CLI
@@ -115,7 +126,7 @@ Built /path/to/hello-station/dist/bundle.js
 
 `npm run dev` produces `dist/bundle-dev.js` with inline sourcemaps. Both are
 one-shot builds; the watching preview server is CLI-only (see
-[Start With a Layout Plugin](#start-with-a-layout-plugin)).
+[Start With a Pane Plugin](#start-with-a-pane-plugin)).
 
 ### Load it into Station
 
@@ -141,8 +152,8 @@ curl -X POST http://localhost:3141/api/plugins/install \
 
 The CLI uses the selected saved Station and its OS-keyring credential. Station
 copies the plugin to `<STATION_HOME>/plugins/<name>/`, rebuilds it, and
-registers its layout, which you can then add to a project from the Plugins
-screen. Passive permissions are auto-granted, active ones named in the approval
+registers its Workspace Pane, which you can then add to a Project with
+**Add pane**. Passive permissions are auto-granted, active ones named in the approval
 are recorded against the installed tree, and trusted ones come back as
 `pendingConsent` for a separate host-owned review. See
 [plugins.md](./plugins.md#installation-flow) for the rest of the plugin HTTP
@@ -166,35 +177,42 @@ published contract.
 Use the template that matches the job:
 
 ```bash
-station plugin create hello-layout --template=layout
+station plugin create hello-pane --template=pane
 station plugin create provider-kit --template=provider
 station plugin create full-workspace --template=full
 ```
 
-- `layout` creates a UI-focused plugin with a layout manifest and entrypoint.
+- `pane` creates a UI plugin with one Workspace Pane, its entrypoint and CSS.
 - `provider` creates a server-side plugin with `plugin.mjs`, a `serverModule`, and a sample provider file.
-- `full` creates the combined starter: layout, agent, build config, and README.
+- `full` creates the combined starter: two Panes, an Agent, build config, and README.
+- `layout` is an alias for `pane`.
+
+Every template writes an Agent Plugins 1.0 `plugin.json`. Station can also
+create the same scaffold from **Plugins → New plugin**, which makes the
+Project for you.
 
 `station plugin init` still works, but it is now just a compatibility alias for the `full` template.
 
-## Start With a Layout Plugin
+## Start With a Pane Plugin
 
-Run `station plugin create hello-layout --template=layout` from the directory
+Run `station plugin create hello-pane --template=pane` from the directory
 where you want the plugin scaffolded. The plugin command family resolves
 `plugin.json` and other paths from the directory where you invoke it:
 
 ```bash
-cd hello-layout
+cd hello-pane
 npm install
 npm run build                              # tsx build.ts → dist/bundle.js
-station plugin dev 4300                    # watching preview server
 ```
 
 The scaffold's `npm run build` runs its own `build.ts`, which calls
 `buildPlugin()` from `@kontourai/station-shared` — the same call
 `station plugin build` wraps.
-`plugin dev` is the CLI-only part: it adds watching, hot rebuilds, the preview
-shell, and the mock host surface described below.
+
+`station plugin dev` previews legacy layout tabs only; it does not render
+`workspacePanes` yet, so install the plugin to see its Pane. For a legacy
+layout plugin, `station plugin dev 4300` adds watching, hot rebuilds, the
+preview shell, and the mock host surface described below.
 
 Open `http://127.0.0.1:4300` and keep the dev server running. The dev server binds only to IPv4 loopback; direct `--host`/non-loopback exposure is unavailable. For a remote development host, forward the loopback listener with `ssh -N -L 4300:127.0.0.1:4300 user@dev-host` and open the same local URL. The dev server:
 
@@ -205,19 +223,17 @@ Open `http://127.0.0.1:4300` and keep the dev server running. The dev server bin
 
 The fetch proxy permits public HTTP(S) only, validates all DNS answers and each redirect, strips credential and hop-by-hop headers, forces identity encoding (encoded upstream responses are rejected), and rejects private/loopback/link-local/metadata targets. JSON requests are limited to 1 MiB, identity fetch responses to 10 MiB, each DNS-through-response hop to 10 seconds and five redirects, and reload streaming to 32 clients.
 
-Edit `src/index.tsx` and `layout.json`, then confirm the preview reloads cleanly.
-
 ## Install It Into Station
 
-Install from either the parent directory of `hello-layout` or the plugin directory itself:
+Install from either the parent directory of `hello-pane` or the plugin directory itself:
 
 ```bash
-station plugin install ./hello-layout
-# Or, from inside hello-layout:
+station plugin install ./hello-pane
+# Or, from inside hello-pane:
 station plugin install .
 ```
 
-Local paths are resolved from the directory where Station was invoked. Use `./hello-layout` from its parent or bare `.` from inside the plugin directory.
+Local paths are resolved from the directory where Station was invoked. Use `./hello-pane` from its parent or bare `.` from inside the plugin directory.
 
 If you are working from a Station checkout and want to test the repository's
 registry fixture too, point its source launcher at the bundled local manifest:

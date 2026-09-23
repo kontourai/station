@@ -239,10 +239,16 @@ describe('ApiBaseContext native health integration', () => {
           String(url).includes('/.well-known/station/v1'),
         ),
     ).toBe(true);
+    const identityCall = nativeTransport.mock.calls.find(([url]) =>
+      String(url).includes('/api/system/identity'),
+    );
+    expect(identityCall).toBeDefined();
+    // station#2327: the probe's identity read reaches the native transport
+    // through the real SDK and ApiBaseContext wrappers still flagged for the
+    // broker's reserved liveness slot.
     expect(
-      nativeTransport.mock.calls.some(([url]) =>
-        String(url).includes('/api/system/identity'),
-      ),
+      (identityCall?.[1] as { livenessProbe?: boolean } | undefined)
+        ?.livenessProbe,
     ).toBe(true);
     expect(
       new Headers(nativeTransport.mock.calls.at(-1)?.[1]?.headers).has(

@@ -1301,6 +1301,26 @@ export class DevicePairingService {
     };
   }
 
+  /** Return identity evidence only when the operator actually bound this Device. */
+  approvedAccountBindingForRequest(requestId: string) {
+    const offer = [...this.#offers.values()].find(
+      (candidate) => candidate.request?.requestId === requestId,
+    );
+    const binding = offer?.principalBinding;
+    if (!binding || !('kind' in binding) || binding.kind !== 'account')
+      return undefined;
+    // #offers is private, in-memory state. Supported request creation always
+    // validates candidate/session as a pair and account confirmation copies
+    // that same candidate; an account binding without either field is an
+    // inconsistent internal record and must never mint a Device.
+    if (!offer?.request?.accountCandidate || !offer.accountCandidateSessionId)
+      throw new DevicePairingError('invalid_request');
+    return {
+      candidate: structuredClone(offer.request.accountCandidate),
+      sessionId: offer.accountCandidateSessionId,
+    };
+  }
+
   /**
    * @param approval Who is approving — see {@link PairingApproval}. Required
    *   on purpose: archive#1490 historically found an approval with no caller

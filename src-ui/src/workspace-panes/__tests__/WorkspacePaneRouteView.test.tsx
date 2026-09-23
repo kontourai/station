@@ -230,6 +230,52 @@ describe('WorkspacePaneRouteView', () => {
     expect(screen.getByTestId('mounted-pane').textContent).toContain('demo');
   });
 
+  test('keeps the pane mounted when a background catalog revalidation fails (#2319)', () => {
+    // A failed refetch of an invalidated catalog leaves `isError` with the
+    // previous answer still in `data` (pinned in
+    // paneCatalogOutsideInstall.test.tsx). That answer is still the pane.
+    const mock = catalogMock as typeof catalogMock & { data?: unknown };
+    mock.isError = true;
+    mock.data = { projectId: 'project-uuid', descriptors: [], instances: [] };
+    try {
+      render(
+        <WorkspacePaneRouteView
+          projectSlug="demo"
+          descriptorId="builtin:flow-run-console"
+          instanceId="flow-console-1"
+        />,
+      );
+
+      expect(screen.queryByText('Could not load workspace pane')).toBeNull();
+      expect(screen.getByTestId('mounted-pane').textContent).toContain('demo');
+    } finally {
+      mock.isError = false;
+      mock.data = undefined;
+    }
+  });
+
+  test('still reports a catalog that never loaded as an error (#2319)', () => {
+    const mock = catalogMock as typeof catalogMock & { data?: unknown };
+    const entries = catalogMock.entries;
+    mock.isError = true;
+    mock.data = undefined;
+    catalogMock.entries = [];
+    try {
+      render(
+        <WorkspacePaneRouteView
+          projectSlug="demo"
+          descriptorId="builtin:flow-run-console"
+          instanceId="flow-console-1"
+        />,
+      );
+
+      expect(screen.getByText('Could not load workspace pane')).toBeTruthy();
+    } finally {
+      mock.isError = false;
+      catalogMock.entries = entries;
+    }
+  });
+
   test('mounts the catalog-selected contributed renderer without branching on contributor identity', () => {
     sdkAdapterMock.mockClear();
     resolveClientTrustedPluginLayoutMock.mockReturnValue(() => null);
