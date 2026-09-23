@@ -44,6 +44,7 @@
  */
 import {
   closeSync,
+  constants,
   existsSync,
   fstatSync,
   lstatSync,
@@ -209,8 +210,16 @@ function readManifestBounded(dir: string): ManifestRead {
   }
   // Read through the descriptor and re-check what was opened, so a swap
   // between lstat and open cannot turn this into a read of something else,
-  // and cap the read itself rather than trusting the size.
-  const fd = openSync(path, 'r');
+  // and cap the read itself rather than trusting the size. The open itself
+  // is non-blocking and refuses a symlink: a synchronous open of a FIFO
+  // blocks the whole server thread, which no timeout above this can undo.
+  // (Both flags are POSIX; on Windows they are absent and read as 0.)
+  const fd = openSync(
+    path,
+    constants.O_RDONLY |
+      (constants.O_NONBLOCK ?? 0) |
+      (constants.O_NOFOLLOW ?? 0),
+  );
   try {
     if (!fstatSync(fd).isFile()) {
       return refuse(
