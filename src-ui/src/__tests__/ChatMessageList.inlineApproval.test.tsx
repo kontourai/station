@@ -499,7 +499,7 @@ describe('#2316 inline approval card', () => {
       ).toHaveLength(1);
     });
 
-    test('offers nothing once the request is resolved or its session exited', async () => {
+    test('offers nothing once the request is resolved, its session exited, or a recovery aborted its turn', async () => {
       for (const settle of [
         {
           method: 'request.resolved',
@@ -507,6 +507,13 @@ describe('#2316 inline approval card', () => {
           status: 'approved',
         },
         { method: 'session.exited', exitCode: 0 },
+        // A boot recovery's abort: no process holds the request any more.
+        {
+          method: 'turn.aborted',
+          turnId: 'turn-1',
+          reason: 'interrupted by restart',
+          recoveryTerminal: true,
+        },
       ]) {
         cleanup();
         sequence = 0;
@@ -524,13 +531,7 @@ describe('#2316 inline approval card', () => {
       }
     });
 
-    test.each([
-      ['completed', { method: 'turn.completed', turnId: 'turn-1' }],
-      [
-        'aborted',
-        { method: 'turn.aborted', turnId: 'turn-1', reason: 'interrupted' },
-      ],
-    ])(
+    test.each([['completed', { method: 'turn.completed', turnId: 'turn-1' }]])(
       'stays answerable after the MAIN turn %s — a background subagent outlives it',
       async (_name, end) => {
         sequence = 0;

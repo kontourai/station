@@ -2410,19 +2410,27 @@ describe('#2316 retired and cancelled cards, and subagent requests', () => {
     });
   });
 
-  it('keeps a subagent request open across the main turn end, and retires it on session exit', () => {
+  it('keeps a subagent request open across the main turn completion only', () => {
     const subagent = opened({ agentId: 'agent-bg' });
     expect(
       card([...subagent, ev({ method: 'turn.completed', turnId: 't-1' })]),
     ).toMatchObject({ needsApproval: true });
-    expect(
-      card([
-        ...subagent,
-        ev({ method: 'turn.aborted', turnId: 't-1', reason: 'interrupted' }),
-      ]),
-    ).toMatchObject({ needsApproval: true });
-    expect(
-      card([...subagent, ev({ method: 'session.exited', exitCode: 0 })]),
-    ).toMatchObject({ needsApproval: false, cancelled: true });
+    for (const end of [
+      // An interrupt: the adapter settles every open request anyway.
+      { method: 'turn.aborted', turnId: 't-1', reason: 'interrupted' },
+      // A boot recovery's abort: no process holds the request any more.
+      {
+        method: 'turn.aborted',
+        turnId: 't-1',
+        reason: 'interrupted by restart',
+        recoveryTerminal: true,
+      },
+      { method: 'session.exited', exitCode: 0 },
+    ]) {
+      expect(card([...subagent, ev(end as never)])).toMatchObject({
+        needsApproval: false,
+        cancelled: true,
+      });
+    }
   });
 });

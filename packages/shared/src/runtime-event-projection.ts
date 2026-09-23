@@ -110,19 +110,21 @@ export function isSubagentApprovalRequest(
  * not be offered. The projection retires bound cards with this and the UI's
  * pending-approvals strip applies it too, so no consumer disagrees.
  *
- * A session exit retires everything. The end of the MAIN turn does not
- * retire a subagent's request: Station declares Claude's per-task stop
- * affordance, under which background subagents outlive the turn (and its
- * interrupt), so their approvals stay live until their own
- * `request.resolved` — which the adapter publishes whenever it settles one.
+ * A session exit or a turn abort retires everything — including a boot
+ * recovery's `turn.aborted` (`recoveryTerminal`), after which no process
+ * holds the request at all, and an interrupt, on which the Claude adapter
+ * settles every open request anyway. Only the MAIN turn's completion spares
+ * a subagent's request: Station declares Claude's per-task stop affordance,
+ * under which a background subagent outlives the turn, so its approval can
+ * still be live; the adapter publishes its `request.resolved` when it
+ * settles it (at the latest when no subagent task is live).
  */
 export function approvalRetiredBy(
   method: string,
   subagentRequest: boolean,
 ): boolean {
-  if (method === 'session.exited') return true;
-  if (subagentRequest) return false;
-  return method === 'turn.completed' || method === 'turn.aborted';
+  if (method === 'session.exited' || method === 'turn.aborted') return true;
+  return method === 'turn.completed' && !subagentRequest;
 }
 
 /**

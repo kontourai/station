@@ -88,6 +88,7 @@ import { snapshotSessionSourceAffinity } from '../sessions/session-source-affini
 import { resolveConfigHomeAffinity } from '../sessions/transcript-file-io.js';
 import { mergeCapabilityDeliveryMetadata } from './capability-delivery-metadata.js';
 import {
+  type ClaudeActiveTask,
   type ClaudeMessageState,
   mapClaudeDecisionToPermissionResult,
   mapClaudeSdkMessage,
@@ -542,11 +543,11 @@ type ClaudeSessionRecord = {
   /** Mirrors `ClaudeMessageState.interruptedResultObserved`. */
   interruptedResultObserved?: boolean;
   /**
-   * Mirrors `ClaudeMessageState.activeTasks`; same object at runtime. Only
-   * membership is read here (`stopProviderTask`), so the value stays opaque
-   * rather than importing the events module's own task shape.
+   * Mirrors `ClaudeMessageState.activeTasks`; same object at runtime.
    */
-  activeTasks?: Map<string, unknown>;
+  activeTasks?: Map<string, ClaudeActiveTask>;
+  /** Mirrors `ClaudeMessageState.onNoLiveTasks` (#2316). */
+  onNoLiveTasks?: () => void;
   lastSessionState: 'idle' | 'running' | 'requires_action';
   streamTask: Promise<void>;
   /** Tracks the live SDK permission mode so sendTurn only calls
@@ -1266,6 +1267,12 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       currentModelOptions: claudeAppliedModelOptions(input.modelOptions),
       skillsOverlayDir,
     };
+    // #2316: with no subagent task live, no subagent can still be waiting on
+    // a permission request; settle any it left behind.
+    record.onNoLiveTasks = () =>
+      this.cancelPendingRequests(record, input.threadId, {
+        subagentsOnly: true,
+      });
     record.streamTask = this.consumeMessages(record);
     this.sessions.set(input.threadId, record);
 
@@ -1642,10 +1649,10 @@ export class ClaudeAdapter implements ProviderAdapterShape {
   private cancelPendingRequests(
     record: ClaudeSessionRecord,
     threadId: string,
-    options: { spareSubagents?: boolean } = {},
+    options: { subagentsOnly?: boolean } = {},
   ): void {
     for (const [requestId, pending] of [...record.pendingRequests]) {
-      if (options.spareSubagents && pending.agentId) continue;
+      if (options.subagentsOnly && !pending.agentId) continue;
       this.cancelPendingRequest(record, threadId, requestId);
     }
   }
@@ -1668,19 +1675,12 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     // Settle them (request.resolved, cancelled) BEFORE turn.aborted, so no
     // later answer lands on them and no grant is minted for them.
     //
-    // Except a live background subagent's: `perTaskStopAffordance` (declared
-    // in buildOptions) makes an interrupt spare background tasks, so their
-    // requests are still waiting on a real call. Which subagent asked is not
-    // tied to a task id here, so while any background task is live every
-    // subagent request is spared; a foreground subagent the interrupt does
-    // kill has its `canUseTool` aborted by the SDK, which settles it through
-    // the signal listener. With no background task live, nothing survives
-    // the interrupt and every request is settled.
-    this.cancelPendingRequests(record, threadId, {
-      spareSubagents: [...(record.activeTasks?.values() ?? [])].some(
-        (task) => (task as { backgrounded?: boolean }).backgrounded === true,
-      ),
-    });
+    // Every request, a subagent's included. A background subagent may
+    // survive the interrupt (`perTaskStopAffordance`), and then loses only
+    // that one call (it is denied); sparing its request instead would leave
+    // it answerable after its subagent ends, and a late "Allow <tool> for
+    // this session" would mint a grant for a call that never ran.
+    this.cancelPendingRequests(record, threadId);
     // A rejected control promise does not prove the engine ignored the
     // interrupt. Keep the exact-turn marker armed until the SDK result stream
     // confirms what happened; a second Stop must not clear the first one's
