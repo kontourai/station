@@ -110,7 +110,7 @@ import {
 import type { SessionInventoryAppReadModule } from '../../services/orchestration/session-inventory-app-read-module.js';
 import type { SessionInventoryModule } from '../../services/orchestration/session-inventory-module.js';
 import {
-  type SessionOwnerAttribution,
+  type StartOwnerAttribution,
   UNATTRIBUTED_AGENT_OWNER_ATTRIBUTION,
 } from '../../services/orchestration/session-owner-attribution.js';
 import { MAX_TOOL_RESULT_DESCRIPTOR_ID_BYTES } from '../../services/orchestration/thread-tool-result-adapter.js';
@@ -663,7 +663,7 @@ interface DelegateTaskRequest {
    * compiler enumerates them). `undefined` means "not an agent dispatch";
    * see `resolveDispatchActor`.
    */
-  ownerAttribution: SessionOwnerAttribution | undefined;
+  ownerAttribution: StartOwnerAttribution | undefined;
   clientOrigin?: ClientOrigin;
   /**
    * #484 controller/receiver split: for a `project-portable` workspace
@@ -728,7 +728,7 @@ interface ForegroundMessageRequest {
    * compiler enumerates them). `undefined` means "not an agent dispatch";
    * see `resolveDispatchActor`.
    */
-  ownerAttribution: SessionOwnerAttribution | undefined;
+  ownerAttribution: StartOwnerAttribution | undefined;
   clientOrigin?: ClientOrigin;
 }
 
@@ -749,7 +749,7 @@ interface ContinueForegroundMessageRequest {
    * compiler enumerates them). `undefined` means "not an agent dispatch";
    * see `resolveDispatchActor`.
    */
-  ownerAttribution: SessionOwnerAttribution | undefined;
+  ownerAttribution: StartOwnerAttribution | undefined;
   clientOrigin?: ClientOrigin;
 }
 
@@ -770,7 +770,7 @@ interface ConversationHandoffRequest
    * compiler enumerates them). `undefined` means "not an agent dispatch";
    * see `resolveDispatchActor`.
    */
-  ownerAttribution: SessionOwnerAttribution | undefined;
+  ownerAttribution: StartOwnerAttribution | undefined;
   clientOrigin?: ClientOrigin;
 }
 
@@ -808,7 +808,7 @@ type ContinueDelegatedTaskRequest = z.infer<
   userId: string;
   principal?: PrincipalRef;
   /** Station #90 lane D (B2/D2): REQUIRED; see `resolveDispatchActor`. */
-  ownerAttribution: SessionOwnerAttribution | undefined;
+  ownerAttribution: StartOwnerAttribution | undefined;
   clientOrigin?: ClientOrigin;
 };
 
@@ -819,7 +819,7 @@ type RespondToDelegatedTaskRequest = z.infer<
   userId: string;
   principal?: PrincipalRef;
   /** Station #90 lane D (B2/D2): REQUIRED; see `resolveDispatchActor`. */
-  ownerAttribution: SessionOwnerAttribution | undefined;
+  ownerAttribution: StartOwnerAttribution | undefined;
   clientOrigin?: ClientOrigin;
 };
 
@@ -830,7 +830,7 @@ type InterruptDelegatedTaskRequest = z.infer<
   userId: string;
   principal?: PrincipalRef;
   /** Station #90 lane D (B2/D2): REQUIRED; see `resolveDispatchActor`. */
-  ownerAttribution: SessionOwnerAttribution | undefined;
+  ownerAttribution: StartOwnerAttribution | undefined;
   clientOrigin?: ClientOrigin;
 };
 
@@ -1034,7 +1034,7 @@ function resolveDispatchActor(
 ): {
   principal: PrincipalRef | undefined;
   userId: string;
-  ownerAttribution?: SessionOwnerAttribution;
+  ownerAttribution?: StartOwnerAttribution;
 } {
   const actor = resolveActorPrincipal(deps, c);
   const agent = deps.resolveAgentDispatchActor?.(c.req.raw);
@@ -1046,6 +1046,9 @@ function resolveDispatchActor(
           ? actor.principal
           : principalRefForSessionOwner(agent.principalId),
       userId: agent.principalId,
+      // S1: the service fails an internal-origin start closed unless the
+      // seam vouches for it explicitly.
+      ownerAttribution: 'verified-bound',
     };
   return { ...actor, ownerAttribution: UNATTRIBUTED_AGENT_OWNER_ATTRIBUTION };
 }

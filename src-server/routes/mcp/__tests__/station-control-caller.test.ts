@@ -38,9 +38,15 @@ import {
   mintStationControlStdioCallerToken,
   revokeStationControlMcpToken,
 } from '../../../runtime/mcp/station-control-mcp-token.js';
+import {
+  createWorkspacePaneHostActorFor,
+  executeWorkspacePaneHostAction,
+} from '../../../runtime/routes/workspace-pane-host-actions.js';
+import { resolveClientOriginForRequest } from '../../../security/runtime-request-security.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../../services/identity/principal-resolver.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { SessionAuthorization } from '../../../services/orchestration/session-authorization.js';
+import type { WorkspacePaneHostActionActor } from '../../../services/plugins/workspace-pane-host-actions.js';
 import {
   __resetStationControlStdioCallerCredentialForTests,
   api,
@@ -60,11 +66,27 @@ import {
 } from '../../../utils/internal-api-token.js';
 import type { Logger } from '../../../utils/logger.js';
 import { createOrchestrationRoutes } from '../../orchestration/orchestration.js';
+import { createWorkspacePaneHostActionRoutes } from '../../orchestration/workspace-pane-host-actions.js';
 import { createStationControlCallerRoutes } from '../station-control-caller-route.js';
 import {
   createStationControlMcpRoutes,
   STATION_CONTROL_MCP_PATH,
 } from '../station-control-mcp-route.js';
+
+// S3: the Pane host bridge's one effect, recorded; the rest of the
+// delegation module stays real.
+const paneHostExecutions = vi.hoisted(() => [] as unknown[]);
+vi.mock('../../../tools/station-control-delegation.js', async (original) => ({
+  ...(await original<object>()),
+  executeExecutionTargetMessage: async (input: unknown) => {
+    paneHostExecutions.push(input);
+    return {
+      conversationId: 'pane-conversation',
+      sessionId: 'pane-session',
+      providerTurnId: 'pane-turn',
+    };
+  },
+}));
 
 const OPERATOR_CREDENTIAL = 'test-only-operator-credential-caller-suite';
 const DELEGATION_BODY = {
@@ -307,6 +329,37 @@ beforeAll(async () => {
       } as never,
     ),
   );
+  // The REAL Pane host route and actor factory; only the ticket/admission
+  // service is a stand-in that hands the actor to the real runtime bridge.
+  app.route(
+    '/api/orchestration/pane-host',
+    createWorkspacePaneHostActionRoutes({
+      service: {
+        execute: async (actor: WorkspacePaneHostActionActor) => ({
+          state: 'accepted',
+          ...(await executeWorkspacePaneHostAction({} as never, actor, {
+            agentId: 'planner',
+            message: 'pane action',
+            project: { slug: 'project-a' },
+          } as never)),
+        }),
+      } as never,
+      actorFor: createWorkspacePaneHostActorFor({
+        resolvePrincipal: () =>
+          ({
+            id: LOCAL_OPERATOR_PRINCIPAL_ID,
+            kind: 'human',
+            display: 'Operator',
+          }) as never,
+        readAuthorityFor: () => ({}) as never,
+        resolveClientOrigin: (request) =>
+          resolveClientOriginForRequest(request),
+        isRequestPrincipalCurrent: () => true,
+        resolveAgentDispatchActor:
+          createAgentDispatchActorResolver(resolveRecord),
+      }),
+    }),
+  );
   // Test-only probe route: what a route using the helpers sees.
   app.get(ORIGIN_PROBE_PATH, (c) =>
     c.json({
@@ -329,6 +382,7 @@ beforeEach(() => {
   delegateTask.mockClear();
   continueDelegatedTask.mockClear();
   dispatchWithReceipt.mockClear();
+  paneHostExecutions.length = 0;
 });
 
 async function readJsonRpc(response: Response): Promise<any> {
@@ -885,7 +939,7 @@ describe('agent-started child sessions (security review B2, D1, D2, D3)', () => 
       userId: 'human:test:alice',
       principal: { id: 'human:test:alice', kind: 'human' },
     });
-    expect(delegatedInput().ownerAttribution).toBeUndefined();
+    expect(delegatedInput().ownerAttribution).toBe('verified-bound');
   });
 
   test.each([
@@ -992,7 +1046,7 @@ describe('agent-started child sessions (security review B2, D1, D2, D3)', () => 
       taskId: 'task:1',
       userId: 'human:test:alice',
     });
-    expect(continuedInput().ownerAttribution).toBeUndefined();
+    expect(continuedInput().ownerAttribution).toBe('verified-bound');
   });
 });
 
@@ -1035,5 +1089,36 @@ describe('/commands adoptSession (review R1)', () => {
     });
     expect(response.status).toBe(200);
     expect(dispatchContext()).not.toHaveProperty('ownerAttribution');
+  });
+});
+
+describe('Pane host actions (review S3)', () => {
+  const ticket = 'a'.repeat(43);
+  async function execute(headers: Record<string, string>) {
+    const response = await fetch(
+      `${baseUrl}/api/orchestration/pane-host/project-a/execute`,
+      {
+        method: 'POST',
+        headers: { ...headers, 'content-type': 'application/json' },
+        body: JSON.stringify({ ticket }),
+      },
+    );
+    expect(response.status).toBe(200);
+    return paneHostExecutions[0] as Record<string, unknown>;
+  }
+
+  test('an internal-credential Pane action reaches executeExecutionTargetMessage marked unattributed-agent', async () => {
+    expect(await execute(internalHeaders())).toMatchObject({
+      message: 'pane action',
+      ownerAttribution: 'unattributed-agent',
+    });
+  });
+
+  test('an operator-credential Pane action carries no marker', async () => {
+    const input = await execute({
+      authorization: `Bearer ${OPERATOR_CREDENTIAL}`,
+    });
+    expect(input.message).toBe('pane action');
+    expect(input).not.toHaveProperty('ownerAttribution');
   });
 });

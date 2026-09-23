@@ -86,7 +86,7 @@ import {
   ForegroundInvocationUnavailableError,
 } from '../services/orchestration/foreground-invocation-admission.js';
 import type { OrchestrationService } from '../services/orchestration/orchestration-service.js';
-import type { SessionOwnerAttribution } from '../services/orchestration/session-owner-attribution.js';
+import type { StartOwnerAttribution } from '../services/orchestration/session-owner-attribution.js';
 import { SessionStartIndeterminateError } from '../services/orchestration/session-turn-boundary.js';
 import {
   type PortableExecutionConsentIdentity,
@@ -217,7 +217,7 @@ export interface DelegateTaskInput {
   delegation?: AgentDelegationContext;
   userId?: string;
   /** Station #90 lane D (B2): route-set only; see session-owner-attribution.ts. */
-  ownerAttribution?: SessionOwnerAttribution;
+  ownerAttribution?: StartOwnerAttribution;
   /** Trusted request authority supplied only by runtime composition. */
   readAuthority?: SessionReadAuthority;
   /** Resolved at the authenticated request seam; never accepted as tool input. */
@@ -460,7 +460,7 @@ export interface ContinueDelegatedTaskInput
    * child session of the task's conversation, which must carry the same
    * owner attribution as a fresh delegation (session-owner-attribution.ts).
    */
-  ownerAttribution?: SessionOwnerAttribution;
+  ownerAttribution?: StartOwnerAttribution;
   model?: string;
   /** archive#978: per-invocation settings passthrough on a follow-up turn. */
   modelOptions?: Record<string, unknown>;
@@ -1188,13 +1188,13 @@ function dispatchContextForAuthority(
   // Station #90 lane D (R1): route-derived owner attribution for a start.
   // The service stamps it on the new session (`prepareStart`), the one
   // place every start passes.
-  ownerAttribution?: SessionOwnerAttribution,
+  ownerAttribution?: StartOwnerAttribution,
 ): {
   userId: string;
   tenantExecutionContext?: SessionReadAuthority['tenantExecutionContext'];
   clientOrigin?: ClientOrigin;
   principal?: PrincipalRef;
-  ownerAttribution?: SessionOwnerAttribution;
+  ownerAttribution?: StartOwnerAttribution;
 } {
   return {
     userId: authority.userId,

@@ -30,7 +30,7 @@ import type {
 } from '@kontourai/station-contracts/workspace-isolation';
 import { errorMessage } from '../../utils/error-message.js';
 import { createLogger } from '../../utils/logger.js';
-import type { SessionOwnerAttribution } from '../orchestration/session-owner-attribution.js';
+import type { StartOwnerAttribution } from '../orchestration/session-owner-attribution.js';
 import { assertProjectWorktreeDirectory } from '../projects/project-service.js';
 import {
   WorktreeProvisioningService,
@@ -97,7 +97,7 @@ export interface ForegroundMessageInput {
    * start's dispatch context, and `OrchestrationService` stamps it on the
    * new session so it acts for no one (`session-owner-attribution.ts`).
    */
-  ownerAttribution?: SessionOwnerAttribution;
+  ownerAttribution?: StartOwnerAttribution;
   /** Resolved at the HTTP/auth seam; not accepted by public JSON schemas. */
   clientOrigin?: ClientOrigin;
   /**

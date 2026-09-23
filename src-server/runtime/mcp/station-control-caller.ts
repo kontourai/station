@@ -23,7 +23,10 @@ import type { TenantExecutionContext } from '@kontourai/station-contracts/tenanc
 import { getRuntimeAuthenticatedRequestPrincipal } from '../../security/runtime-request-security.js';
 import type { OrchestrationService } from '../../services/orchestration/orchestration-service.js';
 import type { SessionActingPrincipal } from '../../services/orchestration/session-authorization.js';
-import { SESSION_LOCAL_PROJECT_ID_METADATA_KEY } from '../../services/orchestration/session-project-identity.js';
+import {
+  SESSION_LOCAL_PROJECT_ID_METADATA_KEY,
+  SESSION_LOCAL_PROJECT_ID_REFUSED_METADATA_KEY,
+} from '../../services/orchestration/session-project-identity.js';
 import {
   STATION_CONTROL_CALLER_TOKEN_HEADER,
   STATION_CONTROL_ORIGIN_AGENT_TOOL,
@@ -80,7 +83,8 @@ export interface StationControlCallerRecordSources {
  * 'session-record'`). A session that predates that stamp falls back to
  * looking its slug up now (`projectIdSource: 'slug-lookup'`). The fallback
  * is wrong when a slug has been reused by a different project since, so
- * anything that grants Project authority must refuse `slug-lookup`.
+ * anything that grants Project authority must refuse `slug-lookup`. A start
+ * that recorded `localProjectIdRefused` gets no id at all.
  */
 export function createStationControlCallerRecordResolver(
   sources: StationControlCallerRecordSources,
@@ -100,8 +104,12 @@ export function createStationControlCallerRecordResolver(
     const recordedId = metadata?.[SESSION_LOCAL_PROJECT_ID_METADATA_KEY];
     const recorded =
       typeof recordedId === 'string' && recordedId ? recordedId : undefined;
+    // S2: a start that refused the stamp is not a pre-stamp session, so it
+    // never gets the slug-lookup fallback.
+    const refused =
+      metadata?.[SESSION_LOCAL_PROJECT_ID_REFUSED_METADATA_KEY] === true;
     const looked =
-      !recorded && projectSlug
+      !recorded && !refused && projectSlug
         ? sources.localProjectId(projectSlug)
         : undefined;
     const localProjectId = recorded ?? looked;

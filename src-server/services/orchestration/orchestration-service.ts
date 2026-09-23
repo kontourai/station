@@ -324,10 +324,14 @@ import {
   type SessionOutputsModule,
 } from './session-outputs-module.js';
 import {
-  type SessionOwnerAttribution,
+  effectiveOwnerAttribution,
+  type StartOwnerAttribution,
   sessionOwnerAttributionMetadata,
 } from './session-owner-attribution.js';
-import { SESSION_LOCAL_PROJECT_ID_METADATA_KEY } from './session-project-identity.js';
+import {
+  SESSION_LOCAL_PROJECT_ID_METADATA_KEY,
+  SESSION_LOCAL_PROJECT_ID_REFUSED_METADATA_KEY,
+} from './session-project-identity.js';
 import {
   createSessionQueryModule,
   MAX_ASSISTANT_TURN_EVENTS,
@@ -1122,9 +1126,13 @@ function isWithinDirectory(root: string, candidate: string): boolean {
  * when the resolved start `cwd` lies inside that Project's
  * `workingDirectory`, or is exactly the server-admitted workspace (a
  * provisioned worktree) bound to this thread and Project. A Project with no
- * directory, or a start whose cwd is elsewhere, is named but unverified,
- * and gets no id: a reader then falls back to a `slug-lookup`, which
- * authority must refuse.
+ * directory, or a start whose cwd is elsewhere, is named but unverified:
+ * it gets no id and an explicit `localProjectIdRefused: true`, so a reader
+ * cannot fall back to looking the slug up.
+ *
+ * The containment check is LEXICAL: paths are resolved and compared as
+ * strings, and symlinks inside the root are not followed. A symlink under
+ * the Project root that points elsewhere still counts as inside.
  */
 function withSessionLocalProjectId(
   input: ProviderSessionStartInput,
@@ -1157,6 +1165,14 @@ function withSessionLocalProjectId(
     return {
       ...input,
       metadata: { ...rest, [SESSION_LOCAL_PROJECT_ID_METADATA_KEY]: id },
+    };
+  if (project)
+    return {
+      ...input,
+      metadata: {
+        ...rest,
+        [SESSION_LOCAL_PROJECT_ID_REFUSED_METADATA_KEY]: true,
+      },
     };
   return _untrusted === undefined ? input : { ...input, metadata: rest };
 }
@@ -4733,12 +4749,13 @@ export class OrchestrationService {
           // Station #90 lane D (R1): the one start choke point. A start an
           // unverified agent caused (derived at the HTTP seam, carried in the
           // dispatch context) is marked so it acts for no one.
-          if (context.ownerAttribution) {
+          const ownerAttribution = effectiveOwnerAttribution(context);
+          if (ownerAttribution) {
             startInput = {
               ...startInput,
               metadata: {
                 ...startInput.metadata,
-                ...sessionOwnerAttributionMetadata(context.ownerAttribution),
+                ...sessionOwnerAttributionMetadata(ownerAttribution),
               },
             };
           }
@@ -5068,7 +5085,7 @@ export class OrchestrationService {
       /** Captured HTTP principal liveness; never supplied by the command body. */
       requestCurrent?: () => boolean;
       /** Station #90 lane D (R1): see `SessionCommandContext.ownerAttribution`. */
-      ownerAttribution?: SessionOwnerAttribution;
+      ownerAttribution?: StartOwnerAttribution;
     },
     internal?: OrchestrationDispatchInternalOptions,
   ): Promise<
@@ -5129,7 +5146,7 @@ export class OrchestrationService {
       principal?: PrincipalRef;
       requestCurrent?: () => boolean;
       /** Station #90 lane D (R1): see `SessionCommandContext.ownerAttribution`. */
-      ownerAttribution?: SessionOwnerAttribution;
+      ownerAttribution?: StartOwnerAttribution;
     },
     internal?: OrchestrationDispatchInternalOptions,
   ): Promise<
@@ -5277,7 +5294,7 @@ export class OrchestrationService {
             context?.userId,
             context?.tenantExecutionContext,
             command.idempotencyKey,
-            context?.ownerAttribution,
+            effectiveOwnerAttribution(context ?? {}),
           );
         case 'sendTurn': {
           // Monitor envelopes register here, at the one execution choke

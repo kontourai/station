@@ -33,3 +33,33 @@ export function sessionOwnerAttributionMetadata(
     ? { [SESSION_OWNER_ATTRIBUTION_METADATA_KEY]: attribution }
     : {};
 }
+
+/**
+ * Station #90 lane D (S1): what the HTTP seam knows about a start's cause.
+ * `verified-bound` is the ONLY value that lets an internal-principal start
+ * keep an acting principal; see {@link effectiveOwnerAttribution}.
+ */
+export type StartOwnerAttribution =
+  | typeof UNATTRIBUTED_AGENT_OWNER_ATTRIBUTION
+  | 'verified-bound';
+
+/**
+ * Station #90 lane D (S1): fail closed from a server fact. A start whose
+ * client origin the auth middleware recorded as Station's internal actor
+ * (the per-boot internal token, which any agent holding a stdio child's env
+ * can present) is unattributed unless the seam explicitly vouched for a
+ * verified, bound caller. Absence of an attribution is never trust.
+ */
+export function effectiveOwnerAttribution(context: {
+  ownerAttribution?: StartOwnerAttribution;
+  clientOrigin?: { actor?: { kind?: string } };
+}): SessionOwnerAttribution | undefined {
+  if (context.ownerAttribution === UNATTRIBUTED_AGENT_OWNER_ATTRIBUTION)
+    return UNATTRIBUTED_AGENT_OWNER_ATTRIBUTION;
+  if (
+    context.clientOrigin?.actor?.kind === 'internal' &&
+    context.ownerAttribution !== 'verified-bound'
+  )
+    return UNATTRIBUTED_AGENT_OWNER_ATTRIBUTION;
+  return undefined;
+}

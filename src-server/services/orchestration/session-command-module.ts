@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import { resolve as resolveFilesystemPath } from 'node:path';
+import type { ClientOrigin } from '@kontourai/station-contracts/client-origin';
 import type {
   OrchestrationCommandReceipt,
   OrchestrationStartSessionInput,
@@ -22,7 +23,7 @@ import {
 } from '../projects/project-contribution-service.js';
 import type { ExecutionWorkspaceBinding } from './execution-workspace-binding.js';
 import type { ForegroundInvocationAdmission } from './foreground-invocation-admission.js';
-import type { SessionOwnerAttribution } from './session-owner-attribution.js';
+import type { StartOwnerAttribution } from './session-owner-attribution.js';
 import {
   type SessionStartBoundaryClaim,
   SessionStartIndeterminateError,
@@ -43,7 +44,13 @@ export type SessionCommandContext = {
    * one place every start passes, so any start an unverified agent caused
    * acts for no one.
    */
-  ownerAttribution?: SessionOwnerAttribution;
+  ownerAttribution?: StartOwnerAttribution;
+  /**
+   * Station #90 lane D (S1): the request's server-resolved client origin.
+   * An `internal` actor fails closed to unattributed unless
+   * `ownerAttribution` is `verified-bound` (`effectiveOwnerAttribution`).
+   */
+  clientOrigin?: ClientOrigin;
 };
 
 export type SessionCommandOutcome =

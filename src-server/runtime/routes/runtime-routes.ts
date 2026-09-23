@@ -543,7 +543,10 @@ import {
   createRuntimeSystemRouteDeps,
 } from './runtime-route-support.js';
 import { createTaskBasisMcpInitialRead } from './task-basis-mcp-initial-read.js';
-import { createRuntimeWorkspacePaneHostActions } from './workspace-pane-host-actions.js';
+import {
+  createRuntimeWorkspacePaneHostActions,
+  createWorkspacePaneHostActorFor,
+} from './workspace-pane-host-actions.js';
 
 type HonoApp = Parameters<NonNullable<HonoServerConfig['configureApp']>>[0];
 
@@ -2723,19 +2726,14 @@ export function configureRuntimeRoutes(
     '/api/orchestration/pane-host',
     createWorkspacePaneHostActionRoutes({
       service: paneHostActions,
-      actorFor: (c) => {
-        const principal = resolveOrchestrationRequestPrincipal(c);
-        // Station #90 lane D (R1): a Pane action an internal-token caller
-        // triggers starts an unattributed session, like every dispatch.
-        const agent = resolveAgentDispatchActor(c.req.raw);
-        return {
-          principal,
-          readAuthority: readAuthorityForExecution(principal.id),
-          clientOrigin: resolveClientOriginForRequest(c.req.raw),
-          isCurrent: () => isRequestPrincipalCurrent(c.req.raw),
-          ...(agent ? { ownerAttribution: 'unattributed-agent' as const } : {}),
-        };
-      },
+      actorFor: createWorkspacePaneHostActorFor({
+        resolvePrincipal: resolveOrchestrationRequestPrincipal,
+        readAuthorityFor: (principalId) =>
+          readAuthorityForExecution(principalId),
+        resolveClientOrigin: resolveClientOriginForRequest,
+        isRequestPrincipalCurrent,
+        resolveAgentDispatchActor,
+      }),
     }),
   );
   context.app.route(

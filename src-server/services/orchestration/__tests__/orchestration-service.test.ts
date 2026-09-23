@@ -859,7 +859,11 @@ describe('OrchestrationService', () => {
     async function started(
       threadId: string,
       metadata: Record<string, unknown>,
-      context: { userId: string; ownerAttribution?: 'unattributed-agent' } = {
+      context: {
+        userId: string;
+        ownerAttribution?: 'unattributed-agent' | 'verified-bound';
+        clientOrigin?: never;
+      } = {
         userId: 'human:test:alice',
       },
     ) {
@@ -915,6 +919,43 @@ describe('OrchestrationService', () => {
       });
     });
 
+    test('S1: an internal-origin start with NO attribution fails closed to unattributed; only an explicit verified-bound keeps its owner', async () => {
+      publishStarts();
+      const internalOrigin = {
+        version: 1,
+        actor: { kind: 'internal' },
+      } as never;
+      await started(
+        'internal-unattributed',
+        { userId: 'human:test:alice' },
+        { userId: 'human:test:alice', clientOrigin: internalOrigin },
+      );
+      await started(
+        'internal-verified',
+        { userId: 'human:test:alice' },
+        {
+          userId: 'human:test:alice',
+          clientOrigin: internalOrigin,
+          ownerAttribution: 'verified-bound',
+        },
+      );
+      expect(
+        service.firstStartedMetadataOfThread('internal-unattributed'),
+      ).toMatchObject({ ownerAttribution: 'unattributed-agent' });
+      expect(
+        service.resolveSessionActingPrincipal('internal-unattributed'),
+      ).toBeUndefined();
+      expect(
+        service.firstStartedMetadataOfThread('internal-verified'),
+      ).not.toHaveProperty('ownerAttribution');
+      expect(
+        service.resolveSessionActingPrincipal('internal-verified'),
+      ).toEqual({
+        id: 'human:test:alice',
+        source: 'session-owner',
+      });
+    });
+
     test('R2: the caller keeps its stamped project after a sparse CLI-init session.configured, and a caller-supplied id never survives', async () => {
       publishStarts();
       configuredProjects.push({
@@ -955,13 +996,37 @@ describe('OrchestrationService', () => {
         userId: 'human:test:alice',
         projectSlug: 'dirless',
       });
-      expect(
-        service.firstStartedMetadataOfThread('dirless-session'),
-      ).not.toHaveProperty('localProjectId');
-      // A reader falls back to a slug lookup, which is marked so authority
-      // can refuse it.
+      const metadata = service.firstStartedMetadataOfThread('dirless-session');
+      expect(metadata).not.toHaveProperty('localProjectId');
+      // S2: the refusal is recorded, and a reader does NOT fall back to
+      // looking the slug up.
+      expect(metadata).toMatchObject({ localProjectIdRefused: true });
+      expect(callerRecord('dirless-session')).not.toHaveProperty(
+        'localProjectId',
+      );
       expect(callerRecord('dirless-session')).toMatchObject({
-        localProjectId: 'project-dirless-id',
+        projectSlug: 'dirless',
+      });
+    });
+
+    test('S2: only a session that predates the stamp gets the slug-lookup fallback', async () => {
+      configuredProjects.push({
+        slug: 'legacy',
+        workingDirectory: tmp,
+        id: 'project-legacy-id',
+      });
+      // A pre-stamp session: its start metadata carries the slug only.
+      eventStore.appendEvent({
+        provider: 'claude',
+        threadId: 'pre-stamp-session',
+        eventId: 'evt-pre-stamp-started',
+        createdAt: new Date().toISOString(),
+        method: 'session.started',
+        sessionId: 'pre-stamp-session',
+        metadata: { userId: 'human:test:alice', projectSlug: 'legacy' },
+      } as CanonicalRuntimeEvent);
+      expect(callerRecord('pre-stamp-session')).toMatchObject({
+        localProjectId: 'project-legacy-id',
         projectIdSource: 'slug-lookup',
       });
     });
