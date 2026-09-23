@@ -352,6 +352,39 @@ describe('createLogger — level filtering and the store tee', () => {
     }
   });
 
+  it('writes nothing to stdout when STATION_STDOUT_LOGS=0, while the durable store still records the line (#2327)', async () => {
+    // Production branch so stdout is `process.stdout` and therefore
+    // spyable; the opt-out is checked before either stdout stream is built.
+    const originalNodeEnv = process.env.NODE_ENV;
+    const originalStdoutLogs = process.env.STATION_STDOUT_LOGS;
+    process.env.NODE_ENV = 'production';
+    process.env.STATION_STDOUT_LOGS = '0';
+    const writeSpy = vi
+      .spyOn(process.stdout, 'write')
+      .mockImplementation(() => true);
+    try {
+      const directory = createTempDir();
+      installServerLogSink({ directory });
+      const logger = createLogger({ name: 'sidecar-logger', level: 'info' });
+      logger.info('only the durable store should see this');
+      await new Promise((resolve) => setImmediate(resolve));
+      const rendered = writeSpy.mock.calls
+        .map((call) => String(call[0]))
+        .join('');
+      expect(rendered).not.toContain('only the durable store should see this');
+      expect(readTodayLines(directory).map((line) => line.msg)).toContain(
+        'only the durable store should see this',
+      );
+    } finally {
+      writeSpy.mockRestore();
+      if (originalNodeEnv === undefined) delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = originalNodeEnv;
+      if (originalStdoutLogs === undefined)
+        delete process.env.STATION_STDOUT_LOGS;
+      else process.env.STATION_STDOUT_LOGS = originalStdoutLogs;
+    }
+  });
+
   it('still writes to stdout-only (no throw) when no sink has been installed', () => {
     const logger = createLogger({ name: 'unsinked-logger', level: 'info' });
     expect(() => logger.info('no sink yet')).not.toThrow();

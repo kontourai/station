@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 import { runtimeEventLoopLag } from '../../../telemetry/metrics.js';
 import {
   runRuntimeHealthChecks,
+  EVENT_LOOP_STALL_WARN_MS,
   startRuntimeEventLoopLagMonitoring,
   startRuntimeHealthChecks,
 } from '../runtime-health.js';
@@ -15,7 +16,7 @@ describe('runtime-health', () => {
     vi.useFakeTimers();
     const runHealthChecks = vi.fn(async () => {});
     const timers: NodeJS.Timeout[] = [];
-    const logger = { debug: vi.fn() };
+    const logger = { debug: vi.fn(), warn: vi.fn() };
 
     await startRuntimeHealthChecks({
       timers,
@@ -91,6 +92,47 @@ describe('runtime-health', () => {
     tick?.();
 
     expect(record).toHaveBeenCalledWith(50);
+  });
+
+  // #2327: a stall between two ticks was invisible to the sampled lag, and
+  // the metric is exported only when OTel is configured.
+  test('writes a stall of at least the warning threshold to the log, then resets the window', () => {
+    let tick: (() => void) | undefined;
+    const logger = { debug: vi.fn(), warn: vi.fn() };
+    const histogram = {
+      enable: vi.fn(),
+      reset: vi.fn(),
+      max: 0,
+      percentile: vi.fn(() => 40 * 1e6),
+    };
+
+    startRuntimeEventLoopLagMonitoring({
+      timers: [],
+      logger,
+      interval: 10_000,
+      now: () => 0,
+      scheduleInterval: (callback) => {
+        tick = callback;
+        return {} as NodeJS.Timeout;
+      },
+      recordLag: vi.fn(),
+      delayHistogram: histogram,
+    });
+    expect(histogram.enable).toHaveBeenCalledTimes(1);
+
+    histogram.max = (EVENT_LOOP_STALL_WARN_MS - 1) * 1e6;
+    tick?.();
+    expect(logger.warn).not.toHaveBeenCalled();
+    expect(histogram.reset).toHaveBeenCalledTimes(1);
+
+    histogram.max = 17_842 * 1e6;
+    tick?.();
+    expect(logger.warn).toHaveBeenCalledWith('Event loop stalled', {
+      maxDelayMs: 17_842,
+      p99DelayMs: 40,
+      windowMs: 10_000,
+    });
+    expect(histogram.reset).toHaveBeenCalledTimes(2);
   });
 
   test('rejects an invalid event-loop lag monitor interval', () => {
