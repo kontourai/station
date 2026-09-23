@@ -212,7 +212,14 @@ export async function probeServerConnection(
     const identityResponse = await stationAuthenticatedFetch(
       new URL('/api/system/identity', url),
       credential,
-      { signal: controller.signal },
+      // station#2327: on desktop this read would otherwise wait in the native
+      // broker's ordinary-read queue behind every background poll, which is
+      // exactly where it timed out on a stalled Station. `livenessProbe`
+      // takes the broker's one reserved slot instead (or is refused at once).
+      // It is carried as an untyped init field on purpose: the native
+      // transport reads it (`authenticatedTransport.ts`), and nothing else is
+      // meant to set it. Plain `fetch` ignores unknown init members.
+      { signal: controller.signal, livenessProbe: true } as RequestInit,
     );
     if (!identityResponse.ok) {
       return {

@@ -562,6 +562,13 @@ struct NativeHttpRequest {
     /// unscoped for compatibility; they omit this field.
     #[serde(default)]
     expected_binding_id: Option<String>,
+    /// station#2327 — set only by the webview's connection-health probe for
+    /// its authenticated identity read. Admitted through the reserved
+    /// liveness slot (`reserve_native_http_liveness_probe`) instead of the
+    /// ordinary-read FIFO, and accepted only for `GET /api/system/identity`
+    /// (`validate_native_liveness_probe`).
+    #[serde(default)]
+    liveness_probe: bool,
 }
 
 #[derive(Serialize)]
@@ -633,6 +640,11 @@ struct NativeActiveHttpRequest {
     /// Whether this reservation draws on the stream allowance rather than the
     /// ordinary-request one (station#2282).
     stream: bool,
+    /// Whether this reservation holds the origin's reserved liveness slot
+    /// (station#2327). Liveness reservations are not counted against the
+    /// ordinary or global allowances, so no ordinary read or stream can ever
+    /// be admitted into the slot or displaced by it.
+    liveness: bool,
 }
 
 /// Native pairing exchange has an independent, deliberately small admission
@@ -2308,11 +2320,13 @@ fn admit_native_http_request(
     let same_class_for_origin = active
         .values()
         .filter(|active_request| {
-            active_request.origin == origin && active_request.stream == is_stream
+            !active_request.liveness
+                && active_request.origin == origin
+                && active_request.stream == is_stream
         })
         .count();
     if active.contains_key(request_id)
-        || active.len() >= NATIVE_HTTP_GLOBAL_REQUEST_LIMIT
+        || native_http_non_liveness_active_count(active) >= NATIVE_HTTP_GLOBAL_REQUEST_LIMIT
         || same_class_for_origin >= per_origin_limit
     {
         return Err("native Station request capacity reached".to_string());
@@ -2323,19 +2337,26 @@ fn admit_native_http_request(
             cancel,
             origin: origin.to_string(),
             stream: is_stream,
+            liveness: false,
         },
     );
     Ok(())
+}
+
+fn native_http_non_liveness_active_count(
+    active: &std::collections::HashMap<String, NativeActiveHttpRequest>,
+) -> usize {
+    active.values().filter(|request| !request.liveness).count()
 }
 
 fn native_http_request_has_capacity(
     active: &std::collections::HashMap<String, NativeActiveHttpRequest>,
     origin: &str,
 ) -> bool {
-    active.len() < NATIVE_HTTP_GLOBAL_REQUEST_LIMIT
+    native_http_non_liveness_active_count(active) < NATIVE_HTTP_GLOBAL_REQUEST_LIMIT
         && active
             .values()
-            .filter(|request| request.origin == origin && !request.stream)
+            .filter(|request| request.origin == origin && !request.stream && !request.liveness)
             .count()
             < NATIVE_HTTP_PER_ORIGIN_REQUEST_LIMIT
 }
@@ -2414,6 +2435,7 @@ fn reserve_native_http_request(
                     cancel: pending.cancel,
                     origin: pending.origin,
                     stream: false,
+                    liveness: false,
                 },
             );
             changed.notify_all();
@@ -2423,6 +2445,73 @@ fn reserve_native_http_request(
             .wait(state)
             .map_err(|_| "native request cancellation state unavailable".to_string())?;
     }
+}
+
+/// The one path the reserved liveness slot serves (station#2327).
+const NATIVE_LIVENESS_PROBE_PATH: &str = "/api/system/identity";
+
+/// Keeps the liveness flag from becoming a general-purpose priority knob: the
+/// slot exists so the health probe can tell a busy Station from an
+/// unreachable one, and a flagged request of any other shape is refused.
+fn validate_native_liveness_probe(
+    method: &str,
+    is_stream_request: bool,
+    url: &url::Url,
+) -> Result<(), NativeCommandError> {
+    if method != "GET" || is_stream_request || url.path() != NATIVE_LIVENESS_PROBE_PATH {
+        return Err(NativeCommandError::new(
+            "invalid_request",
+            "the liveness slot is reserved for the Station identity probe",
+        ));
+    }
+    Ok(())
+}
+
+/// Admission for the connection-health probe's identity read (station#2327).
+///
+/// On a stalled Station the ordinary-read FIFO fills with background polls,
+/// and the probe's identity read used to wait there until its own deadline —
+/// so a slow Station read as an unreachable one. A liveness read instead takes
+/// one reserved slot per origin, above the ordinary and global allowances: it
+/// is admitted immediately when no other liveness read for the origin is
+/// active, and otherwise refused with `transport_capacity`. It never queues —
+/// an answer that arrives after the probe's deadline is worthless — and
+/// because the slot is not counted against the ordinary allowance, ordinary
+/// reads can neither enter it nor be displaced by it.
+fn reserve_native_http_liveness_probe(
+    cancellations: &NativeHttpCancellation,
+    request_id: &str,
+    origin: &str,
+    cancel: std::sync::Arc<std::sync::atomic::AtomicBool>,
+) -> Result<(), NativeCommandError> {
+    let (state_lock, _) = &*cancellations.0;
+    let mut state = state_lock
+        .lock()
+        .map_err(|_| "native request cancellation state unavailable".to_string())?;
+    let duplicate = state.active.contains_key(request_id)
+        || state
+            .pending_reads
+            .iter()
+            .any(|pending| pending.request_id == request_id);
+    let slot_in_use = state
+        .active
+        .values()
+        .any(|active| active.liveness && active.origin == origin);
+    if duplicate || slot_in_use {
+        return Err(native_http_capacity_refusal(
+            "native Station liveness slot is in use".to_string(),
+        ));
+    }
+    state.active.insert(
+        request_id.to_string(),
+        NativeActiveHttpRequest {
+            cancel,
+            origin: origin.to_string(),
+            stream: false,
+            liveness: true,
+        },
+    );
+    Ok(())
 }
 
 fn release_native_http_request(
@@ -2728,14 +2817,26 @@ fn station_native_http_request_blocking(
     } else {
         None
     };
+    if request.liveness_probe {
+        validate_native_liveness_probe(&method, is_stream_request, &parsed_url)?;
+    }
     let cancel = Arc::new(AtomicBool::new(false));
-    reserve_native_http_request(
-        &cancellations,
-        &request_id,
-        &origin,
-        is_stream_request,
-        Arc::clone(&cancel),
-    )?;
+    if request.liveness_probe {
+        reserve_native_http_liveness_probe(
+            &cancellations,
+            &request_id,
+            &origin,
+            Arc::clone(&cancel),
+        )?;
+    } else {
+        reserve_native_http_request(
+            &cancellations,
+            &request_id,
+            &origin,
+            is_stream_request,
+            Arc::clone(&cancel),
+        )?;
+    }
     let result = (|| -> Result<(), NativeHttpBrokerFailure> {
         // Scoped callers enter the capacity queue before we resolve their
         // receipt. That makes an A -> B switch while queued fail closed rather
@@ -12667,6 +12768,7 @@ mod tests {
                     cancel: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
                     origin: origin.to_string(),
                     stream: false,
+                    liveness: false,
                 },
             );
         }
@@ -12727,6 +12829,198 @@ mod tests {
         second.join().unwrap();
     }
 
+    /// Spawns an ordinary read that waits in the FIFO; returns its join handle
+    /// and a receiver that fires once it is admitted.
+    fn spawn_queued_native_read(
+        cancellations: &NativeHttpCancellation,
+        origin: &'static str,
+        request_id: &'static str,
+    ) -> (
+        std::thread::JoinHandle<()>,
+        std::sync::mpsc::Receiver<&'static str>,
+    ) {
+        let (admitted_tx, admitted_rx) = std::sync::mpsc::channel();
+        let queued_cancellations = cancellations.clone();
+        let handle = std::thread::spawn(move || {
+            reserve_native_http_request(
+                &queued_cancellations,
+                request_id,
+                origin,
+                false,
+                std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            )
+            .unwrap();
+            admitted_tx.send(request_id).unwrap();
+        });
+        (handle, admitted_rx)
+    }
+
+    #[test]
+    fn native_http_liveness_probe_is_admitted_past_a_full_read_queue() {
+        // station#2327: the health probe's identity read used to wait in this
+        // FIFO behind every background poll, so a stalled Station timed the
+        // probe out and read as unreachable.
+        let cancellations = NativeHttpCancellation::default();
+        let origin = "https://station.example.test";
+        fill_native_read_allowance(&cancellations, origin);
+        let (queued, _admitted) = spawn_queued_native_read(&cancellations, origin, "queued-read");
+        wait_for_pending_native_reads(&cancellations, 1);
+
+        reserve_native_http_liveness_probe(
+            &cancellations,
+            "liveness-1",
+            origin,
+            std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        )
+        .expect("the liveness read takes the reserved slot without queueing");
+        {
+            let (state_lock, _) = &*cancellations.0;
+            let state = state_lock.lock().unwrap();
+            assert!(state.active.contains_key("liveness-1"));
+            assert_eq!(
+                state.pending_reads.len(),
+                1,
+                "the ordinary read is still queued"
+            );
+        }
+
+        release_native_http_request(&cancellations, "liveness-1").unwrap();
+        release_native_http_request(&cancellations, "seed-0").unwrap();
+        queued.join().unwrap();
+        release_native_http_request(&cancellations, "queued-read").unwrap();
+    }
+
+    #[test]
+    fn native_http_second_concurrent_liveness_probe_is_refused_not_queued() {
+        let cancellations = NativeHttpCancellation::default();
+        let origin = "https://station.example.test";
+        fill_native_read_allowance(&cancellations, origin);
+        let cancel = || std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+
+        reserve_native_http_liveness_probe(&cancellations, "liveness-1", origin, cancel())
+            .expect("the first liveness read is admitted");
+        let refusal =
+            reserve_native_http_liveness_probe(&cancellations, "liveness-2", origin, cancel())
+                .expect_err("only one liveness read per origin at a time");
+        assert_eq!(refusal.code, "transport_capacity");
+        {
+            let (state_lock, _) = &*cancellations.0;
+            let state = state_lock.lock().unwrap();
+            assert!(
+                state.pending_reads.is_empty(),
+                "a liveness read never queues"
+            );
+        }
+
+        // The slot is per origin, and it frees on release.
+        reserve_native_http_liveness_probe(
+            &cancellations,
+            "liveness-other-origin",
+            "https://other.example.test",
+            cancel(),
+        )
+        .expect("another origin has its own slot");
+        release_native_http_request(&cancellations, "liveness-1").unwrap();
+        reserve_native_http_liveness_probe(&cancellations, "liveness-3", origin, cancel())
+            .expect("a released slot can be taken again");
+    }
+
+    #[test]
+    fn native_http_ordinary_reads_never_enter_the_liveness_slot() {
+        let cancellations = NativeHttpCancellation::default();
+        let origin = "https://station.example.test";
+        fill_native_read_allowance(&cancellations, origin);
+        let (queued, admitted) = spawn_queued_native_read(&cancellations, origin, "queued-read");
+        wait_for_pending_native_reads(&cancellations, 1);
+
+        // The reserved slot is free, yet the ordinary read must keep waiting:
+        // its allowance is full.
+        assert!(
+            admitted.recv_timeout(Duration::from_millis(100)).is_err(),
+            "an ordinary read was admitted into the reserved slot"
+        );
+        // Taking and releasing the slot wakes the queue; it must still wait.
+        reserve_native_http_liveness_probe(
+            &cancellations,
+            "liveness-1",
+            origin,
+            std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        )
+        .unwrap();
+        release_native_http_request(&cancellations, "liveness-1").unwrap();
+        assert!(
+            admitted.recv_timeout(Duration::from_millis(100)).is_err(),
+            "releasing the liveness slot admitted an ordinary read"
+        );
+
+        // Only an ordinary release admits it.
+        release_native_http_request(&cancellations, "seed-0").unwrap();
+        assert_eq!(
+            admitted.recv_timeout(Duration::from_secs(2)).unwrap(),
+            "queued-read"
+        );
+        queued.join().unwrap();
+        release_native_http_request(&cancellations, "queued-read").unwrap();
+    }
+
+    #[test]
+    fn native_http_liveness_slot_does_not_displace_ordinary_reads() {
+        let cancellations = NativeHttpCancellation::default();
+        let origin = "https://station.example.test";
+        fill_native_read_allowance(&cancellations, origin);
+        release_native_http_request(&cancellations, "seed-0").unwrap();
+        reserve_native_http_liveness_probe(
+            &cancellations,
+            "liveness-1",
+            origin,
+            std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        )
+        .unwrap();
+
+        // Seven ordinary reads plus the liveness read: the eighth ordinary
+        // read still has its slot and is admitted without waiting.
+        let (queued, admitted) = spawn_queued_native_read(&cancellations, origin, "eighth-read");
+        assert_eq!(
+            admitted.recv_timeout(Duration::from_secs(2)).unwrap(),
+            "eighth-read",
+            "the liveness read took an ordinary slot"
+        );
+        queued.join().unwrap();
+    }
+
+    #[test]
+    fn native_http_request_reads_the_webview_liveness_flag() {
+        // The struct denies unknown fields, so a spelling drift between the
+        // webview transport and this struct would refuse every probe.
+        let flagged: NativeHttpRequest = serde_json::from_str(
+            r#"{"requestId":"probe","url":"https://station.example.test/api/system/identity","method":"GET","livenessProbe":true}"#,
+        )
+        .unwrap();
+        assert!(flagged.liveness_probe);
+        let ordinary: NativeHttpRequest = serde_json::from_str(
+            r#"{"requestId":"read","url":"https://station.example.test/api/tasks","method":"GET"}"#,
+        )
+        .unwrap();
+        assert!(!ordinary.liveness_probe);
+    }
+
+    #[test]
+    fn native_http_liveness_flag_is_refused_outside_the_identity_probe() {
+        let identity = url::Url::parse("https://station.example.test/api/system/identity").unwrap();
+        let other =
+            url::Url::parse("https://station.example.test/api/system/capabilities").unwrap();
+        assert!(validate_native_liveness_probe("GET", false, &identity).is_ok());
+        for (method, is_stream, url) in [
+            ("GET", false, &other),
+            ("POST", false, &identity),
+            ("GET", true, &identity),
+        ] {
+            let refusal = validate_native_liveness_probe(method, is_stream, url)
+                .expect_err("a flagged request of any other shape is refused");
+            assert_eq!(refusal.code, "invalid_request");
+        }
+    }
+
     #[test]
     fn native_http_pending_read_cancellation_wakes_and_removes_the_waiter() {
         let cancellations = NativeHttpCancellation::default();
@@ -12767,6 +13061,7 @@ mod tests {
                         cancel: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
                         origin: format!("https://station-{index}.example.test"),
                         stream: true,
+                        liveness: false,
                     },
                 );
             }
