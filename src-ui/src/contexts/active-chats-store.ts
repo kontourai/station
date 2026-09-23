@@ -203,7 +203,7 @@ export class ActiveChatsStore {
   }
 
   /** The newest record this store holds for a conversation. */
-  getConversationActivity(
+  private getConversationActivity(
     conversationId: string | undefined,
   ): ConversationTurnActivity | undefined {
     return conversationId
