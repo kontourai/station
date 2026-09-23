@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   connect: vi.fn(),
   peerClose: vi.fn(),
   channelClose: vi.fn(),
+  hydrate: vi.fn(),
   transport: vi.fn(async () => new Response('{}')),
 }));
 
@@ -36,7 +37,14 @@ vi.mock('@kontourai/station-connect/self-hosted-browser', () => ({
     close: mocks.channelClose,
   }),
 }));
+vi.mock('../browserRelayApplicationAuthority', () => ({
+  hydrateBrowserRelayApplicationAuthorityScope: mocks.hydrate,
+}));
 
+import {
+  browserRelayAccountScopeKey,
+  getBrowserRelayAccountScope,
+} from '../browserRelayAccountScope';
 import {
   captureBrowserRelayRoute,
   retireBrowserRelayRoute,
@@ -68,6 +76,7 @@ describe('browser broker route preparation', () => {
     });
     mocks.restore.mockResolvedValue(true);
     mocks.connect.mockResolvedValue({ applicationOrigin: origin });
+    mocks.hydrate.mockResolvedValue(null);
   });
   afterEach(() => retireBrowserRelayRoute());
 
@@ -97,5 +106,25 @@ describe('browser broker route preparation', () => {
     ).rejects.toThrow('superseded');
     expect(captureBrowserRelayRoute('route-a', origin, route)).not.toBeNull();
     expect(captureBrowserRelayRoute('route-b', origin, route)).toBeNull();
+  });
+
+  it('keeps B reachable but account-blocked when its independent hydration fails', async () => {
+    await prepareBrowserRelayRoute(connection('route-a'), 1);
+    await vi.waitFor(() => expect(mocks.hydrate).toHaveBeenCalledTimes(1));
+    mocks.hydrate.mockRejectedValueOnce(
+      new Error('account storage unavailable'),
+    );
+    await prepareBrowserRelayRoute(connection('route-b'), 2);
+    await vi.waitFor(() => expect(mocks.hydrate).toHaveBeenCalledTimes(2));
+
+    expect(captureBrowserRelayRoute('route-a', origin, route)).toBeNull();
+    expect(captureBrowserRelayRoute('route-b', origin, route)).not.toBeNull();
+    const accountScopeKey = browserRelayAccountScopeKey({
+      connectionId: 'route-b',
+      applicationOrigin: origin,
+      route,
+      clientOrigin: window.location.origin,
+    });
+    expect(getBrowserRelayAccountScope(accountScopeKey)?.state).toBe('pending');
   });
 });

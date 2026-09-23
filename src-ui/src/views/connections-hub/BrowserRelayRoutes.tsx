@@ -9,6 +9,7 @@ import type { SelfHostedBrokerRouteInvitationV1 } from '@kontourai/station-contr
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
 import { PageRow } from '../../components/PageRow';
+import { retireBrowserRelayRoute } from '../../lib/browserRelayRouteBinding';
 import { usePlatformProfile } from '../../platform/PlatformProfileContext';
 import { BrowserStationTrustApproval } from './BrowserStationTrustApproval';
 
@@ -163,15 +164,24 @@ export function BrowserRelayRoutes() {
   }
 
   async function forget(id: string) {
-    const route = routes.find(
-      (connection) => connection.id === id,
-    )?.brokerRoute;
-    if (!route) return;
+    const connection = routes.find((saved) => saved.id === id);
+    const route = connection?.brokerRoute;
+    if (!connection || !route) return;
     setBusy(true);
     setError(null);
+    // Stop application traffic before any asynchronous custody operation.
+    retireBrowserRelayRoute(id);
     try {
-      removeConnection(id);
+      const { removeBrowserRelayApplicationAuthority } = await import(
+        '../../lib/browserRelayApplicationAuthority'
+      );
+      await removeBrowserRelayApplicationAuthority({
+        connectionId: id,
+        applicationOrigin: connection.url,
+        route,
+      });
       await new BrowserRoutingGrantCustody().forgetRoute(route);
+      removeConnection(id);
     } catch (cause) {
       setError(
         cause instanceof Error ? cause.message : 'Could not forget route.',

@@ -7,6 +7,10 @@ import {
   SelfHostedBrokerBrowserClient,
 } from '@kontourai/station-connect/self-hosted-browser';
 import {
+  beginBrowserRelayAccountScopeChange,
+  browserRelayAccountScopeKey,
+} from './browserRelayAccountScope';
+import {
   beginBrowserRelayPreparation,
   browserRelayBindingIsPublished,
   finishBrowserRelayPreparation,
@@ -110,18 +114,30 @@ export async function prepareBrowserRelayRoute(
     };
     if (!isSelectionCurrent())
       throw new Error('Station route selection was superseded');
-    publishBrowserRelayBinding(next);
-    finishBrowserRelayPreparation(lifetime);
-    const { hydrateBrowserRelayApplicationAuthorityScope } = await import(
-      './browserRelayApplicationAuthority'
-    );
-    await hydrateBrowserRelayApplicationAuthorityScope({
+    const accountScopeKey = browserRelayAccountScopeKey({
       connectionId: connection.id,
       applicationOrigin: connection.url,
       route,
+      clientOrigin: window.location.origin,
     });
-    if (!isSelectionCurrent())
-      throw new Error('Station route selection was superseded');
+    // Account hydration is independent of encrypted route reachability. Fence
+    // any old account scope before B becomes selectable; a failed hydration
+    // keeps B connected but leaves protected work unavailable.
+    beginBrowserRelayAccountScopeChange(accountScopeKey);
+    publishBrowserRelayBinding(next);
+    finishBrowserRelayPreparation(lifetime);
+    void import('./browserRelayApplicationAuthority')
+      .then(({ hydrateBrowserRelayApplicationAuthorityScope }) =>
+        hydrateBrowserRelayApplicationAuthorityScope({
+          connectionId: connection.id,
+          applicationOrigin: connection.url,
+          route,
+        }),
+      )
+      .catch(() => {
+        // The pending account scope remains fail-closed. The encrypted route
+        // itself stays selected and can retry account verification later.
+      });
   } catch (error) {
     lifetime.abort(error);
     retireBrowserRelayRoute(connection.id, selectionEpoch);

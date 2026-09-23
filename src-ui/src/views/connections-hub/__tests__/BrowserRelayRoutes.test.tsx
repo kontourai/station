@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   connections: [] as Array<Record<string, unknown>>,
   addBrokerRoute: vi.fn(),
   removeConnection: vi.fn(),
+  removeAuthority: vi.fn(),
   select: vi.fn(),
   readTrust: vi.fn(),
   approveTrust: vi.fn(),
@@ -52,6 +53,9 @@ vi.mock('@kontourai/station-connect/self-hosted-browser', () => ({
   },
   redeemBrokerRouteInvitation: mocks.redeem,
 }));
+vi.mock('../../../lib/browserRelayApplicationAuthority', () => ({
+  removeBrowserRelayApplicationAuthority: mocks.removeAuthority,
+}));
 
 import { BrowserRelayRoutes } from '../BrowserRelayRoutes';
 
@@ -88,6 +92,8 @@ describe('browser broker route acceptance', () => {
     }
     mocks.connections = [];
     mocks.redeem.mockResolvedValue(undefined);
+    mocks.removeAuthority.mockResolvedValue(undefined);
+    mocks.forget.mockResolvedValue(undefined);
   });
 
   it('refuses an invitation before redemption when Station trust is absent', async () => {
@@ -169,5 +175,65 @@ describe('browser broker route acceptance', () => {
     ).toBeTruthy();
     expect(mocks.addBrokerRoute).not.toHaveBeenCalled();
     expect(mocks.redeem).not.toHaveBeenCalled();
+  });
+
+  it('retires application authority and grant before forgetting the saved route', async () => {
+    const sequence: string[] = [];
+    mocks.connections = [
+      {
+        id: 'saved-route',
+        name: 'Home Station',
+        url: 'https://station.example.test',
+        brokerRoute: {
+          brokerOrigin: 'https://broker.example.test',
+          scope: {
+            stationId: approvedTrust.trust.stationId,
+            enrollmentId: approvedTrust.trust.enrollmentId,
+            routingGeneration: 1,
+            browserOrigin: window.location.origin,
+          },
+        },
+      },
+    ];
+    mocks.removeAuthority.mockImplementation(async () => {
+      sequence.push('authority');
+    });
+    mocks.forget.mockImplementation(async () => {
+      sequence.push('grant');
+    });
+    mocks.removeConnection.mockImplementation(() => {
+      sequence.push('saved-route');
+    });
+    render(<BrowserRelayRoutes />);
+    fireEvent.click(screen.getByRole('button', { name: 'Forget route' }));
+    await waitFor(() =>
+      expect(mocks.removeConnection).toHaveBeenCalledWith('saved-route'),
+    );
+    expect(sequence).toEqual(['authority', 'grant', 'saved-route']);
+  });
+
+  it('keeps a route available for cleanup retry if application custody is unavailable', async () => {
+    mocks.connections = [
+      {
+        id: 'saved-route',
+        name: 'Home Station',
+        url: 'https://station.example.test',
+        brokerRoute: {
+          brokerOrigin: 'https://broker.example.test',
+          scope: {
+            stationId: approvedTrust.trust.stationId,
+            enrollmentId: approvedTrust.trust.enrollmentId,
+            routingGeneration: 1,
+            browserOrigin: window.location.origin,
+          },
+        },
+      },
+    ];
+    mocks.removeAuthority.mockRejectedValue(new Error('Custody unavailable'));
+    render(<BrowserRelayRoutes />);
+    fireEvent.click(screen.getByRole('button', { name: 'Forget route' }));
+    expect(await screen.findByText('Custody unavailable')).toBeTruthy();
+    expect(mocks.forget).not.toHaveBeenCalled();
+    expect(mocks.removeConnection).not.toHaveBeenCalled();
   });
 });
