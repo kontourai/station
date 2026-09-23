@@ -316,7 +316,10 @@ A session spawned before this change has nothing recorded.
   - `settleApprovalPick`, `approvalModeToSend`, `approvalPickUpdate` and
     `approvalPickOverridingDefaults`.
   - The stricter-only rule.
-  - The per-send resend and the stream-position module.
+  - The per-send resend.
+  - The client's "latest position seen" tracker, and
+    `chatSessionKnownEnded`. `streamPosition.ts` keeps only each event's own
+    position, which is what the fold orders by.
 
 ### 4.8 Who may set posture
 
@@ -353,15 +356,27 @@ This is reported as a choice, not a fork.
 
 The acceptance bar is the invariant.
 
-- **Server lifecycle table** (`orchestration-approval-posture.test.ts`). This
-  drives the real `OrchestrationService` and its command path with a fake
-  engine. Devices are modelled as commands carrying their own origin.
-  - The #2449 probe table is re-derived under server order (§7).
-  - It also covers M1, a same-posture re-pick from another device, the
-    ordering of a carried offline pick, materialize, continuation children,
-    and each #2409 Default case.
-- **Route.** `setApprovalMode` is accepted on `/commands` and a malformed mode
-  is refused. The foreground body carries `setApprovalMode` into the executor.
+- **The probe table, end to end**
+  (`src-server/routes/orchestration/__tests__/approval-posture.lifecycle.test.ts`).
+  This drives the real `/chat`, `/chat/:id/continue` and `/commands` routes,
+  the real foreground executor, the real `OrchestrationService` and the real
+  event store, with a fake engine.
+  - The #2449 probe table is re-derived under server order (§7). Devices are
+    modelled as commands. An offline pick is a pick carried on a later send.
+  - Every turn completes, so each continuation is a new child session, and
+    the posture has to carry across the children.
+  - A malformed mode is refused on `/commands`.
+- **The service**
+  (`src-server/services/orchestration/__tests__/approval-posture.test.ts`).
+  This drives the real command path on one live session. It covers:
+  - the recorded event and its sequence;
+  - M1;
+  - a same-posture re-pick from another device;
+  - the ordering of a carried offline pick;
+  - the respawn of a dormant session;
+  - Codex;
+  - refusal on an engine with no approval control;
+  - each #2409 Default case.
 - **Client lifecycle** (`approvalPick.lifecycle.test.tsx`). This goes through
   the real `useChatInput`, send hook, drain, event fold and `ApprovalModeChip`.
   It covers:
