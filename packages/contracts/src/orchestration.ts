@@ -537,9 +537,12 @@ export interface TurnProgressObservation {
  * `startedAt` that no activity or approval can move; `idleLimitMs` fires
  * after a full window with no verified protocol activity measured from the
  * last verified activity (turn start initially), NOT from `startedAt`.
- * Both fields are required on a declaration; a provider that declares no
- * hard budget publishes no declaration at all (honest unknown, never a
- * deadline derived from RPC/discovery timeouts or request metadata).
+ * `idleLimitMs` is required on a declaration. `deadlineAt`/`totalLimitMs`
+ * appear together, and only when a total budget was declared (Muse has no
+ * default total, #2269); an idle-only declaration means no total budget. A
+ * provider with no supervision publishes no declaration at all (honest
+ * unknown, never a deadline derived from RPC/discovery timeouts or request
+ * metadata).
  *
  * Producer rule: only the adapter that owns the child process may publish
  * these facts (on its own `turn.started` metadata), and only the delegation
@@ -550,12 +553,12 @@ export interface TurnSupervisionFacts {
   provider: ProviderSession['provider'];
   turnId: string;
   startedAt: string;
-  /** Absolute wall-clock deadline for the turn (ISO timestamp). */
-  deadlineAt: string;
+  /** Absolute wall-clock deadline (ISO timestamp); only with a declared total. */
+  deadlineAt?: string;
   /** Idle window: full silence of verified protocol activity this long ends the turn. */
   idleLimitMs: number;
-  /** Absolute turn budget in milliseconds; never rescheduled by activity. */
-  totalLimitMs: number;
+  /** Declared absolute turn budget in milliseconds; never rescheduled by activity. */
+  totalLimitMs?: number;
 }
 
 /**
