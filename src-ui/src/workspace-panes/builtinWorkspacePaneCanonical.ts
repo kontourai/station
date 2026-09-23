@@ -31,6 +31,7 @@ import type {
   WorkspacePaneDescriptor,
   WorkspacePaneInstance,
 } from '@kontourai/station-contracts/workspace-pane';
+import { WORKSPACE_PLUGIN_DRAFT_PANE_DESCRIPTOR } from '@kontourai/station-contracts/workspace-plugin-draft-pane';
 import {
   isRegisteredBuiltinWorkspacePaneRendererName,
   BUILTIN_WORKSPACE_PANE_RENDERER_NAMES as SHARED_BUILTIN_WORKSPACE_PANE_RENDERER_NAMES,
@@ -366,6 +367,15 @@ export function isCanonicalBuiltinReadinessDescriptor(
   return sameBuiltinDescriptor(descriptor, WORKSPACE_READINESS_PANE_DESCRIPTOR);
 }
 
+export function isCanonicalBuiltinPluginDraftDescriptor(
+  descriptor: WorkspacePaneDescriptor,
+): boolean {
+  return sameBuiltinDescriptor(
+    descriptor,
+    WORKSPACE_PLUGIN_DRAFT_PANE_DESCRIPTOR,
+  );
+}
+
 export function isCanonicalBuiltinTrustDescriptor(
   descriptor: WorkspacePaneDescriptor,
 ): boolean {
@@ -529,6 +539,11 @@ export function isCanonicalBuiltinWorkspacePaneDescriptor(
   )
     return false;
   if (
+    name === 'workspace-plugin-draft' &&
+    !isCanonicalBuiltinPluginDraftDescriptor(descriptor)
+  )
+    return false;
+  if (
     name === 'workspace-home' &&
     !isCanonicalBuiltinHomeDescriptor(descriptor)
   )
@@ -588,6 +603,7 @@ const BUILTIN_WORKSPACE_PANE_DESCRIPTORS: readonly WorkspacePaneDescriptor[] = [
   WORKSPACE_HOME_PANE_DESCRIPTOR,
   WORKSPACE_LAYOUT_PANE_DESCRIPTOR,
   WORKSPACE_PLAN_PANE_DESCRIPTOR,
+  WORKSPACE_PLUGIN_DRAFT_PANE_DESCRIPTOR,
   WORKSPACE_AGENTS_PANE_DESCRIPTOR,
   WORKSPACE_PULL_REQUEST_PANE_DESCRIPTOR,
   WORKSPACE_READINESS_PANE_DESCRIPTOR,

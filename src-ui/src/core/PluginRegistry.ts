@@ -50,7 +50,7 @@ export interface PluginRegistryConnectionOptions {
   readonly remoteProfile?: boolean;
 }
 
-interface PluginBundleExports {
+export interface PluginBundleExports {
   readonly components?: Record<string, LayoutComponent>;
   readonly default?: LayoutComponent;
   readonly activate?: (
@@ -129,6 +129,56 @@ function readBundleRegistration(name: string): PluginBundleExports | undefined {
   return (window as any).__station_ai_plugins?.[name] as
     | PluginBundleExports
     | undefined;
+}
+
+interface BundleNodeMarker {
+  readonly attribute: string;
+  readonly value: (url: string) => string;
+}
+
+/** Installed bundles: swept wholesale by every registry reload. */
+const INSTALLED_BUNDLE_MARKER: BundleNodeMarker = {
+  attribute: 'data-station-plugin',
+  value: (url) => url,
+};
+
+const DRAFT_NODE_ATTRIBUTE = 'data-station-plugin-draft';
+
+function draftBundleMarker(registrationKey: string): BundleNodeMarker {
+  return { attribute: DRAFT_NODE_ATTRIBUTE, value: () => registrationKey };
+}
+
+/** One executed plugin draft revision and the one way to take it down again. */
+export interface PluginDraftBundle {
+  readonly exports: PluginBundleExports;
+  readonly unload: () => void;
+}
+
+/** The draft counterpart of {@link readBundleRegistration}: a separate global. */
+function readDraftRegistration(
+  registrationKey: string,
+): PluginBundleExports | undefined {
+  return (window as any).__station_ai_plugin_drafts?.[registrationKey] as
+    | PluginBundleExports
+    | undefined;
+}
+
+/**
+ * Removes one draft revision's registration and the nodes it added. Scoped
+ * to that key, so it can never remove an installed plugin's nodes or another
+ * revision's.
+ */
+function unloadDraftBundle(registrationKey: string): void {
+  const drafts = (window as any).__station_ai_plugin_drafts as
+    | Record<string, unknown>
+    | undefined;
+  if (drafts) delete drafts[registrationKey];
+  document
+    .querySelectorAll(`[${DRAFT_NODE_ATTRIBUTE}]`)
+    .forEach((node) => {
+      if (node.getAttribute(DRAFT_NODE_ATTRIBUTE) === registrationKey)
+        node.remove();
+    });
 }
 
 function isLoopbackPluginOrigin(apiBase: string): boolean {
@@ -394,7 +444,7 @@ export class PluginRegistry {
       // Load IIFE bundle via script tag — it registers on window.__station_ai_plugins
       const observedRegistration = await this.loadScript(
         bundleUrl,
-        name,
+        () => readBundleRegistration(name),
         apiBase,
         apiBaseGeneration,
         signal,
@@ -499,10 +549,11 @@ export class PluginRegistry {
    */
   private async loadScript(
     url: string,
-    name: string,
+    readRegistration: () => PluginBundleExports | undefined,
     apiBase: string,
     apiBaseGeneration: number,
     signal: AbortSignal,
+    marker: BundleNodeMarker = INSTALLED_BUNDLE_MARKER,
   ): Promise<PluginBundleExports | undefined> {
     // Plugin-only shared modules are fetched on demand; the bundle's require
     // shim reads them synchronously once it executes, so resolve them first.
@@ -522,22 +573,29 @@ export class PluginRegistry {
       };
     }
     if (isSameOriginBundleUrl(url)) {
-      return await this.executeBundleByUrl(url, name, signal);
+      return await this.executeBundleByUrl(
+        url,
+        readRegistration,
+        signal,
+        marker,
+      );
     }
     return await this.executeBundleInline(
       url,
-      name,
+      readRegistration,
       apiBase,
       apiBaseGeneration,
       signal,
+      marker,
     );
   }
 
   /** Same-origin bundle: the browser fetches it, `'self'` admits it, no nonce. */
   private async executeBundleByUrl(
     url: string,
-    name: string,
+    readRegistration: () => PluginBundleExports | undefined,
     signal: AbortSignal,
+    marker: BundleNodeMarker,
   ): Promise<PluginBundleExports | undefined> {
     // An already-aborted signal never fires `abort`, so without this the
     // script would be appended and run after the caller had given up.
@@ -547,7 +605,7 @@ export class PluginRegistry {
     // Bundles execute in registry order today because each load is awaited;
     // keep that ordering explicit rather than depending on the await alone.
     script.async = false;
-    script.setAttribute('data-station-plugin', url);
+    script.setAttribute(marker.attribute, marker.value(url));
     return await new Promise<PluginBundleExports | undefined>(
       (resolve, reject) => {
         let timer: ReturnType<typeof setTimeout> | undefined;
@@ -589,8 +647,7 @@ export class PluginRegistry {
         // script produced. Reading after the `await` instead would let any
         // later write — including a disowned bundle finishing at last — stand
         // in for it.
-        const handleLoad = () =>
-          settle(undefined, readBundleRegistration(name));
+        const handleLoad = () => settle(undefined, readRegistration());
         const handleError = () => settle(new Error(`Failed to load: ${url}`));
         const handleAbort = () => settle(new Error(`Aborted loading: ${url}`));
         // A script element that never fires either event would leave plugin
@@ -610,10 +667,11 @@ export class PluginRegistry {
   /** Cross-origin bundle (the desktop shell): bytes fetched, run under the nonce. */
   private async executeBundleInline(
     url: string,
-    name: string,
+    readRegistration: () => PluginBundleExports | undefined,
     apiBase: string,
     apiBaseGeneration: number,
     signal: AbortSignal,
+    marker: BundleNodeMarker,
   ): Promise<PluginBundleExports | undefined> {
     const response = await authenticatedFetch(url, {
       signal,
@@ -625,14 +683,14 @@ export class PluginRegistry {
       return undefined;
     const script = document.createElement('script');
     script.textContent = `${source}\n//# sourceURL=${url}`;
-    script.setAttribute('data-station-plugin', url);
+    script.setAttribute(marker.attribute, marker.value(url));
     const nonce = resolveCspNonce();
     if (nonce) script.nonce = nonce;
     document.head.appendChild(script);
     // An inline classic script evaluates synchronously during the append, so
     // this read is the same instant-of-execution capture the URL path gets
     // from its `load` handler.
-    return readBundleRegistration(name);
+    return readRegistration();
   }
 
   private async loadCSS(
@@ -640,6 +698,7 @@ export class PluginRegistry {
     apiBase: string,
     apiBaseGeneration: number,
     signal: AbortSignal,
+    marker: BundleNodeMarker = INSTALLED_BUNDLE_MARKER,
   ): Promise<void> {
     const res = await authenticatedFetch(url, {
       signal,
@@ -651,9 +710,99 @@ export class PluginRegistry {
     if (!css.trim()) return;
     const style = document.createElement('style');
     style.textContent = css;
-    style.setAttribute('data-plugin-css', url);
-    style.setAttribute('data-station-plugin', url);
+    if (marker === INSTALLED_BUNDLE_MARKER)
+      style.setAttribute('data-plugin-css', url);
+    style.setAttribute(marker.attribute, marker.value(url));
     document.head.appendChild(style);
+  }
+
+  /**
+   * Whether this connection executes plugin bundles in this realm at all:
+   * the same decision `initialize` makes for installed bundles, answered
+   * without loading anything. A draft preview (epic #2323 S3) runs in the
+   * installed loopback plugin runtime and nowhere else, so where installed
+   * plugins would be isolated or refused, a draft is refused.
+   */
+  async executesBundlesInProcess(): Promise<boolean> {
+    const apiBase = this.apiBase;
+    if (!apiBase || typeof window === 'undefined') return false;
+    const nativeHost = (await this.platformPromise).platform === 'tauri';
+    if (apiBase !== this.apiBase) return false;
+    if (nativeHost && this.remoteProfile) return false;
+    if (isLoopbackPluginOrigin(apiBase)) return true;
+    return nativeHost && this.allowRemoteBundles;
+  }
+
+  /**
+   * Executes one plugin DRAFT revision (epic #2323 S3) in this realm, through
+   * the exact loader installed bundles use, and returns its exports.
+   *
+   * The caller is the Plugin preview pane, and it calls this only after the
+   * viewing person explicitly chose to run this revision. What differs from
+   * an installed load is identity, never mechanism: the bundle registers on
+   * `window.__station_ai_plugin_drafts[registrationKey]` (so it cannot take
+   * an installed plugin's place), its nodes carry `data-station-plugin-draft`
+   * (so a registry reload does not sweep a running draft's styles, and
+   * unloading a draft cannot touch an installed plugin's), and nothing is
+   * added to this registry's layouts.
+   *
+   * Admission mirrors `loadPlugin`: the registration must be a new object
+   * observed at the instant this load executed.
+   */
+  async loadDraftBundle({
+    bundleUrl,
+    cssUrl,
+    registrationKey,
+    signal,
+  }: {
+    bundleUrl: string;
+    cssUrl?: string;
+    registrationKey: string;
+    signal: AbortSignal;
+  }): Promise<PluginDraftBundle> {
+    if (!(await this.executesBundlesInProcess())) {
+      throw new Error('Plugin drafts do not run on this connection.');
+    }
+    const apiBase = this.apiBase;
+    const apiBaseGeneration = this.apiBaseGeneration;
+    const marker = draftBundleMarker(registrationKey);
+    const read = () => readDraftRegistration(registrationKey);
+    try {
+      if (cssUrl) {
+        await this.loadCSS(cssUrl, apiBase, apiBaseGeneration, signal, marker);
+      }
+      const prior = read();
+      const observed = await this.loadScript(
+        bundleUrl,
+        read,
+        apiBase,
+        apiBaseGeneration,
+        signal,
+        marker,
+      );
+      const exports = observed && observed !== prior ? observed : undefined;
+      if (!exports) throw new Error('The draft did not register its exports.');
+      let disposer: PluginDisposer | undefined;
+      try {
+        disposer = exports.activate?.({ apiBase }) ?? undefined;
+      } catch {
+        throw new Error('The draft failed to activate.');
+      }
+      return {
+        exports,
+        unload: () => {
+          try {
+            disposer?.();
+          } catch {
+            log.api('[PluginRegistry] Plugin draft cleanup failed');
+          }
+          unloadDraftBundle(registrationKey);
+        },
+      };
+    } catch (error) {
+      unloadDraftBundle(registrationKey);
+      throw error;
+    }
   }
 
   /** Reload — re-fetch plugin list and load any new bundles */

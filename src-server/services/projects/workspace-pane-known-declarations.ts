@@ -26,6 +26,10 @@ import {
 } from '@kontourai/station-contracts/workspace-evidence-panels';
 import { WORKSPACE_FILE_PREVIEW_PANE_DESCRIPTOR } from '@kontourai/station-contracts/workspace-file-preview';
 import {
+  createWorkspacePluginDraftPaneInstance,
+  WORKSPACE_PLUGIN_DRAFT_PANE_DESCRIPTOR,
+} from '@kontourai/station-contracts/workspace-plugin-draft-pane';
+import {
   parseWorkspacePaneDescriptor,
   WORKSPACE_PANE_CONTRACT_VERSION,
   type WorkspacePaneDescriptor,
@@ -101,6 +105,18 @@ export const KNOWN_WORKSPACE_PANE_DECLARATIONS = Object.freeze([
       configuration: true,
     },
   }),
+  // Epic #2323 S3. Offered in every Project: opening it runs nothing (the
+  // draft executes only after the viewer explicitly chooses to), and a
+  // Project whose folder holds no plugin.json says so in the pane.
+  declaration(
+    WORKSPACE_PLUGIN_DRAFT_PANE_DESCRIPTOR,
+    {
+      rollout: 'available',
+      distribution: 'enabled',
+      context: { project: 'present' },
+    },
+    createWorkspacePluginDraftPaneInstance,
+  ),
   declaration(
     WORKSPACE_CODING_FILE_BROWSER_PANE_DESCRIPTOR,
     {
