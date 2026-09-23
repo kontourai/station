@@ -82,7 +82,10 @@ import {
 } from './plugin-identity-enumeration.js';
 import { loadPluginProviders } from './plugin-loader.js';
 import { personOnly } from './plugin-person-approval.js';
-import { recordProposalCompletion } from './plugin-proposal-routes.js';
+import {
+  readLifecycleProposalId,
+  recordProposalCompletion,
+} from './plugin-proposal-routes.js';
 
 interface PluginLifecycleRouteDeps {
   /**
@@ -600,7 +603,7 @@ export function registerPluginLifecycleRoutes(
         );
         const proposalOutcome = await recordProposalCompletion(
           deps.proposals,
-          c.req.query('proposalId'),
+          await readLifecycleProposalId(c),
           mutation.value.success === true &&
             mutation.activation?.status !== 'pending',
           { kind: 'update', pluginName: name },
@@ -919,7 +922,7 @@ export function registerPluginLifecycleRoutes(
       }
       const proposalOutcome = await recordProposalCompletion(
         deps.proposals,
-        c.req.query('proposalId'),
+        await readLifecycleProposalId(c),
         mutation.value.success === true &&
           mutation.activation?.status !== 'pending',
         { kind: 'update', pluginName: name },
@@ -1062,7 +1065,7 @@ export function registerPluginLifecycleRoutes(
       }
       const proposalOutcome = await recordProposalCompletion(
         deps.proposals,
-        c.req.query('proposalId'),
+        await readLifecycleProposalId(c),
         mutation.value.success === true &&
           mutation.activation?.status !== 'pending',
         { kind: 'remove', pluginName: name },

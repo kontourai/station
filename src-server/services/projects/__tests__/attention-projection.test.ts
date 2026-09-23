@@ -1,6 +1,7 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { isAcknowledgeableAttentionKind } from '@kontourai/station-contracts/attention';
 import type { Notification } from '@kontourai/station-contracts/notification';
 import { pluginProposalHref } from '@kontourai/station-contracts/plugin';
 import type { ProviderSession } from '@kontourai/station-contracts/provider';
@@ -3131,6 +3132,8 @@ describe('AttentionProjectionService proposed changes and gate reviews', () => {
   });
 });
 
+const OPERATOR = { isOperator: true };
+
 describe('#2323 S5 plugin lifecycle proposal attention', () => {
   const homes: string[] = [];
   afterAll(() => {
@@ -3156,15 +3159,15 @@ describe('#2323 S5 plugin lifecycle proposal attention', () => {
     });
     const projection = makeService({ pluginProposals: store });
 
-    const items = (await projection.list()).items.filter(
+    const items = (await projection.list(undefined, OPERATOR)).items.filter(
       (item) => item.kind === 'plugin-lifecycle-proposal',
     );
     expect(items).toEqual([
       expect.objectContaining({
         id: `plugin-lifecycle-proposal:${proposal.id}`,
         kind: 'plugin-lifecycle-proposal',
-        title: 'Install plugin: /tmp/plugins/pulse',
-        body: 'Adds the pulse pane.',
+        title: 'Install plugin from a local folder',
+        rationale: 'Adds the pulse pane.',
         proposalKind: 'install',
         pluginSource: '/tmp/plugins/pulse',
         author: {
@@ -3179,11 +3182,13 @@ describe('#2323 S5 plugin lifecycle proposal attention', () => {
     expect(items[0]!.openHref).toBe(`/plugins?proposal=${proposal.id}`);
     // Not a session-derived item: the conversation is the tool's report.
     expect(items[0]).not.toHaveProperty('sessionId');
-    expect((await projection.list()).pendingCount).toBe(1);
+    // The agent's words are never Station's own `body` sentence (L1).
+    expect(items[0]).not.toHaveProperty('body');
+    expect((await projection.list(undefined, OPERATOR)).pendingCount).toBe(1);
 
     await store.dismiss(proposal.id);
     expect(
-      (await projection.list()).items.filter(
+      (await projection.list(undefined, OPERATOR)).items.filter(
         (item) => item.kind === 'plugin-lifecycle-proposal',
       ),
     ).toEqual([]);
@@ -3199,19 +3204,63 @@ describe('#2323 S5 plugin lifecycle proposal attention', () => {
     });
     const projection = makeService({ pluginProposals: store });
     expect(
-      (await projection.list()).items.find(
+      (await projection.list(undefined, OPERATOR)).items.find(
         (item) => item.kind === 'plugin-lifecycle-proposal',
       ),
     ).toMatchObject({ title: 'Update plugin: pulse', pluginName: 'pulse' });
     await store.complete(proposal.id, { kind: 'update', pluginName: 'pulse' });
     expect(
-      (await projection.list()).items.filter(
+      (await projection.list(undefined, OPERATOR)).items.filter(
         (item) => item.kind === 'plugin-lifecycle-proposal',
       ),
     ).toEqual([]);
   });
 
+  test('review M6: proposals project for the operator only', async () => {
+    const store = proposalStore();
+    await store.propose({
+      kind: 'update',
+      pluginName: 'pulse',
+      rationale: 'v2.',
+      author: { principal: 'agent' },
+    });
+    const projection = makeService({ pluginProposals: store });
+    const kinds = async (viewer?: { isOperator?: boolean }) =>
+      (await projection.list(undefined, viewer)).items.map((item) => item.kind);
+    expect(await kinds(OPERATOR)).toContain('plugin-lifecycle-proposal');
+    expect(await kinds({ isOperator: false })).not.toContain(
+      'plugin-lifecycle-proposal',
+    );
+    // Unknown viewer fails closed.
+    expect(await kinds()).not.toContain('plugin-lifecycle-proposal');
+    expect(
+      (await projection.list(undefined, { isOperator: false })).pendingCount,
+    ).toBe(0);
+  });
+
+  test('a git proposal’s title names only the host it would come from', async () => {
+    const store = proposalStore();
+    await store.propose({
+      kind: 'install',
+      source: 'https://github.com/org/pulse',
+      rationale: 'r',
+      author: { principal: 'agent' },
+    });
+    const projection = makeService({ pluginProposals: store });
+    expect(
+      (await projection.list(undefined, OPERATOR)).items.find(
+        (item) => item.kind === 'plugin-lifecycle-proposal',
+      ),
+    ).toMatchObject({
+      title: 'Install plugin from github.com',
+      pluginSource: 'https://github.com/org/pulse',
+    });
+  });
+
   test('a proposal cannot be acknowledged away; only completing or dismissing resolves it', async () => {
+    expect(isAcknowledgeableAttentionKind('plugin-lifecycle-proposal')).toBe(
+      false,
+    );
     const store = proposalStore();
     const { proposal } = await store.propose({
       kind: 'remove',
@@ -3253,7 +3302,7 @@ describe('#2323 S5 plugin lifecycle proposal attention', () => {
       registry,
     );
     expect(
-      (await projection.list(hosted)).items.filter(
+      (await projection.list(hosted, OPERATOR)).items.filter(
         (item) => item.kind === 'plugin-lifecycle-proposal',
       ),
     ).toEqual([]);

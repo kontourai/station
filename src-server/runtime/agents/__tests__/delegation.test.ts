@@ -1,5 +1,6 @@
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import { describe, expect, test } from 'vitest';
+import { attestProposalSourceContext } from '../../../services/plugins/plugin-proposal-provenance.js';
 import { wrapDelegationAwareTools } from '../../mcp/mcp-manager.js';
 import {
   createChildDelegationContext,
@@ -340,7 +341,13 @@ describe('delegation helpers', () => {
 
       expect(result).toEqual({
         name: 'pulse',
-        _sourceContext: { agentSlug: 'planner', conversationId: 'conv-parent' },
+        _sourceContext: {
+          agentSlug: 'planner',
+          conversationId: 'conv-parent',
+          // #2323 S5 review M3: the route verifies this to record the
+          // report as Station's own rather than the caller's.
+          attestation: attestProposalSourceContext('planner', 'conv-parent'),
+        },
       });
     },
   );

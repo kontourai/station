@@ -140,6 +140,7 @@ const pluginProposalSourceContextSchema = z
   .object({
     agentSlug: z.string().trim().min(1).max(128).optional(),
     conversationId: z.string().trim().min(1).max(256).optional(),
+    attestation: z.string().min(1).max(128).optional(),
   })
   .strict()
   .optional();

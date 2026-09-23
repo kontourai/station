@@ -541,43 +541,90 @@ describe('Registry Routes', () => {
    * the auth boundary binds it for station-control (that binding is proven
    * end to end in `plugin-person-approval.routes.test.ts`).
    */
-  test('#2323 S5: registry plugin install and removal refuse the internal agent caller on both catalog faces', async () => {
-    const { app } = setup();
-    const outer = new Hono();
-    outer.use('*', async (c, next) => {
-      setRuntimeAuthenticatedRequestPrincipal(c.req.raw, {
-        kind: 'internal',
+  test.each([
+    [
+      'internal agent caller',
+      {
+        kind: 'internal' as const,
         credential: 'internal-token',
         authority: undefined,
-        source: 'bearer',
-        locality: 'home-possession',
+        source: 'bearer' as const,
+        locality: 'home-possession' as const,
+      },
+    ],
+    [
+      // Review M5: another Station's delegation grant is not a person.
+      'delegated Station',
+      {
+        kind: 'credential' as const,
+        credential: 'delegation-credential',
+        authority: 'device-credential' as const,
+        deviceId: 'device-delegation',
+        deviceKind: 'delegation' as const,
+        source: 'bearer' as const,
+      },
+    ],
+  ])(
+    '#2323 S5: registry plugin install and removal refuse the %s on every catalog face',
+    async (_label, principal) => {
+      // Review M1: a plugin-provided layout's removal uninstalls the plugin.
+      const pluginLayoutCatalog = {
+        getLayout: (id: string) =>
+          id === 'plugin-layout'
+            ? { id, source: 'plugin', plugin: 'p1' }
+            : undefined,
+      } as never;
+      const { app } = setup(pluginLayoutCatalog);
+      const outer = new Hono();
+      outer.use('*', async (c, next) => {
+        setRuntimeAuthenticatedRequestPrincipal(c.req.raw, principal);
+        await next();
       });
-      await next();
-    });
-    outer.route('/', app);
-    vi.mocked(installPluginFromSource).mockClear();
-    vi.mocked(uninstallInstalledPlugin).mockClear();
+      outer.route('/', app);
+      vi.mocked(installPluginFromSource).mockClear();
+      vi.mocked(uninstallInstalledPlugin).mockClear();
 
-    for (const [method, path, body] of [
-      ['POST', '/plugins/install', { id: 'p1' }],
-      ['POST', '/agents/install', { id: 'p1' }],
-      ['DELETE', '/plugins/p1', undefined],
-      ['DELETE', '/agents/p1', undefined],
-    ] as const) {
-      const response = await outer.request(path, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        ...(body ? { body: JSON.stringify(body) } : {}),
-      });
-      expect({ path, method, status: response.status }).toEqual({
-        path,
-        method,
-        status: 403,
-      });
-      expect((await json(response)).code).toBe('person-approval-required');
-    }
-    expect(installPluginFromSource).not.toHaveBeenCalled();
-    expect(uninstallInstalledPlugin).not.toHaveBeenCalled();
+      for (const [method, path, body] of [
+        ['POST', '/plugins/install', { id: 'p1' }],
+        ['POST', '/agents/install', { id: 'p1' }],
+        ['DELETE', '/plugins/p1', undefined],
+        ['DELETE', '/agents/p1', undefined],
+        ['DELETE', '/layouts/plugin-layout', undefined],
+      ] as const) {
+        const response = await outer.request(path, {
+          method,
+          headers: { 'Content-Type': 'application/json' },
+          ...(body ? { body: JSON.stringify(body) } : {}),
+        });
+        expect({ path, method, status: response.status }).toEqual({
+          path,
+          method,
+          status: 403,
+        });
+        expect((await json(response)).code).toBe('person-approval-required');
+      }
+      expect(installPluginFromSource).not.toHaveBeenCalled();
+      expect(uninstallInstalledPlugin).not.toHaveBeenCalled();
+    },
+  );
+
+  test('#2323 S5 review M1: a person removing a plugin-provided layout still reaches the uninstall', async () => {
+    const pluginLayoutCatalog = {
+      getLayout: (id: string) =>
+        id === 'plugin-layout'
+          ? { id, source: 'plugin', plugin: 'p1' }
+          : undefined,
+    } as never;
+    const { app } = setup(pluginLayoutCatalog);
+    vi.mocked(uninstallInstalledPlugin).mockClear();
+    const response = await app.request('/layouts/plugin-layout', {
+      method: 'DELETE',
+    });
+    expect(response.status).not.toBe(403);
+    expect(uninstallInstalledPlugin).toHaveBeenCalledWith(
+      'p1',
+      expect.any(Object),
+    );
   });
 
   test('DELETE /plugins/:id removes the installed plugin through the shared lifecycle path', async () => {

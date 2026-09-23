@@ -346,6 +346,11 @@ describe('station-docs plugin-authoring topic', () => {
     // A proposal is not an install, and the prose must not blur that.
     expect(block).toContain('changes nothing else');
     expect(block).not.toMatch(/propos\w*[^.]*\binstalls?\b[^.]*\bfor\b/i);
+    // Review H1: the refusals are scoped to Station's agent tools, and the
+    // same-user shell limit is said plainly rather than implied away.
+    expect(block).toContain("Those refusals cover Station's agent tools only.");
+    expect(block).toMatch(/not a sandbox/);
+    expect(block).toMatch(/same operating-system user/);
     const assistant = findStationDocsTopic('builtin-assistant')!.body;
     expect(assistant).toContain('It proposes instead');
   });

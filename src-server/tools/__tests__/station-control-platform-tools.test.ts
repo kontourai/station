@@ -419,6 +419,9 @@ describe('station-control platform tools (characterization)', () => {
         const { createPluginProposalRoutes } = await import(
           '../../routes/plugins/plugin-proposal-routes.js'
         );
+        const { LOCAL_OPERATOR_PRINCIPAL_ID } = await import(
+          '../../services/identity/principal-resolver.js'
+        );
         const noop = () => {};
         const logger = {
           info: noop,
@@ -453,7 +456,17 @@ describe('station-control platform tools (characterization)', () => {
         );
         app.route(
           '/api/plugin-proposals',
-          createPluginProposalRoutes({ proposals, pluginsDir, logger }),
+          createPluginProposalRoutes({
+            proposals,
+            pluginsDir,
+            logger,
+            // station-control's internal caller resolves as the operator.
+            resolvePrincipal: () => ({
+              id: LOCAL_OPERATOR_PRINCIPAL_ID,
+              kind: 'human',
+              display: 'Operator',
+            }),
+          }),
         );
         fetchMock.mockImplementation(async (input, init) => {
           const url = new URL(String(input));

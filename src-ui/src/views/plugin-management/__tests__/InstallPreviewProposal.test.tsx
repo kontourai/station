@@ -21,7 +21,12 @@ function proposal(
     kind: 'install',
     source: '/tmp/pulse',
     rationale: 'Adds the pulse pane.',
-    author: { principal: 'agent', agentSlug: 'station', conversationId: 'c1' },
+    author: {
+      principal: 'agent',
+      agentSlug: 'station',
+      conversationId: 'c1',
+      reportedBy: 'runtime',
+    },
     createdAt: '2026-09-22T00:00:00.000Z',
     updatedAt: '2026-09-22T00:00:00.000Z',
     proposedContentDigest: DIGEST_AT_PROPOSAL,
@@ -57,7 +62,13 @@ test('names the proposing agent and conversation, and shows its rationale', () =
   renderPreview(DIGEST_AT_PROPOSAL, proposal());
   const block = screen.getByTestId('install-preview-proposal');
   expect(block.textContent).toContain('Proposed by station in conversation c1');
-  expect(block.textContent).toContain('Adds the pulse pane.');
+  expect(
+    screen.getByTestId('install-preview-proposal-summary-rationale')
+      .textContent,
+  ).toBe('The agent wrote: \u201cAdds the pulse pane.\u201d');
+  expect(
+    screen.getByTestId('install-preview-proposal-summary-path').textContent,
+  ).toBe('/tmp/pulse');
   expect(screen.queryByTestId('install-preview-proposal-changed')).toBeNull();
 });
 
@@ -81,4 +92,37 @@ test('says it cannot tell when nothing was recorded at proposal time', () => {
 test('an ordinary preview shows no proposal block', () => {
   renderPreview(DIGEST_NOW, null);
   expect(screen.queryByTestId('install-preview-proposal')).toBeNull();
+});
+
+test('review M4: a folder too large to record says so rather than implying nothing changed', () => {
+  renderPreview(
+    DIGEST_NOW,
+    proposal({
+      proposedContentDigest: undefined,
+      proposedContentDigestUnavailable: 'too-large',
+    }),
+  );
+  expect(
+    screen.getByTestId('install-preview-proposal-unrecorded').textContent,
+  ).toContain('too large');
+});
+
+test('review M2: a git source shows its host and repository path apart', () => {
+  renderPreview(
+    undefined,
+    proposal({
+      source: 'git@evil.example:github.com/org/pulse',
+      proposedContentDigest: undefined,
+      proposedContentDigestUnavailable: 'remote-source',
+    }),
+  );
+  expect(
+    screen.getByTestId('install-preview-proposal-summary-host').textContent,
+  ).toBe('evil.example');
+  expect(
+    screen.getByTestId('install-preview-proposal-summary-path').textContent,
+  ).toBe('github.com/org/pulse');
+  expect(
+    screen.getByTestId('install-preview-proposal-unrecorded').textContent,
+  ).toContain('git source');
 });

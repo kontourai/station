@@ -22,8 +22,14 @@ import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { readJson } from '../../../__test-utils__/read-json.js';
 import { configureRuntimeHttp } from '../../../runtime/bootstrap/runtime-http.js';
+import { getRuntimeAuthenticatedRequestPrincipal } from '../../../security/runtime-request-security.js';
+import {
+  LOCAL_OPERATOR_PRINCIPAL_ID,
+  PrincipalUnresolvedError,
+} from '../../../services/identity/principal-resolver.js';
 import type { EventBus } from '../../../services/orchestration/event-bus.js';
 import { PluginLifecycleProposalService } from '../../../services/plugins/plugin-lifecycle-proposals.js';
+import { attestProposalSourceContext } from '../../../services/plugins/plugin-proposal-provenance.js';
 import {
   getInternalApiToken,
   INTERNAL_API_TOKEN_HEADER,
@@ -32,8 +38,23 @@ import {
 import { registerPluginInstallRoutes } from '../plugin-install-routes.js';
 import { registerPluginLifecycleRoutes } from '../plugin-lifecycle-routes.js';
 import { PLUGIN_PERSON_APPROVAL_REQUIRED } from '../plugin-person-approval.js';
-import { createPluginProposalRoutes } from '../plugin-proposal-routes.js';
+import {
+  createPluginProposalRoutes,
+  PROPOSAL_DIGEST_MAX_ENTRIES,
+} from '../plugin-proposal-routes.js';
 
+const observeTree = vi.hoisted(() => vi.fn());
+vi.mock(
+  '@kontourai/station-shared/plugin-tree-digest',
+  async (importOriginal) => {
+    const actual =
+      await importOriginal<
+        typeof import('@kontourai/station-shared/plugin-tree-digest')
+      >();
+    observeTree.mockImplementation(actual.observePluginTreeAsync);
+    return { ...actual, observePluginTreeAsync: observeTree };
+  },
+);
 const installPluginFromSource = vi.hoisted(() => vi.fn());
 const uninstallInstalledPlugin = vi.hoisted(() => vi.fn());
 const recoverInstalledPlugin = vi.hoisted(() => vi.fn());
@@ -51,6 +72,58 @@ vi.mock(
 );
 
 const OPERATOR = 'operator-credential-for-s5';
+/** Another Station's delegation grant: not a person (review M5). */
+const DELEGATION = 'delegation-device-credential-for-s5';
+/** A person's paired device that is not the operator (review M6). */
+const MEMBER_DEVICE = 'member-device-credential-for-s5';
+
+const CREDENTIALS: Record<
+  string,
+  {
+    authority: 'operator-credential' | 'device-credential';
+    deviceId?: string;
+    deviceKind?: 'device' | 'delegation';
+  }
+> = {
+  [OPERATOR]: { authority: 'operator-credential' },
+  [DELEGATION]: {
+    authority: 'device-credential',
+    deviceId: 'device-delegation',
+    deviceKind: 'delegation',
+  },
+  [MEMBER_DEVICE]: {
+    authority: 'device-credential',
+    deviceId: 'device-member',
+    deviceKind: 'device',
+  },
+};
+
+/**
+ * Stand-in for the orchestration principal resolver, reading the principal
+ * the real auth boundary bound: the internal caller and the operator
+ * credential are the operator (as production resolves them, by
+ * home-possession locality and verified operator credential); a paired
+ * device is its own principal.
+ */
+function principalFor(request: Request) {
+  const principal = getRuntimeAuthenticatedRequestPrincipal(request);
+  if (
+    principal?.kind === 'internal' ||
+    principal?.authority === 'operator-credential'
+  )
+    return {
+      id: LOCAL_OPERATOR_PRINCIPAL_ID,
+      kind: 'human' as const,
+      display: 'Operator',
+    };
+  if (principal?.deviceId)
+    return {
+      id: `human:device:${principal.deviceId}`,
+      kind: 'human' as const,
+      display: principal.deviceId,
+    };
+  throw new PrincipalUnresolvedError('no principal');
+}
 
 type TestBindings = HttpBindings & {
   incoming: HttpBindings['incoming'] & {
@@ -125,9 +198,15 @@ function createHarness(home: string) {
     logger,
     eventBus: { emit() {} } as unknown as EventBus,
     security: {
-      verifyCredential: (candidate: string) => candidate === OPERATOR,
+      verifyCredential: (candidate: string) => candidate in CREDENTIALS,
       resolveGrantedScope: (candidate: string) =>
-        candidate === OPERATOR ? DEFAULT_GRANT_PAIRING_SCOPE : undefined,
+        candidate in CREDENTIALS ? DEFAULT_GRANT_PAIRING_SCOPE : undefined,
+      resolveCredentialAuthority: (candidate: string) =>
+        CREDENTIALS[candidate]?.authority,
+      resolveCredentialDeviceId: (candidate: string) =>
+        CREDENTIALS[candidate]?.deviceId,
+      resolveCredentialDeviceKind: (candidate: string) =>
+        CREDENTIALS[candidate]?.deviceKind,
       allowedOrigins: [],
     },
   } as Parameters<typeof configureRuntimeHttp>[0]);
@@ -155,10 +234,11 @@ function createHarness(home: string) {
       proposals,
       pluginsDir: join(home, 'plugins'),
       logger,
+      resolvePrincipal: (c) => principalFor(c.req.raw),
     }),
   );
   const request = (
-    caller: 'internal' | 'person',
+    caller: 'internal' | 'person' | 'delegation' | 'member',
     method: string,
     path: string,
     body?: unknown,
@@ -174,7 +254,15 @@ function createHarness(home: string) {
                 [INTERNAL_API_TOKEN_HEADER]: getInternalApiToken(),
                 [INTERNAL_PROXY_CALLER_HEADER]: 'local',
               }
-            : { Authorization: `Bearer ${OPERATOR}` }),
+            : {
+                Authorization: `Bearer ${
+                  caller === 'delegation'
+                    ? DELEGATION
+                    : caller === 'member'
+                      ? MEMBER_DEVICE
+                      : OPERATOR
+                }`,
+              }),
         },
         ...(body === undefined ? {} : { body: JSON.stringify(body) }),
       },
@@ -313,11 +401,13 @@ describe('#2323 S5: plugin lifecycle routes refuse Station’s agent caller', ()
     });
     expect(created.status).toBe(201);
     const { proposal } = await readJson(created);
-    // The principal is derived from the request, the rest is the report.
+    // The principal is derived from the request, the rest is the report,
+    // and a report with no runtime attestation is marked as the caller's.
     expect(proposal.author).toEqual({
       principal: 'agent',
       agentSlug: 'station',
       conversationId: 'conv-1',
+      reportedBy: 'caller',
     });
 
     const refused = await request(
@@ -351,7 +441,182 @@ describe('#2323 S5: plugin lifecycle routes refuse Station’s agent caller', ()
     expect(created.status).toBe(201);
     expect((await readJson(created)).proposal.author).toEqual({
       principal: 'person',
+      principalId: LOCAL_OPERATOR_PRINCIPAL_ID,
     });
+  });
+
+  /**
+   * Review M5: another Station's delegation grant is not a person. It is
+   * refused on every verb exactly as Station's own agent caller is, while a
+   * person's paired device reaches the handler.
+   */
+  test('a delegated Station is refused on install, recover, update and remove; a person’s device is not', async () => {
+    const { home, pluginsDir, root } = makeHome();
+    const source = join(root, 'src-plugin');
+    writePlugin(source, 'proposed-plugin');
+    writePlugin(join(pluginsDir, 'installed-plugin'), 'installed-plugin');
+    const { request } = createHarness(home);
+    const cases = [
+      ['POST', '/api/plugins/install', { source, consent: CONSENT }],
+      [
+        'POST',
+        '/api/plugins/installed-plugin/recover',
+        {
+          recoveryRevision: `sha256:${'b'.repeat(64)}`,
+          consent: { ...CONSENT, grantRevision: 'grant-1' },
+        },
+      ],
+      ['POST', '/api/plugins/installed-plugin/update', undefined],
+      ['DELETE', '/api/plugins/installed-plugin', undefined],
+    ] as const;
+    for (const [method, path, body] of cases) {
+      const refused = await request('delegation', method, path, body);
+      expect({ path, status: refused.status }).toEqual({ path, status: 403 });
+      expect((await readJson(refused)).code).toBe(
+        PLUGIN_PERSON_APPROVAL_REQUIRED,
+      );
+    }
+    expect(installPluginFromSource).not.toHaveBeenCalled();
+    expect(recoverInstalledPlugin).not.toHaveBeenCalled();
+    expect(uninstallInstalledPlugin).not.toHaveBeenCalled();
+
+    for (const [method, path, body] of cases) {
+      const reached = await request('member', method, path, body);
+      expect({ path, status: reached.status }).not.toEqual({
+        path,
+        status: 403,
+      });
+    }
+    expect(installPluginFromSource).toHaveBeenCalledTimes(1);
+    expect(uninstallInstalledPlugin).toHaveBeenCalledTimes(1);
+  });
+
+  /** Review M3: provenance says whether Station's runtime vouched for it. */
+  test('an attested agent report is recorded as runtime; a forged or missing attestation as caller', async () => {
+    const { home, pluginsDir } = makeHome();
+    for (const name of ['plugin-a', 'plugin-b', 'plugin-c'])
+      writePlugin(join(pluginsDir, name), name);
+    const { request } = createHarness(home);
+    const propose = async (pluginName: string, context: object) =>
+      (
+        await readJson(
+          await request('internal', 'POST', '/api/plugin-proposals', {
+            kind: 'update',
+            pluginName,
+            rationale: 'r',
+            _sourceContext: context,
+          }),
+        )
+      ).proposal.author;
+
+    expect(
+      await propose('plugin-a', {
+        agentSlug: 'station',
+        conversationId: 'c1',
+        attestation: attestProposalSourceContext('station', 'c1'),
+      }),
+    ).toMatchObject({ agentSlug: 'station', reportedBy: 'runtime' });
+    // An attestation for a different agent does not vouch for this one.
+    expect(
+      await propose('plugin-b', {
+        agentSlug: 'impostor',
+        conversationId: 'c1',
+        attestation: attestProposalSourceContext('station', 'c1'),
+      }),
+    ).toMatchObject({ agentSlug: 'impostor', reportedBy: 'caller' });
+    expect(
+      await propose('plugin-c', {
+        agentSlug: 'station',
+        conversationId: 'c1',
+        attestation: 'x'.repeat(43),
+      }),
+    ).toMatchObject({ reportedBy: 'caller' });
+  });
+});
+
+/**
+ * Review M6: proposals are addressed to the operator. A person's paired
+ * device that is not the operator cannot list, read, or dismiss them, and an
+ * update or remove proposal answers it the same whether or not the plugin is
+ * installed, so it cannot probe the installed inventory.
+ */
+describe('#2323 S5: proposals are the operator’s', () => {
+  test('a non-operator gets 404 for the list and for one proposal; the operator reads both', async () => {
+    const { home, pluginsDir } = makeHome();
+    writePlugin(join(pluginsDir, 'installed-plugin'), 'installed-plugin');
+    const { request } = createHarness(home);
+    const { proposal } = await readJson(
+      await request('internal', 'POST', '/api/plugin-proposals', {
+        kind: 'remove',
+        pluginName: 'installed-plugin',
+        rationale: 'Unused.',
+      }),
+    );
+
+    for (const path of [
+      '/api/plugin-proposals',
+      `/api/plugin-proposals/${proposal.id}`,
+    ]) {
+      const hidden = await request('member', 'GET', path);
+      expect({ path, status: hidden.status }).toEqual({ path, status: 404 });
+    }
+    const dismiss = await request(
+      'member',
+      'POST',
+      `/api/plugin-proposals/${proposal.id}/dismiss`,
+    );
+    expect(dismiss.status).toBe(404);
+
+    const list = await readJson(
+      await request('person', 'GET', '/api/plugin-proposals'),
+    );
+    expect(list.proposals.map((entry: { id: string }) => entry.id)).toEqual([
+      proposal.id,
+    ]);
+    expect(
+      (
+        await readJson(
+          await request(
+            'person',
+            'GET',
+            `/api/plugin-proposals/${proposal.id}`,
+          ),
+        )
+      ).proposal.id,
+    ).toBe(proposal.id);
+  });
+
+  test('a non-operator’s update or remove proposal answers identically for installed and absent plugins', async () => {
+    const { home, pluginsDir } = makeHome();
+    writePlugin(join(pluginsDir, 'installed-plugin'), 'installed-plugin');
+    const { request, proposals } = createHarness(home);
+    const answer = async (pluginName: string) => {
+      const response = await request(
+        'member',
+        'POST',
+        '/api/plugin-proposals',
+        {
+          kind: 'remove',
+          pluginName,
+          rationale: 'r',
+        },
+      );
+      return { status: response.status, body: await readJson(response) };
+    };
+    const installed = await answer('installed-plugin');
+    const absent = await answer('absent-plugin');
+    expect(installed).toEqual(absent);
+    expect(installed.status).toBe(404);
+    expect(proposals.listOpen()).toEqual([]);
+    // The operator still gets the precise answer.
+    const operator = await request('person', 'POST', '/api/plugin-proposals', {
+      kind: 'remove',
+      pluginName: 'absent-plugin',
+      rationale: 'r',
+    });
+    expect((await readJson(operator)).error).toContain(
+      "No installed plugin is named 'absent-plugin'",
+    );
   });
 });
 
@@ -438,6 +703,30 @@ describe('#2323 S5: completing a proposal through the ordinary routes', () => {
     expect(proposals.get(proposal.id)?.status).toBe('open');
   });
 
+  test('review L3: a removal names its proposal in the JSON body, as install does', async () => {
+    const { home, pluginsDir } = makeHome();
+    writePlugin(join(pluginsDir, 'installed-plugin'), 'installed-plugin');
+    const { request, proposals } = createHarness(home);
+    const { proposal } = await readJson(
+      await request('internal', 'POST', '/api/plugin-proposals', {
+        kind: 'remove',
+        pluginName: 'installed-plugin',
+        rationale: 'Unused.',
+      }),
+    );
+    const removed = await request(
+      'person',
+      'DELETE',
+      '/api/plugins/installed-plugin',
+      { proposalId: proposal.id },
+    );
+    expect((await readJson(removed)).proposal).toEqual({
+      id: proposal.id,
+      status: 'completed',
+    });
+    expect(proposals.get(proposal.id)?.status).toBe('completed');
+  });
+
   test('a removal that names the proposal marks it completed', async () => {
     const { home, pluginsDir } = makeHome();
     writePlugin(join(pluginsDir, 'installed-plugin'), 'installed-plugin');
@@ -515,6 +804,46 @@ describe('#2323 S5: the proposal digest is the preview digest', () => {
       rationale: 'Oops.',
     });
     expect(refused.status).toBe(400);
-    expect((await readJson(refused)).code).toBe('manifest-missing');
+    const refusedBody = await readJson(refused);
+    expect(refusedBody.code).toBe('manifest-missing');
+    // Review M4: the same code and words validate answers at the same tier,
+    // so a proposal reveals nothing about a host path validate does not.
+    expect(refusedBody.error).toBe(
+      'Not a valid plugin: plugin.json not found in the folder.',
+    );
+  });
+
+  test('review M4: a folder beyond the walk bounds records no digest and says why', async () => {
+    const { home, root } = makeHome();
+    const source = join(root, 'huge-plugin');
+    writePlugin(source, 'huge-plugin');
+    mkdirSync(join(source, 'many'));
+    for (let index = 0; index <= PROPOSAL_DIGEST_MAX_ENTRIES; index++)
+      writeFileSync(join(source, 'many', `f${index}`), '');
+    const { request } = createHarness(home);
+    const { proposal } = await readJson(
+      await request('internal', 'POST', '/api/plugin-proposals', {
+        kind: 'install',
+        source,
+        rationale: 'Big.',
+      }),
+    );
+    expect(proposal).not.toHaveProperty('proposedContentDigest');
+    expect(proposal.proposedContentDigestUnavailable).toBe('too-large');
+  });
+
+  test('review M4: a duplicate or capped proposal is answered before any digest walk', async () => {
+    const { home, root } = makeHome();
+    const source = join(root, 'src-plugin');
+    writePlugin(source, 'digest-plugin');
+    const { request } = createHarness(home);
+    const body = { kind: 'install', source, rationale: 'r' };
+    await request('internal', 'POST', '/api/plugin-proposals', body);
+    observeTree.mockClear();
+    const again = await readJson(
+      await request('internal', 'POST', '/api/plugin-proposals', body),
+    );
+    expect(again.deduplicated).toBe(true);
+    expect(observeTree).not.toHaveBeenCalled();
   });
 });

@@ -18,9 +18,17 @@
  *   (normalized source, or plugin name) is returned instead of a second one,
  *   whoever asked, so repeating a tool call cannot flood the inbox.
  * - **Capped.** At most {@link MAX_OPEN_PROPOSALS_PER_AUTHOR} open proposals
- *   per author (conversation when known, else agent, else principal) and
- *   {@link MAX_OPEN_PROPOSALS} open in total. Resolved records are retained
- *   up to {@link MAX_RETAINED_RESOLVED_PROPOSALS}, newest first.
+ *   per conversation, {@link MAX_OPEN_PROPOSALS_PER_ENGINE} per engine (a
+ *   runtime-verified agent, all self-reported agents together, or one
+ *   person by principal id), and {@link MAX_OPEN_PROPOSALS} open in total,
+ *   so one engine cannot fill the inbox. Resolved records are retained up to
+ *   {@link MAX_RETAINED_RESOLVED_PROPOSALS}, newest first.
+ * - **Strict sources (#2323 S5 review M2).** See
+ *   {@link resolvePluginProposalSource}: no credentials, query, fragment,
+ *   non-ASCII or IP/private hosts, and no invisible format characters in a
+ *   source or rationale. Git sources are stored normalized, and deduplicate
+ *   by host (case-insensitive) and path (without `.git` or a trailing
+ *   slash).
  * - **Serialized read-decide-write.** Every mutation runs inside one file
  *   mutation lock around read → decide → write, the same shape
  *   `ProposedChangeService` uses, so a concurrent create and dismiss cannot
@@ -34,6 +42,7 @@ import type {
   PluginLifecycleProposal,
   PluginLifecycleProposalAuthor,
   PluginLifecycleProposalKind,
+  PluginProposalDigestUnavailableReason,
 } from '@kontourai/station-contracts/plugin';
 import {
   acquireFileMutationLockAsync,
@@ -46,10 +55,11 @@ import { resolvePluginValidateSource } from './plugin-validate-source.js';
 export const PLUGIN_LIFECYCLE_PROPOSALS_FILE =
   'plugin-lifecycle-proposals.json';
 export const MAX_OPEN_PROPOSALS_PER_AUTHOR = 5;
-export const MAX_OPEN_PROPOSALS = 50;
-export const MAX_RETAINED_RESOLVED_PROPOSALS = 100;
-export const MAX_PROPOSAL_RATIONALE_LENGTH = 2000;
-export const MAX_PROPOSAL_SOURCE_LENGTH = 4096;
+export const MAX_OPEN_PROPOSALS_PER_ENGINE = 15;
+const MAX_OPEN_PROPOSALS = 50;
+const MAX_RETAINED_RESOLVED_PROPOSALS = 100;
+const MAX_PROPOSAL_RATIONALE_LENGTH = 2000;
+const MAX_PROPOSAL_SOURCE_LENGTH = 4096;
 
 interface PluginLifecycleProposalStoreData {
   proposals: PluginLifecycleProposal[];
@@ -90,7 +100,13 @@ export class PluginProposalInvalidError extends Error {
 
 export type PluginProposalSource =
   | { kind: 'local'; source: string }
-  | { kind: 'git'; source: string };
+  | {
+      kind: 'git';
+      /** The normalized source Station stores and a person installs. */
+      source: string;
+      host: string;
+      path: string;
+    };
 
 function hasControlCharacter(value: string): boolean {
   return [...value].some((character) => {
@@ -100,13 +116,86 @@ function hasControlCharacter(value: string): boolean {
 }
 
 /**
+ * Invisible and direction-changing characters: every Unicode format
+ * character (Cf: bidi overrides and isolates, zero-width space/joiners, the
+ * BOM, soft hyphen…) plus the line and paragraph separators. A source or
+ * rationale containing one can render as something other than what it is.
+ */
+const FORMAT_CHARACTERS = /[\p{Cf}\u2028\u2029]/u;
+
+function hasFormatCharacter(value: string): boolean {
+  return FORMAT_CHARACTERS.test(value);
+}
+
+/** One DNS name of two or more lowercase ASCII labels, not all-numeric. */
+const DNS_LABEL = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
+const PRIVATE_SUFFIXES = [
+  '.local',
+  '.localhost',
+  '.internal',
+  '.lan',
+  '.home.arpa',
+];
+
+/**
+ * A git host must be a public-looking DNS name: ASCII only (no IDN, and no
+ * `xn--` punycode either, since a person reading a lookalike's punycode is
+ * not protected by it), at least two labels, no IP literal, and none of the
+ * private-network suffixes. This is a string check; it does not resolve the
+ * name, so a public name that resolves privately is not caught here (the
+ * clone only happens later, when a person previews it).
+ */
+function refuseGitHost(host: string): string | null {
+  if (!/^[\x21-\x7e]+$/.test(host))
+    return 'Git hosts must be plain ASCII names.';
+  const lower = host.toLowerCase();
+  if (lower.length > 253) return 'That git host name is too long.';
+  const labels = lower.split('.');
+  if (labels.length < 2 || !labels.every((label) => DNS_LABEL.test(label)))
+    return 'Git hosts must be DNS names such as github.com.';
+  if (labels.some((label) => label.startsWith('xn--')))
+    return 'Internationalized (punycode) git host names are refused; ask the person to add this source themselves.';
+  if (/^\d+$/.test(labels[labels.length - 1]!))
+    return 'IP-address git hosts are refused.';
+  if (
+    lower === 'localhost' ||
+    PRIVATE_SUFFIXES.some((suffix) => lower.endsWith(suffix))
+  )
+    return 'Loopback and private-network git hosts are refused.';
+  return null;
+}
+
+/** A repository path: ASCII segments, no `..`, no leading `-`. */
+function refuseGitPath(path: string): string | null {
+  const segments = path.split('/').filter((segment) => segment.length > 0);
+  if (
+    segments.length === 0 ||
+    !segments.every(
+      (segment) =>
+        /^[A-Za-z0-9._~-]+$/.test(segment) &&
+        segment !== '.' &&
+        segment !== '..' &&
+        !segment.startsWith('-'),
+    )
+  )
+    return 'A git source path may contain only letters, digits, and . _ ~ - between slashes.';
+  return null;
+}
+
+function trimRepoPath(path: string): string {
+  return path.replace(/^\/+/, '').replace(/\/+$/, '');
+}
+
+/**
  * What an install proposal may name, and its normalized spelling.
  *
  * A local folder goes through S1's `resolvePluginValidateSource` (absolute,
  * no UNC/device/automount path), so a proposal never makes Station stat a
- * network path on an agent's say-so. A remote source must be a git HTTPS URL
- * or an scp-style `git@host:path`; proposing never clones it. Pure string
- * checks, no filesystem access.
+ * network path on an agent's say-so. A remote source must be
+ * `https://<host>/<path>` with no user info, password, port, query or
+ * fragment, or `git@<host>:<path>`, with the host and path rules above; it
+ * is stored normalized (lowercase host, no trailing slash) and never
+ * fetched. Pure string checks, no filesystem or network access.
  */
 export function resolvePluginProposalSource(raw: string): PluginProposalSource {
   const source = raw.trim();
@@ -118,47 +207,73 @@ export function resolvePluginProposalSource(raw: string): PluginProposalSource {
   }
   if (
     source.length > MAX_PROPOSAL_SOURCE_LENGTH ||
-    hasControlCharacter(source)
+    hasControlCharacter(source) ||
+    hasFormatCharacter(raw)
   ) {
     throw new PluginProposalInvalidError(
       'source-invalid',
-      'That plugin source is not a path or URL Station accepts.',
+      'That plugin source contains characters Station does not accept in a path or URL.',
     );
   }
   const local = resolvePluginValidateSource(source);
   if (local.ok) return { kind: 'local', source: local.path };
-  if (local.diagnostic.code === 'remote-source-refused') {
-    if (/\s/.test(source)) {
-      throw new PluginProposalInvalidError(
-        'source-invalid',
-        'A git source cannot contain whitespace.',
-      );
-    }
-    if (/^git@[^/\\:\s]+:[^\s]+$/.test(source)) {
-      return { kind: 'git', source };
-    }
-    let url: URL | undefined;
-    try {
-      url = new URL(source);
-    } catch {
-      url = undefined;
-    }
-    if (url?.protocol === 'https:' && url.hostname && !url.username) {
-      return { kind: 'git', source };
-    }
+  if (local.diagnostic.code !== 'remote-source-refused') {
     throw new PluginProposalInvalidError(
-      'source-unsupported',
-      'A remote plugin source must be a git HTTPS URL (https://…) or git@host:path.',
+      local.diagnostic.code,
+      local.diagnostic.message,
     );
   }
-  throw new PluginProposalInvalidError(
-    local.diagnostic.code,
-    local.diagnostic.message,
-  );
+  const refuse = (message: string): never => {
+    throw new PluginProposalInvalidError('source-unsupported', message);
+  };
+  if (/\s/.test(source)) refuse('A git source cannot contain whitespace.');
+  const scp = /^git@([^/:@]+):(.+)$/.exec(source);
+  if (scp) {
+    const host = scp[1]!;
+    const hostRefusal = refuseGitHost(host);
+    if (hostRefusal) refuse(hostRefusal);
+    const path = trimRepoPath(scp[2]!);
+    const pathRefusal = refuseGitPath(path);
+    if (pathRefusal) refuse(pathRefusal);
+    const lower = host.toLowerCase();
+    return { kind: 'git', source: `git@${lower}:${path}`, host: lower, path };
+  }
+  if (!/^https:\/\//i.test(source))
+    refuse(
+      'A remote plugin source must be a git HTTPS URL (https://host/path) or git@host:path.',
+    );
+  const authority = source.slice('https://'.length).split(/[/?#]/, 1)[0]!;
+  if (authority.includes('@'))
+    refuse('A git URL must not carry a user name or password.');
+  if (source.includes('?') || source.includes('#'))
+    refuse('A git URL must not carry a query or fragment.');
+  if (authority.includes(':')) refuse('A git URL must not name a port.');
+  const hostRefusal = refuseGitHost(authority);
+  if (hostRefusal) refuse(hostRefusal);
+  const path = trimRepoPath(source.slice('https://'.length + authority.length));
+  const pathRefusal = refuseGitPath(path);
+  if (pathRefusal) refuse(pathRefusal);
+  const host = authority.toLowerCase();
+  return { kind: 'git', source: `https://${host}/${path}`, host, path };
+}
+
+/**
+ * The identity two proposals share when they ask for the same thing: a
+ * local folder by its normalized path; a git repository by host and path,
+ * whichever spelling (https or git@), without `.git`.
+ */
+export function pluginProposalSourceKey(source: string): string {
+  try {
+    const resolved = resolvePluginProposalSource(source);
+    if (resolved.kind === 'local') return `local:${resolved.source}`;
+    return `repo:${resolved.host}/${resolved.path.replace(/\.git$/, '')}`;
+  } catch {
+    return `raw:${source.trim()}`;
+  }
 }
 
 /** Bounded, canonical, human-written text. */
-export function normalizeProposalRationale(raw: string): string {
+function normalizeProposalRationale(raw: string): string {
   const rationale = raw.trim();
   if (!rationale) {
     throw new PluginProposalInvalidError(
@@ -172,6 +287,14 @@ export function normalizeProposalRationale(raw: string): string {
       `A rationale is at most ${MAX_PROPOSAL_RATIONALE_LENGTH} characters.`,
     );
   }
+  // The raw text, not the trimmed one: `trim` removes a leading or trailing
+  // BOM, which is exactly a character this refuses.
+  if (hasFormatCharacter(raw)) {
+    throw new PluginProposalInvalidError(
+      'rationale-invalid',
+      'A rationale cannot contain invisible or direction-changing characters.',
+    );
+  }
   return rationale;
 }
 
@@ -182,6 +305,7 @@ export type PluginLifecycleProposalInput =
       rationale: string;
       author: PluginLifecycleProposalAuthor;
       proposedContentDigest?: string;
+      proposedContentDigestUnavailable?: PluginProposalDigestUnavailableReason;
     }
   | {
       kind: 'update' | 'remove';
@@ -207,14 +331,32 @@ function target(proposal: {
   pluginName?: string;
 }): string {
   return proposal.kind === 'install'
-    ? `install:${proposal.source ?? ''}`
+    ? `install:${pluginProposalSourceKey(proposal.source ?? '')}`
     : `${proposal.kind}:${proposal.pluginName ?? ''}`;
 }
 
-function authorKey(author: PluginLifecycleProposalAuthor): string {
-  if (author.conversationId) return `conversation:${author.conversationId}`;
-  if (author.agentSlug) return `agent:${author.agentSlug}`;
-  return `principal:${author.principal}`;
+/**
+ * The conversation an author is counted against, when it names one. A
+ * self-reported conversation id can be varied freely, so the engine cap
+ * below is what actually bounds a single caller.
+ */
+function conversationKey(author: PluginLifecycleProposalAuthor): string | null {
+  return author.principal === 'agent' && author.conversationId
+    ? `conversation:${author.reportedBy ?? 'caller'}:${author.conversationId}`
+    : null;
+}
+
+/**
+ * The engine an author is counted against: one person (by principal id), one
+ * runtime-verified agent, or every self-reported agent together — a name an
+ * external engine writes for itself cannot buy it a fresh allowance.
+ */
+function engineKey(author: PluginLifecycleProposalAuthor): string {
+  if (author.principal === 'person')
+    return `person:${author.principalId ?? 'unresolved'}`;
+  return author.reportedBy === 'runtime' && author.agentSlug
+    ? `agent:${author.agentSlug}`
+    : 'agent:self-reported';
 }
 
 const KINDS = new Set(['install', 'update', 'remove']);
@@ -242,6 +384,11 @@ function validateRecord(value: unknown): PluginLifecycleProposal {
       value.author.principal !== 'person') ||
     !isOptionalString(value.author.agentSlug) ||
     !isOptionalString(value.author.conversationId) ||
+    !isOptionalString(value.author.principalId) ||
+    (value.author.reportedBy !== undefined &&
+      value.author.reportedBy !== 'runtime' &&
+      value.author.reportedBy !== 'caller') ||
+    !isOptionalString(value.proposedContentDigestUnavailable) ||
     (value.kind === 'install'
       ? typeof value.source !== 'string'
       : typeof value.pluginName !== 'string')
@@ -299,10 +446,11 @@ export class PluginLifecycleProposalService {
     return this.read().proposals.find((proposal) => proposal.id === id) ?? null;
   }
 
-  async propose(
-    input: PluginLifecycleProposalInput,
-  ): Promise<{ proposal: PluginLifecycleProposal; deduplicated: boolean }> {
-    const rationale = normalizeProposalRationale(input.rationale);
+  /**
+   * The draft a proposal input names, normalized. Throws the same refusals
+   * `propose` would.
+   */
+  private draftFor(input: PluginLifecycleProposalInput) {
     const draft =
       input.kind === 'install'
         ? {
@@ -316,49 +464,105 @@ export class PluginLifecycleProposalService {
         'Name the installed plugin this proposal is about.',
       );
     }
+    return draft;
+  }
+
+  /** Dedupe, then the three caps. `null` means a new proposal is admitted. */
+  private admit(
+    open: PluginLifecycleProposal[],
+    draft: {
+      kind: PluginLifecycleProposalKind;
+      source?: string;
+      pluginName?: string;
+    },
+    author: PluginLifecycleProposalAuthor,
+  ): PluginLifecycleProposal | null {
+    const existing = open.find(
+      (proposal) => target(proposal) === target(draft),
+    );
+    if (existing) return existing;
+    const conversation = conversationKey(author);
+    if (
+      conversation &&
+      open.filter(
+        (proposal) => conversationKey(proposal.author) === conversation,
+      ).length >= MAX_OPEN_PROPOSALS_PER_AUTHOR
+    ) {
+      throw new PluginProposalLimitError(
+        `This conversation already has ${MAX_OPEN_PROPOSALS_PER_AUTHOR} open plugin proposals. Wait for a person to complete or dismiss one.`,
+      );
+    }
+    const engine = engineKey(author);
+    if (
+      open.filter((proposal) => engineKey(proposal.author) === engine).length >=
+      MAX_OPEN_PROPOSALS_PER_ENGINE
+    ) {
+      throw new PluginProposalLimitError(
+        `This proposer already has ${MAX_OPEN_PROPOSALS_PER_ENGINE} open plugin proposals. Wait for a person to complete or dismiss some.`,
+      );
+    }
+    if (open.length >= MAX_OPEN_PROPOSALS) {
+      throw new PluginProposalLimitError(
+        `Station already has ${MAX_OPEN_PROPOSALS} open plugin proposals. Wait for a person to complete or dismiss some.`,
+      );
+    }
+    return null;
+  }
+
+  /**
+   * Read-only admission check the route runs BEFORE any expensive work (the
+   * digest walk): a duplicate returns the existing proposal, a capped caller
+   * is refused, and nothing is written. `propose` repeats the check under
+   * the lock, so a race between the two can only refuse or deduplicate, never
+   * overshoot a cap.
+   */
+  precheck(
+    input: PluginLifecycleProposalInput,
+  ): { existing: PluginLifecycleProposal } | { admitted: true } {
+    normalizeProposalRationale(input.rationale);
+    const draft = this.draftFor(input);
+    const existing = this.admit(this.listOpen(), draft, input.author);
+    return existing ? { existing } : { admitted: true };
+  }
+
+  async propose(
+    input: PluginLifecycleProposalInput,
+  ): Promise<{ proposal: PluginLifecycleProposal; deduplicated: boolean }> {
+    const rationale = normalizeProposalRationale(input.rationale);
+    const draft = this.draftFor(input);
     return this.mutate((data) => {
       const open = data.proposals.filter(
         (proposal) => proposal.status === 'open',
       );
-      const existing = open.find(
-        (proposal) => target(proposal) === target(draft),
-      );
+      const existing = this.admit(open, draft, input.author);
       if (existing) {
         return { result: { proposal: existing, deduplicated: true } };
       }
-      const key = authorKey(input.author);
-      if (
-        open.filter((proposal) => authorKey(proposal.author) === key).length >=
-        MAX_OPEN_PROPOSALS_PER_AUTHOR
-      ) {
-        throw new PluginProposalLimitError(
-          `This conversation already has ${MAX_OPEN_PROPOSALS_PER_AUTHOR} open plugin proposals. Wait for a person to complete or dismiss one.`,
-        );
-      }
-      if (open.length >= MAX_OPEN_PROPOSALS) {
-        throw new PluginProposalLimitError(
-          `Station already has ${MAX_OPEN_PROPOSALS} open plugin proposals. Wait for a person to complete or dismiss some.`,
-        );
-      }
       const at = this.now().toISOString();
+      const author = input.author;
       const proposal: PluginLifecycleProposal = {
         id: randomUUID(),
         ...draft,
         rationale,
         author: {
-          principal: input.author.principal,
-          ...(input.author.agentSlug
-            ? { agentSlug: input.author.agentSlug }
+          principal: author.principal,
+          ...(author.principalId ? { principalId: author.principalId } : {}),
+          ...(author.agentSlug ? { agentSlug: author.agentSlug } : {}),
+          ...(author.conversationId
+            ? { conversationId: author.conversationId }
             : {}),
-          ...(input.author.conversationId
-            ? { conversationId: input.author.conversationId }
-            : {}),
+          ...(author.reportedBy ? { reportedBy: author.reportedBy } : {}),
         },
         createdAt: at,
         updatedAt: at,
         ...(input.kind === 'install' && input.proposedContentDigest
           ? { proposedContentDigest: input.proposedContentDigest }
-          : {}),
+          : input.kind === 'install' && input.proposedContentDigestUnavailable
+            ? {
+                proposedContentDigestUnavailable:
+                  input.proposedContentDigestUnavailable,
+              }
+            : {}),
         status: 'open',
       };
       return {
@@ -380,10 +584,7 @@ export class PluginLifecycleProposalService {
   ): Promise<PluginProposalCompletionOutcome> {
     const done =
       completion.kind === 'install'
-        ? {
-            kind: completion.kind,
-            source: safeNormalizedSource(completion.source),
-          }
+        ? { kind: completion.kind, source: completion.source }
         : { kind: completion.kind, pluginName: completion.pluginName };
     return this.mutate((data) => {
       const current = data.proposals.find((proposal) => proposal.id === id);
@@ -451,14 +652,5 @@ export class PluginLifecycleProposalService {
     } finally {
       await release();
     }
-  }
-}
-
-/** A completing install's source, normalized the way proposals store it. */
-function safeNormalizedSource(source: string): string {
-  try {
-    return resolvePluginProposalSource(source).source;
-  } catch {
-    return source.trim();
   }
 }

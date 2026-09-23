@@ -347,6 +347,7 @@ import {
 } from '../../services/flow/survey-flow-review-service.js';
 import { identifyIngress } from '../../services/identity/identity-source.js';
 import {
+  LOCAL_OPERATOR_PRINCIPAL_ID,
   PrincipalUnresolvedError,
   resolvePrincipal as resolveStationPrincipal,
 } from '../../services/identity/principal-resolver.js';
@@ -890,6 +891,12 @@ export function configureRuntimeRoutes(
           : undefined,
     resolveCredentialDeviceId: (credential: string) =>
       context.environmentSecurityService.identifyDevice(credential)?.id,
+    // #2323 S5: person-only plugin lifecycle routes refuse delegation grants.
+    resolveCredentialDeviceKind: (credential: string) => {
+      const kind =
+        context.environmentSecurityService.identifyDevice(credential)?.kind;
+      return kind === 'delegation' || kind === 'device' ? kind : undefined;
+    },
     resolvePairingSource: (credential: string) =>
       context.environmentSecurityService.identifyDevice(credential)?.source,
     resolveCredentialLocality: (credential: string) =>
@@ -1767,6 +1774,7 @@ export function configureRuntimeRoutes(
       proposals: pluginLifecycleProposals,
       pluginsDir: join(context.configLoader.getProjectHomeDir(), 'plugins'),
       logger: context.logger,
+      resolvePrincipal: resolveOrchestrationRequestPrincipal,
     }),
   );
   context.app.route('/api/fs', createFsRoutes());
@@ -4602,6 +4610,18 @@ export function configureRuntimeRoutes(
     '/api/attention',
     createAttentionRoutes(attentionProjection, {
       readAuthorityForRequest,
+      // #2323 S5 review M6: plugin proposals are addressed to the operator,
+      // decided by the same resolver `/api/plugin-proposals` reads.
+      viewerIsOperator: (c) => {
+        try {
+          return (
+            resolveOrchestrationRequestPrincipal(c).id ===
+            LOCAL_OPERATOR_PRINCIPAL_ID
+          );
+        } catch {
+          return false;
+        }
+      },
       // #765 D5: derive the device-pairing items' `viewerCanDecide` from the
       // SAME two gates the middleware applies to an approve/deny request, in
       // the same order: the pairing family's authority boundary

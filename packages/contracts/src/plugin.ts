@@ -352,15 +352,31 @@ export interface PluginLifecycleProposalAuthor {
    * authenticated principal, never from the body.
    */
   readonly principal: 'agent' | 'person';
+  /** Person authors only: the resolved principal id (server-derived). */
+  readonly principalId?: string;
   /**
-   * The agent and conversation the proposing tool call reported. Station's
-   * own agent runtime stamps these on the tool call (`mcp-manager.ts`); an
-   * external engine's tool call can supply or omit them. Display provenance
-   * only: it names who asked, it authorizes nothing.
+   * The agent and conversation the proposing tool call named. Display
+   * provenance only: it names who asked, it authorizes nothing.
    */
   readonly agentSlug?: string;
   readonly conversationId?: string;
+  /**
+   * Where `agentSlug`/`conversationId` came from (#2323 S5 review M3).
+   * `runtime`: Station's own agent runtime stamped them and the server
+   * verified its attestation. `caller`: the tool call supplied them, which
+   * for an external engine can be model-written text; the review says so.
+   */
+  readonly reportedBy?: 'runtime' | 'caller';
 }
+
+/** Why an install proposal carries no content digest. */
+export type PluginProposalDigestUnavailableReason =
+  /** A git source: proposing never clones it. */
+  | 'remote-source'
+  /** The folder exceeded the bounded walk (file count or total bytes). */
+  | 'too-large'
+  /** The folder could not be read. */
+  | 'unreadable';
 
 export interface PluginLifecycleProposal {
   readonly id: string;
@@ -381,6 +397,8 @@ export interface PluginLifecycleProposal {
    * to compare against and says so rather than implying the bytes held.
    */
   readonly proposedContentDigest?: string;
+  /** Install only, when no digest was recorded: why. */
+  readonly proposedContentDigestUnavailable?: PluginProposalDigestUnavailableReason;
   readonly status: PluginLifecycleProposalStatus;
   /** When the status left `open`. */
   readonly resolvedAt?: string;

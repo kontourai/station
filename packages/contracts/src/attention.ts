@@ -413,6 +413,12 @@ export interface PluginLifecycleProposalAttentionItem
   /** Update/remove: the installed plugin's name. Install: absent. */
   pluginName?: string;
   /**
+   * The agent's rationale, verbatim. Carried separately from `body` so no
+   * surface renders it as Station's own sentence: the row quotes and
+   * attributes it (#2323 S5 review L1).
+   */
+  rationale: string;
+  /**
    * The proposal's recorded author: `principal` is server-derived; the agent
    * and conversation are the tool call's report (display provenance only).
    */
@@ -420,6 +426,8 @@ export interface PluginLifecycleProposalAttentionItem
     principal: 'agent' | 'person';
     agentSlug?: string;
     conversationId?: string;
+    /** Whether the agent/conversation were runtime-verified or self-reported. */
+    reportedBy?: 'runtime' | 'caller';
   };
   openHref: string;
 }

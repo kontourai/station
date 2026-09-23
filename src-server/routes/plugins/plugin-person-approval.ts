@@ -10,30 +10,33 @@
  * its digest into `/install`, and the record would say an operator decided
  * when nobody saw anything. Update and remove had no refusal anywhere.
  *
- * So the route refuses the caller class that is never a person. That class
- * is the one the auth boundary already names: `principal.kind === 'internal'`
- * is set in `runtime-http.ts` ONLY for a request that proved the per-boot
- * internal token on a direct loopback socket with `x-station-proxy-caller:
- * local` AND presented no bearer or device-session credential. Who reaches
- * that branch:
+ * So the routes refuse the two caller classes that are never a person, both
+ * read off the principal the auth boundary bound (`runtime-http.ts`), never a
+ * header:
  *
- * - station-control (`station-control-shared.ts` `api()` and
- *   `controlRequestOptions()`), in its stdio child or in-process HTTP form;
- * - Station's own agent adapter (`station-agent-adapter.ts`);
- * - the CLI's lifecycle readiness probe, which only reads identity.
+ * - `principal.kind === 'internal'`: set ONLY for a request that proved the
+ *   per-boot internal token on a direct loopback socket with
+ *   `x-station-proxy-caller: local` and presented no bearer or device-session
+ *   credential. That is station-control (stdio child or in-process HTTP),
+ *   Station's own agent adapter, and the CLI's identity probe.
+ * - `principal.deviceKind === 'delegation'`: another Station's delegation
+ *   grant. Another Station is not a person (#2323 S5 review M5).
  *
- * Who does not: the browser (Station's UI proxy always sends
+ * Who is not refused: the browser (Station's UI proxy always sends
  * `x-station-proxy-caller: remote` and forwards the browser's own
- * credential), and the `station` CLI's plugin commands, which authenticate
- * with a bearer credential through `authenticatedFetch` and never send the
- * internal token. Both keep working unchanged.
+ * credential), a person's paired device, and the `station` CLI's plugin
+ * commands, which authenticate with a bearer credential and never send the
+ * internal token.
  *
- * What this does NOT claim: that every non-internal caller is a person. A
- * paired device holding `orchestration:operate` is still admitted, as it is
- * for every other operate-tier route; a process that can read this user's
- * credential files can act as this user anyway. The claim is narrower and
- * checkable: Station's own agent surface cannot perform these verbs, so an
- * agent's only path is a proposal a person completes.
+ * WHAT THIS DOES NOT CLAIM, stated plainly because it is the accepted limit
+ * (#2323 S5 review H1): it closes the path through Station's agent TOOLS. It
+ * does not stop code running as the same operating-system user as Station.
+ * An engine with a shell (Claude Code or Codex running Bash, say) can read
+ * the owner-only files under Station's home (the local-grant secret among
+ * them), pair itself, or run `station plugin install --yes`, and each of
+ * those is indistinguishable here from the person doing it. What is true:
+ * Station's agent tools cannot perform these verbs; their path is a proposal
+ * a person completes.
  */
 import type { Context, MiddlewareHandler } from 'hono';
 import { getRuntimeAuthenticatedRequestPrincipal } from '../../security/runtime-request-security.js';
@@ -50,25 +53,40 @@ export function isInternalControlCaller(request: Request): boolean {
   return getRuntimeAuthenticatedRequestPrincipal(request)?.kind === 'internal';
 }
 
-export function personApprovalRequiredBody(what: string) {
+/** Another Station's delegation grant, as the auth boundary resolved it. */
+function isDelegationDeviceCaller(request: Request): boolean {
+  const principal = getRuntimeAuthenticatedRequestPrincipal(request);
+  return (
+    principal?.authority === 'device-credential' &&
+    !!principal.deviceId &&
+    principal.deviceKind === 'delegation'
+  );
+}
+
+/** The callers these verbs refuse: never a person. */
+function isNonPersonCaller(request: Request): boolean {
+  return isInternalControlCaller(request) || isDelegationDeviceCaller(request);
+}
+
+function personApprovalRequiredBody(what: string) {
   return {
     success: false as const,
     code: PLUGIN_PERSON_APPROVAL_REQUIRED,
-    error: `A person must approve this in Station: Station's agent tools cannot ${what}. Propose it instead (propose_plugin_install, update_plugin or remove_plugin create a proposal), and a person completes it from Plugins.`,
+    error: `A person must approve this in Station: Station's agent tools and delegated Stations cannot ${what}. Station's agent tools can propose it instead (propose_plugin_install, update_plugin or remove_plugin), and a person completes it from Plugins.`,
   };
 }
 
-/** The 403 for an internal caller, or null when the request may proceed. */
+/** The 403 for a non-person caller, or null when the request may proceed. */
 export function refuseInternalControlCaller(
   c: Context,
   what: string,
 ): Response | null {
-  if (!isInternalControlCaller(c.req.raw)) return null;
+  if (!isNonPersonCaller(c.req.raw)) return null;
   return c.json(personApprovalRequiredBody(what), 403);
 }
 
 /**
- * Route middleware form. Registered BEFORE body validation, so an internal
+ * Route middleware form. Registered BEFORE body validation, so a refused
  * caller learns what to do instead of which field it got wrong.
  */
 export function personOnly(what: string): MiddlewareHandler {

@@ -2,15 +2,13 @@ import type { PluginLifecycleProposal } from '@kontourai/station-contracts/plugi
 import { useState } from 'react';
 import { Checkbox } from '../../components/Checkbox';
 import { CheckGlyph, WarningGlyph } from '../../components/icons/Glyph';
+import { PluginProposalSummary } from '../../components/plugins/PluginProposalSummary';
 import {
   ResponsiveDialogCloseButton,
   ResponsiveDialogSurface,
   ResponsiveSurfaceActions,
 } from '../../components/ResponsiveDialogSurface';
-import {
-  compareProposalDigest,
-  describeProposalAuthor,
-} from '../../utils/pluginProposal';
+import { compareProposalDigest } from '../../utils/pluginProposal';
 import type { PreviewData } from './types';
 
 export function InstallPreviewModal({
@@ -241,8 +239,12 @@ function ProposalProvenance({
       className="plugins__modal-message plugins__preview-proposal"
       data-testid="install-preview-proposal"
     >
-      <div>{describeProposalAuthor(proposal.author)}</div>
-      <div className="plugins__card-desc">{proposal.rationale}</div>
+      <PluginProposalSummary
+        author={proposal.author}
+        source={proposal.source}
+        rationale={proposal.rationale}
+        testId="install-preview-proposal-summary"
+      />
       {comparison === 'changed' && (
         <div
           className="plugins__message--warning"
@@ -255,10 +257,21 @@ function ProposalProvenance({
       )}
       {comparison === 'not-recorded' && (
         <div data-testid="install-preview-proposal-unrecorded">
-          Station did not record the files when this was proposed, so it cannot
-          tell whether they changed since.
+          {unrecordedDigestSentence(proposal)}
         </div>
       )}
     </div>
   );
+}
+
+/** Why there is nothing to compare, in the words the recorded reason allows. */
+function unrecordedDigestSentence(proposal: PluginLifecycleProposal): string {
+  switch (proposal.proposedContentDigestUnavailable) {
+    case 'remote-source':
+      return 'This is a git source. Station did not fetch it when it was proposed, so it cannot tell whether it changed since; review what the preview shows now.';
+    case 'too-large':
+      return 'The folder was too large for Station to record when it was proposed, so it cannot tell whether the files changed since.';
+    default:
+      return 'Station did not record the files when this was proposed, so it cannot tell whether they changed since.';
+  }
 }

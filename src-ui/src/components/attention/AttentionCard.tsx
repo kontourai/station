@@ -45,8 +45,8 @@ import {
   navigateToAttentionTarget,
 } from '../../utils/attentionOpen';
 import { formatNotificationTime } from '../../utils/notifications';
-import { describeProposalAuthor } from '../../utils/pluginProposal';
 import { LazyBoundary } from '../LazyBoundary';
+import { PluginProposalSummary } from '../plugins/PluginProposalSummary';
 import { SkeletonList } from '../state';
 import './AttentionCard.css';
 import { useProposedChangeDecision } from '../review/proposedChangeDecision';
@@ -430,11 +430,14 @@ function PluginProposalActions({
   const dismiss = useDismissPluginLifecycleProposalMutation();
   return (
     <>
-      <div
-        className="attention-item__detail"
-        data-testid="attention-plugin-proposal-author"
-      >
-        {describeProposalAuthor(item.author)}
+      <div className="attention-item__detail">
+        <PluginProposalSummary
+          author={item.author}
+          source={item.pluginSource}
+          pluginName={item.pluginName}
+          rationale={item.rationale}
+          testId="attention-plugin-proposal"
+        />
       </div>
       <div className="attention-item__actions">
         <a

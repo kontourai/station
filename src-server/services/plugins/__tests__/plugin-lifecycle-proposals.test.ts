@@ -5,11 +5,13 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
 import {
   MAX_OPEN_PROPOSALS_PER_AUTHOR,
+  MAX_OPEN_PROPOSALS_PER_ENGINE,
   PLUGIN_LIFECYCLE_PROPOSALS_FILE,
   PluginLifecycleProposalService,
   PluginProposalInvalidError,
   PluginProposalLimitError,
   PluginProposalNotOpenError,
+  pluginProposalSourceKey,
   resolvePluginProposalSource,
 } from '../plugin-lifecycle-proposals.js';
 
@@ -251,12 +253,215 @@ describe('#2323 S5 install proposal sources', () => {
     }
   });
 
-  test('git sources are accepted as written and never fetched', () => {
+  test('git sources are stored normalized, with host and path apart, and never fetched', () => {
     expect(
-      resolvePluginProposalSource('https://github.com/org/plugin.git'),
-    ).toEqual({ kind: 'git', source: 'https://github.com/org/plugin.git' });
+      resolvePluginProposalSource('https://GitHub.com/org/plugin.git/'),
+    ).toEqual({
+      kind: 'git',
+      source: 'https://github.com/org/plugin.git',
+      host: 'github.com',
+      path: 'org/plugin.git',
+    });
     expect(
       resolvePluginProposalSource('git@github.com:org/plugin.git'),
-    ).toEqual({ kind: 'git', source: 'git@github.com:org/plugin.git' });
+    ).toEqual({
+      kind: 'git',
+      source: 'git@github.com:org/plugin.git',
+      host: 'github.com',
+      path: 'org/plugin.git',
+    });
+  });
+
+  /**
+   * #2323 S5 review M2, the reviewer's probe cases. Each is refused, and
+   * refused before anything is stored: a credential in a URL, a query or
+   * fragment carrying a token, a homoglyph or punycode host, an invisible or
+   * direction-changing character, a host that is really a path, a loopback,
+   * metadata or private-network host, and an argument-shaped path.
+   */
+  test.each([
+    ['https://:ghp_SECRET@github.com/kontourai/x', 'source-unsupported'],
+    ['https://user@github.com/org/plugin.git', 'source-unsupported'],
+    ['https://github.com/kontourai/x?token=ghp_SECRET', 'source-unsupported'],
+    ['https://github.com/kontourai/x#access_token=abc', 'source-unsupported'],
+    ['https://gіthub.com/kontourai/x', 'source-unsupported'],
+    ['https://xn--gthub-n4a.com/kontourai/x', 'source-unsupported'],
+    ['https://github.com/kontourai/‮txt.x', 'source-invalid'],
+    ['https://github.com/kontourai/x​', 'source-invalid'],
+    ['git@github.com:kontourai/x‮', 'source-invalid'],
+    ['/Users/brian/dev/x‮abc', 'source-invalid'],
+    ['https://github.com@evil.com/x', 'source-unsupported'],
+    ['https://127.0.0.1:3141/api/x', 'source-unsupported'],
+    ['https://127.0.0.1/api/x', 'source-unsupported'],
+    ['https://169.254.169.254/latest', 'source-unsupported'],
+    ['https://[::1]/x', 'source-unsupported'],
+    ['https://localhost/x', 'source-unsupported'],
+    ['https://git.corp.internal/x', 'source-unsupported'],
+    ['https://github.com:8443/org/x', 'source-unsupported'],
+    ['https://github.com/org/../x', 'source-unsupported'],
+    ['https://github.com/', 'source-unsupported'],
+    ['git@evil.com:--upload-pack=touch', 'source-unsupported'],
+    ['git@127.0.0.1:org/x', 'source-unsupported'],
+    ['git@exa_mple.com:org/x', 'source-unsupported'],
+    ['ftp://example.com/plugin', 'source-unsupported'],
+  ])('refuses %j (%s)', (source, code) => {
+    let caught: unknown;
+    try {
+      resolvePluginProposalSource(source);
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(PluginProposalInvalidError);
+    expect((caught as PluginProposalInvalidError).code).toBe(code);
+  });
+
+  test('a git@host:path host that looks like a path is judged on its host alone', () => {
+    // `git@evil.com:github.com/kontourai/x` is evil.com; the review shows the
+    // host by itself, so it is accepted here and displayed as evil.com.
+    expect(
+      resolvePluginProposalSource('git@evil.com:github.com/kontourai/x'),
+    ).toMatchObject({ host: 'evil.com', path: 'github.com/kontourai/x' });
+  });
+
+  test('the same repository in different spellings is one key', () => {
+    const keys = new Set(
+      [
+        'https://github.com/a/b',
+        'https://github.com/a/b/',
+        'https://github.com/a/b.git',
+        'https://GITHUB.com/a/b',
+        'git@github.com:a/b.git',
+      ].map(pluginProposalSourceKey),
+    );
+    expect([...keys]).toEqual(['repo:github.com/a/b']);
+    expect(pluginProposalSourceKey('https://github.com/a/c')).not.toBe(
+      'repo:github.com/a/b',
+    );
+  });
+});
+
+describe('#2323 S5 review M4: dedupe and caps', () => {
+  test('different spellings of one repository from one conversation make one proposal', async () => {
+    const { proposals } = service();
+    for (const source of [
+      'https://github.com/a/b',
+      'https://github.com/a/b/',
+      'https://github.com/a/b.git',
+      'https://GITHUB.com/a/b',
+    ]) {
+      await proposals.propose({
+        kind: 'install',
+        source,
+        rationale: 'r',
+        author: agent('one'),
+      });
+    }
+    expect(proposals.listOpen()).toHaveLength(1);
+  });
+
+  test('one engine cannot fill the inbox by varying the conversation id', async () => {
+    const { proposals } = service();
+    let created = 0;
+    let refused = 0;
+    for (let index = 0; index < 60; index++) {
+      try {
+        await proposals.propose({
+          kind: 'install',
+          source: `https://github.com/a/repo-${index}`,
+          rationale: 'r',
+          // Self-reported: an external engine writing its own names.
+          author: {
+            principal: 'agent',
+            agentSlug: `agent-${index}`,
+            conversationId: `c${index}`,
+            reportedBy: 'caller',
+          },
+        });
+        created++;
+      } catch (error) {
+        expect(error).toBeInstanceOf(PluginProposalLimitError);
+        refused++;
+      }
+    }
+    expect(created).toBe(MAX_OPEN_PROPOSALS_PER_ENGINE);
+    expect(refused).toBe(60 - MAX_OPEN_PROPOSALS_PER_ENGINE);
+    // A runtime-verified agent still has its own allowance.
+    await expect(
+      proposals.propose({
+        kind: 'install',
+        source: 'https://github.com/a/verified',
+        rationale: 'r',
+        author: {
+          principal: 'agent',
+          agentSlug: 'station',
+          conversationId: 'c-verified',
+          reportedBy: 'runtime',
+        },
+      }),
+    ).resolves.toMatchObject({ deduplicated: false });
+  });
+
+  test('people are counted one by one, not as one shared bucket', async () => {
+    const { proposals } = service();
+    const person = (principalId: string) => ({
+      principal: 'person' as const,
+      principalId,
+    });
+    for (let index = 0; index < MAX_OPEN_PROPOSALS_PER_ENGINE; index++) {
+      await proposals.propose({
+        kind: 'install',
+        source: `https://github.com/p/${index}`,
+        rationale: 'r',
+        author: person('human:device:alice'),
+      });
+    }
+    await expect(
+      proposals.propose({
+        kind: 'install',
+        source: 'https://github.com/p/over',
+        rationale: 'r',
+        author: person('human:device:alice'),
+      }),
+    ).rejects.toBeInstanceOf(PluginProposalLimitError);
+    await expect(
+      proposals.propose({
+        kind: 'install',
+        source: 'https://github.com/p/bob',
+        rationale: 'r',
+        author: person('human:device:bob'),
+      }),
+    ).resolves.toMatchObject({ deduplicated: false });
+  });
+
+  test('precheck deduplicates and refuses without writing', async () => {
+    const { proposals, home } = service();
+    const input = {
+      kind: 'install' as const,
+      source: 'https://github.com/a/b',
+      rationale: 'r',
+      author: agent('c'),
+    };
+    expect(proposals.precheck(input)).toEqual({ admitted: true });
+    expect(() =>
+      readFileSync(join(home, PLUGIN_LIFECYCLE_PROPOSALS_FILE), 'utf8'),
+    ).toThrow();
+    const { proposal } = await proposals.propose(input);
+    expect(
+      proposals.precheck({ ...input, source: 'https://github.com/a/b.git' }),
+    ).toEqual({ existing: proposal });
+  });
+
+  test('a rationale with an invisible or direction-changing character is refused', async () => {
+    const { proposals } = service();
+    for (const rationale of ['Safe‮.exe', 'zero​width', 'bom﻿']) {
+      await expect(
+        proposals.propose({
+          kind: 'update',
+          pluginName: 'pulse',
+          rationale,
+          author: agent('c'),
+        }),
+      ).rejects.toMatchObject({ code: 'rationale-invalid' });
+    }
   });
 });

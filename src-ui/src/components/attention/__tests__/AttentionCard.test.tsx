@@ -569,16 +569,17 @@ describe('#2323 S5 plugin lifecycle proposal row', () => {
     return {
       id: 'plugin-lifecycle-proposal:p1',
       kind: 'plugin-lifecycle-proposal',
-      title: 'Install plugin: /tmp/pulse',
-      body: 'Adds the pulse pane.',
+      title: 'Install plugin from github.com',
+      rationale: 'Adds the pulse pane.',
       createdAt: now,
       updatedAt: now,
       proposalKind: 'install',
-      pluginSource: '/tmp/pulse',
+      pluginSource: 'https://github.com/org/pulse',
       author: {
         principal: 'agent',
         agentSlug: 'station',
         conversationId: 'c1',
+        reportedBy: 'runtime',
       },
       openHref: '/plugins?proposal=p1',
       source: { proposalId: 'p1' },
@@ -589,7 +590,6 @@ describe('#2323 S5 plugin lifecycle proposal row', () => {
   test('links into Plugins, names who proposed it, and dismisses through the proposal route', () => {
     render(<AttentionCard item={proposalItem()} />);
     expect(screen.getByText('Plugin proposal')).toBeTruthy();
-    expect(screen.getByText('Adds the pulse pane.')).toBeTruthy();
     expect(
       screen.getByTestId('attention-plugin-proposal-author').textContent,
     ).toBe('Proposed by station in conversation c1');
@@ -606,5 +606,45 @@ describe('#2323 S5 plugin lifecycle proposal row', () => {
     expect(dismissProposal).toHaveBeenCalledWith('p1');
     // It is decision-resolved, so the acknowledge affordance is absent.
     expect(acknowledge).not.toHaveBeenCalled();
+  });
+
+  test('review M2/L1: the host and path render apart, and the rationale is quoted as the agent’s words with bidi removed', () => {
+    render(
+      <AttentionCard
+        item={proposalItem({
+          pluginSource: 'https://evil.example/github.com/org/pulse',
+          rationale: 'Trusted\u202e fix',
+        })}
+      />,
+    );
+    expect(
+      screen.getByTestId('attention-plugin-proposal-host').textContent,
+    ).toBe('evil.example');
+    expect(
+      screen.getByTestId('attention-plugin-proposal-path').textContent,
+    ).toBe('github.com/org/pulse');
+    expect(
+      screen.getByTestId('attention-plugin-proposal-rationale').textContent,
+    ).toBe('The agent wrote: \u201cTrusted fix\u201d');
+  });
+
+  test('review M3: a name the caller supplied is labelled self-reported', () => {
+    render(
+      <AttentionCard
+        item={proposalItem({
+          author: {
+            principal: 'agent',
+            agentSlug: 'station',
+            conversationId: 'c1',
+            reportedBy: 'caller',
+          },
+        })}
+      />,
+    );
+    expect(
+      screen.getByTestId('attention-plugin-proposal-author').textContent,
+    ).toBe(
+      'Proposed by station in conversation c1 (self-reported by the agent)',
+    );
   });
 });

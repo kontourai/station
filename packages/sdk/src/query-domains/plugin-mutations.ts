@@ -163,10 +163,20 @@ export function pluginLifecycleTargetName(
   return typeof target === 'string' ? target : target.name;
 }
 
-function proposalQuery(target: PluginLifecycleTarget): string {
+/**
+ * The request body naming the proposal a change completes, the same
+ * `proposalId` field `POST /install` takes. Absent for the plain name form,
+ * which sends exactly what it sent before.
+ */
+function proposalBody(
+  target: PluginLifecycleTarget,
+): Pick<RequestInit, 'headers' | 'body'> {
   return typeof target === 'string' || !target.proposalId
-    ? ''
-    : `?proposalId=${encodeURIComponent(target.proposalId)}`;
+    ? {}
+    : {
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ proposalId: target.proposalId }),
+      };
 }
 
 export function usePluginUpdateMutation() {
@@ -176,8 +186,8 @@ export function usePluginUpdateMutation() {
       const name = pluginLifecycleTargetName(target);
       const apiBase = await _getApiBase();
       const response = await authenticatedFetch(
-        `${apiBase}/api/plugins/${encodeURIComponent(name)}/update${proposalQuery(target)}`,
-        { method: 'POST' },
+        `${apiBase}/api/plugins/${encodeURIComponent(name)}/update`,
+        { method: 'POST', ...proposalBody(target) },
       );
       const result = await response.json();
       if (!result.success)
@@ -199,8 +209,8 @@ export function usePluginRemoveMutation() {
       const name = pluginLifecycleTargetName(target);
       const apiBase = await _getApiBase();
       const response = await authenticatedFetch(
-        `${apiBase}/api/plugins/${encodeURIComponent(name)}${proposalQuery(target)}`,
-        { method: 'DELETE' },
+        `${apiBase}/api/plugins/${encodeURIComponent(name)}`,
+        { method: 'DELETE', ...proposalBody(target) },
       );
       const result = await response.json();
       if (!result.success)

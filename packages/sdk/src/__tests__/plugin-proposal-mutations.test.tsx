@@ -70,15 +70,30 @@ test('install, update and remove carry the proposal id; the plain forms do not',
       source: '/plugin',
       proposalId: 'p-install',
     });
-    expect(calls.slice(1).map(([url, init]) => [init.method, url])).toEqual([
+    // Review L3: update and remove name the proposal in the JSON body, the
+    // same field install uses; the plain name form sends no body at all.
+    expect(
+      calls
+        .slice(1)
+        .map(([url, init]) => [init.method, url, init.body ?? null]),
+    ).toEqual([
       [
         'POST',
-        'http://example.test/api/plugins/pulse/update?proposalId=p-update',
+        'http://example.test/api/plugins/pulse/update',
+        JSON.stringify({ proposalId: 'p-update' }),
       ],
-      ['DELETE', 'http://example.test/api/plugins/pulse?proposalId=p-remove'],
-      ['POST', 'http://example.test/api/plugins/pulse/update'],
-      ['DELETE', 'http://example.test/api/plugins/pulse'],
-      ['POST', 'http://example.test/api/plugin-proposals/p-dismiss/dismiss'],
+      [
+        'DELETE',
+        'http://example.test/api/plugins/pulse',
+        JSON.stringify({ proposalId: 'p-remove' }),
+      ],
+      ['POST', 'http://example.test/api/plugins/pulse/update', null],
+      ['DELETE', 'http://example.test/api/plugins/pulse', null],
+      [
+        'POST',
+        'http://example.test/api/plugin-proposals/p-dismiss/dismiss',
+        null,
+      ],
     ]);
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['attention'] });
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['plugin-proposals'] });

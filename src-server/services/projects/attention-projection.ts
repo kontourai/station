@@ -58,7 +58,10 @@ import {
   presentOpenRequest,
   truncateRequestText as truncate,
 } from '../orchestration/request-presentation.js';
-import type { PluginLifecycleProposalService } from '../plugins/plugin-lifecycle-proposals.js';
+import {
+  type PluginLifecycleProposalService,
+  resolvePluginProposalSource,
+} from '../plugins/plugin-lifecycle-proposals.js';
 import { DEVICE_PAIRING_NOTIFICATION_SOURCE } from '../ssh/device-pairing-notifications.js';
 import type { ProposedChangeService } from './proposed-change-service.js';
 
@@ -305,6 +308,12 @@ export class AttentionProjectionService {
        * eventually reads it.
        */
       mayDecidePairingRequests?: boolean;
+      /**
+       * #2323 S5 review M6: whether the caller is the Station operator.
+       * Plugin lifecycle proposals are addressed to the operator alone;
+       * absent means unknown, which projects none.
+       */
+      isOperator?: boolean;
     },
   ): Promise<AttentionProjection> {
     const readAuthority = authority ?? this.defaultReadAuthority();
@@ -402,7 +411,9 @@ export class AttentionProjectionService {
     const setupItems = await this.projectSetupRequirement(readAuthority);
 
     const proposedChangeItems = this.projectProposedChanges(readAuthority);
-    const pluginProposalItems = this.projectPluginProposals(readAuthority);
+    const pluginProposalItems = viewer?.isOperator
+      ? this.projectPluginProposals(readAuthority)
+      : [];
     const gateReviews = await this.projectGateReviews(readAuthority);
 
     const undecorated = [
@@ -1025,7 +1036,7 @@ export class AttentionProjectionService {
     return this.pluginProposals.listOpen().map((proposal) => {
       const subject =
         proposal.kind === 'install'
-          ? (proposal.source ?? '')
+          ? installSubject(proposal.source ?? '')
           : (proposal.pluginName ?? '');
       const verb =
         proposal.kind === 'install'
@@ -1036,8 +1047,14 @@ export class AttentionProjectionService {
       return {
         id: `plugin-lifecycle-proposal:${proposal.id}`,
         kind: 'plugin-lifecycle-proposal' as const,
-        title: `${verb}: ${subject}`,
-        body: proposal.rationale,
+        // The title names the verb and where the code would come from; the
+        // full source (host and path apart) and the agent's quoted rationale
+        // render in the row itself, never as Station's own `body` sentence.
+        title:
+          proposal.kind === 'install'
+            ? `${verb} ${subject}`
+            : `${verb}: ${subject}`,
+        rationale: proposal.rationale,
         createdAt: proposal.createdAt,
         updatedAt: proposal.updatedAt,
         // No `sessionId`: the conversation is the tool call's report, and a
@@ -1053,6 +1070,9 @@ export class AttentionProjectionService {
             : {}),
           ...(proposal.author.conversationId
             ? { conversationId: proposal.author.conversationId }
+            : {}),
+          ...(proposal.author.reportedBy
+            ? { reportedBy: proposal.author.reportedBy }
             : {}),
         },
         openHref: pluginProposalHref(proposal.id),
@@ -1260,6 +1280,18 @@ export class AttentionProjectionService {
     const session = sessionsById.get(threadId);
     if (!session) return false;
     return !session.answerability.answerable;
+  }
+}
+
+/** Where an install proposal's code would come from, for a row title. */
+function installSubject(source: string): string {
+  try {
+    const resolved = resolvePluginProposalSource(source);
+    return resolved.kind === 'git'
+      ? `from ${resolved.host}`
+      : 'from a local folder';
+  } catch {
+    return 'from an unrecognized source';
   }
 }
 

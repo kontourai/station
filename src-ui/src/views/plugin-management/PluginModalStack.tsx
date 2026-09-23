@@ -1,11 +1,11 @@
 import type { PluginLifecycleProposal } from '@kontourai/station-contracts/plugin';
 import { createPortal } from 'react-dom';
 import { FolderBrowserModal } from '../../components/modals/FolderBrowserModal';
+import { PluginProposalSummary } from '../../components/plugins/PluginProposalSummary';
 import {
   ResponsiveDialogSurface,
   ResponsiveSurfaceActions,
 } from '../../components/ResponsiveDialogSurface';
-import { describeProposalAuthor } from '../../utils/pluginProposal';
 import { InstallPluginModal } from './InstallPluginModal';
 import { InstallPreviewModal } from './InstallPreviewModal';
 import { LayoutAssignmentModal } from './LayoutAssignmentModal';
@@ -124,11 +124,7 @@ export function PluginModalStack({
           onBrowse={onBrowse}
           onInstall={onInstall}
           onClose={onCloseInstall}
-          proposalNote={
-            proposal?.kind === 'install'
-              ? `${describeProposalAuthor(proposal.author)}: ${proposal.rationale}`
-              : undefined
-          }
+          proposal={proposal?.kind === 'install' ? proposal : null}
         />
       )}
 
@@ -201,9 +197,11 @@ export function PluginModalStack({
           </p>
           {proposal?.kind === 'remove' &&
             proposal.pluginName === removeConfirm && (
-              <p data-testid="remove-plugin-proposal">
-                {describeProposalAuthor(proposal.author)}: {proposal.rationale}
-              </p>
+              <PluginProposalSummary
+                author={proposal.author}
+                rationale={proposal.rationale}
+                testId="remove-plugin-proposal"
+              />
             )}
           <ResponsiveSurfaceActions className="plugins__confirm-actions">
             <button
@@ -237,10 +235,11 @@ export function PluginModalStack({
             Update &ldquo;{updateConfirm.pluginName}&rdquo;? Station pulls the
             plugin&rsquo;s latest code from its source.
           </p>
-          <p data-testid="update-plugin-proposal">
-            {describeProposalAuthor(updateConfirm.author)}:{' '}
-            {updateConfirm.rationale}
-          </p>
+          <PluginProposalSummary
+            author={updateConfirm.author}
+            rationale={updateConfirm.rationale}
+            testId="update-plugin-proposal"
+          />
           <ResponsiveSurfaceActions className="plugins__confirm-actions">
             <button
               type="button"

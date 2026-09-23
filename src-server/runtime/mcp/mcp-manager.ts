@@ -19,6 +19,7 @@ import type { ConfigLoader } from '../../domain/config-loader.js';
 import { wrapPlatformMutationGatedTools } from '../../services/evidence/platform-mutation-gate.js';
 import type { MCPToolProvenanceGeneration } from '../../services/orchestration/mcp-tool-provenance.js';
 import { toolServerOAuthRedirectUrl } from '../../services/plugins/mcp-service.js';
+import { attestProposalSourceContext } from '../../services/plugins/plugin-proposal-provenance.js';
 import { ToolServerCredentialStore } from '../../services/plugins/tool-server-credential-store.js';
 import {
   captureToolServerOperationFailure,
@@ -904,11 +905,17 @@ export function wrapDelegationAwareTools(
           // #2323 S5: who proposed, for the person reviewing it. Always
           // overwritten, never `??=`: this runtime knows the agent and
           // conversation, and a model-written value is not that fact.
+          // The attestation lets the route tell this stamp from a
+          // model-written `_sourceContext` (#2323 S5 review M3).
           nextArgs._sourceContext = {
             agentSlug: options.agentSlug,
             ...(parentConversationId
               ? { conversationId: parentConversationId }
               : {}),
+            attestation: attestProposalSourceContext(
+              options.agentSlug,
+              parentConversationId,
+            ),
           };
         }
         if (!tool.execute) {

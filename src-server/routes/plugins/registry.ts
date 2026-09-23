@@ -360,6 +360,11 @@ export function createRegistryRoutes(
         });
         return c.json({ success: true, data: removed });
       }
+      // #2323 S5 review M1: removing a plugin-provided layout uninstalls the
+      // plugin, so it is the same person-only verb as `DELETE
+      // /api/plugins/:name`. Built-in layouts (above) install no code.
+      const refused = refuseInternalControlCaller(c, 'remove a plugin');
+      if (refused) return refused;
       if (!pluginInstallDeps || !item.plugin) {
         return c.json(
           {

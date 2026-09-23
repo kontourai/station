@@ -77,6 +77,7 @@ const sourceContextSchema = z
   .object({
     agentSlug: z.string().min(1).max(128).optional(),
     conversationId: z.string().min(1).max(256).optional(),
+    attestation: z.string().min(1).max(128).optional(),
   })
   .strict()
   .optional();
