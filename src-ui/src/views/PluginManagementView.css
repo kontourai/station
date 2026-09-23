@@ -1322,3 +1322,15 @@
 .plugins__contribution-action {
   margin-left: auto;
 }
+
+/* ── Reinstall from source (#2323 S4) ── */
+.plugins__reinstall-delta {
+  margin-bottom: 0.75rem;
+}
+.plugins__reinstall-delta p {
+  margin: 0 0 4px;
+}
+.plugins__reinstall-permissions {
+  margin: 0 0 6px;
+  padding-left: 1.25rem;
+}

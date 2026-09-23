@@ -2,6 +2,7 @@ import {
   type PermissionTier,
   PLUGIN_PROPOSAL_QUERY_KEY,
   type PluginLifecycleProposal,
+  type PluginLocalSourceStatus,
 } from '@kontourai/station-contracts/plugin';
 import {
   type PluginProviderDetail,
@@ -25,6 +26,7 @@ import {
   useRevokePluginPermissionMutation,
   waitForAgentHealth,
 } from '@kontourai/station-sdk';
+import { usePluginLocalSourcesQuery } from '@kontourai/station-sdk/plugin-local-sources-query';
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useApiBase } from '../../contexts/ApiBaseContext';
@@ -45,6 +47,8 @@ import {
   type PluginMessage,
   type PluginUpdateSummary,
   type PreviewData,
+  type ReadyPlugin,
+  type ReinstallFromSource,
 } from './types';
 import {
   buildPluginListItems,
@@ -124,6 +128,14 @@ export function usePluginManagementViewModel() {
   const { data: updates = [] } = usePluginUpdatesQuery() as {
     data: PluginUpdateSummary[];
   };
+  // #2323 S4: which installed plugins' source folders changed. Empty for
+  // anyone but the operator (the server answers 404, read as "none").
+  const { data: localSources = [] } = usePluginLocalSourcesQuery() as {
+    data?: PluginLocalSourceStatus[];
+  };
+  // The installed plugin a "Reinstall from source" preview is for, while
+  // that preview and its install are in flight.
+  const [reinstall, setReinstall] = useState<ReinstallFromSource | null>(null);
 
   const [installSource, setInstallSource] = useState('');
   const [showFolderPicker, setShowFolderPicker] = useState(false);
@@ -175,6 +187,10 @@ export function usePluginManagementViewModel() {
       selected.installationReadiness.state === 'ready')
       ? selected
       : undefined;
+
+  const selectedLocalSource = selectedReady
+    ? preferredLocalSource(localSources, selectedReady.name)
+    : undefined;
 
   const { data: settingsData } = usePluginSettingsQuery(selectedReady?.name, {
     enabled: !!selectedReady?.hasSettings,
@@ -426,6 +442,13 @@ export function usePluginManagementViewModel() {
 
     const displayName =
       basis.manifest?.displayName || basis.manifest?.name || source;
+    // #2323 S4: a reinstall from source is this same install, bound to the
+    // same preview and asked the same consent. It differs only in what the
+    // success says and in not offering the layout placement again.
+    const reinstalling =
+      reinstall && reinstall.pluginName === basis.manifest?.name
+        ? reinstall
+        : null;
     const pendingConsent = [
       ...basis.permissions.pendingConsent,
       ...(basis.dependencies ?? []).flatMap((dependency) =>
@@ -444,6 +467,7 @@ export function usePluginManagementViewModel() {
       if (!approved) {
         setPreviewData(null);
         setShowInstallModal(false);
+        setReinstall(null);
         setMessage({
           type: 'success',
           text: installDeclinedMessage(displayName),
@@ -506,6 +530,7 @@ export function usePluginManagementViewModel() {
       {
         onSuccess: async (data) => {
           setShowInstallModal(false);
+          if (reinstalling) setReinstall(null);
           if (proposalId) setActiveProposal(null);
           const installedPlugin = data.plugin;
           if (!installedPlugin) {
@@ -598,9 +623,14 @@ export function usePluginManagementViewModel() {
 
           queryClient.invalidateQueries({ queryKey: ['agents'] });
           queryClient.invalidateQueries({ queryKey: ['projects'] });
-          setMessage({ type: 'success', text: `${pluginName} is ready.` });
+          setMessage({
+            type: 'success',
+            text: reinstalling
+              ? `Reinstalled ${pluginName} from ${reinstalling.projectName}.${reinstalledDataSentence(data)}`
+              : `${pluginName} is ready.`,
+          });
 
-          if (data.layout?.slug) {
+          if (data.layout?.slug && !reinstalling) {
             setQuickProjectName(pluginName);
             setSelectedProjects(new Set());
             setLayoutAssignment({
@@ -610,10 +640,84 @@ export function usePluginManagementViewModel() {
             });
           }
         },
-        onError: (error) =>
-          setInstallMessage({ type: 'error', text: error.message }),
+        onError: (error) => {
+          if (reinstalling) {
+            setReinstall(null);
+            setMessage({
+              type: 'error',
+              text: `${displayName} was not reinstalled: ${error.message}`,
+            });
+            return;
+          }
+          setInstallMessage({ type: 'error', text: error.message });
+        },
       },
     );
+  }
+
+  /**
+   * #2323 S4: "Reinstall from source" for a local-folder plugin whose
+   * Project folder changed. It is the ordinary install: preview the folder,
+   * show what changed against the installed plugin, take the same consent,
+   * then install with the data kept (`dataPolicy: 'preserve'` and the
+   * installation revision the preview saw, via {@link install}).
+   */
+  function reinstallFromSource(
+    plugin: ReadyPlugin,
+    status: PluginLocalSourceStatus,
+  ) {
+    const project = projects.find((entry) => entry.slug === status.projectSlug);
+    const folder = project?.workingDirectory?.trim();
+    if (!project || !folder) {
+      setMessage({
+        type: 'error',
+        text: `Station could not find the folder for ${plugin.displayName || plugin.name}'s Project. Open the Project and check its folder.`,
+      });
+      return;
+    }
+    const context: ReinstallFromSource = {
+      pluginName: plugin.name,
+      projectName: project.name,
+      installedVersion: plugin.version,
+      grantedPermissions: plugin.permissions?.granted ?? [],
+      ...(status.installedSourceDigest
+        ? { installedSourceDigest: status.installedSourceDigest }
+        : {}),
+    };
+    const refuse = (text: string) => {
+      setReinstall(null);
+      setMessage({ type: 'error', text });
+    };
+    setMessage(null);
+    setInstallMessage(null);
+    setActiveProposal(null);
+    setPreviewData(null);
+    setInstallSource(folder);
+    setReinstall(context);
+    previewMutation.mutate(folder, {
+      onSuccess: (data: PreviewData) => {
+        if (!data.valid) {
+          refuse(data.error || 'That folder is not a valid plugin now.');
+          return;
+        }
+        if (data.manifest?.name !== plugin.name) {
+          refuse(
+            `${project.name}'s folder now holds ${data.manifest?.name ? `'${data.manifest.name}'` : 'a different plugin'}, not ${plugin.name}. Nothing was changed.`,
+          );
+          return;
+        }
+        setPreviewSkips(
+          new Set(data.conflicts.map((entry) => `${entry.type}:${entry.id}`)),
+        );
+        setPreviewData(data);
+      },
+      onError: (error) => refuse(error.message),
+    });
+  }
+
+  function closePreview() {
+    setPreviewData(null);
+    setReinstall(null);
   }
 
   function updatePlugin(name: string, proposalId?: string) {
@@ -852,6 +956,10 @@ export function usePluginManagementViewModel() {
       setRemoveConfirm(null);
       if (activeProposal?.kind === 'remove') setActiveProposal(null);
     },
+    closePreview,
+    reinstall,
+    reinstallFromSource,
+    selectedLocalSource,
     closeInstallModal: () => {
       setShowInstallModal(false);
       if (activeProposal?.kind === 'install') setActiveProposal(null);
@@ -938,4 +1046,31 @@ export function usePluginManagementViewModel() {
     updates,
     addLayoutToProjects,
   };
+}
+
+/**
+ * The source status to show for an installed plugin. One folder can be the
+ * source for only one installation, but two Projects can share a folder;
+ * any of them that changed is the one worth offering.
+ */
+function preferredLocalSource(
+  sources: readonly PluginLocalSourceStatus[],
+  pluginName: string,
+): PluginLocalSourceStatus | undefined {
+  const matching = sources.filter((entry) => entry.pluginName === pluginName);
+  return matching.find((entry) => entry.status === 'changed') ?? matching[0];
+}
+
+/**
+ * What the server reported doing with the plugin's data, in words. Read
+ * from the install result's `lifecycle.data`; nothing is said when the
+ * server did not report it.
+ */
+function reinstalledDataSentence(result: unknown): string {
+  const data = (result as { lifecycle?: { data?: unknown } } | null)?.lifecycle
+    ?.data;
+  if (data === 'preserved') return ' Its data was kept.';
+  if (data === 'reset-with-prior-retained')
+    return ' It starts with new data; the previous data is retained.';
+  return '';
 }

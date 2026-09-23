@@ -26,6 +26,10 @@ export function PluginManagementView({
     cancelProposedUpdate,
     cancelRemove,
     closeInstallModal,
+    closePreview,
+    reinstall,
+    reinstallFromSource,
+    selectedLocalSource,
     confirmProposedUpdate,
     updateConfirm,
     addLayoutToProjects,
@@ -76,7 +80,6 @@ export function PluginManagementView({
     setInstallMessage,
     setInstallSourceAndReset,
     setLayoutAssignment,
-    setPreviewData,
     setRemoveConfirm,
     setSearch,
     setShowFolderPicker,
@@ -178,6 +181,17 @@ export function PluginManagementView({
               soleLayoutTargetProject(projects)?.name ?? null
             }
             addLayoutPending={assigningLayout}
+            localSource={selectedLocalSource}
+            localSourceProjectName={
+              projects.find(
+                (project) => project.slug === selectedLocalSource?.projectSlug,
+              )?.name
+            }
+            reinstallPending={!!reinstall && previewMutation.isPending}
+            onReinstallFromSource={() => {
+              if (isRejectedPlugin(selected) || !selectedLocalSource) return;
+              reinstallFromSource(selected, selectedLocalSource);
+            }}
             onAddLayout={() => {
               if (isRejectedPlugin(selected)) return;
               void addPluginLayout(selected);
@@ -267,7 +281,7 @@ export function PluginManagementView({
         onCloseInstall={closeInstallModal}
         onSelectFolder={setInstallSourceAndReset}
         onCloseFolderPicker={() => setShowFolderPicker(false)}
-        onClosePreview={() => setPreviewData(null)}
+        onClosePreview={closePreview}
         onToggleSkip={togglePreviewSkip}
         onConfirmInstall={(dataPolicy) =>
           install(Array.from(previewSkips), dataPolicy)
@@ -282,6 +296,7 @@ export function PluginManagementView({
         updateConfirm={updateConfirm}
         onConfirmUpdate={confirmProposedUpdate}
         onCancelUpdate={cancelProposedUpdate}
+        reinstall={reinstall}
       />
     </>
   );

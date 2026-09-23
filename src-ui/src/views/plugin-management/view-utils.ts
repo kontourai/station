@@ -1,4 +1,10 @@
-import { isRejectedPlugin, type Plugin, type ReadyPlugin } from './types';
+import {
+  isRejectedPlugin,
+  type Plugin,
+  type PreviewData,
+  type ReadyPlugin,
+  type ReinstallFromSource,
+} from './types';
 
 export function pluginSelectionId(plugin: Plugin) {
   return isRejectedPlugin(plugin) ? `rejected:${plugin.name}` : plugin.name;
@@ -157,4 +163,44 @@ export function soleLayoutTargetProject<
   T extends { slug: string; name: string },
 >(projects: readonly T[]): T | null {
   return projects.length === 1 ? projects[0] : null;
+}
+
+/**
+ * #2323 S4: what a reinstall from source changes, against the installed
+ * plugin. Permissions are compared with the plugin's CURRENT grants, so
+ * "added" is what the new version requests that the plugin does not hold
+ * now, and "removed" is what it holds now that the new version no longer
+ * requests. This is disclosure, not the decision: the consent step still
+ * asks exactly what it asks for any install.
+ * "Code" compares the preview's digest with the source digest the
+ * installation recorded; with no recorded digest it is `unknown`, never
+ * `unchanged`. A preview that reported no permissions has no permission
+ * delta (`null`), rather than one claiming every grant was dropped.
+ */
+export function reinstallDelta(
+  installed: Pick<
+    ReinstallFromSource,
+    'grantedPermissions' | 'installedSourceDigest'
+  >,
+  preview: Pick<PreviewData, 'contentDigest' | 'permissions'>,
+): {
+  permissions: { added: string[]; removed: string[] } | null;
+  code: 'changed' | 'unchanged' | 'unknown';
+} {
+  const code =
+    !installed.installedSourceDigest || !preview.contentDigest
+      ? 'unknown'
+      : installed.installedSourceDigest === preview.contentDigest
+        ? 'unchanged'
+        : 'changed';
+  if (!preview.permissions) return { permissions: null, code };
+  const required = new Set(preview.permissions.required);
+  const granted = new Set(installed.grantedPermissions);
+  return {
+    permissions: {
+      added: [...required].filter((entry) => !granted.has(entry)).sort(),
+      removed: [...granted].filter((entry) => !required.has(entry)).sort(),
+    },
+    code,
+  };
 }

@@ -21,9 +21,9 @@
  * the answer is its to do: the reinstall it would lead to is person-only
  * (`personOnly`), and each read walks folders on the host.
  */
+import type { PrincipalRef } from '@kontourai/station-contracts/principal';
 import type { Context } from 'hono';
 import { Hono } from 'hono';
-import type { PrincipalRef } from '../../services/identity/principal-resolver.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../services/identity/principal-resolver.js';
 import type { PackageMcpAdmissionJournal } from '../../services/plugins/package-mcp-admission.js';
 import {

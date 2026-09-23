@@ -62,7 +62,11 @@ function baseViewModel(overrides: Record<string, unknown> = {}) {
     assigningLayout: null,
     changelogData: null,
     changelogExpanded: false,
+    closePreview: vi.fn(),
     createProjectForLayout: vi.fn(),
+    reinstall: null,
+    reinstallFromSource: vi.fn(),
+    selectedLocalSource: undefined as unknown,
     deselectPlugin: vi.fn(),
     expandedProviders: new Set(),
     filtered: [],
@@ -476,5 +480,66 @@ describe('what an installed plugin adds (#1536 G2)', () => {
 
     expect(screen.getByText('First Steps')).toBeTruthy();
     expect(screen.queryByText('Getting Started')).toBeNull();
+  });
+});
+
+describe('#2323 S4 Reinstall from source on the plugin detail', () => {
+  const ready = {
+    name: 'pulse',
+    displayName: 'Connected Pulse',
+    version: '1.0.0',
+    hasBundle: true,
+    permissions: { declared: [], granted: [], missing: [] },
+  };
+  const status = (value: 'changed' | 'unchanged' | 'unknown') => ({
+    pluginName: 'pulse',
+    projectSlug: 'pulse-project',
+    status: value,
+    ...(value === 'unknown' ? { reason: 'too-large' } : {}),
+  });
+  function renderWith(selectedLocalSource: unknown) {
+    const reinstallFromSource = vi.fn();
+    viewModel = baseViewModel({
+      plugins: [ready],
+      filtered: [ready],
+      items: [{ id: 'pulse', name: 'Connected Pulse' }],
+      selectedPlugin: 'pulse',
+      selected: ready,
+      projects: [{ slug: 'pulse-project', name: 'Pulse Lab' }],
+      selectedLocalSource,
+      reinstallFromSource,
+    });
+    render(<PluginManagementView onNavigate={vi.fn()} />);
+    return reinstallFromSource;
+  }
+
+  test('a changed source offers Reinstall from source, names the Project, and starts the reinstall for that plugin and status', () => {
+    const source = status('changed');
+    const reinstallFromSource = renderWith(source);
+    expect(
+      screen.getByTestId('plugin-local-source-note').textContent,
+    ).toContain('The Pulse Lab folder has changed');
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Reinstall from source' }),
+    );
+    expect(reinstallFromSource).toHaveBeenCalledWith(ready, source);
+  });
+
+  test.each([
+    ['unchanged', status('unchanged')],
+    ['unknown', status('unknown')],
+    ['absent', undefined],
+  ])('a %s source offers no reinstall', (_label, source) => {
+    renderWith(source);
+    expect(
+      screen.queryByRole('button', { name: 'Reinstall from source' }),
+    ).toBeNull();
+  });
+
+  test('an unknown source says why Station cannot tell, and an unchanged one says nothing', () => {
+    renderWith(status('unknown'));
+    expect(
+      screen.getByTestId('plugin-local-source-note').textContent,
+    ).toContain('the folder is too large to compare');
   });
 });
