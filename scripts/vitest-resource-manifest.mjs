@@ -892,6 +892,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // declares. jsdom computes no layout and would report the pre-fix
   // edge-to-edge frame and the fixed one identically.
   'src-ui/src/workspace-panes/__tests__/WorkspacePaneRouteView.frame.test.tsx',
+  // Runs the full-regression phase driver CLI and real npm children, including
+  // one it must kill at a deadline.
+  'scripts/__tests__/run-full-regression-phases.test.ts',
 ]);
 
 export const DOGFOOD_RECONCILE_PREFIX =

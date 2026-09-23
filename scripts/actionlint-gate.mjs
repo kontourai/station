@@ -443,15 +443,42 @@ const BASE_CONTROLLED_PR_WORKFLOWS = new Set([
   '.github/workflows/desktop-rust.yml',
   '.github/workflows/ecosystem-packaging.yml',
   '.github/workflows/install-smoke.yml',
+  '.github/workflows/merge-queue-regression.yml',
   '.github/workflows/security-analysis.yml',
   '.github/workflows/windows-pr-verification.yml',
 ]);
 const MERGE_QUEUE_WORKFLOWS = new Set([
   '.github/workflows/build-ios.yml',
   '.github/workflows/ci.yml',
+  '.github/workflows/merge-queue-regression.yml',
   '.github/workflows/security-analysis.yml',
   '.github/workflows/windows-pr-verification.yml',
 ]);
+const MERGE_QUEUE_REGRESSION_WORKFLOW =
+  '.github/workflows/merge-queue-regression.yml';
+const MERGE_QUEUE_REGRESSION_AGGREGATE_JOB = 'merge-queue-regression';
+const MERGE_QUEUE_REGRESSION_AGGREGATE_RUN = `echo "$NEEDS" | jq -r 'to_entries[] | "\\(.key): \\(.value.result)"'
+echo "$NEEDS" | jq -e 'length > 0 and (to_entries | all(.value.result == "success"))' > /dev/null
+`;
+
+/**
+ * The merge-queue regression aggregate reads only its needed jobs' results. It
+ * checks out nothing and runs no repository code, so it is the one job in a
+ * base-controlled workflow allowed to omit the candidate checkout; any other
+ * shape (an action, a second step, a different command) loses the exemption.
+ */
+function isExactMergeQueueRegressionAggregate(file, jobId, job) {
+  const steps = job?.steps ?? [];
+  return (
+    file === MERGE_QUEUE_REGRESSION_WORKFLOW &&
+    jobId === MERGE_QUEUE_REGRESSION_AGGREGATE_JOB &&
+    steps.length === 1 &&
+    steps[0]?.uses === undefined &&
+    hasExactKeys(steps[0]?.env, ['NEEDS']) &&
+    steps[0].env.NEEDS === `\${{ toJSON(needs) }}` &&
+    steps[0]?.run === MERGE_QUEUE_REGRESSION_AGGREGATE_RUN
+  );
+}
 
 function hasRequiredCapacityOwnerLifetime(value) {
   return String(value) === String(CAPACITY_OWNER_LIFETIME_SECONDS);
@@ -1902,7 +1929,8 @@ function baseControlledPrWorkflowFindings(file, document) {
           ? hasExactDependencyReviewSteps(job)
           : file === SECURITY_ANALYSIS_WORKFLOW
             ? false
-            : hasExplicitCheckout(
+            : isExactMergeQueueRegressionAggregate(file, jobId, job) ||
+              hasExplicitCheckout(
                 job,
                 FAST_CHECKOUT_REPOSITORY,
                 FAST_CHECKOUT_REF,
@@ -1946,7 +1974,8 @@ function baseControlledPrWorkflowFindings(file, document) {
           'dtolnay/rust-toolchain@',
         ].some((prefix) => step.uses.startsWith(prefix)) &&
         !(
-          file === '.github/workflows/build-ios.yml' &&
+          (file === '.github/workflows/build-ios.yml' ||
+            file === MERGE_QUEUE_REGRESSION_WORKFLOW) &&
           step.uses.startsWith('actions/upload-artifact@')
         ) &&
         !isExactWindowsPrEvidenceUpload(file, jobId, step) &&
