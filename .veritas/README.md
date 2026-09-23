@@ -58,14 +58,17 @@ in [the issue-class prevention plan](../docs/plans/issue-class-prevention.md).
 Use `veritas explain --file <path>` before editing a routed seam.
 The pre-edit `gate:for` route presents matching guidance. Station's tracked
 `.codex/hooks.json` contains the Veritas Governance Kit's Codex `PreToolUse`
-hook, provisioned with Flow Agents 6.3.0 through Conduit 0.7.1 from Veritas
-v1.7.2. Tracked `.codex/config.toml` enables the stable hooks feature for a
-trusted project layer. The required governance artifact rule rejects either
-missing file; `proof:repo-governance` rejects a disabled feature or a missing,
-duplicated, or misplaced Veritas handler. A Conduit receipt proves installed
-bytes, while Codex's exact hook trust review and normal host execution require
-separate observation. Readiness remains required for edits outside the host
-hook's coverage. The plan records the installation and coverage contract.
+definition. Tracked `.codex/config.toml` enables the hooks feature. Install the
+user-level, repository-scoped dispatcher once with
+`npm run veritas:codex-hook:install`; Flow Agents provisions it through Conduit
+and preserves other handlers. Review and trust its exact definition in Codex.
+The dispatcher uses the shared Git directory, so it covers Station worktrees and
+stays silent in unrelated repositories. The required governance artifact rule
+rejects missing project files; `proof:repo-governance` checks their structure.
+A Conduit receipt proves installed bytes, while a normal Codex edit proves host
+execution. Run readiness for edits outside the hook's coverage. Veritas 1.7.4
+handles `apply_patch` Add File under routed content rules; the plan records the
+published-package host probe.
 
 ## Brownfield Rule
 

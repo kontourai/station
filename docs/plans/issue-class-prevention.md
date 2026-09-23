@@ -62,14 +62,14 @@ selects the corresponding focused suite in the same readiness run. Missing,
 skipped, failed, or unbound results block. `gate:for` presents matching
 `explain` guidance before edits. The Veritas Governance Kit declares a Codex
 `PreToolUse` hook; Flow Agents provisions it through Conduit, preserving other
-handlers and recording the installed bytes. Codex must trust the project hook
-before it executes. The first matching edit in a host session gets full
-guidance; repeat edits with the same path guidance and policy hashes still run
-the decision but do not repeat the prose. A missing session ID or cache error
-repeats the briefing. Hook delivery cannot prove that an agent followed the
-guidance, and tools outside the host's hook coverage still require post-change
-readiness. These checks prove their named tests ran and passed, not every
-behavior suggested by the rule text. Other behavioral gates remain `npm run test:focused -- <selected files>`,
+handlers and recording the installed bytes. Codex must trust the exact
+user-level dispatcher definition before it executes. The first matching edit
+in a host session gets full guidance; repeat edits with the same path guidance
+and policy hashes still run the decision but do not repeat the prose. A missing
+session ID or cache error repeats the briefing. Hook delivery cannot prove
+that an agent followed the guidance. Tools outside the host's hook coverage
+still require post-change readiness. These checks prove their named tests ran
+and passed, not every behavior suggested by the rule text. Other behavioral gates remain `npm run test:focused -- <selected files>`,
 `npm run test:connected-agents`, relevant browser journeys, and `npm run
 ci:fast`, followed by the hosted completion gate when a promotion requires it.
 Use `npm run gate:for -- <paths>` to select the lane. Further expansion of the
@@ -134,8 +134,16 @@ run reported `PreToolUse Completed` and supplied the contract and session
 transition guidance before a named `apply_patch` edit. A normal edit in an
 unrelated temporary Git repository reported no Veritas rule guidance. Codex
 still printed `PreToolUse` start/completion status for that unrelated edit;
-that host-level status noise is `CONFIRMED`. The user-level dispatcher is
-implemented in Flow Agents PR #1409; reproducible installation from its
-published package remains `NOT_VERIFIED` until that PR lands and Station
-consumes the release. The project-local hook remains undiscovered by this
-Codex version, so host activation here depends on the trusted user-level hook.
+that host-level status noise is `CONFIRMED`. The user-level dispatcher landed
+in Flow Agents 6.4.0. Station exposes its one-time installer as
+`npm run veritas:codex-hook:install`. Installing it from the published package
+succeeded with the previously trusted Conduit digest
+`sha256:424ee8a395e52a35f8f1b096ce9de1b1a5aa6474eaca8ecf4e46e47f3606cf1c`.
+A normal Codex edit of an existing file succeeded with the hook enabled.
+A normal `apply_patch` Add File under a routed content rule was blocked with
+`ENOENT` for the not-yet-created path under Veritas 1.7.3. Veritas PR #241
+fixed the pre-edit content scan while retaining path guidance and strict Work
+Area denial. With published Veritas 1.7.4 installed, the exact payload returned
+guidance through the CLI and a normal trusted Codex Add File succeeded. The
+project-local hook remains undiscovered by this Codex version, so host
+activation here depends on the trusted user-level dispatcher.
