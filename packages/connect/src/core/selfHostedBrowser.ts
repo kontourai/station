@@ -1,4 +1,13 @@
 export {
+  type BrokerRouteTrustStore,
+  BrowserRoutingGrantCustody,
+  type BrowserRoutingGrantStorage,
+  encodeBrokerRouteInvitationFragment,
+  IndexedDbBrowserRoutingGrantStorage,
+  parseBrokerRouteInvitationUrl,
+  redeemBrokerRouteInvitation,
+} from './brokerRouteEnrollment.js';
+export {
   type BrowserConnectionTrustStore,
   type BrowserIceProvider,
   type BrowserIceSnapshot,

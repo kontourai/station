@@ -1,8 +1,14 @@
 import { spawn } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import type { SelfHostedBrokerScopeV1 } from '@kontourai/station-contracts/self-hosted-broker';
-import type { BrokerCredentialBundle } from '../../src-server/services/connections/self-hosted-broker-service.js';
+import type {
+  SelfHostedBrokerRouteInvitationV1,
+  SelfHostedBrokerScopeV1,
+} from '@kontourai/station-contracts/self-hosted-broker';
+import {
+  type BrokerCredentialBundle,
+  SelfHostedBrokerService,
+} from '../../src-server/services/connections/self-hosted-broker-service.js';
 import {
   localLabEnvironment,
   runLabCommand,
@@ -26,6 +32,13 @@ interface SelfHostedBrokerProcess {
   /** PRIVATE controller-only credential bundle. Never send beyond routing to a browser. */
   bundle: BrokerCredentialBundle;
   credentialsPath: string;
+  /** Operator-only control path. Never sends the shared routing bearer to a browser. */
+  issueInvitation: (input: {
+    clientOrigin: string;
+    stationSigningKeyId: string;
+    stationSigningGeneration: number;
+  }) => SelfHostedBrokerRouteInvitationV1;
+  revokeClientGrant: (grantId: string) => void;
   readLease: () => Promise<{
     state: string;
     routingGeneration: number;
@@ -212,6 +225,29 @@ export async function startSelfHostedBrokerProcess(
       scope,
       bundle: record.bundle,
       credentialsPath,
+      issueInvitation: (request) => {
+        const owner = new SelfHostedBrokerService(config.databasePath);
+        try {
+          return owner.issueInvitation({
+            scope,
+            routingCredential: record.bundle.routing,
+            brokerOrigin,
+            clientOrigin: request.clientOrigin,
+            stationSigningKeyId: request.stationSigningKeyId,
+            stationSigningGeneration: request.stationSigningGeneration,
+          });
+        } finally {
+          owner.close();
+        }
+      },
+      revokeClientGrant: (grantId) => {
+        const owner = new SelfHostedBrokerService(config.databasePath);
+        try {
+          owner.revokeClientGrant(scope, record.bundle.routing, grantId);
+        } finally {
+          owner.close();
+        }
+      },
       readLease,
       preflight,
       stop,

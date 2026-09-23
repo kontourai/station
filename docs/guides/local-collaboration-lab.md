@@ -486,19 +486,57 @@ npm run lab:browser-transport -- --peer=pion --browser-turn=udp --application-ac
 
 Build the pinned Pion executable as described above first. This mode starts the
 actual broker CLI in a separate owned process with private SQLite state and
-separate routing/connector credentials. The Station-side factory uses the real
-Pion adapter; the browser uses the production self-hosted transport entry point.
+separate routing/connector credentials. Its controller issues two one-use
+invitations, each with a distinct broker routing grant; the operator routing
+credential never enters either browser profile. The browser profiles run on
+two different test-owned HTTPS Origins, both explicitly listed in the Station
+authentication-Origin allowlist. The Station-side factory uses the real Pion
+adapter; the browser uses the production self-hosted transport entry point.
 The full protected Station remains behind private process IPC, with direct browser
 HTTP application requests blocked and counted. No account or Device authority is
 injected into production authentication.
 
 The checks cover account login and continuation, explicit account-bound Device
-approval, permitted/private Project reads, independent revocations, lease renewal,
-fresh-peer reconnect, wrong routing credentials, actual browser CORS, proof tamper
-refusal before remote-description acceptance, and trust retirement. A separate
+approval, permitted/private Project reads, independent Device and broker-grant
+revocations, lease renewal, fresh-peer reconnect, wrong routing credentials,
+actual browser CORS, proof tamper refusal before remote-description acceptance,
+and trust retirement. A separate
 HTTP preflight control checks the broker's exact response. Withdrawal can hide its
 401 behind browser CORS; an independent HTTP control must still observe that exact
 refusal, so an unrelated network failure cannot pass the test.
+
+The source operator command in `scripts/self-hosted-broker.ts` also accepts
+`invite`, `grants` and `revoke`. `invite` takes its existing private broker
+configuration (with one exact Station scope), a private JSON request, and a new
+private output path. The request is:
+
+```json
+{
+  "version": "station-broker-invitation-request/v1",
+  "brokerOrigin": "https://broker.example",
+  "clientOrigin": "https://client.example",
+  "stationSigningKeyId": "43-character approved Station key thumbprint",
+  "stationSigningGeneration": 1
+}
+```
+
+The CLI writes a mode-0600 output file under a private directory. It contains
+the typed invitation and a `/connections/computers#relay-invite=...` link; the
+one-use secret is in the fragment, never the query or CLI output. Invitations
+expire within five minutes. A redeemed grant lasts at most 30 days and permits
+broker signaling only; expiry, a lost successful redemption response, or lost
+local custody requires a newly issued invitation. `grants` lists secret-free
+grant IDs and state; `revoke` retires one grant and its pending signaling while
+leaving the Station connector and other grants live. Existing encrypted peers
+are not forcibly closed by broker revocation.
+
+The Station operator must separately list each recipient Origin in
+`ALLOWED_ORIGINS` and `STATION_AUTHENTICATION_BROWSER_ORIGINS` (the latter has a
+bounded maximum of 16). Broker issuance cannot expand Station application
+authority. The current desktop saved-route UI remains a metadata/trust readout;
+native grant custody does not by itself make a route selectable or prove a real
+Tauri connection. Browser and native onboarding UI/runtime evidence are tracked
+separately under [#2388](https://github.com/kontourai/station/issues/2388).
 
 The broker receives signaling only. The separate TURN recording relay observes
 nonempty encrypted traffic, checked alongside actual DTLS and application delivery;

@@ -1,4 +1,4 @@
-import { lstatSync } from 'node:fs';
+import { lstatSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute } from 'node:path';
 import { serve } from '@hono/node-server';
 import {
@@ -30,9 +30,9 @@ process.once('unhandledRejection', closedFailure);
 const mode = process.argv[2];
 assertSelfHostedBrokerPlatform();
 const configPath = process.argv[3];
-if (!['init', 'serve'].includes(mode ?? ''))
+if (!['init', 'serve', 'invite', 'grants', 'revoke'].includes(mode ?? ''))
   throw new Error(
-    'Usage: station-self-hosted-broker <init|serve> /absolute/private-config.json',
+    'Usage: station-self-hosted-broker <init|serve|invite|grants|revoke> /absolute/private-config.json',
   );
 if (!configPath || !isAbsolute(configPath))
   throw new Error(
@@ -81,6 +81,56 @@ if (
   (credentialsParent.mode & 0o077) !== 0
 )
   throw new Error('Broker credentials parent must be private');
+function readPrivateCredentials(scope: ReturnType<typeof validateBrokerScope>) {
+  const info = lstatSync(credentialsPath);
+  if (
+    !info.isFile() ||
+    info.isSymbolicLink() ||
+    info.nlink !== 1 ||
+    info.uid !== process.getuid!() ||
+    (info.mode & 0o077) !== 0 ||
+    info.size > 128 * 1024
+  )
+    throw new Error('Broker credentials must be private');
+  const value: unknown = readJsonFile(credentialsPath, null, {
+    maxBytes: 128 * 1024,
+    label: 'Broker credentials',
+  });
+  if (!value || typeof value !== 'object' || Array.isArray(value))
+    throw new Error('Invalid broker credentials');
+  const record = value as Record<string, unknown>;
+  if (
+    Object.keys(record).sort().join(',') !== 'bundle,scope,version' ||
+    record.version !== 'station-self-hosted-broker-credentials/v1' ||
+    JSON.stringify(record.scope) !== JSON.stringify(scope) ||
+    !record.bundle ||
+    typeof record.bundle !== 'object' ||
+    Array.isArray(record.bundle)
+  )
+    throw new Error('Invalid broker credentials');
+  const bundle = record.bundle as Record<string, unknown>;
+  const credential = (candidate: unknown) => {
+    if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate))
+      throw new Error('Invalid broker credentials');
+    const value = candidate as Record<string, unknown>;
+    if (
+      Object.keys(value).sort().join(',') !== 'id,secret' ||
+      typeof value.id !== 'string' ||
+      !/^[A-Za-z0-9_-]{22}$/.test(value.id) ||
+      typeof value.secret !== 'string' ||
+      !/^[A-Za-z0-9_-]{43}$/.test(value.secret)
+    )
+      throw new Error('Invalid broker credentials');
+    return { id: value.id, secret: value.secret };
+  };
+  if (Object.keys(bundle).sort().join(',') !== 'connector,routing')
+    throw new Error('Invalid broker credentials');
+  return {
+    connector: credential(bundle.connector),
+    routing: credential(bundle.routing),
+  };
+}
+
 if (mode === 'init') {
   if (config.provision.length !== 1)
     throw new Error('Broker init provisions exactly one generation');
@@ -159,6 +209,97 @@ if (mode === 'init') {
     throw error;
   }
   service.close();
+  process.exit(0);
+}
+if (mode === 'invite' || mode === 'grants' || mode === 'revoke') {
+  if (config.provision.length !== 1)
+    throw new Error('Broker operator command requires one exact scope');
+  const scope = validateBrokerScope(config.provision[0]);
+  const bundle = readPrivateCredentials(scope);
+  const service = new SelfHostedBrokerService(databasePath);
+  try {
+    if (mode === 'grants') {
+      if (process.argv.length !== 4)
+        throw new Error('Usage: grants config.json');
+      process.stdout.write(
+        `STATION_BROKER_GRANTS ${JSON.stringify(service.listClientGrants(scope, bundle.routing))}\n`,
+      );
+    } else if (mode === 'revoke') {
+      const grantId = process.argv[4];
+      if (!grantId || process.argv.length !== 5)
+        throw new Error('Usage: revoke config.json grant-id');
+      service.revokeClientGrant(scope, bundle.routing, grantId);
+      process.stdout.write('STATION_BROKER_GRANT_REVOKED\n');
+    } else {
+      const requestPath = process.argv[4];
+      const outputPath = process.argv[5];
+      if (
+        !requestPath ||
+        !outputPath ||
+        process.argv.length !== 6 ||
+        !isAbsolute(requestPath) ||
+        !isAbsolute(outputPath)
+      )
+        throw new Error(
+          'Usage: invite config.json private-request.json private-output.json',
+        );
+      const requestInfo = lstatSync(requestPath);
+      if (
+        !requestInfo.isFile() ||
+        requestInfo.isSymbolicLink() ||
+        requestInfo.nlink !== 1 ||
+        requestInfo.uid !== process.getuid!() ||
+        (requestInfo.mode & 0o077) !== 0 ||
+        requestInfo.size > 4096
+      )
+        throw new Error('Broker invitation request must be private');
+      const request: unknown = readJsonFile(requestPath, null, {
+        maxBytes: 4096,
+        label: 'Broker invitation request',
+      });
+      if (!request || typeof request !== 'object' || Array.isArray(request))
+        throw new Error('Invalid broker invitation request');
+      const details = request as Record<string, unknown>;
+      if (
+        Object.keys(details).sort().join(',') !==
+          'brokerOrigin,clientOrigin,stationSigningGeneration,stationSigningKeyId,version' ||
+        details.version !== 'station-broker-invitation-request/v1' ||
+        typeof details.brokerOrigin !== 'string' ||
+        typeof details.clientOrigin !== 'string' ||
+        typeof details.stationSigningKeyId !== 'string' ||
+        !Number.isSafeInteger(details.stationSigningGeneration)
+      )
+        throw new Error('Invalid broker invitation request');
+      const outputParent = lstatSync(dirname(outputPath));
+      if (
+        !outputParent.isDirectory() ||
+        outputParent.isSymbolicLink() ||
+        outputParent.uid !== process.getuid!() ||
+        (outputParent.mode & 0o077) !== 0
+      )
+        throw new Error('Broker invitation output parent must be private');
+      const invitation = service.issueInvitation({
+        scope,
+        routingCredential: bundle.routing,
+        brokerOrigin: details.brokerOrigin,
+        clientOrigin: details.clientOrigin,
+        stationSigningKeyId: details.stationSigningKeyId,
+        stationSigningGeneration: details.stationSigningGeneration as number,
+      });
+      const delivery = {
+        version: 'station-broker-invitation-delivery/v1',
+        invitation,
+        link: `${invitation.scope.browserOrigin}/connections/computers#relay-invite=${Buffer.from(JSON.stringify(invitation), 'utf8').toString('base64url')}`,
+      };
+      writeFileSync(outputPath, JSON.stringify(delivery), {
+        flag: 'wx',
+        mode: 0o600,
+      });
+      process.stdout.write('STATION_BROKER_INVITATION_WRITTEN\n');
+    }
+  } finally {
+    service.close();
+  }
   process.exit(0);
 }
 if (config.provision.length !== 0)

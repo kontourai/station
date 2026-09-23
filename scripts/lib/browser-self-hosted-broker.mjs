@@ -18,16 +18,16 @@ export async function browserBrokerConnect(input) {
     !window.stationConnectionTrustStore
   )
     throw new Error('Missing independently admitted Station trust');
-  const credentials = {
-    current: true,
-    capture() {
-      return {
-        id: input.routingId,
-        secret: input.routingSecret,
-        isCurrent: () => this.current,
-      };
-    },
-  };
+  if (!input.invitation)
+    throw new Error('Broker lab requires a one-time client invitation');
+  const credentials = new api.BrowserRoutingGrantCustody();
+  await api.redeemBrokerRouteInvitation({
+    invitation: input.invitation,
+    trustRecord: window.stationConnectionTrustRecord,
+    trustStore: window.stationConnectionTrustStore,
+    custody: credentials,
+    signal: AbortSignal.timeout(15_000),
+  });
   // The real HTTP loopback broker origin is used for validation AND fetch:
   // never validate one origin then fetch a different one.
   const broker = new api.SelfHostedBrokerBrowserClient({
@@ -78,11 +78,22 @@ export async function browserBrokerConnect(input) {
     broker,
     credentials,
     ice,
-    input,
+    // Keep the one-use invitation and its secret out of the long-lived page
+    // fixture after redemption. The live grant stays in its own custody owner.
+    input: {
+      brokerOrigin: input.brokerOrigin,
+      scope: input.scope,
+      applicationOrigin: input.applicationOrigin,
+      port: input.port,
+      username: input.username,
+      password: input.password,
+      transport: input.transport,
+    },
   };
   return {
     connectionId: snapshot.connectionId,
     applicationOrigin: snapshot.applicationOrigin,
+    routingGrantId: credentials.capture().id,
   };
 }
 
@@ -187,7 +198,7 @@ export function browserBrokerClose() {
   const lab = window.stationBrokerLab;
   transport?.close();
   lab?.owner.close();
-  if (lab?.credentials) lab.credentials.current = false;
+  lab?.credentials?.invalidate();
   if (lab?.ice) lab.ice.current = false;
   window.stationBrokerLabTransport = undefined;
   window.stationBrokerLab = undefined;
@@ -199,10 +210,12 @@ export function browserBrokerClose() {
 // OPTIONS preflight is issued here: the non-simple POST below triggers the
 // real browser preflight, which the owned Node broker listener observes.
 export async function browserBrokerProbeOrigin(input) {
+  const credential = window.stationBrokerLab?.credentials?.capture();
+  if (!credential) throw new Error('Missing client-owned broker grant');
   const headers = {
-    Authorization: `Bearer ${input.routingSecret}`,
+    Authorization: `Bearer ${credential.secret}`,
     'Content-Type': 'application/json',
-    'X-Broker-Credential-Id': input.routingId,
+    'X-Broker-Credential-Id': credential.id,
   };
   const body = JSON.stringify({ scope: input.scope });
   const status = await fetch(
@@ -280,16 +293,7 @@ export async function browserBrokerTamperProof() {
       headers: { 'Content-Type': 'application/json' },
     });
   };
-  const credentials = {
-    current: true,
-    capture() {
-      return {
-        id: lab.input.routingId,
-        secret: lab.input.routingSecret,
-        isCurrent: () => this.current,
-      };
-    },
-  };
+  const credentials = lab.credentials;
   const broker = new api.SelfHostedBrokerBrowserClient({
     brokerOrigin: lab.input.brokerOrigin,
     browserOrigin: location.origin,
