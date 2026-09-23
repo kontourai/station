@@ -391,8 +391,11 @@ describe('buildPluginDraft', () => {
     'diagnostic text is bounded and never names the plugin root',
     async () => {
       const long = `missing-${'y'.repeat(2_000)}`;
-      const pluginDir = writeDraft(
-        `import a from '${long}';\nimport b from './nope';\nexport const components = { pulse: () => a + b };\n`,
+      const pluginDir = writeDraft('export {};\n');
+      // An absolute import makes esbuild quote the host path in its message.
+      writeFileSync(
+        join(pluginDir, 'src', 'index.tsx'),
+        `import a from '${long}';\nimport b from '${join(pluginDir, 'src', 'nope.ts')}';\nexport const components = { pulse: () => a + b };\n`,
       );
       const result = await buildPluginDraft({
         pluginDir,
