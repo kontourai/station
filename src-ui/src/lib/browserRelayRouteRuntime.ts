@@ -12,6 +12,7 @@ import {
   finishBrowserRelayPreparation,
   publishBrowserRelayBinding,
   type RouteBinding,
+  retireBrowserRelayRoute,
 } from './browserRelayRouteBinding';
 
 /** Broker preparation has no direct-HTTP fallback and never persists a bearer. */
@@ -111,8 +112,19 @@ export async function prepareBrowserRelayRoute(
       throw new Error('Station route selection was superseded');
     publishBrowserRelayBinding(next);
     finishBrowserRelayPreparation(lifetime);
+    const { hydrateBrowserRelayApplicationAuthorityScope } = await import(
+      './browserRelayApplicationAuthority'
+    );
+    await hydrateBrowserRelayApplicationAuthorityScope({
+      connectionId: connection.id,
+      applicationOrigin: connection.url,
+      route,
+    });
+    if (!isSelectionCurrent())
+      throw new Error('Station route selection was superseded');
   } catch (error) {
     lifetime.abort(error);
+    retireBrowserRelayRoute(connection.id, selectionEpoch);
     transport?.close();
     owner?.close();
     custody.invalidate();

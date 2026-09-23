@@ -26,7 +26,13 @@ import {
   useInsertionEffect,
   useMemo,
   useRef,
+  useSyncExternalStore,
 } from 'react';
+import {
+  browserRelayAccountScopeKey,
+  getBrowserRelayAccountScope,
+  subscribeBrowserRelayAccountScope,
+} from '../lib/browserRelayAccountScope';
 import {
   captureBrowserRelayRoute,
   retireBrowserRelayRoute,
@@ -296,20 +302,6 @@ function StationCredentialBridge({ children }: { children: ReactNode }) {
               evidence.origin,
             )?.bindingId === nativeBinding.bindingId,
         );
-      const requestAuthority = evidence
-        ? !profile.isTauri || nativeBinding
-          ? {
-              ...requestAuthorityScopeFromCredentialEvidence(evidence, {
-                ...(nativeBinding
-                  ? { authorityQualifier: nativeBinding.bindingId }
-                  : {}),
-              }),
-              isCurrent: () =>
-                isCredentialEvidenceCurrent(evidence) &&
-                (!profile.isTauri || nativeBindingIsCurrent()),
-            }
-          : undefined
-        : undefined;
       let relayCredential: ClientCredential | undefined;
       if (!profile.isTauri && evidence?.brokerRoute && browserRoute) {
         const { createBrowserRelayApplicationCredential } = await import(
@@ -325,6 +317,26 @@ function StationCredentialBridge({ children }: { children: ReactNode }) {
             Boolean(browserRoute.isCurrent()),
         });
       }
+      const requestAuthority = evidence
+        ? !profile.isTauri || nativeBinding
+          ? {
+              ...requestAuthorityScopeFromCredentialEvidence(evidence, {
+                ...(nativeBinding
+                  ? { authorityQualifier: nativeBinding.bindingId }
+                  : relayCredential?.requestAuthority?.authorityKey
+                    ? {
+                        authorityQualifier:
+                          relayCredential.requestAuthority.authorityKey,
+                      }
+                    : {}),
+              }),
+              isCurrent: () =>
+                isCredentialEvidenceCurrent(evidence) &&
+                (!profile.isTauri || nativeBindingIsCurrent()) &&
+                (relayCredential?.requestAuthority?.isCurrent() ?? true),
+            }
+          : undefined
+        : undefined;
       return {
         credential,
         origin: evidence?.origin ?? apiBase,
@@ -545,6 +557,20 @@ export function useHostRequestAuthorityScope() {
     useConnections();
   const profile = usePlatformProfile();
   const evidence = captureCredentialEvidence();
+  const relayScopeKey =
+    !profile.isTauri && evidence?.brokerRoute
+      ? browserRelayAccountScopeKey({
+          connectionId: evidence.connectionId,
+          applicationOrigin: evidence.origin,
+          route: evidence.brokerRoute,
+          clientOrigin: window.location.origin,
+        })
+      : null;
+  const relayAccountScope = useSyncExternalStore(
+    subscribeBrowserRelayAccountScope,
+    () => getBrowserRelayAccountScope(relayScopeKey),
+    () => null,
+  );
   const nativeBinding =
     profile.isTauri && evidence
       ? nativeProfileRepository().captureNativeRequestBinding(
@@ -565,18 +591,32 @@ export function useHostRequestAuthorityScope() {
   const authorityGeneration = evidence?.authorityGeneration;
   const credentialState = evidence?.credentialState;
   const nativeBindingId = nativeBinding?.bindingId;
+  const relayAccountScopeKey = relayAccountScope?.scopeKey;
+  const relayAccountScopeVersion = relayAccountScope?.version;
+  const relayAccountScopeReady = relayAccountScope?.state === 'ready';
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: snapshot allocation is intentionally excluded; this hook's authority identity is the primitive tuple below.
   return useMemo(() => {
-    if (!evidence || (profile.isTauri && !nativeBinding)) return undefined;
+    if (
+      !evidence ||
+      (profile.isTauri && !nativeBinding) ||
+      (evidence.brokerRoute && !relayAccountScopeReady)
+    )
+      return undefined;
     return {
       ...requestAuthorityScopeFromCredentialEvidence(evidence, {
         ...(nativeBinding
           ? { authorityQualifier: nativeBinding.bindingId }
-          : {}),
+          : relayAccountScopeKey
+            ? { authorityQualifier: relayAccountScopeKey }
+            : {}),
       }),
       isCurrent: () =>
         isCredentialEvidenceCurrent(evidence) &&
+        (!evidence.brokerRoute ||
+          (relayAccountScopeReady &&
+            getBrowserRelayAccountScope(relayScopeKey) ===
+              relayAccountScope)) &&
         (!profile.isTauri ||
           nativeProfileRepository().captureNativeRequestBinding(
             evidence.connectionId,
@@ -590,6 +630,10 @@ export function useHostRequestAuthorityScope() {
     connectionId,
     credentialState,
     nativeBindingId,
+    relayAccountScopeKey,
+    relayAccountScopeReady,
+    relayAccountScopeVersion,
     profile.isTauri,
+    relayScopeKey,
   ]);
 }

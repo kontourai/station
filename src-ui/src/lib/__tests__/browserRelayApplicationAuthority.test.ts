@@ -32,11 +32,19 @@ vi.mock(
 
 import { createRelayEnrollmentKey } from '@kontourai/station-sdk/relay-enrollment';
 import {
+  browserRelayAccountScopeKey,
+  getBrowserRelayAccountScope,
+} from '../browserRelayAccountScope';
+import {
   adoptBrowserRelayCookies,
   type BrowserRelayAuthorityStorage,
   createBrowserRelayApplicationCredential,
+  hydrateBrowserRelayApplicationAuthorityScope,
   installBrowserRelayApplicationAuthority,
+  publishBrowserRelayApplicationAuthority,
   removeBrowserRelayApplicationAuthority,
+  removeProvisionalBrowserRelayApplicationAuthority,
+  stageBrowserRelayApplicationAuthority,
 } from '../browserRelayApplicationAuthority';
 import {
   publishBrowserRelayBinding,
@@ -80,17 +88,99 @@ const publicKey = {
 } as const;
 const key = { privateKey, publicKey, sign: async () => new Uint8Array(64) };
 
+async function thumbprintFor(jwk: {
+  kty: string;
+  crv: string;
+  x: string;
+  y: string;
+}) {
+  const digest = await crypto.subtle.digest(
+    'SHA-256',
+    new TextEncoder().encode(
+      JSON.stringify({ crv: jwk.crv, kty: jwk.kty, x: jwk.x, y: jwk.y }),
+    ),
+  );
+  return btoa(String.fromCharCode(...new Uint8Array(digest)))
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+}
+
 class MemoryStorage implements BrowserRelayAuthorityStorage {
   values = new Map<string, unknown>();
+  beforeCompare?: (key: string, expected: unknown) => Promise<void>;
+  afterActivate?: () => Promise<void>;
   async read(id: string) {
     return this.values.get(id) ?? null;
   }
-  async write(id: string, record: unknown) {
-    this.values.set(id, record);
+  async compareAndSwap(id: string, expected: any, next: any) {
+    await this.beforeCompare?.(id, expected);
+    const current = this.values.get(id) ?? null;
+    if (!sameStoredIdentity(current, expected)) return false;
+    this.values.set(id, next);
+    return true;
   }
-  async remove(id: string) {
-    this.values.delete(id);
+  async activateStaged(input: any) {
+    const active = this.values.get(input.activeKey) ?? null;
+    const staged = this.values.get(input.stageKey) ?? null;
+    if (
+      !sameStoredIdentity(active, input.expectedActive) ||
+      !sameStoredIdentity(staged, input.expectedStage)
+    )
+      return false;
+    this.values.set(input.activeKey, input.active);
+    this.values.set(input.stageKey, input.stageTombstone);
+    await this.afterActivate?.();
+    return true;
   }
+}
+
+function sameStoredIdentity(value: unknown, expected: any) {
+  if (value === null) return expected === null;
+  if (!value || typeof value !== 'object') return false;
+  const record = value as Record<string, any>;
+  const current =
+    record.status === 'staged'
+      ? { authorityInstanceId: record.stageId, scopeVersion: 0 }
+      : {
+          authorityInstanceId: record.authorityInstanceId,
+          scopeVersion: record.scopeVersion,
+        };
+  return Boolean(
+    expected &&
+      current.authorityInstanceId === expected.authorityInstanceId &&
+      current.scopeVersion === expected.scopeVersion,
+  );
+}
+
+const stageId = 'S'.repeat(43);
+
+async function installApprovedDevice(
+  input: Parameters<typeof stageBrowserRelayApplicationAuthority>[0],
+  storage: MemoryStorage,
+  receiptId = input.stageId,
+  isRouteCurrent: () => boolean = () => true,
+) {
+  await stageBrowserRelayApplicationAuthority(input, storage);
+  await publishBrowserRelayApplicationAuthority(
+    {
+      connectionId: input.connectionId,
+      applicationOrigin: input.applicationOrigin,
+      route: input.route,
+      stageId: receiptId,
+      activationReceipt: {
+        version: 'station.relay-enrollment/v1',
+        state: 'active',
+        enrollmentId: receiptId,
+        deviceId: input.continuation.deviceId,
+        receiptDigest: 'R'.repeat(43),
+        receiptExpiresAt: new Date(Date.now() + 60_000).toISOString(),
+      },
+      isRouteCurrent,
+      ...(input.signal ? { signal: input.signal } : {}),
+    },
+    storage,
+  );
 }
 
 function storageKey(connectionId = 'connection-1') {
@@ -154,8 +244,9 @@ describe('browser relay application authority', () => {
       .replace(/\//g, '_')
       .replace(/=+$/, '');
     const authority = { ...continuation, keyThumbprint: thumbprint };
-    await installBrowserRelayApplicationAuthority(
+    await installApprovedDevice(
       {
+        stageId,
         connectionId: 'connection-1',
         applicationOrigin,
         route,
@@ -208,8 +299,9 @@ describe('browser relay application authority', () => {
       .replace(/\+/g, '-')
       .replace(/\//g, '_')
       .replace(/=+$/, '');
-    await installBrowserRelayApplicationAuthority(
+    await installApprovedDevice(
       {
+        stageId,
         connectionId: 'connection-1',
         applicationOrigin,
         route,
@@ -224,6 +316,400 @@ describe('browser relay application authority', () => {
     };
     expect(saved.key.privateKey).toBe(enrollmentKey.privateKey);
     expect(saved.key.publicKey).toEqual(enrollmentKey.publicKey);
+  });
+
+  it('keeps a staged enrollment inert after reload and removes only its exact stage', async () => {
+    const connectionId = 'staged-only-connection';
+    const transport = publish(connectionId);
+    const storage = new MemoryStorage();
+    const digest = await crypto.subtle.digest(
+      'SHA-256',
+      new TextEncoder().encode(
+        JSON.stringify({
+          crv: publicKey.crv,
+          kty: publicKey.kty,
+          x: publicKey.x,
+          y: publicKey.y,
+        }),
+      ),
+    );
+    const keyThumbprint = btoa(String.fromCharCode(...new Uint8Array(digest)))
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/, '');
+    const stagedInput = {
+      stageId,
+      connectionId,
+      applicationOrigin,
+      route,
+      bearer: { kind: 'device' as const, credential: 'D'.repeat(43) },
+      key,
+      continuation: { ...continuation, keyThumbprint },
+    };
+    await stageBrowserRelayApplicationAuthority(stagedInput, storage);
+    await hydrateBrowserRelayApplicationAuthorityScope(
+      { connectionId, applicationOrigin, route },
+      storage,
+    );
+    const scopeKey = browserRelayAccountScopeKey({
+      connectionId,
+      applicationOrigin,
+      route,
+      clientOrigin: window.location.origin,
+    });
+    expect(getBrowserRelayAccountScope(scopeKey)?.authorityKey).toBeNull();
+    expect(storage.values.has(storageKey(connectionId))).toBe(false);
+    await expect(
+      createBrowserRelayApplicationCredential({
+        connectionId,
+        applicationOrigin,
+        route,
+        transport,
+        routeIsCurrent: () => true,
+        storage,
+      }),
+    ).rejects.toThrow('unavailable or stale');
+    await removeProvisionalBrowserRelayApplicationAuthority(
+      { stageId, connectionId, applicationOrigin, route },
+      storage,
+    );
+    expect(
+      [...storage.values.values()].every(
+        (record) =>
+          !record ||
+          typeof record !== 'object' ||
+          (record as Record<string, unknown>).status !== 'staged',
+      ),
+    ).toBe(true);
+  });
+
+  it('replaces only an expired inert stage on a safe retry with the same stage ID', async () => {
+    const connectionId = 'expired-stage-retry';
+    publish(connectionId);
+    const storage = new MemoryStorage();
+    const input = {
+      stageId: 'Z'.repeat(43),
+      connectionId,
+      applicationOrigin,
+      route,
+      bearer: { kind: 'device' as const, credential: 'a'.repeat(43) },
+      key,
+      continuation: {
+        ...continuation,
+        authorityKey: 'retry-account',
+        credential: 'b'.repeat(43),
+        keyThumbprint: await thumbprintFor(publicKey),
+      },
+    };
+    await stageBrowserRelayApplicationAuthority(input, storage);
+    const stageKey = `${storageKey(connectionId)}::stage:${input.stageId}`;
+    const old = storage.values.get(stageKey) as Record<string, unknown>;
+    storage.values.set(stageKey, {
+      ...old,
+      expiresAt: new Date(Date.now() - 1).toISOString(),
+    });
+    await stageBrowserRelayApplicationAuthority(input, storage);
+    const retried = storage.values.get(stageKey) as Record<string, unknown>;
+    expect(Date.parse(retried.expiresAt as string)).toBeGreaterThan(Date.now());
+    expect(storage.values.has(storageKey(connectionId))).toBe(false);
+  });
+
+  it('retires the old account scope and ignores its late account and Device 401s after A to B on one route', async () => {
+    const connectionId = 'same-route-account-switch';
+    const transport = publish(connectionId);
+    const storage = new MemoryStorage();
+    const keyThumbprint = await thumbprintFor(publicKey);
+    const inputA = {
+      stageId: 'A'.repeat(43),
+      connectionId,
+      applicationOrigin,
+      route,
+      bearer: { kind: 'device' as const, credential: 'D'.repeat(43) },
+      key,
+      continuation: {
+        ...continuation,
+        authorityKey: 'account-A',
+        credential: 'A'.repeat(43),
+        keyThumbprint,
+      },
+    };
+    await installApprovedDevice(inputA, storage);
+    const scopeKey = browserRelayAccountScopeKey({
+      connectionId,
+      applicationOrigin,
+      route,
+      clientOrigin: window.location.origin,
+    });
+    const accountAScope = getBrowserRelayAccountScope(scopeKey);
+    const credentialA = await createBrowserRelayApplicationCredential({
+      connectionId,
+      applicationOrigin,
+      route,
+      transport,
+      routeIsCurrent: () => true,
+      storage,
+    });
+    const inputB = {
+      ...inputA,
+      stageId: 'B'.repeat(43),
+      bearer: { kind: 'device' as const, credential: 'E'.repeat(43) },
+      continuation: {
+        ...inputA.continuation,
+        authorityKey: 'account-B',
+        credential: 'B'.repeat(43),
+        principal: {
+          kind: 'human' as const,
+          id: 'human:local:person-b',
+          display: 'Person B',
+        },
+      },
+    };
+    await installApprovedDevice(inputB, storage);
+    const accountBScope = getBrowserRelayAccountScope(scopeKey);
+    expect(accountAScope?.authorityKey).toBe('account-A');
+    expect(accountBScope?.authorityKey).toBe('account-B');
+    expect(accountBScope?.scopeKey).not.toBe(accountAScope?.scopeKey);
+    expect(credentialA.transportBindingIsCurrent?.()).toBe(false);
+
+    await credentialA.onAccountUnauthorized?.();
+    await credentialA.onUnauthorized?.();
+    const current = storage.values.get(storageKey(connectionId)) as {
+      authorityInstanceId: string;
+      bearer: { credential: string };
+      continuation: { authorityKey: string };
+    };
+    expect(current.authorityInstanceId).toBe(inputB.stageId);
+    expect(current.bearer.credential).toBe(inputB.bearer.credential);
+    expect(current.continuation.authorityKey).toBe('account-B');
+  });
+
+  it('uses IDB CAS when an account 401 races with a replacement install', async () => {
+    const connectionId = 'cas-account-replacement';
+    const transport = publish(connectionId);
+    const storage = new MemoryStorage();
+    const keyThumbprint = await thumbprintFor(publicKey);
+    const inputA = {
+      stageId: 'C'.repeat(43),
+      connectionId,
+      applicationOrigin,
+      route,
+      bearer: { kind: 'device' as const, credential: 'F'.repeat(43) },
+      key,
+      continuation: {
+        ...continuation,
+        authorityKey: 'cas-A',
+        credential: 'G'.repeat(43),
+        keyThumbprint,
+      },
+    };
+    await installApprovedDevice(inputA, storage);
+    const credentialA = await createBrowserRelayApplicationCredential({
+      connectionId,
+      applicationOrigin,
+      route,
+      transport,
+      routeIsCurrent: () => true,
+      storage,
+    });
+    const inputB = {
+      ...inputA,
+      stageId: 'H'.repeat(43),
+      bearer: { kind: 'device' as const, credential: 'I'.repeat(43) },
+      continuation: {
+        ...inputA.continuation,
+        authorityKey: 'cas-B',
+        credential: 'J'.repeat(43),
+      },
+    };
+    let replaced = false;
+    storage.beforeCompare = async (target, expected) => {
+      const expectedRecord = expected as {
+        authorityInstanceId?: string;
+      } | null;
+      if (
+        replaced ||
+        target !== storageKey(connectionId) ||
+        expectedRecord?.authorityInstanceId !== inputA.stageId
+      )
+        return;
+      replaced = true;
+      storage.beforeCompare = undefined;
+      await installApprovedDevice(inputB, storage);
+    };
+    await credentialA.onAccountUnauthorized?.();
+    const current = storage.values.get(storageKey(connectionId)) as {
+      authorityInstanceId: string;
+      continuation: { authorityKey: string };
+    };
+    expect(replaced).toBe(true);
+    expect(current.authorityInstanceId).toBe(inputB.stageId);
+    expect(current.continuation.authorityKey).toBe('cas-B');
+  });
+
+  it('rolls back activation if the selected route retires during the storage transaction', async () => {
+    const connectionId = 'activation-retirement';
+    publish(connectionId);
+    const storage = new MemoryStorage();
+    let routeCurrent = true;
+    storage.afterActivate = async () => {
+      routeCurrent = false;
+    };
+    const input = {
+      stageId: 'K'.repeat(43),
+      connectionId,
+      applicationOrigin,
+      route,
+      bearer: { kind: 'device' as const, credential: 'L'.repeat(43) },
+      key,
+      continuation: {
+        ...continuation,
+        authorityKey: 'retire-account',
+        credential: 'M'.repeat(43),
+        keyThumbprint: await thumbprintFor(publicKey),
+      },
+    };
+    await expect(
+      installApprovedDevice(input, storage, input.stageId, () => routeCurrent),
+    ).rejects.toThrow('route changed while activation was committing');
+    const current = storage.values.get(storageKey(connectionId)) as
+      | { status: string; authorityInstanceId?: string }
+      | undefined;
+    expect(current?.status).toBe('empty');
+    expect(current?.authorityInstanceId).not.toBe(input.stageId);
+  });
+
+  it('conditionally rolls back cookie alias installation when the route retires during commit', async () => {
+    const connectionId = 'alias-install-retirement';
+    publish(connectionId);
+    const storage = new MemoryStorage();
+    const keyThumbprint = await thumbprintFor(publicKey);
+    let retired = false;
+    storage.beforeCompare = async (target) => {
+      if (retired || target !== storageKey(connectionId)) return;
+      retired = true;
+      retireBrowserRelayRoute(connectionId, 1);
+    };
+    await expect(
+      installBrowserRelayApplicationAuthority(
+        {
+          connectionId,
+          applicationOrigin,
+          route,
+          bearer: { kind: 'alias', credential: 'Q'.repeat(43) },
+          key,
+          continuation: { ...continuation, keyThumbprint },
+        },
+        storage,
+      ),
+    ).rejects.toThrow('route changed while cookie authority was committing');
+    const current = storage.values.get(storageKey(connectionId)) as
+      | { status: string; bearer?: unknown }
+      | undefined;
+    expect(retired).toBe(true);
+    expect(current?.status).toBe('empty');
+    expect(current?.bearer).toBeUndefined();
+  });
+
+  it('aborts a pending activation and rolls back a transaction that completed during cancellation', async () => {
+    const connectionId = 'activation-abort';
+    publish(connectionId);
+    const storage = new MemoryStorage();
+    const controller = new AbortController();
+    storage.afterActivate = async () => {
+      controller.abort(new Error('ceremony deadline elapsed'));
+    };
+    const input = {
+      stageId: 'N'.repeat(43),
+      connectionId,
+      applicationOrigin,
+      route,
+      bearer: { kind: 'device' as const, credential: 'O'.repeat(43) },
+      key,
+      continuation: {
+        ...continuation,
+        authorityKey: 'aborted-account',
+        credential: 'P'.repeat(43),
+        keyThumbprint: await thumbprintFor(publicKey),
+      },
+      signal: controller.signal,
+    };
+    await expect(installApprovedDevice(input, storage)).rejects.toThrow(
+      'ceremony deadline elapsed',
+    );
+    const current = storage.values.get(storageKey(connectionId)) as
+      | { status: string; authorityInstanceId?: string }
+      | undefined;
+    expect(current?.status).toBe('empty');
+    expect(current?.authorityInstanceId).not.toBe(input.stageId);
+  });
+
+  it('removes a staged record if its ceremony signal aborts as the write settles', async () => {
+    const connectionId = 'stage-abort';
+    publish(connectionId);
+    const storage = new MemoryStorage();
+    const controller = new AbortController();
+    const input = {
+      stageId: 'U'.repeat(43),
+      connectionId,
+      applicationOrigin,
+      route,
+      bearer: { kind: 'device' as const, credential: 'V'.repeat(43) },
+      key,
+      continuation: {
+        ...continuation,
+        authorityKey: 'aborted-stage',
+        credential: 'W'.repeat(43),
+        keyThumbprint: await thumbprintFor(publicKey),
+      },
+      signal: controller.signal,
+    };
+    storage.beforeCompare = async (target) => {
+      if (target.includes('::stage:')) {
+        storage.beforeCompare = undefined;
+        controller.abort(new Error('stage ceremony cancelled'));
+      }
+    };
+    await expect(
+      stageBrowserRelayApplicationAuthority(input, storage),
+    ).rejects.toThrow('stage ceremony cancelled');
+    const stageRow = storage.values.get(
+      `${storageKey(connectionId)}::stage:${input.stageId}`,
+    ) as Record<string, unknown> | undefined;
+    expect(stageRow?.status).toBe('empty');
+    expect(storage.values.has(storageKey(connectionId))).toBe(false);
+  });
+
+  it('removes the exact provisional grant even after publication promoted it active', async () => {
+    const connectionId = 'provisional-published-cleanup';
+    publish(connectionId);
+    const storage = new MemoryStorage();
+    const input = {
+      stageId: 'X'.repeat(43),
+      connectionId,
+      applicationOrigin,
+      route,
+      bearer: { kind: 'device' as const, credential: 'Y'.repeat(43) },
+      key,
+      continuation: {
+        ...continuation,
+        authorityKey: 'provisional-account',
+        credential: 'Z'.repeat(43),
+        keyThumbprint: await thumbprintFor(publicKey),
+      },
+    };
+    await installApprovedDevice(input, storage);
+    expect(
+      (storage.values.get(storageKey(connectionId)) as Record<string, unknown>)
+        .status,
+    ).toBe('active');
+    await removeProvisionalBrowserRelayApplicationAuthority(
+      { stageId: input.stageId, connectionId, applicationOrigin, route },
+      storage,
+    );
+    expect(
+      (storage.values.get(storageKey(connectionId)) as Record<string, unknown>)
+        .status,
+    ).toBe('empty');
   });
 
   it('refuses absent, expired, or retired route authority rather than using direct HTTP', async () => {
@@ -316,8 +802,9 @@ describe('browser relay application authority', () => {
       .replace(/\+/g, '-')
       .replace(/\//g, '_')
       .replace(/=+$/, '');
-    await installBrowserRelayApplicationAuthority(
+    await installApprovedDevice(
       {
+        stageId,
         connectionId: 'connection-1',
         applicationOrigin,
         route,
