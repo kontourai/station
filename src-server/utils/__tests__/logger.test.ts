@@ -55,8 +55,17 @@ function readTodayLines(directory: string): any[] {
 }
 
 const originalEnvLevel = process.env.STATION_LOG_LEVEL;
+const originalStdoutLogs = process.env.STATION_STDOUT_LOGS;
+
+// Run inside a desktop terminal, the suite would otherwise inherit the
+// sidecar's opt-out and every stdout assertion would read nothing (#2327).
+beforeEach(() => {
+  delete process.env.STATION_STDOUT_LOGS;
+});
 
 afterEach(() => {
+  if (originalStdoutLogs === undefined) delete process.env.STATION_STDOUT_LOGS;
+  else process.env.STATION_STDOUT_LOGS = originalStdoutLogs;
   stopLoggerCaptures();
   resetServerLogSinkForTests();
   for (const dir of dirs.splice(0))
@@ -345,6 +354,35 @@ describe('createLogger — level filtering and the store tee', () => {
         .join('');
       expect(rendered).not.toContain('stdout-secret');
       expect(rendered).toContain('[REDACTED]');
+    } finally {
+      writeSpy.mockRestore();
+      if (originalNodeEnv === undefined) delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = originalNodeEnv;
+    }
+  });
+
+  it('writes nothing to stdout when STATION_STDOUT_LOGS=0, while the durable store still records the line (#2327)', async () => {
+    // Production branch so stdout is `process.stdout` and therefore
+    // spyable; the opt-out is checked before either stdout stream is built.
+    const originalNodeEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'production';
+    process.env.STATION_STDOUT_LOGS = '0';
+    const writeSpy = vi
+      .spyOn(process.stdout, 'write')
+      .mockImplementation(() => true);
+    try {
+      const directory = createTempDir();
+      installServerLogSink({ directory });
+      const logger = createLogger({ name: 'sidecar-logger', level: 'info' });
+      logger.info('only the durable store should see this');
+      await new Promise((resolve) => setImmediate(resolve));
+      const rendered = writeSpy.mock.calls
+        .map((call) => String(call[0]))
+        .join('');
+      expect(rendered).not.toContain('only the durable store should see this');
+      expect(readTodayLines(directory).map((line) => line.msg)).toContain(
+        'only the durable store should see this',
+      );
     } finally {
       writeSpy.mockRestore();
       if (originalNodeEnv === undefined) delete process.env.NODE_ENV;

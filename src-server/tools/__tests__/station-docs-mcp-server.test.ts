@@ -178,9 +178,17 @@ describe('station-docs plugin-authoring topic', () => {
     const named = [
       ...new Set(topic().body.match(/\buse[A-Z][A-Za-z]+\b/g) ?? []),
     ];
-    // The curated set the topic exists to teach. If the prose stops naming
-    // one of these, the check below would pass vacuously for it.
-    expect(named).toEqual(
+    // The curated set the topic exists to teach, required IN the SDK HOOKS
+    // paragraph itself: a hook also mentioned elsewhere (useSendToChat in
+    // COMMON MISTAKES) must not keep this green after its table line is
+    // deleted.
+    const table = [
+      ...new Set(
+        paragraph('SDK HOOKS A PANE CAN USE').match(/\buse[A-Z][A-Za-z]+\b/g) ??
+          [],
+      ),
+    ];
+    expect(table).toEqual(
       expect.arrayContaining([
         'useAgents',
         'useIntegrationsQuery',
@@ -221,6 +229,19 @@ describe('station-docs plugin-authoring topic', () => {
       covered.push(manifest.workspacePanes![0]!.renderer.kind);
     }
     expect(covered.sort()).toEqual(documentedKinds);
+  });
+
+  test('the mcp-tool-ui example requires the integration its renderer ref names', () => {
+    const example = exampleManifests().find(
+      (candidate) =>
+        candidate.extensions['io.kontourai.station'].workspacePanes[0].renderer
+          .kind === 'mcp-tool-ui',
+    );
+    expect(example).toBeDefined();
+    const station = example.extensions['io.kontourai.station'];
+    const [serverId] = station.workspacePanes[0].renderer.ref.split('/');
+    expect(station.integrations.required).toContain(serverId);
+    expect(station.workspacePanes[0].provenance.mcpServerId).toBe(serverId);
   });
 
   test('the plugin-component example declares the entrypoint and renderer name its code exports', () => {

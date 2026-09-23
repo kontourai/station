@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import {
   chmodSync,
+  constants,
   mkdirSync,
   mkdtempSync,
   readdirSync,
@@ -53,13 +54,113 @@ const fsSpies = vi.hoisted(() => ({
   realpathSync: vi.fn(),
   existsSync: vi.fn(),
 }));
+// Every filesystem WRITE entry point, sync and promise. `validateSource`
+// asserts none of them runs while a request is in flight, in every test.
+const fsWriteSpies = vi.hoisted(() => ({
+  mkdtempSync: vi.fn(),
+  cpSync: vi.fn(),
+  writeFileSync: vi.fn(),
+  appendFileSync: vi.fn(),
+  mkdirSync: vi.fn(),
+  renameSync: vi.fn(),
+  rmSync: vi.fn(),
+  unlinkSync: vi.fn(),
+  symlinkSync: vi.fn(),
+  copyFileSync: vi.fn(),
+  writeSync: vi.fn(),
+}));
+const fsPromiseWriteSpies = vi.hoisted(() => ({
+  mkdtemp: vi.fn(),
+  cp: vi.fn(),
+  writeFile: vi.fn(),
+  mkdir: vi.fn(),
+  rename: vi.fn(),
+  rm: vi.fn(),
+  unlink: vi.fn(),
+  copyFile: vi.fn(),
+}));
 vi.mock('node:fs', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:fs')>();
-  for (const [name, spy] of Object.entries(fsSpies)) {
+  for (const [name, spy] of Object.entries({ ...fsSpies, ...fsWriteSpies })) {
     spy.mockImplementation((actual as Record<string, any>)[name]);
   }
-  return { ...actual, ...fsSpies };
+  return { ...actual, ...fsSpies, ...fsWriteSpies };
 });
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs/promises')>();
+  for (const [name, spy] of Object.entries(fsPromiseWriteSpies)) {
+    spy.mockImplementation((actual as Record<string, any>)[name]);
+  }
+  return { ...actual, ...fsPromiseWriteSpies };
+});
+
+const WRITE_FLAGS = constants.O_WRONLY | constants.O_RDWR | constants.O_CREAT;
+
+/** Every write the filesystem saw, including an `openSync` that could write. */
+function fsWrites(): unknown[] {
+  const opened = fsSpies.openSync.mock.calls
+    .filter(([, flags]) =>
+      typeof flags === 'number'
+        ? (flags & WRITE_FLAGS) !== 0
+        : flags !== undefined && flags !== 'r',
+    )
+    .map((args) => ['openSync', args[0], args[1]]);
+  return [
+    ...Object.entries({ ...fsWriteSpies, ...fsPromiseWriteSpies }).flatMap(
+      ([name, spy]) => spy.mock.calls.map((args) => [name, args[0]]),
+    ),
+    ...opened,
+  ];
+}
+
+function clearWriteSpies() {
+  for (const spy of Object.values({
+    ...fsWriteSpies,
+    ...fsPromiseWriteSpies,
+  }))
+    spy.mockClear();
+  fsSpies.openSync.mockClear();
+}
+
+/**
+ * The fields `/install` takes as an operator decision. No validate response,
+ * in any outcome, may carry one: a warning, an error, a refusal or a 400.
+ */
+const CONSENT_FIELDS = [
+  'contentDigest',
+  'grantRevision',
+  'registryTrustRevision',
+  'installationRevision',
+  'consent',
+  'pendingConsent',
+  'autoGranted',
+  'dependencyApprovals',
+  'existingDataScope',
+];
+
+function expectNoConsentBasis(body: unknown) {
+  const serialized = JSON.stringify(body);
+  for (const field of CONSENT_FIELDS) {
+    expect(serialized, `response carries '${field}'`).not.toContain(
+      `"${field}"`,
+    );
+  }
+  expect(serialized).not.toMatch(/sha256:[0-9a-f]{64}/);
+}
+
+/** Every validate request in this file goes through here. */
+async function requestValidate(app: Hono, body: unknown) {
+  clearWriteSpies();
+  const response = await app.request('/validate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const parsed = await readJson<any>(response);
+  expect(fsWrites(), 'validate wrote to the filesystem').toEqual([]);
+  expectNoConsentBasis(parsed);
+  return { status: response.status, body: parsed };
+}
 
 beforeEach(() => {
   execGit.mockClear();
@@ -177,12 +278,7 @@ function writePlugin(
 }
 
 async function validateSource(app: Hono, source: string) {
-  const response = await app.request('/validate', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ source }),
-  });
-  return { status: response.status, body: await readJson<any>(response) };
+  return requestValidate(app, { source });
 }
 
 /** Every path under `dir`, so a before/after comparison sees nested writes. */
@@ -219,25 +315,7 @@ describe('POST /api/plugins/validate', () => {
       bundle: { checked: false },
     });
     expect(body.diagnostics).toEqual([]);
-    // `/install` refuses a decision without these. None may appear anywhere
-    // in the response, nested or not, or an agent could echo them back.
-    const serialized = JSON.stringify(body);
-    for (const field of [
-      'contentDigest',
-      'grantRevision',
-      'registryTrustRevision',
-      'installationRevision',
-      'consent',
-      'pendingConsent',
-      'autoGranted',
-      'dependencyApprovals',
-      'existingDataScope',
-    ]) {
-      expect(serialized, `response carries '${field}'`).not.toContain(
-        `"${field}"`,
-      );
-    }
-    expect(serialized).not.toMatch(/sha256:[0-9a-f]{64}/);
+    // The consent-field scan runs on every response, in `requestValidate`.
   });
 
   test('writes nothing under the plugins directory or into the author folder', async () => {
@@ -424,13 +502,9 @@ describe('POST /api/plugins/validate', () => {
 
   test('refuses a body with install fields rather than ignoring them', async () => {
     const { home } = makeHome();
-    const response = await createApp(home).request('/validate', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        source: '/tmp/x',
-        consent: { permissions: [], contentDigest: 'sha256:x' },
-      }),
+    const response = await requestValidate(createApp(home), {
+      source: '/tmp/x',
+      consent: { permissions: [], contentDigest: 'sha256:x' },
     });
     expect(response.status).toBe(400);
   });
@@ -490,7 +564,7 @@ describe('POST /api/plugins/validate', () => {
   });
 
   describe('a plugin.json that is not a plain file is refused, promptly, without echoing anything', () => {
-    const SECRET = 'AKIA-TEST-SECRET-9f3c';
+    const SECRET = 'validate-probe-sentinel-9f3c';
 
     async function refusedWithin(source: string, home: string) {
       const outcome = await Promise.race([
@@ -696,7 +770,7 @@ describe('POST /api/plugins/validate', () => {
     const { body } = await validateSource(createApp(home), written);
 
     expect(body.valid).toBe(true);
-    const paths = fsCalls().map(([, path]) => String(path));
+    const paths = fsCalls().map((call) => String((call as unknown[])[1]));
     expect(paths).toContain(source);
     expect(
       paths.filter((path) => path.includes('/./') || path.includes('..')),
@@ -739,6 +813,86 @@ describe('POST /api/plugins/validate', () => {
         // readers wrong in the same direction.
         expect(previewBlocked).toBe(where === 'root');
       },
+    );
+  });
+  test('an update to an already-installed plugin does not conflict with itself', async () => {
+    const { root, home, pluginsDir } = makeHome();
+    const paneId = 'pane:plugin%3Amy-pulse:pulse:workspace';
+    writePlugin(join(pluginsDir, 'my-pulse'), agentPluginManifest('my-pulse'));
+    const updated = agentPluginManifest('my-pulse') as Record<string, any>;
+    updated.version = '1.1.0';
+    const source = writePlugin(join(root, 'author', 'my-pulse'), updated);
+
+    const { body } = await validateSource(createApp(home), source);
+
+    expect(body.components).toEqual([
+      expect.objectContaining({ type: 'pane', id: paneId }),
+    ]);
+    expect(body.conflicts).toEqual([]);
+    expect(body.diagnostics).toEqual([]);
+    expect(body.valid).toBe(true);
+  });
+
+  test('a manifest of exactly the byte cap is read; one byte more is refused', async () => {
+    const { root, home } = makeHome();
+    const make = (bytes: number, name: string) => {
+      const dir = join(root, 'author', name);
+      mkdirSync(dir, { recursive: true });
+      const head = `{"name":"${name}","version":"1.0.0","pad":"`;
+      const tail = '"}';
+      const text = `${head}${'x'.repeat(bytes - head.length - tail.length)}${tail}`;
+      expect(Buffer.byteLength(text)).toBe(bytes);
+      writeFileSync(join(dir, 'plugin.json'), text);
+      return dir;
+    };
+    const atCap = await validateSource(
+      createApp(home),
+      make(PLUGIN_VALIDATE_MANIFEST_MAX_BYTES, 'at-cap'),
+    );
+    expect(atCap.body.diagnostics).toEqual([]);
+    expect(atCap.body.plugin).toMatchObject({ name: 'at-cap' });
+
+    const overCap = await validateSource(
+      createApp(home),
+      make(PLUGIN_VALIDATE_MANIFEST_MAX_BYTES + 1, 'over-cap'),
+    );
+    expect(overCap.body.diagnostics).toEqual([
+      expect.objectContaining({ code: 'manifest-too-large' }),
+    ]);
+  });
+
+  test('an entrypoint symlinked into a sibling folder sharing the name prefix is not present', async () => {
+    const { root, home } = makeHome();
+    const evil = join(root, 'author', 'esc-evil');
+    mkdirSync(evil, { recursive: true });
+    writeFileSync(join(evil, 'index.tsx'), 'export const components = {};\n');
+    const source = writePlugin(
+      join(root, 'author', 'esc'),
+      agentPluginManifest('esc'),
+      { entrypoint: false },
+    );
+    symlinkSync(join(evil, 'index.tsx'), join(source, 'src', 'index.tsx'));
+
+    const { body } = await validateSource(createApp(home), source);
+
+    expect(body.entrypoint).toEqual({ path: 'src/index.tsx', present: false });
+    expect(body.diagnostics).toEqual([
+      expect.objectContaining({ code: 'entrypoint-missing' }),
+    ]);
+  });
+  test('the write spies are live: they record the fixture writes a test makes', () => {
+    // Control for the no-write assertion in `requestValidate`: an empty
+    // record must mean "nothing wrote", not "the spies see nothing".
+    const { root } = makeHome();
+    clearWriteSpies();
+    writePlugin(join(root, 'author', 'spy-control'), {
+      name: 'x',
+      version: '1',
+    });
+    expect(fsWrites()).toEqual(
+      expect.arrayContaining([
+        ['writeFileSync', join(root, 'author', 'spy-control', 'plugin.json')],
+      ]),
     );
   });
 });

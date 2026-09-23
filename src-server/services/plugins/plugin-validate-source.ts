@@ -60,10 +60,10 @@ export interface PluginValidateResult {
   note: string;
 }
 
-export const PLUGIN_VALIDATE_BUNDLE_NOT_CHECKED =
+const PLUGIN_VALIDATE_BUNDLE_NOT_CHECKED =
   'Validation does not build. Station builds the bundle when a person installs the plugin; a build error is reported then.';
 
-export const PLUGIN_VALIDATE_NOTE =
+const PLUGIN_VALIDATE_NOTE =
   'Validation only. Nothing was installed, copied, or built, and dependencies were not resolved. A person installs a plugin from Plugins → Install plugin (or `station plugin install <source>`) after reviewing its preview and permissions.';
 
 const REMOTE_SOURCE_REFUSED =
