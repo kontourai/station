@@ -897,8 +897,9 @@ describe('terminal websocket browser origin on the credential-free loopback path
   });
 
   it('refuses a foreign origin on a listener that runs without authentication', async () => {
-    // With no credential configured every peer is admitted without one, so
-    // the origin check covers every peer, not only loopback.
+    // With no credential configured every peer is admitted without one. This
+    // exercises the loopback path of a no-auth listener; the remote-peer case
+    // is covered by the verifier's unit test in station-browser-origins.test.ts.
     const service = {
       subscribe: vi.fn(() => vi.fn()),
       open: vi.fn(),
