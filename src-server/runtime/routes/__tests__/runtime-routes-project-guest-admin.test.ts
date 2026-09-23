@@ -381,8 +381,16 @@ describe('project guest administration over the production composition', () => {
      * guest account as admin; the guest joins over the real
      * accept-invitation route with its bound device credential.
      */
-    const shareWithGuestAdmin = async (slug: string, name: string) => {
-      const project = await projectService.createProject({ name, slug });
+    const shareWithGuestAdmin = async (
+      slug: string,
+      name: string,
+      workingDirectory?: string,
+    ) => {
+      const project = await projectService.createProject({
+        name,
+        slug,
+        ...(workingDirectory ? { workingDirectory } : {}),
+      });
       const enabled = await request(
         `/api/projects/${slug}/access/enable`,
         ownerHeaders({
@@ -553,6 +561,81 @@ describe('project guest administration over the production composition', () => {
       }),
     );
     expect(transfer.status).toBe(403);
+  });
+
+  // Epic #2323 S3 (owner decision: any Project member may preview a plugin
+  // draft). The Project read guard bans member mutations; starting a draft
+  // lease is the one exact POST it lets a member through, because the lease
+  // writes only host-owned storage. A non-member is refused before any draft
+  // handler runs, so nothing is leased, watched, or built for them.
+  //
+  // The person is presented here as a deployment-account session over a
+  // non-account-bound credential (the same shape `ownerHeaders` uses). An
+  // ACCOUNT-BOUND device is a separate, stricter surface (#488): its route
+  // allowlist does not include draft preview at all, and this slice does not
+  // widen it — asserted last.
+  test('plugin draft preview: a member may lease and read; a non-member is refused and starts nothing', async () => {
+    const h = await setup();
+    const folder = join(directories[directories.length - 1], 'draft-folder');
+    mkdirSync(folder);
+    const { guest } = await h.shareWithGuestAdmin('drafts', 'Drafts', folder);
+    const person =
+      (cookie: string) =>
+      (extra?: RequestInit): RequestInit => ({
+        ...extra,
+        headers: {
+          ...(extra?.headers ?? {}),
+          Authorization: `Bearer ${h.operatorCredential}`,
+          Cookie: cookie,
+          Origin: ORIGIN,
+        },
+      });
+    const member = person('fixture_account=guest');
+    const outsider = person('fixture_account=peer');
+
+    for (const [method, path] of [
+      ['POST', '/api/projects/drafts/plugin-draft/lease'],
+      ['GET', '/api/projects/drafts/plugin-draft'],
+      ['GET', '/api/projects/drafts/plugin-draft/generations/1/bundle.js'],
+    ] as const) {
+      const refused = await h.request(path, outsider({ method }));
+      expect(refused.status, `${method} ${path}`).toBe(404);
+      expect(await refused.text()).not.toContain('plugin-draft');
+    }
+    // The outsider's lease never reached the draft service.
+    const idle = await h.request('/api/projects/drafts/plugin-draft', member());
+    expect(idle.status, await idle.clone().text()).toBe(200);
+    expect((await readJson<{ state: string }>(idle)).state).toBe('idle');
+
+    const leased = await h.request(
+      '/api/projects/drafts/plugin-draft/lease',
+      member({ method: 'POST' }),
+    );
+    expect(leased.status, await leased.clone().text()).toBe(200);
+    expect((await readJson<{ state: string }>(leased)).state).not.toBe('idle');
+
+    // The exemption is that one leaf, not the draft family or the Project.
+    const sibling = await h.request(
+      '/api/projects/drafts/plugin-draft/lease/extra',
+      member({ method: 'POST' }),
+    );
+    expect(sibling.status).toBe(403);
+    const rename = await h.request(
+      '/api/projects/drafts',
+      member({
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'Renamed by member' }),
+      }),
+    );
+    expect(rename.status).toBe(403);
+
+    // The restricted account-bound device surface is unchanged.
+    const bound = await h.request(
+      '/api/projects/drafts/plugin-draft',
+      guest(),
+    );
+    expect(bound.status).toBe(403);
   });
 
   test('read-only rescope over the operator endpoint: GET yes, POST no; read+operate restores POST', async () => {

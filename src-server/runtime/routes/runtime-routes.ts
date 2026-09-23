@@ -37,6 +37,7 @@ import {
   timingSafeEqual,
 } from 'node:crypto';
 import { join, resolve } from 'node:path';
+import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import {
   type DevicePairingRequest,
   parseTaskTurnReference,
@@ -497,6 +498,8 @@ import {
   sanitizedTransportError,
 } from '../../utils/outward-error.js';
 import { expandTilde } from '../../utils/paths.js';
+import { createPluginDraftRoutes } from '../../routes/plugins/plugin-draft-routes.js';
+import { PluginDraftService } from '../../services/plugins/plugin-draft-service.js';
 import { installAccountBoundDeviceGate } from '../bootstrap/account-bound-device-gate.js';
 import { createOrchestrationRequestPrincipalResolver } from '../bootstrap/orchestration-request-principal.js';
 import {
@@ -854,6 +857,21 @@ export {
   type CurrentRuntimeRequestPrincipalSecurity,
   isRuntimeRequestPrincipalCurrent,
 } from '../../security/runtime-request-security.js';
+
+/**
+ * Epic #2323 S3 (owner decision: any Project member may author and preview a
+ * plugin draft). The Project read guard refuses every non-GET from a
+ * deployment account that is only a member, because project routes mutate the
+ * Project. Starting a draft lease does not: it reads the Project folder and
+ * writes a build into host-owned storage, never into the Project. It is the
+ * one POST a member may make here, matched exactly so no sibling leaf can
+ * ride on it.
+ */
+export function isProjectMemberDraftLease(method: string, path: string) {
+  return (
+    method === 'POST' && /^\/api\/projects\/[^/]+\/plugin-draft\/lease$/.test(path)
+  );
+}
 
 export function configureRuntimeRoutes(
   context: ConfigureRuntimeRoutesContext,
@@ -3260,7 +3278,12 @@ export function configureRuntimeRoutes(
   };
   const projectReadGuard = async (
     c: Parameters<typeof resolveOrchestrationRequestPrincipal>[0] & {
-      req: { method: string; param(name: string): string; raw: Request };
+      req: {
+        method: string;
+        path: string;
+        param(name: string): string;
+        raw: Request;
+      };
       json: (body: unknown, status: 403 | 404) => Response;
       res: Response;
     },
@@ -3275,7 +3298,12 @@ export function configureRuntimeRoutes(
         c.req.raw,
         c.req.param('slug'),
       );
-      if (restricted && c.req.method !== 'GET' && c.req.method !== 'HEAD') {
+      if (
+        restricted &&
+        c.req.method !== 'GET' &&
+        c.req.method !== 'HEAD' &&
+        !isProjectMemberDraftLease(c.req.method, c.req.path)
+      ) {
         return c.json(
           { success: false, error: 'Project mutation is forbidden' },
           403,
@@ -3306,6 +3334,25 @@ export function configureRuntimeRoutes(
   };
   context.app.use('/api/projects/:slug', projectReadGuard);
   context.app.use('/api/projects/:slug/*', projectReadGuard);
+  // Epic #2323 S3: plugin draft preview. Personal hosts only — the draft runs
+  // in-process in a viewer's tab, which is the loopback plugin runtime, and a
+  // shared tenant host has no such runtime. Mounted behind the Project read
+  // guard above, so a deployment account must be a member of the Project.
+  if (!hostedTenantRegistry && !isHostedTenantExecutionRequired()) {
+    const pluginDraftService = new PluginDraftService({
+      draftsRoot: join(context.configLoader.getProjectHomeDir(), 'plugin-drafts'),
+      emitRebuilt: (event) =>
+        context.eventBus.emit(SERVER_EVENTS.PLUGIN_DRAFTS_REBUILT, event),
+      logger: context.logger,
+    });
+    context.app.route(
+      '/api/projects',
+      createPluginDraftRoutes({
+        service: pluginDraftService,
+        resolveProjectDirectory: (slug) => resolveWorkspacePath(slug),
+      }),
+    );
+  }
   // #2061: the personal scope. Ownership comes from
   // `resolveOrchestrationRequestPrincipal` — the SAME memoized, fail-closed
   // resolver every other identity-bearing route in this file reads — so no
@@ -4487,6 +4534,27 @@ export function configureRuntimeRoutes(
             }
           },
         }),
+      // Epic #2323 S3: a draft revision event names a Project, so it reaches
+      // only subscribers who may read that Project — the same membership
+      // check the Project read guard applies to the draft routes themselves.
+      // A caller with no deployment account is the operator or a paired
+      // device, which that guard also admits for every Project.
+      canReadPluginDraftEvent: async (data, request) => {
+        const projectSlug = (data as { projectSlug?: unknown } | undefined)
+          ?.projectSlug;
+        if (typeof projectSlug !== 'string' || !projectSlug) return false;
+        try {
+          const authority = await authenticatedProjectMember(request);
+          if (!authority) return true;
+          await context.projectMembership!.requireProjectRead(
+            projectSlug,
+            authority,
+          );
+          return true;
+        } catch {
+          return false;
+        }
+      },
       canReadNotificationEvent: (_event, data, authority) => {
         const record = data as Record<string, unknown> | undefined;
         const sessionId = notificationSessionIdentity(record);

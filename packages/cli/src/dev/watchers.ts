@@ -9,8 +9,8 @@ import {
   watchWithFallback,
 } from '@kontourai/station-shared/source-watch';
 
-export { POLL_ENTRY_BUDGET, POLL_INTERVAL_MS };
 export type { WatchHandle, WatchStatus };
+export { POLL_ENTRY_BUDGET, POLL_INTERVAL_MS };
 
 interface WatchSourceChangesContext {
   cwd: string;

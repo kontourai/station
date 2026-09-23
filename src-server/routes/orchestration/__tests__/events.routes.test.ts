@@ -599,6 +599,73 @@ describe('Event Routes (SSE)', () => {
   // `canUserReadSession` — this route must never relay that event type at
   // all, so it can't reopen the same hole a third time (archive#1164, archive#1197 were
   // the first two instances on the gated route itself).
+  // Epic #2323 S3: a plugin-draft revision names a Project, so it reaches only
+  // subscribers the Project-read gate admits — and nobody when no gate is
+  // wired. The gate may answer asynchronously (membership reads the
+  // Project's records), so the "after" liveness marker is emitted only once
+  // the gate has had time to settle.
+  describe('PLUGIN_DRAFTS_REBUILT relays only through the Project-read gate', () => {
+    async function relayWith(
+      canReadPluginDraftEvent?: (
+        data: unknown,
+        request: Request,
+      ) => boolean | Promise<boolean>,
+    ) {
+      const bus = new EventBus();
+      const app = createEventRoutes({
+        eventBus: bus,
+        getACPStatus: () => ({ connected: false, connections: [] }),
+        logger: mockLogger,
+        ...(canReadPluginDraftEvent ? { canReadPluginDraftEvent } : {}),
+      });
+      const res = await app.request('/');
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      bus.emit(SERVER_EVENTS.CONFIG_CHANGED, { marker: 'before' });
+      bus.emit(SERVER_EVENTS.PLUGIN_DRAFTS_REBUILT, {
+        projectSlug: 'secret-project',
+        draftId: 'draft_probe',
+        generation: 3,
+      });
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      bus.emit(SERVER_EVENTS.CONFIG_CHANGED, { marker: 'after' });
+      return readStreamUntil(res.body!, (text) =>
+        text.includes('"marker":"after"'),
+      );
+    }
+
+    test('relays to a subscriber the gate admits, including an asynchronous yes', async () => {
+      const gate = vi.fn(async (data: unknown) => {
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        return (data as { projectSlug?: string }).projectSlug === 'secret-project';
+      });
+      const payload = await relayWith(gate);
+      expect(payload).toContain('event: plugin-drafts:rebuilt');
+      expect(payload).toContain('"generation":3');
+      expect(gate).toHaveBeenCalledTimes(1);
+    });
+
+    test('denies when the gate says no', async () => {
+      const payload = await relayWith(async () => false);
+      expect(payload).toContain('"marker":"after"');
+      expect(payload).not.toContain('plugin-drafts:rebuilt');
+      expect(payload).not.toContain('secret-project');
+    });
+
+    test('denies when the gate throws', async () => {
+      const payload = await relayWith(async () => {
+        throw new Error('membership store unreadable');
+      });
+      expect(payload).toContain('"marker":"after"');
+      expect(payload).not.toContain('secret-project');
+    });
+
+    test('denies when no gate is wired', async () => {
+      const payload = await relayWith();
+      expect(payload).toContain('"marker":"after"');
+      expect(payload).not.toContain('secret-project');
+    });
+  });
+
   describe('never relays ORCHESTRATION_EVENT (station#1205, station#3567)', () => {
     // archive#3567: AC2 used to iterate `SERVER_EVENTS` minus a hand-picked
     // exclusion list and assert the remainder ARE forwarded — a positive

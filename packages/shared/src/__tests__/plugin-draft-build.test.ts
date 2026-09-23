@@ -137,7 +137,10 @@ describe('buildPluginDraft', () => {
       const pluginDir = writeDraft(
         "import secret from './leak';\nexport const components = { pulse: () => secret };\n",
       );
-      symlinkSync(join(outside, 'secret.ts'), join(pluginDir, 'src', 'leak.ts'));
+      symlinkSync(
+        join(outside, 'secret.ts'),
+        join(pluginDir, 'src', 'leak.ts'),
+      );
       const result = await buildPluginDraft({
         pluginDir,
         outdir: join(tempDir('station-draft-out-'), '1'),

@@ -95,6 +95,16 @@ export interface EventRouteDeps {
    * behaviour this gate exists to replace.
    */
   canReadPluginEvent?: (event: string, data: unknown, c: Context) => boolean;
+  /**
+   * Classifies a plugin-draft revision frame (epic #2323 S3) by Project read
+   * authority. Absent means DENIED. May answer asynchronously, because
+   * Project membership is read from the Project's own records; the frame is
+   * relayed only once the answer is yes.
+   */
+  canReadPluginDraftEvent?: (
+    data: unknown,
+    request: Request,
+  ) => boolean | Promise<boolean>;
   connectPairedDevice?: (request: Request) => ClientConnectionLease | undefined;
   isPairedDeviceConnectionCurrent?: (request: Request) => boolean;
   writeSse?: (
@@ -122,6 +132,7 @@ export function createEventRoutes({
   canReadAnswerAssessmentEvent,
   canReadAnswerNarrativeEvent,
   canReadPluginEvent,
+  canReadPluginDraftEvent,
   connectPairedDevice,
   isPairedDeviceConnectionCurrent,
   writeSse,
@@ -217,6 +228,20 @@ export function createEventRoutes({
           // any change to this file (archive#1205, archive#3525).
           if (isPluginIdentityEvent(evt.event)) {
             if (canReadPluginEvent?.(evt.event, evt.data, c)) relay(evt);
+            return;
+          }
+          if (isPluginDraftEvent(evt.event)) {
+            if (!canReadPluginDraftEvent) return;
+            void Promise.resolve()
+              .then(() => canReadPluginDraftEvent(evt.data, c.req.raw))
+              .then(
+                (allowed) => {
+                  if (allowed === true) relay(evt);
+                },
+                () => {
+                  /* an authorization failure is a denial */
+                },
+              );
             return;
           }
           if (isNotificationEvent(evt.event)) {
@@ -321,6 +346,11 @@ export function isApprovalEvent(event: string): boolean {
     event === SERVER_EVENTS.APPROVAL_OPENED ||
     event === SERVER_EVENTS.APPROVAL_RESOLVED
   );
+}
+
+/** Exported for the scoped-channel coverage test, like its siblings. */
+export function isPluginDraftEvent(event: string): boolean {
+  return event === SERVER_EVENTS.PLUGIN_DRAFTS_REBUILT;
 }
 
 export function isNotificationEvent(event: string): boolean {
