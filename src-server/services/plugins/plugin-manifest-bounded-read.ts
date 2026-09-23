@@ -1,7 +1,15 @@
 /**
- * The one way Station reads a `plugin.json` it does not own yet (#2342):
- * a folder an author named to `/validate`, or a source `/preview` and
- * `/install` staged from a path or a git clone.
+ * The bounded reader for a `plugin.json` Station does not own yet (#2342).
+ *
+ * It covers these reads of untrusted trees:
+ * - `POST /api/plugins/validate`: an author-named folder, read in place;
+ * - `POST /api/plugins/preview` and install: the tree staged from a local
+ *   path or a git clone (`fetchPluginSource`);
+ * - fetched dependency sources, in dependency resolution and dependency
+ *   install;
+ * - the registry provider's staged source (`JsonManifestRegistryProvider`);
+ * - the plugin update route, after `git pull --ff-only` or a registry
+ *   re-fetch rewrites the installed tree.
  *
  * An untrusted tree can make `plugin.json` anything. A symlink points it at
  * any file this user can read (and the loader then echoes its bytes in a
@@ -10,9 +18,9 @@
  * So the manifest must be a regular file in the tree itself, and the read is
  * capped. Refusal messages never quote the file's bytes.
  *
- * Installed plugins are NOT read through this. Their trees are Station's own
- * copies, admitted by an install that refused all of the above first, and
- * their runtime reads stay as they were.
+ * Other reads of installed trees (runtime loading, inventory, conflict
+ * detection, uninstall) are NOT routed through this and are unchanged: those
+ * trees are Station's copies, admitted by the reads above.
  */
 import {
   closeSync,
@@ -69,12 +77,15 @@ export function readPluginManifestBytesBounded(
   if (info.size > PLUGIN_MANIFEST_MAX_BYTES) {
     return refuse('manifest-too-large', TOO_LARGE);
   }
-  // Read through the descriptor and re-check what was opened, so a swap
-  // between lstat and open cannot turn this into a read of something else,
-  // and cap the read itself rather than trusting the size. The open itself
-  // is non-blocking and refuses a symlink: a synchronous open of a FIFO
-  // blocks the whole server thread, which no timeout above this can undo.
-  // (Both flags are POSIX; on Windows they are absent and read as 0.)
+  // The open is non-blocking and refuses a final-component symlink, so a
+  // FIFO swapped in after the lstat cannot block the server thread (a
+  // synchronous blocking open is beyond any timeout above this). Both flags
+  // are POSIX; on Windows they read as 0. The descriptor is then checked
+  // against the lstat: it must be a regular file with the SAME inode and
+  // device, so a swap between lstat and open (to a symlink's target, or to
+  // any other file) is refused on every platform, including Windows. The
+  // read itself is capped rather than trusting either size. What this does
+  // not cover: a directory component swapped for a symlink above the file.
   let fd: number;
   try {
     fd = openSync(
@@ -88,7 +99,12 @@ export function readPluginManifestBytesBounded(
     return refuse('manifest-not-regular-file', NOT_REGULAR);
   }
   try {
-    if (!fstatSync(fd).isFile()) {
+    const opened = fstatSync(fd);
+    if (
+      !opened.isFile() ||
+      opened.ino !== info.ino ||
+      opened.dev !== info.dev
+    ) {
       return refuse('manifest-not-regular-file', NOT_REGULAR);
     }
     const buffer = Buffer.alloc(PLUGIN_MANIFEST_MAX_BYTES + 1);

@@ -93,6 +93,7 @@ import { captureLocalPluginArtifact } from './plugin-artifact-local.js';
 import { scanPluginPromptGeneration } from './plugin-command-skill-source.js';
 import {
   computePluginContentDigest,
+  copyPluginTree,
   findPluginContentLockCycleError,
   forgetPluginContentDigest,
   PLUGIN_TREE_COPY,
@@ -1521,7 +1522,7 @@ async function removeOwnedDependencyLifecycles(options: {
             'Dependency uninstall backup',
           );
           mkdirSync(dirname(backupDir), { recursive: true });
-          cpSync(dependencyDir, backupDir, PLUGIN_TREE_COPY);
+          await copyPluginTree(dependencyDir, backupDir);
           const grantScope = createPluginGrantMutationScope(
             options.projectHomeDir,
             dependency.id,
@@ -3667,7 +3668,9 @@ async function installPluginFromSourceUnderContext(
         // taken.
         if (hadExistingPlugin) {
           const backupDir = join(installBackupRoot, 'plugin');
-          if (!isAgentPlugin) cpSync(pluginDir, backupDir, PLUGIN_TREE_COPY);
+          // Installed trees are plugin-writable; `cpSync` aborts the process
+          // on an unreadable directory (see `copyPluginTree`).
+          if (!isAgentPlugin) await copyPluginTree(pluginDir, backupDir);
           backupPluginOwnedIntegrations(
             join(projectHomeDir, 'integrations'),
             pluginName,
@@ -3908,7 +3911,7 @@ async function installPluginFromSourceUnderContext(
           if (existsSync(pluginDir) && pluginDir !== tempDir)
             rmSync(pluginDir, { recursive: true, force: true });
           if (tempDir !== pluginDir)
-            cpSync(tempDir, pluginDir, { recursive: true });
+            await copyPluginTree(tempDir, pluginDir, { recursive: true });
         }
         // The tree just changed. The lock's release forgets the memoized
         // digest, but reads happen INSIDE this span (`hasGrant` below, and
@@ -4737,8 +4740,7 @@ async function uninstallPluginUnderPublication(
   try {
     backupRoot = recovery?.root ?? createStationTempDirSync('plugin-uninstall');
     if (recovery) mkdirSync(backupRoot, { recursive: true });
-    if (!managed)
-      cpSync(pluginDir, join(backupRoot, 'plugin'), PLUGIN_TREE_COPY);
+    if (!managed) await copyPluginTree(pluginDir, join(backupRoot, 'plugin'));
     backupPluginOwnedIntegrations(
       join(projectHomeDir, 'integrations'),
       pluginName,

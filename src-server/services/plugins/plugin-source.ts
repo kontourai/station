@@ -1,6 +1,5 @@
 import { randomBytes } from 'node:crypto';
 import {
-  cpSync,
   existsSync,
   lstatSync,
   mkdirSync,
@@ -33,7 +32,8 @@ import type { Logger } from '../../utils/logger.js';
 import { DistributionProfileService } from './distribution-profile-service.js';
 import {
   computePluginContentDigest,
-  PLUGIN_TREE_COPY,
+  copyPluginTree,
+  isSpecialFileCopyRefusal,
   withPluginContentLock,
 } from './plugin-content-integrity.js';
 import { resolveInstalledPluginRoot } from './plugin-incarnation.js';
@@ -537,13 +537,18 @@ export async function fetchPluginSource(
       return { error: 'Not a valid plugin: plugin.json not found' };
     }
     try {
-      cpSync(source, tempDir, PLUGIN_TREE_COPY);
+      // Async on purpose: `cpSync` aborts the process on an unreadable
+      // directory (see `copyPluginTree`).
+      await copyPluginTree(source, tempDir);
     } catch (error: unknown) {
-      // A copy that fails part-way (an unreadable file, say) must not leave
-      // the half-copied staging tree behind (#2342). Special files do not
-      // reach here: Node's copy skips a FIFO, so a FIFO plugin.json reads
-      // as missing below.
+      // A copy that fails part-way (an unreadable file or directory, a FIFO)
+      // must not leave the half-copied staging tree behind (#2342).
       rmSync(tempDir, { recursive: true, force: true });
+      if (isSpecialFileCopyRefusal(error))
+        return {
+          error:
+            'Plugin source contains a special file (a FIFO, socket or device), which Station does not copy.',
+        };
       return { error: `Failed to stage plugin source: ${errorMessage(error)}` };
     }
   }
@@ -1239,7 +1244,9 @@ export async function installPluginDependency(
               );
               return { success: true };
             }
-            cpSync(tempDir, targetDir, { recursive: true });
+            // The staged tree has been through a build that runs the
+            // dependency's own install scripts, so it is plugin-writable.
+            await copyPluginTree(tempDir, targetDir, { recursive: true });
             try {
               await validateAndBuildInstalledDependency(
                 pluginsDir,

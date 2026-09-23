@@ -28,6 +28,7 @@ import {
   PluginManifestReadRefusedError,
   readPluginManifestBytesBounded,
 } from '../../../services/plugins/plugin-manifest-bounded-read.js';
+import { installPluginDependency } from '../../../services/plugins/plugin-source.js';
 import { registerPluginInstallRoutes } from '../plugin-install-routes.js';
 
 const SECRET = 'AKIASECRET0123456789';
@@ -40,6 +41,9 @@ afterEach(async () => {
       // A test may leave a directory unreadable; restore it so rm can work.
       try {
         chmodSync(join(dir, 'unreadable-source', 'locked.txt'), 0o644);
+      } catch {}
+      try {
+        chmodSync(join(dir, 'unreadable-source', 'locked'), 0o755);
       } catch {}
       await rm(dir, { recursive: true, force: true });
     }),
@@ -180,10 +184,12 @@ describe('POST /preview reads the staged plugin.json through the bounded reader 
     mkdirSync(linked);
     symlinkSync(fifo, join(linked, 'plugin.json'));
 
-    // Node's tree copy skips a FIFO, so the staged tree has no manifest.
+    // The async tree copy refuses a FIFO outright (`ERR_FS_CP_FIFO_PIPE`).
     const direct = await preview(root, inPlace);
     expect(direct.body.valid).toBe(false);
-    expect(direct.body.error).toContain('plugin.json not found');
+    expect(direct.body.error).toBe(
+      'Plugin source contains a special file (a FIFO, socket or device), which Station does not copy.',
+    );
     // The symlink is copied verbatim and refused by the reader.
     const viaLink = await preview(root, linked);
     expect(viaLink.status).toBe(400);
@@ -256,6 +262,36 @@ describe('POST /preview reads the staged plugin.json through the bounded reader 
   });
 });
 
+describe('staging a source with an unreadable directory (#2342 review)', () => {
+  // `fs.cpSync` aborts the whole process on an unreadable directory
+  // (libc++abi filesystem_error, exit 134): the worker running this file
+  // would die, and every test in it with it. Root reads everything, so the
+  // case does not exist there.
+  test.skipIf(process.getuid?.() === 0)(
+    'is refused, cleaned up, and the process survives',
+    async () => {
+      const root = makeRoot();
+      const source = join(root, 'unreadable-source');
+      mkdirSync(join(source, 'locked'), { recursive: true });
+      writeFileSync(
+        join(source, 'plugin.json'),
+        JSON.stringify({ name: 'unreadable', version: '1.0.0' }),
+      );
+      writeFileSync(join(source, 'locked', 'file.txt'), 'x');
+      chmodSync(join(source, 'locked'), 0o000);
+
+      const { body } = await preview(root, source);
+
+      expect(body.valid).toBe(false);
+      expect(body.error).toContain('Failed to stage plugin source');
+      expect(stagingLeftovers(root)).toEqual([]);
+      // Still here: the request answered and the next one does too.
+      const again = await preview(root, source);
+      expect(again.body.valid).toBe(false);
+    },
+  );
+});
+
 describe('preview reads a fetched dependency manifest through the bounded reader (#2342)', () => {
   test('a dependency whose plugin.json is a symlink contributes no manifest-derived consent', async () => {
     const root = makeRoot();
@@ -293,6 +329,76 @@ describe('preview reads a fetched dependency manifest through the bounded reader
     ]);
     expect(body.dependencies[0].consent).toBeUndefined();
     expect(JSON.stringify(body)).not.toContain(SECRET);
+    expect(stagingLeftovers(root)).toEqual([]);
+  });
+});
+
+describe('dependency install reads the fetched manifest through the bounded reader (#2342 review)', () => {
+  function linkedDependency(root: string) {
+    writeSecrets(root);
+    const dependency = join(root, 'linked-dep');
+    mkdirSync(dependency);
+    writeFileSync(join(dependency, 'provider.js'), 'export default {};\n');
+    symlinkSync(join(root, 'secret.json'), join(dependency, 'plugin.json'));
+    return dependency;
+  }
+
+  // The seam that holds the read. A parent install reaches it only after its
+  // preflight (`resolvePluginDependencies`) has already failed to derive the
+  // dependency's consent, so this is driven directly: it is what a source
+  // swapped between preflight and install would meet.
+  test('installPluginDependency refuses a symlinked plugin.json and leaves nothing staged', async () => {
+    const root = makeRoot();
+    const dependency = linkedDependency(root);
+    const buildPlugin = vi.fn().mockResolvedValue(undefined);
+
+    const result = await installPluginDependency(
+      { id: 'linked-dep', source: dependency },
+      join(root, 'plugins'),
+      () => ({
+        install: vi.fn(),
+        listAvailable: vi.fn().mockResolvedValue([]),
+      }),
+      buildPlugin,
+      logger(),
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('plugin.json is a symlink');
+    expect(result.cause).toBeInstanceOf(PluginManifestReadRefusedError);
+    expect(JSON.stringify(result.error)).not.toContain(SECRET);
+    expect(buildPlugin).not.toHaveBeenCalled();
+    expect(existsSync(join(root, 'plugins', 'linked-dep'))).toBe(false);
+    expect(stagingLeftovers(root)).toEqual([]);
+  });
+
+  test('a parent whose local dependency has a symlinked plugin.json does not install', async () => {
+    const root = makeRoot();
+    linkedDependency(root);
+    const parent = join(root, 'parent');
+    mkdirSync(parent);
+    writeFileSync(
+      join(parent, 'plugin.json'),
+      JSON.stringify({
+        name: 'parent',
+        version: '1.0.0',
+        dependencies: [{ id: 'linked-dep', source: '../linked-dep' }],
+      }),
+    );
+    const buildPlugin = vi.fn().mockResolvedValue(undefined);
+
+    await expect(
+      installPluginFromSource(parent, [], {
+        agentsDir: join(root, 'agents'),
+        buildPlugin,
+        logger: logger(),
+        pluginsDir: join(root, 'plugins'),
+        projectHomeDir: root,
+      } as any),
+    ).rejects.toThrow();
+    expect(buildPlugin).not.toHaveBeenCalled();
+    expect(existsSync(join(root, 'plugins', 'linked-dep'))).toBe(false);
+    expect(existsSync(join(root, 'plugins', 'parent'))).toBe(false);
     expect(stagingLeftovers(root)).toEqual([]);
   });
 });

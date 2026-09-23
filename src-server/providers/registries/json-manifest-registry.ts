@@ -9,7 +9,8 @@ import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import type { ToolDef } from '@kontourai/station-contracts/tool';
 import { createStationTempDirSync } from '@kontourai/station-shared/temp-dir';
 import { scanInstalledPluginInventory } from '../../services/plugins/installed-plugin-inventory.js';
-import { readPluginManifestFileSync } from '../../services/plugins/plugin-manifest-loader.js';
+import { copyPluginTree } from '../../services/plugins/plugin-content-integrity.js';
+import { readUntrustedPluginManifestSyncWithFormat } from '../../services/plugins/plugin-manifest-bounded-read.js';
 import { assertPluginIdentityAvailable } from '../../services/plugins/reserved-plugin-identities.js';
 import { errorMessage } from '../../utils/error-message.js';
 import { execGitSync } from '../../utils/git-exec.js';
@@ -256,7 +257,7 @@ export class JsonManifestRegistryProvider
     writeRegistryInstallAliases(this.projectHomeDir, aliases);
   }
 
-  private materializeSource(source: string): string {
+  private async materializeSource(source: string): Promise<string> {
     const resolvedSource = this.resolveManifestSource(source);
     const tempDir = createStationTempDirSync('registry-plugin');
 
@@ -272,7 +273,8 @@ export class JsonManifestRegistryProvider
         if (!existsSync(resolvedSource)) {
           throw new Error(`Source not found: ${resolvedSource}`);
         }
-        cpSync(resolvedSource, tempDir, { recursive: true });
+        // Async: `cpSync` aborts the process on an unreadable directory.
+        await copyPluginTree(resolvedSource, tempDir);
       }
     } catch (error) {
       rmSync(tempDir, { recursive: true, force: true });
@@ -372,13 +374,18 @@ export class JsonManifestRegistryProvider
       }
 
       const pluginsDir = this.getPluginsDir();
-      const stagedSourceDir = this.materializeSource(plugin.source);
+      const stagedSourceDir = await this.materializeSource(plugin.source);
       try {
         const sourceManifestPath = join(stagedSourceDir, 'plugin.json');
         if (!existsSync(sourceManifestPath)) {
           throw new Error(`Plugin '${id}' source is missing plugin.json`);
         }
-        const sourceManifest = readPluginManifestFileSync(sourceManifestPath);
+        // The staged registry source is untrusted: bounded read, no symlink
+        // following (#2342 review).
+        const sourceManifest =
+          readUntrustedPluginManifestSyncWithFormat(
+            sourceManifestPath,
+          ).manifest;
         const pluginName = sourceManifest.name;
         assertSafeRegistrySegment(pluginName, 'Registry plugin manifest name');
         // This provider writes `<plugins>/<pluginName>` itself (below) rather

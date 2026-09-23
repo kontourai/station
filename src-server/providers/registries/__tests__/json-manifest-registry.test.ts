@@ -1,4 +1,11 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import {
   createServer,
@@ -1110,6 +1117,88 @@ describe('JsonManifestRegistryProvider registry manifest proof', () => {
       'keep me',
     );
   });
+
+  function registryFor(projectHome: string, source: string) {
+    const manifestPath = resolve(projectHome, 'registry.json');
+    writeFileSync(
+      manifestPath,
+      JSON.stringify({
+        version: 1,
+        plugins: [
+          {
+            id: 'registry-demo',
+            displayName: 'Registry Demo',
+            description: 'Registry copy',
+            version: '2.0.0',
+            source,
+          },
+        ],
+        tools: [],
+      }),
+    );
+    return new JsonManifestRegistryProvider(manifestPath, projectHome);
+  }
+
+  test('refuses a registry source whose plugin.json is a symlink (#2342 review)', async () => {
+    const projectHome = await makeProjectHome();
+    const registrySource = resolve(projectHome, 'registry-demo-source');
+    mkdirSync(registrySource, { recursive: true });
+    writeFileSync(
+      resolve(projectHome, 'outside.json'),
+      JSON.stringify({
+        name: 'leaked-name',
+        version: '9.9.9',
+        description: 'AKIASECRET0123456789',
+      }),
+    );
+    symlinkSync(
+      resolve(projectHome, 'outside.json'),
+      resolve(registrySource, 'plugin.json'),
+    );
+    const before = new Set(await listStationTempEntries('registry-plugin'));
+
+    const result = await registryFor(
+      projectHome,
+      './registry-demo-source',
+    ).install('registry-demo');
+
+    expect(result).toMatchObject({
+      success: false,
+      message: expect.stringContaining('plugin.json is a symlink'),
+    });
+    expect(JSON.stringify(result)).not.toContain('AKIASECRET');
+    expect(existsSync(resolve(projectHome, 'plugins', 'leaked-name'))).toBe(
+      false,
+    );
+    const after = await listStationTempEntries('registry-plugin');
+    expect(after.filter((entry) => !before.has(entry))).toEqual([]);
+  });
+
+  test.skipIf(process.getuid?.() === 0)(
+    'refuses a registry source with an unreadable directory without aborting the process (#2342 review)',
+    async () => {
+      const projectHome = await makeProjectHome();
+      const registrySource = resolve(projectHome, 'registry-demo-source');
+      mkdirSync(resolve(registrySource, 'locked'), { recursive: true });
+      writeFileSync(
+        resolve(registrySource, 'plugin.json'),
+        JSON.stringify({ name: 'locked-plugin', version: '1.0.0' }),
+      );
+      chmodSync(resolve(registrySource, 'locked'), 0o000);
+      try {
+        const result = await registryFor(
+          projectHome,
+          './registry-demo-source',
+        ).install('registry-demo');
+        expect(result).toMatchObject({
+          success: false,
+          message: expect.stringContaining('EACCES'),
+        });
+      } finally {
+        chmodSync(resolve(registrySource, 'locked'), 0o755);
+      }
+    },
+  );
 
   test('cleans staged registry plugin sources when git materialization fails', async () => {
     const projectHome = await makeProjectHome();

@@ -26,6 +26,7 @@
  *    holding this lock across both closes it.
  */
 import { AsyncLocalStorage } from 'node:async_hooks';
+import { cp } from 'node:fs/promises';
 import { basename, join, resolve } from 'node:path';
 import { setImmediate } from 'node:timers/promises';
 import { isCanonicalPluginId } from '@kontourai/station-contracts/plugin';
@@ -142,6 +143,37 @@ export const PLUGIN_TREE_COPY = {
   recursive: true,
   verbatimSymlinks: true,
 } as const;
+
+/**
+ * Copies a tree a plugin or an untrusted source can shape (#2342 review).
+ *
+ * `fs.cpSync` walks a directory with a native iterator that ABORTS the whole
+ * Node process (libc++abi `filesystem_error`, exit 134) on an unreadable
+ * directory, so no catch above it can turn that into an error. The async
+ * `fs.promises.cp` raises a catchable EACCES instead. (`cpSync` with a
+ * `filter` takes the JS path but throws ERR_INTERNAL_ASSERTION on a FIFO.)
+ *
+ * The async copy refuses special files (`ERR_FS_CP_FIFO_PIPE`,
+ * `ERR_FS_CP_SOCKET`, `ERR_FS_CP_UNKNOWN`) where `cpSync` skipped them;
+ * {@link isSpecialFileCopyRefusal} names that case for callers.
+ */
+export async function copyPluginTree(
+  source: string,
+  target: string,
+  options: Parameters<typeof cp>[2] = PLUGIN_TREE_COPY,
+): Promise<void> {
+  await cp(source, target, options);
+}
+
+/** A copy refused because the tree holds a FIFO, socket or device. */
+export function isSpecialFileCopyRefusal(error: unknown): boolean {
+  const code = (error as { code?: unknown } | null)?.code;
+  return (
+    code === 'ERR_FS_CP_FIFO_PIPE' ||
+    code === 'ERR_FS_CP_SOCKET' ||
+    code === 'ERR_FS_CP_UNKNOWN'
+  );
+}
 
 /**
  * Memoized {@link computePluginContentDigest}, keyed by the resolved plugin
