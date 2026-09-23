@@ -106,18 +106,24 @@ function useSecondClock(enabled: boolean): number {
  */
 export function TurnActivityProgress({
   activity,
+  showSilence = true,
 }: {
   activity: ConversationTurnActivity | undefined;
+  /** False when the host presents the silence itself (the dock's notice). */
+  showSilence?: boolean;
 }) {
-  const hasContent = Boolean(
-    activity?.openTurn &&
-      ((activity.runningTools?.length ?? 0) > 0 ||
-        activity.lastTool ||
-        activity.progressSilence),
+  const running = Boolean(
+    activity?.openTurn && (activity.runningTools?.length ?? 0) > 0,
   );
-  const now = useSecondClock(hasContent);
-  if (!activity || !hasContent) return null;
+  const silence = Boolean(
+    showSilence && activity?.openTurn && activity.progressSilence,
+  );
+  // Tick only while an elapsed time is on screen; "Last: bash · done" is
+  // static and needs no clock.
+  const now = useSecondClock(running || silence);
+  if (!activity?.openTurn) return null;
   const parts = describeTurnActivity(activity, now);
+  if (!showSilence) parts.silence = undefined;
   const tool = parts.running ?? parts.lastTool;
   if (!tool && !parts.silence) return null;
   return (

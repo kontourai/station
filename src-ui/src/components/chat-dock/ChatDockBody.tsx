@@ -943,6 +943,11 @@ export function ChatDockBody({
             hasOlderMessages: transcript.enabled && transcript.hasMore,
             historyLoading: transcript.loading,
             suppressActivity: Boolean(streamStatus),
+            // #2309: the stall notice below presents the silence (with its
+            // Stop action); the streaming row does not repeat it.
+            progressSilenceShownElsewhere: Boolean(
+              turnProgressSilence && isTurnInFlight(activeSession),
+            ),
             onLoadOlder: transcript.loadOlder,
             onOpenBackgroundTasks,
             owner,

@@ -49,6 +49,8 @@ export type StreamingMessageProps = {
    */
   conversationActivity?: ConversationTurnActivity;
   suppressActivity?: boolean;
+  /** #2309: see `ChatMessageList`'s `progressSilenceShownElsewhere`. */
+  hideProgressSilence?: boolean;
   statusLabel?: string;
   /**
    * Row attribution (archive#1424 fix): shown from the FIRST
@@ -98,6 +100,7 @@ export function StreamingMessageView({
   elapsedMs,
   conversationActivity,
   suppressActivity,
+  hideProgressSilence,
   statusLabel,
   attributionAgent,
   owner,
@@ -257,7 +260,10 @@ export function StreamingMessageView({
             </div>
           )}
         {!suppressActivity && (
-          <TurnActivityProgress activity={conversationActivity} />
+          <TurnActivityProgress
+            activity={conversationActivity}
+            showSilence={!hideProgressSilence}
+          />
         )}
       </div>
     </div>

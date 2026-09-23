@@ -62,6 +62,12 @@ interface ChatMessageListProps {
   hasOlderMessages?: boolean;
   historyLoading?: boolean;
   suppressActivity?: boolean;
+  /**
+   * #2309: the host already presents the watchdog's silence for this turn
+   * with an action attached (the dock's stall notice, which offers Stop), so
+   * the streaming row's compact progress omits it rather than saying it twice.
+   */
+  progressSilenceShownElsewhere?: boolean;
   onLoadOlder?: () => Promise<void>;
   /**
    * archive#1301: when provided, the background-tasks banner below
@@ -130,6 +136,7 @@ function ChatMessageListComponent({
   hasOlderMessages,
   historyLoading,
   suppressActivity,
+  progressSilenceShownElsewhere,
   onLoadOlder,
   onOpenBackgroundTasks,
   owner,
@@ -742,6 +749,7 @@ function ChatMessageListComponent({
                   elapsedMs={activeSession.replay?.elapsedMs}
                   conversationActivity={activeSession.conversationActivity}
                   suppressActivity={suppressActivity}
+                  hideProgressSilence={progressSilenceShownElsewhere}
                   statusLabel={
                     activeSession.orchestrationStatus === 'awaiting-approval'
                       ? // station#2235: the status alone asserts nothing about
