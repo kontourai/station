@@ -38,6 +38,7 @@
  * All CDP goes through the host's guarded channel (`BrowserHost.cdp()`), so
  * its method allow-list and parameter refusals apply here as to anyone.
  */
+
 import type {
   LiveSurfaceInput,
   LiveSurfaceInputResult,
@@ -53,6 +54,7 @@ import {
 } from '../live-surface/registry.js';
 import type { BrowserAgentAuthority } from './browser-agent-authority.js';
 import type { BrowserViewport } from './browser-host.js';
+import { jsStringLiteral } from './browser-js-literal.js';
 import {
   BROWSER_LOCATOR_ENGINE_READY,
   BROWSER_LOCATOR_ENGINE_REF,
@@ -1035,7 +1037,7 @@ export class BrowserAutomation {
         const engine = ${BROWSER_LOCATOR_ENGINE_REF};
         if (!engine || typeof engine.parseSelector !== 'function') return 'error:the selector engine is not installed';
         try {
-          return engine.querySelector(engine.parseSelector(${JSON.stringify(target.locator)}), document, true) || null;
+          return engine.querySelector(engine.parseSelector(${jsStringLiteral(target.locator)}), document, true) || null;
         } catch (error) {
           return 'error:' + String(error && error.message || error).slice(0, 300);
         }
@@ -1996,7 +1998,7 @@ export class BrowserAutomation {
       ),
       WAIT_MAX_TIMEOUT_MS,
     );
-    const needle = JSON.stringify(given[0]);
+    const needle = jsStringLiteral(given[0]);
     const expression =
       input.text !== undefined
         ? `(() => { const body = ${PROTO_GET('Document', 'body')}.call(document); return (body ? ${PROTO_GET('HTMLElement', 'innerText')}.call(body) : '').includes(${needle}); })()`
