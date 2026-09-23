@@ -13286,6 +13286,31 @@ mod tests {
         std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false))
     }
 
+    /// Reserves an ordinary read that the test expects to be admitted at once.
+    /// Fails instead of blocking forever if the slot is (wrongly) still held.
+    fn reserve_native_read_promptly(
+        cancellations: &NativeHttpCancellation,
+        request_id: &'static str,
+        origin: &'static str,
+        cancel: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    ) {
+        let (admitted_tx, admitted_rx) = std::sync::mpsc::channel();
+        let task_cancellations = cancellations.clone();
+        std::thread::spawn(move || {
+            let _ = admitted_tx.send(reserve_native_http_request(
+                &task_cancellations,
+                request_id,
+                origin,
+                false,
+                cancel,
+            ));
+        });
+        admitted_rx
+            .recv_timeout(Duration::from_secs(2))
+            .unwrap_or_else(|_| panic!("{request_id} was not admitted: its slot is still held"))
+            .unwrap();
+    }
+
     #[test]
     fn native_http_cancel_releases_a_slot_blocked_in_its_network_call() {
         // station#2327: the cancel flag was only read between body reads, so a
@@ -13369,14 +13394,12 @@ mod tests {
         for index in 0..NATIVE_HTTP_PER_ORIGIN_ORPHAN_LIMIT {
             let request_id: &'static str = Box::leak(format!("orphan-{index}").into_boxed_str());
             let cancel = new_cancel_flag();
-            reserve_native_http_request(
+            reserve_native_read_promptly(
                 &cancellations,
                 request_id,
                 origin,
-                false,
                 std::sync::Arc::clone(&cancel),
-            )
-            .unwrap();
+            );
             let (release_call, call) = blocked_native_call();
             let outcome = spawn_cancellable_native_call(&cancellations, request_id, cancel, call);
             cancel_native_http_request(&cancellations, request_id).unwrap();
@@ -13394,14 +13417,12 @@ mod tests {
         // One more abandoned call at the cap keeps its slot instead of
         // opening another orphaned socket.
         let over_cancel = new_cancel_flag();
-        reserve_native_http_request(
+        reserve_native_read_promptly(
             &cancellations,
             "over-cap",
             origin,
-            false,
             std::sync::Arc::clone(&over_cancel),
-        )
-        .unwrap();
+        );
         let (release_over, over_call) = blocked_native_call();
         let over_outcome =
             spawn_cancellable_native_call(&cancellations, "over-cap", over_cancel, over_call);
@@ -13424,14 +13445,12 @@ mod tests {
 
         // A different origin has its own orphan allowance.
         let other_cancel = new_cancel_flag();
-        reserve_native_http_request(
+        reserve_native_read_promptly(
             &cancellations,
             "other-origin",
             "https://other.example.test",
-            false,
             std::sync::Arc::clone(&other_cancel),
-        )
-        .unwrap();
+        );
         let (release_other, other_call) = blocked_native_call();
         let other_outcome =
             spawn_cancellable_native_call(&cancellations, "other-origin", other_cancel, other_call);
@@ -13465,14 +13484,12 @@ mod tests {
         let cancellations = NativeHttpCancellation::default();
         let origin = "https://station.example.test";
         let cancel = new_cancel_flag();
-        reserve_native_http_request(
+        reserve_native_read_promptly(
             &cancellations,
             "reused-id",
             origin,
-            false,
             std::sync::Arc::clone(&cancel),
-        )
-        .unwrap();
+        );
         let (release_call, call) = blocked_native_call();
         let outcome = spawn_cancellable_native_call(&cancellations, "reused-id", cancel, call);
         cancel_native_http_request(&cancellations, "reused-id").unwrap();
@@ -13483,23 +13500,14 @@ mod tests {
 
         // A later request reuses the id and another origin's call is orphaned
         // too; the first orphan's late completion must disturb neither.
-        reserve_native_http_request(
-            &cancellations,
-            "reused-id",
-            origin,
-            false,
-            new_cancel_flag(),
-        )
-        .unwrap();
+        reserve_native_read_promptly(&cancellations, "reused-id", origin, new_cancel_flag());
         let other_cancel = new_cancel_flag();
-        reserve_native_http_request(
+        reserve_native_read_promptly(
             &cancellations,
             "other",
             "https://other.example.test",
-            false,
             std::sync::Arc::clone(&other_cancel),
-        )
-        .unwrap();
+        );
         let (release_other, other_call) = blocked_native_call();
         let other_outcome =
             spawn_cancellable_native_call(&cancellations, "other", other_cancel, other_call);
