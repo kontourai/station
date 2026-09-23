@@ -262,7 +262,7 @@ export const MUSE_BACKGROUND_TASK_COMPLETED_OUTPUT =
   'Muse reported this background task completed.';
 const MUSE_BACKGROUND_TASK_FAILED_OUTPUT =
   'Muse reported this background task failed.';
-export const MUSE_BACKGROUND_TASK_CANCELLED_OUTPUT =
+const MUSE_BACKGROUND_TASK_CANCELLED_OUTPUT =
   'Muse cancelled this background task.';
 export const MUSE_BACKGROUND_TASK_STOPPED_OUTPUT =
   "The turn was stopped before this background task reported a result. Muse's process exited after Station signalled its process group; that the task itself ended with it was not separately confirmed.";

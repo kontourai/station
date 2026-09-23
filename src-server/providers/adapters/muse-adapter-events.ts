@@ -417,7 +417,7 @@ export function observeMuseToolTask(
  * reports the task's `task_lifecycle` completion (keyed by that `taskId`) and
  * submits an automatic follow-up run before it exits.
  */
-export const MUSE_BACKGROUND_LAUNCH_TOOL_NAME = 'workflow';
+const MUSE_BACKGROUND_LAUNCH_TOOL_NAME = 'workflow';
 
 /**
  * Bound on the `tool_result.text` this adapter will parse for a launch
