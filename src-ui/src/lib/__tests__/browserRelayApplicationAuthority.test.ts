@@ -126,11 +126,13 @@ class MemoryStorage implements BrowserRelayAuthorityStorage {
     expected: any,
     next: any,
     signal?: AbortSignal,
+    commitGuard?: () => boolean,
   ) {
     await this.beforeCompare?.(id, expected);
     if (signal?.aborted && this.refuseAbortedWrites) throw signal.reason;
     const current = this.values.get(id) ?? null;
     if (!sameStoredIdentity(current, expected)) return false;
+    if (commitGuard && !commitGuard()) return false;
     this.values.set(id, next);
     await this.afterCompare?.(id, next);
     return true;
@@ -726,6 +728,75 @@ describe('browser relay application authority', () => {
     expect(current?.authorityInstanceId).not.toBe(input.stageId);
   });
 
+  it('does not publish active authority when the route retires while the final CAS waits', async () => {
+    const connectionId = 'activation-route-retires-in-cas';
+    publish(connectionId);
+    const storage = new MemoryStorage();
+    const controller = new AbortController();
+    const input = {
+      stageId: 'g'.repeat(43),
+      connectionId,
+      applicationOrigin,
+      route,
+      bearer: { kind: 'device' as const, credential: 'h'.repeat(43) },
+      key,
+      continuation: {
+        ...continuation,
+        authorityKey: 'route-retires-in-cas',
+        credential: 'i'.repeat(43),
+        keyThumbprint: await thumbprintFor(publicKey),
+      },
+    };
+    await stageBrowserRelayApplicationAuthority(input, storage);
+    let routeCurrent = true;
+    let activePublications = 0;
+    storage.afterCompare = async (target, next) => {
+      if (
+        target === storageKey(connectionId) &&
+        (next as { status?: string }).status === 'active'
+      )
+        activePublications += 1;
+    };
+    storage.beforeCompare = async (target) => {
+      if (
+        target === storageKey(connectionId) &&
+        (storage.values.get(target) as { status?: string })?.status ===
+          'activating'
+      ) {
+        storage.beforeCompare = undefined;
+        routeCurrent = false;
+      }
+    };
+    await expect(
+      publishBrowserRelayApplicationAuthority(
+        {
+          connectionId,
+          applicationOrigin,
+          route,
+          stageId: input.stageId,
+          activationReceipt: {
+            version: 'station.relay-enrollment/v1',
+            state: 'active',
+            enrollmentId: input.stageId,
+            deviceId: input.continuation.deviceId,
+            receiptDigest: 'R'.repeat(43),
+            receiptExpiresAt: new Date(Date.now() + 60_000).toISOString(),
+          },
+          isRouteCurrent: () => routeCurrent,
+          signal: controller.signal,
+        },
+        storage,
+      ),
+    ).rejects.toThrow('before activation could be published');
+    expect(controller.signal.aborted).toBe(false);
+    expect(routeCurrent).toBe(false);
+    expect(activePublications).toBe(0);
+    expect(
+      (storage.values.get(storageKey(connectionId)) as { status?: string })
+        ?.status,
+    ).toBe('empty');
+  });
+
   it('conditionally rolls back cookie alias installation when the route retires during commit', async () => {
     const connectionId = 'alias-install-retirement';
     publish(connectionId);
@@ -800,6 +871,80 @@ describe('browser relay application authority', () => {
       clientOrigin: window.location.origin,
     });
     expect(getBrowserRelayAccountScope(scopeKey)?.authorityKey).toBeNull();
+  });
+
+  it('preserves a device-only grant if cookie alias replacement fails after account 401', async () => {
+    const connectionId = 'alias-failure-retains-device-only';
+    const transport = publish(connectionId);
+    const storage = new MemoryStorage();
+    const deviceBearer = 'J'.repeat(43);
+    const keyThumbprint = await thumbprintFor(publicKey);
+    await installApprovedDevice(
+      {
+        stageId: 'k'.repeat(43),
+        connectionId,
+        applicationOrigin,
+        route,
+        bearer: { kind: 'device', credential: deviceBearer },
+        key,
+        continuation: { ...continuation, keyThumbprint },
+      },
+      storage,
+    );
+    const credential = await createBrowserRelayApplicationCredential({
+      connectionId,
+      applicationOrigin,
+      route,
+      transport,
+      routeIsCurrent: () => true,
+      storage,
+    });
+    await credential.onAccountUnauthorized?.();
+    const deviceOnly = storage.values.get(storageKey(connectionId)) as {
+      status: string;
+      bearer: { credential: string };
+    };
+    expect(deviceOnly.status).toBe('device-only');
+    expect(deviceOnly.bearer.credential).toBe(deviceBearer);
+
+    storage.afterCompare = async (target, next) => {
+      if (
+        target === storageKey(connectionId) &&
+        (next as { status?: string }).status === 'active'
+      ) {
+        storage.afterCompare = undefined;
+        storage.failRead = (readKey) =>
+          readKey === storageKey(connectionId)
+            ? new Error('replacement read unavailable')
+            : undefined;
+      }
+    };
+    await expect(
+      installBrowserRelayApplicationAuthority(
+        {
+          connectionId,
+          applicationOrigin,
+          route,
+          bearer: { kind: 'alias', credential: 'L'.repeat(43) },
+          key,
+          continuation: {
+            ...continuation,
+            authorityKey: 'replacement-account',
+            credential: 'M'.repeat(43),
+            keyThumbprint,
+          },
+        },
+        storage,
+      ),
+    ).rejects.toThrow('replacement read unavailable');
+    const retained = storage.values.get(storageKey(connectionId)) as {
+      status: string;
+      bearer: { credential: string };
+      continuation?: unknown;
+    };
+    expect(retained.status).toBe('device-only');
+    expect(retained.bearer.credential).toBe(deviceBearer);
+    expect(retained.continuation).toBeUndefined();
   });
 
   it('aborts a pending activation and rolls back a transaction that completed during cancellation', async () => {

@@ -87,6 +87,7 @@ export interface BrowserRelayAuthorityStorage {
     expected: AuthorityIdentity | null,
     next: AuthorityRecord | null,
     signal?: AbortSignal,
+    commitGuard?: () => boolean,
   ): Promise<boolean>;
   activateStaged(input: {
     activeKey: string;
@@ -307,12 +308,14 @@ class IndexedDbBrowserRelayAuthorityStorage
     expected: AuthorityIdentity | null,
     next: AuthorityRecord | null,
     signal?: AbortSignal,
+    commitGuard?: () => boolean,
   ) {
     return atomicAuthorityUpdate((store) => {
       const request = store.get(key);
       let matched = false;
       request.onsuccess = () => {
         if (!sameIdentity(identityOf(request.result), expected)) return;
+        if (commitGuard && !commitGuard()) return;
         matched = true;
         if (next) store.put(next, key);
         else store.delete(key);
@@ -550,9 +553,10 @@ async function rollbackActivation(
   expected: ActivatingAuthorityRecord | ActiveAuthorityRecord,
   previous: unknown,
 ) {
-  const rollback = isActiveRecord(previous)
-    ? { ...previous, scopeVersion: expected.scopeVersion + 1 }
-    : emptyRecord(expected.scopeVersion + 1);
+  const rollback =
+    isActiveRecord(previous) || isDeviceOnlyRecord(previous)
+      ? { ...previous, scopeVersion: expected.scopeVersion + 1 }
+      : emptyRecord(expected.scopeVersion + 1);
   return storage.compareAndSwap(key, identityOf(expected)!, rollback);
 }
 
@@ -746,9 +750,10 @@ async function rollbackInstalledAuthority(
   installed: ActiveAuthorityRecord,
   previous?: unknown,
 ) {
-  const rollback = isActiveRecord(previous)
-    ? { ...previous, scopeVersion: installed.scopeVersion + 1 }
-    : emptyRecord(installed.scopeVersion + 1);
+  const rollback =
+    isActiveRecord(previous) || isDeviceOnlyRecord(previous)
+      ? { ...previous, scopeVersion: installed.scopeVersion + 1 }
+      : emptyRecord(installed.scopeVersion + 1);
   return storage.compareAndSwap(key, identityOf(installed)!, rollback);
 }
 
@@ -1075,6 +1080,7 @@ export async function publishBrowserRelayApplicationAuthority(
         identityOf(activating)!,
         active,
         input.signal,
+        stillSelected,
       ))
     ) {
       await rollbackActivation(storage, key, activating, activeValue);
