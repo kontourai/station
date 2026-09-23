@@ -92,8 +92,11 @@ test('an empty Project folder offers to start a plugin, scaffolds into it, and p
     }),
   );
   const requests: OpenProjectChatsDetail[] = [];
-  const listener = (event: Event) =>
+  // Stands in for the chat dock, which claims the request.
+  const listener = (event: Event) => {
     requests.push((event as CustomEvent<OpenProjectChatsDetail>).detail);
+    event.preventDefault();
+  };
   window.addEventListener(OPEN_PROJECT_CHATS_EVENT, listener);
   chatListeners.push(listener);
 
@@ -138,4 +141,35 @@ test('a folder that cannot take a scaffold offers nothing', async () => {
   // Let the query settle before asserting absence.
   await new Promise((resolve) => setTimeout(resolve, 0));
   expect(screen.queryByRole('button', { name: 'Start a plugin' })).toBeNull();
+});
+
+test('an unclaimed chat request keeps the opening message on screen', async () => {
+  getJsonMock.mockResolvedValue(
+    jsonResponse(200, { success: true, data: { eligible: true } }),
+  );
+  mutateJsonMock.mockResolvedValue(
+    jsonResponse(201, {
+      success: true,
+      data: {
+        name: 'shared-pulse',
+        template: 'pane',
+        displayName: 'Shared Pulse',
+        files: [],
+      },
+    }),
+  );
+  renderCallout();
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Start a plugin' }),
+  );
+  fireEvent.change(await screen.findByLabelText('Plugin name'), {
+    target: { value: 'shared-pulse' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Start plugin' }));
+  expect((await screen.findByRole('alert')).textContent).toMatch(
+    /Chat couldn't open here/,
+  );
+  expect(
+    (screen.getByLabelText('Opening message') as HTMLTextAreaElement).value,
+  ).toContain('`plugin-authoring`');
 });

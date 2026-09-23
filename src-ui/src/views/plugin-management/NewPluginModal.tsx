@@ -7,6 +7,7 @@ import {
 } from '../../components/ResponsiveDialogSurface';
 import { hasLocalStationForProfile } from '../../platform/client-origin-surface';
 import { usePlatformProfile } from '../../platform/PlatformProfileContext';
+import { AuthoringChatFallback } from './AuthoringChatFallback';
 import { PluginTemplateFieldset } from './PluginTemplateFieldset';
 import { useNewPluginFlow } from './useNewPluginFlow';
 
@@ -39,110 +40,117 @@ export function NewPluginModal({ onClose }: { onClose: () => void }) {
           label="Close new plugin"
         />
       </div>
-      <form
-        className="plugins__modal-body plugins__modal-body--visible plugins__new-plugin"
-        onSubmit={(event) => void flow.submit(event)}
-      >
-        <fieldset
-          className="plugins__new-plugin-fields"
-          disabled={flow.submitting || flow.created !== null}
+      {flow.unclaimedPrimer ? (
+        <AuthoringChatFallback
+          message={flow.unclaimedPrimer}
+          onClose={flow.openCreatedProject}
+        />
+      ) : (
+        <form
+          className="plugins__modal-body plugins__modal-body--visible plugins__new-plugin"
+          onSubmit={(event) => void flow.submit(event)}
         >
-          <div className="editor-field">
-            <label className="editor-label" htmlFor="new-plugin-name">
-              Plugin name
-            </label>
-            <input
-              id="new-plugin-name"
-              className="editor-input"
-              value={flow.name}
-              onChange={(event) => flow.setName(event.target.value)}
-              placeholder="my-plugin"
-              autoComplete="off"
-              spellCheck={false}
-              aria-invalid={flow.nameProblem ? true : undefined}
-              aria-describedby={nameHintId}
-            />
-            <p
-              id={nameHintId}
-              className={
-                flow.nameProblem
-                  ? 'plugins__new-plugin-error'
-                  : 'plugins__install-hint'
-              }
-            >
-              {flow.nameProblem ??
-                'Lowercase letters, digits, hyphens or periods. It names the plugin everywhere.'}
-            </p>
-          </div>
-          <div className="editor-field">
-            <label className="editor-label" htmlFor="new-plugin-title-input">
-              Title <span className="editor-hint"> optional</span>
-            </label>
-            <input
-              id="new-plugin-title-input"
-              className="editor-input"
-              value={flow.title}
-              onChange={(event) => flow.setTitle(event.target.value)}
-              placeholder={flow.displayName || 'My Plugin'}
-            />
-          </div>
-          {pickFolder && (
+          <fieldset
+            className="plugins__new-plugin-fields"
+            disabled={flow.submitting || flow.created !== null}
+          >
             <div className="editor-field">
-              <label className="editor-label" htmlFor="new-plugin-directory">
-                Folder <span className="editor-hint"> optional</span>
+              <label className="editor-label" htmlFor="new-plugin-name">
+                Plugin name
               </label>
-              <PathAutocomplete
-                id="new-plugin-directory"
-                value={flow.directory}
-                onChange={flow.setDirectory}
-                placeholder="/path/to/empty/folder"
-                className="editor-input path-autocomplete__input"
-                browsable
-                autoFocus={false}
+              <input
+                id="new-plugin-name"
+                className="editor-input"
+                value={flow.name}
+                onChange={(event) => flow.setName(event.target.value)}
+                placeholder="my-plugin"
+                autoComplete="off"
+                spellCheck={false}
+                aria-invalid={flow.nameProblem ? true : undefined}
+                aria-describedby={nameHintId}
               />
-              <p className="plugins__install-hint">
-                Choose an empty folder, or leave this blank and Station makes
-                one for the Project.
+              <p
+                id={nameHintId}
+                className={
+                  flow.nameProblem
+                    ? 'plugins__new-plugin-error'
+                    : 'plugins__install-hint'
+                }
+              >
+                {flow.nameProblem ??
+                  'Lowercase letters, digits, hyphens or periods. It names the plugin everywhere.'}
               </p>
             </div>
+            <div className="editor-field">
+              <label className="editor-label" htmlFor="new-plugin-title-input">
+                Title <span className="editor-hint"> optional</span>
+              </label>
+              <input
+                id="new-plugin-title-input"
+                className="editor-input"
+                value={flow.title}
+                onChange={(event) => flow.setTitle(event.target.value)}
+                placeholder={flow.displayName || 'My Plugin'}
+              />
+            </div>
+            {pickFolder && (
+              <div className="editor-field">
+                <label className="editor-label" htmlFor="new-plugin-directory">
+                  Folder <span className="editor-hint"> optional</span>
+                </label>
+                <PathAutocomplete
+                  id="new-plugin-directory"
+                  value={flow.directory}
+                  onChange={flow.setDirectory}
+                  placeholder="/path/to/empty/folder"
+                  className="editor-input path-autocomplete__input"
+                  browsable
+                  autoFocus={false}
+                />
+                <p className="plugins__install-hint">
+                  Choose an empty folder, or leave this blank and Station makes
+                  one for the Project.
+                </p>
+              </div>
+            )}
+            <PluginTemplateFieldset
+              name="new-plugin-template"
+              value={flow.template}
+              onChange={flow.setTemplate}
+            />
+          </fieldset>
+          {flow.created && (
+            <p className="plugins__install-hint" role="status">
+              Project {flow.created.name} was created. Retry writes the plugin
+              into that same Project, or open the Project to carry on there.
+            </p>
           )}
-          <PluginTemplateFieldset
-            name="new-plugin-template"
-            value={flow.template}
-            onChange={flow.setTemplate}
-          />
-        </fieldset>
-        {flow.created && (
-          <p className="plugins__install-hint" role="status">
-            Project {flow.created.name} was created. Retry writes the plugin
-            into that same Project, or open the Project to carry on there.
-          </p>
-        )}
-        {flow.error && (
-          <p className="plugins__new-plugin-error" role="alert">
-            {flow.error}
-          </p>
-        )}
-        <ResponsiveSurfaceActions className="plugins__confirm-actions">
-          <Button variant="secondary" onClick={onClose}>
-            Cancel
-          </Button>
-          {flow.created && flow.error && (
-            <Button variant="secondary" onClick={flow.openCreatedProject}>
-              Open Project
+          {flow.error && (
+            <p className="plugins__new-plugin-error" role="alert">
+              {flow.error}
+            </p>
+          )}
+          <ResponsiveSurfaceActions className="plugins__confirm-actions">
+            <Button variant="secondary" onClick={onClose}>
+              Cancel
             </Button>
-          )}
-          <Button
-            type="submit"
-            variant="primary"
-            pending={flow.submitting}
-            pendingLabel="Creating…"
-            disabled={!flow.canSubmit}
-          >
-            {flow.created ? 'Retry' : 'Create plugin'}
-          </Button>
-        </ResponsiveSurfaceActions>
-      </form>
+            {flow.created && flow.error && (
+              <Button variant="secondary" onClick={flow.openCreatedProject}>
+                Open Project
+              </Button>
+            )}
+            <Button
+              type="submit"
+              variant="primary"
+              pending={flow.submitting}
+              pendingLabel="Creating…"
+              disabled={!flow.canSubmit}
+            >
+              {flow.created ? 'Retry' : 'Create plugin'}
+            </Button>
+          </ResponsiveSurfaceActions>
+        </form>
+      )}
     </ResponsiveDialogSurface>
   );
 }

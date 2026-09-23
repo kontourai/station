@@ -935,6 +935,12 @@
   display: grid;
   gap: 2px;
 }
+.plugins__new-plugin-primer {
+  width: 100%;
+  min-height: 160px;
+  font: inherit;
+  resize: vertical;
+}
 .plugins__new-plugin-error {
   margin: 4px 0 0;
   color: var(--error-text);

@@ -6,6 +6,7 @@ import {
   readFileSync,
   rmSync,
   symlinkSync,
+  truncateSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -53,6 +54,7 @@ interface ScaffoldResponse {
   entries?: string[];
   entryCount?: number;
   present?: string[];
+  presentCount?: number;
   missingCount?: number;
   data?: {
     name: string;
@@ -198,7 +200,7 @@ describe('POST /api/projects/:slug/plugin-scaffold', () => {
     );
   });
 
-  test('refuses a folder that already holds work, names what is there, and writes nothing', async () => {
+  test('refuses a folder that already holds work, counts what is there without naming it, and writes nothing', async () => {
     const folder = tempDir();
     writeFileSync(join(folder, 'notes.md'), 'keep me');
     mkdirSync(join(folder, 'src'));
@@ -208,8 +210,11 @@ describe('POST /api/projects/:slug/plugin-scaffold', () => {
 
     expect(status).toBe(409);
     expect(body.code).toBe('working-directory-not-empty');
-    expect(body.entries).toEqual(['notes.md', 'src']);
     expect(body.entryCount).toBe(2);
+    // D1: a member may call this route; the folder's contents are not theirs
+    // to list, so a refusal names nothing that is on disk.
+    expect(body).not.toHaveProperty('entries');
+    expect(JSON.stringify(body)).not.toContain('notes.md');
     expect(readdirSync(folder).sort()).toEqual(['notes.md', 'src']);
     expect(readFileSync(join(folder, 'notes.md'), 'utf8')).toBe('keep me');
   });
@@ -261,7 +266,22 @@ describe('POST /api/projects/:slug/plugin-scaffold', () => {
     );
   });
 
-  test('a partial scaffold names the files already there and writes nothing', async () => {
+  test('a same-named file of the wrong size is judged by its size, never read', async () => {
+    // D4: the occupancy check is member-triggerable. A 3 GiB sparse file at a
+    // scaffold path (no disk cost) is beyond what `readFile` will load, so
+    // reading it would fail the request; the size check refuses it first.
+    const folder = tempDir();
+    const app = appFor({ alpha: { workingDirectory: folder } });
+    writeFileSync(join(folder, 'plugin.json'), '');
+    truncateSync(join(folder, 'plugin.json'), 3 * 1024 ** 3);
+
+    const { status, body } = await post(app, 'alpha', { name: 'sized' });
+
+    expect(status).toBe(409);
+    expect(body.code).toBe('working-directory-not-empty');
+  });
+
+  test('a partial scaffold counts the files already there and writes nothing', async () => {
     const folder = tempDir();
     const app = appFor({ alpha: { workingDirectory: folder } });
     const request = { name: 'retry', template: 'pane' };
@@ -273,14 +293,10 @@ describe('POST /api/projects/:slug/plugin-scaffold', () => {
 
     expect(again.status).toBe(409);
     expect(again.body.code).toBe('partial-scaffold');
-    expect(again.body.present).toEqual([
-      '.gitignore',
-      'README.md',
-      'package.json',
-      'plugin.json',
-      'tsconfig.json',
-    ]);
+    expect(again.body.presentCount).toBe(5);
     expect(again.body.missingCount).toBe(3);
+    expect(again.body).not.toHaveProperty('present');
+    expect(JSON.stringify(again.body)).not.toContain('tsconfig.json');
     expect(again.body.error).toMatch(/Open the Project/);
     expect(existsSync(join(folder, 'build.ts'))).toBe(false);
   });

@@ -7,12 +7,19 @@ import {
   normalizeWorkingDirectory,
 } from '../../components/modals/project-form-utils';
 import { useApiBase } from '../../contexts/ApiBaseContext';
+import { useConfig } from '../../contexts/ConfigContext';
 import { useNavigation } from '../../contexts/NavigationContext';
-import { startPluginAuthoringChat } from './plugin-authoring-primer';
+import {
+  buildPluginAuthoringPrimer,
+  startPluginAuthoringChat,
+} from './plugin-authoring-primer';
 import {
   type PluginScaffoldTemplateChoice,
   scaffoldProjectPlugin,
 } from './plugin-scaffold-client';
+
+export const WORKTREE_OVERRIDE_REFUSED =
+  "This Station runs chats in separate worktrees, and a plugin Project has to work in its folder directly. This device can't change that setting for a Project. Ask the operator to create it, or to set the Station's workspace isolation to Shared.";
 
 export function defaultPluginTitle(name: string): string {
   return name
@@ -64,6 +71,8 @@ export function useNewPluginFlow(onDone: () => void) {
     useState<PluginScaffoldTemplateChoice>('pane');
   const [created, setCreated] = useState<CreatedProject | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [unclaimedPrimer, setUnclaimedPrimer] = useState<string | null>(null);
+  const config = useConfig();
 
   const trimmedName = name.trim();
   const nameProblem = pluginNameProblem(trimmedName);
@@ -78,16 +87,36 @@ export function useNewPluginFlow(onDone: () => void) {
       let project = created;
       if (!project) {
         const normalized = normalizeWorkingDirectory(directory);
-        const result = await createProject.mutateAsync({
-          name: displayName,
-          slug: deriveProjectSlug(trimmedName),
-          ...(normalized ? { workingDirectory: normalized } : {}),
-          // An authoring chat must see the scaffold it is told about. Under
-          // worktree isolation it would run in a checkout that never holds
-          // these uncommitted files (and a blank or non-git folder would be
-          // refused outright), so this Project works in its folder directly.
-          defaultWorkspaceIsolation: 'shared',
-        });
+        // An authoring chat must see the scaffold it is told about. Under
+        // worktree isolation it would run in a checkout that never holds
+        // these uncommitted files (and a blank or non-git folder would be
+        // refused outright), so this Project must work in its folder
+        // directly. The override is sent ONLY when the Station default is
+        // worktree: writing it takes operate scope, and a paired device that
+        // could always create a Project must still be able to here. An
+        // unread config sends nothing; the scaffold route then refuses a
+        // worktree Project with its own fix.
+        const needsSharedOverride =
+          config?.defaultWorkspaceIsolation === 'worktree';
+        let result: { slug: string; name?: string };
+        try {
+          result = await createProject.mutateAsync({
+            name: displayName,
+            slug: deriveProjectSlug(trimmedName),
+            ...(normalized ? { workingDirectory: normalized } : {}),
+            ...(needsSharedOverride
+              ? { defaultWorkspaceIsolation: 'shared' as const }
+              : {}),
+          });
+        } catch (createError) {
+          if (
+            needsSharedOverride &&
+            (createError as { status?: unknown }).status === 403
+          ) {
+            throw new Error(WORKTREE_OVERRIDE_REFUSED);
+          }
+          throw createError;
+        }
         project = { slug: result.slug, name: result.name ?? displayName };
         setCreated(project);
       }
@@ -97,15 +126,26 @@ export function useNewPluginFlow(onDone: () => void) {
         template,
         displayName,
       });
-      setProject(project.slug);
-      startPluginAuthoringChat({
+      const primer = {
         projectSlug: project.slug,
         projectName: project.name,
         name: trimmedName,
         displayName,
         template,
-        revealDock: () => setDockState(true),
-      });
+      };
+      // Asked for BEFORE navigating: navigation unmounts this dialog, and
+      // when no chat pane takes the request the dialog must stay to offer
+      // the opening message. Its Done then opens the Project.
+      if (
+        !startPluginAuthoringChat({
+          ...primer,
+          revealDock: () => setDockState(true),
+        })
+      ) {
+        setUnclaimedPrimer(buildPluginAuthoringPrimer(primer));
+        return;
+      }
+      setProject(project.slug);
       onDone();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
@@ -121,6 +161,7 @@ export function useNewPluginFlow(onDone: () => void) {
 
   return {
     openCreatedProject,
+    unclaimedPrimer,
     name,
     setName,
     title,

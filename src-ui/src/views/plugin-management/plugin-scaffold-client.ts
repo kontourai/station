@@ -22,26 +22,31 @@ interface ScaffoldEnvelope {
   success?: boolean;
   error?: string;
   code?: string;
-  entries?: string[];
   entryCount?: number;
-  present?: string[];
+  presentCount?: number;
+  missingCount?: number;
   data?: PluginScaffoldResult;
 }
 
+function plural(count: number, noun: string): string {
+  return `${count} ${noun}${count === 1 ? '' : 's'}`;
+}
+
 /**
- * The server's refusal, worded for the person. A non-empty folder names what
- * is in it, because "not empty" alone sends them hunting for hidden files.
+ * The server's refusal, worded for the person. The server reports what is in
+ * the folder only as counts (a member may call it, and the folder is not
+ * theirs to list), so this says how much is there, not what.
  */
 function refusalMessage(envelope: ScaffoldEnvelope, status: number): string {
   const base =
     envelope.error || `Station could not scaffold the plugin (${status})`;
-  if (envelope.present?.length) {
-    return `${base}. Already there: ${envelope.present.join(', ')}.`;
+  if (envelope.presentCount !== undefined) {
+    return `${base}. ${plural(envelope.presentCount, 'file')} of this plugin ${envelope.presentCount === 1 ? 'is' : 'are'} already there.`;
   }
-  if (!envelope.entries?.length) return base;
-  const more =
-    (envelope.entryCount ?? envelope.entries.length) - envelope.entries.length;
-  return `${base}. It contains: ${envelope.entries.join(', ')}${more > 0 ? ` and ${more} more` : ''}.`;
+  if (envelope.entryCount) {
+    return `${base}. It holds ${plural(envelope.entryCount, 'item')}.`;
+  }
+  return base;
 }
 
 /** `POST /api/projects/:slug/plugin-scaffold`. Throws with the server's reason. */

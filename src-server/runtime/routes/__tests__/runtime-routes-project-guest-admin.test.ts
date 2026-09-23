@@ -656,11 +656,19 @@ describe('project guest administration over the production composition', () => {
     expect(existsSync(join(folder, 'plugin.json'))).toBe(true);
 
     // The folder is no longer empty: a member cannot scaffold over it.
+    // Put something of the operator's own in the folder too.
+    writeFileSync(join(folder, 'operator-notes.md'), 'private');
     const again = await scaffold(member, 'another-plugin');
     expect(again.status).toBe(409);
-    expect((await readJson<{ code: string }>(again)).code).toBe(
-      'working-directory-not-empty',
-    );
+    const refusal = await readJson<Record<string, unknown>>(again);
+    expect(refusal.code).toBe('working-directory-not-empty');
+    // D1: the refusal counts what is there and names none of it.
+    expect(refusal.entryCount).toBeGreaterThan(1);
+    expect(refusal).not.toHaveProperty('entries');
+    expect(refusal).not.toHaveProperty('present');
+    const text = JSON.stringify(refusal);
+    for (const name of ['operator-notes.md', 'plugin.json', 'README.md', 'src'])
+      expect(text, name).not.toContain(name);
     expect(
       JSON.parse(readFileSync(join(folder, 'plugin.json'), 'utf8')).name,
     ).toBe('member-plugin');

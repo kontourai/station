@@ -122,6 +122,10 @@ async function inspectOccupancy(
     }
     const contents = expected.get(path);
     if (!stats.isFile() || contents === undefined) return foreign;
+    // Size first: a member can trigger this check, and a file of the wrong
+    // length is not this scaffold, however large it is. Only a file of
+    // exactly the expected byte length is read.
+    if (stats.size !== Buffer.byteLength(contents, 'utf8')) return foreign;
     if ((await readFile(absolute, 'utf8')) !== contents) return foreign;
     present.push(path);
   }

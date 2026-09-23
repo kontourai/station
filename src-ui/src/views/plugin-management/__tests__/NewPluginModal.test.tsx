@@ -13,13 +13,19 @@ import {
   type OpenProjectChatsDetail,
 } from '../../../lib/projectChatEvents';
 
-const { createProjectMock, mutateJsonMock, setProjectMock, setDockStateMock } =
-  vi.hoisted(() => ({
-    createProjectMock: vi.fn(),
-    mutateJsonMock: vi.fn(),
-    setProjectMock: vi.fn(),
-    setDockStateMock: vi.fn(),
-  }));
+const {
+  createProjectMock,
+  mutateJsonMock,
+  setProjectMock,
+  setDockStateMock,
+  stationConfig,
+} = vi.hoisted(() => ({
+  createProjectMock: vi.fn(),
+  mutateJsonMock: vi.fn(),
+  setProjectMock: vi.fn(),
+  setDockStateMock: vi.fn(),
+  stationConfig: { value: null as Record<string, unknown> | null },
+}));
 
 // The two network seams the flow owns: Project creation through the SDK's
 // mutation, and the scaffold POST through the SDK's request primitive.
@@ -33,6 +39,9 @@ vi.mock('@kontourai/station-sdk', () => ({
 }));
 vi.mock('../../../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://station.test' }),
+}));
+vi.mock('../../../contexts/ConfigContext', () => ({
+  useConfig: () => stationConfig.value,
 }));
 vi.mock('../../../contexts/NavigationContext', () => ({
   useNavigation: () => ({
@@ -61,6 +70,7 @@ vi.mock('../../../components/PathAutocomplete', () => ({
 }));
 
 const { NewPluginModal } = await import('../NewPluginModal');
+const { WORKTREE_OVERRIDE_REFUSED } = await import('../useNewPluginFlow');
 
 beforeAll(() => {
   Object.defineProperty(window, 'matchMedia', {
@@ -83,6 +93,7 @@ afterEach(() => {
   mutateJsonMock.mockReset();
   setProjectMock.mockReset();
   setDockStateMock.mockReset();
+  stationConfig.value = null;
 });
 
 function jsonResponse(status: number, body: unknown): Response {
@@ -104,10 +115,20 @@ function renderModal(onClose = vi.fn()) {
   return onClose;
 }
 
-function captureProjectChatRequests(): OpenProjectChatsDetail[] {
+/**
+ * Stands in for the mounted chat dock. By default it claims the request, as
+ * the dock does; `claim: false` is a screen with no chat pane that can.
+ */
+function captureProjectChatRequests({
+  claim = true,
+}: {
+  claim?: boolean;
+} = {}): OpenProjectChatsDetail[] {
   const requests: OpenProjectChatsDetail[] = [];
-  const listener = (event: Event) =>
+  const listener = (event: Event) => {
     requests.push((event as CustomEvent<OpenProjectChatsDetail>).detail);
+    if (claim) event.preventDefault();
+  };
   window.addEventListener(OPEN_PROJECT_CHATS_EVENT, listener);
   chatListeners.push(listener);
   return requests;
@@ -146,9 +167,9 @@ test('creates the Project, then scaffolds into it, opens it, and offers a primed
     name: 'Pulse Board',
     slug: 'pulse-board',
     workingDirectory: '/work/pulse',
-    // The authoring chat must see the scaffold: never worktree isolation.
-    defaultWorkspaceIsolation: 'shared',
   });
+  // D2: the Station default is not worktree (config unread here), so no
+  // isolation override is sent; writing one needs operate scope.
   expect(mutateJsonMock).toHaveBeenCalledWith(
     'http://station.test/api/projects/pulse-board/plugin-scaffold',
     'POST',
@@ -178,14 +199,13 @@ test('creates the Project, then scaffolds into it, opens it, and offers a primed
   expect(request.composerDraft?.description).toMatch(/nothing is sent/);
 });
 
-test('a refused scaffold names what is in the folder, and Retry reuses the created Project', async () => {
+test('a refused scaffold says how much is in the folder, and Retry reuses the created Project', async () => {
   createProjectMock.mockResolvedValue({ slug: 'pulse', name: 'Pulse' });
   mutateJsonMock.mockResolvedValueOnce(
     jsonResponse(409, {
       success: false,
       code: 'working-directory-not-empty',
       error: "The Project's folder is not empty",
-      entries: ['notes.md'],
       entryCount: 1,
     }),
   );
@@ -198,7 +218,7 @@ test('a refused scaffold names what is in the folder, and Retry reuses the creat
   fireEvent.click(screen.getByRole('button', { name: 'Create plugin' }));
 
   expect((await screen.findByRole('alert')).textContent).toContain(
-    'It contains: notes.md',
+    'It holds 1 item.',
   );
   expect(onClose).not.toHaveBeenCalled();
   expect(setProjectMock).not.toHaveBeenCalled();
@@ -246,7 +266,7 @@ test('after a partial scaffold, Open Project goes to the created Project', async
       success: false,
       code: 'partial-scaffold',
       error: 'Part of this plugin is already in the Project folder',
-      present: ['plugin.json', 'README.md'],
+      presentCount: 2,
       missingCount: 6,
     }),
   );
@@ -257,9 +277,104 @@ test('after a partial scaffold, Open Project goes to the created Project', async
   fireEvent.click(screen.getByRole('button', { name: 'Create plugin' }));
 
   expect((await screen.findByRole('alert')).textContent).toContain(
-    'Already there: plugin.json, README.md',
+    '2 files of this plugin are already there.',
   );
   fireEvent.click(screen.getByRole('button', { name: 'Open Project' }));
+  expect(setProjectMock).toHaveBeenCalledWith('pulse');
+  expect(onClose).toHaveBeenCalled();
+});
+
+test('under a worktree Station default, the Project is created with shared isolation', async () => {
+  stationConfig.value = { defaultWorkspaceIsolation: 'worktree' };
+  createProjectMock.mockResolvedValue({ slug: 'pulse', name: 'Pulse' });
+  mutateJsonMock.mockResolvedValue(
+    jsonResponse(201, {
+      success: true,
+      data: {
+        name: 'pulse',
+        template: 'pane',
+        displayName: 'Pulse',
+        files: [],
+      },
+    }),
+  );
+  captureProjectChatRequests();
+  const onClose = renderModal();
+  fireEvent.change(screen.getByLabelText('Plugin name'), {
+    target: { value: 'pulse' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Create plugin' }));
+  await waitFor(() => expect(onClose).toHaveBeenCalled());
+  expect(createProjectMock).toHaveBeenCalledWith({
+    name: 'Pulse',
+    slug: 'pulse',
+    defaultWorkspaceIsolation: 'shared',
+  });
+});
+
+test('when this device may not set the override, it says so plainly', async () => {
+  stationConfig.value = { defaultWorkspaceIsolation: 'worktree' };
+  createProjectMock.mockRejectedValue(
+    Object.assign(
+      new Error('The workspace new chats start in is a Station setting'),
+      {
+        status: 403,
+      },
+    ),
+  );
+  renderModal();
+  fireEvent.change(screen.getByLabelText('Plugin name'), {
+    target: { value: 'pulse' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Create plugin' }));
+  expect((await screen.findByRole('alert')).textContent).toBe(
+    WORKTREE_OVERRIDE_REFUSED,
+  );
+  expect(mutateJsonMock).not.toHaveBeenCalled();
+});
+
+test('when no chat pane takes the request, the opening message stays to copy', async () => {
+  createProjectMock.mockResolvedValue({ slug: 'pulse', name: 'Pulse' });
+  mutateJsonMock.mockResolvedValue(
+    jsonResponse(201, {
+      success: true,
+      data: {
+        name: 'pulse',
+        template: 'pane',
+        displayName: 'Pulse',
+        files: [],
+      },
+    }),
+  );
+  const requests = captureProjectChatRequests({ claim: false });
+  const writeText = vi.fn(async () => {});
+  Object.defineProperty(navigator, 'clipboard', {
+    configurable: true,
+    value: { writeText },
+  });
+  const onClose = renderModal();
+  fireEvent.change(screen.getByLabelText('Plugin name'), {
+    target: { value: 'pulse' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Create plugin' }));
+
+  expect((await screen.findByRole('alert')).textContent).toMatch(
+    /Chat couldn't open here/,
+  );
+  expect(requests).toHaveLength(1);
+  // Still open, and not navigated away yet.
+  expect(onClose).not.toHaveBeenCalled();
+  expect(setProjectMock).not.toHaveBeenCalled();
+  const message = (
+    screen.getByLabelText('Opening message') as HTMLTextAreaElement
+  ).value;
+  expect(message).toContain('`validate_plugin`');
+
+  fireEvent.click(screen.getByRole('button', { name: 'Copy opening message' }));
+  await waitFor(() => expect(writeText).toHaveBeenCalledWith(message));
+  expect((await screen.findByRole('status')).textContent).toBe('Copied.');
+
+  fireEvent.click(screen.getByRole('button', { name: 'Done' }));
   expect(setProjectMock).toHaveBeenCalledWith('pulse');
   expect(onClose).toHaveBeenCalled();
 });

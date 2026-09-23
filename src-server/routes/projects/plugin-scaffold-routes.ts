@@ -53,6 +53,33 @@ const REFUSAL_MESSAGES: Record<PluginScaffoldWriteRefusal['code'], string> = {
 
 const logger = createLogger({ name: 'plugin-scaffold-routes' });
 
+/**
+ * What a refusal may say about the folder. Any Project member may call this
+ * route, and the folder is the operator's: a refusal must not become a way
+ * to list it. So entries found in the folder are reported only as counts.
+ * Paths named here come from the scaffold itself (its own file list), never
+ * from what is on disk.
+ */
+function publicRefusalDetail(
+  refusal: PluginScaffoldWriteRefusal,
+): Record<string, unknown> {
+  switch (refusal.code) {
+    case 'working-directory-not-empty':
+      return { entryCount: refusal.entryCount };
+    case 'partial-scaffold':
+      return {
+        presentCount: refusal.present.length,
+        missingCount: refusal.missingCount,
+      };
+    case 'path-escapes-working-directory':
+      return { path: refusal.path };
+    case 'file-exists':
+      return { path: refusal.path, writtenCount: refusal.written.length };
+    default:
+      return {};
+  }
+}
+
 export interface PluginScaffoldRouteDeps {
   dependencies?: PluginScaffoldDependencies;
   /**
@@ -210,7 +237,7 @@ export function createPluginScaffoldRoutes(
         scaffold.files,
       );
       if (!result.ok) {
-        const { code, ...detail } = result.refusal;
+        const { code } = result.refusal;
         logger.info('Plugin scaffold refused', {
           project: slug,
           pluginName: scaffold.name,
@@ -222,7 +249,7 @@ export function createPluginScaffoldRoutes(
             success: false,
             error: REFUSAL_MESSAGES[code],
             code,
-            ...detail,
+            ...publicRefusalDetail(result.refusal),
           },
           409,
         );

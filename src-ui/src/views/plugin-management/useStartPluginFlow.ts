@@ -2,7 +2,10 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { type FormEvent, useState } from 'react';
 import { useApiBase } from '../../contexts/ApiBaseContext';
 import { useNavigation } from '../../contexts/NavigationContext';
-import { startPluginAuthoringChat } from './plugin-authoring-primer';
+import {
+  buildPluginAuthoringPrimer,
+  startPluginAuthoringChat,
+} from './plugin-authoring-primer';
 import {
   type PluginScaffoldTemplateChoice,
   scaffoldProjectPlugin,
@@ -43,6 +46,7 @@ export function useStartPluginFlow(
   const [template, setTemplate] =
     useState<PluginScaffoldTemplateChoice>('pane');
   const [error, setError] = useState<string | null>(null);
+  const [unclaimedPrimer, setUnclaimedPrimer] = useState<string | null>(null);
 
   const trimmedName = name.trim();
   const nameProblem = pluginNameProblem(trimmedName);
@@ -58,14 +62,24 @@ export function useStartPluginFlow(
         template,
         displayName,
       });
-      startPluginAuthoringChat({
+      const primer = {
         projectSlug: project.slug,
         projectName: project.name,
         name: trimmedName,
         displayName,
         template,
-        revealDock: () => setDockState(true),
-      });
+      };
+      if (
+        !startPluginAuthoringChat({
+          ...primer,
+          revealDock: () => setDockState(true),
+        })
+      ) {
+        // No chat pane took the request: keep the dialog open with the
+        // opening message to copy, rather than drop it silently.
+        setUnclaimedPrimer(buildPluginAuthoringPrimer(primer));
+        return;
+      }
       onDone();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
@@ -73,6 +87,7 @@ export function useStartPluginFlow(
   }
 
   return {
+    unclaimedPrimer,
     name,
     setName,
     title,
