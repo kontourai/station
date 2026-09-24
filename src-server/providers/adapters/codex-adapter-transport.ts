@@ -7,6 +7,10 @@ import { childProcessEnvironment } from '../../utils/child-process-environment.j
 import { findCliBinary } from '../auth/cli-auth.js';
 import { AsyncEventQueue } from '../sessions/async-event-queue.js';
 import {
+  routeCodexChildNotification,
+  settleOpenCodexChildren,
+} from './codex-adapter-child-work.js';
+import {
   deriveApprovalToolName,
   extractThreadId,
   hasId,
@@ -650,6 +654,24 @@ export class CodexAdapterTransport {
         : emittingRecord;
 
     if (!record && threadId) {
+      // #2458: a thread this transport does not own is a Codex subagent's
+      // stream on the emitting process's stdio. It goes to the child-work
+      // mapper and NEVER to `handleCodexNotification`: a child's
+      // `turn/completed` would close the parent's turn and its token usage
+      // would be counted as the parent's.
+      try {
+        routeCodexChildNotification(
+          {
+            record: emittingRecord,
+            nowIso: () => this.now().toISOString(),
+            publish: (event) => this.publish(event),
+          },
+          threadId,
+          notification,
+        );
+      } catch {
+        this.onNotificationError?.(notification.method);
+      }
       return;
     }
 
@@ -819,6 +841,13 @@ export class CodexAdapterTransport {
     settleUnresolvedCodexToolCalls({
       record,
       nowIso,
+      publish: (event) => this.publish(event),
+    });
+    // #2458: a subagent still running when its session ends can never
+    // report again, so it settles `unresolved` — same doors, same moment.
+    settleOpenCodexChildren({
+      record,
+      nowIso: () => nowIso,
       publish: (event) => this.publish(event),
     });
   }
