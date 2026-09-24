@@ -76,6 +76,11 @@ Device** offers a fresh username/password account flow where the Station's
 provider supports pending Device enrollment. The Station operator must approve
 that Device; only a signed activation completes the account continuation.
 Unsupported providers refuse, and Project access remains a separate grant.
+If you also have a Project invitation, enter its token in that dialog before
+verification. After the operator approves the Device and Station activates its
+account session, the browser accepts the invitation through the encrypted
+channel; the response must confirm Project membership without granting Device
+access. Close the dialog to open the newly permitted Project.
 This source pilot uses local ICE host candidates. Remote TURN configuration,
 cookie-session adoption and native route selection remain separate work; the
 ordinary positive browser journey is not yet verified in the local lab. Browser

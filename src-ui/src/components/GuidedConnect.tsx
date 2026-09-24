@@ -34,11 +34,14 @@ interface GuidedConnectProps {
    * can take the receipts tour without a Station host.
    */
   onExploreSample?: () => void;
+  /** Hold the pre-session screen while a relay Device ceremony joins Projects. */
+  onRelayOnboardingChange?: (open: boolean) => void;
 }
 
 export function GuidedConnect({
   onSessionEstablished,
   onExploreSample,
+  onRelayOnboardingChange,
 }: GuidedConnectProps) {
   const [openPanel, setOpenPanel] = useState<GuidedConnectPanel | null>(null);
   const [brokerOpen, setBrokerOpen] = useState(false);
@@ -162,7 +165,9 @@ export function GuidedConnect({
             <Suspense
               fallback={<p role="status">Opening broker route setup…</p>}
             >
-              <BrowserRelayRoutes />
+              <BrowserRelayRoutes
+                onEnrollmentOpenChange={onRelayOnboardingChange}
+              />
             </Suspense>
           </section>
         )}

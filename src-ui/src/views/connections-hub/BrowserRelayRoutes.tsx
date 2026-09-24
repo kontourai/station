@@ -24,7 +24,11 @@ const BrowserRelayEnrollmentDialog = lazy(async () => {
 });
 
 /** Browser-only route custody. A route grant never enters SavedConnection. */
-export function BrowserRelayRoutes() {
+export function BrowserRelayRoutes({
+  onEnrollmentOpenChange,
+}: {
+  onEnrollmentOpenChange?: (open: boolean) => void;
+} = {}) {
   const { isTauri } = usePlatformProfile();
   const {
     connections,
@@ -59,6 +63,14 @@ export function BrowserRelayRoutes() {
   useEffect(() => {
     if (enrolling && activeConnection?.id !== enrolling.id) setEnrolling(null);
   }, [activeConnection?.id, enrolling]);
+
+  useEffect(() => {
+    onEnrollmentOpenChange?.(enrolling !== null);
+  }, [enrolling, onEnrollmentOpenChange]);
+  useEffect(
+    () => () => onEnrollmentOpenChange?.(false),
+    [onEnrollmentOpenChange],
+  );
 
   if (isTauri) return null;
 

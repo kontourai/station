@@ -8,6 +8,8 @@ const mocks = vi.hoisted(() => ({
   close: vi.fn(),
   credentials: null as { username: string; password: string } | null,
   signal: null as AbortSignal | null,
+  complete: false,
+  join: vi.fn(),
 }));
 
 vi.mock('../../../lib/browserRelayRouteBinding', () => ({
@@ -27,6 +29,10 @@ vi.mock('../../../lib/browserRelayEnrollmentController', () => ({
     ) {
       mocks.credentials = { ...credentials };
       mocks.signal = signal;
+      if (mocks.complete) {
+        this.options.onState('enrolled');
+        return Promise.resolve({ state: 'active' });
+      }
       this.options.onState('awaiting-approval');
       this.options.onPending({ requestId: 'operator-request-123' });
       return new Promise((_resolve, reject) => {
@@ -41,6 +47,9 @@ vi.mock('../../../lib/browserRelayApplicationAuthority', () => ({
   stageBrowserRelayApplicationAuthority: vi.fn(),
   publishBrowserRelayApplicationAuthority: vi.fn(),
   removeProvisionalBrowserRelayApplicationAuthority: vi.fn(),
+}));
+vi.mock('../../../lib/browserRelayProjectInvitation', () => ({
+  acceptBrowserRelayProjectInvitation: mocks.join,
 }));
 
 import { BrowserRelayEnrollmentDialog } from '../BrowserRelayEnrollmentDialog';
@@ -65,6 +74,8 @@ beforeEach(() => {
   mocks.close.mockReset();
   mocks.credentials = null;
   mocks.signal = null;
+  mocks.complete = false;
+  mocks.join.mockReset();
 });
 
 it('refuses to send account credentials when the encrypted Station route is absent', async () => {
@@ -124,4 +135,38 @@ it('clears the password while waiting for operator Device approval and cancels o
   fireEvent.click(screen.getByRole('button', { name: /^Close$/ }));
   await waitFor(() => expect(mocks.signal?.aborted).toBe(true));
   expect(mocks.close).toHaveBeenCalledOnce();
+});
+
+it('accepts an optional Project invitation after Device activation and before leaving setup', async () => {
+  mocks.complete = true;
+  mocks.capture.mockReturnValue({
+    transport: vi.fn(),
+    isCurrent: () => true,
+  });
+  mocks.join.mockResolvedValue({ projectSlug: 'relay-shared' });
+  render(
+    <BrowserRelayEnrollmentDialog
+      connection={connection}
+      onClose={mocks.close}
+    />,
+  );
+  fireEvent.change(screen.getByLabelText('Station account name'), {
+    target: { value: 'zach' },
+  });
+  fireEvent.change(screen.getByLabelText('Password'), {
+    target: { value: 'local-password' },
+  });
+  const token = 'T'.repeat(43);
+  fireEvent.change(
+    screen.getByLabelText('Project invitation token (optional)'),
+    {
+      target: { value: token },
+    },
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Verify account' }));
+  expect(await screen.findByText(/Joined Project relay-shared/)).toBeTruthy();
+  expect(mocks.join).toHaveBeenCalledWith(
+    expect.objectContaining({ connection, token }),
+  );
+  expect(mocks.close).not.toHaveBeenCalled();
 });

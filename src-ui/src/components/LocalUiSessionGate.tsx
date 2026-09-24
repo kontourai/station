@@ -95,6 +95,7 @@ export function LocalUiSessionGate({
     scopeKey: string;
     authenticated: boolean;
   } | null>(null);
+  const [relayOnboardingOpen, setRelayOnboardingOpen] = useState(false);
   const pairingRecheck = useRef<Promise<
     Awaited<ReturnType<typeof resolveLocalUiSession>>
   > | null>(null);
@@ -185,6 +186,7 @@ export function LocalUiSessionGate({
       verifiedRelay?.connectionId === activeConnection.id &&
       verifiedRelay.scopeKey === relayScope.scopeKey &&
       verifiedRelay.authenticated &&
+      !relayOnboardingOpen &&
       captureBrowserRelayRoute(
         activeConnection.id,
         activeConnection.url,
@@ -265,6 +267,7 @@ export function LocalUiSessionGate({
           componentProps={{
             onSessionEstablished: handleSessionEstablished,
             onExploreSample: () => setSampleOpen(true),
+            onRelayOnboardingChange: setRelayOnboardingOpen,
           }}
           pending={
             <SkeletonBlock count={1} label="Opening connection options" />

@@ -1,5 +1,5 @@
 import type { SavedConnection } from '@kontourai/station-connect';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
 import { Dialog } from '../../components/Dialog';
 import type { BrowserRelayEnrollmentState } from '../../lib/browserRelayEnrollmentController';
@@ -15,6 +15,7 @@ const STATUS: Record<BrowserRelayEnrollmentState, string> = {
   failed: 'Enrollment did not complete.',
   cancelled: 'Enrollment cancelled.',
 };
+const INVITATION_TOKEN = /^[A-Za-z0-9_-]{43}$/;
 
 /** A routing grant is already selected; account and Device approval are separate. */
 export function BrowserRelayEnrollmentDialog({
@@ -29,17 +30,57 @@ export function BrowserRelayEnrollmentDialog({
   const [state, setState] = useState<BrowserRelayEnrollmentState>('idle');
   const [error, setError] = useState<string | null>(null);
   const [pendingRequestId, setPendingRequestId] = useState<string | null>(null);
+  const [invitationToken, setInvitationToken] = useState('');
+  const [joinedProject, setJoinedProject] = useState<string | null>(null);
   const enrollmentAbort = useRef<AbortController | null>(null);
+  const invitationAbort = useRef<AbortController | null>(null);
   const [busy, setBusy] = useState(false);
+  const [accepting, setAccepting] = useState(false);
+  const invitationFieldId = useId();
 
   useEffect(
-    () => () => enrollmentAbort.current?.abort(new Error('Dialog closed')),
+    () => () => {
+      enrollmentAbort.current?.abort(new Error('Dialog closed'));
+      invitationAbort.current?.abort(new Error('Dialog closed'));
+    },
     [],
   );
 
   function close() {
     enrollmentAbort.current?.abort(new Error('Dialog closed'));
+    invitationAbort.current?.abort(new Error('Dialog closed'));
     onClose();
+  }
+
+  async function joinProject(token: string) {
+    if (accepting || invitationAbort.current) return;
+    setAccepting(true);
+    setError(null);
+    const operation = new AbortController();
+    invitationAbort.current = operation;
+    try {
+      const { acceptBrowserRelayProjectInvitation } = await import(
+        '../../lib/browserRelayProjectInvitation'
+      );
+      operation.signal.throwIfAborted();
+      const result = await acceptBrowserRelayProjectInvitation({
+        connection,
+        token,
+        signal: operation.signal,
+      });
+      setJoinedProject(result.projectSlug);
+      setInvitationToken('');
+    } catch (cause) {
+      if (!operation.signal.aborted)
+        setError(
+          cause instanceof Error
+            ? cause.message
+            : 'Station did not accept this Project invitation.',
+        );
+    } finally {
+      if (invitationAbort.current === operation) invitationAbort.current = null;
+      setAccepting(false);
+    }
   }
 
   async function begin() {
@@ -47,6 +88,11 @@ export function BrowserRelayEnrollmentDialog({
     if (busy || enrollmentAbort.current || !route) return;
     setError(null);
     setPendingRequestId(null);
+    const submittedInvitation = invitationToken.trim();
+    if (submittedInvitation && !INVITATION_TOKEN.test(submittedInvitation)) {
+      setError('Enter a valid Project invitation token.');
+      return;
+    }
     const selected = captureBrowserRelayRoute(
       connection.id,
       connection.url,
@@ -125,6 +171,8 @@ export function BrowserRelayEnrollmentDialog({
         onPending: (request) => setPendingRequestId(request.requestId),
       });
       await owner.enroll(submitted, operation.signal);
+      if (submittedInvitation && !operation.signal.aborted)
+        await joinProject(submittedInvitation);
     } catch (cause) {
       if (!operation.signal.aborted)
         setError(
@@ -159,6 +207,21 @@ export function BrowserRelayEnrollmentDialog({
               Verify account
             </Button>
           )}
+          {state === 'enrolled' && !joinedProject && invitationToken && (
+            <Button
+              variant="primary"
+              disabled={
+                busy ||
+                accepting ||
+                !INVITATION_TOKEN.test(invitationToken.trim())
+              }
+              pending={accepting}
+              pendingLabel="Joining…"
+              onClick={() => void joinProject(invitationToken.trim())}
+            >
+              Join Project
+            </Button>
+          )}
         </>
       }
     >
@@ -188,11 +251,37 @@ export function BrowserRelayEnrollmentDialog({
           onChange={(event) => setPassword(event.target.value)}
         />
       </label>
+      {!joinedProject && (
+        <div className="editor-field">
+          <label className="editor-label" htmlFor={invitationFieldId}>
+            Project invitation token (optional)
+          </label>
+          <input
+            id={invitationFieldId}
+            className="editor-input"
+            type="password"
+            autoComplete="off"
+            aria-describedby={`${invitationFieldId}-hint`}
+            value={invitationToken}
+            disabled={busy || accepting}
+            onChange={(event) => setInvitationToken(event.target.value)}
+          />
+          <span id={`${invitationFieldId}-hint`} className="editor-hint">
+            Accept your Project invitation after this Device is approved. The
+            invitation grants only its named Project role, never Device access.
+          </span>
+        </div>
+      )}
       <p role="status">{STATUS[state]}</p>
+      {joinedProject && (
+        <p role="status">
+          Joined Project {joinedProject}. You can open its work after closing
+          this dialog.
+        </p>
+      )}
       {state === 'awaiting-approval' && pendingRequestId && (
         <p className="connections-computers__note">
-          Device approval request ID:{' '}
-          <code>{pendingRequestId}</code>
+          Device approval request ID: <code>{pendingRequestId}</code>
         </p>
       )}
       {error && (
