@@ -1667,6 +1667,37 @@ describe('NativeStationProfileStorage', () => {
       expect(calls).not.toContain('credential_vault_delete_unreferenced');
     });
 
+    it('forgets a Station that is not active without touching a credential it shares', async () => {
+      const initial = structuredClone(
+        PROFILE_STORE,
+      ) as unknown as StationProfileStore;
+      initial.profiles = [
+        ...initial.profiles,
+        {
+          ...initial.profiles[0],
+          name: 'kontour-alias',
+          setupSource: 'manual',
+        },
+      ];
+      const { storage, currentStore, credentials, calls } = storageWithKeyring({
+        initialStore: initial,
+      });
+      await storage.hydrate();
+      await storage.removeProfile({
+        connectionId: 'station-profile:kontour-alias',
+        expected: {
+          name: 'kontour-alias',
+          url: PROFILE_STORE.profiles[0].endpoint,
+        },
+      });
+      expect(currentStore().profiles.map((profile) => profile.name)).toEqual([
+        'kontour',
+        'station.kontourai.io',
+      ]);
+      expect(credentials.get('station-bearer:kontour-token')).toBe('old-token');
+      expect(calls).not.toContain('credential_vault_delete_unreferenced');
+    });
+
     it('refuses a Station that changed since the user confirmed, and the bundled local Station', async () => {
       const initial = structuredClone(
         PROFILE_STORE,
