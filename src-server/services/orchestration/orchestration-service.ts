@@ -85,6 +85,7 @@ import {
 import type { SessionLifecycleState } from '@kontourai/station-contracts/session-lifecycle';
 import {
   foldedSessionLifecycleState,
+  isSessionLifecycleStateAtRest,
   SESSION_ENDED_REJECTION_CODE,
   SESSION_LIFECYCLE_TRANSITIONS,
 } from '@kontourai/station-contracts/session-lifecycle';
@@ -8874,7 +8875,10 @@ export class OrchestrationService {
       }) === false
     )
       return false;
-    return this.readCurrentLifecycleState(threadId) === 'idle';
+    // At rest only — a session waiting on the user (an open request) keeps
+    // its engine, which is what holds that request.
+    const lifecycle = this.readCurrentLifecycleState(threadId);
+    return lifecycle !== undefined && isSessionLifecycleStateAtRest(lifecycle);
   }
 
   private parkIdleSession(

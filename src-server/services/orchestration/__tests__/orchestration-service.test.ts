@@ -2211,30 +2211,52 @@ describe('OrchestrationService', () => {
         throw new Error(withoutCursor.message);
       await runTurn('unresumable-conversation', 'turn-u');
 
-      claude.startSession.mockImplementationOnce(async (input) => {
-        const session = {
-          provider: 'claude' as const,
-          threadId: input.threadId,
-          status: 'ready' as const,
-          resumeCursor: { claudeSessionId: 'native-parked' },
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        };
-        claude.sessions.set(input.threadId, session);
-        return session;
-      });
-      const started = await parkService.sessionCommands.execute(
-        {
-          type: 'start-session',
-          input: {
-            threadId: 'parked-conversation',
-            provider: 'claude',
-            metadata: { userId: 'owner-user' },
+      const startResumable = async (threadId: string) => {
+        claude.startSession.mockImplementationOnce(async (input) => {
+          const session = {
+            provider: 'claude' as const,
+            threadId: input.threadId,
+            status: 'ready' as const,
+            resumeCursor: { claudeSessionId: `native-${threadId}` },
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          };
+          claude.sessions.set(input.threadId, session);
+          return session;
+        });
+        const result = await parkService.sessionCommands.execute(
+          {
+            type: 'start-session',
+            input: {
+              threadId,
+              provider: 'claude',
+              metadata: { userId: 'owner-user' },
+            },
           },
-        },
-        { userId: 'owner-user' },
+          { userId: 'owner-user' },
+        );
+        if (result.status !== 'accepted') throw new Error(result.message);
+      };
+      // Waiting on the user: its engine holds the open request, so it stays.
+      await startResumable('awaiting-conversation');
+      await runTurn('awaiting-conversation', 'turn-a');
+      claude.events.push({
+        eventId: 'awaiting-request',
+        provider: 'claude',
+        threadId: 'awaiting-conversation',
+        requestId: 'request-1',
+        requestType: 'approval',
+        method: 'request.opened',
+        createdAt: new Date().toISOString(),
+      } as CanonicalRuntimeEvent);
+      await vi.waitFor(async () =>
+        expect(
+          (await parkService.readSession('awaiting-conversation'))?.session
+            .lifecycleState,
+        ).toBe('review_pending'),
       );
-      if (started.status !== 'accepted') throw new Error(started.message);
+
+      await startResumable('parked-conversation');
       await runTurn('parked-conversation', 'turn-one');
 
       // Recently used: kept.
@@ -2279,6 +2301,72 @@ describe('OrchestrationService', () => {
       await parkService.shutdown();
     }
   });
+
+  // #2540: a turn's outcome never ends its session. Stopping a turn, or a turn
+  // failing, with the engine still live continues in the SAME session — the
+  // old successor spawned a second engine on the same native thread (Codex:
+  // "thread … already has an active writer").
+  test.each([
+    [
+      'a stopped turn',
+      'canceled',
+      { method: 'turn.aborted', reason: 'user stopped' },
+    ],
+    [
+      'a failed turn',
+      'failed',
+      { method: 'runtime.error', severity: 'error', message: 'usage limit' },
+    ],
+  ] as const)(
+    'after %s the follow-up continues in the same live session',
+    async (_label, rests, terminal) => {
+      const threadId = `conversation-after-${rests}`;
+      const started = await service.sessionCommands.execute(
+        {
+          type: 'start-session',
+          input: {
+            threadId,
+            provider: 'claude',
+            metadata: { userId: 'owner-user', connectionId: 'connection-a' },
+          },
+        },
+        { userId: 'owner-user' },
+      );
+      if (started.status !== 'accepted') throw new Error(started.message);
+      for (const event of [
+        {
+          method: 'session.configured',
+          sessionId: threadId,
+          metadata: {
+            userId: 'owner-user',
+            agentSlug: 'station',
+            connectionId: 'connection-a',
+          },
+        },
+        { method: 'turn.started', turnId: 'turn-one', prompt: 'first' },
+        { ...terminal, turnId: 'turn-one' },
+      ]) {
+        eventStore.appendEvent({
+          eventId: `${threadId}-${event.method}`,
+          provider: 'claude',
+          threadId,
+          createdAt: new Date().toISOString(),
+          ...event,
+        } as never);
+      }
+      expect(
+        (await service.readSession(threadId))?.session.lifecycleState,
+      ).toBe(rests);
+      await expect(
+        service.resolveConversationContinuation(
+          threadId,
+          INTERNAL_SESSION_READ_SCOPE,
+          { provider: 'claude', connectionId: 'connection-a' },
+        ),
+      ).resolves.toEqual({ sessionId: threadId, startRequired: false });
+      expect(eventStore.conversationSessions(threadId)).toHaveLength(1);
+    },
+  );
 
   test('an idle session whose engine binding was closed continues in a successor', async () => {
     claude.startSession.mockImplementationOnce(async (input) => {

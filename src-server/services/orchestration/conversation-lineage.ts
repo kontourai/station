@@ -15,6 +15,7 @@ import {
   foldedSessionLifecycleState,
   isSessionLifecycleStateAtRest,
   isSessionLifecycleStateStopped,
+  isSessionLifecycleStateTerminal,
 } from '@kontourai/station-contracts/session-lifecycle';
 import type { SessionReadAuthority } from '@kontourai/station-contracts/tenancy';
 import { isSessionReadAuthority } from '@kontourai/station-contracts/tenancy';
@@ -279,12 +280,13 @@ export class ConversationLineage {
         'This conversation is not writable under its current control state.',
       );
     }
-    // #2540: an `idle` session (a finished turn) is not stopped, so the
-    // follow-up runs in it — its engine is still resident, or dispatch
-    // restarts it in place from its resume cursor. The exception is an idle
-    // session whose engine binding was explicitly closed or died: dispatch
-    // cannot restart a closed/dead row, so it continues in a successor, the
-    // way a stopped session always has.
+    // #2540: a turn's outcome does not end its session. After a finished
+    // (`idle`), failed or stopped (`canceled`) turn the follow-up runs in the
+    // same session — its engine is still resident, or dispatch restarts it in
+    // place from its resume cursor — so no second engine contends for the
+    // native thread. A successor is reserved only when the session cannot
+    // take the turn: it was explicitly closed (terminal `completed`), or its
+    // engine binding was closed or died (dispatch cannot restart such a row).
     const bindingEnded =
       detail.session.status === 'closed' || detail.session.status === 'dead';
     // Likewise a model switch the live session cannot apply to a turn: the
@@ -292,12 +294,11 @@ export class ConversationLineage {
     // before sessions stayed reusable.
     const requestedModel = requested.modelOverride?.trim();
     const needsModelRestart =
-      lifecycle === 'idle' &&
       !!requestedModel &&
       requestedModel !== detail.session.model?.trim() &&
       this.deps.perTurnModelOverride?.(requested.provider) === false;
     if (
-      !isSessionLifecycleStateStopped(lifecycle) &&
+      !isSessionLifecycleStateTerminal(lifecycle) &&
       !bindingEnded &&
       !needsModelRestart
     ) {
