@@ -498,6 +498,11 @@ Origin and blocks/counts direct Station `/api` requests after route acceptance.
 It reuses the free local broker, Pion, and TURN fixtures above; no hosted
 identity or paid TURN service is needed. Run one transport at a time:
 
+This is a separate UI-only acceptance mode. It stops after the visible Project
+and shared-work checks; it does not run the account continuation, cookie
+adoption, or revocation matrix from the commands above. Use those commands
+without `--station-ui` for the full account/protocol receipt.
+
 ```sh
 npm run lab:browser-transport -- --peer=pion --browser-turn=tcp --application-accounts --self-hosted-broker --station-ui --keep
 ```

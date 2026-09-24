@@ -131,7 +131,6 @@ let brokerLab:
 let accountReport: Record<string, unknown> | undefined;
 let cookieAdoptionReport: Record<string, unknown> | undefined;
 let cookieAdoptionSecrets: string[] = [];
-const scenarioInvitationSecrets: string[] = [];
 const applicationObservations: Array<Record<string, unknown>> = [];
 let freshRelayReport: Record<string, unknown> | undefined;
 let freshRelayJourney:
@@ -248,22 +247,6 @@ function serveBrowserDocument(
   );
 }
 const server = createServer(serveBrowserDocument);
-
-async function accountStationForFollowupScenario(
-  station: Awaited<ReturnType<typeof startRelayAccountStation>>,
-) {
-  const invitation = await station.inviteAgain();
-  assert.notEqual(
-    invitation,
-    station.browser.invitation,
-    'Each account scenario needs its own one-use Project invitation',
-  );
-  scenarioInvitationSecrets.push(invitation);
-  return {
-    ...station,
-    browser: { ...station.browser, invitation },
-  };
-}
 
 async function runFreshRelayScenario(input: {
   approvedPage: Page;
@@ -1868,447 +1851,454 @@ try {
         await uiContext.close();
       }
     }
-    // Browser TURN/UDP uses the direct UDP allocation; the recording relay
-    // forward is TCP-only for the Station-side Pion peer. Never aim browser
-    // UDP at the TCP recording relay port.
-    const brokerBrowserPort =
-      browserTransport === 'udp' ? turnUdpPort : relay.port;
-    assert(brokerBrowserPort);
-    const invitation = brokerLab.issueInvitation({
-      clientOrigin: pageOrigin,
-      stationSigningKeyId: await stationConnectionSigningKeyId(connectionTrust),
-      stationSigningGeneration: connectionTrust.generation,
-    });
-    const connected = await bounded(
-      page.evaluate(browserBrokerConnect, {
-        brokerOrigin: brokerLab.brokerOrigin,
-        scope: invitation.scope,
-        invitation,
-        applicationOrigin: accountStation.station.base,
-        port: brokerBrowserPort,
-        username,
-        password,
-        transport: browserTransport,
-      }),
-      'broker Pion connect',
-    );
-    assert.match(connected.connectionId, /^[a-f0-9-]{36}$/);
-    assert.notEqual(
-      connected.routingGrantId,
-      brokerLab.bundle.routing.id,
-      'Browser must use a client grant, never the operator routing credential',
-    );
-    await page.evaluate(browserBrokerAdmitApplicationTransport);
-    brokerLeaseBefore = (await brokerLab.readLease()).expiresAt;
-    const stationPionPair = await page.evaluate(
-      browserBrokerSelectedCandidatePair,
-    );
-    assert.equal(stationPionPair.localType, 'relay');
-    assert.equal(stationPionPair.remoteType, 'relay');
+    if (!stationUi) {
+      // Browser TURN/UDP uses the direct UDP allocation; the recording relay
+      // forward is TCP-only for the Station-side Pion peer. Never aim browser
+      // UDP at the TCP recording relay port.
+      const brokerBrowserPort =
+        browserTransport === 'udp' ? turnUdpPort : relay.port;
+      assert(brokerBrowserPort);
+      const invitation = brokerLab.issueInvitation({
+        clientOrigin: pageOrigin,
+        stationSigningKeyId:
+          await stationConnectionSigningKeyId(connectionTrust),
+        stationSigningGeneration: connectionTrust.generation,
+      });
+      const connected = await bounded(
+        page.evaluate(browserBrokerConnect, {
+          brokerOrigin: brokerLab.brokerOrigin,
+          scope: invitation.scope,
+          invitation,
+          applicationOrigin: accountStation.station.base,
+          port: brokerBrowserPort,
+          username,
+          password,
+          transport: browserTransport,
+        }),
+        'broker Pion connect',
+      );
+      assert.match(connected.connectionId, /^[a-f0-9-]{36}$/);
+      assert.notEqual(
+        connected.routingGrantId,
+        brokerLab.bundle.routing.id,
+        'Browser must use a client grant, never the operator routing credential',
+      );
+      await page.evaluate(browserBrokerAdmitApplicationTransport);
+      brokerLeaseBefore = (await brokerLab.readLease()).expiresAt;
+      const stationPionPair = await page.evaluate(
+        browserBrokerSelectedCandidatePair,
+      );
+      assert.equal(stationPionPair.localType, 'relay');
+      assert.equal(stationPionPair.remoteType, 'relay');
+    }
   }
-  const good = selfHostedBroker
-    ? undefined
-    : await exchange(page, approved, approved.fingerprint);
   const applicationPion =
     peerAdapter === 'pion' &&
     (args.includes('--application-protocol') ||
       args.includes('--application-accounts'));
   const marker = `private-station-content-${randomBytes(32).toString('hex')}`;
-  if (!selfHostedBroker) {
-    assert(good);
-    if (!applicationPion) {
-      await page.waitForFunction(browserChannelOpen, undefined, {
-        timeout: 20000,
-      });
-      await page.evaluate(browserSend, marker);
-      await page.waitForFunction(browserReceived, marker, { timeout: 10000 });
-      assert.deepEqual(good.messages, [marker]);
+  if (!stationUi) {
+    const good = selfHostedBroker
+      ? undefined
+      : await exchange(page, approved, approved.fingerprint);
+    if (!selfHostedBroker) {
+      assert(good);
+      if (!applicationPion) {
+        await page.waitForFunction(browserChannelOpen, undefined, {
+          timeout: 20000,
+        });
+        await page.evaluate(browserSend, marker);
+        await page.waitForFunction(browserReceived, marker, { timeout: 10000 });
+        assert.deepEqual(good.messages, [marker]);
+      }
+      let pair = good.peer.getSelectedCandidatePair();
+      const pairDeadline = Date.now() + 10_000;
+      while (!pair && Date.now() < pairDeadline) {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        pair = good.peer.getSelectedCandidatePair();
+      }
+      assert.equal(pair?.local.type, 'relay');
+      assert.equal(pair?.remote.type, 'relay');
+      const browserStats = await page.evaluate(readBrowserStats);
+      assert(browserStats.some((entry) => entry.dtlsState === 'connected'));
+      assert(
+        browserStats.some(
+          (entry) =>
+            entry.type === 'certificate' &&
+            entry.fingerprint === approved.fingerprint,
+        ),
+      );
     }
-    let pair = good.peer.getSelectedCandidatePair();
-    const pairDeadline = Date.now() + 10_000;
-    while (!pair && Date.now() < pairDeadline) {
-      await new Promise((resolve) => setTimeout(resolve, 20));
-      pair = good.peer.getSelectedCandidatePair();
+    if (args.includes('--application-protocol')) {
+      applicationProtocol = await bounded(
+        page.evaluate(browserCheckApplicationChannel),
+        'SDK application protocol',
+      );
+      assert.equal(applicationProtocol.status, 'passed');
+      assert(applicationProtocol.responseBytes > 16 * 1024);
     }
-    assert.equal(pair?.local.type, 'relay');
-    assert.equal(pair?.remote.type, 'relay');
-    const browserStats = await page.evaluate(readBrowserStats);
-    assert(browserStats.some((entry) => entry.dtlsState === 'connected'));
-    assert(
-      browserStats.some(
-        (entry) =>
-          entry.type === 'certificate' &&
-          entry.fingerprint === approved.fingerprint,
-      ),
-    );
-  }
-  if (args.includes('--application-protocol')) {
-    applicationProtocol = await bounded(
-      page.evaluate(browserCheckApplicationChannel),
-      'SDK application protocol',
-    );
-    assert.equal(applicationProtocol.status, 'passed');
-    assert(applicationProtocol.responseBytes > 16 * 1024);
-  }
-  if (accountStation) {
-    const accountScenarioStation = stationUi
-      ? await accountStationForFollowupScenario(accountStation)
-      : accountStation;
-    accountReport = await runBrowserAccountScenario(
-      page,
-      accountScenarioStation,
-      root,
-      async () => {
-        if (selfHostedBroker) {
-          assert(brokerLab);
-          const reconnected = await bounded(
-            page.evaluate(browserBrokerReconnect),
-            'broker reconnect',
-          );
-          assert.notEqual(reconnected.connectionId, reconnected.previous);
-          assert.equal(
-            reconnected.peerReplaced,
-            true,
-            'Broker reconnect must select stats from the newly owned browser peer',
-          );
-          await page.evaluate(browserBrokerAdmitApplicationTransport);
-          await page.evaluate(browserBrokerAdoptApplicationTransport);
-          await page.exposeBinding(
-            '__stationBrokerObservation',
-            (_source, observation) => {
-              applicationObservations.push(
-                observation as Record<string, unknown>,
-              );
-            },
-          );
-          await page.evaluate(() => {
-            const browserGlobal = globalThis as unknown as Record<string, any>;
-            const admitted = browserGlobal.stationBrokerLabTransport;
-            if (!admitted) throw new Error('Missing admitted broker transport');
-            const raw = admitted.transport;
-            const state: {
-              expectedAliasCredential?: string;
-              observationCalls: number;
-            } = {
-              expectedAliasCredential: undefined,
-              observationCalls: 0,
-            };
-            const observed = { ...admitted };
-            observed.transport = async (input: any, init: any = {}) => {
-              state.observationCalls++;
-              // Chromium removes Origin from a constructed Request because
-              // normal HTTP would add it later. The encrypted SDK carries
-              // the explicit header in init, so inspect that source too.
-              const suppliedHeaders = new Headers(
-                init.headers ??
-                  (input instanceof Request ? input.headers : undefined),
-              );
-              const request =
-                input instanceof Request ? input : new Request(input, init);
-              const authorization = request.headers.get('Authorization');
-              const response = await raw(input, init);
-              const observation = {
-                path: new URL(request.url).pathname,
-                method: request.method,
-                status: response.status,
-                cookieHeader:
-                  suppliedHeaders.has('Cookie') ||
-                  request.headers.has('Cookie'),
-                setCookieHeader:
-                  response.headers.has('Set-Cookie') ||
-                  response.headers.has('Set-Cookie2'),
-                continuationHeader: request.headers.has(
-                  'X-Station-Account-Continuation',
-                ),
-                proofHeader: request.headers.has('X-Station-Account-Proof'),
-                aliasCredential:
-                  state.expectedAliasCredential !== undefined &&
-                  authorization === `Bearer ${state.expectedAliasCredential}`,
-                origin: suppliedHeaders.get('Origin'),
-              };
-              await browserGlobal.__stationBrokerObservation(observation);
-              return response;
-            };
-            // The production transport descriptor is frozen. Publish a
-            // fixture wrapper for the next SDK resolver instead of trying to
-            // mutate that descriptor (which silently left observations empty).
-            browserGlobal.stationBrokerLabTransport = observed;
-            browserGlobal.stationBrokerLabObservations = state;
-          });
-          const reconnectPair = await page.evaluate(
-            browserBrokerSelectedCandidatePair,
-          );
-          assert.equal(reconnectPair.localType, 'relay');
-          assert.equal(reconnectPair.remoteType, 'relay');
-          assert.equal(
-            (
-              await page.evaluate(browserApplicationAccountRequest, {
-                path: '/api/projects/relay-shared',
-              })
-            ).status,
-            200,
-            'Fresh broker peer restores the permitted Project read',
-          );
-          brokerReconnectForJourney = reconnected;
-          freshRelayJourney = await runFreshRelayScenario({
-            approvedPage: page,
-            pageOrigin: secondaryPageOrigin ?? pageOrigin,
-          });
-          freshRelayReport = freshRelayJourney.report;
-        }
-      },
-    );
-    if (selfHostedBroker) {
-      const observer = {
-        setExpectedAliasCredential: async (value: string) =>
-          page.evaluate((credential) => {
-            (
-              globalThis as unknown as {
-                stationBrokerLabObservations: {
-                  expectedAliasCredential?: string;
-                };
-              }
-            ).stationBrokerLabObservations.expectedAliasCredential = credential;
-          }, value),
-        applicationObservations: () => applicationObservations,
-      };
-      const cookieAdoption = await runBrowserCookieAdoptionScenario(
+    if (accountStation) {
+      accountReport = await runBrowserAccountScenario(
         page,
         accountStation,
-        observer as never,
+        root,
+        async () => {
+          if (selfHostedBroker) {
+            assert(brokerLab);
+            const reconnected = await bounded(
+              page.evaluate(browserBrokerReconnect),
+              'broker reconnect',
+            );
+            assert.notEqual(reconnected.connectionId, reconnected.previous);
+            assert.equal(
+              reconnected.peerReplaced,
+              true,
+              'Broker reconnect must select stats from the newly owned browser peer',
+            );
+            await page.evaluate(browserBrokerAdmitApplicationTransport);
+            await page.evaluate(browserBrokerAdoptApplicationTransport);
+            await page.exposeBinding(
+              '__stationBrokerObservation',
+              (_source, observation) => {
+                applicationObservations.push(
+                  observation as Record<string, unknown>,
+                );
+              },
+            );
+            await page.evaluate(() => {
+              const browserGlobal = globalThis as unknown as Record<
+                string,
+                any
+              >;
+              const admitted = browserGlobal.stationBrokerLabTransport;
+              if (!admitted)
+                throw new Error('Missing admitted broker transport');
+              const raw = admitted.transport;
+              const state: {
+                expectedAliasCredential?: string;
+                observationCalls: number;
+              } = {
+                expectedAliasCredential: undefined,
+                observationCalls: 0,
+              };
+              const observed = { ...admitted };
+              observed.transport = async (input: any, init: any = {}) => {
+                state.observationCalls++;
+                // Chromium removes Origin from a constructed Request because
+                // normal HTTP would add it later. The encrypted SDK carries
+                // the explicit header in init, so inspect that source too.
+                const suppliedHeaders = new Headers(
+                  init.headers ??
+                    (input instanceof Request ? input.headers : undefined),
+                );
+                const request =
+                  input instanceof Request ? input : new Request(input, init);
+                const authorization = request.headers.get('Authorization');
+                const response = await raw(input, init);
+                const observation = {
+                  path: new URL(request.url).pathname,
+                  method: request.method,
+                  status: response.status,
+                  cookieHeader:
+                    suppliedHeaders.has('Cookie') ||
+                    request.headers.has('Cookie'),
+                  setCookieHeader:
+                    response.headers.has('Set-Cookie') ||
+                    response.headers.has('Set-Cookie2'),
+                  continuationHeader: request.headers.has(
+                    'X-Station-Account-Continuation',
+                  ),
+                  proofHeader: request.headers.has('X-Station-Account-Proof'),
+                  aliasCredential:
+                    state.expectedAliasCredential !== undefined &&
+                    authorization === `Bearer ${state.expectedAliasCredential}`,
+                  origin: suppliedHeaders.get('Origin'),
+                };
+                await browserGlobal.__stationBrokerObservation(observation);
+                return response;
+              };
+              // The production transport descriptor is frozen. Publish a
+              // fixture wrapper for the next SDK resolver instead of trying to
+              // mutate that descriptor (which silently left observations empty).
+              browserGlobal.stationBrokerLabTransport = observed;
+              browserGlobal.stationBrokerLabObservations = state;
+            });
+            const reconnectPair = await page.evaluate(
+              browserBrokerSelectedCandidatePair,
+            );
+            assert.equal(reconnectPair.localType, 'relay');
+            assert.equal(reconnectPair.remoteType, 'relay');
+            assert.equal(
+              (
+                await page.evaluate(browserApplicationAccountRequest, {
+                  path: '/api/projects/relay-shared',
+                })
+              ).status,
+              200,
+              'Fresh broker peer restores the permitted Project read',
+            );
+            brokerReconnectForJourney = reconnected;
+            freshRelayJourney = await runFreshRelayScenario({
+              approvedPage: page,
+              pageOrigin: secondaryPageOrigin ?? pageOrigin,
+            });
+            freshRelayReport = freshRelayJourney.report;
+          }
+        },
       );
-      cookieAdoptionReport = cookieAdoption.report;
-      cookieAdoptionSecrets = cookieAdoption.privateSecrets;
+      if (selfHostedBroker) {
+        const observer = {
+          setExpectedAliasCredential: async (value: string) =>
+            page.evaluate((credential) => {
+              (
+                globalThis as unknown as {
+                  stationBrokerLabObservations: {
+                    expectedAliasCredential?: string;
+                  };
+                }
+              ).stationBrokerLabObservations.expectedAliasCredential =
+                credential;
+            }, value),
+          applicationObservations: () => applicationObservations,
+        };
+        const cookieAdoption = await runBrowserCookieAdoptionScenario(
+          page,
+          accountStation,
+          observer as never,
+        );
+        cookieAdoptionReport = cookieAdoption.report;
+        cookieAdoptionSecrets = cookieAdoption.privateSecrets;
+      }
     }
-  }
-  if (freshRelayJourney) {
-    const freshDeviceProjectRead = await freshRelayJourney.readFreshProject();
-    assert.equal(
-      freshDeviceProjectRead,
-      200,
-      'Fresh Device must retain Project access after the previous Device is revoked',
-    );
-    assert(brokerLab);
-    brokerLab.revokeClientGrant(freshRelayJourney.routingGrantId);
-    await assert.rejects(
-      freshRelayJourney.readRouteStatus(),
-      /broker_request_refused_401|Failed to fetch/,
-    );
-    assert.equal(
-      (await page.evaluate(browserBrokerReadStatus)).state,
-      'online',
-    );
-    freshRelayReport = {
-      ...freshRelayJourney.report,
-      previousDeviceRevokedFreshDeviceProjectRead: freshDeviceProjectRead,
-      independentRoutingGrantRevocation: true,
-    };
-    await freshRelayJourney.close();
-    freshRelayJourney = undefined;
-  }
-  if (selfHostedBroker) {
-    assert(brokerLab);
-    assert(accountStation);
-    const lab = brokerLab;
-    // Actual broker CORS from the admitted page origin: the browser emits
-    // Origin itself; no forbidden Origin header is ever set. The non-simple
-    // POST triggers the real browser preflight; the incoming OPTIONS and
-    // its ACAO are observed at the owned Node broker listener.
-    const cors = await bounded(
-      page.evaluate(browserBrokerProbeOrigin, {
-        brokerOrigin: lab.brokerOrigin,
-        scope: { ...lab.scope, browserOrigin: pageOrigin },
-      }),
-      'broker CORS and credential refusal',
-    );
-    assert.equal(cors.pageOrigin, pageOrigin);
-    assert.equal(cors.status, 200);
-    assert.equal((cors.statusBody as { state: string }).state, 'online');
-    // The browser's successful cross-origin fetch is the CORS control. This
-    // separate protocol probe checks the actual broker's preflight response.
-    const observedPreflight = await lab.preflight();
-    assert.equal(observedPreflight.status, 204);
-    assert.equal(observedPreflight.allowOrigin, cors.pageOrigin);
-    assert.equal(cors.wrongStatus, 401);
-    assert.equal(
-      (cors.wrongBody as { error: string }).error,
-      'broker_credential_refused',
-    );
-    // Heartbeat + lease renewal: the Station-side runtime already renewed at
-    // least once during the account journey, so the lease expiry observed
-    // after the journey must extend past the pre-journey observation.
-    let leaseAfter = (await lab.readLease()).expiresAt;
-    const renewDeadline = Date.now() + 30_000;
-    while (leaseAfter <= brokerLeaseBefore && Date.now() < renewDeadline) {
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-      leaseAfter = (await lab.readLease()).expiresAt;
-    }
-    assert(
-      leaseAfter > brokerLeaseBefore,
-      'Broker lease renewal must extend the observed expiry',
-    );
-    assert.equal((await lab.readLease()).state, 'online');
-    // Answer/proof tamper refused by the real production consumer before
-    // any SDP is accepted: the wrapper fetched the REAL answer and altered
-    // ONLY the proof.
-    const tamper = await bounded(
-      page.evaluate(browserBrokerTamperProof),
-      'broker proof tamper refusal',
-    );
-    assert.equal(tamper.tampered, true, 'Tamper must alter a real answer');
-    assert.equal(tamper.tamperedRefused, true, tamper.refusal);
-    assert.equal(tamper.remoteDescriptionAttempted, false);
-    assert.match(tamper.refusal, /proof|refused|invalid/i);
-    // Read the live browser peer candidate pair; its remote relay candidate
-    // was produced by the StationRuntime-owned Pion adapter.
-    const selectedPair = await page.evaluate(
-      browserBrokerSelectedCandidatePair,
-    );
-    assert.equal(selectedPair.localType, 'relay');
-    assert.equal(selectedPair.remoteType, 'relay');
-    assert(brokerReconnectForJourney);
-    assert.equal(
-      freshRelayReport?.independentRoutingGrantRevocation,
-      true,
-      'Broker lab must prove independent client-grant revocation',
-    );
-    const reconnected = brokerReconnectForJourney;
-    brokerJourney = {
-      status: 'passed',
-      connectionId: reconnected.connectionId,
-      clientGrantDistinctFromOperator: true,
-      independentRoutingGrantRevocation:
-        freshRelayReport?.independentRoutingGrantRevocation === true,
-      leaseRenewed: leaseAfter > brokerLeaseBefore,
-      cors: {
-        status: cors.status,
-        allowOrigin: cors.allowOrigin,
-        preflight: observedPreflight.status,
-        preflightAllowOrigin: observedPreflight.allowOrigin,
-        wrongStatus: cors.wrongStatus,
-      },
-      proofTamperRefused: tamper.tamperedRefused,
-      proofTamperObserved: tamper.tampered,
-      stationRuntimeOwnsPionAndVirtualIngress: true,
-      stationPeerRelaySelected: selectedPair,
-      scope:
-        'same Station/enrollment with per-client Origin and independently revocable routing grants; connector and Station authority remain separate',
-    };
-    // Trust retirement refusal: revoke the admitted Device trust in the SAME
-    // profile (a fresh context has isolated storage and no trust to revoke),
-    // then require the next broker admission to refuse before SDP acceptance.
-    const brokerRevokePage = await context.newPage();
-    try {
-      await brokerRevokePage.goto(fixtureDocumentUrl(pageOrigin));
-      await brokerRevokePage.evaluate(
-        browserRevokeConnectionTrust,
-        connectionTrust.stationId,
+    if (freshRelayJourney) {
+      const freshDeviceProjectRead = await freshRelayJourney.readFreshProject();
+      assert.equal(
+        freshDeviceProjectRead,
+        200,
+        'Fresh Device must retain Project access after the previous Device is revoked',
       );
+      assert(brokerLab);
+      brokerLab.revokeClientGrant(freshRelayJourney.routingGrantId);
       await assert.rejects(
-        page.evaluate(browserBrokerReconnect),
-        /trust_retired|authority_retired/,
+        freshRelayJourney.readRouteStatus(),
+        /broker_request_refused_401|Failed to fetch/,
       );
-      assert.equal(await page.evaluate(browserBrokerConnectionId), undefined);
-    } finally {
-      await brokerRevokePage.close();
+      assert.equal(
+        (await page.evaluate(browserBrokerReadStatus)).state,
+        'online',
+      );
+      freshRelayReport = {
+        ...freshRelayJourney.report,
+        previousDeviceRevokedFreshDeviceProjectRead: freshDeviceProjectRead,
+        independentRoutingGrantRevocation: true,
+      };
+      await freshRelayJourney.close();
+      freshRelayJourney = undefined;
     }
-    // Stopping StationRuntime retires its production connector and withdraws
-    // the lease while the broker remains available for the refusal check.
-    assert(accountStation);
-    await accountStation.stop();
-    await assert.rejects(
-      page.evaluate(browserBrokerReadStatus),
-      // With the last lease withdrawn, CORS can hide the error response.
-      /broker_request_refused_401|TypeError: Failed to fetch/,
-    );
-    // This independent HTTP control proves the exact backend refusal, so an
-    // unrelated network failure cannot satisfy the withdrawal check.
-    await assert.rejects(lab.readLease(), /broker_request_refused_401/);
-    brokerJourney = {
-      ...(brokerJourney as Record<string, unknown>),
-      trustRetirementRefused: true,
-      withdrawOffline: true,
-    };
-    await context.close();
-    await lab.stop();
-    brokerLab = undefined;
-  } else {
-    await context.close();
-    assert(good);
-    await good.peer.close();
-  }
+    if (selfHostedBroker) {
+      assert(brokerLab);
+      assert(accountStation);
+      const lab = brokerLab;
+      // Actual broker CORS from the admitted page origin: the browser emits
+      // Origin itself; no forbidden Origin header is ever set. The non-simple
+      // POST triggers the real browser preflight; the incoming OPTIONS and
+      // its ACAO are observed at the owned Node broker listener.
+      const cors = await bounded(
+        page.evaluate(browserBrokerProbeOrigin, {
+          brokerOrigin: lab.brokerOrigin,
+          scope: { ...lab.scope, browserOrigin: pageOrigin },
+        }),
+        'broker CORS and credential refusal',
+      );
+      assert.equal(cors.pageOrigin, pageOrigin);
+      assert.equal(cors.status, 200);
+      assert.equal((cors.statusBody as { state: string }).state, 'online');
+      // The browser's successful cross-origin fetch is the CORS control. This
+      // separate protocol probe checks the actual broker's preflight response.
+      const observedPreflight = await lab.preflight();
+      assert.equal(observedPreflight.status, 204);
+      assert.equal(observedPreflight.allowOrigin, cors.pageOrigin);
+      assert.equal(cors.wrongStatus, 401);
+      assert.equal(
+        (cors.wrongBody as { error: string }).error,
+        'broker_credential_refused',
+      );
+      // Heartbeat + lease renewal: the Station-side runtime already renewed at
+      // least once during the account journey, so the lease expiry observed
+      // after the journey must extend past the pre-journey observation.
+      let leaseAfter = (await lab.readLease()).expiresAt;
+      const renewDeadline = Date.now() + 30_000;
+      while (leaseAfter <= brokerLeaseBefore && Date.now() < renewDeadline) {
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        leaseAfter = (await lab.readLease()).expiresAt;
+      }
+      assert(
+        leaseAfter > brokerLeaseBefore,
+        'Broker lease renewal must extend the observed expiry',
+      );
+      assert.equal((await lab.readLease()).state, 'online');
+      // Answer/proof tamper refused by the real production consumer before
+      // any SDP is accepted: the wrapper fetched the REAL answer and altered
+      // ONLY the proof.
+      const tamper = await bounded(
+        page.evaluate(browserBrokerTamperProof),
+        'broker proof tamper refusal',
+      );
+      assert.equal(tamper.tampered, true, 'Tamper must alter a real answer');
+      assert.equal(tamper.tamperedRefused, true, tamper.refusal);
+      assert.equal(tamper.remoteDescriptionAttempted, false);
+      assert.match(tamper.refusal, /proof|refused|invalid/i);
+      // Read the live browser peer candidate pair; its remote relay candidate
+      // was produced by the StationRuntime-owned Pion adapter.
+      const selectedPair = await page.evaluate(
+        browserBrokerSelectedCandidatePair,
+      );
+      assert.equal(selectedPair.localType, 'relay');
+      assert.equal(selectedPair.remoteType, 'relay');
+      assert(brokerReconnectForJourney);
+      assert.equal(
+        freshRelayReport?.independentRoutingGrantRevocation,
+        true,
+        'Broker lab must prove independent client-grant revocation',
+      );
+      const reconnected = brokerReconnectForJourney;
+      brokerJourney = {
+        status: 'passed',
+        connectionId: reconnected.connectionId,
+        clientGrantDistinctFromOperator: true,
+        independentRoutingGrantRevocation:
+          freshRelayReport?.independentRoutingGrantRevocation === true,
+        leaseRenewed: leaseAfter > brokerLeaseBefore,
+        cors: {
+          status: cors.status,
+          allowOrigin: cors.allowOrigin,
+          preflight: observedPreflight.status,
+          preflightAllowOrigin: observedPreflight.allowOrigin,
+          wrongStatus: cors.wrongStatus,
+        },
+        proofTamperRefused: tamper.tamperedRefused,
+        proofTamperObserved: tamper.tampered,
+        stationRuntimeOwnsPionAndVirtualIngress: true,
+        stationPeerRelaySelected: selectedPair,
+        scope:
+          'same Station/enrollment with per-client Origin and independently revocable routing grants; connector and Station authority remain separate',
+      };
+      // Trust retirement refusal: revoke the admitted Device trust in the SAME
+      // profile (a fresh context has isolated storage and no trust to revoke),
+      // then require the next broker admission to refuse before SDP acceptance.
+      const brokerRevokePage = await context.newPage();
+      try {
+        await brokerRevokePage.goto(fixtureDocumentUrl(pageOrigin));
+        await brokerRevokePage.evaluate(
+          browserRevokeConnectionTrust,
+          connectionTrust.stationId,
+        );
+        await assert.rejects(
+          page.evaluate(browserBrokerReconnect),
+          /trust_retired|authority_retired/,
+        );
+        assert.equal(await page.evaluate(browserBrokerConnectionId), undefined);
+      } finally {
+        await brokerRevokePage.close();
+      }
+      // Stopping StationRuntime retires its production connector and withdraws
+      // the lease while the broker remains available for the refusal check.
+      assert(accountStation);
+      await accountStation.stop();
+      await assert.rejects(
+        page.evaluate(browserBrokerReadStatus),
+        // With the last lease withdrawn, CORS can hide the error response.
+        /broker_request_refused_401|TypeError: Failed to fetch/,
+      );
+      // This independent HTTP control proves the exact backend refusal, so an
+      // unrelated network failure cannot satisfy the withdrawal check.
+      await assert.rejects(lab.readLease(), /broker_request_refused_401/);
+      brokerJourney = {
+        ...(brokerJourney as Record<string, unknown>),
+        trustRetirementRefused: true,
+        withdrawOffline: true,
+      };
+      await context.close();
+      await lab.stop();
+      brokerLab = undefined;
+    } else {
+      await context.close();
+      assert(good);
+      await good.peer.close();
+    }
 
-  if (!selfHostedBroker) {
-    const reconnectContext = await browser.newContext();
-    const reconnectPage = await reconnectContext.newPage();
-    await reconnectPage.goto(fixtureDocumentUrl(pageOrigin));
-    const reconnected = await exchange(
-      reconnectPage,
-      approved,
-      approved.fingerprint,
-    );
-    if (!applicationPion) {
-      await reconnectPage.waitForFunction(browserChannelOpen, undefined, {
+    if (!selfHostedBroker) {
+      const reconnectContext = await browser.newContext();
+      const reconnectPage = await reconnectContext.newPage();
+      await reconnectPage.goto(fixtureDocumentUrl(pageOrigin));
+      const reconnected = await exchange(
+        reconnectPage,
+        approved,
+        approved.fingerprint,
+      );
+      if (!applicationPion) {
+        await reconnectPage.waitForFunction(browserChannelOpen, undefined, {
+          timeout: 20000,
+        });
+        await reconnectPage.evaluate(browserSend, marker);
+        await reconnectPage.waitForFunction(browserReceived, marker, {
+          timeout: 10000,
+        });
+        assert.deepEqual(reconnected.messages, [marker]);
+      }
+      let reconnectPair = reconnected.peer.getSelectedCandidatePair();
+      const reconnectPairDeadline = Date.now() + 10_000;
+      while (!reconnectPair && Date.now() < reconnectPairDeadline) {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        reconnectPair = reconnected.peer.getSelectedCandidatePair();
+      }
+      assert.equal(reconnectPair?.local.type, 'relay');
+      assert.equal(reconnectPair?.remote.type, 'relay');
+      await reconnectContext.close();
+      await reconnected.peer.close();
+
+      const revokedContext = await browser.newContext();
+      const revokedPage = await revokedContext.newPage();
+      await revokedPage.goto(fixtureDocumentUrl(pageOrigin));
+      const revokedPeer = await exchange(
+        revokedPage,
+        approved,
+        approved.fingerprint,
+        false,
+        true,
+      );
+      assert.equal(await revokedPage.evaluate(browserChannelOpen), false);
+      assert.deepEqual(revokedPeer.messages, []);
+      await revokedPeer.peer.close();
+      await revokedContext.close();
+
+      const replacementContext = await browser.newContext();
+      const replacementPage = await replacementContext.newPage();
+      await replacementPage.goto(fixtureDocumentUrl(pageOrigin));
+      await assert.rejects(
+        exchange(replacementPage, substituted, approved.fingerprint),
+        /station_fingerprint_not_approved/,
+      );
+      await replacementContext.close();
+
+      const hostileContext = await browser.newContext();
+      const hostilePage = await hostileContext.newPage();
+      await hostilePage.goto(fixtureDocumentUrl(pageOrigin));
+      const hostile = await exchange(
+        hostilePage,
+        substituted,
+        approved.fingerprint,
+        true,
+      );
+      await hostilePage.waitForFunction(browserFailed, undefined, {
         timeout: 20000,
       });
-      await reconnectPage.evaluate(browserSend, marker);
-      await reconnectPage.waitForFunction(browserReceived, marker, {
-        timeout: 10000,
-      });
-      assert.deepEqual(reconnected.messages, [marker]);
+      const hostileStats = await hostilePage.evaluate(readBrowserStats);
+      assert(hostileStats.some((entry) => entry.dtlsState === 'failed'));
+      assert.deepEqual(hostile.messages, []);
+      await hostileContext.close();
+      await hostile.peer.close();
     }
-    let reconnectPair = reconnected.peer.getSelectedCandidatePair();
-    const reconnectPairDeadline = Date.now() + 10_000;
-    while (!reconnectPair && Date.now() < reconnectPairDeadline) {
-      await new Promise((resolve) => setTimeout(resolve, 20));
-      reconnectPair = reconnected.peer.getSelectedCandidatePair();
-    }
-    assert.equal(reconnectPair?.local.type, 'relay');
-    assert.equal(reconnectPair?.remote.type, 'relay');
-    await reconnectContext.close();
-    await reconnected.peer.close();
-
-    const revokedContext = await browser.newContext();
-    const revokedPage = await revokedContext.newPage();
-    await revokedPage.goto(fixtureDocumentUrl(pageOrigin));
-    const revokedPeer = await exchange(
-      revokedPage,
-      approved,
-      approved.fingerprint,
-      false,
-      true,
-    );
-    assert.equal(await revokedPage.evaluate(browserChannelOpen), false);
-    assert.deepEqual(revokedPeer.messages, []);
-    await revokedPeer.peer.close();
-    await revokedContext.close();
-
-    const replacementContext = await browser.newContext();
-    const replacementPage = await replacementContext.newPage();
-    await replacementPage.goto(fixtureDocumentUrl(pageOrigin));
-    await assert.rejects(
-      exchange(replacementPage, substituted, approved.fingerprint),
-      /station_fingerprint_not_approved/,
-    );
-    await replacementContext.close();
-
-    const hostileContext = await browser.newContext();
-    const hostilePage = await hostileContext.newPage();
-    await hostilePage.goto(fixtureDocumentUrl(pageOrigin));
-    const hostile = await exchange(
-      hostilePage,
-      substituted,
-      approved.fingerprint,
-      true,
-    );
-    await hostilePage.waitForFunction(browserFailed, undefined, {
-      timeout: 20000,
-    });
-    const hostileStats = await hostilePage.evaluate(readBrowserStats);
-    assert(hostileStats.some((entry) => entry.dtlsState === 'failed'));
-    assert.deepEqual(hostile.messages, []);
-    await hostileContext.close();
-    await hostile.peer.close();
   }
   await relay.close();
   const captured = readFileSync(relay.capturePath);
@@ -2322,7 +2312,6 @@ try {
       accountStation.browser.password,
       accountStation.browser.credential,
       accountStation.browser.invitation,
-      ...scenarioInvitationSecrets,
       accountStation.sharedWork.sharedTask.messageMarker,
       accountStation.sharedWork.sharedTask.documentMarker,
       ...cookieAdoptionSecrets,
@@ -2382,43 +2371,53 @@ try {
     stationTurnTransport: peerAdapter === 'pion' ? 'tcp' : 'udp',
     captureBytes: captured.length,
     turnImage: TURN_FIXTURE_IMAGE,
-    checks: selfHostedBroker
+    checks: stationUi
       ? [
-          'separate broker CLI process serves metadata and signaling',
-          'one-time client invitation and distinct broker grant used in the browser',
-          'actual browser CORS and client-grant credential refusal',
-          'one client grant revoked while the other and Station connector remain live',
-          'two explicitly allowed HTTPS client Origins share one Station allocation without sharing grants',
-          'production Pion and browser transport carry authenticated Station application traffic',
-          'TURN relay candidates selected at both ends',
-          'broker lease renewed while application traffic continues',
-          'fresh peer reconnect preserves the approved Device and account continuation',
-          'fresh no-cookie/no-Device account enrollment requires real operator approval and signed ACK',
-          'tampered broker proof rejected before setRemoteDescription',
-          'cross-tab Device trust revocation refuses new admission',
-          'withdrawn routing credential refused by browser and exact HTTP control',
-          ...(stationUi
-            ? [
-                'real Station UI approves operator report, accepts invitation, selects route and passes public health without direct Station API egress',
-              ]
-            : []),
+          'UI-only acceptance; legacy account, cookie-adoption and revocation suites not run',
+          'ordinary Station SPA approves operator key report and accepts a broker invitation',
+          'fresh account login and explicit operator Device approval complete in the browser UI',
+          'browser and Station selected TURN candidates are relay candidates',
+          'Project and published Task appear in the UI; unpublished Task stays hidden',
+          'protected route reads use the broker channel with zero direct Station API egress',
         ]
-      : [
-          'TURN relay selected at both peers',
-          'Station-signed exact client, generation and SDP proof verified and consumed in the browser',
-          'Station signing identity restored from its private home before proof issuance',
-          'tampered proof refused before accepting the connection description',
-          'Device trust persisted and rechecked after crypto; cross-tab revocation refused before SDP acceptance',
-          'browser-native DTLS connected',
-          applicationPion
-            ? 'authenticated SDK application payload crossed the production Pion channel without diagnostic echo'
-            : 'application content echoed through encrypted data channel',
-          'fresh browser and peer reconnect using the same approved Station certificate',
-          'unapproved signaling fingerprint refused',
-          'substituted endpoint fails DTLS fingerprint verification',
-        ],
-    selfHostedBroker: brokerJourney ?? { status: 'not-run' },
-    fullBroker: selfHostedBroker ? 'lab-composition' : 'not-implemented',
+      : selfHostedBroker
+        ? [
+            'separate broker CLI process serves metadata and signaling',
+            'one-time client invitation and distinct broker grant used in the browser',
+            'actual browser CORS and client-grant credential refusal',
+            'one client grant revoked while the other and Station connector remain live',
+            'two explicitly allowed HTTPS client Origins share one Station allocation without sharing grants',
+            'production Pion and browser transport carry authenticated Station application traffic',
+            'TURN relay candidates selected at both ends',
+            'broker lease renewed while application traffic continues',
+            'fresh peer reconnect preserves the approved Device and account continuation',
+            'fresh no-cookie/no-Device account enrollment requires real operator approval and signed ACK',
+            'tampered broker proof rejected before setRemoteDescription',
+            'cross-tab Device trust revocation refuses new admission',
+            'withdrawn routing credential refused by browser and exact HTTP control',
+          ]
+        : [
+            'TURN relay selected at both peers',
+            'Station-signed exact client, generation and SDP proof verified and consumed in the browser',
+            'Station signing identity restored from its private home before proof issuance',
+            'tampered proof refused before accepting the connection description',
+            'Device trust persisted and rechecked after crypto; cross-tab revocation refused before SDP acceptance',
+            'browser-native DTLS connected',
+            applicationPion
+              ? 'authenticated SDK application payload crossed the production Pion channel without diagnostic echo'
+              : 'application content echoed through encrypted data channel',
+            'fresh browser and peer reconnect using the same approved Station certificate',
+            'unapproved signaling fingerprint refused',
+            'substituted endpoint fails DTLS fingerprint verification',
+          ],
+    selfHostedBroker: stationUi
+      ? { status: 'not-run-ui-only' }
+      : (brokerJourney ?? { status: 'not-run' }),
+    fullBroker: stationUi
+      ? 'not-run-ui-only'
+      : selfHostedBroker
+        ? 'lab-composition'
+        : 'not-implemented',
     productionKeyAdmission: 'not-implemented',
   };
 } catch (error) {
