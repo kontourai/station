@@ -244,7 +244,8 @@ export function AgentsWorkspacePane() {
 
   return (
     <div className="agents-pane">
-      <div className="agents-pane__scope" role="group" aria-label="Show">
+      <fieldset className="agents-pane__scope-actions">
+        <legend className="sr-only">Show</legend>
         <Button
           size="sm"
           variant="ghost"
@@ -264,7 +265,7 @@ export function AgentsWorkspacePane() {
         >
           All
         </Button>
-      </div>
+      </fieldset>
       {empty ? (
         <Empty
           variant="compact"

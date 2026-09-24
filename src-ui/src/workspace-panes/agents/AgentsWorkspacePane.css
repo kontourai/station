@@ -7,11 +7,14 @@
   flex-direction: column;
 }
 
-.agents-pane__scope {
+.agents-pane__scope-actions {
   display: flex;
   flex-shrink: 0;
   gap: var(--space-1);
+  min-width: 0;
+  margin: 0;
   padding: var(--space-2) var(--space-2) 0;
+  border: 0;
 }
 
 .agents-pane__section-qualifier {
