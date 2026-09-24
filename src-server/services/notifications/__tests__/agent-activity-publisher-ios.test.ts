@@ -1170,4 +1170,32 @@ describe('agent-activity publisher: iOS review regressions', () => {
     );
     await h.publisher.stop();
   });
+
+  test('revoked while an update is in flight: the retirement end is still ordered after that update', async () => {
+    let deviceId = '';
+    let revoked = false;
+    const h = harness({
+      answer: (call) => {
+        if (call.body.event === 'update' && !revoked) {
+          revoked = true;
+          h.pairing.revokeDevice(deviceId, 'operator-credential');
+        }
+        return undefined;
+      },
+    });
+    ({ deviceId } = await h.registerIos());
+    await h.change([row('s1', 'running', START - 1000)]);
+    h.advance(10_000);
+    await h.change([row('s1', 'approval', h.now())]);
+    await h.publisher.drain();
+    const [update, end] = h.iosCalls().slice(1);
+    expect([update?.body.event, end?.body.event]).toEqual(['update', 'end']);
+    // Same second: without the in-memory timestamp the end would tie the
+    // update (the tombstone's snapshot predates it) and the phone drop it.
+    expect(Number(end?.body.timestamp)).toBe(
+      Number(update?.body.timestamp) + 1,
+    );
+    expect(h.orderViolations).toEqual([]);
+    await h.publisher.stop();
+  });
 });
