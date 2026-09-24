@@ -12,6 +12,7 @@ import {
   hostOwnsExternalLinks,
   openNativeExternalLink,
 } from '../platform/openExternalLink';
+import { Button } from './Button';
 import {
   attachmentBlobForObjectUrl,
   useRetainedAttachmentObjectUrls,
@@ -22,7 +23,6 @@ import { MarkdownImage } from './chat/markdown-images';
 import { classifyMarkdownLink } from './chat/markdownLinkTarget';
 import type { PreviewItem } from './ImagePreviewContent';
 import { LazyBoundary } from './LazyBoundary';
-import { Button } from './Button';
 import { PreviewDownloadLink } from './PreviewDownloadLink';
 import { Empty, SkeletonBlock } from './state';
 
