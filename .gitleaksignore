@@ -14,3 +14,9 @@ d23831f8a93620c2266ba9851043a256eaf7f17a:packages/cli/src/commands/delegate.ts:g
 # a secret-detector test from the withdrawn plugin-publish slice (#2374). The
 # slice was reverted, but its commit remains in this branch's history.
 9a03386390acaffb06db1584939917a232872b30:src-server/services/projects/__tests__/plugin-publish-guards.test.ts:private-key:121
+# #2363: a PEM header fixture ("-----BEGIN OPENSSH PRIVATE KEY-----" with body
+# "abc") in the secret-content detector's own test.
+6d3901650ea8df1106943cb3cc82466b1b4d4b70:src-server/services/projects/__tests__/git-guards.test.ts:private-key:141
+# #2342: a fake AWS-key-shaped sentinel ("AKIASECRET0123456789") planted outside
+# a symlinked plugin.json to prove preview never echoes the linked file.
+4431a2ad5b76f6e49683dbeed3bd3381124a5659:src-server/routes/plugins/__tests__/plugin-preview-untrusted-manifest.test.ts:generic-api-key:33

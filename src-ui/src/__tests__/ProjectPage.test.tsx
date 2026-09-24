@@ -177,12 +177,17 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
 
 vi.mock('@kontourai/station-sdk/workspace-pane', () => ({
   useProjectWorkspacePanesQuery: () => ({
-    data: {
-      projectId: sdkMocks.project?.id,
-      descriptors: sdkMocks.panes,
-      instances: sdkMocks.paneInstances,
-      availability: sdkMocks.paneAvailability,
-    },
+    // A catalog that failed with no answer has no data (TanStack's
+    // `isLoadingError`); error WITH data is a failed background refresh,
+    // which the picker marks instead of reporting a load failure (#2345).
+    data: sdkMocks.paneCatalogError
+      ? undefined
+      : {
+          projectId: sdkMocks.project?.id,
+          descriptors: sdkMocks.panes,
+          instances: sdkMocks.paneInstances,
+          availability: sdkMocks.paneAvailability,
+        },
     isLoading: false,
     isError: sdkMocks.paneCatalogError,
     refetch: sdkMocks.refetchPanes,

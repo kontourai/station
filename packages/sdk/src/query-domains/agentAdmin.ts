@@ -29,6 +29,7 @@ import {
   type QueryConfig,
   useApiMutation,
   useApiQuery,
+  useApiQueryRefetchingInvalidatedOnMount,
 } from '../query-core';
 import { agentQueries, isAgentToolsActivatingError } from '../queryFactories';
 import {
@@ -137,7 +138,10 @@ export function useUserQuery(alias: string, config?: QueryConfig<any>) {
  * agents as they are" from "these are the last snapshot we had".
  */
 export function useAgentsQuery(config?: QueryConfig<AgentCatalogProjection>) {
-  const query = useApiQuery(
+  // Agents change outside this client (plugins, the CLI, other devices), so
+  // an invalidation that lands while no view observes `['agents']` must
+  // refetch on the next mount (#2345).
+  const query = useApiQueryRefetchingInvalidatedOnMount(
     ['agents'],
     async () => {
       const apiBase = await _getApiBase();

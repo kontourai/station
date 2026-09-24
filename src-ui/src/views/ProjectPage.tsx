@@ -475,6 +475,8 @@ export function ProjectPage({ slug }: { slug: string }) {
           entries={paneCatalog.entries}
           loading={paneCatalog.isLoading}
           error={paneCatalog.isError}
+          hasData={paneCatalog.data !== undefined}
+          retrying={paneCatalog.isFetching}
           onRetry={() => void paneCatalog.refetch()}
           onSelect={openPane}
           onAction={handlePaneAction}

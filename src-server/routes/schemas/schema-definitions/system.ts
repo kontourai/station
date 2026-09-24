@@ -78,15 +78,20 @@ export const gitCheckoutSchema = z.object({
   create: z.boolean().optional(),
 });
 
+// #2363: commit and push act on a Project's own folder. `path` only selects
+// a repository inside it (a multi-repo workspace); the route refuses one
+// outside the Project.
 export const gitCommitSchema = z.object({
-  path: z.string().min(1),
-  message: z.string().min(1),
+  projectSlug: z.string().min(1).max(200),
+  path: z.string().min(1).optional(),
+  message: z.string().min(1).max(10_000),
 });
 
 export const gitPushSchema = z.object({
-  path: z.string().min(1),
-  remote: z.string().optional(),
-  branch: z.string().optional(),
+  projectSlug: z.string().min(1).max(200),
+  path: z.string().min(1).optional(),
+  remote: z.string().min(1).max(200).optional(),
+  branch: z.string().min(1).max(250).optional(),
   setUpstream: z.boolean().optional(),
 });
 
