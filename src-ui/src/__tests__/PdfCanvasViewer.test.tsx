@@ -356,6 +356,57 @@ describe('PdfCanvasViewer', () => {
     expect(screen.queryByText('Preview unavailable')).toBeNull();
   });
 
+  test.each([
+    [
+      'an unreadable file',
+      () =>
+        fakeTask(
+          Promise.reject(
+            Object.assign(new Error('Invalid PDF structure.'), {
+              name: 'InvalidPDFException',
+            }),
+          ),
+        ),
+      'Preview unavailable',
+    ],
+    [
+      'a locked file',
+      () =>
+        fakeTask(
+          Promise.reject(
+            Object.assign(new Error('No password given'), {
+              name: 'PasswordException',
+            }),
+          ),
+        ),
+      'This PDF is password-protected',
+    ],
+    [
+      'a first page that cannot be read',
+      () =>
+        fakeTask(
+          Promise.resolve({
+            numPages: 3,
+            getPage: vi.fn(() => Promise.reject(new Error('Bad page tree'))),
+          }),
+        ),
+      'Preview unavailable',
+    ],
+  ])(
+    'frees the worker and document as soon as %s fails, while the error shows',
+    async (_, task, message) => {
+      const loading = task();
+      pdfjs.getDocument.mockReturnValue(loading);
+
+      render(<PdfCanvasViewer blob={pdfBlob()} />);
+
+      expect(await screen.findByText(message)).toBeTruthy();
+      // Still mounted: the error screen is open, and nothing is resident.
+      expect(loading.destroy).toHaveBeenCalledTimes(1);
+      expect(pdfjs.workerPorts[0].terminate).toHaveBeenCalledTimes(1);
+    },
+  );
+
   test('destroys the document and terminates its worker on unmount', async () => {
     const { doc } = fakeDocument(1);
     const task = fakeTask(Promise.resolve(doc));

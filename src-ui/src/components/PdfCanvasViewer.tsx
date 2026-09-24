@@ -207,6 +207,9 @@ export default function PdfCanvasViewer({ blob }: { blob: Blob }) {
         });
       })
       .catch((error: unknown) => {
+        // A failed document keeps nothing resident behind the error screen:
+        // its worker and bytes go now, not when the dialog closes.
+        opened?.destroy();
         if (active)
           setState({
             status: 'failed',
