@@ -573,9 +573,19 @@ describe('a pane opened on a phone opens over Chat', () => {
         current().openSurfaceInRegion(PR);
       });
       await waitFor(() => expect(onLayerEntry()).toBe(true));
+      const marker = () =>
+        (window.history.state as Record<string, unknown> | null)?.[
+          DIALOG_HISTORY_KEY
+        ];
+      const firstEntry = marker();
       act(() => window.history.back());
-      // Reinstated while the (silent) guard "decides".
-      await waitFor(() => expect(onLayerEntry()).toBe(true));
+      // Reinstated under a FRESH entry while the (silent) guard "decides" —
+      // waiting for the new marker proves the Back reached the guard rather
+      // than reading the old entry before the traversal lands.
+      await waitFor(() => {
+        expect(onLayerEntry()).toBe(true);
+        expect(marker()).not.toBe(firstEntry);
+      });
       expect(current().phoneLayer).not.toBeNull();
     } finally {
       unregister();
