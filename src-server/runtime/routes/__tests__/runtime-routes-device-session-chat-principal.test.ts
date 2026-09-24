@@ -324,6 +324,7 @@ describe('device-session chat principal resolution over the REAL auth path (stat
     deploymentAuthentication?: LoadedDeploymentAuthentication,
     withMembership = false,
     withLocalAccounts = false,
+    extraSessions: ReadonlyArray<readonly [string, string]> = [],
   ) {
     const { pairing, paired } = pairRealDevice(searchMode === 'home');
     const roomHomeDir = mkdtempSync(
@@ -338,6 +339,7 @@ describe('device-session chat principal resolution over the REAL auth path (stat
         ['device-owned', `human:device:${paired.device.id}`],
         ['whois-owned', 'human:tailscale-serve:owner@github'],
         ['legacy-owned', getCachedUser().alias],
+        ...extraSessions,
       ]) {
         if (taskReferences)
           store.upsertSession({
@@ -510,6 +512,8 @@ describe('device-session chat principal resolution over the REAL auth path (stat
               sessionQueries: orchestration!.sessionQueries,
               canUserReadSession:
                 orchestration!.canUserReadSession.bind(orchestration),
+              canUserReadConversation:
+                orchestration!.canUserReadConversation.bind(orchestration),
             }),
           }
         : {}),
@@ -1996,6 +2000,39 @@ describe('device-session chat principal resolution over the REAL auth path (stat
     expect(prepareSpy).toHaveBeenCalledOnce();
     const [owner] = prepareSpy.mock.calls[0]!;
     expect(owner).toMatchObject({ principalId: LOCAL_OPERATOR_PRINCIPAL_ID });
+
+    await roomRuntime.close();
+    store.close();
+  });
+
+  /**
+   * A chat created in the UI is owned by the local-operator principal, while
+   * the conversation-scoped routes decided with the cached OS alias — so a
+   * conversation's linked pull requests answered "Conversation unavailable"
+   * for every real chat and served made-up ids (ownerless reads) instead.
+   */
+  test('an operator reads the linked pull requests of the chat it owns, and a made-up id is refused', async () => {
+    const { app, store, roomRuntime } = await setup(
+      'operator',
+      true,
+      undefined,
+      false,
+      false,
+      [['operator-owned', LOCAL_OPERATOR_PRINCIPAL_ID]],
+    );
+    const read = (conversationId: string) =>
+      app.request(
+        `/api/conversation-pull-requests/${encodeURIComponent(conversationId)}`,
+        { headers: { Authorization: `Bearer ${OPERATOR_SECRET}` } },
+        REMOTE_TAILNET_ENV,
+      );
+    const owned = await read('operator-owned');
+    expect(owned.status, await owned.clone().text()).toBe(200);
+    expect(((await owned.json()) as { data: unknown }).data).toMatchObject({
+      conversationId: 'operator-owned',
+      links: [],
+    });
+    expect((await read('made-up-conversation')).status).toBe(404);
 
     await roomRuntime.close();
     store.close();

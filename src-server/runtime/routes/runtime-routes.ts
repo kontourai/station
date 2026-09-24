@@ -2082,6 +2082,27 @@ export function configureRuntimeRoutes(
   context.app.use('/api/search/*', bindConversationReadAuthority);
   context.app.use('/api/tasks', bindConversationReadAuthority);
   context.app.use('/api/tasks/*', bindConversationReadAuthority);
+  // Session- and conversation-scoped reads outside `/api/conversations` must
+  // decide with the same principal orchestration owns sessions under — the
+  // OS alias `readAuthorityForRequest` builds never owns a chat created in the
+  // UI (`human:local:operator` does), so those reads refused every real chat.
+  context.app.use(
+    '/api/conversation-pull-requests',
+    bindConversationReadAuthority,
+  );
+  context.app.use(
+    '/api/conversation-pull-requests/*',
+    bindConversationReadAuthority,
+  );
+  context.app.use('/api/pull-requests/*', bindConversationReadAuthority);
+  context.app.use(
+    '/api/projects/:slug/file-preview',
+    bindConversationReadAuthority,
+  );
+  context.app.use(
+    '/api/projects/:slug/file-preview/*',
+    bindConversationReadAuthority,
+  );
   context.app.route(
     '/agents',
     createAgentRoutes(
@@ -4142,7 +4163,7 @@ export function configureRuntimeRoutes(
               canRead: (id) =>
                 context.orchestrationService.canUserReadSession(
                   id,
-                  readAuthorityForRequest(routeContext.req.raw),
+                  conversationReadAuthorityForRequest(routeContext.req.raw),
                 ),
               listSessions: () =>
                 context.orchestrationService.listSessions(
@@ -4363,13 +4384,13 @@ export function configureRuntimeRoutes(
         canRead: (request, conversationId) =>
           context.orchestrationService.canUserReadConversation(
             conversationId,
-            readAuthorityForRequest(request),
+            conversationReadAuthorityForRequest(request),
           ),
         declared: async (request, conversationId) => {
           if (
             !context.orchestrationService.canUserReadConversation(
               conversationId,
-              readAuthorityForRequest(request),
+              conversationReadAuthorityForRequest(request),
             )
           )
             return [];
@@ -4413,7 +4434,7 @@ export function configureRuntimeRoutes(
             canRead: (id) =>
               context.orchestrationService.canUserReadSession(
                 id,
-                readAuthorityForRequest(routeContext.req.raw),
+                conversationReadAuthorityForRequest(routeContext.req.raw),
               ),
             listSessions: () =>
               context.orchestrationService.listSessions(

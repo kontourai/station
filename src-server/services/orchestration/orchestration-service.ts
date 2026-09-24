@@ -4631,7 +4631,8 @@ export class OrchestrationService {
    * transcript read uses (`readConversationEventWindow`): a conversation with
    * a recorded lineage is readable only when every linked Session is; one
    * without a lineage is a legacy one-Session conversation whose id IS its
-   * Session id, unless that id is a child Session of another conversation.
+   * Session id, unless that id is a child Session of another conversation or
+   * no Session was ever recorded under it.
    * Conversation-scoped routes (linked pull requests) asked
    * `canUserReadSession(conversationId)`, which refuses a conversation whose
    * id is not itself a readable Session.
@@ -4648,6 +4649,10 @@ export class OrchestrationService {
         this.sessionAuthz.canReadSession(linked.sessionId, authority),
       );
     if (store?.conversationForSession(conversationId)) return false;
+    // An id no Session was ever recorded under is not a conversation: in
+    // single-user mode an ownerless id reads as readable, which let a made-up
+    // id be read (and linked to) as if it were one.
+    if (!store?.readSessionByThread(conversationId)) return false;
     return this.sessionAuthz.canReadSession(conversationId, authority);
   }
 
