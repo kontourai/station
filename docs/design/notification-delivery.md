@@ -239,10 +239,17 @@ The Station side mirrors Web Push (`push-routes.ts`, `wireWebPushDelivery`):
   device itself), so a card never holds a session that credential may not
   read. Only a person's device with `orchestration:read`, not bound to a
   deployment account, may register or be read for; a device narrowed below
-  that gets one final empty card and then nothing. A phone paired by code but
-  reached through Tailscale Serve lists sessions as its WhoIs person, so its
-  in-app list can differ from its card; the card never exceeds what the
-  device credential may read. It sends one card per registered
+  that gets one final empty card and then nothing. That final card is best
+  effort: nothing flushes on a scope change, so it goes out with the next
+  lifecycle event or card refresh, and a restart in between forgets it (the
+  phone's last card then expires on its own, within two hours). A phone
+  paired by code but reached through Tailscale Serve lists sessions as its
+  WhoIs person, and a local-UI device's requests resolve to the local
+  operator, so either one's in-app list can differ from its card; the card
+  never exceeds what the device credential may read. The registration file
+  is cached in memory and re-read when its file identity changes, which covers
+  `station environment reset` from another process; two processes writing it
+  in the same instant can still lose one write. It sends one card per registered
   phone: at most five
   rows, attention first (approval, input), then failed, then live, then
   sessions finished in the last 15 minutes. Lifecycle maps to the plugin's
