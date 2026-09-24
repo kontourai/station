@@ -3191,7 +3191,15 @@ export class EventStore {
   }
 
   /**
-   * Threads bound to `ref` that `ownerUserId` could plausibly read, bounded.
+   * Threads bound to `ref` whose owner is one of `ownerUserIds`, or who have
+   * no owner, bounded. `ownerUserIds` is the owner set the caller's
+   * session-read policy can admit (see
+   * `OrchestrationService.attachmentCandidateOwnerIds`): the caller itself,
+   * the owners a personal Station shares one conversation account with, and
+   * the legacy OS-alias owner when the request may read it. Narrowing to the
+   * caller's own id alone dropped every thread the predicate would have
+   * admitted through sharing or the legacy bridge. A single string is the
+   * one-owner case; an empty list keeps only ownerless threads.
    *
    * This is a NARROWING, never an authorization: it can only ever return
    * fewer candidates than are bound, and the caller still puts every one
@@ -3206,7 +3214,10 @@ export class EventStore {
    * the 404 refuses to: does anyone on this Station hold these bytes. Filtering
    * by owner in SQL collapses "bound to threads you cannot read" onto "not
    * bound at all" — both return zero rows and cost zero predicate calls — and
-   * `LIMIT` keeps the authorized path off N as well.
+   * `LIMIT` keeps the authorized path off N as well. One placeholder per owner
+   * id, the same binding the transcript-search queries use for this owner
+   * set; its size is set by the read policy (the caller, its shared owners
+   * and at most one legacy owner), never by the request.
    *
    * `owner_user_id` comes from the conversation-history projection, which
    * materializes the same `metadata.userId` the owner fold reads, written on
@@ -3217,10 +3228,23 @@ export class EventStore {
    */
   listAttachmentCandidateThreads(
     ref: string,
-    ownerUserId: string | undefined,
+    ownerUserIds: string | readonly string[] | undefined,
     limit = ATTACHMENT_CANDIDATE_THREAD_LIMIT,
   ): string[] {
     if (!isAttachmentBlobRef(ref)) return [];
+    const owners = [
+      ...new Set(
+        ownerUserIds === undefined
+          ? []
+          : typeof ownerUserIds === 'string'
+            ? [ownerUserIds]
+            : ownerUserIds,
+      ),
+    ];
+    const ownerMatch =
+      owners.length > 0
+        ? ` OR h.owner_user_id IN (${owners.map(() => '?').join(', ')})`
+        : '';
     return (
       this.db
         .prepare(
@@ -3229,10 +3253,10 @@ export class EventStore {
              LEFT JOIN orchestration_conversation_history h
                ON h.thread_id = r.thread_id
             WHERE r.blob_ref = ?
-              AND (h.owner_user_id IS NULL OR h.owner_user_id = ?)
+              AND (h.owner_user_id IS NULL${ownerMatch})
             LIMIT ?`,
         )
-        .all(ref, ownerUserId ?? null, limit) as Array<{ thread_id: string }>
+        .all(ref, ...owners, limit) as Array<{ thread_id: string }>
     ).map((row) => row.thread_id);
   }
 

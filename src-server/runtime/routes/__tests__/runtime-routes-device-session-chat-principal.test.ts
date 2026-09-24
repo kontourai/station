@@ -325,9 +325,15 @@ describe('device-session chat principal resolution over the REAL auth path (stat
     deploymentAuthentication?: LoadedDeploymentAuthentication,
     withMembership = false,
     withLocalAccounts = false,
-    // Extra rows written before the orchestration runtime starts. Writing
-    // after it starts races its own connections for the SQLite write lock.
-    seed?: (store: EventStore) => void,
+    orchestrationExtras: {
+      // Extra rows written before the orchestration runtime starts. Writing
+      // after it starts races its own connections for the SQLite write lock.
+      seed?: (store: EventStore) => void;
+      // The production personal-conversation sharing policy
+      // (`runtime-initialize.ts` wires it through EnvironmentSecurityService,
+      // which delegates 1:1 to this same DevicePairingService).
+      personalSharing?: boolean;
+    } = {},
   ) {
     const { pairing, paired } = pairRealDevice(searchMode === 'home');
     const roomHomeDir = mkdtempSync(
@@ -384,9 +390,19 @@ describe('device-session chat principal resolution over the REAL auth path (stat
             outputText: 'An exact public answer.',
           });
       }
-      seed?.(store);
+      orchestrationExtras.seed?.(store);
       orchestration = new OrchestrationService({
         eventStore: store,
+        ...(orchestrationExtras.personalSharing
+          ? {
+              personalConversationAccess: {
+                canRead: (requesterId: string, ownerId: string) =>
+                  pairing.canSharePersonalConversation(requesterId, ownerId),
+                ownerIds: (requesterId: string) =>
+                  pairing.personalConversationOwnerIds(requesterId),
+              },
+            }
+          : {}),
         adoptionLedger: store.createAdoptionLedger(),
         eventBus: new EventBus(),
         adapterRegistry: {
@@ -515,6 +531,8 @@ describe('device-session chat principal resolution over the REAL auth path (stat
               sessionQueries: orchestration!.sessionQueries,
               canUserReadSession:
                 orchestration!.canUserReadSession.bind(orchestration),
+              attachmentCandidateOwnerIds:
+                orchestration!.attachmentCandidateOwnerIds.bind(orchestration),
             }),
           }
         : {}),
@@ -2228,132 +2246,235 @@ describe('device-session chat principal resolution over the REAL auth path (stat
   });
 
   // A stored attachment's bytes authorize through the thread that carried
-  // them, so `/api/attachments/:ref` must resolve the SAME principal that owns
-  // that thread. It once narrowed and authorized with the OS alias
-  // (`getCachedUser().alias`) while Sessions are owned by the resolved
+  // them, so `/api/attachments/:ref` must narrow and authorize with the SAME
+  // principal and owner policy that governs that thread. It once used the OS
+  // alias (`getCachedUser().alias`) while Sessions are owned by the resolved
   // principal (`human:local:operator` here), so every stored attachment
-  // answered 404 on every device. The factory test
+  // answered 404 on every device; then it narrowed to the caller's own id,
+  // which dropped threads the read policy admits through personal sharing or
+  // the legacy OS-alias bridge. The factory test
   // (`routes/orchestration/__tests__/attachments.routes.test.ts`) injects its
-  // own deps and could not see that; this goes through the production
+  // own deps and could not see either; these go through the production
   // `configureRuntimeRoutes` wiring and the real credential pipeline.
-  test('attachment bytes resolve the chat principal that owns the thread, and still refuse a caller who cannot read it', async () => {
-    const bytes = Buffer.from('attachment bytes owned by the operator');
-    const ref = attachmentBlobRefFor(bytes);
-    const threadId = 'operator-attachment-owned';
-    const ownerlessBytes = Buffer.from(
-      'attachment bytes on an ownerless thread',
-    );
-    const ownerlessRef = attachmentBlobRefFor(ownerlessBytes);
-    const ownerlessThread = 'ownerless-attachment';
-    const { app, store, roomRuntime, paired } = await setup(
-      'operator',
-      true,
-      undefined,
-      false,
-      false,
-      (seedStore) => {
-        seedStore.appendEvent({
+  describe('GET /api/attachments/:ref through the real wiring', () => {
+    function attachmentTurn(
+      store: EventStore,
+      threadId: string,
+      owner: string | undefined,
+      bytes: Buffer,
+    ) {
+      const metadata = owner ? { metadata: { userId: owner } } : {};
+      if (owner)
+        store.appendEvent({
           eventId: `${threadId}:start`,
           threadId,
           sessionId: threadId,
           provider: 'claude',
           method: 'session.started',
           createdAt: '2026-09-24T00:00:00Z',
-          metadata: { userId: LOCAL_OPERATOR_PRINCIPAL_ID },
+          ...metadata,
         });
-        seedStore.appendEvent({
-          eventId: `${threadId}:turn`,
-          threadId,
-          turnId: `${threadId}:turn`,
-          provider: 'claude',
-          method: 'turn.started',
-          createdAt: '2026-09-24T00:00:01Z',
-          prompt: 'read this note',
-          metadata: { userId: LOCAL_OPERATOR_PRINCIPAL_ID },
-          attachments: [
-            {
-              kind: 'file',
-              name: 'note.txt',
-              mimeType: 'text/plain',
-              size: bytes.length,
-              dataUrl: `data:text/plain;base64,${bytes.toString('base64')}`,
-            },
-          ],
-        });
-        // An ownerless thread; see its assertion below.
-        seedStore.appendEvent({
-          eventId: `${ownerlessThread}:turn`,
-          threadId: ownerlessThread,
-          turnId: `${ownerlessThread}:turn`,
-          provider: 'claude',
-          method: 'turn.started',
-          createdAt: '2026-09-24T00:00:02Z',
-          prompt: 'read this other note',
-          attachments: [
-            {
-              kind: 'file',
-              name: 'other.txt',
-              mimeType: 'text/plain',
-              size: ownerlessBytes.length,
-              dataUrl: `data:text/plain;base64,${ownerlessBytes.toString('base64')}`,
-            },
-          ],
-        });
-      },
+      store.appendEvent({
+        eventId: `${threadId}:turn`,
+        threadId,
+        turnId: `${threadId}:turn`,
+        provider: 'claude',
+        method: 'turn.started',
+        createdAt: '2026-09-24T00:00:01Z',
+        prompt: 'read this note',
+        ...metadata,
+        attachments: [
+          {
+            kind: 'file',
+            name: `${threadId}.txt`,
+            mimeType: 'text/plain',
+            size: bytes.length,
+            dataUrl: `data:text/plain;base64,${bytes.toString('base64')}`,
+          },
+        ],
+      });
+      return attachmentBlobRefFor(bytes);
+    }
+
+    async function fetchAttachment(app: Hono, ref: string, credential: string) {
+      const response = await app.request(
+        `/api/attachments/${ref}`,
+        { headers: { Authorization: `Bearer ${credential}` } },
+        REMOTE_TAILNET_ENV,
+      );
+      const body = Buffer.from(await response.arrayBuffer());
+      return { status: response.status, body };
+    }
+
+    const operatorBytes = Buffer.from('attachment bytes owned by the operator');
+    const ownerlessBytes = Buffer.from(
+      'attachment bytes on an ownerless thread',
     );
-    searchCleanup.unshift(async () => {
-      await roomRuntime.close();
-    });
-    // The discriminating premise: if the alias were the principal, the
-    // alias-based narrowing would have found this thread too.
-    expect(getCachedUser().alias).not.toBe(LOCAL_OPERATOR_PRINCIPAL_ID);
-
-    // The blob is written and bound, and its thread is principal-owned: the
-    // alias narrowing the route used to apply drops it.
-    expect(store.listAttachmentThreads(ref)).toEqual([threadId]);
-    expect(
-      store.listAttachmentCandidateThreads(ref, LOCAL_OPERATOR_PRINCIPAL_ID),
-    ).toEqual([threadId]);
-    expect(
-      store.listAttachmentCandidateThreads(ref, getCachedUser().alias),
-    ).toEqual([]);
-
-    const owner = await app.request(
-      `/api/attachments/${ref}`,
-      { headers: { Authorization: `Bearer ${OPERATOR_SECRET}` } },
-      REMOTE_TAILNET_ENV,
+    const legacyBytes = Buffer.from(
+      'attachment bytes on a pre-principal alias thread',
     );
-    expect(owner.status, await owner.clone().text()).toBe(200);
-    expect(Buffer.from(await owner.arrayBuffer())).toEqual(bytes);
 
-    // A paired device resolves to its own `human:device:<id>` principal and
-    // cannot read the operator's thread.
-    const device = await app.request(
-      `/api/attachments/${ref}`,
-      { headers: { Authorization: `Bearer ${paired.credential}` } },
-      REMOTE_TAILNET_ENV,
-    );
-    expect(device.status, await device.clone().text()).toBe(404);
-    expect((await device.arrayBuffer()).byteLength).toBe(0);
+    test('the chat principal that owns the thread reads its bytes; a device the policy does not admit gets 404', async () => {
+      let ref = '';
+      let ownerlessRef = '';
+      const { app, store, roomRuntime, paired } = await setup(
+        'operator',
+        true,
+        undefined,
+        false,
+        false,
+        {
+          seed: (seedStore) => {
+            ref = attachmentTurn(
+              seedStore,
+              'operator-attachment-owned',
+              LOCAL_OPERATOR_PRINCIPAL_ID,
+              operatorBytes,
+            );
+            ownerlessRef = attachmentTurn(
+              seedStore,
+              'ownerless-attachment',
+              undefined,
+              ownerlessBytes,
+            );
+          },
+        },
+      );
+      searchCleanup.unshift(async () => {
+        await roomRuntime.close();
+      });
+      // The discriminating premise: if the alias were the principal, the
+      // alias-based narrowing would have found this thread too.
+      expect(getCachedUser().alias).not.toBe(LOCAL_OPERATOR_PRINCIPAL_ID);
+      expect(store.listAttachmentThreads(ref)).toEqual([
+        'operator-attachment-owned',
+      ]);
+      expect(
+        store.listAttachmentCandidateThreads(ref, getCachedUser().alias),
+      ).toEqual([]);
 
-    // The owner-narrowing SQL alone refuses the device above (a principal-owned
-    // row never matches another principal), so that 404 cannot tell whether
-    // the session-read predicate still runs. The ownerless thread passes the
-    // narrowing (`owner_user_id IS NULL`) and is refused ONLY by the
-    // predicate: this Station does not grant single-user-compat ownerless
-    // access, so a paired device must still get a 404.
-    expect(
-      store.listAttachmentCandidateThreads(
+      const owner = await fetchAttachment(app, ref, OPERATOR_SECRET);
+      expect(owner.status, owner.body.toString()).toBe(200);
+      expect(owner.body).toEqual(operatorBytes);
+
+      // This Station has no personal sharing, so a paired device resolves to
+      // its own `human:device:<id>` principal and reads nothing it does not
+      // own.
+      const device = await fetchAttachment(app, ref, paired.credential);
+      expect(device.status, device.body.toString()).toBe(404);
+      expect(device.body.byteLength).toBe(0);
+
+      // The owner narrowing alone refuses the device above, so that 404
+      // cannot tell whether the session-read predicate still runs. The
+      // ownerless thread passes the narrowing (`owner_user_id IS NULL`) and is
+      // refused ONLY by the predicate: this Station does not grant
+      // single-user-compat ownerless access.
+      expect(
+        store.listAttachmentCandidateThreads(
+          ownerlessRef,
+          `human:device:${paired.device.id}`,
+        ),
+      ).toEqual(['ownerless-attachment']);
+      const refused = await fetchAttachment(
+        app,
         ownerlessRef,
-        `human:device:${paired.device.id}`,
-      ),
-    ).toEqual([ownerlessThread]);
-    const refused = await app.request(
-      `/api/attachments/${ownerlessRef}`,
-      { headers: { Authorization: `Bearer ${paired.credential}` } },
-      REMOTE_TAILNET_ENV,
-    );
-    expect(refused.status, await refused.clone().text()).toBe(404);
-    expect((await refused.arrayBuffer()).byteLength).toBe(0);
+        paired.credential,
+      );
+      expect(refused.status, refused.body.toString()).toBe(404);
+      expect(refused.body.byteLength).toBe(0);
+    });
+
+    test('a pre-principal thread owned by the OS alias stays readable by the home-possession local operator, and only by it', async () => {
+      let legacyRef = '';
+      const { app, roomRuntime, paired } = await setup(
+        'home',
+        true,
+        undefined,
+        false,
+        false,
+        {
+          seed: (seedStore) => {
+            legacyRef = attachmentTurn(
+              seedStore,
+              'alias-attachment-owned',
+              getCachedUser().alias,
+              legacyBytes,
+            );
+          },
+        },
+      );
+      searchCleanup.unshift(async () => {
+        await roomRuntime.close();
+      });
+      // `setup('home')` mints a home-possession device credential, which
+      // resolves to the local operator WITH the home-possession fact — the
+      // only authority the legacy bridge admits.
+      const home = await fetchAttachment(app, legacyRef, paired.credential);
+      expect(home.status, home.body.toString()).toBe(200);
+      expect(home.body).toEqual(legacyBytes);
+
+      // The operator secret over a remote peer is the same principal with no
+      // home-possession fact: the bridge must not admit it.
+      const remoteOperator = await fetchAttachment(
+        app,
+        legacyRef,
+        OPERATOR_SECRET,
+      );
+      expect(remoteOperator.status, remoteOperator.body.toString()).toBe(404);
+    });
+
+    test('personal conversation sharing admits a paired device to the operator’s thread, and still not to an ownerless one', async () => {
+      let ref = '';
+      let ownerlessRef = '';
+      const { app, roomRuntime, paired, pairing } = await setup(
+        'operator',
+        true,
+        undefined,
+        false,
+        false,
+        {
+          personalSharing: true,
+          seed: (seedStore) => {
+            ref = attachmentTurn(
+              seedStore,
+              'operator-attachment-owned',
+              LOCAL_OPERATOR_PRINCIPAL_ID,
+              operatorBytes,
+            );
+            ownerlessRef = attachmentTurn(
+              seedStore,
+              'ownerless-attachment',
+              undefined,
+              ownerlessBytes,
+            );
+          },
+        },
+      );
+      searchCleanup.unshift(async () => {
+        await roomRuntime.close();
+      });
+      const devicePrincipal = `human:device:${paired.device.id}`;
+      // The premise, from the real pairing store: this device is a member of
+      // the one personal conversation account and may read the operator's
+      // conversations.
+      expect(
+        pairing.canSharePersonalConversation(
+          devicePrincipal,
+          LOCAL_OPERATOR_PRINCIPAL_ID,
+        ),
+      ).toBe(true);
+
+      const shared = await fetchAttachment(app, ref, paired.credential);
+      expect(shared.status, shared.body.toString()).toBe(200);
+      expect(shared.body).toEqual(operatorBytes);
+
+      const refused = await fetchAttachment(
+        app,
+        ownerlessRef,
+        paired.credential,
+      );
+      expect(refused.status, refused.body.toString()).toBe(404);
+      expect(refused.body.byteLength).toBe(0);
+    });
   });
 });

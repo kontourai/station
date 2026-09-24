@@ -357,6 +357,7 @@ import {
   runSessionStartWithBoundary,
   type SessionTurnBoundaryAuthority,
 } from './session-turn-boundary.js';
+import { transcriptOwnerIds } from './transcript-search-queries.js';
 import type { TurnDeduplicator } from './turn-deduplicator.js';
 import { TurnProgressTracker } from './turn-progress-tracker.js';
 import { TurnProvenanceSidecar } from './turn-provenance-sidecar.js';
@@ -4594,6 +4595,20 @@ export class OrchestrationService {
       stationId,
       request,
     );
+  }
+
+  /**
+   * The owners whose threads `authority` could read, for narrowing an
+   * attachment's candidate threads before {@link canUserReadSession} judges
+   * each one. The same owner set transcript search binds, so the two reads
+   * cannot disagree about whose conversations are in scope. Not an
+   * authorization: `canUserReadSession` stays the final check.
+   */
+  attachmentCandidateOwnerIds(authority: SessionReadAuthority): string[] {
+    this.initialize();
+    return transcriptOwnerIds(
+      this.sessionAuthz.transcriptOwnerConstraint(authority),
+    ).filter((owner): owner is string => owner !== null);
   }
 
   canUserReadSession(threadId: string, authority: SessionReadScope): boolean {

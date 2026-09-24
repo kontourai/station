@@ -5142,7 +5142,9 @@ export function configureRuntimeRoutes(
       threadsForAttachment: (ref, request) =>
         runtimeContext.orchestrationEventStore.listAttachmentCandidateThreads(
           ref,
-          conversationReadAuthorityForRequest(request).userId,
+          context.orchestrationService.attachmentCandidateOwnerIds(
+            conversationReadAuthorityForRequest(request),
+          ),
         ),
       canReadSession: (threadId, request) =>
         context.orchestrationService.canUserReadSession(
