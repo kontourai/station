@@ -252,9 +252,14 @@ The Station side mirrors Web Push (`push-routes.ts`, `wireWebPushDelivery`):
   two minutes; `alert_id` is SHA-256 of Station, session, phase and entry.
   Several new entries for one phone are one grouped alert ("2 agents need
   you", up to five titles listed) whose id is derived from the sorted set.
+  The ids a phone has been sent are kept (bounded) with its registration in
+  the sidecar, so a restart or token rotation does not raise a group again.
+  A finished entry only counts a terminal event after the latest
+  `turn.started`; otherwise the observation time stands in.
 - **Delivery.** Per phone, at most one send every three seconds (the gateway
   allows 30 a minute per token); a change inside the interval is coalesced
-  into the next send. 503, 429, other 5xx and network errors wait for the
+  into the next send. 503, 429, 401 (which can be transient), other 5xx and
+  network errors wait for the
   publisher's single unref'd timer with backoff (5 s, ×3, at most 5 min,
   8 timed attempts; after that only a new event retries). A live card is
   re-sent 30 minutes before its two-hour expiry, and the publisher flushes
