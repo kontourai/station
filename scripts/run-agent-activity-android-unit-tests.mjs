@@ -47,6 +47,19 @@ const pluginAndroid = join(
   'android',
 );
 const testSources = join(pluginAndroid, 'src', 'test', 'java');
+/**
+ * Test cases that must be present in their class's report AND pass. A class
+ * that runs is not enough: dropping `@Test` from one of these leaves the class
+ * green. opensTheStationsKnownAnswerVector is the phone opening the Station's
+ * NATIVE_PUSH_SEALED_TEST_VECTOR, whose Kotlin copy
+ * src-server/services/notifications/__tests__/agent-activity-seal.test.ts pins
+ * to the contract; without it that pin guards a vector nothing opens.
+ */
+const REQUIRED_TEST_CASES = Object.freeze({
+  'io.kontourai.station.agentactivity.AgentSealTest': [
+    'opensTheStationsKnownAnswerVector',
+  ],
+});
 const testResults = join(
   pluginAndroid,
   'build',
@@ -132,6 +145,14 @@ try {
       "rootProject.name = 'agent-activity-unit-tests'",
       "include ':tauri-android'",
       `project(':tauri-android').projectDir = new File(${groovyString(tauriAndroid)})`,
+      // Gradle would otherwise write this project's build/ into the shared
+      // Cargo registry, which tauri-plugin copies into every plugin's
+      // .tauri/tauri-api. Keep it inside this throwaway root.
+      'gradle.beforeProject { p ->',
+      "  if (p.path == ':tauri-android') {",
+      `    p.layout.buildDirectory.set(new File(${groovyString(join(root, 'tauri-android-build'))}))`,
+      '  }',
+      '}',
       `include ':${PROJECT}'`,
       `project(':${PROJECT}').projectDir = new File(${groovyString(pluginAndroid)})`,
       '',
@@ -176,14 +197,27 @@ for (const name of expected) {
     missing.push(name);
     continue;
   }
-  const suite = /<testsuite\b[^>]*>/.exec(readFileSync(report, 'utf8'))?.[0];
+  const xml = readFileSync(report, 'utf8');
+  const suite = /<testsuite\b[^>]*>/.exec(xml)?.[0];
   const count = (attr) =>
     Number(new RegExp(`\\b${attr}="(\\d+)"`).exec(suite ?? '')?.[1] ?? NaN);
-  const tests = count('tests');
-  if (!(tests > 0) || count('failures') !== 0 || count('errors') !== 0)
+  // An all-@Ignore class reports tests > 0 with every one skipped; it ran nothing.
+  const ran = count('tests') - count('skipped');
+  if (!(ran > 0) || count('failures') !== 0 || count('errors') !== 0)
     fail(`${name} report is not a clean run: ${suite ?? 'no <testsuite>'}`);
-  total += tests - (count('skipped') || 0);
+  total += ran;
+  for (const testCase of REQUIRED_TEST_CASES[name] ?? []) {
+    const element = [
+      ...xml.matchAll(/<testcase\b([^>]*?)(?:\/>|>([\s\S]*?)<\/testcase>)/g),
+    ].find((match) => new RegExp(`\\bname="${testCase}"`).test(match[1]));
+    if (!element) fail(`${name}.${testCase} did not run`);
+    if (/<(failure|error|skipped)\b/.test(element[2] ?? ''))
+      fail(`${name}.${testCase} did not pass`);
+  }
 }
+for (const name of Object.keys(REQUIRED_TEST_CASES))
+  if (!expected.includes(name))
+    fail(`required test class ${name} has no source under ${testSources}`);
 if (missing.length > 0) fail(`no JUnit report for ${missing.join(', ')}`);
 console.log(
   `agent-activity Kotlin unit tests: ${total} tests passed across ${expected.length} classes`,
