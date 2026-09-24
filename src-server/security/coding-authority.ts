@@ -47,7 +47,7 @@ function actsForAnAgent(request: Request): boolean {
  * access request, and a collaborator's browser are all NOT in person, and
  * neither is a request no auth boundary saw.
  */
-export function isOperatorInPerson(request: Request): boolean {
+function isOperatorInPerson(request: Request): boolean {
   const principal = getRuntimeAuthenticatedRequestPrincipal(request);
   if (!principal) return false;
   return (

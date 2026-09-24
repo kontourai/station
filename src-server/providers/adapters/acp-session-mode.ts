@@ -45,7 +45,7 @@ type AcpModeProcess = {
  * Deliberately not guessed from other names; an agent that declares
  * `_meta.kind: "full_access"` on a mode is classified by that instead.
  */
-export const KNOWN_FULL_ACCESS_ACP_MODE_IDS: readonly string[] = [
+const KNOWN_FULL_ACCESS_ACP_MODE_IDS: readonly string[] = [
   'bypassPermissions',
   'full-access',
   'yolo',
@@ -90,7 +90,7 @@ function declaredFullAccessIds(raw: unknown): string[] {
 }
 
 /** Whether selecting `modeId` in this catalog skips the agent's prompts. */
-export function isFullAccessAcpMode(
+function isFullAccessAcpMode(
   catalog: AdvertisedAcpModeCatalog,
   modeId: string,
 ): boolean {

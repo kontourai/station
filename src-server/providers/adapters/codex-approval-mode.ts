@@ -179,7 +179,7 @@ export function readCodexSandboxPolicy(
 }
 
 /** The Station sandbox mode a policy is; `externalSandbox` has none. */
-export function codexSandboxModeOfPolicy(
+function codexSandboxModeOfPolicy(
   policy: CodexSandboxPolicy | undefined,
 ): CodexSandboxMode | undefined {
   switch (policy?.type) {
