@@ -25,14 +25,18 @@ export function hostOwnsExternalLinks(): boolean {
  * is what this exists to prevent (#2049); the MCP frame already routed around
  * it, and this is that route, shared.
  *
- * DEVIATION, stated plainly: #2049's plan said external links open "in a new
- * tab on web". They do not. A chat anchor's web branch is the anchor's own
- * default, which REPLACES the Station tab — the behaviour before #2049. Only
- * the native half was extracted, so the MCP frame keeps its `location.assign`
- * byte for byte and no caller silently changed. Opening a new tab is a
- * separate change with its own question (whether a model-written link should
- * be able to open one), and `docs/design/placement.md` records it as open.
+ * On the web this is `null` and each caller keeps its own web behaviour: a
+ * chat anchor that leaves Station carries `target="_blank"` (a new tab, as
+ * #2049 specified), and the MCP frame keeps its `location.assign`.
  */
+export async function openNativeExternalLink(
+  url: string,
+): Promise<boolean | null> {
+  const native = await nativePlatformPromise;
+  if (native.platform !== 'tauri') return null;
+  return native.openExternalLink(url);
+}
+
 /**
  * Open `url` outside Station on either host: the native host's opener (on a
  * phone that hands a forge link to its app), else a new browser tab with no
@@ -44,12 +48,4 @@ export async function openExternalLink(url: string): Promise<void> {
   const native = await openNativeExternalLink(url);
   if (native !== null) return;
   window.open(url, '_blank', 'noopener,noreferrer');
-}
-
-export async function openNativeExternalLink(
-  url: string,
-): Promise<boolean | null> {
-  const native = await nativePlatformPromise;
-  if (native.platform !== 'tauri') return null;
-  return native.openExternalLink(url);
 }
