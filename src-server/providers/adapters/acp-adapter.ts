@@ -823,8 +823,6 @@ export class AcpAdapter implements ProviderAdapterShape {
         modelOptions: input.modelOptions
           ? { ...input.modelOptions }
           : undefined,
-        // #2569: an engine re-establishment keeps the session's confinement.
-        ...(input.confinement ? { confinement: input.confinement } : {}),
         workspaceIsolation: input.workspaceIsolation,
         metadata: input.metadata ? { ...input.metadata } : undefined,
         credentialProfileRef: input.credentialProfileRef,
@@ -1245,6 +1243,9 @@ export class AcpAdapter implements ProviderAdapterShape {
           record.currentModeId = modeCatalog.currentModeId;
         }
         // #2569: a full-access mode is the ACP form of approval `never`;
+        // (Only a fresh `session/new` applies a start mode: a credential
+        // re-establishment always resumes with `session/load`, so the
+        // `recoveryStart` copy needs no confinement of its own.)
         // outside a `host` session it is not applied, and the session keeps
         // (and reports, as `acpSessionMode`) the connection's own current
         // mode. `mode` is not an effective-model-option key, so nothing
