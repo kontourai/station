@@ -1840,12 +1840,26 @@ function stopRecord(
       [record.serverPid, record.serverFingerprint, 'server'],
       [record.uiPid, record.uiFingerprint, 'ui'],
     ] as const;
-    let anyPresent = false;
+    let anyAlive = false;
+    let unverifiableLabel: string | undefined;
     for (const [pid, expected, label] of identities) {
       if (!pid) continue;
+      // Liveness is decided by `isProcessAlive` (signal-0 + a zombie check),
+      // never by whether the fingerprint probe returned something: the probe
+      // has more ways to come back null than "the process is gone" — an
+      // unreadable /proc, a `ps` without a `command=` column (busybox), or a
+      // missing boot id. Reading a null fingerprint as absence made `station
+      // stop` delete a running instance's state record (#2332 item 2).
+      if (!isProcessAlive(pid)) continue;
+      anyAlive = true;
       const actual = inspectProcessFingerprint(pid);
-      if (!actual) continue;
-      anyPresent = true;
+      if (!actual) {
+        // Alive, but its identity could not be confirmed. Fail safe: do not
+        // claim absence and do not sign off on a match either — keep the
+        // record and refuse the stop instead of guessing.
+        unverifiableLabel = label;
+        continue;
+      }
       if (!expected || !fingerprintMatchesRecorded(actual, expected)) {
         appendStopResult('failed');
         throw new Error(
@@ -1853,7 +1867,7 @@ function stopRecord(
         );
       }
     }
-    if (!anyPresent) {
+    if (!anyAlive) {
       appendStopResult('already_absent');
       if (record.serverPid) {
         const activeApiBase = activeLocalApiBase(
@@ -1881,6 +1895,12 @@ function stopRecord(
       );
       return;
     }
+    if (unverifiableLabel) {
+      appendStopResult('failed');
+      throw new Error(
+        `Refusing to stop Station instance ${record.instanceId}: the ${unverifiableLabel} process is running but its identity could not be verified (unreadable /proc, unsupported ps output, or a missing boot id). The recorded state was kept; investigate the process manually.`,
+      );
+    }
   }
   for (const pid of pids) {
     if (managed) {
@@ -1888,8 +1908,14 @@ function stopRecord(
         pid === record.serverPid
           ? record.serverFingerprint
           : record.uiFingerprint;
+      if (!isProcessAlive(pid)) continue;
       const actual = inspectProcessFingerprint(pid);
-      if (!actual) continue;
+      if (!actual) {
+        appendStopResult('failed');
+        throw new Error(
+          `Refusing to signal PID ${pid}: process is running but its identity could not be verified`,
+        );
+      }
       if (!expected || !fingerprintMatchesRecorded(actual, expected)) {
         appendStopResult('failed');
         throw new Error(

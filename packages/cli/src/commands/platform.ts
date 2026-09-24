@@ -1,6 +1,6 @@
 import { execFileSync, execSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { performance } from 'node:perf_hooks';
@@ -31,6 +31,8 @@ type InspectFingerprintDependencies = {
   platform?: NodeJS.Platform;
   /** Linux birth token; defaults to the shared `/proc`-derived probe. */
   birth?: (pid: number) => string | null;
+  /** Linux command read; defaults to `/proc/<pid>/cmdline`. */
+  readFile?: (path: string, encoding: 'utf8') => string;
 };
 
 /**
@@ -75,7 +77,7 @@ function inspectLinuxProcessFingerprint(
   pid: number,
   dependencies: InspectFingerprintDependencies,
 ): ProcessFingerprint | null {
-  const exec = dependencies.exec ?? execFileSync;
+  const readFile = dependencies.readFile ?? readFileSync;
   const birth =
     dependencies.birth ??
     ((target: number) =>
@@ -84,12 +86,14 @@ function inspectLinuxProcessFingerprint(
   if (!before) return null;
   let command: string;
   try {
-    command = exec('ps', ['-o', 'command=', '-p', String(pid)], {
-      encoding: 'utf8',
-      env: { ...process.env, LC_ALL: 'C', TZ: 'UTC' },
-      stdio: ['ignore', 'pipe', 'ignore'],
-      windowsHide: true,
-    }).trim();
+    // /proc/<pid>/cmdline is NUL-separated argv with a trailing NUL, and
+    // reading it needs no external binary: a `ps` that lacks a
+    // `command=` column (busybox, some embedded images) previously made
+    // this probe return null for a live process, which stopRecord's caller
+    // then read as "already absent" (#2332 item 2). Reading `/proc`
+    // directly removes that dependency entirely on Linux.
+    const raw = readFile(`/proc/${pid}/cmdline`, 'utf8');
+    command = raw.replace(/\u0000+/g, ' ').trim();
   } catch {
     return null;
   }

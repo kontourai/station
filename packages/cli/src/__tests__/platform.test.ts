@@ -1,4 +1,5 @@
 import { execSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -24,6 +25,9 @@ const fingerprint = (digest: string) => ({
   startToken: 'Mon Jul 13 10:00:00 2026',
   commandDigest: digest.repeat(64),
 });
+
+const createHashHex = (value: string) =>
+  createHash('sha256').update(value).digest('hex');
 
 describe('inspectProcessFingerprint (station#3049)', () => {
   const psOptions = (exec: ReturnType<typeof vi.fn>) =>
@@ -95,9 +99,11 @@ describe('inspectProcessFingerprint (station#3049)', () => {
 });
 
 describe('inspectProcessFingerprint on Linux (WSL2 lstart drift)', () => {
-  const psCommand = vi.fn(
-    (_file: string, _args: string[]) => '/usr/bin/node dist-server/main.js\n',
-  );
+  const readCmdline = (command: string) =>
+    vi.fn((path: string) => {
+      if (path !== '/proc/41/cmdline') throw new Error(`unexpected: ${path}`);
+      return `${command}\u0000`;
+    });
 
   it('takes the start token from the /proc birth, never from lstart', () => {
     // The defect: under WSL2 `ps -o lstart=` for one live process walks
@@ -105,26 +111,57 @@ describe('inspectProcessFingerprint on Linux (WSL2 lstart drift)', () => {
     // so a token recorded at start mismatched at stop. The /proc birth
     // (field 22 + boot id) does not move; lstart must not be consulted.
     const birth = vi.fn(() => 'linux:boot-id:68452148');
+    const readFile = readCmdline('/usr/bin/node\u0000dist-server/main.js');
     const first = inspectProcessFingerprint(41, {
-      exec: psCommand as never,
       platform: 'linux',
       birth,
+      readFile: readFile as never,
     });
     expect(first).toEqual({
       pid: 41,
       startToken: 'linux:boot-id:68452148',
       commandDigest: expect.stringMatching(/^[0-9a-f]{64}$/),
     });
-    const psArgs = psCommand.mock.calls.map((call) => call[1]);
-    expect(psArgs).toEqual([['-o', 'command=', '-p', '41']]);
+    expect(readFile).toHaveBeenCalledWith('/proc/41/cmdline', 'utf8');
+  });
+
+  it('reads the command from /proc/<pid>/cmdline, not `ps` (#2332 item 2)', () => {
+    // Some embedded/busybox `ps` builds have no `command=` column and print
+    // an empty line for it, which previously made this probe return null
+    // for a LIVE process. Reading /proc directly has no `ps` dependency on
+    // Linux at all, so no ps mock is even wired into this test.
+    const readFile = readCmdline('/usr/bin/node\u0000--flag');
+    const result = inspectProcessFingerprint(41, {
+      platform: 'linux',
+      birth: () => 'linux:boot-id:1',
+      readFile: readFile as never,
+    });
+    expect(result?.commandDigest).toBe(
+      createHashHex('/usr/bin/node --flag'),
+    );
+  });
+
+  it('fails closed when /proc/<pid>/cmdline cannot be read', () => {
+    // Unreadable /proc (permissions, an already-reaped pid, or a container
+    // boundary): the caller must NOT read this as a resolved digest.
+    const readFile = vi.fn(() => {
+      throw new Error('ENOENT');
+    });
+    expect(
+      inspectProcessFingerprint(41, {
+        platform: 'linux',
+        birth: () => 'linux:boot-id:1',
+        readFile: readFile as never,
+      }),
+    ).toBeNull();
   });
 
   it('fails closed when the pid is reused between the birth and command reads', () => {
     const births = ['linux:boot-id:100', 'linux:boot-id:200'];
     expect(
       inspectProcessFingerprint(41, {
-        exec: psCommand as never,
         platform: 'linux',
+        readFile: readCmdline('/usr/bin/node') as never,
         birth: () => births.shift() ?? null,
       }),
     ).toBeNull();
@@ -133,8 +170,8 @@ describe('inspectProcessFingerprint on Linux (WSL2 lstart drift)', () => {
   it('fails closed when the process has no birth record', () => {
     expect(
       inspectProcessFingerprint(41, {
-        exec: psCommand as never,
         platform: 'linux',
+        readFile: readCmdline('/usr/bin/node') as never,
         birth: () => null,
       }),
     ).toBeNull();
