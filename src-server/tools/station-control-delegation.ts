@@ -5414,7 +5414,7 @@ export async function executeExecutionTargetMessage(
     // #2436: a carried approval pick is recorded here, on this Station,
     // before the send's session start and turn. An engine with no approval
     // knob records nothing (the pick would be a request nothing honours).
-    recordApprovalMode: async (_access: EnvironmentAccess, pick) =>
+    recordApprovalMode: (_access: EnvironmentAccess, pick) =>
       approvalKnobSupported(pick.provider)
         ? orchestrationService.recordApprovalModeDecision(pick)
         : undefined,
