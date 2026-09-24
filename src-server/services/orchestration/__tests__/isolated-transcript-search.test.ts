@@ -743,6 +743,7 @@ describe('isolated transcript read owner and existing session policy', () => {
     const search = service.createIsolatedTranscriptSearch();
     let result: Awaited<ReturnType<typeof search.search>> = {
       state: 'unavailable',
+      cause: { kind: 'unrecorded' },
     };
     await expect
       .poll(async () => {
