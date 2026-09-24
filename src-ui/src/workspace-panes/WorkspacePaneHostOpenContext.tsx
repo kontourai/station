@@ -35,6 +35,13 @@ export interface WorkspacePaneHostOpenAction {
    * writes a second occurrence or falls back when the exact identity is gone.
    */
   focusExisting?(instanceId: WorkspacePaneInstanceId): boolean;
+  /**
+   * Closes one pane through the host's own close (its persistence lease and
+   * dirty-state confirmation), as the tab's close control would (#2465: a
+   * layout removing a pane that belongs in the dock). A host's last pane is
+   * not closed.
+   */
+  close?(instanceId: WorkspacePaneInstanceId): Promise<void>;
 }
 
 /** Caller-owned state transaction paired with the host's durable open. */

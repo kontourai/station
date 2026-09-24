@@ -272,6 +272,7 @@ function deriveSession(
     lastAppliedApprovalMode: chatState.lastAppliedApprovalMode,
     pendingApprovalMode: chatState.pendingApprovalMode,
     approvalModeOverride: chatState.approvalModeOverride,
+    fullAccessNotCarriedSessionId: chatState.fullAccessNotCarriedSessionId,
     model: chatState.model,
     modelSource: chatState.modelSource,
     defaultModel: chatState.defaultModel,

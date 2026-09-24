@@ -214,7 +214,10 @@
 
   .page-section__actions > button,
   .page-section__actions > a,
-  .page-row__control > button,
+  /* Not switches: a shared Toggle is a 36x20 track whose 44px touch target is
+     its own ::before (Toggle.css). Stretching the button itself to 44px made
+     every PageRow toggle an upright oval on phones (#2441). */
+  .page-row__control > button:not([role="switch"]),
   .page-row__control > a {
     min-height: 44px;
   }
