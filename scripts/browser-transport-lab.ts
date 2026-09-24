@@ -991,6 +991,20 @@ async function runStationUiRelayJourney(input: {
     await input.page
       .getByRole('heading', { name: 'Relay shared fixture', exact: true })
       .waitFor({ timeout: 30000 });
+    await input.page
+      .getByText(input.accountStation.sharedWork.sharedTask.title, {
+        exact: true,
+      })
+      .waitFor({ timeout: 15000 });
+    assert.equal(
+      await input.page
+        .getByText(input.accountStation.sharedWork.unpublishedTask.title, {
+          exact: true,
+        })
+        .count(),
+      0,
+      'Unpublished Project work must stay hidden from the member UI',
+    );
   } catch {
     stationUiFailure = {
       phase: 'project-navigation',
@@ -1016,7 +1030,8 @@ async function runStationUiRelayJourney(input: {
     publicStationHealth: publicHandshake.reason,
     browserSelectedCandidateTypes: selectedRelayPair,
     stationAnswerRelayCandidateCount: stationAnswerCandidateTypes.relay,
-    protectedProjectRead: 'Relay shared fixture visible in Station UI',
+    protectedProjectRead: 'Project and published Task visible in Station UI',
+    unpublishedTaskHidden: true,
     deviceApprovalRequestIdObserved: true,
     directStationApiAttempts,
     routingGrantDistinctFromOperator: true,
