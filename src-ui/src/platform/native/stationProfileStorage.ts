@@ -385,6 +385,10 @@ export function savedConnectionFromStationProfile(
  * does not make a transient connection choice the CLI default: callers must
  * use `makeDefault` for that explicit cross-client mutation.
  */
+function message(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 export class NativeStationProfileStorage
   implements StorageAdapter, NativeStationProfileRepository
 {
@@ -854,50 +858,42 @@ export class NativeStationProfileStorage
 
   /**
    * Forgets a direct saved Station on this device: its profile, its project
-   * mappings, the CLI default if it named it, and its credential unless
-   * another profile still uses that credential.
+   * mappings, the CLI default if it named it (cleared, as `station profile
+   * remove` does), and its credential unless another profile still uses it.
    *
-   * The active Station's credential is deleted first, through the active
-   * path: the host resolves that path from the profile, so it must still be
-   * in the store, and the same call clears the host's active binding. If the
-   * store write then fails, the Station stays listed without a credential,
-   * and forgetting it again finishes the job. Any other Station is written
-   * out first and its credential deleted after, once the host can see nothing
-   * references it. Forgetting the active Station falls back to the default,
-   * which is authorized here so the app is not left with no active Station.
+   * The confirmed name and address are checked before anything changes. The
+   * store is written first and the credential deleted after, for the active
+   * Station too: writing the profile out also clears the host's active
+   * binding, and the host deletes a credential only once nothing references
+   * it. A failed write therefore changes nothing and can simply be retried.
+   *
+   * Forgetting the selected Station moves the selection to the default, or,
+   * with no default left, to the first remaining Station for this session
+   * only; the CLI default is never reassigned here.
    */
   async removeProfile(
     input: import('@kontourai/station-connect').SavedStationRemoval,
   ): Promise<void> {
     const matches = (profile: StationProfile) =>
       profileConnectionId(profile) === input.connectionId;
+    const confirmed = (profile: StationProfile | undefined) =>
+      profile !== undefined &&
+      profile.name === input.expected.name &&
+      profile.endpoint === input.expected.url;
     const initial = await this.readProfileStore();
     const target = initial.profiles.find(matches);
-    if (!target || target.localService || target.relayRoute)
+    if (target && (target.localService || target.relayRoute))
       throw new Error('This Station cannot be forgotten here.');
-    const reference = target.credentialRef;
-    const sharesCredential = (profiles: readonly StationProfile[]) =>
-      reference !== undefined &&
-      profiles.some(
-        (profile) =>
-          !matches(profile) &&
-          profile.credentialRef?.kind === reference.kind &&
-          profile.credentialRef?.id === reference.id,
+    if (!confirmed(target))
+      throw new Error(
+        'This Station changed while you were confirming. Reopen it and try again.',
       );
-    const wasActive =
-      this.activeRequestBinding?.connectionId === input.connectionId;
-    if (wasActive && reference && !sharesCredential(initial.profiles)) {
-      await this.bridge.invoke('credential_vault_delete');
-    }
+    const wasSelected = this.values.get(ACTIVE_KEY) === input.connectionId;
 
     for (let attempt = 0; attempt < 3; attempt++) {
       const current = await this.readProfileStore();
       const profile = current.profiles.find(matches);
-      if (
-        !profile ||
-        profile.name !== input.expected.name ||
-        profile.endpoint !== input.expected.url
-      )
+      if (!profile || !confirmed(profile))
         throw new Error(
           'This Station changed while you were confirming. Reopen it and try again.',
         );
@@ -929,25 +925,42 @@ export class NativeStationProfileStorage
         continue;
       }
       this.replaceProfileStore(next);
-      const fallback = this.values.get(ACTIVE_KEY);
-      if (wasActive && fallback) {
-        try {
-          await this.authorizeActiveConnection(fallback);
-        } catch (error) {
-          throw new Error(
-            `Station forgotten, but switching to the next Station failed: ${String(error)}`,
-          );
-        }
-      }
-      if (reference && !wasActive && !sharesCredential(profiles)) {
+      const reference = profile.credentialRef;
+      const failures: string[] = [];
+      if (
+        reference &&
+        !profiles.some(
+          (candidate) =>
+            candidate.credentialRef?.kind === reference.kind &&
+            candidate.credentialRef?.id === reference.id,
+        )
+      ) {
         try {
           await this.deleteUnreferencedCredential(reference);
         } catch (error) {
-          throw new Error(
-            `Station forgotten, but its saved credential could not be deleted: ${String(error)}`,
+          failures.push(
+            `its saved credential could not be deleted (${message(error)})`,
           );
         }
       }
+      if (wasSelected) {
+        const fallback =
+          this.values.get(ACTIVE_KEY) ??
+          profiles
+            .filter((candidate) => candidate.relayRoute === undefined)
+            .map(profileConnectionId)[0];
+        if (fallback) {
+          try {
+            await this.authorizeActiveConnection(fallback);
+          } catch (error) {
+            failures.push(
+              `switching to the next Station failed (${message(error)})`,
+            );
+          }
+        }
+      }
+      if (failures.length > 0)
+        throw new Error(`Station forgotten, but ${failures.join(' and ')}.`);
       return;
     }
     throw new Error('saved Stations changed concurrently; retry.');

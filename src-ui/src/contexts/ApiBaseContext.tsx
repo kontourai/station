@@ -190,8 +190,13 @@ export function ApiBaseProvider({ children }: { children: ReactNode }) {
       removeSharedProfile={
         profile.isTauri
           ? async (input) => {
-              await nativeProfileRepository().removeProfile(input);
-              notifyCredentialChanged(new URL(input.expected.url).origin);
+              try {
+                await nativeProfileRepository().removeProfile(input);
+              } finally {
+                // Also after a partial failure: the profile may already be
+                // gone, and streams to its origin must not keep its binding.
+                notifyCredentialChanged(new URL(input.expected.url).origin);
+              }
             }
           : undefined
       }

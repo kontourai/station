@@ -313,7 +313,7 @@ function ConnectionRow({
             className="station-connect-row__meta station-connect-row__meta--warning"
           >
             {isSharedStationProfile
-              ? 'Removes it and its saved credential from this device, including for the station CLI if you use it here.'
+              ? 'Removes it from this device, including from the station CLI if you use it here.'
               : 'Removes it from this device only.'}
           </div>
         )}

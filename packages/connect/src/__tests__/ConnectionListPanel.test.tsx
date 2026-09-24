@@ -808,7 +808,7 @@ describe('ConnectionListPanel', () => {
       expect(onRemove).not.toHaveBeenCalled();
       expect(
         screen.getByText(
-          'Removes it and its saved credential from this device, including for the station CLI if you use it here.',
+          'Removes it from this device, including from the station CLI if you use it here.',
         ),
       ).toBeTruthy();
       fireEvent.click(
