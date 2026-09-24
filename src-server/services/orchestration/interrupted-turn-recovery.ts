@@ -22,11 +22,11 @@ interface InterruptedTurnRecoveryDeps {
   /**
    * Called, not captured: the store is optional on the service options and a
    * swap after construction must be honoured. The handle crosses here
-   * deliberately — the four operations this module needs
-   * (`takeInterruptedTurnBoundaries`, `latestEventByMethod`, `hasEventId`,
-   * `resolveInterruptedTurnBoundary`) are one transactional unit over the
-   * boundary table and event log, and fanning them into four unrelated
-   * arrows would hide that. No Map crosses (T13).
+   * deliberately — the five operations this module needs
+   * (`takeInterruptedTurnBoundaries`, `latestEventByMethod`,
+   * `listEventsForTurn`, `hasEventId`, `resolveInterruptedTurnBoundary`) are
+   * one transactional unit over the boundary table and event log, and
+   * fanning them into five unrelated arrows would hide that. No Map crosses (T13).
    */
   eventStore: () => EventStore | undefined;
   /**
@@ -271,10 +271,23 @@ export class InterruptedTurnRecovery {
         // thread's latest turn start, the process died before it landed (or
         // the thread moved on): there is no turn to close or banner.
         const providerTurn = isProviderTurnBoundary(record);
+        // #2324 review L4: a send the engine accepted but never started (it
+        // was queued behind a turn the engine opened itself when the process
+        // died) has no `turn.started` of its own — the start is published
+        // only when the engine starts it. A newer start on the thread is then
+        // not "the thread moved on past it": that send still needs its
+        // terminal and banner, or it vanishes without a trace.
+        const ownTurnStarted =
+          record.providerTurnId !== undefined &&
+          eventStore
+            .listEventsForTurn(record.threadId, record.providerTurnId, 64)
+            .some((event) => event.payload.method === 'turn.started');
         if (
           (providerTurn &&
             latestTurnStarted?.turnId !== record.providerTurnId) ||
-          (latestTurnStarted?.turnId !== undefined &&
+          (!providerTurn &&
+            (record.providerTurnId === undefined || ownTurnStarted) &&
+            latestTurnStarted?.turnId !== undefined &&
             latestTurnStarted.turnId !== record.providerTurnId &&
             latestTurnStarted.createdAt > record.createdAt)
         ) {

@@ -1326,6 +1326,41 @@ describe('station#4080 slice 1: interrupted-turn boundary consumption', () => {
       ).toEqual({ kind: 'available', active: false });
     });
 
+    test('L4: a send queued behind it when the process died (accepted, never started) still gets its terminal and banner', async () => {
+      const path = databasePath();
+      const threadId = 'thread-queued-behind-provider';
+      const dying = new EventStore(path);
+      dying.appendEvent(sessionStartedEvent({ threadId, provider: 'claude' }));
+      // The send: the engine accepted it (its boundary is `accepted`) but it
+      // was queued, so its `turn.started` was never published.
+      const claimed = dying
+        .sessionTurnBoundaryAuthority()
+        .claim(threadId, '2026-08-16T00:00:00.500Z');
+      if (claimed.kind !== 'owner') throw new Error('expected boundary owner');
+      claimed.claim.beginInvocation('2026-08-16T00:00:00.600Z');
+      claimed.claim.accepted('queued-send', '2026-08-16T00:00:00.700Z');
+      // The engine's own turn, running ahead of it.
+      (serviceOn(dying) as any).projectAndPublishEvent(providerStart(threadId));
+      dying.close();
+
+      const eventStore = new EventStore(path);
+      stores.push(eventStore);
+      await (serviceOn(eventStore) as any).interruptedTurns.consume();
+      const aborts = eventStore
+        .listEvents(threadId)
+        .filter((event) => event.payload.method === 'turn.aborted')
+        .map((event) => event.payload.turnId);
+      expect(aborts.sort()).toEqual(['provider:turn-1', 'queued-send']);
+      expect(
+        eventStore
+          .listEvents(threadId)
+          .filter((event) => event.payload.method === 'session.state-changed'),
+      ).toHaveLength(2);
+      expect(
+        eventStore.sessionTurnBoundaryAuthority().hasPossibleEffect(threadId),
+      ).toEqual({ kind: 'available', active: false });
+    });
+
     test('a crash before its start was persisted leaves nothing to close: the row resolves silently', async () => {
       const path = databasePath();
       const threadId = 'thread-provider-no-start';

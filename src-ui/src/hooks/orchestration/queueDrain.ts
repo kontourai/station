@@ -130,6 +130,30 @@ export function resumeHeldQueueDrain(apiBase: string, chatKey: string): void {
   drainQueuedMessageOnTurnCompleted(apiBase, chatKey);
 }
 
+/** #2324 review L2: bounded re-drains for a send refused by a provider turn. */
+const PROVIDER_TURN_REDRAIN_DELAY_MS = 1_000;
+const PROVIDER_TURN_REDRAIN_MAX_ATTEMPTS = 10;
+const providerTurnRedrainAttempts = new Map<string, number>();
+
+function scheduleProviderTurnRedrain(apiBase: string, threadId: string): void {
+  const attempts = providerTurnRedrainAttempts.get(threadId) ?? 0;
+  if (attempts >= PROVIDER_TURN_REDRAIN_MAX_ATTEMPTS) {
+    providerTurnRedrainAttempts.delete(threadId);
+    return;
+  }
+  providerTurnRedrainAttempts.set(threadId, attempts + 1);
+  setTimeout(() => {
+    const chat = activeChatsStore.getSnapshot()[threadId];
+    // An open turn drains the queue when it ends; only a queue nothing
+    // would drain is retried here.
+    if (!chat?.queuedMessages?.length || serverTurnLive(chat) === true) {
+      providerTurnRedrainAttempts.delete(threadId);
+      return;
+    }
+    drainQueuedMessageOnTurnCompleted(apiBase, threadId);
+  }, PROVIDER_TURN_REDRAIN_DELAY_MS);
+}
+
 export function drainQueuedMessageOnTurnCompleted(
   apiBase: string,
   threadId: string,
@@ -315,6 +339,7 @@ export function drainQueuedMessageOnTurnCompleted(
       ),
     })
       .then(() => {
+        providerTurnRedrainAttempts.delete(threadId);
         // Say what the retry actually did: the follow-up went to the
         // conversation as it is, NOT into the project workspace the chat is
         // grouped under. Silently dropping the workspace would be a second
@@ -353,6 +378,27 @@ export function drainQueuedMessageOnTurnCompleted(
             : undefined;
         const sessionEnded =
           dropPermanentlyRejected && code === SESSION_ENDED_REJECTION_CODE;
+        // #2324 (D4, review L2): the engine is replying on its own. Not a
+        // failure of this message: it goes back to the head of the queue,
+        // waiting, and the turn it waits for drains it when it ends. If no
+        // turn is visibly open (it ended while this send was in flight, or
+        // has not published its start yet) nothing else would drain it, so
+        // the drain is retried after a short delay, a bounded number of
+        // times.
+        if (code === PROVIDER_TURN_IN_PROGRESS_CODE) {
+          activeChatsStore.updateChat(threadId, {
+            status: 'idle',
+            error: undefined,
+            sendAwaitingTurnStart: undefined,
+            queuedMessages: [nextMessage, ...(failed?.queuedMessages ?? [])],
+            queuedMessageFailure: undefined,
+            ...(messagesAfterRollback
+              ? { messages: messagesAfterRollback }
+              : {}),
+          });
+          scheduleProviderTurnRedrain(apiBase, threadId);
+          return;
+        }
         // A permanent Station-side refusal of a QUEUED follow-up is not an
         // error state of the chat: the conversation itself is settled, and
         // only this follow-up was undeliverable. Setting `status: 'error'`
