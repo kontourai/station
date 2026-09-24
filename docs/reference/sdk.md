@@ -187,12 +187,18 @@ Returns actions for a specific chat session (stop, clear, etc.).
 
 Returns the current state of a specific chat session (loading, messages, etc.).
 
-#### `useSendToChat(agentSlug: string): (message: string) => void`
+#### `useSendToChat(agent: QualifiedPluginAgentId | AgentId): (message: string) => void`
 
-Convenience hook. Returns a function that creates a session, opens the dock, and sends a message — all in one call. Resolves short agent names via layout context.
+Convenience hook. Returns a function that creates a session, opens the dock, and sends a message — all in one call.
+
+Name an Agent your plugin contributes as `'<plugin>:<agent>'`. The hook derives
+the Agent's identity from it and sends only when the named plugin contributed
+that Agent; a reference naming another plugin is refused. A clean Agent id from
+`agentId()` in `@kontourai/station-contracts/agent-identity` also works. When
+no Agent matches, the function warns and sends nothing.
 
 ```tsx
-const sendToChat = useSendToChat('my-agent');
+const sendToChat = useSendToChat('my-plugin:assistant');
 sendToChat('Summarize this account');
 ```
 
@@ -200,9 +206,13 @@ sendToChat('Summarize this account');
 
 ### Navigation Hooks
 
-#### `useNavigation(): NavigationState & { setDockState, setActiveChat, selectedWorkspace, ... }`
+#### `useNavigation(): SDKNavigation`
 
-Returns the full navigation state and setters.
+Returns the navigation a plugin may read and drive: `pathname`,
+`selectedProject`, `selectedProjectLayout`, `selectedAgent`,
+`activeConversation`, `activeChat`, `activeTab`, `isDockOpen` and
+`isDockMaximized`, plus `navigate`, `setProject`, `setLayout`, `setLayoutTab`,
+`setConversation`, `setActiveChat` and `setDockState`.
 
 #### `useDockState(): { isOpen: boolean; setOpen: (v: boolean) => void; toggle: () => void }`
 
@@ -216,15 +226,15 @@ const { isOpen, toggle } = useDockState();
 
 ### Auth & Config Hooks
 
-#### `useAuth()`
+#### `useAuth(): SDKAuthState`
 
 Returns the current auth state.
 
 ```ts
 {
-  status: 'authenticated' | 'unauthenticated' | 'missing';
-  user: { id: string; name: string; email: string } | null;
-  expiresAt: number | null;
+  status: 'valid' | 'expiring' | 'expired' | 'missing' | 'not-configured' | 'loading';
+  user: { alias: string; name?: string; title?: string; email?: string; profileUrl?: string } | null;
+  expiresAt: Date | null;
   provider: string;
   renew: () => Promise<void>;
   isRenewing: boolean;
@@ -319,15 +329,16 @@ Returns models available for the current user/layout.
 
 ### Knowledge Hooks
 
-#### `useKnowledgeDocs(projectSlug: string, namespace?: string): KnowledgeDoc[]`
+#### `useKnowledgeDocs(projectSlug: string, namespace?: string)`
 
-Returns knowledge documents for a project, optionally filtered by namespace.
+Returns a query whose `data` is the project's `KnowledgeDocumentMeta[]`,
+optionally filtered by namespace.
 
-#### `useKnowledgeNamespaces(projectSlug: string): KnowledgeNamespace[]`
+#### `useKnowledgeNamespaces(projectSlug: string)`
 
-Returns knowledge namespaces for a project.
+Returns a query whose `data` is the project's `KnowledgeNamespaceConfig[]`.
 
-#### `useKnowledgeSearch(projectSlug: string, query: string, namespace?: string): SearchResult[]`
+#### `useKnowledgeSearch(projectSlug: string, query: string, namespace?: string)`
 
 Returns semantic search results from a project's knowledge base.
 
@@ -335,9 +346,24 @@ Returns semantic search results from a project's knowledge base.
 
 ### Notification Hooks
 
-#### `useToast()`
+#### `useToast(): SDKToast`
 
-Returns `{ showToast(message, type, duration?) }`. Types: `'info' | 'success' | 'warning' | 'error'`.
+Returns `{ showToast, dismissToast }`. `showToast` takes either spelling and
+returns the toast id:
+
+```tsx
+const { showToast } = useToast();
+showToast('Saved', 'success');
+showToast({
+  message: 'Saved',
+  type: 'success',
+  duration: 8000,
+  actions: [{ label: 'View', onClick: openNotes }],
+});
+```
+
+Types: `'info' | 'success' | 'warning' | 'error'`. The object form takes one
+`action`, several `actions`, or both.
 
 #### `useNotifications()`
 
@@ -738,7 +764,17 @@ Fetches knowledge namespaces for a project.
 
 ### `useKnowledgeDocContentQuery(projectSlug, docId, namespace?, config?)`
 
-Fetches the content of a specific knowledge document. Disabled when `docId` is null.
+Fetches the content of a specific knowledge document as a `string`. Disabled when `docId` is null.
+
+### `useKnowledgeTreeQuery(projectSlug, namespace, config?)`
+
+Fetches a namespace's directory tree as one root `KnowledgeTreeNode`; its
+`children` are the top-level entries.
+
+### `useKnowledgeFilteredQuery(projectSlug, namespace, filters, config?)`
+
+Fetches the namespace's `KnowledgeDocumentMeta[]` matching `filters`, such as
+`{ metadata: { status: 'draft' } }`.
 
 ### `useKnowledgeScanMutation(projectSlug)`
 
@@ -953,6 +989,10 @@ Adds a layout from an installed plugin to a project.
 
 ### Knowledge API Functions
 
+Project Knowledge reads and writes use the active Station's authenticated
+transport. A saved encrypted broker route never sends Knowledge documents or
+rules through a direct Station HTTP request.
+
 #### `fetchKnowledgeDocs(projectSlug: string, namespace?: string): Promise<any[]>`
 
 Lists knowledge documents for a project.
@@ -1095,12 +1135,62 @@ const accountHeaders = await accounts.headers(continuation, { method: 'GET', url
 // accounts.renew(continuation) preserves authorityKey; accounts.revoke signs out.
 ```
 
+For a browser already signed in on the Station's same HTTPS origin, call
+`accounts.adoptCookies()` with a key from `createApplicationSessionKey()`. The
+browser sends its existing `__Host-station-device` and provider cookies through
+`credentials: 'same-origin'`; the SDK never reads or copies cookie values into
+JavaScript. Adoption returns a short-lived account continuation and a bounded,
+read-only alias for that same approved Device. Keep the alias with its
+continuation and send both on each protected request.
+`accounts.revokeAlias(alias, continuation)` revokes that alias only and leaves
+the provider account session and parent Device grant intact. Cookie adoption
+requires direct same-origin HTTPS; a virtual transport has no cookie authority
+and cannot run this step.
+
 Calling `establish()` without credentials uses native HTTPS cookie exchange;
 virtual-only login requires its separately advertised provider capability. The
 relay forwards headers/body and respects response backpressure; it does not own
 account cookies, proof verification or membership logic. See the
 [application-session protocol](../guides/deployment-authentication.md#application-sessions-over-virtual-transports)
 for expiry, origin, replay and revocation behavior.
+
+### Fresh relay enrollment proof helpers
+
+`@kontourai/station-sdk/relay-enrollment` exposes `createRelayEnrollmentKey`,
+`restoreRelayEnrollmentKey`, `createRelayEnrollmentLoginProof`,
+`createRelayEnrollmentFinalizeProof`, `digestRelayEnrollmentBundle`, and
+`createRelayEnrollmentActivationProof` for the versioned fresh relay-account
+ceremony. The signing key is non-extractable
+P-256 custody, and the proof binds the Station, configured client Origin,
+enrollment attempt, key thumbprint, nonce, method, path, purpose, and short
+expiry. Keep the key in platform credential custody. The login proof authorizes
+only a provider-side candidate identity; the operator must still approve the
+account binding, and the server separately activates a narrow Device after a
+signed delivery acknowledgment. The SDK helper does not transport cookies,
+Device credentials, or continuations.
+
+```ts
+import {
+  createRelayEnrollmentKey,
+  createRelayEnrollmentLoginProof,
+} from '@kontourai/station-sdk/relay-enrollment';
+
+const key = await createRelayEnrollmentKey();
+const proof = await createRelayEnrollmentLoginProof(key, challenge, {
+  method: 'POST',
+  url: `${stationOrigin}/.well-known/station/v1/relay/enrollment/login`,
+  clientOrigin,
+});
+```
+
+The enrollment wire shapes live in
+`@kontourai/station-contracts/relay-enrollment`. This proof is distinct from
+application-session proof and cannot establish an ordinary authenticated
+account session. If finalize delivery is uncertain, do not retry finalize or
+expect the same secret bundle to be returned: Station discards that inert
+attempt and the client starts a fresh enrollment. Activation ACK may be retried
+only with the same signed proof; Station returns the stored receipt only when
+its digest matches the committed ACK.
 
 `listProjectViews(apiBase, options)` and `getProjectView(apiBase, slug, options)`
 from `@kontourai/station-sdk/client` return either the personal/operator Project
@@ -1249,6 +1339,19 @@ Fetches all installed plugins. Cache key: `['plugins']`.
 ### `usePluginUpdatesQuery(config?)`
 
 Checks for available plugin updates. Cache key: `['plugin-updates']`.
+
+### `usePluginLocalSourcesQuery(config?)`
+
+Imported from `@kontourai/station-sdk/plugin-local-sources-query`, not the
+root barrel. For each Project whose folder is the source of an installed local-folder
+plugin, whether the folder still holds the installed code:
+`PluginLocalSourceStatus` from `@kontourai/station-contracts/plugin`, with
+`status` `unchanged`, `changed` or `unknown` (and a `reason` for `unknown`).
+It names the plugin and the Project, never a host path. Operator-only: any
+other viewer receives an empty list. Reinstalling a `changed` source is the
+ordinary preview, consent and `usePluginInstallMutation` with
+`dataPolicy: 'preserve'`; this query decides nothing. Cache key:
+`['plugin-sources']`.
 
 ### `useRegistryPluginsQuery(config?)`
 
@@ -2232,6 +2335,9 @@ with the existing 500 ms failure bound; later reads observe the latest configure
 base. Best-effort SDK telemetry retains at most 1,000 events per flush interval
 and drops additional events in that interval. Flushes are single-flight with a
 five-second request timeout. It is not an accounting ledger.
+Events captured under a different selected Station or account authority are
+dropped rather than retargeted at flush time. Browser broker routes currently
+drop optional telemetry; they never send it by direct Station HTTP.
 
 ## Telemetry
 
@@ -2311,6 +2417,8 @@ interface AgentSummary {
   guardrails?: AgentGuardrails;
   tools?: AgentTools;
   ui?: AgentUIConfig;
+  /** The installed plugin that contributed this Agent; absent for any other. */
+  plugin?: string;
 }
 
 interface Agent extends AgentSummary {}
@@ -2350,14 +2458,8 @@ interface Conversation {
   lastMessage?: string;
 }
 
-interface NavigationState {
-  currentView: string;
-  selectedLayout?: string;
-  selectedAgent?: string;
-  dockState: boolean;
-  dockHeight: number;
-  dockMaximized: boolean;
-}
+/** @deprecated Alias of `SDKNavigation`, what `useNavigation()` returns. */
+type NavigationState = SDKNavigation;
 
 interface InvokeOptions {
   conversationId?: string;
@@ -2399,6 +2501,25 @@ superseded host binding from being attributed to the current native connection.
 It is intentionally separate from `requestAuthority`: a valid authenticated
 recovery may advance credential generation while its host binding remains live.
 Ordinary unscoped SDK calls do not gain a host binding requirement.
+
+### Selected-route raw browser egress
+
+Browser hosts that have features using direct XHR, fetch or WebSocket outside
+the SDK transport can install `setClientRawEgressPolicyResolver` from the
+`@kontourai/station-sdk/client` entry. The resolver returns the current
+`ClientRawEgressPolicy`: `kind` is explicitly `direct` or `broker`, and the
+policy carries the selected API base, connection id, activation epoch and an
+`isCurrent()` check. `getClientRawEgressPolicy()` exposes that snapshot to
+host-owned features such as telemetry. Do not infer route kind from whether a
+transport callback is present.
+
+Call `assertClientRawEgressAllowed(apiBase, channel, expectedBinding)` directly
+before raw content dispatch and after any asynchronous setup. It throws
+`StationRawEgressUnavailableError` for a broker route and
+`StationRequestAuthorityError` when the captured connection or request scope
+has changed. Normal SDK requests continue through their configured transport;
+this guard exists for browser features that cannot use it. Clear the resolver
+when the host connection provider is disposed.
 
 ### Package host actions
 

@@ -1,4 +1,7 @@
-import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import {
+  type CanonicalRuntimeEvent,
+  SERVER_EVENTS,
+} from '@kontourai/station-contracts/runtime-events';
 import { describe, expect, test, vi } from 'vitest';
 import {
   INTERNAL_TURN_CORRELATION_HEADER,
@@ -9,6 +12,7 @@ import { rememberToolPurpose } from '../../runtime/frameworks/tool-purpose.js';
 import { ApprovalRegistry } from '../../services/approvals/approval-registry.js';
 import { EventBus } from '../../services/orchestration/event-bus.js';
 import { tenantExecutionContextOutcomes } from '../../telemetry/metrics.js';
+import { SendTurnRefusedError } from '../adapter-shape.js';
 import type { PendingIdlessToolCall } from '../adapters/station-agent-adapter.js';
 import {
   mapStationAgentStreamEvent,
@@ -1264,6 +1268,75 @@ describe('StationAgentAdapter', () => {
     expect((await adapter.listSessions())[0]?.status).toBe('ready');
   });
 
+  test('#2415: a send racing the running turn is refused definitively, and the next send after it ends is accepted', async () => {
+    const encoder = new TextEncoder();
+    let streamController!: ReadableStreamDefaultController<Uint8Array>;
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              streamController = controller;
+            },
+          }),
+          { status: 200, headers: { 'Content-Type': 'text/event-stream' } },
+        ),
+      )
+      .mockResolvedValueOnce(
+        sseResponse([{ type: 'finish', finishReason: 'stop' }, '[DONE]']),
+      );
+    const adapter = new StationAgentAdapter({
+      apiBase: 'http://127.0.0.1:3141',
+      hasAgent: () => true,
+      ...approvalDeps(),
+      fetch: fetchMock,
+    });
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+    await adapter.startSession({
+      threadId: 'task-concurrent-send',
+      provider: 'station-agent',
+      metadata: { agentId: 'reviewer' },
+    });
+    const first = await adapter.sendTurn({
+      threadId: 'task-concurrent-send',
+      input: 'first',
+    });
+    await nextEvents(iterator, 4); // session.*, state-changed, turn.started
+
+    // A plain error here is what orchestration records as an indeterminate
+    // turn start; the refusal type is what keeps the thread usable.
+    const refusal = await adapter
+      .sendTurn({ threadId: 'task-concurrent-send', input: 'second' })
+      .then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+    expect(refusal).toBeInstanceOf(SendTurnRefusedError);
+    expect((refusal as Error).message).toContain('already running');
+    // The refused send never reached the relay.
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    streamController.enqueue(
+      encoder.encode(
+        `data: ${JSON.stringify({ type: 'finish', finishReason: 'stop' })}\n\ndata: [DONE]\n\n`,
+      ),
+    );
+    streamController.close();
+    const settled = await nextEvents(iterator, 2);
+    expect(settled.map((event) => event.method)).toContain('turn.completed');
+    expect(
+      settled.find((event) => event.method === 'turn.completed'),
+    ).toMatchObject({ turnId: first.turnId });
+
+    const next = await adapter.sendTurn({
+      threadId: 'task-concurrent-send',
+      input: 'third',
+    });
+    expect(next.turnId).not.toBe(first.turnId);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
   /**
    * station#1569 (item 4): this adapter had NO tool-call state — the SSE
    * relay is a stateless per-chunk translator — so a call whose stream was
@@ -1501,6 +1574,191 @@ describe('StationAgentAdapter', () => {
       const [next] = await nextEvents(iterator, 1);
       expect(next).toMatchObject({ method: 'session.exited' });
     });
+  });
+
+  test('#2316: a stale request refuses allow-for-session without minting the tool grant', async () => {
+    const eventBus = new EventBus();
+    const approvalRegistry = new ApprovalRegistry(
+      { info: vi.fn(), warn: vi.fn() },
+      { eventBus },
+    );
+    const encoder = new TextEncoder();
+    let streamController!: ReadableStreamDefaultController<Uint8Array>;
+    const adapter = new StationAgentAdapter({
+      apiBase: 'http://127.0.0.1:3141',
+      hasAgent: () => true,
+      fetch: vi.fn<typeof fetch>().mockResolvedValue(
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              streamController = controller;
+            },
+          }),
+          { status: 200, headers: { 'Content-Type': 'text/event-stream' } },
+        ),
+      ),
+      approvalRegistry,
+      eventBus,
+    });
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+    await adapter.startSession({
+      threadId: 'task-stale',
+      provider: 'station-agent',
+      metadata: { agentId: 'reviewer' },
+    });
+    await adapter.sendTurn({ threadId: 'task-stale', input: 'Write it' });
+
+    // Opened on the adapter, but its registry entry is gone (the registry
+    // entry settled or expired elsewhere): the adapter's entry is stale.
+    streamController.enqueue(
+      encoder.encode(
+        `data: ${JSON.stringify({
+          type: 'tool-approval-request',
+          approvalId: 'stale-approval',
+          toolName: 'repo_write',
+        })}\n\n`,
+      ),
+    );
+    const untilOpened = async (requestId: string) => {
+      for (let seen = 0; seen < 20; seen++) {
+        const [event] = await nextEvents(iterator, 1);
+        if (event?.method === 'request.opened' && event.requestId === requestId)
+          return event;
+      }
+      throw new Error(`request.opened ${requestId} never arrived`);
+    };
+    await untilOpened('stale-approval');
+    await expect(
+      adapter.respondToRequest(
+        'task-stale',
+        'stale-approval',
+        'acceptForSession',
+      ),
+    ).rejects.toThrow('Stale Station agent approval request: stale-approval');
+
+    // The next call to the same tool must still ask.
+    const next = approvalRegistry.register('fresh-approval', {
+      metadata: {
+        source: 'runtime',
+        title: 'repo_write',
+        conversationId: 'task-stale',
+      },
+    });
+    streamController.enqueue(
+      encoder.encode(
+        `data: ${JSON.stringify({
+          type: 'tool-approval-request',
+          approvalId: 'fresh-approval',
+          toolName: 'repo_write',
+        })}\n\n`,
+      ),
+    );
+    await untilOpened('fresh-approval');
+    // A minted grant would have resolved it on arrival (trackApproval).
+    expect(approvalRegistry.has('fresh-approval')).toBe(true);
+    approvalRegistry.resolve('fresh-approval', false);
+    await expect(next).resolves.toBe(false);
+    await adapter.stopSession('task-stale');
+  });
+
+  test('approval.resolved records the device that answered through respondToRequest (#2344)', async () => {
+    const eventBus = new EventBus();
+    const resolved: Array<Record<string, unknown>> = [];
+    eventBus.subscribe((event) => {
+      if (event.event === SERVER_EVENTS.APPROVAL_RESOLVED)
+        resolved.push(event.data as Record<string, unknown>);
+    });
+    const approvalRegistry = new ApprovalRegistry(
+      { info: vi.fn(), warn: vi.fn() },
+      { eventBus },
+    );
+    const encoder = new TextEncoder();
+    let streamController!: ReadableStreamDefaultController<Uint8Array>;
+    const adapter = new StationAgentAdapter({
+      apiBase: 'http://127.0.0.1:3141',
+      hasAgent: () => true,
+      fetch: vi.fn<typeof fetch>().mockResolvedValue(
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              streamController = controller;
+            },
+          }),
+          { status: 200, headers: { 'Content-Type': 'text/event-stream' } },
+        ),
+      ),
+      approvalRegistry,
+      eventBus,
+    });
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+    await adapter.startSession({
+      threadId: 'task-origin',
+      provider: 'station-agent',
+      metadata: { agentId: 'reviewer' },
+    });
+    await adapter.sendTurn({ threadId: 'task-origin', input: 'Write it' });
+    const origin = {
+      version: 1 as const,
+      actor: { kind: 'device' as const, deviceId: 'pixel-10' },
+      reported: { version: 1 as const, surface: 'mobile' as const, build: '1' },
+    };
+    const open = async (approvalId: string) => {
+      const decision = approvalRegistry.register(approvalId, {
+        metadata: {
+          source: 'runtime',
+          title: 'repo_write',
+          conversationId: 'task-origin',
+        },
+      });
+      streamController.enqueue(
+        encoder.encode(
+          `data: ${JSON.stringify({
+            type: 'tool-approval-request',
+            approvalId,
+            toolName: 'repo_write',
+          })}\n\n`,
+        ),
+      );
+      for (let seen = 0; seen < 20; seen++) {
+        const [event] = await nextEvents(iterator, 1);
+        if (
+          event?.method === 'request.opened' &&
+          event.requestId === approvalId
+        )
+          // Wrapped: an async function returning the bare promise would
+          // make the caller wait for the decision it has not made yet.
+          return { decision };
+      }
+      throw new Error(`request.opened ${approvalId} never arrived`);
+    };
+
+    const { decision: withOrigin } = await open('approval-origin');
+    await adapter.respondToRequest('task-origin', 'approval-origin', 'accept', {
+      clientOrigin: origin,
+    });
+    await expect(withOrigin).resolves.toBe(true);
+
+    const { decision: withoutOrigin } = await open('approval-no-origin');
+    await adapter.respondToRequest(
+      'task-origin',
+      'approval-no-origin',
+      'decline',
+    );
+    await expect(withoutOrigin).resolves.toBe(false);
+
+    expect(resolved).toEqual([
+      expect.objectContaining({
+        approvalId: 'approval-origin',
+        status: 'approved',
+        clientOrigin: origin,
+      }),
+      expect.not.objectContaining({ clientOrigin: expect.anything() }),
+    ]);
+    expect(resolved[1]).toMatchObject({
+      approvalId: 'approval-no-origin',
+      status: 'denied',
+    });
+    await adapter.stopSession('task-origin');
   });
 
   test('routes scoped approvals through the shared registry and remembers allow-for-session', async () => {

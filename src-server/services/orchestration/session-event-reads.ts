@@ -1,5 +1,7 @@
+import type { ChildWorkSessionView } from '@kontourai/station-contracts/child-work';
 import type { ConversationContextBoundaryTranscriptMarker } from '@kontourai/station-contracts/conversation-context-boundary';
 import type {
+  ConversationTurnActivity,
   OrchestrationConversationEventWindow,
   OrchestrationSessionDetail,
   OrchestrationSessionEventPage,
@@ -18,7 +20,10 @@ import {
 // Type-only import back into the service module: erased at runtime, so no
 // import cycle exists.
 import type { SessionReadScope } from './orchestration-service.js';
-import { buildOrchestrationSessionSummary } from './orchestration-session-state.js';
+import {
+  buildOrchestrationSessionSummary,
+  type ConversationDraftFacts,
+} from './orchestration-session-state.js';
 import type { TurnProgressTracker } from './turn-progress-tracker.js';
 
 /** Provider resume state is server-only and can be arbitrarily large. */
@@ -27,6 +32,16 @@ function eventWindowSessionSummary(
 ): OrchestrationSessionSummary {
   const { resumeCursor: _resumeCursor, ...publicSummary } = summary;
   return publicSummary;
+}
+
+/** #2310: the lineage half of the Draft fold; absent without a store. */
+function conversationDraftFactsOption(
+  eventStore: EventStore | undefined,
+  threadId: string,
+): { conversationDraftFacts?: ConversationDraftFacts } {
+  return eventStore
+    ? { conversationDraftFacts: eventStore.conversationDraftFacts(threadId) }
+    : {};
 }
 
 interface SessionEventReadsDeps {
@@ -51,6 +66,15 @@ interface SessionEventReadsDeps {
     authority: SessionReadScope,
   ) => boolean;
   readTurnProgress: TurnProgressTracker['read'];
+  /** #2456: the child-work projection's process-local read for a thread. */
+  readChildWork?: (
+    threadId: string,
+    provider: string | undefined,
+  ) => ChildWorkSessionView | undefined;
+  /** #2309: the conversation activity projection's read for a thread. */
+  readConversationActivity?: (
+    threadId: string,
+  ) => ConversationTurnActivity | undefined;
   observeAnswerability: (
     threadId: string,
     provider: string | undefined,
@@ -71,6 +95,13 @@ interface SessionEventReadsDeps {
  */
 export class SessionEventReads {
   constructor(private readonly deps: SessionEventReadsDeps) {}
+
+  private conversationActivityOption(threadId: string): {
+    conversationActivity?: ConversationTurnActivity;
+  } {
+    const conversationActivity = this.deps.readConversationActivity?.(threadId);
+    return conversationActivity ? { conversationActivity } : {};
+  }
 
   /**
    * archive#1284 (HIGH 2): what the PERSISTED log says about one request —
@@ -163,7 +194,10 @@ export class SessionEventReads {
           loaded,
           events: projectionEvents.map((event) => event.payload),
           eventCount: this.deps.eventStore?.countEventsByThread(threadId),
+          ...conversationDraftFactsOption(this.deps.eventStore, threadId),
           turnProgress: this.deps.readTurnProgress(threadId),
+          readChildWork: this.deps.readChildWork,
+          ...this.conversationActivityOption(threadId),
           answerability: this.deps.observeAnswerability(
             threadId,
             (loaded ?? persisted)?.provider,
@@ -222,7 +256,10 @@ export class SessionEventReads {
       loaded,
       events: projectionEvents.map((event) => event.payload),
       eventCount: this.deps.eventStore?.countEventsByThread(threadId),
+      ...conversationDraftFactsOption(this.deps.eventStore, threadId),
       turnProgress: this.deps.readTurnProgress(threadId),
+      readChildWork: this.deps.readChildWork,
+      ...this.conversationActivityOption(threadId),
       answerability: this.deps.observeAnswerability(
         threadId,
         (loaded ?? persisted)?.provider,

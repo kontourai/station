@@ -22,12 +22,14 @@
  *     Needs-attention item — #765 D5), the host approves via the CLI, and
  *     the request reads `confirmed`.
  *
- * Journeys that need an engine report NOT-EXERCISED (loudly, in
- * the summary and the exit report) when the engine is not ready on this
- * host — hosted CI runners have no signed-in `claude`, so there the suite
- * proves the pairing journey end-to-end and discloses the
- * rest. Set CORE_LOOP_REQUIRE_CLAUDE=1 to turn those disclosures into
- * failures on hosts where the engine is expected.
+ * Journeys that need an engine declare `requiresAccount`. In CI (or with
+ * STATION_CI_ACCOUNTS=absent) they are DISABLED before they start — hosted
+ * runners have no signed-in `claude` until #2318 — so there the suite proves
+ * the pairing journey end-to-end and lists the rest as disabled. Elsewhere
+ * they run, and report NOT-EXERCISED (loudly, in the summary and the exit
+ * report) when the engine is not ready on this host. Set
+ * CORE_LOOP_REQUIRE_CLAUDE=1 to run them regardless and turn those
+ * disclosures into failures on hosts where the engine is expected.
  *
  * Set CORE_LOOP_ENGINE=muse (or codex, opencode, etc.) to exercise another
  * installed engine with the same assertions. CORE_LOOP_REQUIRE_ENGINE=1 makes
@@ -45,6 +47,12 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { chromium } from 'playwright';
 import { foldUsageEvents } from '../../packages/shared/src/usage-fold.ts';
+import {
+  ACCOUNT_DISABLED_REASON,
+  accountsAbsent,
+  appendStepSummary,
+  renderAccountDisabledMarkdown,
+} from '../../scripts/lib/account-requirement.mjs';
 import { acceptedTurnReply } from './helpers/accepted-turn-reply.mjs';
 import {
   api,
@@ -77,13 +85,22 @@ const REQUIRE_ENGINE =
   process.env.CORE_LOOP_REQUIRE_ENGINE === '1' ||
   (ENGINE_ID === 'claude-code' && process.env.CORE_LOOP_REQUIRE_CLAUDE === '1');
 
+/**
+ * Journeys that declare `requiresAccount` are DISABLED before they start
+ * when this host has no signed-in account (CI, until #2318) — recorded as
+ * `disabled`, never a pass and never a NOT-EXERCISED. An explicit
+ * CORE_LOOP_REQUIRE_* request still runs them.
+ */
+const ACCOUNT_DISABLED = accountsAbsent(process.env) && !REQUIRE_ENGINE;
+const ENGINE_ACCOUNT = `a signed-in ${ENGINE_ID} engine CLI`;
+
 const SESSION_NOT_FOUND_PATTERN = /No conversation found with session ID/i;
 
 // ---------------------------------------------------------------------------
 // Journey accounting: independently reportable, loud, exit-code honest.
 // ---------------------------------------------------------------------------
 
-/** @type {{ id: string, status: 'passed'|'failed'|'not-exercised', notes: string[] }[]} */
+/** @type {{ id: string, status: 'passed'|'failed'|'not-exercised'|'disabled'|'skipped'|'expected-fail', requires?: string, notes: string[] }[]} */
 const results = [];
 
 class NotExercised extends Error {
@@ -129,7 +146,7 @@ const EXPECTED_JOURNEY_FAILURES = new Map([
   ],
 ]);
 
-async function runJourney(id, title, fn) {
+async function runJourney(id, title, fn, { requiresAccount } = {}) {
   const notes = [];
   const note = (line) => {
     notes.push(line);
@@ -142,6 +159,20 @@ async function runJourney(id, title, fn) {
       notes: ['skipped by CORE_LOOP_JOURNEYS filter'],
     });
     console.log(`\n=== journey ${id}: SKIPPED (CORE_LOOP_JOURNEYS filter)`);
+    return;
+  }
+  if (requiresAccount && ACCOUNT_DISABLED) {
+    results.push({
+      id,
+      status: 'disabled',
+      requires: requiresAccount,
+      notes: [
+        `DISABLED: ${ACCOUNT_DISABLED_REASON} (requires ${requiresAccount})`,
+      ],
+    });
+    console.log(
+      `\n=== journey ${id}: DISABLED — ${ACCOUNT_DISABLED_REASON} (requires ${requiresAccount})`,
+    );
     return;
   }
   console.log(`\n=== journey ${id}: ${title}`);
@@ -1297,11 +1328,13 @@ try {
     '1-multi-turn-continuity',
     'three turns, one conversation (#765 A1/A2)',
     (note) => journeyMultiTurnContinuity(mainPage, note, shared),
+    { requiresAccount: ENGINE_ACCOUNT },
   );
   await runJourney(
     '3-project-deep-link-reload',
     'project chat deep link survives reload (#765 A5)',
     (note) => journeyProjectDeepLinkReload(note, shared),
+    { requiresAccount: ENGINE_ACCOUNT },
   );
   await runJourney(
     '4-pairing-delegation-loop',
@@ -1339,6 +1372,22 @@ const expectedFails = results.filter(
 const notExercised = results.filter(
   (result) => result.status === 'not-exercised',
 );
+const disabled = results.filter((result) => result.status === 'disabled');
+if (disabled.length > 0) {
+  console.log(
+    `\n${disabled.length} journey(s) DISABLED — ${ACCOUNT_DISABLED_REASON}; not run and not counted as passing:`,
+  );
+  for (const result of disabled)
+    console.log(`  ${result.id}: requires ${result.requires}`);
+  appendStepSummary(
+    renderAccountDisabledMarkdown(
+      disabled.map((result) => ({
+        name: `core-loop ${result.id}`,
+        requires: result.requires,
+      })),
+    ),
+  );
+}
 if (expectedFails.length > 0) {
   console.error(
     `\n${expectedFails.length} journey(s) EXPECTED-FAIL (tracked issues; the run FAILS when one starts passing):`,
@@ -1363,5 +1412,5 @@ if (failed.length > 0) {
   process.exit(1);
 }
 console.log(
-  `\ncore-loop journeys passed — ${passed.length} passed, ${expectedFails.length} expected-fail, ${notExercised.length} disclosed, ${skipped.length} filter-skipped, summary at ${join(OUTPUT_ROOT, 'summary.json')}`,
+  `\ncore-loop journeys passed — ${passed.length} passed, ${expectedFails.length} expected-fail, ${notExercised.length} disclosed, ${disabled.length} disabled (requires account), ${skipped.length} filter-skipped, summary at ${join(OUTPUT_ROOT, 'summary.json')}`,
 );

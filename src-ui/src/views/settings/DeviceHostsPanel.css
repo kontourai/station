@@ -1,0 +1,115 @@
+/* Settings › Device hosts (#1973). Rides the lazy panel's chunk. */
+
+.device-hosts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3, 12px);
+}
+
+.device-hosts__intro,
+.device-hosts__note {
+  margin: 0;
+  opacity: 0.85;
+}
+
+.device-hosts__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.device-hosts__row {
+  border: 1px solid var(--color-border, rgba(127, 127, 127, 0.3));
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+  padding: var(--space-3, 12px);
+}
+
+.device-hosts__body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.device-hosts__name {
+  font-weight: 600;
+}
+
+.device-hosts__meta {
+  font-size: 0.8125rem;
+  opacity: 0.8;
+  overflow-wrap: anywhere;
+}
+
+.device-hosts__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2, 8px);
+}
+
+.device-hosts__actions .button {
+  min-height: 44px;
+}
+
+.device-hosts__form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+}
+
+.device-hosts__field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1, 4px);
+}
+
+.device-hosts__field input {
+  min-height: 44px;
+}
+
+.device-hosts__confirm p {
+  margin: 0 0 var(--space-2, 8px);
+}
+
+.device-hosts__error {
+  color: var(--error-text);
+  margin: 0;
+}
+
+.device-hosts__steps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1, 4px);
+  margin: 0;
+  padding-left: 1.25rem;
+}
+
+.device-hosts__step {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2, 8px);
+}
+
+.device-hosts__step-state {
+  font-weight: 600;
+}
+
+.device-hosts__step--pass .device-hosts__step-state {
+  color: var(--color-success, #2e7d32);
+}
+
+.device-hosts__step--fail .device-hosts__step-state {
+  color: var(--error-text);
+}
+
+.device-hosts__step-detail {
+  flex-basis: 100%;
+  font-size: 0.8125rem;
+  opacity: 0.8;
+}

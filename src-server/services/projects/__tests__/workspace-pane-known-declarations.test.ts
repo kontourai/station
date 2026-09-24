@@ -184,10 +184,14 @@ describe('known Workspace Pane declarations', () => {
         rollout: 'available',
         distribution: 'enabled',
         context: { project: 'present' },
-        requirements: {
-          hostCapabilities: ['local-browser-preview'],
-          configuration: true,
-        },
+        requirements: { deploymentCapabilities: ['browser-pane'] },
+      },
+      // Epic #2323 S3: Plugin preview. Opening it runs nothing, so it carries
+      // no requirement beyond a Project.
+      {
+        rollout: 'available',
+        distribution: 'enabled',
+        context: { project: 'present' },
       },
       {
         rollout: 'available',
@@ -270,7 +274,7 @@ describe('known Workspace Pane declarations', () => {
     );
   });
 
-  test('the known declarations claiming docked are exactly Chat, the three coding panes, File Preview and Device (#928, #2047, #2049, #1969)', () => {
+  test('the known declarations claiming docked are exactly Chat, the three coding panes, File Preview, Browser and Device (#928, #2047, #2049, #1969, #90)', () => {
     // `docked` means "may occupy a shell region". Since #2049 a descriptor
     // may earn that two ways, and both have a reader:
     //
@@ -295,6 +299,9 @@ describe('known Workspace Pane declarations', () => {
     expect(claimingDocked).toEqual([
       'pane:builtin:chat',
       'pane:builtin:workspace-preview:file-preview',
+      // #90 D9: an INSTANCE-KEYED family (`browser-preview:<nonce>`), the
+      // pane the float-over-chat's "Open in right panel" places.
+      'pane:builtin:workspace-preview:browser-preview',
       'pane:builtin:coding:file-browser',
       'pane:builtin:coding:diff',
       'pane:builtin:coding:terminal',
@@ -312,7 +319,7 @@ describe('known Workspace Pane declarations', () => {
   /**
    * #1969: what the Device declaration deliberately does NOT claim. Adding
    * `requirements: { hostCapabilities: ['local-browser-preview'] }` — the
-   * shape Browser Preview carries two entries above — reds the second
+   * shape Browser Preview carried before #90 wave 2 — reds the second
    * assertion; adding `context: { project: 'present' }`, which every
    * neighbouring entry declares, reds the third. Both would be availability
    * facts nothing about a captured PNG derives, and either would refuse the
@@ -329,15 +336,9 @@ describe('known Workspace Pane declarations', () => {
     });
     expect(device?.availabilityInput.context).toBeUndefined();
 
-    // Browser Preview is the control: the capability claim IS reachable in
-    // this catalog, so Device's absence of one is a choice, not a gap.
-    const browserPreview = KNOWN_WORKSPACE_PANE_DECLARATIONS.find(
-      ({ descriptor }) =>
-        descriptor.id === 'pane:builtin:workspace-preview:browser-preview',
-    );
-    expect(
-      browserPreview?.availabilityInput.requirements?.hostCapabilities,
-    ).toEqual(['local-browser-preview']);
+    // The control used to be Browser Preview's `local-browser-preview`
+    // claim; #90 wave 2 dropped it (the pane now streams a server Chromium
+    // and renders anywhere), so the Device pin above stands on its own.
 
     // One occurrence whatever the project, and it binds no project.
     const first = device?.createInstance?.('project-a');

@@ -1,12 +1,20 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTopmostModal } from './useTopmostModal';
 
-export type SearchType = 'account' | 'campaign' | 'opportunity';
+/** What the modal can search. No CRM provider serves campaigns (#2402). */
+export type SearchType = 'account' | 'opportunity';
 
 export interface SearchResult {
   id: string;
   name: string;
+  /**
+   * What this result is. The person can switch type while a search is in
+   * flight, so a result says what it is rather than inheriting the type the
+   * modal was opened with (#2402).
+   */
+  kind: SearchType;
   website?: string;
+  /** Shown as `Type: …` under the name. */
   type?: string;
 }
 
@@ -69,11 +77,8 @@ export function SearchModal({
     setSearchResults([]);
   };
 
-  const getTypeLabel = (t: SearchType) => {
-    if (t === 'opportunity') return 'Opportunities';
-    if (t === 'campaign') return 'Campaigns';
-    return 'Accounts';
-  };
+  const getTypeLabel = (t: SearchType) =>
+    t === 'opportunity' ? 'Opportunities' : 'Accounts';
 
   const switchType = (t: SearchType) => {
     setType(t);
@@ -114,22 +119,20 @@ export function SearchModal({
         </div>
         <div className="search-modal-body">
           <div className="search-modal-type-toggle">
-            {(['account', 'campaign', 'opportunity'] as SearchType[]).map(
-              (t) => (
-                <button
-                  type="button"
-                  key={t}
-                  onClick={() => switchType(t)}
-                  className={`search-modal-type-btn ${
-                    type === t
-                      ? 'search-modal-type-btn--active'
-                      : 'search-modal-type-btn--inactive'
-                  }`}
-                >
-                  {getTypeLabel(t)}
-                </button>
-              ),
-            )}
+            {(['account', 'opportunity'] as SearchType[]).map((t) => (
+              <button
+                type="button"
+                key={t}
+                onClick={() => switchType(t)}
+                className={`search-modal-type-btn ${
+                  type === t
+                    ? 'search-modal-type-btn--active'
+                    : 'search-modal-type-btn--inactive'
+                }`}
+              >
+                {getTypeLabel(t)}
+              </button>
+            ))}
           </div>
           <input
             ref={searchInputRef}

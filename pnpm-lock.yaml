@@ -33,7 +33,7 @@ overrides:
   '@ai-sdk/provider-utils>undici': ^6.28.0
   '@kontourai/bearing>csv-parse': ^7.0.2
 
-packageExtensionsChecksum: sha256-8U/NwfVvJih09yZJqI4A31Zbu76ddMrtGmxoWvtwaaI=
+packageExtensionsChecksum: sha256-2l2UxmczKrQr+ImU0nARNUkyKUq+bpu55jGVFAPzU4I=
 
 patchedDependencies:
   '@voltagent/core@2.10.0': 8eda67a9681b85cf7adbeb5669184db3412ccc9f1954e068ac32ee5dd409170a
@@ -89,8 +89,8 @@ importers:
         specifier: ^0.2.0
         version: 0.2.0(playwright@1.62.1)
       '@kontourai/conduit':
-        specifier: 0.6.0
-        version: 0.6.0
+        specifier: 0.7.1
+        version: 0.7.1
       '@kontourai/console-core':
         specifier: ^0.3.0
         version: 0.3.0
@@ -116,8 +116,8 @@ importers:
         specifier: 5.1.1
         version: 5.1.1(supports-color@7.2.0)
       '@kontourai/flow-agents':
-        specifier: 6.2.0
-        version: 6.2.0(@ai-sdk/provider@3.0.15)(@kontourai/bearing@0.2.0(playwright@1.62.1))(playwright@1.62.1)(supports-color@7.2.0)(typescript@5.9.3)(zod@4.5.4)
+        specifier: 6.4.0
+        version: 6.4.0(@ai-sdk/provider@3.0.15)(@kontourai/bearing@0.2.0(playwright@1.62.1))(playwright@1.62.1)(supports-color@7.2.0)(typescript@5.9.3)(zod@4.5.4)
       '@kontourai/forage':
         specifier: ^0.7.0
         version: 0.7.0(playwright@1.62.1)
@@ -155,8 +155,8 @@ importers:
         specifier: ^1.12.0
         version: 1.12.0(react@19.2.8)
       '@kontourai/veritas':
-        specifier: ^1.6.1
-        version: 1.6.1(supports-color@7.2.0)(zod@4.5.4)
+        specifier: 1.7.4
+        version: 1.7.4(supports-color@7.2.0)(zod@4.5.4)
       '@modelcontextprotocol/client':
         specifier: ^2.0.0
         version: 2.0.0
@@ -304,12 +304,18 @@ importers:
       node-pty:
         specifier: ^1.1.0
         version: 1.1.0
+      pdfjs-dist:
+        specifier: ^6.3.289
+        version: 6.3.289
       pino:
         specifier: ^10.3.1
         version: 10.3.1
       pino-pretty:
         specifier: ^13.1.3
         version: 13.1.3
+      playwright-core:
+        specifier: 1.62.1
+        version: 1.62.1
       react-markdown:
         specifier: ^10.1.0
         version: 10.1.0(@types/react@19.2.18)(react@19.2.8)(supports-color@7.2.0)
@@ -413,6 +419,9 @@ importers:
       '@voltagent/cli':
         specifier: ^0.1.21
         version: 0.1.21(@ai-sdk/provider-utils@4.0.50(zod@4.5.4))(@ai-sdk/provider@3.0.15)(@aws-sdk/credential-provider-node@3.972.82)(@smithy/signature-v4@5.6.12)(@types/node@26.2.0)(@voltagent/logger@2.0.2(@opentelemetry/api@1.9.1)(supports-color@7.2.0))(@voltagent/scorers@2.1.0(@voltagent/core@2.10.0(patch_hash=8eda67a9681b85cf7adbeb5669184db3412ccc9f1954e068ac32ee5dd409170a)(@ai-sdk/provider-utils@4.0.50(zod@4.5.4))(@ai-sdk/provider@3.0.15)(@aws-sdk/credential-provider-node@3.972.82)(@smithy/signature-v4@5.6.12)(@voltagent/logger@2.0.2(@opentelemetry/api@1.9.1)(supports-color@7.2.0))(ai@6.0.280(zod@4.5.4))(debug@4.4.3(supports-color@7.2.0))(encoding@0.1.13)(graphql@16.14.2)(supports-color@7.2.0)(ws@8.21.3)(zod@4.5.4))(ai@6.0.280(zod@4.5.4))(encoding@0.1.13)(ws@8.21.3)(zod@4.5.4))(ai@6.0.280(zod@4.5.4))(debug@4.4.3(supports-color@7.2.0))(encoding@0.1.13)(graphql@16.14.2)(supports-color@7.2.0)(ws@8.21.3)(zod@4.5.4)
+      better-call:
+        specifier: 1.4.0
+        version: 1.4.0(zod@4.5.4)
       esbuild:
         specifier: ^0.28.2
         version: 0.28.2
@@ -474,8 +483,8 @@ importers:
   examples/builder-delivery-viewer:
     dependencies:
       '@kontourai/flow-agents':
-        specifier: 6.2.0
-        version: 6.2.0(@ai-sdk/provider@3.0.16)(@kontourai/bearing@0.2.0(playwright@1.62.1))(playwright@1.62.1)(supports-color@7.2.0)(typescript@5.9.3)(zod@4.5.4)
+        specifier: 6.4.0
+        version: 6.4.0(@ai-sdk/provider@3.0.16)(@kontourai/bearing@0.2.0(playwright@1.62.1))(playwright@1.62.1)(supports-color@7.2.0)(typescript@5.9.3)(zod@4.5.4)
       '@kontourai/station-sdk':
         specifier: '*'
         version: link:../../packages/sdk
@@ -681,8 +690,8 @@ importers:
         specifier: 5.1.1
         version: 5.1.1(supports-color@7.2.0)
       '@kontourai/flow-agents':
-        specifier: 6.2.0
-        version: 6.2.0(@ai-sdk/provider@3.0.16)(@kontourai/bearing@0.2.0(playwright@1.62.1))(playwright@1.62.1)(supports-color@7.2.0)(typescript@5.9.3)(zod@4.5.4)
+        specifier: 6.4.0
+        version: 6.4.0(@ai-sdk/provider@3.0.16)(@kontourai/bearing@0.2.0(playwright@1.62.1))(playwright@1.62.1)(supports-color@7.2.0)(typescript@5.9.3)(zod@4.5.4)
       '@kontourai/surface':
         specifier: ^3.2.0
         version: 3.2.0(supports-color@7.2.0)
@@ -699,8 +708,8 @@ importers:
         specifier: 5.1.1
         version: 5.1.1(supports-color@7.2.0)
       '@kontourai/flow-agents':
-        specifier: 6.2.0
-        version: 6.2.0(@ai-sdk/provider@3.0.16)(@kontourai/bearing@0.2.0(playwright@1.62.1))(playwright@1.62.1)(supports-color@7.2.0)(typescript@5.9.3)(zod@4.5.4)
+        specifier: 6.4.0
+        version: 6.4.0(@ai-sdk/provider@3.0.16)(@kontourai/bearing@0.2.0(playwright@1.62.1))(playwright@1.62.1)(supports-color@7.2.0)(typescript@5.9.3)(zod@4.5.4)
       '@kontourai/station-contracts':
         specifier: ^0.7.0
         version: link:../contracts
@@ -2139,12 +2148,8 @@ packages:
     engines: {node: '>=22'}
     hasBin: true
 
-  '@kontourai/conduit@0.2.1':
-    resolution: {integrity: sha512-xhMLtE89WRoa7/MU8C9/Bl676hPKT+niKmp/fj26gW5aL6QVfaBx/ywlgyoEAmmLxkMpjk4PVKLksvslXyzM+A==}
-    engines: {node: '>=22'}
-
-  '@kontourai/conduit@0.6.0':
-    resolution: {integrity: sha512-LbXDbEILAZ1USlekWC+aVBW6hEtfoaXp5+l3p8AZa4DZrHJL3/bmRekXmBuGe97v3tlTCu7t8ac0BMYwGpv5jQ==}
+  '@kontourai/conduit@0.7.1':
+    resolution: {integrity: sha512-EiAd0KYVnysVy6I1lvW6vHoGTocLmG81HotMDsqJTIcqhMBImFAyojMs1qPqXrBnH/HpjrLI+yBlUSOzKtJwjw==}
     engines: {node: '>=22'}
 
   '@kontourai/console-core@0.3.0':
@@ -2231,8 +2236,8 @@ packages:
       '@anthropic-ai/sdk':
         optional: true
 
-  '@kontourai/flow-agents@6.2.0':
-    resolution: {integrity: sha512-DZV2bMAaHxP35hv7bRKA+WKs56oxcvjhF+UTNjsHcHbzQ8/7HgpptyGdG9EgL9FlofPdq/aWl4hBcTjGIiE3cg==}
+  '@kontourai/flow-agents@6.4.0':
+    resolution: {integrity: sha512-PEQy4AWDuPvoZDjpKK9vBNyCT3ccOKrnl7NE10fqXEEn+aD8RWIVQ2f1tL18h2D9icki+MEIDznso7/1EHhTXQ==}
     engines: {node: '>=22'}
     hasBin: true
 
@@ -2396,8 +2401,8 @@ packages:
     peerDependencies:
       react: ^19.0.0
 
-  '@kontourai/veritas@1.6.1':
-    resolution: {integrity: sha512-3YyyGetv/xPTSYwg16YlY2ss5KKWTcqDh8iR8dm11fDXM6XPdLi0vGUko/Eo16jnKTEmBH5PHjS0NQ8ug3Vj/w==}
+  '@kontourai/veritas@1.7.4':
+    resolution: {integrity: sha512-G960alKtrpYg6fgxIpU/02zef6mHzh5jHmNggtqERoYtFpe6XUIhVmy3at6G+ff8MlytSKyEMwxbvWPOrLzaew==}
     engines: {node: '>=22'}
     hasBin: true
 
@@ -6509,6 +6514,10 @@ packages:
   pathe@2.0.3:
     resolution: {integrity: sha512-WUjGcAqP1gQacoQe+OBJsFA7Ld4DyXuUIjZ5cc75cLHvJ7dtNsTugphxIADwspS+AraAUePCKrSVtPLFj/F88w==}
 
+  pdfjs-dist@6.3.289:
+    resolution: {integrity: sha512-ZHjSVpDa3D6izMq8/04lvkhkATUmL9px6ChPaXc1k6nU2Mrhlg1/7F0bdUqCwUjw3NsPTfPZsMDUU6ZIcRaeQw==}
+    engines: {node: '>=22.13.0 || >=24'}
+
   pend@1.2.0:
     resolution: {integrity: sha512-F3asv42UuXchdzt+xXqfW1OGlVBe+mxa2mqI0pg5yAHZPvFmY3Y6drSf/GQ1A86WgWEN9Kzh/WrgKa6iGcHXLg==}
 
@@ -7699,6 +7708,9 @@ packages:
 
   zwitch@2.0.4:
     resolution: {integrity: sha512-bXE4cR/kVZhKZX/RjPEflHaKVhUVl85noU3v6b8apfQEc1x4A+zBxjZ4lN8LqGd6WZ3dl98pY4o717VFmoPp+A==}
+
+ignoredOptionalDependencies:
+  - '@napi-rs/canvas'
 
 snapshots:
 
@@ -9044,9 +9056,7 @@ snapshots:
     transitivePeerDependencies:
       - playwright
 
-  '@kontourai/conduit@0.2.1': {}
-
-  '@kontourai/conduit@0.6.0': {}
+  '@kontourai/conduit@0.7.1': {}
 
   '@kontourai/console-core@0.3.0': {}
 
@@ -9188,9 +9198,9 @@ snapshots:
       - supports-color
       - typescript
 
-  '@kontourai/flow-agents@6.2.0(@ai-sdk/provider@3.0.15)(@kontourai/bearing@0.2.0(playwright@1.62.1))(playwright@1.62.1)(supports-color@7.2.0)(typescript@5.9.3)(zod@4.5.4)':
+  '@kontourai/flow-agents@6.4.0(@ai-sdk/provider@3.0.15)(@kontourai/bearing@0.2.0(playwright@1.62.1))(playwright@1.62.1)(supports-color@7.2.0)(typescript@5.9.3)(zod@4.5.4)':
     dependencies:
-      '@kontourai/conduit': 0.2.1
+      '@kontourai/conduit': 0.7.1
       '@kontourai/datum': 0.7.0(playwright@1.62.1)
       '@kontourai/dispatch': 0.3.0(@ai-sdk/provider@3.0.15)(@anthropic-ai/sdk@0.116.0(zod@4.5.4))(@kontourai/bearing@0.2.0(playwright@1.62.1))(@kontourai/datum@0.7.0(playwright@1.62.1))
       '@kontourai/flow': 5.0.0(supports-color@7.2.0)
@@ -9210,9 +9220,9 @@ snapshots:
       - typescript
       - zod
 
-  '@kontourai/flow-agents@6.2.0(@ai-sdk/provider@3.0.16)(@kontourai/bearing@0.2.0(playwright@1.62.1))(playwright@1.62.1)(supports-color@7.2.0)(typescript@5.9.3)(zod@4.5.4)':
+  '@kontourai/flow-agents@6.4.0(@ai-sdk/provider@3.0.16)(@kontourai/bearing@0.2.0(playwright@1.62.1))(playwright@1.62.1)(supports-color@7.2.0)(typescript@5.9.3)(zod@4.5.4)':
     dependencies:
-      '@kontourai/conduit': 0.2.1
+      '@kontourai/conduit': 0.7.1
       '@kontourai/datum': 0.7.0(playwright@1.62.1)
       '@kontourai/dispatch': 0.3.0(@ai-sdk/provider@3.0.16)(@anthropic-ai/sdk@0.116.0(zod@4.5.4))(@kontourai/bearing@0.2.0(playwright@1.62.1))(@kontourai/datum@0.7.0(playwright@1.62.1))
       '@kontourai/flow': 5.0.0(supports-color@7.2.0)
@@ -9417,7 +9427,7 @@ snapshots:
     dependencies:
       react: 19.2.8
 
-  '@kontourai/veritas@1.6.1(supports-color@7.2.0)(zod@4.5.4)':
+  '@kontourai/veritas@1.7.4(supports-color@7.2.0)(zod@4.5.4)':
     dependencies:
       '@kontourai/surface': 2.18.0(supports-color@7.2.0)
       '@modelcontextprotocol/sdk': 1.30.0(supports-color@7.2.0)(zod@4.5.4)
@@ -14169,6 +14179,8 @@ snapshots:
   path-to-regexp@8.4.2: {}
 
   pathe@2.0.3: {}
+
+  pdfjs-dist@6.3.289: {}
 
   pend@1.2.0: {}
 

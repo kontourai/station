@@ -1,4 +1,5 @@
 import {
+  assertClientRawEgressAllowed,
   executeCodingCommand,
   fetchTerminalPort,
 } from '@kontourai/station-sdk';
@@ -43,7 +44,7 @@ export function TerminalPanel({
    * externally-injected input (e.g. "Send to terminal" from the file tree). */
   isActive?: boolean;
 }) {
-  const { apiBase, credentialProvider } = useApiBase();
+  const { apiBase, connectionId, credentialProvider } = useApiBase();
   const activeChat = useNavigation((state) => state.activeChat);
   const { getDraft, setDraft, updateChat } = useActiveChatActions();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -63,6 +64,8 @@ export function TerminalPanel({
 
   useEffect(() => {
     if (!containerRef.current) return;
+    setUnavailableReason(null);
+    setWsError(false);
 
     // Bump the glyph size on phone-width viewports — xterm renders to a canvas,
     // so the readable-text fix has to live in JS, not CSS. Mirrors the 768px
@@ -115,7 +118,24 @@ export function TerminalPanel({
     let cwdRequest = 0;
     const cwdRequests = new Map<string, (cwd: string | null) => void>();
 
+    const ensureTerminalSocketAllowed = (): boolean => {
+      try {
+        assertClientRawEgressAllowed(apiBase, 'terminal', connectionId);
+        return true;
+      } catch (error) {
+        ws?.close();
+        if (!disposed)
+          setUnavailableReason(
+            error instanceof Error
+              ? error.message
+              : 'Terminal connections are unavailable for the selected Station.',
+          );
+        return false;
+      }
+    };
+
     const connectWs = async () => {
+      if (!ensureTerminalSocketAllowed()) return;
       let port: number;
       try {
         port = await fetchTerminalPort(apiBase);
@@ -123,6 +143,9 @@ export function TerminalPanel({
         if (!disposed) setWsError(true);
         return;
       }
+      // Port discovery may await a routed application request. Recheck the
+      // selected binding directly before opening the raw WebSocket.
+      if (!ensureTerminalSocketAllowed()) return;
 
       // Connect to the host the app was loaded from (e.g. the LAN IP on a
       // phone), not `localhost` — on a remote device localhost is the device
@@ -133,7 +156,12 @@ export function TerminalPanel({
       ws = new WebSocket(`${wsProto}//${base.hostname}:${port}`);
 
       const sendOpen = () => {
-        if (!ws || ws.readyState !== WebSocket.OPEN) return;
+        if (
+          !ensureTerminalSocketAllowed() ||
+          !ws ||
+          ws.readyState !== WebSocket.OPEN
+        )
+          return;
         ws.send(
           JSON.stringify({
             type: 'open',
@@ -158,10 +186,12 @@ export function TerminalPanel({
       );
 
       ws.onopen = () => {
+        if (!ensureTerminalSocketAllowed()) return;
         authGate.open(ws!);
       };
 
       ws.onmessage = (event) => {
+        if (!ensureTerminalSocketAllowed()) return;
         if (authGate.consume(event.data as string)) return;
         try {
           const msg = JSON.parse(event.data as string);
@@ -208,7 +238,11 @@ export function TerminalPanel({
     connectWs();
 
     const dataDispose = terminal.onData((data) => {
-      if (ws?.readyState === WebSocket.OPEN && sessionId) {
+      if (
+        ensureTerminalSocketAllowed() &&
+        ws?.readyState === WebSocket.OPEN &&
+        sessionId
+      ) {
         ws.send(JSON.stringify({ type: 'data', sessionId, data }));
       }
     });
@@ -216,7 +250,12 @@ export function TerminalPanel({
     // Expose a way to inject text into this PTY (read ws/sessionId at call time).
     // Refuse once the PTY has exited so callers don't write into a dead shell.
     sendTextRef.current = (text: string) => {
-      if (!exited && ws?.readyState === WebSocket.OPEN && sessionId) {
+      if (
+        ensureTerminalSocketAllowed() &&
+        !exited &&
+        ws?.readyState === WebSocket.OPEN &&
+        sessionId
+      ) {
         ws.send(JSON.stringify({ type: 'data', sessionId, data: text }));
         return true;
       }
@@ -224,7 +263,13 @@ export function TerminalPanel({
     };
 
     getLiveCwdRef.current = () => {
-      if (!ws || ws.readyState !== WebSocket.OPEN || !sessionId || exited) {
+      if (
+        !ensureTerminalSocketAllowed() ||
+        !ws ||
+        ws.readyState !== WebSocket.OPEN ||
+        !sessionId ||
+        exited
+      ) {
         return Promise.resolve(null);
       }
       const requestId = `${terminalId}:cwd:${cwdRequest++}`;
@@ -248,7 +293,11 @@ export function TerminalPanel({
 
     const observer = new ResizeObserver(() => {
       fitAddon.fit();
-      if (ws?.readyState === WebSocket.OPEN && sessionId) {
+      if (
+        ensureTerminalSocketAllowed() &&
+        ws?.readyState === WebSocket.OPEN &&
+        sessionId
+      ) {
         ws.send(
           JSON.stringify({
             type: 'resize',
@@ -279,6 +328,7 @@ export function TerminalPanel({
     };
   }, [
     apiBase,
+    connectionId,
     credentialProvider,
     projectSlug,
     workingDir,
@@ -355,13 +405,15 @@ export function TerminalPanel({
     return (
       <div className="coding-terminal-shell">
         <p role="alert">{unavailableReason}</p>
-        <CommandExecutor workingDir={workingDir} />
+        <CommandExecutor projectSlug={projectSlug} workingDir={workingDir} />
       </div>
     );
   }
 
   if (wsError) {
-    return <CommandExecutor workingDir={workingDir} />;
+    return (
+      <CommandExecutor projectSlug={projectSlug} workingDir={workingDir} />
+    );
   }
 
   return (
@@ -396,7 +448,13 @@ export function TerminalPanel({
 
 // ─── Alternative command executor ────────────────────────────────────────────
 
-function CommandExecutor({ workingDir }: { workingDir: string }) {
+function CommandExecutor({
+  projectSlug,
+  workingDir,
+}: {
+  projectSlug: string;
+  workingDir: string;
+}) {
   const { apiBase } = useApiBase();
   const isMobile = useIsMobile();
   const [input, setInput] = useState('');
@@ -427,7 +485,14 @@ function CommandExecutor({ workingDir }: { workingDir: string }) {
     setInput('');
     setRunning(true);
     try {
-      const d = await executeCodingCommand(cmd, workingDir, apiBase);
+      // #2412: the command runs in this Project's folder, and a paired
+      // device needs the operator's Run commands grant; a refusal arrives
+      // as the error below, in the server's words.
+      const d = await executeCodingCommand(
+        cmd,
+        { projectSlug, workingDir },
+        apiBase,
+      );
       if (d.stdout)
         setLines((l) => [...l, { text: d.stdout ?? '', type: 'out' }]);
       if (d.stderr)

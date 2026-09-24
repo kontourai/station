@@ -10,6 +10,7 @@ import {
   queryTranscriptMessages,
   queryTranscriptSession,
 } from '../orchestration/transcript-search-queries.js';
+import { errorClassFields } from './search-read-refusal.js';
 import {
   parseTranscriptReadRequest,
   type TranscriptReadResult,
@@ -78,14 +79,21 @@ port.on('message', (wire: unknown) => {
                     }),
                   ),
                 };
-  } catch {
-    /* Failure never becomes an authoritative empty/ownerless result. */
+  } catch (error) {
+    // Failure never becomes an authoritative empty/ownerless result. Its
+    // CLASS (constructor name, `code`, SQLite `errcode`) travels with the
+    // refusal so the owner's log can name it (#2460); its message does not,
+    // because a query error can quote the query.
+    result = {
+      state: 'unavailable',
+      cause: { kind: 'query-error', ...errorClassFields(error) },
+    };
   }
   let reply = JSON.stringify({ id: request.id, result });
   if (Buffer.byteLength(reply) > 64 * 1024)
     reply = JSON.stringify({
       id: request.id,
-      result: { state: 'unavailable' },
+      result: { state: 'unavailable', cause: { kind: 'reply-too-large' } },
     });
   port.postMessage(reply);
 });

@@ -72,3 +72,107 @@
 .connections-computers__remove:hover {
   color: var(--text-primary);
 }
+
+.relay-route-profiles {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-top: var(--space-6);
+}
+
+.relay-route-profiles__heading {
+  margin: 0;
+  font-size: var(--text-lg);
+  color: var(--text-primary);
+}
+
+.relay-route-profiles__form {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-md);
+}
+
+.relay-route-profiles__form label {
+  display: grid;
+  gap: var(--space-1);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+}
+
+.relay-route-profiles__form input {
+  width: 100%;
+  min-height: 44px;
+  padding: var(--space-2);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  background: var(--bg-secondary);
+}
+
+.relay-route-trust {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-3);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+}
+
+.relay-route-trust strong {
+  color: var(--text-primary);
+}
+
+.relay-route-trust--approved {
+  border-color: var(--success-border);
+}
+
+.relay-route-trust--revoked,
+.relay-route-trust--mismatch,
+.relay-route-trust--invalid,
+.relay-route-trust--unavailable {
+  border-color: var(--error-border);
+}
+
+.relay-route-trust--untrusted,
+.relay-route-trust--checking {
+  border-color: var(--warning-border);
+}
+
+.relay-route-trust-approval {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-md);
+}
+
+.relay-route-trust-approval h3 {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: var(--text-md);
+}
+
+.relay-route-trust-approval__confirm {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+}
+
+.relay-route-trust-approval__confirm input {
+  flex: 0 0 auto;
+  width: 20px;
+  min-height: 20px;
+  margin-top: 2px;
+}
+
+.relay-route-trust-approval__key-id {
+  overflow-wrap: anywhere;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+}

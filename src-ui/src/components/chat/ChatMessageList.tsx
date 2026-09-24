@@ -1,3 +1,4 @@
+import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import React, {
   useCallback,
   useEffect,
@@ -9,6 +10,7 @@ import React, {
 import { useAgents } from '../../contexts/AgentsContext';
 import { useApiBase } from '../../contexts/ApiBaseContext';
 import type { ChatContentPart } from '../../contexts/active-chats-state';
+import { unansweredApprovalRequests } from '../../hooks/orchestration/pendingRequestRows';
 import { useSendMessage } from '../../hooks/useActiveChatSessions';
 import { useCopyToClipboardToast } from '../../hooks/useCopyToClipboardToast';
 import { useToolApproval } from '../../hooks/useToolApproval';
@@ -31,6 +33,7 @@ import {
 import { type ForkTurnSource, precedingForkSource } from './fork-turn-source';
 import { formatFormSubmission } from './formSubmission';
 import { MessageBubble, type MessageBubbleSession } from './MessageBubble';
+import { PendingApprovalStrip } from './PendingApprovalStrip';
 import { QuoteSelectionToolbar } from './QuoteSelectionToolbar';
 import { ReasoningSection } from './ReasoningSection';
 import { ScrollToBottomButton } from './ScrollToBottomButton';
@@ -62,6 +65,12 @@ interface ChatMessageListProps {
   hasOlderMessages?: boolean;
   historyLoading?: boolean;
   suppressActivity?: boolean;
+  /**
+   * #2309: the host already presents the watchdog's silence for this turn
+   * with an action attached (the dock's stall notice, which offers Stop), so
+   * the streaming row's compact progress omits it rather than saying it twice.
+   */
+  progressSilenceShownElsewhere?: boolean;
   onLoadOlder?: () => Promise<void>;
   /**
    * archive#1301: when provided, the background-tasks banner below
@@ -89,6 +98,14 @@ interface ChatMessageListProps {
   onForkFromTurn?: (source: ForkTurnSource) => void;
   onNewChatFromMessage?: (text: string) => void;
   onQuote?: (quote: SavedAnswerQuote) => void;
+  /**
+   * #2316: the transcript window's runtime events. Open approvals no rendered
+   * row can answer are derived from them here and rendered as the
+   * pending-approvals strip below the transcript (never as messages).
+   */
+  approvalEvents?: readonly { event: CanonicalRuntimeEvent }[];
+  /** Whether `approvalEvents`' window has finished its first read (#2344). */
+  approvalEventsSettled?: boolean;
 }
 
 // Stable fallback so `agent || FALLBACK_AGENT` doesn't allocate a new object
@@ -118,6 +135,7 @@ function backgroundTasksLabel(
 const RESIZE_REANCHOR_THRESHOLD_PX = 4;
 const VIRTUALIZE_AFTER_MESSAGE_COUNT = 40;
 const EMPTY_MESSAGES: ChatMessage[] = [];
+const NO_PENDING_APPROVALS: ReturnType<typeof unansweredApprovalRequests> = [];
 function ChatMessageListComponent({
   activeSession,
   fontSize,
@@ -130,6 +148,7 @@ function ChatMessageListComponent({
   hasOlderMessages,
   historyLoading,
   suppressActivity,
+  progressSilenceShownElsewhere,
   onLoadOlder,
   onOpenBackgroundTasks,
   owner,
@@ -138,11 +157,25 @@ function ChatMessageListComponent({
   onForkFromTurn,
   onNewChatFromMessage,
   onQuote,
+  approvalEvents,
+  approvalEventsSettled,
 }: ChatMessageListProps) {
   const agents = useAgents();
   const { apiBase } = useApiBase();
   const handleCopy = useCopyToClipboardToast();
   const handleToolApproval = useToolApproval(apiBase);
+  const pendingApprovalRequests = useMemo(
+    () =>
+      approvalEvents && approvalEvents.length > 0 && !activeSession.replay
+        ? unansweredApprovalRequests(
+            activeSession.messages,
+            approvalEvents
+              .map((item) => item.event)
+              .filter((event) => Boolean(event.eventId)),
+          )
+        : NO_PENDING_APPROVALS,
+    [activeSession.messages, activeSession.replay, approvalEvents],
+  );
   const sendMessage = useSendMessage(apiBase);
   // The store is already live at the shell; reading its scalar snapshot here
   // avoids adding a second subscription/allocation to every streaming row.
@@ -531,9 +564,7 @@ function ChatMessageListComponent({
       onNewChatFromMessage={
         msg.role === 'user' ? onNewChatFromMessage : undefined
       }
-      onToolApproval={
-        activeSession.replay ? undefined : (handleToolApproval as any)
-      }
+      onToolApproval={activeSession.replay ? undefined : handleToolApproval}
       anchorKey={messageAnchorKey(msg)}
       owner={owner}
       accountableHuman={accountableHuman}
@@ -626,6 +657,8 @@ function ChatMessageListComponent({
                   part.approvalId!,
                   part.toolName || part.name || '',
                   action,
+                  part.approvalThreadId,
+                  part.approvalEventId,
                 )
             : undefined
         }
@@ -740,7 +773,10 @@ function ChatMessageListComponent({
                   renderToolCall={renderToolCall}
                   activityHint={activeSession.activityHint}
                   elapsedMs={activeSession.replay?.elapsedMs}
+                  conversationActivity={activeSession.conversationActivity}
+                  turnStartedAt={activeSession.openTurnStartedAt}
                   suppressActivity={suppressActivity}
+                  hideProgressSilence={progressSilenceShownElsewhere}
                   statusLabel={
                     activeSession.orchestrationStatus === 'awaiting-approval'
                       ? // station#2235: the status alone asserts nothing about
@@ -804,6 +840,25 @@ function ChatMessageListComponent({
                 </div>
               ))}
           </>
+        )}
+        {/* Mounted while empty too: its live region must exist before the
+            first request arrives (#2344). */}
+        {!activeSession.replay && (
+          <PendingApprovalStrip
+            requests={pendingApprovalRequests}
+            settled={approvalEventsSettled !== false}
+            onApprove={(request, action) =>
+              handleToolApproval(
+                activeSession.id,
+                activeSession.agentSlug,
+                request.approvalId ?? '',
+                request.toolName || request.name || '',
+                action,
+                request.approvalThreadId,
+                request.approvalEventId,
+              )
+            }
+          />
         )}
       </div>
       {isUserScrolledUp && (

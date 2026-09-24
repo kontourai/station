@@ -214,6 +214,7 @@ describe('e2e manifest', () => {
       // dock-chrome settings a region write mirrors.
       'tests/activity-pane.spec.ts': expect.any(String),
       'tests/project-architecture.spec.ts': expect.any(String),
+      'tests/browser-relay-route-acceptance.spec.ts': expect.any(String),
       'tests/buffered-answer-delivery.spec.ts': expect.any(String),
     });
     expect(new Set(classified).size).toBe(classified.length);
@@ -448,8 +449,10 @@ describe('e2e manifest', () => {
   it('requires the bounded smoke lane on pull requests with diagnostics', () => {
     const workflow = readFileSync('.github/workflows/ci.yml', 'utf8');
 
-    expect(workflow).toContain('browser-smoke:');
-    expect(workflow).toContain('name: Deterministic Browser Smoke');
+    // The smoke runs as a step of the required fast-checks job.
+    expect(workflow).toContain(
+      'name: Verify critical browser journeys before merge',
+    );
     expect(workflow).toContain('timeout-minutes: 10');
     expect(workflow).toContain('run: npm run test:e2e:pr-smoke');
     expect(workflow).toContain('playwright-report/');

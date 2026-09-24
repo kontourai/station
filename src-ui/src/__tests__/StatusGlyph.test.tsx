@@ -18,6 +18,7 @@ describe('StatusGlyph', () => {
       ['Stopped', 'Stopped', '■', 'muted'],
       ['Running', 'Running', '●', 'active'],
       ['Ready', 'Ready', '○', 'muted'],
+      ['Draft', 'Draft', '◇', 'muted'],
       ['Unanswerable', "Can't answer here", '?', 'warning'],
       ['Completed', 'Completed', '✓', 'success'],
     ] as const;

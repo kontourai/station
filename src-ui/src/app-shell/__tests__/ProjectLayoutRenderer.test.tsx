@@ -4,6 +4,7 @@
 
 import { createDirectAnswerBasisMcpPaneOccurrence } from '@kontourai/station-basis-pane/workspace-basis-mcp-pane';
 import { createDirectAnswerBasisPaneInstance } from '@kontourai/station-basis-pane/workspace-basis-pane';
+import { workspaceBrowserPaneCatalogInstance } from '@kontourai/station-contracts/workspace-browser-pane';
 import { WORKSPACE_BROWSER_PREVIEW_PANE_DESCRIPTOR } from '@kontourai/station-contracts/workspace-browser-preview';
 import {
   createWorkspaceCodingDiffPaneInstance,
@@ -13,6 +14,10 @@ import {
   WORKSPACE_CODING_FILE_BROWSER_PANE_DESCRIPTOR,
   WORKSPACE_CODING_TERMINAL_PANE_DESCRIPTOR,
 } from '@kontourai/station-contracts/workspace-coding-panels';
+import {
+  WORKSPACE_DEVICE_PANE_DESCRIPTOR,
+  WORKSPACE_DEVICE_PANE_INSTANCE,
+} from '@kontourai/station-contracts/workspace-device-pane';
 import {
   createWorkspacePlanPaneInstance,
   createWorkspaceReadinessPaneInstance,
@@ -191,6 +196,10 @@ vi.mock('../../workspace-panes/useWorkspacePaneBoundIdentity', () => ({
 }));
 vi.mock('../../platform/native', () => ({
   nativePlatformPromise: new Promise(() => {}),
+}));
+const showSurfaceMock = vi.fn();
+vi.mock('../../contexts/useShowSurface', () => ({
+  useShowSurface: () => showSurfaceMock,
 }));
 vi.mock('../../workspace-panes/WorkspacePaneHost', () => ({
   WorkspacePaneHost: ({
@@ -691,6 +700,54 @@ describe('ProjectLayoutRenderer', () => {
     );
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     expect(refetch).toHaveBeenCalledOnce();
+  });
+
+  test('keeps painting the cached catalog when a background revalidation fails (#2319)', () => {
+    // The state a real failed refetch of an invalidated catalog leaves behind
+    // (pinned in paneCatalogOutsideInstall.test.tsx): `isError` with the
+    // previous answer still in `data`.
+    const coding = paneAdaptationFromLayoutTab(
+      {
+        id: 'coding',
+        label: 'Coding',
+        component: { kind: 'builtin-component', name: 'coding' },
+      },
+      {
+        layoutSlug: 'coding',
+        instanceScope: 'project:project-uuid:source:builtin:coding',
+        modeContextRequirement: { project: true, source: true },
+        boundContext: {
+          projectId: 'project-uuid',
+          sourceId: 'builtin:coding',
+        },
+      },
+    )!;
+    catalogMock.mockReturnValue({
+      isError: true,
+      data: { projectId: 'project-uuid', descriptors: [], instances: [] },
+      refetch: vi.fn(),
+      projectId: 'project-uuid',
+      projectSlug: 'project-route',
+      entries: [
+        {
+          instance: coding.instance,
+          availability: {
+            state: 'available',
+            reason: { code: 'ready', source: 'resolver' },
+          },
+          descriptor: coding.descriptor,
+        },
+      ],
+    });
+    mobileMock.mockReturnValue(false);
+    layoutQueryMock.mockReturnValue({ data: { type: 'coding', config: {} } });
+
+    render(
+      <ProjectLayoutRenderer projectSlug="project-route" layoutSlug="coding" />,
+    );
+
+    expect(screen.queryByText('Could not load coding workspace')).toBeNull();
+    expect(screen.getByText('Coding chat pane')).toBeTruthy();
   });
 
   test('keeps the live non-Git Project useful and explains the unavailable Diff pane', async () => {
@@ -1194,10 +1251,9 @@ describe('ProjectLayoutRenderer', () => {
 
     const browserPreview = createBrowserPreviewPaneInstance(
       {
-        version: '1.0',
+        version: '2.0',
         projectId: 'project-uuid',
-        requestedUrl: 'http://127.0.0.1:4173/',
-        viewportPreference: 'responsive',
+        browserSessionId: 'bs_0f8f7c1e-9a41-4f2b-9d4a-2b8b1c0e5a77',
         updatedAt: '2026-08-09T00:00:00.000Z',
       },
       'project-uuid',
@@ -1208,10 +1264,9 @@ describe('ProjectLayoutRenderer', () => {
         window.localStorage,
         browserPreview.stateKey,
         {
-          version: '1.0',
+          version: '2.0',
           projectId: 'project-uuid',
-          requestedUrl: 'http://127.0.0.1:4173/',
-          viewportPreference: 'responsive',
+          browserSessionId: 'bs_0f8f7c1e-9a41-4f2b-9d4a-2b8b1c0e5a77',
           updatedAt: '2026-08-09T00:00:00.000Z',
         },
       ),
@@ -1342,13 +1397,99 @@ describe('ProjectLayoutRenderer', () => {
     );
   });
 
+  test('finds the Browser pane entry when the server issued its per-Project occurrence (the real catalog shape, #90)', () => {
+    const coding = paneAdaptationFromLayoutTab(
+      {
+        id: 'coding',
+        label: 'Coding',
+        component: { kind: 'builtin-component', name: 'coding' },
+      },
+      {
+        layoutSlug: 'workspace',
+        instanceScope: 'project:project-uuid:source:builtin:coding',
+        modeContextRequirement: { project: true, source: true },
+        boundContext: { projectId: 'project-uuid', sourceId: 'builtin:coding' },
+      },
+    )!;
+    catalogMock.mockReturnValue({
+      projectId: 'project-uuid',
+      entries: [
+        {
+          instance: coding.instance,
+          availability: { state: 'available' },
+          descriptor: coding.descriptor,
+        },
+        {
+          availability: { state: 'available' },
+          descriptor: WORKSPACE_FILE_PREVIEW_PANE_DESCRIPTOR,
+        },
+        {
+          // What GET /api/projects/:slug/panes returns since wave 2: the
+          // Browser descriptor WITH its catalogue occurrence.
+          instance: workspaceBrowserPaneCatalogInstance('project-uuid')!,
+          availability: {
+            state: 'temporarily-unavailable',
+            reason: { code: 'health-unavailable', source: 'health' },
+          },
+          descriptor: WORKSPACE_BROWSER_PREVIEW_PANE_DESCRIPTOR,
+        },
+        {
+          instance:
+            createWorkspaceCodingFileBrowserPaneInstance('project-uuid')!,
+          availability: { state: 'available' },
+          descriptor: WORKSPACE_CODING_FILE_BROWSER_PANE_DESCRIPTOR,
+        },
+        {
+          instance: createWorkspaceCodingDiffPaneInstance('project-uuid')!,
+          availability: { state: 'available' },
+          descriptor: WORKSPACE_CODING_DIFF_PANE_DESCRIPTOR,
+        },
+        {
+          instance: createWorkspaceCodingTerminalPaneInstance('project-uuid')!,
+          availability: { state: 'available' },
+          descriptor: WORKSPACE_CODING_TERMINAL_PANE_DESCRIPTOR,
+        },
+        {
+          instance: createWorkspacePlanPaneInstance('project-uuid')!,
+          availability: { state: 'available' },
+          descriptor: WORKSPACE_PLAN_PANE_DESCRIPTOR,
+        },
+        {
+          instance: createWorkspaceReadinessPaneInstance('project-uuid')!,
+          availability: { state: 'available' },
+          descriptor: WORKSPACE_READINESS_PANE_DESCRIPTOR,
+        },
+        {
+          instance: createWorkspaceTrustPaneInstance('project-uuid')!,
+          availability: { state: 'available' },
+          descriptor: WORKSPACE_TRUST_PANE_DESCRIPTOR,
+        },
+      ],
+    });
+    codingChatPaneMock.mockReset();
+    layoutQueryMock.mockReturnValue({ data: { type: 'coding', config: {} } });
+
+    render(<ProjectLayoutRenderer projectSlug="demo" layoutSlug="workspace" />);
+
+    expect(codingChatPaneMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        browserPreviewAvailability: {
+          state: 'temporarily-unavailable',
+          reason: { code: 'health-unavailable', source: 'health' },
+        },
+      }),
+    );
+  });
+
   /**
    * #1596. The picker's Open button had three click paths that completed with
    * nothing on screen. These drive the real `openCatalogEntry` and the real
    * modal, with a host whose `open` returns each refusal the controller can
    * produce, and assert the sentence the reader gets.
    */
-  function renderPickerHost() {
+  function renderPickerHost(
+    extraEntries: ReadonlyArray<Record<string, unknown>> = [],
+  ) {
     const coding = paneAdaptationFromLayoutTab(
       {
         id: 'coding',
@@ -1440,6 +1581,7 @@ describe('ProjectLayoutRenderer', () => {
           },
           descriptor: unrenderableDescriptor,
         },
+        ...extraEntries,
       ],
     });
     layoutQueryMock.mockReturnValue({ data: { type: 'coding', config: {} } });
@@ -1447,6 +1589,82 @@ describe('ProjectLayoutRenderer', () => {
     render(<ProjectLayoutRenderer projectSlug="demo" layoutSlug="coding" />);
     return hostMock.mock.lastCall?.[0];
   }
+
+  /**
+   * #2465: the Device pane is host-global and dock-only (its descriptor
+   * declares `supportedRegions: ['docked']` and no Project context). The
+   * catalog carries it because a dock region resolves it there, but a
+   * layout's picker places panes in the layout's own regions, where the
+   * host then refuses the Project-less occurrence as "belongs to a different
+   * Project". So the picker does not offer it.
+   */
+  test('does not offer the dock-only Device pane in a layout (#2465)', () => {
+    const hostProps = renderPickerHost([
+      {
+        instance: WORKSPACE_DEVICE_PANE_INSTANCE,
+        availability: {
+          state: 'available',
+          reason: { code: 'ready', source: 'resolver' },
+        },
+        descriptor: WORKSPACE_DEVICE_PANE_DESCRIPTOR,
+      },
+    ]);
+    act(() => {
+      hostProps.onOpenActionChange({ open: vi.fn(() => ({ ok: true })) });
+      hostProps.onOpenCatalog({ type: 'add', targetGroupId: 'root' });
+    });
+    const dialog = screen.getByRole('dialog', { name: 'Add workspace pane' });
+    expect(
+      within(dialog).getByRole('button', { name: 'Open File Preview' }),
+    ).toBeTruthy();
+    expect(within(dialog).queryByText('Device')).toBeNull();
+    expect(
+      within(dialog).queryByRole('button', { name: 'Open Device' }),
+    ).toBeNull();
+  });
+
+  /**
+   * #2465 follow-on: a layout that already holds the Device pane (from before
+   * the picker stopped offering it) says where it lives — not "belongs to a
+   * different Project" — keyed on the picker's own predicate, and offers to
+   * open it in the dock or remove it from the layout.
+   */
+  test('a Device pane already in a layout says it lives in the dock, and can be opened there or removed', () => {
+    const deviceEntry = {
+      instance: WORKSPACE_DEVICE_PANE_INSTANCE,
+      availability: {
+        state: 'available',
+        reason: { code: 'ready', source: 'resolver' },
+      },
+      descriptor: WORKSPACE_DEVICE_PANE_DESCRIPTOR,
+    };
+    const first = renderPickerHost([deviceEntry]);
+    const close = vi.fn(async () => {});
+    act(() => {
+      first.onOpenActionChange({ open: vi.fn(), close });
+      first.onDocumentChange({
+        instances: [
+          { instanceId: 'instance:other' },
+          WORKSPACE_DEVICE_PANE_INSTANCE,
+        ],
+      });
+    });
+    const hostProps = hostMock.mock.lastCall?.[0];
+    const slot = within(
+      render(<>{hostProps.renderPane(WORKSPACE_DEVICE_PANE_INSTANCE)}</>)
+        .container,
+    );
+    expect(slot.getByText('The Device pane lives in the dock')).toBeTruthy();
+    expect(
+      slot.queryByText('This pane belongs to a different Project.'),
+    ).toBeNull();
+    fireEvent.click(slot.getByRole('button', { name: 'Open in dock' }));
+    expect(showSurfaceMock).toHaveBeenCalledWith('device');
+    fireEvent.click(slot.getByRole('button', { name: 'Remove from layout' }));
+    expect(close).toHaveBeenCalledWith(
+      WORKSPACE_DEVICE_PANE_INSTANCE.instanceId,
+    );
+  });
 
   test.each([
     [
@@ -1659,10 +1877,9 @@ describe('ProjectLayoutRenderer', () => {
     )!;
     const browserPreview = createBrowserPreviewPaneInstance(
       {
-        version: '1.0',
+        version: '2.0',
         projectId: 'project-uuid',
-        requestedUrl: 'http://127.0.0.1:4173/',
-        viewportPreference: 'responsive',
+        browserSessionId: 'bs_0f8f7c1e-9a41-4f2b-9d4a-2b8b1c0e5a77',
         updatedAt: '2026-08-09T00:00:00.000Z',
       },
       'project-uuid',

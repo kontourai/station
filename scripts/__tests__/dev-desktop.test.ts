@@ -40,7 +40,19 @@ describe('desktop development contract', () => {
       STATION_DESKTOP_PORT: String(first.serverPort),
       STATION_SERVER_PORT: String(first.serverPort),
       STATION_UI_PORT: String(first.uiPort),
+      ALLOWED_ORIGINS: `http://127.0.0.1:${first.uiPort}`,
     });
+    // The dev webview's origin is merged into, not substituted for, any
+    // inherited origin policy.
+    expect(
+      desktopDevEnvironment(first, {
+        ALLOWED_ORIGINS: 'https://station.example.test, http://127.0.0.1:1',
+      }).ALLOWED_ORIGINS?.split(','),
+    ).toEqual([
+      'https://station.example.test',
+      'http://127.0.0.1:1',
+      `http://127.0.0.1:${first.uiPort}`,
+    ]);
     expect(desktopDevTauriConfig(first)).toMatchObject({
       productName: 'Station Dev (dev-beta_ui)',
       identifier: 'io.kontourai.station.dev.dev-beta-ui',

@@ -182,6 +182,10 @@ export interface ChatMessage {
     isError?: boolean;
     needsApproval?: boolean;
     approvalId?: string;
+    /** #2316: see `MessagePart.approvalThreadId` in `packages/shared/src/conversation-message.ts`. */
+    approvalThreadId?: string;
+    /** #2316: see `MessagePart.approvalEventId`. */
+    approvalEventId?: string;
     cancelled?: boolean;
     approvalStatus?:
       | 'auto-approved'
@@ -298,6 +302,13 @@ export interface ChatSession {
   providerOptions?: Record<string, unknown>;
   /** See ChatUIState.lastAppliedApprovalMode (active-chats-state.ts) — not persisted. */
   lastAppliedApprovalMode?: ApprovalMode;
+  /** See ChatUIState.approvalEscalationRejected (active-chats-state.ts, #2436). */
+  approvalEscalationRejected?: boolean;
+  /** See ChatUIState.queuedApprovalMode (active-chats-state.ts, #2436). */
+  queuedApprovalMode?: ApprovalMode;
+  /** See ChatUIState.approvalPosture (active-chats-state.ts, #2436). */
+  approvalPosture?: ApprovalMode;
+  approvalPostureSequence?: number;
   /** See ChatUIState.stopPending (active-chats-state.ts) — not persisted. */
   stopPending?: boolean;
   model?: string;
@@ -318,6 +329,16 @@ export interface ChatSession {
   openTurnId?: string;
   /** See ChatUIState.openTurnShellSuperseded (active-chats-state.ts). */
   openTurnShellSuperseded?: boolean;
+  /** #2309: see ChatUIState.conversationActivity (active-chats-state.ts). */
+  conversationActivity?: import('@kontourai/station-contracts/orchestration').ConversationTurnActivity;
+  /** #2309: see ChatUIState.sendAwaitingTurnStart (active-chats-state.ts). */
+  sendAwaitingTurnStart?: boolean;
+  /** #2309: see ChatUIState.queueDrainSettling (active-chats-state.ts). */
+  queueDrainSettling?: boolean;
+  /** #2309: see ChatUIState.stopSettledTurnId (active-chats-state.ts). */
+  stopSettledTurnId?: string;
+  /** See ChatUIState.openTurnStartedAt (active-chats-state.ts). */
+  openTurnStartedAt?: number;
   /** Incremented only when bounded persisted history must reconcile. */
   orchestrationHistoryRevision?: number;
   inputHistory: string[];

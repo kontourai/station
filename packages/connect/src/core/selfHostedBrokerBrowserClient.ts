@@ -1,3 +1,4 @@
+import type { DeviceConnectionTrustRecord } from '@kontourai/station-contracts/connection-proof';
 import type { SelfHostedBrokerScopeV1 } from '@kontourai/station-contracts/self-hosted-broker';
 import { raceOwnedLifetime } from './browserTransportWait.js';
 
@@ -15,6 +16,15 @@ export interface BrowserRoutingCredentialSnapshot {
 }
 export interface BrowserRoutingCredentialProvider {
   capture(): BrowserRoutingCredentialSnapshot;
+  /** Optional only for the existing fixture/lab legacy credential adapter. */
+  assertBoundToTrust?(
+    trustRecord: DeviceConnectionTrustRecord,
+    route: {
+      brokerOrigin: string;
+      browserOrigin: string;
+      scope: SelfHostedBrokerScopeV1;
+    },
+  ): Promise<boolean>;
 }
 export interface BrokerBrowserConnection {
   readonly clientId: string;
@@ -170,6 +180,23 @@ export class SelfHostedBrokerBrowserClient {
 
   get scope(): Readonly<SelfHostedBrokerScopeV1> {
     return this.#scope;
+  }
+
+  /**
+   * Checks an enrolled grant against the independent Station trust authority
+   * immediately before signaling. Providers without this hook are the legacy
+   * lab/fixture path; production enrollment uses BrowserRoutingGrantCustody.
+   */
+  async assertCredentialBoundToTrust(
+    trustRecord: DeviceConnectionTrustRecord,
+  ): Promise<boolean | undefined> {
+    const assertBound = this.#credentials.assertBoundToTrust;
+    if (!assertBound) return undefined;
+    return assertBound.call(this.#credentials, trustRecord, {
+      brokerOrigin: this.#brokerOrigin,
+      browserOrigin: this.#browserOrigin,
+      scope: this.#scope,
+    });
   }
 
   async #post(

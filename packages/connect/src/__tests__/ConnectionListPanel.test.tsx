@@ -53,7 +53,9 @@ const downLocalServer: SavedConnection = {
   name: 'Local Server',
   url: 'http://127.0.0.1:3141',
   injected: true,
+  injectedSource: 'managed-loopback',
   injectedStatus: 'stopped',
+  ownerId: 'sidecar-one',
 };
 
 function renderPanel(
@@ -61,12 +63,14 @@ function renderPanel(
   {
     connections = [connection],
     onRestartInjectedConnection,
+    localStationOwnerId,
     onMakeDefaultProfile,
     canEditSharedProfiles,
     onStartEdit = vi.fn(),
   }: {
     connections?: SavedConnection[];
     onRestartInjectedConnection?: (connection: SavedConnection) => void;
+    localStationOwnerId?: string;
     onMakeDefaultProfile?: (connection: SavedConnection) => void;
     canEditSharedProfiles?: boolean;
     onStartEdit?: (connection: SavedConnection) => void;
@@ -77,6 +81,7 @@ function renderPanel(
       connections={connections}
       activeConnectionId={connection.id}
       onRestartInjectedConnection={onRestartInjectedConnection}
+      localStationOwnerId={localStationOwnerId}
       canEditSharedProfiles={canEditSharedProfiles}
       editingId={null}
       editName=""
@@ -108,6 +113,42 @@ function renderPanel(
 }
 
 describe('ConnectionListPanel', () => {
+  it('shows the app lifetime on the managed local Station row', () => {
+    renderPanel(vi.fn(), {
+      connections: [downLocalServer],
+      localStationOwnerId: 'sidecar-one',
+    });
+    expect(screen.getByTestId('local-station-lifetime').textContent).toBe(
+      'Runs only while the Station app is open.',
+    );
+  });
+
+  it('shows the app lifetime on the saved profile coalesced with its sidecar', () => {
+    renderPanel(vi.fn(), {
+      connections: [{ ...connection, ownerId: 'sidecar-one' }],
+      localStationOwnerId: 'sidecar-one',
+    });
+    expect(screen.getByTestId('local-station-lifetime').textContent).toBe(
+      'Runs only while the Station app is open.',
+    );
+  });
+
+  it('does not apply the app lifetime detail to unrelated or CLI connections', () => {
+    renderPanel(vi.fn(), {
+      connections: [
+        { ...connection, id: 'remote-profile', ownerId: 'another-sidecar' },
+        {
+          ...downLocalServer,
+          id: 'cli-base',
+          ownerId: undefined,
+          injectedSource: 'cli-base',
+        },
+      ],
+      localStationOwnerId: 'sidecar-one',
+    });
+    expect(screen.queryByTestId('local-station-lifetime')).toBeNull();
+  });
+
   it('copies the complete address and enables managed edits only with the owner capability', async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     vi.stubGlobal('navigator', { clipboard: { writeText } });

@@ -36,14 +36,17 @@ const browserDescriptor: WorkspacePaneDescriptor = {
   id: toWorkspacePaneDescriptorId(
     'pane:builtin:workspace-preview:browser-preview',
   ),
-  name: 'Browser Preview',
-  description: 'Open a validated local browser preview for a workspace.',
+  name: 'Browser',
+  description:
+    'Open a web page in a browser Station runs, and watch or drive it live.',
   rendererId: toWorkspacePaneRendererId(
     'renderer:builtin:builtin-component:workspace-browser-preview',
   ),
   renderer: { kind: 'builtin-component', name: 'workspace-browser-preview' },
+  // Renderer admission compares declarations by value: this mirrors the real
+  // descriptor, `docked` included since #90 D9.
   placement: {
-    supportedRegions: ['primary', 'secondary', 'standalone'],
+    supportedRegions: ['primary', 'secondary', 'standalone', 'docked'],
     preferredRegion: 'secondary',
   },
   // Mirrors the real descriptor's exact default mode, so the canonical

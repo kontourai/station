@@ -95,13 +95,35 @@ async function openConnections(page: Page): Promise<Locator> {
 
   if ((await dialog.isVisible()) && (await managerControl.first().isVisible()))
     return dialog;
-  if (await setupLauncher.isVisible()) {
+  // #2278 sequences authority observation ahead of the App mount, so on a
+  // fresh home the setup-launcher (mounted above the provider) can win the
+  // entry race while the toolbar chip is still settling. The launcher
+  // navigates to the Connections hub, which has no manager entry — prefer
+  // the chip's in-place manager dialog, waiting boundedly for it when the
+  // launcher is already showing. If the chip never settles, fall through
+  // to the pre-existing launcher path below.
+  if (
+    !(await directConnections.isVisible()) &&
+    (await setupLauncher.isVisible())
+  ) {
+    try {
+      await expect
+        .poll(async () => await directConnections.isVisible(), {
+          timeout: CONNECTION_ENTRY_TIMEOUT_MS,
+        })
+        .toBe(true);
+    } catch {
+      // Authority never settled the chip; the launcher path below still
+      // applies and the manager poll gates the outcome either way.
+    }
+  }
+  if (await directConnections.isVisible()) {
+    await directConnections.click();
+  } else if (await setupLauncher.isVisible()) {
     await setupLauncher
       .getByRole('button', { name: 'View All Connections' })
       .click();
     await page.waitForURL(/\/connections(?:\?|$)/);
-  } else if (await directConnections.isVisible()) {
-    await directConnections.click();
   } else {
     await moreActions.click();
     const menu = page.locator('.app-toolbar__overflow-menu');

@@ -311,6 +311,8 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
       'read-only against the isolated temp-home instance; the only writes are this browser context’s own localStorage — the regionArrangement device setting, plus the dock-chrome settings a region write mirrors (station.chatDock.snap, chatDockHeight/chatDockWidth)',
     'tests/project-architecture.spec.ts':
       'browser-local page.route mocks installed before navigation; the only writes are this browser context’s own localStorage — the same regionArrangement and dock-chrome device settings its placement journeys drive',
+    'tests/browser-relay-route-acceptance.spec.ts':
+      'read-only Connections UI against the runner-owned temporary Station; trust refusal occurs before server enrollment, with only this browser context’s request observation and local page state',
     'tests/buffered-answer-delivery.spec.ts':
       'browser-local orchestration SSE and API fixtures installed before navigation; the only write is this browser context’s device-local Answer delivery preference',
   },
@@ -323,6 +325,7 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/attention-file-replies.spec.ts',
     'tests/dialog-return-focus.spec.ts',
     'tests/banner-stack-bound.spec.ts',
+    'tests/toggle-contrast.spec.ts',
     'tests/agent-editor-geometry.spec.ts',
     'tests/answer-quoting.spec.ts',
     'tests/code-block-actions.spec.ts',
@@ -330,6 +333,7 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/pull-request-review.spec.ts',
     'tests/conversation-pull-request-links.spec.ts',
     'tests/image-preview-inspection.spec.ts',
+    'tests/pdf-canvas-preview.spec.ts',
     'tests/diagnostics-bundle.spec.ts',
     'tests/monitoring-and-chrome.spec.ts',
     'tests/keyboard-shortcuts.spec.ts',
@@ -352,6 +356,7 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/registry.spec.ts',
     'tests/registry-install.spec.ts',
     'tests/connections-crud.spec.ts',
+    'tests/browser-relay-route-acceptance.spec.ts',
     'tests/credential-recovery-groups.spec.ts',
     'tests/ssh-environments-ui.spec.ts',
     'tests/connect-modal.spec.ts',
@@ -536,6 +541,8 @@ export const e2eManifest = [
   {
     path: 'tests/agents-new-cli-turn.spec.ts',
     bucket: 'smoke-live',
+    // Disabled in CI until #2318 (scripts/lib/account-requirement.mjs).
+    requiresAccount: 'a signed-in Claude Code or Codex CLI',
     surface: 'Agents',
     tierTarget: 'full',
     primary: true,
@@ -546,6 +553,8 @@ export const e2eManifest = [
   {
     path: 'tests/agents-new-muse-echo-turn.spec.ts',
     bucket: 'smoke-live',
+    // Disabled in CI until #2318 (scripts/lib/account-requirement.mjs).
+    requiresAccount: 'an installed, authenticated Muse CLI',
     surface: 'Agents',
     tierTarget: 'full',
     primary: true,
@@ -621,6 +630,16 @@ export const e2eManifest = [
     primary: true,
     rationale:
       'Real production image inspector and dialog components with browser-decoded PNG input; verifies zoom, pointer and touch pan, keyboard and gallery focus, full backdrop coverage, failure state and narrow theme/rotation geometry. Bundling is in-memory; no live Station instance or shared output writes.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/pdf-canvas-preview.spec.ts',
+    bucket: 'product',
+    surface: 'Chat attachment PDF previews',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Real preview dialog and pdf.js canvas viewer built by Vite in memory exactly as the app builds them (bundled module worker, emitted font/decoder side-files) and served from memory through browser-local page routes under the desktop/mobile CSP with the UI server MIME map and nosniff, with the engine reporting no PDF viewer as Android WebView does. Verifies non-blank page pixels including text, lazy drawing of off-screen pages, the bundled Symbol font load, fit-width zoom, and the unreadable, password-protected and dead-worker states. No live Station instance or shared output writes.',
     exceptions: [],
   },
   {
@@ -818,7 +837,7 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale:
-      "#1969: the Device pane had five jsdom suites and no browser journey, so its aspect-ratio assertions read a CSS custom property off an inline style and NOTHING had observed the pane lay out — which is why docs/ui/responsive-action-surfaces.txt listed it as an exception. This is the render. The setup state is un-intercepted: the suite instance runs with STATION_MOBILE_DEVICE_HUB_URL unset, so the real LocalMobileDeviceHost answers not-configured through the real route and the pane's first-run card is the pane's own reading of it — asserted to offer no retry and to render no device list, so an unconfigured Station can never read as 'no devices'. The populated states need a booted simulator and a booted emulator no runner has, so they are supplied through page.route in the exact envelope mobile-device-host.ts emits (a UDID iOS row and an emulator-<n> Android row, the only spellings that host admits for booted devices) with REAL PNGs built in the spec — valid signature/IHDR/IEND, so the SDK client's base64 check and the host's own reader both accept them. Desktop: both native app targets selectable and captured in turn; the frame's ratio read from getBoundingClientRect rather than getComputedStyle, because the computed property is the declaration echoed back and only the laid out box can fail; a second iOS capture with swapped dimensions relayouts the frame from taller-than-wide to wider-than-tall; caption and image alt both carry 'Snapshot' and the browser's rendering of the capture's own capturedAt, stamped ten seconds in the past so a time taken from Date.now() would differ; switching devices drops the frame rather than hiding it. A 403 on capture renders the access-denied copy and leaves Capture ENABLED — the amended decision on the issue, because a changed sign-in is repairable in place and Capture is the retry — while adding no second button. 390x844 isMobile variant measures the picker rows and Capture against the 44px floor from their laid out boxes, with one hundredth of a pixel of slack because a composited min-height:44px row reports 43.99999237060547 (#2086) and an exact integer comparison would encode the compositor's rounding rather than the CSS. It reaches no device helper and proves nothing about expo-device-hub or the capture route's own authorization; tests/tauri-shell/device-pane.e2e.ts is the lane that drives the real service against a real hub.",
+      '#1969/#1970: the Device pane in a real browser. The setup state is un-intercepted: the suite instance runs with STATION_MOBILE_DEVICE_HUB_URL unset, so the real LocalMobileDeviceHost answers not-configured through the real route and the pane renders its setup slot, with no retry and no device groups. The populated picker needs booted devices no runner has, so the device list and the empty session list are supplied through page.route in the exact envelopes the server emits; the render is the evidence: both platforms grouped (iOS Simulators, Android Emulators), each device offered for opening. The 390x844 isMobile variant measures the picker rows and their Open controls against the 44px floor from laid-out boxes (one hundredth of a pixel of slack, #2086) and checks the phone document does not scroll sideways. It opens no live session: the live stream and input are proven against a real hub by src-server/services/devices/__tests__/device-live.real.test.ts.',
     exceptions: [],
   },
   {
@@ -904,6 +923,8 @@ export const e2eManifest = [
   {
     path: 'tests/workspace-pane-host-actions-live.spec.ts',
     bucket: 'smoke-live',
+    // Disabled in CI until #2318 (scripts/lib/account-requirement.mjs).
+    requiresAccount: 'an installed, authenticated Muse CLI',
     surface: 'Plugins',
     tierTarget: 'full',
     primary: true,
@@ -1096,6 +1117,16 @@ export const e2eManifest = [
     exceptions: [],
   },
   {
+    path: 'tests/browser-relay-route-acceptance.spec.ts',
+    bucket: 'product',
+    surface: 'Connections',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Real browser UI action proving a broker invitation cannot be saved before this browser independently approves the exact Station enrollment; the full local grant/Pion protocol remains covered by the browser transport lab.',
+    exceptions: [],
+  },
+  {
     path: 'tests/credential-recovery-groups.spec.ts',
     bucket: 'product',
     surface: 'Connections',
@@ -1211,6 +1242,16 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale: 'Promoted connection reconnect banner lane.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/toggle-contrast.spec.ts',
+    bucket: 'product',
+    surface: 'Shell',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      '#2441: the shared Toggle track clears WCAG 1.4.11 3:1 non-text contrast against every surface it renders on (page, panels, modal, elevated and hover fills), off and on, both sizes, both themes — computed colours after the cascade and both theme blocks resolve, which jsdom cannot compute. Also proves the states differ by more than colour (outlined vs filled track, thumb moves), that the track keeps its 36x20/28x16 size so consumers do not reflow, and that the Browser pane switch keeps its state word, fits and has a 44px hit area at 390px. Same real-source-bundled-with-esbuild technique as banner-stack-bound.spec.ts, with the real index.css token layers bundled alongside; no live instance or server.',
     exceptions: [],
   },
   {
@@ -2048,6 +2089,22 @@ export function listE2ESourceFiles(rootDir = process.cwd()) {
   return files.sort();
 }
 
+/**
+ * `requiresAccount` names the signed-in account a spec needs; CI skips such a
+ * spec before it starts (scripts/lib/account-requirement.mjs, until #2318).
+ * A declaration that names nothing would disable coverage for no stated
+ * reason, so it is refused.
+ */
+export function requiresAccountErrors(entry) {
+  if (!('requiresAccount' in entry)) return [];
+  return typeof entry.requiresAccount === 'string' &&
+    entry.requiresAccount.trim()
+    ? []
+    : [
+        `${entry.path} declares requiresAccount without naming the account it needs.`,
+      ];
+}
+
 export function validateE2EManifest({
   rootDir = process.cwd(),
   readFile,
@@ -2093,6 +2150,7 @@ export function validateE2EManifest({
     if (!entry.rationale) {
       errors.push(`${entry.path} is missing a rationale.`);
     }
+    errors.push(...requiresAccountErrors(entry));
     if (entry.bucket === 'quarantine' && !entry.replacement) {
       errors.push(`${entry.path} is quarantined without replacement coverage.`);
     }

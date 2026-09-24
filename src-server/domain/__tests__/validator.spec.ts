@@ -156,6 +156,20 @@ describe('Agent schema validation', () => {
     );
   });
 
+  // #2436: an Agent's default approval posture is part of its execution
+  // config; the schema must admit it or every saved default is unloadable.
+  it('accepts an execution approval default, and only a real posture', () => {
+    const withMode = (approvalMode: unknown) => ({
+      name: 'Posture Agent',
+      prompt: '',
+      execution: { agentConnectionId: 'claude', approvalMode },
+    });
+    for (const mode of ['ask', 'auto', 'never', 'connection-default']) {
+      expect(() => validator.validateAgentSpec(withMode(mode))).not.toThrow();
+    }
+    expect(() => validator.validateAgentSpec(withMode('yolo'))).toThrow();
+  });
+
   it('does not treat an Ollama provider-model id as a managed Agent runtime (#1055)', () => {
     const spec = {
       name: 'Ollama Managed Agent',

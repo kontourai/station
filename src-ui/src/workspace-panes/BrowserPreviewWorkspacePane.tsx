@@ -1,135 +1,112 @@
 import {
-  WORKSPACE_BROWSER_PREVIEW_CONTRACT_VERSION,
-  type WorkspaceBrowserPreviewState,
-} from '@kontourai/station-contracts/workspace-browser-preview';
-import { useCallback, useEffect, useState } from 'react';
-import type { NativeCapabilityStatus } from '../platform/native';
-import { nativePlatformPromise } from '../platform/native';
-import { BrowserPreviewPane } from './BrowserPreviewPane';
+  migrateWorkspaceBrowserPaneState,
+  parseWorkspaceBrowserPaneState,
+  WORKSPACE_BROWSER_PANE_STATE_VERSION,
+} from '@kontourai/station-contracts/workspace-browser-pane';
+import { useCallback, useState } from 'react';
+import { LazyBoundary } from '../components/LazyBoundary';
+import { SkeletonBlock } from '../components/state';
+import type { BrowserPaneTarget } from './browser-pane/BrowserPane';
 import { isCanonicalBrowserPreviewPaneInstance } from './browserPreviewPaneInstance';
 import {
   readBrowserPreviewPaneState,
+  storedBrowserPaneProjectId,
   writeBrowserPreviewPaneState,
 } from './browserPreviewPaneStateStorage';
 import type { BuiltinWorkspacePaneProps } from './builtinWorkspacePaneRegistry';
 import { useWorkspacePaneBoundIdentity } from './useWorkspacePaneBoundIdentity';
 import { WorkspacePaneBindingUnavailable } from './WorkspacePaneBindingUnavailable';
 
+// The pane itself (address bar, live canvas, session list, acquisition) is a
+// separate chunk: nothing of it reaches the entry bundle.
+const loadBrowserPane = () => import('./browser-pane/BrowserPane');
+
 /**
- * Bridges strict durable metadata into the UI-local renderer projection. A
- * restored occurrence always starts loading; prior rendering outcomes are not
- * retained as health evidence.
+ * The Browser pane's registry slot (descriptor
+ * `pane:builtin:workspace-preview:browser-preview`). Pane state is per
+ * device and names only the server-owned session this pane shows (v2). A v1
+ * Browser Preview record is migrated on first mount: the pane opens or
+ * restores a session for its URL, then this writes v2 in its place.
  */
 export function BrowserPreviewWorkspacePane({
   instance,
 }: BuiltinWorkspacePaneProps) {
   const identity = useWorkspacePaneBoundIdentity(instance, false);
   const projectId = identity.state === 'resolved' ? identity.project.id : '';
-  const [revision, setRevision] = useState(0);
-  const [externalAction, setExternalAction] = useState<NativeCapabilityStatus>({
-    id: 'local-browser-preview',
-    state: 'disabled',
-    reason:
-      'Station is checking whether the native external-open action is available.',
-  });
-  const state = readBrowserPreviewPaneState(
+  const [, setRevision] = useState(0);
+  const stored = readBrowserPreviewPaneState(
     window.localStorage,
     instance.stateKey,
   );
-  const paneState = state;
-  const canonicalInstance = Boolean(
-    paneState &&
+  // The Add-pane grid opens the Project's occurrence with no state yet: it
+  // then belongs to its bound Project and asks for a page.
+  const storedProject = stored
+    ? storedBrowserPaneProjectId(stored)
+    : (instance.boundContext?.projectId ?? null);
+  const canonical = Boolean(
+    storedProject &&
       instance.boundContext?.projectId === projectId &&
-      isCanonicalBrowserPreviewPaneInstance(instance, paneState),
+      isCanonicalBrowserPreviewPaneInstance(instance, {
+        projectId: storedProject,
+      }),
   );
-  const saveAddress = useCallback(
-    (requestedUrl: string) => {
-      if (!state) return false;
-      const next = {
-        ...state,
-        requestedUrl,
-        updatedAt: new Date().toISOString(),
-      };
-      const written = writeBrowserPreviewPaneState(
-        window.localStorage,
-        instance.stateKey,
-        next,
-      );
-      if (written) setRevision((current) => current + 1);
-      return written;
+  const onAttach = useCallback(
+    (browserSessionId: string) => {
+      if (!storedProject) return;
+      const updatedAt = new Date().toISOString();
+      const next = !stored
+        ? parseWorkspaceBrowserPaneState({
+            version: WORKSPACE_BROWSER_PANE_STATE_VERSION,
+            projectId: storedProject,
+            browserSessionId,
+            updatedAt,
+          })
+        : stored.version === '1.0'
+          ? migrateWorkspaceBrowserPaneState(
+              stored.migration,
+              browserSessionId,
+              updatedAt,
+            )
+          : parseWorkspaceBrowserPaneState({
+              version: WORKSPACE_BROWSER_PANE_STATE_VERSION,
+              projectId: stored.state.projectId,
+              browserSessionId,
+              updatedAt,
+            });
+      if (
+        next &&
+        writeBrowserPreviewPaneState(
+          window.localStorage,
+          instance.stateKey,
+          next,
+        )
+      )
+        setRevision((current) => current + 1);
     },
-    [instance.stateKey, state],
+    [instance.stateKey, stored, storedProject],
   );
-  useEffect(() => {
-    if (!canonicalInstance) return;
-    let disposed = false;
-    void nativePlatformPromise
-      .then((native) => {
-        if (disposed) return;
-        setExternalAction(native.capability('local-browser-preview'));
-      })
-      .catch(() => {
-        if (disposed) return;
-        setExternalAction({
-          id: 'local-browser-preview',
-          state: 'disabled',
-          reason: 'Station could not verify the native external-open action.',
-        });
-      });
-    return () => {
-      disposed = true;
-    };
-  }, [canonicalInstance]);
   if (identity.state !== 'resolved')
     return <WorkspacePaneBindingUnavailable identity={identity} />;
-  if (!paneState || !canonicalInstance)
+  if (!canonical)
     return (
       <WorkspacePaneBindingUnavailable
         identity={{ state: 'pane-state-mismatch' }}
       />
     );
-  const preview: WorkspaceBrowserPreviewState = {
-    contractVersion: WORKSPACE_BROWSER_PREVIEW_CONTRACT_VERSION,
-    requestedUrl: paneState.requestedUrl,
-    currentUrl: paneState.requestedUrl,
-    status:
-      externalAction.state === 'enabled'
-        ? 'external-action-ready'
-        : 'unavailable',
-    historyCapability: 'unavailable',
-    viewportPreference: paneState.viewportPreference,
-    updatedAt: paneState.updatedAt,
-    identity: { projectId },
-  };
-
+  const target: BrowserPaneTarget = !stored
+    ? { kind: 'new' }
+    : stored.version === '2.0'
+      ? { kind: 'session', browserSessionId: stored.state.browserSessionId }
+      : { kind: 'migrate', migration: stored.migration };
   return (
-    <BrowserPreviewPane
-      key={`${instance.instanceId}:${revision}`}
-      preview={preview}
-      onOpenExternal={async (url) => {
-        const native = await nativePlatformPromise;
-        return native.openLocalBrowserPreview(url);
+    <LazyBoundary
+      load={loadBrowserPane}
+      componentProps={{
+        projectSlug: identity.project.slug,
+        target,
+        onAttach,
       }}
-      onDiscoverNativeTarget={
-        externalAction.state === 'enabled'
-          ? async (url) => {
-              const native = await nativePlatformPromise;
-              return native.discoverLocalBrowserPreviewTarget(url);
-            }
-          : undefined
-      }
-      onOpenNativeWindow={
-        externalAction.state === 'enabled'
-          ? async (grantId) => {
-              const native = await nativePlatformPromise;
-              return native.openLocalBrowserPreviewWindow(grantId);
-            }
-          : undefined
-      }
-      onChangeAddress={saveAddress}
-      unavailableReason={
-        externalAction.state === 'enabled' ? undefined : externalAction.reason
-      }
+      pending={<SkeletonBlock count={2} label="Loading the browser" />}
     />
   );
 }

@@ -1921,7 +1921,7 @@ export function HostDevicePairingPanel({
               onChange={(event) =>
                 setQrTarget(event.target.value as 'app' | 'scanner')
               }
-              style={inputStyle}
+              className="pairing-select"
             >
               <option value="app">Phone camera — open Station app</option>
               <option value="scanner">Scanner inside Station</option>
@@ -1955,7 +1955,7 @@ export function HostDevicePairingPanel({
                   event.target.value as Exclude<PairingDeepLinkChannel, 'dev'>,
                 )
               }
-              style={inputStyle}
+              className="pairing-select"
             >
               <option value="stable">Station</option>
               <option value="beta">Station Beta</option>

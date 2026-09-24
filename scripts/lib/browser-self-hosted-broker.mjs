@@ -18,16 +18,16 @@ export async function browserBrokerConnect(input) {
     !window.stationConnectionTrustStore
   )
     throw new Error('Missing independently admitted Station trust');
-  const credentials = {
-    current: true,
-    capture() {
-      return {
-        id: input.routingId,
-        secret: input.routingSecret,
-        isCurrent: () => this.current,
-      };
-    },
-  };
+  if (!input.invitation)
+    throw new Error('Broker lab requires a one-time client invitation');
+  const credentials = new api.BrowserRoutingGrantCustody();
+  await api.redeemBrokerRouteInvitation({
+    invitation: input.invitation,
+    trustRecord: window.stationConnectionTrustRecord,
+    trustStore: window.stationConnectionTrustStore,
+    custody: credentials,
+    signal: AbortSignal.timeout(15_000),
+  });
   // The real HTTP loopback broker origin is used for validation AND fetch:
   // never validate one origin then fetch a different one.
   const broker = new api.SelfHostedBrokerBrowserClient({
@@ -54,12 +54,18 @@ export async function browserBrokerConnect(input) {
       };
     },
   };
+  let peer;
   const owner = api.createBrowserPionConnection({
     broker,
     applicationOrigin: input.applicationOrigin,
     trustRecord: window.stationConnectionTrustRecord,
     trustStore: window.stationConnectionTrustStore,
     ice,
+    createPeer(configuration) {
+      peer = new RTCPeerConnection(configuration);
+      if (window.stationBrokerLab) window.stationBrokerLab.peer = peer;
+      return peer;
+    },
   });
   const signal = AbortSignal.timeout(45000);
   const snapshot = await owner.connect(signal);
@@ -67,27 +73,82 @@ export async function browserBrokerConnect(input) {
     throw new Error('Broker transport application origin mismatch');
   window.stationBrokerLab = {
     owner,
+    peer,
     snapshot,
     broker,
     credentials,
     ice,
-    input,
+    // Keep the one-use invitation and its secret out of the long-lived page
+    // fixture after redemption. The live grant stays in its own custody owner.
+    input: {
+      brokerOrigin: input.brokerOrigin,
+      scope: input.scope,
+      applicationOrigin: input.applicationOrigin,
+      port: input.port,
+      username: input.username,
+      password: input.password,
+      transport: input.transport,
+    },
   };
   return {
     connectionId: snapshot.connectionId,
     applicationOrigin: snapshot.applicationOrigin,
+    routingGrantId: credentials.capture().id,
   };
+}
+
+export async function browserBrokerSelectedCandidatePair() {
+  const peer = window.stationBrokerLab?.peer;
+  if (!peer) throw new Error('Missing broker Pion peer');
+  const deadline = Date.now() + 10_000;
+  while (Date.now() < deadline) {
+    const stats = await peer.getStats();
+    let selected;
+    for (const value of stats.values()) {
+      if (
+        value.type === 'candidate-pair' &&
+        value.state === 'succeeded' &&
+        (value.selected === true || value.nominated === true)
+      ) {
+        selected = value;
+        if (value.selected === true) break;
+      }
+    }
+    if (!selected) {
+      const transport = [...stats.values()].find(
+        (value) => value.type === 'transport' && value.selectedCandidatePairId,
+      );
+      selected = transport
+        ? stats.get(transport.selectedCandidatePairId)
+        : undefined;
+    }
+    const local = selected ? stats.get(selected.localCandidateId) : undefined;
+    const remote = selected ? stats.get(selected.remoteCandidateId) : undefined;
+    if (selected && local && remote)
+      return {
+        state: selected.state,
+        localType: local.candidateType,
+        remoteType: remote.candidateType,
+      };
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  throw new Error('No selected broker Pion candidate pair');
 }
 
 export async function browserBrokerReconnect() {
   const lab = window.stationBrokerLab;
   if (!lab) throw new Error('Missing broker lab connection');
   const previous = lab.snapshot ? lab.snapshot.connectionId : undefined;
+  const previousPeer = lab.peer;
   try {
     const snapshot = await lab.owner.reconnect(AbortSignal.timeout(45000));
     lab.snapshot = snapshot;
     window.stationBrokerLabTransport = undefined;
-    return { previous, connectionId: snapshot.connectionId };
+    return {
+      previous,
+      connectionId: snapshot.connectionId,
+      peerReplaced: lab.peer !== previousPeer,
+    };
   } catch (error) {
     // A failed reconnect retires the owner: report no current owner rather
     // than a stale snapshot of a closed peer.
@@ -132,15 +193,29 @@ export function browserBrokerAdoptApplicationTransport() {
   };
 }
 
+export function browserBrokerClose() {
+  const transport = window.stationBrokerLabTransport;
+  const lab = window.stationBrokerLab;
+  transport?.close();
+  lab?.owner.close();
+  lab?.credentials?.invalidate();
+  if (lab?.ice) lab.ice.current = false;
+  window.stationBrokerLabTransport = undefined;
+  window.stationBrokerLab = undefined;
+  return { closed: true };
+}
+
 // Real CORS + credential checks from the admitted page origin. The browser
 // emits Origin; nothing here sets a forbidden Origin header and no explicit
 // OPTIONS preflight is issued here: the non-simple POST below triggers the
 // real browser preflight, which the owned Node broker listener observes.
 export async function browserBrokerProbeOrigin(input) {
+  const credential = window.stationBrokerLab?.credentials?.capture();
+  if (!credential) throw new Error('Missing client-owned broker grant');
   const headers = {
-    Authorization: `Bearer ${input.routingSecret}`,
+    Authorization: `Bearer ${credential.secret}`,
     'Content-Type': 'application/json',
-    'X-Broker-Credential-Id': input.routingId,
+    'X-Broker-Credential-Id': credential.id,
   };
   const body = JSON.stringify({ scope: input.scope });
   const status = await fetch(
@@ -218,16 +293,7 @@ export async function browserBrokerTamperProof() {
       headers: { 'Content-Type': 'application/json' },
     });
   };
-  const credentials = {
-    current: true,
-    capture() {
-      return {
-        id: lab.input.routingId,
-        secret: lab.input.routingSecret,
-        isCurrent: () => this.current,
-      };
-    },
-  };
+  const credentials = lab.credentials;
   const broker = new api.SelfHostedBrokerBrowserClient({
     brokerOrigin: lab.input.brokerOrigin,
     browserOrigin: location.origin,

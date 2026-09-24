@@ -20,7 +20,25 @@ import {
 import { apiErrorMessage } from './api-error-message';
 import { ChatHttpError } from './chatHttpError';
 import { type ClientRequestOptions, getJson, mutateJson } from './http';
-export interface ForegroundMessageInput {
+/**
+ * #2436: an approval-posture decision a send carries (a pick made before the
+ * chat had a session, or while offline), and its compare-and-set basis: the
+ * sequence of the latest decision the client had folded when the user
+ * picked, `null` when it had folded none. The two travel together; a pick
+ * without its basis is refused by the server rather than recorded
+ * unconditionally.
+ */
+export type ApprovalPickCarry =
+  | { setApprovalMode?: undefined; setApprovalModeBasedOn?: undefined }
+  | {
+      setApprovalMode: import('@kontourai/station-contracts/provider').ApprovalMode;
+      setApprovalModeBasedOn: number | null;
+    };
+
+export type ForegroundMessageInput = ForegroundMessageFields &
+  ApprovalPickCarry;
+
+interface ForegroundMessageFields {
   expectedInputRequest?: AttentionRequestReference;
   target: Omit<ExecutionTarget, 'environment'> & {
     environment?: EnvironmentRef;
@@ -46,6 +64,12 @@ export interface ForegroundMessageReceipt {
   target: { kind: 'agent'; id: AgentId };
   resolution: ExecutionResolutionReceipt;
   handoff?: ConversationHandoffReceipt;
+  /**
+   * #2436: what became of the approval pick the send carried. Absent when it
+   * carried none, or the Station that ran it predates the command; a client
+   * must then treat the pick as not yet received.
+   */
+  approvalMode?: import('@kontourai/station-contracts/orchestration').SetApprovalModeResult;
 }
 
 export interface ConversationHandoffReceipt {
@@ -182,7 +206,7 @@ export async function sendExecutionMessage(
 }
 
 export type ContinueForegroundMessageInput = Omit<
-  ForegroundMessageInput,
+  ForegroundMessageFields,
   'target' | 'conversationId'
 > & { environment?: EnvironmentRef; model?: ExecutionModelRequest };
 
@@ -207,9 +231,10 @@ export async function continueExecutionMessage(
 export async function handoffExecutionMessage(
   apiBase: string,
   conversationId: string,
-  input: Omit<ForegroundMessageInput, 'conversationId'> & {
-    idempotencyKey: string;
-  },
+  input: Omit<ForegroundMessageFields, 'conversationId'> &
+    ApprovalPickCarry & {
+      idempotencyKey: string;
+    },
   opts?: ClientRequestOptions,
 ): Promise<ForegroundMessageReceipt & { handoff: ConversationHandoffReceipt }> {
   const response = await mutateJson(

@@ -53,6 +53,8 @@ interface ConnectionListPanelProps {
    * its state without a Restart control.
    */
   onRestartInjectedConnection?: (connection: SavedConnection) => void;
+  /** Host-owned id of the managed local Station when it stops with the app. */
+  localStationOwnerId?: string;
   onScanQr: () => void;
   onEnterPairingCode: () => void;
   enterPairingCodeRef?: Ref<HTMLButtonElement>;
@@ -102,6 +104,7 @@ function ConnectionRow({
   onRequestAccess,
   onMakeDefaultProfile,
   onRestartInjectedConnection,
+  localStationOwnerId,
   getStatus,
   canEditSharedProfiles,
   busy,
@@ -119,6 +122,7 @@ function ConnectionRow({
   onRequestAccess: (connection?: SavedConnection) => void;
   onMakeDefaultProfile?: (connection: SavedConnection) => void;
   onRestartInjectedConnection?: (connection: SavedConnection) => void;
+  localStationOwnerId?: string;
   getStatus: (connection: SavedConnection) => ConnectionStatus;
 }) {
   // station#4512 review (M6) — Forget removed a saved connection on a
@@ -232,6 +236,14 @@ function ConnectionRow({
         ) : (
           <div className="station-connect-row__url" title={connection.url}>
             {connection.url}
+          </div>
+        )}
+        {localStationOwnerId && connection.ownerId === localStationOwnerId && (
+          <div
+            className="station-connect-row__meta"
+            data-testid="local-station-lifetime"
+          >
+            Runs only while the Station app is open.
           </div>
         )}
         {copyStatus && (
@@ -499,6 +511,7 @@ export function ConnectionListPanel({
   onRequestAccess,
   onMakeDefaultProfile,
   onRestartInjectedConnection,
+  localStationOwnerId,
   onScanQr,
   onEnterPairingCode,
   enterPairingCodeRef,
@@ -655,6 +668,7 @@ export function ConnectionListPanel({
               canEditSharedProfiles={canEditSharedProfiles}
               busy={editPending}
               onRestartInjectedConnection={onRestartInjectedConnection}
+              localStationOwnerId={localStationOwnerId}
               getStatus={getStatus}
             />
           ),

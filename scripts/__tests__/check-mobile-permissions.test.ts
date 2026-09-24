@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, test } from 'vitest';
 import { auditMobilePermissions } from '../check-mobile-permissions.mjs';
 
@@ -6,6 +7,8 @@ const androidManifest = `
   <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
   <uses-permission android:name="android.permission.CAMERA" />
   <uses-feature android:name="android.hardware.camera.any" android:required="false" />
+  <uses-feature android:name="android.hardware.camera" android:required="false" />
+  <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
   <uses-permission android:name="android.permission.RECORD_AUDIO" />
   <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
   <uses-feature android:name="android.hardware.microphone" android:required="false" />
@@ -117,4 +120,21 @@ describe('mobile permission audit', () => {
       }),
     ).toThrow(/sharedpref domain/);
   });
+});
+
+test('release iOS configuration uses durable privacy descriptions outside gen/apple', () => {
+  const config = JSON.parse(
+    readFileSync('src-desktop/tauri.conf.json', 'utf8'),
+  );
+  expect(config.bundle.iOS.infoPlist).toBe('Info.ios.plist');
+  expect(() =>
+    auditMobilePermissions({
+      androidManifest,
+      androidDataExtractionRules,
+      iosInfo: readFileSync(
+        `src-desktop/${config.bundle.iOS.infoPlist}`,
+        'utf8',
+      ),
+    }),
+  ).not.toThrow();
 });

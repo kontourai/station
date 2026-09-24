@@ -1,6 +1,6 @@
 // Blind, bounded UDP capture for test-owned TURN traffic. No endpoint keys.
 import { createSocket } from 'node:dgram';
-import { appendFileSync, writeFileSync } from 'node:fs';
+import { appendFileSync, linkSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const targetPort = Number(process.argv[2]);
@@ -72,9 +72,14 @@ const lifetime = setTimeout(() => fail('lifetime_exceeded'), 120000);
 process.once('SIGINT', close);
 process.once('SIGTERM', close);
 server.bind(0, '127.0.0.1', () => {
-  writeFileSync(
-    join(directory, 'ready.json'),
-    JSON.stringify({ port: server.address().port }),
-    { mode: 0o600, flag: 'wx' },
-  );
+  // The parent treats the file's existence as readiness, so it must appear
+  // already complete: write a private staging file, then hard-link it into
+  // place (exclusive, like 'wx') instead of creating ready.json and filling it.
+  const staged = join(directory, 'ready.json.partial');
+  writeFileSync(staged, JSON.stringify({ port: server.address().port }), {
+    mode: 0o600,
+    flag: 'wx',
+  });
+  linkSync(staged, join(directory, 'ready.json'));
+  unlinkSync(staged);
 });

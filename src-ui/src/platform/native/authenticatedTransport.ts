@@ -22,6 +22,17 @@ type NativeAuthenticatedTransportInit = RequestInit & {
   authorityGuard?: () => void;
   /** Opaque Rust-issued binding for a scoped request; never a credential. */
   expectedBindingId?: string;
+  /**
+   * station#2327 — RESERVED for the connection-health probe's identity read
+   * (`probeServerConnection` in `lib/serverHealth.ts`). The broker admits a
+   * flagged request into one reserved per-Station slot instead of the
+   * ordinary-read queue, or refuses it immediately with
+   * `transport_capacity`; it never waits. The broker also accepts it only
+   * for `GET /api/system/identity`. Any other caller setting it would spend
+   * the one slot that lets the app tell a busy Station from an unreachable
+   * one, so it is deliberately absent from the SDK's request types.
+   */
+  livenessProbe?: boolean;
 };
 
 type BrokerMessage =
@@ -63,6 +74,9 @@ export const nativeAuthenticatedTransport: ClientAuthenticatedTransport =
     const expectedBindingId = (
       init as NativeAuthenticatedTransportInit | undefined
     )?.expectedBindingId;
+    const livenessProbe =
+      (init as NativeAuthenticatedTransportInit | undefined)?.livenessProbe ===
+      true;
     authorityGuard?.();
     const request = input instanceof Request ? input : undefined;
     const url = request?.url ?? String(input);
@@ -209,6 +223,7 @@ export const nativeAuthenticatedTransport: ClientAuthenticatedTransport =
           headers: Object.fromEntries(headers.entries()),
           body,
           ...(expectedBindingId ? { expectedBindingId } : {}),
+          ...(livenessProbe ? { livenessProbe: true } : {}),
         },
         channel,
       }).catch((error) => {

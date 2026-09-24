@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import type { AgentDelegationContext } from '@kontourai/station-contracts/agent';
 import { engineId } from '@kontourai/station-contracts/agent-identity';
 import type { ChatAttachmentInput } from '@kontourai/station-contracts/chat-attachment';
+import type { ClientOrigin } from '@kontourai/station-contracts/client-origin';
 import { stripReservedOrchestrationMetadata } from '@kontourai/station-contracts/provider';
 import {
   type ApprovalStatus,
@@ -53,12 +54,13 @@ import {
   INTERNAL_PROXY_CALLER_HEADER,
   INTERNAL_TENANT_HEADER,
 } from '../../utils/internal-api-token.js';
-import type {
-  ProviderAdapterShape,
-  ProviderSendTurnInput,
-  ProviderSession,
-  ProviderSessionStartInput,
-  ProviderTurnStartResult,
+import {
+  type ProviderAdapterShape,
+  type ProviderSendTurnInput,
+  type ProviderSession,
+  type ProviderSessionStartInput,
+  type ProviderTurnStartResult,
+  SendTurnRefusedError,
 } from '../adapter-shape.js';
 import { effectiveModelMetadata } from '../llm/effective-model-metadata.js';
 import { AsyncEventQueue } from '../sessions/async-event-queue.js';
@@ -884,8 +886,13 @@ export class StationAgentAdapter implements ProviderAdapterShape {
     if (!(await this.options.hasAgent(record.agentId))) {
       throw new Error(`Unknown Station agent: ${record.agentId}`);
     }
+    // #2415: refusing a send that races the running turn happens before any
+    // effect (no relay request, no `turn.started`), so it is a
+    // `SendTurnRefusedError`. A plain error was recorded by orchestration as
+    // an indeterminate turn start, which then blocked every later send on
+    // the thread.
     if (record.activeController && !record.activeController.signal.aborted) {
-      throw new Error(
+      throw new SendTurnRefusedError(
         `Station agent task is already running: ${input.threadId}`,
       );
     }
@@ -1178,14 +1185,12 @@ export class StationAgentAdapter implements ProviderAdapterShape {
     threadId: string,
     requestId: string,
     decision: 'accept' | 'acceptForSession' | 'decline' | 'cancel',
+    context?: { clientOrigin?: ClientOrigin },
   ): Promise<void> {
     const record = this.requireSession(threadId);
     const pending = record.pendingRequests.get(requestId);
     if (!pending) {
       throw new Error(`Unknown Station agent approval request: ${requestId}`);
-    }
-    if (decision === 'acceptForSession' && pending.toolName) {
-      record.approvedTools.add(pending.toolName);
     }
     this.resolutionOverrides.set(
       requestId,
@@ -1195,14 +1200,22 @@ export class StationAgentAdapter implements ProviderAdapterShape {
           ? 'denied'
           : 'cancelled',
     );
+    // #2344: `approval.resolved` records which device answered.
     const resolved = this.options.approvalRegistry.resolve(
       requestId,
       decision === 'accept' || decision === 'acceptForSession',
+      context?.clientOrigin,
     );
     if (!resolved) {
       record.pendingRequests.delete(requestId);
       this.resolutionOverrides.delete(requestId);
       throw new Error(`Stale Station agent approval request: ${requestId}`);
+    }
+    // #2316: the session grant is minted only by a decision that actually
+    // resolved its request. A stale entry refuses above without widening
+    // what this session auto-approves.
+    if (decision === 'acceptForSession' && pending.toolName) {
+      record.approvedTools.add(pending.toolName);
     }
   }
 

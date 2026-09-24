@@ -1,0 +1,75 @@
+/* A recognised link in a chat message: a pull request, a forge page, a file.
+   Everything derives from currentcolor, for the reason `.message a` gives
+   (archive#1254): the same chip sits on the assistant surface and inside the
+   accent-filled user bubble, and no fixed colour is legible on both. */
+.message a.chat-link-chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.3em;
+  max-width: 100%;
+  padding: 0 0.4em;
+  border: 1px solid color-mix(in srgb, currentcolor 28%, transparent);
+  border-radius: 6px;
+  background: color-mix(in srgb, currentcolor 7%, transparent);
+  color: inherit;
+  text-decoration: none;
+  vertical-align: baseline;
+  overflow-wrap: anywhere;
+}
+
+.message a.chat-link-chip:hover {
+  background: color-mix(in srgb, currentcolor 14%, transparent);
+}
+
+.message a.chat-link-chip:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 1px;
+}
+
+.chat-link-chip__icon {
+  flex: none;
+  align-self: center;
+  width: 0.95em;
+  height: 0.95em;
+}
+
+.chat-link-chip__label {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+}
+
+/* A mention written as inline code keeps its code styling inside the chip
+   without a second box around it. */
+.message a.chat-link-chip code {
+  padding: 0;
+  background: none;
+}
+
+.chat-link-chip__state {
+  display: inline-flex;
+  align-items: center;
+  align-self: center;
+  gap: 0.3em;
+  font-size: 0.8em;
+  opacity: 0.85;
+}
+
+.chat-link-chip__state::before {
+  content: "";
+  width: 0.55em;
+  height: 0.55em;
+  border-radius: 50%;
+  background: currentcolor;
+}
+
+.chat-link-chip__state--open::before {
+  background: var(--success-text);
+}
+
+.chat-link-chip__state--merged::before {
+  background: var(--accent-primary);
+}
+
+.chat-link-chip__state--closed::before {
+  background: var(--error-text);
+}

@@ -5,7 +5,7 @@ import {
   execFileSync,
   spawn,
 } from 'node:child_process';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import {
@@ -20,6 +20,9 @@ import {
   discoverVitestResourceGroups,
   ORDINARY_MAX_WORKERS,
   ordinaryVitestExcludes,
+  QUARANTINED_VITEST_FILES,
+  quarantinedVitestFiles,
+  vitestQuarantineErrors,
 } from './vitest-resource-manifest.mjs';
 
 const OUTPUT_LIMIT_BYTES = 2 * 1024 * 1024;
@@ -87,7 +90,76 @@ export const ORDINARY_SHARD_DESCRIPTORS = Object.freeze(
   ),
 );
 
-function corpusDescriptors(groupName, shard) {
+/**
+ * The process-heavy group can be split across machines (the merge-queue
+ * regression workflow runs it on two hosted runners). Each slice keeps the
+ * group's own per-machine worker bound; only the file list is partitioned.
+ * The canonical `full:regression` never passes a shard and still runs the
+ * whole group in one invocation.
+ */
+export const PROCESS_HEAVY_MAX_SHARD_COUNT = 8;
+
+function parseProcessHeavyShard(shard) {
+  const match = /^([1-9][0-9]*)\/([1-9][0-9]*)$/.exec(String(shard ?? ''));
+  const index = match ? Number(match[1]) : Number.NaN;
+  const count = match ? Number(match[2]) : Number.NaN;
+  if (
+    !match ||
+    count < 2 ||
+    count > PROCESS_HEAVY_MAX_SHARD_COUNT ||
+    index > count
+  )
+    throw new Error(
+      `process-heavy Vitest corpus accepts only --shard=<k>/<n> with 2 <= n <= ${PROCESS_HEAVY_MAX_SHARD_COUNT} and 1 <= k <= n`,
+    );
+  return { index, count };
+}
+
+/**
+ * Deterministic, disjoint, exhaustive partition: files are sorted, then dealt
+ * round-robin, so every file lands in exactly one slice and the union of all
+ * slices is the group. An empty slice is an error rather than a vacuous pass.
+ */
+export function partitionShardFiles(files, shard) {
+  const { index, count } = parseProcessHeavyShard(shard);
+  const selected = [...files]
+    .sort()
+    .filter((_, position) => position % count === index - 1);
+  if (selected.length === 0)
+    throw new Error(
+      `process-heavy shard ${shard} selected no files from ${files.length} discovered`,
+    );
+  return selected;
+}
+
+function processHeavyShardDescriptor(shard) {
+  const { index, count } = parseProcessHeavyShard(shard);
+  return Object.freeze({
+    ...VITEST_CORPUS_GROUPS[1],
+    shard: `${index}/${count}`,
+    resultName: `process-heavy-${index}-of-${count}`,
+  });
+}
+
+/** The files one descriptor runs: the whole group, or its partitioned slice. */
+export function descriptorFiles(groups, descriptor) {
+  const files = groupFiles(groups, descriptor.name);
+  return descriptor.name === 'process-heavy' && descriptor.shard
+    ? partitionShardFiles(files, descriptor.shard)
+    : files;
+}
+
+/**
+ * The resource-profiled execution plan: every ordinary hash shard, then each
+ * serialized group, in canonical order. With no selector this is the whole
+ * corpus, each file reached by exactly one entry (the groups are an exact
+ * partition, and the ordinary shards are Vitest's own exhaustive hash split).
+ *
+ * @param {string} [groupName]
+ * @param {string} [shard]
+ * @returns {ReadonlyArray<{ name: string; maxWorkers: number; noFileParallelism?: boolean; shard?: string; resultName?: string }>}
+ */
+export function corpusDescriptors(groupName, shard) {
   if (!groupName)
     return [...ORDINARY_SHARD_DESCRIPTORS, ...VITEST_CORPUS_GROUPS.slice(1)];
   if (groupName === 'ordinary') {
@@ -100,7 +172,12 @@ function corpusDescriptors(groupName, shard) {
       );
     return [selected];
   }
-  if (shard) throw new Error('--shard is supported only with --group=ordinary');
+  if (groupName === 'process-heavy' && shard)
+    return [processHeavyShardDescriptor(shard)];
+  if (shard)
+    throw new Error(
+      '--shard is supported only with --group=ordinary or --group=process-heavy',
+    );
   const selected = VITEST_CORPUS_GROUPS.find(
     (descriptor) => descriptor.name === groupName,
   );
@@ -121,10 +198,123 @@ export function groupFiles(groups, name) {
   return groups[keys[name]];
 }
 
+/**
+ * Merge-queue only (`--exclude-quarantined`): the resource groups with every
+ * quarantined file removed. The canonical lane never calls this, so Nightly
+ * still runs quarantined files.
+ *
+ * Fails closed instead of excluding anything when the quarantine policy does
+ * not hold at run time, most importantly an EXPIRED entry: the policy gate
+ * checks expiry only when a pull request or queue candidate runs it, and an
+ * entry that expires between those runs must turn the queue phase itself
+ * red rather than keep hiding its file. A quarantined path missing from the
+ * groups also fails: an entry that excludes nothing is a stale record.
+ */
+export function withoutQuarantinedFiles(
+  groups,
+  quarantine,
+  { now = new Date() } = {},
+) {
+  const policyErrors = vitestQuarantineErrors(quarantine, { now });
+  if (policyErrors.length > 0)
+    throw new Error(
+      `test quarantine does not hold; nothing was excluded:\n${policyErrors.join('\n')}`,
+    );
+  const excluded = new Set(quarantinedVitestFiles(quarantine));
+  const present = new Set(Object.values(groups).flat());
+  for (const file of excluded)
+    if (!present.has(file))
+      throw new Error(
+        `quarantined file is not in the discovered Vitest corpus: ${file}`,
+      );
+  return Object.freeze(
+    Object.fromEntries(
+      Object.entries(groups).map(([name, files]) => [
+        name,
+        Object.freeze(files.filter((file) => !excluded.has(file))),
+      ]),
+    ),
+  );
+}
+
+function escapeWorkflowCommandData(text) {
+  return String(text)
+    .replaceAll('%', '%25')
+    .replaceAll('\r', '%0D')
+    .replaceAll('\n', '%0A');
+}
+
+/**
+ * What one queue run excluded, as GitHub annotations (one `::notice::` per
+ * file, visible on the run page) and step-summary lines. A skipped test must
+ * never be silent: a partially quarantined group otherwise passes with no
+ * sign that part of it did not run.
+ */
+export function quarantineExclusionReport(runName, entries) {
+  return {
+    annotations: entries.map(
+      ({ file, issue, expires }) =>
+        `::notice title=Quarantined test excluded::${escapeWorkflowCommandData(
+          `${file} was excluded from merge-queue run ${runName} (quarantined until ${expires}, ${issue}); Nightly still runs it.`,
+        )}`,
+    ),
+    summary: entries.map(
+      ({ file, issue, expires }) =>
+        `- \`${file}\` excluded from \`${runName}\` (quarantined until ${expires}, ${issue}); Nightly still runs it.`,
+    ),
+  };
+}
+
+/** Default reporter: annotations to stdout, lines to the job step summary. */
+export function reportQuarantineExclusions(
+  report,
+  {
+    env = process.env,
+    write = (text) => process.stdout.write(text),
+    append = appendFileSync,
+  } = {},
+) {
+  for (const annotation of report.annotations) write(`${annotation}\n`);
+  if (env.GITHUB_STEP_SUMMARY && report.summary.length > 0)
+    append(env.GITHUB_STEP_SUMMARY, `${report.summary.join('\n')}\n`);
+}
+
+/**
+ * Coverage arguments for one corpus slice. Each slice writes only istanbul
+ * JSON into its own directory, and the configured thresholds are neutralised
+ * here because one slice exercises a fraction of the code: they are enforced
+ * once, on the merged report (scripts/run-coverage-corpus.mjs). Vitest's
+ * default `reportOnFailure: false` stays in force, so a slice whose tests
+ * failed leaves no report and the merge refuses it.
+ */
+export function coverageSliceArguments(reportsDirectory) {
+  if (typeof reportsDirectory !== 'string' || reportsDirectory.length === 0)
+    throw new Error('coverage slice requires a reports directory');
+  return [
+    '--coverage.enabled=true',
+    '--coverage.reporter=json',
+    `--coverage.reportsDirectory=${reportsDirectory}`,
+    '--coverage.clean=true',
+    '--coverage.thresholds.lines=0',
+    '--coverage.thresholds.functions=0',
+    '--coverage.thresholds.branches=0',
+    '--coverage.thresholds.statements=0',
+  ];
+}
+
+/**
+ * @param {{ name: string; maxWorkers: number; noFileParallelism?: boolean; shard?: string }} group
+ * @param {readonly string[]} files
+ * @param {{ root?: string; ordinaryExcludes?: readonly string[]; coverageDirectory?: string }} [options]
+ */
 export function buildVitestCommand(
   group,
   files,
-  { root = process.cwd(), ordinaryExcludes = ordinaryVitestExcludes() } = {},
+  {
+    root = process.cwd(),
+    ordinaryExcludes = ordinaryVitestExcludes(),
+    coverageDirectory,
+  } = {},
 ) {
   if (!Array.isArray(files) || files.length === 0) {
     throw new Error(`Vitest group '${group.name}' has no discovered tests`);
@@ -133,6 +323,9 @@ export function buildVitestCommand(
     resolve(root, 'node_modules/vitest/vitest.mjs'),
     'run',
     `--maxWorkers=${group.maxWorkers}`,
+    ...(coverageDirectory === undefined
+      ? []
+      : coverageSliceArguments(coverageDirectory)),
   ];
   if (group.name === 'ordinary') {
     if (!ORDINARY_SHARD_DESCRIPTORS.some(({ shard }) => shard === group.shard))
@@ -195,9 +388,9 @@ export function runWindowsSerializedCorpus({
   const args = selected
     ? buildVitestCommand(
         { ...selected, maxWorkers: 1, noFileParallelism: true },
-        groupFiles(
+        descriptorFiles(
           groups ?? discoverVitestResourceGroups({ root }),
-          selected.name,
+          selected,
         ),
         { root },
       )
@@ -272,6 +465,8 @@ export async function runVitestGroup(
     waitForSettlement = waitForSuiteSettlement,
     spawnProcess = spawn,
     signal,
+    coverageDirectory,
+    ordinaryExcludes,
   } = {},
 ) {
   const resultName = group.resultName ?? group.name;
@@ -281,7 +476,11 @@ export async function runVitestGroup(
       `Vitest corpus cancelled: ${signal.reason ?? 'aborted'}`,
     );
   }
-  const args = buildVitestCommand(group, files, { root });
+  const args = buildVitestCommand(group, files, {
+    root,
+    coverageDirectory,
+    ...(ordinaryExcludes ? { ordinaryExcludes } : {}),
+  });
   const label = `Vitest corpus ${resultName}`;
   let execution;
   try {
@@ -414,6 +613,8 @@ export function emitResult(result) {
     process.stdout.write(
       `[vitest-corpus] ${result.name}: no test results were produced — the run did not complete, so the capture below is a partial transcript and names no failing test.\n`,
     );
+  if (result.skipped)
+    process.stdout.write(`[vitest-corpus] ${result.name}: ${result.skipped}\n`);
   if (!result.passed) {
     process.stderr.write(
       `[vitest-corpus] ${result.name}: ${result.error ?? 'non-zero Vitest status'}\n`,
@@ -439,7 +640,22 @@ export async function runVitestCorpus({
   groupName,
   shard,
   keepGoing = false,
+  // Coverage mode: each slice writes its istanbul JSON under
+  // `<coverageRoot>/<result name>/`. There is no Windows coverage path; the
+  // serialized fallback runs one undifferentiated corpus.
+  coverageRoot,
+  // Multiplies each cataloged group deadline in keep-going mode, for work
+  // (coverage instrumentation) that is slower than the canonical phase.
+  timeoutScale = 1,
+  excludeQuarantined = false,
+  quarantine = QUARANTINED_VITEST_FILES,
+  now = new Date(),
+  reportExclusions = reportQuarantineExclusions,
 } = {}) {
+  if (coverageRoot !== undefined && platform === 'win32')
+    throw new Error('Vitest corpus coverage is not supported on Windows');
+  if (!(Number.isFinite(timeoutScale) && timeoutScale >= 1))
+    throw new Error('Vitest corpus timeoutScale must be a finite number >= 1');
   if (signal?.aborted) {
     const result = terminalFailure(
       'vitest-corpus',
@@ -449,7 +665,24 @@ export async function runVitestCorpus({
     onResult?.(result);
     return { passed: false, results: [result] };
   }
-  const resolvedGroups = groups ?? discoverVitestResourceGroups({ root });
+  if (excludeQuarantined && platform === 'win32')
+    throw new Error(
+      '--exclude-quarantined is supported only by the owned (non-Windows) runner',
+    );
+  const discoveredGroups = groups ?? discoverVitestResourceGroups({ root });
+  const resolvedGroups = excludeQuarantined
+    ? withoutQuarantinedFiles(discoveredGroups, quarantine, { now })
+    : discoveredGroups;
+  const quarantined = quarantinedVitestFiles(quarantine);
+  const quarantineOptions =
+    excludeQuarantined && quarantined.length > 0
+      ? {
+          ordinaryExcludes: Object.freeze([
+            ...ordinaryVitestExcludes(),
+            ...quarantined,
+          ]),
+        }
+      : {};
   const descriptors = corpusDescriptors(groupName, shard);
   const results = [];
   for (const descriptor of descriptors) {
@@ -463,11 +696,58 @@ export async function runVitestCorpus({
       onResult?.(result);
       return { passed: false, results };
     }
-    const files = groupFiles(resolvedGroups, descriptor.name);
-    const phase = FULL_REGRESSION_PHASES.find(
-      (entry) =>
-        entry.id === `test-full-${descriptor.resultName ?? descriptor.name}`,
-    );
+    if (excludeQuarantined) {
+      const excludedHere = new Set(
+        groupFiles(discoveredGroups, descriptor.name),
+      );
+      const excludedEntries = quarantine.filter(({ file }) =>
+        excludedHere.has(file),
+      );
+      if (excludedEntries.length > 0)
+        reportExclusions(
+          quarantineExclusionReport(
+            descriptor.resultName ?? descriptor.name,
+            excludedEntries,
+          ),
+        );
+    }
+    if (
+      excludeQuarantined &&
+      (groupFiles(resolvedGroups, descriptor.name) ?? []).length === 0 &&
+      (groupFiles(discoveredGroups, descriptor.name) ?? []).length > 0
+    ) {
+      const result = {
+        name: descriptor.resultName ?? descriptor.name,
+        status: 0,
+        passed: true,
+        error: null,
+        skipped:
+          'every file in this group is quarantined; Nightly still runs them',
+        stdout: '',
+        stderr: '',
+        output: '',
+        stdoutBytes: 0,
+        stderrBytes: 0,
+        outputBytes: 0,
+      };
+      results.push(result);
+      onResult?.(result);
+      continue;
+    }
+    const files = descriptorFiles(resolvedGroups, descriptor);
+    // A process-heavy slice has no phase of its own, so each slice gets the
+    // whole group's phase budget. The budget applies per slice, not shared
+    // across the slices of one run.
+    const phase =
+      FULL_REGRESSION_PHASES.find(
+        (entry) =>
+          entry.id === `test-full-${descriptor.resultName ?? descriptor.name}`,
+      ) ??
+      (descriptor.name === 'process-heavy'
+        ? FULL_REGRESSION_PHASES.find(
+            (entry) => entry.id === 'test-full-process-heavy',
+          )
+        : undefined);
     if (keepGoing && !phase)
       throw new Error('Audit group has no declared execution budget');
     const groupController = keepGoing ? new AbortController() : null;
@@ -476,7 +756,7 @@ export async function runVitestCorpus({
     const timer = groupController
       ? setTimeout(
           () => groupController.abort('group execution deadline'),
-          phase.timeoutMs,
+          phase.timeoutMs * timeoutScale,
         )
       : null;
     let result;
@@ -494,6 +774,15 @@ export async function runVitestCorpus({
           : await runGroup(descriptor, files, {
               root,
               signal: groupController?.signal ?? signal,
+              ...(coverageRoot === undefined
+                ? {}
+                : {
+                    coverageDirectory: resolve(
+                      coverageRoot,
+                      descriptor.resultName ?? descriptor.name,
+                    ),
+                  }),
+              ...quarantineOptions,
             });
     } finally {
       if (timer !== null) clearTimeout(timer);
@@ -517,6 +806,19 @@ export async function runVitestCorpus({
 }
 
 export function parseVitestCorpusArguments(args) {
+  if (args.includes('--exclude-quarantined')) {
+    if (
+      args.filter((argument) => argument === '--exclude-quarantined').length !==
+      1
+    )
+      throw new Error('usage: --exclude-quarantined may be supplied once');
+    const rest = parseVitestCorpusArguments(
+      args.filter((argument) => argument !== '--exclude-quarantined'),
+    );
+    if (!rest.groupName)
+      throw new Error('--exclude-quarantined requires --group=<name>');
+    return { ...rest, excludeQuarantined: true };
+  }
   if (args.includes('--keep-going')) {
     if (args.filter((argument) => argument === '--keep-going').length !== 1)
       throw new Error('usage: --keep-going may be supplied once');
@@ -530,14 +832,14 @@ export function parseVitestCorpusArguments(args) {
   if (args.length === 0) return {};
   if (args.length > 2)
     throw new Error(
-      'usage: node scripts/run-vitest-corpus.mjs [--group=<name> [--shard=<index>/8]]',
+      'usage: node scripts/run-vitest-corpus.mjs [--group=<name> [--shard=<index>/<count>]]',
     );
   const values = new Map();
   for (const argument of args) {
     const match = argument.match(/^--(group|shard)=(.+)$/);
     if (!match || values.has(match[1]))
       throw new Error(
-        'usage: node scripts/run-vitest-corpus.mjs [--group=<name> [--shard=<index>/8]]',
+        'usage: node scripts/run-vitest-corpus.mjs [--group=<name> [--shard=<index>/<count>]]',
       );
     values.set(match[1], match[2]);
   }
@@ -545,7 +847,7 @@ export function parseVitestCorpusArguments(args) {
   const shard = values.get('shard');
   if (!groupName)
     throw new Error(
-      'usage: node scripts/run-vitest-corpus.mjs [--group=<name> [--shard=<index>/8]]',
+      'usage: node scripts/run-vitest-corpus.mjs [--group=<name> [--shard=<index>/<count>]]',
     );
   if (!VITEST_CORPUS_GROUP_NAMES.includes(groupName))
     throw new Error(`unknown Vitest corpus group '${groupName}'`);
@@ -556,7 +858,14 @@ export function parseVitestCorpusArguments(args) {
       );
     return { groupName, shard };
   }
-  if (shard) throw new Error('--shard is supported only with --group=ordinary');
+  if (groupName === 'process-heavy' && shard) {
+    parseProcessHeavyShard(shard);
+    return { groupName, shard };
+  }
+  if (shard)
+    throw new Error(
+      '--shard is supported only with --group=ordinary or --group=process-heavy',
+    );
   return { groupName };
 }
 

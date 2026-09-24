@@ -1,21 +1,32 @@
 // @vitest-environment jsdom
 
 /**
- * #1969: the authority that fetched a frame owns it.
+ * #1969/#1970: the authority that opened a device owns what is shown.
  *
  * The mobile-device guide's rule — "clear private images when the selected
  * Station/authority changes" — is kept by UNMOUNTING the surface rather than
- * by clearing a state variable: a decoded PNG goes with the component, and
- * nothing has to remember to clear it next time a field is added.
+ * by clearing a state variable: the live stream and its decoded frames go
+ * with the component, and nothing has to remember to clear them.
  */
 
-import { cleanup, screen, waitFor } from '@testing-library/react';
+import { cleanup, screen } from '@testing-library/react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 
 let scope: { apiBase: string; authorityKey: string } | undefined = {
   apiBase: 'http://station.test',
   authorityKey: 'authority-1',
 };
+const activeProject: { slug: string | null } = vi.hoisted(() => ({
+  slug: null,
+}));
+vi.mock('../../hooks/useActiveProject', () => ({
+  useActiveProject: () => ({
+    projectSlug: activeProject.slug,
+    projectName: null,
+    workingDirectory: null,
+  }),
+}));
+
 vi.mock('../../contexts/ApiBaseContext', () => ({
   useHostRequestAuthorityScope: () => scope,
 }));
@@ -26,7 +37,6 @@ import { DeviceWorkspacePane } from '../DeviceWorkspacePane';
 import { devicePaneStateStorageKey } from '../devicePaneStateStorage';
 import {
   ANDROID_DEVICE_ID,
-  captureBody,
   click,
   readyInventory,
   renderInQueryClient,
@@ -76,20 +86,18 @@ describe('the Device pane under a changing authority (#1969)', () => {
   /**
    * Removing the `key` from `DeviceWorkspacePaneSurface` reds this: the
    * surface would keep its state across the change and the previous
-   * authority's frame would still be on screen.
+   * authority's live device would still be on screen.
    */
-  test('changing authority drops the rendered frame and the stored selection', async () => {
+  test('changing authority drops the live stage and the stored selection', async () => {
     scope = FIRST;
-    stubDeviceFetch({
-      inventory: readyInventory(),
-      captures: [captureBody({ platform: 'android' })],
-    });
+    stubDeviceFetch({ inventory: readyInventory() });
     authorizeCurrentScope();
     const { rerenderWrapped } = renderInQueryClient(<DeviceWorkspacePane />);
 
-    await click(await screen.findByRole('radio', { name: /Pixel/ }));
-    await click(screen.getByRole('button', { name: 'Capture' }));
-    await screen.findByRole('img');
+    await click(
+      await screen.findByRole('button', { name: 'Open Pixel 10 Pro XL' }),
+    );
+    await screen.findByRole('toolbar', { name: /controls/ });
     expect(localStorage.getItem(devicePaneStateStorageKey(FIRST))).toContain(
       ANDROID_DEVICE_ID,
     );
@@ -97,21 +105,12 @@ describe('the Device pane under a changing authority (#1969)', () => {
     scope = SECOND;
     rerenderWrapped(<DeviceWorkspacePane />);
 
-    // Wait for the NEW authority's inventory to settle before judging the
-    // frame: the key change puts the query back in flight, and an absent
-    // image during that moment is the skeleton, not proof that anything was
-    // dropped. (Asserting it any earlier was a green that the `key` removal
-    // did not red — the loading branch satisfied it either way.)
-    await waitFor(() =>
-      expect(screen.queryByRole('radio', { name: /Pixel/ })).not.toBeNull(),
-    );
-    expect(screen.queryByRole('img')).toBeNull();
+    // Wait for the NEW authority's picker before judging the stage: the key
+    // change puts the query back in flight, and an absent toolbar during
+    // that moment is the skeleton, not proof that anything was dropped.
+    await screen.findByRole('button', { name: 'Open Pixel 10 Pro XL' });
+    expect(screen.queryByRole('toolbar', { name: /controls/ })).toBeNull();
     expect(localStorage.getItem(devicePaneStateStorageKey(FIRST))).toBeNull();
-    // And the new authority starts with nothing selected.
-    expect(screen.getByRole('radio', { name: /Pixel/ })).toHaveProperty(
-      'checked',
-      false,
-    );
   });
 
   /**

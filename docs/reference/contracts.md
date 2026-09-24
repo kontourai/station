@@ -23,16 +23,20 @@ Use `@kontourai/station-contracts/*` when you need stable API/domain shapes shar
 | `@kontourai/station-contracts/auth` | Auth status, renew results, user identity/detail models |
 | `@kontourai/station-contracts/authority-observation` | Closed credential-bound authority observation: current home identity, resolved principal echo (kind+id only), and verified grant tier; authorization-neutral, grants nothing |
 | `@kontourai/station-contracts/application-session` | Device-bound account continuations, explicit capabilities, public proof keys and challenge/credential projections; no Device or Project grant |
+| `@kontourai/station-contracts/relay-enrollment` | Fresh relay-only account enrollment, finalize-delivery and signed-activation bindings; a pending identity receives no active Device authority before the exact delivered bundle is acknowledged |
 | `@kontourai/station-contracts/deployment-authentication` | Public operator-installed authentication provider configuration, factory, descriptor, operations and verified account-session results; see [deployment authentication](../guides/deployment-authentication.md) |
 | `@kontourai/station-contracts/catalog` | Registry items, install results, skills, guidance assets |
+| `@kontourai/station-contracts/child-work` | Provider-neutral child work (engine subagents and Station delegates): items, deltas, the session read model, and the one pure reducer over them |
 | `@kontourai/station-contracts/cloud-move` | Cloud preparation target/inventory, enrolled target observations, unavailable-transfer projection, and workspace package capture/inspection/verification receipts |
 | `@kontourai/station-contracts/cloud-move` | Cloud preparation target/inventory, unavailable-transfer projection, and workspace package capture/inspection/verification receipts |
 | `@kontourai/station-contracts/registry-trust` | Candidate registry policies, bounded applied identity/epoch shapes, and untrusted signed-package claim shapes |
 | `@kontourai/station-contracts/config` | App config and template variables |
 | `@kontourai/station-contracts/connection-proof` | Transport-only Station/enrollment/client/SDP bindings and independently approved signing-key trust; never account or Project grants |
-| `@kontourai/station-contracts/self-hosted-broker` | Versioned Station/enrollment/routing-generation/Origin scope and offer metadata; routing authority is separate from signing trust, account identity and Project permission |
+| `@kontourai/station-contracts/self-hosted-broker` | Versioned browser Origin scope, native proof-key surface and distinct v2 native offer metadata; routing authority is separate from signing trust, account identity and Project permission |
 | `@kontourai/station-contracts/execution-target` | Environment, Agent and workspace intent, including exact portable Project/resource execution; see [receiver execution offers](../design/portable-project-identity.md#receiver-execution-offers) |
 | `@kontourai/station-contracts/knowledge` | Knowledge namespaces, tree/search/document metadata |
+| `@kontourai/station-contracts/live-surface` | Host-neutral live surface (#90): frame header, input events, control lease, stream params, their strict wire parsers and the length-prefixed binary record envelope |
+| `@kontourai/station-contracts/workspace-browser-pane` | Browser pane v2 (#90): per-device pane state referencing a server-owned browser session, its v1→v2 migration, and the `/api/browser/*` wire views the pane reads |
 | `@kontourai/station-contracts/learning-review` | Owner-neutral learning lifecycle projections and explicit access gaps |
 | `@kontourai/station-contracts/layout` | Layout definitions, tabs, skills, templates |
 | `@kontourai/station-contracts/local-accounts` | Operator-only account projections, sign-in/session actions and one-time recovery results |
@@ -101,28 +105,121 @@ built-in scheduler now emits.
 
 ## Delegation turn supervision (#2269)
 
-A delegated task's current turn carries two distinct, finite bounds. Both
-are PER TURN — a follow-up turn gets its own budget; nothing here promises
-an aggregate limit across a whole task or conversation.
+A delegated task's current turn can carry two distinct bounds. Both are PER
+TURN — a follow-up turn gets its own budget; nothing here promises an
+aggregate limit across a whole task or conversation. Station does not end a
+live turn on a schedule it chose itself: each bound exists only when a
+server-owned caller declares it, and no production caller does today
+(`station-runtime.ts` builds the Muse adapter with neither `turnIdleTimeoutMs`
+nor `turnTimeoutMs`), so production Muse turns carry no Station-imposed
+bound. A turn that goes silent is surfaced instead: the stall watchdog's
+`progressSilence` (below) shows "No output for …" and the stall notice with a
+Stop button, and the user decides. Stop signals the child's process group
+and settles the turn `turn.aborted`.
 
 | Bound | Owner | Semantics | Muse default |
 |---|---|---|---|
-| Idle (no verified progress) | Owning adapter (Muse first) | A full window with no verified protocol activity — non-empty streamed text or a newly identified tool result — ends the turn (`muse-turn-idle-timeout`). Malformed lines, unknown frames, heartbeats, stderr noise, and duplicate completion receipts never reschedule it. Duplicate detection itself is bounded (oldest-first past a per-turn cap): a replay past that retention reads as new activity, and the absolute total still bounds the turn. | 30 min |
-| Total (absolute budget) | Owning adapter | Fixed wall-clock ceiling from turn start. Activity, approval, and progress never move it (`muse-turn-timeout`, unchanged string). An explicit positive finite `turnTimeoutMs` remains an absolute total override — never reinterpreted as idle. | 2 h |
+| Idle (declared) | A server-owned caller that declares `turnIdleTimeoutMs` (none in production today) | A full window with no verified protocol activity — non-empty streamed text, a newly started tool, a tool's task finishing or being cancelled, or a newly identified tool result — ends the turn (`muse-turn-idle-timeout`). It is not armed while a tool is in flight (a `tool.started` whose Muse task has not yet reached `completed`, `failed`, or `cancelled`), nor while background work the turn launched is pending (#2300, below); the task finishing, or the tool's result, re-arms it. A call whose task finished stays open for its result; if none arrives by turn end it is closed with Muse's reported phase (`success` or `error`, with a sentence saying no result was sent), and only a call still running is closed as `unresolved`. In-flight tracking is per call id, so two tasks sharing one `call_id` share it: the first finishing re-arms idle even if the second still runs (disclosed, not handled). Malformed lines, unknown frames, heartbeats, stderr noise, and duplicate completion receipts never reschedule it. Duplicate detection itself is bounded (oldest-first past a per-turn cap): a replay past that retention reads as new activity. | None (was 30 min until #2269) |
+| Total (declared budget) | A server-owned caller that declares `turnTimeoutMs` (none in production today) | Wall-clock ceiling from turn start, armed only when declared; activity never moves it. Expiry is `muse-turn-timeout` (unchanged string), attributed to that declared budget. | None |
 
-Both bounds fail closed: absent, zero, negative, NaN, infinite, or above the
-24 h cap resolves to the documented default, never to "no bound". No
-request, child, or user metadata can choose or extend either bound. On the
-current Muse wire a truly silent long tool call is indistinguishable from a
-stuck turn (no `tool.started`/approval evidence exists to report), so the
-idle copy must say no progress was *observed* — never that the turn is
-stalled or confirmed working.
+A declared bound outside (0, 24 h] applies no bound and is logged once — a
+substitute bound nobody declared would be the failure this policy removes.
+No request, child, or user metadata can choose or extend either bound. Muse
+1.3 reports tool starts (#2308), so a long tool call is known work rather
+than silence; a deadline's error message never carries Muse's routine
+stderr, and the UI names the deadline instead of suggesting a retry.
+
+Background work (#2300). Muse's `workflow` tool returns
+`{"status":"launched","taskId":…}` at once and runs the workflow in the
+background; `muse exec` then reaches `run_terminal` but keeps running until
+the task settles, and delivers the result in an automatic follow-up run
+(`command_accepted` from `muse-runtime-background-terminal`) before it exits.
+A completed `run_terminal` while the turn is still owed such a report — a
+task pending, or settled but not yet reported by a follow-up run — therefore
+holds the turn open: the task is a tool row
+(`toolCallId: muse-task:<taskId>`, named `<tool>_background`, settled by the
+task's final `task_lifecycle` phase), the follow-up run's text and tools are
+published on the same turn, and `turn.completed` fires once, at the last
+run's terminal, with the composed text. No second `turn.started` is minted.
+That Muse also follows up a task which settles before the run that launched
+it ends is unverified (the one live capture settles it afterwards). So only
+when every task the turn is held for settled before it was first held, no
+follow-up run was accepted, and Muse then exits cleanly (code 0, no signal)
+does the turn close as it did before #2300 (`stop`, no warning); every other
+exit while held gets the warning below.
+
+Neither the idle bound nor any other Station-chosen bound applies while a
+task is pending or the turn is held, whatever the turn's declared
+`idleLimitMs` says: a held turn runs until Muse finishes it or someone
+presses Stop (which signals the process group and closes pending rows
+`cancelled`). A held turn with no user to press Stop — a delegated or
+Station-initiated turn — therefore runs until Muse finishes it. A total
+budget a server-owned caller declares still applies; none does in
+production. A held turn that ends any other way (a follow-up terminal that
+did not complete, the child exiting first, a declared budget) closes
+pending rows `unresolved`, publishes a `runtime.warning`
+(`muse-held-turn-unfinished`, carrying Muse's terminal and reason, or the
+exit code or signal) and closes the turn with `turn.completed`
+(`finishReason` from the terminal, or `other`), never `runtime.error`. That
+warning is persisted in the event log and shown in the session diagnostics
+log and as a toast; the transcript does not render it.
+
+A turn that launched nothing still settles at its first `run_terminal`, and
+a child that lingers after it is still reaped one window after the settle:
+the declared idle window, or 30 minutes when none is declared. That reap
+bounds a process that outlived its turn, not a live turn. If the
+turn ended with background rows closed `unresolved` and the child is later
+reaped, the reap is announced as a `runtime.warning`
+(`muse-lingering-child-reaped`) rather than done silently. A send that
+arrives while the previous turn has ended but its process is still exiting
+waits up to 5 seconds for it; past that it is refused with the retryable
+code `muse_turn_slot_releasing`, which the client's queue keeps for retry.
+If Station already tried to stop that process and could not confirm it
+stopped, the send is refused definitively instead (no code): the slot frees
+only when that process exits on its own or the lingering-child reap, one
+window later, confirms stopping it, after which the message can be sent
+again. With no declared idle bound that window is measured from the settle,
+so a Stop Station could not confirm is retried 30 minutes after the Stop,
+not 30 minutes after the turn's last activity. A send that races a turn that is still running is refused
+definitively too (#2415): the adapter refuses it before any effect, so the
+dispatch is `rejected` rather than recorded as a possibly-started turn.
+
+A turn the engine opens on its own (#2324), for example Claude answering after
+background work finishes, is published as a turn whose `turn.started` and
+terminal carry `metadata.trigger: 'provider'`; `isProviderTriggeredTurn` in
+`runtime-events` is the one derivation consumers read. It has no prompt, moves
+the session lifecycle like any turn (reasons `provider_turn_started` /
+`provider_turn_completed`), and notifies "Your agent replied" when the owner
+is offline. A send while it runs is refused with the retryable code
+`provider_turn_in_progress`, and the client queues the message until it ends.
+A Claude send's own `turn.started` is published when the engine starts
+running it, so a send queued behind such a turn starts after it ends. That
+ordering relies on the CLI's per-message lifecycle frames (`msg_lifecycle_v1`,
+reported by claude 2.1.281). A CLI without them runs a send as soon as nothing
+else is running. If the engine's own reply began before that send reached it,
+the reply can then be attributed to the send: this residual is known and not
+closed.
+
+While such a send waits behind the engine's own turn, a Stop from the UI or
+the API stops the open turn — the engine's — and the engine then runs the
+queued send; a plain interrupt leaves queued sends queued. A queued send is
+itself withdrawn (it gets `turn.aborted` and never a start) only when a Stop
+names its own id, which happens when Station cleans up a send whose caller
+aborted after it was accepted, or interrupts a recovered turn. A queued send
+still waiting when the engine ends is recorded with its message and then
+aborted (`engine-ended-before-start`).
 
 The shared 3-minute stall watchdog (`TurnStallWatchdog` /
 `TurnProgressTracker`) stays observe-only: its `progressSilence` marker says
-no progress was *observed* — quiet providers (notably long Muse tool calls,
-which emit no `tool.started`) may be working quietly, and the marker must
-never be rendered as proof of a stall.
+no progress was *observed* — quiet providers (for example a Muse build
+older than 1.3, which emits no `tool.started`) may be working quietly, and
+the marker must never be rendered as proof of a stall. It keys on the
+events the parent turn publishes (streamed text, reasoning, tool start,
+progress, and completion); a tool in flight does not suspend it (only an open
+approval request does). So a Muse turn whose subagent is waiting on
+something writes only to that subagent's own session log, not to the
+parent's stdout, and reads as silent after the window, which is the
+signal the user acts on now that no idle timer ends it.
 
 An interrupted adapter event consumer is also observation loss, not a turn
 terminal. The shared consumer publishes `runtime.warning` with code
@@ -143,9 +240,15 @@ Surfaces (`orchestration.ts`: `TurnSupervisionFacts`; delegation
   with the session's own projected provider). A stale prior turn's facts
   and a malformed declaration are dropped. The status event window is
   bounded, so a very long turn's start event can age out — that reads as
-  honest unknown, never a repaired policy. Adapters without a declared hard
-  budget omit supervision: consumers render "no declared budget", never a
-  deadline derived from RPC timeouts or metadata.
+  honest unknown, never a repaired policy. Adapters that declare no
+  supervision omit it. Each bound is forwarded only when declared: a
+  declaration with no total budget has no `deadlineAt`, `remainingMs`, or
+  `totalLimitMs`, and one with no idle bound has no `idleLimitMs`. Muse's
+  production declaration carries neither, and `station delegate status`
+  prints "Turn budget: none declared for this turn" and "Idle limit: none
+  declared for this turn". A declaration carrying only half of a total
+  budget, or a present but malformed bound, is dropped. Nothing derives a
+  deadline from RPC timeouts or metadata.
 - `reason` is allowlisted and re-synthesized, never forwarded as-is. The
   lifecycle fold classifies a budget-killed turn as `runtime_error` first
   (its message is always non-empty), so the terminal `runtime.error`

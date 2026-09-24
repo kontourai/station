@@ -72,6 +72,8 @@ export function ChatSettingsPanel({
   const reasoningId = useId();
   const toolsId = useId();
   const autoHideId = useId();
+  const autoFloatId = useId();
+  const autoFloatHintId = useId();
   const answerDeliveryId = useId();
   const { featureSettings, developerToolsEnabled } = useDeviceSettings();
   const { navigate } = useNavigationActions();
@@ -223,6 +225,32 @@ export function ChatSettingsPanel({
           className="chat-settings-modal__hint"
         >
           Collapse dock after 5 seconds of inactivity
+        </p>
+      </div>
+
+      <div className="chat-settings-modal__section">
+        <label className="chat-settings-modal__checkbox" htmlFor={autoFloatId}>
+          <Toggle
+            id={autoFloatId}
+            checked={featureSettings.autoFloatAgentBrowserSessions !== false}
+            onChange={(checked) =>
+              setDeviceSetting('featureSettings', {
+                ...featureSettings,
+                autoFloatAgentBrowserSessions: checked,
+              })
+            }
+            size="sm"
+            describedBy={autoFloatHintId}
+          />
+          <span>Automatically show agent browser sessions</span>
+        </label>
+        <p
+          id="chat-settings-autofloat-hint"
+          className="chat-settings-modal__hint"
+        >
+          When an agent drives a browser in this chat's Project and no pane
+          shows it, float it over the chat. A session you close stays closed in
+          that chat.
         </p>
       </div>
 

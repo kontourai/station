@@ -6,6 +6,7 @@ import {
   activityWithNativeCredentialBootstrap,
   androidNamespace,
   applyAndroidNativeBootstrap,
+  manifestWithMediaPermissions,
 } from '../apply-android-native-bootstrap.mjs';
 
 function fixture(namespace: string, activity: string) {
@@ -23,6 +24,10 @@ function fixture(namespace: string, activity: string) {
   writeFileSync(
     join(app, 'build.gradle.kts'),
     `android { namespace = "${namespace}" }`,
+  );
+  writeFileSync(
+    join(app, 'src', 'main', 'AndroidManifest.xml'),
+    '<manifest xmlns:android="http://schemas.android.com/apk/res/android"><uses-permission android:name="android.permission.INTERNET" /><application /></manifest>',
   );
   writeFileSync(activityPath, activity);
   return { root, activityPath };
@@ -45,6 +50,43 @@ describe('Android native credential bootstrap', () => {
       const activity = readFileSync(activityPath, 'utf8');
       const bridge = readFileSync(result.bridgePath, 'utf8');
 
+      const manifestPath = join(
+        root,
+        'src-desktop/gen/android/app/src/main/AndroidManifest.xml',
+      );
+      const manifest = readFileSync(manifestPath, 'utf8');
+      expect(manifest).toContain(
+        '<uses-permission android:name="android.permission.CAMERA" />',
+      );
+      expect(manifest).toContain(
+        'android:name="android.hardware.camera.any" android:required="false"',
+      );
+      expect(manifest).toContain('android:allowBackup="false"');
+      expect(manifest).toContain('android:fullBackupContent="false"');
+      expect(manifest).toContain(
+        'android:dataExtractionRules="@xml/data_extraction_rules"',
+      );
+      expect(
+        readFileSync(
+          join(
+            root,
+            'src-desktop/gen/android/app/src/main/res/xml/data_extraction_rules.xml',
+          ),
+          'utf8',
+        ),
+      ).toBe(
+        readFileSync(
+          'scripts/templates/android/data_extraction_rules.xml',
+          'utf8',
+        ),
+      );
+      expect(manifest).toContain('android.permission.RECORD_AUDIO');
+      expect(manifest).toContain('android.permission.MODIFY_AUDIO_SETTINGS');
+      expect(manifest).toContain(
+        'android:name="android.hardware.microphone" android:required="false"',
+      );
+      applyAndroidNativeBootstrap({ root });
+      expect(readFileSync(manifestPath, 'utf8')).toBe(manifest);
       expect(result.namespace).toBe(namespace);
       expect(activity).toContain('import io.crates.keyring.Keyring');
       expect(
@@ -122,5 +164,33 @@ class MainActivity : TauriActivity() {
         command.indexOf('apply-android-native-bootstrap.mjs'),
       ).toBeLessThan(command.indexOf('tauri android build'));
     },
+  );
+});
+
+describe('camera manifest restoration', () => {
+  it('preserves the checked-in manifest without duplicating permission', () => {
+    const source = readFileSync(
+      'src-desktop/gen/android/app/src/main/AndroidManifest.xml',
+      'utf8',
+    );
+    expect(manifestWithMediaPermissions(source)).toBe(source);
+  });
+  it('refuses a restricted camera permission rather than reporting a repair', () => {
+    expect(() =>
+      manifestWithMediaPermissions(
+        '<manifest><uses-permission android:name="android.permission.CAMERA" android:maxSdkVersion="28" /><application /></manifest>',
+      ),
+    ).toThrow(/restricted/);
+  });
+});
+
+it('keeps generated Android extraction rules aligned with the reviewed seed', () => {
+  expect(
+    readFileSync('scripts/templates/android/data_extraction_rules.xml', 'utf8'),
+  ).toBe(
+    readFileSync(
+      'src-desktop/gen/android/app/src/main/res/xml/data_extraction_rules.xml',
+      'utf8',
+    ),
   );
 });

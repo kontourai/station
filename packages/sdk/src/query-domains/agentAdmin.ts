@@ -29,6 +29,7 @@ import {
   type QueryConfig,
   useApiMutation,
   useApiQuery,
+  useApiQueryRefetchingInvalidatedOnMount,
 } from '../query-core';
 import { agentQueries, isAgentToolsActivatingError } from '../queryFactories';
 import {
@@ -137,7 +138,10 @@ export function useUserQuery(alias: string, config?: QueryConfig<any>) {
  * agents as they are" from "these are the last snapshot we had".
  */
 export function useAgentsQuery(config?: QueryConfig<AgentCatalogProjection>) {
-  const query = useApiQuery(
+  // Agents change outside this client (plugins, the CLI, other devices), so
+  // an invalidation that lands while no view observes `['agents']` must
+  // refetch on the next mount (#2345).
+  const query = useApiQueryRefetchingInvalidatedOnMount(
     ['agents'],
     async () => {
       const apiBase = await _getApiBase();
@@ -533,7 +537,11 @@ export async function updateAppConfig(
   });
   const result = await response.json();
   if (!result.success) {
-    throw new Error(result.error);
+    // The route's stable refusal code (e.g. #2436's
+    // `approval-full-access-not-granted`) travels with the message, so a
+    // caller can explain a refusal rather than offer a retry that cannot
+    // succeed.
+    throw Object.assign(new Error(result.error), { code: result.code });
   }
   return {
     data: result.data as Record<string, unknown>,

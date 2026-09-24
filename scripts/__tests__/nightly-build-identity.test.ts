@@ -621,9 +621,9 @@ describe('the nightly workflow keeps its promises', () => {
       callerWorkflow.indexOf('id: ledger_token'),
     );
     expect(receipt).toContain(
-      'until npm view "@kontourai/station-cli@$CLI_VERSION" gitHead --json',
+      'until npm view --prefer-online "@kontourai/station-cli@$CLI_VERSION" gitHead --json',
     );
-    expect(receipt).toContain('if [ "$attempt" -ge 12 ]; then');
+    expect(receipt).toContain('if [ "$attempt" -ge 40 ]; then');
     expect(receipt).toContain('exit 1');
     // The gitHead comparison against the exact source stays the receipt's
     // authority; the retry only decides when to read.

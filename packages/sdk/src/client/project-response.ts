@@ -9,6 +9,8 @@ export interface ProjectEnvelope<T> {
   success: boolean;
   data?: T;
   error?: string;
+  /** A route refusal's stable code, when it sent one. */
+  code?: string;
 }
 
 /**
@@ -37,7 +39,7 @@ export async function unwrapProjectResponse<T = any>(
     | ProjectEnvelope<T>
     | undefined;
   if (!response.ok) {
-    throw new StationHttpError(
+    const error = new StationHttpError(
       response.status,
       envelopeErrorMessage(
         result,
@@ -45,6 +47,11 @@ export async function unwrapProjectResponse<T = any>(
       ),
       { code: envelopeErrorCode(result) },
     );
+    // A refusal's stable code (e.g. #2412 `working-directory-not-granted`),
+    // so a caller branches on it rather than on the status or the words.
+    if (typeof result?.code === 'string')
+      Object.assign(error, { code: result.code });
+    throw error;
   }
   if (!result?.success) {
     throw new Error(

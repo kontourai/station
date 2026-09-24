@@ -79,6 +79,7 @@ import {
   type ProviderSessionStartInput,
   ProviderTurnEndedError,
   type ProviderTurnStartResult,
+  SendTurnRefusedError,
 } from '../adapter-shape.js';
 import { buildCliRuntimePrerequisites } from '../auth/cli-auth.js';
 import {
@@ -386,6 +387,12 @@ function findAcpModelConfigOption(
 interface AcpPendingRequest {
   resolve: (decision: AcpDecision) => void;
   options: PermissionOption[];
+  /**
+   * Tool-level session-grant identity (`params.toolCall.name`), stored so
+   * `respondToRequest` can remember an `acceptForSession` grant. Absent
+   * when the agent named no tool (nothing is granted or remembered).
+   */
+  toolName?: string;
 }
 
 export interface AcpSessionRecord {
@@ -416,6 +423,14 @@ export interface AcpSessionRecord {
     'threadId' | 'resumeCursor' | 'signal'
   >;
   pendingRequests: Map<string, AcpPendingRequest>;
+  /**
+   * Tool-level session grants from `acceptForSession` (mirrors
+   * claude-adapter/station-agent-adapter `approvedTools`). The grant is
+   * checked Station-side because an agent that only offers `allow_once`
+   * degrades the `allow_always` wire preference to a one-call allow.
+   * Dies with the session.
+   */
+  approvedTools: Set<string>;
   preToolPolicy?: StagedPreToolPolicyEvaluator;
   delegation?: InvocationContext['delegation'];
   activeTurnId?: string;
@@ -809,6 +824,7 @@ export class AcpAdapter implements ProviderAdapterShape {
         tenantExecutionContext: input.tenantExecutionContext,
       },
       pendingRequests: new Map(),
+      approvedTools: new Set(),
       preToolPolicy,
       delegation:
         input.metadata?.delegation &&
@@ -1400,20 +1416,41 @@ export class AcpAdapter implements ProviderAdapterShape {
     input: ProviderSendTurnInput,
   ): Promise<ProviderTurnStartResult> {
     const record = this.requireSession(input.threadId);
+    // #2415: a send that races the session's active turn is refused here,
+    // before any provider-visible effect, so it must be a
+    // `SendTurnRefusedError`. A plain error is recorded by orchestration as
+    // an INDETERMINATE turn start, and that lingering boundary row reads as
+    // an in-flight turn that blocks every later send on the thread — for a
+    // send that provably never started. The turn-start coordinator does not
+    // refuse this case first: it serializes turn STARTS, and an accepted
+    // turn that is still running does not block its claim.
     if (record.activeTurnId) {
-      throw new Error(
+      throw new SendTurnRefusedError(
         `ACP session '${input.threadId}' already has an active turn.`,
       );
     }
     const turnId = crypto.randomUUID();
-    const decodedAttachments = decodeChatAttachments(input.attachments);
-    rejectFileAttachments('This engine', decodedAttachments);
+    // Every throw below runs before the first provider-visible effect (no
+    // prompt sent, no `turn.started` published), so each is a
+    // `SendTurnRefusedError`: orchestration surfaces the message honestly
+    // instead of reporting the turn as possibly started.
+    let decodedAttachments: ReturnType<typeof decodeChatAttachments>;
+    try {
+      decodedAttachments = decodeChatAttachments(input.attachments);
+    } catch (error) {
+      throw new SendTurnRefusedError(errorMessage(error));
+    }
+    try {
+      rejectFileAttachments('This engine', decodedAttachments);
+    } catch (error) {
+      throw new SendTurnRefusedError(errorMessage(error));
+    }
     if (
       decodedAttachments.length > 0 &&
       record.process.initResult?.agentCapabilities?.promptCapabilities
         ?.image !== true
     ) {
-      throw new Error(
+      throw new SendTurnRefusedError(
         'This engine did not advertise image attachment support.',
       );
     }
@@ -1540,6 +1577,7 @@ export class AcpAdapter implements ProviderAdapterShape {
     // bounded redraw and close every live tool row before awaiting the child;
     // this makes an interrupt truthful even when the process never settles.
     record.toolUpdateSupervisor.cancelAll();
+    this.cancelPendingRequests(record, threadId);
     await record.process.cancel();
     if (!this.ownsActiveTurn(threadId, record, targetTurnId)) {
       return {
@@ -1603,6 +1641,9 @@ export class AcpAdapter implements ProviderAdapterShape {
     }
 
     record.pendingRequests.delete(requestId);
+    if (decision === 'acceptForSession' && pending.toolName) {
+      record.approvedTools.add(pending.toolName);
+    }
     pending.resolve(decision);
 
     this.publish({
@@ -1728,6 +1769,31 @@ export class AcpAdapter implements ProviderAdapterShape {
       sessionId: threadId,
       reason,
     });
+  }
+
+  /**
+   * #2316: a cancelled prompt's open permission requests can never run their
+   * call (ACP answers an outstanding `session/request_permission` with
+   * `cancelled` after `session/cancel`). Settle them, so no later answer lands
+   * on a dead request and no session grant is minted for it.
+   */
+  private cancelPendingRequests(
+    record: AcpSessionRecord,
+    threadId: string,
+  ): void {
+    for (const [requestId, pending] of record.pendingRequests) {
+      pending.resolve('cancel');
+      this.publish({
+        eventId: crypto.randomUUID(),
+        provider: this.provider,
+        threadId,
+        createdAt: new Date().toISOString(),
+        requestId,
+        method: 'request.resolved',
+        status: mapAcpDecisionToApprovalStatus('cancel'),
+      });
+    }
+    record.pendingRequests.clear();
   }
 
   private prepareRecordForStop(record: AcpSessionRecord): void {
@@ -1906,6 +1972,22 @@ export class AcpAdapter implements ProviderAdapterShape {
         };
       }
 
+      // Tool-level session grant: "Allow for this session" covers every later
+      // call of the tool, not just this call. Checked after authored policy
+      // (preToolPolicy/autoApprove above stay first) and before publishing,
+      // so granted tools never re-prompt. Denies are never cached. When the
+      // agent offers no allow option at all, the auto-acceptance would be
+      // `cancelled` — fall through to the prompt rather than auto-cancel.
+      if (toolName && record.approvedTools.has(toolName)) {
+        const grantedOutcome = mapAcpDecisionToOutcome(
+          'accept',
+          params.options,
+        );
+        if (grantedOutcome.outcome !== 'cancelled') {
+          return { outcome: grantedOutcome };
+        }
+      }
+
       const requestId = crypto.randomUUID();
       this.publish({
         eventId: crypto.randomUUID(),
@@ -1927,6 +2009,7 @@ export class AcpAdapter implements ProviderAdapterShape {
         record.pendingRequests.set(requestId, {
           resolve,
           options: params.options,
+          ...(toolName ? { toolName } : {}),
         });
       });
 
@@ -2404,6 +2487,7 @@ export class AcpAdapter implements ProviderAdapterShape {
     record.promptEpoch += 1;
     const promptEpoch = record.promptEpoch;
     record.toolUpdateSupervisor.cancelAll();
+    this.cancelPendingRequests(record, threadId);
     await record.process.cancel();
     if (record.activeTurnId !== turnId) {
       throw new ProviderTurnEndedError();

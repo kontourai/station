@@ -155,6 +155,14 @@ interface LaneInputs<T extends HomeWorkItem = HomeLaneItem> {
 interface LanePartition<T extends HomeWorkItem = HomeLaneItem> {
   active: T[];
   external?: T[];
+  /**
+   * #2310: sessions nothing has been sent to (`lifecycleLabel === 'Draft'`,
+   * the server's lineage-aware fold). Not "Active now", which means actually
+   * active — and not a finished lane either, because nothing finished. Present
+   * only when non-empty, like `external`; every consumer renders it, so a
+   * draft stays findable, openable and closable.
+   */
+  drafts?: T[];
   recentlyFinished: T[];
   snoozed: T[];
   settled: T[];
@@ -168,6 +176,7 @@ export function partitionHomeWorkItems<T extends HomeWorkItem>({
 }: LaneInputs<T>): LanePartition<T> {
   const active: T[] = [];
   const external: T[] = [];
+  const drafts: T[] = [];
   const recentlyFinished: T[] = [];
   const snoozed: T[] = [];
   const settled: T[] = [];
@@ -187,6 +196,10 @@ export function partitionHomeWorkItems<T extends HomeWorkItem>({
     }
     if (item.controlMode === 'read-only-attached') {
       external.push(item);
+      continue;
+    }
+    if (item.lifecycleLabel === 'Draft') {
+      drafts.push(item);
       continue;
     }
     if (isTerminalLifecycle(item.lifecycleLabel)) {
@@ -226,6 +239,7 @@ export function partitionHomeWorkItems<T extends HomeWorkItem>({
     snoozed,
     settled,
     ...(external.length ? { external } : {}),
+    ...(drafts.length ? { drafts } : {}),
   };
 }
 

@@ -1,13 +1,13 @@
 import {
+  type LayoutComponentProps,
   useAgents,
   useAuth,
   useNavigation,
-  type WorkspaceComponentProps,
 } from '@kontourai/station-sdk';
 import { useState } from 'react';
 import './layout.css';
 
-function Welcome({ onShowChat }: WorkspaceComponentProps) {
+function Welcome({ onShowChat }: LayoutComponentProps) {
   const agents = useAgents();
   const { status, provider, user } = useAuth();
   const { setDockState } = useNavigation();

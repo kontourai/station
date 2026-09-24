@@ -42,7 +42,7 @@ function createForm(overrides: Partial<AgentFormData> = {}): AgentFormData {
     region: '',
     guardrails: null,
     maxSteps: '',
-    tools: { mcpServers: [], available: [], autoApprove: [] },
+    tools: { mcpServers: [], available: [], autoApprove: [], browser: true },
     execution: {
       agentConnectionId: 'bedrock-runtime',
       modelConnectionId: 'bedrock-default',

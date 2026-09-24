@@ -25,6 +25,7 @@ import {
   resolveTurnModelIdentity,
   turnCompletedNormally,
 } from './message-bubble/utils';
+import type { ToolApprovalOutcome } from './ToolCallDisplay';
 import './chat.css';
 
 // The Task picker owns SDK queries, mutations, dialog primitives, and its own
@@ -117,7 +118,9 @@ interface MessageBubbleProps {
     approvalId: string,
     toolName: string,
     action: 'once' | 'trust' | 'deny',
-  ) => void;
+    approvalThreadId?: string,
+    approvalEventId?: string,
+  ) => Promise<ToolApprovalOutcome>;
   anchorKey?: string;
   /**
    * "via <Station>" row attribution (archive#2585), resolved by callers from
@@ -157,17 +160,22 @@ function MessageBubbleComponent({
   // reason (e.g. a sibling message's isThinking flag flipping).
   const handleContentToolApproval = useCallback(
     (part: MessageContentPart, action: 'once' | 'trust' | 'deny') => {
-      if (!onToolApproval) return;
+      if (!onToolApproval)
+        return Promise.reject(new Error('This chat cannot answer requests.'));
       const toolName = part.toolName || part.name;
       if (!part.approvalId || !toolName) {
-        return;
+        return Promise.reject(
+          new Error('This request is missing its identity.'),
+        );
       }
-      onToolApproval(
+      return onToolApproval(
         activeSession.id,
         activeSession.agentSlug,
         part.approvalId,
         toolName,
         action,
+        part.approvalThreadId,
+        part.approvalEventId,
       );
     },
     [onToolApproval, activeSession.id, activeSession.agentSlug],
@@ -521,15 +529,17 @@ function MessageBubbleComponent({
             <p>
               {msg.changedFiles.reason === 'checkpoint_failed'
                 ? 'Station failed to capture a checkpoint for this turn.'
-                : msg.changedFiles.reason === 'checkpoint_pruned'
-                  ? 'This turn’s checkpoint expired and was pruned.'
-                  : msg.changedFiles.reason === 'checkpoint_missing'
-                    ? 'A checkpoint for this turn is missing.'
-                    : msg.changedFiles.reason === 'diff_output_limit_exceeded'
-                      ? 'This turn changed too many files to summarize.'
-                      : msg.changedFiles.reason === 'repository_changed'
-                        ? 'The turn crossed repository boundaries and cannot be compared.'
-                        : 'The turn’s checkpoint pair could not be compared.'}
+                : msg.changedFiles.reason === 'checkpoint_refused'
+                  ? 'Station does not take checkpoints in this repository: its own git configuration defines a filter or diff program that Station will not run for you.'
+                  : msg.changedFiles.reason === 'checkpoint_pruned'
+                    ? 'This turn’s checkpoint expired and was pruned.'
+                    : msg.changedFiles.reason === 'checkpoint_missing'
+                      ? 'A checkpoint for this turn is missing.'
+                      : msg.changedFiles.reason === 'diff_output_limit_exceeded'
+                        ? 'This turn changed too many files to summarize.'
+                        : msg.changedFiles.reason === 'repository_changed'
+                          ? 'The turn crossed repository boundaries and cannot be compared.'
+                          : 'The turn’s checkpoint pair could not be compared.'}
             </p>
           )}
           {msg.changedFiles.status === 'available' &&

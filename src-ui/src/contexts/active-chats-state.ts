@@ -1,10 +1,12 @@
 import type {
   ConversationHandoffProjection,
   ConversationOpenResolution,
+  ConversationTurnActivity,
 } from '@kontourai/station-contracts/orchestration';
-import type {
-  ApprovalMode,
-  EngineId,
+import {
+  type ApprovalMode,
+  type EngineId,
+  isApprovalMode,
 } from '@kontourai/station-contracts/provider';
 import type { FlowRunFreshness } from '@kontourai/station-contracts/runtime-events';
 import { type ExecutionMode } from '@kontourai/station-contracts/tool';
@@ -15,9 +17,17 @@ import type {
   FileAttachment,
   UnsentMessageRecord,
 } from '../types';
+import {
+  newerConversationActivity,
+  serverTurnLive,
+} from '../utils/conversation-activity';
 
 export type { UnsentMessageRecord } from '../types';
 
+import {
+  migratedApprovalPick,
+  withoutLegacyApprovalMode,
+} from '../utils/approvalMode';
 import type { EffectiveModelSource } from '../utils/execution';
 import type { PlanArtifact } from '../utils/planArtifacts';
 
@@ -95,6 +105,10 @@ export type ChatContentPart = {
   isError?: boolean;
   needsApproval?: boolean;
   approvalId?: string;
+  /** #2316: see `MessagePart.approvalThreadId` in `packages/shared/src/conversation-message.ts`. */
+  approvalThreadId?: string;
+  /** #2316: see `MessagePart.approvalEventId`. */
+  approvalEventId?: string;
   cancelled?: boolean;
   approvalStatus?:
     | 'auto-approved'
@@ -304,6 +318,48 @@ export type ChatUIState = {
    * Session-scoped and not persisted — a dispatch cannot outlive its page.
    */
   pendingClientTurnId?: string;
+  /**
+   * #2309: this composer submitted a turn and the server has not reported it
+   * open yet. Set by the send paths together with `status: 'sending'`, and
+   * cleared by `mergeChatUpdates` the moment the server's activity shows an
+   * open turn or `status` leaves `'sending'`, and by the witnessed
+   * `turn.started`. It is the only client-local liveness once a server
+   * activity record exists: a `status: 'sending'` outside this window (the
+   * event handlers set it for any turn they witness) proves nothing.
+   * Session-scoped and not persisted.
+   */
+  sendAwaitingTurnStart?: boolean;
+  /**
+   * #2309: the turn the record showed open when the current send window
+   * began (a stopped turn not yet aborted, typically). That turn opening
+   * again in the record is not this send's acknowledgement. Not persisted.
+   */
+  sendAwaitingPriorTurnId?: string;
+  /**
+   * #2309: a queue drain has popped this chat's head and not dispatched it
+   * yet (`queueDrain.ts`). A second trigger for the same turn end must not
+   * pop the next one meanwhile. Session-scoped, not persisted.
+   */
+  queueDrainSettling?: boolean;
+  /**
+   * #2309: a turn end found this chat's binding being re-proved and could not
+   * send its queued follow-up; the revalidation sends it when it settles
+   * (`resumeHeldQueueDrain`). Session-scoped, not persisted.
+   */
+  queueDrainHeldForOpen?: boolean;
+  /** #2309: see `ConversationActivityCarrier.stopSettledTurnId`. Not persisted. */
+  stopSettledTurnId?: string;
+  /**
+   * #2309: the server's activity record for this chat's conversation, the
+   * newest by `asOfSequence` across every carrier. Liveness, Stop/steer
+   * targeting and the working clock read it; the legacy fields below
+   * (`orchestrationTurnOpen`, `openTurnId`) remain only as the fallback for a
+   * server that does not send one. Written through
+   * `ActiveChatsStore.applyConversationActivity` or any `updateChat`, which
+   * both keep the newest copy (`mergeChatUpdates`). Not persisted: a reload
+   * reads it fresh from the server.
+   */
+  conversationActivity?: ConversationTurnActivity;
   agentSlug?: string;
   agentName?: string;
   title?: string;
@@ -341,6 +397,25 @@ export type ChatUIState = {
    * chip can show a pending state instead of overclaiming.
    */
   lastAppliedApprovalMode?: ApprovalMode;
+  /**
+   * Whether the engine refused the recorded full access on its latest turn
+   * (`turn.started` metadata `approvalEscalationRejected`). Not persisted,
+   * like the report above.
+   */
+  approvalEscalationRejected?: boolean;
+  /**
+   * #2436: a pick the server has not received yet (see
+   * `ApprovalPostureState`, utils/approvalMode.ts). Persisted: an offline
+   * pick survives a reload and rides the next send.
+   */
+  queuedApprovalMode?: ApprovalMode;
+  /**
+   * #2436: the latest server-recorded posture decision this client has
+   * folded, and its server global sequence. Persisted as a cache of the
+   * server's record; a newer recorded event always replaces it.
+   */
+  approvalPosture?: ApprovalMode;
+  approvalPostureSequence?: number;
   orchestrationSessionStarted?: boolean;
   orchestrationProvider?: EngineId;
   orchestrationModel?: string;
@@ -387,6 +462,24 @@ export type ChatUIState = {
    * allow-list below never reads it), exactly like `openTurnId`.
    */
   openTurnShellSuperseded?: boolean;
+  /**
+   * #2304: when the open turn started, in epoch ms, from the SERVER's
+   * `turn.started.createdAt` — stamped by `turn.started`, or seeded from the
+   * bounded window's `turn.started` when this client attached to a turn that
+   * was already running. The "Working for" clock derives from this, so a
+   * remount (navigation, dock teardown, virtualizer drop) keeps counting the
+   * turn instead of restarting at 0:00 from the component's own mount.
+   *
+   * Cleared by any update that sets `orchestrationTurnOpen: false`
+   * (`mergeChatUpdates`) and by a reconnect catch-up for an open turn
+   * (`applyOrchestrationSnapshot`), and replaced by every non-steer
+   * `turn.started`. A turn that ended unobserved WITHOUT the fold passing
+   * through `false` or a catch-up (a gap no snapshot fallback reported)
+   * would still leave its start here until the next `turn.started`.
+   * Session-scoped bookkeeping, deliberately NOT persisted, like
+   * `openTurnId`.
+   */
+  openTurnStartedAt?: number;
   orchestrationHistoryRevision?: number;
   messages?: ChatMessage[];
   ephemeralMessages?: EphemeralMessage[];
@@ -524,6 +617,16 @@ export type PersistedActiveChat = {
   requestedModel?: string | null;
   requestedModelSource?: EffectiveModelSource;
   requestedProviderOptions?: Record<string, unknown>;
+  /** See ChatUIState.queuedApprovalMode (#2436). */
+  queuedApprovalMode?: ApprovalMode;
+  approvalPosture?: ApprovalMode;
+  approvalPostureSequence?: number;
+  /**
+   * #2436 migration only: the unreleased #2334 fields. Read once by
+   * `hydrateActiveChats` (`migratedApprovalPick`), never written.
+   */
+  pendingApprovalMode?: unknown;
+  approvalModeOverride?: unknown;
   defaultModel?: string;
   defaultModelSource?: EffectiveModelSource;
   projectSlug?: string;
@@ -628,16 +731,26 @@ function readTimestamp(value: BackendTimestampMessage['timestamp']): number {
  */
 export function isTurnInFlight(
   chat:
-    | Pick<ChatUIState, 'abortController' | 'status' | 'orchestrationTurnOpen'>
+    | (Pick<
+        ChatUIState,
+        'abortController' | 'status' | 'orchestrationTurnOpen'
+      > &
+        Pick<
+          ChatUIState,
+          'conversationActivity' | 'sendAwaitingTurnStart' | 'stopSettledTurnId'
+        >)
     | null
     | undefined,
 ): boolean {
   if (!chat) return false;
-  return (
-    !!chat.abortController ||
-    chat.status === 'sending' ||
-    !!chat.orchestrationTurnOpen
-  );
+  if (chat.abortController) return true;
+  // #2309: with a server record the three signals collapse to two — the
+  // server's open turn (any device's, any lineage child's) and this
+  // composer's own unacknowledged send. The legacy fold below is only for a
+  // server that sends no record.
+  const server = serverTurnLive(chat);
+  if (server !== undefined) return server;
+  return chat.status === 'sending' || !!chat.orchestrationTurnOpen;
 }
 
 export function createDefaultChatState(
@@ -693,7 +806,26 @@ export function hydrateActiveChats(
       modelSource: session.modelSource,
       requestedModel: session.requestedModel,
       requestedModelSource: session.requestedModelSource,
-      requestedProviderOptions: session.requestedProviderOptions,
+      // #2436: an approval posture never rides the model-options bags. A
+      // pick persisted there (or in the unreleased #2334 fields) becomes a
+      // queued pick the server records on the next send.
+      requestedProviderOptions: withoutLegacyApprovalMode(
+        session.requestedProviderOptions,
+      ),
+      ...(() => {
+        const queued = isApprovalMode(session.queuedApprovalMode)
+          ? session.queuedApprovalMode
+          : migratedApprovalPick(session);
+        return queued ? { queuedApprovalMode: queued } : {};
+      })(),
+      ...(isApprovalMode(session.approvalPosture)
+        ? {
+            approvalPosture: session.approvalPosture,
+            ...(typeof session.approvalPostureSequence === 'number'
+              ? { approvalPostureSequence: session.approvalPostureSequence }
+              : {}),
+          }
+        : {}),
       defaultModel: session.defaultModel,
       defaultModelSource: session.defaultModelSource,
       projectSlug: session.projectSlug,
@@ -704,7 +836,7 @@ export function hydrateActiveChats(
       providerId: session.providerId,
       defaultProviderId: session.defaultProviderId,
       provider: session.provider,
-      providerOptions: session.providerOptions || {},
+      providerOptions: withoutLegacyApprovalMode(session.providerOptions) || {},
       orchestrationSessionStarted: session.orchestrationSessionStarted || false,
       orchestrationProvider: session.orchestrationProvider,
       orchestrationModel: session.orchestrationModel,
@@ -832,6 +964,20 @@ export function serializeActiveChats(
       requestedModel: chat.requestedModel,
       requestedModelSource: chat.requestedModelSource,
       requestedProviderOptions: chat.requestedProviderOptions,
+      // #2436: a queued pick survives a reload and rides the next send; the
+      // folded posture is a cache of the server's record, ordered by its
+      // sequence, so a newer recorded event replaces it.
+      ...(chat.queuedApprovalMode
+        ? { queuedApprovalMode: chat.queuedApprovalMode }
+        : {}),
+      ...(chat.approvalPosture
+        ? {
+            approvalPosture: chat.approvalPosture,
+            ...(chat.approvalPostureSequence !== undefined
+              ? { approvalPostureSequence: chat.approvalPostureSequence }
+              : {}),
+          }
+        : {}),
       defaultModel: chat.defaultModel,
       defaultModelSource: chat.defaultModelSource,
       projectSlug: chat.projectSlug,
@@ -914,11 +1060,69 @@ export function mergeChatUpdates(
     nextUpdates.queuedMessages !== undefined
       ? boundQueuedMessages(nextUpdates.queuedMessages)
       : { kept: undefined, dropped: [] as string[] };
-  const chat = {
+  const chat: ChatUIState = {
     ...current,
     ...nextUpdates,
     ...(bounded.kept ? { queuedMessages: bounded.kept } : {}),
+    // #2304: clears the open turn's start for every writer that closes the
+    // turn fold (terminal events, session exit, a snapshot reporting
+    // `hasActiveTurn: false`, conversation switch). A snapshot that reseeds
+    // the fold to `true` never passes through here; the reconnect catch-up
+    // clears the start itself (`snapshotHandlers.ts`).
+    ...(nextUpdates.orchestrationTurnOpen === false
+      ? { openTurnStartedAt: undefined }
+      : {}),
   };
+  // #2309: a chat's activity record never regresses. Every writer (the
+  // store's carrier seam, an open-resolution patch, a snapshot) passes
+  // through here, so the keep-newest rule holds for all of them rather than
+  // for whichever caller remembered it. An update that omits the field, or
+  // passes `undefined`, leaves the current record alone.
+  chat.conversationActivity = newerConversationActivity(
+    current.conversationActivity,
+    nextUpdates.conversationActivity,
+  );
+  // A record describes ONE conversation. When the chat now names a different
+  // one (or none), the old record is not about it.
+  if (
+    chat.conversationActivity &&
+    chat.conversationActivity.conversationId !== chat.conversationId
+  ) {
+    chat.conversationActivity = undefined;
+  }
+  // The optimistic send window closes when the server shows THIS send's turn
+  // open, or the composer is no longer sending. See `sendAwaitingTurnStart`.
+  // A turn that was already open when the window began is not this send's
+  // turn: after a settled Stop the record still names the stopped turn until
+  // its `turn.aborted` lands, and closing on it would leave a gap in which a
+  // second Enter dispatches a second turn.
+  if (nextUpdates.sendAwaitingTurnStart === true) {
+    chat.sendAwaitingPriorTurnId =
+      current.conversationActivity?.openTurn?.turnId;
+  }
+  const openTurnId = chat.conversationActivity?.openTurn?.turnId;
+  // #2324: a turn the engine opened on its own is never this send's turn,
+  // however it races the send; its reply is not the send's answer.
+  const openTurnIsProviders =
+    chat.conversationActivity?.openTurn?.trigger === 'provider';
+  if (
+    chat.status !== 'sending' ||
+    (openTurnId !== undefined &&
+      !openTurnIsProviders &&
+      openTurnId !== chat.sendAwaitingPriorTurnId &&
+      openTurnId !== chat.stopSettledTurnId)
+  ) {
+    chat.sendAwaitingTurnStart = undefined;
+  }
+  if (!chat.sendAwaitingTurnStart) chat.sendAwaitingPriorTurnId = undefined;
+  // A settled Stop names one turn; once the record shows a different open
+  // turn (or none), the note has done its job.
+  if (
+    chat.stopSettledTurnId !== undefined &&
+    chat.conversationActivity?.openTurn?.turnId !== chat.stopSettledTurnId
+  ) {
+    chat.stopSettledTurnId = undefined;
+  }
   const shouldPersist =
     'conversationId' in nextUpdates ||
     'title' in nextUpdates ||
@@ -932,6 +1136,8 @@ export function mergeChatUpdates(
     'requestedModel' in nextUpdates ||
     'requestedModelSource' in nextUpdates ||
     'requestedProviderOptions' in nextUpdates ||
+    'queuedApprovalMode' in nextUpdates ||
+    'approvalPosture' in nextUpdates ||
     'defaultModel' in nextUpdates ||
     'defaultModelSource' in nextUpdates ||
     'provider' in nextUpdates ||
@@ -1044,6 +1250,11 @@ export function assignConversationIdState(
   return {
     ...chat,
     conversationId,
+    // #2309: a record describes one conversation; see `mergeChatUpdates`.
+    ...(chat.conversationActivity &&
+    chat.conversationActivity.conversationId !== conversationId
+      ? { conversationActivity: undefined }
+      : {}),
   };
 }
 

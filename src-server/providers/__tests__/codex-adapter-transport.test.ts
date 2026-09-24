@@ -1021,3 +1021,74 @@ describe('codexSpawnEnv', () => {
     );
   });
 });
+
+describe('CodexAdapterTransport — host image reads keep publish order', () => {
+  test("a turn's completion is published after the image tool that ran in it", async () => {
+    const { mkdtempSync, mkdirSync, rmSync, writeFileSync } = await import(
+      'node:fs'
+    );
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const directory = mkdtempSync(join(tmpdir(), 'codex-order-'));
+    const workspace = join(directory, 'workspace');
+    mkdirSync(workspace);
+    const image = join(workspace, 'diagram.png');
+    writeFileSync(
+      image,
+      Buffer.from(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+        'base64',
+      ),
+    );
+    try {
+      const transport = new CodexAdapterTransport(
+        () => new Date('2026-04-11T00:00:00Z'),
+      );
+      const record = createCodexSessionRecord({
+        externalThreadId: 'thread-1',
+        process: new FakeCodexProcess(),
+        provider: 'codex',
+        threadId: 'thread-1',
+        model: 'gpt-5-codex',
+        nowIso: () => '2026-04-11T00:00:00Z',
+      });
+      record.session = { ...record.session, cwd: workspace };
+      transport.registerSession(record);
+      transport.setCodexThreadId(record, 'codex-thread-1');
+      const iterator = transport.streamEvents()[Symbol.asyncIterator]();
+
+      // Delivered back to back, synchronously, as readline would.
+      transport.handleStdoutLine(
+        record,
+        JSON.stringify({
+          method: 'item/completed',
+          params: {
+            threadId: 'codex-thread-1',
+            turnId: 'turn-1',
+            item: { type: 'imageView', id: 'view-1', path: image },
+          },
+        }),
+      );
+      transport.handleStdoutLine(
+        record,
+        JSON.stringify({
+          method: 'turn/completed',
+          params: {
+            threadId: 'codex-thread-1',
+            turn: { id: 'turn-1', status: 'completed' },
+          },
+        }),
+      );
+
+      const methods = (await drainEvents(iterator)).map(
+        (event) => event.method,
+      );
+      expect(methods.indexOf('tool.completed')).toBeGreaterThan(-1);
+      expect(methods.indexOf('turn.completed')).toBeGreaterThan(
+        methods.indexOf('tool.completed'),
+      );
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+});

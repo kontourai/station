@@ -21,6 +21,17 @@ The `gen/android/` directory contains a tracked seed, but channel initialization
 can replace it. Put durable native customization in the owning configuration,
 template, or post-init script, and verify that a regenerated project retains it.
 
+`apply-android-native-bootstrap.mjs` restores the camera/voice permissions and optional
+camera/microphone features after initialization for every channel. Rear-camera
+and autofocus requirements implied by Camera are explicitly optional too. The in-app QR scanner
+uses WebView `getUserMedia`; Android cannot show its runtime permission prompt
+unless the packaged manifest declares Camera. The Nightly staging job checks
+the resulting APK’s camera and microphone permission list before publication. Editing only the
+tracked seed does not repair generated release builds. The same bootstrap restores
+`allowBackup="false"`, `fullBackupContent="false"`, and the maintained
+`data_extraction_rules.xml` resource so credentials and local app data retain
+their existing cloud-backup and device-transfer exclusions.
+
 ## CI Pipeline
 
 **This section describes `.github/workflows/build-android.yml`, which is a

@@ -347,8 +347,10 @@ export interface DelegatedTaskSnapshot {
   resumable: boolean;
   /**
    * #2269: effective per-turn supervision for the current turn, when the
-   * serving Station's owning adapter declared a finite budget. Absent is
-   * honest unknown — never a synthesized deadline.
+   * serving Station's owning adapter declared any. Absent is honest unknown
+   * — never a synthesized deadline. Each bound is present only when it was
+   * declared: no `deadlineAt` means no total budget, no `idleLimitMs` means
+   * no idle bound (a silent turn is not ended by Station).
    */
   supervision?: DelegatedTaskTurnSupervision;
   /** #2269: the serving Station's typed terminal attribution, when any. */
@@ -364,11 +366,13 @@ export interface DelegatedTaskSnapshot {
 export interface DelegatedTaskTurnSupervision {
   provider: string;
   turnId: string;
-  deadlineAt: string;
   elapsedMs: number;
-  remainingMs: number;
-  idleLimitMs: number;
-  totalLimitMs: number;
+  /** Present only when an idle bound was declared for the turn. */
+  idleLimitMs?: number;
+  /** Present together with `remainingMs`/`totalLimitMs` only for a declared total budget. */
+  deadlineAt?: string;
+  remainingMs?: number;
+  totalLimitMs?: number;
   lastProgressEventAt?: string;
 }
 
@@ -424,6 +428,12 @@ export interface DelegatedTaskEvent {
     | 'plan';
   createdAt?: string;
   turnId?: string;
+  /**
+   * #2324: `'provider'` on the start and terminal of a turn the engine
+   * opened on its own — a reply no caller asked for (for example after its
+   * background work finished). Absent on every turn a caller sent.
+   */
+  trigger?: 'provider';
   text?: string;
   truncated?: true;
   toolName?: string;

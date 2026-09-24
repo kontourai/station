@@ -1,4 +1,8 @@
-import type { OrchestrationDelegationContext } from '@kontourai/station-contracts/orchestration';
+import type { SessionChildWork } from '@kontourai/station-contracts/child-work';
+import type {
+  ConversationTurnActivity,
+  OrchestrationDelegationContext,
+} from '@kontourai/station-contracts/orchestration';
 import type { EngineId } from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 
@@ -45,5 +49,23 @@ export type OrchestrationSnapshotPayload = {
     delegation?: OrchestrationDelegationContext;
     createdAt?: string;
     lastEventAt?: string;
+    /**
+     * #2309: the activity of the conversation this row's session belongs
+     * to — every execution child, not just this row's. Absent from older
+     * servers and for sessions with no conversation lineage.
+     */
+    conversationActivity?: ConversationTurnActivity;
+    /**
+     * #2303: the durable conversation this execution thread belongs to — the
+     * root for the root row AND for every `<root>:session:<uuid>`
+     * continuation child. Already on the wire
+     * (`OrchestrationSessionSummary.conversationId`, folded from the
+     * session's own `session.started`/`session.configured` metadata) and
+     * previously dropped only by this type. The chat store is keyed by the
+     * conversation, so this is how a turn running in a child reaches its chat.
+     */
+    conversationId?: string;
+    /** #2456: see `OrchestrationSessionSummary.childWork`. Absent from older servers. */
+    childWork?: SessionChildWork;
   }>;
 };

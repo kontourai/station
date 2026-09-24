@@ -158,6 +158,17 @@ export class ProjectMembershipService {
     }));
   }
 
+  /**
+   * Admissions of a principal Station resolved itself: a verified agent
+   * session's recorded owner (browser tools, #90 D5). The caller vouches for
+   * the id; this never authenticates anyone.
+   */
+  admissionsForResolvedPrincipal(
+    principalId: string,
+  ): readonly { scope: ProjectMembershipScope; member: ProjectMemberView }[] {
+    return this.members.readableProjectAdmissionsForPrincipalId(principalId);
+  }
+
   async requireProjectRead(
     slug: string,
     authority: ProjectMembershipAuthority,

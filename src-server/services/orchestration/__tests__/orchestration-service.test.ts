@@ -19,6 +19,7 @@ import {
   engineConnectionId,
   engineId,
 } from '@kontourai/station-contracts/agent-identity';
+import type { ClientOrigin } from '@kontourai/station-contracts/client-origin';
 import type { OrchestrationCommand } from '@kontourai/station-contracts/orchestration';
 import { PENDING_TURN_INTERRUPT_TTL_MS } from '@kontourai/station-contracts/orchestration';
 import { humanPrincipal } from '@kontourai/station-contracts/principal';
@@ -55,7 +56,12 @@ import type {
   ProviderSessionStartInput,
   ProviderTurnStartResult,
 } from '../../../providers/adapter-shape.js';
-import { ProviderTurnEndedError } from '../../../providers/adapter-shape.js';
+import {
+  ProviderTurnEndedError,
+  ProviderTurnInProgressError,
+  SendTurnRefusedError,
+} from '../../../providers/adapter-shape.js';
+import { MuseTurnSlotReleasingError } from '../../../providers/adapters/muse-adapter.js';
 import { StationAgentAdapter } from '../../../providers/adapters/station-agent-adapter.js';
 import type { IProviderAdapterRegistry } from '../../../providers/provider-interfaces.js';
 import { AsyncEventQueue } from '../../../providers/sessions/async-event-queue.js';
@@ -66,6 +72,10 @@ import {
   INTERNAL_TURN_CORRELATION_HEADER,
   readAuthorizedTurnCorrelationHandoff,
 } from '../../../runtime/conversation/authorized-turn-correlation.js';
+import {
+  createStationControlCallerRecordResolver,
+  stationControlCallerRecordSources,
+} from '../../../runtime/mcp/station-control-caller.js';
 import {
   adapterTurnDuration,
   attachedSessionMutationRejected,
@@ -78,6 +88,7 @@ import {
   orchestrationSteerDispatches,
   orchestrationStoreContentionObserved,
   orchestrationTurnStallDetections,
+  sessionBackgroundTasks,
   sessionOwnerCacheOps,
   tenantExecutionContextOutcomes,
   turnProvenanceProjections,
@@ -100,6 +111,7 @@ import {
   resetServerLogSinkForTests,
 } from '../../infra/server-log-store.js';
 import { NotificationService } from '../../notifications/notification-service.js';
+import { buildSessionFailedItem } from '../../projects/attention-projection.js';
 import { ProjectBindingsStore } from '../../projects/project-binding-store.js';
 import { ReceiverExecutionRefusal } from '../../projects/project-contribution-service.js';
 import { ProjectManifestStore } from '../../projects/project-manifest-store.js';
@@ -231,6 +243,7 @@ class FakeAdapter implements ProviderAdapterShape {
         threadId: string,
         requestId: string,
         decision: 'accept' | 'acceptForSession' | 'decline' | 'cancel',
+        context?: { clientOrigin?: ClientOrigin },
       ) => Promise<void>
     >();
   readonly stopSession = vi.fn<(threadId: string) => Promise<void>>();
@@ -754,7 +767,11 @@ describe('OrchestrationService', () => {
   let adoptionLedger: AdoptionLedger;
   let flowRunService: FlowRunService;
   let workflowSidecarService: WorkflowSidecarService;
-  let configuredProjects: Array<{ slug: string; workingDirectory?: string }>;
+  let configuredProjects: Array<{
+    slug: string;
+    workingDirectory?: string;
+    id?: string;
+  }>;
   let tmp: string;
 
   beforeEach(() => {
@@ -797,6 +814,269 @@ describe('OrchestrationService', () => {
       workflowSidecarService,
       logger: { debug: vi.fn(), warn: vi.fn() },
     });
+  });
+
+  // Station #90 lane D (D5/D7): the real start path through the service and
+  // the SQLite event store. The fake adapter publishes `session.started`
+  // with the start input's metadata, as every real adapter does.
+  describe('station-control caller records written at session start', () => {
+    // The fake adapter publishes what real adapters publish: `session.started`
+    // and `session.configured` with the start metadata, then (like Claude's
+    // CLI init, or Codex/Bedrock/Ollama after model application) a later
+    // sparse `session.configured` that carries none of it.
+    function publishStarts() {
+      claude.startSession.mockImplementation(async (input) => {
+        const now = new Date().toISOString();
+        const base = {
+          provider: 'claude' as const,
+          threadId: input.threadId,
+          sessionId: input.threadId,
+          createdAt: now,
+        };
+        claude.events.push({
+          ...base,
+          eventId: `evt-${input.threadId}-started`,
+          method: 'session.started',
+          metadata: input.metadata,
+        } as never);
+        claude.events.push({
+          ...base,
+          eventId: `evt-${input.threadId}-configured`,
+          method: 'session.configured',
+          metadata: input.metadata,
+        } as never);
+        claude.events.push({
+          ...base,
+          eventId: `evt-${input.threadId}-cli-init`,
+          method: 'session.configured',
+          metadata: { permissionMode: 'default', approvalMode: 'ask' },
+        } as never);
+        return {
+          provider: 'claude' as const,
+          threadId: input.threadId,
+          status: 'ready' as const,
+          cwd: input.cwd,
+          createdAt: now,
+          updatedAt: now,
+        };
+      });
+    }
+
+    async function started(
+      threadId: string,
+      metadata: Record<string, unknown>,
+      context: {
+        userId: string;
+        ownerAttribution?: 'unattributed-agent' | 'verified-bound';
+        clientOrigin?: never;
+      } = {
+        userId: 'human:test:alice',
+      },
+    ) {
+      const result = await service.sessionCommands.execute(
+        {
+          type: 'start-session',
+          input: { threadId, provider: 'claude', cwd: tmp, metadata },
+        },
+        context,
+      );
+      expect(result.status).toBe('accepted');
+      await waitFor(
+        () => service.latestStartedMetadataOfThread(threadId),
+        (latest) => latest?.approvalMode === 'ask',
+        5000,
+      );
+    }
+
+    const callerRecord = createStationControlCallerRecordResolver(
+      stationControlCallerRecordSources({
+        orchestrationService: {
+          resolveSessionActingPrincipal: (threadId) =>
+            service.resolveSessionActingPrincipal(threadId),
+          firstStartedMetadataOfThread: (threadId) =>
+            service.firstStartedMetadataOfThread(threadId),
+        },
+        getProject: (slug) => {
+          const project = configuredProjects.find((p) => p.slug === slug);
+          if (!project?.id) throw new Error('no project');
+          return { id: project.id };
+        },
+      }),
+    );
+
+    test('R1: a start whose dispatch context marks it unattributed acts for no one, stamped by the service itself; an ordinary one acts for its owner', async () => {
+      publishStarts();
+      await started(
+        'agent-child',
+        { userId: 'human:test:alice' },
+        { userId: 'human:test:alice', ownerAttribution: 'unattributed-agent' },
+      );
+      await started('owned-session', { userId: 'human:test:alice' });
+
+      expect(service.firstStartedMetadataOfThread('agent-child')).toMatchObject(
+        { ownerAttribution: 'unattributed-agent' },
+      );
+      expect(
+        service.resolveSessionActingPrincipal('agent-child'),
+      ).toBeUndefined();
+      expect(service.resolveSessionActingPrincipal('owned-session')).toEqual({
+        id: 'human:test:alice',
+        source: 'session-owner',
+      });
+    });
+
+    test('S1: an internal-origin start with NO attribution fails closed to unattributed; only an explicit verified-bound keeps its owner', async () => {
+      publishStarts();
+      const internalOrigin = {
+        version: 1,
+        actor: { kind: 'internal' },
+      } as never;
+      await started(
+        'internal-unattributed',
+        { userId: 'human:test:alice' },
+        { userId: 'human:test:alice', clientOrigin: internalOrigin },
+      );
+      await started(
+        'internal-verified',
+        { userId: 'human:test:alice' },
+        {
+          userId: 'human:test:alice',
+          clientOrigin: internalOrigin,
+          ownerAttribution: 'verified-bound',
+        },
+      );
+      expect(
+        service.firstStartedMetadataOfThread('internal-unattributed'),
+      ).toMatchObject({ ownerAttribution: 'unattributed-agent' });
+      expect(
+        service.resolveSessionActingPrincipal('internal-unattributed'),
+      ).toBeUndefined();
+      expect(
+        service.firstStartedMetadataOfThread('internal-verified'),
+      ).not.toHaveProperty('ownerAttribution');
+      expect(
+        service.resolveSessionActingPrincipal('internal-verified'),
+      ).toEqual({
+        id: 'human:test:alice',
+        source: 'session-owner',
+      });
+    });
+
+    test('R2: the caller keeps its stamped project after a sparse CLI-init session.configured, and a caller-supplied id never survives', async () => {
+      publishStarts();
+      configuredProjects.push({
+        slug: 'alpha',
+        workingDirectory: tmp,
+        id: 'project-alpha-id',
+      });
+      await started('project-session', {
+        userId: 'human:test:alice',
+        projectSlug: 'alpha',
+        localProjectId: 'forged-id',
+      });
+      // The latest configured event really is the sparse one.
+      expect(
+        service.latestStartedMetadataOfThread('project-session'),
+      ).not.toHaveProperty('projectSlug');
+      expect(callerRecord('project-session')).toMatchObject({
+        projectSlug: 'alpha',
+        localProjectId: 'project-alpha-id',
+        projectIdSource: 'session-record',
+      });
+
+      await started('slugless-session', {
+        userId: 'human:test:alice',
+        localProjectId: 'forged-id',
+      });
+      expect(callerRecord('slugless-session')).not.toHaveProperty(
+        'localProjectId',
+      );
+    });
+
+    test('R3: a Project named at start whose directory does not contain the start cwd gets no recorded id', async () => {
+      publishStarts();
+      // No working directory: the start runs in the caller's cwd, which the
+      // Project cannot be shown to contain.
+      configuredProjects.push({ slug: 'dirless', id: 'project-dirless-id' });
+      await started('dirless-session', {
+        userId: 'human:test:alice',
+        projectSlug: 'dirless',
+      });
+      const metadata = service.firstStartedMetadataOfThread('dirless-session');
+      expect(metadata).not.toHaveProperty('localProjectId');
+      // S2: the refusal is recorded, and a reader does NOT fall back to
+      // looking the slug up.
+      expect(metadata).toMatchObject({ localProjectIdRefused: true });
+      expect(callerRecord('dirless-session')).not.toHaveProperty(
+        'localProjectId',
+      );
+      expect(callerRecord('dirless-session')).toMatchObject({
+        projectSlug: 'dirless',
+      });
+    });
+
+    test('S2: only a session that predates the stamp gets the slug-lookup fallback', async () => {
+      configuredProjects.push({
+        slug: 'legacy',
+        workingDirectory: tmp,
+        id: 'project-legacy-id',
+      });
+      // A pre-stamp session: its start metadata carries the slug only.
+      eventStore.appendEvent({
+        provider: 'claude',
+        threadId: 'pre-stamp-session',
+        eventId: 'evt-pre-stamp-started',
+        createdAt: new Date().toISOString(),
+        method: 'session.started',
+        sessionId: 'pre-stamp-session',
+        metadata: { userId: 'human:test:alice', projectSlug: 'legacy' },
+      } as CanonicalRuntimeEvent);
+      expect(callerRecord('pre-stamp-session')).toMatchObject({
+        localProjectId: 'project-legacy-id',
+        projectIdSource: 'slug-lookup',
+      });
+    });
+  });
+
+  test('respondToRequest hands the answering device to the adapter (#2344)', async () => {
+    await service.dispatch({
+      type: 'startSession',
+      input: { threadId: 'origin-respond', provider: 'claude' },
+    });
+    const origin = {
+      version: 1 as const,
+      actor: { kind: 'device' as const, deviceId: 'pixel-10' },
+      reported: { version: 1 as const, surface: 'mobile' as const, build: '1' },
+    };
+
+    await service.dispatch(
+      {
+        type: 'respondToRequest',
+        threadId: 'origin-respond',
+        requestId: 'request-1',
+        decision: 'accept',
+      },
+      { clientOrigin: origin },
+    );
+    expect(claude.respondToRequest).toHaveBeenLastCalledWith(
+      'origin-respond',
+      'request-1',
+      'accept',
+      { clientOrigin: origin },
+    );
+
+    // No known origin: the adapter is called exactly as before.
+    await service.dispatch({
+      type: 'respondToRequest',
+      threadId: 'origin-respond',
+      requestId: 'request-2',
+      decision: 'decline',
+    });
+    expect(claude.respondToRequest.mock.lastCall).toEqual([
+      'origin-respond',
+      'request-2',
+      'decline',
+    ]);
   });
 
   describe('workspace restore execution exclusion', () => {
@@ -1062,7 +1342,13 @@ describe('OrchestrationService', () => {
         threadId: child,
         method: 'session.configured',
       }),
-    ).toEqual({ conversationId: root, currentSessionId: child });
+    ).toEqual({
+      conversationId: root,
+      currentSessionId: child,
+      // #2309: the rebinding frame also carries the conversation's activity
+      // (nothing committed on either child yet).
+      activity: { conversationId: root, asOfSequence: 0 },
+    });
     const lookup = vi.spyOn(eventStore, 'conversationForSession');
     expect(
       service.conversationStreamBinding({
@@ -1071,6 +1357,143 @@ describe('OrchestrationService', () => {
       }),
     ).toBeUndefined();
     expect(lookup).not.toHaveBeenCalled();
+  });
+
+  test('#2309: a client connected through a turn and one that reconnects after it read the same conversation activity', async () => {
+    const root = 'activity-reconnect-root';
+    const child = `${root}:session:child`;
+    const createdAt = '2026-09-22T09:00:00.000Z';
+    for (const threadId of [root, child]) {
+      if (threadId === child)
+        eventStore.reserveNextConversationSession({
+          conversationId: root,
+          predecessorSessionId: root,
+          proposedSessionId: child,
+          createdAt,
+        });
+      eventStore.upsertSession({
+        provider: 'claude',
+        threadId,
+        status: 'ready',
+        createdAt,
+        updatedAt: createdAt,
+      });
+      eventStore.appendEvent({
+        eventId: `${threadId}-started`,
+        provider: 'claude',
+        threadId,
+        createdAt,
+        method: 'session.started',
+        sessionId: threadId,
+        metadata: { agentSlug: 'claude', userId: 'owner-user' },
+      });
+    }
+    // Client A is connected: its frames are bound as each event commits.
+    const frameA = (event: CanonicalRuntimeEvent) => {
+      eventStore.appendEvent(event);
+      return service.conversationStreamBinding(event);
+    };
+    frameA({
+      eventId: 'child-turn-started',
+      provider: 'claude',
+      threadId: child,
+      turnId: 'child-turn',
+      createdAt: '2026-09-22T09:00:01.000Z',
+      method: 'turn.started',
+      prompt: 'work',
+    });
+    const lastA = frameA({
+      eventId: 'child-tool-started',
+      provider: 'claude',
+      threadId: child,
+      turnId: 'child-turn',
+      createdAt: '2026-09-22T09:00:02.000Z',
+      method: 'tool.started',
+      itemId: 'call-1',
+      toolCallId: 'call-1',
+      toolName: 'Bash',
+    } as CanonicalRuntimeEvent);
+    expect(lastA?.activity).toMatchObject({
+      conversationId: root,
+      openTurn: { turnId: 'child-turn', threadId: child },
+      runningTools: [{ name: 'Bash', callId: 'call-1' }],
+    });
+
+    // Client B connects afterwards with no cursor: the snapshot rows carry
+    // the same activity, running tool included, with no further events.
+    const snapshot = await service.listSessionReadModel();
+    for (const threadId of [root, child])
+      expect(
+        snapshot.find((session) => session.threadId === threadId)
+          ?.conversationActivity,
+      ).toEqual(lastA?.activity);
+    // The bounded hydration carriers read the same projection.
+    const page = await service.readSessionEventPage(root, {
+      afterSequence: 0,
+      limit: 10,
+    });
+    expect(page?.session.conversationActivity).toEqual(lastA?.activity);
+    const window = await service.readSessionEventWindow(child, {
+      turnLimit: 1,
+      authority: INTERNAL_SESSION_READ_SCOPE,
+    });
+    expect(window?.session.conversationActivity).toEqual(lastA?.activity);
+    // The inventory's summary-fold path (the suite proxy supplies the
+    // internal scope, not a request authority, so it does not take the
+    // indexed history reader) carries it and derives hasActiveTurn from it.
+    const inventory = await service.listAllSessionConversations();
+    const row = inventory.find((item) => item.id === root);
+    expect(row?.activity).toEqual(lastA?.activity);
+    expect(row?.hasActiveTurn).toBe(true);
+    // So does a process that never saw the live events (a restart).
+    const restarted = new OrchestrationService({
+      adapterRegistry: createRegistry([]),
+      eventBus: new EventBus(),
+      eventStore,
+      listProjects: () => [],
+      logger: { debug: vi.fn(), warn: vi.fn() },
+    });
+    try {
+      expect(
+        (
+          await restarted.listSessionReadModel(
+            personalReadAuthority('owner-user'),
+          )
+        ).find((session) => session.threadId === root)?.conversationActivity,
+      ).toEqual(lastA?.activity);
+    } finally {
+      await restarted.shutdown();
+    }
+
+    const completed = frameA({
+      eventId: 'child-tool-completed',
+      provider: 'claude',
+      threadId: child,
+      turnId: 'child-turn',
+      createdAt: '2026-09-22T09:00:03.000Z',
+      method: 'tool.completed',
+      itemId: 'call-1',
+      toolCallId: 'call-1',
+      toolName: 'Bash',
+      status: 'success',
+    } as CanonicalRuntimeEvent);
+    expect(completed?.activity?.runningTools).toBeUndefined();
+    const closed = frameA({
+      eventId: 'child-turn-completed',
+      provider: 'claude',
+      threadId: child,
+      turnId: 'child-turn',
+      createdAt: '2026-09-22T09:00:04.000Z',
+      method: 'turn.completed',
+    } as CanonicalRuntimeEvent);
+    expect(closed?.activity?.openTurn).toBeUndefined();
+    expect(closed!.activity!.asOfSequence).toBeGreaterThan(
+      lastA!.activity!.asOfSequence,
+    );
+    const converged = (await service.listSessionReadModel()).find(
+      (session) => session.threadId === root,
+    )?.conversationActivity;
+    expect(converged).toEqual(closed?.activity);
   });
 
   test('public session metadata cannot mint a room execution binding', async () => {
@@ -1139,6 +1562,7 @@ describe('OrchestrationService', () => {
         },
       );
       const dispatched = await dispatcher.dispatch(task.id, {
+        fullAccessGrant: null,
         runtimeConfig: { provider: 'claude', cwd: tmp },
       });
       expect(dispatched.kind).toBe(uncertain ? 'indeterminate' : 'dispatched');
@@ -1337,6 +1761,7 @@ describe('OrchestrationService', () => {
       return original(input);
     });
     const dispatched = dispatcher.dispatch(task.id, {
+      fullAccessGrant: null,
       runtimeConfig: { provider: 'claude', cwd: tmp },
     });
     const scope = {
@@ -4628,6 +5053,31 @@ describe('OrchestrationService', () => {
     ).toMatchObject({ lifecycleState: 'completed' });
   });
 
+  test('#2456 R3: a peer Activity record offers no stop because the Station refuses to interrupt it', async () => {
+    const threadId = service.recordPeerDelegationActivityDispatch({
+      taskId: 'task:peer-2456',
+      conversationId: 'task:peer-2456',
+      prompt: 'Run remotely',
+      userId: 'owner-user',
+      environment: { id: 'environment-peer', name: 'Station B', kind: 'peer' },
+      target: { kind: 'agent', id: 'codex' },
+      parentTaskId: 'chat-2456',
+    });
+    // The interrupt a delegate card's Stop would lead to is refused for this
+    // record — so a Stop control on it would be wired to nothing.
+    await expect(
+      service.dispatch({ type: 'interruptTurn', threadId }),
+    ).rejects.toThrow('Peer delegation Activity records are read-only.');
+    const record = (await service.listSessionReadModel()).find(
+      (session) => session.threadId === threadId,
+    );
+    expect(record?.childWork?.asChild).toMatchObject({
+      producer: 'station-delegate',
+      parent: { taskId: 'chat-2456' },
+    });
+    expect(record?.childWork?.asChild).not.toHaveProperty('controls');
+  });
+
   test.each(['needs_input', 'review_pending'] as const)(
     'advances a queued peer Activity record through contract-derived hops to %s (#847 fix round)',
     async (status) => {
@@ -5792,6 +6242,565 @@ describe('OrchestrationService', () => {
     expect(subject).toEqual(anyPersonalOrchestrationStreamPresenceSubject());
   });
 
+  test('#2312: discardDraft stops a live Draft engine, and a late session.exited cannot bring the row back', async () => {
+    const draft = 'draft-live-discard';
+    const witness = 'draft-live-witness';
+    for (const threadId of [draft, witness]) {
+      await service.dispatch({
+        type: 'startSession',
+        input: { threadId, provider: 'bedrock', cwd: tmp },
+      });
+    }
+    const listed = async () =>
+      (await service.listSessionReadModel()).map(
+        (session) => [session.threadId, session.draft] as const,
+      );
+    // Fixture guard: the started session must be what the discard targets.
+    expect(await listed()).toContainEqual([draft, true]);
+
+    await service.dispatchWithReceipt({
+      type: 'discardDraft',
+      threadId: draft,
+    });
+
+    expect(bedrock.stopSession).toHaveBeenCalledWith(draft);
+    expect(bedrock.stopSession).not.toHaveBeenCalledWith(witness);
+    expect((await listed()).map(([threadId]) => threadId)).toEqual([witness]);
+
+    // A stopped engine may still deliver its exit after the delete. The
+    // witness's exit, pushed AFTER it, proves the queue drained past it.
+    const now = new Date().toISOString();
+    for (const threadId of [draft, witness]) {
+      const lateExit: CanonicalRuntimeEvent = {
+        eventId: `${threadId}-late-exit`,
+        provider: 'bedrock',
+        threadId,
+        sessionId: threadId,
+        createdAt: now,
+        method: 'session.exited',
+      };
+      bedrock.events.push(lateExit);
+    }
+    await waitFor(
+      () => eventStore.readSessionByThread(witness)?.status,
+      (status) => status === 'closed',
+    );
+    expect(eventStore.readSessionByThread(draft)).toBeUndefined();
+    expect(eventStore.listSessionProjectionEvents(draft)).toEqual([]);
+    expect((await listed()).map(([threadId]) => threadId)).toEqual([witness]);
+  });
+
+  // #2312 review HIGH: a tab still open on a discarded Draft (another device,
+  // or this one) sends to that conversation, which starts a NEW session under
+  // the same id. The late-event gate belongs to the stopped engine, not the
+  // id: the new session's events must persist and its turn must settle.
+  test('#2312: a new session started on a discarded Draft id records its events and completes its turn', async () => {
+    const draft = 'draft-restarted';
+    const start = () =>
+      service.dispatch({
+        type: 'startSession',
+        input: { threadId: draft, provider: 'bedrock', cwd: tmp },
+      });
+    await start();
+    await service.dispatchWithReceipt({
+      type: 'discardDraft',
+      threadId: draft,
+    });
+    expect(eventStore.readSessionByThread(draft)).toBeUndefined();
+
+    await start();
+    await service.dispatch({
+      type: 'sendTurn',
+      input: { threadId: draft, input: 'sent from a tab left open' },
+    });
+    const now = new Date().toISOString();
+    const started: CanonicalRuntimeEvent = {
+      eventId: `${draft}-turn-started`,
+      provider: 'bedrock',
+      threadId: draft,
+      turnId: 'bedrock-turn',
+      createdAt: now,
+      method: 'turn.started',
+      prompt: 'sent from a tab left open',
+    };
+    const completed: CanonicalRuntimeEvent = {
+      eventId: `${draft}-turn-completed`,
+      provider: 'bedrock',
+      threadId: draft,
+      turnId: 'bedrock-turn',
+      createdAt: now,
+      method: 'turn.completed',
+    };
+    bedrock.events.push(started);
+    bedrock.events.push(completed);
+
+    const methods = await waitFor(
+      () =>
+        eventStore
+          .listSessionProjectionEvents(draft)
+          .map((event) => event.method),
+      (recorded) => recorded.includes('turn.completed'),
+    );
+    expect(methods).toContain('turn.started');
+    // The terminal reached the execution coordinator: the turn is settled,
+    // not stuck open behind dropped events.
+    expect(service.hasActiveTurn(draft)).toBe(false);
+    expect(
+      (await service.listSessionReadModel()).map((session) => session.threadId),
+    ).toContain(draft);
+  });
+
+  // #2312 verifier H1: a send that resolved its adapter before the discard
+  // took the lifecycle lock queues behind it and proceeds after the delete.
+  // With an adapter that (like a real one) throws for a stopped engine, the
+  // old code recorded an indeterminate turn that refused the id forever.
+  function refuseStoppedEngineSends() {
+    bedrock.sendTurn.mockImplementation(async (input) => {
+      if (!bedrock.sessions.has(input.threadId))
+        throw new Error(
+          `No provider session found for thread: ${input.threadId}`,
+        );
+      return { threadId: input.threadId, turnId: 'bedrock-turn' };
+    });
+  }
+
+  test('#2312: a send queued behind a discard is refused cleanly, and the id restarts', async () => {
+    refuseStoppedEngineSends();
+    const draft = 'draft-send-queued';
+    const start = () =>
+      service.dispatch({
+        type: 'startSession',
+        input: { threadId: draft, provider: 'bedrock', cwd: tmp },
+      });
+    await start();
+    const stopping = deferred<void>();
+    const stopEntered = deferred<void>();
+    bedrock.stopSession.mockImplementationOnce(async (threadId) => {
+      stopEntered.resolve();
+      await stopping.promise;
+      bedrock.sessions.delete(threadId);
+      const exit: CanonicalRuntimeEvent = {
+        eventId: `${threadId}-exit`,
+        provider: 'bedrock',
+        threadId,
+        sessionId: threadId,
+        createdAt: new Date().toISOString(),
+        method: 'session.exited',
+      };
+      bedrock.events.push(exit);
+    });
+    const discard = service.dispatchWithReceipt({
+      type: 'discardDraft',
+      threadId: draft,
+    });
+    await stopEntered.promise;
+    const send = service
+      .dispatch({
+        type: 'sendTurn',
+        input: { threadId: draft, input: 'sent while discarding' },
+      })
+      .then(
+        () => undefined,
+        (error: unknown) => error as { code?: string; message: string },
+      );
+    // Let the send resolve its adapter and queue on the turn-start lock.
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    stopping.resolve();
+    await discard;
+
+    const refused = await send;
+    expect(refused?.code).toBe('draft_discarded');
+    expect(bedrock.sendTurn).not.toHaveBeenCalled();
+    expect(service.hasActiveTurn(draft)).toBe(false);
+    expect(eventStore.readSessionByThread(draft)).toBeUndefined();
+
+    await start();
+    // Delta MEDIUM: the refused send's receipt survives the delete. Were it
+    // counted as an execution refusal, the new session under the id would
+    // read "Failed: Station refused the send" before anything was sent.
+    const restarted = (await service.listSessionReadModel()).find(
+      (session) => session.threadId === draft,
+    );
+    expect(restarted?.draft).toBe(true);
+    expect(restarted?.terminalAttribution).toBeUndefined();
+    await expect(
+      service.dispatch({
+        type: 'sendTurn',
+        input: { threadId: draft, input: 'a new chat on the old id' },
+      }),
+    ).resolves.toMatchObject({ threadId: draft });
+  });
+
+  test('#2312: a send already underway when the discard arrives wins, and the discard is refused', async () => {
+    refuseStoppedEngineSends();
+    const draft = 'draft-send-first';
+    await service.dispatch({
+      type: 'startSession',
+      input: { threadId: draft, provider: 'bedrock', cwd: tmp },
+    });
+    const accepted = deferred<ProviderTurnStartResult>();
+    const invoked = deferred<void>();
+    bedrock.sendTurn.mockImplementationOnce(async () => {
+      invoked.resolve();
+      return accepted.promise;
+    });
+    const send = service.dispatch({
+      type: 'sendTurn',
+      input: { threadId: draft, input: 'first' },
+    });
+    await invoked.promise;
+
+    const discard = service
+      .dispatchWithReceipt({ type: 'discardDraft', threadId: draft })
+      .then(
+        () => undefined,
+        (error: unknown) => error as { code?: string },
+      );
+    accepted.resolve({ threadId: draft, turnId: 'bedrock-turn' });
+    await send;
+
+    expect((await discard)?.code).toBe('not_a_draft');
+    expect(bedrock.stopSession).not.toHaveBeenCalledWith(draft);
+    expect(eventStore.readSessionByThread(draft)).toBeDefined();
+  });
+
+  // #2312 verifier M2: the stopped engine's own exit, arriving after a
+  // restart on the id, would close the NEW session. The discard consumes it.
+  test("#2312: the discarded engine's late exit is consumed before the delete, so a restart stays open", async () => {
+    const draft = 'draft-late-exit-restart';
+    const start = () =>
+      service.dispatch({
+        type: 'startSession',
+        input: { threadId: draft, provider: 'bedrock', cwd: tmp },
+      });
+    await start();
+    bedrock.stopSession.mockImplementationOnce(async (threadId) => {
+      bedrock.sessions.delete(threadId);
+      setTimeout(() => {
+        const exit: CanonicalRuntimeEvent = {
+          eventId: `${threadId}-slow-exit`,
+          provider: 'bedrock',
+          threadId,
+          sessionId: threadId,
+          createdAt: new Date().toISOString(),
+          method: 'session.exited',
+        };
+        bedrock.events.push(exit);
+      }, 50);
+    });
+    const began = Date.now();
+    await service.dispatchWithReceipt({
+      type: 'discardDraft',
+      threadId: draft,
+    });
+    // The exit ended the wait, not the cap.
+    expect(Date.now() - began).toBeLessThan(1_500);
+    await start();
+
+    const witness = 'draft-late-exit-witness';
+    await service.dispatch({
+      type: 'startSession',
+      input: { threadId: witness, provider: 'bedrock', cwd: tmp },
+    });
+    const witnessExit: CanonicalRuntimeEvent = {
+      eventId: `${witness}-exit`,
+      provider: 'bedrock',
+      threadId: witness,
+      sessionId: witness,
+      createdAt: new Date().toISOString(),
+      method: 'session.exited',
+    };
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    bedrock.events.push(witnessExit);
+    await waitFor(
+      () => eventStore.readSessionByThread(witness)?.status,
+      (status) => status === 'closed',
+    );
+    expect(eventStore.readSessionByThread(draft)?.status).not.toBe('closed');
+  });
+
+  // #2312 review MEDIUM: the lifecycle locks do not cover lineage
+  // reservation, so a successor can be reserved while the discard awaits the
+  // engine stop. It must not survive naming a deleted predecessor.
+  test('#2312: a successor reserved while the discard stops the engine makes it refuse, deleting nothing', async () => {
+    const draft = 'draft-racing';
+    const child = `${draft}:session:successor`;
+    await service.dispatch({
+      type: 'startSession',
+      input: { threadId: draft, provider: 'bedrock', cwd: tmp },
+    });
+    const stopping = deferred<void>();
+    const stopEntered = deferred<void>();
+    bedrock.stopSession.mockImplementationOnce(async (threadId) => {
+      stopEntered.resolve();
+      await stopping.promise;
+      bedrock.sessions.delete(threadId);
+    });
+
+    const discard = service
+      .dispatchWithReceipt({ type: 'discardDraft', threadId: draft })
+      .then(
+        () => undefined,
+        (error: unknown) => error as { code?: string },
+      );
+    await stopEntered.promise;
+    eventStore.reserveNextConversationSession({
+      conversationId: draft,
+      predecessorSessionId: draft,
+      proposedSessionId: child,
+      createdAt: new Date().toISOString(),
+    });
+    stopping.resolve();
+
+    expect((await discard)?.code).toBe('not_a_draft');
+    expect(eventStore.readSessionByThread(draft)).toBeDefined();
+    expect(
+      eventStore.conversationSessions(draft).map((row) => row.sessionId),
+    ).toEqual([draft, child]);
+    // Delta MEDIUM: the refusal lifts the late-event gate it had set, so the
+    // Draft's own events still land (a witness proves the queue drained).
+    const configured: CanonicalRuntimeEvent = {
+      eventId: `${draft}-after-refusal`,
+      provider: 'bedrock',
+      threadId: draft,
+      sessionId: draft,
+      createdAt: new Date().toISOString(),
+      method: 'session.configured',
+    };
+    bedrock.events.push(configured);
+    const witness = 'draft-racing-witness';
+    await service.dispatch({
+      type: 'startSession',
+      input: { threadId: witness, provider: 'bedrock', cwd: tmp },
+    });
+    const witnessExit: CanonicalRuntimeEvent = {
+      eventId: `${witness}-exit`,
+      provider: 'bedrock',
+      threadId: witness,
+      sessionId: witness,
+      createdAt: new Date().toISOString(),
+      method: 'session.exited',
+    };
+    bedrock.events.push(witnessExit);
+    await waitFor(
+      () => eventStore.readSessionByThread(witness)?.status,
+      (status) => status === 'closed',
+    );
+    expect(
+      eventStore
+        .listSessionProjectionEvents(draft)
+        .map((event) => event.payload.eventId),
+    ).toContain(`${draft}-after-refusal`);
+    expect(
+      eventStore
+        .listCommandReceipts(draft)
+        .filter((entry) => entry.commandType === 'discardDraft')
+        .map((entry) => entry.status),
+    ).toEqual(['rejected']);
+  });
+
+  // #2312 delta HIGH: a successor whose start is mid-flight has no row, read
+  // model or events yet — it is not "never started". Deleting it would leave
+  // the start to resolve into a session the discard already removed.
+  test('#2312: a successor mid-start refuses the discard as busy; the start completes normally', async () => {
+    const draft = 'draft-successor-starting';
+    const child = `${draft}:session:starting`;
+    await service.dispatch({
+      type: 'startSession',
+      input: { threadId: draft, provider: 'bedrock', cwd: tmp },
+    });
+    eventStore.reserveNextConversationSession({
+      conversationId: draft,
+      predecessorSessionId: draft,
+      proposedSessionId: child,
+      createdAt: new Date().toISOString(),
+    });
+    const release = deferred<void>();
+    const entered = deferred<void>();
+    const startNormally = bedrock.startSession.getMockImplementation();
+    bedrock.startSession.mockImplementationOnce(async (input) => {
+      entered.resolve();
+      await release.promise;
+      if (!startNormally) throw new Error('fixture: no default start');
+      return startNormally(input);
+    });
+    const starting = service.dispatch({
+      type: 'startSession',
+      input: { threadId: child, provider: 'bedrock', cwd: tmp },
+    });
+    await entered.promise;
+
+    const error = await service
+      .dispatchWithReceipt({ type: 'discardDraft', threadId: draft })
+      .then(
+        () => undefined,
+        (caught: unknown) => caught as { code?: string },
+      );
+    release.resolve();
+    await starting;
+
+    expect(error?.code).toBe('draft_busy');
+    expect(bedrock.stopSession).not.toHaveBeenCalledWith(draft);
+    expect(eventStore.readSessionByThread(draft)).toBeDefined();
+    expect(eventStore.readSessionByThread(child)).toBeDefined();
+    // The started successor's events flow: nothing gated it.
+    const configured: CanonicalRuntimeEvent = {
+      eventId: `${child}-configured`,
+      provider: 'bedrock',
+      threadId: child,
+      sessionId: child,
+      createdAt: new Date().toISOString(),
+      method: 'session.configured',
+    };
+    bedrock.events.push(configured);
+    await waitFor(
+      () =>
+        eventStore
+          .listSessionProjectionEvents(child)
+          .map((event) => event.payload.eventId),
+      (ids) => ids.includes(`${child}-configured`),
+    );
+  });
+
+  // #2312 delta HIGH, the other ordering: once the discard holds the
+  // members' lifecycle claims, a start of the reserved successor cannot
+  // begin — the durable lifecycle claim refuses its start admission before
+  // any provider call. The successor stays never-started and goes with the
+  // Draft; no session is left behind, and none is orphaned.
+  test('#2312: a successor start attempted while the discard runs is refused before the provider, and nothing is orphaned', async () => {
+    const draft = 'draft-successor-started-meanwhile';
+    const child = `${draft}:session:started`;
+    await service.dispatch({
+      type: 'startSession',
+      input: { threadId: draft, provider: 'bedrock', cwd: tmp },
+    });
+    eventStore.reserveNextConversationSession({
+      conversationId: draft,
+      predecessorSessionId: draft,
+      proposedSessionId: child,
+      createdAt: new Date().toISOString(),
+    });
+    const stopping = deferred<void>();
+    const stopEntered = deferred<void>();
+    bedrock.stopSession.mockImplementationOnce(async (threadId) => {
+      stopEntered.resolve();
+      await stopping.promise;
+      bedrock.sessions.delete(threadId);
+    });
+
+    const discard = service.dispatchWithReceipt({
+      type: 'discardDraft',
+      threadId: draft,
+    });
+    await stopEntered.promise;
+    const lateStart = await service
+      .dispatch({
+        type: 'startSession',
+        input: { threadId: child, provider: 'bedrock', cwd: tmp },
+      })
+      .then(
+        () => 'started',
+        (caught: unknown) => (caught as Error).message,
+      );
+    stopping.resolve();
+    await discard;
+
+    expect(lateStart).toContain('no provider call was made');
+    expect(bedrock.startSession).not.toHaveBeenCalledWith(
+      expect.objectContaining({ threadId: child }),
+    );
+    expect(eventStore.readSessionByThread(child)).toBeUndefined();
+    expect(eventStore.readSessionByThread(draft)).toBeUndefined();
+    expect(eventStore.conversationSessions(draft)).toEqual([]);
+    expect(
+      (await service.listSessionReadModel()).map((session) => session.threadId),
+    ).not.toContain(child);
+  });
+
+  // #2312 final delta: a continuation reserves its successor, awaits, then
+  // starts it. A discard completing in that gap removed the reservation; the
+  // start must refuse with the discard's own words, not become an orphan.
+  test('#2312: a successor start after its conversation was discarded is refused as discarded; a new chat on the id still starts', async () => {
+    const draft = 'draft-reserved-then-discarded';
+    const child = `${draft}:session:reserved`;
+    await service.dispatch({
+      type: 'startSession',
+      input: { threadId: draft, provider: 'bedrock', cwd: tmp },
+    });
+    eventStore.reserveNextConversationSession({
+      conversationId: draft,
+      predecessorSessionId: draft,
+      proposedSessionId: child,
+      createdAt: new Date().toISOString(),
+    });
+    await service.dispatchWithReceipt({
+      type: 'discardDraft',
+      threadId: draft,
+    });
+    expect(eventStore.conversationSessions(draft)).toEqual([]);
+
+    const refused = await service
+      .dispatch({
+        type: 'startSession',
+        input: {
+          threadId: child,
+          provider: 'bedrock',
+          cwd: tmp,
+          metadata: { conversationId: draft },
+        },
+      })
+      .then(
+        () => undefined,
+        (caught: unknown) => caught as { code?: string; message: string },
+      );
+
+    expect(refused?.code).toBe('draft_discarded');
+    expect(refused?.message).toContain('This draft was discarded');
+    expect(bedrock.startSession).not.toHaveBeenCalledWith(
+      expect.objectContaining({ threadId: child }),
+    );
+    expect(eventStore.readSessionByThread(child)).toBeUndefined();
+    // Control: the conversation's own id is a new chat, and starts.
+    await expect(
+      service.dispatch({
+        type: 'startSession',
+        input: { threadId: draft, provider: 'bedrock', cwd: tmp },
+      }),
+    ).resolves.toMatchObject({ threadId: draft });
+  });
+
+  // #2312 review LOW: a turn in flight is a turn, so the refusal is the
+  // definitive `not_a_draft` (a rejected receipt), not the lifecycle lock's
+  // generic failure.
+  test('#2312: discarding while a turn runs is refused as not a Draft', async () => {
+    const draft = 'draft-mid-turn';
+    await service.dispatch({
+      type: 'startSession',
+      input: { threadId: draft, provider: 'bedrock', cwd: tmp },
+    });
+    await service.dispatch({
+      type: 'sendTurn',
+      input: { threadId: draft, input: 'still running' },
+    });
+    expect(service.hasActiveTurn(draft)).toBe(true);
+
+    const error = await service
+      .dispatchWithReceipt({ type: 'discardDraft', threadId: draft })
+      .then(
+        () => undefined,
+        (caught: unknown) => caught as { code?: string },
+      );
+
+    expect(error?.code).toBe('not_a_draft');
+    expect(
+      eventStore
+        .listCommandReceipts(draft)
+        .filter((entry) => entry.commandType === 'discardDraft')
+        .map((entry) => entry.status),
+    ).toEqual(['rejected']);
+    expect(eventStore.readSessionByThread(draft)).toBeDefined();
+  });
+
   test('a freshly constructed hosted service authorizes a persisted tenant-bound command before any other call (slice 6 I11 guard)', async () => {
     // `canReadSessionForCommand` hydrates persisted tenant contexts BEFORE
     // its first authorization decision (its own comment: a freshly
@@ -6146,6 +7155,101 @@ describe('OrchestrationService', () => {
       source: 'aggregate',
       outcome: 'skipped',
       reason: 'aggregate_safe',
+    });
+  });
+
+  test('#2456: snapshot rows carry the live Claude subagent set folded from its legacy task tuples', async () => {
+    const threadId = 'child-work-snapshot';
+    const createdAt = '2026-09-23T09:00:00.000Z';
+    eventStore.upsertSession({
+      provider: 'claude',
+      threadId,
+      status: 'ready',
+      createdAt,
+      updatedAt: createdAt,
+    });
+    eventStore.appendEvent({
+      eventId: `${threadId}-started`,
+      provider: 'claude',
+      threadId,
+      createdAt,
+      method: 'session.started',
+      sessionId: threadId,
+      metadata: { agentSlug: 'claude', userId: 'owner-user' },
+    });
+    const publish = (event: CanonicalRuntimeEvent) =>
+      (
+        service as unknown as {
+          projectAndPublishEvent(event: CanonicalRuntimeEvent): boolean;
+        }
+      ).projectAndPublishEvent(event);
+    publish({
+      eventId: 'registry-1',
+      provider: 'claude',
+      threadId,
+      createdAt: '2026-09-23T09:00:01.000Z',
+      method: 'extension.notification',
+      namespace: 'claude-code',
+      type: 'task/registry',
+      payload: {
+        active: [
+          { taskId: 'task-1', description: 'Research', backgrounded: true },
+        ],
+      },
+    });
+    const row = async () =>
+      (await service.listSessionReadModel()).find(
+        (session) => session.threadId === threadId,
+      );
+    expect((await row())?.childWork?.children).toMatchObject({
+      observability: 'reported',
+      running: [{ childId: 'task-1', title: 'Research', status: 'running' }],
+    });
+    // V1: the single-session reads the UI hydrates from carry the same view,
+    // through the one decoration point (the summary builder's reader).
+    const running = {
+      observability: 'reported',
+      running: [{ childId: 'task-1', status: 'running' }],
+    };
+    expect(
+      (await service.readSession(threadId))?.session.childWork?.children,
+    ).toMatchObject(running);
+    expect(
+      (
+        await service.readSessionEventPage(threadId, {
+          afterSequence: 0,
+          limit: 10,
+        })
+      )?.session.childWork?.children,
+    ).toMatchObject(running);
+    expect(
+      (
+        await service.readSessionEventWindow(threadId, {
+          turnLimit: 1,
+          authority: INTERNAL_SESSION_READ_SCOPE,
+        })
+      )?.session.childWork?.children,
+    ).toMatchObject(running);
+
+    publish({
+      eventId: 'settled-1',
+      provider: 'claude',
+      threadId,
+      createdAt: '2026-09-23T09:00:02.000Z',
+      method: 'extension.notification',
+      namespace: 'claude-code',
+      type: 'task/settled',
+      payload: { taskId: 'task-1', status: 'success' },
+    });
+    expect((await row())?.childWork?.children).toMatchObject({
+      observability: 'reported',
+      running: [],
+    });
+    // The metric still counts the legacy tuple exactly as before (#2456
+    // scope: unchanged until the adapter moves onto the contract, #2457).
+    expect(sessionBackgroundTasks.add).toHaveBeenCalledWith(1, {
+      provider: 'claude',
+      status: 'success',
     });
   });
 
@@ -7442,7 +8546,7 @@ describe('OrchestrationService', () => {
       ].map((row) =>
         FLAG_COLUMNS.filter((_flag, index) => row[index + 2] === 'yes').sort(),
       );
-      expect(docblockRows).toHaveLength(6);
+      expect(docblockRows).toHaveLength(7);
       expect(sites).toEqual(docblockRows);
     });
   });
@@ -7931,6 +9035,7 @@ describe('OrchestrationService', () => {
 
     test('applies a per-agent turn-stall window override resolved through the real AgentExecutionConfig seam', async () => {
       vi.useFakeTimers();
+      vi.mocked(orchestrationTurnStallDetections.add).mockClear();
       try {
         const bounded = new OrchestrationService({
           adapterRegistry: createRegistry([bedrock]),
@@ -12635,6 +13740,195 @@ describe('OrchestrationService', () => {
     expect(chatAttachmentsDispatched.add).not.toHaveBeenCalled();
   });
 
+  test('sendTurn surfaces an adapter pre-effect refusal honestly instead of indeterminate', async () => {
+    // A live ACP engine (e.g. grok) whose handshake reports
+    // `promptCapabilities.image: false` passes the static declared
+    // capability gate and then refuses the turn inside `adapter.sendTurn`
+    // — before any provider effect. That refusal must reach the caller
+    // with its message and a `rejected` receipt, never as
+    // `foreground_message_indeterminate`.
+    await service.dispatch({
+      type: 'startSession',
+      input: {
+        threadId: 'thread-refused-turn',
+        provider: 'claude',
+        modelId: 'claude-sonnet',
+      },
+    });
+    claude.sendTurn.mockClear();
+    claude.sendTurn.mockRejectedValueOnce(
+      new SendTurnRefusedError(
+        'This engine did not advertise image attachment support.',
+      ),
+    );
+
+    const failure = await service
+      .dispatchWithReceipt({
+        type: 'sendTurn',
+        input: {
+          threadId: 'thread-refused-turn',
+          input: 'inspect this',
+          attachments: [
+            {
+              kind: 'image',
+              name: 'screen.png',
+              mimeType: 'image/png',
+              size: 5,
+              dataUrl: 'data:image/png;base64,aGVsbG8=',
+            },
+          ],
+        },
+      })
+      .then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+
+    expect(failure).toBeInstanceOf(OrchestrationCommandDispatchError);
+    const dispatchError = failure as OrchestrationCommandDispatchError;
+    expect(dispatchError.message).toContain(
+      'did not advertise image attachment support',
+    );
+    expect(dispatchError.receipt.status).toBe('rejected');
+    expect(dispatchError.code).toBeUndefined();
+    expect(dispatchError.outcome).toBeUndefined();
+
+    // The refusal retired its turn boundary instead of leaving an
+    // indeterminate row behind, so the thread stays usable: a follow-up
+    // text turn dispatches normally.
+    const followUp = await service.dispatch({
+      type: 'sendTurn',
+      input: { threadId: 'thread-refused-turn', input: 'plain follow-up' },
+    });
+    expect(followUp).toMatchObject({ threadId: 'thread-refused-turn' });
+    expect(claude.sendTurn).toHaveBeenCalledTimes(2);
+  });
+
+  test("#2300: Muse's slot-releasing refusal keeps its retryable code through the dispatch wrapper", async () => {
+    await service.dispatch({
+      type: 'startSession',
+      input: {
+        threadId: 'thread-muse-slot',
+        provider: 'claude',
+        modelId: 'claude-sonnet',
+      },
+    });
+    claude.sendTurn.mockClear();
+    claude.sendTurn.mockRejectedValueOnce(
+      new MuseTurnSlotReleasingError('thread-muse-slot'),
+    );
+    const failure = await service
+      .dispatchWithReceipt({
+        type: 'sendTurn',
+        input: { threadId: 'thread-muse-slot', input: 'queued follow-up' },
+      })
+      .then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+    expect(failure).toBeInstanceOf(OrchestrationCommandDispatchError);
+    const dispatchError = failure as OrchestrationCommandDispatchError;
+    // The literal, not the constant: the client's queue keys on this string.
+    expect(dispatchError.code).toBe('muse_turn_slot_releasing');
+    expect(dispatchError.retryable).toBe(true);
+    expect(dispatchError.receipt.status).toBe('rejected');
+    expect(dispatchError.outcome).toBeUndefined();
+  });
+
+  test('#2324 (D4): a send refused while the engine runs its own turn keeps its retryable code, and the thread stays usable', async () => {
+    await service.dispatch({
+      type: 'startSession',
+      input: {
+        threadId: 'thread-provider-turn',
+        provider: 'claude',
+        modelId: 'claude-sonnet',
+      },
+    });
+    claude.sendTurn.mockClear();
+    claude.sendTurn.mockRejectedValueOnce(new ProviderTurnInProgressError());
+    const failure = await service
+      .dispatchWithReceipt({
+        type: 'sendTurn',
+        input: { threadId: 'thread-provider-turn', input: 'during the reply' },
+      })
+      .then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+    expect(failure).toBeInstanceOf(OrchestrationCommandDispatchError);
+    const dispatchError = failure as OrchestrationCommandDispatchError;
+    // The literal, not the constant: the client's queue keys on this string.
+    expect(dispatchError.code).toBe('provider_turn_in_progress');
+    expect(dispatchError.retryable).toBe(true);
+    expect(dispatchError.receipt.status).toBe('rejected');
+    expect(dispatchError.outcome).toBeUndefined();
+    // Retired cleanly, not left indeterminate: the retry dispatches.
+    const retry = await service.dispatch({
+      type: 'sendTurn',
+      input: { threadId: 'thread-provider-turn', input: 'during the reply' },
+    });
+    expect(retry).toMatchObject({ threadId: 'thread-provider-turn' });
+    expect(claude.sendTurn).toHaveBeenCalledTimes(2);
+  });
+
+  // #2310 review F1/F2/F3: the refusal above, seen from the session list. An
+  // execution-phase refusal (post-authorization) with nothing started reads
+  // Failed with its reason on every surface — but the event fold is left
+  // alone, so the user's retry continues THIS session instead of being
+  // re-routed to a fresh continuation child as if the session had stopped.
+  test('#2310: a refused first send reads Failed with its reason, and a retry continues the same session', async () => {
+    await service.dispatch({
+      type: 'startSession',
+      input: {
+        threadId: 'thread-refused-first',
+        provider: 'claude',
+        modelId: 'claude-sonnet',
+      },
+    });
+    claude.sendTurn.mockClear();
+    claude.sendTurn.mockRejectedValueOnce(
+      new SendTurnRefusedError(
+        'This engine did not advertise image attachment support.',
+      ),
+    );
+    await expect(
+      service.dispatch({
+        type: 'sendTurn',
+        input: { threadId: 'thread-refused-first', input: 'inspect this' },
+      }),
+    ).rejects.toThrow('did not advertise image attachment support');
+
+    // Checked FIRST: the retry must continue this session, not a fresh
+    // continuation child. Round 1 rewrote the fold to 'failed', which routed
+    // exactly this retry to a new child.
+    await expect(
+      service.resolveConversationContinuation(
+        'thread-refused-first',
+        INTERNAL_SESSION_READ_SCOPE,
+        { provider: 'claude' },
+      ),
+    ).resolves.toMatchObject({
+      sessionId: 'thread-refused-first',
+      startRequired: false,
+    });
+
+    const refused = (await service.listSessionReadModel()).find(
+      (session) => session.threadId === 'thread-refused-first',
+    );
+    expect(refused?.draft).toBe(false);
+    expect(refused?.terminalAttribution).toEqual({
+      kind: 'send_refused',
+      detail: 'Station refused the send before it started.',
+    });
+    expect(refused?.blockedReason).toBe(
+      'Station refused the send before it started.',
+    );
+    expect(refused?.lifecycleState).not.toBe('failed');
+    expect(buildSessionFailedItem(refused!).body).toBe(
+      'Station refused the send before it started.',
+    );
+  });
+
   describe('station#1885 — station-agent image attachments', () => {
     // Uses the REAL StationAgentAdapter (not FakeAdapter) so the capability
     // declaration under test is the production one; only the inner /chat relay
@@ -12729,6 +14023,85 @@ describe('OrchestrationService', () => {
         (part: { type: string }) => part.type === 'text',
       );
       expect(textPart).toEqual({ type: 'text', text: 'describe this image' });
+      await stationService.shutdown();
+    });
+
+    test('#2415: a send racing the active turn is rejected definitively and leaves no indeterminate boundary behind', async () => {
+      // The REAL adapter's concurrent-send refusal, through the real
+      // turn-start boundary: before #2415 the adapter threw a plain error
+      // after `providerInvoked` was set, the boundary row was recorded
+      // indeterminate, and the thread then read as mid-turn for good — for a
+      // send that never started.
+      const encoder = new TextEncoder();
+      let streamController!: ReadableStreamDefaultController<Uint8Array>;
+      const fetchMock = vi.fn<typeof fetch>().mockResolvedValueOnce(
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              streamController = controller;
+            },
+          }),
+          { status: 200, headers: { 'Content-Type': 'text/event-stream' } },
+        ),
+      );
+      const stationService = buildStationAgentService(fetchMock);
+      const threadId = 'thread-2415-concurrent';
+      const boundaries = () =>
+        eventStore.sessionTurnBoundaryAuthority().hasPossibleEffect(threadId);
+
+      await stationService.dispatch({
+        type: 'startSession',
+        input: {
+          threadId,
+          provider: 'station-agent',
+          modelId: 'claude-sonnet',
+          metadata: { agentId: 'reviewer' },
+        },
+      });
+      const first = await stationService.dispatch({
+        type: 'sendTurn',
+        input: { threadId, input: 'first' },
+      });
+
+      const failure = await stationService
+        .dispatchWithReceipt({
+          type: 'sendTurn',
+          input: { threadId, input: 'raced send' },
+        })
+        .then(
+          () => undefined,
+          (error: unknown) => error,
+        );
+      expect(failure).toBeInstanceOf(OrchestrationCommandDispatchError);
+      const dispatchError = failure as OrchestrationCommandDispatchError;
+      expect(dispatchError.message).toContain('already running');
+      expect(dispatchError.receipt.status).toBe('rejected');
+      expect(dispatchError.outcome).toBeUndefined();
+      expect(dispatchError.code).toBeUndefined();
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+
+      // End the active turn. Its accepted boundary row is retired by the
+      // terminal; an indeterminate row from the refused send would not be,
+      // and would keep the thread reading as mid-turn.
+      streamController.enqueue(
+        encoder.encode(
+          `data: ${JSON.stringify({ type: 'finish', finishReason: 'stop' })}\n\ndata: [DONE]\n\n`,
+        ),
+      );
+      streamController.close();
+      await waitFor(
+        boundaries,
+        (value) => value.kind === 'available' && value.active === false,
+      );
+      // `hasActiveTurn` is what gates a continuation of this thread
+      // (`assertNoActiveTurn`) and workspace restore; a lingering
+      // indeterminate row keeps it true for good. (A completed turn folds the
+      // session to completed, so the next message on this conversation is a
+      // continuation rather than another `sendTurn` on this thread; the
+      // adapter tests prove the adapter itself accepts the next send.)
+      expect(stationService.hasActiveTurn(threadId)).toBe(false);
+      expect(first).toMatchObject({ threadId });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
       await stationService.shutdown();
     });
 
@@ -14985,6 +16358,45 @@ describe('OrchestrationService', () => {
       service.dispatch({ type: 'adoptSession', sourceThreadId }),
     ).rejects.toThrow(/configured as more than one project \(alpha, beta\)/);
     expect(claude.adoptSession).not.toHaveBeenCalled();
+  });
+
+  // Station #90 lane D (R1): an adoption an unverified agent requested
+  // starts its child marked, like every other start.
+  test('an adoption whose dispatch context marks it unattributed stamps the child start', async () => {
+    const sourceThreadId = 'external:claude:agent-source';
+    const projectRoot = join(tmp, 'agent-project');
+    mkdirSync(projectRoot, { recursive: true });
+    configuredProjects.push({
+      slug: 'agent-project',
+      workingDirectory: projectRoot,
+    });
+    eventStore.upsertSession({
+      provider: 'claude',
+      threadId: sourceThreadId,
+      status: 'ready',
+      cwd: projectRoot,
+      controlMode: 'read-only-attached',
+      attachedSource: {
+        kind: 'claude-transcript',
+        externalSessionId: 'vendor-agent-source',
+        affinity: { kind: 'test', ref: 'fixture' },
+      },
+      createdAt: '2026-07-22T00:00:00.000Z',
+      updatedAt: '2026-07-22T00:00:00.000Z',
+    });
+    await service.dispatch(
+      { type: 'adoptSession', sourceThreadId },
+      { ownerAttribution: 'unattributed-agent' },
+    );
+    expect(claude.adoptSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          adoptedFromThreadId: sourceThreadId,
+          ownerAttribution: 'unattributed-agent',
+        }),
+      }),
+      expect.anything(),
+    );
   });
 
   test('adopts an attached source into a new writable child without mutating the source', async () => {
@@ -18488,7 +19900,11 @@ describe('OrchestrationService', () => {
     );
   });
 
-  test('bounds connected runtime selector validation at the service deadline', async () => {
+  // #2424: the deadline still bounds the catalog read, but a read that misses
+  // it no longer fails the start. Validation for an external engine is
+  // advisory (a selector the catalog does not list already goes to the
+  // engine), so a slow catalog is treated like an empty one.
+  test('bounds connected runtime selector validation at the service deadline without failing the start', async () => {
     vi.useFakeTimers();
     try {
       let operationSignal: AbortSignal | undefined;
@@ -18512,17 +19928,74 @@ describe('OrchestrationService', () => {
           modelId: 'claude-sonnet-4-6',
         },
       });
-      const assertion = expect(pending).rejects.toThrow(
-        'claude model validation timed out.',
-      );
       await vi.advanceTimersByTimeAsync(5_000);
 
-      await assertion;
+      await expect(pending).resolves.toBeDefined();
       expect(operationSignal?.aborted).toBe(true);
-      expect(claude.startSession).not.toHaveBeenCalled();
+      expect(operationSignal?.reason).toMatchObject({
+        message: 'claude model validation timed out.',
+      });
+      expect(claude.startSession).toHaveBeenCalledWith(
+        expect.objectContaining({
+          threadId: 'stalled-model-validation',
+          modelId: 'claude-sonnet-4-6',
+        }),
+      );
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  test('a turn selector whose catalog misses the deadline still reaches the engine', async () => {
+    await service.dispatch({
+      type: 'startSession',
+      input: { threadId: 'stalled-turn-validation', provider: 'claude' },
+    });
+    vi.useFakeTimers();
+    try {
+      claude.listModels.mockImplementation(
+        (options) =>
+          new Promise((_, reject) => {
+            options?.signal?.addEventListener(
+              'abort',
+              () => reject(options.signal?.reason),
+              { once: true },
+            );
+          }),
+      );
+      const pending = service.dispatch({
+        type: 'sendTurn',
+        input: {
+          threadId: 'stalled-turn-validation',
+          input: 'hello',
+          modelId: 'claude-sonnet-4-6',
+        },
+      });
+      await vi.advanceTimersByTimeAsync(5_000);
+
+      await expect(pending).resolves.toBeDefined();
+      expect(claude.sendTurn).toHaveBeenCalledWith(
+        expect.objectContaining({ modelId: 'claude-sonnet-4-6' }),
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test('a catalog failure other than the deadline still fails the start', async () => {
+    claude.listModels.mockRejectedValue(new Error('catalog exploded'));
+
+    await expect(
+      service.dispatch({
+        type: 'startSession',
+        input: {
+          threadId: 'broken-model-validation',
+          provider: 'claude',
+          modelId: 'claude-sonnet-4-6',
+        },
+      }),
+    ).rejects.toThrow('catalog exploded');
+    expect(claude.startSession).not.toHaveBeenCalled();
   });
 
   /**
@@ -20899,8 +22372,8 @@ describe('OrchestrationService', () => {
       eventId: 'window-elided-turn',
       createdAt: '2026-08-19T00:00:01.000Z',
       method: 'turn.started',
-      // Past `snapshotEvent`'s serialized ceiling.
-      prompt: 'p'.repeat(8_000),
+      // Past `snapshotEvent`'s serialized ceiling (24 KiB).
+      prompt: 'p'.repeat(32_000),
     } as never);
     eventStore.appendEvent({
       provider: 'claude',

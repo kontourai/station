@@ -5,6 +5,7 @@ import {
   type ClaudeMessageState,
   mapClaudeSdkMessage,
 } from '../adapters/claude-adapter-events.js';
+import { recordClaudeTurnDispatched } from '../adapters/claude-sdk-turns.js';
 import { OllamaAdapter } from '../adapters/ollama-adapter.js';
 
 vi.mock('../../telemetry/metrics.js', () => ({
@@ -169,7 +170,7 @@ describe('Ollama content-delta itemId (station#3457)', () => {
 
 describe('Claude content-delta itemId (station#3457)', () => {
   function makeRecord(turnId: string): ClaudeMessageState {
-    return {
+    const record: ClaudeMessageState = {
       session: {
         provider: 'claude',
         threadId: 'thread-item-id',
@@ -177,10 +178,10 @@ describe('Claude content-delta itemId (station#3457)', () => {
         createdAt: '2026-01-01T00:00:00.000Z',
         updatedAt: '2026-01-01T00:00:00.000Z',
       },
-      activeTurnId: turnId,
-      dispatchedTurnId: turnId,
       lastSessionState: 'running',
     };
+    recordClaudeTurnDispatched(record, turnId);
+    return record;
   }
 
   /**
@@ -261,8 +262,24 @@ describe('Claude content-delta itemId (station#3457)', () => {
 
     // A second turn on the same record is distinct again.
     const secondTurnPublish = vi.fn();
-    record.activeTurnId = 'turn-2';
-    record.dispatchedTurnId = 'turn-2';
+    // The first turn ends with its result; the second is dispatched.
+    mapClaudeSdkMessage({
+      provider: 'claude',
+      record,
+      publish: vi.fn(),
+      message: {
+        type: 'result',
+        subtype: 'success',
+        is_error: false,
+        num_turns: 1,
+        result: 'done',
+        stop_reason: 'end_turn',
+        usage: { input_tokens: 1, output_tokens: 1 },
+        uuid: 'result-turn-1',
+        session_id: 'thread-item-id',
+      } as never,
+    });
+    recordClaudeTurnDispatched(record, 'turn-2');
     mapClaudeSdkMessage({
       provider: 'claude',
       record,

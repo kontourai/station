@@ -158,3 +158,70 @@ test('hosted reads never consult the personal sharing policy', () => {
   expect(canRead).not.toHaveBeenCalled();
   expect(ownerIds).not.toHaveBeenCalled();
 });
+
+describe('SessionAuthorization.sessionActingPrincipal (Station #90 lane D)', () => {
+  function actingPrincipal(
+    owner: string | undefined,
+    options: {
+      ownerless?: 'deny' | 'single-user-compat';
+      hosted?: boolean;
+    } = {},
+  ) {
+    return new SessionAuthorization({
+      eventStore: {
+        findSessionOwnerAttribution: () => ({
+          ...(owner ? { ownerUserId: owner } : {}),
+          unattributedAgent: false,
+        }),
+      } as never,
+      legacyPersonalOwner: 'released-os-alias',
+      ownerlessSessionAccess: options.ownerless ?? 'single-user-compat',
+      requireTenantExecutionContext: () => options.hosted === true,
+    }).sessionActingPrincipal('thread');
+  }
+
+  test('reads the recorded owner, and names how an operator mapping was derived', () => {
+    expect(actingPrincipal('human:test:alice')).toEqual({
+      id: 'human:test:alice',
+      source: 'session-owner',
+    });
+    expect(actingPrincipal('released-os-alias')).toEqual({
+      id: LOCAL_OPERATOR_PRINCIPAL_ID,
+      source: 'legacy-personal-owner',
+    });
+    expect(actingPrincipal(undefined)).toEqual({
+      id: LOCAL_OPERATOR_PRINCIPAL_ID,
+      source: 'ownerless-single-operator',
+    });
+  });
+
+  test('a session an agent started without a verified principal acts for no one, whatever owner it records (B2)', () => {
+    const authz = (unattributedAgent: boolean) =>
+      new SessionAuthorization({
+        eventStore: {
+          findSessionOwnerAttribution: () => ({
+            ownerUserId: LOCAL_OPERATOR_PRINCIPAL_ID,
+            unattributedAgent,
+          }),
+        } as never,
+        ownerlessSessionAccess: 'single-user-compat',
+      }).sessionActingPrincipal('child');
+    expect(authz(true)).toBeUndefined();
+    expect(authz(false)).toEqual({
+      id: LOCAL_OPERATOR_PRINCIPAL_ID,
+      source: 'session-owner',
+    });
+  });
+
+  test('an ownerless session acts for no one on a deny or hosted host, and a legacy alias never maps in hosted mode', () => {
+    expect(actingPrincipal(undefined, { ownerless: 'deny' })).toBeUndefined();
+    expect(actingPrincipal(undefined, { hosted: true })).toBeUndefined();
+    expect(
+      actingPrincipal('released-os-alias', { hosted: true }),
+    ).toBeUndefined();
+    expect(actingPrincipal('human:test:alice', { hosted: true })).toEqual({
+      id: 'human:test:alice',
+      source: 'session-owner',
+    });
+  });
+});

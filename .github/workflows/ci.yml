@@ -41,6 +41,7 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: .nvmrc
+          package-manager-cache: false
 
       - id: classify
         name: Classify the complete before..sha diff
@@ -115,6 +116,7 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: .nvmrc
+          package-manager-cache: false
 
       - name: Install pinned actionlint
         timeout-minutes: 5
@@ -252,6 +254,7 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: .nvmrc
+          package-manager-cache: false
 
       - name: Install pinned actionlint
         env:
@@ -281,6 +284,13 @@ jobs:
     with:
       source_sha: ${{ github.sha }}
 
+  # No separate browser-smoke job. It needed full-regression without
+  # `always()`, and full-regression runs only on workflow_dispatch, so on push
+  # and merge_group it never executed (skipped in 200 of the last 200 push
+  # runs back to 2026-09-13, and in 39 of the last 40 merge_group runs, the
+  # 40th not having reached it); on dispatch it repeated
+  # `npm run test:e2e:pr-smoke`, which fast-checks already runs on every
+  # event, including dispatch.
   manual-completion-diagnostics:
     # Existing manual-only adjuncts remain available without becoming a second
     # promotion contract. The canonical command already includes the complete
@@ -305,6 +315,7 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: .nvmrc
+          package-manager-cache: false
 
       - run: npm run dependencies:ci
       - run: npm run build:sdk && npm run build:connect
@@ -351,55 +362,3 @@ jobs:
             exit 2
           fi
 
-  browser-smoke:
-    name: Deterministic Browser Smoke
-    # Start browser smoke only after the completion gate.
-    # GitHub skips failed dependencies by default.
-    needs: [classify, full-regression]
-    if: github.event_name != 'pull_request_target' && (github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true')
-    concurrency:
-      group: ci-browser-smoke-${{ github.event_name }}-${{ github.ref }}
-      cancel-in-progress: true
-    runs-on: ubuntu-22.04
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Setup pinned pnpm
-        uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2.1.0
-        with: { install: false }
-
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version-file: .nvmrc
-
-      - run: npm run dependencies:ci
-
-      - name: Install Chromium
-        timeout-minutes: 5
-        run: |
-          echo "PLAYWRIGHT_BROWSERS_PATH=$HOME/.cache/ms-playwright" >> "$GITHUB_ENV"
-          PLAYWRIGHT_BROWSERS_PATH="$HOME/.cache/ms-playwright" npx playwright install chromium
-
-      - name: Run deterministic browser smoke
-        timeout-minutes: 10
-        env:
-          PW_REPORTER: line,html
-        run: npm run test:e2e:pr-smoke
-
-      - name: Upload browser-smoke diagnostics
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        # Diagnostics: a storage/quota failure here is an infrastructure
-        # condition, not a verdict on the code. It must not redden a job
-        # whose work passed (station#2218).
-        continue-on-error: true
-        with:
-          name: browser-smoke-${{ github.run_id }}
-          path: |
-            playwright-report/
-            test-results/
-          if-no-files-found: ignore
-          retention-days: 14

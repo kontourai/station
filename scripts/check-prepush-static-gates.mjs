@@ -25,7 +25,8 @@
  * delegates to the existing scripts, so the counts, the ceilings, and the
  * remedies all keep coming from one voice.
  *
- * Cost, measured on this repo: 8.6s for all twenty-two together. Most are
+ * Cost, measured on this repo: 8.6s for the twenty-two gates listed before
+ * #2333 added `test-path-import-gate` (~1.5s alone, not re-measured together). Most are
  * under 500ms each; `a11y` is ~5s of that because it runs its own biome pass,
  * and `ui-glyph-coverage` (~0.7s) and `stored-path-expansion` (~0.6s) are the
  * next slowest. A docs-only or workflow-only push pays none of it.
@@ -86,6 +87,15 @@ export const PREPUSH_STATIC_GATES = Object.freeze([
   'unsaved-guard-gate',
   'stored-path-expansion-guard',
   'ui-glyph-coverage-ratchet',
+  // #2333: ~1.5s. CodeQL and the iOS classifier skip test paths on the
+  // premise that no product module imports one; this computes that premise.
+  // It also runs in `gate:workflows` (ci:fast); listed here so a pre-push and
+  // `gate:for` surface it on the change that breaks it.
+  'test-path-import-gate',
+  // #2343: ~0.3s, no build. Every example that ships TypeScript must be in a
+  // project `typecheck:examples` compiles. It ran only in `gate:platform`,
+  // so an uncovered example was found in the merge queue.
+  'examples-conformance',
   'a11y-ratchet',
 ]);
 
@@ -106,10 +116,18 @@ export const STATIC_GATE_INPUT_PREFIXES = Object.freeze([
   'schemas/agent-plugins/',
 ]);
 
+/**
+ * Single files these gates read. The root manifest names the
+ * `typecheck:examples` chain that examples-conformance checks coverage
+ * against, so editing it alone can uncover an example.
+ */
+const STATIC_GATE_INPUT_FILES = Object.freeze(['package.json']);
+
 /** Does one repo-relative path feed any of these gates? */
 export function isStaticGateInput(path) {
   const normalized = String(path).replaceAll('\\', '/');
   if (!normalized) return false;
+  if (STATIC_GATE_INPUT_FILES.includes(normalized)) return true;
   // Trailing slashes are load-bearing: `src-ui/` must not match `src-uix/`.
   return STATIC_GATE_INPUT_PREFIXES.some((prefix) =>
     normalized.startsWith(prefix),

@@ -59,7 +59,6 @@
  */
 import { spawnSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
-import { createRequire } from 'node:module';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { invokedDirectly } from './lib/module-entry.mjs';
@@ -122,17 +121,19 @@ export function baselineDeferrals(repoRoot) {
 }
 
 /**
- * Absolute path to the installed TypeScript compiler entry point.
+ * The slot runner every `typecheck:*` lane compiles through
+ * (`scripts/tsc-slot.mjs`): it holds a host-wide typecheck slot and loads
+ * the repository's own installed TypeScript in-process.
  *
  * Deliberately not `npx tsc`. `npx` will happily reach past a missing local
  * install and execute *something else* named `tsc` from the registry or PATH —
  * which is both a supply-chain hazard and, observed while building this gate, a
  * silent correctness one: the placeholder `tsc` package exits 1 with a friendly
- * message, which this gate would have reported as a compile failure.
+ * message, which this gate would have reported as a compile failure. The
+ * runner resolves `typescript/lib/tsc.js` from `repoRoot`'s own install.
  */
-export function resolveCompiler(repoRoot) {
-  const require = createRequire(join(repoRoot, 'package.json'));
-  return require.resolve('typescript/bin/tsc');
+function resolveCompilerRunner(repoRoot) {
+  return join(repoRoot, 'scripts', 'tsc-slot.mjs');
 }
 
 /**
@@ -143,7 +144,13 @@ export function resolveCompiler(repoRoot) {
 export function compileProject(repoRoot, { run = spawnSync } = {}) {
   const result = run(
     process.execPath,
-    [resolveCompiler(repoRoot), '-p', TSCONFIG, '--noEmit', '--listFiles'],
+    [
+      resolveCompilerRunner(repoRoot),
+      '-p',
+      TSCONFIG,
+      '--noEmit',
+      '--listFiles',
+    ],
     { cwd: repoRoot, encoding: 'utf8', windowsHide: true },
   );
   if (result.error) throw result.error;

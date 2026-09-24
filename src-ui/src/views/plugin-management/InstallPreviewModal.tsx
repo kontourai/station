@@ -1,12 +1,16 @@
+import type { PluginLifecycleProposal } from '@kontourai/station-contracts/plugin';
 import { useState } from 'react';
 import { Checkbox } from '../../components/Checkbox';
 import { CheckGlyph, WarningGlyph } from '../../components/icons/Glyph';
+import { PluginProposalSummary } from '../../components/plugins/PluginProposalSummary';
 import {
   ResponsiveDialogCloseButton,
   ResponsiveDialogSurface,
   ResponsiveSurfaceActions,
 } from '../../components/ResponsiveDialogSurface';
-import type { PreviewData } from './types';
+import { compareProposalDigest } from '../../utils/pluginProposal';
+import { ReinstallDelta } from './ReinstallDelta';
+import type { PreviewData, ReinstallFromSource } from './types';
 
 export function InstallPreviewModal({
   previewData,
@@ -15,7 +19,20 @@ export function InstallPreviewModal({
   onClose,
   onToggleSkip,
   onConfirm,
+  proposal = null,
+  reinstall = null,
 }: {
+  /**
+   * #2323 S4: the installed plugin this preview reinstalls from its source
+   * folder, when the person chose "Reinstall from source". Adds the delta
+   * against the installed plugin; the confirm and consent are unchanged.
+   */
+  reinstall?: ReinstallFromSource | null;
+  /**
+   * #2323 S5: the agent proposal this preview reviews, when the person came
+   * from one. Provenance only: the confirm button below is the decision.
+   */
+  proposal?: PluginLifecycleProposal | null;
   previewData: PreviewData;
   previewSkips: Set<string>;
   installPending: boolean;
@@ -37,7 +54,7 @@ export function InstallPreviewModal({
     >
       <div className="plugins__modal-header">
         <h3 id="install-preview-title" className="plugins__modal-title">
-          Install Preview
+          {reinstall ? 'Reinstall from source' : 'Install Preview'}
         </h3>
         <ResponsiveDialogCloseButton
           onClick={onClose}
@@ -63,6 +80,15 @@ export function InstallPreviewModal({
             </div>
           )}
         </div>
+        {reinstall && (
+          <ReinstallDelta reinstall={reinstall} previewData={previewData} />
+        )}
+        {proposal && (
+          <ProposalProvenance
+            proposal={proposal}
+            previewDigest={previewData.contentDigest}
+          />
+        )}
         {previewData.conflicts.length > 0 && (
           <div className="plugins__modal-message plugins__message--error plugins__preview-conflicts">
             {previewData.conflicts.length} conflict
@@ -93,7 +119,12 @@ export function InstallPreviewModal({
                     >
                       {component.type}
                     </span>
-                    <span>{component.id}</span>
+                    <span>{component.name || component.id}</span>
+                    {component.name && (
+                      <span className="plugins__preview-component-id">
+                        {component.id}
+                      </span>
+                    )}
                   </Checkbox>
                 </div>
                 {component.conflict && (
@@ -104,12 +135,20 @@ export function InstallPreviewModal({
                       : ''}
                   </span>
                 )}
-                {!skippable && (
-                  <span className="plugins__preview-conflict-tag">
-                    Required package declaration — resolve the conflict before
-                    install
-                  </span>
-                )}
+                {/* Non-skippable only means the package cannot install without
+                    this declaration. It blocks install only when the server
+                    also reported a conflict for it (see hasBlockingConflict). */}
+                {!skippable &&
+                  (component.conflict ? (
+                    <span className="plugins__preview-conflict-tag">
+                      Required package declaration — resolve the conflict before
+                      install
+                    </span>
+                  ) : (
+                    <span className="plugins__preview-required-tag">
+                      Required
+                    </span>
+                  ))}
               </div>
             );
           })}
@@ -199,14 +238,70 @@ export function InstallPreviewModal({
             }
             disabled={installPending || hasBlockingConflict}
           >
-            {installPending
-              ? 'Installing...'
-              : resetData
-                ? 'Confirm Install with New Data'
-                : 'Confirm Install'}
+            {reinstall
+              ? installPending
+                ? 'Reinstalling...'
+                : resetData
+                  ? 'Reinstall with New Data'
+                  : 'Reinstall'
+              : installPending
+                ? 'Installing...'
+                : resetData
+                  ? 'Confirm Install with New Data'
+                  : 'Confirm Install'}
           </button>
         </ResponsiveSurfaceActions>
       </div>
     </ResponsiveDialogSurface>
   );
+}
+
+function ProposalProvenance({
+  proposal,
+  previewDigest,
+}: {
+  proposal: PluginLifecycleProposal;
+  previewDigest: string | undefined;
+}) {
+  const comparison = compareProposalDigest(proposal, previewDigest);
+  return (
+    <div
+      className="plugins__modal-message plugins__preview-proposal"
+      data-testid="install-preview-proposal"
+    >
+      <PluginProposalSummary
+        author={proposal.author}
+        source={proposal.source}
+        rationale={proposal.rationale}
+        testId="install-preview-proposal-summary"
+      />
+      {comparison === 'changed' && (
+        <div
+          className="plugins__message--warning"
+          role="alert"
+          data-testid="install-preview-proposal-changed"
+        >
+          <WarningGlyph /> Changed since proposed: these files are not the ones
+          the agent proposed. Review what is here now before installing.
+        </div>
+      )}
+      {comparison === 'not-recorded' && (
+        <div data-testid="install-preview-proposal-unrecorded">
+          {unrecordedDigestSentence(proposal)}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Why there is nothing to compare, in the words the recorded reason allows. */
+function unrecordedDigestSentence(proposal: PluginLifecycleProposal): string {
+  switch (proposal.proposedContentDigestUnavailable) {
+    case 'remote-source':
+      return 'This is a git source. Station did not fetch it when it was proposed, so it cannot tell whether it changed since; review what the preview shows now.';
+    case 'too-large':
+      return 'The folder was too large for Station to record when it was proposed, so it cannot tell whether the files changed since.';
+    default:
+      return 'Station did not record the files when this was proposed, so it cannot tell whether they changed since.';
+  }
 }

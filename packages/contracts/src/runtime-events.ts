@@ -1,7 +1,12 @@
 import type { PersistedChatAttachment } from './chat-attachment.js';
+import type { ChildWorkDelta } from './child-work.js';
 import type { ClientOrigin } from './client-origin.js';
 import type { PrincipalRef } from './principal.js';
-import { type EngineId, PROVIDER_CODEX } from './provider.js';
+import {
+  type ApprovalMode,
+  type EngineId,
+  PROVIDER_CODEX,
+} from './provider.js';
 import type {
   SessionLifecycleState,
   SessionTransitionReason,
@@ -72,6 +77,14 @@ export const SERVER_EVENTS = {
   /** A live session projection changed without creating a runtime event. */
   ORCHESTRATION_SESSION_PROJECTION_UPDATED:
     'orchestration:session-projection-updated',
+  /**
+   * A Project's plugin draft built a new revision (epic #2323 S3). Payload is
+   * `{ projectSlug, draftId, generation }`. Deliberately NOT under the
+   * `plugins:` namespace: that namespace is gated by installed-plugin
+   * visibility, and a draft is not an installed plugin. It is gated by
+   * Project read authority instead.
+   */
+  PLUGIN_DRAFTS_REBUILT: 'plugin-drafts:rebuilt',
   PLUGINS_INSTALLED: 'plugins:installed',
   PLUGINS_REMOVED: 'plugins:removed',
   PLUGINS_UPDATED: 'plugins:updated',
@@ -189,6 +202,9 @@ export const SERVER_EVENT_BROADCAST_SAFETY: {
   // returned in one response. 'scoped' means DENIED unless a named gate in
   // `routes/orchestration/events.ts` recognizes the channel; that gate is the
   // per-principal plugin projection.
+  // Names a Project by slug. Relayed only to subscribers who may read that
+  // Project, through the events route's dedicated plugin-draft gate.
+  [SERVER_EVENTS.PLUGIN_DRAFTS_REBUILT]: 'scoped',
   [SERVER_EVENTS.PLUGINS_INSTALLED]: 'scoped',
   [SERVER_EVENTS.PLUGINS_REMOVED]: 'scoped',
   [SERVER_EVENTS.PLUGINS_UPDATED]: 'scoped',
@@ -402,6 +418,8 @@ export interface TurnAbortedEvent extends CanonicalRuntimeEventBase {
    * label-vs-derivation defect in a new place.
    */
   recoveryTerminal?: true;
+  /** #2324: carries `trigger` for a provider-triggered turn's abort. */
+  metadata?: Record<string, unknown>;
 }
 
 /**
@@ -424,6 +442,24 @@ export interface SessionStopSettledEvent extends CanonicalRuntimeEventBase {
    * forward sets it.
    */
   initiatedBy?: 'user' | 'stall';
+}
+
+/**
+ * #2436: a user's approval-posture decision, recorded by Station (never by an
+ * engine) when it receives a `setApprovalMode` command or a send that carries
+ * one. Its global sequence orders it against every other decision; the latest
+ * one across the conversation is what the server applies at the next session
+ * start and turn start (`OrchestrationService.resolveApprovalMode`). It is a
+ * decision, not a report: what the engine actually applied is still reported
+ * on `session.configured` / `turn.started` metadata.
+ *
+ * `'connection-default'` records a Default pick. The server resolves it to a
+ * concrete posture at application time; the event does not claim one.
+ */
+export interface SessionApprovalModeSetEvent extends CanonicalRuntimeEventBase {
+  method: 'session.approval-mode-set';
+  sessionId: string;
+  approvalMode: ApprovalMode;
 }
 
 export interface ContentTextDeltaEvent extends CanonicalRuntimeEventBase {
@@ -528,13 +564,21 @@ export interface ToolCompletedEvent extends CanonicalRuntimeEventBase {
    *
    * Three of these assert what happened: `success` and `error` are the
    * engine's own verdict, and `cancelled` is a stop Station or the user
-   * asked for. `unresolved` (station#1558) asserts the opposite — that no
-   * verdict will ever arrive. It is published for a tool call still open
-   * when its SESSION ended, where the call's fate is genuinely unknown:
-   * Station never saw a result, and cannot tell whether the tool ran. Every
-   * adapter that tracks its open calls settles them this way when its
-   * session ends (station#1569 item 4 extended this past Claude to ACP,
-   * Codex and station-agent).
+   * asked for — or one the engine itself reported for the call (Muse
+   * publishes it when the tool's task reports `cancelled`, #2308). None of
+   * those is a failure. `unresolved` (station#1558) asserts the opposite —
+   * that no verdict will ever arrive. It is published for a tool call still
+   * open when the ENGINE PROCESS that ran it is finished with, where the
+   * call's fate is genuinely unknown: Station never saw a result, and cannot
+   * tell whether the tool ran. For engines with a per-session process that
+   * boundary is session end: every adapter that tracks its open calls
+   * settles them this way when its session ends (station#1569 item 4
+   * extended this past Claude to ACP, Codex and station-agent), with the
+   * output "No result was reported before the session ended; whether the
+   * tool ran is unknown." For an engine whose process lives ONE TURN (Muse:
+   * one `muse exec` per turn) the boundary is turn end, and the output says
+   * so: "No result was reported before the turn ended; whether the tool ran
+   * is unknown." (`unresolved-tool-output.ts` holds both sentences.)
    *
    * A session SUPERSEDED by a restart on the same thread settles its own
    * calls too, on their OWN turns — every terminal carries the turnId that
@@ -575,13 +619,32 @@ export interface ToolCompletedEvent extends CanonicalRuntimeEventBase {
    * So the sentence, not the enum, is the only thing an older client gets
    * right, and a reader has to open the row to find it. That asymmetry is
    * the reason the text is written to stand alone. Publishers must not use
-   * this status for any other situation.
+   * this status for any situation other than the two boundaries above.
    */
   status: 'success' | 'error' | 'cancelled' | 'unresolved';
   output?: unknown;
   error?: string;
   /** See {@link ToolProgressEvent.outputReceipt}. */
   outputReceipt?: ToolOutputReceipt;
+  /**
+   * Images the tool returned to the model — a `Read` of a PNG, an MCP
+   * screenshot, Codex's `imageView` — in the same shape a user's pasted
+   * attachment takes on `turn.started`.
+   *
+   * An adapter publishes them with inline `dataUrl` bytes; EventStore's
+   * ingress replaces those with a content-addressed `blobRef` and binds the
+   * blob to this thread before the event persists or reaches SSE, exactly as
+   * it does for `turn.started`. Every read therefore carries `blobRef`
+   * without `dataUrl`, and a client fetches the bytes from
+   * `GET /api/attachments/:ref`. An entry with neither is an image whose
+   * bytes could not be stored: it names what the tool returned and claims no
+   * preview.
+   *
+   * Only the chat image allowlist within the chat attachment limits is ever
+   * published here; an adapter says what it dropped in the tool's own output
+   * text instead (see `model-image-attachments.ts`).
+   */
+  attachments?: PersistedChatAttachment[];
   /**
    * Set by, and only by, Station's pre-tool policy evaluator
    * (`pre-tool-policy.ts`'s `deny()` — the sole writer in the tree; both
@@ -618,6 +681,11 @@ export interface RuntimeErrorEvent extends CanonicalRuntimeEventBase {
   code?: string;
   retriable?: boolean;
   details?: Record<string, unknown>;
+  /**
+   * #2324: carries `trigger` when this error ends a turn the engine opened
+   * on its own (see {@link PROVIDER_TURN_TRIGGER}).
+   */
+  metadata?: Record<string, unknown>;
 }
 
 /**
@@ -647,6 +715,36 @@ export function isDeferredRetriableTurnError(
     event.method === 'runtime.error' &&
     event.provider === PROVIDER_CODEX &&
     event.retriable === true
+  );
+}
+
+/**
+ * #2324: the `metadata.trigger` value an adapter stamps on the turn events of
+ * a turn the ENGINE opened — a reply it produced on its own (for example after
+ * background work finished) that no user or caller dispatched. Stamped on
+ * that turn's `turn.started` and on its terminal (`turn.completed`,
+ * `turn.aborted`, or the `runtime.error` a failed one ends with). Such a
+ * turn has no prompt of its own.
+ */
+export const PROVIDER_TURN_TRIGGER = 'provider';
+
+/**
+ * #2324: whether a turn event belongs to a turn the engine opened on its own
+ * (see {@link PROVIDER_TURN_TRIGGER}). The ONE derivation every consumer
+ * reads — recovery (never replay one), message counts, inventory, delegation,
+ * notifications — so "provider" is never inferred from a turn id's prefix or
+ * from a missing prompt.
+ */
+export function isProviderTriggeredTurn(event: {
+  method: string;
+  metadata?: Record<string, unknown>;
+}): boolean {
+  return (
+    (event.method === 'turn.started' ||
+      event.method === 'turn.completed' ||
+      event.method === 'turn.aborted' ||
+      event.method === 'runtime.error') &&
+    event.metadata?.trigger === PROVIDER_TURN_TRIGGER
   );
 }
 
@@ -977,6 +1075,17 @@ export interface ExtensionEvent extends CanonicalRuntimeEventBase {
 }
 
 /**
+ * #2456: a change to the child work (engine subagents, Station delegates)
+ * reported under `threadId`. The delta is folded with `applyChildWorkDelta`
+ * from `@kontourai/station-contracts/child-work`; this event carries no
+ * semantics beyond that fold.
+ */
+export interface ChildWorkUpdatedEvent extends CanonicalRuntimeEventBase {
+  method: 'child-work.updated';
+  delta: ChildWorkDelta;
+}
+
+/**
  * An immutable cross-conversation provenance fact. It is deliberately an
  * orchestration event (rather than conversation metadata) so every engine
  * family has one append-only source of truth.
@@ -1004,6 +1113,7 @@ export type CanonicalRuntimeEvent =
   | TurnCompletedEvent
   | TurnAbortedEvent
   | SessionStopSettledEvent
+  | SessionApprovalModeSetEvent
   | ContentTextDeltaEvent
   | ContentReasoningDeltaEvent
   | ToolStartedEvent
@@ -1022,4 +1132,5 @@ export type CanonicalRuntimeEvent =
   | WorkflowStateChangedEvent
   | PlanUpdatedEvent
   | ExtensionEvent
+  | ChildWorkUpdatedEvent
   | ConversationForkedEvent;

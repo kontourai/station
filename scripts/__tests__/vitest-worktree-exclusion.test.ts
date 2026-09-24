@@ -85,8 +85,10 @@ describe('Vitest worktree exclusion', () => {
     expect(packageJson.scripts['test:coverage']).toBe(
       'node scripts/run-verification.mjs request test-coverage',
     );
-    expect(packageJson.scripts['test:coverage:raw']).toContain(
-      '--maxWorkers=1',
+    // Coverage runs through the resource-profiled corpus slices, each bounded
+    // by its group's worker count (scripts/run-vitest-corpus.mjs).
+    expect(packageJson.scripts['test:coverage:raw']).toBe(
+      'node scripts/check-full-regression-browser.mjs && node scripts/run-coverage-corpus.mjs',
     );
   });
 

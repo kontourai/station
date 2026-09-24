@@ -1,0 +1,46 @@
+/*
+ * The Coding layout's "Open Browser" form (#90). Co-located so it rides the
+ * chunk that renders the launcher; 44px targets at every width.
+ */
+
+.browser-launcher {
+  align-items: flex-end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2, 8px);
+  padding: var(--space-2, 8px);
+}
+
+.browser-launcher__label {
+  color: var(--text-secondary);
+  display: flex;
+  flex: 1 1 14rem;
+  flex-direction: column;
+  font-size: var(--text-sm);
+  gap: var(--space-1, 4px);
+  min-width: 0;
+}
+
+.browser-launcher__address {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-md, 6px);
+  color: var(--text-primary);
+  font: inherit;
+  min-height: 44px;
+  padding: 0 var(--space-2, 8px);
+}
+
+.browser-launcher__open {
+  min-height: 44px;
+}
+
+.browser-launcher__note {
+  flex: 1 0 100%;
+  font-size: var(--text-sm);
+  margin: 0;
+}
+
+.browser-launcher > :last-child:not(.browser-launcher__note) {
+  flex: 1 0 100%;
+}

@@ -54,7 +54,9 @@ import {
   UnattendedGrantStore,
 } from '../../services/agents/unattended-grant-store.js';
 import { EventStore } from '../../services/orchestration/event-store.js';
+import { openRelayEnrollmentJournal } from '../../services/relay/relay-enrollment-journal.js';
 import type { RuntimeSearch } from '../../services/search/runtime-search.js';
+import { EnvironmentSecurityService } from '../../services/ssh/environment-security-service.js';
 import { USAGE_TELEMETRY_INVENTORY_REVISION } from '../../services/usage-telemetry-inventory.js';
 import { installSignedStartupProvider } from './fixtures/signed-provider-startup.js';
 
@@ -361,6 +363,21 @@ const { honoServer } = await import('@voltagent/server-hono');
 const { attachVoiceWebSocket } = await import(
   '../../routes/operations/voice.js'
 );
+
+/**
+ * The credential-free WebSocket listeners must receive the server's own UI
+ * origin set; without it every browser upgrade on loopback is refused.
+ */
+function stationBrowserOriginsFor(port: number) {
+  return {
+    allowedBrowserOrigins: expect.arrayContaining([
+      `http://127.0.0.1:${port}`,
+      `http://localhost:${port}`,
+      'tauri://localhost',
+    ]),
+  };
+}
+
 const MCPManager = await import('../mcp/mcp-manager.js');
 
 function replaceTerminalListener(
@@ -509,6 +526,72 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
     ).toThrow(/STATION_HOME_RESET_REQUIRED/);
     expect(existsSync(join(home, 'monitoring'))).toBe(false);
     expect(existsSync(join(home, 'config', 'agent-registry.json'))).toBe(false);
+  });
+
+  it('refuses listener and VirtualApplication admission when relay recovery cannot revoke a pending provider session', async () => {
+    home = await createSchemaHome('station-relay-recovery-failure-');
+    const stationIdentity = await new EnvironmentSecurityService({
+      homeDir: home,
+    }).initialize();
+    const journal = openRelayEnrollmentJournal({
+      dbPath: join(home, 'authentication', 'relay-enrollment.sqlite'),
+      stationId: stationIdentity.environmentId,
+    });
+    const enrollmentId = 'R'.repeat(43);
+    journal.reserveChallenge({
+      enrollmentId,
+      stationId: stationIdentity.environmentId,
+      clientOrigin: 'https://station.example.test',
+      keyThumbprint: 'T'.repeat(43),
+      publicKey: {
+        kty: 'EC',
+        crv: 'P-256',
+        x: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
+        y: 'BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB',
+      },
+      nonce: 'N'.repeat(43),
+      expiresAt: Date.now() + 60_000,
+    });
+    journal.transition({
+      enrollmentId,
+      expectedStates: ['challenge'],
+      nextState: 'provider-creating',
+      patch: {
+        issuer: 'https://identity.example.test',
+        loginJti: 'L'.repeat(22),
+      },
+    });
+    journal.transition({
+      enrollmentId,
+      expectedStates: ['provider-creating'],
+      nextState: 'provider-pending',
+      patch: {
+        providerSessionId: 'session-from-removed-provider',
+        issuer: 'https://identity.example.test',
+        subject: 'pending-subject',
+      },
+    });
+    journal.close();
+
+    const virtualReady = vi.fn();
+    const terminal = replaceTerminalListener(
+      (runtime = new StationRuntime({
+        projectHomeDir: home,
+        port: TEST_PORT,
+        virtualApplication: {
+          origin: 'https://virtual.example.test',
+          ready: virtualReady,
+        },
+      })),
+    );
+    routeMocks.deferServerFactory = true;
+
+    await expect(runtime.initialize()).rejects.toThrow(
+      'Relay enrollment cleanup is unconfirmed',
+    );
+    expect(terminal.start).not.toHaveBeenCalled();
+    expect(routeMocks.configureRuntimeRoutes).not.toHaveBeenCalled();
+    expect(virtualReady).not.toHaveBeenCalled();
   });
 
   it('shutdown during boot settles the in-flight initialize (#1019)', async () => {
@@ -868,6 +951,8 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
       expect.objectContaining({
         verifyCredential: expect.any(Function),
         limiter: expect.anything(),
+        allowedBrowserOrigins:
+          stationBrowserOriginsFor(port).allowedBrowserOrigins,
       }),
     );
     expect(routeMocks.configureRuntimeRoutes).toHaveBeenCalledTimes(1);
@@ -1189,6 +1274,7 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
       1,
       port + 1,
       '127.0.0.1',
+      stationBrowserOriginsFor(port),
     );
     expect(attachVoiceWebSocket).not.toHaveBeenCalled();
     expect(routeMocks.servicePairs).toHaveLength(1);
@@ -1211,13 +1297,18 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
       2,
       port + 1,
       '127.0.0.1',
+      stationBrowserOriginsFor(port),
     );
     expect(attachVoiceWebSocket).toHaveBeenCalledTimes(1);
     expect(attachVoiceWebSocket).toHaveBeenCalledWith(
       port + 2,
       expect.anything(),
       '127.0.0.1',
-      expect.objectContaining({ verifyCredential: expect.any(Function) }),
+      expect.objectContaining({
+        verifyCredential: expect.any(Function),
+        allowedBrowserOrigins:
+          stationBrowserOriginsFor(port).allowedBrowserOrigins,
+      }),
     );
   });
 

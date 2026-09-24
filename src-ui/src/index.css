@@ -4795,6 +4795,42 @@ button.tool-call__line:hover {
   opacity: 0.8;
 }
 
+/* #2316: a decision in flight (or already accepted) cannot be sent twice. */
+.tool-call__approve-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* #2316: a decision Station did not accept is named on the card itself,
+   on its own line beneath the buttons. */
+.tool-call__actions:has(.tool-call__approve-error),
+.tool-call__actions:has(.tool-call__approve-status) {
+  flex-wrap: wrap;
+}
+
+.tool-call__approve-error,
+.tool-call__approve-status {
+  flex-basis: 100%;
+  margin: 2px 0 0;
+  font-size: 0.75em;
+}
+
+.tool-call__approve-error {
+  color: var(--error-text);
+}
+
+.tool-call__approve-status {
+  color: var(--color-text-secondary, var(--color-text));
+}
+
+/* #2316: approvals no transcript row can answer, under the transcript. */
+.pending-approvals {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 8px 0;
+}
+
 /* Collapsed tool-call batch — a muted single-line summary that replaces a
    stack of individually-expandable ToolCallDisplay cards ("three shell_exec
    cards fill the phone screen"). Tapping opens ToolCallBatchSheet, which
@@ -6510,13 +6546,12 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
     white-space: nowrap;
   }
 
-  /* Drop the (potentially long) connection name and the bundled-server note
-     on mobile — the status dot stays. The action cluster's own right-anchor
-     and shrink behaviour live with the rest of `.app-toolbar__actions` in
-     `components/chat/chat.css` (station#3766: two same-specificity rules here
-     and there contradicted each other). */
+  /* Hide the full state and identity spans on mobile. The compact healthy
+     chip keeps its bounded `Station · <saved name>` label in chat.css; the
+     action cluster's right-anchor and shrink behavior live there too
+     (station#3766). */
   .app-toolbar__conn-name,
-  .app-toolbar__conn-note {
+  .app-toolbar__conn-state {
     display: none;
   }
 
@@ -6785,6 +6820,82 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 .image-preview-navigation .button[aria-disabled="true"] {
   opacity: 0.5;
   cursor: default;
+}
+
+/* File Preview (non-image attachments) */
+.file-preview__actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-shrink: 0;
+}
+.file-preview__actions .button {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+}
+.file-preview__body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+}
+.file-preview__frame {
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  border: 0;
+  border-radius: 8px;
+  background: var(--bg-primary);
+}
+.file-preview__text {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+}
+.file-preview__source {
+  margin: 0;
+  padding: 12px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: 8px;
+  font-size: 0.85em;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.file-preview__markdown {
+  padding: 4px 8px;
+  overflow-wrap: anywhere;
+}
+.file-preview__notice {
+  margin: 0;
+  font-size: 0.85em;
+  color: var(--text-muted);
+}
+
+/* Markdown images in chat */
+.markdown-image {
+  max-width: 100%;
+  max-height: 480px;
+  border-radius: 6px;
+}
+.markdown-image-button {
+  position: relative;
+  display: inline-block;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: zoom-in;
+  max-width: 100%;
+}
+/* A 44px hit area without growing the line box: inline badges stay 20px tall
+   in prose, and the target extends invisibly around them. */
+.markdown-image-button::after {
+  content: "";
+  position: absolute;
+  inset: min(0px, calc((100% - 44px) / 2));
 }
 
 /* File Part Preview */
@@ -9000,6 +9111,18 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   max-width: 44px;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.chat-dock__mobile-conn--details {
+  max-width: 100%;
+  justify-content: flex-start;
+}
+
+.chat-dock__mobile-conn--details .chat-dock__mobile-conn-label {
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
 }
 
 /* The gesture-free dock toggle (archive#1052 follow-up): one glyph, flipped when the

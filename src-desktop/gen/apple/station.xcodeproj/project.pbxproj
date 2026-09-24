@@ -15,6 +15,7 @@
 		8D2BB0A1EFF96C48881C183B /* Metal.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = F72B645C441E80FC956644B0 /* Metal.framework */; };
 		9761CF8257B335817DD69F97 /* WebKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AFC2B8495E29FD157E17EEAD /* WebKit.framework */; };
 		AD0C7D6692E4F5A0C9405F3A /* MetalKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = F153A3698700B6031190A8FA /* MetalKit.framework */; };
+		B4F20CC0FBCCB07F4393C13C /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = FDEE6627583142A9999DE72B /* PrivacyInfo.xcprivacy */; };
 		BB70795B7BC2EBECB7FADACA /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = D12D8AFF0E5136982B70DEF7 /* Assets.xcassets */; };
 		EC733B854472516C57E8F03B /* Security.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 20787CF4DFA45B8BBCCC0A75 /* Security.framework */; };
 		F585BC5DED0AA79C7C26A1ED /* libapp.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 3B1D4566486EFF27D77D083C /* libapp.a */; };
@@ -22,19 +23,30 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		086AD6A306EE7D849A657F29 /* ssh_launcher.rs */ = {isa = PBXFileReference; path = ssh_launcher.rs; sourceTree = "<group>"; };
+		10453FA41C7DAF9DA304DF22 /* pairing_deep_link_channels_generated.rs */ = {isa = PBXFileReference; path = pairing_deep_link_channels_generated.rs; sourceTree = "<group>"; };
 		15ED59BCC609CA49A13CD77D /* QuartzCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = QuartzCore.framework; path = System/Library/Frameworks/QuartzCore.framework; sourceTree = SDKROOT; };
 		20787CF4DFA45B8BBCCC0A75 /* Security.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Security.framework; path = System/Library/Frameworks/Security.framework; sourceTree = SDKROOT; };
+		3A1672A32D06F6326FC12CCF /* desktop_companion.rs */ = {isa = PBXFileReference; path = desktop_companion.rs; sourceTree = "<group>"; };
 		3B1D4566486EFF27D77D083C /* libapp.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; path = libapp.a; sourceTree = "<group>"; };
 		42DA81DDFBD959D1F703A1C2 /* bindings.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = bindings.h; sourceTree = "<group>"; };
+		4FD1543B7D7363F59EFC809F /* startup_readiness.rs */ = {isa = PBXFileReference; path = startup_readiness.rs; sourceTree = "<group>"; };
+		50ECFC2E25BAEA0C34D69D43 /* windows_path_trust.rs */ = {isa = PBXFileReference; path = windows_path_trust.rs; sourceTree = "<group>"; };
 		5846F69BCDF7A7941E78AAF4 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		5A90D0604A2EC28CA1AFBB25 /* local_access_watch.rs */ = {isa = PBXFileReference; path = local_access_watch.rs; sourceTree = "<group>"; };
+		630318A6C42EE06BE935DD54 /* channel_ports_generated.rs */ = {isa = PBXFileReference; path = channel_ports_generated.rs; sourceTree = "<group>"; };
 		681BC26D1152661AEBA7B5F3 /* main.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = main.mm; sourceTree = "<group>"; };
 		725325E8980B82524E38D4E8 /* lib.rs */ = {isa = PBXFileReference; path = lib.rs; sourceTree = "<group>"; };
+		7345FFA3484F0890CE29A622 /* android_dns.rs */ = {isa = PBXFileReference; path = android_dns.rs; sourceTree = "<group>"; };
 		8D5E67359C63F739BA3D9A2D /* assets */ = {isa = PBXFileReference; lastKnownFileType = folder; path = assets; sourceTree = SOURCE_ROOT; };
 		8F2CA78C54A20EA0EEA824AB /* tray.rs */ = {isa = PBXFileReference; path = tray.rs; sourceTree = "<group>"; };
 		92CF7A7FF6A28CC53BDBAE4B /* station_iOS.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = station_iOS.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A3A6E4C2C130FC18D4CBBA25 /* station_iOS.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = station_iOS.entitlements; sourceTree = "<group>"; };
 		A7393132A0B53A78E8BA46E1 /* CoreGraphics.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreGraphics.framework; path = System/Library/Frameworks/CoreGraphics.framework; sourceTree = SDKROOT; };
+		A9FFC41781B10A1EFFA98C36 /* login_shell.rs */ = {isa = PBXFileReference; path = login_shell.rs; sourceTree = "<group>"; };
 		AFC2B8495E29FD157E17EEAD /* WebKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WebKit.framework; path = System/Library/Frameworks/WebKit.framework; sourceTree = SDKROOT; };
+		BB85CE7E4851316560BE5099 /* bundled_server_state.rs */ = {isa = PBXFileReference; path = bundled_server_state.rs; sourceTree = "<group>"; };
+		CEADBA2F0FC0432181CF6049 /* notification_watch.rs */ = {isa = PBXFileReference; path = notification_watch.rs; sourceTree = "<group>"; };
 		D12D8AFF0E5136982B70DEF7 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		D59DE748810D013D359DCE4E /* UIKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UIKit.framework; path = System/Library/Frameworks/UIKit.framework; sourceTree = SDKROOT; };
 		EA2365010BB379059C7633AE /* main.rs */ = {isa = PBXFileReference; path = main.rs; sourceTree = "<group>"; };
@@ -42,6 +54,8 @@
 		F153A3698700B6031190A8FA /* MetalKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = MetalKit.framework; path = System/Library/Frameworks/MetalKit.framework; sourceTree = SDKROOT; };
 		F65B2B0F7649F66A37265DCF /* service_state.rs */ = {isa = PBXFileReference; path = service_state.rs; sourceTree = "<group>"; };
 		F72B645C441E80FC956644B0 /* Metal.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Metal.framework; path = System/Library/Frameworks/Metal.framework; sourceTree = SDKROOT; };
+		F9ABC2F4DC001660B3AD6B74 /* windows_private_acl.rs */ = {isa = PBXFileReference; path = windows_private_acl.rs; sourceTree = "<group>"; };
+		FDEE6627583142A9999DE72B /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -101,6 +115,7 @@
 				8D5E67359C63F739BA3D9A2D /* assets */,
 				D12D8AFF0E5136982B70DEF7 /* Assets.xcassets */,
 				EDD857CFCBE58A31D3354F2B /* LaunchScreen.storyboard */,
+				FDEE6627583142A9999DE72B /* PrivacyInfo.xcprivacy */,
 				609980341784D1447A92C1B7 /* Externals */,
 				1C6E8B82D8F61273B48891DA /* Sources */,
 				CD6275B73E5CDACD97E5DF7F /* src */,
@@ -128,10 +143,22 @@
 		CD6275B73E5CDACD97E5DF7F /* src */ = {
 			isa = PBXGroup;
 			children = (
+				7345FFA3484F0890CE29A622 /* android_dns.rs */,
+				BB85CE7E4851316560BE5099 /* bundled_server_state.rs */,
+				630318A6C42EE06BE935DD54 /* channel_ports_generated.rs */,
+				3A1672A32D06F6326FC12CCF /* desktop_companion.rs */,
 				725325E8980B82524E38D4E8 /* lib.rs */,
+				5A90D0604A2EC28CA1AFBB25 /* local_access_watch.rs */,
+				A9FFC41781B10A1EFFA98C36 /* login_shell.rs */,
 				EA2365010BB379059C7633AE /* main.rs */,
+				CEADBA2F0FC0432181CF6049 /* notification_watch.rs */,
+				10453FA41C7DAF9DA304DF22 /* pairing_deep_link_channels_generated.rs */,
 				F65B2B0F7649F66A37265DCF /* service_state.rs */,
+				086AD6A306EE7D849A657F29 /* ssh_launcher.rs */,
+				4FD1543B7D7363F59EFC809F /* startup_readiness.rs */,
 				8F2CA78C54A20EA0EEA824AB /* tray.rs */,
+				50ECFC2E25BAEA0C34D69D43 /* windows_path_trust.rs */,
+				F9ABC2F4DC001660B3AD6B74 /* windows_private_acl.rs */,
 			);
 			name = src;
 			path = ../../src;
@@ -152,6 +179,20 @@
 				EA952A7F92F1B8CCE6C13D09 /* bindings */,
 			);
 			path = station;
+			sourceTree = "<group>";
+		};
+		"TEMP_6666F1A7-2728-4C1E-A6AC-0739C8F83A83" /* x86_64 */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = x86_64;
+			sourceTree = "<group>";
+		};
+		"TEMP_FFD1708A-9684-432F-B61F-CE4092DA1635" /* arm64 */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = arm64;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -214,6 +255,7 @@
 			files = (
 				BB70795B7BC2EBECB7FADACA /* Assets.xcassets in Resources */,
 				3A2610D39B73DBB3218B0E2A /* LaunchScreen.storyboard in Resources */,
+				B4F20CC0FBCCB07F4393C13C /* PrivacyInfo.xcprivacy in Resources */,
 				0D80FAB4324FD87181983189 /* assets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -280,7 +322,7 @@
 				"LIBRARY_SEARCH_PATHS[arch=arm64]" = "$(inherited) $(PROJECT_DIR)/Externals/arm64/$(CONFIGURATION) $(SDKROOT)/usr/lib/swift $(DEVELOPER_DIR)/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/$(PLATFORM_NAME) $(DEVELOPER_DIR)/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift-5.0/$(PLATFORM_NAME)";
 				"LIBRARY_SEARCH_PATHS[arch=x86_64]" = "$(inherited) $(PROJECT_DIR)/Externals/x86_64/$(CONFIGURATION) $(SDKROOT)/usr/lib/swift $(DEVELOPER_DIR)/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/$(PLATFORM_NAME) $(DEVELOPER_DIR)/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift-5.0/$(PLATFORM_NAME)";
 				PRODUCT_BUNDLE_IDENTIFIER = io.kontourai.station;
-				PRODUCT_NAME = "Station";
+				PRODUCT_NAME = Station;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				VALID_ARCHS = arm64;
@@ -430,7 +472,7 @@
 				"LIBRARY_SEARCH_PATHS[arch=arm64]" = "$(inherited) $(PROJECT_DIR)/Externals/arm64/$(CONFIGURATION) $(SDKROOT)/usr/lib/swift $(DEVELOPER_DIR)/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/$(PLATFORM_NAME) $(DEVELOPER_DIR)/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift-5.0/$(PLATFORM_NAME)";
 				"LIBRARY_SEARCH_PATHS[arch=x86_64]" = "$(inherited) $(PROJECT_DIR)/Externals/x86_64/$(CONFIGURATION) $(SDKROOT)/usr/lib/swift $(DEVELOPER_DIR)/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/$(PLATFORM_NAME) $(DEVELOPER_DIR)/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift-5.0/$(PLATFORM_NAME)";
 				PRODUCT_BUNDLE_IDENTIFIER = io.kontourai.station;
-				PRODUCT_NAME = "Station";
+				PRODUCT_NAME = Station;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				VALID_ARCHS = arm64;

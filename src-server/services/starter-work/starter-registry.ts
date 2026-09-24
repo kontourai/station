@@ -22,6 +22,7 @@ import type {
   StartTaskStarterLaunchInput,
   StartTaskStarterLaunchResult,
 } from '@kontourai/station-contracts/starter-work';
+import type { FullAccessGrant } from '../../security/coding-authority.js';
 import type { TaskDispatcher } from '../projects/task-dispatcher.js';
 import type { TaskGraphService } from '../projects/task-graph-service.js';
 import type {
@@ -491,6 +492,8 @@ export class StarterRegistry {
   /** One owner-controlled create → bind → dispatch transaction. */
   async launchStartTask(
     input: StartTaskStarterLaunchInput,
+    /** #2436: the launching request's full-access grant; see TaskDispatcher. */
+    fullAccessGrant: FullAccessGrant | null,
   ): Promise<StartTaskStarterLaunchResult> {
     this.assertKnown(input.starterId);
     this.assertPrerequisite();
@@ -593,6 +596,7 @@ export class StarterRegistry {
       agentId: input.dispatch?.agentId ?? task.agentId ?? readiness.agentId,
       skillName: input.dispatch?.skillName ?? task.skillName,
       sourceSurface: 'starter-work',
+      fullAccessGrant,
     });
     let dispatch: Extract<
       StartTaskStarterLaunchResult,

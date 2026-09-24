@@ -76,13 +76,13 @@ function useAttachmentObjectUrl(
           // right here. Applying it locally is what makes the object URL
           // renderable as an image.
           const bytes = await response.arrayBuffer();
+          const blob = new Blob([bytes], {
+            type: mediaType ?? 'application/octet-stream',
+          });
           const url = storeAttachmentObjectUrl(
             key,
-            URL.createObjectURL(
-              new Blob([bytes], {
-                type: mediaType ?? 'application/octet-stream',
-              }),
-            ),
+            URL.createObjectURL(blob),
+            blob,
           );
           if (!active) {
             releaseAttachmentObjectUrl(key);
@@ -125,8 +125,12 @@ export function FilePartPreview({ part, allParts }: FilePartPreviewProps) {
     return null;
   }
 
-  const canPreview =
-    Boolean(resolvedUrl) && part.mediaType?.startsWith('image/');
+  const isImage = part.mediaType?.startsWith('image/') === true;
+  // Every attachment whose bytes resolved opens the previewer, whatever its
+  // type: the previewer picks an inline view it can honestly render (image,
+  // PDF, text) and otherwise offers the bytes as a download.
+  const canOpen = Boolean(resolvedUrl);
+  const showThumbnail = canOpen && isImage;
   const fileName = part.name || 'Attachment';
   const allPreviewable = (allParts || [])
     .filter((p) => p.type === 'file' && p.mediaType?.startsWith('image/'))
@@ -146,17 +150,23 @@ export function FilePartPreview({ part, allParts }: FilePartPreviewProps) {
         : [];
     });
 
-  const handleClick = canPreview
+  const handleClick = canOpen
     ? () =>
         openPreview(
-          { url: resolvedUrl!, mediaType: part.mediaType!, name: fileName },
-          allPreviewable,
+          {
+            url: resolvedUrl!,
+            mediaType: part.mediaType ?? 'application/octet-stream',
+            name: fileName,
+          },
+          // Prev/next walks the images of this message; any other type opens
+          // on its own.
+          isImage ? allPreviewable : undefined,
         )
     : undefined;
 
   const previewContent = (
     <>
-      {canPreview ? (
+      {showThumbnail ? (
         <img
           src={resolvedUrl}
           alt={fileName}
@@ -174,7 +184,7 @@ export function FilePartPreview({ part, allParts }: FilePartPreviewProps) {
     </>
   );
 
-  if (canPreview) {
+  if (canOpen) {
     return (
       <button
         type="button"

@@ -243,14 +243,16 @@ export function DiffPanel({
   projectSlug,
 }: {
   workingDir: string;
-  projectSlug?: string;
+  /** The Project the diff is read in (#2412: the server refuses a folder
+   * outside it). */
+  projectSlug: string;
 }) {
   const { apiBase } = useApiBase();
   const {
     data: diff = '',
     isLoading: loading,
     error: queryError,
-  } = useCodingDiffQuery(workingDir, apiBase);
+  } = useCodingDiffQuery({ projectSlug, workingDir }, apiBase);
   return (
     <ObservedDiffPanel
       diff={diff}

@@ -7,6 +7,8 @@
          runtime prompt, which Android only shows when CAMERA is declared here. -->
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.camera.any" android:required="false" />
+  <uses-feature android:name="android.hardware.camera" android:required="false" />
+  <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
     <!-- Voice chat captures WebView getUserMedia audio; like CAMERA above, the
          OS runtime prompt only appears when these are declared. -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />

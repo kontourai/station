@@ -66,6 +66,7 @@ import {
   useRef,
   useState,
 } from 'react';
+import { stationQueryDefaults } from '../lib/queryDefaults';
 import { useHostRequestAuthorityScope } from './ApiBaseContext';
 
 /**
@@ -138,15 +139,7 @@ export function useOptionalRecoveryScope(): RecoveryScope | null {
 
 function createRecoveryClient(): QueryClient {
   return new QueryClient({
-    defaultOptions: {
-      queries: {
-        staleTime: 5 * 60 * 1000,
-        gcTime: 10 * 60 * 1000,
-        refetchOnWindowFocus: false,
-        refetchOnMount: false,
-        retry: 1,
-      },
-    },
+    defaultOptions: { queries: stationQueryDefaults() },
   });
 }
 

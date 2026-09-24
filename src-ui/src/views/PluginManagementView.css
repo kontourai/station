@@ -909,6 +909,43 @@
 .plugins__modal-body--visible {
   overflow: visible;
 }
+
+/* ── New Plugin Modal ── */
+.plugins__new-plugin,
+.plugins__new-plugin-fields {
+  display: grid;
+  gap: 12px;
+}
+.plugins__new-plugin-fields,
+.plugins__new-plugin-templates {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+.plugins__new-plugin-template {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-height: 44px;
+  padding: 6px 0;
+  cursor: pointer;
+}
+.plugins__new-plugin-template > span {
+  display: grid;
+  gap: 2px;
+}
+.plugins__new-plugin-primer {
+  width: 100%;
+  min-height: 160px;
+  font: inherit;
+  resize: vertical;
+}
+.plugins__new-plugin-error {
+  margin: 4px 0 0;
+  color: var(--error-text);
+  font-size: 0.8rem;
+}
 .plugins__install--modal {
   margin-bottom: 16px;
 }
@@ -949,6 +986,11 @@
 }
 .plugins__preview-conflict-tag {
   color: var(--accent-primary);
+  font-size: var(--text-base);
+}
+.plugins__preview-required-tag,
+.plugins__preview-component-id {
+  color: var(--text-muted);
   font-size: var(--text-base);
 }
 .plugins__preview-deps {
@@ -1321,4 +1363,16 @@
 }
 .plugins__contribution-action {
   margin-left: auto;
+}
+
+/* ── Reinstall from source (#2323 S4) ── */
+.plugins__reinstall-delta {
+  margin-bottom: 0.75rem;
+}
+.plugins__reinstall-delta p {
+  margin: 0 0 4px;
+}
+.plugins__reinstall-permissions {
+  margin: 0 0 6px;
+  padding-left: 1.25rem;
 }

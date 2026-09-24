@@ -4,24 +4,129 @@ import {
   classifyHttpFailureResponse,
   classifyNativeTransportRefusal,
   HEALTH_PROBE_TIMEOUT_MS,
+  isNativeTransportSaturation,
+  type SavedConnection,
 } from '@kontourai/station-connect';
 import { PUBLIC_STATION_HANDSHAKE_PATH } from '@kontourai/station-contracts/environment-security';
 import { authenticatedFetch } from '@kontourai/station-sdk';
 import { isBlockingCompatibility } from './compatibilityLoader';
 import { isStationUiProxyUnavailableResponse } from './station-ui-proxy';
 
+type HealthRoute =
+  | {
+      kind: 'relay';
+      transport: typeof fetch;
+      identityTransport?: typeof fetch;
+      isCurrent(): boolean;
+      clientOrigin: string;
+      credential?: string;
+    }
+  | { kind: 'reject' }
+  | null;
+type BrokerRoute = NonNullable<SavedConnection['brokerRoute']>;
+
+function relayAuthorityFailure(
+  error: unknown,
+): ConnectionHealthCheckResult | null {
+  const code =
+    error && typeof error === 'object' && 'code' in error
+      ? (error as { code?: unknown }).code
+      : undefined;
+  if (
+    code === 'station_application_authority_required' ||
+    code === 'station_application_authority_invalid'
+  )
+    return { ok: false, reason: 'authentication-failed' };
+  if (code === 'station_relay_route_stale')
+    return { ok: false, reason: 'undetermined' };
+  return null;
+}
+let healthRouteResolver:
+  | ((
+      origin: string,
+      brokerRoute?: BrokerRoute,
+      authenticated?: boolean,
+    ) => HealthRoute | Promise<HealthRoute>)
+  | undefined;
+
+/** Installed by the active Station owner, never by broker discovery. */
+export function setStationHealthRouteResolver(
+  resolver?: (
+    origin: string,
+    brokerRoute?: BrokerRoute,
+    authenticated?: boolean,
+  ) => HealthRoute | Promise<HealthRoute>,
+): void {
+  healthRouteResolver = resolver;
+}
+
+async function healthFetch(
+  url: string | URL,
+  init?: RequestInit,
+  brokerRoute?: BrokerRoute,
+): Promise<Response> {
+  const origin = new URL(url).origin;
+  const route = await healthRouteResolver?.(origin, brokerRoute, false);
+  if (brokerRoute && !route)
+    return Promise.reject(new Error('Station broker route is not ready'));
+  if (route?.kind === 'reject')
+    return Promise.reject(new Error('Station route is not ready'));
+  if (route?.kind === 'relay') {
+    if (!route.isCurrent())
+      return Promise.reject(new Error('Station route is retired'));
+    return route.transport(url, {
+      ...init,
+      headers: {
+        ...Object.fromEntries(new Headers(init?.headers)),
+        Origin: route.clientOrigin,
+      },
+    });
+  }
+  return fetch(url, init);
+}
+
 /**
  * Browser callers retain their explicit per-connection credential behavior.
  * Desktop deliberately supplies no credential string, which selects the
  * origin-scoped native broker configured by ApiBaseContext instead.
  */
-function stationAuthenticatedFetch(
+async function stationAuthenticatedFetch(
   url: string | URL,
   credential: string | undefined,
   init?: RequestInit,
+  brokerRoute?: BrokerRoute,
 ): Promise<Response> {
+  const route = await healthRouteResolver?.(
+    new URL(url).origin,
+    brokerRoute,
+    true,
+  );
+  if (brokerRoute && !route)
+    return Promise.reject(new Error('Station broker route is not ready'));
+  if (route?.kind === 'reject')
+    return Promise.reject(new Error('Station route is not ready'));
+  if (route?.kind === 'relay') {
+    if (!route.identityTransport || !route.isCurrent()) {
+      return Promise.reject(
+        Object.assign(
+          new Error('Approved Station application authority is not ready'),
+          { code: 'station_application_authority_required' },
+        ),
+      );
+    }
+    return route.identityTransport(url, {
+      ...init,
+      headers: {
+        ...Object.fromEntries(new Headers(init?.headers)),
+        Origin: route.clientOrigin,
+        ...(credential && !new Headers(init?.headers).has('Authorization')
+          ? { Authorization: `Bearer ${credential}` }
+          : {}),
+      },
+    });
+  }
   if (!credential) return authenticatedFetch(url, init);
-  return fetch(url, {
+  return healthFetch(url, {
     ...init,
     headers: {
       ...(init?.headers ?? {}),
@@ -115,6 +220,8 @@ export async function checkServerHealthDetailed(
     // alone could not tell the two apart in either direction.
     return { ok: false, reason: await reasonForFailedResponse(response) };
   } catch (error) {
+    const relayFailure = relayAuthorityFailure(error);
+    if (relayFailure) return relayFailure;
     // archive#1713: a desktop native-transport invoke-layer refusal (e.g.
     // "no host-authorized active Station") is not a transport failure at
     // all — recognize it before falling back to the generic reading. Only a
@@ -132,6 +239,7 @@ export async function probeServerConnection(
   credential: string | undefined,
   expectedEnvironmentId: string | null,
   parentSignal: AbortSignal,
+  brokerRoute?: BrokerRoute,
 ): Promise<ConnectionHealthCheckResult> {
   const controller = new AbortController();
   if (parentSignal.aborted) controller.abort(parentSignal.reason);
@@ -141,13 +249,19 @@ export async function probeServerConnection(
   );
   const abort = () => controller.abort(parentSignal.reason);
   parentSignal.addEventListener('abort', abort, { once: true });
+  // station#2327: set once the public handshake has answered as the expected
+  // Station. From then on, a deadline or a saturated native queue on the
+  // identity read is a Station that is slow to give this device a turn — the
+  // address demonstrably answers — not one that cannot be reached.
+  let handshakeAnswered = false;
   try {
-    const handshakeResponse = await fetch(
+    const handshakeResponse = await healthFetch(
       new URL(PUBLIC_STATION_HANDSHAKE_PATH, url),
       {
         headers: { Accept: 'application/json' },
         signal: controller.signal,
       },
+      brokerRoute,
     );
     // archive#3297: this line was the defect the issue was filed about. The
     // public handshake answering 401 — or 403, or 404 — proves the address
@@ -202,10 +316,19 @@ export async function probeServerConnection(
     ) {
       return { ok: false, reason: 'identity-mismatch' };
     }
+    handshakeAnswered = true;
     const identityResponse = await stationAuthenticatedFetch(
       new URL('/api/system/identity', url),
       credential,
-      { signal: controller.signal },
+      // station#2327: on desktop this read would otherwise wait in the native
+      // broker's ordinary-read queue behind every background poll, which is
+      // exactly where it timed out on a stalled Station. `livenessProbe`
+      // takes the broker's one reserved slot instead (or is refused at once).
+      // It is carried as an untyped init field on purpose: the native
+      // transport reads it (`authenticatedTransport.ts`), and nothing else is
+      // meant to set it. Plain `fetch` ignores unknown init members.
+      { signal: controller.signal, livenessProbe: true } as RequestInit,
+      brokerRoute,
     );
     if (!identityResponse.ok) {
       return {
@@ -218,12 +341,21 @@ export async function probeServerConnection(
       ? { ok: true, bootId: identity.bootId }
       : { ok: false, reason: 'unsupported-capability-version' };
   } catch (error) {
+    const relayFailure = relayAuthorityFailure(error);
+    if (relayFailure) return relayFailure;
     // archive#1713: same invoke-layer recognition as `checkServerHealthDetailed`
     // above — a native-transport refusal must never collapse into
     // 'unreachable' just because it arrived as a thrown error like every
     // other transport failure here.
     const nativeRefusal = classifyNativeTransportRefusal(error);
     if (nativeRefusal) return { ok: false, reason: nativeRefusal };
+    if (
+      handshakeAnswered &&
+      (controller.signal.reason === 'timeout' ||
+        isNativeTransportSaturation(error))
+    ) {
+      return { ok: false, reason: 'busy' };
+    }
     return {
       ok: false,
       reason:

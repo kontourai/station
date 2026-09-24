@@ -1,7 +1,12 @@
 import { relativeTimeAgo } from '../../utils/relativeTime';
 import type { SessionIconAgent } from '../../utils/sessionDisplay';
+import {
+  draftDiscardThreadId,
+  draftSessionIds,
+} from '../../views/home/draft-lane';
 import type { HomeLaneItem } from '../../views/home/home-lane-model';
 import { homeRowIconAgent } from '../../views/home/home-row-icon';
+import { DiscardDraftButton } from '../drafts/DiscardDraftButton';
 import { AgentIcon } from '../icons/AgentIcon';
 import { TimeGlyph } from '../icons/Glyph';
 import { LazyBoundary } from '../LazyBoundary';
@@ -23,6 +28,11 @@ interface HomeWorkRowProps {
   agents: readonly SessionIconAgent[];
   onOpen: (task: HomeLaneItem) => void;
   onSnooze?: (task: HomeLaneItem, trigger: HTMLButtonElement) => void;
+  /**
+   * #2312: offer "Discard draft" (a server delete) when the row is a Draft
+   * the server can name. Set by the Drafts section only.
+   */
+  discardDraft?: boolean;
 }
 
 /** Shared Home work-row renderer for active, terminal, and settled lanes. */
@@ -32,7 +42,9 @@ export function renderHomeWorkRow({
   agents,
   onOpen,
   onSnooze,
+  discardDraft = false,
 }: HomeWorkRowProps) {
+  const discardThreadId = discardDraft ? draftDiscardThreadId(task) : null;
   // The catalog entry itself, never a synthesised object: `AgentIcon` takes
   // `agent` by identity, and MessageBubble's archive#1424 N4 note records
   // what allocating a fresh one per render costs. `null` means this Station
@@ -132,17 +144,27 @@ export function renderHomeWorkRow({
             </span>
           )}
         </button>
-        {onSnooze && (
+        {(onSnooze || discardThreadId) && (
           <div className="home-view__row-actions">
-            <button
-              type="button"
-              className="home-view__row-action"
-              aria-label={`Snooze ${task.title}`}
-              aria-haspopup="menu"
-              onClick={(event) => onSnooze(task, event.currentTarget)}
-            >
-              <TimeGlyph />
-            </button>
+            {onSnooze && (
+              <button
+                type="button"
+                className="home-view__row-action"
+                aria-label={`Snooze ${task.title}`}
+                aria-haspopup="menu"
+                onClick={(event) => onSnooze(task, event.currentTarget)}
+              >
+                <TimeGlyph />
+              </button>
+            )}
+            {discardThreadId && (
+              <DiscardDraftButton
+                threadId={discardThreadId}
+                title={task.title}
+                className="home-view__row-action"
+                closeSessionIds={draftSessionIds(task)}
+              />
+            )}
           </div>
         )}
       </div>

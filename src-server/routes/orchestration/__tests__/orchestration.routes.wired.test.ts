@@ -34,6 +34,10 @@ function buildApp() {
     eventBus: new EventBus(),
     logger: { debug: vi.fn() },
     getUserId: () => 'brian',
+    // Production wires the post-resolution sender-authority probe
+    // (runtime-routes.ts); without it the #2285 stale-sender guard refuses
+    // every follow-up forward with 403 before any outbound fetch.
+    isRequestPrincipalCurrent: () => true,
     delegateTask,
     discoverDelegationOptions,
     continueDelegatedTask,
@@ -266,7 +270,7 @@ describe('Orchestration routes wired to the real delegation service (#977 AC12)'
     expect(res.status).toBe(400);
     expect(await readJson(res)).toMatchObject({
       success: false,
-      error: 'Delegated task not found',
+      error: 'The selected Station could not continue the delegated task',
     });
   });
 

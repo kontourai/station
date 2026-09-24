@@ -30,6 +30,7 @@ import { useChatInput } from '../../hooks/useChatInput';
 import { useMobileVisualViewport } from '../../hooks/useMobileVisualViewport';
 import type { ChatMessage, ChatSession, FileAttachment } from '../../types';
 import { advertisedAcpSessionModesFromConnection } from '../../utils/acpSessionMode';
+import { sessionApprovalOverride } from '../../utils/approvalMode';
 import { sessionAdapterSupportsSteering } from '../../utils/execution';
 import {
   accountableHumanFromUser,
@@ -84,7 +85,9 @@ const EMPTY_STRING_LIST: string[] = [];
  * so passing it through `as any` (the old code) left every message key
  * namespaced under the literal "undefined". Only the fields the transcript
  * actually reads (id, agentSlug, agentName, conversationId, messages,
- * status/orchestrationStatus, isProcessingStep, pendingApprovals) come from
+ * status/orchestrationStatus, isProcessingStep, pendingApprovals, and the
+ * #2309 activity record with its send/stop window, and the older-server
+ * open-turn start for the working clock) come from
  * live state; everything else the type requires but the transcript ignores
  * is a stable constant so an unrelated composer update (e.g. `input`) can't
  * change this object's shallow-equality outcome.
@@ -115,6 +118,16 @@ export function buildTranscriptSession(
     orchestrationStatus: state.orchestrationStatus,
     pendingApprovals: state.pendingApprovals,
     isProcessingStep: state.isProcessingStep,
+    // #2309: the server's record drives this panel's liveness and working
+    // clock exactly as it drives the dock's, so a reload mid-turn shows the
+    // turn's real duration here too (the panel has no window seed of its own).
+    conversationActivity: state.conversationActivity,
+    sendAwaitingTurnStart: state.sendAwaitingTurnStart,
+    stopSettledTurnId: state.stopSettledTurnId,
+    // #2304: without a record (an older server) the clock falls back to the
+    // start `turn.started` stamped; ACP has no window seed, so after a reload
+    // on such a server the row states no duration.
+    openTurnStartedAt: state.openTurnStartedAt,
   };
 }
 
@@ -179,19 +192,18 @@ export function ACPChatPanel({
   const { project: sessionProject } = useProject(
     activeSession?.projectSlug ?? projectSlug ?? '',
   );
-  // Agent app connection default for the approval-mode chip (archive#727
-  //) — mirrors useChatDockViewModel.ts's connectionApprovalModeDefault.
   const { data: agentConnections = [] } = useEngineConnectionsQuery() as {
     data?: AgentConnectionView[];
   };
   const runtimeConnection = agentConnections.find(
     (connection) => connection.id === activeSession?.agentConnectionId,
   );
-  const connectionApprovalModeDefault =
-    typeof runtimeConnection?.config.approvalMode === 'string'
-      ? runtimeConnection.config.approvalMode
-      : undefined;
-  // #2144 slice 6: the Station-scope layer below that connection default.
+  // The session's Agent's own default posture for the approval-mode chip
+  // (#2436) — mirrors useChatDockViewModel.ts's agentApprovalModeDefault.
+  const agentApprovalModeDefault = agents.find(
+    (agent) => agent.slug === activeSession?.agentSlug,
+  )?.execution?.approvalMode;
+  // #2144 slice 6: the Station-scope layer below that Agent default.
   const stationApprovalModeDefault = useConfig()?.defaultApprovalMode;
   const { data: acpConnections = [] } = useACPConnections();
   const advertisedAcpSession = useMemo(
@@ -306,6 +318,7 @@ export function ACPChatPanel({
         isSending={activeSession.status === 'sending'}
         turnInFlight={isTurnInFlight(activeSession)}
         workingDirectory={sessionProject?.workingDirectory}
+        mentionProjectSlug={sessionProject?.slug}
         mentionRequestScope={mentionRequestScope}
         mentionAuthority={mentionAuthority}
         busyFollowUp={
@@ -336,7 +349,7 @@ export function ACPChatPanel({
           activeSession.providerOptions
         }
         executionMode={activeSession.executionMode}
-        approvalModeConnectionDefault={connectionApprovalModeDefault}
+        approvalModeAgentDefault={agentApprovalModeDefault}
         approvalModeStationDefault={stationApprovalModeDefault}
         toolPolicyDelivery={
           runtimeConnection
@@ -347,6 +360,7 @@ export function ACPChatPanel({
             : undefined
         }
         lastAppliedApprovalMode={activeSession.lastAppliedApprovalMode}
+        approvalModeOverride={sessionApprovalOverride(activeSession)}
         acpSessionModes={advertisedAcpSession.modes}
         acpCurrentModeId={
           activeSession.currentModeId ?? advertisedAcpSession.currentModeId

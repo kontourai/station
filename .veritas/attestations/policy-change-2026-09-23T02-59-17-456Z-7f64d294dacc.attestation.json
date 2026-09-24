@@ -1,0 +1,93 @@
+{
+  "schemaVersion": 1,
+  "id": "policy-change-2026-09-23T02-59-17-456Z-7f64d294dacc",
+  "kind": "policy-change",
+  "actor": {
+    "id": "brian-anderson",
+    "displayName": "Brian Anderson",
+    "identityEvidence": {
+      "gitEmail": "brian.anderson@kontourai.io",
+      "signingKeyFingerprint": null
+    }
+  },
+  "attestedAt": "2026-09-23T02:59:17.456Z",
+  "repoStandardsHash": "sha256:181e7e4b739076b4b4d6a6ae4b0e65832024620fdf7af14dc654905137638f09",
+  "repoMapHash": "sha256:4bb2649b64f9362547c1905514694881713af1fd97517ea008a19c7e6723bfc3",
+  "repoMapHashAlgorithm": "public-policy-v1",
+  "authoritySettingsHash": "sha256:b47233d5d20d847ee85c5b77ccbd991ff13159270690a6adb957134b72cf57ac",
+  "priorAttestationId": "policy-change-2026-09-18T04-06-56-449Z-84bb216db68b",
+  "validUntilDays": 90,
+  "notes": "Approved in this conversation on 2026-09-22: add advisory session lifecycle recovery and bounded background work guidance, with no new behavioral gate or promotion to Require.",
+  "metadata": {
+    "protectedStandardsPaths": {
+      "repoStandardsPath": ".veritas/repo-standards/default.repo-standards.json",
+      "repoMapPath": ".veritas/repo-map.json",
+      "authoritySettingsPath": ".veritas/authority/default.authority-settings.json"
+    },
+    "supersedes": "policy-change-2026-09-18T04-06-56-449Z-84bb216db68b",
+    "approvalRef": "user-approval-2026-09-22-issue-class-prevention",
+    "approvalRefPolicy": {
+      "mode": "reference-only",
+      "matchedPrefix": null,
+      "requiresResolution": false
+    },
+    "approvalResolution": null
+  },
+  "surface": {
+    "claim": {
+      "id": "veritas.attestation.policy-change-2026-09-23T02-59-17-456Z-7f64d294dacc",
+      "subjectType": "veritas-protected-standards",
+      "subjectId": "protected-standards",
+      "facet": "veritas.attestations",
+      "claimType": "veritas-human-attestation",
+      "fieldOrBehavior": "policy-change",
+      "value": {
+        "contentHash": "ea01e562768f5be8561bae52f1d339f5784b1bb9200fd2d6280f014f1fd552d2",
+        "validUntil": "2026-12-22T02:59:17.456Z"
+      },
+      "createdAt": "2026-09-23T02:59:17.456Z",
+      "updatedAt": "2026-09-23T02:59:17.456Z",
+      "status": "verified",
+      "impactLevel": "high",
+      "confidenceBasis": {
+        "sourceQuality": "strong",
+        "reviewerAuthority": "human",
+        "evidenceStrength": "strong",
+        "impactLevel": "high"
+      }
+    },
+    "evidence": {
+      "id": "evidence.attestation.veritas.attestation.policy-change-2026-09-23T02-59-17-456Z-7f64d294dacc",
+      "claimId": "veritas.attestation.policy-change-2026-09-23T02-59-17-456Z-7f64d294dacc",
+      "evidenceType": "attestation",
+      "method": "attestation",
+      "sourceRef": "veritas:protected-standards",
+      "excerptOrSummary": "Approved in this conversation on 2026-09-22: add advisory session lifecycle recovery and bounded background work guidance, with no new behavioral gate or promotion to Require.",
+      "observedAt": "2026-09-23T02:59:17.456Z",
+      "collectedBy": "brian-anderson",
+      "integrityRef": "ea01e562768f5be8561bae52f1d339f5784b1bb9200fd2d6280f014f1fd552d2",
+      "metadata": {
+        "actor": {
+          "id": "brian-anderson",
+          "displayName": "Brian Anderson"
+        },
+        "attestedAt": "2026-09-23T02:59:17.456Z",
+        "validUntil": "2026-12-22T02:59:17.456Z",
+        "contentHash": "ea01e562768f5be8561bae52f1d339f5784b1bb9200fd2d6280f014f1fd552d2"
+      },
+      "sourceLocator": ".veritas/attestations"
+    },
+    "event": {
+      "id": "veritas.attestation.policy-change-2026-09-23T02-59-17-456Z-7f64d294dacc.verified",
+      "claimId": "veritas.attestation.policy-change-2026-09-23T02-59-17-456Z-7f64d294dacc",
+      "status": "verified",
+      "actor": "brian-anderson",
+      "method": "human attestation",
+      "evidenceIds": [
+        "evidence.attestation.veritas.attestation.policy-change-2026-09-23T02-59-17-456Z-7f64d294dacc"
+      ],
+      "createdAt": "2026-09-23T02:59:17.456Z",
+      "verifiedAt": "2026-09-23T02:59:17.456Z"
+    }
+  }
+}

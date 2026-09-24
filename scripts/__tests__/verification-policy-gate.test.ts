@@ -208,6 +208,30 @@ describe('verification policy gate', () => {
     );
   });
 
+  test('turns red on an expired test quarantine and names the entry (station quarantine policy)', () => {
+    const quarantined = trackedVitestFixture[0];
+    const evidence =
+      'commit 8e40e858a1b2c3d4e5f60718293a4b5c6d7e8f90 passed in run 35756143372 and failed in run 35756143999';
+    const gate = (expires: string) =>
+      executableVerificationPolicyErrors({
+        discoverVitest: () => completeVitestGroups(),
+        discoverTrackedVitest: () => [...trackedVitestFixture],
+        now: new Date('2026-09-22T12:00:00Z'),
+        quarantine: [
+          {
+            file: quarantined,
+            issue: 'https://github.com/kontourai/station/issues/2400',
+            expires,
+            evidence,
+          },
+        ],
+      }).filter((error) => error.startsWith('Test quarantine:'));
+    expect(gate('2026-09-30')).toEqual([]);
+    expect(gate('2026-09-21')).toEqual([
+      `Test quarantine: quarantine entry 1 (${quarantined}): quarantine expired on 2026-09-21; fix the test and remove the entry, or renew it with new evidence`,
+    ]);
+  });
+
   test('fails closed when independently tracked Vitest discovery cannot run', () => {
     const errors = executableVerificationPolicyErrors({
       discoverVitest: () => completeVitestGroups(),

@@ -90,6 +90,71 @@ export interface ApiRequestScope {
   authorityKey: string;
 }
 
+/** Explicit selected-route policy for browser features that cannot use the SDK transport. */
+export interface ClientRawEgressPolicy {
+  kind: 'direct' | 'broker';
+  apiBase: string;
+  connectionId: string;
+  activationEpoch: string;
+  authorityKey?: string;
+  isCurrent: () => boolean;
+}
+
+export type ClientRawEgressPolicyResolver = () =>
+  | ClientRawEgressPolicy
+  | undefined;
+
+let rawEgressPolicyResolver: ClientRawEgressPolicyResolver | undefined;
+
+/** Install the host's live selected-route egress policy. */
+export function setClientRawEgressPolicyResolver(
+  resolver?: ClientRawEgressPolicyResolver,
+): void {
+  rawEgressPolicyResolver = resolver;
+}
+
+/** Read the current explicit route policy without inspecting transport presence. */
+export function getClientRawEgressPolicy(): ClientRawEgressPolicy | undefined {
+  return rawEgressPolicyResolver?.();
+}
+
+export type ClientRawEgressChannel = 'attachment upload' | 'terminal' | 'voice';
+
+/** Raised before content can leave through a browser API outside SDK transport. */
+export class StationRawEgressUnavailableError extends Error {
+  constructor(channel: ClientRawEgressChannel) {
+    super(
+      `Browser broker routes do not support direct ${channel} connections yet. Select a direct Station connection to use this feature.`,
+    );
+    this.name = 'StationRawEgressUnavailableError';
+  }
+}
+
+/** Fail before raw browser dispatch when the selected Station is a broker route. */
+export function assertClientRawEgressAllowed(
+  apiBase: string,
+  channel: ClientRawEgressChannel,
+  expected?: string | ApiRequestScope,
+): void {
+  const policy = getClientRawEgressPolicy();
+  if (!policy) return;
+  if (!policy.isCurrent()) throw new StationRequestAuthorityError();
+  if (policy.kind === 'broker' && sameOrigin(apiBase, policy.apiBase)) {
+    throw new StationRawEgressUnavailableError(channel);
+  }
+  if (typeof expected === 'string' && policy.connectionId !== expected) {
+    throw new StationRequestAuthorityError();
+  }
+  if (
+    expected &&
+    typeof expected === 'object' &&
+    (policy.apiBase !== expected.apiBase ||
+      (policy.authorityKey !== undefined &&
+        policy.authorityKey !== expected.authorityKey))
+  )
+    throw new StationRequestAuthorityError();
+}
+
 export function isApiRequestScope(
   value: ApiRequestScope | undefined,
 ): value is ApiRequestScope {
@@ -364,6 +429,21 @@ export class StationHttpError extends Error {
     if (options?.code !== undefined) {
       this.code = options.code;
     }
+  }
+}
+
+/**
+ * An SSE attempt abandoned because its body delivered nothing for
+ * `stallTimeoutMs` (station#2301). Classified transient: the stream reconnects
+ * with its cursor, exactly as for a dropped connection.
+ */
+export class StationSseStallError extends Error {
+  readonly stallTimeoutMs: number;
+
+  constructor(stallTimeoutMs: number) {
+    super(`SSE stream delivered nothing for ${stallTimeoutMs}ms`);
+    this.name = 'StationSseStallError';
+    this.stallTimeoutMs = stallTimeoutMs;
   }
 }
 
@@ -1164,6 +1244,25 @@ export interface FetchSseOptions extends ClientRequestOptions {
    * climbing, which is the correct direction — something is wrong.
    */
   healthyConnectionMs?: number;
+  /**
+   * station#2301: abandon an attempt whose body has delivered NO bytes for
+   * this long, and reconnect through the ordinary transient-failure path
+   * (Last-Event-ID kept). Unset — the default — waits on `reader.read()`
+   * forever, which is what an open-ended stream with no server heartbeat
+   * needs.
+   *
+   * A socket that dies without an error (doze, NAT rebind, a frozen WebView
+   * resuming onto a dead connection) never rejects that read: the stream
+   * looks open, delivers nothing, and nothing notices. Only a caller whose
+   * server writes a heartbeat can tell silence from death, so only it can
+   * choose this number; set it to a few heartbeat intervals. Any bytes count
+   * as activity, including comments and keepalive frames the caller ignores.
+   *
+   * Checked on a timer and again whenever the page becomes visible, so a
+   * resumed background page — whose timers were frozen — notices at once
+   * rather than one check interval later.
+   */
+  stallTimeoutMs?: number;
   onOpen?: (response: Response) => void;
   /** Return false when the frame was rejected and must not advance its checkpoint. */
   onMessage: (message: FetchSseMessage) => unknown;
@@ -1441,6 +1540,7 @@ async function consumeSseResponse(
   signal: AbortSignal,
   onMessage: (message: FetchSseMessage) => unknown,
   onCheckpoint: (checkpoint: { id?: string; retry?: number }) => void,
+  stallTimeoutMs?: number,
 ): Promise<void> {
   if (!response.ok) {
     const retryAfterMs = parseRetryAfterMs(response.headers.get('retry-after'));
@@ -1458,9 +1558,11 @@ async function consumeSseResponse(
     void reader.cancel();
   };
   signal.addEventListener('abort', cancelReader, { once: true });
+  const stopWatchdog = watchForStall(stallTimeoutMs, cancelReader);
   try {
     while (!signal.aborted) {
       const chunk = await reader.read();
+      stopWatchdog.touch();
       buffer += decoder.decode(chunk.value, { stream: !chunk.done });
       const frames = buffer.split(/\r?\n\r?\n/);
       buffer = frames.pop() ?? '';
@@ -1471,9 +1573,57 @@ async function consumeSseResponse(
       if (chunk.done) break;
     }
   } finally {
+    stopWatchdog.stop();
     signal.removeEventListener('abort', cancelReader);
     reader.releaseLock();
   }
+  // Cancelling the reader resolves the pending read as `done`, which on its
+  // own reads exactly like a server that closed cleanly. Name the cause.
+  if (stopWatchdog.stalled && !signal.aborted && stallTimeoutMs !== undefined)
+    throw new StationSseStallError(stallTimeoutMs);
+}
+
+/**
+ * The read deadline behind `stallTimeoutMs`. Compares wall-clock elapsed time
+ * rather than trusting a single timer to fire on schedule: a backgrounded page
+ * freezes timers, and the first check after it resumes must see the whole
+ * silence, not restart it.
+ */
+function watchForStall(
+  stallTimeoutMs: number | undefined,
+  cancel: () => void,
+): { touch(): void; stop(): void; readonly stalled: boolean } {
+  let stalled = false;
+  if (stallTimeoutMs === undefined) {
+    return { touch() {}, stop() {}, stalled };
+  }
+  let lastActivityAt = Date.now();
+  const check = () => {
+    if (stalled || browserDocument()?.hidden === true) return;
+    if (Date.now() - lastActivityAt < stallTimeoutMs) return;
+    stalled = true;
+    cancel();
+  };
+  const timer = setInterval(check, Math.max(1, Math.floor(stallTimeoutMs / 3)));
+  const doc = browserDocument();
+  const scope = browserWindow();
+  doc?.addEventListener('visibilitychange', check);
+  scope?.addEventListener('focus', check);
+  scope?.addEventListener('online', check);
+  return {
+    touch() {
+      lastActivityAt = Date.now();
+    },
+    stop() {
+      clearInterval(timer);
+      doc?.removeEventListener('visibilitychange', check);
+      scope?.removeEventListener('focus', check);
+      scope?.removeEventListener('online', check);
+    },
+    get stalled() {
+      return stalled;
+    },
+  };
 }
 
 /**
@@ -1585,6 +1735,7 @@ export function fetchSSE(
             }
             opts.onCheckpoint?.(checkpoint);
           },
+          opts.stallTimeoutMs,
         );
         if (!controller.signal.aborted) {
           throw new Error('SSE stream ended unexpectedly');

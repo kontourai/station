@@ -314,6 +314,14 @@ export function createSessionInventoryModule(input: {
       // text/reasoning deltas, progress, arguments, output, error details,
       // request text and arbitrary metadata never reach this projection.
       if (descriptor.method === 'turn.started') {
+        // #2324: a turn the engine opened on its own provided no input;
+        // listing it here would invent a message the user never wrote.
+        if (
+          descriptor.trigger === 'provider' ||
+          descriptor.metadata?.trigger === 'provider'
+        ) {
+          continue;
+        }
         const attachments = (descriptor.attachments ?? []).map(
           (attachment: {
             name: string;

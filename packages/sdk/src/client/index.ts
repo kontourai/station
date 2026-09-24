@@ -44,24 +44,31 @@ export type {
   ClientAuthenticatedRequestInit,
   ClientCredential,
   ClientCredentialResolver,
+  ClientRawEgressChannel,
+  ClientRawEgressPolicy,
+  ClientRawEgressPolicyResolver,
   ClientRequestOptions,
   FetchSseConnection,
   FetchSseMessage,
   FetchSseOptions,
 } from './http';
 export {
+  assertClientRawEgressAllowed,
   authenticatedFetch,
   DEFAULT_CLIENT_REQUEST_TIMEOUT_MS,
   fetchSSE,
+  getClientRawEgressPolicy,
   getClientRequestTimeout,
   isApiRequestScope,
   notifyCredentialChanged,
   StationCredentialConflictError,
   StationHttpError,
+  StationRawEgressUnavailableError,
   StationReadOnlyError,
   StationRequestAuthorityError,
   StationRequestTimeoutError,
   setClientCredentialResolver,
+  setClientRawEgressPolicyResolver,
   setClientRequestTimeout,
 } from './http';
 export * from './integrations';
@@ -72,6 +79,7 @@ export { getPluginHeaders } from './plugin-headers';
 export * from './plugins';
 export * from './project-task-rooms';
 export * from './projects';
+export * from './relay-enrollment';
 export * from './request-inspection';
 export * from './reviews';
 export * from './runs';

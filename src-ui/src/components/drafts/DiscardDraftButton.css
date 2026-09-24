@@ -1,0 +1,8 @@
+.discard-draft__error {
+  align-self: center;
+  max-width: 16rem;
+  padding: 0 var(--space-1);
+  color: var(--status-error);
+  font-size: var(--text-xs);
+  line-height: 1.3;
+}

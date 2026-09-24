@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
+import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../../services/identity/principal-resolver.js';
 import type { FileTreeService } from '../../../services/projects/file-tree-service.js';
 import { execGitSync } from '../../../utils/git-exec.js';
 import { createCodingRoutes } from '../coding.js';
@@ -13,7 +14,19 @@ import { createCodingRoutes } from '../coding.js';
  */
 
 // The git endpoints never touch FileTreeService, so a bare stub is sufficient.
-const app = createCodingRoutes({} as unknown as FileTreeService);
+// Commit and push are operator-only and act on the Project's own folder
+// (#2363); `coding-git-security.routes.test.ts` covers those refusals.
+let repo: string;
+const app = createCodingRoutes({} as unknown as FileTreeService, {
+  resolveProjectFolder: (slug) => (slug === 'acme' ? repo : undefined),
+  visibility: {
+    resolvePrincipal: () => ({
+      id: LOCAL_OPERATOR_PRINCIPAL_ID,
+      kind: 'human',
+      display: 'Operator',
+    }),
+  },
+});
 
 function git(cwd: string, ...args: string[]): string {
   return (execGitSync(args, { cwd, encoding: 'utf-8' }) as string).trim();
@@ -29,7 +42,6 @@ async function post(path: string, body: unknown) {
 }
 
 describe('coding git-ops routes (real git, no mocks)', () => {
-  let repo: string;
   let bare: string;
 
   beforeAll(() => {
@@ -55,6 +67,7 @@ describe('coding git-ops routes (real git, no mocks)', () => {
 
   test('checkout creates and switches a branch — HEAD really moves', async () => {
     const created = await post('/git/checkout', {
+      projectSlug: 'acme',
       path: repo,
       branch: 'feature',
       create: true,
@@ -64,7 +77,11 @@ describe('coding git-ops routes (real git, no mocks)', () => {
     expect(created.json.data.branch).toBe('feature');
     expect(git(repo, 'rev-parse', '--abbrev-ref', 'HEAD')).toBe('feature');
 
-    const back = await post('/git/checkout', { path: repo, branch: 'main' });
+    const back = await post('/git/checkout', {
+      projectSlug: 'acme',
+      path: repo,
+      branch: 'main',
+    });
     expect(back.json.success).toBe(true);
     expect(git(repo, 'rev-parse', '--abbrev-ref', 'HEAD')).toBe('main');
   });
@@ -74,7 +91,7 @@ describe('coding git-ops routes (real git, no mocks)', () => {
     writeFileSync(join(repo, 'file.txt'), 'change\n');
 
     const res = await post('/git/commit', {
-      path: repo,
+      projectSlug: 'acme',
       message: 'add file.txt',
     });
     expect(res.status).toBe(200);
@@ -84,28 +101,31 @@ describe('coding git-ops routes (real git, no mocks)', () => {
     expect(git(repo, 'log', '-1', '--format=%s')).toBe('add file.txt');
   });
 
-  test('push updates the real bare remote', async () => {
-    const localHead = git(repo, 'rev-parse', 'HEAD');
+  test('push to a local-path remote is refused before git runs (#2363)', async () => {
+    // A push to a local path runs the TARGET repository's hooks. The bare
+    // remote here is a local path, so the route refuses it by address.
     const res = await post('/git/push', {
-      path: repo,
+      projectSlug: 'acme',
       remote: 'origin',
       branch: 'main',
       setUpstream: true,
     });
-    expect(res.status).toBe(200);
-    expect(res.json.success).toBe(true);
+    expect(res.status).toBe(409);
+    expect(res.json.success).toBe(false);
+    expect(res.json.code).toBe('remote-unsupported-transport');
 
-    const remoteHead = (
-      execGitSync(['--git-dir', bare, 'rev-parse', 'refs/heads/main'], {
-        encoding: 'utf-8',
-      }) as string
-    ).trim();
-    expect(remoteHead).toBe(localHead);
+    expect(() =>
+      execGitSync(
+        ['--git-dir', bare, 'rev-parse', '--verify', 'refs/heads/main'],
+        { encoding: 'utf-8', stdio: 'pipe' },
+      ),
+    ).toThrow();
   });
 
   test('checkout of a non-existent branch fails with 400 (no state change)', async () => {
     const head = git(repo, 'rev-parse', '--abbrev-ref', 'HEAD');
     const res = await post('/git/checkout', {
+      projectSlug: 'acme',
       path: repo,
       branch: 'does-not-exist',
     });

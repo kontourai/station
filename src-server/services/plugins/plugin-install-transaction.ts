@@ -69,6 +69,7 @@ import {
   assertPathInside,
 } from '../../utils/path-containment.js';
 import type { PackageMcpAdmissionJournal } from './package-mcp-admission.js';
+import { pluginAcquisitionOrigin } from './plugin-acquisition-origin.js';
 import {
   closePluginActivationSession,
   completePluginActivationComposition,
@@ -92,6 +93,7 @@ import { captureLocalPluginArtifact } from './plugin-artifact-local.js';
 import { scanPluginPromptGeneration } from './plugin-command-skill-source.js';
 import {
   computePluginContentDigest,
+  copyPluginTree,
   findPluginContentLockCycleError,
   forgetPluginContentDigest,
   PLUGIN_TREE_COPY,
@@ -128,10 +130,10 @@ import {
   PluginInstallationPending,
   type PluginInstallationService,
 } from './plugin-installation-service.js';
+import { readUntrustedPluginManifestSyncWithFormat } from './plugin-manifest-bounded-read.js';
 import {
   readPluginManifestFile,
   readPluginManifestFileSync,
-  readPluginManifestFileWithFormat,
 } from './plugin-manifest-loader.js';
 import {
   type CapturedPluginPermissionArtifact,
@@ -1520,7 +1522,9 @@ async function removeOwnedDependencyLifecycles(options: {
             'Dependency uninstall backup',
           );
           mkdirSync(dirname(backupDir), { recursive: true });
-          cpSync(dependencyDir, backupDir, PLUGIN_TREE_COPY);
+          await copyPluginTree(dependencyDir, backupDir, {
+            skipSpecialFiles: true,
+          });
           const grantScope = createPluginGrantMutationScope(
             options.projectHomeDir,
             dependency.id,
@@ -3105,8 +3109,10 @@ async function installPluginFromSourceUnderContext(
   let releaseInstallPublication: (() => Promise<void>) | undefined;
   let leaveInstallGraph: (() => void) | undefined;
   try {
+    // The staged source is untrusted: install refuses exactly the manifests
+    // preview refuses (#2342), through the same bounded reader.
     const { manifest, format: manifestFormat } =
-      await readPluginManifestFileWithFormat(join(tempDir, 'plugin.json'));
+      readUntrustedPluginManifestSyncWithFormat(join(tempDir, 'plugin.json'));
     const isAgentPlugin = manifestFormat === 'agent-plugin-1.0';
     const pluginName = manifest.name || tempName;
     if (
@@ -3664,7 +3670,12 @@ async function installPluginFromSourceUnderContext(
         // taken.
         if (hadExistingPlugin) {
           const backupDir = join(installBackupRoot, 'plugin');
-          if (!isAgentPlugin) cpSync(pluginDir, backupDir, PLUGIN_TREE_COPY);
+          // Installed trees are plugin-writable; `cpSync` aborts the process
+          // on an unreadable directory (see `copyPluginTree`).
+          if (!isAgentPlugin)
+            await copyPluginTree(pluginDir, backupDir, {
+              skipSpecialFiles: true,
+            });
           backupPluginOwnedIntegrations(
             join(projectHomeDir, 'integrations'),
             pluginName,
@@ -3691,25 +3702,16 @@ async function installPluginFromSourceUnderContext(
             throw new Error(
               'Preview the current installation before starting with new data',
             );
-          // Acquisition-owner scoped continuity, not a signature/publisher claim.
-          // Native canonicalization prevents alternate local spellings changing identity.
-          const acquisitionSource = existsSync(source)
-            ? realpathSync.native(source)
-            : source;
           if (recovery && !recovery.current())
             throw new Error('Retained recovery changed; preview again');
           const origin =
             recovery?.origin ??
-            createHash('sha256')
-              .update(
-                JSON.stringify({
-                  owner: realpathSync.native(projectHomeDir),
-                  registryId: options?.registryId ?? null,
-                  registryKey: options?.registryKey ?? null,
-                  source: acquisitionSource,
-                }),
-              )
-              .digest('hex');
+            pluginAcquisitionOrigin({
+              projectHomeDir,
+              source,
+              registryId: options?.registryId,
+              registryKey: options?.registryKey,
+            });
           const activationPlan: PluginActivationPlan | undefined = isAgentPlugin
             ? {
                 version: 1,
@@ -3914,7 +3916,9 @@ async function installPluginFromSourceUnderContext(
           if (existsSync(pluginDir) && pluginDir !== tempDir)
             rmSync(pluginDir, { recursive: true, force: true });
           if (tempDir !== pluginDir)
-            cpSync(tempDir, pluginDir, { recursive: true });
+            await copyPluginTree(tempDir, pluginDir, {
+              skipSpecialFiles: true,
+            });
         }
         // The tree just changed. The lock's release forgets the memoized
         // digest, but reads happen INSIDE this span (`hasGrant` below, and
@@ -4744,7 +4748,9 @@ async function uninstallPluginUnderPublication(
     backupRoot = recovery?.root ?? createStationTempDirSync('plugin-uninstall');
     if (recovery) mkdirSync(backupRoot, { recursive: true });
     if (!managed)
-      cpSync(pluginDir, join(backupRoot, 'plugin'), PLUGIN_TREE_COPY);
+      await copyPluginTree(pluginDir, join(backupRoot, 'plugin'), {
+        skipSpecialFiles: true,
+      });
     backupPluginOwnedIntegrations(
       join(projectHomeDir, 'integrations'),
       pluginName,

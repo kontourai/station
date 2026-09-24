@@ -148,7 +148,10 @@ function taskDispatchExecute(deps: StationIntentBindingDeps) {
     const taskId = validatedSubjectId(intent, TASK_SUBJECT);
     if (!taskId) return;
     const input: TaskDispatchInput = { sourceSurface: 'console-board' };
-    const outcome = await deps.taskDispatcher.dispatch(taskId, input);
+    const outcome = await deps.taskDispatcher.dispatch(taskId, {
+      ...input,
+      fullAccessGrant: null,
+    });
     if (outcome.kind !== 'dispatched') throw new Error(outcome.reason);
   };
 }

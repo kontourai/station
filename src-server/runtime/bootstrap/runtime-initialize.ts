@@ -58,6 +58,7 @@ import {
   PAIRING_WS_SCOPES,
 } from '../../security/pairing-route-scopes.js';
 import { RuntimeAuthFailureLimiter } from '../../security/runtime-request-security.js';
+import { resolveStationBrowserOrigins } from '../../security/station-browser-origins.js';
 import type { ACPManager } from '../../services/acp/acp-bridge.js';
 import { getAgentPolicyService } from '../../services/agents/agent-policy-service.js';
 import { publicIdentityAgentSetView } from '../../services/agents/runtime-agent-identity.js';
@@ -603,6 +604,10 @@ export async function initializeRuntime(
     // this Station's default applies to the next chat, not the next restart.
     resolveStationDefaultWorkspaceIsolation: async () =>
       (await configLoader.loadAppConfig()).defaultWorkspaceIsolation,
+    // #2409: what a Default approval pick resolves to on the server. Loaded
+    // per call for the same reason as the workspace default above.
+    resolveStationDefaultApprovalMode: async () =>
+      (await configLoader.loadAppConfig()).defaultApprovalMode,
     nativeDeclaredPullRequestResolver,
     // archive#1501: shadow `resolveProjectResource` against the
     // session-cwd seam over REAL traffic before slice 3c flips it. Dispatched
@@ -1062,6 +1067,7 @@ export async function initializeRuntime(
         credential,
       ),
     limiter: new RuntimeAuthFailureLimiter(),
+    allowedBrowserOrigins: resolveStationBrowserOrigins({ port, host }),
     audit: (record) => logger.warn('Voice authentication denied', record),
   });
   // Defer Claude-transcript follow so the first event-loop turns can answer

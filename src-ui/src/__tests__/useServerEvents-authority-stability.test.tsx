@@ -35,6 +35,7 @@ vi.mock('@kontourai/station-sdk', () => ({
   ),
   notifyCredentialChanged: vi.fn(),
   setClientCredentialResolver: vi.fn(),
+  setClientRawEgressPolicyResolver: vi.fn(),
 }));
 
 vi.mock('@kontourai/station-connect', () => ({

@@ -504,8 +504,10 @@ describe('settings catalog completeness', () => {
     // was their only surface (chat-show-reasoning, chat-show-tool-details,
     // chat-dock-auto-hide, diff-style, diff-wrap). The two Appearance rows
     // that MOVED into the new chat section are not a change to this count:
-    // the same ids, in a different `view`.
-    expect(SETTINGS_CATALOG).toHaveLength(54);
+    // the same ids, in a different `view`. #1973: +1 (device-hosts, the
+    // operator's SSH device hosts). #90 D9: +1 (chat-auto-float-browser,
+    // the float-over-chat's auto-show preference).
+    expect(SETTINGS_CATALOG).toHaveLength(56);
   });
 
   /**
@@ -921,6 +923,31 @@ describe('settings catalog completeness', () => {
         'Log Level and other settings could not be saved. Your changes are kept here until you retry.',
       ),
     ).toBeTruthy();
+  });
+
+  test('#2436: a full-access default this device may not set says why, not "retry"', async () => {
+    const refusal =
+      "This device is not allowed to give an agent full access. The Station's operator can allow it: Devices, this device's access, Allow full access.";
+    updateConfig.mockRejectedValueOnce(
+      Object.assign(new Error(refusal), {
+        code: 'approval-full-access-not-granted',
+      }),
+    );
+    await renderedCatalogIds();
+
+    fireEvent.change(screen.getByLabelText('Default approval mode'), {
+      target: { value: 'never' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    const banner = await screen.findByText(
+      `${refusal} Nothing in this save was stored. Choose a stricter default approval mode to save your other changes.`,
+    );
+    expect(banner).toBeTruthy();
+    expect(updateConfig).toHaveBeenCalledWith(
+      expect.objectContaining({ defaultApprovalMode: 'never' }),
+    );
+    expect(screen.queryByText(/until you retry/)).toBeNull();
   });
 
   test('prevents a second Log Level-only save while the first is pending', async () => {

@@ -1,3 +1,7 @@
+import {
+  parseWorkspaceBrowserPaneState,
+  WORKSPACE_BROWSER_PANE_STATE_VERSION,
+} from '@kontourai/station-contracts/workspace-browser-pane';
 import type {
   WorkspaceFilePreviewLineRange,
   WorkspaceFilePreviewPaneState,
@@ -14,6 +18,11 @@ import {
 import { useCallback } from 'react';
 import { REGION_IDS, type RegionArrangement } from '../regions/region-model';
 import { regionSurfaceOfPane } from '../regions/region-surface-panes';
+import { createBrowserPreviewPaneInstance } from '../workspace-panes/browserPreviewPaneInstance';
+import {
+  createBrowserPreviewPaneStatePreparation,
+  readBrowserPreviewPaneState,
+} from '../workspace-panes/browserPreviewPaneStateStorage';
 import { createFilePreviewPaneInstance } from '../workspace-panes/filePreviewPaneInstance';
 import {
   createFilePreviewPaneStatePreparation,
@@ -238,6 +247,87 @@ export function openFilePreviewInRegion(
   const outcome = openInRegion(model, instance, options);
   if (!outcome.ok) preparation.rollback();
   return outcome;
+}
+
+/** What a Browser pane is opened for: one server-owned session of one Project. */
+export interface OpenBrowserSessionRequest {
+  projectId: string;
+  browserSessionId: string;
+}
+
+/**
+ * Open a Browser pane attached to one session as a dock pane (#90 D9) — the
+ * float-over-chat's "Open in right panel".
+ *
+ * The same two duties `openFilePreviewInRegion` owns, for the same reasons.
+ * DEDUPE: a Browser pane's identity is an opaque nonce, so a second open of
+ * one session would mint a second tab streaming the same surface (two
+ * streams against the ADR 0018 connection budget); the placed Browser panes
+ * are scanned by their stored session instead and a match is revealed. The
+ * STATE WRITE: the pane renders from its stored v2 record, which must exist
+ * before the region derives the occurrence and must not survive a refusal.
+ */
+export function openBrowserSessionInRegion(
+  model: OpenPaneInRegionModel,
+  request: OpenBrowserSessionRequest,
+  options?: OpenInRegionOptions,
+): OpenInRegionOutcome | { ok: false; reason: OpenPaneRefusal } {
+  const { projectId, browserSessionId } = request;
+  const storage = window.localStorage;
+  const held = placedPaneIds(model.regions).find((id) => {
+    if (!id.startsWith('browser-preview:')) return false;
+    const stored = readBrowserPreviewPaneState(storage, id);
+    return (
+      stored?.version === '2.0' &&
+      stored.state.projectId === projectId &&
+      stored.state.browserSessionId === browserSessionId
+    );
+  });
+  if (held !== undefined)
+    return model.openSurfaceInRegion(held, { ...options, focusExisting: true });
+  const state = parseWorkspaceBrowserPaneState({
+    version: WORKSPACE_BROWSER_PANE_STATE_VERSION,
+    projectId,
+    browserSessionId,
+    updatedAt: new Date().toISOString(),
+  });
+  const instance = state
+    ? createBrowserPreviewPaneInstance(state, projectId)
+    : null;
+  if (!state || !instance) return { ok: false, reason: 'no-surface' };
+  const preparation = createBrowserPreviewPaneStatePreparation(
+    storage,
+    String(instance.stateKey),
+    state,
+  );
+  if (!preparation.prepare()) return { ok: false, reason: 'not-stored' };
+  const outcome = openInRegion(model, instance, options);
+  if (!outcome.ok) preparation.rollback();
+  return outcome;
+}
+
+/**
+ * `openBrowserSessionInRegion` bound to the mounted region model, or null
+ * where there is none (the float-over-chat then says the pane cannot open
+ * here rather than offering a control that does nothing).
+ */
+export function useOpenBrowserSessionInRegion():
+  | ((
+      request: OpenBrowserSessionRequest,
+      options?: OpenInRegionOptions,
+    ) => OpenInRegionOutcome | { ok: false; reason: OpenPaneRefusal })
+  | null {
+  const model = useRegionModelOptional();
+  const open = useCallback(
+    (request: OpenBrowserSessionRequest, options?: OpenInRegionOptions) =>
+      openBrowserSessionInRegion(
+        model as NonNullable<typeof model>,
+        request,
+        options,
+      ),
+    [model],
+  );
+  return model ? open : null;
 }
 
 /** `openInRegion` bound to the mounted region model. */

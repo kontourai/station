@@ -10,7 +10,10 @@
  * on the Codex adapter's lifetime or its JSON-RPC vocabulary.
  */
 
-import type { MuseProviderMode } from './muse-adapter-types.js';
+import type {
+  MuseProviderMode,
+  MuseToolTaskBinding,
+} from './muse-adapter-types.js';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
@@ -81,14 +84,50 @@ type MuseTurnEffect =
     }
   | {
       kind: 'tool-completed';
-      /** muse's own `call_id`; the ONLY tool identity the live stream emits. */
+      /** muse's own `call_id`; the tool identity the result is keyed by. */
       toolCallId: string;
-      toolName: string;
+      /**
+       * `correlation_facts.tool_name`, or `null` when the record omits it.
+       * The adapter pairs a nameless result with the `tool.started` it opened
+       * for the same `call_id` and drops it otherwise.
+       */
+      toolName: string | null;
       /** Derived from `correlation_facts.outcome`, not guessed from presence. */
       status: 'success' | 'error';
       output: string | null;
     }
+  | {
+      kind: 'task-lifecycle';
+      /** `task_lifecycle.event.task_id` (falls back to the payload's own). */
+      taskId: string;
+      /** `task_lifecycle.event.kind`: proposed/scheduled/started/completed/... */
+      phase: string;
+      /**
+       * Tool name read from `event.task_kind` (`tool.<name>`); present only on
+       * the `proposed` record of a tool task, `null` everywhere else.
+       */
+      toolName: string | null;
+      /**
+       * muse's tool `call_id`, read from `event.idempotency_key`
+       * (`tool:<call_id>`); present only on a tool task's `scheduled` and
+       * `side_effect_intent` records, `null` everywhere else.
+       */
+      toolCallId: string | null;
+    }
+  /**
+   * #2300: `command_accepted` for muse's automatic follow-up run — the run
+   * that reports background work which settled before it was submitted.
+   */
+  | { kind: 'background-follow-up' }
   | { kind: 'ignored' };
+
+/**
+ * #2300: the `command_accepted.client_id` muse stamps on the run it submits
+ * by itself to report settled background work (live capture, muse
+ * 1.3.0-R3401.1). Every run a user submits carries `client_id: null`.
+ */
+export const MUSE_BACKGROUND_FOLLOW_UP_CLIENT_ID =
+  'muse-runtime-background-terminal';
 
 /**
  * Maps a muse terminal to a canonical `finishReason`.
@@ -121,28 +160,42 @@ export function mapMuseFinishReason(
  * Only two muse payload kinds carry canonical meaning today:
  *
  * - `run_output_delta{text}` -> `content.text-delta`
- * - `run_terminal{terminal,text,reason}` -> `turn.completed` when
- *   `terminal === 'completed'`, or `runtime.error` ONLY (never both;
- *   archive#3450) when it is not.
+ * - `run_terminal{terminal,text,reason}` -> a `terminal` effect. What the
+ *   adapter does with it depends on the turn (#2300): usually `turn.completed`
+ *   when `terminal === 'completed'`, or `runtime.error` ONLY (never both;
+ *   archive#3450) when it is not — but a completed terminal while background
+ *   work the turn launched is still pending HOLDS the turn open, and muse's
+ *   automatic follow-up run (and its own `run_terminal`) is delivered on the
+ *   same turn. See `MuseAdapter`'s docblock.
  *
  * Everything else is dropped ON PURPOSE:
  *
  * - `command_accepted`, `session_run_linked`, `turn_input_user`, `run_started`,
  *   `run_model_configured`, `task_stream_linked` restate what Station already
  *   published from `startSession`/`sendTurn`; re-emitting them duplicates
- *   transcript rows.
- * - `task_lifecycle` is an internal scheduler ping (proposed/accepted/
- *   scheduled/started/status/completed/failed). It names no tool, carries no
- *   arguments and no output, so synthesizing `tool.*` events from it would be
- *   a label with nothing deriving it.
- * - `tool_result` IS that payload, and is mapped: it carries `call_id`, plus
+ *   transcript rows. The one exception is a `command_accepted` whose
+ *   `client_id` is {@link MUSE_BACKGROUND_FOLLOW_UP_CLIENT_ID}: nothing
+ *   Station sent caused it, and it marks the start of the follow-up run that
+ *   reports settled background work (#2300), so it becomes a
+ *   `background-follow-up` effect (no event of its own).
+ * - `tool_result` is mapped to `tool-completed`: it carries `call_id`, plus
  *   `correlation_facts.{tool_name,outcome}` and the result `text`.
- * - No `tool.started` is emitted. `call_id` appears exactly once in a live
- *   turn — on `tool_result` — so a start event would have to borrow
- *   `task_lifecycle`'s `task_id`, and start/completion would then carry
- *   different ids that never pair. Arguments are likewise absent from the live
- *   stream (they exist only in `muse export`'s durable log), so
- *   `tool.started.arguments` would have nothing behind it either.
+ * - `task_lifecycle` (proposed/accepted/scheduled/side_effect_intent/started/
+ *   output/status/completed/failed) is surfaced as a `task-lifecycle` effect
+ *   so {@link observeMuseToolTask} can open a `tool.started`. Against muse
+ *   0.2.1 this was dropped: its lifecycle records named no tool and carried
+ *   no `call_id`, so a start could only have borrowed `task_id` and would
+ *   never have paired with the result. Muse 1.3.0-R3401.1 (a live
+ *   `muse exec --json` capture of a one-bash-call turn, kept verbatim as
+ *   `__tests__/fixtures/muse-1.3-bash-tool-turn.jsonl`) names both on the
+ *   tool's task: `proposed.task_kind` is `tool.bash`, and
+ *   `scheduled.idempotency_key` / `side_effect_intent.idempotency_key` are
+ *   `tool:<call_id>` — the same `call_id` its `tool_result` carries. Model
+ *   and reminder tasks use other prefixes (`model.*`/`model:`,
+ *   `reminder.*`/`reminder_child:`) and never open a tool.
+ * - Arguments are still absent from the live stream (in the 1.3 capture the
+ *   command first appears in `task_lifecycle.output`, after `started`), so
+ *   `tool.started` carries no `arguments` rather than a guessed value.
  * - **No `token-usage.updated` is emitted, because the live envelope carries
  *   no usage kind to map (archive#4197 audit, muse 0.2.1-R1215.1).** Verified
  *   two ways: a live `muse exec --json --provider echo` run (full stream
@@ -163,6 +216,11 @@ export function mapMuseFinishReason(
  */
 export function translateMuseRecord(record: MuseRecord): MuseTurnEffect {
   switch (record.payloadKind) {
+    case 'command_accepted':
+      return extractStringField(record.payload, 'client_id') ===
+        MUSE_BACKGROUND_FOLLOW_UP_CLIENT_ID
+        ? { kind: 'background-follow-up' }
+        : { kind: 'ignored' };
     case 'run_output_delta': {
       const delta = extractStringField(record.payload, 'text');
       if (delta === null || delta === '') return { kind: 'ignored' };
@@ -191,9 +249,11 @@ export function translateMuseRecord(record: MuseRecord): MuseTurnEffect {
       const toolName = factsRecord
         ? extractStringField(factsRecord, 'tool_name')
         : null;
-      // Without an id and a name there is nothing honest to attribute the
-      // result to, and a synthesized id would never pair with anything.
-      if (!toolCallId || !toolName) return { kind: 'ignored' };
+      // Without an id there is nothing honest to attribute the result to, and
+      // a synthesized id would never pair with anything. A missing name is
+      // passed through as `null`: the adapter can still take it from the
+      // start it opened under this `call_id`, and drops the result if none.
+      if (!toolCallId) return { kind: 'ignored' };
       const outcome = factsRecord
         ? extractStringField(factsRecord, 'outcome')
         : null;
@@ -207,9 +267,202 @@ export function translateMuseRecord(record: MuseRecord): MuseTurnEffect {
         output: extractStringField(record.payload, 'text'),
       };
     }
+    case 'task_lifecycle': {
+      const event = isRecord(record.payload.event)
+        ? record.payload.event
+        : undefined;
+      const phase = event ? extractStringField(event, 'kind') : null;
+      const taskId =
+        (event ? extractStringField(event, 'task_id') : null) ??
+        extractStringField(record.payload, 'task_id');
+      if (!event || !phase || !taskId) return { kind: 'ignored' };
+      return {
+        kind: 'task-lifecycle',
+        taskId,
+        phase,
+        toolName: stripNonEmptyPrefix(
+          extractStringField(event, 'task_kind'),
+          'tool.',
+        ),
+        toolCallId: stripNonEmptyPrefix(
+          extractStringField(event, 'idempotency_key'),
+          'tool:',
+        ),
+      };
+    }
     default:
       return { kind: 'ignored' };
   }
+}
+
+function stripNonEmptyPrefix(
+  value: string | null,
+  prefix: string,
+): string | null {
+  if (value === null || !value.startsWith(prefix)) return null;
+  const rest = value.slice(prefix.length);
+  return rest.length > 0 ? rest : null;
+}
+
+/**
+ * Task phases after which muse reports nothing further about the TASK. A
+ * tool task's `tool_result` still follows `completed` and `failed` (results
+ * are batched after the task's final phase, and a failed tool still gets
+ * one), so neither closes an open tool; only `cancelled` does.
+ */
+const MUSE_TASK_FINAL_PHASES = new Set(['completed', 'failed', 'cancelled']);
+
+/** What {@link observeMuseToolTask} tells the adapter to do, if anything. */
+export type MuseToolTaskObservation =
+  | { kind: 'started'; toolName: string; toolCallId: string }
+  | { kind: 'cancelled'; toolName: string; toolCallId: string }
+  /**
+   * The task reached `completed` or `failed`: muse is no longer executing
+   * the tool, but its `tool_result` (which carries the output) normally
+   * follows, so the call stays open and pairable — it just stops being
+   * in-flight work for idle supervision.
+   */
+  | {
+      kind: 'finished';
+      toolName: string;
+      toolCallId: string;
+      /** The task's final phase, which settle reports if no result arrives. */
+      outcome: 'completed' | 'failed';
+    };
+
+/**
+ * Folds one `task-lifecycle` effect into `bindings` (keyed by `task_id`) and
+ * returns the tool start it completes, if any.
+ *
+ * A start is returned only when the same task has shown a `tool.<name>`
+ * `task_kind`, a `tool:<call_id>` idempotency key, AND a `started` phase.
+ * In the 1.3 capture the name and id are both known by `scheduled`, so the
+ * start fires at `started`; the fold is order-independent anyway, so a
+ * build that reports `started` before the binding still fires once the
+ * binding lands. `started` rather than `scheduled`/`side_effect_intent` is
+ * the trigger because it is the record that says the tool is executing —
+ * a task still awaiting approval is not running. A muse build without these
+ * fields never completes a binding, so it degrades to today's behavior: no
+ * start, only the `tool_result` completion.
+ *
+ * Returns each binding's start at most once (`emitted`), and forgets a task
+ * at its final phase. A task whose start was returned and which then reaches
+ * `cancelled` returns a `cancelled` observation so the adapter can close the
+ * open tool: muse reported it will not finish, so leaving it open would keep
+ * the row running and the idle deadline disarmed for nothing. `completed` and
+ * `failed` return `finished` instead: the row stays open for the
+ * `tool_result` that normally follows, but the tool is no longer running. `maxEntries` bounds the map: oldest tasks are evicted first.
+ * Once-per-`call_id` across tasks is the caller's job (the adapter keeps
+ * its own per-turn record of started call ids).
+ */
+export function observeMuseToolTask(
+  bindings: Map<string, MuseToolTaskBinding>,
+  effect: Extract<MuseTurnEffect, { kind: 'task-lifecycle' }>,
+  maxEntries: number,
+): MuseToolTaskObservation | null {
+  if (MUSE_TASK_FINAL_PHASES.has(effect.phase)) {
+    const finished = bindings.get(effect.taskId);
+    bindings.delete(effect.taskId);
+    if (finished?.emitted && finished.toolName && finished.toolCallId) {
+      const tool = {
+        toolName: finished.toolName,
+        toolCallId: finished.toolCallId,
+      };
+      return effect.phase === 'cancelled'
+        ? { kind: 'cancelled', ...tool }
+        : {
+            kind: 'finished',
+            ...tool,
+            outcome: effect.phase === 'failed' ? 'failed' : 'completed',
+          };
+    }
+    return null;
+  }
+  const isStart = effect.phase === 'started';
+  let binding = bindings.get(effect.taskId);
+  if (!binding) {
+    // Only tasks that have shown tool evidence (or a start that evidence may
+    // still follow) are remembered; everything else is not a tool candidate.
+    if (!effect.toolName && !effect.toolCallId && !isStart) return null;
+    if (bindings.size >= maxEntries) {
+      const oldest = bindings.keys().next().value;
+      if (oldest !== undefined) bindings.delete(oldest);
+    }
+    binding = { started: false };
+    bindings.set(effect.taskId, binding);
+  }
+  if (effect.toolName) binding.toolName ??= effect.toolName;
+  if (effect.toolCallId) binding.toolCallId ??= effect.toolCallId;
+  if (isStart) binding.started = true;
+  if (
+    binding.emitted ||
+    !binding.started ||
+    !binding.toolName ||
+    !binding.toolCallId
+  ) {
+    return null;
+  }
+  binding.emitted = true;
+  return {
+    kind: 'started',
+    toolName: binding.toolName,
+    toolCallId: binding.toolCallId,
+  };
+}
+
+/**
+ * #2300: the tool whose result can announce background work. Muse 1.3's
+ * `workflow` tool returns immediately with `{"status":"launched","taskId":…}`
+ * and runs the workflow in the background; the same `muse exec` process then
+ * reports the task's `task_lifecycle` completion (keyed by that `taskId`) and
+ * submits an automatic follow-up run before it exits.
+ */
+const MUSE_BACKGROUND_LAUNCH_TOOL_NAME = 'workflow';
+
+/**
+ * Bound on the `tool_result.text` this adapter will parse for a launch
+ * announcement. The live launch result is ~2 KB; `text` itself can approach
+ * `MUSE_STDOUT_BUFFER_MAX_CHARS`, and parsing a megabyte per tool result to
+ * look for one field is not worth it. A larger text is read as "not a launch"
+ * — the turn then settles exactly as it did before #2300.
+ */
+export const MUSE_LAUNCH_RESULT_MAX_CHARS = 65_536;
+
+/**
+ * Shape a background `taskId` must have to become part of a persisted row id
+ * (`muse-task:<taskId>`). Muse mints UUIDs; anything else — overlong, empty,
+ * or carrying characters a row id should not — is refused, not truncated.
+ */
+const MUSE_BACKGROUND_TASK_ID = /^[A-Za-z0-9._:-]{1,128}$/;
+
+/**
+ * Returns the background task id a `workflow` tool result announces, or
+ * `null`. Total: a non-`workflow` tool, an oversized or malformed text, a
+ * `status` other than `launched`, or a missing/ill-shaped `taskId` all yield
+ * `null` (the result is still published as an ordinary tool completion).
+ */
+export function parseMuseLaunchedBackgroundTask(
+  toolName: string | null | undefined,
+  text: string | null,
+): string | null {
+  if (toolName !== MUSE_BACKGROUND_LAUNCH_TOOL_NAME) return null;
+  if (text === null || text.length > MUSE_LAUNCH_RESULT_MAX_CHARS) return null;
+  let decoded: unknown;
+  try {
+    decoded = JSON.parse(text);
+  } catch {
+    return null;
+  }
+  if (!isRecord(decoded) || decoded.status !== 'launched') return null;
+  const taskId = extractString(decoded.taskId);
+  return taskId !== null && MUSE_BACKGROUND_TASK_ID.test(taskId)
+    ? taskId
+    : null;
+}
+
+/** The persisted tool-row id of a background task (see the adapter docblock). */
+export function museBackgroundTaskRowId(taskId: string): string {
+  return `muse-task:${taskId}`;
 }
 
 /**
@@ -278,6 +531,22 @@ export function buildMuseExecArgs(input: {
     args.push('--workspace', input.cwd);
   }
   for (const path of input.imagePaths ?? []) args.push('--image', path);
+  // Headless `exec` has no channel to answer a tool approval: no approval
+  // event reaches stdout and nothing can decide one. Under muse's default
+  // (`on-request` plus an LLM judge), any call the judge escalates — including
+  // one made by a background `workflow` subagent — waits forever. In the #2300
+  // incident only Station's idle timer ended such a turn; with no default idle
+  // bound (#2269) it would stay open, visibly silent, until the user pressed
+  // Stop, since the waiting subagent writes only to its own session log and
+  // nothing reaches the parent's stdout. `never` stops nothing for
+  // approval and leaves muse's sandbox as the containment. Live-verified
+  // against Muse Code 1.3.0-R3401.1: the same workflow-subagent `bash` call
+  // hangs under `untrusted` or the default mode with the judge off, and
+  // completes under `never` (policy_decision `allow:policy`);
+  // `--permission-profile` and settings.json's `default_profile` do not lift
+  // exec's gate at all. Surfacing approvals to Station instead needs
+  // `muse serve` (#2452).
+  args.push('--approval-mode', 'never');
   args.push('--', input.prompt);
   return args;
 }

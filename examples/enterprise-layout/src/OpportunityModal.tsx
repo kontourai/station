@@ -47,13 +47,19 @@ export function CreateOpportunityModal({
       setError('Name is required');
       return;
     }
+    // CreateOpportunityInput requires an accountId.
+    if (!account) {
+      setError('Choose an account first');
+      return;
+    }
     try {
       const opp = await createOpp.mutateAsync({
         name: name.trim(),
-        accountId: account?.id,
+        accountId: account.id,
         stage,
         amount: amount ? Number(amount) : undefined,
-        closeDate: closeDate ? new Date(closeDate) : undefined,
+        // The date input's YYYY-MM-DD value, as CreateOpportunityInput takes it.
+        closeDate: closeDate || undefined,
       });
       onCreated?.(opp);
       onClose();

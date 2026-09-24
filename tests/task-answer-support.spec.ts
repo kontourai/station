@@ -428,7 +428,13 @@ async function seedStationAccess(page: Page) {
       });
       return;
     }
-    if (await fulfillStationShellRead(route)) return;
+    if (
+      await fulfillStationShellRead(route, {
+        environmentId: 'task-answer-support-fixture',
+        deviceId: 'fixture-device',
+      })
+    )
+      return;
     return rejectUnexpectedFixtureRequest(route);
   });
 }

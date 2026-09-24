@@ -1,13 +1,14 @@
 # Optional Station connection broker
 
-> Status: architecture proposal for [#45](https://github.com/kontourai/station/issues/45).
+> Status: architecture record for [#45](https://github.com/kontourai/station/issues/45).
 > The owner accepted delegated security judgment and required a free local test
 > path on September 12, 2026. Intermediary confidentiality and local testability
 > are requirements. The September 20 implementation target below selects the
-> self-operated WebRTC/Pion/TURN path; production enablement still requires its
-> integrated security and lifecycle evidence. [#1963](https://github.com/kontourai/station/issues/1963)
-> owns that implementation. No broker service or internet-facing deployment is
-> delivered by this decision.
+> self-operated WebRTC/Pion/TURN path. The local browser UI milestone merged in
+> [#2451](https://github.com/kontourai/station/pull/2451); native client delivery,
+> remote/physical proof and production enablement remain separate.
+> [#1963](https://github.com/kontourai/station/issues/1963) owns the full
+> implementation. No internet-facing deployment is delivered by this decision.
 
 ## Implementation target — September 20, 2026
 
@@ -19,6 +20,16 @@ approval for a particular binary, hosted provider, deployment or network.
 Production TURN/TLS, supported native runtimes and actual remote delivery must
 qualify independently. The Node UDP backend remains useful diagnostic evidence;
 it does not acquire TURN/TCP support from Pion's results.
+
+Native desktop has a separate [OS-keyring routing-grant vault](../../src-desktop/src/relay_grant_vault.rs),
+but it does not yet use a grant to connect. The current browser protocol binds
+`browserOrigin` to a canonical HTTP(S) page Origin and the broker checks that
+same Origin on signaling. Packaged Tauri WebViews use different platform
+schemes, so a saved native grant cannot be activated by pretending its WebView
+has an HTTPS browser Origin or by returning the grant secret to renderer JS.
+[#2485](https://github.com/kontourai/station/issues/2485) owns the versioned
+native client identity and host-owned signaling contract required before native
+route activation. Actual packaged WebView Origin behavior remains unverified.
 
 The broker is a separate process and state owner. It carries bounded enrollment,
 reachability and signaling metadata, never decrypted application requests or

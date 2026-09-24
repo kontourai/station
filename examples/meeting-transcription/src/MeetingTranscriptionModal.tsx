@@ -1,12 +1,11 @@
 /**
- * MeetingTranscriptionModal (plugin version) — uses useSTT() from the SDK
- * instead of the WebSpeech API directly.
- *
- * This means it works with any registered STT provider (WebSpeech, ElevenLabs, etc.)
+ * MeetingTranscriptionModal (plugin version) — listens through a registered
+ * STT provider (WebSpeech, ElevenLabs, ...) instead of the WebSpeech API
+ * directly. See useRegisteredSTT for how the provider is chosen.
  */
 
-import { useSTT } from '@kontourai/station-sdk';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useRegisteredSTT } from './useRegisteredSTT';
 
 interface Props {
   isOpen: boolean;
@@ -15,7 +14,7 @@ interface Props {
 }
 
 export function MeetingTranscriptionModal({ isOpen, onSend, onClose }: Props) {
-  const stt = useSTT();
+  const stt = useRegisteredSTT();
   const [finalTranscript, setFinalTranscript] = useState('');
   const [running, setRunning] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);

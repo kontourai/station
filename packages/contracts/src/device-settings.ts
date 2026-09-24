@@ -27,6 +27,11 @@ export interface FeatureSettings {
   smoothReveal?: boolean;
   /** Hold assistant deltas on this device until the next semantic boundary. */
   bufferedDelivery?: boolean;
+  /**
+   * Float a browser session an agent is driving over the chat (#90 D9) when
+   * no pane shows it. Absent means ON: the default the owner chose.
+   */
+  autoFloatAgentBrowserSessions?: boolean;
   /** Per-category foreground notification sounds for this device. */
   notificationSounds: NotificationSoundPreferences;
 }

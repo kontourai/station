@@ -73,6 +73,7 @@ import {
   isCanonicalBuiltinReadinessDescriptor,
   isCanonicalBuiltinTrustDescriptor,
 } from '../workspace-panes/builtinWorkspacePaneRegistry';
+import { DockOnlyWorkspacePaneNotice } from '../workspace-panes/DockOnlyWorkspacePaneNotice';
 import {
   admitRestoredFilePreviewPaneInstance,
   filePreviewPanePresentationLabel,
@@ -92,7 +93,10 @@ import type {
 import type { WorkspacePaneHostOpenAction } from '../workspace-panes/WorkspacePaneHostOpenContext';
 import type { WorkspacePaneAvailabilityCatalogEntry } from '../workspace-panes/workspacePaneAvailabilityPresentation';
 import { presentWorkspacePaneAvailability } from '../workspace-panes/workspacePaneAvailabilityPresentation';
-import { isWorkspacePaneInstanceOwnedByProject } from '../workspace-panes/workspacePaneHostAdmission';
+import {
+  isProjectPlaceableWorkspacePane,
+  isWorkspacePaneInstanceOwnedByProject,
+} from '../workspace-panes/workspacePaneHostAdmission';
 import {
   describeWorkspacePaneOpenRefusal,
   type WorkspacePaneHostOpenRefusal,
@@ -699,9 +703,10 @@ function BuiltinCodingLayoutHost({
       candidate.availability.state === 'available' &&
       isCanonicalBuiltinFilePreviewDescriptor(candidate.descriptor),
   );
+  // The Browser pane's catalogue entry, whether or not the server issued
+  // its per-Project occurrence (#90 wave 2 issues one for the Add-pane grid).
   const browserPreviewEntry = catalog.entries.find(
     (candidate) =>
-      !candidate.instance &&
       candidate.descriptor.id ===
         WORKSPACE_BROWSER_PREVIEW_PANE_DESCRIPTOR_ID &&
       isCanonicalBuiltinBrowserPreviewDescriptor(candidate.descriptor),
@@ -760,7 +765,9 @@ function BuiltinCodingLayoutHost({
   if (catalog.isLoading) {
     return <SkeletonList count={1} label="Loading coding workspace panes" />;
   }
-  if (catalog.isError) {
+  // #2319: a failed background revalidation keeps the answer it had; only a
+  // catalog that never loaded is an error screen.
+  if (catalog.isError && catalog.data === undefined) {
     return (
       <ErrorState
         title="Could not load coding workspace"
@@ -1078,6 +1085,28 @@ function BuiltinCodingLayoutHost({
         onInstanceRemoved={onInstanceRemoved}
         presentationLabel={presentationLabel}
         renderPane={(instance, presentation) => {
+          // #2465: a dock-only pane (the host-global Device pane) is not
+          // another Project's — it is no Project's. Say where it lives. The
+          // same predicate keeps the picker from offering it.
+          const dockOnly = catalog.entries.find(
+            (candidate) =>
+              candidate.descriptor.id === instance.descriptorId &&
+              !isProjectPlaceableWorkspacePane(candidate.descriptor),
+          )?.descriptor;
+          if (dockOnly) {
+            const remove =
+              hostOpen?.close && (hostInstanceIds?.size ?? 0) > 1
+                ? hostOpen.close
+                : undefined;
+            return (
+              <DockOnlyWorkspacePaneNotice
+                descriptor={dockOnly}
+                {...(remove
+                  ? { onRemove: () => void remove(instance.instanceId) }
+                  : {})}
+              />
+            );
+          }
           if (!isWorkspacePaneInstanceOwnedByProject(instance, projectId)) {
             return (
               <Empty
@@ -1269,6 +1298,8 @@ function BuiltinCodingLayoutHost({
         entries={catalog.entries}
         loading={catalog.isLoading}
         error={catalog.isError}
+        hasData={catalog.data !== undefined}
+        retrying={catalog.isFetching}
         onRetry={() => void catalog.refetch()}
         onSelect={openCatalogEntry}
         onAction={(_entry, action) => {

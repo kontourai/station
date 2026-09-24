@@ -1,3 +1,5 @@
+import { useEffect } from 'react';
+
 /**
  * Object URLs for attachment blobs fetched from `GET /api/attachments/:ref`
  * (archive#3385).
@@ -21,6 +23,13 @@ const MAX_IDLE_ENTRIES = 32;
 interface CacheEntry {
   objectUrl: string;
   holders: number;
+  /**
+   * The bytes behind `objectUrl`. Kept because a non-image preview needs them
+   * as text, and the desktop/mobile CSP (`connect-src`) does not admit
+   * `fetch('blob:…')` — re-reading the URL would fail on exactly the devices
+   * that most need a preview.
+   */
+  blob?: Blob;
 }
 
 /** Insertion-ordered, so the iteration order is least-recently-acquired first. */
@@ -59,6 +68,7 @@ export function acquireAttachmentObjectUrl(ref: string): string | undefined {
 export function storeAttachmentObjectUrl(
   ref: string,
   objectUrl: string,
+  blob?: Blob,
 ): string {
   const existing = entries.get(ref);
   if (existing) {
@@ -66,7 +76,7 @@ export function storeAttachmentObjectUrl(
     existing.holders += 1;
     return existing.objectUrl;
   }
-  entries.set(ref, { objectUrl, holders: 1 });
+  entries.set(ref, { objectUrl, holders: 1, ...(blob ? { blob } : {}) });
   evictIdle();
   return objectUrl;
 }
@@ -86,6 +96,55 @@ export function releaseAttachmentObjectUrl(ref: string): void {
  */
 export function peekAttachmentObjectUrl(ref: string): string | undefined {
   return entries.get(ref)?.objectUrl;
+}
+
+/**
+ * Hold a cached object URL by the URL itself, for a consumer that has the URL
+ * but not the key — the preview dialog, which must keep the bytes alive after
+ * the chip that opened it unmounts (a scrolled or switched transcript), or
+ * eviction would revoke the file the user is looking at. Returns the release;
+ * a URL this cache does not own (a data: URL, a markdown image's http URL) is a
+ * no-op.
+ */
+function retainAttachmentObjectUrl(objectUrl: string): () => void {
+  for (const [ref, entry] of entries) {
+    if (entry.objectUrl !== objectUrl) continue;
+    entry.holders += 1;
+    return () => releaseAttachmentObjectUrl(ref);
+  }
+  return () => {};
+}
+
+/**
+ * Hold `objectUrls` for as long as the calling component can show them. Used by the
+ * preview dialog's (lazily loaded) bodies rather than the eager provider, so
+ * the cache stays out of the entry chunk.
+ */
+export function useRetainedAttachmentObjectUrls(
+  objectUrls: readonly string[],
+): void {
+  // Keyed on the joined list so a re-rendered but identical gallery does not
+  // churn its holds.
+  const key = objectUrls.join('\n');
+  useEffect(() => {
+    const releases = key.split('\n').map(retainAttachmentObjectUrl);
+    return () => {
+      for (const release of releases) release();
+    };
+  }, [key]);
+}
+
+/**
+ * The bytes a cached object URL was minted from, or `undefined` when the URL
+ * is not (or no longer) one of ours.
+ */
+export function attachmentBlobForObjectUrl(
+  objectUrl: string,
+): Blob | undefined {
+  for (const [, entry] of entries) {
+    if (entry.objectUrl === objectUrl) return entry.blob;
+  }
+  return undefined;
 }
 
 /** Test seam: drop every entry and revoke every URL. */

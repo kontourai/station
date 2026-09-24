@@ -8,6 +8,10 @@ import {
 } from '@kontourai/station-connect';
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import type { ProjectConfig } from '@kontourai/station-contracts/project';
+import {
+  WORKSPACE_DEVICE_PANE_DESCRIPTOR,
+  WORKSPACE_DEVICE_PANE_INSTANCE,
+} from '@kontourai/station-contracts/workspace-device-pane';
 import { paneAdaptationFromLayoutTab } from '@kontourai/station-contracts/workspace-pane-layout-adapter';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render, screen } from '@testing-library/react';
@@ -22,6 +26,13 @@ const sdkMocks = vi.hoisted(() => ({
     | {
         requestScope?: { authorityKey: string };
         requireRequestScope?: boolean;
+      }
+    | undefined
+  >,
+  capturedProjectViewOptions: [] as Array<
+    | {
+        requestScope?: { apiBase: string; authorityKey: string };
+        requireCredential?: boolean;
       }
     | undefined
   >,
@@ -110,6 +121,36 @@ vi.mock('../hooks/useRecentLayouts', () => ({
   trackRecentLayout: vi.fn(),
 }));
 
+vi.mock('../contexts/ProjectsContext', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  useScopedProjectPageViewQuery: vi.fn(() => {
+    const requestScope = authorityRef.current;
+    if (requestScope)
+      sdkMocks.capturedProjectViewOptions.push({
+        requestScope,
+        requireCredential: true,
+      });
+    const byAuthority = sdkMocks.projectByAuthority as Record<
+      string,
+      ProjectConfig | undefined
+    >;
+    return {
+      data:
+        sdkMocks.isError || sdkMocks.isLoading
+          ? undefined
+          : requestScope
+            ? (byAuthority[requestScope.authorityKey] ?? sdkMocks.project)
+            : undefined,
+      isPending: sdkMocks.isLoading,
+      isError: sdkMocks.isError,
+      error: sdkMocks.error,
+      refetch: sdkMocks.refetch,
+      requestScope,
+      isMemberProject: false,
+    };
+  }),
+}));
+
 vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@kontourai/station-sdk')>()),
   useProjectQuery: vi.fn(
@@ -177,12 +218,17 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
 
 vi.mock('@kontourai/station-sdk/workspace-pane', () => ({
   useProjectWorkspacePanesQuery: () => ({
-    data: {
-      projectId: sdkMocks.project?.id,
-      descriptors: sdkMocks.panes,
-      instances: sdkMocks.paneInstances,
-      availability: sdkMocks.paneAvailability,
-    },
+    // A catalog that failed with no answer has no data (TanStack's
+    // `isLoadingError`); error WITH data is a failed background refresh,
+    // which the picker marks instead of reporting a load failure (#2345).
+    data: sdkMocks.paneCatalogError
+      ? undefined
+      : {
+          projectId: sdkMocks.project?.id,
+          descriptors: sdkMocks.panes,
+          instances: sdkMocks.paneInstances,
+          availability: sdkMocks.paneAvailability,
+        },
     isLoading: false,
     isError: sdkMocks.paneCatalogError,
     refetch: sdkMocks.refetchPanes,
@@ -288,6 +334,7 @@ describe('ProjectPage (#762 query-failure regression)', () => {
   beforeEach(() => {
     pluginRegistryState.loadStatus = {};
     sdkMocks.project = projectFixture;
+    sdkMocks.capturedProjectViewOptions = [];
     sdkMocks.isLoading = false;
     sdkMocks.isError = false;
     sdkMocks.error = undefined;
@@ -453,6 +500,27 @@ describe('ProjectPage (#762 query-failure regression)', () => {
       screen.getByRole('heading', { name: 'Add workspace pane' }),
     ).toBeTruthy();
     expect(screen.getByRole('button', { name: /^Open Files$/ })).toBeTruthy();
+  });
+
+  // #2465: the Device pane is host-global and dock-only (`supportedRegions:
+  // ['docked']`, no Project context). Its catalog entry exists for the dock;
+  // opened from a Project it is refused as "belongs to a different Project",
+  // so the Project's picker does not offer it.
+  test('the Add pane picker does not offer the dock-only Device pane (#2465)', async () => {
+    const placed = codingPaneAdaptation('Files', 'placed');
+    sdkMocks.panes = [placed.descriptor, WORKSPACE_DEVICE_PANE_DESCRIPTOR];
+    sdkMocks.paneInstances = [placed.instance, WORKSPACE_DEVICE_PANE_INSTANCE];
+    sdkMocks.paneAvailability = [
+      availableFor(placed.descriptor.id),
+      availableFor(WORKSPACE_DEVICE_PANE_DESCRIPTOR.id),
+    ];
+
+    await renderProjectPage();
+    fireEvent.click(screen.getByRole('button', { name: '+ Add pane' }));
+
+    expect(screen.getByRole('button', { name: /^Open Files$/ })).toBeTruthy();
+    expect(screen.queryByText('Device')).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Open Device$/ })).toBeNull();
   });
 
   // #1536 E4: with no layouts the section must say so once and keep the two
@@ -762,6 +830,7 @@ describe('ProjectPage scope migration (#481 slice A)', () => {
     sdkMocks.isError = false;
     sdkMocks.error = undefined;
     sdkMocks.capturedProjectQueryConfigs = [];
+    sdkMocks.capturedProjectViewOptions = [];
     sdkMocks.layouts = [];
     sdkMocks.layoutsLoading = false;
     sdkMocks.layoutsError = false;
@@ -838,10 +907,10 @@ describe('ProjectPage scope migration (#481 slice A)', () => {
     expect(await screen.findByText('Home B')).toBeTruthy();
     expect(screen.queryByText('Home A')).toBeNull();
 
-    // Every read went through the canonical fail-closed contract.
-    for (const config of sdkMocks.capturedProjectQueryConfigs) {
-      expect(config?.requireRequestScope).toBe(true);
-      expect(config?.requestScope).toBeDefined();
+    // Every detail read used the captured authority and SDK-owned auth.
+    for (const options of sdkMocks.capturedProjectViewOptions) {
+      expect(options?.requestScope).toBeDefined();
+      expect(options?.requireCredential).toBe(true);
     }
   });
 
@@ -851,12 +920,8 @@ describe('ProjectPage scope migration (#481 slice A)', () => {
     renderWithAuthority();
     // Fail closed: the page must not paint ANY authority's project body.
     expect(screen.queryByText('Demo Project')).toBeNull();
-    // The canonical wrapper captured an absent scope and marked the read
-    // fail-closed — an ambient `_getApiBase()` fallback is not possible.
-    expect(sdkMocks.capturedProjectQueryConfigs.length).toBeGreaterThan(0);
-    for (const config of sdkMocks.capturedProjectQueryConfigs) {
-      expect(config?.requireRequestScope).toBe(true);
-      expect(config?.requestScope).toBeUndefined();
-    }
+    // No API read starts without a current captured scope, so no ambient
+    // `_getApiBase()` fallback can paint project data.
+    expect(sdkMocks.capturedProjectViewOptions).toEqual([]);
   });
 });

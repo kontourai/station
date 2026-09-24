@@ -39,7 +39,11 @@ vi.mock('../contexts/ProjectsContext', () => ({
   useProject: () => ({ project: queryState.project }),
 }));
 vi.mock('../hooks/useGitStatus', () => ({
-  useGitStatus: (workingDirectory: string | null | undefined) => {
+  // #2412: git reads name the Project first; this records the folder.
+  useGitStatus: (
+    _projectSlug: string | null | undefined,
+    workingDirectory: string | null | undefined,
+  ) => {
     queryState.gitStatusArgs.push(workingDirectory);
     return { data: undefined };
   },
@@ -620,6 +624,28 @@ describe('useChatDockViewModel — station#1146 session directory', () => {
       const { result } = render({
         orchestrationSessions: [] as any,
         orchestrationSessionsStatus: status as never,
+      });
+
+      expect(result.current.activeOrchestrationSession).toBeNull();
+      expect(result.current.activeOrchestrationSessionRead).toBe(expected);
+    },
+  );
+
+  // Post-send invalidate: `status` stays `success` with the pre-child cache
+  // while the refetch is in flight. That window must read as `pending`
+  // (skeleton), never as established `absent` ("Session record missing").
+  test.each([
+    ['success', true, 'pending'],
+    ['success', false, 'absent'],
+    ['error', true, 'pending'],
+    ['error', false, 'error'],
+  ])(
+    'reads a not-found session under query status %s fetching %s as %s',
+    (status, fetching, expected) => {
+      const { result } = render({
+        orchestrationSessions: [] as any,
+        orchestrationSessionsStatus: status as never,
+        orchestrationSessionsFetching: fetching,
       });
 
       expect(result.current.activeOrchestrationSession).toBeNull();

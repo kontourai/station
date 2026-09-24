@@ -4,12 +4,16 @@ import {
   activeChatsStore,
 } from '../../contexts/active-chats-store';
 import { toastStore } from '../../contexts/ToastContext';
+import { foldApprovalPosture } from '../../utils/approvalMode';
+import { serverTurnLive } from '../../utils/conversation-activity';
 import {
   acknowledgesModelRequest,
   modelControlOptionsMatch,
   replaceModelControlOptions,
 } from '../../utils/modelCapabilities';
 import { finalizeAssistantTurn } from './assistantTurn';
+import { backgroundTasksAfterSessionEnds } from './childWorkHandlers';
+import { eventStreamPosition } from './streamPosition';
 import type { OrchestrationEvent } from './types';
 
 export function handleSessionLifecycleEvent(
@@ -119,8 +123,11 @@ export function handleSessionStateChangedEvent(
   // on the very next event and is strictly better than trusting process
   // status (the bug this closes).
   const chat = store.getSnapshot()[event.threadId];
+  // #2309: the server's record answers first; the legacy fold is the
+  // older-server path.
   const turnActive =
-    chat?.orchestrationTurnOpen === true || chat?.status === 'sending';
+    serverTurnLive(chat) ??
+    (chat?.orchestrationTurnOpen === true || chat?.status === 'sending');
   // station#2235: the boot-time interrupted-turn recovery stamps
   // needs_input on a turn whose owner died. That turn will never produce a
   // terminal event of its own (unless the recovery's own turn.aborted,
@@ -158,7 +165,12 @@ export function handleSessionStateChangedEvent(
         }
       : {}),
     ...(TERMINAL_SESSION_STATES.has(event.to)
-      ? { activityHint: undefined, backgroundTasks: undefined }
+      ? {
+          activityHint: undefined,
+          // #2456: this session's children end with it; a sibling session of
+          // the same chat keeps its own (R1).
+          backgroundTasks: backgroundTasksAfterSessionEnds(event.threadId),
+        }
       : {}),
   });
 }
@@ -183,8 +195,24 @@ export function handleSessionExitedEvent(
     orchestrationTurnOpen: false,
     orchestrationSessionStarted: false,
     activityHint: undefined,
-    backgroundTasks: undefined,
+    backgroundTasks: backgroundTasksAfterSessionEnds(event.threadId),
   });
+}
+
+/**
+ * #2436: a recorded approval-posture decision, from any device. Folded by
+ * the server's own order (the frame's global sequence), never by arrival.
+ */
+export function handleApprovalModeSetEvent(
+  event: Extract<OrchestrationEvent, { method: 'session.approval-mode-set' }>,
+) {
+  const update = foldApprovalPosture(
+    activeChatsStore.getChatForExecutionSession(event.threadId),
+    event.approvalMode,
+    eventStreamPosition(event),
+  );
+  if (Object.keys(update).length > 0)
+    activeChatsStore.updateChat(event.threadId, update);
 }
 
 export function handleSessionStopSettledEvent(

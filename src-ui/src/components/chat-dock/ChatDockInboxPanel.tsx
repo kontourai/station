@@ -68,12 +68,12 @@ export interface ChatDockInboxPanelProps {
    */
   agents?: InboxGroupListProps['agents'];
   /**
-   * Local session working directories by thread id, for the rows' hover
-   * cards' git section (see `InboxGroupListProps.cwdByThreadId`). Absent
+   * Local session git locations by thread id, for the rows' hover cards'
+   * git section (see `InboxGroupListProps.gitLocationByThreadId`). Absent
    * renders cards without a git section. Referentially stable, like the
    * other shared props — the `memo()` wrap compares shallowly.
    */
-  cwdByThreadId?: InboxGroupListProps['cwdByThreadId'];
+  gitLocationByThreadId?: InboxGroupListProps['gitLocationByThreadId'];
 }
 
 /**
@@ -97,7 +97,7 @@ function ChatDockInboxPanelImpl({
   exiting = false,
   now: suppliedNow,
   agents,
-  cwdByThreadId,
+  gitLocationByThreadId,
 }: ChatDockInboxPanelProps) {
   const now = suppliedNow ?? Date.now();
   const panelRef = useRef<HTMLElement>(null);
@@ -143,7 +143,7 @@ function ChatDockInboxPanelImpl({
             openChatIds={openChatIds}
             now={now}
             agents={agents}
-            cwdByThreadId={cwdByThreadId}
+            gitLocationByThreadId={gitLocationByThreadId}
             collapsible={{ sections, onToggle: toggleSection }}
             onActivate={(item) => {
               // station#3687 seam 4: acknowledge only after the click did
@@ -183,6 +183,13 @@ function ChatDockInboxPanelImpl({
             onCloseChat={(sessionId, action) => {
               moveFocusBeforeRemovingInboxRow(panelRef.current, action);
               onCloseChat(sessionId);
+            }}
+            onDraftDiscarded={(item, action) => {
+              // #2312: the server deleted the Draft; its open tab, if any,
+              // now names nothing.
+              moveFocusBeforeRemovingInboxRow(panelRef.current, action);
+              if (item.chatSessionId && openChatIds.has(item.chatSessionId))
+                onCloseChat(item.chatSessionId);
             }}
           />
         )}

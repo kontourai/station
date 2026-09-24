@@ -128,6 +128,12 @@ vi.mock('../hooks/useNewChatSelectionModel', () => ({
 }));
 
 const { NewChatModal } = await import('../components/modals/NewChatModal');
+const { composerDraftContext } = await import(
+  '../components/chat-dock/ChatDockModalStack'
+);
+const { pluginAuthoringComposerDraft } = await import(
+  '../views/plugin-management/plugin-authoring-primer'
+);
 
 afterEach(() => {
   cleanup();
@@ -302,6 +308,63 @@ describe('NewChatModal select dispatch invariant (#3013)', () => {
     expect(onSelect).toHaveBeenCalledTimes(1);
     expect(onSelect.mock.calls[0][1]).toBe('kontour');
     expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  test('a requested composer draft is offered and handed over verbatim for the composer, not sent (#2323 S2)', () => {
+    // The New plugin flow asks the dock for a primed chat. The dock turns
+    // the request into this picker's draft item; picking an Agent hands the
+    // exact text to `onSelect` as the initial message, which the dock places
+    // in the composer input (`openChatForAgent`'s `updateChat({ input })`).
+    selectionModelState.isGlobal = false;
+    selectionModelState.selectedProject = {
+      slug: 'pulse',
+      name: 'Pulse',
+      workingDirectory: '/tmp/pulse',
+    };
+    const draft = pluginAuthoringComposerDraft({
+      name: 'pulse',
+      displayName: 'Pulse',
+      template: 'pane',
+    });
+    const onSelect = vi.fn();
+    render(
+      <NewChatModal
+        agents={selectionModelState.agents}
+        projects={[]}
+        onSelect={onSelect}
+        onClose={vi.fn()}
+        draftContext={composerDraftContext(draft)}
+      />,
+    );
+
+    expect(screen.getByText('Plugin authoring')).toBeTruthy();
+    clickAgent('assistant');
+
+    expect(onSelect).toHaveBeenCalledTimes(1);
+    expect(onSelect.mock.calls[0][1]).toBe('pulse');
+    // Verbatim: no "Coding context for this chat" framing around it.
+    expect(onSelect.mock.calls[0][3]).toBe(draft.message);
+  });
+
+  test('a deselected composer draft hands over nothing', () => {
+    const draft = pluginAuthoringComposerDraft({
+      name: 'pulse',
+      displayName: 'Pulse',
+      template: 'pane',
+    });
+    const onSelect = vi.fn();
+    render(
+      <NewChatModal
+        agents={selectionModelState.agents}
+        projects={[]}
+        onSelect={onSelect}
+        onClose={vi.fn()}
+        draftContext={composerDraftContext(draft)}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Opening message/ }));
+    clickAgent('assistant');
+    expect(onSelect.mock.calls[0][3]).toBeUndefined();
   });
 
   test('non-global context with an unresolved project must not be silent', () => {

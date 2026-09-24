@@ -41,6 +41,26 @@ const NODE_MODULES_CHAIN =
 const LIFECYCLE_HOOKS = new Set(['preinstall', 'install', 'postinstall']);
 export const PTY_HANDSHAKE_MARKER = 'STATION_NODE_PTY_READY_4296';
 export const PTY_HANDSHAKE_TIMEOUT_MS = 8_000;
+/**
+ * The child's own 8s handshake timer starts only after Node has booted and
+ * loaded node-pty. The outer bound must leave room for that cold start, or it
+ * kills the child before the child can report which phase stalled — the
+ * hosted Windows failure in #2315 was exactly that: an outer SIGTERM at 10s
+ * with an empty stderr. The same hosted log records the first cold Node child
+ * of the install (esbuild's postinstall) at 3965ms against ~160ms warm, so the
+ * old 2s margin was below one observed cold start. Twelve seconds is three
+ * times that observation.
+ */
+const PTY_HANDSHAKE_STARTUP_ALLOWANCE_MS = 12_000;
+/**
+ * A timeout before the ready marker is the one environmental outcome: a
+ * saturated host can stall any process start. Every other failure (a timeout
+ * after the marker, no marker, unnatural exit, unparseable outcome, native
+ * crash) is a verdict about the module and is never retried.
+ * A deterministic hang still fails every attempt, so this stays fail-closed.
+ */
+const PTY_HANDSHAKE_ATTEMPTS = 3;
+const PTY_HANDSHAKE_RETRY_PAUSE_MS = 2_000;
 
 /**
  * The PTY probe always captures UTF-8 output. Keep this injection seam narrow:
@@ -52,6 +72,113 @@ export const PTY_HANDSHAKE_TIMEOUT_MS = 8_000;
 function executeNodePty(file, args, options) {
   return execFileSync(file, args, options);
 }
+
+/** @param {number} ms */
+function pauseSync(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+/**
+ * Per-attempt bound for an install-time probe child (`pnpm --version`,
+ * esbuild `--version`, a no-build-fallback `require`). These were 10s, and
+ * a starved hosted runner overran that before the child printed anything:
+ * the macOS iOS job in run 35818909873 spent 2m14s just starting `npm run
+ * dependencies:ci` (04:41:01.77 -> 04:43:15.88, after `brew install` sat
+ * silent for 2m24s), then `pnpm --version` died with `spawnSync ... pnpm
+ * ETIMEDOUT` ~12.4s later. On hosted Windows #2340 measured the first cold
+ * Node child at 3965ms against ~160ms warm. A warm probe finishes in well
+ * under a second, so 30s (three times the old bound) only matters when the
+ * host is stalled, and a deterministic hang still fails within
+ * 3 x 30s + 2 x 2s, far inside the 600s/1200s install bound.
+ */
+const COLD_START_PROBE_TIMEOUT_MS = 30_000;
+/**
+ * A stall is usually a transient phase of the runner (a bottle pour, a
+ * simulator preboot, a sibling install), so a fresh attempt after a pause can
+ * succeed where extending one attempt would keep waiting on a wedged child.
+ */
+const COLD_START_PROBE_ATTEMPTS = 3;
+const COLD_START_PROBE_RETRY_PAUSE_MS = 2_000;
+
+/** @param {unknown} value */
+function isEmptyOutput(value) {
+  if (value == null) return true;
+  return String(value).trim() === '';
+}
+
+/**
+ * The one environmental signature: our own spawn bound fired (`ETIMEDOUT`,
+ * which Node reports alongside the kill signal, usually SIGTERM) before the
+ * child wrote anything. A bare SIGTERM without ETIMEDOUT came from someone
+ * else (a cancelled job, an OOM killer) and is not ours to retry. A child
+ * that timed out AFTER writing output started fine and then hung, and a
+ * non-zero exit is a verdict; neither is retried.
+ * @param {any} error
+ */
+function isSilentSpawnTimeout(error) {
+  return (
+    error != null &&
+    typeof error === 'object' &&
+    error.code === 'ETIMEDOUT' &&
+    isEmptyOutput(error.stdout) &&
+    isEmptyOutput(error.stderr)
+  );
+}
+
+/**
+ * Run an install-time probe with a cold-start allowance and a bounded retry
+ * of the silent-timeout signature only (#2315). `run` receives the
+ * per-attempt timeout and performs one spawn; whatever it returns is the
+ * probe's result, and the caller judges that result (for example a wrong
+ * version) itself, so a wrong answer is never retried. Attempts are reported
+ * on stderr: callers such as the prebuild verifier print JSON alone on stdout.
+ * @template T
+ * @param {string} label
+ * @param {(timeoutMs: number) => T} run
+ * @param {ColdStartProbeOptions} [options]
+ * @returns {T}
+ */
+export function runColdStartProbe(
+  label,
+  run,
+  {
+    log = console.error,
+    pause = pauseSync,
+    attempts = COLD_START_PROBE_ATTEMPTS,
+  } = {},
+) {
+  for (let attempt = 1; ; attempt += 1) {
+    const startedAt = Date.now();
+    let result;
+    try {
+      result = run(COLD_START_PROBE_TIMEOUT_MS);
+    } catch (error) {
+      const elapsed = Date.now() - startedAt;
+      if (!isSilentSpawnTimeout(error) || attempt >= attempts) {
+        if (attempt > 1)
+          log(
+            `[dependency-lifecycle] ${label} failed on attempt ${attempt}/${attempts} after ${elapsed}ms`,
+          );
+        throw error;
+      }
+      log(
+        `[dependency-lifecycle] ${label} attempt ${attempt}/${attempts} timed out after ${elapsed}ms with no output (code=ETIMEDOUT signal=${String(/** @type {any} */ (error).signal ?? 'none')}); retrying`,
+      );
+      pause(COLD_START_PROBE_RETRY_PAUSE_MS);
+      continue;
+    }
+    if (attempt > 1)
+      log(
+        `[dependency-lifecycle] ${label} completed on attempt ${attempt}/${attempts} in ${Date.now() - startedAt}ms`,
+      );
+    return result;
+  }
+}
+
+/**
+ * Injection seams for install-time probes; production callers pass nothing.
+ * @typedef {{ log?: (line: string) => void, pause?: (ms: number) => void, attempts?: number }} ColdStartProbeOptions
+ */
 
 export function canonicalJson(value) {
   if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
@@ -94,14 +221,24 @@ export function assertPtyHandshakeOutcome(output) {
  */
 /**
  * @param {string} packageRoot
- * @param {{ exec?: NodePtyExec }} options
+ * @param {{ exec?: NodePtyExec, log?: (line: string) => void, pause?: (ms: number) => void, attempts?: number }} options
  */
 export function verifyNodePtyHandshake(
   packageRoot,
-  { exec = executeNodePty } = {},
+  {
+    exec = executeNodePty,
+    // stderr: the prebuild verifier promises JSON alone on stdout, and CI
+    // tees that stdout straight into proof.json.
+    log = console.error,
+    pause = pauseSync,
+    attempts = PTY_HANDSHAKE_ATTEMPTS,
+  } = {},
 ) {
   const child = String.raw`
+const phases = {};
+const mark = (name) => { phases[name] = Math.round(performance.now()); };
 const pty = require(process.argv[1]);
+mark('loadedMs');
 const marker = process.env.STATION_PTY_MARKER;
 const terminal = pty.spawn(process.execPath, ['-e',
   'process.stdout.write(process.env.STATION_PTY_MARKER + "\\n"); process.stdin.resume(); process.stdin.once("data", () => process.exit(0));'
@@ -113,14 +250,16 @@ const finish = (code, message) => {
   if (settled) return;
   settled = true;
   clearTimeout(timeout);
-  if (message) process.stderr.write(message + '\n');
-  if (code === 0) process.stdout.write(JSON.stringify({ marker: seen ? marker : null, exitCode: 0, signal: 0 }));
+  mark('settledMs');
+  if (message) process.stderr.write(message + ' phases=' + JSON.stringify(phases) + '\n');
+  if (code === 0) process.stdout.write(JSON.stringify({ marker: seen ? marker : null, exitCode: 0, signal: 0, phases }));
   process.exit(code);
 };
 terminal.onData((chunk) => {
   transcript += chunk;
   if (seen || !transcript.includes(marker)) return;
   seen = true;
+  mark('markerMs');
   terminal.write('station-pty-ack\r');
 });
 terminal.onExit((event) => {
@@ -134,43 +273,98 @@ const timeout = setTimeout(() => {
   finish(1, 'node-pty handshake timed out (marker seen: ' + seen + ')');
 }, Number(process.env.STATION_PTY_TIMEOUT_MS));
 `;
-  let output;
-  try {
-    output = exec(process.execPath, ['-e', child, packageRoot], {
-      encoding: 'utf8',
-      env: {
-        ...process.env,
-        STATION_PTY_MARKER: PTY_HANDSHAKE_MARKER,
-        STATION_PTY_TIMEOUT_MS: String(PTY_HANDSHAKE_TIMEOUT_MS),
-      },
-      timeout: 10_000,
-      windowsHide: true,
-    });
-  } catch (error) {
-    // A present-but-empty stderr (string or Buffer) is not nullish, so a `??`
-    // chain would suppress the message fallback and log only the bare prefix.
-    // Report stderr when informative, else the message, and attach the
-    // termination facts so a timeout and a native crash stay distinguishable.
-    const facts = [];
-    if (error != null && typeof error === 'object') {
-      if (error.status != null) facts.push(`status=${String(error.status)}`);
-      if (error.signal) facts.push(`signal=${String(error.signal)}`);
-      if (typeof error.killed === 'boolean')
-        facts.push(`killed=${String(error.killed)}`);
-      if (error.code != null) facts.push(`code=${String(error.code)}`);
+  for (let attempt = 1; ; attempt += 1) {
+    const startedAt = Date.now();
+    let output;
+    try {
+      output = exec(process.execPath, ['-e', child, packageRoot], {
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          STATION_PTY_MARKER: PTY_HANDSHAKE_MARKER,
+          STATION_PTY_TIMEOUT_MS: String(PTY_HANDSHAKE_TIMEOUT_MS),
+        },
+        timeout: PTY_HANDSHAKE_TIMEOUT_MS + PTY_HANDSHAKE_STARTUP_ALLOWANCE_MS,
+        windowsHide: true,
+      });
+    } catch (error) {
+      const failure = describePtyHandshakeFailure(error);
+      if (!isPreMarkerHandshakeTimeout(error) || attempt >= attempts) {
+        if (attempt > 1)
+          log(
+            `[dependency-lifecycle] node-pty real PTY handshake failed on attempt ${attempt}/${attempts} after ${Date.now() - startedAt}ms`,
+          );
+        throw failure;
+      }
+      log(
+        `[dependency-lifecycle] node-pty real PTY handshake attempt ${attempt}/${attempts} timed out after ${Date.now() - startedAt}ms; retrying: ${failure.message}`,
+      );
+      pause(PTY_HANDSHAKE_RETRY_PAUSE_MS);
+      continue;
     }
-    const narrative =
-      String(error?.stderr ?? '').trim() ||
-      String(error?.message ?? '').trim() ||
-      (typeof error === 'string' ? error.trim() : '');
-    const detail = [narrative, facts.join(' ')]
-      .filter((part) => part)
-      .join(' ');
-    throw new Error(
-      `node-pty real PTY handshake failed: ${detail || 'no diagnostic output'}`,
+    // A completed child is a verdict, never retried: the outcome must carry
+    // the marker and a natural exit.
+    assertPtyHandshakeOutcome(output);
+    log(
+      `[dependency-lifecycle] node-pty real PTY handshake passed on attempt ${attempt}/${attempts} in ${Date.now() - startedAt}ms ${describePtyPhases(output)}`.trimEnd(),
     );
+    return;
   }
-  assertPtyHandshakeOutcome(output);
+}
+
+/** @param {unknown} output */
+function describePtyPhases(output) {
+  try {
+    const phases = JSON.parse(String(output).trim())?.phases;
+    return phases && typeof phases === 'object'
+      ? `phases=${JSON.stringify(phases)}`
+      : '';
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * Only a stall BEFORE the ready marker is retryable: that is a slow process
+ * start or native load. Once the marker has arrived, a missing ack or exit is
+ * a PTY protocol defect and fails at once. The child's own timer reports which
+ * side of the marker it stopped on. An outer ETIMEDOUT carries no marker state
+ * (the child reports only when it settles); the 12s startup allowance means
+ * the outer kill wins only when boot and load alone overran it, which is the
+ * pre-marker case. A child that exits without the marker, or crashes, is not
+ * a timeout at all.
+ * @param {any} error
+ */
+function isPreMarkerHandshakeTimeout(error) {
+  if (error == null || typeof error !== 'object') return false;
+  const stderr = String(error.stderr ?? '');
+  if (stderr.includes('marker seen: true')) return false;
+  if (error.code === 'ETIMEDOUT') return true;
+  return stderr.includes('node-pty handshake timed out (marker seen: false)');
+}
+
+/** @param {any} error */
+function describePtyHandshakeFailure(error) {
+  // A present-but-empty stderr (string or Buffer) is not nullish, so a `??`
+  // chain would suppress the message fallback and log only the bare prefix.
+  // Report stderr when informative, else the message, and attach the
+  // termination facts so a timeout and a native crash stay distinguishable.
+  const facts = [];
+  if (error != null && typeof error === 'object') {
+    if (error.status != null) facts.push(`status=${String(error.status)}`);
+    if (error.signal) facts.push(`signal=${String(error.signal)}`);
+    if (typeof error.killed === 'boolean')
+      facts.push(`killed=${String(error.killed)}`);
+    if (error.code != null) facts.push(`code=${String(error.code)}`);
+  }
+  const narrative =
+    String(error?.stderr ?? '').trim() ||
+    String(error?.message ?? '').trim() ||
+    (typeof error === 'string' ? error.trim() : '');
+  const detail = [narrative, facts.join(' ')].filter((part) => part).join(' ');
+  return new Error(
+    `node-pty real PTY handshake failed: ${detail || 'no diagnostic output'}`,
+  );
 }
 
 function isObject(value) {
@@ -826,11 +1020,20 @@ export function preflightLifecycleArtifactTargets(
     );
 }
 
+/**
+ * @param {string} root
+ * @param {any} entry
+ * @param {NodeJS.Platform} [platform]
+ * @param {string} [arch]
+ * @param {ColdStartProbeOptions & { exec?: typeof execFileSync }} [probe]
+ *   test seams for the child-process proofs; production passes nothing.
+ */
 export function verifyArtifact(
   root,
   entry,
   platform = process.platform,
   arch = process.arch,
+  { exec = execFileSync, ...probe } = {},
 ) {
   if (!platformMatches(entry, platform, arch))
     return {
@@ -878,11 +1081,18 @@ export function verifyArtifact(
       : executable;
     const args =
       command === process.execPath ? [executable, '--version'] : ['--version'];
-    const version = execFileSync(command, args, {
-      encoding: 'utf8',
-      timeout: 10_000,
-      windowsHide: true,
-    }).trim();
+    const version = String(
+      runColdStartProbe(
+        `esbuild --version for ${entry.path}`,
+        (timeout) =>
+          exec(command, args, {
+            encoding: 'utf8',
+            timeout,
+            windowsHide: true,
+          }),
+        probe,
+      ),
+    ).trim();
     if (version !== entry.version)
       throw new Error(`esbuild artifact version drift for ${entry.path}`);
   }
@@ -916,10 +1126,18 @@ export function verifyArtifact(
     stop();
   }
   if (entry.artifact.proof === 'no-build-fallback')
-    execFileSync(
-      process.execPath,
-      ['-e', 'require(process.argv[1])', entry.artifact.capability],
-      { cwd: packageRoot, stdio: 'ignore', timeout: 10_000, windowsHide: true },
+    // stdio is ignored, so every timeout of this probe is silent: a
+    // deterministic hang still fails after the bounded attempts, and a
+    // non-zero exit (the capability failed to load) is never retried.
+    runColdStartProbe(
+      `no-build fallback require for ${entry.path}`,
+      (timeout) =>
+        exec(
+          process.execPath,
+          ['-e', 'require(process.argv[1])', entry.artifact.capability],
+          { cwd: packageRoot, stdio: 'ignore', timeout, windowsHide: true },
+        ),
+      probe,
     );
   return {
     skipped: false,

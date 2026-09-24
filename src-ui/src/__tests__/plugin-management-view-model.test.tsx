@@ -64,6 +64,15 @@ const mocks = vi.hoisted(() => ({
   projects: [] as Array<{ slug: string; name: string }>,
   addLayoutFromPlugin: vi.fn(),
   setLayout: vi.fn(),
+  // #2323 S5: the proposal deep link.
+  updateParams: vi.fn(),
+  proposal: null as unknown,
+  proposalError: null as unknown,
+  proposalQueryIds: [] as Array<string | null | undefined>,
+  updateMutate: vi.fn(),
+  removeMutate: vi.fn(),
+  // #2323 S4: what `GET /api/plugin-sources` reported.
+  localSources: [] as unknown[],
 }));
 
 vi.mock('@tanstack/react-query', () => ({
@@ -75,7 +84,10 @@ vi.mock('../contexts/ApiBaseContext', () => ({
 }));
 
 vi.mock('../contexts/NavigationContext', () => ({
-  useNavigation: () => ({ setLayout: mocks.setLayout }),
+  useNavigation: () => ({
+    setLayout: mocks.setLayout,
+    updateParams: mocks.updateParams,
+  }),
 }));
 
 vi.mock('../contexts/ProjectsContext', () => ({
@@ -117,7 +129,13 @@ vi.mock('@kontourai/station-sdk', () => ({
   }),
   usePluginProvidersQuery: () => ({ data: undefined, isLoading: false }),
   usePluginProviderToggleMutation: () => ({ mutate: vi.fn() }),
-  usePluginRemoveMutation: () => ({ mutate: vi.fn() }),
+  usePluginRemoveMutation: () => ({ mutate: mocks.removeMutate }),
+  usePluginLifecycleProposalQuery: (id: string | null | undefined) => {
+    mocks.proposalQueryIds.push(id);
+    return id
+      ? { data: mocks.proposal ?? undefined, error: mocks.proposalError }
+      : { data: undefined, error: null };
+  },
   usePluginSettingsMutation: () => ({ mutate: vi.fn() }),
   usePluginSettingsQuery: () => ({ data: undefined }),
   usePluginsQuery: () => ({
@@ -126,7 +144,7 @@ vi.mock('@kontourai/station-sdk', () => ({
     isLoading: false,
     refetch: mocks.refetchPlugins,
   }),
-  usePluginUpdateMutation: () => ({ mutate: vi.fn() }),
+  usePluginUpdateMutation: () => ({ mutate: mocks.updateMutate }),
   usePluginUpdatesQuery: () => ({ data: [] }),
   reloadPlugins: mocks.reloadPlugins,
   useReloadPluginsMutation: () => ({
@@ -138,6 +156,10 @@ vi.mock('@kontourai/station-sdk', () => ({
     mutateAsync: mocks.revokePermission,
   }),
   waitForAgentHealth: vi.fn(),
+}));
+
+vi.mock('@kontourai/station-sdk/plugin-local-sources-query', () => ({
+  usePluginLocalSourcesQuery: () => ({ data: mocks.localSources }),
 }));
 
 describe('usePluginManagementViewModel', () => {
@@ -174,6 +196,14 @@ describe('usePluginManagementViewModel', () => {
       .mockReset()
       .mockResolvedValue({ slug: 'getting-started' });
     mocks.setLayout.mockReset();
+    mocks.updateParams.mockReset();
+    mocks.proposal = null;
+    mocks.proposalError = null;
+    mocks.proposalQueryIds = [];
+    mocks.updateMutate.mockReset();
+    mocks.removeMutate.mockReset();
+    mocks.localSources = [];
+    window.history.replaceState(null, '', '/plugins');
   });
 
   /**
@@ -764,6 +794,165 @@ describe('usePluginManagementViewModel', () => {
     });
   }
 
+  /**
+   * #2323 S5: the Needs attention row links to `/plugins?proposal=<id>`.
+   * The view opens the ORDINARY flow prefilled — the same preview, the same
+   * consent — and only tells the server which proposal the change completes.
+   */
+  describe('opening an agent proposal', () => {
+    const installProposal = {
+      id: 'proposal-1',
+      kind: 'install',
+      source: '/tmp/network-kit',
+      rationale: 'Adds the network pane.',
+      author: { principal: 'agent', agentSlug: 'station' },
+      createdAt: '2026-09-22T00:00:00.000Z',
+      updatedAt: '2026-09-22T00:00:00.000Z',
+      status: 'open',
+    };
+
+    test('an install proposal opens the install modal prefilled, and the install it leads to names the proposal', async () => {
+      window.history.replaceState(null, '', '/plugins?proposal=proposal-1');
+      mocks.proposal = installProposal;
+      mocks.requestInstallConsent.mockResolvedValue(true);
+      const { result } = renderHook(() => usePluginManagementViewModel());
+
+      await waitFor(() => expect(result.current.showInstallModal).toBe(true));
+      expect(mocks.proposalQueryIds).toContain('proposal-1');
+      expect(result.current.installSource).toBe('/tmp/network-kit');
+      expect(result.current.activeProposal).toMatchObject({ id: 'proposal-1' });
+      // The link is consumed: a reload does not reopen the dialog.
+      expect(mocks.updateParams).toHaveBeenCalledWith({ proposal: null });
+      // Nothing was installed or previewed on arrival.
+      expect(mocks.installMutate).not.toHaveBeenCalled();
+      expect(mocks.previewMutate).not.toHaveBeenCalled();
+
+      // The ordinary preview → consent → install.
+      await act(async () => {
+        await result.current.install();
+      });
+      act(() => {
+        mocks.previewOnSuccess?.(PREVIEW);
+      });
+      await act(async () => {
+        await result.current.install([]);
+      });
+      expect(mocks.requestInstallConsent).toHaveBeenCalledTimes(1);
+      expect(mocks.installMutate).toHaveBeenCalledTimes(1);
+      expect(mocks.installMutate.mock.calls[0][0]).toMatchObject({
+        source: '/tmp/network-kit',
+        proposalId: 'proposal-1',
+        consent: { contentDigest: 'sha256:reviewed' },
+      });
+    });
+
+    test('editing the source means the install no longer completes the proposal', async () => {
+      window.history.replaceState(null, '', '/plugins?proposal=proposal-1');
+      mocks.proposal = installProposal;
+      mocks.requestInstallConsent.mockResolvedValue(true);
+      const { result } = renderHook(() => usePluginManagementViewModel());
+      await waitFor(() => expect(result.current.showInstallModal).toBe(true));
+
+      act(() => {
+        result.current.setInstallSourceAndReset('/tmp/something-else');
+      });
+      expect(result.current.activeProposal).toBeNull();
+      await act(async () => {
+        await result.current.install();
+      });
+      act(() => {
+        mocks.previewOnSuccess?.(PREVIEW);
+      });
+      await act(async () => {
+        await result.current.install([]);
+      });
+      expect(mocks.installMutate.mock.calls[0][0]).not.toHaveProperty(
+        'proposalId',
+      );
+    });
+
+    test('an update proposal asks for confirmation, and the update names the proposal', async () => {
+      window.history.replaceState(null, '', '/plugins?proposal=proposal-2');
+      mocks.proposal = {
+        ...installProposal,
+        id: 'proposal-2',
+        kind: 'update',
+        source: undefined,
+        pluginName: 'network-kit',
+      };
+      const { result } = renderHook(() => usePluginManagementViewModel());
+      await waitFor(() =>
+        expect(result.current.updateConfirm).toMatchObject({
+          id: 'proposal-2',
+        }),
+      );
+      expect(mocks.updateMutate).not.toHaveBeenCalled();
+
+      act(() => result.current.confirmProposedUpdate());
+      expect(mocks.updateMutate).toHaveBeenCalledWith(
+        { name: 'network-kit', proposalId: 'proposal-2' },
+        expect.any(Object),
+      );
+    });
+
+    test('a remove proposal opens the ordinary removal confirmation, and the removal names the proposal', async () => {
+      window.history.replaceState(null, '', '/plugins?proposal=proposal-3');
+      mocks.proposal = {
+        ...installProposal,
+        id: 'proposal-3',
+        kind: 'remove',
+        source: undefined,
+        pluginName: 'network-kit',
+      };
+      const { result } = renderHook(() => usePluginManagementViewModel());
+      await waitFor(() =>
+        expect(result.current.removeConfirm).toBe('network-kit'),
+      );
+      expect(mocks.removeMutate).not.toHaveBeenCalled();
+
+      act(() => result.current.remove('network-kit'));
+      expect(mocks.removeMutate).toHaveBeenCalledWith(
+        { name: 'network-kit', proposalId: 'proposal-3' },
+        expect.any(Object),
+      );
+    });
+
+    test('confirming the removal of a DIFFERENT plugin than the remove proposal names does not complete it', async () => {
+      window.history.replaceState(null, '', '/plugins?proposal=proposal-3');
+      mocks.proposal = {
+        ...installProposal,
+        id: 'proposal-3',
+        kind: 'remove',
+        source: undefined,
+        pluginName: 'network-kit',
+      };
+      const { result } = renderHook(() => usePluginManagementViewModel());
+      await waitFor(() =>
+        expect(result.current.removeConfirm).toBe('network-kit'),
+      );
+
+      act(() => result.current.remove('other-kit'));
+      // A bare name: the server is told of no proposal.
+      expect(mocks.removeMutate).toHaveBeenCalledWith(
+        'other-kit',
+        expect.any(Object),
+      );
+    });
+
+    test('a proposal that is no longer open opens nothing and says so', async () => {
+      window.history.replaceState(null, '', '/plugins?proposal=proposal-1');
+      mocks.proposal = { ...installProposal, status: 'dismissed' };
+      const { result } = renderHook(() => usePluginManagementViewModel());
+      await waitFor(() =>
+        expect(result.current.message?.text).toBe(
+          'That plugin proposal was already dismissed.',
+        ),
+      );
+      expect(result.current.showInstallModal).toBe(false);
+      expect(result.current.activeProposal).toBeNull();
+    });
+  });
+
   test('missing installed plugin details remain unknown and cannot prompt from preview identity', async () => {
     mocks.requestInstallConsent.mockResolvedValue(true);
     const { result } = renderHook(() => usePluginManagementViewModel());
@@ -1048,6 +1237,206 @@ describe('usePluginManagementViewModel', () => {
   });
 });
 
+describe('#2323 S4 reinstall from source', () => {
+  const installed = {
+    name: 'pulse',
+    displayName: 'Connected Pulse',
+    version: '1.0.0',
+    hasBundle: true,
+    permissions: {
+      declared: ['navigation.dock', 'network.fetch'],
+      granted: ['navigation.dock', 'network.fetch'],
+      missing: [],
+    },
+  };
+  const status = {
+    pluginName: 'pulse',
+    projectSlug: 'pulse-project',
+    status: 'changed' as const,
+    installedSourceDigest: 'sha256:installed',
+    currentSourceDigest: 'sha256:edited',
+  };
+  const revision = {
+    scope: 'journal',
+    installation: 'pulse',
+    generation: 'g1',
+    artifact: { digest: 'sha256:artifact' },
+    materialization: 'm1',
+    dataScope: 'd1',
+    origin: 'a'.repeat(64),
+  };
+  const preview = {
+    valid: true,
+    manifest: {
+      name: 'pulse',
+      displayName: 'Connected Pulse',
+      version: '1.1.0',
+    },
+    components: [],
+    conflicts: [],
+    dependencies: [],
+    contentDigest: 'sha256:edited',
+    installationRevision: revision,
+    existingDataScope: true,
+    grantRevision: 'grants-7',
+    permissions: {
+      required: ['navigation.dock', 'agents.invoke'],
+      autoGranted: ['navigation.dock'],
+      pendingConsent: [{ permission: 'agents.invoke', tier: 'active' }],
+    },
+  };
+
+  beforeEach(() => {
+    // Its own describe, so it resets the shared mocks itself.
+    mocks.queryClient.invalidateQueries.mockReset();
+    mocks.requestConsent.mockReset();
+    mocks.requestInstallConsent.mockReset();
+    mocks.installMutate
+      .mockReset()
+      .mockImplementation((_variables, options) => {
+        mocks.installOnSuccess = options.onSuccess;
+      });
+    mocks.previewMutate.mockReset().mockImplementation((_source, options) => {
+      mocks.previewOnSuccess = options.onSuccess;
+    });
+    mocks.installOnSuccess = null;
+    mocks.previewOnSuccess = null;
+    mocks.reloadPlugins.mockReset().mockResolvedValue(undefined);
+    mocks.reloadClientRegistry.mockReset().mockResolvedValue('ready');
+    mocks.proposal = null;
+    mocks.proposalError = null;
+    window.history.replaceState(null, '', '/plugins');
+    mocks.projects = [
+      {
+        slug: 'pulse-project',
+        name: 'Pulse Lab',
+        workingDirectory: '/work/pulse',
+      } as { slug: string; name: string },
+    ];
+    mocks.pluginsData = [installed];
+    mocks.selectedId = 'pulse';
+    mocks.localSources = [status];
+  });
+
+  test('the selected plugin carries its local source status', () => {
+    const { result } = renderHook(() => usePluginManagementViewModel());
+    expect(result.current.selectedLocalSource).toEqual(status);
+  });
+
+  test('previews the Project folder, then installs through the same consent with the data kept and the previewed revision', async () => {
+    mocks.requestInstallConsent.mockResolvedValue(true);
+    const { result } = renderHook(() => usePluginManagementViewModel());
+
+    act(() => {
+      result.current.reinstallFromSource(installed, status);
+    });
+    expect(mocks.previewMutate).toHaveBeenCalledWith(
+      '/work/pulse',
+      expect.anything(),
+    );
+    act(() => {
+      mocks.previewOnSuccess?.(preview);
+    });
+    expect(result.current.previewData).toEqual(preview);
+    expect(result.current.reinstall).toEqual({
+      pluginName: 'pulse',
+      projectName: 'Pulse Lab',
+      installedVersion: '1.0.0',
+      grantedPermissions: ['navigation.dock', 'network.fetch'],
+      installedGrants: { pulse: ['navigation.dock', 'network.fetch'] },
+      installedSourceDigest: 'sha256:installed',
+    });
+
+    await act(async () => {
+      await result.current.install([], 'preserve');
+    });
+
+    // The consent owner asks exactly what it asks for any install.
+    expect(mocks.requestInstallConsent).toHaveBeenCalledWith(
+      'pulse',
+      'Connected Pulse',
+      [{ permission: 'agents.invoke', tier: 'active' }],
+    );
+    expect(mocks.installMutate.mock.calls[0][0]).toEqual({
+      source: '/work/pulse',
+      skip: [],
+      dataPolicy: 'preserve',
+      expectedInstallation: revision,
+      consent: {
+        grantRevision: 'grants-7',
+        permissions: ['navigation.dock', 'agents.invoke'],
+        contentDigest: 'sha256:edited',
+        dependencies: [],
+      },
+    });
+
+    await act(async () => {
+      await mocks.installOnSuccess?.({
+        plugin: { name: 'pulse', displayName: 'Connected Pulse' },
+        lifecycle: { data: 'preserved' },
+        layout: { slug: 'pulse-layout' },
+      } as never);
+    });
+    expect(result.current.message).toEqual({
+      type: 'success',
+      text: 'Reinstalled Connected Pulse from Pulse Lab. Its data was kept.',
+    });
+    // The plugin is already placed; a reinstall does not ask again.
+    expect(result.current.layoutAssignment).toBeNull();
+    expect(result.current.reinstall).toBeNull();
+    expect(mocks.reloadPlugins).toHaveBeenCalled();
+    expect(mocks.reloadClientRegistry).toHaveBeenCalled();
+  });
+
+  test('declining the consent installs nothing and ends the reinstall', async () => {
+    mocks.requestInstallConsent.mockResolvedValue(false);
+    const { result } = renderHook(() => usePluginManagementViewModel());
+    act(() => {
+      result.current.reinstallFromSource(installed, status);
+    });
+    act(() => {
+      mocks.previewOnSuccess?.(preview);
+    });
+    await act(async () => {
+      await result.current.install([], 'preserve');
+    });
+    expect(mocks.installMutate).not.toHaveBeenCalled();
+    expect(result.current.reinstall).toBeNull();
+  });
+
+  test('a folder that now holds a different plugin is refused before any preview is shown', () => {
+    const { result } = renderHook(() => usePluginManagementViewModel());
+    act(() => {
+      result.current.reinstallFromSource(installed, status);
+    });
+    act(() => {
+      mocks.previewOnSuccess?.({
+        ...preview,
+        manifest: { name: 'other-plugin', version: '1.0.0' },
+      });
+    });
+    expect(result.current.previewData).toBeNull();
+    expect(result.current.reinstall).toBeNull();
+    expect(result.current.message?.type).toBe('error');
+    expect(result.current.message?.text).toContain("'other-plugin'");
+  });
+
+  test('closing the preview ends the reinstall', () => {
+    const { result } = renderHook(() => usePluginManagementViewModel());
+    act(() => {
+      result.current.reinstallFromSource(installed, status);
+    });
+    act(() => {
+      mocks.previewOnSuccess?.(preview);
+    });
+    act(() => {
+      result.current.closePreview();
+    });
+    expect(result.current.previewData).toBeNull();
+    expect(result.current.reinstall).toBeNull();
+  });
+});
+
 describe('InstallPreviewModal', () => {
   test('keeps non-skippable Pane declarations checked and disables their toggle', () => {
     const onToggleSkip = vi.fn();
@@ -1103,5 +1492,80 @@ describe('InstallPreviewModal', () => {
       ).disabled,
     ).toBe(true);
     expect(screen.getByText(/Required package declaration/)).toBeTruthy();
+    expect(screen.getByText(/conflict \(builtin\)/)).toBeTruthy();
+    // A conflicted row carries the blocking copy, not the neutral tag.
+    expect(screen.queryByText('Required')).toBeNull();
+  });
+
+  test('marks a required Pane without a conflict as required, not conflicted, and shows its declared name', () => {
+    render(
+      <InstallPreviewModal
+        previewData={{
+          valid: true,
+          manifest: {
+            name: 'pulse-plugin',
+            displayName: 'Pulse Plugin',
+            version: '1.0.0',
+            hasBundle: true,
+          },
+          components: [
+            {
+              type: 'pane',
+              id: 'pane:plugin%3Apulse-plugin:pulse:workspace',
+              name: 'Connected Pulse',
+              skippable: false,
+            },
+          ],
+          conflicts: [],
+        }}
+        previewSkips={new Set()}
+        installPending={false}
+        onClose={vi.fn()}
+        onToggleSkip={vi.fn()}
+        onConfirm={vi.fn()}
+      />,
+    );
+    const dialog = screen.getByRole('dialog');
+    expect(dialog.textContent).not.toMatch(/conflict/i);
+    expect(screen.getByText('Required')).toBeTruthy();
+    const checkbox = screen.getByRole('checkbox', {
+      name: 'paneConnected Pulsepane:plugin%3Apulse-plugin:pulse:workspace',
+    }) as HTMLInputElement;
+    expect(checkbox.checked).toBe(true);
+    expect(checkbox.disabled).toBe(true);
+    expect(
+      (
+        screen.getByRole('button', {
+          name: 'Confirm Install',
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(false);
+  });
+
+  test('falls back to the component id when the manifest declares no name', () => {
+    render(
+      <InstallPreviewModal
+        previewData={{
+          valid: true,
+          manifest: {
+            name: 'agent-plugin',
+            displayName: 'Agent Plugin',
+            version: '1.0.0',
+            hasBundle: true,
+          },
+          components: [{ type: 'agent', id: 'assistant' }],
+          conflicts: [],
+        }}
+        previewSkips={new Set()}
+        installPending={false}
+        onClose={vi.fn()}
+        onToggleSkip={vi.fn()}
+        onConfirm={vi.fn()}
+      />,
+    );
+    expect(
+      screen.getByRole('checkbox', { name: 'agentassistant' }),
+    ).toBeTruthy();
+    expect(screen.queryByText('Required')).toBeNull();
   });
 });

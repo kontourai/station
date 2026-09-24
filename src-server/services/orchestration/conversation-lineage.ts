@@ -40,7 +40,7 @@ const CONVERSATION_HISTORY_MAX_ENTRIES = 100;
  * be admissible for the current child rather than treating terminal lifecycle
  * as a permanent read-only state.
  */
-export function isConversationContinuationControlEligible(
+function isConversationContinuationControlEligible(
   detail: OrchestrationSessionDetail,
 ): boolean {
   const session = detail.session;
@@ -67,6 +67,31 @@ export function isConversationContinuationControlEligible(
       foldedSessionLifecycleState(session.lifecycleState),
     )
   );
+}
+
+/**
+ * #2316: whether a conversation that cannot be continued RIGHT NOW is only
+ * waiting on its active turn — the open read's `continuationPending`, which the
+ * UI renders as a busy wait rather than a read-only verdict.
+ *
+ * An approval opened on the live turn sets `pendingReview`, and that alone
+ * made {@link isConversationContinuationControlEligible} deny, so a reload
+ * while Claude waited on "Allow Bash?" read as "could not prove a writable
+ * continuation". While a turn is active, an open request is that turn paused
+ * on the user's decision: it settles when the request is answered, exactly
+ * like any other active-turn wait. Every other denial still applies unchanged
+ * (a read-only attachment, an unanswerable current child), and a pending
+ * review with NO active turn — a request nothing live is waiting on — is still
+ * not a wait.
+ */
+export function isConversationContinuationPending(
+  detail: OrchestrationSessionDetail,
+): boolean {
+  if (detail.session.hasActiveTurn !== true) return false;
+  return isConversationContinuationControlEligible({
+    ...detail,
+    session: { ...detail.session, pendingReview: false },
+  });
 }
 
 export function canResolveConversationContinuation(
@@ -331,6 +356,27 @@ export class ConversationLineage {
       currentLineage.predecessorSessionId,
       authority,
     );
+  }
+
+  /**
+   * #2424: the predecessor of a PLAIN continuation reservation — a lineage
+   * tail with no handoff marker and no context boundary. Only that tail is
+   * one the next ordinary send reuses (`resolveConversationContinuation`
+   * refuses a handoff tail and an unstartable boundary, and starts a
+   * fresh-context child for a startable one), so only it may be described by
+   * its predecessor when the conversation is opened. Says nothing about
+   * whether the tail has started; callers establish that separately.
+   */
+  plainReservationPredecessor(conversationId: string): string | undefined {
+    const store = this.deps.eventStore;
+    const tail = store?.conversationSessions(conversationId).at(-1);
+    if (!store || !tail?.predecessorSessionId) return undefined;
+    if (
+      store.conversationHandoffForSession(tail.sessionId) ||
+      store.conversationContextBoundaryForSuccessor(tail.sessionId)
+    )
+      return undefined;
+    return tail.predecessorSessionId;
   }
 
   reservedConversationHandoff(sessionId: string) {
@@ -905,7 +951,12 @@ export class ConversationLineage {
         if (session.pendingReview !== undefined) {
           item.pendingReview = session.pendingReview;
         }
-        if (session.hasActiveTurn !== undefined) {
+        // #2309: the conversation-wide activity fold answers when present.
+        if (session.conversationActivity) {
+          item.activity = session.conversationActivity;
+          item.hasActiveTurn =
+            session.conversationActivity.openTurn !== undefined;
+        } else if (session.hasActiveTurn !== undefined) {
           item.hasActiveTurn = session.hasActiveTurn;
         }
         return item;
