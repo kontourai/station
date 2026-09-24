@@ -405,7 +405,9 @@ describe('a forge file link (github.com/.../blob/...)', () => {
       lineRange: { start: 2, end: 2 },
     });
     // The tooltip does not imply the local copy is the forge's revision.
-    expect(anchor.getAttribute('title')).toMatch(/working copy of src\/app\.ts/);
+    expect(anchor.getAttribute('title')).toMatch(
+      /working copy of src\/app\.ts/,
+    );
   });
 
   test('a slash branch the checkout is not on, or an unknown branch, opens on the forge', () => {
@@ -480,5 +482,46 @@ describe('an explicit path link follows the session’s file scope', () => {
     expect(notices).toHaveLength(1);
     expect(notices[0]?.message).toMatch(/session's own directory/);
     toastStore.clear();
+  });
+});
+
+describe('a link whose text names another host than it goes to', () => {
+  test('shows the real host beside the text and the full href as its tooltip', () => {
+    for (const [href, text, host] of [
+      ['https://evil.test/x', 'github.com/kontourai/station', 'evil.test'],
+      ['https://evil.test/x', 'https://github.com/o/r', 'evil.test'],
+      ['https://evil.test:8443/', 'www.github.com', 'evil.test:8443'],
+      [
+        'https://github.com.evil.test/o/r',
+        'github.com',
+        'github.com.evil.test',
+      ],
+      // A recognised forge URL on another host is still a mismatch.
+      [
+        'https://gitlab.com/o/r/-/issues/1',
+        'github.com/o/r/issues/1',
+        'gitlab.com',
+      ],
+    ] as const) {
+      const anchor = mount(href, CONVERSATION, text);
+      expect(anchor.textContent, href).toBe(`${text} (${host})`);
+      expect(anchor.getAttribute('title'), href).toBe(new URL(href).href);
+      cleanup();
+    }
+  });
+
+  test('prose, file names and matching hosts are unchanged', () => {
+    for (const [href, text] of [
+      ['https://example.test/docs', 'the docs'],
+      ['https://github.com/o/r/blob/main/README.md', 'README.md'],
+      ['https://github.com/o/r', 'github.com/o/r'],
+      ['https://www.github.com/o/r', 'github.com/o/r'],
+      ['https://github.com/o/r/pull/1', 'src/app.ts'],
+    ] as const) {
+      const anchor = mount(href, CONVERSATION, text);
+      expect(anchor.textContent, `${text} -> ${href}`).toBe(text);
+      expect(anchor.querySelector('.chat-link-host')).toBeNull();
+      cleanup();
+    }
   });
 });

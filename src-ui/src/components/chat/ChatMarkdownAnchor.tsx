@@ -11,7 +11,13 @@ import {
   hostOwnsExternalLinks,
   openNativeExternalLink,
 } from '../../platform/openExternalLink';
-import { chipFor, PullRequestLinkState, textOf } from './ChatLinkChip';
+import {
+  chipFor,
+  LinkHostBadge,
+  mismatchedLinkHost,
+  PullRequestLinkState,
+  textOf,
+} from './ChatLinkChip';
 import {
   type MarkdownLinkContextValue,
   useMarkdownLinkContext,
@@ -186,8 +192,7 @@ function activate(
   // one behaviour to reason about instead of two wrong ones.
   event.preventDefault();
   // The layout route reads the checkout: a worktree file does not take it.
-  if (!scope.thread)
-    link.openPathInMain?.(target.path, target.lineRange);
+  if (!scope.thread) link.openPathInMain?.(target.path, target.lineRange);
 }
 
 type AnchorProps = AnchorHTMLAttributes<HTMLAnchorElement> & {
@@ -279,6 +284,13 @@ function LinkAnchor({
   const text = textOf(children).trim();
   const raw = text === (href ?? '').trim() || `./${text}` === href;
   const chip = target ? chipFor(target, raw) : null;
+  // Text that reads as a URL or host but names another host than the href:
+  // show the real one beside it and put the full href in the tooltip — an
+  // author-supplied title included, since that too is text the link chose.
+  const url = target && target.kind !== 'path' ? target.url : null;
+  const realHost = url && !raw ? mismatchedLinkHost(text, url) : null;
+  const title = realHost && url ? url : undefined;
+  const hostBadge = realHost ? <LinkHostBadge host={realHost} /> : null;
   const onClick = (event: MouseEvent<HTMLAnchorElement>) =>
     activate(event, clickTarget, link, model);
   // A web URL the handler lets through (no dock for a pull request, an
@@ -292,8 +304,15 @@ function LinkAnchor({
   const newTab = leaves ? { target: '_blank', rel: 'noopener noreferrer' } : {};
   if (!chip) {
     return (
-      <a {...anchorProps} {...newTab} href={href} onClick={onClick}>
+      <a
+        {...anchorProps}
+        {...newTab}
+        href={href}
+        onClick={onClick}
+        {...(title ? { title } : {})}
+      >
         {children}
+        {hostBadge}
       </a>
     );
   }
@@ -311,7 +330,7 @@ function LinkAnchor({
       className={className}
       href={href}
       onClick={onClick}
-      title={anchorProps.title ?? chip.title}
+      title={title ?? anchorProps.title ?? chip.title}
     >
       {chip.icon}
       {chip.label ? (
@@ -319,6 +338,7 @@ function LinkAnchor({
       ) : (
         children
       )}
+      {hostBadge}
       {target?.kind === 'pull-request' && link?.conversationId ? (
         <PullRequestLinkState
           conversationId={link.conversationId}

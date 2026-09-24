@@ -104,6 +104,111 @@ function forgeUrlLabel(url: string): string | null {
   return null;
 }
 
+/**
+ * File extensions that are also plausible top-level domains. A bare
+ * `README.md` or `app.ts` in link text names a file, not a host; treating it
+ * as a host claim would decorate ordinary prose.
+ */
+const FILE_LIKE_SUFFIXES = new Set([
+  'c',
+  'cc',
+  'cpp',
+  'cs',
+  'css',
+  'go',
+  'h',
+  'html',
+  'java',
+  'js',
+  'json',
+  'jsx',
+  'kt',
+  'lock',
+  'log',
+  'md',
+  'mjs',
+  'py',
+  'rb',
+  'rs',
+  'sh',
+  'sql',
+  'swift',
+  'toml',
+  'ts',
+  'tsx',
+  'txt',
+  'xml',
+  'yaml',
+  'yml',
+  'zip',
+]);
+
+function canonicalHost(host: string): string {
+  return host
+    .toLowerCase()
+    .replace(/\.$/, '')
+    .replace(/^www\./, '');
+}
+
+/**
+ * The host a link's VISIBLE TEXT claims, or null when the text does not read
+ * as a URL or host: `https://github.com/o/r`, `www.github.com`,
+ * `github.com/o/r` and a bare `github.com` do; `the fix`, `src/app.ts` and a
+ * bare `README.md` do not.
+ */
+function claimedHost(text: string): string | null {
+  const value = text.trim();
+  if (!value || /\s/.test(value)) return null;
+  const hasScheme = /^https?:\/\//i.test(value);
+  let url: URL;
+  try {
+    url = new URL(hasScheme ? value : `https://${value}`);
+  } catch {
+    return null;
+  }
+  const host = url.hostname.toLowerCase().replace(/\.$/, '');
+  if (!/^(?:[a-z0-9-]+\.)+[a-z]{2,}$/.test(host)) return null;
+  if (hasScheme) return host;
+  // Without a scheme the text must BEGIN with the host (`user@host` and the
+  // like are not host-looking prose), and a bare name whose suffix is a
+  // common file extension is a file name.
+  if (!value.toLowerCase().startsWith(host)) return null;
+  const rest = value.slice(host.length);
+  if (host.startsWith('www.') || rest.startsWith('/')) return host;
+  if (rest !== '') return null;
+  const suffix = host.slice(host.lastIndexOf('.') + 1);
+  return FILE_LIKE_SUFFIXES.has(suffix) ? null : host;
+}
+
+/**
+ * The host a link REALLY goes to, when its visible text names a different
+ * one (`[github.com/o/r](https://evil.test/x)`), else null. A WebView shows no
+ * status-bar URL on hover, so without this the reader has no signal before
+ * clicking. `www.` is not a difference; a port or a subdomain is. Text that
+ * does not read as a host returns null: prose link text is not a claim.
+ */
+export function mismatchedLinkHost(text: string, url: string): string | null {
+  const claimed = claimedHost(text);
+  if (!claimed) return null;
+  let real: URL;
+  try {
+    real = new URL(url);
+  } catch {
+    return null;
+  }
+  return canonicalHost(claimed) === canonicalHost(real.hostname)
+    ? null
+    : real.host;
+}
+
+/**
+ * The real host beside the link text, for `mismatchedLinkHost`. Read by
+ * assistive technology too: the discrepancy is the point.
+ */
+export function LinkHostBadge({ host }: { host: string }) {
+  return <span className="chat-link-host"> ({host})</span>;
+}
+
 export interface ChipPresentation {
   icon: ReactNode;
   /** The compact label, or null to keep the link's own text. */

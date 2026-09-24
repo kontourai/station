@@ -163,9 +163,7 @@ describe('classifying a link in a chat message (#2049)', () => {
     // A slash branch cannot be told from a directory by the URL alone: the
     // undivided tail is kept for a reader that knows the branch.
     expect(
-      classifyMarkdownLink(
-        'https://github.com/o/r/blob/feature/x/src/a.ts',
-      ),
+      classifyMarkdownLink('https://github.com/o/r/blob/feature/x/src/a.ts'),
     ).toMatchObject({
       ref: 'feature',
       path: 'x/src/a.ts',
