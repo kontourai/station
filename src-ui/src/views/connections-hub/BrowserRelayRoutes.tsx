@@ -13,6 +13,7 @@ import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
 import { Dialog } from '../../components/Dialog';
 import { PageRow } from '../../components/PageRow';
+import { SkeletonBlock } from '../../components/state';
 import { retireBrowserRelayRoute } from '../../lib/browserRelayRouteBinding';
 import {
   BrowserRelayTurnCustody,
@@ -620,7 +621,11 @@ export function BrowserRelayRoutes({
         </p>
       )}
       {enrolling && (
-        <Suspense fallback={<p role="status">Opening account verification…</p>}>
+        <Suspense
+          fallback={
+            <SkeletonBlock count={1} label="Opening account verification" />
+          }
+        >
           <BrowserRelayEnrollmentDialog
             connection={enrolling}
             onClose={() => setEnrolling(null)}

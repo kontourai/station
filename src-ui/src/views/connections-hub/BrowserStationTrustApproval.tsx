@@ -12,6 +12,7 @@ import {
 } from '@kontourai/station-shared/connection-proof';
 import { useEffect, useState } from 'react';
 import { Button } from '../../components/Button';
+import { SkeletonBlock } from '../../components/state';
 
 const MAX_REPORT_BYTES = 4096;
 const REPORT_SCHEMA = 'station.connection-key/v1';
@@ -379,7 +380,7 @@ export function BrowserStationTrustApproval() {
         </div>
       )}
       {candidate && record === undefined && !recordError && (
-        <p role="status">Checking this browser’s saved Station trust…</p>
+        <SkeletonBlock count={1} label="Checking saved Station trust" />
       )}
       {candidate && decision?.canApprove && (
         <label className="relay-route-trust-approval__confirm">

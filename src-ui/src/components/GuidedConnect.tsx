@@ -15,6 +15,7 @@ import { checkHostCompatibility } from '../lib/compatibilityLoader';
 import { checkServerHealthDetailed } from '../lib/serverHealth';
 import { hasLocalStationForProfile } from '../platform/client-origin-surface';
 import { usePlatformProfile } from '../platform/PlatformProfileContext';
+import { SkeletonBlock } from './state';
 import './GuidedConnect.css';
 import { triggerHaptic } from '../platform/native/haptics';
 import { reconnectLocalService } from '../platform/native/localServiceReconnect';
@@ -163,7 +164,9 @@ export function GuidedConnect({
             aria-label="Broker route setup"
           >
             <Suspense
-              fallback={<p role="status">Opening broker route setup…</p>}
+              fallback={
+                <SkeletonBlock count={1} label="Opening broker route setup" />
+              }
             >
               <BrowserRelayRoutes
                 onEnrollmentOpenChange={onRelayOnboardingChange}

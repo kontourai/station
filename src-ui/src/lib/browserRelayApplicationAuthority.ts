@@ -9,6 +9,7 @@ import {
   restoreApplicationSessionKey,
 } from '@kontourai/station-sdk/application-session';
 import type { ClientCredential } from '@kontourai/station-sdk/client';
+import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import {
   beginBrowserRelayAccountScopeChange,
   browserRelayAccountScopeKey,
@@ -692,7 +693,7 @@ async function installActiveAliasAuthority(
       ...input,
       version: 1,
       status: 'active',
-      authorityInstanceId: crypto.randomUUID(),
+      authorityInstanceId: randomCorrelationId(),
       scopeVersion:
         Math.max(recordScopeVersion(previous), transitionVersion) + 1,
       key: { privateKey: input.key.privateKey, publicKey: input.key.publicKey },
