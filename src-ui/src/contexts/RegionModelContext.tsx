@@ -808,10 +808,14 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
       },
     );
   }, [restorePhoneLayer]);
-  const closePhoneLayer = useCallback(
-    () => navigationStore.runNavigationGuards(restorePhoneLayer),
-    [restorePhoneLayer],
-  );
+  const closePhoneLayer = useCallback(() => {
+    // No layer, nothing to leave — and no guard to ask. Chat-focus intents
+    // call this on every device (`useDismissPhoneLayer`), so asking with no
+    // layer would put a "Discard?" in front of an unrelated dirty form
+    // whose answer changes nothing.
+    if (!phoneLayerRef.current) return;
+    navigationStore.runNavigationGuards(restorePhoneLayer);
+  }, [restorePhoneLayer]);
   closePhoneLayerRef.current = closePhoneLayer;
   useEffect(() => {
     if (!phoneLayerOpen) return;

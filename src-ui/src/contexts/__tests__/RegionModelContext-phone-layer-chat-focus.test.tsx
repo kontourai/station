@@ -87,6 +87,48 @@ afterEach(() => {
 });
 
 describe('focusing a chat while a pane is open over Chat', () => {
+  // Delta review High: the dismissal ran the unsaved-changes guards on EVERY
+  // chat focus, layer or not — a dirty form anywhere got a "Discard?" whose
+  // answer did nothing. With no layer, no guard may be asked.
+  test('with no layer, focusing a chat asks no unsaved-changes guard', async () => {
+    Object.defineProperty(window, 'innerWidth', {
+      configurable: true,
+      value: 1280,
+    });
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addListener: () => {},
+      removeListener: () => {},
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      dispatchEvent: () => false,
+    }));
+    render(
+      <KeyboardShortcutsProvider>
+        <NavigationProvider>
+          <RegionModelProvider>
+            <Probe />
+          </RegionModelProvider>
+        </NavigationProvider>
+      </KeyboardShortcutsProvider>,
+    );
+    await waitFor(() => expect(current().model).not.toBeNull());
+    const guard = vi.fn((proceed: () => void) => proceed());
+    const unregister = navigationStore.registerNavigationGuard(
+      Symbol('dirty-settings-form'),
+      guard,
+    );
+    try {
+      act(() => current().actions.focusSession('session-1'));
+      expect(current().model.phoneLayer).toBeNull();
+      expect(guard).toHaveBeenCalledTimes(0);
+    } finally {
+      unregister();
+    }
+  });
+
   test('focusSession dismisses the layer: Chat is shown, the minted tab gone', async () => {
     render(
       <KeyboardShortcutsProvider>
