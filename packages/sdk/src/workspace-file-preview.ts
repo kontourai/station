@@ -32,11 +32,11 @@ export {
   WORKSPACE_FILE_PREVIEW_PANE_VERSION,
 } from '@kontourai/station-contracts/workspace-file-preview';
 export {
-  listExistingProjectWorkspaceFiles,
   type ProjectWorkspacePaneAvailabilityProjection,
   type ProjectWorkspacePaneCatalog,
   previewProjectWorkspaceFile,
 } from './client/projects';
+export { listExistingProjectWorkspaceFiles } from './client/workspace-file-existence';
 export { useProjectWorkspaceFilePreviewQuery } from './query-domains/workspaceProjects';
 
 export interface WorkspaceFilePreviewDownload {

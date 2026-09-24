@@ -25,7 +25,6 @@ import {
 } from '@kontourai/station-contracts/project-identity';
 import { PROJECT_MEMBER_ACTIONS } from '@kontourai/station-contracts/project-membership';
 import type {
-  WorkspaceFileExistence,
   WorkspaceFilePreview,
   WorkspaceFilePreviewRequest,
 } from '@kontourai/station-contracts/workspace-file-preview';
@@ -260,28 +259,6 @@ export async function previewProjectWorkspaceFile(
   return unwrapOrThrow<WorkspaceFilePreview>(
     response,
     'Failed to preview file',
-  );
-}
-
-/**
- * Which of `paths` the project's preview route would serve as files. POST for
- * the same reason as the preview: paths stay out of URLs and proxy caches.
- */
-export async function listExistingProjectWorkspaceFiles(
-  apiBase: string,
-  projectSlug: string,
-  paths: readonly string[],
-  opts?: ClientRequestOptions,
-): Promise<WorkspaceFileExistence> {
-  const response = await mutateJson(
-    `${apiBase}/api/projects/${encodeURIComponent(projectSlug)}/file-preview/exists`,
-    'POST',
-    { ...opts, readOnly: true },
-    { paths },
-  );
-  return unwrapOrThrow<WorkspaceFileExistence>(
-    response,
-    'Failed to check file existence',
   );
 }
 
