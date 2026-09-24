@@ -59,11 +59,11 @@ struct StationAgentActivityWidget: Widget {
         PhaseSymbol(resolved: resolved)
       } compactTrailing: {
         Text(compactLabel(resolved)).font(.caption2.weight(.semibold)).lineLimit(1)
-          .foregroundStyle(tint(resolved))
+          .foregroundStyle(phaseTint(resolved))
       } minimal: {
         PhaseSymbol(resolved: resolved)
       }
-      .keylineTint(tint(resolved))
+      .keylineTint(phaseTint(resolved))
     }
   }
 }
@@ -81,7 +81,7 @@ private func compactLabel(_ resolved: ResolvedCard) -> String {
   return resolved.stale ? "Waiting" : model.chip
 }
 
-private func tint(_ resolved: ResolvedCard) -> Color {
+private func phaseTint(_ resolved: ResolvedCard) -> Color {
   guard let model = resolved.model, !resolved.stale else { return .gray }
   switch model.phase {
   case .approval?, .input?: return .orange
@@ -107,7 +107,7 @@ private func symbolName(_ resolved: ResolvedCard) -> String {
 struct PhaseSymbol: View {
   let resolved: ResolvedCard
   var body: some View {
-    Image(systemName: symbolName(resolved)).foregroundStyle(tint(resolved))
+    Image(systemName: symbolName(resolved)).foregroundStyle(phaseTint(resolved))
   }
 }
 
@@ -118,8 +118,8 @@ struct ChipLabel: View {
       .font(.caption.weight(.semibold))
       .padding(.horizontal, 8)
       .padding(.vertical, 3)
-      .background(Capsule().fill(tint(resolved).opacity(0.25)))
-      .foregroundStyle(tint(resolved))
+      .background(Capsule().fill(phaseTint(resolved).opacity(0.25)))
+      .foregroundStyle(phaseTint(resolved))
       .lineLimit(1)
   }
 }
