@@ -277,6 +277,8 @@ interface PendingApproval {
   retriedKeys: Set<string>;
   /** After a deadline decline: 0 none yet, 1 child/turn stopped, 2 re-hosted. */
   escalationStep: number;
+  /** Invalidates asynchronous escalation work when the question changes. */
+  generation: number;
   escalation?: ReturnType<typeof setTimeout>;
   /** Returned after a re-host although Station already escalated it once. */
   escalatedBefore?: true;
@@ -1254,6 +1256,7 @@ export class MuseServeSession {
       stagesDecided: 0,
       retriedKeys: new Set(),
       escalationStep: 0,
+      generation: 0,
       ...(escalatedBefore ? { escalatedBefore: true } : {}),
     };
     const signature = approvalSubjectSignature(params);
@@ -1264,7 +1267,7 @@ export class MuseServeSession {
     this.approvals.set(approvalId, pending);
     if (escalatedBefore) {
       // Already declined and escalated once, and back after a re-host:
-      // decline it again at once rather than ask again.
+      // attempt to decline it at once rather than ask again.
       this.deps.publish({
         eventId: crypto.randomUUID(),
         provider: 'muse',
@@ -1273,13 +1276,14 @@ export class MuseServeSession {
         method: 'runtime.warning',
         severity: 'warning',
         code: MUSE_APPROVAL_EXPIRED_CODE,
-        message: `Muse brought back a request to use ${toolName} that Station had already declined, so Station declined it again without asking.`,
+        message: `Muse brought back a request to use ${toolName} that Station had already declined, so Station attempted to decline it again without asking.`,
         details: {
           approvalId,
           ...(subagentId ? { childId: subagentId } : {}),
         },
       });
       pending.intent = 'expire';
+      this.armDeadline(pending);
       this.continueWalk(pending);
       return;
     }
@@ -1451,6 +1455,8 @@ export class MuseServeSession {
       // escalation, its step, the retries) may act on it.
       this.clearEscalation(pending);
       pending.escalationStep = 0;
+      pending.generation += 1;
+      this.escalatedApprovalIds.delete(pending.approvalId);
       pending.retriedKeys.clear();
       this.armDeadline(pending);
       this.publishOpened(pending, {
@@ -1508,6 +1514,21 @@ export class MuseServeSession {
     pending.deadline = setTimeout(() => {
       pending.deadline = undefined;
       if (!this.approvals.has(pending.approvalId) || this.stopped) return;
+      if (pending.escalatedBefore) {
+        this.approvals.delete(pending.approvalId);
+        this.deps.publish({
+          eventId: crypto.randomUUID(),
+          provider: 'muse',
+          threadId: this.deps.threadId,
+          createdAt: this.nowIso(),
+          method: 'runtime.warning',
+          severity: 'warning',
+          code: MUSE_APPROVAL_EXPIRED_CODE,
+          message: `Muse did not settle the repeated request to use ${pending.toolName}; Station stopped waiting for it.`,
+          details: { approvalId: pending.approvalId },
+        });
+        return;
+      }
       const limit = formatMuseServeDuration(this.deps.approvalTimeoutMs);
       pending.intent = 'expire';
       this.publishResolved(pending, 'expired');
@@ -1567,6 +1588,7 @@ export class MuseServeSession {
   private escalate(pending: PendingApproval): void {
     this.clearEscalation(pending);
     if (!this.approvals.has(pending.approvalId) || this.stopped) return;
+    const generation = pending.generation;
     pending.escalationStep += 1;
     this.rememberEscalated(pending.approvalId);
     const connection = this.host?.connection;
@@ -1606,12 +1628,15 @@ export class MuseServeSession {
           { timeoutMs: this.deps.requestTimeoutMs },
         )
         .then(() => {
+          if (pending.generation !== generation) return;
           if (pending.subagentId) {
             recordMuseChildStopRequested(this.childWork, pending.subagentId);
           }
           this.armEscalation(pending);
         })
-        .catch(() => this.escalate(pending));
+        .catch(() => {
+          if (pending.generation === generation) this.escalate(pending);
+        });
       return;
     }
     pending.escalationStep = Math.max(pending.escalationStep, 2);
@@ -1720,6 +1745,7 @@ export class MuseServeSession {
       // Escalated once already: another escalation (and re-host) would only
       // bring it back again. Station stops here; the warning above stands.
       this.approvals.delete(pending.approvalId);
+      this.clearDeadline(pending);
       return;
     }
     if (pending.intent === 'expire') {

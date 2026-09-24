@@ -1261,9 +1261,7 @@ describe('#2452 fix round: host ownership and data home', () => {
     });
     const host = await upToFirstDecide(h);
 
-    await expect(h.adapter.stopSession(THREAD)).rejects.toThrow(
-      'could not confirm termination of its host process',
-    );
+    await expect(h.adapter.stopSession(THREAD)).resolves.toBeUndefined();
     await settle();
 
     const exited = of(h.events, 'session.exited');
@@ -1302,9 +1300,7 @@ describe('#2452 fix round: host ownership and data home', () => {
       },
     });
     const host = await upToFirstDecide(h);
-    await expect(h.adapter.stopSession(THREAD)).rejects.toThrow(
-      'could not confirm',
-    );
+    await expect(h.adapter.stopSession(THREAD)).resolves.toBeUndefined();
     // E4: the teardown still completed: the session exited and is gone,
     // with the unconfirmed process announced.
     await settle();
@@ -1448,6 +1444,41 @@ describe('#2452 delta review: escalation only acts on the question it belongs to
       (frame) => frame.msg.method === 'approval/requested',
     )?.msg as { params: Record<string, unknown> };
 
+  async function rehost(h: Harness, approvals: Record<string, unknown>[]) {
+    const sending = h.adapter.sendTurn({ threadId: THREAD, input: 'again' });
+    sending.catch(() => {});
+    for (let attempt = 0; attempt < 200 && !h.hosts[1]; attempt += 1) {
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+    const next = h.hosts[1];
+    const seen = new Set<SentFrame>();
+    const answer = async (method: string, result: unknown) => {
+      const request = await next.nextRequest(method, seen);
+      seen.add(request);
+      reply(next, request, result);
+      return request;
+    };
+    await answer(
+      'initialize',
+      (
+        loadMuseServeCapture('workflow-child-approve')[2].msg as {
+          result: unknown;
+        }
+      ).result,
+    );
+    await answer('session/resume', {
+      session: {
+        sessionId: '00000000-0000-7000-8000-000000000002',
+        approvalMode: { mode: 'promptUnmatched' },
+      },
+      viewCursor: '',
+      history: {},
+      pendingRequests: [],
+    });
+    await answer('approval/listPending', { approvals, userInputs: [] });
+    return { next, seen, sending };
+  }
+
   test('E1: a subject change reopens the card and the old escalation never ends the host under it', async () => {
     const h = harness({ approvalTimeoutMs: 200, approvalEscalationMs: 60 });
     const host = await unansweredOpen(h);
@@ -1467,6 +1498,32 @@ describe('#2452 delta review: escalation only acts on the question it belongs to
     expect(
       host.sent.filter((frame) => frame.method === 'subagent/stop'),
     ).toEqual([]);
+    expect(host.stdinEnded).toBe(false);
+  });
+
+  test('G3: an in-flight stop reply cannot arm escalation for a reopened card', async () => {
+    const h = harness({ approvalTimeoutMs: 200, approvalEscalationMs: 40 });
+    const host = await unansweredOpen(h);
+    const stop = await host.nextRequest('subagent/stop', new Set());
+    const requested = unansweredRequested().params;
+    host.writeFrame({
+      jsonrpc: '2.0',
+      method: 'approval/updated',
+      params: {
+        ...requested,
+        subject: {
+          ...(requested.subject as Record<string, unknown>),
+          command: 'ls',
+        },
+      },
+    });
+    await settle();
+    expect(of(h.events, 'request.opened')).toHaveLength(2);
+    reply(host, stop, { status: 'accepted' });
+    await wait(110);
+    expect(
+      host.sent.filter((frame) => frame.method === 'subagent/stop'),
+    ).toHaveLength(1);
     expect(host.stdinEnded).toBe(false);
   });
 
@@ -1556,6 +1613,85 @@ describe('#2452 delta review: escalation only acts on the question it belongs to
         event.message.includes('already declined'),
       ),
     ).toBe(true);
+  });
+
+  test('G2: an accepted repeat decline with no resolution releases the approval and permits a sandbox change', async () => {
+    const h = harness({ approvalTimeoutMs: 80, approvalEscalationMs: 40 });
+    const host = await unansweredOpen(h);
+    const consumed = new Set<SentFrame>();
+    await host.nextRequest('approval/decide', consumed);
+    const stop = await host.nextRequest('subagent/stop', consumed);
+    reply(host, stop, { status: 'accepted' });
+    await wait(140);
+    expect(host.stdinEnded).toBe(true);
+    const { next, seen, sending } = await rehost(h, [
+      unansweredRequested().params,
+    ]);
+    const turn = await next.nextRequest('turn/start', seen);
+    seen.add(turn);
+    reject(next, turn);
+    await expect(sending).rejects.toThrow();
+    const decline = await next.nextRequest('approval/decide', seen);
+    seen.add(decline);
+    reply(next, decline, {
+      status: 'accepted',
+      approvalId: UNANSWERED_ID,
+      terminal: false,
+    });
+    await expect(
+      h.adapter.sendTurn({
+        threadId: THREAD,
+        input: 'too early',
+        modelOptions: { approvalMode: 'never' },
+      }),
+    ).rejects.toThrow('cannot change its sandbox');
+    await wait(130);
+    expect(
+      of(h.events, 'runtime.warning').some((event) =>
+        event.message.includes('stopped waiting for it'),
+      ),
+    ).toBe(true);
+    const changing = h.adapter.sendTurn({
+      threadId: THREAD,
+      input: 'change posture',
+      modelOptions: { approvalMode: 'never' },
+    });
+    changing.catch(() => {});
+    for (let attempt = 0; attempt < 200 && !h.hosts[2]; attempt += 1) {
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+    expect(h.hosts).toHaveLength(3);
+    h.hosts[2].exit(1);
+    await expect(changing).rejects.not.toThrow('cannot change its sandbox');
+  });
+
+  test('G4: a changed subject is offered again after the host dies', async () => {
+    const h = harness({ approvalTimeoutMs: 200, approvalEscalationMs: 40 });
+    const host = await unansweredOpen(h);
+    await host.nextRequest('subagent/stop', new Set());
+    const requested = unansweredRequested().params;
+    const changed = {
+      ...requested,
+      subject: {
+        ...(requested.subject as Record<string, unknown>),
+        command: 'ls',
+      },
+    };
+    host.writeFrame({
+      jsonrpc: '2.0',
+      method: 'approval/updated',
+      params: changed,
+    });
+    await settle();
+    expect(of(h.events, 'request.opened')).toHaveLength(2);
+    host.exit(1);
+    const { next, seen } = await rehost(h, [changed]);
+    await settle();
+    expect(of(h.events, 'request.opened')).toHaveLength(3);
+    expect(
+      next.sent.filter((frame) => frame.method === 'approval/decide'),
+    ).toEqual([]);
+    expect(seen.size).toBe(3);
   });
 
   test('E5: refining a stage muse marked argvComplete:false does not reopen the request', async () => {

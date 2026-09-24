@@ -1675,7 +1675,7 @@ export class MuseAdapter implements ProviderAdapterShape {
     // cancelled, running turns abort, running children settle unresolved).
     // Teardown completes even when the host's termination is unconfirmed —
     // the record is deleted and `session.exited` published below — and only
-    // then is the failure reported, as exec reports one.
+    // then is the unconfirmed termination reported as a warning.
     const serveStop = await record.serve?.stop();
     const turn = record.activeTurn;
     if (turn) {
@@ -1724,9 +1724,6 @@ export class MuseAdapter implements ProviderAdapterShape {
         message:
           "Station could not confirm that this session's Muse host process stopped. It is still tracked and is stopped the next time Station starts, if it is still running.",
       });
-      throw new Error(
-        'Muse session stop could not confirm termination of its host process.',
-      );
     }
   }
 
