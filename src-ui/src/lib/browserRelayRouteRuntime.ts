@@ -18,6 +18,7 @@ import {
   type RouteBinding,
   retireBrowserRelayRoute,
 } from './browserRelayRouteBinding';
+import { BrowserRelayTurnCustody } from './browserRelayTurnCustody';
 
 /** Broker preparation has no direct-HTTP fallback and never persists a bearer. */
 export async function prepareBrowserRelayRoute(
@@ -58,6 +59,12 @@ export async function prepareBrowserRelayRoute(
     lifetime.signal.throwIfAborted();
     if (!restored)
       throw new Error('This browser has no current routing grant.');
+    const turnServer = await new BrowserRelayTurnCustody({
+      applicationOrigin: connection.url,
+      browserOrigin: window.location.origin,
+      route,
+    }).restore();
+    lifetime.signal.throwIfAborted();
     const broker = new SelfHostedBrokerBrowserClient({
       brokerOrigin: route.brokerOrigin,
       browserOrigin: window.location.origin,
@@ -73,8 +80,15 @@ export async function prepareBrowserRelayRoute(
       // needs an operator-supplied ICE configuration before it is offered.
       ice: {
         capture: () => ({
-          configuration: { iceServers: [] },
-          isCurrent: () => true,
+          configuration: {
+            iceServers: turnServer ? [turnServer] : [],
+            ...(turnServer ? { iceTransportPolicy: 'relay' as const } : {}),
+          },
+          // `isSelectionCurrent` compares against the provider's pre-commit
+          // active id, so it becomes false when this route is successfully
+          // published. The lifetime is the right post-connect ICE fence;
+          // route retirement/Forget aborts it synchronously.
+          isCurrent: () => !lifetime.signal.aborted,
         }),
       },
     });

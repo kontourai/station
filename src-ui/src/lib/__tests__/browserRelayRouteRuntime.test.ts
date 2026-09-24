@@ -7,8 +7,16 @@ const mocks = vi.hoisted(() => ({
   read: vi.fn(),
   trustClose: vi.fn(),
   restore: vi.fn(),
+  restoreTurn: vi.fn(),
   invalidate: vi.fn(),
   connect: vi.fn(),
+  captureIce: null as
+    | (() => { configuration: RTCConfiguration; isCurrent(): boolean })
+    | null,
+  capturedIce: null as {
+    configuration: RTCConfiguration;
+    isCurrent(): boolean;
+  } | null,
   peerClose: vi.fn(),
   channelClose: vi.fn(),
   hydrate: vi.fn(),
@@ -27,15 +35,27 @@ vi.mock('@kontourai/station-connect/self-hosted-browser', () => ({
     invalidate = mocks.invalidate;
   },
   SelfHostedBrokerBrowserClient: class {},
-  createBrowserPionConnection: () => ({
-    connect: mocks.connect,
-    close: mocks.peerClose,
-  }),
+  createBrowserPionConnection: (input: {
+    ice: {
+      capture(): { configuration: RTCConfiguration; isCurrent(): boolean };
+    };
+  }) => {
+    mocks.captureIce = () => input.ice.capture();
+    return {
+      connect: mocks.connect,
+      close: mocks.peerClose,
+    };
+  },
   createSelfHostedApplicationTransport: () => ({
     transport: mocks.transport,
     transportBindingIsCurrent: () => true,
     close: mocks.channelClose,
   }),
+}));
+vi.mock('../browserRelayTurnCustody', () => ({
+  BrowserRelayTurnCustody: class {
+    restore = mocks.restoreTurn;
+  },
 }));
 vi.mock('../browserRelayApplicationAuthority', () => ({
   hydrateBrowserRelayApplicationAuthorityScope: mocks.hydrate,
@@ -69,13 +89,31 @@ function connection(id: string): SavedConnection {
 
 describe('browser broker route preparation', () => {
   beforeEach(() => {
-    for (const mock of Object.values(mocks)) mock.mockReset();
+    for (const mock of [
+      mocks.read,
+      mocks.trustClose,
+      mocks.restore,
+      mocks.restoreTurn,
+      mocks.invalidate,
+      mocks.connect,
+      mocks.peerClose,
+      mocks.channelClose,
+      mocks.hydrate,
+      mocks.transport,
+    ])
+      mock.mockReset();
+    mocks.captureIce = null;
+    mocks.capturedIce = null;
     mocks.read.mockResolvedValue({
       status: 'approved',
       trust: { stationId: scope.stationId, enrollmentId: scope.enrollmentId },
     });
     mocks.restore.mockResolvedValue(true);
-    mocks.connect.mockResolvedValue({ applicationOrigin: origin });
+    mocks.restoreTurn.mockResolvedValue(null);
+    mocks.connect.mockImplementation(async () => {
+      mocks.capturedIce = mocks.captureIce?.() ?? null;
+      return { applicationOrigin: origin };
+    });
     mocks.hydrate.mockResolvedValue(null);
   });
   afterEach(() => retireBrowserRelayRoute());
@@ -89,6 +127,64 @@ describe('browser broker route preparation', () => {
     ).rejects.toThrow('no current routing grant');
     expect(captureBrowserRelayRoute('route-a', origin, route)).not.toBeNull();
     expect(mocks.channelClose).not.toHaveBeenCalled();
+  });
+
+  it('uses operator-supplied TURN credentials with relay-only ICE', async () => {
+    const turnServer = {
+      urls: 'turn:127.0.0.1:3478?transport=tcp',
+      username: 'local-user',
+      credential: 'local-secret',
+    };
+    mocks.restoreTurn.mockResolvedValue(turnServer);
+    await prepareBrowserRelayRoute(connection('route-a'), 1);
+
+    expect(mocks.restoreTurn).toHaveBeenCalledOnce();
+    expect(mocks.capturedIce?.configuration).toEqual({
+      iceServers: [turnServer],
+      iceTransportPolicy: 'relay',
+    });
+    expect(mocks.capturedIce?.isCurrent()).toBe(true);
+  });
+
+  it('keeps the host-candidate path when no TURN configuration is saved', async () => {
+    await prepareBrowserRelayRoute(connection('route-a'), 1);
+
+    expect(mocks.capturedIce?.configuration).toEqual({ iceServers: [] });
+    expect(mocks.capturedIce?.isCurrent()).toBe(true);
+  });
+
+  it('keeps the published route ICE snapshot current after selection commits', async () => {
+    let selectionCurrent = true;
+    await prepareBrowserRelayRoute(
+      connection('route-b'),
+      2,
+      () => selectionCurrent,
+    );
+    selectionCurrent = false;
+
+    expect(mocks.capturedIce?.isCurrent()).toBe(true);
+    expect(captureBrowserRelayRoute('route-b', origin, route)).not.toBeNull();
+  });
+
+  it('refuses to start ICE if the route is retired while TURN custody restores', async () => {
+    let finishRestore: ((value: RTCIceServer | null) => void) | undefined;
+    mocks.restoreTurn.mockImplementation(
+      () =>
+        new Promise<RTCIceServer | null>((resolve) => {
+          finishRestore = resolve;
+        }),
+    );
+    const preparation = prepareBrowserRelayRoute(connection('route-a'), 1);
+    await vi.waitFor(() => expect(mocks.restoreTurn).toHaveBeenCalledOnce());
+    retireBrowserRelayRoute('route-a', 1);
+    finishRestore?.({
+      urls: 'turn:127.0.0.1:3478?transport=tcp',
+      username: 'local-user',
+      credential: 'local-secret',
+    });
+
+    await expect(preparation).rejects.toThrow();
+    expect(mocks.connect).not.toHaveBeenCalled();
   });
 
   it('retires only the matching selection epoch', async () => {

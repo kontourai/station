@@ -67,11 +67,26 @@ independently approved. A different enrollment cannot be reset from this form.
 
 After that separate approval, the browser can accept a one-time invitation
 link or the operator's private JSON invitation. Enter the Station application
-origin separately, then select the saved route. The routing grant stays in
-browser IndexedDB, outside the saved Station entry. A selected route uses an
-encrypted browser channel for the Station handshake and application requests;
-a missing grant, retired key or failed peer connection refuses instead of
-falling back to direct HTTP. After selecting the route, **Verify account and
+origin separately. For a route that must cross networks, enter the operator's
+**TURN server URL**, **TURN username**, and **TURN credential** with the
+invitation. The fields are optional for same-network host-candidate testing;
+when supplied, all three are required and the browser uses relay-only ICE. The
+versioned credentials live in a separate origin-local IndexedDB record bound to
+the exact broker, Station enrollment and generation, application origin, and
+browser origin. They do not enter the saved Station entry, invitation, broker
+grant, account or Device authority. **Forget route** removes that record.
+After a route is saved, its **Configure TURN** action can add, replace or clear
+these settings without another invitation. Station retires the active browser
+peer before changing the credentials, then reconnects the selected route. To
+avoid replacing live route settings with an invitation that may fail, an
+already-saved route cannot be accepted again; use **Configure TURN** to change
+its ICE service.
+
+Then select the saved route. The routing grant stays in browser IndexedDB,
+outside the saved Station entry. A selected route uses an encrypted browser
+channel for the Station handshake and application requests; a missing grant,
+retired key or failed peer connection refuses instead of falling back to direct
+HTTP. After selecting the route, **Verify account and
 Device** offers a fresh username/password account flow where the Station's
 provider supports pending Device enrollment. The Station operator must approve
 that Device; only a signed activation completes the account continuation.
@@ -81,8 +96,7 @@ verification. After the operator approves the Device and Station activates its
 account session, the browser accepts the invitation through the encrypted
 channel; the response must confirm Project membership without granting Device
 access. Close the dialog to open the newly permitted Project.
-This source pilot uses local ICE host candidates. Remote TURN configuration,
-cookie-session adoption and native route selection remain separate work; the
+Cookie-session adoption and native route selection remain separate work; the
 ordinary positive browser journey is not yet verified in the local lab. Browser
 broker routes also disable attachment staging uploads, interactive terminal
 WebSockets and Nova voice sockets for now: those features still require direct

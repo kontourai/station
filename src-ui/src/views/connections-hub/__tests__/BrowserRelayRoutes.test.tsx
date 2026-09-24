@@ -1,10 +1,17 @@
 /** @vitest-environment jsdom */
 
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   connections: [] as Array<Record<string, unknown>>,
+  activeConnection: null as Record<string, unknown> | null,
   addBrokerRoute: vi.fn(),
   removeConnection: vi.fn(),
   removeAuthority: vi.fn(),
@@ -13,6 +20,10 @@ const mocks = vi.hoisted(() => ({
   approveTrust: vi.fn(),
   closeTrust: vi.fn(),
   redeem: vi.fn(),
+  saveTurn: vi.fn(),
+  forgetTurn: vi.fn(),
+  turnIdentity: null as unknown,
+  retire: vi.fn(),
   forget: vi.fn(),
   invalidate: vi.fn(),
 }));
@@ -20,7 +31,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@kontourai/station-connect', () => ({
   useConnections: () => ({
     connections: mocks.connections,
-    activeConnection: null,
+    activeConnection: mocks.activeConnection,
     addBrokerRoute: mocks.addBrokerRoute,
     removeConnection: mocks.removeConnection,
     setActiveConnection: mocks.select,
@@ -53,8 +64,21 @@ vi.mock('@kontourai/station-connect/self-hosted-browser', () => ({
   },
   redeemBrokerRouteInvitation: mocks.redeem,
 }));
+vi.mock('../../../lib/browserRelayTurnCustody', () => ({
+  BrowserRelayTurnCustody: class {
+    constructor(identity: unknown) {
+      mocks.turnIdentity = identity;
+    }
+    save = mocks.saveTurn;
+    forget = mocks.forgetTurn;
+  },
+  parseBrowserRelayTurnConfiguration: (value: unknown) => value,
+}));
 vi.mock('../../../lib/browserRelayApplicationAuthority', () => ({
   removeBrowserRelayApplicationAuthority: mocks.removeAuthority,
+}));
+vi.mock('../../../lib/browserRelayRouteBinding', () => ({
+  retireBrowserRelayRoute: mocks.retire,
 }));
 
 import { BrowserRelayRoutes } from '../BrowserRelayRoutes';
@@ -69,7 +93,11 @@ const approvedTrust = {
   },
 };
 
-function fillAndAccept() {
+function fillAndAccept(turn?: {
+  url?: string;
+  username?: string;
+  credential?: string;
+}) {
   fireEvent.change(screen.getByLabelText('Station name'), {
     target: { value: 'Home Station' },
   });
@@ -82,16 +110,45 @@ function fillAndAccept() {
       target: { value: 'https://client.example.test/#invitation' },
     },
   );
+  if (turn?.url)
+    fireEvent.change(screen.getByLabelText('TURN server URL'), {
+      target: { value: turn.url },
+    });
+  if (turn?.username)
+    fireEvent.change(screen.getByLabelText('TURN username'), {
+      target: { value: turn.username },
+    });
+  if (turn?.credential)
+    fireEvent.change(screen.getByLabelText('TURN credential'), {
+      target: { value: turn.credential },
+    });
   fireEvent.click(screen.getByRole('button', { name: 'Accept route' }));
 }
 
 describe('browser broker route acceptance', () => {
   beforeEach(() => {
-    for (const mock of Object.values(mocks)) {
-      if ('mockReset' in mock) mock.mockReset();
-    }
+    for (const mock of [
+      mocks.addBrokerRoute,
+      mocks.removeConnection,
+      mocks.removeAuthority,
+      mocks.select,
+      mocks.readTrust,
+      mocks.approveTrust,
+      mocks.closeTrust,
+      mocks.redeem,
+      mocks.saveTurn,
+      mocks.forgetTurn,
+      mocks.retire,
+      mocks.forget,
+      mocks.invalidate,
+    ])
+      mock.mockReset();
     mocks.connections = [];
+    mocks.activeConnection = null;
+    mocks.turnIdentity = null;
     mocks.redeem.mockResolvedValue(undefined);
+    mocks.saveTurn.mockResolvedValue(undefined);
+    mocks.forgetTurn.mockResolvedValue(undefined);
     mocks.removeAuthority.mockResolvedValue(undefined);
     mocks.forget.mockResolvedValue(undefined);
   });
@@ -129,6 +186,112 @@ describe('browser broker route acceptance', () => {
     expect(JSON.stringify(mocks.addBrokerRoute.mock.calls)).not.toContain(
       'must-never-enter-saved-route',
     );
+  });
+
+  it('stores local TURN credentials before saving route metadata or spending the invitation', async () => {
+    const sequence: string[] = [];
+    const secret = 'lab-turn-secret';
+    mocks.readTrust.mockResolvedValue(approvedTrust);
+    mocks.saveTurn.mockImplementation(async (configuration) => {
+      sequence.push('turn');
+      expect(configuration).toEqual({
+        schemaVersion: 1,
+        url: 'turn:127.0.0.1:3478?transport=tcp',
+        username: 'lab-turn-user',
+        credential: secret,
+      });
+    });
+    mocks.addBrokerRoute.mockImplementation(() => sequence.push('route'));
+    mocks.redeem.mockImplementation(async () => sequence.push('redeem'));
+
+    render(<BrowserRelayRoutes />);
+    fillAndAccept({
+      url: 'turn:127.0.0.1:3478?transport=tcp',
+      username: 'lab-turn-user',
+      credential: secret,
+    });
+    await waitFor(() => expect(mocks.redeem).toHaveBeenCalledOnce());
+
+    expect(sequence).toEqual(['turn', 'route', 'redeem']);
+    expect(mocks.turnIdentity).toEqual({
+      applicationOrigin: 'https://station.example.test',
+      browserOrigin: window.location.origin,
+      route: {
+        brokerOrigin: 'https://broker.example.test',
+        scope: expect.objectContaining({
+          stationId: approvedTrust.trust.stationId,
+        }),
+      },
+    });
+    expect(JSON.stringify(mocks.addBrokerRoute.mock.calls)).not.toContain(
+      secret,
+    );
+  });
+
+  it('does not add or redeem a route when TURN secret custody fails', async () => {
+    mocks.readTrust.mockResolvedValue(approvedTrust);
+    mocks.saveTurn.mockRejectedValue(new Error('TURN storage is full'));
+
+    render(<BrowserRelayRoutes />);
+    fillAndAccept({
+      url: 'turn:127.0.0.1:3478?transport=tcp',
+      username: 'lab-turn-user',
+      credential: 'lab-turn-secret',
+    });
+
+    expect(await screen.findByText('TURN storage is full')).toBeTruthy();
+    expect(mocks.addBrokerRoute).not.toHaveBeenCalled();
+    expect(mocks.redeem).not.toHaveBeenCalled();
+  });
+
+  it('changes TURN on a saved active route only after retiring its peer, then reconnects', async () => {
+    const sequence: string[] = [];
+    const savedRoute = {
+      id: 'saved-route',
+      name: 'Home Station',
+      url: 'https://station.example.test',
+      brokerRoute: {
+        brokerOrigin: 'https://broker.example.test',
+        scope: {
+          stationId: approvedTrust.trust.stationId,
+          enrollmentId: approvedTrust.trust.enrollmentId,
+          routingGeneration: 1,
+          browserOrigin: window.location.origin,
+        },
+      },
+    };
+    mocks.connections = [savedRoute];
+    mocks.activeConnection = savedRoute;
+    mocks.retire.mockImplementation(() => sequence.push('retire'));
+    mocks.saveTurn.mockImplementation(async () => sequence.push('save'));
+    mocks.select.mockImplementation(async () => sequence.push('reconnect'));
+
+    render(<BrowserRelayRoutes />);
+    fireEvent.click(screen.getByRole('button', { name: 'Configure TURN' }));
+    const dialog = screen.getByRole('dialog');
+    fireEvent.change(within(dialog).getByLabelText('TURN server URL'), {
+      target: { value: 'turn:127.0.0.1:3478?transport=tcp' },
+    });
+    fireEvent.change(within(dialog).getByLabelText('TURN username'), {
+      target: { value: 'lab-turn-user' },
+    });
+    fireEvent.change(within(dialog).getByLabelText('TURN credential'), {
+      target: { value: 'lab-turn-secret' },
+    });
+    fireEvent.click(
+      within(dialog).getByRole('button', { name: 'Save TURN settings' }),
+    );
+
+    await waitFor(() =>
+      expect(mocks.select).toHaveBeenCalledWith('saved-route'),
+    );
+    expect(sequence).toEqual(['retire', 'save', 'reconnect']);
+    expect(mocks.retire).toHaveBeenCalledWith('saved-route');
+    expect(mocks.turnIdentity).toEqual({
+      applicationOrigin: savedRoute.url,
+      browserOrigin: window.location.origin,
+      route: savedRoute.brokerRoute,
+    });
   });
 
   it('does not save or redeem after the acceptance screen closes during trust lookup', async () => {
@@ -177,6 +340,43 @@ describe('browser broker route acceptance', () => {
     expect(mocks.redeem).not.toHaveBeenCalled();
   });
 
+  it('does not replace TURN custody when the same route is reaccepted', async () => {
+    const existing = {
+      id: 'existing',
+      name: 'Home Station',
+      url: 'https://station.example.test',
+      brokerRoute: {
+        brokerOrigin: 'https://broker.example.test',
+        scope: {
+          stationId: approvedTrust.trust.stationId,
+          enrollmentId: approvedTrust.trust.enrollmentId,
+          routingGeneration: 1,
+          browserOrigin: 'http://localhost:3000',
+        },
+      },
+    };
+    mocks.readTrust.mockResolvedValue(approvedTrust);
+    mocks.connections = [existing];
+
+    render(<BrowserRelayRoutes />);
+    fillAndAccept({
+      url: 'turn:127.0.0.1:3478?transport=tcp',
+      username: 'replacement-user',
+      credential: 'replacement-secret',
+    });
+
+    expect(
+      await screen.findByText(
+        /already saved\. Use Configure TURN to change its TURN settings/,
+      ),
+    ).toBeTruthy();
+    expect(mocks.saveTurn).not.toHaveBeenCalled();
+    expect(mocks.forgetTurn).not.toHaveBeenCalled();
+    expect(mocks.addBrokerRoute).not.toHaveBeenCalled();
+    expect(mocks.redeem).not.toHaveBeenCalled();
+    expect(mocks.connections).toEqual([existing]);
+  });
+
   it('retires application authority and grant before forgetting the saved route', async () => {
     const sequence: string[] = [];
     mocks.connections = [
@@ -195,6 +395,9 @@ describe('browser broker route acceptance', () => {
         },
       },
     ];
+    mocks.forgetTurn.mockImplementation(async () => {
+      sequence.push('turn');
+    });
     mocks.removeAuthority.mockImplementation(async () => {
       sequence.push('authority');
     });
@@ -209,7 +412,7 @@ describe('browser broker route acceptance', () => {
     await waitFor(() =>
       expect(mocks.removeConnection).toHaveBeenCalledWith('saved-route'),
     );
-    expect(sequence).toEqual(['authority', 'grant', 'saved-route']);
+    expect(sequence).toEqual(['turn', 'authority', 'grant', 'saved-route']);
   });
 
   it('keeps a route available for cleanup retry if application custody is unavailable', async () => {
