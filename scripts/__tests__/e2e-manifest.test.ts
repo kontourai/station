@@ -214,6 +214,7 @@ describe('e2e manifest', () => {
       // dock-chrome settings a region write mirrors.
       'tests/activity-pane.spec.ts': expect.any(String),
       'tests/project-architecture.spec.ts': expect.any(String),
+      'tests/browser-relay-route-acceptance.spec.ts': expect.any(String),
       'tests/buffered-answer-delivery.spec.ts': expect.any(String),
     });
     expect(new Set(classified).size).toBe(classified.length);

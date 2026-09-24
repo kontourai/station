@@ -1,5 +1,6 @@
 import { afterEach, expect, test, vi } from 'vitest';
 import { _setApiBase } from '../api-core';
+import { setClientRawEgressPolicyResolver } from '../client/http';
 import { telemetry } from '../telemetry';
 
 afterEach(async () => {
@@ -7,6 +8,66 @@ afterEach(async () => {
   await vi.runOnlyPendingTimersAsync();
   vi.useRealTimers();
   vi.unstubAllGlobals();
+  setClientRawEgressPolicyResolver(undefined);
+});
+
+test('drops broker-route telemetry without direct Station HTTP', async () => {
+  vi.useFakeTimers();
+  _setApiBase('https://station.example.test');
+  const direct = vi.fn().mockResolvedValue({ ok: true });
+  vi.stubGlobal('fetch', direct);
+  setClientRawEgressPolicyResolver(() => ({
+    kind: 'broker',
+    apiBase: 'https://station.example.test',
+    connectionId: 'broker-station',
+    activationEpoch: 'epoch-1',
+    isCurrent: () => true,
+  }));
+
+  telemetry.track('agent:selected', { slug: 'private-agent' });
+  await telemetry.flush();
+  expect(direct).not.toHaveBeenCalled();
+});
+
+test('drops buffered direct events if the selected Station switches to a broker route', async () => {
+  vi.useFakeTimers();
+  _setApiBase('https://station.example.test');
+  const direct = vi.fn().mockResolvedValue({ ok: true });
+  vi.stubGlobal('fetch', direct);
+  let selected: 'direct' | 'broker' = 'direct';
+  setClientRawEgressPolicyResolver(() => ({
+    kind: selected,
+    apiBase: 'https://station.example.test',
+    connectionId: 'station-one',
+    activationEpoch: selected === 'direct' ? 'epoch-1' : 'epoch-2',
+    isCurrent: () => true,
+  }));
+
+  telemetry.track('ui.chat.entry', { source: 1 });
+  selected = 'broker';
+  await telemetry.flush();
+  expect(direct).not.toHaveBeenCalled();
+});
+
+test('drops buffered events when account authority changes at the same Station', async () => {
+  vi.useFakeTimers();
+  _setApiBase('https://station.example.test');
+  const direct = vi.fn().mockResolvedValue({ ok: true });
+  vi.stubGlobal('fetch', direct);
+  let authorityKey = 'account-a';
+  setClientRawEgressPolicyResolver(() => ({
+    kind: 'direct',
+    apiBase: 'https://station.example.test',
+    connectionId: 'station-one',
+    activationEpoch: 'epoch-1',
+    authorityKey,
+    isCurrent: () => true,
+  }));
+
+  telemetry.track('agent:selected', { slug: 'private-agent' });
+  authorityKey = 'account-b';
+  await telemetry.flush();
+  expect(direct).not.toHaveBeenCalled();
 });
 
 test('bounds a telemetry burst while keeping one scheduled flush', async () => {

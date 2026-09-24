@@ -1,10 +1,11 @@
 /** @vitest-environment jsdom */
 
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { useEffect } from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { LocalUiSessionGate } from '../components/LocalUiSessionGate';
 import { resetLocalUiBootstrapForTests } from '../lib/local-ui-bootstrap';
+import { renderWithIsolatedConnections } from './renderWithIsolatedConnections';
 
 vi.mock('../components/GuidedConnect', () => ({
   GuidedConnect: ({
@@ -37,7 +38,7 @@ describe('LocalUiSessionGate pairing recovery (station#2093)', () => {
     const protectedMount = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
 
-    render(
+    renderWithIsolatedConnections(
       <LocalUiSessionGate apiBase="http://127.0.0.1:42693">
         <ProtectedDataProbe onMount={protectedMount} />
       </LocalUiSessionGate>,
@@ -62,7 +63,7 @@ describe('LocalUiSessionGate pairing recovery (station#2093)', () => {
     const protectedMount = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
 
-    render(
+    renderWithIsolatedConnections(
       <LocalUiSessionGate apiBase="http://127.0.0.1:42693">
         <ProtectedDataProbe onMount={protectedMount} />
       </LocalUiSessionGate>,
