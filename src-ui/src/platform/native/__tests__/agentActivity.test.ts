@@ -171,11 +171,14 @@ describe('agent activity controller', () => {
       },
     });
     expect(outcome.status).toBe('enabled');
+    // The card key goes to the plugin only; WebView storage never holds it.
+    expect(JSON.stringify(h.controller.registration(STATION))).not.toContain(
+      PAYLOAD_KEY,
+    );
     expect(h.controller.registration(STATION)).toEqual({
       registrationId: REGISTRATION_ID,
       stationId: STATION,
       stationKey: STATION_KEY,
-      payloadKey: PAYLOAD_KEY,
       token: 'fcm-token-1',
       packageName: 'io.kontourai.station.nightly',
       registeredAt: 1_000_000,
@@ -257,7 +260,6 @@ describe('agent activity controller', () => {
       registrationId: 'reg_BBBBBBBBBBBBBBBBBBBB',
       stationId: 'env-station-b',
       stationKey: STATION_KEY,
-      payloadKey: PAYLOAD_KEY,
       token: 'fcm-token-1',
       packageName: 'io.kontourai.station.nightly',
       registeredAt: 1,
@@ -379,7 +381,6 @@ describe('registration store', () => {
       registrationId: REGISTRATION_ID,
       stationId: 'a',
       stationKey: STATION_KEY,
-      payloadKey: PAYLOAD_KEY,
       token: 't',
       packageName: 'io.kontourai.station',
       registeredAt: 1,
@@ -392,8 +393,38 @@ describe('registration store', () => {
 
     storage.set(
       'station-agent-activity-registrations-v1',
-      JSON.stringify({ c: { ...record, payloadKey: undefined } }),
+      JSON.stringify({ c: { ...record, token: undefined } }),
     );
     expect(store.get('c')).toBeNull();
+  });
+
+  it('drops a card key an earlier version stored, on read and on the next write', () => {
+    const storage = new Map<string, string>();
+    const store = localAgentActivityRegistrationStore({
+      getItem: (key) => storage.get(key) ?? null,
+      setItem: (key, value) => void storage.set(key, value),
+    });
+    const legacy = {
+      registrationId: REGISTRATION_ID,
+      stationId: 'a',
+      stationKey: STATION_KEY,
+      payloadKey: PAYLOAD_KEY,
+      token: 't',
+      packageName: 'io.kontourai.station',
+      registeredAt: 1,
+    };
+    storage.set(
+      'station-agent-activity-registrations-v1',
+      JSON.stringify({ a: legacy }),
+    );
+    expect(store.get('a')).not.toHaveProperty('payloadKey');
+    store.set('b', {
+      ...legacy,
+      stationId: 'b',
+      payloadKey: undefined,
+    } as never);
+    expect(
+      storage.get('station-agent-activity-registrations-v1'),
+    ).not.toContain(PAYLOAD_KEY);
   });
 });

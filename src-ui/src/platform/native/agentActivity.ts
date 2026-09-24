@@ -38,8 +38,6 @@ export interface AgentActivityRegistrationRecord {
   registrationId: string;
   stationId: string;
   stationKey: string;
-  /** Secret card-encryption key; never logged, rendered or sent elsewhere. */
-  payloadKey: string;
   /** The push token the Station last accepted for this registration. */
   token: string;
   packageName: NativePushAndroidPackage;
@@ -212,7 +210,6 @@ export function createAgentActivityController(
       registrationId: response.registrationId,
       stationId: response.stationId,
       stationKey: response.stationKey,
-      payloadKey,
       token,
       packageName,
       registeredAt: deps.now(),
@@ -310,7 +307,6 @@ function isRecord(value: unknown): value is AgentActivityRegistrationRecord {
     typeof candidate.registrationId === 'string' &&
     typeof candidate.stationId === 'string' &&
     typeof candidate.stationKey === 'string' &&
-    typeof candidate.payloadKey === 'string' &&
     typeof candidate.token === 'string' &&
     typeof candidate.packageName === 'string' &&
     (NATIVE_PUSH_ANDROID_PACKAGES as readonly string[]).includes(
@@ -322,10 +318,11 @@ function isRecord(value: unknown): value is AgentActivityRegistrationRecord {
 
 /**
  * Device-local registrations, keyed by Station environment id. None of these
- * authenticate the device to its Station, which does that separately.
- * `payloadKey` does decrypt that Station's cards: it is kept here and in the
- * plugin only, and never logged or rendered. This is WebView storage, readable
- * by any script the WebView runs for this origin, not an OS keystore.
+ * authenticate the device to its Station, which does that separately. The
+ * card-encryption `payloadKey` is deliberately not kept here: WebView storage
+ * is readable by any script the WebView runs for this origin, so the key goes
+ * from the Station's response straight to the plugin, which keeps it in app
+ * storage. Every registration returns it again, so nothing here needs it.
  */
 export function localAgentActivityRegistrationStore(
   storage: Pick<Storage, 'getItem' | 'setItem'> = window.localStorage,
@@ -335,10 +332,23 @@ export function localAgentActivityRegistrationStore(
       const parsed = JSON.parse(storage.getItem(STORAGE_KEY) ?? '{}');
       if (typeof parsed !== 'object' || parsed === null) return {};
       return Object.fromEntries(
-        Object.entries(parsed as Record<string, unknown>).filter(
-          (entry): entry is [string, AgentActivityRegistrationRecord] =>
+        Object.entries(parsed as Record<string, unknown>)
+          .filter((entry): entry is [string, AgentActivityRegistrationRecord] =>
             isRecord(entry[1]),
-        ),
+          )
+          // Rebuild from known fields so anything else stored by an earlier
+          // version (an old payloadKey) is dropped on the next write.
+          .map(([id, record]) => [
+            id,
+            {
+              registrationId: record.registrationId,
+              stationId: record.stationId,
+              stationKey: record.stationKey,
+              token: record.token,
+              packageName: record.packageName,
+              registeredAt: record.registeredAt,
+            },
+          ]),
       );
     } catch {
       return {};
