@@ -36,15 +36,18 @@ function keyringAccount(service: string, account: string) {
 }
 
 function inspectKeyring(item: ReturnType<typeof keyringAccount>) {
-  return spawnSync(
+  const result = spawnSync(
     'security',
     ['find-generic-password', '-s', item.service, '-a', item.account],
     { encoding: 'utf8', windowsHide: true },
-  ).status;
+  );
+  if (result.error || ![0, 44].includes(result.status ?? -1))
+    throw new Error('Keychain lookup failed; fixture ownership is unresolved.');
+  return result.status;
 }
 
 function cleanupKeyring(item: ReturnType<typeof keyringAccount>) {
-  if (inspectKeyring(item) !== 0) return;
+  if (inspectKeyring(item) === 44) return;
   const removed = spawnSync(
     'security',
     ['delete-generic-password', '-s', item.service, '-a', item.account],
@@ -55,7 +58,7 @@ function cleanupKeyring(item: ReturnType<typeof keyringAccount>) {
     0,
     `could not remove exact ${item.service} fixture item`,
   );
-  assert.notEqual(inspectKeyring(item), 0, 'fixture keyring item remained');
+  assert.equal(inspectKeyring(item), 44, 'fixture keyring item remained');
 }
 
 function proofAccount(clientInstanceId: string) {

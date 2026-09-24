@@ -25,15 +25,18 @@ function proofAccount(clientInstanceId: string) {
 }
 
 function keyringStatus(account: string) {
-  return spawnSync(
+  const result = spawnSync(
     'security',
     ['find-generic-password', '-s', KEYRING_SERVICE, '-a', account],
     { encoding: 'utf8', windowsHide: true },
   );
+  if (result.error || ![0, 44].includes(result.status ?? -1))
+    throw new Error('Keychain lookup failed; fixture ownership is unresolved.');
+  return result.status;
 }
 
 function removeOwnedProofKey(account: string) {
-  if (keyringStatus(account).status !== 0) return;
+  if (keyringStatus(account) === 44) return;
   const deleted = spawnSync(
     'security',
     ['delete-generic-password', '-s', KEYRING_SERVICE, '-a', account],
@@ -44,9 +47,9 @@ function removeOwnedProofKey(account: string) {
     0,
     'could not remove the exact fixture proof key',
   );
-  assert.notEqual(
-    keyringStatus(account).status,
-    0,
+  assert.equal(
+    keyringStatus(account),
+    44,
     'fixture proof key remained after cleanup',
   );
 }
@@ -121,11 +124,7 @@ async function main() {
     const publicKey = JSON.parse(metadata['Public key'] ?? 'null');
     assert.equal(publicKey.kty, 'EC');
     assert.equal(publicKey.crv, 'P-256');
-    assert.equal(
-      keyringStatus(account).status,
-      0,
-      'proof key not in OS keyring',
-    );
+    assert.equal(keyringStatus(account), 0, 'proof key not in OS keyring');
     const trustStatus = await driver.execute(
       () =>
         document.querySelector('.relay-route-key-approval')?.textContent ?? '',
