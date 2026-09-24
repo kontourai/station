@@ -7819,6 +7819,14 @@ export class EventStore {
     return row.head;
   }
 
+  /** A bus publish must not escape a caller's still-rollbackable transaction. */
+  assertNoOuterTransactionForPublication(): void {
+    if (this.db.isTransaction)
+      throw new Error(
+        'Cannot publish an orchestration event inside an outer transaction',
+      );
+  }
+
   /** Durable identity of this database, independent of its numeric cursor. */
   streamEpoch(): string {
     const row = this.db

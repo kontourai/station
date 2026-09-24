@@ -8493,6 +8493,7 @@ export class OrchestrationService {
   }
 
   private publishCanonicalEvent(event: CanonicalRuntimeEvent): boolean {
+    this.options.eventStore?.assertNoOuterTransactionForPublication();
     // archive#1399 fix round (independent review, H1/M4/M6, hardened in fix
     // round 2 per B1/B4): a provenance-sanitizing writer — see
     // `ui-block-provenance.ts`'s docblock for why it is NOT the only one
