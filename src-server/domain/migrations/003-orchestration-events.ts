@@ -35,6 +35,13 @@ CREATE TABLE IF NOT EXISTS orchestration_events (
   global_sequence INTEGER NOT NULL DEFAULT 0
 );
 
+-- Keep the cursor head after a Draft or diagnostic thread is physically
+-- removed. A deleted tail event's sequence must never be reused.
+CREATE TABLE IF NOT EXISTS orchestration_stream_identity (
+  singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+  high_water INTEGER NOT NULL CHECK (high_water >= 0)
+);
+
 -- Explicit native declarations are a private, bounded descriptor projection.
 -- They never widen the generic event payload/transcript contract.
 CREATE TABLE IF NOT EXISTS orchestration_declared_outputs (

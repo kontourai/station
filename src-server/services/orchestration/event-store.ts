@@ -1998,6 +1998,12 @@ export class EventStore {
       ensureOrchestrationRecoverySettlementColumns(this.db);
       ensureCredentialApplicationCommitPendingIndex(this.db);
       ensureOrchestrationEventStoreColumns(this.db);
+      this.db
+        .prepare(
+          `INSERT OR IGNORE INTO orchestration_stream_identity(singleton, high_water)
+         SELECT 1, COALESCE(MAX(global_sequence), 0) FROM orchestration_events`,
+        )
+        .run();
       ensureOrchestrationAdoptionColumns(this.db);
       this.ensureConversationHistoryProjectSlugColumn();
       // Repair the bounded pre-existing history projection before the full
@@ -3460,6 +3466,11 @@ export class EventStore {
         this.commitSessionWorkItemAdmission(workItemAdmission);
         return Number(existing.sequence);
       }
+      this.db
+        .prepare(
+          'UPDATE orchestration_stream_identity SET high_water = ? WHERE singleton = 1',
+        )
+        .run(globalSequence);
       this.recordAttachmentRefs(event.threadId, persisted.blobRefs);
       this.chargeCommittedToolImages(persisted.toolImageKey);
       this.projectConversationHistoryEvent(event);
@@ -4112,6 +4123,11 @@ export class EventStore {
         ) as { changes: number };
       absent = result.changes === 0;
       if (!absent) {
+        this.db
+          .prepare(
+            'UPDATE orchestration_stream_identity SET high_water = ? WHERE singleton = 1',
+          )
+          .run(globalSequence);
         this.recordAttachmentRefs(event.threadId, persisted.blobRefs);
         this.chargeCommittedToolImages(persisted.toolImageKey);
         this.projectConversationHistoryEvent(event);
@@ -7748,7 +7764,7 @@ export class EventStore {
   headGlobalSequence(): number {
     const row = this.db
       .prepare(
-        `SELECT COALESCE(MAX(global_sequence), 0) AS head FROM orchestration_events`,
+        `SELECT high_water AS head FROM orchestration_stream_identity WHERE singleton = 1`,
       )
       .get() as { head: number };
     return row.head;
@@ -12258,18 +12274,15 @@ export class EventStore {
 
   /**
    * Next value for the cross-thread `global_sequence` cursor (archive#1092).
-   * Computed the same way as {@link nextSequence} but without the thread
-   * filter, so it stays monotonic across every session. Safe to call
-   * speculatively from `appendEventIfAbsent` before knowing whether the
-   * insert will actually land: an ignored insert never persists the
-   * candidate value, so the next real append recomputes MAX+1 from what is
-   * actually in the table and no gap is observable.
+   * The durable head survives physical deletion of tail events. The caller
+   * advances it in the same savepoint as a successful insert; an ignored
+   * insert or rollback leaves it unchanged.
    */
   private nextGlobalSequence(): number {
     const row = this.db
       .prepare(
-        `SELECT COALESCE(MAX(global_sequence), 0) AS max_sequence
-         FROM orchestration_events`,
+        `SELECT high_water AS max_sequence
+         FROM orchestration_stream_identity WHERE singleton = 1`,
       )
       .get() as { max_sequence: number };
     return row.max_sequence + 1;
