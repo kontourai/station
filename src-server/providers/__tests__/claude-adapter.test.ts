@@ -7597,12 +7597,18 @@ describe('ClaudeAdapter — child work at the session seams (#2457)', () => {
     const threadId = 'thread-child-process-exit';
     const { query, until } = await runningChild(threadId);
     query.end();
-    const emptied = await until(
-      (event) =>
-        event.method === 'child-work.updated' &&
-        event.delta.kind === 'snapshot' &&
-        event.delta.running.length === 0,
-    );
+    // Bounded: without the settle nothing more is published at all, and the
+    // failure should say so rather than time the test out.
+    const emptied = await Promise.race([
+      until(
+        (event) =>
+          event.method === 'child-work.updated' &&
+          event.delta.kind === 'snapshot' &&
+          event.delta.running.length === 0,
+      ),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), 2_000)),
+    ]);
+    expect(emptied, 'no empty snapshot after the engine ended').not.toBeNull();
     expect(emptied.delta).toMatchObject({
       producer: 'engine-subagent',
       reporterThreadId: threadId,
