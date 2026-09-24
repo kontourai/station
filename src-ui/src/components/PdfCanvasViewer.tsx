@@ -130,13 +130,13 @@ function PdfPage({
           setSize({ width: natural.width, height: natural.height });
           return;
         }
+        // The ceiling bounds the final backing-store scale, zoom and device
+        // pixels included: past it the page is drawn softer, never larger.
         const ratio = window.devicePixelRatio || 1;
-        const area = natural.width * natural.height * (scale * ratio) ** 2;
-        const output =
-          area > MAX_CANVAS_PIXELS
-            ? scale *
-              Math.sqrt(MAX_CANVAS_PIXELS / (natural.width * natural.height))
-            : scale * ratio;
+        const output = Math.min(
+          scale * ratio,
+          Math.sqrt(MAX_CANVAS_PIXELS / (natural.width * natural.height)),
+        );
         const viewport = loaded.getViewport({ scale: output });
         canvas.width = Math.floor(viewport.width);
         canvas.height = Math.floor(viewport.height);

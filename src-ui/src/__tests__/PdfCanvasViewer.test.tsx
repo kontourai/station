@@ -61,10 +61,10 @@ function fakePage(width = 600, height = 800): FakePage {
   };
 }
 
-function fakeDocument(numPages: number) {
+function fakeDocument(numPages: number, width = 600, height = 800) {
   const pages = new Map<number, FakePage>();
   const pageFor = (n: number) => {
-    if (!pages.has(n)) pages.set(n, fakePage());
+    if (!pages.has(n)) pages.set(n, fakePage(width, height));
     return pages.get(n)!;
   };
   return {
@@ -203,6 +203,37 @@ describe('PdfCanvasViewer', () => {
       key: '-',
     });
     expect(screen.getByLabelText('PDF zoom level').textContent).toBe('80%');
+  });
+
+  test('keeps the page canvas under the pixel ceiling at maximum zoom on a dense screen', async () => {
+    // A US Letter page fitted to a phone-width dialog (360px of page),
+    // zoomed all the way in on a 3x display.
+    vi.stubGlobal('devicePixelRatio', 3);
+    const clientWidth = vi
+      .spyOn(HTMLElement.prototype, 'clientWidth', 'get')
+      .mockReturnValue(360 + 32);
+    try {
+      const { doc, pageFor } = fakeDocument(1, 612, 792);
+      pdfjs.getDocument.mockReturnValue(fakeTask(Promise.resolve(doc)));
+
+      render(<PdfCanvasViewer blob={pdfBlob()} />);
+      const zoomIn = await screen.findByRole('button', { name: 'Zoom in' });
+      while (!(zoomIn as HTMLButtonElement).disabled) fireEvent.click(zoomIn);
+      expect(screen.getByLabelText('PDF zoom level').textContent).toBe('400%');
+
+      await waitFor(() => {
+        const calls = pageFor(1).render.mock.calls;
+        const last = calls[calls.length - 1][0];
+        expect(last.viewport.scale).toBeGreaterThan(4);
+      });
+      const calls = pageFor(1).render.mock.calls;
+      const { canvas } = calls[calls.length - 1][0];
+      expect(canvas.width * canvas.height).toBeLessThanOrEqual(16_777_216);
+      // Capped, not merely small: it still uses most of the budget.
+      expect(canvas.width * canvas.height).toBeGreaterThan(16_000_000);
+    } finally {
+      clientWidth.mockRestore();
+    }
   });
 
   test('says honestly when the file is not a PDF it can read', async () => {
