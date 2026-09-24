@@ -1526,32 +1526,43 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
   });
 
   it('#2324 review J4b: a durable dispatch refused by a provider turn is not also put in the in-memory queue', async () => {
-    sendExecutionMessageMock.mockRejectedValueOnce(
-      new CodedOrchestrationError(
-        400,
-        'The agent is replying on its own; your message will be sent when it finishes.',
-        'provider_turn_in_progress',
-      ),
-    );
-    const claim = { indeterminate: vi.fn(async () => 'applied' as const) };
-    const { result } = renderHook(() => useSendMessage('http://api.test'));
-    await act(async () => {
-      await result
-        .current(
-          sessionId,
-          'claude',
-          undefined,
-          'durable send',
-          undefined,
-          undefined,
-          'claimed-turn',
-          { skipInMemoryQueueOnBusy: true, dispatch: claim },
-        )
-        .catch(() => undefined);
-    });
-    expect(
-      activeChatsStore.getSnapshot()[sessionId].queuedMessages ?? [],
-    ).toEqual([]);
+    // Only the drain's settle timer is faked: a conversion would start a
+    // drain (popping the head at once), which is what this must not do.
+    vi.useFakeTimers({ toFake: ['setTimeout'] });
+    try {
+      sendExecutionMessageMock.mockRejectedValueOnce(
+        new CodedOrchestrationError(
+          400,
+          'The agent is replying on its own; your message will be sent when it finishes.',
+          'provider_turn_in_progress',
+        ),
+      );
+      const claim = { indeterminate: vi.fn(async () => 'applied' as const) };
+      const { result } = renderHook(() => useSendMessage('http://api.test'));
+      await act(async () => {
+        await result
+          .current(
+            sessionId,
+            'claude',
+            undefined,
+            'durable send',
+            undefined,
+            undefined,
+            'claimed-turn',
+            { skipInMemoryQueueOnBusy: true, dispatch: claim },
+          )
+          .catch(() => undefined);
+      });
+      const chat = activeChatsStore.getSnapshot()[sessionId];
+      // The durable claim owns the outcome; the in-memory queue took nothing
+      // and started no drain of its own.
+      expect(claim.indeterminate).toHaveBeenCalledOnce();
+      expect(chat.queuedMessages ?? []).toEqual([]);
+      expect(chat.queueDrainSettling).toBeUndefined();
+    } finally {
+      vi.clearAllTimers();
+      vi.useRealTimers();
+    }
   });
 
   it('queues on a steering engine when queueOnBusy is requested', async () => {
