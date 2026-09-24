@@ -121,6 +121,8 @@ export interface PluginCommandEffectTransport {
     pluginId: string,
     request: PluginCommandEffectAdmissionRequest,
     signal: AbortSignal,
+    /** The same captured authority settlement uses; see `settle`. */
+    requestScope?: PluginCommandEffectRequestScope,
   ): Promise<PluginCommandEffectAdmitOutcome>;
   /**
    * `null` means the request never reached or returned from the server —
@@ -609,6 +611,7 @@ export function createPluginCommandEffectCoordinator(
           input.pluginId,
           admissionRequest,
           record.controller.signal,
+          input.requestScope,
         ),
       );
       // A reset (Station/authority switch) removed this record while the

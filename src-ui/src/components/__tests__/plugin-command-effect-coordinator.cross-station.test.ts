@@ -151,8 +151,11 @@ describe('plugin command effect coordinator (real SDK transport, cross-Station)'
     vi.stubGlobal('fetch', fetchMock);
 
     const transport: PluginCommandEffectTransport = {
-      admit: (apiBase, pluginId, request, signal) =>
-        admitPluginCommandEffect(apiBase, pluginId, request, { signal }),
+      admit: (apiBase, pluginId, request, signal, requestScope) =>
+        admitPluginCommandEffect(apiBase, pluginId, request, {
+          signal,
+          ...(requestScope ? { requestScope } : {}),
+        }),
       settle: (apiBase, request, options) => {
         settleAttempts.push({ apiBase, requestScope: options.requestScope });
         return settlePluginCommandEffects(apiBase, request, options);
@@ -218,5 +221,42 @@ describe('plugin command effect coordinator (real SDK transport, cross-Station)'
     );
     expect(coordinator._debug.retainedSettlementCount).toBe(0);
     expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('effect-1'));
+  });
+
+  test('an admission chosen under one Station is never dispatched after the switch to another', async () => {
+    const fetchMock = vi.fn(async (): Promise<Response> => {
+      throw new Error('no request may reach the network');
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const transport: PluginCommandEffectTransport = {
+      admit: (apiBase, pluginId, request, signal, requestScope) =>
+        admitPluginCommandEffect(apiBase, pluginId, request, {
+          signal,
+          ...(requestScope ? { requestScope } : {}),
+        }),
+      settle: (apiBase, request, options) =>
+        settlePluginCommandEffects(apiBase, request, options),
+    };
+    const coordinator = createPluginCommandEffectCoordinator({
+      transport,
+      storage: fakeStorage(),
+      windowLike: fakeWindow(),
+    });
+    const apply = vi.fn(() => true);
+    const notify = vi.fn();
+    // The command was chosen while Station A was active; the switch to B
+    // lands before the admission is sent.
+    activeStation = 'b';
+    coordinator.runCommand(
+      baseInput({
+        apply,
+        notify,
+        requestScope: { apiBase: STATION_A, authorityKey: 'conn-a:1' },
+      }),
+    );
+    await vi.waitFor(() => expect(notify).toHaveBeenCalled());
+    await vi.advanceTimersByTimeAsync(8_000);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(apply).not.toHaveBeenCalled();
   });
 });

@@ -42,19 +42,30 @@ function isReceipt(value: unknown): value is PluginCommandEffectReceipt {
   );
 }
 
-/** `POST /api/plugins/:name/command-effects`. Admission is LP-A. */
+/**
+ * `POST /api/plugins/:name/command-effects`. Admission is LP-A.
+ *
+ * `options.requestScope` binds the call to the host authority the command
+ * was chosen under, exactly as for settlement: if the Station has switched
+ * since, `mutateJson` refuses before dispatch and this reports
+ * `network-error`, so an admission is never sent under another Station's
+ * credential or none.
+ */
 export async function admitPluginCommandEffect(
   apiBase: string,
   pluginId: string,
   request: PluginCommandEffectAdmissionRequest,
-  options: { signal?: AbortSignal } = {},
+  options: { signal?: AbortSignal; requestScope?: ApiRequestScope } = {},
 ): Promise<PluginCommandEffectAdmitOutcome> {
   let response: Response;
   try {
     response = await mutateJson(
       `${apiBase}/api/plugins/${encodeURIComponent(pluginId)}/command-effects`,
       'POST',
-      { signal: options.signal },
+      {
+        signal: options.signal,
+        ...(options.requestScope ? { requestScope: options.requestScope } : {}),
+      },
       request,
     );
   } catch {

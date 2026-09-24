@@ -19,8 +19,11 @@ import {
 } from './plugin-command-effect-switch-signal';
 
 const transport: PluginCommandEffectTransport = {
-  admit: (apiBase, pluginId, request, signal) =>
-    admitPluginCommandEffect(apiBase, pluginId, request, { signal }),
+  admit: (apiBase, pluginId, request, signal, requestScope) =>
+    admitPluginCommandEffect(apiBase, pluginId, request, {
+      signal,
+      ...(requestScope ? { requestScope } : {}),
+    }),
   settle: (apiBase, request, options) =>
     settlePluginCommandEffects(apiBase, request, options),
 };
