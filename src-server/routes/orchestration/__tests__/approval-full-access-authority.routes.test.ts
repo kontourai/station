@@ -30,6 +30,15 @@ import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
 import { EnvironmentSecurityService } from '../../../services/ssh/environment-security-service.js';
+import {
+  STATION_CONTROL_ORIGIN_AGENT_TOOL,
+  STATION_CONTROL_ORIGIN_HEADER,
+} from '../../../tools/station-control-shared.js';
+import {
+  getInternalApiToken,
+  INTERNAL_API_TOKEN_HEADER,
+  INTERNAL_PROXY_CALLER_HEADER,
+} from '../../../utils/internal-api-token.js';
 import { createLogger } from '../../../utils/logger.js';
 import { createAgentRoutes } from '../../agents/agents.js';
 import { createOrchestrationRoutes } from '../orchestration.js';
@@ -189,6 +198,19 @@ async function fixture() {
       .map((row) => row.globalSequence);
     return sequences.length > 0 ? Math.max(...sequences) : null;
   };
+  const internal = async (
+    agent: boolean,
+    path: string,
+    body: unknown,
+    method = 'POST',
+  ) => {
+    const [init, env] = internalRequestInit(agent, {
+      method,
+      body: JSON.stringify(body),
+    });
+    const res = await app.request(path, init, env as never);
+    return { status: res.status, body: (await res.json()) as any };
+  };
   const decide = (credential: string, approvalMode: string) =>
     post(credential, '/api/orchestration/commands', {
       type: 'setApprovalMode',
@@ -218,6 +240,8 @@ async function fixture() {
     operator,
     pair,
     post,
+    internal,
+    latestSequence,
     decide,
     recorded,
     grant,
@@ -226,6 +250,32 @@ async function fixture() {
     executeForegroundMessage,
     continueForegroundMessage,
   };
+}
+
+/**
+ * Station's own internal principal: the per-boot token, the `local` caller
+ * marker and a direct loopback socket. The UI's requests and an agent's
+ * station-control tool calls both arrive this way; only the tool's origin
+ * marker tells them apart (#2436 review).
+ */
+function internalRequestInit(agent: boolean, init: RequestInit) {
+  return [
+    {
+      ...init,
+      headers: {
+        'Content-Type': 'application/json',
+        [INTERNAL_API_TOKEN_HEADER]: getInternalApiToken(),
+        [INTERNAL_PROXY_CALLER_HEADER]: 'local',
+        ...(agent
+          ? {
+              [STATION_CONTROL_ORIGIN_HEADER]:
+                STATION_CONTROL_ORIGIN_AGENT_TOOL,
+            }
+          : {}),
+      },
+    },
+    { incoming: { socket: { remoteAddress: '127.0.0.1' } } },
+  ] as const;
 }
 
 const REFUSAL = {
@@ -406,4 +456,34 @@ test('a device the operator granted may set an Agent default to full access', as
       })
     ).status,
   ).toBeLessThan(300);
+});
+
+test("an agent's station-control call cannot record full access or save it as an Agent default; the UI's own call can", async () => {
+  const f = await fixture();
+  const command = () => ({
+    type: 'setApprovalMode',
+    threadId: THREAD,
+    approvalMode: 'never',
+    basedOnSequence: f.latestSequence(),
+  });
+
+  expect(
+    await f.internal(true, '/api/orchestration/commands', command()),
+  ).toEqual({ status: 403, body: REFUSAL });
+  expect(
+    await f.internal(
+      true,
+      '/api/agents/builder',
+      { execution: { approvalMode: 'never' } },
+      'PUT',
+    ),
+  ).toEqual({ status: 403, body: REFUSAL });
+  expect(f.recorded()).toEqual([]);
+  expect(f.agentService.updateAgent).not.toHaveBeenCalled();
+
+  // The same internal principal without the agent marker is the UI.
+  expect(
+    (await f.internal(false, '/api/orchestration/commands', command())).status,
+  ).toBe(200);
+  expect(f.recorded()).toEqual(['never']);
 });

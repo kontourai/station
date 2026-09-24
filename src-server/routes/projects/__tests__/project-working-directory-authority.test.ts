@@ -23,6 +23,15 @@ import { configureRuntimeHttp } from '../../../runtime/bootstrap/runtime-http.js
 import type { EventBus } from '../../../services/orchestration/event-bus.js';
 import { ProjectService } from '../../../services/projects/project-service.js';
 import { EnvironmentSecurityService } from '../../../services/ssh/environment-security-service.js';
+import {
+  STATION_CONTROL_ORIGIN_AGENT_TOOL,
+  STATION_CONTROL_ORIGIN_HEADER,
+} from '../../../tools/station-control-shared.js';
+import {
+  getInternalApiToken,
+  INTERNAL_API_TOKEN_HEADER,
+  INTERNAL_PROXY_CALLER_HEADER,
+} from '../../../utils/internal-api-token.js';
 import { createLogger } from '../../../utils/logger.js';
 import { createProjectRoutes } from '../projects.js';
 
@@ -33,6 +42,32 @@ afterEach(() => {
   for (const root of roots.splice(0))
     rmSync(root, { recursive: true, force: true });
 });
+
+/**
+ * Station's own internal principal: the per-boot token, the `local` caller
+ * marker and a direct loopback socket. The UI's requests and an agent's
+ * station-control tool calls both arrive this way; only the tool's origin
+ * marker tells them apart (#2436 review).
+ */
+function internalRequestInit(agent: boolean, init: RequestInit) {
+  return [
+    {
+      ...init,
+      headers: {
+        'Content-Type': 'application/json',
+        [INTERNAL_API_TOKEN_HEADER]: getInternalApiToken(),
+        [INTERNAL_PROXY_CALLER_HEADER]: 'local',
+        ...(agent
+          ? {
+              [STATION_CONTROL_ORIGIN_HEADER]:
+                STATION_CONTROL_ORIGIN_AGENT_TOOL,
+            }
+          : {}),
+      },
+    },
+    { incoming: { socket: { remoteAddress: '127.0.0.1' } } },
+  ] as const;
+}
 
 async function fixture() {
   vi.stubEnv('STATION_HOSTED_TENANT_REGISTRY_FILE', undefined);
@@ -128,9 +163,30 @@ async function fixture() {
     });
     return { status: res.status, body: (await res.json()) as any };
   };
+  const sendInternally = async (
+    agent: boolean,
+    method: 'POST' | 'PUT',
+    path: string,
+    body: Record<string, unknown>,
+  ) => {
+    const [init, env] = internalRequestInit(agent, {
+      method,
+      body: JSON.stringify(body),
+    });
+    const res = await app.request(`/api/projects${path}`, init, env as never);
+    return { status: res.status, body: (await res.json()) as any };
+  };
   const stored = (slug: string) => storage.getProject(slug);
 
-  return { operator, pair, send, stored, folderA, folderB };
+  return {
+    operator,
+    pair,
+    send,
+    sendInternally,
+    stored,
+    folderA,
+    folderB,
+  };
 }
 
 const REFUSAL = {
@@ -219,4 +275,22 @@ test('a device holding coding:exec chooses a folder on create and update', async
       .status,
   ).toBe(200);
   expect(f.stored('acme').workingDirectory).toBe(f.folderB);
+});
+
+test("an agent's station-control call cannot choose a Project's folder; the UI's own call can", async () => {
+  const f = await fixture();
+  const refused = await f.sendInternally(true, 'POST', '', {
+    name: 'Planted',
+    slug: 'planted',
+    workingDirectory: f.folderA,
+  });
+  expect(refused).toEqual({ status: 403, body: REFUSAL });
+  expect(() => f.stored('planted')).toThrow();
+
+  const created = await f.sendInternally(false, 'POST', '', {
+    name: 'Acme',
+    slug: 'acme',
+    workingDirectory: f.folderA,
+  });
+  expect(created.status).toBe(201);
 });

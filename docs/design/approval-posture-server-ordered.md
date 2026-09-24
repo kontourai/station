@@ -383,6 +383,23 @@ A session spawned before this change has nothing recorded.
 - **One derivation.** The check is `mayGrantFullAccess` in
   `src-server/security/coding-authority.ts`, next to #2412's
   `mayRunCommandsOnHost`. It shares the same `isOperatorInPerson`.
+- **Never an agent.** An agent's station-control tools call the REST API
+  with the per-boot internal token, which the auth boundary binds as
+  Station's own internal principal with home-possession, so it read as the
+  operator in person: `update_config` could set the Station default to
+  `never`. `mayGrantFullAccess` now refuses any request carrying the tool's
+  origin marker or caller credential (`isAgentOriginatedRequest`). Those may
+  only restrict: their absence proves nothing, so the rule refuses more and
+  never grants more. `update_config` also refuses a `never` default itself.
+  - The same rule applies to #2412's `mayRunCommandsOnHost` (the Project
+    folder gate and `POST /exec`). No station-control tool reaches either
+    today, so it closes no live path; it keeps the derivation's claim (the
+    operator in person, or a granted device) true for an agent-marked
+    request, so a future tool cannot inherit operator authority by
+    construction. An agent already has its own engine shell under its own
+    approval posture.
+  - `isOperatorInPerson` itself is unchanged. Its one other use is the New
+    Project form's read-only folder listing.
 - **Where it is enforced.** `routes/orchestration/approval-authority.ts`
   enforces it on every route that can put a session at full access:
   - `/commands` `setApprovalMode`;

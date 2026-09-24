@@ -22,6 +22,15 @@ import { ConfigLoader } from '../../../domain/config-loader.js';
 import { configureRuntimeHttp } from '../../../runtime/bootstrap/runtime-http.js';
 import type { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EnvironmentSecurityService } from '../../../services/ssh/environment-security-service.js';
+import {
+  STATION_CONTROL_ORIGIN_AGENT_TOOL,
+  STATION_CONTROL_ORIGIN_HEADER,
+} from '../../../tools/station-control-shared.js';
+import {
+  getInternalApiToken,
+  INTERNAL_API_TOKEN_HEADER,
+  INTERNAL_PROXY_CALLER_HEADER,
+} from '../../../utils/internal-api-token.js';
 import { createLogger } from '../../../utils/logger.js';
 import { createConfigRoutes } from '../config.js';
 
@@ -31,6 +40,32 @@ afterEach(() => {
   for (const root of roots.splice(0))
     rmSync(root, { recursive: true, force: true });
 });
+
+/**
+ * Station's own internal principal: the per-boot token, the `local` caller
+ * marker and a direct loopback socket. The UI's requests and an agent's
+ * station-control tool calls both arrive this way; only the tool's origin
+ * marker tells them apart (#2436 review).
+ */
+function internalRequestInit(agent: boolean, init: RequestInit) {
+  return [
+    {
+      ...init,
+      headers: {
+        'Content-Type': 'application/json',
+        [INTERNAL_API_TOKEN_HEADER]: getInternalApiToken(),
+        [INTERNAL_PROXY_CALLER_HEADER]: 'local',
+        ...(agent
+          ? {
+              [STATION_CONTROL_ORIGIN_HEADER]:
+                STATION_CONTROL_ORIGIN_AGENT_TOOL,
+            }
+          : {}),
+      },
+    },
+    { incoming: { socket: { remoteAddress: '127.0.0.1' } } },
+  ] as const;
+}
 
 async function fixture() {
   vi.stubEnv('STATION_HOSTED_TENANT_REGISTRY_FILE', undefined);
@@ -116,10 +151,28 @@ async function fixture() {
     });
     return { status: res.status, body: (await res.json()) as any };
   };
+  const setDefaultInternally = async (
+    agent: boolean,
+    defaultApprovalMode: string,
+  ) => {
+    const [init, env] = internalRequestInit(agent, {
+      method: 'PUT',
+      body: JSON.stringify({ defaultApprovalMode }),
+    });
+    const res = await app.request('/config/app', init, env as never);
+    return { status: res.status, body: (await res.json()) as any };
+  };
   const stored = async () =>
     (await configLoader.loadAppConfig()).defaultApprovalMode;
 
-  return { operator, pairPhone, grant, setDefault, stored };
+  return {
+    operator,
+    pairPhone,
+    grant,
+    setDefault,
+    setDefaultInternally,
+    stored,
+  };
 }
 
 test('a device without the grant cannot raise the Station default to full access', async () => {
@@ -145,5 +198,16 @@ test('the operator, or a granted device, may; resending a standing never needs n
   expect((await f.setDefault(f.operator.credential, 'ask')).status).toBe(200);
   f.grant(phone.device.id);
   expect((await f.setDefault(phone.credential, 'never')).status).toBe(200);
+  expect(await f.stored()).toBe('never');
+});
+
+test("an agent's station-control call cannot raise the Station default to full access; the UI's own call can", async () => {
+  const f = await fixture();
+  const refused = await f.setDefaultInternally(true, 'never');
+  expect(refused.status).toBe(403);
+  expect(refused.body.code).toBe('approval-full-access-not-granted');
+  expect(await f.stored()).toBeUndefined();
+
+  expect((await f.setDefaultInternally(false, 'never')).status).toBe(200);
   expect(await f.stored()).toBe('never');
 });
