@@ -105,98 +105,124 @@ function forgeUrlLabel(url: string): string | null {
 }
 
 /**
- * File extensions that are also plausible top-level domains. A bare
- * `README.md` or `app.ts` in link text names a file, not a host; treating it
- * as a host claim would decorate ordinary prose.
+ * Suffixes that read as file extensions, not top-level domains. Consulted
+ * only for BARE text (no scheme, path, port or `www.`), and only for a link
+ * to an ordinary external site: `logo.png` or `go.mod` names a file, and
+ * treating it as a host claim would decorate ordinary prose.
  */
-const FILE_LIKE_SUFFIXES = new Set([
-  'c',
-  'cc',
-  'cpp',
-  'cs',
-  'css',
-  'go',
-  'h',
-  'html',
-  'java',
-  'js',
-  'json',
-  'jsx',
-  'kt',
-  'lock',
-  'log',
-  'md',
-  'mjs',
-  'py',
-  'rb',
-  'rs',
-  'sh',
-  'sql',
-  'swift',
-  'toml',
-  'ts',
-  'tsx',
-  'txt',
-  'xml',
-  'yaml',
-  'yml',
-  'zip',
-]);
+const FILE_LIKE_SUFFIXES = new Set(
+  (
+    'asp aspx bat bmp c cc cfg cjs conf cpp cs css csv dart db dll doc docx ' +
+    'env exe gif go gradle h hpp htm html ico ini ipynb jar java jpeg jpg js ' +
+    'json jsx kt kts less lock log lua md mdx mjs mod mp3 mp4 net pdf php pl ' +
+    'plist png ps1 py pyc rb rs sass scss sh sql sqlite sum svelte svg swift ' +
+    'tar tf tgz toml ts tsv tsx txt vue wasm wav webp xls xlsx xml yaml yml zip'
+  ).split(' '),
+);
 
-function canonicalHost(host: string): string {
-  return host
-    .toLowerCase()
-    .replace(/\.$/, '')
-    .replace(/^www\./, '');
+const IPV4 = /^\d{1,3}(?:\.\d{1,3}){3}$/;
+/** Dotted labels ending in a letter TLD, a punycode TLD, or a Unicode one. */
+const DOMAIN = /^(?:[\p{L}\p{N}-]+\.)+(?:\p{L}{2,}|xn--[a-z0-9-]+)$/u;
+
+interface HostClaim {
+  /** `host[:port]` exactly as the text shows it, before normalisation. */
+  authority: string;
+  /** Written as nothing but a host: no scheme, path, port or `www.`. */
+  bare: boolean;
 }
 
 /**
  * The host a link's VISIBLE TEXT claims, or null when the text does not read
  * as a URL or host: `https://github.com/o/r`, `www.github.com`,
- * `github.com/o/r` and a bare `github.com` do; `the fix`, `src/app.ts` and a
- * bare `README.md` do not.
+ * `github.com/o/r`, `github.com:443`, `localhost:3000`, `127.0.0.1` and a
+ * bare `github.com` do; `the fix` and `src/app.ts` do not.
+ *
+ * The authority is read from the text as a reader sees it, not as a URL
+ * parser would: in `https://github.com@evil.test` the parser's host is
+ * `evil.test` (the rest is userinfo), but the reader sees `github.com`, so
+ * the part before `@` is the claim. Without a scheme, `@` makes the text an
+ * address, not a host. IPv6 literals are not recognised.
  */
-function claimedHost(text: string): string | null {
+function claimedHost(text: string): HostClaim | null {
   const value = text.trim();
   if (!value || /\s/.test(value)) return null;
-  const hasScheme = /^https?:\/\//i.test(value);
-  let url: URL;
+  const scheme = /^https?:\/\//i.exec(value);
+  const rest = scheme ? value.slice(scheme[0].length) : value;
+  const end = rest.search(/[/?#]/);
+  let authority = end === -1 ? rest : rest.slice(0, end);
+  const at = authority.indexOf('@');
+  if (at !== -1) {
+    if (!scheme) return null;
+    authority = authority.slice(0, at);
+  }
+  const match = /^(.+?)(?::(\d{1,5}))?$/.exec(authority);
+  if (!match) return null;
+  const host = match[1]!.toLowerCase().replace(/\.$/, '');
+  const hasPort = match[2] !== undefined;
+  if (host !== 'localhost' && !IPV4.test(host) && !DOMAIN.test(host))
+    return null;
+  const bare =
+    !scheme &&
+    end === -1 &&
+    !hasPort &&
+    !host.startsWith('www.') &&
+    !IPV4.test(host);
+  return { authority: hasPort ? `${host}:${match[2]}` : host, bare };
+}
+
+/** `host[:port]` normalised as the URL parser would, for comparison. */
+function normalisedAuthority(authority: string, protocol: string) {
   try {
-    url = new URL(hasScheme ? value : `https://${value}`);
+    const url = new URL(`${protocol}//${authority}`);
+    return {
+      host: url.hostname.replace(/\.$/, '').replace(/^www\./, ''),
+      port: url.port,
+    };
   } catch {
     return null;
   }
-  const host = url.hostname.toLowerCase().replace(/\.$/, '');
-  if (!/^(?:[a-z0-9-]+\.)+[a-z]{2,}$/.test(host)) return null;
-  if (hasScheme) return host;
-  // Without a scheme the text must BEGIN with the host (`user@host` and the
-  // like are not host-looking prose), and a bare name whose suffix is a
-  // common file extension is a file name.
-  if (!value.toLowerCase().startsWith(host)) return null;
-  const rest = value.slice(host.length);
-  if (host.startsWith('www.') || rest.startsWith('/')) return host;
-  if (rest !== '') return null;
-  const suffix = host.slice(host.lastIndexOf('.') + 1);
-  return FILE_LIKE_SUFFIXES.has(suffix) ? null : host;
 }
 
 /**
  * The host a link REALLY goes to, when its visible text names a different
  * one (`[github.com/o/r](https://evil.test/x)`), else null. A WebView shows no
  * status-bar URL on hover, so without this the reader has no signal before
- * clicking. `www.` is not a difference; a port or a subdomain is. Text that
- * does not read as a host returns null: prose link text is not a claim.
+ * clicking. `www.` and a default port (`github.com:443` on https) are not a
+ * difference; any other port, a subdomain, or a Unicode look-alike (compared
+ * in its punycode form) is. Text that does not read as a host returns null:
+ * prose link text is not a claim.
+ *
+ * Bare text (`github.com`, `docs.rs`, `logo.png`) is ambiguous between a
+ * host and a file name, so it counts as a claim only when `bareIsClaim` —
+ * the caller passes that for a link to an ordinary external site, never for a
+ * pull request or forge file, whose text is usually a file or ref name — and
+ * never when its suffix reads as a file extension.
  */
-export function mismatchedLinkHost(text: string, url: string): string | null {
-  const claimed = claimedHost(text);
-  if (!claimed) return null;
+export function mismatchedLinkHost(
+  text: string,
+  url: string,
+  bareIsClaim: boolean,
+): string | null {
+  const claim = claimedHost(text);
+  if (!claim) return null;
+  if (claim.bare) {
+    if (!bareIsClaim) return null;
+    const suffix = claim.authority.slice(claim.authority.lastIndexOf('.') + 1);
+    if (FILE_LIKE_SUFFIXES.has(suffix)) return null;
+  }
   let real: URL;
   try {
     real = new URL(url);
   } catch {
     return null;
   }
-  return canonicalHost(claimed) === canonicalHost(real.hostname)
+  const claimed = normalisedAuthority(claim.authority, real.protocol);
+  if (!claimed) return null;
+  const actual = {
+    host: real.hostname.replace(/\.$/, '').replace(/^www\./, ''),
+    port: real.port,
+  };
+  return claimed.host === actual.host && claimed.port === actual.port
     ? null
     : real.host;
 }

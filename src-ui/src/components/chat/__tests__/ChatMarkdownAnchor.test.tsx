@@ -518,6 +518,25 @@ describe('a link whose text names another host than it goes to', () => {
         'github.com/o/r/issues/1',
         'gitlab.com',
       ],
+      // A port is part of the host a reader is promised.
+      ['https://github.com:8443/o/r', 'github.com/o/r', 'github.com:8443'],
+      ['https://github.com/x', 'github.com:8443/x', 'github.com'],
+      // localhost, IP literals, with or without scheme and port.
+      ['https://evil.test/', 'localhost:3000', 'evil.test'],
+      ['https://evil.test/', 'localhost', 'evil.test'],
+      ['https://evil.test/', '127.0.0.1', 'evil.test'],
+      ['https://evil.test/', 'http://10.0.0.1:8080/x', 'evil.test'],
+      ['http://10.0.0.2/', '10.0.0.1', '10.0.0.2'],
+      // A Unicode look-alike is compared in the punycode form it resolves to.
+      ['https://xn--gthub-zsa.com/', 'github.com/o', 'xn--gthub-zsa.com'],
+      ['https://github.com/', 'gíthub.com/o', 'github.com'],
+      ['https://evil.test/', 'example.xn--p1ai/x', 'evil.test'],
+      // The reader sees `github.com`; the parser would call it userinfo.
+      ['https://evil.test/', 'https://github.com@evil.test/', 'evil.test'],
+      // A scheme-less host with a port is a claim.
+      ['https://evil.test/', 'github.com:443/x', 'evil.test'],
+      // Bare text is a claim for an ordinary external site.
+      ['https://evil.test/', 'docs.example', 'evil.test'],
     ] as const) {
       const anchor = mount(href, CONVERSATION, text);
       expect(anchor.textContent, href).toBe(`${text} (${host})`);
@@ -533,6 +552,23 @@ describe('a link whose text names another host than it goes to', () => {
       ['https://github.com/o/r', 'github.com/o/r'],
       ['https://www.github.com/o/r', 'github.com/o/r'],
       ['https://github.com/o/r/pull/1', 'src/app.ts'],
+      // A default port is not a difference.
+      ['https://github.com/x', 'github.com:443/x'],
+      ['https://github.com/x', 'https://github.com:443/x'],
+      // Bare file names, on an external site or a forge target.
+      ['https://example.test/a', 'logo.png'],
+      ['https://example.test/a', 'index.php'],
+      ['https://example.test/a', 'Info.plist'],
+      ['https://example.test/a', 'App.vue'],
+      ['https://example.test/a', 'ASP.NET'],
+      ['https://example.test/a', 'docs.rs'],
+      ['https://github.com/o/r/blob/main/go.mod', 'go.mod'],
+      // Bare text on a forge file or pull request is never a host claim —
+      // a ref or file name that happens to look like a domain.
+      ['https://github.com/o/r/blob/main/config.io', 'config.io'],
+      ['https://github.com/o/r/pull/1', 'release.app'],
+      // Without a scheme, `@` makes an address, not a host.
+      ['https://example.test/a', 'someone@github.com'],
     ] as const) {
       const anchor = mount(href, CONVERSATION, text);
       expect(anchor.textContent, `${text} -> ${href}`).toBe(text);

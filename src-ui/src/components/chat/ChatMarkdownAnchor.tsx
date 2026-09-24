@@ -288,7 +288,10 @@ function LinkAnchor({
   // show the real one beside it and put the full href in the tooltip — an
   // author-supplied title included, since that too is text the link chose.
   const url = target && target.kind !== 'path' ? target.url : null;
-  const realHost = url && !raw ? mismatchedLinkHost(text, url) : null;
+  const realHost =
+    url && !raw
+      ? mismatchedLinkHost(text, url, target?.kind === 'external')
+      : null;
   const title = realHost && url ? url : undefined;
   const hostBadge = realHost ? <LinkHostBadge host={realHost} /> : null;
   const onClick = (event: MouseEvent<HTMLAnchorElement>) =>
