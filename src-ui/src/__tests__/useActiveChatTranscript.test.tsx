@@ -56,7 +56,10 @@ vi.mock('@kontourai/station-sdk', async () => ({
 
 import { activeChatsStore } from '../contexts/active-chats-store';
 import { handleOrchestrationEvent } from '../hooks/orchestration/eventHandlers';
-import { resetSequencedLiveEventsForTests } from '../hooks/orchestration/sequencedLiveEvents';
+import {
+  recordSequencedLiveEvent,
+  resetSequencedLiveEventsForTests,
+} from '../hooks/orchestration/sequencedLiveEvents';
 import { handleTurnStartedEvent } from '../hooks/orchestration/turnHandlers';
 import { useActiveChatTranscript } from '../hooks/orchestration/useActiveChatTranscript';
 import { buildOutgoingUserMessage } from '../hooks/useActiveChatSessions.helpers';
@@ -81,6 +84,66 @@ const event = (eventId: string, method: string, fields = {}) => ({
 });
 
 describe('useActiveChatTranscript', () => {
+  test('evicted live frames keep the transcript catching up until a newer window loads', async () => {
+    const id = 'overflow-window';
+    const apiBase = 'http://station-overflow.test';
+    for (let sequence = 1; sequence <= 2049; sequence++) {
+      recordSequencedLiveEvent(
+        apiBase,
+        {
+          eventId: `overflow-${sequence}`,
+          provider: 'codex',
+          threadId: id,
+          createdAt: '2026-09-24T00:00:00.000Z',
+          method: 'content.text-delta',
+          itemId: 'answer',
+          delta: 'x',
+        },
+        sequence,
+      );
+    }
+    fetchWindow.mockResolvedValueOnce({
+      protocolVersion: 1,
+      watermark: 0,
+      hasMore: false,
+      events: [],
+    });
+    let resolveReload: ((value: unknown) => void) | undefined;
+    fetchWindow.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveReload = resolve;
+        }),
+    );
+    const session = {
+      ...baseSession,
+      id,
+      orchestrationSessionStarted: true,
+    } as ChatSession;
+    const view = renderHook(() => useActiveChatTranscript(apiBase, session));
+    try {
+      await waitFor(() => expect(resolveReload).toBeDefined());
+      expect(view.result.current.catchingUp).toBe(true);
+      expect(view.result.current.messages).toEqual([]);
+      await act(async () =>
+        resolveReload?.({
+          protocolVersion: 1,
+          watermark: 2049,
+          hasMore: false,
+          events: [
+            event('e2049', 'turn.completed', {
+              threadId: id,
+              turnId: 'overflow-turn',
+              outputText: 'Done',
+            }),
+          ],
+        }),
+      );
+      await waitFor(() => expect(view.result.current.catchingUp).toBe(false));
+    } finally {
+      view.unmount();
+    }
+  });
   test('a fallback revision hides stale transcript until its new window settles', async () => {
     const id = 'catching-up-turn';
     activeChatsStore.initChat(id, {

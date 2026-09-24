@@ -31,6 +31,10 @@ vi.mock('../../../contexts/active-chats-store', () => ({
 }));
 
 import { ensureOrchestrationEventStream } from '../ensureOrchestrationEventStream';
+import {
+  readSequencedLiveEvents,
+  recordSequencedLiveEvent,
+} from '../sequencedLiveEvents';
 
 describe('ensureOrchestrationEventStream reconnect-fallback snapshot gating (station#1225)', () => {
   const capturedOnMessage = () => mocks.capturedOnMessage!;
@@ -129,6 +133,35 @@ describe('ensureOrchestrationEventStream reconnect-fallback snapshot gating (sta
     });
     expect(mocks.clearConversationActivity).toHaveBeenCalledOnce();
     expect(handleOrchestrationEvent).toHaveBeenCalledOnce();
+  });
+
+  test('an epoch change discards foreign sequenced transcript frames', () => {
+    const apiBase = 'http://api-epoch-transcript';
+    recordSequencedLiveEvent(
+      apiBase,
+      {
+        eventId: 'foreign',
+        method: 'turn.started',
+        provider: 'claude',
+        threadId: 'conversation',
+        turnId: 'old',
+        createdAt: '2026-09-24T00:00:00.000Z',
+        prompt: 'foreign',
+      },
+      100,
+    );
+    ensureOrchestrationEventStream(apiBase);
+    capturedOnMessage()({
+      event: 'orchestration:snapshot',
+      data: JSON.stringify({ sessions: [], epoch: 'old-epoch' }),
+      id: '100',
+    });
+    capturedOnMessage()({
+      event: 'orchestration:snapshot',
+      data: JSON.stringify({ sessions: [], epoch: 'new-epoch' }),
+      id: '1',
+    });
+    expect(readSequencedLiveEvents(apiBase)).toEqual([]);
   });
 
   test('a replacement stream echoes the known store epoch', async () => {

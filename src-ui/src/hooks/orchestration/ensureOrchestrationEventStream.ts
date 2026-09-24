@@ -15,6 +15,7 @@ import {
   recordReplaySnapshot,
 } from './replay/capture-tap';
 import { createStreamCursorTracker, parseStreamSequence } from './resumeCursor';
+import { clearSequencedLiveEvents } from './sequencedLiveEvents';
 import { applyOrchestrationSnapshot } from './snapshotHandlers';
 import { setStreamConnectionState } from './streamConnectionState';
 import type { OrchestrationEvent, OrchestrationSnapshotPayload } from './types';
@@ -421,6 +422,7 @@ export function ensureOrchestrationEventStream(
         const previousEpoch = streamEpochs.get(apiBase);
         if (payload.epoch && previousEpoch && payload.epoch !== previousEpoch) {
           activeChatsStore.clearConversationActivity();
+          clearSequencedLiveEvents(apiBase);
         }
         if (payload.epoch) streamEpochs.set(apiBase, payload.epoch);
         cursor.adopt(raw.id);

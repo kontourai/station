@@ -20,6 +20,7 @@ import { requestReplayHistory, useReplayHistory } from './replay/history';
 import { isReplayThread } from './replay/replay-registry';
 import {
   readSequencedLiveEvents,
+  readSequencedLiveTruncation,
   subscribeSequencedLiveEvents,
 } from './sequencedLiveEvents';
 import { parseTurnStartedAt } from './turnHandlers';
@@ -194,6 +195,31 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
   const windowWatermark = replay
     ? Number.MAX_SAFE_INTEGER
     : serverWindow.watermark;
+  const liveGap =
+    !replay && windowWatermark < readSequencedLiveTruncation(apiBase);
+  const gapReloadKey = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (
+      !liveGap ||
+      !serverWindow.settled ||
+      serverWindow.loading ||
+      serverWindow.error
+    )
+      return;
+    const key = `${apiBase}\0${session.id}\0${windowWatermark}`;
+    if (gapReloadKey.current === key) return;
+    gapReloadKey.current = key;
+    void serverWindow.reload();
+  }, [
+    apiBase,
+    session.id,
+    windowWatermark,
+    liveGap,
+    serverWindow.settled,
+    serverWindow.loading,
+    serverWindow.error,
+    serverWindow.reload,
+  ]);
   const stitchedEvents = useMemo(() => {
     if (replay) return window.events;
     const watermark =
@@ -762,10 +788,10 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
     ...window,
     events: stitchedEvents,
     enabled,
-    catchingUp: !replay && serverWindow.catchingUp,
+    catchingUp: !replay && (serverWindow.catchingUp || liveGap),
     openTurnProjected,
     messages:
-      enabled && !replay && serverWindow.catchingUp
+      enabled && !replay && (serverWindow.catchingUp || liveGap)
         ? EMPTY_MESSAGES
         : enabled
           ? messages
