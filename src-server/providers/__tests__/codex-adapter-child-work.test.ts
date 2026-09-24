@@ -6,6 +6,7 @@
  */
 import {
   applyChildWorkDelta,
+  CHILD_WORK_SUMMARY_MAX_CHARS,
   type ChildWorkDelta,
   type ChildWorkItem,
   childWorkForReporter,
@@ -13,6 +14,14 @@ import {
 } from '@kontourai/station-contracts/child-work';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { describe, expect, test } from 'vitest';
+import {
+  CODEX_CHILD_PENDING_BYTES_MAX,
+  codexChildHeldStats,
+} from '../adapters/codex-adapter-child-work.js';
+import {
+  CodexAdapterTransport,
+  createCodexSessionRecord,
+} from '../adapters/codex-adapter-transport.js';
 import {
   CODEX_COLLAB_STATION_THREAD,
   CODEX_COLLAB_V1_CLIENT_TURN_INTERRUPT,
@@ -23,6 +32,7 @@ import {
   CODEX_COLLAB_V2_SPAWN_REJECTED,
   CODEX_COLLAB_V2_SPAWN_WAIT_COMPLETED,
   codexCaptureIds,
+  InertCodexProcess,
   replayCodexCapture,
 } from './codex-collab-fixtures.js';
 
@@ -37,16 +47,23 @@ function deltasOf(events: CanonicalRuntimeEvent[]): ChildWorkDelta[] {
   );
 }
 
-function fold(events: CanonicalRuntimeEvent[]): ChildWorkItem[] {
+function fold(
+  events: CanonicalRuntimeEvent[],
+  reporter = CODEX_COLLAB_STATION_THREAD,
+): ChildWorkItem[] {
   let state = createEmptyChildWorkRegistry();
   for (const delta of deltasOf(events)) {
     state = applyChildWorkDelta(state, delta);
   }
-  return childWorkForReporter(state, CODEX_COLLAB_STATION_THREAD);
+  return childWorkForReporter(state, reporter);
 }
 
-function child(events: CanonicalRuntimeEvent[], id = CHILD): ChildWorkItem {
-  const found = fold(events).find((item) => item.childId === id);
+function child(
+  events: CanonicalRuntimeEvent[],
+  id = CHILD,
+  reporter = CODEX_COLLAB_STATION_THREAD,
+): ChildWorkItem {
+  const found = fold(events, reporter).find((item) => item.childId === id);
   if (!found) throw new Error(`no child ${id}`);
   return found;
 }
@@ -608,5 +625,179 @@ describe('#2458 Codex agent status mapping (capture-shaped streams)', () => {
       ]),
     );
     expect(events).toEqual([]);
+  });
+});
+
+describe('#2458 fix round: routing and bounds', () => {
+  test('R1: a thread id another session owns, streamed by THIS process as its child, never reaches that session', () => {
+    const transport = new CodexAdapterTransport(
+      () => new Date('2026-09-23T00:00:00.000Z'),
+      async () => {},
+    );
+    const events: CanonicalRuntimeEvent[] = [];
+    transport.publish = (event) => {
+      events.push(event);
+    };
+    const session = (externalThreadId: string, codexThreadId: string) => {
+      const record = createCodexSessionRecord({
+        externalThreadId,
+        process: new InertCodexProcess(),
+        provider: 'codex',
+        threadId: externalThreadId,
+        model: 'gpt-5.5',
+        nowIso: () => '2026-09-23T00:00:00.000Z',
+      });
+      transport.registerSession(record);
+      transport.setCodexThreadId(record, codexThreadId);
+      record.activeTurnId = `${externalThreadId}-turn`;
+      return record;
+    };
+    const a = session('thread-a', 'codex-a');
+    // Session B's own codex thread id is the id A's process reports as its
+    // child: the collision.
+    const b = session('thread-b', CHILD);
+    const line = (msg: Msg) => JSON.stringify(msg);
+    transport.handleStdoutLine(
+      a,
+      line({
+        method: 'item/completed',
+        params: {
+          threadId: 'codex-a',
+          turnId: 'thread-a-turn',
+          item: collab('spawnAgent', {
+            senderThreadId: 'codex-a',
+            agentsStates: { [CHILD]: { status: 'pendingInit', message: null } },
+          }),
+        },
+      }),
+    );
+    transport.handleStdoutLine(a, line(childUsage(77)));
+    transport.handleStdoutLine(
+      a,
+      line(childTurnCompleted({ status: 'completed', durationMs: 5 })),
+    );
+    // Nothing reached B: no event on its thread, its turn still open.
+    expect(events.filter((event) => event.threadId === 'thread-b')).toEqual([]);
+    expect(b.activeTurnId).toBe('thread-b-turn');
+    expect(b.terminalPublishedForTurnId).toBeUndefined();
+    // It was A's child all along.
+    expect(child(events, CHILD, 'thread-a')).toMatchObject({
+      status: 'completed',
+      usage: { totalTokens: 77, durationMs: 5 },
+    });
+    // B's OWN process still owns B's thread.
+    transport.handleStdoutLine(
+      b,
+      line({
+        method: 'turn/completed',
+        params: {
+          threadId: CHILD,
+          turn: { id: 'thread-b-turn', status: 'completed' },
+        },
+      }),
+    );
+    expect(
+      events.filter(
+        (event) =>
+          event.threadId === 'thread-b' && event.method === 'turn.completed',
+      ),
+    ).toHaveLength(1);
+  });
+
+  test('R2: a child keeps facts only while its outcome can still change; session end clears everything', async () => {
+    const capture = CODEX_COLLAB_V1_SPAWN_WAIT_COMPLETED;
+    const childDone = capture.findIndex((line) => {
+      const { msg } = JSON.parse(line);
+      return msg.method === 'turn/completed' && msg.params.threadId === CHILD;
+    });
+    const running = replayCodexCapture(capture, { limit: childDone });
+    expect(codexChildHeldStats(running.record).facts).toBe(1);
+    const settled = replayCodexCapture(capture);
+    expect(child(settled.events).status).toBe('completed');
+    expect(codexChildHeldStats(settled.record).facts).toBe(0);
+    // A correctable terminal keeps its facts (a later outcome may correct it).
+    const stopped = replayCodexCapture(
+      synthetic([spawn(), parentItem('completed', collab('closeAgent'))]),
+    );
+    expect(child(stopped.events).status).toBe('stopped-unconfirmed');
+    expect(codexChildHeldStats(stopped.record).facts).toBe(1);
+    await running.stop();
+    expect(codexChildHeldStats(running.record)).toEqual({
+      threads: 0,
+      notifications: 0,
+      bytes: 0,
+      facts: 0,
+    });
+  });
+
+  test('R2: the fallback summary is capped at the contract bound and flagged truncated', () => {
+    const long = 'x'.repeat(CHILD_WORK_SUMMARY_MAX_CHARS * 3);
+    const { events } = replayCodexCapture(
+      synthetic([
+        spawn(),
+        {
+          method: 'item/completed',
+          params: {
+            threadId: CHILD,
+            turnId: 'child-turn',
+            item: { type: 'agentMessage', id: 'm', text: long },
+          },
+        },
+        childTurnCompleted({ status: 'completed' }),
+      ]),
+    );
+    const settle = deltasOf(events).find((delta) => delta.kind === 'settle');
+    expect(
+      settle?.kind === 'settle' ? settle.result?.summary?.length : 0,
+    ).toBeLessThanOrEqual(CHILD_WORK_SUMMARY_MAX_CHARS + 1);
+    expect(child(events).result).toMatchObject({ summaryTruncated: true });
+    expect(child(events).result?.summary).toHaveLength(
+      CHILD_WORK_SUMMARY_MAX_CHARS,
+    );
+  });
+
+  test('R2: held payloads are bounded in bytes, oldest first; an oversized one is never held', () => {
+    const big = (threadId: string, size: number, totalTokens: number): Msg => ({
+      method: 'thread/tokenUsage/updated',
+      params: {
+        threadId,
+        padding: 'p'.repeat(size),
+        tokenUsage: { total: { totalTokens } },
+      },
+    });
+    const register = (threadId: string): Msg =>
+      parentItem('completed', {
+        type: 'subAgentActivity',
+        id: `a-${threadId}`,
+        kind: 'started',
+        agentThreadId: threadId,
+        agentPath: `/root/${threadId}`,
+      });
+    const share = Math.floor(CODEX_CHILD_PENDING_BYTES_MAX * 0.6);
+    const heldOnly = replayCodexCapture(
+      synthetic([
+        big('first', share, 1),
+        big('second', share, 2),
+        big('huge', CODEX_CHILD_PENDING_BYTES_MAX + 1, 3),
+      ]),
+    );
+    const stats = codexChildHeldStats(heldOnly.record);
+    expect(stats.bytes).toBeLessThanOrEqual(CODEX_CHILD_PENDING_BYTES_MAX);
+    expect(stats).toMatchObject({ threads: 1, notifications: 1 });
+    const claimed = replayCodexCapture(
+      synthetic([
+        big('first', share, 1),
+        big('second', share, 2),
+        big('huge', CODEX_CHILD_PENDING_BYTES_MAX + 1, 3),
+        register('first'),
+        register('second'),
+        register('huge'),
+      ]),
+    );
+    // The oldest was dropped to make room, the oversized one never held.
+    expect(child(claimed.events, 'first').usage).toBeUndefined();
+    expect(child(claimed.events, 'second').usage).toEqual({ totalTokens: 2 });
+    expect(child(claimed.events, 'huge').usage).toBeUndefined();
+    expect(codexChildHeldStats(claimed.record).bytes).toBe(0);
   });
 });

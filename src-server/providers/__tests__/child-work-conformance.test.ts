@@ -56,6 +56,13 @@ type Driver = {
   adapterModule?: string;
   /** Replays the engine's captured output; returns everything published. */
   run: () => Promise<CanonicalRuntimeEvent[]>;
+  /**
+   * When the engine reports subagents in more than one wire format, each
+   * format's replay on its own. `run` is their union, so a signal lost in
+   * ONE format would still pass the union check; each format is checked
+   * separately below.
+   */
+  formats?: Record<string, () => Promise<CanonicalRuntimeEvent[]>>;
 };
 
 const CLAUDE_TASK_SUBAGENTS_FIXTURE = readFileSync(
@@ -189,10 +196,17 @@ async function replayAcpKiroSubagentTuple(): Promise<CanonicalRuntimeEvent[]> {
  * because that is where a child thread's notifications used to be dropped:
  * a notifications-only replay could not see the child's stream at all.
  */
+const CODEX_FORMATS = {
+  'v1 collabAgentToolCall': async () =>
+    replayCodexCapture(CODEX_COLLAB_V1_SPAWN_WAIT_COMPLETED).events,
+  'v2 subAgentActivity': async () =>
+    replayCodexCapture(CODEX_COLLAB_V2_SPAWN_WAIT_COMPLETED).events,
+};
+
 async function replayCodexCollabCaptures(): Promise<CanonicalRuntimeEvent[]> {
   return [
-    ...replayCodexCapture(CODEX_COLLAB_V1_SPAWN_WAIT_COMPLETED).events,
-    ...replayCodexCapture(CODEX_COLLAB_V2_SPAWN_WAIT_COMPLETED).events,
+    ...(await CODEX_FORMATS['v1 collabAgentToolCall']()),
+    ...(await CODEX_FORMATS['v2 subAgentActivity']()),
   ];
 }
 
@@ -223,6 +237,7 @@ const DRIVERS: Record<string, Driver> = {
   codex: {
     adapterModule: 'codex-adapter-child-work.ts',
     run: replayCodexCollabCaptures,
+    formats: CODEX_FORMATS,
   },
   muse: { run: replayMuseCaptures },
   acp: { run: replayAcpKiroSubagentTuple },
@@ -327,6 +342,32 @@ const KNOWN_SIGNAL_GAPS: Record<
  */
 const KNOWN_MODULE_GAPS: Record<string, string> = {};
 
+/**
+ * Engines whose emitted child work offers a control its matrix
+ * `subagentControl` cell does not declare wired (or the reverse), keyed to
+ * the tracking issue. Each is a `test.fails`.
+ */
+const KNOWN_CONTROL_GAPS: Record<string, string> = {
+  // The legacy Claude translator stamps `controls.stop: 'provider-task-stop'`
+  // on every running task (the adapter's station#1877 per-task stop), while
+  // Claude's `subagentControl` cell says `none`. One of the two is wrong;
+  // the Claude move onto the contract (#2457) owns resolving it.
+  claude: '#2457',
+};
+
+/** Every control any delta offers, on an item or a settle's identity. */
+function offeredControls(deltas: ChildWorkDelta[]): string[] {
+  return deltas.flatMap((delta) => {
+    const controls = [
+      ...itemsOf(delta).map((item) => item.controls),
+      delta.kind === 'settle' ? delta.identity?.controls : undefined,
+    ];
+    return controls.flatMap((control) =>
+      control ? [control.stop ?? 'controls-without-stop'] : [],
+    );
+  });
+}
+
 describe('#2456 child-work conformance tripwire', () => {
   test("the projection's unmapped-engine set is exactly the engines whose declared lifecycle is a known gap", () => {
     const lifecycleGaps = Object.fromEntries(
@@ -346,6 +387,29 @@ describe('#2456 child-work conformance tripwire', () => {
   for (const [key, matrix] of Object.entries(ENGINE_CAPABILITY_MATRICES)) {
     const cell = matrix.subagentObservability;
     const driver = DRIVERS[key];
+    // A control is what a client renders a stop button from, so the emitted
+    // child work and the matrix must agree: a `none` cell offers no control
+    // on any delta, and a `wired` cell's stop is actually offered.
+    const control = matrix.subagentControl;
+    const controlTest = KNOWN_CONTROL_GAPS[key] ? test.fails : test;
+    controlTest(
+      `${key}: emitted controls match subagentControl \`${control.state}\`${
+        KNOWN_CONTROL_GAPS[key] ? ` (known gap ${KNOWN_CONTROL_GAPS[key]})` : ''
+      }`,
+      async () => {
+        const runs = [driver.run, ...Object.values(driver.formats ?? {})];
+        const stopOffered =
+          control.state === 'wired' && control.stop.state === 'available';
+        for (const run of runs) {
+          const offered = offeredControls(childWorkDeltas(await run()));
+          if (stopOffered) {
+            expect(offered.length).toBeGreaterThan(0);
+          } else {
+            expect(offered).toEqual([]);
+          }
+        }
+      },
+    );
     if (cell.state === 'none') {
       test(`${key}: declared none — real output emits no child work`, async () => {
         const events = await driver.run();
@@ -370,6 +434,12 @@ describe('#2456 child-work conformance tripwire', () => {
       const observed = observedSignals(childWorkDeltas(await driver.run()));
       expect([...observed].sort()).toEqual([...expected].sort());
     });
+    for (const [format, run] of Object.entries(driver.formats ?? {})) {
+      test(`${key} (${format}): this format alone delivers every declared signal`, async () => {
+        const observed = observedSignals(childWorkDeltas(await run()));
+        expect([...observed].sort()).toEqual([...expected].sort());
+      });
+    }
     for (const [signal, issue] of Object.entries(gaps)) {
       test.fails(`${key}: delivers declared ${signal} (known gap ${issue})`, async () => {
         const observed = observedSignals(childWorkDeltas(await driver.run()));

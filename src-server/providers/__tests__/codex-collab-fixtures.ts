@@ -7,7 +7,8 @@
  * SCRUBBED, not byte-identical: thread/turn/item ids are rewritten to
  * `00000000-0000-7000-8000-00000000000N` / `call_000N` / `msg_000N`, paths to
  * `/workspace/repo` and `/home/user/.codex`, and the user agent to
- * `collab-capture/0.155.1 (scrubbed)`. The capture driver's own non-protocol
+ * `collab-capture/0.155.1 (scrubbed)`, and command-execution OS pids
+ * (`processId`) to the placeholder `"10000"`. The capture driver's own non-protocol
  * timeout note was dropped from the end of the v1 client-interrupt file
  * (the parent hung there; the file simply stops). v1/v2 is the subagent
  * item format the model's hidden per-model setting chose: v1 is
@@ -161,7 +162,8 @@ export function codexCaptureIds(capture: readonly string[]): {
   return { parentThreadId, parentTurnId };
 }
 
-class InertCodexProcess implements CodexProcessLike {
+/** A process double that does nothing; replays feed lines directly. */
+export class InertCodexProcess implements CodexProcessLike {
   readonly stdin = { write: () => true } as unknown as NodeJS.WritableStream;
   readonly stdout = {} as NodeJS.ReadableStream;
   readonly stderr = {} as NodeJS.ReadableStream;

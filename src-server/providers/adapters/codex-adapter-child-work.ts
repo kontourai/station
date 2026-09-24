@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import {
   applyChildWorkDelta,
+  CHILD_WORK_SUMMARY_MAX_CHARS,
   type ChildWorkDelta,
   type ChildWorkItem,
   type ChildWorkParent,
@@ -65,9 +66,21 @@ const CHILD_METHODS = new Set([
   'item/completed',
 ]);
 
-/** Bounds on notifications held for threads no parent item has claimed. */
+/**
+ * Bounds on notifications held for threads no parent item has claimed: how
+ * many threads, how many notifications each, and their total serialized size.
+ * Past any of them the OLDEST go first — a child's outcome and latest usage
+ * come last, and are what a late claim most needs.
+ *
+ * The real codex-cli 0.155.1 captures never NEED the hold: the only child
+ * notification they show before the linking item is `thread/status/changed`,
+ * which this mapper does not read. It exists because the protocol does not
+ * order a child's stream against its parent's items, and it is proven on
+ * reordered and synthetic streams only.
+ */
 const PENDING_THREADS_MAX = 16;
 const PENDING_NOTIFICATIONS_PER_THREAD_MAX = 32;
+export const CODEX_CHILD_PENDING_BYTES_MAX = 256 * 1024;
 const TITLE_MAX_CHARS = 200;
 
 interface CodexChildFacts {
@@ -79,10 +92,17 @@ interface CodexChildFacts {
 
 export interface CodexChildWorkState {
   registry: ChildWorkRegistryState;
-  /** child codex thread id → what the child's own stream has told us. */
+  /**
+   * child codex thread id → what the child's own stream has told us. Kept
+   * only while the child runs or holds a CORRECTABLE terminal: once its
+   * outcome is sticky the registry item carries everything, so its facts
+   * are dropped (see `pruneFacts`).
+   */
   children: Map<string, CodexChildFacts>;
   /** unclaimed codex thread id → its notifications, in arrival order. */
-  pending: Map<string, CodexChildNotification[]>;
+  pending: Map<string, HeldNotification[]>;
+  /** Serialized size of everything in `pending`. */
+  pendingBytes: number;
   /** Set once the session has ended; nothing is mapped after that. */
   closed: boolean;
 }
@@ -90,6 +110,11 @@ export interface CodexChildWorkState {
 export interface CodexChildNotification {
   method: string;
   params?: unknown;
+}
+
+interface HeldNotification {
+  notification: CodexChildNotification;
+  bytes: number;
 }
 
 interface ChildWorkContext {
@@ -103,6 +128,7 @@ function stateOf(record: CodexSessionRecord): CodexChildWorkState {
     registry: createEmptyChildWorkRegistry(),
     children: new Map(),
     pending: new Map(),
+    pendingBytes: 0,
     closed: false,
   };
   return record.childWork;
@@ -154,6 +180,7 @@ function emit(context: ChildWorkContext, delta: ChildWorkDelta): boolean {
   const next = applyChildWorkDelta(state.registry, delta);
   if (next === state.registry) return false;
   state.registry = next;
+  pruneFacts(context.record);
   context.publish({
     eventId: crypto.randomUUID(),
     provider: 'codex',
@@ -163,6 +190,29 @@ function emit(context: ChildWorkContext, delta: ChildWorkDelta): boolean {
     delta,
   });
   return true;
+}
+
+/** A terminal no later observation can change (the reducer keeps it). */
+function isStickyTerminal(item: ChildWorkItem | undefined): boolean {
+  return (
+    item !== undefined &&
+    item.status !== 'running' &&
+    item.status !== 'unresolved' &&
+    item.status !== 'stopped-unconfirmed'
+  );
+}
+
+/**
+ * Drops the facts of every child whose item is gone (evicted, or never
+ * accepted past the reducer's bound) or whose outcome is sticky: nothing a
+ * later notification carries can change it, and the item holds the rest.
+ */
+function pruneFacts(record: CodexSessionRecord): void {
+  const state = stateOf(record);
+  for (const childId of state.children.keys()) {
+    const item = itemFor(record, childId);
+    if (!item || isStickyTerminal(item)) state.children.delete(childId);
+  }
 }
 
 function runningChildren(record: CodexSessionRecord): ChildWorkItem[] {
@@ -218,12 +268,17 @@ function registerChild(
 ): void {
   const state = stateOf(context.record);
   if (state.closed) return;
+  const existing = itemFor(context.record, childId);
+  if (isStickyTerminal(existing)) {
+    // Settled for good: nothing to register, nothing held worth replaying.
+    dropHeld(state, childId);
+    return;
+  }
   const facts = state.children.get(childId) ?? {};
   if (facts.depth === undefined && identity.depth !== undefined) {
     facts.depth = identity.depth;
   }
   state.children.set(childId, facts);
-  const existing = itemFor(context.record, childId);
   if (!existing) {
     const item: ChildWorkItem = {
       producer: 'engine-subagent',
@@ -242,6 +297,8 @@ function registerChild(
       reporterThreadId: context.record.externalThreadId,
       running: [...runningChildren(context.record), item],
     });
+    // Refused (the reducer's running bound): no item, so no facts either.
+    pruneFacts(context.record);
   } else if (existing.status === 'running') {
     const missing: Partial<ChildWorkItem> = {};
     if (!existing.parent && identity.parent) missing.parent = identity.parent;
@@ -256,13 +313,20 @@ function registerChild(
       emit(context, { kind: 'upsert', item: { ...existing, ...missing } });
     }
   }
-  const held = state.pending.get(childId);
-  if (held) {
-    state.pending.delete(childId);
-    for (const notification of held) {
-      handleKnownChildNotification(context, childId, notification);
-    }
+  const held = dropHeld(state, childId);
+  for (const { notification } of held) {
+    handleKnownChildNotification(context, childId, notification);
   }
+}
+
+function dropHeld(
+  state: CodexChildWorkState,
+  threadId: string,
+): HeldNotification[] {
+  const held = state.pending.get(threadId) ?? [];
+  state.pending.delete(threadId);
+  for (const entry of held) state.pendingBytes -= entry.bytes;
+  return held;
 }
 
 function settleChild(
@@ -328,7 +392,9 @@ function depthUnder(
 ): number | undefined {
   if (!senderThreadId) return undefined;
   if (senderThreadId === record.codexThreadId) return 1;
-  const senderDepth = stateOf(record).children.get(senderThreadId)?.depth;
+  const senderDepth =
+    stateOf(record).children.get(senderThreadId)?.depth ??
+    itemFor(record, senderThreadId)?.depth;
   return senderDepth !== undefined ? senderDepth + 1 : undefined;
 }
 
@@ -517,7 +583,8 @@ export function observeCodexThreadStarted(
   const known =
     parentThreadId === context.record.codexThreadId ||
     (parentThreadId !== null &&
-      stateOf(context.record).children.has(parentThreadId));
+      (stateOf(context.record).children.has(parentThreadId) ||
+        itemFor(context.record, parentThreadId) !== undefined));
   if (!known || parentThreadId === null) return false;
   const depth = extractTokenFigure(spawn.depth);
   const agentPath =
@@ -562,19 +629,51 @@ export function routeCodexChildNotification(
     handleKnownChildNotification(context, threadId, notification);
     return;
   }
+  // A child whose outcome is already sticky: nothing it says can change it.
+  if (itemFor(context.record, threadId)) return;
+  const bytes = JSON.stringify(notification).length;
+  if (bytes > CODEX_CHILD_PENDING_BYTES_MAX) return;
   let held = state.pending.get(threadId);
   if (!held) {
     if (state.pending.size >= PENDING_THREADS_MAX) {
       const oldest = state.pending.keys().next().value;
-      if (oldest !== undefined) state.pending.delete(oldest);
+      if (oldest !== undefined) dropHeld(state, oldest);
     }
     held = [];
     state.pending.set(threadId, held);
   }
-  // Past the bound the OLDEST goes: a child's outcome (`turn/completed`) and
-  // latest usage come last, and are what a late claim most needs.
-  if (held.length >= PENDING_NOTIFICATIONS_PER_THREAD_MAX) held.shift();
-  held.push(notification);
+  if (held.length >= PENDING_NOTIFICATIONS_PER_THREAD_MAX) {
+    const dropped = held.shift();
+    if (dropped) state.pendingBytes -= dropped.bytes;
+  }
+  held.push({ notification, bytes });
+  state.pendingBytes += bytes;
+  // Total size: oldest first, across threads in the order they were first held.
+  while (state.pendingBytes > CODEX_CHILD_PENDING_BYTES_MAX) {
+    const [oldestThread, queue] = state.pending.entries().next().value ?? [];
+    if (oldestThread === undefined || !queue) break;
+    const dropped = queue.shift();
+    if (dropped) state.pendingBytes -= dropped.bytes;
+    if (queue.length === 0) state.pending.delete(oldestThread);
+  }
+}
+
+/** Held notifications and their total size, for bound tests. */
+export function codexChildHeldStats(record: CodexSessionRecord): {
+  threads: number;
+  notifications: number;
+  bytes: number;
+  facts: number;
+} {
+  const state = stateOf(record);
+  let notifications = 0;
+  for (const queue of state.pending.values()) notifications += queue.length;
+  return {
+    threads: state.pending.size,
+    notifications,
+    bytes: state.pendingBytes,
+    facts: state.children.size,
+  };
 }
 
 function handleKnownChildNotification(
@@ -612,7 +711,14 @@ function handleKnownChildNotification(
         item.type === 'agentMessage'
       ) {
         const text = extractString(item.text);
-        if (text) facts.lastAgentMessage = text;
+        // One char past the contract bound, so the reducer still sees an
+        // over-long summary and flags it truncated.
+        if (text) {
+          facts.lastAgentMessage = text.slice(
+            0,
+            CHILD_WORK_SUMMARY_MAX_CHARS + 1,
+          );
+        }
         return;
       }
       // A nested spawn, reported on the child's own stream.
@@ -693,5 +799,8 @@ export function settleOpenCodexChildren(context: ChildWorkContext): void {
     settleChild(context, item.childId, 'unresolved');
   }
   state.closed = true;
+  state.children.clear();
   state.pending.clear();
+  state.pendingBytes = 0;
+  state.registry = createEmptyChildWorkRegistry();
 }

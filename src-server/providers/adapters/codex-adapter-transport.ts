@@ -647,10 +647,21 @@ export class CodexAdapterTransport {
       return;
     }
     const threadId = extractThreadId(notification.params);
+    // #2458 fix round (R1): a thread-id hit counts only when it belongs to
+    // the process that EMITTED the line. `threadLookup` spans every session
+    // on this transport, and each session runs its own app-server, so a hit
+    // on another process's record is a collision (a thread id that session
+    // owns, streamed here as this process's child or stale thread) — never
+    // that session's fact. It is unclaimed for the emitting process instead.
+    const lookupHit = threadId ? this.threadLookup.get(threadId) : undefined;
+    const ownHit =
+      lookupHit && lookupHit.process === emittingRecord.process
+        ? lookupHit
+        : undefined;
     const record = ACCOUNT_SCOPED_NOTIFICATION_METHODS.has(notification.method)
       ? emittingRecord
       : threadId
-        ? this.threadLookup.get(threadId)
+        ? ownHit
         : emittingRecord;
 
     if (!record && threadId) {
