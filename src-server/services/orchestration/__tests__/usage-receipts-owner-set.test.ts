@@ -81,7 +81,7 @@ describe('usage receipts owner set (#2561)', () => {
       ),
       'local',
       { from: '2026-09-01', to: '2026-09-07' },
-    ) as {
+    ) as unknown as {
       receipts: Array<{ threadId: string }>;
       coverage: { state: string };
     };

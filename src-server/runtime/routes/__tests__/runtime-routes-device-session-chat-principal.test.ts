@@ -531,8 +531,20 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       orchestrationEventStore: store,
       ...(principalReads.usage
         ? {
+            // Forwards `listUsageReceipts`, which the production ref in
+            // `station-runtime.ts` does not (it exposes only
+            // `listSessionUsage`), so this exercises the route's authority
+            // wiring, not today's production data path.
             usageAggregator: new UsageAggregator(roomHomeDir, {
-              get: () => orchestration,
+              get: () => ({
+                listSessionUsage: () => [],
+                listUsageReceipts: (authority, stationId, request) =>
+                  orchestration!.listUsageReceipts(
+                    authority,
+                    stationId,
+                    request,
+                  ),
+              }),
             }),
           }
         : {}),
