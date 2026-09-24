@@ -31,9 +31,9 @@
  * to PARSE before anything starts, which makes a bad allocation fail here,
  * loudly, by name.
  *
- * "Both native app targets" is the acceptance criterion, and it is driven
- * literally: select the iOS simulator, capture, screenshot; select the
- * Android emulator, capture, screenshot.
+ * "Both native app targets" is driven as: both platform groups render from
+ * the real service's read of the helper, each device offered for opening
+ * (#1970 replaced the snapshot Capture journey with the live picker).
  *
  * WHAT IT STILL DOES NOT PROVE. The helper is a fixture, so this says nothing
  * about `expo-device-hub` itself, nor about what a real simulator screen
@@ -290,98 +290,41 @@ async function main() {
       },
     );
 
+    // #1970: the snapshot journey (select a row, Capture) is gone; the pane
+    // is a live picker. What this lane can prove against a fixture helper
+    // that answers only `/api/devices` and the screenshot routes is that the
+    // real service's inventory reaches the shell as both platform groups,
+    // each device offered for opening. Opening a LIVE session needs the
+    // helper's streaming sockets, which this fixture does not serve; the
+    // real-hub evidence for that lives in
+    // src-server/services/devices/__tests__/device-live.real.test.ts.
     for (const target of [
-      {
-        platform: 'ios' as const,
-        name: IOS_NAME,
-        deviceId: IOS_DEVICE_ID,
-        vendor: 'serve-sim',
-        shot: 'device-pane-desktop-ios.png',
-      },
-      {
-        platform: 'android' as const,
-        name: ANDROID_NAME,
-        deviceId: ANDROID_DEVICE_ID,
-        vendor: 'serve-emu',
-        shot: 'device-pane-desktop-android.png',
-      },
+      { name: IOS_NAME, group: 'iOS Simulators' },
+      { name: ANDROID_NAME, group: 'Android Emulators' },
     ]) {
-      // Wait for the ROW, not for the helper's request log. The hub records
-      // the inventory read the moment it is asked, but the answer still has
-      // to travel back through the route, the SDK client, the query cache and
-      // a render before a row exists — so keying this wait on the request is
-      // keying it on an event that is already true while the DOM is still
-      // empty, which is how one run in two failed here with the pane visibly
-      // fine. The request assertion above keeps its own meaning: it is what
-      // separates "two rows rendered" from "two rows rendered because Station
-      // read them".
-      let radio: string | undefined;
+      let open: string | undefined;
       await driver.waitUntil(
         async () => {
-          radio = await driver.findElement(
-            `.device-pane__choice input[value="${target.platform}:${target.deviceId}"]`,
+          open = await driver.findElement(
+            `button[aria-label="Open ${target.name}"]`,
           );
-          return Boolean(radio);
+          return Boolean(open);
         },
         {
           timeout: 30_000,
-          timeoutMsg: `The ${target.name} row was never offered for selection.`,
+          timeoutMsg: `${target.name} was never offered under ${target.group}.`,
         },
       );
-      assert.ok(radio, `The ${target.name} row resolved empty.`);
-      await driver.clickElement(radio);
-
-      let capture: string | undefined;
-      await driver.waitUntil(
-        async () => {
-          capture = await driver.findElement(
-            '.device-pane__actions button.button--primary:not([disabled])',
-          );
-          return Boolean(capture);
-        },
-        {
-          timeout: 30_000,
-          timeoutMsg: `Capture never became pressable for ${target.name}.`,
-        },
-      );
-      assert.ok(capture, 'Capture was reported pressable but not resolvable.');
-      await driver.clickElement(capture);
-
-      await driver.waitUntil(
-        async () =>
-          log.requests.some((entry) =>
-            entry.endsWith(`/vendor/${target.vendor}/api/screenshot`),
-          ),
-        {
-          timeout: 30_000,
-          timeoutMsg: `Station never asked the helper for ${target.name}’s screen.`,
-        },
-      );
-      await driver.waitUntil(
-        async () => Boolean(await driver.findElement('.device-pane__image')),
-        {
-          timeout: 30_000,
-          timeoutMsg: `No frame reached the shell for ${target.name}.`,
-        },
-      );
-
-      const caption = await driver.execute(
-        () =>
-          document.querySelector('.device-pane__caption')?.textContent ?? '',
-      );
-      assert.ok(
-        caption.includes('Snapshot') && caption.includes(target.name),
-        `The caption did not name a snapshot of ${target.name}: ${caption}`,
-      );
-
-      // Let the frame paint before the screenshot, so the artifact shows what
-      // the assertions above already established rather than a blank box.
-      await sleep(500);
-      writeFileSync(join(outputDir, target.shot), await driver.screenshot());
+      assert.ok(open, `The ${target.name} Open control resolved empty.`);
     }
+    await sleep(500);
+    writeFileSync(
+      join(outputDir, 'device-pane-desktop-picker.png'),
+      await driver.screenshot(),
+    );
 
     console.log(
-      `device-pane e2e: both native app targets captured. Helper saw ${log.requests.length} request(s): ${log.requests.join(', ')}`,
+      `device-pane e2e: both platforms offered. Helper saw ${log.requests.length} request(s): ${log.requests.join(', ')}`,
     );
   } finally {
     // Teardown reports itself and never REPLACES the journey's outcome. A

@@ -6822,6 +6822,82 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   cursor: default;
 }
 
+/* File Preview (non-image attachments) */
+.file-preview__actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-shrink: 0;
+}
+.file-preview__actions .button {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+}
+.file-preview__body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+}
+.file-preview__frame {
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  border: 0;
+  border-radius: 8px;
+  background: var(--bg-primary);
+}
+.file-preview__text {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+}
+.file-preview__source {
+  margin: 0;
+  padding: 12px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: 8px;
+  font-size: 0.85em;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.file-preview__markdown {
+  padding: 4px 8px;
+  overflow-wrap: anywhere;
+}
+.file-preview__notice {
+  margin: 0;
+  font-size: 0.85em;
+  color: var(--text-muted);
+}
+
+/* Markdown images in chat */
+.markdown-image {
+  max-width: 100%;
+  max-height: 480px;
+  border-radius: 6px;
+}
+.markdown-image-button {
+  position: relative;
+  display: inline-block;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: zoom-in;
+  max-width: 100%;
+}
+/* A 44px hit area without growing the line box: inline badges stay 20px tall
+   in prose, and the target extends invisibly around them. */
+.markdown-image-button::after {
+  content: "";
+  position: absolute;
+  inset: min(0px, calc((100% - 44px) / 2));
+}
+
 /* File Part Preview */
 .file-part-preview {
   display: inline-flex;

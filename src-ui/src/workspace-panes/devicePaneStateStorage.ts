@@ -68,12 +68,12 @@ export function readDevicePaneState(
 export function writeDevicePaneState(
   storage: DevicePaneStateStorage | null,
   scope: { apiBase: string; authorityKey: string },
-  target: { platform: 'ios' | 'android'; deviceId: string },
+  target: { hostId: string; platform: 'ios' | 'android'; deviceId: string },
 ): void {
   if (!storage) return;
   const state: WorkspaceDevicePaneState = {
     version: WORKSPACE_DEVICE_PANE_STATE_VERSION,
-    hostId: 'local',
+    hostId: target.hostId,
     platform: target.platform,
     deviceId: target.deviceId,
   };

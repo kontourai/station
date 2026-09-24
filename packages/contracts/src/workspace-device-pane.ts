@@ -1,4 +1,7 @@
-import type { MobileDevicePlatform } from './mobile-device.js';
+import {
+  isMobileDeviceHostId,
+  type MobileDevicePlatform,
+} from './mobile-device.js';
 import {
   parseWorkspacePaneDescriptor,
   parseWorkspacePaneInstance,
@@ -23,11 +26,10 @@ function descriptor(value: unknown): WorkspacePaneDescriptor {
 /**
  * The Device pane, declared as a Workspace Pane (#1969).
  *
- * One captured frame of a running simulator or emulator, beside the work that
- * produced it. It is a SNAPSHOT surface: the renderer asks for a frame, shows
- * it with the time it was taken, and sends nothing back to the device. There
- * is no stream and no input in this build, and the pane says so in every
- * state that shows a frame rather than leaving a reader to assume.
+ * A running simulator or emulator, beside the work that uses it: its screen
+ * streamed live and its input driven through Station's live surface (#1970;
+ * it began as a one-frame snapshot surface in #1969). Watching and driving
+ * are authorized per request on the server, not by anything declared here.
  *
  * Three declarations carry the design:
  *
@@ -42,10 +44,10 @@ function descriptor(value: unknown): WorkspacePaneDescriptor {
  *   conversation is the whole placement story for this slice.
  * - **No `requirements.hostCapabilities`.** Browser Preview declares
  *   `local-browser-preview` because the DESKTOP shell is what renders it.
- *   Viewing a captured PNG needs nothing of the kind — the same bytes render
- *   in a browser tab and in the desktop webview — so gating this pane on a
- *   desktop capability would refuse a surface that works, and would be a
- *   requirement nothing derives.
+ *   A live surface is image frames over an authenticated stream — the same
+ *   bytes draw in a browser tab and in the desktop webview — so gating this
+ *   pane on a desktop capability would refuse a surface that works, and
+ *   would be a requirement nothing derives.
  *
  * The SELECTED device is pane STATE (`WorkspaceDevicePaneState`), not pane
  * identity: there is one Device pane per region set, like Activity, and which
@@ -63,7 +65,7 @@ export const WORKSPACE_DEVICE_PANE_DESCRIPTOR = descriptor({
   version: WORKSPACE_PANE_CONTRACT_VERSION,
   id: WORKSPACE_DEVICE_PANE_DESCRIPTOR_ID,
   name: 'Device',
-  description: 'Take a snapshot of a simulator or emulator screen.',
+  description: 'Watch and control a simulator or emulator.',
   rendererId: WORKSPACE_DEVICE_PANE_RENDERER_ID,
   renderer: {
     kind: 'builtin-component',
@@ -135,12 +137,13 @@ export const WORKSPACE_DEVICE_PANE_STATE_VERSION = '1.0' as const;
  */
 export interface WorkspaceDevicePaneState {
   version: typeof WORKSPACE_DEVICE_PANE_STATE_VERSION;
-  hostId: 'local';
+  /** `local`, or an SSH device host's id (#1973); nothing else. */
+  hostId: string;
   platform: MobileDevicePlatform;
   deviceId: string;
 }
 
-/** The host's own id bound: `local` is the only host this slice addresses. */
+/** A device id's own bound (the host id has its own grammar). */
 const MAX_DEVICE_ID_LENGTH = 256;
 
 function isDeviceId(value: unknown): value is string {
@@ -170,14 +173,14 @@ export function parseWorkspaceDevicePaneState(
         key !== 'deviceId',
     ) ||
     row.version !== WORKSPACE_DEVICE_PANE_STATE_VERSION ||
-    row.hostId !== 'local' ||
+    !isMobileDeviceHostId(row.hostId) ||
     (row.platform !== 'ios' && row.platform !== 'android') ||
     !isDeviceId(row.deviceId)
   )
     return null;
   return {
     version: WORKSPACE_DEVICE_PANE_STATE_VERSION,
-    hostId: 'local',
+    hostId: row.hostId as string,
     platform: row.platform,
     deviceId: row.deviceId,
   };

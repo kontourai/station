@@ -1,0 +1,33 @@
+{
+  "name": "station-device-tool",
+  "lockfileVersion": 3,
+  "requires": true,
+  "packages": {
+    "": {
+      "name": "station-device-tool",
+      "dependencies": {
+        "agent-device": "0.21.12"
+      }
+    },
+    "node_modules/agent-device": {
+      "version": "0.21.12",
+      "resolved": "https://registry.npmjs.org/agent-device/-/agent-device-0.21.12.tgz",
+      "integrity": "sha512-aeIMmmMRUCnpRzhl3it0/PpTxhfcnxk8U3epV3kGRw9aQgo2UZa04kBc/h6i7wswhiuZw29TSPO0ewths3eJHg==",
+      "license": "MIT",
+      "bin": {
+        "agent-device": "bin/agent-device.mjs"
+      },
+      "engines": {
+        "node": ">=22.12"
+      },
+      "peerDependencies": {
+        "ai": "^6.0.0 || ^7.0.0"
+      },
+      "peerDependenciesMeta": {
+        "ai": {
+          "optional": true
+        }
+      }
+    }
+  }
+}
