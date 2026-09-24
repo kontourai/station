@@ -455,7 +455,7 @@ struct CredentialProfileStore {
     project_profiles: std::collections::HashMap<String, String>,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 #[serde(rename_all = "camelCase")]
 struct CredentialProfile {
@@ -1027,15 +1027,34 @@ fn profile_bindings_are_authorized(
     Ok(())
 }
 
+/// `current` is the store the host read under the write lock for this
+/// revision CAS; `store` is the renderer's proposed next store.
+///
+/// The renderer may never introduce a credential reference the host has not
+/// observed. It may, however, carry one forward untouched (#2565): a saved
+/// Station awaiting sign-in (`requires-auth`, never observed) must not block
+/// edits to every other Station. "Untouched" is whole-profile equality with
+/// the same-named profile in `current`, so the reference cannot move to
+/// another profile, and its endpoint, environment, development origin, relay
+/// route and configuration state cannot change while it is carried (flipping
+/// `requires-auth` to `configured` would make the next host start observe
+/// it as trusted).
 fn renderer_store_references_are_authorized(
     authority: &NativeProfileAuthorityState,
+    current: &CredentialProfileStore,
     store: &CredentialProfileStore,
 ) -> Result<(), String> {
     profile_bindings_are_authorized(authority, store)?;
     for profile in &store.profiles {
         if let Some(reference) = &profile.credential_ref {
             let key = credential_reference_key(reference)?;
-            if !authority.bindings.contains_key(&key) {
+            let carried_unchanged = || {
+                current
+                    .profiles
+                    .iter()
+                    .any(|existing| existing.name == profile.name && existing == profile)
+            };
+            if !authority.bindings.contains_key(&key) && !carried_unchanged() {
                 return Err(
                     "Station renderer writes cannot add an unobserved credential reference"
                         .to_string(),
@@ -5200,7 +5219,7 @@ fn station_profile_store_write_with_host(
                 }
             }
         } else {
-            renderer_store_references_are_authorized(&state, &next_store)?;
+            renderer_store_references_are_authorized(&state, &current_store, &next_store)?;
         }
     }
     let mut temporary = None;
@@ -14997,7 +15016,7 @@ mod tests {
         )
         .unwrap();
         assert!(
-            renderer_store_references_are_authorized(&authority, &endpoint_mutation)
+            renderer_store_references_are_authorized(&authority, &trusted, &endpoint_mutation)
                 .unwrap_err()
                 .contains("origin and environment")
         );
@@ -15009,9 +15028,12 @@ mod tests {
             }"#,
         )
         .unwrap();
-        assert!(
-            renderer_store_references_are_authorized(&authority, &environment_mutation).is_err()
-        );
+        assert!(renderer_store_references_are_authorized(
+            &authority,
+            &trusted,
+            &environment_mutation
+        )
+        .is_err());
 
         let unknown_reference = parse_station_profile_store(
             r#"{
@@ -15021,7 +15043,7 @@ mod tests {
         )
         .unwrap();
         assert!(
-            renderer_store_references_are_authorized(&authority, &unknown_reference)
+            renderer_store_references_are_authorized(&authority, &trusted, &unknown_reference)
                 .unwrap_err()
                 .contains("cannot add")
         );
@@ -15237,10 +15259,133 @@ mod tests {
         let mut restarted_authority = NativeProfileAuthorityState::default();
         observe_configured_profile_bindings(&mut restarted_authority, &requires_auth).unwrap();
         assert!(restarted_authority.bindings.is_empty());
+        let mut before_pending = requires_auth.clone();
+        before_pending.revision = 0;
+        before_pending.profiles.clear();
+        assert!(renderer_store_references_are_authorized(
+            &restarted_authority,
+            &before_pending,
+            &requires_auth
+        )
+        .unwrap_err()
+        .contains("cannot add"));
+    }
+
+    /// #2565: a saved Station awaiting sign-in is never observed, so its
+    /// reference is only acceptable in a renderer write when the host's
+    /// current store already carries the identical profile.
+    fn unobserved_pending_fixture() -> (NativeProfileAuthorityState, CredentialProfileStore) {
+        let current = parse_station_profile_store(
+            r#"{
+              "schemaVersion":1,"revision":4,"defaultProfile":"one","projectProfiles":{},
+              "profiles":[
+                {"schemaVersion":1,"name":"one","endpoint":"https://one.example","credentialRef":{"kind":"station-bearer","id":"token-one"},"environmentId":"environment-one","setupSource":"hosted","configurationState":"configured","createdAt":1,"updatedAt":1},
+                {"schemaVersion":1,"name":"two","endpoint":"https://two.example","credentialRef":{"kind":"station-bearer","id":"token-two"},"environmentId":"environment-two","setupSource":"hosted","configurationState":"configured","createdAt":1,"updatedAt":1},
+                {"schemaVersion":1,"name":"pending","endpoint":"https://pending.example","credentialRef":{"kind":"station-bearer","id":"pending-token"},"environmentId":"environment-pending","setupSource":"paired","configurationState":"requires-auth","createdAt":1,"updatedAt":1}
+              ]
+            }"#,
+        )
+        .unwrap();
+        let mut authority = NativeProfileAuthorityState::default();
+        observe_configured_profile_bindings(&mut authority, &current).unwrap();
+        assert!(!authority.bindings.contains_key(
+            &credential_reference_key(current.profiles[2].credential_ref.as_ref().unwrap())
+                .unwrap()
+        ));
+        (authority, current)
+    }
+
+    fn next_revision_of(current: &CredentialProfileStore) -> CredentialProfileStore {
+        let mut next = current.clone();
+        next.revision = current.revision + 1;
+        next
+    }
+
+    #[test]
+    fn renderer_write_may_carry_an_unchanged_unobserved_reference() {
+        let (authority, current) = unobserved_pending_fixture();
+
+        // (a) forget a different Station while the pending one is untouched.
+        let mut forget_other = next_revision_of(&current);
+        forget_other
+            .profiles
+            .retain(|profile| profile.name != "two");
+        renderer_store_references_are_authorized(&authority, &current, &forget_other).unwrap();
+
+        // (b) rename a different Station and make it default.
+        let mut rename_other = next_revision_of(&current);
+        rename_other.profiles[1].name = "two-renamed".to_string();
+        rename_other.default_profile = Some("two-renamed".to_string());
+        renderer_store_references_are_authorized(&authority, &current, &rename_other).unwrap();
+
+        // Forgetting the pending Station itself removes the reference.
+        let mut forget_pending = next_revision_of(&current);
+        forget_pending
+            .profiles
+            .retain(|profile| profile.name != "pending");
+        renderer_store_references_are_authorized(&authority, &current, &forget_pending).unwrap();
+    }
+
+    #[test]
+    fn renderer_write_cannot_add_or_move_or_rebind_an_unobserved_reference() {
+        let (authority, current) = unobserved_pending_fixture();
+        let refused = |next: &CredentialProfileStore| {
+            renderer_store_references_are_authorized(&authority, &current, next).unwrap_err()
+        };
+
+        // (c) a new unobserved reference is still refused.
+        let mut added = next_revision_of(&current);
+        let mut extra = current.profiles[2].clone();
+        extra.name = "three".to_string();
+        extra.credential_ref = Some(NativeCredentialReference {
+            kind: "station-bearer".to_string(),
+            id: "token-three".to_string(),
+        });
+        added.profiles.push(extra);
+        assert!(refused(&added).contains("cannot add an unobserved credential reference"));
+
+        // (d) moving the unobserved reference onto another profile name.
+        let mut moved = next_revision_of(&current);
+        moved.profiles[2].name = "impostor".to_string();
+        assert!(refused(&moved).contains("cannot add an unobserved credential reference"));
+
+        // (d) keeping the reference but repointing the endpoint.
+        let mut repointed = next_revision_of(&current);
+        repointed.profiles[2].endpoint = "https://attacker.example".to_string();
+        assert!(refused(&repointed).contains("cannot add an unobserved credential reference"));
+
+        // (d) keeping the reference but changing the environment binding.
+        let mut rebound = next_revision_of(&current);
+        rebound.profiles[2]._environment_id = Some("environment-other".to_string());
+        assert!(refused(&rebound).contains("cannot add an unobserved credential reference"));
+
+        // Promoting it to configured would make the next host start trust it.
+        let mut promoted = next_revision_of(&current);
+        promoted.profiles[2].configuration_state = "configured".to_string();
+        assert!(refused(&promoted).contains("cannot add an unobserved credential reference"));
+
+        // Moving the pending reference onto a different existing profile.
+        let mut swapped = next_revision_of(&current);
+        let pending_ref = swapped.profiles[2].credential_ref.take();
+        swapped.profiles.remove(2);
+        swapped.profiles[1].credential_ref = pending_ref;
+        assert!(refused(&swapped).contains("cannot add an unobserved credential reference"));
+    }
+
+    #[test]
+    fn renderer_write_still_refuses_an_unchanged_transitioning_reference() {
+        let (mut authority, current) = unobserved_pending_fixture();
+        authority.transitioning.insert(
+            credential_reference_key(current.profiles[2].credential_ref.as_ref().unwrap()).unwrap(),
+        );
+        let mut forget_other = next_revision_of(&current);
+        forget_other
+            .profiles
+            .retain(|profile| profile.name != "two");
         assert!(
-            renderer_store_references_are_authorized(&restarted_authority, &requires_auth)
+            renderer_store_references_are_authorized(&authority, &current, &forget_other)
                 .unwrap_err()
-                .contains("cannot add")
+                .contains("transitioning")
         );
     }
 
