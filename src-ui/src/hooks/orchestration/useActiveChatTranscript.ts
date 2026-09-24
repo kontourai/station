@@ -607,7 +607,28 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
             candidate.content === message.content,
         );
       }
-      if (match < 0) return true;
+      if (match < 0) {
+        // station#2530 review: `chat.messages` (the local echo/optimistic
+        // array `handleTurnStartedEvent` writes one "event-input" row into
+        // per turn, forever — nothing ever prunes it) outlives the bounded
+        // server window (`turnLimit`, the last few turns only). Once a
+        // turn's own row ages OUT of that window, `projected` no longer
+        // carries it, so this always matched `true` unconditionally and
+        // resurrected the turn's prompt as a phantom duplicate row — on a
+        // long-lived connection that never disconnected, exactly where a
+        // reconnected client (whose local echo never existed beyond what it
+        // was TOLD, i.e. the window it read) would correctly show nothing.
+        // Only a row that could still legitimately be catching up survives
+        // unmatched: the current pending send, one with no turnId at all
+        // (the documented reconnect-gap case), or one whose turn the window
+        // itself still shows open.
+        return (
+          message === currentPending ||
+          !message.turnId ||
+          message.turnId === windowOpenTurnId ||
+          message.turnId === session.openTurnId
+        );
+      }
       claimedProjectedUsers.add(match);
       // The local row owns the prompt's stable identity until the turn has
       // settled. If the bounded newest page already contains turn.started,

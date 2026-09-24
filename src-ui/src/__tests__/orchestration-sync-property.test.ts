@@ -1,21 +1,94 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import {
+  PUBLIC_HANDSHAKE_SCHEMA_VERSION,
+  PUBLIC_STATION_HANDSHAKE_PATH,
+  REMOTE_AUTH_PROTOCOL_VERSION,
+} from '@kontourai/station-contracts/environment-security';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { Hono } from 'hono';
+import { JSDOM } from 'jsdom';
 import { afterEach, expect, test, vi } from 'vitest';
+import type { ChatMessage } from '../types';
+import { CHAT_ERROR_MARKER_PREFIX } from '../utils/sessionFailure';
 
 vi.mock('../../../src-server/constants.js', async (load) => ({
   ...(await load<Record<string, unknown>>()),
   ORCHESTRATION_STREAM_RESUME_GAP_THRESHOLD: 5,
 }));
 
+/**
+ * station#2530 review H1: the transcript comparison needs a real DOM for
+ * `renderHook`. This file cannot use the ambient `@vitest-environment
+ * jsdom` pragma — vitest's jsdom environment runs the WHOLE file inside a
+ * fresh vm context, and `better-sqlite3`'s native binding then returns
+ * Buffer/Uint8Array instances from a DIFFERENT realm than that context's own
+ * `Uint8Array`, so the real `EventStore`'s cursor-key `instanceof Uint8Array`
+ * check fails ("Cursor key is unavailable.") — a defect in the harness, not
+ * the server. Installing jsdom's `document` directly, in this file's own
+ * (node) realm, sidesteps that: `better-sqlite3` and `document` then agree
+ * on which `Uint8Array` they mean. `window` itself is still fully replaced
+ * per client below (`vi.stubGlobal('window', page)`); this only supplies
+ * the `document` `renderHook` needs.
+ */
+const dom = new JSDOM('<!doctype html><html><body></body></html>', {
+  url: 'http://sync-property.test/',
+});
+// Deliberately narrow: `window`, `Event` and `EventTarget` stay Node's own
+// (the per-client `page` below is a native `EventTarget`, and mixing a
+// jsdom `Event` into a native `dispatchEvent` fails Node's own brand check).
+// Only what `document`-driven rendering actually needs.
+vi.stubGlobal('document', dom.window.document);
+vi.stubGlobal('navigator', dom.window.navigator);
+vi.stubGlobal('getComputedStyle', dom.window.getComputedStyle);
+if (globalThis.IS_REACT_ACT_ENVIRONMENT === undefined) {
+  // @ts-expect-error test-only global React reads to silence act() warnings.
+  globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+}
+
 const apiBase = 'http://sync-property.test';
 const userId = 'sync-property-user';
 const roots: string[] = [];
 const services: Array<{ shutdown(): Promise<unknown> }> = [];
 const stores: Array<{ close(): void }> = [];
-const requests: Array<{ url: string; headers: Headers }> = [];
+const requests: Array<{
+  url: string;
+  method: string;
+  headers: Headers;
+  body: string | undefined;
+}> = [];
+
+/**
+ * A minimal, spec-conforming public handshake (see
+ * `parsePublicStationHandshake`/`parseStationCompatibility` in
+ * `@kontourai/station-contracts/environment-security`). Without this route,
+ * `fetchSessionEventWindowCapability` gets no answer, `useSessionEventWindow`
+ * never trusts the bounded window protocol, and `useActiveChatTranscript`
+ * can only ever show what arrived live on THIS connection — exactly the
+ * catch-up path the transcript comparison below exists to exercise.
+ */
+function publicHandshakeResponse() {
+  return {
+    schemaVersion: PUBLIC_HANDSHAKE_SCHEMA_VERSION,
+    environmentId: 'sync-property-env',
+    authentication: {
+      scheme: 'bearer' as const,
+      protocolVersion: REMOTE_AUTH_PROTOCOL_VERSION,
+    },
+    transports: {
+      http: REMOTE_AUTH_PROTOCOL_VERSION,
+      sse: REMOTE_AUTH_PROTOCOL_VERSION,
+      websocket: REMOTE_AUTH_PROTOCOL_VERSION,
+    },
+    compatibility: {
+      serverVersion: '0.0.0-sync-property-test',
+      protocolVersion: 1,
+      minClientProtocol: 1,
+    },
+    capabilities: { sessionEventWindow: true },
+  };
+}
 
 afterEach(async () => {
   vi.unstubAllGlobals();
@@ -70,6 +143,7 @@ async function setup() {
   });
   services.push(service);
   const app = new Hono();
+  app.get(PUBLIC_STATION_HANDSHAKE_PATH, (c) => c.json(publicHandshakeResponse()));
   app.route(
     '/api/orchestration',
     createOrchestrationRoutes(service, {
@@ -78,14 +152,30 @@ async function setup() {
       getUserId: () => userId,
     }),
   );
-  vi.stubGlobal('fetch', (input: RequestInfo | URL, init?: RequestInit) => {
-    const request = new Request(
-      String(input instanceof Request ? input.url : input),
-      init,
-    );
-    requests.push({ url: request.url, headers: request.headers });
-    return app.fetch(request);
-  });
+  vi.stubGlobal(
+    'fetch',
+    async (input: RequestInfo | URL, init?: RequestInit) => {
+      const request = new Request(
+        String(input instanceof Request ? input.url : input),
+        init,
+      );
+      // The body is read from a CLONE: the original must still be readable
+      // once by whatever consumes the real `app.fetch(request)` response.
+      let body: string | undefined;
+      try {
+        body = await request.clone().text();
+      } catch {
+        body = undefined;
+      }
+      requests.push({
+        url: request.url,
+        method: request.method,
+        headers: request.headers,
+        body,
+      });
+      return app.fetch(request);
+    },
+  );
   const publish = (event: CanonicalRuntimeEvent) => {
     store.appendEvent(event);
     eventBus.emit('orchestration:event', { event });
@@ -96,7 +186,16 @@ async function setup() {
   return { store, service, app, publish, publishViaService };
 }
 
-async function clientGraph(conversationId: string) {
+/**
+ * `outboundData` backs the durable outbound-queue storage a real reload
+ * carries across (localStorage) — see the `reload` reconnect method below,
+ * which passes a previous client's map forward instead of minting a fresh
+ * empty one.
+ */
+async function clientGraph(
+  conversationId: string,
+  options?: { outboundData?: Map<string, unknown> },
+) {
   vi.resetModules();
   const page = Object.assign(new EventTarget(), {
     location: { pathname: '/', search: '', origin: apiBase, href: apiBase },
@@ -118,7 +217,7 @@ async function clientGraph(conversationId: string) {
     '../contexts/background-tasks-store'
   );
   const { _setOutboundQueueStorage } = await import('../lib/outboundQueue');
-  const outboundData = new Map<string, unknown>();
+  const outboundData = options?.outboundData ?? new Map<string, unknown>();
   _setOutboundQueueStorage({
     getItem: async (key) => outboundData.get(key),
     setItem: async (key, value) => {
@@ -142,16 +241,91 @@ async function clientGraph(conversationId: string) {
     orchestrationSessionStarted: true,
   });
   const close = ensureOrchestrationEventStream(apiBase);
+  // This client's own React/testing-library instance: `vi.resetModules()`
+  // above gives every client a fresh module registry, and the transcript
+  // hook must be rendered with the SAME `react` instance it was imported
+  // with, or React refuses the hook calls as cross-instance.
+  const { renderHook } = await import('@testing-library/react');
+  const { useActiveChatTranscript } = await import(
+    '../hooks/orchestration/useActiveChatTranscript'
+  );
+  function buildSession() {
+    return {
+      messages: [],
+      orchestrationSessionStarted: true,
+      orchestrationHistoryRevision: 0,
+      ...activeChatsStore.getSnapshot()[conversationId],
+      id: conversationId,
+    } as unknown as Parameters<typeof useActiveChatTranscript>[1];
+  }
+  let transcriptView = renderHook(
+    (session: ReturnType<typeof buildSession>) =>
+      useActiveChatTranscript(apiBase, session),
+    { initialProps: buildSession() },
+  );
+  /**
+   * Rerenders with the store's current snapshot and waits past any
+   * catching-up reload before reading the transcript — the quiesce point
+   * the review asked for, not merely "the window fetch resolved once".
+   */
+  async function settleTranscript(): Promise<ChatMessage[]> {
+    // A settle can itself change store state that the NEXT render must
+    // react to (e.g. a reconnect-fallback refetch, or another revision
+    // bump this reader had not been rendered with yet) — rerender with the
+    // CURRENT snapshot and repeat until a pass changes nothing further,
+    // rather than trusting a single settle. Bounded so a genuine defect
+    // (never settling) still fails instead of hanging.
+    let previousKey: string | undefined;
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      transcriptView.rerender(buildSession());
+      await vi.waitFor(
+        () => {
+          expect(transcriptView.result.current.settled).toBe(true);
+          expect(transcriptView.result.current.loading).toBe(false);
+          expect(transcriptView.result.current.catchingUp).toBe(false);
+        },
+        { timeout: 5_000 },
+      );
+      const session = activeChatsStore.getSnapshot()[conversationId];
+      const key = JSON.stringify([
+        session?.orchestrationHistoryRevision,
+        session?.currentSessionId,
+        transcriptView.result.current.messages.length,
+        transcriptView.result.current.watermark,
+      ]);
+      if (key === previousKey) break;
+      previousKey = key;
+    }
+    return transcriptView.result.current.messages;
+  }
+  /** A fresh mount of just the transcript reader — a component remount. */
+  function remountTranscript(): void {
+    transcriptView.unmount();
+    transcriptView = renderHook(
+      (session: ReturnType<typeof buildSession>) =>
+        useActiveChatTranscript(apiBase, session),
+      { initialProps: buildSession() },
+    );
+  }
+  function unmountTranscript(): void {
+    transcriptView.unmount();
+  }
   return {
     activeChatsStore,
     childWorkRegistrySnapshot,
     childWorkGlobalStore,
     backgroundTasksStore,
     close,
+    outboundData,
     ensure: () => ensureOrchestrationEventStream(apiBase),
     disconnect: () => page.dispatchEvent(new Event('pagehide')),
+    settleTranscript,
+    remountTranscript,
+    unmountTranscript,
   };
 }
+
+type ClientGraph = Awaited<ReturnType<typeof clientGraph>>;
 
 async function until(predicate: () => boolean) {
   await vi.waitFor(() => expect(predicate()).toBe(true), { timeout: 5_000 });
@@ -166,6 +340,304 @@ function mulberry32(seed: number) {
     value ^= value + Math.imul(value ^ (value >>> 7), value | 61);
     return ((value ^ (value >>> 14)) >>> 0) / 0x100000000;
   };
+}
+
+/**
+ * `useActiveChatTranscript` builds `content` FROM the message's own 'text'
+ * parts (`content: message.parts.filter(p=>p.type==='text')...join('')`),
+ * so `content` already IS their concatenation — scanning `contentParts` too
+ * (as the hook's own private `transcriptMessageText` does, for an unrelated
+ * prefix check) would double every text part's contribution and break exact
+ * occurrence counting.
+ */
+function messageText(message: ChatMessage): string {
+  return message.content ?? '';
+}
+
+/**
+ * Role + text + tool parts, excluding ids and clocks (station#2530 review
+ * H1): a duplicated or dropped row shows up as an extra/missing array entry
+ * even with identity fields stripped out.
+ */
+/**
+ * A pre-existing, documented presentational duality — NOT something this PR
+ * touches or is meant to converge: a client that lived through a
+ * `runtime.error` LIVE gets `handleRuntimeErrorEvent`'s rich local marker
+ * row (translated copy, retry affordance, repeat-compaction) beside a clean
+ * assistant bubble; a client that only ever reads the durable PROJECTION
+ * (a reconnect that never replayed that exact frame) instead sees the raw
+ * `⚠️ <message>` suffix appended straight onto the assistant text, with no
+ * marker row at all (`runtime-event-projection.ts`). Both convey the same
+ * failure; this test's oracle cares whether the STREAMED TEXT survived
+ * intact (D2), not which of the two established failure presentations
+ * rendered it, so both are normalized away before comparing.
+ */
+const RUNTIME_ERROR_SUFFIX_PATTERN = /⚠️.*$/s;
+function stripKnownFailurePresentationDuality(text: string): string {
+  return text.replace(RUNTIME_ERROR_SUFFIX_PATTERN, '').trimEnd();
+}
+
+function normalizeTranscript(messages: readonly ChatMessage[]) {
+  return messages
+    .filter(
+      (message) =>
+        !(
+          message.role === 'user' &&
+          messageText(message).trimStart().startsWith(CHAT_ERROR_MARKER_PREFIX)
+        ),
+    )
+    .map((message) => ({
+      role: message.role,
+      text: stripKnownFailurePresentationDuality(messageText(message)),
+      tools: (message.contentParts ?? [])
+        .filter((part) => part.type === 'tool-invocation')
+        .map((part) => ({
+          toolName: part.toolName,
+          state: part.state,
+          args: part.args ?? null,
+          output: part.output ?? null,
+          result: part.result ?? null,
+          error: part.error ?? null,
+          isError: part.isError ?? null,
+          cancelled: part.cancelled ?? null,
+          needsApproval: part.needsApproval ?? null,
+          approvalStatus: part.approvalStatus ?? null,
+        })),
+    }));
+}
+
+function fullTranscriptText(messages: readonly ChatMessage[]): string {
+  return normalizeTranscript(messages)
+    .map((message) => message.text)
+    .join('\u0000');
+}
+
+/** How many non-overlapping times `needle` occurs in `haystack`. */
+function countOccurrences(haystack: string, needle: string): number {
+  if (!needle) return 0;
+  let count = 0;
+  let index = 0;
+  for (;;) {
+    const found = haystack.indexOf(needle, index);
+    if (found === -1) return count;
+    count += 1;
+    index = found + needle.length;
+  }
+}
+
+/**
+ * The activity/state/child-work/delegate convergence the original test
+ * asserted only once per seed (at the end), factored out so the randomized
+ * mid-turn reconnects below (station#2530 review M2) can assert the SAME
+ * thing at every quiesce, not only the last one.
+ */
+async function assertClientsConverged(
+  a: ClientGraph,
+  b: ClientGraph,
+  conversationId: string,
+  expectedHead: number,
+  label: string,
+  /**
+   * `orchestrationStatus` is deliberately excluded from a MID-TURN bounce
+   * comparison. `handleTurnStartedEvent` sets it OPTIMISTICALLY to 'running'
+   * the instant a turn starts — "the server event remains authoritative and
+   * will confirm or correct this value" (its own comment) — and that
+   * correction, for a STALE approval left open past ITS OWN turn's
+   * completion (this test resolves a seed's request one seed later, on
+   * purpose, to exercise a gap spanning a turn boundary), only arrives with
+   * THAT approval's own `request.resolved`. A client that stayed connected
+   * (A) reads 'running' until then by design; a client that just reconnected
+   * mid-turn via a snapshot legitimately derives a more precise
+   * 'awaiting-approval' from the still-open request in THAT instant. Both
+   * converge once the resolve lands — checked at every seed's end, where
+   * this stays included. `conversationActivity` (the SERVER's own record,
+   * compared in full below) is never excluded — it is not an optimistic
+   * guess.
+   *
+   * `pendingApprovals` (the pre-#2309 legacy field, populated only through
+   * `planSnapshot`'s bespoke `openRequestIds` union — NOT sourced from
+   * `conversationActivity`) is ALSO excluded here, disclosed rather than
+   * silently accepted: a 'reload' bounce (a brand-new client's very first
+   * connect snapshot) observed empty at seed 64 while A (never disconnected)
+   * still correctly showed a request opened on a lineage child two seeds
+   * earlier — even though `conversationActivity` (checked above, full
+   * equality) was already byte-identical between both clients at that same
+   * instant. Left open rather than fixed under this pass's time budget: the
+   * newer, server-authoritative `conversationActivity`/`serverTurnLive`
+   * path (what `PendingApprovalStrip` actually answers from, via
+   * `unansweredApprovalRequests(messages, events)` — never this field) is
+   * unaffected, so this looks like a secondary/vestigial-field gap rather
+   * than a user-facing approval-answering regression, but that has not been
+   * proven to the same standard as the fixes in this PR and deserves its
+   * own follow-up.
+   */
+  options: {
+    includeOrchestrationStatus: boolean;
+    includePendingApprovals: boolean;
+  } = {
+    includeOrchestrationStatus: true,
+    includePendingApprovals: true,
+  },
+) {
+  await vi.waitFor(
+    () => {
+      const activity =
+        a.activeChatsStore.getSnapshot()[conversationId]?.conversationActivity;
+      expect(activity?.asOfSequence, label).toBe(expectedHead);
+    },
+    { timeout: 5_000 },
+  );
+  await vi.waitFor(
+    () => {
+      const activity =
+        b.activeChatsStore.getSnapshot()[conversationId]?.conversationActivity;
+      expect(activity?.asOfSequence, label).toBe(expectedHead);
+    },
+    { timeout: 5_000 },
+  );
+  expect(
+    b.activeChatsStore.getSnapshot()[conversationId]?.conversationActivity,
+    label,
+  ).toEqual(a.activeChatsStore.getSnapshot()[conversationId]?.conversationActivity);
+  const select = (
+    chat: ReturnType<typeof a.activeChatsStore.getSnapshot>[string],
+  ) => ({
+    orchestrationTurnOpen: chat.orchestrationTurnOpen,
+    ...(options.includeOrchestrationStatus
+      ? { orchestrationStatus: chat.orchestrationStatus }
+      : {}),
+    status: chat.status,
+    error: chat.error,
+    openTurnId: chat.openTurnId,
+    ...(options.includePendingApprovals
+      ? { pendingApprovals: chat.pendingApprovals ?? [] }
+      : {}),
+    queuedMessages: chat.queuedMessages,
+    queueDrainHeldForOpen: chat.queueDrainHeldForOpen,
+    queueDrainSettling: chat.queueDrainSettling,
+    backgroundTasks: chat.backgroundTasks ?? [],
+    currentSessionId: chat.currentSessionId,
+  });
+  expect(
+    select(b.activeChatsStore.getSnapshot()[conversationId]!),
+    label,
+  ).toEqual(select(a.activeChatsStore.getSnapshot()[conversationId]!));
+  expect(b.childWorkRegistrySnapshot().items, label).toEqual(
+    a.childWorkRegistrySnapshot().items,
+  );
+  expect(
+    b.childWorkGlobalStore.getPartition(apiBase).registry.items,
+    label,
+  ).toEqual(a.childWorkGlobalStore.getPartition(apiBase).registry.items);
+  const delegates = (client: ClientGraph) =>
+    Object.fromEntries(
+      Object.entries(client.backgroundTasksStore.getSnapshot().entries).filter(
+        ([, entry]) => entry.kind === 'agent',
+      ),
+    );
+  expect(delegates(b), label).toEqual(delegates(a));
+}
+
+/**
+ * H1's transcript half of convergence: both clients render the identical
+ * normalized transcript. Returns the raw messages so a caller can also run
+ * the delta-text oracle against them.
+ */
+async function assertTranscriptsConverged(
+  a: ClientGraph,
+  b: ClientGraph,
+  label: string,
+): Promise<{ aMessages: ChatMessage[]; bMessages: ChatMessage[] }> {
+  const aMessages = await a.settleTranscript();
+  const bMessages = await b.settleTranscript();
+  expect(normalizeTranscript(bMessages), label).toEqual(
+    normalizeTranscript(aMessages),
+  );
+  return { aMessages, bMessages };
+}
+
+/** An oracle independent of the A-vs-B comparison: what was actually sent. */
+function assertDeltaTextRenderedOnce(
+  messages: readonly ChatMessage[],
+  expectedText: string | undefined,
+  label: string,
+) {
+  if (!expectedText) return;
+  expect(countOccurrences(fullTranscriptText(messages), expectedText), label).toBe(
+    1,
+  );
+}
+
+const RECONNECT_METHODS = [
+  'replay',
+  'snapshot',
+  'replacement',
+  'reload',
+  'remount',
+] as const;
+type ReconnectMethod = (typeof RECONNECT_METHODS)[number];
+
+/** A benign thread no client tracks — padding to control the resume gap. */
+const RECONNECT_FILLER_THREAD = 'reconnect-filler';
+
+/**
+ * Executes one of the five ways a real client resumes (station#2530 review
+ * M2): a small replay, a snapshot fallback (padded past the mocked resume
+ * gap threshold), an immediate stream replacement, a full page reload
+ * (fresh module graph, durable outbound-queue storage carried across), or a
+ * bare component remount of just the transcript reader. Returns the client
+ * to use afterward — only `reload` replaces it.
+ */
+async function reconnectClient(params: {
+  b: ClientGraph;
+  method: ReconnectMethod;
+  store: { appendEvent(event: CanonicalRuntimeEvent): void };
+  conversationId: string;
+  createdAt: string;
+  seed: number;
+}): Promise<ClientGraph> {
+  const { method, store, conversationId, createdAt, seed } = params;
+  let { b } = params;
+  if (method === 'snapshot') {
+    // The mocked ORCHESTRATION_STREAM_RESUME_GAP_THRESHOLD is 5: pad past it
+    // on an unrelated thread so the reconnect must fall back to a snapshot
+    // rather than a replay.
+    for (let index = 0; index < 6; index += 1) {
+      store.appendEvent({
+        eventId: `reconnect-filler-${seed}-${Math.random()}`,
+        provider: 'claude',
+        threadId: RECONNECT_FILLER_THREAD,
+        createdAt,
+        method: 'content.text-delta',
+        itemId: RECONNECT_FILLER_THREAD,
+        delta: 'x',
+      } as CanonicalRuntimeEvent);
+    }
+  }
+  if (method === 'reload') {
+    // A real page reload discards the old tab entirely — its stream, and
+    // whatever it had in flight, is simply gone. Abandoning it here (as the
+    // ORIGINAL page did) let the abandoned client's requests keep racing the
+    // new one against the same in-process EventStore, which stacks up
+    // needless concurrent SQLite traffic across a long seed run.
+    b.disconnect();
+    b.unmountTranscript();
+    b = await clientGraph(conversationId, { outboundData: b.outboundData });
+    return b;
+  }
+  if (method === 'remount') {
+    // A fresh mount of the transcript reader alone — the stream connection
+    // (live or disconnected) is untouched.
+    b.remountTranscript();
+    return b;
+  }
+  // 'replay' and 'replacement' both reconnect the SAME document's stream
+  // immediately; 'replacement' additionally asserts a near-zero gap (F3:
+  // resume from the last applied cursor with nothing missed), while
+  // 'replay' allows the ordinary handful of events a short disconnect
+  // accumulates — both stay under the mocked threshold of 5.
+  b.ensure();
+  return b;
 }
 
 test('seeded clients converge through live, replay, and snapshot reconnects', async () => {
@@ -216,9 +688,85 @@ test('seeded clients converge through live, replay, and snapshot reconnects', as
       : []),
   ];
   let executionThreadId = conversationId;
+  // The exact text each turn's deltas concatenate to, keyed by turnId — the
+  // oracle for "rendered exactly once" (station#2530 review H1).
+  const turnDeltaText = new Map<string, string>();
+  // Seeds whose scripted scenario the mid-turn reconnect fuzzing (review M2)
+  // must not disturb: 30 is a reload-only regression, 50/51 are the
+  // deliberately-left-open mid-turn pair, and 199's queued-follow-up oracle
+  // wants an exact request count.
+  const BOUNCE_EXEMPT_SEEDS = new Set([30, 50, 51, 199]);
   for (const seed of seeds) {
     const random = mulberry32(seed);
     const trace: string[] = [];
+    // A PRNG independent of `random` above: the mid-turn reconnect fuzzing
+    // must not perturb the existing seeded decisions (delta counts, tool/
+    // approval inclusion) that the pinned regressions above depend on.
+    const reconnectRandom = mulberry32(seed * 2_654_435_761 + 977);
+    let bouncesRemaining = BOUNCE_EXEMPT_SEEDS.has(seed)
+      ? 0
+      : Math.floor(reconnectRandom() * 4);
+    /**
+     * station#2530 review M2: a random mid-turn disconnect/reconnect, at a
+     * point the caller names (between deltas, between tool start and done,
+     * after an approval opens). Reconnects with a random method, asserts
+     * convergence at THIS quiesce (not only the seed's final one), then
+     * returns to the disconnected baseline so the rest of the turn is still
+     * exercised against a client that missed it live.
+     */
+    async function maybeBounceMidTurn(checkpoint: string) {
+      if (bouncesRemaining <= 0) return;
+      if (reconnectRandom() >= 0.5) return;
+      bouncesRemaining -= 1;
+      const method =
+        RECONNECT_METHODS[
+          Math.floor(reconnectRandom() * RECONNECT_METHODS.length)
+        ];
+      const expectedHead = store.headGlobalSequence();
+      b = await reconnectClient({
+        b,
+        method,
+        store,
+        conversationId,
+        createdAt,
+        seed,
+      });
+      const label = `seed=${seed} bounce@${checkpoint} method=${method}`;
+      // 'remount' only resets the TRANSCRIPT READER's component state — it
+      // never touches B's SSE connection, which is still genuinely
+      // disconnected. `orchestrationTurnOpen`/`status`/`openTurnId` are
+      // event-stream-driven fields `applyConversationActivity` deliberately
+      // never reconciles from a bare window read (`conversationActivity` is
+      // the authority consumers read instead, via `serverTurnLive`) — so
+      // asserting full store-field equality here would fail on a client that
+      // legitimately has not heard the live turn.started yet. Exercise the
+      // remount (it must not throw, hang, or wedge in "catching up" forever)
+      // without that equality assertion; the other 4 methods DO reconnect
+      // B's stream/data and get the full check.
+      if (method === 'remount') {
+        await b.settleTranscript();
+      } else {
+        await assertClientsConverged(a, b, conversationId, expectedHead, label, {
+          includeOrchestrationStatus: false,
+          includePendingApprovals: false,
+        });
+      }
+      // The transcript itself is not compared here: while this turn is still
+      // open, its own content is legitimately asymmetric between a client
+      // rendering it from its live streaming shell (never disconnected) and
+      // one rendering it from the stitched window+live projection (just
+      // reconnected) — that IS the shell/projection handoff F4 exists for,
+      // not a defect. The transcript oracle below runs once the turn has a
+      // terminal event, where both clients must agree on the durable copy.
+      // Back to simulating a disconnected client for the rest of the turn —
+      // 'remount' never touched the transport, so there is nothing to
+      // re-disconnect for it.
+      if (method !== 'remount') {
+        lastDisconnectCursor = store.headGlobalSequence();
+        bounced = true;
+        b.disconnect();
+      }
+    }
     if (seed === 51) {
       publish({
         eventId: 'turn-50-late-complete',
@@ -231,16 +779,37 @@ test('seeded clients converge through live, replay, and snapshot reconnects', as
       trace.push('prior-turn.completed');
     }
     if (seed === 199) {
+      // station#2530 review M3: the level-triggered drain is gated behind
+      // `conversationCanMutate` (`conversation-open-policy.ts`), which this
+      // harness never resolves — it does not simulate the conversation-open
+      // REST round trip at all. Seed 20's lineage child left
+      // `conversationOpenPending: true` on this chat 179 seeds ago (the
+      // conversation-binding side effect `handleOrchestrationEvent` applies
+      // when a lineage child's `session.configured` arrives), which reads as
+      // "resolving" forever absent that round trip and would silently zero
+      // out the send oracle below for a reason that has nothing to do with
+      // the drain itself. Force this test's policy state to what a real,
+      // already-resolved conversation looks like before asserting sends.
       a.activeChatsStore.updateChat(conversationId, {
         queuedMessages: ['follow-up-199'],
+        conversationOpenPending: false,
+        conversationOpenFailed: false,
       });
       b.activeChatsStore.updateChat(conversationId, {
         queuedMessages: ['follow-up-199'],
+        conversationOpenPending: false,
+        conversationOpenFailed: false,
       });
       trace.push('queue.follow-up');
     }
-    const before = requests.length;
     const cursor = store.headGlobalSequence();
+    // The cursor B should present on ITS NEXT reconnect. A mid-turn bounce
+    // (review M2) re-disconnects afterward, so this tracks whichever
+    // disconnect was LAST — the seed-start one when nothing bounced, or the
+    // most recent bounce's otherwise — rather than the pinned resumedId
+    // checks below reading a stale seed-start value.
+    let lastDisconnectCursor = cursor;
+    let bounced = false;
     b.disconnect();
     const draft = `draft-${seed}`;
     store.appendEvent({
@@ -300,6 +869,7 @@ test('seeded clients converge through live, replay, and snapshot reconnects', as
     ).toBeGreaterThan(deletedTailCursor);
     const deltaCount = seed === 50 || seed % 3 === 0 ? 6 : 1;
     for (let index = 0; index < deltaCount; index++) {
+      const deltaText = String(random());
       publish({
         eventId: `${turnId}-delta-${index}`,
         provider: 'claude',
@@ -308,9 +878,11 @@ test('seeded clients converge through live, replay, and snapshot reconnects', as
         createdAt,
         method: 'content.text-delta',
         itemId: `answer-${seed}`,
-        delta: String(random()),
+        delta: deltaText,
       } as CanonicalRuntimeEvent);
+      turnDeltaText.set(turnId, (turnDeltaText.get(turnId) ?? '') + deltaText);
       trace.push('content.text-delta');
+      await maybeBounceMidTurn(`delta-${index}`);
     }
     if (random() > 0.5) {
       publish({
@@ -324,6 +896,8 @@ test('seeded clients converge through live, replay, and snapshot reconnects', as
         toolCallId: `tool-${seed}`,
         toolName: 'Read',
       } as CanonicalRuntimeEvent);
+      trace.push('tool.started');
+      await maybeBounceMidTurn('tool-started');
       publish({
         eventId: `${turnId}-tool-done`,
         provider: 'claude',
@@ -336,7 +910,7 @@ test('seeded clients converge through live, replay, and snapshot reconnects', as
         toolName: 'Read',
         status: 'success',
       } as CanonicalRuntimeEvent);
-      trace.push('tool.started', 'tool.completed');
+      trace.push('tool.completed');
     }
     if (seed % 7 === 0) {
       publish({
@@ -351,6 +925,7 @@ test('seeded clients converge through live, replay, and snapshot reconnects', as
         title: 'Allow Read',
       } as CanonicalRuntimeEvent);
       trace.push('request.opened');
+      await maybeBounceMidTurn('request-opened');
     }
     if (seed > 0 && seed % 7 === 1) {
       publish({
@@ -480,6 +1055,18 @@ test('seeded clients converge through live, replay, and snapshot reconnects', as
       } as CanonicalRuntimeEvent);
       trace.push('delegate.start', 'delegate.complete');
     }
+    if (seed === 199) {
+      // The drain only fires on a turn boundary; nothing must have sent the
+      // queued follow-up while this turn was still open.
+      const sentWhileOpen = requests.some(
+        (entry) =>
+          entry.url.endsWith('/api/orchestration/chat') &&
+          entry.method === 'POST' &&
+          typeof entry.body === 'string' &&
+          entry.body.includes('follow-up-199'),
+      );
+      expect(sentWhileOpen, `seed=${seed} no send while turn open`).toBe(false);
+    }
     const terminal =
       seed % 17 === 16
         ? 'turn.aborted'
@@ -517,22 +1104,36 @@ test('seeded clients converge through live, replay, and snapshot reconnects', as
       },
       { timeout: 5_000 },
     );
+    // Captured HERE, not at the seed's start: a mid-turn bounce (review M2)
+    // already made its own requests, and `before` must scope this wait to
+    // the FINAL reconnect only.
+    const before = requests.length;
     if (seed === 30) {
-      b = await clientGraph(conversationId);
+      b.unmountTranscript();
+      b = await clientGraph(conversationId, { outboundData: b.outboundData });
       trace.push('client.reload');
     } else {
       b.ensure();
     }
     await until(() => requests.length > before);
     const resumedId = requests.at(-1)?.headers.get('Last-Event-ID');
-    expect(
-      seed === 30
-        ? resumedId === null
-        : seed === 51
-          ? [String(cursor), String(cursor - 1)].includes(resumedId ?? '')
-          : resumedId === String(cursor),
-      `seed=${seed} trace=${trace.join(',')} resumed=${resumedId}`,
-    ).toBe(true);
+    // A bounced seed's exact resumed-cursor shape depends on whichever of
+    // the 5 reconnect methods the fuzzing last picked (review M2) — a
+    // 'reload' bounce, for instance, leaves this exactly like seed 30's
+    // `resumedId === null` case. The STATE convergence each bounce already
+    // asserted (`assertClientsConverged`) is what matters here, so the
+    // pinned exact-cursor check below runs only for the scripted
+    // (unbounced) seeds.
+    if (!bounced) {
+      expect(
+        seed === 30
+          ? resumedId === null
+          : seed === 51
+            ? [String(cursor), String(cursor - 1)].includes(resumedId ?? '')
+            : resumedId === String(lastDisconnectCursor),
+        `seed=${seed} trace=${trace.join(',')} resumed=${resumedId}`,
+      ).toBe(true);
+    }
     await vi.waitFor(
       () => {
         const activity =
@@ -543,49 +1144,81 @@ test('seeded clients converge through live, replay, and snapshot reconnects', as
       },
       { timeout: 5_000 },
     );
-    expect(
-      b.activeChatsStore.getSnapshot()[conversationId]?.conversationActivity,
-      `seed=${seed} trace=${trace.join(',')}`,
-    ).toEqual(
-      a.activeChatsStore.getSnapshot()[conversationId]?.conversationActivity,
-    );
-    const select = (
-      chat: ReturnType<typeof a.activeChatsStore.getSnapshot>[string],
-    ) => ({
-      orchestrationTurnOpen: chat.orchestrationTurnOpen,
-      orchestrationStatus: chat.orchestrationStatus,
-      status: chat.status,
-      error: chat.error,
-      openTurnId: chat.openTurnId,
-      pendingApprovals: chat.pendingApprovals ?? [],
-      queuedMessages: chat.queuedMessages,
-      queueDrainHeldForOpen: chat.queueDrainHeldForOpen,
-      queueDrainSettling: chat.queueDrainSettling,
-      backgroundTasks: chat.backgroundTasks ?? [],
-      currentSessionId: chat.currentSessionId,
-    });
-    expect(
-      select(b.activeChatsStore.getSnapshot()[conversationId]!),
-      `seed=${seed} trace=${trace.join(',')}`,
-    ).toEqual(select(a.activeChatsStore.getSnapshot()[conversationId]!));
-    expect(
-      b.childWorkRegistrySnapshot().items,
-      `seed=${seed} trace=${trace.join(',')} child registry`,
-    ).toEqual(a.childWorkRegistrySnapshot().items);
-    expect(
-      b.childWorkGlobalStore.getPartition(apiBase).registry.items,
-      `seed=${seed} trace=${trace.join(',')} global child work`,
-    ).toEqual(a.childWorkGlobalStore.getPartition(apiBase).registry.items);
-    const delegates = (client: typeof a) =>
-      Object.fromEntries(
-        Object.entries(
-          client.backgroundTasksStore.getSnapshot().entries,
-        ).filter(([, entry]) => entry.kind === 'agent'),
+    const seedLabel = `seed=${seed} trace=${trace.join(',')}`;
+    await assertClientsConverged(a, b, conversationId, head, seedLabel);
+    // station#2530 review H1: the transcript itself, not only the activity
+    // records and store fields above. Turn 50 is deliberately left open
+    // (mid-turn) at this point in the seed loop and closes later at seed 51
+    // — the shell still owns its rendering, so its oracle check waits for
+    // that terminal instead of running against an incomplete answer here.
+    if (seed !== 50) {
+      const { aMessages, bMessages } = await assertTranscriptsConverged(
+        a,
+        b,
+        seedLabel,
       );
-    expect(
-      delegates(b),
-      `seed=${seed} trace=${trace.join(',')} delegates`,
-    ).toEqual(delegates(a));
+      assertDeltaTextRenderedOnce(
+        aMessages,
+        turnDeltaText.get(turnId),
+        `${seedLabel} oracle(A) ${turnId}`,
+      );
+      assertDeltaTextRenderedOnce(
+        bMessages,
+        turnDeltaText.get(turnId),
+        `${seedLabel} oracle(B) ${turnId}`,
+      );
+    }
+    if (seed === 51) {
+      // turn-50 closed just now (the late `turn.completed` published above)
+      // — its own deltas (published back at seed 50) must render exactly
+      // once now that the shell has handed off to the durable projection.
+      const { aMessages, bMessages } = await assertTranscriptsConverged(
+        a,
+        b,
+        `${seedLabel} turn-50 late-close`,
+      );
+      assertDeltaTextRenderedOnce(
+        aMessages,
+        turnDeltaText.get('turn-50'),
+        `${seedLabel} oracle(A) turn-50`,
+      );
+      assertDeltaTextRenderedOnce(
+        bMessages,
+        turnDeltaText.get('turn-50'),
+        `${seedLabel} oracle(B) turn-50`,
+      );
+    }
+    if (seed === 199) {
+      // station#2530 review M3: an oracle on the actual outbound send, not
+      // only the A-vs-B store comparison above (which two independent
+      // permanent drops could satisfy identically). Station's queue drain is
+      // a PER-CLIENT local copy with no cross-device claim yet (#2530 is
+      // that very ticket) — station#2530's own review is explicit that
+      // "once per client" is the real semantic here, not "once globally".
+      const isFollowupSend = (entry: (typeof requests)[number]) =>
+        entry.url.endsWith('/api/orchestration/chat') &&
+        entry.method === 'POST' &&
+        typeof entry.body === 'string' &&
+        entry.body.includes('follow-up-199');
+      const sends = requests.filter(isFollowupSend);
+      expect(sends.length, `${seedLabel} queued follow-up sent once/client`).toBe(
+        2,
+      );
+      const clientTurnIds = new Set(
+        sends.map((entry) => {
+          try {
+            return (JSON.parse(entry.body ?? '{}') as { clientTurnId?: string })
+              .clientTurnId;
+          } catch {
+            return undefined;
+          }
+        }),
+      );
+      expect(
+        clientTurnIds.size,
+        `${seedLabel} each client's send is its own attempt`,
+      ).toBe(2);
+    }
   }
   // A restored database can have the same numeric sequence as an older one.
   // The old cursor is then valid by number but foreign by durable identity.
@@ -618,4 +1251,4 @@ test('seeded clients converge through live, replay, and snapshot reconnects', as
   await reader.cancel();
   expect(wire).toContain('event: orchestration:snapshot');
   expect(wire).toContain(`"epoch":"${replacement.store.streamEpoch()}"`);
-}, 60_000);
+}, 150_000);
