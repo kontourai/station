@@ -382,6 +382,8 @@ describe('#2312 discarding Drafts from the inbox', () => {
       hasActiveTurn: false,
       conversationActivity: {
         conversationId: WORKED.threadId,
+        // The server names the current execution; only it reads Running.
+        currentThreadId: WORKED.threadId,
         asOfSequence: 8,
         runningChildWork: { count: 1, producers: ['engine-subagent'] },
       },
