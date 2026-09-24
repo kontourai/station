@@ -606,9 +606,20 @@ export function reconcileBackgroundTasksSnapshot(
         ...next.entries,
         [existing.id]: {
           ...existing,
-          state: session.childWork?.asChild
-            ? CHILD_WORK_CARD_STATE[child.status]
-            : ('stopped' as BackgroundTaskState),
+          // station#2530 review 5: a current server's `childWork.asChild`
+          // demoting to its OWN 'unresolved' status is the exact same "no
+          // terminal fact observed" case the older-server fallback (no
+          // `asChild` at all) already reads as 'stopped' — both mean
+          // nothing recorded HOW this ended, just that it is no longer
+          // running. Only a genuine, richer terminal status the new server
+          // actually reports (completed/failed/cancelled/
+          // stopped-unconfirmed) should read differently from the legacy
+          // demotion; 'unresolved' must not, or the same demotion reads two
+          // ways depending on which server vintage sent the row.
+          state:
+            session.childWork?.asChild && child.status !== 'unresolved'
+              ? CHILD_WORK_CARD_STATE[child.status]
+              : ('stopped' as BackgroundTaskState),
           endedAt,
         },
       };
