@@ -1,5 +1,3 @@
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   PUBLIC_HANDSHAKE_SCHEMA_VERSION,
@@ -15,6 +13,7 @@ import { Hono } from 'hono';
 // @ts-expect-error no type declarations for 'jsdom' in this typecheck lane
 import { JSDOM } from 'jsdom';
 import { afterEach, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../src-server/__test-utils__/temp-dirs';
 import type { ChatMessage } from '../types';
 import { CHAT_ERROR_MARKER_PREFIX } from '../utils/sessionFailure';
 
@@ -61,7 +60,9 @@ if (!hadActEnvironmentBeforeThisFile) {
 
 const apiBase = 'http://sync-property.test';
 const userId = 'sync-property-user';
-const roots: string[] = [];
+// Registered before this file's own afterEach: after-hooks run in reverse,
+// so services and stores close before their directories are removed.
+const makeTempDir = trackTempDirs();
 const services: Array<{ shutdown(): Promise<unknown> }> = [];
 const stores: Array<{ close(): void }> = [];
 const requests: Array<{
@@ -109,8 +110,6 @@ afterEach(async () => {
   }
   for (const service of services.splice(0)) await service.shutdown();
   for (const store of stores.splice(0)) store.close();
-  for (const root of roots.splice(0))
-    rmSync(root, { recursive: true, force: true });
 });
 
 async function setup() {
@@ -137,8 +136,7 @@ async function setup() {
   const { OrchestrationService } = serviceModule;
   const { createOrchestrationRoutes } = routeModule;
   vi.stubGlobal('localStorage', { getItem: () => null, setItem: () => {} });
-  const root = mkdtempSync(join(tmpdir(), 'station-sync-property-'));
-  roots.push(root);
+  const root = makeTempDir('station-sync-property-');
   const store = new EventStore(join(root, 'orchestration.sqlite'));
   stores.push(store);
   const eventBus = new EventBus();

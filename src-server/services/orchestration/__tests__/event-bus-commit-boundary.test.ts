@@ -1,14 +1,15 @@
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { EventBus } from '../event-bus.js';
 import { EventStore } from '../event-store.js';
 import { OrchestrationService } from '../orchestration-service.js';
 
+const makeTempDir = trackTempDirs();
+
 test('the service refuses to broadcast an event held by an outer transaction', async () => {
-  const root = mkdtempSync(join(tmpdir(), 'event-bus-commit-'));
+  const root = makeTempDir('event-bus-commit-');
   const store = new EventStore(join(root, 'orchestration.sqlite'));
   const bus = new EventBus();
   const emitted: string[] = [];
@@ -58,6 +59,5 @@ test('the service refuses to broadcast an event held by an outer transaction', a
   } finally {
     await service.shutdown();
     store.close();
-    rmSync(root, { recursive: true, force: true });
   }
 });
