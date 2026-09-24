@@ -1054,22 +1054,26 @@ describe('RegionShells mounts one shell per occupied region (#928)', () => {
       expect(currentRegionModel().regions.right.occupant).toBe('activity'),
     );
     expect(shells()).toHaveLength(1);
-    // #2046 2a: Activity joined Chat's region above, so hiding Activity hides
-    // that one region — its shell stays mounted, collapsed — and showing
-    // Activity expands it again.
+    // Activity joined Chat's region above (#2046 2a), and on a phone the
+    // "Show" opened it OVER Chat (the phone layer). Its "Hide" used to hide
+    // that one region — Chat with it, since the region is Chat's. Review M1
+    // made hiding the layer's own pane the way back to Chat instead: the
+    // region stays open, Chat selected, Activity's tab kept (the user placed
+    // it; the layer did not mint it). Showing Activity selects it again.
     selectRegionCommand('Hide Activity from the dock');
     await waitFor(() =>
-      expect(shell.classList.contains('is-collapsed')).toBe(true),
+      expect(currentRegionModel().regions.right).toMatchObject({
+        panes: ['chat', 'activity'],
+        occupant: 'chat',
+        visible: true,
+      }),
     );
-    expect(currentRegionModel().regions.right).toMatchObject({
-      panes: ['chat', 'activity'],
-      occupant: 'activity',
-      visible: false,
-    });
+    expect(shell.classList.contains('is-collapsed')).toBe(false);
     selectRegionCommand('Show Activity in the dock');
     await waitFor(() =>
-      expect(shell.classList.contains('is-collapsed')).toBe(false),
+      expect(currentRegionModel().regions.right.occupant).toBe('activity'),
     );
+    expect(shell.classList.contains('is-collapsed')).toBe(false);
 
     /**
      * #1386. The `⋯` row and the docked shell's own visibility control are
