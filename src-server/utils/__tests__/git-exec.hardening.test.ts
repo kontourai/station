@@ -48,7 +48,17 @@ function sandbox(): string {
 /** This process's environment, minus variables a case blanked with
  * `vi.stubEnv(name, '')` (git reads an empty `GIT_SSH_COMMAND` as set). */
 function plainEnv(): NodeJS.ProcessEnv {
-  const env: NodeJS.ProcessEnv = { ...process.env, GIT_TERMINAL_PROMPT: '0' };
+  // A fixed identity: fixtures commit in repositories created with a bare
+  // `git init`, and a host with no global identity (a CI runner) would
+  // otherwise refuse those commits silently.
+  const env: NodeJS.ProcessEnv = {
+    ...process.env,
+    GIT_TERMINAL_PROMPT: '0',
+    GIT_AUTHOR_NAME: 'Station Test',
+    GIT_AUTHOR_EMAIL: 'test@station.dev',
+    GIT_COMMITTER_NAME: 'Station Test',
+    GIT_COMMITTER_EMAIL: 'test@station.dev',
+  };
   for (const key of ['GIT_SSH_COMMAND', 'GIT_SSH']) {
     if (env[key] === '') delete env[key];
   }
