@@ -17,6 +17,7 @@ import {
   createPluginCommandEffectCoordinator,
   PLUGIN_COMMAND_EFFECT_ADMISSION_TIMEOUT_MS,
   PLUGIN_COMMAND_EFFECT_COORDINATOR_MAX_IN_FLIGHT,
+  PLUGIN_COMMAND_EFFECT_RETAINED_SETTLEMENT_MAX,
   type PluginCommandEffectAdmitOutcome,
   type PluginCommandEffectRunInput,
   type PluginCommandEffectStorageLike,
@@ -725,14 +726,20 @@ describe('plugin command effect coordinator', () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     // One more than the bound: each command is admitted, applied, and
     // survives its own Station switch, so every one ends up retained.
-    for (let index = 0; index < 17; index += 1) {
+    for (
+      let index = 0;
+      index < PLUGIN_COMMAND_EFFECT_RETAINED_SETTLEMENT_MAX + 1;
+      index += 1
+    ) {
       coordinator.runCommand(baseInput());
       const call = admitCalls[admitCalls.length - 1];
       call.resolve({ kind: 'admitted', receipt: receiptFor(call) });
       await flushMicrotasks();
       coordinator.resetForAuthorityChange();
     }
-    expect(coordinator._debug.retainedSettlementCount).toBe(16);
+    expect(coordinator._debug.retainedSettlementCount).toBe(
+      PLUGIN_COMMAND_EFFECT_RETAINED_SETTLEMENT_MAX,
+    );
     expect(warnSpy).toHaveBeenCalledWith(
       expect.stringContaining('exceeded the retained-settlement count bound'),
     );

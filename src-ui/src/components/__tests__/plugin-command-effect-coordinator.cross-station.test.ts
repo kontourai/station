@@ -17,16 +17,12 @@ import {
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   createPluginCommandEffectCoordinator,
+  PLUGIN_COMMAND_EFFECT_RETAINED_SETTLEMENT_MAX_AGE_MS,
   type PluginCommandEffectRunInput,
   type PluginCommandEffectStorageLike,
   type PluginCommandEffectTransport,
   type PluginCommandEffectWindowLike,
 } from '../plugin-command-effect-coordinator';
-
-// Mirrors `PLUGIN_COMMAND_EFFECT_RETAINED_SETTLEMENT_MAX_AGE_MS` as a literal
-// so this file keeps working (and keeps discriminating) even when run
-// against a coordinator build that predates that export.
-const RETAINED_SETTLEMENT_MAX_AGE_MS = 10 * 60 * 1000;
 
 const STATION_A = 'https://station-a.test';
 const STATION_B = 'https://station-b.test';
@@ -217,7 +213,9 @@ describe('plugin command effect coordinator (real SDK transport, cross-Station)'
     // Advance past the retention bound: the record must be dropped rather
     // than retried forever (it can never authenticate while Station B is
     // active).
-    await vi.advanceTimersByTimeAsync(RETAINED_SETTLEMENT_MAX_AGE_MS);
+    await vi.advanceTimersByTimeAsync(
+      PLUGIN_COMMAND_EFFECT_RETAINED_SETTLEMENT_MAX_AGE_MS,
+    );
     expect(coordinator._debug.retainedSettlementCount).toBe(0);
     expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('effect-1'));
   });
