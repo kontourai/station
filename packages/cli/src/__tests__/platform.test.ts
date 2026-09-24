@@ -136,9 +136,7 @@ describe('inspectProcessFingerprint on Linux (WSL2 lstart drift)', () => {
       birth: () => 'linux:boot-id:1',
       readFile: readFile as never,
     });
-    expect(result?.commandDigest).toBe(
-      createHashHex('/usr/bin/node --flag'),
-    );
+    expect(result?.commandDigest).toBe(createHashHex('/usr/bin/node --flag'));
   });
 
   it('fails closed when /proc/<pid>/cmdline cannot be read', () => {
@@ -265,6 +263,57 @@ describe('fingerprintMatchesRecorded (station#3049)', () => {
     expect(
       fingerprintMatchesRecorded({ ...recorded }, null, { legacyInspect }),
     ).toBe(false);
+  });
+
+  it('refuses a legacy Linux record when the pinned lstart token matches but the command differs (#2332 item 4a)', () => {
+    // The pinned-lstart migration path bridges a lstart-shaped record to a
+    // live /proc-observed process — it must never become a way to skip
+    // identity. A matching lstart token from a DIFFERENT command (e.g. a
+    // pid recycled within the same second, station#1863 M5) must still be
+    // refused; `sameProcessFingerprint`'s digest field is what does that
+    // work, and this proves the caller actually reaches it.
+    const lstartRecord = { ...recorded };
+    const procObservation = { ...recorded, startToken: 'linux:boot:123' };
+    const pinnedLstartInspect = vi.fn(() => ({
+      ...recorded,
+      commandDigest: 'e'.repeat(64),
+    }));
+    const legacyInspect = vi.fn(() => null);
+    expect(
+      fingerprintMatchesRecorded(procObservation, lstartRecord, {
+        pinnedLstartInspect,
+        legacyInspect,
+      }),
+    ).toBe(false);
+    expect(pinnedLstartInspect).toHaveBeenCalledWith(41);
+  });
+
+  describe('default pinnedLstartInspect wiring (#2332 item 4b)', () => {
+    afterEach(async () => {
+      await reapAllLongRunningFixtureChildren();
+    });
+
+    it('resolves a Linux migration match through the real, unmocked lstart probe', async () => {
+      // No `pinnedLstartInspect` override is passed below: the default
+      // (`inspectLstartProcessFingerprint`, which shells out to the real
+      // `ps`) must be the one this call actually reaches. A REAL live
+      // child process stands in for the daemon so the probe has something
+      // genuine to observe, rather than asserting only that a mock got
+      // wired to the right parameter name.
+      const proc = await spawnLongRunningFixtureChild();
+      const pid = proc.pid!;
+      // The real lstart-based observation of this live process, captured
+      // through the exact same (unmocked) code the default dependency
+      // resolves to.
+      const expected = inspectProcessFingerprint(pid, { platform: 'darwin' });
+      expect(expected).not.toBeNull();
+      // A synthetic Linux birth-token OBSERVATION of the very same pid —
+      // the shape that only ever arises post-#2325 on Linux and is exactly
+      // what routes `fingerprintMatchesRecorded` into the pinned-lstart
+      // migration branch.
+      const actual = { ...expected!, startToken: 'linux:boot-id:123' };
+      expect(fingerprintMatchesRecorded(actual, expected)).toBe(true);
+    });
   });
 });
 
