@@ -336,19 +336,16 @@ export function AgentsWorkspacePane() {
               : ''}
           </p>
         )}
-        {readModelPending && (
+        {readModelFailed && (
           <p className="agents-pane__note" role="status">
-            {readModelFailed ? (
-              <>
-                Delegated tasks could not be loaded.{' '}
-                <Button size="sm" variant="link" onClick={retry}>
-                  Try again
-                </Button>
-              </>
-            ) : (
-              'Loading delegated tasks…'
-            )}
+            Delegated tasks could not be loaded.{' '}
+            <Button size="sm" variant="link" onClick={retry}>
+              Try again
+            </Button>
           </p>
+        )}
+        {readModelPending && !readModelFailed && (
+          <SkeletonBlock count={1} label="Loading delegated tasks" />
         )}
         {runningCount > 0 && (
           <section className="background-tasks-sheet__section">
