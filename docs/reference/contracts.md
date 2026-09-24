@@ -199,6 +199,15 @@ else is running. If the engine's own reply began before that send reached it,
 the reply can then be attributed to the send: this residual is known and not
 closed.
 
+While such a send waits behind the engine's own turn, a Stop from the UI or
+the API stops the open turn — the engine's — and the engine then runs the
+queued send; a plain interrupt leaves queued sends queued. A queued send is
+itself withdrawn (it gets `turn.aborted` and never a start) only when a Stop
+names its own id, which happens when Station cleans up a send whose caller
+aborted after it was accepted, or interrupts a recovered turn. A queued send
+still waiting when the engine ends is recorded with its message and then
+aborted (`engine-ended-before-start`).
+
 The shared 3-minute stall watchdog (`TurnStallWatchdog` /
 `TurnProgressTracker`) stays observe-only: its `progressSilence` marker says
 no progress was *observed* — quiet providers (for example a Muse build

@@ -56,9 +56,13 @@ const SESSION_KIND = 'runtime';
  * `replied` (#2324, owner decision D1): a turn the engine opened on its own
  * finished — a reply nobody sent a message for, such as after background
  * work. Delivered in the `turn-completed` category, worded as a reply.
- * `reply-failed` (#2324 review F1): such a turn failed (its own error, or a
- * crash). Still a failure worth an offline push, worded as the agent's reply
- * failing rather than a turn the user started needing attention.
+ * `reply-failed` (#2324 review F1): such a turn failed — its own error
+ * result, or the recovery abort boot publishes for one a crashed process
+ * left open. Still a failure worth an offline push, worded as the agent's
+ * reply failing rather than a turn the user started needing attention. A
+ * provider turn the live process closes without its result (the engine
+ * ended, or moved on) is `turn.completed` with `closedWithoutResult` and
+ * pushes nothing.
  */
 type TurnOutcome = 'done' | 'failed' | 'stopped' | 'replied' | 'reply-failed';
 

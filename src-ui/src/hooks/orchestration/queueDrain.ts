@@ -134,7 +134,18 @@ export function resumeHeldQueueDrain(apiBase: string, chatKey: string): void {
 const PROVIDER_TURN_REDRAIN_DELAY_MS = 1_000;
 const PROVIDER_TURN_REDRAIN_MAX_ATTEMPTS = 10;
 const providerTurnRedrainAttempts = new Map<string, number>();
+const providerTurnRedrainTimers = new Map<
+  string,
+  ReturnType<typeof setTimeout>
+>();
 
+/**
+ * The retry fires later, with the `apiBase` it was scheduled under. It is
+ * dropped (#2324 delta review) when the chat is gone or no longer names the
+ * same conversation and execution by then — a removed chat or a switched
+ * Station is not where this message was headed — and a newer schedule for
+ * the same chat replaces an older one.
+ */
 function scheduleProviderTurnRedrain(apiBase: string, threadId: string): void {
   const attempts = providerTurnRedrainAttempts.get(threadId) ?? 0;
   if (attempts >= PROVIDER_TURN_REDRAIN_MAX_ATTEMPTS) {
@@ -142,16 +153,32 @@ function scheduleProviderTurnRedrain(apiBase: string, threadId: string): void {
     return;
   }
   providerTurnRedrainAttempts.set(threadId, attempts + 1);
-  setTimeout(() => {
-    const chat = activeChatsStore.getSnapshot()[threadId];
-    // An open turn drains the queue when it ends; only a queue nothing
-    // would drain is retried here.
-    if (!chat?.queuedMessages?.length || serverTurnLive(chat) === true) {
-      providerTurnRedrainAttempts.delete(threadId);
-      return;
-    }
-    drainQueuedMessageOnTurnCompleted(apiBase, threadId);
-  }, PROVIDER_TURN_REDRAIN_DELAY_MS);
+  const scheduled = activeChatsStore.getSnapshot()[threadId];
+  const binding = [scheduled?.conversationId, scheduled?.currentSessionId];
+  const previous = providerTurnRedrainTimers.get(threadId);
+  if (previous) clearTimeout(previous);
+  providerTurnRedrainTimers.set(
+    threadId,
+    setTimeout(() => {
+      providerTurnRedrainTimers.delete(threadId);
+      const chat = activeChatsStore.getSnapshot()[threadId];
+      if (
+        !chat ||
+        chat.conversationId !== binding[0] ||
+        chat.currentSessionId !== binding[1]
+      ) {
+        providerTurnRedrainAttempts.delete(threadId);
+        return;
+      }
+      // An open turn drains the queue when it ends; only a queue nothing
+      // would drain is retried here.
+      if (!chat.queuedMessages?.length || serverTurnLive(chat) === true) {
+        providerTurnRedrainAttempts.delete(threadId);
+        return;
+      }
+      drainQueuedMessageOnTurnCompleted(apiBase, threadId);
+    }, PROVIDER_TURN_REDRAIN_DELAY_MS),
+  );
 }
 
 export function drainQueuedMessageOnTurnCompleted(
