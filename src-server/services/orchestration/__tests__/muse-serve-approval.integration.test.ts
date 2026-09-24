@@ -8,11 +8,10 @@
  * using the request id Station persisted — not an id the test knows from the
  * capture.
  */
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import {
   FakeMuseServeHost,
   loadMuseServeCapture,
@@ -42,6 +41,9 @@ async function eventually<T>(
 }
 
 describe('#2452 a Muse workflow subagent approval through OrchestrationService', () => {
+  // Created before the afterEach below, so its directories are removed
+  // AFTER the event store closes (vitest runs after-hooks in reverse).
+  const makeTempDir = trackTempDirs();
   let tmp: string;
   let eventStore: EventStore;
   let service: OrchestrationService;
@@ -49,7 +51,7 @@ describe('#2452 a Muse workflow subagent approval through OrchestrationService',
   const hosts: FakeMuseServeHost[] = [];
 
   beforeEach(() => {
-    tmp = mkdtempSync(join(tmpdir(), 'muse-serve-approval-'));
+    tmp = makeTempDir('muse-serve-approval-');
     eventStore = new EventStore(join(tmp, 'orchestration.sqlite'));
     hosts.length = 0;
     adapter = new MuseAdapter({
@@ -87,7 +89,6 @@ describe('#2452 a Muse workflow subagent approval through OrchestrationService',
   afterEach(async () => {
     await adapter.stopAll().catch(() => undefined);
     eventStore.close();
-    rmSync(tmp, { recursive: true, force: true });
   });
 
   function persisted(): CanonicalRuntimeEvent[] {
