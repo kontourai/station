@@ -6343,6 +6343,14 @@ describe('OrchestrationService', () => {
     expect(eventStore.readSessionByThread(draft)).toBeUndefined();
 
     await start();
+    // Delta MEDIUM: the refused send's receipt survives the delete. Were it
+    // counted as an execution refusal, the new session under the id would
+    // read "Failed: Station refused the send" before anything was sent.
+    const restarted = (await service.listSessionReadModel()).find(
+      (session) => session.threadId === draft,
+    );
+    expect(restarted?.draft).toBe(true);
+    expect(restarted?.terminalAttribution).toBeUndefined();
     await expect(
       service.dispatch({
         type: 'sendTurn',
@@ -6477,12 +6485,164 @@ describe('OrchestrationService', () => {
     expect(
       eventStore.conversationSessions(draft).map((row) => row.sessionId),
     ).toEqual([draft, child]);
+    // Delta MEDIUM: the refusal lifts the late-event gate it had set, so the
+    // Draft's own events still land (a witness proves the queue drained).
+    const configured: CanonicalRuntimeEvent = {
+      eventId: `${draft}-after-refusal`,
+      provider: 'bedrock',
+      threadId: draft,
+      sessionId: draft,
+      createdAt: new Date().toISOString(),
+      method: 'session.configured',
+    };
+    bedrock.events.push(configured);
+    const witness = 'draft-racing-witness';
+    await service.dispatch({
+      type: 'startSession',
+      input: { threadId: witness, provider: 'bedrock', cwd: tmp },
+    });
+    const witnessExit: CanonicalRuntimeEvent = {
+      eventId: `${witness}-exit`,
+      provider: 'bedrock',
+      threadId: witness,
+      sessionId: witness,
+      createdAt: new Date().toISOString(),
+      method: 'session.exited',
+    };
+    bedrock.events.push(witnessExit);
+    await waitFor(
+      () => eventStore.readSessionByThread(witness)?.status,
+      (status) => status === 'closed',
+    );
+    expect(
+      eventStore
+        .listSessionProjectionEvents(draft)
+        .map((event) => event.payload.eventId),
+    ).toContain(`${draft}-after-refusal`);
     expect(
       eventStore
         .listCommandReceipts(draft)
         .filter((entry) => entry.commandType === 'discardDraft')
         .map((entry) => entry.status),
     ).toEqual(['rejected']);
+  });
+
+  // #2312 delta HIGH: a successor whose start is mid-flight has no row, read
+  // model or events yet — it is not "never started". Deleting it would leave
+  // the start to resolve into a session the discard already removed.
+  test('#2312: a successor mid-start refuses the discard as busy; the start completes normally', async () => {
+    const draft = 'draft-successor-starting';
+    const child = `${draft}:session:starting`;
+    await service.dispatch({
+      type: 'startSession',
+      input: { threadId: draft, provider: 'bedrock', cwd: tmp },
+    });
+    eventStore.reserveNextConversationSession({
+      conversationId: draft,
+      predecessorSessionId: draft,
+      proposedSessionId: child,
+      createdAt: new Date().toISOString(),
+    });
+    const release = deferred<void>();
+    const entered = deferred<void>();
+    const startNormally = bedrock.startSession.getMockImplementation();
+    bedrock.startSession.mockImplementationOnce(async (input) => {
+      entered.resolve();
+      await release.promise;
+      if (!startNormally) throw new Error('fixture: no default start');
+      return startNormally(input);
+    });
+    const starting = service.dispatch({
+      type: 'startSession',
+      input: { threadId: child, provider: 'bedrock', cwd: tmp },
+    });
+    await entered.promise;
+
+    const error = await service
+      .dispatchWithReceipt({ type: 'discardDraft', threadId: draft })
+      .then(
+        () => undefined,
+        (caught: unknown) => caught as { code?: string },
+      );
+    release.resolve();
+    await starting;
+
+    expect(error?.code).toBe('draft_busy');
+    expect(bedrock.stopSession).not.toHaveBeenCalledWith(draft);
+    expect(eventStore.readSessionByThread(draft)).toBeDefined();
+    expect(eventStore.readSessionByThread(child)).toBeDefined();
+    // The started successor's events flow: nothing gated it.
+    const configured: CanonicalRuntimeEvent = {
+      eventId: `${child}-configured`,
+      provider: 'bedrock',
+      threadId: child,
+      sessionId: child,
+      createdAt: new Date().toISOString(),
+      method: 'session.configured',
+    };
+    bedrock.events.push(configured);
+    await waitFor(
+      () =>
+        eventStore
+          .listSessionProjectionEvents(child)
+          .map((event) => event.payload.eventId),
+      (ids) => ids.includes(`${child}-configured`),
+    );
+  });
+
+  // #2312 delta HIGH, the other ordering: once the discard holds the
+  // members' lifecycle claims, a start of the reserved successor cannot
+  // begin — the durable lifecycle claim refuses its start admission before
+  // any provider call. The successor stays never-started and goes with the
+  // Draft; no session is left behind, and none is orphaned.
+  test('#2312: a successor start attempted while the discard runs is refused before the provider, and nothing is orphaned', async () => {
+    const draft = 'draft-successor-started-meanwhile';
+    const child = `${draft}:session:started`;
+    await service.dispatch({
+      type: 'startSession',
+      input: { threadId: draft, provider: 'bedrock', cwd: tmp },
+    });
+    eventStore.reserveNextConversationSession({
+      conversationId: draft,
+      predecessorSessionId: draft,
+      proposedSessionId: child,
+      createdAt: new Date().toISOString(),
+    });
+    const stopping = deferred<void>();
+    const stopEntered = deferred<void>();
+    bedrock.stopSession.mockImplementationOnce(async (threadId) => {
+      stopEntered.resolve();
+      await stopping.promise;
+      bedrock.sessions.delete(threadId);
+    });
+
+    const discard = service.dispatchWithReceipt({
+      type: 'discardDraft',
+      threadId: draft,
+    });
+    await stopEntered.promise;
+    const lateStart = await service
+      .dispatch({
+        type: 'startSession',
+        input: { threadId: child, provider: 'bedrock', cwd: tmp },
+      })
+      .then(
+        () => 'started',
+        (caught: unknown) => (caught as Error).message,
+      );
+    stopping.resolve();
+    await discard;
+
+    expect(lateStart).toContain('no provider call was made');
+    expect(bedrock.startSession).not.toHaveBeenCalledWith(
+      expect.objectContaining({ threadId: child }),
+    );
+    expect(eventStore.readSessionByThread(child)).toBeUndefined();
+    expect(eventStore.readSessionByThread(draft)).toBeUndefined();
+    expect(eventStore.conversationSessions(draft)).toEqual([]);
+    expect(
+      (await service.listSessionReadModel()).map((session) => session.threadId),
+    ).not.toContain(child);
   });
 
   // #2312 review LOW: a turn in flight is a turn, so the refusal is the

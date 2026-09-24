@@ -48,19 +48,23 @@ function useDiscardDraft(
       // Sessions) and is a no-op once a host already closed it.
       // Verifier L6: every Session of the discarded conversation, and every
       // chat bound to any of them — not only the first match.
+      // Bounded: each pass removes the chat it found, and the cap keeps a
+      // store that failed to remove one from spinning.
       for (const sessionId of new Set([threadId, ...closeSessionIds])) {
-        for (
-          let key = activeChatsStore.getChatKeyForExecutionSession(sessionId);
-          key !== undefined;
-          key = activeChatsStore.getChatKeyForExecutionSession(sessionId)
-        )
+        for (let pass = 0; pass < MAX_CHATS_CLOSED_PER_SESSION; pass += 1) {
+          const key = activeChatsStore.getChatKeyForExecutionSession(sessionId);
+          if (key === undefined) break;
           activeChatsStore.removeChat(key);
+        }
       }
       return refetchSessions();
     },
     onError: () => refetchSessions(),
   });
 }
+
+/** More local chats than one device ever holds for one session. */
+const MAX_CHATS_CLOSED_PER_SESSION = 64;
 
 export const DISCARD_DRAFT_FAILED =
   'Could not discard this draft. It may have started since this list was read.';

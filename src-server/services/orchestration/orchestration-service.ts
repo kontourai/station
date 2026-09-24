@@ -580,6 +580,23 @@ class DraftDiscardNotAuthorizedError extends Error {
 }
 
 /**
+ * #2312 delta HIGH: a Session in the Draft's conversation has a start
+ * underway (a send from another device began one). Refused rather than
+ * deleted: the start would otherwise resolve into a session the discard had
+ * already removed. Retryable once the start settles.
+ */
+class DraftDiscardBusyError extends Error {
+  readonly code = 'draft_busy';
+
+  constructor() {
+    super(
+      'This draft is starting on another device or tab, so it was not discarded. Try again in a moment.',
+    );
+    this.name = 'DraftDiscardBusyError';
+  }
+}
+
+/**
  * #2312 verifier H1: a send that was already on its way when a discard
  * deleted its Draft. It is refused before the provider is touched — a
  * definitive refusal, never an indeterminate turn record. Recorded as an
@@ -1574,6 +1591,13 @@ export class OrchestrationService {
    * new session whose events must flow.
    */
   private readonly discardedDraftThreads = new Set<string>();
+  /**
+   * #2312 delta HIGH: threads with an engine start underway, counted from
+   * the start command's entry (so the whole of it: admission, lineage,
+   * adapter start) until it settles. A discard refuses while any member of
+   * its conversation is here.
+   */
+  private readonly startsUnderway = new Map<string, number>();
   /** #2312 verifier M2: see `awaitDiscardedEngineExit`. */
   private readonly discardedEngineExitWaiters = new Map<string, () => void>();
   /**
@@ -5217,11 +5241,31 @@ export class OrchestrationService {
     context: SessionCommandContext,
     internal: SessionCommandInternalOptions,
   ): Promise<SessionCommandOutcome> {
-    return this.sessionCommandImplementation.executeInternal(
-      command,
-      context,
-      internal,
+    return this.trackStartUnderway(command.input.threadId, () =>
+      this.sessionCommandImplementation.executeInternal(
+        command,
+        context,
+        internal,
+      ),
     );
+  }
+
+  /** #2312: see {@link startsUnderway}. */
+  private async trackStartUnderway<T>(
+    threadId: string,
+    run: () => Promise<T>,
+  ): Promise<T> {
+    this.startsUnderway.set(
+      threadId,
+      (this.startsUnderway.get(threadId) ?? 0) + 1,
+    );
+    try {
+      return await run();
+    } finally {
+      const remaining = (this.startsUnderway.get(threadId) ?? 1) - 1;
+      if (remaining > 0) this.startsUnderway.set(threadId, remaining);
+      else this.startsUnderway.delete(threadId);
+    }
   }
 
   async dispatch(
@@ -5315,16 +5359,20 @@ export class OrchestrationService {
     >
   > {
     if (command.type === 'startSession') {
-      const outcome = internal
-        ? await this.sessionCommandImplementation.executeInternal(
-            { type: 'start-session', input: command.input },
-            context ?? {},
-            internal,
-          )
-        : await this.sessionCommands.execute(
-            { type: 'start-session', input: command.input },
-            context ?? {},
-          );
+      const outcome = await this.trackStartUnderway(
+        command.input.threadId,
+        () =>
+          internal
+            ? this.sessionCommandImplementation.executeInternal(
+                { type: 'start-session', input: command.input },
+                context ?? {},
+                internal,
+              )
+            : this.sessionCommands.execute(
+                { type: 'start-session', input: command.input },
+                context ?? {},
+              ),
+      );
       if (outcome.status === 'accepted') {
         return { receipt: outcome.receipt, result: outcome.session };
       }
@@ -6747,6 +6795,7 @@ export class OrchestrationService {
           error instanceof DraftDiscardRefusedError ||
           error instanceof DraftDiscardNotAuthorizedError ||
           error instanceof DraftDiscardedError ||
+          error instanceof DraftDiscardBusyError ||
           // #2300: a Muse send refused while the previous turn's process
           // was still exiting — a refusal to act, retryable.
           isMuseTurnSlotReleasingRefusal(error) ||
@@ -6793,6 +6842,7 @@ export class OrchestrationService {
           error instanceof SessionStopWhileStartingError ||
           error instanceof DraftDiscardRefusedError ||
           error instanceof DraftDiscardedError ||
+          error instanceof DraftDiscardBusyError ||
           error instanceof RequestEventGuardError ||
           error instanceof ReceiverExecutionRefusal
           ? error.code
@@ -6831,31 +6881,47 @@ export class OrchestrationService {
     const eventStore = this.options.eventStore;
     if (!eventStore) throw new DraftDiscardRefusedError(threadId);
     const members = eventStore.conversationSessionIds(threadId);
+    // Delta HIGH: a start underway is not "never started" — a fresh start
+    // has no row, read model or events until it resolves. Such a
+    // conversation is refused outright (`draft_busy`), never exempted.
+    const startUnderway = (member: string) =>
+      this.startsUnderway.has(member) || this.materializingSessions.has(member);
+    const assertNoStartUnderway = () => {
+      if (members.some(startUnderway)) throw new DraftDiscardBusyError();
+    };
     const neverStarted = (member: string) =>
       member !== threadId &&
       !this.sessionReadModel.has(member) &&
-      !this.materializingSessions.has(member) &&
       !eventStore.readSessionByThread(member) &&
       (eventStore.countEventsByThreads([member]).get(member) ?? 0) === 0;
     const started = () => members.filter((member) => !neverStarted(member));
     // `dispatchWithReceipt` authorized `threadId` only; every other started
-    // member is deleted too, so each must pass the same gate.
-    if (
-      caller.userId !== undefined &&
-      !started().every((member) =>
-        this.sessionAuthz.canReadSessionForCommand(
-          member,
-          caller.userId,
-          caller.tenantExecutionContext,
-        ),
+    // member is deleted too, so each must pass the same gate. Re-run under
+    // the locks and right before the delete: a member that finished starting
+    // meanwhile (another owner's, say) joins the checked set.
+    const assertCallerMayDeleteStarted = () => {
+      if (
+        caller.userId !== undefined &&
+        !started().every((member) =>
+          this.sessionAuthz.canReadSessionForCommand(
+            member,
+            caller.userId,
+            caller.tenantExecutionContext,
+          ),
+        )
       )
-    )
-      throw new DraftDiscardNotAuthorizedError(threadId);
+        throw new DraftDiscardNotAuthorizedError(threadId);
+    };
+    assertNoStartUnderway();
+    assertCallerMayDeleteStarted();
     const sameMembers = () =>
       eventStore.conversationSessionIds(threadId).join('\n') ===
       members.join('\n');
     const discard = async () => {
       if (!sameMembers()) throw new DraftDiscardRefusedError(threadId);
+      assertNoStartUnderway();
+      assertCallerMayDeleteStarted();
+      const checked = started().join('\n');
       const live: string[] = [];
       for (const member of started()) {
         const detail = await this.readSession(
@@ -6887,12 +6953,17 @@ export class OrchestrationService {
         // resumable write would only be deleted again.
         for (const member of live) {
           const exited = this.awaitDiscardedEngineExit(member);
-          await this.stopSessionNow(member);
-          // Verifier M2: the stopped engine's own `session.exited` may still
-          // be in flight. Consumed here (dropped by the gate) it cannot land
-          // after a restart on this id and close the NEW session. Bounded:
-          // an engine that never reports its exit costs the wait, no more.
-          await exited;
+          try {
+            await this.stopSessionNow(member);
+            // Verifier M2: the stopped engine's own `session.exited` may
+            // still be in flight. Consumed here (dropped by the gate) it
+            // cannot land after a restart on this id and close the NEW
+            // session. Bounded: an engine that never reports its exit costs
+            // the wait, no more.
+            await exited.settled;
+          } finally {
+            exited.cancel();
+          }
         }
         // Review MEDIUM: a successor reserved across the awaits above (the
         // lifecycle locks do not cover lineage reservation) would survive
@@ -6901,6 +6972,10 @@ export class OrchestrationService {
         // refusal here leaves any engine stopped above stopped — resumable,
         // and still listed as the Draft it is.
         if (!sameMembers()) throw new DraftDiscardRefusedError(threadId);
+        // Delta HIGH: nothing may have begun or finished starting across the
+        // awaits; if a member did, the checked set is stale.
+        assertNoStartUnderway();
+        if (started().join('\n') !== checked) throw new DraftDiscardBusyError();
       } catch (error) {
         for (const member of members) this.discardedDraftThreads.delete(member);
         throw error;
@@ -6935,6 +7010,7 @@ export class OrchestrationService {
       if (
         !(error instanceof DraftDiscardRefusedError) &&
         !(error instanceof DraftDiscardNotAuthorizedError) &&
+        !(error instanceof DraftDiscardBusyError) &&
         turnInFlight()
       )
         throw new DraftDiscardRefusedError(threadId);
@@ -6958,21 +7034,30 @@ export class OrchestrationService {
   }
 
   /** Resolves on the discarded engine's `session.exited`, or at the cap. */
-  private awaitDiscardedEngineExit(threadId: string): Promise<void> {
-    return new Promise((resolve) => {
-      const timer = setTimeout(
-        done,
-        this.options.draftDiscardExitWaitMs ?? DRAFT_DISCARD_EXIT_WAIT_MS,
-      );
-      function done() {
-        clearTimeout(timer);
-        resolve();
-      }
-      this.discardedEngineExitWaiters.set(threadId, () => {
-        this.discardedEngineExitWaiters.delete(threadId);
-        done();
-      });
+  private awaitDiscardedEngineExit(threadId: string): {
+    settled: Promise<void>;
+    /** Idempotent: clears the timer and the waiter (timeout, throw, exit). */
+    cancel: () => void;
+  } {
+    let resolve!: () => void;
+    const settled = new Promise<void>((settle) => {
+      resolve = settle;
     });
+    const cancel = () => {
+      clearTimeout(timer);
+      if (this.discardedEngineExitWaiters.get(threadId) === cancelAndSettle)
+        this.discardedEngineExitWaiters.delete(threadId);
+    };
+    const cancelAndSettle = () => {
+      cancel();
+      resolve();
+    };
+    const timer = setTimeout(
+      cancelAndSettle,
+      this.options.draftDiscardExitWaitMs ?? DRAFT_DISCARD_EXIT_WAIT_MS,
+    );
+    this.discardedEngineExitWaiters.set(threadId, cancelAndSettle);
+    return { settled, cancel };
   }
 
   /**
@@ -6988,11 +7073,13 @@ export class OrchestrationService {
     admission?: Parameters<typeof runSessionStartWithBoundary>[3],
   ): Promise<T> {
     this.discardedDraftThreads.delete(threadId);
-    return runSessionStartWithBoundary(
-      this.sessionStartBoundaries,
-      threadId,
-      invoke,
-      admission,
+    return this.trackStartUnderway(threadId, () =>
+      runSessionStartWithBoundary(
+        this.sessionStartBoundaries,
+        threadId,
+        invoke,
+        admission,
+      ),
     );
   }
 
