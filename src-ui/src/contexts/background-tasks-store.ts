@@ -166,7 +166,8 @@ function backgroundTaskEntryFromChildWork(
     source: 'provider-task',
     chatThreadId: placement.chatThreadId,
     title: placement.title || item.title || item.kindLabel || 'Background task',
-    detail: item.kindLabel,
+    // #2457: the child's live status line when it reports one, else its kind.
+    detail: item.progress ?? item.kindLabel,
     ...(placement.startedAt !== undefined
       ? { startedAt: placement.startedAt }
       : {}),
@@ -213,6 +214,7 @@ function providerTaskChildWork(task: ChatBackgroundTask): ChildWorkItem {
     status: 'running',
     ...(task.description ? { title: task.description } : {}),
     ...(task.subagentType ? { kindLabel: task.subagentType } : {}),
+    ...(task.progress ? { progress: task.progress } : {}),
     // #2459: a stop only for a child that carried the seam itself, and only
     // with a session to address it to. A session thread alone is not a seam:
     // deriving one from it offered a Codex child a Stop wired to nothing.

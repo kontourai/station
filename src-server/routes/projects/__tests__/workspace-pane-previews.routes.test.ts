@@ -269,3 +269,92 @@ describe('Workspace Pane preview routes', () => {
     });
   });
 });
+
+describe('a preview for one session reads that session’s directory (#2476)', () => {
+  const tempDirs: string[] = [];
+  afterEach(() => {
+    for (const dir of tempDirs.splice(0))
+      rmSync(dir, { recursive: true, force: true });
+  });
+
+  function fixture() {
+    const checkout = mkdtempSync(join(tmpdir(), 'station-thread-checkout-'));
+    const worktree = mkdtempSync(join(tmpdir(), 'station-thread-worktree-'));
+    tempDirs.push(checkout, worktree);
+    writeFileSync(join(checkout, 'app.ts'), 'checkout copy');
+    writeFileSync(join(worktree, 'app.ts'), 'worktree copy');
+    writeFileSync(join(worktree, 'only-here.ts'), 'new file');
+    const sessions: Record<string, string | undefined | null> = {
+      isolated: worktree,
+      'in-checkout': undefined,
+      'not-yours': null,
+    };
+    const app = new Hono();
+    app.route(
+      '/:slug/file-preview',
+      createWorkspacePanePreviewRoutes(
+        {
+          getProject: vi.fn((slug: string) => {
+            if (slug !== 'alpha') throw new Error('Not found');
+            return { workingDirectory: checkout };
+          }),
+        } as any,
+        undefined,
+        async (_c, slug, thread) =>
+          slug === 'alpha' && thread in sessions ? sessions[thread] : null,
+      ),
+    );
+    const post = (path: string, body: unknown) =>
+      app.request(`/alpha/file-preview${path}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+    return { post };
+  }
+
+  test('an isolated session previews its own worktree copy', async () => {
+    const { post } = fixture();
+    const response = await post('', { path: 'app.ts', thread: 'isolated' });
+    expect((await json(response)).data).toMatchObject({
+      content: 'worktree copy',
+    });
+    const exists = await post('/exists', {
+      paths: ['app.ts', 'only-here.ts'],
+      thread: 'isolated',
+    });
+    expect((await json(exists)).data).toEqual({
+      files: ['app.ts', 'only-here.ts'],
+    });
+  });
+
+  test('a session in the checkout, or no thread at all, reads the checkout', async () => {
+    const { post } = fixture();
+    for (const body of [
+      { path: 'app.ts', thread: 'in-checkout' },
+      { path: 'app.ts' },
+    ]) {
+      const response = await post('', body);
+      expect((await json(response)).data).toMatchObject({
+        content: 'checkout copy',
+      });
+    }
+  });
+
+  test('a session the caller may not read is refused, never answered from the checkout', async () => {
+    const { post } = fixture();
+    const preview = await post('', { path: 'app.ts', thread: 'not-yours' });
+    expect(preview.status).toBe(404);
+    expect(JSON.stringify(await json(preview))).not.toContain('checkout copy');
+    const exists = await post('/exists', {
+      paths: ['app.ts'],
+      thread: 'not-yours',
+    });
+    expect((await json(exists)).data).toEqual({ files: [] });
+    const download = await post('/download', {
+      path: 'app.ts',
+      thread: 'not-yours',
+    });
+    expect(download.status).toBe(404);
+  });
+});
