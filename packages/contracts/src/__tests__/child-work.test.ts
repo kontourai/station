@@ -284,8 +284,8 @@ describe('projectDelegateChildWork', () => {
   const base = {
     threadId: 'del-1',
     createdAt: '2026-09-23T10:00:00.000Z',
-    lastEventAt: '2026-09-23T10:05:00.000Z',
   };
+  const endedAt = '2026-09-23T10:05:00.000Z';
 
   test('a delegate with a parent is a running child of that parent while its turn is open', () => {
     expect(
@@ -338,17 +338,36 @@ describe('projectDelegateChildWork', () => {
   });
 
   test('a CLI delegate with no parent is a root-level child (no parent)', () => {
-    const child = projectDelegateChildWork({
+    const child = projectDelegateChildWork(
+      {
+        ...base,
+        hasActiveTurn: false,
+        lifecycleState: 'completed',
+        delegation: { taskId: 'del-1' },
+      },
+      { endedAt },
+    );
+    expect(child).toMatchObject({ status: 'completed', endedAt });
+    expect(child).not.toHaveProperty('parent');
+  });
+
+  test('#2459: a finished delegate with no terminal time has no end — and a running one never has one', () => {
+    const settled = projectDelegateChildWork({
       ...base,
       hasActiveTurn: false,
       lifecycleState: 'completed',
       delegation: { taskId: 'del-1' },
     });
-    expect(child).toMatchObject({
-      status: 'completed',
-      endedAt: base.lastEventAt,
-    });
-    expect(child).not.toHaveProperty('parent');
+    expect(settled).not.toHaveProperty('endedAt');
+    const running = projectDelegateChildWork(
+      {
+        ...base,
+        hasActiveTurn: true,
+        delegation: { taskId: 'del-1' },
+      },
+      { endedAt },
+    );
+    expect(running).not.toHaveProperty('endedAt');
   });
 
   test('terminal status derives from lifecycle; no terminal lifecycle is unresolved', () => {

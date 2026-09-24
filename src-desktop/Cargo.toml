@@ -135,6 +135,9 @@ tauri-plugin-keyring-store = { version = "=0.2.0", default-features = false }
 # Tailscale MagicDNS); std::net::ToSocketAddrs bypasses that resolver.
 jni = "0.21"
 ndk-context = "0.1"
+# Agent-activity cards and Android 16 Live Updates, rendered natively from
+# FCM data messages (docs/design/notification-delivery.md).
+tauri-plugin-station-agent-activity = { path = "plugins/agent-activity" }
 
 [target."cfg(unix)".dependencies]
 libc = "0.2"

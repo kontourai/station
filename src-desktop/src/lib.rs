@@ -157,6 +157,39 @@ fn native_app_channel(identifier: &str, dev_build: bool) -> &'static str {
     }
 }
 
+/// The Android plugin's Gradle build reads the same four `STATION_FIREBASE_*`
+/// values from the environment the Rust build sees, fails on a partial set,
+/// and without them `push_token` answers `unconfigured`. `option_env!` makes
+/// cargo rebuild when any of them changes.
+fn android_build_carries_firebase_identity(values: [Option<&str>; 4]) -> bool {
+    values
+        .iter()
+        .all(|value| value.is_some_and(|value| !value.trim().is_empty()))
+}
+
+/// Closed-app push is the Android agent-activity plugin (FCM through the
+/// Kontour push gateway). Enabled means this build CAN register; whether a
+/// Station sends anything depends on the person turning it on.
+fn remote_push_capability(android: bool, firebase_identity: bool) -> NativeCapabilityStatus {
+    match (android, firebase_identity) {
+        (true, true) => NativeCapabilityStatus {
+            id: "remote-push",
+            state: "enabled",
+            reason: "This Android build carries a push configuration; agent activity on this phone can be turned on in Settings.",
+        },
+        (true, false) => NativeCapabilityStatus {
+            id: "remote-push",
+            state: "unsupported",
+            reason: "This build has no push configuration.",
+        },
+        (false, _) => NativeCapabilityStatus {
+            id: "remote-push",
+            state: "unsupported",
+            reason: "Closed-app push is available only in the Android app; iOS Live Activities and APNs are not built yet.",
+        },
+    }
+}
+
 fn compile_target_capability_report(identifier: &str) -> NativeCapabilityReport {
     let mut capabilities = vec![
         NativeCapabilityStatus {
@@ -250,11 +283,15 @@ fn compile_target_capability_report(identifier: &str) -> NativeCapabilityReport 
         reason: "Haptic feedback is a mobile-only host capability.",
     });
 
-    capabilities.push(NativeCapabilityStatus {
-        id: "remote-push",
-        state: "unsupported",
-        reason: "Station has no provisioned FCM/APNs application or server delivery credentials; the local notification watch cannot wake a backgrounded or closed mobile app (station#917/#1225).",
-    });
+    capabilities.push(remote_push_capability(
+        cfg!(target_os = "android"),
+        android_build_carries_firebase_identity([
+            option_env!("STATION_FIREBASE_APP_ID"),
+            option_env!("STATION_FIREBASE_API_KEY"),
+            option_env!("STATION_FIREBASE_PROJECT_ID"),
+            option_env!("STATION_FIREBASE_SENDER_ID"),
+        ]),
+    ));
 
     NativeCapabilityReport {
         platform: compile_target_platform(),
@@ -10553,6 +10590,10 @@ If a stable instance is running, this launch will focus its window and exit.",
     // haptics unsupported off-mobile so the webview never calls it there.
     #[cfg(mobile)]
     let builder = builder.plugin(tauri_plugin_haptics::init());
+    // Android-only: its capability file is scoped to android, and the iOS
+    // counterpart (a Live Activity widget extension) does not exist yet.
+    #[cfg(target_os = "android")]
+    let builder = builder.plugin(tauri_plugin_station_agent_activity::init());
     let builder = builder
         .manage(NativeProfileAuthority::default())
         .manage(NativePendingPairingCredentials::default())
@@ -16909,7 +16950,31 @@ mod tests {
         assert!(states.contains(&("haptics", "enabled")));
         #[cfg(not(mobile))]
         assert!(states.contains(&("haptics", "unsupported")));
+        #[cfg(not(target_os = "android"))]
         assert!(states.contains(&("remote-push", "unsupported")));
+    }
+
+    #[test]
+    fn remote_push_is_enabled_only_for_an_android_build_with_firebase_identity() {
+        let state = |android, identity| remote_push_capability(android, identity).state;
+        assert_eq!(state(true, true), "enabled");
+        assert_eq!(state(true, false), "unsupported");
+        assert_eq!(state(false, true), "unsupported");
+        assert_eq!(state(false, false), "unsupported");
+        assert_eq!(
+            remote_push_capability(true, false).reason,
+            "This build has no push configuration."
+        );
+
+        let all = [Some("1:2:android:ab"), Some("A"), Some("p"), Some("3")];
+        assert!(android_build_carries_firebase_identity(all));
+        let mut missing = all;
+        missing[3] = None;
+        assert!(!android_build_carries_firebase_identity(missing));
+        let mut blank = all;
+        blank[0] = Some("  ");
+        assert!(!android_build_carries_firebase_identity(blank));
+        assert!(!android_build_carries_firebase_identity([None; 4]));
     }
 
     #[cfg(not(mobile))]
