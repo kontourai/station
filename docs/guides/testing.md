@@ -624,7 +624,7 @@ re-subsetting; #1704 shrinks it by replacing the icon-shaped glyphs.
 `.github/workflows/gallery-pr-check.yml` runs the same capture and exact diff
 on pull requests, in the same container (#2428), so a PR that moves a screen
 finds out before it merges instead of reddening the next nightly. Its
-`classify` job reads `scripts/classify-ci-change.mjs --scope gallery` from the
+`classify` job reads `scripts/classify-ci-change.mjs` (with `--scope gallery`) from the
 base commit and skips the capture only when every changed path is one the
 capture never reads (docs, agent instructions, other workflows, desktop Rust,
 test files). The scope is an exclusion list because the capture boots the
