@@ -10,11 +10,11 @@ import {
 import { join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { inventoryCodeHealthFiles } from './code-health-inventory.mjs';
+import { createFallowReview } from './fallow-review-status.mjs';
 import {
   fallowChildEnvironment,
   prepareFallowTempDirectory,
 } from './lib/fallow-base-cache.mjs';
-import { createFallowReview } from './fallow-review-status.mjs';
 import {
   captureOwnedProcessOutput,
   executeOwnedCommand,

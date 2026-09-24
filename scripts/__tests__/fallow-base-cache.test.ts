@@ -2,15 +2,13 @@ import { execFileSync } from 'node:child_process';
 import {
   existsSync,
   mkdirSync,
-  mkdtempSync,
   readdirSync,
-  rmSync,
   utimesSync,
   writeFileSync,
 } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import {
   FALLOW_BASE_CACHE_PREFIX,
   pruneFallowBaseCaches,
@@ -23,6 +21,7 @@ import { runFallowAnalysis } from '../run-fallow-audit.mjs';
  * root, and each run prunes it to the most recently used caches.
  */
 
+const makeTempDir = trackTempDirs();
 let scratch: string;
 const saved = {
   STATION_TEMP_ROOT: process.env.STATION_TEMP_ROOT,
@@ -31,7 +30,7 @@ const saved = {
 };
 
 beforeEach(() => {
-  scratch = mkdtempSync(join(tmpdir(), 'fallow-base-cache-'));
+  scratch = makeTempDir('fallow-base-cache-');
 });
 
 afterEach(() => {
@@ -39,7 +38,6 @@ afterEach(() => {
     if (value === undefined) delete process.env[key];
     else process.env[key] = value;
   }
-  rmSync(scratch, { recursive: true, force: true });
 });
 
 const cachesIn = (directory: string) =>
