@@ -99,6 +99,13 @@
   cursor: pointer;
 }
 
+/* #2312: the older-drafts disclosure sits among rows, not group headings. */
+.chat-dock-inbox__older-drafts {
+  font-weight: 500;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
 .chat-dock-inbox__row {
   position: relative;
   border-radius: var(--radius-md);

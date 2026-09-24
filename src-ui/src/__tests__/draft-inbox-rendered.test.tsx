@@ -9,7 +9,9 @@
  */
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import type { OrchestrationSessionSummary } from '@kontourai/station-contracts/orchestration';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, within } from '@testing-library/react';
+import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ChatDockInboxPanel } from '../components/chat-dock/ChatDockInboxPanel';
 import type { ChatUIState } from '../contexts/active-chats-state';
@@ -82,6 +84,16 @@ function panelItems(
   return buildHomeTaskItems({ chats: {}, sessions, agents: [], chatItems });
 }
 
+// #2312: Draft rows carry "Discard draft", a server mutation, so the panel
+// needs the QueryClient production mounts it under.
+function withQueryClient({ children }: { children: ReactNode }) {
+  return (
+    <QueryClientProvider client={new QueryClient()}>
+      {children}
+    </QueryClientProvider>
+  );
+}
+
 function renderInbox(items: ReturnType<typeof panelItems>) {
   return render(
     <ChatDockInboxPanel
@@ -95,6 +107,7 @@ function renderInbox(items: ReturnType<typeof panelItems>) {
       onOpenHistory={vi.fn()}
       now={NOW}
     />,
+    { wrapper: withQueryClient },
   );
 }
 

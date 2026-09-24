@@ -81,7 +81,18 @@ export type OrchestrationCommand =
       expectedRequestEventId?: string;
       decision: 'accept' | 'acceptForSession' | 'decline' | 'cancel';
     }
-  | { type: 'stopSession'; threadId: string };
+  | { type: 'stopSession'; threadId: string }
+  /**
+   * #2312: remove a Draft (see `OrchestrationSessionSummary.draft`) for every
+   * device. The Draft fact is conversation-wide, so the whole conversation
+   * goes: every Session in its lineage is torn down and deleted server-side,
+   * and the next session-list read on any client no longer returns them. The
+   * server re-derives the fact for every member under their lifecycle locks
+   * and refuses (`not_a_draft`) if any member is not a Draft — a turn (even
+   * one in flight), content or an attempted send — or if the conversation
+   * gains a Session while the discard runs.
+   */
+  | { type: 'discardDraft'; threadId: string };
 
 /**
  * How long the orchestration service waits for the engine to acknowledge a

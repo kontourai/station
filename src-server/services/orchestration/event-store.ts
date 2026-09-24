@@ -10758,6 +10758,52 @@ export class EventStore {
     return recoveryTransition(result);
   }
 
+  /**
+   * #2312: every Session in `threadId`'s conversation lineage, `threadId`
+   * included, sorted. A thread with no lineage row is its own conversation.
+   */
+  conversationSessionIds(threadId: string): string[] {
+    const rows = this.db
+      .prepare(
+        `SELECT member.session_id AS session_id
+         FROM orchestration_conversation_sessions member
+         WHERE member.conversation_id = COALESCE(
+           (SELECT conversation_id FROM orchestration_conversation_sessions
+            WHERE session_id = ?),
+           ?)`,
+      )
+      .all(threadId, threadId) as Array<{ session_id: string }>;
+    return [
+      ...new Set([threadId, ...rows.map((row) => row.session_id)]),
+    ].sort();
+  }
+
+  /**
+   * #2312: retire the conversation-level rows naming Sessions a discard
+   * deleted — lineage, and any handoff or context-boundary record between
+   * them. `deleteThread` leaves these alone (its other callers own that
+   * decision); a discarded Draft conversation must not leave records behind
+   * that name Sessions which no longer exist.
+   */
+  deleteConversationLineageRows(sessionIds: readonly string[]): void {
+    const statements = [
+      'DELETE FROM orchestration_conversation_sessions WHERE session_id = ?',
+      `DELETE FROM orchestration_conversation_handoffs
+       WHERE session_id = ?1 OR predecessor_session_id = ?1`,
+      `DELETE FROM orchestration_conversation_context_boundaries
+       WHERE successor_session_id = ?1 OR predecessor_session_id = ?1`,
+    ].map((sql) => this.db.prepare(sql));
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      for (const sessionId of sessionIds)
+        for (const statement of statements) statement.run(sessionId);
+      this.db.exec('COMMIT');
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+  }
+
   /** Remove a deliberately ephemeral diagnostic session and all of its receipts. */
   deleteThread(threadId: string): void {
     // Captured before the deletes, resolved after the commit: deleting a file
@@ -10837,6 +10883,15 @@ export class EventStore {
         .run(threadId);
       this.db
         .prepare('DELETE FROM provider_session_state WHERE thread_id = ?')
+        .run(threadId);
+      // #2312 verifier H1: a possible-effect record for a thread that no
+      // longer exists would keep reporting an active turn and refuse every
+      // later start under the id. Lifecycle claims are left to their holder,
+      // which releases them itself (a discard deletes while holding one).
+      this.db
+        .prepare(
+          "DELETE FROM orchestration_turn_boundaries WHERE thread_id = ? AND state != 'lifecycle'",
+        )
         .run(threadId);
       this.db
         .prepare(

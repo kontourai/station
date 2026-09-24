@@ -7,6 +7,10 @@ import {
 } from '../../views/home/blocks/pulse-stats';
 import { bucketByRecency } from '../../views/home/blocks/recency-buckets';
 import {
+  olderDraftsLabel,
+  splitDraftsByAge,
+} from '../../views/home/draft-lane';
+import {
   formatWakeTime,
   type HomeLaneItem,
 } from '../../views/home/home-lane-model';
@@ -315,15 +319,11 @@ function HomeWorkLanesContent({
         </details>
       ) : null}
       {controller.lanes.drafts?.length ? (
-        <details className="home-view__settled-tail">
-          <summary>Drafts ({controller.lanes.drafts.length})</summary>
-          <p>Sessions nothing has been sent to yet.</p>
-          <ul className="home-view__task-list">
-            {controller.lanes.drafts.map((task) =>
-              renderHomeWorkRow({ task, isWoken: false, agents, onOpen }),
-            )}
-          </ul>
-        </details>
+        <HomeDraftsSection
+          drafts={controller.lanes.drafts}
+          agents={agents}
+          onOpen={onOpen}
+        />
       ) : null}
       <HomeSnoozeMenu controller={controller} />
       <HomeSnoozedShelf controller={controller} />
@@ -333,6 +333,44 @@ function HomeWorkLanesContent({
         onOpen={onOpen}
       />
     </>
+  );
+}
+
+/**
+ * #2312: Drafts, each discardable (a server delete). Drafts untouched for a
+ * day fold under their own "N older drafts" disclosure — presentation only;
+ * nothing ages out of existence.
+ */
+function HomeDraftsSection({
+  drafts,
+  agents,
+  onOpen,
+}: {
+  drafts: readonly HomeLaneItem[];
+  agents: readonly SessionIconAgent[];
+  onOpen: (task: HomeWorkItem) => void;
+}) {
+  const { recent, older } = splitDraftsByAge(drafts, Date.now());
+  const row = (task: HomeLaneItem) =>
+    renderHomeWorkRow({
+      task,
+      isWoken: false,
+      agents,
+      onOpen,
+      discardDraft: true,
+    });
+  return (
+    <details className="home-view__settled-tail">
+      <summary>Drafts ({drafts.length})</summary>
+      <p>Sessions nothing has been sent to yet.</p>
+      <ul className="home-view__task-list">{recent.map(row)}</ul>
+      {older.length > 0 && (
+        <details className="home-view__older-drafts">
+          <summary>{olderDraftsLabel(older.length)}</summary>
+          <ul className="home-view__task-list">{older.map(row)}</ul>
+        </details>
+      )}
+    </details>
   );
 }
 
