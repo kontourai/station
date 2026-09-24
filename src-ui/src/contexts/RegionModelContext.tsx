@@ -12,10 +12,7 @@ import {
   useRef,
   useState,
 } from 'react';
-import {
-  DIALOG_HISTORY_KEY,
-  registerDialogHistory,
-} from '../components/dialog-history';
+import { registerDialogHistory } from '../components/dialog-history';
 import {
   availablePlacements,
   dockFoldsToOneRegion,
@@ -235,10 +232,11 @@ interface RegionModelValue {
    */
   phoneLayer: { region: DockRegionId; surfaceId: string } | null;
   /**
-   * Leave the phone layer, the same as the device's Back: travels back over
-   * the layer's history entry when it is the live one (so the entry is
-   * consumed rather than left for a later Back to trip over), else restores
-   * directly.
+   * Leave the phone layer — the "‹ Chat" control. The same restore the
+   * device's Back runs (`restorePhonePaneLayer`); the layer's history entry
+   * is then consumed by its registration's cleanup, which travels back over
+   * it because the `?maximize` mirror has already returned the URL to the
+   * one the entry was pushed at (see the registration effect).
    */
   closePhoneLayer(): void;
 }
@@ -678,7 +676,8 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
   );
 
   // The way back from a phone layer (`restorePhonePaneLayer`): Back's
-  // `close`, the "‹ Chat" control's fallback, and the dismissal effect below.
+  // `close`, the "‹ Chat" control (`closePhoneLayer`), and the dismissal
+  // effect below.
   const restorePhoneLayer = useCallback(() => {
     const layer = phoneLayerRef.current;
     if (!layer) return;
@@ -700,21 +699,6 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
     regionsRef.current = next;
     setRegions(next);
   }, [setPhoneLayer]);
-
-  const closePhoneLayer = useCallback(() => {
-    if (!phoneLayerRef.current) return;
-    const state: unknown = window.history.state;
-    const onLayerEntry =
-      state !== null &&
-      typeof state === 'object' &&
-      (state as Record<string, unknown>)[DIALOG_HISTORY_KEY] ===
-        PHONE_LAYER_HISTORY_ID;
-    // Travelling back is what consumes the entry: the popstate reaches the
-    // layer's `close` (restore) through `dialog-history`, exactly as the
-    // device's own Back does, so the two exits cannot differ.
-    if (onLayerEntry) window.history.back();
-    else restorePhoneLayer();
-  }, [restorePhoneLayer]);
 
   // Anything else that takes the layer's pane off screen — "Show Chat" in the
   // folded menu, the tab closed, the region hidden, another tab adopting a
@@ -1001,7 +985,7 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
       canRenderRegionSurfaces: mountedSurfaceHosts > 0,
       registerRegionSurfaceHost,
       phoneLayer: phoneLayerView,
-      closePhoneLayer,
+      closePhoneLayer: restorePhoneLayer,
     }),
     [
       regions,
@@ -1019,7 +1003,7 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
       mountedSurfaceHosts,
       registerRegionSurfaceHost,
       phoneLayerView,
-      closePhoneLayer,
+      restorePhoneLayer,
     ],
   );
   return (
