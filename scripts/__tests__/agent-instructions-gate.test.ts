@@ -11,6 +11,7 @@ import { tmpdir } from 'node:os';
 import { resolve, win32 } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { describe, expect, test } from 'vitest';
+import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import {
   canonicalInstructionPath,
   discoverOnDiskInstructionFiles,
@@ -22,6 +23,9 @@ import {
   resolveEffectiveInstructions,
 } from '../agent-instructions-gate.mjs';
 import { REQUIRED_INSTRUCTION_FILES } from '../agent-instructions-manifest.mjs';
+
+// Removed in an after-hook whether the test passed or not (#2421).
+const makeTempDir = trackTempDirs();
 
 const root = process.cwd();
 const governance = `<!-- veritas:governance-block:start -->\nThis repo uses Veritas for AI governance. Read \`.veritas/GOVERNANCE.md\` before making changes.\nAfter changes, run \`veritas readiness\` and address any FAIL lines before finishing.\n<!-- veritas:governance-block:end -->\n`;
@@ -299,15 +303,9 @@ describe('agent instruction topology', () => {
     // verification:policy:gate on an otherwise clean worktree. Prove the
     // build-output path is now skipped, while the guard still catches the
     // real thing: a symlinked directory somewhere a human actually writes.
-    const buildOutputRoot = mkdtempSync(
-      resolve(tmpdir(), 'station-instructions-build-output-'),
-    );
-    const sourceRoot = mkdtempSync(
-      resolve(tmpdir(), 'station-instructions-source-linked-'),
-    );
-    const linkedTarget = mkdtempSync(
-      resolve(tmpdir(), 'station-instructions-linked-target-'),
-    );
+    const buildOutputRoot = makeTempDir('station-instructions-build-output-');
+    const sourceRoot = makeTempDir('station-instructions-source-linked-');
+    const linkedTarget = makeTempDir('station-instructions-linked-target-');
     try {
       const swiftRsDir = resolve(
         buildOutputRoot,
@@ -336,14 +334,12 @@ describe('agent instruction topology', () => {
   });
 
   test('the same holds when the gate runs as a real child process (process-level)', () => {
-    const buildOutputRoot = mkdtempSync(
-      resolve(tmpdir(), 'station-instructions-proc-build-output-'),
+    const buildOutputRoot = makeTempDir(
+      'station-instructions-proc-build-output-',
     );
-    const sourceRoot = mkdtempSync(
-      resolve(tmpdir(), 'station-instructions-proc-source-linked-'),
-    );
-    const linkedTarget = mkdtempSync(
-      resolve(tmpdir(), 'station-instructions-proc-linked-target-'),
+    const sourceRoot = makeTempDir('station-instructions-proc-source-linked-');
+    const linkedTarget = makeTempDir(
+      'station-instructions-proc-linked-target-',
     );
     try {
       const swiftRsDir = resolve(
