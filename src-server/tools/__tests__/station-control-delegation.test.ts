@@ -4302,6 +4302,15 @@ describe('#2324 a delegated task event carries a provider-triggered turn’s tri
       status: 'stopped',
       trigger: 'provider',
     });
+    expect(
+      projectDelegatedTaskEvent(4, {
+        ...base,
+        method: 'runtime.error',
+        severity: 'error',
+        message: 'overloaded',
+        ...trigger,
+      }),
+    ).toMatchObject({ kind: 'runtime', trigger: 'provider' });
     // A caller's turn, and a delta inside the provider turn, carry none.
     expect(
       projectDelegatedTaskEvent(4, {

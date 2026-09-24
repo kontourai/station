@@ -258,6 +258,31 @@ describe('wireTurnCompletionNotifications (station#1225)', () => {
       );
     });
 
+    test('F1: its failure still notifies an offline owner, worded as the reply failing', async () => {
+      const schedule = vi
+        .spyOn(notificationService, 'schedule')
+        .mockResolvedValue({} as never);
+      await emit('orchestration:event', {
+        event: baseEvent({ method: 'turn.started', ...provider }),
+      });
+      await emit('orchestration:event', {
+        event: baseEvent({
+          method: 'runtime.error',
+          severity: 'error',
+          message: 'overloaded',
+          ...provider,
+        }),
+      });
+      expect(schedule).toHaveBeenCalledWith(
+        'turn-completion',
+        expect.objectContaining({
+          category: 'turn-failed',
+          title: "Your agent's reply failed",
+          body: "Your agent's reply on its own failed in session thread-1",
+        }),
+      );
+    });
+
     test('a Stop on it is never reported as "stopped"', async () => {
       const schedule = vi
         .spyOn(notificationService, 'schedule')

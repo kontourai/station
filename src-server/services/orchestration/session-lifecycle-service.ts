@@ -1057,7 +1057,15 @@ function deriveLifecycleTransition(
         isSessionLifecycleStateStopped(from)
       )
         return null;
-      return { from, to: 'failed', reason: 'runtime_error', source: 'runtime' };
+      return {
+        from,
+        to: 'failed',
+        // #2324: a turn the engine opened on its own failed.
+        reason: isProviderTriggeredTurn(event)
+          ? 'provider_turn_failed'
+          : 'runtime_error',
+        source: 'runtime',
+      };
     case 'session.exited': {
       // archive#3442: `exitCode` is the only field here an adapter ever sets
       // from an actual observation (see `codex-adapter-transport.ts`'s

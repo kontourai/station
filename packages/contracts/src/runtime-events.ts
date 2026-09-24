@@ -639,6 +639,11 @@ export interface RuntimeErrorEvent extends CanonicalRuntimeEventBase {
   code?: string;
   retriable?: boolean;
   details?: Record<string, unknown>;
+  /**
+   * #2324: carries `trigger` when this error ends a turn the engine opened
+   * on its own (see {@link PROVIDER_TURN_TRIGGER}).
+   */
+  metadata?: Record<string, unknown>;
 }
 
 /**
@@ -675,8 +680,9 @@ export function isDeferredRetriableTurnError(
  * #2324: the `metadata.trigger` value an adapter stamps on the turn events of
  * a turn the ENGINE opened — a reply it produced on its own (for example after
  * background work finished) that no user or caller dispatched. Stamped on
- * that turn's `turn.started` and on its terminal (`turn.completed` /
- * `turn.aborted`). Such a turn has no prompt of its own.
+ * that turn's `turn.started` and on its terminal (`turn.completed`,
+ * `turn.aborted`, or the `runtime.error` a failed one ends with). Such a
+ * turn has no prompt of its own.
  */
 export const PROVIDER_TURN_TRIGGER = 'provider';
 
@@ -694,7 +700,8 @@ export function isProviderTriggeredTurn(event: {
   return (
     (event.method === 'turn.started' ||
       event.method === 'turn.completed' ||
-      event.method === 'turn.aborted') &&
+      event.method === 'turn.aborted' ||
+      event.method === 'runtime.error') &&
     event.metadata?.trigger === PROVIDER_TURN_TRIGGER
   );
 }

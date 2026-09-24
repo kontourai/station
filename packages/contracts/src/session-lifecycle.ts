@@ -29,6 +29,7 @@ export type SessionTransitionReason =
    */
   | 'provider_turn_started'
   | 'provider_turn_completed'
+  | 'provider_turn_failed'
   | 'approval_requested'
   | 'review_requested'
   | 'input_requested'
@@ -55,6 +56,7 @@ export const SESSION_TRANSITION_REASONS: readonly SessionTransitionReason[] = [
   'turn_completed',
   'provider_turn_started',
   'provider_turn_completed',
+  'provider_turn_failed',
   'approval_requested',
   'review_requested',
   'input_requested',

@@ -856,6 +856,11 @@ export function mapClaudeSdkMessage({
             : ENGINE_TURN_FAILED_CODE,
         retriable: false,
         message: claudeResultFailureText(message),
+        // #2324 review F1: a failed turn the engine opened on its own ends
+        // with this error; it carries the trigger its start did.
+        ...(resultTurn?.kind === 'provider'
+          ? { metadata: claudeTurnTerminalMetadata(resultTurn) }
+          : {}),
       });
       return;
     }

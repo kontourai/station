@@ -56,8 +56,11 @@ const SESSION_KIND = 'runtime';
  * `replied` (#2324, owner decision D1): a turn the engine opened on its own
  * finished — a reply nobody sent a message for, such as after background
  * work. Delivered in the `turn-completed` category, worded as a reply.
+ * `reply-failed` (#2324 review F1): such a turn failed (its own error, or a
+ * crash). Still a failure worth an offline push, worded as the agent's reply
+ * failing rather than a turn the user started needing attention.
  */
-type TurnOutcome = 'done' | 'failed' | 'stopped' | 'replied';
+type TurnOutcome = 'done' | 'failed' | 'stopped' | 'replied' | 'reply-failed';
 
 interface TurnCompletionOrchestrationService {
   resolveSessionPresenceSubject(
@@ -114,7 +117,7 @@ async function deliverTurnCompletionPush(input: {
 
   await notificationService.schedule(TURN_COMPLETION_SOURCE, {
     category:
-      outcome === 'failed'
+      outcome === 'failed' || outcome === 'reply-failed'
         ? 'turn-failed'
         : outcome === 'stopped'
           ? 'turn-stopped'
@@ -122,13 +125,19 @@ async function deliverTurnCompletionPush(input: {
     title:
       outcome === 'failed'
         ? 'Your agent needs attention'
-        : outcome === 'stopped'
-          ? 'Your agent stopped'
-          : outcome === 'replied'
-            ? 'Your agent replied'
-            : 'Your agent finished',
-    body: `Agent ${outcome === 'failed' ? 'failed' : outcome === 'stopped' ? 'stopped' : outcome === 'replied' ? 'replied' : 'finished'} in session ${threadId}`,
-    priority: outcome === 'failed' ? 'high' : 'normal',
+        : outcome === 'reply-failed'
+          ? "Your agent's reply failed"
+          : outcome === 'stopped'
+            ? 'Your agent stopped'
+            : outcome === 'replied'
+              ? 'Your agent replied'
+              : 'Your agent finished',
+    body:
+      outcome === 'reply-failed'
+        ? `Your agent's reply on its own failed in session ${threadId}`
+        : `Agent ${outcome === 'failed' ? 'failed' : outcome === 'stopped' ? 'stopped' : outcome === 'replied' ? 'replied' : 'finished'} in session ${threadId}`,
+    priority:
+      outcome === 'failed' || outcome === 'reply-failed' ? 'high' : 'normal',
     dedupeTag: `turn-completion:${threadId}:${turnId}`,
     metadata: {
       sessionId: threadId,
@@ -485,6 +494,7 @@ export function wireTurnCompletionNotifications(
             }
             outcome = 'replied';
           }
+          if (providerTurn && outcome === 'failed') outcome = 'reply-failed';
 
           // archive#3525: a stop this process initiated as internal machinery
           // (not a user action, not an unattended mid-turn death) armed this
@@ -504,7 +514,9 @@ export function wireTurnCompletionNotifications(
           // reclaimed later by the leak-prevention timer, never by a real
           // event) and always schedules normally.
           if (
-            (outcome === 'failed' || outcome === 'stopped') &&
+            (outcome === 'failed' ||
+              outcome === 'reply-failed' ||
+              outcome === 'stopped') &&
             orchestrationService.consumeInternalStopSuppression?.(event.turnId)
           ) {
             turnCompletionNotificationOps.add(1, {

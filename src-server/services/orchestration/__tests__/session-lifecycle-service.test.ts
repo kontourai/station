@@ -99,6 +99,25 @@ describe('session-lifecycle-service', () => {
       lifecycleState: 'completed',
       transitionReason: 'provider_turn_completed',
     });
+    // #2324 review F1: a provider turn that fails, likewise distinguishable.
+    const providerFailed: CanonicalRuntimeEvent = {
+      ...base,
+      eventId: 'p3',
+      method: 'runtime.error',
+      severity: 'error',
+      message: 'overloaded',
+      turnId: 'provider:p',
+      ...trigger,
+    };
+    expect(
+      projectSessionLifecycle({
+        session,
+        events: [...userDone, providerStarted, providerFailed],
+      }),
+    ).toMatchObject({
+      lifecycleState: 'failed',
+      transitionReason: 'provider_turn_failed',
+    });
     // The persisted stamp carries the same reason.
     expect(
       normalizeCanonicalRuntimeEventLifecycle(providerDone, 'running'),

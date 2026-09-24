@@ -1274,6 +1274,36 @@ describe('ClaudeAdapter', () => {
       await adapter.stopSession(threadId);
     });
 
+    test('F1: a provider turn that fails ends with a runtime.error carrying its trigger', async () => {
+      const controlled = createControlledMockQuery();
+      mockQuery.mockReturnValue(controlled);
+      const adapter = new ClaudeAdapter();
+      const events: any[] = [];
+      void (async () => {
+        for await (const event of adapter.streamEvents()) events.push(event);
+      })();
+      const threadId = 'provider-turn-fails';
+      await adapter.startSession({ provider: 'claude', threadId });
+      controlled.push(replyFrame(threadId));
+      await flush();
+      const started = events.find((event) => event.method === 'turn.started');
+      controlled.push({
+        ...providerResult(threadId),
+        subtype: 'error_during_execution',
+        is_error: true,
+        result: 'API Error: overloaded',
+      });
+      await flush();
+      expect(
+        events.find((event) => event.method === 'runtime.error'),
+      ).toMatchObject({
+        turnId: started.turnId,
+        code: 'engine-turn-failed',
+        metadata: { trigger: 'provider' },
+      });
+      await adapter.stopSession(threadId);
+    });
+
     test('Stop on a provider turn aborts it with its trigger, and a send after the Stop is accepted', async () => {
       const controlled = createControlledMockQuery();
       mockQuery.mockReturnValue(controlled);
