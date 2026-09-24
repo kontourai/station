@@ -14,17 +14,20 @@ import { join } from 'node:path';
  *
  * Each run therefore gets a private temp directory under
  * `<Station temp root>/fallow/`, removed when the run ends. Nothing is shared
- * between runs, so no run can remove a checkout another is reading. Sharing
- * would need to know which checkouts are in use, and fallow cannot say:
- * it writes those stamps once, at creation, never on reuse, and `.lock` is a
- * plain file rather than an OS lock. What sharing would save is small:
- * fallow's own per-worktree analysis cache (`.fallow/`) usually spares the
- * checkout entirely, and a miss costs about nine seconds.
+ * between runs. Sharing would need to know which checkouts are in use, and
+ * fallow cannot say: it writes those stamps once, at creation, never on reuse,
+ * and `.lock` is a plain file rather than an OS lock. What sharing would save
+ * is one checkout per audit whose base fallow's per-worktree analysis cache
+ * (`.fallow/`) has not seen: repeated runs against an unchanged base skip the
+ * checkout, but a new base (main moved, a fresh worktree) builds one, about
+ * nine seconds here.
  *
  * A run that is killed before its `finally` leaves its directory behind. Runs
  * are bounded at two minutes (`runFallowAnalysis`), so a run directory older
  * than {@link FALLOW_RUN_DIRECTORY_MAX_AGE_MS} belongs to no live run, and the
- * next run removes it.
+ * next run removes it. That rests on the bound being enforced: if the audit
+ * script itself dies and the fallow child it detached then hangs for over an
+ * hour, a later run would remove the hung child's directory.
  */
 
 /** Older than this, a run directory belongs to no live run (runs are bounded at two minutes). */
