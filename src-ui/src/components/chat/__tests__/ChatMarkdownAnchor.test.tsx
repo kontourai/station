@@ -539,7 +539,15 @@ describe('a link whose text names another host than it goes to', () => {
       ['https://evil.test/', 'docs.example', 'evil.test'],
     ] as const) {
       const anchor = mount(href, CONVERSATION, text);
-      expect(anchor.textContent, href).toBe(`${text} (${host})`);
+      const visible = anchor.cloneNode(true) as HTMLElement;
+      for (const hidden of visible.querySelectorAll('.sr-only'))
+        hidden.remove();
+      expect(visible.textContent, href).toBe(`${text} (${host})`);
+      // A screen reader hears where it goes, not the parenthetical.
+      expect(
+        screen.getByRole('link', { name: `${text}, goes to ${host}` }),
+        href,
+      ).toBe(anchor);
       expect(anchor.getAttribute('title'), href).toBe(new URL(href).href);
       cleanup();
     }
