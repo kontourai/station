@@ -93,7 +93,11 @@ export function sessionAttentionDisposition(
   if (subject.lifecycleState === 'failed' || isFirstSendFailure(subject)) {
     return { state: 'failed' };
   }
+  // #2540: `idle` is a finished turn on a live, reusable session — the same
+  // "done" to anyone reading attention as the terminal `completed` it
+  // replaced for ordinary turns.
   if (
+    subject.lifecycleState === 'idle' ||
     subject.lifecycleState === 'completed' ||
     subject.lifecycleState === 'canceled' ||
     subject.status === 'closed'

@@ -1,6 +1,6 @@
 import {
   foldedSessionLifecycleState,
-  isSessionLifecycleStateStopped,
+  isSessionLifecycleStateAtRest,
 } from '@kontourai/station-contracts/session-lifecycle';
 import type { OrchestrationSessionSummary } from '@kontourai/station-sdk';
 import type { ChatSession } from '../../types';
@@ -69,7 +69,7 @@ export function conversationContextBoundaryEligibility(input: {
     };
   }
   if (
-    isSessionLifecycleStateStopped(
+    isSessionLifecycleStateAtRest(
       foldedSessionLifecycleState(input.orchestrationSession.lifecycleState),
     )
   ) {
