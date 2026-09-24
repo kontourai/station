@@ -37,6 +37,8 @@ function mergePages(
 
 interface SessionEventWindowReader {
   events: OrchestrationSequencedEvent[];
+  /** Stable event-log head captured by the window read. */
+  watermark: number;
   /** Present for conversation reads when the newest lineage child is known. */
   currentSessionId?: string;
   /** Per-execution-Session Agent identity for historical transcript rows. */
@@ -372,6 +374,7 @@ export function useSessionEventWindow(
   );
   return {
     events: currentReader ? events : [],
+    watermark: currentReader ? watermark : 0,
     ...(currentReader && currentSessionId ? { currentSessionId } : {}),
     ...(currentReader && sessionLineage ? { sessionLineage } : {}),
     handoffs: currentReader ? handoffs : [],

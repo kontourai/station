@@ -43,6 +43,21 @@ describe('useStreamingContent', () => {
     vi.useRealTimers();
   });
 
+  test('a remounted row immediately reads buffered text from the store', () => {
+    store.publish({
+      session: {
+        streamingMessage: {
+          role: 'assistant',
+          content: 'already here',
+          contentParts: [{ type: 'text', content: 'already here' }],
+        },
+      },
+    });
+    const hook = renderHook(() => useStreamingContent('session'));
+    expect(hook.result.current.streamingText).toBe('already here');
+    expect(hook.result.current.hasContent).toBe(true);
+  });
+
   test('routes per-token orchestration tail parts through the 80ms text flush', () => {
     const hook = renderHook(() => useStreamingContent('session'));
 

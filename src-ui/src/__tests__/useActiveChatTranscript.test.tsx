@@ -55,6 +55,8 @@ vi.mock('@kontourai/station-sdk', async () => ({
 }));
 
 import { activeChatsStore } from '../contexts/active-chats-store';
+import { handleOrchestrationEvent } from '../hooks/orchestration/eventHandlers';
+import { resetSequencedLiveEventsForTests } from '../hooks/orchestration/sequencedLiveEvents';
 import { handleTurnStartedEvent } from '../hooks/orchestration/turnHandlers';
 import { useActiveChatTranscript } from '../hooks/orchestration/useActiveChatTranscript';
 import { buildOutgoingUserMessage } from '../hooks/useActiveChatSessions.helpers';
@@ -79,6 +81,183 @@ const event = (eventId: string, method: string, fields = {}) => ({
 });
 
 describe('useActiveChatTranscript', () => {
+  test('stitches a live delta after the window watermark into one projected open turn', async () => {
+    const id = 'stitch-open-turn';
+    const apiBase = 'http://station-stitch.test';
+    activeChatsStore.initChat(id, {
+      agentSlug: 'codex',
+      agentName: 'Codex',
+      title: 'Stitch',
+      orchestrationSessionStarted: true,
+    });
+    activeChatsStore.updateChat(id, {
+      orchestrationTurnOpen: true,
+      openTurnId: 'turn-stitch',
+      openTurnShellSuperseded: true,
+    });
+    fetchWindow.mockResolvedValueOnce({
+      protocolVersion: 1,
+      watermark: 2,
+      hasMore: false,
+      events: [
+        {
+          ...event('e1', 'turn.started', {
+            threadId: id,
+            turnId: 'turn-stitch',
+            prompt: 'Question',
+          }),
+          sequence: 1,
+        },
+        {
+          ...event('e2', 'content.text-delta', {
+            threadId: id,
+            turnId: 'turn-stitch',
+            itemId: 'text',
+            delta: 'A',
+          }),
+          sequence: 2,
+        },
+      ],
+    });
+    const session = () =>
+      ({
+        ...baseSession,
+        ...activeChatsStore.getSnapshot()[id],
+        id,
+      }) as ChatSession;
+    const view = renderHook(
+      ({ chat }) => useActiveChatTranscript(apiBase, chat),
+      {
+        initialProps: { chat: session() },
+      },
+    );
+    try {
+      await waitFor(() => expect(view.result.current.settled).toBe(true));
+      act(() => {
+        handleOrchestrationEvent(
+          apiBase,
+          {
+            ...event('e3', 'content.text-delta', {
+              threadId: id,
+              turnId: 'turn-stitch',
+              itemId: 'text',
+              delta: 'B',
+            }).event,
+          } as Parameters<typeof handleOrchestrationEvent>[1],
+          undefined,
+          undefined,
+          3,
+        );
+      });
+      view.rerender({ chat: session() });
+      await waitFor(() =>
+        expect(
+          view.result.current.messages
+            .filter((row) => row.role === 'assistant')
+            .map((row) => row.content)
+            .join(''),
+        ).toBe('AB'),
+      );
+      expect(view.result.current.openTurnProjected).toBe(true);
+      fetchWindow.mockResolvedValueOnce({
+        protocolVersion: 1,
+        watermark: 3,
+        hasMore: false,
+        events: [
+          {
+            ...event('e1', 'turn.started', {
+              threadId: id,
+              turnId: 'turn-stitch',
+              prompt: 'Question',
+            }),
+            sequence: 1,
+          },
+          {
+            ...event('e2', 'content.text-delta', {
+              threadId: id,
+              turnId: 'turn-stitch',
+              itemId: 'text',
+              delta: 'A',
+            }),
+            sequence: 2,
+          },
+          {
+            ...event('e3', 'content.text-delta', {
+              threadId: id,
+              turnId: 'turn-stitch',
+              itemId: 'text',
+              delta: 'B',
+            }),
+            sequence: 3,
+          },
+        ],
+      });
+      act(() =>
+        activeChatsStore.updateChat(id, { orchestrationHistoryRevision: 1 }),
+      );
+      view.rerender({ chat: session() });
+      await waitFor(() => expect(fetchWindow).toHaveBeenCalledTimes(2));
+      expect(
+        view.result.current.messages
+          .filter((row) => row.role === 'assistant')
+          .map((row) => row.content)
+          .join(''),
+      ).toBe('AB');
+      view.unmount();
+      fetchWindow.mockResolvedValueOnce({
+        protocolVersion: 1,
+        watermark: 3,
+        hasMore: false,
+        events: [
+          {
+            ...event('e1', 'turn.started', {
+              threadId: id,
+              turnId: 'turn-stitch',
+              prompt: 'Question',
+            }),
+            sequence: 1,
+          },
+          {
+            ...event('e2', 'content.text-delta', {
+              threadId: id,
+              turnId: 'turn-stitch',
+              itemId: 'text',
+              delta: 'A',
+            }),
+            sequence: 2,
+          },
+          {
+            ...event('e3', 'content.text-delta', {
+              threadId: id,
+              turnId: 'turn-stitch',
+              itemId: 'text',
+              delta: 'B',
+            }),
+            sequence: 3,
+          },
+        ],
+      });
+      const remounted = renderHook(() =>
+        useActiveChatTranscript(apiBase, session()),
+      );
+      try {
+        await waitFor(() =>
+          expect(remounted.result.current.settled).toBe(true),
+        );
+        expect(
+          remounted.result.current.messages
+            .filter((row) => row.role === 'assistant')
+            .map((row) => row.content)
+            .join(''),
+        ).toBe('AB');
+      } finally {
+        remounted.unmount();
+      }
+    } finally {
+      view.unmount();
+      activeChatsStore.removeChat(id);
+    }
+  });
   test('mounted replay retains settled rows without history or checkpoint requests', async () => {
     const { registerReplayThread, unregisterReplayThread } = await import(
       '../hooks/orchestration/replay/replay-registry'
@@ -362,7 +541,9 @@ describe('useActiveChatTranscript', () => {
   });
 
   beforeEach(() => {
+    resetSequencedLiveEventsForTests();
     vi.clearAllMocks();
+    fetchWindow.mockReset();
     recoveryBudget.clear();
     fetchCapability.mockResolvedValue(true);
     fetchConversationWindow.mockImplementation((...args: unknown[]) =>
@@ -474,14 +655,17 @@ describe('useActiveChatTranscript', () => {
 
     expect(result.current.messages.map((message) => message.content)).toEqual([
       'current question',
+      'live answer',
     ]);
     expect(result.current.messages[0]?.id).toBe('e3:user');
+    expect(result.current.openTurnProjected).toBe(true);
 
     await act(async () => result.current.loadOlder());
     expect(result.current.messages.map((message) => message.content)).toEqual([
       'older question',
       'older answer',
       'current question',
+      'live answer',
     ]);
     expect(fetchWindow).toHaveBeenNthCalledWith(
       2,
@@ -546,6 +730,14 @@ describe('useActiveChatTranscript', () => {
       useActiveChatTranscript('http://station.test', session),
     );
 
+    await waitFor(() => expect(result.current.settled).toBe(true));
+    expect(fetchWindow).toHaveBeenCalledTimes(1);
+    expect(result.current.events.map((item) => item.event.eventId)).toEqual([
+      'e1',
+      'e2',
+      'e3',
+      'e4',
+    ]);
     await waitFor(() => expect(result.current.messages).toHaveLength(4));
     expect(
       result.current.messages.map((message) => [
@@ -2119,7 +2311,9 @@ describe('useActiveChatTranscript', () => {
 // prompt and nothing else.
 describe('useActiveChatTranscript live failure marker (UX audit V3)', () => {
   beforeEach(() => {
+    resetSequencedLiveEventsForTests();
     vi.clearAllMocks();
+    fetchWindow.mockReset();
     recoveryBudget.clear();
     fetchCapability.mockResolvedValue(true);
   });

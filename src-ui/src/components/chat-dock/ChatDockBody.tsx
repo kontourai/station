@@ -942,6 +942,7 @@ export function ChatDockBody({
           pending={<SkeletonList count={4} label="Loading conversation" />}
           componentProps={{
             activeSession: renderedSession,
+            suppressStreamingRow: transcript.openTurnProjected,
             fontSize: chatFontSize,
             layoutHeight: dockHeight,
             showReasoning,

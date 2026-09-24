@@ -1,7 +1,14 @@
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { getJson, readEnvelopeOrThrow } from '@kontourai/station-sdk';
 import { projectRuntimeEventsToMessages } from '@kontourai/station-shared/runtime-event-projection';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react';
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import type { ChatMessage, ChatSession } from '../../types';
 import { serverTurnLive } from '../../utils/conversation-activity';
@@ -11,6 +18,10 @@ import { extractUIBlocks } from '../../utils/uiBlocks';
 import { upsertToolResultBlocks } from './messageParts';
 import { requestReplayHistory, useReplayHistory } from './replay/history';
 import { isReplayThread } from './replay/replay-registry';
+import {
+  readSequencedLiveEvents,
+  subscribeSequencedLiveEvents,
+} from './sequencedLiveEvents';
 import { parseTurnStartedAt } from './turnHandlers';
 import { useSessionEventWindow } from './useSessionEventWindow';
 
@@ -170,6 +181,59 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
           }
         : serverWindow,
     [replayHistory, serverWindow, session.id],
+  );
+  const subscribeLive = useCallback(
+    (listener: () => void) => subscribeSequencedLiveEvents(apiBase, listener),
+    [apiBase],
+  );
+  const readLive = useCallback(
+    () => readSequencedLiveEvents(apiBase),
+    [apiBase],
+  );
+  const liveEvents = useSyncExternalStore(subscribeLive, readLive, readLive);
+  const windowWatermark = replay
+    ? Number.MAX_SAFE_INTEGER
+    : serverWindow.watermark;
+  const stitchedEvents = useMemo(() => {
+    if (replay) return window.events;
+    const watermark =
+      windowWatermark ??
+      Math.max(0, ...window.events.map((item) => item.sequence));
+    const threadIds = new Set([
+      session.id,
+      session.currentSessionId,
+      ...(window.sessionLineage ?? []).map((entry) => entry.sessionId),
+    ]);
+    const events = [...window.events];
+    const persistedIds = new Set(
+      window.events.map((item) => item.event.eventId).filter(Boolean),
+    );
+    for (const item of liveEvents) {
+      if (item.sequence <= watermark || !threadIds.has(item.event.threadId))
+        continue;
+      if (persistedIds.has(item.event.eventId)) continue;
+      events.push(item);
+    }
+    return events.sort((left, right) => left.sequence - right.sequence);
+  }, [
+    replay,
+    window.events,
+    windowWatermark,
+    window.sessionLineage,
+    liveEvents,
+    session.id,
+    session.currentSessionId,
+  ]);
+  const projectedOpenThread =
+    session.conversationActivity?.openTurn?.threadId ??
+    session.currentSessionId ??
+    session.id;
+  const openTurnProjected = Boolean(
+    enabled &&
+      !replay &&
+      (session.conversationActivity?.openTurn ||
+        session.orchestrationTurnOpen) &&
+      openTurnInWindow(stitchedEvents, projectedOpenThread),
   );
   const checkpointRevision = session.orchestrationHistoryRevision ?? 0;
 
@@ -333,7 +397,7 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
       (window.sessionLineage ?? []).map((entry) => [entry.sessionId, entry]),
     );
     const projected = projectRuntimeEventsToMessages(
-      window.events
+      stitchedEvents
         .map((item) => item.event)
         .filter((event): event is CanonicalRuntimeEvent =>
           Boolean(event.eventId),
@@ -356,6 +420,7 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
         (message) =>
           !(
             session.orchestrationTurnOpen &&
+            !openTurnProjected &&
             !session.openTurnShellSuperseded &&
             message.role === 'assistant' &&
             message.metadata?.turnId === session.openTurnId
@@ -466,7 +531,7 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
     // that row IS its canonical copy. (`openTurnId` is not the key: across a
     // gap it still names the last turn this connection saw start.)
     const windowOpenTurnId = active
-      ? openTurnInWindow(window.events, executionSessionId)?.turnId
+      ? openTurnInWindow(stitchedEvents, executionSessionId)?.turnId
       : undefined;
     const unclaimedUser = (candidate: ChatMessage, index: number) =>
       !claimedProjectedUsers.has(index) && candidate.role === 'user';
@@ -680,12 +745,14 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
     session.openTurnShellSuperseded,
     session.orchestrationStatus,
     session.orchestrationTurnOpen,
+    openTurnProjected,
     session.status,
     session.conversationActivity,
     session.sendAwaitingTurnStart,
     session.stopSettledTurnId,
     changedFilesByTurn,
     window.events,
+    stitchedEvents,
     window.sessionLineage,
     window.handoffs,
     window.contextBoundaries,
@@ -693,7 +760,9 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
 
   return {
     ...window,
+    events: stitchedEvents,
     enabled,
+    openTurnProjected,
     messages: enabled
       ? messages
       : EMPTY_MESSAGES === session.messages

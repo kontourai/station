@@ -4,21 +4,17 @@ import { join } from 'node:path';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { Hono } from 'hono';
 import { afterEach, expect, test, vi } from 'vitest';
-import { createOrchestrationRoutes } from '../../../src-server/routes/orchestration/orchestration.js';
-import { EventBus } from '../../../src-server/services/orchestration/event-bus.js';
-import { EventStore } from '../../../src-server/services/orchestration/event-store.js';
-import { OrchestrationService } from '../../../src-server/services/orchestration/orchestration-service.js';
 
 vi.mock('../../../src-server/constants.js', async (load) => ({
-  ...(await load<typeof import('../../../src-server/constants.js')>()),
+  ...(await load<Record<string, unknown>>()),
   ORCHESTRATION_STREAM_RESUME_GAP_THRESHOLD: 5,
 }));
 
 const apiBase = 'http://sync-property.test';
 const userId = 'sync-property-user';
 const roots: string[] = [];
-const services: OrchestrationService[] = [];
-const stores: EventStore[] = [];
+const services: Array<{ shutdown(): Promise<unknown> }> = [];
+const stores: Array<{ close(): void }> = [];
 const requests: Array<{ url: string; headers: Headers }> = [];
 
 afterEach(async () => {
@@ -29,7 +25,29 @@ afterEach(async () => {
     rmSync(root, { recursive: true, force: true });
 });
 
-function setup() {
+async function setup() {
+  // Vitest loads the real server modules at runtime. This cross-runtime
+  // harness lives in the UI test lane, whose TypeScript project does not
+  // compile server internals or provide their Node-only ambient types.
+  const [storeModule, busModule, serviceModule, routeModule] =
+    await Promise.all([
+      vi.importActual<any>(
+        '../../../src-server/services/orchestration/event-store.js',
+      ),
+      vi.importActual<any>(
+        '../../../src-server/services/orchestration/event-bus.js',
+      ),
+      vi.importActual<any>(
+        '../../../src-server/services/orchestration/orchestration-service.js',
+      ),
+      vi.importActual<any>(
+        '../../../src-server/routes/orchestration/orchestration.js',
+      ),
+    ]);
+  const { EventStore } = storeModule;
+  const { EventBus } = busModule;
+  const { OrchestrationService } = serviceModule;
+  const { createOrchestrationRoutes } = routeModule;
   vi.stubGlobal('localStorage', { getItem: () => null, setItem: () => {} });
   const root = mkdtempSync(join(tmpdir(), 'station-sync-property-'));
   roots.push(root);
@@ -125,12 +143,11 @@ function mulberry32(seed: number) {
 }
 
 test('seeded clients converge through live, replay, and snapshot reconnects', async () => {
-  const { store, publish } = setup();
+  const { store, publish } = await setup();
   const conversationId = 'sync-root';
   const createdAt = '2026-09-24T00:00:00.000Z';
   store.upsertSession({
     provider: 'claude',
-    conversationId,
     threadId: conversationId,
     status: 'ready',
     createdAt,
@@ -313,7 +330,7 @@ test('seeded clients converge through live, replay, and snapshot reconnects', as
   // A restored database can have the same numeric sequence as an older one.
   // The old cursor is then valid by number but foreign by durable identity.
   const oldEpoch = store.streamEpoch();
-  const replacement = setup();
+  const replacement = await setup();
   replacement.publish({
     eventId: 'replacement-configured',
     provider: 'claude',
