@@ -2473,3 +2473,68 @@ describe('settleUnresolvedClaudeToolCalls (station#1558)', () => {
     expect(publish).not.toHaveBeenCalled();
   });
 });
+
+describe('#2324 turn ledger attribution with command lifecycle', () => {
+  test('a reply frame naming no user message, while a send is only queued, is the engine’s own turn — never the queued send', () => {
+    const publish = vi.fn();
+    const record = makeRecord(undefined, { dispatched: [] });
+    const map = (message: Record<string, unknown>) =>
+      mapClaudeSdkMessage({
+        provider: 'claude',
+        record,
+        publish,
+        message: {
+          session_id: record.session.threadId,
+          uuid: `m-${Math.random()}`,
+          ...message,
+        } as unknown as SDKMessage,
+      });
+    // The first turn: dispatched, started, init (which declares lifecycle
+    // messages), result.
+    recordClaudeTurnDispatched(record, 'turn-0');
+    map({
+      type: 'command_lifecycle',
+      command_uuid: 'turn-0',
+      state: 'started',
+    });
+    map({
+      type: 'system',
+      subtype: 'init',
+      cwd: '/w',
+      model: 'm',
+      capabilities: ['msg_lifecycle_v1'],
+    });
+    map({
+      type: 'result',
+      subtype: 'success',
+      is_error: false,
+      num_turns: 1,
+      result: 'done',
+      stop_reason: 'end_turn',
+      usage: { input_tokens: 1, output_tokens: 1 },
+      user_message_uuid: 'turn-0',
+    });
+    // A send is queued; the engine has not started it.
+    recordClaudeTurnDispatched(record, 'turn-u');
+    expect(record.activeTurnId).toBeUndefined();
+    map({
+      type: 'stream_event',
+      parent_tool_use_id: null,
+      event: {
+        type: 'content_block_delta',
+        index: 0,
+        delta: { type: 'text_delta', text: 'finished' },
+      },
+    });
+    const started = publish.mock.calls
+      .map(([event]) => event)
+      .filter((event) => event.method === 'turn.started');
+    expect(started).toEqual([
+      expect.objectContaining({ metadata: { trigger: 'provider' } }),
+    ]);
+    expect(record.activeTurnId).toBe(started[0].turnId);
+    expect(record.sdkTurns?.queued.map((turn) => turn.turnId)).toEqual([
+      'turn-u',
+    ]);
+  });
+});
