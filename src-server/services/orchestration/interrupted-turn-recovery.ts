@@ -276,7 +276,12 @@ export class InterruptedTurnRecovery {
         // died) has no `turn.started` of its own — the start is published
         // only when the engine starts it. A newer start on the thread is then
         // not "the thread moved on past it": that send still needs its
-        // terminal and banner, or it vanishes without a trace.
+        // terminal and banner, or it vanishes without a trace. Disclosed:
+        // if a NEWER turn is genuinely running by the time this runs (the
+        // same window the moved-on check above exists for), that send's
+        // banner still lands and forces needs_input over it — accepted
+        // because the alternative loses the user's message silently, and
+        // consume runs once, at boot, before live traffic normally arrives.
         const ownTurnStarted =
           record.providerTurnId !== undefined &&
           eventStore

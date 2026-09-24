@@ -1859,6 +1859,13 @@ export class ClaudeAdapter implements ProviderAdapterShape {
    * withdrawn (it was already taken for the next turn, or the SDK has no
    * such method) the Stop is marked on its entry: the ledger publishes its
    * start and abort together and interrupts the engine the moment it starts.
+   *
+   * Reached only when a Stop names the queued send's own id — Station's
+   * cleanup of a send whose caller aborted after the engine accepted it, or
+   * a recovered turn's interrupt. A user or API Stop while a send is queued
+   * behind a turn the engine opened itself names the OPEN turn: it stops that
+   * turn, and the SDK then runs the queued send (a plain interrupt leaves
+   * queued sends queued, `still_queued`).
    */
   private async stopQueuedTurn(
     record: ClaudeSessionRecord,

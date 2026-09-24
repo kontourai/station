@@ -92,15 +92,23 @@ function pushBeforeRunningTurnInit(lines: FixtureLine[]): FixtureLine[] {
 function controlledQuery() {
   const pending: unknown[] = [];
   let wake: (() => void) | null = null;
+  let ended = false;
   return {
     push(message: unknown) {
       pending.push(message);
       wake?.();
       wake = null;
     },
+    /** The engine process ends: the SDK iterator finishes. */
+    end() {
+      ended = true;
+      wake?.();
+      wake = null;
+    },
     async *[Symbol.asyncIterator]() {
       for (;;) {
         while (pending.length === 0) {
+          if (ended) return;
           await new Promise<void>((resolve) => {
             wake = resolve;
           });
@@ -155,7 +163,16 @@ describe('#2324 review H1: provider-triggered turns through OrchestrationService
     mockQuery.mockReset();
   });
 
-  async function run(lines: FixtureLine[]) {
+  async function run(
+    lines: FixtureLine[],
+    options: {
+      /** End the engine right after the first message this matches. */
+      endAfter?: (
+        message: Record<string, unknown>,
+        sends: ReadonlyMap<string, string>,
+      ) => boolean;
+    } = {},
+  ) {
     const query = controlledQuery();
     mockQuery.mockReturnValue(query);
     const adapter = new ClaudeAdapter();
@@ -223,6 +240,11 @@ describe('#2324 review H1: provider-triggered turns through OrchestrationService
       if (message.subtype === 'init') message.cwd = directory;
       query.push(message);
       await settle();
+      if (options.endAfter?.(message, sends)) {
+        query.end();
+        await settle();
+        break;
+      }
       // The first reply frame that names U2: U2 is replying now.
       const u2 = sends.get('U2');
       if (
@@ -250,7 +272,17 @@ describe('#2324 review H1: provider-triggered turns through OrchestrationService
       threadId,
       INTERNAL_SESSION_READ_SCOPE,
     );
-    return { service, threadId, sends, midpoint, events: persisted(), detail };
+    return {
+      service,
+      threadId,
+      sends,
+      midpoint,
+      events: persisted(),
+      detail,
+      possibleEffect: eventStore
+        .sessionTurnBoundaryAuthority()
+        .hasPossibleEffect(threadId),
+    };
   }
 
   const turnFacts = (events: CanonicalRuntimeEvent[]) =>
@@ -319,4 +351,26 @@ describe('#2324 review H1: provider-triggered turns through OrchestrationService
       expect(detail?.session.conversationActivity?.openTurn).toBeUndefined();
     });
   }
+
+  test('M-1: a send still queued when the engine ends reaches the transcript with its message, then ends, and its boundary retires', async () => {
+    const { sends, events, possibleEffect } = await run(
+      pushBeforeRunningTurnInit(loadFixture('send-races-provider-turn-start')),
+      {
+        // The engine's own reply has begun; U2 is still queued behind it.
+        endAfter: (message, sent) =>
+          sent.has('U2') &&
+          message.type === 'stream_event' &&
+          message.user_message_uuid === undefined,
+      },
+    );
+    const u2 = sends.get('U2')!;
+    const u2Events = events.filter((event) => event.turnId === u2);
+    expect(u2Events.map((event) => event.method)).toEqual([
+      'turn.started',
+      'turn.aborted',
+    ]);
+    expect(u2Events[0]).toMatchObject({ prompt: 'U2' });
+    expect(u2Events[1]).toMatchObject({ reason: 'engine-ended-before-start' });
+    expect(possibleEffect).toEqual({ kind: 'available', active: false });
+  });
 });

@@ -578,7 +578,9 @@ export type ClaudeResultTarget =
  * Which turn a `result` closes. Its user uuids name the turn(s) it answers;
  * a result naming none is the running turn's (a provider turn's carries
  * `origin: task-notification`), and with nothing running, the oldest queued
- * send's — the SDK runs prompts in the order they were pushed. Resolved
+ * send's — the SDK runs prompts in the order they were pushed — unless the
+ * CLI reports command lifecycle, in which case a queued send has not started
+ * and the result closes nothing. Resolved
  * WITHOUT changing the ledger; {@link settleClaudeResultTarget} removes it.
  */
 export function resolveClaudeResultTarget(
@@ -598,6 +600,9 @@ export function resolveClaudeResultTarget(
     return { kind: 'turn', turn, folded: named.slice(0, -1) };
   }
   if (ledger.running) return { kind: 'turn', turn: ledger.running, folded: [] };
+  // With lifecycle messages a queued send has provably not started, so a
+  // result naming nobody is not its result (#2324 delta review).
+  if (ledger.lifecycleMessages === true) return { kind: 'none' };
   const head = ledger.queued[0];
   return head ? { kind: 'turn', turn: head, folded: [] } : { kind: 'none' };
 }
@@ -648,13 +653,46 @@ export function observeClaudeEmptyResult(context: ClaudeSdkTurnContext): void {
 }
 
 /**
+ * #2324 delta review M-1: sends the engine never started when it stopped
+ * running anything. Each held start is published — it carries the user's
+ * message, which must reach the durable transcript — and then its
+ * `turn.aborted`, so the send has a terminal and its boundary row retires. A
+ * send whose start was already published (or never held) gets the abort
+ * alone.
+ */
+const ENGINE_ENDED_BEFORE_START = 'engine-ended-before-start';
+
+function endQueuedClaudeTurns(context: ClaudeSdkTurnContext): void {
+  const ledger = claudeSdkTurns(context.record);
+  const queued = ledger.queued;
+  ledger.queued = [];
+  for (const turn of queued) {
+    if (turn.startEvent && !turn.startPublished) {
+      turn.startPublished = true;
+      context.publish({ ...turn.startEvent, createdAt: context.createdAt });
+    }
+    context.publish({
+      eventId: crypto.randomUUID(),
+      provider: context.provider,
+      threadId: context.record.session.threadId,
+      createdAt: context.createdAt,
+      turnId: turn.turnId,
+      method: 'turn.aborted',
+      reason: ENGINE_ENDED_BEFORE_START,
+    });
+  }
+}
+
+/**
  * The SDK iterator ended: a turn the engine opened on its own will never
- * report its end, so it is closed here. Dispatched turns are left as they
- * are — their terminal comes from the failure that ended the iterator or
+ * report its end, so it is closed here, and a send still queued is ended
+ * (see {@link endQueuedClaudeTurns}). The running dispatched turn is left as
+ * it is — its terminal comes from the failure that ended the iterator or
  * from `session.exited`, as before this ledger existed.
  */
 export function endClaudeProviderTurn(context: ClaudeSdkTurnContext): void {
   closeProviderTurnWithoutResult(context, 'session-ended');
+  endQueuedClaudeTurns(context);
   claudeSdkTurns(context.record).providerTurnPending = false;
 }
 
@@ -664,8 +702,8 @@ export function clearClaudeSdkTurns(
   reason: ProviderTurnCloseReason = 'session-ended',
 ): void {
   closeProviderTurnWithoutResult(context, reason);
+  endQueuedClaudeTurns(context);
   const ledger = claudeSdkTurns(context.record);
-  ledger.queued = [];
   ledger.steers.clear();
   ledger.startedAwaitingInit = false;
   ledger.providerTurnPending = false;

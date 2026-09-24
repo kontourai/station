@@ -564,6 +564,27 @@ describe('drainQueuedMessageOnTurnCompleted (#613)', () => {
     expect(activeChatsStore.getSnapshot()[threadId].queuedMessages).toEqual([]);
   });
 
+  test('#2324 delta review: a pending provider-turn retry is dropped when the chat was removed before it fires', async () => {
+    activeChatsStore.updateChat(threadId, {
+      queuedMessages: ['after the reply'],
+    });
+    sendExecutionMessageMock.mockRejectedValueOnce(
+      new ChatHttpError(
+        400,
+        'The agent is replying on its own; your message will be sent when it finishes.',
+        'provider_turn_in_progress',
+      ),
+    );
+    drainQueuedMessageOnTurnCompleted('http://api.test', threadId);
+    await vi.advanceTimersByTimeAsync(100);
+    await vi.dynamicImportSettled();
+    expect(sendExecutionMessageMock).toHaveBeenCalledTimes(1);
+    activeChatsStore.removeChat(threadId);
+    await vi.advanceTimersByTimeAsync(1_100);
+    await vi.dynamicImportSettled();
+    expect(sendExecutionMessageMock).toHaveBeenCalledTimes(1);
+  });
+
   test('a 401 auth refusal is requeued — re-pairing recovers it', async () => {
     activeChatsStore.updateChat(threadId, {
       queuedMessages: ['auth-blocked message'],

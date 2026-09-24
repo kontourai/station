@@ -458,6 +458,69 @@ describe('#2324 a turn the engine opened on its own', () => {
   });
 });
 
+describe('#2324 delta review M-2: a bare abort for a queued send', () => {
+  test('leaves the open provider turn streaming, and only ends the waiting send', async () => {
+    const client = await loadClient();
+    client.applyOrchestrationSnapshot(reloadSnapshot(closedActivity(700)));
+    const at = STARTED_AT;
+    client.handleOrchestrationEvent(
+      API,
+      {
+        eventId: 'p-start',
+        provider: 'claude',
+        threadId: CONVERSATION,
+        createdAt: at,
+        method: 'turn.started',
+        turnId: 'provider:p',
+        metadata: { trigger: 'provider' },
+      },
+      undefined,
+    );
+    client.handleOrchestrationEvent(
+      API,
+      {
+        eventId: 'p-text',
+        provider: 'claude',
+        threadId: CONVERSATION,
+        createdAt: at,
+        method: 'content.text-delta',
+        turnId: 'provider:p',
+        itemId: 'p-item',
+        delta: 'finished the job',
+      },
+      undefined,
+    );
+    client.store.updateChat(CONVERSATION, {
+      sendAwaitingTurnStart: true,
+      pendingClientTurnId: 'client-turn-u',
+    });
+    const before = chatOf(client);
+    expect(before.streamingMessage?.content).toContain('finished the job');
+    // The queued send is withdrawn: its abort names only it.
+    client.handleOrchestrationEvent(
+      API,
+      {
+        eventId: 'u-abort',
+        provider: 'claude',
+        threadId: CONVERSATION,
+        createdAt: at,
+        method: 'turn.aborted',
+        turnId: 'queued-u',
+        reason: 'interrupted',
+      },
+      undefined,
+    );
+    const after = chatOf(client);
+    expect(after.streamingMessage?.content).toContain('finished the job');
+    expect(after.openTurnId).toBe('provider:p');
+    expect(after.orchestrationTurnOpen).toBe(true);
+    expect(after.status).toBe('sending');
+    expect(after.error).toBeUndefined();
+    expect(after.sendAwaitingTurnStart).toBeUndefined();
+    expect(after.pendingClientTurnId).toBeUndefined();
+  });
+});
+
 describe('#2309 review F5: chatSessionIsLive honours a settled Stop', () => {
   test('the stopped turn does not keep the session live for the send path', async () => {
     const client = await loadClient();
