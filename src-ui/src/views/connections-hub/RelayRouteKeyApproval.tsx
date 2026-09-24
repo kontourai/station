@@ -36,6 +36,7 @@ export function RelayRouteKeyApproval({
   const [approvalKeyId, setApprovalKeyId] = useState('');
   const [separateChannelConfirmed, setSeparateChannelConfirmed] =
     useState(false);
+  const [rotationReview, setRotationReview] = useState(false);
   const [revokeKeyId, setRevokeKeyId] = useState('');
   const [message, setMessage] = useState<string | null>(null);
   const [surface, setSurface] = useState<RelayKeyApprovalSurface | null>(null);
@@ -98,6 +99,8 @@ export function RelayRouteKeyApproval({
     onSuccess: async () => {
       activeAttemptId.current += 1;
       hasPendingSession.current = false;
+      setRotationReview(false);
+      setSurface(null);
       setInvitation('');
       invitationAttempt.current = null;
       setConfirmationCode('');
@@ -143,6 +146,7 @@ export function RelayRouteKeyApproval({
       }),
     onSuccess: async () => {
       hasPendingSession.current = false;
+      setRotationReview(false);
       setConfirmationCode('');
       setApprovalKeyId('');
       setSeparateChannelConfirmed(false);
@@ -182,7 +186,11 @@ export function RelayRouteKeyApproval({
   useEffect(() => {
     if (candidate) hasPendingSession.current = true;
   }, [candidate]);
-  const busy = begin.isPending || approve.isPending || revoke.isPending;
+  const busy =
+    begin.isPending ||
+    approve.isPending ||
+    revoke.isPending ||
+    cancel.isPending;
   const candidateMatchesRoute =
     candidate?.brokerOrigin === brokerOrigin &&
     candidate.stationId === stationId &&
@@ -213,7 +221,10 @@ export function RelayRouteKeyApproval({
           : 'mismatch'
         : 'untrusted';
   const canStartEnrollment =
-    trustStatusCurrent && (status === 'untrusted' || status === 'revoked');
+    trustStatusCurrent &&
+    (status === 'untrusted' ||
+      status === 'revoked' ||
+      (status === 'approved' && rotationReview));
   const canApprove = Boolean(
     candidate &&
       candidateMatchesRoute &&
@@ -258,6 +269,22 @@ export function RelayRouteKeyApproval({
         'Could not copy install proof. Select the public values above and share them with the Station operator.',
       );
     }
+  }
+  function cancelKeyReview() {
+    setRotationReview(false);
+    setSurface(null);
+    setInvitation('');
+    setConfirmationCode('');
+    setApprovalKeyId('');
+    setSeparateChannelConfirmed(false);
+    if (hasPendingSession.current) {
+      activeAttemptId.current += 1;
+      void cancel.mutateAsync().catch(() => undefined);
+      return;
+    }
+    setMessage(
+      'New Station key review cancelled. The currently approved key remains trusted.',
+    );
   }
 
   return (
@@ -332,6 +359,12 @@ export function RelayRouteKeyApproval({
           </section>
         )}
 
+      {status === 'approved' && !rotationReview && !candidate && (
+        <Button disabled={busy} onClick={() => setRotationReview(true)}>
+          Review new Station key
+        </Button>
+      )}
+
       {canStartEnrollment && !candidate && !surfaceMatchesRoute && (
         <div className="relay-route-key-approval__prepare">
           <p className="connections-computers__note">
@@ -347,6 +380,15 @@ export function RelayRouteKeyApproval({
           >
             Prepare native Station identity
           </Button>
+          {status === 'approved' && rotationReview && (
+            <Button
+              variant="danger-outline"
+              disabled={cancel.isPending}
+              onClick={cancelKeyReview}
+            >
+              Cancel key review
+            </Button>
+          )}
         </div>
       )}
       {canStartEnrollment && !candidate && surfaceMatchesRoute && surface && (
@@ -426,9 +468,21 @@ export function RelayRouteKeyApproval({
           {begin.isPending && (
             <Button
               variant="danger-outline"
-              onClick={() => void cancel.mutateAsync().catch(() => undefined)}
+              onClick={() => {
+                if (rotationReview) cancelKeyReview();
+                else void cancel.mutateAsync().catch(() => undefined);
+              }}
             >
               Cancel key discovery
+            </Button>
+          )}
+          {status === 'approved' && rotationReview && !begin.isPending && (
+            <Button
+              variant="danger-outline"
+              disabled={cancel.isPending}
+              onClick={cancelKeyReview}
+            >
+              Cancel key review
             </Button>
           )}
         </section>

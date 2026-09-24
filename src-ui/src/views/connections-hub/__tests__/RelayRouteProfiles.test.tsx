@@ -210,6 +210,142 @@ describe('RelayRouteProfiles', () => {
     ).toBeNull();
   });
 
+  test('reveals rotation setup only on request and keeps the current key trusted until a new key is approved', async () => {
+    const rotatedCandidate = {
+      pendingId: 'pending-rotation',
+      profileName: 'Home Station',
+      brokerOrigin: 'https://broker.example',
+      stationId,
+      enrollmentId,
+      generation: 8,
+      keyId: 'sha256:rotated-station-key',
+      confirmationCode: 'ABCD1234EFGH5678',
+      expiresAt: Date.now() + 60_000,
+      trustRevision: 1,
+      status: 'pending' as const,
+    };
+    const approvedOldKey = {
+      status: 'approved',
+      trustRevision: 1,
+      profileName: 'Home Station',
+      brokerOrigin: 'https://broker.example',
+      stationId,
+      enrollmentId,
+      generation: 7,
+      keyId: 'sha256:old-station-key',
+    };
+    const approvedNewKey = {
+      ...approvedOldKey,
+      trustRevision: 2,
+      generation: 8,
+      keyId: rotatedCandidate.keyId,
+    };
+    mocks.keyStatus.mockResolvedValue(approvedOldKey);
+    mocks.pendingKey.mockResolvedValue(null);
+    mocks.prepareKey.mockResolvedValue({
+      profileName: 'Home Station',
+      brokerOrigin: 'https://broker.example',
+      stationId,
+      enrollmentId,
+      appIdentifier: 'io.kontourai.station',
+      channel: 'stable',
+      clientInstanceId: 'install-1',
+      keyThumbprint: 'sha256:install-proof',
+      publicKey: { kty: 'EC', crv: 'P-256', x: 'x', y: 'y' },
+    });
+    mocks.beginKey.mockImplementation(async () => {
+      mocks.pendingKey.mockResolvedValue(rotatedCandidate);
+      return rotatedCandidate;
+    });
+    mocks.approveKey.mockImplementation(async () => {
+      mocks.pendingKey.mockResolvedValue(null);
+      mocks.keyStatus.mockResolvedValue(approvedNewKey);
+      return approvedNewKey;
+    });
+
+    renderRoutes();
+    await screen.findByText('Station key approved');
+    expect(screen.getByText('sha256:old-station-key')).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: 'Review new Station key' }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole('button', { name: 'Prepare native Station identity' }),
+    ).toBeNull();
+    expect(screen.queryByLabelText('One-time Station invitation')).toBeNull();
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Review new Station key' }),
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Prepare native Station identity' }),
+    );
+    await screen.findByRole('region', {
+      name: 'Public install proof metadata',
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel key review' }));
+    await screen.findByRole('button', { name: 'Review new Station key' });
+    expect(
+      screen.queryByRole('region', { name: 'Public install proof metadata' }),
+    ).toBeNull();
+    expect(screen.getByText('sha256:old-station-key')).toBeTruthy();
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Review new Station key' }),
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Prepare native Station identity' }),
+    );
+    await screen.findByRole('region', {
+      name: 'Public install proof metadata',
+    });
+    fireEvent.change(screen.getByLabelText('One-time Station invitation'), {
+      target: {
+        value: '{"version":"station-broker-native-route-invitation/v2"}',
+      },
+    });
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Discover Station key' }),
+    );
+    await screen.findByRole('region', {
+      name: 'Candidate from native verification',
+    });
+    expect(screen.getByText('Station key approved')).toBeTruthy();
+    expect(screen.getByText('sha256:old-station-key')).toBeTruthy();
+
+    fireEvent.change(screen.getByLabelText('Operator comparison code'), {
+      target: { value: 'ABCD-1234-EFGH-5678' },
+    });
+    fireEvent.change(
+      screen.getByLabelText('Full key ID confirmed by operator'),
+      {
+        target: { value: rotatedCandidate.keyId },
+      },
+    );
+    fireEvent.click(
+      screen.getByLabelText(
+        /I got these values from the Station operator through a separate channel/,
+      ),
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Approve Station key' }),
+    );
+    await waitFor(() =>
+      expect(mocks.approveKey).toHaveBeenCalledWith({
+        pendingId: rotatedCandidate.pendingId,
+        confirmationCode: 'ABCD1234EFGH5678',
+        fullKeyId: rotatedCandidate.keyId,
+      }),
+    );
+    await waitFor(() =>
+      expect(screen.getByText('sha256:rotated-station-key')).toBeTruthy(),
+    );
+    expect(
+      screen.getByRole('button', { name: 'Review new Station key' }),
+    ).toBeTruthy();
+    expect(screen.queryByLabelText('One-time Station invitation')).toBeNull();
+  });
+
   test('requires native surface preparation, a pasted invitation, and separately entered operator values', async () => {
     const candidate = {
       pendingId: 'pending-1',
