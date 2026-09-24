@@ -9,22 +9,13 @@
       "await new Promise((resolve) => setTimeout(resolve, HOLD_MS * 3));",
       "promise-sleep"
     ],
-    [
-      "await sleep(90); // three hold periods",
-      "literal-sleep"
-    ],
+    ["await sleep(90); // three hold periods", "literal-sleep"],
     [
       "Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);",
       "blocking-wait"
     ],
-    [
-      "await new Promise((r) => setTimeout(() => r(), 30));",
-      "promise-sleep"
-    ],
-    [
-      "await delay(1_000);",
-      "literal-sleep"
-    ]
+    ["await new Promise((r) => setTimeout(() => r(), 30));", "promise-sleep"],
+    ["await delay(1_000);", "literal-sleep"]
   ],
   "unflagged": [
     "await new Promise((resolve) => setTimeout(resolve, 0));",

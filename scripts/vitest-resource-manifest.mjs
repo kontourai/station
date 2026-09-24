@@ -207,6 +207,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // the real exit status is what the assertions read; process ownership is the
   // behavior under test, not a helper.
   'scripts/__tests__/literal-swap-gate.test.ts',
+  // Same shape: throwaway Git repositories, and the real-time wait gate run
+  // as a child process so its exit status (0/1/2) is what is asserted.
+  'scripts/__tests__/test-realtime-wait-gate.test.ts',
   // station#1648: runs the Playwright install script as a child process behind
   // a fake `npx` on PATH, because the exit status and the argv it really
   // builds are the two things an in-process call cannot prove. Each child is
