@@ -73,6 +73,13 @@ normal test corpus. Credential-gated live-provider examples are reported as
 `NOT PROVEN AT RUNTIME`; a successful static build does not prove an external
 service or credential path.
 
+`typecheck:examples` compiles every example that ships TypeScript, including
+its tests. `examples:conformance` fails when an example's TypeScript is outside
+every project that script names. The only way to opt out is an entry in
+`TYPECHECK_EXCLUDED` in `scripts/examples-conformance.mjs`, together with a
+README note that marks the example as unmaintained reference code. No example
+is excluded today.
+
 ## Coverage Still Needed
 
 The next useful examples are not more layout variations:

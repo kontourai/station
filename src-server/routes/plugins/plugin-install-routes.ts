@@ -39,7 +39,10 @@ import { localPluginInstallationState } from '../../services/plugins/plugin-inst
 import type { PluginInstallationHost } from '../../services/plugins/plugin-installation-service.js';
 import { PluginInstallationPending } from '../../services/plugins/plugin-installation-service.js';
 import type { PluginLifecycleProposalService } from '../../services/plugins/plugin-lifecycle-proposals.js';
-import { readPluginManifestFileWithFormat } from '../../services/plugins/plugin-manifest-loader.js';
+import {
+  PluginManifestReadRefusedError,
+  readUntrustedPluginManifestSyncWithFormat,
+} from '../../services/plugins/plugin-manifest-bounded-read.js';
 import {
   describePluginGrantState,
   getPermissionTier,
@@ -492,9 +495,29 @@ export function registerPluginInstallRoutes(
 
       const { tempDir } = result;
       try {
-        const { manifest, format } = await readPluginManifestFileWithFormat(
-          join(tempDir, 'plugin.json'),
-        );
+        // The staged manifest is untrusted bytes, local or cloned: the
+        // bounded reader refuses a symlinked, non-regular or oversized
+        // plugin.json rather than following, blocking on or streaming it
+        // (#2342). The `finally` below removes the staging tree either way.
+        let read: ReturnType<typeof readUntrustedPluginManifestSyncWithFormat>;
+        try {
+          read = readUntrustedPluginManifestSyncWithFormat(
+            join(tempDir, 'plugin.json'),
+          );
+        } catch (error) {
+          if (!(error instanceof PluginManifestReadRefusedError)) throw error;
+          return c.json(
+            {
+              valid: false,
+              error: error.message,
+              code: error.code,
+              components: [],
+              conflicts: [],
+            },
+            400,
+          );
+        }
+        const { manifest, format } = read;
         // Preview refuses exactly what install refuses, through the SAME scan
         // (`collectPluginPromptFiles`). A preview that reported "valid" for a
         // plugin the installer will reject is worse than refusing late: the

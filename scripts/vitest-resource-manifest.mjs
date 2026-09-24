@@ -124,6 +124,10 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Creates FIFOs with mkfifo to prove plugin validation refuses them without blocking.
   'src-server/routes/plugins/__tests__/plugin-validate-routes.test.ts',
+  // Creates FIFOs and a git repo to prove plugin preview refuses untrusted manifests (#2342).
+  'src-server/routes/plugins/__tests__/plugin-preview-untrusted-manifest.test.ts',
+  // Creates a FIFO, a listening unix socket and git repos to prove a plugin with special files can be updated and removed.
+  'src-server/routes/plugins/__tests__/plugin-special-files-lifecycle.test.ts',
   // Resolves real Git roots through bounded child processes in temporary repositories.
   'src-server/services/orchestration/__tests__/workspace-identity.test.ts',
   // Runs the source CLI twice against one private SQLite root to prove init recovery.
@@ -725,6 +729,12 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-server/utils/__tests__/sqlite-wal.process.test.ts',
   // Shells out to `git grep` for the projection source guard.
   'src-server/services/agents/__tests__/agent-binding-projection.test.ts',
+  // #2363: plants repo-local git config and runs plain git beside Station's
+  // hardened runner against real temp repositories.
+  'src-server/utils/__tests__/git-exec.hardening.test.ts',
+  // #2363: the coding git routes over real repositories, a real bare remote
+  // and plain git as the control for every planted config.
+  'src-server/routes/projects/__tests__/coding-git-security.routes.test.ts',
   // station#3278: builds the real watchdog bundle and spawns it through
   // symlinked paths to prove the entrypoint guard fires; the esbuild step and
   // child spawns keep it out of ordinary workers.

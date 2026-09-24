@@ -6627,11 +6627,22 @@ export class OrchestrationService {
               }
             }
           }
-          await adapter.respondToRequest(
-            command.threadId,
-            command.requestId,
-            command.decision,
-          );
+          // #2344: an adapter that records the decision itself (the Station
+          // agent's ApprovalRegistry) attributes the approving device, as the
+          // old `/tool-approval` path did. Passed only when there is one, so
+          // an adapter never sees a context it cannot use.
+          await (context?.clientOrigin
+            ? adapter.respondToRequest(
+                command.threadId,
+                command.requestId,
+                command.decision,
+                { clientOrigin: context.clientOrigin },
+              )
+            : adapter.respondToRequest(
+                command.threadId,
+                command.requestId,
+                command.decision,
+              ));
           this.assertAdapterCurrentAfterCommand(adapter);
           this.persistReceipt(receipt);
           return { receipt, result: undefined };

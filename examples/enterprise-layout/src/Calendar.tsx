@@ -1,6 +1,6 @@
 import {
+  callTool,
   invoke,
-  transformTool,
   useKnowledgeSaveMutation,
   useNotifications,
   useSendToChat,
@@ -23,8 +23,12 @@ import {
   setCache,
 } from './calendar-utils';
 import { ConfirmModal } from './components/ConfirmModal';
-import { SearchModal } from './components/SearchModal';
-import { CRM_BASE_URL } from './constants';
+import {
+  SearchModal,
+  type SearchResult,
+  type SearchType,
+} from './components/SearchModal';
+import { AGENT_SLUG, CRM_BASE_URL } from './constants';
 import {
   calendarProvider,
   crmProvider,
@@ -41,7 +45,57 @@ import { useCalendarNavigation } from './useCalendarNavigation';
 import { useSalesContext } from './useSalesContext';
 import './layout.css';
 
-export function Calendar({ activeTab }: CalendarProps) {
+/**
+ * Meeting bodies are HTML from the mail server. Strip inline styling, and drop
+ * inline attachment images (`cid:` and Exchange GetFileAttachment URLs): they
+ * cannot load outside the mail client and render as broken images.
+ */
+function sanitizeMeetingBody(body: string): string {
+  const dropAttachmentImages = (node: Element) => {
+    if (node.tagName !== 'IMG') return;
+    const src = node.getAttribute('src');
+    if (src?.startsWith('cid:') || src?.includes('GetFileAttachment')) {
+      node.remove();
+    }
+  };
+  // DOMPurify hooks are global, so add this one only for this call.
+  DOMPurify.addHook('afterSanitizeAttributes', dropAttachmentImages);
+  try {
+    return DOMPurify.sanitize(body, {
+      FORBID_ATTR: ['style', 'bgcolor', 'background', 'color'],
+      FORBID_TAGS: ['style'],
+    });
+  } finally {
+    DOMPurify.removeHook('afterSanitizeAttributes', dropAttachmentImages);
+  }
+}
+
+/** The CRM provider searches accounts and opportunities; it has no campaigns. */
+async function searchCRM(
+  query: string,
+  type: SearchType,
+): Promise<SearchResult[]> {
+  const condition = {
+    field: 'name',
+    operator: 'CONTAINS' as const,
+    value: query,
+  };
+  if (type === 'account') {
+    const accounts = await crmProvider.searchAccounts(condition);
+    return accounts.map((a) => ({
+      id: a.id,
+      name: a.name,
+      website: a.website,
+    }));
+  }
+  if (type === 'opportunity') {
+    const opportunities = await crmProvider.searchOpportunities(condition);
+    return opportunities.map((o) => ({ id: o.id, name: o.name }));
+  }
+  return [];
+}
+
+export function Calendar(_props: CalendarProps) {
   const salesContext = useSalesContext();
   const { state: salesState, setState: setSalesState } = useSales();
   const projectSlug = useProjectSlug();
@@ -49,7 +103,7 @@ export function Calendar({ activeTab }: CalendarProps) {
 
   const { showToast } = useToast();
   const { notify } = useNotifications();
-  const sendToChat = useSendToChat('enterprise-assistant');
+  const sendToChat = useSendToChat(AGENT_SLUG);
   const notesSave = useKnowledgeSaveMutation(projectSlug!, 'notes');
 
   const {
@@ -69,7 +123,7 @@ export function Calendar({ activeTab }: CalendarProps) {
     allDayExpanded,
     setAllDayExpanded,
     formatLocalDate,
-  } = useCalendarNavigation(activeTab);
+  } = useCalendarNavigation();
 
   const {
     data: rawEvents = [],
@@ -1732,7 +1786,7 @@ export function Calendar({ activeTab }: CalendarProps) {
                                   key={resp}
                                   onClick={async () => {
                                     try {
-                                      await transformTool(
+                                      await callTool(
                                         'enterprise-assistant',
                                         'calendar-mcp_calendar_meeting',
                                         {
@@ -1744,7 +1798,6 @@ export function Calendar({ activeTab }: CalendarProps) {
                                             meetingDetails.meetingChangeKey,
                                           rsvpResponse: resp,
                                         },
-                                        'data => data',
                                       );
                                       showToast(`Meeting ${resp}ed`, 'success');
                                       meetingDetails.responseStatus =
@@ -1830,30 +1883,8 @@ export function Calendar({ activeTab }: CalendarProps) {
                               <div
                                 className={`meeting-body-content cal-content-body ${!contentExpanded ? 'cal-content-body--collapsed' : ''}`}
                                 dangerouslySetInnerHTML={{
-                                  __html: DOMPurify.sanitize(
+                                  __html: sanitizeMeetingBody(
                                     meetingDetails.body,
-                                    {
-                                      FORBID_ATTR: [
-                                        'style',
-                                        'bgcolor',
-                                        'background',
-                                        'color',
-                                      ],
-                                      FORBID_TAGS: ['style'],
-                                      HOOKS: {
-                                        afterSanitizeAttributes: (node) => {
-                                          if (node.tagName === 'IMG') {
-                                            const src =
-                                              node.getAttribute('src');
-                                            if (
-                                              src?.startsWith('cid:') ||
-                                              src?.includes('GetFileAttachment')
-                                            )
-                                              node.remove();
-                                          }
-                                        },
-                                      },
-                                    },
                                   ),
                                 }}
                               />
@@ -1918,10 +1949,9 @@ export function Calendar({ activeTab }: CalendarProps) {
                                 setAiLoading(true);
                                 try {
                                   const context = `Meeting: ${meetingDetails.subject}\nDate: ${new Date(meetingDetails.start).toLocaleString()}\nAttendees: ${meetingDetails.attendees?.map((a) => a.name || a.email).join(', ') || 'None'}\n\nRaw notes:\n${meetingNotes}`;
-                                  const r = await invoke(
-                                    'enterprise-assistant',
-                                    `Clean up and enhance these meeting notes. Keep the original meaning but improve structure, fix typos, and add any useful formatting. Return ONLY the improved notes, no preamble:\n\n${context}`,
-                                  );
+                                  const r = await invoke({
+                                    prompt: `Clean up and enhance these meeting notes. Keep the original meaning but improve structure, fix typos, and add any useful formatting. Return ONLY the improved notes, no preamble:\n\n${context}`,
+                                  });
                                   const text =
                                     typeof r === 'string'
                                       ? r
@@ -2354,7 +2384,7 @@ export function Calendar({ activeTab }: CalendarProps) {
         onClose={() => setShowSearchModal(false)}
         onSelect={handleSelectSearchResult}
         type={searchModalType}
-        agentSlug="enterprise-assistant"
+        onSearch={searchCRM}
       />
 
       {/* Log Activity Modal */}
@@ -2926,23 +2956,12 @@ export function Calendar({ activeTab }: CalendarProps) {
                               });
                             }
                             if (taskId) {
-                              notify({
-                                title: 'Activity logged successfully',
-                                message: (
-                                  <a
-                                    href={`${CRM_BASE_URL}/r/Task/${taskId}/view`}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    style={{
-                                      color: 'var(--color-primary)',
-                                      textDecoration: 'underline',
-                                    }}
-                                  >
-                                    {activityFormData.subject}
-                                  </a>
-                                ) as any,
-                                type: 'success',
-                              });
+                              // Toasts render plain text, so name the task
+                              // rather than linking it.
+                              notify(
+                                `Activity logged: ${activityFormData.subject}`,
+                                { type: 'success' },
+                              );
                             } else {
                               showToast(
                                 'Activity logged successfully',

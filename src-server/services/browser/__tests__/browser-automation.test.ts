@@ -225,7 +225,12 @@ function scriptButton(fake: Fake) {
 }
 
 async function harness(
-  options: { stepDeadlineMs?: number; humanHoldMs?: number } = {},
+  options: {
+    stepDeadlineMs?: number;
+    humanHoldMs?: number;
+    /** The lease's clock. Tests that lapse a hold drive it by hand. */
+    leaseNow?: () => number;
+  } = {},
 ) {
   const stationHome = mkdtempSync(join(tmpdir(), 'station-browser-auto-'));
   homes.push(stationHome);
@@ -238,7 +243,16 @@ async function harness(
       `bs_00000000-0000-4000-8000-${String(++ids).padStart(12, '0')}`,
   });
   const surfaces = new LiveSurfaceRegistry(
-    options.humanHoldMs ? { lease: { humanHoldMs: options.humanHoldMs } } : {},
+    options.humanHoldMs || options.leaseNow
+      ? {
+          lease: {
+            ...(options.humanHoldMs
+              ? { humanHoldMs: options.humanHoldMs }
+              : {}),
+            ...(options.leaseNow ? { now: options.leaseNow } : {}),
+          },
+        }
+      : {},
   );
   const binder = new BrowserLiveSurfaces({
     sessions,
@@ -358,8 +372,12 @@ describe('BrowserAutomation: history keeps refusals and takeovers (D6)', () => {
   });
 
   test('a person clicking across several lapses of their own hold is ONE takeover; an agent in between makes the next click a takeover again; lapses are never recorded', async () => {
+    // The lease clock is driven by hand. On a real clock a 40ms hold could
+    // lapse BETWEEN a click's down and up events on a loaded runner, and the
+    // up was refused (Nightly run 35940201058).
     const HOLD_MS = 40;
-    const h = await harness({ humanHoldMs: HOLD_MS });
+    let clock = 0;
+    const h = await harness({ humanHoldMs: HOLD_MS, leaseNow: () => clock });
     pageBasics(h.fake);
     const session = await h.open();
     const id = session.browserSessionId;
@@ -376,8 +394,8 @@ describe('BrowserAutomation: history keeps refusals and takeovers (D6)', () => {
       );
       expect(result.ok).toBe(true);
     };
-    const lapse = async () => {
-      await new Promise((resolve) => setTimeout(resolve, HOLD_MS * 3));
+    const lapse = () => {
+      clock += HOLD_MS * 3;
       expect(entry.lease.snapshot().holder).toBeNull();
     };
     const controlKinds = () =>
@@ -387,7 +405,7 @@ describe('BrowserAutomation: history keeps refusals and takeovers (D6)', () => {
         .map((e) => [e.kind, e.actor.kind]);
     for (let i = 0; i < 3; i++) {
       await click();
-      await lapse();
+      lapse();
     }
     expect(controlKinds()).toEqual([['control-taken', 'operator']]);
     // An agent acts, then the person clicks again: control changed hands.
@@ -408,13 +426,14 @@ describe('BrowserAutomation: history keeps refusals and takeovers (D6)', () => {
 
   test('Take control is recorded even by the person who last held it; only an explicit release is', async () => {
     const HOLD_MS = 40;
-    const h = await harness({ humanHoldMs: HOLD_MS });
+    let clock = 0;
+    const h = await harness({ humanHoldMs: HOLD_MS, leaseNow: () => clock });
     pageBasics(h.fake);
     const session = await h.open();
     const id = session.browserSessionId;
     const entry = h.entryOf(id);
     expect(claimHumanControl(entry, HUMAN).ok).toBe(true);
-    await new Promise((resolve) => setTimeout(resolve, HOLD_MS * 3));
+    clock += HOLD_MS * 3;
     expect(entry.lease.snapshot().holder).toBeNull();
     expect(claimHumanControl(entry, HUMAN).ok).toBe(true);
     expect(

@@ -17,6 +17,10 @@
  *     with no dev script.
  *   - Declared dependency on `@kontourai/station-sdk` resolves to a real
  *     workspace version rather than a stale range.
+ *   - Every TypeScript source under `examples/` is compiled by one of the
+ *     projects `npm run typecheck:examples` names, or its example is listed in
+ *     TYPECHECK_EXCLUDED with a README note saying so (station#2343: thirteen
+ *     examples had TS sources no compiler ever saw, and 76 errors hid in one).
  *
  * Live build/run proof is a separate lane: see `--build`. Examples that need
  * credentials are declared here rather than skipped silently, so "not proven"
@@ -25,7 +29,8 @@
 
 import { spawnSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { dirname, join, relative, resolve, sep } from 'node:path';
+import ts from 'typescript';
 import { npmInvocation } from './lib/npm-cli.mjs';
 
 const ROOT = process.cwd();
@@ -41,6 +46,189 @@ export const CREDENTIAL_GATED = new Map([
   ['nova-sonic-voice', 'needs AWS Bedrock credentials for Nova Sonic'],
   ['meeting-transcription', 'needs a speech-to-text provider credential'],
 ]);
+
+/**
+ * Examples deliberately left out of `typecheck:examples`, as name -> reason.
+ * This is the ONLY place an example with TypeScript sources may opt out, and
+ * an entry is only honoured when the example's README carries
+ * TYPECHECK_EXCLUDED_README_NOTE, so a reader copying from it is told. Empty
+ * means every example that ships TypeScript is type-checked.
+ */
+export const TYPECHECK_EXCLUDED = new Map();
+
+/** The sentence an excluded example's README must contain. */
+export const TYPECHECK_EXCLUDED_README_NOTE =
+  'Unmaintained reference code: not type-checked by `npm run typecheck:examples`.';
+
+const TS_SOURCE = /\.(?:ts|tsx|mts|cts)$/;
+// Declaration files are compiler output here (shared-providers emits its
+// `providers/*.d.ts`), not sources anyone authors or copies.
+const TS_DECLARATION = /\.d\.(?:ts|mts|cts)$/;
+const SKIPPED_DIRS = new Set(['node_modules', 'dist']);
+
+/** Every authored TypeScript file under `dir`, absolute. */
+export function typeScriptSources(dir) {
+  const found = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      if (!SKIPPED_DIRS.has(entry.name)) found.push(...typeScriptSources(full));
+    } else if (TS_SOURCE.test(entry.name) && !TS_DECLARATION.test(entry.name)) {
+      found.push(full);
+    }
+  }
+  return found.sort();
+}
+
+/** The tsconfig paths `typecheck:examples` passes to `-p`, repo-relative. */
+export function typecheckedProjects(command) {
+  return typecheckSegments(command).map((segment) => segment.project);
+}
+
+// The whole segment is the slot runner, bare flags and one `-p <tsconfig>`,
+// and nothing else: `… -p x || true`, a pipe or a `;` would let the compile
+// fail without failing the chain. A flag that takes a value does not match;
+// the chain uses none. Checked token by token rather than with one regex,
+// which CodeQL flags as exponential backtracking (js/redos).
+const FLAG = /^--?[\w-]+$/;
+const PROJECT_PATH = /^[^-|;&][^|;&]*$/;
+
+function segmentArgs(raw) {
+  const tokens = raw.trim().split(/\s+/);
+  if (tokens[0] !== 'node' || tokens[1] !== 'scripts/tsc-slot.mjs') return null;
+  const args = tokens.slice(2);
+  let project = null;
+  for (let i = 0; i < args.length; i += 1) {
+    if (args[i] === '-p') {
+      if (project !== null || !PROJECT_PATH.test(args[i + 1] ?? ''))
+        return null;
+      project = args[i + 1];
+      i += 1;
+    } else if (!FLAG.test(args[i])) {
+      return null;
+    }
+  }
+  return project === null ? null : { project, args };
+}
+
+/**
+ * The compiler runs `typecheck:examples` performs: `&&`-joined segments that
+ * invoke the slot runner, each with the project it passes to `-p`. A segment
+ * that runs anything else (`echo -p x`, say) type-checks nothing and is not
+ * counted, however its arguments read.
+ */
+export function typecheckSegments(command) {
+  const segments = [];
+  for (const raw of (command ?? '').split('&&')) {
+    const segment = segmentArgs(raw);
+    if (segment) segments.push(segment);
+  }
+  return segments;
+}
+
+/** `// @ts-nocheck` (or its block form) switches a file's checking off. */
+const TS_NOCHECK = /^\s*(?:\/\/|\/\*)\s*@ts-nocheck\b/m;
+
+/**
+ * The files TypeScript itself resolves for a project -- the compiler's own
+ * include/exclude/files evaluation, not a re-implementation of its globbing.
+ */
+export function projectFiles(tsconfigPath) {
+  const read = ts.readConfigFile(tsconfigPath, ts.sys.readFile);
+  if (read.error) {
+    throw new Error(
+      `${tsconfigPath}: ${ts.flattenDiagnosticMessageText(read.error.messageText, '\n')}`,
+    );
+  }
+  const parsed = ts.parseJsonConfigFileContent(
+    read.config,
+    ts.sys,
+    dirname(tsconfigPath),
+  );
+  return {
+    files: parsed.fileNames.map((file) => resolve(file)),
+    noCheck: parsed.options.noCheck === true,
+  };
+}
+
+/**
+ * Problems with how `examples/` TypeScript is (not) type-checked: a source no
+ * `typecheck:examples` project compiles, or an exclusion that is stale,
+ * contradicted by coverage, or undisclosed in the example's README.
+ */
+export function typecheckCoverageProblems({
+  root = ROOT,
+  examplesDir = join(root, 'examples'),
+  typecheckCommand = JSON.parse(
+    readFileSync(join(root, 'package.json'), 'utf8'),
+  ).scripts?.['typecheck:examples'],
+  excluded = TYPECHECK_EXCLUDED,
+} = {}) {
+  const problems = [];
+  const covered = new Set();
+  for (const { project, args } of typecheckSegments(typecheckCommand)) {
+    const path = resolve(root, project);
+    if (!existsSync(path)) {
+      problems.push(`typecheck:examples names a missing project: ${project}`);
+      continue;
+    }
+    const { files, noCheck } = projectFiles(path);
+    // A project compiled without checking covers nothing.
+    if (noCheck || args.includes('--noCheck')) {
+      problems.push(
+        `${project} is compiled with noCheck, so typecheck:examples does not type-check it`,
+      );
+      continue;
+    }
+    for (const file of files) covered.add(file);
+  }
+
+  const examples = listExamples(examplesDir);
+  for (const name of examples) {
+    const dir = join(examplesDir, name);
+    const sources = typeScriptSources(dir);
+    const uncovered = sources.filter((file) => !covered.has(file));
+    if (excluded.has(name)) {
+      if (sources.length === 0) {
+        problems.push(
+          `${name}: listed in TYPECHECK_EXCLUDED but has no TypeScript sources`,
+        );
+      } else if (uncovered.length < sources.length) {
+        problems.push(
+          `${name}: listed in TYPECHECK_EXCLUDED but typecheck:examples compiles it`,
+        );
+      }
+      const readme = join(dir, 'README.md');
+      if (
+        !existsSync(readme) ||
+        !readFileSync(readme, 'utf8').includes(TYPECHECK_EXCLUDED_README_NOTE)
+      ) {
+        problems.push(
+          `${name}: listed in TYPECHECK_EXCLUDED but its README does not say "${TYPECHECK_EXCLUDED_README_NOTE}"`,
+        );
+      }
+      continue;
+    }
+    for (const file of sources) {
+      if (TS_NOCHECK.test(readFileSync(file, 'utf8'))) {
+        problems.push(
+          `${relative(root, file).split(sep).join('/')} disables type checking with @ts-nocheck`,
+        );
+      }
+    }
+    for (const file of uncovered) {
+      problems.push(
+        `${relative(root, file).split(sep).join('/')} is TypeScript that no typecheck:examples project compiles; add it to a project or list ${name} in TYPECHECK_EXCLUDED`,
+      );
+    }
+  }
+  for (const name of excluded.keys()) {
+    if (!examples.includes(name)) {
+      problems.push(`TYPECHECK_EXCLUDED names a missing example: ${name}`);
+    }
+  }
+  return problems;
+}
 
 /** Manifest fields whose values are repo-relative paths that must exist. */
 function declaredPaths(manifest) {
@@ -180,6 +368,12 @@ function main() {
       `\n  examples/README.md does not list: ${uncatalogued.join(', ')}`,
     );
   }
+  const typecheckProblems = typecheckCoverageProblems();
+  if (typecheckProblems.length > 0) {
+    failed += 1;
+    console.error('\n  TypeScript coverage (typecheck:examples):');
+    for (const problem of typecheckProblems) console.error(`    - ${problem}`);
+  }
   for (const name of examples) {
     const problems = checkExample(join(EXAMPLES_DIR, name), name);
     if (problems.length === 0) continue;
@@ -197,6 +391,9 @@ function main() {
 
   for (const [name, reason] of CREDENTIAL_GATED) {
     console.log(`  NOT PROVEN AT RUNTIME: ${name} — ${reason}`);
+  }
+  for (const [name, reason] of TYPECHECK_EXCLUDED) {
+    console.log(`  NOT TYPE-CHECKED: ${name} — ${reason}`);
   }
 
   if (!withBuild) return;

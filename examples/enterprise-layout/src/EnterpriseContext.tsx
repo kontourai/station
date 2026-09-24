@@ -28,15 +28,15 @@ const defaultState: EnterpriseState = {
   contextLoaded: false,
 };
 
-const { Provider, useContext } = createLayoutContext<EnterpriseState>({
+const { Provider, useLayoutContext } = createLayoutContext<EnterpriseState>({
   layoutSlug: 'enterprise-assistant',
-  defaultState,
+  initialState: defaultState,
   persist: true,
 });
 
 export const EnterpriseProvider = Provider;
-export const useEnterpriseContext = useContext;
+export const useEnterpriseContext = useLayoutContext;
 
 /** Alias for components that use the old useSales name */
-export const useSales = useContext;
+export const useSales = useLayoutContext;
 export const SalesProvider = Provider;
