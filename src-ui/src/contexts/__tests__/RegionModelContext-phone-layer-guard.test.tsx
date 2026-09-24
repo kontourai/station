@@ -213,6 +213,61 @@ describe('leaving a phone layer asks before discarding a review draft', () => {
     expect(current().phoneLayer).toBeNull();
   });
 
+  // Delta review (browser-verified): Back dropped `?maximize` before the
+  // prompt, so the pane shrank to the half sheet behind it while "‹ Chat"
+  // kept it full screen. The layer stays as it was until the answer.
+  test('while Back’s prompt is up the layer stays maximized, the same as for "‹ Chat"', async () => {
+    await mountWithDraft();
+    await waitFor(() =>
+      expect(new URLSearchParams(window.location.search).get('maximize')).toBe(
+        'true',
+      ),
+    );
+    act(() => window.history.back());
+    await screen.findByRole('dialog', { name: /Unsaved Changes/ });
+    await waitFor(() =>
+      expect(new URLSearchParams(window.location.search).get('maximize')).toBe(
+        'true',
+      ),
+    );
+    expectLayerOpen();
+    expect(current().regions.bottom.maximized).toBe(true);
+    expect(onLayerEntry()).toBe(true);
+  });
+
+  // Delta review LOW: with no layer entry while the prompt was up, a second
+  // Back travelled to the page BEFORE the layer, and every cancelled Back
+  // pushed another entry. A Back now always lands on the layer's own entry,
+  // and repeated Back→Cancel leaves the history no longer than it was.
+  test('repeated Back→Cancel neither grows the history nor leaves the layer’s page', async () => {
+    window.history.replaceState(
+      window.history.state,
+      '',
+      '/?dock=open&page=before',
+    );
+    window.history.pushState(window.history.state, '', '/?dock=open');
+    await mountWithDraft();
+    const length = window.history.length;
+    for (let round = 0; round < 3; round += 1) {
+      act(() => window.history.back());
+      await screen.findByRole('dialog', { name: /Unsaved Changes/ });
+      // A second Back while the prompt is up stays on the layer's page.
+      act(() => window.history.back());
+      await waitFor(() => expect(onLayerEntry()).toBe(true));
+      expect(new URLSearchParams(window.location.search).get('page')).toBe(
+        null,
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+      await waitFor(() =>
+        expect(
+          screen.queryByRole('dialog', { name: /Unsaved Changes/ }),
+        ).toBeNull(),
+      );
+      expectLayerOpen();
+    }
+    expect(window.history.length).toBeLessThanOrEqual(length);
+  });
+
   test('"‹ Chat" asks too; Cancel keeps the layer, Discard closes it', async () => {
     const comment = await mountWithDraft();
 

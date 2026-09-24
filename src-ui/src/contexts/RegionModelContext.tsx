@@ -419,10 +419,10 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
   // id, so the marker `dialog-history` orphans on a Back can never match a
   // LATER layer's live entry and skip it.
   const [layerEntry, setLayerEntry] = useState(0);
-  // A Back is waiting on an unsaved-changes guard: the URL has already
-  // travelled back, so navigation's inbound sync may hide or restore Chat's
-  // region meanwhile; that must not read as the user dismissing the layer.
-  const layerBackPendingRef = useRef(false);
+  // The Back an unsaved-changes guard is deciding, if any
+  // (`leavePhoneLayerByBack`). While set, the layer is reinstated and neither
+  // navigation's inbound sync nor the dismissal effect may act on it.
+  const layerBackDecisionRef = useRef<object | null>(null);
   // `toggleSurface` is declared above the layer's exits; it reaches the
   // current one through this.
   const closePhoneLayerRef = useRef<() => void>(() => {});
@@ -741,7 +741,7 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
   // entry is consumed by the registration's cleanup below.
   useEffect(() => {
     const layer = phoneLayerRef.current;
-    if (!layer || layer !== phoneLayer || layerBackPendingRef.current) return;
+    if (!layer || layer !== phoneLayer || layerBackDecisionRef.current) return;
     const state = regions[layer.region];
     if (state.visible && state.occupant === layer.surfaceId) return;
     restorePhoneLayer();
@@ -780,34 +780,66 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
   // mirror's clearing write lands before `dialog-history`'s deferred cleanup
   // compares URLs, so the entry is travelled back over, not collapsed.
   //
-  // Both exits ask the unsaved-changes guards first (a pull request review
-  // draft is component state; the restore unmounts it). Back has already
-  // left the entry when it asks, so a refusal puts the layer back — shown,
-  // selected, maximized as it was — under a fresh entry.
+  // Every deliberate exit — Back, "‹ Chat" (`closePhoneLayer`), the folded
+  // menu's hide of the layer's pane, a chat-focus intent — asks the
+  // unsaved-changes guards first (a pull request review draft is component
+  // state; the restore unmounts it). KNOWN LIMITATION (review M-a): the
+  // guards are the navigation store's app-wide set, not the layer pane's, so
+  // an unrelated dirty form mounted elsewhere also asks, and its answer
+  // decides whether the layer closes. Scoping guards to a surface is design
+  // work that is not done here. Back has already left the entry when it
+  // asks; `leavePhoneLayerByBack` keeps the layer as it was while the guard
+  // decides.
   const phoneLayerOpen = phoneLayer !== null;
   const leavePhoneLayerByBack = useCallback(() => {
-    layerBackPendingRef.current = true;
+    const layer = phoneLayerRef.current;
+    if (!layer) return;
+    // One decision at a time: a second Back while the prompt is up starts a
+    // new one, and the guard cancels the first (`useUnsavedGuard`), whose
+    // answer must then change nothing.
+    const decision = {};
+    layerBackDecisionRef.current = decision;
+    const current = () => layerBackDecisionRef.current === decision;
+    let reinstated = false;
+    // Back has already left the layer's entry and dropped `?maximize` from
+    // the URL. While the guard decides, the layer stays exactly as it was —
+    // shown, selected, maximized — under a fresh entry, so the prompt sits
+    // over the pane the user sees and a second Back lands on that entry
+    // rather than on the page before the layer. The mirror is handed the
+    // popped state so it writes the layer's view back onto the new entry;
+    // navigation's inbound sync is held off meanwhile (see that effect).
+    const reinstate = () => {
+      reinstated = true;
+      const nav = navigationStore.getSnapshot();
+      mirroredRegionsRef.current = updateRegion(
+        regionsRef.current,
+        layer.region,
+        { visible: nav.isDockOpen, maximized: false },
+      );
+      const next = updateRegion(regionsRef.current, layer.region, {
+        visible: true,
+        occupant: layer.surfaceId,
+        maximized: layerMaximizedRef.current,
+      });
+      regionsRef.current = next;
+      setRegions(next);
+      setLayerEntry((entry) => entry + 1);
+    };
     navigationStore.runNavigationGuards(
       () => {
-        layerBackPendingRef.current = false;
+        if (!current()) return;
+        layerBackDecisionRef.current = null;
+        // Discard: the in-app restore; the registration's cleanup travels
+        // back over the reinstated entry, if there is one.
         restorePhoneLayer();
       },
       () => {
-        layerBackPendingRef.current = false;
-        const layer = phoneLayerRef.current;
-        if (!layer) return;
-        const next = updateRegion(regionsRef.current, layer.region, {
-          visible: true,
-          occupant: layer.surfaceId,
-          maximized: layerMaximizedRef.current,
-        });
-        if (next !== regionsRef.current) {
-          regionsRef.current = next;
-          setRegions(next);
-        }
-        setLayerEntry((entry) => entry + 1);
+        if (!current()) return;
+        layerBackDecisionRef.current = null;
+        if (!reinstated) reinstate();
       },
     );
+    if (current() && !reinstated) reinstate();
   }, [restorePhoneLayer]);
   const closePhoneLayer = useCallback(() => {
     // No layer, nothing to leave — and no guard to ask. Chat-focus intents
@@ -991,6 +1023,10 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
     )
       return;
     seenNavigationRef.current = { dockMode, isDockOpen, isDockMaximized };
+    // A phone layer's Back is waiting on an unsaved-changes guard: the URL
+    // travelled back, but the layer is reinstated until the user answers, so
+    // this navigation is not Chat's to act on (`leavePhoneLayerByBack`).
+    if (layerBackDecisionRef.current) return;
     const current = regionsRef.current;
     const placement = chatRegion(current);
     let next = current;
