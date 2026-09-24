@@ -29,6 +29,10 @@ vi.mock('../../../contexts/useOpenInRegion', () => ({
 vi.mock('../../../contexts/RegionModelContext', () => ({
   useRegionModelOptional: () => model,
 }));
+let repositoryContext: unknown;
+vi.mock('@kontourai/station-sdk', () => ({
+  usePullRequestContextQuery: () => ({ data: repositoryContext }),
+}));
 vi.mock('../../../platform/openExternalLink', () => ({
   hostOwnsExternalLinks: () => tauri,
   openNativeExternalLink: (url: string) => openNativeExternalLink(url),
@@ -53,9 +57,10 @@ const CONVERSATION: MarkdownLinkContextValue = {
 function mount(
   href: string,
   value: MarkdownLinkContextValue | null = CONVERSATION,
+  text = 'link',
 ): HTMLAnchorElement {
   const anchor: ReactNode = (
-    <ChatMarkdownAnchor href={href}>link</ChatMarkdownAnchor>
+    <ChatMarkdownAnchor href={href}>{text}</ChatMarkdownAnchor>
   );
   render(
     value ? (
@@ -66,7 +71,7 @@ function mount(
       anchor
     ),
   );
-  return screen.getByText('link') as HTMLAnchorElement;
+  return screen.getByRole('link') as HTMLAnchorElement;
 }
 
 /** Click, reporting whether the anchor's own navigation survived. */
@@ -75,6 +80,7 @@ function click(anchor: HTMLAnchorElement, init: MouseEventInit = {}): boolean {
 }
 
 beforeEach(() => {
+  repositoryContext = undefined;
   tauri = false;
   model = { regions: {}, openSurfaceInRegion: vi.fn() };
 });
@@ -240,5 +246,96 @@ describe('a link in a chat message (#2049)', () => {
     expect(openNativeExternalLink).toHaveBeenCalledWith(
       'https://github.com/o/r/pull/1',
     );
+  });
+});
+
+describe('how a recognised link looks', () => {
+  test('a raw pull-request URL reads as its forge and owner/repo#number', () => {
+    const url = 'https://github.com/kontourai/station/pull/2049';
+    const anchor = mount(url, CONVERSATION, url);
+    expect(anchor.textContent).toBe('kontourai/station#2049');
+    expect(anchor.className).toContain('chat-link-chip--pull-request');
+    expect(anchor.getAttribute('title')).toBe(url);
+    expect(anchor.querySelector('svg')).not.toBeNull();
+  });
+
+  test('text an author chose is kept, with the mark beside it', () => {
+    const anchor = mount(
+      'https://github.com/kontourai/station/pull/2049',
+      CONVERSATION,
+      'the fix',
+    );
+    expect(anchor.textContent).toBe('the fix');
+    expect(anchor.className).toContain('chat-link-chip');
+  });
+
+  test('issues and commits read the way the forge writes them', () => {
+    for (const [url, label] of [
+      ['https://github.com/o/r/issues/12', 'o/r#12'],
+      ['https://github.com/o/r/commit/abcdef1234567', 'o/r@abcdef1'],
+      ['https://gitlab.com/g/p/-/issues/3', 'g/p#3'],
+      ['https://github.com/o/r', 'o/r'],
+    ]) {
+      expect(mount(url, CONVERSATION, url).textContent, url).toBe(label);
+      cleanup();
+    }
+  });
+
+  test('a raw path reads as its file name and position', () => {
+    const anchor = mount(
+      'src/deep/app.ts:12',
+      CONVERSATION,
+      'src/deep/app.ts:12',
+    );
+    expect(anchor.textContent).toBe('app.ts:12');
+    expect(anchor.getAttribute('title')).toBe('src/deep/app.ts:12');
+  });
+
+  test('an ordinary site stays a plain anchor, and nothing is a chip outside a conversation', () => {
+    const site = mount('https://example.test/docs');
+    expect(site.className).toBe('');
+    cleanup();
+    const pr = 'https://github.com/o/r/pull/1';
+    expect(mount(pr, null, pr).className).toBe('');
+  });
+});
+
+describe('a forge file link (github.com/.../blob/...)', () => {
+  const url = 'https://github.com/kontourai/station/blob/main/src/app.ts#L4';
+
+  test('opens the local preview when the checkout IS that repository', () => {
+    repositoryContext = {
+      available: true,
+      provider: 'github',
+      host: 'github.com',
+      repository: { owner: 'KontourAI', name: 'Station' },
+    };
+    expect(click(mount(url))).toBe(false);
+    expect(openFilePreviewInRegion).toHaveBeenCalledWith(model, {
+      projectId: 'alpha-id',
+      projectSlug: 'alpha',
+      path: 'src/app.ts',
+      lineRange: { start: 4, end: 4 },
+    });
+  });
+
+  test('opens on the forge when the checkout is another repository or unknown', () => {
+    tauri = true;
+    for (const context of [
+      undefined,
+      { available: false, reason: 'no remote' },
+      {
+        available: true,
+        provider: 'github',
+        host: 'github.com',
+        repository: { owner: 'kontourai', name: 'other' },
+      },
+    ]) {
+      repositoryContext = context;
+      expect(click(mount(url))).toBe(false);
+      cleanup();
+    }
+    expect(openFilePreviewInRegion).not.toHaveBeenCalled();
+    expect(openNativeExternalLink).toHaveBeenCalledTimes(3);
   });
 });

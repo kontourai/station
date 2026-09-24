@@ -1988,12 +1988,24 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     setIsBackgroundTasksOpen((open) => !open);
   }, [backgroundTasksOpensPane, setIsBackgroundTasksOpen, showSurface]);
   const codingLayoutSlug = sessionCodingLayout?.slug ?? null;
+  const conversationProjectDirectory = conversationProjectSlug
+    ? (projects.find((project) => project.slug === conversationProjectSlug)
+        ?.workingDirectory ?? null)
+    : null;
+  const conversationId = activeSession?.conversationId ?? null;
   const markdownLinkContext = useMemo(
     () => ({
       projectSlug: conversationProjectSlug,
       projectId: conversationProjectId,
       dockProjectSlug,
       bottomOnly: dockBottomOnly,
+      // Where an absolute path in this conversation can point: the project's
+      // checkout, and the session's own directory when it runs elsewhere (an
+      // isolated worktree writes absolute paths under that, not the project).
+      projectRoots: [conversationProjectDirectory, sessionDisplayCwd].filter(
+        (root): root is string => !!root,
+      ),
+      conversationId,
       openPathInMain:
         conversationProjectSlug && codingLayoutSlug
           ? (path: string, lineRange?: { start: number; end: number }) =>
@@ -2008,10 +2020,13 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     }),
     [
       codingLayoutSlug,
+      conversationId,
+      conversationProjectDirectory,
       conversationProjectId,
       conversationProjectSlug,
       dockBottomOnly,
       dockProjectSlug,
+      sessionDisplayCwd,
       setLayout,
     ],
   );
