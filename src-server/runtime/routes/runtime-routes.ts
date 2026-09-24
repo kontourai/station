@@ -213,6 +213,7 @@ import { createAnalyticsRoutes } from '../../routes/operations/analytics.js';
 import { createFeedbackRoutes } from '../../routes/operations/feedback.js';
 import { createInsightsRoutes } from '../../routes/operations/insights.js';
 import { createMonitoringRoutes } from '../../routes/operations/monitoring.js';
+import { createNativePushRoutes } from '../../routes/operations/native-push-routes.js';
 import { createNotificationRoutes } from '../../routes/operations/notifications.js';
 import { createPushRoutes } from '../../routes/operations/push-routes.js';
 import { createSchedulerRoutes } from '../../routes/operations/scheduler.js';
@@ -4780,6 +4781,8 @@ export function configureRuntimeRoutes(
     attentionProjection,
     webPushService,
     webPushEnabled,
+    pushSigningKeyStore,
+    agentActivityPublisher,
   } = configureRuntimeSupportServices(context, flowRunService, {
     // #2064 (D4): the same aggregate `/api/survey-flow-reviews` serves, over
     // the same live project inventory — one read, so a paused review counted
@@ -5036,6 +5039,29 @@ export function configureRuntimeRoutes(
         context.environmentSecurityService.devicePairing.clearPushSubscription(
           deviceId,
         ),
+    }),
+  );
+  context.app.route(
+    '/api/system',
+    createNativePushRoutes({
+      enabled: webPushEnabled,
+      identifyDevice: (credential) =>
+        context.environmentSecurityService.identifyDevice(credential),
+      loadOrCreateStationKey: async () =>
+        (await pushSigningKeyStore.loadOrCreate()).thumbprint,
+      stationId: () =>
+        context.environmentSecurityService.devicePairing.environmentId(),
+      setNativePush: (deviceId, request) =>
+        context.environmentSecurityService.devicePairing.setNativePush(
+          deviceId,
+          request,
+        ),
+      clearNativePush: (deviceId) => {
+        context.environmentSecurityService.devicePairing.clearNativePush(
+          deviceId,
+        );
+      },
+      onRegistered: () => agentActivityPublisher.requestFlush(),
     }),
   );
   context.app.route(

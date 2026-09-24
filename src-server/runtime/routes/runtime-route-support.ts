@@ -1,5 +1,6 @@
 import { ACPStatus } from '@kontourai/station-contracts/acp';
 import type { HomeRecoveryDisclosure } from '@kontourai/station-contracts/system-status';
+import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
 import { readStationHomeRecovery } from '@kontourai/station-shared/station-home-archive';
 import { getNotificationProviders } from '../../providers/registries/registry.js';
 import { listDetectedUnconnectedACPRegistryEntries } from '../../routes/connections/acp.js';
@@ -13,7 +14,13 @@ import {
 import type { FlowRunService } from '../../services/flow/flow-run-service.js';
 import { createEnvironmentRuntimeResourcePostureProbe } from '../../services/infra/resource-posture.js';
 import { createServerLogReader } from '../../services/infra/server-log-reader.js';
+import {
+  agentActivityRowFromSummary,
+  resolvePushGatewayConfig,
+  wireAgentActivityPublisher,
+} from '../../services/notifications/agent-activity-publisher.js';
 import { NotificationService } from '../../services/notifications/notification-service.js';
+import { PushSigningKeyStore } from '../../services/notifications/push-signing-key-store.js';
 import { VapidKeyService } from '../../services/notifications/vapid-key-service.js';
 import { wireWebPushDelivery } from '../../services/notifications/web-push-delivery.js';
 import { WebPushService } from '../../services/notifications/web-push-service.js';
@@ -544,6 +551,48 @@ export function configureRuntimeSupportServices(
     { enabled: webPushEnabled },
   );
 
+  // Agent-activity push to registered phones through the Kontour push
+  // gateway (docs/design/notification-delivery.md, "Station contract").
+  // Off exactly where Web Push is off: hosted paired-device records have no
+  // tenant binding. The key store only reads here; the first registration
+  // creates the key.
+  const pushSigningKeyStore = new PushSigningKeyStore(
+    context.configLoader.getProjectHomeDir(),
+    () => context.environmentSecurityService.devicePairing.environmentId(),
+  );
+  const pushGateway = resolvePushGatewayConfig();
+  if (!pushGateway)
+    context.logger.warn(
+      'STATION_PUSH_GATEWAY_URL is not an https URL; agent-activity push is off',
+    );
+  const agentActivityPublisher = wireAgentActivityPublisher({
+    eventBus: context.eventBus,
+    devicePairing: context.environmentSecurityService.devicePairing,
+    signingKey: pushSigningKeyStore,
+    gateway: pushGateway ?? { sendUrl: '', audience: '' },
+    enabled: webPushEnabled && pushGateway !== null,
+    logger: context.logger,
+    // The same personal-mode read authority the attention projection uses;
+    // hosted mode never reaches this (the publisher is disabled there).
+    listSessions: async () => {
+      const projects = new Map(
+        context.projectService
+          .listProjects()
+          .map((project) => [project.slug, project.name] as const),
+      );
+      const sessions = await context.orchestrationService.listSessionReadModel(
+        sessionReadAuthorityFromRequest(
+          getCachedUser().alias,
+          undefined,
+          undefined,
+        ),
+      );
+      return sessions.map((session) =>
+        agentActivityRowFromSummary(session, (slug) => projects.get(slug)),
+      );
+    },
+  });
+
   const attentionProjection = new AttentionProjectionService(
     notificationService,
     context.orchestrationService,
@@ -589,5 +638,7 @@ export function configureRuntimeSupportServices(
     attentionProjection,
     webPushService,
     webPushEnabled,
+    pushSigningKeyStore,
+    agentActivityPublisher,
   };
 }
