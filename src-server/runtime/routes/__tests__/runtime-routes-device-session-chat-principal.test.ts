@@ -46,6 +46,7 @@ import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import { PUBLIC_ANSWER_SHARE_VIEW_PATH } from '@kontourai/station-contracts/answer-share';
 import { ACCOUNT_AUTHENTICATION_FAILURE_HEADER } from '@kontourai/station-contracts/application-session';
 import {
   DEPLOYMENT_AUTHENTICATION_VERSION,
@@ -324,6 +325,15 @@ describe('device-session chat principal resolution over the REAL auth path (stat
     deploymentAuthentication?: LoadedDeploymentAuthentication,
     withMembership = false,
     withLocalAccounts = false,
+    /**
+     * #2561: extra seeded sessions (`[threadId, ownerUserId]`), and whether
+     * the runtime's orchestration service exposes the session reads the
+     * formerly alias-decided routes call (`readSessionMessages`,
+     * `listAgentRuns`) on the real service rather than an inert stub.
+     */
+    principalReads: {
+      extraOwners?: ReadonlyArray<readonly [string, string]>;
+    } = {},
   ) {
     const { pairing, paired } = pairRealDevice(searchMode === 'home');
     const roomHomeDir = mkdtempSync(
@@ -338,6 +348,7 @@ describe('device-session chat principal resolution over the REAL auth path (stat
         ['device-owned', `human:device:${paired.device.id}`],
         ['whois-owned', 'human:tailscale-serve:owner@github'],
         ['legacy-owned', getCachedUser().alias],
+        ...(principalReads.extraOwners ?? []),
       ]) {
         if (taskReferences)
           store.upsertSession({
@@ -510,6 +521,14 @@ describe('device-session chat principal resolution over the REAL auth path (stat
               sessionQueries: orchestration!.sessionQueries,
               canUserReadSession:
                 orchestration!.canUserReadSession.bind(orchestration),
+              ...(principalReads.extraOwners
+                ? {
+                    readSessionMessages:
+                      orchestration!.readSessionMessages.bind(orchestration),
+                    listAgentRuns:
+                      orchestration!.listAgentRuns.bind(orchestration),
+                  }
+                : {}),
             }),
           }
         : {}),
@@ -2220,5 +2239,116 @@ describe('device-session chat principal resolution over the REAL auth path (stat
 
     await roomRuntime.close();
     store.close();
+  });
+
+  /**
+   * #2561: these routes used to decide session reads with the cached OS
+   * alias, which owns no UI-created chat (those are owned by the local
+   * operator principal). The operator's own bearer must now read the
+   * operator-owned session, still not read another person's, and a made-up
+   * id must stay unreadable.
+   */
+  describe('formerly OS-alias session reads decide with the request principal (#2561)', () => {
+    async function operatorSetup() {
+      const h = await setup('operator', true, undefined, false, false, {
+        extraOwners: [['operator-owned', LOCAL_OPERATOR_PRINCIPAL_ID]],
+      });
+      searchCleanup.unshift(async () => {
+        await h.roomRuntime.close();
+      });
+      return h;
+    }
+    const operatorHeaders = {
+      Authorization: `Bearer ${OPERATOR_SECRET}`,
+      'Content-Type': 'application/json',
+    };
+
+    test('run inventory lists each caller’s own session: the operator’s for the operator bearer, the device’s for the device bearer', async () => {
+      const { app, paired } = await operatorSetup();
+      const runsFor = async (credential: string) => {
+        const response = await app.request(
+          '/api/runs?source=orchestration',
+          {
+            headers: {
+              Authorization: `Bearer ${credential}`,
+              'Content-Type': 'application/json',
+            },
+          },
+          REMOTE_TAILNET_ENV,
+        );
+        const body = (await response.json()) as {
+          data?: Array<{ sourceId?: string }>;
+        };
+        expect(response.status, JSON.stringify(body)).toBe(200);
+        return (body.data ?? []).map((run) => run.sourceId).sort();
+      };
+      // `legacy-owned` carries the OS alias; only a home-possession operator
+      // reads it, so neither remote bearer does.
+      await expect(runsFor(OPERATOR_SECRET)).resolves.toEqual([
+        'operator-owned',
+      ]);
+      await expect(runsFor(paired.credential)).resolves.toEqual([
+        'device-owned',
+      ]);
+    });
+
+    test('an answer share mints, lists and opens for the operator-owned session, never for a made-up or foreign one', async () => {
+      const { app } = await operatorSetup();
+      const mint = await app.request(
+        '/api/shares',
+        {
+          method: 'POST',
+          headers: operatorHeaders,
+          body: JSON.stringify({
+            sessionId: 'operator-owned',
+            turnId: 'operator-owned:turn',
+          }),
+        },
+        REMOTE_TAILNET_ENV,
+      );
+      const minted = (await mint.json()) as {
+        data?: { token?: string; share?: { id?: string } };
+      };
+      expect(mint.status, JSON.stringify(minted)).toBe(201);
+
+      const list = await app.request(
+        '/api/shares',
+        { headers: operatorHeaders },
+        REMOTE_TAILNET_ENV,
+      );
+      const listed = (await list.json()) as { data?: Array<{ id?: string }> };
+      expect(list.status, JSON.stringify(listed)).toBe(200);
+      expect((listed.data ?? []).map((share) => share.id)).toEqual([
+        minted.data?.share?.id,
+      ]);
+
+      // The public view is anonymous: the token is the capability, and the
+      // answer is read as the sharer recorded at mint.
+      const view = await app.request(
+        PUBLIC_ANSWER_SHARE_VIEW_PATH,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: minted.data?.token }),
+        },
+        REMOTE_TAILNET_ENV,
+      );
+      const viewed = (await view.json()) as { state?: string };
+      expect(view.status, JSON.stringify(viewed)).toBe(200);
+      expect(viewed.state, JSON.stringify(viewed)).toBe('ok');
+
+      for (const sessionId of ['made-up-session', 'whois-owned']) {
+        const refused = await app.request(
+          '/api/shares',
+          {
+            method: 'POST',
+            headers: operatorHeaders,
+            body: JSON.stringify({ sessionId, turnId: `${sessionId}:turn` }),
+          },
+          REMOTE_TAILNET_ENV,
+        );
+        expect(refused.status, sessionId).toBe(404);
+      }
+    });
   });
 });

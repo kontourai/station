@@ -1108,6 +1108,13 @@ export function configureRuntimeRoutes(
   // Keep only immutable deployment configuration in this closure.  Every
   // call constructs authority from the ingress context belonging to the
   // current Request; neither a tenant nor an authority crosses requests.
+  //
+  // #2561: its user is the cached OS alias, which owns no UI-created chat, so
+  // it must never decide a session or conversation read. The callers left
+  // read only `.mode` (personal vs hosted, which comes from the tenant context
+  // and registry, not the user), plus the pull-request and file-preview reads
+  // a separate change moves onto the principal. New session reads use
+  // `conversationReadAuthorityForRequest`.
   const readAuthorityForRequest = (request: Request) =>
     sessionReadAuthorityFromRequest(
       getCachedUser().alias,
@@ -1416,6 +1423,44 @@ export function configureRuntimeRoutes(
     identifyIngress,
     deploymentAuthentication: context.deploymentAuthentication,
   });
+  // #2561: every route family below decides a session or conversation read
+  // (or records an owner that a later session read compares against), so it
+  // must use the request's principal, exactly like the chat routes bound
+  // further down. `readAuthorityForRequest` names the cached OS alias, which
+  // owns no UI-created chat. Registered here, ahead of every mount, because
+  // Hono runs middleware in registration order and `/api/analytics` mounts
+  // before the chat block. A request whose principal cannot be resolved fails
+  // here rather than reading as the OS alias.
+  for (const path of [
+    '/integrations/:serverId/ui/:toolName/initial-result',
+    '/tool-approval/:approvalId',
+    '/api/shares',
+    '/api/shares/*',
+    '/api/projects/:slug/operating-state/*',
+    '/monitoring/*',
+    '/events',
+    '/api/runs',
+    '/api/runs/*',
+    '/notifications',
+    '/notifications/*',
+    '/api/attention',
+    '/api/attention/*',
+    '/api/action-operations',
+    '/api/action-operations/*',
+    '/api/insights',
+    '/api/insights/*',
+  ]) {
+    context.app.use(path, bindConversationReadAuthority);
+  }
+  // These two families are classified per method leaf in the pairing-scope
+  // table, so an all-method `use` would register unclassified routes.
+  context.app.on('GET', '/api/attachments/*', bindConversationReadAuthority);
+  context.app.on('GET', '/api/board', bindConversationReadAuthority);
+  context.app.on(
+    'POST',
+    ['/api/board/pin', '/api/board/unpin', '/api/board/move'],
+    bindConversationReadAuthority,
+  );
   context.app.route(
     '/api/account-auth/continuations',
     createApplicationSessionRoutes(context.applicationSessions),
@@ -1617,7 +1662,16 @@ export function configureRuntimeRoutes(
       request: c.req.raw,
       service: answerShareService,
       budget: answerShareViewBudget,
-      authority: readAuthorityForRequest(c.req.raw),
+      // #2561: the viewer is anonymous; the token is the capability, and the
+      // service reads the answer as the sharer recorded at mint. The cached
+      // OS alias is neither, and owns no UI-created chat, so passing it made
+      // every share of a real chat "no longer available". Hosted views keep
+      // the request's tenant-bound authority (a separate, still-open gap: its
+      // user is the alias too).
+      authority:
+        hostedTenantRegistry === undefined
+          ? undefined
+          : readAuthorityForRequest(c.req.raw),
       readBoundedBody: readBoundedRequestBody,
     });
     return outcome.kind === 'rate-limited'
@@ -2714,7 +2768,7 @@ export function configureRuntimeRoutes(
   const taskBasisMcpInitialRead = createTaskBasisMcpInitialRead({
     taskBasis,
     taskGraph: context.taskGraphService,
-    authorityForRequest: readAuthorityForRequest,
+    authorityForRequest: conversationReadAuthorityForRequest,
     isRequestPrincipalCurrent,
     canReadSession: (sessionId, authority) =>
       context.orchestrationService.canUserReadSession(sessionId, authority),
@@ -2767,7 +2821,7 @@ export function configureRuntimeRoutes(
         const basisInput = parseStationBasisToolInput(input.arguments);
         if (basisInput?.scope !== 'answer')
           return buildStationBasisUnavailableToolResult();
-        const authority = readAuthorityForRequest(input.request);
+        const authority = conversationReadAuthorityForRequest(input.request);
         const outcome = await exactAnswerBasis.read({
           sessionId: basisInput.sessionId,
           turnId: basisInput.turnId,
@@ -3599,7 +3653,9 @@ export function configureRuntimeRoutes(
   context.app.route('/agents', createAgentToolRoutes(runtimeContext));
   context.app.route(
     '/',
-    createInvokeRoutes(runtimeContext, { readAuthorityForRequest }),
+    createInvokeRoutes(runtimeContext, {
+      readAuthorityForRequest: conversationReadAuthorityForRequest,
+    }),
   );
   context.app.route(
     '/api/agents',
@@ -4513,7 +4569,9 @@ export function configureRuntimeRoutes(
   // `access:manage` — see `pairing-route-scopes.ts` for the reasoning.
   context.app.route(
     '/api/shares',
-    createAnswerShareRoutes(answerShareService, { readAuthorityForRequest }),
+    createAnswerShareRoutes(answerShareService, {
+      readAuthorityForRequest: conversationReadAuthorityForRequest,
+    }),
   );
   context.app.get('/api/projects/:slug/conversations', async (routeContext) => {
     // File-memory conversations have no tenant binding.  They are therefore
@@ -4769,7 +4827,7 @@ export function configureRuntimeRoutes(
     '/api/projects/:slug/operating-state',
     createOperatingStateRoutes(operatingStateService, {
       getWorkspacePath: resolveWorkspacePath,
-      getSessionReadAuthority: readAuthorityForRequest,
+      getSessionReadAuthority: conversationReadAuthorityForRequest,
       intentBindingDeps: {
         taskGraphService: context.taskGraphService,
         taskDispatcher: context.taskDispatcher,
@@ -5033,7 +5091,7 @@ export function configureRuntimeRoutes(
       monitoringEvents: context.monitoringEvents,
       queryEventsFromDisk: context.queryEventsFromDisk,
       projectHomeDir: context.configLoader.getProjectHomeDir(),
-      readAuthorityForRequest,
+      readAuthorityForRequest: conversationReadAuthorityForRequest,
       canReadMonitoringEvent: (event, authority) => {
         const sessionId = monitoringSessionIdentity(event);
         return sessionId
@@ -5135,7 +5193,7 @@ export function configureRuntimeRoutes(
       readAttachment: (ref) =>
         runtimeContext.orchestrationEventStore.readAttachmentBlob(ref),
       threadsForAttachment: (ref, request) => {
-        const authority = readAuthorityForRequest(request);
+        const authority = conversationReadAuthorityForRequest(request);
         return runtimeContext.orchestrationEventStore.listAttachmentCandidateThreads(
           ref,
           isSessionReadAuthority(authority) ? authority.userId : undefined,
@@ -5144,7 +5202,7 @@ export function configureRuntimeRoutes(
       canReadSession: (threadId, request) =>
         context.orchestrationService.canUserReadSession(
           threadId,
-          readAuthorityForRequest(request),
+          conversationReadAuthorityForRequest(request),
         ),
     }),
   );
@@ -5253,7 +5311,7 @@ export function configureRuntimeRoutes(
       createOrchestrationBoardAuthorization({
         orchestrationService: context.orchestrationService,
         taskGraphService: context.taskGraphService,
-        readAuthorityForRequest,
+        readAuthorityForRequest: conversationReadAuthorityForRequest,
       }),
     ),
   );
@@ -5303,7 +5361,7 @@ export function configureRuntimeRoutes(
         };
       },
       logger: context.logger,
-      readAuthorityForRequest,
+      readAuthorityForRequest: conversationReadAuthorityForRequest,
       /**
        * #2067. The plugin lifecycle channels, gated by the same projection
        * `GET /api/plugins` applies and the same memoized caller resolver.
@@ -5475,12 +5533,16 @@ export function configureRuntimeRoutes(
   );
   context.app.route(
     '/api/runs',
-    createRunRoutes(runService, context.logger, readAuthorityForRequest),
+    createRunRoutes(
+      runService,
+      context.logger,
+      conversationReadAuthorityForRequest,
+    ),
   );
   context.app.route(
     '/notifications',
     createNotificationRoutes(notificationService, {
-      readAuthorityForRequest,
+      readAuthorityForRequest: conversationReadAuthorityForRequest,
       canReadSession: (sessionId, authority) =>
         context.orchestrationService.canUserReadSession(sessionId, authority),
     }),
@@ -5488,7 +5550,7 @@ export function configureRuntimeRoutes(
   context.app.route(
     '/api/attention',
     createAttentionRoutes(attentionProjection, {
-      readAuthorityForRequest,
+      readAuthorityForRequest: conversationReadAuthorityForRequest,
       // #2323 S5 review M6: plugin proposals are addressed to the operator,
       // decided by the same resolver `/api/plugin-proposals` reads.
       // Station's own agents resolve as the operator too; they see none
@@ -5549,7 +5611,7 @@ export function configureRuntimeRoutes(
     createActionOperationRoutes({
       operations: actionOperations,
       actorForRequest: (request) => {
-        const authority = readAuthorityForRequest(request);
+        const authority = conversationReadAuthorityForRequest(request);
         return actionOperationActorForRequest(request, authority, (sessionId) =>
           context.orchestrationService.canUserReadSession(sessionId, authority),
         );
@@ -5565,7 +5627,7 @@ export function configureRuntimeRoutes(
     // station#3130: insights reads the same directory as /monitoring/events
     // and must apply the same two authorization layers.
     createInsightsRoutes(context.eventLogPath, {
-      readAuthorityForRequest,
+      readAuthorityForRequest: conversationReadAuthorityForRequest,
       // The SAME central session predicate /monitoring/events composes, not a
       // second derivation of it.
       canReadMonitoringEvent: (event, authority) => {

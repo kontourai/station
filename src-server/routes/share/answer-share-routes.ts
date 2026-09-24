@@ -64,13 +64,20 @@ export function createAnswerShareRoutes(
     const authority = options.readAuthorityForRequest?.(c.req.raw);
     // An absent hosted ingress context is not permission to enumerate the
     // global share store. Keep the management list's empty shape stable.
-    if (authority && isHostedSessionReadAuthority(authority)) {
-      if (!authority.tenantExecutionContext) {
-        return c.json({ success: true, data: [] });
-      }
-      return c.json({ success: true, data: service.list(authority) });
+    if (
+      authority &&
+      isHostedSessionReadAuthority(authority) &&
+      !authority.tenantExecutionContext
+    ) {
+      return c.json({ success: true, data: [] });
     }
-    return c.json({ success: true, data: service.list() });
+    // #2561: a personal caller lists with its own authority too. Without it
+    // the service falls back to an authority with no user, which can read
+    // only ownerless sessions, so every share of a real chat disappeared.
+    return c.json({
+      success: true,
+      data: authority ? service.list(authority) : service.list(),
+    });
   });
 
   app.post('/', validate(answerShareMintSchema), async (c) => {
