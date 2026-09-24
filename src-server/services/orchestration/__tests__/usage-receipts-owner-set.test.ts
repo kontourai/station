@@ -24,7 +24,7 @@ describe('usage receipts owner set (#2561)', () => {
     for (const step of cleanup.splice(0).reverse()) step();
   });
 
-  function setup() {
+  function setup(usageThreads?: readonly string[]) {
     const dir = mkdtempSync(join(tmpdir(), 'usage-owner-set-'));
     const store = new EventStore(join(dir, 'orchestration.sqlite'));
     cleanup.push(() => rmSync(dir, { recursive: true, force: true }));
@@ -45,6 +45,7 @@ describe('usage receipts owner set (#2561)', () => {
         createdAt: '2026-09-04T00:00:00.000Z',
         metadata: { userId: owner },
       } as never);
+      if (usageThreads && !usageThreads.includes(threadId)) continue;
       store.appendEvent({
         eventId: `${threadId}:usage`,
         threadId,
@@ -94,6 +95,16 @@ describe('usage receipts owner set (#2561)', () => {
     const orchestration = setup();
     const read = threadsFor(orchestration, true);
     expect(read.threads).toEqual(['legacy-owned', 'operator-owned']);
+    expect(read.coverage).not.toBe('unknown');
+  });
+
+  test('coverage evidence comes from the same owners as the receipts', () => {
+    // Only the pre-principal chat has usage. Coverage selected by the
+    // operator id alone would find no observations and report `unknown`
+    // beside a receipt the same read returned.
+    const orchestration = setup(['legacy-owned']);
+    const read = threadsFor(orchestration, true);
+    expect(read.threads).toEqual(['legacy-owned']);
     expect(read.coverage).not.toBe('unknown');
   });
 

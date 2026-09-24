@@ -73,6 +73,7 @@ import { setClientCredentialResolver } from '@kontourai/station-sdk/client';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { awaitSessionAttachmentSettled } from '../../../__test-utils__/session-runtime-barriers.js';
+import { UsageAggregator } from '../../../analytics/usage-aggregator.js';
 import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
 import { getCachedUser } from '../../../routes/system/auth.js';
 import { createApplicationSessionRuntime } from '../../../services/identity/application-session-runtime.js';
@@ -337,6 +338,8 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       onLog?: (entry: string) => void;
       /** The monitoring event directory `/api/insights` reads. */
       eventLogPath?: string;
+      /** Back the usage rollup with the real orchestration usage source. */
+      usage?: boolean;
     } = {},
   ) {
     const { pairing, paired } = pairRealDevice(searchMode === 'home');
@@ -526,6 +529,13 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       metricsLog: [],
       monitoringEvents: [],
       orchestrationEventStore: store,
+      ...(principalReads.usage
+        ? {
+            usageAggregator: new UsageAggregator(roomHomeDir, {
+              get: () => orchestration,
+            }),
+          }
+        : {}),
       ...(principalReads.eventLogPath
         ? {
             eventLogPath: principalReads.eventLogPath,
@@ -2439,6 +2449,52 @@ describe('device-session chat principal resolution over the REAL auth path (stat
         );
       expect((await openAs(OPERATOR_SECRET)).status).toBe(200);
       expect((await openAs(paired.credential)).status).toBe(404);
+    });
+
+    test('the usage rollup counts the operator’s own chats for the operator bearer and no other person’s', async () => {
+      // A paired device's standard grant has no analytics scope, so only the
+      // operator reads the rollup here.
+      const { app, store, roomRuntime } = await setup(
+        'operator',
+        true,
+        undefined,
+        false,
+        false,
+        {
+          extraOwners: [['operator-owned', LOCAL_OPERATOR_PRINCIPAL_ID]],
+          usage: true,
+        },
+      );
+      searchCleanup.unshift(async () => {
+        await roomRuntime.close();
+      });
+      for (const threadId of ['operator-owned', 'device-owned', 'whois-owned'])
+        store.appendEvent({
+          eventId: `${threadId}:usage`,
+          threadId,
+          turnId: `${threadId}:turn`,
+          provider: 'claude',
+          method: 'token-usage.updated',
+          createdAt: new Date().toISOString(),
+          promptTokens: 1,
+        } as never);
+      const usageThreadsFor = async (credential: string) => {
+        const response = await app.request(
+          '/api/analytics/usage-rollup?localOnly=1',
+          { headers: { Authorization: `Bearer ${credential}` } },
+          REMOTE_TAILNET_ENV,
+        );
+        const body = (await response.json()) as {
+          data?: { receipts?: Array<{ threadId?: string }> };
+        };
+        expect(response.status, JSON.stringify(body)).toBe(200);
+        return [
+          ...new Set((body.data?.receipts ?? []).map((r) => r.threadId)),
+        ].sort();
+      };
+      await expect(usageThreadsFor(OPERATOR_SECRET)).resolves.toEqual([
+        'operator-owned',
+      ]);
     });
 
     test('an answer share mints, lists and opens for the operator-owned session, never for a made-up or foreign one', async () => {
