@@ -1529,7 +1529,31 @@ export class OrchestrationService {
    */
   private readonly turnProgress: TurnProgressTracker;
   /** Current running child work plus durable terminal outcomes. */
-  private readonly childWork = new ChildWorkProjection();
+  /**
+   * #2457: a child's running → terminal fold is the background-task settle
+   * the `sessionBackgroundTasks` metric counts, once per child, for every
+   * engine that reports child work. Its `status` label is the child-work
+   * terminal (`completed`/`failed`/`cancelled`/`unresolved`/
+   * `stopped-unconfirmed`), no longer the legacy tuple's tool status.
+   */
+  private readonly childWork = new ChildWorkProjection({
+    onChildSettled: (item, provider) => {
+      sessionBackgroundTasks.add(1, { provider, status: item.status });
+      // Provider lifecycle observations are aggregate only: they carry no
+      // request/tenant authority and cannot make an internal Station API
+      // call. Keep that classification explicit rather than inventing a
+      // tenant from the event's thread.
+      tenantExecutionContextOutcomes.add(
+        1,
+        tenantExecutionContextAttributes({
+          operation: 'background',
+          source: 'aggregate',
+          outcome: 'skipped',
+          reason: 'aggregate_safe',
+        }),
+      );
+    },
+  });
   /** #2456: the one reader every session-summary emission path hands over. */
   private readonly readChildWork = (
     threadId: string,
@@ -8570,26 +8594,6 @@ export class OrchestrationService {
         namespace: event.namespace,
         kind: event.type,
       });
-      if (event.type === 'task/settled') {
-        const status = (event.payload as { status?: unknown } | null)?.status;
-        sessionBackgroundTasks.add(1, {
-          provider: event.provider,
-          status: typeof status === 'string' ? status : 'unknown',
-        });
-        // Provider lifecycle notifications are aggregate observations only:
-        // they carry no request/tenant authority and cannot make an internal
-        // Station API call. Keep that classification explicit rather than
-        // inventing a tenant from the event's thread.
-        tenantExecutionContextOutcomes.add(
-          1,
-          tenantExecutionContextAttributes({
-            operation: 'background',
-            source: 'aggregate',
-            outcome: 'skipped',
-            reason: 'aggregate_safe',
-          }),
-        );
-      }
     }
     // #2456: child work (engine subagents) folds here, beside turnProgress,
     // so session summaries — and the reconnect snapshot built from them —

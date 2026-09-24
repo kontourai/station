@@ -17,6 +17,12 @@ import {
   isSessionLifecycleStateStopped,
   validateSessionLifecycleTransition,
 } from '@kontourai/station-contracts/session-lifecycle';
+import {
+  formatProviderQuotaEventText,
+  PROVIDER_PLAN_QUOTA_EXHAUSTED_CODE,
+  PROVIDER_PLAN_QUOTA_MESSAGE,
+  providerQuotaFactsFromDetails,
+} from '../../providers/provider-plan-quota.js';
 
 interface LifecycleProjection {
   lifecycleState: SessionLifecycleState;
@@ -340,6 +346,36 @@ function projectTerminalAttribution(options: {
   }
 
   if (options.terminalEvent?.method === 'runtime.error') {
+    // #2265: a classified provider-plan quota exhaustion carries its
+    // wait/check/reset guidance in the notice itself, composed ONLY from
+    // re-validated bounded facts. The reset text is provider-reported
+    // civil time with no timezone — repeated verbatim, never computed on.
+    // The kind stays `runtime_error`, so the existing Failed/Stopped
+    // notice surfaces (SessionsView, Home) render it unchanged. A
+    // quota-coded terminal with forged details never falls through to the
+    // generic `message`-echoing copy below — that would surface arbitrary
+    // provider text under a quota classification. It gets this fixed
+    // allowlisted copy instead (see the hostile-message sentinel in the
+    // fold tests). Unrelated errors keep the existing notice byte-for-byte.
+    if (options.terminalEvent.code === PROVIDER_PLAN_QUOTA_EXHAUSTED_CODE) {
+      const quotaFacts = providerQuotaFactsFromDetails(
+        options.terminalEvent.details,
+      );
+      if (quotaFacts) {
+        return {
+          kind: 'runtime_error',
+          detail:
+            `${formatProviderQuotaEventText(quotaFacts)} — wait for the ` +
+            `reset or check the provider plan, then continue explicitly.`,
+        };
+      }
+      return {
+        kind: 'runtime_error',
+        detail:
+          `${PROVIDER_PLAN_QUOTA_MESSAGE} Wait for the reset or check ` +
+          `the provider plan, then continue explicitly.`,
+      };
+    }
     const detail = compactTerminalDetail(
       options.terminalEvent.message,
       'The engine reported an error: ',

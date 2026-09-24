@@ -5156,7 +5156,7 @@ export class EventStore {
                     created_at, sequence, global_sequence
              FROM orchestration_events
              WHERE thread_id IN (${placeholders})
-               AND method IN ('child-work.updated', 'extension.notification', 'session.exited')
+               AND method IN ('child-work.updated', 'extension.notification', 'session.exited', 'session.started')
              ORDER BY global_sequence ASC`,
             )
             .all(...chunk) as any[],

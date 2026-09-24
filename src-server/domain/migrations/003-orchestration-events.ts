@@ -1154,7 +1154,7 @@ export function ensureOrchestrationEventStoreColumns(
   db.exec(
     `CREATE INDEX IF NOT EXISTS idx_events_child_work_history
      ON orchestration_events(thread_id, global_sequence)
-     WHERE method IN ('child-work.updated', 'extension.notification', 'session.exited')`,
+     WHERE method IN ('child-work.updated', 'extension.notification', 'session.exited', 'session.started')`,
   );
   db.exec(
     'CREATE INDEX IF NOT EXISTS idx_events_thread_turn_sequence ON orchestration_events(thread_id, turn_id, sequence)',

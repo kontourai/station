@@ -233,9 +233,11 @@ function PreviewStatus({ preview }: { preview: WorkspaceFilePreview }) {
 function FilePreviewDownloadHandoff({
   projectSlug,
   path,
+  thread,
 }: {
   projectSlug: string;
   path: string;
+  thread?: string;
 }) {
   const [error, setError] = useState<string | null>(null);
   const [downloading, setDownloading] = useState(false);
@@ -247,7 +249,7 @@ function FilePreviewDownloadHandoff({
         onClick={() => {
           setDownloading(true);
           setError(null);
-          void downloadProjectWorkspaceFilePreview(projectSlug, path)
+          void downloadProjectWorkspaceFilePreview(projectSlug, path, thread)
             .then(({ bytes, filename }) => {
               // The attachment is always octet-stream. It is saved, never
               // navigated, mounted, proxied, or treated as trusted HTML/PDF.
@@ -865,6 +867,7 @@ function PreviewContent(props: {
       <FilePreviewDownloadHandoff
         projectSlug={props.state.projectSlug}
         path={props.state.path}
+        thread={props.state.thread}
       />
     </>
   ) : (
@@ -897,6 +900,7 @@ export function FilePreviewPane({
   const previewRequest = {
     path: state.path,
     ...(state.lineRange ? { lineRange: state.lineRange } : {}),
+    ...(state.thread ? { thread: state.thread } : {}),
   };
   const query = useProjectWorkspaceFilePreviewQuery(
     projectSlug,

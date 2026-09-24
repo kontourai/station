@@ -51,7 +51,7 @@ export const CHILD_WORK_SUMMARY_MAX_CHARS = 4_000;
  * settled ones it retains. A reporter listing more than this is not a shape
  * any engine produces; the bound exists so a misbehaving one cannot grow a
  * server-side registry without limit. Settled children beyond the bound are
- * evicted oldest-first, the same trade-off station#1892's retention map makes.
+ * evicted oldest-first.
  */
 export const CHILD_WORK_ITEMS_MAX_PER_REPORTER = 64;
 
@@ -639,7 +639,9 @@ export function projectDelegateChildWork(
 
 /**
  * Namespace of the pre-contract Claude Code task tuples
- * (`extension.notification` `task/registry` / `task/settled`).
+ * (`extension.notification` `task/registry` / `task/settled`). Since #2457
+ * the adapter emits `child-work.updated` instead; these survive only in
+ * persisted history.
  */
 export const LEGACY_CLAUDE_TASK_NAMESPACE = 'claude-code';
 
@@ -673,9 +675,9 @@ function legacyClaudeTaskStatus(
 /**
  * #2456: the ONE translation from the Claude adapter's legacy task tuples to
  * child work, shared by the server projection and the client so both fold
- * the same deltas. Until #2457 moves the adapter onto `child-work.updated`,
- * this is the LIVE Claude path, and it is also how persisted history and
- * cursor replay of those tuples reach the registry.
+ * the same deltas. REPLAY ONLY since #2457 moved the adapter onto
+ * `child-work.updated`: this is how persisted pre-#2457 history, and cursor
+ * replay of it, still reaches the registry. Nothing live emits these tuples.
  *
  * - `task/registry` → an authoritative `snapshot` of the running set.
  * - `task/settled` → a `settle`, carrying whatever identity, result and usage

@@ -18,12 +18,19 @@ export function settledChildWorkFromHistory(
 } {
   let historical = createEmptyChildWorkRegistry();
   let lastReportAt: string | undefined;
+  let exited = false;
   for (const event of events) {
     if (event.method === 'session.exited') {
       historical = forgetChildWorkReporter(historical, threadId);
       lastReportAt = undefined;
+      exited = true;
       continue;
     }
+    if (event.method === 'session.started') {
+      exited = false;
+      continue;
+    }
+    if (exited) continue;
     const delta =
       event.method === 'child-work.updated'
         ? event.delta

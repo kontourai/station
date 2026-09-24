@@ -1,13 +1,6 @@
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
-import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { describe, expect, test } from 'vitest';
-import {
-  type ClaudeMessageState,
-  mapClaudeSdkMessage,
-} from '../../../providers/adapters/claude-adapter-events.js';
-import { recordClaudeTurnDispatched } from '../../../providers/adapters/claude-sdk-turns.js';
+import { replayClaudeTaskCapture } from '../../../providers/__tests__/claude-task-captures.js';
 import { ChildWorkProjection } from '../child-work-projection.js';
 import { buildOrchestrationSessionSummary } from '../orchestration-session-state.js';
 
@@ -110,7 +103,7 @@ describe('ChildWorkProjection', () => {
     expect(projection.read(THREAD, undefined)).toBeUndefined();
   });
 
-  test("folds the Claude adapter's legacy task tuples through the contract translator", () => {
+  test("replay: folds pre-#2457 Claude history's legacy task tuples through the contract translator", () => {
     const projection = new ChildWorkProjection();
     projection.observe(
       legacy('task/registry', {
@@ -193,36 +186,12 @@ describe('ChildWorkProjection', () => {
 
   test('the real captured Claude run: the backgrounded task reads as running mid-run and nothing is left running at the end', () => {
     const projection = new ChildWorkProjection();
-    const record: ClaudeMessageState = {
-      session: {
-        provider: 'claude',
-        threadId: THREAD,
-        status: 'running',
-        createdAt: '2026-09-23T00:00:00.000Z',
-        updatedAt: '2026-09-23T00:00:00.000Z',
-      },
-      lastSessionState: 'running',
-    };
-    // #2324: turn identity lives in the SDK turn ledger; dispatching turn-1
-    // makes it the running turn, as the live adapter does.
-    recordClaudeTurnDispatched(record, 'turn-1');
-    const lines = readFileSync(
-      resolve(
-        process.cwd(),
-        'src-server/providers/__tests__/fixtures/claude-task-subagents.jsonl',
-      ),
-      'utf8',
-    )
-      .split('\n')
-      .filter(Boolean);
+    const { events } = replayClaudeTaskCapture('task-subagents', {
+      threadId: THREAD,
+    });
     let sawBackgroundRunning = false;
-    for (const line of lines) {
-      mapClaudeSdkMessage({
-        provider: 'claude',
-        record,
-        message: JSON.parse(line) as SDKMessage,
-        publish: (published) => projection.observe(published),
-      });
+    for (const published of events) {
+      projection.observe(published);
       const view = projection.read(THREAD, 'claude');
       if (
         view?.observability === 'reported' &&
@@ -238,6 +207,121 @@ describe('ChildWorkProjection', () => {
       observability: 'reported',
       running: [],
     });
+  });
+
+  test('#2457 D1: a late settle after session.exited recreates nothing; a restarted thread is live again', () => {
+    const settled: string[] = [];
+    const projection = new ChildWorkProjection({
+      onChildSettled: (item) => settled.push(item.childId),
+    });
+    const key = {
+      producer: 'engine-subagent' as const,
+      reporterThreadId: THREAD,
+    };
+    const listed = () =>
+      event({
+        method: 'child-work.updated',
+        delta: {
+          kind: 'snapshot',
+          ...key,
+          running: [{ ...key, childId: 'a', status: 'running' }],
+        },
+      });
+    projection.observe(listed());
+    projection.observe(event({ method: 'session.exited' }));
+    // The adapter drains the real outcome after the session ended.
+    projection.observe(
+      event({
+        method: 'child-work.updated',
+        delta: { kind: 'settle', ...key, childId: 'a', status: 'cancelled' },
+      }),
+    );
+    const internals = projection as unknown as {
+      state: { items: Record<string, unknown> };
+      observedAt: Map<string, string>;
+    };
+    expect(internals.state.items).toEqual({});
+    expect(internals.observedAt.has(THREAD)).toBe(false);
+    expect(projection.read(THREAD, 'claude', 'now')).toEqual({
+      observability: 'reported',
+      running: [],
+      observedAt: 'now',
+    });
+    expect(settled).toEqual([]);
+
+    // The same thread starting again reports normally.
+    projection.observe(event({ method: 'session.started' }));
+    projection.observe(listed());
+    expect(projection.read(THREAD, 'claude')).toMatchObject({
+      running: [{ childId: 'a', status: 'running' }],
+    });
+  });
+
+  test('#2457: onChildSettled fires once per child, on its running → terminal fold, with the settling provider', () => {
+    const settled: Array<[string, string, string]> = [];
+    const projection = new ChildWorkProjection({
+      onChildSettled: (item, provider) =>
+        settled.push([item.childId, item.status, provider]),
+    });
+    const key = {
+      producer: 'engine-subagent' as const,
+      reporterThreadId: THREAD,
+    };
+    const running = (childId: string) => ({
+      ...key,
+      childId,
+      status: 'running' as const,
+    });
+    projection.observe(
+      event({
+        method: 'child-work.updated',
+        delta: {
+          kind: 'snapshot',
+          ...key,
+          running: [running('a'), running('b')],
+        },
+      }),
+    );
+    // The station#1892 pair: the second terminal only enriches.
+    for (const summary of [undefined, 'done']) {
+      projection.observe(
+        event({
+          method: 'child-work.updated',
+          delta: {
+            kind: 'settle',
+            ...key,
+            childId: 'a',
+            status: 'completed',
+            ...(summary ? { result: { summary } } : {}),
+          },
+        }),
+      );
+    }
+    // `b` is dropped from the listing (unresolved), then its real outcome
+    // corrects that: one settle, not two.
+    projection.observe(
+      event({
+        method: 'child-work.updated',
+        delta: { kind: 'snapshot', ...key, running: [] },
+      }),
+    );
+    projection.observe(
+      event({
+        method: 'child-work.updated',
+        delta: { kind: 'settle', ...key, childId: 'b', status: 'failed' },
+      }),
+    );
+    // A settle for a child this process never saw running is not counted.
+    projection.observe(
+      event({
+        method: 'child-work.updated',
+        delta: { kind: 'settle', ...key, childId: 'c', status: 'completed' },
+      }),
+    );
+    expect(settled).toEqual([
+      ['a', 'completed', 'claude'],
+      ['b', 'unresolved', 'claude'],
+    ]);
   });
 });
 
