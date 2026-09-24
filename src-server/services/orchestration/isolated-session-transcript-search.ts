@@ -9,6 +9,11 @@ import type {
 } from '@kontourai/station-contracts/unified-search';
 import { publicAgentIdFromRuntimeKey } from '../agents/runtime-agent-identity.js';
 import type { IsolatedTranscriptReads } from '../search/isolated-transcript-search.js';
+import {
+  errorClassFields,
+  type SearchReadRefusal,
+  SearchReadRefusedError,
+} from '../search/search-read-refusal.js';
 import { boundedTaskText } from '../search/task-search-protocol.js';
 import type { TranscriptSearchMatch } from '../search/transcript-search-protocol.js';
 import type { SessionAuthorization } from './session-authorization.js';
@@ -29,48 +34,83 @@ export function createIsolatedSessionTranscriptSearch(
   let busy = false;
   let active: AbortController | undefined;
 
+  /**
+   * #2460: every refusal records WHICH branch refused — admission, the
+   * specific currentness component, or the read's own failure with the lower
+   * layer's cause — so the runtime's provider log can name it. The caller's
+   * response still says only `unavailable`.
+   */
   async function readAuthorized<T>(
     input: IsolatedSessionReadInput,
     read: (current: () => boolean, signal: AbortSignal) => Promise<T>,
-  ): Promise<T | undefined> {
+  ): Promise<
+    | { ok: true; value: Exclude<T, undefined> }
+    | { ok: false; refusal: SearchReadRefusal }
+  > {
+    const refuse = (refusal: SearchReadRefusal) =>
+      ({ ok: false, refusal }) as const;
+    if (closed) return refuse({ kind: 'closed', stage: 'admission' });
+    if (busy) return refuse({ kind: 'busy', stage: 'admission' });
+    if (input.signal?.aborted)
+      return refuse({ kind: 'aborted', stage: 'admission' });
     if (
-      closed ||
-      busy ||
-      input.signal?.aborted ||
       !isSessionReadAuthority(input.authority) ||
       (input.authority.mode === 'hosted' &&
         !input.authority.tenantExecutionContext)
     )
-      return;
+      return refuse({ kind: 'authority-invalid', stage: 'admission' });
     const { signal, current: requestCurrent } = input;
     busy = true;
     const controller = new AbortController();
     active = controller;
     const deadline = performance.now() + 2000;
     const sameGeneration = authorization.captureReadCurrentness();
-    const current = () => {
+    /** The first false currentness component, or undefined when current. */
+    const staleness = (): string | undefined => {
       try {
-        return (
-          runtimeCurrent() === true &&
-          requestCurrent() === true &&
-          !closed &&
-          !controller.signal.aborted &&
-          performance.now() < deadline &&
-          sameGeneration()
-        );
+        if (runtimeCurrent() !== true) return 'runtime';
+        if (requestCurrent() !== true) return 'request';
+        if (closed) return 'closed';
+        if (controller.signal.aborted) return 'aborted';
+        if (performance.now() >= deadline) return 'deadline';
+        if (!sameGeneration()) return 'generation';
+        return undefined;
       } catch {
-        return false;
+        return 'threw';
       }
     };
+    const current = () => staleness() === undefined;
+    const notCurrent = (stage: 'before-read' | 'during-read' | 'after-read') =>
+      refuse({
+        kind: 'not-current',
+        stage,
+        // A read that stopped on a transiently false component may find it
+        // true again by the time this is asked.
+        component: staleness() ?? 'transient',
+      });
     const abort = () => controller.abort();
     const timer = setTimeout(abort, 2000);
     signal?.addEventListener('abort', abort, { once: true });
     try {
-      if (signal?.aborted || !current()) return;
+      if (signal?.aborted)
+        return refuse({ kind: 'aborted', stage: 'before-read' });
+      if (!current()) return notCurrent('before-read');
       const result = await read(current, controller.signal);
-      return current() ? result : undefined;
-    } catch {
-      return undefined;
+      // A read returns `undefined` only when it stopped on currentness.
+      if (result === undefined) return notCurrent('during-read');
+      if (!current()) return notCurrent('after-read');
+      return { ok: true, value: result as Exclude<T, undefined> };
+    } catch (error) {
+      const component = staleness();
+      return refuse({
+        kind: 'read-failed',
+        stage: 'during-read',
+        ...(component ? { component } : {}),
+        read:
+          error instanceof SearchReadRefusedError
+            ? error.refusal
+            : { kind: 'threw', ...errorClassFields(error) },
+      });
     } finally {
       clearTimeout(timer);
       signal?.removeEventListener('abort', abort);
@@ -146,7 +186,7 @@ export function createIsolatedSessionTranscriptSearch(
           };
         },
       );
-      return outcome ?? { state: 'unavailable' };
+      return outcome.ok ? outcome.value : { state: 'unavailable' };
     },
     async search(
       input: IsolatedSessionReadInput & {
@@ -156,7 +196,8 @@ export function createIsolatedSessionTranscriptSearch(
       },
     ): Promise<
       | { state: 'available'; matches: TranscriptSearchMatch[] }
-      | { state: 'unavailable' }
+      /** `cause` is log-only (#2460): the runtime provider names it, never a response. */
+      | { state: 'unavailable'; cause: SearchReadRefusal }
     > {
       const { authority, query, projectId } = input;
       const limit = input.limit ?? 20;
@@ -167,7 +208,10 @@ export function createIsolatedSessionTranscriptSearch(
         limit > 20 ||
         (projectId !== undefined && !boundedTaskText(projectId, 256))
       )
-        return { state: 'unavailable' };
+        return {
+          state: 'unavailable',
+          cause: { kind: 'request-invalid', stage: 'admission' },
+        };
       const matches = await readAuthorized(input, async (current, signal) => {
         const rows = await source.search(
           {
@@ -197,9 +241,9 @@ export function createIsolatedSessionTranscriptSearch(
         }
         return permitted;
       });
-      return matches
-        ? { state: 'available', matches }
-        : { state: 'unavailable' };
+      return matches.ok
+        ? { state: 'available', matches: matches.value }
+        : { state: 'unavailable', cause: matches.refusal };
     },
     async openSession(
       input: IsolatedSessionReadInput & { sessionId: string },
@@ -240,7 +284,7 @@ export function createIsolatedSessionTranscriptSearch(
           };
         },
       );
-      return outcome ?? { state: 'unavailable' };
+      return outcome.ok ? outcome.value : { state: 'unavailable' };
     },
     async open(
       input: IsolatedSessionReadInput & {
@@ -291,7 +335,7 @@ export function createIsolatedSessionTranscriptSearch(
           };
         },
       );
-      return outcome ?? { state: 'unavailable' };
+      return outcome.ok ? outcome.value : { state: 'unavailable' };
     },
   };
 }

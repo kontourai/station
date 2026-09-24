@@ -1,5 +1,9 @@
 /** Owner-private wire facts, never SessionReadAuthority or executable policy. */
 import { types } from 'node:util';
+import {
+  parseWorkerRefusal,
+  type SearchReadRefusal,
+} from './search-read-refusal.js';
 import { boundedTaskText } from './task-search-protocol.js';
 
 export type TranscriptReadRequest =
@@ -83,7 +87,8 @@ export type TranscriptReadResult =
   | { state: 'available'; owner: string | null }
   | { state: 'available'; target: TranscriptMessageOpenFact | null }
   | { state: 'available'; session: TranscriptSessionOpenFact | null }
-  | { state: 'unavailable' };
+  /** `cause` is log-only (#2460) and never reaches a search response. */
+  | { state: 'unavailable'; cause?: SearchReadRefusal };
 
 function exact(
   value: unknown,
@@ -278,12 +283,17 @@ export function parseTranscriptReadResult(
 ): TranscriptReadResult | null {
   const result = exact(
     value,
-    ['state', 'rows', 'owner', 'target', 'session', 'page'],
+    ['state', 'rows', 'owner', 'target', 'session', 'page', 'cause'],
     ['state'],
   );
   if (!result) return null;
-  if (result.state === 'unavailable')
-    return Object.keys(result).length === 1 ? { state: 'unavailable' } : null;
+  if (result.state === 'unavailable') {
+    const keys = Object.keys(result).length;
+    if (keys === 1) return { state: 'unavailable' };
+    const cause = keys === 2 ? parseWorkerRefusal(result.cause) : null;
+    return cause ? { state: 'unavailable', cause } : null;
+  }
+  if (Object.hasOwn(result, 'cause')) return null;
   if (result.state !== 'available' || Object.keys(result).length !== 2)
     return null;
   if (request.type === 'session-owner') {
