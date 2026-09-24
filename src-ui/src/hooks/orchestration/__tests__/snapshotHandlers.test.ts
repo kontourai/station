@@ -159,6 +159,99 @@ describe('applyOrchestrationSnapshot reconnect-fallback refetch (station#1225)',
     expect(chats['thread-1'].pendingApprovals).toEqual(['child-request']);
   });
 
+  // station#2530 review 3: the identity a root row advertises must never
+  // bind ANOTHER conversation's lineage child to this chat.
+  test("a root row naming another chat's lineage child cannot pull that child's approvals into its own chat", () => {
+    chats = {
+      'chat-x': {
+        provider: 'claude',
+        conversationId: 'chat-x',
+        currentSessionId: 'chat-x',
+      },
+      'chat-y': {
+        provider: 'claude',
+        conversationId: 'chat-y',
+        currentSessionId: 'chat-y',
+      },
+    };
+    applyOrchestrationSnapshot(
+      {
+        sessions: [
+          {
+            provider: 'claude',
+            threadId: 'chat-x',
+            conversationId: 'chat-x',
+            status: 'ready',
+            hasActiveTurn: false,
+            currentSessionId: 'chat-y:session:child',
+            openRequestIds: [],
+          },
+          {
+            provider: 'claude',
+            threadId: 'chat-y',
+            conversationId: 'chat-y',
+            status: 'ready',
+            hasActiveTurn: false,
+            currentSessionId: 'chat-y:session:child',
+            openRequestIds: [],
+          },
+          {
+            provider: 'claude',
+            threadId: 'chat-y:session:child',
+            conversationId: 'chat-y',
+            status: 'ready',
+            hasActiveTurn: true,
+            currentSessionId: 'chat-y:session:child',
+            openRequestIds: ['chat-y-request'],
+          },
+        ],
+      },
+      { apiBase: 'http://api', isReconnectFallback: true },
+    );
+    expect(chats['chat-x'].pendingApprovals ?? []).toEqual([]);
+    expect(chats['chat-y'].pendingApprovals).toEqual(['chat-y-request']);
+  });
+
+  test('two root rows claiming the same child with no conversation to decide between them bind it to neither', () => {
+    chats = {
+      'chat-x': { provider: 'claude', currentSessionId: 'chat-x' },
+      'chat-y': { provider: 'claude', currentSessionId: 'chat-y' },
+    };
+    applyOrchestrationSnapshot(
+      {
+        sessions: [
+          {
+            provider: 'claude',
+            threadId: 'chat-x',
+            status: 'ready',
+            hasActiveTurn: false,
+            currentSessionId: 'shared-child',
+            openRequestIds: [],
+          },
+          {
+            provider: 'claude',
+            threadId: 'chat-y',
+            status: 'ready',
+            hasActiveTurn: false,
+            currentSessionId: 'shared-child',
+            openRequestIds: [],
+          },
+          {
+            provider: 'claude',
+            threadId: 'shared-child',
+            status: 'ready',
+            hasActiveTurn: true,
+            currentSessionId: 'shared-child',
+            openRequestIds: ['shared-request'],
+          },
+        ],
+      },
+      { apiBase: 'http://api', isReconnectFallback: true },
+    );
+    expect(chats['chat-x'].pendingApprovals ?? []).toEqual([]);
+    expect(chats['chat-y'].pendingApprovals ?? []).toEqual([]);
+  });
+
   test('an open activity record restores the exact turn even when the process status is ready', () => {
     applyOrchestrationSnapshot(
       {

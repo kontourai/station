@@ -223,24 +223,46 @@ function selectSnapshotRows(
   // carried no `conversationId` metadata) has ever named can still resolve to
   // the same chat — and its `openRequestIds` reach `pendingApprovals` on the
   // very snapshot that would otherwise be the client's only chance to see it.
+  //
+  // Only a chat's OWN root row (its `threadId` is the chat key) may teach
+  // this mapping, and only when the row's `conversationId`, if it names one,
+  // is that same chat. A `currentSessionId` two rows both claim is ambiguous
+  // and teaches nothing. And a learned identity never outranks a row's own
+  // `conversationId` (see below), so a row cannot bind itself, or anyone
+  // else's lineage child, to a chat that is not its conversation.
+  const learned = new Map<string, string | null>();
   for (const session of payload.sessions) {
-    const key = resolveChatKey(session.threadId);
-    if (
-      key &&
-      session.currentSessionId &&
-      !keyByExecutionIdentity.has(session.currentSessionId)
-    ) {
-      keyByExecutionIdentity.set(session.currentSessionId, key);
-    }
+    const key = chats[session.threadId] ? session.threadId : undefined;
+    const claimed = session.currentSessionId;
+    if (!key || !claimed || keyByExecutionIdentity.has(claimed)) continue;
+    const conversationKey = resolveChatKey(session.conversationId);
+    if (conversationKey !== undefined && conversationKey !== key) continue;
+    const prior = learned.get(claimed);
+    learned.set(claimed, prior === undefined || prior === key ? key : null);
+  }
+  const learnedIdentities = new Set<string>();
+  for (const [identity, key] of learned) {
+    if (key === null) continue;
+    keyByExecutionIdentity.set(identity, key);
+    learnedIdentities.add(identity);
   }
 
   const candidatesByChat = new Map<string, SnapshotSession[]>();
   for (const session of payload.sessions) {
+    const conversationKey = resolveChatKey(session.conversationId);
+    let threadKey = resolveChatKey(session.threadId);
+    if (
+      threadKey !== undefined &&
+      conversationKey !== undefined &&
+      threadKey !== conversationKey &&
+      learnedIdentities.has(session.threadId)
+    ) {
+      threadKey = undefined;
+    }
     const keys = new Set(
-      [
-        resolveChatKey(session.threadId),
-        resolveChatKey(session.conversationId),
-      ].filter((key): key is string => key !== undefined),
+      [threadKey, conversationKey].filter(
+        (key): key is string => key !== undefined,
+      ),
     );
     for (const key of keys) {
       const candidates = candidatesByChat.get(key);
