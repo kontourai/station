@@ -110,7 +110,18 @@ export function createCodexSessionRecord(options: {
 export class CodexAdapterTransport {
   private readonly events = new AsyncEventQueue<CanonicalRuntimeEvent>();
   private readonly sessions = new Map<string, CodexSessionRecord>();
-  private readonly threadLookup = new Map<string, CodexSessionRecord>();
+  /**
+   * #2458 fix round (P1a): codex thread id → record, PER EMITTING PROCESS.
+   * Each session runs its own app-server, and a thread id is only meaningful
+   * on the process streaming it: two sessions may resume the same codex
+   * thread, and a process may stream, as its own child, a thread id another
+   * session owns. A single global map let the later registration capture the
+   * earlier session's events (and, with a process guard on top, drop them).
+   */
+  private readonly threadLookup = new Map<
+    CodexProcessLike,
+    Map<string, CodexSessionRecord>
+  >();
 
   constructor(
     private readonly now: () => Date,
@@ -141,14 +152,23 @@ export class CodexAdapterTransport {
 
   unregisterSession(record: CodexSessionRecord): void {
     this.sessions.delete(record.externalThreadId);
-    if (record.codexThreadId) {
-      this.threadLookup.delete(record.codexThreadId);
+    const threads = this.threadLookup.get(record.process);
+    if (threads) {
+      for (const [threadId, owner] of threads) {
+        if (owner === record) threads.delete(threadId);
+      }
+      if (threads.size === 0) this.threadLookup.delete(record.process);
     }
   }
 
   setCodexThreadId(record: CodexSessionRecord, codexThreadId: string): void {
     record.codexThreadId = codexThreadId;
-    this.threadLookup.set(codexThreadId, record);
+    let threads = this.threadLookup.get(record.process);
+    if (!threads) {
+      threads = new Map();
+      this.threadLookup.set(record.process, threads);
+    }
+    threads.set(codexThreadId, record);
   }
 
   handleProcess(record: CodexSessionRecord): void {
@@ -647,17 +667,12 @@ export class CodexAdapterTransport {
       return;
     }
     const threadId = extractThreadId(notification.params);
-    // #2458 fix round (R1): a thread-id hit counts only when it belongs to
-    // the process that EMITTED the line. `threadLookup` spans every session
-    // on this transport, and each session runs its own app-server, so a hit
-    // on another process's record is a collision (a thread id that session
-    // owns, streamed here as this process's child or stale thread) — never
-    // that session's fact. It is unclaimed for the emitting process instead.
-    const lookupHit = threadId ? this.threadLookup.get(threadId) : undefined;
-    const ownHit =
-      lookupHit && lookupHit.process === emittingRecord.process
-        ? lookupHit
-        : undefined;
+    // #2458: resolved only among the threads of the process that EMITTED
+    // the line (see `threadLookup`). A miss is a thread this process streams
+    // but no session registered on it: a subagent's stream.
+    const ownHit = threadId
+      ? this.threadLookup.get(emittingRecord.process)?.get(threadId)
+      : undefined;
     const record = ACCOUNT_SCOPED_NOTIFICATION_METHODS.has(notification.method)
       ? emittingRecord
       : threadId

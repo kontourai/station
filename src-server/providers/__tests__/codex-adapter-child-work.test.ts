@@ -17,6 +17,7 @@ import { describe, expect, test } from 'vitest';
 import {
   CODEX_CHILD_PENDING_BYTES_MAX,
   codexChildHeldStats,
+  SETTLED_AWAITING_OWN_TERMINAL_MAX,
 } from '../adapters/codex-adapter-child-work.js';
 import {
   CodexAdapterTransport,
@@ -799,5 +800,188 @@ describe('#2458 fix round: routing and bounds', () => {
     expect(child(claimed.events, 'second').usage).toEqual({ totalTokens: 2 });
     expect(child(claimed.events, 'huge').usage).toBeUndefined();
     expect(codexChildHeldStats(claimed.record).bytes).toBe(0);
+  });
+});
+
+describe('#2458 fix round 2: shared thread ids, late child streams, byte order', () => {
+  test('P1a: two sessions resuming the same codex thread each keep their own events', () => {
+    const transport = new CodexAdapterTransport(
+      () => new Date('2026-09-23T00:00:00.000Z'),
+      async () => {},
+    );
+    const events: CanonicalRuntimeEvent[] = [];
+    transport.publish = (event) => {
+      events.push(event);
+    };
+    const session = (externalThreadId: string) => {
+      const record = createCodexSessionRecord({
+        externalThreadId,
+        process: new InertCodexProcess(),
+        provider: 'codex',
+        threadId: externalThreadId,
+        model: 'gpt-5.5',
+        nowIso: () => '2026-09-23T00:00:00.000Z',
+      });
+      transport.registerSession(record);
+      transport.setCodexThreadId(record, 'shared-codex-thread');
+      record.activeTurnId = `${externalThreadId}-turn`;
+      return record;
+    };
+    const first = session('thread-first');
+    const second = session('thread-second');
+    for (const record of [first, second]) {
+      transport.handleStdoutLine(
+        record,
+        JSON.stringify({
+          method: 'thread/tokenUsage/updated',
+          params: {
+            threadId: 'shared-codex-thread',
+            tokenUsage: { total: { totalTokens: 11 } },
+          },
+        }),
+      );
+      transport.handleStdoutLine(
+        record,
+        JSON.stringify({
+          method: 'turn/completed',
+          params: {
+            threadId: 'shared-codex-thread',
+            turn: {
+              id: `${record.externalThreadId}-turn`,
+              status: 'completed',
+            },
+          },
+        }),
+      );
+    }
+    for (const threadId of ['thread-first', 'thread-second']) {
+      const own = events.filter((event) => event.threadId === threadId);
+      expect(own.map((event) => event.method).sort()).toEqual([
+        'token-usage.updated',
+        'turn.completed',
+      ]);
+      expect(
+        own.find((event) => event.method === 'turn.completed')?.turnId,
+      ).toBe(`${threadId}-turn`);
+    }
+    expect(first.activeTurnId).toBeUndefined();
+    expect(second.activeTurnId).toBeUndefined();
+  });
+
+  const lateStream = (): Msg[] => [
+    childUsage(55),
+    {
+      method: 'item/completed',
+      params: {
+        threadId: CHILD,
+        turnId: 'child-turn',
+        item: { type: 'agentMessage', id: 'm', text: 'child answer' },
+      },
+    },
+    childTurnCompleted({ status: 'completed', durationMs: 9 }),
+  ];
+
+  test('P1b: the parent reports the child done first (v1 wait); its own later stream still fills summary, tokens and duration', () => {
+    const { events, record } = replayCodexCapture(
+      synthetic([spawn(), wait('completed'), ...lateStream()]),
+    );
+    expect(child(events)).toMatchObject({
+      status: 'completed',
+      result: { summary: 'child answer' },
+      usage: { totalTokens: 55, durationMs: 9 },
+    });
+    // Its own stream ended: now its facts go.
+    expect(codexChildHeldStats(record).facts).toBe(0);
+  });
+
+  test('P1b: the same for v2 subAgentActivity completed before the child stream', () => {
+    const activity = (kind: string): Msg =>
+      parentItem('completed', {
+        type: 'subAgentActivity',
+        id: `a-${kind}`,
+        kind,
+        agentThreadId: CHILD,
+        agentPath: '/root/worker',
+      });
+    const { events } = replayCodexCapture(
+      synthetic([activity('started'), activity('completed'), ...lateStream()]),
+    );
+    expect(child(events)).toMatchObject({
+      status: 'completed',
+      result: { summary: 'child answer' },
+      usage: { totalTokens: 55, durationMs: 9 },
+    });
+  });
+
+  test('P1b: settled children awaiting their own stream are bounded, oldest first', () => {
+    const count = SETTLED_AWAITING_OWN_TERMINAL_MAX + 6;
+    const ids = Array.from({ length: count }, (_, index) => `kid-${index}`);
+    const msgs: Msg[] = ids.flatMap((id) => [
+      parentItem(
+        'completed',
+        collab('spawnAgent', {
+          id: `spawn-${id}`,
+          receiverThreadIds: [id],
+          agentsStates: { [id]: { status: 'pendingInit', message: null } },
+        }),
+      ),
+      parentItem(
+        'completed',
+        collab('wait', {
+          id: `wait-${id}`,
+          agentsStates: { [id]: { status: 'completed', message: null } },
+        }),
+      ),
+    ]);
+    const { record } = replayCodexCapture(synthetic(msgs));
+    expect(codexChildHeldStats(record).facts).toBe(
+      SETTLED_AWAITING_OWN_TERMINAL_MAX,
+    );
+  });
+
+  const held = (
+    threadId: string,
+    padding: string,
+    totalTokens: number,
+  ): Msg => ({
+    method: 'thread/tokenUsage/updated',
+    params: { threadId, padding, tokenUsage: { total: { totalTokens } } },
+  });
+  const register = (threadId: string): Msg =>
+    parentItem('completed', {
+      type: 'subAgentActivity',
+      id: `a-${threadId}`,
+      kind: 'started',
+      agentThreadId: threadId,
+      agentPath: `/root/${threadId}`,
+    });
+
+  test('P2a: the held bound counts UTF-8 bytes, not UTF-16 code units', () => {
+    // 3 bytes per char: each payload is ~0.3 of the cap in code units but
+    // ~0.9 in bytes, so two cannot both be held.
+    const euros = '€'.repeat(Math.floor(CODEX_CHILD_PENDING_BYTES_MAX * 0.3));
+    const { record } = replayCodexCapture(
+      synthetic([held('one', euros, 1), held('two', euros, 2)]),
+    );
+    const stats = codexChildHeldStats(record);
+    expect(stats.bytes).toBeLessThanOrEqual(CODEX_CHILD_PENDING_BYTES_MAX);
+    expect(stats.notifications).toBe(1);
+  });
+
+  test('P2b: eviction follows global arrival order (A1, B1, A2 keeps A2)', () => {
+    const size = (share: number) =>
+      'p'.repeat(Math.floor(CODEX_CHILD_PENDING_BYTES_MAX * share));
+    const { events } = replayCodexCapture(
+      synthetic([
+        held('A', size(0.2), 1),
+        held('B', size(0.4), 2),
+        held('A', size(0.7), 3),
+        register('A'),
+        register('B'),
+      ]),
+    );
+    // Over the cap after A2: the two OLDEST (A1, then B1) go; A's newest stays.
+    expect(child(events, 'A').usage).toEqual({ totalTokens: 3 });
+    expect(child(events, 'B').usage).toBeUndefined();
   });
 });

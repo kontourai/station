@@ -80,7 +80,10 @@ const CHILD_METHODS = new Set([
  */
 const PENDING_THREADS_MAX = 16;
 const PENDING_NOTIFICATIONS_PER_THREAD_MAX = 32;
+/** UTF-8 bytes of serialized held notifications, across every thread. */
 export const CODEX_CHILD_PENDING_BYTES_MAX = 256 * 1024;
+/** Settled children still waiting on their own stream's end (see facts). */
+export const SETTLED_AWAITING_OWN_TERMINAL_MAX = 64;
 const TITLE_MAX_CHARS = 200;
 
 interface CodexChildFacts {
@@ -88,6 +91,13 @@ interface CodexChildFacts {
   totalTokens?: number;
   lastAgentMessage?: string;
   stopRequested?: boolean;
+  /**
+   * The child's OWN stream has ended (`turn/completed` or `thread/closed`).
+   * Until then a child the parent already reported settled keeps its facts
+   * and its stream is still read: the reducer lets a later settle fill the
+   * summary, tokens and duration the parent's report lacked.
+   */
+  ownTerminalSeen?: boolean;
 }
 
 export interface CodexChildWorkState {
@@ -101,8 +111,10 @@ export interface CodexChildWorkState {
   children: Map<string, CodexChildFacts>;
   /** unclaimed codex thread id → its notifications, in arrival order. */
   pending: Map<string, HeldNotification[]>;
-  /** Serialized size of everything in `pending`. */
+  /** Serialized UTF-8 size of everything in `pending`. */
   pendingBytes: number;
+  /** Next arrival sequence number for a held notification. */
+  pendingSeq: number;
   /** Set once the session has ended; nothing is mapped after that. */
   closed: boolean;
 }
@@ -115,6 +127,8 @@ export interface CodexChildNotification {
 interface HeldNotification {
   notification: CodexChildNotification;
   bytes: number;
+  /** Arrival order across ALL held threads, for oldest-first eviction. */
+  seq: number;
 }
 
 interface ChildWorkContext {
@@ -129,6 +143,7 @@ function stateOf(record: CodexSessionRecord): CodexChildWorkState {
     children: new Map(),
     pending: new Map(),
     pendingBytes: 0,
+    pendingSeq: 0,
     closed: false,
   };
   return record.childWork;
@@ -204,14 +219,25 @@ function isStickyTerminal(item: ChildWorkItem | undefined): boolean {
 
 /**
  * Drops the facts of every child whose item is gone (evicted, or never
- * accepted past the reducer's bound) or whose outcome is sticky: nothing a
- * later notification carries can change it, and the item holds the rest.
+ * accepted past the reducer's bound), or whose outcome is sticky AND whose
+ * own stream has ended: nothing later can change or enrich it. A child the
+ * parent settled before its own stream ended is kept, bounded: past
+ * `SETTLED_AWAITING_OWN_TERMINAL_MAX` the oldest registered go first.
  */
 function pruneFacts(record: CodexSessionRecord): void {
   const state = stateOf(record);
-  for (const childId of state.children.keys()) {
+  const awaiting: string[] = [];
+  for (const [childId, facts] of state.children) {
     const item = itemFor(record, childId);
-    if (!item || isStickyTerminal(item)) state.children.delete(childId);
+    if (!item || (isStickyTerminal(item) && facts.ownTerminalSeen)) {
+      state.children.delete(childId);
+    } else if (isStickyTerminal(item)) {
+      awaiting.push(childId);
+    }
+  }
+  const excess = awaiting.length - SETTLED_AWAITING_OWN_TERMINAL_MAX;
+  for (const childId of awaiting.slice(0, Math.max(0, excess))) {
+    state.children.delete(childId);
   }
 }
 
@@ -631,7 +657,7 @@ export function routeCodexChildNotification(
   }
   // A child whose outcome is already sticky: nothing it says can change it.
   if (itemFor(context.record, threadId)) return;
-  const bytes = JSON.stringify(notification).length;
+  const bytes = Buffer.byteLength(JSON.stringify(notification), 'utf8');
   if (bytes > CODEX_CHILD_PENDING_BYTES_MAX) return;
   let held = state.pending.get(threadId);
   if (!held) {
@@ -646,12 +672,22 @@ export function routeCodexChildNotification(
     const dropped = held.shift();
     if (dropped) state.pendingBytes -= dropped.bytes;
   }
-  held.push({ notification, bytes });
+  held.push({ notification, bytes, seq: state.pendingSeq++ });
   state.pendingBytes += bytes;
-  // Total size: oldest first, across threads in the order they were first held.
+  // Total size: evict by GLOBAL arrival order. Each queue is in arrival
+  // order, so the oldest held notification is the smallest queue head.
   while (state.pendingBytes > CODEX_CHILD_PENDING_BYTES_MAX) {
-    const [oldestThread, queue] = state.pending.entries().next().value ?? [];
-    if (oldestThread === undefined || !queue) break;
+    let oldestThread: string | undefined;
+    let oldestSeq = Number.POSITIVE_INFINITY;
+    for (const [candidate, queue] of state.pending) {
+      const head = queue[0];
+      if (head && head.seq < oldestSeq) {
+        oldestSeq = head.seq;
+        oldestThread = candidate;
+      }
+    }
+    if (oldestThread === undefined) break;
+    const queue = state.pending.get(oldestThread) ?? [];
     const dropped = queue.shift();
     if (dropped) state.pendingBytes -= dropped.bytes;
     if (queue.length === 0) state.pending.delete(oldestThread);
@@ -735,6 +771,9 @@ function handleKnownChildNotification(
       const turn = params.turn;
       const status = mapCodexChildTurnStatus(turn.status);
       const durationMs = extractTokenFigure(turn.durationMs) ?? undefined;
+      // The child's own word: after this settle (or its enrichment of a
+      // settle the parent already reported) its facts can go.
+      facts.ownTerminalSeen = true;
       const summary =
         status === 'failed'
           ? (extractString(isRecord(turn.error) ? turn.error.message : null) ??
@@ -746,9 +785,11 @@ function handleKnownChildNotification(
         ...(summary ? { summary } : {}),
         ...(durationMs !== undefined ? { durationMs } : {}),
       });
+      pruneFacts(context.record);
       return;
     }
     case 'thread/closed': {
+      facts.ownTerminalSeen = true;
       if (!isRunning(context.record, childId)) {
         // A stop was requested and the thread is now gone: the stop took.
         if (
@@ -757,6 +798,7 @@ function handleKnownChildNotification(
         ) {
           settleChild(context, childId, 'cancelled');
         }
+        pruneFacts(context.record);
         return;
       }
       settleChild(
@@ -802,5 +844,6 @@ export function settleOpenCodexChildren(context: ChildWorkContext): void {
   state.children.clear();
   state.pending.clear();
   state.pendingBytes = 0;
+  state.pendingSeq = 0;
   state.registry = createEmptyChildWorkRegistry();
 }
