@@ -123,6 +123,7 @@ import {
 } from '@tanstack/react-query-persist-client';
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { SkeletonBlock } from '../components/state';
+import { notifyOrchestrationAuthorityChanged } from '../hooks/orchestration/ensureOrchestrationEventStream';
 import {
   useConnectionSwitchScope,
   useInvalidateCachesOnConnectionSwitch,
@@ -357,6 +358,7 @@ export function AuthorityQueryProvider({
       lastVerifiedNamespaceRef.current !== verifiedNamespace
     ) {
       activeChatsStore.clearConversationActivity();
+      notifyOrchestrationAuthorityChanged(apiBase);
     }
     lastVerifiedNamespaceRef.current = verifiedNamespace;
     if (activeRef.current?.namespace === verifiedNamespace) return;
@@ -368,7 +370,7 @@ export function AuthorityQueryProvider({
     activeRef.current = next;
     setActive(next);
     if (previous) retireAuthorityClient(previous.queryClient);
-  }, [verifiedNamespace]);
+  }, [verifiedNamespace, apiBase]);
 
   // Boot-payload seed (moved from `main.tsx`): the payload is fetched at the
   // EXACT captured origin — never a module-global resolved after a switch —

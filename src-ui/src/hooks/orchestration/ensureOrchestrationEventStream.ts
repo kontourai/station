@@ -111,6 +111,16 @@ const basesWithSnapshot = new Set<string>();
 const appliedCursors = new Map<string, string>();
 const streamEpochs = new Map<string, string>();
 
+/** Re-read present-tense state when a previously viewed authority returns. */
+export function notifyOrchestrationAuthorityChanged(apiBase: string): void {
+  const owned = activeSources.get(apiBase);
+  if (owned && !owned.ended && !owned.connection.signal.aborted) {
+    owned.connection.restart();
+  } else if (requestedBases.has(apiBase)) {
+    ensureOrchestrationEventStream(apiBase);
+  }
+}
+
 function reensureRequestedStreams(): void {
   if (
     (globalThis as { document?: { hidden?: boolean } }).document?.hidden ===

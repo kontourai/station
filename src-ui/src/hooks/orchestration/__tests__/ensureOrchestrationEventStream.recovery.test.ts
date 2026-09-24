@@ -31,7 +31,10 @@ vi.mock('../eventHandlers', () => ({
     settleSemanticDeliveryBuffer(...args),
 }));
 
-import { ensureOrchestrationEventStream } from '../ensureOrchestrationEventStream';
+import {
+  ensureOrchestrationEventStream,
+  notifyOrchestrationAuthorityChanged,
+} from '../ensureOrchestrationEventStream';
 import { getStreamConnectionState } from '../streamConnectionState';
 
 const encoder = new TextEncoder();
@@ -138,6 +141,21 @@ function advanceClock(ms: number) {
 }
 
 describe('ensureOrchestrationEventStream recovery (station#2301)', () => {
+  test('switching A to B to A refreshes A with its retained cursor', async () => {
+    const a = 'http://recovery.test/authority-a';
+    const b = 'http://recovery.test/authority-b';
+    ensureOrchestrationEventStream(a);
+    ensureOrchestrationEventStream(b);
+    await settle();
+    notifyOrchestrationAuthorityChanged(b);
+    await settle();
+    notifyOrchestrationAuthorityChanged(a);
+    await settle();
+    expect(requestsTo(a)).toHaveLength(2);
+    expect(requestsTo(b)).toHaveLength(2);
+    const resumedA = requestsTo(a)[1]?.[1] as RequestInit | undefined;
+    expect(new Headers(resumedA?.headers).get('Last-Event-ID')).toBe('5');
+  });
   test('a stream ended by a non-persisted pagehide is replaced by the next ensure', async () => {
     const apiBase = 'http://recovery.test/pagehide';
     ensureOrchestrationEventStream(apiBase);
