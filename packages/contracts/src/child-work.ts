@@ -534,7 +534,6 @@ export interface DelegateChildWorkSource {
   /** The durable conversation this delegated session belongs to. */
   conversationId?: string;
   createdAt?: string;
-  lastEventAt?: string;
   hasActiveTurn?: boolean;
   lifecycleState?: string;
   delegation?: {
@@ -581,6 +580,14 @@ export function projectDelegateChildWork(
      * the launch carried no delegation context — never defaulted to 1.
      */
     depth?: number;
+    /**
+     * When the delegate's last turn actually ENDED: its terminal turn fact's
+     * own time (`turn.completed`/`turn.aborted`/a non-retriable
+     * `runtime.error`). Absent when no terminal fact was observed. Never the
+     * session's last event time — a restart's `session.started` or a state
+     * change after completion is a later event, not a later end (#2459).
+     */
+    endedAt?: string;
   } = {},
 ): ChildWorkItem | undefined {
   const delegation = summary.delegation;
@@ -617,9 +624,7 @@ export function projectDelegateChildWork(
           },
         }),
     ...(summary.createdAt ? { startedAt: summary.createdAt } : {}),
-    ...(!running && summary.lastEventAt
-      ? { endedAt: summary.lastEventAt }
-      : {}),
+    ...(!running && facts.endedAt ? { endedAt: facts.endedAt } : {}),
     // A peer record is read-only on this Station: the orchestration command
     // gate rejects every command for it (including interruptTurn), and the
     // delegate interrupt route refuses its binding. So no stop is offered.

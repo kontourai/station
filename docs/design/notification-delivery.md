@@ -91,13 +91,13 @@ the platform, not by `getaddrinfo`.
 ## Status: the watch is landed and dormant
 
 `notification_watch_start` / `notification_watch_stop` exist and are tested, and
-**nothing calls them** — the live blocker is #917 (the FCM/APNs dependency
-decision). The dormant call site is commented in
+**nothing calls them**. Push (below) supersedes it for backgrounded delivery.
+The dormant call site is commented in
 `src-ui/src/contexts/ApiBaseContext.tsx` so switching it on is a visible,
 small change rather than an archaeology exercise.
 
-(Historical: #3088 corrected this record after a backlog sweep closed the
-original tracking issue with no code change. #3088 is itself now closed, so
+(Historical: archive#3088 corrected this record after a backlog sweep closed
+the original tracking issue with no code change. It is itself now closed, so
 it must not be cited here as live tracking — that would repeat the very
 defect it was filed for.)
 
@@ -110,12 +110,13 @@ defect it was filed for.)
 | Force-quit / swiped away | **no** |
 | Device rebooted, app never opened | **no** |
 
-Everything below the first row needs FCM on Android and APNs on iOS (#917).
-The native capability report therefore returns `remote-push: unsupported`
-instead of allowing the presence of the local-notification plugin or dormant
-watch to be mistaken for wake-capable delivery. #1225 remains open until #917
-selects and provisions both the mobile applications and server send
-credentials; repository code cannot manufacture those provider identities.
+Everything below the first row needs FCM on Android and APNs on iOS
+(archive#917, reseeded as #63 and batched into #177). The native capability
+report therefore returns `remote-push: unsupported` instead of allowing the
+presence of the local-notification plugin or dormant watch to be mistaken for
+wake-capable delivery. archive#1225 remains open until the mobile applications
+and server send credentials are provisioned; repository code cannot
+manufacture those provider identities.
 
 That is not a consolation prize. Push is the mechanism that does not require
 keeping a process alive at all — the system unfreezes the app to deliver — so it
@@ -125,12 +126,213 @@ platform's answer. The cost is real and is a product decision, not a technical
 one: every notification leaves the machine and transits Google or Apple, which
 matters for a self-hosted product.
 
-The seam is ready for it: `notification_watch_start` takes a URL and a
-credential and owns delivery from then on, so a push relay slots in behind the
-same call without the web layer changing.
-
 **iOS** has no foreground-service equivalent either, and is foreground-only
-until push is decided.
+until push lands.
+
+## Decision: push through a Kontour-operated push gateway
+
+Decided September 23, 2026 by the owner: follow
+[T3 Code](https://github.com/pingdotgg/t3code), which ships this for a
+self-hosted product today, adapted where Station differs.
+
+- **Why a hosted service at all.** Push credentials belong to whoever publishes
+  the app (the Firebase project and the APNs key are bound to its package and
+  bundle IDs), so a self-hosted Station cannot send to the published app
+  directly. T3 runs a hosted relay (`infra/relay/src/agentActivity/`).
+- **Named "push gateway", not relay.** In Station, relay and
+  [broker](connection-broker.md) name the path a Device uses to *reach* a
+  Station. The push gateway does the opposite job, Station to phone through
+  Google or Apple, and only the app's publisher can run it. The broker design
+  already kept notifications apart ("a separate payload policy and delivery
+  grant").
+- **Stateless, Station-signed.** T3's relay links servers to Clerk user
+  accounts, stores device tokens and builds each card itself. Station has no
+  hosted accounts, and a Station already knows its paired phones, so the
+  gateway (`deploy/push-gateway`) keeps nothing: every request is signed by the
+  Station's own P-256 push key (ES256, body hash bound into the token, at most
+  120 s lifetime). The gateway verifies it, rate limits per key and globally,
+  accepts only a data-only agent-activity message for a Station package, and
+  forwards it to FCM at high priority. The Station owns device tokens, builds
+  the card, and drops a token when the gateway answers 410.
+- **What stops a stranger.** Anyone can mint a key, so passing the gateway
+  proves only possession of *some* key. The gateway therefore stamps the
+  verified key's thumbprint into every message (`station_key`, which callers
+  cannot supply), and the phone accepts a push only when `station_key`,
+  `device_id` (a random per-registration value) and `user_id` all match what
+  its own Station returned at registration. Per-address, global, per-key and
+  per-push-token rate limits bound the rest.
+- **Android.** FCM *data* messages are received by a native
+  `FirebaseMessagingService` that renders the card itself — no WebView, no
+  JavaScript. While work runs the card requests promotion
+  (`setRequestPromotedOngoing`, `setShortCriticalText`), which Android 16 shows
+  as a status-bar Live Update chip.
+- **iOS.** A Live Activity from a widget extension, updated by APNs
+  `liveactivity` pushes, with push-to-start tokens (iOS 17.2+) so a card can
+  appear while the app is closed.
+
+The card carries status, session titles and project names, never
+transcripts, code or tool output (the same rule as the
+[connection broker](connection-broker.md)), and it is end-to-end encrypted
+to the phone: the gateway and Google see only routing data.
+
+**What doing without hosted accounts costs**, compared with T3: no single card
+merging several Stations (each Station owns its own card), revocation happens
+at the Station rather than centrally, and the gateway cannot restrict senders
+to known people, so abuse is bounded by rate limits and the phone-side check
+rather than by sign-up. Revisit when a Station has more than one person, or a
+cross-Station inbox is wanted.
+
+Push avoids the failures above for a backgrounded or swiped-away app: the
+platform wakes the process to deliver, so nothing has to stay alive, and
+neither the freezer nor tauri#11609/#15671 is involved. Rust does no
+networking, so the DNS failure does not apply either. Two limits remain. FCM
+does not deliver to an app the user force-stopped (Settings → Force stop)
+until it is opened again. And normal-priority data messages wait out Doze,
+while the client drops activity older than ten minutes, so the gateway sends
+activity as high-priority messages.
+
+### Station contract
+
+The Station side mirrors Web Push (`push-routes.ts`, `wireWebPushDelivery`):
+
+- **Push key.** `security/push-signing-key.json` (0600) holds a P-256 key used
+  only for gateway requests: domain-separated from the connection signing key,
+  whose tokens are not a general signature (connection-broker.md). It is
+  created on the first registration, never before.
+- **Registration.** `POST /api/system/native-push/register` from a paired
+  device, body `{ token, packageName, platform: 'android' }`, returns
+  `{ registrationId, stationId, stationKey, payloadKey }`. `registrationId` is
+  128 random bits and is the value the phone checks on every push
+  (`device_id`); `stationId` is the environment id (`user_id`); `stationKey`
+  is the push key's RFC 7638 thumbprint, which the gateway stamps as
+  `station_key` after verifying the signature, so the phone can pin it;
+  `payloadKey` is 32 random bytes (base64url, 43 characters) the card is
+  sealed with. `registrationId` and `payloadKey` are kept across token
+  rotation and replaced after a `DELETE`. The registration is stored in its
+  own 0600 sidecar, `security/native-push-registrations.json`, keyed by
+  device id — not on the paired-device record, which older Stations read
+  with a strict key check and would refuse whole. The package must be one the
+  gateway delivers to, and the route sits on the `/api/system` operate tier.
+  `DELETE /api/system/native-push` clears the caller's own registration only.
+  Revoking or replacing a device drops its registration, and a registration
+  whose device is no longer active is never listed. Hosted-tenant mode
+  disables both routes, as it does Web Push; an invalid gateway URL, or a
+  corrupt key or registration file, makes registration answer 503.
+- **Sealed card.** Only routing data travels in clear: the FCM data is
+  `{ station_kind: 'agent_activity', device_id: <registrationId>, sealed }`,
+  where `sealed` = base64url(nonce[12] || AES-256-GCM ciphertext || tag[16])
+  under that registration's `payloadKey`, with additional authenticated data
+  `station-agent-activity:v1:<registrationId>`. The plaintext is one JSON
+  object of strings: `user_id`, `updated_at`, `active`, `activity_phase`,
+  `activity_line_0..4`, `activity_active_count`, `activity_attention_count`,
+  `activity_expires_at`, and the `alert_*` fields. It is held to 2500 bytes
+  (rows dropped from the tail, a long alert body shortened first), so the
+  sealed data stays under the gateway's 3800-byte limit with room for
+  `station_key`. `NATIVE_PUSH_SEALED_TEST_VECTOR` in
+  `@kontourai/station-contracts/native-push` is the known-answer vector for
+  the phone's opener.
+- **Publisher.** An `ORCHESTRATION_EVENT` subscriber marks the card dirty on
+  lifecycle events (never streamed content), coalesces per Station, and reads
+  the session read model once per reading principal: each phone reads with
+  the read authority its own device credential carries
+  (`pairedDevicePrincipal` — the device's tailnet person binding, else the
+  device itself), so a card never holds a session that credential may not
+  read. Only a person's device with `orchestration:read`, not bound to a
+  deployment account, may register or be read for; a device narrowed below
+  that gets one final empty card and then nothing. That final card is best
+  effort: nothing flushes on a scope change, so it goes out with the next
+  lifecycle event or card refresh, and a restart in between forgets it (the
+  phone's last card then expires on its own, within two hours). A phone
+  paired by code but reached through Tailscale Serve lists sessions as its
+  WhoIs person, and a local-UI device's requests resolve to the local
+  operator, so either one's in-app list can differ from its card; the card
+  never exceeds what the device credential may read. The registration file
+  is cached in memory and re-read when its file identity changes, which covers
+  `station environment reset` from another process; two processes writing it
+  in the same instant can still lose one write. It sends one card per registered
+  phone: at most five
+  rows, attention first (approval, input), then failed, then live, then
+  sessions finished in the last 15 minutes. Lifecycle maps to the plugin's
+  phases through `sessionAttentionDisposition`, the adjudication the bell
+  shares: `queued` with an open turn → `starting` (an attached-but-idle
+  session also projects `queued` and stays off the card), `running` →
+  `running`, an approval request (`review_pending`, which the lifecycle fold
+  derives from an unresolved non-input `request.opened`) →
+  `waiting_for_approval`, `needs_input` → `waiting_for_input`, `blocked` →
+  `stale` (live, but not counted as attention: the phone's attention means an
+  approval or input request), `completed` → `completed`, `failed` → `failed`;
+  canceled sessions leave the card. Failed sessions leave after 15 minutes
+  like any other finished one, and live phases require the session to be
+  attached in this process.
+- **Entries and alerts.** Which entry into a phase a session is in comes from
+  its event log: the open request for approval or input, the turn for a live
+  session, the terminal event for a finished one. So a second approval is a
+  new entry even if nothing saw the session leave the first. An alert goes
+  out once per entry into approval or input, and for a finish within the last
+  two minutes; `alert_id` is SHA-256 of Station, session, phase and entry.
+  Several new entries for one phone are one grouped alert ("2 agents need
+  you", up to five titles listed) whose id is derived from the sorted set.
+  The ids a phone has been sent are kept (bounded) with its registration in
+  the sidecar, so a restart or token rotation does not raise a group again.
+  A finished entry only counts a terminal event after the latest
+  `turn.started`; otherwise the observation time stands in.
+- **Delivery.** Per phone, at most one send every three seconds (the gateway
+  allows 30 a minute per token); a change inside the interval is coalesced
+  into the next send. 503, 429, 401 (which can be transient), other 5xx and
+  network errors wait for the
+  publisher's single unref'd timer with backoff (5 s, ×3, at most 5 min,
+  8 timed attempts; after that only a new event retries). A live card is
+  re-sent 30 minutes before its two-hour expiry, and the publisher flushes
+  once shortly after boot. A 410 clears that registration (unless the phone
+  re-registered with a new token meanwhile); a registration pinned to a push
+  key this Station no longer holds is dropped. Requests never follow
+  redirects. The listener never throws, and the runtime stops the publisher
+  (and its timer) on shutdown. Implementation:
+  `src-server/services/notifications/` (`agent-activity-card.ts`,
+  `agent-activity-publisher.ts`, `agent-activity-seal.ts`,
+  `native-push-registration-store.ts`, `push-signing-key-store.ts`) and
+  `src-server/routes/operations/native-push-routes.ts`.
+- **Gateway URL.** `STATION_PUSH_GATEWAY_URL`, defaulting to the Kontour
+  gateway; it must be a bare https origin (a path, query or credentials are
+  refused, and native push is then off). Nothing is sent until a device
+  registers, which only happens when its user turns agent activity on; the
+  flow is listed in the privacy inventory.
+
+### Provisioning
+
+- Firebase project `kontour-station` under the kontourai.io organization,
+  Spark plan, Analytics and Gemini off. Android apps are registered for
+  `io.kontourai.station` and its `.nightly`, `.beta` and `.debug` variants.
+- Service account `station-push-gateway`, whose only role is Firebase Cloud
+  Messaging API Admin. The organization blocks service-account keys; the
+  project alone carries an exception (`iam.managed.disableServiceAccountKeyCreation`
+  not enforced) so the Worker can hold one key, which lives only in the Worker
+  secret `FCM_SERVICE_ACCOUNT`.
+- Worker `station-push-gateway` on Cloudflare (workers.dev for now).
+
+### Delivery status
+
+| Slice | State |
+|---|---|
+| Android rendering + FCM receipt (`src-desktop/plugins/agent-activity`) | built; ported from T3's Kotlin module. Verified on a Pixel 10 Pro XL (Android 16): real FCM delivery, and delivery through the deployed gateway, to a killed process; promoted chip; launch after that wake |
+| Push gateway (`deploy/push-gateway`) | built and deployed; FCM only. Verified end to end with a throwaway Station key |
+| Station publisher (push key, device tokens, card building, session state → gateway) | built; cards are sealed to each phone. Verified against the gateway's own verifier and request parser, and against the phone's opener through a shared known-answer vector. FCM rotates tokens without the app open and the plugin has no `onNewToken` hook, so the app re-registers on start and on return to the foreground |
+| Web registration (`configure`, `pushToken`, settings UI) | built: Settings → Notifications → "Agent activity on this phone", shown only when an Android build reports `remote-push` enabled (it has all four `STATION_FIREBASE_*` values). Registrations are kept per Station; the card key goes from the Station's response straight to the plugin and is never kept in WebView storage. The app re-registers on start and return to the foreground when the token changed or the registration is a day old |
+| One card per Station on the phone | built: each registration has its own card, replay state and intents; cards open only with that registration's key and must carry its Station's key thumbprint |
+| iOS Live Activity (widget extension in `gen/apple/project.yml`) and APNs in the gateway | not started |
+
+The Android plugin builds with or without Firebase. Its Firebase identity comes
+from `STATION_FIREBASE_APP_ID`, `_API_KEY`, `_PROJECT_ID` and `_SENDER_ID` at
+build time (public values, but bound to one project); without them
+`pushToken` reports `unconfigured`. With them, Firebase auto-init stays off
+until `pushToken` is called, so installing the app does not contact Google
+before the user asks for push; the `clear` command turns it off again and
+deletes the token. The plugin's Kotlin unit tests run only
+locally (`./gradlew :tauri-plugin-station-agent-activity:testDebugUnitTest` in
+a generated `gen/android`); no workflow runs them yet. Debug builds include a broadcast receiver,
+restricted to the `adb` shell, that stands in for FCM so rendering and
+wake-from-cold can be verified without a sender — see
+`DebugAgentActivityReceiver.kt`.
 
 ## Rules this area has earned
 

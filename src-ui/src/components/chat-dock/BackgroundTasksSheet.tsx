@@ -11,7 +11,7 @@ import {
   ResponsiveDialogSurface,
 } from '../ResponsiveDialogSurface';
 import { Empty } from '../state';
-import { TaskRow } from './backgroundTaskRows';
+import { backgroundTaskElapsedMs, TaskRow } from './backgroundTaskRows';
 import './BackgroundTasksSheet.css';
 
 const SECTION_STORAGE_KEY = 'station.background-tasks.sections';
@@ -114,7 +114,7 @@ export function BackgroundTasksSheet({
                 <TaskRow
                   key={entry.id}
                   entry={entry}
-                  elapsedMs={now - entry.startedAt}
+                  elapsedMs={backgroundTaskElapsedMs(entry, now)}
                   onOpenTranscript={onOpenTranscript}
                 />
               ))}
@@ -140,9 +140,7 @@ export function BackgroundTasksSheet({
                   <TaskRow
                     key={entry.id}
                     entry={entry}
-                    elapsedMs={
-                      (entry.endedAt ?? entry.startedAt) - entry.startedAt
-                    }
+                    elapsedMs={backgroundTaskElapsedMs(entry, now)}
                     outcomeChip={entry.state}
                     onOpenTranscript={onOpenTranscript}
                   />
