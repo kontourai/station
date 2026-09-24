@@ -44,6 +44,11 @@ const expectedDependencies = new Map(
     // decides what may be written and normalizes the record, and it grants
     // nothing and renders nothing.
     'src-server/routes/projects/project-layout-admission.ts': 'persistence',
+    // #2363: the coding toolbar's Commit and Push, moved out of the route so
+    // the route keeps validation and the operator check. `git-review`,
+    // beside the toolbar that calls it: it runs git in the Project's own
+    // repository and refuses what Station will not commit or push.
+    'src-server/services/projects/coding-git-actions.ts': 'git-review',
     'src-server/routes/projects/projects.ts': 'project-route',
     'src-server/runtime/routes/runtime-routes.ts': 'route-registration',
     'src-server/security/pairing-route-scopes.ts': 'route-authorization',

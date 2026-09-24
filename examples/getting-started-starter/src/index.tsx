@@ -1,12 +1,13 @@
 import {
+  type AgentSummary,
+  type LayoutComponentProps,
   useAgents,
   useNavigation,
   useToast,
-  type WorkspaceComponentProps,
 } from '@kontourai/station-sdk';
 import './layout.css';
 
-function GettingStartedHome({ onShowChat }: WorkspaceComponentProps) {
+function GettingStartedHome({ onShowChat }: LayoutComponentProps) {
   const agents = useAgents();
   const { setDockState } = useNavigation();
   const { showToast } = useToast();
@@ -41,7 +42,7 @@ function GettingStartedHome({ onShowChat }: WorkspaceComponentProps) {
         </p>
         {agents.length > 0 ? (
           <ul className="starter-list">
-            {agents.map((agent) => (
+            {agents.map((agent: AgentSummary) => (
               <li key={agent.slug}>
                 <span>{agent.name}</span>
                 <code>{agent.slug}</code>

@@ -1478,6 +1478,23 @@ export function mapClaudeSessionState(
 }
 
 /**
+ * #2348: how Station settles a subagent's permission request when no subagent
+ * task is tracked as live (`onNoLiveTasks`). That signal can be wrong: a
+ * `skip_transcript` task is never tracked, and a `task_*` settle message can
+ * be processed after another subagent's `canUseTool` registered its request.
+ * So this is a plain denial of the one call, never the `cancel` mapping's
+ * `interrupt: true`, which may abort a subagent that is in fact still running.
+ * The message lets a live subagent ask again.
+ */
+export function withdrawnSubagentPermissionResult(): PermissionResult {
+  return {
+    behavior: 'deny',
+    message:
+      'The permission request was withdrawn before it was answered. Request it again if the call is still needed.',
+  };
+}
+
+/**
  * Map an adapter-level permission decision plus the original `toolInput`
  * and any SDK-proposed `PermissionUpdate` suggestions into the exact
  * `PermissionResult` shape the `@anthropic-ai/claude-agent-sdk` control

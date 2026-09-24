@@ -193,15 +193,42 @@ const ATTACHMENT_DESCRIPTOR = {
  */
 const OPERATOR_SECRET = 'operator-secret-remote-fixture';
 
+/**
+ * #2460: cleanup that stops at its first throw leaks everything after it —
+ * `orchestration.shutdown()` can reject with `Transcript reader retirement is
+ * still pending` when a worker takes >100ms to terminate, and the store it
+ * preceded was then never closed, leaking into every later test in the file.
+ * Every step runs; the FIRST failure is rethrown so the test still reports it.
+ */
+async function runEveryStep(
+  steps: ReadonlyArray<() => unknown>,
+): Promise<void> {
+  const failures: unknown[] = [];
+  for (const step of steps) {
+    try {
+      await step();
+    } catch (error) {
+      failures.push(error);
+    }
+  }
+  if (failures.length > 0) throw failures[0];
+}
+
 describe('device-session chat principal resolution over the REAL auth path (station#4518)', () => {
   const directories: string[] = [];
   const searchCleanup: Array<() => Promise<void>> = [];
-  afterEach(async () => {
-    for (const close of searchCleanup.splice(0)) await close();
-    vi.restoreAllMocks();
-    for (const directory of directories.splice(0))
-      rmSync(directory, { recursive: true, force: true });
-  });
+  afterEach(() =>
+    runEveryStep([
+      ...searchCleanup.splice(0),
+      () => vi.restoreAllMocks(),
+      ...directories
+        .splice(0)
+        .map(
+          (directory) => () =>
+            rmSync(directory, { recursive: true, force: true }),
+        ),
+    ]),
+  );
 
   /**
    * Pairs a real device through the REAL `DevicePairingService` — the exact
@@ -372,11 +399,13 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       // so the runtime and its SQLite handle leak into every later test in
       // the file. `runtimeSearch` is deliberately optional here — it does not
       // exist yet, and a barrier that never resolved means it never will.
-      searchCleanup.push(async () => {
-        await runtimeSearch?.close();
-        await orchestration!.shutdown();
-        await expect.poll(() => store.close().kind).toBe('closed');
-      });
+      searchCleanup.push(() =>
+        runEveryStep([
+          () => runtimeSearch?.close(),
+          () => orchestration!.shutdown(),
+          () => expect.poll(() => store.close().kind).toBe('closed'),
+        ]),
+      );
       await awaitSessionAttachmentSettled(orchestration);
       runtimeSearch = createRuntimeSearch({
         stationId: '22222222-2222-4222-8222-222222222222',

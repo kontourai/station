@@ -541,6 +541,7 @@ function CodingDiffPane({ instance }: BuiltinWorkspacePaneProps) {
   return (
     <div className="workspace-coding-diff-pane">
       <BranchToolbar
+        projectSlug={projectSlug}
         workingDir={workingDir}
         onActiveRepoChange={setActiveRepoRoot}
       />

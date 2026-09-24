@@ -465,15 +465,18 @@ describe('live surface registry', () => {
     viewer.close();
   });
   test('a long press or drag does not lapse the lease; releasing lets it lapse (N1)', async () => {
+    // A hand-driven clock: on a real one, 90ms of sleep against the 120ms
+    // ceiling (4 x 30ms) crossed the ceiling on a loaded runner.
+    let clock = 0;
     const { producer, entry } = setup(() => true, {
-      lease: { humanHoldMs: 30 },
+      lease: { humanHoldMs: 30, now: () => clock },
     });
     await dispatchHumanInput(entry, human, 0, [press('down', 7, 8)]);
-    await sleep(90); // three hold periods, button still down
+    clock += 90; // three hold periods, button still down, under the ceiling
     expect(entry.lease.snapshot().holder).toMatchObject(human);
     expect(producer.dispatched).toHaveLength(1); // nothing cancelled it
     await dispatchHumanInput(entry, human, 1, [press('up', 7, 8)]);
-    await sleep(90);
+    clock += 90;
     expect(entry.lease.snapshot().holder).toBeNull();
   });
 

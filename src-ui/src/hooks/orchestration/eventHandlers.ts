@@ -40,6 +40,7 @@ import {
   handleToolProgressEvent,
   handleToolStartedEvent,
 } from './streamHandlers';
+import { recordEventPosition } from './streamPosition';
 import {
   handleRuntimeErrorEvent,
   handleRuntimeWarningEvent,
@@ -94,7 +95,13 @@ export function handleOrchestrationEvent(
    */
   provenance?: unknown,
   conversation?: OrchestrationConversationStreamBinding,
+  /**
+   * #2334: the server's stream sequence for this frame (the SSE id). Lets an
+   * approval report be ordered against the user's pick.
+   */
+  position?: number,
 ) {
+  recordEventPosition(apiBase, event, position);
   if (
     conversation?.currentSessionId === event.threadId &&
     (event.method === 'session.started' ||

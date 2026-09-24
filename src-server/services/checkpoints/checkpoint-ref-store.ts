@@ -9,7 +9,7 @@ import {
   isSafeCheckpointRefSegment,
   removeThreadCheckpointRefs,
 } from '@kontourai/station-shared/checkpoints';
-import { execGit, spawnGit } from '../../utils/git-exec.js';
+import { execGit, killGitProcessTree, spawnGit } from '../../utils/git-exec.js';
 
 /**
  * Workspace checkpoint ref store (archive#2802, slice 1).
@@ -748,7 +748,8 @@ async function batchCheckObjects(
       resolve(value);
     };
     const timer = setTimeout(() => {
-      child.kill('SIGTERM');
+      // The whole process group: git behind macOS's xcrun shim included.
+      killGitProcessTree(child, 'SIGKILL');
       finish(null);
     }, timeoutMs);
     child.stdout?.setEncoding('utf-8');

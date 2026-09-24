@@ -41,13 +41,15 @@ type PublishedClaim = {
   status?: string;
 };
 
-declare global {
+// With the automatic JSX runtime, intrinsic elements are declared on React's
+// own JSX namespace. A `declare global { namespace JSX }` block is ignored.
+declare module 'react' {
   namespace JSX {
     interface IntrinsicElements {
       'surface-trust-panel': React.DetailedHTMLProps<
         React.HTMLAttributes<HTMLElement>,
         HTMLElement
-      >;
+      > & { heading?: string };
     }
   }
 }

@@ -32,6 +32,13 @@ export async function dispatchForeground(input: {
    * options bag outranks it and is left untouched.
    */
   approvalModeFallback?: string;
+  /**
+   * The session approval override: the pending pick, else the confirmed one
+   * (`sessionApprovalOverride`, #2334). It travels ALONGSIDE the model
+   * options, never in place of them, and survives the `engine-selected`
+   * branch below: resetting the model does not withdraw an approval pick.
+   */
+  approvalModeOverride?: string;
   message: string;
   attachments?: FileAttachment[];
   attachmentStages?: ComposerAttachmentStageSnapshot[];
@@ -43,9 +50,12 @@ export async function dispatchForeground(input: {
   const resolved = resolveTurnModel(input);
   const defaultRequested = resolved.kind === 'engine-selected';
   const modelOptions = ((): Record<string, unknown> | undefined => {
-    const requested = defaultRequested
+    const modelControls = defaultRequested
       ? undefined
       : (input.requestedProviderOptions ?? input.providerOptions);
+    const requested = input.approvalModeOverride
+      ? { ...(modelControls ?? {}), approvalMode: input.approvalModeOverride }
+      : modelControls;
     if (!input.approvalModeFallback) return requested;
     // A session override travels in the options bag itself and wins; the
     // fallback fills only the gap. `'connection-default'` in the bag is the
