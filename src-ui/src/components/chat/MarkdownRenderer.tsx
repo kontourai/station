@@ -10,6 +10,7 @@ import {
   markdownBlocksRequireWholeParse,
   splitMarkdownBlocks,
 } from './markdown-blocks';
+import { chatUrlTransform, MarkdownImage } from './markdown-images';
 import { QuoteSourceLink } from './QuoteSourceLink';
 import { remarkPathMentions } from './remarkPathMentions';
 
@@ -48,6 +49,7 @@ const sourceAwareComponents: NonNullable<Options['components']> = {
       </ChatMarkdownAnchor>
     );
   },
+  img: MarkdownImage,
 };
 // After GFM, so a URL it autolinks is already a link and is not re-scanned
 // for path mentions.
@@ -166,7 +168,7 @@ function MarkdownRendererComponent({
       remarkRehypeOptions,
       skipHtml,
       unwrapDisallowed,
-      urlTransform,
+      urlTransform: urlTransform ?? chatUrlTransform,
     }),
     [
       allowElement,
