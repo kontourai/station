@@ -8,7 +8,6 @@
 import { readFileSync } from 'node:fs';
 import { createServer as createHttpServer } from 'node:http';
 import { type AddressInfo, createServer } from 'node:net';
-import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import { buildHubGuardSource } from '../../toolchain/device-hub-guard.js';
 import { HUB_LAUNCH_ARGS } from '../../toolchain/device-hub-supervisor.js';
@@ -297,10 +296,9 @@ describe('the SSH device hub', () => {
     // "Authentications that can continue: …keyboard-interactive" before
     // the key is accepted, then the bind fails.
     const transcript = readFileSync(
-      join(
-        __dirname,
-        'fixtures',
-        'openssh-10.3p1-debug1-forward-bind-race.txt',
+      new URL(
+        './fixtures/openssh-10.3p1-debug1-forward-bind-race.txt',
+        import.meta.url,
       ),
       'utf8',
     );

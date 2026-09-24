@@ -4,7 +4,6 @@
  * ssh option, and keep Station from ever accepting an unconfirmed host key.
  */
 import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import {
   buildSshDeviceCommandArgs,
@@ -228,14 +227,17 @@ describe('the forward-listening line (H1)', () => {
 });
 
 describe('ssh failures are typed', () => {
-  const fixture = (name: string) =>
-    readFileSync(join(__dirname, 'fixtures', name), 'utf8');
-
   test('D1: a REAL DEBUG1 transcript is classified by its non-debug lines only', () => {
     // A refused login at DEBUG1 is still auth-failed…
     expect(
       classifySshDeviceFailure({
-        stderr: fixture('openssh-10.3p1-debug1-auth-denied.txt'),
+        stderr: readFileSync(
+          new URL(
+            './fixtures/openssh-10.3p1-debug1-auth-denied.txt',
+            import.meta.url,
+          ),
+          'utf8',
+        ),
         exitCode: 255,
       }),
     ).toBe('auth-failed');
@@ -243,7 +245,13 @@ describe('ssh failures are typed', () => {
     // "keyboard-interactive" prompt the debug negotiation mentions.
     expect(
       classifySshDeviceFailure({
-        stderr: fixture('openssh-10.3p1-debug1-forward-bind-race.txt'),
+        stderr: readFileSync(
+          new URL(
+            './fixtures/openssh-10.3p1-debug1-forward-bind-race.txt',
+            import.meta.url,
+          ),
+          'utf8',
+        ),
         exitCode: 255,
       }),
     ).toBe('forward-failed');

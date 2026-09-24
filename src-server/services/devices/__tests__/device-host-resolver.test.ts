@@ -1,5 +1,6 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
 import {
   createDeviceHostResolver,
@@ -75,7 +76,7 @@ describe('the device host resolver with SSH hosts', () => {
  * the runtime composition hands them out only through the resolver.
  */
 describe('the resolver is the only path to a hub', () => {
-  const root = join(__dirname, '../../..');
+  const root = fileURLToPath(new URL('../../..', import.meta.url));
   function sources(dir: string): string[] {
     const out: string[] = [];
     for (const name of readdirSync(dir)) {
