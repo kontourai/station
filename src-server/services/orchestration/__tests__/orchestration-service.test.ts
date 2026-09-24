@@ -2062,10 +2062,7 @@ describe('OrchestrationService', () => {
       finishReason: 'stop',
       createdAt: '2026-08-24T00:00:02.000Z',
     });
-    const detail = await service.readSession(
-      'conversation-idle',
-      INTERNAL_SESSION_READ_SCOPE,
-    );
+    const detail = await service.readSession('conversation-idle');
     expect(detail?.session.lifecycleState).toBe('idle');
 
     const requested = {
@@ -2180,10 +2177,7 @@ describe('OrchestrationService', () => {
     // Production adapters leave a stopped engine's row `closed` (this fake
     // does not publish the exit); record that fact directly.
     eventStore.markSessionClosed('conversation-idle-closed', 'claude');
-    const detail = await service.readSession(
-      'conversation-idle-closed',
-      INTERNAL_SESSION_READ_SCOPE,
-    );
+    const detail = await service.readSession('conversation-idle-closed');
     // The stop does not rewrite the finished turn's outcome...
     expect(detail?.session.lifecycleState).toBe('idle');
     expect(detail?.session.status).toBe('closed');
