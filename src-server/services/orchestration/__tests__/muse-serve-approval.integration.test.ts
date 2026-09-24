@@ -68,6 +68,10 @@ describe('#2452 a Muse workflow subagent approval through OrchestrationService',
       },
       logger: { warn: () => {}, info: () => {} },
     });
+    // The Muse Code login prerequisite reads the operator's home directory;
+    // this test drives a fake host, so it must not depend on the machine it
+    // runs on (it passed locally only where muse was logged in).
+    vi.spyOn(adapter, 'getPrerequisites').mockResolvedValue([]);
     service = new OrchestrationService({
       adapterRegistry: {
         register() {},
