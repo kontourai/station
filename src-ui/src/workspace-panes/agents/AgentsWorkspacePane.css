@@ -1,0 +1,41 @@
+/* #2459: the Agents pane's scope toggle and notes. Lazy chunk only. */
+
+.agents-pane {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.agents-pane__scope-actions {
+  display: flex;
+  flex-shrink: 0;
+  gap: var(--space-1);
+  min-width: 0;
+  margin: 0;
+  padding: var(--space-2) var(--space-2) 0;
+  border: 0;
+}
+
+.agents-pane__scope-actions > .button[aria-pressed="true"] {
+  /* The pressed scope's treatment is keyed on the SAME attribute assistive
+     tech reads, so the two agree from the first render. */
+  background: var(--bg-tertiary);
+  border-color: var(--border-primary);
+  color: var(--text-primary);
+}
+
+.agents-pane__section-qualifier {
+  color: var(--text-tertiary);
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.agents-pane__note {
+  margin: 0;
+  padding: var(--space-1) var(--space-2);
+  color: var(--text-tertiary);
+  /* The rows' secondary text size, legible at 390px. */
+  font-size: var(--text-xs);
+}

@@ -225,6 +225,18 @@ describe('frozen stable client-build provenance', () => {
     expect(linuxDependencies?.run).toContain('rpm2cpio cpio');
 
     const androidJob = workflowJob(release, 'android');
+    // apkanalyzer fails on a bundle (#2473); the AAB goes through a
+    // checksum-verified bundletool, and the verification precedes its use.
+    const packagedAudit = String(
+      namedStep(androidJob, 'Audit packaged Android capabilities').run,
+    );
+    expect(packagedAudit).not.toMatch(/apkanalyzer[^\n]*"\$aab"/);
+    const verifyJar = packagedAudit.indexOf('sha256sum --check --status');
+    const dumpAab = packagedAudit.indexOf(
+      'dump manifest --bundle "$aab" > "$RUNNER_TEMP/station-aab-manifest.xml"',
+    );
+    expect(verifyJar).toBeGreaterThan(-1);
+    expect(dumpAab).toBeGreaterThan(verifyJar);
     const nativeBuild = namedStep(
       androidJob,
       'Build signed universal APK and AAB',

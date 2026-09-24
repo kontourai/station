@@ -124,7 +124,10 @@ import {
 } from './layout-working-directory.js';
 import { createProjectIdentityRoutes } from './project-identity-routes.js';
 import { admitProjectLayoutWrite } from './project-layout-admission.js';
-import { createWorkspacePanePreviewRoutes } from './workspace-pane-previews.js';
+import {
+  createWorkspacePanePreviewRoutes,
+  type SessionWorkspaceDirectory,
+} from './workspace-pane-previews.js';
 
 /** Read a plugin's layout.json to create a layout reference */
 function readPluginLayout(projectHomeDir: string, pluginName: string) {
@@ -203,6 +206,12 @@ async function registerPluginNamespaces(
 }
 
 interface ProjectRouteDeps {
+  /**
+   * #2476: the directory a session of this project runs in, for a caller
+   * allowed to read it — so a file preview of that conversation reads its
+   * isolated worktree rather than the checkout.
+   */
+  sessionWorkspaceDirectory?: SessionWorkspaceDirectory;
   /** Restricts the Project catalogue for an authenticated shared member. */
   memberProjectAdmissions?: (c: Context) => Promise<
     | readonly {
@@ -705,7 +714,11 @@ export function createProjectRoutes(
   // persistence or catalog construction.
   app.route(
     '/:slug/file-preview',
-    createWorkspacePanePreviewRoutes(projectService),
+    createWorkspacePanePreviewRoutes(
+      projectService,
+      undefined,
+      deps.sessionWorkspaceDirectory,
+    ),
   );
 
   // List all projects

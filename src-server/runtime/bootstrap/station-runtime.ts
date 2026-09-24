@@ -377,6 +377,7 @@ import type { DeviceSessionService } from '../../services/devices/device-session
 import type { DeviceToolchainService } from '../../services/devices/toolchain/device-toolchain-service.js';
 import { DiscordGatewayService } from '../../services/discord/discord-gateway-service.js';
 import type { LiveSurfaceRegistry } from '../../services/live-surface/registry.js';
+import type { AgentActivityPublisher } from '../../services/notifications/agent-activity-publisher.js';
 import {
   ActionOperationService,
   FileActionOperationStore,
@@ -697,6 +698,7 @@ export class StationRuntime {
   private deviceToolchainService?: DeviceToolchainService;
   /** #1970 device sessions (personal hosts only); their decoders stop with us. */
   private deviceSessions?: DeviceSessionService;
+  private agentActivityPublisher?: AgentActivityPublisher;
   /** #90 live surfaces (personal hosts only); disposed after the browsers. */
   private liveSurfaceRegistry?: LiveSurfaceRegistry;
   /** Epic #2323 S3: draft watchers and built drafts, released on shutdown. */
@@ -4029,6 +4031,7 @@ export class StationRuntime {
       liveSurfaceRegistry,
       pluginDraftService,
       deviceHosts,
+      agentActivityPublisher,
     } = configureRuntimeRoutes({
       projectMembership: this.projectMembership?.service,
       projectSharedTasks: this.projectMembership?.sharedTasks,
@@ -4139,6 +4142,7 @@ export class StationRuntime {
     this.browserService = browserService;
     this.deviceToolchainService = deviceToolchainService;
     this.deviceSessions = deviceSessions;
+    this.agentActivityPublisher = agentActivityPublisher;
     this.liveSurfaceRegistry = liveSurfaceRegistry;
     this.pluginDraftService = pluginDraftService;
     this.deviceHosts = deviceHosts;
@@ -4632,6 +4636,8 @@ export class StationRuntime {
       // Sessions first: their producers read the hub the toolchain stops.
       await this.deviceSessions?.dispose();
       this.deviceSessions = undefined;
+      await this.agentActivityPublisher?.stop();
+      this.agentActivityPublisher = undefined;
     } catch (error) {
       failures.push(error);
     }
