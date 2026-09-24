@@ -13,6 +13,7 @@ import {
 import { paneAdaptationFromLayoutTab } from '@kontourai/station-contracts/workspace-pane-layout-adapter';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render, screen } from '@testing-library/react';
+import { useSyncExternalStore } from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { commandFrecencyStorage } from '../components/command-frecency-storage';
 import {
@@ -117,13 +118,28 @@ const setProjectMock = vi.fn();
 const setDockStateMock = vi.fn();
 
 vi.mock('../contexts/NavigationContext', () => ({
-  useNavigation: () => ({
-    navigate: navigateMock,
-    setProject: setProjectMock,
-    setDockState: setDockStateMock,
-    selectedProject: 'alpha',
-    selectedProjectLayout: selectedProjectLayoutMock,
-  }),
+  // #1418/#1419 review, MEDIUM: `activeChat`/`activeConversation`/
+  // `isDockOpen` are read live off the REAL navigationStore singleton
+  // (subscribed, so a test's `navigationStore.setActiveChat`/`setDockState`
+  // call is observed) — the palette's seed-composer availability now
+  // depends on them. Every action stays the existing static spy.
+  useNavigation: () => {
+    const snapshot = useSyncExternalStore(
+      navigationStore.subscribe,
+      navigationStore.getSnapshot,
+      navigationStore.getSnapshot,
+    );
+    return {
+      navigate: navigateMock,
+      setProject: setProjectMock,
+      setDockState: setDockStateMock,
+      selectedProject: 'alpha',
+      selectedProjectLayout: selectedProjectLayoutMock,
+      activeChat: snapshot.activeChat,
+      activeConversation: snapshot.activeConversation,
+      isDockOpen: snapshot.isDockOpen,
+    };
+  },
 }));
 vi.mock('../contexts/RegionModelContext', () => ({}));
 vi.mock('../contexts/useShowSurface', () => ({

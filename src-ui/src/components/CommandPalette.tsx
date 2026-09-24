@@ -222,6 +222,9 @@ export function CommandPalette() {
     setDockState,
     selectedProject,
     selectedProjectLayout,
+    activeChat,
+    activeConversation,
+    isDockOpen,
   } = useNavigation();
   const { getAllShortcuts } = useShortcutRegistry();
   const { isMobile, isDesktop } = usePlatformProfile();
@@ -313,15 +316,30 @@ export function CommandPalette() {
     openChatIdentitiesSnapshot,
     openChatIdentitiesSnapshot,
   );
-  // #1418/#1419: the palette has no global "focused chat" concept — only the
-  // dock's own local tab state does, which this global overlay cannot reach
-  // without inventing new shared state. A `seed-composer` command therefore
-  // only becomes available with exactly one open chat: never guessing which
-  // of several to seed is safer than seeding the wrong one, and matches the
-  // "no product claim the runtime cannot prove" rule (src-ui/AGENTS.md).
-  // #1361 gap: a real focused-chat signal would let this work with several
-  // chats open.
-  const activeChatId = openChats.length === 1 ? openChats[0].sessionId : null;
+  // #1418/#1419 review, MEDIUM: a global "focused chat" signal DOES exist —
+  // navigationStore's `activeChat`/`activeConversation` name it, and
+  // `toolActivityNotifications.ts` already treats them as the on-screen chat
+  // while a Chat surface is showing (`isDockOpen`). `getChatKeyForExecutionSession`
+  // resolves either identifier (chat key, execution session id, or
+  // conversationId) against the registered chats the same way that reader
+  // does. Gated on `isDockOpen` so this never claims a chat is focused while
+  // no Chat surface is actually showing it, and it never guesses among
+  // several open chats — only the one navigationStore itself calls active.
+  const activeChatId = useMemo(() => {
+    if (!isDockOpen) return null;
+    return (
+      (activeChat
+        ? activeChatsStore.getChatKeyForExecutionSession(activeChat)
+        : undefined) ??
+      (activeConversation
+        ? activeChatsStore.getChatKeyForExecutionSession(activeConversation)
+        : undefined) ??
+      null
+    );
+    // `openChats` is not read directly, but its identity changes whenever
+    // `activeChatsStore` does, which is exactly when a stale resolution here
+    // (e.g. a chat's conversationId just got assigned) needs recomputing.
+  }, [isDockOpen, activeChat, activeConversation, openChats]);
   const pluginPaletteCommands = useMemo(
     () =>
       projectPluginPaletteCommands(plugins, {
