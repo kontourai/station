@@ -50,7 +50,12 @@ describe('isUnmatchedPendingRowStillPending', () => {
   test('a row with no turnId at all (the reconnect-gap case) is kept', () => {
     const message = userMessage({ turnId: undefined });
     expect(
-      isUnmatchedPendingRowStillPending(message, undefined, 'turn-current', undefined),
+      isUnmatchedPendingRowStillPending(
+        message,
+        undefined,
+        'turn-current',
+        undefined,
+      ),
     ).toBe(true);
   });
 

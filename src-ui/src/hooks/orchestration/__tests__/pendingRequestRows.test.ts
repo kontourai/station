@@ -73,9 +73,7 @@ describe('unansweredApprovalRequests', () => {
     // No turn is open right now (or a DIFFERENT turn is), so bound-detection
     // is not suppressed for this message: its own durable row already
     // answers the request, and the strip must not duplicate it.
-    expect(unansweredApprovalRequests(messages, events, undefined)).toEqual(
-      [],
-    );
+    expect(unansweredApprovalRequests(messages, events, undefined)).toEqual([]);
     expect(unansweredApprovalRequests(messages, events, 'turn-open')).toEqual(
       [],
     );
