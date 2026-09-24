@@ -161,6 +161,7 @@ function expectLayerOpen() {
 beforeEach(() => {
   model = null;
   localStorage.clear();
+  sessionStorage.clear();
   deviceSettingsStore.reloadFromStorage();
   window.history.replaceState({}, '', '/?dock=open');
   navigationStore.navigate('/', { dock: 'open', maximize: null });
@@ -381,6 +382,31 @@ describe('leaving a phone layer asks before discarding a review draft', () => {
     expect(
       screen.getByRole('dialog', { name: /Unsaved Changes/ }),
     ).toBeTruthy();
+  });
+
+  // Delta review LOW: G1's record names the layer's LIVE entry, and a
+  // cancelled Back replaces that entry (G3's synchronous re-push). The record
+  // must follow it, or a reload on the new entry would not restore the
+  // pre-layer dock state.
+  test('after Back→Cancel the pre-layer record names the re-pushed entry', async () => {
+    const record = () =>
+      JSON.parse(
+        sessionStorage.getItem('station.phoneLayer.preLayerDock.v1') ?? 'null',
+      ) as { entry?: string } | null;
+    const marker = () =>
+      (window.history.state as Record<string, unknown> | null)?.[
+        DIALOG_HISTORY_KEY
+      ];
+    await mountWithDraft();
+    await waitFor(() => expect(record()?.entry).toBe(marker()));
+    const firstEntry = record()?.entry;
+
+    act(() => window.history.back());
+    await screen.findByRole('dialog', { name: /Unsaved Changes/ });
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    await waitFor(() => expect(onLayerEntry()).toBe(true));
+    expect(marker()).not.toBe(firstEntry);
+    expect(record()?.entry).toBe(marker());
   });
 
   test('"‹ Chat" asks too; Cancel keeps the layer, Discard closes it', async () => {
