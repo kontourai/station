@@ -89,6 +89,15 @@ export interface CodexSessionRecord {
   terminalPublishedForTurnId?: string;
   lastSessionState: 'idle' | 'running' | 'errored';
   turnOutput: Map<string, string>;
+  /**
+   * `turnId → itemId` of the agent message `turnOutput` last grew from.
+   * Codex streams each commentary update as its own `agentMessage` item, and
+   * the items carry no whitespace between them, so a turn's updates ran
+   * together ("…the PR.The focused tests…"). A change of item is where the
+   * adapter inserts the paragraph break. Optional so existing records and
+   * fixtures stay valid; created on first use.
+   */
+  turnOutputItemId?: Map<string, string>;
   toolNames: Map<string, string>;
   /**
    * `itemId → { toolName, turnId }` for tool items whose `tool.started` has
