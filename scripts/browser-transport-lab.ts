@@ -11,8 +11,9 @@ import {
 import { createServer, request as httpRequest } from 'node:http';
 import { createServer as createHttpsServer } from 'node:https';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { isAbsolute, join, relative } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import { fileURLToPath } from 'node:url';
 import { serveApplicationChannel } from '@kontourai/station-connect/application-channel';
 import type { ApprovedStationConnectionTrust } from '@kontourai/station-contracts/connection-proof';
 import {
@@ -130,6 +131,7 @@ let brokerLab:
 let accountReport: Record<string, unknown> | undefined;
 let cookieAdoptionReport: Record<string, unknown> | undefined;
 let cookieAdoptionSecrets: string[] = [];
+const scenarioInvitationSecrets: string[] = [];
 const applicationObservations: Array<Record<string, unknown>> = [];
 let freshRelayReport: Record<string, unknown> | undefined;
 let freshRelayJourney:
@@ -183,6 +185,47 @@ let pionProvenance:
   | undefined;
 let stationUiRelayJourney: Record<string, unknown> | undefined;
 let stationUiFailure: Record<string, unknown> | undefined;
+
+function firstOwnedFailureLocation(error: unknown) {
+  const stack = error instanceof Error ? error.stack : undefined;
+  if (!stack) return undefined;
+  for (const line of stack.split('\n')) {
+    const frame = line.match(
+      /(?:\(|\bat\s+)(file:\/\/\/[^)\s]+|\/[^)\s]+):(\d+):(\d+)\)?$/u,
+    );
+    if (!frame) continue;
+    let absolute: string;
+    try {
+      absolute = frame[1].startsWith('file://')
+        ? fileURLToPath(frame[1])
+        : frame[1];
+    } catch {
+      continue;
+    }
+    const sourceFile = relative(process.cwd(), absolute);
+    if (
+      !sourceFile ||
+      sourceFile === '..' ||
+      sourceFile.startsWith(`..${process.platform === 'win32' ? '\\' : '/'}`) ||
+      isAbsolute(sourceFile) ||
+      sourceFile.length > 240
+    )
+      continue;
+    const lineNumber = Number(frame[2]);
+    const columnNumber = Number(frame[3]);
+    if (
+      !Number.isSafeInteger(lineNumber) ||
+      !Number.isSafeInteger(columnNumber)
+    )
+      continue;
+    return {
+      file: sourceFile.replaceAll('\\', '/'),
+      line: lineNumber,
+      column: columnNumber,
+    };
+  }
+  return undefined;
+}
 let clientProofScript = '';
 let connectionTrust: ApprovedStationConnectionTrust;
 let proofIssuer: ReturnType<typeof createStationConnectionProofIssuer>;
@@ -205,6 +248,22 @@ function serveBrowserDocument(
   );
 }
 const server = createServer(serveBrowserDocument);
+
+async function accountStationForFollowupScenario(
+  station: Awaited<ReturnType<typeof startRelayAccountStation>>,
+) {
+  const invitation = await station.inviteAgain();
+  assert.notEqual(
+    invitation,
+    station.browser.invitation,
+    'Each account scenario needs its own one-use Project invitation',
+  );
+  scenarioInvitationSecrets.push(invitation);
+  return {
+    ...station,
+    browser: { ...station.browser, invitation },
+  };
+}
 
 async function runFreshRelayScenario(input: {
   approvedPage: Page;
@@ -613,6 +672,193 @@ async function readSelfHostedBrokerPeerDiagnostics() {
   }
 }
 
+async function readProjectNavigationFailureStatus(
+  page: Page,
+  clientOrigin: string,
+) {
+  return page
+    .evaluate(
+      async ({ clientOrigin: originValue }) => {
+        const browser = globalThis as unknown as {
+          document: {
+            body: { innerText: string };
+            querySelectorAll(selector: string): ArrayLike<{
+              textContent: string | null;
+            }>;
+            querySelector(
+              selector: string,
+            ): { textContent: string | null } | null;
+          };
+          location: { pathname: string };
+        };
+        const text = browser.document.body.innerText;
+        const classify = (message: string, name = '') => {
+          if (
+            name === 'StationRequestAuthorityError' ||
+            /requested station authority is no longer available/iu.test(message)
+          )
+            return 'station-request-authority-error' as const;
+          if (
+            /enrolled.{0,30}credential|credential.{0,30}enrolled|credential.{0,20}required/iu.test(
+              message,
+            )
+          )
+            return 'enrolled-credential-required' as const;
+          if (/unsupported member project view/iu.test(message))
+            return 'unsupported-member-view' as const;
+          if (
+            /full project configuration|invalid project (response|catalogue)|member project view/iu.test(
+              message,
+            )
+          )
+            return 'incompatible-response' as const;
+          if (/timed out|timeout/iu.test(message)) return 'timeout' as const;
+          return 'other' as const;
+        };
+        const alertText =
+          browser.document.querySelector('[role="alert"]')?.textContent ?? '';
+        const ui = {
+          pathname: browser.location.pathname,
+          projectErrorVisible: text.includes('Could not load project'),
+          stationConnectionUnavailableVisible: text.includes(
+            'Station connection unavailable',
+          ),
+          degradedProjectLoaderVisible: text.includes(
+            'Project is taking longer than expected',
+          ),
+          sharedProjectLabelVisible: text.includes('Shared Project'),
+          projectHeadingVisible: Array.from(
+            browser.document.querySelectorAll('h1, h2, h3'),
+          ).some(
+            (heading) => heading.textContent?.trim() === 'Relay shared fixture',
+          ),
+          sharedWorkErrorVisible: text.includes('Shared work is unavailable'),
+          sharedWorkLoading: Boolean(
+            browser.document.querySelector(
+              '[role="status"][aria-label="Loading shared work"]',
+            ),
+          ),
+          projectErrorCategory: classify(alertText),
+        };
+        const unavailable = {
+          routeIsCurrent: false,
+          projectReadStatus: null as number | null,
+          sdkProjectRead: { probeAvailable: false as const },
+        };
+        try {
+          const connections = JSON.parse(
+            localStorage.getItem('station-connect-connections') ?? '[]',
+          ) as Array<{
+            id: string;
+            url: string;
+            brokerRoute?: {
+              brokerOrigin: string;
+              scope: Record<string, unknown>;
+            };
+          }>;
+          const activeId = localStorage.getItem(
+            'station-connect-connections-active',
+          );
+          const connection = connections.find(
+            (candidate) => candidate.id === activeId && candidate.brokerRoute,
+          );
+          if (!connection?.brokerRoute) return { ...ui, ...unavailable };
+          const clientOrigin = new URL(originValue).origin;
+          const [bindingModule, authorityModule] = await Promise.all([
+            import(
+              new URL('/src/lib/browserRelayRouteBinding.ts', clientOrigin).href
+            ),
+            import(
+              new URL(
+                '/src/lib/browserRelayApplicationAuthority.ts',
+                clientOrigin,
+              ).href
+            ),
+          ]);
+          const binding = bindingModule.captureBrowserRelayRoute(
+            connection.id,
+            connection.url,
+            connection.brokerRoute,
+          );
+          if (!binding?.isCurrent()) return { ...ui, ...unavailable };
+          const credential =
+            await authorityModule.createBrowserRelayApplicationCredential({
+              connectionId: connection.id,
+              applicationOrigin: connection.url,
+              route: connection.brokerRoute,
+              transport: binding.transport,
+              routeIsCurrent: binding.isCurrent,
+            });
+          let projectReadStatus: number | null = null;
+          try {
+            const response = await credential.transport(
+              new URL('/api/projects/relay-shared', connection.url).href,
+              { headers: { Accept: 'application/json', Origin: clientOrigin } },
+            );
+            projectReadStatus = response.status;
+          } catch {
+            // Keep status absent without retaining transport details.
+          }
+          let sdkProjectRead:
+            | { resolvedShape: 'member-project' | 'project-config' }
+            | {
+                errorClass: ReturnType<typeof classify> | 'http-error';
+                httpStatus?: number;
+              }
+            | { probeAvailable: false };
+          try {
+            const sdkSpecifier = '@kontourai/station-sdk';
+            const sdk = await import(sdkSpecifier);
+            const value = await sdk.getProjectView(
+              connection.url,
+              'relay-shared',
+              {
+                requireCredential: true,
+                timeoutMs: 15_000,
+                maxResponseBytes: 65_536,
+              },
+            );
+            const view = value as unknown as Record<string, unknown>;
+            sdkProjectRead = {
+              resolvedShape:
+                view.version === 'station.member-project/v1' &&
+                view.kind === 'member-project'
+                  ? 'member-project'
+                  : 'project-config',
+            };
+          } catch (cause) {
+            const error = cause as {
+              name?: unknown;
+              status?: unknown;
+              message?: unknown;
+            };
+            sdkProjectRead = {
+              errorClass:
+                typeof error.status === 'number'
+                  ? 'http-error'
+                  : classify(
+                      typeof error.message === 'string' ? error.message : '',
+                      typeof error.name === 'string' ? error.name : '',
+                    ),
+              ...(typeof error.status === 'number'
+                ? { httpStatus: error.status }
+                : {}),
+            };
+          }
+          return {
+            ...ui,
+            routeIsCurrent: binding.isCurrent(),
+            projectReadStatus,
+            sdkProjectRead,
+          };
+        } catch {
+          return { ...ui, ...unavailable };
+        }
+      },
+      { clientOrigin },
+    )
+    .catch(() => ({ uiDiagnosticAvailable: false as const }));
+}
 async function runStationUiRelayJourney(input: {
   page: Page;
   clientOrigin: string;
@@ -1573,21 +1819,39 @@ try {
     let stationLease:
       | Awaited<ReturnType<typeof brokerLab.readLease>>
       | undefined;
+    let connectorLeaseOnlineObserved = false;
     const leaseDeadline = Date.now() + 30_000;
     while (Date.now() < leaseDeadline) {
       try {
         stationLease = await brokerLab.readLease();
-        if (stationLease.state === 'online') break;
+        if (stationLease.state === 'online') {
+          connectorLeaseOnlineObserved = true;
+          break;
+        }
       } catch {
         // Wait only for the StationRuntime-owned connector registration.
       }
       await new Promise((resolve) => setTimeout(resolve, 250));
     }
+    stationUiFailure = {
+      phase: 'connector-lease-before-browser-admission',
+      childListeningObserved: Number.isSafeInteger(accountStation.station.port),
+      connectorLeaseReadSucceeded: stationLease !== undefined,
+      connectorLeaseState:
+        stationLease?.state === 'online' || stationLease?.state === 'offline'
+          ? stationLease.state
+          : null,
+      connectorLeaseExpiredAtCheck: stationLease
+        ? stationLease.expiresAt <= Date.now()
+        : null,
+      connectorLeaseOnlineObserved,
+    };
     assert.equal(
       stationLease?.state,
       'online',
       'StationRuntime child must register the broker lease before browser admission',
     );
+    stationUiFailure = undefined;
     if (stationUi) {
       const uiContext = await browser.newContext();
       try {
@@ -1687,9 +1951,12 @@ try {
     assert(applicationProtocol.responseBytes > 16 * 1024);
   }
   if (accountStation) {
+    const accountScenarioStation = stationUi
+      ? await accountStationForFollowupScenario(accountStation)
+      : accountStation;
     accountReport = await runBrowserAccountScenario(
       page,
-      accountStation,
+      accountScenarioStation,
       root,
       async () => {
         if (selfHostedBroker) {
@@ -2055,6 +2322,7 @@ try {
       accountStation.browser.password,
       accountStation.browser.credential,
       accountStation.browser.invitation,
+      ...scenarioInvitationSecrets,
       accountStation.sharedWork.sharedTask.messageMarker,
       accountStation.sharedWork.sharedTask.documentMarker,
       ...cookieAdoptionSecrets,
@@ -2197,6 +2465,9 @@ try {
 if (!report && !errors.length)
   errors.push(new Error('No completed browser transport report'));
 if (errors.length) {
+  const firstOwnedLocation = errors
+    .map(firstOwnedFailureLocation)
+    .find((location) => location !== undefined);
   writeFileSync(
     join(root, 'failure.json'),
     JSON.stringify(
@@ -2206,7 +2477,9 @@ if (errors.length) {
         errorNames: errors.map((error) =>
           error instanceof Error ? error.name : 'UnknownError',
         ),
-        stationUi: stationUiFailure ?? { status: 'no-station-ui-diagnostic' },
+        ...(firstOwnedLocation ? { firstOwnedLocation } : {}),
+        stationUi: stationUiRelayJourney ??
+          stationUiFailure ?? { status: 'no-station-ui-diagnostic' },
       },
       null,
       2,
@@ -2220,7 +2493,8 @@ const finalReport = errors.length
       scope: 'browser-transport-evaluation',
       status: 'failed',
       browserTurnTransport: browserTransport,
-      stationUi: stationUiFailure ?? { status: 'not-reached' },
+      stationUi: stationUiRelayJourney ??
+        stationUiFailure ?? { status: 'not-reached' },
     }
   : report;
 writeFileSync(join(root, 'report.json'), JSON.stringify(finalReport, null, 2), {
