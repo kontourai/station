@@ -844,6 +844,35 @@ describe('agent-activity publisher', () => {
     await h.publisher.stop();
   });
 
+  test('a terminal event from before the latest turn is not this outcome’s entry', () => {
+    const events = [
+      ev('s1', START, {
+        method: 'runtime.error',
+        turnId: 'turn-1',
+        message: 'earlier failure',
+      }),
+      ev('s1', START + 60 * 60_000, {
+        method: 'turn.started',
+        turnId: 'turn-2',
+        prompt: 'try again',
+      }),
+    ];
+    const [row] = agentActivityRowsWithEntries(
+      [
+        {
+          sessionId: 's1',
+          lifecycleState: 'failed',
+          status: 'running',
+          isLoaded: true,
+        },
+      ],
+      () => new Map([['s1', events]]),
+    );
+    // No terminal event of this run: the publisher falls back to the time it
+    // observes the failure, rather than dating it an hour back.
+    expect(row?.entry).toBeUndefined();
+  });
+
   test('an entry event older than the phase already observed is not trusted', async () => {
     const h = await harness();
     const { registration } = await h.pairAndRegister();
