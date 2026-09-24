@@ -41,6 +41,7 @@ import { sshLauncher } from '../../platform/native/sshLauncher';
 // this route imports. Without it the rows render as unstyled text.
 import '../page-layout.css';
 import './ComputersSection.css';
+import { BrowserRelayRoutes } from './BrowserRelayRoutes';
 import { type ComputerRowModel, isSshBusy } from './computer-rows';
 import { knownEnvironmentRegistry } from './known-environment-registry';
 import { PEER_CREDENTIAL_COMMAND } from './peer-credential-command';
@@ -418,6 +419,7 @@ export function ComputersSection() {
         variant="danger"
       />
       <RelayRouteProfiles />
+      <BrowserRelayRoutes />
     </>
   );
 }

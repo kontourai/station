@@ -104,6 +104,33 @@ vi.mock('../contexts/ApiBaseContext', () => ({
   useHostRequestAuthorityScope: () => null,
 }));
 
+// These Project Page interaction tests exercise the operator layout picker,
+// not authority acquisition. Model a resolved page-view query with a live
+// authority scope so the page's fail-closed connection guard is satisfied.
+// The null scope above remains useful for direct ApiBase consumers in this
+// isolated fixture.
+vi.mock('../contexts/ProjectsContext', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../contexts/ProjectsContext')>()),
+  useScopedProjectPageViewQuery: () => ({
+    data: {
+      slug: 'demo',
+      name: 'Demo',
+      workingDirectory: '/tmp/demo',
+      agents: [],
+    },
+    isPending: false,
+    isError: false,
+    error: null,
+    refetch: vi.fn(),
+    requestScope: {
+      apiBase: 'http://localhost:3141',
+      authorityKey: 'project-layout-test',
+      isCurrent: () => true,
+    },
+    isMemberProject: false,
+  }),
+}));
+
 vi.mock('../contexts/NavigationContext', () => ({
   useNavigation: () => ({
     setLayout: vi.fn(),
