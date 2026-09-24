@@ -1,5 +1,6 @@
 import { dispatchOrchestrationCommandWithReceipt } from '@kontourai/station-sdk';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { activeChatsStore } from '../../contexts/active-chats-store';
 import { DiscardGlyph } from '../icons/Glyph';
 import './DiscardDraftButton.css';
 
@@ -15,9 +16,7 @@ import './DiscardDraftButton.css';
  * `mutate(…, { onSuccess })` callback does not fire once its component has
  * unmounted — the host's focus move and tab teardown would silently not run.
  */
-function useDiscardDraft(
-  onDiscarded?: (action: HTMLButtonElement) => void,
-) {
+function useDiscardDraft(onDiscarded?: (action: HTMLButtonElement) => void) {
   const queryClient = useQueryClient();
   const refetchSessions = () =>
     Promise.all([
@@ -37,8 +36,15 @@ function useDiscardDraft(
         type: 'discardDraft',
         threadId,
       }),
-    onSuccess: (_result, { action }) => {
+    onSuccess: (_result, { threadId, action }) => {
       onDiscarded?.(action);
+      // #2312 review: whichever surface discarded it, a tab this device
+      // still has open on the Draft now names a deleted session — and a send
+      // from it would silently start a new one. The dock hosts close it with
+      // their own bookkeeping in `onDiscarded`; this catches the rest (Home,
+      // Sessions) and is a no-op once a host already closed it.
+      const openChat = activeChatsStore.getChatKeyForExecutionSession(threadId);
+      if (openChat) activeChatsStore.removeChat(openChat);
       return refetchSessions();
     },
     onError: () => refetchSessions(),

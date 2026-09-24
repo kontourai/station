@@ -269,6 +269,25 @@ describe('#2312 discarding Drafts from the inbox', () => {
     ).toBeTruthy();
   });
 
+  it('folds by creation, not by clocks a stop or engine housekeeping moves', () => {
+    // #2312 review: stopping an idle engine rewrites `updatedAt`, and engine
+    // notifications move `lastEventAt`; neither is anyone touching the Draft.
+    const restarted = {
+      ...draft('grok-build:restarted', 30 * HOUR, 'restarted-agent'),
+      updatedAt: iso(HOUR),
+      lastEventAt: iso(HOUR),
+    };
+    const rows = items([FRESH, restarted]);
+    renderPanel(rows);
+    const drafts = screen.getByRole('region', { name: 'Drafts' });
+    expect(
+      within(drafts).queryByText(titleOf(rows, restarted.threadId)),
+    ).toBeNull();
+    expect(
+      within(drafts).getByRole('button', { name: /1 older draft$/ }),
+    ).toBeTruthy();
+  });
+
   it('the mobile switcher offers the same discard and the same fold', async () => {
     dispatch.mockResolvedValue(accepted(STALE.threadId));
     const rows = items([FRESH, STALE]);

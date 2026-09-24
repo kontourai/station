@@ -18,6 +18,7 @@ import {
   within,
 } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { activeChatsStore } from '../contexts/active-chats-store';
 import { NavigationProvider } from '../contexts/NavigationContext';
 import { ToastProvider } from '../contexts/ToastContext';
 import { ATTACHED_SESSION_CONTINUATION_STORAGE_KEY } from '../lib/attached-session-continuation-store';
@@ -4046,6 +4047,9 @@ describe('SessionsView', () => {
         },
         draftSession('fresh-draft', 'Fresh draft', HOUR),
       ];
+      // #2312 review: a tab this device has open on the Draft closes too, or
+      // a send from it would start a new session under the deleted id.
+      activeChatsStore.initChat('fresh-draft', {});
       renderView();
 
       expect(
@@ -4062,6 +4066,11 @@ describe('SessionsView', () => {
         }),
       );
       expect(discardDraftCommand).toHaveBeenCalledTimes(1);
+      await waitFor(() =>
+        expect(
+          activeChatsStore.getChatKeyForExecutionSession('fresh-draft'),
+        ).toBeUndefined(),
+      );
     });
 
     test('folds Drafts untouched for a day under a collapsed "N older drafts" group', () => {

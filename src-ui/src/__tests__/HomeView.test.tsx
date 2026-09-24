@@ -20,6 +20,7 @@ import {
   test,
   vi,
 } from 'vitest';
+import { activeChatsStore } from '../contexts/active-chats-store';
 import { openChatsStore } from '../contexts/open-chats-store';
 import { writeSnooze } from '../utils/activity-snooze-store';
 import { TERMINAL_LINGER_MS } from '../views/home/home-lane-model';
@@ -699,6 +700,8 @@ describe('HomeView', () => {
     ];
     const queryClient = new QueryClient();
     const invalidate = vi.spyOn(queryClient, 'invalidateQueries');
+    // #2312 review: a dock tab open on the Draft closes with it.
+    activeChatsStore.initChat('fresh-draft', {});
     renderHomeView({ continuation: null, onNavigate: vi.fn() }, queryClient);
 
     const drafts = screen
@@ -735,6 +738,9 @@ describe('HomeView', () => {
       type: 'discardDraft',
       threadId: 'fresh-draft',
     });
+    expect(
+      activeChatsStore.getChatKeyForExecutionSession('fresh-draft'),
+    ).toBeUndefined();
   });
 
   // archive#1297: an orchestration row Station CAN rehydrate (a real
