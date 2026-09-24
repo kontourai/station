@@ -318,6 +318,7 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
   },
   parallelSafe: [
     'tests/buffered-answer-delivery.spec.ts',
+    'tests/agents-pane.spec.ts',
     'tests/toolbar-reachability.spec.ts',
     'tests/command-palette.spec.ts',
     'tests/sidebar-file-intake.spec.ts',
@@ -325,6 +326,7 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/attention-file-replies.spec.ts',
     'tests/dialog-return-focus.spec.ts',
     'tests/banner-stack-bound.spec.ts',
+    'tests/toggle-contrast.spec.ts',
     'tests/agent-editor-geometry.spec.ts',
     'tests/answer-quoting.spec.ts',
     'tests/code-block-actions.spec.ts',
@@ -332,6 +334,7 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/pull-request-review.spec.ts',
     'tests/conversation-pull-request-links.spec.ts',
     'tests/image-preview-inspection.spec.ts',
+    'tests/pdf-canvas-preview.spec.ts',
     'tests/diagnostics-bundle.spec.ts',
     'tests/monitoring-and-chrome.spec.ts',
     'tests/keyboard-shortcuts.spec.ts',
@@ -628,6 +631,16 @@ export const e2eManifest = [
     primary: true,
     rationale:
       'Real production image inspector and dialog components with browser-decoded PNG input; verifies zoom, pointer and touch pan, keyboard and gallery focus, full backdrop coverage, failure state and narrow theme/rotation geometry. Bundling is in-memory; no live Station instance or shared output writes.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/pdf-canvas-preview.spec.ts',
+    bucket: 'product',
+    surface: 'Chat attachment PDF previews',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Real preview dialog and pdf.js canvas viewer built by Vite in memory exactly as the app builds them (bundled module worker, emitted font/decoder side-files) and served from memory through browser-local page routes under the desktop/mobile CSP with the UI server MIME map and nosniff, with the engine reporting no PDF viewer as Android WebView does. Verifies non-blank page pixels including text, lazy drawing of off-screen pages, the bundled Symbol font load, fit-width zoom, and the unreadable, password-protected and dead-worker states. No live Station instance or shared output writes.',
     exceptions: [],
   },
   {
@@ -1233,6 +1246,16 @@ export const e2eManifest = [
     exceptions: [],
   },
   {
+    path: 'tests/toggle-contrast.spec.ts',
+    bucket: 'product',
+    surface: 'Shell',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      '#2441: the shared Toggle track clears WCAG 1.4.11 3:1 non-text contrast against every surface it renders on (page, panels, modal, elevated and hover fills), off and on, both sizes, both themes — computed colours after the cascade and both theme blocks resolve, which jsdom cannot compute. Also proves the states differ by more than colour (outlined vs filled track, thumb moves), that the track keeps its 36x20/28x16 size so consumers do not reflow, and that the Browser pane switch keeps its state word, fits and has a 44px hit area at 390px. Same real-source-bundled-with-esbuild technique as banner-stack-bound.spec.ts, with the real index.css token layers bundled alongside; no live instance or server.',
+    exceptions: [],
+  },
+  {
     path: 'tests/banner-stack-bound.spec.ts',
     bucket: 'product',
     surface: 'Shell',
@@ -1383,6 +1406,16 @@ export const e2eManifest = [
     primary: true,
     rationale:
       '#585 device-local buffered answer delivery: real preference selection, canonical live event injection, semantic boundary reveal, and mid-turn disable flush.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/agents-pane.spec.ts',
+    bucket: 'product',
+    surface: 'Chat / Orchestration',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      '#2459 Agents pane child work: opened from the dock row, per-chat Claude Stop kept on the pre-contract row, All scope showing a CLI delegate and a chatless subagent live with provenance, an exit read as No result, and the scope remembered across reload.',
     exceptions: [],
   },
   {

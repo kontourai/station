@@ -122,6 +122,11 @@ export async function getAnswerBasis(
 ) {
   return (await import('./client/answer-basis.js')).getAnswerBasis(...args);
 }
+// The Agent references `useSendToChat` accepts (#2400)
+export type {
+  AgentId,
+  QualifiedPluginAgentId,
+} from '@kontourai/station-contracts/agent-identity';
 export * from './answer-support';
 export type { InvokeOptions } from './api';
 // Re-export utility functions
@@ -326,6 +331,20 @@ export {
   // Workflows
   useWorkflows,
 } from './hooks';
+// Contracts for the host context slots the hooks below read (#2399)
+export type {
+  SDKAgentsContext,
+  SDKAuthContext,
+  SDKAuthState,
+  SDKAuthUser,
+  SDKNavigation,
+  SDKNavigationContext,
+  SDKToast,
+  SDKToastContext,
+  ToastAction,
+  ToastRequest,
+  ToastType,
+} from './host-contexts';
 // Re-export layout utilities
 export { createLayoutContext } from './layout/context';
 export type { ProviderMetadata } from './layoutProviders';
@@ -344,6 +363,7 @@ export {
   LayoutNavigationProvider,
   LayoutProvider,
   SDKContext,
+  type SDKContextValue,
   SDKProvider,
   useLayoutNavigation,
 } from './providers';
@@ -638,6 +658,7 @@ export {
   reconnectACPConnection,
   recordFirstRunDecision,
   regenerateConversationTitle,
+  registerNativePush,
   rejectProposedChange,
   reloadPlugins,
   renameCodingFile,
@@ -690,6 +711,7 @@ export {
   type SystemStatus,
   saveFeedbackRating,
   sendOrchestrationTurn,
+  setOrchestrationApprovalMode,
   shouldRetryLayoutCatalog,
   shouldRetryProjectLayout,
   shouldRetrySystemStatus,
@@ -730,6 +752,7 @@ export {
   type UpdateAppLogLevelResult,
   type UsageRollupQuery,
   type UsageRollupResponse,
+  unregisterNativePush,
   unsubscribePushNotifications,
   updateACPConnection,
   updateAgent,
@@ -1086,7 +1109,10 @@ export {
   usePinBoardWidget,
   useUnpinBoardWidget,
 } from './query-domains/board.js';
-export type { CodingFileMentionCandidates } from './query-domains/chatRuntimeCoding.js';
+export type {
+  CodingFileMentionCandidates,
+  CodingLocation,
+} from './query-domains/chatRuntimeCoding.js';
 export {
   fetchCodingFileMentionCandidates,
   useCodingFileMentionCandidatesQuery,
@@ -1132,7 +1158,10 @@ export {
 // System tab, so re-exporting it here would pull it into every eager importer
 // of this barrel for no first-paint benefit. Published
 // exclusively via `@kontourai/station-sdk/resource-posture`.
-export type { GitStatusResult } from './query-domains/projectData.js';
+export type {
+  GitReadLocation,
+  GitStatusResult,
+} from './query-domains/projectData.js';
 export {
   adoptCommittedProjectTaskRoomDocument,
   appendProjectTaskRoomHumanMessage,

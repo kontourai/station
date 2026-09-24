@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
 import { execGit } from '../../utils/git-exec.js';
 import { JsonFileStore } from '../infra/json-store.js';
+import { checkRepositoryConfig } from '../projects/git-repository-config.js';
 import type {
   CheckpointIndexStore,
   TurnCheckpointPhase,
@@ -90,6 +91,7 @@ export class CheckpointRestoreService {
   }): Promise<CheckpointRestorePreview> {
     this.prunePreviews(input.ownerKey);
     const target = await this.resolveTarget(input);
+    await assertRepositoryConfigRunnable(target.repoRoot);
     const currentTreeSha = await snapshotWorkingTree(target.repoRoot);
     const paths = await changedPaths(
       target.repoRoot,
@@ -188,6 +190,8 @@ export class CheckpointRestoreService {
       target.repoRoot !== preview.repoRoot
     )
       throw new CheckpointRestoreError('checkpoint_identity_mismatch');
+    // Again here, not only at preview: the config can change in between.
+    await assertRepositoryConfigRunnable(preview.repoRoot);
     const currentTree = await snapshotWorkingTree(preview.repoRoot);
     if (currentTree !== preview.currentTreeSha)
       throw new CheckpointRestoreError('workspace_changed');
@@ -297,6 +301,22 @@ async function changedPaths(repoRoot: string, current: string, target: string) {
   });
 }
 
+/**
+ * #2410: the snapshot below runs `add -A` (a repository-defined clean
+ * filter) and materializing runs `read-tree -u` (a smudge filter), as the
+ * operator. A repository whose own config defines one is refused, by the
+ * rule the coding routes and checkpoint capture apply.
+ */
+async function assertRepositoryConfigRunnable(repoRoot: string) {
+  const verdict = await checkRepositoryConfig(repoRoot, 'read');
+  if (!verdict.ok)
+    throw new CheckpointRestoreError(
+      verdict.code === 'repository-config-refused'
+        ? 'repository_config_refused'
+        : 'repository_config_unreadable',
+    );
+}
+
 async function withTemporaryIndex<T>(
   run: (index: string) => Promise<T>,
 ): Promise<T> {
@@ -354,7 +374,9 @@ class CheckpointRestoreError extends Error {
       | 'restore_verification_failed'
       | 'preview_invalid'
       | 'workspace_changed'
-      | 'authorization_changed',
+      | 'authorization_changed'
+      | 'repository_config_refused'
+      | 'repository_config_unreadable',
   ) {
     super(reason);
   }

@@ -405,13 +405,15 @@ export function TerminalPanel({
     return (
       <div className="coding-terminal-shell">
         <p role="alert">{unavailableReason}</p>
-        <CommandExecutor workingDir={workingDir} />
+        <CommandExecutor projectSlug={projectSlug} workingDir={workingDir} />
       </div>
     );
   }
 
   if (wsError) {
-    return <CommandExecutor workingDir={workingDir} />;
+    return (
+      <CommandExecutor projectSlug={projectSlug} workingDir={workingDir} />
+    );
   }
 
   return (
@@ -446,7 +448,13 @@ export function TerminalPanel({
 
 // ─── Alternative command executor ────────────────────────────────────────────
 
-function CommandExecutor({ workingDir }: { workingDir: string }) {
+function CommandExecutor({
+  projectSlug,
+  workingDir,
+}: {
+  projectSlug: string;
+  workingDir: string;
+}) {
   const { apiBase } = useApiBase();
   const isMobile = useIsMobile();
   const [input, setInput] = useState('');
@@ -477,7 +485,14 @@ function CommandExecutor({ workingDir }: { workingDir: string }) {
     setInput('');
     setRunning(true);
     try {
-      const d = await executeCodingCommand(cmd, workingDir, apiBase);
+      // #2412: the command runs in this Project's folder, and a paired
+      // device needs the operator's Run commands grant; a refusal arrives
+      // as the error below, in the server's words.
+      const d = await executeCodingCommand(
+        cmd,
+        { projectSlug, workingDir },
+        apiBase,
+      );
       if (d.stdout)
         setLines((l) => [...l, { text: d.stdout ?? '', type: 'out' }]);
       if (d.stderr)

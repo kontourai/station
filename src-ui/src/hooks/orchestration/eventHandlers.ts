@@ -2,6 +2,7 @@ import type { OrchestrationConversationStreamBinding } from '@kontourai/station-
 import { isDeferredRetriableTurnError } from '@kontourai/station-contracts/runtime-events';
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import { backgroundTasksStore } from '../../contexts/background-tasks-store';
+import { childWorkGlobalStore } from '../../contexts/child-work-global-store';
 import { deviceSettingsStore } from '../../lib/device-settings-store';
 import {
   handleRequestOpenedEvent,
@@ -28,6 +29,7 @@ import { drainQueuedMessageOnTurnCompleted } from './queueDrain';
 import { recordReplayRuntime } from './replay/capture-tap';
 import { isReplayThread } from './replay/replay-registry';
 import {
+  handleApprovalModeSetEvent,
   handleSessionExitedEvent,
   handleSessionLifecycleEvent,
   handleSessionStateChangedEvent,
@@ -96,12 +98,12 @@ export function handleOrchestrationEvent(
   provenance?: unknown,
   conversation?: OrchestrationConversationStreamBinding,
   /**
-   * #2334: the server's stream sequence for this frame (the SSE id). Lets an
-   * approval report be ordered against the user's pick.
+   * The server's global sequence for this frame (the SSE id). A recorded
+   * approval-posture decision is folded by it, never by arrival (#2436).
    */
   position?: number,
 ) {
-  recordEventPosition(apiBase, event, position);
+  recordEventPosition(event, position);
   if (
     conversation?.currentSessionId === event.threadId &&
     (event.method === 'session.started' ||
@@ -147,6 +149,9 @@ export function handleOrchestrationEvent(
     // its chat was since rebound to a newer session (the guard below would
     // drop it), or the chat keeps the dead session's children.
     observeChildWorkLifecycle(event);
+    // #2459: the Agents pane's "All" scope — every session's engine
+    // subagents, including sessions no chat has open (a CLI delegate).
+    childWorkGlobalStore.ingest(apiBase, event);
   }
 
   if (replayThread) {
@@ -291,6 +296,9 @@ function dispatchProjectedOrchestrationEvent(
       return;
     case 'session.stop-settled':
       handleSessionStopSettledEvent(event);
+      return;
+    case 'session.approval-mode-set':
+      handleApprovalModeSetEvent(event);
       return;
     case 'policy.hooks-attached':
       handlePolicyHooksAttachedEvent(event);

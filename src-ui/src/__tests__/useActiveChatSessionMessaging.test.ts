@@ -319,207 +319,82 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
   });
 
   /**
-   * #2144 slice 6 fix round 1. This is the ENFORCEMENT seam: the chip's
-   * `resolveEffectiveApprovalMode` only ever decided a label, and both
-   * default layers under a session override reached nothing else. These
-   * assert the payload `sendExecutionMessage` is called with, not the
-   * resolver.
+   * #2436: the server resolves the defaults (the Agent's, then this
+   * Station's) at a session start, so the send path puts none on the wire,
+   * whatever the chat's liveness. The only posture a send carries is a pick
+   * the server has not received yet, as its own compare-and-set command.
    */
-  describe('approval-mode defaults reaching the wire', () => {
+  describe('approval posture on the wire', () => {
     beforeEach(() => {
-      // A knob-supporting engine (claude/codex are the two adapters that
-      // read `modelOptions.approvalMode`), with nothing session-scoped.
       activeChatsStore.updateChat(sessionId, {
         agentConnectionId: 'claude',
-        // The composer renders an approval control only for `external`, and
-        // this turn starts the chat's session (no id, nothing started).
         executionMode: 'external',
         requestedProviderOptions: undefined,
         providerOptions: {},
       });
-      stationAppConfig.current = undefined;
+      stationAppConfig.current = { defaultApprovalMode: 'never' };
     });
 
     afterEach(() => {
       stationAppConfig.current = undefined;
-      // `vi.clearAllMocks` clears calls, not implementations — a
-      // `mockReturnValue` set below would otherwise leak into later files'
-      // expectations of an empty connection list.
-      agentConnectionsMock.mockReturnValue({ data: [] });
     });
 
-    it("sends this Station's default when neither the chat nor its connection names one", async () => {
-      stationAppConfig.current = { defaultApprovalMode: 'never' };
-      const { result } = renderHook(() => useSendMessage('http://api.test'));
-
-      await act(async () => {
-        await result.current(sessionId, 'codex', undefined, 'go');
-      });
-
-      expect(
-        sendExecutionMessageMock.mock.calls[0][1].target.model.options,
-      ).toMatchObject({ approvalMode: 'never' });
-    });
-
-    it('lets the session override win over the Station default', async () => {
-      stationAppConfig.current = { defaultApprovalMode: 'never' };
-      activeChatsStore.updateChat(sessionId, {
-        requestedProviderOptions: { approvalMode: 'ask' },
-      });
-      const { result } = renderHook(() => useSendMessage('http://api.test'));
-
-      await act(async () => {
-        await result.current(sessionId, 'codex', undefined, 'go');
-      });
-
-      expect(
-        sendExecutionMessageMock.mock.calls[0][1].target.model.options,
-      ).toMatchObject({ approvalMode: 'ask' });
-    });
-
-    it("lets the connection's own default win over the Station default", async () => {
-      stationAppConfig.current = { defaultApprovalMode: 'never' };
-      agentConnectionsMock.mockReturnValue({
-        data: [{ id: 'claude', config: { approvalMode: 'auto' } }],
-      });
-      const { result } = renderHook(() => useSendMessage('http://api.test'));
-
-      await act(async () => {
-        await result.current(sessionId, 'codex', undefined, 'go');
-      });
-
-      expect(
-        sendExecutionMessageMock.mock.calls[0][1].target.model.options,
-      ).toMatchObject({ approvalMode: 'auto' });
-    });
-
-    it('sends nothing to an engine whose adapter has no approval knob', async () => {
-      stationAppConfig.current = { defaultApprovalMode: 'never' };
-      activeChatsStore.updateChat(sessionId, {
-        agentConnectionId: 'some-acp-runtime',
-      });
-      const { result } = renderHook(() => useSendMessage('http://api.test'));
-
-      await act(async () => {
-        await result.current(sessionId, 'codex', undefined, 'go');
-      });
-
-      expect(
-        sendExecutionMessageMock.mock.calls[0][1].target.model.options,
-      ).not.toHaveProperty('approvalMode');
-    });
-
-    it('sends nothing for a Station-mode chat, which shows no approval control', async () => {
-      // Round 2 M2: a provider-managed Station-mode chat keeps a
-      // knob-capable `agentConnectionId` (its model provider), and
-      // ChatInputArea renders no chip for it — a posture on the wire would
-      // be one no surface offered.
-      stationAppConfig.current = { defaultApprovalMode: 'never' };
-      activeChatsStore.updateChat(sessionId, { executionMode: 'station' });
-      const { result } = renderHook(() => useSendMessage('http://api.test'));
-
-      await act(async () => {
-        await result.current(sessionId, 'codex', undefined, 'go');
-      });
-
-      expect(
-        sendExecutionMessageMock.mock.calls[0][1].target.model.options,
-      ).not.toHaveProperty('approvalMode');
-    });
-
-    async function optionsAfterSend() {
+    async function bodyAfterSend() {
       const { result } = renderHook(() => useSendMessage('http://api.test'));
       await act(async () => {
         await result.current(sessionId, 'codex', undefined, 'go');
       });
-      return sendExecutionMessageMock.mock.calls[0][1].target.model.options;
+      return sendExecutionMessageMock.mock.calls[0][1];
     }
 
-    it('sends nothing on a live session, which is not a chat starting', async () => {
-      // Round 2 M3: the setting is the posture a NEW chat starts in.
-      // Re-requesting it per turn reconfigures a running session, and
-      // Claude refuses a mid-session escalation to 'never' with a
-      // runtime.warning on every later turn.
-      stationAppConfig.current = { defaultApprovalMode: 'never' };
-      activeChatsStore.updateChat(sessionId, {
-        orchestrationSessionStarted: true,
-        orchestrationStatus: 'running',
-        currentSessionId: 'live-session-1',
-      });
-
-      expect(await optionsAfterSend()).not.toHaveProperty('approvalMode');
-    });
-
-    /**
-     * Round 4 N1/N6. A stopped TURN is not a stopped session: the process is
-     * alive, the server continues it, and a posture sent now is the
-     * mid-life re-request this gate exists to prevent.
-     */
     it.each([
-      ['aborted', 'the user stopped the previous turn'],
-      ['errored', 'the previous turn hit a runtime error'],
-      ['idle', 'the session is simply between turns'],
-    ])('sends nothing when the status is %s (%s)', async (status) => {
-      stationAppConfig.current = { defaultApprovalMode: 'never' };
-      activeChatsStore.updateChat(sessionId, {
-        orchestrationSessionStarted: true,
-        orchestrationStatus: status,
-        currentSessionId: 'live-session-1',
-      });
-
-      expect(await optionsAfterSend()).not.toHaveProperty('approvalMode');
+      ['a chat starting its session', {}],
+      [
+        'a session that exited',
+        {
+          orchestrationSessionStarted: false,
+          orchestrationStatus: 'exited',
+          currentSessionId: 'dead-session-1',
+        },
+      ],
+      [
+        'a live session',
+        {
+          orchestrationSessionStarted: true,
+          orchestrationStatus: 'running',
+          currentSessionId: 'live-session-1',
+        },
+      ],
+    ])('sends no default for %s', async (_label, state) => {
+      activeChatsStore.updateChat(sessionId, state);
+      const body = await bodyAfterSend();
+      expect(body.target.model?.options ?? {}).not.toHaveProperty(
+        'approvalMode',
+      );
+      expect(body).not.toHaveProperty('setApprovalMode');
     });
 
-    /**
-     * Round 3 F1. The previous gate was
-     * `orchestrationSessionStarted || currentSessionId`, and each disjunct
-     * was true on a path where the SERVER starts a session — so the posture
-     * was withheld from the very spawn it is for. One test per disjunct.
-     */
-    it('sends the default after the session exited, whose id lingers', async () => {
-      // `session.exited` writes `orchestrationSessionStarted: false` and
-      // leaves `currentSessionId` in place; the id is not the session.
-      stationAppConfig.current = { defaultApprovalMode: 'never' };
+    it('carries a queued pick as setApprovalMode, compare-and-set against the folded decision', async () => {
       activeChatsStore.updateChat(sessionId, {
-        orchestrationSessionStarted: false,
-        orchestrationStatus: 'exited',
-        currentSessionId: 'dead-session-1',
+        queuedApprovalMode: 'ask',
+        approvalPostureSequence: 41,
       });
-
-      expect(await optionsAfterSend()).toMatchObject({
-        approvalMode: 'never',
+      const body = await bodyAfterSend();
+      expect(body).toMatchObject({
+        setApprovalMode: 'ask',
+        setApprovalModeBasedOn: 41,
       });
+      expect(body.target.model?.options ?? {}).not.toHaveProperty(
+        'approvalMode',
+      );
     });
 
-    it('sends the default for a reopened conversation that is merely continuable', async () => {
-      // `commitConversationOpen` marks every `status: 'resolved'` open as
-      // started and carries the child id; a stopped conversation resolves
-      // too, and the next send is the server's `startRequired` path. No
-      // `orchestrationStatus` accompanies a reopen, which is exactly the
-      // "unsure" case `chatSessionIsLive` answers as not-live.
-      stationAppConfig.current = { defaultApprovalMode: 'never' };
-      activeChatsStore.updateChat(sessionId, {
-        orchestrationSessionStarted: true,
-        orchestrationStatus: undefined,
-        currentSessionId: 'reopened-child-1',
+    it('a pick made having folded no decision says so (null), not "unconditional"', async () => {
+      activeChatsStore.updateChat(sessionId, { queuedApprovalMode: 'auto' });
+      expect(await bodyAfterSend()).toMatchObject({
+        setApprovalMode: 'auto',
+        setApprovalModeBasedOn: null,
       });
-
-      expect(await optionsAfterSend()).toMatchObject({
-        approvalMode: 'never',
-      });
-    });
-
-    it('sends nothing when this Station states no posture', async () => {
-      stationAppConfig.current = { defaultApprovalMode: 'connection-default' };
-      const { result } = renderHook(() => useSendMessage('http://api.test'));
-
-      await act(async () => {
-        await result.current(sessionId, 'codex', undefined, 'go');
-      });
-
-      expect(
-        sendExecutionMessageMock.mock.calls[0][1].target.model.options,
-      ).not.toHaveProperty('approvalMode');
     });
   });
 
@@ -1386,6 +1261,183 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     expect(
       activeChatsStore.getSnapshot()[sessionId].streamingMessage?.content,
     ).toBe('partial answer');
+  });
+
+  it('#2324 (D4): queues, never steers, while the engine runs a turn of its own', async () => {
+    activeChatsStore.updateChat(sessionId, {
+      status: 'sending',
+      orchestrationProvider: 'claude',
+      currentSessionId: 'exec-claude-1',
+      conversationId: 'conversation-p',
+      conversationActivity: {
+        conversationId: 'conversation-p',
+        asOfSequence: 7,
+        openTurn: {
+          turnId: 'provider:p',
+          threadId: 'exec-claude-1',
+          startedAt: '2026-09-23T00:00:00.000Z',
+          trigger: 'provider',
+        },
+      },
+    });
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+
+    await act(async () => {
+      await result.current(sessionId, 'claude', sessionId, 'after it');
+    });
+
+    expect(steerOrchestrationTurnMock).not.toHaveBeenCalled();
+    expect(sendExecutionMessageMock).not.toHaveBeenCalled();
+    expect(activeChatsStore.getSnapshot()[sessionId].queuedMessages).toEqual([
+      'after it',
+    ]);
+  });
+
+  it('#2324 (D4): a send refused because the engine began its own turn moves into the queue instead of failing', async () => {
+    sendExecutionMessageMock.mockRejectedValueOnce(
+      new CodedOrchestrationError(
+        400,
+        'The agent is replying on its own; your message will be sent when it finishes.',
+        'provider_turn_in_progress',
+      ),
+    );
+    // The server shows the provider turn open by the time the refusal lands,
+    // so the queue waits for its end rather than draining at once.
+    activeChatsStore.updateChat(sessionId, {
+      conversationId: 'conversation-q',
+    });
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+    const sent = act(async () => {
+      await result.current(sessionId, 'claude', sessionId, 'raced it');
+    });
+    activeChatsStore.updateChat(sessionId, {
+      conversationActivity: {
+        conversationId: 'conversation-q',
+        asOfSequence: 9,
+        openTurn: {
+          turnId: 'provider:q',
+          threadId: sessionId,
+          startedAt: '2026-09-23T00:00:00.000Z',
+          trigger: 'provider',
+        },
+      },
+    });
+    await sent;
+
+    const chat = activeChatsStore.getSnapshot()[sessionId];
+    expect(chat.queuedMessages).toEqual(['raced it']);
+    expect(chat.status).not.toBe('error');
+    expect(chat.error).toBeUndefined();
+    // Not left as a sent row, and not restored as a draft too.
+    expect(
+      chat.messages?.some(
+        (message) => message.role === 'user' && message.content === 'raced it',
+      ),
+    ).toBe(false);
+    expect(chat.input ?? '').toBe('');
+    expect(chat.ephemeralMessages ?? []).toEqual([]);
+  });
+
+  it('#2324 (D4): a refused send whose provider turn already ended by the time the refusal lands starts draining from the queue at once', async () => {
+    // Only the drain's settle timer is faked, so its send never runs here:
+    // what is under test is that the drain STARTED (it pops the head and
+    // marks itself settling synchronously), not the drained send.
+    vi.useFakeTimers({ toFake: ['setTimeout'] });
+    try {
+      sendExecutionMessageMock.mockRejectedValueOnce(
+        new CodedOrchestrationError(
+          400,
+          'The agent is replying on its own; your message will be sent when it finishes.',
+          'provider_turn_in_progress',
+        ),
+      );
+      // The server shows no open turn: the provider turn's end — the queue's
+      // only trigger — has already passed.
+      activeChatsStore.updateChat(sessionId, {
+        conversationId: 'conversation-r',
+        conversationActivity: {
+          conversationId: 'conversation-r',
+          asOfSequence: 3,
+        },
+      });
+      const { result } = renderHook(() => useSendMessage('http://api.test'));
+      await act(async () => {
+        await result.current(sessionId, 'claude', sessionId, 'after it ended');
+      });
+      const chat = activeChatsStore.getSnapshot()[sessionId];
+      expect(chat.queuedMessages).toEqual([]);
+      expect(chat.queueDrainSettling).toBe(true);
+    } finally {
+      vi.clearAllTimers();
+      vi.useRealTimers();
+    }
+  });
+
+  it('#2324 review J4: a refused send WITH attachments is not dropped into the text queue — it keeps its attachments and the ordinary error', async () => {
+    activeChatsStore.updateChat(sessionId, {
+      attachments: [stagedAttachment],
+      attachmentStages: [stagedSnapshot],
+    });
+    sendExecutionMessageMock.mockRejectedValueOnce(
+      new CodedOrchestrationError(
+        400,
+        'The agent is replying on its own; your message will be sent when it finishes.',
+        'provider_turn_in_progress',
+      ),
+    );
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+    await act(async () => {
+      await result.current(sessionId, 'claude', undefined, 'with a file', [
+        stagedAttachment,
+      ]);
+    });
+    const chat = activeChatsStore.getSnapshot()[sessionId];
+    expect(chat.queuedMessages ?? []).toEqual([]);
+    expect(chat).toMatchObject({
+      attachments: [stagedAttachment],
+      attachmentStages: [stagedSnapshot],
+    });
+    expect(chat.ephemeralMessages?.at(-1)?.content).toBeTruthy();
+  });
+
+  it('#2324 review J4b: a durable dispatch refused by a provider turn is not also put in the in-memory queue', async () => {
+    // Only the drain's settle timer is faked: a conversion would start a
+    // drain (popping the head at once), which is what this must not do.
+    vi.useFakeTimers({ toFake: ['setTimeout'] });
+    try {
+      sendExecutionMessageMock.mockRejectedValueOnce(
+        new CodedOrchestrationError(
+          400,
+          'The agent is replying on its own; your message will be sent when it finishes.',
+          'provider_turn_in_progress',
+        ),
+      );
+      const claim = { indeterminate: vi.fn(async () => 'applied' as const) };
+      const { result } = renderHook(() => useSendMessage('http://api.test'));
+      await act(async () => {
+        await result
+          .current(
+            sessionId,
+            'claude',
+            undefined,
+            'durable send',
+            undefined,
+            undefined,
+            'claimed-turn',
+            { skipInMemoryQueueOnBusy: true, dispatch: claim },
+          )
+          .catch(() => undefined);
+      });
+      const chat = activeChatsStore.getSnapshot()[sessionId];
+      // The durable claim owns the outcome; the in-memory queue took nothing
+      // and started no drain of its own.
+      expect(claim.indeterminate).toHaveBeenCalledOnce();
+      expect(chat.queuedMessages ?? []).toEqual([]);
+      expect(chat.queueDrainSettling).toBeUndefined();
+    } finally {
+      vi.clearAllTimers();
+      vi.useRealTimers();
+    }
   });
 
   it('queues on a steering engine when queueOnBusy is requested', async () => {

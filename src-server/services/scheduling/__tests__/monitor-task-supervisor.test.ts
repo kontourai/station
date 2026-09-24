@@ -133,6 +133,50 @@ describe('MonitorTaskTurnSupervisor', () => {
     ).toMatchObject({ turns: 1, tokens: 7 });
   });
 
+  test('#2324: a turn the engine opened on its own is never taken as the monitor’s initial turn, but one after it counts toward the budget', () => {
+    const f = fixture();
+    const initial = arm(f);
+    const provider = { metadata: { trigger: 'provider' } };
+    f.publish(event('session-1', 'turn.started', 'provider:early', provider));
+    expect(initial).not.toHaveBeenCalled();
+    f.publish(event('session-1', 'turn.completed', 'provider:early', provider));
+    f.publish(event('session-1', 'turn.started', 'monitor-turn'));
+    expect(initial).toHaveBeenCalledWith({
+      taskId: 'task-1',
+      sessionId: 'session-1',
+      turnId: 'monitor-turn',
+    });
+    f.publish(
+      event('session-1', 'token-usage.updated', 'monitor-turn', {
+        totalTokens: 7,
+      }),
+    );
+    f.publish(event('session-1', 'turn.completed', 'monitor-turn'));
+    // The engine replies on its own after the monitor's turn: that reply's
+    // tokens are the task's too.
+    f.publish(event('session-1', 'turn.started', 'provider:late', provider));
+    f.publish(
+      event('session-1', 'token-usage.updated', 'provider:late', {
+        totalTokens: 5,
+      }),
+    );
+    f.publish(event('session-1', 'turn.completed', 'provider:late', provider));
+    expect(
+      f.supervisor.receipt({
+        triggerId: 'trigger-1',
+        monitorId: 'monitor',
+        task: {
+          taskId: 'task-1',
+          sessionId: 'session-1',
+          turnId: 'monitor-turn',
+        },
+        startedAt: new Date().toISOString(),
+        deadlineAt: new Date(Date.now() + 60_000).toISOString(),
+        limits: { maxTurns: 2, maxTokens: 100 },
+      }),
+    ).toMatchObject({ turns: 2, tokens: 12 });
+  });
+
   test('allows the initial turn but refuses the second after maxCompletedTurns', () => {
     const f = fixture();
     arm(f, { maxTurns: 1 });

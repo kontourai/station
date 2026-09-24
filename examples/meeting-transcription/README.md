@@ -1,6 +1,14 @@
 # meeting-transcription — example plugin
 
-Reference implementation of a meeting transcription toolbar plugin.
+Reference implementation of a meeting transcription plugin. It contributes one
+Workspace Pane, **Meeting Transcription**: add it to a Project, choose **Start
+meeting**, and the modal listens through a registered speech-to-text provider.
+The transcript goes to chat with Station's own Agent, since this plugin
+contributes none.
+
+Station has no plugin toolbar actions. This example used to declare one
+(`toolbarActions`), along with `clientBundle` and `providerTypes`; no runtime
+reads those fields, so the modal had no way to open.
 
 Unlike the voice provider plugins, this one doesn't register an STT provider. It
 listens through one that is already registered in `voiceRegistry` from
@@ -19,10 +27,11 @@ placeholder is first, the modal opens but hears nothing.
 
 ## Files
 
-- `plugin.json` — declares a toolbar action (`"Meeting"` button), requires `voice:stt` permission
+- `plugin.json` — an Agent Plugins 1.0 manifest declaring the Workspace Pane, with the `agents.invoke` permission for sending the transcript to chat
+- `src/MeetingTranscriptionPane.tsx` — the Pane: opens the modal and sends its transcript to chat
 - `src/MeetingTranscriptionModal.tsx` — full-screen continuous speech capture UI
 - `src/useRegisteredSTT.ts` — binds the modal to a registered STT provider through `voiceRegistry`
-- `src/index.ts` — exports the modal for the plugin loader to register as a toolbar action
+- `src/index.ts` — exports `components`, keyed by the renderer name the manifest's Pane declares
 
 ## Contrast with the old `MeetingTranscriptionModal.tsx`
 

@@ -82,7 +82,50 @@ export type NativeCommandName =
   | 'commit-renderer-mount'
   | 'commit-startup-readiness'
   | 'commit-startup-recovery-ui'
-  | 'review-consent-natively';
+  | 'review-consent-natively'
+  | 'agent-activity-status'
+  | 'agent-activity-push-token'
+  | 'configure-agent-activity'
+  | 'clear-agent-activity'
+  | 'open-live-update-settings';
+
+/**
+ * What the Android agent-activity plugin reports about this phone. Local facts
+ * only: `configured` means this phone holds at least one registration, not
+ * that any Station will send to it.
+ */
+export interface NativeAgentActivityStatus {
+  sdkInt: number;
+  /** This install's application id; it differs per channel. */
+  packageName: string;
+  /** Whether the OS will show Station's notifications at all. */
+  notificationsEnabled: boolean;
+  /** Android 16 or later, where a card can become a Live Update chip. */
+  liveUpdatesSupported: boolean;
+  /** Whether the person allows Station's cards to be promoted to Live Updates. */
+  promotionAllowed: boolean;
+  /** Whether this build carries a Firebase identity. */
+  pushConfigured: boolean;
+  configured: boolean;
+}
+
+/** The phone's push token, or `unconfigured` when the build has no push. */
+export type NativeAgentActivityPushToken =
+  | { state: 'unconfigured' }
+  | { state: 'available'; token: string };
+
+/** Exactly what a Station returned from native-push registration. */
+export interface NativeAgentActivityRegistration {
+  registrationId: string;
+  stationId: string;
+  stationKey: string;
+  /**
+   * Per-registration AES-256 key (base64url) the Station encrypts card
+   * payloads with. Secret: it goes to the plugin and nowhere else.
+   */
+  payloadKey: string;
+  ongoingEnabled: boolean;
+}
 
 /** Exact workspace identity admitted by a desktop pane pop-out request. */
 export interface NativeWorkspacePanePopOutRequest {
@@ -413,6 +456,25 @@ export interface NativePlatformAdapter {
   reviewConsentNatively(
     requestId: string,
   ): Promise<NativeCommandResult<NativeConsentOutcome>>;
+  /**
+   * Agent activity on this phone (Android only). Every call returns
+   * `unsupported` unless the host reports `remote-push` as enabled.
+   */
+  agentActivityStatus(): Promise<
+    NativeCommandResult<NativeAgentActivityStatus>
+  >;
+  agentActivityPushToken(): Promise<
+    NativeCommandResult<NativeAgentActivityPushToken>
+  >;
+  configureAgentActivity(
+    registration: NativeAgentActivityRegistration,
+  ): Promise<NativeCommandResult<void>>;
+  /** Remove one registration; the host deletes the push token when none remain. */
+  clearAgentActivity(
+    registrationId: string,
+  ): Promise<NativeCommandResult<void>>;
+  /** Open the OS page where the person allows Live Updates for Station. */
+  openLiveUpdateSettings(): Promise<NativeCommandResult<{ opened: boolean }>>;
 }
 
 /** The settled transaction status the native consent broker returns. */

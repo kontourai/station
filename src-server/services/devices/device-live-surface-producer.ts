@@ -878,7 +878,7 @@ export class DeviceLiveSurfaceProducer implements LiveSurfaceProducer {
     input: LiveSurfaceInput,
     context?: LiveSurfaceDispatchContext,
   ): Promise<void> {
-    await this.bounded(() => this.dispatchNow(input, context));
+    await this.bounded((signal) => this.dispatchNow(input, context, signal));
   }
 
   async cancelHeldInput(_held: LiveSurfaceHeldInput): Promise<void> {
@@ -887,24 +887,32 @@ export class DeviceLiveSurfaceProducer implements LiveSurfaceProducer {
     await this.bounded(() => this.cancelNow());
   }
 
-  /** Each dispatch has its own deadline, so the registry never wedges on it. */
-  private async bounded(work: () => Promise<void>): Promise<void> {
+  /**
+   * Each dispatch has its own deadline, so the registry never wedges on it.
+   * When the deadline passes the caller is told `dispatch-timeout` AND the
+   * work's signal aborts (#2442 review M1): work that is still waiting, or
+   * running on a device host, is cancelled rather than left to act after
+   * the caller was told it failed.
+   */
+  private async bounded(
+    work: (signal: AbortSignal) => Promise<void>,
+  ): Promise<void> {
     if (this.disposed) throw new DeviceInputError('disposed', 'device closed');
+    const abort = new AbortController();
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
       await Promise.race([
-        work(),
+        work(abort.signal),
         new Promise<never>((_resolve, reject) => {
-          timer = setTimeout(
-            () =>
-              reject(
-                new DeviceInputError(
-                  'dispatch-timeout',
-                  'device input timed out',
-                ),
+          timer = setTimeout(() => {
+            abort.abort();
+            reject(
+              new DeviceInputError(
+                'dispatch-timeout',
+                'device input timed out',
               ),
-            this.dispatchTimeoutMs,
-          );
+            );
+          }, this.dispatchTimeoutMs);
         }),
       ]);
     } finally {
@@ -1018,6 +1026,7 @@ export class DeviceLiveSurfaceProducer implements LiveSurfaceProducer {
   private async dispatchNow(
     input: LiveSurfaceInput,
     guard: LiveSurfaceDispatchContext | undefined,
+    signal?: AbortSignal,
   ): Promise<void> {
     switch (input.kind) {
       case 'pointer': {
@@ -1085,12 +1094,19 @@ export class DeviceLiveSurfaceProducer implements LiveSurfaceProducer {
             'button-unsupported',
             'rotation is not available for this device',
           );
-        if (guard && !guard.isCurrent())
-          throw new DeviceInputError('interrupted', 'control changed hands');
+        const stillCurrent = () => {
+          if (guard && !guard.isCurrent())
+            throw new DeviceInputError('interrupted', 'control changed hands');
+        };
+        stillCurrent();
+        // The host may make the rotation wait (an SSH device host's slot):
+        // the lease is asked again once it can run, before anything runs,
+        // and the dispatch deadline cancels it (#2442 review M1).
         await actions.rotateAndroid(
           this.options.deviceId,
           input.orientation,
           this.dispatchTimeoutMs,
+          { beforeRun: stillCurrent, ...(signal ? { signal } : {}) },
         );
         return;
       }

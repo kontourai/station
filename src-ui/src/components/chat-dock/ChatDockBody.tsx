@@ -172,7 +172,7 @@ interface ChatDockBodyProps {
   modelProviderLabel?: string;
   modelProviders?: ModelProviderOption[];
   agentDefaultModelId?: string;
-  connectionApprovalModeDefault?: unknown;
+  agentApprovalModeDefault?: unknown;
   /** This Station's `AppConfig.defaultApprovalMode` (#2144 slice 6). */
   stationApprovalModeDefault?: unknown;
   toolPolicyDelivery?: ToolPolicyDelivery;
@@ -257,7 +257,7 @@ export function ChatDockBody({
   modelProviderLabel,
   modelProviders,
   agentDefaultModelId,
-  connectionApprovalModeDefault,
+  agentApprovalModeDefault,
   stationApprovalModeDefault,
   toolPolicyDelivery,
   availableModels,
@@ -322,11 +322,14 @@ export function ChatDockBody({
   // tab. Provider/model availability today cannot convert a recovery view
   // into a writable continuation of a different child session.
   const openPhase = conversationOpenPhase(activeSession);
-  // Split deliberately. `resolvingOpen` blocks the same writes `readOnlyOpen`
+  // Split deliberately. `resolvingOpen` blocks the same writes `recoveryOpen`
   // does — you cannot send into a conversation whose continuation is unproven —
   // but it is the only one of the two that may not claim anything is wrong
   // (#1582 E3/B6).
-  const readOnlyOpen = openPhase === 'read-only';
+  // #2424: `unverified` refuses writes and shows the same recovery notice, but
+  // is a failed check rather than a verdict — only `read-only` may say so.
+  const unverifiedOpen = openPhase === 'unverified';
+  const recoveryOpen = openPhase === 'read-only' || unverifiedOpen;
   const busyOpen = openPhase === 'busy';
   const resolvingOpen = openPhase === 'resolving';
   const transcript = useActiveChatTranscript(apiBase, activeSession);
@@ -1240,12 +1243,12 @@ export function ChatDockBody({
         only"), reused rather than given a class of its own — the entry
         stylesheet is at its budget ceiling to the byte.
 
-        `!readOnlyOpen` because the read-only recovery notice below carries its
+        `!recoveryOpen` because the recovery notice below carries its
         own "Start new chat": a reload whose point-read lands `unavailable`
         BEFORE the transcript's first read satisfies both conditions at once,
         and rendered the control twice (delta-review L1).
       */}
-      {conversationLoading && !readOnlyOpen ? (
+      {conversationLoading && !recoveryOpen ? (
         <div className="session-history-controls">
           {onNewChat ? (
             <button
@@ -1260,17 +1263,16 @@ export function ChatDockBody({
           ) : null}
         </div>
       ) : null}
-      {readOnlyOpen ? (
+      {recoveryOpen ? (
         <LazyBoundary
           load={loadConversationOpenRecoveryNotice}
           componentProps={{
             title:
               activeSession.conversationOpenState?.conversation.title ??
               activeSession.title,
-            state:
-              activeSession.conversationOpenState?.status === 'missing-session'
-                ? 'missing-session'
-                : 'unavailable',
+            state: unverifiedOpen
+              ? 'unverified'
+              : activeSession.conversationOpenState?.status,
             onRetry: onRetryConversationOpen
               ? () => void onRetryConversationOpen()
               : undefined,
@@ -1283,8 +1285,7 @@ export function ChatDockBody({
           }}
           pending={
             <div className="session-history-error" role="status">
-              Conversation recovery is loading. This conversation remains
-              read-only.
+              Conversation recovery is loading. Sending is paused.
             </div>
           }
         />
@@ -1384,11 +1385,12 @@ export function ChatDockBody({
             activeConversationId={activeSession.conversationId}
             input={chatInput.input}
             workingDirectory={workingDirectory}
+            mentionProjectSlug={activeSession.projectSlug}
             mentionRequestScope={mentionRequestScope}
             mentionAuthority={mentionAuthority}
             attachments={chatInput.attachments}
             textareaRef={chatInput.textareaRef}
-            disabled={!agent || readOnlyOpen || resolvingOpen || busyOpen}
+            disabled={!agent || recoveryOpen || resolvingOpen || busyOpen}
             isSending={isExecutionActive}
             turnInFlight={isTurnInFlight(activeSession)}
             busyFollowUp={busyFollowUp}
@@ -1422,7 +1424,7 @@ export function ChatDockBody({
               activeSession.providerOptions
             }
             secondaryActions={
-              readOnlyOpen || resolvingOpen || busyOpen
+              recoveryOpen || resolvingOpen || busyOpen
                 ? undefined
                 : secondaryActions
             }
@@ -1436,7 +1438,7 @@ export function ChatDockBody({
             agentHandoffDisabled={secondaryActions?.handoffDisabled}
             agentHandoffDisabledReason={secondaryActions?.handoffDisabledReason}
             executionMode={activeSession.executionMode}
-            approvalModeConnectionDefault={connectionApprovalModeDefault}
+            approvalModeAgentDefault={agentApprovalModeDefault}
             approvalModeStationDefault={stationApprovalModeDefault}
             toolPolicyDelivery={toolPolicyDelivery}
             lastAppliedApprovalMode={activeSession.lastAppliedApprovalMode}
@@ -1455,13 +1457,14 @@ export function ChatDockBody({
             attachmentError={chatInput.attachmentError}
             attachmentStages={chatInput.attachmentStages}
             sendBlockedReason={
-              readOnlyOpen
+              recoveryOpen && !unverifiedOpen
                 ? 'This conversation is available read-only. Retry resolution or start a new chat.'
-                : resolvingOpen || busyOpen
+                : recoveryOpen || resolvingOpen || busyOpen
                   ? // The banner above already says this; repeating the SENTENCE
                     // under the composer is what made one ordinary reload read as
                     // three separate problems. `undefined` leaves the composer
-                    // quietly disabled.
+                    // quietly disabled. An `unverified` check (#2424) is the same:
+                    // its notice says what failed and carries the Retry.
                     undefined
                   : chatInput.sendBlockedReason
             }

@@ -368,6 +368,9 @@ export class DeviceSessionService {
       platform: summary.platform,
       deviceId: summary.deviceId,
       isOpen: () => entry.open,
+      // One memo per session: the share key a check resolved, so a later
+      // re-check can refuse a revoked share without the host (#2433).
+      shareKeyMemo: {},
     };
     try {
       entry.unregister = this.options.surfaces.register(

@@ -2,6 +2,7 @@ import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
+import { fullAccessGrantForTesting } from '../../../security/coding-authority.js';
 import type { TaskDispatcher } from '../../projects/task-dispatcher.js';
 import type { StarterOwnerAdapter } from '../starter-owner-adapter.js';
 import {
@@ -443,11 +444,14 @@ describe('StarterRegistry', () => {
   it('creates, binds, and dispatches exactly once with the exact Session identity', async () => {
     const { registry, createTaskIdempotent, dispatch } = await fixture();
     await expect(
-      registry.launchStartTask({
-        starterId: 'start-task',
-        operationId: 'launch-1',
-        task: { projectId: 'project-1', title: 'First task' },
-      }),
+      registry.launchStartTask(
+        {
+          starterId: 'start-task',
+          operationId: 'launch-1',
+          task: { projectId: 'project-1', title: 'First task' },
+        },
+        null,
+      ),
     ).resolves.toMatchObject({
       task: { kind: 'task', id: 'task-1', projectId: 'project-1' },
       correlation: { state: 'bound' },
@@ -461,6 +465,20 @@ describe('StarterRegistry', () => {
     expect(dispatch).toHaveBeenCalledTimes(1);
   });
 
+  it('#2436: hands the launching request grant to the dispatcher, which enforces it', async () => {
+    const { registry, dispatch } = await fixture();
+    const grant = fullAccessGrantForTesting();
+    await registry.launchStartTask(
+      {
+        starterId: 'start-task',
+        operationId: 'launch-grant',
+        task: { projectId: 'project-1', title: 'First task' },
+      },
+      grant,
+    );
+    expect(dispatch.mock.calls[0]?.[1].fullAccessGrant).toBe(grant);
+  });
+
   it('preserves indeterminate dispatch without an automatic retry', async () => {
     const { registry, dispatch } = await fixture();
     dispatch.mockResolvedValueOnce({
@@ -468,11 +486,14 @@ describe('StarterRegistry', () => {
       reason: 'response lost',
     });
     await expect(
-      registry.launchStartTask({
-        starterId: 'start-task',
-        operationId: 'launch-2',
-        task: { projectId: 'project-1', title: 'First task' },
-      }),
+      registry.launchStartTask(
+        {
+          starterId: 'start-task',
+          operationId: 'launch-2',
+          task: { projectId: 'project-1', title: 'First task' },
+        },
+        null,
+      ),
     ).resolves.toMatchObject({
       dispatch: {
         state: 'indeterminate',
@@ -491,8 +512,8 @@ describe('StarterRegistry', () => {
       operationId: 'launch-replay',
       task: { projectId: 'project-1', title: 'First task' },
     };
-    await registry.launchStartTask(input);
-    await expect(registry.launchStartTask(input)).resolves.toMatchObject({
+    await registry.launchStartTask(input, null);
+    await expect(registry.launchStartTask(input, null)).resolves.toMatchObject({
       dispatch: { state: 'dispatched', session: { id: 'session-1' } },
     });
     expect(dispatch).toHaveBeenCalledTimes(1);
@@ -505,15 +526,18 @@ describe('StarterRegistry', () => {
       reason: 'Agent engine is starting.',
     });
     await expect(
-      registry.launchStartTask({
-        starterId: 'start-task',
-        operationId: 'launch-deferred',
-        task: {
-          projectId: 'project-1',
-          title: 'First task',
-          agentId: 'station',
+      registry.launchStartTask(
+        {
+          starterId: 'start-task',
+          operationId: 'launch-deferred',
+          task: {
+            projectId: 'project-1',
+            title: 'First task',
+            agentId: 'station',
+          },
         },
-      }),
+        null,
+      ),
     ).resolves.toEqual({
       state: 'deferred',
       reason: 'Agent engine is starting.',

@@ -1,4 +1,5 @@
 import { describe, expect, test, vi } from 'vitest';
+import { fullAccessGrantForTesting } from '../../../security/coding-authority.js';
 import { createInMemorySessionTurnBoundaryAuthority } from '../../orchestration/session-turn-boundary.js';
 import {
   createTaskDispatcher,
@@ -77,7 +78,9 @@ describe('TaskDispatcher Interface', () => {
         },
         { claim: async () => owned },
       );
-      expect(await dispatcher.dispatch('task-1', {})).toMatchObject({
+      expect(
+        await dispatcher.dispatch('task-1', { fullAccessGrant: null }),
+      ).toMatchObject({
         kind: 'dispatched',
       });
       expect(authority.hasPossibleEffect(reservation.sessionId)).toEqual({
@@ -101,6 +104,7 @@ describe('TaskDispatcher Interface', () => {
     );
     await expect(
       dispatcher.dispatch('task-1', {
+        fullAccessGrant: null,
         agentId: 'configured-agent',
         monitor: {
           agentId: 'other-agent',
@@ -143,7 +147,9 @@ describe('TaskDispatcher Interface', () => {
       telemetry,
       publisher,
     );
-    await expect(dispatcher.dispatch('task-1', {})).resolves.toMatchObject({
+    await expect(
+      dispatcher.dispatch('task-1', { fullAccessGrant: null }),
+    ).resolves.toMatchObject({
       kind: 'dispatched',
     });
     expect(publisher.publishAgentStarted).toHaveBeenCalledWith(
@@ -166,7 +172,9 @@ describe('TaskDispatcher Interface', () => {
         },
         telemetry,
       );
-      await expect(dispatcher.dispatch('task-1', {})).resolves.toEqual({
+      await expect(
+        dispatcher.dispatch('task-1', { fullAccessGrant: null }),
+      ).resolves.toEqual({
         kind,
         reason: kind,
       });
@@ -191,7 +199,9 @@ describe('TaskDispatcher Interface', () => {
     };
     const dispatcher = createTaskDispatcher(state, claims, remote, telemetry);
 
-    await expect(dispatcher.dispatch('task-1', {})).resolves.toEqual({
+    await expect(
+      dispatcher.dispatch('task-1', { fullAccessGrant: null }),
+    ).resolves.toEqual({
       kind: 'unavailable',
       reason: 'not ready',
       retryable: true,
@@ -225,7 +235,9 @@ describe('TaskDispatcher Interface', () => {
       telemetry,
     );
 
-    await expect(dispatcher.dispatch('task-1', {})).resolves.toEqual({
+    await expect(
+      dispatcher.dispatch('task-1', { fullAccessGrant: null }),
+    ).resolves.toEqual({
       kind: 'indeterminate',
       reason: 'reservation write failed',
     });
@@ -248,7 +260,10 @@ describe('TaskDispatcher Interface', () => {
     );
 
     await expect(
-      dispatcher.dispatch('task-1', { signal: AbortSignal.abort() }),
+      dispatcher.dispatch('task-1', {
+        fullAccessGrant: null,
+        signal: AbortSignal.abort(),
+      }),
     ).resolves.toEqual({
       kind: 'aborted',
       reason: 'Task dispatch aborted',
@@ -285,7 +300,10 @@ describe('TaskDispatcher Interface', () => {
     const dispatcher = createTaskDispatcher(state, claims, remote, telemetry);
 
     await expect(
-      dispatcher.dispatch('task-1', { signal: controller.signal }),
+      dispatcher.dispatch('task-1', {
+        fullAccessGrant: null,
+        signal: controller.signal,
+      }),
     ).resolves.toMatchObject({
       kind: 'indeterminate',
       reason: 'Task dispatch aborted: request closed',
@@ -318,7 +336,7 @@ describe('TaskDispatcher Interface', () => {
     );
 
     await expect(
-      dispatcher.dispatch('task-1', { timeoutMs: 1 }),
+      dispatcher.dispatch('task-1', { fullAccessGrant: null, timeoutMs: 1 }),
     ).resolves.toMatchObject({
       kind: 'indeterminate',
       reason: 'Task dispatch timed out',
@@ -364,7 +382,7 @@ describe('TaskDispatcher Interface', () => {
     );
 
     await expect(
-      dispatcher.dispatch('task-1', { timeoutMs: 1 }),
+      dispatcher.dispatch('task-1', { fullAccessGrant: null, timeoutMs: 1 }),
     ).resolves.toMatchObject({
       kind: 'indeterminate',
       reason: 'Task dispatch timed out',
@@ -416,6 +434,7 @@ describe('TaskDispatcher Interface', () => {
       telemetry,
     );
     const dispatch = dispatcher.dispatch('task-1', {
+      fullAccessGrant: null,
       signal: controller.signal,
     });
     await vi.waitFor(() => expect(claims.claim).toHaveBeenCalledOnce());
@@ -452,7 +471,9 @@ describe('TaskDispatcher Interface', () => {
       telemetry,
     );
 
-    await expect(dispatcher.dispatch('task-1', {})).resolves.toEqual({
+    await expect(
+      dispatcher.dispatch('task-1', { fullAccessGrant: null }),
+    ).resolves.toEqual({
       kind: 'indeterminate',
       reason: 'release failed',
     });
@@ -480,7 +501,9 @@ describe('TaskDispatcher Interface', () => {
       observer,
     );
 
-    await expect(dispatcher.dispatch('task-1', {})).resolves.toMatchObject({
+    await expect(
+      dispatcher.dispatch('task-1', { fullAccessGrant: null }),
+    ).resolves.toMatchObject({
       kind: 'contended',
       reason: 'Task is claimed by another actor: held',
     });
@@ -509,7 +532,9 @@ describe('TaskDispatcher Interface', () => {
     };
     const dispatcher = createTaskDispatcher(state, claims, remote, telemetry);
 
-    await expect(dispatcher.dispatch('task-1', {})).resolves.toMatchObject({
+    await expect(
+      dispatcher.dispatch('task-1', { fullAccessGrant: null }),
+    ).resolves.toMatchObject({
       kind: 'failed',
       reason: 'workspace/taskSlug failed',
     });
@@ -519,7 +544,9 @@ describe('TaskDispatcher Interface', () => {
       session: {} as never,
       outcome: 'started' as const,
     });
-    await expect(dispatcher.dispatch('task-1', {})).resolves.toMatchObject({
+    await expect(
+      dispatcher.dispatch('task-1', { fullAccessGrant: null }),
+    ).resolves.toMatchObject({
       kind: 'dispatched',
     });
   });
@@ -558,7 +585,9 @@ describe('TaskDispatcher Interface', () => {
         },
         telemetry,
       );
-      await expect(dispatcher.dispatch('task-1', {})).resolves.toMatchObject({
+      await expect(
+        dispatcher.dispatch('task-1', { fullAccessGrant: null }),
+      ).resolves.toMatchObject({
         kind: 'indeterminate',
       });
       expect(state.markIndeterminate).toHaveBeenCalledWith(reservation);
@@ -590,8 +619,71 @@ describe('TaskDispatcher Interface', () => {
         failed: vi.fn(),
       },
     );
-    await expect(dispatcher.dispatch('task-1', {})).resolves.toMatchObject({
+    await expect(
+      dispatcher.dispatch('task-1', { fullAccessGrant: null }),
+    ).resolves.toMatchObject({
       kind: 'dispatched',
     });
+  });
+
+  test('#2436: refuses full access without the caller grant, before anything is reserved', async () => {
+    const reserve = vi.fn<TaskDispatchGraphState['reserve']>(async () => ({
+      kind: 'reserved',
+      reservation,
+    }));
+    const startOrSeed = vi.fn(async () => ({
+      session: { threadId: reservation.sessionId } as never,
+      outcome: 'started' as const,
+    }));
+    const dispatcher = createTaskDispatcher(
+      graph(reserve),
+      {
+        claim: vi.fn(async () => undefined),
+        compensate: vi.fn(async () => ({ kind: 'released' as const })),
+      },
+      {
+        readiness: () => ({ kind: 'ready' as const }),
+        mayHaveStarted: () => false,
+        startOrSeed,
+      },
+      telemetry,
+    );
+    const atFullAccess = { modelOptions: { approvalMode: 'never' } };
+    await expect(
+      dispatcher.dispatch('task-1', {
+        fullAccessGrant: null,
+        runtimeConfig: atFullAccess,
+      }),
+    ).resolves.toEqual({
+      kind: 'forbidden',
+      code: 'approval-full-access-not-granted',
+      reason: expect.any(String),
+    });
+    expect(reserve).not.toHaveBeenCalled();
+    expect(startOrSeed).not.toHaveBeenCalled();
+
+    // A look-alike is not a grant: only this module's own class passes.
+    await expect(
+      dispatcher.dispatch('task-1', {
+        fullAccessGrant: { nominal: true } as never,
+        runtimeConfig: atFullAccess,
+      }),
+    ).resolves.toMatchObject({ kind: 'forbidden' });
+    expect(reserve).not.toHaveBeenCalled();
+
+    // A stricter posture needs no grant; full access with one proceeds.
+    await expect(
+      dispatcher.dispatch('task-1', {
+        fullAccessGrant: null,
+        runtimeConfig: { modelOptions: { approvalMode: 'ask' } },
+      }),
+    ).resolves.toMatchObject({ kind: 'dispatched' });
+    await expect(
+      dispatcher.dispatch('task-1', {
+        fullAccessGrant: fullAccessGrantForTesting(),
+        runtimeConfig: atFullAccess,
+      }),
+    ).resolves.toMatchObject({ kind: 'dispatched' });
+    expect(startOrSeed).toHaveBeenCalledTimes(2);
   });
 });

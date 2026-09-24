@@ -10,7 +10,10 @@
  * `PrincipalUnresolvedError` — never a default identity.
  */
 
-import type { DevicePrincipalBinding } from '@kontourai/station-contracts/environment-security';
+import type {
+  DevicePrincipalBinding,
+  PairedDevice,
+} from '@kontourai/station-contracts/environment-security';
 import type { PrincipalRef } from '@kontourai/station-contracts/principal';
 import { humanPrincipal as deploymentHumanPrincipal } from '@kontourai/station-contracts/principal';
 import { getCachedUser } from '../../routes/system/auth.js';
@@ -50,6 +53,45 @@ function principalForDeviceBinding(
         binding.subject,
         binding.subject,
       );
+}
+
+/** The identity a request carrying this device's own credential presents. */
+function deviceIdentity(
+  device: Pick<PairedDevice, 'id' | 'name'>,
+): VerifiedIdentity {
+  return {
+    provider: 'device',
+    subject: device.id,
+    displayName: device.name?.trim() || device.id,
+  };
+}
+
+/**
+ * The principal a request authenticated by this paired device's own
+ * credential resolves to through the resolver below, when that request
+ * carries no ingress (WhoIs) identity and no deployment-account session: the
+ * device's person binding when it is a tailnet binding, otherwise the device
+ * itself. Background work acting for a device (the agent-activity publisher
+ * reading what that phone may see) uses this so it reads exactly what the
+ * device's own requests read, never a process-wide identity.
+ */
+export function pairedDevicePrincipal(
+  device: Pick<PairedDevice, 'id' | 'name' | 'principalBinding'>,
+): PrincipalRef {
+  const binding = device.principalBinding;
+  return resolveStationPrincipal(
+    binding && !('kind' in binding)
+      ? {
+          provider: binding.provider,
+          subject: binding.subject,
+          displayName: binding.subject,
+        }
+      : deviceIdentity(device),
+    'personal',
+    undefined,
+    undefined,
+    { resolveOperatorDisplay: () => getCachedUser().alias },
+  );
 }
 
 export interface OrchestrationRequestPrincipalDeps {
@@ -94,11 +136,7 @@ export function createOrchestrationRequestPrincipalResolver(
       runtimePrincipal.credential,
     );
     if (!device) return null;
-    return {
-      provider: 'device',
-      subject: device.id,
-      displayName: device.name?.trim() || device.id,
-    };
+    return deviceIdentity(device);
   };
   return memoizePerRequest((c) => {
     const runtimePrincipal = getRuntimeAuthenticatedRequestPrincipal(c.req.raw);

@@ -1,13 +1,23 @@
 /**
  * Nova Sonic Voice plugin — client bundle entry point.
+ *
+ * The browser plugin host calls `activate` when the bundle loads and the
+ * disposer it returns before reload or disable (#2401: the bundle used to
+ * register at import time, reading an undeclared `station` global).
  */
 import { voiceRegistry } from '@kontourai/station-sdk';
 import { NovaSonicProvider } from './NovaSonicProvider';
 
-declare const station: { apiBase: string };
+interface PluginHostContext {
+  readonly apiBase: string;
+}
 
-const apiBase = typeof station !== 'undefined' ? station.apiBase : '';
-
-voiceRegistry.registerSTT(new NovaSonicProvider(apiBase));
-// NovaSonicProvider also implements TTSProvider (same session)
-voiceRegistry.registerTTS(new NovaSonicProvider(apiBase));
+export function activate({ apiBase }: PluginHostContext): () => void {
+  const disposeSTT = voiceRegistry.registerSTT(new NovaSonicProvider(apiBase));
+  // NovaSonicProvider also implements TTSProvider (same session).
+  const disposeTTS = voiceRegistry.registerTTS(new NovaSonicProvider(apiBase));
+  return () => {
+    disposeTTS();
+    disposeSTT();
+  };
+}

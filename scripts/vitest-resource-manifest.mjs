@@ -180,6 +180,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Hono routes composed with the real Task and transcript worker owners.
   'src-server/services/search/__tests__/runtime-search.test.ts',
   'src-server/services/orchestration/__tests__/isolated-transcript-search.test.ts',
+  // #2374 (epic #2323 S6): real `git` plumbing and pushes into temp bare
+  // repositories, through the production publish service and route.
+  'src-server/routes/projects/__tests__/plugin-publish-routes.test.ts',
+  'src-server/services/projects/__tests__/plugin-publish-service.test.ts',
   // Creates and observes real Git checkouts through the portable identity owner.
   'src-server/services/projects/__tests__/project-identity-service.test.ts',
   // Owns real CPU-blocking worker_threads and canonical TaskGraph file fixtures.
@@ -207,6 +211,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // the real exit status is what the assertions read; process ownership is the
   // behavior under test, not a helper.
   'scripts/__tests__/literal-swap-gate.test.ts',
+  // Same shape: throwaway Git repositories, and the real-time wait gate run
+  // as a child process so its exit status (0/1/2) is what is asserted.
+  'scripts/__tests__/test-realtime-wait-gate.test.ts',
   // station#1648: runs the Playwright install script as a child process behind
   // a fake `npx` on PATH, because the exit status and the argv it really
   // builds are the two things an in-process call cannot prove. Each child is
@@ -655,6 +662,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-server/services/checkpoints/__tests__/checkpoint-restore.test.ts',
   'src-server/services/checkpoints/__tests__/checkpoint-read.test.ts',
   'src-server/services/checkpoints/__tests__/checkpoint-retention.test.ts',
+  // #2410: drives the real capture through the EventBus against a fixture
+  // repository whose own config plants a clean filter (execFileSync git).
+  'src-server/services/checkpoints/__tests__/turn-checkpoint-capture.test.ts',
   'packages/cli/src/__tests__/checkpoints-command.test.ts',
   // These ACP integration tests do not import child_process directly, but
   // exercise shared discovery/process startup and exceeded their 5s contract
@@ -955,6 +965,12 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // loopback ephemeral port, killed when its session's stdin closes), in a
   // private HOME. No ssh, no network.
   'src-server/services/devices/hosts/__tests__/ssh-device-remote-script.test.ts',
+  // #2442: the device-host program's `tool` mode for real through `/bin/sh`
+  // and short-lived node children, with `adb`/`xcrun` stand-ins (sh scripts;
+  // one sleeps 5 s until the deadline kills it) in a private HOME, plus the
+  // Station side through the registry with an ssh stand-in that runs those
+  // same words locally. No ssh, no network, no device.
+  'src-server/services/devices/hosts/__tests__/ssh-device-tools.process.test.ts',
   // SSH device hosts over REAL ssh to this machine's sshd: one `ssh
   // localhost true` probe at load, then (only with key auth and a known host
   // key, never on CI) Test connection and, with STATION_DEVICE_HUB_TEST_HOME,

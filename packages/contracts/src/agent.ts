@@ -1,4 +1,5 @@
 import type { AgentId, EngineConnectionId } from './agent-identity.js';
+import type { ApprovalMode } from './provider.js';
 import type {
   WorkspaceIsolationConfig,
   WorkspaceIsolationMode,
@@ -160,6 +161,22 @@ export interface AgentExecutionConfig {
    * the ones applied.
    */
   credentialProfileRef?: string | null;
+  /**
+   * #2436: the approval posture this Agent's sessions start in, and what a
+   * Default pick returns to. Precedence at a session start (and when a Default
+   * pick is applied): the conversation's recorded decision, then this, then
+   * this Station's `AppConfig.defaultApprovalMode`. It lives with the other
+   * per-Agent engine-execution settings (`credentialProfileRef` above): like
+   * them it is read by the server where the engine session starts
+   * (`approval-posture.ts`), and it only means anything for an engine whose
+   * adapter has an approval knob. `'connection-default'` or absent states no
+   * posture.
+   *
+   * Saving `'never'` requires the operator in person or a device holding
+   * `approval:full-access`, the same authority as recording full access on a
+   * session: a default is a posture every session of the Agent starts in.
+   */
+  approvalMode?: ApprovalMode;
   workspaceIsolationMode?: WorkspaceIsolationMode;
   runtimeOptions?: Record<string, unknown>;
   modelOptions?: Record<string, unknown>;

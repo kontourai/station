@@ -62,6 +62,7 @@ import { createFfmpegDecoderProvider } from '../../services/devices/h264-jpeg-de
 import { DeviceHostRegistry } from '../../services/devices/hosts/device-host-registry.js';
 import { RemoteDeviceHostServices } from '../../services/devices/hosts/device-host-services.js';
 import { DeviceHostStore } from '../../services/devices/hosts/device-host-store.js';
+import { createSshDeviceHostActions } from '../../services/devices/hosts/ssh-device-tools.js';
 import { DeviceToolchainService } from '../../services/devices/toolchain/device-toolchain-service.js';
 import type { ApplicationSessionService } from '../../services/identity/application-session-service.js';
 import type { LoadedDeploymentAuthentication } from '../../services/identity/deployment-authentication-loader.js';
@@ -247,6 +248,7 @@ import { createAnalyticsRoutes } from '../../routes/operations/analytics.js';
 import { createFeedbackRoutes } from '../../routes/operations/feedback.js';
 import { createInsightsRoutes } from '../../routes/operations/insights.js';
 import { createMonitoringRoutes } from '../../routes/operations/monitoring.js';
+import { createNativePushRoutes } from '../../routes/operations/native-push-routes.js';
 import { createNotificationRoutes } from '../../routes/operations/notifications.js';
 import { createPushRoutes } from '../../routes/operations/push-routes.js';
 import { createSchedulerRoutes } from '../../routes/operations/scheduler.js';
@@ -280,6 +282,7 @@ import { createRegistryRoutes } from '../../routes/plugins/registry.js';
 import { createCodingRoutes } from '../../routes/projects/coding.js';
 import { createFsRoutes } from '../../routes/projects/fs.js';
 import { createWorkflowRoutes } from '../../routes/projects/layouts.js';
+import { createPluginPublishRoutes } from '../../routes/projects/plugin-publish-routes.js';
 import { createPluginScaffoldRoutes } from '../../routes/projects/plugin-scaffold-routes.js';
 import {
   createProjectContributionRoutes,
@@ -426,6 +429,7 @@ import { StationKitObservabilityHost } from '../../services/kits/kit-observabili
 import { StationKitObservabilityRegistry } from '../../services/kits/kit-observability-registry.js';
 import type { KnowledgeService } from '../../services/knowledge/knowledge-service.js';
 import { ownedLayoutStore } from '../../services/layouts/personal-layout-service.js';
+import type { AgentActivityPublisher } from '../../services/notifications/agent-activity-publisher.js';
 import type { NotificationService } from '../../services/notifications/notification-service.js';
 import type { WebPushService } from '../../services/notifications/web-push-service.js';
 import { actionOperationActorForRequest } from '../../services/operations/action-operation-authority.js';
@@ -777,6 +781,8 @@ interface ConfigureRuntimeRoutesResult {
   notificationService: NotificationService;
   attentionProjection: AttentionProjectionService;
   webPushService: WebPushService;
+  /** Agent-activity push; the runtime stops it (and its timer) on shutdown. */
+  agentActivityPublisher: AgentActivityPublisher;
   kitLifecycleReady: Promise<void>;
   projectTaskRoomRuntime?: ProjectTaskRoomRuntime;
   /**
@@ -2281,13 +2287,21 @@ export function configureRuntimeRoutes(
       (await deviceAccessImpl?.isOperator(request)) === true,
     hasStanding: async (request, purpose) =>
       (await deviceAccessImpl?.hasStanding(request, purpose)) === true,
-    mayAccessDevice: async (request, platform, deviceId, purpose, hostId) =>
+    mayAccessDevice: async (
+      request,
+      platform,
+      deviceId,
+      purpose,
+      hostId,
+      shareKeyMemo,
+    ) =>
       (await deviceAccessImpl?.mayAccessDevice(
         request,
         platform,
         deviceId,
         purpose,
         hostId,
+        shareKeyMemo,
       )) === true,
   });
   // Who a live-surface request's HUMAN caller is (bound in the block below):
@@ -2467,12 +2481,15 @@ export function configureRuntimeRoutes(
               surfaces: sessionSurfaces,
               access: deviceAccess,
               decoder: deviceDecoder,
-              // No host actions: they run `adb` on THIS machine, which is not
-              // where an SSH host's emulator is (Android rotation reports
-              // unsupported there).
+              // Android rotation runs `adb` ON THAT HOST, through its
+              // device-host program's allowlisted `tool` mode (#2442).
+              actions: createSshDeviceHostActions(hostRegistry, hostId),
               onError: onDeviceError,
             })
           : undefined,
+      // #2442: the Tools drawer for that host runs its vectors there, and
+      // reads that host's own hub (built from the endpoint resolved above).
+      toolsHost: hostRegistry,
     });
     if (liveSurfaceRegistry)
       deviceSessions = new DeviceSessionService({
@@ -2535,13 +2552,14 @@ export function configureRuntimeRoutes(
       createDeviceToolsRoutes({
         isRequestPrincipalCurrent,
         access: deviceAccess,
-        // THIS machine's xcrun/adb and hub: the local device host only
-        // (#1973). An SSH device host's device is refused `unsupported`.
+        // THIS machine's xcrun/adb and hub serve the local device host; an
+        // SSH device host has its own service (#2442), built per host.
         tools: new DeviceToolsService({
           hostId: LOCAL_DEVICE_HOST_ID,
           runner: createDeviceToolRunner(),
           hub: deviceHubEndpoint,
         }),
+        toolsFor: (hostId) => remoteDeviceHosts?.get(hostId)?.tools,
         ...(toolCaller ? { resolveHumanCaller: toolCaller } : {}),
         ...(toolSessions && toolSurfaces
           ? {
@@ -4186,6 +4204,17 @@ export function configureRuntimeRoutes(
       requestPrincipalId: (c) => resolveOrchestrationRequestPrincipal(c).id,
     }),
   );
+  // #2374 (epic #2323 S6): publish a plugin Project to a git remote.
+  // Mounted under the Project read guard like its siblings; the routes
+  // themselves are operator-only, because the push uses this computer's git
+  // credentials.
+  context.app.route(
+    '/api/projects/:slug/plugin-publish',
+    createPluginPublishRoutes({
+      getWorkspacePath: resolveWorkspacePath,
+      visibility: { resolvePrincipal: resolveOrchestrationRequestPrincipal },
+    }),
+  );
   context.app.route(
     '/api/providers',
     createProviderRoutes(context.providerService, {
@@ -5084,6 +5113,9 @@ export function configureRuntimeRoutes(
     attentionProjection,
     webPushService,
     webPushEnabled,
+    pushSigningKeyStore,
+    pushGatewayAvailable,
+    agentActivityPublisher,
   } = configureRuntimeSupportServices(context, flowRunService, {
     // #2064 (D4): the same aggregate `/api/survey-flow-reviews` serves, over
     // the same live project inventory — one read, so a paused review counted
@@ -5343,6 +5375,32 @@ export function configureRuntimeRoutes(
     }),
   );
   context.app.route(
+    '/api/system',
+    createNativePushRoutes({
+      enabled: webPushEnabled,
+      deliverable: pushGatewayAvailable,
+      logger: context.logger,
+      identifyDevice: (credential) =>
+        context.environmentSecurityService.identifyDevice(credential),
+      loadOrCreateStationKey: async () =>
+        (await pushSigningKeyStore.loadOrCreate()).thumbprint,
+      stationId: () =>
+        context.environmentSecurityService.devicePairing.environmentId(),
+      setNativePush: (deviceId, request, stationKey) =>
+        context.environmentSecurityService.devicePairing.setNativePush(
+          deviceId,
+          request,
+          stationKey,
+        ),
+      clearNativePush: (deviceId) => {
+        context.environmentSecurityService.devicePairing.clearNativePush(
+          deviceId,
+        );
+      },
+      onRegistered: () => agentActivityPublisher.requestFlush(),
+    }),
+  );
+  context.app.route(
     '/scheduler',
     createSchedulerRoutes(schedulerService, context.logger, {
       readAuthorityForRequest,
@@ -5474,6 +5532,7 @@ export function configureRuntimeRoutes(
     notificationService,
     attentionProjection,
     webPushService,
+    agentActivityPublisher,
     kitLifecycleReady,
     projectTaskRoomRuntime,
     liveSurfaceRegistry,

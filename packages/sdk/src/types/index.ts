@@ -25,6 +25,8 @@ export type {
 export type {
   KnowledgeDocumentMeta,
   KnowledgeNamespaceConfig,
+  KnowledgeSearchFilter,
+  KnowledgeTreeNode,
 } from '@kontourai/station-contracts/knowledge';
 export type {
   LayoutDefinition,
@@ -81,6 +83,8 @@ export interface AgentSummary {
   tools?: import('@kontourai/station-contracts/agent').AgentTools;
   ui?: import('@kontourai/station-contracts/agent').AgentUIConfig;
   unavailableFix?: import('@kontourai/station-contracts/enriched-agent').EnrichedAgentProjection['unavailableFix'];
+  /** The installed plugin that contributed this Agent; absent for any other. */
+  plugin?: string;
 }
 
 export interface Agent extends AgentSummary {}
@@ -136,14 +140,13 @@ export interface Conversation {
   lastMessage?: string;
 }
 
-export interface NavigationState {
-  currentView: string;
-  selectedLayout?: string;
-  selectedAgent?: string;
-  dockState: boolean;
-  dockHeight: number;
-  dockMaximized: boolean;
-}
+/**
+ * @deprecated Use `SDKNavigation`, what `useNavigation()` returns. This name
+ * once described fields (`dockState`, `currentView`, `dockHeight`) the host
+ * never provided, which is how `useDockState` came to read a missing field
+ * (#2399). It is now an alias of `SDKNavigation`.
+ */
+export type NavigationState = import('../host-contexts').SDKNavigation;
 
 export interface Toast {
   id: string;

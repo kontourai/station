@@ -735,22 +735,22 @@ describe('the accessibility overlay', () => {
 });
 
 /**
- * #1973: the tools run on THIS Station. A device on an SSH device host gets
- * a clear notice, and neither the drawer nor the overlay asks anything.
+ * #2442: an SSH device host's device is served by THAT host (its own tools
+ * and its own hub, server side). The drawer and the overlay ask for it like
+ * any other device, naming its host, and show the host's typed refusals.
  */
-describe('a device on an SSH device host (#1973)', () => {
+describe('a device on an SSH device host (#2442)', () => {
+  const REMOTE = 'ssh-0123456789ab';
   const REMOTE_TARGET = {
-    hostId: 'ssh-0123456789ab',
+    hostId: REMOTE,
     platform: 'ios' as const,
     deviceId: IOS_DEVICE.deviceId,
   };
   const scope = { apiBase: 'http://station.test', authorityKey: 'authority-1' };
 
-  test('the drawer says tools are for this Station only and requests nothing', async () => {
+  async function renderDrawer(tools: ToolsHandler) {
     const { DeviceToolsDrawer } = await import('../device/DeviceToolsDrawer');
-    const log = stubDeviceFetch({
-      tools: () => ({ body: { success: true, data: snapshot() } }),
-    });
+    const log = stubDeviceFetch({ tools });
     renderInQueryClient(
       <DeviceToolsDrawer
         axOverlay={false}
@@ -766,24 +766,62 @@ describe('a device on an SSH device host (#1973)', () => {
       />,
     );
     const drawer = await screen.findByRole('complementary', { name: 'Tools' });
-    expect(within(drawer).getByRole('status').textContent).toMatch(
-      /only for simulators and emulators on this Station/,
+    return { log, drawer };
+  }
+
+  test('the drawer reads the device on ITS host and shows what that host read', async () => {
+    const { log, drawer } = await renderDrawer(({ method, path }) =>
+      method === 'GET' && path.endsWith('/tools')
+        ? {
+            body: {
+              success: true,
+              data: snapshot({
+                hostId: REMOTE,
+                location: {
+                  state: 'unreadable',
+                  reason: 'device-host-not-enabled',
+                },
+              }),
+            },
+          }
+        : undefined,
     );
     expect(
-      within(drawer).queryByRole('button', { name: /Refresh/ }),
-    ).toBeNull();
-    await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+      await within(drawer).findByText('The device reports dark mode.'),
+    ).toBeTruthy();
     expect(
-      log.requests.filter((request) => request.url.includes('/tools')),
-    ).toEqual([]);
+      within(drawer).getByText('Devices are not enabled on the device’s host.'),
+    ).toBeTruthy();
+    expect(new URL(toolsRequests(log)[0]!.url).pathname).toBe(
+      `/api/mobile-devices/hosts/${REMOTE}/devices/ios/${IOS_DEVICE.deviceId}/tools`,
+    );
   });
 
-  test('the overlay never polls an SSH-host device', async () => {
+  test('a busy host is said as busy, not as a refusal', async () => {
+    const { drawer } = await renderDrawer(({ method, path }) =>
+      method === 'GET' && path.endsWith('/tools')
+        ? {
+            status: 503,
+            body: { success: false, code: 'device-host-busy' },
+          }
+        : undefined,
+    );
+    expect(
+      await within(drawer).findByText(
+        'The device’s host is busy. Try again in a moment.',
+      ),
+    ).toBeTruthy();
+  });
+
+  test('the overlay polls that host’s tree', async () => {
     const { DeviceAccessibilityOverlay } = await import(
       '../device/DeviceToolsDrawer'
     );
     const log = stubDeviceFetch({
-      tools: () => ({ body: { success: true, data: { elements: [] } } }),
+      tools: ({ path }) =>
+        path.endsWith('/tools/accessibility')
+          ? { body: { success: true, data: TREE } }
+          : undefined,
     });
     renderInQueryClient(
       <DeviceAccessibilityOverlay
@@ -795,7 +833,9 @@ describe('a device on an SSH device host (#1973)', () => {
         visible
       />,
     );
-    await act(() => new Promise((resolve) => setTimeout(resolve, 100)));
-    expect(toolsRequests(log, '/accessibility')).toHaveLength(0);
+    expect(await screen.findByTestId('device-ax-overlay')).toBeTruthy();
+    expect(new URL(toolsRequests(log, '/accessibility')[0]!.url).pathname).toBe(
+      `/api/mobile-devices/hosts/${REMOTE}/devices/ios/${IOS_DEVICE.deviceId}/tools/accessibility`,
+    );
   });
 });

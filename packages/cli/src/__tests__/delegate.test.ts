@@ -47,7 +47,7 @@ interface DelegatedTaskRecord {
     deadlineAt?: string;
     elapsedMs: number;
     remainingMs?: number;
-    idleLimitMs: number;
+    idleLimitMs?: number;
     totalLimitMs?: number;
     lastProgressEventAt?: string;
   };
@@ -96,6 +96,8 @@ describe('station delegate over HTTP', () => {
     pathname: string;
     body: Record<string, unknown>;
   }> = [];
+  // #2459: the client-origin header each delegation POST carried.
+  const delegationOrigins: Array<string | undefined> = [];
   // Capability-delivery disclosure fixtures: when set, the mock server
   // attaches them to the create/status responses so tests can pin the
   // DEFAULT human output's disclosure lines without a real engine.
@@ -110,6 +112,7 @@ describe('station delegate over HTTP', () => {
     consoleLog = vi.spyOn(console, 'log').mockImplementation(() => {});
     consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
     requestBodies.length = 0;
+    delegationOrigins.length = 0;
     tasks.clear();
     conversations.clear();
     sessionReads.length = 0;
@@ -134,6 +137,13 @@ describe('station delegate over HTTP', () => {
       const body = method === 'POST' ? await readBody(req) : undefined;
       if (method === 'POST' && body) {
         requestBodies.push({ pathname: url.pathname, body });
+      }
+      if (
+        method === 'POST' &&
+        url.pathname === '/api/orchestration/delegations'
+      ) {
+        const origin = req.headers['x-station-client-origin'];
+        delegationOrigins.push(Array.isArray(origin) ? origin[0] : origin);
       }
 
       const sendJson = (status: number, payload: unknown) => {
@@ -258,8 +268,7 @@ describe('station delegate over HTTP', () => {
                 transitionReason: 'runtime_error',
               }
             : {}),
-          // #2269 (owner direction): Muse's default — an idle window and no
-          // declared total budget.
+          // #2269: an idle window declared, no total budget.
           ...(body.prompt === 'trigger idle-only supervised task'
             ? {
                 supervision: {
@@ -267,6 +276,17 @@ describe('station delegate over HTTP', () => {
                   turnId: 'turn-idle-only-1',
                   elapsedMs: 10 * 60_000,
                   idleLimitMs: 30 * 60_000,
+                },
+              }
+            : {}),
+          // #2269: Muse's production default — no bound declared at all.
+          ...(body.prompt === 'trigger unbounded supervised task'
+            ? {
+                supervision: {
+                  provider: 'muse',
+                  turnId: 'turn-unbounded-1',
+                  elapsedMs: 45 * 60_000,
+                  lastProgressEventAt: '2026-09-20T22:10:00.000Z',
                 },
               }
             : {}),
@@ -663,6 +683,38 @@ describe('station delegate over HTTP', () => {
   });
 
   /**
+   * #2459: Station can only say a delegation was "Started from the CLI" if
+   * the CLI says so. It declares its surface through the SDK's client-origin
+   * resolver, which attaches the header to authenticated same-Station
+   * requests — so a credential is configured here, as every real Station
+   * request has one.
+   */
+  test('create declares its client surface as the CLI', async () => {
+    vi.stubEnv('STATION_API_CREDENTIAL', 'test-credential');
+    try {
+      const { runCli } = await import('../cli.js');
+      await runCli([
+        'delegate',
+        '--agent=default',
+        '--json',
+        'Ship it',
+        `--api-base=${apiBase}`,
+      ]);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+    const { parseClientReportedOrigin } = await import(
+      '@kontourai/station-contracts/client-origin'
+    );
+    expect(delegationOrigins).toHaveLength(1);
+    expect(parseClientReportedOrigin(delegationOrigins[0])).toEqual({
+      version: 1,
+      surface: 'cli',
+      build: null,
+    });
+  });
+
+  /**
    * station#3409, and the human-readable surface specifically. Every other
    * assertion in this file passes `--json`, so the sentences an operator
    * actually reads were unreviewed — which is how `dispatched (resumable)`
@@ -901,6 +953,36 @@ describe('station delegate over HTTP', () => {
       detail:
         'The turn ended after a full window with no verified protocol activity.',
     });
+  });
+
+  test('status renders a supervision with no declared bound as none declared (#2269)', async () => {
+    const { runCli } = await import('../cli.js');
+
+    await runCli([
+      'delegate',
+      '--agent=default',
+      '--json',
+      'trigger unbounded supervised task',
+      `--api-base=${apiBase}`,
+    ]);
+    const created = JSON.parse(
+      consoleLog.mock.calls.map((call) => call[0]).join('\n'),
+    );
+    consoleLog.mockClear();
+
+    await runCli([
+      'delegate',
+      'status',
+      created.data.taskId,
+      `--api-base=${apiBase}`,
+    ]);
+    const printed = consoleLog.mock.calls.map((call) => call[0]).join('\n');
+    expect(printed).toContain('Turn budget: none declared for this turn');
+    expect(printed).toContain(
+      'Idle limit: none declared for this turn (watchdog last observed activity at 2026-09-20T22:10:00.000Z;',
+    );
+    expect(printed).not.toContain('undefined');
+    expect(printed).not.toContain('NaN');
   });
 
   test('status renders an idle-only supervision as no declared budget (#2269)', async () => {

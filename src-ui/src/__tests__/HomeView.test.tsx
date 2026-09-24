@@ -1,5 +1,6 @@
 /** @vitest-environment jsdom */
 
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   act,
   fireEvent,
@@ -19,6 +20,7 @@ import {
   test,
   vi,
 } from 'vitest';
+import { activeChatsStore } from '../contexts/active-chats-store';
 import { openChatsStore } from '../contexts/open-chats-store';
 import { writeSnooze } from '../utils/activity-snooze-store';
 import { TERMINAL_LINGER_MS } from '../views/home/home-lane-model';
@@ -55,8 +57,17 @@ vi.mock('../contexts/useShowSurface', () => ({
 
 import { HomeView } from '../views/HomeView';
 
-function renderHomeView(props: ComponentProps<typeof HomeView>) {
-  return render(<HomeView {...props} />);
+// #2312: Draft rows carry "Discard draft", a server mutation, so Home renders
+// under the QueryClient production mounts it in.
+function renderHomeView(
+  props: ComponentProps<typeof HomeView>,
+  queryClient = new QueryClient(),
+) {
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <HomeView {...props} />
+    </QueryClientProvider>,
+  );
 }
 
 const fixtures = vi.hoisted(() => ({
@@ -79,6 +90,17 @@ const fixtures = vi.hoisted(() => ({
   defaultAgent: { slug: 'codex-agent', name: 'Codex' } as any,
   defaultModelLabel: 'gpt-5.3-codex',
   sessionsRefetch: vi.fn(),
+  // #2312: the server command a Draft row's discard dispatches.
+  discardDraft: vi.fn(async (command: { threadId: string }) => ({
+    receipt: {
+      commandId: 'discard-1',
+      threadId: command.threadId,
+      commandType: 'discardDraft',
+      status: 'accepted',
+      createdAt: '2026-09-23T00:00:00.000Z',
+    },
+    result: null,
+  })),
   tasksRefetch: vi.fn(),
   inventoryRefetch: vi.fn(),
   remoteSessionsResult: undefined as
@@ -167,6 +189,7 @@ vi.mock('@kontourai/station-sdk', () => ({
       : undefined;
     return { data, isLoading: fixtures.projectsLoading };
   },
+  dispatchOrchestrationCommandWithReceipt: fixtures.discardDraft,
   useOrchestrationSessionsQuery: () => ({
     data: fixtures.sessions,
     isError: fixtures.sessionsError,
@@ -329,6 +352,7 @@ describe('HomeView', () => {
     fixtures.defaultAgent = { slug: 'codex-agent', name: 'Codex' };
     fixtures.defaultModelLabel = 'gpt-5.3-codex';
     fixtures.sessionsRefetch.mockClear();
+    fixtures.discardDraft.mockClear();
     fixtures.tasksRefetch.mockClear();
     fixtures.inventoryRefetch.mockClear();
     fixtures.remoteSessionsResult = undefined;
@@ -626,6 +650,97 @@ describe('HomeView', () => {
     const active = screen.getByRole('region', { name: /Active now/ });
     expect(within(active).queryByText('Never prompted title')).toBeNull();
     expect(within(active).getByText('Worked session title')).toBeTruthy();
+  });
+
+  // #2312: a Draft is discarded by the SERVER (so every device agrees), from
+  // the Drafts section, and Drafts untouched for a day fold under their own
+  // disclosure instead of aging out of existence.
+  test('Home discards a Draft through the server and folds day-old Drafts under "N older drafts"', async () => {
+    fixtures.agents = [];
+    fixtures.defaultAgent = undefined;
+    fixtures.defaultModelLabel = 'Model not reported';
+    const at = (ageMs: number) => new Date(Date.now() - ageMs).toISOString();
+    const HOUR = 60 * 60 * 1000;
+    const base = {
+      provider: '',
+      status: 'ready' as const,
+      isLoaded: true,
+      isPersisted: true,
+      answerability: { answerable: true as const },
+      eventCount: 0,
+      hasActiveTurn: false,
+      lifecycleState: 'queued',
+    };
+    fixtures.sessions = [
+      {
+        ...base,
+        threadId: 'worked-thread',
+        displayTitle: 'Worked session title',
+        lifecycleState: 'running',
+        draft: false,
+        createdAt: at(HOUR),
+        updatedAt: at(HOUR),
+      },
+      {
+        ...base,
+        threadId: 'fresh-draft',
+        displayTitle: 'Fresh draft title',
+        draft: true,
+        createdAt: at(23 * HOUR),
+        updatedAt: at(23 * HOUR),
+      },
+      {
+        ...base,
+        threadId: 'stale-draft',
+        displayTitle: 'Stale draft title',
+        draft: true,
+        createdAt: at(25 * HOUR),
+        updatedAt: at(25 * HOUR),
+      },
+    ];
+    const queryClient = new QueryClient();
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries');
+    // #2312 review: a dock tab open on the Draft closes with it.
+    activeChatsStore.initChat('fresh-draft');
+    renderHomeView({ continuation: null, onNavigate: vi.fn() }, queryClient);
+
+    const drafts = screen
+      .getByText('Drafts (2)')
+      .closest('details') as HTMLElement;
+    const older = within(drafts)
+      .getByText('1 older draft')
+      .closest('details') as HTMLDetailsElement;
+    // The 25h Draft is folded, the 23h one is not.
+    expect(older.open).toBe(false);
+    expect(within(older).getByText('Stale draft title')).toBeTruthy();
+    expect(within(older).queryByText('Fresh draft title')).toBeNull();
+    expect(within(drafts).getByText('Fresh draft title')).toBeTruthy();
+    // Only Drafts are discardable.
+    expect(
+      screen.queryByRole('button', {
+        name: 'Discard draft Worked session title',
+      }),
+    ).toBeNull();
+
+    fireEvent.click(
+      within(drafts).getByRole('button', {
+        name: 'Discard draft Fresh draft title',
+      }),
+    );
+
+    await waitFor(() =>
+      expect(invalidate).toHaveBeenCalledWith({
+        queryKey: ['orchestration-sessions'],
+      }),
+    );
+    expect(fixtures.discardDraft).toHaveBeenCalledTimes(1);
+    expect(fixtures.discardDraft).toHaveBeenCalledWith({
+      type: 'discardDraft',
+      threadId: 'fresh-draft',
+    });
+    expect(
+      activeChatsStore.getChatKeyForExecutionSession('fresh-draft'),
+    ).toBeUndefined();
   });
 
   // archive#1297: an orchestration row Station CAN rehydrate (a real

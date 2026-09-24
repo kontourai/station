@@ -8,6 +8,10 @@ import {
 } from '@kontourai/station-connect';
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import type { ProjectConfig } from '@kontourai/station-contracts/project';
+import {
+  WORKSPACE_DEVICE_PANE_DESCRIPTOR,
+  WORKSPACE_DEVICE_PANE_INSTANCE,
+} from '@kontourai/station-contracts/workspace-device-pane';
 import { paneAdaptationFromLayoutTab } from '@kontourai/station-contracts/workspace-pane-layout-adapter';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render, screen } from '@testing-library/react';
@@ -496,6 +500,27 @@ describe('ProjectPage (#762 query-failure regression)', () => {
       screen.getByRole('heading', { name: 'Add workspace pane' }),
     ).toBeTruthy();
     expect(screen.getByRole('button', { name: /^Open Files$/ })).toBeTruthy();
+  });
+
+  // #2465: the Device pane is host-global and dock-only (`supportedRegions:
+  // ['docked']`, no Project context). Its catalog entry exists for the dock;
+  // opened from a Project it is refused as "belongs to a different Project",
+  // so the Project's picker does not offer it.
+  test('the Add pane picker does not offer the dock-only Device pane (#2465)', async () => {
+    const placed = codingPaneAdaptation('Files', 'placed');
+    sdkMocks.panes = [placed.descriptor, WORKSPACE_DEVICE_PANE_DESCRIPTOR];
+    sdkMocks.paneInstances = [placed.instance, WORKSPACE_DEVICE_PANE_INSTANCE];
+    sdkMocks.paneAvailability = [
+      availableFor(placed.descriptor.id),
+      availableFor(WORKSPACE_DEVICE_PANE_DESCRIPTOR.id),
+    ];
+
+    await renderProjectPage();
+    fireEvent.click(screen.getByRole('button', { name: '+ Add pane' }));
+
+    expect(screen.getByRole('button', { name: /^Open Files$/ })).toBeTruthy();
+    expect(screen.queryByText('Device')).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Open Device$/ })).toBeNull();
   });
 
   // #1536 E4: with no layouts the section must say so once and keep the two
