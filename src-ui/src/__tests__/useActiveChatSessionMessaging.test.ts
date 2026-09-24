@@ -546,36 +546,47 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     ).toBeUndefined();
   });
 
-  // A session start the server could not confirm either way (Codex
-  // answered "thread … already has an active writer") used to fall through
-  // to the generic "Error: <raw text>" notice with a Retry that resent into
-  // the very session holding the writer — against the server's own "Inspect
-  // the session before retrying".
-  it('treats an indeterminate session start as unconfirmed, with no Retry', async () => {
-    sendExecutionMessageMock.mockRejectedValueOnce(
-      new CodedOrchestrationError(
-        400,
-        'thread t-1 already has an active writer. Provider session creation may have completed. Inspect the session before retrying.',
-        'SESSION_START_INDETERMINATE',
-      ),
-    );
-    const { result } = renderHook(() => useSendMessage('http://api.test'));
+  // The server wraps every failed engine start in SESSION_START_INDETERMINATE.
+  // The engine's own failure must still be translated (an expired login
+  // stays "needs to be signed in"), but the notice must not offer a blind
+  // Retry: the start may have created the session, and Codex then refuses a
+  // resend with "thread … already has an active writer".
+  it.each([
+    [
+      'thread t-1 already has an active writer',
+      /^\*\*The chat didn't start\*\*\n\nthread t-1 already has an active writer\n\n/,
+    ],
+    [
+      'OAuth session expired and could not be refreshed',
+      /^\*\*This engine needs to be signed in\*\*/,
+    ],
+  ])(
+    'an indeterminate start (%s) keeps its cause, restores the draft, and withholds Retry',
+    async (cause, notice) => {
+      sendExecutionMessageMock.mockRejectedValueOnce(
+        new CodedOrchestrationError(
+          400,
+          `${cause}. Provider session creation may have completed. Inspect the session before retrying.`,
+          'SESSION_START_INDETERMINATE',
+        ),
+      );
+      const { result } = renderHook(() => useSendMessage('http://api.test'));
 
-    await act(async () => {
-      await expect(
-        result.current(sessionId, 'codex', undefined, 'continue'),
-      ).rejects.toMatchObject({ code: 'SESSION_START_INDETERMINATE' });
-    });
+      await act(async () => {
+        await result.current(sessionId, 'codex', undefined, 'continue');
+      });
 
-    const chat = activeChatsStore.getSnapshot()[sessionId];
-    expect(chat?.status).toBe('idle');
-    const notice = chat?.ephemeralMessages?.at(-1);
-    expect(notice?.content).toMatch(
-      /^\*\*Session start needs confirmation\*\*\n\n/,
-    );
-    expect(notice?.content).not.toContain('Retrying may help');
-    expect(notice?.action).toBeUndefined();
-  });
+      const chat = activeChatsStore.getSnapshot()[sessionId];
+      const last = chat?.ephemeralMessages?.at(-1);
+      expect(last?.content).toMatch(notice);
+      expect(last?.content).toContain('Check it before sending again');
+      expect(last?.content).not.toContain('Retrying may help');
+      expect(last?.content).not.toContain('Provider session creation');
+      expect(last?.action).toBeUndefined();
+      expect(chat?.input).toBe('continue');
+      expect(chat?.orchestrationSessionStarted).not.toBe(true);
+    },
+  );
 
   // archive#3690: the queue path stopped attributing a
   // Station-side refusal to the agent, but the direct composer path still

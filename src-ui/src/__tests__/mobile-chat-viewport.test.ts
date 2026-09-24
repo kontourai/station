@@ -93,14 +93,15 @@ describe('mobile chat visual viewport', () => {
   });
 
   test('a keyboard pan over an unresized WebView leaves the dock flush with the keyboard', () => {
-    // The phone case: the WebView keeps its full 915px, the IME covers 337px,
-    // and the page pans 300px to bring the composer into view. The dock must
-    // span exactly the 578px of glass above the keyboard; the old reader
-    // subtracted the pan again and left a 300px band of page below it.
+    // The phone case: the WebView keeps its full 915px layout, the IME covers
+    // 337px, and the visual viewport (578px) pans 300px down the page to
+    // bring the composer into view. The dock must span exactly the 578px of
+    // glass above the keyboard; the old reader subtracted the pan again
+    // (278px) and left a 300px band of page between dock and keyboard.
     const target = {
       innerWidth: 412,
       innerHeight: 915,
-      visualViewport: { height: 915, offsetTop: 300 },
+      visualViewport: { height: 578, offsetTop: 300 },
       StationAndroidInsets: {
         safeArea: () =>
           JSON.stringify({

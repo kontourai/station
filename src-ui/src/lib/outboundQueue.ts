@@ -236,17 +236,9 @@ export function readForeground(error: unknown):
     outcome?: unknown;
     detail?: { session?: { threadId?: unknown } };
   };
-  // `SESSION_START_INDETERMINATE` (session-turn-boundary.ts) is the same
-  // claim made before a session identity existed: the provider may have
-  // created the session, so a blind resend can collide with it (Codex answers
-  // "thread … already has an active writer"). It reaches the client as a
-  // plain coded error, without the foreground receipt's `outcome` field.
-  const sessionStartIndeterminate =
-    candidate.code === 'SESSION_START_INDETERMINATE';
   if (
-    !sessionStartIndeterminate &&
-    (candidate.code !== 'foreground_message_indeterminate' ||
-      candidate.outcome !== 'indeterminate')
+    candidate.code !== 'foreground_message_indeterminate' ||
+    candidate.outcome !== 'indeterminate'
   ) {
     return undefined;
   }

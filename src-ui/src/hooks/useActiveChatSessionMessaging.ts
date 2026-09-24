@@ -39,6 +39,7 @@ import {
 } from '../utils/approvalMode';
 import {
   type ChatErrorTranslation,
+  SESSION_START_INDETERMINATE_CODE,
   translateChatError,
 } from '../utils/chatErrorTranslation';
 import { liveTurnTarget, serverTurnLive } from '../utils/conversation-activity';
@@ -718,8 +719,14 @@ export function useSendMessage(
           ...(terminalSession ? { terminalSession: true } : {}),
           // A workspace refusal is permanent for this conversation. Other
           // failures retry with the same id and latest conversation id.
+          // A start the server could not confirm either way may have
+          // created the session (Codex then refuses a resend: "thread …
+          // already has an active writer"), so it gets no blind Retry.
           action:
-            terminalSession || foregroundIndeterminate || dispatchClaim
+            terminalSession ||
+            foregroundIndeterminate ||
+            dispatchClaim ||
+            err.code === SESSION_START_INDETERMINATE_CODE
               ? undefined
               : {
                   label: 'Retry',
