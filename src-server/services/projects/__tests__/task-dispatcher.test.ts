@@ -1,5 +1,5 @@
 import { describe, expect, test, vi } from 'vitest';
-import type { FullAccessGrant } from '../../../security/coding-authority.js';
+import { fullAccessGrantForTesting } from '../../../security/coding-authority.js';
 import { createInMemorySessionTurnBoundaryAuthority } from '../../orchestration/session-turn-boundary.js';
 import {
   createTaskDispatcher,
@@ -662,6 +662,15 @@ describe('TaskDispatcher Interface', () => {
     expect(reserve).not.toHaveBeenCalled();
     expect(startOrSeed).not.toHaveBeenCalled();
 
+    // A look-alike is not a grant: only this module's own class passes.
+    await expect(
+      dispatcher.dispatch('task-1', {
+        fullAccessGrant: { nominal: true } as never,
+        runtimeConfig: atFullAccess,
+      }),
+    ).resolves.toMatchObject({ kind: 'forbidden' });
+    expect(reserve).not.toHaveBeenCalled();
+
     // A stricter posture needs no grant; full access with one proceeds.
     await expect(
       dispatcher.dispatch('task-1', {
@@ -671,7 +680,7 @@ describe('TaskDispatcher Interface', () => {
     ).resolves.toMatchObject({ kind: 'dispatched' });
     await expect(
       dispatcher.dispatch('task-1', {
-        fullAccessGrant: {} as FullAccessGrant,
+        fullAccessGrant: fullAccessGrantForTesting(),
         runtimeConfig: atFullAccess,
       }),
     ).resolves.toMatchObject({ kind: 'dispatched' });

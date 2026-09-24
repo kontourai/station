@@ -91,23 +91,47 @@ export function mayGrantFullAccess(
   );
 }
 
-declare const fullAccessGrantBrand: unique symbol;
-
 /**
  * #2436: proof, derived from one request by `fullAccessGrantFor`, that the
  * request may put a session at full access. A seam that starts sessions on a
  * caller's behalf (`TaskDispatcher.dispatch`) takes `FullAccessGrant | null`
  * as a required input, so every caller states its authority where it calls,
- * and only a request's own authority can produce a grant. Unattended callers
- * (monitors, the board intent, e2e control) pass `null`.
+ * and checks it with `isFullAccessGrant`. Unattended callers (monitors, the
+ * board intent, e2e control) pass `null`.
+ *
+ * The class is private to this module and has a private member, so no
+ * object literal satisfies the type and no other module can construct one:
+ * a cast (`{} as FullAccessGrant`) type-checks but fails `instanceof`.
  */
-export type FullAccessGrant = { readonly [fullAccessGrantBrand]: true };
+class FullAccessGrantProof {
+  // Type-only and private: makes the type nominal, so a structural
+  // look-alike does not type-check. `isFullAccessGrant` is the runtime check.
+  declare private readonly nominal: true;
+}
+
+export type FullAccessGrant = FullAccessGrantProof;
 
 export function fullAccessGrantFor(
   request: Request,
   grantedScope: string | undefined,
 ): FullAccessGrant | null {
   return mayGrantFullAccess(request, grantedScope)
-    ? (Object.freeze({}) as FullAccessGrant)
+    ? new FullAccessGrantProof()
     : null;
+}
+
+/** Whether `value` is a grant this module minted (never a look-alike). */
+export function isFullAccessGrant(value: unknown): value is FullAccessGrant {
+  return value instanceof FullAccessGrantProof;
+}
+
+/**
+ * TEST-ONLY. A grant for unit tests of the seams that enforce one. Throws
+ * outside the test runner, so production code cannot mint a grant without
+ * a request.
+ */
+export function fullAccessGrantForTesting(): FullAccessGrant {
+  if (process.env.VITEST !== 'true')
+    throw new Error('fullAccessGrantForTesting is test-only.');
+  return new FullAccessGrantProof();
 }

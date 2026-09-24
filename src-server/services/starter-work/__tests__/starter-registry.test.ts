@@ -2,7 +2,7 @@ import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
-import type { FullAccessGrant } from '../../../security/coding-authority.js';
+import { fullAccessGrantForTesting } from '../../../security/coding-authority.js';
 import type { TaskDispatcher } from '../../projects/task-dispatcher.js';
 import type { StarterOwnerAdapter } from '../starter-owner-adapter.js';
 import {
@@ -467,7 +467,7 @@ describe('StarterRegistry', () => {
 
   it('#2436: hands the launching request grant to the dispatcher, which enforces it', async () => {
     const { registry, dispatch } = await fixture();
-    const grant = {} as FullAccessGrant;
+    const grant = fullAccessGrantForTesting();
     await registry.launchStartTask(
       {
         starterId: 'start-task',

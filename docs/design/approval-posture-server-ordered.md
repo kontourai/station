@@ -430,8 +430,11 @@ A session spawned before this change has nothing recorded.
     is reserved.
   - The grant is a required field (`FullAccessGrant | null`), so every caller
     states its authority where it calls, and the compiler rejects one that
-    forgets. It is a branded type minted only by `fullAccessGrantFor` from a
-    request's own authority (`mayGrantFullAccess`). Unattended callers (the
+    forgets. It is an instance of a class private to `coding-authority.ts`,
+    minted only by `fullAccessGrantFor` from a request's own authority
+    (`mayGrantFullAccess`); the dispatcher checks it with `instanceof`
+    (`isFullAccessGrant`), so a cast look-alike is refused. Tests obtain one
+    from `fullAccessGrantForTesting`, which throws outside the test runner. Unattended callers (the
     external monitor, the board intent, e2e control) pass `null`.
   - The tasks and starter routes keep an early 403 from the same derivation,
     so a refused Starter launch leaves no Task behind.

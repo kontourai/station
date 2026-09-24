@@ -10,7 +10,10 @@ import type {
   EngineId,
   ProviderSession,
 } from '@kontourai/station-contracts/provider';
-import type { FullAccessGrant } from '../../security/coding-authority.js';
+import {
+  type FullAccessGrant,
+  isFullAccessGrant,
+} from '../../security/coding-authority.js';
 import { errorMessage } from '../../utils/error-message.js';
 import type {
   SessionStartBoundaryClaim,
@@ -217,7 +220,7 @@ class TaskDispatcherImplementation implements TaskDispatcher {
     // is reserved, so a refusal leaves the Task exactly as it was.
     if (
       intent.runtimeConfig?.modelOptions?.approvalMode === 'never' &&
-      !intent.fullAccessGrant
+      !isFullAccessGrant(intent.fullAccessGrant)
     ) {
       return {
         kind: 'forbidden',
