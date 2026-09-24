@@ -224,9 +224,11 @@ describe('end-of-turn toasts', () => {
     expect(toastCards()).toHaveLength(0);
   });
 
+  // Each case settles its grace window before the next begins: a Stop still
+  // in flight (`stopPending`) would otherwise also cover the earlier cases.
   test("this user's own Stop raises nothing, whichever fact arrives first", () => {
-    startTurn('turn-1');
     // Cooperative: the engine's abort lands before Station's settled stop.
+    startTurn('turn-1');
     emit({ method: 'turn.aborted', turnId: 'turn-1', reason: 'interrupted' });
     emit({
       method: 'session.stop-settled',
@@ -234,6 +236,9 @@ describe('end-of-turn toasts', () => {
       outcome: 'cooperative',
       initiatedBy: 'user',
     });
+    passGrace();
+    expect(toastCards()).toHaveLength(0);
+
     // Forced: the settled stop lands first.
     startTurn('turn-2');
     emit({
@@ -243,12 +248,30 @@ describe('end-of-turn toasts', () => {
       initiatedBy: 'user',
     });
     emit({ method: 'turn.aborted', turnId: 'turn-2', reason: 'forced' });
+    passGrace();
+    expect(toastCards()).toHaveLength(0);
+
     // This client's own Stop in flight.
     startTurn('turn-3');
     act(() => activeChatsStore.updateChat(BG, { stopPending: true }));
     emit({ method: 'turn.aborted', turnId: 'turn-3', reason: 'interrupted' });
     passGrace();
     expect(toastCards()).toHaveLength(0);
+  });
+
+  test("a stall-watchdog stop is not the user's, and still toasts", () => {
+    startTurn('turn-1');
+    emit({ method: 'turn.aborted', turnId: 'turn-1', reason: 'no progress' });
+    emit({
+      method: 'session.stop-settled',
+      turnId: 'turn-1',
+      outcome: 'cooperative',
+      initiatedBy: 'stall',
+    });
+    passGrace();
+    expect(
+      screen.getByText('Dev Agent (Codex) stopped: no progress'),
+    ).toBeTruthy();
   });
 
   test('a turn stopped by something other than the user toasts why', () => {
