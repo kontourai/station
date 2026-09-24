@@ -298,6 +298,80 @@ describe('PullRequestRepositoryContextResolver', () => {
     }
   });
 
+  /**
+   * The owner's own checkout: an https `origin` and an ssh `public` for the
+   * SAME repository. Counting remotes rather than repositories made every
+   * pull-request read for that project 404 as "ambiguous".
+   */
+  test('several remotes for one repository are one identity, not an ambiguity', async () => {
+    const twoRemotes = async () => ({
+      ok: true as const,
+      remotes: [
+        { name: 'public', url: 'git@github.com:kontourai/station.git' },
+        { name: 'origin', url: 'https://github.com/KontourAI/Station.git' },
+      ],
+    });
+    const runGit = git('main\n', 'origin/main\n', '0\t0\n', 'origin/main\n');
+    const resolver = new PullRequestRepositoryContextResolver({
+      git: runGit as any,
+      readRemotes: twoRemotes as any,
+    });
+    await expect(
+      resolver.resolve({ projectWorkingDirectory: '/checkout' }),
+    ).resolves.toMatchObject({
+      available: true,
+      context: {
+        repository: {
+          owner: 'KontourAI',
+          name: 'Station',
+          remote: 'https://github.com/KontourAI/Station.git',
+        },
+      },
+    });
+    // `origin` is the remote whose HEAD names the base branch.
+    expect(runGit.mock.calls.map(([args]) => args.join(' '))).toContain(
+      'symbolic-ref --quiet --short refs/remotes/origin/HEAD',
+    );
+
+    const exact = new PullRequestRepositoryContextResolver({
+      git: git(`${realpathSync(tmpdir())}\n`) as any,
+      readRemotes: twoRemotes as any,
+    });
+    await expect(
+      exact.resolveExactIdentity({ workingDirectory: realpathSync(tmpdir()) }),
+    ).resolves.toEqual({
+      available: true,
+      context: {
+        host: 'github.com',
+        repository: { owner: 'KontourAI', name: 'Station' },
+      },
+    });
+  });
+
+  test('remotes naming two repositories, or one that does not parse, stay ambiguous', async () => {
+    for (const remotes of [
+      [
+        { name: 'origin', url: 'https://github.com/kontourai/station.git' },
+        { name: 'fork', url: 'https://github.com/someone/station.git' },
+      ],
+      [
+        { name: 'origin', url: 'https://github.com/kontourai/station.git' },
+        { name: 'mirror', url: '/srv/mirror/station.git' },
+      ],
+    ]) {
+      const resolver = new PullRequestRepositoryContextResolver({
+        git: git() as any,
+        readRemotes: (async () => ({ ok: true as const, remotes })) as any,
+      });
+      await expect(
+        resolver.resolve({ projectWorkingDirectory: '/checkout' }),
+      ).resolves.toMatchObject({
+        available: false,
+        reason: 'Checkout forge host is ambiguous or unsupported',
+      });
+    }
+  });
+
   test('accepts a lone unknown host as a GitHub Enterprise candidate', async () => {
     const resolver = new PullRequestRepositoryContextResolver({
       git: git(

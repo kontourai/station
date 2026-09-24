@@ -553,3 +553,47 @@ describe('revision-bound review routes', () => {
     ).toBe(200);
   });
 });
+
+describe('pull request reads say why they cannot be served', () => {
+  test('a refused checkout carries the resolver reason, not "Provider unavailable"', async () => {
+    const routes = createPullRequestRoutes(
+      () => [],
+      async () => ({
+        available: false,
+        reason: 'Checkout forge host is ambiguous or unsupported',
+      }),
+      { operatorIdentityForRequest: () => undefined },
+    );
+    const response = await routes.request(
+      '/github/github.com/o/r/7/review?project=station',
+    );
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toEqual({
+      success: false,
+      error: 'Checkout forge host is ambiguous or unsupported',
+    });
+  });
+
+  test('another repository is named as such', async () => {
+    const response = await app().app.request(
+      '/github/github.com/o/other/7/review?project=station',
+    );
+    expect(response.status).toBe(404);
+    expect((await response.json()).error).toMatch(/different repository/);
+  });
+
+  test('owner and repository match case-insensitively, as on the forge', async () => {
+    const x = app();
+    const response = await x.app.request(
+      '/github/github.com/O/R/7/review?project=station',
+    );
+    expect(response.status).toBe(200);
+    // The provider reads with the checkout's own spelling.
+    expect(x.provider.getReviewSnapshot).toHaveBeenCalledWith(
+      expect.objectContaining({
+        repository: expect.objectContaining({ owner: 'o', name: 'r' }),
+      }),
+      '7',
+    );
+  });
+});
