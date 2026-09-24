@@ -57,6 +57,17 @@ export function isOperatorInPerson(request: Request): boolean {
 }
 
 /**
+ * #2493 delta review: the operator in person AND not a request that may be
+ * an agent's (`actsForAnAgent`). `isOperatorInPerson` alone reads Station's
+ * internal principal as the operator, because the per-boot token is minted
+ * with home-possession; a gate that grants the operator something outside
+ * Project confinement must use this instead.
+ */
+export function isOperatorInPersonNotAgent(request: Request): boolean {
+  return isOperatorInPerson(request) && !actsForAnAgent(request);
+}
+
+/**
  * The operator in person, or a caller the auth boundary accepted whose
  * granted scope carries `coding:exec` (a device the operator allowed to run
  * commands, once, from its access editor). `grantedScope` is the scope the

@@ -180,11 +180,11 @@ export class ApprovalPosture {
    * `workspace`. Never derived from an approval mode a turn or replay
    * carries: that is exactly the value a confined caller controls.
    *
-   * Accepted (#2493 review F2): on a `host`-stamped session a Default pick,
-   * which needs no authority, resolves to the Agent's or Station's default,
-   * and if that is `never` it runs unconfined. That restores the posture the
-   * operator configured and started the session under; it grants nothing the
-   * operator's own start did not.
+   * Accepted residual (#2493 review F2): a Default pick needs no authority
+   * (the #2436 rule), and resolves to the Agent's and Station's defaults the
+   * operator configured, even when that is `never`. On a `host`-stamped
+   * session that `never` runs unconfined, including one the operator started
+   * with an explicit Ask.
    */
   standingConfinement(threadId: string, stamp: unknown): StationConfinement {
     return stamp === 'host' || this.recordedFullAccess(threadId)
