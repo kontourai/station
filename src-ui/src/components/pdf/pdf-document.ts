@@ -20,6 +20,14 @@ function startPdfWorker(): Worker {
   );
 }
 
+/**
+ * How long a new worker may take to announce itself. This bounds startup
+ * only — loading the worker script — never parsing, so a slow phone reading a
+ * large PDF is not cut off; it is generous because a phone parses 1.2 MB of
+ * worker JavaScript before it can answer.
+ */
+const WORKER_START_DEADLINE_MS = 30_000;
+
 export interface OpenedPdf {
   promise: Promise<PDFDocumentProxy>;
   /** Stops parsing, frees the document, and terminates its worker. */
@@ -42,14 +50,31 @@ export interface OpenedPdf {
 export function openPdf(data: Uint8Array): OpenedPdf {
   const port = startPdfWorker();
   // pdf.js waits forever for a worker it was handed that never starts (a
-  // refused script, a crash on load), which would leave the preview loading
-  // with no end. A worker error before the document opens fails it instead.
+  // refused script, a crash on load) or never answers, which would leave the
+  // preview loading with no end. A worker error before the document opens,
+  // or no `ready` announcement within the deadline, fails it instead.
+  // (PDFWorker's own promise cannot tell: for a handed-in port it resolves
+  // at once, before the worker has run a line.)
+  let stopWatching: () => void = () => undefined;
   const workerFailed = new Promise<never>((_, reject) => {
-    port.addEventListener(
-      'error',
-      () => reject(new Error('The PDF worker failed to start')),
-      { once: true },
+    const onError = () => reject(new Error('The PDF worker failed to start'));
+    const onMessage = (event: MessageEvent) => {
+      if ((event.data as { action?: unknown } | null)?.action !== 'ready')
+        return;
+      clearTimeout(deadline);
+      port.removeEventListener('message', onMessage);
+    };
+    const deadline = setTimeout(
+      () => reject(new Error('The PDF worker did not start in time')),
+      WORKER_START_DEADLINE_MS,
     );
+    port.addEventListener('error', onError);
+    port.addEventListener('message', onMessage);
+    stopWatching = () => {
+      clearTimeout(deadline);
+      port.removeEventListener('error', onError);
+      port.removeEventListener('message', onMessage);
+    };
   });
   workerFailed.catch(() => undefined);
   const worker = PDFWorker.create({ port });
@@ -68,6 +93,7 @@ export function openPdf(data: Uint8Array): OpenedPdf {
     destroy: () => {
       if (destroyed) return;
       destroyed = true;
+      stopWatching();
       // The task's own teardown waits on the worker; terminating the worker
       // is what actually releases the memory, so it does not wait for that.
       task.destroy().catch(() => undefined);

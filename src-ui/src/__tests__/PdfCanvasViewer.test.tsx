@@ -23,21 +23,37 @@ vi.mock('pdfjs-dist', () => ({
   PDFWorker: { create: pdfjs.createWorker },
 }));
 
+type Listener = (event: { data?: unknown }) => void;
+
 class FakeWorker {
   terminate = vi.fn();
-  private errorListeners: (() => void)[] = [];
+  private listeners = new Map<string, Set<Listener>>();
   constructor(
     readonly url: URL | string,
     readonly options?: WorkerOptions,
   ) {
     pdfjs.workerPorts.push(this);
   }
-  addEventListener(type: string, listener: () => void) {
-    if (type === 'error') this.errorListeners.push(listener);
+  addEventListener(type: string, listener: Listener) {
+    if (!this.listeners.has(type)) this.listeners.set(type, new Set());
+    this.listeners.get(type)!.add(listener);
+  }
+  removeEventListener(type: string, listener: Listener) {
+    this.listeners.get(type)?.delete(listener);
+  }
+  private emit(type: string, event: { data?: unknown }) {
+    for (const listener of [...(this.listeners.get(type) ?? [])])
+      listener(event);
   }
   /** What a Worker does when its script is refused or throws on load. */
   fail() {
-    for (const listener of this.errorListeners) listener();
+    this.emit('error', {});
+  }
+  /** pdf.js's worker announces itself this way once its script has run. */
+  announceReady() {
+    this.emit('message', {
+      data: { sourceName: 'worker', targetName: 'main', action: 'ready' },
+    });
   }
 }
 
@@ -269,6 +285,56 @@ describe('PdfCanvasViewer', () => {
     act(() => pdfjs.workerPorts[0].fail());
 
     expect(await screen.findByText('Preview unavailable')).toBeTruthy();
+  });
+
+  test('gives up on a worker that starts but never answers', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      pdfjs.getDocument.mockReturnValue(fakeTask(new Promise(() => undefined)));
+      render(<PdfCanvasViewer blob={pdfBlob()} />);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(pdfjs.workerPorts).toHaveLength(1);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(10 * 60_000);
+      });
+
+      expect(screen.getByText('Preview unavailable')).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test('never cuts off a worker that is ready but slow to parse', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      let open: (doc: unknown) => void = () => undefined;
+      pdfjs.getDocument.mockReturnValue(
+        fakeTask(new Promise((resolve) => (open = resolve))),
+      );
+      render(<PdfCanvasViewer blob={pdfBlob()} />);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      act(() => pdfjs.workerPorts[0].announceReady());
+
+      // Ten minutes of parsing a huge document on a slow phone.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(10 * 60_000);
+      });
+      expect(screen.queryByText('Preview unavailable')).toBeNull();
+      expect(screen.getByLabelText('Loading PDF preview')).toBeTruthy();
+
+      await act(async () => {
+        open(fakeDocument(2).doc);
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(screen.getByText('2 pages')).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   test('names a password-protected PDF as such rather than as broken', async () => {

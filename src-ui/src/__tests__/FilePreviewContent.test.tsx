@@ -13,6 +13,7 @@ vi.mock('pdfjs-dist', () => ({
 class FakeWorker {
   terminate() {}
   addEventListener() {}
+  removeEventListener() {}
 }
 
 import {

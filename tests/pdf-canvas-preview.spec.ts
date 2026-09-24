@@ -321,3 +321,33 @@ test('reports a PDF worker that never starts instead of loading forever', async 
   });
   await expect(dialog.getByRole('link', { name: 'Download' })).toBeVisible();
 });
+
+test('gives up on a worker that loads but never answers, and never on one that did', async ({
+  page,
+}) => {
+  await page.clock.install();
+  await mount(page);
+  const dialog = page.getByRole('dialog', { name: 'Preview' });
+
+  // The real worker announces itself, so an hour later the pages are still
+  // there: its `ready` message cleared the startup deadline.
+  await page.getByRole('button', { name: 'Open PDF', exact: true }).click();
+  await expect(dialog.getByText('2 pages')).toBeVisible({ timeout: 20_000 });
+  await page.clock.fastForward('01:00:00');
+  await expect(dialog.getByText('2 pages')).toBeVisible();
+  await expect(dialog.getByText('Preview unavailable')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Close preview' }).click();
+
+  // A worker script that loads fine and then says nothing.
+  await page.route(`${ORIGIN}/assets/pdf.worker*`, (route) =>
+    route.fulfill({
+      status: 200,
+      headers: { 'Content-Type': 'application/javascript' },
+      body: '// silent',
+    }),
+  );
+  await page.getByRole('button', { name: 'Open PDF', exact: true }).click();
+  await expect(dialog.getByLabel('Loading PDF preview')).toBeVisible();
+  await page.clock.fastForward('00:31');
+  await expect(dialog.getByText('Preview unavailable')).toBeVisible();
+});
