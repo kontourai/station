@@ -45,6 +45,7 @@ import {
   sessionAdapterSupportsSteering,
 } from '../utils/execution';
 import { steerRefusalMessage } from '../utils/steerTurn';
+import { drainQueuedMessageOnTurnCompleted } from './orchestration/queueDrain';
 import { isReplayThread } from './orchestration/replay/replay-registry';
 import { buildOutgoingUserMessage } from './useActiveChatSessions.helpers';
 import { useStreamingMessage } from './useStreamingMessage';
@@ -632,9 +633,6 @@ export function useSendMessage(
           if (
             serverTurnLive(activeChatsStore.getSnapshot()[sessionId]) !== true
           ) {
-            const { drainQueuedMessageOnTurnCompleted } = await import(
-              './orchestration/queueDrain'
-            );
             drainQueuedMessageOnTurnCompleted(apiBase, sessionId);
           }
           return false;
