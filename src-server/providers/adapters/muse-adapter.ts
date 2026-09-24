@@ -14,6 +14,7 @@ import {
   FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY,
   MUSE_HELD_TURN_UNFINISHED_CODE,
   MUSE_LINGERING_CHILD_REAPED_CODE,
+  MUSE_SERVE_STOP_UNCONFIRMED_CODE,
   MUSE_SERVE_UNAVAILABLE_CODE,
   MUSE_TURN_IDLE_TIMEOUT_CODE,
   MUSE_TURN_SLOT_RELEASING_CODE,
@@ -1672,7 +1673,10 @@ export class MuseAdapter implements ProviderAdapterShape {
     record.stopped = true;
     // Serve: the host ends with the session (its pending approvals resolve
     // cancelled, running turns abort, running children settle unresolved).
-    await record.serve?.stop();
+    // Teardown completes even when the host's termination is unconfirmed —
+    // the record is deleted and `session.exited` published below — and only
+    // then is the failure reported, as exec reports one.
+    const serveStop = await record.serve?.stop();
     const turn = record.activeTurn;
     if (turn) {
       turn.interrupted = true;
@@ -1708,6 +1712,22 @@ export class MuseAdapter implements ProviderAdapterShape {
       sessionId: threadId,
       reason: 'stopped',
     });
+    if (serveStop && !serveStop.terminationConfirmed) {
+      this.publish({
+        eventId: crypto.randomUUID(),
+        provider: this.provider,
+        threadId,
+        createdAt: nowIso,
+        method: 'runtime.warning',
+        severity: 'warning',
+        code: MUSE_SERVE_STOP_UNCONFIRMED_CODE,
+        message:
+          "Station could not confirm that this session's Muse host process stopped. It is still tracked and is stopped the next time Station starts, if it is still running.",
+      });
+      throw new Error(
+        'Muse session stop could not confirm termination of its host process.',
+      );
+    }
   }
 
   async listSessions(): Promise<ProviderSession[]> {

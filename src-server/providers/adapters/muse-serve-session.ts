@@ -92,6 +92,8 @@ export const MUSE_SERVE_HANDSHAKE_TIMEOUT_MS = 20_000;
 export const MUSE_SERVE_REQUEST_TIMEOUT_MS = 30_000;
 /** How long an interrupt waits for the turn's own `cancelled` terminal. */
 export const MUSE_SERVE_INTERRUPT_SETTLE_MS = 10_000;
+/** Bound on escalated approval ids remembered per session. */
+const ESCALATED_APPROVALS_MAX = 256;
 /** Bound on stages walked for one approval (the probe saw two). */
 const APPROVAL_STAGES_MAX = 32;
 /** Bound on settled turns remembered (workflow items outlive their turn). */
@@ -276,6 +278,8 @@ interface PendingApproval {
   /** After a deadline decline: 0 none yet, 1 child/turn stopped, 2 re-hosted. */
   escalationStep: number;
   escalation?: ReturnType<typeof setTimeout>;
+  /** Returned after a re-host although Station already escalated it once. */
+  escalatedBefore?: true;
 }
 
 /**
@@ -290,9 +294,15 @@ function approvalSubjectSignature(
 ): string | undefined {
   const subject = isRecord(params.subject) ? params.subject : undefined;
   if (!subject) return undefined;
+  // A stage muse marks `argvComplete: false` may still be refined, so its
+  // argv is not part of what the user is held to having seen.
   const stages = Array.isArray(subject.stages)
     ? subject.stages.map((stage) =>
-        isRecord(stage) && Array.isArray(stage.argv) ? stage.argv : null,
+        isRecord(stage) &&
+        Array.isArray(stage.argv) &&
+        stage.argvComplete !== false
+          ? stage.argv
+          : null,
       )
     : null;
   return JSON.stringify([
@@ -390,6 +400,13 @@ export class MuseServeSession {
   private readonly resolvedApprovalIds = new Set<string>();
   /** Tool-level session grants (`acceptForSession`), Station-side (#2299). */
   private readonly approvedTools = new Set<string>();
+  /**
+   * Durable approval ids Station already escalated (bounded, oldest first).
+   * One that comes back after a re-host is declined at once, never put to
+   * the user again, so the same approval cannot loop through expire,
+   * escalate, re-host and reopen.
+   */
+  private readonly escalatedApprovalIds = new Set<string>();
   private readonly childWork: MuseServeChildWorkContext;
 
   constructor(private readonly deps: MuseServeSessionDeps) {
@@ -634,8 +651,13 @@ export class MuseServeSession {
     return { outcome: 'stopped', taskId: childId };
   }
 
-  async stop(): Promise<void> {
-    if (this.stopped) return;
+  /**
+   * Ends the session. Always completes the teardown; resolves with whether
+   * the host's termination was confirmed (an unconfirmed host keeps its
+   * owned-process record for the startup sweep).
+   */
+  async stop(): Promise<{ terminationConfirmed: boolean }> {
+    if (this.stopped) return { terminationConfirmed: true };
     this.stopped = true;
     for (const pending of this.approvals.values()) {
       this.clearDeadline(pending);
@@ -652,11 +674,7 @@ export class MuseServeSession {
       });
     }
     settleOpenMuseChildren(this.childWork, { close: true });
-    if (!(await this.closeHost())) {
-      throw new Error(
-        'Muse session stop could not confirm that its host process stopped.',
-      );
-    }
+    return { terminationConfirmed: await this.closeHost() };
   }
 
   // --------------------------------------------------------------- host
@@ -1219,6 +1237,7 @@ export class MuseServeSession {
     const origin = isRecord(params.subagentOrigin) ? params.subagentOrigin : {};
     const subagentId = readString(origin.subagentId);
     const toolName = readString(params.toolName) ?? 'tool';
+    const escalatedBefore = this.escalatedApprovalIds.has(approvalId);
     const requestId = this.resolvedApprovalIds.has(approvalId)
       ? `${approvalId}:${crypto.randomUUID()}`
       : approvalId;
@@ -1235,6 +1254,7 @@ export class MuseServeSession {
       stagesDecided: 0,
       retriedKeys: new Set(),
       escalationStep: 0,
+      ...(escalatedBefore ? { escalatedBefore: true } : {}),
     };
     const signature = approvalSubjectSignature(params);
     if (signature) pending.subjectSignature = signature;
@@ -1242,6 +1262,27 @@ export class MuseServeSession {
     if (turnId && this.turns.has(turnId)) pending.turnId = turnId;
     this.updateApproval(pending, params);
     this.approvals.set(approvalId, pending);
+    if (escalatedBefore) {
+      // Already declined and escalated once, and back after a re-host:
+      // decline it again at once rather than ask again.
+      this.deps.publish({
+        eventId: crypto.randomUUID(),
+        provider: 'muse',
+        threadId: this.deps.threadId,
+        createdAt: this.nowIso(),
+        method: 'runtime.warning',
+        severity: 'warning',
+        code: MUSE_APPROVAL_EXPIRED_CODE,
+        message: `Muse brought back a request to use ${toolName} that Station had already declined, so Station declined it again without asking.`,
+        details: {
+          approvalId,
+          ...(subagentId ? { childId: subagentId } : {}),
+        },
+      });
+      pending.intent = 'expire';
+      this.continueWalk(pending);
+      return;
+    }
     if (this.approvedTools.has(toolName)) {
       // "Allow for this session" covers every later call of the tool (#2299,
       // Station's rule for every engine: trust the tool, not the call);
@@ -1406,6 +1447,11 @@ export class MuseServeSession {
       pending.resolvedPublished = false;
       pending.intent = undefined;
       pending.lastDecidedKey = undefined;
+      // A new question for the user: nothing the old one set in motion (an
+      // escalation, its step, the retries) may act on it.
+      this.clearEscalation(pending);
+      pending.escalationStep = 0;
+      pending.retriedKeys.clear();
       this.armDeadline(pending);
       this.publishOpened(pending, {
         ...params,
@@ -1522,6 +1568,7 @@ export class MuseServeSession {
     this.clearEscalation(pending);
     if (!this.approvals.has(pending.approvalId) || this.stopped) return;
     pending.escalationStep += 1;
+    this.rememberEscalated(pending.approvalId);
     const connection = this.host?.connection;
     const sessionId = this.museSessionIdValue;
     const target = pending.subagentId
@@ -1575,6 +1622,15 @@ export class MuseServeSession {
     void this.abandonHost(
       `Station ended Muse's host process because it did not act on a declined request to use ${pending.toolName}. It restarts on the next message.`,
     );
+  }
+
+  private rememberEscalated(approvalId: string): void {
+    this.escalatedApprovalIds.delete(approvalId);
+    this.escalatedApprovalIds.add(approvalId);
+    if (this.escalatedApprovalIds.size > ESCALATED_APPROVALS_MAX) {
+      const oldest = this.escalatedApprovalIds.values().next().value;
+      if (oldest !== undefined) this.escalatedApprovalIds.delete(oldest);
+    }
   }
 
   private announceEscalation(pending: PendingApproval, message: string): void {
@@ -1660,6 +1716,12 @@ export class MuseServeSession {
    */
   private decideUndeliverable(pending: PendingApproval): void {
     if (!this.approvals.has(pending.approvalId) || this.stopped) return;
+    if (pending.escalatedBefore) {
+      // Escalated once already: another escalation (and re-host) would only
+      // bring it back again. Station stops here; the warning above stands.
+      this.approvals.delete(pending.approvalId);
+      return;
+    }
     if (pending.intent === 'expire') {
       this.escalate(pending);
       return;

@@ -738,6 +738,14 @@ export const MUSE_APPROVAL_MODE_NOT_APPLIED_CODE =
 export const MUSE_SERVE_HOST_EXITED_CODE = 'muse-serve-host-exited';
 
 /**
+ * #2452: `runtime.warning` code for a stopped `muse serve` session whose
+ * host process Station could not confirm stopped. The session is torn down
+ * (`session.exited` is published); the process stays in Station's
+ * owned-process registry so the next startup's sweep can reap it.
+ */
+export const MUSE_SERVE_STOP_UNCONFIRMED_CODE = 'muse-serve-stop-unconfirmed';
+
+/**
  * #2324: refusal code for a send that arrived while the engine is running a
  * turn it opened on its own (a provider-triggered turn, see
  * `PROVIDER_TURN_TRIGGER`). Accepting it would fold the message into a reply
