@@ -18,7 +18,7 @@
  *   nesting   = a depth on any child
  */
 import { EventEmitter } from 'node:events';
-import { readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { PassThrough } from 'node:stream';
 import {
   type ChildWorkDelta,
@@ -52,8 +52,6 @@ import {
 } from './muse-adapter-fixtures.js';
 
 type Driver = {
-  /** The adapter module whose mapper this driver actually runs. */
-  adapterModule?: string;
   /** Replays the engine's captured output; returns everything published. */
   run: () => Promise<CanonicalRuntimeEvent[]>;
   /**
@@ -214,12 +212,10 @@ async function stationAdapterStructural(): Promise<CanonicalRuntimeEvent[]> {
 const DRIVERS: Record<string, Driver> = {
   station: { run: stationAdapterStructural },
   claude: {
-    adapterModule: 'claude-adapter-child-work.ts',
     run: replayClaudeCaptures,
     formats: CLAUDE_FORMATS,
   },
   codex: {
-    adapterModule: 'codex-adapter-child-work.ts',
     run: replayCodexCollabCaptures,
     formats: CODEX_FORMATS,
   },
@@ -314,12 +310,24 @@ const KNOWN_SIGNAL_GAPS: Record<
   Partial<Record<SubagentSignal, string>>
 > = {};
 
+const ADAPTERS_DIR = new URL('../adapters/', import.meta.url);
+
 /**
- * Engines whose cell names an adapter module the driver does not run,
- * keyed to the tracking issue. Empty since #2458 moved Codex onto
- * `codex-adapter-child-work.ts`.
+ * The adapter modules that can emit child work: the ones whose source names
+ * the `child-work.updated` event. A driver's child work can only have come
+ * from one of these, so this is what ties a cell's `adapterModule` to the
+ * code a replay actually ran (#2457 review V4).
  */
-const KNOWN_MODULE_GAPS: Record<string, string> = {};
+function childWorkEmittingModules(): string[] {
+  return readdirSync(ADAPTERS_DIR)
+    .filter((name) => name.endsWith('.ts'))
+    .filter((name) =>
+      readFileSync(new URL(name, ADAPTERS_DIR), 'utf8').includes(
+        "'child-work.updated'",
+      ),
+    )
+    .sort();
+}
 
 /**
  * Engines whose emitted child work offers a control its matrix
@@ -349,6 +357,16 @@ describe('#2456 child-work conformance tripwire', () => {
       ),
     );
     expect(STATION_UNMAPPED_SUBAGENT_ENGINES).toEqual(lifecycleGaps);
+  });
+
+  test('the modules that emit child work are exactly the declared cells’ adapter modules', () => {
+    const declared = Object.values(ENGINE_CAPABILITY_MATRICES).flatMap(
+      (matrix) =>
+        matrix.subagentObservability.state === 'declared'
+          ? [matrix.subagentObservability.adapterModule]
+          : [],
+    );
+    expect(childWorkEmittingModules()).toEqual([...new Set(declared)].sort());
   });
 
   test('there is exactly one driver per matrix engine key', () => {
@@ -394,13 +412,19 @@ describe('#2456 child-work conformance tripwire', () => {
       });
       continue;
     }
-    const moduleTest = KNOWN_MODULE_GAPS[key] ? test.fails : test;
-    moduleTest(
-      `${key}: the driver runs the adapter module the cell names`,
-      () => {
-        expect(driver.adapterModule).toBe(cell.adapterModule);
-      },
-    );
+    test(`${key}: the cell's adapter module exists and is where this engine's child work is emitted`, async () => {
+      expect(existsSync(new URL(cell.adapterModule, ADAPTERS_DIR))).toBe(true);
+      expect(childWorkEmittingModules()).toContain(cell.adapterModule);
+      // The replay really produced child work, for this engine, and (by the
+      // emitter-set test below) only a declared cell's module can emit it.
+      const emitted = (await driver.run()).filter(
+        (event) => event.method === 'child-work.updated',
+      );
+      expect(emitted.length).toBeGreaterThan(0);
+      expect(new Set(emitted.map((event) => event.provider))).toEqual(
+        new Set([key]),
+      );
+    });
     const gaps = KNOWN_SIGNAL_GAPS[key] ?? {};
     const expected = cell.signals.filter((signal) => !gaps[signal]);
     test(`${key}: observed signals are the declared ones, less registered gaps`, async () => {

@@ -51,7 +51,16 @@ import type { ProviderSession } from '../adapter-shape.js';
  *   sibling child, so it is not listed.
  * - A resumed agent reuses its `task_id` under a new `tool_use_id`
  *   (captured: `nested-agent`). The contract never revives a settled child,
- *   so a second run of an id that already settled is not listed again.
+ *   so a re-run of a settled `task_id` is a child of its own, keyed
+ *   `${task_id}:${tool_use_id}`. The FIRST run keeps the bare `task_id`, the
+ *   key pre-#2457 history carries. Frames name only the `task_id`, so they
+ *   are routed to that id's current run, and a stop addressed to a re-run's
+ *   key reaches the engine as its `task_id` (`resolveClaudeChildStop`).
+ * - After the session ends, only a REAL terminal is still mapped: when
+ *   `stopSession`'s grace elapses, the SDK can still drain a queued
+ *   `task_notification`, and that observed outcome corrects the
+ *   `unresolved`/`stopped-unconfirmed` the session end recorded (the reducer
+ *   lets a real settle replace those two).
  *
  * Status mapping never reads a stop, a kill or an unknown value as success:
  * an unrecognised `task_notification` status is `unresolved`, and an
@@ -64,9 +73,11 @@ import type { ProviderSession } from '../adapter-shape.js';
 
 export interface ClaudeChildWorkState {
   registry: ChildWorkRegistryState;
-  /** Children Station asked the engine to stop (`stopProviderTask`). */
+  /** Children (by child id) Station asked the engine to stop. */
   stopRequested: Set<string>;
-  /** Set once the session has ended; nothing is mapped after that. */
+  /** SDK `task_id` → the child id of its current run (re-runs only). */
+  runs: Map<string, string>;
+  /** Set once the session has ended; only real terminals are mapped after. */
   closed: boolean;
 }
 
@@ -88,6 +99,7 @@ function stateOf(record: ClaudeChildWorkRecord): ClaudeChildWorkState {
   record.childWork ??= {
     registry: createEmptyChildWorkRegistry(),
     stopRequested: new Set(),
+    runs: new Map(),
     closed: false,
   };
   return record.childWork;
@@ -205,6 +217,32 @@ function itemFor(
   );
 }
 
+/** The child id of the current run of SDK task `taskId`. */
+function childIdFor(record: ClaudeChildWorkRecord, taskId: string): string {
+  return stateOf(record).runs.get(taskId) ?? taskId;
+}
+
+/** The SDK `task_id` a child id belongs to. */
+function taskIdOf(record: ClaudeChildWorkRecord, childId: string): string {
+  for (const [taskId, current] of stateOf(record).runs) {
+    if (current === childId) return taskId;
+  }
+  return childId;
+}
+
+/**
+ * What a stop addressed to `id` (a child id as clients hold it, or a bare
+ * SDK `task_id`) reaches: the engine's `task_id` for `Query.stopTask`, and
+ * the child whose stop is recorded.
+ */
+export function resolveClaudeChildStop(
+  record: ClaudeChildWorkRecord,
+  id: string,
+): { taskId: string; childId: string } {
+  const taskId = taskIdOf(record, id);
+  return { taskId, childId: childIdFor(record, taskId) };
+}
+
 function runningChildren(record: ClaudeChildWorkRecord): ChildWorkItem[] {
   return childWorkForReporter(
     stateOf(record).registry,
@@ -216,8 +254,8 @@ function runningChildren(record: ClaudeChildWorkRecord): ChildWorkItem[] {
 
 /**
  * `task_started`: the running set plus the new child, as an authoritative
- * snapshot. A child already settled is never revived (see the module note on
- * resumed agents).
+ * snapshot. A re-run of a settled `task_id` is a new child (see the module
+ * note on resumed agents).
  */
 export function observeClaudeTaskStarted(
   context: ClaudeChildWorkContext,
@@ -225,7 +263,14 @@ export function observeClaudeTaskStarted(
 ): void {
   const state = stateOf(context.record);
   if (state.closed || !isClaudeChildWorkTask(message)) return;
-  if (itemFor(context.record, message.task_id)) return;
+  let childId = childIdFor(context.record, message.task_id);
+  const previous = itemFor(context.record, childId);
+  if (previous?.status === 'running') return;
+  if (previous) {
+    childId = `${message.task_id}:${message.tool_use_id ?? context.createdAt}`;
+    if (itemFor(context.record, childId)) return;
+    state.runs.set(message.task_id, childId);
+  }
   const parent: ChildWorkParent = {};
   if (message.tool_use_id) parent.toolCallId = message.tool_use_id;
   if (context.record.activeTurnId) parent.turnId = context.record.activeTurnId;
@@ -235,7 +280,7 @@ export function observeClaudeTaskStarted(
   const item: ChildWorkItem = {
     producer: 'engine-subagent',
     reporterThreadId: context.record.session.threadId,
-    childId: message.task_id,
+    childId,
     status: 'running',
     ...(Object.keys(parent).length > 0 ? { parent } : {}),
     ...(title ? { title } : {}),
@@ -266,7 +311,10 @@ export function observeClaudeTaskProgress(
   message: SDKTaskProgressMessage,
 ): void {
   if (stateOf(context.record).closed) return;
-  const existing = itemFor(context.record, message.task_id);
+  const existing = itemFor(
+    context.record,
+    childIdFor(context.record, message.task_id),
+  );
   if (existing?.status !== 'running') return;
   const described = nonEmpty(message.description);
   const progress =
@@ -296,22 +344,23 @@ export function observeClaudeTaskUpdated(
   context: ClaudeChildWorkContext,
   message: SDKTaskUpdatedMessage,
 ): void {
-  if (stateOf(context.record).closed) return;
-  const existing = itemFor(context.record, message.task_id);
+  const childId = childIdFor(context.record, message.task_id);
+  const existing = itemFor(context.record, childId);
   // Untracked here means not child work (owned, ambient) or started before
   // this process attached: its task_notification settles it.
   if (!existing) return;
   const patch = message.patch ?? {};
   const terminal = mapUpdatedStatus(patch.status);
   if (terminal) {
-    settle(context, message.task_id, terminal, {
+    // A real terminal is mapped even after the session end (module note).
+    settle(context, childId, terminal, {
       ...(terminal === 'failed' && nonEmpty(patch.error)
         ? { result: { summary: patch.error } }
         : {}),
     });
     return;
   }
-  if (existing.status !== 'running') return;
+  if (stateOf(context.record).closed || existing.status !== 'running') return;
   const description = nonEmpty(patch.description);
   const backgrounded =
     typeof patch.is_backgrounded === 'boolean'
@@ -338,7 +387,7 @@ export function observeClaudeTaskNotification(
   message: SDKTaskNotificationMessage & ClaudeTaskWireExtras,
   options: { ownedBySubagent?: boolean } = {},
 ): void {
-  if (stateOf(context.record).closed) return;
+  // A real terminal: mapped even after the session end (module note).
   if (options.ownedBySubagent || !isClaudeChildWorkTask(message)) return;
   const summary = nonEmpty(message.summary);
   const outputFile = nonEmpty(message.output_file);
@@ -352,7 +401,8 @@ export function observeClaudeTaskNotification(
         }
       : undefined;
   const usage = readTaskUsage(message.usage);
-  settle(context, message.task_id, mapNotificationStatus(message.status), {
+  const childId = childIdFor(context.record, message.task_id);
+  settle(context, childId, mapNotificationStatus(message.status), {
     ...(result ? { result } : {}),
     ...(usage ? { usage } : {}),
     ...(message.tool_use_id
@@ -410,23 +460,36 @@ function settle(
  */
 export function markClaudeChildStopRequested(
   record: ClaudeChildWorkRecord,
-  taskId: string,
+  childId: string,
 ): void {
-  stateOf(record).stopRequested.add(taskId);
+  stateOf(record).stopRequested.add(childId);
+}
+
+/** The stop request did not reach the engine: nothing was requested. */
+export function clearClaudeChildStopRequested(
+  record: ClaudeChildWorkRecord,
+  childId: string,
+): void {
+  stateOf(record).stopRequested.delete(childId);
 }
 
 /**
  * Session end: no child still running can report any more. One whose stop
  * was requested settles `stopped-unconfirmed`; every other one `unresolved`,
  * through an empty snapshot. Called beside `settleUnresolvedClaudeToolCalls`,
- * before `session.exited`. Idempotent.
+ * before `session.exited`. Idempotent. Returns the SDK `task_id` of every
+ * child it settled, so the adapter can withdraw what they left pending.
+ *
+ * The registry is kept: a real terminal the SDK still drains afterwards
+ * corrects the outcome recorded here.
  */
 export function settleOpenClaudeChildren(
   context: ClaudeChildWorkContext,
-): void {
+): string[] {
   const state = context.record.childWork;
-  if (!state || state.closed) return;
-  for (const item of runningChildren(context.record)) {
+  if (!state || state.closed) return [];
+  const open = runningChildren(context.record);
+  for (const item of open) {
     if (state.stopRequested.has(item.childId)) {
       settle(context, item.childId, 'stopped-unconfirmed');
     }
@@ -441,5 +504,5 @@ export function settleOpenClaudeChildren(
   }
   state.closed = true;
   state.stopRequested.clear();
-  state.registry = createEmptyChildWorkRegistry();
+  return open.map((item) => taskIdOf(context.record, item.childId));
 }

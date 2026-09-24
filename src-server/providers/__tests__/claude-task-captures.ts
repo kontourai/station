@@ -92,6 +92,8 @@ export function replayClaudeTaskCapture(
     threadId?: string;
     /** Probes to act on in addition to the capture's own (by line index). */
     extraProbes?: Record<number, string>;
+    /** Stop after mapping this line index, with no session end. */
+    stopAfterLine?: number;
   } = {},
 ): { events: CanonicalRuntimeEvent[]; record: ClaudeMessageState } {
   const threadId = options.threadId ?? 'thread-claude';
@@ -124,7 +126,9 @@ export function replayClaudeTaskCapture(
     }
     if (probe === 'ITERATOR END') endSession();
   };
-  loadClaudeTaskCapture(name).forEach((line, index) => {
+  const lines = loadClaudeTaskCapture(name);
+  const last = options.stopAfterLine ?? lines.length - 1;
+  lines.slice(0, last + 1).forEach((line, index) => {
     const extra = options.extraProbes?.[index];
     if (extra) act(extra);
     if (line.probe !== undefined) {
@@ -138,6 +142,6 @@ export function replayClaudeTaskCapture(
       publish,
     });
   });
-  endSession();
+  if (options.stopAfterLine === undefined) endSession();
   return { events, record };
 }

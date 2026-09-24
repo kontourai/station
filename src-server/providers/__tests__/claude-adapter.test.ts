@@ -7454,7 +7454,7 @@ describe('ClaudeAdapter — child work at the session seams (#2457)', () => {
         : [],
     );
 
-  function endableQuery() {
+  function endableQuery({ endOnClose = true } = {}) {
     const pending: unknown[] = [];
     let wake: (() => void) | null = null;
     let ended = false;
@@ -7484,17 +7484,28 @@ describe('ClaudeAdapter — child work at the session seams (#2457)', () => {
       stopTask: vi.fn<(taskId: string) => Promise<void>>(),
       interrupt: vi.fn().mockResolvedValue(undefined),
       supportedModels: vi.fn().mockResolvedValue([]),
-      close: vi.fn().mockImplementation(end),
+      // `endOnClose: false` models an engine whose iterator does not end at
+      // close(), so stopSession's grace elapses (station#1569).
+      close: vi.fn().mockImplementation(() => {
+        if (endOnClose) end();
+      }),
       setModel: vi.fn().mockResolvedValue(undefined),
       setPermissionMode: vi.fn().mockResolvedValue(undefined),
       applyFlagSettings: vi.fn().mockResolvedValue(undefined),
     };
   }
 
-  async function runningChild(threadId: string) {
-    const query = endableQuery();
+  async function runningChild(
+    threadId: string,
+    options: { endOnClose?: boolean; streamStopGraceMs?: number } = {},
+  ) {
+    const query = endableQuery({ endOnClose: options.endOnClose });
     mockQuery.mockReturnValue(query);
-    const adapter = new ClaudeAdapter();
+    const adapter = new ClaudeAdapter(
+      options.streamStopGraceMs !== undefined
+        ? { streamStopGraceMs: options.streamStopGraceMs }
+        : undefined,
+    );
     const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
     await adapter.startSession({ provider: 'claude', threadId });
     await adapter.sendTurn({ threadId, input: 'work' });
@@ -7517,7 +7528,7 @@ describe('ClaudeAdapter — child work at the session seams (#2457)', () => {
           (item: { childId: string }) => item.childId === capturedChildId,
         ),
     );
-    return { adapter, query, until, seen };
+    return { adapter, query, until, seen, iterator };
   }
 
   const childSettles = (events: any[]) =>
@@ -7528,6 +7539,56 @@ describe('ClaudeAdapter — child work at the session seams (#2457)', () => {
         ? [event.delta.status]
         : [],
     );
+
+  test("R4: stopping a resumed agent's re-run by its child id reaches Query.stopTask as the SDK task_id", async () => {
+    const threadId = 'thread-child-rerun-stop';
+    const nested = loadClaudeTaskCapture('nested-agent');
+    const starts = nested.flatMap((line, index) => {
+      const message = line.message as
+        | {
+            subtype?: string;
+            task_id?: string;
+            tool_use_id?: string;
+            task_type?: string;
+          }
+        | undefined;
+      return message?.subtype === 'task_started' &&
+        message.task_type === 'local_agent'
+        ? [{ index, taskId: message.task_id!, toolUseId: message.tool_use_id! }]
+        : [];
+    });
+    // Premise: the inner agent's task_id is started twice.
+    const rerunStart = starts[2];
+    expect(rerunStart.taskId).toBe(starts[1].taskId);
+    const rerunKey = `${rerunStart.taskId}:${rerunStart.toolUseId}`;
+    const query = endableQuery();
+    mockQuery.mockReturnValue(query);
+    const adapter = new ClaudeAdapter();
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+    await adapter.startSession({ provider: 'claude', threadId });
+    await adapter.sendTurn({ threadId, input: 'work' });
+    for (const line of nested.slice(0, rerunStart.index + 1)) {
+      if (line.message) query.push(line.message);
+    }
+    for (let step = 0; step < 120; step++) {
+      const { value } = await iterator.next();
+      if (
+        value.method === 'child-work.updated' &&
+        value.delta.kind === 'snapshot' &&
+        value.delta.running.some(
+          (item: { childId: string }) => item.childId === rerunKey,
+        )
+      )
+        break;
+      if (step === 119) throw new Error('the re-run was never listed');
+    }
+    query.stopTask.mockResolvedValue(undefined);
+    await expect(adapter.stopProviderTask(threadId, rerunKey)).resolves.toEqual(
+      { outcome: 'stopped', taskId: rerunKey },
+    );
+    expect(query.stopTask).toHaveBeenCalledWith(rerunStart.taskId);
+    await adapter.stopSession(threadId);
+  });
 
   test("stopProviderTask reaches Query.stopTask; the engine's stopped answer settles the child cancelled and clears it", async () => {
     const threadId = 'thread-child-stop';
@@ -7613,5 +7674,77 @@ describe('ClaudeAdapter — child work at the session seams (#2457)', () => {
       producer: 'engine-subagent',
       reporterThreadId: threadId,
     });
+  });
+
+  test('R1: when the stop grace elapses, a real stopped outcome the SDK drains afterwards corrects stopped-unconfirmed to cancelled', async () => {
+    const threadId = 'thread-child-late-outcome';
+    const { adapter, query, until, seen } = await runningChild(threadId, {
+      endOnClose: false,
+      streamStopGraceMs: 20,
+    });
+    query.stopTask.mockResolvedValue(undefined);
+    await adapter.stopProviderTask(threadId, capturedChildId);
+    await adapter.stopSession(threadId);
+    await until((event) => event.method === 'session.exited');
+    expect(childSettles(seen)).toEqual(['stopped-unconfirmed']);
+    // The engine's own answer drains after the stop.
+    for (const message of stopAnswer) query.push(message);
+    await until(
+      (event) =>
+        event.method === 'child-work.updated' &&
+        event.delta.kind === 'settle' &&
+        event.delta.status === 'cancelled',
+    );
+    expect(childSettles(seen).slice(0, 2)).toEqual([
+      'stopped-unconfirmed',
+      'cancelled',
+    ]);
+  });
+
+  test("R2: a child's pending approval is withdrawn when the stream ends with the child unsettled, and cannot be granted later", async () => {
+    const threadId = 'thread-child-approval-at-end';
+    const { adapter, query, until } = await runningChild(threadId);
+    const canUseTool = mockQuery.mock.calls.at(-1)![0].options.canUseTool;
+    const permission = canUseTool(
+      'Bash',
+      { command: 'npm test' },
+      {
+        signal: new AbortController().signal,
+        toolUseID: 'toolu-child-bash',
+        agentID: capturedChildId,
+        suggestions: [],
+      },
+    );
+    const opened = await until((event) => event.method === 'request.opened');
+    query.end();
+    const result = await permission;
+    expect(result).toMatchObject({ behavior: 'deny' });
+    expect(result).not.toHaveProperty('interrupt');
+    expect(
+      await until((event) => event.method === 'request.resolved'),
+    ).toMatchObject({ requestId: opened.requestId, status: 'cancelled' });
+    await expect(
+      adapter.respondToRequest(threadId, opened.requestId, 'acceptForSession'),
+    ).rejects.toThrow('Unknown Claude permission request');
+  });
+
+  test('R3: a stopTask that rejects leaves no stop marker — the session end reports the child unresolved, not stopped-unconfirmed', async () => {
+    const threadId = 'thread-child-stop-rejected';
+    const { adapter, query, until, seen } = await runningChild(threadId);
+    query.stopTask.mockRejectedValue(new Error('control channel closed'));
+    await expect(
+      adapter.stopProviderTask(threadId, capturedChildId),
+    ).rejects.toThrow('control channel closed');
+    await adapter.stopSession(threadId);
+    await until((event) => event.method === 'session.exited');
+    expect(childSettles(seen)).toEqual([]);
+    expect(
+      seen.some(
+        (event) =>
+          event.method === 'child-work.updated' &&
+          event.delta.kind === 'snapshot' &&
+          event.delta.running.length === 0,
+      ),
+    ).toBe(true);
   });
 });

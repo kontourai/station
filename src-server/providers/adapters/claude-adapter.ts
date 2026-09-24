@@ -96,7 +96,9 @@ import { resolveConfigHomeAffinity } from '../sessions/transcript-file-io.js';
 import { mergeCapabilityDeliveryMetadata } from './capability-delivery-metadata.js';
 import {
   type ClaudeChildWorkState,
+  clearClaudeChildStopRequested,
   markClaudeChildStopRequested,
+  resolveClaudeChildStop,
   settleOpenClaudeChildren,
 } from './claude-adapter-child-work.js';
 import {
@@ -1682,13 +1684,23 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     taskId: string,
   ): Promise<ProviderTaskStopResult> {
     const record = this.requireSession(threadId);
+    // #2457: `taskId` is the child id a client holds, which for a re-run of
+    // a resumed agent is not the engine's own `task_id`.
+    const target = resolveClaudeChildStop(record, taskId);
     // A subagent can settle between a client rendering its stop control and
     // this request landing. That race is a normal outcome, not an error.
-    if (!record.activeTasks?.has(taskId)) {
+    if (!record.activeTasks?.has(target.taskId)) {
       return { outcome: 'no-active-task', taskId };
     }
-    markClaudeChildStopRequested(record, taskId);
-    await record.query.stopTask(taskId);
+    markClaudeChildStopRequested(record, target.childId);
+    try {
+      await record.query.stopTask(target.taskId);
+    } catch (error) {
+      // The request never reached the engine, so no stop was requested: a
+      // session end must not report this child `stopped-unconfirmed`.
+      clearClaudeChildStopRequested(record, target.childId);
+      throw error;
+    }
     return { outcome: 'stopped', taskId };
   }
 
@@ -2868,12 +2880,20 @@ export class ClaudeAdapter implements ProviderAdapterShape {
    */
   private settleSessionEnd(record: ClaudeSessionRecord): void {
     const publish = (event: CanonicalRuntimeEvent) => this.publish(event);
-    settleOpenClaudeChildren({
+    const endedChildren = settleOpenClaudeChildren({
       provider: this.provider,
       record,
       publish,
       createdAt: new Date().toISOString(),
     });
+    // A child that ended with the session can no longer be waiting on the
+    // approvals it raised (canUseTool's agentID is its task_id): withdraw
+    // them, so a late "Allow for this session" cannot mint a grant.
+    for (const taskId of endedChildren) {
+      this.cancelPendingRequests(record, record.session.threadId, {
+        agentId: taskId,
+      });
+    }
     settleUnresolvedClaudeToolCalls({
       provider: this.provider,
       record: record as ClaudeMessageState,
