@@ -69,7 +69,7 @@ describe('addedTestLines', () => {
       addedTestLines(SAMPLES.plusPlusDiff.join('\n')).map(
         (entry: { text: string }) => entry.text,
       ),
-    ).toEqual(['++ x;', 'await sleep(66);']);
+    ).toEqual(SAMPLES.plusPlusAdded);
   });
 
   test('unquotes a path git quoted for its non-ASCII bytes', () => {

@@ -74,5 +74,6 @@
   ],
   "quotedPath": "\"b/src/__tests__/\\303\\251 uni.test.ts\"",
   "unicodeTestFile": "test('x', async () => {\n  await sleep(22);\n});\n",
-  "dirtyWaiver": "// real-time: only in the working tree"
+  "dirtyWaiver": "// real-time: only in the working tree",
+  "plusPlusAdded": ["++ x;", "await sleep(66);"]
 }
