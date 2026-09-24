@@ -187,6 +187,39 @@ until it is opened again. And normal-priority data messages wait out Doze,
 while the client drops activity older than ten minutes, so the gateway sends
 activity as high-priority messages.
 
+### Station contract
+
+The Station side mirrors Web Push (`push-routes.ts`, `wireWebPushDelivery`):
+
+- **Push key.** `security/push-signing-key.json` (0600) holds a P-256 key used
+  only for gateway requests: domain-separated from the connection signing key,
+  whose tokens are not a general signature (connection-broker.md). It is
+  created on the first registration, never before.
+- **Registration.** `POST /api/system/native-push/register` from a paired
+  device, body `{ token, packageName, platform: 'android' }`, stores
+  `{ token, packageName, platform, registrationId, updatedAt }` privately on
+  that device's record and returns `{ registrationId, stationId }`.
+  `registrationId` is 128 random bits, kept across token rotation, and is the
+  value the phone checks on every push (`device_id`); `stationId` is the
+  environment id (`user_id`). `DELETE /api/system/native-push` clears the
+  caller's own registration only. Unpairing a device drops it with the rest of
+  the record. Hosted-tenant mode disables both routes, as it does Web Push.
+- **Publisher.** An `ORCHESTRATION_EVENT` subscriber keeps a per-session
+  snapshot (title, project, lifecycle state, updated time), coalesces per
+  Station, and sends one card to every registered device: at most five rows,
+  attention first (approval, input), then failed, then running, then sessions
+  finished in the last 15 minutes. Lifecycle maps to the plugin's phases:
+  `queued` → `starting`, `running` → `running`, an approval request →
+  `waiting_for_approval`, `needs_input` → `waiting_for_input`, `completed` →
+  `completed`, `failed` → `failed`; canceled sessions leave the card. An
+  alert (`alert_id` = hash of session, phase and entry time) goes out on entry
+  into approval or input, and on a finish within the last two minutes. A 410
+  from the gateway clears that registration. The listener never throws.
+- **Gateway URL.** `STATION_PUSH_GATEWAY_URL`, defaulting to the Kontour
+  gateway. Nothing is sent until a device registers, which only happens when
+  its user turns agent activity on; the flow is listed in the privacy
+  inventory.
+
 ### Provisioning
 
 - Firebase project `kontour-station` under the kontourai.io organization,

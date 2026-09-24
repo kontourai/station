@@ -32,6 +32,8 @@ test('refuses anything that is not a Station agent-activity data message', () =>
     [{ token: 'short' }, 'invalid token'],
     [{ token: `${'f'.repeat(100)} x` }, 'invalid token'],
     [{ collapseKey: 'Has Spaces' }, 'invalid collapseKey'],
+    [{ data: data({ notification: 'x' }) }, 'invalid data key notification'],
+    [{ data: data({ station_key: 'forged' }) }, 'invalid data key station_key'],
   ];
   for (const [overrides, reason] of cases) {
     assert.deepEqual(parse(overrides), { ok: false, reason }, reason);

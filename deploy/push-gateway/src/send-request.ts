@@ -5,8 +5,10 @@
 const MAX_DATA_BYTES = 3800; // FCM's limit is 4096 for the whole data payload.
 const MAX_DATA_KEYS = 40;
 const DATA_KEY = /^[a-z][a-z0-9_]{0,63}$/;
-// FCM reserves these prefixes and keys.
-const RESERVED_KEY = /^(google|gcm|from|message_type|collapse_key)/;
+// FCM reserves these prefixes and keys. `station_key` is stamped by the
+// gateway itself after verifying the signature, so a caller may not supply it.
+const RESERVED_KEY =
+  /^(google|gcm|from|message_type|collapse_key|notification$|station_key$)/;
 
 export interface SendRequest {
   token: string;

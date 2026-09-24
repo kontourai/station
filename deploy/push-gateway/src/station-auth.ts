@@ -61,6 +61,11 @@ function decodeJson(segment: string): Record<string, unknown> | null {
   }
 }
 
+function isCanonicalCoordinate(value: string): boolean {
+  const bytes = base64UrlDecode(value);
+  return bytes?.length === 32 && base64UrlEncode(bytes) === value;
+}
+
 function publicJwk(value: unknown): PushJwk | null {
   if (!value || typeof value !== 'object') return null;
   const jwk = value as Record<string, unknown>;
@@ -69,10 +74,10 @@ function publicJwk(value: unknown): PushJwk | null {
   if ('d' in jwk) return null;
   if (jwk.kty !== 'EC' || jwk.crv !== 'P-256') return null;
   if (typeof jwk.x !== 'string' || typeof jwk.y !== 'string') return null;
-  if (
-    base64UrlDecode(jwk.x)?.length !== 32 ||
-    base64UrlDecode(jwk.y)?.length !== 32
-  )
+  // Only the canonical encoding is accepted: base64url leaves spare bits in the
+  // last character, and without this one key would have several thumbprints,
+  // multiplying its rate limit and breaking the phone's pin on it.
+  if (!isCanonicalCoordinate(jwk.x) || !isCanonicalCoordinate(jwk.y))
     return null;
   return { kty: 'EC', crv: 'P-256', x: jwk.x, y: jwk.y };
 }
@@ -104,7 +109,14 @@ export async function verifyStationRequest(input: {
   const [, headerSegment, payloadSegment, signatureSegment] = match;
 
   const header = decodeJson(headerSegment);
-  if (!header || header.alg !== 'ES256' || header.typ !== PUSH_JWT_TYPE) {
+  // RFC 7515: a receiver must reject critical extensions it does not know,
+  // and this gateway knows none.
+  if (
+    !header ||
+    header.alg !== 'ES256' ||
+    header.typ !== PUSH_JWT_TYPE ||
+    'crit' in header
+  ) {
     return { ok: false, reason: 'unsupported token header' };
   }
   const jwk = publicJwk(header.jwk);
@@ -115,13 +127,19 @@ export async function verifyStationRequest(input: {
   // JWS ES256 signatures are raw r||s, which is also what WebCrypto verifies.
   if (!signature || signature.length !== 64)
     return { ok: false, reason: 'bad signature encoding' };
-  const key = await crypto.subtle.importKey(
-    'jwk',
-    { ...jwk, ext: true },
-    { name: 'ECDSA', namedCurve: 'P-256' },
-    false,
-    ['verify'],
-  );
+  let key: CryptoKey;
+  try {
+    key = await crypto.subtle.importKey(
+      'jwk',
+      { ...jwk, ext: true },
+      { name: 'ECDSA', namedCurve: 'P-256' },
+      false,
+      ['verify'],
+    );
+  } catch {
+    // Well-formed coordinates that are not a point on the curve.
+    return { ok: false, reason: 'header must carry a public P-256 jwk' };
+  }
   const signed = encoder.encode(`${headerSegment}.${payloadSegment}`);
   const valid = await crypto.subtle.verify(
     { name: 'ECDSA', hash: 'SHA-256' },

@@ -110,3 +110,48 @@ test('rejects missing and malformed authorization', async () => {
     assert.equal((await verify(value)).ok, false, String(value));
   }
 });
+
+test('accepts only the canonical encoding of a key, so it has one thumbprint', async () => {
+  const key = await stationKey();
+  const body = sendBody();
+  // Base64url of 32 bytes ends in a character carrying 2 unused bits; flipping
+  // them decodes to the same bytes but would be a different thumbprint input.
+  const alphabet =
+    'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+  const last = key.publicJwk.x.at(-1) ?? 'A';
+  const variant = alphabet[alphabet.indexOf(last) ^ 1];
+  const x = key.publicJwk.x.slice(0, -1) + variant;
+  const result = await verify(
+    await signRequest(body, key, { header: { jwk: { ...key.publicJwk, x } } }),
+    body,
+  );
+  assert.deepEqual(result, {
+    ok: false,
+    reason: 'header must carry a public P-256 jwk',
+  });
+});
+
+test('rejects critical header extensions', async () => {
+  const key = await stationKey();
+  const body = sendBody();
+  assert.deepEqual(
+    await verify(
+      await signRequest(body, key, { header: { crit: ['b64'] } }),
+      body,
+    ),
+    { ok: false, reason: 'unsupported token header' },
+  );
+});
+
+test('answers a coordinate pair that is not a curve point without throwing', async () => {
+  const key = await stationKey();
+  const body = sendBody();
+  const offCurve = { ...key.publicJwk, y: key.publicJwk.x };
+  assert.deepEqual(
+    await verify(
+      await signRequest(body, key, { header: { jwk: offCurve } }),
+      body,
+    ),
+    { ok: false, reason: 'header must carry a public P-256 jwk' },
+  );
+});

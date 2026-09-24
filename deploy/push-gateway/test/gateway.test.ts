@@ -40,8 +40,10 @@ async function config(
     allowedPackages: [PACKAGE],
     // A fresh account object per test: the sender cache is keyed on it.
     serviceAccount: (await fakeServiceAccount()).account,
-    perKeyLimiter: allow,
+    perIpLimiter: allow,
     globalLimiter: allow,
+    perKeyLimiter: allow,
+    perTokenLimiter: allow,
     nowSeconds: () => NOW,
     ...overrides,
   };
@@ -141,10 +143,7 @@ test('distinguishes retryable from permanent FCM failures', async () => {
     await config({ fetchImpl: retry.fetchImpl }),
   );
   assert.equal(retryResponse.status, 503);
-  assert.deepEqual(await retryResponse.json(), {
-    result: 'unavailable',
-    upstreamStatus: 500,
-  });
+  assert.deepEqual(await retryResponse.json(), { result: 'unavailable' });
 
   const bad = upstream(() =>
     Response.json(
@@ -197,8 +196,14 @@ test('rate limits per Station key, keyed by the key thumbprint', async () => {
   assert.equal(calls.length, 0);
 });
 
-test('applies the global cap before checking signatures', async () => {
-  const globalLimiter = { limit: async () => ({ success: false }) };
+test('unsigned requests never touch the shared global budget', async () => {
+  let globalCalls = 0;
+  const globalLimiter = {
+    limit: async () => {
+      globalCalls += 1;
+      return { success: true };
+    },
+  };
   const response = await handleRequest(
     new Request(`${AUDIENCE}/v1/fcm/send`, {
       method: 'POST',
@@ -206,7 +211,126 @@ test('applies the global cap before checking signatures', async () => {
     }),
     await config({ globalLimiter }),
   );
+  assert.equal(response.status, 401);
+  assert.equal(
+    globalCalls,
+    0,
+    'junk cannot spend the budget real Stations share',
+  );
+});
+
+test('limits each client address before doing any work', async () => {
+  const keys: string[] = [];
+  const perIpLimiter = {
+    limit: async ({ key }: { key: string }) => {
+      keys.push(key);
+      return { success: false };
+    },
+  };
+  const response = await handleRequest(
+    new Request(`${AUDIENCE}/v1/fcm/send`, {
+      method: 'POST',
+      headers: { 'cf-connecting-ip': '203.0.113.9' },
+      body: sendBody(),
+    }),
+    await config({ perIpLimiter }),
+  );
   assert.equal(response.status, 429);
+  assert.deepEqual(keys, ['203.0.113.9']);
+});
+
+test('limits each push token whichever key signs for it', async () => {
+  const keys: string[] = [];
+  const perTokenLimiter = {
+    limit: async ({ key }: { key: string }) => {
+      keys.push(key);
+      return { success: keys.length < 2 };
+    },
+  };
+  const { fetchImpl } = upstream(() => Response.json({}));
+  const cfg = await config({ perTokenLimiter, fetchImpl });
+  assert.equal((await send(cfg)).status, 200);
+  // A fresh key per request is free; the token limit still applies.
+  assert.equal((await send(cfg, sendBody(), await stationKey())).status, 429);
+  assert.equal(keys[0], keys[1], 'keyed on the token, not the signing key');
+  assert.ok(!keys[0].includes('f'.repeat(20)), 'the raw token is not the key');
+});
+
+test('stamps the verified key thumbprint into the payload', async () => {
+  const { calls, fetchImpl } = upstream(() => Response.json({}));
+  const station = await stationKey();
+  await send(await config({ fetchImpl }), sendBody(), station);
+  const fcm = calls.find((call) => call.url.includes('fcm'));
+  assert.ok(fcm);
+  assert.equal(
+    JSON.parse(fcm.body).message.data.station_key,
+    await jwkThumbprint(station.publicJwk),
+  );
+});
+
+test('refuses a body larger than the limit even without a content-length', async () => {
+  const station = await stationKey();
+  const chunk = new Uint8Array(4096);
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      for (let i = 0; i < 4; i += 1) controller.enqueue(chunk);
+      controller.close();
+    },
+  });
+  const response = await handleRequest(
+    new Request(`${AUDIENCE}/v1/fcm/send`, {
+      method: 'POST',
+      headers: { authorization: await signRequest(sendBody(), station) },
+      body: stream,
+      duplex: 'half',
+    } as RequestInit),
+    await config(),
+  );
+  assert.equal(response.status, 413);
+});
+
+test('treats an FCM bad-token error as unregistered', async () => {
+  const { fetchImpl } = upstream(() =>
+    Response.json(
+      {
+        error: {
+          details: [
+            {
+              '@type': 'type.googleapis.com/google.rpc.BadRequest',
+              fieldViolations: [{ field: 'message.token' }],
+            },
+          ],
+        },
+      },
+      { status: 400 },
+    ),
+  );
+  const response = await send(await config({ fetchImpl }));
+  assert.equal(response.status, 410);
+});
+
+test('retries once with a fresh Google token after a 401', async () => {
+  let fcmCalls = 0;
+  const { calls, fetchImpl } = upstream(() => {
+    fcmCalls += 1;
+    return fcmCalls === 1
+      ? new Response('', { status: 401 })
+      : Response.json({});
+  });
+  const response = await send(await config({ fetchImpl }));
+  assert.equal(response.status, 200);
+  assert.equal(calls.filter((call) => call.url.includes('oauth2')).length, 2);
+});
+
+test('shares one Google token exchange across concurrent sends', async () => {
+  const { calls, fetchImpl } = upstream(() => Response.json({}));
+  const cfg = await config({ fetchImpl });
+  const results = await Promise.all([send(cfg), send(cfg), send(cfg)]);
+  assert.deepEqual(
+    results.map((r) => r.status),
+    [200, 200, 200],
+  );
+  assert.equal(calls.filter((call) => call.url.includes('oauth2')).length, 1);
 });
 
 test('reports unconfigured delivery, oversize bodies and unknown routes', async () => {

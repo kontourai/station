@@ -86,6 +86,9 @@ async function signAssertion(
 
 export class FcmSender {
   private cached: { token: string; expiresAt: number } | null = null;
+  // One exchange at a time: concurrent cold-start requests share it rather
+  // than each signing an assertion and calling Google.
+  private pending: Promise<string> | null = null;
   private readonly account: ServiceAccount;
   private readonly fetchImpl: typeof fetch;
   private readonly now: () => number;
@@ -102,9 +105,18 @@ export class FcmSender {
     this.now = now;
   }
 
-  private async accessToken(): Promise<string> {
+  private accessToken(): Promise<string> {
+    if (this.cached && this.cached.expiresAt > this.now()) {
+      return Promise.resolve(this.cached.token);
+    }
+    this.pending ??= this.exchange().finally(() => {
+      this.pending = null;
+    });
+    return this.pending;
+  }
+
+  private async exchange(): Promise<string> {
     const now = this.now();
-    if (this.cached && this.cached.expiresAt > now) return this.cached.token;
     const response = await this.fetchImpl(TOKEN_URL, {
       method: 'POST',
       headers: { 'content-type': 'application/x-www-form-urlencoded' },
@@ -135,6 +147,16 @@ export class FcmSender {
   }
 
   async send(request: SendRequest): Promise<SendOutcome> {
+    const first = await this.attempt(request);
+    // A 401 means Google revoked the cached token early; one fresh try.
+    return first === 'retry' ? this.finish(await this.attempt(request)) : first;
+  }
+
+  private finish(outcome: SendOutcome | 'retry'): SendOutcome {
+    return outcome === 'retry' ? { kind: 'unavailable', status: 401 } : outcome;
+  }
+
+  private async attempt(request: SendRequest): Promise<SendOutcome | 'retry'> {
     let accessToken: string;
     try {
       accessToken = await this.accessToken();
@@ -175,19 +197,30 @@ export class FcmSender {
     ).catch(() => null);
     if (!response) return { kind: 'unavailable', status: 504 };
     if (response.ok) return { kind: 'sent' };
-    if (response.status === 401) this.cached = null;
+    if (response.status === 401) {
+      this.cached = null;
+      return 'retry';
+    }
 
     const errorBody = (await response.json().catch(() => null)) as {
-      error?: { details?: Array<{ errorCode?: string }> };
+      error?: {
+        details?: Array<{
+          errorCode?: string;
+          fieldViolations?: Array<{ field?: string }>;
+        }>;
+      };
     } | null;
-    const codes =
-      errorBody?.error?.details?.map((detail) => detail.errorCode) ?? [];
-    if (codes.includes('UNREGISTERED')) return { kind: 'unregistered' };
-    if (
-      response.status === 429 ||
-      response.status >= 500 ||
-      response.status === 401
-    ) {
+    const details = errorBody?.error?.details ?? [];
+    const codes = details.map((detail) => detail.errorCode);
+    // FCM reports a malformed token as INVALID_ARGUMENT on message.token. It
+    // can never succeed, so the Station must forget it like an unregistered one.
+    const badToken = details.some((detail) =>
+      detail.fieldViolations?.some((v) => v.field === 'message.token'),
+    );
+    if (codes.includes('UNREGISTERED') || badToken) {
+      return { kind: 'unregistered' };
+    }
+    if (response.status === 429 || response.status >= 500) {
       return { kind: 'unavailable', status: response.status };
     }
     return { kind: 'rejected', status: response.status };

@@ -8,8 +8,10 @@ interface Env {
   AUDIENCES: string;
   /** Comma-separated Android application ids the gateway may deliver to. */
   ALLOWED_PACKAGES: string;
-  PER_KEY_LIMITER: RateLimiter;
+  PER_IP_LIMITER: RateLimiter;
   GLOBAL_LIMITER: RateLimiter;
+  PER_KEY_LIMITER: RateLimiter;
+  PER_TOKEN_LIMITER: RateLimiter;
 }
 
 // Parsed once per isolate: handleRequest keys its sender (and the cached
@@ -35,8 +37,10 @@ export default {
       audiences: list(env.AUDIENCES),
       allowedPackages: list(env.ALLOWED_PACKAGES),
       serviceAccount: parsed.account,
-      perKeyLimiter: env.PER_KEY_LIMITER,
+      perIpLimiter: env.PER_IP_LIMITER,
       globalLimiter: env.GLOBAL_LIMITER,
+      perKeyLimiter: env.PER_KEY_LIMITER,
+      perTokenLimiter: env.PER_TOKEN_LIMITER,
     });
   },
 };
