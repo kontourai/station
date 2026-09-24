@@ -19,6 +19,7 @@ import type {
 import { Hono } from 'hono';
 import { parseDeviceSessionCookie } from '../../runtime/bootstrap/runtime-http.js';
 import { parseStrictBearer } from '../../security/runtime-request-security.js';
+import { canReadAgentActivity } from '../../services/notifications/agent-activity-eligibility.js';
 import { isValidNativePushRequest } from '../../services/notifications/native-push-registration-store.js';
 import { DevicePairingError } from '../../services/ssh/device-pairing-service.js';
 
@@ -79,6 +80,19 @@ export function createNativePushRoutes(deps: NativePushRouteDeps) {
     const credential = extractCredential(c.req);
     const device = credential ? deps.identifyDevice(credential) : null;
     if (!device) return c.json({ error: 'device_pairing_required' }, 403);
+    // Only a device that could list the sessions a card shows may register:
+    // a person's device (not another Station's delegation grant) with
+    // orchestration:read, not bound to a deployment account. The publisher
+    // applies the same rule, so a refused device would never get a card.
+    if (!canReadAgentActivity(device))
+      return c.json(
+        {
+          error: 'native_push_not_allowed',
+          message:
+            'This device cannot read agent sessions, so it cannot receive agent activity.',
+        },
+        403,
+      );
     if (deps.deliverable === false) return c.json(UNAVAILABLE, 503);
 
     let body: unknown;

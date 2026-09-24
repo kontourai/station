@@ -185,6 +185,8 @@ async function harness(
     principalFor?: (
       deviceId: string,
     ) => { principalId: string; sessionIds: string[] } | null;
+    /** Principals whose session read throws. */
+    failingPrincipals?: Set<string>;
   } = {},
 ) {
   const homeDir = mkdtempSync(join(tmpdir(), 'station-agent-activity-'));
@@ -256,10 +258,13 @@ async function harness(
       if (!reader) return null;
       return {
         principalId: reader.principalId,
-        listSessions: async () =>
-          (await listSessions()).filter((row) =>
+        listSessions: async () => {
+          if (options.failingPrincipals?.has(reader.principalId))
+            throw new Error(`read failed for ${reader.principalId}`);
+          return (await listSessions()).filter((row) =>
             reader.sessionIds.includes(row.sessionId),
-          ),
+          );
+        },
       };
     },
     gateway: GATEWAY,
@@ -1104,6 +1109,52 @@ describe('agent-activity publisher', () => {
     await h.publisher.stop();
   });
 
+  test("one principal's failed read skips only its phones, and they are retried in a minute", async () => {
+    let first = '';
+    let second = '';
+    const failing = new Set<string>();
+    const h = await harness({
+      principalFor: (deviceId) =>
+        deviceId === first
+          ? { principalId: 'principal-a', sessionIds: ['s1'] }
+          : deviceId === second
+            ? { principalId: 'principal-b', sessionIds: ['s1'] }
+            : null,
+      failingPrincipals: failing,
+    });
+    first = (await h.pairAndRegister('A')).deviceId;
+    second = (await h.pairAndRegister('B', `fcm-token-${'b'.repeat(60)}`))
+      .deviceId;
+    h.sessions.set('s1', sessionEvents('s1', 'running', START));
+    failing.add('principal-a');
+    h.emit('turn.started');
+    await h.settle();
+    // B's card went out although A's read failed first.
+    expect(h.delivered.map((d) => d.token)).toEqual([
+      `fcm-token-${'b'.repeat(60)}`,
+    ]);
+    const retry = h.liveTimers().sort((a, b) => a.at - b.at)[0];
+    expect(retry?.at).toBe(START + 60_000);
+    failing.clear();
+    await h.fireNextTimer();
+    expect(h.delivered.map((d) => d.token)).toContain(TOKEN);
+    await h.publisher.stop();
+  });
+
+  test('a first flush that reads nothing is looked at again, with no device state yet', async () => {
+    const h = await harness({
+      principalFor: () => ({ principalId: 'principal-a', sessionIds: ['s1'] }),
+      failingPrincipals: new Set(['principal-a']),
+    });
+    await h.pairAndRegister();
+    h.emit('turn.started');
+    await h.settle();
+    const armed = h.liveTimers();
+    expect(armed).toHaveLength(1);
+    expect(armed[0]?.at).toBe(START + 60_000);
+    await h.publisher.stop();
+  });
+
   test('a registered device that may no longer read sessions is sent nothing', async () => {
     const h = await harness({ principalFor: () => null });
     await h.pairAndRegister();
@@ -1190,7 +1241,7 @@ describe('agent-activity publisher', () => {
     h.listSessions.mockRejectedValueOnce(new Error('read model down'));
     h.emit('turn.completed');
     await expect(h.settle()).resolves.toBeUndefined();
-    expect(h.warn).toHaveBeenCalledWith('agent-activity: card flush failed', {
+    expect(h.warn).toHaveBeenCalledWith('agent-activity: session read failed', {
       error: 'read model down',
     });
     await h.publisher.stop();

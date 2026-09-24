@@ -154,9 +154,11 @@ function createHarness(
 async function pairDevice(
   harness: ReturnType<typeof createHarness>,
   name = 'Pixel',
+  offerOptions: { kind?: 'device' | 'delegation'; scope?: string } = {},
 ) {
   const offer = harness.pairing.createOffer({
     endpoint: 'https://station.example.test',
+    ...offerOptions,
   });
   const req = harness.pairing.requestPairing({
     requesterPosition: 'off-box',
@@ -521,6 +523,43 @@ describe('native push routes', () => {
       1,
     );
     expect(readFileSync(harness.sidecarPath, 'utf8')).toContain(TOKEN_A);
+    expect(harness.pairing.listNativePushRegistrations()).toEqual([]);
+  });
+  test('a device that cannot read sessions cannot register (the publisher would never read for it)', async () => {
+    const harness = createHarness();
+    const paired = await pairDevice(harness);
+    // Operate is what the route table demands; reading sessions needs read.
+    harness.pairing.setDeviceScope(
+      paired.device.id,
+      ['orchestration:operate'],
+      { kind: 'presented-credential' },
+    );
+    const response = await harness.register(
+      paired.credential,
+      androidBody(TOKEN_A),
+    );
+    expect(response.status).toBe(403);
+    expect(await response.json()).toMatchObject({
+      error: 'native_push_not_allowed',
+    });
+    expect(harness.pairing.listNativePushRegistrations()).toEqual([]);
+    expect(existsSync(harness.keyPath)).toBe(false);
+  });
+
+  test('another Station’s delegation grant cannot register', async () => {
+    const harness = createHarness();
+    const delegation = await pairDevice(harness, 'Peer Station', {
+      kind: 'delegation',
+    });
+    expect(delegation.device.kind).toBe('delegation');
+    const response = await harness.register(
+      delegation.credential,
+      androidBody(TOKEN_A),
+    );
+    expect(response.status).toBe(403);
+    expect(await response.json()).toMatchObject({
+      error: 'native_push_not_allowed',
+    });
     expect(harness.pairing.listNativePushRegistrations()).toEqual([]);
   });
 });
