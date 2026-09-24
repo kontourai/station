@@ -124,8 +124,8 @@ export async function unsubscribePushNotifications(
 /**
  * Registers this paired device for native (FCM) agent-activity push, or
  * refreshes its token after FCM rotated it. The answer carries the values the
- * phone must check on every push; `registrationId` is stable across token
- * rotation.
+ * phone must check on every push and the key it opens sealed cards with;
+ * `registrationId` and `payloadKey` are stable across token rotation.
  */
 export async function registerNativePush(
   request: NativePushRegistrationRequest,
@@ -149,7 +149,9 @@ export async function registerNativePush(
   if (
     typeof result.registrationId !== 'string' ||
     typeof result.stationId !== 'string' ||
-    typeof result.stationKey !== 'string'
+    typeof result.stationKey !== 'string' ||
+    typeof result.payloadKey !== 'string' ||
+    !/^[A-Za-z0-9_-]{43}$/.test(result.payloadKey)
   ) {
     throw new Error('Malformed native push registration response');
   }
@@ -157,6 +159,7 @@ export async function registerNativePush(
     registrationId: result.registrationId,
     stationId: result.stationId,
     stationKey: result.stationKey,
+    payloadKey: result.payloadKey,
   };
 }
 
