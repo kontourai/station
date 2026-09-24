@@ -45,6 +45,9 @@ class AgentActivityPlugin(private val activity: Activity) : Plugin(activity) {
     val manager = context.getSystemService(NotificationManager::class.java)
     val result = JSObject()
     result.put("sdkInt", Build.VERSION.SDK_INT)
+    // The web layer registers this exact package with its Station; it differs
+    // per channel (.nightly, .beta, .debug) and must not be guessed.
+    result.put("packageName", context.packageName)
     result.put("notificationsEnabled", NotificationManagerCompat.from(context).areNotificationsEnabled())
     // Live Updates are Android 16 (API 36). The user can revoke promotion
     // per app, in which case cards still post but never become chips.
