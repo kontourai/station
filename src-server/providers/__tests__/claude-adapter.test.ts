@@ -1043,6 +1043,32 @@ describe('ClaudeAdapter', () => {
       await adapter.stopSession(threadId);
     });
 
+    test('a result naming a send still held as queued publishes that send’s start before its completion', async () => {
+      const controlled = createControlledMockQuery();
+      mockQuery.mockReturnValue(controlled);
+      const adapter = new ClaudeAdapter();
+      const events = collect(adapter);
+      const threadId = 'queued-send-merged';
+      await adapter.startSession({ provider: 'claude', threadId });
+      const a = await adapter.sendTurn({ threadId, input: 'A' });
+      await adapter.interruptTurn(threadId, a.turnId);
+      const b = await adapter.sendTurn({ threadId, input: 'B' });
+      // B is queued behind the stopped A; the engine merges it into one
+      // turn whose result names both.
+      controlled.push(successResult(threadId, [a.turnId, b.turnId]));
+      await flush();
+      const bEvents = events
+        .filter(
+          (event) =>
+            event.turnId === b.turnId &&
+            (event.method === 'turn.started' ||
+              event.method === 'turn.completed'),
+        )
+        .map((event) => event.method);
+      expect(bEvents).toEqual(['turn.started', 'turn.completed']);
+      await adapter.stopSession(threadId);
+    });
+
     test('with uuids, a stopped turn’s success result is attributed by uuid even when a later send is running', async () => {
       const controlled = createControlledMockQuery();
       mockQuery.mockReturnValue(controlled);
