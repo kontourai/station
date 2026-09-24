@@ -164,15 +164,28 @@ const SDK_BROAD_MODULE_EDGES = Object.freeze([
 /** Repository data readers and explicit runtime seams supplementing import analysis. */
 export const GOVERNED_REPO_DATA_EDGES = Object.freeze([
   {
+    // #2458: the same overflow class as SDK_TRANSPORT_EDGES (#2301). The
+    // matrix is imported by `contracts/agent.ts`, `config.ts` and `tool.ts`,
+    // so its related graph is most of the UI and server corpus, and a
+    // matrix-only change ran fast-checks past its 12-minute budget with zero
+    // failures. The suites that exercise the matrix's own declarations run
+    // here; its consumers run in the required merge-queue full regression.
     pattern: 'packages/contracts/src/engine-capability-matrix.ts',
-    related: true,
     tests: [
       'packages/contracts/src/__tests__/engine-capability-matrix.test.ts',
+      'packages/contracts/src/__tests__/agent-capability-profile.test.ts',
+      'src-server/providers/__tests__/child-work-conformance.test.ts',
+      'src-server/providers/__tests__/engine-image-input-declaration.test.ts',
+      'src-server/providers/__tests__/tool-policy-delivery-tripwire.test.ts',
       'src-server/services/orchestration/__tests__/attached-session-adoption.test.ts',
+      'src-server/services/orchestration/__tests__/engine-capability-basis-vocabulary.test.ts',
       'src-server/services/orchestration/__tests__/orchestration-service.test.ts',
+      'src-ui/src/components/acp-connections/__tests__/EngineCapabilitySummary.test.tsx',
     ],
     reason:
-      'engine continuation declarations control adoption command admission',
+      'engine capability declarations: own-behaviour suites; the import ' +
+      'graph is too broad for the fast lane, so consumers run in the ' +
+      'merge-queue full regression (#2458)',
   },
   {
     pattern: 'src-server/services/orchestration/attached-session-adoption.ts',
