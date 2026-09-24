@@ -834,6 +834,16 @@ export function wireAgentActivityPublisher(
    */
   const lastTimestamps = new Map<string, number>();
 
+  /** Keeps only timestamps a device state or a tombstone still refers to. */
+  function pruneLastTimestamps() {
+    const referenced = new Set([
+      ...[...devices.values()].map((state) => state.registrationId),
+      ...tombstoneStates.keys(),
+    ]);
+    for (const id of [...lastTimestamps.keys()])
+      if (!referenced.has(id)) lastTimestamps.delete(id);
+  }
+
   /** Per retired registration: its end's and deletions' backoff. */
   const tombstoneStates = new Map<
     string,
@@ -872,7 +882,11 @@ export function wireAgentActivityPublisher(
       }
       // Its activity has long ended on the phone, and the gateway's sweep
       // reclaims its channels: nothing left worth a request.
-      logger.warn('agent-activity: dropped a retired live activity after 24 h');
+      // Once per tombstone, even if removing it keeps failing.
+      warnOnce(
+        `expired:${tombstone.registrationId}`,
+        'agent-activity: dropped a retired live activity after 24 h',
+      );
       try {
         devicePairing.updateNativePushTombstone?.(
           tombstone.registrationId,
@@ -1511,6 +1525,7 @@ export function wireAgentActivityPublisher(
     if (targets === null) return 'stalled';
     if (targets.length === 0 && tombstones().length === 0) {
       forgetUnregistered(targets);
+      pruneLastTimestamps();
       return unreadablePlatforms.size > 0 ? 'partial' : 'complete';
     }
     let key: PushSigningKey | null;
@@ -1760,12 +1775,7 @@ export function wireAgentActivityPublisher(
       return updatedAt;
     });
     forgetUnregistered(targets);
-    const referenced = new Set([
-      ...[...devices.values()].map((state) => state.registrationId),
-      ...tombstoneStates.keys(),
-    ]);
-    for (const id of [...lastTimestamps.keys()])
-      if (!referenced.has(id)) lastTimestamps.delete(id);
+    pruneLastTimestamps();
     return failedPrincipals.size > 0 || unreadablePlatforms.size > 0
       ? 'partial'
       : 'complete';

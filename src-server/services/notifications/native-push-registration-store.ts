@@ -771,9 +771,10 @@ export class NativePushIosRegistrationStore extends RegistrationFileStore<
   /**
    * Retires an activity whose registration is already gone (it was revoked
    * while the activity's start was in flight): it joins that registration's
-   * tombstone, or starts one. A tombstone that already holds another
-   * activity takes this one's channel as a deletion instead (this activity
-   * then goes stale on the phone).
+   * tombstone, or starts one, to be ended. A start only follows an end that
+   * was already sent (steps run in order, and a failed end stops them), so
+   * an activity the tombstone already holds is one whose end has gone out —
+   * a rollover's — and only its channel still needs deleting.
    */
   retireLiveActivity(tombstone: NativePushIosTombstone): void {
     const { registrations, tombstones } = this.readAll();
@@ -785,23 +786,22 @@ export class NativePushIosRegistrationStore extends RegistrationFileStore<
       this.writeAll(registrations, [...current, tombstone]);
       return;
     }
-    let merged: NativePushIosTombstone = { ...existing };
-    if (tombstone.activity && !existing.activity)
-      merged.activity = tombstone.activity;
-    else if (tombstone.activity)
-      merged = {
-        ...merged,
-        channelDeletes: [
-          ...(merged.channelDeletes ?? []),
-          {
-            bundleId: tombstone.bundleId,
-            environment: tombstone.environment,
-            channelId: tombstone.activity.channelId,
-            channelAuth: tombstone.activity.channelAuth,
-            deleteAt: tombstone.retiredAt,
-          },
-        ].slice(-CHANNEL_DELETES_MAX),
-      };
+    const ended = existing.activity;
+    const merged: NativePushIosTombstone = {
+      ...existing,
+      ...(tombstone.activity ? { activity: tombstone.activity } : {}),
+    };
+    if (ended && tombstone.activity)
+      merged.channelDeletes = [
+        ...(existing.channelDeletes ?? []),
+        {
+          bundleId: existing.bundleId,
+          environment: existing.environment,
+          channelId: ended.channelId,
+          channelAuth: ended.channelAuth,
+          deleteAt: tombstone.retiredAt,
+        },
+      ].slice(-CHANNEL_DELETES_MAX);
     this.writeAll(
       registrations,
       current.map((entry) => (entry === existing ? merged : entry)),

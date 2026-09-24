@@ -345,7 +345,9 @@ iPhone yet.
   dismissed now, then deletes its channels, so a revoked phone stops
   showing sessions even when the Station restarted in between. A phone
   revoked while its start is in flight has that start's activity retired
-  the same way once the start answers. A tombstone older than 24 hours is
+  the same way once the start answers; during a rollover that start's
+  activity is the one ended, and the rolled-over one (whose end already
+  went out) only has its channel deleted. A tombstone older than 24 hours is
   dropped: the activity has ended on the phone, and the sweep reclaims its
   channels. While one registration file is unreadable, its phones keep
   their state but are only looked at on the stalled-flush minute. A token

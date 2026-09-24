@@ -1198,4 +1198,45 @@ describe('agent-activity publisher: iOS review regressions', () => {
     expect(h.orderViolations).toEqual([]);
     await h.publisher.stop();
   });
+
+  test('revoked during a rollover: the new activity is ended too, and both channels are deleted', async () => {
+    let deviceId = '';
+    let revoked = false;
+    const h = harness({
+      answer: (call) => {
+        if (call.body.event === 'end' && !revoked) {
+          revoked = true;
+          h.pairing.revokeDevice(deviceId, 'operator-credential');
+        }
+        return undefined;
+      },
+    });
+    ({ deviceId } = await h.registerIos());
+    await h.change([row('s1', 'running', START - 1000)]);
+    const [first] = [...h.channels.keys()];
+    while (!revoked) await h.fireNextTimer();
+    await h.publisher.drain();
+    const calls = h.iosCalls();
+    const rollover = calls.findIndex((call) => call.body.event === 'end');
+    const after = calls.slice(rollover);
+    expect(after[0]?.body.channelId).toBe(first);
+    expect(after[1]?.body.event).toBe('start');
+    const second = Buffer.from('channel-2').toString('base64');
+    // The activity the rollover's start made is ended too...
+    expect(
+      after
+        .filter((call) => call.body.event === 'end')
+        .map((call) => call.body.channelId),
+    ).toEqual([first, second]);
+    expect(
+      after
+        .filter((call) => call.body.op === 'delete')
+        .map((call) => call.body.channelId)
+        .sort(),
+    ).toEqual([first, second].sort());
+    // ...and both channels are gone.
+    expect(h.channels.size).toBe(0);
+    expect(h.iosFile()?.tombstones).toBeUndefined();
+    await h.publisher.stop();
+  });
 });
