@@ -256,13 +256,14 @@ export function mismatchedLinkHost(
  * The real host beside the link text, for `mismatchedLinkHost`. The visible
  * `(evil.test)` is hidden from assistive technology and replaced by a
  * sentence that says what it means, so a screen reader hears where the link
- * goes rather than a parenthetical it must interpret.
+ * goes rather than a parenthetical it must interpret. The sentence is not
+ * selectable, so copying the link yields the visible text alone.
  */
 export function LinkHostBadge({ host }: { host: string }) {
   return (
     <span className="chat-link-host">
       <span aria-hidden="true"> ({host})</span>
-      <span className="sr-only">, goes to {host}</span>
+      <span className="chat-link-host__sr sr-only">, goes to {host}</span>
     </span>
   );
 }

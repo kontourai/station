@@ -80,3 +80,10 @@
   opacity: 0.8;
   white-space: nowrap;
 }
+
+/* The badge's screen-reader sentence stays out of a copied selection: the
+   visible "(host)" already carries the fact. */
+.chat-link-host__sr {
+  -webkit-user-select: none;
+  user-select: none;
+}
