@@ -25,6 +25,13 @@ const sdkMocks = vi.hoisted(() => ({
       }
     | undefined
   >,
+  capturedProjectViewOptions: [] as Array<
+    | {
+        requestScope?: { apiBase: string; authorityKey: string };
+        requireCredential?: boolean;
+      }
+    | undefined
+  >,
   isLoading: false,
   isError: false,
   error: undefined as Error | undefined,
@@ -108,6 +115,36 @@ vi.mock('../hooks/useGitStatus', () => ({
 
 vi.mock('../hooks/useRecentLayouts', () => ({
   trackRecentLayout: vi.fn(),
+}));
+
+vi.mock('../contexts/ProjectsContext', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  useScopedProjectPageViewQuery: vi.fn(() => {
+    const requestScope = authorityRef.current;
+    if (requestScope)
+      sdkMocks.capturedProjectViewOptions.push({
+        requestScope,
+        requireCredential: true,
+      });
+    const byAuthority = sdkMocks.projectByAuthority as Record<
+      string,
+      ProjectConfig | undefined
+    >;
+    return {
+      data:
+        sdkMocks.isError || sdkMocks.isLoading
+          ? undefined
+          : requestScope
+            ? (byAuthority[requestScope.authorityKey] ?? sdkMocks.project)
+            : undefined,
+      isPending: sdkMocks.isLoading,
+      isError: sdkMocks.isError,
+      error: sdkMocks.error,
+      refetch: sdkMocks.refetch,
+      requestScope,
+      isMemberProject: false,
+    };
+  }),
 }));
 
 vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
@@ -293,6 +330,7 @@ describe('ProjectPage (#762 query-failure regression)', () => {
   beforeEach(() => {
     pluginRegistryState.loadStatus = {};
     sdkMocks.project = projectFixture;
+    sdkMocks.capturedProjectViewOptions = [];
     sdkMocks.isLoading = false;
     sdkMocks.isError = false;
     sdkMocks.error = undefined;
@@ -767,6 +805,7 @@ describe('ProjectPage scope migration (#481 slice A)', () => {
     sdkMocks.isError = false;
     sdkMocks.error = undefined;
     sdkMocks.capturedProjectQueryConfigs = [];
+    sdkMocks.capturedProjectViewOptions = [];
     sdkMocks.layouts = [];
     sdkMocks.layoutsLoading = false;
     sdkMocks.layoutsError = false;
@@ -843,10 +882,10 @@ describe('ProjectPage scope migration (#481 slice A)', () => {
     expect(await screen.findByText('Home B')).toBeTruthy();
     expect(screen.queryByText('Home A')).toBeNull();
 
-    // Every read went through the canonical fail-closed contract.
-    for (const config of sdkMocks.capturedProjectQueryConfigs) {
-      expect(config?.requireRequestScope).toBe(true);
-      expect(config?.requestScope).toBeDefined();
+    // Every detail read used the captured authority and SDK-owned auth.
+    for (const options of sdkMocks.capturedProjectViewOptions) {
+      expect(options?.requestScope).toBeDefined();
+      expect(options?.requireCredential).toBe(true);
     }
   });
 
@@ -856,12 +895,8 @@ describe('ProjectPage scope migration (#481 slice A)', () => {
     renderWithAuthority();
     // Fail closed: the page must not paint ANY authority's project body.
     expect(screen.queryByText('Demo Project')).toBeNull();
-    // The canonical wrapper captured an absent scope and marked the read
-    // fail-closed — an ambient `_getApiBase()` fallback is not possible.
-    expect(sdkMocks.capturedProjectQueryConfigs.length).toBeGreaterThan(0);
-    for (const config of sdkMocks.capturedProjectQueryConfigs) {
-      expect(config?.requireRequestScope).toBe(true);
-      expect(config?.requestScope).toBeUndefined();
-    }
+    // No API read starts without a current captured scope, so no ambient
+    // `_getApiBase()` fallback can paint project data.
+    expect(sdkMocks.capturedProjectViewOptions).toEqual([]);
   });
 });

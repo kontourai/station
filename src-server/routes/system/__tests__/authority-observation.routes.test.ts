@@ -222,6 +222,10 @@ async function createHarness(options?: {
   // device gate still denies everything outside the exact self-read.
   app.post('/api/projects/:slug/publish', (c) => c.json({ published: true }));
   app.get('/api/auth/status', (c) => c.json({ authenticated: true }));
+  app.get('/api/system/identity', (c) =>
+    c.json({ bootId: '11111111-1111-4111-8111-111111111111' }),
+  );
+  app.get('/api/system/status', (c) => c.json({ ready: true }));
 
   const request = async (
     path: string,
@@ -490,6 +494,36 @@ describe('GET /api/auth/authority through the production composition', () => {
     }>(allowed);
     expect(body.principal.id).toMatch(/^human:deployment:[0-9a-f]{64}$/);
     expect(body.grant.kind).toBe('device');
+
+    // The browser's encrypted-route gate may read this Station's own
+    // identity after account/Device admission, without opening system status
+    // or another operator/runtime surface.
+    const identity = await h.request(
+      '/api/system/identity',
+      h.bothCookies(credential),
+    );
+    expect(identity.status).toBe(200);
+    expect(await readJson(identity)).toEqual({
+      bootId: '11111111-1111-4111-8111-111111111111',
+    });
+    const identityWithoutAccount = await h.request(
+      '/api/system/identity',
+      h.bearer(credential),
+    );
+    expect(identityWithoutAccount.status).toBe(401);
+    const identityWrongVerb = await h.request('/api/system/identity', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${credential}`,
+        Cookie: 'fixture_account=valid',
+      },
+    });
+    expect(identityWrongVerb.status).toBe(403);
+    const siblingSystemRead = await h.request(
+      '/api/system/status',
+      h.bothCookies(credential),
+    );
+    expect(siblingSystemRead.status).toBe(403);
 
     // Everything else stays denied: a sibling auth self-read, a non-read
     // verb on the observation path, and a management mutation.

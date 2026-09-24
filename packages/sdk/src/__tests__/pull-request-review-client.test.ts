@@ -105,3 +105,51 @@ test('retains provider uncertainty without retrying a write', async () => {
   ).resolves.toEqual(result);
   expect(transport.mutateJson).toHaveBeenCalledOnce();
 });
+test('a refusal shows the server reason instead of "refresh"', async () => {
+  transport.getJson.mockResolvedValue(
+    new Response(
+      JSON.stringify({
+        success: false,
+        error: 'Checkout forge host is ambiguous or unsupported',
+      }),
+      { status: 404, headers: { 'content-type': 'application/json' } },
+    ),
+  );
+  await expect(
+    getPullRequestReview('http://station.test', target, options),
+  ).rejects.toThrow(
+    'Pull request review unavailable: Checkout forge host is ambiguous or unsupported.',
+  );
+});
+test('owner and repository compare case-insensitively; another repository is still refused', async () => {
+  transport.getJson.mockResolvedValue(
+    response({
+      available: true,
+      data: {
+        ...snapshot,
+        pullRequest: {
+          ...snapshot.pullRequest,
+          repository: { owner: 'Group/Nested', name: 'REPO' },
+        },
+      },
+    }),
+  );
+  await expect(
+    getPullRequestReview('http://station.test', target, options),
+  ).resolves.toMatchObject({ available: true });
+  transport.getJson.mockResolvedValue(
+    response({
+      available: true,
+      data: {
+        ...snapshot,
+        pullRequest: {
+          ...snapshot.pullRequest,
+          repository: { owner: 'group/nested', name: 'other' },
+        },
+      },
+    }),
+  );
+  await expect(
+    getPullRequestReview('http://station.test', target, options),
+  ).rejects.toThrow('different or incomplete target');
+});
