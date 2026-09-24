@@ -801,6 +801,93 @@ describe('#2452 muse serve: turn terminals', () => {
   });
 });
 
+describe('#2452 muse serve: a posture change of sandbox re-hosts the session', () => {
+  test('`never` mid-session: an idle session moves to a --disable-sandbox host, resumed, in allowAll', async () => {
+    const h = harness();
+    await run(h, 'workflow-child-deny', {
+      approvalMode: 'ask',
+      decide: 'decline',
+    });
+    const sending = h.adapter.sendTurn({
+      threadId: THREAD,
+      input: 'again',
+      modelOptions: { approvalMode: 'never' },
+    });
+    for (let attempt = 0; attempt < 100 && !h.hosts[1]; attempt += 1) {
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+    const host = h.hosts[1];
+    expect(host.args).toEqual(['serve', '--disable-sandbox']);
+    expect(h.hosts[0].stdinEnded).toBe(true);
+    const answer = async (method: string, result: unknown) => {
+      const request = await host.nextRequest(method, new Set());
+      host.writeFrame({ jsonrpc: '2.0', id: request.id, result });
+      return request;
+    };
+    await answer(
+      'initialize',
+      (
+        loadMuseServeCapture('workflow-child-deny')[2].msg as {
+          result: unknown;
+        }
+      ).result,
+    );
+    await answer('session/resume', {
+      session: {
+        sessionId: '00000000-0000-7000-8000-000000000002',
+        approvalMode: { mode: 'promptUnmatched' },
+      },
+      viewCursor: '',
+      history: {},
+      pendingRequests: [],
+    });
+    await answer('approval/listPending', { approvals: [], userInputs: [] });
+    const setMode = await answer('session/setApprovalMode', {
+      status: 'accepted',
+    });
+    expect(setMode.params?.mode).toBe('allowAll');
+    await answer('turn/start', {
+      status: 'accepted',
+      disposition: 'started',
+      turnId: 'turn-never',
+    });
+    await sending;
+    await settle();
+    expect(
+      of(h.events, 'turn.started').find(
+        (event) => event.turnId === 'turn-never',
+      )?.metadata,
+    ).toMatchObject({
+      approvalMode: 'never',
+      museApprovalMode: 'allowAll',
+      museSandbox: 'disabled',
+    });
+  });
+
+  test('a sandbox change is refused, not forced, while a workflow child still runs', async () => {
+    const h = harness();
+    const stopAt = captureIndex(
+      'workflow-child-approve',
+      (msg) =>
+        msg.method === 'item/updated' &&
+        JSON.stringify(msg).includes('"status":"started"'),
+    );
+    await run(h, 'workflow-child-approve', {
+      approvalMode: 'ask',
+      stopAt: stopAt + 1,
+    });
+    await expect(
+      h.adapter.sendTurn({
+        threadId: THREAD,
+        input: 'again',
+        modelOptions: { approvalMode: 'never' },
+      }),
+    ).rejects.toThrow('cannot change its sandbox');
+    expect(h.hosts).toHaveLength(1);
+    expect(h.hosts[0].stdinEnded).toBe(false);
+  });
+});
+
 describe('#2452 muse serve: exec stays the fallback', () => {
   test('a host that fails the handshake falls back to exec, says why, and reports no child work', async () => {
     const execSpawned: string[][] = [];
