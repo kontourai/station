@@ -30,6 +30,7 @@ import {
   DOCK_REGION_IDS,
   type DockRegionId,
   dockMirrorDiff,
+  endPhonePaneLayerInPlace,
   isDockRegion,
   moveRegionPanes as moveRegionPanesInArrangement,
   occupiedRegion,
@@ -748,18 +749,18 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
 
   // The layer is a bottom-only device's (review M3): when the fold opens (a
   // narrow window widened, split view resized) the layer ENDS where it
-  // stands. Its pane stays as an ordinary tab — the device now has a tab
-  // strip, so nothing is hidden, and nothing the pane holds (a review draft)
-  // is unmounted by a resize nobody chose — and only the maximize the layer
-  // added is undone. The history entry goes with the registration.
+  // stands (`endPhonePaneLayerInPlace`). A pane it moved out of another
+  // region goes back there, so the record keeps it where the user put it
+  // (that move remounts the pane in its own region's host); any other pane
+  // stays as an ordinary tab — the device now has a tab strip — and is not
+  // unmounted by a resize nobody chose. Only the maximize the layer added is
+  // undone. The history entry goes with the registration.
   useEffect(() => {
     if (bottomOnly) return;
     const layer = phoneLayerRef.current;
     if (!layer) return;
     setPhoneLayer(null);
-    const next = updateRegion(regionsRef.current, layer.region, {
-      maximized: layer.previous.maximized,
-    });
+    const next = endPhonePaneLayerInPlace(regionsRef.current, layer);
     if (next === regionsRef.current) {
       navigationStore.lastDockMaximized = layerDockMemoryRef.current;
       return;

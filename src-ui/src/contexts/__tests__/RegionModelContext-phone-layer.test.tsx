@@ -489,6 +489,57 @@ describe('a pane opened on a phone opens over Chat', () => {
     await waitFor(() => expect(onLayerEntry()).toBe(false));
   });
 
+  // Delta review M-b: the fold-open ending undid only the maximize, so a
+  // pane the layer had moved out of a hidden side region was left in Chat's
+  // region and the record lost it from the region the user put it in.
+  test('widening out of the fold returns a moved pane to its region, and the record keeps it there', async () => {
+    Object.defineProperty(window, 'innerWidth', {
+      configurable: true,
+      value: 600,
+    });
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: query === MOBILE_MEDIA_QUERY,
+      media: query,
+      onchange: null,
+      addListener: () => {},
+      removeListener: () => {},
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      dispatchEvent: () => false,
+    }));
+    await mount();
+    act(() => {
+      current().placeSurface(PR, 'right');
+      current().setRegion('right', { visible: false });
+      current().selectPane('bottom', 'chat');
+    });
+    const settle = () =>
+      act(() => new Promise((resolve) => setTimeout(resolve, 250)));
+    await settle();
+    const record = () =>
+      JSON.stringify(deviceSettingsStore.get('regionArrangement'));
+    const before = record();
+    expect(before).toContain(PR);
+
+    act(() => {
+      current().openSurfaceInRegion(PR);
+    });
+    await waitFor(() => expect(current().phoneLayer).not.toBeNull());
+    Object.defineProperty(window, 'innerWidth', {
+      configurable: true,
+      value: 1200,
+    });
+    act(() => window.dispatchEvent(new Event('resize')));
+    await waitFor(() => expect(current().phoneLayer).toBeNull());
+    expect(current().regions.right).toMatchObject({
+      panes: [PR],
+      visible: false,
+    });
+    expect(current().regions.bottom.panes).toEqual(['chat']);
+    await settle();
+    expect(record()).toBe(before);
+  });
+
   test('a fine-pointer desktop keeps its own rule: a side region, no layer, no history', async () => {
     stubDevice({ phone: false });
     await mount();

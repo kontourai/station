@@ -579,7 +579,9 @@ export interface PhonePaneLayer {
    * Where a minted pane was held before the layer moved it over Chat — a
    * side region a phone never shows — so the way back returns it there
    * rather than leaving it unplaced (review M2). Null for a pane that was
-   * placed nowhere.
+   * placed nowhere. Never `main`: a pane held there does not open a layer
+   * (the provider keeps `main`'s own rule), so a layer pane's origin is
+   * always a dock region.
    */
   origin: PhonePaneLayerOrigin | null;
 }
@@ -713,6 +715,25 @@ export function restorePhonePaneLayer(
   }
   if (!state.visible) return next;
   return updateRegion(next, region, { maximized: previous.maximized });
+}
+
+/**
+ * End a phone layer IN PLACE, for the fold opening under it (a narrow window
+ * widened): no Back, so no return to Chat. A pane the layer moved out of
+ * another region goes back there (the record must not lose it — review
+ * M2/M-b); any other pane stays as an ordinary tab of the layer's region,
+ * which a device with every region shows in its strip. Only the maximize the
+ * layer added is undone.
+ */
+export function endPhonePaneLayerInPlace(
+  arrangement: RegionArrangement,
+  layer: PhonePaneLayer,
+): RegionArrangement {
+  const next = layer.origin ? returnLayerPane(arrangement, layer) : arrangement;
+  if (!next[layer.region].visible) return next;
+  return updateRegion(next, layer.region, {
+    maximized: layer.previous.maximized,
+  });
 }
 
 export interface DockMirrorDiff {
