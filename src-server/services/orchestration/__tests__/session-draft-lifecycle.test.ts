@@ -871,6 +871,106 @@ describe('Draft lifecycle derivation (#2310)', () => {
       expect(await listedIds(instance)).toEqual([ROOT]);
     });
 
+    // Verifier M3: every Session the discard deletes must pass the gate the
+    // named one passed — and the refusal must not reveal the other Session.
+    test('a successor owned by someone else stops the discard, answered as not found', async () => {
+      upsert(ROOT);
+      seedNeverPrompted(ROOT);
+      const child = `${ROOT}:session:0f0f0f0f-0000-4000-8000-00000000beef`;
+      store.reserveNextConversationSession({
+        conversationId: ROOT,
+        predecessorSessionId: ROOT,
+        proposedSessionId: child,
+        createdAt: at(5_000),
+      });
+      upsert(child, { createdAt: at(5_000) });
+      seedNeverPrompted(child, ROOT, { userId: SOMEONE_ELSE });
+      const instance = await service();
+
+      const error = await refusal(
+        instance.dispatchWithReceipt(
+          { type: 'discardDraft', threadId: ROOT },
+          { userId: OWNER },
+        ),
+      );
+
+      expect(error.message).toBe(`Session not found: ${ROOT}`);
+      expect(error.message).not.toContain(child);
+      expect(error.code).toBeUndefined();
+      expect(store.readSessionByThread(child)).toBeDefined();
+      expect(store.readSessionByThread(ROOT)).toBeDefined();
+    });
+
+    // Verifier L4: a successor that was reserved but never started has no
+    // history and no owner; it must not make the Draft undiscardable.
+    test('a reserved successor that never started goes with the Draft', async () => {
+      upsert(ROOT);
+      seedNeverPrompted(ROOT);
+      const reserved = `${ROOT}:session:0f0f0f0f-0000-4000-8000-00000000cafe`;
+      store.reserveNextConversationSession({
+        conversationId: ROOT,
+        predecessorSessionId: ROOT,
+        proposedSessionId: reserved,
+        createdAt: at(5_000),
+      });
+      const instance = await service();
+      // Fixture guard: the row still reads Draft and the lineage has both.
+      expect((await instance.listSessionReadModel(ownerRead()))[0]?.draft).toBe(
+        true,
+      );
+      expect(store.conversationSessions(ROOT)).toHaveLength(2);
+
+      await instance.dispatchWithReceipt(
+        { type: 'discardDraft', threadId: ROOT },
+        { userId: OWNER },
+      );
+
+      expect(await listedIds(instance)).toEqual([]);
+      expect(store.conversationSessions(ROOT)).toEqual([]);
+    });
+
+    // Verifier L5: the handoff and context-boundary records between deleted
+    // Sessions go too.
+    test('handoff and context-boundary records of the discarded conversation are removed', async () => {
+      upsert(ROOT);
+      seedNeverPrompted(ROOT);
+      const successor = `${ROOT}:session:0f0f0f0f-0000-4000-8000-0000000b0001`;
+      store.reserveConversationContextBoundary({
+        boundaryId: 'boundary-draft',
+        conversationId: ROOT,
+        predecessorSessionId: ROOT,
+        successorSessionId: successor,
+        idempotencyKey: 'boundary-draft',
+        policy: 'empty-next-cold-start',
+        status: 'reserved',
+        actorId: OWNER,
+        createdAt: at(5_000),
+      });
+      store.reserveConversationHandoff({
+        conversationId: ROOT,
+        predecessorSessionId: successor,
+        sessionId: `${successor}:handoff`,
+        idempotencyKey: 'handoff-draft',
+        targetAgentId: 'codex',
+        targetEnvironmentId: 'env-test',
+        messageDigest: 'digest-empty',
+        createdAt: at(6_000),
+      });
+      // Fixture guard: both records exist before the discard.
+      expect(store.listConversationContextBoundaries(ROOT)).toHaveLength(1);
+      expect(store.listConversationHandoffs(ROOT)).toHaveLength(1);
+      const instance = await service();
+
+      await instance.dispatchWithReceipt(
+        { type: 'discardDraft', threadId: ROOT },
+        { userId: OWNER },
+      );
+
+      expect(store.listConversationContextBoundaries(ROOT)).toEqual([]);
+      expect(store.listConversationHandoffs(ROOT)).toEqual([]);
+      expect(await listedIds(instance)).toEqual([]);
+    });
+
     test('a Draft conversation is discarded whole: no member is left naming a deleted Session', async () => {
       upsert(ROOT);
       seedNeverPrompted(ROOT);

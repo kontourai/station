@@ -6278,6 +6278,167 @@ describe('OrchestrationService', () => {
     ).toContain(draft);
   });
 
+  // #2312 verifier H1: a send that resolved its adapter before the discard
+  // took the lifecycle lock queues behind it and proceeds after the delete.
+  // With an adapter that (like a real one) throws for a stopped engine, the
+  // old code recorded an indeterminate turn that refused the id forever.
+  function refuseStoppedEngineSends() {
+    bedrock.sendTurn.mockImplementation(async (input) => {
+      if (!bedrock.sessions.has(input.threadId))
+        throw new Error(
+          `No provider session found for thread: ${input.threadId}`,
+        );
+      return { threadId: input.threadId, turnId: 'bedrock-turn' };
+    });
+  }
+
+  test('#2312: a send queued behind a discard is refused cleanly, and the id restarts', async () => {
+    refuseStoppedEngineSends();
+    const draft = 'draft-send-queued';
+    const start = () =>
+      service.dispatch({
+        type: 'startSession',
+        input: { threadId: draft, provider: 'bedrock', cwd: tmp },
+      });
+    await start();
+    const stopping = deferred<void>();
+    const stopEntered = deferred<void>();
+    bedrock.stopSession.mockImplementationOnce(async (threadId) => {
+      stopEntered.resolve();
+      await stopping.promise;
+      bedrock.sessions.delete(threadId);
+      const exit: CanonicalRuntimeEvent = {
+        eventId: `${threadId}-exit`,
+        provider: 'bedrock',
+        threadId,
+        sessionId: threadId,
+        createdAt: new Date().toISOString(),
+        method: 'session.exited',
+      };
+      bedrock.events.push(exit);
+    });
+    const discard = service.dispatchWithReceipt({
+      type: 'discardDraft',
+      threadId: draft,
+    });
+    await stopEntered.promise;
+    const send = service
+      .dispatch({
+        type: 'sendTurn',
+        input: { threadId: draft, input: 'sent while discarding' },
+      })
+      .then(
+        () => undefined,
+        (error: unknown) => error as { code?: string; message: string },
+      );
+    // Let the send resolve its adapter and queue on the turn-start lock.
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    stopping.resolve();
+    await discard;
+
+    const refused = await send;
+    expect(refused?.code).toBe('draft_discarded');
+    expect(bedrock.sendTurn).not.toHaveBeenCalled();
+    expect(service.hasActiveTurn(draft)).toBe(false);
+    expect(eventStore.readSessionByThread(draft)).toBeUndefined();
+
+    await start();
+    await expect(
+      service.dispatch({
+        type: 'sendTurn',
+        input: { threadId: draft, input: 'a new chat on the old id' },
+      }),
+    ).resolves.toMatchObject({ threadId: draft });
+  });
+
+  test('#2312: a send already underway when the discard arrives wins, and the discard is refused', async () => {
+    refuseStoppedEngineSends();
+    const draft = 'draft-send-first';
+    await service.dispatch({
+      type: 'startSession',
+      input: { threadId: draft, provider: 'bedrock', cwd: tmp },
+    });
+    const accepted = deferred<ProviderTurnStartResult>();
+    const invoked = deferred<void>();
+    bedrock.sendTurn.mockImplementationOnce(async () => {
+      invoked.resolve();
+      return accepted.promise;
+    });
+    const send = service.dispatch({
+      type: 'sendTurn',
+      input: { threadId: draft, input: 'first' },
+    });
+    await invoked.promise;
+
+    const discard = service
+      .dispatchWithReceipt({ type: 'discardDraft', threadId: draft })
+      .then(
+        () => undefined,
+        (error: unknown) => error as { code?: string },
+      );
+    accepted.resolve({ threadId: draft, turnId: 'bedrock-turn' });
+    await send;
+
+    expect((await discard)?.code).toBe('not_a_draft');
+    expect(bedrock.stopSession).not.toHaveBeenCalledWith(draft);
+    expect(eventStore.readSessionByThread(draft)).toBeDefined();
+  });
+
+  // #2312 verifier M2: the stopped engine's own exit, arriving after a
+  // restart on the id, would close the NEW session. The discard consumes it.
+  test("#2312: the discarded engine's late exit is consumed before the delete, so a restart stays open", async () => {
+    const draft = 'draft-late-exit-restart';
+    const start = () =>
+      service.dispatch({
+        type: 'startSession',
+        input: { threadId: draft, provider: 'bedrock', cwd: tmp },
+      });
+    await start();
+    bedrock.stopSession.mockImplementationOnce(async (threadId) => {
+      bedrock.sessions.delete(threadId);
+      setTimeout(() => {
+        const exit: CanonicalRuntimeEvent = {
+          eventId: `${threadId}-slow-exit`,
+          provider: 'bedrock',
+          threadId,
+          sessionId: threadId,
+          createdAt: new Date().toISOString(),
+          method: 'session.exited',
+        };
+        bedrock.events.push(exit);
+      }, 50);
+    });
+    const began = Date.now();
+    await service.dispatchWithReceipt({
+      type: 'discardDraft',
+      threadId: draft,
+    });
+    // The exit ended the wait, not the cap.
+    expect(Date.now() - began).toBeLessThan(1_500);
+    await start();
+
+    const witness = 'draft-late-exit-witness';
+    await service.dispatch({
+      type: 'startSession',
+      input: { threadId: witness, provider: 'bedrock', cwd: tmp },
+    });
+    const witnessExit: CanonicalRuntimeEvent = {
+      eventId: `${witness}-exit`,
+      provider: 'bedrock',
+      threadId: witness,
+      sessionId: witness,
+      createdAt: new Date().toISOString(),
+      method: 'session.exited',
+    };
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    bedrock.events.push(witnessExit);
+    await waitFor(
+      () => eventStore.readSessionByThread(witness)?.status,
+      (status) => status === 'closed',
+    );
+    expect(eventStore.readSessionByThread(draft)?.status).not.toBe('closed');
+  });
+
   // #2312 review MEDIUM: the lifecycle locks do not cover lineage
   // reservation, so a successor can be reserved while the discard awaits the
   // engine stop. It must not survive naming a deleted predecessor.

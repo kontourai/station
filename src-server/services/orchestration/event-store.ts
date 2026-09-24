@@ -10811,6 +10811,15 @@ export class EventStore {
       this.db
         .prepare('DELETE FROM provider_session_state WHERE thread_id = ?')
         .run(threadId);
+      // #2312 verifier H1: a possible-effect record for a thread that no
+      // longer exists would keep reporting an active turn and refuse every
+      // later start under the id. Lifecycle claims are left to their holder,
+      // which releases them itself (a discard deletes while holding one).
+      this.db
+        .prepare(
+          "DELETE FROM orchestration_turn_boundaries WHERE thread_id = ? AND state != 'lifecycle'",
+        )
+        .run(threadId);
       this.db
         .prepare(
           'DELETE FROM orchestration_conversation_history WHERE thread_id = ?',
