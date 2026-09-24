@@ -138,19 +138,34 @@ export function addressBucket(address: string): string {
   const groups = (part: string) =>
     part === ''
       ? []
-      : part
-          .split(':')
-          // An embedded IPv4 suffix (::ffff:1.2.3.4) stands for two groups.
-          .flatMap((group) => (group.includes('.') ? ['0', '0'] : [group]));
+      : part.split(':').flatMap((group) => {
+          // An embedded dotted IPv4 (::ffff:192.0.2.1) is the last two groups.
+          if (!group.includes('.')) return [group];
+          const octets = group.split('.').map(Number);
+          return [
+            ((octets[0] << 8) | octets[1]).toString(16),
+            ((octets[2] << 8) | octets[3]).toString(16),
+          ];
+        });
   const left = groups(head);
   const right = tail === undefined ? [] : groups(tail);
   const zeros =
     tail === undefined
       ? []
       : Array(Math.max(0, 8 - left.length - right.length)).fill('0');
-  const full = [...left, ...zeros, ...right];
-  const prefix = full.slice(0, 4).map((group) => group.replace(/^0+(?=.)/, ''));
-  return `${prefix.join(':')}::/64`;
+  const full = [...left, ...zeros, ...right].map(
+    (group) => Number.parseInt(group, 16) || 0,
+  );
+  // IPv4-mapped (::ffff:0:0/96) and NAT64 (64:ff9b::/96) addresses carry one
+  // IPv4 client in their last 32 bits: limit that client, not the prefix.
+  const mapped = full.slice(0, 6).join(':') === '0:0:0:0:0:65535';
+  const nat64 = full.slice(0, 6).join(':') === '100:65435:0:0:0:0';
+  if (mapped || nat64)
+    return [full[6] >> 8, full[6] & 255, full[7] >> 8, full[7] & 255].join('.');
+  return `${full
+    .slice(0, 4)
+    .map((group) => group.toString(16))
+    .join(':')}::/64`;
 }
 
 // The channel id shape Apple issues (verified 2026-09-24), for sizing a start

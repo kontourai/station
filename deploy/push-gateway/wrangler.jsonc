@@ -15,6 +15,13 @@
     // APNS_AUTH_KEY and APNS_CHANNEL_AUTH_SECRET secrets; until both are set
     // the /v1/apns routes answer 503.
     "ALLOWED_IOS_BUNDLES": "io.kontourai.station,io.kontourai.station.beta,io.kontourai.station.nightly,io.kontourai.station.dev.instance",
+    // The (environment, bundle) scopes the channel sweep manages. The sweep
+    // deletes every channel in a swept scope that THIS deployment's ledger
+    // does not record, so each swept scope must have exactly one ledger:
+    // never create channels in a swept scope from anywhere else (wrangler
+    // dev, a staging deploy, a manual test). Develop and test on the sandbox
+    // environment or on io.kontourai.station.dev.instance, which are unswept.
+    "SWEEP_SCOPES": "production:io.kontourai.station,production:io.kontourai.station.beta,production:io.kontourai.station.nightly",
     "APNS_TEAM_ID": "U7KHF2QAC4",
     "APNS_KEY_ID": "AY2F92348K"
   },

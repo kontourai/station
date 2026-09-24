@@ -11,8 +11,13 @@
 //
 // KV is eventually consistent (a fresh write can take about a minute to be
 // visible elsewhere), so the sweep never deletes a channel the first time it
-// finds it unrecorded: it marks it, and deletes it only if a later run still
-// finds it unrecorded and marked.
+// finds it unrecorded: it marks it with the time, and deletes it only when a
+// later run still finds it unrecorded at least ten minutes after the mark.
+//
+// The sweep manages only the scopes (environment + bundle) it is told to.
+// Within a swept scope every channel must come from this gateway and this
+// ledger: one created by `wrangler dev`, a staging deploy or a manual test
+// would be deleted. Development and testing belong on unswept scopes.
 
 import type { ApnsSender } from './apns.ts';
 import type { ApnsEnvironment } from './apns-request.ts';
@@ -22,21 +27,22 @@ import { bodyHash } from './station-auth.ts';
 export const LEDGER_TTL_SECONDS = 12 * 60 * 60;
 /** Longer than the gap between sweeps, so a mark survives to the next run. */
 const SUSPECT_TTL_SECONDS = 60 * 60;
+/** How long a channel must stay unrecorded after its mark to be deleted. */
+export const MIN_MARK_AGE_SECONDS = 10 * 60;
 /** Per run: each delete is a subrequest to Apple and one to KV. */
 export const MAX_SWEEP_DELETES = 200;
-const MAX_SWEEP_MARKS = 500;
-const ENVIRONMENTS: readonly ApnsEnvironment[] = ['sandbox', 'production'];
+export const MAX_SWEEP_MARKS = 500;
 
 /** The subset of a Workers KV namespace the ledger uses. */
 export interface LedgerStore {
   put(
     key: string,
     value: string,
-    options?: { expirationTtl?: number },
+    options?: { expirationTtl?: number; metadata?: unknown },
   ): Promise<void>;
   delete(key: string): Promise<void>;
   list(options: { prefix: string; cursor?: string }): Promise<{
-    keys: Array<{ name: string }>;
+    keys: Array<{ name: string; metadata?: unknown }>;
     list_complete: boolean;
     cursor?: string;
   }>;
@@ -84,16 +90,20 @@ export async function forgetChannel(
   });
 }
 
-/** Every channel id under a prefix; throws if KV cannot list completely. */
+/**
+ * Every channel id under a prefix, with its metadata; throws if KV cannot
+ * list completely.
+ */
 async function listIds(
   store: LedgerStore,
   prefix: string,
-): Promise<Set<string>> {
-  const ids = new Set<string>();
+): Promise<Map<string, unknown>> {
+  const ids = new Map<string, unknown>();
   let cursor: string | undefined;
   for (;;) {
     const page = await store.list({ prefix, ...(cursor ? { cursor } : {}) });
-    for (const { name } of page.keys) ids.add(name.slice(prefix.length));
+    for (const { name, metadata } of page.keys)
+      ids.set(name.slice(prefix.length), metadata);
     if (page.list_complete) return ids;
     if (!page.cursor) throw new Error('KV list ended without a cursor');
     cursor = page.cursor;
@@ -108,17 +118,60 @@ export interface SweepReport {
   failed: number;
   /** Unrecorded channels left for the next run because a cap was reached. */
   deferred: number;
+  /** Scopes whose channels or ledger could not be read: nothing deleted. */
   skipped: string[];
 }
+
+export interface SweepScope {
+  environment: ApnsEnvironment;
+  bundleId: string;
+}
+
+/**
+ * Reads `SWEEP_SCOPES` (`<environment>:<bundle>`, comma-separated). Entries
+ * naming an unknown environment or a bundle the gateway does not serve are
+ * dropped and logged; nothing is swept by default.
+ */
+export function parseSweepScopes(
+  raw: string | undefined,
+  allowedBundles: readonly string[],
+): SweepScope[] {
+  const scopes: SweepScope[] = [];
+  for (const entry of (raw ?? '').split(',')) {
+    const trimmed = entry.trim();
+    if (!trimmed) continue;
+    const separator = trimmed.indexOf(':');
+    const environment = trimmed.slice(0, separator);
+    const bundleId = trimmed.slice(separator + 1);
+    if (
+      separator < 0 ||
+      (environment !== 'production' && environment !== 'sandbox') ||
+      !allowedBundles.includes(bundleId)
+    ) {
+      console.error(`apns sweep scope ignored: ${trimmed.slice(0, 128)}`);
+      continue;
+    }
+    scopes.push({ environment, bundleId });
+  }
+  return scopes;
+}
+
+const markedAtOf = (metadata: unknown): number | null => {
+  const value = (metadata as { markedAt?: unknown } | null)?.markedAt;
+  return typeof value === 'number' ? value : null;
+};
 
 export async function sweepChannels(input: {
   store: LedgerStore;
   sender: ApnsSender;
-  bundles: readonly string[];
+  scopes: readonly SweepScope[];
+  nowSeconds: number;
   maxDeletes?: number;
+  maxMarks?: number;
 }): Promise<SweepReport> {
-  const { store, sender, bundles } = input;
+  const { store, sender, scopes, nowSeconds } = input;
   const maxDeletes = input.maxDeletes ?? MAX_SWEEP_DELETES;
+  const maxMarks = input.maxMarks ?? MAX_SWEEP_MARKS;
   const report: SweepReport = {
     listed: 0,
     kept: 0,
@@ -128,15 +181,16 @@ export async function sweepChannels(input: {
     deferred: 0,
     skipped: [],
   };
-  for (const bundleId of bundles) {
-    for (const environment of ENVIRONMENTS) {
-      const label = `${environment}:${bundleId}`;
+  for (const { bundleId, environment } of scopes) {
+    const label = `${environment}:${bundleId}`;
+    // One scope failing (Apple, KV) must not stop the others.
+    try {
       const listed = await sender.listChannels(bundleId, environment);
       if (!listed) {
         report.skipped.push(label);
         continue;
       }
-      // If the ledger cannot be read completely, this throws and the run
+      // If the ledger cannot be read completely, this throws and the scope
       // deletes nothing: an unreadable ledger must never look empty.
       const ledgered = await listIds(
         store,
@@ -153,17 +207,21 @@ export async function sweepChannels(input: {
           report.kept += 1;
           continue;
         }
-        if (!suspects.has(channelId)) {
-          if (report.marked >= MAX_SWEEP_MARKS) {
+        const markedAt = markedAtOf(suspects.get(channelId));
+        if (markedAt === null) {
+          if (report.marked >= maxMarks) {
             report.deferred += 1;
             continue;
           }
-          await store.put(suspectKey(channel), '1', {
+          await store.put(suspectKey(channel), '', {
             expirationTtl: SUSPECT_TTL_SECONDS,
+            metadata: { markedAt: nowSeconds },
           });
           report.marked += 1;
           continue;
         }
+        // Too recent: a ledger write may still be on its way.
+        if (nowSeconds - markedAt < MIN_MARK_AGE_SECONDS) continue;
         if (report.deleted + report.failed >= maxDeletes) {
           report.deferred += 1;
           continue;
@@ -180,6 +238,12 @@ export async function sweepChannels(input: {
           report.failed += 1;
         }
       }
+    } catch (error) {
+      console.error(
+        `apns channel sweep skipped ${label}:`,
+        error instanceof Error ? error.message : 'unknown error',
+      );
+      report.skipped.push(label);
     }
   }
   return report;

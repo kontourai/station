@@ -1,6 +1,10 @@
 import { ApnsSender } from './apns.ts';
 import { parseChannelAuthSecrets } from './apns-channel-auth.ts';
-import { type LedgerStore, sweepChannels } from './apns-ledger.ts';
+import {
+  type LedgerStore,
+  parseSweepScopes,
+  sweepChannels,
+} from './apns-ledger.ts';
 import { parseApnsCredentials } from './apns-token.ts';
 import { parseServiceAccount, type ServiceAccount } from './fcm.ts';
 import {
@@ -27,6 +31,12 @@ export interface Env {
   APNS_KEY_ID?: string;
   /** Comma-separated iOS bundle ids the gateway may deliver to. */
   ALLOWED_IOS_BUNDLES?: string;
+  /**
+   * `<environment>:<bundle>` pairs the channel sweep manages. Every channel
+   * in a swept scope must come from this gateway's ledger; unset sweeps
+   * nothing.
+   */
+  SWEEP_SCOPES?: string;
   /** HMAC secret for channelAuth (a Worker secret, at least 32 characters). */
   APNS_CHANNEL_AUTH_SECRET?: string;
   /** The rotated-out secret, still accepted while Stations refresh. */
@@ -139,14 +149,21 @@ function apnsConfig(env: Env): ApnsGatewayConfig | null {
 }
 
 /** Ships dark with the routes: no APNs configuration or ledger, no sweep. */
-export async function sweep(env: Env, fetchImpl?: typeof fetch): Promise<void> {
+export async function sweep(
+  env: Env,
+  fetchImpl?: typeof fetch,
+  nowSeconds: number = Math.floor(Date.now() / 1000),
+): Promise<void> {
   const apns = apnsConfig(env);
   if (!apns) return;
+  const scopes = parseSweepScopes(env.SWEEP_SCOPES, apns.allowedBundles);
+  if (scopes.length === 0) return;
   try {
     const report = await sweepChannels({
       store: apns.ledger,
-      sender: new ApnsSender(apns.credentials, fetchImpl),
-      bundles: apns.allowedBundles,
+      sender: new ApnsSender(apns.credentials, fetchImpl, () => nowSeconds),
+      scopes,
+      nowSeconds,
     });
     console.error(`apns channel sweep: ${JSON.stringify(report)}`);
   } catch (error) {

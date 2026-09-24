@@ -164,7 +164,10 @@ export const encodeBody = (value: unknown): Uint8Array<ArrayBuffer> =>
  * callers must follow the cursor.
  */
 export function fakeLedger() {
-  const entries = new Map<string, { value: string; ttl?: number }>();
+  const entries = new Map<
+    string,
+    { value: string; ttl?: number; metadata?: unknown }
+  >();
   const store = {
     entries,
     failPut: false,
@@ -172,10 +175,14 @@ export function fakeLedger() {
     async put(
       key: string,
       value: string,
-      options?: { expirationTtl?: number },
+      options?: { expirationTtl?: number; metadata?: unknown },
     ) {
       if (store.failPut) throw new Error('kv put failed');
-      entries.set(key, { value, ttl: options?.expirationTtl });
+      entries.set(key, {
+        value,
+        ttl: options?.expirationTtl,
+        metadata: options?.metadata,
+      });
     },
     async delete(key: string) {
       entries.delete(key);
@@ -189,7 +196,10 @@ export function fakeLedger() {
       const page = names.slice(start, start + 2);
       const done = start + 2 >= names.length;
       return {
-        keys: page.map((name) => ({ name })),
+        keys: page.map((name) => ({
+          name,
+          metadata: entries.get(name)?.metadata,
+        })),
         list_complete: done,
         ...(done ? {} : { cursor: String(start + 2) }),
       };

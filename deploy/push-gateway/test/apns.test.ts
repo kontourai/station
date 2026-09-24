@@ -964,7 +964,14 @@ test('client addresses are limited per IPv6 /64, IPv4 as they are', async () => 
     '2001:db8:1:2::/64',
   );
   assert.equal(addressBucket('2001:db8::1'), '2001:db8:0:0::/64');
-  assert.equal(addressBucket('::ffff:192.0.2.1'), '0:0:0:0::/64');
+  // IPv4-mapped and NAT64 addresses are one IPv4 client each.
+  assert.equal(addressBucket('::ffff:192.0.2.1'), '192.0.2.1');
+  assert.equal(addressBucket('::FFFF:c000:0201'), '192.0.2.1');
+  assert.equal(addressBucket('64:ff9b::198.51.100.7'), '198.51.100.7');
+  assert.equal(addressBucket('64:ff9b::c633:6407'), '198.51.100.7');
+  // Other addresses that merely end in an IPv4 are still bucketed by /64.
+  assert.equal(addressBucket('2001:db8:1:2::192.0.2.1'), '2001:db8:1:2::/64');
+  assert.equal(addressBucket('64:ff9b:1::1'), '64:ff9b:1:0::/64');
   assert.equal(addressBucket('fe80::'), 'fe80:0:0:0::/64');
 
   const log: string[] = [];

@@ -114,6 +114,11 @@ npx tsc -p deploy/push-gateway/tsconfig.json
 
 ## Deploy
 
+The gateway needs the **Workers Paid plan**. KV writes (deletes count as writes)
+are one per start, one per channel delete, and up to about 700 per sweep run
+(500 marks, 200 marker removals); the Free plan's 1,000 writes a day would
+make starts fail with 503 within hours.
+
 ```sh
 cd deploy/push-gateway
 npx --yes wrangler@4 deploy
@@ -173,15 +178,35 @@ A successful delete, explicit or compensating, removes the entry. The
 compensating delete after a refused start runs through `ctx.waitUntil`, so a
 caller that disconnects cannot cancel it.
 
-Every 15 minutes the sweep lists each allowed bundle's channels in both
-environments (`GET /1/apps/<bundle>/all-channels`) and deletes the ones the
-ledger does not record. KV is eventually consistent, so a channel is only
-marked the first time it is found unrecorded and deleted if the next run still
-finds it unrecorded; an unreadable ledger aborts the run rather than looking
-empty. A run deletes at most 200 channels and logs its counts
-(`apns channel sweep: {...}`). So every leak (a Station that never deletes, a
-failed compensating delete, a crash between create and record) heals within
-about 13 hours.
+Every 15 minutes the sweep lists the channels of each scope named in
+`SWEEP_SCOPES` (`GET /1/apps/<bundle>/all-channels`) and deletes the ones the
+ledger does not record. KV is eventually consistent, so the first time a
+channel is found unrecorded it is only marked (with the time, in the marker's
+metadata), and it is deleted only if a later run still finds it unrecorded at
+least ten minutes after the mark. A scope whose ledger or channel list cannot
+be read is skipped (an unreadable ledger must never look empty) without
+stopping the other scopes. A run deletes at most 200 channels, marks at most
+500, and logs its counts (`apns channel sweep: {...}`). Apple's list is not
+known to page; if it answers with any key besides `channels`, or a length that
+is a round hundred of at least 1,000, the sweep logs `may be paged`.
+
+In steady state every leak (a Station that never deletes, a failed
+compensating delete, a crash between create and record) heals within about 13
+hours: 12 hours of ledger, then two sweeps. That bound assumes the sweep keeps
+up. Under the full create load the global limit allows (10 a minute, 150 per
+run) a backlog only drains by about 50 channels per run, so a large backlog
+(after an outage, or when a scope is first swept) takes correspondingly longer.
+
+**Sweep scopes.** The sweep deletes every channel in a swept scope that this
+deployment's ledger does not record, so each swept environment and bundle
+must have exactly one ledger: never create channels in a swept scope from
+anywhere else (`wrangler dev`, a staging deploy, a manual test with the real
+key), or they will be deleted. `SWEEP_SCOPES` defaults to production for the
+three shipping bundles (`io.kontourai.station`, `.beta`, `.nightly`); the
+sandbox environment and `io.kontourai.station.dev.instance` are never swept,
+so do development and testing there. An entry naming another environment or a
+bundle outside `ALLOWED_IOS_BUNDLES` is ignored and logged, and an empty value
+sweeps nothing. Channels leaked in unswept scopes are not reclaimed.
 
 ## Credentials
 

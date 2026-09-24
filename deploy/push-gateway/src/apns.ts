@@ -192,6 +192,15 @@ export class ApnsSender {
       channels?: unknown;
     } | null;
     if (!Array.isArray(body?.channels)) return null;
+    // Paging is unverified. Extra keys (a cursor?) or a suspiciously round
+    // length suggest a partial list; say so, since channels past a page are
+    // never swept.
+    const extra = Object.keys(body).filter((key) => key !== 'channels');
+    const count = body.channels.length;
+    if (extra.length > 0 || (count >= 1000 && count % 100 === 0))
+      console.error(
+        `apns channel list for ${environment}:${bundleId} may be paged: ${count} channels, extra keys [${extra.join(',').slice(0, 128)}]`,
+      );
     const ids: string[] = [];
     for (const entry of body.channels) {
       const id =
