@@ -165,6 +165,30 @@ describe('child-work client path (legacy Claude tuples → contract reducer)', (
     expect(announcements()).toEqual(['⏹ Background task stopped']);
   });
 
+  test('#2459: a settle with no observed outcome is never announced as finished', () => {
+    // The legacy tuple's unknown status translates to `unresolved`.
+    tuple('task/settled', {
+      taskId: 'a',
+      description: 'Mystery',
+      backgrounded: true,
+      status: 'timeout',
+      summary: 'partial notes',
+    });
+    handlers.applyChildWorkToChat(threadId, {
+      kind: 'settle',
+      producer: 'engine-subagent',
+      reporterThreadId: threadId,
+      childId: 'b',
+      status: 'stopped-unconfirmed',
+      result: { summary: 'still going?' },
+      identity: { title: 'Runaway', backgrounded: true },
+    });
+    expect(announcements()).toEqual([
+      'Background task ended — outcome unknown — Mystery\n\npartial notes',
+      'Background task stop requested — not confirmed — Runaway\n\nstill going?',
+    ]);
+  });
+
   test('a reconnect snapshot view is authoritative: an omitted task stops reading as running, and its later real settle still announces', () => {
     tuple('task/registry', {
       active: [{ taskId: 'a', description: 'Long job', backgrounded: true }],

@@ -10,7 +10,7 @@
  * pane showing another conversation's work under this one's tab.
  */
 
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import type { BackgroundTaskEntry } from '../../contexts/background-tasks-store';
 
@@ -40,7 +40,9 @@ vi.mock('../../contexts/NavigationContext', () => ({
 vi.mock('../../contexts/useShowSurface', () => ({
   useShowSurface: () => showSurface,
 }));
+let sessions: unknown[] = [];
 vi.mock('@kontourai/station-sdk', () => ({
+  useOrchestrationSessionsQuery: () => ({ data: sessions }),
   useOrchestrationSessionQuery: (...args: unknown[]) =>
     useOrchestrationSessionQuery(...args),
   useInterruptDelegatedTaskMutation: (...args: unknown[]) =>
@@ -54,8 +56,8 @@ import { AgentsWorkspacePane } from '../AgentsWorkspacePane';
 function entry(overrides: Partial<BackgroundTaskEntry> = {}) {
   return {
     id: 'call-1',
-    kind: 'agent' as const,
-    source: 'delegate-session' as const,
+    kind: 'tool' as const,
+    source: 'tool-event' as const,
     chatThreadId: 'chat-1',
     title: 'Investigate flaky test',
     startedAt: Date.now() - 65_000,
@@ -72,7 +74,29 @@ function mount(view: {
   return render(<AgentsWorkspacePane />);
 }
 
+/** #2459: delegates reach the pane as child work, from the session read model. */
+function delegateSession(overrides: Record<string, unknown> = {}) {
+  return {
+    threadId: 'delegate-1',
+    childWork: {
+      asChild: {
+        producer: 'station-delegate',
+        reporterThreadId: 'delegate-1',
+        childId: 'delegate-1',
+        status: 'running',
+        parent: { taskId: 'chat-1' },
+        title: 'Investigate flaky test',
+        result: { handle: { kind: 'session', threadId: 'delegate-1' } },
+        controls: { stop: 'delegate-interrupt' },
+        ...overrides,
+      },
+    },
+  };
+}
+
 beforeEach(() => {
+  localStorage.clear();
+  sessions = [];
   activeChat = 'chat-1';
   useOrchestrationSessionQuery.mockReturnValue({ data: undefined });
   useInterruptDelegatedTaskMutation.mockReturnValue({
@@ -109,30 +133,23 @@ test('the pane lists the ACTIVE chat’s running and finished work', () => {
   expect(screen.getByText('Investigate flaky test')).toBeTruthy();
   expect(screen.getByText('Rebuild index')).toBeTruthy();
   // Elapsed comes from `startedAt`, which IS carried.
-  expect(screen.getByText(/Agent · 1:0\d/)).toBeTruthy();
+  expect(screen.getByText(/Tool · 1:0\d/)).toBeTruthy();
 });
 
-test('no chat is no list, and an empty list says so rather than showing zeroes', () => {
+test('no chat shows every conversation’s work; an empty chat says so rather than showing zeroes', () => {
   activeChat = null;
   mount({ running: [], finished: [] });
-  expect(screen.getByText('Nothing here yet')).toBeTruthy();
-  // Only the no-chat empty carries the remedy; the empty list has none to
-  // offer, so it says nothing rather than inventing an instruction.
-  expect(
-    screen.getByText('Open a chat to see the work it set running.'),
-  ).toBeTruthy();
+  // #2459: with no chat there is no "this conversation" — the pane reads All.
+  expect(screen.getByText('No agent work yet')).toBeTruthy();
   expect(useChatBackgroundTasks).toHaveBeenCalledWith(null);
   cleanup();
   activeChat = 'chat-1';
   mount({ running: [], finished: [] });
-  expect(screen.getByText('Nothing here yet')).toBeTruthy();
-  expect(
-    screen.queryByText('Open a chat to see the work it set running.'),
-  ).toBeNull();
+  expect(screen.getByText('No subagents running')).toBeTruthy();
   expect(screen.queryByText(/Running \(/)).toBeNull();
 });
 
-test('a task the provider reported no tokens for shows no token clause', () => {
+test('a delegate the provider reported no tokens for shows no token clause', () => {
   // The engine reported usage but no token total (ACP reports context
   // occupancy only). Rendering `usageTokens ?? 0` here would print a
   // "0 tokens" nobody measured; the clause is dropped instead and the tool
@@ -140,29 +157,25 @@ test('a task the provider reported no tokens for shows no token clause', () => {
   useOrchestrationSessionQuery.mockReturnValue({
     data: { events: [] },
   });
-  const { container } = mount({
-    running: [entry({ delegateThreadId: 'delegate-1' })],
-    finished: [],
-  });
-  // The two zeroes are not the same zero. Tool uses are counted by Station
-  // from `tool.completed`, so zero there is a measurement and prints;
-  // `totalTokens` is absent from the fold entirely, so no token figure
-  // exists to print. `usageTokens ?? 0` would print one anyway, and this is
-  // the assertion that reds for it.
-  expect(
-    container.querySelector('.background-tasks-sheet__usage')?.textContent,
-  ).toBe('0 tool uses');
+  sessions = [delegateSession()];
+  const { container } = mount({ running: [], finished: [] });
+  // #2459: a delegate's accounting is read only once its row is opened.
+  expect(useOrchestrationSessionQuery).not.toHaveBeenCalled();
+  fireEvent.click(
+    screen.getByRole('button', { name: /Investigate flaky test/ }),
+  );
+  expect(container.querySelector('.child-work-row__usage')?.textContent).toBe(
+    '0 tool uses',
+  );
 });
 
 test('a running delegate can be stopped; a provider task with no session thread cannot', () => {
+  sessions = [delegateSession()];
   mount({
     running: [
       entry({
-        delegateThreadId: 'delegate-1',
-        stop: { kind: 'delegate-interrupt' },
-      }),
-      entry({
         id: 'call-3',
+        kind: 'agent',
         title: 'Provider subagent',
         source: 'provider-task',
         stop: { kind: 'provider-task-stop' },
@@ -176,9 +189,10 @@ test('a running delegate can be stopped; a provider task with no session thread 
   expect(screen.getAllByText('Stop')).toHaveLength(1);
 });
 
-test('opening a delegate’s transcript reveals it on Activity', () => {
-  mount({ running: [entry({ delegateThreadId: 'delegate-1' })], finished: [] });
-  screen.getByText('View transcript').click();
+test('opening a delegate’s session reveals it on Activity', () => {
+  sessions = [delegateSession()];
+  mount({ running: [], finished: [] });
+  fireEvent.click(screen.getByRole('button', { name: 'Open session' }));
   expect(showSurface).toHaveBeenCalledWith('activity', {
     session: 'delegate-1',
   });

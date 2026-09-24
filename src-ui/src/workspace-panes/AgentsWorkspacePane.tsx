@@ -299,7 +299,7 @@ export function AgentsWorkspacePane() {
           {finishedCount > 0 && (
             <section className="background-tasks-sheet__section">
               <h3 className="background-tasks-sheet__section-label">
-                Finished ({finishedCount})
+                <span>Finished ({finishedCount})</span>
                 <span className="agents-pane__section-qualifier">
                   subagents since this window connected
                 </span>

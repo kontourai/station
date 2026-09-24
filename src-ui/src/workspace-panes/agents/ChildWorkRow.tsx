@@ -251,8 +251,7 @@ export function ChildWorkRow({
           )}
           {stopMutation.isError && row.stop && (
             <span className="child-work-row__error" role="alert">
-              Could not stop this {isDelegate ? 'task' : 'subagent'}. Try
-              again.
+              Could not stop this {isDelegate ? 'task' : 'subagent'}. Try again.
             </span>
           )}
         </div>

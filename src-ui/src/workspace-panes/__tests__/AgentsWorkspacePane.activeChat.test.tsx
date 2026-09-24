@@ -39,6 +39,7 @@ vi.mock('../../contexts/useShowSurface', () => ({
   useShowSurface: () => vi.fn(),
 }));
 vi.mock('@kontourai/station-sdk', () => ({
+  useOrchestrationSessionsQuery: () => ({ data: [] }),
   useOrchestrationSessionQuery: (...args: unknown[]) =>
     useOrchestrationSessionQuery(...args),
   useInterruptDelegatedTaskMutation: (...args: unknown[]) =>
@@ -124,7 +125,7 @@ test('the pane lists the work the badge counts, for a conversation whose store k
   expect(screen.getByTestId('badge').textContent).toBe('1');
   expect(screen.getByText('Running (1)')).toBeTruthy();
   expect(screen.getByText('Investigate flaky test')).toBeTruthy();
-  expect(screen.queryByText('Nothing here yet')).toBeNull();
+  expect(screen.queryByText('No subagents running')).toBeNull();
 });
 
 /**
@@ -135,13 +136,13 @@ test('the pane lists the work the badge counts, for a conversation whose store k
 test('no chat is still no list, and an unknown id borrows nobody else’s work', () => {
   activeChat = null;
   const { unmount } = render(<AgentsWorkspacePane />);
-  expect(
-    screen.getByText('Open a chat to see the work it set running.'),
-  ).toBeTruthy();
+  // #2459: no chat reads the All scope, which borrows no chat's tool calls.
+  expect(screen.getByText('No agent work yet')).toBeTruthy();
+  expect(screen.queryByText('Investigate flaky test')).toBeNull();
   unmount();
 
   activeChat = 'conv-nobody-has';
   render(<AgentsWorkspacePane />);
-  expect(screen.getByText('Nothing here yet')).toBeTruthy();
+  expect(screen.getByText('No subagents running')).toBeTruthy();
   expect(screen.queryByText('Investigate flaky test')).toBeNull();
 });

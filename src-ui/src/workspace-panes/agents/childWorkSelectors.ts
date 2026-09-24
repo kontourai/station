@@ -150,7 +150,9 @@ export function engineStopIsWired(provider: string | undefined): boolean {
 }
 
 /** Whether the engine's matrix says it reports nothing about subagents. */
-export function engineReportsNoSubagents(provider: string | undefined): boolean {
+export function engineReportsNoSubagents(
+  provider: string | undefined,
+): boolean {
   return engineMatrix(provider)?.subagentObservability.state === 'none';
 }
 
@@ -334,7 +336,8 @@ function treeOrder(
   const visit = (candidate: Candidate, baseLevel: number) => {
     out.push({ ...candidate.row, level: baseLevel + candidate.row.level });
     const nested = (byParent.get(candidate.row.key) ?? []).sort(compare);
-    for (const child of nested) visit(child, baseLevel + candidate.row.level + 1);
+    for (const child of nested)
+      visit(child, baseLevel + candidate.row.level + 1);
   };
   for (const root of roots.sort(compare)) visit(root, 0);
   return out;
@@ -389,7 +392,12 @@ export function selectChatChildWork(
       item.producer === 'engine-subagent'
         ? item.reporterThreadId
         : item.parent?.taskId;
-    if (anchor && resolveChat(anchor, input, sessions) === chatKey)
+    // The key itself is a thread id: a thread with no chat still reads its
+    // own work (`useChatStoreKey`'s fall-through).
+    if (
+      anchor &&
+      (anchor === chatKey || resolveChat(anchor, input, sessions) === chatKey)
+    )
       return true;
     const parent = candidate.parentKey
       ? byKey.get(candidate.parentKey)
