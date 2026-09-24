@@ -511,8 +511,7 @@ The UI-mode receipt requires the selected browser ICE pair and Station answer
 to contain TURN relay candidates, and the protected Project to open through
 the live UI. This is a browser acceptance check only; it does not establish a
 second physical machine, two-person access, internet reachability, or native
-client behavior. Until the command completes successfully against the current
-source, retain the not-verified status in [Connections](connections.md).
+client behavior. The journey passed for source revision `a36f390151f4dcebda3219c09e36413bc11ac971`; its machine-readable receipt also records the source SHA and clean-worktree status. The full account, cookie-adoption, and revocation matrix remains covered by the commands above without `--station-ui`.
 
 Build the pinned Pion executable as described above first. This mode starts the
 actual broker CLI in a separate owned process with private SQLite state and

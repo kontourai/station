@@ -96,12 +96,19 @@ verification. After the operator approves the Device and Station activates its
 account session, the browser accepts the invitation through the encrypted
 channel; the response must confirm Project membership without granting Device
 access. Close the dialog to open the newly permitted Project.
-Cookie-session adoption and native route selection remain separate work; the
-ordinary positive browser journey is not yet verified in the local lab. Browser
-broker routes also disable attachment staging uploads, interactive terminal
-WebSockets and Nova voice sockets for now: those features still require direct
-browser XHR, fetch or WebSocket access, so Station reports them unavailable
-before sending attachment bytes, upload grants, terminal input or voice audio.
+The local/free `--station-ui` acceptance drives this ordinary browser flow on
+two distinct HTTPS Origins on one host. It verifies operator key approval,
+invitation acceptance, TURN relay selection, fresh account login, explicit
+Device approval, Project access, and a published Task through the Station UI;
+the unpublished Task remains hidden, and the browser sends no direct Station
+`/api` requests after accepting the route. This fixture does not prove Internet
+NAT traversal, a second physical machine, or the real two-person journey.
+Cookie-session adoption, native route selection, and the full account,
+cookie-adoption, and revocation matrix remain separate checks. Browser broker
+routes also disable attachment staging uploads, interactive terminal WebSockets
+and Nova voice sockets for now: those features still require direct browser
+XHR, fetch or WebSocket access, so Station reports them unavailable before
+sending attachment bytes, upload grants, terminal input or voice audio.
 
 One broker can serve several Stations, and one Station can be reached through
 more than one route. A broker route belongs beneath the Station it reaches; it
