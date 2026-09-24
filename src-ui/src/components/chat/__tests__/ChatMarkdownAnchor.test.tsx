@@ -575,6 +575,21 @@ describe('a link whose text names another host than it goes to', () => {
       // a ref or file name that happens to look like a domain.
       ['https://github.com/o/r/blob/main/config.io', 'config.io'],
       ['https://github.com/o/r/pull/1', 'release.app'],
+      // A file with a position, anchor or query is still a file (#HIGH r2).
+      ['https://github.com/o/r/blob/main/src/app.ts#L42', 'app.ts:42'],
+      ['https://github.com/o/r/blob/main/src/app.ts#L42', 'app.ts#L42'],
+      [
+        'https://github.com/o/r/blob/main/README.md#install',
+        'README.md#install',
+      ],
+      [
+        'https://github.com/o/r/blob/main/package.json?plain=1',
+        'package.json?plain=1',
+      ],
+      ['https://example.test/a', 'app.ts:42'],
+      // A version string is not an address on a forge link.
+      ['https://github.com/o/r/pull/1', '1.2.3.4'],
+      ['https://github.com/o/r/blob/v1.2.3.4/a.ts', '1.2.3.4'],
       // Without a scheme, `@` makes an address, not a host.
       ['https://example.test/a', 'someone@github.com'],
     ] as const) {

@@ -125,17 +125,22 @@ const IPV4 = /^\d{1,3}(?:\.\d{1,3}){3}$/;
 const DOMAIN = /^(?:[\p{L}\p{N}-]+\.)+(?:\p{L}{2,}|xn--[a-z0-9-]+)$/u;
 
 interface HostClaim {
-  /** `host[:port]` exactly as the text shows it, before normalisation. */
-  authority: string;
-  /** Written as nothing but a host: no scheme, path, port or `www.`. */
-  bare: boolean;
+  /** The host as the text shows it, lower-cased, without a port. */
+  host: string;
+  /** The port the text writes, or null when it writes none. */
+  port: string | null;
+  /** The text starts with `http://` or `https://`. */
+  scheme: boolean;
+  /** A `/` follows the authority: the text reads as a URL, not a name. */
+  path: boolean;
 }
 
 /**
  * The host a link's VISIBLE TEXT claims, or null when the text does not read
  * as a URL or host: `https://github.com/o/r`, `www.github.com`,
  * `github.com/o/r`, `github.com:443`, `localhost:3000`, `127.0.0.1` and a
- * bare `github.com` do; `the fix` and `src/app.ts` do not.
+ * bare `github.com` do; `the fix` and `src/app.ts` do not. Whether a claim
+ * COUNTS for a given link is `mismatchedLinkHost`'s decision.
  *
  * The authority is read from the text as a reader sees it, not as a URL
  * parser would: in `https://github.com@evil.test` the parser's host is
@@ -158,16 +163,39 @@ function claimedHost(text: string): HostClaim | null {
   const match = /^(.+?)(?::(\d{1,5}))?$/.exec(authority);
   if (!match) return null;
   const host = match[1]!.toLowerCase().replace(/\.$/, '');
-  const hasPort = match[2] !== undefined;
   if (host !== 'localhost' && !IPV4.test(host) && !DOMAIN.test(host))
     return null;
-  const bare =
-    !scheme &&
-    end === -1 &&
-    !hasPort &&
-    !host.startsWith('www.') &&
-    !IPV4.test(host);
-  return { authority: hasPort ? `${host}:${match[2]}` : host, bare };
+  return {
+    host,
+    port: match[2] ?? null,
+    scheme: !!scheme,
+    path: end !== -1 && rest[end] === '/',
+  };
+}
+
+/**
+ * Whether a claim counts for this link. Text with a scheme always does.
+ * Scheme-less text is ambiguous between a host and a file or identifier —
+ * `app.ts:42`, `README.md#install` and `package.json?plain=1` split into a
+ * "host" and a suffix exactly as `github.com:443/x` does — so:
+ *
+ * - a scheme-less host whose last label reads as a file extension is a file
+ *   name, whatever follows it (`www.` hosts excepted: no file starts so);
+ * - for a pull request or forge file, whose text is usually a file, ref or
+ *   path, only scheme-less text with a `/` path counts (`github.com/o/r`);
+ * - for an ordinary external site, bare text (`github.com`, `1.2.3.4`)
+ *   counts too.
+ *
+ * Known limit: a dotted code identifier on an external link
+ * (`Array.prototype.map`, `os.path.join`) reads as a host and gets a badge.
+ */
+function claimCounts(claim: HostClaim, external: boolean): boolean {
+  if (claim.scheme) return true;
+  if (!claim.host.startsWith('www.')) {
+    const suffix = claim.host.slice(claim.host.lastIndexOf('.') + 1);
+    if (FILE_LIKE_SUFFIXES.has(suffix)) return false;
+  }
+  return external || claim.path;
 }
 
 /** `host[:port]` normalised as the URL parser would, for comparison. */
@@ -192,31 +220,26 @@ function normalisedAuthority(authority: string, protocol: string) {
  * in its punycode form) is. Text that does not read as a host returns null:
  * prose link text is not a claim.
  *
- * Bare text (`github.com`, `docs.rs`, `logo.png`) is ambiguous between a
- * host and a file name, so it counts as a claim only when `bareIsClaim` —
- * the caller passes that for a link to an ordinary external site, never for a
- * pull request or forge file, whose text is usually a file or ref name — and
- * never when its suffix reads as a file extension.
+ * `external` is true for a link to an ordinary external site, false for a
+ * pull request or forge file; `claimCounts` says what it changes.
  */
 export function mismatchedLinkHost(
   text: string,
   url: string,
-  bareIsClaim: boolean,
+  external: boolean,
 ): string | null {
   const claim = claimedHost(text);
-  if (!claim) return null;
-  if (claim.bare) {
-    if (!bareIsClaim) return null;
-    const suffix = claim.authority.slice(claim.authority.lastIndexOf('.') + 1);
-    if (FILE_LIKE_SUFFIXES.has(suffix)) return null;
-  }
+  if (!claim || !claimCounts(claim, external)) return null;
   let real: URL;
   try {
     real = new URL(url);
   } catch {
     return null;
   }
-  const claimed = normalisedAuthority(claim.authority, real.protocol);
+  const claimed = normalisedAuthority(
+    claim.port === null ? claim.host : `${claim.host}:${claim.port}`,
+    real.protocol,
+  );
   if (!claimed) return null;
   const actual = {
     host: real.hostname.replace(/\.$/, '').replace(/^www\./, ''),
