@@ -122,6 +122,8 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 // has measured — and the branch that reds is then whichever one happened to
 // add the next spawn, not the design that made the deadline fragile.
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
+  // Real CLI prerequisite probes, a loopback listener, and the SQLite runtime owner.
+  'src-server/tools/__tests__/station-control-delegation.provider-quota-connected.test.ts',
   // Creates FIFOs with mkfifo to prove plugin validation refuses them without blocking.
   'src-server/routes/plugins/__tests__/plugin-validate-routes.test.ts',
   // Creates FIFOs and a git repo to prove plugin preview refuses untrusted manifests (#2342).
