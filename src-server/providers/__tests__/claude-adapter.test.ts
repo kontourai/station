@@ -4188,7 +4188,9 @@ describe('ClaudeAdapter', () => {
   });
 
   test('#2436: the server re-applies a refused full access on every turn; the warning is sent once, the refusal is reported on each turn, and a different posture re-arms it', async () => {
-    const mockedQuery = createMockQuery([]);
+    // Controlled, so each turn can end before the next is sent: a send while
+    // a turn is still owed is refused (#2415/#2324).
+    const mockedQuery = createControlledMockQuery();
     mockQuery.mockReturnValue(mockedQuery);
     const adapter = new ClaudeAdapter();
     const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
@@ -4199,6 +4201,7 @@ describe('ClaudeAdapter', () => {
     });
     await iterator.next(); // session.started
     await iterator.next(); // session.configured
+    const THREAD = 'thread-refused-repeat';
     const turn = (approvalMode: string) =>
       adapter.sendTurn({
         threadId: 'thread-refused-repeat',
@@ -4215,6 +4218,7 @@ describe('ClaudeAdapter', () => {
       method: 'turn.started',
       metadata: { approvalEscalationRejected: true },
     });
+    await completeClaudeTurn(mockedQuery, THREAD, iterator);
 
     // The next turn, same recorded posture: no second warning, and the turn
     // still says it was refused.
@@ -4223,6 +4227,7 @@ describe('ClaudeAdapter', () => {
       method: 'turn.started',
       metadata: { approvalMode: 'ask', approvalEscalationRejected: true },
     });
+    await completeClaudeTurn(mockedQuery, THREAD, iterator);
 
     // A different posture applies, then full access is decided again: that
     // is a new refusal, and it is warned about.
@@ -4231,6 +4236,7 @@ describe('ClaudeAdapter', () => {
       method: 'turn.started',
       metadata: { approvalMode: 'auto' },
     });
+    await completeClaudeTurn(mockedQuery, THREAD, iterator);
     await turn('never');
     expect((await iterator.next()).value).toMatchObject({
       method: 'runtime.warning',
