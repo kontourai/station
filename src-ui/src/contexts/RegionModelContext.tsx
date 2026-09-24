@@ -746,6 +746,29 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
     restorePhoneLayer();
   }, [phoneLayer, regions, restorePhoneLayer]);
 
+  // The layer is a bottom-only device's (review M3): when the fold opens (a
+  // narrow window widened, split view resized) the layer ENDS where it
+  // stands. Its pane stays as an ordinary tab — the device now has a tab
+  // strip, so nothing is hidden, and nothing the pane holds (a review draft)
+  // is unmounted by a resize nobody chose — and only the maximize the layer
+  // added is undone. The history entry goes with the registration.
+  useEffect(() => {
+    if (bottomOnly) return;
+    const layer = phoneLayerRef.current;
+    if (!layer) return;
+    setPhoneLayer(null);
+    const next = updateRegion(regionsRef.current, layer.region, {
+      maximized: layer.previous.maximized,
+    });
+    if (next === regionsRef.current) {
+      navigationStore.lastDockMaximized = layerDockMemoryRef.current;
+      return;
+    }
+    pendingDockMemoryRef.current = layerDockMemoryRef.current;
+    regionsRef.current = next;
+    setRegions(next);
+  }, [bottomOnly, setPhoneLayer]);
+
   // One history entry per layer, not per pane: a replacement keeps the entry
   // (the effect is keyed on whether a layer is open), so one Back returns to
   // Chat however many panes were opened over it. DECLARED BEFORE the mirror
@@ -1035,12 +1058,14 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
     updateParams(clearSurfaceDeepLinkParams());
   }, [intentKey]);
 
+  // Never offered off a fold, even for the render before the effect above
+  // ends the layer: "‹ Chat" is a bottom-only device's control.
   const phoneLayerView = useMemo(
     () =>
-      phoneLayer
+      phoneLayer && bottomOnly
         ? { region: phoneLayer.region, surfaceId: phoneLayer.surfaceId }
         : null,
-    [phoneLayer],
+    [bottomOnly, phoneLayer],
   );
   const value = useMemo(
     () => ({

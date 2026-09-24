@@ -450,6 +450,45 @@ describe('a pane opened on a phone opens over Chat', () => {
     expect(record()).toBe(before);
   });
 
+  // Review M3: a narrow fine-pointer window folds to one region too, and
+  // widening it opens the fold. The layer must end there — no "‹ Chat" off a
+  // fold — without unmounting the pane the user was reading.
+  test('widening out of the fold ends the layer, keeping its pane as an ordinary tab', async () => {
+    Object.defineProperty(window, 'innerWidth', {
+      configurable: true,
+      value: 600,
+    });
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: query === MOBILE_MEDIA_QUERY,
+      media: query,
+      onchange: null,
+      addListener: () => {},
+      removeListener: () => {},
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      dispatchEvent: () => false,
+    }));
+    await mount();
+    act(() => {
+      current().openSurfaceInRegion(PR);
+    });
+    await waitFor(() => expect(current().phoneLayer).not.toBeNull());
+    await waitFor(() => expect(onLayerEntry()).toBe(true));
+
+    Object.defineProperty(window, 'innerWidth', {
+      configurable: true,
+      value: 1200,
+    });
+    act(() => window.dispatchEvent(new Event('resize')));
+    await waitFor(() => expect(current().phoneLayer).toBeNull());
+    expect(current().regions.bottom).toMatchObject({
+      panes: ['chat', PR],
+      occupant: PR,
+      maximized: false,
+    });
+    await waitFor(() => expect(onLayerEntry()).toBe(false));
+  });
+
   test('a fine-pointer desktop keeps its own rule: a side region, no layer, no history', async () => {
     stubDevice({ phone: false });
     await mount();
