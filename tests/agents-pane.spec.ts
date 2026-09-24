@@ -21,8 +21,8 @@ import {
  * "Background tasks" row, then switch scope with the pane's own buttons.
  */
 
-const SESSION_ID = 'session-agents-1';
-const CONVERSATION_ID = 'conv-agents-1';
+const SESSION_ID = 'session-1';
+const CONVERSATION_ID = 'conv-1';
 const CLI_DELEGATE = 'delegate-cli-1';
 const CHATLESS = 'exec-no-chat-open';
 
