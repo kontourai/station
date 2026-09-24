@@ -440,7 +440,7 @@ describe('plugin command effect coordinator', () => {
     second.dispose();
   });
 
-  test('a reload mints a distinct documentKey, so a settlement the old incarnation dispatches cannot be mistaken for the new one (station#1418/#1419 review, LOW: the prior version of this test only checked a fresh coordinator'\''s idle in-flight count, which is zero regardless of whether identity is shared)', async () => {
+  test('a reload mints a distinct documentKey, so a settlement the old incarnation dispatches cannot be mistaken for the new one', async () => {
     const storage = fakeStorage();
     const { transport, admitCalls, settleCalls } = scriptedTransport();
     const first = createPluginCommandEffectCoordinator({
@@ -565,39 +565,40 @@ describe('plugin command effect coordinator', () => {
       kind: 'admitted',
       receipt: receiptFor(admitCalls[0]),
     });
-    // The effect is DECIDED (applied) but not yet settled: let the
-    // synchronous receipt-processing step finish (it schedules an immediate
-    // flush) before the reset interrupts it.
+    // The receipt-processing step schedules an immediate (0ms) flush.
+    await vi.advanceTimersByTimeAsync(0);
+    expect(settleCalls).toHaveLength(1);
+    const oldDocumentKey = settleCalls[0].request.documentKey;
+    // The ack is dropped (network error): the coordinator must retry it.
+    // Resolved (not left pending) before the reset below, so the reset's own
+    // flush attempt cannot race a still-in-flight settle call for the same
+    // record.
+    settleCalls[0].resolve(null);
     await flushMicrotasks();
-    const oldDocumentKey = coordinator._debug.documentKey;
+    expect(coordinator._debug.inFlightCount).toBe(1);
 
-    // Station/authority switch. The old identity's flush (fired by
-    // `resetForAuthorityChange` itself) is in flight; let it fail (dropped
-    // ack), simulating the switch outrunning the network.
+    // Station/authority switch while this decided record is mid-backoff.
     coordinator.resetForAuthorityChange();
-    await vi.waitFor(() => expect(settleCalls).toHaveLength(1));
     expect(coordinator._debug.documentKey).not.toBe(oldDocumentKey);
-    // The decided record does not count against the NEW identity's bounded
-    // in-flight admission capacity.
+    // It does not count against the NEW identity's bounded admission
+    // capacity…
     expect(coordinator._debug.inFlightCount).toBe(0);
-    // It is not lost: it is retained, still carrying its OLD identity —
-    // mismatched from the coordinator's now-live one — never the new one.
+    // …but it is not lost: retained, still carrying its OLD identity.
     expect(coordinator._debug.retainedSettlementCount).toBe(1);
-    expect(settleCalls[0].request.documentKey).toBe(oldDocumentKey);
-    expect(settleCalls[0].request.documentKey).not.toBe(
+
+    // Its already-scheduled retry fires and keeps using the OLD identity —
+    // mismatched from the coordinator's now-live one, never the new one.
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(settleCalls).toHaveLength(2);
+    expect(settleCalls[1].request.documentKey).toBe(oldDocumentKey);
+    expect(settleCalls[1].request.documentKey).not.toBe(
       coordinator._debug.documentKey,
     );
-    settleCalls[0].resolve(null); // dropped ack: must retry, not vanish.
-
-    await vi.advanceTimersByTimeAsync(30_000);
-    await vi.waitFor(() => expect(settleCalls).toHaveLength(2));
-    expect(settleCalls[1].request.documentKey).toBe(oldDocumentKey);
     settleCalls[1].resolve([
       { requestId: admitCalls[0].request.requestId, status: 'settled' },
     ]);
-    await vi.waitFor(() =>
-      expect(coordinator._debug.retainedSettlementCount).toBe(0),
-    );
+    await flushMicrotasks();
+    expect(coordinator._debug.retainedSettlementCount).toBe(0);
   });
 
   test('cancelRequest marks a request cancelled before its receipt arrives, settling `aborted`', async () => {

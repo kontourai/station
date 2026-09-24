@@ -132,6 +132,14 @@ export interface PluginCommandEffectRunInput {
    * (never a cached row). Encapsulates the command's own abort condition —
    * the draft-revision CAS for seed-composer, the unsaved-guard check for
    * navigate — and must not await anything. Returns whether it applied.
+   *
+   * A throw is caught by the coordinator and settles `aborted` rather than
+   * leaving the record in-flight forever (an uncaught throw here used to
+   * skip the settlement step entirely). That residual is real: a throw
+   * AFTER a partial side effect is still reported as `aborted`, which
+   * understates what happened. Implementations must be all-or-nothing —
+   * either fully apply before returning `true`, or touch nothing and throw
+   * or return `false`.
    */
   apply(content: PluginCommandEffectContent): boolean;
   /** Surfaced for a refused admission or an aborted receipt. Best-effort. */
@@ -220,6 +228,17 @@ export function createPluginCommandEffectCoordinator(
     deps.clearTimer ?? ((handle) => clearTimeout(handle as never));
 
   const requests = new Map<string, RequestRecord>();
+  /**
+   * Decided records (an outcome was reached) that survived an authority
+   * reset. They keep retrying under their OWN identity — `documentId`/
+   * `documentKey` are already baked into their settlement request — outside
+   * the bounded `requests` map so they never block a new command's
+   * admission capacity under the NEW identity (station#1418/#1419 review,
+   * HIGH: `resetForAuthorityChange` used to `requests.clear()`
+   * unconditionally, so a decided-but-unacked outcome whose settle failed
+   * was dropped forever even though it could keep retrying).
+   */
+  const retainedSettlements = new Map<string, RequestRecord>();
   let documentId = loadOrCreateDocumentId();
   let documentKey = randomId();
   let flushTimer: unknown = null;
@@ -249,10 +268,19 @@ export function createPluginCommandEffectCoordinator(
     );
   }
 
+  /** Forgets a record wherever it currently lives (live or retained). */
+  function forgetRecord(requestId: string): void {
+    requests.delete(requestId);
+    retainedSettlements.delete(requestId);
+  }
+
   /** Groups pending records by the exact identity they were admitted under. */
   function pendingGroups(): Map<string, RequestRecord[]> {
     const groups = new Map<string, RequestRecord[]>();
-    for (const record of requests.values()) {
+    for (const record of [
+      ...requests.values(),
+      ...retainedSettlements.values(),
+    ]) {
       if (record.outcome === undefined) continue;
       if (record.nextAttemptAt > now()) continue;
       const key = `${record.apiBase}\u0000${record.documentId}\u0000${record.documentKey}`;
@@ -300,7 +328,7 @@ export function createPluginCommandEffectCoordinator(
       for (const record of batch) {
         const status = byRequestId.get(record.requestId);
         if (status !== undefined && TERMINAL_STATUSES.has(status)) {
-          requests.delete(record.requestId);
+          forgetRecord(record.requestId);
           continue;
         }
         // `cancel-refused`, or the server did not answer this item: retry.
@@ -447,7 +475,24 @@ export function createPluginCommandEffectCoordinator(
         // Abort: an invalidation for this plugin/generation was already
         // observed. An optimisation — the server's capture is the barrier.
       } else {
-        applied = input.apply(receipt.effect);
+        try {
+          applied = input.apply(receipt.effect);
+        } catch (error) {
+          // A throw must still settle the record — never leave it in an
+          // in-flight slot forever, never an unhandled rejection. Reported
+          // the same as any other abort; see the residual documented on
+          // `PluginCommandEffectRunInput.apply`.
+          applied = false;
+          try {
+            console.error(
+              '[plugin-command-effect] apply() threw; settling this effect as aborted.',
+              error,
+            );
+          } catch {
+            // A host without a usable console must not turn this into a
+            // second failure.
+          }
+        }
       }
       record.outcome = applied ? 'applied' : 'aborted';
       if (!applied) {
@@ -470,14 +515,32 @@ export function createPluginCommandEffectCoordinator(
 
   /**
    * Station or authority switch. Flushes whatever the OLD identity owes,
-   * then mints a fresh document identity: effects the old identity admitted
-   * but never settled stay outstanding server-side, exactly like a document
-   * that never came back.
+   * then mints a fresh document identity.
+   *
+   * Two different fates for what the old identity was carrying:
+   * - An admission still in flight (undecided) has an unknown fate that
+   *   belongs to the identity that sent it, which is gone: abort it and
+   *   drop it. It stays outstanding server-side, exactly like a document
+   *   that never came back.
+   * - A DECIDED record (an outcome was already reached, e.g. `applied`,
+   *   just not yet acknowledged) is not a mystery — its documentId/
+   *   documentKey are already baked into its settlement request — so it is
+   *   moved to `retainedSettlements` and keeps retrying under its own old
+   *   identity rather than being discarded (station#1418/#1419 review,
+   *   HIGH: this used to `requests.clear()` unconditionally, silently
+   *   dropping a decided-but-unacked outcome whose settle attempt failed).
    */
   function resetForAuthorityChange(): void {
     void flush({ keepalive: false });
-    for (const record of requests.values()) record.controller.abort();
-    requests.clear();
+    for (const [requestId, record] of [...requests]) {
+      if (record.outcome === undefined) {
+        record.controller.abort();
+        requests.delete(requestId);
+        continue;
+      }
+      requests.delete(requestId);
+      retainedSettlements.set(requestId, record);
+    }
     documentId = randomId();
     deps.storage.setItem(DOCUMENT_ID_STORAGE_KEY, documentId);
     documentKey = randomId();
@@ -504,6 +567,10 @@ export function createPluginCommandEffectCoordinator(
       },
       get inFlightCount() {
         return requests.size;
+      },
+      /** Decided records retained across an authority reset, still retrying. */
+      get retainedSettlementCount() {
+        return retainedSettlements.size;
       },
       flushNow: (options: { keepalive: boolean } = { keepalive: false }) =>
         flush(options),
