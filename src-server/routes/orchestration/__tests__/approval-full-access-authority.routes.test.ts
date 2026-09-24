@@ -254,9 +254,11 @@ async function fixture() {
 
 /**
  * Station's own internal principal: the per-boot token, the `local` caller
- * marker and a direct loopback socket. The UI's requests and an agent's
- * station-control tool calls both arrive this way; only the tool's origin
- * marker tells them apart (#2436 review).
+ * marker and a direct loopback socket. An agent's station-control tool calls
+ * arrive this way, with the tool's origin marker; any holder of the token can
+ * omit that marker, so it only ever restricts (#2436 review, #2493 review F1).
+ * The operator's UI does not: its proxy hop is marked `remote` and carries
+ * the browser's own credential.
  */
 function internalRequestInit(agent: boolean, init: RequestInit) {
   return [
@@ -458,7 +460,7 @@ test('a device the operator granted may set an Agent default to full access', as
   ).toBeLessThan(300);
 });
 
-test("an agent's station-control call cannot record full access or save it as an Agent default; the UI's own call can", async () => {
+test("an agent's station-control call, marked or not, cannot record full access or save it as an Agent default", async () => {
   const f = await fixture();
   const command = () => ({
     type: 'setApprovalMode',
@@ -481,9 +483,21 @@ test("an agent's station-control call cannot record full access or save it as an
   expect(f.recorded()).toEqual([]);
   expect(f.agentService.updateAgent).not.toHaveBeenCalled();
 
-  // The same internal principal without the agent marker is the UI.
+  // #2493 review F1: the marker only restricts. Without it the request is
+  // still Station's internal principal, which any holder of the per-boot
+  // token (an agent's tool among them) can present; the operator's UI
+  // reaches Station through the proxy with its own credential instead.
   expect(
-    (await f.internal(false, '/api/orchestration/commands', command())).status,
-  ).toBe(200);
-  expect(f.recorded()).toEqual(['never']);
+    await f.internal(false, '/api/orchestration/commands', command()),
+  ).toEqual({ status: 403, body: REFUSAL });
+  expect(
+    await f.internal(
+      false,
+      '/api/agents/builder',
+      { execution: { approvalMode: 'never' } },
+      'PUT',
+    ),
+  ).toEqual({ status: 403, body: REFUSAL });
+  expect(f.recorded()).toEqual([]);
+  expect(f.agentService.updateAgent).not.toHaveBeenCalled();
 });

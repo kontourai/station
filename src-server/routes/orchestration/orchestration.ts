@@ -1165,9 +1165,12 @@ function resolveDispatchActor(
   ownerAttribution?: StartOwnerAttribution;
   /**
    * #2493: this request's proof that the session it starts may reach beyond
-   * its workspace (`host` confinement). Never for an agent-capable request:
-   * every request the internal token authenticates may be an agent's,
-   * whatever headers it carries, so it starts confined.
+   * its workspace (`host` confinement): `fullAccessGrantForRequest`, which
+   * holds for the operator in person or a device holding
+   * `approval:full-access`. `null` for every request Station's internal
+   * principal carries (`resolveAgentDispatchActor` answers for all of them,
+   * and `mayGrantFullAccess` refuses them too): any holder of the per-boot
+   * token may be an agent, whatever headers it sends, so it starts confined.
    */
   fullAccessGrant: FullAccessGrant | null;
 } {

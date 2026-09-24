@@ -148,9 +148,12 @@ export class ApprovalPosture {
 
   /**
    * #2493: whether the conversation's latest recorded decision is a concrete
-   * `never`. Recording one needs the operator in person or a device holding
-   * `approval:full-access` (the `/commands` route and the foreground routes
-   * that carry a pick refuse anyone else), so it is itself a grant of `host`.
+   * `never`. Every writer of a decision is a route that refuses `never`
+   * unless `mayGrantFullAccess` holds (`/commands` `setApprovalMode`, and a
+   * pick carried on `/chat`, `/chat/:id/continue` or a handoff): the operator
+   * in person or a device holding `approval:full-access`, never Station's
+   * internal principal, marked as an agent's tool or not. So a recorded
+   * `never` is itself a grant of `host`.
    */
   private recordedFullAccess(threadId: string): boolean {
     return this.decision(threadId)?.approvalMode === 'never';
@@ -176,6 +179,12 @@ export class ApprovalPosture {
    * missing or unknown stamp (a session from before #2493) counts as
    * `workspace`. Never derived from an approval mode a turn or replay
    * carries: that is exactly the value a confined caller controls.
+   *
+   * Accepted (#2493 review F2): on a `host`-stamped session a Default pick,
+   * which needs no authority, resolves to the Agent's or Station's default,
+   * and if that is `never` it runs unconfined. That restores the posture the
+   * operator configured and started the session under; it grants nothing the
+   * operator's own start did not.
    */
   standingConfinement(threadId: string, stamp: unknown): StationConfinement {
     return stamp === 'host' || this.recordedFullAccess(threadId)

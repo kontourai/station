@@ -628,4 +628,86 @@ describe('#2493: who may start a session unconfined', () => {
     });
     expect(conversationId).toBeDefined();
   });
+
+  /**
+   * #2493 review F1: a recorded concrete never makes a conversation host, so
+   * recording one must need the same authority as starting host. Station's
+   * internal principal without the station-control origin marker is still a
+   * request any holder of the per-boot token (an agent's tool among them)
+   * can make: it may not record never on any path that records a pick.
+   */
+  test.each([
+    ['the command route', 'commands'],
+    ['a pick carried on /chat', 'chat'],
+    ['a pick carried on /chat/:id/continue', 'continue'],
+  ] as const)(
+    'an unmarked internal-token request cannot record never through %s; the conversation stays workspace',
+    async (_label, via) => {
+      const f = await fixture();
+      const phone = f.pair('Phone');
+      const { conversationId } = await f.chat(
+        f.bearer(phone.credential),
+        'claude-agent',
+      );
+      const threadId = f.claude.starts.at(-1)!.threadId;
+      const [headers, env] = f.internal(false);
+      const pick = { setApprovalMode: 'never', setApprovalModeBasedOn: null };
+      const refused =
+        via === 'commands'
+          ? await f.request(
+              headers,
+              '/api/orchestration/commands',
+              {
+                type: 'setApprovalMode',
+                threadId,
+                approvalMode: 'never',
+                basedOnSequence: null,
+              },
+              env,
+            )
+          : via === 'chat'
+            ? await f.request(
+                headers,
+                '/api/orchestration/chat',
+                {
+                  message: 'again',
+                  conversationId,
+                  target: {
+                    environment: { kind: 'current' },
+                    agent: 'claude-agent',
+                  },
+                  ...pick,
+                },
+                env,
+              )
+            : await f.request(
+                headers,
+                `/api/orchestration/chat/${encodeURIComponent(conversationId)}/continue`,
+                { message: 'again', ...pick },
+                env,
+              );
+      expect(refused.status, refused.text).toBe(403);
+      expect(refused.body.code).toBe('approval-full-access-not-granted');
+      expect(
+        f.store
+          .listEvents(threadId)
+          .filter((row) => row.payload.method === 'session.approval-mode-set'),
+      ).toEqual([]);
+
+      const turns = f.claude.turns.length;
+      await f.service.dispatch({
+        type: 'sendTurn',
+        input: {
+          threadId,
+          input: 'after',
+          modelOptions: { approvalMode: 'never' },
+        },
+      });
+      expect(f.claude.turns).toHaveLength(turns + 1);
+      expect(f.claude.turns.at(-1)).toMatchObject({
+        confinement: 'workspace',
+        modelOptions: { approvalMode: 'auto' },
+      });
+    },
+  );
 });
