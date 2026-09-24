@@ -2088,11 +2088,19 @@ export function configureRuntimeRoutes(
   // OS alias `readAuthorityForRequest` builds never owns a chat created in the
   // UI (`human:local:operator` does), so those reads refused every real chat.
   // A `/*` pattern also matches its bare prefix, so one binding covers each.
-  context.app.use(
+  // GET and POST only: these families serve no other method, and an
+  // all-method `use` would register PUT/PATCH/DELETE/HEAD paths the route
+  // coverage table (pairing-route-scopes) does not classify.
+  context.app.on(
+    ['GET', 'POST'],
     '/api/conversation-pull-requests/*',
     bindConversationReadAuthority,
   );
-  context.app.use('/api/pull-requests/*', bindConversationReadAuthority);
+  context.app.on(
+    ['GET', 'POST'],
+    '/api/pull-requests/*',
+    bindConversationReadAuthority,
+  );
   context.app.use(
     '/api/projects/:slug/file-preview/*',
     bindConversationReadAuthority,
