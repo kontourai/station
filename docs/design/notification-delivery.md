@@ -231,6 +231,34 @@ The Station side mirrors Web Push (`push-routes.ts`, `wireWebPushDelivery`):
   `station_key`. `NATIVE_PUSH_SEALED_TEST_VECTOR` in
   `@kontourai/station-contracts/native-push` is the known-answer vector for
   the phone's opener.
+- **Opening the session a card names (#2515).** The plaintext may also
+  carry `activity_session_id` / `activity_project_slug` (the session in row 0)
+  and, for a single-session alert, `alert_session_id` / `alert_project_slug`.
+  A grouped alert names none. They travel only inside the seal, and only
+  when the session id (and the project slug, if the session has one) match
+  `NATIVE_PUSH_SESSION_REFERENCE_PATTERN` (`^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$`,
+  ASCII); otherwise nothing is sent and a tap opens the app where it was. The
+  reference is a pair of identifiers, not a path, so neither the card nor the
+  phone ever supplies a URL. On the phone, `AgentActivityModel.kt`
+  (`SessionRoute.validOrNull`) checks the same grammar — a server test pins
+  the Kotlin pattern to the contract's — and drops the whole route on any
+  failure; the route's Station is the registration's verified Station id,
+  never a card field. `AgentNotifications.openApp` puts it on the tap's
+  launch intent as extras (no data URI or action, which the deep-link plugin
+  would read as a pairing link); each card and alert has its own request code
+  and, from API 29, intent identifier, and `FLAG_UPDATE_CURRENT` replaces the
+  extras of the same card's intent, so an updated card never opens a stale
+  session. `AgentActivityPlugin` adopts the route from the launch intent
+  (`load`) or `onNewIntent` only if its Station is one this phone registered
+  with — the launcher activity is exported, so another app can start it with
+  extras — removes the extras so a recreated activity cannot replay them,
+  and hands it to the web layer through `take_launch_route` (returns and
+  clears), announced by a `launchRoute` plugin event while the app runs. The
+  web layer (`agentActivitySessionTarget`) validates the grammar a third time
+  and navigates only when the route's Station is the connected one, to the
+  Station's exact-session deep link: `/projects/<slug>?chat=<id>&dock=open`,
+  or `/?chat=<id>&dock=open` without a project. A route for another Station
+  is dropped; switching Stations from a tap is not attempted.
 - **Publisher.** An `ORCHESTRATION_EVENT` subscriber marks the card dirty on
   lifecycle events (never streamed content), coalesces per Station, and reads
   the session read model once per reading principal: each phone reads with

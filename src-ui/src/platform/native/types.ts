@@ -87,7 +87,8 @@ export type NativeCommandName =
   | 'agent-activity-push-token'
   | 'configure-agent-activity'
   | 'clear-agent-activity'
-  | 'open-live-update-settings';
+  | 'open-live-update-settings'
+  | 'take-agent-activity-launch-route';
 
 /**
  * What the Android agent-activity plugin reports about this phone. Local facts
@@ -113,6 +114,18 @@ export interface NativeAgentActivityStatus {
 export type NativeAgentActivityPushToken =
   | { state: 'unconfigured' }
   | { state: 'available'; token: string };
+
+/**
+ * The session an agent-activity card or alert tap asked to open (#2515), as
+ * the plugin holds it: `stationId` is the registration's verified Station,
+ * the rest came from the sealed card. Untrusted until
+ * `agentActivitySessionTarget` validates it against the connected Station.
+ */
+export interface NativeAgentActivityLaunchRoute {
+  stationId: string;
+  sessionId: string;
+  projectSlug?: string;
+}
 
 /** Exactly what a Station returned from native-push registration. */
 export interface NativeAgentActivityRegistration {
@@ -475,6 +488,18 @@ export interface NativePlatformAdapter {
   ): Promise<NativeCommandResult<void>>;
   /** Open the OS page where the person allows Live Updates for Station. */
   openLiveUpdateSettings(): Promise<NativeCommandResult<{ opened: boolean }>>;
+  /** Return and clear the route the last card tap carried; `route: null` when none. */
+  takeAgentActivityLaunchRoute(): Promise<
+    NativeCommandResult<{ route: NativeAgentActivityLaunchRoute | null }>
+  >;
+  /**
+   * Called (with no route) when a card tap arrives while the app runs; the
+   * listener then calls `takeAgentActivityLaunchRoute`. A no-op subscription
+   * wherever the plugin is absent.
+   */
+  subscribeToAgentActivityLaunchRoutes(
+    listener: () => void,
+  ): NativeEventSubscription;
 }
 
 /** The settled transaction status the native consent broker returns. */

@@ -70,6 +70,9 @@ export const NATIVE_PUSH_SEALED_AAD_PREFIX = 'station-agent-activity:v1:';
  * card itself (a JSON object of strings: `user_id`, `updated_at`, `active`,
  * `activity_*`, `alert_*`) is in `sealed` =
  * base64url(nonce[12] || AES-256-GCM ciphertext || tag[16]).
+ *
+ * Session references travel only inside the seal: see
+ * {@link NATIVE_PUSH_SESSION_REFERENCE_FIELDS}.
  */
 export interface NativePushSealedData {
   station_kind: 'agent_activity';
@@ -91,3 +94,45 @@ export const NATIVE_PUSH_SEALED_TEST_VECTOR = {
   sealed:
     'AAECAwQFBgcICQoLPCCjaKCXnXLpY62pgNhJXLLntgXdSm5NCUrRtCxYLYowIZ_RnvAjqUWVTty5thkJzHVC-Cqywq5a83V4bMHPzMEE9krj4RZRLGSaXt-tIspZ6b0LAAZxUt-J7Lkd0pWvqpstj9IovGPBbFbTOxADRZgQA8KXrEv9Epk4v92HHn7JPXan2PXncWmCPMhLszi7aZiKW1BOo2i2fakHiqCGmPL7wmGvlrRe0wu42rns59Dk7qZN7MIdnBG6s7MtsfucdCXk2kytpusbdLKFziiv7ZUHpxdedNOHFM75qDQm-9h5AeWNygJiRiYuzmHBaCMw3OfcG-lZ5stICAgG5ehguzbg0Ly_uytKHqkbc85yX3Kq3bio89Tg21MVT2AyxIp7MTTseIr1_iewEBg7ZvDSp8ejP3xztv8nqAEtJqcNddn5pU8au1BI2ZPQSxBt4y1SoyrntKwktTh5k0hWvYF4z2kfyem1ZEL7EJ-UE6eFUhi0zS9J3sEi7b2EWLmuIwZGzPesvKU98Z3RAIwQSCF-p4xuCd_6RHD4H3GyIz-S5DR2Hi5J-fMXG9iYqDqa2NbJPAA9MnDsR4yJmZeI9d8_us1a4rLJPtFdqmqQdYyGxMFWrOh4YsInKEEUM74P',
 } as const;
+
+/**
+ * The sealed card's session references (#2515): which session a tap on the
+ * card or on a single-session alert opens. Each pair is optional and appears
+ * only when the Station has a reference that passes
+ * {@link isNativePushSessionReference}; without one the tap opens the app
+ * where it was. A grouped alert carries none.
+ *
+ * - `activity_session_id` / `activity_project_slug`: the card's first row.
+ * - `alert_session_id` / `alert_project_slug`: the alert's one session.
+ *
+ * The project slug is optional (a session with no project opens at `/`).
+ * The phone validates both again before attaching them to an intent, and the
+ * web layer validates them a third time and navigates only when the card's
+ * Station is the one the app is connected to.
+ */
+export const NATIVE_PUSH_SESSION_REFERENCE_FIELDS = {
+  activity: {
+    sessionId: 'activity_session_id',
+    projectSlug: 'activity_project_slug',
+  },
+  alert: {
+    sessionId: 'alert_session_id',
+    projectSlug: 'alert_project_slug',
+  },
+} as const;
+
+/**
+ * The grammar a session id or project slug must match to travel as a
+ * session reference: an ASCII letter or digit, then up to 127 of letters,
+ * digits, `.`, `_`, `:` and `-`. Anything else is not sent, and is refused on
+ * the phone (AgentActivityModel.kt `SESSION_REFERENCE`) and in the web layer.
+ */
+export const NATIVE_PUSH_SESSION_REFERENCE_PATTERN =
+  /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+
+export function isNativePushSessionReference(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    NATIVE_PUSH_SESSION_REFERENCE_PATTERN.test(value)
+  );
+}

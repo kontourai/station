@@ -428,7 +428,12 @@ describe('agent-activity publisher', () => {
       activity_line_0: 'Working\tFix the flaky login test\tLogin App',
       activity_active_count: '1',
       activity_attention_count: '0',
+      // The session a tap opens (#2515), from the read model's thread id and
+      // project slug — sealed, never in the clear routing fields.
+      activity_session_id: 's1',
+      activity_project_slug: 'login-app',
     });
+    expect(JSON.stringify(a?.data)).not.toContain('login-app');
     expect(a?.card.station_kind).toBeUndefined();
     expect(a?.card.device_id).toBeUndefined();
     // Each phone's card is sealed under its own key.

@@ -24,6 +24,21 @@ import com.google.firebase.messaging.RemoteMessage
 
 internal const val AGENT_ACTIVITY_KIND = "agent_activity"
 private const val EXTRA_REGISTRATION = "io.kontourai.station.agentactivity.REGISTRATION"
+internal const val EXTRA_ROUTE_STATION = "io.kontourai.station.agentactivity.ROUTE_STATION"
+internal const val EXTRA_ROUTE_SESSION = "io.kontourai.station.agentactivity.ROUTE_SESSION"
+internal const val EXTRA_ROUTE_PROJECT = "io.kontourai.station.agentactivity.ROUTE_PROJECT"
+
+/** The route a card or alert tap carries, if any; see [SessionRoute.validOrNull]. */
+internal fun Intent.agentActivityRoute(): SessionRoute? =
+  if (!hasExtra(EXTRA_ROUTE_SESSION)) {
+    null
+  } else {
+    SessionRoute.validOrNull(
+      getStringExtra(EXTRA_ROUTE_STATION),
+      getStringExtra(EXTRA_ROUTE_SESSION),
+      getStringExtra(EXTRA_ROUTE_PROJECT)
+    )
+  }
 
 /**
  * Runs in a process FCM may have just started: no MainActivity, no WebView,
@@ -159,6 +174,15 @@ object AgentNotifications {
   /** True once `configure` stored a registration here; says nothing about the Station's side. */
   fun isConfigured(context: Context): Boolean = registrationIds(context).isNotEmpty()
 
+  /**
+   * Whether [stationId] is a Station this phone holds a registration for.
+   * The launcher activity is exported, so any app can start it with route
+   * extras; a route for a Station this phone never registered with is not
+   * one of its cards.
+   */
+  fun knowsStation(context: Context, stationId: String): Boolean =
+    registrationIds(context).any { state(context, it).getString("stationId", null) == stationId }
+
   @Synchronized
   fun dismiss(context: Context, registrationId: String) {
     if (registrationId == PREVIEW) {
@@ -188,8 +212,15 @@ object AgentNotifications {
     if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) return
     val prefs = state(context, registration.id)
     channels(context)
-    showAlert(context, registration.id, prefs, card)
-    updateActivity(context, registration.id, prefs, card, updatedAt)
+    showAlert(context, registration.id, prefs, card, sessionRoute(registration, card, RouteSource.ALERT))
+    updateActivity(
+      context,
+      registration.id,
+      prefs,
+      card,
+      updatedAt,
+      sessionRoute(registration, card, RouteSource.ACTIVITY)
+    )
   }
 
   /**
@@ -199,8 +230,9 @@ object AgentNotifications {
   @Synchronized
   fun preview(context: Context, data: Map<String, String>) {
     channels(context)
-    data["alert_id"]?.let { postAlert(context, PREVIEW, data, it) }
-    showActivity(context, PREVIEW, data, data["active"] == "true", RUNNING_LIFETIME_MS)
+    // A preview has no registration, so no verified Station to route to.
+    data["alert_id"]?.let { postAlert(context, PREVIEW, data, it, null) }
+    showActivity(context, PREVIEW, data, data["active"] == "true", RUNNING_LIFETIME_MS, null)
   }
 
   private fun activityTag(registrationId: String) = "$ACTIVITY_TAG:$registrationId"
@@ -210,7 +242,8 @@ object AgentNotifications {
     context: Context,
     registrationId: String,
     prefs: SharedPreferences,
-    data: Map<String, String>
+    data: Map<String, String>,
+    route: SessionRoute?
   ) {
     // Delivery retries carry the same alert id. Keep a bounded, ordered
     // history so a retry of alert A after alert B is still recognised.
@@ -220,7 +253,7 @@ object AgentNotifications {
     // The open app shows its own in-app notice. Record the alert either way,
     // so a retry cannot surface it after the app is backgrounded.
     if (!ProcessLifecycleOwner.get().lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
-      postAlert(context, registrationId, data, alertId)
+      postAlert(context, registrationId, data, alertId, route)
     }
     prefs.edit().putString(
       "seenAlerts",
@@ -232,7 +265,8 @@ object AgentNotifications {
     context: Context,
     registrationId: String,
     data: Map<String, String>,
-    alertId: String
+    alertId: String,
+    route: SessionRoute?
   ) {
     val title = data["alert_title"].orEmpty().take(120)
     // Grouped alerts list up to five 120-character thread titles.
@@ -243,7 +277,7 @@ object AgentNotifications {
       .setContentTitle(title).setContentText(body)
       .setStyle(NotificationCompat.BigTextStyle().bigText(body))
       .setAutoCancel(true)
-      .setContentIntent(openApp(context, id))
+      .setContentIntent(openApp(context, id, "alert:$registrationId:$alertId", route))
       .build()
     manager(context).notify(alertTag(registrationId), id, notification)
   }
@@ -253,7 +287,8 @@ object AgentNotifications {
     registrationId: String,
     prefs: SharedPreferences,
     data: Map<String, String>,
-    updatedAt: Long
+    updatedAt: Long,
+    route: SessionRoute?
   ) {
     // Drop reordered status updates without dropping an unrelated alert.
     if (updatedAt < prefs.getLong("lastUpdate", 0)) return
@@ -275,7 +310,7 @@ object AgentNotifications {
     // replays of the finished state stay dismissed.
     if (active && !wasActive) prefs.edit().putBoolean("dismissed", false).apply()
     if (!prefs.getBoolean("dismissed", false)) {
-      showActivity(context, registrationId, data, active, remainingMs)
+      showActivity(context, registrationId, data, active, remainingMs, route)
     }
   }
 
@@ -298,11 +333,14 @@ object AgentNotifications {
     registrationId: String,
     data: Map<String, String>,
     active: Boolean,
-    remainingMs: Long
+    remainingMs: Long,
+    route: SessionRoute?
   ) {
     val dismissIntent = registrationIntent(context, AgentActivityDismissReceiver::class.java, registrationId)
     val model = ActivityModel(data, active)
-    val open = openApp(context, registrationId.hashCode())
+    // One PendingIntent per registration's card, updated in place: a tap (or
+    // the action button) always opens the session the current row 0 names.
+    val open = openApp(context, registrationId.hashCode(), "activity:$registrationId", route)
     val builder = base(context, ACTIVITY_CHANNEL)
       .setOngoing(active).setOnlyAlertOnce(true).setSilent(true)
       .setTimeoutAfter(remainingMs)
@@ -367,12 +405,27 @@ object AgentNotifications {
   }
 
   /**
-   * Opens the app where it was. Routing to a specific session needs a route
-   * contract with the web layer and is deliberately not guessed here.
+   * Opens the app: at the session [route] names when there is one
+   * (AgentActivityPlugin hands it to the web layer, which validates it again
+   * and navigates), otherwise where it was. Only route extras are added —
+   * no data URI or action, which the deep-link plugin would read as a
+   * pairing link.
+   *
+   * PendingIntent identity ignores extras. [id] (the request code) and, from
+   * API 29, [identity] keep one card's or alert's intent from being replaced
+   * by another's; FLAG_UPDATE_CURRENT then replaces the extras of the SAME
+   * notification's intent, so an updated card never opens a stale session
+   * and a card that stops naming one stops carrying it.
    */
-  private fun openApp(context: Context, id: Int): PendingIntent? {
+  private fun openApp(context: Context, id: Int, identity: String, route: SessionRoute?): PendingIntent? {
     val intent = context.packageManager.getLaunchIntentForPackage(context.packageName) ?: return null
     intent.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) intent.identifier = "station-agent-activity:$identity"
+    if (route != null) {
+      intent.putExtra(EXTRA_ROUTE_STATION, route.stationId)
+        .putExtra(EXTRA_ROUTE_SESSION, route.sessionId)
+      route.projectSlug?.let { intent.putExtra(EXTRA_ROUTE_PROJECT, it) }
+    }
     return PendingIntent.getActivity(
       context,
       id,

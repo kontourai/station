@@ -136,6 +136,8 @@ export interface AgentActivitySessionRow extends AgentActivitySessionFacts {
   sessionId: string;
   title?: string;
   project?: string;
+  /** The project's slug: not shown, only what a tap on the card opens. */
+  projectSlug?: string;
   /** ISO time of the session's latest event; fallback entry time. */
   lastEventAt?: string;
   /** Which entry into its current phase, from the event log. */
@@ -155,7 +157,10 @@ export function agentActivityRowFromSummary(
     sessionId: summary.threadId,
     ...(summary.displayTitle ? { title: summary.displayTitle } : {}),
     ...(summary.projectSlug
-      ? { project: projectName(summary.projectSlug) ?? summary.projectSlug }
+      ? {
+          project: projectName(summary.projectSlug) ?? summary.projectSlug,
+          projectSlug: summary.projectSlug,
+        }
       : {}),
     ...(summary.lifecycleState
       ? { lifecycleState: summary.lifecycleState }
@@ -483,6 +488,7 @@ export function wireAgentActivityPublisher(
         sessionId: row.sessionId,
         title: row.title ?? '',
         project: row.project ?? '',
+        ...(row.projectSlug ? { projectSlug: row.projectSlug } : {}),
         phase,
         enteredAt,
         entryKey,

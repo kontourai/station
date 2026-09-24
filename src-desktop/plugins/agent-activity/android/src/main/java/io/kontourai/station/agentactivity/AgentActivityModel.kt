@@ -29,7 +29,11 @@ import org.json.JSONObject
  *   without a valid row renders as a bare "Agent activity" card.
  * - `activity_active_count`, `activity_attention_count`: optional totals
  * - `activity_expires_at`: optional absolute expiry, epoch millis
+ * - `activity_session_id`, `activity_project_slug`: optional; the session row 0
+ *   names, which a tap on the card opens (see [sessionRoute])
  * - `alert_id`, `alert_title`, `alert_body`: optional one-shot attention alert.
+ * - `alert_session_id`, `alert_project_slug`: optional; the session a
+ *   single-session alert names
  *   While the app is in the foreground the alert is recorded as seen and not
  *   posted, on the premise that the web layer shows its own notice. The
  *   sender cannot know the app is in the foreground, so the web layer must
@@ -237,3 +241,45 @@ internal class ActivityModel(data: Map<String, String>, val active: Boolean) {
   /** Null when finished: the card swipes away and a tap opens the app. */
   val action: String? = if (active) phase?.action ?: "Open" else null
 }
+
+/**
+ * The contract grammar for a session id or project slug
+ * (packages/contracts/src/native-push.ts
+ * `NATIVE_PUSH_SESSION_REFERENCE_PATTERN`; a server test pins the two equal).
+ * ASCII only: `[A-Za-z0-9]` is not Unicode-aware in java.util.regex.
+ */
+internal val SESSION_REFERENCE = Regex("^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
+
+/**
+ * A session a tap opens, and which Station it belongs to. `stationId` is the
+ * registration's verified Station id, never a value from the card, so the
+ * web layer can refuse a route for a Station it is not connected to.
+ */
+data class SessionRoute(val stationId: String, val sessionId: String, val projectSlug: String?) {
+  companion object {
+    /**
+     * Null unless every part is well formed: a session id and (optional)
+     * project slug in the contract grammar, and a Station id that is a
+     * registration's. Anything else opens the app where it was.
+     */
+    fun validOrNull(stationId: String?, sessionId: String?, projectSlug: String?): SessionRoute? {
+      if (stationId.isNullOrBlank() || stationId.length > 128) return null
+      if (sessionId == null || !SESSION_REFERENCE.matches(sessionId)) return null
+      if (projectSlug != null && !SESSION_REFERENCE.matches(projectSlug)) return null
+      return SessionRoute(stationId, sessionId, projectSlug)
+    }
+  }
+}
+
+internal enum class RouteSource(val prefix: String) { ACTIVITY("activity"), ALERT("alert") }
+
+/**
+ * The route a card (or its alert) names, from an opened, accepted card.
+ * A malformed reference is dropped whole — never half a route.
+ */
+internal fun sessionRoute(registration: Registration, data: Map<String, String>, source: RouteSource): SessionRoute? =
+  SessionRoute.validOrNull(
+    registration.stationId,
+    data["${source.prefix}_session_id"],
+    data["${source.prefix}_project_slug"]
+  )
