@@ -114,6 +114,13 @@ import {
   type ClaudeToolServerSkip,
   resolveClaudeMcpServers,
 } from './claude-mcp-passthrough.js';
+import {
+  CLAUDE_MODEL_CATALOG_MAX_ENTRIES,
+  CLAUDE_MODEL_CATALOG_TTL_MS,
+  CLAUDE_MODEL_DISCOVERY_TIMEOUT_MS,
+  claudeModelCatalogKey,
+  KeyedCatalogSingleFlight,
+} from './claude-model-catalog-cache.js';
 import { CLAUDE_DEFAULT_MODEL, CLAUDE_KNOWN_MODELS } from './claude-models.js';
 import {
   claudeResumeSessionId,
@@ -1018,6 +1025,8 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     },
     defaultModel: CLAUDE_DEFAULT_MODEL,
     knownModels: CLAUDE_KNOWN_MODELS,
+    // #2482: `probeModelCatalog` builds every entry with `originalId: id`.
+    modelCatalogIdentityMapped: true,
     modelLaunch: {
       defaultAtStart: 'engine-selected',
       omissionAtResume: 'engine-selected',
@@ -1047,6 +1056,15 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     string,
     Promise<CliCommandResult | null>
   >();
+  /** #2482: the shared, TTL-bounded model catalog probe (see `listModelCatalog`). */
+  private readonly modelCatalog = new KeyedCatalogSingleFlight<{
+    models: ModelOption[];
+    truncated?: boolean;
+  }>({
+    ttlMs: CLAUDE_MODEL_CATALOG_TTL_MS,
+    timeoutMs: CLAUDE_MODEL_DISCOVERY_TIMEOUT_MS,
+    timeoutMessage: 'Claude model discovery timed out.',
+  });
 
   constructor(private readonly options: ClaudeAdapterOptions = {}) {}
 
@@ -2211,22 +2229,20 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     truncated?: boolean;
   }> {
     const maxEntries = Math.min(
-      1000,
-      Math.max(1, Math.floor(options?.maxEntries ?? 1000)),
+      CLAUDE_MODEL_CATALOG_MAX_ENTRIES,
+      Math.max(
+        1,
+        Math.floor(options?.maxEntries ?? CLAUDE_MODEL_CATALOG_MAX_ENTRIES),
+      ),
     );
     options?.signal?.throwIfAborted();
-
-    const abortController = new AbortController();
-    const abortProbe = () => abortController.abort(options?.signal?.reason);
-    options?.signal?.addEventListener('abort', abortProbe, { once: true });
     // #1551: the discovery probe must run the SAME executable a session will,
     // or the model catalog is reported by a different Claude Code than the
     // one that answers the turn. This is the probe's first await, so an abort
     // can now land BEFORE the spawn — refuse there rather than spawning a
     // process only to close it.
-    const claudeExecutable = launchedClaudeExecutable(
-      await this.resolveClaudeExecutable(),
-    );
+    const resolution = await this.resolveClaudeExecutable();
+    const claudeExecutable = launchedClaudeExecutable(resolution);
     options?.signal?.throwIfAborted();
     // station#2072: discovery sees the connection env + config home, so a
     // proxy-routed connection lists the proxy's catalog, not the global
@@ -2234,6 +2250,40 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     // applies. (Unlike the credential-profile app-home env, which stays
     // session-scoped by archive#896 design.)
     const connectionEnv = await this.resolveConnectionEnv();
+    // #2482: every probe is a whole Claude Code process, and the picker asks
+    // about ten times per page load. Readers of the same executable + routing
+    // share one probe and reuse its answer for the TTL.
+    const catalog = await this.modelCatalog.read(
+      claudeModelCatalogKey({
+        executable: claudeExecutable,
+        installedVersion: resolution.installedVersion,
+        bundledVersion: resolution.bundledVersion,
+        connectionEnv,
+      }),
+      (signal) =>
+        this.probeModelCatalog(signal, claudeExecutable, connectionEnv),
+      options?.signal,
+    );
+    const truncated =
+      catalog.truncated === true || catalog.models.length > maxEntries;
+    return {
+      models: catalog.models
+        .slice(0, maxEntries)
+        .map((model) => ({ ...model })),
+      ...(truncated ? { truncated: true } : {}),
+    };
+  }
+
+  private async probeModelCatalog(
+    signal: AbortSignal,
+    claudeExecutable: string | null,
+    connectionEnv: Record<string, string> | undefined,
+  ): Promise<{ models: ModelOption[]; truncated?: boolean }> {
+    const maxEntries = CLAUDE_MODEL_CATALOG_MAX_ENTRIES;
+    signal.throwIfAborted();
+    const abortController = new AbortController();
+    const abortProbe = () => abortController.abort(signal.reason);
+    signal.addEventListener('abort', abortProbe, { once: true });
     const promptQueue = new AsyncUserMessageQueue();
     const sdkQuery = query({
       prompt: promptQueue,
@@ -2313,7 +2363,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         ...(truncated ? { truncated: true } : {}),
       };
     } finally {
-      options?.signal?.removeEventListener('abort', abortProbe);
+      signal.removeEventListener('abort', abortProbe);
       promptQueue.close();
       sdkQuery.close();
     }

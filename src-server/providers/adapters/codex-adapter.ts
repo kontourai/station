@@ -659,6 +659,9 @@ export class CodexAdapter implements ProviderAdapterShape {
       dispatchSettlement: 'provider-response',
     },
     reviewIsolation: 'read-only',
+    // #2482: `mapCodexModelCatalogEntry` builds every entry with
+    // `originalId: id`.
+    modelCatalogIdentityMapped: true,
     modelLaunch: {
       defaultAtStart: 'engine-selected',
       omissionAtResume: 'engine-selected',
