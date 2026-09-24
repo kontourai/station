@@ -1,3 +1,4 @@
+import type { MobileDeviceSession } from '@kontourai/station-contracts/mobile-device';
 import type {
   BrowserPaneAccessView,
   BrowserSessionView,
@@ -12,14 +13,24 @@ import {
   useEffect,
   useId,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
 } from 'react';
 import { Button } from '../components/Button';
 import { CloseGlyph, MenuGlyph, MonitorGlyph } from '../components/icons/Glyph';
-import { useApiBase } from '../contexts/ApiBaseContext';
+import {
+  useApiBase,
+  useHostRequestAuthorityScope,
+} from '../contexts/ApiBaseContext';
+import type {
+  OpenInRegionOutcome,
+  OpenInRegionRefusal,
+} from '../contexts/RegionModelContext';
+import { useOpenDeviceInRegion } from '../contexts/useOpenDeviceInRegion';
 import {
   describeOpenInRegionRefusal,
+  type OpenPaneRefusal,
   useOpenBrowserSessionInRegion,
 } from '../contexts/useOpenInRegion';
 import { useFeatureSettings } from '../hooks/useFeatureSettings';
@@ -28,6 +39,11 @@ import {
   type LiveSurfaceControllerTone,
   type LiveSurfaceControlState,
 } from '../live-surface/LiveSurfaceCanvas';
+import {
+  DEVICE_PLACEHOLDER_ASPECT,
+  deviceCornerRadius,
+  deviceOsLabel,
+} from '../workspace-panes/device/deviceScreen';
 import { pickAutoFloatCandidate } from './autoFloatCandidate';
 import {
   clampFloatPosition,
@@ -42,18 +58,29 @@ import {
   resizeFloatFrame,
   resolveFloatFrame,
 } from './floatLayout';
-import { type FloatSource, floatSourceKey } from './floatSource';
 import {
+  type DeviceFloatSource,
+  type FloatSource,
+  floatSourceKey,
+} from './floatSource';
+import {
+  clearFloatNotice,
   closeFloat,
   dismissFloat,
+  type FloatNotice as FloatNoticeState,
+  getFloatGeneration,
   getFloatingSource,
+  getFloatNotice,
   getFloatPlacement,
   handOffFloat,
   isFloatDismissed,
   isFloatHandedOff,
   migrateFloatConversation,
   openFloat,
+  registerFloatHost,
+  setFloatNotice,
   setFloatPlacement,
+  takeFloatRequest,
   useFloatStoreVersion,
 } from './floatStore';
 import {
@@ -69,8 +96,8 @@ import {
 import './FloatOverChat.css';
 
 /**
- * Float over chat (#90 D9): a live surface — a Browser session now, a
- * Device later — floated as a small movable player over the conversation,
+ * Float over chat (#90 D9): a live surface — a Browser session or a Device
+ * session — floated as a small movable player over the conversation,
  * so a user can watch and drive what an agent is doing without leaving it.
  *
  * - It floats over the chat column, off the composer (measured live), 12px
@@ -86,6 +113,12 @@ import './FloatOverChat.css';
  *   Project and no pane shows it (the "Automatically show agent browser
  *   sessions" setting, default on), never re-floating one the user put away
  *   in this conversation.
+ * - A Device floats only when a person asks (the Device pane's "Float over
+ *   chat"): no agent can open or drive a device surface today (the device
+ *   session service fails an agent claim closed), so there is nothing for
+ *   auto-float to follow. Its session is read from ITS device host's list,
+ *   which the server filters to the devices this viewer may view (D12): a
+ *   device missing from that list is never shown here.
  * - Too narrow a chat gets a one-line notice with the same two actions
  *   instead of a player that would cover the conversation.
  */
@@ -100,12 +133,41 @@ const FLOAT_POLL_MAX_MS = 60_000;
 /** The SDK's authenticated fetch, or a test's stand-in. */
 export type FloatFetch = typeof authenticatedFetch;
 
-/** A browser route answered with something other than a usable 200. */
+/** A route answered with something other than a usable 200. */
 export class FloatReadError extends Error {
-  constructor(readonly status: number) {
-    super(`Browser route unavailable (HTTP ${status})`);
+  constructor(
+    readonly status: number,
+    /** The route's typed refusal (`code`), when it named one. */
+    readonly code?: string,
+  ) {
+    super(`Float read unavailable (HTTP ${status})`);
     this.name = 'FloatReadError';
   }
+}
+
+/**
+ * Whether a failed read of a floated device's host is worth asking again.
+ * Only a host that said it is briefly busy (503 `device-host-busy`) or a
+ * read that never got an answer (the network, a dropped relay) is: every
+ * other answer — refused, no such host, the host is unavailable, a list
+ * that cannot be trusted — is final, and the floater goes (with a notice).
+ */
+function deviceReadRetries(error: unknown): boolean {
+  if (!(error instanceof FloatReadError)) return true;
+  return error.status === 503 && error.code === 'device-host-busy';
+}
+
+/** The sentence a chat shows when a floated device could not stay. */
+function deviceFloatNotice(name: string, error: unknown): string {
+  if (error instanceof FloatReadError) {
+    if (error.status === 403)
+      return `You cannot view ${name} from here, so it is not floating.`;
+    if (error.status === 404 || error.status === 503)
+      return `The device host for ${name} is not available, so it is not floating.`;
+    if (error.status === 200)
+      return `The device host for ${name} answered with sessions Station could not trust, so it is not floating.`;
+  }
+  return `${name} could not be shown here, so it is not floating.`;
 }
 
 /**
@@ -141,9 +203,13 @@ async function readEnvelope(
   const envelope = (await response.json().catch(() => null)) as {
     success?: boolean;
     data?: unknown;
+    code?: unknown;
   } | null;
   if (!response.ok || envelope?.success !== true)
-    throw new FloatReadError(response.status);
+    throw new FloatReadError(
+      response.status,
+      typeof envelope?.code === 'string' ? envelope.code : undefined,
+    );
   return envelope.data;
 }
 
@@ -166,6 +232,63 @@ async function readProjectBrowserSessions(
   );
   if (!Array.isArray(data)) throw new FloatReadError(200);
   return data as BrowserSessionView[];
+}
+
+/**
+ * The open sessions on one device host that this viewer may VIEW (the route
+ * filters by D12 access per (host, platform, device)). Every row must name
+ * the host asked about: one that does not is not trusted, so the read fails.
+ */
+async function readDeviceHostSessions(
+  fetcher: FloatFetch,
+  apiBase: string,
+  hostId: string,
+  projectSlug: string | null,
+  signal: AbortSignal,
+): Promise<MobileDeviceSession[]> {
+  const query = projectSlug
+    ? `?projectSlug=${encodeURIComponent(projectSlug)}`
+    : '';
+  const data = (await readEnvelope(
+    fetcher,
+    `${apiBase}/api/mobile-devices/hosts/${encodeURIComponent(hostId)}/sessions${query}`,
+    signal,
+  )) as { sessions?: unknown } | null;
+  const rows = data?.sessions;
+  if (
+    !Array.isArray(rows) ||
+    !rows.every(
+      (row) =>
+        typeof row === 'object' &&
+        row !== null &&
+        (row as { hostId?: unknown }).hostId === hostId &&
+        typeof (row as { surfaceId?: unknown }).surfaceId === 'string',
+    )
+  )
+    throw new FloatReadError(200);
+  return rows as MobileDeviceSession[];
+}
+
+/** The device a source names, as the Device pane selects one. */
+function deviceTargetOf(source: DeviceFloatSource) {
+  return {
+    hostId: source.hostId,
+    platform: source.platform,
+    deviceId: source.deviceId,
+  };
+}
+
+/** The floated device's session in a host's list, if this viewer may see it. */
+function deviceSessionOf(
+  list: readonly MobileDeviceSession[] | undefined,
+  source: DeviceFloatSource,
+): MobileDeviceSession | undefined {
+  return list?.find(
+    (row) =>
+      row.hostId === source.hostId &&
+      row.platform === source.platform &&
+      row.deviceId === source.deviceId,
+  );
 }
 
 /** Whether this viewer may use the browser here, and as which principal. */
@@ -216,9 +339,26 @@ export function FloatOverChatHost({
   const { apiBase } = useApiBase();
   const { settings } = useFeatureSettings();
   const autoFloat = settings.autoFloatAgentBrowserSessions !== false;
-  useFloatStoreVersion();
+  const storeVersion = useFloatStoreVersion();
   const shownVersion = useShownSourcesVersion();
   const source = getFloatingSource(conversationKey);
+  // This chat can take a person's "Float over chat" (the Device pane's)
+  // while it is mounted; the first mounted chat to see a request floats it.
+  useEffect(() => registerFloatHost(), []);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: storeVersion is the change signal for the module store's request.
+  useEffect(() => {
+    const request = takeFloatRequest();
+    if (!request) return;
+    clearFloatNotice(conversationKey);
+    // A PERSON's request: a new session of the device floating now (another
+    // surface) is a new float, read afresh, not the old one following it.
+    openFloat(conversationKey, request.source, { requested: true });
+    request.onTaken?.();
+  }, [storeVersion, conversationKey]);
+  const deviceSource = source?.kind === 'device' ? source : null;
+  // The browser reads run to auto-float, or to follow a floated browser;
+  // a floated device needs neither.
+  const browserReads = source === null ? autoFloat : source.kind === 'browser';
   // Consecutive failures per read, for the back-off (reset by a success).
   const accessFailures = useRef(0);
   const sessionFailures = useRef(0);
@@ -239,7 +379,7 @@ export function FloatOverChatHost({
         throw error;
       }
     },
-    enabled: autoFloat || source !== null,
+    enabled: browserReads,
     retry: false,
     staleTime: Number.POSITIVE_INFINITY,
     // One success is the answer; a 403/404 is too; anything else is retried.
@@ -271,11 +411,98 @@ export function FloatOverChatHost({
     // (the list route answers a 200 with an empty list to anyone, so it
     // cannot say that), and only while it can matter: to auto-float, or to
     // notice that the floated session went away.
-    enabled: access.isSuccess && (autoFloat || source !== null),
+    enabled: access.isSuccess && browserReads,
     retry: false,
     refetchInterval: (query) =>
       floatReadDelay(query.state.error, sessionFailures.current, FLOAT_POLL_MS),
   });
+  // A floated device: its host's session list, as THIS viewer may see it
+  // under the Project it was floated from.
+  const deviceFailures = useRef(0);
+  const deviceHostId = deviceSource?.hostId ?? null;
+  const deviceProject = deviceSource?.projectSlug ?? null;
+  // Keyed by THIS float's generation (review A): a float of another device
+  // on the same host and Project — or of the same device after a close —
+  // starts from a fresh read, never from an earlier float's cached list or
+  // final error. A key rather than a comparison of update times, because a
+  // fresh key cannot observe an old answer at all, while a time gate needs
+  // a refetch to happen and trusts two clocks to order it.
+  const deviceGeneration = deviceSource
+    ? getFloatGeneration(conversationKey)
+    : 0;
+  const deviceSessions = useQuery({
+    queryKey: [
+      'float-over-chat',
+      apiBase,
+      'device-sessions',
+      deviceProject,
+      deviceHostId,
+      deviceGeneration,
+    ],
+    queryFn: async ({ signal }) => {
+      try {
+        const rows = await readDeviceHostSessions(
+          transport,
+          apiBase,
+          deviceHostId as string,
+          deviceProject,
+          signal,
+        );
+        deviceFailures.current = 0;
+        return { rows, receivedAt: performance.now() };
+      } catch (error) {
+        deviceFailures.current += 1;
+        throw error;
+      }
+    },
+    enabled: deviceHostId !== null,
+    retry: false,
+    // Only a busy host or an unanswered read is asked again (backing off);
+    // any other answer is final (the effect below closes the floater).
+    refetchInterval: (query) =>
+      query.state.error === null
+        ? FLOAT_POLL_MS
+        : deviceReadRetries(query.state.error)
+          ? floatReadDelay(query.state.error, deviceFailures.current, false)
+          : false,
+  });
+  const deviceRows = deviceSessions.data?.rows;
+  const deviceError = deviceSessions.error;
+  const deviceRetrying = deviceError !== null && deviceReadRetries(deviceError);
+
+  useEffect(() => {
+    if (!deviceSource) return;
+    // A final answer (refused, no such host, unavailable, untrusted): the
+    // floater goes, and the chat says why. Not a dismissal.
+    if (deviceError !== null && !deviceReadRetries(deviceError)) {
+      closeFloat(conversationKey);
+      // No "Open in right panel" here (review LOW-2): refused, or its host
+      // is gone or untrusted — the pane could not show it either, and would
+      // only dead-end after its wait.
+      setFloatNotice(conversationKey, {
+        subject: 'device',
+        text: deviceFloatNotice(deviceSource.name, deviceError),
+      });
+      return;
+    }
+    if (!deviceRows || deviceError !== null) return;
+    const current = deviceSessionOf(deviceRows, deviceSource);
+    // Ended, or not one this viewer may view: the floater goes with it.
+    if (!current) {
+      closeFloat(conversationKey);
+      setFloatNotice(conversationKey, {
+        subject: 'device',
+        text: `${deviceSource.name} is no longer open for you, so it is not floating.`,
+        // Its host answered and lists devices: the pane can show the
+        // device there to open again.
+        device: deviceTargetOf(deviceSource),
+      });
+    } else if (current.surfaceId !== deviceSource.surfaceId)
+      openFloat(conversationKey, {
+        ...deviceSource,
+        surfaceId: current.surfaceId,
+      });
+  }, [deviceSource, deviceRows, deviceError, conversationKey]);
   const list = sessions.data?.list;
   const receivedAt = sessions.data?.receivedAt;
   // Every poll re-decides, even one whose list is unchanged: a hand-off's
@@ -300,6 +527,10 @@ export function FloatOverChatHost({
       return;
     }
     if (!autoFloat || principalKey === null) return;
+    // Read the store, not this render's `source`: a person's float taken in
+    // this same commit (the request effect above) must not be replaced by an
+    // auto-float decided from the render before it.
+    if (getFloatingSource(conversationKey) !== null) return;
     const candidate = pickAutoFloatCandidate(
       list,
       { projectSlug, threadIds, principalKey },
@@ -332,27 +563,60 @@ export function FloatOverChatHost({
 
   const sourceKey = source ? floatSourceKey(source) : null;
   const shownInPane = useSourceShown(sourceKey);
-  if (!source || shownInPane) return null;
-  // TODO(#90 device batch): the Device source's player.
-  if (source.kind !== 'browser') return null;
-  const session = list?.find(
-    (candidate) => candidate.browserSessionId === source.browserSessionId,
-  );
-  // Until the effect above closes it, a session that stopped being live
-  // shows nothing rather than a live view of a surface that is gone.
-  if (session?.state !== 'live' || !session.surfaceId) return null;
-  return (
-    <BrowserFloat
-      key={source.surfaceId}
-      anchor={anchor}
-      conversationKey={conversationKey}
-      source={source}
-      session={session}
-      receivedAt={receivedAt}
-      apiBase={apiBase}
-      transport={transport}
+  const notice = getFloatNotice(conversationKey);
+  const noticeCard = notice ? (
+    <FloatNotice
+      notice={notice}
+      onDismiss={() => clearFloatNotice(conversationKey)}
     />
+  ) : null;
+  return (
+    <>
+      {noticeCard}
+      {source && !shownInPane ? renderSource(source) : null}
+    </>
   );
+
+  function renderSource(source: FloatSource) {
+    if (source.kind === 'device') {
+      // Only a session the server listed for THIS viewer on THIS host. While
+      // a busy or unreachable host is asked again, the floater stays — with
+      // Close — saying it is waiting; it never lingers as nothing.
+      const row = deviceSessionOf(deviceRows, source);
+      const live = row !== undefined && row.surfaceId === source.surfaceId;
+      if (!live && !deviceRetrying) return null;
+      return (
+        <DeviceFloat
+          key={source.surfaceId}
+          anchor={anchor}
+          conversationKey={conversationKey}
+          source={source}
+          session={live ? row : null}
+          receivedAt={deviceSessions.data?.receivedAt}
+          apiBase={apiBase}
+          transport={transport}
+        />
+      );
+    }
+    const session = list?.find(
+      (candidate) => candidate.browserSessionId === source.browserSessionId,
+    );
+    // Until the effect above closes it, a session that stopped being live
+    // shows nothing rather than a live view of a surface that is gone.
+    if (session?.state !== 'live' || !session.surfaceId) return null;
+    return (
+      <BrowserFloat
+        key={source.surfaceId}
+        anchor={anchor}
+        conversationKey={conversationKey}
+        source={source}
+        session={session}
+        receivedAt={receivedAt}
+        apiBase={apiBase}
+        transport={transport}
+      />
+    );
+  }
 }
 
 interface FloatLayoutMeasure {
@@ -497,29 +761,47 @@ interface Gesture {
   direction: FloatResizeDirection | null;
 }
 
-function BrowserFloat({
+/** What "Open in right panel" returns: the region model's own outcome. */
+type OpenPanelOutcome =
+  | OpenInRegionOutcome
+  | { ok: false; reason: OpenPaneRefusal | OpenInRegionRefusal };
+
+/**
+ * The shell every source floats in (source-generic): the overlay over the
+ * chat body, the narrow-chat notice, the player, Close and "Open in right
+ * panel". A source supplies what it is (noun, title, size), how to open it
+ * in a panel, and its live view.
+ */
+function SourceFloat({
   anchor,
   conversationKey,
-  source,
-  session,
-  receivedAt,
-  apiBase,
-  transport,
+  sourceKey,
+  noun,
+  title,
+  narrowText,
+  sourceSize,
+  agentInput,
+  openInPanel: open,
+  renderSurface,
 }: {
   anchor: HTMLElement;
   conversationKey: string;
-  source: Extract<FloatSource, { kind: 'browser' }>;
-  session: BrowserSessionView;
-  /** When the list carrying `session` arrived (`performance.now()`). */
-  receivedAt: number | undefined;
-  apiBase: string;
-  transport: FloatFetch;
+  sourceKey: string;
+  /** "browser" or "device": the player's accessible names use it. */
+  noun: string;
+  /** The page's host, or the device's name. */
+  title: string;
+  /** The narrow notice's sentence, given whether an agent is driving. */
+  narrowText: (agentDriving: boolean) => string;
+  sourceSize: FloatSize;
+  agentInput: RecentAgentInput;
+  /** Opens the source in a panel; null where no panel can open here. */
+  openInPanel: (() => OpenPanelOutcome) | null;
+  renderSurface: (
+    onControlState: (state: LiveSurfaceControlState) => void,
+  ) => ReactNode;
 }) {
   const layout = useFloatLayout(anchor);
-  const agentInput = agentInputOf(session, receivedAt);
-  const sourceKey = floatSourceKey(source);
-  const host = hostOf(session.url);
-  const openBrowser = useOpenBrowserSessionInRegion();
   const [notice, setNotice] = useState<string | null>(null);
   const [control, setControl] = useState<LiveSurfaceControlState | null>(null);
 
@@ -528,23 +810,15 @@ function BrowserFloat({
     [conversationKey, sourceKey],
   );
   const openInPanel = useCallback(() => {
-    if (!openBrowser) return;
-    const request = {
-      projectId: session.projectId,
-      browserSessionId: session.browserSessionId,
-    };
-    let outcome = openBrowser(request, { region: 'right' });
-    // A device whose fold offers no right region still has a dock: the
-    // Browser pane's own default placement is the next best panel.
-    if (!outcome.ok && outcome.reason === 'region-unavailable')
-      outcome = openBrowser(request);
+    if (!open) return;
+    const outcome = open();
     // Not a dismissal: the pane is about to show it (and `shownSources`
     // keeps the floater away while it does); closing that pane later is not
     // the user saying "never float this here again". The hand-off only keeps
     // it from re-floating in the moment before the pane has mounted.
     if (outcome.ok) handOffFloat(conversationKey, sourceKey);
     else setNotice(describeOpenInRegionRefusal(outcome.reason));
-  }, [openBrowser, session, conversationKey, sourceKey]);
+  }, [open, conversationKey, sourceKey]);
 
   if (!layout) return null;
   // The overlay covers exactly the chat body, from whatever ancestor
@@ -565,10 +839,11 @@ function BrowserFloat({
               (layout.obstacles.composer?.height ?? 0) -
               FLOAT_EDGE_GAP * 2,
           )}
-          host={host}
+          label={`Floating ${noun}: ${title}`}
+          text={narrowText}
           agentInput={agentInput}
           notice={notice}
-          canOpen={openBrowser !== null}
+          canOpen={open !== null}
           onOpen={openInPanel}
           onClose={close}
         />
@@ -579,18 +854,72 @@ function BrowserFloat({
       <FloatPlayer
         layout={layout}
         sourceKey={sourceKey}
-        sourceSize={{
-          width: session.viewport.width,
-          height: session.viewport.height,
-        }}
-        label={`Floating browser: ${host}`}
+        sourceSize={sourceSize}
+        noun={noun}
+        label={`Floating ${noun}: ${title}`}
         control={control}
         agentInput={agentInput}
         notice={notice}
-        canOpen={openBrowser !== null}
+        canOpen={open !== null}
         onOpen={openInPanel}
         onClose={close}
       >
+        {renderSurface(setControl)}
+      </FloatPlayer>
+    </div>
+  );
+}
+
+function BrowserFloat({
+  anchor,
+  conversationKey,
+  source,
+  session,
+  receivedAt,
+  apiBase,
+  transport,
+}: {
+  anchor: HTMLElement;
+  conversationKey: string;
+  source: Extract<FloatSource, { kind: 'browser' }>;
+  session: BrowserSessionView;
+  /** When the list carrying `session` arrived (`performance.now()`). */
+  receivedAt: number | undefined;
+  apiBase: string;
+  transport: FloatFetch;
+}) {
+  const host = hostOf(session.url);
+  const openBrowser = useOpenBrowserSessionInRegion();
+  const { projectId, browserSessionId } = session;
+  const openInPanel = useMemo(() => {
+    if (!openBrowser) return null;
+    return () => {
+      const request = { projectId, browserSessionId };
+      const outcome = openBrowser(request, { region: 'right' });
+      // A device whose fold offers no right region still has a dock: the
+      // Browser pane's own default placement is the next best panel.
+      return !outcome.ok && outcome.reason === 'region-unavailable'
+        ? openBrowser(request)
+        : outcome;
+    };
+  }, [openBrowser, projectId, browserSessionId]);
+  return (
+    <SourceFloat
+      anchor={anchor}
+      conversationKey={conversationKey}
+      sourceKey={floatSourceKey(source)}
+      noun="browser"
+      title={host}
+      narrowText={(agentDriving) =>
+        `${agentDriving ? 'An agent is driving a browser' : 'A browser is open'} at ${host}. The chat is too narrow to float it here.`
+      }
+      sourceSize={{
+        width: session.viewport.width,
+        height: session.viewport.height,
+      }}
+      agentInput={agentInputOf(session, receivedAt)}
+      openInPanel={openInPanel}
+      renderSurface={(onControlState) => (
         <LiveSurfaceCanvas
           apiBase={apiBase}
           surfaceId={source.surfaceId}
@@ -598,10 +927,163 @@ function BrowserFloat({
           transport={transport}
           hostControls
           inputRequiresLease
-          onControlState={setControl}
+          onControlState={onControlState}
         />
-      </FloatPlayer>
-    </div>
+      )}
+    />
+  );
+}
+
+/**
+ * The size a device's player is laid out at before its frames say
+ * otherwise: the Device pane's placeholder phone shape, at a width the
+ * player never needs to exceed. The live view draws the real frame at its
+ * own aspect inside it (`fit`), so a frame that differs is letterboxed by a
+ * few pixels rather than stretched.
+ */
+function devicePlayerSize(platform: 'ios' | 'android'): FloatSize {
+  const width = 1080;
+  return {
+    width,
+    height: Math.round(width / DEVICE_PLACEHOLDER_ASPECT[platform]),
+  };
+}
+
+function DeviceFloat({
+  anchor,
+  conversationKey,
+  source,
+  session,
+  receivedAt,
+  apiBase,
+  transport,
+}: {
+  anchor: HTMLElement;
+  conversationKey: string;
+  source: DeviceFloatSource;
+  /** The listed session; null while its host is being asked again. */
+  session: MobileDeviceSession | null;
+  receivedAt: number | undefined;
+  apiBase: string;
+  transport: FloatFetch;
+}) {
+  const scope = useHostRequestAuthorityScope();
+  const openDevice = useOpenDeviceInRegion();
+  const { hostId, platform, deviceId } = source;
+  const openInPanel = useMemo(() => {
+    if (!openDevice || !scope) return null;
+    return () => {
+      const device = { hostId, platform, deviceId };
+      const outcome = openDevice(scope, device, { region: 'right' });
+      return !outcome.ok && outcome.reason === 'region-unavailable'
+        ? openDevice(scope, device)
+        : outcome;
+    };
+  }, [openDevice, scope, hostId, platform, deviceId]);
+  // Who is driving is derived by the Browser's own rule (`recentDriver`):
+  // the live lease, or an agent's recent input. No agent path reaches a
+  // device surface today, so a device session carries no driver history and
+  // the rule falls to the lease alone — the indicator is never asserted.
+  const agentInput: RecentAgentInput = {
+    lastAgentInputAt: undefined,
+    serverNow: undefined,
+    receivedAt,
+    lastDriverIsAgent: false,
+  };
+  const name = session?.name ?? source.name;
+  const { projectSlug } = source;
+  return (
+    <SourceFloat
+      anchor={anchor}
+      conversationKey={conversationKey}
+      sourceKey={floatSourceKey(source)}
+      noun="device"
+      title={name}
+      narrowText={(agentDriving) =>
+        `${agentDriving ? `An agent is driving ${name}` : `${name} is open`}. The chat is too narrow to float it here.`
+      }
+      sourceSize={devicePlayerSize(platform)}
+      agentInput={agentInput}
+      openInPanel={openInPanel}
+      renderSurface={(onControlState) =>
+        session === null ? (
+          <p className="float-over-chat__waiting" role="status">
+            Waiting for the device host to answer…
+          </p>
+        ) : (
+          <LiveSurfaceCanvas
+            apiBase={apiBase}
+            surfaceId={source.surfaceId}
+            label={`${session.name} (${deviceOsLabel(session)})`}
+            transport={transport}
+            {...(projectSlug ? { projectSlug } : {})}
+            fit={{
+              aspect: DEVICE_PLACEHOLDER_ASPECT[platform],
+              cornerRadius: (box) => deviceCornerRadius(platform, box),
+            }}
+            hostControls
+            inputRequiresLease
+            onControlState={onControlState}
+          />
+        )
+      }
+    />
+  );
+}
+
+/**
+ * Why the floater went away on its own (a device this viewer cannot view
+ * here, a host that is gone, a session that ended), until the person
+ * dismisses it or asks for something else to float.
+ *
+ * In the chat's FLOW, not the overlay (review D): it renders right after
+ * the float's marker, so it is part of what the float measures as docked
+ * below the marker — the player keeps clear of it exactly as it keeps
+ * clear of the composer, and the two can never overlap.
+ */
+function FloatNotice({
+  notice,
+  onDismiss,
+}: {
+  notice: FloatNoticeState;
+  onDismiss: () => void;
+}) {
+  const scope = useHostRequestAuthorityScope();
+  const openDevice = useOpenDeviceInRegion();
+  const [refusal, setRefusal] = useState<string | null>(null);
+  const { device } = notice;
+  const canOpen = device !== undefined && openDevice !== null && !!scope;
+  const open = () => {
+    if (!device || !openDevice || !scope) return;
+    let outcome = openDevice(scope, device, { region: 'right' });
+    if (!outcome.ok && outcome.reason === 'region-unavailable')
+      outcome = openDevice(scope, device);
+    if (outcome.ok) onDismiss();
+    else setRefusal(describeOpenInRegionRefusal(outcome.reason));
+  };
+  return (
+    <section
+      className="float-over-chat__notice-bar"
+      aria-label={`Floating ${notice.subject} notice`}
+    >
+      <p className="float-over-chat__notice-text" role="status">
+        {refusal ?? notice.text}
+      </p>
+      <div className="float-over-chat__narrow-actions">
+        {canOpen ? (
+          <Button size="sm" className="float-over-chat__action" onClick={open}>
+            Open in right panel
+          </Button>
+        ) : null}
+        <Button
+          size="sm"
+          className="float-over-chat__action"
+          onClick={onDismiss}
+        >
+          Dismiss
+        </Button>
+      </div>
+    </section>
   );
 }
 
@@ -612,7 +1094,8 @@ function BrowserFloat({
  */
 function NarrowFloatNotice({
   maxHeight,
-  host,
+  label,
+  text,
   agentInput,
   notice,
   canOpen,
@@ -621,7 +1104,8 @@ function NarrowFloatNotice({
 }: {
   /** The rows above the composer stack: the notice stays off it too. */
   maxHeight: number;
-  host: string;
+  label: string;
+  text: (agentDriving: boolean) => string;
   /** No live view here, so no lease reading: the same derivation, holder unknown. */
   agentInput: RecentAgentInput;
   notice: string | null;
@@ -633,13 +1117,10 @@ function NarrowFloatNotice({
   return (
     <section
       className="float-over-chat__narrow"
-      aria-label={`Floating browser: ${host}`}
+      aria-label={label}
       style={{ maxHeight }}
     >
-      <p className="float-over-chat__narrow-text">
-        {agentDriving ? 'An agent is driving a browser' : 'A browser is open'}{' '}
-        at {host}. The chat is too narrow to float it here.
-      </p>
+      <p className="float-over-chat__narrow-text">{text(agentDriving)}</p>
       {notice ? (
         <p className="float-over-chat__notice" role="status">
           {notice}
@@ -667,6 +1148,7 @@ function FloatPlayer({
   layout,
   sourceKey,
   sourceSize,
+  noun,
   label,
   control,
   agentInput,
@@ -679,6 +1161,7 @@ function FloatPlayer({
   layout: FloatLayoutMeasure;
   sourceKey: string;
   sourceSize: FloatSize;
+  noun: string;
   label: string;
   control: LiveSurfaceControlState | null;
   /** What the agent-driving window is derived from (`agentInputOf`). */
@@ -844,7 +1327,7 @@ function FloatPlayer({
           type="button"
           className="float-over-chat__dot"
           data-tone={tone}
-          aria-label={`Floating browser controls. ${status}.`}
+          aria-label={`Floating ${noun} controls. ${status}.`}
           aria-expanded={pillOpen}
           aria-controls={pillOpen ? pillId : undefined}
           onClick={() => {
@@ -861,12 +1344,12 @@ function FloatPlayer({
             id={pillId}
             className="float-over-chat__pill"
             role="toolbar"
-            aria-label="Floating browser"
+            aria-label={`Floating ${noun}`}
           >
             <button
               type="button"
               className="float-over-chat__handle"
-              aria-label="Move floating browser. Arrow keys move it; Shift and an arrow key resize it."
+              aria-label={`Move floating ${noun}. Arrow keys move it; Shift and an arrow key resize it.`}
               title="Drag to move"
               onPointerDown={(event) => beginGesture(event, null)}
               onPointerMove={moveGesture}
@@ -907,7 +1390,7 @@ function FloatPlayer({
               size="sm"
               variant="ghost"
               className="float-over-chat__action float-over-chat__icon"
-              aria-label="Close floating browser"
+              aria-label={`Close floating ${noun}`}
               title="Close"
               onClick={onClose}
             >

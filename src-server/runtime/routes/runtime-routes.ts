@@ -1,6 +1,9 @@
 import { humanPrincipal as deploymentHumanPrincipal } from '@kontourai/station-contracts/principal';
 import { createBrowserRoutes } from '../../routes/browser.js';
 import { createBrowserAgentRoutes } from '../../routes/browser-agent.js';
+import { createDeviceHostRoutes } from '../../routes/device-hosts.js';
+import { createDeviceToolchainRoutes } from '../../routes/device-toolchain.js';
+import { createDeviceToolsRoutes } from '../../routes/device-tools.js';
 import { createHomeTransferRoomRoutes } from '../../routes/environments/home-transfer-room-routes.js';
 import { createLiveSurfaceRoutes } from '../../routes/live-surface.js';
 import { createMobileDeviceRoutes } from '../../routes/mobile-device.js';
@@ -30,6 +33,36 @@ import {
   createBrowserService,
 } from '../../services/browser/browser-service.js';
 import { suggestLocalTargets } from '../../services/browser/local-port-scanner.js';
+import { createAndroidAvdResolver } from '../../services/devices/android-avd.js';
+import {
+  type DeviceAccess,
+  deviceAccessFromShares,
+  failClosedDeviceAccess,
+} from '../../services/devices/device-access.js';
+import {
+  createDeviceHostResolver,
+  LOCAL_DEVICE_HOST_ID,
+} from '../../services/devices/device-host-resolver.js';
+import { createDeviceHostActions } from '../../services/devices/device-host-tools.js';
+import {
+  deviceHubEndpointFromToolchain,
+  explicitDeviceHubEndpoint,
+} from '../../services/devices/device-hub-endpoint.js';
+import { DeviceSessionService } from '../../services/devices/device-session-service.js';
+import {
+  type DeviceAccessDeps,
+  DeviceShareStore,
+} from '../../services/devices/device-shares.js';
+import {
+  createDeviceToolRunner,
+  DeviceToolsService,
+  deviceControlConflict,
+} from '../../services/devices/device-tools.js';
+import { createFfmpegDecoderProvider } from '../../services/devices/h264-jpeg-decoder.js';
+import { DeviceHostRegistry } from '../../services/devices/hosts/device-host-registry.js';
+import { RemoteDeviceHostServices } from '../../services/devices/hosts/device-host-services.js';
+import { DeviceHostStore } from '../../services/devices/hosts/device-host-store.js';
+import { DeviceToolchainService } from '../../services/devices/toolchain/device-toolchain-service.js';
 import type { ApplicationSessionService } from '../../services/identity/application-session-service.js';
 import type { LoadedDeploymentAuthentication } from '../../services/identity/deployment-authentication-loader.js';
 import {
@@ -131,6 +164,7 @@ function principalForDeviceBinding(binding: DevicePrincipalBinding) {
 
 import type { Agent } from '@voltagent/core';
 import type { HonoServerConfig } from '@voltagent/server-hono';
+import type { Context } from 'hono';
 import { setCookie } from 'hono/cookie';
 import type { FileMemoryAdapter } from '../../adapters/file/memory-adapter.js';
 import {
@@ -752,6 +786,10 @@ interface ConfigureRuntimeRoutesResult {
   liveSurfaceRegistry?: LiveSurfaceRegistry;
   /** Personal hosts only; the runtime shuts it down on stop. */
   browserService?: BrowserService;
+  /** Personal hosts only; the runtime stops the managed hub on stop. */
+  deviceToolchainService?: DeviceToolchainService;
+  /** Live device sessions (#1970); personal hosts only, disposed on stop. */
+  deviceSessions?: DeviceSessionService;
   /**
    * The D5 Project authorizer the browser routes and browser surfaces use
    * (personal hosts only). Returned so the composition's own request
@@ -761,6 +799,11 @@ interface ConfigureRuntimeRoutesResult {
   browserProjectAuthorizer?: BrowserProjectAuthorizer;
   /** Epic #2323 S3: stops draft watchers and removes built drafts on shutdown. */
   pluginDraftService?: Pick<PluginDraftService, 'dispose'>;
+  /**
+   * SSH device hosts (#1973): their sessions and supervised hubs (ssh
+   * sessions and forwards); personal hosts only, disposed on stop.
+   */
+  deviceHosts?: { dispose(): Promise<void> };
 }
 
 /**
@@ -960,6 +1003,12 @@ export function configureRuntimeRoutes(
   let projectTaskRoomLifecycleReady: Promise<void> = Promise.resolve();
   let liveSurfaceRegistry: LiveSurfaceRegistry | undefined;
   let browserService: BrowserService | undefined;
+  let deviceToolchainService: DeviceToolchainService | undefined;
+  let deviceShareStore: DeviceShareStore | undefined;
+  let deviceShareAccess: DeviceAccessDeps | undefined;
+  let deviceSessions: DeviceSessionService | undefined;
+  let deviceHostRegistry: DeviceHostRegistry | undefined;
+  let remoteDeviceHosts: RemoteDeviceHostServices | undefined;
   let browserProjectAuthorizer: BrowserProjectAuthorizer | undefined;
   const allowedOrigins = resolveConfiguredRuntimeOrigins(context);
   const runtimeSecurity = {
@@ -2223,20 +2272,34 @@ export function configureRuntimeRoutes(
   // never a shared tenant: neither is mounted on a hosted deployment.
   const isPersonalHost =
     !hostedTenantRegistry && !isHostedTenantExecutionRequired();
-  if (isPersonalHost) {
-    context.app.route(
-      '/api/mobile-devices',
-      createMobileDeviceRoutes(
-        new LocalMobileDeviceHost({
-          endpoint: process.env.STATION_MOBILE_DEVICE_HUB_URL,
-        }),
-        { isRequestPrincipalCurrent },
-      ),
-    );
-  }
-  // Live surfaces (#90) stream a server-side screen (Chromium now, a device
-  // later) and accept its input: personal operator hosts only, like the
-  // device routes above. With no producer registered the routes are inert.
+  // Who may use which device (D5/D12): bound in the mobile-device block
+  // below (`deviceAccessFromShares`); read at request time, so every request
+  // sees the bound implementation and one with none bound is refused.
+  let deviceAccessImpl: DeviceAccess | undefined;
+  const deviceAccess: DeviceAccess = failClosedDeviceAccess({
+    isOperator: async (request) =>
+      (await deviceAccessImpl?.isOperator(request)) === true,
+    hasStanding: async (request, purpose) =>
+      (await deviceAccessImpl?.hasStanding(request, purpose)) === true,
+    mayAccessDevice: async (request, platform, deviceId, purpose, hostId) =>
+      (await deviceAccessImpl?.mayAccessDevice(
+        request,
+        platform,
+        deviceId,
+        purpose,
+        hostId,
+      )) === true,
+  });
+  // Who a live-surface request's HUMAN caller is (bound in the block below):
+  // the live-surface routes and the device Tools drawer's lease check (#1971)
+  // must resolve it identically, or "you hold control" would disagree.
+  let resolveLiveSurfaceHumanCaller:
+    | ((c: Context) => { principal: string; device: string } | null)
+    | undefined;
+  // Live surfaces (#90) stream a server-side screen (a Chromium page, a
+  // simulator or emulator) and accept its input: personal operator hosts
+  // only, like the device routes. With no producer registered the routes are
+  // inert.
   if (!hostedTenantRegistry && !isHostedTenantExecutionRequired()) {
     const liveSurfaceCallerKey = randomBytes(32);
     liveSurfaceRegistry = new LiveSurfaceRegistry({
@@ -2247,8 +2310,9 @@ export function configureRuntimeRoutes(
           }),
       },
     });
-    // A browser surface's authorizer resolves Project membership for the
-    // request (D5), which reads the captured request principal.
+    // A browser surface's authorizer, and a device surface's (D12 shares),
+    // resolves Project membership for the request (D5), which reads the
+    // captured request principal.
     context.app.use('/api/live-surfaces/*', async (c, next) => {
       try {
         roomRequestPrincipals.set(
@@ -2260,38 +2324,247 @@ export function configureRuntimeRoutes(
       }
       await next();
     });
+    // Only a HUMAN may drive a surface over HTTP; agents claim through
+    // the registry with their verified session. In personal mode every
+    // credential — including the per-boot internal token the
+    // station-control MCP child presents — resolves to the operator's
+    // human principal, so the principal kind alone refuses nothing:
+    // refuse agent-originated credentials explicitly.
+    // TODO(#122): replace these two checks with the first-class
+    // `isAgentOriginatedRequest` once it lands.
+    const resolveHumanCaller = (
+      c: Context,
+    ): { principal: string; device: string } | null => {
+      const runtime = getRuntimeAuthenticatedRequestPrincipal(c.req.raw);
+      if (!runtime || runtime.kind === 'internal') return null;
+      if (
+        resolveInboundDeviceKindForRequest(c.req.raw, (credential) =>
+          context.environmentSecurityService.identifyDevice(credential),
+        ) === 'delegation'
+      )
+        return null;
+      const principal = resolveSubscriberPrincipal(c as never);
+      if (principal?.kind !== 'human') return null;
+      // The client the human acts from: the paired device, else the one
+      // credential — as an HMAC under a key minted for this boot, so the
+      // id broadcast to other viewers is not a stable digest of a secret
+      // (an unsalted hash is an offline-checkable fingerprint of it).
+      const device = runtime.deviceId
+        ? `device:${runtime.deviceId}`
+        : `credential:${createHmac('sha256', liveSurfaceCallerKey).update(runtime.credential).digest('base64url').slice(0, 22)}`;
+      return { principal: principal.id, device };
+    };
+    resolveLiveSurfaceHumanCaller = resolveHumanCaller;
     context.app.route(
       '/api/live-surfaces',
       createLiveSurfaceRoutes(liveSurfaceRegistry, {
         isRequestPrincipalCurrent,
-        // Only a HUMAN may drive a surface over HTTP; agents claim through
-        // the registry with their verified session. In personal mode every
-        // credential — including the per-boot internal token the
-        // station-control MCP child presents — resolves to the operator's
-        // human principal, so the principal kind alone refuses nothing:
-        // refuse agent-originated credentials explicitly.
-        // TODO(#122): replace these two checks with the first-class
-        // `isAgentOriginatedRequest` once it lands.
-        resolveHumanCaller: (c) => {
-          const runtime = getRuntimeAuthenticatedRequestPrincipal(c.req.raw);
-          if (!runtime || runtime.kind === 'internal') return null;
-          if (
-            resolveInboundDeviceKindForRequest(c.req.raw, (credential) =>
-              context.environmentSecurityService.identifyDevice(credential),
-            ) === 'delegation'
-          )
-            return null;
-          const principal = resolveSubscriberPrincipal(c as never);
-          if (principal?.kind !== 'human') return null;
-          // The client the human acts from: the paired device, else the one
-          // credential — as an HMAC under a key minted for this boot, so the
-          // id broadcast to other viewers is not a stable digest of a secret
-          // (an unsalted hash is an offline-checkable fingerprint of it).
-          const device = runtime.deviceId
-            ? `device:${runtime.deviceId}`
-            : `credential:${createHmac('sha256', liveSurfaceCallerKey).update(runtime.credential).digest('base64url').slice(0, 22)}`;
-          return { principal: principal.id, device };
-        },
+        resolveHumanCaller,
+      }),
+    );
+  }
+  // Mobile devices (#1969 snapshots, #1970 live sessions, toolchain and
+  // shares): personal operator hosts only, never a shared tenant.
+  if (isPersonalHost) {
+    // #1970: Station's own supervised hub. An explicitly configured hub URL
+    // still wins; the managed one is started on demand, never at boot.
+    const devices = new DeviceToolchainService({
+      stationHome: context.configLoader.getProjectHomeDir(),
+      configuredHubUrl: process.env.STATION_MOBILE_DEVICE_HUB_URL,
+    });
+    deviceToolchainService = devices;
+    // D12: devices belong to the operator; admins/owners of a Project use
+    // only the devices the operator shared with it. The membership authority
+    // is declared further down; these closures read it per request.
+    deviceShareStore = new DeviceShareStore(
+      context.configLoader.getProjectHomeDir(),
+    );
+    // #1973: operator-managed SSH device hosts. Each receives Station's own
+    // verified hub install and runs it under the same guard; nothing starts
+    // until the operator enabled a host and someone opens a device there.
+    const shareStore = deviceShareStore;
+    const hostRegistry = new DeviceHostRegistry({
+      stationHome: context.configLoader.getProjectHomeDir(),
+      store: new DeviceHostStore(context.configLoader.getProjectHomeDir()),
+      // M2: a retargeted or removed host's shares go with its consent.
+      dropShares: (hostId) => void shareStore.removeHost(hostId),
+      localHub: () =>
+        devices.toolchain.installedEntry('expo-device-hub')
+          ? {
+              installDir: devices.toolchain.installDir('expo-device-hub'),
+              version: devices.toolchain.pin('expo-device-hub').version,
+            }
+          : undefined,
+    });
+    deviceHostRegistry = hostRegistry;
+    const localAvd = createAndroidAvdResolver();
+    const deviceMembershipAccess = {
+      operator: (request: Request) =>
+        projectMembershipAuthority(request).operator(),
+      authority: (request: Request) => projectMembershipAuthority(request),
+      ...(context.projectMembership
+        ? { membership: context.projectMembership }
+        : {}),
+    };
+    deviceShareAccess = {
+      authorizeOperator: createBrowserOperatorAuthorizer(
+        deviceMembershipAccess,
+      ),
+      authorizeProject: createBrowserProjectAuthorizer(deviceMembershipAccess),
+      resolveProject: (slug) => {
+        const project = context.projectService
+          .listProjects()
+          .find((candidate) => candidate.slug === slug);
+        return project ? { id: project.id } : undefined;
+      },
+      shares: deviceShareStore,
+      // Android shares are keyed by AVD name; a serial is resolved per use,
+      // on the host that runs it.
+      resolveAndroidAvd: (serial, hostId) =>
+        hostId === LOCAL_DEVICE_HOST_ID
+          ? localAvd(serial)
+          : hostRegistry.resolveAndroidAvd(hostId, serial),
+    };
+    // The live Device pane asks one predicate (per device, per purpose);
+    // the share store answers it.
+    deviceAccessImpl = deviceAccessFromShares(deviceShareAccess);
+    // D13: every hub is reached through the device host resolver. The local
+    // host is the managed hub (through its allowlisted, secret-carrying
+    // connection) unless an explicit hub URL is configured; an SSH device
+    // host (#1973) is its forwarded hub, through the same connection shape.
+    const deviceHosts = createDeviceHostResolver({
+      local: deviceHubEndpointFromToolchain(
+        devices,
+        explicitDeviceHubEndpoint(process.env.STATION_MOBILE_DEVICE_HUB_URL),
+      ),
+      remote: hostRegistry,
+    });
+    const deviceHubEndpoint = deviceHosts.resolve({
+      hostId: LOCAL_DEVICE_HOST_ID,
+    })!;
+    const deviceHost = new LocalMobileDeviceHost({ hub: deviceHubEndpoint });
+    const sessionSurfaces = liveSurfaceRegistry;
+    // Android frames from ANY host are decoded here, on the Station host.
+    const deviceDecoder = createFfmpegDecoderProvider();
+    const onDeviceError = (message: string, error: unknown) =>
+      context.logger.warn(message, {
+        error:
+          error instanceof Error
+            ? error.message
+            : typeof error === 'string'
+              ? error
+              : JSON.stringify(error),
+      });
+    remoteDeviceHosts = new RemoteDeviceHostServices({
+      has: (hostId) => hostRegistry.has(hostId),
+      resolver: deviceHosts,
+      createSessions: ({ hostId, host, endpoint }) =>
+        sessionSurfaces
+          ? new DeviceSessionService({
+              hostId,
+              host,
+              endpoint,
+              surfaces: sessionSurfaces,
+              access: deviceAccess,
+              decoder: deviceDecoder,
+              // No host actions: they run `adb` on THIS machine, which is not
+              // where an SSH host's emulator is (Android rotation reports
+              // unsupported there).
+              onError: onDeviceError,
+            })
+          : undefined,
+    });
+    if (liveSurfaceRegistry)
+      deviceSessions = new DeviceSessionService({
+        host: deviceHost,
+        endpoint: deviceHubEndpoint,
+        surfaces: liveSurfaceRegistry,
+        access: deviceAccess,
+        decoder: deviceDecoder,
+        actions: createDeviceHostActions(),
+        onError: (message, error) =>
+          context.logger.warn(message, {
+            error:
+              error instanceof Error
+                ? error.message
+                : typeof error === 'string'
+                  ? error
+                  : JSON.stringify(error),
+          }),
+      });
+    // Device access reads the request principal (operator and Project
+    // membership); prime it for every device route before any of them runs.
+    context.app.use('/api/mobile-devices/*', async (c, next) => {
+      try {
+        roomRequestPrincipals.set(
+          c.req.raw,
+          resolveOrchestrationRequestPrincipal(c),
+        );
+      } catch {
+        // Unattributable: membership then refuses; the route decides.
+      }
+      await next();
+    });
+    context.app.route(
+      '/api/mobile-devices',
+      createMobileDeviceRoutes(deviceHost, {
+        isRequestPrincipalCurrent,
+        access: deviceAccess,
+        ...(deviceSessions ? { sessions: deviceSessions } : {}),
+        remoteHost: (hostId) => remoteDeviceHosts?.get(hostId),
+        listRemoteHosts: () => hostRegistry.summaries(),
+      }),
+    );
+    // #1973: the operator's SSH device hosts (CRUD, test, hub consent).
+    context.app.route(
+      '/api/mobile-devices',
+      createDeviceHostRoutes({
+        registry: hostRegistry,
+        isOperator: (request) => deviceAccess.isOperator(request),
+        isRequestPrincipalCurrent,
+      }),
+    );
+    // #1971 Tools drawer: typed device actions with read-back, through the
+    // same per-device access, and refused while ANOTHER controller holds the
+    // device's live-surface lease.
+    const toolSessions = deviceSessions;
+    const toolSurfaces = liveSurfaceRegistry;
+    const toolCaller = resolveLiveSurfaceHumanCaller;
+    context.app.route(
+      '/api/mobile-devices',
+      createDeviceToolsRoutes({
+        isRequestPrincipalCurrent,
+        access: deviceAccess,
+        // THIS machine's xcrun/adb and hub: the local device host only
+        // (#1973). An SSH device host's device is refused `unsupported`.
+        tools: new DeviceToolsService({
+          hostId: LOCAL_DEVICE_HOST_ID,
+          runner: createDeviceToolRunner(),
+          hub: deviceHubEndpoint,
+        }),
+        ...(toolCaller ? { resolveHumanCaller: toolCaller } : {}),
+        ...(toolSessions && toolSurfaces
+          ? {
+              // The lease of the device's session ON ITS HOST: each host has
+              // its own session service (surface ids are unique across them).
+              controlConflict: (caller, platform, deviceId, hostId) => {
+                const sessions =
+                  hostId === LOCAL_DEVICE_HOST_ID
+                    ? toolSessions
+                    : remoteDeviceHosts?.get(hostId)?.sessions;
+                return sessions
+                  ? deviceControlConflict(
+                      { sessions, surfaces: toolSurfaces },
+                      platform,
+                      deviceId,
+                      caller,
+                    )
+                  : // A host with no session service here cannot prove the
+                    // device is free, so it reads as held, never as open.
+                    'other';
+              },
+            }
+          : {}),
       }),
     );
   }
@@ -3422,6 +3695,12 @@ export function configureRuntimeRoutes(
       serverPort: context.port,
       consentPort: configuredConsentPort(),
       configuredOrigins: allowedOrigins,
+      // #1970: the managed device hub and its helpers, read live.
+      // #1973: every SSH device host's local forward and host hub port too.
+      extraListenerPorts: () => [
+        ...(deviceToolchainService?.listeningPorts() ?? []),
+        ...(deviceHostRegistry?.listeningPorts() ?? []),
+      ],
       ...(liveSurfaceRegistry
         ? {
             liveSurfaces: {
@@ -3535,6 +3814,31 @@ export function configureRuntimeRoutes(
             .listProjects()
             .find((candidate) => candidate.id === projectId)?.slug,
         surfaceIdFor: browserService.surfaceIdFor,
+      }),
+    );
+    // #1970: toolchain status/installs, device shares and the device hub
+    // proxy, authorized per D5/D12 (operator, or an admin of a Project the
+    // device is shared with).
+    context.app.route(
+      '/api/mobile-devices',
+      createDeviceToolchainRoutes({
+        service: deviceToolchainService!,
+        access: deviceShareAccess!,
+        shares: deviceShareStore!,
+        ...(deviceHostRegistry
+          ? {
+              remoteHubs: {
+                has: (hostId: string) => deviceHostRegistry!.has(hostId),
+                ensureHub: (hostId: string) =>
+                  deviceHostRegistry!.ensureHub(hostId),
+              },
+            }
+          : {}),
+        listProjects: () =>
+          context.projectService
+            .listProjects()
+            .map((project) => ({ id: project.id, slug: project.slug })),
+        isRequestPrincipalCurrent,
       }),
     );
   }
@@ -5166,8 +5470,21 @@ export function configureRuntimeRoutes(
     projectTaskRoomRuntime,
     liveSurfaceRegistry,
     browserService,
+    deviceToolchainService,
+    deviceSessions,
     browserProjectAuthorizer,
     ...(pluginDraftService ? { pluginDraftService } : {}),
+    ...(remoteDeviceHosts || deviceHostRegistry
+      ? {
+          deviceHosts: {
+            dispose: async () => {
+              // Sessions first: their producers read the hubs that stop next.
+              await remoteDeviceHosts?.dispose();
+              await deviceHostRegistry?.shutdown();
+            },
+          },
+        }
+      : {}),
   };
 }
 

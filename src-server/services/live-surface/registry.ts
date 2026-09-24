@@ -147,13 +147,18 @@ class PressedInput {
       this.pointer = { x: event.x, y: event.y };
       if (event.type === 'down')
         this.pointerType = event.pointerType ?? 'mouse';
-      if (event.type === 'down' && event.button)
-        this.buttons.set(event.button, {
+      // A down/up with no `button` is the primary one (a raw client's touch
+      // names none). Recording it as nothing would leave that press
+      // uncancelled at a handoff (Device pane lane, #1970).
+      const button =
+        event.button ??
+        (event.type === 'down' || event.type === 'up' ? 'left' : undefined);
+      if (event.type === 'down' && button)
+        this.buttons.set(button, {
           pointerType: event.pointerType ?? 'mouse',
           owner,
         });
-      if (event.type === 'up' && event.button)
-        this.buttons.delete(event.button);
+      if (event.type === 'up' && button) this.buttons.delete(button);
     } else if (event.kind === 'key') {
       const id = event.code || event.key;
       if (event.type === 'down')
@@ -470,7 +475,9 @@ async function dispatchFenced(
     // out and lands later, is still accounted for by the cancel.
     own.pressed.record(event, controller);
     const outcome = await dispatchWithTimeout(entry, () =>
-      entry.producer.dispatch(event),
+      entry.producer.dispatch(event, {
+        isCurrent: () => entry.lease.isCurrent(fence, controller).ok,
+      }),
     );
     if (outcome !== 'ok')
       return {

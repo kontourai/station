@@ -1,11 +1,28 @@
 import type {
+  DeviceHostCheckResult,
+  DeviceHostSummary,
+  DeviceSshHostView,
   MobileDeviceCapture,
   MobileDeviceInventory,
+  MobileDeviceSession,
   MobileDeviceTarget,
 } from '@kontourai/station-contracts/mobile-device';
 import {
+  addDeviceSshHost,
   captureMobileDevice,
+  checkDeviceSshHost,
+  closeMobileDeviceSession,
+  fetchDeviceSshHosts,
+  fetchMobileDeviceHosts,
   fetchMobileDeviceInventory,
+  fetchMobileDeviceSessions,
+  openMobileDeviceSession,
+  powerOffMobileDevice,
+  removeDeviceSshHost,
+  setDeviceSshHub,
+  startDeviceSshHub,
+  startMobileDevice,
+  updateDeviceSshHost,
 } from '../mobile-device';
 import {
   type ApiRequestScope,
@@ -27,23 +44,47 @@ import {
  * from another's cache, and re-signing in under a different principal must not
  * either.
  */
-export const mobileDeviceInventoryQueryKey = (scope: ApiRequestScope) => [
-  'mobile-device-inventory',
-  scope.apiBase,
-  scope.authorityKey,
+/**
+ * A device host other than `local` (#1973) partitions every device key, so
+ * one host's list is never served for another. `local` keeps the keys it
+ * always had.
+ */
+const hostPart = (hostId?: string | null) =>
+  hostId && hostId !== 'local' ? [`host:${hostId}`] : [];
+
+export const mobileDeviceInventoryQueryKey = (
+  scope: ApiRequestScope,
+  projectSlug?: string | null,
+  hostId?: string | null,
+) => [
+  ...(projectSlug
+    ? [
+        'mobile-device-inventory',
+        scope.apiBase,
+        scope.authorityKey,
+        projectSlug,
+      ]
+    : ['mobile-device-inventory', scope.apiBase, scope.authorityKey]),
+  ...hostPart(hostId),
 ];
 
 export function useMobileDeviceInventoryQuery(
   scope: ApiRequestScope,
   config?: QueryConfig<MobileDeviceInventory>,
+  /** D12: the Project the device list is read for (shares are per Project). */
+  projectSlug?: string | null,
+  /** #1973: the device host; `local` when absent. */
+  hostId: string = 'local',
 ) {
   return useApiQuery<MobileDeviceInventory>(
-    mobileDeviceInventoryQueryKey(scope),
+    mobileDeviceInventoryQueryKey(scope, projectSlug, hostId),
     (signal) =>
-      fetchMobileDeviceInventory(scope.apiBase, {
-        ...(signal ? { signal } : {}),
-        requestScope: scope,
-      }),
+      fetchMobileDeviceInventory(
+        scope.apiBase,
+        { ...(signal ? { signal } : {}), requestScope: scope },
+        projectSlug,
+        hostId,
+      ),
     {
       // Explicit refresh only. A poll would be a stream affordance this
       // slice does not have, and each tick is a real request to a device
@@ -79,5 +120,252 @@ export function useMobileDeviceInventoryQuery(
 export function useCaptureMobileDeviceMutation(scope: ApiRequestScope) {
   return useApiMutation<MobileDeviceCapture, MobileDeviceTarget>((target) =>
     captureMobileDevice(scope.apiBase, target, { requestScope: scope }),
+  );
+}
+
+// ---- live device sessions (#1970) -------------------------------------------
+//
+// Every call takes the Project the pane is in (D12): device shares are per
+// Project, so a Project admin's request must name it. It partitions the
+// session list's cache too, like the inventory's.
+
+export const mobileDeviceSessionsQueryKey = (
+  scope: ApiRequestScope,
+  projectSlug?: string | null,
+  hostId?: string | null,
+) => [
+  ...(projectSlug
+    ? ['mobile-device-sessions', scope.apiBase, scope.authorityKey, projectSlug]
+    : ['mobile-device-sessions', scope.apiBase, scope.authorityKey]),
+  ...hostPart(hostId),
+];
+
+/** Open sessions (D6: none is hidden). Refreshed after every session change. */
+export function useMobileDeviceSessionsQuery(
+  scope: ApiRequestScope,
+  projectSlug?: string | null,
+  config?: QueryConfig<MobileDeviceSession[]>,
+  hostId: string = 'local',
+) {
+  return useApiQuery<MobileDeviceSession[]>(
+    mobileDeviceSessionsQueryKey(scope, projectSlug, hostId),
+    (signal) =>
+      fetchMobileDeviceSessions(
+        scope.apiBase,
+        { ...(signal ? { signal } : {}), requestScope: scope },
+        projectSlug,
+        hostId,
+      ),
+    { staleTime: 5_000, retry: 1, retryDelay: 250, ...config },
+  );
+}
+
+const sessionKeys = (
+  scope: ApiRequestScope,
+  projectSlug?: string | null,
+  hostId?: string | null,
+) => [
+  mobileDeviceInventoryQueryKey(scope, projectSlug, hostId),
+  mobileDeviceSessionsQueryKey(scope, projectSlug, hostId),
+];
+
+/** Boot a stopped device; the list is re-read afterwards. */
+export function useStartMobileDeviceMutation(
+  scope: ApiRequestScope,
+  projectSlug?: string | null,
+  hostId: string = 'local',
+) {
+  return useApiMutation<
+    { deviceId: string; state: 'running' | 'starting' },
+    MobileDeviceTarget
+  >(
+    (target) =>
+      startMobileDevice(
+        scope.apiBase,
+        target,
+        { requestScope: scope },
+        projectSlug,
+      ),
+    { invalidateKeys: sessionKeys(scope, projectSlug, hostId) },
+  );
+}
+
+export function useOpenMobileDeviceSessionMutation(
+  scope: ApiRequestScope,
+  projectSlug?: string | null,
+  hostId: string = 'local',
+) {
+  return useApiMutation<MobileDeviceSession, MobileDeviceTarget>(
+    (target) =>
+      openMobileDeviceSession(
+        scope.apiBase,
+        target,
+        { requestScope: scope },
+        projectSlug,
+      ),
+    {
+      invalidateKeys: [
+        mobileDeviceSessionsQueryKey(scope, projectSlug, hostId),
+      ],
+    },
+  );
+}
+
+export function useCloseMobileDeviceSessionMutation(
+  scope: ApiRequestScope,
+  projectSlug?: string | null,
+  hostId: string = 'local',
+) {
+  return useApiMutation<void, string>(
+    (sessionId) =>
+      closeMobileDeviceSession(
+        scope.apiBase,
+        sessionId,
+        { requestScope: scope },
+        projectSlug,
+        hostId,
+      ),
+    {
+      invalidateKeys: [
+        mobileDeviceSessionsQueryKey(scope, projectSlug, hostId),
+      ],
+    },
+  );
+}
+
+export function usePowerOffMobileDeviceMutation(
+  scope: ApiRequestScope,
+  projectSlug?: string | null,
+  hostId: string = 'local',
+) {
+  return useApiMutation<void, MobileDeviceTarget>(
+    (target) =>
+      powerOffMobileDevice(
+        scope.apiBase,
+        target,
+        { requestScope: scope },
+        projectSlug,
+      ),
+    { invalidateKeys: sessionKeys(scope, projectSlug, hostId) },
+  );
+}
+
+// ---- device hosts (#1973) ---------------------------------------------------
+
+export const mobileDeviceHostsQueryKey = (
+  scope: ApiRequestScope,
+  projectSlug?: string | null,
+) =>
+  projectSlug
+    ? ['mobile-device-hosts', scope.apiBase, scope.authorityKey, projectSlug]
+    : ['mobile-device-hosts', scope.apiBase, scope.authorityKey];
+
+/** The Device pane's host picker: `local`, then each SSH device host. */
+export function useMobileDeviceHostsQuery(
+  scope: ApiRequestScope,
+  projectSlug?: string | null,
+  config?: QueryConfig<DeviceHostSummary[]>,
+) {
+  return useApiQuery<DeviceHostSummary[]>(
+    mobileDeviceHostsQueryKey(scope, projectSlug),
+    (signal) =>
+      fetchMobileDeviceHosts(
+        scope.apiBase,
+        { ...(signal ? { signal } : {}), requestScope: scope },
+        projectSlug,
+      ),
+    { staleTime: 30_000, retry: 1, retryDelay: 250, ...config },
+  );
+}
+
+export const deviceSshHostsQueryKey = (scope: ApiRequestScope) => [
+  'device-ssh-hosts',
+  scope.apiBase,
+  scope.authorityKey,
+];
+
+/** The operator's SSH device hosts (Settings → Device hosts). */
+export function useDeviceSshHostsQuery(
+  scope: ApiRequestScope,
+  config?: QueryConfig<DeviceSshHostView[]>,
+) {
+  return useApiQuery<DeviceSshHostView[]>(
+    deviceSshHostsQueryKey(scope),
+    (signal) =>
+      fetchDeviceSshHosts(scope.apiBase, {
+        ...(signal ? { signal } : {}),
+        requestScope: scope,
+      }),
+    { staleTime: 5_000, retry: false, ...config },
+  );
+}
+
+const hostKeys = (scope: ApiRequestScope) => [
+  deviceSshHostsQueryKey(scope),
+  ['mobile-device-hosts', scope.apiBase, scope.authorityKey],
+];
+
+export function useAddDeviceSshHostMutation(scope: ApiRequestScope) {
+  return useApiMutation<
+    DeviceSshHostView,
+    { label: string; sshTarget: string }
+  >(
+    (input) => addDeviceSshHost(scope.apiBase, input, { requestScope: scope }),
+    { invalidateKeys: hostKeys(scope) },
+  );
+}
+
+export function useUpdateDeviceSshHostMutation(scope: ApiRequestScope) {
+  return useApiMutation<
+    DeviceSshHostView,
+    { hostId: string; label?: string; sshTarget?: string }
+  >(
+    ({ hostId, ...input }) =>
+      updateDeviceSshHost(scope.apiBase, hostId, input, {
+        requestScope: scope,
+      }),
+    { invalidateKeys: hostKeys(scope) },
+  );
+}
+
+export function useRemoveDeviceSshHostMutation(scope: ApiRequestScope) {
+  return useApiMutation<void, string>(
+    (hostId) =>
+      removeDeviceSshHost(scope.apiBase, hostId, { requestScope: scope }),
+    { invalidateKeys: hostKeys(scope) },
+  );
+}
+
+/** "Test connection" changes nothing on the server: no invalidation. */
+export function useCheckDeviceSshHostMutation(scope: ApiRequestScope) {
+  return useApiMutation<DeviceHostCheckResult, string>((hostId) =>
+    checkDeviceSshHost(scope.apiBase, hostId, { requestScope: scope }),
+  );
+}
+
+export function useSetDeviceSshHubMutation(scope: ApiRequestScope) {
+  return useApiMutation<
+    DeviceSshHostView,
+    | { hostId: string; enabled: true; consent: true }
+    | { hostId: string; enabled: false }
+  >(
+    (variables) =>
+      setDeviceSshHub(
+        scope.apiBase,
+        variables.hostId,
+        variables.enabled
+          ? { enabled: true, consent: variables.consent }
+          : { enabled: false },
+        { requestScope: scope },
+      ),
+    { invalidateKeys: hostKeys(scope) },
+  );
+}
+
+export function useStartDeviceSshHubMutation(scope: ApiRequestScope) {
+  return useApiMutation<DeviceSshHostView, string>(
+    (hostId) =>
+      startDeviceSshHub(scope.apiBase, hostId, { requestScope: scope }),
+    { invalidateKeys: hostKeys(scope) },
   );
 }

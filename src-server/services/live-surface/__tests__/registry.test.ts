@@ -61,7 +61,9 @@ const keysOf = (events: LiveSurfaceInput[]) =>
       ? `${event.type}:${event.key}`
       : event.kind === 'pointer'
         ? `${event.type}@${event.x},${event.y}`
-        : event.text,
+        : event.kind === 'text'
+          ? event.text
+          : event.kind,
   );
 
 describe('live surface registry', () => {
@@ -413,6 +415,42 @@ describe('live surface registry', () => {
     ]);
     await dispatchHumanInput(second.entry, human, 1, [move(9)]);
     expect(cancelled[0]?.pointerType).toBe('touch');
+  });
+
+  test('a press that names no button is the primary one, and is cancelled at the handoff (#1970 S1)', async () => {
+    const cancelled: LiveSurfaceHeldInput[] = [];
+    const { producer, entry } = setup();
+    producer.cancelHeldInput = async (held) => {
+      cancelled.push(held);
+    };
+    const fence = await agentFence(entry);
+    // A raw client's touch: a down with no `button` at all.
+    await dispatchAgentInput(entry, agent, OPERATOR, fence, [
+      { kind: 'pointer', type: 'down', x: 5, y: 6, pointerType: 'touch' },
+    ]);
+    await dispatchHumanInput(entry, human, 1, [move(9)]);
+    await settleChain();
+    expect(cancelled).toHaveLength(1);
+    expect(cancelled[0]).toMatchObject({
+      buttons: ['left'],
+      pointerType: 'touch',
+    });
+  });
+
+  test('a buttonless up releases the buttonless down, so nothing is cancelled later', async () => {
+    const cancelled: LiveSurfaceHeldInput[] = [];
+    const { producer, entry } = setup();
+    producer.cancelHeldInput = async (held) => {
+      cancelled.push(held);
+    };
+    const fence = await agentFence(entry);
+    await dispatchAgentInput(entry, agent, OPERATOR, fence, [
+      { kind: 'pointer', type: 'down', x: 5, y: 6 },
+      { kind: 'pointer', type: 'up', x: 5, y: 6 },
+    ]);
+    await dispatchHumanInput(entry, human, 1, [move(9)]);
+    await settleChain();
+    expect(cancelled).toHaveLength(0);
   });
 
   test('viewers are told when the surface wedges and when it recovers (W1a)', async () => {

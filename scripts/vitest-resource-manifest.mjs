@@ -400,6 +400,13 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // the whole file; every case reports an explicit skip when no browser is
   // installed. Never downloads Chromium.
   'src-server/services/browser/__tests__/chromium-server-host.real.test.ts',
+  // #1970 hub lockdown: always spawns short-lived guarded node children
+  // (the hub guard preloaded via NODE_OPTIONS, loopback ephemeral ports,
+  // detached dummy helpers it then kills). When STATION_DEVICE_HUB_TEST_HOME
+  // names a home with a completed managed expo-device-hub install it also
+  // starts that REAL hub under the guard and stops it. Installs nothing and
+  // never downloads; hub cases report an explicit skip without an install.
+  'src-server/services/devices/toolchain/__tests__/device-hub.real.test.ts',
   // station#1649: runs the glyph-coverage ratchet as a real child process
   // against a throwaway git repository, because the thing under test is the
   // gate's EXIT STATUS on a rejection — a guardrail whose failure branch has
@@ -917,6 +924,32 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Runs the full-regression phase driver CLI and real npm children, including
   // one it must kill at a deadline.
   'scripts/__tests__/run-full-regression-phases.test.ts',
+  // Real device-surface evidence (#1970): spawns ffmpeg to decode H.264,
+  // and — only when a hub URL is configured — drives a real simulator or
+  // emulator through the device hub. Skips, naming why, otherwise. Its waits
+  // are bounded by what the device must do (boot, first frame), not by
+  // contention-sensitive constants.
+  'src-server/services/devices/__tests__/device-live.real.test.ts',
+  // Real Tools drawer evidence (#1971): runs `xcrun simctl` against an
+  // already-booted simulator and reads the accessibility tree through a
+  // configured device hub. Never boots a device; every case skips, naming
+  // why, without both (always on Linux runners).
+  'src-server/services/devices/__tests__/device-tools.real.test.ts',
+  // #1971 D1: the Tools drawer's host runner against real `/bin/sh`
+  // processes that leave a sleeping grandchild holding stdout, proving the
+  // deadline and output bound settle without waiting for `close`. A few
+  // short-lived children; the grandchildren sleep 3 s at most.
+  'src-server/services/devices/__tests__/device-host-tools.process.test.ts',
+  // SSH device hosts (#1973): runs the device-host program for real through
+  // `/bin/sh` and short-lived node children (a guarded stand-in hub on a
+  // loopback ephemeral port, killed when its session's stdin closes), in a
+  // private HOME. No ssh, no network.
+  'src-server/services/devices/hosts/__tests__/ssh-device-remote-script.test.ts',
+  // SSH device hosts over REAL ssh to this machine's sshd: one `ssh
+  // localhost true` probe at load, then (only with key auth and a known host
+  // key, never on CI) Test connection and, with STATION_DEVICE_HUB_TEST_HOME,
+  // the real guarded hub through a forward. Skips, naming why, otherwise.
+  'src-server/services/devices/hosts/__tests__/ssh-device-host.real.test.ts',
   // #90 wave 2: launches a REAL installed Chrome/Edge (headless, pipe CDP,
   // temporary profile, one loopback fixture server) to prove the Browser
   // pane's live surface end to end: a screencast frame reaches a viewer,
