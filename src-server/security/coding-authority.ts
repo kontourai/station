@@ -70,3 +70,24 @@ export function mayGrantFullAccess(
     pairingScopeIncludes(grantedScope, PAIRING_SCOPE_APPROVAL_FULL_ACCESS)
   );
 }
+
+declare const fullAccessGrantBrand: unique symbol;
+
+/**
+ * #2436: proof, derived from one request by `fullAccessGrantFor`, that the
+ * request may put a session at full access. A seam that starts sessions on a
+ * caller's behalf (`TaskDispatcher.dispatch`) takes `FullAccessGrant | null`
+ * as a required input, so every caller states its authority where it calls,
+ * and only a request's own authority can produce a grant. Unattended callers
+ * (monitors, the board intent, e2e control) pass `null`.
+ */
+export type FullAccessGrant = { readonly [fullAccessGrantBrand]: true };
+
+export function fullAccessGrantFor(
+  request: Request,
+  grantedScope: string | undefined,
+): FullAccessGrant | null {
+  return mayGrantFullAccess(request, grantedScope)
+    ? (Object.freeze({}) as FullAccessGrant)
+    : null;
+}

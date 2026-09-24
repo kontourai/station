@@ -9,7 +9,11 @@
  */
 import { APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE } from '@kontourai/station-contracts/orchestration';
 import type { Context } from 'hono';
-import { mayGrantFullAccess } from '../../security/coding-authority.js';
+import {
+  type FullAccessGrant,
+  fullAccessGrantFor,
+  mayGrantFullAccess,
+} from '../../security/coding-authority.js';
 import {
   grantedPairingScope,
   type PairingScopeContextStore,
@@ -46,4 +50,15 @@ export function refuseUngrantedFullAccess(
   )
     return undefined;
   return c.json(APPROVAL_FULL_ACCESS_NOT_GRANTED, 403);
+}
+
+/**
+ * This request's full-access grant, for a seam that enforces it itself
+ * (`TaskDispatcher.dispatch`). `null` when the request may not grant it.
+ */
+export function fullAccessGrantForRequest(c: Context): FullAccessGrant | null {
+  return fullAccessGrantFor(
+    c.req.raw,
+    grantedPairingScope(c as unknown as PairingScopeContextStore),
+  );
 }

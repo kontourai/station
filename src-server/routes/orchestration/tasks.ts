@@ -77,6 +77,8 @@ import {
 import { taskTurnReferenceResolutionTotal } from '../../telemetry/metrics.js';
 import { errorMessage, getBody, param, validate } from '../schemas/schemas.js';
 import {
+  APPROVAL_FULL_ACCESS_NOT_GRANTED,
+  fullAccessGrantForRequest,
   refuseUngrantedFullAccess,
   requestedApprovalMode,
 } from './approval-authority.js';
@@ -1928,7 +1930,10 @@ export function createTaskRoutes(
       const outcome = await dispatcher.dispatch(param(c, 'taskId'), {
         ...getBody(c),
         clientOrigin: resolveClientOriginForRequest(c.req.raw),
+        fullAccessGrant: fullAccessGrantForRequest(c),
       });
+      if (outcome.kind === 'forbidden')
+        return c.json(APPROVAL_FULL_ACCESS_NOT_GRANTED, 403);
       if (outcome.kind !== 'dispatched') throw new Error(outcome.reason);
       const data = outcome.result;
       return c.json({ success: true, data });

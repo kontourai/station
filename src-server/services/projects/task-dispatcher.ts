@@ -9,6 +9,8 @@ import type {
   EngineId,
   ProviderSession,
 } from '@kontourai/station-contracts/provider';
+import { APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE } from '@kontourai/station-contracts/orchestration';
+import type { FullAccessGrant } from '../../security/coding-authority.js';
 import { errorMessage } from '../../utils/error-message.js';
 import type {
   SessionStartBoundaryClaim,
@@ -43,6 +45,13 @@ type MonitorTaskDispatchIntent = Readonly<{
 }>;
 
 type DispatchIntent = TaskDispatchInput & {
+  /**
+   * #2436: the caller's authority to start this Task's session at full
+   * access (`runtimeConfig.modelOptions.approvalMode: 'never'`). Required so
+   * that every caller, present and future, states it; `null` for a caller
+   * acting without a request that may grant it. Enforced by `dispatch`.
+   */
+  readonly fullAccessGrant: FullAccessGrant | null;
   readonly signal?: AbortSignal;
   readonly timeoutMs?: number;
   readonly monitor?: MonitorTaskDispatchIntent;
@@ -53,6 +62,11 @@ export type DispatchOutcome =
   | { kind: 'dispatched'; result: TaskDispatchResult }
   | { kind: 'not-found' | 'contended' | 'terminal'; reason: string }
   | { kind: 'failed'; reason: string }
+  | {
+      kind: 'forbidden';
+      code: typeof APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE;
+      reason: string;
+    }
   | { kind: 'indeterminate'; reason: string; sessionId?: string }
   | { kind: 'aborted'; reason: string; retryable: true }
   | { kind: 'unavailable'; reason: string; retryable: boolean };
@@ -199,6 +213,18 @@ class TaskDispatcherImplementation implements TaskDispatcher {
     intent: DispatchIntent,
   ): Promise<DispatchOutcome> {
     const startedAt = performance.now();
+    // #2436: full access needs the caller's grant. Checked before anything
+    // is reserved, so a refusal leaves the Task exactly as it was.
+    if (
+      intent.runtimeConfig?.modelOptions?.approvalMode === 'never' &&
+      !intent.fullAccessGrant
+    ) {
+      return {
+        kind: 'forbidden',
+        code: APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE,
+        reason: 'This caller may not start a session with full access.',
+      };
+    }
     if (
       intent.monitor &&
       (!intent.agentId || intent.agentId !== intent.monitor.agentId)
