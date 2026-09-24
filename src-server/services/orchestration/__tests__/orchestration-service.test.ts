@@ -13264,6 +13264,85 @@ describe('OrchestrationService', () => {
       await stationService.shutdown();
     });
 
+    test('#2415: a send racing the active turn is rejected definitively and leaves no indeterminate boundary behind', async () => {
+      // The REAL adapter's concurrent-send refusal, through the real
+      // turn-start boundary: before #2415 the adapter threw a plain error
+      // after `providerInvoked` was set, the boundary row was recorded
+      // indeterminate, and the thread then read as mid-turn for good — for a
+      // send that never started.
+      const encoder = new TextEncoder();
+      let streamController!: ReadableStreamDefaultController<Uint8Array>;
+      const fetchMock = vi.fn<typeof fetch>().mockResolvedValueOnce(
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              streamController = controller;
+            },
+          }),
+          { status: 200, headers: { 'Content-Type': 'text/event-stream' } },
+        ),
+      );
+      const stationService = buildStationAgentService(fetchMock);
+      const threadId = 'thread-2415-concurrent';
+      const boundaries = () =>
+        eventStore.sessionTurnBoundaryAuthority().hasPossibleEffect(threadId);
+
+      await stationService.dispatch({
+        type: 'startSession',
+        input: {
+          threadId,
+          provider: 'station-agent',
+          modelId: 'claude-sonnet',
+          metadata: { agentId: 'reviewer' },
+        },
+      });
+      const first = await stationService.dispatch({
+        type: 'sendTurn',
+        input: { threadId, input: 'first' },
+      });
+
+      const failure = await stationService
+        .dispatchWithReceipt({
+          type: 'sendTurn',
+          input: { threadId, input: 'raced send' },
+        })
+        .then(
+          () => undefined,
+          (error: unknown) => error,
+        );
+      expect(failure).toBeInstanceOf(OrchestrationCommandDispatchError);
+      const dispatchError = failure as OrchestrationCommandDispatchError;
+      expect(dispatchError.message).toContain('already running');
+      expect(dispatchError.receipt.status).toBe('rejected');
+      expect(dispatchError.outcome).toBeUndefined();
+      expect(dispatchError.code).toBeUndefined();
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+
+      // End the active turn. Its accepted boundary row is retired by the
+      // terminal; an indeterminate row from the refused send would not be,
+      // and would keep the thread reading as mid-turn.
+      streamController.enqueue(
+        encoder.encode(
+          `data: ${JSON.stringify({ type: 'finish', finishReason: 'stop' })}\n\ndata: [DONE]\n\n`,
+        ),
+      );
+      streamController.close();
+      await waitFor(
+        boundaries,
+        (value) => value.kind === 'available' && value.active === false,
+      );
+      // `hasActiveTurn` is what gates a continuation of this thread
+      // (`assertNoActiveTurn`) and workspace restore; a lingering
+      // indeterminate row keeps it true for good. (A completed turn folds the
+      // session to completed, so the next message on this conversation is a
+      // continuation rather than another `sendTurn` on this thread; the
+      // adapter tests prove the adapter itself accepts the next send.)
+      expect(stationService.hasActiveTurn(threadId)).toBe(false);
+      expect(first).toMatchObject({ threadId });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      await stationService.shutdown();
+    });
+
     test('still refuses a file attachment the station-agent adapter does not advertise', async () => {
       const fetchMock = vi
         .fn<typeof fetch>()

@@ -72,7 +72,10 @@ import type {
   ProviderTaskStopResult,
   ProviderTurnStartResult,
 } from '../adapter-shape.js';
-import { ProviderTurnEndedError } from '../adapter-shape.js';
+import {
+  ProviderTurnEndedError,
+  SendTurnRefusedError,
+} from '../adapter-shape.js';
 import { detectClaudeAuthState } from '../auth/claude-auth.js';
 import type { CliCommandResult } from '../auth/cli-auth.js';
 import {
@@ -1427,6 +1430,28 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     const record = this.requireSession(input.threadId);
     if (record.session.status === 'error' || record.session.status === 'dead') {
       throw new ProviderTurnEndedError();
+    }
+    // #2415: a send that races a turn whose prompt is already in the SDK
+    // queue, and has not produced its result, is refused before any effect.
+    // Accepting it used to push a second prompt into the running query —
+    // Claude's mid-turn input path, i.e. an unannounced steer — while
+    // minting a new turn id that took over `activeTurnId`, so the running
+    // turn's later events and result were attributed to the new turn and the
+    // first turn never received a terminal of its own. A deliberate mid-turn
+    // message is `steerTurn`. Keyed on `dispatchedTurnId` (armed only once a
+    // prompt is queued, cleared by that turn's result), not `activeTurnId`,
+    // which is allocated before this method's async setup and so can outlive
+    // a setup that threw. A turn Stop was requested for is exempt, as
+    // before: `interruptTurn` closes it with `turn.aborted`, and the result
+    // mapper already handles a new turn queued before the stopped turn's
+    // result arrives.
+    if (
+      record.dispatchedTurnId !== undefined &&
+      record.interruptingTurnId !== record.dispatchedTurnId
+    ) {
+      throw new SendTurnRefusedError(
+        'This Claude session already has an active turn.',
+      );
     }
     const turnId = crypto.randomUUID();
     record.activeTurnId = turnId;

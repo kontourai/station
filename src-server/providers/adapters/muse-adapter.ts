@@ -298,7 +298,7 @@ const MUSE_SETTLED_CHILD_EXIT_WAIT_MS = 5_000;
  * dispatch cleanly and rethrow it. Any other error thrown from `sendTurn` is
  * converted to `foreground_message_indeterminate` (the turn MAY have
  * started), which is what the plain "already has an active turn" error
- * became before #2300.
+ * became before #2300 (and, for a still-running occupant, until #2415).
  */
 export class MuseTurnSlotReleasingError extends SendTurnRefusedError {
   readonly code = MUSE_TURN_SLOT_RELEASING_CODE;
@@ -1030,8 +1030,16 @@ export class MuseAdapter implements ProviderAdapterShape {
           ),
         );
       }
-      throw new Error(
-        `Muse session already has an active turn: ${input.threadId}`,
+      // #2415: the occupant is a live turn. Refusing is certain and nothing
+      // was spawned, so this is a pre-effect refusal too; a plain error here
+      // was recorded as an indeterminate turn start, whose lingering
+      // boundary row blocked every later send on the thread. The thread id
+      // stays out of the message (see `refuseSend`).
+      throw this.refuseSend(
+        input.threadId,
+        new SendTurnRefusedError(
+          'This Muse session already has an active turn.',
+        ),
       );
     }
     this.reportProviderNoticeOnce();

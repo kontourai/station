@@ -1166,13 +1166,32 @@ describe('MuseAdapter', () => {
       'already exists',
     );
     await harness.adapter.sendTurn({ threadId: 'thread-guard', input: 'one' });
-    await expect(
-      harness.adapter.sendTurn({ threadId: 'thread-guard', input: 'two' }),
-    ).rejects.toThrow('active turn');
+    // #2415: a send racing the live turn is a definitive pre-effect refusal.
+    // A plain error here was recorded by orchestration as an indeterminate
+    // turn start, which then blocked every later send on the thread.
+    const refusal = await harness.adapter
+      .sendTurn({ threadId: 'thread-guard', input: 'two' })
+      .then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+    expect(refusal).toBeInstanceOf(SendTurnRefusedError);
+    expect((refusal as Error).message).toContain('active turn');
+    expect((refusal as Error).message).not.toContain('thread-guard');
     expect(harness.processes).toHaveLength(1);
     await expect(
       harness.adapter.sendTurn({ threadId: 'unknown-thread', input: 'x' }),
     ).rejects.toThrow('not found');
+
+    // Once the live turn ends (its child exits), the next send is accepted.
+    await writeLines(harness.processes[0], MUSE_META_RUN_TERMINAL);
+    harness.processes[0].exit(0);
+    await flushIo();
+    await harness.adapter.sendTurn({
+      threadId: 'thread-guard',
+      input: 'three',
+    });
+    expect(harness.processes).toHaveLength(2);
   });
 
   // Settling the TURN and freeing the SLOT are two different moments.

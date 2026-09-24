@@ -53,12 +53,13 @@ import {
   INTERNAL_PROXY_CALLER_HEADER,
   INTERNAL_TENANT_HEADER,
 } from '../../utils/internal-api-token.js';
-import type {
-  ProviderAdapterShape,
-  ProviderSendTurnInput,
-  ProviderSession,
-  ProviderSessionStartInput,
-  ProviderTurnStartResult,
+import {
+  type ProviderAdapterShape,
+  type ProviderSendTurnInput,
+  type ProviderSession,
+  type ProviderSessionStartInput,
+  type ProviderTurnStartResult,
+  SendTurnRefusedError,
 } from '../adapter-shape.js';
 import { effectiveModelMetadata } from '../llm/effective-model-metadata.js';
 import { AsyncEventQueue } from '../sessions/async-event-queue.js';
@@ -884,8 +885,13 @@ export class StationAgentAdapter implements ProviderAdapterShape {
     if (!(await this.options.hasAgent(record.agentId))) {
       throw new Error(`Unknown Station agent: ${record.agentId}`);
     }
+    // #2415: refusing a send that races the running turn happens before any
+    // effect (no relay request, no `turn.started`), so it is a
+    // `SendTurnRefusedError`. A plain error was recorded by orchestration as
+    // an indeterminate turn start, which then blocked every later send on
+    // the thread.
     if (record.activeController && !record.activeController.signal.aborted) {
-      throw new Error(
+      throw new SendTurnRefusedError(
         `Station agent task is already running: ${input.threadId}`,
       );
     }

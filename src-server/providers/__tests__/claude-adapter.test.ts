@@ -86,7 +86,10 @@ import { agentCapabilityUndelivered } from '../../telemetry/metrics.js';
 import { STATION_CONTROL_CALLER_TOKEN_ENV } from '../../tools/station-control-shared.js';
 import { scrubBootInternalSecrets } from '../../utils/child-process-environment.js';
 import { INTERNAL_API_TOKEN_ENV } from '../../utils/internal-api-token.js';
-import { ProviderTurnEndedError } from '../adapter-shape.js';
+import {
+  ProviderTurnEndedError,
+  SendTurnRefusedError,
+} from '../adapter-shape.js';
 import {
   ClaudeAdapter,
   parseClaudeCodeVersion,
@@ -160,6 +163,38 @@ function createControlledMockQuery() {
     setPermissionMode: vi.fn().mockResolvedValue(undefined),
     applyFlagSettings: vi.fn().mockResolvedValue(undefined),
   };
+}
+
+/**
+ * #2415: ends the dispatched turn the way Claude does — with its successful
+ * `result` — so a following `sendTurn` is a new turn rather than a send that
+ * races the running one (which the adapter refuses). With an iterator, drains
+ * it through that turn's `turn.completed`.
+ */
+async function completeClaudeTurn(
+  controlled: ReturnType<typeof createControlledMockQuery>,
+  sessionId: string,
+  iterator?: AsyncIterator<any>,
+): Promise<void> {
+  controlled.push({
+    type: 'result',
+    subtype: 'success',
+    is_error: false,
+    result: 'done',
+    stop_reason: 'end_turn',
+    num_turns: 1,
+    usage: { input_tokens: 1, output_tokens: 1 },
+    uuid: `result-${crypto.randomUUID()}`,
+    session_id: sessionId,
+  });
+  if (!iterator) {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    return;
+  }
+  for (let seen = 0; seen < 10; seen++) {
+    if ((await iterator.next()).value?.method === 'turn.completed') return;
+  }
+  throw new Error('turn.completed never arrived');
 }
 
 describe('ClaudeAdapter', () => {
@@ -699,6 +734,77 @@ describe('ClaudeAdapter', () => {
     await adapter.stopSession('thread-steer');
   });
 
+  test('#2415: a send racing a dispatched turn is refused before any effect, and the next send after its result is accepted', async () => {
+    const controlled = createControlledMockQuery();
+    mockQuery.mockReturnValue(controlled);
+    const adapter = new ClaudeAdapter();
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+    const until = async (predicate: (event: any) => boolean) => {
+      for (let seen = 0; seen < 30; seen++) {
+        const event = (await iterator.next()).value;
+        if (predicate(event)) return event;
+      }
+      throw new Error('expected event never arrived');
+    };
+    const threadId = 'thread-concurrent-send';
+    await adapter.startSession({ provider: 'claude', threadId });
+    const first = await adapter.sendTurn({ threadId, input: 'first' });
+    await until((event) => event.method === 'turn.started');
+    const queued = mockQuery.mock.calls[0][0].prompt[Symbol.asyncIterator]();
+    await expect(queued.next()).resolves.toMatchObject({
+      value: { uuid: first.turnId },
+    });
+
+    const refusal = await adapter.sendTurn({ threadId, input: 'second' }).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    expect(refusal).toBeInstanceOf(SendTurnRefusedError);
+    expect((refusal as Error).message).toContain('already has an active turn');
+
+    // The running turn keeps its identity: its result closes IT, not a
+    // turn the refused send would have minted.
+    controlled.push({
+      type: 'result',
+      subtype: 'success',
+      is_error: false,
+      result: 'done',
+      stop_reason: 'end_turn',
+      num_turns: 1,
+      usage: { input_tokens: 1, output_tokens: 1 },
+      uuid: 'result-first',
+      session_id: threadId,
+    });
+    await expect(
+      until((event) => event.method === 'turn.completed'),
+    ).resolves.toMatchObject({ turnId: first.turnId });
+
+    const next = await adapter.sendTurn({ threadId, input: 'third' });
+    expect(next.turnId).not.toBe(first.turnId);
+    // Only the first and third prompts ever entered the SDK queue.
+    await expect(queued.next()).resolves.toMatchObject({
+      value: { uuid: next.turnId },
+    });
+    await adapter.stopSession(threadId);
+  });
+
+  test('#2415: a send after Stop was requested is still accepted before the stopped turn reports its result', async () => {
+    const controlled = createControlledMockQuery();
+    mockQuery.mockReturnValue(controlled);
+    const adapter = new ClaudeAdapter();
+    const threadId = 'thread-send-after-stop';
+    await adapter.startSession({ provider: 'claude', threadId });
+    const first = await adapter.sendTurn({ threadId, input: 'first' });
+    await expect(
+      adapter.interruptTurn(threadId, first.turnId),
+    ).resolves.toMatchObject({ outcome: 'cancelled' });
+    // The stopped turn's own result has not arrived yet; the refusal above
+    // must not turn Stop-then-send into a refusal.
+    const next = await adapter.sendTurn({ threadId, input: 'after stop' });
+    expect(next.turnId).not.toBe(first.turnId);
+    await adapter.stopSession(threadId);
+  });
+
   test('steerTurn reports a typed turn-ended race when the input queue closed', async () => {
     mockQuery.mockReturnValue(createMockQuery([]));
     const adapter = new ClaudeAdapter();
@@ -760,7 +866,7 @@ describe('ClaudeAdapter', () => {
   });
 
   test('applies and records a supported model change without restarting the Claude session', async () => {
-    const sdkQuery = createMockQuery([]);
+    const sdkQuery = createControlledMockQuery();
     mockQuery.mockReturnValue(sdkQuery);
     const adapter = new ClaudeAdapter();
     const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
@@ -818,6 +924,7 @@ describe('ClaudeAdapter', () => {
     expect(
       turnStarted.value.metadata.effectiveModelOptions.systemPrompt,
     ).toBeUndefined();
+    await completeClaudeTurn(sdkQuery, 'thread-model-change', iterator);
 
     await adapter.sendTurn({
       threadId: 'thread-model-change',
@@ -831,7 +938,10 @@ describe('ClaudeAdapter', () => {
       fastMode: null,
       disableAutoMode: null,
     });
-    const resetTurn = await iterator.next();
+    let resetTurn = await iterator.next();
+    while (resetTurn.value?.method !== 'turn.started' && !resetTurn.done) {
+      resetTurn = await iterator.next();
+    }
     expect(resetTurn.value).toMatchObject({
       method: 'turn.started',
       metadata: { effectiveModel: 'claude-opus-4-6' },
@@ -3032,7 +3142,7 @@ describe('ClaudeAdapter', () => {
   });
 
   test('a per-turn approvalMode downgrade (auto -> ask) calls setPermissionMode and reaches Claude from the next turn (#727)', async () => {
-    const mockedQuery = createMockQuery([]);
+    const mockedQuery = createControlledMockQuery();
     mockQuery.mockReturnValue(mockedQuery);
     const adapter = new ClaudeAdapter();
 
@@ -3050,6 +3160,7 @@ describe('ClaudeAdapter', () => {
       modelOptions: { approvalMode: 'auto' },
     });
     expect(mockedQuery.setPermissionMode).not.toHaveBeenCalled();
+    await completeClaudeTurn(mockedQuery, 'thread-turn-override');
 
     // A changed override calls the live SDK control to apply it starting
     // with this turn, without restarting the session.
@@ -3060,6 +3171,7 @@ describe('ClaudeAdapter', () => {
     });
     expect(mockedQuery.setPermissionMode).toHaveBeenCalledTimes(1);
     expect(mockedQuery.setPermissionMode).toHaveBeenCalledWith('default');
+    await completeClaudeTurn(mockedQuery, 'thread-turn-override');
 
     // Same mode again — idempotent, no second call.
     await adapter.sendTurn({
@@ -3124,7 +3236,7 @@ describe('ClaudeAdapter', () => {
   });
 
   test('an escalation to never WITH the spawn-time flag already granted still applies via setPermissionMode (#727 review item 1b)', async () => {
-    const mockedQuery = createMockQuery([]);
+    const mockedQuery = createControlledMockQuery();
     mockQuery.mockReturnValue(mockedQuery);
     const adapter = new ClaudeAdapter();
 
@@ -3143,6 +3255,7 @@ describe('ClaudeAdapter', () => {
       modelOptions: { approvalMode: 'ask' },
     });
     expect(mockedQuery.setPermissionMode).toHaveBeenLastCalledWith('default');
+    await completeClaudeTurn(mockedQuery, 'thread-escalate-allowed');
 
     await adapter.sendTurn({
       threadId: 'thread-escalate-allowed',

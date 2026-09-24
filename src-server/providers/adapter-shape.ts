@@ -38,6 +38,16 @@ export class ProviderTurnEndedError extends Error {
  * surfaced honestly — instead of the fail-closed indeterminate path. An
  * adapter failure that MAY have reached the provider must stay a plain
  * error so callers keep refusing to retry it blindly.
+ *
+ * A send that races the session's still-running turn is the other expected
+ * source (#2415), and the adapter is the first layer to refuse it:
+ * `SessionExecutionCoordinator` serializes turn STARTS and refuses ("turn
+ * start in progress") only while another start is still being prepared or
+ * invoked, or was left indeterminate; an accepted turn that is still running
+ * does not block the claim. An adapter's "already has an active turn" guard
+ * must therefore throw this type. A plain error there is recorded as an
+ * indeterminate turn start, and that lingering boundary row reads as an
+ * in-flight turn that blocks later continuations of the thread.
  */
 export class SendTurnRefusedError extends Error {
   constructor(message: string) {
