@@ -565,6 +565,26 @@ describe('App home route resolution', () => {
     expect(navigate).not.toHaveBeenCalled();
   });
 
+  test('switching to another Station while its projects load shows the skeleton, not the previous Station’s Home', async () => {
+    const { rerender } = render(<App />);
+    await act(async () => undefined);
+    expect(screen.getByTestId('app-view-content').textContent).toBe(
+      '{"type":"home"}',
+    );
+
+    homeConnection.apiBase = 'http://other-station.test';
+    try {
+      hooks.projects = { data: undefined, isLoading: true, isError: false };
+      await act(async () => rerender(<App />));
+      expect(
+        screen.getByRole('status', { name: /loading your workspace/i }),
+      ).toBeTruthy();
+      expect(screen.queryByTestId('app-view-content')).toBeNull();
+    } finally {
+      homeConnection.apiBase = 'http://station.test';
+    }
+  });
+
   /**
    * #2414, the other half. The outlet still swaps the routed view for other
    * states of `/` (here: the host became unavailable), and a dialog open in

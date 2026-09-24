@@ -401,13 +401,23 @@ function App() {
   // withhold is the continuation (#223), and Home already renders a null one
   // as "nothing to resume", so it stays mounted and the offer arrives when the
   // layouts do. A failure resets this: after an error or an unavailable host,
-  // Home has not settled on what the Station now says.
-  const [homeSurfaceSettled, setHomeSurfaceSettled] = useState(false);
+  // Home has not settled on what the Station now says. So does a different
+  // Station: what is recorded is WHICH Station Home settled for, so a switch
+  // re-enters `pending` unsettled and shows the skeleton rather than keeping
+  // the previous Station's Home up while the new one's projects load.
+  const homeSurfaceIdentity = `${API_BASE}|${activeConnectionUrl ?? ''}`;
+  const [homeSurfaceSettledFor, setHomeSurfaceSettledFor] = useState<
+    string | null
+  >(null);
   if (homeSurface.status !== 'pending') {
-    const settled =
-      homeSurface.status === 'resolved' || homeSurface.status === 'empty';
-    if (settled !== homeSurfaceSettled) setHomeSurfaceSettled(settled);
+    const settledFor =
+      homeSurface.status === 'resolved' || homeSurface.status === 'empty'
+        ? homeSurfaceIdentity
+        : null;
+    if (settledFor !== homeSurfaceSettledFor)
+      setHomeSurfaceSettledFor(settledFor);
   }
+  const homeSurfaceSettled = homeSurfaceSettledFor === homeSurfaceIdentity;
 
   const displayCurrentView: NavigationView =
     window.location.pathname === '/' ? { type: 'home' } : currentView;
