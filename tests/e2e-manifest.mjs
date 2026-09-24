@@ -318,6 +318,7 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
   },
   parallelSafe: [
     'tests/buffered-answer-delivery.spec.ts',
+    'tests/agents-pane.spec.ts',
     'tests/toolbar-reachability.spec.ts',
     'tests/command-palette.spec.ts',
     'tests/sidebar-file-intake.spec.ts',
@@ -1383,6 +1384,16 @@ export const e2eManifest = [
     primary: true,
     rationale:
       '#585 device-local buffered answer delivery: real preference selection, canonical live event injection, semantic boundary reveal, and mid-turn disable flush.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/agents-pane.spec.ts',
+    bucket: 'product',
+    surface: 'Chat / Orchestration',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      '#2459 Agents pane child work: opened from the dock row, per-chat Claude Stop kept on the pre-contract row, All scope showing a CLI delegate and a chatless subagent live with provenance, an exit read as No result, and the scope remembered across reload.',
     exceptions: [],
   },
   {
