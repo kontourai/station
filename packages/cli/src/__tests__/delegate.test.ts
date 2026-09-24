@@ -96,6 +96,8 @@ describe('station delegate over HTTP', () => {
     pathname: string;
     body: Record<string, unknown>;
   }> = [];
+  // #2459: the client-origin header each delegation POST carried.
+  const delegationOrigins: Array<string | undefined> = [];
   // Capability-delivery disclosure fixtures: when set, the mock server
   // attaches them to the create/status responses so tests can pin the
   // DEFAULT human output's disclosure lines without a real engine.
@@ -110,6 +112,7 @@ describe('station delegate over HTTP', () => {
     consoleLog = vi.spyOn(console, 'log').mockImplementation(() => {});
     consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
     requestBodies.length = 0;
+    delegationOrigins.length = 0;
     tasks.clear();
     conversations.clear();
     sessionReads.length = 0;
@@ -134,6 +137,13 @@ describe('station delegate over HTTP', () => {
       const body = method === 'POST' ? await readBody(req) : undefined;
       if (method === 'POST' && body) {
         requestBodies.push({ pathname: url.pathname, body });
+      }
+      if (
+        method === 'POST' &&
+        url.pathname === '/api/orchestration/delegations'
+      ) {
+        const origin = req.headers['x-station-client-origin'];
+        delegationOrigins.push(Array.isArray(origin) ? origin[0] : origin);
       }
 
       const sendJson = (status: number, payload: unknown) => {
@@ -670,6 +680,38 @@ describe('station delegate over HTTP', () => {
     // back no lifecycle state, so it makes no claim about whether a LATER
     // turn would be accepted. `delegate status` is where that is computed.
     expect(payload.data).not.toHaveProperty('resumable');
+  });
+
+  /**
+   * #2459: Station can only say a delegation was "Started from the CLI" if
+   * the CLI says so. It declares its surface through the SDK's client-origin
+   * resolver, which attaches the header to authenticated same-Station
+   * requests — so a credential is configured here, as every real Station
+   * request has one.
+   */
+  test('create declares its client surface as the CLI', async () => {
+    vi.stubEnv('STATION_API_CREDENTIAL', 'test-credential');
+    try {
+      const { runCli } = await import('../cli.js');
+      await runCli([
+        'delegate',
+        '--agent=default',
+        '--json',
+        'Ship it',
+        `--api-base=${apiBase}`,
+      ]);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+    const { parseClientReportedOrigin } = await import(
+      '@kontourai/station-contracts/client-origin'
+    );
+    expect(delegationOrigins).toHaveLength(1);
+    expect(parseClientReportedOrigin(delegationOrigins[0])).toEqual({
+      version: 1,
+      surface: 'cli',
+      build: null,
+    });
   });
 
   /**

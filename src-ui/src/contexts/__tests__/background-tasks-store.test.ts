@@ -564,7 +564,7 @@ describe('selectChatBackgroundTasks — provider-task dedup by toolCallId', () =
     });
   });
 
-  test('station#1877: a provider task with a reporting session offers a task-scoped stop', () => {
+  test('station#1877: a provider task with a reporting session and its own stop seam offers a task-scoped stop', () => {
     const view = selectChatBackgroundTasks(
       createEmptyBackgroundTasksState(),
       'chat-1',
@@ -573,6 +573,7 @@ describe('selectChatBackgroundTasks — provider-task dedup by toolCallId', () =
           taskId: 'provider-task-1',
           description: 'Long investigation',
           sessionThreadId: 'session-9',
+          stop: 'provider-task-stop',
         },
       ],
     );
@@ -582,6 +583,21 @@ describe('selectChatBackgroundTasks — provider-task dedup by toolCallId', () =
       // Task-scoped, never 'turn-interrupt' — that would stop every sibling.
       stop: { kind: 'provider-task-stop' },
     });
+  });
+
+  test('#2459: a session thread alone is not a stop seam — a child that carried none (Codex) offers no stop', () => {
+    const view = selectChatBackgroundTasks(
+      createEmptyBackgroundTasksState(),
+      'chat-1',
+      [
+        {
+          taskId: 'codex-child-1',
+          description: 'Survey the repo',
+          sessionThreadId: 'session-9',
+        },
+      ],
+    );
+    expect(view.running[0]?.stop).toBeUndefined();
   });
 
   test('station#1877: a provider task with no reporting session offers no stop at all', () => {

@@ -6,6 +6,7 @@ import {
   DEFAULT_CLIENT_REQUEST_TIMEOUT_MS,
   getClientRequestTimeout,
   setClientCredentialResolver,
+  setClientOriginResolver,
   setClientRequestTimeout,
 } from '@kontourai/station-sdk/client';
 import { readActiveLocalStation } from './active-local-station.js';
@@ -360,6 +361,18 @@ export function configureRequestTimeout(): void {
     );
   }
   setClientRequestTimeout(parsedMs);
+}
+
+/**
+ * #2459: declare this client's surface as the CLI, through the SDK's one
+ * client-origin mechanism (the same one the web app sets from its platform
+ * profile). The SDK attaches it only to authenticated same-Station requests,
+ * and Station records it as display-only provenance — so a delegation started
+ * here reads "Started from the CLI" rather than "No parent". No build is
+ * claimed.
+ */
+export function configureClientOrigin(): void {
+  setClientOriginResolver(() => ({ version: 1, surface: 'cli', build: null }));
 }
 
 /**
