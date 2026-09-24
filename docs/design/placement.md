@@ -600,8 +600,10 @@ only the fallback when the model refuses.
 The layer is provider state (`RegionModelContext.phoneLayer`), transient and
 never persisted — the record is written as if the layer were closed. While it
 is open the provider holds ONE `registerDialogHistory` entry per layer (id
-`phone-pane-layer:<n>`, fresh for each layer so a marker orphaned by an
-earlier Back can never skip a later layer's live entry), so the device's
+`phone-pane-layer:<load>-<n>`, fresh for each entry so a marker orphaned by
+an earlier Back can never skip a later layer's live entry, and carrying a
+per-page-load nonce so a layer opened on an entry an EARLIER load left
+behind never shares its id and still closes on Back), so the device's
 Back — and the visible "‹ Chat" control the region chrome shows while a
 layer is open (`RegionChromeBar` `onBackToChat`; the iOS app has no
 swipe-back) — returns to Chat: Chat reselected, its maximize and visibility
@@ -624,9 +626,11 @@ had moved out of another region goes back there — its origin region shown
 with it selected if the reader was looking at it — unless the pane's own
 unsaved-changes guard is registered: the move remounts the pane, so a dirty
 pane stays where it is, an ordinary tab of Chat's region, until the user
-moves it. Any other pane stays a tab of Chat's region. The live arrangement
-that results is exactly what is saved. Every exit leaves `lastDockMaximized`
-as the layer found it.
+moves it. A clean pane that goes back IS remounted, so state it keeps
+without a guard (its scroll position, filters, an expanded row) is reset.
+Any other pane stays a tab of Chat's region. The live arrangement that
+results is exactly what is saved. Every exit leaves `lastDockMaximized` as
+the layer found it.
 
 Back, "‹ Chat" (`closePhoneLayer`), the folded menu's hide of the layer's
 own pane, and a chat-focus intent ask the unsaved-changes guards first —
@@ -653,10 +657,13 @@ A reload with a layer open lands in the pre-layer dock state. The layer's
 maximize (and a dock open it adds) ride Chat's `?dock`/`?maximize` params,
 so the provider keeps Chat's pre-layer visibility, maximize and
 `lastDockMaximized` in the tab's session storage for the life of the layer
-(`station.phoneLayer.preLayerDock.v1`), keyed to the layer's history entry:
-a load on that entry seeds the arrangement from it and writes navigation
-back once; a load anywhere else discards it. Every ending of a layer removes
-it. The layer itself does not survive a reload.
+(`station.phoneLayer.preLayerDock.v1`), together with the exact id of the
+layer's live history entry (rewritten whenever the layer pushes a new one).
+A load on exactly that entry seeds the arrangement from the record and
+writes navigation back once; a load on any other entry discards it. Every
+ending of a layer removes the record, and so does the provider unmounting
+with a layer open (a reload runs no cleanup, which is what leaves it for the
+next load). The layer itself does not survive a reload.
 
 **Owner decision 2026-09-24 (#928 comment).** This supersedes #928's
 2026-09-03 phone decision in one respect: showing Activity (or any pane) on
