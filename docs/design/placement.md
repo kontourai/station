@@ -599,28 +599,51 @@ only the fallback when the model refuses.
 
 The layer is provider state (`RegionModelContext.phoneLayer`), transient and
 never persisted — the record is written as if the layer were closed. While it
-is open the provider holds ONE `registerDialogHistory` entry
-(`phone-pane-layer`), so the device's Back — and the visible "‹ Chat"
-control the region chrome shows while a layer is open (`RegionChromeBar`
-`onBackToChat`; the iOS app has no swipe-back) — returns to Chat: Chat
-reselected, its maximize and visibility restored, and the tab the layer
-minted removed (a phone has no tab strip, so a tab left behind Chat would be
-one nobody can see or close; `restorePhonePaneLayer`). Opening another pane
-while a layer is open replaces the layer's pane and keeps the ORIGINAL
-previous state, so one Back always returns to Chat. Anything else that takes
-the pane off screen — "Show Chat" in the folded menu, closing the tab,
-hiding the region — dismisses the layer the same way and consumes its entry.
-The entry is registered before the `?maximize` mirror writes (effect
-declaration order), so Back travels to the pre-layer URL and an in-app close
-travels back over the entry rather than collapsing it.
+is open the provider holds ONE `registerDialogHistory` entry per layer (id
+`phone-pane-layer:<n>`, fresh for each layer so a marker orphaned by an
+earlier Back can never skip a later layer's live entry), so the device's
+Back — and the visible "‹ Chat" control the region chrome shows while a
+layer is open (`RegionChromeBar` `onBackToChat`; the iOS app has no
+swipe-back) — returns to Chat: Chat reselected, its maximize and visibility
+restored, and the tab the layer minted removed (a phone has no tab strip, so
+a tab left behind Chat would be one nobody can see or close;
+`restorePhonePaneLayer`). A minted pane the layer moved out of another
+(hidden) region goes back to its tab slot there, so the record never loses
+it. Opening another pane while a layer is open replaces the layer's pane and
+keeps the ORIGINAL previous state, so one Back always returns to Chat.
+Anything else that takes the pane off screen — "Show Chat" in the folded
+menu, closing the tab, hiding the region — dismisses the layer the same way
+and consumes its entry; "Hide <pane>" for the layer's own pane is the way
+back to Chat rather than a hide of Chat's region. A chat-focus intent
+(`focusSession`, `openChatForAgent`, opening a conversation) dismisses the
+layer through `useDismissPhoneLayer`. When the fold opens (a narrow window
+widened) the layer ends in place: its pane stays as an ordinary tab and only
+its maximize is undone. Every exit leaves `lastDockMaximized` as the layer
+found it.
 
-This supersedes #928's 2026-09-03 phone decision in one respect: showing
-Activity (or any pane) on a phone no longer takes the folded region from
-Chat and swaps Chat back from the toolbar; it opens over Chat, and Back or
-"‹ Chat" returns. When Chat's region was HIDDEN before the layer opened,
-closing it hands the navigation mirror the `lastDockMaximized` the layer
-found rather than the layer's own maximize, so the archive#945 close rule
-does not make the next `focusSession` reopen Chat Full.
+Both user exits ask the unsaved-changes guards first
+(`navigationStore.runNavigationGuards`): the restore unmounts the pane, and a
+pull request review's typed comment is component state behind
+`useUnsavedGuard`. "‹ Chat" simply waits for the answer; Back has already
+left the entry when it asks, so a refusal puts the layer back — shown,
+selected, maximized — under a fresh entry. The entry is registered before
+the `?maximize` mirror writes (effect declaration order), so Back travels to
+the pre-layer URL and an in-app close travels back over the entry rather
+than collapsing it.
+
+**Pending owner acknowledgement.** This supersedes #928's 2026-09-03 phone
+decision in one respect: showing Activity (or any pane) on a phone no longer
+takes the folded region from Chat and swaps Chat back from the toolbar; it
+opens over Chat, and Back or "‹ Chat" returns.
+
+The pull request pane's "Open on GitHub" ("Open on GitLab" for gitlab.com,
+"Open in browser" otherwise) opens the PR's URL outside Station
+(`openExternalLink`): a new tab on the web, for http(s) URLs only. In the
+Station app the host's `open_external_link` admits only its reviewed
+allowlist — today GitHub issue URLs, so NOT pull requests (#2480, awaiting an
+owner decision) — and every refusal, from this button or a chat link, is
+shown as a notice with the link and a Copy action
+(`reportUnopenedExternalLink`) rather than being a click that does nothing.
 
 **Implemented by #2050 (slice 6: the Agents pane), 2026-09-14.** The
 background work of the conversation on screen — tool calls, delegated
