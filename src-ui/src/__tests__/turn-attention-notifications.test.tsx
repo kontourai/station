@@ -8,9 +8,9 @@
  * through `navigationStore` itself.
  */
 
-import type { OrchestrationEvent } from '@kontourai/station-contracts/runtime-events';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import type { OrchestrationEvent } from '../hooks/orchestration/types';
 
 vi.mock('../contexts/NavigationContext', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../contexts/NavigationContext')>()),
