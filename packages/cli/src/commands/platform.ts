@@ -1,6 +1,6 @@
 import { execFileSync, execSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { performance } from 'node:perf_hooks';
@@ -31,6 +31,8 @@ type InspectFingerprintDependencies = {
   platform?: NodeJS.Platform;
   /** Linux birth token; defaults to the shared `/proc`-derived probe. */
   birth?: (pid: number) => string | null;
+  /** Linux command read; defaults to `/proc/<pid>/cmdline`. */
+  readFile?: (path: string, encoding: 'utf8') => string;
 };
 
 /**
@@ -71,11 +73,27 @@ export function inspectProcessFingerprint(
   return inspectLstartProcessFingerprint(pid, dependencies);
 }
 
+function readPsCommand(exec: typeof execFileSync, pid: number): string {
+  try {
+    return String(
+      exec('ps', ['-o', 'command=', '-p', String(pid)], {
+        encoding: 'utf8',
+        env: { ...process.env, LC_ALL: 'C', TZ: 'UTC' },
+        stdio: ['ignore', 'pipe', 'ignore'],
+        windowsHide: true,
+      }),
+    ).trim();
+  } catch {
+    return '';
+  }
+}
+
 function inspectLinuxProcessFingerprint(
   pid: number,
   dependencies: InspectFingerprintDependencies,
 ): ProcessFingerprint | null {
   const exec = dependencies.exec ?? execFileSync;
+  const readFile = dependencies.readFile ?? readFileSync;
   const birth =
     dependencies.birth ??
     ((target: number) =>
@@ -84,12 +102,20 @@ function inspectLinuxProcessFingerprint(
   if (!before) return null;
   let command: string;
   try {
-    command = exec('ps', ['-o', 'command=', '-p', String(pid)], {
-      encoding: 'utf8',
-      env: { ...process.env, LC_ALL: 'C', TZ: 'UTC' },
-      stdio: ['ignore', 'pipe', 'ignore'],
-      windowsHide: true,
-    }).trim();
+    // `ps` stays the primary source so the digest matches records written by
+    // earlier CLIs: a digest computed another way would read as a different
+    // process after an upgrade and block `station stop` with a fingerprint
+    // mismatch. `/proc/<pid>/cmdline` (NUL-separated argv) is the fallback
+    // for a `ps` that fails or prints nothing -- busybox and some embedded
+    // images lack the `command=` column -- which previously made this probe
+    // return null for a live process (#2332 item 2).
+    command = readPsCommand(exec, pid);
+    if (!command) {
+      command = readFile(`/proc/${pid}/cmdline`, 'utf8')
+        .split('\u0000')
+        .filter((segment) => segment.length > 0)
+        .join(' ');
+    }
   } catch {
     return null;
   }

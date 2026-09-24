@@ -1,12 +1,10 @@
 import {
   mkdirSync,
-  mkdtempSync,
   readdirSync,
   readFileSync,
   statSync,
   writeFileSync,
 } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   STATION_TASK_BASIS_COLLECTION_VERSION,
@@ -20,6 +18,7 @@ import {
 import { Hono } from 'hono';
 import { describe, expect, type Mock, test, vi } from 'vitest';
 import { readJson } from '../../../__test-utils__/read-json.js';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { setRuntimeAuthenticatedRequestPrincipal } from '../../../security/runtime-request-security.js';
 import { TaskAnswerSupportUnavailableError } from '../../../services/evidence/task-answer-support-module.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
@@ -32,6 +31,8 @@ import { TaskGraphService } from '../../../services/projects/task-graph-service.
 import { createOrchestrationRoutes } from '../orchestration.js';
 import { createTaskRoutes } from '../tasks.js';
 
+const makeTempDir = trackTempDirs();
+
 /**
  * A service wired with a `projectService`, which the workspace-binding routes
  * need: `createTask` derives the binding from the project's working directory,
@@ -40,26 +41,23 @@ import { createTaskRoutes } from '../tasks.js';
 function createRouteService(
   extra: ConstructorParameters<typeof TaskGraphService>[1] = {},
 ) {
-  const workspace = mkdtempSync(join(tmpdir(), 'station-task-workspace-'));
-  return new TaskGraphService(
-    mkdtempSync(join(tmpdir(), 'station-task-routes-')),
-    {
-      ...extra,
-      projectService: {
-        getProject: (slug: string) => {
-          if (slug !== 'project-alpha') throw new Error('missing project');
-          return {
-            id: slug,
-            slug,
-            name: 'Project alpha',
-            workingDirectory: workspace,
-            createdAt: '2026-05-03T00:00:00.000Z',
-            updatedAt: '2026-05-03T00:00:00.000Z',
-          };
-        },
+  const workspace = makeTempDir('station-task-workspace-');
+  return new TaskGraphService(makeTempDir('station-task-routes-'), {
+    ...extra,
+    projectService: {
+      getProject: (slug: string) => {
+        if (slug !== 'project-alpha') throw new Error('missing project');
+        return {
+          id: slug,
+          slug,
+          name: 'Project alpha',
+          workingDirectory: workspace,
+          createdAt: '2026-05-03T00:00:00.000Z',
+          updatedAt: '2026-05-03T00:00:00.000Z',
+        };
       },
     },
-  );
+  });
 }
 
 const inertTaskDispatcher = {
@@ -159,7 +157,7 @@ describe('Task routes', () => {
   );
 
   test('composes direct and Task Basis from durable owners without GET writes or protected Project leakage', async () => {
-    const home = mkdtempSync(join(tmpdir(), 'station-basis-owners-'));
+    const home = makeTempDir('station-basis-owners-');
     const workspace = join(home, 'workspace');
     let store = new EventStore(join(home, 'orchestration.sqlite'));
     try {
@@ -1666,8 +1664,8 @@ describe('Task routes', () => {
   });
 
   test('user-input GET collapses missing, denied, project mismatch, and malformed stored tuples', async () => {
-    const home = mkdtempSync(join(tmpdir(), 'station-input-malformed-'));
-    const workspace = mkdtempSync(join(tmpdir(), 'station-input-workspace-'));
+    const home = makeTempDir('station-input-malformed-');
+    const workspace = makeTempDir('station-input-workspace-');
     const service = new TaskGraphService(home, {
       projectService: {
         getProject: () => ({

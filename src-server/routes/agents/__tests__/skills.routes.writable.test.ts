@@ -18,16 +18,15 @@
 import {
   existsSync,
   mkdirSync,
-  mkdtempSync,
   readFileSync,
   rmSync,
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { readJson as json } from '../../../__test-utils__/read-json.js';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import type { ConfigLoader } from '../../../domain/config-loader.js';
 
 vi.mock('../../../telemetry/metrics.js', () => ({
@@ -233,9 +232,11 @@ function refusalOf(row: Record<string, unknown> | undefined): {
   };
 }
 
+const makeTempDir = trackTempDirs();
+
 beforeEach(() => {
   vi.clearAllMocks();
-  home = mkdtempSync(join(tmpdir(), 'skills-writable-'));
+  home = makeTempDir('skills-writable-');
   seedFixtures();
 });
 
