@@ -361,7 +361,7 @@ test('a page zoomed wider than the dialog can be scrolled to both of its edges',
   );
 });
 
-test('gives up on a worker that loads but never answers, and never on one that did', async ({
+test('never cuts off a worker that announced itself, however long it stays open', async ({
   page,
 }) => {
   await page.clock.install();
@@ -375,8 +375,11 @@ test('gives up on a worker that loads but never answers, and never on one that d
   await page.clock.fastForward('01:00:00');
   await expect(dialog.getByText('2 pages')).toBeVisible();
   await expect(dialog.getByText('Preview unavailable')).toHaveCount(0);
-  await page.getByRole('button', { name: 'Close preview' }).click();
+});
 
+test('gives up on a worker that loads but never answers', async ({ page }) => {
+  await page.clock.install();
+  await mount(page);
   // A worker script that loads fine and then says nothing.
   await page.route(`${ORIGIN}/assets/pdf.worker*`, (route) =>
     route.fulfill({
@@ -385,8 +388,14 @@ test('gives up on a worker that loads but never answers, and never on one that d
       body: '// silent',
     }),
   );
+  const dialog = page.getByRole('dialog', { name: 'Preview' });
+
+  const workerLoaded = page.waitForResponse(/\/assets\/pdf\.worker/);
   await page.getByRole('button', { name: 'Open PDF', exact: true }).click();
-  await expect(dialog.getByLabel('Loading PDF preview')).toBeVisible();
-  await page.clock.fastForward('00:31');
+  // The deadline starts with the worker, so wait for it before moving time.
+  await workerLoaded;
+  await page.clock.fastForward('00:10');
+  await expect(dialog.getByText('Preview unavailable')).toHaveCount(0);
+  await page.clock.fastForward('00:21');
   await expect(dialog.getByText('Preview unavailable')).toBeVisible();
 });
