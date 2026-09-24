@@ -1,4 +1,3 @@
-import { join } from 'node:path';
 import type { ACPConfig } from '@kontourai/station-contracts/acp';
 import type { AgentSpec } from '@kontourai/station-contracts/agent';
 import type { AppConfig } from '@kontourai/station-contracts/config';
@@ -21,7 +20,6 @@ import {
 } from '../../domain/agent-registry.js';
 import { DEFAULT_SYSTEM_PROMPT } from '../../domain/config-loader.js';
 import type { FileStorageAdapter } from '../../domain/file-storage-adapter.js';
-import { pluginAgentOwner } from '../../domain/plugin-agent-ownership.js';
 import type { MonitoringEmitter } from '../../monitoring/emitter.js';
 import type { ProviderSessionStartInput } from '../../providers/adapter-shape.js';
 import { AcpAdapter } from '../../providers/adapters/acp-adapter.js';
@@ -610,11 +608,6 @@ export async function initializeRuntime(
     // per call for the same reason as the workspace default above.
     resolveStationDefaultApprovalMode: async () =>
       (await configLoader.loadAppConfig()).defaultApprovalMode,
-    // #2436: a plugin-contributed Agent's full-access default is not applied.
-    isPluginOwnedAgent: (agentSlug) =>
-      pluginAgentOwner(
-        join(configLoader.getProjectHomeDir(), 'agents', agentSlug),
-      ) !== null,
     nativeDeclaredPullRequestResolver,
     // archive#1501: shadow `resolveProjectResource` against the
     // session-cwd seam over REAL traffic before slice 3c flips it. Dispatched

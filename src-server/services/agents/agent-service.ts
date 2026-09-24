@@ -16,8 +16,17 @@ import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display'
 
 type Agent = any;
 
+import { isApprovalMode } from '@kontourai/station-contracts/provider';
+import {
+  agentPluginOwner,
+  effectivePluginAgentApprovalMode,
+  storedAgentApprovalMode,
+  withEffectiveAgentApprovalMode,
+  writeAgentApprovalOverride,
+} from '../../domain/agent-approval-overrides.js';
 import {
   type AgentRegistry,
+  acquireAgentIdentityMutationLockAtHome,
   assertCustomAgentIdentity,
   DefaultAgentMutationError,
   isRegistryDefaultAgent,
@@ -645,12 +654,73 @@ export class AgentService {
       return this.getAgent(slug);
     }
 
+    const homeDir =
+      typeof this.configLoader.getProjectHomeDir === 'function'
+        ? this.configLoader.getProjectHomeDir()
+        : undefined;
+    if (homeDir)
+      await this.recordPluginAgentApprovalChoice(homeDir, slug, filtered);
     const result = await this.configLoader.updateAgent(slug, filtered);
     agentOps.add(1, { operation: 'update', agent: slug });
     // The save response is a READ too: the editor loads it straight back into
     // its form and `agents.ts` validates capabilities against it, so it goes
-    // through the same projection as every other read.
-    return projectStationEngineBinding(slug, result, this.agentMetadataMap);
+    // through the same projection as every other read — including the
+    // effective default approval posture of a plugin-owned Agent (#2436).
+    return projectStationEngineBinding(
+      slug,
+      homeDir ? withEffectiveAgentApprovalMode(homeDir, slug, result) : result,
+      this.agentMetadataMap,
+    );
+  }
+
+  /**
+   * #2436 (owner decision): on a plugin-owned Agent, a default approval
+   * posture set through this write is the OPERATOR's choice, and is kept
+   * outside the plugin's directory (`agent-approval-overrides.ts`), so a
+   * plugin update neither erases nor forges it. The route in front of this
+   * has already applied the full-access gate. The plugin's own declared value
+   * stays in its `agent.json`.
+   *
+   * Only a CHANGE from the effective value is a choice: an unrelated save
+   * resends the whole `execution` block with the value the editor was shown,
+   * and must not pin it. "Use this Station's default" (no value) over a
+   * plugin's declared one records an explicit "no default".
+   */
+  private async recordPluginAgentApprovalChoice(
+    homeDir: string,
+    slug: string,
+    updates: Record<string, any>,
+  ): Promise<void> {
+    const plugin = agentPluginOwner(homeDir, slug);
+    const execution = updates.execution;
+    if (!plugin || !execution || typeof execution !== 'object') return;
+    const { approvalMode: requested, ...rest } = execution as {
+      approvalMode?: unknown;
+    };
+    const declared = storedAgentApprovalMode(homeDir, slug);
+    updates.execution = {
+      ...rest,
+      ...(declared !== undefined ? { approvalMode: declared } : {}),
+    };
+    const effective = effectivePluginAgentApprovalMode(
+      homeDir,
+      slug,
+      plugin,
+      declared,
+    );
+    const chosen = isApprovalMode(requested) ? requested : undefined;
+    if (chosen === effective) return;
+    const release = await acquireAgentIdentityMutationLockAtHome(homeDir);
+    try {
+      writeAgentApprovalOverride(
+        homeDir,
+        slug,
+        plugin,
+        chosen ?? 'connection-default',
+      );
+    } finally {
+      await release();
+    }
   }
 
   async deleteAgent(

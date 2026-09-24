@@ -44,13 +44,6 @@ export interface ApprovalPostureDecision {
   sequence: number;
 }
 
-/** A plugin-contributed Agent's default, with full access not applied. */
-function withoutPluginFullAccess(
-  mode: ApprovalMode | undefined,
-): ApprovalMode | undefined {
-  return mode === 'never' ? undefined : mode;
-}
-
 function concrete(mode: unknown): ApprovalMode | undefined {
   return isApprovalMode(mode) && mode !== 'connection-default'
     ? mode
@@ -76,13 +69,6 @@ export class ApprovalPosture {
       resolveAgentDefault?: (
         agentSlug: string,
       ) => Promise<ApprovalMode | undefined>;
-      /**
-       * Whether the Agent's definition is contributed by a plugin. A plugin
-       * is installed at the ordinary operate tier, so a full-access default
-       * it ships would be full access no one with that authority chose
-       * (#2436 escalation authority): it is not applied.
-       */
-      isPluginOwnedAgent?: (agentSlug: string) => boolean;
     },
   ) {}
 
@@ -144,16 +130,13 @@ export class ApprovalPosture {
     // (a reread could see a definition the admission did not). A read that
     // fails is not "no default": it propagates and fails the start, like the
     // credential-profile pin read beside it.
+    // Both sources are the Agent's EFFECTIVE default: for a plugin-owned
+    // Agent, the operator's override, else the plugin's own value short of
+    // full access (`agent-approval-overrides.ts`, applied at the read seam).
     const agent = input.capturedAgent
-      ? // Only plugin Workspace Pane actions capture an Agent, and its
-        // definition is the plugin's own.
-        withoutPluginFullAccess(concrete(input.capturedAgent.approvalMode))
+      ? concrete(input.capturedAgent.approvalMode)
       : input.agentSlug
-        ? this.deps.isPluginOwnedAgent?.(input.agentSlug)
-          ? withoutPluginFullAccess(
-              concrete(await this.deps.resolveAgentDefault?.(input.agentSlug)),
-            )
-          : concrete(await this.deps.resolveAgentDefault?.(input.agentSlug))
+        ? concrete(await this.deps.resolveAgentDefault?.(input.agentSlug))
         : undefined;
     if (agent) return agent;
     return concrete(await this.deps.resolveStationDefault?.());

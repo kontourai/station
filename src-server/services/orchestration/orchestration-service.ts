@@ -647,11 +647,6 @@ interface OrchestrationServiceOptions {
    * Loaded per call, like the workspace default above.
    */
   resolveStationDefaultApprovalMode?: () => Promise<ApprovalMode | undefined>;
-  /**
-   * #2436: whether an Agent's definition is plugin-contributed; such an
-   * Agent's full-access default is not applied (`approval-posture.ts`).
-   */
-  isPluginOwnedAgent?: (agentSlug: string) => boolean;
   /** Private exact PR point read; it never shares the public route's branch resolver. */
   nativeDeclaredPullRequestResolver?: {
     read(input: {
@@ -1632,9 +1627,6 @@ export class OrchestrationService {
       // the credential-profile pin uses (`loadAgentExecutionConfig`).
       resolveAgentDefault: async (agentSlug) =>
         (await options.loadAgentExecutionConfig?.(agentSlug))?.approvalMode,
-      ...(options.isPluginOwnedAgent
-        ? { isPluginOwnedAgent: options.isPluginOwnedAgent }
-        : {}),
     });
     this.nativeOutputDeclarations = createNativeOutputDeclarationOperation({
       authority: this.nativeOutputGrants,

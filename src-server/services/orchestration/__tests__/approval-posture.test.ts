@@ -136,7 +136,6 @@ describe('server-ordered approval posture (#2436)', () => {
   let acp: RecordingAdapter;
   let stationDefault: ApprovalMode | undefined;
   let agentDefaults: Record<string, ApprovalMode | undefined>;
-  let pluginAgents: Set<string>;
   let service: OrchestrationService;
 
   function createService(): OrchestrationService {
@@ -151,7 +150,6 @@ describe('server-ordered approval posture (#2436)', () => {
         ...input,
         agent: { slug: String(input.metadata?.agentSlug ?? 'claude') },
       }),
-      isPluginOwnedAgent: (slug) => pluginAgents.has(slug),
       loadAgentExecutionConfig: async (slug) =>
         agentDefaults[slug] ? { approvalMode: agentDefaults[slug] } : undefined,
       logger: { debug: vi.fn(), warn: vi.fn() },
@@ -168,7 +166,6 @@ describe('server-ordered approval posture (#2436)', () => {
     acp = new RecordingAdapter('acp');
     stationDefault = undefined;
     agentDefaults = {};
-    pluginAgents = new Set();
     service = createService();
   });
 
@@ -475,17 +472,6 @@ describe('server-ordered approval posture (#2436)', () => {
       expect(claude.starts.at(-1)?.modelOptions?.approvalMode).toBe('auto');
       await start('t-no-agent-default', 'claude', undefined, 'other');
       expect(claude.starts.at(-1)?.modelOptions?.approvalMode).toBe('never');
-    });
-
-    test("a plugin-contributed Agent's full-access default is not applied; its stricter one is", async () => {
-      pluginAgents.add('plugin-agent');
-      agentDefaults['plugin-agent'] = 'never';
-      stationDefault = 'ask';
-      await start('t-plugin-never', 'claude', undefined, 'plugin-agent');
-      expect(claude.starts.at(-1)?.modelOptions?.approvalMode).toBe('ask');
-      agentDefaults['plugin-agent'] = 'auto';
-      await start('t-plugin-auto', 'claude', undefined, 'plugin-agent');
-      expect(claude.starts.at(-1)?.modelOptions?.approvalMode).toBe('auto');
     });
 
     test('a live session is not reconfigured by a default: a turn with nothing recorded sends no posture', async () => {
