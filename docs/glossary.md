@@ -23,6 +23,11 @@ running on a Station distinct.
 - **Broker** — an optional service that helps a Device reach a Station when a
   direct path is unavailable. One broker may serve many Stations and Devices;
   it handles bounded routing/signaling metadata, not Project data or agent work.
+- **Push gateway** — the Kontour-operated service that forwards a Station's
+  signed notifications to Google (and later Apple) push, which only the app's
+  publisher can send to. It keeps no state and no Project data. It is not a
+  Broker and not a relay: those let a Device reach a Station; the push gateway
+  lets a Station wake a Device.
 - **Route grant** — a separately issued, revocable broker credential kept by a
   client to reach one Station enrollment. Browser v1 grants bind a client
   Origin; native v2 grants bind an approved install proof key and native app

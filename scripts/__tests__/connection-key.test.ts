@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import { randomBytes, randomUUID } from 'node:crypto';
 import {
   existsSync,
   mkdtempSync,
@@ -8,8 +9,14 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { calculateJwkThumbprint } from 'jose';
+import {
+  formatStationConnectionKeyConfirmationCode,
+  stationConnectionKeyConfirmationCode,
+  verifyStationConnectionKeyCandidate,
+} from '@kontourai/station-shared/connection-proof';
+import { calculateJwkThumbprint, exportJWK, generateKeyPair } from 'jose';
 import { afterEach, expect, test } from 'vitest';
+import { ConnectionSigningKeyStore } from '../../src-server/services/ssh/connection-signing-key-store.js';
 import { EnvironmentSecurityService } from '../../src-server/services/ssh/environment-security-service.js';
 import { localLabEnvironment } from '../lib/local-collaboration-process.mjs';
 import {
@@ -92,6 +99,12 @@ test('operator CLI initializes once across processes, inspects public metadata, 
   const absent = await run(['inspect', `--home=${home}`]);
   expect(absent.result.status).toBe(2);
   expect(report(absent.output).status).toBe('absent');
+  const absentFingerprint = await run(['fingerprint', `--home=${home}`]);
+  expect(absentFingerprint.result.status).toBe(2);
+  expect(report(absentFingerprint.output)).toMatchObject({
+    schema: 'station.connection-key-fingerprint/v1',
+    status: 'absent',
+  });
   expect(existsSync(path)).toBe(false);
   const first = await run(['initialize', `--home=${home}`]);
   expect(first.result.status).toBe(0);
@@ -100,6 +113,95 @@ test('operator CLI initializes once across processes, inspects public metadata, 
   expect(initial.keyId).toBe(
     await calculateJwkThumbprint(initial.trust.signingKey),
   );
+  const fingerprint = await run(['fingerprint', `--home=${home}`]);
+  const fingerprintReport = report(fingerprint.output);
+  expect(fingerprint.result.status).toBe(0);
+  expect(fingerprintReport).toMatchObject({
+    schema: 'station.connection-key-fingerprint/v1',
+    status: 'present',
+    stationId: initial.trust.stationId,
+    enrollmentId: initial.trust.enrollmentId,
+    generation: initial.trust.generation,
+    keyId: initial.keyId,
+    confirmationCode: formatStationConnectionKeyConfirmationCode(
+      await stationConnectionKeyConfirmationCode(initial.trust),
+    ),
+  });
+  expect(JSON.stringify(fingerprint.output)).not.toContain('PRIVATE KEY');
+  const installKey = await generateKeyPair('ES256', { extractable: true });
+  const clientKeyThumbprint = await calculateJwkThumbprint(
+    (await exportJWK(installKey.publicKey)) as {
+      kty: 'EC';
+      crv: 'P-256';
+      x: string;
+      y: string;
+    },
+  );
+  const challenge = randomBytes(32).toString('base64url');
+  const clientInstanceId = randomUUID();
+  const candidateOutput = await run([
+    'candidate',
+    `--home=${home}`,
+    `--expected-station-id=${initial.trust.stationId}`,
+    `--expected-enrollment-id=${initial.trust.enrollmentId}`,
+    '--broker-origin=https://broker.example',
+    `--challenge=${challenge}`,
+    `--client-instance-id=${clientInstanceId}`,
+    `--client-key-thumbprint=${clientKeyThumbprint}`,
+  ]);
+  expect(candidateOutput.result.status).toBe(0);
+  const candidateReport = report(candidateOutput.output);
+  expect(candidateReport).toMatchObject({
+    schema: 'station.connection-key-candidate-report/v1',
+    status: 'present',
+    keyId: initial.keyId,
+    confirmationCode: fingerprintReport.confirmationCode,
+  });
+  const verified = await verifyStationConnectionKeyCandidate(
+    candidateReport.candidate,
+    {
+      brokerOrigin: 'https://broker.example',
+      challenge,
+      clientInstanceId,
+      clientKeyThumbprint,
+      stationId: initial.trust.stationId,
+      enrollmentId: initial.trust.enrollmentId,
+      now: Math.floor(Date.now() / 1000),
+    },
+  );
+  expect(verified.status).toBe('candidate');
+  expect(verified.claims.candidate).toEqual(initial.trust);
+  expect(JSON.stringify(candidateOutput.output)).not.toContain('PRIVATE KEY');
+  expect(JSON.stringify(candidateOutput.output)).not.toContain(
+    identity.credential,
+  );
+  const wrongHome = await fixture();
+  await new ConnectionSigningKeyStore(wrongHome.home).initialize();
+  const wrongHomeCandidate = await run([
+    'candidate',
+    `--home=${wrongHome.home}`,
+    `--expected-station-id=${initial.trust.stationId}`,
+    `--expected-enrollment-id=${initial.trust.enrollmentId}`,
+    '--broker-origin=https://broker.example',
+    `--challenge=${challenge}`,
+    `--client-instance-id=${clientInstanceId}`,
+    `--client-key-thumbprint=${clientKeyThumbprint}`,
+  ]);
+  expect(wrongHomeCandidate.result.status).toBe(1);
+  expect(wrongHomeCandidate.output.stderr).toContain('candidate_stale');
+  expect(wrongHomeCandidate.output.stdout).toBe('');
+  const malformedCandidate = await run([
+    'candidate',
+    `--home=${home}`,
+    `--expected-station-id=${initial.trust.stationId}`,
+    `--expected-enrollment-id=${initial.trust.enrollmentId}`,
+    '--broker-origin=https://broker.example/path',
+    `--challenge=${'N'.repeat(43)}`,
+    `--client-instance-id=${clientInstanceId}`,
+    `--client-key-thumbprint=${clientKeyThumbprint}`,
+  ]);
+  expect(malformedCandidate.result.status).toBe(1);
+  expect(malformedCandidate.output.stderr).toContain('invalid_arguments');
   const originalBytes = readFileSync(path);
   const again = await run(['initialize', `--home=${home}`]);
   expect(again.result.status).toBe(0);
@@ -171,6 +273,7 @@ test('invalid flags never create a key and missing homes are not initialized', a
     ['initialize', '--home=relative'],
     ['initialize', `--home=${home}`, `--home=${home}`],
     ['initialize', `--home=${home}`, '--operator=true'],
+    ['fingerprint'],
     [
       'rotate',
       `--home=${home}`,

@@ -50,7 +50,8 @@ export function useSessionInventoryLive(
     const provider =
       activeChatsStore.getSnapshot()[chatStoreId]?.backgroundTasks;
     const next = selectSessionInventoryLiveNow(raw, sessionId, provider).filter(
-      (entry) => entry.startedAt >= startedAfter,
+      (entry) =>
+        entry.startedAt !== undefined && entry.startedAt >= startedAfter,
     );
     const pendingApprovalIds = [
       ...new Set(

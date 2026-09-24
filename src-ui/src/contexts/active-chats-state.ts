@@ -226,6 +226,13 @@ export type ChatBackgroundTask = {
    * addressing a task-scoped stop needs this one.
    */
   sessionThreadId?: string;
+  /**
+   * #2459: the per-task stop seam the CHILD itself carried
+   * (`ChildWorkItem.controls.stop`). A session thread says where a stop
+   * would go, not that the engine has one: Claude's legacy translator sets
+   * this on running tasks; a Codex child carries none.
+   */
+  stop?: 'provider-task-stop';
 };
 
 /**

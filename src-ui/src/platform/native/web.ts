@@ -6,6 +6,7 @@ import type {
   NativeBrowserPreviewWindowResult,
   NativeCapabilityId,
   NativeCapabilityStatus,
+  NativeCommandName,
   NativeCommandResult,
   NativeEventSubscription,
   NativePairingDeepLinkEvent,
@@ -279,6 +280,36 @@ export class WebNativePlatformAdapter implements NativePlatformAdapter {
       status: 'unsupported',
       command: 'haptic-feedback',
       reason: WEB_CAPABILITIES.haptics.reason,
+    };
+  }
+
+  async agentActivityStatus(): Promise<NativeCommandResult<never>> {
+    return this.agentActivityUnsupported('agent-activity-status');
+  }
+
+  async agentActivityPushToken(): Promise<NativeCommandResult<never>> {
+    return this.agentActivityUnsupported('agent-activity-push-token');
+  }
+
+  async configureAgentActivity(): Promise<NativeCommandResult<never>> {
+    return this.agentActivityUnsupported('configure-agent-activity');
+  }
+
+  async clearAgentActivity(): Promise<NativeCommandResult<never>> {
+    return this.agentActivityUnsupported('clear-agent-activity');
+  }
+
+  async openLiveUpdateSettings(): Promise<NativeCommandResult<never>> {
+    return this.agentActivityUnsupported('open-live-update-settings');
+  }
+
+  private agentActivityUnsupported(
+    command: NativeCommandName,
+  ): NativeCommandResult<never> {
+    return {
+      status: 'unsupported',
+      command,
+      reason: WEB_CAPABILITIES['remote-push'].reason,
     };
   }
 }

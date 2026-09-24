@@ -1,8 +1,8 @@
 //! Desktop-only custody for Station's native broker-redemption proof key.
 //!
 //! This is deliberately not connected to Tauri commands or application
-//! traffic. The only signing entry point accepts the typed v2 broker JWS
-//! challenge, and private PKCS#8 bytes stay in the OS keyring.
+//! traffic. Signing accepts only closed typed v2 redemption/request JWS
+//! challenges, and private PKCS#8 bytes stay in the OS keyring.
 
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine as _;
@@ -274,6 +274,14 @@ impl NativeRelayProofKeyVault {
     ) -> ProofResult<Vec<u8>> {
         self.inner.sign_es256_p1363(owner, challenge)
     }
+
+    pub(crate) fn sign_native_request_es256_p1363(
+        &self,
+        owner: &NativeProofKeyOwner,
+        challenge: &NativeBrokerRequestProofChallenge,
+    ) -> ProofResult<Vec<u8>> {
+        self.inner.sign_native_request_es256_p1363(owner, challenge)
+    }
 }
 
 #[cfg(test)]
@@ -309,6 +317,14 @@ impl MemoryNativeRelayProofKeyVault {
         challenge: &NativeBrokerRedemptionChallenge,
     ) -> ProofResult<Vec<u8>> {
         self.inner.sign_es256_p1363(owner, challenge)
+    }
+
+    pub(crate) fn sign_native_request_es256_p1363(
+        &self,
+        owner: &NativeProofKeyOwner,
+        challenge: &NativeBrokerRequestProofChallenge,
+    ) -> ProofResult<Vec<u8>> {
+        self.inner.sign_native_request_es256_p1363(owner, challenge)
     }
 }
 
@@ -372,6 +388,31 @@ impl<B: SecretBackend> ProofKeyVault<B> {
         &self,
         owner: &NativeProofKeyOwner,
         challenge: &NativeBrokerRedemptionChallenge,
+    ) -> ProofResult<Vec<u8>> {
+        let _guard = NATIVE_PROOF_KEY_OPERATION
+            .lock()
+            .map_err(|_| ProofKeyError::Store)?;
+        let stored = self.read_record(owner)?;
+        if challenge.key_thumbprint != stored.public.thumbprint {
+            return Err(ProofKeyError::InvalidChallenge);
+        }
+        let rng = SystemRandom::new();
+        let key_pair = signature::EcdsaKeyPair::from_pkcs8(
+            &signature::ECDSA_P256_SHA256_FIXED_SIGNING,
+            stored.private_pkcs8.0.as_slice(),
+            &rng,
+        )
+        .map_err(|_| ProofKeyError::Corrupt)?;
+        key_pair
+            .sign(&rng, challenge.signing_input.as_bytes())
+            .map(|signature| signature.as_ref().to_vec())
+            .map_err(|_| ProofKeyError::Signing)
+    }
+
+    fn sign_native_request_es256_p1363(
+        &self,
+        owner: &NativeProofKeyOwner,
+        challenge: &NativeBrokerRequestProofChallenge,
     ) -> ProofResult<Vec<u8>> {
         let _guard = NATIVE_PROOF_KEY_OPERATION
             .lock()
@@ -605,6 +646,441 @@ impl NativeBrokerRedemptionChallenge {
             nonce: nonce.to_owned(),
         })
     }
+}
+
+/// One fixed v2 native broker operation. Callers cannot provide a URL or path.
+#[derive(Clone, Copy)]
+pub(crate) enum NativeBrokerRequestBody<'a> {
+    Open {
+        nonce: &'a str,
+        offer_sdp: &'a str,
+    },
+    Read {
+        nonce: &'a str,
+    },
+    Retire,
+    Renew {
+        renewal_id: &'a str,
+        expected_expires_at: u64,
+    },
+}
+
+/// Host-owned grant facts used to construct one request proof. The bearer is
+/// borrowed only long enough to compute `ath`; it is never retained here.
+pub(crate) struct NativeBrokerRequestIdentity<'a> {
+    pub(crate) broker_origin: &'a str,
+    pub(crate) grant_id: &'a str,
+    pub(crate) station_id: &'a str,
+    pub(crate) enrollment_id: &'a str,
+    pub(crate) routing_generation: u64,
+    pub(crate) app_identifier: &'a str,
+    pub(crate) channel: &'a str,
+    pub(crate) client_instance_id: &'a str,
+    pub(crate) key_thumbprint: &'a str,
+    pub(crate) station_signing_key_id: &'a str,
+    pub(crate) station_signing_generation: u64,
+    pub(crate) bearer_secret: &'a str,
+}
+
+/// A closed request body, exact claims bytes, and the only allowed request
+/// endpoint/purpose. There is no arbitrary signing-input constructor.
+pub(crate) struct NativeBrokerRequestProofChallenge {
+    signing_input: String,
+    key_thumbprint: String,
+    broker_origin: String,
+    grant_id: String,
+    station_id: String,
+    enrollment_id: String,
+    routing_generation: u64,
+    app_identifier: String,
+    channel: String,
+    client_instance_id: String,
+    station_signing_key_id: String,
+    station_signing_generation: u64,
+    ath: String,
+    path: &'static str,
+    body: Zeroizing<Vec<u8>>,
+    jti: String,
+    issued_at: u64,
+}
+
+impl NativeBrokerRequestProofChallenge {
+    pub(crate) fn from_request(
+        identity: NativeBrokerRequestIdentity<'_>,
+        body: NativeBrokerRequestBody<'_>,
+        issued_at: u64,
+    ) -> ProofResult<Self> {
+        let mut jti = [0_u8; 32];
+        SystemRandom::new()
+            .fill(&mut jti)
+            .map_err(|_| ProofKeyError::Signing)?;
+        Self::from_request_with_jti(identity, body, issued_at, jti)
+    }
+
+    fn from_request_with_jti(
+        identity: NativeBrokerRequestIdentity<'_>,
+        operation: NativeBrokerRequestBody<'_>,
+        issued_at: u64,
+        jti_bytes: [u8; 32],
+    ) -> ProofResult<Self> {
+        validate_native_request_identity(&identity, &operation, issued_at)?;
+        let scope = NativeRequestProofScope {
+            station_id: identity.station_id,
+            enrollment_id: identity.enrollment_id,
+            routing_generation: identity.routing_generation,
+        };
+        let surface = NativeRequestProofSurface {
+            kind: "station-native",
+            app_identifier: identity.app_identifier,
+            channel: identity.channel,
+            client_instance_id: identity.client_instance_id,
+            key_thumbprint: identity.key_thumbprint,
+        };
+        let (path, purpose, body) = match operation {
+            NativeBrokerRequestBody::Open { nonce, offer_sdp } => (
+                "/broker/v1/native/connections/open",
+                "station-native-connection-open-v2",
+                serde_json::to_vec(&NativeRequestOpenBody {
+                    scope,
+                    surface,
+                    connection: NativeRequestOpenConnection {
+                        version: "station-broker-native-connection-open/v2",
+                        nonce,
+                        offer_sdp,
+                    },
+                }),
+            ),
+            NativeBrokerRequestBody::Read { nonce } => (
+                "/broker/v1/native/connections/read",
+                "station-native-connection-read-v2",
+                serde_json::to_vec(&NativeRequestReadBody {
+                    version: "station-broker-native-connection-read/v2",
+                    scope,
+                    surface,
+                    nonce,
+                }),
+            ),
+            NativeBrokerRequestBody::Retire => (
+                "/broker/v1/native/grants/retire",
+                "station-native-grant-retire-v2",
+                serde_json::to_vec(&NativeRequestRetireBody {
+                    version: "station-broker-native-grant-retire/v2",
+                    scope,
+                    surface,
+                }),
+            ),
+            NativeBrokerRequestBody::Renew {
+                renewal_id,
+                expected_expires_at,
+            } => (
+                "/broker/v1/native/grants/renew",
+                "station-native-grant-renew-v2",
+                serde_json::to_vec(&NativeRequestRenewBody {
+                    version: "station-broker-native-grant-renew/v2",
+                    scope,
+                    surface,
+                    renewal_id,
+                    expected_expires_at,
+                }),
+            ),
+        };
+        let body = body.map_err(|_| ProofKeyError::InvalidChallenge)?;
+        if body.len() > 256 * 1024 {
+            return Err(ProofKeyError::InvalidChallenge);
+        }
+        let body_sha256 =
+            URL_SAFE_NO_PAD.encode(ring::digest::digest(&ring::digest::SHA256, &body));
+        let ath = URL_SAFE_NO_PAD.encode(ring::digest::digest(
+            &ring::digest::SHA256,
+            identity.bearer_secret.as_bytes(),
+        ));
+        let jti = URL_SAFE_NO_PAD.encode(jti_bytes);
+        let claims = NativeRequestProofClaimsV1 {
+            version: "station-broker-native-request-proof/v1",
+            aud: identity.broker_origin,
+            purpose,
+            broker_origin: identity.broker_origin,
+            method: "POST",
+            path,
+            grant_id: identity.grant_id,
+            scope,
+            surface,
+            station_signing_key_id: identity.station_signing_key_id,
+            station_signing_generation: identity.station_signing_generation,
+            ath,
+            jti: &jti,
+            issued_at,
+            expires_at: issued_at
+                .checked_add(30)
+                .filter(|expires_at| *expires_at <= 9_007_199_254_740_991)
+                .ok_or(ProofKeyError::InvalidChallenge)?,
+            body_sha256,
+        };
+        let payload = serde_json::to_vec(&claims).map_err(|_| ProofKeyError::InvalidChallenge)?;
+        let header = serde_json::to_vec(&NativeRequestProofProtectedHeader {
+            alg: "ES256",
+            typ: "station-broker-native-request+jws",
+        })
+        .map_err(|_| ProofKeyError::InvalidChallenge)?;
+        let signing_input = format!(
+            "{}.{}",
+            URL_SAFE_NO_PAD.encode(header),
+            URL_SAFE_NO_PAD.encode(payload)
+        );
+        Ok(Self {
+            signing_input,
+            key_thumbprint: identity.key_thumbprint.to_owned(),
+            broker_origin: identity.broker_origin.to_owned(),
+            grant_id: identity.grant_id.to_owned(),
+            station_id: identity.station_id.to_owned(),
+            enrollment_id: identity.enrollment_id.to_owned(),
+            routing_generation: identity.routing_generation,
+            app_identifier: identity.app_identifier.to_owned(),
+            channel: identity.channel.to_owned(),
+            client_instance_id: identity.client_instance_id.to_owned(),
+            station_signing_key_id: identity.station_signing_key_id.to_owned(),
+            station_signing_generation: identity.station_signing_generation,
+            ath: URL_SAFE_NO_PAD.encode(ring::digest::digest(
+                &ring::digest::SHA256,
+                identity.bearer_secret.as_bytes(),
+            )),
+            path,
+            body: Zeroizing::new(body),
+            jti,
+            issued_at,
+        })
+    }
+
+    pub(crate) fn path(&self) -> &'static str {
+        self.path
+    }
+
+    pub(crate) fn matches_identity(&self, identity: &NativeBrokerRequestIdentity<'_>) -> bool {
+        self.broker_origin == identity.broker_origin
+            && self.grant_id == identity.grant_id
+            && self.station_id == identity.station_id
+            && self.enrollment_id == identity.enrollment_id
+            && self.routing_generation == identity.routing_generation
+            && self.app_identifier == identity.app_identifier
+            && self.channel == identity.channel
+            && self.client_instance_id == identity.client_instance_id
+            && self.key_thumbprint == identity.key_thumbprint
+            && self.station_signing_key_id == identity.station_signing_key_id
+            && self.station_signing_generation == identity.station_signing_generation
+            && self.ath
+                == URL_SAFE_NO_PAD.encode(ring::digest::digest(
+                    &ring::digest::SHA256,
+                    identity.bearer_secret.as_bytes(),
+                ))
+    }
+
+    pub(crate) fn body(&self) -> &[u8] {
+        &self.body
+    }
+
+    pub(crate) fn jti(&self) -> &str {
+        &self.jti
+    }
+
+    pub(crate) fn issued_at(&self) -> u64 {
+        self.issued_at
+    }
+
+    pub(crate) fn compact_jws(&self, signature_p1363: &[u8]) -> ProofResult<String> {
+        if signature_p1363.len() != 64 {
+            return Err(ProofKeyError::Signing);
+        }
+        Ok(format!(
+            "{}.{}",
+            self.signing_input,
+            URL_SAFE_NO_PAD.encode(signature_p1363)
+        ))
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct NativeRequestProofProtectedHeader {
+    alg: &'static str,
+    typ: &'static str,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct NativeRequestProofClaimsV1<'a> {
+    version: &'static str,
+    aud: &'a str,
+    purpose: &'static str,
+    broker_origin: &'a str,
+    method: &'static str,
+    path: &'static str,
+    grant_id: &'a str,
+    scope: NativeRequestProofScope<'a>,
+    surface: NativeRequestProofSurface<'a>,
+    station_signing_key_id: &'a str,
+    station_signing_generation: u64,
+    ath: String,
+    jti: &'a str,
+    #[serde(rename = "iat")]
+    issued_at: u64,
+    #[serde(rename = "exp")]
+    expires_at: u64,
+    body_sha256: String,
+}
+
+#[derive(Clone, Copy, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct NativeRequestProofScope<'a> {
+    station_id: &'a str,
+    enrollment_id: &'a str,
+    routing_generation: u64,
+}
+
+#[derive(Clone, Copy, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct NativeRequestProofSurface<'a> {
+    kind: &'static str,
+    app_identifier: &'a str,
+    channel: &'a str,
+    client_instance_id: &'a str,
+    key_thumbprint: &'a str,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct NativeRequestOpenBody<'a> {
+    scope: NativeRequestProofScope<'a>,
+    surface: NativeRequestProofSurface<'a>,
+    connection: NativeRequestOpenConnection<'a>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct NativeRequestOpenConnection<'a> {
+    version: &'static str,
+    nonce: &'a str,
+    offer_sdp: &'a str,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct NativeRequestReadBody<'a> {
+    version: &'static str,
+    scope: NativeRequestProofScope<'a>,
+    surface: NativeRequestProofSurface<'a>,
+    nonce: &'a str,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct NativeRequestRetireBody<'a> {
+    version: &'static str,
+    scope: NativeRequestProofScope<'a>,
+    surface: NativeRequestProofSurface<'a>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct NativeRequestRenewBody<'a> {
+    version: &'static str,
+    scope: NativeRequestProofScope<'a>,
+    surface: NativeRequestProofSurface<'a>,
+    renewal_id: &'a str,
+    expected_expires_at: u64,
+}
+
+fn validate_native_request_identity(
+    identity: &NativeBrokerRequestIdentity<'_>,
+    operation: &NativeBrokerRequestBody<'_>,
+    issued_at: u64,
+) -> ProofResult<()> {
+    let url =
+        url::Url::parse(identity.broker_origin).map_err(|_| ProofKeyError::InvalidChallenge)?;
+    let loopback = match url.host() {
+        Some(url::Host::Domain("localhost")) => true,
+        Some(url::Host::Ipv4(address)) => address == std::net::Ipv4Addr::LOCALHOST,
+        Some(url::Host::Ipv6(address)) => address == std::net::Ipv6Addr::LOCALHOST,
+        _ => false,
+    };
+    let valid_origin = url.origin().ascii_serialization() == identity.broker_origin
+        && (url.scheme() == "https" || (url.scheme() == "http" && loopback))
+        && url.username().is_empty()
+        && url.password().is_none()
+        && url.path() == "/"
+        && url.query().is_none()
+        && url.fragment().is_none();
+    let valid_channel = matches!(identity.channel, "stable" | "beta" | "nightly" | "dev");
+    let valid_grant_id = (8..=128).contains(&identity.grant_id.len())
+        && identity
+            .grant_id
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'));
+    let valid_secret = identity.bearer_secret.len() == 43
+        && identity
+            .bearer_secret
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'));
+    let valid_identifier = |value: &str| {
+        value.len() == 36
+            && [8, 13, 18, 23]
+                .iter()
+                .all(|index| value.as_bytes()[*index] == b'-')
+            && value
+                .bytes()
+                .enumerate()
+                .all(|(index, byte)| [8, 13, 18, 23].contains(&index) || byte.is_ascii_hexdigit())
+    };
+    let valid_surface = identity
+        .app_identifier
+        .as_bytes()
+        .first()
+        .is_some_and(|byte| {
+            byte.is_ascii_alphanumeric()
+                && identity.app_identifier.len() <= 255
+                && identity
+                    .app_identifier
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'-'))
+        });
+    let valid_request_body = match operation {
+        NativeBrokerRequestBody::Open { nonce, offer_sdp } => {
+            valid_request_token(nonce)
+                && !offer_sdp.is_empty()
+                && offer_sdp.as_bytes().len() <= 128 * 1024
+        }
+        NativeBrokerRequestBody::Read { nonce } => valid_request_token(nonce),
+        NativeBrokerRequestBody::Retire => true,
+        NativeBrokerRequestBody::Renew { renewal_id, .. } => valid_request_token(renewal_id),
+    };
+    if !valid_origin
+        || !valid_grant_id
+        || !valid_secret
+        || !valid_identifier(identity.station_id)
+        || !valid_identifier(identity.enrollment_id)
+        || !valid_identifier(identity.client_instance_id)
+        || !valid_surface
+        || !valid_channel
+        || !valid_request_token(identity.key_thumbprint)
+        || !valid_request_token(identity.station_signing_key_id)
+        || identity.key_thumbprint.len() != 43
+        || identity.station_signing_key_id.len() != 43
+        || identity.routing_generation == 0
+        || identity.routing_generation > 9_007_199_254_740_991
+        || identity.station_signing_generation == 0
+        || identity.station_signing_generation > 9_007_199_254_740_991
+        || issued_at > 9_007_199_254_740_991 - 30
+        || !valid_request_body
+    {
+        return Err(ProofKeyError::InvalidChallenge);
+    }
+    Ok(())
+}
+
+fn valid_request_token(value: &str) -> bool {
+    (8..=128).contains(&value.len())
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
 }
 
 #[derive(Serialize)]
@@ -1012,6 +1488,107 @@ mod tests {
             "{\"aud\":\"station-self-hosted-broker\",\"purpose\":\"redeem-native-route-invitation\",\"version\":\"station-broker-native-route-invitation/v2\",\"brokerOrigin\":\"https://broker.example\",\"scope\":{\"stationId\":\"station-12345678\",\"enrollmentId\":\"enroll-12345678\",\"routingGeneration\":9},\"stationSigningKeyId\":\"KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK\",\"stationSigningGeneration\":4,\"surface\":{\"kind\":\"station-native\",\"appIdentifier\":\"io.kontourai.station\",\"channel\":\"nightly\",\"clientInstanceId\":\"7c6f49aa-6925-4bb2-b7c4-22bb6e264105\",\"keyThumbprint\":\"TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT\"},\"invitationId\":\"invite-12345678\",\"invitationSecretDigest\":\"cwNHKhO8UqbEmG63NB3wWnIRQaHNpk7z6r78WuCtcPs\",\"expiresAt\":1700000000123,\"nonce\":\"NNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNN\"}"
         );
         assert!(!challenge.signing_input.contains(&"A".repeat(43)));
+    }
+
+    #[test]
+    fn native_request_proof_matches_shared_golden_and_signs_compact_es256_jws() {
+        let fixture: serde_json::Value = serde_json::from_str(include_str!(
+            "../../packages/contracts/fixtures/native-request-proof-v1.json"
+        ))
+        .unwrap();
+        let owner = NativeProofKeyOwner::new(
+            fixture["surface"]["appIdentifier"].as_str().unwrap(),
+            NativeProofKeyChannel::Stable,
+            fixture["surface"]["clientInstanceId"].as_str().unwrap(),
+        )
+        .unwrap();
+        let bearer_secret = "S".repeat(43);
+        let operation = NativeBrokerRequestBody::Open {
+            nonce: "nonce-request-proof-01",
+            offer_sdp: "offer-fixture",
+        };
+        let fixture_identity = NativeBrokerRequestIdentity {
+            broker_origin: fixture["brokerOrigin"].as_str().unwrap(),
+            grant_id: fixture["grantId"].as_str().unwrap(),
+            station_id: fixture["scope"]["stationId"].as_str().unwrap(),
+            enrollment_id: fixture["scope"]["enrollmentId"].as_str().unwrap(),
+            routing_generation: fixture["scope"]["routingGeneration"].as_u64().unwrap(),
+            app_identifier: fixture["surface"]["appIdentifier"].as_str().unwrap(),
+            channel: fixture["surface"]["channel"].as_str().unwrap(),
+            client_instance_id: fixture["surface"]["clientInstanceId"].as_str().unwrap(),
+            key_thumbprint: fixture["surface"]["keyThumbprint"].as_str().unwrap(),
+            station_signing_key_id: fixture["stationSigningKeyId"].as_str().unwrap(),
+            station_signing_generation: fixture["stationSigningGeneration"].as_u64().unwrap(),
+            bearer_secret: &bearer_secret,
+        };
+        let jti: [u8; 32] = URL_SAFE_NO_PAD
+            .decode(fixture["jti"].as_str().unwrap())
+            .unwrap()
+            .try_into()
+            .unwrap();
+        let issued_at = fixture["iat"].as_u64().unwrap();
+        let challenge = NativeBrokerRequestProofChallenge::from_request_with_jti(
+            fixture_identity,
+            operation,
+            issued_at,
+            jti,
+        )
+        .unwrap();
+        assert_eq!(challenge.path(), fixture["path"].as_str().unwrap());
+        assert_eq!(
+            challenge.body(),
+            fixture["bodyJson"].as_str().unwrap().as_bytes()
+        );
+        let payload = challenge.signing_input.split('.').nth(1).unwrap();
+        assert_eq!(
+            String::from_utf8(URL_SAFE_NO_PAD.decode(payload).unwrap()).unwrap(),
+            fixture["claimsJson"].as_str().unwrap()
+        );
+        assert!(
+            !fixture.to_string().contains(&"S".repeat(43)),
+            "fixture must not contain bearer material"
+        );
+
+        let proof_keys = MemoryNativeRelayProofKeyVault::new();
+        let public = proof_keys.create(&owner).unwrap();
+        let identity = NativeBrokerRequestIdentity {
+            broker_origin: fixture["brokerOrigin"].as_str().unwrap(),
+            grant_id: fixture["grantId"].as_str().unwrap(),
+            station_id: fixture["scope"]["stationId"].as_str().unwrap(),
+            enrollment_id: fixture["scope"]["enrollmentId"].as_str().unwrap(),
+            routing_generation: fixture["scope"]["routingGeneration"].as_u64().unwrap(),
+            app_identifier: fixture["surface"]["appIdentifier"].as_str().unwrap(),
+            channel: fixture["surface"]["channel"].as_str().unwrap(),
+            client_instance_id: fixture["surface"]["clientInstanceId"].as_str().unwrap(),
+            key_thumbprint: public.thumbprint(),
+            station_signing_key_id: fixture["stationSigningKeyId"].as_str().unwrap(),
+            station_signing_generation: fixture["stationSigningGeneration"].as_u64().unwrap(),
+            bearer_secret: &bearer_secret,
+        };
+        let challenge = NativeBrokerRequestProofChallenge::from_request_with_jti(
+            identity, operation, issued_at, jti,
+        )
+        .unwrap();
+        let signature = proof_keys
+            .sign_native_request_es256_p1363(&owner, &challenge)
+            .unwrap();
+        let compact = challenge.compact_jws(&signature).unwrap();
+        let parts = compact.split('.').collect::<Vec<_>>();
+        assert_eq!(parts.len(), 3);
+        assert_eq!(
+            URL_SAFE_NO_PAD.decode(parts[0]).unwrap(),
+            br#"{"alg":"ES256","typ":"station-broker-native-request+jws"}"#
+        );
+        assert_eq!(URL_SAFE_NO_PAD.decode(parts[2]).unwrap(), signature);
+        let x = URL_SAFE_NO_PAD.decode(public.jwk.x()).unwrap();
+        let y = URL_SAFE_NO_PAD.decode(public.jwk.y()).unwrap();
+        let mut point = vec![0x04];
+        point.extend_from_slice(&x);
+        point.extend_from_slice(&y);
+        let signing_input = format!("{}.{}", parts[0], parts[1]);
+        signature::UnparsedPublicKey::new(&signature::ECDSA_P256_SHA256_FIXED, point)
+            .verify(signing_input.as_bytes(), &signature)
+            .unwrap();
     }
 
     #[test]
