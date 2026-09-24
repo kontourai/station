@@ -231,6 +231,8 @@ test('a delegation device cannot set it; a granted one can', async () => {
 test("a plugin update keeps the operator's choice, whatever the new copy declares", async () => {
   const f = await fixture('ask');
   expect((await f.setDefault(f.operator.credential, 'never')).status).toBe(200);
+  // The operator's choice did not overwrite the plugin's own declared value.
+  expect(f.declaredOnDisk()).toBe('ask');
   // The update replaces the directory with the plugin's new copy.
   f.installPluginCopy('auto');
   expect(f.declaredOnDisk()).toBe('auto');
