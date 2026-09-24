@@ -1,5 +1,35 @@
 [
   {
+    "timestampUtc": "2026-09-24T03:22:39Z",
+    "channel": "nightly-android",
+    "version": "0.1.11-nightly.2458.2",
+    "sha": "7bc3cc6dfb7947f68ab7c4884b189e71101e7061",
+    "artifactBuiltAt": "2026-09-24T02:40:10.399Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/35945178538",
+    "artifacts": [
+      "play-internal-aab:cohort-finalized"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 35945178538)"
+    ],
+    "changelog": {
+      "previousSha": "1bfdde4c7935155996e685e582cff9c5a0551c6e",
+      "groups": {
+        "feat": [],
+        "fix": [],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#2466](https://github.com/kontourai/station/pull/2466) test(browser): drive the control lease clock by hand in hold tests",
+          "[#2454](https://github.com/kontourai/station/pull/2454) perf(windows): skip ACL setter for freshly verified paths"
+        ]
+      },
+      "note": null,
+      "commitCount": 2
+    }
+  },
+  {
     "timestampUtc": "2026-09-24T03:16:24Z",
     "channel": "nightly-npm",
     "version": "0.6.0-nightly.2458.35945178538",
