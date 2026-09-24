@@ -11,6 +11,10 @@
 
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine as _;
+use ring::agreement::{
+    agree_ephemeral, EphemeralPrivateKey, UnparsedPublicKey as AgreementUnparsedPublicKey,
+    ECDH_P256,
+};
 use ring::digest::{digest, SHA256};
 use ring::rand::{SecureRandom, SystemRandom};
 use ring::signature::{self, UnparsedPublicKey};
@@ -20,6 +24,7 @@ use std::collections::HashMap;
 #[cfg(test)]
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::time::{SystemTime, UNIX_EPOCH};
 use url::Url;
 use zeroize::Zeroizing;
 
@@ -33,6 +38,42 @@ const TRUST_KEYRING_ACCOUNT_PREFIX: &str = "station-connection-trust:v1:";
 const MAX_APPROVED_ROUTE_BINDINGS: usize = 1024;
 const HEADER: &[u8] = br#"{"alg":"ES256","typ":"station-connection-key-candidate+jws"}"#;
 static STATION_TRUST_OPERATION: Mutex<()> = Mutex::new(());
+
+pub(crate) trait StationTrustClock: Send + Sync {
+    fn now_seconds(&self) -> CandidateResult<u64>;
+}
+
+pub(crate) struct SystemStationTrustClock;
+
+impl StationTrustClock for SystemStationTrustClock {
+    fn now_seconds(&self) -> CandidateResult<u64> {
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|duration| duration.as_secs())
+            .map_err(|_| CandidateError::Stale)
+    }
+}
+
+#[cfg(test)]
+struct TestStationTrustClock(std::sync::atomic::AtomicU64);
+
+#[cfg(test)]
+impl TestStationTrustClock {
+    fn new(seconds: u64) -> Self {
+        Self(std::sync::atomic::AtomicU64::new(seconds))
+    }
+
+    fn set(&self, seconds: u64) {
+        self.0.store(seconds, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
+#[cfg(test)]
+impl StationTrustClock for TestStationTrustClock {
+    fn now_seconds(&self) -> CandidateResult<u64> {
+        Ok(self.0.load(std::sync::atomic::Ordering::SeqCst))
+    }
+}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum CandidateError {
@@ -240,15 +281,7 @@ impl PendingStationKeyChallenge {
         {
             return Err(CandidateError::BindingMismatch);
         }
-        if now > JS_SAFE_INTEGER_MAX
-            || claims.exp <= now
-            || claims.iat > now.saturating_add(5)
-            || claims.iat < now.saturating_sub(CANDIDATE_LIFETIME_SECONDS)
-            || claims.exp <= claims.iat
-            || claims.exp - claims.iat > CANDIDATE_LIFETIME_SECONDS
-        {
-            return Err(CandidateError::Stale);
-        }
+        ensure_candidate_fresh(&claims, now)?;
         let key_id = signing_key_id(&claims.candidate.signing_key)?;
         let confirmation = confirmation_code(&claims.candidate)?;
         if claims.key_id != key_id || claims.confirmation_code != confirmation {
@@ -361,6 +394,19 @@ fn validate_claims(claims: &Claims) -> CandidateResult<()> {
     Ok(())
 }
 
+fn ensure_candidate_fresh(claims: &Claims, now: u64) -> CandidateResult<()> {
+    if now > JS_SAFE_INTEGER_MAX
+        || claims.exp <= now
+        || claims.iat > now.saturating_add(5)
+        || claims.iat < now.saturating_sub(CANDIDATE_LIFETIME_SECONDS)
+        || claims.exp <= claims.iat
+        || claims.exp - claims.iat > CANDIDATE_LIFETIME_SECONDS
+    {
+        return Err(CandidateError::Stale);
+    }
+    Ok(())
+}
+
 fn profile_binding(binding: &CandidateBinding) -> TrustProfileBinding {
     TrustProfileBinding {
         profile_owner_id: binding.profile_owner_id.clone(),
@@ -429,8 +475,12 @@ pub(crate) trait StationTrustBackend: Send {
 /// `profiles.json.lock` supplied by `LockedTrustProfileProvider`, then
 /// `STATION_TRUST_OPERATION`, then the OS keyring call. This module never calls
 /// back into the profile writer while holding its trust mutex.
-pub(crate) struct NativeStationTrustStore<B: StationTrustBackend> {
+pub(crate) struct NativeStationTrustStore<
+    B: StationTrustBackend,
+    C: StationTrustClock = SystemStationTrustClock,
+> {
     backend: B,
+    clock: C,
 }
 
 struct OsStationTrustBackend;
@@ -457,20 +507,33 @@ impl StationTrustBackend for OsStationTrustBackend {
     }
 }
 
-impl NativeStationTrustStore<OsStationTrustBackend> {
+impl NativeStationTrustStore<OsStationTrustBackend, SystemStationTrustClock> {
     pub(crate) fn system() -> Self {
         Self {
             backend: OsStationTrustBackend,
+            clock: SystemStationTrustClock,
         }
     }
 }
 
-impl<B: StationTrustBackend> NativeStationTrustStore<B> {
-    #[cfg(test)]
+#[cfg(test)]
+const TEST_TRUST_NOW: u64 = 1_700_000_000;
+
+#[cfg(test)]
+impl<B: StationTrustBackend> NativeStationTrustStore<B, TestStationTrustClock> {
     fn with_backend(backend: B) -> Self {
-        Self { backend }
+        Self {
+            backend,
+            clock: TestStationTrustClock::new(TEST_TRUST_NOW),
+        }
     }
 
+    fn with_backend_and_clock(backend: B, clock: TestStationTrustClock) -> Self {
+        Self { backend, clock }
+    }
+}
+
+impl<B: StationTrustBackend, C: StationTrustClock> NativeStationTrustStore<B, C> {
     pub(crate) fn current_revision<P: LockedTrustProfileProvider>(
         &mut self,
         provider: &P,
@@ -508,6 +571,7 @@ impl<B: StationTrustBackend> NativeStationTrustStore<B> {
             let _guard = STATION_TRUST_OPERATION
                 .lock()
                 .map_err(|_| CandidateError::TrustStore)?;
+            ensure_candidate_fresh(&candidate.claims, self.clock.now_seconds()?)?;
             let account = trust_account(&binding)?;
             let mut stored = self.read_record(&account, &binding.station_id)?;
             if stored.revision != expected_store_revision {
@@ -532,6 +596,9 @@ impl<B: StationTrustBackend> NativeStationTrustStore<B> {
             stored.status = Some(StationTrustStatus::Approved);
             stored.trust = Some(candidate.claims.candidate.clone());
             let receipt = receipt_from(&stored)?;
+            // Recheck while both host profile and trust-store locks remain held,
+            // immediately before committing the OS-keyring record.
+            ensure_candidate_fresh(&candidate.claims, self.clock.now_seconds()?)?;
             self.write_record(&account, &stored)?;
             Ok(receipt)
         })
@@ -741,7 +808,7 @@ fn validate_descriptor(descriptor: &Descriptor) -> CandidateResult<()> {
     {
         return Err(CandidateError::TrustStore);
     }
-    p256_point(&descriptor.signing_key)?;
+    p256_point(&descriptor.signing_key).map_err(|_| CandidateError::TrustStore)?;
     Ok(())
 }
 
@@ -844,7 +911,8 @@ fn valid_confirmation_code(value: &str) -> bool {
 
 fn valid_uuid(value: &str) -> bool {
     let bytes = value.as_bytes();
-    bytes.len() == 36
+    value == value.to_ascii_lowercase()
+        && bytes.len() == 36
         && [8, 13, 18, 23].iter().all(|index| bytes[*index] == b'-')
         && bytes
             .iter()
@@ -868,6 +936,13 @@ fn p256_point(key: &SigningKey) -> CandidateResult<Vec<u8>> {
     point.push(4);
     point.extend_from_slice(&x);
     point.extend_from_slice(&y);
+    // Ring validates both SEC1 encoding and P-256 curve membership when used
+    // as an ECDH peer. This applies equally to freshly verified candidates and
+    // records reloaded from the OS keyring.
+    let ephemeral = EphemeralPrivateKey::generate(&ECDH_P256, &SystemRandom::new())
+        .map_err(|_| CandidateError::Invalid)?;
+    let peer = AgreementUnparsedPublicKey::new(&ECDH_P256, point.as_slice());
+    agree_ephemeral(ephemeral, &peer, |_| ()).map_err(|_| CandidateError::Invalid)?;
     Ok(point)
 }
 
@@ -1175,6 +1250,12 @@ mod tests {
             PendingStationKeyChallenge::begin(invalid),
             Err(CandidateError::Invalid)
         );
+        let mut noncanonical = binding();
+        noncanonical.station_id = "ABCDEFAB-CDEF-4ABC-8ABC-ABCDEFABCDEF".into();
+        assert_eq!(
+            PendingStationKeyChallenge::begin(noncanonical),
+            Err(CandidateError::Invalid)
+        );
         let mut invalid = binding();
         invalid.profile_revision = 0;
         assert_eq!(
@@ -1376,6 +1457,54 @@ mod tests {
         let mut store = NativeStationTrustStore::with_backend(backend);
         assert_eq!(
             store.current_revision(&locked_profile(&binding()), &trust_binding, 7),
+            Err(CandidateError::TrustStore)
+        );
+    }
+
+    #[test]
+    fn approved_candidate_expires_before_locked_keyring_commit() {
+        let backend = MemoryTrustBackend::default();
+        let profile = locked_profile(&binding());
+        let clock = TestStationTrustClock::new(NOW);
+        let mut store = NativeStationTrustStore::with_backend_and_clock(backend.clone(), clock);
+        let candidate = verified_for_store(0, 3);
+        let code = candidate.confirmation_code().to_owned();
+        let key_id = candidate.key_id().to_owned();
+        // Verification happened at NOW; expiry is NOW + 60 seconds. Keep the
+        // candidate pending past that boundary before entering the profile lock.
+        store.clock.set(NOW + 60);
+        assert_eq!(
+            store.approve(&profile, candidate, &code, &key_id),
+            Err(CandidateError::Stale)
+        );
+        assert!(backend.0.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn stored_off_curve_p256_point_is_rejected_on_reload() {
+        let backend = MemoryTrustBackend::default();
+        let profile_binding = binding();
+        let profile = locked_profile(&profile_binding);
+        let trust_binding = trust_binding(&profile_binding);
+        let mut store = NativeStationTrustStore::with_backend(backend.clone());
+        let candidate = verified_for_store(0, 3);
+        let code = candidate.confirmation_code().to_owned();
+        let key_id = candidate.key_id().to_owned();
+        store.approve(&profile, candidate, &code, &key_id).unwrap();
+
+        let account = trust_account(&trust_binding).unwrap();
+        let encoded = backend.0.lock().unwrap().get(&account).unwrap().clone();
+        let mut stored: StoredStationTrust = serde_json::from_str(&encoded).unwrap();
+        let trust = stored.trust.as_mut().unwrap();
+        trust.signing_key.x = URL_SAFE_NO_PAD.encode([0u8; 32]);
+        trust.signing_key.y = URL_SAFE_NO_PAD.encode([0u8; 32]);
+        stored.generation_floor.as_mut().unwrap().key_id =
+            signing_key_id(&trust.signing_key).unwrap();
+        let corrupted = serde_json::to_string(&stored).unwrap();
+        backend.0.lock().unwrap().insert(account, corrupted);
+
+        assert_eq!(
+            store.current_revision(&profile, &trust_binding, 7),
             Err(CandidateError::TrustStore)
         );
     }
