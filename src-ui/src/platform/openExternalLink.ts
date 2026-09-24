@@ -1,3 +1,5 @@
+import { toastStore } from '../contexts/ToastContext';
+import { copyToClipboard } from '../lib/clipboard';
 import { hasTauriRuntime, nativePlatformPromise } from './native';
 
 /**
@@ -14,38 +16,88 @@ export function hostOwnsExternalLinks(): boolean {
 }
 
 /**
- * Open `url` outside Station through the native host, or `null` when there is
- * no native host to open it (the web build). `null` is not failure: it is
- * "this is not mine", and it lets each caller keep its own web behaviour —
- * the MCP frame navigates the top level, a chat anchor simply does what an
- * anchor does.
- *
- * On Tauri a plain `<a href>` NAVIGATES THE WEBVIEW, replacing the running
- * application with the linked page and losing every open conversation. That
- * is what this exists to prevent (#2049); the MCP frame already routed around
- * it, and this is that route, shared.
- *
- * On the web this is `null` and each caller keeps its own web behaviour: a
- * chat anchor that leaves Station carries `target="_blank"` (a new tab, as
- * #2049 specified), and the MCP frame keeps its `location.assign`.
+ * Tell the reader a link could not be opened, and hand them the link. A
+ * refused open must never be a click that does nothing: the desktop host
+ * admits only a reviewed allowlist of URLs (`open_external_link`, #2480), and
+ * the web refuses any scheme but http(s). The notice names the URL and offers
+ * a Copy action, so the reader can still get where they were going.
  */
-export async function openNativeExternalLink(
+export function reportUnopenedExternalLink(
   url: string,
-): Promise<boolean | null> {
+  reason: 'host-refused' | 'unsupported-scheme',
+): void {
+  const why =
+    reason === 'host-refused'
+      ? 'The Station app cannot open this link.'
+      : 'Station only opens web (http or https) links.';
+  toastStore.show(
+    `${why} Copy it to open it yourself: ${url}`,
+    undefined,
+    0,
+    [
+      {
+        label: 'Copy link',
+        variant: 'primary',
+        onClick: () => {
+          void copyToClipboard(url).then((copied) => {
+            if (!copied)
+              toastStore.show(
+                `Copying was blocked on this device. The link: ${url}`,
+                undefined,
+                0,
+                undefined,
+                undefined,
+                'warning',
+              );
+          });
+        },
+      },
+    ],
+    undefined,
+    'warning',
+  );
+}
+
+async function invokeNativeExternalLink(url: string): Promise<boolean | null> {
   const native = await nativePlatformPromise;
   if (native.platform !== 'tauri') return null;
   return native.openExternalLink(url);
 }
 
 /**
- * Open `url` outside Station on either host: the native host's opener (on a
- * phone that hands a forge link to its app), else a new browser tab with no
- * opener. For an explicit "open this elsewhere" control, where leaving is the
- * point — not for a model-written link, whose web behaviour stays the
- * anchor's own (`ChatMarkdownAnchor`).
+ * Open `url` outside Station through the native host, or `null` when there is
+ * no native host to open it (the web build). `null` is not failure: it is
+ * "this is not mine", and it lets each caller keep its own web behaviour —
+ * the MCP frame navigates the top level, a chat anchor that leaves Station
+ * carries `target="_blank"` (a new tab, as #2049 specified).
+ *
+ * On Tauri a plain `<a href>` NAVIGATES THE WEBVIEW, replacing the running
+ * application with the linked page and losing every open conversation. That
+ * is what this exists to prevent (#2049).
+ *
+ * `false` is a REFUSAL: the desktop host opens only the URLs its reviewed
+ * allowlist admits (today, GitHub issue URLs; widening it is #2480). Every
+ * refusal is reported here (`reportUnopenedExternalLink`), so no caller can
+ * leave one silent.
  */
-export async function openExternalLink(url: string): Promise<void> {
+export async function openNativeExternalLink(
+  url: string,
+): Promise<boolean | null> {
+  const opened = await invokeNativeExternalLink(url);
+  if (opened === false) reportUnopenedExternalLink(url, 'host-refused');
+  return opened;
+}
+
+/**
+ * Open `url` outside Station on either host, for an explicit "open this
+ * elsewhere" control: the native host's opener where there is one (which
+ * admits only its allowlist — a refusal is reported, not swallowed), else a
+ * new browser tab with no opener, for http(s) URLs only. Anything else is
+ * refused visibly. Resolves whether it opened.
+ */
+export async function openExternalLink(url: string): Promise<boolean> {
   const native = await openNativeExternalLink(url);
-  if (native !== null) return;
+  if (native !== null) return native;
   window.open(url, '_blank', 'noopener,noreferrer');
+  return true;
 }

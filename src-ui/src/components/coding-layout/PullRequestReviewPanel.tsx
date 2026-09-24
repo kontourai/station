@@ -241,9 +241,11 @@ function ReviewOwner({
           Refresh
         </Button>
         {data?.pullRequest.url ? (
-          // Beside Refresh rather than in the body: on a phone this pane
-          // opens over Chat and the forge's own app is the better review
-          // surface, so the way there is the first thing on screen.
+          // Beside Refresh rather than in the body, so the way to the forge
+          // is the first thing on screen. On the web it opens a new tab. In
+          // the Station app the host opens only the URLs its allowlist admits
+          // (#2480 — pull request URLs are not among them today), and a
+          // refusal shows the link with a Copy action rather than nothing.
           <Button onClick={() => void openExternalLink(data.pullRequest.url)}>
             {pullRequestExternalLabel(data.pullRequest.url)}
           </Button>

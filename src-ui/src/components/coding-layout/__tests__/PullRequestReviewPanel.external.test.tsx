@@ -3,7 +3,8 @@
 /**
  * The review pane's way to the forge: an action named for the forge the
  * pull request's URL points at, which hands that URL to the platform's
- * external opener (on a phone, the forge's own app). The label is derived
+ * external opener (`openExternalLink`, whose native refusal is reported —
+ * `openExternalLink.native-refusal.test.tsx`). The label is derived
  * from the URL the provider supplied, so it names where the click goes.
  */
 
