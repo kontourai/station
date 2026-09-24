@@ -225,6 +225,9 @@ describe('ConversationTurnActivityProjection (#2309)', () => {
   });
 
   test('#2324: a turn the engine opened on its own reports its trigger — live, freshly seeded and primed; a steer keeps it; a caller turn has none', () => {
+    // Seed first, with no turn open, so the start below reaches the LIVE
+    // fold rather than a seed read.
+    expect(projection.readForThread(ROOT)?.openTurn).toBeUndefined();
     const started = append(ROOT, {
       method: 'turn.started',
       turnId: 'provider:p',
@@ -255,6 +258,7 @@ describe('ConversationTurnActivityProjection (#2309)', () => {
       turnId: 'provider:p',
       metadata: { trigger: 'provider' },
     });
+    expect(projection.readForThread(ROOT)?.openTurn).toBeUndefined();
     const user = append(ROOT, {
       method: 'turn.started',
       turnId: 'user-turn',
