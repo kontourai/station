@@ -22,6 +22,21 @@ if (!firebaseConfigured && firebaseValues.values.any { !it.isNullOrBlank() }) {
         "STATION_FIREBASE_* is partially set; set all of APP_ID, API_KEY, PROJECT_ID and SENDER_ID or none.",
     )
 }
+// Firebase validates these formats only at runtime, where a typo surfaces as
+// a failed token fetch on the user's device. Fail the build instead.
+if (firebaseConfigured) {
+    val formats = mapOf(
+        "google_app_id" to Regex("""1:\d+:android:[0-9a-f]+"""),
+        "google_api_key" to Regex("""A[\w-]{38}"""),
+        "project_id" to Regex("""[a-z][a-z0-9-]{4,28}[a-z0-9]"""),
+        "gcm_defaultSenderId" to Regex("""\d+"""),
+    )
+    formats.forEach { (name, format) ->
+        if (!format.matches(firebaseValues.getValue(name)!!)) {
+            throw GradleException("STATION_FIREBASE value for $name does not match the Firebase format $format.")
+        }
+    }
+}
 
 android {
     namespace = "io.kontourai.station.agentactivity"

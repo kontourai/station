@@ -48,7 +48,8 @@ class AgentActivityPlugin(private val activity: Activity) : Plugin(activity) {
       Build.VERSION.SDK_INT >= 36 && manager.canPostPromotedNotifications()
     )
     result.put("pushConfigured", firebaseConfigured())
-    result.put("registered", AgentNotifications.isRegistered(context))
+    // Local identity only: whether any relay knows this device is not known here.
+    result.put("configured", AgentNotifications.isConfigured(context))
     invoke.resolve(result)
   }
 
@@ -91,12 +92,24 @@ class AgentActivityPlugin(private val activity: Activity) : Plugin(activity) {
       invoke.resolve(result)
       return
     }
-    FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
-      val token = task.result.takeIf { task.isSuccessful }
+    val messaging = try {
+      FirebaseMessaging.getInstance().also {
+        // Auto-init is off in the manifest so an install does not contact
+        // Google before the user asks for push. Asking is this call.
+        it.isAutoInitEnabled = true
+      }
+    } catch (e: Exception) {
+      invoke.reject("push unavailable", e)
+      return
+    }
+    // The listener runs on the main thread outside the plugin manager's
+    // error handling: read `result` only after checking success, because
+    // Task.getResult() throws on a failed task and would crash the app.
+    messaging.token.addOnCompleteListener { task ->
+      val token = if (task.isSuccessful) task.result else null
       if (token.isNullOrBlank()) {
         invoke.reject("push token unavailable", task.exception)
       } else {
-        AgentNotifications.rememberPushToken(context, token)
         val result = JSObject()
         result.put("state", "available")
         result.put("token", token)

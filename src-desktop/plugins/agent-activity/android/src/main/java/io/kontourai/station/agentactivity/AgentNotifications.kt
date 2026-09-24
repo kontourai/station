@@ -33,10 +33,6 @@ class AgentMessagingService : FirebaseMessagingService() {
       AgentNotifications.receive(this, remoteMessage.data)
     }
   }
-
-  override fun onNewToken(token: String) {
-    AgentNotifications.rememberPushToken(this, token)
-  }
 }
 
 class AgentActivityDismissReceiver : BroadcastReceiver() {
@@ -90,24 +86,14 @@ object AgentNotifications {
   @Synchronized
   fun clear(context: Context) {
     cancelActivity(context)
-    val prefs = prefs(context)
-    val token = prefs.getString("pushToken", null)
-    // The push token belongs to the app install, not to the registration.
-    val editor = prefs.edit().clear()
-    if (token != null) editor.putString("pushToken", token)
-    editor.apply()
+    prefs(context).edit().clear().apply()
     val manager = manager(context)
     manager.activeNotifications.filter { it.tag == ACTIVITY_TAG || it.tag == ALERT_TAG }
       .forEach { manager.cancel(it.tag, it.id) }
   }
 
-  fun rememberPushToken(context: Context, token: String) {
-    prefs(context).edit().putString("pushToken", token).apply()
-  }
-
-  fun rememberedPushToken(context: Context): String? = prefs(context).getString("pushToken", null)
-
-  fun isRegistered(context: Context): Boolean = prefs(context).getBoolean("enabled", false)
+  /** True once `configure` stored an identity here; says nothing about any relay registration. */
+  fun isConfigured(context: Context): Boolean = prefs(context).getBoolean("enabled", false)
 
   @Synchronized
   fun dismiss(context: Context) {

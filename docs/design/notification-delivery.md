@@ -155,9 +155,14 @@ The payload carries status, thread titles and project names, never
 transcripts, code or tool output (the same rule as the
 [connection broker](connection-broker.md)).
 
-Push avoids every failure above: the platform wakes the process to deliver, so
-nothing has to stay alive, and neither the freezer nor tauri#11609/#15671 is
-involved. Rust does no networking, so the DNS failure does not apply either.
+Push avoids the failures above for a backgrounded or swiped-away app: the
+platform wakes the process to deliver, so nothing has to stay alive, and
+neither the freezer nor tauri#11609/#15671 is involved. Rust does no
+networking, so the DNS failure does not apply either. Two limits remain. FCM
+does not deliver to an app the user force-stopped (Settings → Force stop)
+until it is opened again. And normal-priority data messages wait out Doze,
+while the client drops activity older than ten minutes, so the relay must send
+activity as high-priority messages.
 The one Tauri-specific risk is launch-after-wake: FCM starts the process
 without `MainActivity`, which is the same lifecycle family as tauri#11609 and
 must be proven on a device.
@@ -175,7 +180,11 @@ must be proven on a device.
 The Android plugin builds with or without Firebase. Its Firebase identity comes
 from `STATION_FIREBASE_APP_ID`, `_API_KEY`, `_PROJECT_ID` and `_SENDER_ID` at
 build time (public values, but bound to one project); without them
-`pushToken` reports `unconfigured`. Debug builds include a broadcast receiver,
+`pushToken` reports `unconfigured`. With them, Firebase auto-init stays off
+until `pushToken` is called, so installing the app does not contact Google
+before the user asks for push. The plugin's Kotlin unit tests run only
+locally (`./gradlew :tauri-plugin-station-agent-activity:testDebugUnitTest` in
+a generated `gen/android`); no workflow runs them yet. Debug builds include a broadcast receiver,
 restricted to the `adb` shell, that stands in for FCM so rendering and
 wake-from-cold can be verified before the relay exists — see
 `DebugAgentActivityReceiver.kt`.

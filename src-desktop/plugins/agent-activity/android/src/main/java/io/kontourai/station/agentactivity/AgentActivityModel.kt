@@ -15,10 +15,15 @@ package io.kontourai.station.agentactivity
  * - `updated_at`: epoch millis; stale or reordered messages are dropped
  * - `active`: `true` while any agent is working or waiting on the user
  * - `activity_phase`: one of [ActivityPhase.wire]
- * - `activity_line_0`..`activity_line_4`: `status\ttitle\tproject`, ordered by the sender
+ * - `activity_line_0`..`activity_line_4`: `status\ttitle\tproject`, ordered by the sender.
+ *   Required: unlike T3's format there is no title/body fallback, so a payload
+ *   without a valid row renders as a bare "Agent activity" card.
  * - `activity_active_count`, `activity_attention_count`: optional totals
  * - `activity_expires_at`: optional absolute expiry, epoch millis
- * - `alert_id`, `alert_title`, `alert_body`: optional one-shot attention alert
+ * - `alert_id`, `alert_title`, `alert_body`: optional one-shot attention alert.
+ *   While the app is in the foreground the alert is recorded as seen and not
+ *   posted, on the premise that the web layer shows its own notice; the
+ *   sender must not rely on this path alone for a foreground user.
  */
 internal data class ActivityRow(val status: String, val title: String, val project: String)
 

@@ -3,6 +3,10 @@
   <!-- Android 16 Live Updates: lets an ongoing card request status-bar promotion. -->
   <uses-permission android:name="android.permission.POST_PROMOTED_NOTIFICATIONS" />
   <application>
+    <!-- Without this, a Firebase-configured build creates an installation and
+         token on first launch, contacting Google before the user has asked for
+         push. The plugin's pushToken command enables it. -->
+    <meta-data android:name="firebase_messaging_auto_init_enabled" android:value="false" />
     <!-- FCM wakes the process into this service without starting MainActivity,
          the WebView or the Rust runtime. It must stay independent of all three. -->
     <service android:name="io.kontourai.station.agentactivity.AgentMessagingService" android:exported="false">
