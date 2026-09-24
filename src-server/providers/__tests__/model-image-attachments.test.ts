@@ -295,90 +295,132 @@ describe('addWorkspaceImageFile', () => {
 
 describe('redactInlineData', () => {
   const b64 = `${'QUJD'.repeat(50)}WFla`;
+  const PLACEHOLDER = '[inline image data omitted]';
+  // A realistic image body: the 1x1 PNG, padded out so it wraps many lines.
+  const pngBody = Buffer.concat([PNG_1X1, Buffer.alloc(900, 7)]).toString(
+    'base64',
+  );
+  const wrap = (body: string, columns: number, eol = '\n') =>
+    body.match(new RegExp(`.{1,${columns}}`, 'g'))!.join(eol);
 
   test('redacts data-URL spans anywhere in a string, keeping the surrounding text', () => {
     expect(
       redactInlineData(
-        `Screenshot: data:image/png;base64,${b64}== done; also DATA:;base64,${b64}==`,
+        `Screenshot: data:image/png;base64,${b64} done; also DATA:;base64,${b64}==`,
       ),
-    ).toBe(
-      'Screenshot: [inline image data omitted] done; also [inline image data omitted]',
-    );
-    // Unpadded, a following base64-looking word cannot be told from a wrapped
-    // line and is swallowed (documented over-redaction), never leaked bytes.
-    expect(
-      redactInlineData(`Screenshot: data:image/png;base64,${b64} done; ok`),
-    ).toBe('Screenshot: [inline image data omitted]; ok');
+    ).toBe(`Screenshot: ${PLACEHOLDER} done; also ${PLACEHOLDER}`);
     expect(
       redactInlineData(`x data:image/svg+xml;charset=utf-8;base64,${b64}`),
-    ).toBe('x [inline image data omitted]');
+    ).toBe(`x ${PLACEHOLDER}`);
     const plain = 'no inline data here, just ;base64, mentioned';
     expect(redactInlineData(plain)).toBe(plain);
   });
 
-  test('a line-wrapped data URL is redacted whole — no suffix survives', () => {
-    // The reviewer's reproduction.
-    expect(redactInlineData('data:image/png;base64,QUJD\nREVG')).toBe(
-      '[inline image data omitted]',
+  test('a realistic 76-column MIME-wrapped PNG is redacted whole (LF and CRLF)', () => {
+    for (const eol of ['\n', '\r\n']) {
+      const wrapped = wrap(pngBody, 76, eol);
+      expect(wrapped.split(eol).length).toBeGreaterThan(10);
+      expect(
+        redactInlineData(`before: data:image/png;base64,${wrapped}, after`),
+      ).toBe(`before: ${PLACEHOLDER}, after`);
+    }
+  });
+
+  test('a 64-column PEM-style wrap is redacted whole', () => {
+    expect(
+      redactInlineData(`data:image/png;base64,${wrap(pngBody, 64)}\nDone.`),
+    ).toBe(`${PLACEHOLDER}\nDone.`);
+  });
+
+  test('prose after a data URL survives: a blank line, or a short last line', () => {
+    // The reviewer's reproduction: the instruction after the image stays.
+    expect(redactInlineData('data:image/png;base64,AAAA\n\nNext step')).toBe(
+      `${PLACEHOLDER}\n\nNext step`,
     );
-    // MIME-style 76-column wrapping with CRLF, and space-separated chunks: the
-    // same whitespace the collector strips inside base64.
-    const lines = Array.from({ length: 6 }, () => 'QUJD'.repeat(19));
-    for (const separator of ['\n', '\r\n', ' ', '\t']) {
-      const wrapped = `before: data:image/png;base64,${lines.join(separator)}WFla==, after`;
-      expect(redactInlineData(wrapped)).toBe(
-        'before: [inline image data omitted], after',
-      );
+    expect(redactInlineData(`data:image/png;base64,${b64} done`)).toBe(
+      `${PLACEHOLDER} done`,
+    );
+    // Even after a full wrapped line, a blank line ends the image.
+    expect(
+      redactInlineData(
+        `data:image/png;base64,${'QUJD'.repeat(19)}\n\nNext step`,
+      ),
+    ).toBe(`${PLACEHOLDER}\n\nNext step`);
+  });
+
+  test('spaces and tabs never continue a data URL (documented limit)', () => {
+    const full = 'QUJD'.repeat(19);
+    for (const separator of [' ', '\t']) {
+      expect(
+        redactInlineData(`data:image/png;base64,${full}${separator}REVG`),
+      ).toBe(`${PLACEHOLDER}${separator}REVG`);
     }
   });
 
   test('two adjacent data URLs are each redacted; the first never swallows the second', () => {
+    const full = 'QUJD'.repeat(19);
     expect(
       redactInlineData(
-        `data:image/png;base64,QUJD data:image/png;base64,REVG\nSEla`,
+        `data:image/png;base64,QUJD data:image/png;base64,${full}\nSEla`,
       ),
-    ).toBe('[inline image data omitted] [inline image data omitted]');
+    ).toBe(`${PLACEHOLDER} ${PLACEHOLDER}`);
+    // A new data URL on the line after a full wrapped line is its own span.
+    expect(
+      redactInlineData(
+        `data:image/png;base64,${full}\ndata:image/png;base64,REVG`,
+      ),
+    ).toBe(`${PLACEHOLDER}\n${PLACEHOLDER}`);
   });
 
   test.each([
-    ['repeated data: prefixes', 'data:'.repeat(1_000_000)],
+    ['repeated data: prefixes', 'data:'.repeat(1_000_000), false],
     [
       'near-miss media types',
       `data:${'a'.repeat(64)}/${'b'.repeat(64)};`.repeat(40_000),
+      false,
     ],
-    ['repeated ;base64, markers', ';base64,'.repeat(700_000)],
+    ['repeated ;base64, markers', ';base64,'.repeat(700_000), false],
     // The shape that breaks a backtracking pattern: many `data:` starts, each
     // of which could only fail after scanning to a far delimiter, with a
     // `;base64,` present so the literal pre-check does not short-circuit.
     [
       'many failing data: starts before a marker',
       `${'data:x'.repeat(400_000)},;base64,`,
+      false,
     ],
-    // Shapes aimed at the whitespace continuation: long alternations, long
-    // whitespace runs that end in a non-base64 character, and a URL per chunk.
+    // Shapes aimed at the line-continuation rule.
     [
-      'a 5 MB whitespace-wrapped body',
-      `data:;base64,${'AAAA\n'.repeat(1_000_000)}`,
+      'a 5 MB body wrapped at 76 columns',
+      `data:;base64,${Array.from({ length: 70_000 }, () => 'A'.repeat(76)).join('\n')}`,
+      true,
+    ],
+    [
+      'long lines that are not a multiple of 4 (each backtracks)',
+      `data:;base64,${`${'A'.repeat(4_001)}\n`.repeat(1_000)}`,
+      false,
     ],
     [
       'long whitespace runs before a stop character',
       `data:;base64,A${' '.repeat(2 * 1024 * 1024)}!`.repeat(2),
+      false,
     ],
     [
       'a data: URL after every chunk',
       'data:;base64,AAAA data:'.repeat(200_000),
+      false,
     ],
     [
       'one 5 MB data URL',
       `data:image/png;base64,${'A'.repeat(5 * 1024 * 1024)}`,
+      true,
     ],
   ])(
     'stays linear on a multi-megabyte adversarial input: %s',
-    (_label, input) => {
+    (_label, input, fullyRedacted) => {
       const started = performance.now();
       const output = redactInlineData(input);
       expect(performance.now() - started).toBeLessThan(2_000);
-      expect(output).not.toContain('AAAAAAAA');
+      if (fullyRedacted) expect(output).toBe(PLACEHOLDER);
     },
   );
 

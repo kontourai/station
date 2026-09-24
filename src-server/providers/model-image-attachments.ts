@@ -246,39 +246,108 @@ export function summarizeImageOmissions(
 export const INLINE_IMAGE_DATA_PLACEHOLDER = '[inline image data omitted]';
 
 /**
- * One `data:[type/subtype][;param=value]*;base64,<base64>` span, anywhere in a
- * string. Every quantifier is bounded or runs over a class that excludes the
- * delimiter after it (`:`, `/`, `;`, `=`, `,` are outside `[\w.+-]`), so a
- * failed attempt costs a bounded number of steps and the scan is linear in
- * the input — no catastrophic backtracking on multi-megabyte output.
+ * The `data:[type/subtype][;param=value]*;base64,` header of an inline data
+ * URL, anywhere in a string. Every quantifier is bounded or runs over a class
+ * that excludes the delimiter after it (`:`, `/`, `;`, `=`, `,` are outside
+ * `[\w.+-]`), so a failed attempt costs a bounded number of steps.
  *
- * The base64 body continues across whitespace, exactly as the collector
- * accepts it (`addBase64` strips `\s` inside base64), so a line-wrapped data
- * URL is redacted whole. The body alternates base64 runs and whitespace runs
- * from disjoint classes, so every split is unambiguous and the scan stays
- * linear; a whitespace run is never crossed into a following `data:`, so two
- * adjacent data URLs are each redacted rather than the second one's prefix
- * being swallowed by the first.
- *
- * The price is over-redaction: an unpadded data URL followed only by
- * whitespace and a base64-looking word (`…QUJD done`) swallows that word too.
- * Nothing distinguishes a wrapped base64 line from a word, and leaking image
- * bytes is the worse error. Padding (`=`) or any other character ends it.
+ * The BODY is deliberately not part of the pattern: a regular expression that
+ * repeats a "full wrapped line" group keeps backtracking state per repetition,
+ * and a real 5 MB image overflowed V8's regexp stack (`RangeError`). The body
+ * is scanned by hand in {@link inlineDataBodyEnd}, one character at a time.
  */
-const INLINE_DATA_URL_SPAN =
-  /data:(?:[\w.+-]{1,64}\/[\w.+-]{1,64})?(?:;[\w.+-]{1,64}=[\w.+-]{1,64}){0,4};base64,(?:[A-Za-z0-9+/]+(?:\s+(?!data:)[A-Za-z0-9+/]+)*)?={0,2}/giu;
+const INLINE_DATA_URL_HEADER =
+  /data:(?:[\w.+-]{1,64}\/[\w.+-]{1,64})?(?:;[\w.+-]{1,64}=[\w.+-]{1,64}){0,4};base64,/giu;
+
+/** A full MIME (76) / PEM (64) wrapped line: at least this many characters. */
+const WRAPPED_LINE_MIN = 60;
+
+function isBase64Char(code: number): boolean {
+  return (
+    (code >= 65 && code <= 90) || // A-Z
+    (code >= 97 && code <= 122) || // a-z
+    (code >= 48 && code <= 57) || // 0-9
+    code === 43 || // +
+    code === 47 // /
+  );
+}
 
 /**
- * `value` with every inline data-URL span replaced by
+ * Where the base64 body starting at `from` ends. The body continues across a
+ * line break ONLY the way MIME (76 columns) and PEM (64 columns) wrap it:
+ * across a single `\n` or `\r\n`, when the run just before the break is a
+ * full wrapped line — at least {@link WRAPPED_LINE_MIN} base64 characters and
+ * a multiple of 4 — and the next line starts with base64 and is not another
+ * `data:` URL. It never continues across spaces, tabs, or a blank line, so
+ * prose after a data URL survives (`…AAAA\n\nNext step`, `…QUJD done`). Up to
+ * two `=` of padding end it. Each character is visited once: linear.
+ *
+ * What it does not catch: base64 wrapped at fewer than 60 columns, or across
+ * spaces/tabs, keeps its text after the first break. And when the LAST line
+ * is itself full and is followed by one line break and a base64-looking word
+ * (`…<76 chars>\nNext`), that word is taken as a continuation line.
+ */
+function inlineDataBodyEnd(value: string, from: number): number {
+  let position = from;
+  for (;;) {
+    const runStart = position;
+    while (
+      position < value.length &&
+      isBase64Char(value.charCodeAt(position))
+    ) {
+      position += 1;
+    }
+    const run = position - runStart;
+    if (run < WRAPPED_LINE_MIN || run % 4 !== 0) break;
+    const breakLength =
+      value.charCodeAt(position) === 10
+        ? 1
+        : value.charCodeAt(position) === 13 &&
+            value.charCodeAt(position + 1) === 10
+          ? 2
+          : 0;
+    if (breakLength === 0) break;
+    const next = position + breakLength;
+    if (
+      !isBase64Char(value.charCodeAt(next)) ||
+      value.slice(next, next + 5).toLowerCase() === 'data:'
+    ) {
+      break;
+    }
+    position = next;
+  }
+  for (let pad = 0; pad < 2 && value.charCodeAt(position) === 61; pad += 1) {
+    position += 1;
+  }
+  return position;
+}
+
+/**
+ * `value` with every inline data URL replaced by
  * {@link INLINE_IMAGE_DATA_PLACEHOLDER}: image bytes are not text, wherever in
  * a string they appear (`Screenshot: data:image/png;base64,…`). Returns the
  * same string when there is nothing to redact. Callers redact BEFORE any
- * truncation, so a tail can never keep a slice of the bytes.
+ * truncation, so a tail can never keep a slice of the bytes. Linear in the
+ * input: the header search is bounded per attempt and each body character is
+ * scanned once.
  */
 export function redactInlineData(value: string): string {
   // Cheap literal pre-check: most output carries no data URL at all.
   if (!/;base64,/iu.test(value)) return value;
-  return value.replace(INLINE_DATA_URL_SPAN, INLINE_IMAGE_DATA_PLACEHOLDER);
+  const header = new RegExp(INLINE_DATA_URL_HEADER.source, 'giu');
+  let output = '';
+  let copied = 0;
+  for (
+    let match = header.exec(value);
+    match !== null;
+    match = header.exec(value)
+  ) {
+    const end = inlineDataBodyEnd(value, match.index + match[0].length);
+    output += value.slice(copied, match.index) + INLINE_IMAGE_DATA_PLACEHOLDER;
+    copied = end;
+    header.lastIndex = end;
+  }
+  return copied === 0 ? value : output + value.slice(copied);
 }
 
 /** How long a host image read may take before it is abandoned. */
