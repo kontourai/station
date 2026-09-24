@@ -33,6 +33,19 @@ export function hostOwnsExternalLinks(): boolean {
  * separate change with its own question (whether a model-written link should
  * be able to open one), and `docs/design/placement.md` records it as open.
  */
+/**
+ * Open `url` outside Station on either host: the native host's opener (on a
+ * phone that hands a forge link to its app), else a new browser tab with no
+ * opener. For an explicit "open this elsewhere" control, where leaving is the
+ * point — not for a model-written link, whose web behaviour stays the
+ * anchor's own (`ChatMarkdownAnchor`).
+ */
+export async function openExternalLink(url: string): Promise<void> {
+  const native = await openNativeExternalLink(url);
+  if (native !== null) return;
+  window.open(url, '_blank', 'noopener,noreferrer');
+}
+
 export async function openNativeExternalLink(
   url: string,
 ): Promise<boolean | null> {
