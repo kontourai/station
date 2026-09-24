@@ -10706,16 +10706,29 @@ export class EventStore {
   }
 
   /**
-   * #2312: retire the lineage rows of Sessions a discard deleted.
-   * `deleteThread` leaves lineage alone (its other callers own that
-   * decision); a discarded Draft conversation must not leave lineage behind
-   * that names Sessions which no longer exist.
+   * #2312: retire the conversation-level rows naming Sessions a discard
+   * deleted — lineage, and any handoff or context-boundary record between
+   * them. `deleteThread` leaves these alone (its other callers own that
+   * decision); a discarded Draft conversation must not leave records behind
+   * that name Sessions which no longer exist.
    */
   deleteConversationLineageRows(sessionIds: readonly string[]): void {
-    const remove = this.db.prepare(
+    const statements = [
       'DELETE FROM orchestration_conversation_sessions WHERE session_id = ?',
-    );
-    for (const sessionId of sessionIds) remove.run(sessionId);
+      `DELETE FROM orchestration_conversation_handoffs
+       WHERE session_id = ?1 OR predecessor_session_id = ?1`,
+      `DELETE FROM orchestration_conversation_context_boundaries
+       WHERE successor_session_id = ?1 OR predecessor_session_id = ?1`,
+    ].map((sql) => this.db.prepare(sql));
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      for (const sessionId of sessionIds)
+        for (const statement of statements) statement.run(sessionId);
+      this.db.exec('COMMIT');
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
   }
 
   /** Remove a deliberately ephemeral diagnostic session and all of its receipts. */

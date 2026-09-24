@@ -842,6 +842,35 @@ describe('Draft lifecycle derivation (#2310)', () => {
       expect((await listedIds(instance)).sort()).toEqual([ROOT, child].sort());
     });
 
+    test('a fork source is never discarded: the fork fact lives on its thread', async () => {
+      upsert(ROOT);
+      seedNeverPrompted(ROOT);
+      append({
+        threadId: ROOT,
+        method: 'conversation.forked',
+        sourceConversationId: ROOT,
+        targetConversationId: 'fork-target',
+        targetAgent: 'grok-build',
+        forkedAt: at(9_000),
+        continuation: 'replay-seed',
+      });
+      const instance = await service();
+      // Fixture guard: the fork fact does not end the source's Draft.
+      expect((await instance.listSessionReadModel(ownerRead()))[0]?.draft).toBe(
+        true,
+      );
+
+      const error = await refusal(
+        instance.dispatchWithReceipt(
+          { type: 'discardDraft', threadId: ROOT },
+          { userId: OWNER },
+        ),
+      );
+
+      expect(error.code).toBe('not_a_draft');
+      expect(await listedIds(instance)).toEqual([ROOT]);
+    });
+
     test('a Draft conversation is discarded whole: no member is left naming a deleted Session', async () => {
       upsert(ROOT);
       seedNeverPrompted(ROOT);

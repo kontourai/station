@@ -6199,14 +6199,15 @@ describe('OrchestrationService', () => {
     // witness's exit, pushed AFTER it, proves the queue drained past it.
     const now = new Date().toISOString();
     for (const threadId of [draft, witness]) {
-      bedrock.events.push({
+      const lateExit: CanonicalRuntimeEvent = {
         eventId: `${threadId}-late-exit`,
         provider: 'bedrock',
         threadId,
         sessionId: threadId,
         createdAt: now,
         method: 'session.exited',
-      } as CanonicalRuntimeEvent);
+      };
+      bedrock.events.push(lateExit);
     }
     await waitFor(
       () => eventStore.readSessionByThread(witness)?.status,
@@ -6215,6 +6216,144 @@ describe('OrchestrationService', () => {
     expect(eventStore.readSessionByThread(draft)).toBeUndefined();
     expect(eventStore.listSessionProjectionEvents(draft)).toEqual([]);
     expect((await listed()).map(([threadId]) => threadId)).toEqual([witness]);
+  });
+
+  // #2312 review HIGH: a tab still open on a discarded Draft (another device,
+  // or this one) sends to that conversation, which starts a NEW session under
+  // the same id. The late-event gate belongs to the stopped engine, not the
+  // id: the new session's events must persist and its turn must settle.
+  test('#2312: a new session started on a discarded Draft id records its events and completes its turn', async () => {
+    const draft = 'draft-restarted';
+    const start = () =>
+      service.dispatch({
+        type: 'startSession',
+        input: { threadId: draft, provider: 'bedrock', cwd: tmp },
+      });
+    await start();
+    await service.dispatchWithReceipt({
+      type: 'discardDraft',
+      threadId: draft,
+    });
+    expect(eventStore.readSessionByThread(draft)).toBeUndefined();
+
+    await start();
+    await service.dispatch({
+      type: 'sendTurn',
+      input: { threadId: draft, input: 'sent from a tab left open' },
+    });
+    const now = new Date().toISOString();
+    const started: CanonicalRuntimeEvent = {
+      eventId: `${draft}-turn-started`,
+      provider: 'bedrock',
+      threadId: draft,
+      turnId: 'bedrock-turn',
+      createdAt: now,
+      method: 'turn.started',
+      prompt: 'sent from a tab left open',
+    };
+    const completed: CanonicalRuntimeEvent = {
+      eventId: `${draft}-turn-completed`,
+      provider: 'bedrock',
+      threadId: draft,
+      turnId: 'bedrock-turn',
+      createdAt: now,
+      method: 'turn.completed',
+    };
+    bedrock.events.push(started);
+    bedrock.events.push(completed);
+
+    const methods = await waitFor(
+      () =>
+        eventStore
+          .listSessionProjectionEvents(draft)
+          .map((event) => event.method),
+      (recorded) => recorded.includes('turn.completed'),
+    );
+    expect(methods).toContain('turn.started');
+    // The terminal reached the execution coordinator: the turn is settled,
+    // not stuck open behind dropped events.
+    expect(service.hasActiveTurn(draft)).toBe(false);
+    expect(
+      (await service.listSessionReadModel()).map((session) => session.threadId),
+    ).toContain(draft);
+  });
+
+  // #2312 review MEDIUM: the lifecycle locks do not cover lineage
+  // reservation, so a successor can be reserved while the discard awaits the
+  // engine stop. It must not survive naming a deleted predecessor.
+  test('#2312: a successor reserved while the discard stops the engine makes it refuse, deleting nothing', async () => {
+    const draft = 'draft-racing';
+    const child = `${draft}:session:successor`;
+    await service.dispatch({
+      type: 'startSession',
+      input: { threadId: draft, provider: 'bedrock', cwd: tmp },
+    });
+    const stopping = deferred<void>();
+    const stopEntered = deferred<void>();
+    bedrock.stopSession.mockImplementationOnce(async (threadId) => {
+      stopEntered.resolve();
+      await stopping.promise;
+      bedrock.sessions.delete(threadId);
+    });
+
+    const discard = service
+      .dispatchWithReceipt({ type: 'discardDraft', threadId: draft })
+      .then(
+        () => undefined,
+        (error: unknown) => error as { code?: string },
+      );
+    await stopEntered.promise;
+    eventStore.reserveNextConversationSession({
+      conversationId: draft,
+      predecessorSessionId: draft,
+      proposedSessionId: child,
+      createdAt: new Date().toISOString(),
+    });
+    stopping.resolve();
+
+    expect((await discard)?.code).toBe('not_a_draft');
+    expect(eventStore.readSessionByThread(draft)).toBeDefined();
+    expect(
+      eventStore.conversationSessions(draft).map((row) => row.sessionId),
+    ).toEqual([draft, child]);
+    expect(
+      eventStore
+        .listCommandReceipts(draft)
+        .filter((entry) => entry.commandType === 'discardDraft')
+        .map((entry) => entry.status),
+    ).toEqual(['rejected']);
+  });
+
+  // #2312 review LOW: a turn in flight is a turn, so the refusal is the
+  // definitive `not_a_draft` (a rejected receipt), not the lifecycle lock's
+  // generic failure.
+  test('#2312: discarding while a turn runs is refused as not a Draft', async () => {
+    const draft = 'draft-mid-turn';
+    await service.dispatch({
+      type: 'startSession',
+      input: { threadId: draft, provider: 'bedrock', cwd: tmp },
+    });
+    await service.dispatch({
+      type: 'sendTurn',
+      input: { threadId: draft, input: 'still running' },
+    });
+    expect(service.hasActiveTurn(draft)).toBe(true);
+
+    const error = await service
+      .dispatchWithReceipt({ type: 'discardDraft', threadId: draft })
+      .then(
+        () => undefined,
+        (caught: unknown) => caught as { code?: string },
+      );
+
+    expect(error?.code).toBe('not_a_draft');
+    expect(
+      eventStore
+        .listCommandReceipts(draft)
+        .filter((entry) => entry.commandType === 'discardDraft')
+        .map((entry) => entry.status),
+    ).toEqual(['rejected']);
+    expect(eventStore.readSessionByThread(draft)).toBeDefined();
   });
 
   test('a freshly constructed hosted service authorizes a persisted tenant-bound command before any other call (slice 6 I11 guard)', async () => {

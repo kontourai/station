@@ -541,10 +541,13 @@ class SessionStopWhileStartingError extends Error {
 }
 
 /**
- * #2312: `discardDraft` refused because the session is not a Draft as the
- * server derives it at discard time (a turn, output or send happened, or it
- * carries history from elsewhere), or because its conversation holds other
- * Sessions. A refusal to act — nothing was stopped or deleted.
+ * #2312: `discardDraft` refused because the session, or another Session of
+ * its conversation, is not a Draft as the server derives it at discard time
+ * (a turn — including one in flight — output or a send happened, it carries
+ * history from elsewhere, or it is a fork's source), or because the
+ * conversation gained a Session while the discard ran. A refusal to act:
+ * nothing is deleted. An engine already stopped before a late refusal stays
+ * stopped (resumable), and the Draft stays listed.
  */
 class DraftDiscardRefusedError extends Error {
   readonly code = 'not_a_draft';
@@ -1521,11 +1524,12 @@ export class OrchestrationService {
   private readonly sessionConnectionIds = new Map<string, string>();
   private readonly quarantinedThreads = new Set<string>();
   /**
-   * #2312: threads deleted by `discardDraft`. A stopped engine may still
+   * #2312: threads deleted by `discardDraft`. The stopped engine may still
    * deliver a late event (`session.exited` above all), and projecting it
    * would re-create the row the discard just deleted — the Draft would come
-   * back as a closed session on every device. Retained for the process
-   * lifetime: one entry per user discard.
+   * back as a closed session on every device. An entry lives only until the
+   * next engine start for that id (`runEngineSessionStart`): that start is a
+   * new session whose events must flow.
    */
   private readonly discardedDraftThreads = new Set<string>();
   /**
@@ -2727,10 +2731,8 @@ export class OrchestrationService {
       let session: ProviderSession;
       try {
         session = await withTenantExecutionContext(tenantExecutionContext, () =>
-          runSessionStartWithBoundary(
-            this.sessionStartBoundaries,
-            startInput.threadId,
-            () => adapter.startSession(startInput),
+          this.runEngineSessionStart(startInput.threadId, () =>
+            adapter.startSession(startInput),
           ),
         );
       } finally {
@@ -4970,8 +4972,7 @@ export class OrchestrationService {
           try {
             const invoke = () =>
               withTenantExecutionContext(context.tenantExecutionContext, () =>
-                runSessionStartWithBoundary(
-                  this.sessionStartBoundaries,
+                this.runEngineSessionStart(
                   input.threadId,
                   () => adapter.startSession(input),
                   internal?.sessionStartAdmission,
@@ -6776,30 +6777,45 @@ export class OrchestrationService {
       )
     )
       throw new DraftDiscardRefusedError(threadId);
+    const sameMembers = () =>
+      eventStore.conversationSessionIds(threadId).join('\n') ===
+      members.join('\n');
     const discard = async () => {
-      // Re-read under the locks: a member reserved after the read above
-      // would otherwise survive, naming a deleted predecessor.
-      const lockedMembers = eventStore.conversationSessionIds(threadId);
-      if (lockedMembers.join('\n') !== members.join('\n'))
-        throw new DraftDiscardRefusedError(threadId);
+      if (!sameMembers()) throw new DraftDiscardRefusedError(threadId);
       for (const member of members) {
         const detail = await this.readSession(
           member,
           INTERNAL_SESSION_READ_SCOPE,
         );
         if (!detail) throw new Error(`Session not found: ${member}`);
-        if (detail.session.draft !== true)
+        // A fork source is excluded outright: the fork's
+        // `conversation.forked` fact lives on the SOURCE thread, and deleting
+        // it would erase the target's evidence of copied history. (Forking
+        // needs a message, so a Draft cannot be one today; this keeps it so.)
+        if (
+          detail.session.draft !== true ||
+          eventStore.firstEventByMethod(member, 'conversation.forked')
+        )
           throw new DraftDiscardRefusedError(threadId);
       }
+      // Only a live or starting engine has anything to tear down. A dormant
+      // or closed Draft is deleted as it stands: the stop path's resumable
+      // write would only be deleted again.
       for (const member of members) {
-        // Only a live or starting engine has anything to tear down. A
-        // dormant or closed Draft is deleted as it stands: the stop path's
-        // resumable write would only be deleted again.
         if (
           this.sessionAdapters.has(member) ||
           this.materializingSessions.has(member)
         )
           await this.stopSessionNow(member);
+      }
+      // Review MEDIUM: a successor reserved across the awaits above (the
+      // lifecycle locks do not cover lineage reservation) would survive the
+      // delete, naming a deleted predecessor. Re-checked with no await
+      // between this and the deletes below, so nothing can interleave. A
+      // refusal here leaves any engine stopped above stopped — resumable,
+      // and still listed as the Draft it is.
+      if (!sameMembers()) throw new DraftDiscardRefusedError(threadId);
+      for (const member of members) {
         this.discardedDraftThreads.add(member);
         eventStore.deleteThread(member);
         this.forgetThreadState(member, {
@@ -6811,12 +6827,47 @@ export class OrchestrationService {
       }
       eventStore.deleteConversationLineageRows(members);
     };
+    // Review LOW: a turn in flight means a turn exists, which ends a Draft by
+    // definition — a definitive refusal (`not_a_draft`, a rejected receipt),
+    // not the lifecycle lock's generic "has an active turn" failure.
+    const turnInFlight = () =>
+      members.some((member) =>
+        this.sessionExecutionCoordinator.hasActiveTurn(member),
+      );
+    if (turnInFlight()) throw new DraftDiscardRefusedError(threadId);
     const locked = members.reduceRight<() => Promise<void>>(
       (inner, member) => () =>
         this.sessionExecutionCoordinator.runLifecycleTransition(member, inner),
       discard,
     );
-    await locked();
+    try {
+      await locked();
+    } catch (error) {
+      if (!(error instanceof DraftDiscardRefusedError) && turnInFlight())
+        throw new DraftDiscardRefusedError(threadId);
+      throw error;
+    }
+  }
+
+  /**
+   * Every engine start for a thread goes through here (fresh start, the
+   * start command, lazy recovery). #2312 review HIGH: a start on a discarded
+   * Draft's id — a tab still open elsewhere sends to that conversation — is
+   * a NEW session, so the discard's late-event gate for the stopped engine
+   * ends here; otherwise the new session's every event would be dropped.
+   */
+  private runEngineSessionStart<T>(
+    threadId: string,
+    invoke: () => Promise<T>,
+    admission?: Parameters<typeof runSessionStartWithBoundary>[3],
+  ): Promise<T> {
+    this.discardedDraftThreads.delete(threadId);
+    return runSessionStartWithBoundary(
+      this.sessionStartBoundaries,
+      threadId,
+      invoke,
+      admission,
+    );
   }
 
   /**
@@ -8123,12 +8174,7 @@ export class OrchestrationService {
   ): RecoveredSessionStartOptions {
     return {
       invokeSessionStart: (threadId, invoke) =>
-        runSessionStartWithBoundary(
-          this.sessionStartBoundaries,
-          threadId,
-          invoke,
-          admission,
-        ),
+        this.runEngineSessionStart(threadId, invoke, admission),
       eventStore: this.options.eventStore,
       assertAdapterReady: (adapter, connectionId) =>
         this.assertAdapterReady(adapter, connectionId),
