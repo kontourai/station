@@ -7,6 +7,7 @@ import {
   handleRequestOpenedEvent,
   handleRequestResolvedEvent,
 } from './approvalHandlers';
+import { handleChildWorkUpdatedEvent } from './childWorkHandlers';
 import { handleExtensionNotificationEvent } from './extensionHandlers';
 import {
   handleFlowGateVerdictEvent,
@@ -267,6 +268,9 @@ function dispatchProjectedOrchestrationEvent(
       return;
     case 'extension.notification':
       handleExtensionNotificationEvent(event);
+      return;
+    case 'child-work.updated':
+      handleChildWorkUpdatedEvent(event);
       return;
     case 'token-usage.updated':
       handleTokenUsageUpdatedEvent(event);

@@ -86,6 +86,7 @@ import {
   orchestrationSteerDispatches,
   orchestrationStoreContentionObserved,
   orchestrationTurnStallDetections,
+  sessionBackgroundTasks,
   sessionOwnerCacheOps,
   tenantExecutionContextOutcomes,
   turnProvenanceProjections,
@@ -6524,6 +6525,76 @@ describe('OrchestrationService', () => {
       source: 'aggregate',
       outcome: 'skipped',
       reason: 'aggregate_safe',
+    });
+  });
+
+  test('#2456: snapshot rows carry the live Claude subagent set folded from its legacy task tuples', async () => {
+    const threadId = 'child-work-snapshot';
+    const createdAt = '2026-09-23T09:00:00.000Z';
+    eventStore.upsertSession({
+      provider: 'claude',
+      threadId,
+      status: 'ready',
+      createdAt,
+      updatedAt: createdAt,
+    });
+    eventStore.appendEvent({
+      eventId: `${threadId}-started`,
+      provider: 'claude',
+      threadId,
+      createdAt,
+      method: 'session.started',
+      sessionId: threadId,
+      metadata: { agentSlug: 'claude', userId: 'owner-user' },
+    });
+    const publish = (event: CanonicalRuntimeEvent) =>
+      (
+        service as unknown as {
+          projectAndPublishEvent(event: CanonicalRuntimeEvent): boolean;
+        }
+      ).projectAndPublishEvent(event);
+    publish({
+      eventId: 'registry-1',
+      provider: 'claude',
+      threadId,
+      createdAt: '2026-09-23T09:00:01.000Z',
+      method: 'extension.notification',
+      namespace: 'claude-code',
+      type: 'task/registry',
+      payload: {
+        active: [
+          { taskId: 'task-1', description: 'Research', backgrounded: true },
+        ],
+      },
+    });
+    const row = async () =>
+      (await service.listSessionReadModel()).find(
+        (session) => session.threadId === threadId,
+      );
+    expect((await row())?.childWork?.children).toMatchObject({
+      observability: 'reported',
+      running: [{ childId: 'task-1', title: 'Research', status: 'running' }],
+    });
+
+    publish({
+      eventId: 'settled-1',
+      provider: 'claude',
+      threadId,
+      createdAt: '2026-09-23T09:00:02.000Z',
+      method: 'extension.notification',
+      namespace: 'claude-code',
+      type: 'task/settled',
+      payload: { taskId: 'task-1', status: 'success' },
+    });
+    expect((await row())?.childWork?.children).toMatchObject({
+      observability: 'reported',
+      running: [],
+    });
+    // The metric still counts the legacy tuple exactly as before (#2456
+    // scope: unchanged until the adapter moves onto the contract, #2457).
+    expect(sessionBackgroundTasks.add).toHaveBeenCalledWith(1, {
+      provider: 'claude',
+      status: 'success',
     });
   });
 

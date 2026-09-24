@@ -1,3 +1,4 @@
+import type { ChildWorkSessionView } from '@kontourai/station-contracts/child-work';
 import type { ConversationContextBoundaryTranscriptMarker } from '@kontourai/station-contracts/conversation-context-boundary';
 import type {
   ConversationTurnActivity,
@@ -65,6 +66,8 @@ interface SessionEventReadsDeps {
     authority: SessionReadScope,
   ) => boolean;
   readTurnProgress: TurnProgressTracker['read'];
+  /** #2456: the child-work projection's process-local read for a thread. */
+  readChildWork?: (threadId: string) => ChildWorkSessionView | undefined;
   /** #2309: the conversation activity projection's read for a thread. */
   readConversationActivity?: (
     threadId: string,
@@ -190,6 +193,7 @@ export class SessionEventReads {
           eventCount: this.deps.eventStore?.countEventsByThread(threadId),
           ...conversationDraftFactsOption(this.deps.eventStore, threadId),
           turnProgress: this.deps.readTurnProgress(threadId),
+          childWork: this.deps.readChildWork?.(threadId),
           ...this.conversationActivityOption(threadId),
           answerability: this.deps.observeAnswerability(
             threadId,
@@ -251,6 +255,7 @@ export class SessionEventReads {
       eventCount: this.deps.eventStore?.countEventsByThread(threadId),
       ...conversationDraftFactsOption(this.deps.eventStore, threadId),
       turnProgress: this.deps.readTurnProgress(threadId),
+      childWork: this.deps.readChildWork?.(threadId),
       ...this.conversationActivityOption(threadId),
       answerability: this.deps.observeAnswerability(
         threadId,

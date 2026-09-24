@@ -11,6 +11,7 @@ import {
   replaceModelControlOptions,
 } from '../../utils/modelCapabilities';
 import { finalizeAssistantTurn } from './assistantTurn';
+import { forgetChildWorkForThread } from './childWorkHandlers';
 import type { OrchestrationEvent } from './types';
 
 export function handleSessionLifecycleEvent(
@@ -165,6 +166,8 @@ export function handleSessionStateChangedEvent(
       ? { activityHint: undefined, backgroundTasks: undefined }
       : {}),
   });
+  if (TERMINAL_SESSION_STATES.has(event.to))
+    forgetChildWorkForThread(event.threadId);
 }
 
 export function handleSessionExitedEvent(
@@ -189,6 +192,7 @@ export function handleSessionExitedEvent(
     activityHint: undefined,
     backgroundTasks: undefined,
   });
+  forgetChildWorkForThread(event.threadId);
 }
 
 export function handleSessionStopSettledEvent(

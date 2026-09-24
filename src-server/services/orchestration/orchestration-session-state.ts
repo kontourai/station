@@ -1,6 +1,10 @@
 import { createHash } from 'node:crypto';
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import {
+  type ChildWorkSessionView,
+  projectDelegateChildWork,
+} from '@kontourai/station-contracts/child-work';
+import {
   type ClientOrigin,
   isClientOrigin,
 } from '@kontourai/station-contracts/client-origin';
@@ -466,6 +470,11 @@ export function buildOrchestrationSessionSummary(options: {
   /** #2309: the conversation activity projection's read for this thread. */
   conversationActivity?: ConversationTurnActivity;
   /**
+   * #2456: the child-work projection's process-local read for this thread,
+   * handed over exactly like `turnProgress` — never reconstructed from events.
+   */
+  childWork?: ChildWorkSessionView;
+  /**
    * The CONVERSATION's first prompted turn, supplied only when this thread is a
    * continuation child (`EventStore.conversationRootFirstPromptedTurn`).
    *
@@ -554,7 +563,7 @@ export function buildOrchestrationSessionSummary(options: {
         }
       : undefined;
 
-  return {
+  const summary: OrchestrationSessionSummary = {
     provider: base.provider,
     threadId: base.threadId,
     status: base.status,
@@ -629,6 +638,19 @@ export function buildOrchestrationSessionSummary(options: {
     hasActiveTurn: hasOpenTurn(events),
     ...(draft !== undefined ? { draft } : {}),
   };
+  // #2456: a delegated session, as its parent's child work. Derived from the
+  // summary's own folds (delegation + open turn + lifecycle), so it can never
+  // disagree with the members it is computed from.
+  const asChild = projectDelegateChildWork(summary);
+  return options.childWork || asChild
+    ? {
+        ...summary,
+        childWork: {
+          ...(options.childWork ? { children: options.childWork } : {}),
+          ...(asChild ? { asChild } : {}),
+        },
+      }
+    : summary;
 }
 
 export function clientOriginIdentity(origin: ClientOrigin): string {

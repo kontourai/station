@@ -1193,6 +1193,20 @@ describe('orchestration-session-state', () => {
         kind: 'delegation',
         taskId: 'task-worker-1',
       },
+      // #2456: a delegate carries itself as its parent's child work, derived
+      // from the delegation + turn fold above (idle, lifecycle completed).
+      childWork: {
+        asChild: {
+          producer: 'station-delegate',
+          reporterThreadId: 'thread-4',
+          childId: 'thread-4',
+          status: 'completed',
+          parent: { taskId: 'parent-task' },
+          startedAt: '2026-04-11T00:00:00.000Z',
+          endedAt: '2026-04-11T00:00:05.000Z',
+          controls: { stop: 'delegate-interrupt' },
+        },
+      },
     });
   });
 

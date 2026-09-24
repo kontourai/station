@@ -8,6 +8,7 @@ import {
   modelControlOptionsMatch,
   replaceModelControlOptions,
 } from '../../utils/modelCapabilities';
+import { applySnapshotChildWork } from './childWorkHandlers';
 import { rehydrateChatSession } from './rehydrateChatSession';
 import { isReplayThread } from './replay/replay-registry';
 import type { OrchestrationSnapshotPayload } from './types';
@@ -517,6 +518,15 @@ export function applyOrchestrationSnapshot(
       isProcessingStep: false,
       streamingMessage: undefined,
     });
+  }
+
+  // #2456: the snapshot is the only thing a client that missed live deltas
+  // hears about child work, so each row's `childWork` view reaches the chat
+  // through the same reducer a live delta does. A replay never feeds it.
+  if (!replayId) {
+    for (const session of payload.sessions) {
+      applySnapshotChildWork(session.threadId, session.childWork?.children);
+    }
   }
 
   if (!isReconnectFallback || !options || replayId) return;
