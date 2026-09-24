@@ -1595,7 +1595,7 @@ describe('CommandPalette plugin commands (#1418/#1419)', () => {
     }
   });
 
-  test("seed-composer captures the single open chat's draft and applies through its CAS", async () => {
+  test("seed-composer captures the navigationStore-active chat's draft and applies through its CAS", async () => {
     activeChatsStore.initChat('chat-1', {
       agentSlug: 'demo-agent',
       agentName: 'Demo',
@@ -1618,6 +1618,10 @@ describe('CommandPalette plugin commands (#1418/#1419)', () => {
       },
     ];
     try {
+      act(() => {
+        navigationStore.setActiveChat('chat-1');
+        navigationStore.setDockState(true);
+      });
       await renderCommandPalette();
       open();
       fireEvent.click(screen.getByRole('option', { name: /Draft with demo/ }));
@@ -1643,10 +1647,14 @@ describe('CommandPalette plugin commands (#1418/#1419)', () => {
       );
     } finally {
       activeChatsStore.removeChat('chat-1');
+      act(() => {
+        navigationStore.setActiveChat(null);
+        navigationStore.setDockState(false);
+      });
     }
   });
 
-  test('seed-composer is unavailable with no open chat, and with more than one open chat', async () => {
+  test('seed-composer is unavailable with no open chat, unavailable while the dock is closed, and — with several chats open — available only for and seeding the navigationStore-active one (#1418/#1419 review, MEDIUM)', async () => {
     pluginsMock = [
       {
         name: 'demo',
@@ -1680,15 +1688,48 @@ describe('CommandPalette plugin commands (#1418/#1419)', () => {
       title: 'Chat 2',
     });
     try {
+      // Two chats open, neither named active by navigationStore: still
+      // unavailable — this never guesses among several open chats.
       fireEvent.change(screen.getByRole('combobox'), {
         target: { value: 'Draft with demo' },
       });
       expect(
         screen.getByRole('option', { name: /Draft with demo/ }).textContent,
       ).toContain('Open a chat before staging this command in the composer.');
+
+      // navigationStore names chat-2 active, but no Chat surface is showing
+      // it (dock closed): still unavailable.
+      act(() => {
+        navigationStore.setActiveChat('chat-2');
+      });
+      fireEvent.change(screen.getByRole('combobox'), {
+        target: { value: 'Draft with demo' },
+      });
+      expect(
+        screen.getByRole('option', { name: /Draft with demo/ }).textContent,
+      ).toContain('Open a chat before staging this command in the composer.');
+
+      // The dock opens: now available, and it seeds chat-2 specifically —
+      // never chat-1, the other chat that happens to be open.
+      act(() => {
+        navigationStore.setDockState(true);
+      });
+      fireEvent.click(screen.getByRole('option', { name: /Draft with demo/ }));
+      await vi.waitFor(() =>
+        expect(pluginCommandRunMock).toHaveBeenCalledTimes(1),
+      );
+      const call = pluginCommandRunMock.mock.calls[0][0];
+      expect(call).toMatchObject({
+        target: { kind: 'composer', sessionId: 'chat-2' },
+        context: { projectSlug: 'alpha', activeChatSessionId: 'chat-2' },
+      });
     } finally {
       activeChatsStore.removeChat('chat-1');
       activeChatsStore.removeChat('chat-2');
+      act(() => {
+        navigationStore.setActiveChat(null);
+        navigationStore.setDockState(false);
+      });
     }
   });
 });
