@@ -2,6 +2,7 @@ import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { closeSync, lstatSync, openSync } from 'node:fs';
 import { dirname, isAbsolute } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import type { StationConnectionKeyCandidateV1 } from '@kontourai/station-contracts/connection-proof';
 import { STATION_CONNECTION_PROOF_MAX_BYTES } from '@kontourai/station-contracts/connection-proof';
 import {
   SELF_HOSTED_BROKER_CLIENT_GRANT_VERSION,
@@ -25,6 +26,9 @@ import {
   type SelfHostedBrokerNativeConnectionOpenV2,
   type SelfHostedBrokerNativeGrantRenewedV2,
   type SelfHostedBrokerNativeGrantRenewV2,
+  type SelfHostedBrokerNativeKeyCandidateOfferV1,
+  type SelfHostedBrokerNativeKeyCandidateProofV1,
+  type SelfHostedBrokerNativeKeyCandidateResultV1,
   type SelfHostedBrokerNativeRedemptionProofV2,
   type SelfHostedBrokerNativeRequestProofClaimsV1,
   type SelfHostedBrokerNativeRouteInvitationV2,
@@ -278,12 +282,13 @@ function validateNativePublicKey(value: unknown) {
 function nativeProofPayload(
   invitation: SelfHostedBrokerNativeRouteInvitationV2,
   nonce: string,
+  purpose = 'redeem-native-route-invitation',
 ) {
   // Property order is the wire contract. Clients sign these exact UTF-8 bytes
   // with ES256; the invitation secret is represented only by its digest.
   return JSON.stringify({
     aud: 'station-self-hosted-broker',
-    purpose: 'redeem-native-route-invitation',
+    purpose,
     version: invitation.version,
     brokerOrigin: invitation.brokerOrigin,
     scope: {
@@ -315,9 +320,21 @@ export function serializeNativeBrokerRedemptionPayload(
 ): Uint8Array {
   return Buffer.from(nativeProofPayload(invitation, nonce), 'utf8');
 }
+/** Exact ordered UTF-8 bytes; domain separation prevents a courier proof from redeeming. */
+export function serializeNativeBrokerKeyCandidatePayload(
+  invitation: SelfHostedBrokerNativeRouteInvitationV2,
+  challenge: string,
+  action: 'request' | 'read',
+): Uint8Array {
+  return Buffer.from(
+    nativeProofPayload(invitation, challenge, `${action}-native-key-candidate`),
+    'utf8',
+  );
+}
 async function assertNativeProof(
   invitation: SelfHostedBrokerNativeRouteInvitationV2,
   value: unknown,
+  candidateAction?: 'request' | 'read',
 ) {
   if (!value || typeof value !== 'object' || Array.isArray(value))
     throw new Error('invalid_native_proof');
@@ -341,11 +358,20 @@ async function assertNativeProof(
     if (
       Object.keys(verified.protectedHeader).sort().join(',') !== 'alg,typ' ||
       verified.protectedHeader.alg !== 'ES256' ||
-      verified.protectedHeader.typ !== 'station-broker-native-redemption+jws' ||
+      verified.protectedHeader.typ !==
+        (candidateAction
+          ? 'station-broker-native-key-candidate+jws'
+          : 'station-broker-native-redemption+jws') ||
       !timingSafeEqual(
         Buffer.from(verified.payload),
         Buffer.from(
-          serializeNativeBrokerRedemptionPayload(invitation, proof.nonce),
+          candidateAction
+            ? serializeNativeBrokerKeyCandidatePayload(
+                invitation,
+                proof.nonce,
+                candidateAction,
+              )
+            : serializeNativeBrokerRedemptionPayload(invitation, proof.nonce),
         ),
       )
     )
@@ -442,6 +468,16 @@ export function validateBrokerScope(value: unknown): BrokerScope {
 export class SelfHostedBrokerService {
   private readonly db: DatabaseSync;
   private transactionDepth = 0;
+  // Ephemeral discovery is allowed to disappear on restart. Entries remain as
+  // replay tombstones until invitation expiry; no secret or grant is retained.
+  private readonly keyCandidates = new Map<
+    string,
+    {
+      offer: SelfHostedBrokerNativeKeyCandidateOfferV1;
+      invitationExpiresAt: number;
+      candidate: StationConnectionKeyCandidateV1 | null;
+    }
+  >();
   private nativeConnectionMaintenance: NodeJS.Timeout | undefined;
   constructor(
     path: string,
@@ -1221,6 +1257,228 @@ export class SelfHostedBrokerService {
         expiresAt,
       };
     });
+  }
+  private async authenticateKeyCandidate(
+    input: SelfHostedBrokerNativeRouteInvitationV2,
+    proof: SelfHostedBrokerNativeKeyCandidateProofV1,
+    action: 'request' | 'read',
+  ) {
+    const invitation = structuredClone(input);
+    if (
+      !invitation ||
+      typeof invitation !== 'object' ||
+      Object.keys(invitation).sort().join(',') !==
+        'brokerOrigin,expiresAt,invitationId,invitationSecret,scope,stationSigningGeneration,stationSigningKeyId,surface,version' ||
+      invitation.version !== SELF_HOSTED_BROKER_NATIVE_INVITATION_VERSION ||
+      !ID.test(invitation.invitationId) ||
+      !SECRET.test(invitation.invitationSecret) ||
+      !SIGNING_KEY_ID.test(invitation.stationSigningKeyId) ||
+      !Number.isSafeInteger(invitation.stationSigningGeneration) ||
+      invitation.stationSigningGeneration < 1 ||
+      !Number.isSafeInteger(invitation.expiresAt)
+    )
+      throw new Error('invalid_native_invitation');
+    const scope = validateNativeScope(invitation.scope);
+    const brokerOrigin = canonicalBrokerOrigin(invitation.brokerOrigin);
+    const surface = validateNativeSurface(invitation.surface);
+    const normalizedInvitation = {
+      ...invitation,
+      brokerOrigin,
+      scope,
+      surface,
+    };
+    await assertNativeProof(
+      normalizedInvitation,
+      structuredClone(proof),
+      action,
+    );
+    // The live invitation and lease are re-read after asynchronous verification.
+    const row = this.db
+      .prepare(
+        'SELECT * FROM broker_native_route_invitations WHERE invitation_id=?',
+      )
+      .get(invitation.invitationId) as NativeInvitationRow | undefined;
+    if (
+      !row ||
+      row.station_id !== scope.stationId ||
+      row.enrollment_id !== scope.enrollmentId ||
+      row.generation !== scope.routingGeneration ||
+      row.broker_origin !== brokerOrigin ||
+      row.signing_key_id !== invitation.stationSigningKeyId ||
+      row.signing_generation !== invitation.stationSigningGeneration ||
+      row.app_identifier !== surface.appIdentifier ||
+      row.channel !== surface.channel ||
+      row.client_instance_id !== surface.clientInstanceId ||
+      row.key_thumbprint !== surface.keyThumbprint ||
+      row.expires_at !== invitation.expiresAt ||
+      row.consumed_at !== null ||
+      row.expires_at <= this.now() ||
+      row.grant_expires_at <= this.now() ||
+      !timingSafeEqual(
+        Buffer.from(row.secret_hash),
+        nativeInvitationDigest(invitation.invitationSecret),
+      )
+    )
+      throw new Error('native_invitation_refused');
+    const lease = this.db
+      .prepare('SELECT * FROM broker_leases WHERE station_id=?')
+      .get(scope.stationId) as LeaseRow | undefined;
+    if (
+      !lease ||
+      lease.enrollment_id !== scope.enrollmentId ||
+      lease.generation !== scope.routingGeneration ||
+      lease.withdrawn_at !== null ||
+      lease.expires_at <= this.now()
+    )
+      throw new Error('native_invitation_refused');
+    return normalizedInvitation;
+  }
+  private pruneKeyCandidates() {
+    for (const [id, item] of this.keyCandidates) {
+      if (item.invitationExpiresAt <= this.now()) this.keyCandidates.delete(id);
+    }
+  }
+  async requestNativeKeyCandidate(
+    invitation: SelfHostedBrokerNativeRouteInvitationV2,
+    proof: SelfHostedBrokerNativeKeyCandidateProofV1,
+  ): Promise<SelfHostedBrokerNativeKeyCandidateResultV1> {
+    const challenge = proof?.nonce;
+    const selected = await this.authenticateKeyCandidate(
+      invitation,
+      proof,
+      'request',
+    );
+    this.pruneKeyCandidates();
+    const existing = this.keyCandidates.get(selected.invitationId);
+    if (existing) {
+      if (
+        existing.offer.challenge !== challenge ||
+        existing.offer.expiresAt <= this.now()
+      )
+        throw new Error('connection_replayed');
+      return {
+        version: 'station-broker-native-key-candidate-result/v1',
+        expiresAt: existing.offer.expiresAt,
+        candidate: null,
+      };
+    }
+    if (
+      this.keyCandidates.size >= 1024 ||
+      [...this.keyCandidates.values()].filter(
+        (item) => item.offer.scope.stationId === selected.scope.stationId,
+      ).length >= 64
+    )
+      throw new Error('pending_limit');
+    const expiresAt = Math.min(this.now() + 60_000, selected.expiresAt);
+    this.keyCandidates.set(selected.invitationId, {
+      invitationExpiresAt: selected.expiresAt,
+      candidate: null,
+      offer: {
+        version: 'station-broker-native-key-candidate-offer/v1',
+        invitationId: selected.invitationId,
+        brokerOrigin: selected.brokerOrigin,
+        scope: selected.scope,
+        surface: selected.surface,
+        stationSigningKeyId: selected.stationSigningKeyId,
+        stationSigningGeneration: selected.stationSigningGeneration,
+        challenge,
+        expiresAt,
+      },
+    });
+    return {
+      version: 'station-broker-native-key-candidate-result/v1',
+      expiresAt,
+      candidate: null,
+    };
+  }
+  async readNativeKeyCandidate(
+    invitation: SelfHostedBrokerNativeRouteInvitationV2,
+    proof: SelfHostedBrokerNativeKeyCandidateProofV1,
+  ): Promise<SelfHostedBrokerNativeKeyCandidateResultV1> {
+    const challenge = proof?.nonce;
+    const selected = await this.authenticateKeyCandidate(
+      invitation,
+      proof,
+      'read',
+    );
+    const item = this.keyCandidates.get(selected.invitationId);
+    if (
+      !item ||
+      item.offer.challenge !== challenge ||
+      item.offer.expiresAt <= this.now()
+    )
+      throw new Error('connection_unavailable');
+    return structuredClone({
+      version: 'station-broker-native-key-candidate-result/v1',
+      expiresAt: item.offer.expiresAt,
+      candidate: item.candidate,
+    });
+  }
+  nativeKeyCandidateOffers(scope: BrokerScope, credential: BrokerCredential) {
+    this.lease(validateBrokerScope(scope), credential, 'connector');
+    this.pruneKeyCandidates();
+    return [...this.keyCandidates.values()]
+      .filter((item) => {
+        const row = this.db
+          .prepare(
+            'SELECT consumed_at FROM broker_native_route_invitations WHERE invitation_id=?',
+          )
+          .get(item.offer.invitationId) as
+          | { consumed_at: number | null }
+          | undefined;
+        return (
+          item.offer.scope.stationId === scope.stationId &&
+          item.offer.scope.enrollmentId === scope.enrollmentId &&
+          item.offer.scope.routingGeneration === scope.routingGeneration &&
+          item.offer.expiresAt > this.now() &&
+          !item.candidate &&
+          row?.consumed_at === null
+        );
+      })
+      .slice(0, 1)
+      .map((item) => structuredClone(item.offer));
+  }
+  answerNativeKeyCandidate(
+    scope: BrokerScope,
+    credential: BrokerCredential,
+    invitationId: string,
+    challenge: string,
+    candidate: StationConnectionKeyCandidateV1,
+  ) {
+    this.lease(validateBrokerScope(scope), credential, 'connector');
+    if (
+      !candidate ||
+      Object.keys(candidate).sort().join(',') !== 'compactJws,version' ||
+      candidate.version !== 'station-connection-key-candidate/v1' ||
+      typeof candidate.compactJws !== 'string' ||
+      candidate.compactJws.length === 0 ||
+      Buffer.byteLength(candidate.compactJws) >
+        STATION_CONNECTION_PROOF_MAX_BYTES
+    )
+      throw new Error('invalid_request');
+    const item = this.keyCandidates.get(invitationId);
+    const row = this.db
+      .prepare(
+        'SELECT consumed_at FROM broker_native_route_invitations WHERE invitation_id=?',
+      )
+      .get(invitationId) as { consumed_at: number | null } | undefined;
+    if (
+      !item ||
+      item.offer.scope.stationId !== scope.stationId ||
+      item.offer.scope.enrollmentId !== scope.enrollmentId ||
+      item.offer.scope.routingGeneration !== scope.routingGeneration ||
+      item.offer.challenge !== challenge ||
+      item.offer.expiresAt <= this.now() ||
+      row?.consumed_at !== null
+    )
+      throw new Error('connection_unavailable');
+    if (
+      item.candidate &&
+      JSON.stringify(item.candidate) !== JSON.stringify(candidate)
+    )
+      throw new Error('connection_replayed');
+    item.candidate = structuredClone(candidate);
+    return { accepted: true };
   }
   /** One-use native redemption; a JWS proof binds the exact invite and install key. */
   async redeemNativeInvitation(

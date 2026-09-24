@@ -1,9 +1,11 @@
 import { createHash, randomBytes } from 'node:crypto';
+import type { StationConnectionKeyCandidateV1 } from '@kontourai/station-contracts/connection-proof';
 import type {
   SelfHostedBrokerNativeClientGrantV2,
   SelfHostedBrokerNativeClientSurfaceV2,
   SelfHostedBrokerNativeConnectionOfferV2,
   SelfHostedBrokerNativeGrantRenewedV2,
+  SelfHostedBrokerNativeKeyCandidateOfferV1,
   SelfHostedBrokerNativeRequestProofClaimsV1,
   SelfHostedBrokerScopeV1,
 } from '@kontourai/station-contracts/self-hosted-broker';
@@ -264,6 +266,90 @@ export class SelfHostedBrokerClient {
         throw new Error('broker_response_invalid');
       return offer as unknown as BrokerOffer;
     });
+  }
+  async nativeKeyCandidateOffers(
+    signal: AbortSignal,
+  ): Promise<SelfHostedBrokerNativeKeyCandidateOfferV1[]> {
+    const value = exact(
+      await this.#post('/native/key-candidates/offers', {}, signal),
+      ['offers'],
+    );
+    if (!Array.isArray(value.offers) || value.offers.length > 1)
+      throw new Error('broker_response_invalid');
+    return value.offers.map((item) => {
+      const offer = exact(item, [
+        'version',
+        'invitationId',
+        'brokerOrigin',
+        'scope',
+        'surface',
+        'stationSigningKeyId',
+        'stationSigningGeneration',
+        'challenge',
+        'expiresAt',
+      ]);
+      const scope = exact(offer.scope, [
+        'stationId',
+        'enrollmentId',
+        'routingGeneration',
+      ]);
+      const surface = exact(offer.surface, [
+        'kind',
+        'appIdentifier',
+        'channel',
+        'clientInstanceId',
+        'keyThumbprint',
+      ]);
+      if (
+        offer.version !== 'station-broker-native-key-candidate-offer/v1' ||
+        offer.brokerOrigin !== this.#base ||
+        scope.stationId !== this.#scope.stationId ||
+        scope.enrollmentId !== this.#scope.enrollmentId ||
+        scope.routingGeneration !== this.#scope.routingGeneration ||
+        typeof offer.invitationId !== 'string' ||
+        !ID.test(offer.invitationId) ||
+        typeof offer.challenge !== 'string' ||
+        !/^[A-Za-z0-9_-]{43}$/.test(offer.challenge) ||
+        typeof offer.stationSigningKeyId !== 'string' ||
+        !/^[A-Za-z0-9_-]{43}$/.test(offer.stationSigningKeyId) ||
+        !Number.isSafeInteger(offer.stationSigningGeneration) ||
+        (offer.stationSigningGeneration as number) < 1 ||
+        !Number.isSafeInteger(offer.expiresAt) ||
+        (offer.expiresAt as number) <= this.now() ||
+        (offer.expiresAt as number) > this.now() + 60_000 ||
+        surface.kind !== 'station-native' ||
+        typeof surface.appIdentifier !== 'string' ||
+        !/^[A-Za-z0-9][A-Za-z0-9.-]{0,254}$/.test(surface.appIdentifier) ||
+        !['dev', 'stable', 'beta', 'nightly'].includes(
+          String(surface.channel),
+        ) ||
+        typeof surface.clientInstanceId !== 'string' ||
+        !/^[0-9a-f-]{36}$/i.test(surface.clientInstanceId) ||
+        typeof surface.keyThumbprint !== 'string' ||
+        !/^[A-Za-z0-9_-]{43}$/.test(surface.keyThumbprint)
+      )
+        throw new Error('broker_response_invalid');
+      return offer as unknown as SelfHostedBrokerNativeKeyCandidateOfferV1;
+    });
+  }
+  async answerNativeKeyCandidate(
+    offer: SelfHostedBrokerNativeKeyCandidateOfferV1,
+    candidate: StationConnectionKeyCandidateV1,
+    signal: AbortSignal,
+  ) {
+    const result = exact(
+      await this.#post(
+        '/native/key-candidates/answer',
+        {
+          invitationId: offer.invitationId,
+          challenge: offer.challenge,
+          candidate,
+        },
+        signal,
+      ),
+      ['accepted'],
+    );
+    if (result.accepted !== true) throw new Error('broker_response_invalid');
   }
   /** Versioned native offers stay separate from the legacy browser-v1 queue. */
   async nativeOffers(
