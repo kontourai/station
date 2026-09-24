@@ -1263,12 +1263,41 @@ fn is_missing_credential(error: &keyring_core::Error) -> bool {
     matches!(error, keyring_core::Error::NoEntry)
 }
 
+/// Every command in this family can wait on `profiles.json.lock` (desktop
+/// writes and genesis; every mobile read, since the mobile path resolver takes
+/// the lock) and may also block in the OS keyring or a loopback HTTP exchange.
+/// A plain `fn` command is `ExecutionContext::Blocking`, which Tauri runs on
+/// the main thread, so a CLI holding the lock froze the UI for the whole
+/// bounded wait, and on Android the 5s mobile wait reaches the ANR threshold
+/// (#2469). `spawn_blocking` rather than `#[tauri::command(async)]`: the
+/// latter runs the body on an async-runtime worker, where a 10s lock wait or a
+/// blocking `ureq` request would stall the async commands sharing it.
+async fn run_saved_station_command<T, E>(
+    operation: impl FnOnce() -> Result<T, E> + Send + 'static,
+) -> Result<T, E>
+where
+    T: Send + 'static,
+    E: From<String> + Send + 'static,
+{
+    tauri::async_runtime::spawn_blocking(operation)
+        .await
+        .map_err(|error| E::from(format!("saved Station command task failed: {error}")))?
+}
+
 #[tauri::command]
-fn credential_vault_delete(
+async fn credential_vault_delete(
     app: AppHandle,
     authority: State<'_, NativeProfileAuthority>,
 ) -> Result<(), String> {
-    let reference = authorized_credential_reference(&app, &authority)?;
+    let authority = authority.inner().clone();
+    run_saved_station_command(move || credential_vault_delete_blocking(&app, &authority)).await
+}
+
+fn credential_vault_delete_blocking(
+    app: &AppHandle,
+    authority: &NativeProfileAuthority,
+) -> Result<(), String> {
+    let reference = authorized_credential_reference(app, authority)?;
     match credential_entry(&reference)?.delete_credential() {
         Ok(()) => {
             let mut state = authority
@@ -1294,12 +1323,20 @@ fn credential_vault_delete(
 /// still owns it. This supports key rotation without reopening arbitrary
 /// read/write/delete access to every keyring account.
 #[tauri::command]
-fn credential_vault_delete_unreferenced(
+async fn credential_vault_delete_unreferenced(
     app: AppHandle,
     reference: NativeCredentialReference,
 ) -> Result<(), String> {
+    run_saved_station_command(move || credential_vault_delete_unreferenced_blocking(&app, reference))
+        .await
+}
+
+fn credential_vault_delete_unreferenced_blocking(
+    app: &AppHandle,
+    reference: NativeCredentialReference,
+) -> Result<(), String> {
     credential_reference_key(&reference)?;
-    let contents = read_station_profile_contents(&app)?;
+    let contents = read_station_profile_contents(app)?;
     let store = parse_station_profile_store(&contents)?;
     if store.profiles.iter().any(|profile| {
         profile
@@ -1380,12 +1417,16 @@ fn authorize_active_profile_in_state(
 }
 
 #[tauri::command]
-fn station_profile_authorize_active(
+async fn station_profile_authorize_active(
     app: AppHandle,
     authority: State<'_, NativeProfileAuthority>,
     profile_name: String,
 ) -> Result<NativeProfileAuthorizationReceipt, String> {
-    station_profile_authorize_active_internal(&app, &authority, &profile_name)
+    let authority = authority.inner().clone();
+    run_saved_station_command(move || {
+        station_profile_authorize_active_internal(&app, &authority, &profile_name)
+    })
+    .await
 }
 
 /// Same-user local self-authorization (station#1715): reads the per-boot
@@ -2094,6 +2135,12 @@ fn authorized_credential_reference(
     app: &AppHandle,
     authority: &NativeProfileAuthority,
 ) -> Result<NativeCredentialReference, NativeCommandError> {
+    // Read the saved Stations BEFORE taking the authority mutex. On mobile the
+    // read takes `profiles.json.lock`, and the writer holds that lock while it
+    // takes this mutex; taking them in the other order here would let a
+    // concurrent write and this read stall each other until the lock wait
+    // expires (the commands run off the main thread since #2469).
+    let store = parse_station_profile_store(&read_station_profile_contents(app)?)?;
     let state = authority
         .0
         .lock()
@@ -2104,7 +2151,6 @@ fn authorized_credential_reference(
             "Station has no host-authorized active Station",
         )
     })?;
-    let store = parse_station_profile_store(&read_station_profile_contents(app)?)?;
     profile_bindings_are_authorized(&state, &store)?;
     let profile = selected_profile_from_store(&store, &selected.name)?;
     if profile.credential_ref.as_ref() != Some(&selected.reference) {
@@ -2249,6 +2295,8 @@ fn authorized_profile_for_origin(
     authority: &NativeProfileAuthority,
     origin: &str,
 ) -> Result<NativeCredentialReference, NativeCommandError> {
+    // Store read before the authority mutex; see `authorized_credential_reference`.
+    let store = parse_station_profile_store(&read_station_profile_contents(app)?)?;
     let state = authority
         .0
         .lock()
@@ -2259,7 +2307,6 @@ fn authorized_profile_for_origin(
             "Station has no host-authorized active Station",
         )
     })?;
-    let store = parse_station_profile_store(&read_station_profile_contents(app)?)?;
     profile_bindings_are_authorized(&state, &store)?;
     let profile = selected_profile_from_store(&store, &selected.name)?;
     if profile.credential_ref.as_ref() != Some(&selected.reference) {
@@ -2328,12 +2375,13 @@ fn scoped_profile_for_origin(
     if uuid::Uuid::parse_str(expected_binding_id).is_err() {
         return Err(native_request_binding_stale());
     }
+    // Store read before the authority mutex; see `authorized_credential_reference`.
+    let store = read_station_profile_contents(app)
+        .and_then(|contents| parse_station_profile_store(&contents))
+        .map_err(|_| native_request_binding_stale())?;
     let state = authority
         .0
         .lock()
-        .map_err(|_| native_request_binding_stale())?;
-    let store = read_station_profile_contents(app)
-        .and_then(|contents| parse_station_profile_store(&contents))
         .map_err(|_| native_request_binding_stale())?;
     scoped_profile_for_origin_in_store(&state, &store, expected_binding_id, origin)
 }
@@ -4248,6 +4296,10 @@ fn credential_vault_commit_pairing_internal(
     pending: &NativePendingPairingCredentials,
     handle: &str,
 ) -> Result<(), String> {
+    // The saved-Station read comes before the pending mutex for the same
+    // lock-order reason as `authorized_credential_reference`: the writer holds
+    // `profiles.json.lock` (mobile) while it takes this mutex.
+    let store = parse_station_profile_store(&read_station_profile_contents(app)?)?;
     let mut pending = pending
         .0
         .lock()
@@ -4260,7 +4312,6 @@ fn credential_vault_commit_pairing_internal(
         NativePairingPhase::RequiresAuthPersisted { profile_name } => profile_name.clone(),
         _ => return Err("Station pairing handle is not awaiting keyring commitment".to_string()),
     };
-    let store = parse_station_profile_store(&read_station_profile_contents(app)?)?;
     pairing_profile_matches(&store, &profile_name, entry, "requires-auth")?;
     let reference_key = credential_reference_key(&entry.reference)?;
     let state = authority
@@ -4286,13 +4337,18 @@ fn credential_vault_commit_pairing_internal(
 }
 
 #[tauri::command]
-fn credential_vault_commit_pairing(
+async fn credential_vault_commit_pairing(
     app: AppHandle,
     authority: State<'_, NativeProfileAuthority>,
     pending: State<'_, NativePendingPairingCredentials>,
     handle: String,
 ) -> Result<(), String> {
-    credential_vault_commit_pairing_internal(&app, &authority, &pending, &handle)
+    let authority = authority.inner().clone();
+    let pending = pending.inner().clone();
+    run_saved_station_command(move || {
+        credential_vault_commit_pairing_internal(&app, &authority, &pending, &handle)
+    })
+    .await
 }
 
 /// A short owner-only lock shared with the CLI's `profiles.json.lock` protocol.
@@ -4343,11 +4399,13 @@ const PROFILE_LOCK_STALE_AFTER: Duration = Duration::from_secs(5 * 60);
 // The CLI uses the same bound for the same locks (packages/cli
 // profile-store.ts).
 const PROFILE_LOCK_WAIT: Duration = Duration::from_secs(10);
-// Mobile takes the profile lock on every saved Station READ, from Tauri sync
-// commands on the main thread, where Android reports an ANR after 5s. Keep
-// its wait at the old nominal budget (500 naps of 10ms), never the desktop
-// bound: a crashed v1 lock stays unreclaimable for five minutes, and each
-// read in that window waits this long before reporting busy.
+// Mobile takes the profile lock on every saved Station READ. Those commands
+// run on the blocking pool (`run_saved_station_command`, #2469), not the main
+// thread where Android reports an ANR after 5s, but a waiting read still
+// stalls the UI flow awaiting it. Keep the wait at the old nominal budget
+// (500 naps of 10ms), never the desktop bound: a crashed v1 lock stays
+// unreclaimable for five minutes, and each read in that window waits this
+// long before reporting busy.
 #[cfg(any(mobile, test))]
 const PROFILE_LOCK_MOBILE_WAIT: Duration = Duration::from_secs(5);
 // The stale-lock probe creates and fsyncs a guard lock and resolves the
@@ -4991,11 +5049,19 @@ fn profile_lock_owner_alive(pid: u32) -> bool {
 /// ordinary first-run state; malformed content is returned to the TypeScript
 /// contract validator so the UI can fail closed with its diagnostic.
 #[tauri::command]
-fn station_profile_store_read(
+async fn station_profile_store_read(
     app: AppHandle,
     authority: State<'_, NativeProfileAuthority>,
 ) -> Result<String, String> {
-    let path = station_profiles_path(&app)?;
+    let authority = authority.inner().clone();
+    run_saved_station_command(move || station_profile_store_read_blocking(&app, &authority)).await
+}
+
+fn station_profile_store_read_blocking(
+    app: &AppHandle,
+    authority: &NativeProfileAuthority,
+) -> Result<String, String> {
+    let path = station_profiles_path(app)?;
     validate_station_profile_store(&path)?;
     match read_station_profile_store(&path) {
         Ok(contents) => {
@@ -5341,7 +5407,7 @@ fn station_profile_store_write_with_host(
 }
 
 #[tauri::command]
-fn station_profile_store_write(
+async fn station_profile_store_write(
     app: AppHandle,
     authority: State<'_, NativeProfileAuthority>,
     pending: State<'_, NativePendingPairingCredentials>,
@@ -5349,14 +5415,19 @@ fn station_profile_store_write(
     expected_revision: u64,
     pairing_handle: Option<String>,
 ) -> Result<(), String> {
-    station_profile_store_write_internal(
-        &app,
-        &authority,
-        &pending,
-        contents,
-        expected_revision,
-        pairing_handle,
-    )
+    let authority = authority.inner().clone();
+    let pending = pending.inner().clone();
+    run_saved_station_command(move || {
+        station_profile_store_write_internal(
+            &app,
+            &authority,
+            &pending,
+            contents,
+            expected_revision,
+            pairing_handle,
+        )
+    })
+    .await
 }
 
 #[cfg(not(mobile))]
@@ -5578,10 +5649,24 @@ fn reconcile_bundled_local_profile_with_retry(
 /// granting a compromised webview authority to invent a local service.
 #[cfg(not(mobile))]
 #[tauri::command]
-fn station_ensure_bundled_local_profile(
+async fn station_ensure_bundled_local_profile(
     app: AppHandle,
     authority: State<'_, NativeProfileAuthority>,
     pending: State<'_, NativePendingPairingCredentials>,
+) -> Result<Option<String>, String> {
+    let authority = authority.inner().clone();
+    let pending = pending.inner().clone();
+    run_saved_station_command(move || {
+        station_ensure_bundled_local_profile_blocking(app, authority, pending)
+    })
+    .await
+}
+
+#[cfg(not(mobile))]
+fn station_ensure_bundled_local_profile_blocking(
+    app: AppHandle,
+    authority: NativeProfileAuthority,
+    pending: NativePendingPairingCredentials,
 ) -> Result<Option<String>, String> {
     let state = app
         .try_state::<DesktopServerState>()
@@ -6236,10 +6321,25 @@ fn validate_local_self_provision_owner(
 
 #[cfg(not(mobile))]
 #[tauri::command]
-fn station_local_self_provision(
+async fn station_local_self_provision(
     app: AppHandle,
     authority: State<'_, NativeProfileAuthority>,
     pending: State<'_, NativePendingPairingCredentials>,
+    profile_name: String,
+) -> Result<(), NativeCommandError> {
+    let authority = authority.inner().clone();
+    let pending = pending.inner().clone();
+    run_saved_station_command(move || {
+        station_local_self_provision_blocking(app, authority, pending, profile_name)
+    })
+    .await
+}
+
+#[cfg(not(mobile))]
+fn station_local_self_provision_blocking(
+    app: AppHandle,
+    authority: NativeProfileAuthority,
+    pending: NativePendingPairingCredentials,
     profile_name: String,
 ) -> Result<(), NativeCommandError> {
     let store = parse_station_profile_store(&read_station_profile_contents(&app)?)?;
@@ -18108,7 +18208,7 @@ mod tests {
         std::fs::remove_dir_all(directory).unwrap();
     }
 
-    /// station#2461 review: mobile locks on every read from the main thread.
+    /// station#2461 review: mobile locks on every saved Station read.
     /// A crashed v1 owner younger than five minutes is not reclaimable, so a
     /// read waits the full bound; it must stay at the mobile budget, not the
     /// desktop one.
@@ -18384,6 +18484,80 @@ mod tests {
                 "the detail must not merely restate the code — they are different contracts, one for machines and one for people"
             );
         }
+    }
+
+    /// #2469: these commands can wait on `profiles.json.lock` (10s on desktop;
+    /// 5s on every mobile read), the OS keyring, or a loopback HTTP exchange.
+    /// Tauri picks a command's execution context from its signature: a plain
+    /// `fn` is `ExecutionContext::Blocking` and runs on the thread that
+    /// dispatched the IPC message, which in the app is the main thread, so the
+    /// UI froze for the whole wait; an `async fn` is spawned on the async
+    /// runtime. The commands take `AppHandle<Wry>`, which the mock runtime
+    /// cannot dispatch, so this pins the signature Tauri reads instead: each
+    /// must return a future. Reverting any of them to a plain `fn` fails to
+    /// compile here with "`Result<..>` is not a future".
+    #[cfg(not(mobile))]
+    #[test]
+    fn saved_station_commands_are_async_so_tauri_never_runs_them_on_the_main_thread() {
+        macro_rules! assert_async_command {
+            ($command:path, $($argument:ty),+) => {{
+                fn returns_future<Command, Output>(_: Command)
+                where
+                    Command: Fn($($argument),+) -> Output,
+                    Output: std::future::Future,
+                {
+                }
+                returns_future($command);
+            }};
+        }
+        type Authority = State<'static, NativeProfileAuthority>;
+        type Pending = State<'static, NativePendingPairingCredentials>;
+        assert_async_command!(credential_vault_delete, AppHandle, Authority);
+        assert_async_command!(
+            credential_vault_delete_unreferenced,
+            AppHandle,
+            NativeCredentialReference
+        );
+        assert_async_command!(credential_vault_commit_pairing, AppHandle, Authority, Pending, String);
+        assert_async_command!(station_profile_authorize_active, AppHandle, Authority, String);
+        assert_async_command!(station_profile_store_read, AppHandle, Authority);
+        assert_async_command!(
+            station_profile_store_write,
+            AppHandle,
+            Authority,
+            Pending,
+            String,
+            u64,
+            Option<String>
+        );
+        assert_async_command!(station_ensure_bundled_local_profile, AppHandle, Authority, Pending);
+        assert_async_command!(station_local_self_provision, AppHandle, Authority, Pending, String);
+    }
+
+    /// The async signature alone only moves the body to an async-runtime
+    /// worker, where a 10s lock wait would stall every async command sharing
+    /// it. The shared runner must hand the body to another (blocking-pool)
+    /// thread, and a panicking body must answer with an error, not hang the
+    /// renderer's awaited invoke.
+    #[test]
+    fn saved_station_command_runner_moves_the_body_off_the_awaiting_thread() {
+        let (awaiting, ran_on) = tauri::async_runtime::block_on(async {
+            let awaiting = std::thread::current().id();
+            let ran_on = run_saved_station_command(|| Ok::<_, String>(std::thread::current().id()))
+                .await
+                .expect("the body answers");
+            (awaiting, ran_on)
+        });
+        assert_ne!(ran_on, awaiting, "the body ran on the thread awaiting it");
+
+        let panicked = tauri::async_runtime::block_on(run_saved_station_command(
+            || -> Result<(), String> { panic!("saved Station body panicked") },
+        ))
+        .expect_err("a panicking body answers with an error");
+        assert!(
+            panicked.starts_with("saved Station command task failed"),
+            "unexpected error: {panicked}"
+        );
     }
 }
 
