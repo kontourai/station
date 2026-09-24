@@ -49,7 +49,7 @@ export function loadMuseServeCapture(
 }
 
 /** Requests the adapter itself sends; every other probe request is skipped. */
-export const DRIVEN_METHODS = new Set([
+const DRIVEN_METHODS = new Set([
   'initialize',
   'session/start',
   'turn/start',

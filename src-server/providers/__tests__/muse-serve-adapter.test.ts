@@ -801,6 +801,7 @@ describe('#2452 muse serve: exec stays the fallback', () => {
       },
     });
     await h.adapter.startSession({ provider: 'muse', threadId: THREAD });
+    await settle();
     expect(h.hosts).toEqual([]);
     expect(of(h.events, 'session.configured')[0].metadata).toMatchObject({
       museTransport: 'exec',

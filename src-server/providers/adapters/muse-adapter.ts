@@ -657,7 +657,7 @@ function createMuseProcess(args: string[], cwd?: string): MuseSpawnResult {
  * CONFIG (credential, settings, model choice) stays in `XDG_CONFIG_HOME` and
  * is untouched.
  */
-export function museServeDataHome(homeDir: string = resolveHomeDir()): string {
+function museServeDataHome(homeDir: string = resolveHomeDir()): string {
   return join(homeDir, 'engine-data', 'muse');
 }
 
@@ -1178,8 +1178,12 @@ export class MuseAdapter implements ProviderAdapterShape {
         ...transportMetadata,
       },
     });
-    if (!serve)
+    // Only an adapter configured for serve (the Station runtime) says what
+    // its exec sessions cannot report: that is the configuration the muse
+    // matrix cell's `declared` claim describes.
+    if (!serve && this.options.serve) {
       this.publishExecTransportFacts(input.threadId, serveUnavailable);
+    }
 
     providerOps.add(1, {
       operation: 'adapter-session-start',

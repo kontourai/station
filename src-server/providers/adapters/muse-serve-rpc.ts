@@ -52,10 +52,10 @@ export interface MuseServeSpawnResult {
  * past this is a host writing without newlines, and is dropped rather than
  * growing memory without bound.
  */
-export const MUSE_SERVE_LINE_MAX_CHARS = 4 * 1024 * 1024;
+const MUSE_SERVE_LINE_MAX_CHARS = 4 * 1024 * 1024;
 
 /** Bound on the stderr tail kept for a host-exit diagnosis. */
-export const MUSE_SERVE_STDERR_TAIL_MAX_CHARS = 400;
+const MUSE_SERVE_STDERR_TAIL_MAX_CHARS = 400;
 
 export class MuseServeRpcError extends Error {
   constructor(
@@ -70,7 +70,7 @@ export class MuseServeRpcError extends Error {
 }
 
 /** The host went away (or the connection was closed) before replying. */
-export class MuseServeClosedError extends Error {
+class MuseServeClosedError extends Error {
   constructor(readonly method: string) {
     super(`The Muse host closed before answering ${method}.`);
     this.name = 'MuseServeClosedError';

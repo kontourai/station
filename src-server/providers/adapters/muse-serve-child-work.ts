@@ -191,7 +191,7 @@ function parseChild(value: unknown): MuseServeWorkflowChild | undefined {
 }
 
 /** A child's `terminal` (turn vocabulary, wire-open), as child work. */
-export function mapMuseChildTerminal(
+function mapMuseChildTerminal(
   terminal: string,
 ): ChildWorkTerminalStatus {
   switch (terminal) {
@@ -218,7 +218,7 @@ function usageOf(child: MuseServeWorkflowChild): ChildWorkUsage | undefined {
 }
 
 /** The facts the reconciliation message states about the workflow. */
-export function parseMuseWorkflowReconciliation(message: unknown): {
+function parseMuseWorkflowReconciliation(message: unknown): {
   summary?: string;
   allToolsFailed: boolean;
 } {
@@ -378,7 +378,13 @@ export function observeMuseWorkflowItem(
       continue;
     }
     if (existing && existing.status !== 'running') continue;
-    const usage = usageOf(child);
+    // A revision restates only what it carries (`completed` has a duration,
+    // not the tokens `usage` reported), so usage accumulates.
+    const reported = usageOf(child);
+    const usage =
+      reported || existing?.usage
+        ? { ...existing?.usage, ...reported }
+        : undefined;
     const next: ChildWorkItem = {
       ...baseItem(context, workflow, child),
       ...(existing?.startedAt

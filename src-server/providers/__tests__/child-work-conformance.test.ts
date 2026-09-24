@@ -136,9 +136,11 @@ class FakeMuseProcess extends EventEmitter {
 }
 
 /**
- * The REAL muse 1.3 captures already committed for the muse adapter (a bash
- * tool turn and a background-workflow turn), fed through the actual adapter
- * with its process replaced by a stream double.
+ * The REAL muse 1.3 `muse exec` captures already committed for the muse
+ * adapter (a bash tool turn and a background-workflow turn), fed through the
+ * actual adapter with its process replaced by a stream double — on the
+ * production exec path: a runtime configured for serve whose host cannot be
+ * used (#2452).
  */
 async function replayMuseCaptures(): Promise<CanonicalRuntimeEvent[]> {
   const events: CanonicalRuntimeEvent[] = [];
@@ -156,6 +158,13 @@ async function replayMuseCaptures(): Promise<CanonicalRuntimeEvent[]> {
       },
       terminateProcess: async (processHandle: MuseProcessLike) => {
         processHandle.kill('SIGTERM');
+      },
+      // #2452: a runtime configured for serve whose host cannot be used —
+      // the production fallback — rather than an exec-only construction.
+      serve: {
+        spawnHost: () => {
+          throw new Error('muse serve is not available here');
+        },
       },
       logger: { warn: () => {}, info: () => {} },
     });

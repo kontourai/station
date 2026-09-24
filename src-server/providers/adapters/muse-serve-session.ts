@@ -74,7 +74,7 @@ type MuseServeLogger = Pick<Logger, 'warn' | 'info'>;
  * mapping against, so the session falls back to `muse exec` (and says so)
  * rather than guessing at approval and child-work shapes.
  */
-export const MUSE_SERVE_VERIFIED_SCHEMA_FINGERPRINTS: ReadonlySet<string> =
+const MUSE_SERVE_VERIFIED_SCHEMA_FINGERPRINTS: ReadonlySet<string> =
   new Set([
     'sha256:7469c9e352e67def4a59df7e439984d7194fa351e1c8b7abb34060fd977ced81',
   ]);
@@ -154,7 +154,7 @@ export function museServeApprovalPlan(
 }
 
 /** The host could not be used; the caller falls back to `muse exec`. */
-export class MuseServeUnavailableError extends Error {
+class MuseServeUnavailableError extends Error {
   constructor(readonly reason: string) {
     super(`muse serve is unavailable: ${reason}`);
     this.name = 'MuseServeUnavailableError';
@@ -304,7 +304,7 @@ function truncate(value: string, max: number): string {
   return value.length > max ? `${value.slice(0, max - 1)}…` : value;
 }
 
-export function formatMuseServeDuration(ms: number): string {
+function formatMuseServeDuration(ms: number): string {
   const unit = (value: number, name: string) =>
     `${value} ${name}${value === 1 ? '' : 's'}`;
   if (ms > 0 && ms % 3_600_000 === 0) return unit(ms / 3_600_000, 'hour');
