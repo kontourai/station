@@ -14,7 +14,6 @@ import {
   useInvalidateQuery,
   useQueryClient,
 } from '@kontourai/station-sdk';
-import type { ApprovalPickCarry } from '@kontourai/station-sdk/client';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { useCallback } from 'react';
 import { useActiveChatActions } from '../contexts/ActiveChatsContext';
@@ -354,20 +353,13 @@ export function useSendMessage(
         // recorded on receipt, before the turn. A replayed turn carries the
         // chat's CURRENT queued pick, never one captured when it was queued.
         const carriedApprovalPick = currentState?.queuedApprovalMode;
-        const approvalPick: ApprovalPickCarry = carriedApprovalPick
-          ? {
-              setApprovalMode: carriedApprovalPick,
-              // `null`: this chat has folded no decision yet.
-              setApprovalModeBasedOn:
-                currentState?.approvalPostureSequence ?? null,
-            }
-          : {};
         const receipt = await dispatchForeground({
           apiBase,
           sessionId,
           agentSlug,
           projectSlug: currentState?.projectSlug,
-          ...approvalPick,
+          setApprovalMode: carriedApprovalPick,
+          setApprovalModeBasedOn: currentState?.approvalPostureSequence ?? null,
           requestedModel: options?.executionSnapshot
             ? options.executionSnapshot.requestedModel
             : currentState?.requestedModel,

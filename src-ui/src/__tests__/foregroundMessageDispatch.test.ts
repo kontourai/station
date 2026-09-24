@@ -39,8 +39,6 @@ const { dispatchForeground } = await import('../lib/foregroundMessageDispatch');
 type DispatchInput = Parameters<typeof dispatchForeground>[0];
 
 function baseInput(overrides: Partial<DispatchInput> = {}): DispatchInput {
-  // Partial of the pick union loses its coupling; the tests below always pass
-  // a pick together with its basis.
   return {
     apiBase: 'http://localhost:3242',
     sessionId: 'session-1',
@@ -49,7 +47,7 @@ function baseInput(overrides: Partial<DispatchInput> = {}): DispatchInput {
     clientTurnId: 'turn-1',
     signal: new AbortController().signal,
     ...overrides,
-  } as DispatchInput;
+  };
 }
 
 function dispatchedTarget(): Record<string, unknown> {
@@ -268,6 +266,13 @@ describe('dispatchForeground target', () => {
         setApprovalMode: 'auto',
         setApprovalModeBasedOn: null,
       });
+    });
+
+    test('a pick without its basis is refused before anything is sent', async () => {
+      await expect(
+        dispatchForeground(baseInput({ setApprovalMode: 'ask' })),
+      ).rejects.toThrow(/decision it was based on/);
+      expect(sendExecutionMessage).not.toHaveBeenCalled();
     });
 
     test('absent, the send carries no posture at all', async () => {
