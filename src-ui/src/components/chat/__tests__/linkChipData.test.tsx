@@ -66,6 +66,21 @@ describe('the existence batcher', () => {
     ]);
   });
 
+  test('a session’s thread is part of the batch: it rides the request, never another’s', async () => {
+    await Promise.all([
+      workspaceFileExistenceBatcher.exists(scope, 'alpha', 'real/a.ts'),
+      workspaceFileExistenceBatcher.exists(
+        scope,
+        'alpha',
+        'real/a.ts',
+        'thread-7',
+      ),
+    ]);
+    expect(
+      listExistingProjectWorkspaceFiles.mock.calls.map((call) => call[4]),
+    ).toEqual([undefined, 'thread-7']);
+  });
+
   test('projects never share a request', async () => {
     await Promise.all([
       workspaceFileExistenceBatcher.exists(scope, 'alpha', 'real/a.ts'),

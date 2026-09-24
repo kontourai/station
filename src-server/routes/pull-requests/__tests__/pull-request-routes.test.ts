@@ -598,3 +598,59 @@ describe('pull request reads say why they cannot be served', () => {
     );
   });
 });
+
+describe('what each route asks of the checkout (#2474, #2475)', () => {
+  function recording() {
+    const requests: { requireBranchState: boolean; repository?: unknown }[] =
+      [];
+    const routes = createPullRequestRoutes(
+      () => [],
+      async (_c, request) => {
+        requests.push(request);
+        return { available: false, reason: 'recorded' };
+      },
+      { operatorIdentityForRequest: () => 'operator' },
+    );
+    return { routes, requests };
+  }
+
+  test('reads and actions on pull request #N resolve without branch state', async () => {
+    const { routes, requests } = recording();
+    await routes.request('/github/github.com/o/r?project=p');
+    await routes.request('/github/github.com/o/r/7?project=p');
+    await routes.request('/github/github.com/o/r/7/review?project=p');
+    await routes.request('/context?project=p');
+    const post = (path: string, body: unknown) =>
+      routes.request(`/github/github.com/o/r/7/${path}?project=p`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+    const sha = 'a'.repeat(40);
+    await post('comments', { body: 'hi' });
+    await post('approve', {});
+    await post('merge', { method: 'merge' });
+    await post('review', { action: 'approve', expectedHeadSha: sha });
+    expect(requests).toHaveLength(8);
+    expect(requests.map((r) => r.requireBranchState)).toEqual(
+      Array(8).fill(false),
+    );
+    expect(requests[2]?.repository).toEqual({
+      host: 'github.com',
+      owner: 'o',
+      name: 'r',
+    });
+  });
+
+  test('opening a pull request from the current branch still requires it', async () => {
+    const { routes, requests } = recording();
+    await routes.request('/github/github.com/o/r/open?project=p', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: 't' }),
+    });
+    expect(requests).toEqual([
+      expect.objectContaining({ requireBranchState: true }),
+    ]);
+  });
+});

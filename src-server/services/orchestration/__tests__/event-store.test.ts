@@ -7689,9 +7689,14 @@ describe('EventStore', () => {
       expect(attachment?.blobRef).toMatch(/^sha256-[0-9a-f]{64}$/);
 
       store.appendEvent(projected);
-      expect(
-        persistedRow('thread-live-large').attachments[0].dataUrl,
-      ).toBeUndefined();
+      const [persisted] = persistedRow('thread-live-large').attachments;
+      expect(persisted.dataUrl).toBeUndefined();
+      // #2483: the live path appends the reference-only form, and the
+      // reference this store wrote while projecting it stays bound.
+      expect(persisted.blobRef).toBe(attachment?.blobRef);
+      expect(store.listAttachmentThreads(attachment!.blobRef!)).toEqual([
+        'thread-live-large',
+      ]);
     });
 
     test('refuses attachment count, per-file, and combined-byte overages before blob writes', () => {
