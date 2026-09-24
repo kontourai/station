@@ -322,6 +322,27 @@ describe('Claude content-delta itemId (station#3457)', () => {
     ]);
   });
 
+  test("a subagent's messages add no paragraph breaks to the reply", () => {
+    const publish = vi.fn();
+    const record = makeRecord('turn-1');
+    const emit = (message: never) =>
+      mapClaudeSdkMessage({ provider: 'claude', record, publish, message });
+    const fromSubagent = (message: never) =>
+      ({
+        ...(message as object),
+        parent_tool_use_id: 'task-tool-1',
+      }) as never;
+
+    emit(messageStart('msg_a', 'u1'));
+    emit(textDelta(0, 'Delegating.', 'u2'));
+    emit(fromSubagent(messageStart('sub_1', 'u3')));
+    emit(fromSubagent(textDelta(0, 'sub text', 'u4')));
+
+    expect(
+      publish.mock.calls.map(([event]) => (event as DeltaEvent).delta),
+    ).toEqual(['Delegating.', 'sub text']);
+  });
+
   test('deltas with no preceding message_start still share one id per turn, and never across turns', () => {
     const publish = vi.fn();
     const record = makeRecord('turn-1');

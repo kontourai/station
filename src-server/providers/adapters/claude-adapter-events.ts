@@ -743,12 +743,17 @@ export function mapClaudeSdkMessage({
         turnId: record.activeTurnId,
         itemId,
         method: 'content.text-delta',
-        delta: withParagraphBreak(
-          record.textBoundary,
-          record.activeTurnId ?? 'no-turn',
-          record.contentMessageKey ?? 'no-message',
-          streamEvent.delta.text,
-        ),
+        // Only the top-level reply's messages: a subagent's `message_start`
+        // also moves `contentMessageKey`, and is no paragraph of this reply.
+        delta:
+          message.parent_tool_use_id == null
+            ? withParagraphBreak(
+                record.textBoundary,
+                record.activeTurnId ?? 'no-turn',
+                record.contentMessageKey ?? 'no-message',
+                streamEvent.delta.text,
+              )
+            : streamEvent.delta.text,
       });
     }
     if (
