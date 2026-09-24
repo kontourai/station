@@ -148,15 +148,27 @@ export interface MuseActiveTurn {
    *
    * - `totalTimeoutHandle`: armed ONLY when the server declared a turn budget
    *   (`turnTimeoutMs`); absolute from turn start, never rescheduled.
-   * - `idleTimeoutHandle`: full silence window with no verified protocol
-   *   activity AND no tool in flight; rescheduled by `noteVerifiedActivity`,
-   *   and not armed at all while a tool is in flight (an open call not yet in
-   *   `awaitingResultToolCalls`).
+   * - `idleTimeoutHandle`: while the turn is live, armed ONLY when the
+   *   server declared an idle bound (`turnIdleTimeoutMs`): full silence with
+   *   no verified protocol activity AND no tool in flight; rescheduled by
+   *   `noteVerifiedActivity`, and not armed at all while a tool is in flight
+   *   (an open call not yet in `awaitingResultToolCalls`). Once the turn has
+   *   settled it is the lingering-child reap (`lingeringChildReapMs`).
    */
   totalTimeoutHandle?: ReturnType<typeof setTimeout>;
   idleTimeoutHandle?: ReturnType<typeof setTimeout>;
-  /** Resolved idle window for this turn (server-owned config). */
-  idleLimitMs: number;
+  /**
+   * Declared idle bound for this turn (server-owned config), or `undefined`
+   * when none was declared — the default (#2269): a silent live turn is
+   * surfaced, never ended by Station.
+   */
+  idleLimitMs: number | undefined;
+  /**
+   * How long the child may keep running after this turn settled before it
+   * is reaped (#2328/#2300): the declared idle window, else
+   * `MUSE_LINGERING_CHILD_REAP_MS`.
+   */
+  lingeringChildReapMs: number;
   /**
    * Declared absolute budget for this turn (server-owned config), or
    * `undefined` when none was declared — the default: no total timer.

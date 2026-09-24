@@ -148,6 +148,11 @@ export type OrchestrationCommandInput =
   | {
       type: 'stopSession';
       threadId: string;
+    }
+  | {
+      /** #2312: delete a Draft server-side, for every device. */
+      type: 'discardDraft';
+      threadId: string;
     };
 
 export interface OrchestrationCommandReceipt {

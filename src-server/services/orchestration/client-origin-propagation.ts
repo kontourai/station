@@ -1,6 +1,9 @@
 import type { ClientOrigin } from '@kontourai/station-contracts/client-origin';
 import type { PrincipalRef } from '@kontourai/station-contracts/principal';
-import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import {
+  type CanonicalRuntimeEvent,
+  isProviderTriggeredTurn,
+} from '@kontourai/station-contracts/runtime-events';
 
 /** One propagation rule for durable command receipts and the turn event they cause. */
 export function withClientOrigin<T extends { clientOrigin?: ClientOrigin }>(
@@ -109,6 +112,10 @@ export class ClientOriginTurnPropagation {
 
   apply(event: CanonicalRuntimeEvent): CanonicalRuntimeEvent | undefined {
     if (event.method !== 'turn.started') return event;
+    // #2324: a turn the engine opened on its own is no send's turn. Holding
+    // it for an in-flight reservation would attribute that send's origin to
+    // it on settle — or drop it on retire, leaving its deltas with no start.
+    if (isProviderTriggeredTurn(event)) return event;
     if (event.clientOrigin !== undefined && event.principal !== undefined) {
       return event;
     }

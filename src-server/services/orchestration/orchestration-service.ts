@@ -57,6 +57,7 @@ import {
   MODEL_LAUNCH_REQUESTED_OVERRIDE_METADATA_KEY,
   MUSE_TURN_SLOT_RELEASING_CODE,
   PORTABLE_EXECUTION_CONSENT_METADATA_KEY,
+  PROVIDER_TURN_IN_PROGRESS_CODE,
   SESSION_AGENT_DISPLAY_NAME_MAX_LENGTH,
   SESSION_AGENT_DISPLAY_NAME_METADATA_KEY,
   SESSION_AGENT_ICON_METADATA_KEY,
@@ -74,7 +75,10 @@ import type {
   CanonicalRuntimeEvent,
   FlowRunFreshness,
 } from '@kontourai/station-contracts/runtime-events';
-import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
+import {
+  isProviderTriggeredTurn,
+  SERVER_EVENTS,
+} from '@kontourai/station-contracts/runtime-events';
 import type { SessionLifecycleState } from '@kontourai/station-contracts/session-lifecycle';
 import {
   foldedSessionLifecycleState,
@@ -150,6 +154,7 @@ import {
   orchestrationSteerDispatches,
   orchestrationStoreContentionObserved,
   orchestrationTurnDedup,
+  providerTurnBoundaryRecords,
   sessionActivityEvents,
   sessionBackgroundTasks,
   sessionCwdResolution,
@@ -495,22 +500,36 @@ export class OrchestrationCommandDispatchError extends Error {
       this.retryable =
         code === 'session_start_in_flight' ||
         code === 'resource_engine_start_capacity' ||
-        code === MUSE_TURN_SLOT_RELEASING_CODE;
+        RETRYABLE_ADAPTER_REFUSAL_CODES.has(code);
     }
   }
 }
 
 /**
- * #2300: the Muse adapter's retryable refusal for a send that arrived while
- * the previous turn's `muse exec` was still exiting. Matched on the
+ * Adapter refusals a caller should retry rather than drop: the same send
+ * succeeds once the condition passes.
+ * - #2300: a Muse send that arrived while the previous turn's `muse exec` was
+ *   still exiting.
+ * - #2324: a send that arrived while the engine was running a turn it opened
+ *   on its own; it succeeds once that turn closes.
+ */
+const RETRYABLE_ADAPTER_REFUSAL_CODES: ReadonlySet<string> = new Set([
+  MUSE_TURN_SLOT_RELEASING_CODE,
+  PROVIDER_TURN_IN_PROGRESS_CODE,
+]);
+
+/**
+ * The code of a retryable adapter refusal (see
+ * {@link RETRYABLE_ADAPTER_REFUSAL_CODES}), or `undefined`. Matched on the
  * contract code (not the adapter's class) so this service does not import an
  * adapter module.
  */
-function isMuseTurnSlotReleasingRefusal(error: unknown): boolean {
-  return (
-    error instanceof Error &&
-    (error as { code?: unknown }).code === MUSE_TURN_SLOT_RELEASING_CODE
-  );
+function retryableAdapterRefusalCode(error: unknown): string | undefined {
+  if (!(error instanceof Error)) return undefined;
+  const code = (error as { code?: unknown }).code;
+  return typeof code === 'string' && RETRYABLE_ADAPTER_REFUSAL_CODES.has(code)
+    ? code
+    : undefined;
 }
 
 /** A repeated start may attach only when it cannot change session behavior. */
@@ -538,6 +557,80 @@ class SessionStopWhileStartingError extends Error {
       `Session is still starting; stop did not settle within ${timeoutMs}ms — retry: ${threadId}`,
     );
     this.name = 'SessionStopWhileStartingError';
+  }
+}
+
+/**
+ * #2312: `discardDraft` refused because the session, or another Session of
+ * its conversation, is not a Draft as the server derives it at discard time
+ * (a turn — including one in flight — output or a send happened, it carries
+ * history from elsewhere, or it is a fork's source), or because the
+ * conversation gained a Session while the discard ran. A refusal to act:
+ * nothing is deleted. An engine already stopped before a late refusal stays
+ * stopped (resumable), and the Draft stays listed.
+ */
+class DraftDiscardRefusedError extends Error {
+  readonly code = 'not_a_draft';
+
+  constructor(threadId: string) {
+    super(
+      `Only a Draft can be discarded, and this session is not one: ${threadId}`,
+    );
+    this.name = 'DraftDiscardRefusedError';
+  }
+}
+
+/** #2312 verifier M2: cap on waiting for a discarded engine's exit. */
+const DRAFT_DISCARD_EXIT_WAIT_MS = 2_000;
+/** #2312: most discarded ids the late-event gate remembers at once. */
+const DISCARDED_DRAFT_GATE_MAX = 256;
+
+/**
+ * #2312 verifier M3: a Session in the Draft's conversation is one the caller
+ * may not act on. Answered exactly as the dispatch gate answers an
+ * unreadable session — "not found" for the id the caller named — so the
+ * refusal says nothing about the other Session. Recorded as an
+ * authorization-phase refusal.
+ */
+class DraftDiscardNotAuthorizedError extends Error {
+  constructor(threadId: string) {
+    super(`Session not found: ${threadId}`);
+    this.name = 'DraftDiscardNotAuthorizedError';
+  }
+}
+
+/**
+ * #2312 delta HIGH: a Session in the Draft's conversation has a start
+ * underway (a send from another device began one). Refused rather than
+ * deleted: the start would otherwise resolve into a session the discard had
+ * already removed. Retryable once the start settles.
+ */
+class DraftDiscardBusyError extends Error {
+  readonly code = 'draft_busy';
+
+  constructor() {
+    super(
+      'This draft is starting on another device or tab, so it was not discarded. Try again in a moment.',
+    );
+    this.name = 'DraftDiscardBusyError';
+  }
+}
+
+/**
+ * #2312 verifier H1: a send that was already on its way when a discard
+ * deleted its Draft. It is refused before the provider is touched — a
+ * definitive refusal, never an indeterminate turn record. Recorded as an
+ * authorization-phase refusal: it is a fact about a session that no longer
+ * exists, not evidence about a later session started under the same id.
+ */
+class DraftDiscardedError extends Error {
+  readonly code = 'draft_discarded';
+
+  constructor() {
+    super(
+      'This draft was discarded, so it cannot take a message. Start a new chat to continue.',
+    );
+    this.name = 'DraftDiscardedError';
   }
 }
 
@@ -760,6 +853,11 @@ interface OrchestrationServiceOptions {
    * keeping an unresponsive local process from lingering indefinitely.
    */
   cooperativeStopBudgetMs?: number;
+  /**
+   * #2312: how long a Draft discard waits for the stopped engine's
+   * `session.exited` before deleting. Default {@link DRAFT_DISCARD_EXIT_WAIT_MS}.
+   */
+  draftDiscardExitWaitMs?: number;
   /** Bounded owner-cache capacity; configurable for small deterministic tests. */
   sessionOwnerCacheMaxEntries?: number;
   logger: {
@@ -1514,6 +1612,26 @@ export class OrchestrationService {
    */
   private readonly sessionConnectionIds = new Map<string, string>();
   private readonly quarantinedThreads = new Set<string>();
+  /**
+   * #2312: threads deleted by `discardDraft`. The stopped engine may still
+   * deliver a late event (`session.exited` above all), and projecting it
+   * would re-create the row the discard just deleted — the Draft would come
+   * back as a closed session on every device. An entry lives only until the
+   * next engine start for that id (`runEngineSessionStart`): that start is a
+   * new session whose events must flow.
+   */
+  private readonly discardedDraftThreads = new Set<string>();
+  /**
+   * #2312 delta HIGH: threads with an engine start underway, counted from
+   * the start command's entry (so the whole of it: admission, lineage,
+   * adapter start) until it settles. A discard refuses while any member of
+   * its conversation is here.
+   */
+  private readonly startsUnderway = new Map<string, number>();
+  /** #2312: see `rememberDiscardedConversation`. */
+  private readonly discardedConversations = new Set<string>();
+  /** #2312 verifier M2: see `awaitDiscardedEngineExit`. */
+  private readonly discardedEngineExitWaiters = new Map<string, () => void>();
   /**
    * Internal-stop push suppression (epic archive#4024, archive#4144): the C5
    * cluster's Set and its archive#3525 rationale moved verbatim to
@@ -2726,10 +2844,8 @@ export class OrchestrationService {
       let session: ProviderSession;
       try {
         session = await withTenantExecutionContext(tenantExecutionContext, () =>
-          runSessionStartWithBoundary(
-            this.sessionStartBoundaries,
-            startInput.threadId,
-            () => adapter.startSession(startInput),
+          this.runEngineSessionStart(startInput.threadId, () =>
+            adapter.startSession(startInput),
           ),
         );
       } finally {
@@ -4989,8 +5105,7 @@ export class OrchestrationService {
           try {
             const invoke = () =>
               withTenantExecutionContext(context.tenantExecutionContext, () =>
-                runSessionStartWithBoundary(
-                  this.sessionStartBoundaries,
+                this.runEngineSessionStart(
                   input.threadId,
                   () => adapter.startSession(input),
                   internal?.sessionStartAdmission,
@@ -5191,11 +5306,36 @@ export class OrchestrationService {
     context: SessionCommandContext,
     internal: SessionCommandInternalOptions,
   ): Promise<SessionCommandOutcome> {
-    return this.sessionCommandImplementation.executeInternal(
-      command,
-      context,
-      internal,
+    const refused = this.refusedDiscardedSuccessorStart(
+      command.input,
+      context.clientOrigin,
     );
+    if (refused) return refused;
+    return this.trackStartUnderway(command.input.threadId, () =>
+      this.sessionCommandImplementation.executeInternal(
+        command,
+        context,
+        internal,
+      ),
+    );
+  }
+
+  /** #2312: see {@link startsUnderway}. */
+  private async trackStartUnderway<T>(
+    threadId: string,
+    run: () => Promise<T>,
+  ): Promise<T> {
+    this.startsUnderway.set(
+      threadId,
+      (this.startsUnderway.get(threadId) ?? 0) + 1,
+    );
+    try {
+      return await run();
+    } finally {
+      const remaining = (this.startsUnderway.get(threadId) ?? 1) - 1;
+      if (remaining > 0) this.startsUnderway.set(threadId, remaining);
+      else this.startsUnderway.delete(threadId);
+    }
   }
 
   async dispatch(
@@ -5289,16 +5429,23 @@ export class OrchestrationService {
     >
   > {
     if (command.type === 'startSession') {
-      const outcome = internal
-        ? await this.sessionCommandImplementation.executeInternal(
-            { type: 'start-session', input: command.input },
-            context ?? {},
-            internal,
-          )
-        : await this.sessionCommands.execute(
-            { type: 'start-session', input: command.input },
-            context ?? {},
-          );
+      const outcome =
+        this.refusedDiscardedSuccessorStart(
+          command.input,
+          context?.clientOrigin,
+        ) ??
+        (await this.trackStartUnderway(command.input.threadId, () =>
+          internal
+            ? this.sessionCommandImplementation.executeInternal(
+                { type: 'start-session', input: command.input },
+                context ?? {},
+                internal,
+              )
+            : this.sessionCommands.execute(
+                { type: 'start-session', input: command.input },
+                context ?? {},
+              ),
+        ));
       if (outcome.status === 'accepted') {
         return { receipt: outcome.receipt, result: outcome.session };
       }
@@ -5675,6 +5822,12 @@ export class OrchestrationService {
                     turnInput.threadId,
                     INTERNAL_SESSION_READ_SCOPE,
                   );
+                  // #2312 verifier H1: this send resolved its adapter before a
+                  // discard took the lifecycle lock, and queued behind it.
+                  // The Draft is gone and its engine stopped: refuse before
+                  // any invocation is recorded.
+                  if (this.discardedDraftThreads.has(turnInput.threadId))
+                    throw new DraftDiscardedError();
                   if (
                     current &&
                     foldedSessionLifecycleState(
@@ -6020,12 +6173,16 @@ export class OrchestrationService {
                       }
                       if (error instanceof SendTurnRefusedError) {
                         // The adapter refused the turn BEFORE its first
-                        // provider-visible effect — the type is only thrown
-                        // by pre-effect input validation (unsupported
-                        // attachments, unadvertised capabilities), so no
-                        // engine was invoked and no `turn.started` was
-                        // published even though `providerInvoked` is already
-                        // set (it flips before `adapter.sendTurn` runs).
+                        // provider-visible effect, so no engine was invoked
+                        // and no `turn.started` was published even though
+                        // `providerInvoked` is already set (it flips before
+                        // `adapter.sendTurn` runs). Sources: pre-effect input
+                        // validation (unsupported attachments, unadvertised
+                        // capabilities); a send racing the session's running
+                        // turn, which every adapter with such a guard refuses
+                        // with this type (#2415); and a send while the engine
+                        // runs a turn it opened itself, whose retryable code
+                        // the dispatch error forwards (#2324).
                         // Same clean-refusal shape as above: retire this
                         // dispatch's boundary row and release the
                         // client-turn claim so the thread stays usable, and
@@ -6692,70 +6849,15 @@ export class OrchestrationService {
           return { receipt, result: undefined };
         }
         case 'stopSession': {
-          // archive#3493 residual 1: a Stop that lands mid-materialisation
-          // must tear down the engine that is starting, not report success
-          // around it. Await the in-flight start (bounded by the
-          // adapter-stop deadline below — never unbounded), then take the
-          // live path against the bound adapter. A
-          // start that FAILS leaves nothing to stop — its failure evidence
-          // is already recorded on the thread (archive#1090) — so fall
-          // through to the dormant branch against the persisted row, whose
-          // `error` status the dormant write now preserves.
-          const materializing = this.materializingSessions.get(
-            command.threadId,
-          );
-          if (materializing) {
-            // Bounded (fix-round HIGH): the wrapped promise settles on start
-            // success AND failure — a failed start leaves nothing to stop,
-            // so both fall through to the dormant check below — which makes
-            // a rejection from the race unambiguously the deadline. Reuses
-            // the adapter-stop deadline: a Stop that cannot settle within
-            // the time an adapter is allowed to take stopping refuses,
-            // typed, instead of hanging on a wedged `startSession`.
-            const timeoutMs = this.adapterRetirement.adapterStopTimeoutMs();
-            try {
-              await this.adapterRetirement.runOperationWithinDeadline(
-                materializing.then(
-                  () => undefined,
-                  () => undefined,
-                ),
-                `stopSession await of in-flight materialisation for ${command.threadId}`,
-                Date.now() + timeoutMs,
-              );
-            } catch {
-              throw new SessionStopWhileStartingError(
-                command.threadId,
-                timeoutMs,
-              );
-            }
-          }
-          // archive#3476: stopping a session restored at boot must not first
-          // start it. There is no process to tear down, so the whole of
-          // `stopUserSessionImmediately`'s observable effect is its two local
-          // steps — persist the row as resumable, forget the live binding —
-          // which is what this does.
-          if (this.isDormantSessionThread(command.threadId)) {
-            this.cooperativeStop.stopDormantSessionImmediately(
-              command.threadId,
-            );
-            this.persistReceipt(receipt);
-            return { receipt, result: undefined };
-          }
-          const adapter = await resolveOrchestrationAdapterForThread({
-            threadId: command.threadId,
-            threadProviders: this.threadProviders,
-            requireAdapter: (provider) => this.requireAdapter(provider),
-            adapters: this.options.adapterRegistry.list(),
-          });
-          this.assertAdapterCurrent(adapter);
-          // `stopSession` owns irreversible internal cleanup (smokes,
-          // quarantine, and explicit ownership reclamation). User Stop task
-          // dispatches `interruptTurn`, which alone gets the bounded,
-          // resumable cooperative protocol.
-          await this.cooperativeStop.stopUserSessionImmediately(
-            adapter,
-            command.threadId,
-          );
+          await this.stopSessionNow(command.threadId);
+          this.persistReceipt(receipt);
+          return { receipt, result: undefined };
+        }
+        case 'discardDraft': {
+          await this.discardDraftSession(command.threadId, context ?? {});
+          // Persisted AFTER the delete on purpose: `deleteThread` removes
+          // every receipt of the thread, and this one is the record of who
+          // discarded it.
           this.persistReceipt(receipt);
           return { receipt, result: undefined };
         }
@@ -6777,9 +6879,15 @@ export class OrchestrationService {
           // archive#3493 fix round: a Stop refused because the session is
           // still starting is a refusal to act, not a failed action.
           error instanceof SessionStopWhileStartingError ||
-          // #2300: a Muse send refused while the previous turn's process
-          // was still exiting — a refusal to act, retryable.
-          isMuseTurnSlotReleasingRefusal(error) ||
+          // #2312: not a Draft (or not its conversation's only Session).
+          error instanceof DraftDiscardRefusedError ||
+          error instanceof DraftDiscardNotAuthorizedError ||
+          error instanceof DraftDiscardedError ||
+          error instanceof DraftDiscardBusyError ||
+          // #2300/#2324: a send refused until a condition passes (a Muse
+          // process still exiting, an engine's own turn still running) — a
+          // refusal to act, retryable.
+          retryableAdapterRefusalCode(error) !== undefined ||
           error instanceof RequestEventGuardError ||
           // #484 continuation: a portable refusal is a refusal to act, not
           // a failed action — and its closed code must survive the wrapper
@@ -6792,7 +6900,16 @@ export class OrchestrationService {
       // Every refusal that reaches this catch passed the authorization gate
       // above: it is evidence about the session, not about the caller
       // (#2310 review F3).
-      this.persistReceipt(failedReceipt, 'execution');
+      this.persistReceipt(
+        failedReceipt,
+        // #2312: both are refusals about the caller's standing or a session
+        // that no longer exists — not evidence about the session under this
+        // id, which a Draft/first-send fold must not count.
+        error instanceof DraftDiscardNotAuthorizedError ||
+          error instanceof DraftDiscardedError
+          ? 'authorization'
+          : 'execution',
+      );
       throw new OrchestrationCommandDispatchError(
         errorMessage(error),
         failedReceipt,
@@ -6807,19 +6924,375 @@ export class OrchestrationService {
         // #484 continuation: a portable refusal's closed code is already a
         // public contract (fixed copy per code, 403-mapped at every route),
         // so it survives here exactly like the ended-session code.
-        // #2300: the Muse slot-releasing refusal's code is forwarded so the
+        // #2300/#2324: a retryable adapter refusal's code is forwarded so the
         // client's queue keeps the send for a retry instead of dropping it
         // as a definitive rejection.
         error instanceof SessionEndedError ||
           error instanceof SessionStopWhileStartingError ||
+          error instanceof DraftDiscardRefusedError ||
+          error instanceof DraftDiscardedError ||
+          error instanceof DraftDiscardBusyError ||
           error instanceof RequestEventGuardError ||
           error instanceof ReceiverExecutionRefusal
           ? error.code
-          : isMuseTurnSlotReleasingRefusal(error)
-            ? MUSE_TURN_SLOT_RELEASING_CODE
-            : undefined,
+          : retryableAdapterRefusalCode(error),
       );
     }
+  }
+
+  /**
+   * #2312: delete a Draft for every device. The Draft fact is lineage-wide
+   * (no activity anywhere in the conversation), so the discard removes the
+   * whole conversation: every member is activity-free by the same fact, and
+   * deleting only one would leave the rest naming a Session that is gone.
+   *
+   * Every member's lifecycle lock is held (in sorted order, so two discards
+   * cannot deadlock). That waits out a turn start already inside the lock
+   * and makes a later one queue — it does NOT stop a send that resolved its
+   * adapter before the lock: that send proceeds once the lock is released,
+   * and is refused there (`DraftDiscardedError`, verifier H1). The fact is
+   * re-derived from the store, never taken from the caller: a client's
+   * cached "Draft" may predate a send made from another device.
+   *
+   * A successor RESERVED but never started (lineage row only, no session)
+   * has no history and no owner; it goes with the conversation (verifier
+   * L4) and is exempt from the per-Session checks.
+   */
+  private async discardDraftSession(
+    threadId: string,
+    caller: {
+      userId?: string;
+      tenantExecutionContext?: TenantExecutionContext;
+    },
+  ): Promise<void> {
+    const eventStore = this.options.eventStore;
+    if (!eventStore) throw new DraftDiscardRefusedError(threadId);
+    const members = eventStore.conversationSessionIds(threadId);
+    const conversationId =
+      eventStore.conversationForSession(threadId)?.conversationId ?? threadId;
+    // Delta HIGH: a start underway is not "never started" — a fresh start
+    // has no row, read model or events until it resolves. Such a
+    // conversation is refused outright (`draft_busy`), never exempted.
+    const startUnderway = (member: string) =>
+      this.startsUnderway.has(member) ||
+      // Recovery marks `materializingSessions` before its preparation; its
+      // engine start is counted only once it reaches `runEngineSessionStart`.
+      this.materializingSessions.has(member);
+    const assertNoStartUnderway = () => {
+      if (members.some(startUnderway)) throw new DraftDiscardBusyError();
+    };
+    const neverStarted = (member: string) =>
+      member !== threadId &&
+      !this.sessionReadModel.has(member) &&
+      !eventStore.readSessionByThread(member) &&
+      (eventStore.countEventsByThreads([member]).get(member) ?? 0) === 0;
+    const started = () => members.filter((member) => !neverStarted(member));
+    // `dispatchWithReceipt` authorized `threadId` only; every other started
+    // member is deleted too, so each must pass the same gate. Re-run under
+    // the locks and right before the delete: a member that finished starting
+    // meanwhile (another owner's, say) joins the checked set.
+    const assertCallerMayDeleteStarted = () => {
+      if (
+        caller.userId !== undefined &&
+        !started().every((member) =>
+          this.sessionAuthz.canReadSessionForCommand(
+            member,
+            caller.userId,
+            caller.tenantExecutionContext,
+          ),
+        )
+      )
+        throw new DraftDiscardNotAuthorizedError(threadId);
+    };
+    assertNoStartUnderway();
+    assertCallerMayDeleteStarted();
+    const sameMembers = () =>
+      eventStore.conversationSessionIds(threadId).join('\n') ===
+      members.join('\n');
+    const discard = async () => {
+      if (!sameMembers()) throw new DraftDiscardRefusedError(threadId);
+      assertNoStartUnderway();
+      assertCallerMayDeleteStarted();
+      const checked = started().join('\n');
+      const live: string[] = [];
+      for (const member of started()) {
+        const detail = await this.readSession(
+          member,
+          INTERNAL_SESSION_READ_SCOPE,
+        );
+        if (!detail) throw new Error(`Session not found: ${member}`);
+        // A fork source is excluded outright: the fork's
+        // `conversation.forked` fact lives on the SOURCE thread, and deleting
+        // it would erase the target's evidence of copied history. (Forking
+        // needs a message, so a Draft cannot be one today; this keeps it so.)
+        if (
+          detail.session.draft !== true ||
+          eventStore.firstEventByMethod(member, 'conversation.forked')
+        )
+          throw new DraftDiscardRefusedError(threadId);
+        if (
+          this.sessionAdapters.has(member) ||
+          this.materializingSessions.has(member)
+        )
+          live.push(member);
+      }
+      // From here the members' events are dropped (see the gate), and a send
+      // queued behind the locks is refused (`DraftDiscardedError`).
+      for (const member of members) this.markDraftDiscarded(member);
+      try {
+        // Only a live or starting engine has anything to tear down. A
+        // dormant or closed Draft is deleted as it stands: the stop path's
+        // resumable write would only be deleted again.
+        for (const member of live) {
+          const exited = this.awaitDiscardedEngineExit(member);
+          try {
+            await this.stopSessionNow(member);
+            // Verifier M2: the stopped engine's own `session.exited` may
+            // still be in flight. Consumed here (dropped by the gate) it
+            // cannot land after a restart on this id and close the NEW
+            // session. Bounded: an engine that never reports its exit costs
+            // the wait, no more.
+            await exited.settled;
+          } finally {
+            exited.cancel();
+          }
+        }
+        // Review MEDIUM: a successor reserved across the awaits above (the
+        // lifecycle locks do not cover lineage reservation) would survive
+        // the delete, naming a deleted predecessor. Re-checked with no await
+        // between this and the deletes below, so nothing can interleave. A
+        // refusal here leaves any engine stopped above stopped — resumable,
+        // and still listed as the Draft it is.
+        if (!sameMembers()) throw new DraftDiscardRefusedError(threadId);
+        // Delta HIGH: nothing may have begun or finished starting across the
+        // awaits; if a member did, the checked set is stale.
+        assertNoStartUnderway();
+        if (started().join('\n') !== checked) throw new DraftDiscardBusyError();
+      } catch (error) {
+        for (const member of members) this.discardedDraftThreads.delete(member);
+        throw error;
+      }
+      for (const member of members) {
+        eventStore.deleteThread(member);
+        this.forgetThreadState(member, {
+          policyThreads: true,
+          flowBoundThreads: true,
+          ownerCache: true,
+          turnProgress: true,
+        });
+      }
+      eventStore.deleteConversationLineageRows(members);
+      this.rememberDiscardedConversation(conversationId);
+    };
+    // Review LOW: a turn in flight is a turn, which ends a Draft by
+    // definition — a definitive refusal (`not_a_draft`, a rejected receipt),
+    // not the lifecycle lock's generic "has an active turn" failure.
+    const turnInFlight = () =>
+      members.some((member) =>
+        this.sessionExecutionCoordinator.hasActiveTurn(member),
+      );
+    if (turnInFlight()) throw new DraftDiscardRefusedError(threadId);
+    const locked = members.reduceRight<() => Promise<void>>(
+      (inner, member) => () =>
+        this.sessionExecutionCoordinator.runLifecycleTransition(member, inner),
+      discard,
+    );
+    try {
+      await locked();
+    } catch (error) {
+      const refusal =
+        error instanceof DraftDiscardRefusedError ||
+        error instanceof DraftDiscardNotAuthorizedError ||
+        error instanceof DraftDiscardBusyError;
+      // A lock refused because a member is starting is busy, not "not a
+      // Draft": the start's boundary claim reads as possible effect.
+      if (!refusal && members.some(startUnderway))
+        throw new DraftDiscardBusyError();
+      if (!refusal && turnInFlight())
+        throw new DraftDiscardRefusedError(threadId);
+      throw error;
+    }
+  }
+
+  /**
+   * Marks a thread discarded for the late-event gate. Bounded (insertion
+   * order, oldest evicted): an entry only matters until the stopped engine's
+   * stragglers have arrived, and a restart clears it anyway.
+   */
+  private markDraftDiscarded(threadId: string): void {
+    this.discardedDraftThreads.delete(threadId);
+    this.discardedDraftThreads.add(threadId);
+    while (this.discardedDraftThreads.size > DISCARDED_DRAFT_GATE_MAX) {
+      const oldest = this.discardedDraftThreads.values().next().value;
+      if (oldest === undefined) break;
+      this.discardedDraftThreads.delete(oldest);
+    }
+  }
+
+  /**
+   * #2312 final delta: a continuation reserves its successor synchronously
+   * but starts it only after further awaits. A discard landing in that gap
+   * deletes the conversation (the reservation included), and the start would
+   * then succeed as an orphan session nobody's chat points at. That start is
+   * refused instead, with the discard's own words.
+   */
+  private rememberDiscardedConversation(conversationId: string): void {
+    this.discardedConversations.delete(conversationId);
+    this.discardedConversations.add(conversationId);
+    while (this.discardedConversations.size > DISCARDED_DRAFT_GATE_MAX) {
+      const oldest = this.discardedConversations.values().next().value;
+      if (oldest === undefined) break;
+      this.discardedConversations.delete(oldest);
+    }
+  }
+
+  /**
+   * A start for a SUCCESSOR (its conversation is not itself) of a discarded
+   * conversation, whose reservation the discard removed. A successor
+   * reserved again later has its lineage row, and starts normally; a start
+   * on the conversation's own id is a new chat on that id, and starts too.
+   */
+  private refusedDiscardedSuccessorStart(
+    input: SessionCommand['input'],
+    clientOrigin?: ClientOrigin,
+  ): SessionCommandOutcome | undefined {
+    const conversationId = input.metadata?.conversationId;
+    if (
+      typeof conversationId !== 'string' ||
+      conversationId === input.threadId ||
+      !this.discardedConversations.has(conversationId) ||
+      this.options.eventStore?.conversationForSession(input.threadId)
+    )
+      return undefined;
+    const receipt = withClientOrigin<OrchestrationCommandReceipt>(
+      {
+        commandId: crypto.randomUUID(),
+        threadId: input.threadId,
+        commandType: 'startSession',
+        status: 'rejected',
+        createdAt: new Date().toISOString(),
+      },
+      clientOrigin,
+    );
+    this.persistReceipt(receipt, 'authorization');
+    const refused = new DraftDiscardedError();
+    return {
+      status: 'rejected',
+      receipt,
+      receiptStatus: 'persisted',
+      message: refused.message,
+      code: refused.code,
+    };
+  }
+
+  /** Resolves on the discarded engine's `session.exited`, or at the cap. */
+  private awaitDiscardedEngineExit(threadId: string): {
+    settled: Promise<void>;
+    /** Idempotent: clears the timer and the waiter (timeout, throw, exit). */
+    cancel: () => void;
+  } {
+    let resolve!: () => void;
+    const settled = new Promise<void>((settle) => {
+      resolve = settle;
+    });
+    const cancel = () => {
+      clearTimeout(timer);
+      if (this.discardedEngineExitWaiters.get(threadId) === cancelAndSettle)
+        this.discardedEngineExitWaiters.delete(threadId);
+    };
+    const cancelAndSettle = () => {
+      cancel();
+      resolve();
+    };
+    const timer = setTimeout(
+      cancelAndSettle,
+      this.options.draftDiscardExitWaitMs ?? DRAFT_DISCARD_EXIT_WAIT_MS,
+    );
+    this.discardedEngineExitWaiters.set(threadId, cancelAndSettle);
+    return { settled, cancel };
+  }
+
+  /**
+   * Every engine start for a thread goes through here (fresh start, the
+   * start command, lazy recovery). #2312 review HIGH: a start on a discarded
+   * Draft's id — a tab still open elsewhere sends to that conversation — is
+   * a NEW session, so the discard's late-event gate for the stopped engine
+   * ends here; otherwise the new session's every event would be dropped.
+   */
+  private runEngineSessionStart<T>(
+    threadId: string,
+    invoke: () => Promise<T>,
+    admission?: Parameters<typeof runSessionStartWithBoundary>[3],
+  ): Promise<T> {
+    this.discardedDraftThreads.delete(threadId);
+    return this.trackStartUnderway(threadId, () =>
+      runSessionStartWithBoundary(
+        this.sessionStartBoundaries,
+        threadId,
+        invoke,
+        admission,
+      ),
+    );
+  }
+
+  /**
+   * The `stopSession` command's teardown, shared with `discardDraft` (#2312),
+   * which must end whatever engine a Draft holds before deleting it.
+   */
+  private async stopSessionNow(threadId: string): Promise<void> {
+    // archive#3493 residual 1: a Stop that lands mid-materialisation
+    // must tear down the engine that is starting, not report success
+    // around it. Await the in-flight start (bounded by the
+    // adapter-stop deadline below — never unbounded), then take the
+    // live path against the bound adapter. A
+    // start that FAILS leaves nothing to stop — its failure evidence
+    // is already recorded on the thread (archive#1090) — so fall
+    // through to the dormant branch against the persisted row, whose
+    // `error` status the dormant write now preserves.
+    const materializing = this.materializingSessions.get(threadId);
+    if (materializing) {
+      // Bounded (fix-round HIGH): the wrapped promise settles on start
+      // success AND failure — a failed start leaves nothing to stop,
+      // so both fall through to the dormant check below — which makes
+      // a rejection from the race unambiguously the deadline. Reuses
+      // the adapter-stop deadline: a Stop that cannot settle within
+      // the time an adapter is allowed to take stopping refuses,
+      // typed, instead of hanging on a wedged `startSession`.
+      const timeoutMs = this.adapterRetirement.adapterStopTimeoutMs();
+      try {
+        await this.adapterRetirement.runOperationWithinDeadline(
+          materializing.then(
+            () => undefined,
+            () => undefined,
+          ),
+          `stopSession await of in-flight materialisation for ${threadId}`,
+          Date.now() + timeoutMs,
+        );
+      } catch {
+        throw new SessionStopWhileStartingError(threadId, timeoutMs);
+      }
+    }
+    // archive#3476: stopping a session restored at boot must not first
+    // start it. There is no process to tear down, so the whole of
+    // `stopUserSessionImmediately`'s observable effect is its two local
+    // steps — persist the row as resumable, forget the live binding —
+    // which is what this does.
+    if (this.isDormantSessionThread(threadId)) {
+      this.cooperativeStop.stopDormantSessionImmediately(threadId);
+      return;
+    }
+    const adapter = await resolveOrchestrationAdapterForThread({
+      threadId: threadId,
+      threadProviders: this.threadProviders,
+      requireAdapter: (provider) => this.requireAdapter(provider),
+      adapters: this.options.adapterRegistry.list(),
+    });
+    this.assertAdapterCurrent(adapter);
+    // `stopSession` owns irreversible internal cleanup (smokes,
+    // quarantine, and explicit ownership reclamation). User Stop task
+    // dispatches `interruptTurn`, which alone gets the bounded,
+    // resumable cooperative protocol.
+    await this.cooperativeStop.stopUserSessionImmediately(adapter, threadId);
   }
 
   /**
@@ -7373,11 +7846,14 @@ export class OrchestrationService {
    * rows 1 AND 2's flags are DECLARED at the ctor seam — the
    * `forgetThreadState` dep closures handed to CredentialProfileRecovery
    * and CooperativeStop, in that construction order — which is also why
-   * those sites sort first and second in file order):
+   * those sites sort first and second in file order). `discardDraftSession`
+   * (#2312) clears everything: the thread is deleted, so no binding, cached
+   * owner or progress record of it may outlive the delete:
    * | caller | policyThreads | flowBoundThreads | ownerCache | turnProgress |
    * |---|---|---|---|---|
    * | CredentialProfileRecovery.quarantineSession | yes | yes | — | — |
    * | CooperativeStop.forgetLiveUserSession | yes | — | — | yes |
+   * | discardDraftSession | yes | yes | yes | yes |
    * | finalizeStoppedAdapterSessions | yes | yes | — | — |
    * | clearAbandonedAdoptionMemory | — | — | yes | — |
    * | recoverSessions.quarantineSession | yes | — | yes | — |
@@ -7706,6 +8182,46 @@ export class OrchestrationService {
     return this.publishCanonicalEvent(event);
   }
 
+  /**
+   * #2324: a turn the engine opened on its own passed through no send, so no
+   * claim recorded its boundary row. Record it BEFORE its `turn.started` is
+   * persisted: a crash after the start then leaves the same durable fact a
+   * crashed user turn leaves, and boot closes it with the interrupted-turn
+   * banner (`InterruptedTurnRecovery`); a crash before the start leaves a
+   * row boot resolves silently. Retired by the turn's own terminal like any
+   * accepted row. A failed record is logged and counted, and the turn is
+   * still published — losing the crash banner is better than losing the
+   * turn.
+   */
+  private recordProviderTurnBoundary(event: CanonicalRuntimeEvent): void {
+    if (
+      event.method !== 'turn.started' ||
+      !event.turnId ||
+      !isProviderTriggeredTurn(event)
+    ) {
+      return;
+    }
+    const recorded = this.sessionStartBoundaries.recordProviderTurn(
+      event.threadId,
+      event.turnId,
+      event.createdAt,
+    );
+    providerTurnBoundaryRecords.add(1, {
+      provider: event.provider,
+      outcome: recorded.kind,
+    });
+    if (recorded.kind !== 'applied') {
+      this.options.logger.warn(
+        'Provider-triggered turn boundary was not recorded; a crash during this turn will not be bannered at boot',
+        {
+          threadId: event.threadId,
+          turnId: event.turnId,
+          outcome: recorded.kind,
+        },
+      );
+    }
+  }
+
   private publishCanonicalEvent(event: CanonicalRuntimeEvent): boolean {
     // archive#1399 fix round (independent review, H1/M4/M6, hardened in fix
     // round 2 per B1/B4): a provenance-sanitizing writer — see
@@ -7734,6 +8250,11 @@ export class OrchestrationService {
       event.turnId,
       event.method,
     );
+    if (this.discardedDraftThreads.has(event.threadId)) {
+      if (event.method === 'session.exited')
+        this.discardedEngineExitWaiters.get(event.threadId)?.();
+      return false;
+    }
     const quarantined = this.quarantinedThreads.has(event.threadId);
     if (quarantined && event.method !== 'session.exited') return false;
     if (quarantined) this.quarantinedThreads.delete(event.threadId);
@@ -7811,6 +8332,7 @@ export class OrchestrationService {
             projectedEvent.eventId,
           )
         : [];
+    this.recordProviderTurnBoundary(projectedEvent);
     try {
       this.options.eventStore?.appendEvent(projectedEvent, declaredOutputs);
       if (declaredOutputs.length > 0) {
@@ -8068,12 +8590,7 @@ export class OrchestrationService {
   ): RecoveredSessionStartOptions {
     return {
       invokeSessionStart: (threadId, invoke) =>
-        runSessionStartWithBoundary(
-          this.sessionStartBoundaries,
-          threadId,
-          invoke,
-          admission,
-        ),
+        this.runEngineSessionStart(threadId, invoke, admission),
       eventStore: this.options.eventStore,
       assertAdapterReady: (adapter, connectionId) =>
         this.assertAdapterReady(adapter, connectionId),

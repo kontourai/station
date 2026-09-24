@@ -5,6 +5,7 @@ import {
   type ClaudeMessageState,
   mapClaudeSdkMessage,
 } from '../../../providers/adapters/claude-adapter-events.js';
+import { recordClaudeTurnDispatched } from '../../../providers/adapters/claude-sdk-turns.js';
 import { OllamaAdapter } from '../../../providers/adapters/ollama-adapter.js';
 import { DeltaCoalescer } from '../delta-coalescer.js';
 
@@ -223,10 +224,9 @@ describe('content deltas coalesce for the events the adapters really emit', () =
         createdAt: '2026-01-01T00:00:00.000Z',
         updatedAt: '2026-01-01T00:00:00.000Z',
       },
-      activeTurnId: 'turn-1',
-      dispatchedTurnId: 'turn-1',
       lastSessionState: 'running',
     };
+    recordClaudeTurnDispatched(record, 'turn-1');
     const streamed: CanonicalRuntimeEvent[] = [];
     const publish = (event: CanonicalRuntimeEvent) => streamed.push(event);
     const emit = (message: unknown) =>

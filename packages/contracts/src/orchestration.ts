@@ -82,7 +82,18 @@ export type OrchestrationCommand =
       expectedRequestEventId?: string;
       decision: 'accept' | 'acceptForSession' | 'decline' | 'cancel';
     }
-  | { type: 'stopSession'; threadId: string };
+  | { type: 'stopSession'; threadId: string }
+  /**
+   * #2312: remove a Draft (see `OrchestrationSessionSummary.draft`) for every
+   * device. The Draft fact is conversation-wide, so the whole conversation
+   * goes: every Session in its lineage is torn down and deleted server-side,
+   * and the next session-list read on any client no longer returns them. The
+   * server re-derives the fact for every member under their lifecycle locks
+   * and refuses (`not_a_draft`) if any member is not a Draft — a turn (even
+   * one in flight), content or an attempted send — or if the conversation
+   * gains a Session while the discard runs.
+   */
+  | { type: 'discardDraft'; threadId: string };
 
 /**
  * How long the orchestration service waits for the engine to acknowledge a
@@ -568,6 +579,13 @@ export interface ConversationTurnActivity {
     threadId: string;
     /** `createdAt` of the turn's first `turn.started`; a steer keeps it. */
     startedAt: string;
+    /**
+     * #2324: `'provider'` when the engine opened this turn on its own (see
+     * `PROVIDER_TURN_TRIGGER`) — a reply no send asked for. Read from the
+     * turn's first `turn.started`, never inferred. A client must not treat
+     * it as the answer to a send it is still waiting on.
+     */
+    trigger?: 'provider';
   };
   /** `createdAt` of the newest committed event on any child. */
   lastActivityAt?: string;
@@ -601,12 +619,14 @@ export interface ConversationTurnActivity {
  * `startedAt` that no activity or approval can move; `idleLimitMs` fires
  * after a full window with no verified protocol activity measured from the
  * last verified activity (turn start initially), NOT from `startedAt`.
- * `idleLimitMs` is required on a declaration. `deadlineAt`/`totalLimitMs`
- * appear together, and only when a total budget was declared (Muse has no
- * default total, #2269); an idle-only declaration means no total budget. A
- * provider with no supervision publishes no declaration at all (honest
- * unknown, never a deadline derived from RPC/discovery timeouts or request
- * metadata).
+ * Each bound appears only when one was declared for the turn, because only
+ * then does anything enforce it: `deadlineAt`/`totalLimitMs` together for a
+ * total budget, `idleLimitMs` for an idle bound. Muse declares neither by
+ * default (#2269), so its declaration usually carries no bound at all,
+ * which means exactly that: Station will not end this turn on a schedule of
+ * its own. A provider with no supervision publishes no declaration at all
+ * (honest unknown, never a deadline derived from RPC/discovery timeouts or
+ * request metadata).
  *
  * Producer rule: only the adapter that owns the child process may publish
  * these facts (on its own `turn.started` metadata), and only the delegation
@@ -620,14 +640,16 @@ export interface TurnSupervisionFacts {
   /** Absolute wall-clock deadline (ISO timestamp); only with a declared total. */
   deadlineAt?: string;
   /**
-   * Idle window: full silence of verified protocol activity this long ends
-   * the turn. Declared at turn start; the owning adapter may suspend it for
-   * known in-progress work. Muse suspends it while a tool is in flight and
-   * for the whole time a turn is held open for background work (#2300); a
-   * held turn has no idle or post-terminal bound and runs until muse
-   * finishes it or someone stops it, whatever this value says.
+   * Idle window, only when one was declared: full silence of verified
+   * protocol activity this long ends the turn. Declared at turn start; the
+   * owning adapter may suspend it for known in-progress work. Muse suspends
+   * it while a tool is in flight and for the whole time a turn is held open
+   * for background work (#2300); a held turn has no idle or post-terminal
+   * bound and runs until muse finishes it or someone stops it, whatever this
+   * value says. Absent: no idle bound; a silent turn is surfaced as silence
+   * (`TurnProgressObservation.progressSilence`), not ended.
    */
-  idleLimitMs: number;
+  idleLimitMs?: number;
   /** Declared absolute turn budget in milliseconds; never rescheduled by activity. */
   totalLimitMs?: number;
 }

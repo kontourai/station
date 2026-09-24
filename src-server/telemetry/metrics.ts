@@ -1237,6 +1237,14 @@ export const sessionStateDuration = meter.createHistogram(
   },
 );
 
+export const providerTurnBoundaryRecords = meter.createCounter(
+  'station.orchestration.provider_turn_boundary_records',
+  {
+    description:
+      'Durable boundary rows recorded for turns an engine opened on its own, #2324 (attrs: provider, outcome)',
+  },
+);
+
 export const sessionBackgroundTasks = meter.createCounter(
   'station.session.background_tasks',
   {

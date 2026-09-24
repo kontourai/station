@@ -75,6 +75,10 @@ export const CloseGlyph = /* @__PURE__ */ glyph('M3.5 3.5l9 9m0-9-9 9');
 export const CodeGlyph = /* @__PURE__ */ glyph(
   'm5 5-3 3 3 3m6-6 3 3-3 3M9.5 3.5l-3 9',
 );
+/** #2312: discard (delete) — a bin, not the Archive box, which implies recoverable. */
+export const DiscardGlyph = /* @__PURE__ */ glyph(
+  'M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.5h5.8l.6-8.5M7 7v4M9 7v4',
+);
 export const DatabaseGlyph = /* @__PURE__ */ glyph(
   'M3 4c0-1 2.2-1.8 5-1.8S13 3 13 4s-2.2 1.8-5 1.8S3 5 3 4Zm0 0v4c0 1 2.2 1.8 5 1.8S13 9 13 8V4m-10 4v4c0 1 2.2 1.8 5 1.8s5-.8 5-1.8V8',
 );

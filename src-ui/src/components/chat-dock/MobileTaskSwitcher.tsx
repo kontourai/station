@@ -401,6 +401,13 @@ export function MobileTaskSwitcher({
                   }
                 : undefined
             }
+            onDraftDiscarded={(task, action) => {
+              // #2312: the server deleted the Draft; its open tab, if any,
+              // now names nothing.
+              moveFocusBeforeRemovingInboxRow(panelRef.current, action);
+              if (task.chatSessionId && openMembership.has(task.chatSessionId))
+                onCloseChat?.(task.chatSessionId);
+            }}
           />
           {hiddenCount > 0 && (
             <button

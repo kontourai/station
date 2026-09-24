@@ -4,6 +4,7 @@ import {
   ENGINE_TURN_FAILED_CODE,
   isApprovalMode,
 } from '@kontourai/station-contracts/provider';
+import { isProviderTriggeredTurn } from '@kontourai/station-contracts/runtime-events';
 import {
   type ActiveChatsStore,
   activeChatsStore,
@@ -213,11 +214,18 @@ export function handleTurnStartedEvent(
         }
       : {}),
     // The dispatch this turn came from has started; the pre-start cancel
-    // window it named is over
-    pendingClientTurnId: undefined,
-    // #2309: a witnessed turn start closes the optimistic send window, even
-    // when the frame's as-of-delivery activity already shows the turn ended.
-    sendAwaitingTurnStart: undefined,
+    // window it named is over. #2324: a turn the engine opened on its own
+    // came from no dispatch — a send this client still has in flight keeps
+    // its pre-start window and its optimistic send window.
+    ...(isProviderTriggeredTurn(event)
+      ? {}
+      : {
+          pendingClientTurnId: undefined,
+          // #2309: a witnessed turn start closes the optimistic send window,
+          // even when the frame's as-of-delivery activity already shows the
+          // turn ended.
+          sendAwaitingTurnStart: undefined,
+        }),
     status: 'sending',
     orchestrationTurnOpen: true,
     // archive#1410: the identity of the turn whose text is about to be
@@ -359,6 +367,22 @@ export function handleTurnAbortedEvent(
     activeChatsStore.getChatForExecutionSession(event.threadId)
       ?.orchestrationHistoryRevision ?? 0;
   const chat = activeChatsStore.getChatForExecutionSession(event.threadId);
+  // #2324 delta review M-2: the same turn-identity guard the completion
+  // handler applies. A send withdrawn or cancelled while it was still queued
+  // behind another turn ends with a bare `turn.aborted` for ITS id while that
+  // other turn — often one the engine opened on its own — is open and
+  // streaming. That abort must not tear down the open turn's stream or mark
+  // the chat idle; it only ends the waiting send.
+  const openTurnId = chat?.openTurnId;
+  if (openTurnId && openTurnId !== event.turnId) {
+    activeChatsStore.updateChat(chatKey, {
+      orchestrationHistoryRevision: historyRevision + 1,
+      ...(chat?.sendAwaitingTurnStart
+        ? { sendAwaitingTurnStart: undefined, pendingClientTurnId: undefined }
+        : {}),
+    });
+    return;
+  }
   activeChatsStore.updateChat(chatKey, {
     // A late provider abort revokes a previously committed same-turn answer.
     // Keeping it would leave Add to Task on an answer the lifecycle rejects.
