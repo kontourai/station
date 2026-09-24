@@ -10,12 +10,10 @@ vi.mock('pdfjs-dist', () => ({
   getDocument: pdfjs.getDocument,
   PDFWorker: { create: () => ({ destroy: () => undefined }) },
 }));
-vi.mock('pdfjs-dist/build/pdf.worker.min.mjs?worker', () => ({
-  default: class {
-    terminate() {}
-    addEventListener() {}
-  },
-}));
+class FakeWorker {
+  terminate() {}
+  addEventListener() {}
+}
 
 import {
   releaseAttachmentObjectUrl,
@@ -47,6 +45,7 @@ beforeEach(() => {
   fetchSpy.mockReset();
   pdfjs.getDocument.mockReset();
   vi.stubGlobal('fetch', fetchSpy);
+  vi.stubGlobal('Worker', FakeWorker);
   pdfViewerEnabled = true;
   Object.defineProperty(navigator, 'pdfViewerEnabled', {
     configurable: true,

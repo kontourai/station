@@ -1,10 +1,24 @@
 import { getDocument, type PDFDocumentProxy, PDFWorker } from 'pdfjs-dist';
-// Bundled by Vite as a same-origin module worker (`worker.format: 'es'`) with
-// a `.js` name. The package's own `.mjs` file would be served by Station's UI
-// server as `application/octet-stream`, which a module worker refuses under
-// `nosniff`; `worker-src 'self'` admits the bundled one in both CSPs.
-import PdfjsWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?worker';
 import { BundledPdfBinaryDataFactory } from './pdf-binary-data';
+
+/**
+ * pdf.js's worker, bundled by Vite as a same-origin module worker
+ * (`worker.format: 'es'`) with a `.js` name: Vite rebuilds any
+ * `new Worker(new URL(…, import.meta.url))` it sees. The package's own `.mjs`
+ * file would be served by Station's UI server as `application/octet-stream`,
+ * which a module worker refuses under `nosniff`; `worker-src 'self'` admits
+ * the bundled one in both CSPs. Plain `new URL` (not a `?worker` import) keeps
+ * this module loadable by the esbuild harnesses that bundle the previewer.
+ */
+function startPdfWorker(): Worker {
+  return new Worker(
+    new URL(
+      '../../../../node_modules/pdfjs-dist/build/pdf.worker.min.mjs',
+      import.meta.url,
+    ),
+    { type: 'module', name: 'station-pdf' },
+  );
+}
 
 export interface OpenedPdf {
   promise: Promise<PDFDocumentProxy>;
@@ -26,7 +40,7 @@ export interface OpenedPdf {
  * CSPs grant, and otherwise run in pdf.js's interpreter.
  */
 export function openPdf(data: Uint8Array): OpenedPdf {
-  const port = new PdfjsWorker({ name: 'station-pdf' });
+  const port = startPdfWorker();
   // pdf.js waits forever for a worker it was handed that never starts (a
   // refused script, a crash on load), which would leave the preview loading
   // with no end. A worker error before the document opens fails it instead.

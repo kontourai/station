@@ -9,16 +9,13 @@ import {
 } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
-// The pdf.js module boundary: jsdom has no canvas or workers, so the library
-// is faked and everything above it (the viewer, its worker ownership, the
-// options it passes) is real.
+// The pdf.js module boundary and the browser's Worker: jsdom has neither a
+// canvas nor workers, so both are faked and everything above them (the
+// viewer, its worker ownership, the options it passes) is real.
 const pdfjs = vi.hoisted(() => ({
   getDocument: vi.fn(),
   createWorker: vi.fn(),
-  workerPorts: [] as {
-    terminate: ReturnType<typeof vi.fn>;
-    fail: () => void;
-  }[],
+  workerPorts: [] as FakeWorker[],
 }));
 
 vi.mock('pdfjs-dist', () => ({
@@ -26,22 +23,23 @@ vi.mock('pdfjs-dist', () => ({
   PDFWorker: { create: pdfjs.createWorker },
 }));
 
-vi.mock('pdfjs-dist/build/pdf.worker.min.mjs?worker', () => ({
-  default: class {
-    terminate = vi.fn();
-    private errorListeners: (() => void)[] = [];
-    constructor() {
-      pdfjs.workerPorts.push(this);
-    }
-    addEventListener(type: string, listener: () => void) {
-      if (type === 'error') this.errorListeners.push(listener);
-    }
-    /** What a Worker does when its script is refused or throws on load. */
-    fail() {
-      for (const listener of this.errorListeners) listener();
-    }
-  },
-}));
+class FakeWorker {
+  terminate = vi.fn();
+  private errorListeners: (() => void)[] = [];
+  constructor(
+    readonly url: URL | string,
+    readonly options?: WorkerOptions,
+  ) {
+    pdfjs.workerPorts.push(this);
+  }
+  addEventListener(type: string, listener: () => void) {
+    if (type === 'error') this.errorListeners.push(listener);
+  }
+  /** What a Worker does when its script is refused or throws on load. */
+  fail() {
+    for (const listener of this.errorListeners) listener();
+  }
+}
 
 import PdfCanvasViewer from '../components/PdfCanvasViewer';
 
@@ -86,6 +84,7 @@ const bytes = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, 0x31, 0x2e, 0x37]);
 const pdfBlob = () => new Blob([bytes], { type: 'application/pdf' });
 
 beforeEach(() => {
+  vi.stubGlobal('Worker', FakeWorker);
   pdfjs.getDocument.mockReset();
   pdfjs.createWorker.mockReset();
   pdfjs.workerPorts.length = 0;
@@ -113,8 +112,10 @@ describe('PdfCanvasViewer', () => {
     expect(options.data).toBeInstanceOf(Uint8Array);
     expect(Array.from(options.data)).toEqual(Array.from(bytes));
     expect(options.url).toBeUndefined();
-    // The worker is this document's own, built from the bundled module.
+    // The worker is this document's own: pdf.js's module worker.
     expect(pdfjs.workerPorts).toHaveLength(1);
+    expect(String(pdfjs.workerPorts[0].url)).toContain('pdf.worker');
+    expect(pdfjs.workerPorts[0].options?.type).toBe('module');
     expect(pdfjs.createWorker).toHaveBeenCalledWith({
       port: pdfjs.workerPorts[0],
     });
