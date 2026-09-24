@@ -232,6 +232,28 @@ export function applySnapshotChildWork(
     reporterThreadId: threadId,
     running: view.running,
   });
+  for (const item of view.settled ?? []) {
+    const {
+      producer,
+      reporterThreadId,
+      childId,
+      status,
+      result,
+      usage,
+      ...identity
+    } = item;
+    if (status === 'running') continue;
+    applyChildWorkToChat(threadId, {
+      kind: 'settle',
+      producer,
+      reporterThreadId,
+      childId,
+      status,
+      ...(result ? { result } : {}),
+      ...(usage ? { usage } : {}),
+      identity,
+    });
+  }
 }
 
 /**

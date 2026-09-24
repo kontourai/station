@@ -118,12 +118,14 @@ export class ChildWorkProjection {
     const observedAt = this.observedAt.get(threadId);
     if (observedAt === undefined && cell?.state !== 'declared')
       return undefined;
+    const children = childWorkForReporter(this.state, threadId).filter(
+      (item) => item.producer === 'engine-subagent',
+    );
+    const settled = children.filter((item) => item.status !== 'running');
     return {
       observability: 'reported',
-      running: childWorkForReporter(this.state, threadId).filter(
-        (item) =>
-          item.producer === 'engine-subagent' && item.status === 'running',
-      ),
+      running: children.filter((item) => item.status === 'running'),
+      ...(settled.length > 0 ? { settled } : {}),
       observedAt: observedAt ?? now,
     };
   }

@@ -82,6 +82,26 @@ describe('applyOrchestrationSnapshot reconnect-fallback refetch (station#1225)',
     expect(showToast).toHaveBeenCalledOnce();
   });
 
+  test('a terminal runtime error replaces a stale idle status', () => {
+    applyOrchestrationSnapshot(
+      {
+        sessions: [
+          {
+            provider: 'claude',
+            threadId: 'thread-1',
+            status: 'ready',
+            hasActiveTurn: false,
+            lastEventMethod: 'runtime.error',
+            openRequestIds: [],
+          },
+        ],
+      },
+      { apiBase: 'http://api', isReconnectFallback: true },
+    );
+    expect(chats['thread-1'].orchestrationStatus).toBe('errored');
+    expect(chats['thread-1'].status).toBe('error');
+  });
+
   test('an ordinary (non-reconnect) snapshot never triggers a messages refetch', () => {
     applyOrchestrationSnapshot(
       {

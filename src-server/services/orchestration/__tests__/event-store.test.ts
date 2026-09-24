@@ -512,7 +512,7 @@ describe('EventStore', () => {
         requestId: 'request-1',
         ...(method === 'request.opened'
           ? { requestType: 'approval', title: 'Allow Read' }
-          : { resolution: 'accepted' }),
+          : { status: 'approved' }),
       }) as CanonicalRuntimeEvent;
     store.appendEvent(request('opened-a', 'thread-a', 'request.opened'));
     store.appendEvent(request('opened-b', 'thread-b', 'request.opened'));

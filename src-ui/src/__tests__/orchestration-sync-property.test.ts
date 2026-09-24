@@ -90,7 +90,10 @@ async function setup() {
     store.appendEvent(event);
     eventBus.emit('orchestration:event', { event });
   };
-  return { store, service, app, publish };
+  const publishViaService = (event: CanonicalRuntimeEvent) => {
+    (service as any).publishCanonicalEvent(event);
+  };
+  return { store, service, app, publish, publishViaService };
 }
 
 async function clientGraph(conversationId: string) {
@@ -104,6 +107,12 @@ async function clientGraph(conversationId: string) {
   const { activeChatsStore } = await import('../contexts/active-chats-store');
   const { ensureOrchestrationEventStream } = await import(
     '../hooks/orchestration/ensureOrchestrationEventStream'
+  );
+  const { childWorkRegistrySnapshot } = await import(
+    '../hooks/orchestration/childWorkHandlers'
+  );
+  const { childWorkGlobalStore } = await import(
+    '../contexts/child-work-global-store'
   );
   sdk.setClientCredentialResolver(() => ({
     origin: apiBase,
@@ -121,6 +130,8 @@ async function clientGraph(conversationId: string) {
   const close = ensureOrchestrationEventStream(apiBase);
   return {
     activeChatsStore,
+    childWorkRegistrySnapshot,
+    childWorkGlobalStore,
     close,
     ensure: () => ensureOrchestrationEventStream(apiBase),
     disconnect: () => page.dispatchEvent(new Event('pagehide')),
@@ -143,7 +154,7 @@ function mulberry32(seed: number) {
 }
 
 test('seeded clients converge through live, replay, and snapshot reconnects', async () => {
-  const { store, publish } = await setup();
+  const { store, publish, publishViaService } = await setup();
   const conversationId = 'sync-root';
   const createdAt = '2026-09-24T00:00:00.000Z';
   store.upsertSession({
@@ -214,6 +225,7 @@ test('seeded clients converge through live, replay, and snapshot reconnects', as
       createdAt,
       method: 'turn.started',
       prompt: `seed ${seed}`,
+      ...(seed % 9 === 0 ? { metadata: { trigger: 'provider' } } : {}),
     } as CanonicalRuntimeEvent);
     trace.push('turn.started');
     const deltaCount = seed % 3 === 0 ? 6 : 1;
@@ -270,15 +282,109 @@ test('seeded clients converge through live, replay, and snapshot reconnects', as
       } as CanonicalRuntimeEvent);
       trace.push('request.opened');
     }
+    if (seed > 0 && seed % 7 === 1) {
+      publish({
+        eventId: `${turnId}-request-resolved`,
+        provider: 'claude',
+        threadId: conversationId,
+        turnId,
+        createdAt,
+        method: 'request.resolved',
+        requestId: `request-${seed - 1}`,
+        status: 'approved',
+      } as CanonicalRuntimeEvent);
+      trace.push('request.resolved');
+    }
+    if (seed === 0) {
+      const child = {
+        producer: 'engine-subagent',
+        reporterThreadId: conversationId,
+        childId: 'seed-child',
+        status: 'running',
+        title: 'Explore',
+        backgrounded: true,
+      };
+      publishViaService({
+        eventId: 'child-upsert',
+        provider: 'claude',
+        threadId: conversationId,
+        createdAt,
+        method: 'child-work.updated',
+        delta: { kind: 'upsert', item: child },
+      } as CanonicalRuntimeEvent);
+      publishViaService({
+        eventId: 'child-settle',
+        provider: 'claude',
+        threadId: conversationId,
+        createdAt,
+        method: 'child-work.updated',
+        delta: {
+          kind: 'settle',
+          producer: 'engine-subagent',
+          reporterThreadId: conversationId,
+          childId: 'seed-child',
+          status: 'completed',
+          result: { summary: 'Explored.' },
+        },
+      } as CanonicalRuntimeEvent);
+      trace.push('child.upsert', 'child.settle');
+    }
+    if (seed === 1) {
+      publishViaService({
+        eventId: 'late-child-upsert',
+        provider: 'claude',
+        threadId: conversationId,
+        createdAt,
+        method: 'child-work.updated',
+        delta: {
+          kind: 'upsert',
+          item: {
+            producer: 'engine-subagent',
+            reporterThreadId: conversationId,
+            childId: 'late-child',
+            status: 'running',
+            title: 'Build',
+          },
+        },
+      } as CanonicalRuntimeEvent);
+      trace.push('child.upsert');
+    }
+    if (seed === 2) {
+      publishViaService({
+        eventId: 'late-child-settle',
+        provider: 'claude',
+        threadId: conversationId,
+        createdAt,
+        method: 'child-work.updated',
+        delta: {
+          kind: 'settle',
+          producer: 'engine-subagent',
+          reporterThreadId: conversationId,
+          childId: 'late-child',
+          status: 'completed',
+        },
+      } as CanonicalRuntimeEvent);
+      trace.push('child.settle');
+    }
+    const terminal =
+      seed % 17 === 16
+        ? 'turn.aborted'
+        : seed % 13 === 12
+          ? 'runtime.error'
+          : 'turn.completed';
     publish({
-      eventId: `${turnId}-completed`,
+      eventId: `${turnId}-terminal`,
       provider: 'claude',
       threadId: conversationId,
       turnId,
       createdAt,
-      method: 'turn.completed',
+      method: terminal,
+      ...(terminal === 'turn.aborted' ? { reason: 'interrupted' } : {}),
+      ...(terminal === 'runtime.error'
+        ? { severity: 'error', message: 'provider failed' }
+        : {}),
     } as CanonicalRuntimeEvent);
-    trace.push('turn.completed');
+    trace.push(terminal);
     const head = store.headGlobalSequence();
     expect(head, `seed=${seed} trace=${trace.join(',')}`).toBeGreaterThan(
       deletedTailCursor,
@@ -320,12 +426,21 @@ test('seeded clients converge through live, replay, and snapshot reconnects', as
       orchestrationStatus: chat.orchestrationStatus,
       pendingApprovals: chat.pendingApprovals ?? [],
       queuedMessages: chat.queuedMessages,
+      backgroundTasks: chat.backgroundTasks ?? [],
       currentSessionId: chat.currentSessionId,
     });
     expect(
       select(b.activeChatsStore.getSnapshot()[conversationId]!),
       `seed=${seed} trace=${trace.join(',')}`,
     ).toEqual(select(a.activeChatsStore.getSnapshot()[conversationId]!));
+    expect(
+      b.childWorkRegistrySnapshot().items,
+      `seed=${seed} trace=${trace.join(',')} child registry`,
+    ).toEqual(a.childWorkRegistrySnapshot().items);
+    expect(
+      b.childWorkGlobalStore.getPartition(apiBase).registry.items,
+      `seed=${seed} trace=${trace.join(',')} global child work`,
+    ).toEqual(a.childWorkGlobalStore.getPartition(apiBase).registry.items);
   }
   // A restored database can have the same numeric sequence as an older one.
   // The old cursor is then valid by number but foreign by durable identity.

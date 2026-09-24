@@ -301,7 +301,10 @@ function planSnapshot(
   const selected = selectSnapshotRows(payload, chats);
 
   const sessionUpdates = [...selected].map(
-    ([chatKey, { row: session, record, openRequestIds }]) => {
+    ([
+      chatKey,
+      { row: session, record, openRequestIds, lastTurnEndMethod },
+    ]) => {
       const chat = chats[chatKey];
       // #2303: live events for the running child route through
       // `getChatForExecutionSession`, which matches `currentSessionId`; a
@@ -391,10 +394,17 @@ function planSnapshot(
           // re-strand the streaming shell after a reconnect — the exact
           // symptom archive#1005 fixed on the live-event path.
           orchestrationStatus:
-            (session.status === 'running' || session.status === 'ready') &&
+            lastTurnEndMethod === 'runtime.error' &&
             !rowTurnIsOpen(session, record)
-              ? 'idle'
-              : session.status,
+              ? 'errored'
+              : lastTurnEndMethod === 'turn.aborted' &&
+                  !rowTurnIsOpen(session, record)
+                ? 'aborted'
+                : (session.status === 'running' ||
+                      session.status === 'ready') &&
+                    !rowTurnIsOpen(session, record)
+                  ? 'idle'
+                  : session.status,
           ...(openRequestIds ? { pendingApprovals: openRequestIds } : {}),
           // Reseed the client turn fold only from an EXPLICIT server
           // verdict (archive#1076) — a reconnect during an in-turn approval must
@@ -410,9 +420,12 @@ function planSnapshot(
           // (applied to the store before this plan runs); this keeps the
           // coarse fields consistent with it for readers that still use them.
           status:
-            session.status === 'running' && rowTurnIsOpen(session, record)
-              ? 'sending'
-              : 'idle',
+            lastTurnEndMethod === 'runtime.error' &&
+            !rowTurnIsOpen(session, record)
+              ? 'error'
+              : session.status === 'running' && rowTurnIsOpen(session, record)
+                ? 'sending'
+                : 'idle',
           ...(adoptsOpenChild
             ? {
                 currentSessionId: runningChild,

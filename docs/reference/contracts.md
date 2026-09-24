@@ -61,6 +61,10 @@ Use `@kontourai/station-contracts/*` when you need stable API/domain shapes shar
 its durable request state. An empty array means no requests remain open;
 absence means that server did not report this projection.
 
+`ChildWorkSessionView` may include bounded `settled` items with a reported
+running set. A missing `children` view still means the server made no
+child-work report for that row; clients retain their existing state.
+
 ## Import examples
 
 ```ts
