@@ -93,7 +93,8 @@ async function mount(children?: React.ReactNode) {
 
 function onLayerEntry(): boolean {
   const state = window.history.state as Record<string, unknown> | null;
-  return state?.[DIALOG_HISTORY_KEY] === 'phone-pane-layer';
+  const marker = state?.[DIALOG_HISTORY_KEY];
+  return typeof marker === 'string' && marker.startsWith('phone-pane-layer:');
 }
 
 function maximizeParam(): string | null {

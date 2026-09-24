@@ -232,8 +232,9 @@ interface RegionModelValue {
    */
   phoneLayer: { region: DockRegionId; surfaceId: string } | null;
   /**
-   * Leave the phone layer — the "‹ Chat" control. The same restore the
-   * device's Back runs (`restorePhonePaneLayer`); the layer's history entry
+   * Leave the phone layer — the "‹ Chat" control. Asks the unsaved-changes
+   * guards first (`navigationStore.runNavigationGuards`), exactly as Back
+   * does, then runs the same restore (`restorePhonePaneLayer`); the layer's history entry
    * is then consumed by its registration's cleanup, which travels back over
    * it because the `?maximize` mirror has already returned the URL to the
    * one the entry was pushed at (see the registration effect).
@@ -241,7 +242,7 @@ interface RegionModelValue {
   closePhoneLayer(): void;
 }
 
-/** The layer's `registerDialogHistory` id: one phone layer at a time. */
+/** The prefix of the layer's `registerDialogHistory` ids (`<prefix>:<n>`). */
 const PHONE_LAYER_HISTORY_ID = 'phone-pane-layer';
 
 const RegionModelContext = createContext<RegionModelValue | null>(null);
@@ -408,6 +409,17 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
   );
   const phoneLayerRef = useRef<PhonePaneLayer | null>(null);
   const layerDockMemoryRef = useRef(false);
+  // Whether the open layer maximized its region, so a Back the user cancels
+  // can put the layer back exactly as it was.
+  const layerMaximizedRef = useRef(false);
+  // Bumped per layer and per re-pushed entry: each history entry gets its own
+  // id, so the marker `dialog-history` orphans on a Back can never match a
+  // LATER layer's live entry and skip it.
+  const [layerEntry, setLayerEntry] = useState(0);
+  // A Back is waiting on an unsaved-changes guard: the URL has already
+  // travelled back, so navigation's inbound sync may hide or restore Chat's
+  // region meanwhile; that must not read as the user dismissing the layer.
+  const layerBackPendingRef = useRef(false);
   const setPhoneLayer = useCallback((layer: PhonePaneLayer | null) => {
     phoneLayerRef.current = layer;
     setPhoneLayerState(layer);
@@ -541,8 +553,12 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
           // The maximize memory as the layer found it: the layer's own
           // maximize is mirrored into it, and a close from a hidden Chat
           // would otherwise forward that as the memory (see the restore).
-          if (!phoneLayerRef.current)
+          if (!phoneLayerRef.current) {
             layerDockMemoryRef.current = navigationStore.lastDockMaximized;
+            setLayerEntry((entry) => entry + 1);
+          }
+          layerMaximizedRef.current =
+            opened.arrangement[opened.layer.region].maximized;
           commit(opened.arrangement, opened.layer.region);
           setPhoneLayer(opened.layer);
           return {
@@ -706,7 +722,7 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
   // entry is consumed by the registration's cleanup below.
   useEffect(() => {
     const layer = phoneLayerRef.current;
-    if (!layer || layer !== phoneLayer) return;
+    if (!layer || layer !== phoneLayer || layerBackPendingRef.current) return;
     const state = regions[layer.region];
     if (state.visible && state.occupant === layer.surfaceId) return;
     restorePhoneLayer();
@@ -721,11 +737,47 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
   // therefore travels to the entry without it; and on an in-app close the
   // mirror's clearing write lands before `dialog-history`'s deferred cleanup
   // compares URLs, so the entry is travelled back over, not collapsed.
+  //
+  // Both exits ask the unsaved-changes guards first (a pull request review
+  // draft is component state; the restore unmounts it). Back has already
+  // left the entry when it asks, so a refusal puts the layer back — shown,
+  // selected, maximized as it was — under a fresh entry.
   const phoneLayerOpen = phoneLayer !== null;
+  const leavePhoneLayerByBack = useCallback(() => {
+    layerBackPendingRef.current = true;
+    navigationStore.runNavigationGuards(
+      () => {
+        layerBackPendingRef.current = false;
+        restorePhoneLayer();
+      },
+      () => {
+        layerBackPendingRef.current = false;
+        const layer = phoneLayerRef.current;
+        if (!layer) return;
+        const next = updateRegion(regionsRef.current, layer.region, {
+          visible: true,
+          occupant: layer.surfaceId,
+          maximized: layerMaximizedRef.current,
+        });
+        if (next !== regionsRef.current) {
+          regionsRef.current = next;
+          setRegions(next);
+        }
+        setLayerEntry((entry) => entry + 1);
+      },
+    );
+  }, [restorePhoneLayer]);
+  const closePhoneLayer = useCallback(
+    () => navigationStore.runNavigationGuards(restorePhoneLayer),
+    [restorePhoneLayer],
+  );
   useEffect(() => {
     if (!phoneLayerOpen) return;
-    return registerDialogHistory(PHONE_LAYER_HISTORY_ID, restorePhoneLayer);
-  }, [phoneLayerOpen, restorePhoneLayer]);
+    return registerDialogHistory(
+      `${PHONE_LAYER_HISTORY_ID}:${layerEntry}`,
+      leavePhoneLayerByBack,
+    );
+  }, [phoneLayerOpen, layerEntry, leavePhoneLayerByBack]);
 
   const persistRegionArrangement = useCallback(() => {
     // A phone layer is transient: the record is written as if it were not
@@ -985,7 +1037,7 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
       canRenderRegionSurfaces: mountedSurfaceHosts > 0,
       registerRegionSurfaceHost,
       phoneLayer: phoneLayerView,
-      closePhoneLayer: restorePhoneLayer,
+      closePhoneLayer,
     }),
     [
       regions,
@@ -1003,7 +1055,7 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
       mountedSurfaceHosts,
       registerRegionSurfaceHost,
       phoneLayerView,
-      restorePhoneLayer,
+      closePhoneLayer,
     ],
   );
   return (
