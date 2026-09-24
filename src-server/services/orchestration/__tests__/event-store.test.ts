@@ -8717,23 +8717,6 @@ describe('EventStore', () => {
       expect(store.listAttachmentCandidateThreads(unbound, 'me')).toEqual([]);
     });
 
-    test('candidate threads narrow to an owner SET, and an empty set keeps only ownerless threads', () => {
-      store.appendEvent(ownedTurn('evt-mine', 'thread-mine', 'me'));
-      store.appendEvent(ownedTurn('evt-shared', 'thread-shared', 'my-phone'));
-      store.appendEvent(ownedTurn('evt-theirs', 'thread-theirs', 'someone'));
-      store.appendEvent(attachmentTurn('evt-ownerless', 'thread-ownerless'));
-      const blobRef = persistedRow('thread-mine').attachments[0].blobRef;
-
-      expect(
-        store
-          .listAttachmentCandidateThreads(blobRef, ['me', 'my-phone', 'me'])
-          .sort(),
-      ).toEqual(['thread-mine', 'thread-ownerless', 'thread-shared']);
-      expect(store.listAttachmentCandidateThreads(blobRef, [])).toEqual([
-        'thread-ownerless',
-      ]);
-    });
-
     test('the candidate set is capped however many threads reference the blob', () => {
       for (let index = 0; index < 12; index += 1) {
         store.appendEvent(

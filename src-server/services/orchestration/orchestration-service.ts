@@ -357,7 +357,6 @@ import {
   runSessionStartWithBoundary,
   type SessionTurnBoundaryAuthority,
 } from './session-turn-boundary.js';
-import { transcriptOwnerIds } from './transcript-search-queries.js';
 import type { TurnDeduplicator } from './turn-deduplicator.js';
 import { TurnProgressTracker } from './turn-progress-tracker.js';
 import { TurnProvenanceSidecar } from './turn-provenance-sidecar.js';
@@ -4630,9 +4629,14 @@ export class OrchestrationService {
    */
   attachmentCandidateOwnerIds(authority: SessionReadAuthority): string[] {
     this.initialize();
-    return transcriptOwnerIds(
-      this.sessionAuthz.transcriptOwnerConstraint(authority),
-    ).filter((owner): owner is string => owner !== null);
+    const constraint = this.sessionAuthz.transcriptOwnerConstraint(authority);
+    return [
+      ...new Set([
+        constraint.ownerUserId,
+        ...(constraint.ownerUserIds ?? []),
+        ...(constraint.legacyOwnerUserId ? [constraint.legacyOwnerUserId] : []),
+      ]),
+    ];
   }
 
   canUserReadSession(threadId: string, authority: SessionReadScope): boolean {

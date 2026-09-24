@@ -1025,6 +1025,12 @@ export function isProjectMemberDraftLease(method: string, path: string) {
   );
 }
 
+/**
+ * Candidate threads an attachment read may judge, matching the event store's
+ * per-query bound, so authorization work stays constant per request.
+ */
+const ATTACHMENT_CANDIDATE_THREADS_PER_REQUEST = 4;
+
 export function configureRuntimeRoutes(
   context: ConfigureRuntimeRoutesContext,
 ): ConfigureRuntimeRoutesResult {
@@ -5139,13 +5145,27 @@ export function configureRuntimeRoutes(
     createAttachmentRoutes({
       readAttachment: (ref) =>
         runtimeContext.orchestrationEventStore.readAttachmentBlob(ref),
-      threadsForAttachment: (ref, request) =>
-        runtimeContext.orchestrationEventStore.listAttachmentCandidateThreads(
-          ref,
-          context.orchestrationService.attachmentCandidateOwnerIds(
-            conversationReadAuthorityForRequest(request),
-          ),
-        ),
+      threadsForAttachment: (ref, request) => {
+        // One bounded, owner-narrowed query per owner the caller could read
+        // (their own, shared personal-account owners, and the legacy alias
+        // where the home-possession bridge admits it). The owner list comes
+        // from the caller, never from the reference, and the merged set keeps
+        // the store's per-query bound, so response time still cannot answer
+        // whether anyone else holds these bytes.
+        const owners = context.orchestrationService.attachmentCandidateOwnerIds(
+          conversationReadAuthorityForRequest(request),
+        );
+        const threads = new Set<string>();
+        for (const owner of owners) {
+          for (const threadId of runtimeContext.orchestrationEventStore.listAttachmentCandidateThreads(
+            ref,
+            owner,
+          ))
+            threads.add(threadId);
+          if (threads.size >= ATTACHMENT_CANDIDATE_THREADS_PER_REQUEST) break;
+        }
+        return [...threads].slice(0, ATTACHMENT_CANDIDATE_THREADS_PER_REQUEST);
+      },
       canReadSession: (threadId, request) =>
         context.orchestrationService.canUserReadSession(
           threadId,
