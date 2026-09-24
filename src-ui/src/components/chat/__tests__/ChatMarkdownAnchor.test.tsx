@@ -384,6 +384,51 @@ describe('a forge file link (github.com/.../blob/...)', () => {
     expect(openNativeExternalLink).toHaveBeenCalledTimes(4);
   });
 
+  const station = (branch?: string) => ({
+    available: true,
+    provider: 'github',
+    host: 'github.com',
+    repository: { owner: 'kontourai', name: 'station' },
+    ...(branch ? { branch } : {}),
+  });
+
+  test('a branch with a `/` in it is split at the checkout’s branch, not at its first segment', () => {
+    repositoryContext = station('feature/x');
+    const anchor = mount(
+      'https://github.com/kontourai/station/blob/feature/x/src/app.ts#L2',
+    );
+    expect(click(anchor)).toBe(false);
+    expect(openFilePreviewInRegion).toHaveBeenCalledWith(model, {
+      projectId: 'alpha-id',
+      projectSlug: 'alpha',
+      path: 'src/app.ts',
+      lineRange: { start: 2, end: 2 },
+    });
+    // The tooltip does not imply the local copy is the forge's revision.
+    expect(anchor.getAttribute('title')).toMatch(/working copy of src\/app\.ts/);
+  });
+
+  test('a slash branch the checkout is not on, or an unknown branch, opens on the forge', () => {
+    tauri = true;
+    for (const context of [
+      station('feature/y'),
+      station('feature/xy'),
+      station(undefined),
+    ]) {
+      repositoryContext = context;
+      const anchor = mount(
+        'https://github.com/kontourai/station/blob/feature/x/src/app.ts',
+      );
+      expect(click(anchor)).toBe(false);
+      expect(anchor.getAttribute('title')).toBe(
+        'https://github.com/kontourai/station/blob/feature/x/src/app.ts',
+      );
+      cleanup();
+    }
+    expect(openFilePreviewInRegion).not.toHaveBeenCalled();
+    expect(openNativeExternalLink).toHaveBeenCalledTimes(3);
+  });
+
   test('in a worktree session the ref is compared with the WORKTREE branch', () => {
     contextQueries.length = 0;
     mount(url, {

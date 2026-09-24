@@ -1,3 +1,4 @@
+import { isWorkspaceFilePreviewRelativePath } from '@kontourai/station-contracts/workspace-file-preview';
 import { usePullRequestContextQuery } from '@kontourai/station-sdk';
 import type { AnchorHTMLAttributes, MouseEvent, ReactNode } from 'react';
 import { useRegionModelOptional } from '../../contexts/RegionModelContext';
@@ -348,12 +349,44 @@ function PathMentionAnchor({
 }
 
 /**
+ * The ref and path a forge file URL names, read against the branch the
+ * checkout is on. The URL alone cannot tell `blob/feature/x/a.ts` (branch
+ * `feature/x`, file `a.ts`) from branch `feature`, file `x/a.ts`; knowing the
+ * checkout's branch settles it for THAT branch. Any other split stays the
+ * classifier's one-segment reading, which then fails the ref comparison and
+ * opens on the forge.
+ */
+function splitForgeRefPath(
+  target: Pick<
+    Extract<MarkdownLinkTarget, { kind: 'repo-file' }>,
+    'ref' | 'path' | 'refPath'
+  >,
+  branch: string | undefined,
+): { ref: string; path: string } {
+  if (branch?.includes('/') && target.refPath.startsWith(`${branch}/`)) {
+    const path = target.refPath.slice(branch.length + 1);
+    if (isWorkspaceFilePreviewRelativePath(path)) return { ref: branch, path };
+  }
+  return { ref: target.ref, path: target.path };
+}
+
+/**
  * A forge file link opens the LOCAL preview only when the conversation's
  * checkout is that repository on that host, on the ref the link names —
  * decided by the same repository context the pull-request list resolves, never
  * by the path merely existing here (a file of the same name in another
  * repository, or at another commit, is a different file).
  * Until that is known, and when it does not match, it opens on the forge.
+ *
+ * The rule, and what it does not know: the ref must equal the checkout's
+ * LOCAL branch name (a branch containing `/` is split at that name, see
+ * `splitForgeRefPath`). The repository context carries no ahead/behind count,
+ * so a checkout behind its upstream, ahead of it, or with uncommitted edits
+ * still matches and the preview shows ITS working copy, not the forge's
+ * revision. The link's tooltip says so rather than implying the two agree.
+ * A local branch whose name is a PREFIX of the link's slash branch (local
+ * `feature`, link `feature/x`) also cannot be told apart and reads as a
+ * match; the preview then names `x/...`, which usually does not exist.
  */
 function RepoFileAnchor({
   target,
@@ -371,24 +404,34 @@ function RepoFileAnchor({
   });
   const identity = context.data?.available ? context.data : undefined;
   const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
-  // Same repository AND the ref the checkout is on: a link to the file at an
-  // older commit or another branch is different code, and the local preview
-  // shows only the working tree. Known limits: the ref is compared with the
-  // LOCAL branch name, a checkout behind its upstream still counts, and a
-  // branch name containing `/` is read as ref + directory — mismatches of the
-  // first kind fall back to the forge, which is the safe direction.
+  const { ref, path } = splitForgeRefPath(target, identity?.branch);
   const local =
     !!identity &&
     same(identity.host, target.host) &&
     same(identity.repository.owner, target.owner) &&
     same(identity.repository.name, target.repository) &&
-    identity.branch === target.ref;
+    identity.branch === ref;
   const clickTarget: MarkdownLinkTarget = local
     ? {
         kind: 'path',
-        path: target.path,
+        path,
         ...(target.lineRange ? { lineRange: target.lineRange } : {}),
       }
     : target;
-  return <LinkAnchor {...rest} target={target} clickTarget={clickTarget} />;
+  const anchorProps = local
+    ? {
+        ...rest.anchorProps,
+        title:
+          rest.anchorProps.title ??
+          `${target.url}\nOpens this checkout's working copy of ${path}, which may differ from the forge's.`,
+      }
+    : rest.anchorProps;
+  return (
+    <LinkAnchor
+      {...rest}
+      anchorProps={anchorProps}
+      target={target}
+      clickTarget={clickTarget}
+    />
+  );
 }
