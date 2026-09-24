@@ -40,26 +40,28 @@ const TITLE_MAX = 120;
 const PROJECT_MAX = 120;
 const STATUS_MAX = 40;
 const ALERT_TITLE_MAX = 120;
-const ALERT_BODY_MAX = 240;
+/** The phone truncates an alert body at 608 characters. */
+const ALERT_BODY_MAX = 600;
+const ALERT_LIST_MAX = 5;
 /** Finished sessions stay on the card this long. */
 const FINISHED_WINDOW_MS = 15 * 60 * 1000;
 /** A finish alerts only this soon after it happened. */
 const FINISH_ALERT_WINDOW_MS = 2 * 60 * 1000;
 const RUNNING_EXPIRY_MS = 2 * 60 * 60 * 1000;
 /**
- * The gateway refuses data over 3800 bytes and then adds `station_key`
- * (~55 bytes); FCM's own ceiling is 4096. Rows are dropped from the tail
- * until the card, per-device fields included, fits this budget.
+ * The card travels sealed: base64url(nonce || ciphertext || tag) inside
+ * `{station_kind, device_id, sealed}`. The gateway refuses data over 3800
+ * bytes (and then stamps ~60 bytes of `station_key`; FCM's own ceiling is
+ * 4096). 2500 plaintext bytes seal to at most
+ * ceil((2500 + 28) * 4 / 3) = 3371 characters, which with the routing
+ * fields and a 64-character registrationId stays under 3500.
  */
-const DATA_BUDGET_BYTES = 3400;
+const PLAINTEXT_BUDGET_BYTES = 2500;
+/** An alert body is cut to this many bytes before a row is given up. */
+const ALERT_BODY_SHORT_BYTES = 400;
 
-/** Waiting on the user; `stale` is only ever produced for `blocked`. */
+/** What the phone's `needsUser` means: an approval or input request. */
 const needsUser = (phase: AgentActivityPhase) =>
-  phase === 'waiting_for_approval' ||
-  phase === 'waiting_for_input' ||
-  phase === 'stale';
-/** Alerts go out on entry into an approval or input request only. */
-const alertsOnEntry = (phase: AgentActivityPhase) =>
   phase === 'waiting_for_approval' || phase === 'waiting_for_input';
 const finished = (phase: AgentActivityPhase) =>
   phase === 'completed' || phase === 'failed';
@@ -86,7 +88,8 @@ export interface AgentActivitySessionFacts extends SessionAttentionSubject {
  *   approval) and a runtime `awaiting-approval` state into `review_pending`
  *   plus `pendingReview` (session-lifecycle-service.ts). `needs_input` is an
  *   input request. `blocked` waits on the user too but has no plugin phase of
- *   its own; it reads `stale` ("Waiting") and counts as attention.
+ *   its own; it reads `stale` ("Waiting"). It is not counted as attention:
+ *   the phone's attention count means an approval or input request.
  * - `canceled` sessions leave the card; other finished sessions read Done.
  * - An absent lifecycle state is not put on the card. The shared
  *   `foldedSessionLifecycleState` default leans live on purpose for in-app
@@ -121,20 +124,39 @@ export interface AgentActivitySnapshot {
   title: string;
   project: string;
   phase: AgentActivityPhase;
-  /** Epoch ms the session entered `phase`; stable across rebuilds. */
+  /** Epoch ms the session entered `phase`. */
+  enteredAt: number;
+  /**
+   * Which entry into `phase` this is — derived from the event log (the open
+   * request, the turn, the terminal event), so a second approval on the same
+   * session is a different entry even when no observation saw it leave.
+   */
+  entryKey: string;
+}
+
+/** One alertable entry: an approval/input request, or a recent finish. */
+export interface AgentActivityAlertEntry {
+  /** Stable across rebuilds and restarts; see {@link agentActivityEntryId}. */
+  id: string;
+  phase: AgentActivityPhase;
+  title: string;
+  project: string;
   enteredAt: number;
 }
 
 export interface AgentActivityCard {
-  /** Card fields except the per-device `device_id` and `updated_at`. */
-  fields: Record<string, string>;
-  /**
-   * Identity of what the phone would render (fields minus the clock-driven
-   * expiry). Unchanged content is not re-sent.
-   */
+  /** `user_id`, `active`, counts and expiry; no rows, alert or timestamp. */
+  base: Record<string, string>;
+  /** Plugin row strings, in display order; may be cut to fit when sealed. */
+  rows: string[];
+  topPhase?: AgentActivityPhase;
+  active: boolean;
+  /** Absolute expiry the card carries (`activity_expires_at`). */
+  expiresAt: number;
+  /** What the phone renders, minus the clock-driven expiry. */
   contentKey: string;
-  /** True when the card has no rows: sending it clears the phone's card. */
-  empty: boolean;
+  /** Alertable entries currently on the card, newest first. */
+  alertables: AgentActivityAlertEntry[];
 }
 
 /** Collapses anything that could break the tab-separated row format. */
@@ -157,15 +179,15 @@ function rank(snapshot: AgentActivitySnapshot): number {
   return 3;
 }
 
-export function agentActivityAlertId(input: {
+export function agentActivityEntryId(input: {
   stationId: string;
   sessionId: string;
   phase: AgentActivityPhase;
-  enteredAt: number;
+  entryKey: string;
 }): string {
   return createHash('sha256')
     .update(
-      `${input.stationId}|${input.sessionId}|${input.phase}|${input.enteredAt}`,
+      `${input.stationId}|${input.sessionId}|${input.phase}|${input.entryKey}`,
     )
     .digest('hex');
 }
@@ -196,39 +218,6 @@ export function buildAgentActivityCard(input: {
   const activeCount = eligible.filter((s) => !finished(s.phase)).length;
   const attentionCount = eligible.filter((s) => needsUser(s.phase)).length;
   const active = activeCount > 0;
-
-  const alertSource = eligible
-    .filter(
-      (s) =>
-        alertsOnEntry(s.phase) ||
-        (finished(s.phase) && now - s.enteredAt <= FINISH_ALERT_WINDOW_MS),
-    )
-    .sort(
-      (a, b) =>
-        b.enteredAt - a.enteredAt || a.sessionId.localeCompare(b.sessionId),
-    )[0];
-
-  const base: Record<string, string> = {
-    station_kind: 'agent_activity',
-    user_id: stationId,
-    active: active ? 'true' : 'false',
-    activity_active_count: String(activeCount),
-    activity_attention_count: String(attentionCount),
-  };
-  if (alertSource) {
-    const title = clean(alertSource.title, TITLE_MAX) || 'Untitled session';
-    const project = clean(alertSource.project, PROJECT_MAX);
-    base.alert_id = agentActivityAlertId({ stationId, ...alertSource });
-    base.alert_title = clean(
-      ALERT_TITLE[alertSource.phase] ?? 'Agent activity',
-      ALERT_TITLE_MAX,
-    );
-    base.alert_body = clean(
-      project ? `${title} · ${project}` : title,
-      ALERT_BODY_MAX,
-    );
-  }
-
   const rows = ordered
     .slice(0, MAX_ROWS)
     .map((session) =>
@@ -242,35 +231,145 @@ export function buildAgentActivityCard(input: {
     rows.length === 0
       ? now
       : now + (active ? RUNNING_EXPIRY_MS : FINISHED_WINDOW_MS);
-  // Room for the per-device fields added by the publisher.
-  const perDeviceAllowance = JSON.stringify({
-    device_id: 'x'.repeat(64),
-    updated_at: String(Number.MAX_SAFE_INTEGER),
-  }).length;
-  const assemble = (count: number) => {
-    const fields: Record<string, string> = { ...base };
-    const top = ordered[0];
-    if (count > 0 && top) fields.activity_phase = top.phase;
-    rows.slice(0, count).forEach((row, index) => {
+  const base: Record<string, string> = {
+    user_id: stationId,
+    active: active ? 'true' : 'false',
+    activity_active_count: String(activeCount),
+    activity_attention_count: String(attentionCount),
+  };
+  const topPhase = ordered[0]?.phase;
+  const alertables = eligible
+    .filter(
+      (s) =>
+        needsUser(s.phase) ||
+        (finished(s.phase) && now - s.enteredAt <= FINISH_ALERT_WINDOW_MS),
+    )
+    .sort(
+      (a, b) =>
+        b.enteredAt - a.enteredAt || a.sessionId.localeCompare(b.sessionId),
+    )
+    .map((s) => ({
+      id: agentActivityEntryId({ stationId, ...s }),
+      phase: s.phase,
+      title: clean(s.title, TITLE_MAX) || 'Untitled session',
+      project: clean(s.project, PROJECT_MAX),
+      enteredAt: s.enteredAt,
+    }));
+  return {
+    base,
+    rows,
+    ...(topPhase ? { topPhase } : {}),
+    active,
+    expiresAt,
+    contentKey: JSON.stringify({ base, rows, topPhase }),
+    alertables,
+  };
+}
+
+/**
+ * The alert fields for the entries a phone has not been alerted about yet.
+ * One entry reads as itself; several are grouped into one alert whose id is
+ * derived from the sorted set, so a retry of the same group is recognised.
+ */
+export function agentActivityAlertFields(
+  entries: readonly AgentActivityAlertEntry[],
+): Record<string, string> {
+  const [first] = entries;
+  if (!first) return {};
+  if (entries.length === 1) {
+    return {
+      alert_id: first.id,
+      alert_title: clean(
+        ALERT_TITLE[first.phase] ?? 'Agent activity',
+        ALERT_TITLE_MAX,
+      ),
+      alert_body: clean(
+        first.project ? `${first.title} · ${first.project}` : first.title,
+        ALERT_BODY_MAX,
+      ),
+    };
+  }
+  const attention = entries.filter((e) => needsUser(e.phase)).length;
+  const title =
+    attention === entries.length
+      ? `${entries.length} agents need you`
+      : attention === 0
+        ? `${entries.length} agents finished`
+        : `${entries.length} agent updates`;
+  const lines = entries
+    .slice(0, ALERT_LIST_MAX)
+    .map((e) => `${PHASE_STATUS[e.phase]}: ${e.title}`);
+  if (entries.length > ALERT_LIST_MAX)
+    lines.push(`and ${entries.length - ALERT_LIST_MAX} more`);
+  let body = lines.join('\n');
+  if (Array.from(body).length > ALERT_BODY_MAX)
+    body = `${Array.from(body)
+      .slice(0, ALERT_BODY_MAX - 1)
+      .join('')}…`;
+  return {
+    alert_id: createHash('sha256')
+      .update(
+        entries
+          .map((e) => e.id)
+          .sort()
+          .join('|'),
+      )
+      .digest('hex'),
+    alert_title: clean(title, ALERT_TITLE_MAX),
+    alert_body: body,
+  };
+}
+
+/**
+ * Serializes the plaintext one phone receives: the card plus that phone's
+ * alert and the Station-monotonic `updated_at`. Rows are dropped from the
+ * tail, then the alert body is shortened, until it fits the sealed budget.
+ */
+export function composeAgentActivityPlaintext(
+  card: AgentActivityCard,
+  alert: Record<string, string>,
+  updatedAt: number,
+): string {
+  const assemble = (rowCount: number, alertFields: Record<string, string>) => {
+    const fields: Record<string, string> = {
+      user_id: card.base.user_id ?? '',
+      updated_at: String(updatedAt),
+      active: card.base.active ?? 'false',
+    };
+    if (rowCount > 0 && card.topPhase) fields.activity_phase = card.topPhase;
+    card.rows.slice(0, rowCount).forEach((row, index) => {
       fields[`activity_line_${index}`] = row;
     });
-    fields.activity_expires_at = String(expiresAt);
-    return fields;
+    fields.activity_active_count = card.base.activity_active_count ?? '0';
+    fields.activity_attention_count = card.base.activity_attention_count ?? '0';
+    fields.activity_expires_at = String(card.expiresAt);
+    return JSON.stringify({ ...fields, ...alertFields });
   };
-  let count = rows.length;
-  let fields = assemble(count);
-  while (
-    count > 0 &&
-    Buffer.byteLength(JSON.stringify(fields)) + perDeviceAllowance >
-      DATA_BUDGET_BYTES
-  ) {
-    count -= 1;
-    fields = assemble(count);
+  const fits = (text: string) =>
+    Buffer.byteLength(text, 'utf8') <= PLAINTEXT_BUDGET_BYTES;
+  const withBody = (bytes: number) =>
+    alert.alert_body === undefined
+      ? alert
+      : { ...alert, alert_body: truncateBytes(alert.alert_body, bytes) };
+  // Rows are what the card is for: shorten a long alert body before giving
+  // up a row, and give up rows before dropping the body.
+  for (let count = card.rows.length; count >= 0; count -= 1) {
+    for (const alertFields of [alert, withBody(ALERT_BODY_SHORT_BYTES)]) {
+      const text = assemble(count, alertFields);
+      if (fits(text)) return text;
+    }
   }
-  const { activity_expires_at: _expiry, ...content } = fields;
-  return {
-    fields,
-    contentKey: JSON.stringify(content),
-    empty: count === 0,
-  };
+  const { alert_body: _dropped, ...withoutBody } = alert;
+  return assemble(0, withoutBody);
+}
+
+/** Cuts to at most `bytes` UTF-8 bytes on a code-point boundary. */
+function truncateBytes(value: string, bytes: number): string {
+  if (Buffer.byteLength(value, 'utf8') <= bytes) return value;
+  let result = '';
+  for (const char of value) {
+    if (Buffer.byteLength(`${result}${char}…`, 'utf8') > bytes) break;
+    result += char;
+  }
+  return `${result}…`;
 }

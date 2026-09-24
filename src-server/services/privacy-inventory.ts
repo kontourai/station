@@ -113,12 +113,13 @@ const PRIVACY_INVENTORY: readonly PrivacyInventoryEntry[] = [
     usedForTracking: false,
     purpose: 'App Functionality',
     collection:
-      "A compact agent-activity card: up to five agent sessions' titles and project names (truncated), their status (working, waiting for approval or input, done, failed), activity counts, and a short alert when a session needs the user or finishes; plus the phone's Firebase Cloud Messaging registration token and random per-registration and per-Station identifiers. Never transcripts, prompts beyond the session title, code, tool output or file paths. Sent only after the user turns on agent activity on a paired Android phone, which registers that phone with its Station; nothing is sent while no phone is registered.",
+      "An agent-activity card for a paired Android phone: up to five agent sessions' titles (a session's title is the first ~120 characters of your first message in that session), their project names, and their status (working, waiting for approval or input, done, failed), with activity counts and a short alert when a session needs you or finishes. The card is end-to-end encrypted to the phone with a key only that phone and your Station hold, so the Kontour push gateway and Google see only routing data: the phone's Firebase Cloud Messaging registration token, a random per-registration identifier, the Station's push-key fingerprint, and the size and timing of each message. Never transcripts, later messages, code, tool output or file paths. Sent only after the user turns on agent activity on a paired phone; nothing is sent while no phone is registered.",
     destination:
-      'The Kontour push gateway (STATION_PUSH_GATEWAY_URL, default https://push.kontourai.io), which keeps nothing and forwards the card to Google Firebase Cloud Messaging for delivery to the registered phone.',
+      'The Kontour push gateway (STATION_PUSH_GATEWAY_URL, default https://push.kontourai.io), which keeps nothing and forwards the encrypted card to Google Firebase Cloud Messaging for delivery to the registered phone.',
     evidence: [
       'src-server/services/notifications/agent-activity-publisher.ts',
       'src-server/services/notifications/agent-activity-card.ts',
+      'src-server/services/notifications/agent-activity-seal.ts',
       'src-server/routes/operations/native-push-routes.ts',
       'deploy/push-gateway/src/gateway.ts',
     ],

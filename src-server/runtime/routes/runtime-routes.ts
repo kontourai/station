@@ -427,6 +427,7 @@ import { StationKitObservabilityHost } from '../../services/kits/kit-observabili
 import { StationKitObservabilityRegistry } from '../../services/kits/kit-observability-registry.js';
 import type { KnowledgeService } from '../../services/knowledge/knowledge-service.js';
 import { ownedLayoutStore } from '../../services/layouts/personal-layout-service.js';
+import type { AgentActivityPublisher } from '../../services/notifications/agent-activity-publisher.js';
 import type { NotificationService } from '../../services/notifications/notification-service.js';
 import type { WebPushService } from '../../services/notifications/web-push-service.js';
 import { actionOperationActorForRequest } from '../../services/operations/action-operation-authority.js';
@@ -778,6 +779,8 @@ interface ConfigureRuntimeRoutesResult {
   notificationService: NotificationService;
   attentionProjection: AttentionProjectionService;
   webPushService: WebPushService;
+  /** Agent-activity push; the runtime stops it (and its timer) on shutdown. */
+  agentActivityPublisher: AgentActivityPublisher;
   kitLifecycleReady: Promise<void>;
   projectTaskRoomRuntime?: ProjectTaskRoomRuntime;
   /**
@@ -5086,6 +5089,7 @@ export function configureRuntimeRoutes(
     webPushService,
     webPushEnabled,
     pushSigningKeyStore,
+    pushGatewayAvailable,
     agentActivityPublisher,
   } = configureRuntimeSupportServices(context, flowRunService, {
     // #2064 (D4): the same aggregate `/api/survey-flow-reviews` serves, over
@@ -5349,16 +5353,19 @@ export function configureRuntimeRoutes(
     '/api/system',
     createNativePushRoutes({
       enabled: webPushEnabled,
+      deliverable: pushGatewayAvailable,
+      logger: context.logger,
       identifyDevice: (credential) =>
         context.environmentSecurityService.identifyDevice(credential),
       loadOrCreateStationKey: async () =>
         (await pushSigningKeyStore.loadOrCreate()).thumbprint,
       stationId: () =>
         context.environmentSecurityService.devicePairing.environmentId(),
-      setNativePush: (deviceId, request) =>
+      setNativePush: (deviceId, request, stationKey) =>
         context.environmentSecurityService.devicePairing.setNativePush(
           deviceId,
           request,
+          stationKey,
         ),
       clearNativePush: (deviceId) => {
         context.environmentSecurityService.devicePairing.clearNativePush(
@@ -5500,6 +5507,7 @@ export function configureRuntimeRoutes(
     notificationService,
     attentionProjection,
     webPushService,
+    agentActivityPublisher,
     kitLifecycleReady,
     projectTaskRoomRuntime,
     liveSurfaceRegistry,

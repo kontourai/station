@@ -4,6 +4,8 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  statSync,
+  writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -12,13 +14,18 @@ import { DEFAULT_GRANT_PAIRING_SCOPE } from '@kontourai/station-contracts';
 import {
   NATIVE_PUSH_REGISTER_PATH,
   NATIVE_PUSH_REGISTRATION_PATH,
+  type NativePushRegistrationRequest,
 } from '@kontourai/station-contracts/native-push';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { createNativePushRoutes } from '../../routes/operations/native-push-routes.js';
+import { NativePushRegistrationStore } from '../../services/notifications/native-push-registration-store.js';
 import { PushSigningKeyStore } from '../../services/notifications/push-signing-key-store.js';
 import type { EventBus } from '../../services/orchestration/event-bus.js';
-import { DevicePairingService } from '../../services/ssh/device-pairing-service.js';
+import {
+  DevicePairingError,
+  DevicePairingService,
+} from '../../services/ssh/device-pairing-service.js';
 import type { Logger } from '../../utils/logger.js';
 import { configureRuntimeHttp } from '../bootstrap/runtime-http.js';
 
@@ -49,7 +56,17 @@ function logger(): Logger {
   };
 }
 
-function createHarness(options: { enabled?: boolean } = {}) {
+function createHarness(
+  options: {
+    enabled?: boolean;
+    deliverable?: boolean;
+    setNativePush?: (
+      deviceId: string,
+      request: NativePushRegistrationRequest,
+      stationKey: string,
+    ) => { registrationId: string; payloadKey: string };
+  } = {},
+) {
   const homeDir = mkdtempSync(join(tmpdir(), 'station-native-push-routes-'));
   homes.push(homeDir);
   mkdirSync(join(homeDir, 'security'), { mode: 0o700 });
@@ -82,12 +99,17 @@ function createHarness(options: { enabled?: boolean } = {}) {
     '/api/system',
     createNativePushRoutes({
       ...(options.enabled !== undefined ? { enabled: options.enabled } : {}),
+      ...(options.deliverable !== undefined
+        ? { deliverable: options.deliverable }
+        : {}),
       identifyDevice: (credential) => pairing.identifyDevice(credential),
       loadOrCreateStationKey: async () =>
         (await keys.loadOrCreate()).thumbprint,
       stationId: () => pairing.environmentId(),
-      setNativePush: (deviceId, request) =>
-        pairing.setNativePush(deviceId, request),
+      setNativePush:
+        options.setNativePush ??
+        ((deviceId, request, stationKey) =>
+          pairing.setNativePush(deviceId, request, stationKey)),
       clearNativePush: (deviceId) => {
         pairing.clearNativePush(deviceId);
       },
@@ -125,6 +147,7 @@ function createHarness(options: { enabled?: boolean } = {}) {
     unregister,
     keyPath: join(homeDir, 'security', 'push-signing-key.json'),
     registryPath: join(homeDir, 'security', 'paired-devices.json'),
+    sidecarPath: join(homeDir, 'security', 'native-push-registrations.json'),
   };
 }
 
@@ -175,10 +198,14 @@ describe('native push routes', () => {
     expect(response.status).toBe(200);
     const body = (await response.json()) as Record<string, string>;
     expect(Object.keys(body).sort()).toEqual([
+      'payloadKey',
       'registrationId',
       'stationId',
       'stationKey',
     ]);
+    // 32 CSPRNG bytes, base64url without padding.
+    expect(body.payloadKey).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect(Buffer.from(body.payloadKey ?? '', 'base64url')).toHaveLength(32);
     expect(body.stationId).toBe(ENVIRONMENT_ID);
     expect(body.stationKey).toBe(harness.keys.read()?.thumbprint);
     // 128 random bits, base64url.
@@ -193,6 +220,8 @@ describe('native push routes', () => {
           packageName: 'io.kontourai.station',
           platform: 'android',
           registrationId: body.registrationId,
+          payloadKey: body.payloadKey,
+          stationKey: body.stationKey,
         }),
       },
     ]);
@@ -340,8 +369,14 @@ describe('native push routes', () => {
     expect(listed).not.toContain(registrationId);
     expect(listed).not.toContain('nativePush');
 
-    // Persisted, and a fresh reader accepts the stored shape.
-    expect(readFileSync(harness.registryPath, 'utf8')).toContain(TOKEN_A);
+    // Persisted in the 0600 sidecar, and never in the device registry an
+    // older Station would refuse whole.
+    const registry = readFileSync(harness.registryPath, 'utf8');
+    for (const secret of [TOKEN_A, registrationId, 'nativePush', 'payloadKey'])
+      expect(registry).not.toContain(secret);
+    expect(readFileSync(harness.sidecarPath, 'utf8')).toContain(TOKEN_A);
+    if (process.platform !== 'win32')
+      expect(statSync(harness.sidecarPath).mode & 0o777).toBe(0o600);
     const reloaded = new DevicePairingService({
       homeDir: harness.homeDir,
       environmentId: ENVIRONMENT_ID,
@@ -364,9 +399,126 @@ describe('native push routes', () => {
     harness.pairing.revokeDevice(paired.device.id, 'operator-credential');
     expect(harness.pairing.listNativePushRegistrations()).toEqual([]);
     // Severed on disk, not just hidden from the listing.
-    expect(readFileSync(harness.registryPath, 'utf8')).not.toContain(TOKEN_A);
+    expect(readFileSync(harness.sidecarPath, 'utf8')).not.toContain(TOKEN_A);
     expect(
       (await harness.register(paired.credential, androidBody(TOKEN_A))).status,
     ).toBe(401);
+  });
+
+  test('a new registration after delete gets a new payload key; rotation keeps it', async () => {
+    const harness = createHarness();
+    const paired = await pairDevice(harness);
+    const first = (await (
+      await harness.register(paired.credential, androidBody(TOKEN_A))
+    ).json()) as Record<string, string>;
+    const rotated = (await (
+      await harness.register(paired.credential, androidBody(TOKEN_B))
+    ).json()) as Record<string, string>;
+    expect(rotated.payloadKey).toBe(first.payloadKey);
+    await harness.unregister(paired.credential);
+    const again = (await (
+      await harness.register(paired.credential, androidBody(TOKEN_A))
+    ).json()) as Record<string, string>;
+    expect(again.payloadKey).not.toBe(first.payloadKey);
+  });
+
+  test('a registry written by the pre-release build (nativePush on the device) still loads, and the field is dropped', async () => {
+    const harness = createHarness();
+    const paired = await pairDevice(harness);
+    const registry = JSON.parse(readFileSync(harness.registryPath, 'utf8'));
+    registry.devices[0].nativePush = {
+      token: TOKEN_A,
+      packageName: 'io.kontourai.station',
+      platform: 'android',
+      registrationId: 'r'.repeat(22),
+      updatedAt: 1,
+    };
+    writeFileSync(harness.registryPath, JSON.stringify(registry), {
+      mode: 0o600,
+    });
+    const reloaded = new DevicePairingService({
+      homeDir: harness.homeDir,
+      environmentId: ENVIRONMENT_ID,
+    });
+    expect(reloaded.identifyDevice(paired.credential)?.id).toBe(
+      paired.device.id,
+    );
+    reloaded.revokeDevice(paired.device.id, 'operator-credential');
+    expect(readFileSync(harness.registryPath, 'utf8')).not.toContain(
+      'nativePush',
+    );
+  });
+
+  test('an invalid gateway URL makes registration unavailable (503), not a silent promise', async () => {
+    const harness = createHarness({ deliverable: false });
+    const paired = await pairDevice(harness);
+    const response = await harness.register(
+      paired.credential,
+      androidBody(TOKEN_A),
+    );
+    expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({
+      error: 'native_push_unavailable',
+    });
+    expect(existsSync(harness.keyPath)).toBe(false);
+    expect(harness.pairing.listNativePushRegistrations()).toEqual([]);
+  });
+
+  test('a corrupt push key file answers 503 and registers nothing', async () => {
+    const harness = createHarness();
+    const paired = await pairDevice(harness);
+    writeFileSync(harness.keyPath, '{ not json', { mode: 0o600 });
+    const response = await harness.register(
+      paired.credential,
+      androidBody(TOKEN_A),
+    );
+    expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({
+      error: 'native_push_unavailable',
+    });
+    expect(harness.pairing.listNativePushRegistrations()).toEqual([]);
+    expect(readFileSync(harness.keyPath, 'utf8')).toBe('{ not json');
+  });
+
+  test('a pairing refusal from the store is a 4xx, not a 500', async () => {
+    const harness = createHarness({
+      setNativePush: () => {
+        throw new DevicePairingError('device_not_found');
+      },
+    });
+    const paired = await pairDevice(harness);
+    const response = await harness.register(
+      paired.credential,
+      androidBody(TOKEN_A),
+    );
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({ error: 'device_pairing_required' });
+  });
+
+  test('the store itself refuses a revoked device', async () => {
+    const harness = createHarness();
+    const paired = await pairDevice(harness);
+    harness.pairing.revokeDevice(paired.device.id, 'operator-credential');
+    expect(() =>
+      harness.pairing.setNativePush(
+        paired.device.id,
+        androidBody(TOKEN_A) as NativePushRegistrationRequest,
+        'k'.repeat(43),
+      ),
+    ).toThrow(DevicePairingError);
+  });
+  test('a registration left behind for a revoked device is never listed', async () => {
+    const harness = createHarness();
+    const paired = await pairDevice(harness);
+    harness.pairing.revokeDevice(paired.device.id, 'operator-credential');
+    // As if dropping it had failed: the entry is still in the sidecar.
+    new NativePushRegistrationStore(harness.homeDir).upsert(
+      paired.device.id,
+      androidBody(TOKEN_A) as NativePushRegistrationRequest,
+      'k'.repeat(43),
+      1,
+    );
+    expect(readFileSync(harness.sidecarPath, 'utf8')).toContain(TOKEN_A);
+    expect(harness.pairing.listNativePushRegistrations()).toEqual([]);
   });
 });

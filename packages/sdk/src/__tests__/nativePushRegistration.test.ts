@@ -35,12 +35,14 @@ describe('native push registration', () => {
       registrationId: 'r'.repeat(22),
       stationId: 'station-1',
       stationKey: 'k'.repeat(43),
+      payloadKey: 'p'.repeat(43),
       extra: 'ignored',
     });
     await expect(registerNativePush(REQUEST)).resolves.toEqual({
       registrationId: 'r'.repeat(22),
       stationId: 'station-1',
       stationKey: 'k'.repeat(43),
+      payloadKey: 'p'.repeat(43),
     });
     expect(fetch).toHaveBeenCalledWith(
       'http://example.test/api/system/native-push/register',
@@ -48,6 +50,18 @@ describe('native push registration', () => {
         method: 'POST',
         body: JSON.stringify(REQUEST),
       }),
+    );
+  });
+
+  it('refuses a response without a well-formed payload key', async () => {
+    mockJsonResponse({
+      registrationId: 'r'.repeat(22),
+      stationId: 'station-1',
+      stationKey: 'k'.repeat(43),
+      payloadKey: 'short',
+    });
+    await expect(registerNativePush(REQUEST)).rejects.toThrow(
+      'Malformed native push registration response',
     );
   });
 

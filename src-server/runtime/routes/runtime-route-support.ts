@@ -1,4 +1,5 @@
 import { ACPStatus } from '@kontourai/station-contracts/acp';
+import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import type { HomeRecoveryDisclosure } from '@kontourai/station-contracts/system-status';
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
 import { readStationHomeRecovery } from '@kontourai/station-shared/station-home-archive';
@@ -16,6 +17,7 @@ import { createEnvironmentRuntimeResourcePostureProbe } from '../../services/inf
 import { createServerLogReader } from '../../services/infra/server-log-reader.js';
 import {
   agentActivityRowFromSummary,
+  agentActivityRowsWithEntries,
   resolvePushGatewayConfig,
   wireAgentActivityPublisher,
 } from '../../services/notifications/agent-activity-publisher.js';
@@ -563,7 +565,7 @@ export function configureRuntimeSupportServices(
   const pushGateway = resolvePushGatewayConfig();
   if (!pushGateway)
     context.logger.warn(
-      'STATION_PUSH_GATEWAY_URL is not an https URL; agent-activity push is off',
+      'STATION_PUSH_GATEWAY_URL must be an https origin with no path, query or credentials; agent-activity push is off',
     );
   const agentActivityPublisher = wireAgentActivityPublisher({
     eventBus: context.eventBus,
@@ -587,8 +589,25 @@ export function configureRuntimeSupportServices(
           undefined,
         ),
       );
-      return sessions.map((session) =>
-        agentActivityRowFromSummary(session, (slug) => projects.get(slug)),
+      // Entry identity (which approval, which turn) comes from the same
+      // lifecycle projection events the read model folds.
+      return agentActivityRowsWithEntries(
+        sessions.map((session) =>
+          agentActivityRowFromSummary(session, (slug) => projects.get(slug)),
+        ),
+        (threadIds) => {
+          const byThread = new Map<string, CanonicalRuntimeEvent[]>();
+          const persisted =
+            context.orchestrationEventStore?.listSessionProjectionEventsForThreads(
+              threadIds,
+            );
+          for (const [threadId, events] of persisted ?? [])
+            byThread.set(
+              threadId,
+              events.map((event) => event.payload),
+            );
+          return byThread;
+        },
       );
     },
   });
@@ -639,6 +658,7 @@ export function configureRuntimeSupportServices(
     webPushService,
     webPushEnabled,
     pushSigningKeyStore,
+    pushGatewayAvailable: pushGateway !== null,
     agentActivityPublisher,
   };
 }
