@@ -28,6 +28,8 @@ This file decides nothing about how `station.kontourai.io` will read the ledger 
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-09-24T03:22:42Z | nightly-desktop | 0.1.11-nightly.2458.2 | `7bc3cc6` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/35945178538) |
+| 2026-09-24T03:22:39Z | nightly-android | 0.1.11-nightly.2458.2 | `7bc3cc6` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/35945178538) |
 | 2026-09-24T03:16:24Z | nightly-npm | 0.6.0-nightly.2458.35945178538 | `7bc3cc6` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/35945178538) |
 | 2026-09-24T02:27:24Z | nightly-desktop | 0.1.11-nightly.2458.1 | `1bfdde4` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/35941621675) |
 | 2026-09-24T02:27:21Z | nightly-android | 0.1.11-nightly.2458.1 | `1bfdde4` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/35941621675) |
@@ -131,6 +133,38 @@ This file decides nothing about how `station.kontourai.io` will read the ledger 
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-09-24T03:22:42Z · nightly-desktop · 0.1.11-nightly.2458.2
+
+- Ship SHA: `7bc3cc6dfb7947f68ab7c4884b189e71101e7061`
+- Artifact built at: `2026-09-24T02:40:17.047Z` (not provider upload/record time)
+- Artifact: github-release:nightly-desktop (cohort-finalized)
+- Note: ios: TestFlight delivery success (run 35945178538)
+
+### Changelog
+
+Commits since `1bfdde4` ([full sha](https://github.com/kontourai/station/commit/1bfdde4c7935155996e685e582cff9c5a0551c6e)):
+
+**Other**
+
+- [#2466](https://github.com/kontourai/station/pull/2466) test(browser): drive the control lease clock by hand in hold tests
+- [#2454](https://github.com/kontourai/station/pull/2454) perf(windows): skip ACL setter for freshly verified paths
+
+## 2026-09-24T03:22:39Z · nightly-android · 0.1.11-nightly.2458.2
+
+- Ship SHA: `7bc3cc6dfb7947f68ab7c4884b189e71101e7061`
+- Artifact built at: `2026-09-24T02:40:10.399Z` (not provider upload/record time)
+- Artifact: play-internal-aab:cohort-finalized
+- Note: ios: TestFlight delivery success (run 35945178538)
+
+### Changelog
+
+Commits since `1bfdde4` ([full sha](https://github.com/kontourai/station/commit/1bfdde4c7935155996e685e582cff9c5a0551c6e)):
+
+**Other**
+
+- [#2466](https://github.com/kontourai/station/pull/2466) test(browser): drive the control lease clock by hand in hold tests
+- [#2454](https://github.com/kontourai/station/pull/2454) perf(windows): skip ACL setter for freshly verified paths
 
 ## 2026-09-24T03:16:24Z · nightly-npm · 0.6.0-nightly.2458.35945178538
 
