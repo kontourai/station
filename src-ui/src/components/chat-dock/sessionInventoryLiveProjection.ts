@@ -49,5 +49,8 @@ export function selectSessionInventoryLiveNow(
   return [
     ...raw.filter((entry) => !(entry.kind === 'tool' && joined.has(entry.id))),
     ...provider,
-  ].sort((left, right) => left.startedAt - right.startedAt);
+    // Every entry here carries a start (store cards always do, and provider
+    // entries are kept only when joined to their tool card); `?? 0` is for
+    // the type, which #2459 made optional for unjoined provider cards.
+  ].sort((left, right) => (left.startedAt ?? 0) - (right.startedAt ?? 0));
 }

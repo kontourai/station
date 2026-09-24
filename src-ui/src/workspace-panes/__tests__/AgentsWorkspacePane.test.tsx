@@ -40,7 +40,20 @@ vi.mock('../../contexts/NavigationContext', () => ({
 vi.mock('../../contexts/useShowSurface', () => ({
   useShowSurface: () => showSurface,
 }));
+// #2459: the pane registers its QueryClient with the orchestration stream
+// (tested in AgentsWorkspacePane.streamRefresh.test.tsx); inert here.
+vi.mock('../../hooks/orchestration/ensureOrchestrationEventStream', () => ({
+  ensureOrchestrationEventStream: () => () => {},
+}));
+vi.mock('../../contexts/ApiBaseContext', () => ({
+  useApiBase: () => ({ apiBase: 'http://station.test' }),
+}));
+vi.mock('@tanstack/react-query', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  useQueryClient: () => ({}),
+}));
 vi.mock('@kontourai/station-sdk', () => ({
+  useOrchestrationSessionsQuery: () => ({ data: [] }),
   useOrchestrationSessionQuery: (...args: unknown[]) =>
     useOrchestrationSessionQuery(...args),
   useInterruptDelegatedTaskMutation: (...args: unknown[]) =>
@@ -73,6 +86,7 @@ function mount(view: {
 }
 
 beforeEach(() => {
+  localStorage.clear();
   activeChat = 'chat-1';
   useOrchestrationSessionQuery.mockReturnValue({ data: undefined });
   useInterruptDelegatedTaskMutation.mockReturnValue({
@@ -112,23 +126,16 @@ test('the pane lists the ACTIVE chat’s running and finished work', () => {
   expect(screen.getByText(/Agent · 1:0\d/)).toBeTruthy();
 });
 
-test('no chat is no list, and an empty list says so rather than showing zeroes', () => {
+test('no chat shows every conversation’s work; an empty chat says so rather than showing zeroes', () => {
   activeChat = null;
   mount({ running: [], finished: [] });
-  expect(screen.getByText('Nothing here yet')).toBeTruthy();
-  // Only the no-chat empty carries the remedy; the empty list has none to
-  // offer, so it says nothing rather than inventing an instruction.
-  expect(
-    screen.getByText('Open a chat to see the work it set running.'),
-  ).toBeTruthy();
+  // #2459: with no chat there is no "this conversation" — the pane reads All.
+  expect(screen.getByText('No agent work yet')).toBeTruthy();
   expect(useChatBackgroundTasks).toHaveBeenCalledWith(null);
   cleanup();
   activeChat = 'chat-1';
   mount({ running: [], finished: [] });
-  expect(screen.getByText('Nothing here yet')).toBeTruthy();
-  expect(
-    screen.queryByText('Open a chat to see the work it set running.'),
-  ).toBeNull();
+  expect(screen.getByText('No subagents running')).toBeTruthy();
   expect(screen.queryByText(/Running \(/)).toBeNull();
 });
 

@@ -22,6 +22,7 @@ const ALLOWED_RAW_LOCAL_STORAGE_KEYS = [
   'station-attached-session-continuations-v1', // Exact Attached Session continuation evidence.
   'station-browser-relay-account-scope-event-v1', // Transient cross-tab relay account-scope signal; written and removed, never a setting or credential.
   'station.background-tasks.sections', // Ephemeral panel disclosure state.
+  'station.agents-pane.scope', // Ephemeral Agents pane scope (this conversation / all), view state not a setting.
   'station.banners.dismissed', // Per-occurrence banner dismissals, not a setting.
   'station.chatDock.snap', // Ephemeral dock geometry/snap state.
   'station.dockFirstRunSeen', // One-time affordance marker.

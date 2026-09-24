@@ -38,7 +38,18 @@ vi.mock('../../contexts/NavigationContext', () => ({
 vi.mock('../../contexts/useShowSurface', () => ({
   useShowSurface: () => vi.fn(),
 }));
+vi.mock('../../hooks/orchestration/ensureOrchestrationEventStream', () => ({
+  ensureOrchestrationEventStream: () => () => {},
+}));
+vi.mock('../../contexts/ApiBaseContext', () => ({
+  useApiBase: () => ({ apiBase: 'http://station.test' }),
+}));
+vi.mock('@tanstack/react-query', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  useQueryClient: () => ({}),
+}));
 vi.mock('@kontourai/station-sdk', () => ({
+  useOrchestrationSessionsQuery: () => ({ data: [] }),
   useOrchestrationSessionQuery: (...args: unknown[]) =>
     useOrchestrationSessionQuery(...args),
   useInterruptDelegatedTaskMutation: (...args: unknown[]) =>
@@ -48,6 +59,11 @@ vi.mock('@kontourai/station-sdk', () => ({
 }));
 
 import { activeChatsStore } from '../../contexts/active-chats-store';
+import { childWorkGlobalStore } from '../../contexts/child-work-global-store';
+
+/** The Station these events arrive from (the store is partitioned by it). */
+const API = 'http://station.test';
+
 import { useChatBackgroundTasksRunningCount } from '../../hooks/useBackgroundTasks';
 import { AgentsWorkspacePane } from '../AgentsWorkspacePane';
 
@@ -92,8 +108,23 @@ beforeEach(() => {
         description: 'Investigate flaky test',
         subagentType: 'general-purpose',
         sessionThreadId: 'exec-1',
+        stop: 'provider-task-stop',
       },
     ],
+  });
+  // The same child as the window-wide registry holds it: its item carries
+  // the per-task stop seam the pane's Claude bridge requires (#2459 R1).
+  childWorkGlobalStore.reset();
+  childWorkGlobalStore.ingest(API, {
+    provider: 'claude',
+    threadId: 'exec-1',
+    createdAt: '2026-09-24T00:00:00.000Z',
+    method: 'extension.notification',
+    namespace: 'claude-code',
+    type: 'task/registry',
+    payload: {
+      active: [{ taskId: 'task-1', description: 'Investigate flaky test' }],
+    },
   });
 });
 
@@ -124,7 +155,7 @@ test('the pane lists the work the badge counts, for a conversation whose store k
   expect(screen.getByTestId('badge').textContent).toBe('1');
   expect(screen.getByText('Running (1)')).toBeTruthy();
   expect(screen.getByText('Investigate flaky test')).toBeTruthy();
-  expect(screen.queryByText('Nothing here yet')).toBeNull();
+  expect(screen.queryByText('No subagents running')).toBeNull();
 });
 
 /**
@@ -134,14 +165,17 @@ test('the pane lists the work the badge counts, for a conversation whose store k
  */
 test('no chat is still no list, and an unknown id borrows nobody else’s work', () => {
   activeChat = null;
+  // All lists every conversation's subagents; this case is about the chat
+  // key, so the window-wide registry is empty here.
+  childWorkGlobalStore.reset();
   const { unmount } = render(<AgentsWorkspacePane />);
-  expect(
-    screen.getByText('Open a chat to see the work it set running.'),
-  ).toBeTruthy();
+  // #2459: no chat reads the All scope, which borrows no chat's tool calls.
+  expect(screen.getByText('No agent work yet')).toBeTruthy();
+  expect(screen.queryByText('Investigate flaky test')).toBeNull();
   unmount();
 
   activeChat = 'conv-nobody-has';
   render(<AgentsWorkspacePane />);
-  expect(screen.getByText('Nothing here yet')).toBeTruthy();
+  expect(screen.getByText('No subagents running')).toBeTruthy();
   expect(screen.queryByText('Investigate flaky test')).toBeNull();
 });
