@@ -19,7 +19,6 @@
  */
 import { EventEmitter } from 'node:events';
 import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 import { PassThrough } from 'node:stream';
 import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk';
 import {
@@ -56,10 +55,12 @@ type Driver = {
   run: () => Promise<CanonicalRuntimeEvent[]>;
 };
 
-const fixture = (name: string) =>
-  readFileSync(resolve(__dirname, 'fixtures', name), 'utf8')
-    .split('\n')
-    .filter((line) => line.length > 0);
+const CLAUDE_TASK_SUBAGENTS_FIXTURE = readFileSync(
+  new URL('./fixtures/claude-task-subagents.jsonl', import.meta.url),
+  'utf8',
+)
+  .split('\n')
+  .filter((line) => line.length > 0);
 
 /**
  * A REAL capture (`fixtures/claude-task-subagents.jsonl`, recorded by
@@ -81,7 +82,7 @@ async function replayClaudeCapture(): Promise<CanonicalRuntimeEvent[]> {
     dispatchedTurnId: 'turn-1',
     lastSessionState: 'running',
   };
-  for (const line of fixture('claude-task-subagents.jsonl')) {
+  for (const line of CLAUDE_TASK_SUBAGENTS_FIXTURE) {
     mapClaudeSdkMessage({
       provider: 'claude',
       record,
@@ -258,10 +259,7 @@ async function replayCodexCollabSchemaShape(): Promise<
  */
 async function stationAdapterStructural(): Promise<CanonicalRuntimeEvent[]> {
   const source = readFileSync(
-    resolve(
-      process.cwd(),
-      'src-server/providers/adapters/station-agent-adapter.ts',
-    ),
+    new URL('../adapters/station-agent-adapter.ts', import.meta.url),
     'utf8',
   );
   expect(source).not.toContain('child-work.updated');
