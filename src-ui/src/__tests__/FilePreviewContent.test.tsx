@@ -243,7 +243,7 @@ describe('FilePreviewContent', () => {
         current={{
           url: dataUrl(
             'text/markdown',
-            '[repo file](src/app.ts), [site](https://example.test/docs) and [pr](https://github.com/acme/app/pull/7)',
+            '[repo file](src/app.ts), [site](https://example.test/docs), [pr](https://github.com/acme/app/pull/7) and [forge file](https://github.com/acme/app/blob/main/src/app.ts)',
           ),
           mediaType: 'text/markdown',
           name: 'links.md',
@@ -262,6 +262,10 @@ describe('FilePreviewContent', () => {
     expect(screen.getByRole('link', { name: 'pr' }).getAttribute('href')).toBe(
       'https://github.com/acme/app/pull/7',
     );
+    // So is a file on a forge: no project here to open it from locally.
+    expect(
+      screen.getByRole('link', { name: 'forge file' }).getAttribute('href'),
+    ).toBe('https://github.com/acme/app/blob/main/src/app.ts');
   });
 
   test('offers the download for a type it cannot render', () => {
