@@ -268,6 +268,44 @@ describe('leaving a phone layer asks before discarding a review draft', () => {
     expect(window.history.length).toBeLessThanOrEqual(length);
   });
 
+  // Round-4 review L3: a second Back while the prompt is up starts a new
+  // decision, and the guard cancels the first. The superseded decision's
+  // answer must change nothing — if it cleared the live decision, the second
+  // Back would never reinstate the layer's entry, and Discard would have no
+  // entry to travel back over.
+  test('Back, Back, Discard: the superseded decision changes nothing, and Discard travels back over the one live entry', async () => {
+    await mountWithDraft();
+    act(() => window.history.back());
+    await screen.findByRole('dialog', { name: /Unsaved Changes/ });
+    const marker = () =>
+      (window.history.state as Record<string, unknown> | null)?.[
+        DIALOG_HISTORY_KEY
+      ];
+    await waitFor(() => expect(onLayerEntry()).toBe(true));
+    const firstReinstated = marker();
+
+    act(() => window.history.back());
+    // The second decision reinstated its own entry: a new marker, live.
+    await waitFor(() => {
+      expect(onLayerEntry()).toBe(true);
+      expect(marker()).not.toBe(firstReinstated);
+    });
+    expectLayerOpen();
+    expect(current().regions.bottom.maximized).toBe(true);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
+    await waitFor(() => expect(current().phoneLayer).toBeNull());
+    expect(current().regions.bottom).toMatchObject({
+      panes: ['chat'],
+      occupant: 'chat',
+    });
+    // Travelled back over the reinstated entry rather than leaving it.
+    await waitFor(() => expect(onLayerEntry()).toBe(false));
+    expect(
+      screen.queryByRole('dialog', { name: /Unsaved Changes/ }),
+    ).toBeNull();
+  });
+
   test('"‹ Chat" asks too; Cancel keeps the layer, Discard closes it', async () => {
     const comment = await mountWithDraft();
 
