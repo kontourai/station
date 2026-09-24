@@ -319,8 +319,9 @@ test('per chat, delegates are the background-tasks store’s cards — live, as 
   ).toBeNull();
 });
 
-test('Claude’s per-chat Stop survives on the TaskRow bridge, with no invented elapsed; ChildWorkRow offers none from a `none` cell', () => {
+test('#2457: a live Claude child with its cell wired shows exactly ONE Stop — its ChildWorkRow, no bridge row, no duplicate', () => {
   openChat('claude');
+  // What `childWorkHandlers` derives for the chat from the live delta below.
   activeChatsStore.updateChat(CHAT, {
     backgroundTasks: [
       {
@@ -329,26 +330,49 @@ test('Claude’s per-chat Stop survives on the TaskRow bridge, with no invented 
         backgrounded: true,
         sessionThreadId: 'exec-1',
         stop: 'provider-task-stop',
+        progress: 'Reading the test logs — Grep',
       },
     ],
   });
-  claudeRegistry([{ taskId: 'task-1', description: 'Investigate flaky test' }]);
+  // The live shape since #2457: `child-work.updated`, not the legacy tuple.
+  childWorkGlobalStore.ingest(API, {
+    provider: 'claude',
+    threadId: 'exec-1',
+    createdAt: '2026-09-24T00:00:00.000Z',
+    method: 'child-work.updated',
+    delta: {
+      kind: 'snapshot',
+      producer: 'engine-subagent',
+      reporterThreadId: 'exec-1',
+      running: [
+        {
+          producer: 'engine-subagent',
+          reporterThreadId: 'exec-1',
+          childId: 'task-1',
+          status: 'running',
+          title: 'Investigate flaky test',
+          backgrounded: true,
+          progress: 'Reading the test logs — Grep',
+          controls: { stop: 'provider-task-stop' },
+        },
+      ],
+    },
+  });
   const { container } = render(<AgentsWorkspacePane />);
-  // Per chat: ONE row (the bridge), with the shipped Stop.
+  // Per chat: ONE row, the contract's, with ONE Stop.
   expect(screen.getByText('Running (1)')).toBeTruthy();
   expect(screen.getAllByText('Investigate flaky test')).toHaveLength(1);
   expect(screen.getAllByRole('button', { name: 'Stop' })).toHaveLength(1);
-  // No spawning tool card was seen, so no start: the row shows no time
-  // (it showed an invented `Date.now()` start before #2459 R2).
+  expect(container.querySelectorAll('.child-work-row')).toHaveLength(1);
+  // The TaskRow bridge retired itself: no provider card row at all.
   expect(
-    container.querySelector('.background-tasks-sheet__meta')?.textContent,
-  ).toBe('Agent');
+    container.querySelectorAll('.background-tasks-sheet__row'),
+  ).toHaveLength(0);
 
-  // All: the contract row, and no Stop — Claude's cell is not wired.
+  // All: the same single row and Stop.
   fireEvent.click(screen.getByRole('button', { name: 'All' }));
   expect(screen.getAllByText('Investigate flaky test')).toHaveLength(1);
-  expect(screen.getByText('From “Morning triage”')).toBeTruthy();
-  expect(screen.queryByRole('button', { name: 'Stop' })).toBeNull();
+  expect(screen.getAllByRole('button', { name: 'Stop' })).toHaveLength(1);
 });
 
 test('a Codex child with no stop seam gets no Stop per chat', () => {

@@ -506,8 +506,9 @@ describe('settings catalog completeness', () => {
     // that MOVED into the new chat section are not a change to this count:
     // the same ids, in a different `view`. #1973: +1 (device-hosts, the
     // operator's SSH device hosts). #90 D9: +1 (chat-auto-float-browser,
-    // the float-over-chat's auto-show preference).
-    expect(SETTINGS_CATALOG).toHaveLength(56);
+    // the float-over-chat's auto-show preference). #2511: +1
+    // (open-last-station, mobile-only, so not in this desktop render).
+    expect(SETTINGS_CATALOG).toHaveLength(57);
   });
 
   /**

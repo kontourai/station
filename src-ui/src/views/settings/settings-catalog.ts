@@ -554,6 +554,14 @@ const SETTINGS_CATALOG_SOURCE = [
     configKeys: ['featureSettings'],
   },
   {
+    id: 'open-last-station',
+    title: 'Open last Station on launch',
+    section: 'pairing',
+    keywords: ['reconnect', 'startup', 'last connection', 'phone'],
+    configKeys: ['openLastStationOnLaunch'],
+    conditional: 'mobile',
+  },
+  {
     id: 'personal-knowledge-store',
     title: 'My knowledge store',
     section: 'knowledge',

@@ -467,6 +467,15 @@
       "configKey": "featureSettings"
     },
     {
+      "id": "open-last-station",
+      "label": "Open last Station on launch",
+      "help": "On this phone, Station reconnects to the Station you last selected when the app opens.",
+      "scope": "device",
+      "section": "pairing",
+      "route": "/settings?view=pairing&highlight=open-last-station",
+      "configKey": "openLastStationOnLaunch"
+    },
+    {
       "id": "personal-knowledge-store",
       "label": "My knowledge store",
       "scope": "station",
