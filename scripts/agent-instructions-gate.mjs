@@ -138,7 +138,11 @@ const DISCOVERY_IGNORES = new Set(['.git', 'node_modules', 'vendor']);
 // list narrow and path-anchored rather than matching by basename, so a
 // real source directory that happens to share a build tool's folder name
 // is never silently skipped.
-const BUILD_OUTPUT_DIRECTORIES = ['src-desktop/gen', 'src-desktop/target', 'src-desktop/binaries'];
+const BUILD_OUTPUT_DIRECTORIES = [
+  'src-desktop/gen',
+  'src-desktop/target',
+  'src-desktop/binaries',
+];
 function isBuildOutputDirectory(relativePath) {
   return BUILD_OUTPUT_DIRECTORIES.some(
     (directory) =>

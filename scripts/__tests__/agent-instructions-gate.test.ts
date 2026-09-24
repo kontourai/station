@@ -315,9 +315,9 @@ describe('agent instruction topology', () => {
       );
       mkdirSync(swiftRsDir, { recursive: true });
       symlinkSync(linkedTarget, resolve(swiftRsDir, 'generated'), 'dir');
-      expect(
-        discoverOnDiskInstructionFiles({ root: buildOutputRoot }),
-      ).toEqual([]);
+      expect(discoverOnDiskInstructionFiles({ root: buildOutputRoot })).toEqual(
+        [],
+      );
 
       mkdirSync(resolve(sourceRoot, 'src-server'), { recursive: true });
       symlinkSync(
