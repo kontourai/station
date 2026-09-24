@@ -2,17 +2,16 @@ import {
   existsSync,
   linkSync,
   mkdirSync,
-  mkdtempSync,
   readFileSync,
   renameSync,
   rmSync,
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { SKILL_COMMAND_NAME_RULE } from '@kontourai/station-contracts/skill-command';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 
 vi.mock('../../../telemetry/metrics.js', () => ({
   skillDiscoveries: { add: vi.fn() },
@@ -30,6 +29,7 @@ const { localSkillRevisionFromDirectory } = await import(
 );
 
 let testDir: string;
+const makeTempDir = trackTempDirs();
 const mockConfigLoader = {
   getProjectHomeDir: () => testDir,
   loadSkill: vi.fn(),
@@ -61,7 +61,7 @@ beforeEach(() => {
   // mkdtempSync guarantees a unique dir; `Date.now()` alone collided when two
   // tests ran in the same millisecond, leaking skills between them under
   // shuffled/fast execution.
-  testDir = mkdtempSync(join(tmpdir(), 'skill-test-'));
+  testDir = makeTempDir('skill-test-');
   // `vi.clearAllMocks()` resets call history but NOT mock implementations set
   // via `mockResolvedValue`. A `loadSkill` return configured by an earlier
   // test would otherwise leak into later tests under shuffled order (or vice
