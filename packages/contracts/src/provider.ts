@@ -211,6 +211,29 @@ export const WORKSPACE_PANE_HOST_ACTION_METADATA_KEY =
   'workspacePaneHostAction';
 
 /**
+ * #2493: how far a session's engine may reach beyond its workspace. A
+ * separate axis from `ApprovalMode`, derived by the server only:
+ *
+ * - `host`: the start was made by a caller that may grant full access (the
+ *   operator in person, or a device holding `approval:full-access`), or the
+ *   conversation's recorded decision is a concrete `never`. Full access then
+ *   means what it always meant (Codex `danger-full-access`, Claude
+ *   `bypassPermissions`).
+ * - `workspace`: everything else, including an absent or unknown value. A
+ *   `never` that arrived through an Agent or Station default runs sandboxed
+ *   to the workspace (Codex) or at `auto` (an engine with no process
+ *   sandbox).
+ */
+export type StationConfinement = 'host' | 'workspace';
+
+/**
+ * #2493: the confinement a session's start was granted, stamped by the
+ * server on its start metadata so a respawn or recovery reads it back.
+ * Reserved: a caller-supplied value is stripped before the stamp is written.
+ */
+export const STATION_CONFINEMENT_METADATA_KEY = 'stationConfinement';
+
+/**
  * Complete set of orchestration evidence fields a public caller may never
  * provide. Keep this list aligned with session-summary model projections:
  * launch plan, typed receipt, requested/effective selector and options, and
@@ -233,6 +256,7 @@ export const RESERVED_ORCHESTRATION_METADATA_KEYS = [
   SESSION_AGENT_ICON_METADATA_KEY,
   FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY,
   WORKSPACE_PANE_HOST_ACTION_METADATA_KEY,
+  STATION_CONFINEMENT_METADATA_KEY,
 ] as const;
 
 /**
@@ -940,6 +964,11 @@ export interface ProviderSessionStartInput {
     requestId: string;
     reviewerId: string;
   };
+  /**
+   * #2493: server-derived confinement for this spawn. Public orchestration
+   * commands omit this field; absent is `workspace`.
+   */
+  confinement?: StationConfinement;
   metadata?: Record<string, unknown>;
   /**
    * Server-only opaque app-home selector for a single provider spawn. It is
@@ -1005,6 +1034,8 @@ export interface ProviderSendTurnInput {
     requestId: string;
     reviewerId: string;
   };
+  /** #2493: server-derived confinement; absent is `workspace`. */
+  confinement?: StationConfinement;
   /**
    * Server-owned execution facts for this dispatch. HTTP/client schemas do
    * not accept this bag; adapters may use the model-launch plan only to

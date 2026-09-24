@@ -78,6 +78,7 @@ import {
 import type { TaskDispatchExecutionAuthority } from './task-dispatcher.js';
 import {
   type TaskDispatchReservation as DispatcherReservation,
+  type DispatchIntent,
   type TaskDispatchAssociation,
   type TaskDispatchClaims,
   type TaskDispatchGraphState,
@@ -2774,7 +2775,7 @@ export class TaskGraphService {
         orchestrationService !== undefined,
       startOrSeed: async (
         reservation: DispatcherReservation,
-        input: TaskDispatchInput,
+        input: DispatchIntent,
         admission?: SessionStartBoundaryClaim,
       ) => {
         if (reservation.provider !== 'task-dispatch' && orchestrationService) {
@@ -2797,7 +2798,11 @@ export class TaskGraphService {
                 ...(taskSlug ? { metadata: { taskSlug } } : {}),
               },
             },
-            undefined,
+            // #2493: the dispatching request's grant, or none (a monitor, the
+            // board intent): the session runs `host` only with it.
+            input.fullAccessGrant
+              ? { fullAccessGrant: input.fullAccessGrant }
+              : undefined,
             {
               roomExecutionBinding: {
                 projectId: reservation.task.projectId,

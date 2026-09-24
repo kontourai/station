@@ -10368,7 +10368,13 @@ describe('OrchestrationService', () => {
       expect.objectContaining({
         threadId,
         provider: 'claude',
-        metadata: { agentSlug: 'delegated-agent', delegation },
+        // #2493: the restart carries its session's confinement stamp
+        // forward (none here, so the `workspace` it already meant).
+        metadata: {
+          agentSlug: 'delegated-agent',
+          delegation,
+          stationConfinement: 'workspace',
+        },
       }),
       undefined,
     );

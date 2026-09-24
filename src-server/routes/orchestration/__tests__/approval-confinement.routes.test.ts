@@ -1,0 +1,631 @@
+/**
+ * #2493: confinement is a server-derived axis beside the approval mode. A
+ * session reaches `host` (Codex `danger-full-access`, Claude
+ * `bypassPermissions`) only when the caller that STARTED it may grant full
+ * access: the operator in person or a device holding `approval:full-access`.
+ * Any other starter that reaches `never` through an Agent or Station default
+ * gets `workspace`: Codex keeps `never` inside its workspace sandbox, Claude
+ * applies `auto`.
+ *
+ * Everything real except the engines and the Station's own HTTP discovery
+ * reads: the security service pairs devices, the runtime auth boundary
+ * stamps principal and scope, the orchestration routes mint (or do not mint)
+ * the grant, the production foreground and delegation executors
+ * (`station-control-delegation.ts`) carry it, and the real
+ * `OrchestrationService` derives confinement and hands the engine its input.
+ * The recording engines read exactly what an adapter would receive.
+ */
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { agentId } from '@kontourai/station-contracts/agent-identity';
+import {
+  PAIRING_SCOPE_APPROVAL_FULL_ACCESS,
+  PAIRING_SCOPE_PRESETS,
+  pairingScopePresetString,
+} from '@kontourai/station-contracts/environment-security';
+import type {
+  ApprovalMode,
+  ProviderSendTurnInput,
+  ProviderSessionStartInput,
+} from '@kontourai/station-contracts/provider';
+import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
+import { Hono } from 'hono';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import type {
+  ProviderAdapterMetadata,
+  ProviderAdapterShape,
+  ProviderSession,
+} from '../../../providers/adapter-shape.js';
+import type { IProviderAdapterRegistry } from '../../../providers/provider-interfaces.js';
+import { AsyncEventQueue } from '../../../providers/sessions/async-event-queue.js';
+import { configureRuntimeHttp } from '../../../runtime/bootstrap/runtime-http.js';
+import { createAgentDispatchActorResolver } from '../../../runtime/mcp/station-control-caller.js';
+import { EventBus } from '../../../services/orchestration/event-bus.js';
+import { EventStore } from '../../../services/orchestration/event-store.js';
+import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
+import { EnvironmentSecurityService } from '../../../services/ssh/environment-security-service.js';
+import {
+  STATION_CONTROL_ORIGIN_AGENT_TOOL,
+  STATION_CONTROL_ORIGIN_HEADER,
+} from '../../../tools/station-control-shared.js';
+import {
+  getInternalApiToken,
+  INTERNAL_API_TOKEN_HEADER,
+  INTERNAL_PROXY_CALLER_HEADER,
+} from '../../../utils/internal-api-token.js';
+import { createLogger } from '../../../utils/logger.js';
+import { createOrchestrationRoutes } from '../orchestration.js';
+
+const CURRENT_API = 'http://confinement.test';
+process.env.STATION_API_BASE = CURRENT_API;
+
+const fetchMock = vi.fn<typeof fetch>();
+
+function json(data: unknown, status = 200): Response {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
+
+/** Two Agents on this Station, one per engine with an approval knob. */
+const AGENTS = {
+  'codex-agent': 'codex',
+  'claude-agent': 'claude',
+} as const;
+
+function installStationDiscovery(): void {
+  fetchMock.mockImplementation(async (input) => {
+    const url = String(input);
+    if (url === `${CURRENT_API}/.well-known/station/v1`)
+      return json({ environmentId: 'environment-current' });
+    for (const [slug, provider] of Object.entries(AGENTS)) {
+      if (url === `${CURRENT_API}/api/agents/${slug}`)
+        return json({
+          success: true,
+          data: {
+            slug,
+            name: slug,
+            available: true,
+            execution: { agentConnectionId: `${provider}-connection` },
+          },
+        });
+      if (url === `${CURRENT_API}/api/connections/${provider}-connection`)
+        return json({
+          success: true,
+          data: {
+            id: `${provider}-connection`,
+            kind: 'agent',
+            type: provider,
+            enabled: true,
+            status: 'ready',
+            capabilities: ['agent-runtime'],
+            config: { provider },
+          },
+        });
+    }
+    throw new Error(`Unexpected request in confinement test: ${url}`);
+  });
+}
+
+class RecordingEngine implements ProviderAdapterShape {
+  readonly metadata: ProviderAdapterMetadata;
+  readonly events = new AsyncEventQueue<CanonicalRuntimeEvent>();
+  readonly starts: ProviderSessionStartInput[] = [];
+  readonly turns: ProviderSendTurnInput[] = [];
+  private readonly sessions = new Map<string, ProviderSession>();
+
+  constructor(readonly provider: 'claude' | 'codex') {
+    this.metadata = {
+      displayName: provider,
+      description: `${provider} confinement test engine`,
+      capabilities: ['agent-runtime'],
+    };
+  }
+
+  async startSession(
+    input: ProviderSessionStartInput,
+  ): Promise<ProviderSession> {
+    this.starts.push(input);
+    const now = new Date().toISOString();
+    for (const method of ['session.started', 'session.configured'] as const)
+      this.events.push({
+        eventId: `${input.threadId}:${method}:${this.starts.length}`,
+        provider: this.provider,
+        threadId: input.threadId,
+        createdAt: now,
+        method,
+        sessionId: input.threadId,
+        metadata: { ...input.metadata },
+      } as CanonicalRuntimeEvent);
+    const session: ProviderSession = {
+      provider: this.provider,
+      threadId: input.threadId,
+      status: 'ready',
+      createdAt: now,
+      updatedAt: now,
+    };
+    this.sessions.set(input.threadId, session);
+    return session;
+  }
+
+  async sendTurn(input: ProviderSendTurnInput) {
+    this.turns.push(input);
+    return {
+      threadId: input.threadId,
+      turnId: `${this.provider}-turn-${this.turns.length}`,
+    };
+  }
+
+  async interruptTurn() {
+    return { outcome: 'no-active-turn' } as const;
+  }
+  async respondToRequest(): Promise<void> {}
+  async stopSession(threadId: string): Promise<void> {
+    this.sessions.delete(threadId);
+  }
+  async listSessions(): Promise<ProviderSession[]> {
+    return [...this.sessions.values()];
+  }
+  async hasSession(threadId: string): Promise<boolean> {
+    return this.sessions.has(threadId);
+  }
+  async stopAll(): Promise<void> {}
+  streamEvents(options?: {
+    signal?: AbortSignal;
+  }): AsyncIterable<CanonicalRuntimeEvent> {
+    return this.events.iterable(options);
+  }
+}
+
+const roots: string[] = [];
+const cleanups: Array<() => Promise<void> | void> = [];
+
+beforeEach(() => {
+  vi.stubGlobal('fetch', fetchMock);
+  fetchMock.mockReset();
+  installStationDiscovery();
+});
+
+afterEach(async () => {
+  vi.unstubAllEnvs();
+  vi.unstubAllGlobals();
+  for (const cleanup of cleanups.splice(0)) await cleanup();
+  for (const root of roots.splice(0))
+    rmSync(root, { recursive: true, force: true });
+});
+
+async function fixture(
+  defaults: {
+    station?: ApprovalMode;
+    agents?: Partial<Record<keyof typeof AGENTS, ApprovalMode>>;
+  } = { station: 'never' },
+) {
+  vi.stubEnv('STATION_HOSTED_TENANT_REGISTRY_FILE', undefined);
+  const root = mkdtempSync(join(tmpdir(), 'station-confinement-'));
+  roots.push(root);
+  const security = new EnvironmentSecurityService({
+    homeDir: join(root, 'home'),
+  });
+  const operator = await security.initialize();
+  const pair = (name: string, fullAccess = false) => {
+    const offer = security.devicePairing.createOffer({
+      endpoint: 'https://station.example.test',
+      scope: pairingScopePresetString('standard'),
+    });
+    const requested = security.devicePairing.requestPairing({
+      requesterPosition: 'off-box',
+      offerId: offer.offerId,
+      proof: offer.challenge,
+      deviceName: name,
+    });
+    security.devicePairing.confirmRequest(requested.requestId, {
+      kind: 'presented-credential',
+    });
+    const paired = security.devicePairing.exchange({
+      offerId: offer.offerId,
+      proof: offer.challenge,
+      requestId: requested.requestId,
+    });
+    if (fullAccess)
+      security.devicePairing.setDeviceScope(
+        paired.device.id,
+        [...PAIRING_SCOPE_PRESETS.standard, PAIRING_SCOPE_APPROVAL_FULL_ACCESS],
+        { kind: 'presented-credential' },
+      );
+    return paired;
+  };
+
+  const store = new EventStore(join(root, 'orchestration.sqlite'));
+  const eventBus = new EventBus();
+  const codex = new RecordingEngine('codex');
+  const claude = new RecordingEngine('claude');
+  const registry: IProviderAdapterRegistry = {
+    register() {},
+    get: (provider) => [codex, claude].find((a) => a.provider === provider),
+    list: () => [codex, claude],
+  };
+  const service = new OrchestrationService({
+    adapterRegistry: registry,
+    eventBus,
+    eventStore: store,
+    resolveStationDefaultApprovalMode: async () => defaults.station,
+    loadAgentExecutionConfig: async (slug: string) => {
+      const mode = defaults.agents?.[slug as keyof typeof AGENTS];
+      return mode ? { approvalMode: mode } : undefined;
+    },
+    resolveSessionAgent: async (input: ProviderSessionStartInput) => ({
+      ...input,
+      agent: { slug: String(input.metadata?.agentSlug ?? 'agent') },
+    }),
+    logger: { debug: vi.fn(), warn: vi.fn() },
+    ownerlessSessionAccess: 'single-user-compat',
+  } as never);
+  cleanups.push(async () => {
+    await service.shutdown();
+    store.close();
+  });
+
+  const {
+    continueExecutionTargetMessage,
+    delegateTask,
+    executeExecutionTargetMessage,
+  } = await import('../../../tools/station-control-delegation.js');
+  const readAuthority = (userId: string) =>
+    sessionReadAuthorityFromRequest(userId, undefined, undefined);
+
+  const app = new Hono();
+  configureRuntimeHttp({
+    app: app as never,
+    logger: createLogger({ name: 'confinement-test', level: 'error' }),
+    eventBus: { emit() {} } as unknown as EventBus,
+    security: {
+      verifyCredential: (candidate, request) =>
+        request !== undefined &&
+        security.authorizeCredential(candidate, request),
+      resolveGrantedScope: (candidate) =>
+        security.resolveGrantedScope(candidate),
+      resolveCredentialAuthority: (candidate) =>
+        security.verifyOperatorCredential(candidate)
+          ? 'operator-credential'
+          : security.identifyDevice(candidate)
+            ? 'device-credential'
+            : undefined,
+      resolveCredentialDeviceId: (candidate) =>
+        security.identifyDevice(candidate)?.id,
+      resolveCredentialLocality: (candidate) =>
+        security.credentialLocality(candidate),
+      resolveCredentialMintKind: (candidate) =>
+        security.credentialMintKind(candidate),
+      allowedOrigins: [],
+    },
+  });
+  // The runtime's own composition (runtime-routes.ts): each executor gets
+  // the route's request object spread into it, plus the read authority.
+  app.route(
+    '/api/orchestration',
+    createOrchestrationRoutes(service, {
+      eventBus,
+      logger: { debug: vi.fn() },
+      getUserId: () => 'operator',
+      resolveAgentDispatchActor: createAgentDispatchActorResolver(),
+      executeForegroundMessage: (input: { userId: string }) =>
+        executeExecutionTargetMessage(
+          { ...input, readAuthority: readAuthority(input.userId) } as never,
+          service,
+        ),
+      continueForegroundMessage: (input: { userId: string }) =>
+        continueExecutionTargetMessage(
+          { ...input, readAuthority: readAuthority(input.userId) } as never,
+          service,
+        ),
+      delegateTask: (input: { userId: string }) =>
+        delegateTask(
+          { ...input, readAuthority: readAuthority(input.userId) } as never,
+          service,
+        ),
+    } as never),
+  );
+
+  const request = async (
+    headers: Record<string, string>,
+    path: string,
+    body: unknown,
+    env?: unknown,
+  ) => {
+    const res = await app.request(
+      path,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...headers },
+        body: JSON.stringify(body),
+      },
+      env as never,
+    );
+    const text = await res.text();
+    return { status: res.status, text, body: JSON.parse(text) as any };
+  };
+  const bearer = (credential: string) => ({
+    Authorization: `Bearer ${credential}`,
+  });
+  /**
+   * Station's own internal principal: the per-boot token, the `local`
+   * caller marker and a loopback socket. An agent's station-control tool
+   * arrives this way; with or without its origin marker, it may be an agent.
+   */
+  const internal = (marked: boolean) =>
+    [
+      {
+        [INTERNAL_API_TOKEN_HEADER]: getInternalApiToken(),
+        [INTERNAL_PROXY_CALLER_HEADER]: 'local',
+        ...(marked
+          ? {
+              [STATION_CONTROL_ORIGIN_HEADER]:
+                STATION_CONTROL_ORIGIN_AGENT_TOOL,
+            }
+          : {}),
+      },
+      { incoming: { socket: { remoteAddress: '127.0.0.1' } } },
+    ] as const;
+
+  const chat = async (
+    headers: Record<string, string>,
+    agent: keyof typeof AGENTS,
+    env?: unknown,
+  ) => {
+    const response = await request(
+      headers,
+      '/api/orchestration/chat',
+      {
+        message: 'go',
+        target: { environment: { kind: 'current' }, agent },
+      },
+      env,
+    );
+    expect(response.status, response.text).toBe(200);
+    return response.body.data as { conversationId: string };
+  };
+
+  return {
+    operator,
+    pair,
+    service,
+    store,
+    codex,
+    claude,
+    request,
+    bearer,
+    internal,
+    chat,
+    readAuthority,
+    delegateTask,
+    executeExecutionTargetMessage,
+  };
+}
+
+type Fixture = Awaited<ReturnType<typeof fixture>>;
+
+function engineFor(f: Fixture, agent: keyof typeof AGENTS): RecordingEngine {
+  return AGENTS[agent] === 'codex' ? f.codex : f.claude;
+}
+
+/** The start the engine received and the stamp its start event persisted. */
+function lastStart(f: Fixture, agent: keyof typeof AGENTS) {
+  const start = engineFor(f, agent).starts.at(-1);
+  expect(start).toBeDefined();
+  return {
+    confinement: start!.confinement,
+    approvalMode: start!.modelOptions?.approvalMode,
+    stamp: start!.metadata?.stationConfinement,
+  };
+}
+
+describe('#2493: who may start a session unconfined', () => {
+  test('the operator in person starting at the Station default never is host on both engines', async () => {
+    const f = await fixture();
+    for (const agent of ['codex-agent', 'claude-agent'] as const) {
+      await f.chat(f.bearer(f.operator.credential), agent);
+      expect(lastStart(f, agent)).toEqual({
+        confinement: 'host',
+        approvalMode: 'never',
+        stamp: 'host',
+      });
+    }
+  });
+
+  test('a device holding approval:full-access is host', async () => {
+    const f = await fixture();
+    const granted = f.pair('Laptop', true);
+    await f.chat(f.bearer(granted.credential), 'codex-agent');
+    expect(lastStart(f, 'codex-agent')).toEqual({
+      confinement: 'host',
+      approvalMode: 'never',
+      stamp: 'host',
+    });
+  });
+
+  test('a device without the grant reaching never through the Station default is confined: Codex keeps never, Claude applies auto', async () => {
+    const f = await fixture();
+    const phone = f.pair('Phone');
+    await f.chat(f.bearer(phone.credential), 'codex-agent');
+    expect(lastStart(f, 'codex-agent')).toEqual({
+      confinement: 'workspace',
+      approvalMode: 'never',
+      stamp: 'workspace',
+    });
+    expect(f.codex.turns.at(-1)?.confinement).toBe('workspace');
+
+    await f.chat(f.bearer(phone.credential), 'claude-agent');
+    expect(lastStart(f, 'claude-agent')).toEqual({
+      confinement: 'workspace',
+      approvalMode: 'auto',
+      stamp: 'workspace',
+    });
+  });
+
+  test("a device without the grant reaching never through an Agent's own default is confined", async () => {
+    const f = await fixture({ agents: { 'claude-agent': 'never' } });
+    const phone = f.pair('Phone');
+    await f.chat(f.bearer(phone.credential), 'claude-agent');
+    expect(lastStart(f, 'claude-agent')).toEqual({
+      confinement: 'workspace',
+      approvalMode: 'auto',
+      stamp: 'workspace',
+    });
+    // The operator starting the same Agent is not.
+    await f.chat(f.bearer(f.operator.credential), 'claude-agent');
+    expect(lastStart(f, 'claude-agent')).toMatchObject({
+      confinement: 'host',
+      approvalMode: 'never',
+    });
+  });
+
+  test.each([
+    ['with', true],
+    ['without', false],
+  ] as const)(
+    "an agent's station-control call %s its origin marker is confined",
+    async (_label, marked) => {
+      const f = await fixture();
+      const [headers, env] = f.internal(marked);
+      await f.chat(headers, 'claude-agent', env);
+      expect(lastStart(f, 'claude-agent')).toEqual({
+        confinement: 'workspace',
+        approvalMode: 'auto',
+        stamp: 'workspace',
+      });
+    },
+  );
+
+  test('a delegation is host only for a caller that may grant it', async () => {
+    const f = await fixture();
+    const phone = f.pair('Phone');
+    const delegate = (credential: string) =>
+      f.request(f.bearer(credential), '/api/orchestration/delegations', {
+        prompt: 'go',
+        target: { environment: { kind: 'current' }, agent: 'codex-agent' },
+      });
+    const byOperator = await delegate(f.operator.credential);
+    expect(byOperator.status, byOperator.text).toBe(200);
+    expect(lastStart(f, 'codex-agent')).toMatchObject({
+      confinement: 'host',
+      stamp: 'host',
+    });
+    const byPhone = await delegate(phone.credential);
+    expect(byPhone.status, byPhone.text).toBe(200);
+    expect(lastStart(f, 'codex-agent')).toMatchObject({
+      confinement: 'workspace',
+      stamp: 'workspace',
+    });
+  });
+
+  test('in-process starters carry no grant: the delegate_task and send_message tools, webhooks and Discord all start confined', async () => {
+    const f = await fixture();
+    // delegate_task (station-control-operations-tools.ts) calls this with no
+    // grant; send_message, the webhook seam and Discord enter the foreground
+    // executor the same way.
+    await f.delegateTask(
+      {
+        prompt: 'go',
+        target: {
+          environment: { kind: 'current' },
+          agent: agentId('codex-agent'),
+        },
+        userId: 'operator',
+      },
+      f.service,
+    );
+    expect(lastStart(f, 'codex-agent')).toMatchObject({
+      confinement: 'workspace',
+      approvalMode: 'never',
+    });
+    await f.executeExecutionTargetMessage(
+      {
+        message: 'go',
+        target: {
+          environment: { kind: 'current' },
+          agent: agentId('claude-agent'),
+        },
+        userId: 'operator',
+        readAuthority: f.readAuthority('operator'),
+      },
+      f.service,
+    );
+    expect(lastStart(f, 'claude-agent')).toMatchObject({
+      confinement: 'workspace',
+      approvalMode: 'auto',
+    });
+  });
+
+  test('a caller-supplied confinement, stamp or grant in the body is ignored', async () => {
+    const f = await fixture();
+    const phone = f.pair('Phone');
+    const response = await f.request(
+      f.bearer(phone.credential),
+      '/api/orchestration/chat',
+      {
+        message: 'go',
+        target: { environment: { kind: 'current' }, agent: 'claude-agent' },
+        confinement: 'host',
+        stationConfinement: 'host',
+        fullAccessGrant: {},
+      },
+    );
+    expect(response.status, response.text).toBe(200);
+    expect(lastStart(f, 'claude-agent')).toEqual({
+      confinement: 'workspace',
+      approvalMode: 'auto',
+      stamp: 'workspace',
+    });
+
+    // On the options bag it is not an option any engine takes.
+    const options = await f.request(
+      f.bearer(phone.credential),
+      '/api/orchestration/chat',
+      {
+        message: 'go',
+        target: {
+          environment: { kind: 'current' },
+          agent: 'claude-agent',
+          model: { options: { confinement: 'host' } },
+        },
+      },
+    );
+    expect(options.status).not.toBe(200);
+    expect(f.claude.starts).toHaveLength(1);
+  });
+
+  test('the operator recording never on a confined conversation makes its next turn host', async () => {
+    const f = await fixture();
+    const phone = f.pair('Phone');
+    const { conversationId } = await f.chat(
+      f.bearer(phone.credential),
+      'claude-agent',
+    );
+    expect(lastStart(f, 'claude-agent').confinement).toBe('workspace');
+    const threadId = f.claude.starts.at(-1)!.threadId;
+
+    const decided = await f.request(
+      f.bearer(f.operator.credential),
+      '/api/orchestration/commands',
+      {
+        type: 'setApprovalMode',
+        threadId,
+        approvalMode: 'never',
+        basedOnSequence: null,
+      },
+    );
+    expect(decided.status, decided.text).toBe(200);
+    await f.service.dispatch({
+      type: 'sendTurn',
+      input: { threadId, input: 'again' },
+    });
+    expect(f.claude.turns.at(-1)).toMatchObject({
+      confinement: 'host',
+      modelOptions: { approvalMode: 'never' },
+    });
+    expect(conversationId).toBeDefined();
+  });
+});

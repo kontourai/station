@@ -3950,6 +3950,135 @@ describe('CodexAdapter', () => {
     await adapter.stopAll();
   });
 
+  describe('#2493: never reaches danger-full-access only in a host session', () => {
+    /** The next event with `method`, skipping the ones before it. */
+    async function nextOf(
+      iterator: AsyncIterator<any>,
+      method: string,
+    ): Promise<any> {
+      for (let seen = 0; seen < 20; seen += 1) {
+        const event = await nextEvent(iterator, method);
+        if (event?.method === method) return event;
+      }
+      throw new Error(`No ${method} event`);
+    }
+
+    async function startWith(
+      threadId: string,
+      confinement: 'host' | 'workspace' | undefined,
+      resume: boolean,
+    ) {
+      processHandle = new FakeCodexProcess();
+      const adapter = new CodexAdapter({
+        processFactory: () => processHandle!,
+      });
+      const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+      const sessionPromise = adapter.startSession({
+        provider: 'codex',
+        threadId,
+        cwd: '/tmp/project',
+        modelId: 'gpt-5-codex',
+        modelOptions: { approvalMode: 'never' },
+        ...(resume
+          ? { resumeCursor: { codexThreadId: `codex-${threadId}` } }
+          : {}),
+        ...(confinement ? { confinement } : {}),
+      });
+      await flushIo();
+      writeServerMessage(adapter, threadId, {
+        id: '1',
+        result: { userAgent: 'test' },
+      });
+      await flushIo();
+      writeServerMessage(adapter, threadId, {
+        id: '2',
+        result: {
+          thread: { id: `codex-${threadId}` },
+          model: 'gpt-5-codex',
+        },
+      });
+      await withTimeout(sessionPromise, `startSession ${threadId}`);
+      await flushIo();
+      const request = processHandle.stdin.lines
+        .map(parseLine)
+        .find(
+          (line) => line.method === (resume ? 'thread/resume' : 'thread/start'),
+        );
+      const configured = await nextOf(iterator, 'session.configured');
+      return { adapter, iterator, request, configured };
+    }
+
+    test.each([
+      ['thread/start', false],
+      ['thread/resume', true],
+    ] as const)(
+      'a host session sends exactly the historical pair on %s',
+      async (_method, resume) => {
+        const { adapter, request, configured } = await startWith(
+          `host-${String(resume)}`,
+          'host',
+          resume,
+        );
+        expect(request?.params).toMatchObject({
+          approvalPolicy: 'never',
+          sandbox: 'danger-full-access',
+        });
+        expect(configured.metadata).toMatchObject({
+          approvalPolicy: 'never',
+          sandbox: 'danger-full-access',
+          approvalMode: 'never',
+          confinement: 'host',
+        });
+        await adapter.stopAll();
+      },
+    );
+
+    test.each([
+      ['thread/start', 'workspace', false],
+      ['thread/resume', 'workspace', true],
+      ['thread/start (no confinement at all)', undefined, false],
+    ] as const)(
+      'a confined session keeps never but sandboxes %s to the workspace',
+      async (_method, confinement, resume) => {
+        const { adapter, iterator, request, configured } = await startWith(
+          `confined-${String(resume)}-${String(confinement)}`,
+          confinement,
+          resume,
+        );
+        expect(request?.params).toMatchObject({
+          approvalPolicy: 'never',
+          sandbox: 'workspace-write',
+        });
+        expect(configured.metadata).toMatchObject({
+          sandbox: 'workspace-write',
+          approvalMode: 'never',
+          confinement: 'workspace',
+        });
+
+        const threadId = `confined-${String(resume)}-${String(confinement)}`;
+        const turnPromise = adapter.sendTurn({
+          threadId,
+          input: 'go',
+          modelOptions: { approvalMode: 'never' },
+          ...(confinement ? { confinement } : {}),
+        });
+        await flushIo();
+        writeServerMessage(adapter, threadId, {
+          id: '3',
+          result: { turn: { id: `turn-${threadId}` } },
+        });
+        await withTimeout(turnPromise, `sendTurn ${threadId}`);
+        const turnStarted = await nextOf(iterator, 'turn.started');
+        expect(turnStarted.metadata).toMatchObject({
+          sandbox: 'workspace-write',
+          approvalMode: 'never',
+          confinement: 'workspace',
+        });
+        await adapter.stopAll();
+      },
+    );
+  });
+
   describe('#896 wave 2: app-home profile env layering', () => {
     test('uses the server-only credential profile ref for app-home lookup without emitting it in canonical events', async () => {
       processHandle = new FakeCodexProcess();

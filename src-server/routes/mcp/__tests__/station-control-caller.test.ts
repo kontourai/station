@@ -357,6 +357,7 @@ beforeAll(async () => {
         isRequestPrincipalCurrent: () => true,
         resolveAgentDispatchActor:
           createAgentDispatchActorResolver(resolveRecord),
+        fullAccessGrantFor: () => null,
       }),
     }),
   );

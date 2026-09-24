@@ -27,6 +27,7 @@ import type {
 } from '../../../providers/adapter-shape.js';
 import type { IProviderAdapterRegistry } from '../../../providers/provider-interfaces.js';
 import { AsyncEventQueue } from '../../../providers/sessions/async-event-queue.js';
+import { fullAccessGrantForTesting } from '../../../security/coding-authority.js';
 import { EventBus } from '../event-bus.js';
 import { EventStore } from '../event-store.js';
 import { OrchestrationService } from '../orchestration-service.js';
@@ -175,21 +176,32 @@ describe('server-ordered approval posture (#2436)', () => {
     rmSync(tmp, { recursive: true, force: true });
   });
 
+  /**
+   * A session start. `operator` starts it as a caller that may grant full
+   * access (the routes mint that grant from the request, #2493); without it
+   * the start is an unattended one (a webhook, a monitor, an agent's tool).
+   */
   async function start(
     threadId: string,
     provider: 'claude' | 'codex' | 'acp' = 'claude',
     approvalMode?: ApprovalMode,
     agentSlug?: string,
+    options: { operator?: boolean } = {},
   ) {
-    await service.dispatch({
-      type: 'startSession',
-      input: {
-        threadId,
-        provider,
-        ...(approvalMode ? { modelOptions: { approvalMode } } : {}),
-        ...(agentSlug ? { metadata: { agentSlug } } : {}),
+    await service.dispatch(
+      {
+        type: 'startSession',
+        input: {
+          threadId,
+          provider,
+          ...(approvalMode ? { modelOptions: { approvalMode } } : {}),
+          ...(agentSlug ? { metadata: { agentSlug } } : {}),
+        },
       },
-    });
+      options.operator
+        ? { fullAccessGrant: fullAccessGrantForTesting() }
+        : undefined,
+    );
     const deadline = Date.now() + 2000;
     while (
       !store
@@ -547,13 +559,17 @@ describe('server-ordered approval posture (#2436)', () => {
   describe("an Agent's default posture (#2436 owner request)", () => {
     test("a session of an Agent whose default is never starts at never, and a member's turn runs at it", async () => {
       agentDefaults.builder = 'never';
-      await start('t-agent', 'claude', undefined, 'builder');
+      await start('t-agent', 'claude', undefined, 'builder', {
+        operator: true,
+      });
       expect(claude.starts.at(-1)?.modelOptions?.approvalMode).toBe('never');
     });
 
     test('a member can tighten below it, and a Default pick returns to it', async () => {
       agentDefaults.builder = 'never';
-      await start('t-agent-member', 'claude', undefined, 'builder');
+      await start('t-agent-member', 'claude', undefined, 'builder', {
+        operator: true,
+      });
       await decide('t-agent-member', 'ask', phone);
       await turn('t-agent-member');
       expect(claude.lastTurnMode()).toBe('ask');
@@ -565,9 +581,13 @@ describe('server-ordered approval posture (#2436)', () => {
     test("the Agent's default outranks the Station default, and a recorded decision outranks both", async () => {
       agentDefaults.builder = 'auto';
       stationDefault = 'never';
-      await start('t-agent-precedence', 'claude', undefined, 'builder');
+      await start('t-agent-precedence', 'claude', undefined, 'builder', {
+        operator: true,
+      });
       expect(claude.starts.at(-1)?.modelOptions?.approvalMode).toBe('auto');
-      await start('t-no-agent-default', 'claude', undefined, 'other');
+      await start('t-no-agent-default', 'claude', undefined, 'other', {
+        operator: true,
+      });
       expect(claude.starts.at(-1)?.modelOptions?.approvalMode).toBe('never');
     });
 
@@ -606,6 +626,245 @@ describe('server-ordered approval posture (#2436)', () => {
     });
     expect(claude.starts.at(-1)?.modelOptions?.approvalMode).toBe('ask');
     expect(claude.lastTurnMode()).toBe('ask');
+  });
+
+  describe('#2493: confinement is a server-derived axis beside the approval mode', () => {
+    /** The confinement stamp on the thread's latest stored `session.started`. */
+    function startStamp(threadId: string): unknown {
+      const started = store
+        .listEvents(threadId)
+        .filter((row) => row.payload.method === 'session.started')
+        .at(-1)?.payload as { metadata?: Record<string, unknown> } | undefined;
+      return started?.metadata?.stationConfinement;
+    }
+
+    function restartForCredentialProfile(threadId: string) {
+      return (
+        service as unknown as {
+          restartCredentialProfileRecoverySession(input: {
+            threadId: string;
+            input: string;
+            modelOptions?: Record<string, string>;
+            recoveryCorrelationId: string;
+            signal: AbortSignal;
+            credentialProfileRef?: string;
+          }): Promise<unknown>;
+        }
+      ).restartCredentialProfileRecoverySession({
+        threadId,
+        input: 'retry',
+        // The source turn's own posture: exactly what a confined caller
+        // controls, so it must not decide confinement.
+        modelOptions: { approvalMode: 'never' },
+        recoveryCorrelationId: `recovery-${threadId}`,
+        signal: new AbortController().signal,
+        credentialProfileRef: 'backup',
+      });
+    }
+
+    /** A session this process restored at boot without an engine. */
+    function dormant(
+      threadId: string,
+      provider: 'claude' | 'codex',
+      stamp: string | undefined,
+      recordedNever = false,
+    ) {
+      store.upsertSession({
+        provider,
+        threadId,
+        status: 'ready',
+        resumeCursor: { cursor: `resume-${threadId}` },
+        createdAt: '2026-09-01T00:00:00.000Z',
+        updatedAt: '2026-09-01T00:00:05.000Z',
+      });
+      store.appendEvent({
+        eventId: `${threadId}-started-before-restart`,
+        provider,
+        threadId,
+        createdAt: '2026-09-01T00:00:01.000Z',
+        method: 'session.started',
+        sessionId: threadId,
+        metadata: stamp === undefined ? {} : { stationConfinement: stamp },
+      } as CanonicalRuntimeEvent);
+      if (recordedNever)
+        store.appendEvent({
+          eventId: `${threadId}-never-before-restart`,
+          provider,
+          threadId,
+          createdAt: '2026-09-01T00:00:02.000Z',
+          method: 'session.approval-mode-set',
+          sessionId: threadId,
+          approvalMode: 'never',
+        } as CanonicalRuntimeEvent);
+    }
+
+    test('an unattended start that reaches never through a default is confined: Codex keeps never sandboxed, Claude applies auto', async () => {
+      stationDefault = 'never';
+      await start('c-codex-station', 'codex');
+      expect(codex.starts.at(-1)).toMatchObject({
+        confinement: 'workspace',
+        modelOptions: { approvalMode: 'never' },
+      });
+      await start('c-claude-station', 'claude');
+      expect(claude.starts.at(-1)).toMatchObject({
+        confinement: 'workspace',
+        modelOptions: { approvalMode: 'auto' },
+      });
+
+      stationDefault = undefined;
+      agentDefaults.builder = 'never';
+      await start('c-claude-agent', 'claude', undefined, 'builder');
+      expect(claude.starts.at(-1)).toMatchObject({
+        confinement: 'workspace',
+        modelOptions: { approvalMode: 'auto' },
+      });
+      expect(startStamp('c-claude-agent')).toBe('workspace');
+    });
+
+    test('the operator starting at never, picked or by default, is host on both engines', async () => {
+      stationDefault = 'never';
+      await start('c-op-codex', 'codex', undefined, undefined, {
+        operator: true,
+      });
+      expect(codex.starts.at(-1)).toMatchObject({
+        confinement: 'host',
+        modelOptions: { approvalMode: 'never' },
+      });
+      await start('c-op-claude', 'claude', 'never', undefined, {
+        operator: true,
+      });
+      expect(claude.starts.at(-1)).toMatchObject({
+        confinement: 'host',
+        modelOptions: { approvalMode: 'never' },
+      });
+      expect(startStamp('c-op-claude')).toBe('host');
+    });
+
+    test('a caller-supplied confinement, stamp or grant look-alike is ignored', async () => {
+      stationDefault = 'never';
+      await service.dispatch(
+        {
+          type: 'startSession',
+          input: {
+            threadId: 'c-forged',
+            provider: 'claude',
+            confinement: 'host',
+            metadata: { stationConfinement: 'host' },
+          } as never,
+        },
+        // What a JSON body could carry: never the minted proof.
+        { fullAccessGrant: {} as never },
+      );
+      expect(claude.starts.at(-1)).toMatchObject({
+        confinement: 'workspace',
+        modelOptions: { approvalMode: 'auto' },
+        metadata: { stationConfinement: 'workspace' },
+      });
+      expect(startStamp('c-forged')).toBe('workspace');
+
+      // On the options bag it is not an option any engine takes.
+      const before = claude.starts.length;
+      await expect(
+        service.dispatch({
+          type: 'startSession',
+          input: {
+            threadId: 'c-forged-options',
+            provider: 'claude',
+            modelOptions: { approvalMode: 'never', confinement: 'host' },
+          },
+        }),
+      ).rejects.toThrow();
+      expect(claude.starts).toHaveLength(before);
+    });
+
+    test('a confined session applies a carried never as auto on every turn; a host one keeps it', async () => {
+      await start('c-turn-confined', 'claude', 'never');
+      await turn('c-turn-confined', {
+        modelOptions: { approvalMode: 'never' },
+      });
+      expect(claude.turns.at(-1)).toMatchObject({
+        confinement: 'workspace',
+        modelOptions: { approvalMode: 'auto' },
+      });
+
+      await start('c-turn-host', 'claude', 'never', undefined, {
+        operator: true,
+      });
+      await turn('c-turn-host', { modelOptions: { approvalMode: 'never' } });
+      expect(claude.turns.at(-1)).toMatchObject({
+        confinement: 'host',
+        modelOptions: { approvalMode: 'never' },
+      });
+    });
+
+    test('the operator recording never on a confined conversation makes its turns and respawns host', async () => {
+      stationDefault = 'never';
+      await start('c-elevate', 'claude');
+      expect(claude.starts.at(-1)?.confinement).toBe('workspace');
+
+      await decide('c-elevate', 'never');
+      await turn('c-elevate');
+      expect(claude.turns.at(-1)).toMatchObject({
+        confinement: 'host',
+        modelOptions: { approvalMode: 'never' },
+      });
+      await restartForCredentialProfile('c-elevate');
+      expect(claude.starts.at(-1)).toMatchObject({
+        threadId: 'c-elevate',
+        confinement: 'host',
+        modelOptions: { approvalMode: 'never' },
+      });
+    });
+
+    test('a credential-profile restart keeps the confinement its session started with', async () => {
+      stationDefault = 'never';
+      await start('c-cred-confined', 'claude');
+      await restartForCredentialProfile('c-cred-confined');
+      expect(claude.starts.at(-1)).toMatchObject({
+        threadId: 'c-cred-confined',
+        confinement: 'workspace',
+        modelOptions: { approvalMode: 'auto' },
+      });
+      expect(claude.lastTurnMode()).toBe('auto');
+      expect(startStamp('c-cred-confined')).toBe('workspace');
+
+      await start('c-cred-host', 'claude', undefined, undefined, {
+        operator: true,
+      });
+      await restartForCredentialProfile('c-cred-host');
+      expect(claude.starts.at(-1)).toMatchObject({
+        threadId: 'c-cred-host',
+        confinement: 'host',
+        modelOptions: { approvalMode: 'never' },
+      });
+      expect(claude.lastTurnMode()).toBe('never');
+      expect(startStamp('c-cred-host')).toBe('host');
+    });
+
+    test.each([
+      ['a workspace stamp', 'workspace', false, 'workspace'],
+      ['a host stamp', 'host', false, 'host'],
+      ['no stamp (a session from before #2493)', undefined, false, 'workspace'],
+      ['no stamp but a recorded never', undefined, true, 'host'],
+    ] as const)(
+      'a dormant respawn with %s runs %s',
+      async (_label, stamp, recordedNever, expected) => {
+        stationDefault = 'never';
+        dormant('c-dormant', 'codex', stamp, recordedNever);
+        service.initialize();
+        await awaitSessionRecoveryCompleted(service);
+        await turn('c-dormant');
+        expect(codex.starts.at(-1)).toMatchObject({
+          threadId: 'c-dormant',
+          confinement: expected,
+        });
+        // The respawn's own start event carries the stamp forward, so the
+        // next respawn reads the same answer rather than "legacy".
+        expect(startStamp('c-dormant')).toBe(
+          stamp === 'host' ? 'host' : 'workspace',
+        );
+      },
+    );
   });
 
   describe('a Default pick (#2409)', () => {

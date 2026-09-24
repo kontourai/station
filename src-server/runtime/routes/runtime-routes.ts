@@ -256,6 +256,7 @@ import { createSshEnvironmentRoutes } from '../../routes/operations/ssh-environm
 import { createTelemetryRoutes } from '../../routes/operations/telemetry-events.js';
 import { createUsageTelemetryDisclosureRoutes } from '../../routes/operations/usage-telemetry-disclosure.js';
 import { createVoiceRoutes } from '../../routes/operations/voice.js';
+import { fullAccessGrantForRequest } from '../../routes/orchestration/approval-authority.js';
 import { createAttachmentStagingRoutes } from '../../routes/orchestration/attachment-staging.js';
 import { createAttachmentRoutes } from '../../routes/orchestration/attachments.js';
 import { createAttentionRoutes } from '../../routes/orchestration/attention.js';
@@ -3269,6 +3270,8 @@ export function configureRuntimeRoutes(
         resolveClientOrigin: resolveClientOriginForRequest,
         isRequestPrincipalCurrent,
         resolveAgentDispatchActor,
+        fullAccessGrantFor: (c) =>
+          fullAccessGrantForRequest(c as unknown as Context),
       }),
     }),
   );

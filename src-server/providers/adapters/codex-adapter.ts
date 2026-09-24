@@ -1739,9 +1739,13 @@ export class CodexAdapter implements ProviderAdapterShape {
       this.transport.sendNotification(record, 'initialized');
 
       const modelOptions = (input.modelOptions ?? {}) as CodexModelOptions;
+      // #2493: `never` reaches `danger-full-access` only for a `host`
+      // session; the orchestration service derives confinement, and an
+      // absent value confines.
       const approvalKnobs = resolveCodexExecutionKnobs(
         input.modelOptions,
         input.reviewIsolation,
+        input.confinement,
       );
       const approvalWire = approvalKnobs
         ? {
@@ -1857,6 +1861,9 @@ export class CodexAdapter implements ProviderAdapterShape {
               // start without re-deriving it from provider-specific knobs
               // (archive#727 review round 3, item 1).
               approvalMode: mapCodexKnobsToApprovalMode(approvalKnobs),
+              // #2493: the pair alone no longer says whether `never` is
+              // confined to the workspace.
+              confinement: input.confinement ?? 'workspace',
             }
           : {}),
         codexThreadId: codexThread.id,
@@ -2177,6 +2184,7 @@ export class CodexAdapter implements ProviderAdapterShape {
     const approvalKnobs = resolveCodexExecutionKnobs(
       input.modelOptions,
       input.reviewIsolation,
+      input.confinement,
     );
     let result: unknown;
     try {
@@ -2288,6 +2296,7 @@ export class CodexAdapter implements ProviderAdapterShape {
               // Lets the client track a durable lastAppliedApprovalMode baseline
               // (archive#727 review round 3, item 1 — the pending-apply chip state).
               approvalMode: mapCodexKnobsToApprovalMode(approvalKnobs),
+              confinement: input.confinement ?? 'workspace',
             }
           : {}),
         [MODEL_SELECTION_RECEIPT_METADATA_KEY]: modelSelectionReceipt(
