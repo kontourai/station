@@ -12,6 +12,7 @@ import { afterEach, describe, expect, test } from 'vitest';
 import {
   addedTestLines,
   findRealtimeWaits,
+  unquoteGitPath,
 } from '../test-realtime-wait-gate.mjs';
 
 const GATE = resolve(__dirname, '../test-realtime-wait-gate.mjs');
@@ -61,6 +62,21 @@ describe('addedTestLines', () => {
   test('keeps only added lines of test files, numbered in the new file', () => {
     expect(addedTestLines(SAMPLES.diff.join('\n'))).toEqual(SAMPLES.diffAdded);
   });
+
+  test('an added line starting with ++ is content, not a new file header', () => {
+    // A raw `+++ x;` inside a hunk used to reset the file and stop scanning.
+    expect(
+      addedTestLines(SAMPLES.plusPlusDiff.join('\n')).map(
+        (entry: { text: string }) => entry.text,
+      ),
+    ).toEqual(['++ x;', 'await sleep(66);']);
+  });
+
+  test('unquotes a path git quoted for its non-ASCII bytes', () => {
+    expect(unquoteGitPath(SAMPLES.quotedPath)).toBe(
+      'b/src/__tests__/\u00e9 uni.test.ts',
+    );
+  });
 });
 
 describe('the gate as a process', () => {
@@ -91,22 +107,59 @@ describe('the gate as a process', () => {
     return root;
   }
 
-  function runGate(root: string) {
-    return spawnSync(process.execPath, [GATE, '--base=base'], {
+  function runGate(root: string, extra: string[] = [], env = {}) {
+    return spawnSync(process.execPath, [GATE, '--base=base', ...extra], {
       cwd: root,
       encoding: 'utf8',
+      env: {
+        ...process.env,
+        GITHUB_ACTIONS: '',
+        GITHUB_STEP_SUMMARY: '',
+        ...env,
+      },
     });
   }
 
-  test('exits 1 and names the line when a change adds a real-time wait', () => {
+  test('reports an added real-time wait, exits 0, and annotates it in CI', () => {
     const root = repoWith({
       'src/__tests__/a.test.ts': SAMPLES.unwaivedTestFile,
     });
-    const result = runGate(root);
-    expect(result.status, result.stderr).toBe(1);
+    const result = runGate(root, [], { GITHUB_ACTIONS: 'true' });
+    expect(result.status, result.stderr).toBe(0);
     expect(result.stdout).toContain(
       'src/__tests__/a.test.ts:4 [promise-sleep]',
     );
+    expect(result.stdout).toContain(
+      '::warning file=src/__tests__/a.test.ts,line=4,',
+    );
+  });
+
+  test('--strict exits 1 on the same finding', () => {
+    const root = repoWith({
+      'src/__tests__/a.test.ts': SAMPLES.unwaivedTestFile,
+    });
+    expect(runGate(root, ['--strict']).status).toBe(1);
+  });
+
+  test('a diff.noprefix or non-ASCII filename cannot hide an added wait', () => {
+    const root = repoWith({
+      'src/__tests__/\u00e9 uni.test.ts': SAMPLES.unicodeTestFile,
+    });
+    execFileSync('git', ['config', 'diff.noprefix', 'true'], { cwd: root });
+    const result = runGate(root, ['--strict']);
+    expect(result.status, result.stdout).toBe(1);
+    expect(result.stdout).toContain('\u00e9 uni.test.ts:2 [literal-sleep]');
+  });
+
+  test('a waiver only in the uncommitted working tree does not count', () => {
+    const root = repoWith({
+      'src/__tests__/a.test.ts': SAMPLES.unwaivedTestFile,
+    });
+    const file = join(root, 'src/__tests__/a.test.ts');
+    const lines = readFileSync(file, 'utf8').split('\n');
+    lines[2] = SAMPLES.dirtyWaiver; // the line above the committed wait
+    writeFileSync(file, lines.join('\n'));
+    expect(runGate(root, ['--strict']).status).toBe(1);
   });
 
   test('exits 0 when the added wait says why it needs real time', () => {

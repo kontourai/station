@@ -15,7 +15,10 @@
       "blocking-wait"
     ],
     ["await new Promise((r) => setTimeout(() => r(), 30));", "promise-sleep"],
-    ["await delay(1_000);", "literal-sleep"]
+    ["await delay(1_000);", "literal-sleep"],
+    ["setTimeout(() => resolve(observed), 30)", "promise-sleep"],
+    ["setTimeout(() => { resolve(); }, 40)", "promise-sleep"],
+    ["await delay(projectsDelayMs);", "literal-sleep"]
   ],
   "unflagged": [
     "await new Promise((resolve) => setTimeout(resolve, 0));",
@@ -24,7 +27,9 @@
     "await vi.waitFor(() => expect(order).toEqual(['a']));",
     "await vi.advanceTimersByTimeAsync(5_000);",
     "clock.sleep(10);",
-    "await waitFor(() => screen.getByText('x'));"
+    "await waitFor(() => screen.getByText('x'));",
+    "setTimeout(() => resolve(TIMED_OUT), 500)",
+    "await wait(someCondition);"
   ],
   "waivedOnLine": "await sleep(50); // real-time: nothing may arrive within 50ms",
   "bareWait": "await sleep(50);",
@@ -60,5 +65,14 @@
   ],
   "unwaivedTestFile": "import { test } from 'vitest';\n\ntest('x', async () => {\n  await new Promise((resolve) => setTimeout(resolve, 50));\n});\n",
   "waivedTestFile": "test('x', async () => {\n  // real-time: proves nothing arrives within 50ms\n  await new Promise((resolve) => setTimeout(resolve, 50));\n});\n",
-  "sourceFileWithWait": "await sleep(90);\n"
+  "sourceFileWithWait": "await sleep(90);\n",
+  "plusPlusDiff": [
+    "+++ b/src/__tests__/a.test.ts",
+    "@@ -0,0 +1,2 @@",
+    "+++ x;",
+    "+await sleep(66);"
+  ],
+  "quotedPath": "\"b/src/__tests__/\\303\\251 uni.test.ts\"",
+  "unicodeTestFile": "test('x', async () => {\n  await sleep(22);\n});\n",
+  "dirtyWaiver": "// real-time: only in the working tree"
 }

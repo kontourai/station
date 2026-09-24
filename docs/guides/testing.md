@@ -989,12 +989,21 @@ repeatedly under CPU pressure did not reproduce any of them; each was visible
 in the line that added it.
 
 `scripts/test-realtime-wait-gate.mjs` runs in `ci:fast` and reads only the
-lines a change adds to test files. It flags three shapes:
-`setTimeout(resolve, N)` / `setTimeout(() => resolve(), N)`, a helper call
-with a literal duration (`sleep(90)`, `delay(1_000)`), and
+lines a change adds to test files. It flags three shapes: a promise settled by
+a timer (`setTimeout(resolve, N)`, `setTimeout(() => resolve(x), N)`), a
+`sleep`/`delay` helper call (`sleep(90)`, `delay(delayMs)`), and
 `Atomics.wait(..., N)`. A literal `0` is a task yield and is not flagged, and
-neither is a timer that resolves with a value, which is a `Promise.race`
-guard. Existing lines are never flagged.
+neither is a timer resolving with a string or UPPER_CASE sentinel, the
+`Promise.race([op, timeout('TIMED_OUT')])` shape. That exemption is safe only
+when the test expects the sentinel; `.not.toBe('TIMED_OUT')` asserts `op`
+finished in time, which load can fail. Existing lines are never read.
+
+It reports rather than blocks. Replayed over 150 main commits, about 40% of
+what it flags is the hazard (a sleep, then an assertion that something did
+happen); the rest sleep before a negative assertion, which load can only make
+pass, or sleep inside a loop that already polls. So each finding is an inline
+warning on the pull request's added line and a step-summary entry, and the
+check stays green. `--strict` exits 1 for a caller that wants to enforce it.
 
 Prefer, in order:
 
@@ -1006,8 +1015,9 @@ Prefer, in order:
 
 When a line genuinely needs real time (a negative assertion that something
 does not happen within a window, or a test of a timeout itself), put a
-`real-time: <reason>` comment on that line or the line above. The gate is a
-prompt, not a proof: it sees these textual shapes, not every way to wait.
+`real-time: <reason>` comment on that line or the line above, which silences
+the warning. The gate is a prompt, not a proof: it sees these textual shapes,
+not every way to wait.
 
 ### Test quarantine
 
