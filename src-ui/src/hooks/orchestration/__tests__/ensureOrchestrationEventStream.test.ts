@@ -222,6 +222,58 @@ describe('ensureOrchestrationEventStream reconnect-fallback snapshot gating (sta
     );
   });
 
+  // station#2530 review D6/4: an empty or malformed caught-up body is a
+  // legitimate wire shape (an older server, a rolling deploy mid-response) —
+  // never a reason to throw inside the SSE handler and drop the connection's
+  // whole message loop. Both must apply nothing and leave the stream able to
+  // process the next frame.
+  test('a caught-up frame with an empty body applies nothing and the stream stays live', () => {
+    applyOrchestrationSnapshot.mockClear();
+    handleOrchestrationEvent.mockClear();
+    const apiBase = 'http://api-caughtup-empty-body';
+    ensureOrchestrationEventStream(apiBase);
+    expect(() =>
+      capturedOnMessage()({
+        event: 'orchestration:caughtUp',
+        data: '',
+        id: '1',
+      }),
+    ).not.toThrow();
+    expect(applyOrchestrationSnapshot).not.toHaveBeenCalled();
+    // The next frame on the same stream is still processed.
+    capturedOnMessage()({
+      event: 'orchestration:event',
+      data: JSON.stringify({
+        event: { method: 'turn.started', threadId: 'x' },
+      }),
+      id: '2',
+    });
+    expect(handleOrchestrationEvent).toHaveBeenCalledOnce();
+  });
+
+  test('a caught-up frame with a malformed JSON body applies nothing and the stream stays live', () => {
+    applyOrchestrationSnapshot.mockClear();
+    handleOrchestrationEvent.mockClear();
+    const apiBase = 'http://api-caughtup-malformed-body';
+    ensureOrchestrationEventStream(apiBase);
+    expect(() =>
+      capturedOnMessage()({
+        event: 'orchestration:caughtUp',
+        data: '{not valid json',
+        id: '1',
+      }),
+    ).not.toThrow();
+    expect(applyOrchestrationSnapshot).not.toHaveBeenCalled();
+    capturedOnMessage()({
+      event: 'orchestration:event',
+      data: JSON.stringify({
+        event: { method: 'turn.started', threadId: 'x' },
+      }),
+      id: '2',
+    });
+    expect(handleOrchestrationEvent).toHaveBeenCalledOnce();
+  });
+
   test('a trailing activity frame refreshes the current record without moving the cursor', () => {
     const apiBase = 'http://api-trailing-activity';
     mocks.applyConversationActivity.mockClear();

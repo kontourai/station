@@ -121,6 +121,35 @@ function openTurnStartFromWindow(
   return parseTurnStartedAt(open.createdAt);
 }
 
+/**
+ * station#2530 review 4: whether a local echo/optimistic user row
+ * (`chat.messages` — `handleTurnStartedEvent` writes one "event-input" row
+ * per turn, forever; nothing ever prunes it) that could NOT be matched
+ * against the bounded server window still deserves to render, once its own
+ * turn's row has aged out of that window entirely.
+ *
+ * Unconditionally keeping every unmatched row resurrected a turn's prompt as
+ * a phantom duplicate on a long-lived connection that never disconnected —
+ * exactly where a freshly reconnected client (whose local echo never existed
+ * beyond what the window told it) would correctly show nothing. Only a row
+ * that could still legitimately be catching up survives unmatched: the
+ * current pending send, one with no turnId at all (the documented
+ * reconnect-gap case), or one whose turn the window itself still shows open.
+ */
+export function isUnmatchedPendingRowStillPending(
+  message: ChatMessage,
+  currentPending: ChatMessage | undefined,
+  windowOpenTurnId: string | undefined,
+  sessionOpenTurnId: string | undefined,
+): boolean {
+  return (
+    message === currentPending ||
+    !message.turnId ||
+    message.turnId === windowOpenTurnId ||
+    message.turnId === sessionOpenTurnId
+  );
+}
+
 function mergeTranscriptMessages(...groups: ChatMessage[][]): ChatMessage[] {
   const seenIds = new Set<string>();
   return groups
@@ -608,25 +637,11 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
         );
       }
       if (match < 0) {
-        // station#2530 review: `chat.messages` (the local echo/optimistic
-        // array `handleTurnStartedEvent` writes one "event-input" row into
-        // per turn, forever — nothing ever prunes it) outlives the bounded
-        // server window (`turnLimit`, the last few turns only). Once a
-        // turn's own row ages OUT of that window, `projected` no longer
-        // carries it, so this always matched `true` unconditionally and
-        // resurrected the turn's prompt as a phantom duplicate row — on a
-        // long-lived connection that never disconnected, exactly where a
-        // reconnected client (whose local echo never existed beyond what it
-        // was TOLD, i.e. the window it read) would correctly show nothing.
-        // Only a row that could still legitimately be catching up survives
-        // unmatched: the current pending send, one with no turnId at all
-        // (the documented reconnect-gap case), or one whose turn the window
-        // itself still shows open.
-        return (
-          message === currentPending ||
-          !message.turnId ||
-          message.turnId === windowOpenTurnId ||
-          message.turnId === session.openTurnId
+        return isUnmatchedPendingRowStillPending(
+          message,
+          currentPending,
+          windowOpenTurnId,
+          session.openTurnId,
         );
       }
       claimedProjectedUsers.add(match);
