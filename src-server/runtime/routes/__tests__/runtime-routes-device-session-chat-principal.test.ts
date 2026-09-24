@@ -333,6 +333,8 @@ describe('device-session chat principal resolution over the REAL auth path (stat
      */
     principalReads: {
       extraOwners?: ReadonlyArray<readonly [string, string]>;
+      /** Receives every runtime log call, so a masked 500 stays visible. */
+      onLog?: (entry: string) => void;
     } = {},
   ) {
     const { pairing, paired } = pairRealDevice(searchMode === 'home');
@@ -502,7 +504,15 @@ describe('device-session chat principal resolution over the REAL auth path (stat
         getProjectHomeDir: () => roomHomeDir,
         loadAppConfig: () => ({}),
       },
-      logger: { debug() {}, info() {}, warn() {}, error() {} },
+      logger: principalReads.onLog
+        ? Object.fromEntries(
+            ['debug', 'info', 'warn', 'error', 'fatal'].map((level) => [
+              level,
+              (...args: unknown[]) =>
+                principalReads.onLog?.(JSON.stringify(args)),
+            ]),
+          )
+        : { debug() {}, info() {}, warn() {}, error() {} },
       activeAgents: new Map(),
       agentService: { listAgents: () => [] },
       agentMetadataMap: new Map(),
@@ -2290,6 +2300,108 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       await expect(runsFor(paired.credential)).resolves.toEqual([
         'device-owned',
       ]);
+    });
+
+    test('every moved route family resolves the principal before its handler reads it', async () => {
+      const logs: string[] = [];
+      const { app, roomRuntime } = await setup(
+        'operator',
+        true,
+        undefined,
+        false,
+        false,
+        {
+          extraOwners: [['operator-owned', LOCAL_OPERATOR_PRINCIPAL_ID]],
+          onLog: (entry) => logs.push(entry),
+        },
+      );
+      searchCleanup.unshift(async () => {
+        await roomRuntime.close();
+      });
+      // A route that reads the principal authority without the binding
+      // middleware throws `Conversation request authority was not resolved`.
+      // The handlers behind these requests run on inert stubs here, and the
+      // runtime masks an unexpected throw as `internal_error`, so the check
+      // reads both the response and every log line rather than each route's
+      // answer.
+      const requests: ReadonlyArray<readonly [string, string, unknown?]> = [
+        ['GET', '/api/runs'],
+        ['GET', '/api/runs/made-up-run'],
+        ['GET', '/notifications'],
+        ['GET', '/api/attention'],
+        ['POST', '/api/attention/made-up/ack'],
+        ['GET', '/api/action-operations'],
+        ['GET', '/api/insights'],
+        ['GET', '/monitoring/stats'],
+        ['GET', '/monitoring/metrics'],
+        ['GET', `/api/attachments/sha256-${'0'.repeat(64)}`],
+        ['GET', '/api/board?kind=session&id=operator-owned'],
+        ['POST', '/tool-approval/made-up', { approved: true }],
+        [
+          'POST',
+          '/api/projects/project-1/operating-state/intent',
+          { intent: { id: 'made-up', kind: 'made-up' } },
+        ],
+        ['GET', '/api/shares'],
+      ];
+      for (const [method, path, body] of requests) {
+        const response = await app.request(
+          path,
+          {
+            method,
+            headers: operatorHeaders,
+            ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+          },
+          REMOTE_TAILNET_ENV,
+        );
+        const text = await response.text();
+        expect(
+          `${text}\n${logs.join('\n')}`,
+          `${method} ${path}`,
+        ).not.toContain('Conversation request authority was not resolved');
+      }
+    });
+
+    test('attachment bytes open for the owner of the chat that carried them, not for another caller', async () => {
+      const { app, store, paired } = await operatorSetup();
+      const pixels = Buffer.alloc(6 * 1024, 7);
+      store.appendEvent({
+        eventId: 'operator-owned:upload',
+        provider: 'claude',
+        threadId: 'operator-owned',
+        createdAt: '2026-09-04T00:00:03Z',
+        method: 'turn.started',
+        turnId: 'operator-owned:upload-turn',
+        prompt: 'what is in this screenshot?',
+        metadata: { userId: LOCAL_OPERATOR_PRINCIPAL_ID },
+        attachments: [
+          {
+            kind: 'image',
+            name: 'screenshot.png',
+            mimeType: 'image/png',
+            size: pixels.length,
+            dataUrl: `data:image/png;base64,${pixels.toString('base64')}`,
+          },
+        ],
+      });
+      const [ref] = store
+        .listEvents('operator-owned')
+        .flatMap((event) =>
+          'attachments' in event.payload
+            ? (event.payload.attachments ?? []).flatMap((attachment) =>
+                attachment.blobRef ? [attachment.blobRef] : [],
+              )
+            : [],
+        );
+      expect(ref).toMatch(/^sha256-/);
+      const openAs = (credential: string) =>
+        app.request(
+          `/api/attachments/${ref}`,
+          { headers: { Authorization: `Bearer ${credential}` } },
+          REMOTE_TAILNET_ENV,
+        );
+      expect((await openAs(OPERATOR_SECRET)).status).toBe(200);
+      expect((await openAs(paired.credential)).status).toBe(404);
     });
 
     test('an answer share mints, lists and opens for the operator-owned session, never for a made-up or foreign one', async () => {
