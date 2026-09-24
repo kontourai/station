@@ -2256,6 +2256,28 @@ describe('OrchestrationService', () => {
         ).toBe('review_pending'),
       );
 
+      // Work still running under a finished turn (a backgrounded task) would
+      // die with the process: not idle.
+      await startResumable('background-conversation');
+      await runTurn('background-conversation', 'turn-b');
+      const subagent = {
+        producer: 'engine-subagent' as const,
+        reporterThreadId: 'background-conversation',
+      };
+      claude.events.push({
+        eventId: 'background-child-work',
+        provider: 'claude',
+        threadId: 'background-conversation',
+        method: 'child-work.updated',
+        delta: {
+          kind: 'snapshot',
+          ...subagent,
+          running: [{ ...subagent, childId: 'task-1', status: 'running' }],
+        },
+        createdAt: new Date().toISOString(),
+      } as CanonicalRuntimeEvent);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
       await startResumable('parked-conversation');
       await runTurn('parked-conversation', 'turn-one');
 
@@ -2298,6 +2320,112 @@ describe('OrchestrationService', () => {
       );
     } finally {
       unsubscribe();
+      await parkService.shutdown();
+    }
+  });
+
+  // #2540 review B1: a send resolves its engine BEFORE it takes the turn
+  // lock. If a park takes the session's lifecycle lock in that window and
+  // stops the engine, the send must restart it in place, never dispatch into
+  // the stopped one.
+  test('a send that races a park restarts the engine instead of dispatching into the stopped one', async () => {
+    const parkService = new OrchestrationService({
+      adapterRegistry: createRegistry([claude]),
+      eventBus,
+      eventStore,
+      flowRunService,
+      listProjects: () => configuredProjects,
+      workflowSidecarService,
+      logger: { debug: vi.fn(), warn: vi.fn() },
+      idleSessionParkAfterMs: 60_000,
+      idleSessionSweepMs: 3_600_000,
+    });
+    const threadId = 'raced-conversation';
+    let releaseStop!: () => void;
+    const stopGate = new Promise<void>((resolve) => {
+      releaseStop = resolve;
+    });
+    claude.stopSession.mockImplementation(async (stopped) => {
+      await stopGate;
+      claude.sessions.delete(stopped);
+      claude.events.push({
+        eventId: `${stopped}:exited`,
+        provider: 'claude',
+        threadId: stopped,
+        sessionId: stopped,
+        method: 'session.exited',
+        reason: 'stopped',
+        createdAt: new Date().toISOString(),
+      } as CanonicalRuntimeEvent);
+    });
+    claude.startSession.mockImplementation(async (input) => {
+      const session = {
+        provider: 'claude' as const,
+        threadId: input.threadId,
+        status: 'ready' as const,
+        resumeCursor: { claudeSessionId: `native-${input.threadId}` },
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      claude.sessions.set(input.threadId, session);
+      return session;
+    });
+    try {
+      const started = await parkService.sessionCommands.execute(
+        {
+          type: 'start-session',
+          input: {
+            threadId,
+            provider: 'claude',
+            metadata: { userId: 'owner-user' },
+          },
+        },
+        { userId: 'owner-user' },
+      );
+      if (started.status !== 'accepted') throw new Error(started.message);
+      for (const [method, extra] of [
+        [
+          'session.configured',
+          { sessionId: threadId, metadata: { userId: 'owner-user' } },
+        ],
+        ['turn.started', { turnId: 'turn-one', prompt: 'first' }],
+        ['turn.completed', { turnId: 'turn-one', finishReason: 'stop' }],
+      ] as const) {
+        claude.events.push({
+          eventId: `${threadId}-${method}`,
+          provider: 'claude',
+          threadId,
+          method,
+          ...extra,
+          createdAt: new Date().toISOString(),
+        } as CanonicalRuntimeEvent);
+      }
+      await vi.waitFor(async () =>
+        expect(
+          (await parkService.readSession(threadId))?.session.lifecycleState,
+        ).toBe('idle'),
+      );
+      const startsBefore = claude.startSession.mock.calls.length;
+
+      // The park takes the lock and is mid-stop; the engine still looks live.
+      const sweep = parkService.sweepIdleSessions(Date.now() + 120_000);
+      await vi.waitFor(() => expect(claude.stopSession).toHaveBeenCalled());
+      const send = parkService.dispatchWithReceipt(
+        { type: 'sendTurn', input: { threadId, input: 'again' } },
+        { userId: 'owner-user' },
+      );
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(claude.sendTurn).not.toHaveBeenCalled();
+
+      releaseStop();
+      await expect(sweep).resolves.toEqual([threadId]);
+      await send;
+      expect(claude.startSession.mock.calls.length).toBe(startsBefore + 1);
+      const restart = claude.startSession.mock.invocationCallOrder.at(-1)!;
+      const dispatch = claude.sendTurn.mock.invocationCallOrder.at(-1)!;
+      expect(restart).toBeLessThan(dispatch);
+      expect(claude.sendTurn.mock.calls.at(-1)?.[0].threadId).toBe(threadId);
+    } finally {
       await parkService.shutdown();
     }
   });
@@ -2367,6 +2495,128 @@ describe('OrchestrationService', () => {
       expect(eventStore.conversationSessions(threadId)).toHaveLength(1);
     },
   );
+
+  // Claude and ACP mark their own session `error` after a failed turn and
+  // refuse another turn on it (`ProviderTurnEndedError`), so that session's
+  // follow-up still goes to a successor. (Codex keeps its session `ready`
+  // through a failed turn — the reuse case above.)
+  test('a failed turn whose engine marked its session errored continues in a successor', async () => {
+    const threadId = 'conversation-engine-errored';
+    const started = await service.sessionCommands.execute(
+      {
+        type: 'start-session',
+        input: {
+          threadId,
+          provider: 'claude',
+          metadata: { userId: 'owner-user', connectionId: 'connection-a' },
+        },
+      },
+      { userId: 'owner-user' },
+    );
+    if (started.status !== 'accepted') throw new Error(started.message);
+    const record = claude.sessions.get(threadId);
+    if (record) claude.sessions.set(threadId, { ...record, status: 'error' });
+    for (const event of [
+      {
+        method: 'session.configured',
+        sessionId: threadId,
+        metadata: {
+          userId: 'owner-user',
+          agentSlug: 'station',
+          connectionId: 'connection-a',
+        },
+      },
+      { method: 'turn.started', turnId: 'turn-one', prompt: 'first' },
+      {
+        method: 'runtime.error',
+        turnId: 'turn-one',
+        severity: 'error',
+        code: 'engine-turn-failed',
+        message: 'the turn failed',
+      },
+    ]) {
+      claude.events.push({
+        eventId: `${threadId}-${event.method}`,
+        provider: 'claude',
+        threadId,
+        createdAt: new Date().toISOString(),
+        ...event,
+      } as CanonicalRuntimeEvent);
+    }
+    await vi.waitFor(async () => {
+      const detail = await service.readSession(threadId);
+      expect(detail?.session.lifecycleState).toBe('failed');
+      expect(detail?.session.status).toBe('error');
+    });
+    const next = await service.resolveConversationContinuation(
+      threadId,
+      INTERNAL_SESSION_READ_SCOPE,
+      { provider: 'claude', connectionId: 'connection-a' },
+    );
+    expect(next.startRequired).toBe(true);
+    expect(next.sessionId).not.toBe(threadId);
+  });
+
+  // The failure that DOES need a fresh engine: the native binding is dead.
+  // It reads `failed` like any failed turn, but its row is `dead`, so the
+  // next turn goes to a successor rather than a restart that cannot resume.
+  test('a failed turn whose engine binding is dead continues in a successor', async () => {
+    const threadId = 'conversation-binding-dead';
+    const started = await service.sessionCommands.execute(
+      {
+        type: 'start-session',
+        input: {
+          threadId,
+          provider: 'claude',
+          metadata: { userId: 'owner-user', connectionId: 'connection-a' },
+        },
+      },
+      { userId: 'owner-user' },
+    );
+    if (started.status !== 'accepted') throw new Error(started.message);
+    // As the real Claude adapter does, its own record reads `dead` too.
+    const record = claude.sessions.get(threadId);
+    if (record) claude.sessions.set(threadId, { ...record, status: 'dead' });
+    for (const event of [
+      {
+        method: 'session.configured',
+        sessionId: threadId,
+        metadata: {
+          userId: 'owner-user',
+          agentSlug: 'station',
+          connectionId: 'connection-a',
+        },
+      },
+      { method: 'turn.started', turnId: 'turn-one', prompt: 'first' },
+      {
+        method: 'runtime.error',
+        turnId: 'turn-one',
+        severity: 'error',
+        code: 'engine-session-binding-dead',
+        message: 'native session is gone',
+      },
+    ]) {
+      claude.events.push({
+        eventId: `${threadId}-${event.method}`,
+        provider: 'claude',
+        threadId,
+        createdAt: new Date().toISOString(),
+        ...event,
+      } as CanonicalRuntimeEvent);
+    }
+    await vi.waitFor(async () => {
+      const detail = await service.readSession(threadId);
+      expect(detail?.session.lifecycleState).toBe('failed');
+      expect(detail?.session.status).toBe('dead');
+    });
+    const next = await service.resolveConversationContinuation(
+      threadId,
+      INTERNAL_SESSION_READ_SCOPE,
+      { provider: 'claude', connectionId: 'connection-a' },
+    );
+    expect(next.startRequired).toBe(true);
+    expect(next.sessionId).not.toBe(threadId);
+  });
 
   test('an idle session whose engine binding was closed continues in a successor', async () => {
     claude.startSession.mockImplementationOnce(async (input) => {

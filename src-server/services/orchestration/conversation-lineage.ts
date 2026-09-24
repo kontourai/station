@@ -286,9 +286,14 @@ export class ConversationLineage {
     // place from its resume cursor — so no second engine contends for the
     // native thread. A successor is reserved only when the session cannot
     // take the turn: it was explicitly closed (terminal `completed`), or its
-    // engine binding was closed or died (dispatch cannot restart such a row).
+    // engine binding can no longer take one — `closed` or `dead` (dispatch
+    // cannot restart such a row), or `error` (engines that mark a failed turn
+    // that way, Claude and ACP, refuse further turns on it; Codex keeps its
+    // session `ready` through a failed turn, and continues in place).
     const bindingEnded =
-      detail.session.status === 'closed' || detail.session.status === 'dead';
+      detail.session.status === 'closed' ||
+      detail.session.status === 'dead' ||
+      detail.session.status === 'error';
     // Likewise a model switch the live session cannot apply to a turn: the
     // successor starts with the requested model, as every follow-up did
     // before sessions stayed reusable.

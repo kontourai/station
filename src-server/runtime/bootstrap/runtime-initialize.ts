@@ -534,7 +534,13 @@ export async function initializeRuntime(
         new GitLabPullRequestProvider(),
       ],
     });
+  // #2540: idle-engine parking. A non-negative integer overrides the
+  // threshold in milliseconds; `0` turns parking off.
+  const idleSessionParkAfterMs = parseNonNegativeIntegerEnv(
+    process.env.STATION_IDLE_SESSION_PARK_AFTER_MS,
+  );
   const orchestrationService = new OrchestrationService({
+    ...(idleSessionParkAfterMs !== undefined ? { idleSessionParkAfterMs } : {}),
     // Bedrock and Ollama are Station-engine model-provider implementations,
     // not public engine connections. Keep them available for dispatch without
     // publishing them through the registry that feeds New Chat inventory.
@@ -1093,4 +1099,12 @@ export async function initializeRuntime(
     voltAgent,
     voiceWsAttached: true,
   };
+}
+
+function parseNonNegativeIntegerEnv(
+  value: string | undefined,
+): number | undefined {
+  if (value === undefined || value.trim() === '') return undefined;
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed >= 0 ? parsed : undefined;
 }
