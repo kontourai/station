@@ -837,6 +837,9 @@ describe('server-ordered approval posture (#2436)', () => {
         modelOptions: { approvalMode: 'auto' },
       });
       expect(claude.lastTurnMode()).toBe('auto');
+      // #2493 Q1: the replay goes straight to the adapter; it must carry the
+      // session's confinement exactly like an ordinary turn.
+      expect(claude.turns.at(-1)?.confinement).toBe('workspace');
       expect(startStamp('c-cred-confined')).toBe('workspace');
 
       await start('c-cred-host', 'claude', undefined, undefined, {
@@ -849,8 +852,32 @@ describe('server-ordered approval posture (#2436)', () => {
         modelOptions: { approvalMode: 'never' },
       });
       expect(claude.lastTurnMode()).toBe('never');
+      expect(claude.turns.at(-1)?.confinement).toBe('host');
       expect(startStamp('c-cred-host')).toBe('host');
     });
+
+    test.each([
+      ['host', { operator: true }],
+      ['workspace', {}],
+    ] as const)(
+      '#2493 Q1: a Codex credential-profile replay reaches the adapter as %s',
+      async (expected, options) => {
+        stationDefault = 'never';
+        await start(
+          `c-cred-codex-${expected}`,
+          'codex',
+          undefined,
+          undefined,
+          options,
+        );
+        await restartForCredentialProfile(`c-cred-codex-${expected}`);
+        expect(codex.turns.at(-1)).toMatchObject({
+          threadId: `c-cred-codex-${expected}`,
+          confinement: expected,
+          modelOptions: { approvalMode: 'never' },
+        });
+      },
+    );
 
     test.each([
       {

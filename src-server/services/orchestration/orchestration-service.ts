@@ -2347,6 +2347,11 @@ export class OrchestrationService {
         this.internalStops.reportRedispatchFailed(threadId, turnId, provider),
       replayModelOptions: (threadId, provider, modelOptions) =>
         this.replayModelOptionsWithPosture(threadId, provider, modelOptions),
+      replayConfinement: (threadId) =>
+        this.approvalPosture.standingConfinement(
+          threadId,
+          this.readStartConfinementStamp(threadId),
+        ),
       onTurnDispatched: (input) =>
         this.monitoringBridge.onTurnDispatched(input),
       forgetCoalescedThread: (threadId) =>
