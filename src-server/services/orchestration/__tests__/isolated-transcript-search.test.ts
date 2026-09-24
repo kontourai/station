@@ -846,7 +846,11 @@ describe('isolated transcript read owner and existing session policy', () => {
         ),
         current: () => true,
       }),
-    ).toEqual({ state: 'unavailable' });
+      // #2460: the refusal names the admission branch that decided it.
+    ).toEqual({
+      state: 'unavailable',
+      cause: { kind: 'authority-invalid', stage: 'admission' },
+    });
   });
 
   test.each(
@@ -908,7 +912,22 @@ describe('isolated transcript read owner and existing session policy', () => {
       }
       if (change === 'principal') principalCurrent = false;
       release.resolve(undefined);
-      expect(await pending).toEqual({ state: 'unavailable' });
+      // Opens answer the public outcome vocabulary, which carries no cause.
+      // A search's internal refusal names the currentness component that
+      // stopped it (#2460): an owner/tenant change bumps the read
+      // generation; a principal change is the request's own currentness.
+      expect(await pending).toEqual(
+        operation === 'search'
+          ? {
+              state: 'unavailable',
+              cause: {
+                kind: 'not-current',
+                stage: 'during-read',
+                component: change === 'principal' ? 'request' : 'generation',
+              },
+            }
+          : { state: 'unavailable' },
+      );
       principalCurrent = true;
       const calls = lookup.mock.calls.length;
       expect(
