@@ -640,11 +640,23 @@ describe('changed verification selection', () => {
         .relatedPaths,
     ).toContain('packages/cli/src/commands/session-client.ts');
   });
+  test('selects the capability-matrix suites instead of its import graph (#2458)', () => {
+    const path = 'packages/contracts/src/engine-capability-matrix.ts';
+    const selection = selectChangedVerification([path]);
+    // contracts/agent.ts, config.ts and tool.ts import the matrix, so its
+    // graph is most of the corpus and overran the hosted fast-lane budget.
+    expect(selection.relatedPaths).not.toContain(path);
+    expect(selection.tests.map((entry) => entry.path)).toEqual(
+      expect.arrayContaining([
+        'packages/contracts/src/__tests__/engine-capability-matrix.test.ts',
+        'src-server/providers/__tests__/child-work-conformance.test.ts',
+        'src-server/services/orchestration/__tests__/attached-session-adoption.test.ts',
+        'src-server/services/orchestration/__tests__/orchestration-service.test.ts',
+      ]),
+    );
+    expect(selection.lanes).toEqual([]);
+  });
   test.each([
-    [
-      'packages/contracts/src/engine-capability-matrix.ts',
-      'src-server/services/orchestration/__tests__/orchestration-service.test.ts',
-    ],
     [
       'src-server/services/orchestration/attached-session-adoption.ts',
       'src-server/services/orchestration/__tests__/orchestration-service.test.ts',

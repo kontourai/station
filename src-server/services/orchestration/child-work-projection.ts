@@ -50,7 +50,7 @@ import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime
  */
 export const STATION_UNMAPPED_SUBAGENT_ENGINES: Readonly<
   Record<string, string>
-> = { codex: '#2458' };
+> = {};
 
 export class ChildWorkProjection {
   private state: ChildWorkRegistryState = createEmptyChildWorkRegistry();

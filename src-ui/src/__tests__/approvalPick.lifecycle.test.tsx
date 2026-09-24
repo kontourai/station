@@ -150,12 +150,15 @@ let streamSeq = 1000;
  * Folds one event as the stream delivers it: at the next server position,
  * unless the test names one (a frame delivered late).
  */
+/** The engine the folded events come from. */
+const engine = 'codex';
+
 function fold(event: Record<string, unknown>, position = ++streamSeq) {
   clock += 1;
   handleOrchestrationEvent(
     'http://station.test',
     {
-      provider: 'codex',
+      provider: engine,
       threadId: SESSION_ID,
       createdAt: new Date(Date.UTC(2026, 8, 23, 0, 0, clock)).toISOString(),
       ...event,
@@ -222,7 +225,7 @@ function renderComposer() {
       useChatInput({
         apiBase: 'http://station.test',
         sessionId: SESSION_ID,
-        agentSlug: 'codex',
+        agentSlug: engine,
         conversationId: 'conv-1',
         availableModels: [modelX],
         agentDefaultModel: 'model-x',
@@ -248,7 +251,7 @@ function renderComposer() {
   const send = async (text = 'go'): Promise<Wire> => {
     sendExecutionMessage.mockClear();
     await act(async () => {
-      await sender.result.current(SESSION_ID, 'codex', 'conv-1', text);
+      await sender.result.current(SESSION_ID, engine, 'conv-1', text);
     });
     composer.rerender();
     expect(sendExecutionMessage).toHaveBeenCalledTimes(1);
