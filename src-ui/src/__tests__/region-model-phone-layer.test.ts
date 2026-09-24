@@ -50,6 +50,7 @@ describe('openPhonePaneLayer', () => {
       surfaceId: PR,
       mintedTab: true,
       previous: { selected: 'chat', maximized: false, visible: true },
+      origin: null,
     });
   });
 
@@ -120,6 +121,52 @@ describe('openPhonePaneLayer', () => {
 });
 
 describe('restorePhonePaneLayer', () => {
+  // Review M2: a pane the layer moved out of a hidden side region used to
+  // come back UNPLACED, and the record written while the layer was open (the
+  // restored projection) lost it from the region the user had put it in.
+  test('a pane moved over Chat from a hidden side region goes back to its slot there', () => {
+    let before = placeSurface(chatShowing(), 'activity', 'right');
+    before = placeSurface(before, PR, 'right');
+    before = updateRegion(before, 'right', {
+      occupant: 'activity',
+      visible: false,
+    });
+    before = updateRegion(before, 'bottom', {
+      visible: true,
+      occupant: 'chat',
+    });
+    expect(before.right).toMatchObject({
+      panes: ['activity', PR],
+      occupant: 'activity',
+      visible: false,
+    });
+    const opened = openPhonePaneLayer(before, PR, OPEN);
+    if (!opened) throw new Error('open did not apply');
+    expect(opened.arrangement.right.panes).toEqual(['activity']);
+    expect(opened.layer.origin).toEqual({
+      region: 'right',
+      index: 1,
+      selected: false,
+      visible: false,
+    });
+    expect(restorePhonePaneLayer(opened.arrangement, opened.layer)).toEqual(
+      before,
+    );
+  });
+
+  test('a lone pane emptied out of its side region is returned, selected, with the region hidden again', () => {
+    const before = updateRegion(
+      placeSurface(chatShowing(), PR, 'right', false),
+      'bottom',
+      { visible: true, occupant: 'chat' },
+    );
+    const opened = openPhonePaneLayer(before, PR, OPEN);
+    if (!opened) throw new Error('open did not apply');
+    expect(restorePhonePaneLayer(opened.arrangement, opened.layer)).toEqual(
+      before,
+    );
+  });
+
   test('Back: Chat is selected again, the region restored, and the minted tab removed', () => {
     const before = chatShowing();
     const opened = openPhonePaneLayer(before, PR, OPEN);

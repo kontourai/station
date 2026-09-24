@@ -575,6 +575,47 @@ export interface PhonePaneLayer {
   surfaceId: string;
   mintedTab: boolean;
   previous: PhonePaneLayerPrevious;
+  /**
+   * Where a minted pane was held before the layer moved it over Chat — a
+   * side region a phone never shows — so the way back returns it there
+   * rather than leaving it unplaced (review M2). Null for a pane that was
+   * placed nowhere.
+   */
+  origin: PhonePaneLayerOrigin | null;
+}
+
+/** A layer pane's place before the layer: its region, tab slot and view. */
+export interface PhonePaneLayerOrigin {
+  region: DockRegionId;
+  index: number;
+  selected: boolean;
+  visible: boolean;
+}
+
+/**
+ * Take a layer's minted pane back out of the layer's region and, when it came
+ * from another region, return it to its tab slot there with that region's
+ * selection and visibility as they were. A pane the layer did not mint is
+ * left where it is.
+ */
+function returnLayerPane(
+  arrangement: RegionArrangement,
+  layer: PhonePaneLayer,
+): RegionArrangement {
+  if (!layer.mintedTab) return arrangement;
+  const next = removeRegionPane(arrangement, layer.region, layer.surfaceId);
+  const origin = layer.origin;
+  if (!origin || occupiedRegion(next, layer.surfaceId)) return next;
+  const panes = [...next[origin.region].panes];
+  panes.splice(Math.min(origin.index, panes.length), 0, layer.surfaceId);
+  return updateRegion(next, origin.region, {
+    panes,
+    occupant:
+      origin.selected || next[origin.region].occupant === null
+        ? layer.surfaceId
+        : next[origin.region].occupant,
+    visible: origin.visible,
+  });
 }
 
 /**
@@ -611,10 +652,7 @@ export function openPhonePaneLayer(
     'bottom';
   if (!surfaceMayOccupy(surfaceId, region)) return null;
   const replacing = active !== null && active.surfaceId !== surfaceId;
-  const base =
-    replacing && active.mintedTab
-      ? removeRegionPane(arrangement, active.region, active.surfaceId)
-      : arrangement;
+  const base = replacing ? returnLayerPane(arrangement, active) : arrangement;
   const previous: PhonePaneLayerPrevious = active?.previous ?? {
     selected: base[region].occupant,
     maximized: base[region].maximized,
@@ -624,11 +662,23 @@ export function openPhonePaneLayer(
     active !== null && !replacing
       ? active.mintedTab
       : !base[region].panes.includes(surfaceId);
+  const heldIn = mintedTab ? occupiedDockRegion(base, surfaceId) : undefined;
+  const origin: PhonePaneLayerOrigin | null =
+    active !== null && !replacing
+      ? active.origin
+      : heldIn
+        ? {
+            region: heldIn,
+            index: base[heldIn].panes.indexOf(surfaceId),
+            selected: base[heldIn].occupant === surfaceId,
+            visible: base[heldIn].visible,
+          }
+        : null;
   let next = placeSurface(base, surfaceId, region, true);
   if (options.maximize) next = updateRegion(next, region, { maximized: true });
   return {
     arrangement: next,
-    layer: { region, surfaceId, mintedTab, previous },
+    layer: { region, surfaceId, mintedTab, previous, origin },
   };
 }
 
@@ -648,9 +698,7 @@ export function restorePhonePaneLayer(
   const { region, surfaceId, previous } = layer;
   const wasShowing =
     arrangement[region].visible && arrangement[region].occupant === surfaceId;
-  const next = layer.mintedTab
-    ? removeRegionPane(arrangement, region, surfaceId)
-    : arrangement;
+  const next = returnLayerPane(arrangement, layer);
   const state = next[region];
   if (wasShowing) {
     const selected =

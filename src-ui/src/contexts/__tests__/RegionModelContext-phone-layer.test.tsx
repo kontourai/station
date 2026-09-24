@@ -408,6 +408,48 @@ describe('a pane opened on a phone opens over Chat', () => {
     expect(JSON.stringify(stored ?? {})).not.toContain(PR);
   });
 
+  // Review M2: through the persisted record. A pane held in a hidden side
+  // region is moved over Chat by the layer; the record written while the
+  // layer is open, and after Back, must still hold it where it was.
+  test('a pane from a hidden side region stays in that region in the record, during the layer and after Back', async () => {
+    await mount();
+    act(() => {
+      current().placeSurface(PR, 'right');
+      current().setRegion('right', { visible: false });
+      current().selectPane('bottom', 'chat');
+    });
+    await waitFor(() =>
+      expect(current().regions.right).toMatchObject({
+        panes: [PR],
+        visible: false,
+      }),
+    );
+    const settle = () =>
+      act(() => new Promise((resolve) => setTimeout(resolve, 250)));
+    await settle();
+    const record = () =>
+      JSON.stringify(deviceSettingsStore.get('regionArrangement'));
+    const before = record();
+    expect(before).toContain(PR);
+
+    act(() => {
+      current().openSurfaceInRegion(PR);
+    });
+    await waitFor(() => expect(current().regions.bottom.occupant).toBe(PR));
+    expect(current().regions.right.panes).toEqual([]);
+    await settle();
+    expect(record()).toBe(before);
+
+    act(() => window.history.back());
+    await waitFor(() => expect(current().regions.bottom.occupant).toBe('chat'));
+    expect(current().regions.right).toMatchObject({
+      panes: [PR],
+      visible: false,
+    });
+    await settle();
+    expect(record()).toBe(before);
+  });
+
   test('a fine-pointer desktop keeps its own rule: a side region, no layer, no history', async () => {
     stubDevice({ phone: false });
     await mount();
