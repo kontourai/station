@@ -261,6 +261,24 @@ export function createSelfHostedBrokerRoutes(service: SelfHostedBrokerService) {
     }),
   );
   app.post(
+    '/native/key-candidates/refuse',
+    invoke(async (c) => {
+      const { body, credential } = await parse(c);
+      exact(body, ['scope', 'invitationId', 'challenge']);
+      if (
+        typeof body.invitationId !== 'string' ||
+        typeof body.challenge !== 'string'
+      )
+        throw new Error('invalid_request');
+      return service.refuseNativeKeyCandidate(
+        body.scope as BrokerScope,
+        credential,
+        body.invitationId,
+        body.challenge,
+      );
+    }),
+  );
+  app.post(
     '/native/key-candidates/answer',
     invoke(async (c) => {
       const { body, credential } = await parse(c);

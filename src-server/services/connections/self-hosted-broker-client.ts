@@ -315,7 +315,7 @@ export class SelfHostedBrokerClient {
         !Number.isSafeInteger(offer.stationSigningGeneration) ||
         (offer.stationSigningGeneration as number) < 1 ||
         !Number.isSafeInteger(offer.expiresAt) ||
-        (offer.expiresAt as number) <= this.now() ||
+        (offer.expiresAt as number) <= 0 ||
         (offer.expiresAt as number) > this.now() + 60_000 ||
         surface.kind !== 'station-native' ||
         typeof surface.appIdentifier !== 'string' ||
@@ -345,6 +345,22 @@ export class SelfHostedBrokerClient {
           challenge: offer.challenge,
           candidate,
         },
+        signal,
+      ),
+      ['accepted'],
+    );
+    if (typeof result.accepted !== 'boolean')
+      throw new Error('broker_response_invalid');
+    return result.accepted;
+  }
+  async refuseNativeKeyCandidate(
+    offer: SelfHostedBrokerNativeKeyCandidateOfferV1,
+    signal: AbortSignal,
+  ) {
+    const result = exact(
+      await this.#post(
+        '/native/key-candidates/refuse',
+        { invitationId: offer.invitationId, challenge: offer.challenge },
         signal,
       ),
       ['accepted'],

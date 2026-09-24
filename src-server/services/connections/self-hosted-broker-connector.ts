@@ -225,6 +225,7 @@ export class SelfHostedBrokerConnector {
         throw new Error('broker_connector_trust_unavailable');
       const keyId = await stationConnectionSigningKeyId(descriptor);
       let answered = 0;
+      let refused = 0;
       while (answered < 1) {
         currentSignal.throwIfAborted();
         if (!this.trust.isCurrent(descriptor))
@@ -241,9 +242,13 @@ export class SelfHostedBrokerConnector {
         const offer = offers[0]!;
         if (
           offer.stationSigningKeyId !== keyId ||
-          offer.stationSigningGeneration !== descriptor.generation
-        )
-          throw new Error('broker_connector_native_station_binding_mismatch');
+          offer.stationSigningGeneration !== descriptor.generation ||
+          offer.expiresAt <= Date.now()
+        ) {
+          await this.client.refuseNativeKeyCandidate(offer, currentSignal);
+          refused++;
+          break;
+        }
         const issued = await issuer.issue({
           brokerOrigin: offer.brokerOrigin,
           expectedStationId: descriptor.stationId,
@@ -271,14 +276,18 @@ export class SelfHostedBrokerConnector {
           verified.claims.candidate.generation !== descriptor.generation
         )
           throw new Error('broker_connector_trust_retired');
-        await this.client.answerNativeKeyCandidate(
+        const accepted = await this.client.answerNativeKeyCandidate(
           offer,
           issued.candidate,
           currentSignal,
         );
-        answered++;
+        if (accepted) answered++;
+        else {
+          refused++;
+          break;
+        }
       }
-      return { answered };
+      return { answered, refused };
     });
   }
   /** Explicit native-v2 lane; the legacy `poll()` callback never sees it. */

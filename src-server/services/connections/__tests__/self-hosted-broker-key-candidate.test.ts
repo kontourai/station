@@ -206,44 +206,49 @@ async function fixture() {
   };
 }
 
+function createCandidateRuntime(f: Awaited<ReturnType<typeof fixture>>) {
+  const startAdapter = vi.fn(async () => {
+    throw new Error('no native or browser application traffic');
+  });
+  const runtime = createSelfHostedBrokerPionRuntime(
+    {
+      brokerOrigin: f.brokerOrigin,
+      applicationOrigin: 'https://station.example',
+      scope: f.scope,
+      connectorCredential: f.credentials.connector,
+      executable: '/unused',
+      certificatePem: 'unused',
+      privateKeyPem: 'unused',
+      turn: { url: 'turn:unused', username: 'unused', password: 'unused' },
+      trust: f.trustOwner,
+      issuer: {
+        issue: async () => {
+          throw new Error('no connection proof');
+        },
+      },
+      candidateIssuer: f.issuer,
+      heartbeatMs: 30_000,
+      renewMs: 10_000,
+      pollMs: 1_000,
+      maxPeerLifetimeMs: 60_000,
+      maxPeers: 1,
+    },
+    {
+      signal: new AbortController().signal,
+      fetch: async () => new Response('unexpected'),
+    },
+    { startAdapter },
+  );
+  cleanup.push(() => runtime.shutdown());
+  return { runtime, startAdapter };
+}
+
 describe.runIf(process.platform !== 'win32')(
   'pre-grant candidate courier',
   () => {
     test('production polling exchanges a signed candidate over loopback without opening traffic or consuming invitation', async () => {
       const f = await fixture();
-      const startAdapter = vi.fn(async () => {
-        throw new Error('no native or browser application traffic');
-      });
-      const runtime = createSelfHostedBrokerPionRuntime(
-        {
-          brokerOrigin: f.brokerOrigin,
-          applicationOrigin: 'https://station.example',
-          scope: f.scope,
-          connectorCredential: f.credentials.connector,
-          executable: '/unused',
-          certificatePem: 'unused',
-          privateKeyPem: 'unused',
-          turn: { url: 'turn:unused', username: 'unused', password: 'unused' },
-          trust: f.trustOwner,
-          issuer: {
-            issue: async () => {
-              throw new Error('no connection proof');
-            },
-          },
-          candidateIssuer: f.issuer,
-          heartbeatMs: 30_000,
-          renewMs: 10_000,
-          pollMs: 1_000,
-          maxPeerLifetimeMs: 60_000,
-          maxPeers: 1,
-        },
-        {
-          signal: new AbortController().signal,
-          fetch: async () => new Response('unexpected'),
-        },
-        { startAdapter },
-      );
-      cleanup.push(() => runtime.shutdown());
+      const { runtime, startAdapter } = createCandidateRuntime(f);
       await runtime.start();
       const before = f.counts();
       const opened = await f.post('request');
@@ -425,7 +430,9 @@ describe.runIf(process.platform !== 'win32')(
       expect((await f.post('request', invitation)).status).toBe(200);
       await expect(
         f.connector.pollNativeKeyCandidates(f.issuer, signal),
-      ).rejects.toThrow('broker_connector_native_station_binding_mismatch');
+      ).resolves.toEqual({ answered: 0, refused: 1 });
+      expect(await f.client.nativeKeyCandidateOffers(signal)).toEqual([]);
+      expect((await f.post('read', invitation)).status).toBe(401);
     });
     test('binds the exact invitation and retains bounded replay slots after explicit redemption', async () => {
       const f = await fixture();
@@ -514,6 +521,70 @@ describe.runIf(process.platform !== 'win32')(
         ).status,
       ).toBe(401);
       expect(f.counts().grants).toMatchObject({ n: 0 });
+    });
+
+    test.each(['stale-pin', 'consumed', 'expired'] as const)(
+      'keeps production browser polling alive after %s candidate and retires its queue slot',
+      async (failure) => {
+        const f = await fixture();
+        const { runtime } = createCandidateRuntime(f);
+        const browserPolls = vi.spyOn(f.service, 'offers');
+        const withdrawal = vi.spyOn(f.service, 'withdraw');
+        const invitation =
+          failure === 'stale-pin'
+            ? f.service.issueNativeInvitation({
+                scope: f.scope,
+                routingCredential: f.credentials.routing,
+                brokerOrigin: f.brokerOrigin,
+                surface: f.surface,
+                stationSigningKeyId: 'B'.repeat(43),
+                stationSigningGeneration: f.trust.generation,
+              })
+            : f.invitation;
+        if (failure !== 'stale-pin') {
+          const issue = f.issuer.issue.bind(f.issuer);
+          vi.spyOn(f.issuer, 'issue').mockImplementationOnce(
+            async (request) => {
+              const candidate = await issue(request);
+              if (failure === 'consumed')
+                await f.service.redeemNativeInvitation(
+                  invitation,
+                  await f.proof('redeem', invitation),
+                );
+              else f.advance(60_001);
+              return candidate;
+            },
+          );
+        }
+        expect((await f.post('request', invitation)).status).toBe(200);
+        await runtime.start();
+        await vi.waitFor(
+          () =>
+            expect(browserPolls.mock.calls.length).toBeGreaterThanOrEqual(2),
+          { timeout: 5_000 },
+        );
+        expect(withdrawal).not.toHaveBeenCalled();
+        expect(
+          await f.client.nativeKeyCandidateOffers(new AbortController().signal),
+        ).toEqual([]);
+        expect((await f.post('read', invitation)).status).toBe(401);
+      },
+    );
+    test('still rejects genuine custody and connector lease failures', async () => {
+      const f = await fixture();
+      const signal = new AbortController().signal;
+      await f.connector.register(signal);
+      await f.post('request');
+      vi.spyOn(f.issuer, 'issue').mockRejectedValueOnce(
+        new Error('candidate_key_unavailable'),
+      );
+      await expect(
+        f.connector.pollNativeKeyCandidates(f.issuer, signal),
+      ).rejects.toThrow('candidate_key_unavailable');
+      f.service.withdraw(f.scope, f.credentials.connector);
+      await expect(
+        f.connector.pollNativeKeyCandidates(f.issuer, signal),
+      ).rejects.toThrow('broker_request_refused_401');
     });
   },
 );

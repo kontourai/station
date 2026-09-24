@@ -475,6 +475,7 @@ export class SelfHostedBrokerService {
     {
       offer: SelfHostedBrokerNativeKeyCandidateOfferV1;
       invitationExpiresAt: number;
+      refused: boolean;
       candidate: StationConnectionKeyCandidateV1 | null;
     }
   >();
@@ -1351,6 +1352,7 @@ export class SelfHostedBrokerService {
     this.pruneKeyCandidates();
     const existing = this.keyCandidates.get(selected.invitationId);
     if (existing) {
+      if (existing.refused) throw new Error('connection_unavailable');
       if (
         existing.offer.challenge !== challenge ||
         existing.offer.expiresAt <= this.now()
@@ -1372,6 +1374,7 @@ export class SelfHostedBrokerService {
     const expiresAt = Math.min(this.now() + 60_000, selected.expiresAt);
     this.keyCandidates.set(selected.invitationId, {
       invitationExpiresAt: selected.expiresAt,
+      refused: false,
       candidate: null,
       offer: {
         version: 'station-broker-native-key-candidate-offer/v1',
@@ -1404,6 +1407,7 @@ export class SelfHostedBrokerService {
     const item = this.keyCandidates.get(selected.invitationId);
     if (
       !item ||
+      item.refused ||
       item.offer.challenge !== challenge ||
       item.offer.expiresAt <= this.now()
     )
@@ -1432,11 +1436,33 @@ export class SelfHostedBrokerService {
           item.offer.scope.routingGeneration === scope.routingGeneration &&
           item.offer.expiresAt > this.now() &&
           !item.candidate &&
+          !item.refused &&
           row?.consumed_at === null
         );
       })
       .slice(0, 1)
       .map((item) => structuredClone(item.offer));
+  }
+  /** Terminal disposition for one candidate, not a lease or grant revocation. */
+  refuseNativeKeyCandidate(
+    scope: BrokerScope,
+    credential: BrokerCredential,
+    invitationId: string,
+    challenge: string,
+  ) {
+    this.lease(validateBrokerScope(scope), credential, 'connector');
+    const item = this.keyCandidates.get(invitationId);
+    if (
+      item &&
+      item.offer.scope.stationId === scope.stationId &&
+      item.offer.scope.enrollmentId === scope.enrollmentId &&
+      item.offer.scope.routingGeneration === scope.routingGeneration &&
+      item.offer.challenge === challenge
+    ) {
+      item.refused = true;
+      item.candidate = null;
+    }
+    return { accepted: true };
   }
   answerNativeKeyCandidate(
     scope: BrokerScope,
@@ -1467,11 +1493,18 @@ export class SelfHostedBrokerService {
       item.offer.scope.stationId !== scope.stationId ||
       item.offer.scope.enrollmentId !== scope.enrollmentId ||
       item.offer.scope.routingGeneration !== scope.routingGeneration ||
-      item.offer.challenge !== challenge ||
+      item.offer.challenge !== challenge
+    )
+      return { accepted: false };
+    if (
+      item.refused ||
       item.offer.expiresAt <= this.now() ||
       row?.consumed_at !== null
-    )
-      throw new Error('connection_unavailable');
+    ) {
+      item.refused = true;
+      item.candidate = null;
+      return { accepted: false };
+    }
     if (
       item.candidate &&
       JSON.stringify(item.candidate) !== JSON.stringify(candidate)
