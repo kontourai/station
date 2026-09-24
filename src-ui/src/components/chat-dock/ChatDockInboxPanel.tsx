@@ -184,6 +184,13 @@ function ChatDockInboxPanelImpl({
               moveFocusBeforeRemovingInboxRow(panelRef.current, action);
               onCloseChat(sessionId);
             }}
+            onDraftDiscarded={(item, action) => {
+              // #2312: the server deleted the Draft; its open tab, if any,
+              // now names nothing.
+              moveFocusBeforeRemovingInboxRow(panelRef.current, action);
+              if (item.chatSessionId && openChatIds.has(item.chatSessionId))
+                onCloseChat(item.chatSessionId);
+            }}
           />
         )}
       </div>

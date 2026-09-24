@@ -184,6 +184,36 @@ test('indexes the maximum 20,000-frame archive without consulting mounted rows',
   expect(performance.now() - started).toBeLessThan(250);
 });
 
+test('#2324: a turn the engine opened on its own is not a user-turn landmark; its frames stay in the turn it followed', () => {
+  const provider = {
+    eventId: 'provider-start',
+    threadId: 'durable-session',
+    provider: 'claude',
+    createdAt: '2026-09-20T00:03:00Z',
+    method: 'turn.started',
+    turnId: 'provider:p',
+    metadata: { trigger: 'provider' },
+  } as OrchestrationEvent;
+  const events = [
+    ...turn('turn-1', 'First question', 1),
+    provider,
+    { ...provider, eventId: 'provider-done', method: 'turn.completed' },
+    ...turn('turn-2', 'Second question', 4),
+  ] as OrchestrationEvent[];
+  const frames = events.map((event, index) => ({
+    kind: 'runtime' as const,
+    atMs: index,
+    event,
+  }));
+  const landmarks = conversationTimelineLandmarks({ frames });
+  expect(landmarks.map((landmark) => landmark.turnId)).toEqual([
+    'turn-1',
+    'turn-2',
+  ]);
+  // turn-1's range runs through the provider turn's frames.
+  expect(landmarks[0]).toMatchObject({ startFrame: 0, endFrame: 3 });
+});
+
 test('loads an authoritative earlier execution without rebinding it to the current session', async () => {
   activeChatsStore.initChat('live-chat', {
     agentSlug: 'codex',

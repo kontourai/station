@@ -66,7 +66,26 @@ export type LiveSurfaceConnectionStatus =
   | 'unavailable'
   | 'denied';
 
-export type LiveSurfaceInputNotice = 'control-changed' | 'input-failed' | null;
+/**
+ * `host-busy` (#2433): the server could not authorize the input or claim
+ * right now (503 `surface-busy`, e.g. a saturated SSH device host). Nothing
+ * was sent; trying again may work. Not a refusal.
+ */
+export type LiveSurfaceInputNotice =
+  | 'control-changed'
+  | 'input-failed'
+  | 'host-busy'
+  | null;
+
+/** A retryable 503 `surface-busy` answer (#2433). */
+function isSurfaceBusy(response: Response, envelope: unknown): boolean {
+  return (
+    response.status === 503 &&
+    typeof envelope === 'object' &&
+    envelope !== null &&
+    (envelope as { code?: unknown }).code === 'surface-busy'
+  );
+}
 
 export interface LiveSurfaceFrame {
   header: LiveSurfaceFrameHeader;
@@ -114,6 +133,9 @@ export interface UseLiveSurfaceResult {
   claimControl: () => Promise<void>;
   retry: () => void;
 }
+
+/** How long "the host is busy" stays up without a newer outcome. */
+const HOST_BUSY_NOTICE_MS = 5_000;
 
 const LIVE_SURFACE_RECONNECT_DELAYS_MS = [
   500, 1_000, 2_000, 4_000, 8_000, 10_000,
@@ -403,6 +425,22 @@ export function useLiveSurface(
   const orphanedRef = useRef(new Set<string>());
   const inFlightRef = useRef(false);
   const flushScheduledRef = useRef(false);
+  const busyNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (busyNoticeTimerRef.current) clearTimeout(busyNoticeTimerRef.current);
+    },
+    [],
+  );
+  /** Say the host is busy; a successful send or 5 s later, stop saying it. */
+  const showHostBusy = useCallback(() => {
+    setInputNotice('host-busy');
+    if (busyNoticeTimerRef.current) clearTimeout(busyNoticeTimerRef.current);
+    busyNoticeTimerRef.current = setTimeout(() => {
+      busyNoticeTimerRef.current = null;
+      setInputNotice((current) => (current === 'host-busy' ? null : current));
+    }, HOST_BUSY_NOTICE_MS);
+  }, []);
   const inputUrl = `${apiBase}/api/live-surfaces/${encodeURIComponent(surfaceId)}/input${contextQuery(projectSlug)}`;
   const inputUrlRef = useRef(inputUrl);
   inputUrlRef.current = inputUrl;
@@ -442,6 +480,12 @@ export function useLiveSurface(
       const envelope = (await response.json().catch(() => null)) as {
         data?: LiveSurfaceInputResult;
       } | null;
+      if (isSurfaceBusy(response, envelope)) {
+        // Not sent, and not replayed later onto a view that may have moved on.
+        queueRef.current = [];
+        showHostBusy();
+        return;
+      }
       const result = envelope?.data;
       const nextLease = result
         ? parseLiveSurfaceControlLease(result.lease)
@@ -469,7 +513,7 @@ export function useLiveSurface(
       inFlightRef.current = false;
     }
     if (queueRef.current.length > 0) void flush();
-  }, [adoptLease]);
+  }, [adoptLease, showHostBusy]);
 
   const sendInput = useCallback(
     (events: LiveSurfaceInput[]) => {
@@ -517,6 +561,10 @@ export function useLiveSurface(
       const envelope = (await response.json().catch(() => null)) as {
         data?: LiveSurfaceLeaseResult;
       } | null;
+      if (isSurfaceBusy(response, envelope)) {
+        showHostBusy();
+        return;
+      }
       const nextLease = envelope?.data
         ? parseLiveSurfaceControlLease(envelope.data.lease)
         : null;
@@ -525,7 +573,7 @@ export function useLiveSurface(
     } catch {
       setInputNotice('input-failed');
     }
-  }, [apiBase, surfaceId, projectSlug, adoptLease]);
+  }, [apiBase, surfaceId, projectSlug, adoptLease, showHostBusy]);
 
   const retry = useCallback(() => setRetryToken((value) => value + 1), []);
 

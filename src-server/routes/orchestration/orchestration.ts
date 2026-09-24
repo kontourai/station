@@ -340,6 +340,13 @@ const stopSessionCommandSchema = z.object({
   threadId: z.string().min(1),
 });
 
+// #2312: the server re-derives the Draft fact itself; the body names only
+// the session.
+const discardDraftCommandSchema = z.object({
+  type: z.literal('discardDraft'),
+  threadId: z.string().min(1).max(ATTENTION_REQUEST_ID_MAX_CHARS),
+});
+
 const sessionTransitionSchema = z.object({
   state: z.enum(SESSION_LIFECYCLE_STATES),
   reason: z
@@ -364,6 +371,7 @@ export const orchestrationCommandSchema = z.discriminatedUnion('type', [
   steerTurnCommandSchema,
   respondToRequestCommandSchema,
   stopSessionCommandSchema,
+  discardDraftCommandSchema,
 ]);
 
 const environmentRefSchema = z.discriminatedUnion('kind', [

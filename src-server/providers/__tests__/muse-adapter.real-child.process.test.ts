@@ -142,8 +142,8 @@ afterEach(async () => {
 async function startOwnedTurn(options: {
   threadId: string;
   fixture: string;
-  turnIdleTimeoutMs: number;
-  turnTimeoutMs: number;
+  turnIdleTimeoutMs?: number;
+  turnTimeoutMs?: number;
   extraArgs?: string[];
 }): Promise<{ harness: OwnedRealChild; turnId: string }> {
   const root = mkdtempSync(join(tmpdir(), 'station-muse-real-child-'));
@@ -402,6 +402,59 @@ describe('muse adapter real owned-child supervision (#2269)', () => {
       input: 'follow-up',
     });
     expect(followUp.turnId).not.toBe(turnId);
+  }, 60_000);
+
+  test('#2269: with no declared bound, a silent real child is left running until Stop, which reaps its descendant tree and settles the turn', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'station-muse-real-stop-'));
+    tempRoots.push(root);
+    const pidFile = join(root, 'grandchild.pid');
+    const started = await startOwnedTurn({
+      threadId: 'real-stop-tree',
+      fixture: TREE_FIXTURE,
+      extraArgs: [pidFile],
+    });
+    harness = started.harness;
+    const { seen, childPids, registryDir } = started.harness;
+    const { turnId } = started;
+
+    await waitFor('grandchild pid file', () => {
+      try {
+        return readdirSync(root).includes('grandchild.pid');
+      } catch {
+        return false;
+      }
+    });
+    const grandchildPid = Number(readFileSync(pidFile, 'utf8').trim());
+    expect(Number.isSafeInteger(grandchildPid)).toBe(true);
+    expect(grandchildPid).toBeGreaterThan(0);
+    harness.childPids.push(grandchildPid);
+
+    // Silent, no tool, no declared bound: Station leaves it running. (The
+    // fake-clock suite proves this for a day; here, a window longer than the
+    // short idle bounds the sibling cases declare.)
+    await new Promise((resolve) => setTimeout(resolve, 2_000));
+    expect(terminalsFor(seen, turnId)).toHaveLength(0);
+    expect(isDead(childPids[0])).toBe(false);
+    expect(isDead(grandchildPid)).toBe(false);
+
+    // Stop: the production termination path signals the process GROUP.
+    await expect(
+      started.harness.adapter.interruptTurn('real-stop-tree', turnId),
+    ).resolves.toMatchObject({ outcome: 'cancelled', turnId });
+    await waitFor(`real child ${childPids[0]} to exit`, () =>
+      isDead(childPids[0]),
+    );
+    await waitFor(`grandchild ${grandchildPid} to be reaped`, () =>
+      isDead(grandchildPid),
+    );
+    const terminals = terminalsFor(seen, turnId);
+    expect(terminals.map((event) => event.method)).toEqual(['turn.aborted']);
+    expect(started.harness.releaseCalls).toBe(1);
+    expect(
+      readdirSync(registryDir).filter(
+        (name) => name === `engine-${childPids[0]}.json`,
+      ),
+    ).toHaveLength(0);
   }, 60_000);
 
   test('an idle kill reaps the owned descendant tree, not just the child', async () => {

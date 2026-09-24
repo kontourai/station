@@ -8,6 +8,7 @@ import type {
 import {
   type CanonicalRuntimeEvent,
   isDeferredRetriableTurnError,
+  isProviderTriggeredTurn,
   type TurnStartedEvent,
 } from '@kontourai/station-contracts/runtime-events';
 import type { ProviderAdapterShape } from '../../providers/adapter-shape.js';
@@ -31,6 +32,12 @@ import {
   type RecoveryLedger,
   type RecoveryTransition,
 } from './recovery-ledger.js';
+
+/**
+ * A recorded turn start everything of which can be sent again: it has the
+ * prompt a send carried (see `replayableSource`).
+ */
+type ReplayableTurnStart = TurnStartedEvent & { prompt: string };
 
 const DEFAULT_MAX_ATTEMPTS = 1;
 const RECOVERY_SHUTDOWN_SETTLEMENT_MS = 250;
@@ -265,6 +272,10 @@ export class SessionRecoveryCoordinator {
     });
     const source = this.findSourceTurn(event.threadId, event.turnId);
     if (!source) return;
+    // #2324: a turn the engine opened on its own has no send to replay.
+    // Arming for it would re-send whatever input its start carries — none —
+    // as a brand-new user turn.
+    if (this.isProviderTurn(event.threadId, source)) return;
     const intent = this.armRecovery(
       event,
       source,
@@ -276,7 +287,11 @@ export class SessionRecoveryCoordinator {
     if (this.disposed) return;
     if (this.credentialRecovery) {
       this.enqueueLifecycle(intent.fingerprint, async () => {
-        const handled = await this.tryProfileRecoveryOrSchedule(intent, source);
+        // An unreplayable source (no prompt, reclaimed attachment bytes)
+        // keeps ordinary timing-based recovery, which fails it at replay.
+        const handled = this.replayableSource(source)
+          ? await this.tryProfileRecoveryOrSchedule(intent, source)
+          : false;
         if (
           !handled &&
           !this.disposed &&
@@ -398,7 +413,7 @@ export class SessionRecoveryCoordinator {
    */
   private async tryProfileRecoveryOrSchedule(
     intent: ConnectionRecoveryIntent,
-    source: TurnStartedEvent,
+    source: ReplayableTurnStart,
   ): Promise<boolean> {
     const module = this.credentialRecovery;
     if (!module) return false;
@@ -495,7 +510,7 @@ export class SessionRecoveryCoordinator {
 
   private async dispatchClaimedIntent(
     intent: ConnectionRecoveryIntent,
-    source: TurnStartedEvent,
+    source: ReplayableTurnStart,
     dispatchAttempt: RecoveryClaim,
   ): Promise<void> {
     const fingerprint = intent.fingerprint;
@@ -586,7 +601,7 @@ export class SessionRecoveryCoordinator {
 
   private launchDispatch(
     intent: ConnectionRecoveryIntent,
-    source: TurnStartedEvent,
+    source: ReplayableTurnStart,
     dispatchAttempt: RecoveryClaim,
   ): void {
     this.trackOperation(
@@ -727,8 +742,10 @@ export class SessionRecoveryCoordinator {
    */
   private replayableSource(
     source: TurnStartedEvent | undefined,
-  ): source is TurnStartedEvent {
+  ): source is ReplayableTurnStart {
     if (!source || source.prompt === undefined) return false;
+    // #2324: never replay a turn the engine opened on its own.
+    if (isProviderTriggeredTurn(source)) return false;
     if (!source.attachments?.length) return true;
     if (dispatchableChatAttachments(source.attachments) !== undefined) {
       return true;
@@ -754,7 +771,7 @@ export class SessionRecoveryCoordinator {
 
   private buildReplayInput(
     threadId: string,
-    source: TurnStartedEvent,
+    source: ReplayableTurnStart,
     recoveryCorrelationId: string,
     signal: AbortSignal,
   ): {
@@ -770,7 +787,7 @@ export class SessionRecoveryCoordinator {
     const dispatchable = dispatchableChatAttachments(source.attachments);
     return {
       threadId,
-      input: source.prompt ?? '',
+      input: source.prompt,
       ...(dispatchable ? { attachments: dispatchable } : {}),
       ...(source.ambientContext
         ? { ambientContext: source.ambientContext }
@@ -1021,6 +1038,19 @@ export class SessionRecoveryCoordinator {
     } finally {
       if (timer) clearTimeout(timer);
     }
+  }
+
+  /**
+   * #2324: whether `source`'s turn is one the engine opened on its own. Read
+   * from every start the turn has: a steer on a provider turn adds a start
+   * of its own that carries the steer's text and no trigger.
+   */
+  private isProviderTurn(threadId: string, source: TurnStartedEvent): boolean {
+    if (isProviderTriggeredTurn(source)) return true;
+    if (!source.turnId) return false;
+    return this.options.eventStore
+      .listEventsForTurn(threadId, source.turnId)
+      .some((entry) => isProviderTriggeredTurn(entry.payload));
   }
 
   private findSourceTurn(

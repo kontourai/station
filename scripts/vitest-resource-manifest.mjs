@@ -207,6 +207,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // the real exit status is what the assertions read; process ownership is the
   // behavior under test, not a helper.
   'scripts/__tests__/literal-swap-gate.test.ts',
+  // Same shape: throwaway Git repositories, and the real-time wait gate run
+  // as a child process so its exit status (0/1/2) is what is asserted.
+  'scripts/__tests__/test-realtime-wait-gate.test.ts',
   // station#1648: runs the Playwright install script as a child process behind
   // a fake `npx` on PATH, because the exit status and the argv it really
   // builds are the two things an in-process call cannot prove. Each child is
@@ -955,6 +958,12 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // loopback ephemeral port, killed when its session's stdin closes), in a
   // private HOME. No ssh, no network.
   'src-server/services/devices/hosts/__tests__/ssh-device-remote-script.test.ts',
+  // #2442: the device-host program's `tool` mode for real through `/bin/sh`
+  // and short-lived node children, with `adb`/`xcrun` stand-ins (sh scripts;
+  // one sleeps 5 s until the deadline kills it) in a private HOME, plus the
+  // Station side through the registry with an ssh stand-in that runs those
+  // same words locally. No ssh, no network, no device.
+  'src-server/services/devices/hosts/__tests__/ssh-device-tools.process.test.ts',
   // SSH device hosts over REAL ssh to this machine's sshd: one `ssh
   // localhost true` probe at load, then (only with key auth and a known host
   // key, never on CI) Test connection and, with STATION_DEVICE_HUB_TEST_HOME,

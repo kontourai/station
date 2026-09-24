@@ -200,7 +200,16 @@ function renderAcpContentBlockAsText(
 ): string | undefined {
   if (content.type === 'text') return content.text;
   if (content.type === 'image') {
-    return `\n![image](${content.uri ?? `data:${content.mimeType};base64,${content.data}`})\n`;
+    // Never the bytes. A base64 data URL here used to put the whole image into
+    // a text delta: over EventStore's 64 KiB ingress ceiling for any real
+    // screenshot, and rendered as nothing anyway, because the markdown
+    // renderer refuses `data:` URLs. A canonical text delta has no place for
+    // an image, so the message says one was sent instead of pretending to
+    // show it. Images returned by TOOLS are carried as attachments on
+    // `tool.completed` (`acp-tool-update-supervisor.ts`).
+    const uri = typeof content.uri === 'string' ? content.uri : undefined;
+    if (uri && /^https?:\/\//iu.test(uri)) return `\n![image](${uri})\n`;
+    return '\n[image not shown: images sent in agent messages cannot be displayed yet]\n';
   }
   if (content.type === 'resource') {
     const resource = content.resource;

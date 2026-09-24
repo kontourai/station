@@ -254,6 +254,10 @@
 .home-view__settled-tail {
   margin-top: 16px;
 }
+/* #2312: Drafts untouched for a day, folded inside the Drafts section. */
+.home-view__older-drafts {
+  margin-top: 8px;
+}
 .home-view__snoozed-shelf {
   border-top: 1px solid var(--border-primary);
 }

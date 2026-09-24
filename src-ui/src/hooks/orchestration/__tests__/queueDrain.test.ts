@@ -531,6 +531,60 @@ describe('drainQueuedMessageOnTurnCompleted (#613)', () => {
     });
   }
 
+  test('#2324 (D4, review L2): a send refused because the engine is replying on its own waits in the queue — and is re-sent when no turn would drain it', async () => {
+    activeChatsStore.updateChat(threadId, {
+      queuedMessages: ['after the reply'],
+    });
+    sendExecutionMessageMock.mockRejectedValueOnce(
+      new ChatHttpError(
+        400,
+        'The agent is replying on its own; your message will be sent when it finishes.',
+        'provider_turn_in_progress',
+      ),
+    );
+
+    drainQueuedMessageOnTurnCompleted('http://api.test', threadId);
+    await vi.advanceTimersByTimeAsync(100);
+    await vi.dynamicImportSettled();
+
+    const waiting = activeChatsStore.getSnapshot()[threadId];
+    // Waiting, not failed: no error state, no failure notice.
+    expect(waiting.status).not.toBe('error');
+    expect(waiting.error).toBeUndefined();
+    expect(waiting.queuedMessages).toEqual(['after the reply']);
+    expect(waiting.ephemeralMessages ?? []).toEqual([]);
+    expect(sendExecutionMessageMock).toHaveBeenCalledTimes(1);
+
+    // The provider turn's end already passed (no turn is open), so nothing
+    // else would drain it: it is re-sent after the retry delay.
+    await vi.advanceTimersByTimeAsync(1_000);
+    await vi.advanceTimersByTimeAsync(100);
+    await vi.dynamicImportSettled();
+    expect(sendExecutionMessageMock).toHaveBeenCalledTimes(2);
+    expect(activeChatsStore.getSnapshot()[threadId].queuedMessages).toEqual([]);
+  });
+
+  test('#2324 delta review: a pending provider-turn retry is dropped when the chat was removed before it fires', async () => {
+    activeChatsStore.updateChat(threadId, {
+      queuedMessages: ['after the reply'],
+    });
+    sendExecutionMessageMock.mockRejectedValueOnce(
+      new ChatHttpError(
+        400,
+        'The agent is replying on its own; your message will be sent when it finishes.',
+        'provider_turn_in_progress',
+      ),
+    );
+    drainQueuedMessageOnTurnCompleted('http://api.test', threadId);
+    await vi.advanceTimersByTimeAsync(100);
+    await vi.dynamicImportSettled();
+    expect(sendExecutionMessageMock).toHaveBeenCalledTimes(1);
+    activeChatsStore.removeChat(threadId);
+    await vi.advanceTimersByTimeAsync(1_100);
+    await vi.dynamicImportSettled();
+    expect(sendExecutionMessageMock).toHaveBeenCalledTimes(1);
+  });
+
   test('a 401 auth refusal is requeued — re-pairing recovers it', async () => {
     activeChatsStore.updateChat(threadId, {
       queuedMessages: ['auth-blocked message'],

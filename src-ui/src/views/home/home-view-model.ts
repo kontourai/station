@@ -393,7 +393,15 @@ function buildSessionWorkItem(
     model: session.reportedModel ?? session.effectiveModel ?? session.model,
     ...(cwdLabel ? { cwdLabel: `…/${cwdLabel}` } : {}),
     turnProgress: activeTurnProgress(session),
-    updatedAt: sessionRecency(session),
+    // #2312 review: a Draft's own clocks move without anyone touching it — a
+    // stop (idle reaper, shutdown) rewrites `updatedAt`, engine housekeeping
+    // bumps `lastEventAt` — and would keep an abandoned Draft out of the
+    // 24h "older drafts" fold forever. Nothing user-visible has happened to a
+    // Draft since it was created, so its recency is its creation.
+    updatedAt:
+      lifecycleLabel === 'Draft'
+        ? Date.parse(session.createdAt) || sessionRecency(session)
+        : sessionRecency(session),
     lifecycleLabel,
     // The basis behind an `'Unanswerable'` chip. Carried on the item rather
     // than recomputed at render so the row and the label come from one read
