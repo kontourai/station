@@ -44,6 +44,7 @@ import type { EventBus } from '../../services/orchestration/event-bus.js';
 import { defaultTerminalShell } from '../../services/terminal/terminal-shells.js';
 import { configOps } from '../../telemetry/metrics.js';
 import type { Logger } from '../../utils/logger.js';
+import { refuseUngrantedFullAccess } from '../orchestration/approval-authority.js';
 import {
   appConfigUpdateSchema,
   errorMessage,
@@ -551,6 +552,17 @@ export function createConfigRoutes(
       // The onboarding picker (archive#1194) sends a delta with a genuinely new
       // value, so change-gating preserves its contract exactly.
       const priorConfig = await configLoader.loadAppConfig();
+      // #2436: the Station default applies to every session start, the
+      // unattended ones included, so raising it to full access needs the
+      // same grant as starting one session there. Resending a `never` that
+      // already stands (Settings round-trips the whole config) is not gated.
+      if (
+        accepted.defaultApprovalMode === 'never' &&
+        priorConfig.defaultApprovalMode !== 'never'
+      ) {
+        const fullAccessRefused = refuseUngrantedFullAccess(c, ['never']);
+        if (fullAccessRefused) return fullAccessRefused;
+      }
       const priorBuiltinEngineConnectionId =
         priorConfig.builtinAgentEngineConnectionId;
       const contributionRequested = Object.hasOwn(accepted, 'contribution');

@@ -385,6 +385,10 @@ A session spawned before this change has nothing recorded.
   - `/delegations`, and a delegation continue;
   - Task dispatch and Starter Work's `start-task` launch
     (`runtimeConfig.modelOptions`); see below.
+  - `PUT /config/app`, raising `defaultApprovalMode` to `never`. The Station
+    default reaches every session start (§4.2), so it needs the same grant.
+    Resending a `never` that already stands is not gated, because Settings
+    round-trips the whole config.
 - **Task dispatch is enforced in the dispatcher, not only at routes.** A
   review found `POST /api/starter-work/launch` passed
   `dispatch.runtimeConfig` to `TaskDispatcher.dispatch` with no gate.
@@ -542,6 +546,11 @@ The acceptance bar is the invariant.
   both routes (with no Task left behind), a stricter posture allowed, and a
   granted device and the operator reaching the engine at `never`. The
   dispatcher's own refusal, for any caller, is in `task-dispatcher.test.ts`.
+- **Station default authority**
+  (`src-server/routes/system/__tests__/config-default-approval-full-access.routes.test.ts`):
+  a device refused on raising the default to `never` and allowed a stricter
+  one; the operator and a granted device allowed; a standing `never`
+  resent without a grant.
 - **Client lifecycle** (`approvalPick.lifecycle.test.tsx`). It covers:
   - the pick as a command, and the compare-and-set basis;
   - a superseded note;
