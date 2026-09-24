@@ -27,7 +27,12 @@ const cleanup: Array<() => Promise<void>> = [];
 afterEach(async () => {
   for (const close of cleanup.splice(0)) await close();
 });
-async function fixture(hosted = false) {
+async function fixture(
+  hosted = false,
+  options: {
+    logger?: Parameters<typeof createRuntimeSearch>[0]['logger'];
+  } = {},
+) {
   const home = mkdtempSync(join(tmpdir(), 'station-search-routes-'));
   const store = new EventStore(join(home, 'events.sqlite'));
   const graph = new TaskGraphService(home, {
@@ -60,6 +65,7 @@ async function fixture(hosted = false) {
     stationId: 'environment-a',
     tasks: graph,
     transcripts: orchestration,
+    ...(options.logger ? { logger: options.logger } : {}),
   });
   const tasks = createTasks.mock.results[0].value;
   let authority = sessionReadAuthorityFromRequest('user', undefined, undefined);
@@ -594,7 +600,100 @@ describe('the runtime composition gives unified search a logger', () => {
     expect(warn.mock.calls.map((call) => call[0])).toEqual([
       'Unified search provider threw',
     ]);
-    expect(recordedError(warn).message).toBe('Search unavailable');
+    // A reader that reports no cause is itself a finding, and says so.
+    expect(recordedError(warn).message).toBe(
+      'Search unavailable: cause not recorded',
+    );
     await search.close();
+  });
+});
+
+/**
+ * #2460: a `station.messages` refusal that finished well inside the provider
+ * deadline logged only `Search unavailable`, because the cause was discarded
+ * three times on the way up — the worker's query catch, the session read
+ * gate's catch, and the runtime provider's generic rethrow. These drive the
+ * REAL worker and orchestration composition, so dropping the cause at any of
+ * those layers reddens a case here. The HTTP response must still carry only
+ * the closed reason vocabulary.
+ */
+describe('a refused message read names its cause in the log, never the response (#2460)', () => {
+  const providerThrew = (warn: ReturnType<typeof vi.fn>) => {
+    const calls = warn.mock.calls.filter(
+      (call) => call[0] === 'Unified search provider threw',
+    );
+    expect(calls).toHaveLength(1);
+    const context = calls[0]![1] as { providerId: string; err: Error };
+    expect(context.providerId).toBe('station.messages');
+    return context.err.message;
+  };
+  async function searchResponse(f: Awaited<ReturnType<typeof fixture>>) {
+    const response = await f.request(query);
+    expect(response.status).toBe(200);
+    const body = await response.text();
+    const sources = (
+      JSON.parse(body) as {
+        data: {
+          sources: Array<{
+            providerId: string;
+            state: string;
+            reason?: string;
+          }>;
+        };
+      }
+    ).data.sources;
+    expect(
+      sources.find((row) => row.providerId === 'station.messages'),
+    ).toEqual(
+      expect.objectContaining({
+        state: 'unavailable',
+        reason: 'provider-timeout-or-error',
+      }),
+    );
+    return body;
+  }
+
+  test('a worker SQLite query error names its class, SQLite code and errcode', async () => {
+    const warn = vi.fn();
+    const f = await fixture(false, { logger: { warn } as never });
+    f.message('thread-a', 'alpha');
+    // A schema change under the read-only worker: its next prepare fails with
+    // a genuine non-BUSY SQLite error, the class the issue could not tell
+    // apart from a worker exit.
+    const db = new DatabaseSync(f.databasePath);
+    try {
+      db.exec(
+        'ALTER TABLE provider_session_state RENAME TO provider_session_state_gone',
+      );
+    } finally {
+      db.close();
+    }
+
+    const body = await searchResponse(f);
+
+    const message = providerThrew(warn);
+    expect(message).toMatch(
+      /^Search unavailable: read-failed\(stage=during-read\) <- query-error\(name=Error code=ERR_SQLITE_ERROR errcode=1\)$/,
+    );
+    // The query's own text (which a SQLite message can quote) stays out.
+    expect(message).not.toContain('provider_session_state');
+    for (const leak of ['query-error', 'ERR_SQLITE_ERROR', 'read-failed'])
+      expect(body).not.toContain(leak);
+  });
+
+  test('a closed session reader names the admission branch that refused', async () => {
+    const warn = vi.fn();
+    const f = await fixture(false, { logger: { warn } as never });
+    f.message('thread-a', 'alpha');
+    // The orchestration-owned transcript reader closes (e.g. retirement)
+    // while the runtime search that holds it is still admitting requests.
+    await f.createTranscripts.mock.results[0]!.value.close();
+
+    const body = await searchResponse(f);
+
+    expect(providerThrew(warn)).toBe(
+      'Search unavailable: closed(stage=admission)',
+    );
+    expect(body).not.toContain('admission');
   });
 });
