@@ -13,7 +13,7 @@ import { inventoryCodeHealthFiles } from './code-health-inventory.mjs';
 import { createFallowReview } from './fallow-review-status.mjs';
 import {
   fallowChildEnvironment,
-  prepareFallowTempDirectory,
+  prepareFallowRun,
 } from './lib/fallow-base-cache.mjs';
 import {
   captureOwnedProcessOutput,
@@ -81,7 +81,7 @@ export function fallowCommands(scope) {
 export async function runFallowAnalysis(root, command, outputFile, args = []) {
   // `fallow audit` leaves a full base checkout in its temp directory for every
   // base commit; keep those inside Station's temp root, pruned (#2529).
-  const temp = prepareFallowTempDirectory();
+  const fallowRun = prepareFallowRun(root);
   const execution = executeOwnedCommand(
     process.execPath,
     [
@@ -100,7 +100,7 @@ export async function runFallowAnalysis(root, command, outputFile, args = []) {
     `fallow ${command}`,
     {
       cwd: root,
-      env: fallowChildEnvironment(temp),
+      env: fallowChildEnvironment(fallowRun.directory),
       stdio: ['ignore', 'pipe', 'pipe'],
       windowsHide: true,
     },
@@ -148,6 +148,7 @@ export async function runFallowAnalysis(root, command, outputFile, args = []) {
     process.removeListener('SIGINT', onSignal);
     process.removeListener('SIGTERM', onSignal);
     if (execution.isAlive()) await stop();
+    fallowRun.release();
   }
 }
 
