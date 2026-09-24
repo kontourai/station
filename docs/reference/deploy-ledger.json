@@ -1,5 +1,43 @@
 [
   {
+    "timestampUtc": "2026-09-24T22:24:13Z",
+    "channel": "nightly-npm",
+    "version": "0.6.0-nightly.2458.36061294532",
+    "sha": "f18562c4fc01edf17abdeaec88ff150ae80edf3e",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/36061294532",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.6.0-nightly.2458.36061294532 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "e390f5a83b50b2aa97e4287f43b4a5fc986697e8",
+      "groups": {
+        "feat": [
+          "[#2511](https://github.com/kontourai/station/pull/2511) feat(mobile): reopen last selected Station on launch",
+          "[#2533](https://github.com/kontourai/station/pull/2533) feat(claude): report subagents on the child-work contract (#2457)"
+        ],
+        "fix": [
+          "[#2550](https://github.com/kontourai/station/pull/2550) fix(server): stored attachments load on every device",
+          "[#2554](https://github.com/kontourai/station/pull/2554) fix(ui): iOS and iPadOS draw attachment PDFs with pdf.js",
+          "[#2538](https://github.com/kontourai/station/pull/2538) fix(test): remove test temp dirs in hooks and ratchet raw mkdtemp calls",
+          "[#2551](https://github.com/kontourai/station/pull/2551) fix(cli,scripts): process identity follow-ups — fail-safe stop, lease upgrade window, missing tests",
+          "[#2546](https://github.com/kontourai/station/pull/2546) fix(claude): stop spawning a CLI to validate every Claude start's model (#2482)"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#2547](https://github.com/kontourai/station/pull/2547) test(e2e): name the Project on coding calls, as the #2471 confinement requires"
+        ]
+      },
+      "note": null,
+      "commitCount": 8
+    }
+  },
+  {
     "timestampUtc": "2026-09-24T17:56:23Z",
     "channel": "nightly-desktop",
     "version": "0.1.11-nightly.2458.5",
