@@ -418,7 +418,19 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
   // Bumped per layer and per re-pushed entry: each history entry gets its own
   // id, so the marker `dialog-history` orphans on a Back can never match a
   // LATER layer's live entry and skip it.
-  const [layerEntry, setLayerEntry] = useState(0);
+  const layerEntryRef = useRef(0);
+  // The live entry's unregister. A layer's first entry is registered by the
+  // effect below; a Back's reinstatement registers the next one
+  // SYNCHRONOUSLY, inside the popstate that asked (gap G3), so a second Back
+  // queued in the same tick lands on it rather than on the page before.
+  const layerHistoryRef = useRef<(() => void) | null>(null);
+  const leavePhoneLayerByBackRef = useRef<() => void>(() => {});
+  const registerLayerEntry = useCallback(() => {
+    layerHistoryRef.current = registerDialogHistory(
+      `${PHONE_LAYER_HISTORY_ID}:${layerEntryRef.current}`,
+      () => leavePhoneLayerByBackRef.current(),
+    );
+  }, []);
   // `toggleSurface` is declared above the layer's exits; it reaches the
   // current one through this.
   const closePhoneLayerRef = useRef<() => void>(() => {});
@@ -566,7 +578,7 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
           // would otherwise forward that as the memory (see the restore).
           if (!phoneLayerRef.current) {
             layerDockMemoryRef.current = navigationStore.lastDockMaximized;
-            setLayerEntry((entry) => entry + 1);
+            layerEntryRef.current += 1;
           }
           layerMaximizedRef.current =
             opened.arrangement[opened.layer.region].maximized;
@@ -828,7 +840,9 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
       });
       regionsRef.current = next;
       setRegions(next);
-      setLayerEntry((entry) => entry + 1);
+      layerHistoryRef.current?.();
+      layerEntryRef.current += 1;
+      registerLayerEntry();
     };
     navigationStore.runNavigationGuards(
       () => {
@@ -847,7 +861,8 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
       { owner: layer.surfaceId },
     );
     if (current() && !reinstated) reinstate();
-  }, [restorePhoneLayer]);
+  }, [registerLayerEntry, restorePhoneLayer]);
+  leavePhoneLayerByBackRef.current = leavePhoneLayerByBack;
   const closePhoneLayer = useCallback(() => {
     // No layer, nothing to leave — and no guard to ask. Chat-focus intents
     // call this on every device (`useDismissPhoneLayer`), so asking with no
@@ -861,11 +876,12 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
   closePhoneLayerRef.current = closePhoneLayer;
   useEffect(() => {
     if (!phoneLayerOpen) return;
-    return registerDialogHistory(
-      `${PHONE_LAYER_HISTORY_ID}:${layerEntry}`,
-      leavePhoneLayerByBack,
-    );
-  }, [phoneLayerOpen, layerEntry, leavePhoneLayerByBack]);
+    registerLayerEntry();
+    return () => {
+      layerHistoryRef.current?.();
+      layerHistoryRef.current = null;
+    };
+  }, [phoneLayerOpen, registerLayerEntry]);
 
   const persistRegionArrangement = useCallback(() => {
     // A phone layer is transient: the record is written as if it were not

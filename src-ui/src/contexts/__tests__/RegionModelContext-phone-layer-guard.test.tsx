@@ -341,6 +341,48 @@ describe('leaving a phone layer asks before discarding a review draft', () => {
     }
   });
 
+  // Gap G3: the layer's entry was re-pushed from an effect after the Back
+  // that asked, so two history.back() calls in the same tick traversed the
+  // entry before the layer too — leaving the conversation. The re-push is
+  // synchronous in the popstate that asks, so the second Back lands on it.
+  test('two history.back() calls in the same tick while the prompt is up stay on the layer', async () => {
+    window.history.replaceState(
+      window.history.state,
+      '',
+      '/?dock=open&page=before',
+    );
+    window.history.pushState(window.history.state, '', '/?dock=open');
+    await mountWithDraft();
+    act(() => window.history.back());
+    await screen.findByRole('dialog', { name: /Unsaved Changes/ });
+    await waitFor(() => expect(onLayerEntry()).toBe(true));
+
+    // The mechanism, observed deterministically: by the time the popstate
+    // that asks has been handled, the layer's entry is already live again.
+    // A second traversal queued in the same tick runs after this dispatch,
+    // so it can only land on that entry. (jsdom happens to flush React's
+    // effects between two queued traversals, so the double Back below
+    // passes even with an effect-deferred re-push; this listener does not.)
+    const liveAfterPopstate: boolean[] = [];
+    const observe = () => liveAfterPopstate.push(onLayerEntry());
+    window.addEventListener('popstate', observe);
+    act(() => {
+      window.history.back();
+      window.history.back();
+    });
+    // Let both traversals land.
+    await act(() => new Promise((resolve) => setTimeout(resolve, 100)));
+    window.removeEventListener('popstate', observe);
+    expect(liveAfterPopstate.length).toBeGreaterThan(0);
+    expect(liveAfterPopstate.every(Boolean)).toBe(true);
+    expect(new URLSearchParams(window.location.search).get('page')).toBe(null);
+    await waitFor(() => expect(onLayerEntry()).toBe(true));
+    expectLayerOpen();
+    expect(
+      screen.getByRole('dialog', { name: /Unsaved Changes/ }),
+    ).toBeTruthy();
+  });
+
   test('"‹ Chat" asks too; Cancel keeps the layer, Discard closes it', async () => {
     const comment = await mountWithDraft();
 
