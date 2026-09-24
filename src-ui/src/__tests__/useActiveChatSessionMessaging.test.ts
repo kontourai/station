@@ -546,6 +546,37 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     ).toBeUndefined();
   });
 
+  // A session start the server could not confirm either way (Codex
+  // answered "thread … already has an active writer") used to fall through
+  // to the generic "Error: <raw text>" notice with a Retry that resent into
+  // the very session holding the writer — against the server's own "Inspect
+  // the session before retrying".
+  it('treats an indeterminate session start as unconfirmed, with no Retry', async () => {
+    sendExecutionMessageMock.mockRejectedValueOnce(
+      new CodedOrchestrationError(
+        400,
+        'thread t-1 already has an active writer. Provider session creation may have completed. Inspect the session before retrying.',
+        'SESSION_START_INDETERMINATE',
+      ),
+    );
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+
+    await act(async () => {
+      await expect(
+        result.current(sessionId, 'codex', undefined, 'continue'),
+      ).rejects.toMatchObject({ code: 'SESSION_START_INDETERMINATE' });
+    });
+
+    const chat = activeChatsStore.getSnapshot()[sessionId];
+    expect(chat?.status).toBe('idle');
+    const notice = chat?.ephemeralMessages?.at(-1);
+    expect(notice?.content).toMatch(
+      /^\*\*Session start needs confirmation\*\*\n\n/,
+    );
+    expect(notice?.content).not.toContain('Retrying may help');
+    expect(notice?.action).toBeUndefined();
+  });
+
   // archive#3690: the queue path stopped attributing a
   // Station-side refusal to the agent, but the direct composer path still
   // wrote `status: 'error'` — which `chatLifecycleLabel` turns into "Failed"
