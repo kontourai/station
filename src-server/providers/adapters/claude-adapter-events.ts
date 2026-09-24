@@ -6,6 +6,7 @@ import type {
   SDKMessage,
   TerminalReason,
 } from '@anthropic-ai/claude-agent-sdk';
+import type { ChatAttachmentInput } from '@kontourai/station-contracts/chat-attachment';
 import {
   ENGINE_SESSION_BINDING_DEAD_CODE,
   ENGINE_TURN_FAILED_CODE,
@@ -16,6 +17,11 @@ import type {
 } from '@kontourai/station-contracts/runtime-events';
 import type { ProviderSession } from '../adapter-shape.js';
 import { reportedModelMetadata } from '../llm/effective-model-metadata.js';
+import {
+  ModelImageCollector,
+  redactInlineData,
+  summarizeImageOmissions,
+} from '../model-image-attachments.js';
 import { mapPermissionModeToApprovalMode } from './claude-approval-mode.js';
 import {
   classifyClaudeResultOutcome,
@@ -1028,6 +1034,7 @@ export function mapClaudeSdkMessage({
           supersedes: entry.terminalPublished ? 'task-terminal' : 'unresolved',
         });
       }
+      const images = collectClaudeToolResultImages(toolResult.content);
       publish({
         eventId: crypto.randomUUID(),
         provider,
@@ -1043,10 +1050,14 @@ export function mapClaudeSdkMessage({
         toolCallId,
         toolName,
         status: toolResult.is_error === true ? 'error' : 'success',
-        output: summarizeClaudeToolResult(toolResult.content),
+        output: withImageOmissions(
+          summarizeClaudeToolResult(toolResult.content),
+          images.omissions,
+        ),
         ...(claudeToolResultOutputReceipt(toolResult.content)
           ? { outputReceipt: claudeToolResultOutputReceipt(toolResult.content) }
           : {}),
+        ...(images.attachments ? { attachments: images.attachments } : {}),
       });
     }
     return;
@@ -1395,6 +1406,57 @@ function settleClaudeTask(params: {
 const CLAUDE_TOOL_RESULT_OUTPUT_LIMIT = 2000;
 
 /**
+ * The images in a `tool_result` — a `Read` of a PNG, an MCP screenshot — as
+ * attachments, plus a marker for each one Station would not keep.
+ *
+ * {@link summarizeClaudeToolResult} keeps only text blocks, so before this an
+ * image-only result reached the transcript as a result with no output at all:
+ * the model saw a picture and the user saw nothing. Anthropic image blocks
+ * carry their bytes as `{source: {type: 'base64', media_type, data}}`; a
+ * `url` source names bytes Station never received, so it is reported rather
+ * than fetched.
+ */
+function collectClaudeToolResultImages(content: unknown): {
+  attachments?: ChatAttachmentInput[];
+  omissions: string[];
+} {
+  if (!Array.isArray(content)) return { omissions: [] };
+  const collector = new ModelImageCollector();
+  const omissions: string[] = [];
+  for (const part of content) {
+    if (!part || typeof part !== 'object') continue;
+    if ((part as { type?: unknown }).type !== 'image') continue;
+    const source = (part as { source?: unknown }).source;
+    const outcome =
+      source &&
+      typeof source === 'object' &&
+      (source as { type?: unknown }).type === 'base64'
+        ? collector.addBase64(
+            (source as { media_type?: unknown }).media_type,
+            (source as { data?: unknown }).data,
+          )
+        : ({
+            kind: 'omitted',
+            marker: '[image not shown: only inline image data can be shown]',
+          } as const);
+    if (outcome.kind === 'omitted') omissions.push(outcome.marker);
+  }
+  return { attachments: collector.result(), omissions };
+}
+
+/** Append what was dropped to the text a reader already sees. */
+function withImageOmissions(
+  summary: string | undefined,
+  omissions: readonly string[],
+): string | undefined {
+  // One bounded summary, not a line per image: enough rejected blocks used to
+  // push the output past EventStore's ingress ceiling and lose the terminal.
+  const omitted = summarizeImageOmissions(omissions);
+  if (!omitted) return summary;
+  return [summary, omitted].filter(Boolean).join('\n');
+}
+
+/**
  * The receipt for the head-slice {@link summarizeClaudeToolResult} performs,
  * or undefined when nothing was dropped (archive#4237).
  *
@@ -1434,35 +1496,42 @@ export function claudeToolResultOutputReceipt(
 
 /** The untruncated text {@link summarizeClaudeToolResult} slices. */
 function fullClaudeToolResultText(content: unknown): string {
-  if (typeof content === 'string') return content;
+  // Redacted BEFORE any slice: a head slice of `Screenshot: data:…;base64,…`
+  // would otherwise persist the first bytes of the image as text. Both the
+  // summary and its receipt measure this redacted text.
+  if (typeof content === 'string') return redactInlineData(content);
   if (Array.isArray(content)) {
-    return content
-      .map((part) =>
-        part && typeof part === 'object' && 'text' in part
-          ? String((part as { text: unknown }).text)
-          : '',
-      )
-      .filter(Boolean)
-      .join('\n');
+    return redactInlineData(
+      content
+        .map((part) =>
+          part && typeof part === 'object' && 'text' in part
+            ? String((part as { text: unknown }).text)
+            : '',
+        )
+        .filter(Boolean)
+        .join('\n'),
+    );
   }
   return '';
 }
 
+/**
+ * The text a Claude tool result shows, head-sliced to
+ * `CLAUDE_TOOL_RESULT_OUTPUT_LIMIT`. Shared by the live adapter and the
+ * transcript source (`claude-transcript-session-source.ts`), so both redact
+ * inline image data before slicing.
+ */
 export function summarizeClaudeToolResult(
   content: unknown,
 ): string | undefined {
   if (typeof content === 'string') {
-    return content.slice(0, CLAUDE_TOOL_RESULT_OUTPUT_LIMIT);
+    return fullClaudeToolResultText(content).slice(
+      0,
+      CLAUDE_TOOL_RESULT_OUTPUT_LIMIT,
+    );
   }
   if (Array.isArray(content)) {
-    const text = content
-      .map((part) =>
-        part && typeof part === 'object' && 'text' in part
-          ? String((part as { text: unknown }).text)
-          : '',
-      )
-      .filter(Boolean)
-      .join('\n');
+    const text = fullClaudeToolResultText(content);
     return text ? text.slice(0, CLAUDE_TOOL_RESULT_OUTPUT_LIMIT) : undefined;
   }
   return undefined;
