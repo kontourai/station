@@ -1235,6 +1235,10 @@ async function runStationUiRelayJourney(input: {
       'Unpublished Project work must stay hidden from the member UI',
     );
   } catch {
+    const projectNavigation = await readProjectNavigationFailureStatus(
+      input.page,
+      input.clientOrigin,
+    );
     stationUiFailure = {
       phase: 'project-navigation',
       routeConnected: true,
@@ -1243,6 +1247,7 @@ async function runStationUiRelayJourney(input: {
       brokerResponseCount,
       applicationApiResponseCount,
       directStationApiAttempts,
+      projectNavigation,
     };
     throw new Error('Protected Project did not open in the live Station UI.');
   }
