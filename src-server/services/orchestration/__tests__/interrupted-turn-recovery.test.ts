@@ -1375,7 +1375,7 @@ describe('station#4080 slice 1: interrupted-turn boundary consumption', () => {
         createdAt: '2026-08-16T00:00:00.500Z',
         method: 'turn.started',
         prompt: 'earlier',
-      } as CanonicalRuntimeEvent);
+      });
       expect(
         dying
           .sessionTurnBoundaryAuthority()

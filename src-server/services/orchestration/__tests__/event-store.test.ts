@@ -665,51 +665,57 @@ describe('EventStore', () => {
 
   describe('#2324: a turn the engine opened on its own provided no input', () => {
     const threadId = 'provider-turn-thread';
-    const append = (event: Record<string, unknown>) =>
-      store.appendEvent({
-        provider: 'claude',
-        threadId,
-        createdAt: '2026-09-23T00:00:00.000Z',
-        ...event,
-      } as CanonicalRuntimeEvent);
+    const at = '2026-09-23T00:00:00.000Z';
+    const base = { provider: 'claude' as const, threadId, createdAt: at };
+    const trigger = { trigger: 'provider' };
     const seed = () => {
-      append({
-        eventId: 'pt-session',
-        method: 'session.started',
-        sessionId: threadId,
-        metadata: { userId: 'owner-alpha', agentSlug: 'claude' },
-      });
-      append({
-        eventId: 'pt-user-start',
-        turnId: 'user-turn',
-        method: 'turn.started',
-        prompt: 'start the job',
-      });
-      append({
-        eventId: 'pt-user-done',
-        turnId: 'user-turn',
-        method: 'turn.completed',
-        outputText: 'started',
-      });
-      append({
-        eventId: 'pt-provider-start',
-        turnId: 'provider:p',
-        method: 'turn.started',
-        metadata: { trigger: 'provider' },
-      });
-      append({
-        eventId: 'pt-provider-text',
-        turnId: 'provider:p',
-        method: 'content.text-delta',
-        delta: 'finished',
-      });
-      append({
-        eventId: 'pt-provider-done',
-        turnId: 'provider:p',
-        method: 'turn.completed',
-        outputText: 'finished',
-        metadata: { trigger: 'provider' },
-      });
+      const events: CanonicalRuntimeEvent[] = [
+        {
+          ...base,
+          eventId: 'pt-session',
+          method: 'session.started',
+          sessionId: threadId,
+          metadata: { userId: 'owner-alpha', agentSlug: 'claude' },
+        },
+        {
+          ...base,
+          eventId: 'pt-user-start',
+          turnId: 'user-turn',
+          method: 'turn.started',
+          prompt: 'start the job',
+        },
+        {
+          ...base,
+          eventId: 'pt-user-done',
+          turnId: 'user-turn',
+          method: 'turn.completed',
+          outputText: 'started',
+        },
+        {
+          ...base,
+          eventId: 'pt-provider-start',
+          turnId: 'provider:p',
+          method: 'turn.started',
+          metadata: trigger,
+        },
+        {
+          ...base,
+          eventId: 'pt-provider-text',
+          turnId: 'provider:p',
+          itemId: 'pt-provider-item',
+          method: 'content.text-delta',
+          delta: 'finished',
+        },
+        {
+          ...base,
+          eventId: 'pt-provider-done',
+          turnId: 'provider:p',
+          method: 'turn.completed',
+          outputText: 'finished',
+          metadata: trigger,
+        },
+      ];
+      for (const event of events) store.appendEvent(event);
     };
 
     test('counts its reply but not its start as a message', () => {

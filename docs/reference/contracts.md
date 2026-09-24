@@ -183,6 +183,22 @@ not 30 minutes after the turn's last activity. A send that races a turn that is 
 definitively too (#2415): the adapter refuses it before any effect, so the
 dispatch is `rejected` rather than recorded as a possibly-started turn.
 
+A turn the engine opens on its own (#2324), for example Claude answering after
+background work finishes, is published as a turn whose `turn.started` and
+terminal carry `metadata.trigger: 'provider'`; `isProviderTriggeredTurn` in
+`runtime-events` is the one derivation consumers read. It has no prompt, moves
+the session lifecycle like any turn (reasons `provider_turn_started` /
+`provider_turn_completed`), and notifies "Your agent replied" when the owner
+is offline. A send while it runs is refused with the retryable code
+`provider_turn_in_progress`, and the client queues the message until it ends.
+A Claude send's own `turn.started` is published when the engine starts
+running it, so a send queued behind such a turn starts after it ends. That
+ordering relies on the CLI's per-message lifecycle frames (`msg_lifecycle_v1`,
+reported by claude 2.1.281). A CLI without them runs a send as soon as nothing
+else is running. If the engine's own reply began before that send reached it,
+the reply can then be attributed to the send: this residual is known and not
+closed.
+
 The shared 3-minute stall watchdog (`TurnStallWatchdog` /
 `TurnProgressTracker`) stays observe-only: its `progressSilence` marker says
 no progress was *observed* — quiet providers (for example a Muse build

@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { PROVIDER_TURN_IN_PROGRESS_CODE } from '@kontourai/station-contracts/provider';
+import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 /**
@@ -48,7 +49,8 @@ vi.mock('../auth/cli-auth.js', () => ({
 import { ProviderTurnInProgressError } from '../adapter-shape.js';
 import { ClaudeAdapter } from '../adapters/claude-adapter.js';
 
-type FixtureLine = { t: number; msg?: any; probe?: string };
+/** One capture line: an SDK message as the CLI emitted it, or a probe action. */
+type FixtureLine = { t: number; msg?: Record<string, unknown>; probe?: string };
 
 const FIXTURES = [
   'background-bash',
@@ -102,10 +104,10 @@ function pushBeforeRunningTurnInit(
 }
 
 function createControlledMockQuery() {
-  const pending: any[] = [];
+  const pending: unknown[] = [];
   let wake: (() => void) | null = null;
   return {
-    push(message: any) {
+    push(message: unknown) {
       pending.push(message);
       wake?.();
       wake = null;
@@ -134,7 +136,7 @@ const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 type PushMode = 'send' | 'steer';
 
 interface ReplayResult {
-  events: any[];
+  events: CanonicalRuntimeEvent[];
   sends: Map<string, { turnId?: string; error?: unknown }>;
   adapter: ClaudeAdapter;
   threadId: string;
@@ -145,19 +147,21 @@ async function replay(
   options: {
     pushMode?: Record<string, PushMode>;
     /** Stop replaying after the first message this returns true for. */
-    stopAfter?: (msg: any) => boolean;
+    stopAfter?: (msg: Record<string, unknown>) => boolean;
   } = {},
 ): Promise<ReplayResult> {
   const controlled = createControlledMockQuery();
   mockQuery.mockReturnValue(controlled);
   const adapter = new ClaudeAdapter();
-  const events: any[] = [];
+  const events: CanonicalRuntimeEvent[] = [];
   void (async () => {
     for await (const event of adapter.streamEvents()) events.push(event);
   })();
   const threadId = `fixture-${crypto.randomUUID()}`;
   await adapter.startSession({ provider: 'claude', threadId });
-  const queued = mockQuery.mock.calls.at(-1)![0].prompt[Symbol.asyncIterator]();
+  const queued = mockQuery.mock.calls
+    .at(-1)![0]
+    .prompt[Symbol.asyncIterator]() as AsyncIterator<{ uuid: string }>;
   const rewrites = new Map<string, string>();
   const sends = new Map<string, { turnId?: string; error?: unknown }>();
 
@@ -165,7 +169,7 @@ async function replay(
     for (let index = fromIndex + 1; index < lines.length; index++) {
       const msg = lines[index].msg;
       if (msg?.type === 'command_lifecycle' && msg.state === 'queued') {
-        return msg.command_uuid;
+        return String(msg.command_uuid);
       }
     }
     return undefined;
@@ -204,7 +208,7 @@ async function replay(
     if (!line.msg) continue;
     let text = JSON.stringify(line.msg);
     for (const [from, to] of rewrites) text = text.split(from).join(to);
-    const msg = JSON.parse(text);
+    const msg = JSON.parse(text) as Record<string, unknown>;
     controlled.push(msg);
     await flush();
     if (options.stopAfter?.(msg)) break;
@@ -213,35 +217,67 @@ async function replay(
   return { events, sends, adapter, threadId };
 }
 
-const turnFacts = (events: any[]) =>
-  events
-    .filter(
-      (event) =>
-        event.method === 'turn.started' ||
-        event.method === 'turn.completed' ||
-        event.method === 'turn.aborted' ||
-        event.method === 'runtime.error',
-    )
-    .map((event) => ({
-      method: event.method,
-      turnId: event.turnId,
-      ...(event.metadata?.trigger ? { trigger: event.metadata.trigger } : {}),
-      ...(event.outputText !== undefined
-        ? { outputText: event.outputText }
-        : {}),
-      ...(event.finishReason ? { finishReason: event.finishReason } : {}),
-      ...(event.method === 'turn.started' && event.prompt !== undefined
-        ? { prompt: event.prompt }
-        : {}),
-    }));
+interface TurnFact {
+  method: string;
+  turnId: string;
+  trigger?: unknown;
+  outputText?: string;
+  finishReason?: string;
+  prompt?: string;
+}
 
-const textFor = (events: any[], turnId: string) =>
+const turnFacts = (events: CanonicalRuntimeEvent[]): TurnFact[] =>
+  events.flatMap((event): TurnFact[] => {
+    switch (event.method) {
+      case 'turn.started':
+        return [
+          {
+            method: event.method,
+            turnId: event.turnId,
+            ...(event.metadata?.trigger
+              ? { trigger: event.metadata.trigger }
+              : {}),
+            ...(event.prompt !== undefined ? { prompt: event.prompt } : {}),
+          },
+        ];
+      case 'turn.completed':
+        return [
+          {
+            method: event.method,
+            turnId: event.turnId,
+            ...(event.metadata?.trigger
+              ? { trigger: event.metadata.trigger }
+              : {}),
+            ...(event.outputText !== undefined
+              ? { outputText: event.outputText }
+              : {}),
+            ...(event.finishReason ? { finishReason: event.finishReason } : {}),
+          },
+        ];
+      case 'turn.aborted':
+        return [
+          {
+            method: event.method,
+            turnId: event.turnId,
+            ...(event.metadata?.trigger
+              ? { trigger: event.metadata.trigger }
+              : {}),
+          },
+        ];
+      case 'runtime.error':
+        return [{ method: event.method, turnId: event.turnId ?? '' }];
+      default:
+        return [];
+    }
+  });
+
+const textFor = (events: CanonicalRuntimeEvent[], turnId: string) =>
   events
-    .filter(
-      (event) =>
-        event.method === 'content.text-delta' && event.turnId === turnId,
+    .flatMap((event) =>
+      event.method === 'content.text-delta' && event.turnId === turnId
+        ? [event.delta]
+        : [],
     )
-    .map((event) => event.delta)
     .join('');
 
 const isProviderId = (turnId: unknown) =>
@@ -308,9 +344,7 @@ describe('#2324 provider-triggered turns, replayed from live Claude streams', ()
     expect(textFor(events, facts[2].turnId)).toBe('finished');
     expect(textFor(events, u1)).toBe('started');
     // A provider turn has no prompt of its own.
-    expect(
-      events.find((event) => event.turnId === facts[2].turnId).prompt,
-    ).toBeUndefined();
+    expect(facts[2]).not.toHaveProperty('prompt');
     // Once it closed, the next send is accepted.
     await expect(
       adapter.sendTurn({ threadId, input: 'next' }),
@@ -345,9 +379,7 @@ describe('#2324 provider-triggered turns, replayed from live Claude streams', ()
     // The provider turn opened only after the agent's task settled.
     const settledAt = events.findIndex(
       (event) =>
-        event.method === 'tool.completed' &&
-        typeof event.toolName === 'string' &&
-        event.toolName.startsWith('Task'),
+        event.method === 'tool.completed' && event.toolName.startsWith('Task'),
     );
     const providerStartAt = events.findIndex(
       (event) => event.method === 'turn.started' && isProviderId(event.turnId),
@@ -386,7 +418,9 @@ describe('#2324 provider-triggered turns, replayed from live Claude streams', ()
     // capture answers a push Station has just refused.
     const { events, sends, adapter, threadId } = await replay(lines, {
       stopAfter: (msg) =>
-        msg.type === 'result' && msg.origin?.kind === 'task-notification',
+        msg.type === 'result' &&
+        (msg.origin as { kind?: unknown } | undefined)?.kind ===
+          'task-notification',
     });
     const refusal = sends.get('U2')!.error;
     expect(refusal).toBeInstanceOf(ProviderTurnInProgressError);

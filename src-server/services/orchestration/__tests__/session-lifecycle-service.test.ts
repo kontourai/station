@@ -49,7 +49,7 @@ describe('session-lifecycle-service', () => {
       createdAt: base.createdAt,
       updatedAt: base.createdAt,
     };
-    const userDone = [
+    const userDone: CanonicalRuntimeEvent[] = [
       {
         ...base,
         eventId: 'u1',
@@ -58,21 +58,21 @@ describe('session-lifecycle-service', () => {
         prompt: 'go',
       },
       { ...base, eventId: 'u2', method: 'turn.completed', turnId: 'u' },
-    ] as CanonicalRuntimeEvent[];
-    const providerStarted = {
+    ];
+    const providerStarted: CanonicalRuntimeEvent = {
       ...base,
       eventId: 'p1',
       method: 'turn.started',
       turnId: 'provider:p',
       ...trigger,
-    } as CanonicalRuntimeEvent;
-    const providerDone = {
+    };
+    const providerDone: CanonicalRuntimeEvent = {
       ...base,
       eventId: 'p2',
       method: 'turn.completed',
       turnId: 'provider:p',
       ...trigger,
-    } as CanonicalRuntimeEvent;
+    };
     expect(
       projectSessionLifecycle({ session, events: userDone }),
     ).toMatchObject({
