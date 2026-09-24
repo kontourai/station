@@ -182,6 +182,73 @@ const iceProvider = () => ({
 });
 
 describe('browser relay consumer (public boundary)', () => {
+  test.each([1, 2, 3])(
+    'undefined host trust guard at check %i fails closed before application publication',
+    async (failedCheck) => {
+      const { keys, trust, trustRecord } = await trustFixture();
+      const base = brokerStub(trust, keys, ANSWER);
+      let checks = 0;
+      const peer = fakePeer(OFFER, []);
+      const adapter: PionSignalingClient = {
+        ...base,
+        // Deliberately violate the static contract to model an untyped adapter.
+        assertCredentialBoundToTrust: async () =>
+          ++checks === failedCheck ? (undefined as unknown as boolean) : true,
+      };
+      const owner = createBrowserPionConnection({
+        broker: adapter,
+        applicationOrigin: 'https://app.example',
+        trustRecord,
+        trustStore: { isCurrent: async () => true },
+        ice: iceProvider(),
+        createPeer: () => peer as unknown as RTCPeerConnection,
+      });
+      await expect(owner.connect(new AbortController().signal)).rejects.toThrow(
+        'browser_transport_grant_trust_retired',
+      );
+      expect(checks).toBe(failedCheck);
+      expect(peer.setRemoteDescription).not.toHaveBeenCalled();
+      if (failedCheck < 3) expect(base.open).not.toHaveBeenCalled();
+      expect(base.read).not.toHaveBeenCalled();
+    },
+  );
+
+  test('browser client explicitly accepts legacy lab custody and preserves a custody refusal', async () => {
+    const { trust, trustRecord } = await trustFixture();
+    const browserOrigin = 'https://browser.example';
+    const credentials = {
+      capture: () => ({
+        id: 'legacy-lab',
+        secret: 'x'.repeat(43),
+        isCurrent: () => true,
+      }),
+    };
+    const input = {
+      brokerOrigin: 'https://broker.example',
+      browserOrigin,
+      scope: {
+        stationId: trust.stationId,
+        enrollmentId: trust.enrollmentId,
+        routingGeneration: 1,
+        browserOrigin,
+      },
+      credentials,
+    };
+    const legacy: PionSignalingClient = new SelfHostedBrokerBrowserClient(
+      input,
+    );
+    await expect(
+      legacy.assertCredentialBoundToTrust(trustRecord),
+    ).resolves.toBe(true);
+    const guarded: PionSignalingClient = new SelfHostedBrokerBrowserClient({
+      ...input,
+      credentials: { ...credentials, assertBoundToTrust: async () => false },
+    });
+    await expect(
+      guarded.assertCredentialBoundToTrust(trustRecord),
+    ).resolves.toBe(false);
+  });
+
   test('host-style signaling adapter opens an application channel then fences changed trust', async () => {
     const { keys, trust, trustRecord } = await trustFixture();
     const channels: unknown[] = [];
