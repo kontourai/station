@@ -175,9 +175,18 @@ function ChatMessageListComponent({
             approvalEvents
               .map((item) => item.event)
               .filter((event) => Boolean(event.eventId)),
+            activeSession.orchestrationTurnOpen
+              ? activeSession.openTurnId
+              : undefined,
           )
         : NO_PENDING_APPROVALS,
-    [activeSession.messages, activeSession.replay, approvalEvents],
+    [
+      activeSession.messages,
+      activeSession.replay,
+      activeSession.orchestrationTurnOpen,
+      activeSession.openTurnId,
+      approvalEvents,
+    ],
   );
   const sendMessage = useSendMessage(apiBase);
   // The store is already live at the shell; reading its scalar snapshot here
