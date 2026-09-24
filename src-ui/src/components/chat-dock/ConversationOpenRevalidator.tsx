@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import type { ChatUIState } from '../../contexts/active-chats-state';
 import { activeChatsStore } from '../../contexts/active-chats-store';
+import { resumeHeldQueueDrain } from '../../hooks/orchestration/queueDrain';
 import {
   type SelectableModel,
   sanitizeRuntimeOptionsForModel,
@@ -120,6 +121,10 @@ export function ConversationOpenRevalidator({
               ?.name,
           }),
         );
+        // #2309: a turn end that arrived while this binding was being
+        // re-proved held its queued follow-up; now that the chat is writable
+        // again, send it.
+        resumeHeldQueueDrain(apiBase, sessionId);
       })
       .catch(() => {
         if (cancelled) return;

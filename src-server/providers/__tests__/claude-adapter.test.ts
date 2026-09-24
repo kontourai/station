@@ -4019,6 +4019,103 @@ describe('ClaudeAdapter', () => {
       });
     });
 
+    test('#90 D14: a stock Claude agent gets the built-in station-browser server in-process, beside station-control and without strict mode', async () => {
+      mockQuery.mockReturnValue(createMockQuery([]));
+      const control = { connect: vi.fn(), close: vi.fn() };
+      const browser = { connect: vi.fn(), close: vi.fn() };
+      const order: string[] = [];
+      const adapter = new ClaudeAdapter({
+        createInProcessStationControl: vi.fn(() => {
+          order.push('station-control');
+          return control;
+        }),
+        createInProcessStationBrowser: vi.fn(() => {
+          order.push('station-browser');
+          return browser;
+        }),
+        revokeStationControlCallerToken: vi.fn(),
+      });
+      await adapter.startSession({
+        provider: 'claude',
+        threadId: 'thread-browser',
+        agent: { slug: 'stock', toolServers: stationControlToolServers },
+      });
+      const options = (
+        mockQuery.mock.calls.at(-1)![0] as {
+          options: {
+            mcpServers: Record<string, Record<string, unknown>>;
+            strictMcpConfig?: boolean;
+          };
+        }
+      ).options;
+      expect(options.mcpServers['station-browser']).toEqual({
+        type: 'sdk',
+        name: 'station-browser',
+        instance: browser,
+      });
+      expect(options.mcpServers['station-control']).toMatchObject({
+        type: 'sdk',
+        instance: control,
+      });
+      // station-control first, so the browser server reuses its credential.
+      expect(order).toEqual(['station-control', 'station-browser']);
+
+      // An agent that authored no tool servers still gets the browser tools,
+      // and keeps Claude's own MCP discovery (no strict mode).
+      await adapter.startSession({
+        provider: 'claude',
+        threadId: 'thread-browser-2',
+        agent: { slug: 'plain' },
+      });
+      const plain = (
+        mockQuery.mock.calls.at(-1)![0] as {
+          options: {
+            mcpServers?: Record<string, unknown>;
+            strictMcpConfig?: boolean;
+          };
+        }
+      ).options;
+      expect(Object.keys(plain.mcpServers ?? {})).toEqual(['station-browser']);
+      expect(plain.strictMcpConfig).toBeUndefined();
+    });
+
+    test('#90 D14: the agent toggle, an agent-less session and a runtime without bound delivery all mean no station-browser', async () => {
+      mockQuery.mockReturnValue(createMockQuery([]));
+      const createInProcessStationBrowser = vi.fn(() => ({
+        connect: vi.fn(),
+        close: vi.fn(),
+      }));
+      const adapter = new ClaudeAdapter({ createInProcessStationBrowser });
+      await adapter.startSession({
+        provider: 'claude',
+        threadId: 'thread-off',
+        agent: { slug: 'off', browserTools: false },
+      });
+      await adapter.startSession({
+        provider: 'claude',
+        threadId: 'thread-none',
+      });
+      expect(createInProcessStationBrowser).not.toHaveBeenCalled();
+      for (const call of mockQuery.mock.calls.slice(-2))
+        expect(
+          (call[0] as { options: { mcpServers?: Record<string, unknown> } })
+            .options.mcpServers?.['station-browser'],
+        ).toBeUndefined();
+      const bare = new ClaudeAdapter({});
+      await bare.startSession({
+        provider: 'claude',
+        threadId: 'thread-bare',
+        agent: { slug: 'stock' },
+      });
+      expect(
+        (
+          mockQuery.mock.calls.at(-1)![0] as {
+            options: { mcpServers?: Record<string, unknown> };
+          }
+        ).options.mcpServers,
+      ).toBeUndefined();
+    });
+
     test('Station #90 lane D: a session whose station-control id is not the canonical built-in mints nothing', async () => {
       mockQuery.mockReturnValue(createMockQuery([]));
       const createInProcessStationControl = vi.fn();

@@ -1485,6 +1485,26 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                         />
                       }
                     />
+                    {/* #90 D9: the same key the in-chat gear panel sets. */}
+                    <PageRow
+                      {...settingsRow('chat-auto-float-browser')}
+                      description="When an agent in a chat opens or drives a browser and no pane shows it, the browser floats over that chat. A session you close stays closed in that chat."
+                      control={
+                        <Toggle
+                          checked={
+                            featureSettings?.autoFloatAgentBrowserSessions !==
+                            false
+                          }
+                          onChange={(checked) =>
+                            setDeviceSetting('featureSettings', {
+                              ...featureSettings,
+                              autoFloatAgentBrowserSessions: checked,
+                            })
+                          }
+                          label={settingsRow('chat-auto-float-browser').title}
+                        />
+                      }
+                    />
                     {/* The diff rows belong to chat because the changed files a
                   reader opens arrive there. `DiffPanel` writes the same two
                   keys from its own controls. */}

@@ -449,6 +449,9 @@ export function createSessionAgentResolver(
       if (spec.tools?.autoApprove !== undefined) {
         definition.autoApprove = spec.tools.autoApprove;
       }
+      // #90 D14: only an explicit `false` withholds the built-in browser
+      // tools; anything else leaves the engine's default in place.
+      if (spec.tools?.browser === false) definition.browserTools = false;
 
       // archive#895 wave B: the prompt is on the spec, not a resolved id — no
       // resolveOne I/O, unlike toolServers/skills above. There is no

@@ -1,4 +1,6 @@
+import type { ConversationTurnActivity } from '@kontourai/station-contracts/orchestration';
 import { migrateSnoozeKey } from '../utils/activity-snooze-store';
+import { newerConversationActivity } from '../utils/conversation-activity';
 import { log } from '../utils/logger';
 import {
   type ActiveChatMetadata,
@@ -56,6 +58,13 @@ export class ActiveChatsStore {
    * still gets told.
    */
   private storageFailureReportedFor = new Set<string>();
+  /**
+   * #2309: the newest server activity record per conversation, including
+   * conversations no chat holds yet (a list row, a sessions read). A chat
+   * that later names the conversation starts from this record instead of
+   * waiting for the next carrier.
+   */
+  private activityByConversation = new Map<string, ConversationTurnActivity>();
 
   constructor(options: ActiveChatsStoreOptions = {}) {
     this.storageKey = options.storageKey ?? 'activeChats';
@@ -202,6 +211,84 @@ export class ActiveChatsStore {
     this.getBackendMessages = resolver;
   }
 
+  /**
+   * #2309: the one seam every carrier feeds (snapshot rows, stream bindings,
+   * the event window, the sessions list, the conversation list, the open
+   * resolution). Keeps the newest record per conversation and hands it to
+   * every chat on that conversation; an older copy is dropped. Notifies only
+   * when a chat's record actually changed.
+   */
+  applyConversationActivity(activity: ConversationTurnActivity | undefined) {
+    if (!activity) return;
+    const known = this.activityByConversation.get(activity.conversationId);
+    const newest = newerConversationActivity(known, activity);
+    if (!newest || newest === known) return;
+    this.activityByConversation.set(activity.conversationId, newest);
+    let changed = false;
+    for (const [key, chat] of Object.entries(this.chats)) {
+      if (chat.conversationId !== activity.conversationId) continue;
+      const { chat: next } = mergeChatUpdates(chat, {
+        conversationActivity: newest,
+      });
+      if (next.conversationActivity === chat.conversationActivity) continue;
+      this.chats[key] = next;
+      changed = true;
+    }
+    if (changed) this.notify(false);
+  }
+
+  /**
+   * #2309: forget every server record. Records are per Station: after the
+   * tab's authority changes, another Station's sequences are not comparable,
+   * and keep-newest would otherwise reject its lower ones for the tab's life.
+   */
+  clearConversationActivity() {
+    this.activityByConversation.clear();
+    let changed = false;
+    for (const [key, chat] of Object.entries(this.chats)) {
+      if (
+        !chat.conversationActivity &&
+        chat.openTurnStartedAt === undefined &&
+        chat.orchestrationTurnOpen === undefined
+      )
+        continue;
+      this.chats[key] = {
+        ...chat,
+        conversationActivity: undefined,
+        sendAwaitingTurnStart: undefined,
+        sendAwaitingPriorTurnId: undefined,
+        stopSettledTurnId: undefined,
+        // With the record gone, the older-server fallback would read these:
+        // the previous Station's turn fold and its witnessed turn start. They
+        // are just as foreign, so the chat reads unknown (no duration, no
+        // borrowed liveness) until the new Station reports.
+        orchestrationTurnOpen: undefined,
+        openTurnStartedAt: undefined,
+      };
+      changed = true;
+    }
+    if (changed) this.notify(false);
+  }
+
+  /** The newest record this store holds for a conversation. */
+  private getConversationActivity(
+    conversationId: string | undefined,
+  ): ConversationTurnActivity | undefined {
+    return conversationId
+      ? this.activityByConversation.get(conversationId)
+      : undefined;
+  }
+
+  /** A chat that names a conversation adopts the newest record already held. */
+  private withKnownActivity(chat: ChatUIState): ChatUIState {
+    const known = this.getConversationActivity(chat.conversationId);
+    if (!known || known === chat.conversationActivity) return chat;
+    const { chat: next } = mergeChatUpdates(chat, {
+      conversationActivity: known,
+    });
+    return next;
+  }
+
   private notify = (persist = false) => {
     this.snapshot = { ...this.chats };
     if (persist) {
@@ -219,7 +306,9 @@ export class ActiveChatsStore {
     // in this store) rather than letting `createDefaultChatState` fall back
     // to its own `Date.now` default — keeps every store-created chat on
     // one clock, real or fake, including in tests that inject `now`.
-    this.chats[sessionId] = createDefaultChatState(metadata, this.now());
+    this.chats[sessionId] = this.withKnownActivity(
+      createDefaultChatState(metadata, this.now()),
+    );
     this.notify(true);
   }
 
@@ -233,7 +322,25 @@ export class ActiveChatsStore {
       current,
       updates,
     );
-    this.chats[targetSessionId!] = chat;
+    const next = this.withKnownActivity(chat);
+    this.chats[targetSessionId!] = next;
+    if (
+      chat.conversationActivity &&
+      chat.conversationActivity !== current.conversationActivity
+    ) {
+      // A record that arrived through a direct update (an open-resolution
+      // patch) is the newest this store has seen for that conversation too.
+      const known = this.activityByConversation.get(
+        chat.conversationActivity.conversationId,
+      );
+      const newest = newerConversationActivity(
+        known,
+        chat.conversationActivity,
+      );
+      if (newest) {
+        this.activityByConversation.set(newest.conversationId, newest);
+      }
+    }
     // review: a bounded queue that discards silently is the same
     // loss the ceiling exists to make safe. Say what was dropped, with the
     // text, so it can be copied back out.
@@ -355,7 +462,9 @@ export class ActiveChatsStore {
     if (!chat) {
       return;
     }
-    this.chats[sessionId] = assignConversationIdState(chat, conversationId);
+    this.chats[sessionId] = this.withKnownActivity(
+      assignConversationIdState(chat, conversationId),
+    );
     // This is the transition from an ephemeral tab to a durable conversation.
     // Persist it synchronously so an immediate reload/navigation cannot lose
     // the session while the ordinary 300 ms coalescing timer is still pending.

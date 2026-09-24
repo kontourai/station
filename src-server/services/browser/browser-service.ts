@@ -5,8 +5,15 @@
  */
 import { findRunning } from '@kontourai/station-shared/instance-registry';
 import { createLogger } from '../../utils/logger.js';
-import type { BrowserHost } from './browser-host.js';
+import type { LiveSurfaceRegistry } from '../live-surface/registry.js';
+import type { BrowserProjectAuthorizer } from './browser-access.js';
+import {
+  type BrowserHost,
+  createLocalBrowserHostResolver,
+} from './browser-host.js';
+import { BrowserLiveSurfaces } from './browser-live-surfaces.js';
 import { LocalTargetStore } from './browser-local-targets.js';
+import { BrowserProjectSettingsStore } from './browser-project-settings.js';
 import {
   type BrowserProfile,
   BrowserSessionRegistry,
@@ -20,6 +27,7 @@ import {
 import { LocalPortScanner } from './local-port-scanner.js';
 import {
   deriveStationListeners,
+  isStationSelfUrl,
   localInterfaceAddresses,
   type StationInstancePorts,
   type StationListeners,
@@ -36,14 +44,26 @@ export interface BrowserServiceOptions {
   consentPort?: number;
   /** The resolved allowed-origin list (`resolveConfiguredRuntimeOrigins`). */
   configuredOrigins: readonly string[];
+  /**
+   * Where live sessions publish their screencast surfaces, and who may reach
+   * them (D5 + D7). Absent: sessions run with no live view.
+   */
+  liveSurfaces?: {
+    registry: Pick<LiveSurfaceRegistry, 'register' | 'get'>;
+    authorizeProject: BrowserProjectAuthorizer;
+  };
 }
 
 export interface BrowserService {
   registry: BrowserSessionRegistry;
   acquisition: ChromiumAcquisition;
   localTargets: LocalTargetStore;
+  /** Per-Project browser permissions (D4 `browserEvaluate`). */
+  projectSettings: BrowserProjectSettingsStore;
   portScanner: LocalPortScanner;
   listeners(): StationListeners;
+  /** The live-surface id of a live session, when live surfaces are wired. */
+  surfaceIdFor(browserSessionId: string): string | undefined;
   shutdown(): Promise<void>;
 }
 
@@ -104,7 +124,14 @@ export function createBrowserService(
   const localTargets = new LocalTargetStore(options.stationHome);
   const registry = new BrowserSessionRegistry({
     stationHome: options.stationHome,
-    createHost: (profile: BrowserProfile): BrowserHost => {
+    isStationAddress: (url) =>
+      isStationSelfUrl(url, listeners(), localInterfaceAddresses()),
+    // #90 D13: the resolver is the one path to a host; local only today.
+    hostResolver: createLocalBrowserHostResolver((request): BrowserHost => {
+      const profile: Pick<BrowserProfile, 'projectId' | 'reach'> = {
+        projectId: request.projectId,
+        reach: request.principalKey === 'operator' ? 'operator' : 'project',
+      };
       const executablePath = acquisition.resolveExecutable();
       if (!executablePath) {
         throw new BrowserHostExitedError(
@@ -126,15 +153,33 @@ export function createBrowserService(
             });
         },
       });
-    },
+    }),
   });
+  const surfaces = options.liveSurfaces
+    ? new BrowserLiveSurfaces({
+        sessions: registry,
+        surfaces: options.liveSurfaces.registry,
+        authorizeProject: options.liveSurfaces.authorizeProject,
+        onError: (message, error) =>
+          logger.warn(`browser: ${message}`, {
+            error: error instanceof Error ? error.message : String(error),
+          }),
+      })
+    : undefined;
   return {
     registry,
     acquisition,
     localTargets,
+    projectSettings: new BrowserProjectSettingsStore(options.stationHome),
     portScanner: new LocalPortScanner(() => listeners().ports),
     listeners,
-    shutdown: () => registry.shutdown(),
+    surfaceIdFor: (browserSessionId) =>
+      surfaces?.surfaceIdFor(browserSessionId),
+    shutdown: async () => {
+      // Surfaces first: no viewer keeps streaming from a browser being shut.
+      await surfaces?.dispose();
+      await registry.shutdown();
+    },
   };
 }
 

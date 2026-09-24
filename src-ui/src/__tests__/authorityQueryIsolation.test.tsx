@@ -51,6 +51,8 @@ import {
   AuthorityQueryProvider,
   type FetchAuthorityObservation,
 } from '../contexts/AuthorityQueryContext';
+import { isTurnInFlight } from '../contexts/active-chats-state';
+import { activeChatsStore } from '../contexts/active-chats-store';
 import { useScopedProjectsQuery } from '../contexts/ProjectsContext';
 import {
   AUTHORITY_CACHE_KEY_PREFIX,
@@ -514,6 +516,131 @@ describe('authority query isolation (real provider tree, mocked wire)', () => {
     );
     // Restored from A's own blob — no refetch for the return trip.
     expect(harness.projectFetches.length).toBe(fetchesAfterA + 1);
+    unmount();
+  });
+
+  it("#2309: switching Station forgets the previous Station's activity records", async () => {
+    const harness = createHarness();
+    harness.observationPlan.set('default', async () => OBS_DEFAULT);
+    const { unmount } = renderTree(harness);
+    const { id: idA, url: urlA } = await addHome('homea');
+    const { id: idB, url: urlB } = await addHome('homeb');
+    harness.observationPlan.set(urlA, async () => OBS_A);
+    harness.observationPlan.set(urlB, async () => OBS_B);
+    await switchTo(idA);
+    await waitFor(() =>
+      expect(probe().getAttribute('data-namespace')).toBe(NS_A),
+    );
+
+    const conversationId = 'claude:conv-authority-2309';
+    activeChatsStore.initChat(conversationId, {
+      agentSlug: 'dev-agent',
+      agentName: 'Dev Agent',
+      title: 'Authority',
+      conversationId,
+    });
+    // Station A's record, at A's sequence.
+    act(() =>
+      activeChatsStore.applyConversationActivity({
+        conversationId,
+        asOfSequence: 9_000,
+        openTurn: {
+          turnId: 'a-turn',
+          threadId: `${conversationId}:child`,
+          startedAt: '2026-09-22T18:55:25.000Z',
+        },
+      }),
+    );
+
+    // Station A's older-server fallback state too: its turn fold and the
+    // start this client witnessed.
+    act(() =>
+      activeChatsStore.updateChat(conversationId, {
+        orchestrationTurnOpen: true,
+        openTurnStartedAt: Date.parse('2026-09-22T18:55:25.000Z'),
+      }),
+    );
+
+    await switchTo(idB);
+    await waitFor(() =>
+      expect(probe().getAttribute('data-namespace')).toBe(NS_B),
+    );
+    const afterSwitch = activeChatsStore.getSnapshot()[conversationId];
+    expect(afterSwitch?.conversationActivity).toBeUndefined();
+    // Nothing of A's is left for the fallback clock or liveness to read.
+    expect(afterSwitch?.openTurnStartedAt).toBeUndefined();
+    expect(afterSwitch?.orchestrationTurnOpen).toBeUndefined();
+    expect(isTurnInFlight(afterSwitch)).toBe(false);
+    // Station B's lower sequence is accepted, not rejected as older than A's.
+    act(() =>
+      activeChatsStore.applyConversationActivity({
+        conversationId,
+        asOfSequence: 12,
+      }),
+    );
+    expect(
+      activeChatsStore.getSnapshot()[conversationId]?.conversationActivity
+        ?.asOfSequence,
+    ).toBe(12);
+    activeChatsStore.removeChat(conversationId);
+    unmount();
+  });
+
+  it('#2309: a re-verify of the SAME Station (a transient unverified gap) keeps the activity records', async () => {
+    const harness = createHarness();
+    harness.observationPlan.set('default', async () => OBS_DEFAULT);
+    const { unmount } = renderTree(harness);
+    const { id: idA, url: urlA } = await addHome('homea');
+    const reverified = deferred<AuthorityObservation>();
+    let rotated = false;
+    harness.observationPlan.set(urlA, async () =>
+      rotated ? reverified.promise : OBS_A,
+    );
+    await switchTo(idA);
+    await waitFor(() =>
+      expect(probe().getAttribute('data-namespace')).toBe(NS_A),
+    );
+    const conversationId = 'claude:conv-reverify-2309';
+    activeChatsStore.initChat(conversationId, {
+      agentSlug: 'dev-agent',
+      agentName: 'Dev Agent',
+      title: 'Reverify',
+      conversationId,
+    });
+    act(() =>
+      activeChatsStore.applyConversationActivity({
+        conversationId,
+        asOfSequence: 77,
+        openTurn: {
+          turnId: 'still-running',
+          threadId: `${conversationId}:child`,
+          startedAt: '2026-09-22T18:55:25.000Z',
+        },
+      }),
+    );
+
+    rotated = true;
+    await act(async () => {
+      connections?.setCredential(idA, 'cred-rotated-same-principal');
+    });
+    // The gap: nothing verified.
+    await waitFor(() => expect(screen.queryByTestId('probe')).toBeNull());
+    expect(
+      activeChatsStore.getSnapshot()[conversationId]?.conversationActivity
+        ?.asOfSequence,
+    ).toBe(77);
+    await act(async () => {
+      reverified.resolve(OBS_A);
+    });
+    await waitFor(() =>
+      expect(probe().getAttribute('data-namespace')).toBe(NS_A),
+    );
+    // Same Station: its sequences still compare, so the record stays.
+    expect(
+      activeChatsStore.getSnapshot()[conversationId]?.conversationActivity
+        ?.asOfSequence,
+    ).toBe(77);
+    activeChatsStore.removeChat(conversationId);
     unmount();
   });
 

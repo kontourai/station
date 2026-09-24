@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import type { CdpTransport } from '../browser-host.js';
+import { ChromiumScreencastProducer } from '../chromium-screencast-producer.js';
 import {
   BEST_EFFORT_DENIED_PERMISSIONS,
   BrowserHostExitedError,
@@ -575,6 +576,8 @@ describe('ChromiumServerHost with a fake browser', () => {
       'Page.startScreencast',
       'Page.stopScreencast',
       'Page.screencastFrameAck',
+      'Page.handleJavaScriptDialog',
+      'Page.createIsolatedWorld',
       'Input.dispatchMouseEvent',
       'Input.dispatchKeyEvent',
       'Input.dispatchTouchEvent',
@@ -726,6 +729,14 @@ describe('ChromiumServerHost with a fake browser', () => {
         { type: 'keyDown', key: 'v', commands: 'paste' },
       ],
       ['Page.reload', { scriptToEvaluateOnLoad: 'alert(1)' }],
+      [
+        'Page.createIsolatedWorld',
+        { frameId: 'F', worldName: 'w', grantUniveralAccess: true },
+      ],
+      [
+        'Page.createIsolatedWorld',
+        { frameId: 'F', worldName: 'w', grantUniversalAccess: true },
+      ],
     ] as const) {
       await expect(cdp.send(method, params, 'S-T1')).rejects.toMatchObject({
         code: 'param-not-allowed',
@@ -744,10 +755,16 @@ describe('ChromiumServerHost with a fake browser', () => {
       'S-T1',
     );
     await cdp.send('Page.reload', {}, 'S-T1');
+    await cdp.send(
+      'Page.createIsolatedWorld',
+      { frameId: 'F', worldName: 'w', grantUniveralAccess: false },
+      'S-T1',
+    );
     expect(calls.slice(before).map((c) => c.method)).toEqual([
       'Runtime.evaluate',
       'Input.dispatchKeyEvent',
       'Page.reload',
+      'Page.createIsolatedWorld',
     ]);
   });
 
@@ -800,6 +817,61 @@ describe('ChromiumServerHost with a fake browser', () => {
       params: { url: 'https://example.com/np' },
       sessionId: 'S-T1',
     });
+  });
+
+  test("the screencast producer's dialog answer and touch cancel pass the guarded channel (behaviour, not the pin)", async () => {
+    // The real-Chromium test skips without an installed browser, so this is
+    // what proves the producer's CDP calls are ones the guard forwards.
+    const { host, profileDir, calls } = harness();
+    await host.openTarget({ profileDir, viewport: VIEWPORT });
+    const producer = new ChromiumScreencastProducer({
+      surfaceId: 'browser:x:g1',
+      cdp: host.cdp(),
+      cdpSessionId: 'S-T1',
+    });
+    const before = calls.length;
+    await producer.dispatch({
+      kind: 'pointer',
+      type: 'down',
+      x: 1,
+      y: 1,
+      button: 'left',
+      pointerType: 'touch',
+    });
+    await producer.cancelHeldInput({
+      buttons: ['left'],
+      keys: [],
+      pointer: { x: 1, y: 1 },
+      pointerType: 'touch',
+      buttonPointerTypes: { left: 'touch' },
+    });
+    await host
+      .cdp()
+      .send('Page.handleJavaScriptDialog', { accept: false }, 'S-T1');
+    expect(calls.slice(before).map((call) => call.method)).toEqual([
+      'Input.dispatchTouchEvent',
+      'Input.dispatchTouchEvent',
+      'Page.handleJavaScriptDialog',
+    ]);
+    producer.dispose();
+  });
+
+  test('a mobile viewport is opened with touch emulation on', async () => {
+    const { host, profileDir, calls } = harness();
+    await host.openTarget({
+      profileDir,
+      viewport: { width: 393, height: 852, deviceScaleFactor: 3, mobile: true },
+    });
+    const emulation = calls.filter((call) =>
+      call.method.startsWith('Emulation.'),
+    );
+    expect(emulation.map((call) => [call.method, call.params])).toEqual([
+      [
+        'Emulation.setDeviceMetricsOverride',
+        { width: 393, height: 852, deviceScaleFactor: 3, mobile: true },
+      ],
+      ['Emulation.setTouchEmulationEnabled', { enabled: true }],
+    ]);
   });
 
   test('history navigation is refused when the entry is out of scope', async () => {

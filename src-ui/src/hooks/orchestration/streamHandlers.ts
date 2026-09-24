@@ -1,6 +1,7 @@
 import { toolPurposeView } from '../../components/chat/tool-display-view';
 import type { ChatContentPart } from '../../contexts/active-chats-state';
 import { activeChatsStore } from '../../contexts/active-chats-store';
+import { serverTurnLive } from '../../utils/conversation-activity';
 import { derivePlanArtifactFromStreamingState } from '../../utils/planArtifacts';
 import { extractUIBlocks } from '../../utils/uiBlocks';
 import {
@@ -19,11 +20,72 @@ function getStreamingMessage(
   return chat.streamingMessage || createAssistantStreamingMessage();
 }
 
+/**
+ * #2309: is this delta provider output with no turn open? A CLI can finish
+ * background work after its turn closed and then reply on its own: its
+ * deltas carry no turn id, and no terminal turn event will ever follow them
+ * (conversation claude:1790098279239 read as active forever this way). A
+ * delta that names a turn is always in-turn. One that names none is turn-less
+ * when no turn is open by the server's record (or, on an older server, by
+ * the legacy fold's explicit `false`), and this composer is not waiting on
+ * its own send to open one.
+ */
+function isTurnlessDelta(
+  chat: ReturnType<typeof activeChatsStore.getSnapshot>[string],
+  event: { turnId?: string },
+): boolean {
+  if (event.turnId !== undefined) return false;
+  const server = serverTurnLive(chat);
+  if (server !== undefined) return !server;
+  return chat.orchestrationTurnOpen === false && chat.status !== 'sending';
+}
+
+/**
+ * Turn-less output is not a live stream, so it never builds the streaming
+ * shell. It is durable, though, and the server's transcript projection folds
+ * it into a message, so the bounded window is asked to re-read: debounced
+ * while the output keeps coming, and at least every
+ * `TURNLESS_REFETCH_MAX_WAIT_MS` so a long reply still appears as it grows.
+ */
+const TURNLESS_REFETCH_DEBOUNCE_MS = 1_500;
+const TURNLESS_REFETCH_MAX_WAIT_MS = 10_000;
+const turnlessRefetch = new Map<
+  string,
+  { timer: ReturnType<typeof setTimeout>; firstAt: number }
+>();
+
+function scheduleTurnlessRefetch(threadId: string, now = Date.now()): void {
+  const pending = turnlessRefetch.get(threadId);
+  if (pending) clearTimeout(pending.timer);
+  const firstAt = pending?.firstAt ?? now;
+  const delay = Math.max(
+    0,
+    Math.min(
+      TURNLESS_REFETCH_DEBOUNCE_MS,
+      firstAt + TURNLESS_REFETCH_MAX_WAIT_MS - now,
+    ),
+  );
+  const timer = setTimeout(() => {
+    turnlessRefetch.delete(threadId);
+    const chat = activeChatsStore.getChatForExecutionSession(threadId);
+    if (!chat) return;
+    activeChatsStore.updateChat(threadId, {
+      orchestrationHistoryRevision:
+        (chat.orchestrationHistoryRevision ?? 0) + 1,
+    });
+  }, delay);
+  turnlessRefetch.set(threadId, { timer, firstAt });
+}
+
 export function handleTextDeltaEvent(
   event: Extract<OrchestrationEvent, { method: 'content.text-delta' }>,
 ) {
   const chat = activeChatsStore.getChatForExecutionSession(event.threadId);
   if (!chat) return;
+  if (isTurnlessDelta(chat, event)) {
+    scheduleTurnlessRefetch(event.threadId);
+    return;
+  }
   const streamingMessage = getStreamingMessage(chat);
 
   // Built once and shared by the store update and the plan derivation —
@@ -39,8 +101,9 @@ export function handleTextDeltaEvent(
     ),
   };
 
+  // #2309: no `status: 'sending'` here. A delta is content for a turn some
+  // other signal already opened; it never mints liveness on its own.
   activeChatsStore.updateChat(event.threadId, {
-    status: 'sending',
     // Real content is flowing — the transient "Thinking…" hint is stale.
     activityHint: undefined,
     streamingMessage: nextStreamingMessage,
@@ -59,6 +122,10 @@ export function handleReasoningDeltaEvent(
 ) {
   const chat = activeChatsStore.getChatForExecutionSession(event.threadId);
   if (!chat) return;
+  if (isTurnlessDelta(chat, event)) {
+    scheduleTurnlessRefetch(event.threadId);
+    return;
+  }
   const streamingMessage = getStreamingMessage(chat);
 
   const nextStreamingMessage = {
@@ -71,7 +138,6 @@ export function handleReasoningDeltaEvent(
   };
 
   activeChatsStore.updateChat(event.threadId, {
-    status: 'sending',
     streamingMessage: nextStreamingMessage,
     planArtifact: derivePlanArtifactFromStreamingState(
       {

@@ -1,0 +1,664 @@
+/**
+ * @vitest-environment jsdom
+ *
+ * #2309: when a queued follow-up is sent.
+ *
+ * Only a turn's terminal EVENT drains the queue (as on main), so a Stop
+ * (`turn.aborted`) never auto-sends (archive#3451), and a replayed frame's
+ * as-of-delivery record can never fire a send ahead of the turn it replays.
+ * The activity record is used for liveness and for OFFERING "Send now" when
+ * the automatic drain will not come; the send itself is the user's.
+ *
+ * These cases drive the real app-wide stream (`ensureOrchestrationEventStream`,
+ * with only the SSE transport and the dispatch network call mocked).
+ */
+
+import { agentId } from '@kontourai/station-contracts/agent-identity';
+import type {
+  ConversationOpenResolution,
+  ConversationTurnActivity,
+  OrchestrationConversationStreamBinding,
+} from '@kontourai/station-contracts/orchestration';
+import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
+import { useSyncExternalStore } from 'react';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import type {
+  OrchestrationEvent,
+  OrchestrationSnapshotPayload,
+} from '../hooks/orchestration/types';
+
+const mocks = vi.hoisted(() => ({
+  onMessage: new Map<
+    string,
+    (raw: { event: string; data: string; id?: string }) => void
+  >(),
+  dispatchForeground: vi.fn(async (_input: Record<string, unknown>) => ({})),
+}));
+vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@kontourai/station-sdk')>()),
+  fetchSSE: (
+    url: string,
+    options: {
+      onMessage: (raw: { event: string; data: string; id?: string }) => void;
+    },
+  ) => {
+    mocks.onMessage.set(url, options.onMessage);
+    return {
+      close: vi.fn(),
+      signal: new AbortController().signal,
+      completed: Promise.resolve(),
+      retry: vi.fn(),
+    };
+  },
+}));
+const resolveConversationOpen = vi.hoisted(() =>
+  vi.fn<(...args: unknown[]) => Promise<ConversationOpenResolution>>(),
+);
+vi.mock('@kontourai/station-sdk/conversation-open', () => ({
+  resolveConversationOpen,
+}));
+vi.mock('../lib/foregroundMessageDispatch', () => ({
+  dispatchForeground: mocks.dispatchForeground,
+}));
+vi.mock('../contexts/ActiveChatsContext', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('../contexts/ActiveChatsContext')>();
+  const { activeChatsStore } = await import('../contexts/active-chats-store');
+  return {
+    ...actual,
+    useActiveChatActions: () => ({
+      updateChat: activeChatsStore.updateChat.bind(activeChatsStore),
+      removeQueuedMessage:
+        activeChatsStore.removeQueuedMessage.bind(activeChatsStore),
+      editQueuedMessage:
+        activeChatsStore.editQueuedMessage.bind(activeChatsStore),
+      reorderQueuedMessage:
+        activeChatsStore.reorderQueuedMessage.bind(activeChatsStore),
+    }),
+  };
+});
+
+import { QueuedMessages } from '../components/chat/QueuedMessages';
+import { ConversationOpenRevalidator } from '../components/chat-dock/ConversationOpenRevalidator';
+import { activeChatsStore } from '../contexts/active-chats-store';
+import { ensureOrchestrationEventStream } from '../hooks/orchestration/ensureOrchestrationEventStream';
+import { drainQueuedMessageOnTurnCompleted } from '../hooks/orchestration/queueDrain';
+import { queueSendNowOffered } from '../utils/conversation-activity';
+
+let index = 0;
+let API = '';
+let CONVERSATION = '';
+let CHILD = '';
+let TURN = '';
+let sequence = 0;
+
+function open(
+  asOfSequence: number,
+  extra: Partial<ConversationTurnActivity> = {},
+): ConversationTurnActivity {
+  return {
+    conversationId: CONVERSATION,
+    asOfSequence,
+    openTurn: {
+      turnId: TURN,
+      threadId: CHILD,
+      startedAt: '2026-09-22T18:55:25.000Z',
+    },
+    ...extra,
+  };
+}
+
+function closed(asOfSequence: number): ConversationTurnActivity {
+  return {
+    conversationId: CONVERSATION,
+    asOfSequence,
+    lastActivityAt: '2026-09-22T18:57:44.000Z',
+  };
+}
+
+function deliver(apiBase: string, raw: { event: string; data: string }) {
+  const onMessage = mocks.onMessage.get(`${apiBase}/api/orchestration/events`);
+  if (!onMessage) throw new Error(`stream not started for ${apiBase}`);
+  sequence += 1;
+  onMessage({ ...raw, id: String(sequence) });
+}
+
+function deliverSnapshot(
+  apiBase: string,
+  payload: OrchestrationSnapshotPayload,
+) {
+  deliver(apiBase, {
+    event: 'orchestration:snapshot',
+    data: JSON.stringify(payload),
+  });
+}
+
+function deliverEvent(
+  apiBase: string,
+  event: OrchestrationEvent,
+  activity: ConversationTurnActivity,
+) {
+  const conversation: OrchestrationConversationStreamBinding = {
+    conversationId: CONVERSATION,
+    currentSessionId: CHILD,
+    activity,
+  };
+  deliver(apiBase, {
+    event: SERVER_EVENTS.ORCHESTRATION_EVENT,
+    data: JSON.stringify({ event, conversation }),
+  });
+}
+
+function turnCompleted(): OrchestrationEvent {
+  return {
+    eventId: `evt-done-${index}`,
+    provider: 'claude',
+    threadId: CHILD,
+    createdAt: '2026-09-22T18:57:44.000Z',
+    method: 'turn.completed',
+    turnId: TURN,
+    outputText: 'Answer to the running turn.',
+  };
+}
+
+function turnAborted(): OrchestrationEvent {
+  return {
+    eventId: `evt-aborted-${index}`,
+    provider: 'claude',
+    threadId: CHILD,
+    createdAt: '2026-09-22T18:57:44.000Z',
+    method: 'turn.aborted',
+    turnId: TURN,
+    reason: 'Stopped by the user',
+  };
+}
+
+/** A chat on the conversation with follow-ups queued behind the open turn. */
+function chatWithQueue(
+  queued: string[],
+  currentSessionId: string = CONVERSATION,
+) {
+  activeChatsStore.initChat(CONVERSATION, {
+    agentSlug: 'dev-agent',
+    agentName: 'Dev Agent',
+    title: 'Queue behind a turn',
+    conversationId: CONVERSATION,
+  });
+  activeChatsStore.updateChat(CONVERSATION, {
+    currentSessionId,
+    orchestrationSessionStarted: true,
+    conversationOpenPending: false,
+    queuedMessages: queued,
+  });
+}
+
+function connect(apiBase: string, activity: ConversationTurnActivity) {
+  ensureOrchestrationEventStream(apiBase);
+  deliverSnapshot(apiBase, {
+    sessions: [
+      {
+        provider: 'claude',
+        threadId: CONVERSATION,
+        status: 'running',
+        hasActiveTurn: false,
+        conversationActivity: activity,
+      },
+      {
+        provider: 'claude',
+        threadId: CHILD,
+        status: 'running',
+        hasActiveTurn: activity.openTurn !== undefined,
+        conversationActivity: activity,
+      },
+    ],
+  });
+}
+
+/**
+ * A reload that resumes the stream by cursor: no snapshot, so nothing adopts
+ * the running child; the chat keeps naming the root, and the record arrives
+ * through another carrier (the event window read).
+ */
+function resumeWithoutSnapshot(
+  apiBase: string,
+  activity: ConversationTurnActivity,
+) {
+  ensureOrchestrationEventStream(apiBase);
+  activeChatsStore.applyConversationActivity(activity);
+}
+
+function chat() {
+  const current = activeChatsStore.getSnapshot()[CONVERSATION];
+  if (!current) throw new Error('chat missing');
+  return current;
+}
+
+/** The dock's queue, with the dock's own "Send now" wiring. */
+function Queue({ apiBase }: { apiBase: string }) {
+  const current = useSyncExternalStore(
+    activeChatsStore.subscribe,
+    () => activeChatsStore.getSnapshot()[CONVERSATION],
+  );
+  if (!current) return null;
+  return (
+    <QueuedMessages
+      sessionId={CONVERSATION}
+      messages={current.queuedMessages}
+      onSendNow={
+        queueSendNowOffered(current)
+          ? () =>
+              drainQueuedMessageOnTurnCompleted(
+                apiBase,
+                CONVERSATION,
+                true,
+                true,
+              )
+          : undefined
+      }
+    />
+  );
+}
+
+beforeEach(() => {
+  index += 1;
+  API = `http://station-queue-${index}.test`;
+  CONVERSATION = `claude:conv-queue-${index}`;
+  CHILD = `${CONVERSATION}:session:child`;
+  TURN = `turn-queue-${index}`;
+  sequence = 0;
+  mocks.dispatchForeground.mockClear();
+  vi.useFakeTimers();
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+  activeChatsStore.removeChat(CONVERSATION);
+});
+
+describe('#2309 the queue drains on the turn END event, routed by the frame binding', () => {
+  test("a lineage child's turn.completed drains the conversation's chat, though the chat names the root", async () => {
+    chatWithQueue(['and then summarize it']);
+    resumeWithoutSnapshot(API, open(10));
+    // Premise: the child's events route to no chat.
+    expect(
+      activeChatsStore.getChatKeyForExecutionSession(CHILD),
+    ).toBeUndefined();
+
+    deliverEvent(API, turnCompleted(), closed(11));
+    await vi.advanceTimersByTimeAsync(200);
+
+    expect(mocks.dispatchForeground).toHaveBeenCalledTimes(1);
+    expect(mocks.dispatchForeground.mock.calls[0]?.[0]).toMatchObject({
+      apiBase: API,
+      message: 'and then summarize it',
+      conversationId: CONVERSATION,
+    });
+  });
+
+  test("a lineage child's turn.aborted (a Stop elsewhere) does not drain through the binding either", async () => {
+    chatWithQueue(['held after the stop']);
+    resumeWithoutSnapshot(API, open(12));
+    deliverEvent(API, turnAborted(), closed(13));
+    await vi.advanceTimersByTimeAsync(500);
+    expect(mocks.dispatchForeground).not.toHaveBeenCalled();
+    expect(chat().queuedMessages).toEqual(['held after the stop']);
+  });
+
+  test('Station A, then B, then A: the drain goes through the Station that delivered the turn end', async () => {
+    const stationA = API;
+    const stationB = `${API}-b`;
+    // The chat names the root, so it is the binding-routed path that drains.
+    chatWithQueue(['for station A']);
+    resumeWithoutSnapshot(stationA, open(20));
+    ensureOrchestrationEventStream(stationB);
+    ensureOrchestrationEventStream(stationA);
+
+    deliverEvent(stationA, turnCompleted(), closed(21));
+    await vi.advanceTimersByTimeAsync(200);
+
+    expect(mocks.dispatchForeground).toHaveBeenCalledTimes(1);
+    expect(mocks.dispatchForeground.mock.calls[0]?.[0]).toMatchObject({
+      apiBase: stationA,
+    });
+  });
+
+  test('a reconnect replay: frames carrying the already-closed record send nothing; the replayed turn.completed sends exactly one, after the answer', async () => {
+    chatWithQueue(['B1', 'B2'], CHILD);
+    connect(API, open(30));
+    act(() =>
+      activeChatsStore.updateChat(CONVERSATION, {
+        orchestrationTurnOpen: true,
+        openTurnId: TURN,
+      }),
+    );
+
+    // The server attaches its CURRENT record (the turn already ended) to
+    // every replayed frame, starting with the turn's own content.
+    deliverEvent(
+      API,
+      {
+        eventId: `evt-delta-${index}`,
+        provider: 'claude',
+        threadId: CHILD,
+        createdAt: '2026-09-22T18:56:00.000Z',
+        method: 'content.text-delta',
+        turnId: TURN,
+        itemId: 'item-answer',
+        delta: 'Answer to the running turn.',
+      },
+      closed(40),
+    );
+    await vi.advanceTimersByTimeAsync(500);
+    expect(mocks.dispatchForeground).not.toHaveBeenCalled();
+    expect(chat().queuedMessages).toEqual(['B1', 'B2']);
+
+    deliverEvent(API, turnCompleted(), closed(40));
+    await vi.advanceTimersByTimeAsync(500);
+
+    expect(mocks.dispatchForeground).toHaveBeenCalledTimes(1);
+    expect(mocks.dispatchForeground.mock.calls[0]?.[0]).toMatchObject({
+      message: 'B1',
+    });
+    expect(chat().queuedMessages).toEqual(['B2']);
+    const messages = chat().messages ?? [];
+    const answerAt = messages.findIndex(
+      (message) =>
+        message.role === 'assistant' &&
+        message.content.includes('Answer to the running turn.'),
+    );
+    const b1At = messages.findIndex(
+      (message) => message.role === 'user' && message.content === 'B1',
+    );
+    expect(answerAt).toBeGreaterThanOrEqual(0);
+    expect(b1At).toBeGreaterThan(answerAt);
+  });
+});
+
+describe('#2309 a reload that adopts the running child: the turn end waits for the re-proved binding, then sends once', () => {
+  test('the snapshot adopts the child; its turn.completed holds the follow-up; the revalidation sends it exactly once', async () => {
+    chatWithQueue(['after the reload']);
+    // The snapshot names the running child through the record; the chat
+    // adopts it and re-proves the binding (conversationOpenPending).
+    connect(API, open(120));
+    expect(chat().currentSessionId).toBe(CHILD);
+    expect(chat().conversationOpenPending).toBe(true);
+
+    // The child's turn ends: it routes to the chat now, and cannot send yet.
+    deliverEvent(API, turnCompleted(), closed(121));
+    await vi.advanceTimersByTimeAsync(500);
+    expect(mocks.dispatchForeground).not.toHaveBeenCalled();
+    expect(chat().queuedMessages).toEqual(['after the reload']);
+    expect(chat().queueDrainHeldForOpen).toBe(true);
+
+    const resolution: ConversationOpenResolution = {
+      status: 'resolved',
+      conversation: {
+        id: CONVERSATION,
+        source: 'runtime',
+        agentSlug: agentId('dev-agent'),
+        title: 'Queue behind a turn',
+        createdAt: '2026-09-22T18:00:00.000Z',
+        updatedAt: '2026-09-22T18:57:44.000Z',
+        messageCount: 3,
+        mutable: true,
+        answerability: { answerable: true },
+      },
+      currentSessionId: CHILD,
+      execution: {
+        sessionId: CHILD,
+        agentId: agentId('dev-agent'),
+        provider: 'claude',
+      },
+      transcript: { available: true, owner: 'runtime', messageCount: 3 },
+      canContinue: true,
+      answerability: { answerable: true },
+      recoveryActions: [],
+    };
+    resolveConversationOpen.mockResolvedValue(resolution);
+    render(
+      <ConversationOpenRevalidator
+        sessionId={CONVERSATION}
+        conversationId={CONVERSATION}
+        apiBase={API}
+        updateChat={(id, patch) => activeChatsStore.updateChat(id, patch)}
+      />,
+    );
+    // The revalidation's own module load and read are real async work.
+    vi.useRealTimers();
+    await waitFor(() => expect(chat().conversationOpenPending).toBe(false));
+    await waitFor(() =>
+      expect(mocks.dispatchForeground).toHaveBeenCalledTimes(1),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 300));
+
+    expect(mocks.dispatchForeground).toHaveBeenCalledTimes(1);
+    expect(mocks.dispatchForeground.mock.calls[0]?.[0]).toMatchObject({
+      message: 'after the reload',
+      apiBase: API,
+    });
+    expect(chat().queueDrainHeldForOpen).toBeUndefined();
+  });
+});
+
+describe('#2309 the binding-routed drain acts only for an unrouted current child', () => {
+  function runtimeError(provider: 'claude' | 'codex', retriable: boolean) {
+    const failed: OrchestrationEvent = {
+      eventId: `evt-error-${index}-${provider}-${retriable}`,
+      provider,
+      threadId: CHILD,
+      createdAt: '2026-09-22T18:57:44.000Z',
+      method: 'runtime.error',
+      turnId: TURN,
+      severity: 'error',
+      message: 'engine failed',
+      retriable,
+    };
+    return failed;
+  }
+
+  test('a terminal of a child that is no longer current drains nothing', async () => {
+    chatWithQueue(['not for a retired child']);
+    resumeWithoutSnapshot(API, open(90));
+    const conversation: OrchestrationConversationStreamBinding = {
+      conversationId: CONVERSATION,
+      // A newer child is current; this frame's child is retired.
+      currentSessionId: `${CONVERSATION}:session:newer`,
+      activity: closed(91),
+    };
+    deliver(API, {
+      event: SERVER_EVENTS.ORCHESTRATION_EVENT,
+      data: JSON.stringify({ event: turnCompleted(), conversation }),
+    });
+    await vi.advanceTimersByTimeAsync(500);
+    expect(mocks.dispatchForeground).not.toHaveBeenCalled();
+    expect(chat().queuedMessages).toEqual(['not for a retired child']);
+  });
+
+  test('a definitive runtime.error on the unrouted current child drains once; a deferred-retriable one does not', async () => {
+    chatWithQueue(['after the failure']);
+    resumeWithoutSnapshot(API, open(100));
+    deliverEvent(API, runtimeError('codex', true), closed(101));
+    await vi.advanceTimersByTimeAsync(500);
+    expect(mocks.dispatchForeground).not.toHaveBeenCalled();
+
+    deliverEvent(API, runtimeError('claude', false), closed(102));
+    await vi.advanceTimersByTimeAsync(500);
+    expect(mocks.dispatchForeground).toHaveBeenCalledTimes(1);
+    expect(mocks.dispatchForeground.mock.calls[0]?.[0]).toMatchObject({
+      message: 'after the failure',
+      apiBase: API,
+    });
+  });
+
+  test('a chat the terminal routes to is left to its own handler: the head is taken only after the answer is committed', async () => {
+    chatWithQueue(['B1', 'B2'], CHILD);
+    connect(API, open(110));
+    act(() =>
+      activeChatsStore.updateChat(CONVERSATION, {
+        orchestrationTurnOpen: true,
+        openTurnId: TURN,
+      }),
+    );
+    // The order the store sees, write by write: when the answer lands in the
+    // transcript and when the queue head leaves the queue.
+    const order: string[] = [];
+    const unsubscribe = activeChatsStore.subscribe(() => {
+      const current = activeChatsStore.getSnapshot()[CONVERSATION];
+      if (
+        !order.includes('answer') &&
+        (current?.messages ?? []).some(
+          (message) =>
+            message.role === 'assistant' &&
+            message.content.includes('Answer to the running turn.'),
+        )
+      )
+        order.push('answer');
+      if (!order.includes('head-taken') && current?.queuedMessages[0] !== 'B1')
+        order.push('head-taken');
+    });
+    try {
+      deliverEvent(API, turnCompleted(), closed(111));
+    } finally {
+      unsubscribe();
+    }
+    expect(order).toEqual(['answer', 'head-taken']);
+    await vi.advanceTimersByTimeAsync(500);
+    expect(mocks.dispatchForeground).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('#2309 "Send now" when the automatic drain will not come', () => {
+  test('a Stop on another device, seen after a reconnect: nothing is sent, "Send now" is offered, and one click sends exactly one', async () => {
+    chatWithQueue(['after the stop', 'and this later'], CHILD);
+    connect(API, open(50));
+    render(<Queue apiBase={API} />);
+    expect(
+      screen.queryByRole('button', { name: /Send the next queued/ }),
+    ).toBeNull();
+
+    act(() => deliverEvent(API, turnAborted(), closed(51)));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500);
+    });
+    expect(mocks.dispatchForeground).not.toHaveBeenCalled();
+    expect(chat().queuedMessages).toEqual(['after the stop', 'and this later']);
+
+    const sendNow = screen.getByRole('button', {
+      name: 'Send the next queued message now',
+    });
+    expect(sendNow.textContent).toBe('Send now');
+    await act(async () => {
+      fireEvent.click(sendNow);
+      await vi.advanceTimersByTimeAsync(500);
+    });
+    expect(mocks.dispatchForeground).toHaveBeenCalledTimes(1);
+    expect(mocks.dispatchForeground.mock.calls[0]?.[0]).toMatchObject({
+      message: 'after the stop',
+      apiBase: API,
+    });
+    expect(chat().queuedMessages).toEqual(['and this later']);
+  });
+
+  test('a turn that stays open is never offered "Send now", even once the watchdog has observed it silent', () => {
+    chatWithQueue(['waiting'], CHILD);
+    connect(API, open(60));
+    render(<Queue apiBase={API} />);
+    expect(
+      screen.queryByRole('button', { name: /Send the next queued/ }),
+    ).toBeNull();
+
+    act(() =>
+      activeChatsStore.applyConversationActivity(
+        open(60, {
+          progressSilence: {
+            detectedAt: '2026-09-22T19:10:00.000Z',
+            windowMs: 600_000,
+            silentSinceEventAt: '2026-09-22T19:00:00.000Z',
+            provider: 'claude',
+          },
+        }),
+      ),
+    );
+    // Sending into an open (if silent) turn is refused as indeterminate and
+    // blocks the thread; the path is Stop first.
+    expect(
+      screen.queryByRole('button', { name: /Send the next queued/ }),
+    ).toBeNull();
+  });
+
+  test('a silent turn, then Stop: once the turn has ended "Send now" is offered, and one click sends exactly one', async () => {
+    chatWithQueue(['after the silent turn', 'later'], CHILD);
+    connect(
+      API,
+      open(64, {
+        progressSilence: {
+          detectedAt: '2026-09-22T19:10:00.000Z',
+          windowMs: 600_000,
+          silentSinceEventAt: '2026-09-22T19:00:00.000Z',
+          provider: 'claude',
+        },
+      }),
+    );
+    render(<Queue apiBase={API} />);
+    expect(
+      screen.queryByRole('button', { name: /Send the next queued/ }),
+    ).toBeNull();
+
+    // The stall notice's Stop ends the turn; its turn.aborted closes the record.
+    act(() => deliverEvent(API, turnAborted(), closed(65)));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500);
+    });
+    expect(mocks.dispatchForeground).not.toHaveBeenCalled();
+
+    await act(async () => {
+      fireEvent.click(
+        screen.getByRole('button', {
+          name: 'Send the next queued message now',
+        }),
+      );
+      await vi.advanceTimersByTimeAsync(500);
+    });
+    expect(mocks.dispatchForeground).toHaveBeenCalledTimes(1);
+    expect(mocks.dispatchForeground.mock.calls[0]?.[0]).toMatchObject({
+      message: 'after the silent turn',
+      apiBase: API,
+    });
+    expect(chat().queuedMessages).toEqual(['later']);
+  });
+});
+
+describe('#2309 explicit sends are never held back silently', () => {
+  test('Retry sends while the record still shows a turn open', async () => {
+    chatWithQueue(['retry me'], CHILD);
+    connect(API, open(70));
+    act(() =>
+      activeChatsStore.updateChat(CONVERSATION, {
+        queuedMessageFailure: { message: 'engine paused', at: 1 },
+      }),
+    );
+    drainQueuedMessageOnTurnCompleted(API, CONVERSATION, true, true);
+    await vi.advanceTimersByTimeAsync(200);
+    expect(mocks.dispatchForeground).toHaveBeenCalledTimes(1);
+  });
+
+  test('an explicit send that cannot go says why in the chat', () => {
+    chatWithQueue(['being edited'], CHILD);
+    connect(API, closed(80));
+    act(() =>
+      activeChatsStore.updateChat(CONVERSATION, { isEditingQueue: true }),
+    );
+    drainQueuedMessageOnTurnCompleted(API, CONVERSATION, true, true);
+    expect(mocks.dispatchForeground).not.toHaveBeenCalled();
+    expect(
+      (chat().ephemeralMessages ?? []).map((message) => message.content),
+    ).toContain('Finish editing the queued message first, then send it.');
+  });
+});

@@ -186,3 +186,46 @@ test('an initial native launch plan is not relabeled as current model-connection
   if (pending?.status === 'resolved')
     expect(pending.execution).not.toHaveProperty('modelConnectionId');
 });
+
+test('#2309: an open resolution carries the conversation activity read with the current child', async () => {
+  const { store, service } = readerFixture();
+  const threadId = 'activity-open-conversation';
+  store.upsertSession({
+    threadId,
+    provider: 'claude',
+    status: 'running',
+    createdAt: '2026-09-01T00:00:00Z',
+    updatedAt: '2026-09-01T00:01:00Z',
+  });
+  store.appendEvent({
+    eventId: 'activity-open-start',
+    threadId,
+    sessionId: threadId,
+    provider: 'claude',
+    method: 'session.started',
+    metadata: { userId: 'owner', agentSlug: 'claude' },
+    createdAt: '2026-09-01T00:00:01Z',
+  });
+  store.appendEvent({
+    eventId: 'activity-open-turn',
+    threadId,
+    turnId: 'open-turn',
+    provider: 'claude',
+    method: 'turn.started',
+    createdAt: '2026-09-01T00:00:02Z',
+  });
+  const authority = sessionReadAuthorityFromRequest(
+    'owner',
+    undefined,
+    undefined,
+  );
+  const resolved = await service.resolveConversationOpen(threadId, authority);
+  expect(resolved?.status).toBe('resolved');
+  if (resolved?.status !== 'resolved') return;
+  expect(resolved.activity?.openTurn).toEqual({
+    turnId: 'open-turn',
+    threadId,
+    startedAt: '2026-09-01T00:00:02Z',
+  });
+  expect(resolved.activity?.asOfSequence).toBe(store.headGlobalSequence());
+});

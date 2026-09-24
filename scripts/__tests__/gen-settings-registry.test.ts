@@ -241,6 +241,7 @@ const PUBLISHED_SCOPE_BY_ID: Readonly<Record<string, string>> = {
   'chat-show-reasoning': 'device',
   'chat-show-tool-details': 'device',
   'chat-dock-auto-hide': 'device',
+  'chat-auto-float-browser': 'device',
   'diff-style': 'device',
   'diff-wrap': 'device',
   theme: 'device',

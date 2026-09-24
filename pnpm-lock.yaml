@@ -310,6 +310,9 @@ importers:
       pino-pretty:
         specifier: ^13.1.3
         version: 13.1.3
+      playwright-core:
+        specifier: 1.62.1
+        version: 1.62.1
       react-markdown:
         specifier: ^10.1.0
         version: 10.1.0(@types/react@19.2.18)(react@19.2.8)(supports-color@7.2.0)

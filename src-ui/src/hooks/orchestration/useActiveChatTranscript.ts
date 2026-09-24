@@ -4,6 +4,7 @@ import { projectRuntimeEventsToMessages } from '@kontourai/station-shared/runtim
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import type { ChatMessage, ChatSession } from '../../types';
+import { serverTurnLive } from '../../utils/conversation-activity';
 import { isSessionExecutionActive } from '../../utils/execution';
 import { CHAT_ERROR_MARKER_PREFIX } from '../../utils/sessionFailure';
 import { extractUIBlocks } from '../../utils/uiBlocks';
@@ -230,6 +231,9 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
     previousTurnStartedAt.current = session.openTurnStartedAt;
     previousShellSuperseded.current = session.openTurnShellSuperseded;
     if (!enabled || replay || !session.orchestrationTurnOpen) return;
+    // #2309: with a server activity record the clock reads the record's
+    // open-turn start; this seed is only the older-server fallback.
+    if (session.conversationActivity) return;
     if (session.openTurnStartedAt !== undefined) return;
     if (window.events === eventsReadBeforeClear.current) return;
     const startedAt = openTurnStartFromWindow(
@@ -257,6 +261,7 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
     session.openTurnShellSuperseded,
     session.openTurnStartedAt,
     session.orchestrationTurnOpen,
+    session.conversationActivity,
     window.events,
   ]);
   const checkpointKey = `${apiBase}\0${session.id}\0${checkpointRevision}`;
@@ -423,12 +428,19 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
         answerEligible: message.metadata?.answerEligible,
         provenance: message.metadata?.provenance,
       }));
+    // #2309: the server's record when it sent one; the legacy fold otherwise.
     const active =
-      session.orchestrationTurnOpen ||
-      isSessionExecutionActive({
-        orchestrationStatus: session.orchestrationStatus,
+      serverTurnLive({
+        conversationActivity: session.conversationActivity,
         status: session.status,
-      });
+        sendAwaitingTurnStart: session.sendAwaitingTurnStart,
+        stopSettledTurnId: session.stopSettledTurnId,
+      }) ??
+      (session.orchestrationTurnOpen ||
+        isSessionExecutionActive({
+          orchestrationStatus: session.orchestrationStatus,
+          status: session.status,
+        }));
     const currentPendingClientId = active
       ? [...session.messages]
           .reverse()
@@ -669,6 +681,9 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
     session.orchestrationStatus,
     session.orchestrationTurnOpen,
     session.status,
+    session.conversationActivity,
+    session.sendAwaitingTurnStart,
+    session.stopSettledTurnId,
     changedFilesByTurn,
     window.events,
     window.sessionLineage,

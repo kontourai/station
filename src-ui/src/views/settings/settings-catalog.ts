@@ -431,6 +431,15 @@ const SETTINGS_CATALOG_SOURCE = [
     keywords: ['collapse idle dock'],
     configKeys: ['chatDockAutoHide'],
   },
+  // #90 D9: the float-over-chat's auto-show preference, also in the in-chat
+  // gear panel. It is a member of the `featureSettings` composite.
+  {
+    id: 'chat-auto-float-browser',
+    title: 'Automatically show agent browser sessions',
+    section: 'chat',
+    keywords: ['float over chat', 'mini player', 'browser', 'agent browser'],
+    configKeys: ['featureSettings'],
+  },
   {
     id: 'diff-style',
     title: 'Diff view style',

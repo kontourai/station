@@ -18,7 +18,7 @@ describe('Workspace browser preview contract', () => {
         name: 'workspace-browser-preview',
       },
       placement: {
-        supportedRegions: ['primary', 'secondary', 'standalone'],
+        supportedRegions: ['primary', 'secondary', 'standalone', 'docked'],
         preferredRegion: 'secondary',
       },
       modes: [

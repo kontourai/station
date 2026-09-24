@@ -93,6 +93,16 @@ export const PAGE_SESSION_CDP_ALLOWLIST: readonly string[] = Object.freeze([
   'Page.startScreencast',
   'Page.stopScreencast',
   'Page.screencastFrameAck',
+  // Answering a JavaScript dialog. A headless dialog is invisible and holds
+  // the input that opened it pending, so the screencast producer must answer
+  // every one (live-surface producer contract); it only dismisses or accepts,
+  // it cannot open anything.
+  'Page.handleJavaScriptDialog',
+  // An isolated script world for the agent tools' own reads and locators
+  // (#90 #122/#123): the page's JavaScript cannot redefine what Station's
+  // code sees there (prototypes, globals). Never with universal access,
+  // which would grant the world cross-origin reach (refused below).
+  'Page.createIsolatedWorld',
   // Input the human or agent sends into the page (the lease decides who).
   'Input.dispatchMouseEvent',
   'Input.dispatchKeyEvent',
@@ -151,6 +161,8 @@ const PAGE_SESSION_CDP_ALLOWED = new Set(PAGE_SESSION_CDP_ALLOWLIST);
  *   selectAll) outside the page's own permission checks;
  * - `Page.reload.scriptToEvaluateOnLoad` is script evaluation by another
  *   name; the D4 eval tool will get its own gated path.
+ * - `Page.createIsolatedWorld.grantUniveralAccess` would let the world reach
+ *   across origins.
  */
 function refusedCdpParam(
   method: string,
@@ -171,6 +183,14 @@ function refusedCdpParam(
     return 'commands';
   if (method === 'Page.reload' && p.scriptToEvaluateOnLoad !== undefined)
     return 'scriptToEvaluateOnLoad';
+  // CDP spells it `grantUniveralAccess`; refuse both spellings.
+  if (
+    method === 'Page.createIsolatedWorld' &&
+    ((p.grantUniveralAccess !== undefined && p.grantUniveralAccess !== false) ||
+      (p.grantUniversalAccess !== undefined &&
+        p.grantUniversalAccess !== false))
+  )
+    return 'grantUniveralAccess';
   return undefined;
 }
 
@@ -549,10 +569,18 @@ export class ChromiumServerHost implements BrowserHost {
           width: p.viewport.width,
           height: p.viewport.height,
           deviceScaleFactor: p.viewport.deviceScaleFactor,
-          mobile: false,
+          mobile: p.viewport.mobile === true,
         },
         sessionId,
       );
+      // A mobile viewport takes touch input, exactly as the session
+      // registry's viewport change applies it.
+      if (p.viewport.mobile === true)
+        await transport.send(
+          'Emulation.setTouchEmulationEnabled',
+          { enabled: true },
+          sessionId,
+        );
       return { targetId, cdpSessionId: sessionId };
     } catch (error) {
       await this.closeTarget(targetId).catch(() => {});

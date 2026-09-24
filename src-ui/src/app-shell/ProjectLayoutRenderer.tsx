@@ -699,9 +699,10 @@ function BuiltinCodingLayoutHost({
       candidate.availability.state === 'available' &&
       isCanonicalBuiltinFilePreviewDescriptor(candidate.descriptor),
   );
+  // The Browser pane's catalogue entry, whether or not the server issued
+  // its per-Project occurrence (#90 wave 2 issues one for the Add-pane grid).
   const browserPreviewEntry = catalog.entries.find(
     (candidate) =>
-      !candidate.instance &&
       candidate.descriptor.id ===
         WORKSPACE_BROWSER_PREVIEW_PANE_DESCRIPTOR_ID &&
       isCanonicalBuiltinBrowserPreviewDescriptor(candidate.descriptor),

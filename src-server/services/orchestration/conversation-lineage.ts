@@ -930,7 +930,12 @@ export class ConversationLineage {
         if (session.pendingReview !== undefined) {
           item.pendingReview = session.pendingReview;
         }
-        if (session.hasActiveTurn !== undefined) {
+        // #2309: the conversation-wide activity fold answers when present.
+        if (session.conversationActivity) {
+          item.activity = session.conversationActivity;
+          item.hasActiveTurn =
+            session.conversationActivity.openTurn !== undefined;
+        } else if (session.hasActiveTurn !== undefined) {
           item.hasActiveTurn = session.hasActiveTurn;
         }
         return item;
