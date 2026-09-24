@@ -14,6 +14,12 @@ mod notification_watch;
 mod local_access_watch;
 #[cfg(not(mobile))]
 mod desktop_companion;
+// Foundation only: this module owns native proof-key custody and signing but
+// is intentionally not registered as renderer IPC or wired to app traffic.
+#[cfg(not(mobile))]
+pub(crate) mod native_relay_proof_key;
+#[cfg(not(mobile))]
+mod native_relay_redemption;
 #[cfg(not(mobile))]
 mod relay_grant_vault;
 mod pairing_deep_link_channels_generated;

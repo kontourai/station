@@ -24,3 +24,7 @@ d23831f8a93620c2266ba9851043a256eaf7f17a:packages/cli/src/commands/delegate.ts:g
 # at new historical fingerprints; neither is a credential or a private key.
 face98c2f17115cf37450f5fb83b377e4a5e45cb:src-server/routes/plugins/__tests__/plugin-preview-untrusted-manifest.test.ts:generic-api-key:34
 face98c2f17115cf37450f5fb83b377e4a5e45cb:src-server/services/projects/__tests__/git-guards.test.ts:private-key:141
+# The broker v2 golden fixture contains only SHA-256("native-route-invitation/v2:" +
+# a synthetic repeated-A invitation secret). This exempts its one historical
+# digest literal, not future matches in the file.
+ed19e3a3d7095b97e31eb3b2a372787ff5172ba3:src-server/services/connections/__tests__/self-hosted-broker-service.test.ts:generic-api-key:127

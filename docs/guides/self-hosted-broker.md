@@ -26,6 +26,56 @@ Connector and routing credentials are separate 256-bit secrets. Every request mu
 
 This tranche provisions one operator-owned routing credential for one Station and browser Origin. It is not per-Device enrollment or revocation, does not bootstrap an account, and does not complete routine fresh-client onboarding. The connector and optional Pion runtime below consume this routing scope. The broker cannot mint or replace independently approved connection-signing trust.
 
+## Native routing grant foundation (v2)
+
+The broker database upgrades additively from schema v2 through v4. Native
+invitation and grant metadata lives in separate tables, and native connection
+offers live in their own v4 table; existing browser v1 wire records, Origin
+checks, owner tables, and signaling behavior are unchanged. A native surface is
+discriminated as `station-native` and binds the app identifier, one of the
+actual `dev`, `stable`, `beta`, or `nightly` channels, a client instance UUID,
+and a P-256 proof-key thumbprint. The operator must choose that thumbprint from
+an independently approved native install key. The descriptive app/channel
+fields are bound as metadata; this exchange does not provide OS app attestation.
+
+`POST /broker/v1/native/grants/redeem` accepts only a v2 invitation and an
+ES256 compact JWS proof from its bound key. The signed payload uses UTF-8 JSON
+with exact property order and binds audience `station-self-hosted-broker`,
+purpose `redeem-native-route-invitation`, v2 version, broker origin, Station,
+enrollment, routing generation, Station signing-key ID and generation, every
+native surface field, invitation ID, the domain-separated SHA-256 digest of the
+invitation secret, expiry, and a 32-byte client nonce. The protected header is
+exactly `{ "alg": "ES256", "typ": "station-broker-native-redemption+jws" }`.
+The secret itself is never copied into the JWS. The server checks the public
+key's JWK thumbprint and verifies the signature before consuming the invitation
+and publishing a grant in one SQLite transaction. The endpoint refuses
+`Origin`, cookies, and browser credentials; those checks do not replace the
+signature. The one-use invite secret and key proof authorize only routing.
+
+Native grants can be independently inventoried and revoked by the broker
+service, and their stored credential is hashed. The native grant defaults to
+and is capped at 24 hours; browser v1 retains its separate 30-day cap. There is
+no native grant renewal flow yet. Ongoing native onboarding needs
+operator-backed renewal or per-request proof-of-possession before general
+enablement. Native invitations and grants are retired with their Station
+routing generation. V1 redemption rejects v2
+invitations, and native-v2 redemption rejects v1 invitations. This foundation
+adds versioned v2 native `open`, `read`, and `retire` operations. Host requests
+carry the exact Station/enrollment/routing generation and native surface with
+the grant bearer; they send no browser Origin or cookies. V2 offers contain an
+explicit protocol version, full surface, Station signing-key ID, and signing
+generation. They are stored separately and never appear in v1 offer pages.
+
+The Station connector exposes `pollNative()` only when a caller explicitly
+supplies a native offer adapter bound to one exact surface. Before that callback
+can allocate a peer, it checks the offer's Station key thumbprint and generation
+against current approved Station trust. The production Pion runtime does not
+register this adapter, and its ordinary `poll()` never reads native offers.
+Native signalling therefore does not enable application ingress, encrypted
+application traffic, or native UI onboarding. Several native installations can
+hold separate grants; connector fan-out across multiple native surfaces remains
+future work.
+
 Connection offers use a caller-chosen client ID and nonce, expire after 30 seconds, and remain replay tombstones for five minutes. Each Station may hold 32 live offers and the broker 1024. Offer and answer SDP are capped at 128 KiB; the opaque Station proof uses its owning 4 KiB contract limit. A connection accepts one answer. Withdrawal and a newer routing generation invalidate pending work without changing Station signing-key trust. Lease renewal uses an explicit revision CAS.
 
 The service binds only to loopback. TLS termination, reverse-proxy hardening, public deployment, production connector lifecycle, and application transport remain later integration work under #1963.
@@ -42,11 +92,14 @@ This composition does not distribute routing credentials, approve a new client s
 
 ## HTTP control contract
 
-Every control request is a POST under `/broker/v1`, with JSON `scope`, an exact
-configured `Origin`, `Authorization: Bearer <routing-or-connector-secret>` and
-`X-Broker-Credential-Id`. These are broker credentials, never Station Device or
-account credentials. The request body is capped at 256 KiB. The client refuses
-redirects and bounds each response to 1 MiB and 15 seconds.
+Browser v1 control requests are POSTs under `/broker/v1`, with JSON `scope`, an
+exact configured `Origin`, `Authorization: Bearer <routing-or-connector-secret>`
+and `X-Broker-Credential-Id`. These are broker credentials, never Station
+Device or account credentials. The native v2 redemption endpoint is the sole
+exception: it has no browser Origin and accepts no cookies or v1 credentials;
+its authority is the invitation-bound ES256 key proof described above. The
+request body is capped at 256 KiB. Clients refuse redirects and bound each
+response to 1 MiB and 15 seconds.
 
 | Suffix | Credential | Additional body / result |
 | --- | --- | --- |
@@ -54,6 +107,15 @@ redirects and bounds each response to 1 MiB and 15 seconds.
 | `/leases/renew` | Connector | `expectedRevision`; returns next revision and expiry |
 | `/leases/withdraw` | Connector | Retires this routing generation and pending offers |
 | `/stations/status` | Routing | Returns presence, routing generation and lease expiry |
+| `/native/grants/invitations/issue` | Operator routing credential | Exact native surface and independently approved proof-key thumbprint |
+| `/native/grants/list` | Operator routing credential | Native grant binding metadata and expiry/revocation state; no credentials |
+| `/native/grants/revoke` | Operator routing credential | Exact native `grantId`; retires only that routing grant |
+| `/native/grants/redeem` | Bound native P-256 key | V2 invitation plus exact ES256 proof; no browser Origin |
+| `/native/connections/open` | Native grant bearer | Exact v2 open record and native surface; no Origin or cookies |
+| `/native/connections/read` | Native grant bearer | Own attempt by nonce and exact surface; no Origin or cookies |
+| `/native/grants/retire` | Native grant bearer | Retires only the caller's native grant; no Origin or cookies |
+| `/native/connections/offers` | Connector | Versioned native offers for one exact surface |
+| `/native/connections/answer` | Connector | Answer SDP and Station proof for the bound native offer |
 | `/connections` | Routing | `connection: {clientId, nonce, offerSdp}` opens one attempt |
 | `/connections/offers` | Connector | `limit: 1`; returns at most one offer per page |
 | `/connections/answer` | Connector | Exact attempt IDs, answer SDP and opaque Station proof |
