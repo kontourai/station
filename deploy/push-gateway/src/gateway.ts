@@ -83,7 +83,7 @@ export async function handleRequest(
 
   let sender = senders.get(config.serviceAccount);
   if (!sender) {
-    sender = new FcmSender(config.serviceAccount, config.fetchImpl ?? fetch);
+    sender = new FcmSender(config.serviceAccount, config.fetchImpl);
     senders.set(config.serviceAccount, sender);
   }
   const outcome = await sender.send(parsed.request);

@@ -227,3 +227,29 @@ test('reports unconfigured delivery, oversize bodies and unknown routes', async 
     200,
   );
 });
+
+test('calls the global fetch unbound, as the Workers runtime requires', async () => {
+  // Workers rejects fetch invoked with any other `this` ("Illegal invocation");
+  // Node does not, so reproduce the rule here.
+  const original = globalThis.fetch;
+  const { calls, fetchImpl } = upstream(() => Response.json({}));
+  globalThis.fetch = function (
+    this: unknown,
+    input: RequestInfo | URL,
+    init?: RequestInit,
+  ) {
+    if (this !== undefined && this !== globalThis) {
+      throw new TypeError(
+        'Illegal invocation: function called with incorrect `this` reference.',
+      );
+    }
+    return fetchImpl(input, init);
+  } as typeof fetch;
+  try {
+    const response = await send(await config({ fetchImpl: undefined }));
+    assert.equal(response.status, 200);
+    assert.equal(calls.filter((call) => call.url.includes('fcm')).length, 1);
+  } finally {
+    globalThis.fetch = original;
+  }
+});

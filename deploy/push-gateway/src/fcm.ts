@@ -92,7 +92,9 @@ export class FcmSender {
 
   constructor(
     account: ServiceAccount,
-    fetchImpl: typeof fetch = fetch,
+    // Workers throws "Illegal invocation" when fetch is called as a method of
+    // another object, so the default must be a wrapper, not the bare global.
+    fetchImpl: typeof fetch = (input, init) => fetch(input, init),
     now: () => number = () => Math.floor(Date.now() / 1000),
   ) {
     this.account = account;
@@ -112,8 +114,16 @@ export class FcmSender {
       }),
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
-    if (!response.ok)
-      throw new Error(`token exchange failed with ${response.status}`);
+    if (!response.ok) {
+      // Google's error code (e.g. invalid_grant) names the cause; the body
+      // never contains the key or the assertion.
+      const detail = (await response.json().catch(() => null)) as {
+        error?: unknown;
+      } | null;
+      throw new Error(
+        `token exchange failed with ${response.status} ${String(detail?.error ?? '')}`.trim(),
+      );
+    }
     const body = (await response.json()) as { access_token?: unknown };
     if (typeof body.access_token !== 'string')
       throw new Error('token exchange returned no access_token');
@@ -128,7 +138,11 @@ export class FcmSender {
     let accessToken: string;
     try {
       accessToken = await this.accessToken();
-    } catch {
+    } catch (error) {
+      console.error(
+        'fcm access token unavailable:',
+        error instanceof Error ? error.message : 'unknown error',
+      );
       return { kind: 'unavailable', status: 503 };
     }
     const response = await this.fetchImpl(
