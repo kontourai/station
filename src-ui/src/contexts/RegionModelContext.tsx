@@ -852,19 +852,21 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
 
   // The layer is a bottom-only device's (review M3): when the fold opens (a
   // narrow window widened, split view resized) the layer ENDS where it
-  // stands (`endPhonePaneLayerInPlace`): its pane stays visible, selected
-  // and mounted as an ordinary tab — the device now has a tab strip — and
-  // only the maximize the layer added is undone. That arrangement is also
-  // what is saved: a pane the layer moved out of another region stays in the
-  // layer's region (moving it back would remount it and hide what the user
-  // was reading; the user can move it). The history entry goes with the
-  // registration.
+  // stands (`endPhonePaneLayerInPlace`). A pane the layer moved out of
+  // another region goes back there — shown and selected if the reader was
+  // looking at it — unless its own unsaved-changes guard is registered
+  // (dirty): the move remounts the pane, so a dirty one stays where it is,
+  // an ordinary tab of Chat's region (gap G4). The maximize the layer added
+  // is undone, and the arrangement that results is the one saved. The
+  // history entry goes with the registration.
   useEffect(() => {
     if (bottomOnly) return;
     const layer = phoneLayerRef.current;
     if (!layer) return;
     setPhoneLayer(null);
-    const next = endPhonePaneLayerInPlace(regionsRef.current, layer);
+    const next = endPhonePaneLayerInPlace(regionsRef.current, layer, {
+      returnToOrigin: !navigationStore.hasNavigationGuard(layer.surfaceId),
+    });
     if (next === regionsRef.current) {
       navigationStore.lastDockMaximized = layerDockMemoryRef.current;
       return;

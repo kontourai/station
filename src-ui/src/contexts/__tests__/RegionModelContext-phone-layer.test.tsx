@@ -566,14 +566,12 @@ describe('a pane opened on a phone opens over Chat', () => {
     await waitFor(() => expect(onLayerEntry()).toBe(false));
   });
 
-  // The fold-open ending (decided in rounds 4–5): the layer ends in place.
-  // A pane it moved out of a hidden side region stays where the user is
-  // looking at it — visible, selected, mounted as a tab of Chat's region —
-  // and that live arrangement is exactly what is saved. It is NOT returned
-  // to its origin, live or in the record (round 5 removed that projection:
-  // it disagreed with the live state across later layers, the persist
-  // early-return and cross-tab adoption). The user can move it.
-  test('widening out of the fold keeps a moved pane on screen, and saves exactly that arrangement', async () => {
+  // Gap G4: when the fold opens, a pane the layer moved out of a hidden side
+  // region goes BACK there — shown and selected, since the reader was looking
+  // at it — unless its own unsaved-changes guard is dirty, in which case it
+  // stays a tab of Chat's region (the move would remount it). Either way the
+  // saved record is exactly the live arrangement.
+  async function widenWithMovedPane(dirty: boolean) {
     Object.defineProperty(window, 'innerWidth', {
       configurable: true,
       value: 600,
@@ -605,6 +603,13 @@ describe('a pane opened on a phone opens over Chat', () => {
     act(() => {
       current().openSurfaceInRegion(PR);
     });
+    const unregister = dirty
+      ? navigationStore.registerNavigationGuard(
+          Symbol('pane-draft'),
+          (proceed) => proceed(),
+          PR,
+        )
+      : () => {};
     await waitFor(() => expect(current().phoneLayer).not.toBeNull());
     Object.defineProperty(window, 'innerWidth', {
       configurable: true,
@@ -612,6 +617,31 @@ describe('a pane opened on a phone opens over Chat', () => {
     });
     act(() => window.dispatchEvent(new Event('resize')));
     await waitFor(() => expect(current().phoneLayer).toBeNull());
+    await settle();
+    unregister();
+    expect(record()).toBe(
+      JSON.stringify(toRegionArrangementRecord(current().regions)),
+    );
+    return before;
+  }
+
+  test('widening out of the fold returns a clean moved pane to its region, on screen', async () => {
+    const before = await widenWithMovedPane(false);
+    expect(current().regions.right).toMatchObject({
+      panes: [PR],
+      occupant: PR,
+      visible: true,
+    });
+    expect(current().regions.bottom).toMatchObject({
+      panes: ['chat'],
+      occupant: 'chat',
+      maximized: false,
+    });
+    expect(before).toContain(PR);
+  });
+
+  test('widening out of the fold leaves a pane with unsaved changes where it is', async () => {
+    await widenWithMovedPane(true);
     expect(current().regions.bottom).toMatchObject({
       panes: ['chat', PR],
       occupant: PR,
@@ -619,11 +649,6 @@ describe('a pane opened on a phone opens over Chat', () => {
       maximized: false,
     });
     expect(current().regions.right.panes).toEqual([]);
-    await settle();
-    expect(record()).not.toBe(before);
-    expect(record()).toBe(
-      JSON.stringify(toRegionArrangementRecord(current().regions)),
-    );
   });
 
   // Round-4 review M1: a guard that never answers (its component unmounted
