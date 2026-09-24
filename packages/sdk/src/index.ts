@@ -157,22 +157,29 @@ export {
 export type { InvokeRunReceipt } from './api-agent-runtime';
 export { hasCapability } from './capability';
 export type {
+  ClientRawEgressPolicy,
+  ClientRawEgressPolicyResolver,
   FetchSseConnection,
   FetchSseMessage,
   JsonEnvelope,
 } from './client/http';
 export {
+  assertClientRawEgressAllowed,
   authenticatedFetch,
   envelopeFailureMessage,
   fetchSSE,
+  getClientRawEgressPolicy,
   getJson,
   mutateJson,
   notifyCredentialChanged,
   readEnvelopeOrThrow,
   StationCredentialConflictError,
   StationHttpError,
+  StationRawEgressUnavailableError,
   StationReadOnlyError,
+  StationRequestAuthorityError,
   setClientCredentialResolver,
+  setClientRawEgressPolicyResolver,
 } from './client/http';
 export {
   applyProjectLayout,

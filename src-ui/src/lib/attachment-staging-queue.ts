@@ -9,6 +9,7 @@ import {
 import type { ApiRequestScope } from '@kontourai/station-sdk/client';
 import {
   type AttachmentStageUploadTransport,
+  assertClientRawEgressAllowed,
   getAttachmentStagingCapability,
   prepareAttachmentStage,
   uploadAttachmentStage,
@@ -70,6 +71,10 @@ export async function stageComposerAttachments(
 ): Promise<ComposerAttachmentDispatch> {
   const inputs = attachments.map(inputFor);
   if (inputs.length === 0) return { kind: 'legacy-inline', attachments: [] };
+  // Refuse before asking the selected Station for staging grants. The eventual
+  // upload uses raw XHR/fetch and cannot travel through the broker application
+  // channel, even when an explicit grant is supplied by the prepare response.
+  assertClientRawEgressAllowed(apiBase, 'attachment upload', requestScope);
   for (const input of inputs)
     observer?.({
       clientAttachmentId: input.clientAttachmentId,

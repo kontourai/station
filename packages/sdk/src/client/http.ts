@@ -90,6 +90,71 @@ export interface ApiRequestScope {
   authorityKey: string;
 }
 
+/** Explicit selected-route policy for browser features that cannot use the SDK transport. */
+export interface ClientRawEgressPolicy {
+  kind: 'direct' | 'broker';
+  apiBase: string;
+  connectionId: string;
+  activationEpoch: string;
+  authorityKey?: string;
+  isCurrent: () => boolean;
+}
+
+export type ClientRawEgressPolicyResolver = () =>
+  | ClientRawEgressPolicy
+  | undefined;
+
+let rawEgressPolicyResolver: ClientRawEgressPolicyResolver | undefined;
+
+/** Install the host's live selected-route egress policy. */
+export function setClientRawEgressPolicyResolver(
+  resolver?: ClientRawEgressPolicyResolver,
+): void {
+  rawEgressPolicyResolver = resolver;
+}
+
+/** Read the current explicit route policy without inspecting transport presence. */
+export function getClientRawEgressPolicy(): ClientRawEgressPolicy | undefined {
+  return rawEgressPolicyResolver?.();
+}
+
+export type ClientRawEgressChannel = 'attachment upload' | 'terminal' | 'voice';
+
+/** Raised before content can leave through a browser API outside SDK transport. */
+export class StationRawEgressUnavailableError extends Error {
+  constructor(channel: ClientRawEgressChannel) {
+    super(
+      `Browser broker routes do not support direct ${channel} connections yet. Select a direct Station connection to use this feature.`,
+    );
+    this.name = 'StationRawEgressUnavailableError';
+  }
+}
+
+/** Fail before raw browser dispatch when the selected Station is a broker route. */
+export function assertClientRawEgressAllowed(
+  apiBase: string,
+  channel: ClientRawEgressChannel,
+  expected?: string | ApiRequestScope,
+): void {
+  const policy = getClientRawEgressPolicy();
+  if (!policy) return;
+  if (!policy.isCurrent()) throw new StationRequestAuthorityError();
+  if (policy.kind === 'broker' && sameOrigin(apiBase, policy.apiBase)) {
+    throw new StationRawEgressUnavailableError(channel);
+  }
+  if (typeof expected === 'string' && policy.connectionId !== expected) {
+    throw new StationRequestAuthorityError();
+  }
+  if (
+    expected &&
+    typeof expected === 'object' &&
+    (policy.apiBase !== expected.apiBase ||
+      (policy.authorityKey !== undefined &&
+        policy.authorityKey !== expected.authorityKey))
+  )
+    throw new StationRequestAuthorityError();
+}
+
 export function isApiRequestScope(
   value: ApiRequestScope | undefined,
 ): value is ApiRequestScope {
