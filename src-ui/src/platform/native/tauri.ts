@@ -1,3 +1,4 @@
+import { readNativeCommandError } from './nativeCommandError';
 import { validateNativeShareText } from './share';
 import { invokeTauri } from './tauriInvoke';
 import type {
@@ -5,6 +6,9 @@ import type {
   BundledServerPhase,
   BundledServerStatus,
   HapticFeedbackKind,
+  NativeAgentActivityPushToken,
+  NativeAgentActivityRegistration,
+  NativeAgentActivityStatus,
   NativeBrowserPreviewGrantResult,
   NativeBrowserPreviewHostErrorCode,
   NativeBrowserPreviewObservation,
@@ -12,6 +16,7 @@ import type {
   NativeCapabilityId,
   NativeCapabilityReport,
   NativeCapabilityStatus,
+  NativeCommandName,
   NativeCommandResult,
   NativeConsentOutcome,
   NativeEventSubscription,
@@ -119,7 +124,8 @@ const INITIAL_TAURI_CAPABILITIES: Record<
   'remote-push': {
     id: 'remote-push',
     state: 'unsupported',
-    reason: 'Closed-app push requires provisioned APNs or FCM delivery.',
+    reason:
+      'The native host must report closed-app push support before it can be used.',
   },
   'share-intake': {
     id: 'share-intake',
@@ -555,6 +561,54 @@ function parseBundledServerStatus(value: unknown): BundledServerStatus | null {
 function errorMessage(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
   return message.slice(0, 500);
+}
+
+/** Tauri plugin id of the Android agent-activity plugin (src-desktop/plugins/agent-activity). */
+const AGENT_ACTIVITY_PLUGIN = 'plugin:station-agent-activity';
+
+function parseAgentActivityStatus(
+  value: unknown,
+): NativeAgentActivityStatus | null {
+  if (typeof value !== 'object' || value === null) return null;
+  const candidate = value as Record<string, unknown>;
+  const booleans = [
+    'notificationsEnabled',
+    'liveUpdatesSupported',
+    'promotionAllowed',
+    'pushConfigured',
+    'configured',
+  ] as const;
+  if (
+    !Number.isSafeInteger(candidate.sdkInt) ||
+    typeof candidate.packageName !== 'string' ||
+    candidate.packageName.length === 0 ||
+    booleans.some((key) => typeof candidate[key] !== 'boolean')
+  )
+    return null;
+  return {
+    sdkInt: candidate.sdkInt as number,
+    packageName: candidate.packageName,
+    notificationsEnabled: candidate.notificationsEnabled as boolean,
+    liveUpdatesSupported: candidate.liveUpdatesSupported as boolean,
+    promotionAllowed: candidate.promotionAllowed as boolean,
+    pushConfigured: candidate.pushConfigured as boolean,
+    configured: candidate.configured as boolean,
+  };
+}
+
+function parseAgentActivityPushToken(
+  value: unknown,
+): NativeAgentActivityPushToken | null {
+  if (typeof value !== 'object' || value === null) return null;
+  const candidate = value as Record<string, unknown>;
+  if (candidate.state === 'unconfigured') return { state: 'unconfigured' };
+  if (
+    candidate.state === 'available' &&
+    typeof candidate.token === 'string' &&
+    candidate.token.length > 0
+  )
+    return { state: 'available', token: candidate.token };
+  return null;
 }
 
 /** The sole Tauri SDK adapter for Station's React application. */
@@ -1219,6 +1273,111 @@ export class TauriNativePlatformAdapter implements NativePlatformAdapter {
         status: 'error',
         command: 'review-consent-natively',
         message: errorMessage(error),
+      };
+    }
+  }
+  async agentActivityStatus(): Promise<
+    NativeCommandResult<NativeAgentActivityStatus>
+  > {
+    return this.agentActivityCommand(
+      'agent-activity-status',
+      'status',
+      undefined,
+      parseAgentActivityStatus,
+    );
+  }
+
+  async agentActivityPushToken(): Promise<
+    NativeCommandResult<NativeAgentActivityPushToken>
+  > {
+    return this.agentActivityCommand(
+      'agent-activity-push-token',
+      'push_token',
+      undefined,
+      parseAgentActivityPushToken,
+    );
+  }
+
+  async configureAgentActivity(
+    registration: NativeAgentActivityRegistration,
+  ): Promise<NativeCommandResult<void>> {
+    return this.agentActivityCommand(
+      'configure-agent-activity',
+      'configure',
+      {
+        registrationId: registration.registrationId,
+        stationId: registration.stationId,
+        stationKey: registration.stationKey,
+        payloadKey: registration.payloadKey,
+        ongoingEnabled: registration.ongoingEnabled,
+      },
+      () => undefined,
+    );
+  }
+
+  async clearAgentActivity(
+    registrationId: string,
+  ): Promise<NativeCommandResult<void>> {
+    return this.agentActivityCommand(
+      'clear-agent-activity',
+      'clear',
+      { registrationId },
+      () => undefined,
+    );
+  }
+
+  async openLiveUpdateSettings(): Promise<
+    NativeCommandResult<{ opened: boolean }>
+  > {
+    return this.agentActivityCommand(
+      'open-live-update-settings',
+      'open_live_update_settings',
+      undefined,
+      (value) =>
+        typeof value === 'object' &&
+        value !== null &&
+        typeof (value as { opened?: unknown }).opened === 'boolean'
+          ? { opened: (value as { opened: boolean }).opened }
+          : null,
+    );
+  }
+
+  /**
+   * The plugin is compiled into Android builds only, so the host's
+   * `remote-push` report — not a guess about the platform — decides whether
+   * a call is attempted at all.
+   */
+  private async agentActivityCommand<T>(
+    command: NativeCommandName,
+    pluginCommand: string,
+    args: Record<string, unknown> | undefined,
+    parse: (value: unknown) => T | null,
+  ): Promise<NativeCommandResult<T>> {
+    const capability = this.capabilities['remote-push'];
+    if (capability.state !== 'enabled') {
+      return { status: 'unsupported', command, reason: capability.reason };
+    }
+    try {
+      const raw = await this.bridge.invoke<unknown>(
+        `${AGENT_ACTIVITY_PLUGIN}|${pluginCommand}`,
+        args,
+      );
+      const value = parse(raw);
+      if (value === null) {
+        return {
+          status: 'error',
+          command,
+          message: `The agent-activity plugin returned an invalid ${pluginCommand} result.`,
+        };
+      }
+      return { status: 'ok', value };
+    } catch (error) {
+      // Plugin rejections arrive as a plain string or `{ message }`, not an
+      // Error; keep the plugin's own words rather than "[object Object]".
+      return {
+        status: 'error',
+        command,
+        message: readNativeCommandError(error).message.slice(0, 500),
       };
     }
   }

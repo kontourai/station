@@ -78,6 +78,60 @@ describe('mobile permission audit', () => {
     );
   });
 
+  const withLibraryPermissions = androidManifest.replace(
+    '<activity',
+    [
+      'android.permission.VIBRATE',
+      'android.permission.POST_PROMOTED_NOTIFICATIONS',
+      'com.google.android.c2dm.permission.RECEIVE',
+      'io.kontourai.station.nightly.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION',
+    ]
+      .map((name) => `<uses-permission android:name="${name}" />\n`)
+      .join('') + '<activity',
+  );
+
+  test('accepts reviewed library permissions in a merged/package manifest', () => {
+    expect(() =>
+      auditMobilePermissions({
+        androidManifest,
+        packagedAndroidManifests: [
+          ['release/AndroidManifest.xml', withLibraryPermissions],
+        ],
+        androidDataExtractionRules,
+        iosInfo,
+      }),
+    ).not.toThrow();
+  });
+
+  test('rejects library permissions declared in the source manifest', () => {
+    expect(() =>
+      auditMobilePermissions({
+        androidManifest: withLibraryPermissions,
+        androidDataExtractionRules,
+        iosInfo,
+      }),
+    ).toThrow(/Android source manifest permissions drifted/);
+  });
+
+  test('rejects a dynamic-receiver permission owned by another app', () => {
+    expect(() =>
+      auditMobilePermissions({
+        androidManifest,
+        packagedAndroidManifests: [
+          [
+            'release/AndroidManifest.xml',
+            androidManifest.replace(
+              '<activity',
+              '<uses-permission android:name="com.example.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION" />\n<activity',
+            ),
+          ],
+        ],
+        androidDataExtractionRules,
+        iosInfo,
+      }),
+    ).toThrow(/permissions drifted/);
+  });
+
   test('keeps the maintained native keyboard resize contract', () => {
     expect(() =>
       auditMobilePermissions({
