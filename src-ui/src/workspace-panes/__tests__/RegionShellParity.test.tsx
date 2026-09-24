@@ -1102,7 +1102,12 @@ describe('RegionShells mounts one shell per occupied region (#928)', () => {
   // command every surviving surface offers — no matchMedia stub, so
   // `availablePlacements` reads the real coarse provider, which is the half
   // the old name was about.
-  test('re-showing a hidden Activity region folds Chat out through the real coarse provider', async () => {
+  // Was "re-showing a hidden Activity region folds Chat out": before the
+  // phone layer, the show made `right` the one visible dock region and
+  // Chat's shell unmounted. The layer opens Activity OVER Chat instead — it
+  // leaves `right` for Chat's region and renders in Chat's shell — so the
+  // same command now proves the coarse provider takes the layer path.
+  test('re-showing a hidden Activity region opens it over Chat through the real coarse provider', async () => {
     Object.defineProperty(window, 'innerWidth', {
       configurable: true,
       value: 390,
@@ -1127,19 +1132,24 @@ describe('RegionShells mounts one shell per occupied region (#928)', () => {
     selectRegionCommand('Show Activity in the dock');
 
     await waitFor(() =>
-      expect(
-        document.querySelector('section[aria-label="Activity"]'),
-      ).not.toBeNull(),
+      expect(currentRegionModel().regions.bottom).toMatchObject({
+        panes: ['chat', 'activity'],
+        occupant: 'activity',
+        visible: true,
+      }),
     );
     expect(
       foldedDockRegion(
         currentRegionModel().regions,
         currentRegionModel().lastShownRegion,
       ),
-    ).toBe('right');
-    expect(currentRegionModel().regions.right.visible).toBe(true);
-    expect(currentRegionModel().regions.bottom.visible).toBe(false);
-    expect(document.querySelector('#chat-dock')).toBeNull();
+    ).toBe('bottom');
+    expect(currentRegionModel().regions.right.panes).toEqual([]);
+    // One shell, Chat's: Activity is a pane in it, not a second dock.
+    await waitFor(() =>
+      expect(document.querySelector('#chat-dock')).not.toBeNull(),
+    );
+    expect(document.querySelectorAll('.chat-dock')).toHaveLength(1);
   });
 
   test('rotating a two-visible-occupant desktop layout to coarse keeps only the last shown occupant', async () => {
