@@ -2,6 +2,20 @@
 
 import { fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+
+// pdf.js is the module boundary for the canvas viewer (jsdom has no canvas or
+// workers); the previewer's choice between frame and canvas is real.
+const pdfjs = vi.hoisted(() => ({ getDocument: vi.fn() }));
+vi.mock('pdfjs-dist', () => ({
+  getDocument: pdfjs.getDocument,
+  PDFWorker: { create: () => ({ destroy: () => undefined }) },
+}));
+vi.mock('pdfjs-dist/build/pdf.worker.min.mjs?worker', () => ({
+  default: class {
+    terminate() {}
+  },
+}));
+
 import {
   releaseAttachmentObjectUrl,
   resetAttachmentObjectUrls,
@@ -30,6 +44,7 @@ beforeEach(() => {
   createObjectURL.mockClear();
   revokeObjectURL.mockClear();
   fetchSpy.mockReset();
+  pdfjs.getDocument.mockReset();
   vi.stubGlobal('fetch', fetchSpy);
   pdfViewerEnabled = true;
   Object.defineProperty(navigator, 'pdfViewerEnabled', {
@@ -170,23 +185,94 @@ describe('FilePreviewContent', () => {
     expect(createObjectURL.mock.calls[0][0].type).toBe('application/pdf');
   });
 
-  test('offers the download instead of a blank frame where the engine has no PDF viewer', () => {
-    pdfViewerEnabled = false; // Android WebView
+  function renderablePdf(numPages: number) {
+    const page = {
+      getViewport: ({ scale }: { scale: number }) => ({
+        width: 600 * scale,
+        height: 800 * scale,
+        scale,
+      }),
+      render: () => ({ promise: Promise.resolve(), cancel: () => undefined }),
+      cleanup: () => undefined,
+    };
+    pdfjs.getDocument.mockReturnValue({
+      promise: Promise.resolve({ numPages, getPage: async () => page }),
+      destroy: () => Promise.resolve(),
+    });
+  }
+
+  test.each([
+    ['has no PDF viewer (Android WebView)', false],
+    ['does not say whether it has one', undefined],
+  ] as const)(
+    'draws the PDF with pdf.js where the engine %s',
+    async (_, enabled) => {
+      pdfViewerEnabled = enabled;
+      renderablePdf(2);
+      const pdfBytes = new TextEncoder().encode('%PDF-1.7 cached bytes');
+      storeAttachmentObjectUrl(
+        'cached-pdf',
+        'blob:cached-pdf',
+        new Blob([pdfBytes], { type: 'application/pdf' }),
+      );
+      render(
+        <FilePreviewContent
+          current={{
+            url: 'blob:cached-pdf',
+            mediaType: 'application/pdf',
+            name: 'report.pdf',
+          }}
+        />,
+      );
+
+      expect(
+        await screen.findByRole('img', { name: 'Page 1 of 2' }),
+      ).toBeTruthy();
+      expect(screen.queryByTitle('report.pdf')).toBeNull();
+      // pdf.js got the cached bytes themselves; nothing fetched the blob: URL.
+      const { data } = pdfjs.getDocument.mock.calls[0][0];
+      expect(Array.from(data)).toEqual(Array.from(pdfBytes));
+      expect(fetchSpy).not.toHaveBeenCalled();
+      expect(
+        screen.getByRole('link', { name: 'Download' }).getAttribute('href'),
+      ).toBe('blob:cached-pdf');
+    },
+  );
+
+  test('decodes an inline PDF for pdf.js without minting a frame URL', async () => {
+    pdfViewerEnabled = false;
+    renderablePdf(1);
     render(
       <FilePreviewContent
         current={{
-          url: 'blob:cached-pdf',
+          url: dataUrl('application/pdf', '%PDF-1.7 inline'),
           mediaType: 'application/pdf',
-          name: 'report.pdf',
+          name: 'inline.pdf',
         }}
       />,
     );
 
-    expect(screen.queryByTitle('report.pdf')).toBeNull();
-    expect(screen.getByText("This device can't show PDFs here")).toBeTruthy();
-    expect(
-      screen.getByRole('link', { name: 'Download' }).getAttribute('href'),
-    ).toBe('blob:cached-pdf');
+    expect(await screen.findByText('1 page')).toBeTruthy();
+    const { data } = pdfjs.getDocument.mock.calls[0][0];
+    expect(new TextDecoder().decode(data)).toBe('%PDF-1.7 inline');
+    expect(createObjectURL).not.toHaveBeenCalled();
+  });
+
+  test('draws nothing on canvas for a "PDF" whose bytes Station does not hold', () => {
+    pdfViewerEnabled = false;
+    render(
+      <FilePreviewContent
+        current={{
+          url: 'blob:not-ours',
+          mediaType: 'application/pdf',
+          name: 'stray.pdf',
+        }}
+      />,
+    );
+
+    expect(screen.getByText('Preview unavailable')).toBeTruthy();
+    expect(pdfjs.getDocument).not.toHaveBeenCalled();
+    expect(screen.getByRole('link', { name: 'Download' })).toBeTruthy();
   });
 
   test('refuses to frame a "PDF" whose URL is not bytes Station holds', () => {

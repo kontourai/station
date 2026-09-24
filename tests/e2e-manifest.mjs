@@ -330,6 +330,7 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/pull-request-review.spec.ts',
     'tests/conversation-pull-request-links.spec.ts',
     'tests/image-preview-inspection.spec.ts',
+    'tests/pdf-canvas-preview.spec.ts',
     'tests/diagnostics-bundle.spec.ts',
     'tests/monitoring-and-chrome.spec.ts',
     'tests/keyboard-shortcuts.spec.ts',
@@ -625,6 +626,16 @@ export const e2eManifest = [
     primary: true,
     rationale:
       'Real production image inspector and dialog components with browser-decoded PNG input; verifies zoom, pointer and touch pan, keyboard and gallery focus, full backdrop coverage, failure state and narrow theme/rotation geometry. Bundling is in-memory; no live Station instance or shared output writes.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/pdf-canvas-preview.spec.ts',
+    bucket: 'product',
+    surface: 'Chat attachment PDF previews',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Real preview dialog and pdf.js canvas viewer built by Vite in memory exactly as the app builds them (bundled module worker, emitted font/decoder side-files) and served from memory through browser-local page routes under the desktop/mobile CSP with the UI server MIME map and nosniff, with the engine reporting no PDF viewer as Android WebView does. Verifies non-blank page pixels including text, lazy drawing of off-screen pages, the bundled Symbol font load, fit-width zoom, and the unreadable and password-protected states. No live Station instance or shared output writes.',
     exceptions: [],
   },
   {
