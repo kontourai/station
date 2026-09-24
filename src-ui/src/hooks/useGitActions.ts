@@ -140,13 +140,26 @@ export function useGitCheckoutMutation(workingDirectory: string) {
   });
 }
 
-/** Commit all changes with a message. */
-export function useGitCommitMutation(workingDirectory: string) {
+/**
+ * Commit all changes with a message.
+ *
+ * #2363: commit and push are the Station operator's act and run in the
+ * Project's own folder. The server resolves that folder from `projectSlug`;
+ * `workingDirectory` only names which repository inside it (a multi-repo
+ * workspace). A refusal (a secret-looking file, repository config Station
+ * will not run git with, a remote it will not push to) comes back as the
+ * mutation's error, whose message names the files or keys.
+ */
+export function useGitCommitMutation(
+  projectSlug: string,
+  workingDirectory: string,
+) {
   const { apiBase } = useApiBase();
   const invalidate = useInvalidateGit(workingDirectory);
   return useMutation({
     mutationFn: ({ message }: { message: string }) =>
       postJson<{ sha: string }>(`${apiBase}/api/coding/git/commit`, {
+        projectSlug,
         path: workingDirectory,
         message,
       }),
@@ -154,8 +167,11 @@ export function useGitCommitMutation(workingDirectory: string) {
   });
 }
 
-/** Push the current branch to a remote. */
-export function useGitPushMutation(workingDirectory: string) {
+/** Push the current branch to a remote. See `useGitCommitMutation`. */
+export function useGitPushMutation(
+  projectSlug: string,
+  workingDirectory: string,
+) {
   const { apiBase } = useApiBase();
   const invalidate = useInvalidateGit(workingDirectory);
   return useMutation({
@@ -163,6 +179,7 @@ export function useGitPushMutation(workingDirectory: string) {
       args: { remote?: string; branch?: string; setUpstream?: boolean } = {},
     ) =>
       postJson<{ output: string }>(`${apiBase}/api/coding/git/push`, {
+        projectSlug,
         path: workingDirectory,
         ...args,
       }),

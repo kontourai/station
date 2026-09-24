@@ -392,6 +392,28 @@ export type ChatUIState = {
    * chip can show a pending state instead of overclaiming.
    */
   lastAppliedApprovalMode?: ApprovalMode;
+  /**
+   * An approval pick the engine has not confirmed yet (#2334). Kept out of
+   * `requestedProviderOptions` on purpose — see `ApprovalPickState`
+   * (utils/approvalMode.ts). Persisted: it is a request, like the bag.
+   */
+  pendingApprovalMode?: ApprovalMode;
+  /** See `ApprovalPickState` (utils/approvalMode.ts, #2334). Persisted. */
+  pendingApprovalPickedAt?: number;
+  /**
+   * See `ApprovalPickState`. Not persisted: the dispatch it names does not
+   * survive a reload.
+   */
+  pendingApprovalBehindTurn?: string;
+  /** See `ApprovalPickState`. Persisted with the pending pick. */
+  pendingApprovalAppliedAtPick?: ApprovalMode;
+  /**
+   * An approval pick a report showed the engine applying (#2334). Persisted
+   * as confirmed. An Ask/Auto is reasserted on each send, as main's request
+   * bag does; a full access never is (`approvalModeToSend`), so restoring it
+   * cannot loosen a session another device tightened.
+   */
+  approvalModeOverride?: ApprovalMode;
   orchestrationSessionStarted?: boolean;
   orchestrationProvider?: EngineId;
   orchestrationModel?: string;
@@ -593,6 +615,11 @@ export type PersistedActiveChat = {
   requestedModel?: string | null;
   requestedModelSource?: EffectiveModelSource;
   requestedProviderOptions?: Record<string, unknown>;
+  /** See ChatUIState.pendingApprovalMode (#2334). */
+  pendingApprovalMode?: ApprovalMode;
+  pendingApprovalPickedAt?: number;
+  pendingApprovalAppliedAtPick?: ApprovalMode;
+  approvalModeOverride?: ApprovalMode;
   defaultModel?: string;
   defaultModelSource?: EffectiveModelSource;
   projectSlug?: string;
@@ -773,6 +800,23 @@ export function hydrateActiveChats(
       requestedModel: session.requestedModel,
       requestedModelSource: session.requestedModelSource,
       requestedProviderOptions: session.requestedProviderOptions,
+      ...(session.pendingApprovalMode
+        ? {
+            pendingApprovalMode: session.pendingApprovalMode,
+            ...(session.pendingApprovalPickedAt !== undefined
+              ? { pendingApprovalPickedAt: session.pendingApprovalPickedAt }
+              : {}),
+            ...(session.pendingApprovalAppliedAtPick
+              ? {
+                  pendingApprovalAppliedAtPick:
+                    session.pendingApprovalAppliedAtPick,
+                }
+              : {}),
+          }
+        : {}),
+      ...(session.approvalModeOverride
+        ? { approvalModeOverride: session.approvalModeOverride }
+        : {}),
       defaultModel: session.defaultModel,
       defaultModelSource: session.defaultModelSource,
       projectSlug: session.projectSlug,
@@ -911,6 +955,27 @@ export function serializeActiveChats(
       requestedModel: chat.requestedModel,
       requestedModelSource: chat.requestedModelSource,
       requestedProviderOptions: chat.requestedProviderOptions,
+      // #2334: both picks survive a reload as what they are. The confirmed
+      // one (Ask/Auto) is reasserted on the next send; the pending one keeps
+      // its stream position and the posture known at the pick, so a later
+      // stricter report still retires it.
+      ...(chat.pendingApprovalMode
+        ? {
+            pendingApprovalMode: chat.pendingApprovalMode,
+            ...(chat.pendingApprovalPickedAt !== undefined
+              ? { pendingApprovalPickedAt: chat.pendingApprovalPickedAt }
+              : {}),
+            ...(chat.pendingApprovalAppliedAtPick
+              ? {
+                  pendingApprovalAppliedAtPick:
+                    chat.pendingApprovalAppliedAtPick,
+                }
+              : {}),
+          }
+        : {}),
+      ...(chat.approvalModeOverride
+        ? { approvalModeOverride: chat.approvalModeOverride }
+        : {}),
       defaultModel: chat.defaultModel,
       defaultModelSource: chat.defaultModelSource,
       projectSlug: chat.projectSlug,
@@ -1069,6 +1134,9 @@ export function mergeChatUpdates(
     'requestedModel' in nextUpdates ||
     'requestedModelSource' in nextUpdates ||
     'requestedProviderOptions' in nextUpdates ||
+    'pendingApprovalMode' in nextUpdates ||
+    'approvalModeOverride' in nextUpdates ||
+    'pendingApprovalPickedAt' in nextUpdates ||
     'defaultModel' in nextUpdates ||
     'defaultModelSource' in nextUpdates ||
     'provider' in nextUpdates ||

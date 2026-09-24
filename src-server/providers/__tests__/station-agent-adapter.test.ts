@@ -1,4 +1,7 @@
-import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import {
+  type CanonicalRuntimeEvent,
+  SERVER_EVENTS,
+} from '@kontourai/station-contracts/runtime-events';
 import { describe, expect, test, vi } from 'vitest';
 import {
   INTERNAL_TURN_CORRELATION_HEADER,
@@ -1656,6 +1659,106 @@ describe('StationAgentAdapter', () => {
     approvalRegistry.resolve('fresh-approval', false);
     await expect(next).resolves.toBe(false);
     await adapter.stopSession('task-stale');
+  });
+
+  test('approval.resolved records the device that answered through respondToRequest (#2344)', async () => {
+    const eventBus = new EventBus();
+    const resolved: Array<Record<string, unknown>> = [];
+    eventBus.subscribe((event) => {
+      if (event.event === SERVER_EVENTS.APPROVAL_RESOLVED)
+        resolved.push(event.data as Record<string, unknown>);
+    });
+    const approvalRegistry = new ApprovalRegistry(
+      { info: vi.fn(), warn: vi.fn() },
+      { eventBus },
+    );
+    const encoder = new TextEncoder();
+    let streamController!: ReadableStreamDefaultController<Uint8Array>;
+    const adapter = new StationAgentAdapter({
+      apiBase: 'http://127.0.0.1:3141',
+      hasAgent: () => true,
+      fetch: vi.fn<typeof fetch>().mockResolvedValue(
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              streamController = controller;
+            },
+          }),
+          { status: 200, headers: { 'Content-Type': 'text/event-stream' } },
+        ),
+      ),
+      approvalRegistry,
+      eventBus,
+    });
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+    await adapter.startSession({
+      threadId: 'task-origin',
+      provider: 'station-agent',
+      metadata: { agentId: 'reviewer' },
+    });
+    await adapter.sendTurn({ threadId: 'task-origin', input: 'Write it' });
+    const origin = {
+      version: 1 as const,
+      actor: { kind: 'device' as const, deviceId: 'pixel-10' },
+      reported: { version: 1 as const, surface: 'mobile' as const, build: '1' },
+    };
+    const open = async (approvalId: string) => {
+      const decision = approvalRegistry.register(approvalId, {
+        metadata: {
+          source: 'runtime',
+          title: 'repo_write',
+          conversationId: 'task-origin',
+        },
+      });
+      streamController.enqueue(
+        encoder.encode(
+          `data: ${JSON.stringify({
+            type: 'tool-approval-request',
+            approvalId,
+            toolName: 'repo_write',
+          })}\n\n`,
+        ),
+      );
+      for (let seen = 0; seen < 20; seen++) {
+        const [event] = await nextEvents(iterator, 1);
+        if (
+          event?.method === 'request.opened' &&
+          event.requestId === approvalId
+        )
+          // Wrapped: an async function returning the bare promise would
+          // make the caller wait for the decision it has not made yet.
+          return { decision };
+      }
+      throw new Error(`request.opened ${approvalId} never arrived`);
+    };
+
+    const { decision: withOrigin } = await open('approval-origin');
+    await adapter.respondToRequest('task-origin', 'approval-origin', 'accept', {
+      clientOrigin: origin,
+    });
+    await expect(withOrigin).resolves.toBe(true);
+
+    const { decision: withoutOrigin } = await open('approval-no-origin');
+    await adapter.respondToRequest(
+      'task-origin',
+      'approval-no-origin',
+      'decline',
+    );
+    await expect(withoutOrigin).resolves.toBe(false);
+
+    expect(resolved).toEqual([
+      expect.objectContaining({
+        approvalId: 'approval-origin',
+        status: 'approved',
+        clientOrigin: origin,
+      }),
+      expect.not.objectContaining({ clientOrigin: expect.anything() }),
+    ]);
+    expect(resolved[1]).toMatchObject({
+      approvalId: 'approval-no-origin',
+      status: 'denied',
+    });
+    await adapter.stopSession('task-origin');
   });
 
   test('routes scoped approvals through the shared registry and remembers allow-for-session', async () => {

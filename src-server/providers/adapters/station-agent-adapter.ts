@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import type { AgentDelegationContext } from '@kontourai/station-contracts/agent';
 import { engineId } from '@kontourai/station-contracts/agent-identity';
 import type { ChatAttachmentInput } from '@kontourai/station-contracts/chat-attachment';
+import type { ClientOrigin } from '@kontourai/station-contracts/client-origin';
 import { stripReservedOrchestrationMetadata } from '@kontourai/station-contracts/provider';
 import {
   type ApprovalStatus,
@@ -1184,6 +1185,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
     threadId: string,
     requestId: string,
     decision: 'accept' | 'acceptForSession' | 'decline' | 'cancel',
+    context?: { clientOrigin?: ClientOrigin },
   ): Promise<void> {
     const record = this.requireSession(threadId);
     const pending = record.pendingRequests.get(requestId);
@@ -1198,9 +1200,11 @@ export class StationAgentAdapter implements ProviderAdapterShape {
           ? 'denied'
           : 'cancelled',
     );
+    // #2344: `approval.resolved` records which device answered.
     const resolved = this.options.approvalRegistry.resolve(
       requestId,
       decision === 'accept' || decision === 'acceptForSession',
+      context?.clientOrigin,
     );
     if (!resolved) {
       record.pendingRequests.delete(requestId);

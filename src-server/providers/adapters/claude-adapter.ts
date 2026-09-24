@@ -100,6 +100,7 @@ import {
   mapClaudeDecisionToPermissionResult,
   mapClaudeSdkMessage,
   settleUnresolvedClaudeToolCalls,
+  withdrawnSubagentPermissionResult,
 } from './claude-adapter-events.js';
 import {
   AsyncEventQueue,
@@ -1691,16 +1692,19 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     record: ClaudeSessionRecord,
     threadId: string,
     requestId: string,
+    options: { withdraw?: boolean } = {},
   ): void {
     const pending = record.pendingRequests.get(requestId);
     if (!pending) return;
     record.pendingRequests.delete(requestId);
     pending.resolve(
-      mapClaudeDecisionToPermissionResult(
-        'cancel',
-        pending.toolInput,
-        pending.suggestions,
-      ),
+      options.withdraw
+        ? withdrawnSubagentPermissionResult()
+        : mapClaudeDecisionToPermissionResult(
+            'cancel',
+            pending.toolInput,
+            pending.suggestions,
+          ),
     );
     this.publish({
       eventId: crypto.randomUUID(),
@@ -1720,7 +1724,13 @@ export class ClaudeAdapter implements ProviderAdapterShape {
   ): void {
     for (const [requestId, pending] of [...record.pendingRequests]) {
       if (options.subagentsOnly && !pending.agentId) continue;
-      this.cancelPendingRequest(record, threadId, requestId);
+      // #2348: the subagents-only sweep runs on an inference (no task
+      // tracked as live) that can be wrong, so it denies the one call
+      // rather than interrupting. Every other caller ends the turn or the
+      // session for real and keeps the interrupting cancel.
+      this.cancelPendingRequest(record, threadId, requestId, {
+        withdraw: options.subagentsOnly === true,
+      });
     }
   }
 

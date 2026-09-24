@@ -3,6 +3,7 @@ import {
   parseEngineConnectionId,
   parseEngineId,
 } from '@kontourai/station-contracts/agent-identity';
+import type { ClientOrigin } from '@kontourai/station-contracts/client-origin';
 import type { ConnectionQuotaResult } from '@kontourai/station-contracts/connection-quota';
 import type { ConnectionRecoveryCapability } from '@kontourai/station-contracts/connection-recovery';
 import type { ModelInventoryExecutionIdentity } from '@kontourai/station-contracts/model-inventory';
@@ -272,6 +273,11 @@ export interface ProviderAdapterShape {
     threadId: string,
     requestId: string,
     decision: 'accept' | 'acceptForSession' | 'decline' | 'cancel',
+    /**
+     * Who answered (#2344). Only adapters that record the decision
+     * themselves read it; the command receipt carries it for every engine.
+     */
+    context?: { clientOrigin?: ClientOrigin },
   ): Promise<void>;
   stopSession(threadId: string): Promise<void>;
   listSessions(): Promise<ProviderSession[]>;

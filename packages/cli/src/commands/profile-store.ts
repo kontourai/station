@@ -67,6 +67,74 @@ export function resolveStationHome(): string {
 export const MAX_PROFILE_NAME_LENGTH = 64;
 const PROFILE_NAME_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/;
 const PROFILE_STORE_LOCK_STALE_MS = 5 * 60 * 1_000;
+// How long a cold start keeps retrying while a LIVE sibling holds genesis
+// (the deadline stops new retries; see the store-lock bound below for what can
+// run past it). Wall-clock, not an attempt count: the winner's publication is several file and directory
+// fsyncs, which on a busy or slow disk can outlast any fixed number of 10ms
+// naps. 100 of them lasted about 3s on macOS (measured), where each nap also
+// spawns `ps` for the stale-lock check, and less on Linux, where that check
+// is a /proc read.
+const PROFILE_STORE_GENESIS_WAIT_MS = 10_000;
+// How long a write keeps retrying the profiles.json lock while a LIVE holder
+// has it. The same wall-clock bound as genesis, for the same reason, and the
+// same bound the native Desktop uses for this lock (src-desktop
+// `PROFILE_LOCK_WAIT`): a CLI write racing a Desktop write must not lose
+// merely because it arrived second. Both bounds stop new retries; a call can
+// still run past them by a probe already in flight plus the final probe
+// taken at expiry.
+const PROFILE_STORE_LOCK_WAIT_MS = 10_000;
+// The stale-lock probe creates and fsyncs a guard lock and, on macOS, spawns
+// `ps` for the owner's birth. Running it on every 10ms nap competes with the
+// very holder being waited for, so contention probes once immediately (a dead
+// holder is still reclaimed at once) and then at this interval, plus once
+// more before giving up. A holder that dies mid-wait is reclaimed within it.
+const PROFILE_STORE_RECLAIM_PROBE_INTERVAL_MS = 250;
+const PROFILE_STORE_LOCK_NAP_MS = 10;
+// Our own birth is the identity other processes use to decide whether our
+// lock is stale, so it is never invented. It is our own pid, which is
+// certainly alive, so a null answer is a transient probe failure (on macOS a
+// `ps` that hit its timeout under load); retry that a bounded number of times.
+const PROFILE_LOCK_OWNER_BIRTH_ATTEMPTS = 3;
+const PROFILE_LOCK_OWNER_BIRTH_RETRY_DELAY_MS = 100;
+
+interface ProfileStoreLockTiming {
+  genesisWaitMs: number;
+  storeWaitMs: number;
+  reclaimProbeIntervalMs: number;
+}
+const DEFAULT_PROFILE_STORE_LOCK_TIMING: Readonly<ProfileStoreLockTiming> =
+  Object.freeze({
+    genesisWaitMs: PROFILE_STORE_GENESIS_WAIT_MS,
+    storeWaitMs: PROFILE_STORE_LOCK_WAIT_MS,
+    reclaimProbeIntervalMs: PROFILE_STORE_RECLAIM_PROBE_INTERVAL_MS,
+  });
+let profileStoreLockTiming: ProfileStoreLockTiming = {
+  ...DEFAULT_PROFILE_STORE_LOCK_TIMING,
+};
+let onReclaimProbeForTests:
+  | ((path: string, reclaimed: boolean) => void)
+  | undefined;
+let profileLockOwnerBirth: { pid: number; birth: string } | undefined;
+
+/**
+ * Test-only seam: shorten the lock waits, observe stale-lock probes, and drop
+ * the cached owner birth. Call with no argument to restore production values.
+ */
+export function setProfileStoreLockTimingForTests(
+  overrides: Partial<ProfileStoreLockTiming> & {
+    /** Called after each stale-lock probe with whether it reclaimed. */
+    onReclaimProbe?: (path: string, reclaimed: boolean) => void;
+  } = {},
+): void {
+  const { onReclaimProbe, ...timing } = overrides;
+  profileStoreLockTiming = { ...DEFAULT_PROFILE_STORE_LOCK_TIMING, ...timing };
+  onReclaimProbeForTests = onReclaimProbe;
+  profileLockOwnerBirth = undefined;
+}
+
+function napSync(milliseconds: number): void {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds);
+}
 // This root-scoped record survives a missing/moved config directory. Both the
 // CLI and the native desktop check the same bytes before ever recreating the
 // shared profile document.
@@ -258,33 +326,28 @@ function withProfileStoreGenesisLock<T>(home: string, callback: () => T): T {
   );
   // The parent is the existing user-owned directory that contains the root;
   // never create config/ merely to coordinate genesis.
-  let reclaimed = false;
-  for (let attempt = 0; attempt < 100; attempt += 1) {
-    const descriptor = createExclusiveProfileStoreLock(path);
-    if (descriptor !== undefined) {
-      try {
-        return callback();
-      } finally {
-        closeSync(descriptor);
-        try {
-          unlinkSync(path);
-        } catch {
-          // A retained lock is a safe retryable fence.
-        }
-      }
-    }
-    if (!reclaimed && reclaimStaleProfileStoreLockAt(path)) {
-      reclaimed = true;
-      continue;
-    }
-    // A live sibling Desktop or CLI initializer has not yet published its
-    // marker/document. Wait boundedly for that winner rather than turning a
-    // healthy three-channel cold start into a spurious failure.
-    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
-  }
-  throw new Error(
-    'saved Station genesis is busy; retry after the other client finishes.',
+  // A live sibling Desktop or CLI initializer may not yet have published its
+  // marker/document. Wait boundedly for that winner rather than turning a
+  // healthy three-channel cold start into a spurious failure.
+  const descriptor = acquireExclusiveProfileStoreLockWithin(
+    path,
+    profileStoreLockTiming.genesisWaitMs,
   );
+  if (descriptor === undefined) {
+    throw new Error(
+      'saved Station genesis is busy; retry after the other client finishes.',
+    );
+  }
+  try {
+    return callback();
+  } finally {
+    closeSync(descriptor);
+    try {
+      unlinkSync(path);
+    } catch {
+      // A retained lock is a safe retryable fence.
+    }
+  }
 }
 
 /**
@@ -563,7 +626,27 @@ function reclaimableProfileStoreLock(
   }
 }
 
+function resolveProfileLockOwnerBirth(): string {
+  // A process's birth never changes, so one successful lookup serves every
+  // lock this process creates (genesis, reclaim guard, store lock).
+  if (profileLockOwnerBirth?.pid === process.pid)
+    return profileLockOwnerBirth.birth;
+  for (let attempt = 1; ; attempt++) {
+    const birth = lookupProcessBirthFingerprint(process.pid);
+    if (birth) {
+      profileLockOwnerBirth = { pid: process.pid, birth };
+      return birth;
+    }
+    if (attempt >= PROFILE_LOCK_OWNER_BIRTH_ATTEMPTS) break;
+    napSync(PROFILE_LOCK_OWNER_BIRTH_RETRY_DELAY_MS);
+  }
+  throw new Error('saved Station lock process identity is unavailable');
+}
+
 function createExclusiveProfileStoreLock(path: string): number | undefined {
+  // Resolve the identity before creating the file, so a slow or failed probe
+  // never holds (or briefly publishes an empty) lock.
+  const birth = resolveProfileLockOwnerBirth();
   try {
     const fd = openSync(
       path,
@@ -581,14 +664,7 @@ function createExclusiveProfileStoreLock(path: string): number | undefined {
         `${JSON.stringify({
           schemaVersion: 2,
           pid: process.pid,
-          birth: (() => {
-            const birth = lookupProcessBirthFingerprint(process.pid);
-            if (!birth)
-              throw new Error(
-                'saved Station lock process identity is unavailable',
-              );
-            return birth;
-          })(),
+          birth,
           createdAt: Date.now(),
         } satisfies ProfileStoreLock)}\n`,
         'utf-8',
@@ -649,41 +725,71 @@ function reclaimStaleProfileStoreLockAt(path: string): boolean {
   }
 }
 
-function reclaimStaleProfileStoreLock(home: string): boolean {
-  return reclaimStaleProfileStoreLockAt(lockPath(home));
+/**
+ * Create `path` exclusively, waiting up to `waitMs` of wall-clock time for a
+ * live holder to release it. At most one stale lock is reclaimed per
+ * acquisition, and only through `reclaimStaleProfileStoreLockAt`, so the
+ * stale rules are exactly those of a zero-wait acquisition. `waitMs` 0 is one
+ * attempt, one probe, and (after a successful reclaim) one more attempt.
+ */
+function acquireExclusiveProfileStoreLockWithin(
+  path: string,
+  waitMs: number,
+): number | undefined {
+  const { reclaimProbeIntervalMs } = profileStoreLockTiming;
+  const deadline = performance.now() + waitMs;
+  let reclaimed = false;
+  let nextProbeAt = Number.NEGATIVE_INFINITY;
+  while (true) {
+    const descriptor = createExclusiveProfileStoreLock(path);
+    if (descriptor !== undefined) return descriptor;
+    const now = performance.now();
+    const expired = now >= deadline;
+    if (!reclaimed && (now >= nextProbeAt || expired)) {
+      nextProbeAt = now + reclaimProbeIntervalMs;
+      const probeReclaimed = reclaimStaleProfileStoreLockAt(path);
+      onReclaimProbeForTests?.(path, probeReclaimed);
+      if (probeReclaimed) {
+        reclaimed = true;
+        continue;
+      }
+    }
+    if (expired || performance.now() >= deadline) return undefined;
+    napSync(
+      Math.max(
+        1,
+        Math.min(PROFILE_STORE_LOCK_NAP_MS, deadline - performance.now()),
+      ),
+    );
+  }
 }
 
-function acquireProfileStoreLock(home: string): { fd: number; path: string } {
+function acquireProfileStoreLock(
+  home: string,
+  waitMs: number,
+): { fd: number; path: string } {
   const path = lockPath(home);
   ensureWindowsProfileDirectories(home);
   mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
   assertTrustedProfileStoreParent(profilesPath(home));
-  for (let attempt = 0; attempt < 2; attempt++) {
-    const fd = createExclusiveProfileStoreLock(path);
-    if (fd !== undefined) {
-      try {
-        assertWindowsPathsTrusted(windowsTrustRun, [{ kind: 'file', path }]);
-        return { fd, path };
-      } catch (error) {
-        closeSync(fd);
-        try {
-          unlinkSync(path);
-        } catch {
-          // Retaining an untrusted lock is safer than deleting an object that changed.
-        }
-        throw error;
-      }
-    }
-    if (attempt === 0 && reclaimStaleProfileStoreLock(home)) {
-      continue;
-    }
-    if (attempt === 1) {
-      throw new Error(
-        `saved Station store is busy: ${path}. Retry after the other client finishes.`,
-      );
-    }
+  const fd = acquireExclusiveProfileStoreLockWithin(path, waitMs);
+  if (fd === undefined) {
+    throw new Error(
+      `saved Station store is busy: ${path}. Retry after the other client finishes.`,
+    );
   }
-  throw new Error(`saved Station store is busy: ${path}.`);
+  try {
+    assertWindowsPathsTrusted(windowsTrustRun, [{ kind: 'file', path }]);
+    return { fd, path };
+  } catch (error) {
+    closeSync(fd);
+    try {
+      unlinkSync(path);
+    } catch {
+      // Retaining an untrusted lock is safer than deleting an object that changed.
+    }
+    throw error;
+  }
 }
 
 /**
@@ -696,8 +802,18 @@ function acquireProfileStoreLock(home: string): { fd: number; path: string } {
 export function withProfileStoreLock<T>(
   callback: () => T,
   home: string = resolveStationHome(),
+  /**
+   * Waiting is opt-in. Without it a live holder refuses at once, which is what
+   * the Desktop's runtime preparation needs: it already holds the registry
+   * lock and maintenance lease under a 10s watchdog and refuses its other
+   * locks within 250ms, so it must not sit on them waiting for this one.
+   */
+  options: { waitForLiveHolder?: boolean } = {},
 ): T {
-  const lock = acquireProfileStoreLock(home);
+  const lock = acquireProfileStoreLock(
+    home,
+    options.waitForLiveHolder ? profileStoreLockTiming.storeWaitMs : 0,
+  );
   try {
     return callback();
   } finally {
@@ -730,51 +846,55 @@ export function writeProfileStore(
   const path = profilesPath(home);
   const temporary = `${path}.${process.pid}.tmp`;
   let fd: number | undefined;
-  return withProfileStoreLock(() => {
-    try {
-      const actual = readPersistedProfileStore(
-        home,
-        'saved Station metadata disappeared during a write; refusing to recreate it.',
-      );
-      if (actual.revision !== expectedRevision) {
-        throw new Error(
-          `saved Station store changed concurrently (expected revision ${expectedRevision}, found ${actual.revision}). Re-read and retry.`,
+  return withProfileStoreLock(
+    () => {
+      try {
+        const actual = readPersistedProfileStore(
+          home,
+          'saved Station metadata disappeared during a write; refusing to recreate it.',
         );
-      }
-      const next: StationProfileStore = {
-        ...store,
-        revision: actual.revision + 1,
-      };
-      if (existsSync(temporary)) unlinkSync(temporary);
-      fd = openSync(
-        temporary,
-        fsConstants.O_WRONLY |
-          fsConstants.O_CREAT |
-          fsConstants.O_EXCL |
-          (fsConstants.O_NOFOLLOW ?? 0),
-        0o600,
-      );
-      fchmodSync(fd, 0o600);
-      hardenWindowsPathsTrusted(windowsTrustRun, [
-        { kind: 'file', path: temporary },
-      ]);
-      writeFileSync(fd, `${JSON.stringify(next, null, 2)}\n`, 'utf-8');
-      fsyncSync(fd);
-      closeSync(fd);
-      fd = undefined;
-      renameSync(temporary, path);
-      return next;
-    } finally {
-      if (fd !== undefined) closeSync(fd);
-      if (existsSync(temporary)) {
-        try {
-          unlinkSync(temporary);
-        } catch {
-          // best-effort cleanup only; never hide the primary write error
+        if (actual.revision !== expectedRevision) {
+          throw new Error(
+            `saved Station store changed concurrently (expected revision ${expectedRevision}, found ${actual.revision}). Re-read and retry.`,
+          );
+        }
+        const next: StationProfileStore = {
+          ...store,
+          revision: actual.revision + 1,
+        };
+        if (existsSync(temporary)) unlinkSync(temporary);
+        fd = openSync(
+          temporary,
+          fsConstants.O_WRONLY |
+            fsConstants.O_CREAT |
+            fsConstants.O_EXCL |
+            (fsConstants.O_NOFOLLOW ?? 0),
+          0o600,
+        );
+        fchmodSync(fd, 0o600);
+        hardenWindowsPathsTrusted(windowsTrustRun, [
+          { kind: 'file', path: temporary },
+        ]);
+        writeFileSync(fd, `${JSON.stringify(next, null, 2)}\n`, 'utf-8');
+        fsyncSync(fd);
+        closeSync(fd);
+        fd = undefined;
+        renameSync(temporary, path);
+        return next;
+      } finally {
+        if (fd !== undefined) closeSync(fd);
+        if (existsSync(temporary)) {
+          try {
+            unlinkSync(temporary);
+          } catch {
+            // best-effort cleanup only; never hide the primary write error
+          }
         }
       }
-    }
-  }, home);
+    },
+    home,
+    { waitForLiveHolder: true },
+  );
 }
 
 export function normalizeProfileEndpoint(value: string): string {

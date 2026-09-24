@@ -33,7 +33,11 @@ import type {
   OutboundDispatchTransportResult,
 } from '../lib/outboundQueue';
 import type { ComposerAttachmentStageSnapshot, FileAttachment } from '../types';
-import { approvalModeForDispatch } from '../utils/approvalMode';
+import {
+  approvalModeForDispatch,
+  approvalModeToSend,
+  approvalPickOverridingDefaults,
+} from '../utils/approvalMode';
 import {
   type ChatErrorTranslation,
   translateChatError,
@@ -41,6 +45,7 @@ import {
 import { liveTurnTarget, serverTurnLive } from '../utils/conversation-activity';
 import {
   chatSessionIsLive,
+  chatSessionKnownEnded,
   resolveSessionEngineConnectionId,
   sessionAdapterSupportsSteering,
 } from '../utils/execution';
@@ -384,11 +389,19 @@ export function useSendMessage(
             (agent) => agent.slug === agentSlug,
           )?.execution?.agentConnectionId,
         });
-        const dispatchedProviderOptions = options?.executionSnapshot
-          ? (options.executionSnapshot.requestedProviderOptions ??
-            options.executionSnapshot.providerOptions)
-          : (currentState?.requestedProviderOptions ??
-            currentState?.providerOptions);
+        // The approval pick travels beside the model options (#2334). It is
+        // session posture, not message content: a replayed turn sends the
+        // chat's CURRENT pick, never the one it was queued with. A confirmed
+        // Ask/Auto is reasserted on every send; a confirmed full access never
+        // is (see `approvalModeToSend`).
+        const dispatchedApprovalOverride = approvalModeToSend(currentState);
+        // The pick the defaults below must yield to: a withheld confirmed
+        // full access still suppresses the Station default while the session
+        // may be live; at a session known to have ended it does not.
+        const sessionApprovalPick = approvalPickOverridingDefaults(
+          currentState,
+          chatSessionKnownEnded(currentState),
+        );
         const receipt = await dispatchForeground({
           apiBase,
           sessionId,
@@ -406,12 +419,13 @@ export function useSendMessage(
             // outlives its session, and a reopened conversation is marked
             // started whether or not anything is running (round 3 F1).
             sessionAlreadyStarted: chatSessionIsLive(currentState),
-            sessionOverride: dispatchedProviderOptions?.approvalMode,
+            sessionOverride: sessionApprovalPick,
             connectionDefault: agentConnections.find(
               (connection) => connection.id === sessionEngineConnectionId,
             )?.config.approvalMode,
             stationDefault: stationApprovalModeDefault,
           }),
+          approvalModeOverride: dispatchedApprovalOverride,
           requestedModel: options?.executionSnapshot
             ? options.executionSnapshot.requestedModel
             : currentState?.requestedModel,

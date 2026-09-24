@@ -3572,6 +3572,148 @@ describe('ClaudeAdapter', () => {
       await adapter.stopSession(threadId);
     });
 
+    // #2348: `onNoLiveTasks` infers "no subagent can be waiting" from the
+    // tracked task set, and that inference can be wrong. Its settlement must
+    // deny the one call, never send the cancel mapping's `interrupt: true`,
+    // which may abort a subagent that is still running.
+    describe('#2348: a wrong "no task is live" settles with a plain denial', () => {
+      async function subagentHarness(threadId: string) {
+        const controlled = createControlledMockQuery();
+        mockQuery.mockReturnValue(controlled);
+        const adapter = new ClaudeAdapter();
+        const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+        const until = async (predicate: (event: any) => boolean) => {
+          for (let seen = 0; seen < 30; seen++) {
+            const event = (await iterator.next()).value;
+            if (predicate(event)) return event;
+          }
+          throw new Error('expected event never arrived');
+        };
+        await adapter.startSession({ provider: 'claude', threadId });
+        const turn = await adapter.sendTurn({ threadId, input: 'research it' });
+        await until((event) => event.method === 'turn.started');
+        const canUseTool = mockQuery.mock.calls[0][0].options.canUseTool;
+        const askAs = (agentID: string, toolUseID: string) =>
+          canUseTool(
+            'Bash',
+            { command: 'npm test' },
+            {
+              signal: new AbortController().signal,
+              toolUseID,
+              agentID,
+              suggestions: [],
+            },
+          );
+        return { controlled, adapter, until, askAs, turn };
+      }
+
+      test("subagent A's settle, processed after B's canUseTool, does not interrupt B", async () => {
+        const threadId = 'thread-settle-lag';
+        const { controlled, adapter, until, askAs } =
+          await subagentHarness(threadId);
+        controlled.push({
+          type: 'system',
+          subtype: 'task_started',
+          task_id: 'task-a',
+          tool_use_id: 'toolu-a',
+          description: 'Subagent A',
+          uuid: 'u-a1',
+          session_id: 's-1',
+        });
+        await until((event) => event.method === 'tool.started');
+
+        // B's permission arrives by direct callback, while B's own
+        // `task_started` is still behind A's settle in the message stream.
+        const bPermission = askAs('agent-b', 'toolu-b-bash');
+        const bOpened = await until(
+          (event) => event.method === 'request.opened',
+        );
+        controlled.push({
+          type: 'system',
+          subtype: 'task_updated',
+          task_id: 'task-a',
+          patch: { status: 'completed' },
+          uuid: 'u-a2',
+          session_id: 's-1',
+        });
+
+        const result = await bPermission;
+        expect(result).toMatchObject({ behavior: 'deny' });
+        expect(result).not.toHaveProperty('interrupt');
+        expect(
+          await until((event) => event.method === 'request.resolved'),
+        ).toMatchObject({ requestId: bOpened.requestId, status: 'cancelled' });
+        // Still never answerable later, so no grant can be minted for it.
+        await expect(
+          adapter.respondToRequest(
+            threadId,
+            bOpened.requestId,
+            'acceptForSession',
+          ),
+        ).rejects.toThrow('Unknown Claude permission request');
+        // B, still running, can ask again.
+        void askAs('agent-b', 'toolu-b-retry');
+        expect(
+          await until((event) => event.method === 'request.opened'),
+        ).toMatchObject({ payload: { agentId: 'agent-b' } });
+        await adapter.stopSession(threadId);
+      });
+
+      test('an untracked (skip_transcript) task’s request is not interrupted when the main turn completes', async () => {
+        const threadId = 'thread-untracked-task';
+        const { controlled, adapter, until, askAs } =
+          await subagentHarness(threadId);
+        controlled.push({
+          type: 'system',
+          subtype: 'task_started',
+          task_id: 'task-ambient',
+          tool_use_id: 'toolu-ambient',
+          description: 'Housekeeping',
+          skip_transcript: true,
+          uuid: 'u-h1',
+          session_id: 's-1',
+        });
+        const permission = askAs('agent-ambient', 'toolu-ambient-bash');
+        const opened = await until(
+          (event) => event.method === 'request.opened',
+        );
+
+        // The main turn completes; nothing is tracked, so the sweep runs.
+        controlled.push({
+          type: 'result',
+          is_error: false,
+          result: 'done',
+          stop_reason: 'end_turn',
+          usage: { input_tokens: 1, output_tokens: 1 },
+          uuid: 'main-result',
+          session_id: 's-1',
+        });
+
+        const result = await permission;
+        expect(result).toMatchObject({ behavior: 'deny' });
+        expect(result).not.toHaveProperty('interrupt');
+        expect(
+          await until((event) => event.method === 'request.resolved'),
+        ).toMatchObject({ requestId: opened.requestId, status: 'cancelled' });
+        await adapter.stopSession(threadId);
+      });
+
+      test('an interrupt still cancels a subagent request with interrupt', async () => {
+        const threadId = 'thread-interrupt-keeps-cancel';
+        const { adapter, until, askAs, turn } = await subagentHarness(threadId);
+        const permission = askAs('agent-b', 'toolu-b-bash');
+        await until((event) => event.method === 'request.opened');
+
+        await adapter.interruptTurn(threadId, turn.turnId);
+
+        await expect(permission).resolves.toMatchObject({
+          behavior: 'deny',
+          interrupt: true,
+        });
+        await adapter.stopSession(threadId);
+      });
+    });
+
     test('a main-thread request under a named Station agent carries no agentId', async () => {
       const threadId = 'thread-named-agent-approval';
       mockQuery.mockReturnValue(createControlledMockQuery());
