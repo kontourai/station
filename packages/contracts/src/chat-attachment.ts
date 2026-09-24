@@ -75,9 +75,10 @@ export interface ChatAttachmentInput {
  *   because retention reclaimed the blob or because the caller asked for a
  *   bounded read that deliberately withholds them.
  * - both — the normal read: the reference resolved and the bytes are attached.
- * - neither — the descriptor only: a reference arrived without bytes and this
- *   Station could not bind it to the thread (#2483), so the name and type are
- *   kept with no preview.
+ * - neither — the descriptor only: the bytes were not kept, so the name and
+ *   type stay with no preview. For example, a reference arrived without bytes
+ *   and could not be bound to the thread (#2483), or a tool image was refused
+ *   for its type, the chat's storage budget, or a failed write.
  *
  * A consumer that needs the bytes must check `dataUrl` rather than assume it.
  */
