@@ -105,10 +105,11 @@ function forgeUrlLabel(url: string): string | null {
 }
 
 /**
- * Suffixes that read as file extensions, not top-level domains. Consulted
- * only for BARE text (no scheme, path, port or `www.`), and only for a link
- * to an ordinary external site: `logo.png` or `go.mod` names a file, and
- * treating it as a host claim would decorate ordinary prose.
+ * Suffixes that read as file extensions, not top-level domains. Consulted for
+ * scheme-less text with no `/` path and no `www.` (`logo.png`, `app.ts:42`,
+ * `README.md#install`): a file name, not a host claim. Text with a path is a
+ * host claim even when its top-level domain is on this list (`docs.rs/serde`,
+ * `example.net/login`, `github.com.zip/o/r`).
  */
 const FILE_LIKE_SUFFIXES = new Set(
   (
@@ -179,8 +180,9 @@ function claimedHost(text: string): HostClaim | null {
  * `app.ts:42`, `README.md#install` and `package.json?plain=1` split into a
  * "host" and a suffix exactly as `github.com:443/x` does — so:
  *
- * - a scheme-less host whose last label reads as a file extension is a file
- *   name, whatever follows it (`www.` hosts excepted: no file starts so);
+ * - a scheme-less host with no `/` path whose last label reads as a file
+ *   extension is a file name (`www.` hosts excepted: no file starts so) —
+ *   with a path it is a host claim whatever its top-level domain;
  * - for a pull request or forge file, whose text is usually a file, ref or
  *   path, only scheme-less text with a `/` path counts (`github.com/o/r`);
  * - for an ordinary external site, bare text (`github.com`, `1.2.3.4`)
@@ -191,7 +193,7 @@ function claimedHost(text: string): HostClaim | null {
  */
 function claimCounts(claim: HostClaim, external: boolean): boolean {
   if (claim.scheme) return true;
-  if (!claim.host.startsWith('www.')) {
+  if (!claim.path && !claim.host.startsWith('www.')) {
     const suffix = claim.host.slice(claim.host.lastIndexOf('.') + 1);
     if (FILE_LIKE_SUFFIXES.has(suffix)) return false;
   }

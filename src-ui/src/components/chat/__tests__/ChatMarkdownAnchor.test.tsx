@@ -505,6 +505,11 @@ describe('a link whose text names another host than it goes to', () => {
   test('shows the real host beside the text and the full href as its tooltip', () => {
     for (const [href, text, host] of [
       ['https://evil.test/x', 'github.com/kontourai/station', 'evil.test'],
+      // A path makes it a host claim even when the TLD reads like an
+      // extension (.rs, .net, .zip).
+      ['https://evil.test/x', 'docs.rs/serde', 'evil.test'],
+      ['https://evil.test/x', 'example.net/login', 'evil.test'],
+      ['https://evil.test/x', 'github.com.zip/o/r', 'evil.test'],
       ['https://evil.test/x', 'https://github.com/o/r', 'evil.test'],
       ['https://evil.test:8443/', 'www.github.com', 'evil.test:8443'],
       [
