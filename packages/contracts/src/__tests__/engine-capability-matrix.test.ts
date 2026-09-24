@@ -1041,9 +1041,10 @@ describe('subagent capability cells', () => {
   /**
    * The module's standing rule, applied to subagents: a control cell is what a
    * client may render a control FROM, so it may only leave `none` when a real
-   * path exists. Station wires none today, which is why every control cell
-   * reads `none` — this test is what makes flipping one a deliberate act with
-   * evidence attached, rather than an aspirational edit.
+   * path exists. #2486 flipped Codex's cell to `wired` (a real
+   * `stopProviderTask` seam, `codex-adapter.ts`) — this test is what made
+   * that flip a deliberate act with evidence attached, rather than an
+   * aspirational edit, and keeps every OTHER engine's `none` honest.
    */
   test('a wired control cell must carry evidence for each action it claims', () => {
     for (const [key, matrix] of Object.entries(ENGINE_CAPABILITY_MATRICES)) {
