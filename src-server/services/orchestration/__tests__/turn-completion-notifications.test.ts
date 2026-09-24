@@ -283,7 +283,7 @@ describe('wireTurnCompletionNotifications (station#1225)', () => {
       expect(schedule).not.toHaveBeenCalled();
     });
 
-    test('closed without its own result (a folded send, a new turn) it adds no push; the same shape on a caller turn still does', async () => {
+    test('L6: a reply that ended on a deferred tool (finishReason other, its own result) still notifies "replied"', async () => {
       const schedule = vi
         .spyOn(notificationService, 'schedule')
         .mockResolvedValue({} as never);
@@ -292,6 +292,26 @@ describe('wireTurnCompletionNotifications (station#1225)', () => {
       });
       await emit('orchestration:event', {
         event: baseEvent({ finishReason: 'other', ...provider }),
+      });
+      expect(schedule).toHaveBeenCalledWith(
+        'turn-completion',
+        expect.objectContaining({ title: 'Your agent replied' }),
+      );
+    });
+
+    test('closed without its own result (a folded send, a new turn) it adds no push; the same shape on a caller turn still does', async () => {
+      const schedule = vi
+        .spyOn(notificationService, 'schedule')
+        .mockResolvedValue({} as never);
+      await emit('orchestration:event', {
+        event: baseEvent({ method: 'turn.started', ...provider }),
+      });
+      await emit('orchestration:event', {
+        event: baseEvent({
+          finishReason: 'other',
+          turnId: provider.turnId,
+          metadata: { trigger: 'provider', closedWithoutResult: 'folded-send' },
+        }),
       });
       expect(schedule).not.toHaveBeenCalled();
       await emit('orchestration:event', {

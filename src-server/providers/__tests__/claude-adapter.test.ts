@@ -1187,23 +1187,25 @@ describe('ClaudeAdapter', () => {
       })();
       const threadId = 'provider-turn-next-init';
       await adapter.startSession({ provider: 'claude', threadId });
-      const init = (capabilities: string[]) => ({
+      const init = () => ({
         type: 'system',
         subtype: 'init',
         session_id: threadId,
         cwd: '/workspace',
         model: 'claude-sonnet-4-6',
-        capabilities,
+        capabilities: ['msg_lifecycle_v1'],
         uuid: `init-${crypto.randomUUID()}`,
       });
       // A CLI that reports command lifecycle: an init with no `started`
-      // before it is a turn the engine opened itself.
-      controlled.push(init(['msg_lifecycle_v1']));
+      // before it is a turn the engine began itself; its first frame opens it.
+      controlled.push(init());
+      controlled.push(replyFrame(threadId));
       await flush();
       const first = events.find((event) => event.method === 'turn.started');
       expect(first).toMatchObject({ metadata: { trigger: 'provider' } });
       // Its result is lost; the engine starts another turn of its own.
-      controlled.push(init(['msg_lifecycle_v1']));
+      controlled.push(init());
+      controlled.push(replyFrame(threadId));
       await flush();
       const starts = events.filter((event) => event.method === 'turn.started');
       expect(starts).toHaveLength(2);
@@ -1212,7 +1214,10 @@ describe('ClaudeAdapter', () => {
       ).toMatchObject({
         turnId: first.turnId,
         finishReason: 'other',
-        metadata: { trigger: 'provider' },
+        metadata: {
+          trigger: 'provider',
+          closedWithoutResult: 'next-turn-started',
+        },
       });
       await adapter.stopSession(threadId);
     });
@@ -1269,6 +1274,257 @@ describe('ClaudeAdapter', () => {
       });
       const next = await adapter.sendTurn({ threadId, input: 'after stop' });
       expect(next.turnId).not.toBe(started.turnId);
+      await adapter.stopSession(threadId);
+    });
+  });
+
+  describe('#2324 review: engine order, queued sends, and turns that never reply', () => {
+    const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+    const init = (threadId: string) => ({
+      type: 'system',
+      subtype: 'init',
+      session_id: threadId,
+      cwd: '/workspace',
+      model: 'claude-sonnet-4-6',
+      capabilities: ['msg_lifecycle_v1'],
+      uuid: `init-${crypto.randomUUID()}`,
+    });
+    const lifecycle = (
+      threadId: string,
+      uuid: string,
+      state: 'queued' | 'started' | 'completed' | 'cancelled',
+    ) => ({
+      type: 'command_lifecycle',
+      command_uuid: uuid,
+      state,
+      uuid: `lc-${crypto.randomUUID()}`,
+      session_id: threadId,
+    });
+    const result = (threadId: string, uuids: string[], extra = {}) => ({
+      type: 'result',
+      subtype: 'success',
+      is_error: false,
+      result: 'done',
+      stop_reason: 'end_turn',
+      num_turns: 1,
+      usage: { input_tokens: 1, output_tokens: 1 },
+      uuid: `result-${crypto.randomUUID()}`,
+      session_id: threadId,
+      ...(uuids.length
+        ? { user_message_uuid: uuids.at(-1), user_message_uuids: uuids }
+        : {}),
+      ...extra,
+    });
+    const frame = (threadId: string, uuids: string[] = []) => ({
+      type: 'stream_event',
+      parent_tool_use_id: null,
+      event: {
+        type: 'content_block_delta',
+        index: 0,
+        delta: { type: 'text_delta', text: 'x' },
+      },
+      uuid: `frame-${crypto.randomUUID()}`,
+      session_id: threadId,
+      ...(uuids.length
+        ? { user_message_uuid: uuids.at(-1), user_message_uuids: uuids }
+        : {}),
+    });
+
+    /** A session whose first turn ran and whose CLI reports lifecycle. */
+    async function lifecycleSession(
+      threadId: string,
+      queryExtras: Record<string, unknown> = {},
+    ) {
+      const controlled = Object.assign(
+        createControlledMockQuery(),
+        queryExtras,
+      );
+      mockQuery.mockReturnValue(controlled);
+      const adapter = new ClaudeAdapter();
+      const events: any[] = [];
+      void (async () => {
+        for await (const event of adapter.streamEvents()) events.push(event);
+      })();
+      await adapter.startSession({ provider: 'claude', threadId });
+      const first = await adapter.sendTurn({ threadId, input: 'first' });
+      controlled.push(lifecycle(threadId, first.turnId, 'started'));
+      controlled.push(init(threadId));
+      controlled.push(result(threadId, [first.turnId]));
+      await flush();
+      return { controlled, adapter, events, first };
+    }
+    const methods = (events: any[], from = 0) =>
+      events
+        .slice(from)
+        .filter((event) =>
+          ['turn.started', 'turn.completed', 'turn.aborted'].includes(
+            event.method,
+          ),
+        )
+        .map((event) => `${event.method}:${event.turnId}`);
+
+    test('H1: a queued send publishes its start when the engine starts it, not when Station queued it', async () => {
+      const threadId = 'deferred-start';
+      const { controlled, adapter, events } = await lifecycleSession(threadId);
+      const from = events.length;
+      const u = await adapter.sendTurn({ threadId, input: 'second' });
+      await flush();
+      expect(methods(events, from)).toEqual([]);
+      controlled.push(lifecycle(threadId, u.turnId, 'started'));
+      await flush();
+      expect(methods(events, from)).toEqual([`turn.started:${u.turnId}`]);
+      expect(
+        events.find(
+          (event) =>
+            event.method === 'turn.started' && event.turnId === u.turnId,
+        ),
+      ).toMatchObject({ prompt: 'second' });
+      await adapter.stopSession(threadId);
+    });
+
+    test('M1: Stop on a queued send withdraws it from the engine queue — an abort, never a start', async () => {
+      const threadId = 'stop-queued-withdrawn';
+      const cancelAsyncMessage = vi.fn().mockResolvedValue(true);
+      const { controlled, adapter, events } = await lifecycleSession(threadId, {
+        cancelAsyncMessage,
+      });
+      const from = events.length;
+      const u = await adapter.sendTurn({ threadId, input: 'second' });
+      await expect(adapter.interruptTurn(threadId, u.turnId)).resolves.toEqual({
+        outcome: 'cancelled',
+        turnId: u.turnId,
+      });
+      expect(cancelAsyncMessage).toHaveBeenCalledWith(u.turnId);
+      expect(controlled.interrupt).not.toHaveBeenCalled();
+      expect(methods(events, from)).toEqual([`turn.aborted:${u.turnId}`]);
+      // Its later cancellation frame adds nothing; the next send is free.
+      controlled.push(lifecycle(threadId, u.turnId, 'cancelled'));
+      await flush();
+      expect(methods(events, from)).toEqual([`turn.aborted:${u.turnId}`]);
+      await expect(
+        adapter.sendTurn({ threadId, input: 'third' }),
+      ).resolves.toMatchObject({ turnId: expect.any(String) });
+      await adapter.stopSession(threadId);
+    });
+
+    test('M1: Stop on a queued send the engine already took stops it the moment it starts', async () => {
+      const threadId = 'stop-queued-on-start';
+      const cancelAsyncMessage = vi.fn().mockResolvedValue(false);
+      const { controlled, adapter, events } = await lifecycleSession(threadId, {
+        cancelAsyncMessage,
+      });
+      const from = events.length;
+      const u = await adapter.sendTurn({ threadId, input: 'second' });
+      await expect(adapter.interruptTurn(threadId, u.turnId)).resolves.toEqual({
+        outcome: 'cancelled',
+        turnId: u.turnId,
+      });
+      expect(controlled.interrupt).not.toHaveBeenCalled();
+      expect(methods(events, from)).toEqual([]);
+      controlled.push(lifecycle(threadId, u.turnId, 'started'));
+      await flush();
+      expect(methods(events, from)).toEqual([
+        `turn.started:${u.turnId}`,
+        `turn.aborted:${u.turnId}`,
+      ]);
+      expect(controlled.interrupt).toHaveBeenCalledOnce();
+      // Its interrupted result is the Stop's receipt, not a failure.
+      controlled.push(
+        result(threadId, [u.turnId], {
+          is_error: true,
+          result: 'interrupted',
+          stop_reason: null,
+        }),
+      );
+      await flush();
+      expect(events.some((event) => event.method === 'runtime.error')).toBe(
+        false,
+      );
+      await adapter.stopSession(threadId);
+    });
+
+    test('M1: steering a queued send is refused definitively', async () => {
+      const threadId = 'steer-queued';
+      const { adapter } = await lifecycleSession(threadId);
+      const u = await adapter.sendTurn({ threadId, input: 'second' });
+      await expect(
+        adapter.steerTurn(threadId, 'more', u.turnId),
+      ).rejects.toBeInstanceOf(SendTurnRefusedError);
+      await adapter.stopSession(threadId);
+    });
+
+    test('M3: a queued send the engine cancels gets an abort so its boundary retires', async () => {
+      const threadId = 'engine-cancelled';
+      const { controlled, adapter, events } = await lifecycleSession(threadId);
+      const from = events.length;
+      const u = await adapter.sendTurn({ threadId, input: 'second' });
+      controlled.push(lifecycle(threadId, u.turnId, 'cancelled'));
+      await flush();
+      expect(methods(events, from)).toEqual([`turn.aborted:${u.turnId}`]);
+      await expect(
+        adapter.sendTurn({ threadId, input: 'third' }),
+      ).resolves.toMatchObject({ turnId: expect.any(String) });
+      await adapter.stopSession(threadId);
+    });
+
+    test('M2: a turn the engine begins but never replies in leaves no phantom turn, and refuses sends only while it might', async () => {
+      const threadId = 'lone-init';
+      const { controlled, adapter, events } = await lifecycleSession(threadId);
+      const from = events.length;
+      controlled.push(init(threadId));
+      await flush();
+      expect(methods(events, from)).toEqual([]);
+      // While it is beginning, a send is refused retryably (D4) …
+      await expect(
+        adapter.sendTurn({ threadId, input: 'during' }),
+      ).rejects.toBeInstanceOf(ProviderTurnInProgressError);
+      // … and a result closing nothing ends it: no turn was published.
+      controlled.push(result(threadId, [], { num_turns: 0, result: '' }));
+      await flush();
+      expect(methods(events, from)).toEqual([]);
+      await expect(
+        adapter.sendTurn({ threadId, input: 'after' }),
+      ).resolves.toMatchObject({ turnId: expect.any(String) });
+      await adapter.stopSession(threadId);
+    });
+
+    test('L1: a steer folded into a turn does not swallow the next turn the engine opens itself', async () => {
+      const threadId = 'steer-then-provider';
+      const { controlled, adapter, events } = await lifecycleSession(threadId);
+      const u = await adapter.sendTurn({ threadId, input: 'second' });
+      controlled.push(lifecycle(threadId, u.turnId, 'started'));
+      controlled.push(init(threadId));
+      await flush();
+      await adapter.steerTurn(threadId, 'also', u.turnId);
+      const queue = mockQuery.mock.calls
+        .at(-1)![0]
+        .prompt[Symbol.asyncIterator]();
+      // Drain the pushed prompts to learn the steer's uuid.
+      const pushed: any[] = [];
+      for (let index = 0; index < 3; index++)
+        pushed.push((await queue.next()).value);
+      const steer = pushed.find(
+        (message) => message.message.content === 'also',
+      );
+      controlled.push(lifecycle(threadId, steer.uuid, 'started'));
+      controlled.push(result(threadId, [u.turnId, steer.uuid]));
+      await flush();
+      const from = events.length;
+      // The engine opens a turn of its own: its init is recognised as that
+      // (a send is refused while it begins), then its reply opens it.
+      controlled.push(init(threadId));
+      await flush();
+      await expect(
+        adapter.sendTurn({ threadId, input: 'racing it' }),
+      ).rejects.toBeInstanceOf(ProviderTurnInProgressError);
+      controlled.push(frame(threadId));
+      await flush();
+      expect(
+        events
+          .slice(from)
+          .filter((event) => event.method === 'turn.started')
+          .map((event) => event.metadata?.trigger),
+      ).toEqual(['provider']);
       await adapter.stopSession(threadId);
     });
   });

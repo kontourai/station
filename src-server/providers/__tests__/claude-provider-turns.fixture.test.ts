@@ -422,7 +422,9 @@ describe('#2324 provider-triggered turns, replayed from live Claude streams', ()
   test('a send racing the provider turn’s start is queued behind it: the reply stays on the provider turn, the send gets its own', async () => {
     // Station accepted U2 before reading the provider turn's `init`; the
     // engine had already started that turn, so U2 ran after it. The frames
-    // before U2's `started` carry no user uuid and must not become U2's.
+    // before U2's `started` carry no user uuid and must not become U2's, and
+    // U2's start is published when the engine starts it (#2324 review H1):
+    // the published order is the engine's, which every server fold follows.
     const lines = pushBeforeRunningTurnInit(
       loadFixture('send-races-provider-turn-start'),
       'U2',
@@ -435,7 +437,6 @@ describe('#2324 provider-triggered turns, replayed from live Claude streams', ()
       (fact) => fact.method === 'turn.started' && isProviderId(fact.turnId),
     )!.turnId;
     expect(facts.slice(2)).toEqual([
-      { method: 'turn.started', turnId: u2, prompt: 'U2' },
       { method: 'turn.started', turnId: provider, trigger: 'provider' },
       {
         method: 'turn.completed',
@@ -444,6 +445,7 @@ describe('#2324 provider-triggered turns, replayed from live Claude streams', ()
         outputText: 'finished',
         finishReason: 'stop',
       },
+      { method: 'turn.started', turnId: u2, prompt: 'U2' },
       {
         method: 'turn.completed',
         turnId: u2,
@@ -468,7 +470,6 @@ describe('#2324 provider-triggered turns, replayed from live Claude streams', ()
       (fact) => fact.method === 'turn.started' && isProviderId(fact.turnId),
     )!.turnId;
     expect(facts.slice(2)).toEqual([
-      { method: 'turn.started', turnId: u2, prompt: 'U2' },
       { method: 'turn.started', turnId: provider, trigger: 'provider' },
       // Closed where the engine took U2: no result of its own will come.
       {
@@ -477,6 +478,8 @@ describe('#2324 provider-triggered turns, replayed from live Claude streams', ()
         trigger: 'provider',
         finishReason: 'other',
       },
+      // U2 starts where the engine took it, not where Station queued it.
+      { method: 'turn.started', turnId: u2, prompt: 'U2' },
       // The one combined result (U2's uuid + task-notification origin).
       {
         method: 'turn.completed',

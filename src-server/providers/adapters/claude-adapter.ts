@@ -64,6 +64,7 @@ import type {
   ProviderAdapterShape,
   ProviderAdoptionHooks,
   ProviderDiscardSessionRecovery,
+  ProviderInterruptTurnResult,
   ProviderNativeSessionIdentity,
   ProviderSendTurnInput,
   ProviderSession,
@@ -118,13 +119,16 @@ import {
   claudeSourceResumeCursor,
 } from './claude-resume-cursor.js';
 import {
+  type ClaudeSdkTurnContext,
   type ClaudeSdkTurnLedger,
   claudeRunningTurnTerminalMetadata,
   claudeSendBlockedBy,
   endClaudeProviderTurn,
+  queuedClaudeTurn,
   recordClaudeSteer,
   recordClaudeTurnDispatched,
   recordClaudeTurnStopRequested,
+  withdrawQueuedClaudeTurn,
 } from './claude-sdk-turns.js';
 import {
   cleanupMaterializedSkills,
@@ -1633,45 +1637,19 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     // An allocated ID is not enough to attribute an inbound SDK result: a
     // resume/init handshake can arrive while async setup above is in flight.
     // Arm completion provenance only after this turn's prompt is queued.
-    recordClaudeTurnDispatched(record, turnId);
-
-    this.publish({
-      eventId: crypto.randomUUID(),
-      provider: this.provider,
-      threadId: input.threadId,
-      createdAt: new Date().toISOString(),
-      turnId,
-      method: 'turn.started',
-      // Transcript-facing: the typed text, never the composed model input.
-      prompt: input.displayInput ?? input.input,
-      attachments: input.attachments,
-      ...(input.ambientContext ? { ambientContext: input.ambientContext } : {}),
-      // Durable per-turn record of the resolved (actually-applied, not
-      // merely requested) approval posture (archive#727 review item 5).
-      metadata: {
-        ...effectiveModelMetadata(
-          record.session.model,
-          record.currentModelOptions,
-        ),
-        ...(input.recoveryCorrelationId
-          ? { recoveryCorrelationId: input.recoveryCorrelationId }
-          : {}),
-        ...(record.currentPermissionMode
-          ? { permissionMode: record.currentPermissionMode }
-          : {}),
-        ...(mapPermissionModeToApprovalMode(record.currentPermissionMode)
-          ? {
-              approvalMode: mapPermissionModeToApprovalMode(
-                record.currentPermissionMode,
-              ),
-            }
-          : {}),
-        ...(rejectedEscalation ? { approvalEscalationRejected: true } : {}),
-        [MODEL_SELECTION_RECEIPT_METADATA_KEY]: modelSelectionReceipt(
-          input.modelId,
-          input.modelId ? record.session.model : undefined,
-        ),
-      },
+    // #2324 review H1: the start is handed to the turn ledger, which
+    // publishes it when the SDK starts running this turn — at once when
+    // nothing else is running and the CLI cannot say otherwise, and on its
+    // `command_lifecycle` `started` when it can — so the published order is
+    // the engine's order.
+    recordClaudeTurnDispatched(record, turnId, {
+      context: this.sdkTurnContext(record),
+      event: this.dispatchedTurnStartEvent(
+        record,
+        input,
+        turnId,
+        rejectedEscalation,
+      ),
     });
 
     return {
@@ -1746,8 +1724,80 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     }
   }
 
-  async interruptTurn(threadId: string, turnId?: string) {
+  /** The `turn.started` a dispatched send publishes when it starts running. */
+  private dispatchedTurnStartEvent(
+    record: ClaudeSessionRecord,
+    input: ProviderSendTurnInput,
+    turnId: string,
+    rejectedEscalation: boolean,
+  ): CanonicalRuntimeEvent {
+    return {
+      eventId: crypto.randomUUID(),
+      provider: this.provider,
+      threadId: input.threadId,
+      createdAt: new Date().toISOString(),
+      turnId,
+      method: 'turn.started',
+      // Transcript-facing: the typed text, never the composed model input.
+      prompt: input.displayInput ?? input.input,
+      attachments: input.attachments,
+      ...(input.ambientContext ? { ambientContext: input.ambientContext } : {}),
+      // Durable per-turn record of the resolved (actually-applied, not
+      // merely requested) approval posture (archive#727 review item 5).
+      metadata: {
+        ...effectiveModelMetadata(
+          record.session.model,
+          record.currentModelOptions,
+        ),
+        ...(input.recoveryCorrelationId
+          ? { recoveryCorrelationId: input.recoveryCorrelationId }
+          : {}),
+        ...(record.currentPermissionMode
+          ? { permissionMode: record.currentPermissionMode }
+          : {}),
+        ...(mapPermissionModeToApprovalMode(record.currentPermissionMode)
+          ? {
+              approvalMode: mapPermissionModeToApprovalMode(
+                record.currentPermissionMode,
+              ),
+            }
+          : {}),
+        ...(rejectedEscalation ? { approvalEscalationRejected: true } : {}),
+        [MODEL_SELECTION_RECEIPT_METADATA_KEY]: modelSelectionReceipt(
+          input.modelId,
+          input.modelId ? record.session.model : undefined,
+        ),
+      },
+    };
+  }
+
+  /** The turn ledger's context for this session's own publishes. */
+  private sdkTurnContext(record: ClaudeSessionRecord): ClaudeSdkTurnContext {
+    return {
+      provider: this.provider,
+      record,
+      publish: (event) => this.publish(event),
+      createdAt: new Date().toISOString(),
+      logInfo: (message, details) =>
+        (this.options.logger ?? console).info?.(message, details),
+      interruptEngine: () => {
+        void record.query.interrupt().catch(() => undefined);
+      },
+    };
+  }
+
+  async interruptTurn(
+    threadId: string,
+    turnId?: string,
+  ): Promise<ProviderInterruptTurnResult> {
     const record = this.requireSession(threadId);
+    // #2324 review M1: a send the SDK holds but has not started. Withdrawn
+    // from the queue when the engine still can; otherwise marked, and stopped
+    // the moment it starts (its start is then followed by its abort). Either
+    // way the Stop is acknowledged for exactly this turn, never a no-op.
+    if (turnId && queuedClaudeTurn(record, turnId)) {
+      return this.stopQueuedTurn(record, turnId);
+    }
     if (!record.activeTurnId) return { outcome: 'no-active-turn' } as const;
     if (turnId && turnId !== record.activeTurnId) {
       return {
@@ -1791,12 +1841,67 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     return { outcome: 'cancelled', turnId: targetTurnId } as const;
   }
 
+  /**
+   * #2324 review M1: Stop for a send the SDK holds but has not started.
+   * `cancelAsyncMessage` (a runtime Query method the SDK's typings omit, so
+   * it is feature-detected) withdraws it while it is still queued; the turn
+   * then gets its `turn.aborted` and never a start. When it can no longer be
+   * withdrawn (it was already taken for the next turn, or the SDK has no
+   * such method) the Stop is marked on its entry: the ledger publishes its
+   * start and abort together and interrupts the engine the moment it starts.
+   */
+  private async stopQueuedTurn(
+    record: ClaudeSessionRecord,
+    turnId: string,
+  ): Promise<ProviderInterruptTurnResult> {
+    const cancelAsyncMessage = (
+      record.query as unknown as {
+        cancelAsyncMessage?: (uuid: string) => Promise<unknown>;
+      }
+    ).cancelAsyncMessage;
+    let withdrawn = false;
+    if (typeof cancelAsyncMessage === 'function') {
+      try {
+        withdrawn =
+          (await cancelAsyncMessage.call(record.query, turnId)) === true;
+      } catch {
+        withdrawn = false;
+      }
+    }
+    if (withdrawn) {
+      withdrawQueuedClaudeTurn(
+        this.sdkTurnContext(record),
+        turnId,
+        'interrupted',
+      );
+    } else if (queuedClaudeTurn(record, turnId)) {
+      recordClaudeTurnStopRequested(record, turnId);
+    } else {
+      // It started (or was cancelled) while the withdrawal was in flight;
+      // stop it like any running turn.
+      return this.interruptTurn(record.session.threadId, turnId);
+    }
+    providerOps.add(1, {
+      operation: 'claude-queued-turn-stop',
+      provider: this.provider,
+      outcome: withdrawn ? 'withdrawn' : 'stop-on-start',
+    });
+    return { outcome: 'cancelled', turnId };
+  }
+
   async steerTurn(
     threadId: string,
     input: string,
     turnId: string,
   ): Promise<void> {
     const record = this.requireSession(threadId);
+    // #2324 review M1: a send still queued behind another turn has not
+    // started; there is nothing to steer yet. Refused before any effect.
+    if (queuedClaudeTurn(record, turnId)) {
+      throw new SendTurnRefusedError(
+        'This Claude turn has not started yet, so it cannot be steered. Send the message as a new turn.',
+      );
+    }
     if (record.activeTurnId !== turnId) {
       throw new Error(`Claude turn '${turnId}' is no longer active.`);
     }
@@ -2825,6 +2930,9 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       publish: (event) => this.publish(event),
       logInfo: (message, details) =>
         (this.options.logger ?? console).info?.(message, details),
+      interruptEngine: () => {
+        void record.query.interrupt().catch(() => undefined);
+      },
     });
   }
 

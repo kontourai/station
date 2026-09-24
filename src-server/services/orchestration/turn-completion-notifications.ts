@@ -473,8 +473,10 @@ export function wireTurnCompletionNotifications(
           if (providerTurn && event.method === 'turn.completed') {
             // Closed without its own result (a send the engine folded into
             // it, a new turn, the session ending): whatever came next carries
-            // the news, so this one does not add a push of its own.
-            if (event.finishReason === 'other') {
+            // the news, so this one does not add a push of its own. Read
+            // from the adapter's own marker, not `finishReason`: a reply that
+            // ended on a deferred tool is `'other'` too, and is a reply.
+            if (event.metadata?.closedWithoutResult !== undefined) {
               turnCompletionNotificationOps.add(1, {
                 outcome,
                 result: 'skipped_provider_turn',

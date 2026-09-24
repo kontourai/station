@@ -27,7 +27,9 @@ import {
   type ClaudeSdkTurnLedger,
   claudeTurnTerminalMetadata,
   clearClaudeSdkTurns,
+  ensureClaudeTurnStartPublished,
   observeClaudeCommandLifecycle,
+  observeClaudeEmptyResult,
   observeClaudeInit,
   observeClaudeReplyFrame,
   readClaudeCommandLifecycle,
@@ -382,6 +384,8 @@ interface MapClaudeMessageParams {
   publish: (event: CanonicalRuntimeEvent) => void;
   /** Adapter-owned observability seam for dropped non-turn result messages. */
   logInfo?: (message: string, details: Record<string, unknown>) => void;
+  /** Interrupts the SDK (see `ClaudeSdkTurnContext.interruptEngine`). */
+  interruptEngine?: () => void;
 }
 
 export function mapClaudeSdkMessage({
@@ -390,6 +394,7 @@ export function mapClaudeSdkMessage({
   message,
   publish,
   logInfo,
+  interruptEngine,
 }: MapClaudeMessageParams): void {
   const createdAt = new Date().toISOString();
   const turnContext: ClaudeSdkTurnContext = {
@@ -398,6 +403,7 @@ export function mapClaudeSdkMessage({
     publish,
     createdAt,
     logInfo,
+    interruptEngine,
   };
 
   if (message.type === 'system' && message.subtype === 'init') {
@@ -769,6 +775,9 @@ export function mapClaudeSdkMessage({
         ? target.turn
         : undefined;
     const resultTurnId = resultTurn?.turnId;
+    // A send the ledger still holds as queued (no lifecycle messages) gets
+    // its start before any fact about its end.
+    if (resultTurn) ensureClaudeTurnStartPublished(turnContext, resultTurn);
     publish({
       eventId: crypto.randomUUID(),
       provider,
@@ -854,6 +863,8 @@ export function mapClaudeSdkMessage({
     // normal result fields (including usage), but `num_turns: 0` proves the
     // runtime did not execute Station's queued prompt, so it closes nothing.
     if (message.num_turns === 0) {
+      // Whatever turn the engine was beginning did not happen.
+      observeClaudeEmptyResult(turnContext);
       logInfo?.('Dropped Claude handshake result before lifecycle mapping', {
         threadId: record.session.threadId,
         resultKind: 'resume-init-handshake',

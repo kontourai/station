@@ -35,6 +35,16 @@ import type { ProviderSession } from '../adapter-shape.js';
  * A send pushed while it runs is folded into it at its next tool-round
  * boundary at the default priority: `started` for the send arrives mid-reply
  * and ONE result carries both the send's uuid and that origin.
+ *
+ * Published order follows the engine, not the push (#2324 review H1): a
+ * dispatched send's `turn.started` is published when the SDK starts running
+ * it, not when Station queued it. With lifecycle messages that is its
+ * `started`; so a send queued behind a turn the engine opened itself reads
+ * `P started → P ended → U started → U's reply → U ended`, which every
+ * single-slot turn fold on the server can follow. Without lifecycle messages
+ * (an older CLI) a send runs as soon as nothing else is running, and a reply
+ * the engine began before that send reached it can still be attributed to
+ * the send: that residual is documented, not closed.
  */
 export interface ClaudeSdkTurn {
   turnId: string;
@@ -49,6 +59,13 @@ export interface ClaudeSdkTurn {
   kind: 'dispatched' | 'provider' | 'untracked';
   /** A Stop was requested for exactly this turn; its result is a receipt. */
   stopRequested: boolean;
+  /**
+   * `dispatched` only: the turn's `turn.started`, held until the SDK starts
+   * running it, then published once (with the time it actually started).
+   */
+  startEvent?: CanonicalRuntimeEvent;
+  /** Its `turn.started` is published (a queued send's is not, yet). */
+  startPublished?: boolean;
 }
 
 export interface ClaudeSdkTurnLedger {
@@ -61,8 +78,19 @@ export interface ClaudeSdkTurnLedger {
    * first `init`; the first turn of a session is dispatched before it.
    */
   lifecycleMessages?: boolean;
-  /** A `command_lifecycle` `started` arrived and no `init` consumed it yet. */
+  /**
+   * A `command_lifecycle` `started` began a new SDK turn and no `init`
+   * consumed it yet. Not set by a `started` that folds into the running turn
+   * (a steer, a send merged into a reply): no `init` follows those.
+   */
   startedAwaitingInit: boolean;
+  /**
+   * An `init` no `started` preceded: the engine began a turn of its own that
+   * has not produced a frame yet. Sends are refused as they are for an open
+   * provider turn, but nothing is published until its first frame — so a
+   * turn that never replies (a handshake) leaves no phantom turn behind.
+   */
+  providerTurnPending: boolean;
   /** Steer uuid → the turn it was steered into. */
   steers: Map<string, string>;
 }
@@ -80,6 +108,12 @@ export interface ClaudeSdkTurnContext {
   publish: (event: CanonicalRuntimeEvent) => void;
   createdAt: string;
   logInfo?: (message: string, details: Record<string, unknown>) => void;
+  /**
+   * Interrupts whatever the SDK is running. Called when a send Stop was
+   * requested for while it was still queued (and could not be withdrawn)
+   * starts running.
+   */
+  interruptEngine?: () => void;
 }
 
 export type ProviderTurnCloseReason =
@@ -150,6 +184,7 @@ function claudeSdkTurns(record: ClaudeSdkTurnState): ClaudeSdkTurnLedger {
   record.sdkTurns ??= {
     queued: [],
     startedAwaitingInit: false,
+    providerTurnPending: false,
     steers: new Map(),
   };
   return record.sdkTurns;
@@ -173,12 +208,14 @@ export function claudeSendBlockedBy(
     return 'dispatched';
   if (ledger.running?.kind === 'provider' && !ledger.running.stopRequested)
     return 'provider';
+  if (!ledger.running && ledger.providerTurnPending) return 'provider';
   return undefined;
 }
 
 function setRunning(
   record: ClaudeSdkTurnState,
   turn: ClaudeSdkTurn | undefined,
+  context?: ClaudeSdkTurnContext,
 ): void {
   const ledger = claudeSdkTurns(record);
   if (ledger.running !== turn) {
@@ -187,31 +224,109 @@ function setRunning(
     record.lastReportedModel = undefined;
   }
   ledger.running = turn;
+  if (turn) ledger.providerTurnPending = false;
   record.activeTurnId =
     turn && turn.kind !== 'untracked' ? turn.turnId : undefined;
+  if (turn && context) publishClaudeTurnStart(context, turn);
+}
+
+/**
+ * Publishes a dispatched turn's held `turn.started`, once. A turn Stop was
+ * requested for while it was queued is then stopped at once: its
+ * `turn.aborted` follows its start and the engine is interrupted, so its
+ * result arrives as the Stop's receipt.
+ */
+function publishClaudeTurnStart(
+  context: ClaudeSdkTurnContext,
+  turn: ClaudeSdkTurn,
+): void {
+  if (turn.kind !== 'dispatched' || turn.startPublished || !turn.startEvent)
+    return;
+  turn.startPublished = true;
+  context.publish({ ...turn.startEvent, createdAt: context.createdAt });
+  if (!turn.stopRequested) return;
+  context.publish({
+    eventId: crypto.randomUUID(),
+    provider: context.provider,
+    threadId: context.record.session.threadId,
+    createdAt: context.createdAt,
+    turnId: turn.turnId,
+    method: 'turn.aborted',
+    reason: 'interrupted',
+  });
+  context.interruptEngine?.();
+}
+
+/**
+ * A dispatched turn is about to report a terminal: its start must precede
+ * it. Reached only without lifecycle messages, when a result names a send
+ * the ledger still holds as queued.
+ */
+export function ensureClaudeTurnStartPublished(
+  context: ClaudeSdkTurnContext,
+  turn: ClaudeSdkTurn,
+): void {
+  publishClaudeTurnStart({ ...context, interruptEngine: undefined }, turn);
 }
 
 /**
  * A dispatched prompt entered the SDK queue. Until the engine reports it
- * started it is queued; when this CLI cannot report that (no lifecycle
- * messages, or none seen yet) and nothing is running, the SDK runs it next,
- * so it is running now — exactly the attribution Station always used.
+ * started it is queued, and its `turn.started` is held; when this CLI cannot
+ * report that (no lifecycle messages, or none seen yet) and nothing is
+ * running, the SDK runs it next, so it is running now and its start is
+ * published now — exactly the attribution Station always used.
  */
 export function recordClaudeTurnDispatched(
   record: ClaudeSdkTurnState,
   turnId: string,
+  start?: { event: CanonicalRuntimeEvent; context: ClaudeSdkTurnContext },
 ): void {
   const ledger = claudeSdkTurns(record);
   const turn: ClaudeSdkTurn = {
     turnId,
     kind: 'dispatched',
     stopRequested: false,
+    ...(start ? { startEvent: start.event } : { startPublished: true }),
   };
   if (ledger.lifecycleMessages !== true && !ledger.running) {
-    setRunning(record, turn);
+    setRunning(record, turn, start?.context);
   } else {
     ledger.queued.push(turn);
   }
+}
+
+/** A dispatched send the SDK holds but has not started. */
+export function queuedClaudeTurn(
+  record: ClaudeSdkTurnState,
+  turnId: string,
+): ClaudeSdkTurn | undefined {
+  return claudeSdkTurns(record).queued.find((turn) => turn.turnId === turnId);
+}
+
+/**
+ * A queued send was withdrawn before it ran (the engine cancelled it, or a
+ * Stop withdrew it). Its boundary needs a terminal, so `turn.aborted` is
+ * published — never a `turn.started` first: nothing ran.
+ */
+export function withdrawQueuedClaudeTurn(
+  context: ClaudeSdkTurnContext,
+  turnId: string,
+  reason: string,
+): boolean {
+  const ledger = claudeSdkTurns(context.record);
+  const index = ledger.queued.findIndex((turn) => turn.turnId === turnId);
+  if (index === -1) return false;
+  ledger.queued.splice(index, 1);
+  context.publish({
+    eventId: crypto.randomUUID(),
+    provider: context.provider,
+    threadId: context.record.session.threadId,
+    createdAt: context.createdAt,
+    turnId,
+    method: 'turn.aborted',
+    reason,
+  });
+  return true;
 }
 
 export function recordClaudeSteer(
@@ -222,14 +337,24 @@ export function recordClaudeSteer(
   claudeSdkTurns(record).steers.set(steerUuid, turnId);
 }
 
-/** Marks a Stop for the running turn; returns whether it was that turn. */
+/**
+ * Marks a Stop for `turnId`: the running turn, or a queued send (which is
+ * then stopped the moment it starts, see {@link publishClaudeTurnStart}).
+ * Returns whether it named either.
+ */
 export function recordClaudeTurnStopRequested(
   record: ClaudeSdkTurnState,
   turnId: string,
 ): boolean {
-  const running = claudeSdkTurns(record).running;
-  if (running?.turnId !== turnId || running.kind === 'untracked') return false;
-  running.stopRequested = true;
+  const ledger = claudeSdkTurns(record);
+  const running = ledger.running;
+  if (running?.turnId === turnId && running.kind !== 'untracked') {
+    running.stopRequested = true;
+    return true;
+  }
+  const queued = ledger.queued.find((turn) => turn.turnId === turnId);
+  if (!queued) return false;
+  queued.stopRequested = true;
   return true;
 }
 
@@ -303,7 +428,10 @@ function closeProviderTurnWithoutResult(
     turnId: running.turnId,
     method: 'turn.completed',
     finishReason: 'other',
-    metadata: turnMetadata(running),
+    // Why it closed without its result: consumers that act on a reply
+    // (the "replied" push) skip a turn whose end is really something else's
+    // start — derived from what the engine did, not from `finishReason`.
+    metadata: { ...turnMetadata(running), closedWithoutResult: reason },
   });
 }
 
@@ -316,6 +444,7 @@ function closeProviderTurnWithoutResult(
 function startCommand(context: ClaudeSdkTurnContext, uuid: string): true {
   const { record } = context;
   const ledger = claudeSdkTurns(record);
+  ledger.providerTurnPending = false;
   const steeredInto = ledger.steers.get(uuid);
   if (steeredInto !== undefined) {
     // Kept until its turn settles: the steer's uuid also names the frames
@@ -359,7 +488,7 @@ function startCommand(context: ClaudeSdkTurnContext, uuid: string): true {
       stopRequested: ledger.running.stopRequested,
     });
   }
-  setRunning(record, turn);
+  setRunning(record, turn, context);
   return true;
 }
 
@@ -370,18 +499,16 @@ export function observeClaudeCommandLifecycle(
 ): void {
   const ledger = claudeSdkTurns(context.record);
   if (lifecycle.state === 'started') {
-    // Only this CLI reports lifecycle, so it also reports the init that
-    // follows; mark it even if the uuid is not one Station tracks.
+    // Only this CLI reports lifecycle. A `started` with nothing running
+    // begins a new SDK turn, whose `init` follows; one that folds into the
+    // running turn (a steer, a send merged into a reply) has no `init`.
     ledger.lifecycleMessages = true;
-    ledger.startedAwaitingInit = true;
+    ledger.startedAwaitingInit = ledger.running === undefined;
     startCommand(context, lifecycle.command_uuid);
     return;
   }
   if (lifecycle.state === 'cancelled') {
-    const index = ledger.queued.findIndex(
-      (turn) => turn.turnId === lifecycle.command_uuid,
-    );
-    if (index !== -1) ledger.queued.splice(index, 1);
+    withdrawQueuedClaudeTurn(context, lifecycle.command_uuid, 'cancelled');
     ledger.steers.delete(lifecycle.command_uuid);
   }
 }
@@ -410,7 +537,9 @@ export function observeClaudeInit(
     closeProviderTurnWithoutResult(context, 'next-turn-started');
   }
   if (ledger.running) return;
-  openProviderTurn(context);
+  // Opened on its first frame (`observeClaudeReplyFrame`); until then sends
+  // are refused, and a turn that never replies publishes nothing.
+  ledger.providerTurnPending = true;
 }
 
 /**
@@ -435,7 +564,7 @@ export function observeClaudeReplyFrame(
   }
   if (ledger.running) return;
   if (ledger.lifecycleMessages !== true && ledger.queued.length > 0) {
-    setRunning(context.record, ledger.queued.shift());
+    setRunning(context.record, ledger.queued.shift(), context);
     return;
   }
   openProviderTurn(context);
@@ -501,11 +630,21 @@ export function settleClaudeResultTarget(
   if (ledger.running && ended.has(ledger.running)) {
     setRunning(record, undefined);
   }
+  // A result ends whatever turn the engine was beginning, too.
+  ledger.providerTurnPending = false;
   if (!ledger.running && ledger.lifecycleMessages !== true) {
     // Without lifecycle messages the next queued send runs next.
     const next = ledger.queued.shift();
-    if (next) setRunning(record, next);
+    if (next) setRunning(record, next, context);
   }
+}
+
+/**
+ * A result that closes nothing (`num_turns: 0`, a handshake): the turn the
+ * engine was beginning did not happen.
+ */
+export function observeClaudeEmptyResult(context: ClaudeSdkTurnContext): void {
+  claudeSdkTurns(context.record).providerTurnPending = false;
 }
 
 /**
@@ -516,6 +655,7 @@ export function settleClaudeResultTarget(
  */
 export function endClaudeProviderTurn(context: ClaudeSdkTurnContext): void {
   closeProviderTurnWithoutResult(context, 'session-ended');
+  claudeSdkTurns(context.record).providerTurnPending = false;
 }
 
 /** A terminal failure: nothing is running any more. */
@@ -528,5 +668,6 @@ export function clearClaudeSdkTurns(
   ledger.queued = [];
   ledger.steers.clear();
   ledger.startedAwaitingInit = false;
+  ledger.providerTurnPending = false;
   setRunning(context.record, undefined);
 }
