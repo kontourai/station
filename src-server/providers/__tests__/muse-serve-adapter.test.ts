@@ -1642,7 +1642,7 @@ describe('#2452 delta review: escalation only acts on the question it belongs to
         (event) =>
           event.message.includes(
             'still waiting on a request Station could not decline',
-          ) && event.message.includes('stopped the subagent'),
+          ) && event.message.includes('asked Muse to stop the subagent'),
       ),
     ).toBe(true);
     const turn = await next.nextRequest('turn/start', seen);
@@ -1710,6 +1710,71 @@ describe('#2452 delta review: escalation only acts on the question it belongs to
     expect(h.hosts).toHaveLength(3);
     h.hosts[2].exit(1);
     await expect(changing).rejects.not.toThrow('cannot change its sandbox');
+  });
+
+  test('a returned parent approval with no known turn never interrupts the new live turn', async () => {
+    const h = harness({ approvalTimeoutMs: 60, approvalEscalationMs: 40 });
+    const stopAt = captureIndex(
+      'approval-unanswered-workflow-cancel',
+      (msg, dir) => dir === 's2c' && msg.method === 'approval/requested',
+    );
+    await run(h, 'approval-unanswered-workflow-cancel', {
+      approvalMode: 'ask',
+      stopAt,
+    });
+    const parentApproval = { ...unansweredRequested().params };
+    delete parentApproval.turnId;
+    delete parentApproval.subagentOrigin;
+    const host = h.hosts[0];
+    host.writeFrame({
+      jsonrpc: '2.0',
+      method: 'approval/requested',
+      params: parentApproval,
+    });
+    await host.nextRequest('approval/decide', new Set());
+    await wait(120);
+    expect(host.stdinEnded).toBe(true);
+
+    const { next, seen, sending } = await rehost(h, [parentApproval]);
+    const turn = await next.nextRequest('turn/start', seen);
+    seen.add(turn);
+    reply(next, turn, {
+      status: 'accepted',
+      disposition: 'started',
+      turnId: 'new-live-turn',
+    });
+    await expect(sending).resolves.toMatchObject({ turnId: 'new-live-turn' });
+
+    const decline = await next.nextRequest('approval/decide', seen);
+    seen.add(decline);
+    reject(next, decline);
+    const listed = await next.nextRequest('approval/listPending', seen);
+    seen.add(listed);
+    reply(next, listed, { approvals: [parentApproval], userInputs: [] });
+    const retry = await next.nextRequest('approval/decide', seen);
+    seen.add(retry);
+    reject(next, retry);
+    await settle();
+
+    expect(
+      next.sent.filter((frame) => frame.method === 'turn/interrupt'),
+    ).toEqual([]);
+    expect(
+      next.sent.filter((frame) => frame.method === 'subagent/stop'),
+    ).toEqual([]);
+    expect(
+      of(h.events, 'runtime.warning').filter(
+        (event) => event.code === MUSE_APPROVAL_DECIDE_FAILED_CODE,
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        message: expect.stringContaining('could not identify the turn'),
+      }),
+    ]);
+    expect(next.stdinEnded).toBe(false);
+    await expect(
+      h.adapter.sendTurn({ threadId: THREAD, input: 'another message' }),
+    ).rejects.toThrow('already has an active turn');
   });
 
   test('G4: a changed subject is offered again after the host dies', async () => {

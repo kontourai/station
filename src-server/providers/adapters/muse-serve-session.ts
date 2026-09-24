@@ -1751,7 +1751,9 @@ export class MuseServeSession {
       // Send one bounded stop request, then release Station's pending record.
       const connection = this.host?.connection;
       const sessionId = this.museSessionIdValue;
-      const turnId = pending.turnId ?? this.liveTurn()?.turnId;
+      // Only the turn this approval belongs to. Never fall back to whatever
+      // turn is live now: after a re-host that can be the user's new message.
+      const turnId = pending.turnId;
       const { approvalId, subagentId } = pending;
       const target = pending.subagentId
         ? {
@@ -1781,6 +1783,11 @@ export class MuseServeSession {
             }
           })
           .catch((error: unknown) => {
+            // Accepted limitation: with the decline undeliverable twice and
+            // the stop refused too, Station has no further bounded action
+            // that would not bring the request back (a re-host re-lists it).
+            // The warning below tells the user muse is waiting; stopping the
+            // session ends it.
             this.deps.logger?.warn('Muse approval stop was not admitted', {
               threadId: this.deps.threadId,
               approvalId,
@@ -1796,7 +1803,7 @@ export class MuseServeSession {
         method: 'runtime.warning',
         severity: 'warning',
         code: MUSE_APPROVAL_DECIDE_FAILED_CODE,
-        message: `Muse is still waiting on a request Station could not decline. Station ${target ? 'stopped' : 'could not identify'} the ${pending.subagentId ? 'subagent' : 'turn'} that asked.`,
+        message: `Muse is still waiting on a request Station could not decline. Station ${target ? 'asked Muse to stop' : 'could not identify'} the ${pending.subagentId ? 'subagent' : 'turn'} that asked. If Muse stays stuck, stop this session.`,
         details: {
           requestId: pending.requestId,
           ...(pending.subagentId ? { childId: pending.subagentId } : {}),
