@@ -10,6 +10,7 @@ import type {
   EngineId,
   ProviderSession,
 } from '@kontourai/station-contracts/provider';
+import { isKnownFullAccessAcpModeId } from '../../providers/adapters/acp-session-mode.js';
 import {
   type FullAccessGrant,
   isFullAccessGrant,
@@ -220,8 +221,11 @@ class TaskDispatcherImplementation implements TaskDispatcher {
     const startedAt = performance.now();
     // #2436: full access needs the caller's grant. Checked before anything
     // is reserved, so a refusal leaves the Task exactly as it was.
+    // #2569: an ACP agent's own full-access mode is the same request.
+    const options = intent.runtimeConfig?.modelOptions;
     if (
-      intent.runtimeConfig?.modelOptions?.approvalMode === 'never' &&
+      (options?.approvalMode === 'never' ||
+        isKnownFullAccessAcpModeId(options?.mode)) &&
       !isFullAccessGrant(intent.fullAccessGrant)
     ) {
       return {

@@ -340,6 +340,39 @@ test('a pick without its compare-and-set basis is refused, never recorded uncond
   expect(f.continueForegroundMessage).not.toHaveBeenCalled();
 });
 
+test.each(['bypassPermissions', 'full-access', 'yolo'])(
+  "#2569: an ACP agent's own full-access mode %s needs the same grant as never",
+  async (mode) => {
+    const f = await fixture();
+    const phone = f.pair('Phone');
+    const chat = await f.post(phone.credential, '/api/orchestration/chat', {
+      message: 'go',
+      target: { agent: 'opencode', model: { options: { mode } } },
+    });
+    expect(chat).toEqual({ status: 403, body: REFUSAL });
+    const continued = await f.post(
+      phone.credential,
+      `/api/orchestration/chat/${THREAD}/continue`,
+      { message: 'go', model: { options: { mode } } },
+    );
+    expect(continued).toEqual({ status: 403, body: REFUSAL });
+    expect(f.executeForegroundMessage).not.toHaveBeenCalled();
+    expect(f.continueForegroundMessage).not.toHaveBeenCalled();
+
+    // An ordinary advertised mode needs nothing, and the operator is not
+    // refused a full-access one (the fixture's executor then throws).
+    await f.post(phone.credential, '/api/orchestration/chat', {
+      message: 'go',
+      target: { agent: 'opencode', model: { options: { mode: 'plan' } } },
+    });
+    await f.post(f.operator.credential, '/api/orchestration/chat', {
+      message: 'go',
+      target: { agent: 'opencode', model: { options: { mode } } },
+    });
+    expect(f.executeForegroundMessage).toHaveBeenCalledTimes(2);
+  },
+);
+
 test('the operator in person needs no grant', async () => {
   const f = await fixture();
   expect((await f.decide(f.operator.credential, 'never')).status).toBe(200);

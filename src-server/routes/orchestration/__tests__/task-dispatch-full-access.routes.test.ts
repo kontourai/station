@@ -221,6 +221,7 @@ async function fixture() {
     operator,
     pair,
     grant,
+    post,
     dispatchTask,
     launchStarter,
     started,
@@ -288,3 +289,17 @@ test.each([
     ]);
   },
 );
+
+test("#2569: a device without the grant cannot dispatch a Task in an ACP agent's full-access mode", async () => {
+  const f = await fixture();
+  const phone = f.pair('Phone');
+  for (const mode of ['bypassPermissions', 'full-access', 'yolo']) {
+    expect(
+      await f.post(phone.credential, '/api/tasks/task-1/dispatch', {
+        runtimeConfig: { provider: 'acp', modelOptions: { mode } },
+      }),
+    ).toEqual({ status: 403, body: REFUSAL });
+  }
+  expect(f.reserve).not.toHaveBeenCalled();
+  expect(f.started).toEqual([]);
+});

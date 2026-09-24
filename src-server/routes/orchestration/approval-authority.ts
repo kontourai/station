@@ -9,6 +9,7 @@
  */
 import { APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE } from '@kontourai/station-contracts/orchestration';
 import type { Context } from 'hono';
+import { isKnownFullAccessAcpModeId } from '../../providers/adapters/acp-session-mode.js';
 import {
   type FullAccessGrant,
   fullAccessGrantFor,
@@ -26,11 +27,18 @@ export const APPROVAL_FULL_ACCESS_NOT_GRANTED = {
     "This device is not allowed to give an agent full access. The Station's operator can allow it: Devices, this device's access, Allow full access.",
 };
 
-/** The approval mode a `modelOptions` bag asks for, if any. */
+/**
+ * The approval posture a `modelOptions` bag asks for, if any. #2569: an ACP
+ * `mode` on the known full-access list (`KNOWN_FULL_ACCESS_ACP_MODE_IDS`:
+ * an agent's own permission bypass) asks for full access too, so it reads as
+ * `never` here and needs the same authority. A mode an agent only declares
+ * as full access in its advertised catalog cannot be seen at the route; the
+ * adapter withholds it outside a `host` session.
+ */
 export function requestedApprovalMode(options: unknown): unknown {
-  return options && typeof options === 'object'
-    ? (options as Record<string, unknown>).approvalMode
-    : undefined;
+  if (!options || typeof options !== 'object') return undefined;
+  const bag = options as Record<string, unknown>;
+  return isKnownFullAccessAcpModeId(bag.mode) ? 'never' : bag.approvalMode;
 }
 
 /**
