@@ -1,3 +1,4 @@
+import { agentId } from '@kontourai/station-contracts/agent-identity';
 import type {
   OrchestrationSessionSummary,
   TaskRecord,
@@ -888,7 +889,7 @@ describe('orchestration Running is gated on an in-flight turn (#1069)', () => {
   const attachedButIdle = {
     threadId: 'codex:1784515865925',
     provider: 'codex',
-    assignedAgentSlug: 'codex',
+    assignedAgentSlug: agentId('codex'),
     status: 'ready',
     lifecycleState: 'running',
     previousLifecycleState: 'queued',
@@ -903,7 +904,7 @@ describe('orchestration Running is gated on an in-flight turn (#1069)', () => {
     isPersisted: true,
     answerability: { answerable: true },
     eventCount: 1090,
-  };
+  } as const;
 
   test('a session that only attached is Ready, not Running', () => {
     const [item] = buildHomeWorkItems({
@@ -979,8 +980,10 @@ describe('orchestration Running is gated on an in-flight turn (#1069)', () => {
   });
 
   test('a stopped turn with a running child is Running until that child settles', () => {
-    const session = {
+    const session: OrchestrationSessionSummary = {
       ...attachedButIdle,
+      controlMode: 'station-owned',
+      answerability: { answerable: true },
       lifecycleState: 'canceled',
       conversationActivity: {
         conversationId: attachedButIdle.threadId,
@@ -988,7 +991,7 @@ describe('orchestration Running is gated on an in-flight turn (#1069)', () => {
         asOfSequence: 7,
         runningChildWork: { count: 1, producers: ['engine-subagent'] },
       },
-    } as OrchestrationSessionSummary;
+    };
     expect(orchestrationLifecycleLabel(session)).toBe('Running');
     const [item] = buildHomeWorkItems({
       chats: {},
@@ -1016,14 +1019,15 @@ describe('orchestration Running is gated on an in-flight turn (#1069)', () => {
       asOfSequence: 8,
       runningChildWork: { count: 1, producers: ['engine-subagent'] },
     };
-    const predecessor = {
+    const predecessor: OrchestrationSessionSummary = {
       ...attachedButIdle,
+      answerability: { answerable: true },
       threadId: conversationId,
       conversationId,
       controlMode: 'station-owned',
       lifecycleState: 'canceled',
       conversationActivity: activity,
-    } as OrchestrationSessionSummary;
+    };
     const current = {
       ...predecessor,
       threadId: currentThreadId,
