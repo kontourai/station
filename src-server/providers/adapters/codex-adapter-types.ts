@@ -1,5 +1,6 @@
 import type { ProviderSession } from '../adapter-shape.js';
 import type { CodexChildWorkState } from './codex-adapter-child-work.js';
+import type { CodexThreadSandbox } from './codex-approval-mode.js';
 
 export interface CodexProcessLike {
   readonly pid?: number;
@@ -72,6 +73,13 @@ export interface CodexSessionRecord {
    * auto-accepts later calls without re-prompting. Dies with the session.
    */
   approvedTools: Set<string>;
+  /**
+   * #2559: the sandbox the thread runs in, from `thread/start`,
+   * `thread/resume` or `thread/fork`'s own report, updated whenever a turn
+   * sends a `sandboxPolicy`. `turn/start` takes no sandbox mode string, so
+   * this is what a turn's sandbox actually is.
+   */
+  threadSandbox?: CodexThreadSandbox;
   activeTurnId?: string;
   activeTurnStartedAt?: number;
   /**

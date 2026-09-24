@@ -3,6 +3,7 @@ import {
   CODEX_DEFAULT_APPROVAL_KNOBS,
   mapApprovalModeToCodex,
   mapCodexKnobsToApprovalMode,
+  planCodexTurnSandbox,
   resolveCodexApprovalKnobs,
   resolveCodexExecutionKnobs,
 } from '../adapters/codex-approval-mode.js';
@@ -160,5 +161,51 @@ describe('mapCodexKnobsToApprovalMode', () => {
         sandbox: 'danger-full-access',
       }),
     ).toBe('connection-default');
+  });
+});
+
+describe('planCodexTurnSandbox (#2559)', () => {
+  // The adapter's knob mapping already confines never; this pins the second
+  // line: a full-access request never becomes a full-access policy outside
+  // a host session, whoever produced the knobs.
+  test('full access outside a host session is planned as workspace-write', () => {
+    for (const confinement of ['workspace', undefined] as const) {
+      expect(
+        planCodexTurnSandbox(
+          { approvalPolicy: 'never', sandbox: 'danger-full-access' },
+          { policy: { type: 'readOnly', networkAccess: false } },
+          confinement,
+        ),
+      ).toEqual({
+        sandboxPolicy: {
+          type: 'workspaceWrite',
+          writableRoots: [],
+          networkAccess: false,
+          excludeTmpdirEnvVar: false,
+          excludeSlashTmp: false,
+        },
+        applied: 'workspace-write',
+      });
+    }
+    expect(
+      planCodexTurnSandbox(
+        { approvalPolicy: 'never', sandbox: 'danger-full-access' },
+        { policy: { type: 'readOnly', networkAccess: false } },
+        'host',
+      ),
+    ).toEqual({
+      sandboxPolicy: { type: 'dangerFullAccess' },
+      applied: 'danger-full-access',
+    });
+  });
+
+  test('an unknown thread sandbox grants no network when a policy must be sent', () => {
+    expect(
+      planCodexTurnSandbox(
+        { approvalPolicy: 'untrusted', sandbox: 'workspace-write' },
+        {},
+        'workspace',
+      ).sandboxPolicy,
+    ).toMatchObject({ type: 'workspaceWrite', networkAccess: false });
   });
 });

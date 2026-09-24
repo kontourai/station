@@ -90,6 +90,8 @@ import {
 import type { CodexSessionRecord } from './codex-adapter-types.js';
 import {
   mapCodexKnobsToApprovalMode,
+  planCodexTurnSandbox,
+  readCodexSandboxPolicy,
   resolveCodexExecutionKnobs,
 } from './codex-approval-mode.js';
 import {
@@ -1800,6 +1802,17 @@ export class CodexAdapter implements ProviderAdapterShape {
       // the ONLY place the resolved model ever appears.
       const reportedModelFromInit =
         extractStringField(result, 'model') ?? undefined;
+      // #2559: the sandbox the thread actually runs in. Codex reports it on
+      // start, resume and fork alike; when it does not, what Station asked
+      // for is the best-known value.
+      const reportedSandbox = readCodexSandboxPolicy(
+        (result as { sandbox?: unknown } | undefined)?.sandbox,
+      );
+      record.threadSandbox = reportedSandbox
+        ? { policy: reportedSandbox }
+        : approvalKnobs
+          ? { requestedMode: approvalKnobs.sandbox }
+          : {};
       record.session = {
         ...record.session,
         status: 'ready',
@@ -2186,6 +2199,14 @@ export class CodexAdapter implements ProviderAdapterShape {
       input.reviewIsolation,
       input.confinement,
     );
+    // #2559: `turn/start` ignores a sandbox mode string; its only sandbox
+    // override is a full `sandboxPolicy`, sent only when the posture moves
+    // the thread to a different sandbox, and never looser than confinement.
+    const sandboxPlan = planCodexTurnSandbox(
+      approvalKnobs,
+      record.threadSandbox ?? {},
+      input.confinement,
+    );
     let result: unknown;
     try {
       result = await this.transport.sendRequest(record, 'turn/start', {
@@ -2208,13 +2229,16 @@ export class CodexAdapter implements ProviderAdapterShape {
         model: input.modelId,
         effort: mapReasoningEffort(modelOptions),
         ...(approvalKnobs
-          ? {
-              approvalPolicy: approvalKnobs.approvalPolicy,
-              sandbox: approvalKnobs.sandbox,
-            }
+          ? { approvalPolicy: approvalKnobs.approvalPolicy }
+          : {}),
+        ...(sandboxPlan.sandboxPolicy
+          ? { sandboxPolicy: sandboxPlan.sandboxPolicy }
           : {}),
         serviceTier: modelOptions.fastMode ? 'fast' : undefined,
       });
+      // Applies to this turn and every later one (TurnStartParams).
+      if (sandboxPlan.sandboxPolicy)
+        record.threadSandbox = { policy: sandboxPlan.sandboxPolicy };
       providerOps.add(1, {
         operation: 'adapter-model-options',
         provider: this.provider,
@@ -2292,10 +2316,20 @@ export class CodexAdapter implements ProviderAdapterShape {
         ...(approvalKnobs
           ? {
               approvalPolicy: approvalKnobs.approvalPolicy,
-              sandbox: approvalKnobs.sandbox,
-              // Lets the client track a durable lastAppliedApprovalMode baseline
-              // (archive#727 review round 3, item 1 — the pending-apply chip state).
-              approvalMode: mapCodexKnobsToApprovalMode(approvalKnobs),
+              // #2559: the sandbox this turn runs in (the thread's, or the
+              // policy just sent), never merely the one requested; and the
+              // mode that pair really is. Omitted when Codex reported none.
+              ...(sandboxPlan.applied
+                ? {
+                    sandbox: sandboxPlan.applied,
+                    // Lets the client track a durable lastAppliedApprovalMode
+                    // baseline (archive#727 review round 3, item 1).
+                    approvalMode: mapCodexKnobsToApprovalMode({
+                      approvalPolicy: approvalKnobs.approvalPolicy,
+                      sandbox: sandboxPlan.applied,
+                    }),
+                  }
+                : {}),
               confinement: input.confinement ?? 'workspace',
             }
           : {}),

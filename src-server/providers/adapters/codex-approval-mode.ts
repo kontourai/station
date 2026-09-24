@@ -121,3 +121,157 @@ export function mapCodexKnobsToApprovalMode(
       return 'connection-default';
   }
 }
+
+/**
+ * #2559: Codex's `SandboxPolicy`, the shape `thread/start`, `thread/resume`
+ * and `thread/fork` report as the thread's `sandbox`, and the only per-turn
+ * sandbox override `turn/start` accepts (`sandboxPolicy`; its `sandbox` mode
+ * string is ignored there). Mirrored from Codex 0.155.1's generated
+ * `v2/SandboxPolicy.ts`.
+ */
+export type CodexSandboxPolicy =
+  | { type: 'dangerFullAccess' }
+  | { type: 'readOnly'; networkAccess: boolean }
+  | { type: 'externalSandbox'; networkAccess: 'restricted' | 'enabled' }
+  | {
+      type: 'workspaceWrite';
+      writableRoots: string[];
+      networkAccess: boolean;
+      excludeTmpdirEnvVar: boolean;
+      excludeSlashTmp: boolean;
+    };
+
+/** The thread's reported sandbox, or `undefined` when it is not one Codex defines. */
+export function readCodexSandboxPolicy(
+  value: unknown,
+): CodexSandboxPolicy | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const policy = value as Record<string, unknown>;
+  switch (policy.type) {
+    case 'dangerFullAccess':
+      return { type: 'dangerFullAccess' };
+    case 'readOnly':
+      return typeof policy.networkAccess === 'boolean'
+        ? { type: 'readOnly', networkAccess: policy.networkAccess }
+        : undefined;
+    case 'externalSandbox':
+      return policy.networkAccess === 'restricted' ||
+        policy.networkAccess === 'enabled'
+        ? { type: 'externalSandbox', networkAccess: policy.networkAccess }
+        : undefined;
+    case 'workspaceWrite':
+      return Array.isArray(policy.writableRoots) &&
+        policy.writableRoots.every((root) => typeof root === 'string') &&
+        typeof policy.networkAccess === 'boolean' &&
+        typeof policy.excludeTmpdirEnvVar === 'boolean' &&
+        typeof policy.excludeSlashTmp === 'boolean'
+        ? {
+            type: 'workspaceWrite',
+            writableRoots: [...(policy.writableRoots as string[])],
+            networkAccess: policy.networkAccess,
+            excludeTmpdirEnvVar: policy.excludeTmpdirEnvVar,
+            excludeSlashTmp: policy.excludeSlashTmp,
+          }
+        : undefined;
+    default:
+      return undefined;
+  }
+}
+
+/** The Station sandbox mode a policy is; `externalSandbox` has none. */
+export function codexSandboxModeOfPolicy(
+  policy: CodexSandboxPolicy | undefined,
+): CodexSandboxMode | undefined {
+  switch (policy?.type) {
+    case 'dangerFullAccess':
+      return 'danger-full-access';
+    case 'workspaceWrite':
+      return 'workspace-write';
+    case 'readOnly':
+      return 'read-only';
+    default:
+      return undefined;
+  }
+}
+
+/** What a thread is known to be sandboxed to right now. */
+export interface CodexThreadSandbox {
+  /** Codex's own report (thread response), or the policy Station last sent. */
+  policy?: CodexSandboxPolicy;
+  /** The mode Station asked for at thread start when Codex reported none. */
+  requestedMode?: CodexSandboxMode;
+}
+
+function networkOf(policy: CodexSandboxPolicy | undefined): boolean {
+  switch (policy?.type) {
+    // Full access already had the network; keeping it is not a loosening.
+    case 'dangerFullAccess':
+      return true;
+    case 'workspaceWrite':
+    case 'readOnly':
+      return policy.networkAccess;
+    case 'externalSandbox':
+      return policy.networkAccess === 'enabled';
+    default:
+      // Unknown: never grant what the thread may not have had.
+      return false;
+  }
+}
+
+/**
+ * #2559: the per-turn `sandboxPolicy` a turn must send so the thread runs in
+ * `desired`'s sandbox, and the sandbox mode the turn then actually runs in.
+ *
+ * - Nothing is sent when the thread is already in the desired mode, or the
+ *   turn carries no posture: the thread's sandbox (and whatever the user's
+ *   own Codex config put in it, network included) keeps governing.
+ * - A change is sent as a full policy built from the thread's current one,
+ *   never looser: network and writable roots carry over, and an unknown
+ *   current policy gives no network.
+ * - `danger-full-access` is sent only to a `host` session; anything else
+ *   gets `workspace-write` instead, whatever the turn asked for.
+ */
+export function planCodexTurnSandbox(
+  desired: CodexApprovalKnobs | undefined,
+  thread: CodexThreadSandbox,
+  confinement: StationConfinement | undefined,
+): { sandboxPolicy?: CodexSandboxPolicy; applied?: CodexSandboxMode } {
+  const current = thread.policy
+    ? codexSandboxModeOfPolicy(thread.policy)
+    : thread.requestedMode;
+  if (!desired) return current ? { applied: current } : {};
+  const wanted: CodexSandboxMode =
+    desired.sandbox === 'danger-full-access' && confinement !== 'host'
+      ? 'workspace-write'
+      : desired.sandbox;
+  if (wanted === current) return { applied: current };
+  const policy = thread.policy;
+  switch (wanted) {
+    case 'danger-full-access':
+      return {
+        sandboxPolicy: { type: 'dangerFullAccess' },
+        applied: wanted,
+      };
+    case 'read-only':
+      return {
+        sandboxPolicy: { type: 'readOnly', networkAccess: false },
+        applied: wanted,
+      };
+    case 'workspace-write':
+      return {
+        sandboxPolicy: {
+          type: 'workspaceWrite',
+          writableRoots:
+            policy?.type === 'workspaceWrite' ? [...policy.writableRoots] : [],
+          networkAccess: networkOf(policy),
+          excludeTmpdirEnvVar:
+            policy?.type === 'workspaceWrite'
+              ? policy.excludeTmpdirEnvVar
+              : false,
+          excludeSlashTmp:
+            policy?.type === 'workspaceWrite' ? policy.excludeSlashTmp : false,
+        },
+        applied: wanted,
+      };
+  }
+}
