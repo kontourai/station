@@ -929,6 +929,7 @@ describe('ClaudeAdapter', () => {
         threadId,
         modelId: 'claude-sonnet-4-6',
       });
+      const events = collect(adapter);
       const a = await adapter.sendTurn({ threadId, input: 'A' });
       await adapter.interruptTurn(threadId, a.turnId);
       const b = adapter.sendTurn({
@@ -943,6 +944,18 @@ describe('ClaudeAdapter', () => {
       await expect(b).rejects.toThrow('query ended');
       const c = await adapter.sendTurn({ threadId, input: 'C' });
       expect(c.turnId).not.toBe(a.turnId);
+      // A is fully gone, not merely exempt: C runs, and C's own result
+      // closes C.
+      expect(
+        events.filter((event) => event.method === 'turn.completed'),
+      ).toEqual([]);
+      controlled.push(successResult(threadId));
+      await flush();
+      expect(
+        events
+          .filter((event) => event.method === 'turn.completed')
+          .map((event) => event.turnId),
+      ).toEqual([c.turnId]);
       await adapter.stopSession(threadId);
     });
 
