@@ -976,7 +976,7 @@ describe('NativeStationProfileStorage', () => {
     ]);
   });
 
-  it('keeps selection-provenance migration disabled for mobile repositories', async () => {
+  it('keeps selection-provenance migration disabled when a repository opts out', async () => {
     const selectionStorage = legacyConnectionSelectionStorage({
       name: 'Chosen remote',
       url: 'https://station.kontourai.io',
@@ -1254,6 +1254,71 @@ describe('NativeStationProfileStorage', () => {
     await expect(storage.authorizeDefaultProfile()).resolves.toBe(true);
 
     expect(calls).toContainEqual([
+      'station_profile_authorize_active',
+      { profileName: 'kontour' },
+    ]);
+  });
+
+  it('reopens a client-selected Station after a new native process without changing the shared default', async () => {
+    const clientSelectionStorage = memoryStorage();
+    const first = storageWithProfileStore(
+      PROFILE_STORE,
+      clientSelectionStorage,
+    );
+    await first.storage.hydrate();
+    await first.storage.authorizeActiveConnection(
+      'station-profile:station.kontourai.io',
+      true,
+    );
+
+    const restarted = storageWithProfileStore(
+      PROFILE_STORE,
+      clientSelectionStorage,
+    );
+    await restarted.storage.hydrate();
+    await expect(restarted.storage.authorizeRememberedProfile()).resolves.toBe(
+      true,
+    );
+    expect(restarted.calls).toContainEqual([
+      'station_profile_authorize_active',
+      { profileName: 'station.kontourai.io' },
+    ]);
+    expect(PROFILE_STORE.defaultProfile).toBe('kontour');
+  });
+
+  it('falls back to the shared default when the client has no saved choice', async () => {
+    const { calls, storage } = storageWithProfileStore();
+    await storage.hydrate();
+    await expect(storage.authorizeRememberedProfile()).resolves.toBe(true);
+    expect(calls).toContainEqual([
+      'station_profile_authorize_active',
+      { profileName: 'kontour' },
+    ]);
+  });
+
+  it('forgets a prior client choice when this device opens the shared default', async () => {
+    const clientSelectionStorage = memoryStorage();
+    const { storage } = storageWithProfileStore(
+      PROFILE_STORE,
+      clientSelectionStorage,
+    );
+    await storage.hydrate();
+    await storage.authorizeActiveConnection(
+      'station-profile:station.kontourai.io',
+      true,
+    );
+    await storage.authorizeDefaultProfile(true);
+    expect(
+      clientSelectionStorage.get('station-native-profile-selection-v1'),
+    ).toBeNull();
+
+    const restarted = storageWithProfileStore(
+      PROFILE_STORE,
+      clientSelectionStorage,
+    );
+    await restarted.storage.hydrate();
+    await restarted.storage.authorizeRememberedProfile();
+    expect(restarted.calls).toContainEqual([
       'station_profile_authorize_active',
       { profileName: 'kontour' },
     ]);

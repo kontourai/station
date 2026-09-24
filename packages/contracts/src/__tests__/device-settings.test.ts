@@ -137,7 +137,7 @@ describe('DEVICE_SETTINGS_REGISTRY completeness', () => {
     expect(byKey.get('modelPickerPreferences')).toBe('station.device-settings');
   });
 
-  test('registers exactly the twenty-eight documented DeviceSettings fields', () => {
+  test('registers exactly the twenty-nine documented DeviceSettings fields', () => {
     const keys = DEVICE_SETTINGS_REGISTRY.map(
       (definition) => definition.key as string,
     ).sort();
@@ -167,6 +167,7 @@ describe('DEVICE_SETTINGS_REGISTRY completeness', () => {
         'dockSlotPlacement',
         // station#1954:
         'hapticsEnabled',
+        'openLastStationOnLaunch',
         // station#2652 — guided first-run progress on this device.
         'firstRunProgress',
         // station#3314 — sidebar Open chats/Drafts collapse + removal.
