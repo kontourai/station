@@ -608,9 +608,9 @@ swipe-back) — returns to Chat: Chat reselected, its maximize and visibility
 restored, and the tab the layer minted removed (a phone has no tab strip, so
 a tab left behind Chat would be one nobody can see or close;
 `restorePhonePaneLayer`). A minted pane the layer moved out of another
-(hidden) dock region goes back to its tab slot there — on Back, "‹ Chat",
-a dismissal, or the fold opening — so neither the record nor the
-arrangement loses it. (A pane held in `main` never opens a layer, so a
+(hidden) dock region goes back to its tab slot there on Back, "‹ Chat" or a
+dismissal. When the fold opens instead, the pane stays on screen (below)
+and only the persisted record returns it, so the record never loses it. (A pane held in `main` never opens a layer, so a
 layer pane's origin is always a dock region.) Opening another pane while a layer is open replaces the layer's pane and
 keeps the ORIGINAL previous state, so one Back always returns to Chat.
 Anything else that takes the pane off screen — "Show Chat" in the folded
@@ -619,9 +619,15 @@ and consumes its entry; "Hide <pane>" for the layer's own pane is the way
 back to Chat rather than a hide of Chat's region. A chat-focus intent
 (`focusSession`, `openChatForAgent`, opening a conversation) dismisses the
 layer through `useDismissPhoneLayer`. When the fold opens (a narrow window
-widened) the layer ends in place (`endPhonePaneLayerInPlace`): a pane it
-moved returns to its origin region, any other stays as an ordinary tab, and
-only its maximize is undone. Every exit leaves `lastDockMaximized` as the
+widened) the layer ends in place (`endPhonePaneLayerInPlace`): its pane
+stays visible, selected and mounted as an ordinary tab of Chat's region —
+moving it would remount it (dropping an unguarded draft) and hide what the
+user was reading — and only its maximize is undone. For a pane the layer
+moved out of another region, the persisted record keeps projecting it into
+that origin (`projectPhoneLayerPaneToOrigin`, applied by the provider's
+persist) for as long as it is still a tab of Chat's region, so a reload
+finds it where the user put it; the projection is dropped once the user
+moves or closes the tab. Every exit leaves `lastDockMaximized` as the
 layer found it.
 
 Back, "‹ Chat" (`closePhoneLayer`), the folded menu's hide of the layer's
