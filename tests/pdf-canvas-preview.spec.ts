@@ -322,6 +322,45 @@ test('reports a PDF worker that never starts instead of loading forever', async 
   await expect(dialog.getByRole('link', { name: 'Download' })).toBeVisible();
 });
 
+test('a page zoomed wider than the dialog can be scrolled to both of its edges', async ({
+  page,
+}) => {
+  await mount(page);
+  await page.getByRole('button', { name: 'Open PDF', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Preview' });
+  await expect(dialog.getByText('2 pages')).toBeVisible({ timeout: 20_000 });
+  const zoomIn = dialog.getByRole('button', { name: 'Zoom in', exact: true });
+  while (await zoomIn.isEnabled()) await zoomIn.click();
+  await expect(dialog.getByLabel('PDF zoom level')).toHaveText('400%');
+
+  const region = dialog.getByRole('region', { name: 'PDF pages' });
+  const sheet = dialog.getByRole('img', { name: 'Page 1 of 2' });
+  const box = async () => ({
+    region: (await region.boundingBox())!,
+    sheet: (await sheet.boundingBox())!,
+  });
+  await expect
+    .poll(async () => {
+      const { region: r, sheet: s } = await box();
+      return s.width > r.width;
+    })
+    .toBe(true);
+
+  await region.evaluate((element) => {
+    element.scrollLeft = 0;
+  });
+  const start = await box();
+  expect(start.sheet.x).toBeGreaterThanOrEqual(start.region.x);
+
+  await region.evaluate((element) => {
+    element.scrollLeft = element.scrollWidth;
+  });
+  const end = await box();
+  expect(end.sheet.x + end.sheet.width).toBeLessThanOrEqual(
+    end.region.x + end.region.width,
+  );
+});
+
 test('gives up on a worker that loads but never answers, and never on one that did', async ({
   page,
 }) => {

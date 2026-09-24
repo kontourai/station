@@ -45,7 +45,10 @@
   overscroll-behavior: contain;
   display: flex;
   flex-direction: column;
-  align-items: center;
+  /* Not center: a page zoomed wider than the viewport would overflow to a
+     negative, unscrollable offset. Auto margins center a narrower page and
+     collapse to 0 on a wider one. */
+  align-items: flex-start;
   gap: 12px;
   padding: 12px 16px;
   background: var(--bg-primary);
@@ -59,6 +62,7 @@
 .pdf-canvas-viewer__page {
   position: relative;
   flex-shrink: 0;
+  margin-inline: auto;
   /* A page is paper whatever the theme; the canvas draws on top of it. */
   background: #fff;
   box-shadow: 0 1px 3px rgb(0 0 0 / 0.3);
