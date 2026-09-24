@@ -123,7 +123,6 @@ import {
 } from '@tanstack/react-query-persist-client';
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { SkeletonBlock } from '../components/state';
-import { notifyOrchestrationAuthorityChanged } from '../hooks/orchestration/ensureOrchestrationEventStream';
 import {
   useConnectionSwitchScope,
   useInvalidateCachesOnConnectionSwitch,
@@ -358,7 +357,11 @@ export function AuthorityQueryProvider({
       lastVerifiedNamespaceRef.current !== verifiedNamespace
     ) {
       activeChatsStore.clearConversationActivity();
-      notifyOrchestrationAuthorityChanged(apiBase);
+      window.dispatchEvent(
+        new CustomEvent('station:orchestration-authority-change', {
+          detail: apiBase,
+        }),
+      );
     }
     lastVerifiedNamespaceRef.current = verifiedNamespace;
     if (activeRef.current?.namespace === verifiedNamespace) return;

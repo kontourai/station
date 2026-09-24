@@ -31,10 +31,7 @@ vi.mock('../eventHandlers', () => ({
     settleSemanticDeliveryBuffer(...args),
 }));
 
-import {
-  ensureOrchestrationEventStream,
-  notifyOrchestrationAuthorityChanged,
-} from '../ensureOrchestrationEventStream';
+import { ensureOrchestrationEventStream } from '../ensureOrchestrationEventStream';
 import { getStreamConnectionState } from '../streamConnectionState';
 
 const encoder = new TextEncoder();
@@ -147,9 +144,13 @@ describe('ensureOrchestrationEventStream recovery (station#2301)', () => {
     ensureOrchestrationEventStream(a);
     ensureOrchestrationEventStream(b);
     await settle();
-    notifyOrchestrationAuthorityChanged(b);
+    window.dispatchEvent(
+      new CustomEvent('station:orchestration-authority-change', { detail: b }),
+    );
     await settle();
-    notifyOrchestrationAuthorityChanged(a);
+    window.dispatchEvent(
+      new CustomEvent('station:orchestration-authority-change', { detail: a }),
+    );
     await settle();
     expect(requestsTo(a)).toHaveLength(2);
     expect(requestsTo(b)).toHaveLength(2);

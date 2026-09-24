@@ -160,6 +160,13 @@ function installRecoveryListeners(): void {
   scope.window?.addEventListener('focus', reensureRequestedStreams);
   scope.window?.addEventListener('online', reensureRequestedStreams);
   scope.window?.addEventListener('pageshow', reensureRequestedStreams);
+  scope.window?.addEventListener(
+    'station:orchestration-authority-change',
+    (event) =>
+      notifyOrchestrationAuthorityChanged(
+        (event as CustomEvent<string>).detail,
+      ),
+  );
 }
 
 /**
