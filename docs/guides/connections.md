@@ -53,6 +53,32 @@ wired into the ordinary client, these records remain unconnected and cannot be
 selected as direct Station connections or CLI defaults. The CLI also refuses
 `--station` and `STATION_TARGET` when they name one of these inert routes.
 
+For a native signing-key approval, select the saved broker route and choose
+**Prepare native Station identity**. Station creates or reopens this install's
+proof key in the OS keyring and shows only its public key, thumbprint, client
+instance, app/channel, and selected route. Copy this **public install proof** to
+the Station operator. On the operator's machine, with the self-hosted connector
+configured and online, save that JSON to a private file and run:
+
+```sh
+npm run connector:invite -- /absolute/station-home /absolute/private-connector-config.json /absolute/prepare.json /absolute/private-directory/new-invitation.json
+```
+
+The command uses the Station-owned broker credential internally and writes one
+surface-bound native invitation to a new 0600 file in a private directory. It
+does not print the invitation secret. Send the file's contents to the intended
+client through a private channel; the invitation alone grants no Station,
+account, Device, or Project authority. The client pastes it into the saved
+route's **One-time Station invitation** field, then independently compares the
+candidate's 16-character code and full key ID with the operator using a
+separate channel. The operator can read those values with
+`npm run --silent connection:key -- fingerprint --home=<absolute-home-path>`.
+Only after entering both independently obtained values and confirming that
+separate comparison does **Approve Station key** store public trust on the
+client. **Revoke Station key trust** requires the current full key ID and a
+successful keyring write; an error leaves revocation unresolved. Approval and
+revocation do not start a native broker route or sign the client in.
+
 In the browser, **Manage Stations → Broker routes** first has a **Station
 signing key** step. A fresh browser with no Device cookie can reach the same
 setup from **Connect to a Station → Use a broker invitation**. The operator can run
@@ -75,9 +101,9 @@ with the operator before approving. The broker has a bounded pre-grant courier
 for a Station-signed, short-lived candidate bound to the selected broker and
 one client challenge. The signature proves possession of the included key;
 it does not approve the Station. The native verifier checks the signature,
-challenge, route, client key, key ID, and confirmation code, but the packaged
-app does not yet expose a durable native approval ceremony or select a native
-relay route. The recipient must compare the code and full key ID through a
+challenge, route, client key, key ID, and confirmation code; the explicit
+Desktop approval ceremony stores public trust in the OS keyring but does not
+yet select or connect a native relay route. The recipient must compare the code and full key ID through a
 separate channel and explicitly record trust in its own trust owner. Courier
 delivery does not consume the invitation, enroll a Device, or grant account,
 Project, or compute permissions.
