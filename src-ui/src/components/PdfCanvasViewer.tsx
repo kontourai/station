@@ -301,8 +301,14 @@ export default function PdfCanvasViewer({
           <output aria-label="PDF page count">
             {pageCount === 1 ? '1 page' : `${pageCount} pages`}
           </output>
-          <Button disabled={zoom === 1} onClick={() => changeZoom(1)}>
-            Fit width
+          {/* Short visible label so the row, with Download, fits a phone. */}
+          <Button
+            disabled={zoom === 1}
+            onClick={() => changeZoom(1)}
+            aria-label="Fit width"
+            title="Fit width"
+          >
+            Fit
           </Button>
           <Button
             className="pdf-canvas-viewer__zoom-step"

@@ -85,7 +85,8 @@ describe('FilePreviewContent', () => {
     const download = screen.getByRole('link', { name: 'Download notes.txt' });
     expect(download.getAttribute('href')).toBe(url);
     // One slim row naming the type, not a row of its own for the button.
-    expect(download.closest('.file-preview__toolbar')?.textContent).toBe(
+    const toolbar = download.closest('.file-preview__toolbar');
+    expect(toolbar?.querySelector('.file-preview__kind')?.textContent).toBe(
       'Text',
     );
     expect(download.getAttribute('download')).toBe('notes.txt');

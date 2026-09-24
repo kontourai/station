@@ -322,6 +322,31 @@ test('reports a PDF worker that never starts instead of loading forever', async 
   await expect(dialog.getByRole('link', { name: 'Download' })).toBeVisible();
 });
 
+test('keeps the page count, zoom and Download on one row at phone width', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mount(page);
+
+  await page.getByRole('button', { name: 'Open PDF', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Preview' });
+  await expect(dialog.getByRole('img', { name: 'Page 1 of 2' })).toBeVisible({
+    timeout: 20_000,
+  });
+  const zoomIn = (await dialog
+    .getByRole('button', { name: 'Zoom in', exact: true })
+    .boundingBox())!;
+  const download = (await dialog
+    .getByRole('link', { name: 'Download report.pdf' })
+    .boundingBox())!;
+  // One toolbar row, not a Download row of its own above it.
+  expect(download.y).toBe(zoomIn.y);
+  expect(download.x).toBeGreaterThan(zoomIn.x);
+  expect(download.x + download.width).toBeLessThanOrEqual(390);
+  expect(download.height).toBeGreaterThanOrEqual(44);
+  expect(download.width).toBeGreaterThanOrEqual(44);
+});
+
 test('a page zoomed wider than the dialog can be scrolled to both of its edges', async ({
   page,
 }) => {
