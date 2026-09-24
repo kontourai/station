@@ -89,6 +89,16 @@ export interface AppConfig {
    * start, and nothing computes that without launching a process.
    */
   defaultTerminalShell?: string;
+  /**
+   * HTTP address of the local device helper Station lists simulators and
+   * emulators through (`http://127.0.0.1:<high port>`). Resolution follows
+   * the registry entry's chain — this stored value, then the
+   * `STATION_MOBILE_DEVICE_HUB_URL` environment variable, then unconfigured —
+   * so the Settings row and the Device pane's setup copy name the same
+   * source. The host validates the value itself and reports a refused
+   * address as a typed failure rather than a boot error.
+   */
+  mobileDeviceHubUrl?: string;
   disableDefaultSkillRegistries?: boolean;
   approvalGuardian?: ApprovalGuardianConfig;
   /**
