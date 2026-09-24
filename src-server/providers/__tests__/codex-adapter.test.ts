@@ -4339,6 +4339,21 @@ describe('CodexAdapter', () => {
       });
     });
 
+    test('R5: an external sandbox report claims no Station sandbox mode in session.configured', async () => {
+      // Codex says the thread runs inside an outer sandbox, which is none of
+      // read-only, workspace-write or full access. Reporting the requested
+      // mode would claim one the thread is not in.
+      const { configured } = await run(
+        'configured-external',
+        { approvalMode: 'never', confinement: 'host' },
+        { type: 'externalSandbox', networkAccess: 'restricted' },
+        [],
+      );
+      expect(configured).toMatchObject({ approvalPolicy: 'never' });
+      expect(configured).not.toHaveProperty('sandbox');
+      expect(configured).not.toHaveProperty('approvalMode');
+    });
+
     test('R5: session.configured falls back to the requested pair only when Codex reported no sandbox', async () => {
       const reported = await run(
         'configured-reported',

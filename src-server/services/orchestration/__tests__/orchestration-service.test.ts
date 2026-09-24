@@ -16451,15 +16451,19 @@ describe('OrchestrationService', () => {
   });
 
   test.each([
-    ['a request that may grant full access', true, 'host'],
-    [
-      'a request that may not (a device without the grant, an agent)',
-      false,
-      'workspace',
-    ],
+    {
+      label: 'a request that may grant full access',
+      granted: true,
+      expected: 'host',
+    },
+    {
+      label: 'a request that may not (a device without the grant, an agent)',
+      granted: false,
+      expected: 'workspace',
+    },
   ] as const)(
-    '#2493 Q2: an adoption by %s stamps its child %s',
-    async (_label, granted, expected) => {
+    '#2493 Q2: an adoption by $label stamps its child $expected',
+    async ({ granted, expected }) => {
       const sourceThreadId = `external:claude:confine-${expected}`;
       const projectRoot = join(tmp, `confine-project-${expected}`);
       mkdirSync(projectRoot, { recursive: true });

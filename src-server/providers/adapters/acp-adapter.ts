@@ -1242,14 +1242,15 @@ export class AcpAdapter implements ProviderAdapterShape {
         if (modeCatalog.modes.length > 0) {
           record.currentModeId = modeCatalog.currentModeId;
         }
-        // #2569: a full-access mode is the ACP form of approval `never`;
-        // (Only a fresh `session/new` applies a start mode: a credential
-        // re-establishment always resumes with `session/load`, so the
-        // `recoveryStart` copy needs no confinement of its own.)
-        // outside a `host` session it is not applied, and the session keeps
+        // #2569: a full-access mode is the ACP form of approval `never`.
+        // Outside a `host` session it is not applied, and the session keeps
         // (and reports, as `acpSessionMode`) the connection's own current
         // mode. `mode` is not an effective-model-option key, so nothing
         // reports the withheld request as applied.
+        //
+        // Only a fresh `session/new` applies a start mode: a credential
+        // re-establishment always resumes with `session/load`, so the
+        // `recoveryStart` copy needs no confinement of its own.
         const requestedMode = permittedAcpSessionMode(
           modeCatalog,
           requestedAcpSessionMode(input.modelOptions),

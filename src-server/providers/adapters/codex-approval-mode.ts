@@ -234,9 +234,12 @@ type CodexTurnSandboxPlan = {
  * #2559: the per-turn `sandboxPolicy` a turn must send, and the sandbox mode
  * the turn then actually runs in.
  *
- * - A thread Codex reports `readOnly` is a floor: its configuration (or a
- *   managed requirement) won over whatever Station asked, and nothing
- *   Station sends may loosen it.
+ * - A thread whose sandbox is `readOnly` is a floor nothing Station sends
+ *   may loosen. That covers both a read-only Codex reported against what
+ *   Station asked (its configuration or a managed requirement won) and a
+ *   read-only Station itself chose (review isolation's knobs, or a
+ *   `readOnly` policy Station sent), since the recorded policy is whichever
+ *   the thread last had.
  * - Outside a `host` session a thread at full access is pulled to
  *   workspace-write on EVERY turn, with or without a posture on it: a thread
  *   the user's own Codex config started unconfined, or an adopted session
