@@ -93,7 +93,7 @@ export type AgentActivityRefreshOutcome =
   | 'unconfigured';
 
 /** A step failed; `message` is safe to show. */
-export class AgentActivityError extends Error {
+class AgentActivityError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'AgentActivityError';
