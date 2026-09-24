@@ -4276,9 +4276,11 @@ describe('CodexAdapter', () => {
       });
     });
 
-    test('the applied sandbox is what Codex reported, not what was requested', async () => {
+    test("the thread's sandbox is what Codex reported, not what Station asked for at start", async () => {
       // Station asked for workspace-write; Codex reports read-only (its own
-      // config won). The turn runs read-only, and says so.
+      // config won). The adapter plans from the report: an Ask turn really
+      // moves the thread to workspace-write. (Had it trusted the request, it
+      // would have sent nothing and reported a sandbox the thread was not in.)
       const { params, metadata } = await run(
         'reported',
         { approvalMode: 'auto', confinement: 'workspace' },
