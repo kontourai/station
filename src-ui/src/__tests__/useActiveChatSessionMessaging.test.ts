@@ -580,6 +580,7 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
       const last = chat?.ephemeralMessages?.at(-1);
       expect(last?.content).toMatch(notice);
       expect(last?.content).toContain('Check it before sending again');
+      expect(last?.content).toContain('Your message is back in the composer.');
       expect(last?.content).not.toContain('Retrying may help');
       expect(last?.content).not.toContain('Provider session creation');
       expect(last?.action).toBeUndefined();

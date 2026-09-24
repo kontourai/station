@@ -317,16 +317,22 @@ export function translateChatError(
       .replace(/[\s.]+$/, '')
       .trim();
     // An engine whose login lapsed fails at START as readily as mid-turn.
-    const translated =
-      engineAuthTranslation(cause) ??
-      translateChatError({ status, message: cause });
+    // No cause: the provider call returned but Station could not record the
+    // start, so "an unknown error" would understate what is known.
+    const translated = cause
+      ? (engineAuthTranslation(cause) ??
+        translateChatError({ status, message: cause }))
+      : {
+          title: "The chat's start wasn't confirmed",
+          body: 'The engine answered, but Station could not record that this session started.',
+        };
     return {
       ...translated,
       title:
         translated.title === 'Error'
           ? "The chat didn't start"
           : translated.title,
-      hint: 'Station may already have started this session. Check it before sending again — your message is back in the composer.',
+      hint: 'Station may already have started this session. Check it before sending again.',
     };
   }
 

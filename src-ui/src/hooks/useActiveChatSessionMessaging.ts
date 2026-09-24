@@ -715,6 +715,13 @@ export function useSendMessage(
           // ran the label into the engine's text.
           content: `**${translated.title}**\n\n${translated.body}${
             translated.hint ? `\n\n${translated.hint}` : ''
+          }${
+            // Said only when the rollback put the draft back: a user who
+            // typed during the send keeps what they typed instead.
+            err.code === SESSION_START_INDETERMINATE_CODE &&
+            'input' in rollbackComposer
+              ? ' Your message is back in the composer.'
+              : ''
           }`,
           ...(terminalSession ? { terminalSession: true } : {}),
           // A workspace refusal is permanent for this conversation. Other
