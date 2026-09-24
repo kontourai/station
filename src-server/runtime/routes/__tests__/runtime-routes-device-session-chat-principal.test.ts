@@ -42,7 +42,7 @@
  * mocked-away) to assert the exact resolved `principalId` reached the
  * service, which is the same shape `/chat` stamps onto its dispatched turn.
  */
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
@@ -63,6 +63,7 @@ import type {
   ProjectAccessAdministrationView,
   ProjectInvitationView,
 } from '@kontourai/station-contracts/project-membership';
+import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import type { TaskRecord } from '@kontourai/station-contracts/task-graph';
 import { UNIFIED_SEARCH_V1 } from '@kontourai/station-contracts/unified-search';
 import {
@@ -82,6 +83,10 @@ import type { LoadedDeploymentAuthentication } from '../../../services/identity/
 import { DeploymentAuthenticationService } from '../../../services/identity/deployment-authentication-service.js';
 import { loadLocalAccounts } from '../../../services/identity/local-account-runtime.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../../services/identity/principal-resolver.js';
+import {
+  ActionOperationService,
+  FileActionOperationStore,
+} from '../../../services/operations/action-operation-service.js';
 import { AttachmentStagingService } from '../../../services/orchestration/attachment-staging-service.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
@@ -2606,6 +2611,155 @@ describe('device-session chat principal resolution over the REAL auth path (stat
         'operator-owned',
         'whois-owned',
       ]);
+    });
+
+    test('action operations list the operator’s own operations for the operator bearer', async () => {
+      const operations = new ActionOperationService(
+        new FileActionOperationStore(makeTempDir('station-principal-ops-')),
+      );
+      const create = (id: string, accountId: string, sessionId: string) =>
+        operations.create(
+          { accountId, canReadSession: () => true },
+          {
+            id,
+            scope: { accountId, sessionId },
+            title: 'Fork conversation',
+            cancellation: 'unsupported',
+            domain: {
+              kind: 'conversation-fork',
+              sourceConversationId: sessionId,
+              targetConversationId: `${sessionId}-fork`,
+            },
+            reentry: {
+              kind: 'conversation',
+              agentId: 'codex',
+              conversationId: `${sessionId}-fork`,
+            },
+          },
+        );
+      expect(
+        await create(
+          'operator-op',
+          LOCAL_OPERATOR_PRINCIPAL_ID,
+          'operator-owned',
+        ),
+      ).toBeDefined();
+      // Operation account ids exclude `@`, so this stranger's id omits the
+      // host part of their login.
+      expect(
+        await create(
+          'stranger-op',
+          'human:tailscale-serve:stranger',
+          'stranger-owned',
+        ),
+      ).toBeDefined();
+      const { app } = await principalSetup({ actionOperations: operations });
+      const response = await app.request(
+        '/api/action-operations',
+        { headers: operatorHeaders },
+        REMOTE_TAILNET_ENV,
+      );
+      const body = (await response.json()) as {
+        data?: { items?: Array<{ id: string }> };
+      };
+      expect(response.status, JSON.stringify(body)).toBe(200);
+      expect((body.data?.items ?? []).map((item) => item.id)).toEqual([
+        'operator-op',
+      ]);
+    });
+
+    test('monitoring history and the insights rollup keep the account’s session rows and drop a stranger’s', async () => {
+      // Both rows carry the OS alias as `userId`: the routes' separate
+      // per-user row filter still defaults to it, and this test is about the
+      // session predicate that runs after it.
+      const now = Date.now();
+      const row = (sessionId: string) => ({
+        timestamp: new Date(now).toISOString(),
+        'timestamp.ms': now,
+        'gen_ai.operation.name': 'invoke_agent',
+        'gen_ai.conversation.id': sessionId,
+        userId: getCachedUser().alias,
+      });
+      const rows = [row('operator-owned'), row('stranger-owned')];
+      const eventLogPath = makeTempDir('station-principal-insights-');
+      writeFileSync(
+        join(
+          eventLogPath,
+          `events-${new Date(now).toISOString().slice(0, 10)}.ndjson`,
+        ),
+        `${rows.map((entry) => JSON.stringify(entry)).join('\n')}\n`,
+      );
+      const { app } = await principalSetup({
+        eventLogPath,
+        monitoringRows: rows,
+      });
+
+      const history = await app.request(
+        '/monitoring/events?start=0',
+        { headers: operatorHeaders },
+        REMOTE_TAILNET_ENV,
+      );
+      const historyBody = (await history.json()) as {
+        data?: Array<Record<string, unknown>>;
+      };
+      expect(history.status, JSON.stringify(historyBody)).toBe(200);
+      expect(
+        (historyBody.data ?? []).map(
+          (event) => event['gen_ai.conversation.id'],
+        ),
+      ).toEqual(['operator-owned']);
+
+      const insights = await app.request(
+        '/api/insights',
+        { headers: operatorHeaders },
+        REMOTE_TAILNET_ENV,
+      );
+      const insightsBody = (await insights.json()) as {
+        data?: { hourlyActivity?: number[] };
+      };
+      expect(insights.status, JSON.stringify(insightsBody)).toBe(200);
+      expect(
+        (insightsBody.data?.hourlyActivity ?? []).reduce((a, b) => a + b, 0),
+      ).toBe(1);
+    });
+
+    test('the live relay delivers an answer update for the account’s session and not for a stranger’s', async () => {
+      const eventBus = new EventBus();
+      const { app } = await principalSetup({
+        eventBus,
+        eventLogPath: makeTempDir('station-principal-relay-'),
+      });
+      const abort = new AbortController();
+      const stream = await app.request(
+        '/events',
+        { headers: operatorHeaders, signal: abort.signal },
+        REMOTE_TAILNET_ENV,
+      );
+      expect(stream.status).toBe(200);
+      const reader = stream.body!.getReader();
+      const decoder = new TextDecoder();
+      // The first frame is written after the relay subscribed.
+      let received = decoder.decode((await reader.read()).value);
+      eventBus.emit(SERVER_EVENTS.ANSWER_NARRATIVE_UPDATED, {
+        sessionId: 'stranger-owned',
+      });
+      eventBus.emit(SERVER_EVENTS.ANSWER_NARRATIVE_UPDATED, {
+        sessionId: 'operator-owned',
+      });
+      const deadline = Date.now() + 5_000;
+      while (!received.includes('operator-owned') && Date.now() < deadline) {
+        const next = await Promise.race([
+          reader.read(),
+          new Promise<{ value?: undefined }>((resolve) =>
+            setTimeout(() => resolve({}), 250),
+          ),
+        ]);
+        if (next.value) received += decoder.decode(next.value);
+      }
+      abort.abort();
+      await reader.cancel().catch(() => undefined);
+      expect(received).toContain('operator-owned');
+      expect(received).not.toContain('stranger-owned');
     });
 
     test('an answer share mints, lists and opens for the operator-owned session, never for a made-up or foreign one', async () => {
