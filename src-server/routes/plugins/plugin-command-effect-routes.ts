@@ -1,15 +1,22 @@
 /**
  * Plugin command effects over HTTP (kontourai/station#1418, #1419).
  *
- * - `POST /:name/command-effects` admits one local effect (LP-A).
+ * - `POST /:name/command-effects` admits one local effect (LP-A). Refused for
+ *   the same non-person caller classes `plugin-person-approval.ts` refuses
+ *   for install/update/remove: admission records that a person's own click
+ *   in a browser document caused this effect, and Station's own agent tools
+ *   or a delegated Station are never that click.
  * - `POST /command-effects/settlements` records how a document settled its
  *   effects (LP-K).
  * - `GET /command-effects/withdrawals`, `GET …/withdrawals/:id` and
  *   `POST …/:id/resolve` are the operator's view of, and only way to close,
- *   an indeterminate withdrawal.
+ *   an indeterminate withdrawal. `operatorOnly` alone lets the internal
+ *   caller through when it resolves the same local-operator principal id;
+ *   `personOnly` refuses that caller class regardless of principal id.
  * - `GET /command-effects/uncaptured` and `POST /command-effects/effects/
  *   :effectId/abandon` let the operator free an aged outstanding effect no
- *   withdrawal captured.
+ *   withdrawal captured; `abandon` carries the same `personOnly` gate as
+ *   `resolve`.
  *
  * Hosted deployments refuse every route: their audit and document authority
  * are not established, so no effect is admitted there.
@@ -36,6 +43,7 @@ import {
   operatorOnly,
   type PluginPrincipalResolution,
 } from './plugin-identity-enumeration.js';
+import { personOnly } from './plugin-person-approval.js';
 
 export interface PluginCommandEffectRouteDeps {
   admission: PluginCommandEffectAdmission;
@@ -232,6 +240,7 @@ export function registerPluginCommandEffectRoutes(
 
   app.post(
     '/command-effects/effects/:effectId/abandon',
+    personOnly('abandon plugin command effects'),
     asOperator('abandon plugin command effects', async (c) => {
       try {
         const outcome = await deps.effects.abandonEffect(
@@ -282,6 +291,7 @@ export function registerPluginCommandEffectRoutes(
 
   app.post(
     '/command-effects/withdrawals/:id/resolve',
+    personOnly('resolve plugin command withdrawals'),
     asOperator('resolve plugin command withdrawals', async (c) => {
       const body = await readJson(c);
       if (
@@ -322,6 +332,7 @@ export function registerPluginCommandEffectRoutes(
 
   app.post(
     '/:name/command-effects',
+    personOnly('run a plugin command'),
     withCaller(async (c, caller) => {
       const outcome = await deps.admission.admit({
         principal: caller,
