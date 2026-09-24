@@ -19,16 +19,16 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Hono } from 'hono';
 import { afterEach, describe, expect, test } from 'vitest';
-import { TEST_OPERATOR_PRINCIPAL } from '../../../../src-server/routes/plugins/__tests__/plugin-visibility-test-support.js';
-import { createPluginRoutes } from '../../../../src-server/routes/plugins/plugins.js';
-import { grantPermissions } from '../../../../src-server/services/plugins/plugin-permissions.js';
-import { capturePluginRuntimeArtifact } from '../../../../src-server/services/plugins/plugin-runtime-artifact.js';
-import { PluginVisibilityService } from '../../../../src-server/services/plugins/plugin-visibility-service.js';
 import {
   createPluginCommandEffectCoordinator,
   type PluginCommandEffectAdmitOutcome,
   type PluginCommandEffectTransport,
-} from '../plugin-command-effect-coordinator';
+} from '../../../../src-ui/src/components/plugin-command-effect-coordinator';
+import { grantPermissions } from '../../../services/plugins/plugin-permissions.js';
+import { capturePluginRuntimeArtifact } from '../../../services/plugins/plugin-runtime-artifact.js';
+import { PluginVisibilityService } from '../../../services/plugins/plugin-visibility-service.js';
+import { createPluginRoutes } from '../plugins.js';
+import { TEST_OPERATOR_PRINCIPAL } from './plugin-visibility-test-support.js';
 
 const cleanups: Array<() => void> = [];
 afterEach(() => {
