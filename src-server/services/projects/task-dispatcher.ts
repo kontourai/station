@@ -5,11 +5,11 @@ import type {
   TaskDispatchResult,
   TaskRecord,
 } from '@kontourai/station-contracts';
+import { APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE } from '@kontourai/station-contracts/orchestration';
 import type {
   EngineId,
   ProviderSession,
 } from '@kontourai/station-contracts/provider';
-import { APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE } from '@kontourai/station-contracts/orchestration';
 import type { FullAccessGrant } from '../../security/coding-authority.js';
 import { errorMessage } from '../../utils/error-message.js';
 import type {
