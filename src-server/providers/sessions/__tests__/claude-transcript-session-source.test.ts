@@ -1192,6 +1192,48 @@ describe('ClaudeTranscriptSessionSource', () => {
       expect(receipt?.truncated).toBe(true);
     });
 
+    test('redacts an inline data URL in tool_result text before the head slice', async () => {
+      const root = fixtureDir();
+      const directory = join(root, 'projects', 'project');
+      mkdirSync(directory, { recursive: true });
+      writeFileSync(
+        join(directory, 'session-a.jsonl'),
+        [
+          {
+            type: 'user',
+            uuid: 'tool-result-img',
+            sessionId: 'session-a',
+            cwd: '/workspace/project',
+            timestamp: '2026-09-17T00:00:00.000Z',
+            message: {
+              content: [
+                {
+                  type: 'tool_result',
+                  tool_use_id: 'tool-1',
+                  content: [
+                    {
+                      type: 'text',
+                      text: `Screenshot: data:image/png;base64,${'QUJD'.repeat(5_000)}WFla==`,
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        ]
+          .map(record)
+          .join(''),
+      );
+      const source = new ClaudeTranscriptSessionSource({ configDir: root });
+      const [session] = (await source.discover()).sessions;
+      const result = await source.read(session);
+      const completed = result.events.find(
+        (event) => event.method === 'tool.completed',
+      ) as { output?: string } | undefined;
+      expect(completed?.output).toBe('Screenshot: [inline image data omitted]');
+      expect(JSON.stringify(result.events)).not.toContain('QUJD');
+    });
+
     test('bounds oversized tool_use arguments and announces the bound as a warning', async () => {
       const root = fixtureDir();
       const directory = join(root, 'projects', 'project');

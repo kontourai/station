@@ -422,9 +422,16 @@ describe('AcpToolUpdateSupervisor', () => {
           uri: 'https://image.example/a',
           omitted: 'image-bytes',
         },
+        // `secret-bytes` is not a PNG, so it becomes no attachment — and the
+        // output says so rather than dropping it silently.
+        {
+          type: 'text',
+          text: '[image not shown: the data is not a image/png image]',
+        },
       ],
       outputReceipt: { truncated: true, fullOutput: 'unavailable' },
     });
+    expect(events.at(-1)).not.toHaveProperty('attachments');
     expect(JSON.stringify(events.at(-1))).not.toContain('secret-bytes');
   });
 
@@ -638,5 +645,355 @@ describe('AcpToolUpdateSupervisor', () => {
       expect(terminals).toHaveLength(1);
       expect(terminals[0]).toMatchObject({ status: 'success' });
     });
+  });
+});
+
+describe('AcpToolUpdateSupervisor — images a tool returned', () => {
+  const PNG_1X1_BASE64 =
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+  const imageBlock = (data = PNG_1X1_BASE64, mimeType = 'image/png') => ({
+    type: 'content',
+    content: { type: 'image', data, mimeType },
+  });
+
+  test('an image from an earlier content redraw is published with the bare terminal', () => {
+    const { events, supervisor } = harness();
+    supervisor.acceptStarted({ toolCallId: 'shot', title: 'Screenshot' });
+    supervisor.acceptUpdate({
+      toolCallId: 'shot',
+      hasContent: true,
+      content: [...text('captured'), imageBlock()],
+    });
+    supervisor.acceptUpdate({
+      toolCallId: 'shot',
+      status: 'completed',
+      hasStatus: true,
+    });
+    const completed = events.at(-1) as any;
+    expect(completed).toMatchObject({
+      method: 'tool.completed',
+      status: 'success',
+      attachments: [
+        {
+          kind: 'image',
+          name: 'image-1.png',
+          mimeType: 'image/png',
+          dataUrl: `data:image/png;base64,${PNG_1X1_BASE64}`,
+        },
+      ],
+    });
+    // Progress redraws and the text output never carry the bytes.
+    for (const event of events.slice(0, -1))
+      expect(JSON.stringify(event)).not.toContain(PNG_1X1_BASE64);
+    expect(JSON.stringify(completed.output)).not.toContain(PNG_1X1_BASE64);
+  });
+
+  test('a later content redraw replaces the images of the earlier one', () => {
+    const { events, supervisor } = harness();
+    supervisor.acceptStarted({ toolCallId: 'redraw' });
+    supervisor.acceptUpdate({
+      toolCallId: 'redraw',
+      hasContent: true,
+      content: [imageBlock()],
+    });
+    supervisor.acceptUpdate({
+      toolCallId: 'redraw',
+      hasContent: true,
+      content: text('no image any more'),
+    });
+    supervisor.acceptUpdate({
+      toolCallId: 'redraw',
+      status: 'completed',
+      hasStatus: true,
+    });
+    expect(events.at(-1)).not.toHaveProperty('attachments');
+  });
+
+  test('images beyond the session hold budget are named, not kept', () => {
+    const budget = new AcpToolUpdateGlobalBudget();
+    const { events, supervisor } = harness({ budget });
+    // Five 4 MiB images fit one result's count limit but not the 15 MiB
+    // per-session hold: the collector already refuses past 15 MiB combined,
+    // so fill the session from a second open call instead.
+    const big = Buffer.concat([
+      Buffer.from(PNG_1X1_BASE64, 'base64'),
+      Buffer.alloc(4 * 1024 * 1024),
+    ]).toString('base64');
+    supervisor.acceptStarted({ toolCallId: 'first' });
+    supervisor.acceptUpdate({
+      toolCallId: 'first',
+      hasContent: true,
+      content: [imageBlock(big), imageBlock(big), imageBlock(big)],
+    });
+    supervisor.acceptStarted({ toolCallId: 'second' });
+    supervisor.acceptUpdate({
+      toolCallId: 'second',
+      hasContent: true,
+      content: [imageBlock(big)],
+    });
+    supervisor.acceptUpdate({
+      toolCallId: 'second',
+      status: 'completed',
+      hasStatus: true,
+    });
+    const second = events.at(-1) as any;
+    expect(second).not.toHaveProperty('attachments');
+    expect(second.output).toContainEqual({
+      type: 'text',
+      text: '[image not shown: 1 image(s) exceeded what Station holds for open tool calls]',
+    });
+    // Releasing the first call frees its hold for the next result.
+    supervisor.acceptUpdate({
+      toolCallId: 'first',
+      status: 'completed',
+      hasStatus: true,
+    });
+    expect((events.at(-1) as any).attachments).toHaveLength(3);
+    supervisor.acceptStarted({ toolCallId: 'third' });
+    supervisor.acceptUpdate({
+      toolCallId: 'third',
+      hasContent: true,
+      content: [imageBlock(big)],
+      status: 'completed',
+      hasStatus: true,
+    });
+    expect((events.at(-1) as any).attachments).toHaveLength(1);
+  });
+
+  test('the terminal persists through EventStore as a blob reference', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'acp-image-'));
+    const store = new EventStore(join(dir, 'orchestration.sqlite'));
+    try {
+      const supervisor = new AcpToolUpdateSupervisor(session(), (event) =>
+        store.appendEvent(store.projectLiveEvent(event)),
+      );
+      supervisor.acceptStarted({ toolCallId: 'persist' });
+      supervisor.acceptUpdate({
+        toolCallId: 'persist',
+        hasContent: true,
+        content: [imageBlock()],
+        status: 'completed',
+        hasStatus: true,
+      });
+      const terminal = store
+        .listEvents('thread-1')
+        .map((event) => event.payload)
+        .find((event) => event.method === 'tool.completed') as any;
+      expect(terminal.attachments[0].blobRef).toMatch(/^sha256-[0-9a-f]{64}$/);
+      expect(terminal.attachments[0]).not.toHaveProperty('dataUrl');
+      expect(
+        store.listAttachmentThreads(terminal.attachments[0].blobRef),
+      ).toEqual(['thread-1']);
+    } finally {
+      store.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('AcpToolUpdateSupervisor — image bytes never ride text', () => {
+  const PNG_1X1_BASE64 =
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+  const probe = PNG_1X1_BASE64.slice(20, 44);
+  const dataUri = `data:image/png;base64,${PNG_1X1_BASE64}`;
+
+  test('a data: image uri is not printed into progress text', () => {
+    const { events, supervisor } = harness();
+    supervisor.acceptStarted({ toolCallId: 'uri' });
+    supervisor.acceptUpdate({
+      toolCallId: 'uri',
+      hasContent: true,
+      content: [{ type: 'content', content: { type: 'image', uri: dataUri } }],
+    });
+    const progress = events.find((event) => event.method === 'tool.progress');
+    expect(progress).toMatchObject({
+      message: '[image: [inline image data omitted]]',
+    });
+    expect(JSON.stringify(events)).not.toContain(probe);
+  });
+
+  test('a data: image uri is not printed into a failed call error', () => {
+    const { events, supervisor } = harness();
+    supervisor.acceptStarted({ toolCallId: 'fail' });
+    supervisor.acceptUpdate({
+      toolCallId: 'fail',
+      hasContent: true,
+      content: [{ type: 'image', uri: dataUri, mimeType: 'image/png' }],
+      status: 'failed',
+      hasStatus: true,
+    });
+    const terminal = events.at(-1) as any;
+    expect(terminal.status).toBe('error');
+    expect(terminal.error).toContain('[inline image data omitted]');
+    expect(JSON.stringify(events)).not.toContain(probe);
+  });
+
+  test('rawOutput data URLs and image-shaped payloads are replaced whole', () => {
+    const { events, supervisor } = harness();
+    supervisor.acceptStarted({ toolCallId: 'raw' });
+    supervisor.acceptUpdate({
+      toolCallId: 'raw',
+      hasRawOutput: true,
+      rawOutput: {
+        screenshot: dataUri,
+        blocks: [
+          { type: 'image', data: PNG_1X1_BASE64, mimeType: 'image/png' },
+        ],
+      },
+      status: 'completed',
+      hasStatus: true,
+    });
+    const terminal = events.at(-1) as any;
+    expect(terminal.output).toEqual({
+      screenshot: '[inline image data omitted]',
+      blocks: [
+        {
+          type: 'image',
+          data: '[inline image data omitted]',
+          mimeType: 'image/png',
+        },
+      ],
+    });
+    expect(JSON.stringify(events)).not.toContain(probe);
+  });
+
+  test('a bare data URL rawOutput is replaced, not tail-truncated', () => {
+    const { events, supervisor } = harness();
+    supervisor.acceptStarted({ toolCallId: 'bare' });
+    supervisor.acceptUpdate({
+      toolCallId: 'bare',
+      hasRawOutput: true,
+      rawOutput: `data:image/png;base64,${'A'.repeat(20_000)}`,
+      status: 'completed',
+      hasStatus: true,
+    });
+    expect((events.at(-1) as any).output).toBe('[inline image data omitted]');
+  });
+});
+
+describe('AcpToolUpdateSupervisor — redaction under a nearly spent budget', () => {
+  test('a data URL rawOutput is never tail-truncated into a base64 slice when little budget is left', () => {
+    const { events, supervisor } = harness();
+    supervisor.acceptStarted({ toolCallId: 'tight' });
+    // rawInput takes almost the whole per-call budget, leaving rawOutput
+    // fewer bytes than the placeholder itself — the one path where the raw
+    // projector re-tails its input string.
+    supervisor.acceptUpdate({
+      toolCallId: 'tight',
+      hasRawInput: true,
+      rawInput: 'x'.repeat(ACP_TOOL_UPDATE_LIMITS.maxRetainedBytesPerCall - 17),
+    });
+    supervisor.acceptUpdate({
+      toolCallId: 'tight',
+      hasRawOutput: true,
+      rawOutput: `data:image/png;base64,${'QUJD'.repeat(200)}WFla`,
+      status: 'completed',
+      hasStatus: true,
+    });
+    expect(JSON.stringify(events)).not.toContain('WFla');
+    expect(JSON.stringify(events)).not.toContain('QUJD');
+  });
+});
+
+describe('AcpToolUpdateSupervisor — embedded and nested image data', () => {
+  const tail = 'WFla';
+  const dataUri = `data:image/png;base64,${'QUJD'.repeat(200)}${tail}`;
+
+  test('a data URL inside prose is redacted in progress text and rawOutput', () => {
+    const { events, supervisor } = harness();
+    supervisor.acceptStarted({ toolCallId: 'prose' });
+    supervisor.acceptUpdate({
+      toolCallId: 'prose',
+      hasContent: true,
+      content: text(`Screenshot: ${dataUri} saved`),
+    });
+    supervisor.acceptUpdate({
+      toolCallId: 'prose',
+      hasRawOutput: true,
+      rawOutput: `Screenshot: ${dataUri}`,
+      status: 'completed',
+      hasStatus: true,
+    });
+    expect(
+      events.find((event) => event.method === 'tool.progress'),
+    ).toMatchObject({
+      message: 'Screenshot: [inline image data omitted] saved',
+    });
+    expect(JSON.stringify(events)).not.toContain(tail);
+  });
+
+  test.each([
+    ['a data-URL property', (pad: string) => ({ pad, screenshot: dataUri })],
+    [
+      'an image-shaped nested property',
+      (pad: string) => ({
+        pad,
+        image: { type: 'image', data: `${'QUJD'.repeat(200)}${tail}` },
+      }),
+    ],
+    [
+      // The reachable fallback for the image shape: its `data` is a direct
+      // property of the object whose budget is nearly spent.
+      'an image-shaped top-level payload',
+      (pad: string) => ({
+        pad,
+        type: 'image',
+        data: `${'QUJD'.repeat(200)}${tail}`,
+      }),
+    ],
+  ])(
+    '%s never leaks a base64 suffix when earlier properties nearly fill the budget',
+    (_label, build) => {
+      // Sweep the padding so the nested property lands on every leftover
+      // budget from "fits" down to "nothing left": the fallback that tails a
+      // string must only ever see the redacted text.
+      for (
+        let padLength = ACP_TOOL_UPDATE_LIMITS.maxRetainedBytesPerCall - 80;
+        padLength < ACP_TOOL_UPDATE_LIMITS.maxRetainedBytesPerCall;
+        padLength += 1
+      ) {
+        const { events, supervisor } = harness();
+        supervisor.acceptStarted({ toolCallId: 'nested' });
+        supervisor.acceptUpdate({
+          toolCallId: 'nested',
+          hasRawOutput: true,
+          rawOutput: build('x'.repeat(padLength)),
+          status: 'completed',
+          hasStatus: true,
+        });
+        const serialized = JSON.stringify(events);
+        expect(serialized, `pad ${padLength}`).not.toContain(tail);
+        expect(serialized, `pad ${padLength}`).not.toContain('QUJD');
+      }
+    },
+  );
+});
+
+describe('AcpToolUpdateSupervisor — omission notes on a failed call', () => {
+  test('a failed call states the omission in its error text', () => {
+    const { events, supervisor } = harness();
+    supervisor.acceptStarted({ toolCallId: 'failed' });
+    supervisor.acceptUpdate({
+      toolCallId: 'failed',
+      hasContent: true,
+      content: [
+        ...text('capture failed'),
+        {
+          type: 'content',
+          content: {
+            type: 'image',
+            data: 'PHN2Zy8+',
+            mimeType: 'image/svg+xml',
+          },
+        },
+      ],
+      status: 'failed',
+      hasStatus: true,
+    });
+    const terminal = events.at(-1) as any;
+    expect(terminal.status).toBe('error');
+    expect(terminal.error).toBe(
+      'capture failed\n[image omitted]\n[image not shown: image/svg+xml is not a supported image type]',
+    );
   });
 });

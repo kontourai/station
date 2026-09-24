@@ -603,6 +603,25 @@ export interface ToolCompletedEvent extends CanonicalRuntimeEventBase {
   /** See {@link ToolProgressEvent.outputReceipt}. */
   outputReceipt?: ToolOutputReceipt;
   /**
+   * Images the tool returned to the model — a `Read` of a PNG, an MCP
+   * screenshot, Codex's `imageView` — in the same shape a user's pasted
+   * attachment takes on `turn.started`.
+   *
+   * An adapter publishes them with inline `dataUrl` bytes; EventStore's
+   * ingress replaces those with a content-addressed `blobRef` and binds the
+   * blob to this thread before the event persists or reaches SSE, exactly as
+   * it does for `turn.started`. Every read therefore carries `blobRef`
+   * without `dataUrl`, and a client fetches the bytes from
+   * `GET /api/attachments/:ref`. An entry with neither is an image whose
+   * bytes could not be stored: it names what the tool returned and claims no
+   * preview.
+   *
+   * Only the chat image allowlist within the chat attachment limits is ever
+   * published here; an adapter says what it dropped in the tool's own output
+   * text instead (see `model-image-attachments.ts`).
+   */
+  attachments?: PersistedChatAttachment[];
+  /**
    * Set by, and only by, Station's pre-tool policy evaluator
    * (`pre-tool-policy.ts`'s `deny()` — the sole writer in the tree; both
    * engine adapters copy it verbatim and nothing infers it).

@@ -2467,3 +2467,247 @@ describe('settleUnresolvedClaudeToolCalls (station#1558)', () => {
     expect(publish).not.toHaveBeenCalled();
   });
 });
+
+describe('claude-adapter-events — images a tool returned', () => {
+  const PNG_1X1_BASE64 =
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+
+  const runToolCycle = (content: unknown) => {
+    const publish = vi.fn();
+    const record = makeRecord();
+    mapClaudeSdkMessage({
+      provider: 'claude',
+      record,
+      publish,
+      message: {
+        type: 'assistant',
+        parent_tool_use_id: null,
+        message: {
+          content: [
+            {
+              type: 'tool_use',
+              id: 'toolu-img',
+              name: 'Read',
+              input: { file_path: '/tmp/chart.png' },
+            },
+          ],
+        },
+        uuid: 'u-img-1',
+        session_id: 's-1',
+      } as any,
+    });
+    mapClaudeSdkMessage({
+      provider: 'claude',
+      record,
+      publish,
+      message: {
+        type: 'user',
+        parent_tool_use_id: null,
+        message: {
+          content: [{ type: 'tool_result', tool_use_id: 'toolu-img', content }],
+        },
+        uuid: 'u-img-2',
+        session_id: 's-1',
+      } as any,
+    });
+    return publish.mock.calls
+      .map(([event]) => event)
+      .find((event) => event.method === 'tool.completed');
+  };
+
+  test('a Read of a PNG publishes the image as an attachment, not as nothing', () => {
+    // The real shape the Agent SDK delivers for Read on an image file.
+    const completed = runToolCycle([
+      {
+        type: 'image',
+        source: {
+          type: 'base64',
+          media_type: 'image/png',
+          data: PNG_1X1_BASE64,
+        },
+      },
+    ]);
+    expect(completed).toMatchObject({
+      toolCallId: 'toolu-img',
+      status: 'success',
+      attachments: [
+        {
+          kind: 'image',
+          name: 'image-1.png',
+          mimeType: 'image/png',
+          dataUrl: `data:image/png;base64,${PNG_1X1_BASE64}`,
+        },
+      ],
+    });
+    // The text output stays text: no base64 in it.
+    expect(completed.output).toBeUndefined();
+  });
+
+  test('an MCP screenshot beside text keeps the text and adds the image', () => {
+    const completed = runToolCycle([
+      { type: 'text', text: 'Screenshot of the login page' },
+      {
+        type: 'image',
+        source: {
+          type: 'base64',
+          media_type: 'image/png',
+          data: PNG_1X1_BASE64,
+        },
+      },
+    ]);
+    expect(completed.output).toBe('Screenshot of the login page');
+    expect(completed.attachments).toHaveLength(1);
+  });
+
+  test('an unsupported image is named in the output, never attached', () => {
+    const completed = runToolCycle([
+      { type: 'text', text: 'Rendered diagram' },
+      {
+        type: 'image',
+        source: {
+          type: 'base64',
+          media_type: 'image/tiff',
+          data: PNG_1X1_BASE64,
+        },
+      },
+    ]);
+    expect(completed).not.toHaveProperty('attachments');
+    expect(completed.output).toBe(
+      'Rendered diagram\n[image not shown: image/tiff is not a supported image type]',
+    );
+  });
+});
+
+describe('claude-adapter-events — many rejected images', () => {
+  test('thousands of rejected image blocks still persist the terminal through EventStore', async () => {
+    const { mkdtempSync, rmSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const { EventStore } = await import(
+      '../../services/orchestration/event-store.js'
+    );
+    const dir = mkdtempSync(join(tmpdir(), 'claude-many-images-'));
+    const store = new EventStore(join(dir, 'orchestration.sqlite'));
+    try {
+      const record = makeRecord();
+      const publish = (event: any) =>
+        store.appendEvent(store.projectLiveEvent(event));
+      mapClaudeSdkMessage({
+        provider: 'claude',
+        record,
+        publish,
+        message: {
+          type: 'assistant',
+          parent_tool_use_id: null,
+          message: {
+            content: [
+              { type: 'tool_use', id: 'toolu-many', name: 'mcp__x', input: {} },
+            ],
+          },
+          uuid: 'u-many-1',
+          session_id: 's-1',
+        } as any,
+      });
+      // 3000 distinct unsupported types: one marker line each would be far
+      // past the 64 KiB ingress ceiling.
+      const content = Array.from({ length: 3000 }, (_, i) => ({
+        type: 'image',
+        source: {
+          type: 'base64',
+          media_type: `image/x-unsupported-type-number-${i}`,
+          data: 'AAAA',
+        },
+      }));
+      mapClaudeSdkMessage({
+        provider: 'claude',
+        record,
+        publish,
+        message: {
+          type: 'user',
+          parent_tool_use_id: null,
+          message: {
+            content: [
+              { type: 'tool_result', tool_use_id: 'toolu-many', content },
+            ],
+          },
+          uuid: 'u-many-2',
+          session_id: 's-1',
+        } as any,
+      });
+      const terminal = store
+        .listEvents(record.session.threadId)
+        .map((event) => event.payload as any)
+        .find((event) => event.method === 'tool.completed');
+      expect(terminal.status).toBe('success');
+      expect(terminal.output.split('\n')).toEqual([
+        '[image not shown: image/x-unsupported-type-number-0 is not a supported image type]',
+        '[image not shown: image/x-unsupported-type-number-1 is not a supported image type]',
+        '[image not shown: image/x-unsupported-type-number-2 is not a supported image type]',
+        '[2997 more images not shown]',
+      ]);
+    } finally {
+      store.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('claude-adapter-events — inline image data in tool_result text', () => {
+  test.each([
+    [
+      'a string result',
+      `Screenshot: data:image/png;base64,${'QUJD'.repeat(5_000)}WFla==`,
+    ],
+    [
+      'a text-block result',
+      [
+        {
+          type: 'text',
+          text: `Screenshot: data:image/png;base64,${'QUJD'.repeat(5_000)}WFla==`,
+        },
+      ],
+    ],
+  ])('%s is redacted before the head slice', (_label, content) => {
+    const publish = vi.fn();
+    const record = makeRecord();
+    mapClaudeSdkMessage({
+      provider: 'claude',
+      record,
+      publish,
+      message: {
+        type: 'assistant',
+        parent_tool_use_id: null,
+        message: {
+          content: [
+            { type: 'tool_use', id: 'toolu-text', name: 'mcp__x', input: {} },
+          ],
+        },
+        uuid: 'u-text-1',
+        session_id: 's-1',
+      } as any,
+    });
+    mapClaudeSdkMessage({
+      provider: 'claude',
+      record,
+      publish,
+      message: {
+        type: 'user',
+        parent_tool_use_id: null,
+        message: {
+          content: [
+            { type: 'tool_result', tool_use_id: 'toolu-text', content },
+          ],
+        },
+        uuid: 'u-text-2',
+        session_id: 's-1',
+      } as any,
+    });
+    const completed = publish.mock.calls
+      .map(([event]) => event)
+      .find((event) => event.method === 'tool.completed');
+    expect(completed.output).toBe('Screenshot: [inline image data omitted]');
+    // The redacted text fits the limit: no truncation receipt, no bytes.
+    expect(completed).not.toHaveProperty('outputReceipt');
+    expect(JSON.stringify(completed)).not.toContain('QUJD');
+  });
+});

@@ -544,7 +544,7 @@ describe('mapAcpSessionUpdate — tool name / argument resolution (chat-dock-max
 });
 
 describe('mapAcpSessionUpdate — content-block parity (image/resource)', () => {
-  test('renders image content as a markdown image on agent_message_chunk', () => {
+  test('never puts inline image bytes into an agent_message_chunk text delta', () => {
     const events: CanonicalRuntimeEvent[] = [];
     const ctx = makeCtx(events);
 
@@ -565,8 +565,12 @@ describe('mapAcpSessionUpdate — content-block parity (image/resource)', () => 
     expect(events[0]).toMatchObject({
       method: 'content.text-delta',
       itemId: 'message-1',
-      delta: '\n![image](data:image/png;base64,abc123)\n',
+      delta:
+        '\n[image not shown: images sent in agent messages cannot be displayed yet]\n',
     });
+    // The bytes used to ride the delta as a data URL: over the ingress
+    // ceiling for any real screenshot, and blanked by the markdown renderer.
+    expect(JSON.stringify(events[0])).not.toContain('abc123');
   });
 
   test('renders resource content as a fenced code block on agent_message_chunk', () => {
