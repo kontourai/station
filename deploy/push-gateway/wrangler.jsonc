@@ -12,15 +12,20 @@
     "AUDIENCES": "https://push.kontourai.io",
     "ALLOWED_PACKAGES": "io.kontourai.station,io.kontourai.station.nightly,io.kontourai.station.beta,io.kontourai.station.debug",
     // iOS bundles for Live Activities. APNs delivery also needs the
-    // APNS_AUTH_KEY secret; until it is set the /v1/apns routes answer 503.
+    // APNS_AUTH_KEY and APNS_CHANNEL_AUTH_SECRET secrets; until both are set
+    // the /v1/apns routes answer 503.
     "ALLOWED_IOS_BUNDLES": "io.kontourai.station,io.kontourai.station.beta,io.kontourai.station.nightly,io.kontourai.station.dev.instance",
     "APNS_TEAM_ID": "U7KHF2QAC4",
     "APNS_KEY_ID": "AY2F92348K"
   },
   // Per-location and eventually consistent: cost ceilings, not accounting.
   // Order in the handler: per address (unsigned), then global, per key and
-  // per push token (signed only). Channel create/delete adds its own global
-  // and per-key ceilings: each channel spends Apple's per-app channel quota.
+  // per push token (signed only), checked narrowest first so a refused request
+  // never spends a wider budget. A Live Activity start creates a broadcast
+  // channel, which spends Apple's per-app channel quota, so starts use the
+  // CHANNEL_* ceilings instead (per address, per device, per key, global);
+  // channel deletes have their own per-key ceiling. Bindings only offer 10 s
+  // or 60 s periods, so the per-address and per-device ceilings are per minute.
   "ratelimits": [
     {
       "name": "PER_IP_LIMITER",
@@ -51,6 +56,21 @@
       "name": "CHANNEL_PER_KEY_LIMITER",
       "namespace_id": "4106",
       "simple": { "limit": 3, "period": 60 }
+    },
+    {
+      "name": "CHANNEL_PER_IP_LIMITER",
+      "namespace_id": "4107",
+      "simple": { "limit": 3, "period": 60 }
+    },
+    {
+      "name": "CHANNEL_PER_DEVICE_LIMITER",
+      "namespace_id": "4108",
+      "simple": { "limit": 1, "period": 60 }
+    },
+    {
+      "name": "CHANNEL_DELETE_LIMITER",
+      "namespace_id": "4109",
+      "simple": { "limit": 10, "period": 60 }
     }
   ],
   // Error lines only: invocation logs would record request headers, which

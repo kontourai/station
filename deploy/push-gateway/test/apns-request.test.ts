@@ -15,6 +15,7 @@ import {
   IOS_BUNDLE,
   liveActivityBody,
   NOW,
+  PLACEHOLDER_CHANNEL_AUTH,
   PUSH_TO_START_TOKEN,
   REGISTRATION_ID,
   SEALED,
@@ -66,7 +67,24 @@ test('refuses every malformed or out-of-contract live-activity field', () => {
       liveActivityBody({ pushToStartToken: undefined }),
       'missing pushToStartToken',
     ],
-    [liveActivityBody({ channelId: undefined }), 'missing channelId'],
+    [liveActivityBody({ channelId: CHANNEL_ID }), 'unknown key channelId'],
+    [
+      liveActivityBody({ channelAuth: PLACEHOLDER_CHANNEL_AUTH }),
+      'unknown key channelAuth',
+    ],
+    [liveActivityBody({ channelId: undefined }, 'update'), 'missing channelId'],
+    [
+      liveActivityBody({ channelAuth: undefined }, 'end'),
+      'missing channelAuth',
+    ],
+    [
+      liveActivityBody({ channelAuth: 'v1.short' }, 'update'),
+      'invalid channelAuth',
+    ],
+    [
+      liveActivityBody({ channelAuth: `v2.${'A'.repeat(43)}` }, 'end'),
+      'invalid channelAuth',
+    ],
     [liveActivityBody({ staleAt: undefined }, 'update'), 'missing staleAt'],
     [liveActivityBody({ dismissAt: undefined }, 'end'), 'missing dismissAt'],
     [
@@ -90,8 +108,14 @@ test('refuses every malformed or out-of-contract live-activity field', () => {
       liveActivityBody({ pushToStartToken: 'zz'.repeat(40) }),
       'invalid pushToStartToken',
     ],
-    [liveActivityBody({ channelId: 'abc\r\nx-evil: 1' }), 'invalid channelId'],
-    [liveActivityBody({ channelId: 'x'.repeat(129) }), 'invalid channelId'],
+    [
+      liveActivityBody({ channelId: 'abc\r\nx-evil: 1' }, 'update'),
+      'invalid channelId',
+    ],
+    [
+      liveActivityBody({ channelId: 'x'.repeat(129) }, 'end'),
+      'invalid channelId',
+    ],
     [liveActivityBody({ registrationId: 'short' }), 'invalid registrationId'],
     [
       liveActivityBody({ registrationId: `${'r'.repeat(21)}/` }),
@@ -143,30 +167,29 @@ test('accepts the edges of each time window', () => {
   assert.ok(parse(liveActivityBody({ dismissAt: NOW + 4 * 3600 }, 'end')).ok);
 });
 
-test('parses channel create and delete strictly', () => {
+test('the channel route only deletes, and only with channelAuth', () => {
   const channel = (value: unknown) =>
     parseChannelRequest(encodeBody(value), [IOS_BUNDLE]);
-  const base = { bundleId: IOS_BUNDLE, environment: 'production' };
-  assert.deepEqual(channel({ op: 'create', ...base }), {
-    ok: true,
-    request: { op: 'create', ...base },
-  });
-  assert.deepEqual(channel({ op: 'delete', ...base, channelId: CHANNEL_ID }), {
-    ok: true,
-    request: { op: 'delete', ...base, channelId: CHANNEL_ID },
-  });
+  const base = {
+    op: 'delete',
+    bundleId: IOS_BUNDLE,
+    environment: 'production',
+    channelId: CHANNEL_ID,
+    channelAuth: PLACEHOLDER_CHANNEL_AUTH,
+  };
+  assert.deepEqual(channel(base), { ok: true, request: base });
   const cases: Array<[unknown, string]> = [
-    [{ op: 'list', ...base }, 'unsupported op'],
-    [{ op: 'create', ...base, channelId: CHANNEL_ID }, 'unknown key channelId'],
-    [{ op: 'create', ...base, sk: 'x' }, 'sk is stamped by the gateway'],
-    [{ op: 'delete', ...base }, 'missing channelId'],
-    [{ op: 'delete', ...base, channelId: 'a b' }, 'invalid channelId'],
-    [
-      { op: 'create', ...base, bundleId: 'io.other' },
-      'bundle is not a Station app',
-    ],
-    [{ op: 'create', ...base, environment: 'prod' }, 'invalid environment'],
-    [{ op: 'create', bundleId: IOS_BUNDLE }, 'missing environment'],
+    // Channels are created only inside a start.
+    [{ ...base, op: 'create' }, 'unsupported op'],
+    [{ ...base, op: 'list' }, 'unsupported op'],
+    [{ ...base, extra: 1 }, 'unknown key extra'],
+    [{ ...base, sk: 'x' }, 'sk is stamped by the gateway'],
+    [{ ...base, channelId: undefined }, 'missing channelId'],
+    [{ ...base, channelAuth: undefined }, 'missing channelAuth'],
+    [{ ...base, channelId: 'a b' }, 'invalid channelId'],
+    [{ ...base, channelAuth: 'nope' }, 'invalid channelAuth'],
+    [{ ...base, bundleId: 'io.other' }, 'bundle is not a Station app'],
+    [{ ...base, environment: 'prod' }, 'invalid environment'],
   ];
   for (const [value, reason] of cases) {
     assert.deepEqual(
@@ -178,7 +201,11 @@ test('parses channel create and delete strictly', () => {
 });
 
 test('builds a start payload from fixed vocabulary and stamps the key', () => {
-  const payload = buildLiveActivityPayload(request('start'), 'THUMBPRINT');
+  const payload = buildLiveActivityPayload(
+    request('start'),
+    'THUMBPRINT',
+    CHANNEL_ID,
+  );
   assert.deepEqual(payload, {
     aps: {
       timestamp: NOW,
@@ -223,6 +250,11 @@ test('builds update and end payloads, alerting only when asked', () => {
   assert.equal(end['dismissal-date'], NOW + 900);
   assert.equal(end['stale-date'], undefined);
   assert.equal(end.alert, undefined);
+  // A finish the Station wants noticed ends with the same fixed alert.
+  assert.deepEqual(
+    buildLiveActivityPayload(request('end', { alert: true }), 'K').aps.alert,
+    { title: 'Station', body: 'Agent activity', sound: 'default' },
+  );
   assert.deepEqual(end['content-state'], {
     v: 1,
     rid: REGISTRATION_ID,
@@ -245,9 +277,9 @@ test('caps the final APNs body at 4096 bytes', () => {
       sealed: 'S'.repeat(3400),
       pushToStartToken: 'ab'.repeat(100),
       registrationId: 'r'.repeat(64),
-      channelId: 'A'.repeat(128),
     }),
     'k'.repeat(43),
+    'A'.repeat(128),
   );
   assert.ok(payloadBytes(largest), 'the largest valid request fits');
   const over = { aps: { pad: 'x'.repeat(MAX_APNS_PAYLOAD_BYTES) } };

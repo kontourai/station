@@ -30,6 +30,8 @@ const TOKEN = /^(?:[0-9a-f]{2}){32,100}$/i;
 const CHANNEL_ID = /^[A-Za-z0-9+/]{4,128}={0,2}$/;
 const REGISTRATION_ID = /^[A-Za-z0-9_-]{22,64}$/;
 const BASE64URL = /^[A-Za-z0-9_-]+$/;
+// "v1." + base64url(HMAC-SHA256): see apns-channel-auth.ts.
+const CHANNEL_AUTH = /^v1\.[A-Za-z0-9_-]{43}$/;
 
 export type ApnsEnvironment = 'production' | 'sandbox';
 export type LiveActivityEvent = 'start' | 'update' | 'end';
@@ -40,7 +42,14 @@ export interface LiveActivityRequest {
   event: LiveActivityEvent;
   /** Start only: the device's push-to-start token (hex). */
   pushToStartToken?: string;
-  channelId: string;
+  /**
+   * Update and end only. A start carries none: the gateway creates the
+   * activity's channel itself, so a caller cannot spend Apple's channel quota
+   * without also addressing a real device.
+   */
+  channelId?: string;
+  /** Update and end only: the gateway's proof this key was handed the channel. */
+  channelAuth?: string;
   registrationId: string;
   sealed: string;
   alert: boolean;
@@ -51,14 +60,14 @@ export interface LiveActivityRequest {
   dismissAt?: number;
 }
 
-export type ChannelRequest =
-  | { op: 'create'; bundleId: string; environment: ApnsEnvironment }
-  | {
-      op: 'delete';
-      bundleId: string;
-      environment: ApnsEnvironment;
-      channelId: string;
-    };
+/** Channels are created only inside a start; the route only deletes. */
+export interface ChannelRequest {
+  op: 'delete';
+  bundleId: string;
+  environment: ApnsEnvironment;
+  channelId: string;
+  channelAuth: string;
+}
 
 type Parsed<T> = { ok: true; request: T } | { ok: false; reason: string };
 
@@ -66,7 +75,6 @@ const COMMON_KEYS = [
   'bundleId',
   'environment',
   'event',
-  'channelId',
   'registrationId',
   'sealed',
   'alert',
@@ -74,13 +82,16 @@ const COMMON_KEYS = [
 ] as const;
 const EVENT_KEYS: Record<LiveActivityEvent, readonly string[]> = {
   start: [...COMMON_KEYS, 'pushToStartToken', 'staleAt'],
-  update: [...COMMON_KEYS, 'staleAt'],
-  end: [...COMMON_KEYS, 'dismissAt'],
+  update: [...COMMON_KEYS, 'channelId', 'channelAuth', 'staleAt'],
+  end: [...COMMON_KEYS, 'channelId', 'channelAuth', 'dismissAt'],
 };
-const CHANNEL_KEYS: Record<ChannelRequest['op'], readonly string[]> = {
-  create: ['op', 'bundleId', 'environment'],
-  delete: ['op', 'bundleId', 'environment', 'channelId'],
-};
+const CHANNEL_KEYS = [
+  'op',
+  'bundleId',
+  'environment',
+  'channelId',
+  'channelAuth',
+] as const;
 
 function decodeObject(
   body: Uint8Array<ArrayBuffer>,
@@ -129,6 +140,11 @@ function checkRouting(
 const isChannelId = (value: unknown): value is string =>
   typeof value === 'string' && CHANNEL_ID.test(value);
 
+export const isApnsChannelId = isChannelId;
+
+const isChannelAuth = (value: unknown): value is string =>
+  typeof value === 'string' && CHANNEL_AUTH.test(value);
+
 const isSeconds = (value: unknown): value is number =>
   typeof value === 'number' && Number.isSafeInteger(value) && value > 0;
 
@@ -153,8 +169,12 @@ export function parseLiveActivityRequest(
       !TOKEN.test(input.pushToStartToken))
   )
     return { ok: false, reason: 'invalid pushToStartToken' };
-  if (!isChannelId(input.channelId))
-    return { ok: false, reason: 'invalid channelId' };
+  if (event !== 'start') {
+    if (!isChannelId(input.channelId))
+      return { ok: false, reason: 'invalid channelId' };
+    if (!isChannelAuth(input.channelAuth))
+      return { ok: false, reason: 'invalid channelAuth' };
+  }
   if (
     typeof input.registrationId !== 'string' ||
     !REGISTRATION_ID.test(input.registrationId)
@@ -199,8 +219,10 @@ export function parseLiveActivityRequest(
       event,
       ...(event === 'start'
         ? { pushToStartToken: (input.pushToStartToken as string).toLowerCase() }
-        : {}),
-      channelId: input.channelId,
+        : {
+            channelId: input.channelId as string,
+            channelAuth: input.channelAuth as string,
+          }),
       registrationId: input.registrationId,
       sealed: input.sealed,
       alert: input.alert,
@@ -218,22 +240,24 @@ export function parseChannelRequest(
 ): Parsed<ChannelRequest> {
   const input = decodeObject(body);
   if (typeof input === 'string') return { ok: false, reason: input };
-  const { op } = input;
-  if (op !== 'create' && op !== 'delete')
-    return { ok: false, reason: 'unsupported op' };
-  const keyError = checkKeys(input, CHANNEL_KEYS[op]);
+  if (input.op !== 'delete') return { ok: false, reason: 'unsupported op' };
+  const keyError = checkKeys(input, CHANNEL_KEYS);
   if (keyError) return { ok: false, reason: keyError };
   const routingError = checkRouting(input, allowedBundles);
   if (routingError) return { ok: false, reason: routingError };
-  const bundleId = input.bundleId as string;
-  const environment = input.environment as ApnsEnvironment;
-  if (op === 'create')
-    return { ok: true, request: { op, bundleId, environment } };
   if (!isChannelId(input.channelId))
     return { ok: false, reason: 'invalid channelId' };
+  if (!isChannelAuth(input.channelAuth))
+    return { ok: false, reason: 'invalid channelAuth' };
   return {
     ok: true,
-    request: { op, bundleId, environment, channelId: input.channelId },
+    request: {
+      op: 'delete',
+      bundleId: input.bundleId as string,
+      environment: input.environment as ApnsEnvironment,
+      channelId: input.channelId,
+      channelAuth: input.channelAuth,
+    },
   };
 }
 
@@ -245,10 +269,12 @@ export function livePriority(request: LiveActivityRequest): 5 | 10 {
 /**
  * The complete APNs body. `stationKey` is the thumbprint of the key that
  * signed the request, which the widget pins before opening the card.
+ * `startChannelId` is the channel the gateway created for a start.
  */
 export function buildLiveActivityPayload(
   request: LiveActivityRequest,
   stationKey: string,
+  startChannelId?: string,
 ): { aps: Record<string, unknown> } {
   const contentState = {
     v: LIVE_ACTIVITY_STATE_VERSION,
@@ -269,7 +295,7 @@ export function buildLiveActivityPayload(
   if (request.event === 'start') {
     aps['attributes-type'] = APNS_ATTRIBUTES_TYPE;
     aps.attributes = { rid: request.registrationId };
-    aps['input-push-channel'] = request.channelId;
+    aps['input-push-channel'] = startChannelId;
     aps['stale-date'] = request.staleAt;
     // Push-to-start needs an alert to present the activity; it is silent
     // unless the Station asked for one.

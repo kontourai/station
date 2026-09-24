@@ -1,8 +1,13 @@
+import { parseChannelAuthSecrets } from './apns-channel-auth.ts';
 import { parseApnsCredentials } from './apns-token.ts';
 import { parseServiceAccount, type ServiceAccount } from './fcm.ts';
-import { handleRequest, type RateLimiter } from './gateway.ts';
+import {
+  type ApnsGatewayConfig,
+  handleRequest,
+  type RateLimiter,
+} from './gateway.ts';
 
-interface Env {
+export interface Env {
   /** Service-account JSON for station-push-gateway (a Worker secret). */
   FCM_SERVICE_ACCOUNT?: string;
   /** Comma-separated origins a Station token may name as its audience. */
@@ -19,8 +24,15 @@ interface Env {
   APNS_KEY_ID?: string;
   /** Comma-separated iOS bundle ids the gateway may deliver to. */
   ALLOWED_IOS_BUNDLES?: string;
-  CHANNEL_GLOBAL_LIMITER: RateLimiter;
-  CHANNEL_PER_KEY_LIMITER: RateLimiter;
+  /** HMAC secret for channelAuth (a Worker secret, at least 32 characters). */
+  APNS_CHANNEL_AUTH_SECRET?: string;
+  /** The rotated-out secret, still accepted while Stations refresh. */
+  APNS_CHANNEL_AUTH_SECRET_PREVIOUS?: string;
+  CHANNEL_PER_IP_LIMITER?: RateLimiter;
+  CHANNEL_PER_DEVICE_LIMITER?: RateLimiter;
+  CHANNEL_PER_KEY_LIMITER?: RateLimiter;
+  CHANNEL_GLOBAL_LIMITER?: RateLimiter;
+  CHANNEL_DELETE_LIMITER?: RateLimiter;
 }
 
 // Parsed once per isolate: handleRequest keys its sender (and the cached
@@ -42,14 +54,6 @@ export default {
         account: parseServiceAccount(env.FCM_SERVICE_ACCOUNT),
       };
     }
-    // Cheap to re-read: the signed provider token is cached by key
-    // fingerprint (apns-token.ts), not by this object.
-    const apnsCredentials = parseApnsCredentials({
-      teamId: env.APNS_TEAM_ID,
-      keyId: env.APNS_KEY_ID,
-      authKey: env.APNS_AUTH_KEY,
-    });
-    const allowedBundles = list(env.ALLOWED_IOS_BUNDLES ?? '');
     return handleRequest(request, {
       audiences: list(env.AUDIENCES),
       allowedPackages: list(env.ALLOWED_PACKAGES),
@@ -58,19 +62,53 @@ export default {
       globalLimiter: env.GLOBAL_LIMITER,
       perKeyLimiter: env.PER_KEY_LIMITER,
       perTokenLimiter: env.PER_TOKEN_LIMITER,
-      // Ships dark: every piece must be present or the APNs routes answer 503.
-      apns:
-        apnsCredentials &&
-        allowedBundles.length > 0 &&
-        env.CHANNEL_GLOBAL_LIMITER &&
-        env.CHANNEL_PER_KEY_LIMITER
-          ? {
-              credentials: apnsCredentials,
-              allowedBundles,
-              channelGlobalLimiter: env.CHANNEL_GLOBAL_LIMITER,
-              channelPerKeyLimiter: env.CHANNEL_PER_KEY_LIMITER,
-            }
-          : null,
+      apns: apnsConfig(env),
     });
   },
 };
+
+/**
+ * Ships dark: every piece must be present, or the APNs routes answer 503.
+ * Cheap to re-read per request: the signed provider token is cached by key
+ * fingerprint (apns-token.ts), not by this object.
+ */
+function apnsConfig(env: Env): ApnsGatewayConfig | null {
+  const credentials = parseApnsCredentials({
+    teamId: env.APNS_TEAM_ID,
+    keyId: env.APNS_KEY_ID,
+    authKey: env.APNS_AUTH_KEY,
+  });
+  const channelAuth = parseChannelAuthSecrets(
+    env.APNS_CHANNEL_AUTH_SECRET,
+    env.APNS_CHANNEL_AUTH_SECRET_PREVIOUS,
+  );
+  const allowedBundles = list(env.ALLOWED_IOS_BUNDLES ?? '');
+  const {
+    CHANNEL_PER_IP_LIMITER: channelPerIpLimiter,
+    CHANNEL_PER_DEVICE_LIMITER: channelPerDeviceLimiter,
+    CHANNEL_PER_KEY_LIMITER: channelPerKeyLimiter,
+    CHANNEL_GLOBAL_LIMITER: channelGlobalLimiter,
+    CHANNEL_DELETE_LIMITER: channelDeleteLimiter,
+  } = env;
+  if (
+    !credentials ||
+    !channelAuth ||
+    allowedBundles.length === 0 ||
+    !channelPerIpLimiter ||
+    !channelPerDeviceLimiter ||
+    !channelPerKeyLimiter ||
+    !channelGlobalLimiter ||
+    !channelDeleteLimiter
+  )
+    return null;
+  return {
+    credentials,
+    allowedBundles,
+    channelAuth,
+    channelPerIpLimiter,
+    channelPerDeviceLimiter,
+    channelPerKeyLimiter,
+    channelGlobalLimiter,
+    channelDeleteLimiter,
+  };
+}

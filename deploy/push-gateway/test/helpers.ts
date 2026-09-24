@@ -131,6 +131,9 @@ export const PUSH_TO_START_TOKEN = 'ab'.repeat(40);
 export const CHANNEL_ID = 'dHN0LXNyY2gtY2hubA==';
 export const REGISTRATION_ID = 'r'.repeat(22);
 export const SEALED = 'S'.repeat(400);
+/** Well-formed but proves nothing; tests that need a valid one sign it. */
+export const PLACEHOLDER_CHANNEL_AUTH = `v1.${'A'.repeat(43)}`;
+export const CHANNEL_AUTH_SECRET = 'test-channel-auth-secret-0123456789abcdef';
 
 export function liveActivityBody(
   overrides: Record<string, unknown> = {},
@@ -140,8 +143,9 @@ export function liveActivityBody(
     bundleId: IOS_BUNDLE,
     environment: 'sandbox',
     event,
-    ...(event === 'start' ? { pushToStartToken: PUSH_TO_START_TOKEN } : {}),
-    channelId: CHANNEL_ID,
+    ...(event === 'start'
+      ? { pushToStartToken: PUSH_TO_START_TOKEN }
+      : { channelId: CHANNEL_ID, channelAuth: PLACEHOLDER_CHANNEL_AUTH }),
     registrationId: REGISTRATION_ID,
     sealed: SEALED,
     alert: false,

@@ -15,34 +15,64 @@ repository, so a root `npm run dependencies:ci` installs them for the tests,
 
 Every `POST` route takes the same Station-signed `Authorization: Station <jws>`
 header (ES256, the body hash bound into the token, at most 120 s lifetime) and
-passes the same per-address, global and per-key rate limits before its body is
-parsed. Unknown body keys are refused on every route.
+the same per-address limit before any work. Unknown body keys are refused on
+every route. After the body is parsed, each route checks its own rate limits
+narrowest first and stops at the first refusal, so a request refused by a
+narrow limit never spends a wider, shared budget.
 
 | Route | Body | Answers |
 | --- | --- | --- |
-| `/v1/fcm/send` | `{ token, packageName, data, collapseKey? }` | 200 sent, 410 unregistered, 422 rejected, 503 unavailable |
-| `/v1/apns/live-activity` | `{ bundleId, environment, event: start\|update\|end, pushToStartToken (start only), channelId, registrationId, sealed, alert, timestamp, staleAt (start/update) \| dismissAt (end) }` | 200 sent, 410 `unregistered` (push-to-start token dead), 410 `channel-gone` (create a new channel), 422 rejected, 503 unavailable |
-| `/v1/apns/channels` | `{ op: create\|delete, bundleId, environment, channelId (delete only) }` | 200 `{ result: "created", channelId }` or `{ result: "deleted" }` (a channel Apple no longer has counts as deleted), 422, 503 |
+| `/v1/fcm/send` | `{ token, packageName, data, collapseKey? }` | 200 `sent`, 410 `unregistered`, 422 `rejected`, 503 `unavailable` |
+| `/v1/apns/live-activity`, start | `{ bundleId, environment, event: "start", pushToStartToken, registrationId, sealed, alert, timestamp, staleAt }` (no channel) | 200 `{ result: "sent", channelId, channelAuth }`, 410 `unregistered`, 422 `rejected`, 503 `unavailable` |
+| `/v1/apns/live-activity`, update | `{ bundleId, environment, event: "update", channelId, channelAuth, registrationId, sealed, alert, timestamp, staleAt }` | 200 `{ result: "sent" }` (plus a fresh `channelAuth` after secret rotation), 403 `channel-unauthorized`, 410 `channel-gone`, 422, 503 |
+| `/v1/apns/live-activity`, end | as update, with `dismissAt` instead of `staleAt` | as update |
+| `/v1/apns/channels` | `{ op: "delete", bundleId, environment, channelId, channelAuth }` | 200 `{ result: "deleted" }` (a channel Apple reports as `BadChannelId`/`ChannelNotRegistered` counts as deleted), 403 `channel-unauthorized`, 422, 503 |
+
+Rate-limit refusals are 429 `{ error: "rate limited" }` and malformed bodies
+400 `{ error: <reason> }` on every route.
+
+**Channels belong to one activity and are created only inside its start.** A
+start creates a broadcast channel on Apple's management host, sends the
+push-to-start naming it (`input-push-channel`), and answers with the channel id
+and `channelAuth`. If Apple refuses the start, or it never reaches Apple, the
+gateway deletes the channel before answering, so a refused start never keeps
+quota. The Station deletes an activity's channel through `/v1/apns/channels`
+once the activity has ended and been dismissed.
+
+**`channelAuth`** is `"v1." + base64url(HMAC-SHA256(APNS_CHANNEL_AUTH_SECRET,
+"station-apns-channel:v1\n" + bundleId + "\n" + environment + "\n" +
+channelId + "\n" + <signing key thumbprint>))`. Update, end and delete require
+it and it is checked before any per-channel limit, so someone who has only
+learned a channel id can neither use the channel nor spend its budget. A token
+made with `APNS_CHANNEL_AUTH_SECRET_PREVIOUS` is still accepted, and the 200
+then carries a fresh `channelAuth` for the Station to store.
 
 A Station never sends APNs JSON. The gateway builds the `aps` payload itself:
 the content state is `{ v: 1, rid, sk, sealed }`, where `sk` is the verified
 signing key's thumbprint (a caller-supplied `sk` is refused), and the only
 readable text is the fixed alert `Station` / `Agent activity`, which the
-Station can only switch on or off (`alert`). Priority is derived, never
-supplied: 10 for start, end and an alerting update, otherwise 5. Pushes expire
-after 300 s. The final APNs body is held to 4096 bytes.
+Station can only switch on or off (`alert`). A start always carries the alert,
+with a sound only when `alert` is true; an update or an end carries it (with
+the sound) only when `alert` is true, so a finished run can end its activity
+with an alert. Priority is derived, never supplied: 10 for start, end and an
+alerting update, otherwise 5. Pushes expire after 300 s. The final APNs body
+is held to 4096 bytes.
 
 A start is a push-to-start to `/3/device/<token>` (topic
-`<bundle>.push-type.liveactivity`) naming the activity's broadcast channel
-(`input-push-channel`); updates and ends are broadcasts to
+`<bundle>.push-type.liveactivity`); updates and ends are broadcasts to
 `/4/broadcasts/apps/<bundle>` with `apns-channel-id`. Channels are created and
 deleted on `api-manage-broadcast[.sandbox].push.apple.com` (port 2196
 production, 2195 sandbox).
 
 APNs' own status and reason are never relayed: they would make the gateway an
-oracle for whether a token or channel is live. A `403` from Apple (a bad or
-expired provider token, a revoked key) is the gateway's own configuration
-fault: the caller gets a retryable 503 and the reason goes to the error log.
+oracle for whether a token or channel is live. Outcomes follow Apple's reason,
+not its bare status: `Unregistered`, `BadDeviceToken` and
+`DeviceTokenNotForTopic` on a start mean `unregistered`; `BadChannelId` and
+`ChannelNotRegistered` mean `channel-gone`. A 404 with any other reason is
+`rejected` and logged, because a wrong path answers 404 too. A 403 (a bad or
+expired provider token, a revoked key) or a 429 (Apple throttling the gateway)
+is the gateway's own fault: the caller gets a retryable 503 and the reason goes
+to the error log.
 
 ## Check
 
@@ -66,15 +96,28 @@ The Worker runs on the Cloudflare account that owns the `kontourai.io` zone,
 served only on the custom domain (`workers_dev` and preview URLs are off).
 Configuration lives in `wrangler.jsonc`: allowed audiences, allowed Android
 packages (`ALLOWED_PACKAGES`), allowed iOS bundles (`ALLOWED_IOS_BUNDLES`), the
-APNs team and key ids (`APNS_TEAM_ID`, `APNS_KEY_ID`), and six rate limits: per
-client address before any work, then global, per Station key and per push
-token (a device token or, for broadcasts, a channel id, hashed) on signed
-requests only, plus `CHANNEL_GLOBAL_LIMITER` (30/min) and
-`CHANNEL_PER_KEY_LIMITER` (3/min per Station key) on channel management.
+APNs team and key ids (`APNS_TEAM_ID`, `APNS_KEY_ID`), and the rate limits.
 
-APNs ships dark: until the `APNS_AUTH_KEY` secret is set (and the ids and
-bundle list are present), both `/v1/apns` routes answer 503 without doing any
-work, and the FCM route is unaffected.
+| Limit | Keyed on | Applies to |
+| --- | --- | --- |
+| `PER_IP_LIMITER` | client address | every route, before any work |
+| `PER_TOKEN_LIMITER` | hash of the FCM token or broadcast channel | FCM sends, updates, ends |
+| `PER_KEY_LIMITER` | Station key thumbprint | FCM sends, updates, ends |
+| `GLOBAL_LIMITER` | one bucket | FCM sends, updates, ends |
+| `CHANNEL_PER_IP_LIMITER` | client address | starts (each creates a channel) |
+| `CHANNEL_PER_DEVICE_LIMITER` | hash of the push-to-start token | starts |
+| `CHANNEL_PER_KEY_LIMITER` | Station key thumbprint | starts |
+| `CHANNEL_GLOBAL_LIMITER` | one bucket | starts |
+| `CHANNEL_DELETE_LIMITER` | Station key thumbprint | channel deletes |
+
+Rows are listed in the order each route checks them. Workers rate-limit
+bindings only offer 10 s and 60 s periods, so every ceiling is per minute; a
+per-day device ceiling would need storage the gateway does not have.
+
+APNs ships dark: until both the `APNS_AUTH_KEY` and `APNS_CHANNEL_AUTH_SECRET`
+secrets are set (and the ids, bundle list and channel limiters are present),
+both `/v1/apns` routes answer 503 without doing any work, and the FCM route is
+unaffected.
 
 ## Credentials
 
@@ -110,7 +153,19 @@ file:
 npx --yes wrangler@4 secret put APNS_AUTH_KEY < AuthKey_<key id>.p8
 ```
 
-To rotate, create a new key in the Apple developer account, put it, change
+`APNS_CHANNEL_AUTH_SECRET` is a random secret of at least 32 characters that
+signs `channelAuth`:
+
+```sh
+openssl rand -base64 48 | tr -d '\n' | npx --yes wrangler@4 secret put APNS_CHANNEL_AUTH_SECRET
+```
+
+To rotate it, put the current value into `APNS_CHANNEL_AUTH_SECRET_PREVIOUS`,
+put a new `APNS_CHANNEL_AUTH_SECRET`, and delete the previous secret once the
+longest Live Activity has had time to refresh its token (eight hours plus the
+dismissal window). Every accepted old token is answered with a new one.
+
+To rotate the APNs key, create a new key in the Apple developer account, put it, change
 `APNS_KEY_ID` in `wrangler.jsonc` in the same deploy, then revoke the old key.
 The provider-token cache is keyed on the key's fingerprint, so a new key never
 reuses the old key's token. Provider tokens are signed deterministically with
@@ -120,33 +175,36 @@ token and APNs never sees more than one new token per window (it answers 429
 
 ## Channel quota abuse
 
-Apple limits how many broadcast channels an app may hold (the exact quota is
-not yet verified), and anyone can mint a
-Station key, so channel creation is the resource worth defending. Normal use is
-one channel per iOS registration, created lazily and deleted when the
-registration is dropped. The channel limiters bound the damage: 3 creates or
-deletes per minute per key, 30 per minute across the gateway.
+Apple limits how many broadcast channels an app may hold per environment
+(about 10,000; not yet verified live), channels do not expire, and anyone can
+mint a Station key, so channel creation is the resource worth defending. It
+happens only inside a start, which must name a real push-to-start token, and
+the start limits (per address, per device, per key, global) bound the rate. A
+refused start gives its channel back at once.
 
-If creates start failing (429 or 503 answers on `/v1/apns/channels`):
+If starts begin failing with 503 (the channel create is refused) or quota
+looks low:
 
 1. Check the Worker's request metrics in the Cloudflare dashboard. The gateway
-   does not log rate-limited requests (invocation logs are off), so a sustained
-   burst of 429s on the channels route is the signature of key minting.
-2. Lower `CHANNEL_GLOBAL_LIMITER` and deploy. Existing channels keep working,
-   and Stations back off and retry their creates.
+   does not log rate-limited requests (invocation logs are off), so a
+   sustained burst of 429s on `/v1/apns/live-activity` is the signature of key
+   minting.
+2. Lower `CHANNEL_GLOBAL_LIMITER` (and `CHANNEL_PER_IP_LIMITER`) and deploy.
+   Running activities keep working; Stations back off and retry their starts.
 3. List the app's channels with a provider token
    (`GET https://api-manage-broadcast.push.apple.com:2196/1/apps/<bundle>/all-channels`)
-   and delete the ones no registered Station uses; a Station whose channel
-   was deleted gets 410 `channel-gone` on its next update and creates a new one.
-4. If it recurs, the durable fix is a per-registration proof (e.g. the phone's
-   push-to-start token must accompany a create), not a larger quota.
+   and delete stale ones. A Station whose channel was deleted gets 410
+   `channel-gone` on its next update and starts a fresh activity.
+4. If it recurs, the durable fix is a longer-horizon per-device ceiling (a
+   Durable Object or similar), not a larger quota.
 
 ## Logs
 
 Invocation logs are off (they would record the signed `Authorization`
 header). Only `console.error` lines are kept, and they carry Google's error
-code for a failed token exchange or Apple's reason for a refused provider
-token, never keys, tokens or payloads:
+code for a failed token exchange and Apple's reason for a refused provider
+token, throttling, an unrecognised 404, or a channel left behind after a
+refused start, never keys, tokens or payloads:
 
 ```sh
 npx --yes wrangler@4 tail station-push-gateway --format pretty
