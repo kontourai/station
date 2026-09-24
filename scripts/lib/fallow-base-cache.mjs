@@ -31,7 +31,7 @@ import { join } from 'node:path';
  */
 
 /** Older than this, a run directory belongs to no live run (runs are bounded at two minutes). */
-export const FALLOW_RUN_DIRECTORY_MAX_AGE_MS = 60 * 60 * 1000;
+const FALLOW_RUN_DIRECTORY_MAX_AGE_MS = 60 * 60 * 1000;
 
 const RUN_DIRECTORY_PREFIX = 'run-';
 
@@ -40,7 +40,7 @@ const RUN_DIRECTORY_PREFIX = 'run-';
  * packages/shared/src/temp-dir.ts (`STATION_TEMP_ROOT`, else
  * `<os tmpdir>/station`), which a script cannot import.
  */
-export function fallowTempRoot(env = process.env) {
+function fallowTempRoot(env = process.env) {
   const root =
     env.STATION_TEMP_ROOT && env.STATION_TEMP_ROOT.length > 0
       ? env.STATION_TEMP_ROOT
