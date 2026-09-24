@@ -23,6 +23,8 @@ an explicit Details action.
 
 Message action rows reserve their layout space. Hover and keyboard focus may
 reveal controls, but must not change bubble size or the position of later messages.
+During an authorized active-turn continuation wait, the composer accepts and
+preserves a draft. Sending and queueing stay blocked until continuation is writable.
 The shared popover shell opens toward the roomier viewport edge, including when
 the dock is maximized. A narrow Activity region shows its list or its selected
 detail, with a Back to list control, instead of squeezing both columns.
