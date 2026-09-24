@@ -514,6 +514,7 @@ describe('device-session chat principal resolution over the REAL auth path (stat
                 orchestration!.canUserReadSession.bind(orchestration),
               canUserReadConversation:
                 orchestration!.canUserReadConversation.bind(orchestration),
+              listSessions: orchestration!.listSessions.bind(orchestration),
             }),
           }
         : {}),
@@ -2033,6 +2034,38 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       conversationId: 'operator-owned',
       links: [],
     });
+
+    // The other session-scoped reads moved onto the same principal must have
+    // the authority BOUND for their prefixes: an unbound prefix throws
+    // "Conversation request authority was not resolved" (a 500) the moment a
+    // request names a thread.
+    const bound = [
+      await app.request(
+        '/api/pull-requests/context?project=project&thread=operator-owned',
+        { headers: { Authorization: `Bearer ${OPERATOR_SECRET}` } },
+        REMOTE_TAILNET_ENV,
+      ),
+      await app.request(
+        '/api/projects/project/file-preview',
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${OPERATOR_SECRET}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            path: 'missing.txt',
+            thread: 'operator-owned',
+          }),
+        },
+        REMOTE_TAILNET_ENV,
+      ),
+    ];
+    for (const response of bound) {
+      const text = await response.text();
+      expect(response.status, text).not.toBe(500);
+      expect(text).not.toContain('authority was not resolved');
+    }
 
     await roomRuntime.close();
     store.close();
