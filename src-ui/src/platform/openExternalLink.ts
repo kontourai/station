@@ -56,7 +56,7 @@ export function trackedRefusalNoticeCount(): number {
  * but http(s) before asking a host. The notice names the URL and offers
  * a Copy action, so the reader can still get where they were going.
  */
-export function reportUnopenedExternalLink(
+function reportUnopenedExternalLink(
   url: string,
   reason: 'host-refused' | 'unsupported-scheme',
 ): void {
