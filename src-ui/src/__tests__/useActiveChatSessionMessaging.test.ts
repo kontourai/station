@@ -1498,6 +1498,62 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     }
   });
 
+  it('#2324 review J4: a refused send WITH attachments is not dropped into the text queue — it keeps its attachments and the ordinary error', async () => {
+    activeChatsStore.updateChat(sessionId, {
+      attachments: [stagedAttachment],
+      attachmentStages: [stagedSnapshot],
+    });
+    sendExecutionMessageMock.mockRejectedValueOnce(
+      new CodedOrchestrationError(
+        400,
+        'The agent is replying on its own; your message will be sent when it finishes.',
+        'provider_turn_in_progress',
+      ),
+    );
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+    await act(async () => {
+      await result.current(sessionId, 'claude', undefined, 'with a file', [
+        stagedAttachment,
+      ]);
+    });
+    const chat = activeChatsStore.getSnapshot()[sessionId];
+    expect(chat.queuedMessages ?? []).toEqual([]);
+    expect(chat).toMatchObject({
+      attachments: [stagedAttachment],
+      attachmentStages: [stagedSnapshot],
+    });
+    expect(chat.ephemeralMessages?.at(-1)?.content).toBeTruthy();
+  });
+
+  it('#2324 review J4b: a durable dispatch refused by a provider turn is not also put in the in-memory queue', async () => {
+    sendExecutionMessageMock.mockRejectedValueOnce(
+      new CodedOrchestrationError(
+        400,
+        'The agent is replying on its own; your message will be sent when it finishes.',
+        'provider_turn_in_progress',
+      ),
+    );
+    const claim = { indeterminate: vi.fn(async () => 'applied' as const) };
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+    await act(async () => {
+      await result
+        .current(
+          sessionId,
+          'claude',
+          undefined,
+          'durable send',
+          undefined,
+          undefined,
+          'claimed-turn',
+          { skipInMemoryQueueOnBusy: true, dispatch: claim },
+        )
+        .catch(() => undefined);
+    });
+    expect(
+      activeChatsStore.getSnapshot()[sessionId].queuedMessages ?? [],
+    ).toEqual([]);
+  });
+
   it('queues on a steering engine when queueOnBusy is requested', async () => {
     activeChatsStore.updateChat(sessionId, {
       status: 'sending',

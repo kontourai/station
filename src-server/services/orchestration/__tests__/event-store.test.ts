@@ -5007,6 +5007,104 @@ describe('EventStore', () => {
     });
   });
 
+  test('#2324 review J1: the history backfill counts a provider turn’s reply but not its start', () => {
+    store.close();
+    const databasePath = join(dir, 'pre-ownership-provider-history.sqlite');
+    const database = new DatabaseSync(databasePath);
+    database.exec(ORCHESTRATION_EVENT_STORE_MIGRATION);
+    database
+      .prepare(
+        `INSERT INTO provider_session_state
+          (thread_id, provider, status, tenant_execution_context, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        'thread-backfilled',
+        'claude',
+        'ready',
+        JSON.stringify({ tenantId: 'alpha', source: 'session' }),
+        '2026-08-08T11:00:00.000Z',
+        '2026-08-08T12:00:00.000Z',
+      );
+    const insertEvent = database.prepare(
+      `INSERT INTO orchestration_events
+        (id, provider, thread_id, method, payload, created_at, sequence, global_sequence)
+       VALUES (?, 'claude', 'thread-backfilled', ?, ?, ?, ?, ?)`,
+    );
+    insertEvent.run(
+      'backfilled-start',
+      'session.started',
+      JSON.stringify({
+        method: 'session.started',
+        metadata: { userId: 'owner-alpha', agentSlug: 'claude' },
+      }),
+      '2026-08-08T11:00:00.000Z',
+      1,
+      1,
+    );
+    insertEvent.run(
+      'backfilled-turn-start',
+      'turn.started',
+      JSON.stringify({
+        method: 'turn.started',
+        prompt: 'Accurate history title',
+      }),
+      '2026-08-08T11:01:00.000Z',
+      2,
+      2,
+    );
+    insertEvent.run(
+      'backfilled-turn-complete',
+      'turn.completed',
+      JSON.stringify({ method: 'turn.completed' }),
+      '2026-08-08T12:00:00.000Z',
+      3,
+      3,
+    );
+    insertEvent.run(
+      'backfilled-provider-start',
+      'turn.started',
+      JSON.stringify({
+        method: 'turn.started',
+        metadata: { trigger: 'provider' },
+      }),
+      '2026-08-08T12:00:01.000Z',
+      4,
+      4,
+    );
+    insertEvent.run(
+      'backfilled-provider-complete',
+      'turn.completed',
+      JSON.stringify({
+        method: 'turn.completed',
+        metadata: { trigger: 'provider' },
+      }),
+      '2026-08-08T12:00:02.000Z',
+      5,
+      5,
+    );
+    database.close();
+
+    store = new EventStore(databasePath);
+
+    expect(
+      store.listConversationHistoryPage({
+        ownerUserId: 'owner-alpha',
+        tenantId: 'alpha',
+        limit: 1,
+      }).records,
+    ).toEqual([
+      expect.objectContaining({
+        threadId: 'thread-backfilled',
+        title: 'Accurate history title',
+        messageCount: 3,
+      }),
+    ]);
+    expect(store.readConversationHistoryUpgrade()).toMatchObject({
+      status: 'complete',
+      quarantinedCount: 0,
+    });
+  });
   test('hosted history remains bounded when newer quarantined rows outnumber accepted rows', () => {
     const validAt = '2026-08-08T12:00:00.000Z';
     store.upsertSession({

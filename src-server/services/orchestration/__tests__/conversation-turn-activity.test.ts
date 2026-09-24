@@ -276,6 +276,48 @@ describe('ConversationTurnActivityProjection (#2309)', () => {
     });
   });
 
+  test('#2324 review J7b: when the store’s start read finds nothing, the trigger comes from the folded start event itself', () => {
+    const started = append(ROOT, {
+      method: 'turn.started',
+      turnId: 'provider:p',
+      metadata: { trigger: 'provider' },
+    });
+    // A store whose start reads come back empty: the seed falls back to the
+    // `turn.started` the fold itself read.
+    const withoutStartRead = new Proxy(store, {
+      get(target, property, receiver) {
+        if (property === 'readTurnActivitySeed') {
+          return (threadId: string, turnId: string | undefined) => {
+            const { openTurn: _openTurn, ...rest } =
+              target.readTurnActivitySeed(threadId, turnId);
+            return rest;
+          };
+        }
+        if (property === 'readOpenTurnActivitySeed') {
+          return (threadId: string, turnId: string) => {
+            const { openTurn: _openTurn, ...rest } =
+              target.readOpenTurnActivitySeed(threadId, turnId);
+            return rest;
+          };
+        }
+        const value = Reflect.get(target, property, receiver);
+        return typeof value === 'function' ? value.bind(target) : value;
+      },
+    });
+    const fallback = new ConversationTurnActivityProjection({
+      eventStore: withoutStartRead,
+      readTurnProgress: () => undefined,
+      logger,
+    });
+    extraProjections.push(fallback);
+    expect(fallback.readForThread(ROOT)?.openTurn).toEqual({
+      turnId: 'provider:p',
+      threadId: ROOT,
+      startedAt: started.createdAt,
+      trigger: 'provider',
+    });
+  });
+
   test('closes on a deferred-retriable runtime.error and on an interrupt abort, as hasActiveTurn does', () => {
     expect(projection.readForThread(ROOT)?.openTurn).toBeUndefined();
     append(ROOT, { method: 'turn.started', turnId: 'turn-r' });
