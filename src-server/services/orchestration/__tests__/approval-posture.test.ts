@@ -427,6 +427,21 @@ describe('server-ordered approval posture (#2436)', () => {
       ).toMatchObject({ recorded: true });
     });
 
+    test("a fresh device's Ask is recorded over a standing Default that cannot be ranked", async () => {
+      // Nothing configured and nothing applied: the standing Default leaves
+      // the engine on its own configuration, which cannot be ranked. Ask is
+      // at least as strict as any posture, so it is recorded all the same.
+      await start('t-default-standing');
+      await decide('t-default-standing', 'connection-default', desktop);
+      expect(
+        await decide('t-default-standing', 'ask', phone, null),
+      ).toMatchObject({ recorded: true, approvalMode: 'ask' });
+      // A looser Auto on the same stale basis is still held to it.
+      expect(
+        await decide('t-default-standing', 'auto', phone, null),
+      ).toMatchObject({ recorded: false, approvalMode: 'ask' });
+    });
+
     test('the spawn window: a pick recorded before its session exists is the posture the session spawns in', async () => {
       const recorded = await service.recordApprovalModeDecision({
         threadId: 't-spawn-window',
