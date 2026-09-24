@@ -5081,6 +5081,7 @@ fn station_profile_store_write_internal(
         }
     }
     let mut temporary = None;
+    let mut published = false;
     let write_result = (|| -> Result<(), String> {
         // Post-transition prepublication errors must reach the rollback below.
         // Grant invalidation still precedes profile publication: a failed
@@ -5095,7 +5096,6 @@ fn station_profile_store_write_internal(
                 .map_err(|error| format!("clock for profile write: {error}"))?
                 .as_nanos()
         ));
-        temporary = Some(staged.clone());
         #[cfg(unix)]
         use std::os::unix::fs::OpenOptionsExt;
         let mut options = std::fs::OpenOptions::new();
@@ -5105,6 +5105,9 @@ fn station_profile_store_write_internal(
         let mut file = options
             .open(&staged)
             .map_err(|error| format!("create saved Station temp file: {error}"))?;
+        // Only this successful create_new() owns the staging path. A
+        // collision must never delete another writer's existing file.
+        temporary = Some(staged.clone());
         crate::windows_path_trust::ensure(&[(
             crate::windows_path_trust::TrustKind::File,
             &staged,
@@ -5117,6 +5120,7 @@ fn station_profile_store_write_internal(
         // process still owns its descriptor; POSIX permits the old ordering.
         drop(file);
         replace_station_profile_store(&staged, &path)?;
+        published = true;
         crate::windows_path_trust::ensure(&[(crate::windows_path_trust::TrustKind::File, &path)])?;
         Ok(())
     })();
@@ -5149,7 +5153,7 @@ fn station_profile_store_write_internal(
                 entries.remove(handle);
             }
         }
-    } else if let Some((reference_key, handle)) = transition_rollback {
+    } else if let Some((reference_key, handle)) = transition_rollback.filter(|_| !published) {
         let mut state = authority
             .0
             .lock()
