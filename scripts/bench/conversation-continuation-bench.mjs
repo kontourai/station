@@ -52,12 +52,12 @@ const PROMPT = 'Reply with exactly one word: OK';
 const log = (...a) => console.error('[bench]', ...a);
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-/** Every process descending from `rootPid`, with RSS in KiB. */
-function processTree(rootPid) {
-  const rows = execFileSync('ps', ['-A', '-o', 'pid=,ppid=,rss=,command='], {
-    encoding: 'utf8',
-    windowsHide: true,
-  })
+/**
+ * Every process descending from `rootPid` in `ps -o pid=,ppid=,rss=,command=`
+ * output, with RSS in KiB.
+ */
+export function descendantProcesses(psOutput, rootPid) {
+  const rows = psOutput
     .split('\n')
     .map((line) => line.trim().match(/^(\d+)\s+(\d+)\s+(\d+)\s+(.*)$/))
     .filter(Boolean)
@@ -80,6 +80,16 @@ function processTree(rootPid) {
     stack.push(...(children.get(row.pid) ?? []));
   }
   return out;
+}
+
+function processTree(rootPid) {
+  return descendantProcesses(
+    execFileSync('ps', ['-A', '-o', 'pid=,ppid=,rss=,command='], {
+      encoding: 'utf8',
+      windowsHide: true,
+    }),
+    rootPid,
+  );
 }
 
 function sampleProcesses(serverPid) {
@@ -318,8 +328,16 @@ async function main() {
     if (args.keep !== 'true') rmSync(root, { recursive: true, force: true });
   }
 
-  results.summary = Object.fromEntries(
-    Object.entries(results.engines).map(([engine, record]) => {
+  results.summary = summarize(results.engines);
+  const json = JSON.stringify(results, null, 2);
+  if (args.out) writeFileSync(args.out, json);
+  console.log(json);
+}
+
+/** Per-engine follow-up outcome, sessions used, and peak process footprint. */
+export function summarize(engines) {
+  return Object.fromEntries(
+    Object.entries(engines).map(([engine, record]) => {
       const followups = record.turns.filter((row) => row.turn > 0);
       const ok = followups.filter((row) => row.outcome === 'turn.completed');
       const median = (values) => {
@@ -348,12 +366,11 @@ async function main() {
       ];
     }),
   );
-  const json = JSON.stringify(results, null, 2);
-  if (args.out) writeFileSync(args.out, json);
-  console.log(json);
 }
 
-main().catch((error) => {
-  console.error('[bench] FAIL', error?.stack ?? error);
-  process.exit(1);
-});
+if (import.meta.url === `file://${process.argv[1]}`) {
+  main().catch((error) => {
+    console.error('[bench] FAIL', error?.stack ?? error);
+    process.exit(1);
+  });
+}
