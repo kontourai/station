@@ -15,6 +15,16 @@ export function hostOwnsExternalLinks(): boolean {
   return hasTauriRuntime();
 }
 
+/** The live refusal notice per URL: one at a time, however often it is clicked. */
+const liveRefusalNotices = new Map<string, string>();
+
+/** A long link shortened for reading; the notice's Copy keeps the whole. */
+export function displayedExternalLink(url: string): string {
+  const MAX = 80;
+  if (url.length <= MAX) return url;
+  return `${url.slice(0, 60)}…${url.slice(-15)}`;
+}
+
 /**
  * Tell the reader a link could not be opened, and hand them the link. A
  * refused open must never be a click that does nothing: the app host's
@@ -28,12 +38,15 @@ export function reportUnopenedExternalLink(
   url: string,
   reason: 'host-refused' | 'unsupported-scheme',
 ): void {
+  const live = liveRefusalNotices.get(url);
+  if (live && toastStore.getSnapshot().some((toast) => toast.id === live))
+    return;
   const why =
     reason === 'host-refused'
       ? 'The Station app cannot open this link.'
       : 'Station only opens web (http or https) links.';
-  toastStore.show(
-    `${why} Copy it to open it yourself: ${url}`,
+  const id = toastStore.show(
+    `${why} Copy it to open it yourself: ${displayedExternalLink(url)}`,
     undefined,
     0,
     [
@@ -42,15 +55,18 @@ export function reportUnopenedExternalLink(
         variant: 'primary',
         onClick: () => {
           void copyToClipboard(url).then((copied) => {
-            if (!copied)
-              toastStore.show(
-                `Copying was blocked on this device. The link: ${url}`,
-                undefined,
-                0,
-                undefined,
-                undefined,
-                'warning',
-              );
+            toastStore.show(
+              copied
+                ? 'Link copied'
+                : // The whole link, untruncated: this is the fallback for a
+                  // reader who has to copy it by hand.
+                  `Copying was blocked on this device. The link: ${url}`,
+              undefined,
+              copied ? 2500 : 0,
+              undefined,
+              undefined,
+              copied ? 'success' : 'warning',
+            );
           });
         },
       },
@@ -58,6 +74,7 @@ export function reportUnopenedExternalLink(
     undefined,
     'warning',
   );
+  liveRefusalNotices.set(url, id);
 }
 
 async function invokeNativeExternalLink(url: string): Promise<boolean | null> {

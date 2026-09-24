@@ -103,6 +103,30 @@ describe('a refused native open is shown, with the link and a Copy action', () =
     expect(notice.textContent).toContain(PR_URL);
     fireEvent.click(screen.getByRole('button', { name: 'Copy link' }));
     await waitFor(() => expect(writeText).toHaveBeenCalledWith(PR_URL));
+    // A copy that worked says so (delta review LOW: it was silent).
+    expect(await screen.findByText('Link copied')).toBeTruthy();
+  });
+
+  // Delta review LOW: the notice's action skipped the toast store's de-dup
+  // and never auto-dismisses, so every click on a refused link stacked
+  // another. One live notice per link; a long link is shortened for reading
+  // while Copy still copies the whole of it.
+  test('one live notice per link, a long link shortened on screen and copied whole', async () => {
+    renderNotices();
+    const long = `https://github.com/kontourai/station/pull/2049?${'q=1&'.repeat(40)}end=1`;
+    await act(async () => {
+      await openExternalLink(long);
+      await openExternalLink(long);
+      await openExternalLink(long);
+    });
+    const notices = await screen.findAllByText(
+      /The Station app cannot open this link\./,
+    );
+    expect(notices).toHaveLength(1);
+    expect(notices[0]?.textContent).not.toContain(long);
+    expect(notices[0]?.textContent).toContain('…');
+    fireEvent.click(screen.getByRole('button', { name: 'Copy link' }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(long));
   });
 
   test('a chat link the host refuses is shown too, not dropped', async () => {
