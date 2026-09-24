@@ -138,6 +138,19 @@ export interface DelegateTaskInput {
   prompt: string;
   target: ExecutionTarget;
   parentTaskId?: string;
+  /**
+   * #485 receiver request-claim slice: CLOSED, OPT-IN correlation for
+   * portable delegation creates. A caller-minted opaque token, stable
+   * across retries of the SAME logical request. Gate sending this field on
+   * the receiver's advertised `delegationAttemptClaims` handshake
+   * capability — an older receiver silently strips it and no claim exists.
+   * Never an authorization by itself: the receiver keys its durable claim
+   * by the verified delegation peer grant plus this token, refuses a
+   * redelivered request whose validated intent differs, and answers the
+   * exact-attempt lookup (`lookupDelegationAttempt`) for the SAME grant
+   * only. `none`/unknown from a lookup is NOT permission to resend.
+   */
+  attemptId?: string;
 }
 
 function delegationRequestProjection(
@@ -149,6 +162,7 @@ function delegationRequestProjection(
     ...(input.parentTaskId === undefined
       ? {}
       : { parentTaskId: input.parentTaskId }),
+    ...(input.attemptId === undefined ? {} : { attemptId: input.attemptId }),
   };
 }
 
@@ -331,6 +345,41 @@ export interface DelegatedTaskSnapshot {
   pendingRequest?: DelegatedTaskPendingRequest;
   canInterrupt: boolean;
   resumable: boolean;
+  /**
+   * #2269: effective per-turn supervision for the current turn, when the
+   * serving Station's owning adapter declared any. Absent is honest unknown
+   * — never a synthesized deadline. Each bound is present only when it was
+   * declared: no `deadlineAt` means no total budget, no `idleLimitMs` means
+   * no idle bound (a silent turn is not ended by Station).
+   */
+  supervision?: DelegatedTaskTurnSupervision;
+  /** #2269: the serving Station's typed terminal attribution, when any. */
+  reason?: DelegatedTaskReason;
+  /** #2269: lifecycle transition reason the serving Station folded, if any. */
+  transitionReason?: string;
+}
+
+/**
+ * #2269: server-forwarded per-turn supervision (mirrors the server's
+ * `DelegatedTurnSupervision`; this SDK is a typed carrier, not a deriver).
+ */
+export interface DelegatedTaskTurnSupervision {
+  provider: string;
+  turnId: string;
+  elapsedMs: number;
+  /** Present only when an idle bound was declared for the turn. */
+  idleLimitMs?: number;
+  /** Present together with `remainingMs`/`totalLimitMs` only for a declared total budget. */
+  deadlineAt?: string;
+  remainingMs?: number;
+  totalLimitMs?: number;
+  lastProgressEventAt?: string;
+}
+
+/** #2269: server-forwarded typed reason (mirrors `DelegatedTaskReason`). */
+export interface DelegatedTaskReason {
+  code: string;
+  detail?: string;
 }
 
 /**
@@ -379,6 +428,12 @@ export interface DelegatedTaskEvent {
     | 'plan';
   createdAt?: string;
   turnId?: string;
+  /**
+   * #2324: `'provider'` on the start and terminal of a turn the engine
+   * opened on its own — a reply no caller asked for (for example after its
+   * background work finished). Absent on every turn a caller sent.
+   */
+  trigger?: 'provider';
   text?: string;
   truncated?: true;
   toolName?: string;
@@ -619,4 +674,58 @@ export async function listDelegatedTasks(
     await unwrapDelegationResponse<DelegatedTaskInventory>(response);
   inventory.tasks = inventory.tasks.map(normalizeDelegationIdentity);
   return inventory;
+}
+
+/**
+ * #485 receiver request-claim slice — the bounded closed projection of one
+ * durable receiver attempt claim. Declared locally (SDK package boundary):
+ * it mirrors the receiver's `GET /api/orchestration/delegations/attempts/:attemptId`
+ * response. Never contains a prompt, path, digest, transcript, or provider
+ * output.
+ */
+export interface DelegationAttemptView {
+  attemptId: string;
+  /**
+   * - `none` — no claim under this key AS OBSERVED NOW. This is NOT
+   *   permission to resend: a delayed original request can still arrive.
+   * - `preparing` — claimed; the requested initial turn is not yet durably
+   *   evidenced (a started session alone is not acceptance).
+   * - `accepted` — the one real execution; `taskId` is the receiver task
+   *   handle and `turnId` is the real initial turn. A lost acknowledgement
+   *   resolves to exactly that task/turn WITHOUT re-POSTing.
+   * - `unresolved` — the invocation may have happened and completion is
+   *   not proven. Never a resend authorization.
+   * - `refused` — a clean pre-effect refusal was recorded (terminal; the
+   *   attempt key can never execute again under changed intent).
+   */
+  state: 'none' | 'preparing' | 'accepted' | 'unresolved' | 'refused';
+  /**
+   * The reserved receiver task reference. Present for every KNOWN claim so
+   * an unknown outcome stays reconcilable against session/turn evidence; a
+   * reference only — never proof the turn was accepted, never permission
+   * to resend.
+   */
+  taskId?: string;
+  /** Present only when `state === 'accepted'`: the real initial turn id. */
+  turnId?: string;
+}
+
+/**
+ * `GET /api/orchestration/delegations/attempts/:attemptId` — the authorized
+ * read-only lookup for one exact opt-in attempt. Served by the ACTUAL
+ * executing receiver only; requires the CURRENT verified delegation peer
+ * grant the claim is keyed by (the server refuses everyone else with no
+ * data). Use this to settle a lost acknowledgement WITHOUT re-POSTing the
+ * create request.
+ */
+export async function lookupDelegationAttempt(
+  apiBase: string,
+  attemptId: string,
+  opts?: ClientRequestOptions,
+): Promise<DelegationAttemptView> {
+  const response = await getJson(
+    `${apiBase}/api/orchestration/delegations/attempts/${encodeURIComponent(attemptId)}`,
+    opts,
+  );
+  return unwrapDelegationResponse<DelegationAttemptView>(response);
 }

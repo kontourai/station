@@ -141,6 +141,16 @@ const FAILURE_COPY: Record<
     summary: `${host}'s server is down or recovering.`,
     action: 'The Station UI is still available and will keep trying.',
   }),
+  // station#2327. Names no network condition: this reason is produced only
+  // when requests are queued behind a slow Station, or after the address
+  // answered and the next read did not get a turn in time. The reason can
+  // persist for a whole outage, so the copy makes no promise about when it
+  // clears and says what to do if it does not.
+  busy: (host) => ({
+    summary: `${host} is answering, but not keeping up.`,
+    action:
+      'Still retrying. If this lasts, the Station may be overloaded or need a restart.',
+  }),
   // station#3297. Says what was observed (it answered, and said no) and points
   // at the only place the answer can change — the host's own allow-list. It
   // must not offer pairing: no credential this device can obtain affects it.
@@ -307,6 +317,9 @@ const KIND_RANK: Record<AccessEndpointKind, number> = {
   // it, but dies with the launcher — rank below the supervised bases.
   'ssh-forward': 1,
   'tailnet-https': 1,
+  // A broker route is an encrypted application path, not a direct HTTP
+  // candidate. Its dedicated probe is supplied by useConnectionStatus.
+  'broker-route': 1,
   'lan-https': 2,
   manual: 3,
   'lan-http': 4,

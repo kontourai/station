@@ -160,6 +160,24 @@ export function describeDeviceProvenance(device: PairedDevice): string | null {
   return 'Pairing code';
 }
 
+/**
+ * #488 invited-admin slice: the account this device is bound to, kept
+ * visible wherever the operator reviews or edits its access. An
+ * account-bound grant is only meaningful next to the person it was approved
+ * for — without this, a collaborator's browser and a peer Station holding
+ * the same read+operate tokens read identically. `null` when the device
+ * carries no account binding (ordinary personal devices, peer delegations);
+ * rendered as nothing rather than a guess.
+ */
+export function describeDeviceAccountBinding(
+  device: PairedDevice,
+): string | null {
+  const binding = device.principalBinding;
+  if (!binding || !('kind' in binding) || binding.kind !== 'account')
+    return null;
+  return `Account: ${binding.displayName}`;
+}
+
 /** Bounded revocation provenance, never a guessed actor for upgraded records. */
 export function describeDeviceRevocation(device: PairedDevice): string | null {
   if (device.revokedAt === null) return null;

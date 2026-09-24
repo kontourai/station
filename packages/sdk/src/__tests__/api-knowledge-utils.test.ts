@@ -11,13 +11,16 @@ import {
   knowledgeBase,
   requestKnowledgeJson,
 } from '../api-knowledge-utils';
+import { setClientCredentialResolver } from '../client/http';
 
 describe('api-knowledge-utils', () => {
   beforeEach(() => {
     _setApiBase('https://station.example.test');
+    setClientCredentialResolver(undefined);
   });
 
   afterEach(() => {
+    setClientCredentialResolver(undefined);
     vi.unstubAllGlobals();
   });
 
@@ -84,6 +87,39 @@ describe('api-knowledge-utils', () => {
       'https://station.example.test/api/projects/proj%20slug/knowledge/ns/notes%2Fcore/search',
       'https://station.example.test/api/projects/proj%20slug/knowledge/ns/rules/upload',
     ]);
+  });
+
+  test('sends Project Knowledge content through the selected Station transport', async () => {
+    const direct = vi
+      .fn<typeof fetch>()
+      .mockRejectedValue(new Error('direct Station HTTP must not be used'));
+    vi.stubGlobal('fetch', direct);
+    const transport = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(
+        Response.json({ success: true, data: { id: 'rules-1' } }),
+      );
+    setClientCredentialResolver(() => ({
+      origin: 'https://station.example.test',
+      transport,
+      transportBindingIsCurrent: () => true,
+    }));
+
+    await uploadKnowledge(
+      'project-one',
+      'project-rules.md',
+      'Private Project instructions',
+      'rules',
+    );
+
+    expect(transport).toHaveBeenCalledOnce();
+    expect(transport.mock.calls[0]?.[0]).toBe(
+      'https://station.example.test/api/projects/project-one/knowledge/ns/rules/upload',
+    );
+    expect(transport.mock.calls[0]?.[1]?.body).toContain(
+      'Private Project instructions',
+    );
+    expect(direct).not.toHaveBeenCalled();
   });
 
   test('rejects a malformed knowledge response with the operation prefix', async () => {

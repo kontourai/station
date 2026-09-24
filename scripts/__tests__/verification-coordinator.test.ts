@@ -2176,14 +2176,17 @@ describe('verification coordinator', () => {
       const waiters = [];
       for (const worktree of worktrees.slice(1, -1)) {
         waiters.push(coordinateVerification(options(worktree)));
-        await waitFor(
-          () =>
-            verificationStatus({ root: temp.root }).jobs.filter(
-              (job) =>
-                job.live &&
-                job.state === 'queued' &&
-                job.request?.laneId === 'full-regression',
-            ).length === waiters.length,
+        // A request lease is queued before the completion mutex reserves its
+        // slot. Observe this caller's reservation before submitting the next.
+        await waitFor(() =>
+          verificationStatus({ root: temp.root }).jobs.some(
+            (job) =>
+              job.worktree === worktree &&
+              job.live &&
+              job.state === 'queued' &&
+              job.completionQueueReserved === true &&
+              job.request?.laneId === 'full-regression',
+          ),
         );
       }
 

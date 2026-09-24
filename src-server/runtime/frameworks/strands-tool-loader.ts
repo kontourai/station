@@ -23,9 +23,11 @@ import {
   withStationControlRuntimeEnv,
 } from '../bootstrap/station-control-runtime-env.js';
 import { sameMCPConnectionDefinition } from '../mcp/mcp-definition-currentness.js';
+import { NATIVE_OUTPUT_DECLARATION_TOOL } from '../native-output-declaration.js';
 import { runWithCurrentNativeOutputCall } from '../native-output-turn-grant.js';
 import {
   copyLoadedMCPToolProvenance,
+  getLoadedMCPToolProvenance,
   normalizeLoadedMCPTools,
 } from '../tools/mcp-tool-names.js';
 import { markTrustedNativeStationControlTool } from '../tools/tool-provenance.js';
@@ -35,6 +37,7 @@ import {
   createCustodiedStrandsClient,
   isStrandsClientCurrent,
 } from './strands-mcp-custody.js';
+import { extractToolPurpose, toolSchemaWithPurpose } from './tool-purpose.js';
 import type { CreateAgentOptions } from './voltagent-adapter.js';
 
 interface StrandsToolLoaderState {
@@ -411,56 +414,66 @@ export type StrandsToolLoadOptions = Pick<
 export function createStrandsFunctionTools(
   tools: ITool[],
   deniedToolCalls: Map<string, ToolCallDenial>,
+  purposeEnabledToolNames: Set<string> = new Set(),
 ): FunctionTool[] {
-  return tools.map(
-    (tool) =>
-      new FunctionTool({
-        name: tool.name,
-        description: tool.description || '',
-        inputSchema: tool.parameters as any,
-        callback: async (input: unknown, toolContext: any) => {
-          const toolUseId = toolContext?.toolUse?.toolUseId;
-          const denial = toolUseId ? deniedToolCalls.get(toolUseId) : undefined;
-          if (toolUseId && denial !== undefined) {
-            deniedToolCalls.delete(toolUseId);
-            // archive#1834: surface the gate's REAL reason as a tool ERROR.
-            // Throwing here is how every other tool failure surfaces —
-            // FunctionTool.stream() catches and wraps it in a
-            // `status: 'error'` ToolResultBlock. The old behavior returned a
-            // fabricated "denied by the user" SUCCESS string, so unattended
-            // runs completed as if the blocked tool had simply agreed.
-            //
-            // archive#3091: `denial.policyDenied` rides along on the thrown
-            // Error as a custom own-property. Strands' own error handling
-            // (`createErrorResult` in the installed SDK) holds the SAME
-            // Error object reference on the resulting ToolResultBlock's
-            // `.error` field rather than cloning it, so the marker survives
-            // into `mapStrandsStreamEvent` unchanged — that's the carrying
-            // seam this archive#3091 fix depends on.
-            //
-            // archive#3210: the authorship marker `stationComposedReason`
-            // rides the same own-property channel, and is what
-            // `mapStrandsStreamEvent` reads to decide verbatim vs. redacted.
-            const error = new Error(denial.reason) as Error & {
-              policyDenied?: true;
-              stationComposedReason?: true;
-            };
-            if (denial.policyDenied) error.policyDenied = true;
-            if (denial.stationComposedReason) {
-              error.stationComposedReason = true;
-            }
-            throw error;
+  return tools.map((tool) => {
+    const inputSchema =
+      getLoadedMCPToolProvenance(tool) ||
+      tool.name === NATIVE_OUTPUT_DECLARATION_TOOL
+        ? tool.parameters
+        : toolSchemaWithPurpose(tool.parameters);
+    const purposeEnabled = inputSchema !== tool.parameters;
+    if (purposeEnabled) purposeEnabledToolNames.add(tool.name);
+    return new FunctionTool({
+      name: tool.name,
+      description: tool.description || '',
+      inputSchema: inputSchema as any,
+      callback: async (input: unknown, toolContext: any) => {
+        const toolUseId = toolContext?.toolUse?.toolUseId;
+        const denial = toolUseId ? deniedToolCalls.get(toolUseId) : undefined;
+        if (toolUseId && denial !== undefined) {
+          deniedToolCalls.delete(toolUseId);
+          // archive#1834: surface the gate's REAL reason as a tool ERROR.
+          // Throwing here is how every other tool failure surfaces —
+          // FunctionTool.stream() catches and wraps it in a
+          // `status: 'error'` ToolResultBlock. The old behavior returned a
+          // fabricated "denied by the user" SUCCESS string, so unattended
+          // runs completed as if the blocked tool had simply agreed.
+          //
+          // archive#3091: `denial.policyDenied` rides along on the thrown
+          // Error as a custom own-property. Strands' own error handling
+          // (`createErrorResult` in the installed SDK) holds the SAME
+          // Error object reference on the resulting ToolResultBlock's
+          // `.error` field rather than cloning it, so the marker survives
+          // into `mapStrandsStreamEvent` unchanged — that's the carrying
+          // seam this archive#3091 fix depends on.
+          //
+          // archive#3210: the authorship marker `stationComposedReason`
+          // rides the same own-property channel, and is what
+          // `mapStrandsStreamEvent` reads to decide verbatim vs. redacted.
+          const error = new Error(denial.reason) as Error & {
+            policyDenied?: true;
+            stationComposedReason?: true;
+          };
+          if (denial.policyDenied) error.policyDenied = true;
+          if (denial.stationComposedReason) {
+            error.stationComposedReason = true;
           }
-          // Only the real Strands callback supplies this id. In particular,
-          // never fall back to tool arguments, a generic MCP id, or stream
-          // event timing: those are model-/transport-controlled values.
-          return runWithCurrentNativeOutputCall(
-            toolContext?.toolUse?.toolUseId,
-            () => tool.execute(input, toolContext),
-          );
-        },
-      }),
-  );
+          throw error;
+        }
+        // Only the real Strands callback supplies this id. In particular,
+        // never fall back to tool arguments, a generic MCP id, or stream
+        // event timing: those are model-/transport-controlled values.
+        const purposeful = purposeEnabled
+          ? extractToolPurpose(input)
+          : { input };
+        return runWithCurrentNativeOutputCall(
+          toolContext?.toolUse?.toolUseId,
+          () => tool.execute(purposeful.input, toolContext),
+        );
+      },
+    });
+  });
 }
 
 export function applyStrandsAvailableToolFilter(

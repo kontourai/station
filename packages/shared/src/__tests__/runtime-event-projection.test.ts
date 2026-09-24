@@ -56,6 +56,121 @@ describe('projectRuntimeEventsToMessages', () => {
       'Here is the complete answer.',
     ]);
   });
+  // #2300: an engine whose `outputText` is the WHOLE turn's text (Muse)
+  // must be reconciled against every text part the turn emitted, not just
+  // the text after its last tool row.
+  const wholeTurn = (turnId: string, deltas: string[], outputText: string) => [
+    ev({ method: 'turn.started', turnId, prompt: 'go' }),
+    ev({ method: 'content.text-delta', turnId, delta: deltas[0] }),
+    ev({
+      method: 'tool.started',
+      turnId,
+      toolCallId: `${turnId}-call`,
+      toolName: 'bash',
+    }),
+    ev({
+      method: 'tool.completed',
+      turnId,
+      toolCallId: `${turnId}-call`,
+      toolName: 'bash',
+      status: 'success',
+      output: 'done',
+    }),
+    ...deltas
+      .slice(1)
+      .map((delta) => ev({ method: 'content.text-delta', turnId, delta })),
+    ev({ method: 'turn.completed', turnId, outputText }),
+  ];
+  const texts = (messages: ReturnType<typeof projectRuntimeEventsToMessages>) =>
+    messages
+      .at(-1)
+      ?.parts.filter((part) => part.type === 'text')
+      .map((part) => part.text);
+
+  // #2309: provider output after its turn closed (claude:1790098279239 —
+  // deltas with no turn id, no turn.started, no terminal). The client builds
+  // no live stream for it and re-reads the window instead, so THIS fold is
+  // the only place it renders: exactly once, after the turn's answer, and
+  // without the turn's own text reconciled into it twice (#2300).
+  it('#2309: turn-less output after a completed turn renders once, after the answer, with no duplicated suffix', () => {
+    const messages = projectRuntimeEventsToMessages([
+      ev({ method: 'turn.started', turnId: 'done', prompt: 'Start the job' }),
+      ev({
+        method: 'content.text-delta',
+        turnId: 'done',
+        delta: 'Started it in the background.',
+      }),
+      ev({
+        method: 'turn.completed',
+        turnId: 'done',
+        outputText: 'Started it in the background.',
+      }),
+      ev({
+        method: 'content.text-delta',
+        itemId: 't1:no-turn:msg_1',
+        delta: 'Background job ',
+      }),
+      ev({
+        method: 'content.text-delta',
+        itemId: 't1:no-turn:msg_1',
+        delta: 'finished.',
+      }),
+      ev({ method: 'token-usage.updated', completionTokens: 4 }),
+    ]);
+    const texts = messages
+      .filter((message) => message.role === 'assistant')
+      .flatMap((message) =>
+        message.parts
+          .filter((part) => part.type === 'text')
+          .map((part) => part.text),
+      );
+    expect(texts).toEqual([
+      'Started it in the background.',
+      'Background job finished.',
+    ]);
+  });
+
+  it('#2300: an outputText equal to all emitted text (before and after a tool) adds nothing', () => {
+    expect(
+      texts(
+        projectRuntimeEventsToMessages(
+          wholeTurn('whole', ['Before.', 'ok'], 'Before.ok'),
+        ),
+      ),
+    ).toEqual(['Before.', 'ok']);
+  });
+
+  it('#2300: an outputText extending the emitted text appends only the missing suffix', () => {
+    // The follow-up's text reached only the terminal: nothing streamed after
+    // the tool row.
+    expect(
+      texts(
+        projectRuntimeEventsToMessages(
+          wholeTurn('suffix', ['Launching.'], 'Launching.\n\nFinished.'),
+        ),
+      ),
+    ).toEqual(['Launching.', '\n\nFinished.']);
+    // A strict prefix still open in the buffer is extended in place.
+    expect(
+      texts(
+        projectRuntimeEventsToMessages(
+          wholeTurn('open', ['Before.', 'Aft'], 'Before.After.'),
+        ),
+      ),
+    ).toEqual(['Before.', 'After.']);
+  });
+
+  it('#2300: with nothing streamed, the outputText is the text', () => {
+    expect(
+      texts(
+        projectRuntimeEventsToMessages([
+          ev({ method: 'turn.started', turnId: 'none', prompt: 'go' }),
+          ev({ method: 'turn.completed', turnId: 'none', outputText: 'Hi.' }),
+        ]),
+      ),
+    ).toEqual(['Hi.']);
+  });
+
   it('preserves simultaneous terminal results sharing one toolCallId by event identity', () => {
     const messages = projectRuntimeEventsToMessages([
       ev({
@@ -2141,5 +2256,468 @@ it('retains the invocation name when an imported result supplies the generic fal
     toolName: 'Read',
     args: { file_path: 'file.ts' },
     output: 'contents',
+  });
+});
+
+it('retains stated tool purpose through durable projection', () => {
+  const messages = projectRuntimeEventsToMessages([
+    ev({ method: 'turn.started', turnId: 'purpose-turn', prompt: 'inspect' }),
+    ev({
+      method: 'tool.started',
+      turnId: 'purpose-turn',
+      toolCallId: 'purpose-call',
+      toolName: 'read_file',
+      arguments: { path: 'README.md' },
+      purpose: 'Inspect project documentation',
+    }),
+  ]);
+  expect(
+    messages
+      .flatMap((message) => message.parts)
+      .find((part) => part.toolCallId === 'purpose-call'),
+  ).toMatchObject({
+    toolName: 'read_file',
+    purpose: 'Inspect project documentation',
+    args: { path: 'README.md' },
+  });
+});
+
+describe('#2316 request.opened binds the approval card to the request it answers', () => {
+  const toolPart = (
+    messages: ReturnType<typeof projectRuntimeEventsToMessages>,
+    toolCallId: string,
+  ) =>
+    messages
+      .flatMap((message) => message.parts)
+      .find(
+        (part) =>
+          part.type === 'tool-invocation' && part.toolCallId === toolCallId,
+      );
+
+  it('binds by the exact call id and stamps the requesting thread, not the newest same-named call', () => {
+    const requestOpened = ev({
+      method: 'request.opened',
+      requestId: 'req-first',
+      requestType: 'approval',
+      payload: { toolName: 'Bash', toolCallId: 'bash-first' },
+    });
+    const messages = projectRuntimeEventsToMessages([
+      ev({ method: 'turn.started', turnId: 'turn-a', prompt: 'Run both' }),
+      ev({
+        method: 'tool.started',
+        turnId: 'turn-a',
+        toolCallId: 'bash-first',
+        toolName: 'Bash',
+        arguments: { command: 'ls' },
+      }),
+      ev({
+        method: 'tool.started',
+        turnId: 'turn-a',
+        toolCallId: 'bash-second',
+        toolName: 'Bash',
+        arguments: { command: 'pwd' },
+      }),
+      // Claude's canUseTool for the FIRST call. A name-only fold picked the
+      // newest Bash (`bash-second`) — a card beside the wrong command.
+      requestOpened,
+    ]);
+
+    expect(toolPart(messages, 'bash-first')).toMatchObject({
+      needsApproval: true,
+      approvalId: 'req-first',
+      approvalThreadId: 't1',
+      // The exact prompt the card answers (sent as expectedRequestEventId).
+      approvalEventId: requestOpened.eventId,
+      state: 'awaiting-approval',
+    });
+    expect(toolPart(messages, 'bash-second')).not.toHaveProperty('approvalId');
+  });
+
+  it('never binds a subagent’s request whose exact call id misses onto a same-named main-thread call', () => {
+    const messages = projectRuntimeEventsToMessages([
+      ev({ method: 'turn.started', turnId: 'turn-m', prompt: 'Delegate' }),
+      ev({
+        method: 'tool.started',
+        turnId: 'turn-m',
+        toolCallId: 'main-bash',
+        toolName: 'Bash',
+        arguments: { command: 'ls' },
+      }),
+      ev({
+        method: 'request.opened',
+        requestId: 'req-sub',
+        requestType: 'approval',
+        payload: { toolName: 'Bash', toolCallId: 'sub-call', agentId: 'a1' },
+      }),
+    ]);
+    expect(toolPart(messages, 'main-bash')).not.toHaveProperty('approvalId');
+  });
+
+  it('stamps the child session on a child’s request folded inside the parent’s turn', () => {
+    const messages = projectRuntimeEventsToMessages([
+      ev({
+        method: 'turn.started',
+        threadId: 'parent',
+        turnId: 'turn-p',
+        prompt: 'Go',
+      }),
+      ev({
+        method: 'tool.started',
+        threadId: 'child',
+        turnId: 'turn-c',
+        toolCallId: 'child-call',
+        toolName: 'Read',
+        arguments: { path: 'a' },
+      }),
+      ev({
+        method: 'request.opened',
+        threadId: 'child',
+        requestId: 'req-child',
+        requestType: 'approval',
+        payload: { toolName: 'Read', toolCallId: 'child-call' },
+      }),
+    ]);
+    expect(toolPart(messages, 'child-call')).toMatchObject({
+      approvalId: 'req-child',
+      approvalThreadId: 'child',
+    });
+  });
+
+  it('never binds an exact call id across sessions that reuse it', () => {
+    const messages = projectRuntimeEventsToMessages([
+      ev({
+        method: 'turn.started',
+        threadId: 'session-a',
+        turnId: 'turn-a',
+        prompt: 'Go',
+      }),
+      ev({
+        method: 'tool.started',
+        threadId: 'session-a',
+        turnId: 'turn-a',
+        toolCallId: 'call-1',
+        toolName: 'Bash',
+        arguments: { command: 'ls' },
+      }),
+      // Another session in the lineage reuses the same provider call id.
+      ev({
+        method: 'request.opened',
+        threadId: 'session-b',
+        requestId: 'req-b',
+        requestType: 'approval',
+        payload: { toolName: 'Bash', toolCallId: 'call-1' },
+      }),
+    ]);
+    expect(toolPart(messages, 'call-1')).not.toHaveProperty('approvalId');
+  });
+
+  it('never binds another session’s id-less request onto the folded turn’s call', () => {
+    const messages = projectRuntimeEventsToMessages([
+      ev({
+        method: 'turn.started',
+        threadId: 'successor',
+        turnId: 'turn-s',
+        prompt: 'Run it',
+      }),
+      ev({
+        method: 'tool.started',
+        threadId: 'successor',
+        turnId: 'turn-s',
+        toolCallId: 'bash-successor',
+        toolName: 'Bash',
+        arguments: { command: 'ls' },
+      }),
+      // A request from a DIFFERENT session in the same conversation lineage,
+      // with no call id — only its tool name matches.
+      ev({
+        method: 'request.opened',
+        threadId: 'predecessor',
+        requestId: 'req-predecessor',
+        requestType: 'approval',
+        payload: { toolName: 'Bash' },
+      }),
+    ]);
+
+    expect(toolPart(messages, 'bash-successor')).not.toHaveProperty(
+      'approvalId',
+    );
+  });
+
+  it('keeps the same-thread name fallback, without stealing a call already awaiting another request', () => {
+    const messages = projectRuntimeEventsToMessages([
+      ev({ method: 'turn.started', turnId: 'turn-n', prompt: 'Run both' }),
+      ev({
+        method: 'tool.started',
+        turnId: 'turn-n',
+        toolCallId: 'bash-one',
+        toolName: 'Bash',
+        arguments: { command: 'ls' },
+      }),
+      ev({
+        method: 'tool.started',
+        turnId: 'turn-n',
+        toolCallId: 'bash-two',
+        toolName: 'Bash',
+        arguments: { command: 'pwd' },
+      }),
+      ev({
+        method: 'request.opened',
+        requestId: 'req-one',
+        requestType: 'approval',
+        payload: { toolName: 'Bash' },
+      }),
+      ev({
+        method: 'request.opened',
+        requestId: 'req-two',
+        requestType: 'approval',
+        payload: { toolName: 'Bash' },
+      }),
+    ]);
+
+    expect(toolPart(messages, 'bash-two')).toMatchObject({
+      approvalId: 'req-one',
+      approvalThreadId: 't1',
+    });
+    expect(toolPart(messages, 'bash-one')).toMatchObject({
+      approvalId: 'req-two',
+      approvalThreadId: 't1',
+    });
+  });
+});
+
+describe('#2316 a bound card is retired when its request can no longer be answered', () => {
+  const bashCard = (
+    messages: ReturnType<typeof projectRuntimeEventsToMessages>,
+  ) =>
+    messages
+      .flatMap((message) => message.parts)
+      .find(
+        (part) => part.type === 'tool-invocation' && part.toolCallId === 'c1',
+      );
+  const openOnTurnOne = () => [
+    ev({ method: 'turn.started', turnId: 't-1', prompt: 'Run it' }),
+    ev({
+      method: 'tool.started',
+      turnId: 't-1',
+      toolCallId: 'c1',
+      toolName: 'Bash',
+      arguments: { command: 'rm -rf build' },
+    }),
+    ev({
+      method: 'request.opened',
+      requestId: 'req-c1',
+      requestType: 'approval',
+      payload: { toolName: 'Bash', toolCallId: 'c1' },
+    }),
+  ];
+
+  it.each([
+    [
+      'turn.aborted',
+      { method: 'turn.aborted', turnId: 't-1', reason: 'interrupted' },
+    ],
+    ['turn.completed', { method: 'turn.completed', turnId: 't-1' }],
+    ['session.exited', { method: 'session.exited', exitCode: 0 }],
+  ] as const)('after %s, even with a later completed turn', (_name, end) => {
+    const messages = projectRuntimeEventsToMessages([
+      ...openOnTurnOne(),
+      ev(end as never),
+      ev({ method: 'turn.started', turnId: 't-2', prompt: 'Next' }),
+      ev({ method: 'turn.completed', turnId: 't-2', outputText: 'Done' }),
+    ]);
+    expect(bashCard(messages)).toMatchObject({
+      approvalId: 'req-c1',
+      needsApproval: false,
+    });
+  });
+
+  it('stays open across another session’s turn end', () => {
+    const messages = projectRuntimeEventsToMessages([
+      ...openOnTurnOne(),
+      ev({ method: 'turn.completed', threadId: 'other-session', turnId: 'x' }),
+    ]);
+    expect(bashCard(messages)).toMatchObject({ needsApproval: true });
+  });
+
+  it('settles on a request.resolved that arrives after its turn was emitted', () => {
+    const messages = projectRuntimeEventsToMessages([
+      ...openOnTurnOne(),
+      ev({ method: 'turn.started', turnId: 't-2', prompt: 'Queued' }),
+      ev({ method: 'request.resolved', requestId: 'req-c1', status: 'denied' }),
+    ]);
+    expect(bashCard(messages)).toMatchObject({
+      needsApproval: false,
+      approvalStatus: 'user-denied',
+    });
+  });
+});
+
+describe('#2316 retired and cancelled cards, and subagent requests', () => {
+  const card = (events: CanonicalRuntimeEvent[]) =>
+    projectRuntimeEventsToMessages(events)
+      .flatMap((message) => message.parts)
+      .find(
+        (part) => part.type === 'tool-invocation' && part.toolCallId === 'c1',
+      );
+  const opened = (payload: Record<string, unknown>) => [
+    ev({ method: 'turn.started', turnId: 't-1', prompt: 'Run it' }),
+    ev({
+      method: 'tool.started',
+      turnId: 't-1',
+      toolCallId: 'c1',
+      toolName: 'Bash',
+      arguments: { command: 'ls' },
+    }),
+    ev({
+      method: 'request.opened',
+      requestId: 'req-c1',
+      requestType: 'approval',
+      payload: { toolName: 'Bash', toolCallId: 'c1', ...payload },
+    }),
+  ];
+
+  it('marks a card retired by its turn end as cancelled', () => {
+    expect(
+      card([
+        ...opened({}),
+        ev({ method: 'turn.aborted', turnId: 't-1', reason: 'interrupted' }),
+      ]),
+    ).toMatchObject({
+      needsApproval: false,
+      cancelled: true,
+      state: 'cancelled',
+    });
+  });
+
+  it('marks a card settled as cancelled as cancelled', () => {
+    expect(
+      card([
+        ...opened({}),
+        ev({
+          method: 'request.resolved',
+          requestId: 'req-c1',
+          status: 'cancelled',
+        }),
+      ]),
+    ).toMatchObject({
+      needsApproval: false,
+      cancelled: true,
+      state: 'cancelled',
+    });
+  });
+
+  it('keeps a subagent request open across the main turn completion only', () => {
+    const subagent = opened({ agentId: 'agent-bg' });
+    expect(
+      card([...subagent, ev({ method: 'turn.completed', turnId: 't-1' })]),
+    ).toMatchObject({ needsApproval: true });
+    for (const end of [
+      // An interrupt: the adapter settles every open request anyway.
+      { method: 'turn.aborted', turnId: 't-1', reason: 'interrupted' },
+      // A boot recovery's abort: no process holds the request any more.
+      {
+        method: 'turn.aborted',
+        turnId: 't-1',
+        reason: 'interrupted by restart',
+        recoveryTerminal: true,
+      },
+      { method: 'session.exited', exitCode: 0 },
+    ]) {
+      expect(card([...subagent, ev(end as never)])).toMatchObject({
+        needsApproval: false,
+        cancelled: true,
+      });
+    }
+  });
+});
+
+describe('projectRuntimeEventsToMessages — images a tool returned', () => {
+  const screenshot = {
+    kind: 'image' as const,
+    name: 'image-1.png',
+    mimeType: 'image/png' as const,
+    size: 68,
+    blobRef: `sha256-${'a'.repeat(64)}`,
+  };
+
+  it('places the image directly after its tool row and before later prose', () => {
+    const messages = projectRuntimeEventsToMessages([
+      ev({ method: 'turn.started', turnId: 'shot', prompt: 'screenshot it' }),
+      ev({
+        method: 'tool.started',
+        turnId: 'shot',
+        toolCallId: 'cap',
+        toolName: 'screenshot',
+        arguments: {},
+      }),
+      ev({
+        eventId: 'cap-done',
+        method: 'tool.completed',
+        turnId: 'shot',
+        toolCallId: 'cap',
+        toolName: 'screenshot',
+        status: 'success',
+        attachments: [screenshot],
+      } as never),
+      ev({
+        method: 'content.text-delta',
+        turnId: 'shot',
+        delta: 'Here it is.',
+      }),
+      ev({ method: 'turn.completed', turnId: 'shot' }),
+    ]);
+    const assistant = messages.find((m) => m.role === 'assistant')!;
+    expect(assistant.parts.map((part) => part.type)).toEqual([
+      'tool-invocation',
+      'file',
+      'text',
+    ]);
+    expect(assistant.parts[1]).toEqual({
+      type: 'file',
+      blobRef: screenshot.blobRef,
+      mediaType: 'image/png',
+      name: 'image-1.png',
+      toolCallId: 'cap',
+      sourceEventId: 'cap-done',
+    });
+  });
+
+  it("a late result's image lands on the earlier turn's row, once", () => {
+    const late = ev({
+      eventId: 'late-done',
+      method: 'tool.completed',
+      turnId: 'first',
+      toolCallId: 'bg',
+      toolName: 'screenshot',
+      status: 'success',
+      attachments: [screenshot],
+    } as never);
+    const messages = projectRuntimeEventsToMessages([
+      ev({ method: 'turn.started', turnId: 'first', prompt: 'go' }),
+      ev({
+        method: 'tool.started',
+        turnId: 'first',
+        toolCallId: 'bg',
+        toolName: 'screenshot',
+        arguments: {},
+      }),
+      ev({ method: 'turn.completed', turnId: 'first' }),
+      ev({ method: 'turn.started', turnId: 'second', prompt: 'next' }),
+      late,
+      // A replayed copy of the same terminal must not double the image.
+      late,
+      ev({ method: 'turn.completed', turnId: 'second' }),
+    ]);
+    const assistants = messages.filter((m) => m.role === 'assistant');
+    expect(assistants[0]!.parts.map((part) => part.type)).toEqual([
+      'tool-invocation',
+      'file',
+    ]);
+    expect(
+      assistants
+        .slice(1)
+        .flatMap((m) => m.parts)
+        .filter((p) => p.type === 'file'),
+    ).toEqual([]);
   });
 });

@@ -28,10 +28,11 @@
  * own server/toolName/originalName (without it, those render raw internal
  * tool names instead of the resolved display name). Both callers supply it
  * from a real hook boundary: `useRehydrateSessions` calls `useQueryClient`
- * directly; the reconnect path threads it down from `useOrchestration`'s
- * `useQueryClient` call through `ensureOrchestrationEventStream` ->
- * `applyOrchestrationSnapshot` (neither of which is a hook, so neither can
- * call `useQueryClient` itself).
+ * directly; on the reconnect path `ChatDock` registers its `useQueryClient`
+ * result with `ensureOrchestrationEventStream`, which hands the apiBase's
+ * currently registered client to `applyOrchestrationSnapshot` (neither of
+ * which is a hook, so neither can call `useQueryClient` itself). That client
+ * is per authority, not app-wide — see `streamQueryClients` there (#2307).
  */
 import type { QueryClient } from '@tanstack/react-query';
 import type { ChatUIState } from '../../contexts/active-chats-state';

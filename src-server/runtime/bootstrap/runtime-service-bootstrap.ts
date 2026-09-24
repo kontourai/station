@@ -1,4 +1,5 @@
 import type { EventEmitter } from 'node:events';
+import { join } from 'node:path';
 import type { AgentSpec } from '@kontourai/station-contracts/agent';
 import type { EngineConnectionId } from '@kontourai/station-contracts/agent-identity';
 import type { AppConfig } from '@kontourai/station-contracts/config';
@@ -152,7 +153,9 @@ export function createRuntimeServiceBundle(
   // runtime. A custom factory owns any monitor it chooses to construct.
   const runtimeAuthHealthMonitor = factories.createConnectionService
     ? undefined
-    : new RuntimeAuthHealthMonitor(context.eventBus);
+    : new RuntimeAuthHealthMonitor(context.eventBus, {
+        persistPath: join(context.projectHomeDir, 'runtime-auth-health.json'),
+      });
   const getEngineReadiness = async (engineConnectionId: string) => {
     if (engineConnectionId === 'default') {
       return {

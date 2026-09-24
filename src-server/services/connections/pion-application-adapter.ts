@@ -1,0 +1,418 @@
+import { createHash } from 'node:crypto';
+import {
+  existsSync,
+  lstatSync,
+  readFileSync,
+  realpathSync,
+  writeFileSync,
+} from 'node:fs';
+import { dirname, isAbsolute, join } from 'node:path';
+import type { Readable, Writable } from 'node:stream';
+import type { ApplicationChannel } from '@kontourai/station-connect/application-channel';
+import { readJsonFile } from '@kontourai/station-shared/json-file-storage';
+import {
+  createStationTempDir,
+  removeStationTempDir,
+} from '@kontourai/station-shared/temp-dir';
+import {
+  spawnOwnedChild,
+  terminateProcessTree,
+} from '../infra/process-utils.js';
+import {
+  PION_APPLICATION_IPC_VERSION,
+  PionApplicationIpc,
+} from './pion-application-ipc.js';
+
+export type PionAdapterProfile = 'application' | 'diagnosticEcho';
+export interface PionApplicationAdapterInput {
+  executable: string;
+  profile: PionAdapterProfile;
+  applicationChannelLabel?: string;
+  offer: { type: 'offer'; sdp: string };
+  certificatePem: string;
+  privateKeyPem: string;
+  turn: { url: string; username: string; password: string };
+  accept(channel: ApplicationChannel): void;
+  signal: AbortSignal;
+  maxLifetimeMs: number;
+}
+export interface PionAdapterDependencies {
+  createTemp: typeof createStationTempDir;
+  removeTemp: typeof removeStationTempDir;
+  spawn: typeof spawnOwnedChild;
+  terminate: typeof terminateProcessTree;
+  write: typeof writeFileSync;
+  now: () => number;
+}
+const defaultDependencies: PionAdapterDependencies = {
+  createTemp: createStationTempDir,
+  removeTemp: removeStationTempDir,
+  spawn: spawnOwnedChild,
+  terminate: terminateProcessTree,
+  write: writeFileSync,
+  now: Date.now,
+};
+export function pionProcessEnvironment(
+  source: NodeJS.ProcessEnv = process.env,
+) {
+  const result: NodeJS.ProcessEnv = {};
+  for (const key of [
+    'TMPDIR',
+    'TMP',
+    'TEMP',
+    'LANG',
+    'LC_ALL',
+    'SSL_CERT_FILE',
+    'SSL_CERT_DIR',
+  ])
+    if (source[key]) result[key] = source[key];
+  return result;
+}
+export function validatePionAdapterProfile(
+  profile: PionAdapterProfile | undefined,
+  label: string | undefined,
+) {
+  if (profile !== 'application' && profile !== 'diagnosticEcho')
+    throw new Error(
+      profile === undefined ? 'pion_profile_required' : 'pion_profile_unknown',
+    );
+  if (profile === 'application' && !label)
+    throw new Error('pion_application_label_required');
+  if (profile === 'diagnosticEcho' && label)
+    throw new Error('pion_diagnostic_profile_invalid');
+}
+function executable(path: string) {
+  if (!isAbsolute(path)) throw new Error('pion_executable_invalid');
+  const resolved = realpathSync(path);
+  const info = lstatSync(resolved);
+  if (!info.isFile() || info.isSymbolicLink() || info.nlink !== 1)
+    throw new Error('pion_executable_invalid');
+  return resolved;
+}
+function boundedOutput(
+  stream: Readable | undefined,
+  onFailure: (error: Error) => void,
+) {
+  let bytes = 0;
+  let text = '';
+  stream?.setEncoding('utf8');
+  stream?.on('data', (chunk: string) => {
+    bytes += Buffer.byteLength(chunk);
+    if (bytes > 64 * 1024)
+      onFailure(new Error('pion_diagnostic_output_exceeded_bound'));
+    else text += chunk;
+  });
+  return () => text;
+}
+function diagnosticMessages(directory: string) {
+  const value = readJsonFile<Record<string, unknown>>(
+    join(directory, 'messages.json'),
+    { messages: [], local: '', remote: '' },
+    { maxBytes: 128 * 1024, label: 'Pion diagnostic messages' },
+  );
+  if (
+    Object.keys(value).sort().join(',') !== 'local,messages,remote' ||
+    !Array.isArray(value.messages) ||
+    value.messages.length > 8 ||
+    !value.messages.every(
+      (message) =>
+        typeof message === 'string' && Buffer.byteLength(message) <= 65_536,
+    ) ||
+    typeof value.local !== 'string' ||
+    Buffer.byteLength(value.local) > 32 ||
+    typeof value.remote !== 'string' ||
+    Buffer.byteLength(value.remote) > 32
+  )
+    throw new Error('pion_diagnostic_messages_invalid');
+  return value.messages as string[];
+}
+export async function startPionApplicationAdapter(
+  input: PionApplicationAdapterInput,
+  dependencies: PionAdapterDependencies = defaultDependencies,
+) {
+  validatePionAdapterProfile(input.profile, input.applicationChannelLabel);
+  if (
+    !Number.isSafeInteger(input.maxLifetimeMs) ||
+    input.maxLifetimeMs < 1_000 ||
+    input.maxLifetimeMs > 86_400_000
+  )
+    throw new Error('pion_lifetime_invalid');
+  if (process.platform === 'win32')
+    throw new Error('pion_private_pipe_custody_unavailable_on_windows');
+  input.signal.throwIfAborted();
+  if (
+    Buffer.byteLength(input.offer.sdp) > 128 * 1024 ||
+    Buffer.byteLength(input.certificatePem) > 64 * 1024 ||
+    Buffer.byteLength(input.privateKeyPem) > 64 * 1024 ||
+    [input.turn.url, input.turn.username, input.turn.password].some(
+      (value) => typeof value !== 'string' || Buffer.byteLength(value) > 4096,
+    )
+  )
+    throw new Error('pion_configuration_invalid');
+  const resolvedExecutable = executable(input.executable);
+  const directory = await dependencies.createTemp('pion-application');
+  for (const path of [dirname(directory), directory]) {
+    const info = lstatSync(path);
+    if (
+      !info.isDirectory() ||
+      info.isSymbolicLink() ||
+      info.uid !== process.getuid?.() ||
+      (info.mode & 0o022) !== 0
+    ) {
+      await dependencies.removeTemp(directory);
+      throw new Error('pion_temp_custody_invalid');
+    }
+  }
+  try {
+    input.signal.throwIfAborted();
+  } catch (error) {
+    await dependencies.removeTemp(directory);
+    throw error;
+  }
+  const certificate = join(directory, 'certificate.pem');
+  const key = join(directory, 'private-key.pem');
+  try {
+    dependencies.write(certificate, input.certificatePem, {
+      flag: 'wx',
+      mode: 0o600,
+    });
+    dependencies.write(key, input.privateKeyPem, { flag: 'wx', mode: 0o600 });
+    dependencies.write(
+      join(directory, 'config.json'),
+      JSON.stringify({
+        Offer: input.offer,
+        Certificate: certificate,
+        Key: key,
+        URL: input.turn.url,
+        Username: input.turn.username,
+        Password: input.turn.password,
+        Profile: input.profile,
+        ProtocolVersion:
+          input.profile === 'application'
+            ? PION_APPLICATION_IPC_VERSION
+            : 'station.diagnostic-echo/v1',
+        ApplicationChannelLabel: input.applicationChannelLabel ?? '',
+        LifetimeSeconds: Math.ceil(input.maxLifetimeMs / 1_000),
+      }),
+      { flag: 'wx', mode: 0o600 },
+    );
+  } catch (error) {
+    await dependencies.removeTemp(directory);
+    throw error;
+  }
+  let owned: ReturnType<typeof spawnOwnedChild>;
+  try {
+    owned = dependencies.spawn(resolvedExecutable, [directory], {
+      cwd: directory,
+      env: pionProcessEnvironment(),
+      stdio:
+        input.profile === 'application'
+          ? ['ignore', 'pipe', 'pipe', 'pipe', 'pipe']
+          : ['ignore', 'pipe', 'pipe'],
+    });
+  } catch (error) {
+    await dependencies.removeTemp(directory);
+    throw error;
+  }
+  const child = owned.proc;
+  let failure: Error | undefined;
+  let ipc: PionApplicationIpc | undefined;
+  let shutdown: Promise<void> | undefined;
+  let stdout = () => '';
+  let aborted = () => {};
+  let abortFailure: Error | undefined;
+  let lifetime: ReturnType<typeof setTimeout> | undefined;
+  // Adapter-owned cleanup receipt: resolves once resource cleanup
+  // (process termination, temp custody, handle release) is confirmed and
+  // rejects only on actual cleanup failure. `close()` may additionally reject
+  // with an operational failure (abort, lifetime expiry, process exit) even
+  // after cleanup completed — callers must join this receipt instead of
+  // guessing cleanup state from error strings.
+  let markCleanupDone!: () => void;
+  let markCleanupFailed!: (error: unknown) => void;
+  const cleanupComplete: Promise<void> = new Promise<void>(
+    (resolve, reject) => {
+      markCleanupDone = resolve;
+      markCleanupFailed = reject;
+    },
+  );
+  // Handled here so an unobserved operational shutdown never surfaces as an
+  // unhandled rejection; awaiting the receipt still observes the outcome.
+  cleanupComplete.then(undefined, () => {});
+  let cleanupSettled = false;
+  const close = () =>
+    (shutdown ??= (async () => {
+      input.signal.removeEventListener('abort', aborted);
+      clearTimeout(lifetime);
+      try {
+        ipc?.close();
+        await dependencies.terminate(child, {
+          graceMs: 2_000,
+          killConfirmMs: 3_000,
+        });
+        ipc?.finish();
+        if (input.profile === 'application' && stdout() !== '')
+          throw new Error('pion_application_content_diagnostic_boundary');
+        await dependencies.removeTemp(directory);
+        if (existsSync(directory))
+          throw new Error('pion_temp_cleanup_incomplete');
+        owned.release();
+      } catch (error) {
+        if (!cleanupSettled) {
+          cleanupSettled = true;
+          markCleanupFailed(error);
+        }
+        throw error;
+      }
+      if (!cleanupSettled) {
+        cleanupSettled = true;
+        markCleanupDone();
+      }
+      if (failure) throw failure;
+    })());
+  const fail = (error: Error) => {
+    failure ??= error;
+    void close().catch(() => {});
+  };
+  child.once('error', () => fail(new Error('pion_process_failed')));
+  child.once('exit', () => {
+    if (!shutdown) fail(new Error('pion_process_exited'));
+  });
+  stdout = boundedOutput(child.stdout ?? undefined, fail);
+  boundedOutput(child.stderr ?? undefined, fail);
+  try {
+    if (input.profile === 'application') {
+      const write = child.stdio?.[3];
+      const read = child.stdio?.[4];
+      if (!write || !read || !('write' in write) || !('read' in read))
+        throw new Error('pion_application_pipes_unavailable');
+      ipc = new PionApplicationIpc(
+        write as Writable,
+        read as Readable,
+        input.accept,
+      );
+    }
+  } catch (error) {
+    failure =
+      error instanceof Error
+        ? error
+        : new Error('pion_application_setup_failed');
+    await close().catch(() => {});
+    throw error;
+  }
+  aborted = () => {
+    abortFailure = new Error('pion_application_aborted', {
+      cause: input.signal.reason,
+    });
+    fail(abortFailure);
+  };
+  input.signal.addEventListener('abort', aborted, { once: true });
+  lifetime = setTimeout(
+    () => fail(new Error('pion_application_lifetime_expired')),
+    input.maxLifetimeMs,
+  );
+  lifetime.unref();
+  try {
+    const deadline = dependencies.now() + 25_000;
+    while (true) {
+      input.signal.throwIfAborted();
+      if (failure) throw failure;
+      try {
+        const answer = readJsonFile<{ type: unknown; sdp: unknown }>(
+          join(directory, 'answer.json'),
+          { type: null, sdp: null },
+          { maxBytes: 128 * 1024, label: 'Pion answer' },
+        );
+        if (
+          Object.keys(answer).sort().join(',') === 'sdp,type' &&
+          answer.type === 'answer' &&
+          typeof answer.sdp === 'string' &&
+          answer.sdp.length > 0 &&
+          Buffer.byteLength(answer.sdp) <= 128 * 1024
+        ) {
+          const version = readJsonFile<Record<string, unknown>>(
+            join(directory, 'version.json'),
+            {},
+            { maxBytes: 4096, label: 'Pion version' },
+          );
+          if (
+            Object.keys(version).sort().join(',') !== 'go,pion' ||
+            version.pion !== 'v4.2.20' ||
+            typeof version.go !== 'string' ||
+            !version.go.startsWith('go1.26')
+          )
+            throw new Error('pion_version_invalid');
+          return {
+            answer: { type: 'answer' as const, sdp: answer.sdp },
+            provenance: {
+              pionWebrtc: version.pion,
+              goVersion: version.go,
+              executableSha256: createHash('sha256')
+                .update(readFileSync(resolvedExecutable))
+                .digest('hex'),
+            },
+            peer: {
+              close,
+              getSelectedCandidatePair() {
+                const value = readJsonFile<Record<string, unknown>>(
+                  join(directory, 'transport.json'),
+                  {},
+                  { maxBytes: 4096, label: 'Pion transport' },
+                );
+                return typeof value.local === 'string' &&
+                  typeof value.remote === 'string'
+                  ? {
+                      local: { type: value.local },
+                      remote: { type: value.remote },
+                    }
+                  : null;
+              },
+            },
+            diagnostics: () =>
+              readJsonFile(join(directory, 'state.json'), null, {
+                maxBytes: 4096,
+                label: 'Pion state',
+              }),
+            readMessages: () =>
+              input.profile === 'diagnosticEcho'
+                ? diagnosticMessages(directory)
+                : [],
+            close,
+            cleanupComplete,
+          };
+        }
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      }
+      if (dependencies.now() >= deadline)
+        throw new Error('pion_answer_timeout');
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+  } catch (error) {
+    try {
+      await close();
+    } catch (closeFailure) {
+      try {
+        await cleanupComplete;
+      } catch (cleanup) {
+        throw new AggregateError(
+          [error, cleanup],
+          'pion_adapter_startup_cleanup_failed',
+        );
+      }
+      // Resource cleanup succeeded. Only our own abort notification may be
+      // collapsed into the caller's exact cancellation reason; an unrelated
+      // operational error must remain visible.
+      if (
+        closeFailure !== error &&
+        !(closeFailure === abortFailure && error === input.signal.reason)
+      ) {
+        throw new AggregateError(
+          [error, closeFailure],
+          'pion_adapter_startup_failed',
+        );
+      }
+    }
+    throw error;
+  }
+}

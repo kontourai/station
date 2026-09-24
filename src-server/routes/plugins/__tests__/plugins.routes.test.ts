@@ -7,7 +7,7 @@ import {
   rmSync,
   writeFileSync,
 } from 'node:fs';
-import { readFile } from 'node:fs/promises';
+import { cp, readFile } from 'node:fs/promises';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { readJson as json } from '../../../__test-utils__/read-json.js';
 import { PluginIncarnationError } from '../../../services/plugins/plugin-incarnation.js';
@@ -371,6 +371,9 @@ vi.mock('node:fs', async (importOriginal) => {
 });
 
 vi.mock('node:fs/promises', () => ({
+  // Tree copies of plugin-writable trees go through `copyPluginTree`
+  // (`fs.promises.cp`, #2342 review); stubbed like `cpSync` above.
+  cp: vi.fn(async () => undefined),
   readdir: vi.fn().mockResolvedValue([
     {
       name: 'test-plugin',
@@ -380,6 +383,35 @@ vi.mock('node:fs/promises', () => ({
   ]),
   readFile: vi.fn().mockResolvedValue(JSON.stringify(mockManifest)),
 }));
+
+// The update route reads the pulled/re-fetched plugin.json through the
+// bounded reader (#2342 review), whose descriptor reads this suite's `node:fs`
+// stubs cannot serve. It answers with `postUpdateManifest.text`, which a test
+// sets to what its update "produced" (default: the fixture manifest).
+const postUpdateManifest = vi.hoisted(() => ({
+  text: null as string | null,
+}));
+vi.mock(
+  '../../../services/plugins/plugin-manifest-bounded-read.js',
+  async (importOriginal) => {
+    const actual =
+      await importOriginal<
+        typeof import('../../../services/plugins/plugin-manifest-bounded-read.js')
+      >();
+    const { parsePluginManifestDocumentWithFormat } = await import(
+      '../../../services/plugins/plugin-manifest-loader.js'
+    );
+    return {
+      ...actual,
+      readUntrustedPluginManifestSyncWithFormat: vi.fn((path: string) =>
+        parsePluginManifestDocumentWithFormat(
+          postUpdateManifest.text ?? JSON.stringify(mockManifest),
+          path,
+        ),
+      ),
+    };
+  },
+);
 
 vi.mock('node:child_process', () => ({
   execFile: vi.fn(
@@ -445,6 +477,44 @@ function setup(runtime?: {
   );
 }
 
+/** A valid stored update proposal, as the store would hand it back. */
+const LEGACY_UPDATE_PROPOSAL = {
+  id: '11111111-1111-4111-8111-111111111111',
+  kind: 'update' as const,
+  pluginName: 'test-plugin',
+  rationale: 'New version.',
+  author: { principal: 'agent' as const },
+  createdAt: '2026-09-22T00:00:00.000Z',
+  updatedAt: '2026-09-22T00:00:00.000Z',
+  status: 'open' as const,
+};
+
+/**
+ * #2323 S5: the legacy (git or registry checkout) update route with a
+ * proposal store double. `node:fs` is a fixture in this file, so the store's
+ * own matching is pinned in `plugin-lifecycle-proposals.test.ts` and, over a
+ * real store, on the installation-host path in
+ * `plugin-installation.integration.test.ts`.
+ */
+function legacyUpdateApp(
+  proposals: { complete: (...args: any[]) => unknown },
+  activation: 'applied' | 'pending',
+) {
+  return createPluginRoutes(
+    '/tmp/project',
+    logger as any,
+    eventBus as any,
+    {
+      applyConfigurationMutation: vi.fn(async (operation) =>
+        operation(vi.fn(), { status: activation }),
+      ),
+      settleProviderAdapterRetirements: vi.fn().mockResolvedValue(undefined),
+      visibility: operatorPluginVisibility('/tmp/project'),
+      proposals,
+    } as any,
+  );
+}
+
 describe('Plugin Routes', () => {
   // Reset the shared overrides store between tests — the PUT /overrides test
   // mutates this module-level object, which leaked into GET /providers (the
@@ -487,6 +557,8 @@ describe('Plugin Routes', () => {
     scanPluginPromptFileSafety.mockClear();
     execGit.mockClear();
     vi.mocked(cpSync).mockClear();
+    vi.mocked(cp).mockClear();
+    postUpdateManifest.text = null;
     vi.mocked(rmSync).mockClear();
     vi.mocked(existsSync).mockImplementation((p) => {
       if (
@@ -533,12 +605,53 @@ describe('Plugin Routes', () => {
     );
   });
 
+  test('an update reads the pulled plugin.json through the bounded reader and refuses what it refuses (#2342 review)', async () => {
+    const {
+      PluginManifestReadRefusedError,
+      readUntrustedPluginManifestSyncWithFormat,
+    } = await import(
+      '../../../services/plugins/plugin-manifest-bounded-read.js'
+    );
+    vi.mocked(readUntrustedPluginManifestSyncWithFormat).mockImplementationOnce(
+      () => {
+        throw new PluginManifestReadRefusedError(
+          'manifest-not-regular-file',
+          'plugin.json is a symlink. Station reads the manifest from the plugin folder itself; replace the link with the file.',
+        );
+      },
+    );
+    const app = setup({
+      applyConfigurationMutation: vi.fn(async (operation) =>
+        operation(vi.fn(), { status: 'applied' }),
+      ),
+      settleProviderAdapterRetirements: vi.fn().mockResolvedValue(undefined),
+    });
+
+    const response = await app.request('/test-plugin/update', {
+      method: 'POST',
+    });
+    const body = await json(response);
+
+    // A git pull landed a symlinked manifest: the update is refused, and the
+    // route read the pulled manifest at the path it just pulled into.
+    expect(response.status).toBe(400);
+    expect(body).toMatchObject({
+      success: false,
+      error: expect.stringContaining('plugin.json is a symlink'),
+    });
+    expect(readUntrustedPluginManifestSyncWithFormat).toHaveBeenCalledWith(
+      '/tmp/project/plugins/test-plugin/plugin.json',
+    );
+    // Nothing past the read ran: consent was never re-bound to the pulled
+    // tree.
+    expect(rebindGrantsAfterContentChange).not.toHaveBeenCalled();
+  });
+
   test('rejects a plugin identity change and restores the prior provider source', async () => {
     const oldManifest = { ...mockManifest, name: 'test-plugin' };
     const renamedManifest = { ...mockManifest, name: 'renamed-plugin' };
-    vi.mocked(readFile)
-      .mockResolvedValueOnce(JSON.stringify(oldManifest))
-      .mockResolvedValueOnce(JSON.stringify(renamedManifest));
+    vi.mocked(readFile).mockResolvedValueOnce(JSON.stringify(oldManifest));
+    postUpdateManifest.text = JSON.stringify(renamedManifest);
     const beginMutation = vi.fn();
     const applyConfigurationMutation = vi.fn(
       async (operation, _options?: unknown) =>
@@ -582,6 +695,81 @@ describe('Plugin Routes', () => {
     expect(settleProviderAdapterRetirements).toHaveBeenCalledOnce();
   });
 
+  /**
+   * #2323 S5: the legacy (git or registry checkout) update path hands the
+   * proposal store what it actually updated, and reports the store's answer.
+   * The store's own matching is pinned in `plugin-lifecycle-proposals.test.ts`
+   * and, over a real store, on the installation-host path in
+   * `plugin-installation.integration.test.ts`; `node:fs` is a fixture here.
+   */
+  test('#2323 S5: a legacy update that names its proposal completes it for the plugin it updated', async () => {
+    const complete = vi.fn(async () => ({
+      status: 'completed' as const,
+      proposal: { ...LEGACY_UPDATE_PROPOSAL, status: 'completed' as const },
+    }));
+    const app = legacyUpdateApp({ complete }, 'applied');
+
+    const response = await app.request('/test-plugin/update', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ proposalId: LEGACY_UPDATE_PROPOSAL.id }),
+    });
+    const body = await json(response);
+
+    expect(response.status).toBe(200);
+    expect(execGit).toHaveBeenCalledWith(
+      ['pull', '--ff-only'],
+      expect.anything(),
+    );
+    expect(complete).toHaveBeenCalledWith(LEGACY_UPDATE_PROPOSAL.id, {
+      kind: 'update',
+      pluginName: 'test-plugin',
+    });
+    expect(body.proposal).toEqual({
+      id: LEGACY_UPDATE_PROPOSAL.id,
+      status: 'completed',
+    });
+  });
+
+  test('#2323 S5: a legacy update whose activation is still pending leaves its proposal open', async () => {
+    const complete = vi.fn();
+    const app = legacyUpdateApp({ complete }, 'pending');
+
+    const response = await app.request('/test-plugin/update', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ proposalId: LEGACY_UPDATE_PROPOSAL.id }),
+    });
+    const body = await json(response);
+
+    expect(response.status).toBe(202);
+    expect(complete).not.toHaveBeenCalled();
+    expect(body.proposal).toEqual({
+      id: LEGACY_UPDATE_PROPOSAL.id,
+      status: 'open',
+    });
+  });
+
+  test('#2323 S5: a legacy update whose pull fails does not complete its proposal', async () => {
+    const complete = vi.fn();
+    execGit.mockRejectedValueOnce(new Error('pull failed: not fast-forward'));
+    const app = legacyUpdateApp({ complete }, 'applied');
+
+    const response = await app.request('/test-plugin/update', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ proposalId: LEGACY_UPDATE_PROPOSAL.id }),
+    });
+    const body = await json(response);
+
+    expect(response.status).toBe(500);
+    expect(body.error).toContain('pull failed');
+    expect(complete).not.toHaveBeenCalled();
+    // A thrown update answers with its error alone: it names no proposal
+    // outcome, so nothing reads as completed.
+    expect(body).not.toHaveProperty('proposal');
+  });
+
   test('captures each update rollback snapshot only after its configuration lease starts', async () => {
     let releasePull!: () => void;
     const blockedPull = new Promise<void>((resolve) => {
@@ -608,12 +796,12 @@ describe('Plugin Routes', () => {
     await vi.waitFor(() => expect(execGit).toHaveBeenCalledOnce());
     const second = app.request('/test-plugin/update', { method: 'POST' });
     await Promise.resolve();
-    expect(cpSync).toHaveBeenCalledTimes(1);
+    expect(cp).toHaveBeenCalledTimes(1);
 
     releasePull();
     await expect(first).resolves.toMatchObject({ status: 200 });
     await expect(second).resolves.toMatchObject({ status: 200 });
-    expect(cpSync).toHaveBeenCalledTimes(2);
+    expect(cp).toHaveBeenCalledTimes(2);
   });
 
   test('updates non-Git plugins through the plugin registry without touching the agent registry', async () => {
@@ -892,6 +1080,7 @@ describe('Plugin Routes', () => {
       },
     ]);
     vi.mocked(readFile).mockResolvedValue(JSON.stringify(aliasedManifest));
+    postUpdateManifest.text = JSON.stringify(aliasedManifest);
     const app = setup({
       applyConfigurationMutation: vi.fn(async (operation) =>
         operation(vi.fn(), { status: 'applied' }),
@@ -942,6 +1131,7 @@ describe('Plugin Routes', () => {
       },
     ]);
     vi.mocked(readFile).mockResolvedValue(JSON.stringify(aliasedManifest));
+    postUpdateManifest.text = JSON.stringify(aliasedManifest);
     const app = setup({
       applyConfigurationMutation: vi.fn(async (operation) =>
         operation(vi.fn(), { status: 'applied' }),
@@ -954,14 +1144,20 @@ describe('Plugin Routes', () => {
     });
 
     expect(response.status).toBe(200);
-    expect(cpSync).toHaveBeenCalledWith(
+    expect(cp).toHaveBeenCalledWith(
       '/tmp/project/plugins/actual-plugin',
       expect.any(String),
       // archive#4288: `verbatimSymlinks` is load-bearing, not cosmetic — see
       // `PLUGIN_TREE_COPY`. Without it the backup resolves relative symlinks
       // to absolute paths, so restoring it produces a tree with a different
       // content digest and a rolled-back update strips every permission.
-      { recursive: true, verbatimSymlinks: true },
+      // A plugin's own tree may hold sockets or pipes its server created;
+      // the backup skips them rather than refusing the update (#2342 review).
+      expect.objectContaining({
+        recursive: true,
+        verbatimSymlinks: true,
+        filter: expect.any(Function),
+      }),
     );
     expect(pluginRegistryProvider.update).toHaveBeenCalledWith(
       'registry-plugin',
@@ -1013,6 +1209,7 @@ describe('Plugin Routes', () => {
       ),
     });
     expect(cpSync).not.toHaveBeenCalled();
+    expect(cp).not.toHaveBeenCalled();
     expect(pluginRegistryProvider.update).not.toHaveBeenCalled();
     expect(pluginRegistryProvider.install).not.toHaveBeenCalled();
   });
@@ -1155,6 +1352,7 @@ describe('Plugin Routes', () => {
       error: expect.stringContaining('multiple plugin registry providers'),
     });
     expect(cpSync).not.toHaveBeenCalled();
+    expect(cp).not.toHaveBeenCalled();
     expect(pluginRegistryProvider.update).not.toHaveBeenCalled();
     expect(pluginRegistryProvider.install).not.toHaveBeenCalled();
   });
@@ -1287,6 +1485,7 @@ describe('Plugin Routes', () => {
       error: new PluginIncarnationError('unsafe-pointer').message,
     });
     expect(cpSync).not.toHaveBeenCalled();
+    expect(cp).not.toHaveBeenCalled();
     expect(execGit).not.toHaveBeenCalled();
   });
 

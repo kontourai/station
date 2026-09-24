@@ -6,12 +6,14 @@
  * bypassed the chooser whose copy exists to explain the difference).
  */
 
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   probe: vi.fn(),
   create: vi.fn(),
+  isTauri: false,
 }));
 
 vi.mock('@kontourai/station-sdk', () => ({
@@ -32,18 +34,21 @@ vi.mock('@kontourai/station-sdk', () => ({
 }));
 
 vi.mock('@kontourai/station-connect', () => ({
-  ConnectionManagerModal: ({ initialPanel }: { initialPanel: string }) => (
-    <div data-testid="connection-manager">{initialPanel}</div>
-  ),
-  // The SSH branch renders SshComputerCreatorDialog, which reads the device
-  // presentation and so reaches `useConnections` for the active api base.
-  // A factory mock makes any unlisted export a hard throw, so this owes the
-  // line even though nothing here asserts on the connection.
+  // The control goal fires the shared open-connections event instead of
+  // mounting this package's modal (composition boundary: the chooser lives
+  // in the replaceable protected tree). The SSH branch renders
+  // SshComputerCreatorDialog, which reads the device presentation and so
+  // reaches `useConnections` for the active api base. A factory mock makes
+  // any unlisted export a hard throw, so this owes the line even though
+  // nothing here asserts on the connection.
   useConnections: () => ({ apiBase: 'http://station.test' }),
 }));
 
 vi.mock('../platform/PlatformProfileContext', () => ({
-  usePlatformProfile: () => ({ isTauri: false, isDesktop: false }),
+  usePlatformProfile: () => ({
+    isTauri: mocks.isTauri,
+    isDesktop: mocks.isTauri,
+  }),
 }));
 
 vi.mock('../platform/native/haptics', () => ({ triggerHaptic: vi.fn() }));
@@ -59,6 +64,7 @@ describe('AddMachineModal', () => {
     localStorage.clear();
     mocks.probe.mockReset();
     mocks.create.mockReset();
+    mocks.isTauri = false;
   });
 
   test('asks the goal first, offering all three mechanisms', () => {
@@ -73,14 +79,26 @@ describe('AddMachineModal', () => {
     ).toBeTruthy();
   });
 
-  test('the control branch opens the shared pairing panel', () => {
-    render(<AddMachineModal isOpen onClose={vi.fn()} />);
+  test('the control branch hands off to the stable recovery modal instead of mounting its own', async () => {
+    // Composition boundary: this chooser lives in the replaceable
+    // protected tree, so mounting a `ConnectionManagerModal` here would
+    // unmount the open access-request flow on the next authority
+    // activation transition. The control goal fires the shared
+    // open-connections event (the recovery shell owns the one modal state
+    // machine) and closes the chooser.
+    const { consumePendingConnectionsModal } = await import(
+      '../lib/connectionModalEvents'
+    );
+    const onClose = vi.fn();
+    render(<AddMachineModal isOpen onClose={onClose} />);
     fireEvent.click(
       screen.getByText('Control this Station from another device'),
     );
-    expect(screen.getByTestId('connection-manager').textContent).toBe(
-      'pair-host',
-    );
+    expect(consumePendingConnectionsModal()).toEqual({ mode: 'pair-host' });
+    // The chooser hands off and asks its owner to close (in production the
+    // owner flips `isOpen`; here `onClose` is a stub, so the chooser itself
+    // is still rendered — assert the handoff, not the owner's close).
+    expect(onClose).toHaveBeenCalled();
   });
 
   test('the Station branch opens the address dialog, and adding one persists it locally', async () => {
@@ -106,6 +124,28 @@ describe('AddMachineModal', () => {
     expect(stored[0].label).toBe('https://home-lab.tailnet.ts.net');
     expect(stored[0].source).toBe('manual');
     vi.unstubAllGlobals();
+  });
+
+  test('the native chooser opens the separate broker-route profile editor', () => {
+    mocks.isTauri = true;
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <AddMachineModal isOpen onClose={vi.fn()} />
+      </QueryClientProvider>,
+    );
+    fireEvent.click(screen.getByText('Save an encrypted broker route'));
+    expect(
+      screen.getByRole('heading', { name: 'Save broker route' }),
+    ).toBeTruthy();
+    expect(screen.getByLabelText(/Station application address/)).toBeTruthy();
+    expect(screen.getByLabelText(/Broker address/)).toBeTruthy();
+    expect(
+      screen.getByText(/The profile stores no broker credential/),
+    ).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Save route' })).toBeTruthy();
   });
 
   test('an invalid Station address is refused with a usable message, and nothing is stored', () => {

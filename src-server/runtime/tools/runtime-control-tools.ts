@@ -46,6 +46,10 @@ const SC_READ_ONLY_TOOL_NAMES = [
   'get_config',
   'list_plugins',
   'check_plugin_updates',
+  // #2323 S1: reads a local plugin folder in place and writes nothing (no
+  // staging copy, no build); no Station state changes and nothing it
+  // returns can authorize an install.
+  'validate_plugin',
   'get_usage',
   'get_achievements',
   // archive#1880: semantic search over the K3 knowledge index — embeds the
@@ -92,6 +96,13 @@ const SC_MUTATING_TOOL_NAMES = [
   'install_registry_integration',
   'create_provider',
   'install_plugin',
+  // #2323 S5: these three RECORD a proposal and change nothing a plugin
+  // runs. Still mutating, deliberately: each writes a durable record and an
+  // inbox row, which is what this list means, and the cost is bounded — the
+  // platform-mutation gate applies only in policy-opted workspaces, where the
+  // owner chose to approve every write. Auto-approving them as read-only
+  // would call a writer a reader.
+  'propose_plugin_install',
   'update_plugin',
   'remove_plugin',
   // scheduler
@@ -146,6 +157,10 @@ const SC_MUTATING_TOOL_NAMES = [
 const SC_TOOL_NAME_PREFIXES = ['station-control_', 'stationControl_'];
 
 export const SC_READ_ONLY_TOOLS = SC_READ_ONLY_TOOL_NAMES.map(
+  (toolName) => `station-control_${toolName}`,
+);
+
+export const SC_MUTATING_TOOLS = SC_MUTATING_TOOL_NAMES.map(
   (toolName) => `station-control_${toolName}`,
 );
 

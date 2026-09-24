@@ -32,6 +32,13 @@ import {
 import { NavigationProvider } from '../../contexts/NavigationContext';
 import { navigationStore } from '../../contexts/navigation-store';
 
+vi.mock('@kontourai/station-connect', () => ({
+  useConnections: () => ({
+    activeConnection: { id: 'test', name: 'Test Station' },
+    captureCredentialEvidence: () => undefined,
+  }),
+}));
+
 // --- Everything NOT under test: mocked to the lightest shape that lets the
 // real ChatWorkspacePane mount without crashing. Navigation, device settings
 // (a real store, no provider needed) and the keyboard-shortcut registry stay

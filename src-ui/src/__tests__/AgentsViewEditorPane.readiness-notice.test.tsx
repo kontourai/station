@@ -34,6 +34,15 @@ import { AgentsViewEditorPane } from '../views/agent-editor/AgentsViewEditorPane
 import { createEmptyAgentForm } from '../views/agent-editor/agentsViewUtils';
 
 let isMobile = false;
+vi.mock('../contexts/ApiBaseContext', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  useHostRequestAuthorityScope: () => ({
+    apiBase: 'http://station.test',
+    authorityKey: 'ui-scope-test-authority',
+    isCurrent: () => true,
+  }),
+}));
+
 vi.mock('../hooks/useIsMobile', () => ({
   useIsMobile: () => isMobile,
 }));

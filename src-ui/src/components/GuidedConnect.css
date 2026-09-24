@@ -104,6 +104,11 @@
   border-radius: 12px;
   background: var(--bg-secondary);
 }
+
+.guided-connect__broker {
+  width: 100%;
+  text-align: left;
+}
 .guided-connect__destination h2 {
   margin: 0 0 8px;
   font-size: 17px;

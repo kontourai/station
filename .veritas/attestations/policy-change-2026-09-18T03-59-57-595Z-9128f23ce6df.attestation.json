@@ -1,0 +1,93 @@
+{
+  "schemaVersion": 1,
+  "id": "policy-change-2026-09-18T03-59-57-595Z-9128f23ce6df",
+  "kind": "policy-change",
+  "actor": {
+    "id": "brian-anderson",
+    "displayName": "Brian Anderson",
+    "identityEvidence": {
+      "gitEmail": "brian.anderson@kontourai.io",
+      "signingKeyFingerprint": null
+    }
+  },
+  "attestedAt": "2026-09-18T03:59:57.595Z",
+  "repoStandardsHash": "sha256:2b48874e05b19ae6c7609101d57c69e8f0ac7700478332b6538b24aefff2b007",
+  "repoMapHash": "sha256:9ef94f29b62dc36054aa08f1077206cf213a636e9ad8bdbc05a1598d813a3309",
+  "repoMapHashAlgorithm": "public-policy-v1",
+  "authoritySettingsHash": "sha256:b47233d5d20d847ee85c5b77ccbd991ff13159270690a6adb957134b72cf57ac",
+  "priorAttestationId": "legacy-attestation-v0:0c534276f49e1056",
+  "validUntilDays": 90,
+  "notes": "Declare the style standard (npm run lint:check) as an advisory evidence check in defaultEvidenceCheckIds. Owner-approved in-thread 2026-09-17 (recorded in #2220): standalone readiness runs now execute and record the style verdict; it stays out of requiredEvidenceCheckIds because the style standard already blocks as a direct ci:fast invariant. Advisory per the observe-first authority profile; promotion follows the normal workflow.",
+  "metadata": {
+    "protectedStandardsPaths": {
+      "repoStandardsPath": ".veritas/repo-standards/default.repo-standards.json",
+      "repoMapPath": ".veritas/repo-map.json",
+      "authoritySettingsPath": ".veritas/authority/default.authority-settings.json"
+    },
+    "supersedes": "legacy-attestation-v0:0c534276f49e1056",
+    "approvalRef": "https://github.com/kontourai/station/issues/2220",
+    "approvalRefPolicy": {
+      "mode": "reference-only",
+      "matchedPrefix": null,
+      "requiresResolution": false
+    },
+    "approvalResolution": null
+  },
+  "surface": {
+    "claim": {
+      "id": "veritas.attestation.policy-change-2026-09-18T03-59-57-595Z-9128f23ce6df",
+      "subjectType": "veritas-protected-standards",
+      "subjectId": "protected-standards",
+      "facet": "veritas.attestations",
+      "claimType": "veritas-human-attestation",
+      "fieldOrBehavior": "policy-change",
+      "value": {
+        "contentHash": "266d601878fe43906bd82b6316a3848714c4975d128e887556fea4ca69625518",
+        "validUntil": "2026-12-17T03:59:57.595Z"
+      },
+      "createdAt": "2026-09-18T03:59:57.595Z",
+      "updatedAt": "2026-09-18T03:59:57.595Z",
+      "status": "verified",
+      "impactLevel": "high",
+      "confidenceBasis": {
+        "sourceQuality": "strong",
+        "reviewerAuthority": "human",
+        "evidenceStrength": "strong",
+        "impactLevel": "high"
+      }
+    },
+    "evidence": {
+      "id": "evidence.attestation.veritas.attestation.policy-change-2026-09-18T03-59-57-595Z-9128f23ce6df",
+      "claimId": "veritas.attestation.policy-change-2026-09-18T03-59-57-595Z-9128f23ce6df",
+      "evidenceType": "attestation",
+      "method": "attestation",
+      "sourceRef": "veritas:protected-standards",
+      "excerptOrSummary": "Declare the style standard (npm run lint:check) as an advisory evidence check in defaultEvidenceCheckIds. Owner-approved in-thread 2026-09-17 (recorded in #2220): standalone readiness runs now execute and record the style verdict; it stays out of requiredEvidenceCheckIds because the style standard already blocks as a direct ci:fast invariant. Advisory per the observe-first authority profile; promotion follows the normal workflow.",
+      "observedAt": "2026-09-18T03:59:57.595Z",
+      "collectedBy": "brian-anderson",
+      "integrityRef": "266d601878fe43906bd82b6316a3848714c4975d128e887556fea4ca69625518",
+      "metadata": {
+        "actor": {
+          "id": "brian-anderson",
+          "displayName": "Brian Anderson"
+        },
+        "attestedAt": "2026-09-18T03:59:57.595Z",
+        "validUntil": "2026-12-17T03:59:57.595Z",
+        "contentHash": "266d601878fe43906bd82b6316a3848714c4975d128e887556fea4ca69625518"
+      },
+      "sourceLocator": ".veritas/attestations"
+    },
+    "event": {
+      "id": "veritas.attestation.policy-change-2026-09-18T03-59-57-595Z-9128f23ce6df.verified",
+      "claimId": "veritas.attestation.policy-change-2026-09-18T03-59-57-595Z-9128f23ce6df",
+      "status": "verified",
+      "actor": "brian-anderson",
+      "method": "human attestation",
+      "evidenceIds": [
+        "evidence.attestation.veritas.attestation.policy-change-2026-09-18T03-59-57-595Z-9128f23ce6df"
+      ],
+      "createdAt": "2026-09-18T03:59:57.595Z",
+      "verifiedAt": "2026-09-18T03:59:57.595Z"
+    }
+  }
+}

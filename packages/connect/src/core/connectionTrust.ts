@@ -13,6 +13,29 @@ const MAX_STATIONS = 256;
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
+export type StationRelayRouteTrustStatus =
+  | 'untrusted'
+  | 'revoked'
+  | 'mismatch'
+  | 'approved';
+
+/**
+ * Compares saved route identifiers with an independently stored trust record.
+ * This never creates trust and intentionally ignores broker advertisements.
+ */
+export function stationRelayRouteTrustStatus(
+  record: DeviceConnectionTrustRecord | null,
+  route: { stationId: string; enrollmentId: string },
+): StationRelayRouteTrustStatus {
+  if (!record) return 'untrusted';
+  if (
+    record.trust.stationId !== route.stationId ||
+    record.trust.enrollmentId !== route.enrollmentId
+  )
+    return 'mismatch';
+  return record.status === 'approved' ? 'approved' : 'revoked';
+}
+
 class DeviceTrustError extends Error {
   constructor(
     readonly code:

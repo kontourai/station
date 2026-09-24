@@ -11,6 +11,8 @@ import { memo, useEffect, useMemo, useRef, useSyncExternalStore } from 'react';
 import { buildInfo } from '../../build-info';
 import { useAllActiveChats } from '../../contexts/ActiveChatsContext';
 import { useAgents } from '../../contexts/AgentsContext';
+import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
+import { useAuthorityPersistence } from '../../contexts/AuthorityPersistenceContext';
 import { chatDraftsStore } from '../../contexts/chat-drafts-store';
 import {
   useDeviceSettings,
@@ -186,11 +188,26 @@ function ProjectSidebarImpl() {
   );
   // archive#3315: server-owned order. The list arrives pre-sorted by the
   // persisted positions; a commit sends the full desired slug order back.
+  // #481: the reorder captures the host authority at call time, so the
+  // optimistic write/rollback/settle target THIS authority's list cache and
+  // never another home's.
+  const hostRequestAuthority = useHostRequestAuthorityScope();
+  const { namespace: durableAuthorityNamespace } = useAuthorityPersistence();
   const reorderProjectsMutation = useReorderProjectsMutation();
   const { rowReorderProps, announcement: reorderAnnouncement } =
     useProjectListReorder(
       projectSlugs,
-      (order) => reorderProjectsMutation.mutate(order),
+      (order) =>
+        reorderProjectsMutation.mutate({
+          order,
+          requestScope: hostRequestAuthority,
+          requireRequestScope: true,
+          // MUST equal the list reader's durable id for this authority, or
+          // the optimistic write lands in an entry no reader watches.
+          ...(durableAuthorityNamespace
+            ? { durableAuthorityId: durableAuthorityNamespace }
+            : {}),
+        }),
       {
         labelFor: (slug) =>
           projects.find((project) => project.slug === slug)?.name ?? slug,

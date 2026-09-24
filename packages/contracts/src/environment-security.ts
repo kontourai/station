@@ -47,6 +47,18 @@ export const PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_PATH =
 export const PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_STARTUP_PROOF_PATH =
   '/.well-known/station/v1/pairing/local-grant-startup-proof' as const;
 /**
+ * Decisive local-grant eligibility answer for a desktop-owned local sidecar
+ * (#2228). Like the startup proof, it requires the fresh owner-only grant
+ * secret on a direct loopback connection and never mints, replaces, or
+ * returns a credential. Unlike the bearer-authenticated
+ * `GET /api/auth/local-grant-eligibility`, it answers even when the presented
+ * bearer is DEAD — the exact state a desktop must classify to recover — so
+ * the answer is decisive instead of an authentication rejection the desktop
+ * must fail closed on.
+ */
+export const PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_ELIGIBILITY_PATH =
+  '/.well-known/station/v1/pairing/local-grant-eligibility' as const;
+/**
  * A launcher-issued, single-use capability carried in a local Station UI URL
  * fragment. The browser exchanges it for the ordinary HttpOnly device-session
  * cookie; the capability itself is never sent as an Authorization header and
@@ -217,6 +229,53 @@ export const PAIRING_SCOPE_HOME_CONTROL = 'home:control' as const;
  */
 export const PAIRING_SCOPE_ENGINE_LOGIN = 'engine:login' as const;
 
+/**
+ * Run a shell command on this Station's host through
+ * `POST /api/coding/exec` (#2412, owner decision 2026-09-23). That route
+ * stays at the `orchestration:operate` tier and ALSO requires this token of
+ * a paired device; the operator in person (the operator credential, or a
+ * credential minted by proving possession of this home: the desktop app,
+ * the host browser, Station's own processes) never needs it.
+ *
+ * WHY A TOKEN, AND WHY OPERATOR PROMOTION. The command runs as the operator,
+ * with the operator's keys, so "may operate this Station" is not the same
+ * decision as "may run anything on this computer". Operate is carried by
+ * every `standard`, `delegation` and collaborator-management grant, and by
+ * the frozen default grant, so gating on it granted command execution to
+ * every one of them without anyone choosing it. This token is in no preset
+ * and never in the default grant, for the same two reasons as
+ * {@link PAIRING_SCOPE_ENGINE_LOGIN}: pairing time is when a device is least
+ * known, and adding it to `standard` would make every newly issued standard
+ * grant unparseable to peers built before it. The operator grants it once,
+ * per device, from that device's access editor, and revokes it there.
+ *
+ * What it does NOT cover: `terminal:operate` (in `standard`) already opens
+ * an interactive terminal on this host. This token narrows the one-shot
+ * command route; it does not take the terminal away from a device that has
+ * it.
+ */
+export const PAIRING_SCOPE_CODING_EXEC = 'coding:exec' as const;
+
+/**
+ * Put a session, or an Agent's default, at full access: approval posture
+ * `never` (#2436, owner decision 2026-09-23). The approval-posture routes
+ * stay at `orchestration:operate`, so any operate device may still tighten a
+ * session to Ask or Auto, or pick Default; recording `never`, carrying it on
+ * a send, or saving it as an Agent's default ALSO requires this token of a
+ * paired device. The operator in person (the operator credential, or a
+ * credential minted by proving possession of this home) never needs it.
+ *
+ * Operator promotion only, in no preset and never in the default grant, for
+ * the same two reasons as {@link PAIRING_SCOPE_ENGINE_LOGIN} and
+ * {@link PAIRING_SCOPE_CODING_EXEC}: pairing time is when a device is least
+ * known, and adding it to a preset would make newly issued grants
+ * unparseable to older peers. Full access runs the agent with no sandbox and
+ * no approval prompt, as the operator; "may operate this Station" is not
+ * that decision.
+ */
+export const PAIRING_SCOPE_APPROVAL_FULL_ACCESS =
+  'approval:full-access' as const;
+
 export const PAIRING_SCOPES = [
   PAIRING_SCOPE_ORCHESTRATION_READ,
   PAIRING_SCOPE_ORCHESTRATION_OPERATE,
@@ -228,6 +287,8 @@ export const PAIRING_SCOPES = [
   PAIRING_SCOPE_HOME_TRANSFER,
   PAIRING_SCOPE_HOME_CONTROL,
   PAIRING_SCOPE_ENGINE_LOGIN,
+  PAIRING_SCOPE_CODING_EXEC,
+  PAIRING_SCOPE_APPROVAL_FULL_ACCESS,
 ] as const;
 
 export type PairingScope = (typeof PAIRING_SCOPES)[number];
@@ -405,6 +466,10 @@ export const PAIRING_SCOPE_GRANT_PATHS: Record<
   // instead of it, so promotion after pairing is the only shape that is both
   // additive and backward-compatible.
   [PAIRING_SCOPE_ENGINE_LOGIN]: ['operator-promotion'],
+  // #2412: operator promotion only, for the reasons on its docblock.
+  [PAIRING_SCOPE_CODING_EXEC]: ['operator-promotion'],
+  // #2436: operator promotion only, for the reasons on its docblock.
+  [PAIRING_SCOPE_APPROVAL_FULL_ACCESS]: ['operator-promotion'],
 };
 
 export const DEFAULT_PAIRING_SCOPE_PRESET: PairingScopePreset = 'standard';
@@ -578,6 +643,16 @@ interface DevicePairingRequestBase {
   createdAt: number;
   expiresAt: number;
   status: 'pending' | 'confirmed' | 'denied';
+  /** Provider-verified account offered for explicit operator binding. */
+  accountCandidate?: DeviceAccountBindingCandidate;
+  /** Immutable requester intent: this ceremony may mint only an account-bound Device. */
+  requireAccountBinding?: true;
+}
+
+export interface DeviceAccountBindingCandidate {
+  issuer: string;
+  subject: string;
+  displayName: string;
 }
 
 export interface TailscaleServeRequester {
@@ -598,6 +673,10 @@ export type DevicePairingRequest = DevicePairingRequestBase &
       }
   );
 
+export type DevicePairingConfirmation = DevicePairingRequest & {
+  readonly principalBinding?: DevicePrincipalBinding;
+};
+
 /** A public access request is pending until explicit authority confirms it. */
 export interface DevicePairingAccessRequestResponse {
   environmentId: string;
@@ -605,6 +684,8 @@ export interface DevicePairingAccessRequestResponse {
   proof: string;
   requestId: string;
   expiresAt: number;
+  accountCandidate?: DeviceAccountBindingCandidate;
+  requireAccountBinding?: true;
 }
 
 /**
@@ -648,13 +729,23 @@ export interface ConnectedClientProjection {
 /** Explicit operator approval to recognize this device as a verified person.
  * Separate from wire scopes and Project membership; valid only while its device
  * grant is active. Historical requester provenance alone never creates it. */
-export interface DevicePrincipalBinding {
-  readonly provider: 'tailscale-serve';
-  readonly subject: string;
-  readonly approvedAt: number;
-  readonly approvalId: string;
-  readonly approvedBy: string;
-}
+export type DevicePrincipalBinding =
+  | {
+      readonly provider: 'tailscale-serve';
+      readonly subject: string;
+      readonly approvedAt: number;
+      readonly approvalId: string;
+      readonly approvedBy: string;
+    }
+  | {
+      readonly kind: 'account';
+      readonly issuer: string;
+      readonly subject: string;
+      readonly displayName: string;
+      readonly approvedAt: number;
+      readonly approvalId: string;
+      readonly approvedBy: string;
+    };
 
 export interface PairedDevice {
   readonly principalBinding?: DevicePrincipalBinding;
@@ -905,6 +996,36 @@ export interface StationCapabilityFlags {
    * discover the capability. Neither half can be reverted alone.
    */
   devicePairingApproval?: boolean;
+  /**
+   * #484 phase A: this build understands the `project-portable` execution
+   * workspace intent on `POST /api/orchestration/delegations` — the receiver
+   * will admit such work ONLY through its operator's execution offer
+   * (`AppConfig.contribution`) plus a currently-bound resource, and will
+   * refuse the intent outright rather than fall back to a local slug/path.
+   * A STATIC protocol fact about this build's admission surface, never a
+   * statement that anything is currently offered: what is offered is
+   * readable only after authentication, from the contribution projection.
+   * A caller MUST gate sending the `project-portable` workspace variant on
+   * this flag; an older receiver strips-and-executes nothing — its schema
+   * refuses the unknown union member — but the flag lets the caller refuse
+   * before the wire with an actionable error.
+   */
+  portableExecutionOffers?: boolean;
+  /**
+   * #485 receiver request-claim slice: this build understands the opt-in
+   * `attemptId` field on `POST /api/orchestration/delegations` — a receiver
+   * that advertises this flag durably claims an accepted portable create
+   * request under `(verified delegation device, attemptId)` before any
+   * execution preparation, refuses a redelivered request whose validated
+   * intent digest differs, and answers an authorized exact-attempt lookup
+   * (`GET /api/orchestration/delegations/attempts/:attemptId`) with a
+   * bounded closed projection. A caller MUST gate sending `attemptId` on
+   * this flag: an older receiver's schema strips-and-refuses nothing — the
+   * unknown field is silently dropped, and the sender would believe a claim
+   * exists when none does. Like every capability flag, a STATIC protocol
+   * fact about this build, never a statement that any claim is held.
+   */
+  delegationAttemptClaims?: boolean;
 }
 
 export interface PublicStationHandshake {

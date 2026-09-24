@@ -1,3 +1,4 @@
+import { join } from 'node:path';
 import type { ServerEventName } from '@kontourai/station-contracts/runtime-events';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { listProviders } from '../../providers/registries/registry.js';
@@ -5,6 +6,8 @@ import {
   engineSpawnTmpDirPath,
   reapEngineSpawnTmpDir,
 } from '../../services/infra/engine-spawn-tmpdir.js';
+import { checkPluginUpdates } from '../../services/plugins/plugin-update-check.js';
+import { errorMessage } from '../../utils/error-message.js';
 
 /** archive#2204: bound engine-spawn artifacts even when ACP bootstrap fails. */
 const ENGINE_SPAWN_TMP_REAP_INTERVAL_MS = 5 * 60_000;
@@ -169,25 +172,30 @@ export function startRuntimeACPConnections(context: {
 
 export function scheduleRuntimePluginUpdateCheck(
   context: RuntimeTaskTimerContext & {
-    port: number;
+    projectHomeDir: string;
+    checkForUpdates?: (pluginsDir: string) => Promise<{ updates: unknown[] }>;
     eventBus: RuntimeEventBus;
     logger: RuntimeLogger;
-    fetchImpl?: typeof fetch;
     setTimeoutImpl?: typeof setTimeout;
   },
 ): void {
-  const fetchImpl = context.fetchImpl || fetch;
+  // station#2236: this check runs the update scan in-process. The previous
+  // shape HTTP self-fetched this server's own operator-only route over
+  // loopback with no credential, so it 401'd (`credential_missing`) on
+  // every boot and the updates-available event never fired. A server
+  // calling itself over HTTP to reach its own service is the defect;
+  // `checkForUpdates` is injectable so tests never need a plugins dir.
+  const pluginsDir = join(context.projectHomeDir, 'plugins');
+  const checkForUpdates =
+    context.checkForUpdates ??
+    (async (dir: string) =>
+      checkPluginUpdates({ pluginsDir: dir, logger: context.logger }));
   const setTimeoutImpl = context.setTimeoutImpl || setTimeout;
 
   context.timers.push(
     setTimeoutImpl(async () => {
       try {
-        const response = await fetchImpl(
-          `http://localhost:${context.port}/api/plugins/check-updates`,
-        );
-        if (!response.ok) return;
-
-        const { updates } = (await response.json()) as { updates: any[] };
+        const { updates } = await checkForUpdates(pluginsDir);
         if (updates.length > 0) {
           context.eventBus.emit(SERVER_EVENTS.PLUGINS_UPDATES_AVAILABLE, {
             count: updates.length,
@@ -199,7 +207,7 @@ export function scheduleRuntimePluginUpdateCheck(
         }
       } catch (error: any) {
         context.logger.debug('Failed to check for plugin updates', {
-          error: error.message,
+          error: errorMessage(error),
         });
       }
     }, 5000),

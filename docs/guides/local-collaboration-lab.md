@@ -1,7 +1,8 @@
 # Free local collaboration lab
 
 > Status: transport/enrollment and real local-account/member scenarios are
-> implemented. Shared content, approved Device access, UI, compute and plugin
+> implemented. The optional encrypted account diagnostic also exercises an
+> explicitly account-bound Device. Shared content, UI, compute and plugin
 > integration remains under
 > [#1985](https://github.com/kontourai/station/issues/1985) and its feature owners.
 
@@ -117,8 +118,9 @@ pairs of disposable homes; the report names each stage under `scenarios` and
 marks unselected stages `not-run`. The full command still exits 3 because approved
 Device/content access, compute/plugin integration, the production relay adapter
 and real-human/native/network acceptance are not complete. The account stage
-uses direct loopback HTTP; it does not claim to carry account sessions through
-the encrypted broker before the owning continuation contract lands.
+uses direct loopback HTTP. The separate `--application-accounts` browser
+transport profile below exercises the landed continuation contract through an
+encrypted application channel.
 
 ## Output and retained evidence
 
@@ -252,12 +254,18 @@ operation; the bounded public result is its receipt.
 
 ### Device-side signing trust
 
-The browser fixture consumes `@kontourai/station-connect/connection-trust`.
+The browser client consumes `@kontourai/station-connect/connection-trust`.
 Its `openDeviceConnectionTrustStore()` stores only public signing trust in the
-current browser origin/storage partition. The trusted caller supplies a descriptor
-and key ID from independently authenticated operator approval; neither broker
-discovery nor account login is that approval ceremony. Production approval UI and
-account/session transport are not enabled by this module.
+current browser origin/storage partition. In **Manage Stations → Broker
+routes**, a user can paste the public report from the Station operator's
+`connection:key inspect` command into the separate Station signing key step.
+The browser recomputes the JWK thumbprint, shows the complete key ID, and
+requires the user to confirm that it was compared through a separate trusted
+channel. This is an explicit user-attested ceremony; Station cannot establish
+which human or channel supplied pasted text. Broker invitation data is never
+used to create trust. The UI handles higher-generation rotation and revocation
+through the existing revision-checked store. This does not implement account or
+session transport.
 
 The store exposes `read`, `approve`, `revoke`, `isCurrent`, and `close`.
 `approve(descriptor, expectedRevision, approvedKeyId)` requires `null` for first
@@ -370,9 +378,10 @@ versions, capture size and completed checks. The report is published after
 cleanup. Failure exits 1 and retains private protocol diagnostics; `--keep`
 also retains successful evidence. Fixture ICE credentials and keys stay in the
 private temporary home, not in the public report. Production key enrollment,
-signaling authentication, renewal/recovery, native app delivery and Station
-request/stream integration remain unimplemented. The fixture's out-of-band
-trust setup does not implement those contracts.
+signaling authentication, renewal/recovery and native app delivery remain
+separate delivery requirements. The fixture's out-of-band trust setup does not
+implement those contracts. The optional application profiles below exercise
+SDK framing and protected Station requests.
 
 ### SDK application framing over the encrypted channel
 
@@ -392,9 +401,10 @@ transport runs report it as `not-run`.
 
 This is a Fetch/framing qualification, **not an account or full Station API
 journey**. It does not grant a person, Device or Project authority. The Pion
-profile currently refuses this option; its existing echo fixture is not an
-application adapter. Production TCP/native/remote and full account/Device/Project
-requests must qualify separately.
+profile supports the same option after building the pinned peer; its application
+frames travel through private inherited pipes. Browser TURN/TCP and TURN/UDP
+have separate local qualification receipts. Native/remote delivery must qualify
+separately, and the full account/Device/Project profile follows below.
 
 The initial wire profile has one request per reliable ordered DataChannel,
 48 KiB JSON frames, at most 64 headers/16 KiB header text, and a **16 KiB request
@@ -412,15 +422,57 @@ records whether dispatch may have occurred; disconnection is not proof that a
 mutation did not execute. Account-session signing and authorization remain with
 the SDK/provider and protected Station application. The opt-in
 [virtual application ingress](../design/connection-broker.md#protected-application-dispatch)
-is the server integration seam; composing the two against the full runtime is
-still required before enabling application relay access.
+is the server integration seam. The full-runtime diagnostic below composes
+these owners; product onboarding, approved endpoint trust and broker lifecycle
+remain necessary before enabling managed application access.
+
+### Full runtime account relay diagnostic
+
+```sh
+npm run lab:browser-transport -- --peer=node --browser-turn=udp --application-accounts --keep
+```
+
+This diagnostic composes the actual source `StationRuntime` in a separate owned
+process with the encrypted Node/Chromium channel. Its private process IPC carries
+application frames directly into the protected Hono app; it does not re-dial
+HTTP and invent a loopback caller. The signing-key trust, environment identity
+and account Station identity must match. A fresh schema marker is installed
+before security state is created in the disposable home.
+
+Setup uses real local account registration, Project invitations and explicit
+operator-approved read-only Device pairing. The browser receives its Device
+grant and synthetic account credentials, never the operator credential or an
+account cookie. Its SDK account calls use the configured transport resolver;
+direct browser HTTP requests to the Station are blocked and counted. The
+continuation key is non-extractable. The scenario checks account identity,
+proof replay, invitation acceptance, renewal, continuation/provider-session/
+Device revocation, and an unshared Project refusal. It retains
+`account-boundary.json` and `account-scenario.json` separately from transport
+receipts so positive account checks cannot hide a failed privacy boundary.
+
+The scoped [#2030](https://github.com/kontourai/station/issues/2030) acceptance
+now uses an explicit operator-approved account-bound replacement Device. A
+matching current account reads its shared Project and receives a causeless 404
+for the unshared Project. The same Device without account proof is refused with
+401 over direct and virtual application paths; a different account is also
+refused. Continuation, provider-session, membership and Device revocation each
+independently stop a later permitted-Project read. Earlier retained runs that
+returned the private marker remain failure evidence rather than being rewritten.
+
+This remains a free synthetic source-runtime diagnostic. The full account path
+has run through the Node UDP peer and the Pion adapter with browser TURN over
+UDP and TCP. It does not prove the rendered guest UI, native or remote delivery,
+legacy unbound personal-Device collaboration, Tailscale-bound account identity,
+offered compute/plugins, public broker deployment, or hostile-process isolation.
+The production connector remains disabled until those separately owned
+boundaries qualify.
 
 ### Full collaboration
 
 Future integration uses actual membership, account, compute and plugin owners;
 missing behavior must not become a successful skipped test. Station-local
-accounts under [#1981](https://github.com/kontourai/station/issues/1981) will
-provide a real account adapter without requiring hosted identity.
+accounts under [#1981](https://github.com/kontourai/station/issues/1981)
+provide the real account adapter without requiring hosted identity.
 
 This fixture does not verify live Tailscale identity, production key admission,
 browser/native trust distribution, internet/NAT reachability, invitation email
@@ -428,3 +480,145 @@ delivery or the [real two-human journey](https://github.com/kontourai/station/is
 Two security homes in one process and relays running as the same OS user do not
 prove tenant or hostile-code isolation. Those remain separate acceptance under
 [#487](https://github.com/kontourai/station/issues/487).
+
+### Separate self-hosted broker and production browser consumer
+
+Run the integrated signaling path with the full account diagnostic:
+
+```sh
+npm run lab:browser-transport -- --peer=pion --browser-turn=tcp --application-accounts --self-hosted-broker --keep
+npm run lab:browser-transport -- --peer=pion --browser-turn=udp --application-accounts --self-hosted-broker --keep
+```
+
+The additional `--station-ui` mode drives the actual Station SPA through
+operator key-report approval, invitation acceptance, TURN setup, Connect,
+fresh account login, operator Device approval, invitation redemption, and
+in-app Project navigation. It serves the UI on the lab-owned HTTPS client
+Origin and blocks/counts direct Station `/api` requests after route acceptance.
+It reuses the free local broker, Pion, and TURN fixtures above; no hosted
+identity or paid TURN service is needed. Run one transport at a time:
+
+This is a separate UI-only acceptance mode. It stops after the visible Project
+and shared-work checks; it does not run the account continuation, cookie
+adoption, or revocation matrix from the commands above. Use those commands
+without `--station-ui` for the full account/protocol receipt.
+
+```sh
+npm run lab:browser-transport -- --peer=pion --browser-turn=tcp --application-accounts --self-hosted-broker --station-ui --keep
+```
+
+The UI-mode receipt requires the selected browser ICE pair and Station answer
+to contain TURN relay candidates, and the protected Project to open through
+the live UI. This is a browser acceptance check only; it does not establish a
+second physical machine, two-person access, internet reachability, or native
+client behavior. The journey passed for source revision `a36f390151f4dcebda3219c09e36413bc11ac971`; its machine-readable receipt also records the source SHA and clean-worktree status. The full account, cookie-adoption, and revocation matrix remains covered by the commands above without `--station-ui`.
+
+Build the pinned Pion executable as described above first. This mode starts the
+actual broker CLI in a separate owned process with private SQLite state and
+separate routing/connector credentials. Its controller issues two one-use
+invitations, each with a distinct broker routing grant; the operator routing
+credential never enters either browser profile. The browser profiles run on
+two different test-owned HTTPS Origins, both explicitly listed in the Station
+authentication-Origin allowlist. The Station-side factory uses the real Pion
+adapter; the browser uses the production self-hosted transport entry point.
+The full protected Station remains behind private process IPC, with direct browser
+HTTP application requests blocked and counted. No account or Device authority is
+injected into production authentication.
+
+The checks cover account login and continuation, explicit account-bound Device
+approval, permitted/private Project reads, independent Device and broker-grant
+revocations, lease renewal, fresh-peer reconnect, wrong routing credentials,
+actual browser CORS, proof tamper refusal before remote-description acceptance,
+and trust retirement. A separate
+HTTP preflight control checks the broker's exact response. Withdrawal can hide its
+401 behind browser CORS; an independent HTTP control must still observe that exact
+refusal, so an unrelated network failure cannot pass the test.
+
+The source operator command in `scripts/self-hosted-broker.ts` also accepts
+`invite`, `grants` and `revoke`. `invite` takes its existing private broker
+configuration (with one exact Station scope), a private JSON request, and a new
+private output path. The request is:
+
+```json
+{
+  "version": "station-broker-invitation-request/v1",
+  "brokerOrigin": "https://broker.example",
+  "clientOrigin": "https://client.example",
+  "stationSigningKeyId": "43-character approved Station key thumbprint",
+  "stationSigningGeneration": 1
+}
+```
+
+The CLI writes a mode-0600 typed invitation file under a private directory;
+the one-use secret never enters a query string or CLI output. The browser
+contract can encode it into a `/connections/computers#relay-invite=...`
+fragment. The browser's Broker routes form accepts that link or the CLI's
+private JSON invitation after that browser already has independently approved
+Station-key trust; it does not
+auto-consume an incoming fragment or establish that trust. Keep the CLI's JSON
+file private and deliver it through an operator-approved channel. Invitations
+expire within five minutes. A redeemed grant lasts at most 30 days and permits
+broker signaling only; expiry, a lost successful redemption response, or lost
+local custody requires a newly issued invitation. `grants` lists secret-free
+grant IDs and state; `revoke` retires one grant and its pending signaling while
+leaving the Station connector and other grants live. Existing encrypted peers
+are not forcibly closed by broker revocation.
+
+The Station operator must separately list each recipient Origin in
+`ALLOWED_ORIGINS` and `STATION_AUTHENTICATION_BROWSER_ORIGINS` (the latter has a
+bounded maximum of 16). Broker issuance cannot expand Station application
+authority. The current desktop saved-route UI remains a metadata/trust readout;
+native grant custody does not by itself make a route selectable or prove a real
+Tauri connection. The browser route picker currently uses local ICE host
+candidates and has no remote TURN setup. Its source-level fresh-account Device
+ceremony requires provider support and explicit operator approval, but the
+positive joined ordinary-UI browser journey has not yet passed this lab.
+Browser and native onboarding UI/runtime evidence are tracked
+separately under [#2388](https://github.com/kontourai/station/issues/2388).
+
+The broker receives signaling only. The separate TURN recording relay observes
+nonempty encrypted traffic, checked alongside actual DTLS and application delivery;
+absence of a plaintext marker alone is not encryption evidence. Cleanup joins the
+broker process, Pion peers, full Station, browser, recording relay and owned Coturn
+container, and reports failures instead of claiming unconfirmed cleanup.
+
+`selfHostedBroker.status: "passed"` means this local composition passed. It is not
+fresh guest onboarding: the account fixture begins with an approved test Device,
+then exercises the account-bound grant. It does not prove installed native clients,
+real humans, remote-host deployment, compute/plugin isolation, or a production
+rollout. Those remain separate acceptance requirements. The original direct
+transport profiles retain their certificate-substitution controls; this broker
+mode reports only the controls it actually executes.
+
+### Cross-machine encrypted relay qualification
+
+`npm run lab:remote-relay -- --ssh-host <known-host> --remote-checkout
+/absolute/isolated-checkout --remote-node /absolute/node --pion-executable
+/absolute/local/linux-pion-peer --keep` uses a local Chromium controller and a
+separate POSIX Station/Pion process on the selected SSH host. Prepare the remote
+checkout with the same committed source and managed dependencies first; supply a
+Pion executable built for that host. Existing SSH host trust is required.
+
+The controller owns loopback broker and TURN fixtures. Explicit SSH reverse TCP
+forwarding makes those fixtures reachable from the remote Station without a
+firewall or service change. Browser application requests still use the verified
+encrypted DataChannel. A separate SSH forward is restricted to fixture operator
+setup; the browser is blocked from using it. This qualifies cross-machine
+TCP-over-SSH transport, not native remote UDP, a production deployment or a
+managed service.
+
+The account scenario also creates inert Tasks through the real API, publishes
+selected messages and a document, and proves that unpublished work in the same
+Project stays hidden. Unsharing, republication and membership/Device revocation
+are checked independently. No Task is dispatched to an agent or billable model.
+
+The run creates a private home beneath the isolated remote checkout and leaves
+that named fixture root and local evidence available for inspection. It does not
+restart an existing Station. Successful completion requires clean remote
+supervisor exit, broker withdrawal, owned-process cleanup, the real account and
+Project authorization journey, reconnect and renewal, zero direct browser
+application requests, and a nonempty relay capture without application secret
+markers. Source revisions, dirty state, fixture and binary hashes are recorded;
+an uncommitted-source diagnostic is not an exact-release receipt. A synthetic
+pre-approved Device remains a fixture prerequisite and does not qualify fresh
+collaborator enrollment, native clients or real humans.

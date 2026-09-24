@@ -48,6 +48,11 @@ export function isAttachmentBlobRef(value: unknown): value is string {
   return typeof value === 'string' && BLOB_REF_PATTERN.test(value);
 }
 
+/** The reference {@link AttachmentBlobStore.writeBytes} returns for `bytes`. */
+export function attachmentBlobRefFor(bytes: Buffer): string {
+  return `sha256-${createHash('sha256').update(bytes).digest('hex')}`;
+}
+
 interface AttachmentBlobStoreOptions {
   rootDir: string;
   logger?: BlobStoreLogger;
@@ -144,6 +149,11 @@ export class AttachmentBlobStore {
     } catch {
       return undefined;
     }
+    return this.writeBytes(bytes);
+  }
+
+  /** {@link write} for bytes already decoded (see {@link attachmentBlobRefFor}). */
+  writeBytes(bytes: Buffer): string | undefined {
     if (bytes.length === 0) return undefined;
     const digest = createHash('sha256').update(bytes).digest('hex');
     const ref = `sha256-${digest}`;

@@ -4,7 +4,9 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -150,6 +152,153 @@ function makeResolver(
 function expectWellFormed(result: ResourceResolutionResult): void {
   expect(isWellFormedResolution(result)).toBe(true);
 }
+
+describe('resolveProjectExecutionRoot', () => {
+  test('joins the portable relative root to this Station binding', async () => {
+    const harness = createHome();
+    const checkout = tempDir('station-execution-root-checkout-');
+    const app = join(checkout, 'packages', 'app');
+    mkdirSync(app, { recursive: true });
+    await saveProject(harness.adapter, {
+      slug: 'acme',
+      workingDirectory: checkout,
+    });
+    writeManifestRecord(harness.home, 'acme', {
+      id: 'prj_acme',
+      repos: [gitResource('github.com/acme/mono')],
+      executionRoot: {
+        repoId: 'github.com/acme/mono',
+        path: 'packages/app',
+      },
+    });
+
+    const resolver = makeResolver(
+      harness,
+      remoteReader(['git@github.com:acme/mono.git']),
+    );
+    expect(await resolver.resolveProjectExecutionRoot('acme')).toBe(
+      realpathSync(app),
+    );
+  });
+
+  test('normalizes a Windows-authored portable root on a POSIX destination', async () => {
+    const harness = createHome();
+    const checkout = tempDir('station-execution-root-checkout-');
+    const app = join(checkout, 'packages', 'app');
+    mkdirSync(app, { recursive: true });
+    await saveProject(harness.adapter, {
+      slug: 'acme',
+      workingDirectory: checkout,
+    });
+    writeManifestRecord(harness.home, 'acme', {
+      id: 'prj_acme',
+      repos: [gitResource('github.com/acme/mono')],
+      executionRoot: {
+        repoId: 'github.com/acme/mono',
+        path: 'packages\\app',
+      },
+    });
+    const resolver = makeResolver(
+      harness,
+      remoteReader(['git@github.com:acme/mono.git']),
+    );
+    expect(await resolver.resolveProjectExecutionRoot('acme')).toBe(
+      realpathSync(app),
+    );
+  });
+
+  test('returns the same canonical in-repo symlink target used for containment', async () => {
+    const harness = createHome();
+    const checkout = tempDir('station-execution-root-checkout-');
+    const canonicalApp = join(checkout, 'packages', 'app');
+    mkdirSync(canonicalApp, { recursive: true });
+    symlinkSync(canonicalApp, join(checkout, 'app-link'));
+    await saveProject(harness.adapter, {
+      slug: 'acme',
+      workingDirectory: checkout,
+    });
+    writeManifestRecord(harness.home, 'acme', {
+      id: 'prj_acme',
+      repos: [gitResource('github.com/acme/mono')],
+      executionRoot: {
+        repoId: 'github.com/acme/mono',
+        path: 'app-link',
+      },
+    });
+    const resolver = makeResolver(
+      harness,
+      remoteReader(['git@github.com:acme/mono.git']),
+    );
+    expect(await resolver.resolveProjectExecutionRoot('acme')).toBe(
+      realpathSync(canonicalApp),
+    );
+  });
+
+  test('fails closed when a relative root resolves through a symlink outside the repo', async () => {
+    const harness = createHome();
+    const checkout = tempDir('station-execution-root-checkout-');
+    const outside = tempDir('station-execution-root-outside-');
+    symlinkSync(outside, join(checkout, 'escaped'));
+    await saveProject(harness.adapter, {
+      slug: 'acme',
+      workingDirectory: checkout,
+    });
+    writeManifestRecord(harness.home, 'acme', {
+      id: 'prj_acme',
+      repos: [gitResource('github.com/acme/mono')],
+      executionRoot: {
+        repoId: 'github.com/acme/mono',
+        path: 'escaped',
+      },
+    });
+
+    const resolver = makeResolver(
+      harness,
+      remoteReader(['git@github.com:acme/mono.git']),
+    );
+    await expect(resolver.resolveProjectExecutionRoot('acme')).rejects.toThrow(
+      'Project execution root escapes root',
+    );
+  });
+
+  test('fails closed when the selected root is a file', async () => {
+    const harness = createHome();
+    const checkout = tempDir('station-execution-root-checkout-');
+    writeFileSync(join(checkout, 'package.json'), '{}');
+    await saveProject(harness.adapter, {
+      slug: 'acme',
+      workingDirectory: checkout,
+    });
+    writeManifestRecord(harness.home, 'acme', {
+      id: 'prj_acme',
+      repos: [gitResource('github.com/acme/mono')],
+      executionRoot: {
+        repoId: 'github.com/acme/mono',
+        path: 'package.json',
+      },
+    });
+    const resolver = makeResolver(
+      harness,
+      remoteReader(['git@github.com:acme/mono.git']),
+    );
+    await expect(resolver.resolveProjectExecutionRoot('acme')).rejects.toThrow(
+      'execution root is not a directory',
+    );
+  });
+
+  test('fails closed when an explicit local-only execution root has no destination binding', async () => {
+    const harness = createHome();
+    await saveProject(harness.adapter, { slug: 'notes' });
+    writeManifestRecord(harness.home, 'notes', {
+      id: 'prj_notes',
+      repos: [{ kind: 'local-only', id: 'local:notes' }],
+      executionRoot: { repoId: 'local:notes', path: 'drafts' },
+    });
+    await expect(
+      makeResolver(harness).resolveProjectExecutionRoot('notes'),
+    ).rejects.toThrow(/cannot start here \(unbound\)/);
+  });
+});
 
 describe('resolveProjectResource — the upgrade path from an install predating manifests', () => {
   test('a project with project.json and NO manifest resolves through the working-directory fallback, and the read WRITES NOTHING', async () => {
@@ -414,6 +563,40 @@ describe('resolveProjectResource — bindings (§3.6)', () => {
       harness,
       remoteReader(['git@github.com:kontourai/station.git']),
     ).resolveProjectResource('acme');
+    expect(result).toEqual({
+      state: 'bound',
+      resourceId: 'github.com/kontourai/station',
+      path: checkout,
+    });
+    expectWellFormed(result);
+  });
+
+  test('an explicitly-requested resource binds receiver-locally with no compat workingDirectory', async () => {
+    const harness = createHome();
+    const checkout = tempDir('station-ppi-nocompat-checkout-');
+    // Deliberately NO workingDirectory: the project binds this resource
+    // receiver-locally through its binding row, not through a default
+    // checkout. A portable attachment naming the exact resource id must
+    // still resolve to the checked binding path.
+    await saveProject(harness.adapter, { slug: 'acme' });
+    const record = writeManifestRecord(harness.home, 'acme', {
+      id: 'prj_acme',
+      repos: [gitResource('github.com/kontourai/station', 'primary')],
+    });
+    await harness.bindings.upsertProjectBinding({
+      projectId: record.id,
+      resourceId: 'github.com/kontourai/station',
+      kind: 'git-checkout',
+      path: checkout,
+      remotes: ['git@github.com:kontourai/station.git'],
+      verifiedAt: Date.now(),
+      state: 'bound',
+    });
+
+    const result = await makeResolver(
+      harness,
+      remoteReader(['git@github.com:kontourai/station.git']),
+    ).resolveProjectResource('acme', 'github.com/kontourai/station');
     expect(result).toEqual({
       state: 'bound',
       resourceId: 'github.com/kontourai/station',

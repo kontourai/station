@@ -71,6 +71,7 @@ export type {
   GateReviewAttentionItem,
   GateRouteBackAttentionItem,
   NeedsInputAttentionItem,
+  PluginLifecycleProposalAttentionItem,
   ProposedChangeAttentionItem,
   ReviewPendingAttentionItem,
   SessionFailedAttentionItem,
@@ -121,6 +122,11 @@ export async function getAnswerBasis(
 ) {
   return (await import('./client/answer-basis.js')).getAnswerBasis(...args);
 }
+// The Agent references `useSendToChat` accepts (#2400)
+export type {
+  AgentId,
+  QualifiedPluginAgentId,
+} from '@kontourai/station-contracts/agent-identity';
 export * from './answer-support';
 export type { InvokeOptions } from './api';
 // Re-export utility functions
@@ -156,23 +162,37 @@ export {
 export type { InvokeRunReceipt } from './api-agent-runtime';
 export { hasCapability } from './capability';
 export type {
+  ClientRawEgressPolicy,
+  ClientRawEgressPolicyResolver,
   FetchSseConnection,
   FetchSseMessage,
+  JsonEnvelope,
 } from './client/http';
 export {
+  assertClientRawEgressAllowed,
   authenticatedFetch,
+  envelopeFailureMessage,
   fetchSSE,
+  getClientRawEgressPolicy,
+  getJson,
+  mutateJson,
   notifyCredentialChanged,
+  readEnvelopeOrThrow,
   StationCredentialConflictError,
   StationHttpError,
+  StationRawEgressUnavailableError,
   StationReadOnlyError,
+  StationRequestAuthorityError,
   setClientCredentialResolver,
+  setClientRawEgressPolicyResolver,
 } from './client/http';
 export {
   applyProjectLayout,
   bindProjectResource,
   closeProjectTerminal,
   getProjectResolution,
+  getProjectView,
+  listProjectViews,
 } from './client/projects';
 export {
   getReviewReceipt,
@@ -311,6 +331,20 @@ export {
   // Workflows
   useWorkflows,
 } from './hooks';
+// Contracts for the host context slots the hooks below read (#2399)
+export type {
+  SDKAgentsContext,
+  SDKAuthContext,
+  SDKAuthState,
+  SDKAuthUser,
+  SDKNavigation,
+  SDKNavigationContext,
+  SDKToast,
+  SDKToastContext,
+  ToastAction,
+  ToastRequest,
+  ToastType,
+} from './host-contexts';
 // Re-export layout utilities
 export { createLayoutContext } from './layout/context';
 export type { ProviderMetadata } from './layoutProviders';
@@ -329,6 +363,7 @@ export {
   LayoutNavigationProvider,
   LayoutProvider,
   SDKContext,
+  type SDKContextValue,
   SDKProvider,
   useLayoutNavigation,
 } from './providers';
@@ -503,6 +538,7 @@ export {
   fetchOrchestrationSessionEventWindow,
   fetchOrchestrationSessions,
   fetchPeerCredentials,
+  fetchPluginLifecycleProposal,
   fetchPluginVisibility,
   fetchProjectSessionBoard,
   fetchProposedChanges,
@@ -585,6 +621,7 @@ export {
   type PluginChangelogData,
   type PluginChangelogEntry,
   type PluginInstallConsent,
+  type PluginLifecycleTarget,
   type PluginPermissionRevocationResult,
   type PluginProviderDetail,
   type PluginRecoveryConsent,
@@ -594,9 +631,11 @@ export {
   type PluginSettingField,
   type PluginSettingsData,
   PluginVisibilityForbiddenError,
+  type ProjectReadQueryConfig,
   type ProviderCommandDescriptor,
   type ProviderWorkItem,
   peerCredentialQueries,
+  pluginLifecycleTargetName,
   postBoardIntent,
   proposedChangesQueryKey,
   type ReadinessInitResultVM,
@@ -613,10 +652,13 @@ export {
   type RemoteEnvironmentSessions,
   type RemoteEnvironmentUnavailable,
   type RemoteSessionsResult,
+  type ReorderProjectsInput,
+  type ReorderProjectsVariables,
   type ResolvedOpenSshHost,
   reconnectACPConnection,
   recordFirstRunDecision,
   regenerateConversationTitle,
+  registerNativePush,
   rejectProposedChange,
   reloadPlugins,
   renameCodingFile,
@@ -669,6 +711,7 @@ export {
   type SystemStatus,
   saveFeedbackRating,
   sendOrchestrationTurn,
+  setOrchestrationApprovalMode,
   shouldRetryLayoutCatalog,
   shouldRetryProjectLayout,
   shouldRetrySystemStatus,
@@ -709,6 +752,7 @@ export {
   type UpdateAppLogLevelResult,
   type UsageRollupQuery,
   type UsageRollupResponse,
+  unregisterNativePush,
   unsubscribePushNotifications,
   updateACPConnection,
   updateAgent,
@@ -808,6 +852,7 @@ export {
   useDiffCommentsQuery,
   useDisconnectSshEnvironmentMutation,
   useDismissNotificationMutation,
+  useDismissPluginLifecycleProposalMutation,
   useDismissSessionSummaryMutation,
   useDispatchTaskMutation,
   useEditJob,
@@ -889,6 +934,7 @@ export {
   usePeerCredentialsQuery,
   usePluginChangelogQuery,
   usePluginInstallMutation,
+  usePluginLifecycleProposalQuery,
   usePluginPreviewMutation,
   usePluginProvidersQuery,
   usePluginProviderToggleMutation,
@@ -1063,6 +1109,14 @@ export {
   usePinBoardWidget,
   useUnpinBoardWidget,
 } from './query-domains/board.js';
+export type {
+  CodingFileMentionCandidates,
+  CodingLocation,
+} from './query-domains/chatRuntimeCoding.js';
+export {
+  fetchCodingFileMentionCandidates,
+  useCodingFileMentionCandidatesQuery,
+} from './query-domains/chatRuntimeCoding.js';
 export {
   confirmDevicePairingRequest,
   DevicePairingRequestActionError,
@@ -1104,7 +1158,10 @@ export {
 // System tab, so re-exporting it here would pull it into every eager importer
 // of this barrel for no first-paint benefit. Published
 // exclusively via `@kontourai/station-sdk/resource-posture`.
-export type { GitStatusResult } from './query-domains/projectData.js';
+export type {
+  GitReadLocation,
+  GitStatusResult,
+} from './query-domains/projectData.js';
 export {
   adoptCommittedProjectTaskRoomDocument,
   appendProjectTaskRoomHumanMessage,

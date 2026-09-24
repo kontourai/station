@@ -1,4 +1,7 @@
-import type { ConversationListItem } from '@kontourai/station-contracts/orchestration';
+import type {
+  ConversationListItem,
+  ConversationTurnActivity,
+} from '@kontourai/station-contracts/orchestration';
 import type { SessionReadAuthority } from '@kontourai/station-contracts/tenancy';
 import type { ProviderSession } from '../../providers/adapter-shape.js';
 import { publicAgentIdFromRuntimeKey } from '../agents/runtime-agent-identity.js';
@@ -59,6 +62,15 @@ export class ConversationHistoryReadService {
       ) => Parameters<
         typeof buildOrchestrationSessionSummary
       >[0]['answerability'];
+      /**
+       * #2309: the conversation activity projection. When it answers, the
+       * item's `hasActiveTurn` is ITS open turn — a conversation-wide fold
+       * over every committed event, not the 1,000-event tail below, which
+       * reads a turn with more events than that as not running.
+       */
+      readConversationActivity?: (
+        conversationId: string,
+      ) => ConversationTurnActivity | undefined;
       ownerlessPersonalAccess: boolean;
     },
   ) {}
@@ -168,7 +180,13 @@ export class ConversationHistoryReadService {
           item.lifecycleState = summary.lifecycleState;
         if (summary.pendingReview !== undefined)
           item.pendingReview = summary.pendingReview;
-        if (summary.hasActiveTurn !== undefined)
+        const activity = this.options.readConversationActivity?.(
+          record.conversationId,
+        );
+        if (activity) {
+          item.activity = activity;
+          item.hasActiveTurn = activity.openTurn !== undefined;
+        } else if (summary.hasActiveTurn !== undefined)
           item.hasActiveTurn = summary.hasActiveTurn;
         return [item];
       },

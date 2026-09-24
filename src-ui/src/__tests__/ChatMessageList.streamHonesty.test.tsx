@@ -51,7 +51,18 @@ vi.mock('../hooks/useActiveChatSessions', () => ({
 }));
 
 vi.mock('../components/chat/StreamingMessage', () => ({
-  StreamingMessage: () => <div data-testid="streaming-message">Streaming</div>,
+  StreamingMessage: (props: {
+    statusLabel?: string;
+    turnStartedAt?: number;
+  }) => (
+    <div
+      data-testid="streaming-message"
+      data-status-label={props.statusLabel ?? ''}
+      data-turn-started-at={props.turnStartedAt ?? ''}
+    >
+      Streaming
+    </div>
+  ),
 }));
 
 vi.mock('../components/chat/SessionSummaryCard', () => ({
@@ -159,6 +170,25 @@ describe('station#3300 — settled turn stays settled on resume', () => {
     expect(screen.getByTestId('streaming-message')).toBeTruthy();
   });
 
+  test("#2304: the streaming row counts from the open turn's server start", () => {
+    const serverStart = Date.parse('2026-09-22T12:00:00.000Z');
+    renderList(
+      managedSession({
+        orchestrationStatus: 'running',
+        orchestrationTurnOpen: true,
+        openTurnId: 'turn-2',
+        openTurnStartedAt: serverStart,
+        status: 'sending',
+      }),
+    );
+
+    expect(
+      screen
+        .getByTestId('streaming-message')
+        .getAttribute('data-turn-started-at'),
+    ).toBe(String(serverStart));
+  });
+
   test('the optimistic local-send window (submit before turn.started) still renders the streaming row', () => {
     renderList(
       managedSession({
@@ -184,6 +214,43 @@ describe('station#3300 — settled turn stays settled on resume', () => {
     );
 
     expect(screen.getByTestId('streaming-message')).toBeTruthy();
+  });
+
+  test('station#2235: awaiting-approval WITH a pending grant names the approval', () => {
+    // The label asserts an approval only when a grant is actually pending —
+    // a crashed turn's needs_input folds to this status with no request
+    // behind it, and must not read as a decision.
+    renderList(
+      managedSession({
+        orchestrationStatus: 'awaiting-approval',
+        orchestrationTurnOpen: true,
+        openTurnId: 'turn-2',
+        status: 'idle',
+        pendingApprovals: ['req-1'],
+      }),
+    );
+
+    expect(
+      screen.getByTestId('streaming-message').getAttribute('data-status-label'),
+    ).toBe('Waiting for approval');
+  });
+
+  test('station#2235: awaiting-approval with NO pending grant waits on the user, not on an approval', () => {
+    renderList(
+      managedSession({
+        orchestrationStatus: 'awaiting-approval',
+        orchestrationTurnOpen: true,
+        openTurnId: 'turn-2',
+        status: 'idle',
+        pendingApprovals: [],
+      }),
+    );
+
+    const label = screen
+      .getByTestId('streaming-message')
+      .getAttribute('data-status-label');
+    expect(label).toBe('Waiting on you');
+    expect(label).not.toContain('approval');
   });
 
   test('a non-managed session keeps the session-level derivation', () => {

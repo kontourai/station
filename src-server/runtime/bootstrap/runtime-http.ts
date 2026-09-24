@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import {
   ACCOUNT_AUTHENTICATION_FAILURE_HEADER,
+  APPLICATION_SESSION_BASE_PATH,
   APPLICATION_SESSION_HEADER,
   APPLICATION_SESSION_PROOF_HEADER,
 } from '@kontourai/station-contracts/application-session';
@@ -73,6 +74,11 @@ export const SECURE_DEVICE_SESSION_COOKIE = '__Host-station-device';
 export const LOOPBACK_DEVICE_SESSION_COOKIE = 'station-device';
 const DEVICE_CREDENTIAL_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 const SAFE_HTTP_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
+const ALIAS_SESSION_CONTROL_PATHS = new Set([
+  `${APPLICATION_SESSION_BASE_PATH}/challenge`,
+  `${APPLICATION_SESSION_BASE_PATH}/exchange`,
+  `${APPLICATION_SESSION_BASE_PATH}/login`,
+]);
 const RUNTIME_ROUTE_CAPABILITY_VAR = 'stationRuntimeRouteCapability';
 
 type RuntimeRouteLabeler = (path: string) => string;
@@ -675,8 +681,33 @@ function configureRuntimeSecurity(
         })(),
       }));
     if (valid) {
+      const aliasId = security.resolveCredentialAliasId?.(credential!);
+      const proofBoundContinuation =
+        c.req.raw.headers.has(APPLICATION_SESSION_HEADER) &&
+        c.req.raw.headers.has(APPLICATION_SESSION_PROOF_HEADER);
+      const aliasAccountControl =
+        accountOperation &&
+        c.req.method === 'POST' &&
+        ALIAS_SESSION_CONTROL_PATHS.has(c.req.path);
+      if (
+        aliasId !== undefined &&
+        !aliasAccountControl &&
+        (!proofBoundContinuation ||
+          (!accountOperation &&
+            security.deploymentAuthentication?.current(c.req.raw)?.kind !==
+              'authenticated'))
+      ) {
+        c.header(ACCOUNT_AUTHENTICATION_FAILURE_HEADER, 'account');
+        return c.json(
+          { error: { code: 'account_authentication_required' } },
+          401,
+        );
+      }
       const authority = security.resolveCredentialAuthority?.(credential!);
       const deviceId = security.resolveCredentialDeviceId?.(credential!);
+      const deviceKind = deviceId
+        ? security.resolveCredentialDeviceKind?.(credential!)
+        : undefined;
       const pairingSource = security.resolvePairingSource?.(credential!);
       const locality = security.resolveCredentialLocality?.(credential!);
       const mintKind = security.resolveCredentialMintKind?.(credential!);
@@ -685,6 +716,7 @@ function configureRuntimeSecurity(
         credential: credential!,
         authority,
         ...(deviceId ? { deviceId } : {}),
+        ...(deviceId && deviceKind ? { deviceKind } : {}),
         source: cookieCredential !== undefined ? 'session' : 'bearer',
         ...(pairingSource ? { pairingSource } : {}),
         ...(locality ? { locality } : {}),
@@ -991,6 +1023,21 @@ export function parseDeviceSessionCookie(
   return matches.length === 1 ? matches[0] : undefined;
 }
 
+/** Cookie-adoption is an HTTPS browser ceremony; reject loopback's cleartext cookie name. */
+export function parseSecureDeviceSessionCookie(
+  value: string | undefined,
+): string | undefined {
+  if (!value || value.length > 16 * 1024) return undefined;
+  const hasSecureName = value.split(';').some((segment) => {
+    const separator = segment.indexOf('=');
+    return (
+      separator > 0 &&
+      segment.slice(0, separator).trim() === SECURE_DEVICE_SESSION_COOKIE
+    );
+  });
+  return hasSecureName ? parseDeviceSessionCookie(value) : undefined;
+}
+
 function hasCredentialQuery(url: string): boolean {
   try {
     const query = new URL(url).searchParams;
@@ -1066,9 +1113,13 @@ export function resolveRuntimeCorsOrigin(
 // it exhausts the request quota. Keep exact read leaves separate from writes;
 // authentication and request budgets still apply unchanged.
 const READ_ONLY_DATA_POST_ROUTES = [
-  /^\/api\/projects\/[^/]+\/file-preview(?:\/download)?\/?$/,
+  /^\/api\/projects\/[^/]+\/file-preview(?:\/download|\/exists)?\/?$/,
   /^\/api\/projects\/[^/]+\/knowledge\/(?:ns\/[^/]+\/)?search\/?$/,
   /^\/api\/knowledge\/(?:search|index\/search|roots\/validate)\/?$/,
+  // The receiver-side contribution query is a POST-carried read: it changes
+  // nothing, so broadcasting a key would make the asking client's own
+  // contribution query refetch itself.
+  /^\/api\/project-contributions\/query\/?$/,
 ];
 
 function getInvalidationKeysForRequest(method: string, path: string): string[] {
@@ -1087,6 +1138,9 @@ function getInvalidationKeysForRequest(method: string, path: string): string[] {
   if (path.includes('/scheduler') || path.includes('/jobs')) {
     keys.push('scheduler-jobs');
   }
+  // An execution offer lives in AppConfig.contribution; the settings surface
+  // (and any other reader of ['config']) must see the change.
+  if (path.startsWith('/api/project-contributions/')) keys.push('config');
   if (path.includes('/projects')) keys.push('projects');
   if (path.includes('/knowledge')) keys.push('knowledge');
   if (path.includes('/registry')) keys.push('skills', 'integrations', 'agents');

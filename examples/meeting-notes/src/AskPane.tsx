@@ -148,10 +148,7 @@ function AnswerCard({ result, isSelected, onViewSource }: AnswerCardProps) {
 
 export function AskPane(_props: LayoutComponentProps) {
   const { apiBase } = useApiBase();
-  const navigation = useNavigation() as {
-    selectedProject?: string | null;
-    navigate?: (pathname: string) => void;
-  };
+  const navigation = useNavigation();
   const selectedProject = navigation.selectedProject ?? null;
   const rootsQuery = useKnowledgeRootsQuery();
 

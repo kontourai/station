@@ -39,8 +39,12 @@ interface ApprovalModeChipProps {
   toolPolicyDelivery?: ToolPolicyDelivery;
   /** Raw session override value, typically `providerOptions.approvalMode`. */
   sessionOverride?: unknown;
-  /** The Agent app connection's configured default, if any. */
-  connectionDefault?: unknown;
+  /**
+   * The session's Agent's own default (#2436,
+   * `AgentSpec.execution.approvalMode`), which the server applies below the
+   * session's pick and above the Station default.
+   */
+  agentDefault?: unknown;
   /**
    * This Station's `AppConfig.defaultApprovalMode` (#2144 slice 6) — the
    * layer below the connection's own default. Absent leaves resolution
@@ -57,6 +61,11 @@ interface ApprovalModeChipProps {
    * server-side" (archive#727).
    */
   lastAppliedApprovalMode?: unknown;
+  /**
+   * How far the engine has shown `sessionOverride` applied (#2436,
+   * `SessionApprovalOverride.state`). Absent keeps the pre-#2334 behaviour.
+   */
+  sessionOverrideState?: 'requested' | 'refused' | 'confirmed';
   onChange: (mode: ApprovalMode) => void;
 }
 
@@ -97,9 +106,10 @@ export function ApprovalModeChip({
   engineConnectionId,
   toolPolicyDelivery,
   sessionOverride,
-  connectionDefault,
+  agentDefault,
   stationDefault,
   lastAppliedApprovalMode,
+  sessionOverrideState,
   onChange,
 }: ApprovalModeChipProps) {
   const [isSheetOpen, setIsSheetOpen] = useState(false);
@@ -114,7 +124,7 @@ export function ApprovalModeChip({
   const effective = resolveEffectiveApprovalMode({
     engineConnectionId,
     sessionOverride,
-    connectionDefault,
+    agentDefault,
     stationDefault,
   });
   const appliedMode = isApprovalMode(lastAppliedApprovalMode)
@@ -129,24 +139,68 @@ export function ApprovalModeChip({
   const displayedMode = isOverride
     ? effective.mode
     : (appliedMode ?? effective.mode);
+  // #2436: the server applies the recorded posture at every turn start, on
+  // every send path, so "takes effect next turn" is true of any requested
+  // pick. The exception is a full access Claude refused because the session
+  // was not spawned with it: that needs a session restart, and "next turn"
+  // would promise an escalation that is not going to happen.
+  const isRefused = isOverride && sessionOverrideState === 'refused';
+  // #2436: the Agent's own default is named as such, so a member using an
+  // Agent set to full access sees it before sending. Only while the engine
+  // has reported nothing else: a session that started before the default
+  // changed runs what it reports.
+  const agentDefaultShown =
+    !isOverride &&
+    effective.source === 'agent default' &&
+    (appliedMode === undefined || appliedMode === effective.mode);
   const isPendingApply =
-    isOverride && effective.mode === 'never' && appliedMode !== 'never';
+    isOverride &&
+    !isRefused &&
+    effective.mode === 'never' &&
+    appliedMode !== 'never';
+  // The reverse gap (#2334): a stricter pick is requested while the engine
+  // still reports full access. Decision recorded against the #1933 pin: ONLY
+  // this requested case gets a visible "· pending", because a bare "Ask"
+  // there would overclaim in the dangerous direction. Every other requested
+  // pick (e.g. a requested Ask against an applied `auto`) keeps the plain
+  // visible label #1933 pins; its accessible name still says it is not
+  // confirmed (`pendingNote` below).
+  const isPendingRestrict =
+    isOverride &&
+    sessionOverrideState === 'requested' &&
+    effective.mode !== 'never' &&
+    appliedMode === 'never';
+  const pendingNote = isPendingRestrict
+    ? 'the engine still reports full access; takes effect next turn'
+    : isRefused
+      ? 'the engine refused it because this session did not start with full access; it applies when the session restarts'
+      : isOverride && sessionOverrideState === 'requested' && !isPendingApply
+        ? 'requested; takes effect next turn'
+        : undefined;
 
   // Full text for assistive tech and hover; the pill itself shows the short
   // form so it stops clipping at 390px (archive#1010).
   const selectedLabel = isPendingApply
     ? `${approvalModeLabel('never')} — full access requested for the next turn`
-    : !isOverride && appliedMode
-      ? approvalModeLabel(appliedMode)
-      : effective.label;
+    : pendingNote
+      ? `${effective.label} — ${pendingNote}`
+      : !isOverride && appliedMode
+        ? approvalModeLabel(appliedMode)
+        : effective.label;
   const chipText = isPendingApply
     ? `${approvalModeChipLabel('never')} · pending`
-    : isOverride
-      ? approvalModeChipLabel(displayedMode)
-      : 'Default';
+    : isPendingRestrict || isRefused
+      ? `${approvalModeChipLabel(displayedMode)} · ${isRefused ? 'needs restart' : 'pending'}`
+      : isOverride
+        ? approvalModeChipLabel(displayedMode)
+        : agentDefaultShown
+          ? `${approvalModeChipLabel(effective.mode)} (agent default)`
+          : 'Default';
   const accessibleLabel = isOverride
     ? selectedLabel
-    : `Default — ${selectedLabel}`;
+    : agentDefaultShown
+      ? `${chipText} — ${approvalModeLabel(effective.mode)}`
+      : `Default — ${selectedLabel}`;
 
   return (
     <>
@@ -154,7 +208,7 @@ export function ApprovalModeChip({
         ref={triggerRef}
         type="button"
         className={`choice-trigger chat-input__approval-chip ${
-          isPendingApply
+          isPendingApply || isPendingRestrict || isRefused
             ? 'chat-input__approval-chip--pending'
             : isOverride
               ? 'chat-input__approval-chip--override'
@@ -170,13 +224,18 @@ export function ApprovalModeChip({
         aria-label={
           isPendingApply
             ? `Approval mode: ${chipText} — takes effect next turn. Engine approval control. ${policyDisclosure}`
-            : `Approval mode: ${accessibleLabel}. Engine approval control. ${policyDisclosure}`
+            : `Approval mode: ${isPendingRestrict || isRefused ? `${chipText} — ${pendingNote}` : accessibleLabel}. Engine approval control. ${policyDisclosure}`
         }
         title={`Approval mode: ${selectedLabel}. ${policyDisclosure}`}
         onClick={() => setIsSheetOpen((open) => !open)}
       >
-        <span className="chat-input__approval-chip-label" aria-hidden="true">
-          {chipText}
+        <span className="chat-input__chip-stack">
+          <span className="chat-input__chip-caption" aria-hidden="true">
+            Approval
+          </span>
+          <span className="chat-input__approval-chip-label" aria-hidden="true">
+            {chipText}
+          </span>
         </span>
         <ArrowDownGlyph className="choice-caret" />
       </button>

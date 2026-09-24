@@ -89,6 +89,16 @@ interface ConnectionManagerModalContentProps {
    * true so the served-from-Station web behavior is unchanged when unset.
    */
   originIsStation?: boolean;
+  /**
+   * True when this device has a Station of its own: the web UI served by that
+   * Station, or a native desktop supervising its local server. False on a
+   * client-only device such as the phone, where no local Station exists and
+   * the paired device credential cannot mint pairing offers on a remote host,
+   * so the list's host-access section and the host-pairing panel are dead
+   * ends (station#2205). Defaults to true so served-from-Station web behavior
+   * is unchanged when unset.
+   */
+  hasLocalStation?: boolean;
   /** Native shell name, when this UI is not running in a browser. */
   hostAppName?: string;
   pairingClientChannel?: 'stable' | 'beta' | 'nightly';
@@ -102,6 +112,15 @@ interface ConnectionManagerModalContentProps {
    * shows its state without a Restart control.
    */
   onRestartInjectedConnection?: (connection: SavedConnection) => void;
+  /** Host-owned id of the managed local Station when it stops with the app. */
+  localStationOwnerId?: string;
+  /**
+   * Re-authorize this app's own access to the active Station (#2228). Passed
+   * only by a host whose local service can self-provision (native desktop);
+   * when omitted the host pairing panel's auth-rejected state renders its
+   * copy without a Reconnect control.
+   */
+  onReconnectLocalService?: () => Promise<boolean>;
   /** Persistent trigger to restore after a parent chooser is replaced. */
   returnFocusTarget?: HTMLElement | null;
   /** Optional success side-effect after pairing commits (station#1954). */
@@ -161,11 +180,14 @@ export function ConnectionManagerModalContent({
   pairingLinkError,
   onPairingReviewDismissed,
   originIsStation = true,
+  hasLocalStation = true,
   hostAppName,
   pairingClientChannel,
   allowManualCredentials = true,
   authenticatedRequest,
   onRestartInjectedConnection,
+  localStationOwnerId,
+  onReconnectLocalService,
   returnFocusTarget,
   onPairingSucceeded,
   onApprovalPending,
@@ -225,9 +247,15 @@ export function ConnectionManagerModalContent({
     // host address. Showing that to someone re-pairing a saved connection
     // would be worse than the list they were trying to skip, so fall back
     // rather than open a screen that cannot do the job asked of it.
+    // station#2205: the same applies to `pair-host` on a client-only device —
+    // its device credential cannot mint offers on the remote host, so the
+    // list is the honest landing instead of a pairing screen that can only
+    // report failure.
     initialPanel === 'request-access' && !seededRequestAccessTarget
       ? 'list'
-      : initialPanel,
+      : initialPanel === 'pair-host' && !hasLocalStation
+        ? 'list'
+        : initialPanel,
   );
   const pairingCodeTriggerRef = useRef<HTMLButtonElement>(null);
   const restorePairingCodeFocusRef = useRef(false);
@@ -982,6 +1010,7 @@ export function ConnectionManagerModalContent({
             }}
             onAddManual={() => setPanel('add')}
             onRestartInjectedConnection={onRestartInjectedConnection}
+            localStationOwnerId={localStationOwnerId}
             onRequestAccess={(connection) => {
               if (!connection) {
                 setRequestAccessTarget(null);
@@ -1020,6 +1049,7 @@ export function ConnectionManagerModalContent({
             }}
             onViewDevices={() => setPanel('devices')}
             discoveryAvailable={providerCount > 0}
+            hasLocalStation={hasLocalStation}
             onDiscover={() => {
               setPanel('discover');
               refreshCandidates();
@@ -1150,6 +1180,7 @@ export function ConnectionManagerModalContent({
                 : undefined
             }
             request={authenticatedRequest}
+            onReconnect={onReconnectLocalService}
             onCancel={() => setPanel(hostPairingReturnPanel)}
           />
         )}

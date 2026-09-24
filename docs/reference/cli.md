@@ -300,6 +300,15 @@ saved Station persistence for bootstrap and diagnostics; it never changes the
 default. A named override or merely viewing a Station also never changes the
 default.
 
+A native Desktop may save an inert broker route in this same store. It has no
+CLI transport or credential reference: `--station` and `STATION_TARGET` refuse
+that route instead of sending a direct request to its recorded Station origin.
+The strict schema means an older CLI or Desktop build that predates the
+`relayRoute` field refuses the shared profile file. Update readers sharing the
+root before saving a broker route; see [#2404](https://github.com/kontourai/station/issues/2404)
+for the mixed-version compatibility work. Current readers fail closed without
+overwriting unknown metadata.
+
 Project selection is an explicit, secret-free pointer to a saved Station:
 `station stations project use <name>` maps the canonical invoked directory in
 the owner-controlled store, `show` reports it, and `clear` removes it.
@@ -933,6 +942,7 @@ station delegate events <task-id> [--after=<cursor>] [--on=<environment>] [--jso
 station delegate continue <legacy-id> <message> [--on=<environment>] [--model=<id>] [--approval-mode=<ask|auto|never|connection-default>] [--effort=<level>] [--thinking=<true|false>] [--model-option key=value]... [--on-request=<wait|fail>] [--json] # deprecated compatibility alias
 station delegate respond <task-id> <request-id> <accept|acceptForSession|decline|cancel> [--on=<environment>] [--json]
 station delegate interrupt <task-id> [--on=<environment>] [--json]
+station delegate wait <task-id> [--on=<environment>] [--timeout=<seconds>] [--interval=<seconds>] [--json]
 station delegate targets [--on=<environment>] [--project=<slug>|--project-path=<path>] [--json]
 ```
 
@@ -963,6 +973,7 @@ station delegate --agent=station --json "Summarize the open work" --api-base=htt
 # {"ok":true,"kind":"delegate.create","data":{"taskId":"task:...","status":"dispatched",...}}
 
 station delegate status task:0f3c... --json
+station delegate wait task:0f3c... --timeout=1800 --json   # exit 0 on completed; 5 = deadline with the task last observed active
 station delegate events task:0f3c... --json
 station delegate --session=task:0f3c... "Also check the failing test" --json
 station delegate interrupt task:0f3c... --json
@@ -1020,6 +1031,76 @@ e.g. `delegate.create`, `delegate.status`, `delegate.events`,
 `delegate.continue`, `delegate.respond`, `delegate.interrupt`,
 `delegate.targets`.
 
+`wait` (#2264) is bounded, OBSERVATION-ONLY completion waiting: it polls the
+same secret-minimized status snapshot `status` reads until the task reaches
+an honest outcome or the caller's wait budget expires. It can never
+redispatch, restart, approve, decline, or interrupt the delegated provider —
+a wait deadline, Ctrl-C, or a polling failure leaves the delegated task
+untouched and running. There is no progress-based kill policy and no
+heartbeat-driven wait extension.
+
+```
+station delegate wait <task-id> [--timeout=<seconds>] [--interval=<seconds>] [--json]
+```
+
+`--timeout=<seconds>` bounds the whole wait (default 3600, max 86400);
+`--interval=<seconds>` spaces consecutive polls (default 5, max 3600).
+Both must be positive whole seconds — malformed (`abc`, `1.5`, `Infinity`),
+zero, or out-of-range values are usage errors (exit 1) before any request.
+Each HTTP status read is bounded by the REMAINING wait budget, so a hung
+read cannot silently outwait the deadline. The wait budget is the caller's
+observing budget only and is entirely separate from the delegated engine's
+own per-turn execution budget (the `supervision` facts `status` forwards):
+expiring one says nothing about the other.
+
+Outcomes are honest and distinguishable; observation ambiguity is never
+laundered into completion or failure:
+
+- `completed` — the task finished (exit 0).
+- `failed` — the server reported `failed` or `canceled` (exit 3).
+- `needs-action` — a `pendingRequest` is open, or status is `needs_input`,
+  `review_pending`, or `blocked` (exit 4). The task is alive and waiting on
+  you; answer with `station delegate respond` or `station approvals respond`.
+- `wait-timeout` — the deadline expired while the task was last observed
+  `queued`/`running` (exit 5). Waiting never stops the task, and it may have
+  advanced or finished since the last observation; re-run `wait` or check
+  `status` to see where it is now.
+- `observation-lost` — a status read failed (transport error, HTTP failure,
+  or a read bounded out by the budget) (exit 2, the delegate transport-failure
+  code). Output carries only a SAFE fixed error category (transport, HTTP
+  status, refusal code, timeout) — never the raw error message, URL, or
+  response body, which can carry peer-controlled content. The last good
+  observation is reported and explicitly NOT classified as a task failure;
+  after the loss the task's outcome is not known from here. Re-running
+  `wait` is safe.
+- `unknown` — the server reported `unknown`, or a status value this CLI
+  version cannot classify (exit 6).
+- `interrupted` — Ctrl-C (exit 130). The abort signal reaches the in-flight
+  status read itself, so a hung read cannot keep Ctrl-C blocked; the
+  listener is removed on exit. Observation stopped without cancelling the
+  task, and the task's current state is not known from here.
+
+The result reports the actually observed identifiers — the durable
+`conversationId` and the CURRENT child Session (`currentSessionId`) at the
+last observation. A continuation that replaced the child Session mid-wait is
+observed (`sessionChanged` with `previousSessionId`), never dispatched; the
+wait continues and the final envelope names the real current Session, so no
+outcome ever implies a later turn already completed.
+
+Under `--json`, exactly one envelope is written to stdout — progress text is
+suppressed, so the output stays machine-clean:
+`{"ok": <true only when completed>, "kind": "delegate.wait",
+"data": {outcome, exitCode, taskId, conversationId, currentSessionId,
+status, pendingRequest?, sessionChanged, previousSessionId?, pollCount,
+elapsedMs, timeoutMs, intervalMs, lastError? (a safe fixed error
+category — never a raw message, URL, or response body), lastSnapshot?}}`.
+Human output shows concise progress on stderr and a final summary that
+reuses `status`'s safe projection; it states explicitly that a wait timeout
+leaves the task running. Raw provider logs are never printed.
+
+Exit codes, scoped to `delegate` only (every other command's exit behavior
+is unchanged):
+
 For canonical `delegate --session`, `data` contains the foreground execution
 receipt (`conversationId`, accepted `sessionId`, `providerTurnId`, `target`, and
 `resolution`), plus `currentSessionId` as an alias of `sessionId` and
@@ -1050,9 +1131,12 @@ is unchanged):
 
 - `0` — success
 - `1` — usage error (a missing/invalid argument, before any request is attempted) — the same as every other CLI command
-- `2` — transport failure (the target Station is unreachable or timed out)
-- `3` — delegation rejection (a received-but-unsuccessful response: bad target, not ready, or a deps-unavailable/business-rejection response)
-- `4` — `--on-request=fail` found a request already pending right after dispatch/continue (the task is left alive, not torn down)
+- `2` — transport failure (the target Station is unreachable or timed out); for `wait`, also an observation lost while polling — never classified as a task failure
+- `3` — delegation rejection (a received-but-unsuccessful response: bad target, not ready, or a deps-unavailable/business-rejection response); for `wait`, the task reached `failed`/`canceled`
+- `4` — `--on-request=fail` found a request already pending right after dispatch/continue (the task is left alive, not torn down); for `wait`, the task needs your action (pending request / `needs_input` / `review_pending` / `blocked`)
+- `5` — `wait` deadline expired with the task last observed active (not a failure — waiting never stops the task)
+- `6` — `wait` observed a task status of `unknown` (or one this CLI cannot classify)
+- `130` — `wait` interrupted by Ctrl-C (the delegated task is unaffected)
 
 ### `tasks`
 
@@ -1801,7 +1885,7 @@ station environment credential rotate [--force]
 station environment reset [--force]
 station environment offer [--tailscale] [--tailscale-serve-port=<port>]
 station environment access list [--api-base=<loopback-url>|--station=<name>]
-station environment access approve [<request-id-or-offer-id>|--latest] [--force] [--bind-person] [--api-base=<loopback-url>|--station=<name>]
+station environment access approve [<request-id-or-offer-id>|--latest] [--force] [--bind-person|--bind-account|--personal-device] [--api-base=<loopback-url>|--station=<name>]
 station environment access deny [<request-id-or-offer-id>|--latest] [--force] [--api-base=<loopback-url>|--station=<name>]
 station environment access request --api-base=<host-url> [--station=<name>] [--device-name=<name>] [--timeout=<seconds>] [--force]
 station environment hosts [--api-base=<url>]
@@ -2093,7 +2177,7 @@ station checkpoints restore --thread=<threadId> --turn=<turnId> [--phase=baselin
 | `prune` | Removes a thread's checkpoint refs and reflogs (and the index/archive records naming it). Requires `--thread=<id>` or `--all`. `--gc` additionally runs `git gc --prune=now --quiet` in each affected repo so the space is actually freed, not just eligible for the next `gc.reflogExpire` window. |
 | `history` | Lists recorded checkpoint-restore events for one thread from `checkpoint-restores.json`. |
 | `retention` | Lists recorded checkpoint-retention sweep events for one thread from `checkpoint-retention.json`. |
-| `restore` | Destructive — requires `--confirm`. POSTs to `/api/orchestration/sessions/:threadId/checkpoints/:turnId/restore` on a **running** Station (`--api-base`, defaulting through the selected channel runtime resolver) to restore a session to an earlier turn's `baseline` (pre-turn) or `settle` (post-turn, the default) checkpoint. |
+| `restore` | Destructive — requires `--confirm`. The CLI first creates a short-lived restore preview, displays the exact changed paths, target tree, and current tree, then confirms that exact preview against the same running Station. The server refuses expired, reused, owner-mismatched, session/turn-mismatched, or current-tree-mismatched previews. It restores the earlier turn's `baseline` (pre-turn) or `settle` (post-turn, the default) checkpoint only while the workspace has no active or starting local turn. |
 
 `--json` on every action prints one JSON document instead of the
 human-readable form.
@@ -2104,6 +2188,11 @@ station checkpoints prune --thread=abc123 --gc
 station checkpoints prune --all --gc
 station checkpoints restore --thread=abc123 --turn=turn-7 --confirm
 ```
+
+Restore changes workspace files only. It does not rewind conversation history
+or external tool effects. A failed or indeterminate response must be inspected
+before retrying; Station does not treat response loss as confirmation that the
+workspace was unchanged.
 
 Checkpoint capture itself only runs when the `workspaceCheckpoints` setting
 is on (off by default) — `status` reporting no threads does not mean the
@@ -2507,20 +2596,30 @@ station plugin init my-plugin
 Scaffold a new plugin project using a specific template.
 
 ```
-station plugin create [name] [--template=<full|layout|provider>]
+station plugin create [name] [--template=<pane|full|provider>]
 ```
+
+Every template writes an Agent Plugins 1.0 `plugin.json` whose Station
+settings live under `extensions["io.kontourai.station"]`. The same templates
+back the in-app **Plugins → New plugin** action
+(`packages/shared/src/plugin-scaffold.ts`). The name must match the Agent
+Plugins name grammar: lowercase letters, digits, hyphens or periods.
 
 | Template | Description |
 |----------|-------------|
-| `full` | Layout + agent + build config starter |
-| `layout` | UI-focused starter with layout manifest and entrypoint |
-| `provider` | Server-side starter with `serverModule`, provider files, and request hooks |
+| `pane` | One `plugin-component` Workspace Pane (`src/index.tsx`, `src/pane.css`) and a build script |
+| `full` (default) | Two Workspace Panes, an Agent definition, and a build script |
+| `provider` | Server-side starter with `serverModule`, a branding provider, and a setting |
+| `layout` | Alias for `pane`, kept for existing scripts |
 
 ```bash
 station plugin create my-plugin --template=full
-station plugin create my-layout --template=layout
+station plugin create my-pane --template=pane
 station plugin create my-provider --template=provider
 ```
+
+`station plugin dev` previews legacy layout tabs only; it does not render
+`workspacePanes`. Install the scaffold to see its Pane.
 
 ### `plugin build`
 
@@ -2758,6 +2857,19 @@ The CLI requires the server's binding acknowledgment and reports older servers
 that approved access without recognizing the option. Revoke the paired device
 to revoke its binding; existing grants are not silently linked.
 
+When an access request reports a current server-verified account candidate, an
+operator can instead pass `--bind-account`. The confirmation names the account
+and issuer; neither value is accepted from a CLI flag. Account binding requires
+that account to sign in again on the requesting Device. The current pilot can
+view Projects the account may access; editing and running work are unavailable.
+It does not grant Project membership or personal access.
+For a request with an account candidate, the operator must choose exactly one
+of `--bind-account`, `--bind-person` (when verified Tailscale identity is also
+available), or `--personal-device`. The last choice grants an ordinary Device
+the selected scope until revocation; it does not require account relogin and is
+not limited by that account's Project membership. A stale or revoked account
+candidate fails without retrying as ordinary device approval.
+
 
 ### Portable Project identity and attachment
 
@@ -2768,6 +2880,7 @@ attachment requires an explicit destination.
 ```sh
 station projects prepare-identity website --station=laptop > project-identity.json
 station projects attach website-server --identity-file=project-identity.json --name=Website --station=server --target-workspace='~/src/website'
+station projects execution-root website-server --repo-id=github.com/example/website --path=apps/web --station=server
 ```
 
 `prepare-identity` explicitly prepares a missing identity and prints its portable
@@ -2782,3 +2895,10 @@ path quoted so the invoking shell leaves its interpretation to that Station.
 Omit `--target-workspace` for a Project with no local checkout. An existing
 conflicting Project is refused; an exact replay can return the existing
 association. Membership and compute contributions require their separate grants.
+
+`execution-root` first reads the current portable identity and then submits that
+exact snapshot as an optimistic guard. Supply `--repo-id` and a repo-relative
+`--path` to select a directory, or `--clear` to remove the selection. The named
+resource must already be declared, but it may be unbound on this Station;
+configuration never clones, binds, or grants compute. An unchanged request is
+idempotent and does not advance the identity timestamp.

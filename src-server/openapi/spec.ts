@@ -12,6 +12,7 @@ import {
   pluginOverridesSchema,
   pluginPreviewSchema,
   pluginRecoverySchema,
+  pluginValidateSchema,
   registryInstallSchema,
   skillImportSchema,
   skillOutcomeSchema,
@@ -267,6 +268,15 @@ const FIRST_PASS_PATHS: Record<
       responses: {
         409: 'Registry trust or reviewed installation state refused; inspect and review again',
       },
+    },
+  },
+  '/api/plugins/validate': {
+    post: {
+      operationId: 'validatePlugin',
+      requestBodySchema: pluginValidateSchema,
+      summary:
+        'Check a local plugin folder for authoring errors without installing, copying, or building it (local absolute paths only)',
+      tags: ['plugins'],
     },
   },
   '/api/plugins/install': {
@@ -566,6 +576,7 @@ function collectSchemas() {
     PluginOverrides: pluginOverridesSchema,
     PluginPreview: pluginPreviewSchema,
     PluginRecovery: pluginRecoverySchema,
+    PluginValidate: pluginValidateSchema,
     RegistryInstall: registryInstallSchema,
     SkillCreate: localSkillCreateSchema,
     SkillImport: skillImportSchema,
@@ -598,6 +609,7 @@ function schemaRef(schema: unknown) {
     [pluginOverridesSchema, 'PluginOverrides'],
     [pluginPreviewSchema, 'PluginPreview'],
     [pluginRecoverySchema, 'PluginRecovery'],
+    [pluginValidateSchema, 'PluginValidate'],
     [registryInstallSchema, 'RegistryInstall'],
     [localSkillCreateSchema, 'SkillCreate'],
     [skillImportSchema, 'SkillImport'],

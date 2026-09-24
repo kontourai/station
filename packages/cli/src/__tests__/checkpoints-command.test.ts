@@ -151,7 +151,19 @@ describe('station checkpoints (real git, default runner)', () => {
     const errors: string[] = [];
     const request = vi
       .fn()
-      .mockResolvedValue(
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            success: true,
+            data: {
+              previewId: 'preview-1',
+              currentTreeSha: 'a'.repeat(40),
+            },
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        ),
+      )
+      .mockResolvedValueOnce(
         new Response(
           JSON.stringify({ success: true, data: { restored: true } }),
           { status: 200, headers: { 'content-type': 'application/json' } },
@@ -184,11 +196,24 @@ describe('station checkpoints (real git, default runner)', () => {
         stdout: () => {},
       },
     );
-    expect(request).toHaveBeenCalledWith(
+    expect(request).toHaveBeenNthCalledWith(
+      1,
+      'http://127.0.0.1:3141/api/orchestration/sessions/thread-1/checkpoints/turn-1/restore-preview',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ phase: 'baseline' }),
+      }),
+    );
+    expect(request).toHaveBeenNthCalledWith(
+      2,
       'http://127.0.0.1:3141/api/orchestration/sessions/thread-1/checkpoints/turn-1/restore',
       expect.objectContaining({
         method: 'POST',
-        body: JSON.stringify({ confirmed: true, phase: 'baseline' }),
+        body: JSON.stringify({
+          confirmed: true,
+          previewId: 'preview-1',
+          expectedCurrentTreeSha: 'a'.repeat(40),
+        }),
       }),
     );
   });

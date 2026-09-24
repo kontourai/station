@@ -9,7 +9,8 @@ import {
   isSafeCheckpointRefSegment,
   removeThreadCheckpointRefs,
 } from '@kontourai/station-shared/checkpoints';
-import { execGit, spawnGit } from '../../utils/git-exec.js';
+import { execGit, killGitProcessTree, spawnGit } from '../../utils/git-exec.js';
+import { checkRepositoryConfig } from '../projects/git-repository-config.js';
 
 /**
  * Workspace checkpoint ref store (archive#2802, slice 1).
@@ -90,7 +91,8 @@ type CheckpointDegradedReason =
   | 'detached_head'
   | 'rebase_in_progress'
   | 'git_timeout'
-  | 'capture_failed';
+  | 'capture_failed'
+  | 'repository_config_refused';
 
 export interface CapturedCheckpoint {
   checkpointId: string;
@@ -235,6 +237,27 @@ export class CheckpointRefStore {
       encoding: 'utf-8' as const,
       timeout: this.gitTimeoutMs,
     };
+
+    // #2410: `add -A` below runs a clean filter the repository's own config
+    // defines, as the operator, with nobody having clicked anything. The
+    // runner cannot switch a per-file filter off, so such a repository gets
+    // no checkpoints, by the same rule the coding routes apply before
+    // `status` and `diff` (`git-repository-config.ts`). Checked on every
+    // capture, not once: the config can change between turns.
+    const config = await checkRepositoryConfig(repoRoot, 'read');
+    if (!config.ok) {
+      return {
+        status: 'degraded',
+        reason:
+          config.code === 'repository-config-refused'
+            ? 'repository_config_refused'
+            : 'capture_failed',
+        detail:
+          config.code === 'repository-config-refused'
+            ? `repository config sets ${config.keys.join(', ')}`
+            : "git could not read the repository's configuration",
+      };
+    }
 
     try {
       await this.assertHeadSnapshotable(repoRoot);
@@ -748,7 +771,8 @@ async function batchCheckObjects(
       resolve(value);
     };
     const timer = setTimeout(() => {
-      child.kill('SIGTERM');
+      // The whole process group: git behind macOS's xcrun shim included.
+      killGitProcessTree(child, 'SIGKILL');
       finish(null);
     }, timeoutMs);
     child.stdout?.setEncoding('utf-8');

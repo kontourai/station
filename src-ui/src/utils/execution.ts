@@ -20,6 +20,10 @@ import {
   type ModelOption,
   type RuntimeCatalogSource,
 } from '@kontourai/station-contracts/tool';
+import {
+  type ConversationActivityCarrier,
+  serverTurnLive,
+} from './conversation-activity';
 import { modelDisplayLabel } from './modelCapabilities';
 import { modelProviderDisplayLabel } from './modelProviderDisplay';
 
@@ -394,6 +398,11 @@ export function runtimeCatalogVisibleModels(
   if (!runtimeCatalog) {
     return asModelOptions(runtimeConnection?.config.modelOptions);
   }
+  // A live answer is authoritative, including an empty one. Falling through
+  // to builtInModels here is how a dated snapshot hid later models.
+  if (runtimeCatalog.source === 'live') {
+    return runtimeCatalog.models ?? [];
+  }
   // A connection's catalog may omit models/builtInModels entirely — guard so a
   // partial catalog doesn't crash callers that render a model picker from it.
   if (runtimeCatalog.models?.length) {
@@ -606,7 +615,7 @@ type SessionExecutionSummary = {
 
 type SessionExecutionActivity = SessionExecutionSummary & {
   status?: string | null;
-};
+} & ConversationActivityCarrier;
 
 export function isManagedRuntimeConnectionId(
   agentConnectionId?: string | null,
@@ -1078,15 +1087,24 @@ function orchestrationStatusIsSessionSettled(status: string): boolean {
  * running a posture the composer is simultaneously claiming.
  */
 export function chatSessionIsLive(
-  session?: {
-    orchestrationSessionStarted?: boolean;
-    orchestrationStatus?: string;
-    orchestrationTurnOpen?: boolean;
-  } | null,
+  session?:
+    | ({
+        orchestrationSessionStarted?: boolean;
+        orchestrationStatus?: string;
+        orchestrationTurnOpen?: boolean;
+      } & ConversationActivityCarrier)
+    | null,
 ): boolean {
   if (!session) return false;
   if (session.orchestrationSessionStarted !== true) return false;
-  if (session.orchestrationTurnOpen === true) return true;
+  // #2309: the server's open turn, when it sent a record; the legacy fold
+  // only when it did not.
+  if (
+    session.conversationActivity
+      ? serverTurnLive(session) === true
+      : session.orchestrationTurnOpen === true
+  )
+    return true;
   if (!session.orchestrationStatus) return false;
   return !orchestrationStatusIsSessionSettled(session.orchestrationStatus);
 }
@@ -1095,6 +1113,15 @@ export function isSessionExecutionActive(
   session?: SessionExecutionActivity | null,
 ): boolean {
   if (!session) return false;
+  // #2309: with a server record, "doing anything" is the server's open turn
+  // (or this composer's unacknowledged send) plus a wait on the user. The
+  // coarse `orchestrationStatus: 'running'` is the provider's process state
+  // and is not consulted: it is exactly the flag that survived a missed
+  // terminal and kept a finished thread looking active.
+  const server = serverTurnLive(session);
+  if (server !== undefined) {
+    return server || session.orchestrationStatus === 'awaiting-approval';
+  }
   // OR the two liveness signals rather than letting a stale
   // `orchestrationStatus` (e.g. 'idle' left over from the previous turn)
   // veto a locally-initiated send. `status === 'sending'` flips the moment
@@ -1141,6 +1168,12 @@ type TurnStreamActivity = SessionExecutionActivity & {
  */
 export function isTurnStreamLive(session?: TurnStreamActivity | null): boolean {
   if (!session) return false;
+  // #2309: the server's record decides first. It is folded from committed
+  // events for the whole conversation, so a reload, a reconnect, another
+  // device and a lineage child all read the same answer, and a content delta
+  // on its own can never make a turn look live.
+  const server = serverTurnLive(session);
+  if (server !== undefined) return server;
   if (session.orchestrationSessionStarted) {
     return (
       session.orchestrationTurnOpen === true || session.status === 'sending'

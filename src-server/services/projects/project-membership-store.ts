@@ -248,6 +248,59 @@ export class ProjectMembershipStore {
     return scope;
   }
 
+  readableProjectScopes(actor: PrincipalRef): ProjectMembershipScope[] {
+    return this.readableProjectAdmissions(actor).map(({ scope }) => scope);
+  }
+
+  readableProjectAdmissions(actor: PrincipalRef): Array<{
+    scope: ProjectMembershipScope;
+    member: ProjectMemberView;
+  }> {
+    if (!isPrincipalRef(actor)) throw new ProjectMembershipRefusal('forbidden');
+    return this.readableProjectAdmissionsForPrincipalId(actor.id);
+  }
+
+  /**
+   * The same admissions, keyed on a principal id Station resolved itself
+   * (a verified agent session's recorded owner, #90 D5). Never an id from
+   * request input: there is no authenticated actor to compare it with here.
+   */
+  readableProjectAdmissionsForPrincipalId(principalId: string): Array<{
+    scope: ProjectMembershipScope;
+    member: ProjectMemberView;
+  }> {
+    if (typeof principalId !== 'string' || principalId.length === 0)
+      throw new ProjectMembershipRefusal('forbidden');
+    return this.db
+      .prepare(
+        'SELECT shared_projects.local_id, shared_projects.portable_id, shared_projects.local_slug, project_members.record FROM shared_projects JOIN project_members ON project_members.project_id=shared_projects.local_id WHERE project_members.principal_id=? ORDER BY shared_projects.local_slug',
+      )
+      .all(principalId)
+      .flatMap((row) => {
+        if (
+          typeof row.local_id !== 'string' ||
+          typeof row.portable_id !== 'string' ||
+          typeof row.local_slug !== 'string'
+        )
+          throw new ProjectMembershipRefusal('unavailable');
+        const member = this.parseMember(row.record);
+        return member.status === 'active' &&
+          this.actions(member.role).includes('view')
+          ? [
+              {
+                scope: {
+                  stationId: this.stationId,
+                  localProjectId: row.local_id,
+                  portableProjectId: row.portable_id,
+                  localProjectSlug: row.local_slug,
+                },
+                member: { ...member, actions: this.actions(member.role) },
+              },
+            ]
+          : [];
+      });
+  }
+
   invitationScope(token: string): ProjectMembershipScope {
     const { scope, invitation } = this.pendingInvitation(token);
     this.requireGrant(scope, invitation.invitedBy, invitation.role);

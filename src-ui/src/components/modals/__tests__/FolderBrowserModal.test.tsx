@@ -99,6 +99,130 @@ describe('FolderBrowserModal', () => {
     expect(screen.queryByText('..')).toBeNull();
   });
 
+  // Windows navigation is server-driven: the server owns the path semantics
+  // (the UI may be browsing a remote Windows host from any client). These
+  // cases pin the contract that replaced the POSIX-only `..` regex, which
+  // could not climb backslash paths at all.
+  test('navigates a Windows listing via the server-provided parent and entry paths', () => {
+    browseMock.mockImplementation((path?: string) => {
+      if (path === 'C:\\') {
+        return {
+          data: {
+            path: 'C:\\',
+            parent: '\\',
+            selectable: true,
+            entries: [
+              { name: 'Projects', isDirectory: true, path: 'C:\\Projects' },
+            ],
+          },
+        };
+      }
+      return {
+        data: {
+          path: 'C:\\Projects',
+          parent: 'C:\\',
+          selectable: true,
+          entries: [
+            { name: 'src', isDirectory: true, path: 'C:\\Projects\\src' },
+          ],
+        },
+      };
+    });
+
+    render(
+      <FolderBrowserModal
+        onSelect={vi.fn()}
+        onClose={vi.fn()}
+        initialPath={'C:\\Projects'}
+      />,
+    );
+
+    fireEvent.click(screen.getByText('..'));
+    expect(browseMock).toHaveBeenCalledWith('C:\\');
+
+    // Drives and children carry their own full paths — no client-side join.
+    fireEvent.click(screen.getByText('Projects'));
+    expect(browseMock).toHaveBeenCalledWith('C:\\Projects');
+  });
+
+  test('renders the Windows drive level: no "..", labelled, unselectable, drives navigate', () => {
+    browseMock.mockReturnValue({
+      data: {
+        path: '\\',
+        parent: null,
+        label: 'This PC',
+        selectable: false,
+        entries: [
+          { name: 'C:', isDirectory: true, path: 'C:\\' },
+          { name: 'D:', isDirectory: true, path: 'D:\\' },
+        ],
+      },
+    });
+
+    render(
+      <FolderBrowserModal
+        onSelect={vi.fn()}
+        onClose={vi.fn()}
+        initialPath={'\\'}
+      />,
+    );
+
+    expect(screen.queryByText('..')).toBeNull();
+    const location = screen.getByText('This PC');
+    expect(location.getAttribute('aria-current')).toBe('location');
+
+    const selectButton = screen.getByRole('button', {
+      name: 'Select This Folder',
+    });
+    expect(selectButton).toHaveProperty('disabled', true);
+
+    fireEvent.click(screen.getByText('D:'));
+    expect(browseMock).toHaveBeenCalledWith('D:\\');
+  });
+
+  // Older servers predate `parent`/per-entry `path`; the local fallback must
+  // still climb backslash paths correctly (this is the exact regression that
+  // made the Windows picker unable to leave the starting folder).
+  test('derives ".." locally for older servers on Windows paths', () => {
+    browseMock.mockReturnValue({
+      data: {
+        path: 'C:\\Users\\brian',
+        entries: [{ name: 'dev', isDirectory: true }],
+      },
+    });
+
+    render(
+      <FolderBrowserModal
+        onSelect={vi.fn()}
+        onClose={vi.fn()}
+        initialPath={'C:\\Users\\brian'}
+      />,
+    );
+
+    fireEvent.click(screen.getByText('..'));
+    expect(browseMock).toHaveBeenCalledWith('C:\\Users');
+
+    // Legacy entries are joined with the listing's own separator.
+    fireEvent.click(screen.getByText('dev'));
+    expect(browseMock).toHaveBeenCalledWith('C:\\Users\\brian\\dev');
+  });
+
+  test('treats a Windows drive root as the top for older servers', () => {
+    browseMock.mockReturnValue({
+      data: { path: 'C:\\', entries: [] },
+    });
+
+    render(
+      <FolderBrowserModal
+        onSelect={vi.fn()}
+        onClose={vi.fn()}
+        initialPath={'C:\\'}
+      />,
+    );
+
+    expect(screen.queryByText('..')).toBeNull();
+  });
+
   test('selecting the resolved folder calls onSelect and onClose', () => {
     browseMock.mockReturnValue({
       data: { path: '/tmp', entries: [{ name: 'project', isDirectory: true }] },

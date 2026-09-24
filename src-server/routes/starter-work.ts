@@ -10,6 +10,11 @@ import {
   StarterWorkConflictError,
   StarterWorkUnavailableError,
 } from '../services/starter-work/starter-work-module.js';
+import {
+  fullAccessGrantForRequest,
+  refuseUngrantedFullAccess,
+  requestedApprovalMode,
+} from './orchestration/approval-authority.js';
 import { getBody, validate } from './schemas/schemas.js';
 
 const taskReferenceSchema = z
@@ -227,11 +232,23 @@ export function createStarterWorkRoutes(registry: StarterRegistry) {
     try {
       const body = getBody(c) as never;
       const starterId = (body as { starterId: string }).starterId;
+      if (starterId === 'start-task') {
+        // #2436: refused before the Task is created. The dispatcher enforces
+        // the same grant for every caller; this only keeps a refused launch
+        // from leaving a Task behind.
+        const fullAccessRefused = refuseUngrantedFullAccess(c, [
+          requestedApprovalMode(
+            (body as z.infer<typeof startTaskLaunchSchema>).dispatch
+              ?.runtimeConfig?.modelOptions,
+          ),
+        ]);
+        if (fullAccessRefused) return fullAccessRefused;
+      }
       const result =
         starterId === 'continue-session'
           ? await registry.launchContinueSession(body)
           : starterId === 'start-task'
-            ? await registry.launchStartTask(body)
+            ? await registry.launchStartTask(body, fullAccessGrantForRequest(c))
             : starterId === 'run-scheduled-check'
               ? await registry.launchScheduledCheck(body)
               : await registry.launchInspection(body);

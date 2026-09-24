@@ -27,7 +27,7 @@ function createForm(
     region: '',
     guardrails: null,
     maxSteps: '',
-    tools: { mcpServers: [], available: [], autoApprove: [] },
+    tools: { mcpServers: [], available: [], autoApprove: [], browser: true },
     execution: {
       agentConnectionId: 'claude',
       modelConnectionId: '',

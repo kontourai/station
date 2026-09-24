@@ -121,7 +121,11 @@ export interface MuseActiveTurn {
    * see `muse-adapter.ts`'s `outputTextDetail`.
    */
   outputText: string;
-  /** True once a terminal event (`run_terminal` or child exit) closed the turn. */
+  /**
+   * True once a terminal event closed the turn: usually `run_terminal` or
+   * the child exiting. A completed `run_terminal` while background work is
+   * pending does NOT settle (#2300, see `heldRuns`).
+   */
   settled: boolean;
   /** Set by `interruptTurn`/`stopSession` so the exit handler can classify. */
   interrupted: boolean;
@@ -140,10 +144,149 @@ export interface MuseActiveTurn {
   stdoutOverflowed: boolean;
   terminationPromise?: Promise<boolean>;
   /**
-   * Per-turn deadline. Cleared only when the slot is freed, so a child that
-   * emits `run_terminal` and then wedges is still killed and reaped.
+   * #2269: per-turn deadlines, both cleared only when the slot is freed.
+   *
+   * - `totalTimeoutHandle`: armed ONLY when the server declared a turn budget
+   *   (`turnTimeoutMs`); absolute from turn start, never rescheduled.
+   * - `idleTimeoutHandle`: while the turn is live, armed ONLY when the
+   *   server declared an idle bound (`turnIdleTimeoutMs`): full silence with
+   *   no verified protocol activity AND no tool in flight; rescheduled by
+   *   `noteVerifiedActivity`, and not armed at all while a tool is in flight
+   *   (an open call not yet in `awaitingResultToolCalls`). Once the turn has
+   *   settled it is the lingering-child reap (`lingeringChildReapMs`).
    */
-  timeoutHandle?: ReturnType<typeof setTimeout>;
+  totalTimeoutHandle?: ReturnType<typeof setTimeout>;
+  idleTimeoutHandle?: ReturnType<typeof setTimeout>;
+  /**
+   * Declared idle bound for this turn (server-owned config), or `undefined`
+   * when none was declared — the default (#2269): a silent live turn is
+   * surfaced, never ended by Station.
+   */
+  idleLimitMs: number | undefined;
+  /**
+   * How long the child may keep running after this turn settled before it
+   * is reaped (#2328/#2300): the declared idle window, else
+   * `MUSE_LINGERING_CHILD_REAP_MS`.
+   */
+  lingeringChildReapMs: number;
+  /**
+   * Declared absolute budget for this turn (server-owned config), or
+   * `undefined` when none was declared — the default: no total timer.
+   */
+  totalLimitMs: number | undefined;
+  /** Wall-clock of the last verified protocol activity (turn start initially). */
+  lastProgressAt: number;
+  /**
+   * Tool-result ids already counted as liveness, oldest-first, bounded by
+   * `MUSE_SEEN_TOOL_CALL_IDS_MAX`. A replayed receipt is still published
+   * (the transcript is a fact) but never reschedules idle.
+   */
+  seenToolCallIds: string[];
+  /**
+   * #2308: what each muse task has revealed about itself so far, keyed by
+   * `task_id` (see `observeMuseToolTask`). Bounded by the same cap as
+   * `seenToolCallIds`; a task is dropped at its final lifecycle phase.
+   */
+  toolTasks: Map<string, MuseToolTaskBinding>;
+  /**
+   * Tool calls this turn published `tool.started` for and has not yet seen a
+   * result for (`call_id` -> tool name). Whatever remains when the turn
+   * settles is closed as `unresolved`.
+   */
+  openToolCalls: Map<string, string>;
+  /**
+   * Open calls whose muse task already reached `completed`/`failed`, keyed
+   * by `call_id` to that phase: still awaiting (and pairable with) their
+   * `tool_result`, but no longer running, so they do not hold the idle
+   * deadline disarmed. If the result never arrives, settle reports the
+   * phase muse gave rather than `unresolved`. Keys are always a subset of
+   * `openToolCalls`. Tracked per call id: two tasks sharing one `call_id`
+   * share this entry (a disclosed limit — the first task finishing re-arms
+   * idle even if the second is still running).
+   */
+  awaitingResultToolCalls: Map<string, 'completed' | 'failed'>;
+  /**
+   * #2300: background tasks a `workflow` tool result announced as `launched`
+   * and whose `task_lifecycle` has not yet reported a final phase, keyed by
+   * muse's `taskId`. Each has an open tool row `muse-task:<taskId>`.
+   *
+   * Deliberately NOT in `openToolCalls`: those are calls of the current run
+   * that settle's #2308 closure reports as unresolved, and a background task
+   * is not a call — its launching call already completed. While this map is
+   * non-empty the idle deadline is disarmed, and a completed `run_terminal`
+   * holds the turn open instead of settling it.
+   */
+  pendingBackgroundTasks: Map<
+    string,
+    { toolCallId: string; toolName: string; announcedAt: number }
+  >;
+  /**
+   * #2300: background tasks that reached a final phase with no follow-up run
+   * submitted for them yet (cleared by the follow-up's `command_accepted`,
+   * client id `muse-runtime-background-terminal`). Muse delivers every settled task's
+   * result in an automatic follow-up run, so while this is non-empty a
+   * completed `run_terminal` still holds the turn — even when the task
+   * settled BEFORE the run that launched it ended.
+   */
+  awaitingReportTasks: Set<string>;
+  /**
+   * #2300: resolves once the turn's slot is freed (`finishTurn`). A send
+   * that arrives while the previous turn is settled but its child is still
+   * exiting waits on this, bounded, instead of being refused outright.
+   */
+  slotReleased: Promise<void>;
+  /**
+   * #2300: set when Station tried to stop this child and could not confirm
+   * it stopped. A send that finds the slot still held by such a turn is
+   * refused definitively, not retryably: the slot frees only if the process
+   * exits on its own or the idle reap, one window later, confirms stopping
+   * it — no prompt retry will succeed.
+   */
+  terminationUnconfirmed?: boolean;
+  /**
+   * #2300: tasks that settled while no run had yet been held, i.e. before
+   * the run that launched them ended. Only a clean exit held for such tasks
+   * alone is closed without a warning (the unverified-invariant case).
+   */
+  settledBeforeHold: Set<string>;
+  resolveSlotReleased: () => void;
+  /**
+   * #2300: how many completed runs this turn has held open for pending
+   * background work. Non-zero means muse's automatic follow-up run is being
+   * delivered on this turn: a child exit now closes the turn with
+   * `turn.completed` (see the adapter's exit handler), not `runtime.error`.
+   */
+  heldRuns: number;
+  /**
+   * #2300: set when a run is held and cleared by the next run's first text:
+   * that run's text is joined to the earlier text with a paragraph break,
+   * so the streamed transcript and `turn.completed.outputText` agree.
+   */
+  runSeparatorPending: boolean;
+  /**
+   * #2300: true once the current run has streamed a non-empty delta, so its
+   * `run_terminal.text` (the run's FULL text) is not appended a second time.
+   */
+  runStreamedText: boolean;
+  /**
+   * #2300: number of background rows settle closed while the child could
+   * still be running them. If the idle deadline later reaps that child, the
+   * reap is announced with a `runtime.warning` rather than done silently.
+   */
+  backgroundRowsClosedAtSettle: number;
+}
+
+/**
+ * What `observeMuseToolTask` has learned about one muse task so far. A task
+ * only becomes a tool start once BOTH identities and `started` have been
+ * observed for the same `task_id`.
+ */
+export interface MuseToolTaskBinding {
+  toolName?: string;
+  toolCallId?: string;
+  started: boolean;
+  /** True once this binding has produced its start. */
+  emitted?: boolean;
 }
 
 export interface MuseSessionRecord {

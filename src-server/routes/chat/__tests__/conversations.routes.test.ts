@@ -3070,6 +3070,10 @@ describe('Global Conversation Routes', () => {
         source: 'runtime',
         projectSlug: 'proj-runtime',
         mutable: false,
+        referenceEligibility: {
+          eligible: true,
+          visibility: 'personal-private',
+        },
       }),
       expect.objectContaining({
         id: 'store-1',
@@ -3077,6 +3081,10 @@ describe('Global Conversation Routes', () => {
         agentSlug: 'station',
         projectSlug: 'proj-store',
         mutable: true,
+        referenceEligibility: {
+          eligible: true,
+          visibility: 'personal-private',
+        },
       }),
     ]);
     // Per-user ACL: the route hands the resolved caller identity to the

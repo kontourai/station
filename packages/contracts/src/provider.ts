@@ -138,6 +138,55 @@ export const SESSION_VISIBILITY_METADATA_KEY = 'sessionVisibility';
 /** Durable conversation/Station ownership is always resolved by Station. */
 export const CONVERSATION_ID_RESERVED_METADATA_KEY = 'conversationId';
 export const ENVIRONMENT_ID_RESERVED_METADATA_KEY = 'environmentId';
+/**
+ * #484 phase A: server-minted marker that a session was started for an
+ * explicit portable-execution intent, carrying the admitted consent
+ * identity (`{ portableProjectId, resourceId }`). Reserved so no public
+ * caller can forge (or omit-then-claim) portable consent into the untyped
+ * `metadata` bag: continuation paths (`continueDelegatedTask`,
+ * `respondToDelegatedTaskRequest`) read this marker off the persisted
+ * session binding and refuse a portable continuation that arrives without
+ * a freshly re-admitted offer. The one legitimate writer is the
+ * delegation dispatch, through `startSessionInternal`'s
+ * `portableExecutionConsent` internal-only option, which re-stamps this
+ * key into `metadata` AFTER the reserved-key strip runs.
+ *
+ * #484 continuation: the marker ALSO carries the ORIGINAL receiver-local
+ * Project incarnation (`localProjectId` — the receiver Project record id
+ * the admission was captured against). Two fields plus cwd/slug cannot
+ * recognize a removed/recreated Project at the same path: the effect
+ * guards compare the persisted incarnation against the freshly admitted
+ * one, so a same-path replacement refuses instead of executing. Markers
+ * minted before this field existed fail closed (they cannot prove their
+ * association) and require a new explicit execution — they are never
+ * silently upgraded. See `PortableExecutionConsentMarker`.
+ */
+export const PORTABLE_EXECUTION_CONSENT_METADATA_KEY =
+  'portableExecutionConsent';
+
+/**
+ * #484 continuation: the server-issued portable consent marker shape,
+ * owned HERE next to the reserved key so public callers can neither forge
+ * it (the reserved-key strip removes it from every start input; only the
+ * internal-only consent re-stamp writes it) nor clear it by omission
+ * (reads are off persisted events, never the request).
+ *
+ * - `portableProjectId` / `resourceId`: the admitted portable consent
+ *   identity (the operator's offered association).
+ * - `localProjectId`: the ORIGINAL receiver-local Project incarnation —
+ *   the receiver Project record id the admission was captured against.
+ *   A recreated Project at the same path mints a new record id, so the
+ *   persisted incarnation proves the thread's history consented to THIS
+ *   incarnation, not a same-path successor.
+ *
+ * Additive and closed: readers MUST treat a marker missing `localProjectId`
+ * as unprovable (fail closed), never as consent to the current incarnation.
+ */
+export interface PortableExecutionConsentMarker {
+  readonly portableProjectId: string;
+  readonly resourceId: string;
+  readonly localProjectId: string;
+}
 /** Immutable Agent presentation copied into session start/configuration metadata. */
 export const SESSION_AGENT_DISPLAY_NAME_METADATA_KEY = 'agentName';
 export const SESSION_AGENT_ICON_METADATA_KEY = 'agentIcon';
@@ -179,6 +228,7 @@ export const RESERVED_ORCHESTRATION_METADATA_KEYS = [
   SESSION_VISIBILITY_METADATA_KEY,
   CONVERSATION_ID_RESERVED_METADATA_KEY,
   ENVIRONMENT_ID_RESERVED_METADATA_KEY,
+  PORTABLE_EXECUTION_CONSENT_METADATA_KEY,
   SESSION_AGENT_DISPLAY_NAME_METADATA_KEY,
   SESSION_AGENT_ICON_METADATA_KEY,
   FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY,
@@ -259,15 +309,25 @@ export function resolveModelLaunchPlan(
 ): ModelLaunchPlan {
   const requestedModelId = options.requestedModelId?.trim();
   const retainedModelId = options.retainedModelId?.trim();
-  // A turn may restate the model the engine already confirmed for the
-  // session. That is retention, not a per-turn override.
+  // A turn or a resume may restate the model the engine already confirmed
+  // for the session — that is retention, not a new launch. Scoped to the
+  // lifecycles whose override capability is `false`: where an override IS
+  // supported, the same selector rides the override path and its evidence
+  // unchanged. 2026-09-18 live incident: an OpenCode (ACP) session recovered
+  // after its engine exited refused the client's restated selector as
+  // `resume-override-unsupported`, so the conversation could not be
+  // continued from the UI while a model was selected — the recovery path
+  // passes the retained model, and the restatement could never reach the
+  // adapter's fresh start, which does support it.
   const isRetainedRestatement =
-    options.lifecycle === 'turn' &&
-    capabilities?.overridePerTurn === false &&
     requestedModelId !== undefined &&
     requestedModelId !== '' &&
     retainedModelId !== undefined &&
-    requestedModelId === retainedModelId;
+    requestedModelId === retainedModelId &&
+    ((options.lifecycle === 'turn' &&
+      capabilities?.overridePerTurn === false) ||
+      (options.lifecycle === 'resume' &&
+        capabilities?.overrideAtResume === false));
   const isOverride =
     requestedModelId !== undefined &&
     requestedModelId !== '' &&
@@ -586,6 +646,64 @@ export const ENGINE_SESSION_BINDING_DEAD_CODE = 'engine-session-binding-dead';
 export const ENGINE_TURN_FAILED_CODE = 'engine-turn-failed';
 
 /**
+ * #2269: `runtime.error` codes for a Muse turn that a Station-owned deadline
+ * ended — a full idle window with no verified activity and no tool reported running,
+ * or the turn budget a server-owned caller declared. Neither reports an
+ * engine or connection failure. Published by the Muse adapter; the UI reads
+ * them so its copy names the deadline instead of guessing at a cause.
+ * `muse-turn-timeout` predates #2269 and keeps its string for existing
+ * attribution.
+ */
+export const MUSE_TURN_IDLE_TIMEOUT_CODE = 'muse-turn-idle-timeout';
+export const MUSE_TURN_TOTAL_TIMEOUT_CODE = 'muse-turn-timeout';
+
+/**
+ * #2300: `runtime.warning` code for a Muse child that Station's
+ * lingering-child reap stopped AFTER its turn had already ended, while
+ * background work the turn launched may still have been running in it (the
+ * turn closed that work's rows as unresolved). Stopping the child ends that work, so the reap is
+ * announced rather than done silently. A warning, not an error: the turn's
+ * own outcome was already published and is not changed by it.
+ */
+export const MUSE_LINGERING_CHILD_REAPED_CODE = 'muse-lingering-child-reaped';
+
+/**
+ * #2300: `runtime.warning` code for a Muse turn held open for background
+ * work (see the Muse adapter) that ended without muse delivering the
+ * result: its follow-up run ended without completing, the process exited
+ * first, or a declared turn budget expired. The turn itself still closes
+ * with `turn.completed` — never `runtime.error`, whose "Send again" would
+ * re-launch the work — so this warning is where the terminal, reason, or
+ * exit code is recorded. It is persisted in the session's event log (the
+ * session diagnostics log shows it) and toasted live; the transcript does
+ * not render it.
+ */
+export const MUSE_HELD_TURN_UNFINISHED_CODE = 'muse-held-turn-unfinished';
+
+/**
+ * #2300: refusal code for a Muse send that arrived while the previous
+ * turn had already ended but its `muse exec` process had not yet exited,
+ * and did not exit within the adapter's short wait. The previous process
+ * still owns the session's `--session-id`, so the send is refused rather
+ * than run concurrently — retryable, because that process is only exiting:
+ * the same send succeeds once it is gone (or once Station's idle reap stops
+ * a process that lingers). Used ONLY while Station has not already tried to
+ * stop that process and failed to confirm it; a slot held by such a process
+ * frees itself on no schedule, so that send is refused definitively instead
+ * (no code; stop the session to recover).
+ */
+export const MUSE_TURN_SLOT_RELEASING_CODE = 'muse_turn_slot_releasing';
+
+/**
+ * #2324: refusal code for a send that arrived while the engine is running a
+ * turn it opened on its own (a provider-triggered turn, see
+ * `PROVIDER_TURN_TRIGGER`). Accepting it would fold the message into a reply
+ * the user did not ask for. Retryable: the same send succeeds once that turn
+ * closes, so clients keep it queued and send it then.
+ */
+export const PROVIDER_TURN_IN_PROGRESS_CODE = 'provider_turn_in_progress';
+
+/**
  * Whether Station owns an orchestration session or only follows it.
  *
  * Older persisted sessions omit this field and are treated as station-owned
@@ -678,6 +796,12 @@ export interface ResolvedAgentDefinition {
    * authored empty array, which simply means "no shortcuts").
    */
   autoApprove?: string[];
+  /**
+   * #90 D14: `false` when the agent's operator switched the built-in browser
+   * tools (`station-browser`) off. Absent means the engine's default: an
+   * adapter with bound in-process delivery (Claude) serves them.
+   */
+  browserTools?: boolean;
   // Later waves (additive): model preferences.
 }
 

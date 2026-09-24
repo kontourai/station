@@ -29,6 +29,10 @@ const turnActionsMenu = readFileSync(
   join(uiRoot, 'components', 'chat', 'TurnActionsMenu.tsx'),
   'utf8',
 );
+const turnActionsMenuCss = readFileSync(
+  join(uiRoot, 'components', 'chat', 'TurnActionsMenu.css'),
+  'utf8',
+);
 const turnProvenanceCard = readFileSync(
   join(uiRoot, 'components', 'chat', 'TurnProvenanceCard.tsx'),
   'utf8',
@@ -144,12 +148,13 @@ describe('chat message responsive layout contract (station#4241/#4244)', () => {
     const footerActions = messageBubble.indexOf(
       'className="turn-footer__actions"',
     );
-    const shareContent = messageBubble.indexOf('shareContent={');
+    // #2211: the share affordance is composed under the overflow menu's
+    // `provenance.shareContent` prop and mounts only inside that dialog.
+    const shareContent = messageBubble.indexOf('shareContent: (');
     const shareLoader = messageBubble.indexOf('load={loadShareAnswerButton}');
     expect(footerActions).toBeGreaterThanOrEqual(0);
     expect(shareContent).toBeGreaterThanOrEqual(0);
     expect(shareLoader).toBeGreaterThan(shareContent);
-    expect(footerActions).toBeGreaterThan(shareLoader);
     expect(messageBubble.indexOf('load={loadTurnActionsMenu}')).toBeGreaterThan(
       footerActions,
     );
@@ -215,5 +220,46 @@ describe('chat message responsive layout contract (station#4241/#4244)', () => {
     expect(chatCss.slice(narrowRuleEnd + 1)).not.toMatch(
       /\.turn-footer \.turn-footer__actions\s*\{[^}]*align-self:/s,
     );
+  });
+
+  test('side-mode keeps the transcript on the main-view alignment model', () => {
+    // The side dock used to set `align-items: flex-end` on `.chat-messages`.
+    // Every transcript row is a shrink-wrappable `.chat-message-anchor`, so
+    // that override pushed ASSISTANT answers (avatar and all) against the
+    // dock's far edge. The side-mode rules may style the scroll surface but
+    // must not override the column's default stretch again.
+    const sideMessageLists =
+      indexCss.match(
+        /\.app__main > :is\(\[data-region="left"\], \[data-region="right"\]\)\s*\.chat-messages\s*\{[^}]*\}/g,
+      ) ?? [];
+    expect(sideMessageLists).not.toHaveLength(0);
+    for (const body of sideMessageLists) {
+      expect(body).not.toContain('align-items');
+    }
+    // The mechanism user-message right-alignment relies on without the
+    // container override: the row is full width and reversed.
+    expect(rule(chatCss, '.message-row--user')).toContain(
+      'flex-direction: row-reverse',
+    );
+  });
+
+  test('the turn overflow menu escapes the bubble instead of being clipped by it', () => {
+    const menu = rule(turnActionsMenuCss, '.turn-footer__overflow-menu');
+    // Fixed, not absolute: the menu portals to the document because the
+    // side-mode `.message` rule clips `overflow-x` at the bubble edge, so any
+    // in-bubble anchor is cut off exactly there.
+    expect(menu).toContain('position: fixed');
+    // Portalled menus need a chrome-beating tier: `--layer-popover` (1000)
+    // paints underneath `.chat-dock` (`--layer-dock`, 9200) — the shape
+    // recorded on `.chat-dock__more-menu` in index.css.
+    expect(menu).toContain('z-index: var(--layer-navigation)');
+    expect(menu).not.toContain('--layer-popover');
+    // In-bubble anchoring must not survive beside the fixed positioning;
+    // coordinates belong to the component's measured inline style.
+    expect(menu).not.toContain('bottom:');
+    expect(menu).not.toContain('right:');
+    // The CSS extent and the placement constant are one fact in two files.
+    expect(menu).toContain('min-width: 180px');
+    expect(turnActionsMenu).toContain('MENU_MIN_WIDTH_PX = 180');
   });
 });

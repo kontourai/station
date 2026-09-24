@@ -1,5 +1,9 @@
 // @vitest-environment jsdom
 import { PRINCIPAL_UNRESOLVED_CODE } from '@kontourai/station-contracts/principal';
+import {
+  MUSE_TURN_IDLE_TIMEOUT_CODE,
+  MUSE_TURN_TOTAL_TIMEOUT_CODE,
+} from '@kontourai/station-contracts/provider';
 import { describe, expect, it } from 'vitest';
 import {
   formatChatErrorDisplay,
@@ -12,6 +16,31 @@ import {
 // planning, so these are representative, pattern-matched fixtures —
 // (archive#196) is where the live text gets confirmed against these patterns.
 describe('translateChatError', () => {
+  // #2269: a Station-owned deadline is not a transient engine failure, so
+  // the fallback's retry hint must not appear, and the headline names the
+  // deadline rather than a generic "Error". The codes come from the same
+  // contract the Muse adapter publishes them from.
+  it.each([
+    [
+      MUSE_TURN_IDLE_TIMEOUT_CODE,
+      'Muse turn was idle for 1800000ms with no verified protocol activity and no tool running (last activity at 2026-09-22T18:05:05.000Z), so Station stopped it.',
+      /going quiet/i,
+    ],
+    [
+      MUSE_TURN_TOTAL_TIMEOUT_CODE,
+      'Muse did not finish the turn within the 3600000ms turn budget declared for it, so Station stopped it.',
+      /time budget/i,
+    ],
+  ])('names a %s deadline without a retry claim', (code, message, title) => {
+    const result = translateChatError({ code, message });
+    expect(result.title).toMatch(title);
+    expect(result.hint).toBeUndefined();
+    expect(formatChatErrorDisplay(result)).not.toMatch(/retrying may help/i);
+    expect(result.disclosureRaw).toBe(true);
+    // The same message without the code still reaches the honest fallback.
+    expect(translateChatError({ message }).hint).toMatch(/retrying may help/i);
+  });
+
   it('classifies an ended-session refusal by backend code as a Station-side end, not an error', () => {
     const result = translateChatError({
       code: 'session_ended',
@@ -332,6 +361,26 @@ describe('translateChatError', () => {
     expect(result.hint).toBeTruthy();
   });
 
+  it("classifies the station-agent adapter's retriable turn failure by code, with a retry hint and no invented cause", () => {
+    const result = translateChatError({
+      message: 'Station agent turn failed',
+      code: 'station_agent_turn_failed',
+    });
+
+    expect(result.title).toBe('This turn did not complete');
+    expect(result.body).toMatch(/could not finish/i);
+    // The event carries `retriable: true`, so the hint may promise a retry;
+    // it must not invent a cause (no model-connection claim from this code).
+    expect(result.hint).toMatch(/send it again to retry/i);
+    expect(`${result.title} ${result.body}`).not.toMatch(
+      /model connection|ollama|credential/i,
+    );
+    expect(result.terminalSession).toBeUndefined();
+    // The raw text adds nothing beyond the headline, so there is no
+    // disclosure section to demote it into.
+    expect(result.disclosureRaw).toBeUndefined();
+  });
+
   // archive#1827
   describe('a dead engine session binding', () => {
     const rawMessage =
@@ -392,11 +441,9 @@ describe('translateProjectedRuntimeError', () => {
       'engine-session-binding-dead',
     );
     expect(result).toMatch(/engine session was lost/i);
-    // The raw prose survives, demoted to the disclosure section.
-    expect(result).toContain(RAW);
-    expect(result!.indexOf(RAW)).toBeGreaterThan(
-      result!.toLowerCase().indexOf('engine session was lost'),
-    );
+    // Raw host text is offered via Details, not inlined in the card markdown.
+    expect(result).not.toContain(RAW);
+    expect(result).not.toContain('Raw engine message');
   });
 
   it('preserves a repeat-compaction suffix', () => {
@@ -412,6 +459,18 @@ describe('translateProjectedRuntimeError', () => {
     expect(
       translateProjectedRuntimeError(`⚠️ ${RAW}`, 'some-unmapped-code'),
     ).toBeNull();
+  });
+
+  it('translates the station-agent retriable turn failure instead of quoting it verbatim', () => {
+    const result = translateProjectedRuntimeError(
+      '⚠️ Station agent turn failed',
+      'station_agent_turn_failed',
+    );
+
+    expect(result).toMatch(/did not complete/i);
+    expect(result).toMatch(/send it again to retry/i);
+    // No cause to disclose: the raw text must not reappear as a blockquote.
+    expect(result).not.toContain('Raw engine message');
   });
 });
 
@@ -437,35 +496,32 @@ describe('formatChatErrorDisplay', () => {
     expect(rendered).not.toContain('undefined');
   });
 
-  // archive#1827
-  it('appends the raw message as a de-emphasized blockquote when disclosureRaw is set', () => {
-    const rendered = formatChatErrorDisplay(
-      {
-        title: "This conversation's history is gone",
-        body: "Can't reach native session.",
-        hint: 'New chat.',
-        disclosureRaw: true,
-      },
-      'No conversation found with session ID: dead-id',
-    );
+  it('never inlines host stderr in the card markdown', () => {
+    const rendered = formatChatErrorDisplay({
+      title: "This conversation's history is gone",
+      body: "Can't reach native session.",
+      hint: 'New chat.',
+      disclosureRaw: true,
+    });
 
-    expect(rendered).toContain(
-      '> No conversation found with session ID: dead-id',
-    );
-    // The raw text is never the headline: it must appear strictly after
-    // the translated title.
-    expect(rendered.indexOf('dead-id')).toBeGreaterThan(
-      rendered.indexOf("This conversation's history is gone"),
-    );
-  });
-
-  it('never appends a disclosure section when disclosureRaw is unset (every existing translation)', () => {
-    const rendered = formatChatErrorDisplay(
-      { title: 'Error', body: 'Synthetic provider failure' },
-      'Synthetic provider failure',
-    );
-
+    expect(rendered).toContain("This conversation's history is gone");
     expect(rendered).not.toContain('Raw engine message');
     expect(rendered).not.toContain('---');
+  });
+});
+
+describe('engine OAuth / sign-in classification', () => {
+  it('classifies an expired OAuth session as sign-in, not a generic turn failure', () => {
+    const raw =
+      'Failed to authenticate: OAuth session expired and could not be refreshed';
+    const result = translateChatError({
+      code: 'engine-turn-failed',
+      message: raw,
+    });
+    expect(result.title).toMatch(/signed in/i);
+    expect(result.retryable).toBe(false);
+    expect(result.disclosureRaw).toBe(true);
+    expect(result.body).not.toContain(raw);
+    expect(result.hint).not.toMatch(/send again/i);
   });
 });

@@ -1,3 +1,5 @@
+import { pluginLifecycleTargetName } from '@kontourai/station-sdk';
+import { useState } from 'react';
 import { Button } from '../components/Button';
 import { PlugGlyph } from '../components/icons/Glyph';
 import { SplitPaneLayout } from '../components/SplitPaneLayout';
@@ -7,6 +9,7 @@ import './page-layout.css';
 import './editor-layout.css';
 import { ConfirmModal } from '../components/modals/ConfirmModal';
 import { describePermission } from '../core/permission-vocabulary';
+import { NewPluginModal } from './plugin-management/NewPluginModal';
 import { PluginDetailPanel } from './plugin-management/PluginDetailPanel';
 import { PluginEmptyState } from './plugin-management/PluginEmptyState';
 import { PluginModalStack } from './plugin-management/PluginModalStack';
@@ -21,6 +24,16 @@ export function PluginManagementView({
   onNavigate: (view: NavigationView) => void;
 }) {
   const {
+    activeProposal,
+    cancelProposedUpdate,
+    cancelRemove,
+    closeInstallModal,
+    closePreview,
+    reinstall,
+    reinstallFromSource,
+    selectedLocalSource,
+    confirmProposedUpdate,
+    updateConfirm,
     addLayoutToProjects,
     addPluginLayout,
     assigningLayout,
@@ -69,7 +82,6 @@ export function PluginManagementView({
     setInstallMessage,
     setInstallSourceAndReset,
     setLayoutAssignment,
-    setPreviewData,
     setRemoveConfirm,
     setSearch,
     setShowFolderPicker,
@@ -85,6 +97,7 @@ export function PluginManagementView({
     updatePlugin,
     updates,
   } = usePluginManagementViewModel();
+  const [showNewPlugin, setShowNewPlugin] = useState(false);
 
   return (
     <>
@@ -114,14 +127,26 @@ export function PluginManagementView({
         listEmptyTitle="No plugins installed yet"
         listEmptyDescription="Install one from a folder or Git URL, or browse Registry."
         headerActions={
-          <Button
-            variant="secondary"
-            size="sm"
-            className="plugins__registry-btn"
-            onClick={() => onNavigate({ type: 'registry', tab: 'plugins' })}
-          >
-            Browse Registry
-          </Button>
+          <>
+            {/* Beside Install plugin: someone looking to add a plugin is
+                also the person who might want to build one. */}
+            <Button
+              variant="secondary"
+              size="sm"
+              className="plugins__registry-btn"
+              onClick={() => setShowNewPlugin(true)}
+            >
+              New plugin
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              className="plugins__registry-btn"
+              onClick={() => onNavigate({ type: 'registry', tab: 'plugins' })}
+            >
+              Browse Registry
+            </Button>
+          </>
         }
         emptyIcon={<PlugGlyph />}
         emptyDescription="Select a plugin from the list or install a new one"
@@ -148,7 +173,11 @@ export function PluginManagementView({
             loadingProviderDetails={loadingProviderDetails}
             changelogExpanded={changelogExpanded}
             updatePending={updateMutation.isPending}
-            updateTarget={updateMutation.variables}
+            updateTarget={
+              updateMutation.variables === undefined
+                ? undefined
+                : pluginLifecycleTargetName(updateMutation.variables)
+            }
             onUpdate={updatePlugin}
             onCheckUpdates={() =>
               queryClient.invalidateQueries({
@@ -167,6 +196,17 @@ export function PluginManagementView({
               soleLayoutTargetProject(projects)?.name ?? null
             }
             addLayoutPending={assigningLayout}
+            localSource={selectedLocalSource}
+            localSourceProjectName={
+              projects.find(
+                (project) => project.slug === selectedLocalSource?.projectSlug,
+              )?.name
+            }
+            reinstallPending={!!reinstall && previewMutation.isPending}
+            onReinstallFromSource={() => {
+              if (isRejectedPlugin(selected) || !selectedLocalSource) return;
+              reinstallFromSource(selected, selectedLocalSource);
+            }}
             onAddLayout={() => {
               if (isRejectedPlugin(selected)) return;
               void addPluginLayout(selected);
@@ -221,6 +261,10 @@ export function PluginManagementView({
         onCancel={() => setRevokeConfirm(null)}
       />
 
+      {showNewPlugin && (
+        <NewPluginModal onClose={() => setShowNewPlugin(false)} />
+      )}
+
       <PluginModalStack
         showInstallModal={showInstallModal}
         showFolderPicker={showFolderPicker}
@@ -239,7 +283,11 @@ export function PluginManagementView({
             plugin.retainedOnRemoval === true,
         )}
         layoutAssignment={layoutAssignment}
-        projects={projects}
+        projects={projects.flatMap((project) =>
+          project.layoutCount === undefined
+            ? []
+            : [{ ...project, layoutCount: project.layoutCount }],
+        )}
         quickProjectName={quickProjectName}
         selectedProjects={selectedProjects}
         assigningLayout={assigningLayout}
@@ -249,20 +297,25 @@ export function PluginManagementView({
         }}
         onBrowse={() => setShowFolderPicker(true)}
         onInstall={() => install()}
-        onCloseInstall={() => setShowInstallModal(false)}
+        onCloseInstall={closeInstallModal}
         onSelectFolder={setInstallSourceAndReset}
         onCloseFolderPicker={() => setShowFolderPicker(false)}
-        onClosePreview={() => setPreviewData(null)}
+        onClosePreview={closePreview}
         onToggleSkip={togglePreviewSkip}
         onConfirmInstall={(dataPolicy) =>
           install(Array.from(previewSkips), dataPolicy)
         }
-        onCancelRemove={() => setRemoveConfirm(null)}
+        onCancelRemove={cancelRemove}
         onConfirmRemove={remove}
         onCloseLayoutAssignment={() => setLayoutAssignment(null)}
         onToggleProject={toggleProjectSelection}
         onCreateProject={createProjectForLayout}
         onAddToProjects={addLayoutToProjects}
+        proposal={activeProposal}
+        updateConfirm={updateConfirm}
+        onConfirmUpdate={confirmProposedUpdate}
+        onCancelUpdate={cancelProposedUpdate}
+        reinstall={reinstall}
       />
     </>
   );

@@ -1,14 +1,13 @@
+import { childWorkDeltaFromLegacyClaudeTaskNotification } from '@kontourai/station-contracts/child-work';
 import {
   type ExtensionNotificationConsumer,
   extensionNotificationBinding,
   takeUnboundExtensionNotice,
 } from '@shared/extension-notification-bindings';
-import type {
-  ChatActivityHint,
-  ChatBackgroundTask,
-} from '../../contexts/active-chats-state';
+import type { ChatActivityHint } from '../../contexts/active-chats-state';
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import { log } from '../../utils/logger';
+import { applyChildWorkToChat } from './childWorkHandlers';
 import type { OrchestrationEvent } from './types';
 
 function readPayloadString(payload: unknown, key: string): string | undefined {
@@ -23,15 +22,6 @@ function readPayloadNumber(payload: unknown, key: string): number | undefined {
   return typeof value === 'number' && Number.isFinite(value)
     ? value
     : undefined;
-}
-
-function readPayloadBoolean(
-  payload: unknown,
-  key: string,
-): boolean | undefined {
-  if (!payload || typeof payload !== 'object') return undefined;
-  const value = (payload as Record<string, unknown>)[key];
-  return typeof value === 'boolean' ? value : undefined;
 }
 
 function formatApproxTokens(tokens: number): string {
@@ -58,40 +48,6 @@ function activityHintsEqual(
   if (a === b) return true;
   if (!a || !b) return false;
   return a.kind === b.kind && a.detail === b.detail;
-}
-
-function readRegistryTasks(
-  payload: unknown,
-  sessionThreadId: string,
-): ChatBackgroundTask[] {
-  if (!payload || typeof payload !== 'object') return [];
-  const active = (payload as { active?: unknown }).active;
-  if (!Array.isArray(active)) return [];
-  const tasks: ChatBackgroundTask[] = [];
-  for (const entry of active) {
-    if (!entry || typeof entry !== 'object') continue;
-    const raw = entry as Record<string, unknown>;
-    if (typeof raw.taskId !== 'string') continue;
-    tasks.push({
-      taskId: raw.taskId,
-      toolCallId:
-        typeof raw.toolCallId === 'string' ? raw.toolCallId : undefined,
-      description:
-        typeof raw.description === 'string' ? raw.description : undefined,
-      subagentType:
-        typeof raw.subagentType === 'string' ? raw.subagentType : undefined,
-      backgrounded: raw.backgrounded === true,
-      // Absent depth stays absent: "not reported" is not "top level".
-      spawnDepth:
-        typeof raw.spawnDepth === 'number' &&
-        Number.isFinite(raw.spawnDepth) &&
-        raw.spawnDepth > 0
-          ? raw.spawnDepth
-          : undefined,
-      sessionThreadId,
-    });
-  }
-  return tasks;
 }
 
 /**
@@ -141,63 +97,18 @@ function handleClaudeNotification(
     return;
   }
 
-  if (consumer === 'ui.claude.task-registry') {
-    activeChatsStore.updateChat(event.threadId, {
-      backgroundTasks: readRegistryTasks(event.payload, event.threadId),
-    });
-    return;
-  }
-
-  if (consumer === 'ui.claude.task-settled') {
-    const taskId = readPayloadString(event.payload, 'taskId');
-    const chat = activeChatsStore.getChatForExecutionSession(event.threadId);
-    const remaining = (chat?.backgroundTasks || []).filter(
-      (task) => task.taskId !== taskId,
+  if (
+    consumer === 'ui.claude.task-registry' ||
+    consumer === 'ui.claude.task-settled'
+  ) {
+    // #2456: the adapter's legacy task tuples, through the contract's one
+    // translator into the same reducer path a `child-work.updated` takes.
+    // Until #2457 this is the live Claude path, not only replayed history.
+    const delta = childWorkDeltaFromLegacyClaudeTaskNotification(
+      event,
+      event.threadId,
     );
-    // station#1877: the registry carries every live subagent, not only ones
-    // that outlived their turn, so registry membership alone does not mean the
-    // user saw this as "still working" — an inline tool part already reports a
-    // same-turn completion. Gate on `backgrounded`, which is what "survived
-    // past its turn" actually meant.
-    //
-    // station#1892: read `backgrounded` off the PAYLOAD rather than off the
-    // registry entry. The SDK sends two terminals per task; the first removes
-    // the entry, so by the time the one carrying the result arrives there is
-    // no entry left to read — which is exactly why the real result used to be
-    // dropped. The adapter now stamps `backgrounded` on every settle.
-    // The registry entry is the fallback for a settle that carries no stamp —
-    // an older server, or the untracked path — so this never silently stops
-    // announcing work a client was already tracking as backgrounded.
-    const announceable =
-      readPayloadBoolean(event.payload, 'backgrounded') === true ||
-      (chat?.backgroundTasks || []).find((task) => task.taskId === taskId)
-        ?.backgrounded === true;
-    activeChatsStore.updateChat(event.threadId, {
-      backgroundTasks: remaining,
-    });
-    // station#1892: announce only the settle that actually carries an outcome.
-    // The SDK's first terminal has identity but no result and its second has
-    // the result; announcing the first produced the empty "Background task
-    // finished" the user saw while the real findings went unreported. The
-    // adapter publishes at most one settle bearing a result per task, so this
-    // fires exactly once.
-    const summary = readPayloadString(event.payload, 'summary');
-    const outputFile = readPayloadString(event.payload, 'outputFile');
-    if (announceable && (summary || outputFile)) {
-      const description = readPayloadString(event.payload, 'description');
-      const status = readPayloadString(event.payload, 'status');
-      const heading =
-        status === 'error'
-          ? 'Background task failed'
-          : status === 'cancelled'
-            ? '⏹ Background task stopped'
-            : 'Background task finished';
-      const label = description ? `${heading} — ${description}` : heading;
-      activeChatsStore.addEphemeralMessage(event.threadId, {
-        role: 'system',
-        content: summary ? `${label}\n\n${summary}` : label,
-      });
-    }
+    if (delta) applyChildWorkToChat(event.threadId, delta);
     return;
   }
 }

@@ -43,6 +43,18 @@ describe('resolveTurnCompletionOutcome', () => {
     expect(resolveTurnCompletionOutcome({ method: 'turn.aborted' })).toBe(
       'failed',
     );
+    // station#2235: a recovery-synthesized abort is the crash's only
+    // offline signal (the needs_input attention path schedules no push),
+    // so it resolves 'failed' exactly like the engine abort it stands in
+    // for — the in-app copy stays owned by the interrupted-turn banner.
+    expect(
+      resolveTurnCompletionOutcome({
+        method: 'turn.aborted',
+        turnId: 'turn-1',
+        reason: 'The turn was interrupted before it finished.',
+        recoveryTerminal: true,
+      } as Parameters<typeof resolveTurnCompletionOutcome>[0]),
+    ).toBe('failed');
     // archive#3442: this is the ONLY event a genuine stream/runtime failure
     // publishes while a turnId is known (bedrock/ollama's
     // `publishTurnFailure`, codex-adapter-notifications' `'error'` case and
@@ -215,6 +227,133 @@ describe('wireTurnCompletionNotifications (station#1225)', () => {
         priority: 'normal',
       }),
     );
+  });
+
+  describe('#2324 (D1): a turn the engine opened on its own', () => {
+    const provider = {
+      metadata: { trigger: 'provider' },
+      turnId: 'provider:p',
+    };
+
+    test('its completion notifies "Your agent replied" when the owner is offline', async () => {
+      const schedule = vi
+        .spyOn(notificationService, 'schedule')
+        .mockResolvedValue({} as never);
+      await emit('orchestration:event', {
+        event: baseEvent({ method: 'turn.started', ...provider }),
+      });
+      await emit('orchestration:event', {
+        event: baseEvent({ finishReason: 'stop', ...provider }),
+      });
+      expect(schedule).toHaveBeenCalledTimes(1);
+      expect(schedule).toHaveBeenCalledWith(
+        'turn-completion',
+        expect.objectContaining({
+          category: 'turn-completed',
+          title: 'Your agent replied',
+          body: 'Agent replied in session thread-1',
+          priority: 'normal',
+          dedupeTag: 'turn-completion:thread-1:provider:p',
+        }),
+      );
+    });
+
+    test('F1: its failure still notifies an offline owner, worded as the reply failing', async () => {
+      const schedule = vi
+        .spyOn(notificationService, 'schedule')
+        .mockResolvedValue({} as never);
+      await emit('orchestration:event', {
+        event: baseEvent({ method: 'turn.started', ...provider }),
+      });
+      await emit('orchestration:event', {
+        event: baseEvent({
+          method: 'runtime.error',
+          severity: 'error',
+          message: 'overloaded',
+          ...provider,
+        }),
+      });
+      expect(schedule).toHaveBeenCalledWith(
+        'turn-completion',
+        expect.objectContaining({
+          category: 'turn-failed',
+          title: "Your agent's reply failed",
+          body: "Your agent's reply on its own failed in session thread-1",
+        }),
+      );
+    });
+
+    test('a Stop on it is never reported as "stopped"', async () => {
+      const schedule = vi
+        .spyOn(notificationService, 'schedule')
+        .mockResolvedValue({} as never);
+      await emit('orchestration:event', {
+        event: baseEvent({ method: 'turn.started', ...provider }),
+      });
+      await emit('orchestration:event', {
+        event: baseEvent({
+          method: 'session.stop-settled',
+          outcome: 'forced',
+          initiatedBy: 'user',
+          ...provider,
+        }),
+      });
+      await emit('orchestration:event', {
+        event: baseEvent({
+          method: 'turn.aborted',
+          reason: 'interrupted',
+          ...provider,
+        }),
+      });
+      expect(schedule).not.toHaveBeenCalled();
+    });
+
+    test('L6: a reply that ended on a deferred tool (finishReason other, its own result) still notifies "replied"', async () => {
+      const schedule = vi
+        .spyOn(notificationService, 'schedule')
+        .mockResolvedValue({} as never);
+      await emit('orchestration:event', {
+        event: baseEvent({ method: 'turn.started', ...provider }),
+      });
+      await emit('orchestration:event', {
+        event: baseEvent({ finishReason: 'other', ...provider }),
+      });
+      expect(schedule).toHaveBeenCalledWith(
+        'turn-completion',
+        expect.objectContaining({ title: 'Your agent replied' }),
+      );
+    });
+
+    test('closed without its own result (a folded send, a new turn) it adds no push; the same shape on a caller turn still does', async () => {
+      const schedule = vi
+        .spyOn(notificationService, 'schedule')
+        .mockResolvedValue({} as never);
+      await emit('orchestration:event', {
+        event: baseEvent({ method: 'turn.started', ...provider }),
+      });
+      await emit('orchestration:event', {
+        event: baseEvent({
+          finishReason: 'other',
+          turnId: provider.turnId,
+          metadata: { trigger: 'provider', closedWithoutResult: 'folded-send' },
+        }),
+      });
+      expect(schedule).not.toHaveBeenCalled();
+      await emit('orchestration:event', {
+        event: baseEvent({
+          method: 'turn.started',
+          turnId: 'user-turn',
+          prompt: 'hi',
+        }),
+      });
+      await emit('orchestration:event', {
+        event: baseEvent({ finishReason: 'other', turnId: 'user-turn' }),
+      });
+      expect(schedule).toHaveBeenCalledWith(
+        'turn-completion',
+        expect.objectContaining({ title: 'Your agent finished' }),
+      );
+    });
   });
 
   test('an unaccompanied Codex turn.completed(cancelled) keeps the existing completed mapping', async () => {

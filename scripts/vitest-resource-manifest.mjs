@@ -122,12 +122,31 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 // has measured — and the branch that reds is then whichever one happened to
 // add the next spawn, not the design that made the deadline fragile.
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
+  // Creates FIFOs with mkfifo to prove plugin validation refuses them without blocking.
+  'src-server/routes/plugins/__tests__/plugin-validate-routes.test.ts',
+  // Creates FIFOs and a git repo to prove plugin preview refuses untrusted manifests (#2342).
+  'src-server/routes/plugins/__tests__/plugin-preview-untrusted-manifest.test.ts',
+  // Creates a FIFO, a listening unix socket and git repos to prove a plugin with special files can be updated and removed.
+  'src-server/routes/plugins/__tests__/plugin-special-files-lifecycle.test.ts',
+  // Resolves real Git roots through bounded child processes in temporary repositories.
+  'src-server/services/orchestration/__tests__/workspace-identity.test.ts',
+  // Runs the source CLI twice against one private SQLite root to prove init recovery.
+  'scripts/__tests__/self-hosted-broker-cli.test.ts',
+  // Races two real worker-owned SQLite connections at one lease CAS barrier.
+  'src-server/services/connections/__tests__/self-hosted-broker-service.test.ts',
+  // Exercises owned Pion child lifecycle and injected teardown faults.
+  'src-server/services/connections/__tests__/pion-application-adapter.test.ts',
   // Launches real descendant trees and verifies signal/early-exit cleanup.
   'scripts/__tests__/dev-desktop-process.test.ts',
   // Real framework signal handlers run in bounded, isolated child processes.
   'src-server/runtime/bootstrap/__tests__/runtime-signal-ownership.test.ts',
   // Owns bounded TLS endpoints, OpenSSL children and TCP relay processes.
   'scripts/__tests__/connection-key.test.ts',
+  // Offline identity CLI and OpenSSL connector custody fixtures.
+  'scripts/__tests__/self-hosted-connector-identity.test.ts',
+  // Boots the normal source Station against an owned metadata broker.
+  'scripts/__tests__/self-hosted-connector-startup.test.ts',
+  'src-server/runtime/bootstrap/__tests__/self-hosted-connector-config.test.ts',
   'scripts/__tests__/device-connection-trust.test.ts',
   'scripts/__tests__/local-collaboration-lab.test.ts',
   // Owns a UDP relay child and private command-output diagnostics.
@@ -140,6 +159,12 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'packages/cli/src/__tests__/desktop-companion.test.ts',
   // The shared observer fixture also creates real POSIX FIFOs and runs two
   // bounded Node children to prove the exact open-boundary blocking race.
+  // Epic #2323 S3: real FIFOs (`mkfifo`) as plugin inputs, and a bounded
+  // child process for the tsconfig read a regression would block.
+  'packages/shared/src/__tests__/plugin-build-fifo.test.ts',
+  // Epic #2323 S3: each draft build forks a disposable process that is
+  // killed at its deadline; the test observes that process and a FIFO.
+  'src-server/services/plugins/__tests__/plugin-draft-build-process.test.ts',
   'packages/shared/src/__tests__/station-home-recovery-preflight.test.ts',
   // The CLI fixture imports child_process only to forbid every launch while
   // patching builtin exports around the real read-only dispatch seam.
@@ -155,6 +180,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Hono routes composed with the real Task and transcript worker owners.
   'src-server/services/search/__tests__/runtime-search.test.ts',
   'src-server/services/orchestration/__tests__/isolated-transcript-search.test.ts',
+  // #2374 (epic #2323 S6): real `git` plumbing and pushes into temp bare
+  // repositories, through the production publish service and route.
+  'src-server/routes/projects/__tests__/plugin-publish-routes.test.ts',
+  'src-server/services/projects/__tests__/plugin-publish-service.test.ts',
   // Creates and observes real Git checkouts through the portable identity owner.
   'src-server/services/projects/__tests__/project-identity-service.test.ts',
   // Owns real CPU-blocking worker_threads and canonical TaskGraph file fixtures.
@@ -182,6 +211,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // the real exit status is what the assertions read; process ownership is the
   // behavior under test, not a helper.
   'scripts/__tests__/literal-swap-gate.test.ts',
+  // Same shape: throwaway Git repositories, and the real-time wait gate run
+  // as a child process so its exit status (0/1/2) is what is asserted.
+  'scripts/__tests__/test-realtime-wait-gate.test.ts',
   // station#1648: runs the Playwright install script as a child process behind
   // a fake `npx` on PATH, because the exit status and the argv it really
   // builds are the two things an in-process call cannot prove. Each child is
@@ -197,6 +229,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Creates two disposable Git roots and invokes the transfer gate's real Git
   // provenance/capture boundary under a hostile hook environment.
   'scripts/__tests__/orchestration-transfer-gate.test.ts',
+  // #2355: creates real linked worktrees, removes them with `git worktree
+  // remove`, and holds one open with a live child process whose cwd is inside
+  // it, because the in-use probe (lsof/proc/ps) is the behavior under test.
+  'scripts/__tests__/transfer-baselines.test.ts',
   // station#4294: owns a real loopback listener, fresh HTTP sockets, a
   // streaming SDK transport, and a temporary SQLite EventStore.  The test's
   // barriers are stream facts, never a wall-clock budget, but the host
@@ -272,6 +308,11 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // proven. Two bounded single-shot children; the real 82s aggregate never
   // starts.
   'scripts/__tests__/prepush-typecheck.test.ts',
+  // Host typecheck slots: spawns fleets of six short-lived fake compilers
+  // against a PRIVATE slot directory (never the host's), SIGKILLs one holder
+  // to prove reclaim, and runs one real `tsc` on a two-file temp project
+  // three times to prove a warm incremental run still reports errors.
+  'scripts/__tests__/typecheck-host-slots.test.ts',
   // Asks git (`check-ignore`, `ls-files`) whether the generated Basis MCP app
   // bundles are ignored and untracked, because .gitignore's text cannot say
   // whether a rule still matches or a file was force-added. Two single-shot
@@ -329,6 +370,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // `execFileSync` to prove the manifest derives real revision/branch values
   // — same shape as `content-integrity-gate.test.ts` below.
   'scripts/__tests__/desktop-build-manifest.test.ts',
+  // The execution-offers real-auth integration builds one throwaway git
+  // checkout per setup via bounded single-shot `git` children (init/config/
+  // commit/remote), the same shape as the desktop-build-manifest fixture.
+  'src-server/runtime/routes/__tests__/runtime-routes-project-contribution-auth.test.ts',
   'scripts/__tests__/docs-reference-gate.test.ts',
   'scripts/__tests__/dogfood-reconcile-scenario-parity.test.ts',
   // One bounded node child proving the cli-doc parity entry point.
@@ -358,6 +403,21 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // through `execFileSync` on purpose — its oracle has to be what git actually
   // returns for a pathspec, not a fixture that would pin the bug instead.
   'scripts/__tests__/gate-scope.test.ts',
+  // #90 lane C: launches a REAL installed Chrome/Edge (headless, pipe CDP,
+  // its own temporary profile and loopback fixture servers) to prove the
+  // server browser host's enforcement end to end: scheme blocking, download
+  // denial, popup folding, the Station-listener egress deny (HTTP, WebSocket,
+  // worker, service worker, rebinding) and crash detection. One browser for
+  // the whole file; every case reports an explicit skip when no browser is
+  // installed. Never downloads Chromium.
+  'src-server/services/browser/__tests__/chromium-server-host.real.test.ts',
+  // #1970 hub lockdown: always spawns short-lived guarded node children
+  // (the hub guard preloaded via NODE_OPTIONS, loopback ephemeral ports,
+  // detached dummy helpers it then kills). When STATION_DEVICE_HUB_TEST_HOME
+  // names a home with a completed managed expo-device-hub install it also
+  // starts that REAL hub under the guard and stops it. Installs nothing and
+  // never downloads; hub cases report an explicit skip without an install.
+  'src-server/services/devices/toolchain/__tests__/device-hub.real.test.ts',
   // station#1649: runs the glyph-coverage ratchet as a real child process
   // against a throwaway git repository, because the thing under test is the
   // gate's EXIT STATUS on a rejection — a guardrail whose failure branch has
@@ -400,6 +460,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // station#4389: runs the root shell launcher against isolated PATH stubs to
   // prove lifecycle delegation and launch sequencing at the process boundary.
   'scripts/__tests__/dependency-lifecycle.test.ts',
+  // Real child verifies pnpm audit alias dispatch and terminal failures.
+  'scripts/__tests__/pnpm-advisory-command.test.ts',
   // Probes a pinned package-manager executable before selecting an install command.
   'scripts/__tests__/pnpm-lifecycle.test.ts',
   // Real child process proves the fixed installer guard excludes a second owner.
@@ -443,6 +505,15 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // These tests start real children through the owned-process helper rather
   // than importing node:child_process directly.
   'scripts/__tests__/owned-process.test.ts',
+  // #2269: drives the REAL muse adapter (production spawnOwnedChild +
+  // production terminateProcessTree, no injected terminate) against tiny
+  // Node fixtures emitting valid Muse JSONL with short injected idle/total
+  // bounds — no model, no billing, no 30-minute waits. Wall-clock values
+  // are observed bounds only: cases wait for stream facts (terminal events,
+  // pid files, process death) with generous caps, never exact firing times.
+  // Each case owns one child plus one grandchild at most, all under
+  // Station-owned tempdirs with the registry pointed at a disposable dir.
+  'src-server/providers/__tests__/muse-adapter.real-child.process.test.ts',
   // Forks the real Windows owned launcher with an IPC channel and a fake guard
   // (node itself, exiting on a bad module path) to prove the production
   // `onState` wiring delivers settlement-state messages to the coordinator.
@@ -503,6 +574,11 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // new-versus-inherited attribution and resistance to candidate rebaselining.
   'scripts/__tests__/code-health-gate.test.ts',
   'scripts/__tests__/run-e2e-suite-ports.test.ts',
+  // #2318/#2416: runs the E2E suite runner and the usability-feedback gate as
+  // real child processes so "disabled before start" and the DISABLED exit
+  // contract are proven against their actual exit statuses. Single-shot,
+  // no Station boot, no wall-clock assertion.
+  'scripts/__tests__/account-requirement.test.ts',
   'scripts/__tests__/server-build-portability.test.ts',
   'scripts/__tests__/station-agent-smoke.test.ts',
   // Drives the deploy-ledger commit-back's
@@ -532,6 +608,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // child process" shape as builder-delivery-viewer-import-gate.test.ts and
   // prepush-static-gates.test.ts above.
   'scripts/__tests__/test-import-existence-gate.test.ts',
+  // #2333: runs the test-path import gate as a real child process against
+  // throwaway git repos (known-bad fixtures and false-positive controls) and
+  // against this repository, same shape as the entry above.
+  'scripts/__tests__/test-path-import-gate.test.ts',
   'scripts/__tests__/trust-reconcile-manifest.test.ts',
   // station#3465 review (second pass): one assertion shells a real `git
   // ls-files` child process as an independent oracle for packages/connect's
@@ -586,6 +666,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-server/services/checkpoints/__tests__/checkpoint-restore.test.ts',
   'src-server/services/checkpoints/__tests__/checkpoint-read.test.ts',
   'src-server/services/checkpoints/__tests__/checkpoint-retention.test.ts',
+  // #2410: drives the real capture through the EventBus against a fixture
+  // repository whose own config plants a clean filter (execFileSync git).
+  'src-server/services/checkpoints/__tests__/turn-checkpoint-capture.test.ts',
   'packages/cli/src/__tests__/checkpoints-command.test.ts',
   // These ACP integration tests do not import child_process directly, but
   // exercise shared discovery/process startup and exceeded their 5s contract
@@ -660,6 +743,12 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-server/utils/__tests__/sqlite-wal.process.test.ts',
   // Shells out to `git grep` for the projection source guard.
   'src-server/services/agents/__tests__/agent-binding-projection.test.ts',
+  // #2363: plants repo-local git config and runs plain git beside Station's
+  // hardened runner against real temp repositories.
+  'src-server/utils/__tests__/git-exec.hardening.test.ts',
+  // #2363: the coding git routes over real repositories, a real bare remote
+  // and plain git as the control for every planted config.
+  'src-server/routes/projects/__tests__/coding-git-security.routes.test.ts',
   // station#3278: builds the real watchdog bundle and spawns it through
   // symlinked paths to prove the entrypoint guard fires; the esbuild step and
   // child spawns keep it out of ordinary workers.
@@ -759,6 +848,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // toolbar control x-offsets across connection states).
   'src-ui/src/__tests__/HeaderActions.connection-reflow.test.tsx',
   'src-ui/src/__tests__/chatFeedback.geometry.test.tsx',
+  // #2260: owns Chromium for actual mobile close-target geometry and hit testing.
+  'src-ui/src/__tests__/ProjectSidebarHeader.mobileCloseGeometry.test.tsx',
   'src-ui/src/__tests__/ImportedConversationPane.test.tsx',
   // station#4474 H1 (review round): same shape again — launches a real
   // Chromium via `@playwright/test` to measure real cascade-resolved
@@ -854,6 +945,57 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // declares. jsdom computes no layout and would report the pre-fix
   // edge-to-edge frame and the fixed one identically.
   'src-ui/src/workspace-panes/__tests__/WorkspacePaneRouteView.frame.test.tsx',
+  // Runs the full-regression phase driver CLI and real npm children, including
+  // one it must kill at a deadline.
+  'scripts/__tests__/run-full-regression-phases.test.ts',
+  // Real device-surface evidence (#1970): spawns ffmpeg to decode H.264,
+  // and — only when a hub URL is configured — drives a real simulator or
+  // emulator through the device hub. Skips, naming why, otherwise. Its waits
+  // are bounded by what the device must do (boot, first frame), not by
+  // contention-sensitive constants.
+  'src-server/services/devices/__tests__/device-live.real.test.ts',
+  // Real Tools drawer evidence (#1971): runs `xcrun simctl` against an
+  // already-booted simulator and reads the accessibility tree through a
+  // configured device hub. Never boots a device; every case skips, naming
+  // why, without both (always on Linux runners).
+  'src-server/services/devices/__tests__/device-tools.real.test.ts',
+  // #1971 D1: the Tools drawer's host runner against real `/bin/sh`
+  // processes that leave a sleeping grandchild holding stdout, proving the
+  // deadline and output bound settle without waiting for `close`. A few
+  // short-lived children; the grandchildren sleep 3 s at most.
+  'src-server/services/devices/__tests__/device-host-tools.process.test.ts',
+  // SSH device hosts (#1973): runs the device-host program for real through
+  // `/bin/sh` and short-lived node children (a guarded stand-in hub on a
+  // loopback ephemeral port, killed when its session's stdin closes), in a
+  // private HOME. No ssh, no network.
+  'src-server/services/devices/hosts/__tests__/ssh-device-remote-script.test.ts',
+  // #2442: the device-host program's `tool` mode for real through `/bin/sh`
+  // and short-lived node children, with `adb`/`xcrun` stand-ins (sh scripts;
+  // one sleeps 5 s until the deadline kills it) in a private HOME, plus the
+  // Station side through the registry with an ssh stand-in that runs those
+  // same words locally. No ssh, no network, no device.
+  'src-server/services/devices/hosts/__tests__/ssh-device-tools.process.test.ts',
+  // SSH device hosts over REAL ssh to this machine's sshd: one `ssh
+  // localhost true` probe at load, then (only with key auth and a known host
+  // key, never on CI) Test connection and, with STATION_DEVICE_HUB_TEST_HOME,
+  // the real guarded hub through a forward. Skips, naming why, otherwise.
+  'src-server/services/devices/hosts/__tests__/ssh-device-host.real.test.ts',
+  // #90 wave 2: launches a REAL installed Chrome/Edge (headless, pipe CDP,
+  // temporary profile, one loopback fixture server) to prove the Browser
+  // pane's live surface end to end: a screencast frame reaches a viewer,
+  // human input changes the page, and an alert() is answered without
+  // wedging. Explicit skip when no browser is installed; never downloads.
+  'src-server/services/browser/__tests__/chromium-screencast-producer.real.test.ts',
+  // #90 #122/#123: launches a REAL installed Chrome/Edge (headless, pipe CDP,
+  // temporary profile, one loopback fixture server) to prove the browser
+  // tools end to end: an agent opens, snapshots, clicks a ref, types through
+  // a Playwright locator and waits, and a person's input interrupts it.
+  // Explicit skip when no browser is installed; never downloads.
+  'src-server/services/browser/__tests__/browser-agent-tools.real.test.ts',
+  // #90 review S1–S3: the same real Chromium against hostile pages (lying
+  // geometry, a squatted locator global, a covered button, 300,000
+  // elements, a page spinning forever). Explicit skip without a browser.
+  'src-server/services/browser/__tests__/browser-agent-hostile.real.test.ts',
 ]);
 
 export const DOGFOOD_RECONCILE_PREFIX =
@@ -1189,4 +1331,167 @@ export function discoverVitestResourceGroups(options = {}) {
   );
   assertOrdinaryVitestSelection(groups, options);
   return groups;
+}
+
+/**
+ * Test quarantine (the merge-queue regression gate's escape valve).
+ *
+ * A quarantine entry names a test file that is flaky, not broken: the same
+ * commit both passed and failed it. Quarantined files are EXCLUDED from the
+ * merge-queue regression shards only (`run-vitest-corpus.mjs
+ * --exclude-quarantined`, passed by `run-full-regression-phases.mjs`). They
+ * STILL run in Nightly's canonical `full:regression`, which never reads this
+ * list — so Nightly stays exposed to the flake while the queue stops holding
+ * unrelated PRs hostage to it.
+ *
+ * This is an overlay, not a partition member: a quarantined file keeps its
+ * resource group above (`partitionVitestResourceSubset` and
+ * `buildVitestResourceGroups` do not read `quarantine`), so the
+ * every-file-in-exactly-one-group invariant is unchanged and the canonical
+ * lane's selection is byte-identical whatever this list holds. Moving the
+ * file into a group of its own would have forced the canonical lane to grow a
+ * phase for it and would have dropped the file's resource isolation.
+ *
+ * Each entry is `{ file, issue, expires, evidence }`, validated by
+ * `vitestQuarantineErrors` from `verification:policy:gate`:
+ * - `issue`: the full URL of the OPEN station issue labelled `flaky` that
+ *   tracks the fix. The gate checks the format only; it never calls GitHub.
+ * - `expires`: `YYYY-MM-DD`, at most QUARANTINE_MAX_DAYS after the day the
+ *   gate runs. From that date on the gate is RED: an expired quarantine is a
+ *   failure of every pull request until the entry is removed (fixed) or
+ *   renewed in a reviewed change with fresh evidence.
+ * - `evidence`: the same-commit disagreement — the commit SHA (40 hex) and at
+ *   least two distinct run ids (`actions/runs/<id>` or `run <id>`).
+ * At most QUARANTINE_MAX_ENTRIES entries. See docs/guides/testing.md.
+ */
+export const QUARANTINE_MAX_ENTRIES = 5;
+export const QUARANTINE_MAX_DAYS = 14;
+export const QUARANTINED_VITEST_FILES = Object.freeze([]);
+
+const QUARANTINE_ENTRY_KEYS = Object.freeze([
+  'evidence',
+  'expires',
+  'file',
+  'issue',
+]);
+const QUARANTINE_ISSUE_PATTERN =
+  /^https:\/\/github\.com\/kontourai\/station\/issues\/[1-9][0-9]*$/;
+const QUARANTINE_COMMIT_PATTERN = /(?:^|[^0-9a-f])([0-9a-f]{40})(?![0-9a-f])/i;
+const QUARANTINE_RUN_PATTERN = /(?:actions\/runs\/|\brun\s+)([0-9]{6,})\b/gi;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function utcDay(date) {
+  return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
+}
+
+function parseQuarantineDate(value) {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value))
+    return null;
+  const parsed = new Date(`${value}T00:00:00Z`);
+  return Number.isNaN(parsed.getTime()) ||
+    parsed.toISOString().slice(0, 10) !== value
+    ? null
+    : parsed.getTime();
+}
+
+/**
+ * Policy errors for a quarantine list. `now` is the gate's clock; tests pass
+ * a fixed one. `trackedFiles`, when given, is the tracked Vitest corpus a
+ * quarantined file must belong to.
+ */
+function quarantineKeysError(entry) {
+  const keys = Object.keys(entry).sort();
+  const exact =
+    keys.length === QUARANTINE_ENTRY_KEYS.length &&
+    keys.every((key, position) => key === QUARANTINE_ENTRY_KEYS[position]);
+  return exact
+    ? null
+    : `must have exactly the keys ${QUARANTINE_ENTRY_KEYS.join(', ')}; found ${keys.join(', ') || '<none>'}`;
+}
+
+// A quarantined path becomes a Vitest `--exclude` pattern, so a glob
+// metacharacter would widen one entry into many excluded files.
+const GLOB_METACHARACTERS = /[[\]{}()*?!]/;
+
+function quarantineFileError(file, seen, tracked) {
+  if (!isSafeRelativeFile(file))
+    return 'file must be a repository-relative test path';
+  if (GLOB_METACHARACTERS.test(file))
+    return 'file must be a literal path, without glob metacharacters [ ] { } ( ) * ? !';
+  if (seen.has(file)) return 'file is quarantined twice';
+  if (tracked && !tracked.has(file))
+    return 'file is not a tracked Vitest test file';
+  return null;
+}
+
+function quarantineIssueError(issue) {
+  return typeof issue === 'string' && QUARANTINE_ISSUE_PATTERN.test(issue)
+    ? null
+    : "issue must be the URL of the open 'flaky' issue, https://github.com/kontourai/station/issues/<number>";
+}
+
+function quarantineExpiryError(expires, today) {
+  const expiry = parseQuarantineDate(expires);
+  if (expiry === null) return 'expires must be a calendar date YYYY-MM-DD';
+  if (expiry <= today)
+    return `quarantine expired on ${expires}; fix the test and remove the entry, or renew it with new evidence`;
+  if (expiry > today + QUARANTINE_MAX_DAYS * DAY_MS)
+    return `expires ${expires} is more than ${QUARANTINE_MAX_DAYS} days away`;
+  return null;
+}
+
+function quarantineEvidenceError(evidence) {
+  const text = typeof evidence === 'string' ? evidence : '';
+  const runs = new Set(
+    [...text.matchAll(QUARANTINE_RUN_PATTERN)].map((match) => match[1]),
+  );
+  return QUARANTINE_COMMIT_PATTERN.test(text) && runs.size >= 2
+    ? null
+    : 'evidence must cite the commit SHA (40 hex) and two distinct run ids that disagreed on it';
+}
+
+/**
+ * Policy errors for a quarantine list. `now` is the gate's clock; tests pass
+ * a fixed one. `trackedFiles`, when given, is the tracked Vitest corpus a
+ * quarantined file must belong to.
+ */
+export function vitestQuarantineErrors(
+  entries = QUARANTINED_VITEST_FILES,
+  { now = new Date(), trackedFiles } = {},
+) {
+  if (!Array.isArray(entries)) return ['quarantine must be an array'];
+  const errors = [];
+  if (entries.length > QUARANTINE_MAX_ENTRIES)
+    errors.push(
+      `quarantine holds ${entries.length} entries; at most ${QUARANTINE_MAX_ENTRIES} are allowed`,
+    );
+  const today = utcDay(now);
+  const tracked = trackedFiles ? new Set(trackedFiles) : null;
+  const seen = new Set();
+  for (const [index, entry] of entries.entries()) {
+    const label = `quarantine entry ${index + 1}`;
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+      errors.push(`${label} must be an object`);
+      continue;
+    }
+    const keysError = quarantineKeysError(entry);
+    if (keysError) errors.push(`${label} ${keysError}`);
+    const { file, issue, expires, evidence } = entry;
+    const name = typeof file === 'string' ? `${label} (${file})` : label;
+    const fieldErrors = [
+      quarantineFileError(file, seen, tracked),
+      quarantineIssueError(issue),
+      quarantineExpiryError(expires, today),
+      quarantineEvidenceError(evidence),
+    ];
+    if (typeof file === 'string') seen.add(file);
+    for (const error of fieldErrors)
+      if (error) errors.push(`${name}: ${error}`);
+  }
+  return errors;
+}
+
+/** The files the merge-queue regression shards exclude. */
+export function quarantinedVitestFiles(entries = QUARANTINED_VITEST_FILES) {
+  return Object.freeze(entries.map((entry) => entry.file));
 }

@@ -7,7 +7,6 @@ import {
 import {
   useProjectLayoutQuery,
   useProjectLayoutsQuery,
-  useProjectsQuery,
   useQueryClient,
 } from '@kontourai/station-sdk';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -39,7 +38,10 @@ import { useApiBase } from './contexts/ApiBaseContext';
 import { useConfig } from './contexts/ConfigContext';
 import { useModels } from './contexts/ModelsContext';
 import { useNavigation } from './contexts/NavigationContext';
-import { ProjectsProvider } from './contexts/ProjectsContext';
+import {
+  ProjectsProvider,
+  useScopedProjectsQuery,
+} from './contexts/ProjectsContext';
 import { useRegionModelOptional } from './contexts/RegionModelContext';
 import { useToast } from './contexts/ToastContext';
 import { useShowSurface } from './contexts/useShowSurface';
@@ -106,7 +108,6 @@ import { useIsMobile } from './hooks/useIsMobile';
 import { useKeyboardShortcut } from './hooks/useKeyboardShortcut';
 import { useQueryCacheReconnectSync } from './hooks/useQueryCacheReconnectSync';
 import { useServerEvents } from './hooks/useServerEvents';
-import { setAuthCallback } from './lib/apiClient';
 import { checkServerHealth, probeServerConnection } from './lib/serverHealth';
 import type { NavigationView } from './types';
 
@@ -206,7 +207,7 @@ function App() {
     data: projects = [],
     isLoading: projectsLoading,
     isError: projectsError,
-  } = useProjectsQuery();
+  } = useScopedProjectsQuery();
   const appConfig = useConfig();
   const { settings: featureSettings } = useFeatureSettings();
   const [showShortcutsCheatsheet, setShowShortcutsCheatsheet] = useState(false);
@@ -261,17 +262,6 @@ function App() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lastProject, lastProjectLayout]);
-
-  // Setup auth callback
-  useEffect(() => {
-    const authCallback = async () => Promise.resolve(false);
-    setAuthCallback(authCallback);
-    (
-      globalThis as typeof globalThis & {
-        authCallback?: () => Promise<boolean>;
-      }
-    ).authCallback = authCallback;
-  }, []);
 
   const handleAuthError = async (): Promise<boolean> => Promise.resolve(false);
 

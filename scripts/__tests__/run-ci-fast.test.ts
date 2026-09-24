@@ -129,6 +129,7 @@ describe('bounded ci:fast runner', () => {
       ['npm', ['run', 'lockfile-sync:gate']],
       [process.execPath, ['scripts/check-changesets.mjs']],
       [process.execPath, ['scripts/code-health-gate.mjs']],
+      [process.execPath, ['scripts/test-realtime-wait-gate.mjs']],
       ['npm', ['run', 'channel-ports:check']],
       ['npm', ['run', 'gate:workflows']],
       ['npm', ['run', 'content:integrity']],

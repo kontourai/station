@@ -40,7 +40,11 @@ import {
 import { localPluginInstallationState } from '../../services/plugins/plugin-installation-local.js';
 import type { PluginInstallationHost } from '../../services/plugins/plugin-installation-service.js';
 import { PluginInstallationPending } from '../../services/plugins/plugin-installation-service.js';
-import { readPluginManifestFileWithFormat } from '../../services/plugins/plugin-manifest-loader.js';
+import type { PluginLifecycleProposalService } from '../../services/plugins/plugin-lifecycle-proposals.js';
+import {
+  PluginManifestReadRefusedError,
+  readUntrustedPluginManifestSyncWithFormat,
+} from '../../services/plugins/plugin-manifest-bounded-read.js';
 import {
   describePluginGrantState,
   getPermissionTier,
@@ -82,6 +86,8 @@ import {
 } from '../system/configuration-activation.js';
 import { buildPlugin } from './plugin-bundles.js';
 import { capturePluginConfigurationMutation } from './plugin-configuration-activation.js';
+import { personOnly } from './plugin-person-approval.js';
+import { recordProposalCompletion } from './plugin-proposal-routes.js';
 
 interface PluginInstallRouteDeps {
   installationHost?: PluginInstallationHost;
@@ -128,6 +134,12 @@ interface PluginInstallRouteDeps {
   projectVisiblePlugins(
     c: Context,
   ): (installed: readonly string[]) => readonly string[];
+  /**
+   * #2323 S5: the proposal store `POST /install` completes when the request
+   * names a `proposalId`. Optional: a composition without it installs
+   * exactly as before and reports the proposal as still open.
+   */
+  proposals?: PluginLifecycleProposalService;
 }
 
 export function registerPluginInstallRoutes(
@@ -381,6 +393,11 @@ export function registerPluginInstallRoutes(
       );
     }
   });
+  // #2323 S5: recover and install are person-only. Registered as path
+  // middleware ahead of each handler (and its body validation), so an
+  // internal caller learns what to do instead of which field it got wrong.
+  app.use('/:name/recover', personOnly('recover a plugin'));
+  app.use('/install', personOnly('install a plugin'));
   app.post('/:name/recover', validate(pluginRecoverySchema), async (c) => {
     try {
       const body = getBody(c);
@@ -502,9 +519,29 @@ export function registerPluginInstallRoutes(
 
       const { tempDir } = result;
       try {
-        const { manifest, format } = await readPluginManifestFileWithFormat(
-          join(tempDir, 'plugin.json'),
-        );
+        // The staged manifest is untrusted bytes, local or cloned: the
+        // bounded reader refuses a symlinked, non-regular or oversized
+        // plugin.json rather than following, blocking on or streaming it
+        // (#2342). The `finally` below removes the staging tree either way.
+        let read: ReturnType<typeof readUntrustedPluginManifestSyncWithFormat>;
+        try {
+          read = readUntrustedPluginManifestSyncWithFormat(
+            join(tempDir, 'plugin.json'),
+          );
+        } catch (error) {
+          if (!(error instanceof PluginManifestReadRefusedError)) throw error;
+          return c.json(
+            {
+              valid: false,
+              error: error.message,
+              code: error.code,
+              components: [],
+              conflicts: [],
+            },
+            400,
+          );
+        }
+        const { manifest, format } = read;
         // Preview refuses exactly what install refuses, through the SAME scan
         // (`collectPluginPromptFiles`). A preview that reported "valid" for a
         // plugin the installer will reject is worse than refusing late: the
@@ -564,6 +601,7 @@ export function registerPluginInstallRoutes(
           components.push({
             type: 'pane',
             id: pane.id,
+            name: pane.name,
             detail: `${pane.renderer.kind}:${pane.rendererId}`,
             conflict,
             skippable: false,
@@ -830,8 +868,14 @@ export function registerPluginInstallRoutes(
 
   app.post('/install', validate(pluginInstallSchema), async (c) => {
     try {
-      const { source, skip, consent, dataPolicy, expectedInstallation } =
-        getBody(c);
+      const {
+        source,
+        skip,
+        consent,
+        dataPolicy,
+        expectedInstallation,
+        proposalId,
+      } = getBody(c);
       // archive#4288. Refused before the source is even staged: this route is
       // how an operator admits a plugin's code into the shell's own document,
       // and the permission derivation cannot see the contributions that run
@@ -903,6 +947,14 @@ export function registerPluginInstallRoutes(
           });
         }
       }
+      const proposalOutcome = await recordProposalCompletion(
+        deps.proposals,
+        proposalId,
+        mutation.value.success === true &&
+          mutation.activation?.status !== 'pending',
+        { kind: 'install', source },
+        logger,
+      );
       // LP-C: installing over a plugin may have withdrawn command effects.
       const settled = await settlePluginCommandEffectsForResponse(
         projectHomeDir,
@@ -915,6 +967,7 @@ export function registerPluginInstallRoutes(
           ...settled.fields,
           success: mutation.activation?.status !== 'pending',
           ...configurationActivationPayload(mutation.activation),
+          ...proposalOutcome,
         },
         settled.status as ContentfulStatusCode,
       );

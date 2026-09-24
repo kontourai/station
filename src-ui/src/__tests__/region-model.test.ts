@@ -252,6 +252,9 @@ describe('region model', () => {
       home: 'main',
       'pr:': 'right',
       'file-preview:': 'right',
+      // #90 D9: a Browser pane opened from the float-over-chat's "Open in
+      // right panel" lands where that control says.
+      'browser-preview:': 'right',
       // #2157: a Board or a Layout as a pane lands beside the other
       // instance-keyed families, on the right.
       'board:': 'right',

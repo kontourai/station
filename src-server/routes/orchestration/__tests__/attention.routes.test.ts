@@ -32,6 +32,22 @@ describe('Attention Routes', () => {
     expect(list).toHaveBeenCalledOnce();
   });
 
+  test('#2323 S5 review M6: GET / tells the projection whether the viewer is the operator, and fails closed without a resolver', async () => {
+    const list = vi.fn().mockResolvedValue({ pendingCount: 0, items: [] });
+    await createAttentionRoutes({ list } as never, {
+      viewerIsOperator: () => true,
+    }).request('/');
+    await createAttentionRoutes({ list } as never, {
+      viewerIsOperator: () => false,
+    }).request('/');
+    await createAttentionRoutes({ list } as never).request('/');
+    expect(list.mock.calls.map((call) => call[1]?.isOperator)).toEqual([
+      true,
+      false,
+      false,
+    ]);
+  });
+
   test('POST /:id/ack acknowledges a session-failed item', async () => {
     const acknowledge = vi.fn().mockResolvedValue(true);
     const app = createAttentionRoutes({
@@ -110,6 +126,7 @@ describe('Attention Routes', () => {
     // the fail-closed `false` is the security-relevant half of this call.
     expect(list).toHaveBeenCalledWith(authority, {
       mayDecidePairingRequests: false,
+      isOperator: false,
     });
     expect(acknowledge).toHaveBeenCalledWith('session-failed:alpha', authority);
   });

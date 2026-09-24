@@ -1,7 +1,12 @@
 /** @vitest-environment jsdom */
 import { describe, expect, test } from 'vitest';
 import type { HomeWorkItem } from '../../home-view-model';
-import { barHeight, bucketLabel, buildHeatRows } from '../activity-bars';
+import {
+  barHeight,
+  bucketLabel,
+  buildHeatRows,
+  WINDOW_RANGE_LABEL,
+} from '../activity-bars';
 
 const NOW = 1_760_000_000_000;
 
@@ -154,6 +159,14 @@ describe('barHeight', () => {
 
   test('a zero peak cannot divide by zero', () => {
     expect(Number.isFinite(barHeight(3, 0))).toBe(true);
+  });
+});
+
+describe('WINDOW_RANGE_LABEL', () => {
+  /** The axis start reads "2 days ago" (a point); the total needs a range. */
+  test('states the window as a range, not a point', () => {
+    expect(WINDOW_RANGE_LABEL).toBe('the last 2 days');
+    expect(`2 in ${WINDOW_RANGE_LABEL}`).not.toMatch(/ago/);
   });
 });
 

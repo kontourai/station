@@ -1,8 +1,10 @@
 /*
- * The Device pane's own chrome (#1969). Co-located with the lazy component so
- * it rides that chunk rather than the eagerly loaded `index.css` — the global
- * mobile wrap/44px/focus-order floor lives there and applies to everything
- * here; this file owns only what is particular to a device frame.
+ * The Device pane's own chrome (#1969, #1970). Co-located with the lazy
+ * component so it rides that chunk rather than the eagerly loaded
+ * `index.css` — the global mobile wrap/44px/focus-order floor lives there
+ * and applies to everything here (the `-actions` containers below are what
+ * its shared rule targets); this file owns only what is particular to a
+ * device.
  */
 
 .device-pane {
@@ -11,139 +13,190 @@
   gap: var(--space-3, 12px);
   height: 100%;
   min-height: 0;
+  overflow: auto;
   padding: var(--space-3, 12px);
 }
 
-.device-pane__toolbar {
-  display: flex;
-  flex-direction: column;
+/* The live stage takes the whole pane; the canvas owns its scrolling. */
+.device-pane--live {
   gap: var(--space-2, 8px);
-  flex: 0 0 auto;
+  overflow: hidden;
+  padding: var(--space-2, 8px);
 }
 
-.device-pane__picker {
-  border: 0;
+.device-pane__picker-header {
+  align-items: center;
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2, 8px);
+  justify-content: space-between;
+}
+
+.device-pane__picker-title {
+  font-size: 0.9375rem;
+  margin: 0;
+}
+
+.device-pane__picker-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2, 8px);
+}
+
+/* #1973: which device host the pane lists (only with SSH device hosts). */
+.device-pane__hosts {
+  border: 0;
+  margin: 0;
+  min-width: 0;
+  padding: 0;
+}
+
+.device-pane__hosts-legend {
+  font-size: 0.75rem;
+  letter-spacing: 0.02em;
+  margin-bottom: var(--space-1, 4px);
+  opacity: 0.75;
+  padding: 0;
+  text-transform: uppercase;
+}
+
+.device-pane__hosts-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2, 8px);
+}
+
+.device-pane__host {
+  min-height: 44px;
+}
+
+.device-pane__group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+}
+
+.device-pane__group-title {
+  font-size: 0.75rem;
+  letter-spacing: 0.02em;
+  margin: 0;
+  opacity: 0.75;
+  text-transform: uppercase;
+}
+
+.device-pane__rows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+  list-style: none;
   margin: 0;
   padding: 0;
 }
 
-.device-pane__picker-legend {
-  font-size: 0.75rem;
-  opacity: 0.75;
-  padding: 0;
-}
-
-.device-pane__choice {
+.device-pane__row {
   align-items: center;
   border: 1px solid var(--border-primary);
   border-radius: var(--radius-2, 8px);
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2, 8px);
-  /* The shared 44px target floor, spelled here because a label is not a
-     control the global button rules reach. */
   min-height: 44px;
   padding: var(--space-2, 8px);
 }
 
-.device-pane__choice:has(input:disabled) {
-  opacity: 0.6;
+.device-pane__row-name {
+  font-weight: 600;
 }
 
-.device-pane__choice:has(input:focus-visible) {
-  outline: 2px solid var(--accent-primary);
-  outline-offset: 2px;
-}
-
-.device-pane__choice-meta,
-.device-pane__choice-reason {
+.device-pane__row-meta {
+  flex: 1 1 10rem;
   font-size: 0.75rem;
   opacity: 0.75;
 }
 
-.device-pane__choice-reason {
-  flex-basis: 100%;
+.device-pane__row-actions {
+  display: flex;
+  gap: var(--space-2, 8px);
+  margin-left: auto;
+}
+
+.device-pane__note,
+.device-pane__loading-line {
+  font-size: 0.8125rem;
+  margin: 0;
+}
+
+.device-pane__loading {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+}
+
+.device-pane__loading-stage {
+  max-height: 12rem;
+}
+
+/* The 36px device toolbar: identity on the left, hardware buttons right. */
+.device-pane__toolbar {
+  align-items: center;
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  gap: var(--space-2, 8px);
+  min-height: 36px;
+}
+
+.device-pane__identity {
+  display: flex;
+  flex: 1 1 8rem;
+  flex-wrap: wrap;
+  gap: 0 var(--space-2, 8px);
+  margin: 0;
+  min-width: 0;
+}
+
+.device-pane__identity-name {
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.device-pane__identity-meta {
+  font-size: 0.75rem;
+  opacity: 0.75;
 }
 
 .device-pane__actions {
+  align-items: center;
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-2, 8px);
+  gap: var(--space-1, 4px);
 }
 
-.device-pane__view-only,
-.device-pane__note {
-  font-size: 0.75rem;
-  margin: 0;
-  opacity: 0.8;
+.device-pane__icon-button {
+  align-items: center;
+  display: inline-flex;
+  justify-content: center;
+  min-height: 32px;
+  min-width: 32px;
+  padding: 0;
+}
+
+/*
+ * The live stage and the Tools drawer (#1971). The drawer's own chunk styles
+ * it as an overlay (absolute, over the stage) or a docked 288px column; this
+ * row only has to hold both and give the overlay its positioning context.
+ */
+.device-pane__workspace {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  position: relative;
 }
 
 .device-pane__stage {
-  align-items: center;
   display: flex;
-  /* Column because a refused re-capture renders the refusal AND the frame the
-     reader already had, stacked. With one child this is identical to a row:
-     both axes are centred either way. */
-  flex-direction: column;
   flex: 1 1 auto;
-  gap: var(--space-2, 8px);
-  justify-content: center;
-  min-height: 0;
-  overflow: auto;
-}
-
-.device-pane__figure {
-  display: flex;
   flex-direction: column;
-  gap: var(--space-2, 8px);
-  margin: 0;
-  max-height: 100%;
   min-height: 0;
-}
-
-.device-pane__frame {
-  /* Set inline from the capture's own width and height. The fallback is a
-     square rather than a phone ratio: an invented portrait shape would be a
-     claim about a device nobody measured. */
-  aspect-ratio: var(--device-frame-ratio, 1 / 1);
-  /* A defined token with no literal fallback, here and on the border above
-     and on the picker rows. The names this file first reached for are
-     defined in no theme root, so their colour fallbacks were what would
-     always paint: a fixed 5% black behind the letterbox bars
-     `object-fit: contain` leaves, and a fixed 15% black hairline, both of
-     which disappear on a dark theme. (The scanner behind
-     undefined-css-custom-properties.test.ts reads comments too, so this one
-     names no var expression.) */
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border-primary);
-  border-radius: var(--radius-2, 8px);
-  margin: auto;
-  max-height: 100%;
-  max-width: 100%;
-  min-height: 0;
-  overflow: hidden;
-}
-
-.device-pane__image {
-  display: block;
-  height: 100%;
-  /* Never `cover`: cropping a device screen hides UI, which is the one thing
-     this pane exists to show. */
-  object-fit: contain;
-  /* The frame is not an input surface. The absence of handlers is what makes
-     that true; this only stops a drag from reading as one. */
-  pointer-events: none;
-  width: 100%;
-}
-
-.device-pane__caption {
-  font-size: 0.8125rem;
-  text-align: center;
-}
-
-.device-pane__stale {
-  font-weight: 600;
+  min-width: 0;
 }

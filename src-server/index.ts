@@ -29,6 +29,8 @@ import {
   resolveRuntimePort,
 } from './runtime/bootstrap/runtime-port.js';
 import { createRuntimeProcessLifecycle } from './runtime/bootstrap/runtime-process-lifecycle.js';
+import type { SelfHostedBrokerStatus } from './runtime/bootstrap/self-hosted-broker-runtime.js';
+import { loadSelfHostedBrokerConnectorConfig } from './runtime/bootstrap/self-hosted-connector-config.js';
 import { StationRuntime } from './runtime/bootstrap/station-runtime.js';
 import { armSupervisedParentWatchdog } from './runtime/bootstrap/supervised-parent-watchdog.js';
 import { sweepOrphanedOwnedProcesses } from './services/infra/process-utils.js';
@@ -118,12 +120,28 @@ async function main() {
     port = await allocateFreePortBlock(host);
   }
 
+  const connector = loadSelfHostedBrokerConnectorConfig({
+    homeDir: projectHomeDir,
+    observeStatus: (status: SelfHostedBrokerStatus) => {
+      const message = 'Self-hosted relay lifecycle status';
+      const detail = { ...status };
+      if (status.state === 'failed') logger.warn(message, detail);
+      else logger.info(message, detail);
+    },
+  });
+
   const runtime = new StationRuntime({
     projectHomeDir,
     port,
     host: configuredHost,
     logger,
     buildProvenanceSnapshot,
+    ...(connector
+      ? {
+          virtualApplication: connector.virtualApplication,
+          selfHostedBrokerConnector: connector.selfHostedBrokerConnector,
+        }
+      : {}),
   });
 
   let stdoutBrokenPipe = false;
@@ -141,20 +159,6 @@ async function main() {
   try {
     await runtime.initialize();
     let shuttingDown = false;
-
-    // Emit a single structured readiness line for a supervising parent process
-    // (the desktop spawner) once every listener is bound. No-op unless the
-    // supervisor opted in with STATION_STDOUT_HANDSHAKE=1.
-    if (
-      !writeReadinessHandshake(
-        process.stdout,
-        port,
-        host,
-        process.env.STATION_STDOUT_HANDSHAKE === '1',
-      )
-    ) {
-      stdoutBrokenPipe = true;
-    }
 
     // The read side of archive#1903: a self-update that never confirmed the
     // new server was healthy used to leave no trace at all past a log line
@@ -197,11 +201,6 @@ async function main() {
       process.exit(exitCode);
     };
 
-    // A supervisor can disappear in the narrow interval before the shutdown
-    // closure exists. The guard remembered it; now converge through the same
-    // one-shot shutdown path rather than continuing as an orphan.
-    if (stdoutBrokenPipe) void gracefulShutdown('stdout_epipe', 1);
-
     process.on('SIGINT', () => void gracefulShutdown?.('SIGINT'));
     process.on('SIGTERM', () => void gracefulShutdown?.('SIGTERM'));
     armSupervisedParentWatchdog({
@@ -215,6 +214,24 @@ async function main() {
         void gracefulShutdown?.('uncaughtException');
       },
     });
+
+    // A supervisor may stop us immediately after readiness. Install all
+    // shutdown handlers before publishing that ownership handoff.
+    // Emit a single structured readiness line for a supervising parent process
+    // (the desktop spawner) once every listener is bound. No-op unless the
+    // supervisor opted in with STATION_STDOUT_HANDSHAKE=1.
+    if (
+      !writeReadinessHandshake(
+        process.stdout,
+        port,
+        host,
+        process.env.STATION_STDOUT_HANDSHAKE === '1',
+      )
+    ) {
+      stdoutBrokenPipe = true;
+    }
+    // Cover both an earlier async EPIPE and a synchronous handshake refusal.
+    if (stdoutBrokenPipe) void gracefulShutdown('stdout_epipe', 1);
   } catch (error) {
     processLifecycle.observeShutdown('startup_failure');
     processLifecycle.observeExit(1);

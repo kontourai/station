@@ -339,6 +339,11 @@ vi.mock('../contexts/AgentsContext', () => ({
 }));
 vi.mock('../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: homeConnection.apiBase }),
+  useHostRequestAuthorityScope: () => ({
+    apiBase: homeConnection.apiBase,
+    authorityKey: 'app-home-route:test-authority',
+    isCurrent: () => true,
+  }),
 }));
 vi.mock('../contexts/ConfigContext', () => ({
   useConfig: () => ({ defaultModel: 'codex-mini' }),
@@ -364,9 +369,16 @@ vi.mock('../contexts/NavigationContext', () => {
     useNavigationActions: navigation,
   };
 });
-vi.mock('../contexts/ProjectsContext', () => ({
-  ProjectsProvider: ({ children }: { children: ReactNode }) => <>{children}</>,
-}));
+vi.mock('../contexts/ProjectsContext', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('../contexts/ProjectsContext')>();
+  return {
+    ...actual,
+    ProjectsProvider: ({ children }: { children: ReactNode }) => (
+      <>{children}</>
+    ),
+  };
+});
 // The stubs below describe an ARRANGEMENT; the registry is the real one,
 // supplied here the way the provider supplies it, because `RegionShells`
 // reads `surfaces` to decide which dock occupants get a host (#2045).
@@ -399,7 +411,6 @@ vi.mock('../hooks/useQueryCacheReconnectSync', () => ({
 vi.mock('../hooks/useOutboundQueueFlush', () => ({
   useOutboundQueueFlush: vi.fn(),
 }));
-vi.mock('../lib/apiClient', () => ({ setAuthCallback: vi.fn() }));
 
 function resetHooks() {
   hooks.projects = { data: [], isLoading: false, isError: false };

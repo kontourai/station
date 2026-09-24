@@ -65,6 +65,11 @@ managed pnpm lifecycle above. `npm run` remains the script interface; it does
 not select npm dependency storage. The migration must update those inputs, native
 hooks and patches, verification identity, packaging, CI, and this guide together.
 
+Executable version-manager shims keep their invocation name while Station
+checks and launches the canonical driver outside the dependency tree being
+retired. An alias does not relax the exact pnpm pin: an unconfigured shim or
+a different manager version still refuses before installation.
+
 The npm download cache does not share installed dependency trees between
 worktrees. If installation fails with `ENOSPC`, check free space and treat the
 partial install as unverified before diagnosing downstream build/test errors.

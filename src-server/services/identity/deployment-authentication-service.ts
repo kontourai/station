@@ -7,21 +7,38 @@ import {
   type DeploymentAuthenticationDescriptor,
   type DeploymentAuthenticationProvider,
   type DeploymentAuthenticationResult,
+  type PendingEnrollmentSessionResult,
   type VerifiedAuthenticationSession,
 } from '@kontourai/station-contracts/deployment-authentication';
 import {
   humanPrincipal,
   type PrincipalRef,
 } from '@kontourai/station-contracts/principal';
-import { raceWithSignal } from '../../utils/bounded-async.js';
+import {
+  awaitSettlementWithin,
+  raceWithSignal,
+} from '../../utils/bounded-async.js';
 import { createLogger } from '../../utils/logger.js';
 import {
   readDeploymentAuthenticationDescriptor,
   readDeploymentAuthenticationResult,
+  readPendingEnrollmentSessionResult,
 } from './deployment-authentication-validation.js';
 import { PrincipalUnresolvedError } from './principal-resolver.js';
 
 const logger = createLogger({ name: 'deployment-authentication' });
+const RELAY_ENROLLMENT_ID_PATTERN = /^[A-Za-z0-9_-]{43}$/;
+export function deploymentAccountPrincipal(
+  issuer: string,
+  subject: string,
+  displayName: string,
+): PrincipalRef {
+  const boundedSubject = createHash('sha256')
+    .update(JSON.stringify([issuer, subject]))
+    .digest('hex');
+  return humanPrincipal('deployment', boundedSubject, displayName);
+}
+
 export type ResolvedDeploymentAuthentication =
   | Exclude<DeploymentAuthenticationResult, { kind: 'authenticated' }>
   | {
@@ -88,6 +105,146 @@ export class DeploymentAuthenticationService {
       login: typeof this.provider.sessionReferences?.login === 'function',
     };
   }
+
+  pendingEnrollmentCapabilities(): { available: boolean } {
+    const pending = this.provider.sessionReferences?.pendingEnrollment;
+    return {
+      available:
+        this.sessionReferenceCapabilities().verify &&
+        this.description.login?.kind === 'username-password' &&
+        typeof pending?.create === 'function' &&
+        typeof pending.verify === 'function' &&
+        typeof pending.promote === 'function' &&
+        typeof pending.discard === 'function',
+    };
+  }
+
+  /** Candidate-only provider login; never publishes ordinary request identity. */
+  async createPendingEnrollment(
+    enrollmentId: string,
+    request: Request,
+  ): Promise<PendingEnrollmentSessionResult> {
+    const pending = this.provider.sessionReferences?.pendingEnrollment;
+    if (
+      this.closing ||
+      !RELAY_ENROLLMENT_ID_PATTERN.test(enrollmentId) ||
+      !this.pendingEnrollmentCapabilities().available ||
+      !pending
+    )
+      return { kind: 'unavailable' };
+    const signal = AbortSignal.any([
+      request.signal,
+      AbortSignal.timeout(10_000),
+    ]);
+    try {
+      const headers = new Headers(request.headers);
+      // Provider-owned password verification must not adopt or forward any
+      // browser/Device/continuation cookie. Only public request context such
+      // as Origin and Content-Type may reach the provider hook.
+      headers.delete('Cookie');
+      headers.delete('Cookie2');
+      headers.delete('Authorization');
+      headers.delete(APPLICATION_SESSION_HEADER);
+      headers.delete(APPLICATION_SESSION_PROOF_HEADER);
+      headers.delete('Content-Length');
+      const bounded = new Request(request, { headers, signal });
+      const result = await raceWithSignal(
+        pending.create(enrollmentId, bounded),
+        signal,
+      );
+      if (this.closing || signal.aborted) return { kind: 'unavailable' };
+      return readPendingEnrollmentSessionResult(
+        result,
+        enrollmentId,
+        this.now(),
+      );
+    } catch {
+      return { kind: 'unavailable' };
+    }
+  }
+
+  /** Recheck an exact still-pending session; this never falls back to generic verify. */
+  async verifyPendingEnrollment(
+    enrollmentId: string,
+    sessionId: string,
+    callerSignal: AbortSignal,
+  ): Promise<PendingEnrollmentSessionResult> {
+    const pending = this.provider.sessionReferences?.pendingEnrollment;
+    if (
+      this.closing ||
+      !RELAY_ENROLLMENT_ID_PATTERN.test(enrollmentId) ||
+      !sessionId.trim() ||
+      !this.pendingEnrollmentCapabilities().available ||
+      !pending
+    )
+      return { kind: 'unavailable' };
+    const signal = AbortSignal.any([callerSignal, AbortSignal.timeout(10_000)]);
+    try {
+      const result = await raceWithSignal(
+        pending.verify(enrollmentId, sessionId, signal),
+        signal,
+      );
+      if (this.closing || signal.aborted) return { kind: 'unavailable' };
+      const checked = readPendingEnrollmentSessionResult(
+        result,
+        enrollmentId,
+        this.now(),
+      );
+      return checked.kind === 'pending' &&
+        checked.session.sessionId !== sessionId
+        ? { kind: 'invalid', reason: 'conflicting-identity' }
+        : checked;
+    } catch {
+      return { kind: 'unavailable' };
+    }
+  }
+
+  async promotePendingEnrollment(
+    enrollmentId: string,
+    sessionId: string,
+    callerSignal: AbortSignal,
+  ): Promise<void> {
+    const pending = this.provider.sessionReferences?.pendingEnrollment;
+    if (
+      this.closing ||
+      !RELAY_ENROLLMENT_ID_PATTERN.test(enrollmentId) ||
+      !sessionId.trim() ||
+      !this.pendingEnrollmentCapabilities().available ||
+      !pending
+    )
+      throw new Error('Pending enrollment promotion is unavailable.');
+    const signal = AbortSignal.any([callerSignal, AbortSignal.timeout(10_000)]);
+    const operation = Promise.resolve().then(() =>
+      pending.promote(enrollmentId, sessionId, signal),
+    );
+    if (!(await awaitSettlementWithin(operation, 10_000)))
+      throw new Error('Pending enrollment promotion is unconfirmed.');
+    await operation;
+  }
+
+  async discardPendingEnrollment(
+    enrollmentId: string,
+    sessionId: string | undefined,
+    callerSignal: AbortSignal,
+  ): Promise<void> {
+    const pending = this.provider.sessionReferences?.pendingEnrollment;
+    if (
+      this.closing ||
+      !RELAY_ENROLLMENT_ID_PATTERN.test(enrollmentId) ||
+      (sessionId !== undefined && !sessionId.trim()) ||
+      !this.pendingEnrollmentCapabilities().available ||
+      !pending
+    )
+      throw new Error('Pending enrollment cleanup is unavailable.');
+    const signal = AbortSignal.any([callerSignal, AbortSignal.timeout(10_000)]);
+    const operation = Promise.resolve().then(() =>
+      pending.discard(enrollmentId, sessionId, signal),
+    );
+    if (!(await awaitSettlementWithin(operation, 10_000)))
+      throw new Error('Pending enrollment cleanup is unconfirmed.');
+    await operation;
+  }
+
   async verifySessionReference(
     sessionId: string,
     callerSignal: AbortSignal,
@@ -120,12 +277,12 @@ export class DeploymentAuthenticationService {
     if (this.closing || !this.provider.sessionReferences?.revoke)
       throw new Error('Account session revocation is unavailable.');
     const signal = AbortSignal.any([callerSignal, AbortSignal.timeout(10_000)]);
-    await raceWithSignal(
-      this.provider.sessionReferences.revoke(sessionId, signal),
-      signal,
+    const operation = Promise.resolve().then(() =>
+      this.provider.sessionReferences!.revoke(sessionId, signal),
     );
-    if (this.closing || signal.aborted)
-      throw new Error('Account session revocation is unavailable.');
+    if (!(await awaitSettlementWithin(operation, 10_000)))
+      throw new Error('Account session revocation is unconfirmed.');
+    await operation;
   }
   async loginVirtualSession(
     request: Request,
@@ -357,13 +514,14 @@ export class DeploymentAuthenticationService {
     const session = parsed.session;
     // Hash the unambiguous exact pair to keep PrincipalRef bounded without
     // exposing upstream identifiers. Display/contact changes do not merge people.
-    const subject = createHash('sha256')
-      .update(JSON.stringify([this.description.issuer, session.subject]))
-      .digest('hex');
     return {
       kind: 'authenticated',
       issuer: this.description.issuer,
-      principal: humanPrincipal('deployment', subject, session.displayName),
+      principal: deploymentAccountPrincipal(
+        this.description.issuer,
+        session.subject,
+        session.displayName,
+      ),
       session,
     };
   }

@@ -3,7 +3,14 @@ import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { engineId } from '@kontourai/station-contracts/agent-identity';
-import { FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY } from '@kontourai/station-contracts/provider';
+import {
+  FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY,
+  MUSE_HELD_TURN_UNFINISHED_CODE,
+  MUSE_LINGERING_CHILD_REAPED_CODE,
+  MUSE_TURN_IDLE_TIMEOUT_CODE,
+  MUSE_TURN_SLOT_RELEASING_CODE,
+  MUSE_TURN_TOTAL_TIMEOUT_CODE,
+} from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import type { Prerequisite } from '@kontourai/station-contracts/tool';
 import { redactSecrets } from '@kontourai/station-shared/redaction';
@@ -20,12 +27,13 @@ import {
 import { childProcessEnvironment } from '../../utils/child-process-environment.js';
 import { errorMessage } from '../../utils/error-message.js';
 import type { Logger } from '../../utils/logger.js';
-import type {
-  ProviderAdapterShape,
-  ProviderSendTurnInput,
-  ProviderSession,
-  ProviderSessionStartInput,
-  ProviderTurnStartResult,
+import {
+  type ProviderAdapterShape,
+  type ProviderSendTurnInput,
+  type ProviderSession,
+  type ProviderSessionStartInput,
+  type ProviderTurnStartResult,
+  SendTurnRefusedError,
 } from '../adapter-shape.js';
 import type { CliAuthState, CliCommandResult } from '../auth/cli-auth.js';
 import {
@@ -40,8 +48,12 @@ import {
   decodeChatAttachments,
   rejectFileAttachments,
 } from '../sessions/chat-attachments.js';
+import { projectBoundedToolOutput } from '../tool-output-projection.js';
 import {
   buildMuseExecArgs,
+  museBackgroundTaskRowId,
+  observeMuseToolTask,
+  parseMuseLaunchedBackgroundTask,
   parseMuseLine,
   splitMuseLines,
   translateMuseRecord,
@@ -58,6 +70,7 @@ import {
   MUSE_MODEL_LAUNCH,
   MUSE_PROVIDER_MODES,
 } from './muse-adapter-types.js';
+import { UNRESOLVED_TURN_TOOL_OUTPUT } from './unresolved-tool-output.js';
 
 /**
  * Only `warn`/`info` are used, so the option is typed to exactly that slice —
@@ -100,20 +113,125 @@ export interface MuseAdapterOptions {
     signal?: AbortSignal,
   ) => Promise<CliCommandResult | null>;
   /**
-   * Per-turn deadline in milliseconds. `muse exec` has no timeout of its own,
-   * so a wedged child would otherwise hold the turn (and `hasOpenTurn`) open
-   * forever. Generous by default — this is a backstop for a hung process, not
-   * a latency budget for a long answer.
+   * Declared absolute per-turn budget in milliseconds (wall-clock from turn
+   * start; activity never moves it). Absent means NO total budget: Station
+   * does not end a live turn on a schedule of its own choosing. A declared
+   * value outside (0, 24 h] also means no total budget, and is reported once
+   * as a warning on the first turn. Never read from request/child/user
+   * metadata — server-owned only.
    */
   turnTimeoutMs?: number;
+  /**
+   * Declared idle limit in milliseconds: a full window with no verified
+   * protocol activity (non-empty streamed text, a newly started tool, or a
+   * newly identified tool result) AND no tool in flight ends the turn.
+   * Absent means NO idle bound: a silent turn is surfaced (the stall
+   * watchdog's `progressSilence`) and the user decides whether to Stop it
+   * (#2269). A declared value outside (0, 24 h] also means none, and is
+   * reported once on the first turn. When declared it is also the window
+   * after which a child still running after its turn settled is reaped.
+   * Server-owned only.
+   */
+  turnIdleTimeoutMs?: number;
+  /**
+   * #2300: how long a send waits for a settled turn's child to exit before
+   * refusing with the retryable `MUSE_TURN_SLOT_RELEASING_CODE`. Defaults to
+   * {@link MUSE_SETTLED_CHILD_EXIT_WAIT_MS}; injected by tests.
+   */
+  settledChildExitWaitMs?: number;
 }
 
 /**
- * Backstop only: a `muse exec` still streaming after this is treated as hung.
- * Long model answers finish well inside it; the value exists so a wedged child
- * cannot hold a turn open for the life of the process.
+ * #2269 (owner direction 2026-09-22: Station does not kill live work on its
+ * own schedule). A live Muse turn has no Station-chosen bound. Two bounds
+ * apply only when a server-owned caller DECLARES them, and no production
+ * caller does (`station-runtime.ts` constructs this adapter with neither):
+ *
+ * - IDLE (`turnIdleTimeoutMs`, no default): a full window with no VERIFIED
+ *   protocol activity (non-empty streamed text, a newly started tool, or a
+ *   newly identified tool result) ends the turn — but never while a tool is
+ *   in flight (a `tool.started` whose muse task has not finished, #2308) or
+ *   background work the turn launched is pending (#2300): that is known
+ *   in-progress work, not silence. Each verified activity reschedules the
+ *   window, and the tool's task finishing (completed/failed/cancelled) or
+ *   its result re-arms it. Its expiry is `MUSE_TURN_IDLE_TIMEOUT_CODE`. A
+ *   30-minute default used to apply to every turn; it was the last timer
+ *   that ended a live turn Station had not been asked to bound. A silent
+ *   turn is now shown as silent (the stall watchdog's `progressSilence`,
+ *   "No output for …" with a Stop button) and the user decides.
+ * - TOTAL (`turnTimeoutMs`, no default): an absolute wall-clock ceiling from
+ *   turn start. Its expiry is `MUSE_TURN_TOTAL_TIMEOUT_CODE`. A fixed 2 h
+ *   default used to apply here and killed a healthy turn whose bash tool
+ *   completed every ~5 minutes.
+ *
+ * A declared value outside (0, 24 h] is refused (no bound) and reported once,
+ * never replaced by a bound nobody declared. No request/child/user metadata
+ * can choose or extend either bound. Both are capped at 24 h (well inside
+ * Node's setTimeout range).
+ *
+ * Separately, a child still running after its turn SETTLED is reaped one
+ * window after the settle (#2328/#2300, {@link MUSE_LINGERING_CHILD_REAP_MS},
+ * or the declared idle window). That bounds a process that outlived its
+ * turn, not a live turn.
  */
-const MUSE_DEFAULT_TURN_TIMEOUT_MS = 30 * 60_000;
+export const MUSE_LINGERING_CHILD_REAP_MS = 30 * 60_000;
+export const MUSE_MAX_SUPERVISION_TIMEOUT_MS = 24 * 60 * 60_000;
+/**
+ * Resolution of the lingering-child reap window: a positive finite number
+ * within the 24 h cap is honored; anything else (absent, zero, negative,
+ * NaN, Infinity, above the cap) resolves to the given default — never to "no
+ * bound", because a child that outlived its turn holds the session's slot.
+ * Exported for unit tests. The declared turn bounds deliberately do not use
+ * this: they have no default to fall back to (see
+ * {@link resolveMuseTurnBudget}).
+ */
+export function resolveMuseSupervisionBound(
+  value: number | undefined,
+  defaultMs: number,
+): number {
+  if (
+    typeof value === 'number' &&
+    Number.isFinite(value) &&
+    value > 0 &&
+    value <= MUSE_MAX_SUPERVISION_TIMEOUT_MS
+  ) {
+    return value;
+  }
+  return defaultMs;
+}
+
+/**
+ * A declared turn bound (TOTAL or IDLE), or `undefined` for none. Absent -> none. A
+ * declared value that is not a positive finite number within the 24 h cap
+ * also resolves to none (reported as `invalid`), rather than to a substitute
+ * budget nobody declared: the only choices for a malformed declaration are
+ * inventing a budget or applying none, and inventing one is the failure this
+ * policy exists to remove. The caller warns once so the misconfiguration is
+ * visible.
+ */
+export function resolveMuseTurnBudget(value: number | undefined): {
+  budgetMs: number | undefined;
+  invalid: boolean;
+} {
+  if (value === undefined) return { budgetMs: undefined, invalid: false };
+  if (
+    typeof value === 'number' &&
+    Number.isFinite(value) &&
+    value > 0 &&
+    value <= MUSE_MAX_SUPERVISION_TIMEOUT_MS
+  ) {
+    return { budgetMs: value, invalid: false };
+  }
+  return { budgetMs: undefined, invalid: true };
+}
+
+/**
+ * Terminal codes for an idle expiry and for a DECLARED absolute budget's
+ * expiry. Defined in the provider contract so the UI reads the same values;
+ * re-exported here for the adapter's existing importers.
+ * `station-control-delegation.ts`'s budget reasons match these strings.
+ */
+export { MUSE_TURN_IDLE_TIMEOUT_CODE, MUSE_TURN_TOTAL_TIMEOUT_CODE };
 
 /**
  * Cap on the unterminated stdout tail carried across chunk boundaries. muse
@@ -123,6 +241,109 @@ const MUSE_DEFAULT_TURN_TIMEOUT_MS = 30 * 60_000;
  * dropped instead of growing the turn's memory without limit.
  */
 export const MUSE_STDOUT_BUFFER_MAX_CHARS = 1_048_576;
+
+/**
+ * #2269: bound on remembered tool-result ids per turn (replay dedup for idle
+ * rescheduling). A duplicate `tool_result` receipt must not extend the idle
+ * window; the ids are remembered so a replay reads as a replay. The queue
+ * evicts oldest-first past this cap — an evicted id replaying reads as new,
+ * which only reschedules idle on what is still a protocol frame the child
+ * actually emitted (and a declared total budget, if any, still bounds it).
+ */
+const MUSE_SEEN_TOOL_CALL_IDS_MAX = 500;
+
+/**
+ * Outputs for a call whose muse task reached `completed` / `failed` but
+ * whose `tool_result` never arrived before the turn settled. The status
+ * follows muse's reported phase; the sentence says the result is missing.
+ */
+export const MUSE_FINISHED_NO_RESULT_OUTPUT =
+  'Muse reported the tool finished but sent no result.';
+export const MUSE_FAILED_NO_RESULT_OUTPUT =
+  'Muse reported the tool failed but sent no result.';
+
+/** Output for a tool call muse cancelled before reporting a result. */
+export const MUSE_CANCELLED_TOOL_OUTPUT =
+  'Muse cancelled this tool call before it reported a result.';
+
+/**
+ * #2300: outputs for a background task's row (`muse-task:<taskId>`). The
+ * first three follow the final phase muse itself reported for the task. The
+ * last two are Station's: the turn was stopped (Stop kills the child's whole
+ * process group, background work included), or it ended — the child exited,
+ * or the turn closed for another reason — before muse reported the task's
+ * fate, which is then unknown.
+ */
+export const MUSE_BACKGROUND_TASK_COMPLETED_OUTPUT =
+  'Muse reported this background task completed.';
+const MUSE_BACKGROUND_TASK_FAILED_OUTPUT =
+  'Muse reported this background task failed.';
+const MUSE_BACKGROUND_TASK_CANCELLED_OUTPUT =
+  'Muse cancelled this background task.';
+export const MUSE_BACKGROUND_TASK_STOPPED_OUTPUT =
+  "The turn was stopped before this background task reported a result. Muse's process exited after Station signalled its process group; that the task itself ended with it was not separately confirmed.";
+export const MUSE_BACKGROUND_TASK_STOP_UNCONFIRMED_OUTPUT =
+  "The turn was stopped before this background task reported a result. Station could not confirm that Muse's process stopped, so the task may still be running.";
+export const MUSE_BACKGROUND_TASK_UNRESOLVED_OUTPUT =
+  'The Muse turn ended before this background task reported a result, so whether it finished is unknown.';
+
+/**
+ * #2300: bound on background tasks tracked per turn. An announcement past it
+ * is not tracked (logged once), so it neither opens a row nor holds the turn —
+ * the turn then behaves for that task exactly as it did before #2300.
+ */
+export const MUSE_PENDING_BACKGROUND_TASKS_MAX = 64;
+
+/**
+ * #2300 (review M5): how long a send waits for the PREVIOUS turn's child to
+ * exit when that turn has already ended. The server frees a turn at its
+ * `turn.completed`, but the child can still take a moment to exit (~160 ms
+ * observed after muse's follow-up run), and until it does it owns the
+ * session's `--session-id`. Past this wait the send is refused with the
+ * retryable `MUSE_TURN_SLOT_RELEASING_CODE`.
+ */
+const MUSE_SETTLED_CHILD_EXIT_WAIT_MS = 5_000;
+
+/**
+ * A send refused because the previous turn's child had not yet exited (see
+ * {@link MUSE_SETTLED_CHILD_EXIT_WAIT_MS}). A refusal to act, and retryable:
+ * the same send succeeds once that process is gone.
+ *
+ * A `SendTurnRefusedError` because it IS a pre-effect refusal — nothing was
+ * spawned — and that type is what makes the orchestration layer retire the
+ * dispatch cleanly and rethrow it. Any other error thrown from `sendTurn` is
+ * converted to `foreground_message_indeterminate` (the turn MAY have
+ * started), which is what the plain "already has an active turn" error
+ * became before #2300 (and, for a still-running occupant, until #2415).
+ */
+export class MuseTurnSlotReleasingError extends SendTurnRefusedError {
+  readonly code = MUSE_TURN_SLOT_RELEASING_CODE;
+  readonly retryable = true;
+  /**
+   * Kept off the message: a client queue shows the refusal text to the user
+   * verbatim, and a thread id there is noise. `sendTurn` logs it.
+   */
+  constructor(readonly threadId: string) {
+    super(
+      "Muse is still closing the previous turn's process; try again in a moment.",
+    );
+    this.name = 'MuseTurnSlotReleasingError';
+  }
+}
+
+/**
+ * Human form of a Station-owned duration, for user-facing warnings. Exact:
+ * whole hours or whole minutes when the value is one, otherwise seconds
+ * (fractional when needed) — a 90 s limit reads "90 seconds", never a
+ * rounded "2 minutes".
+ */
+export function formatMuseDuration(ms: number): string {
+  const unit = (value: number, name: string) =>
+    `${value} ${name}${value === 1 ? '' : 's'}`;
+  if (ms > 0 && ms % 3_600_000 === 0) return unit(ms / 3_600_000, 'hour');
+  if (ms > 0 && ms % 60_000 === 0) return unit(ms / 60_000, 'minute');
+  return unit(ms / 1_000, 'second');
+}
 
 /**
  * Where the muse CLI stores its credential, honoring XDG. Presence only —
@@ -325,10 +546,25 @@ const MUSE_TERMINAL_FIELD_MAX_CHARS = 200;
  * call site instead of a comment asserting it holds.
  */
 type MuseTurnSettleOutcome =
-  | { kind: 'aborted'; abortReason: string }
+  | {
+      kind: 'aborted';
+      abortReason: string;
+      /**
+       * #2300: whether the child is known to have stopped. Only then may a
+       * pending background row say its process exited.
+       */
+      terminationConfirmed: boolean;
+    }
   | {
       kind: 'error';
       error: { message: string; code: string };
+      /**
+       * True for a Station-owned deadline. The deadline, not anything muse
+       * wrote, is why the turn ended, and muse writes unrelated warnings to
+       * stderr on every run (workspace banner, rules-file truncation), so
+       * appending the stderr tail would present those as the cause.
+       */
+      omitStderr?: boolean;
       /**
        * Turn text muse had produced or reported before the failure. Never
        * published as `turn.completed.outputText` (this outcome never
@@ -383,6 +619,66 @@ async function terminateMuseProcess(
  * - `sendTurn` spawns the turn's child and tears it down when the turn ends.
  * - A child exit is a NORMAL per-turn event and must never publish
  *   `session.exited`; only `stopSession` does that.
+ *
+ * #2300 — `run_terminal` does not always end the turn. Muse's `workflow`
+ * tool launches work in the background and returns
+ * `{"status":"launched","taskId":…}` at once; the run then reaches its
+ * `run_terminal`, but `muse exec` does NOT exit. It waits for the task,
+ * reports the task's `task_lifecycle` completion, submits an automatic
+ * follow-up run (`command_accepted` from `muse-runtime-background-terminal`)
+ * that reports the result, and exits after that run's own `run_terminal`
+ * (live-measured on muse 1.3.0-R3401.1; the capture is
+ * `__tests__/fixtures/muse-1.3-background-workflow-turn.jsonl`). Owner
+ * decision on #2300: Station HOLDS the turn open across that.
+ *
+ * - A launch announces a background task: its row is opened as
+ *   `tool.started` with `toolCallId: muse-task:<taskId>` and settled by the
+ *   task's final `task_lifecycle` phase. That id scheme is persisted in the
+ *   event log, so it is a deliberate one-way choice: the prefix keeps the row
+ *   distinct from the launching call's own row (`tool:<call_id>`, completed
+ *   when the launch returned) and from any real muse `call_id`.
+ * - A COMPLETED `run_terminal` while the turn is still owed a background
+ *   report (below) does not settle. The follow-up run is published on the SAME turn — its
+ *   text as a new item, joined to earlier text by a paragraph break, its
+ *   tools as ordinary rows — and `turn.completed` fires once, at the last
+ *   run's terminal, with the composed text. No second `turn.started` is
+ *   ever minted (#2324 owns provider-triggered turns).
+ * - The hold lasts until every announced task has settled AND a follow-up
+ *   run has reported it. Muse delivers each settled task's result in a
+ *   follow-up run; the follow-up is recognised by its `command_accepted`
+ *   (client id `muse-runtime-background-terminal`), and its terminal releases
+ *   the tasks it reported. If muse stops stamping that id, nothing releases
+ *   the hold early: the follow-up text still lands on the turn, and the
+ *   turn closes when the child exits.
+ * - UNVERIFIED muse invariant: that muse also submits a follow-up for a task
+ *   that settles BEFORE the run that launched it ends. The only live
+ *   capture settles the task after run 1's terminal. The hold for such a
+ *   task therefore still delivers a follow-up that does come, but if muse
+ *   instead exits cleanly (code 0, no signal) with no task still pending
+ *   and no follow-up started, the turn closes exactly as it did before
+ *   #2300: `turn.completed`, `stop`, the text so far, and no warning. A
+ *   non-zero or signal exit, or one with a task still pending, gets the
+ *   warning below.
+ * - Neither the idle deadline nor any other Station-chosen bound applies
+ *   while a task is pending or the turn is held: it runs until muse finishes
+ *   or someone presses Stop, which kills the child's process group and
+ *   closes pending rows cancelled. A held turn with no user to press Stop —
+ *   a delegated or Station-initiated turn — therefore runs until muse
+ *   finishes it. (A budget a server-owned caller DECLARES via
+ *   `turnTimeoutMs` still applies; no production caller declares one.)
+ * - A held turn that ends any other way — a follow-up terminal that is not
+ *   `completed`, the child exiting first, or a declared budget — closes its
+ *   pending rows as unresolved, publishes a `runtime.warning`
+ *   (`muse-held-turn-unfinished`, carrying the terminal and reason, or the
+ *   exit code) and closes the turn with `turn.completed` (`finishReason`
+ *   from the terminal, or `other`). Never `runtime.error`: that marks the
+ *   session failed and offers "Send again", which would re-launch the
+ *   workflow run 1 already started.
+ * - The background row is named `<tool>_background` (e.g.
+ *   `workflow_background`), not the launching tool's own name: it is not a
+ *   second call of that tool, and per-name tool counts must not read it as
+ *   one.
+ * - Turns that launch nothing are unchanged, down to their timing.
  */
 export class MuseAdapter implements ProviderAdapterShape {
   readonly provider = 'muse' as const;
@@ -432,7 +728,17 @@ export class MuseAdapter implements ProviderAdapterShape {
   private readonly env: NodeJS.ProcessEnv;
   private readonly credentialFileExists: (path: string) => boolean;
   private readonly findBinary: (command: string) => string | null;
-  private readonly turnTimeoutMs: number;
+  private readonly turnTimeoutMs: number | undefined;
+  /** A declared `turnTimeoutMs` that was refused; reported on the first turn. */
+  private readonly refusedTurnTimeoutMs: unknown;
+  private refusedTurnTimeoutReported = false;
+  /** The declared idle bound, or `undefined` for none (the default). */
+  private readonly turnIdleTimeoutMs: number | undefined;
+  /** A declared `turnIdleTimeoutMs` that was refused; reported on the first turn. */
+  private readonly refusedTurnIdleTimeoutMs: unknown;
+  private refusedTurnIdleTimeoutReported = false;
+  /** How long a child may outlive its settled turn before it is reaped. */
+  private readonly lingeringChildReapMs: number;
   /**
    * Resolved ONCE, at construction, from {@link MUSE_PROVIDER_OVERRIDE_ENV}:
    * a mid-run env mutation cannot change what a session's later turns run
@@ -462,7 +768,24 @@ export class MuseAdapter implements ProviderAdapterShape {
     this.env = options.env ?? process.env;
     this.credentialFileExists = options.credentialFileExists ?? existsSync;
     this.findBinary = options.findBinary ?? findCliBinary;
-    this.turnTimeoutMs = options.turnTimeoutMs ?? MUSE_DEFAULT_TURN_TIMEOUT_MS;
+    // Neither turn bound has a default (see MUSE_LINGERING_CHILD_REAP_MS's
+    // doc); a malformed declaration is kept to be reported, not replaced.
+    const budget = resolveMuseTurnBudget(options.turnTimeoutMs);
+    this.turnTimeoutMs = budget.budgetMs;
+    this.refusedTurnTimeoutMs = budget.invalid
+      ? options.turnTimeoutMs
+      : undefined;
+    const idle = resolveMuseTurnBudget(options.turnIdleTimeoutMs);
+    this.turnIdleTimeoutMs = idle.budgetMs;
+    this.refusedTurnIdleTimeoutMs = idle.invalid
+      ? options.turnIdleTimeoutMs
+      : undefined;
+    // The reap window fails CLOSED to its default: a child that outlived its
+    // turn holds the session's slot, so "no bound" is not an option here.
+    this.lingeringChildReapMs = resolveMuseSupervisionBound(
+      this.turnIdleTimeoutMs,
+      MUSE_LINGERING_CHILD_REAP_MS,
+    );
     let refusal: MuseProviderOverrideRefusal | undefined;
     this.providerOverride = resolveMuseProviderOverride(this.env, (refused) => {
       refusal = refused;
@@ -482,6 +805,35 @@ export class MuseAdapter implements ProviderAdapterShape {
    */
   private appliedModelId(modelId: string | undefined): string | undefined {
     return this.providerOverride === 'echo' ? undefined : modelId;
+  }
+
+  /**
+   * Reports a refused `turnTimeoutMs` / `turnIdleTimeoutMs` declaration once,
+   * on the first turn — deferred for the same reason as
+   * {@link reportProviderNoticeOnce}: this adapter is built before the
+   * runtime's logger is wired.
+   */
+  private reportRefusedTurnBudgetOnce(): void {
+    const logger = this.options.logger;
+    if (!logger?.warn) return;
+    if (
+      !this.refusedTurnTimeoutReported &&
+      this.refusedTurnTimeoutMs !== undefined
+    ) {
+      logger.warn(
+        `Ignoring Muse turnTimeoutMs=${String(this.refusedTurnTimeoutMs)}: not a positive number of milliseconds up to ${MUSE_MAX_SUPERVISION_TIMEOUT_MS}. Muse turns run with no total budget.`,
+      );
+      this.refusedTurnTimeoutReported = true;
+    }
+    if (
+      !this.refusedTurnIdleTimeoutReported &&
+      this.refusedTurnIdleTimeoutMs !== undefined
+    ) {
+      logger.warn(
+        `Ignoring Muse turnIdleTimeoutMs=${String(this.refusedTurnIdleTimeoutMs)}: not a positive number of milliseconds up to ${MUSE_MAX_SUPERVISION_TIMEOUT_MS}. Muse turns run with no idle bound.`,
+      );
+      this.refusedTurnIdleTimeoutReported = true;
+    }
   }
 
   /**
@@ -670,17 +1022,69 @@ export class MuseAdapter implements ProviderAdapterShape {
     // tokens, and publish `content.text-delta`/`turn.completed` AFTER
     // `session.exited`.
     if (record.stopped) {
-      throw new Error(`Muse session is stopped: ${input.threadId}`);
+      throw this.refuseSend(
+        input.threadId,
+        new SendTurnRefusedError('This Muse session is stopped.'),
+      );
     }
     // The slot is held until the child EXITS, not until the turn settles: two
     // `muse exec` processes must never run concurrently against one
-    // `--session-id`.
-    if (record.activeTurn) {
-      throw new Error(
-        `Muse session already has an active turn: ${input.threadId}`,
+    // `--session-id`. #2300 (review M5): the server frees a turn at its
+    // terminal event, so a queued send can arrive while the previous child
+    // is still exiting; that is waited out briefly, not refused.
+    const previous = record.activeTurn;
+    if (previous?.settled && !previous.terminationUnconfirmed) {
+      await this.waitForSlotRelease(previous);
+      // A Stop that lands during the wait acts on the OLD turn (the one
+      // still in the slot), which is the right target; this send is then
+      // refused cleanly, as a pre-effect refusal, rather than thrown as a
+      // plain error the orchestration layer would record as indeterminate.
+      if (record.stopped) {
+        throw this.refuseSend(
+          input.threadId,
+          new SendTurnRefusedError('This Muse session is stopped.'),
+        );
+      }
+    }
+    const occupant = record.activeTurn;
+    if (occupant) {
+      // Retryable only while the previous child is merely exiting. If
+      // Station already tried to stop it and could not confirm it stopped
+      // (Stop, stopSession, or a deadline reap left it termination-
+      // unconfirmed), no prompt retry will succeed: the slot frees only if
+      // the process exits on its own or the lingering-child reap, one window
+      // later, confirms stopping it (with no declared idle bound, measured
+      // from the settle: an unconfirmed Stop is retried 30 minutes after the
+      // Stop, not after the turn's last activity). That is the definitive refusal, still a
+      // pre-effect one so the dispatch is retired cleanly.
+      if (occupant.settled && !occupant.terminationUnconfirmed) {
+        throw this.refuseSend(
+          input.threadId,
+          new MuseTurnSlotReleasingError(input.threadId),
+        );
+      }
+      if (occupant.settled) {
+        throw this.refuseSend(
+          input.threadId,
+          new SendTurnRefusedError(
+            'Station could not confirm that the previous Muse process stopped. It will try stopping it again; this message can be sent again after that.',
+          ),
+        );
+      }
+      // #2415: the occupant is a live turn. Refusing is certain and nothing
+      // was spawned, so this is a pre-effect refusal too; a plain error here
+      // was recorded as an indeterminate turn start, whose lingering
+      // boundary row blocked every later send on the thread. The thread id
+      // stays out of the message (see `refuseSend`).
+      throw this.refuseSend(
+        input.threadId,
+        new SendTurnRefusedError(
+          'This Muse session already has an active turn.',
+        ),
       );
     }
     this.reportProviderNoticeOnce();
+    this.reportRefusedTurnBudgetOnce();
     const turnId = crypto.randomUUID();
     const modelId = input.modelId ?? record.modelId;
     const decoded = decodeChatAttachments(input.attachments);
@@ -731,6 +1135,11 @@ export class MuseAdapter implements ProviderAdapterShape {
       cleanupImages();
       throw error;
     }
+    const turnStartedAt = Date.now();
+    let resolveSlotReleased: () => void = () => {};
+    const slotReleased = new Promise<void>((resolve) => {
+      resolveSlotReleased = resolve;
+    });
     const turn: MuseActiveTurn = {
       turnId,
       process: spawned.process,
@@ -741,7 +1150,24 @@ export class MuseAdapter implements ProviderAdapterShape {
           cleanupImages();
         }
       },
-      startedAt: Date.now(),
+      startedAt: turnStartedAt,
+      idleLimitMs: this.turnIdleTimeoutMs,
+      lingeringChildReapMs: this.lingeringChildReapMs,
+      totalLimitMs: this.turnTimeoutMs,
+      lastProgressAt: turnStartedAt,
+      seenToolCallIds: [],
+      toolTasks: new Map(),
+      openToolCalls: new Map(),
+      awaitingResultToolCalls: new Map(),
+      pendingBackgroundTasks: new Map(),
+      awaitingReportTasks: new Set(),
+      settledBeforeHold: new Set(),
+      slotReleased,
+      resolveSlotReleased,
+      heldRuns: 0,
+      runSeparatorPending: false,
+      runStreamedText: false,
+      backgroundRowsClosedAtSettle: 0,
       outputText: '',
       settled: false,
       interrupted: false,
@@ -766,7 +1192,7 @@ export class MuseAdapter implements ProviderAdapterShape {
       updatedAt: this.now().toISOString(),
     };
     this.attachProcess(record, turn);
-    this.armTurnDeadline(record, turn);
+    this.armTurnDeadlines(record, turn);
 
     // Independent review MEDIUM-1: carries the server-owned
     // `firstTurnInstructionsComposed` marker (reserved metadata, stripped
@@ -774,6 +1200,11 @@ export class MuseAdapter implements ProviderAdapterShape {
     // record — see the constant's doc comment in provider.ts — so the
     // delegate-seam disclosure can derive 'delivered' from this turn
     // having actually composed it, not merely from having started.
+    // #2269: host-authored supervision facts for the delegation projection.
+    // Computed here from server-owned config only — never from
+    // `input.metadata` (caller-influenced) or child output. The projection
+    // forwards these; other adapters omit them (honest unknown).
+    const turnStartedAtIso = new Date(turnStartedAt).toISOString();
     const turnStartedMetadata: Record<string, unknown> = {
       ...(input.recoveryCorrelationId
         ? { recoveryCorrelationId: input.recoveryCorrelationId }
@@ -781,6 +1212,26 @@ export class MuseAdapter implements ProviderAdapterShape {
       ...(input.metadata?.[FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY]
         ? { [FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY]: true }
         : {}),
+      // Each bound appears only when it was declared, because only then
+      // does anything enforce it. With neither (production), the
+      // declaration says exactly that: this turn has no Station-imposed
+      // bound, and the delegation projection shows "none declared".
+      supervision: {
+        provider: this.provider,
+        turnId,
+        startedAt: turnStartedAtIso,
+        ...(this.turnTimeoutMs === undefined
+          ? {}
+          : {
+              deadlineAt: new Date(
+                turnStartedAt + this.turnTimeoutMs,
+              ).toISOString(),
+              totalLimitMs: this.turnTimeoutMs,
+            }),
+        ...(this.turnIdleTimeoutMs === undefined
+          ? {}
+          : { idleLimitMs: this.turnIdleTimeoutMs }),
+      },
     };
     this.publish({
       eventId: crypto.randomUUID(),
@@ -825,6 +1276,7 @@ export class MuseAdapter implements ProviderAdapterShape {
     this.settleTurn(record, turn, {
       kind: 'aborted',
       abortReason: 'interrupted',
+      terminationConfirmed,
     });
     if (terminationConfirmed) {
       this.finishTurn(record, turn);
@@ -887,6 +1339,7 @@ export class MuseAdapter implements ProviderAdapterShape {
       this.settleTurn(record, turn, {
         kind: 'aborted',
         abortReason: 'session-stopped',
+        terminationConfirmed: true,
       });
       this.finishTurn(record, turn);
     }
@@ -986,6 +1439,56 @@ export class MuseAdapter implements ProviderAdapterShape {
           this.settleTurn(record, turn, {
             kind: 'aborted',
             abortReason: 'interrupted',
+            // The child just exited: that much is observed.
+            terminationConfirmed: true,
+          });
+        } else if (
+          turn.heldRuns > 0 &&
+          code === 0 &&
+          !turn.process.signalCode &&
+          turn.pendingBackgroundTasks.size === 0 &&
+          turn.awaitingReportTasks.size > 0 &&
+          [...turn.awaitingReportTasks].every((taskId) =>
+            turn.settledBeforeHold.has(taskId),
+          )
+        ) {
+          // #2300 (conservative), for exactly the UNVERIFIED case: every
+          // task the turn is held for settled BEFORE the turn was first held
+          // (i.e. before the run that launched it ended), no follow-up run
+          // was accepted in this hold, and muse then exited cleanly. The one
+          // live capture shows muse following up a task that settles AFTER
+          // that terminal, never one that settled before it — so this exit
+          // is closed exactly as before #2300: a completed turn with the
+          // text so far, `stop`, and no warning. Any other clean exit while
+          // held (a task pending at the first terminal that then settled, or
+          // a follow-up that started and was cut off) is the verified shape
+          // going wrong, and gets the warning below.
+          this.settleTurn(record, turn, {
+            kind: 'completed',
+            finishReason: 'stop',
+            outputText: turn.outputText,
+          });
+        } else if (turn.heldRuns > 0) {
+          // #2300: a held turn whose child exited without a further
+          // terminal. Run 1 completed, so this is not a failed turn — and a
+          // `runtime.error` would offer "Send again", re-launching the work
+          // run 1 already started. `other` because nothing reported how the
+          // follow-up ended: it is not a proven `stop`, so it gets no clear
+          // authority (`finish-reason-authority.ts`). Any task still pending
+          // is closed as unresolved by settle; the exit itself is recorded
+          // by the warning.
+          const signal = turn.process.signalCode;
+          this.publishHeldTurnUnfinished(
+            record,
+            turn,
+            `Muse's process exited (${
+              signal ? `signal ${signal}` : `code ${code ?? 'unknown'}`
+            }) before it delivered the result of background work this turn launched.`,
+          );
+          this.settleTurn(record, turn, {
+            kind: 'completed',
+            finishReason: 'other',
+            outputText: turn.outputText,
           });
         } else {
           this.settleTurn(record, turn, {
@@ -1040,7 +1543,15 @@ export class MuseAdapter implements ProviderAdapterShape {
 
     if (effect.kind === 'text-delta') {
       turn.itemId ??= crypto.randomUUID();
-      turn.outputText += effect.delta;
+      // #2300: the first text of a follow-up run is joined to the held
+      // run's text by a paragraph break, in the stream itself, so what the
+      // live transcript renders and `turn.completed.outputText` agree.
+      const delta = turn.runSeparatorPending
+        ? `\n\n${effect.delta}`
+        : effect.delta;
+      turn.runSeparatorPending = false;
+      turn.runStreamedText = true;
+      turn.outputText += delta;
       this.publish({
         eventId: crypto.randomUUID(),
         provider: this.provider,
@@ -1049,16 +1560,109 @@ export class MuseAdapter implements ProviderAdapterShape {
         method: 'content.text-delta',
         turnId: turn.turnId,
         itemId: turn.itemId,
-        delta: effect.delta,
+        delta,
       });
+      // `translateMuseRecord` already drops empty deltas, so reaching here is
+      // verified protocol activity — never a heartbeat. Reschedules IDLE only;
+      // a declared total never moves.
+      this.noteVerifiedActivity(record, turn);
+      return;
+    }
+
+    if (effect.kind === 'background-follow-up') {
+      // #2300: muse submitted the run that reports every background task
+      // settled so far, so the turn no longer owes their report; its
+      // terminal can release the hold. A task that settles DURING this run
+      // lands in `awaitingReportTasks` again and holds the turn for the next
+      // follow-up.
+      turn.awaitingReportTasks.clear();
+      return;
+    }
+
+    if (effect.kind === 'task-lifecycle') {
+      // #2300: a final phase for an announced background task settles its
+      // row. Such a task has no `tool.*` binding (muse reports only its
+      // final phase), so `observeMuseToolTask` below ignores it.
+      if (turn.pendingBackgroundTasks.has(effect.taskId)) {
+        this.settleBackgroundTask(record, turn, effect.taskId, effect.phase);
+      }
+      // #2308: muse 1.3 names the tool and its `call_id` on the tool task's
+      // lifecycle records, so a start can be opened under the SAME id its
+      // `tool_result` later closes (see `observeMuseToolTask`).
+      const observed = observeMuseToolTask(
+        turn.toolTasks,
+        effect,
+        MUSE_SEEN_TOOL_CALL_IDS_MAX,
+      );
+      if (!observed) return;
+      if (observed.kind === 'cancelled') {
+        this.closeCancelledTool(record, turn, observed);
+        return;
+      }
+      if (observed.kind === 'finished') {
+        // The task ended; its result is still owed and still pairs, but the
+        // tool is no longer running, so it stops holding idle disarmed. A
+        // result that never arrives is closed as unresolved at settle.
+        if (
+          turn.openToolCalls.has(observed.toolCallId) &&
+          !turn.awaitingResultToolCalls.has(observed.toolCallId)
+        ) {
+          turn.awaitingResultToolCalls.set(
+            observed.toolCallId,
+            observed.outcome,
+          );
+          this.noteVerifiedActivity(record, turn);
+        }
+        return;
+      }
+      const start = observed;
+      // At most one start per call id, and never a start for a call whose
+      // result already arrived: that would reopen a finished row.
+      if (
+        turn.openToolCalls.has(start.toolCallId) ||
+        turn.seenToolCallIds.includes(start.toolCallId)
+      ) {
+        return;
+      }
+      turn.openToolCalls.set(start.toolCallId, start.toolName);
+      this.publish({
+        eventId: crypto.randomUUID(),
+        provider: this.provider,
+        threadId: record.externalThreadId,
+        createdAt: this.now().toISOString(),
+        method: 'tool.started',
+        turnId: turn.turnId,
+        itemId: `tool:${start.toolCallId}`,
+        toolCallId: start.toolCallId,
+        toolName: start.toolName,
+      });
+      // A newly started tool is verified activity, counted once per call id
+      // exactly like a newly identified result.
+      this.noteVerifiedActivity(record, turn);
       return;
     }
 
     if (effect.kind === 'tool-completed') {
-      // Only `tool.completed` — the live stream emits `call_id` exactly once,
-      // on the result, so there is no honest id to open a `tool.started` with
-      // (see muse-adapter-events.ts). Its own itemId keeps the tool row
-      // distinct from the assistant text item.
+      // A result that omits `correlation_facts.tool_name` still pairs with
+      // the start this turn opened under its `call_id`, which named the tool
+      // from muse's own `task_kind`. With no such start there is nothing to
+      // name it by, so it is dropped rather than published under a guess.
+      const toolName =
+        effect.toolName ?? turn.openToolCalls.get(effect.toolCallId);
+      if (!toolName) return;
+      // At most one `tool.completed` per call id per turn: a result for a
+      // call already closed (by an earlier result, or by its task reporting
+      // `cancelled`) is dropped, so a replayed or late receipt cannot add a
+      // second outcome row. `seenToolCallIds` is bounded (oldest-first), so
+      // a call evicted from it reads as new again — the same disclosed
+      // bound its idle bookkeeping has.
+      if (turn.seenToolCallIds.includes(effect.toolCallId)) return;
+      // Its own itemId keeps the tool row distinct from the assistant text
+      // item, and matches the `tool.started` itemId for the same call.
+      turn.openToolCalls.delete(effect.toolCallId);
+      turn.awaitingResultToolCalls.delete(effect.toolCallId);
+      const isNewToolResult = !turn.seenToolCallIds.includes(effect.toolCallId);
+      const preview = projectBoundedToolOutput(effect.output);
       this.publish({
         eventId: crypto.randomUUID(),
         provider: this.provider,
@@ -1068,9 +1672,70 @@ export class MuseAdapter implements ProviderAdapterShape {
         turnId: turn.turnId,
         itemId: `tool:${effect.toolCallId}`,
         toolCallId: effect.toolCallId,
-        toolName: effect.toolName,
+        toolName,
         status: effect.status,
-        ...(effect.output === null ? {} : { output: effect.output }),
+        ...(effect.output === null ? {} : { output: preview.value }),
+        ...(preview.receipt ? { outputReceipt: preview.receipt } : {}),
+      });
+      // Replay/duplicate completion receipts must not extend idle: only a
+      // NEWLY identified tool result counts. Malformed/unknown/heartbeat
+      // frames never reach this branch (`ignored` returns above).
+      if (isNewToolResult) {
+        if (turn.seenToolCallIds.length >= MUSE_SEEN_TOOL_CALL_IDS_MAX) {
+          turn.seenToolCallIds.shift();
+        }
+        turn.seenToolCallIds.push(effect.toolCallId);
+      }
+      // #2300: after the launching call's own row closed, so its background
+      // row reads after it. Opening one disarms idle, so it precedes the
+      // activity note below.
+      const launchedTaskId = parseMuseLaunchedBackgroundTask(
+        toolName,
+        effect.output,
+      );
+      if (launchedTaskId !== null) {
+        this.announceBackgroundTask(
+          record,
+          turn,
+          launchedTaskId,
+          effect.toolCallId,
+          toolName,
+        );
+      }
+      if (isNewToolResult) {
+        this.noteVerifiedActivity(record, turn);
+      }
+      return;
+    }
+
+    // #2300: a turn still owed a background report (a task pending, or
+    // settled with no follow-up run submitted for it yet) is held; a held
+    // turn's text accumulates across runs, and a terminal that is not
+    // `completed` closes it honestly rather than as a failure (see the class
+    // docblock).
+    if (effect.completed && this.owesBackgroundReport(turn)) {
+      this.appendRunTerminalText(turn, effect.text);
+      this.holdTurn(turn);
+      return;
+    }
+    if (turn.heldRuns > 0) {
+      this.appendRunTerminalText(turn, effect.text);
+      if (!effect.completed) {
+        const terminal = this.boundedTerminalField(effect.terminal);
+        const reason = this.boundedTerminalField(effect.reason);
+        this.publishHeldTurnUnfinished(
+          record,
+          turn,
+          `Muse's follow-up run ended without completing (terminal: ${terminal ?? 'unknown'}${reason ? `, reason: ${reason}` : ''}).`,
+        );
+      }
+      this.settleTurn(record, turn, {
+        kind: 'completed',
+        // `stop` only for a completed terminal; otherwise muse's own
+        // terminal classifies it (`cancelled` or `other`), neither of which
+        // carries clear authority (`finish-reason-authority.ts`).
+        finishReason: effect.finishReason,
+        outputText: turn.outputText,
       });
       return;
     }
@@ -1247,6 +1912,101 @@ export class MuseAdapter implements ProviderAdapterShape {
     turn.settled = true;
     const nowIso = this.now().toISOString();
 
+    // #2308: a tool this turn started but never reported a result for is
+    // closed BEFORE the turn's terminal. Muse's engine run is one process
+    // per turn, and once the turn settles this adapter reads nothing more
+    // from it, so no result can ever reach Station for these calls. The
+    // projection deliberately carries an open call past its turn
+    // (station#1558), so without this the row would read "running" forever.
+    // For a call still RUNNING, `unresolved` with the turn-scoped sentence
+    // says exactly that: no result, fate unknown — not a failure and not a
+    // cancellation. A call whose task muse already reported finished keeps
+    // that verdict (see below). (A task
+    // that is proposed and never starts opened no row, so it needs none.)
+    const openToolCalls = [...turn.openToolCalls];
+    const finishedPhases = new Map(turn.awaitingResultToolCalls);
+    turn.openToolCalls.clear();
+    turn.awaitingResultToolCalls.clear();
+    for (const [toolCallId, toolName] of openToolCalls) {
+      // A call whose task muse reported finished keeps muse's verdict; only
+      // a call still RUNNING at settle has an unknown fate.
+      const phase = finishedPhases.get(toolCallId);
+      this.publish({
+        eventId: crypto.randomUUID(),
+        provider: this.provider,
+        threadId: record.externalThreadId,
+        createdAt: nowIso,
+        method: 'tool.completed',
+        turnId: turn.turnId,
+        itemId: `tool:${toolCallId}`,
+        toolCallId,
+        toolName,
+        ...(phase === 'completed'
+          ? { status: 'success', output: MUSE_FINISHED_NO_RESULT_OUTPUT }
+          : phase === 'failed'
+            ? { status: 'error', output: MUSE_FAILED_NO_RESULT_OUTPUT }
+            : { status: 'unresolved', output: UNRESOLVED_TURN_TOOL_OUTPUT }),
+      });
+    }
+    // #2300: background work still pending when the turn ends gets the same
+    // closure, also BEFORE the terminal. `aborted` means Stop / stopSession,
+    // which signal the child's process group: `cancelled`, with wording that
+    // claims no more than was observed. Anything else (the child exited, a
+    // declared budget, a follow-up terminal that did not complete) leaves
+    // the task's fate unknown: `unresolved`. Settle is final for this turn —
+    // the adapter reads nothing from the child after it — so nothing later
+    // supersedes these rows.
+    const pendingBackground = [...turn.pendingBackgroundTasks];
+    turn.pendingBackgroundTasks.clear();
+    turn.awaitingReportTasks.clear();
+    for (const [taskId, task] of pendingBackground) {
+      const rowId = museBackgroundTaskRowId(taskId);
+      this.rememberSettledRow(turn, rowId);
+      this.publish({
+        eventId: crypto.randomUUID(),
+        provider: this.provider,
+        threadId: record.externalThreadId,
+        createdAt: nowIso,
+        method: 'tool.completed',
+        turnId: turn.turnId,
+        itemId: `tool:${rowId}`,
+        toolCallId: rowId,
+        toolName: task.toolName,
+        ...(outcome.kind === 'aborted'
+          ? {
+              status: 'cancelled',
+              output: outcome.terminationConfirmed
+                ? MUSE_BACKGROUND_TASK_STOPPED_OUTPUT
+                : MUSE_BACKGROUND_TASK_STOP_UNCONFIRMED_OUTPUT,
+            }
+          : {
+              status: 'unresolved',
+              output: MUSE_BACKGROUND_TASK_UNRESOLVED_OUTPUT,
+            }),
+      });
+    }
+    if (outcome.kind !== 'aborted') {
+      turn.backgroundRowsClosedAtSettle = pendingBackground.length;
+    }
+    // Parity with the pre-#2308 schedule for a settled turn: there, the idle
+    // timer was always pending at settle, so a child that lingers after its
+    // terminal was reaped one idle window on. Several things now leave a
+    // live turn with no idle timer — no idle bound declared (the default,
+    // #2269), a tool in flight (#2308), background work pending, and a turn
+    // held for its follow-up run (#2300) — so the invariant is restored here
+    // directly: a turn that settles with no idle timer gets the
+    // lingering-child reap, from now (the time before was the turn's, not
+    // the child's). Keyed on the missing timer rather than on the reasons it
+    // was missing, so a future reason to disarm idle cannot silently strand
+    // a lingering child (and with it the session's slot) again. A timer that
+    // already fired (a declared idle deadline that caused this settle) is
+    // still set, so it is not rescheduled. If the reap ends a child whose
+    // background rows were closed here, it is announced
+    // (`scheduleIdleTimer`), not silent.
+    if (!turn.idleTimeoutHandle) {
+      this.scheduleIdleTimer(record, turn);
+    }
+
     switch (outcome.kind) {
       case 'aborted':
         this.publish({
@@ -1272,7 +2032,7 @@ export class MuseAdapter implements ProviderAdapterShape {
           // rather than a warning of their own: for a turn that died on an
           // expired key or an unknown model, this message is the ONLY
           // diagnosis the user gets, and an exit code alone names nothing.
-          message: `${outcome.error.message}${this.outputTextDetail(outcome.outputText)}${this.stderrDetail(turn)}`,
+          message: `${outcome.error.message}${this.outputTextDetail(outcome.outputText)}${outcome.omitStderr ? '' : this.stderrDetail(turn)}`,
           code: outcome.error.code,
           retriable: false,
         });
@@ -1321,14 +2081,11 @@ export class MuseAdapter implements ProviderAdapterShape {
   /**
    * Idempotent slot release, run when the child is GONE (exit or spawn error)
    * or after termination is confirmed — never merely because the turn
-   * settled. It drops the owned-process registry record, clears the per-turn
-   * deadline, and frees the session's single turn slot.
+   * settled. It drops the owned-process registry record, clears both
+   * per-turn deadlines, and frees the session's single turn slot.
    */
   private finishTurn(record: MuseSessionRecord, turn: MuseActiveTurn): void {
-    if (turn.timeoutHandle) {
-      clearTimeout(turn.timeoutHandle);
-      turn.timeoutHandle = undefined;
-    }
+    this.clearTurnTimers(turn);
     // Deliberately does NOT release the owned-process record. Freeing the turn
     // slot is a usability act (the session must not stay blocked by a wedged
     // child); un-registering the child is a safety act, and is only correct
@@ -1340,6 +2097,7 @@ export class MuseAdapter implements ProviderAdapterShape {
     if (record.activeTurn === turn) {
       record.activeTurn = undefined;
     }
+    turn.resolveSlotReleased();
   }
 
   /** Drops the owned-process record. Only ever called once the child exited. */
@@ -1349,34 +2107,485 @@ export class MuseAdapter implements ProviderAdapterShape {
   }
 
   /**
-   * Arms the per-turn deadline. `muse exec` has no timeout of its own, so a
-   * child that hangs (or one that emits `run_terminal` and then never exits)
-   * is the last remaining way a turn can stay open forever. The turn is
-   * settled with a terminal event FIRST — so the reason the user sees is the
-   * timeout, not a downstream "exited before reporting a terminal result" —
-   * and the child is then terminated and the slot freed.
+   * Arms the per-turn deadlines.
+   *
+   * - TOTAL is armed only when the server declared a budget
+   *   (`turnTimeoutMs`), once, and never rescheduled. With no declaration a
+   *   live turn is never ended on a Station-chosen schedule; a wedged child
+   *   is visible as silence and stopped by the user.
+   * - IDLE is armed only when the server declared an idle bound
+   *   (`turnIdleTimeoutMs`); with none (the default, #2269) a silent live
+   *   turn is surfaced as silence and stopped by the user. When declared it
+   *   is rescheduled by verified protocol activity alone
+   *   (`noteVerifiedActivity`) and is not armed while a tool is in flight.
+   *   Malformed/unknown/heartbeat/stderr frames and duplicate completion
+   *   receipts never touch it.
+   *
+   * Both settle with a terminal event FIRST — so the reason the user sees is
+   * the deadline, not a downstream "exited before reporting a terminal
+   * result" — and the child is then terminated and the slot freed, in the
+   * same settle→terminate→finish order as before.
    */
-  private armTurnDeadline(
+  /**
+   * Settles a deadline-killed turn, then terminates the child and frees the
+   * slot ONLY once termination is confirmed — the same semantics as
+   * `interruptTurn`'s `termination-unconfirmed` path. The original code
+   * freed the slot in `.finally`, so an unconfirmed kill let a replacement
+   * `muse exec` start against the same `--session-id` while the old child
+   * could still be alive. On the unconfirmed path only the timers are
+   * cleared; the slot stays held until the late `exit` handler releases and
+   * frees it exactly once. The `activeTurn` guard keeps a late callback for
+   * a superseded turn from touching its replacement's timers or slot.
+   */
+  private settleTimeoutTurn(
+    record: MuseSessionRecord,
+    turn: MuseActiveTurn,
+    outcome: MuseTurnSettleOutcome,
+  ): void {
+    this.settleTurn(record, turn, outcome);
+    void this.terminateTurn(turn).then((confirmed) => {
+      if (record.activeTurn !== turn) return;
+      if (confirmed) {
+        this.finishTurn(record, turn);
+      } else {
+        this.clearTurnTimers(turn);
+      }
+    });
+  }
+
+  /** Clears both per-turn deadlines without freeing the slot. Idempotent. */
+  private clearTurnTimers(turn: MuseActiveTurn): void {
+    if (turn.totalTimeoutHandle) {
+      clearTimeout(turn.totalTimeoutHandle);
+      turn.totalTimeoutHandle = undefined;
+    }
+    if (turn.idleTimeoutHandle) {
+      clearTimeout(turn.idleTimeoutHandle);
+      turn.idleTimeoutHandle = undefined;
+    }
+  }
+
+  private armTurnDeadlines(
     record: MuseSessionRecord,
     turn: MuseActiveTurn,
   ): void {
-    if (!Number.isFinite(this.turnTimeoutMs) || this.turnTimeoutMs <= 0) return;
+    const totalLimitMs = turn.totalLimitMs;
+    if (totalLimitMs !== undefined) {
+      const totalHandle = setTimeout(() => {
+        // #2300: a held turn is closed without `runtime.error` even by a
+        // declared budget; the warning records why it ended.
+        if (turn.heldRuns > 0) {
+          this.publishHeldTurnUnfinished(
+            record,
+            turn,
+            `Muse did not finish within the turn budget of ${formatMuseDuration(totalLimitMs)} declared for it, so Station stopped it before it delivered the result of background work this turn launched.`,
+          );
+          this.settleTimeoutTurn(record, turn, {
+            kind: 'completed',
+            finishReason: 'other',
+            outputText: turn.outputText,
+          });
+          return;
+        }
+        this.settleTimeoutTurn(record, turn, {
+          kind: 'error',
+          outputText: turn.outputText.length > 0 ? turn.outputText : undefined,
+          omitStderr: true,
+          error: {
+            message: `Muse did not finish the turn within the ${totalLimitMs}ms turn budget declared for it, so Station stopped it.`,
+            code: MUSE_TURN_TOTAL_TIMEOUT_CODE,
+          },
+        });
+      }, totalLimitMs);
+      // A pending deadline must never be the reason the process stays alive.
+      totalHandle.unref?.();
+      turn.totalTimeoutHandle = totalHandle;
+    }
+    this.armIdleDeadline(record, turn);
+  }
+
+  /**
+   * (Re)arms the declared idle deadline `idleLimitMs` from now; a no-op when
+   * none was declared. Called once at turn start and again on every verified
+   * protocol activity. Never called for
+   * anything else — notably never for approval state (muse has no approval
+   * channel) and never by the total path.
+   *
+   * While a tool is in flight (an open call whose muse task has not reached
+   * `completed`/`failed`/`cancelled`) the deadline is cleared and NOT
+   * re-armed: a running tool is known work, however long it runs. The task
+   * finishing, or its result, is verified activity and re-arms it.
+   */
+  private armIdleDeadline(
+    record: MuseSessionRecord,
+    turn: MuseActiveTurn,
+  ): void {
+    if (turn.idleTimeoutHandle) {
+      clearTimeout(turn.idleTimeoutHandle);
+      turn.idleTimeoutHandle = undefined;
+    }
+    if (turn.settled) return;
+    // #2269: no declared idle bound (the default) means a silent live turn is
+    // never ended by Station. It is surfaced as silence instead — the stall
+    // watchdog's `progressSilence` keys on the same parent-visible events —
+    // and the user decides whether to Stop it.
+    if (turn.idleLimitMs === undefined) return;
+    if (this.hasToolInFlight(turn)) return;
+    // #2300: pending background work is known work too, and owner decision
+    // 2 gives a held turn no post-terminal budget: it runs until muse
+    // finishes it or the user presses Stop.
+    if (turn.pendingBackgroundTasks.size > 0) return;
+    if (turn.heldRuns > 0) return;
+    this.scheduleIdleTimer(record, turn);
+  }
+
+  /** True while any open call's muse task has not yet finished. */
+  private hasToolInFlight(turn: MuseActiveTurn): boolean {
+    return turn.openToolCalls.size > turn.awaitingResultToolCalls.size;
+  }
+
+  /**
+   * Starts the per-turn idle timer from now: on a live turn, the declared
+   * idle bound (`idleLimitMs`, called from `armIdleDeadline` only when one was
+   * declared); on a settled turn, the lingering-child reap
+   * (`lingeringChildReapMs`, called from `settleTurn`). A live turn's timer
+   * that is still pending when the turn settles keeps running and reaps
+   * instead. On a settled turn the callback only reaps the lingering child —
+   * announced with a `runtime.warning` when settle closed background rows
+   * (#2300).
+   */
+  private scheduleIdleTimer(
+    record: MuseSessionRecord,
+    turn: MuseActiveTurn,
+  ): void {
+    const idleLimitMs = turn.settled
+      ? turn.lingeringChildReapMs
+      : turn.idleLimitMs;
+    if (idleLimitMs === undefined) return;
     const handle = setTimeout(() => {
-      this.settleTurn(record, turn, {
+      const lastActivityIso = new Date(turn.lastProgressAt).toISOString();
+      if (turn.settled) {
+        this.reapSettledChild(record, turn, idleLimitMs, lastActivityIso);
+        return;
+      }
+      this.settleTimeoutTurn(record, turn, {
         kind: 'error',
         outputText: turn.outputText.length > 0 ? turn.outputText : undefined,
+        omitStderr: true,
         error: {
-          message: `Muse did not finish the turn within ${this.turnTimeoutMs}ms and was terminated.`,
-          code: 'muse-turn-timeout',
+          message: `Muse turn was idle for ${idleLimitMs}ms, the idle bound declared for it, with no verified protocol activity and no tool reported running (last activity at ${lastActivityIso}), so Station stopped it.`,
+          code: MUSE_TURN_IDLE_TIMEOUT_CODE,
         },
       });
-      void this.terminateTurn(turn).finally(() => {
-        this.finishTurn(record, turn);
-      });
-    }, this.turnTimeoutMs);
-    // A pending backstop must never be the reason the process stays alive.
+    }, idleLimitMs);
     handle.unref?.();
-    turn.timeoutHandle = handle;
+    turn.idleTimeoutHandle = handle;
+  }
+
+  /**
+   * #2300: the run reached a completed `run_terminal` while background work
+   * is pending, so the turn stays open for muse's follow-up run. Its text
+   * becomes a new item, joined to what came before by a paragraph break.
+   * Idle stays disarmed (`armIdleDeadline`) while the work is pending.
+   */
+  private holdTurn(turn: MuseActiveTurn): void {
+    // A turn held only because a settled task is still owed its report may
+    // have idle armed from run 1's activity; a held turn has no idle bound.
+    if (turn.idleTimeoutHandle) {
+      clearTimeout(turn.idleTimeoutHandle);
+      turn.idleTimeoutHandle = undefined;
+    }
+    turn.heldRuns += 1;
+    turn.itemId = undefined;
+    turn.runStreamedText = false;
+    turn.runSeparatorPending = turn.outputText.length > 0;
+  }
+
+  /**
+   * #2300: true while the turn is owed a background report: a task is still
+   * pending, or settled without a follow-up run having reported it yet.
+   */
+  private owesBackgroundReport(turn: MuseActiveTurn): boolean {
+    return (
+      turn.pendingBackgroundTasks.size > 0 || turn.awaitingReportTasks.size > 0
+    );
+  }
+
+  /**
+   * #2300: records why a held turn ended without muse delivering its
+   * background result, before the turn's own `turn.completed`. The turn is
+   * never closed with `runtime.error` (see the class docblock), so this
+   * warning is the durable record of the terminal, reason, or exit code:
+   * persisted in the event log and shown in the session diagnostics log,
+   * toasted live, not rendered in the transcript.
+   */
+  private publishHeldTurnUnfinished(
+    record: MuseSessionRecord,
+    turn: MuseActiveTurn,
+    message: string,
+  ): void {
+    this.publish({
+      eventId: crypto.randomUUID(),
+      provider: this.provider,
+      threadId: record.externalThreadId,
+      createdAt: this.now().toISOString(),
+      method: 'runtime.warning',
+      severity: 'warning',
+      turnId: turn.turnId,
+      code: MUSE_HELD_TURN_UNFINISHED_CODE,
+      message,
+    });
+  }
+
+  /**
+   * Reaps a child still running after its turn settled (the #2328 parity
+   * reap). Silent when nothing the turn knew of could still be running in
+   * it; announced when settle closed background rows as unresolved (#2300),
+   * with wording that depends on whether termination was confirmed. Frees
+   * the slot only once termination is confirmed, as `settleTimeoutTurn`
+   * does.
+   */
+  private reapSettledChild(
+    record: MuseSessionRecord,
+    turn: MuseActiveTurn,
+    idleLimitMs: number,
+    lastActivityIso: string,
+  ): void {
+    const announce = turn.backgroundRowsClosedAtSettle > 0;
+    void this.terminateTurn(turn).then((confirmed) => {
+      if (announce) {
+        this.publish({
+          eventId: crypto.randomUUID(),
+          provider: this.provider,
+          threadId: record.externalThreadId,
+          createdAt: this.now().toISOString(),
+          method: 'runtime.warning',
+          severity: 'warning',
+          turnId: turn.turnId,
+          code: MUSE_LINGERING_CHILD_REAPED_CODE,
+          message: confirmed
+            ? `Muse was still running ${formatMuseDuration(idleLimitMs)} after its turn ended, with background work from that turn unreported (last activity at ${lastActivityIso}), so Station stopped its process group. Whether that work stopped with it was not separately confirmed.`
+            : `Muse was still running ${formatMuseDuration(idleLimitMs)} after its turn ended, with background work from that turn unreported (last activity at ${lastActivityIso}). Station tried to stop its process but could not confirm it stopped, so that work may still be running.`,
+        });
+      }
+      if (record.activeTurn !== turn) return;
+      if (confirmed) {
+        this.finishTurn(record, turn);
+      } else {
+        this.clearTurnTimers(turn);
+      }
+    });
+  }
+
+  /**
+   * #2300: logs a send refusal with its thread id — kept out of the error
+   * text, which a client queue shows to the user verbatim — and returns
+   * the error for the caller to throw.
+   */
+  private refuseSend(threadId: string, error: Error): Error {
+    this.options.logger?.warn?.(
+      `Muse refused a send for thread ${threadId}: ${error.message}`,
+    );
+    return error;
+  }
+
+  /**
+   * #2300 (review M5): waits, bounded by
+   * {@link MUSE_SETTLED_CHILD_EXIT_WAIT_MS}, for a settled turn's child to
+   * exit and free the slot. Resolves either way; the caller re-checks.
+   */
+  private async waitForSlotRelease(turn: MuseActiveTurn): Promise<void> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        turn.slotReleased,
+        new Promise<void>((resolve) => {
+          timer = setTimeout(
+            resolve,
+            this.options.settledChildExitWaitMs ??
+              MUSE_SETTLED_CHILD_EXIT_WAIT_MS,
+          );
+          timer.unref?.();
+        }),
+      ]);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  }
+
+  /**
+   * #2300: folds a run's `run_terminal.text` into the turn text of a held
+   * turn. That text is the run's FULL text, so it is appended only when the
+   * run streamed none — the same rule the single-run path follows.
+   */
+  private appendRunTerminalText(
+    turn: MuseActiveTurn,
+    text: string | null,
+  ): void {
+    if (turn.runStreamedText || !text) return;
+    turn.outputText += turn.runSeparatorPending ? `\n\n${text}` : text;
+    turn.runSeparatorPending = false;
+  }
+
+  /**
+   * #2300: opens the row for a background task a `workflow` result
+   * announced. Idempotent per task id, including after it settled, so a
+   * replayed launch result cannot reopen a finished row.
+   */
+  private announceBackgroundTask(
+    record: MuseSessionRecord,
+    turn: MuseActiveTurn,
+    taskId: string,
+    toolCallId: string,
+    toolName: string,
+  ): void {
+    const rowId = museBackgroundTaskRowId(taskId);
+    if (
+      turn.pendingBackgroundTasks.has(taskId) ||
+      turn.seenToolCallIds.includes(rowId)
+    ) {
+      return;
+    }
+    if (turn.pendingBackgroundTasks.size >= MUSE_PENDING_BACKGROUND_TASKS_MAX) {
+      this.options.logger?.warn?.(
+        `Muse launched more than ${MUSE_PENDING_BACKGROUND_TASKS_MAX} background tasks in one turn; the rest are not tracked and do not hold the turn open.`,
+      );
+      return;
+    }
+    // Not the launching tool's own name: this row is not a second call of
+    // it, and per-name tool counts (turn provenance) must not read it so.
+    const rowToolName = `${toolName}_background`;
+    turn.pendingBackgroundTasks.set(taskId, {
+      toolCallId,
+      toolName: rowToolName,
+      announcedAt: Date.now(),
+    });
+    this.publish({
+      eventId: crypto.randomUUID(),
+      provider: this.provider,
+      threadId: record.externalThreadId,
+      createdAt: this.now().toISOString(),
+      method: 'tool.started',
+      turnId: turn.turnId,
+      itemId: `tool:${rowId}`,
+      toolCallId: rowId,
+      toolName: rowToolName,
+    });
+  }
+
+  /**
+   * #2300: settles a background task's row from muse's own final phase.
+   * Non-final phases are ignored. Verified activity: with nothing else
+   * pending, idle re-arms from here for the follow-up run.
+   */
+  private settleBackgroundTask(
+    record: MuseSessionRecord,
+    turn: MuseActiveTurn,
+    taskId: string,
+    phase: string,
+  ): void {
+    const status =
+      phase === 'completed'
+        ? ('success' as const)
+        : phase === 'failed'
+          ? ('error' as const)
+          : phase === 'cancelled'
+            ? ('cancelled' as const)
+            : undefined;
+    if (!status) return;
+    const task = turn.pendingBackgroundTasks.get(taskId);
+    if (!task) return;
+    turn.pendingBackgroundTasks.delete(taskId);
+    // Muse reports every settled task in a follow-up run; until one has,
+    // the turn is still owed that report (`owesBackgroundReport`).
+    turn.awaitingReportTasks.add(taskId);
+    if (turn.heldRuns === 0) turn.settledBeforeHold.add(taskId);
+    const rowId = museBackgroundTaskRowId(taskId);
+    this.rememberSettledRow(turn, rowId);
+    this.publish({
+      eventId: crypto.randomUUID(),
+      provider: this.provider,
+      threadId: record.externalThreadId,
+      createdAt: this.now().toISOString(),
+      method: 'tool.completed',
+      turnId: turn.turnId,
+      itemId: `tool:${rowId}`,
+      toolCallId: rowId,
+      toolName: task.toolName,
+      status,
+      output:
+        status === 'success'
+          ? MUSE_BACKGROUND_TASK_COMPLETED_OUTPUT
+          : status === 'error'
+            ? MUSE_BACKGROUND_TASK_FAILED_OUTPUT
+            : MUSE_BACKGROUND_TASK_CANCELLED_OUTPUT,
+    });
+    this.noteVerifiedActivity(record, turn);
+  }
+
+  /** Records a closed row id so nothing can reopen it (bounded, oldest-first). */
+  private rememberSettledRow(turn: MuseActiveTurn, rowId: string): void {
+    if (turn.seenToolCallIds.includes(rowId)) return;
+    if (turn.seenToolCallIds.length >= MUSE_SEEN_TOOL_CALL_IDS_MAX) {
+      turn.seenToolCallIds.shift();
+    }
+    turn.seenToolCallIds.push(rowId);
+  }
+
+  /**
+   * Closes a started tool whose muse task reported `cancelled` (see
+   * `observeMuseToolTask`). Published as `cancelled` because that is the
+   * outcome muse itself reported — not a failure nothing observed, and not
+   * `unresolved`, which asserts that no verdict arrived. The call leaves
+   * `openToolCalls`, so the idle deadline re-arms once nothing else is in
+   * flight; the cancel is itself verified activity. It is also recorded as
+   * seen, so a later start for the same `call_id` cannot reopen the row.
+   */
+  private closeCancelledTool(
+    record: MuseSessionRecord,
+    turn: MuseActiveTurn,
+    tool: { toolName: string; toolCallId: string },
+  ): void {
+    if (!turn.openToolCalls.delete(tool.toolCallId)) return;
+    turn.awaitingResultToolCalls.delete(tool.toolCallId);
+    this.publish({
+      eventId: crypto.randomUUID(),
+      provider: this.provider,
+      threadId: record.externalThreadId,
+      createdAt: this.now().toISOString(),
+      method: 'tool.completed',
+      turnId: turn.turnId,
+      itemId: `tool:${tool.toolCallId}`,
+      toolCallId: tool.toolCallId,
+      toolName: tool.toolName,
+      status: 'cancelled',
+      output: MUSE_CANCELLED_TOOL_OUTPUT,
+    });
+    if (!turn.seenToolCallIds.includes(tool.toolCallId)) {
+      if (turn.seenToolCallIds.length >= MUSE_SEEN_TOOL_CALL_IDS_MAX) {
+        turn.seenToolCallIds.shift();
+      }
+      turn.seenToolCallIds.push(tool.toolCallId);
+    }
+    this.noteVerifiedActivity(record, turn);
+  }
+
+  /**
+   * Records verified protocol activity and reschedules the IDLE deadline
+   * only. Callers are `handleStdoutLine`'s text-delta, new-tool-start,
+   * tool-task-finished and new-tool-result branches, `closeCancelledTool`,
+   * and `settleBackgroundTask` (#2300)
+   * — i.e. facts the child actually emitted — never stderr noise, malformed
+   * lines, heartbeats, or duplicate receipts.
+   */
+  private noteVerifiedActivity(
+    record: MuseSessionRecord,
+    turn: MuseActiveTurn,
+  ): void {
+    if (turn.settled) return;
+    if (record.activeTurn !== turn) return;
+    turn.lastProgressAt = Date.now();
+    this.armIdleDeadline(record, turn);
   }
 
   private terminateTurn(turn: MuseActiveTurn): Promise<boolean> {
@@ -1387,6 +2596,8 @@ export class MuseAdapter implements ProviderAdapterShape {
         this.options.logger?.warn?.(
           `Muse turn process termination was not confirmed: ${errorMessage(error)}`,
         );
+        // #2300: a later send must not be told this slot frees itself.
+        turn.terminationUnconfirmed = true;
         return false;
       })
       .finally(() => {

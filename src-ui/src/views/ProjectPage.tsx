@@ -1,6 +1,8 @@
+import type { MemberProjectView } from '@kontourai/station-contracts/project';
 import type { ConnectionConfig } from '@kontourai/station-contracts/tool';
 import type { WorkspacePaneAvailabilityAction } from '@kontourai/station-contracts/workspace-pane-availability';
 import {
+  StationHttpError,
   useApplyProjectLayoutMutation,
   useAvailableProjectLayoutsQuery,
   useEngineConnectionsQuery,
@@ -9,17 +11,21 @@ import {
   useKnowledgeStatusQuery,
   useProjectConversationsQuery,
   useProjectLayoutsQuery,
-  useProjectQuery,
   useUpdateProjectMutation,
 } from '@kontourai/station-sdk';
 import { useMemo, useReducer, useState } from 'react';
 import { selectChatReadyAgents } from '../components/agent-selection-policy';
 import { Button } from '../components/Button';
 import { BranchGlyph } from '../components/icons/Glyph';
+import { LazyBoundary } from '../components/LazyBoundary';
 import { PageCallout, PageCalloutStack } from '../components/PageCallout';
 import { ErrorState, SkeletonBlock } from '../components/state';
 import { useAgents } from '../contexts/AgentsContext';
 import { useNavigation } from '../contexts/NavigationContext';
+import {
+  type ProjectConfig,
+  useScopedProjectPageViewQuery,
+} from '../contexts/ProjectsContext';
 import { useDegradedQueryState } from '../hooks/useDegradedQueryState';
 import { useGitLog, useGitStatus } from '../hooks/useGitStatus';
 import { trackRecentLayout } from '../hooks/useRecentLayouts';
@@ -32,6 +38,7 @@ import {
   workspacePaneDirectRoute,
   workspacePaneRequiresLayoutIdentity,
 } from '../workspace-panes/workspacePaneDirectRoute';
+import { MemberProjectPage } from './project-page/MemberProjectPage';
 import { ProjectConversationsSection } from './project-page/ProjectConversationsSection';
 import { ProjectKnowledgeSection } from './project-page/ProjectKnowledgeSection';
 import {
@@ -40,31 +47,127 @@ import {
 } from './project-page/ProjectLayoutsSection';
 import { ProjectLiveWorkSection } from './project-page/ProjectLiveWorkSection';
 import { ProjectPageHeader } from './project-page/ProjectPageHeader';
+import { ProjectPluginPublishSection } from './project-page/ProjectPluginPublishSection';
 import { ProjectTasksSection } from './project-page/ProjectTasksSection';
 import { projectChatCta } from './project-page/projectChatCta';
 import type { AvailableLayout, ConversationRecord } from './project-page/types';
 import './project-page-frame.css';
 import './ProjectPage.css';
 
-export function ProjectPage({ slug }: { slug: string }) {
-  const { setLayout, setConversation, navigate, setDockState } =
-    useNavigation();
+// Epic #2323 S2: the plugin-start offer (its eligibility query included)
+// loads after first paint, off the entry bundle.
+const loadProjectPluginStartGate = () =>
+  import('./project-page/ProjectPluginStartGate').then((module) => ({
+    default: module.ProjectPluginStartGate,
+  }));
 
-  const {
-    data: project,
-    isLoading,
-    isError: isProjectError,
-    error: projectError,
-    refetch: refetchProject,
-  } = useProjectQuery(slug);
+export function ProjectPage({ slug }: { slug: string }) {
+  const projectQuery = useScopedProjectPageViewQuery(slug);
   const [projectRetrySeq, bumpProjectRetry] = useReducer(
     (n: number) => n + 1,
     0,
   );
   const projectQueryState = useDegradedQueryState({
-    isPending: isLoading,
+    isPending: projectQuery.isPending,
     resetKey: projectRetrySeq,
   });
+  const requestScope = projectQuery.requestScope;
+
+  if (!requestScope?.isCurrent()) {
+    return (
+      <div className="project-page">
+        <div className="project-page__inner">
+          <ErrorState
+            title="Station connection unavailable"
+            description="Connect to a Station with current access to this Project."
+          />
+        </div>
+      </div>
+    );
+  }
+
+  if (projectQuery.isError) {
+    return (
+      <div className="project-page">
+        <div className="project-page__inner">
+          <ErrorState
+            title="Could not load project"
+            description={
+              projectQuery.error instanceof StationHttpError &&
+              [401, 403, 404].includes(projectQuery.error.status)
+                ? 'This Project is unavailable or your access has changed.'
+                : errorText(projectQuery.error)
+            }
+            action={
+              <button type="button" onClick={() => void projectQuery.refetch()}>
+                Retry
+              </button>
+            }
+          />
+        </div>
+      </div>
+    );
+  }
+
+  if (projectQuery.isPending || !projectQuery.data) {
+    if (projectQueryState === 'degraded') {
+      return (
+        <div className="project-page">
+          <div className="project-page__inner">
+            <ErrorState
+              title="Project is taking longer than expected"
+              description="This view hasn't loaded yet."
+              action={
+                <button
+                  type="button"
+                  onClick={() => {
+                    bumpProjectRetry();
+                    void projectQuery.refetch();
+                  }}
+                >
+                  Retry
+                </button>
+              }
+            />
+          </div>
+        </div>
+      );
+    }
+    return (
+      <div className="project-page">
+        <div className="project-page__inner">
+          <SkeletonBlock count={3} label="Loading project" />
+        </div>
+      </div>
+    );
+  }
+
+  if (projectQuery.isMemberProject) {
+    return (
+      <MemberProjectPage
+        project={projectQuery.data as MemberProjectView}
+        requestScope={requestScope}
+      />
+    );
+  }
+
+  return (
+    <ProjectOperatorPage
+      slug={slug}
+      project={projectQuery.data as ProjectConfig}
+    />
+  );
+}
+
+function ProjectOperatorPage({
+  slug,
+  project,
+}: {
+  slug: string;
+  project: ProjectConfig;
+}) {
+  const { setLayout, setConversation, navigate, setDockState } =
+    useNavigation();
   // #801: the page renders as soon as the *project* query settles, so a
   // layouts fetch still in flight used to reach the section as an empty array
   // and render the empty state for a project that has layouts.
@@ -93,8 +196,8 @@ export function ProjectPage({ slug }: { slug: string }) {
       ),
     [agentConnections, agents, project?.agents, slug],
   );
-  const { data: gitStatus } = useGitStatus(project?.workingDirectory);
-  const { data: gitLog = [] } = useGitLog(project?.workingDirectory, 5);
+  const { data: gitStatus } = useGitStatus(slug, project?.workingDirectory);
+  const { data: gitLog = [] } = useGitLog(slug, project?.workingDirectory, 5);
   const {
     data: docs = [],
     isError: docsError,
@@ -211,57 +314,6 @@ export function ProjectPage({ slug }: { slug: string }) {
     return 'This build can explain the requirement but cannot complete that step from the pane catalog.';
   }
 
-  if (isProjectError && !project) {
-    return (
-      <div className="project-page">
-        <div className="project-page__inner">
-          <ErrorState
-            title="Could not load project"
-            description={errorText(projectError)}
-            action={
-              <button type="button" onClick={() => refetchProject()}>
-                Retry
-              </button>
-            }
-          />
-        </div>
-      </div>
-    );
-  }
-
-  if (isLoading || !project) {
-    if (projectQueryState === 'degraded') {
-      return (
-        <div className="project-page">
-          <div className="project-page__inner">
-            <ErrorState
-              title="Project is taking longer than expected"
-              description="This view hasn't loaded yet."
-              action={
-                <button
-                  type="button"
-                  onClick={() => {
-                    bumpProjectRetry();
-                    void refetchProject();
-                  }}
-                >
-                  Retry
-                </button>
-              }
-            />
-          </div>
-        </div>
-      );
-    }
-    return (
-      <div className="project-page">
-        <div className="project-page__inner">
-          <SkeletonBlock count={3} label="Loading project" />
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="project-page">
       <div className="project-page__inner">
@@ -269,10 +321,19 @@ export function ProjectPage({ slug }: { slug: string }) {
           project={project}
           gitStatus={gitStatus}
           editingDir={editingDir}
-          setEditingDir={setEditingDir}
+          setEditingDir={(editing: boolean) => {
+            // A refusal belongs to the attempt it answered, not the next one.
+            if (editing) updateProjectMutation.reset();
+            setEditingDir(editing);
+          }}
           dirDraft={dirDraft}
           setDirDraft={setDirDraft}
           updateWorkingDirectory={updateWorkingDirectory}
+          workingDirectoryError={
+            updateProjectMutation.error
+              ? errorText(updateProjectMutation.error)
+              : null
+          }
           navigateToSettings={() => navigate(`/projects/${slug}/edit`)}
         />
 
@@ -280,6 +341,18 @@ export function ProjectPage({ slug }: { slug: string }) {
             that is what the sidebar badge sent you here for. Renders nothing
             when nothing is in flight. */}
         <ProjectLiveWorkSection slug={slug} />
+
+        {/* Epic #2323 S2: renders only when the server says this Project's
+            folder is empty and could take a starter plugin. */}
+        {!navigator.webdriver && (
+          <LazyBoundary
+            load={loadProjectPluginStartGate}
+            componentProps={{
+              project: { slug, name: project.name || slug },
+            }}
+            pending={null}
+          />
+        )}
 
         {conversations.length === 0 && !navigator.webdriver && chatCta && (
           // In a stack even as the only callout: the stack owns the rhythm
@@ -364,6 +437,8 @@ export function ProjectPage({ slug }: { slug: string }) {
           </div>
         )}
 
+        <ProjectPluginPublishSection slug={slug} />
+
         <section
           className="project-page__layouts"
           aria-labelledby="project-open-title"
@@ -416,6 +491,7 @@ export function ProjectPage({ slug }: { slug: string }) {
 
         <ProjectTasksSection
           slug={slug}
+          projectId={project.id}
           projectWorkingDirectory={project.workingDirectory}
           gitStatus={gitStatus}
           agents={project.agents}
@@ -454,6 +530,8 @@ export function ProjectPage({ slug }: { slug: string }) {
           entries={paneCatalog.entries}
           loading={paneCatalog.isLoading}
           error={paneCatalog.isError}
+          hasData={paneCatalog.data !== undefined}
+          retrying={paneCatalog.isFetching}
           onRetry={() => void paneCatalog.refetch()}
           onSelect={openPane}
           onAction={handlePaneAction}

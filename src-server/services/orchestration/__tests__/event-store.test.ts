@@ -663,6 +663,106 @@ describe('EventStore', () => {
     );
   });
 
+  describe('#2324: a turn the engine opened on its own provided no input', () => {
+    const threadId = 'provider-turn-thread';
+    const at = '2026-09-23T00:00:00.000Z';
+    const base = { provider: 'claude' as const, threadId, createdAt: at };
+    const trigger = { trigger: 'provider' };
+    const seed = () => {
+      const events: CanonicalRuntimeEvent[] = [
+        {
+          ...base,
+          eventId: 'pt-session',
+          method: 'session.started',
+          sessionId: threadId,
+          metadata: { userId: 'owner-alpha', agentSlug: 'claude' },
+        },
+        {
+          ...base,
+          eventId: 'pt-user-start',
+          turnId: 'user-turn',
+          method: 'turn.started',
+          prompt: 'start the job',
+        },
+        {
+          ...base,
+          eventId: 'pt-user-done',
+          turnId: 'user-turn',
+          method: 'turn.completed',
+          outputText: 'started',
+        },
+        {
+          ...base,
+          eventId: 'pt-provider-start',
+          turnId: 'provider:p',
+          method: 'turn.started',
+          metadata: trigger,
+        },
+        {
+          ...base,
+          eventId: 'pt-provider-text',
+          turnId: 'provider:p',
+          itemId: 'pt-provider-item',
+          method: 'content.text-delta',
+          delta: 'finished',
+        },
+        {
+          ...base,
+          eventId: 'pt-provider-done',
+          turnId: 'provider:p',
+          method: 'turn.completed',
+          outputText: 'finished',
+          metadata: trigger,
+        },
+      ];
+      for (const event of events) store.appendEvent(event);
+    };
+
+    test('counts its reply but not its start as a message', () => {
+      seed();
+      expect(
+        store.listConversationHistoryPage({
+          ownerUserId: 'owner-alpha',
+          limit: 5,
+        }).records,
+      ).toEqual([expect.objectContaining({ threadId, messageCount: 3 })]);
+    });
+
+    test('lists no authored input for it in the Session inventory', () => {
+      seed();
+      const page = store.listSessionInventoryEvents(threadId);
+      const starts = page.events.filter(
+        (event) => event.method === 'turn.started',
+      );
+      expect(starts).toEqual([
+        expect.objectContaining({ id: 'pt-user-start' }),
+        expect.objectContaining({
+          id: 'pt-provider-start',
+          trigger: 'provider',
+        }),
+      ]);
+      expect(starts[0]).not.toHaveProperty('trigger');
+    });
+
+    test('its Basis window carries no input for its start', () => {
+      seed();
+      const result = store.listBasisEventsForTurn(threadId, 'provider:p');
+      expect(result.status).toBe('found');
+      if (result.status !== 'found') return;
+      const start = result.events.find(
+        (event) => event.eventId === 'pt-provider-start',
+      );
+      expect(start).toBeDefined();
+      expect(start).not.toHaveProperty('input');
+      // A caller's turn still carries its input.
+      const user = store.listBasisEventsForTurn(threadId, 'user-turn');
+      expect(
+        user.status === 'found' &&
+          user.events.find((event) => event.eventId === 'pt-user-start'),
+      ).toMatchObject({ input: { kind: 'initial', prompt: 'start the job' } });
+    });
+  });
+
   test('usage session ids are SQL-narrowed by owner and tenant, making other tenants indistinguishable from empty', () => {
     const add = (threadId: string, tenantId: string) => {
       store.upsertSession({
@@ -3850,10 +3950,11 @@ describe('EventStore', () => {
     };
 
     test('labels a payload stripped by the serialized ceiling byte_limit', () => {
-      // Comfortably past the 4 KB per-event ceiling, and nothing else about
-      // it is unusual — this is the shape a long prompt or an inline
-      // attachment produces.
-      startTurn('turn-big', 'p'.repeat(8_000));
+      // Comfortably past the per-event ceiling (24 KiB — sized to clear the
+      // 16 KiB transcript chunks, so this needs 32 KiB), and nothing else
+      // about it is unusual — this is the shape a very long prompt or an
+      // inline attachment produces.
+      startTurn('turn-big', 'p'.repeat(32_000));
       const started = windowEvent('turn-big-start');
 
       expect(started.elided).toBe('byte_limit');
@@ -3965,7 +4066,7 @@ describe('EventStore', () => {
      */
     test('counts what it withheld, by reason', () => {
       vi.mocked(orchestrationEventWindowElisions.add).mockClear();
-      startTurn('turn-counted', 'p'.repeat(8_000));
+      startTurn('turn-counted', 'p'.repeat(32_000));
 
       store.listEventWindowByTurn(threadId, { turnLimit: 1 });
 
@@ -3985,9 +4086,9 @@ describe('EventStore', () => {
 
     test('reports byte_limit, not output_limit, when both budgets fire on one event', () => {
       // A tool result whose output is cut to 84 chars AND whose remaining
-      // payload still blows the ceiling. Naming the narrower budget would
-      // understate what the read withheld — the cut field is gone with
-      // everything else.
+      // payload still blows the ceiling (24 KiB — the padding needs 32 KiB).
+      // Naming the narrower budget would understate what the read withheld —
+      // the cut field is gone with everything else.
       store.appendEvent({
         eventId: 'turn-both-start',
         provider: 'codex',
@@ -4006,7 +4107,7 @@ describe('EventStore', () => {
         method: 'tool.completed',
         toolCallId: 'tool-1',
         output: 'o'.repeat(500),
-        args: { padding: 'z'.repeat(8_000) },
+        args: { padding: 'z'.repeat(32_000) },
       } as any);
       const completed = windowEvent('turn-both-complete');
 
@@ -4417,6 +4518,254 @@ describe('EventStore', () => {
     );
   });
 
+  test('a 16 KiB transcript chunk survives the conversation window with its text', () => {
+    // The session sources persist assistant text in 16 KiB deltas
+    // (`MAX_TEXT_CHUNK_BYTES`). At the old 4 KiB per-event ceiling every one
+    // stripped to identity fields, and a turn whose text lived only in them
+    // projected to no assistant message while its short user prompt
+    // survived — the scroll-back shape where AI rows vanish and user rows
+    // do not.
+    const threadId = 'transcript-chunk-conversation';
+    const longText = 'ab '.repeat(5_462);
+    expect(Buffer.byteLength(longText, 'utf8')).toBeGreaterThan(16 * 1024);
+    store.appendEvent({
+      eventId: 'chunk-turn-started',
+      provider: 'codex',
+      threadId,
+      turnId: 'chunk-turn',
+      createdAt: '2026-08-24T04:00:00.000Z',
+      method: 'turn.started',
+      prompt: 'summarize this',
+    });
+    store.appendEvent({
+      eventId: 'chunk-turn-delta',
+      provider: 'codex',
+      threadId,
+      turnId: 'chunk-turn',
+      createdAt: '2026-08-24T04:00:01.000Z',
+      method: 'content.text-delta',
+      itemId: 'chunk-item',
+      delta: longText,
+    });
+    store.appendEvent({
+      eventId: 'chunk-turn-completed',
+      provider: 'codex',
+      threadId,
+      turnId: 'chunk-turn',
+      createdAt: '2026-08-24T04:00:02.000Z',
+      method: 'turn.completed',
+      outputText: longText,
+    });
+
+    const window = store.listConversationEventWindowByTurn([threadId], {
+      turnLimit: 1,
+    });
+    const delta = window.events.find(
+      (event) => event.id === 'chunk-turn-delta',
+    )!;
+    expect(delta.elided).toBeUndefined();
+    expect((delta.payload as { delta?: string }).delta).toBe(longText);
+    const messages = projectRuntimeEventsToMessages(
+      window.events.map((event) => event.payload as never),
+    );
+    expect(messages.map((message) => message.role)).toEqual([
+      'user',
+      'assistant',
+    ]);
+  });
+
+  test('a long turn.completed reply survives the conversation window', () => {
+    // No streamed deltas: the reply text lives only in the terminal event.
+    // The newest-first path always allowed it 48 KiB; the conversation path
+    // held it to the per-event ceiling and dropped the assistant message.
+    const threadId = 'long-reply-conversation';
+    const reply = 'r'.repeat(30_000);
+    store.appendEvent({
+      eventId: 'long-turn-started',
+      provider: 'codex',
+      threadId,
+      turnId: 'long-turn',
+      createdAt: '2026-08-24T05:00:00.000Z',
+      method: 'turn.started',
+      prompt: 'write a long reply',
+    });
+    store.appendEvent({
+      eventId: 'long-turn-completed',
+      provider: 'codex',
+      threadId,
+      turnId: 'long-turn',
+      createdAt: '2026-08-24T05:00:01.000Z',
+      method: 'turn.completed',
+      outputText: reply,
+    });
+
+    const window = store.listConversationEventWindowByTurn([threadId], {
+      turnLimit: 1,
+    });
+    const completed = window.events.find(
+      (event) => event.id === 'long-turn-completed',
+    )!;
+    expect(completed.elided).toBeUndefined();
+    expect((completed.payload as { outputText?: string }).outputText).toBe(
+      reply,
+    );
+    const messages = projectRuntimeEventsToMessages(
+      window.events.map((event) => event.payload as never),
+    );
+    expect(messages.map((message) => message.role)).toEqual([
+      'user',
+      'assistant',
+    ]);
+  });
+
+  test('keeps a ten-session conversation cursor within the route cursor cap', () => {
+    // The cursor used to embed every lineage session id, so past ~7 UUID
+    // sessions the server minted a page-two cursor its own route schema
+    // (512 chars) rejected with `Invalid event window`. The pin carries the
+    // prefix size and hash instead, so length is lineage-independent.
+    const sessionIds = Array.from(
+      { length: 10 },
+      (_, index) =>
+        `00000000-0000-4000-8000-${String(index).padStart(12, '0')}`,
+    );
+    for (const [index, threadId] of sessionIds.entries()) {
+      const turnId = `long-lineage-turn-${index}`;
+      store.appendEvent({
+        eventId: `${turnId}-started`,
+        provider: 'codex',
+        threadId,
+        turnId,
+        createdAt: `2026-08-24T01:${String(index).padStart(2, '0')}:00.000Z`,
+        method: 'turn.started',
+        prompt: `question ${index}`,
+      });
+      store.appendEvent({
+        eventId: `${turnId}-completed`,
+        provider: 'codex',
+        threadId,
+        turnId,
+        createdAt: `2026-08-24T01:${String(index).padStart(2, '0')}:01.000Z`,
+        method: 'turn.completed',
+        outputText: `answer ${index}`,
+      });
+    }
+
+    const pages = [
+      store.listConversationEventWindowByTurn(sessionIds, { turnLimit: 2 }),
+    ];
+    for (let guard = 0; pages.at(-1)!.nextCursor && guard < 10; guard += 1) {
+      pages.push(
+        store.listConversationEventWindowByTurn(sessionIds, {
+          cursor: pages.at(-1)!.nextCursor,
+          turnLimit: 2,
+        }),
+      );
+    }
+    const cursors = pages.flatMap((page) =>
+      page.nextCursor ? [page.nextCursor] : [],
+    );
+    expect(cursors.length).toBeGreaterThan(0);
+    for (const cursor of cursors)
+      expect(cursor.length).toBeLessThanOrEqual(512);
+    const received = pages.flatMap((page) => page.events);
+    expect(new Set(received.map((event) => event.id)).size).toBe(20);
+    expect(pages.at(-1)!.hasMore).toBe(false);
+  });
+
+  test('a pre-pin cursor embedding the lineage ids still pages one turn', () => {
+    // A client mid-pagination when the pin ships still holds an
+    // id-embedding cursor. Rebuilding that exact shape from a fresh pin
+    // cursor must read the same page as the pin cursor itself.
+    const sessionIds = [
+      'legacy-cursor-root',
+      'legacy-cursor-child-1',
+      'legacy-cursor-child-2',
+    ];
+    for (const [index, threadId] of sessionIds.entries()) {
+      const turnId = `legacy-turn-${index}`;
+      store.appendEvent({
+        eventId: `${turnId}-started`,
+        provider: 'codex',
+        threadId,
+        turnId,
+        createdAt: `2026-08-24T02:${String(index).padStart(2, '0')}:00.000Z`,
+        method: 'turn.started',
+        prompt: `question ${index}`,
+      });
+      store.appendEvent({
+        eventId: `${turnId}-completed`,
+        provider: 'codex',
+        threadId,
+        turnId,
+        createdAt: `2026-08-24T02:${String(index).padStart(2, '0')}:01.000Z`,
+        method: 'turn.completed',
+        outputText: `answer ${index}`,
+      });
+    }
+    const first = store.listConversationEventWindowByTurn(sessionIds, {
+      turnLimit: 1,
+    });
+    expect(first.nextCursor).toBeDefined();
+    const decoded = JSON.parse(
+      Buffer.from(first.nextCursor!, 'base64url').toString('utf8'),
+    );
+    expect(decoded.threadIds).toBeUndefined();
+    const { lineageSize, lineageHash, ...rest } = decoded;
+    expect(typeof lineageSize).toBe('number');
+    expect(typeof lineageHash).toBe('string');
+    const legacy = Buffer.from(
+      JSON.stringify({ ...rest, threadIds: sessionIds }),
+    ).toString('base64url');
+    const viaLegacy = store.listConversationEventWindowByTurn(sessionIds, {
+      cursor: legacy,
+      turnLimit: 1,
+    });
+    const viaPin = store.listConversationEventWindowByTurn(sessionIds, {
+      cursor: first.nextCursor,
+      turnLimit: 1,
+    });
+    expect(viaLegacy.events.map((event) => event.id)).toEqual(
+      viaPin.events.map((event) => event.id),
+    );
+  });
+
+  test('a pin minted for another lineage cannot page this conversation', () => {
+    const sessionIds = ['pin-mine-1', 'pin-mine-2'];
+    for (const [index, threadId] of sessionIds.entries()) {
+      store.appendEvent({
+        eventId: `pin-turn-${index}-started`,
+        provider: 'codex',
+        threadId,
+        turnId: `pin-turn-${index}`,
+        createdAt: `2026-08-24T03:0${index}:00.000Z`,
+        method: 'turn.started',
+        prompt: `question ${index}`,
+      });
+    }
+    const first = store.listConversationEventWindowByTurn(sessionIds, {
+      turnLimit: 1,
+    });
+    expect(first.nextCursor).toBeDefined();
+    const foreignIds = ['pin-foreign-1', 'pin-foreign-2'];
+    for (const [index, threadId] of foreignIds.entries()) {
+      store.appendEvent({
+        eventId: `pin-foreign-${index}-started`,
+        provider: 'codex',
+        threadId,
+        turnId: `pin-foreign-turn-${index}`,
+        createdAt: `2026-08-24T03:1${index}:00.000Z`,
+        method: 'turn.started',
+        prompt: `foreign ${index}`,
+      });
+    }
+    expect(() =>
+      store.listConversationEventWindowByTurn(foreignIds, {
+        cursor: first.nextCursor,
+        turnLimit: 1,
+      }),
+    ).toThrow('Conversation event window cursor is invalid');
+  });
+
   test('preflights the exact UTF-8 replay frame with a persisted provenance sidecar without reading payloads', () => {
     const threadId = 'thread-replay-sidecar-bytes';
     const event = {
@@ -4658,6 +5007,104 @@ describe('EventStore', () => {
     });
   });
 
+  test('#2324 review J1: the history backfill counts a provider turn’s reply but not its start', () => {
+    store.close();
+    const databasePath = join(dir, 'pre-ownership-provider-history.sqlite');
+    const database = new DatabaseSync(databasePath);
+    database.exec(ORCHESTRATION_EVENT_STORE_MIGRATION);
+    database
+      .prepare(
+        `INSERT INTO provider_session_state
+          (thread_id, provider, status, tenant_execution_context, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        'thread-backfilled',
+        'claude',
+        'ready',
+        JSON.stringify({ tenantId: 'alpha', source: 'session' }),
+        '2026-08-08T11:00:00.000Z',
+        '2026-08-08T12:00:00.000Z',
+      );
+    const insertEvent = database.prepare(
+      `INSERT INTO orchestration_events
+        (id, provider, thread_id, method, payload, created_at, sequence, global_sequence)
+       VALUES (?, 'claude', 'thread-backfilled', ?, ?, ?, ?, ?)`,
+    );
+    insertEvent.run(
+      'backfilled-start',
+      'session.started',
+      JSON.stringify({
+        method: 'session.started',
+        metadata: { userId: 'owner-alpha', agentSlug: 'claude' },
+      }),
+      '2026-08-08T11:00:00.000Z',
+      1,
+      1,
+    );
+    insertEvent.run(
+      'backfilled-turn-start',
+      'turn.started',
+      JSON.stringify({
+        method: 'turn.started',
+        prompt: 'Accurate history title',
+      }),
+      '2026-08-08T11:01:00.000Z',
+      2,
+      2,
+    );
+    insertEvent.run(
+      'backfilled-turn-complete',
+      'turn.completed',
+      JSON.stringify({ method: 'turn.completed' }),
+      '2026-08-08T12:00:00.000Z',
+      3,
+      3,
+    );
+    insertEvent.run(
+      'backfilled-provider-start',
+      'turn.started',
+      JSON.stringify({
+        method: 'turn.started',
+        metadata: { trigger: 'provider' },
+      }),
+      '2026-08-08T12:00:01.000Z',
+      4,
+      4,
+    );
+    insertEvent.run(
+      'backfilled-provider-complete',
+      'turn.completed',
+      JSON.stringify({
+        method: 'turn.completed',
+        metadata: { trigger: 'provider' },
+      }),
+      '2026-08-08T12:00:02.000Z',
+      5,
+      5,
+    );
+    database.close();
+
+    store = new EventStore(databasePath);
+
+    expect(
+      store.listConversationHistoryPage({
+        ownerUserId: 'owner-alpha',
+        tenantId: 'alpha',
+        limit: 1,
+      }).records,
+    ).toEqual([
+      expect.objectContaining({
+        threadId: 'thread-backfilled',
+        title: 'Accurate history title',
+        messageCount: 3,
+      }),
+    ]);
+    expect(store.readConversationHistoryUpgrade()).toMatchObject({
+      status: 'complete',
+      quarantinedCount: 0,
+    });
+  });
   test('hosted history remains bounded when newer quarantined rows outnumber accepted rows', () => {
     const validAt = '2026-08-08T12:00:00.000Z';
     store.upsertSession({
@@ -7661,6 +8108,29 @@ describe('EventStore', () => {
       expect(
         store.toolCompletedEventById('thread', 'evt-tool-result-overflow'),
       ).toBeUndefined();
+    });
+
+    // station#2210: a deterministic ingress rejection carries no payload, so
+    // it must at least name its subject — the same oversized event used to
+    // fail every 2s poll with an anonymous error nobody could trace.
+    test('names the event method and thread when ingress rejects an oversized event', () => {
+      expect(() =>
+        store.appendEvent({
+          eventId: 'evt-tool-result-identity',
+          provider: 'claude',
+          threadId: 'external:claude:oversized',
+          turnId: 'turn',
+          itemId: 'item',
+          createdAt: '2026-08-19T00:00:00.000Z',
+          method: 'tool.completed',
+          toolCallId: 'call',
+          toolName: 'shell',
+          status: 'success',
+          output: 'x'.repeat(70_000),
+        }),
+      ).toThrow(
+        /method=tool\.completed, threadId=external:claude:oversized.*ingress ceiling/s,
+      );
     });
 
     test('bounds both event insert paths before JSON serialization', () => {

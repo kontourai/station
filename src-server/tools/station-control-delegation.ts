@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { resolve as resolveFilesystemPath } from 'node:path';
 import type { AgentDelegationContext } from '@kontourai/station-contracts/agent';
 import {
   type AgentId,
@@ -21,17 +22,25 @@ import {
 } from '@kontourai/station-contracts/orchestration';
 import type { PrincipalRef } from '@kontourai/station-contracts/principal';
 import {
+  type ApprovalMode,
   type CapabilityDeliveryCapability,
   type CapabilityUndeliveredReason,
   type EngineId,
   FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY,
+  PORTABLE_EXECUTION_CONSENT_METADATA_KEY,
   SESSION_CAPABILITY_DELIVERY_METADATA_KEY,
   SESSION_VISIBILITY_METADATA_KEY,
   type SessionCapabilityDeliveryMetadata,
 } from '@kontourai/station-contracts/provider';
 import {
+  isDeferredRetriableTurnError,
+  isProviderTriggeredTurn,
+  PROVIDER_TURN_TRIGGER,
+} from '@kontourai/station-contracts/runtime-events';
+import {
   isSessionLifecycleState,
   isSessionLifecycleStateStopped,
+  isSessionTransitionReason,
 } from '@kontourai/station-contracts/session-lifecycle';
 import {
   type SessionReadAuthority,
@@ -67,13 +76,32 @@ import {
   matchVerifiedRemoteProjectPath,
   resolveExecutionTarget,
 } from '../services/execution-target/execution-target-resolver.js';
+import { approvalKnobSupported } from '../services/orchestration/approval-posture.js';
+import {
+  DelegationAttemptCapacityError,
+  DelegationAttemptClaimStore,
+  DelegationAttemptConflictError,
+  DelegationAttemptExistsError,
+  DelegationAttemptPendingError,
+  delegationAttemptClaimKey,
+  delegationAttemptIntentDigest,
+} from '../services/orchestration/delegation-attempt-claim-store.js';
 import { captureExecutionWorkspaceBinding } from '../services/orchestration/execution-workspace-binding.js';
 import {
   type ForegroundInvocationAdmission,
   ForegroundInvocationUnavailableError,
 } from '../services/orchestration/foreground-invocation-admission.js';
 import type { OrchestrationService } from '../services/orchestration/orchestration-service.js';
+import type { StartOwnerAttribution } from '../services/orchestration/session-owner-attribution.js';
 import { SessionStartIndeterminateError } from '../services/orchestration/session-turn-boundary.js';
+import {
+  type PortableExecutionConsentIdentity,
+  portableConsentOfStartedMetadata,
+  RECEIVER_EXECUTION_REFUSAL_COPY,
+  type ReceiverExecutionAdmission,
+  ReceiverExecutionRefusal,
+  receiverAdmittedCwd,
+} from '../services/projects/project-contribution-service.js';
 import {
   delegatedTaskFollowUps,
   delegatedTaskInterrupts,
@@ -127,6 +155,10 @@ async function readExecutionProject(
 
 interface StationHandshake {
   environmentId: string;
+  capabilities?: {
+    portableExecutionOffers?: boolean;
+    delegationAttemptClaims?: boolean;
+  };
 }
 
 interface SshEnvironmentView {
@@ -190,17 +222,84 @@ export interface DelegateTaskInput {
   parentTaskId?: string;
   delegation?: AgentDelegationContext;
   userId?: string;
+  /** Station #90 lane D (B2): route-set only; see session-owner-attribution.ts. */
+  ownerAttribution?: StartOwnerAttribution;
   /** Trusted request authority supplied only by runtime composition. */
   readAuthority?: SessionReadAuthority;
   /** Resolved at the authenticated request seam; never accepted as tool input. */
   clientOrigin?: ClientOrigin;
   /** Resolved alongside clientOrigin when an authenticated actor exists. */
   principal?: PrincipalRef;
+  /**
+   * #484 phase A: the receiver-owned admission for a `project-portable`
+   * workspace intent, composed ONLY by the receiving runtime after the
+   * request's credential was verified (it is unreachable from public JSON —
+   * the route schema strips it). Required on the RECEIVING Station whenever
+   * it executes a `project-portable` workspace locally; a forwarding sender
+   * never holds one. Its `recheck` is awaited before the session start and
+   * again before the turn dispatch, and is additionally threaded into the
+   * service internal options so the provider-effect path rechecks it
+   * adjacent to the actual adapter invocation — a withdrawn offer or lost
+   * binding refuses at the effect seam rather than at the door only.
+   */
+  receiverAdmission?: ReceiverExecutionAdmission;
+  /**
+   * #484 controller/receiver split: server-only callable that mints the
+   * receiver admission above, bound by the HTTP route to the CURRENT
+   * request's credential BEFORE any await (never public JSON — a function
+   * cannot cross it). Invoked ONLY when THIS Station is the actual local
+   * executor (the single `resolveTarget` below resolved `current`); a
+   * forwarding controller never invokes it, so a controller needs no local
+   * offer or association for a saved receiver's intent.
+   */
+  authorizeReceiverExecution?: (workspace: {
+    portableProjectId: string;
+    resourceId: string;
+  }) => Promise<ReceiverExecutionAdmission>;
+  /**
+   * #484 no-onward-hop: the server-resolved paired-device kind for the
+   * inbound credential (`device` vs `delegation`), composed by the runtime
+   * from the verified credential's device record — never body, userId, or
+   * metadata. `delegation` marks an enrolled peer host; absent on every
+   * non-device caller (operator, internal) and on ordinary devices.
+   */
+  inboundDeviceKind?: 'device' | 'delegation';
+  /** Trusted request closure; never accepted from public JSON. */
+  isRequestAuthorityCurrent?: () => boolean;
+  /**
+   * #485 receiver request-claim slice: the caller's OPT-IN attempt
+   * correlation id, validated at the route seam (closed charset/bounds) and
+   * forwarded in the portable peer body ONLY when the receiving capability
+   * is advertised. Present, not authorization: the receiver keys its
+   * durable claim by the VERIFIED caller grant, never by this field alone.
+   */
+  delegationAttemptId?: string;
+  /**
+   * #485: the verified delegation-kind device grant behind the CURRENT
+   * request (`resolveInboundDelegationDeviceForRequest`, server-derived).
+   * Present only when this request could claim at THIS Station; a
+   * forwarding controller never holds one for its caller. `attemptId`
+   * without this composition refuses on the receiver-local path — a claim
+   * is never keyed by body/user labels.
+   */
+  delegationAttemptCaller?: { readonly deviceId: string };
+  /**
+   * #485: the receiver's durable attempt-claim owner, composed once by the
+   * runtime. Absent (unwired runtime) plus an attempt id refuses rather
+   * than silently executing unclaimed.
+   */
+  delegationAttemptClaimStore?: DelegationAttemptClaimStore;
 }
 
 type AuthorityBearingForegroundMessageInput = ForegroundMessageInput & {
   /** Trusted request authority supplied only by runtime composition. */
   readAuthority?: SessionReadAuthority;
+  /**
+   * Fresh portable admission for a follow-up turn, threaded by
+   * `continueDelegatedTask` after minting on the executing receiver.
+   * Server-only; scoped to the executing thread in the closures below.
+   */
+  receiverAdmission?: ReceiverExecutionAdmission;
 };
 
 /**
@@ -362,15 +461,61 @@ export interface DelegatedTaskEventsInput extends DelegatedTaskReferenceInput {
 export interface ContinueDelegatedTaskInput
   extends DelegatedTaskReferenceInput {
   message: string;
+  /**
+   * Station #90 lane D (D2): route-set only. A follow-up can start a new
+   * child session of the task's conversation, which must carry the same
+   * owner attribution as a fresh delegation (session-owner-attribution.ts).
+   */
+  ownerAttribution?: StartOwnerAttribution;
   model?: string;
   /** archive#978: per-invocation settings passthrough on a follow-up turn. */
   modelOptions?: Record<string, unknown>;
+  /**
+   * A freshly minted offer admission for continuing a portable task,
+   * threaded by `continueDelegatedTask` after minting on the executing
+   * receiver (or injected by tests). Server-only; never public JSON.
+   */
+  receiverAdmission?: ReceiverExecutionAdmission;
+  /**
+   * #484 continuation: the trusted route-bound mint factory for a portable
+   * follow-up, bound by the HTTP route to the CURRENT request credential
+   * before any await. Minted on the actual executing receiver only — after
+   * this tool resolves the target to `current` and reads the thread's OWN
+   * persisted consent marker — never from public JSON (a function cannot
+   * cross it) and never on a forwarding sender.
+   */
+  authorizeReceiverExecution?: (workspace: {
+    portableProjectId: string;
+    resourceId: string;
+  }) => Promise<ReceiverExecutionAdmission>;
+  // Verified-caller composition (same shape as the create input, composed
+  // by the HTTP routes from the verified credential — never public JSON):
+  // the no-onward-hop verdict and the post-resolution sender-currency
+  // probe on the forwarding branch read them here.
+  inboundDeviceKind?: 'device' | 'delegation';
+  isRequestAuthorityCurrent?: () => boolean;
 }
 
 export interface RespondToDelegatedTaskRequestInput
   extends DelegatedTaskReferenceInput {
   requestId: string;
   decision: ApprovalDecision;
+  /**
+   * Same re-admission slot as the continue path; a marked portable
+   * session without one refuses. Server-only; never public JSON.
+   */
+  receiverAdmission?: ReceiverExecutionAdmission;
+  /**
+   * Same trusted mint factory as the continue path; minted on the
+   * actual executing receiver only.
+   */
+  authorizeReceiverExecution?: (workspace: {
+    portableProjectId: string;
+    resourceId: string;
+  }) => Promise<ReceiverExecutionAdmission>;
+  // Same verified-caller composition as the continue input.
+  inboundDeviceKind?: 'device' | 'delegation';
+  isRequestAuthorityCurrent?: () => boolean;
 }
 
 export interface DelegatedTaskEvent {
@@ -389,6 +534,12 @@ export interface DelegatedTaskEvent {
     | 'plan';
   createdAt?: string;
   turnId?: string;
+  /**
+   * #2324: `'provider'` on the start and terminal of a turn the engine
+   * opened on its own — a reply no caller asked for (for example after its
+   * background work finished). Absent on every turn a caller sent.
+   */
+  trigger?: 'provider';
   text?: string;
   truncated?: true;
   toolName?: string;
@@ -586,6 +737,340 @@ export function delegatedCapabilityDelivery(
   return { ...(prompt ? { prompt } : {}), dropped };
 }
 
+/**
+ * #2269: effective per-turn supervision for a delegated task's current turn.
+ *
+ * Forwarded from the serving Station's canonical facts only: the owning
+ * adapter's host-authored `turn.started` supervision declaration, joined to
+ * the live watchdog observation (`turnProgress`) so a stale prior turn's
+ * facts are never presented as current. Request/child/user metadata is
+ * never a source. Adapters that declare no supervision omit this entirely.
+ * Each bound is forwarded only when the adapter declared it: an idle window
+ * as `idleLimitMs`, a total budget as `deadlineAt`/`remainingMs`/
+ * `totalLimitMs`. A declaration with neither (Muse's default since #2269: no
+ * production caller declares `turnIdleTimeoutMs` or `turnTimeoutMs`) is
+ * forwarded as exactly that — the turn has no Station-imposed bound.
+ */
+export interface DelegatedTurnSupervision {
+  provider: string;
+  turnId: string;
+  /** Milliseconds elapsed since turn start at read time (>= 0). */
+  elapsedMs: number;
+  /**
+   * Idle window, only when one was declared: a full silence of verified
+   * activity (with no tool reported running) this long ends the turn.
+   */
+  idleLimitMs?: number;
+  /**
+   * Absolute wall-clock ceiling for the turn (ISO timestamp). Present only
+   * with a declared total budget, together with `remainingMs` and
+   * `totalLimitMs`.
+   */
+  deadlineAt?: string;
+  /** Milliseconds until the absolute deadline at read time (>= 0). */
+  remainingMs?: number;
+  /** Declared absolute turn budget; activity never moves it. */
+  totalLimitMs?: number;
+  /** Last verified protocol activity the watchdog observed, when known. */
+  lastProgressEventAt?: string;
+}
+
+/**
+ * #2269: a typed, safe reason for a delegated task's current outcome. The
+ * `code` is an allowlisted value (a known per-turn budget code or a
+ * `TerminalAttribution` kind); `detail`, when present, is host-synthesized
+ * fixed text — never a forwarded attribution detail, event message, or
+ * provider log. Unknown errors carry a bare generic code with no detail.
+ */
+export interface DelegatedTaskReason {
+  code: string;
+  detail?: string;
+}
+
+/** Upper bound accepted for forwarded supervision limits (24 h; mirrors the muse adapter cap). */
+const DELEGATED_SUPERVISION_LIMIT_MAX_MS = 24 * 60 * 60_000;
+
+function optionalPositiveBoundedMs(value: unknown): number | undefined {
+  return typeof value === 'number' &&
+    Number.isFinite(value) &&
+    value > 0 &&
+    value <= DELEGATED_SUPERVISION_LIMIT_MAX_MS
+    ? value
+    : undefined;
+}
+
+function optionalIsoTimestamp(value: unknown): string | undefined {
+  if (typeof value !== 'string' || !value) return undefined;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? value : undefined;
+}
+
+/**
+ * #2269: derive the current turn's supervision from canonical facts only.
+ * The `turn.started` declaration counts only when its own `turnId` names
+ * the turn the watchdog is still observing (`turnProgress.turnId`) — the
+ * match is by that identity, not by "the latest start event", so a stale
+ * prior turn's declaration and a malformed declaration are both dropped
+ * rather than repaired. A declaration whose provider disagrees with the
+ * session's own projected provider is dropped too: the session projection
+ * is Station-authored while event metadata from a non-owning adapter may
+ * repeat caller input. Returns `undefined` when there is no usable
+ * declaration (honest unknown) — including when the status event window no
+ * longer contains the turn's start event after a long history. Each bound
+ * is returned only when declared; a declaration with neither is returned
+ * with neither (no Station-imposed bound), and a bound that is present but
+ * malformed drops the whole declaration rather than being repaired.
+ */
+export function delegatedTurnSupervision(
+  session: Record<string, unknown>,
+  events: Array<Record<string, unknown>>,
+  nowMs: number = Date.now(),
+): DelegatedTurnSupervision | undefined {
+  const progress =
+    session.turnProgress && typeof session.turnProgress === 'object'
+      ? (session.turnProgress as Record<string, unknown>)
+      : undefined;
+  const observedTurnId =
+    typeof progress?.turnId === 'string' ? progress.turnId : undefined;
+  if (!observedTurnId) return undefined;
+  const lastProgressEventAt =
+    typeof progress?.lastProgressEventAt === 'string'
+      ? progress.lastProgressEventAt
+      : undefined;
+  // Newest-first scan for the declaration that names the observed turn. The
+  // status event window is bounded, so a very long turn's start event can
+  // age out — that reads as honest unknown, never as a repaired policy.
+  const supervision = [...events]
+    .reverse()
+    .reduce((found: Record<string, unknown> | undefined, event) => {
+      if (found || event.method !== 'turn.started') return found;
+      const candidate =
+        event.metadata && typeof event.metadata === 'object'
+          ? ((event.metadata as Record<string, unknown>).supervision as
+              | Record<string, unknown>
+              | undefined)
+          : undefined;
+      return candidate &&
+        typeof candidate === 'object' &&
+        candidate.turnId === observedTurnId
+        ? candidate
+        : found;
+    }, undefined);
+  if (!supervision) return undefined;
+  const idleLimitMs = optionalPositiveBoundedMs(supervision.idleLimitMs);
+  const startedAt = optionalIsoTimestamp(supervision.startedAt);
+  if (
+    (supervision.idleLimitMs !== undefined && idleLimitMs === undefined) ||
+    startedAt === undefined ||
+    typeof supervision.provider !== 'string' ||
+    !supervision.provider
+  ) {
+    return undefined;
+  }
+  // The total budget is optional, but all-or-nothing: a declaration that
+  // carries either half must carry both, valid, or it is malformed and
+  // dropped rather than repaired into an idle-only one.
+  const declaresTotal =
+    supervision.totalLimitMs !== undefined ||
+    supervision.deadlineAt !== undefined;
+  const totalLimitMs = optionalPositiveBoundedMs(supervision.totalLimitMs);
+  const deadlineAt = optionalIsoTimestamp(supervision.deadlineAt);
+  if (
+    declaresTotal &&
+    (totalLimitMs === undefined || deadlineAt === undefined)
+  ) {
+    return undefined;
+  }
+  // The declaration must agree with the session's own projected provider.
+  // A mismatch means the start event is not the owning adapter's fact (a
+  // non-owning adapter may forward caller-influenced metadata), so the
+  // policy is dropped rather than attributed to the wrong engine.
+  if (
+    typeof session.provider === 'string' &&
+    session.provider &&
+    session.provider !== supervision.provider
+  ) {
+    return undefined;
+  }
+  const startedMs = Date.parse(startedAt);
+  let total: Pick<
+    DelegatedTurnSupervision,
+    'deadlineAt' | 'remainingMs' | 'totalLimitMs'
+  > = {};
+  if (deadlineAt !== undefined && totalLimitMs !== undefined) {
+    const deadlineMs = Date.parse(deadlineAt);
+    if (!(deadlineMs > startedMs)) return undefined;
+    total = {
+      deadlineAt,
+      remainingMs: Math.max(0, deadlineMs - nowMs),
+      totalLimitMs,
+    };
+  }
+  return {
+    provider: supervision.provider,
+    turnId: observedTurnId,
+    elapsedMs: Math.max(0, nowMs - startedMs),
+    ...(idleLimitMs === undefined ? {} : { idleLimitMs }),
+    ...total,
+    ...(lastProgressEventAt ? { lastProgressEventAt } : {}),
+  };
+}
+
+/**
+ * Known per-turn budget codes the serving Station's adapters settle with,
+ * mapped to the delegation reason and its HOST-SYNTHESIZED detail. The
+ * detail is fixed text per code — never the terminal event's message, which
+ * can carry child output, paths, or provider errors. Only codes in this
+ * table keep a detail; everything else is a bare code or nothing.
+ */
+const DELEGATED_BUDGET_REASONS: Record<string, DelegatedTaskReason> = {
+  'muse-turn-idle-timeout': {
+    code: 'muse-turn-idle-timeout',
+    detail:
+      'The turn ended after a full window with no verified protocol activity.',
+  },
+  'muse-turn-timeout': {
+    code: 'muse-turn-timeout',
+    detail: 'The turn ended at its absolute turn budget.',
+  },
+  'turn-timeout': {
+    code: 'turn-timeout',
+    detail: 'The turn ended at its absolute turn budget.',
+  },
+};
+
+/** Attribution kinds whose detail is always a service-fixed string, safe to synthesize. */
+const DELEGATED_FIXED_DETAILS: Record<string, string> = {
+  requested_stop: 'Stopped by request.',
+  stall_stop: 'Station stopped it after no progress was detected.',
+  timeout: 'Station ended the session after it timed out.',
+  no_output: 'The engine ended without output.',
+};
+
+/**
+ * #2269: derive the delegation reason from canonical facts only, with no
+ * raw detail anywhere in the output.
+ *
+ * The lifecycle fold deliberately classifies a budget-killed turn as
+ * `runtime_error` first (its message is always non-empty), so the
+ * attribution alone cannot distinguish an idle expiry from an absolute one
+ * — the CURRENT terminal event's code is read for that (newest terminal
+ * event first, scoped to the latest turn by identity, never the newest
+ * budget code anywhere in history), and only an allowlisted budget code
+ * maps to a reason WITH detail (host-synthesized fixed text, never the
+ * event message). A clean `turn.completed` — and a `completed` lifecycle —
+ * ends the story with no reason even when older budget errors linger.
+ * Otherwise the attribution kind maps to a bare code plus a synthesized
+ * fixed detail for the service-fixed kinds; `runtime_error` and
+ * unrecognized kinds carry no detail at all, so unknown provider errors
+ * stay a redacted generic and a sentinel secret or private path in the raw
+ * message can never cross the delegation seam.
+ */
+/**
+ * Whether an event can carry the CURRENT terminal outcome for the reason
+ * seam. Session-scoped/retriable nonterminal `runtime.error`s are skipped
+ * with the canonical predicate shared with the stall watchdog — a codex
+ * deferred retry is not proof the turn is over, so it must not mask the
+ * genuine terminal behind it nor pose as one itself.
+ */
+function isDelegationTerminalEvent(event: Record<string, unknown>): boolean {
+  if (
+    event.method === 'turn.completed' ||
+    event.method === 'turn.aborted' ||
+    event.method === 'session.exited'
+  ) {
+    return true;
+  }
+  if (event.method !== 'runtime.error' && event.method !== 'runtime_error') {
+    return false;
+  }
+  return !isDeferredRetriableTurnError({
+    method: 'runtime.error',
+    provider:
+      typeof event.provider === 'string'
+        ? (event.provider as EngineId)
+        : undefined,
+    retriable:
+      typeof event.retriable === 'boolean' ? event.retriable : undefined,
+  });
+}
+
+export function delegatedTaskReason(
+  session: Record<string, unknown>,
+  events: Array<Record<string, unknown>> = [],
+): DelegatedTaskReason | undefined {
+  // A clean success carries no reason: an older turn's budget code must
+  // never label it (root review 00:40 — observable wrong status, not style).
+  if (session.lifecycleState === 'completed') return undefined;
+  const reversed = [...events].reverse();
+  // The CURRENT outcome is the newest terminal event, not the newest budget
+  // code anywhere in history: a prior budget failure followed by a newer
+  // turn's terminal (or a still-running turn) must not reuse the old code.
+  const terminal = reversed.find(isDelegationTerminalEvent);
+  if (!terminal) return undefined;
+  // A clean completion ends the story even when older errors linger.
+  if (terminal.method === 'turn.completed') return undefined;
+  const terminalCode =
+    (terminal.method === 'runtime.error' ||
+      terminal.method === 'runtime_error') &&
+    typeof terminal.code === 'string' &&
+    terminal.code
+      ? (terminal.code as string)
+      : undefined;
+  if (terminalCode && DELEGATED_BUDGET_REASONS[terminalCode]) {
+    // Scope the budget code to the latest turn: a budget error from a
+    // superseded turn (older than the newest turn.started, different turn
+    // id) is history, not the current outcome. When the start event aged
+    // out of the window there is nothing to scope against, so the newest
+    // terminal stands on its own (honest bounded behavior, documented on
+    // `delegatedTurnSupervision`).
+    const newestStartTurnId = reversed.find(
+      (event) => event.method === 'turn.started',
+    )?.turnId;
+    if (
+      typeof newestStartTurnId === 'string' &&
+      typeof terminal.turnId === 'string' &&
+      newestStartTurnId !== terminal.turnId
+    ) {
+      return undefined;
+    }
+    return { ...DELEGATED_BUDGET_REASONS[terminalCode] };
+  }
+  const attribution =
+    session.terminalAttribution &&
+    typeof session.terminalAttribution === 'object'
+      ? (session.terminalAttribution as Record<string, unknown>)
+      : undefined;
+  const kind =
+    typeof attribution?.kind === 'string' && attribution.kind
+      ? attribution.kind
+      : undefined;
+  if (!kind) return undefined;
+  if (kind === 'runtime_error') return { code: 'runtime_error' };
+  if (kind === 'exit') {
+    const exitCode = [...events]
+      .reverse()
+      .find(
+        (event) =>
+          event.method === 'session.exited' &&
+          typeof event.exitCode === 'number' &&
+          Number.isSafeInteger(event.exitCode) &&
+          event.exitCode !== 0,
+      )?.exitCode as number | undefined;
+    return {
+      code: 'exit',
+      detail:
+        exitCode === undefined
+          ? 'The engine exited without completing.'
+          : `The engine exited with code ${exitCode}.`,
+    };
+  }
+  const fixed = DELEGATED_FIXED_DETAILS[kind];
+  // Unrecognized kinds read as no reason rather than a guessed one: a new
+  // attribution kind must be allowlisted here before it crosses the seam.
+  return fixed ? { code: kind, detail: fixed } : undefined;
+}
+
 export interface DelegatedTaskSnapshot {
   /** Durable selector for continuation; `taskId` is retained for compatibility. */
   conversationId: string;
@@ -617,6 +1102,29 @@ export interface DelegatedTaskSnapshot {
   capabilityDelivery?: DelegatedCapabilityDelivery;
   eventCount: number;
   lastEvent?: { method: string; createdAt?: string };
+  /**
+   * #2269: effective supervision for the CURRENT turn, forwarded — never
+   * re-derived — from the serving Station's own facts (the owning adapter's
+   * `turn.started` supervision declaration joined to the live watchdog
+   * observation). Absent means the provider declared no hard budget or the
+   * turn already ended: an honest unknown, never a synthesized deadline.
+   */
+  supervision?: DelegatedTurnSupervision;
+  /**
+   * #2269 (covers the necessary part of #2265): the serving Station's typed
+   * terminal attribution for the current non-clean outcome, allowlisted and
+   * re-synthesized — never forwarded as-is. Only known budget codes keep a
+   * (host-authored, fixed-text) detail; unknown provider errors stay a
+   * redacted generic code with no detail. Raw event messages, attribution
+   * details, and provider logs are never forwarded here.
+   */
+  reason?: DelegatedTaskReason;
+  /**
+   * #2269: lifecycle transition reason the serving Station folded, if it is
+   * a value the `SessionTransitionReason` vocabulary recognizes. Anything
+   * else is dropped, never relayed.
+   */
+  transitionReason?: string;
   pendingRequest?: {
     id: string;
     title?: string;
@@ -722,11 +1230,16 @@ function dispatchContextForAuthority(
   // the HTTP seam (`orchestration.ts`'s `resolveActorPrincipal`) and passed
   // in by callers that have one.
   principal?: PrincipalRef,
+  // Station #90 lane D (R1): route-derived owner attribution for a start.
+  // The service stamps it on the new session (`prepareStart`), the one
+  // place every start passes.
+  ownerAttribution?: StartOwnerAttribution,
 ): {
   userId: string;
   tenantExecutionContext?: SessionReadAuthority['tenantExecutionContext'];
   clientOrigin?: ClientOrigin;
   principal?: PrincipalRef;
+  ownerAttribution?: StartOwnerAttribution;
 } {
   return {
     userId: authority.userId,
@@ -735,6 +1248,7 @@ function dispatchContextForAuthority(
       : {}),
     ...(clientOrigin ? { clientOrigin } : {}),
     ...(principal ? { principal } : {}),
+    ...(ownerAttribution ? { ownerAttribution } : {}),
   };
 }
 
@@ -822,6 +1336,264 @@ async function postCanonical<T>(
   );
   if (!payload.success || payload.data === undefined) {
     throw new Error(payload.error || unavailableMessage);
+  }
+  return payload.data;
+}
+
+/** Error envelopes the runtime auth boundary and the delegation route emit. */
+interface PeerPortableErrorEnvelope {
+  success?: boolean;
+  error?: string | { code?: string };
+  code?: string;
+  data?: unknown;
+  /** #485 duplicate-attempt outcomes carry the closed attempt reference. */
+  attemptId?: string;
+  taskId?: string;
+  /** The receiver's real initial turn id, when it named one (exists). */
+  turnId?: string;
+}
+
+/**
+ * #484 peer-hop refusal translation. A KNOWN receiver portable refusal must
+ * arrive at the operator as the SAME refusal — same closed code, same fixed
+ * copy, same 403 — instead of degrading into a plain `Error`/400 that reads
+ * as a generic server fault. A peer 401 or a known `insufficient_scope` is
+ * an AUTHORITY fact about the saved peer credential, so it becomes the
+ * actionable `receiver_execution_authority_changed` refusal (403 at this
+ * Station) without relaying raw peer text or minting a misleading
+ * controller-local 401. Anything else — 5xx, malformed bodies, transport
+ * failures — is deliberately NOT translated: an unknown failure must never
+ * be laundered into an authorization outcome.
+ */
+function peerPortableRefusalFor(
+  status: number,
+  payload: PeerPortableErrorEnvelope | null,
+): ReceiverExecutionRefusal | undefined {
+  if (status === 401) {
+    return new ReceiverExecutionRefusal(
+      'receiver_execution_authority_changed',
+      RECEIVER_EXECUTION_REFUSAL_COPY.receiver_execution_authority_changed,
+    );
+  }
+  if (status !== 403) return undefined;
+  // Top-level known codes share the closed projection (nested known codes
+  // stay untranslated here, preserving the reviewed create contract; the
+  // follow-up translator accepts both positions, and both stay inside the
+  // closed map either way).
+  const refusal = closedPortableRefusalFromCode(payload?.code);
+  if (refusal) return refusal;
+  const nested =
+    typeof payload?.error === 'object' && payload.error !== null
+      ? payload.error.code
+      : undefined;
+  if (
+    payload?.error === 'insufficient_scope' ||
+    nested === 'insufficient_scope'
+  ) {
+    return new ReceiverExecutionRefusal(
+      'receiver_execution_authority_changed',
+      RECEIVER_EXECUTION_REFUSAL_COPY.receiver_execution_authority_changed,
+    );
+  }
+  return undefined;
+}
+
+/**
+ * #485 receiver request-claim slice: the receiver's typed duplicate
+ * outcomes (409 + closed code), relayed to the CONTROLLING caller as the
+ * same typed outcome with its attempt reference — never laundered into a
+ * generic server fault, and never answered with a manufactured handle. The
+ * controller does not interpret these; it forwards them verbatim to its
+ * caller, whose remedy is the receiver's authorized attempt lookup.
+ */
+const PEER_ATTEMPT_DUPLICATE_CODES = new Set([
+  'delegation_attempt_pending',
+  'delegation_attempt_exists',
+  'delegation_attempt_conflict',
+  'delegation_attempt_capacity',
+]);
+
+export class PeerDelegationAttemptDuplicateError extends Error {
+  constructor(
+    readonly code:
+      | 'delegation_attempt_pending'
+      | 'delegation_attempt_exists'
+      | 'delegation_attempt_conflict'
+      | 'delegation_attempt_capacity',
+    readonly attemptId: string | undefined,
+    readonly taskId: string | undefined,
+    /** The receiver's real initial turn id, when it named one (exists). */
+    readonly turnId: string | undefined = undefined,
+  ) {
+    super(
+      'The receiving Station already holds a claim for this attempt; do not resend it.',
+    );
+    this.name = 'PeerDelegationAttemptDuplicateError';
+  }
+}
+
+/**
+ * The portable peer dispatch's own poster: identical wire behavior to
+ * {@link postCanonical} for success, but on a non-2xx it consults
+ * {@link peerPortableRefusalFor} BEFORE falling back to the plain-error
+ * path, so a receiver's closed portable refusal keeps its code and 403 at
+ * this Station. A receiver's 409 attempt-duplicate outcome keeps ITS code
+ * and attempt reference (#485). Non-portable delegation keeps
+ * `postCanonical` byte-for-byte.
+ */
+async function postPeerPortableDelegation<T>(
+  target: Pick<DelegationTarget, 'apiBase' | 'requestOptions'>,
+  path: string,
+  body: unknown,
+  unavailableMessage: string,
+): Promise<T> {
+  let response: Response;
+  try {
+    response = await postDelegationJson(target, path, body);
+  } catch {
+    throw new Error(unavailableMessage);
+  }
+  let payload: (ApiEnvelope<T> & PeerPortableErrorEnvelope) | null;
+  try {
+    payload = (await response.json()) as ApiEnvelope<T> &
+      PeerPortableErrorEnvelope;
+  } catch {
+    payload = null;
+  }
+  if (!response.ok) {
+    if (
+      response.status === 409 &&
+      typeof payload?.code === 'string' &&
+      PEER_ATTEMPT_DUPLICATE_CODES.has(payload.code)
+    ) {
+      throw new PeerDelegationAttemptDuplicateError(
+        payload.code as PeerDelegationAttemptDuplicateError['code'],
+        typeof payload.attemptId === 'string' ? payload.attemptId : undefined,
+        typeof payload.taskId === 'string' ? payload.taskId : undefined,
+        typeof payload.turnId === 'string' ? payload.turnId : undefined,
+      );
+    }
+    const refusal = peerPortableRefusalFor(response.status, payload);
+    if (refusal) throw refusal;
+    throw new Error(unavailableMessage);
+  }
+  if (!payload?.success || payload.data === undefined) {
+    throw new Error(unavailableMessage);
+  }
+  return payload.data;
+}
+
+/**
+ * The shared closed-code projection: a KNOWN portable refusal code (top
+ * level or nested error object) becomes the fixed-copy refusal; anything
+ * else — unknown codes, inherited map keys (`__proto__`/`constructor`
+ * can never match through `Object.hasOwn`), malformed payloads — is not
+ * a refusal. Both peer translators use it, so a forged code is never
+ * laundered into an authorization outcome on any path.
+ */
+function closedPortableRefusalFromCode(
+  code: unknown,
+): ReceiverExecutionRefusal | undefined {
+  if (
+    typeof code === 'string' &&
+    Object.hasOwn(RECEIVER_EXECUTION_REFUSAL_COPY, code)
+  ) {
+    const known = code as ReceiverExecutionRefusal['code'];
+    return new ReceiverExecutionRefusal(
+      known,
+      RECEIVER_EXECUTION_REFUSAL_COPY[known],
+    );
+  }
+  return undefined;
+}
+
+/**
+ * The follow-up peer poster's refusal translation. Deliberately NARROWER
+ * than the create-path translator: a follow-up body carries no portable
+ * ids, so a forwarding sender cannot know whether the task it forwards
+ * is portable or legacy. Only a 403 naming a KNOWN portable refusal code
+ * is translated — a non-portable receiver never emits those codes, so
+ * the translation cannot mislabel a legacy failure. Every other failure
+ * becomes the generic caller-safe error below: peer paths, prompts, and
+ * credentials never cross this seam.
+ */
+function peerPortableFollowUpRefusalFor(
+  status: number,
+  payload: PeerPortableErrorEnvelope | null,
+): ReceiverExecutionRefusal | undefined {
+  if (status !== 403) return undefined;
+  const code =
+    typeof payload?.code === 'string'
+      ? payload.code
+      : typeof payload?.error === 'object' && payload.error !== null
+        ? payload.error.code
+        : undefined;
+  return closedPortableRefusalFromCode(code);
+}
+
+/**
+ * The sentinel for every NON-refusal follow-up poster failure: transport
+ * errors, non-403 statuses, unknown codes, malformed bodies. Its message
+ * is ALWAYS the caller-safe generic — peer paths, prompts, credentials,
+ * and diagnostics never cross this seam (a deliberate break from
+ * `readJson`'s text-preserving path: raw peer disclosure is not
+ * preserved). The closed status distinction is refusal (typed,
+ * fixed-copy, 403 at the route) versus this sentinel (generic, 400).
+ */
+class PeerPortableFollowUpError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'PeerPortableFollowUpError';
+  }
+}
+
+async function postDelegationJson(
+  target: Pick<DelegationTarget, 'apiBase' | 'requestOptions'>,
+  path: string,
+  body: unknown,
+): Promise<Response> {
+  return fetch(`${target.apiBase}${path}`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      ...(target.requestOptions?.headers ?? {}),
+    },
+    body: JSON.stringify(body),
+  });
+}
+
+/**
+ * The portable follow-up's own peer poster: identical wire behavior to
+ * `postCanonical` for success, but a receiver's closed portable refusal
+ * (403 + known code) keeps its code and 403 at this Station, and every
+ * other failure becomes the generic sentinel — never peer text.
+ */
+async function postPeerPortableFollowUp<T>(
+  target: Pick<DelegationTarget, 'apiBase' | 'requestOptions'>,
+  path: string,
+  body: unknown,
+  unavailableMessage: string,
+): Promise<T> {
+  let response: Response;
+  try {
+    response = await postDelegationJson(target, path, body);
+  } catch {
+    throw new PeerPortableFollowUpError(unavailableMessage);
+  }
+  let payload: (ApiEnvelope<T> & PeerPortableErrorEnvelope) | null;
+  try {
+    payload = (await response.json()) as ApiEnvelope<T> &
+      PeerPortableErrorEnvelope;
+  } catch {
+    payload = null;
+  }
+  if (!response.ok) {
+    const refusal = peerPortableFollowUpRefusalFor(response.status, payload);
+    if (refusal) throw refusal;
+    throw new PeerPortableFollowUpError(unavailableMessage);
+  }
+  if (!payload?.success || payload.data === undefined) {
+    throw new PeerPortableFollowUpError(unavailableMessage);
   }
   return payload.data;
 }
@@ -1321,6 +2093,21 @@ async function pinSshDispatchWorkspace(
   executionTarget: ExecutionTarget,
 ): Promise<ExecutionTarget> {
   if (target.kind !== 'ssh') return executionTarget;
+  if (executionTarget.workspace?.kind === 'project-portable') {
+    // #484 phase A (bounded scope, not a transport claim): the portable
+    // intent is admitted ONLY by the receiving runtime's offer authority,
+    // and this slice composes that admission on the direct-peer path only —
+    // so the SSH forwarding path refuses outright instead of degrading to
+    // a verified-directory execution the operator never offered.
+    // Non-portable SSH delegation behavior is unchanged. A tunneled peer
+    // presenting its own authorization may be admitted by a later slice
+    // through the same receiver admission; this refusal is scope, not a
+    // claim about transport indistinguishability.
+    throw new ReceiverExecutionRefusal(
+      'receiver_execution_not_offered',
+      'Portable execution requires a direct peer connection; it cannot be forwarded over SSH.',
+    );
+  }
   if (!target.projectPath) {
     throw new Error(
       'The selected SSH environment has no verified workspace binding',
@@ -1838,6 +2625,135 @@ function sessionBinding(detail: {
   return record(bindingEvent).metadata as Record<string, unknown> | undefined;
 }
 
+/**
+ * #484 phase A: read the server-minted portable consent marker off a
+ * persisted session binding (`PORTABLE_EXECUTION_CONSENT_METADATA_KEY`,
+ * stamped at dispatch and re-stamped after the reserved-key strip, so no
+ * public caller can forge it — and omitting it cannot claim consent).
+ * Returns the admitted consent identity, or undefined for a session that
+ * never executed a portable intent (legacy and ordinary tasks).
+ */
+function portableConsentOfBinding(
+  metadata: Record<string, unknown> | undefined,
+): PortableExecutionConsentIdentity | undefined {
+  return portableConsentOfStartedMetadata(metadata);
+}
+
+/**
+ * #484 phase A: a follow-up effect on a marked portable session (continue,
+ * respond) runs ONLY with a freshly re-admitted offer naming the SAME
+ * consent identity — otherwise it refuses outright rather than silently
+ * bypassing the explicit portable mode's contract across a
+ * persist/recovery boundary. This preserves the mode's contract, not a
+ * global confinement: unmarked sessions are unaffected, and the refusal
+ * names the missing offer rather than the workspace.
+ *
+ * #484 continuation: the admission is minted through the trusted
+ * route-bound factory (`mintPortableFollowUpAdmission`) on the actual
+ * executing receiver only — after the target resolves to `current` and
+ * from the thread's OWN persisted marker, never from public JSON.
+ */
+function requirePortableContinuationAdmission(
+  marker: PortableExecutionConsentIdentity | undefined,
+  admission: ReceiverExecutionAdmission | undefined,
+): void {
+  if (!marker) return;
+  if (
+    !admission ||
+    admission.portableProjectId !== marker.portableProjectId ||
+    admission.resourceId !== marker.resourceId
+  )
+    throw new ReceiverExecutionRefusal(
+      'receiver_execution_not_offered',
+      'This portable task cannot continue without a current execution offer for its Project resource.',
+    );
+}
+
+/**
+ * #484 continuation: mint the fresh admission for a portable follow-up on
+ * the ACTUAL executing receiver. The consent identity comes from the
+ * thread's OWN persisted server-minted marker — never from the request
+ * body (follow-up bodies carry no portable ids at all) and never from a
+ * peer's claim — so a forged or omitted intent cannot bypass the marker's
+ * guard: minting for an unmarked thread never happens (the caller returns
+ * early), and minting names exactly what the thread consented to.
+ *
+ * A pre-incarnation (two-field) marker fails closed here with the named
+ * stale outcome before any mint: its association cannot be proven, it
+ * retains its history, and it requires a new explicit execution rather
+ * than a silent upgrade. Returns undefined for unmarked threads (no new
+ * authority is ever minted for an ordinary follow-up).
+ */
+async function mintPortableFollowUpAdmission(
+  marker: PortableExecutionConsentIdentity | undefined,
+  input: {
+    receiverAdmission?: ReceiverExecutionAdmission;
+    authorizeReceiverExecution?: (workspace: {
+      portableProjectId: string;
+      resourceId: string;
+    }) => Promise<ReceiverExecutionAdmission>;
+  },
+): Promise<ReceiverExecutionAdmission | undefined> {
+  if (!marker) return undefined;
+  if (!marker.localProjectId)
+    throw new ReceiverExecutionRefusal(
+      'receiver_execution_consent_stale',
+      RECEIVER_EXECUTION_REFUSAL_COPY.receiver_execution_consent_stale,
+    );
+  const admission =
+    input.receiverAdmission ??
+    (await input.authorizeReceiverExecution?.({
+      portableProjectId: marker.portableProjectId,
+      resourceId: marker.resourceId,
+    }));
+  requirePortableContinuationAdmission(marker, admission);
+  // The offer/binding/association/currency recheck runs here — after the
+  // mint and before any dispatch — AND again inside the provider-effect
+  // path adjacent to the adapter invocation, so a withdrawal, rebind,
+  // incarnation replacement, policy change, or caller revocation that
+  // lands in between refuses before the effect.
+  await admission!.recheck();
+  return admission;
+}
+
+/**
+ * #484 continuation: scope a contribution-level admission to the ACTUAL
+ * executing thread for one provider effect. The thread id is coordinated
+ * only through the trusted continuation owner (the lineage-resolved
+ * current session id or the adapter turn input's thread id) — never an
+ * arbitrary body id. The admitted coordinate (exact cwd, project slug,
+ * portable identity plus ORIGINAL incarnation) is what the effect guards
+ * verify the prepared input and the persisted session against.
+ */
+function receiverEffectAdmissionFor(
+  threadId: string,
+  admission: ReceiverExecutionAdmission,
+): {
+  recheck: () => Promise<void>;
+  admitted: {
+    threadId: string;
+    projectSlug: string;
+    cwd: string;
+    portableProjectId: string;
+    resourceId: string;
+    localProjectId: string;
+  };
+} {
+  return {
+    recheck: admission.recheck,
+    admitted: {
+      threadId,
+      projectSlug: admission.admittedProject.slug,
+      cwd: resolveFilesystemPath(
+        receiverAdmittedCwd(admission.admittedProject),
+      ),
+      portableProjectId: admission.portableProjectId,
+      resourceId: admission.resourceId,
+      localProjectId: admission.admittedProject.localProjectId,
+    },
+  };
+}
+
 function taskStatus(
   session: Record<string, unknown>,
 ): DelegatedTaskSnapshot['status'] {
@@ -2003,7 +2919,11 @@ function delegatedConversationId(
   );
 }
 
-function snapshotFor(options: {
+/**
+ * Derive the delegate seam's task snapshot. Exported for its unit tests;
+ * production callers go through `observeDelegatedTask` and friends below.
+ */
+export function snapshotFor(options: {
   target: DelegationTarget;
   detail: {
     session?: Record<string, unknown>;
@@ -2070,6 +2990,24 @@ function snapshotFor(options: {
               : {}),
           },
         }
+      : {}),
+    // #2269: forwarded canonical facts only — the serving Station's own
+    // watchdog observation joined to the owning adapter's declaration
+    // (`supervision`), plus its typed terminal attribution (`reason`).
+    // Never request metadata, never raw logs. Absent is honest unknown.
+    ...(() => {
+      const supervision = delegatedTurnSupervision(session, events);
+      return supervision ? { supervision } : {};
+    })(),
+    ...(() => {
+      const reason = delegatedTaskReason(session, events);
+      return reason ? { reason } : {};
+    })(),
+    // #2269: only a vocabulary value the contract recognizes crosses the
+    // seam — a forged or misspelled transition reason is dropped, never
+    // relayed as fact.
+    ...(isSessionTransitionReason(session.transitionReason)
+      ? { transitionReason: session.transitionReason }
       : {}),
     ...(pendingRequest
       ? {
@@ -2172,6 +3110,17 @@ function commonTaskEvent(
       : {}),
     ...(optionalString(event.turnId)
       ? { turnId: optionalString(event.turnId) }
+      : {}),
+    // #2324: forwarded, never inferred from a turn id or a missing prompt.
+    ...(typeof event.method === 'string' &&
+    isProviderTriggeredTurn({
+      method: event.method,
+      metadata:
+        event.metadata && typeof event.metadata === 'object'
+          ? (event.metadata as Record<string, unknown>)
+          : undefined,
+    })
+      ? { trigger: PROVIDER_TURN_TRIGGER }
       : {}),
   };
 }
@@ -2820,6 +3769,9 @@ export async function continueDelegatedTask(
   input: ContinueDelegatedTaskInput,
   orchestrationService?: OrchestrationService,
 ): Promise<DelegatedTaskFollowUpHandle> {
+  // Follow-up turns never inherit the create-time admission — a marked
+  // portable session continues only under a freshly minted admission for
+  // its own persisted marker (see `mintPortableFollowUpAdmission`).
   if (!input.message.trim()) {
     throw new Error('Task follow-up message is required');
   }
@@ -2833,8 +3785,42 @@ export async function continueDelegatedTask(
     orchestrationService,
   );
   if (selectedTarget.kind !== 'current' || !orchestrationService) {
+    // No-onward-hop + current sender authority, BEFORE any outbound
+    // fetch — mirroring the create path. A delegation peer (an enrolled
+    // peer host driving this Station's API, even one whose person
+    // binding names the local operator) can never make this Station
+    // forward a follow-up on its stored outbound credential to a third
+    // station: the guard is portable-agnostic on purpose, since the body
+    // carries no portable signal and reading the marker would itself
+    // need an outbound round-trip. Operator/device callers fall through
+    // to the forward below. Then the sender-currency probe: a revocation
+    // that landed during target resolution refuses before the POST.
+    if (
+      isInboundDelegationPeer(
+        input.principal,
+        input.clientOrigin,
+        input.inboundDeviceKind,
+      )
+    )
+      throw new ReceiverExecutionRefusal(
+        'receiver_execution_forwarding_refused',
+        RECEIVER_EXECUTION_REFUSAL_COPY.receiver_execution_forwarding_refused,
+      );
+    if (
+      input.isRequestAuthorityCurrent &&
+      input.isRequestAuthorityCurrent() !== true
+    )
+      throw new ReceiverExecutionRefusal(
+        'receiver_execution_authority_changed',
+        RECEIVER_EXECUTION_REFUSAL_COPY.receiver_execution_authority_changed,
+      );
+    // A forwarded follow-up goes through the portable follow-up poster —
+    // a receiver's closed portable refusal keeps its code/403 at this
+    // Station, while every non-portable failure keeps the plain path
+    // byte-for-byte (the narrow translator cannot mislabel a legacy
+    // failure, since the body carries no portable signal either way).
     return normalizeDelegatedIdentity(
-      await postCanonical<DelegatedTaskFollowUpHandle>(
+      await postPeerPortableFollowUp<DelegatedTaskFollowUpHandle>(
         selectedTarget,
         `/api/orchestration/delegations/${encodeURIComponent(input.taskId)}/continue`,
         {
@@ -2847,6 +3833,13 @@ export async function continueDelegatedTask(
     );
   }
   const loaded = await loadDelegatedTask(input, orchestrationService);
+  // Minted here, on the actual executing receiver (`current` targets
+  // only; peer targets forwarded above), from the thread's own
+  // persisted marker — never public JSON.
+  const followUpAdmission = await mintPortableFollowUpAdmission(
+    portableConsentOfBinding(sessionBinding(loaded.detail)),
+    input,
+  );
   const snapshot = snapshotFor(loaded);
   // The shared execution-target resolver owns model-option capability checks.
   // A completed predecessor may be replaced by a child with another provider,
@@ -2857,6 +3850,12 @@ export async function continueDelegatedTask(
       conversationId: snapshot.conversationId,
       message: input.message,
       userId: readAuthority.userId,
+      ...(input.ownerAttribution
+        ? { ownerAttribution: input.ownerAttribution }
+        : {}),
+      // The fresh admission rides to the adapter start/sendTurn
+      // effects; ordinary follow-ups carry none.
+      ...(followUpAdmission ? { receiverAdmission: followUpAdmission } : {}),
       environment:
         input.environmentId === undefined
           ? { kind: 'current' }
@@ -2906,8 +3905,30 @@ export async function respondToDelegatedTaskRequest(
     orchestrationService,
   );
   if (selectedTarget.kind !== 'current' || !orchestrationService) {
+    // Same no-onward-hop + sender-currency guards as the continue path.
+    if (
+      isInboundDelegationPeer(
+        input.principal,
+        input.clientOrigin,
+        input.inboundDeviceKind,
+      )
+    )
+      throw new ReceiverExecutionRefusal(
+        'receiver_execution_forwarding_refused',
+        RECEIVER_EXECUTION_REFUSAL_COPY.receiver_execution_forwarding_refused,
+      );
+    if (
+      input.isRequestAuthorityCurrent &&
+      input.isRequestAuthorityCurrent() !== true
+    )
+      throw new ReceiverExecutionRefusal(
+        'receiver_execution_authority_changed',
+        RECEIVER_EXECUTION_REFUSAL_COPY.receiver_execution_authority_changed,
+      );
+    // Same follow-up poster as the continue path — a receiver's closed
+    // portable refusal keeps its code/403 here too.
     return normalizeDelegatedIdentity(
-      await postCanonical<DelegatedTaskRequestResponseHandle>(
+      await postPeerPortableFollowUp<DelegatedTaskRequestResponseHandle>(
         selectedTarget,
         `/api/orchestration/delegations/${encodeURIComponent(input.taskId)}/respond`,
         { requestId: input.requestId, decision: input.decision },
@@ -2916,6 +3937,11 @@ export async function respondToDelegatedTaskRequest(
     );
   }
   const loaded = await loadDelegatedTask(input, orchestrationService);
+  // Same fresh-admission enforcement as the continue path.
+  const followUpAdmission = await mintPortableFollowUpAdmission(
+    portableConsentOfBinding(sessionBinding(loaded.detail)),
+    input,
+  );
   const events = loaded.detail.events ?? [];
   const requestIsOpen = events.some(
     (event) =>
@@ -2943,6 +3969,16 @@ export async function respondToDelegatedTaskRequest(
         input.clientOrigin,
         input.principal,
       ),
+      // The fresh admission reaches the provider-request response
+      // effect (thread id from the trusted lineage owner).
+      followUpAdmission
+        ? {
+            receiverExecutionAdmission: receiverEffectAdmissionFor(
+              snapshot.currentSessionId,
+              followUpAdmission,
+            ),
+          }
+        : undefined,
     );
   } else {
     await respondToRequest(
@@ -3034,17 +4070,123 @@ export async function interruptDelegatedTask(
   return { ...snapshot, interruptRequested: true };
 }
 
+/**
+ * #484 no-onward-hop: true only for an INBOUND enrolled peer host bearing
+ * an explicit portable intent. The positive signal is the server-resolved
+ * paired-device kind `delegation` (an enrolled peer's credential, read off
+ * the verified credential's device record by runtime composition — never
+ * body, userId, or metadata), and it is DECISIVE: a delegation-kind device
+ * credential can carry a human person binding (or a WhoIs ingress
+ * identity) that names the local operator, so `principal`/`clientOrigin`
+ * are display/attribution facts that must never override the verified
+ * device kind into a forward. A true operator/internal caller carries no
+ * device-credential authority, so production composition resolves its kind
+ * to `undefined` (never a peer); an ordinary personal device resolves
+ * `device` and may still select a saved peer as its controller. The
+ * `principal`/`clientOrigin` parameters are retained so call sites keep
+ * passing the verified caller facts (and the derivation stays reviewable
+ * next to them), but they do not participate in the verdict. Exported for
+ * unit coverage of the derivation without a runtime.
+ */
+export function isInboundDelegationPeer(
+  _principal: PrincipalRef | undefined,
+  _clientOrigin: ClientOrigin | undefined,
+  inboundDeviceKind: 'device' | 'delegation' | undefined,
+): boolean {
+  return inboundDeviceKind === 'delegation';
+}
+
 export async function delegateTask(
   input: DelegateTaskInput,
   orchestrationService?: OrchestrationService,
 ): Promise<DelegatedTaskHandle> {
   const readAuthority = readAuthorityForInput(input);
+  const portableIntent = input.target.workspace?.kind === 'project-portable';
+  // #484 no-onward-hop, derived BEFORE any effect from the verified caller
+  // facts only (never body/userId/metadata) — see isInboundDelegationPeer.
+  const inboundPeer =
+    portableIntent === true &&
+    isInboundDelegationPeer(
+      input.principal,
+      input.clientOrigin,
+      input.inboundDeviceKind,
+    );
+  // The ONE environment resolution for this dispatch: the route never
+  // resolves, so there is no second resolution to race these endpoints.
   const selectedTarget = await resolveTarget({
     environmentId:
       input.target.environment.kind === 'saved'
         ? input.target.environment.id
         : undefined,
   });
+  if (portableIntent && selectedTarget.kind !== 'current') {
+    // #484 no-onward-hop: an explicit portable arrival FROM an enrolled
+    // peer must execute on THIS verified receiver or refuse — a caller
+    // body naming a saved third peer can never make this Station forward
+    // on the stored outbound credential. Refused here, before the peer
+    // capability read below and before any forward/post: NO outbound
+    // fetch and NO provider effect. An operator (or ordinary personal
+    // device) controller falls through to the forward below.
+    if (inboundPeer) {
+      throw new ReceiverExecutionRefusal(
+        'receiver_execution_forwarding_refused',
+        'A portable execution that arrived from a peer Station cannot be forwarded to another Station.',
+      );
+    }
+    // A forwarding sender never holds the receiver-owned admission: it is
+    // minted only by the executing receiver below. Holding one here is a
+    // composition violation, refused rather than silently dropped.
+    if (input.receiverAdmission) {
+      throw new ReceiverExecutionRefusal(
+        'receiver_execution_not_offered',
+        'This Station does not currently offer execution for the requested Project resource.',
+      );
+    }
+  }
+  // #484 phase A: a portable intent aimed at a PEER is gated on the peer's
+  // own advertised capability (its public handshake). An older receiver
+  // would refuse the unknown workspace variant at its schema anyway; the
+  // check turns that into a caller-local refusal with an actionable error
+  // instead of a wire round-trip. The handshake is a PUBLIC capability
+  // fact only — no credential is minted here, and the receiver re-verifies
+  // the CURRENT credential plus its operator offer when the forwarded
+  // intent arrives. The apiBase is pinned from this Station's saved peer
+  // credential (never a fresh unvalidated redirect target), and the
+  // responder must name the selected environment back.
+  if (portableIntent && selectedTarget.kind === 'peer') {
+    const handshake = await readJson<StationHandshake>(
+      `${selectedTarget.apiBase}/.well-known/station/v1`,
+      {
+        headers: selectedTarget.requestOptions?.headers ?? {},
+      },
+      'The selected Station could not be reached to confirm portable execution support',
+    );
+    if (handshake.environmentId !== selectedTarget.environmentId) {
+      throw new ReceiverExecutionRefusal(
+        'receiver_execution_not_offered',
+        'The selected Station did not confirm portable execution support for this environment.',
+      );
+    }
+    if (handshake.capabilities?.portableExecutionOffers !== true) {
+      throw new ReceiverExecutionRefusal(
+        'receiver_execution_not_offered',
+        'The selected Station does not support portable execution offers.',
+      );
+    }
+    // #485: an opt-in attempt id may only be forwarded to a receiver that
+    // ADVERTISES the attempt-claim capability — an older receiver's schema
+    // would silently strip the field and the sender would believe a durable
+    // claim exists when none does.
+    if (
+      input.delegationAttemptId &&
+      handshake.capabilities?.delegationAttemptClaims !== true
+    ) {
+      throw new ReceiverExecutionRefusal(
+        'delegation_attempt_unsupported',
+        RECEIVER_EXECUTION_REFUSAL_COPY.delegation_attempt_unsupported,
+      );
+    }
+  }
   localServiceRequiredInHostedMode(
     selectedTarget,
     readAuthority,
@@ -3055,16 +4197,48 @@ export async function delegateTask(
       selectedTarget,
       input.target,
     );
-    const remoteHandle = await postCanonical<DelegatedTaskHandle>(
-      selectedTarget,
-      '/api/orchestration/delegations',
-      {
-        prompt: input.prompt,
-        target: { ...pinnedTarget, environment: { kind: 'current' } },
-        ...(input.parentTaskId ? { parentTaskId: input.parentTaskId } : {}),
-      },
-      'The selected Station could not start the delegated task',
-    );
+    // Target discovery and capability probes awaited above. Recheck the
+    // sending request before its stored peer credential can cause an effect.
+    // postCanonical reaches fetch without another asynchronous preparation.
+    if (portableIntent && input.isRequestAuthorityCurrent?.() !== true) {
+      throw new ReceiverExecutionRefusal(
+        'receiver_execution_authority_changed',
+        'Portable execution authority changed before forwarding.',
+      );
+    }
+    // Portable dispatch through the translating poster: a receiver's closed
+    // portable refusal keeps its code/403 at this Station; a peer 401 or
+    // insufficient_scope becomes the actionable authority-changed refusal;
+    // a 409 attempt-duplicate outcome keeps its code and attempt reference
+    // (#485). Non-portable peer dispatch below keeps the plain postCanonical
+    // path.
+    const remoteHandle = portableIntent
+      ? await postPeerPortableDelegation<DelegatedTaskHandle>(
+          selectedTarget,
+          '/api/orchestration/delegations',
+          {
+            prompt: input.prompt,
+            target: { ...pinnedTarget, environment: { kind: 'current' } },
+            ...(input.parentTaskId ? { parentTaskId: input.parentTaskId } : {}),
+            // #485: the opt-in correlation rides the portable forward body
+            // ONLY (validated at both seams; the receiver re-derives its
+            // claim key from its OWN verified view of the caller grant).
+            ...(input.delegationAttemptId
+              ? { attemptId: input.delegationAttemptId }
+              : {}),
+          },
+          'The selected Station could not start the delegated task',
+        )
+      : await postCanonical<DelegatedTaskHandle>(
+          selectedTarget,
+          '/api/orchestration/delegations',
+          {
+            prompt: input.prompt,
+            target: { ...pinnedTarget, environment: { kind: 'current' } },
+            ...(input.parentTaskId ? { parentTaskId: input.parentTaskId } : {}),
+          },
+          'The selected Station could not start the delegated task',
+        );
     const handle =
       selectedTarget.kind === 'peer'
         ? normalizeDelegatedIdentity(remoteHandle)
@@ -3087,158 +4261,586 @@ export async function delegateTask(
     }
     return handle;
   }
-  // archive#4543 LOW-2: a caller-supplied `sessionId` becomes this task's
-  // `metadata.conversationId` below (via `conversationIdentity`) — reject a
-  // non-conforming custom id here, before any resolution HTTP call, rather
-  // than let it be stamped into a reserved key whose contract promises
-  // Station resolution. A server-minted id always conforms, so this only
-  // ever rejects caller input.
-  if (input.sessionId && !TASK_SESSION_ID_PATTERN.test(input.sessionId)) {
-    throw new Error(
-      `Invalid session id '${input.sessionId}': a custom session id must match the 'task:<uuid>' form Station mints (e.g. 'task:${randomUUID()}').`,
-    );
-  }
-  const resolverDependencies = {
-    resolveEnvironmentAccess: async (_executionTarget: ExecutionTarget) => {
-      const target = selectedTarget;
-      return {
-        apiBase: target.apiBase,
-        environmentId: target.environmentId,
-        environmentName: target.environmentName,
-        kind: target.kind,
-        ...(target.projectPath
-          ? { verifiedProjectPath: target.projectPath }
-          : {}),
-        ...(target.remoteHome ? { remoteHome: target.remoteHome } : {}),
-        ...(target.requestOptions
-          ? { requestOptions: target.requestOptions }
-          : {}),
-      } satisfies EnvironmentAccess;
-    },
-    getAgent: async (access, id) =>
-      (await getAgent(
-        access.apiBase,
-        id,
-        access.requestOptions,
-      )) as ExecutionTargetAgentView,
-    getConnection: async (access, id) =>
-      readConnection(access as DelegationTarget, id),
-    getProject: (access, slug) =>
-      readExecutionProject(access, slug, orchestrationService),
-    // #2144 slice 2. Only the CURRENT Station answers: `getProject` above
-    // reads the selected Station, and this Station's config describes this
-    // host. Naming a remote Environment's project with the local default
-    // would attribute one host's setting to another's project, so a remote
-    // Environment keeps today's behavior — its project record, else shared.
-    getStationDefaultWorkspaceIsolation: async (access: EnvironmentAccess) =>
-      access.kind === 'current'
-        ? await orchestrationService.resolveStationDefaultWorkspaceIsolation?.()
-        : undefined,
-    getProviderAdapter: (provider) =>
-      orchestrationService.getProviderAdapter(provider),
-  } satisfies Parameters<typeof resolveExecutionTarget>[1];
-  const resolved = await resolveExecutionTarget(
-    input.target,
-    resolverDependencies,
-  );
-  const target: DelegationTarget = {
-    apiBase: resolved.access.apiBase,
-    environmentId: resolved.access.environmentId,
-    environmentName: resolved.access.environmentName,
-    kind: resolved.access.kind,
-    ...(resolved.access.verifiedProjectPath
-      ? { projectPath: resolved.access.verifiedProjectPath }
-      : {}),
-    ...(resolved.access.requestOptions
-      ? { requestOptions: resolved.access.requestOptions }
-      : {}),
-  };
-  const project: ResolvedDelegationProject | undefined = resolved.workspace
-    ? {
-        ...(resolved.workspace.kind === 'project'
-          ? {
-              slug: resolved.workspace.projectSlug,
-              slugJoin:
-                target.kind === 'current'
-                  ? ('local' as const)
-                  : resolved.projectDirectoryExactMatch
-                    ? ('directory-corroborated' as const)
-                    : ('unverified-cross-machine' as const),
-            }
-          : {}),
-        path: resolved.workspace.cwd,
+  // #484 phase A, receiver-local only: past this point THIS Station is the
+  // receiver (remote peer/ssh targets forwarded above), so the portable
+  // intent executes ONLY through the offer admission minted by the
+  // receiving runtime — it is never reachable from public JSON and can
+  // never exist on a forwarding sender. A receiver-local portable intent
+  // without one is refused; there is no slug/path fallback that could
+  // silently execute an unoffered project.
+  //
+  // #484 controller/receiver split: the admission is minted HERE, on the
+  // actual local executor, through the server-only factory the HTTP route
+  // bound to the current request credential before any await. A
+  // controlling sender that forwarded here never invoked it, so it needs
+  // no local offer or association of its own.
+  // #485 receiver request-claim slice — THIS Station is the actual executing
+  // receiver from here on (remote peer/ssh targets were forwarded above), so
+  // an OPT-IN attempt is claimed HERE and nowhere else: never at a
+  // forwarding controller. The claim is written BEFORE the admission mint,
+  // before `resolveExecutionTarget`, and before any engine preparation —
+  // the only awaits above it are host/handshake selection, which do not
+  // touch the intent. The digest covers the VALIDATED RAW intent only
+  // (prompt + normalized target + parentTaskId): resolved workspaces and
+  // incarnations do not exist yet and are bound separately under the SAME
+  // claim after resolution (`bindAdmitted` below), before any provider
+  // effect. No lock and no store handle is held across any of the awaits
+  // that follow — the store transaction is the short atomic reserve.
+  const attemptClaim:
+    | {
+        key: string;
+        ownerToken: string;
+        taskId: string;
+        initialClientTurnId: string;
       }
-    : undefined;
-  const sessionId = input.sessionId || `task:${randomUUID()}`;
-  const resolvedCwd = resolved.workspace?.cwd;
-  const bindingTarget = {
-    kind: 'agent' as const,
-    id: resolved.agentId,
+    | undefined = await (async () => {
+    if (!input.delegationAttemptId) return undefined;
+    // Attempt claims are portable-only (the route refuses any other
+    // topology at its seam): a direct tool caller naming an attempt id on
+    // a non-portable target refuses here, before any claim is reserved —
+    // never reserves-then-crashes at the admission bind below.
+    if (!portableIntent) {
+      throw new ReceiverExecutionRefusal(
+        'delegation_attempt_unsupported',
+        RECEIVER_EXECUTION_REFUSAL_COPY.delegation_attempt_unsupported,
+      );
+    }
+    const claimStore = input.delegationAttemptClaimStore;
+    const attemptCaller = input.delegationAttemptCaller;
+    if (!claimStore || !attemptCaller) {
+      // An attempt id without the verified delegation caller composition
+      // (or without the receiver's claim owner) refuses — a claim is never
+      // keyed by a body label, and an unwired receiver never silently
+      // executes an opt-in request unclaimed.
+      throw new ReceiverExecutionRefusal(
+        'delegation_attempt_unsupported',
+        RECEIVER_EXECUTION_REFUSAL_COPY.delegation_attempt_unsupported,
+      );
+    }
+    const reservedTaskId =
+      input.sessionId && TASK_SESSION_ID_PATTERN.test(input.sessionId)
+        ? input.sessionId
+        : `task:${randomUUID()}`;
+    // The storage key is the unambiguous length-prefixed tuple of the
+    // verified caller grant and the attempt id — never a naive
+    // colon-join, whose boundary collides across grants.
+    const claimKey = delegationAttemptClaimKey(
+      attemptCaller.deviceId,
+      input.delegationAttemptId,
+    );
+    const outcome = await claimStore.reserve({
+      key: claimKey,
+      attemptId: input.delegationAttemptId,
+      callerDeviceId: attemptCaller.deviceId,
+      intentDigest: delegationAttemptIntentDigest({
+        prompt: input.prompt,
+        target: input.target,
+        ...(input.parentTaskId ? { parentTaskId: input.parentTaskId } : {}),
+      }),
+      taskId: reservedTaskId,
+    });
+    // Same tuple + same validated intent: join the existing claim and name
+    // it — NEVER launch a second effect. `accepted` names the one real
+    // task AND its real initial turn (a lost ACK resolves to exactly
+    // that); anything earlier is an explicit pending/unknown with the
+    // attempt reference (the caller's remedy is the authorized lookup,
+    // never a resend). Mismatched digest under the same tuple refuses.
+    if (outcome.kind === 'existing') {
+      if (outcome.record.state === 'accepted') {
+        // Fail closed on a claim that reads `accepted` without its turn
+        // evidence: the store validator guarantees it, so its absence is
+        // corruption, never a handle to manufacture.
+        if (!outcome.record.initialTurnId) {
+          throw new Error(
+            'Delegation attempt claim is accepted without its initial turn; refusing rather than naming a handle.',
+          );
+        }
+        throw new DelegationAttemptExistsError(
+          input.delegationAttemptId,
+          outcome.record.taskId,
+          outcome.record.initialTurnId,
+        );
+      }
+      throw new DelegationAttemptPendingError(input.delegationAttemptId);
+    }
+    if (outcome.kind === 'conflict') {
+      throw new DelegationAttemptConflictError(input.delegationAttemptId);
+    }
+    if (outcome.kind === 'capacity') {
+      throw new DelegationAttemptCapacityError();
+    }
+    return {
+      key: claimKey,
+      ownerToken: outcome.ownerToken,
+      taskId: reservedTaskId,
+      initialClientTurnId: outcome.initialClientTurnId,
+    };
+  })();
+  // Claim-lifecycle classification for everything below the reserve:
+  // - throws BEFORE the session start is invoked are clean pre-effect
+  //   refusals → the claim is retained as terminal `refused` (a refused
+  //   key can never re-execute under changed intent);
+  // - an invocation that may have happened (indeterminate start, or the
+  //   start was invoked but the initial turn's fate is unknown) →
+  //   `unresolved`, retained, never a resend authorization;
+  // - a durably evidenced session start → `session-started` (marked
+  //   immediately, before the first turn dispatch). This is NOT an
+  //   accepted work request;
+  // - the initial-turn dispatch returning its real provider turn id →
+  //   `accepted` with that turn recorded (marked immediately, before
+  //   anything else runs).
+  // Mark failures inside this handler are swallowed deliberately: a claim
+  // that fails to advance stays at its earlier state, which is the
+  // conservative projection — it can only understate, never overstate,
+  // and it never authorizes a resend.
+  let attemptStartInvoked = false;
+  let attemptInitialTurnReturned = false;
+  let attemptInitialTurnAccepted = false;
+  const settleAttemptClaim = async (
+    classify: 'refused' | 'unresolved',
+  ): Promise<void> => {
+    if (!attemptClaim) return;
+    const claimStore = input.delegationAttemptClaimStore!;
+    try {
+      if (classify === 'unresolved') {
+        await claimStore.markUnresolved(
+          attemptClaim.key,
+          attemptClaim.ownerToken,
+        );
+      } else {
+        await claimStore.markRefused(attemptClaim.key, attemptClaim.ownerToken);
+      }
+    } catch {
+      // Deliberately conservative: see the classification comment above.
+    }
   };
-  const session = await orchestrationService.readSession(
-    sessionId,
-    readAuthority,
-  );
-  if (session) {
-    assertSessionBinding(session, target, bindingTarget, readAuthority.userId);
-  } else {
-    // archive#4543 fix: `environmentId` (like `conversationId`) is a
-    // RESERVED_ORCHESTRATION_METADATA_KEYS entry — `prepareStart` strips it
-    // from every public `sessionCommands.execute` caller unconditionally,
-    // trusted or not (see provider.ts's docblock). Writing it in the plain
-    // `metadata` bag below is silently discarded before it ever reaches the
-    // adapter or the persisted `session.started`/`session.configured`
-    // event, which is exactly the metadata `sessionBinding()` (this file,
-    // above) requires to recognize a delegated-task binding at all — so
-    // every `station delegate status`/`events` lookup for a task this
-    // function just created failed closed with "does not match a
-    // delegated-task binding", regardless of target/provider kind.
-    // `executeExecutionTargetMessage`'s own `startSession` closure (below,
-    // reached indirectly by `continueDelegatedTask` via
-    // `continueExecutionTargetMessage`'s tail call into it) already routes
-    // through this exact internal-only escape hatch for the same reason
-    // (`conversationIdentity` re-stamps `environmentId`/`conversationId`
-    // AFTER the strip runs) — commit a8a2dcb01 introduced BOTH the strip
-    // and that escape-hatch fix together, migrating the foreground/continue
-    // path in the same change that regressed this one. This create path is
-    // now migrated to match it.
-    const started = await orchestrationService.startSessionInternal(
-      {
-        type: 'start-session',
-        input: {
-          threadId: sessionId,
+  try {
+    let receiverAdmission = input.receiverAdmission;
+    if (portableIntent && !receiverAdmission) {
+      const workspace = input.target.workspace;
+      if (
+        !input.authorizeReceiverExecution ||
+        workspace?.kind !== 'project-portable'
+      ) {
+        throw new ReceiverExecutionRefusal(
+          'receiver_execution_not_offered',
+          'This Station does not currently offer execution for the requested Project resource.',
+        );
+      }
+      receiverAdmission = await input.authorizeReceiverExecution({
+        portableProjectId: workspace.portableProjectId,
+        resourceId: workspace.resourceId,
+      });
+    }
+    // archive#4543 LOW-2: a caller-supplied `sessionId` becomes this task's
+    // `metadata.conversationId` below (via `conversationIdentity`) — reject a
+    // non-conforming custom id here, before any resolution HTTP call, rather
+    // than let it be stamped into a reserved key whose contract promises
+    // Station resolution. A server-minted id always conforms, so this only
+    // ever rejects caller input.
+    if (input.sessionId && !TASK_SESSION_ID_PATTERN.test(input.sessionId)) {
+      throw new Error(
+        `Invalid session id '${input.sessionId}': a custom session id must match the 'task:<uuid>' form Station mints (e.g. 'task:${randomUUID()}').`,
+      );
+    }
+    const resolverDependencies = {
+      resolveEnvironmentAccess: async (_executionTarget: ExecutionTarget) => {
+        const target = selectedTarget;
+        return {
+          apiBase: target.apiBase,
+          environmentId: target.environmentId,
+          environmentName: target.environmentName,
+          kind: target.kind,
+          ...(target.projectPath
+            ? { verifiedProjectPath: target.projectPath }
+            : {}),
+          ...(target.remoteHome ? { remoteHome: target.remoteHome } : {}),
+          ...(target.requestOptions
+            ? { requestOptions: target.requestOptions }
+            : {}),
+        } satisfies EnvironmentAccess;
+      },
+      getAgent: async (access, id) =>
+        (await getAgent(
+          access.apiBase,
+          id,
+          access.requestOptions,
+        )) as ExecutionTargetAgentView,
+      getConnection: async (access, id) =>
+        readConnection(access as DelegationTarget, id),
+      getProject: (access, slug) =>
+        readExecutionProject(access, slug, orchestrationService),
+      // #2144 slice 2. Only the CURRENT Station answers: `getProject` above
+      // reads the selected Station, and this Station's config describes this
+      // host. Naming a remote Environment's project with the local default
+      // would attribute one host's setting to another's project, so a remote
+      // Environment keeps today's behavior — its project record, else shared.
+      getStationDefaultWorkspaceIsolation: async (access: EnvironmentAccess) =>
+        access.kind === 'current'
+          ? await orchestrationService.resolveStationDefaultWorkspaceIsolation?.()
+          : undefined,
+      getProviderAdapter: (provider) =>
+        orchestrationService.getProviderAdapter(provider),
+      // #484 phase A: the portable intent resolves its workspace through the
+      // receiver-owned admission — the ADMITTED project, never a caller-named
+      // slug or path. Absent admission never reaches here (refused or minted
+      // above). The resolver's exact requested ids must equal the
+      // admission's captured ids: a wrong portableProjectId/resourceId
+      // refuses rather than executing the admitted workspace under a
+      // different association.
+      ...(receiverAdmission
+        ? {
+            getPortableProject: async (
+              _access,
+              portableProjectId,
+              resourceId,
+            ) => {
+              const admitted = receiverAdmission!;
+              if (
+                portableProjectId !== admitted.portableProjectId ||
+                resourceId !== admitted.resourceId
+              ) {
+                throw new ReceiverExecutionRefusal(
+                  'receiver_execution_not_offered',
+                  'This Station does not currently offer execution for the requested Project resource.',
+                );
+              }
+              return admitted.admittedProject;
+            },
+          }
+        : {}),
+    } satisfies Parameters<typeof resolveExecutionTarget>[1];
+    const resolved = await resolveExecutionTarget(
+      input.target,
+      resolverDependencies,
+    );
+    // #484 receiver placement: a portable intent that resolves to worktree
+    // isolation refuses HERE — before any session exists, before any
+    // filesystem provisioning, and before any provider effect. This
+    // delegation path has no worktree provisioning owner (only the
+    // foreground execution path provisions, via `provisionProjectWorktree`),
+    // and the admitted coordinate names the shared repo path, so starting
+    // there would silently ignore the receiver operator's worktree policy
+    // while provisioning elsewhere would re-target the admission-bound
+    // checkout the effect guards verify. Full portable worktree support
+    // needs a later slice that provisions through the admission owners;
+    // until then the unsupported mode refuses with the existing typed
+    // `receiver_execution_unavailable` (same 403 + peer-hop mapping, no new
+    // code), never falls back to shared. `resolveTarget` above performed
+    // only handshake/agent reads — no effect to undo.
+    if (
+      portableIntent &&
+      receiverAdmission &&
+      resolved.workspace?.kind === 'project' &&
+      resolved.workspace.workspaceIsolation.mode === 'worktree'
+    ) {
+      throw new ReceiverExecutionRefusal(
+        'receiver_execution_unavailable',
+        'The offered Project resource is unavailable.',
+      );
+    }
+    const target: DelegationTarget = {
+      apiBase: resolved.access.apiBase,
+      environmentId: resolved.access.environmentId,
+      environmentName: resolved.access.environmentName,
+      kind: resolved.access.kind,
+      ...(resolved.access.verifiedProjectPath
+        ? { projectPath: resolved.access.verifiedProjectPath }
+        : {}),
+      ...(resolved.access.requestOptions
+        ? { requestOptions: resolved.access.requestOptions }
+        : {}),
+    };
+    const project: ResolvedDelegationProject | undefined = resolved.workspace
+      ? {
+          ...(resolved.workspace.kind === 'project'
+            ? {
+                slug: resolved.workspace.projectSlug,
+                slugJoin:
+                  target.kind === 'current'
+                    ? ('local' as const)
+                    : resolved.projectDirectoryExactMatch
+                      ? ('directory-corroborated' as const)
+                      : ('unverified-cross-machine' as const),
+              }
+            : {}),
+          path: resolved.workspace.cwd,
+        }
+      : undefined;
+    const sessionId = attemptClaim
+      ? attemptClaim.taskId
+      : input.sessionId || `task:${randomUUID()}`;
+    const resolvedCwd = resolved.workspace?.cwd;
+    // #484 phase A: the server-minted admitted coordinate for the provider
+    // effect path — the EXACT admitted cwd (execution root when it selects
+    // the resource, else the resource's bound path), normalized exactly as
+    // the resolver normalized it. Composition integrity: the resolved
+    // workspace MUST be that directory; anything else refuses here, before
+    // any session exists, rather than executing a re-targeted workspace.
+    // A foreign-shaped admission without an exact path (only reachable from
+    // hand-made server-internal stubs — the factory always mints the exact
+    // path) cannot name a workspace and refuses below, never executes.
+    const admittedExactRaw =
+      receiverAdmission?.admittedProject.executionRoot ??
+      receiverAdmission?.admittedProject.resourcePath;
+    const portableAdmittedCwd =
+      receiverAdmission && admittedExactRaw !== undefined
+        ? resolveFilesystemPath(admittedExactRaw)
+        : undefined;
+    if (portableIntent && receiverAdmission) {
+      if (
+        portableAdmittedCwd === undefined ||
+        resolvedCwd !== portableAdmittedCwd
+      )
+        throw new ReceiverExecutionRefusal(
+          'receiver_execution_unavailable',
+          'The offered Project resource is unavailable.',
+        );
+    }
+    const receiverEffectAdmission =
+      receiverAdmission && portableAdmittedCwd !== undefined
+        ? {
+            recheck: receiverAdmission.recheck,
+            admitted: {
+              threadId: sessionId,
+              projectSlug: receiverAdmission.admittedProject.slug,
+              cwd: portableAdmittedCwd,
+              portableProjectId: receiverAdmission.portableProjectId,
+              resourceId: receiverAdmission.resourceId,
+              localProjectId: receiverAdmission.admittedProject.localProjectId,
+            },
+          }
+        : undefined;
+    const bindingTarget = {
+      kind: 'agent' as const,
+      id: resolved.agentId,
+    };
+    // #485: bind the server-derived ADMITTED facts under the SAME claim —
+    // after resolution and every placement/refusal check above, before any
+    // provider effect. The #484 admission rechecks below and inside the
+    // service are unchanged and still gate the effect itself; this record
+    // is the durable pre-effect audit of exactly what was admitted.
+    if (attemptClaim) {
+      const bound = await input.delegationAttemptClaimStore!.bindAdmitted(
+        attemptClaim.key,
+        attemptClaim.ownerToken,
+        {
           provider: resolved.provider,
-          ...(resolvedCwd ? { cwd: resolvedCwd } : {}),
-          ...(resolved.workspace?.kind === 'project'
-            ? { workspaceIsolation: resolved.workspace.workspaceIsolation }
-            : {}),
           ...(resolved.modelId ? { modelId: resolved.modelId } : {}),
-          ...(resolved.modelOptions
-            ? { modelOptions: { ...resolved.modelOptions } }
-            : {}),
-          metadata: {
-            agentId: resolved.agentId,
-            agentSlug: resolved.agentId,
-            ...(resolved.engine.kind === 'connection'
-              ? { connectionId: resolved.engine.connectionId }
-              : {}),
-            targetKind: bindingTarget.kind,
-            targetId: bindingTarget.id,
-            environmentId: target.environmentId,
-            environmentName: target.environmentName,
-            taskId: sessionId,
-            ...(project?.slug ? { projectSlug: project.slug } : {}),
-            // Preserve the resolved creation policy for continuation. The
-            // current Project default cannot certify an earlier launch.
+          ...(project?.slug ? { projectSlug: project.slug } : {}),
+          portableProjectId: receiverAdmission!.portableProjectId,
+          resourceId: receiverAdmission!.resourceId,
+          localProjectId: receiverAdmission!.admittedProject.localProjectId,
+        },
+      );
+      if (bound.kind !== 'applied') {
+        throw new Error(
+          'Delegation attempt claim could not be bound; no session was started.',
+        );
+      }
+    }
+    const session = await orchestrationService.readSession(
+      sessionId,
+      readAuthority,
+    );
+    if (session) {
+      assertSessionBinding(
+        session,
+        target,
+        bindingTarget,
+        readAuthority.userId,
+      );
+      // #485: reattach path — the read just proved the reserved session
+      // exists. Record `session-started` (NOT accepted: the requested
+      // initial turn is still unproven) before the turn dispatch below.
+      if (attemptClaim) {
+        const startedMark =
+          await input.delegationAttemptClaimStore!.markSessionStarted(
+            attemptClaim.key,
+            attemptClaim.ownerToken,
+          );
+        if (startedMark.kind !== 'applied') {
+          throw new Error(
+            'Delegation attempt claim could not advance; no turn was dispatched.',
+          );
+        }
+      }
+    } else {
+      // archive#4543 fix: `environmentId` (like `conversationId`) is a
+      // RESERVED_ORCHESTRATION_METADATA_KEYS entry — `prepareStart` strips it
+      // from every public `sessionCommands.execute` caller unconditionally,
+      // trusted or not (see provider.ts's docblock). Writing it in the plain
+      // `metadata` bag below is silently discarded before it ever reaches the
+      // adapter or the persisted `session.started`/`session.configured`
+      // event, which is exactly the metadata `sessionBinding()` (this file,
+      // above) requires to recognize a delegated-task binding at all — so
+      // every `station delegate status`/`events` lookup for a task this
+      // function just created failed closed with "does not match a
+      // delegated-task binding", regardless of target/provider kind.
+      // `executeExecutionTargetMessage`'s own `startSession` closure (below,
+      // reached indirectly by `continueDelegatedTask` via
+      // `continueExecutionTargetMessage`'s tail call into it) already routes
+      // through this exact internal-only escape hatch for the same reason
+      // (`conversationIdentity` re-stamps `environmentId`/`conversationId`
+      // AFTER the strip runs) — commit a8a2dcb01 introduced BOTH the strip
+      // and that escape-hatch fix together, migrating the foreground/continue
+      // path in the same change that regressed this one. This create path is
+      // now migrated to match it.
+      // #484 phase A: the offer/binding admission is rechecked immediately
+      // before the irreversible session start, after every preceding await —
+      // AND threaded into the service internal options, where the
+      // provider-effect path rechecks it again adjacent to the actual adapter
+      // invocation (a door check alone cannot cover what races the awaits
+      // inside the service).
+      await receiverAdmission?.recheck();
+      // #485: from this point the invocation may happen — classification
+      // below (and in the outer catch) flips to `unresolved`.
+      attemptStartInvoked = true;
+      const started = await orchestrationService.startSessionInternal(
+        {
+          type: 'start-session',
+          input: {
+            threadId: sessionId,
+            provider: resolved.provider,
+            ...(resolvedCwd ? { cwd: resolvedCwd } : {}),
             ...(resolved.workspace?.kind === 'project'
               ? { workspaceIsolation: resolved.workspace.workspaceIsolation }
               : {}),
-            // archive#1463: record the resolved project join on every Agent.
-            ...(project?.slugJoin ? { projectSlugJoin: project.slugJoin } : {}),
-            ...(input.parentTaskId ? { parentTaskId: input.parentTaskId } : {}),
-            ...(input.delegation ? { delegation: input.delegation } : {}),
-            ...(readAuthority.userId ? { userId: readAuthority.userId } : {}),
+            ...(resolved.modelId ? { modelId: resolved.modelId } : {}),
+            ...(resolved.modelOptions
+              ? { modelOptions: { ...resolved.modelOptions } }
+              : {}),
+            metadata: {
+              agentId: resolved.agentId,
+              agentSlug: resolved.agentId,
+              ...(resolved.engine.kind === 'connection'
+                ? { connectionId: resolved.engine.connectionId }
+                : {}),
+              targetKind: bindingTarget.kind,
+              targetId: bindingTarget.id,
+              environmentId: target.environmentId,
+              environmentName: target.environmentName,
+              taskId: sessionId,
+              ...(project?.slug ? { projectSlug: project.slug } : {}),
+              // Preserve the resolved creation policy for continuation. The
+              // current Project default cannot certify an earlier launch.
+              ...(resolved.workspace?.kind === 'project'
+                ? { workspaceIsolation: resolved.workspace.workspaceIsolation }
+                : {}),
+              // archive#1463: record the resolved project join on every Agent.
+              ...(project?.slugJoin
+                ? { projectSlugJoin: project.slugJoin }
+                : {}),
+              ...(input.parentTaskId
+                ? { parentTaskId: input.parentTaskId }
+                : {}),
+              ...(input.delegation ? { delegation: input.delegation } : {}),
+              ...(readAuthority.userId ? { userId: readAuthority.userId } : {}),
+              // #484 phase A: server-minted portable consent marker. The
+              // service re-stamps this same identity after the reserved-key
+              // strip, so the persisted session binding carries the exact
+              // consent continuation paths enforce. Never caller-supplied.
+              ...(receiverAdmission
+                ? {
+                    [PORTABLE_EXECUTION_CONSENT_METADATA_KEY]: {
+                      portableProjectId: receiverAdmission.portableProjectId,
+                      resourceId: receiverAdmission.resourceId,
+                      localProjectId:
+                        receiverAdmission.admittedProject.localProjectId,
+                    },
+                  }
+                : {}),
+            },
           },
+        },
+        dispatchContextForAuthority(
+          readAuthority,
+          input.clientOrigin,
+          input.principal,
+          input.ownerAttribution,
+        ),
+        {
+          conversationIdentity: {
+            conversationId: sessionId,
+            environmentId: target.environmentId,
+          },
+          resourceAdmissionIntent: 'delegated_background',
+          // #484 phase A: the service rechecks this inside the start-effect
+          // path, adjacent to the adapter invocation, AND verifies the
+          // prepared input against the admitted coordinate.
+          ...(receiverEffectAdmission
+            ? {
+                receiverExecutionAdmission: receiverEffectAdmission,
+                portableExecutionConsent: {
+                  portableProjectId:
+                    receiverEffectAdmission.admitted.portableProjectId,
+                  resourceId: receiverEffectAdmission.admitted.resourceId,
+                  localProjectId:
+                    receiverEffectAdmission.admitted.localProjectId,
+                },
+              }
+            : {}),
+        },
+      );
+      if (started.status === 'indeterminate') {
+        throw new Error(
+          `${started.message} Session ${started.session?.threadId ?? sessionId} may already be running; do not retry automatically.`,
+        );
+      }
+      if (started.status !== 'accepted') {
+        const error = new Error(started.message) as Error & { code?: string };
+        error.code = started.code;
+        throw error;
+      }
+      // #485: the reserved session start is durably accepted (the existing
+      // SessionStartBoundary / session.started evidence path owns that
+      // fact). Mark the claim `session-started` BEFORE the first turn
+      // dispatch so a crash in the turn path still leaves the truthful,
+      // evidence-backed state — a started session alone is NOT an accepted
+      // work request. The reserved taskId IS the started session id, so
+      // the claim is permanently linked to the one real task.
+      if (attemptClaim) {
+        const marked =
+          await input.delegationAttemptClaimStore!.markSessionStarted(
+            attemptClaim.key,
+            attemptClaim.ownerToken,
+          );
+        if (marked.kind !== 'applied') {
+          throw new Error(
+            'Delegation attempt claim could not advance; no turn was dispatched.',
+          );
+        }
+      }
+    }
+    // #484 phase A: recheck again at the turn boundary — this covers the
+    // resume path (existing session, no start) and everything that raced the
+    // start above — AND thread the admission into the service internal
+    // options so the turn-effect path rechecks it adjacent to the adapter
+    // sendTurn invocation. Refusal fails the turn BEFORE the provider effect.
+    await receiverAdmission?.recheck();
+    // #485: the one initial-turn dispatch carries the claim's stable
+    // `initialClientTurnId`, linking it to existing durable turn evidence
+    // (turn.started events, the turn-dedup mapping) for reconciliation.
+    // Only the dispatch RETURNING its real provider turn id advances the
+    // claim to `accepted` with that turn recorded — never invented, never
+    // a second dispatch for the same claim.
+    const attemptTurnDispatch = await orchestrationService.dispatchWithReceipt(
+      {
+        type: 'sendTurn',
+        input: {
+          threadId: sessionId,
+          input: input.prompt,
+          // See the foreground sendTurn: the Agent's declared model is a
+          // start-time selection, not a per-turn override.
+          ...(input.target.model?.override
+            ? { modelId: input.target.model.override }
+            : {}),
+          ...(resolved.modelOptions
+            ? { modelOptions: { ...resolved.modelOptions } }
+            : {}),
+          ...(attemptClaim
+            ? { clientTurnId: attemptClaim.initialClientTurnId }
+            : {}),
         },
       },
       dispatchContextForAuthority(
@@ -3252,71 +4854,103 @@ export async function delegateTask(
           environmentId: target.environmentId,
         },
         resourceAdmissionIntent: 'delegated_background',
+        // #484 phase A: the service rechecks this inside the start-effect
+        // path, adjacent to the adapter invocation, AND verifies the
+        // prepared input against the admitted coordinate.
+        ...(receiverEffectAdmission
+          ? {
+              receiverExecutionAdmission: receiverEffectAdmission,
+              portableExecutionConsent: {
+                portableProjectId:
+                  receiverEffectAdmission.admitted.portableProjectId,
+                resourceId: receiverEffectAdmission.admitted.resourceId,
+                localProjectId: receiverEffectAdmission.admitted.localProjectId,
+              },
+            }
+          : {}),
       },
     );
-    if (started.status === 'indeterminate') {
-      throw new Error(
-        `${started.message} Session ${started.session?.threadId ?? sessionId} may already be running; do not retry automatically.`,
+    // The dispatch returning means the turn was durably accepted by the
+    // adapter (the dedup-hit path returns the SAME already-accepted turn
+    // rather than executing again). Record that flag before the claim
+    // write so a later failure cannot misclassify the claim as
+    // never-dispatched.
+    const attemptInitialTurnId =
+      attemptTurnDispatch.result &&
+      typeof attemptTurnDispatch.result === 'object' &&
+      'turnId' in attemptTurnDispatch.result &&
+      typeof attemptTurnDispatch.result.turnId === 'string' &&
+      attemptTurnDispatch.result.turnId.length > 0
+        ? attemptTurnDispatch.result.turnId
+        : undefined;
+    if (attemptClaim) {
+      if (!attemptInitialTurnId) {
+        throw new Error(
+          'Delegation attempt turn acceptance did not include a provider turn id; no turn was proven accepted.',
+        );
+      }
+      attemptInitialTurnReturned = true;
+      const marked = await input.delegationAttemptClaimStore!.markAccepted(
+        attemptClaim.key,
+        attemptClaim.ownerToken,
+        attemptInitialTurnId,
       );
+      if (marked.kind !== 'applied') {
+        throw new Error(
+          'Delegation attempt claim could not record its accepted turn; the turn stands as dispatched.',
+        );
+      }
+      attemptInitialTurnAccepted = true;
     }
-    if (started.status !== 'accepted') {
-      const error = new Error(started.message) as Error & { code?: string };
-      error.code = started.code;
-      throw error;
+    delegatedTasks.add(1, {
+      target: bindingTarget.kind,
+      environment: target.kind,
+    });
+    // Delivery disclosure at dispatch: read the just-started session's
+    // capability receipts back off its event log. The resolution-stage drops
+    // (engine-unsupported, not-found, secret-boundary-env) were stamped into
+    // `session.started` metadata before the adapter ran, so they are already
+    // durable here. Best-effort by design — a read failure must never fail an
+    // otherwise-successful dispatch, and `delegate status` re-derives the same
+    // view from the same events on every read.
+    let capabilityDelivery: DelegatedCapabilityDelivery | undefined;
+    try {
+      const detail = await orchestrationService.readSession(
+        sessionId,
+        readAuthority,
+      );
+      capabilityDelivery = delegatedCapabilityDelivery(
+        (detail?.events ?? []) as unknown as Array<Record<string, unknown>>,
+      );
+    } catch {
+      capabilityDelivery = undefined;
     }
+    return {
+      ...handleFor(input, target, project, sessionId),
+      target: { kind: 'agent', id: resolved.agentId },
+      resolution: resolved.receipt,
+      provider: resolved.provider,
+      ...(capabilityDelivery ? { capabilityDelivery } : {}),
+    };
+  } catch (attemptError) {
+    if (attemptClaim) {
+      if (attemptInitialTurnAccepted || attemptInitialTurnReturned) {
+        // The initial turn was durably accepted by the adapter (the
+        // dispatch returned its real turn id) and the claim already reads
+        // `accepted` — or, if the claim write itself failed, `session-
+        // started`, which preserves the reserved task reference and the
+        // stable client-turn identity for reconciliation against durable
+        // turn evidence. A later failure cannot unaccept the turn, and the
+        // claim is retained exactly as it is: never refused, never
+        // unresolved into a resend.
+      } else if (attemptStartInvoked) {
+        await settleAttemptClaim('unresolved');
+      } else {
+        await settleAttemptClaim('refused');
+      }
+    }
+    throw attemptError;
   }
-  await orchestrationService.dispatchWithReceipt(
-    {
-      type: 'sendTurn',
-      input: {
-        threadId: sessionId,
-        input: input.prompt,
-        // See the foreground sendTurn: the Agent's declared model is a
-        // start-time selection, not a per-turn override.
-        ...(input.target.model?.override
-          ? { modelId: input.target.model.override }
-          : {}),
-        ...(resolved.modelOptions
-          ? { modelOptions: { ...resolved.modelOptions } }
-          : {}),
-      },
-    },
-    dispatchContextForAuthority(
-      readAuthority,
-      input.clientOrigin,
-      input.principal,
-    ),
-  );
-  delegatedTasks.add(1, {
-    target: bindingTarget.kind,
-    environment: target.kind,
-  });
-  // Delivery disclosure at dispatch: read the just-started session's
-  // capability receipts back off its event log. The resolution-stage drops
-  // (engine-unsupported, not-found, secret-boundary-env) were stamped into
-  // `session.started` metadata before the adapter ran, so they are already
-  // durable here. Best-effort by design — a read failure must never fail an
-  // otherwise-successful dispatch, and `delegate status` re-derives the same
-  // view from the same events on every read.
-  let capabilityDelivery: DelegatedCapabilityDelivery | undefined;
-  try {
-    const detail = await orchestrationService.readSession(
-      sessionId,
-      readAuthority,
-    );
-    capabilityDelivery = delegatedCapabilityDelivery(
-      (detail?.events ?? []) as unknown as Array<Record<string, unknown>>,
-    );
-  } catch {
-    capabilityDelivery = undefined;
-  }
-  return {
-    ...handleFor(input, target, project, sessionId),
-    target: { kind: 'agent', id: resolved.agentId },
-    resolution: resolved.receipt,
-    provider: resolved.provider,
-    ...(capabilityDelivery ? { capabilityDelivery } : {}),
-  };
 }
 
 /**
@@ -3400,7 +5034,11 @@ export async function executeExecutionTargetMessage(
           : '/api/orchestration/chat',
       {
         ...remoteInput,
-        target: { ...pinnedTarget, environment: { kind: 'current' } },
+        target: {
+          ...pinnedTarget,
+          environment: { kind: 'current' },
+          ...remoteApprovalCarry(pinnedTarget.model, input.setApprovalMode),
+        },
       },
       'The selected Station could not execute the Agent message',
     );
@@ -3704,17 +5342,50 @@ export async function executeExecutionTargetMessage(
                 retainedWorktree as import('@kontourai/station-contracts/workspace-isolation').WorktreeSessionMetadata,
             })
           : undefined;
+      // #484 continuation: a portable follow-up that needs a new child
+      // session starts it under the fresh admission — scoped to the
+      // lineage-resolved child thread id (the trusted continuation
+      // owner), with the server-minted consent (identity + ORIGINAL
+      // incarnation) re-stamped so the child's own binding carries the
+      // marker the NEXT follow-up enforces. The child runs in the exact
+      // admitted coordinate (execution root when it selects the resource,
+      // else the resource's bound path) — the admission owns the portable
+      // coordinate the same way `getPortableProject` does on the create
+      // path — and the effect path rechecks + verifies it adjacent to the
+      // adapter start. Ordinary starts are byte-identical.
+      const followUpEffectAdmission = input.receiverAdmission
+        ? receiverEffectAdmissionFor(
+            startInput.threadId,
+            input.receiverAdmission,
+          )
+        : undefined;
+      const portableStartInput =
+        followUpEffectAdmission && input.receiverAdmission
+          ? { ...startInput, cwd: followUpEffectAdmission.admitted.cwd }
+          : startInput;
       const started = await orchestrationService.startSessionInternal(
-        { type: 'start-session', input: startInput },
+        { type: 'start-session', input: portableStartInput },
         dispatchContextForAuthority(
           readAuthority,
           input.clientOrigin,
           input.principal,
+          input.ownerAttribution,
         ),
         {
           ...(executionWorkspace ? { executionWorkspace } : {}),
           ...(ephemeral ? { ephemeralSessionVisibility: true } : {}),
           ...(admission ? { foregroundInvocationAdmission: admission } : {}),
+          ...(followUpEffectAdmission && input.receiverAdmission
+            ? {
+                receiverExecutionAdmission: followUpEffectAdmission,
+                portableExecutionConsent: {
+                  portableProjectId: input.receiverAdmission.portableProjectId,
+                  resourceId: input.receiverAdmission.resourceId,
+                  localProjectId:
+                    input.receiverAdmission.admittedProject.localProjectId,
+                },
+              }
+            : {}),
           resourceAdmissionIntent:
             startContext?.resourceAdmissionIntent ??
             (ephemeral
@@ -3764,6 +5435,13 @@ export async function executeExecutionTargetMessage(
     },
     nativeMemoryOwnsTranscript:
       orchestrationService.supportsNativeMemoryContinuity?.() === true,
+    // #2436: a carried approval pick is recorded here, on this Station,
+    // before the send's session start and turn. An engine with no approval
+    // knob records nothing (the pick would be a request nothing honours).
+    recordApprovalMode: (_access: EnvironmentAccess, pick) =>
+      approvalKnobSupported(pick.provider)
+        ? orchestrationService.recordApprovalModeDecision(pick)
+        : undefined,
     sendTurn: async (_access: EnvironmentAccess, turnInput, context) => {
       const command = { type: 'sendTurn' as const, input: turnInput };
       const dispatchContext = dispatchContextForAuthority(
@@ -3771,6 +5449,9 @@ export async function executeExecutionTargetMessage(
         context?.clientOrigin,
         context?.principal,
       );
+      // A portable follow-up turn carries the fresh admission into
+      // the service turn-effect path (scoped to the turn input's own
+      // thread id). Ordinary turns are byte-identical.
       const dispatched = admission
         ? await orchestrationService.dispatchWithReceipt(
             command,
@@ -3778,12 +5459,30 @@ export async function executeExecutionTargetMessage(
             {
               foregroundInvocationAdmission: admission,
               nativeMemoryReadAuthority: readAuthority,
+              ...(input.receiverAdmission
+                ? {
+                    receiverExecutionAdmission: receiverEffectAdmissionFor(
+                      turnInput.threadId,
+                      input.receiverAdmission,
+                    ),
+                  }
+                : {}),
             },
           )
         : await orchestrationService.dispatchWithReceipt(
             command,
             dispatchContext,
-            { nativeMemoryReadAuthority: readAuthority },
+            {
+              nativeMemoryReadAuthority: readAuthority,
+              ...(input.receiverAdmission
+                ? {
+                    receiverExecutionAdmission: receiverEffectAdmissionFor(
+                      turnInput.threadId,
+                      input.receiverAdmission,
+                    ),
+                  }
+                : {}),
+            },
           );
       if (!dispatched.result || !('turnId' in dispatched.result)) {
         throw new ForegroundMessageTurnIdentityUnavailableError(
@@ -3828,6 +5527,28 @@ export type ContinueForegroundMessageInput = Omit<
   /** A server-validated next-turn selector for the bound Agent. */
   model?: ExecutionModelRequest;
 };
+
+/**
+ * #2436 HIGH-1: an approval pick sent to another Station travels twice. As
+ * `setApprovalMode`, a Station that speaks the command records it (and
+ * reports it back). On `model.options.approvalMode`, a Station that predates
+ * the command still applies it to the turn, as it always did; one that
+ * speaks it applies that channel only while nothing is recorded, so the
+ * duplicate is harmless there. An older Station's schema strips the unknown
+ * key, which is why the second channel is needed at all.
+ */
+function remoteApprovalCarry(
+  model: ExecutionModelRequest | undefined,
+  pick: ApprovalMode | undefined,
+): { model?: ExecutionModelRequest } {
+  if (!pick) return {};
+  return {
+    model: {
+      ...(model ?? {}),
+      options: { ...(model?.options ?? {}), approvalMode: pick },
+    },
+  };
+}
 
 /** Continue only through the Environment+Agent binding persisted at start. */
 /**
@@ -3906,6 +5627,15 @@ export async function continueExecutionTargetMessage(
           : {}),
         ...(input.clientTurnId ? { clientTurnId: input.clientTurnId } : {}),
         ...(input.model ? { model: input.model } : {}),
+        ...remoteApprovalCarry(input.model, input.setApprovalMode),
+        ...(input.setApprovalMode
+          ? {
+              setApprovalMode: input.setApprovalMode,
+              ...(input.setApprovalModeBasedOn !== undefined
+                ? { setApprovalModeBasedOn: input.setApprovalModeBasedOn }
+                : {}),
+            }
+          : {}),
       },
       'Station could not continue the Agent conversation',
     );

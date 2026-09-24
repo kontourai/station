@@ -439,6 +439,7 @@ type StoredChat = {
   providerOptions?: Record<string, unknown>;
   projectSlug?: string;
   projectName?: string;
+  cwd?: string;
   currentModeId?: string;
   orchestrationSessionStarted?: boolean;
   orchestrationStatus?: string;
@@ -453,10 +454,16 @@ type StoredChat = {
 export async function seedActiveChats(
   page: Page,
   chats: StoredChat[],
+  options: { preserveExisting?: boolean } = {},
 ): Promise<void> {
-  await page.addInitScript((items) => {
-    sessionStorage.setItem('activeChats', JSON.stringify(items));
-  }, chats);
+  await page.addInitScript(
+    ({ items, preserveExisting }) => {
+      if (preserveExisting && sessionStorage.getItem('activeChats') !== null)
+        return;
+      sessionStorage.setItem('activeChats', JSON.stringify(items));
+    },
+    { items: chats, preserveExisting: options.preserveExisting === true },
+  );
 }
 
 export async function installMockOrchestrationSse(page: Page): Promise<void> {
@@ -715,26 +722,29 @@ export async function emitMockOrchestrationEvent(
 /**
  * Opens Settings the way the shell now offers it.
  *
- * #1552 D1 folded "Open settings" into the avatar's menu on a fine pointer: the
- * standalone gear is `.app-toolbar__action--compact-only`, so at a desktop
- * viewport it is `display: none` and `button[aria-label="Open settings"]`
- * matches nothing visible. The gear still exists on a phone, where the avatar —
- * and therefore its menu — is hidden instead, so this takes whichever route the
+ * #1552 D1 folded "Open settings" into the avatar's menu on a fine pointer.
+ * On a phone the avatar — and therefore its menu — is hidden instead, and the
+ * header carries no Settings gear either: Settings lives in the sidebar
+ * drawer's footer (`ProjectSidebarFooter`), so this takes whichever route the
  * running breakpoint actually offers rather than assuming one.
  *
  * The avatar branch is deliberately a real click through the real menu: it is
  * the only end-to-end coverage of the route D1 introduced, and a spec that
- * reached Settings by chord would pass with that menu completely broken.
+ * reached Settings by chord would pass with that menu completely broken. The
+ * drawer branch is the same idea: a real open of the drawer plus the real
+ * footer button, so a spec fails if either stops existing.
  */
 export async function openHeaderSettings(page: Page): Promise<void> {
   const avatar = page.getByRole('button', { name: 'Profile and settings' });
-  const gear = page.getByRole('button', { name: 'Open settings' });
+  const drawerToggle = page.getByRole('button', { name: 'Toggle menu' });
   // WAIT BEFORE BRANCHING. Asking `isVisible()` the instant after `goto` answers
   // "has the toolbar rendered yet", not "which breakpoint is this" — a first
   // draft branched on that answer, took the phone path on a desktop, and then
-  // waited ten seconds for a gear that is `display: none` there. Wait for
+  // waited ten seconds for a control that is `display: none` there. Wait for
   // whichever route this breakpoint renders, THEN choose.
-  await expect(avatar.or(gear).first()).toBeVisible({ timeout: 15_000 });
+  await expect(avatar.or(drawerToggle).first()).toBeVisible({
+    timeout: 15_000,
+  });
   if (await avatar.isVisible()) {
     await avatar.click();
     await page
@@ -742,8 +752,12 @@ export async function openHeaderSettings(page: Page): Promise<void> {
       .click({ timeout: 10_000 });
     return;
   }
-  // The phone toolbar keeps the gear (see `.app-toolbar__action--compact-only`).
-  await gear.first().click();
+  // The phone route: the hamburger opens the sidebar drawer, whose footer
+  // carries the Settings button.
+  await drawerToggle.click();
+  await page
+    .getByRole('button', { name: 'Settings', exact: true })
+    .click({ timeout: 10_000 });
 }
 
 export async function dismissSetupLauncher(page: Page): Promise<void> {

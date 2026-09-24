@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import {
   parseStationAnswerNarrativePublishInput,
@@ -36,7 +36,14 @@ import {
   type OrchestrationQuoteSource,
   QUOTE_SOURCE_MAX_BYTES,
 } from '@kontourai/station-contracts/orchestration';
-import type { PrincipalRef } from '@kontourai/station-contracts/principal';
+import {
+  humanPrincipal,
+  type PrincipalRef,
+} from '@kontourai/station-contracts/principal';
+import {
+  APPROVAL_MODES,
+  type ApprovalMode,
+} from '@kontourai/station-contracts/provider';
 import {
   ORCHESTRATION_STREAM_CAUGHT_UP_EVENT,
   SERVER_EVENTS,
@@ -87,6 +94,14 @@ import {
   handoffActionOperationId,
 } from '../../services/operations/action-operation-tracker.js';
 import { ConversationContextBoundaryNotFoundError } from '../../services/orchestration/conversation-lineage.js';
+import {
+  DelegationAttemptCapacityError,
+  DelegationAttemptClaimStore,
+  DelegationAttemptConflictError,
+  DelegationAttemptExistsError,
+  DelegationAttemptPendingError,
+  type DelegationAttemptProjection,
+} from '../../services/orchestration/delegation-attempt-claim-store.js';
 import type { OrchestrationService } from '../../services/orchestration/orchestration-service.js';
 import {
   AdoptionContinuationInProgressError,
@@ -98,9 +113,19 @@ import {
 } from '../../services/orchestration/orchestration-stream-presence.js';
 import type { SessionInventoryAppReadModule } from '../../services/orchestration/session-inventory-app-read-module.js';
 import type { SessionInventoryModule } from '../../services/orchestration/session-inventory-module.js';
+import {
+  type StartOwnerAttribution,
+  UNATTRIBUTED_AGENT_OWNER_ATTRIBUTION,
+} from '../../services/orchestration/session-owner-attribution.js';
 import { MAX_TOOL_RESULT_DESCRIPTOR_ID_BYTES } from '../../services/orchestration/thread-tool-result-adapter.js';
+import type { ReceiverExecutionAdmission } from '../../services/projects/project-contribution-service.js';
+import {
+  RECEIVER_EXECUTION_REFUSAL_COPY,
+  ReceiverExecutionRefusal,
+} from '../../services/projects/project-contribution-service.js';
 import { ProjectWorktreeDirectoryError } from '../../services/projects/project-service.js';
 import { composeAuthorizedSessionAnswerBasis } from '../../services/projects/task-basis-module.js';
+import { CLIENT_SESSION_ID_PATTERN } from '../../services/ssh/client-connection-presence.js';
 import {
   orchestrationStreamDuration,
   orchestrationStreamPresenceOps,
@@ -108,10 +133,15 @@ import {
   orchestrationStreamResumeGap,
   sseOps,
 } from '../../telemetry/metrics.js';
+import { PeerDelegationAttemptDuplicateError } from '../../tools/station-control-delegation.js';
 import { sessionCorrelationBindings } from '../../utils/logger-correlation.js';
 import { assertBoundedJsonResponse } from '../chat/bounded-response.js';
 import { errorMessage, getBody, param, validate } from '../schemas/schemas.js';
 import { sseKeepalive, streamSSE } from '../sse-response.js';
+import {
+  refuseUngrantedFullAccess,
+  requestedApprovalMode,
+} from './approval-authority.js';
 
 // These are intentional public projections. The typed code/outcome and, when
 // available, the receipt/session below give callers evidence to observe; a
@@ -120,6 +150,25 @@ const FOREGROUND_MESSAGE_INDETERMINATE_ERROR =
   'Foreground Agent message may have started. Do not retry automatically.';
 const FOREGROUND_CONTINUATION_INDETERMINATE_ERROR =
   'Foreground Agent continuation may have started. Do not retry automatically.';
+
+const CHECKPOINT_RESTORE_REASONS = new Set([
+  'authorization_changed',
+  'checkpoint_failed',
+  'checkpoint_identity_mismatch',
+  'checkpoint_missing',
+  'checkpoint_pruned',
+  'preview_invalid',
+  'repository_config_refused',
+  'repository_config_unreadable',
+  'restore_verification_failed',
+  'workspace_changed',
+  'workspace_checkpoint_unsupported',
+]);
+
+function checkpointRestoreReason(error: unknown): string {
+  const reason = error instanceof Error ? error.message : '';
+  return CHECKPOINT_RESTORE_REASONS.has(reason) ? reason : 'restore_failed';
+}
 
 const reviewedSourceAssociationSchema = z
   .object({
@@ -301,6 +350,28 @@ const stopSessionCommandSchema = z.object({
   threadId: z.string().min(1),
 });
 
+// #2436: a posture decision, recorded and ordered by the server; applied at
+// the next session start or turn start whatever path sends it.
+const approvalModeSchema = z.enum(
+  APPROVAL_MODES as unknown as [ApprovalMode, ...ApprovalMode[]],
+);
+const setApprovalModeCommandSchema = z.object({
+  type: z.literal('setApprovalMode'),
+  threadId: z.string().min(1).max(512),
+  approvalMode: approvalModeSchema,
+  // Compare-and-set: the latest decision's sequence the client had folded
+  // when the user picked (`null`: none). Required, so a client that forgets
+  // it is refused rather than recorded unconditionally.
+  basedOnSequence: z.number().int().nonnegative().nullable(),
+});
+
+// #2312: the server re-derives the Draft fact itself; the body names only
+// the session.
+const discardDraftCommandSchema = z.object({
+  type: z.literal('discardDraft'),
+  threadId: z.string().min(1).max(ATTENTION_REQUEST_ID_MAX_CHARS),
+});
+
 const sessionTransitionSchema = z.object({
   state: z.enum(SESSION_LIFECYCLE_STATES),
   reason: z
@@ -325,6 +396,8 @@ export const orchestrationCommandSchema = z.discriminatedUnion('type', [
   steerTurnCommandSchema,
   respondToRequestCommandSchema,
   stopSessionCommandSchema,
+  setApprovalModeCommandSchema,
+  discardDraftCommandSchema,
 ]);
 
 const environmentRefSchema = z.discriminatedUnion('kind', [
@@ -344,6 +417,14 @@ const workspaceTargetSchema = z.discriminatedUnion('kind', [
   z.object({
     kind: z.literal('directory'),
     cwd: z.string().min(1).max(4_096),
+  }),
+  // #484 phase A: explicit portable execution intent — consent identity,
+  // not an address. A receiver from before this slice refuses the whole
+  // workspace object here (fail-closed), never a stripped-field fallback.
+  z.object({
+    kind: z.literal('project-portable'),
+    portableProjectId: z.string().min(1).max(512),
+    resourceId: z.string().min(1).max(512),
   }),
 ]);
 
@@ -387,6 +468,23 @@ export const delegateTaskSchema = z.object({
   prompt: z.string().trim().min(1).max(CHAT_INPUT_MAX_CHARS),
   target: executionTargetSchema,
   parentTaskId: z.string().min(1).max(512).optional(),
+  /**
+   * #485 receiver request-claim slice: CLOSED, OPT-IN correlation for
+   * portable delegation creates. Opaque caller-minted token — never an
+   * authorization by itself; the receiver keys its durable claim by the
+   * VERIFIED delegation peer grant plus this token. Senders must gate the
+   * field on the receiver's advertised `delegationAttemptClaims` handshake
+   * capability: an older receiver would silently strip it here (its schema
+   * never had the field) and the sender would falsely believe a claim
+   * exists. Legacy bodies without the field are byte-unchanged.
+   */
+  attemptId: z
+    .string()
+    // 128 = 1 + 127 from the charset regex below. The explicit .max() keeps
+    // the bound machine-visible to the seam walker (regex length is not).
+    .max(128)
+    .regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/)
+    .optional(),
 });
 
 const inputRequestReferenceSchema = z.object({
@@ -445,6 +543,10 @@ export const foregroundMessageObjectSchema = z.object({
     .max(CHAT_ATTACHMENT_MAX_COUNT)
     .optional(),
   clientTurnId: z.string().min(1).max(200).optional(),
+  // #2436: a posture decision this send carries (a pick made before the chat
+  // had a session, or while offline). Recorded on receipt, before the turn.
+  setApprovalMode: approvalModeSchema.optional(),
+  setApprovalModeBasedOn: z.number().int().nonnegative().nullable().optional(),
 });
 
 const agentDelegationContextSchema = z.object({
@@ -490,12 +592,44 @@ function requireMessageOrAttachment(
   });
 }
 
+/**
+ * #2436: a carried approval pick must name its compare-and-set basis
+ * (`setApprovalModeBasedOn`, `null` when the client had seen no decision).
+ * Without one, a client bug would skip compare-and-set silently.
+ */
+function requireApprovalPickBasis(
+  value: { setApprovalMode?: unknown; setApprovalModeBasedOn?: unknown },
+  ctx: z.RefinementCtx,
+): void {
+  if (
+    value.setApprovalMode !== undefined &&
+    value.setApprovalModeBasedOn === undefined
+  )
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['setApprovalModeBasedOn'],
+      message:
+        'setApprovalModeBasedOn is required with setApprovalMode (null when no decision had been seen).',
+    });
+}
+
+function requireForegroundBody(
+  value: Parameters<typeof requireMessageOrAttachment>[0] & {
+    setApprovalMode?: unknown;
+    setApprovalModeBasedOn?: unknown;
+  },
+  ctx: z.RefinementCtx,
+): void {
+  requireApprovalPickBasis(value, ctx);
+  requireMessageOrAttachment(value, ctx);
+}
+
 const foregroundMessageSchema = foregroundMessageObjectSchema.superRefine(
-  requireMessageOrAttachment,
+  requireForegroundBody,
 );
 const delegatedForegroundMessageSchema = foregroundMessageObjectSchema
   .extend({ delegation: agentDelegationContextSchema })
-  .superRefine(requireMessageOrAttachment);
+  .superRefine(requireForegroundBody);
 
 // Exported (archive#2831) for the structural derivation pin in
 // __tests__/orchestration-chat-input-limits.test.ts: this continuation body
@@ -522,14 +656,16 @@ export const continueForegroundMessageSchema = foregroundMessageObjectSchema
       executionTargetSchema.shape.model,
     ),
   })
-  .superRefine(requireMessageOrAttachment);
+  .superRefine(requireForegroundBody);
 
-export const conversationHandoffSchema = foregroundMessageObjectSchema.extend({
-  // A handoff may target another Station; current-host staged references
-  // have no portable byte authority and must be refused at validation.
-  attachmentRefs: z.never().optional(),
-  idempotencyKey: z.string().min(1).max(200),
-});
+export const conversationHandoffSchema = foregroundMessageObjectSchema
+  .extend({
+    // A handoff may target another Station; current-host staged references
+    // have no portable byte authority and must be refused at validation.
+    attachmentRefs: z.never().optional(),
+    idempotencyKey: z.string().min(1).max(200),
+  })
+  .superRefine(requireApprovalPickBasis);
 
 const conversationContextBoundarySchema = z.object({
   policy: z.enum(['continue-from-history', 'empty-next-cold-start']),
@@ -594,7 +730,49 @@ interface DelegateTaskRequest {
   parentTaskId?: string;
   userId: string;
   principal?: PrincipalRef;
+  /**
+   * Station #90 lane D (B2/D2): REQUIRED so every construction of a
+   * session-starting request names its owner attribution explicitly (the
+   * compiler enumerates them). `undefined` means "not an agent dispatch";
+   * see `resolveDispatchActor`.
+   */
+  ownerAttribution: StartOwnerAttribution | undefined;
   clientOrigin?: ClientOrigin;
+  /**
+   * #484 controller/receiver split: for a `project-portable` workspace
+   * intent, the route composes this server-only mint callable (bound to the
+   * current request credential) instead of an admission — the admission is
+   * minted inside `delegateTask` ONLY when this Station is the actual local
+   * executor, so a controlling sender never needs a local offer. Never
+   * public JSON (a function cannot cross it; the route schema strips it).
+   */
+  authorizeReceiverExecution?: (workspace: {
+    portableProjectId: string;
+    resourceId: string;
+  }) => Promise<ReceiverExecutionAdmission>;
+  /**
+   * #484 no-onward-hop: the server-resolved paired-device kind for the
+   * inbound credential, composed from the verified device record — never
+   * body, userId, or metadata. Present only for portable intents.
+   */
+  inboundDeviceKind?: 'device' | 'delegation';
+  /** Server-bound sender authority, checked again before forwarding. */
+  isRequestAuthorityCurrent?: () => boolean;
+  /**
+   * #485: the validated opt-in attempt correlation id from the request
+   * body (closed charset/bounds at the schema above). Forwarded in the
+   * portable peer body; claimed on THIS Station only when the verified
+   * caller grant composes below and this Station is the executing
+   * receiver. Never an authorization by itself.
+   */
+  delegationAttemptId?: string;
+  /**
+   * #485: the verified delegation-kind device grant behind the CURRENT
+   * request, resolved by the runtime from the middleware-owned principal
+   * (never body/user labels). Required, together with the claim owner, for
+   * a receiver-local attempt claim and for the authorized lookup.
+   */
+  delegationAttemptCaller?: { readonly deviceId: string };
 }
 
 interface ForegroundMessageRequest {
@@ -609,6 +787,9 @@ interface ForegroundMessageRequest {
   }) => ChatAttachmentInput[];
   ambientContext?: string;
   clientTurnId?: string;
+  /** #2436: see `ForegroundMessageInput.setApprovalMode`. */
+  setApprovalMode?: ApprovalMode;
+  setApprovalModeBasedOn?: number | null;
   userId: string;
   /**
    * archive#4075 stage 2: the dispatching caller's resolved `PrincipalRef`,
@@ -617,6 +798,13 @@ interface ForegroundMessageRequest {
    * on the legacy test-only `getUserId` path (see `resolveActorPrincipal`).
    */
   principal?: PrincipalRef;
+  /**
+   * Station #90 lane D (B2/D2): REQUIRED so every construction of a
+   * session-starting request names its owner attribution explicitly (the
+   * compiler enumerates them). `undefined` means "not an agent dispatch";
+   * see `resolveDispatchActor`.
+   */
+  ownerAttribution: StartOwnerAttribution | undefined;
   clientOrigin?: ClientOrigin;
 }
 
@@ -624,6 +812,9 @@ interface ContinueForegroundMessageRequest {
   conversationId: string;
   environment?: EnvironmentRef;
   model?: ExecutionModelRequest;
+  /** #2436: see `ForegroundMessageInput.setApprovalMode`. */
+  setApprovalMode?: ApprovalMode;
+  setApprovalModeBasedOn?: number | null;
   message: string;
   attachments?: ChatAttachmentInput[];
   ambientContext?: string;
@@ -631,6 +822,13 @@ interface ContinueForegroundMessageRequest {
   userId: string;
   /** archive#4075 stage 2 review round 1 (F1) — see ForegroundMessageRequest.principal. */
   principal?: PrincipalRef;
+  /**
+   * Station #90 lane D (B2/D2): REQUIRED so every construction of a
+   * session-starting request names its owner attribution explicitly (the
+   * compiler enumerates them). `undefined` means "not an agent dispatch";
+   * see `resolveDispatchActor`.
+   */
+  ownerAttribution: StartOwnerAttribution | undefined;
   clientOrigin?: ClientOrigin;
 }
 
@@ -645,6 +843,13 @@ interface ConversationHandoffRequest
   userId: string;
   /** archive#4075 stage 2 review round 1 (F1) — see ForegroundMessageRequest.principal. */
   principal?: PrincipalRef;
+  /**
+   * Station #90 lane D (B2/D2): REQUIRED so every construction of a
+   * session-starting request names its owner attribution explicitly (the
+   * compiler enumerates them). `undefined` means "not an agent dispatch";
+   * see `resolveDispatchActor`.
+   */
+  ownerAttribution: StartOwnerAttribution | undefined;
   clientOrigin?: ClientOrigin;
 }
 
@@ -681,6 +886,8 @@ type ContinueDelegatedTaskRequest = z.infer<
   taskId: string;
   userId: string;
   principal?: PrincipalRef;
+  /** Station #90 lane D (B2/D2): REQUIRED; see `resolveDispatchActor`. */
+  ownerAttribution: StartOwnerAttribution | undefined;
   clientOrigin?: ClientOrigin;
 };
 
@@ -690,6 +897,8 @@ type RespondToDelegatedTaskRequest = z.infer<
   taskId: string;
   userId: string;
   principal?: PrincipalRef;
+  /** Station #90 lane D (B2/D2): REQUIRED; see `resolveDispatchActor`. */
+  ownerAttribution: StartOwnerAttribution | undefined;
   clientOrigin?: ClientOrigin;
 };
 
@@ -699,6 +908,8 @@ type InterruptDelegatedTaskRequest = z.infer<
   taskId: string;
   userId: string;
   principal?: PrincipalRef;
+  /** Station #90 lane D (B2/D2): REQUIRED; see `resolveDispatchActor`. */
+  ownerAttribution: StartOwnerAttribution | undefined;
   clientOrigin?: ClientOrigin;
 };
 
@@ -775,6 +986,43 @@ export function resolveStreamResumePlan(
 }
 
 /**
+ * station#2301: who is on the other end of an `/events` connection, in the
+ * terms an operator reconstructing a two-device divergence needs. The access
+ * log's `stream-open-after=` line carries none of this, and without it a
+ * desktop and a phone reconnecting against one headless server are
+ * indistinguishable after the fact.
+ *
+ * - `clientSession` is the per-document id the client sends in
+ *   `X-Station-Client-Session`: it changes on every app restart or reload and
+ *   is stable across that document's reconnects, so it separates "the same
+ *   client reconnected" from "a fresh JS context connected". Only a
+ *   well-formed UUID is echoed; anything else reads `none`.
+ * - `actor` is Station's own authenticated resolution (a paired device's id,
+ *   or the operator) — never a client claim.
+ * - `surface`/`build` are client-REPORTED and display-only, as everywhere
+ *   else they appear.
+ */
+function describeOrchestrationStreamClient(request: Request): {
+  clientSession: string;
+  actor: string;
+  surface: string;
+  build: string | null;
+} {
+  const header = request.headers.get('x-station-client-session');
+  const origin = resolveClientOriginForRequest(request);
+  return {
+    clientSession:
+      header && CLIENT_SESSION_ID_PATTERN.test(header) ? header : 'none',
+    actor:
+      origin.actor.kind === 'device'
+        ? `device:${origin.actor.deviceId}`
+        : origin.actor.kind,
+    surface: origin.reported.surface,
+    build: origin.reported.build,
+  };
+}
+
+/**
  * archive#4075 stage 2: the minimal per-request shape `resolvePrincipal`
  * needs — a duck-typed subset of Hono's `Context`, not the Hono type itself,
  * so this route module stays decoupled from Hono internals. Every route
@@ -836,6 +1084,91 @@ function resolveActorPrincipal(
   );
 }
 
+/**
+ * Station #90 lane D (station #122), security review B2: who a dispatch
+ * acts for when a station-control agent tool makes it.
+ *
+ * Every station-control REST call authenticates as Station's internal
+ * principal (the local operator), so `resolveActorPrincipal` alone stamps
+ * an agent-started session as the operator's. `deps.resolveAgentDispatchActor`
+ * (runtime composition; server facts only) says instead:
+ *
+ * - `verified`: a `bound` caller whose acting principal is an
+ *   authenticated session owner. The dispatch acts, and the new session is
+ *   owned, as that principal. The turn's PrincipalRef is the caller's
+ *   (`principalRefForSessionOwner`), never the operator's ingress one.
+ * - `unattributed`: any other request authenticated as Station's internal
+ *   principal (D3: headers prove nothing, so this is the default for that
+ *   principal). Authority stays as today; the new session is marked so it
+ *   acts for no one.
+ * - `undefined`: an operator or device credential. Unchanged.
+ */
+/**
+ * Station #90 lane D (D6): the PrincipalRef for a verified caller's session
+ * owner. Station has no principal store to look an id up in (checked: the
+ * only principal sources are the per-request resolvers, which hold no
+ * record of other principals), so the owner id is rebuilt through the
+ * `humanPrincipal` constructor that minted it, which validates it, and the
+ * rebuilt id must equal the recorded one. The display is the subject, the
+ * only label the id carries; a human's chosen display name is not
+ * recoverable here. Any id the constructor refuses (a reserved or
+ * malformed id) yields `undefined`.
+ *
+ * Downstream need, checked: `principal` is optional on every dispatch input;
+ * it feeds turn attribution (`dispatchContextForAuthority` →
+ * `clientOriginTurns`) and staged-attachment hydration, which an agent tool
+ * never uses (it has no staged references, and the route refuses staging
+ * without a principal). `isInboundDelegationPeer` ignores it and
+ * `authorizeReceiverExecution` reads request currency, not the principal.
+ */
+function principalRefForSessionOwner(id: string): PrincipalRef | undefined {
+  const match = /^human:([^:]+):(.+)$/.exec(id);
+  if (!match) return undefined;
+  try {
+    const rebuilt = humanPrincipal(match[1]!, match[2]!, match[2]!);
+    // The constructor normalizes nothing today; this keeps a future change
+    // from silently attributing the turn to a different id.
+    return rebuilt.id === id ? rebuilt : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+export type AgentDispatchActor =
+  | { readonly kind: 'verified'; readonly principalId: string }
+  | { readonly kind: 'unattributed' };
+
+function resolveDispatchActor(
+  deps: {
+    resolvePrincipal?: (c: PrincipalResolutionContext) => PrincipalRef;
+    getUserId?: () => string;
+    resolveAgentDispatchActor?: (
+      request: Request,
+    ) => AgentDispatchActor | undefined;
+  },
+  c: PrincipalResolutionContext & { req: { raw: Request } },
+): {
+  principal: PrincipalRef | undefined;
+  userId: string;
+  ownerAttribution?: StartOwnerAttribution;
+} {
+  const actor = resolveActorPrincipal(deps, c);
+  const agent = deps.resolveAgentDispatchActor?.(c.req.raw);
+  if (!agent) return actor;
+  if (agent.kind === 'verified')
+    return {
+      principal:
+        actor.principal?.id === agent.principalId
+          ? actor.principal
+          : principalRefForSessionOwner(agent.principalId),
+      userId: agent.principalId,
+      // S1: the service fails an internal-origin start closed unless the
+      // seam vouches for it explicitly.
+      ownerAttribution: 'verified-bound',
+    };
+  return { ...actor, ownerAttribution: UNATTRIBUTED_AGENT_OWNER_ATTRIBUTION };
+}
+
 export function createOrchestrationRoutes(
   orchestrationService: OrchestrationService,
   deps: {
@@ -849,6 +1182,12 @@ export function createOrchestrationRoutes(
     };
     logger: {
       debug(message: string, meta?: Record<string, unknown>): void;
+      /**
+       * Optional: the `/events` stream lifecycle lines (open/close) go here so
+       * they survive the default `info` level. Falls back to `debug` for the
+       * narrow `{ debug }` test doubles this suite uses everywhere.
+       */
+      info?(message: string, meta?: Record<string, unknown>): void;
       warn?(message: string, meta?: Record<string, unknown>): void;
       /**
        * Optional (archive#1897 logging slice 3): binds a `conversationId`
@@ -868,7 +1207,59 @@ export function createOrchestrationRoutes(
       readProcess(sessionId: string): TerminalProcessDetail | null;
       close(sessionId: string): Promise<void>;
     };
+    /**
+     * Station #90 lane D (B2): runtime-composed from server facts (the
+     * verified station-control caller). See `resolveDispatchActor`.
+     */
+    resolveAgentDispatchActor?: (
+      request: Request,
+    ) => AgentDispatchActor | undefined;
     delegateTask?: (input: DelegateTaskRequest) => Promise<unknown>;
+    /**
+     * #484 phase A: admits (or refuses) the explicit portable-execution
+     * intent against this Station's operator offer, binding the CURRENT
+     * request credential via `authorityCurrent`. Composed by
+     * `runtime-routes.ts` over the contribution service.
+     */
+    authorizeReceiverExecution?: (
+      input: { portableProjectId: string; resourceId: string },
+      authorityCurrent: () => boolean,
+    ) => Promise<ReceiverExecutionAdmission>;
+    /**
+     * #484 no-onward-hop: resolves the inbound credential's server-owned
+     * paired-device kind (`device` vs `delegation`) from the verified
+     * device record. Wired once at `runtime-routes.ts`; absent in tests
+     * that never simulate an enrolled peer (treated as non-peer).
+     */
+    resolveInboundDeviceKind?: (
+      c: PrincipalResolutionContext,
+    ) => 'device' | 'delegation' | undefined;
+    /**
+     * #485 receiver request-claim slice: resolves the VERIFIED
+     * delegation-kind device grant (kind `delegation` +
+     * `orchestration:operate` + live id match) for the CURRENT request from
+     * the middleware-owned principal. The only identity a receiver claim or
+     * an authorized attempt lookup is keyed by — never body, userId, or
+     * reported origin. `undefined` for operator/internal/personal-device
+     * callers and revoked grants.
+     */
+    resolveInboundDelegationDevice?: (
+      c: PrincipalResolutionContext,
+    ) => { readonly id: string } | undefined;
+    /**
+     * #485: the authorized read-only exact-attempt lookup over the durable
+     * claim owner. Returns the bounded closed projection only for the SAME
+     * verified delegation grant the claim was keyed by.
+     */
+    lookupDelegationAttempt?: (input: {
+      attemptId: string;
+      callerDeviceId: string;
+    }) => Promise<DelegationAttemptProjection>;
+    /**
+     * #485: the receiver's durable attempt-claim owner, composed once by
+     * the runtime. Server-only; never public JSON.
+     */
+    delegationAttemptClaimStore?: DelegationAttemptClaimStore;
     executeForegroundMessage?: (
       input: ForegroundMessageRequest,
     ) => Promise<unknown>;
@@ -915,10 +1306,26 @@ export function createOrchestrationRoutes(
       input: DelegatedTaskEventsRequest,
     ) => Promise<unknown>;
     continueDelegatedTask?: (
-      input: ContinueDelegatedTaskRequest,
+      input: ContinueDelegatedTaskRequest & {
+        /**
+         * #484 continuation: the trusted route-bound portable mint
+         * factory, composed by the continue route. Server-only; never
+         * public JSON.
+         */
+        authorizeReceiverExecution?: (workspace: {
+          portableProjectId: string;
+          resourceId: string;
+        }) => Promise<ReceiverExecutionAdmission>;
+      },
     ) => Promise<unknown>;
     respondToDelegatedTaskRequest?: (
-      input: RespondToDelegatedTaskRequest,
+      input: RespondToDelegatedTaskRequest & {
+        /** Same trusted mint factory as continue. */
+        authorizeReceiverExecution?: (workspace: {
+          portableProjectId: string;
+          resourceId: string;
+        }) => Promise<ReceiverExecutionAdmission>;
+      },
     ) => Promise<unknown>;
     interruptDelegatedTask?: (
       input: InterruptDelegatedTaskRequest,
@@ -982,11 +1389,20 @@ export function createOrchestrationRoutes(
      * intact one.
      */
     listThreadCheckpoints?: (threadId: string) => Promise<unknown[]>;
-    restoreThreadCheckpoint?: (input: {
+    previewThreadCheckpointRestore?: (input: {
       threadId: string;
       turnId: string;
       phase: 'baseline' | 'settle';
+      ownerKey: string;
+    }) => Promise<unknown>;
+    restoreThreadCheckpoint?: (input: {
+      threadId: string;
+      turnId: string;
+      previewId: string;
+      expectedCurrentTreeSha: string;
+      ownerKey: string;
       confirmed: true;
+      isAuthorized?: () => boolean;
     }) => Promise<unknown>;
     listCheckpointRestoreEvents?: (threadId: string) => unknown[];
     /** Shared status envelope for the existing attached-session handoff. */
@@ -1001,6 +1417,15 @@ export function createOrchestrationRoutes(
       getTenantRequestContext(c.req.raw),
       deps.hostedTenantRegistry,
     );
+  const mutationIdentity = (c: PrincipalResolutionContext) => {
+    const { userId } = resolveActorPrincipal(deps, c);
+    const tenant = getTenantRequestContext(c.req.raw);
+    return {
+      userId,
+      tenant: tenantExecutionContextForRequest(c.req.raw),
+      ownerKey: JSON.stringify([userId, tenant?.tenantId ?? null]),
+    };
+  };
   /**
    * One in-flight peer-delegation reconciliation per caller.
    *
@@ -1193,7 +1618,17 @@ export function createOrchestrationRoutes(
         delegation?: z.infer<typeof agentDelegationContextSchema>;
         automaticBackground?: true;
       };
-      const { principal, userId } = resolveActorPrincipal(deps, c);
+      // #2436: full access needs the operator in person or a granted device,
+      // whether the send carries it as a pick or asks for it on the options.
+      const fullAccessRefused = refuseUngrantedFullAccess(c, [
+        body.setApprovalMode,
+        requestedApprovalMode(body.target.model?.options),
+      ]);
+      if (fullAccessRefused) return fullAccessRefused;
+      const { principal, userId, ownerAttribution } = resolveDispatchActor(
+        deps,
+        c,
+      );
       if (body.expectedInputRequest) {
         const context = orchestrationService.inspectInputReplyContext(
           body.expectedInputRequest,
@@ -1272,6 +1707,7 @@ export function createOrchestrationRoutes(
         // which stamps it into the dispatch context so the resulting
         // `turn.started` carries the dispatching principal at emit time.
         principal,
+        ownerAttribution,
         clientOrigin: resolveClientOriginForRequest(c.req.raw),
       } as ForegroundMessageRequest;
       const data = await deps.executeForegroundMessage(foregroundRequest);
@@ -1391,7 +1827,15 @@ export function createOrchestrationRoutes(
       }
       try {
         const body = getBody(c);
-        const { principal, userId } = resolveActorPrincipal(deps, c);
+        const fullAccessRefused = refuseUngrantedFullAccess(c, [
+          (body as { setApprovalMode?: unknown }).setApprovalMode,
+          requestedApprovalMode(body.target.model?.options),
+        ]);
+        if (fullAccessRefused) return fullAccessRefused;
+        const { principal, userId, ownerAttribution } = resolveDispatchActor(
+          deps,
+          c,
+        );
         const data = await deps.handoffConversation({
           ...body,
           target: normalizeExecutionTarget(body.target),
@@ -1406,6 +1850,7 @@ export function createOrchestrationRoutes(
           // `input.principal` seam, so an explicit engine/Agent handoff's
           // turn.started is attributed at emit time too.
           principal,
+          ownerAttribution,
           clientOrigin: resolveClientOriginForRequest(c.req.raw),
         });
         if (!isForegroundDispatchHandle(data)) {
@@ -1571,7 +2016,15 @@ export function createOrchestrationRoutes(
       }
       try {
         const body = getBody(c);
-        const { principal, userId } = resolveActorPrincipal(deps, c);
+        const fullAccessRefused = refuseUngrantedFullAccess(c, [
+          body.setApprovalMode,
+          requestedApprovalMode(body.model?.options),
+        ]);
+        if (fullAccessRefused) return fullAccessRefused;
+        const { principal, userId, ownerAttribution } = resolveDispatchActor(
+          deps,
+          c,
+        );
         const data = await deps.continueForegroundMessage({
           ...body,
           ...(body.environment
@@ -1596,6 +2049,8 @@ export function createOrchestrationRoutes(
           // forwards it — station-control-delegation.ts's
           // `continueExecutionTargetMessage`).
           principal,
+          // A continuation may start a new child session of the conversation.
+          ownerAttribution,
           clientOrigin: resolveClientOriginForRequest(c.req.raw),
         });
         if (!isForegroundDispatchHandle(data)) {
@@ -1669,16 +2124,180 @@ export function createOrchestrationRoutes(
     }
     try {
       const body = getBody(c);
-      const { principal, userId } = resolveActorPrincipal(deps, c);
+      const fullAccessRefused = refuseUngrantedFullAccess(c, [
+        requestedApprovalMode(
+          (body as { target?: { model?: { options?: unknown } } }).target?.model
+            ?.options,
+        ),
+      ]);
+      if (fullAccessRefused) return fullAccessRefused;
+      const { principal, userId, ownerAttribution } = resolveDispatchActor(
+        deps,
+        c,
+      );
+      const clientOrigin = resolveClientOriginForRequest(c.req.raw);
+      // #484 controller/receiver split: this route NEVER mints the
+      // receiver admission itself — minting here, before `delegateTask`
+      // resolves/forwards the environment, forced every controlling
+      // sender to hold a local offer for a saved receiver's intent. The
+      // admission is minted inside `delegateTask` ONLY when this Station
+      // is the actual local executor. Capture the trusted mint factory
+      // (bound to the CURRENT request credential) and the verified caller
+      // facts BEFORE any await; the factory is server-only (a function
+      // cannot cross public JSON) and is never invoked on a forwarding
+      // sender. No environment is resolved here, so nothing races the
+      // single resolution inside `delegateTask`.
+      const authorizeReceiverExecution = deps.authorizeReceiverExecution
+        ? (workspace: { portableProjectId: string; resourceId: string }) =>
+            deps.authorizeReceiverExecution!(
+              workspace,
+              () => deps.isRequestPrincipalCurrent?.(c.req.raw) ?? false,
+            )
+        : undefined;
+      const portableIntent = body.target.workspace?.kind === 'project-portable';
+      // #485 receiver request-claim slice: validate the opt-in correlation
+      // at the route seam. The attempt id is admitted ONLY on a portable
+      // intent (any other topology is an explicit refusal, never a silent
+      // strip); the verified delegation caller grant is composed from the
+      // middleware-owned principal — an operator or personal-device caller
+      // forwards the id but can never claim, and on the receiver-local path
+      // that composition is REQUIRED.
+      if (body.attemptId !== undefined && !portableIntent) {
+        return c.json(
+          {
+            success: false,
+            error:
+              RECEIVER_EXECUTION_REFUSAL_COPY.delegation_attempt_unsupported,
+            code: 'delegation_attempt_unsupported',
+          },
+          403,
+        );
+      }
+      const delegationAttemptCaller = body.attemptId
+        ? deps.resolveInboundDelegationDevice?.(c)
+        : undefined;
       const data = await deps.delegateTask({
         ...body,
         target: normalizeExecutionTarget(body.target),
         userId,
         principal,
-        clientOrigin: resolveClientOriginForRequest(c.req.raw),
+        ownerAttribution,
+        clientOrigin,
+        ...(body.attemptId ? { delegationAttemptId: body.attemptId } : {}),
+        // The tool keys claims by `deviceId`: project the verified grant's
+        // id explicitly — passing the `{ id }` grant object through would
+        // key every claim under `undefined:` (cross-grant collision) and
+        // lookups keyed by the real id would never hit.
+        ...(body.attemptId && delegationAttemptCaller
+          ? {
+              delegationAttemptCaller: {
+                deviceId: delegationAttemptCaller.id,
+              },
+            }
+          : {}),
+        ...(deps.delegationAttemptClaimStore
+          ? { delegationAttemptClaimStore: deps.delegationAttemptClaimStore }
+          : {}),
+        ...(portableIntent
+          ? {
+              authorizeReceiverExecution,
+              inboundDeviceKind: deps.resolveInboundDeviceKind?.(c),
+              isRequestAuthorityCurrent: () =>
+                deps.isRequestPrincipalCurrent?.(c.req.raw) ?? false,
+            }
+          : {}),
       });
       return c.json({ success: true, data });
     } catch (error) {
+      // #485: the receiver's typed duplicate outcomes — an explicit
+      // pending/unknown or exists reference with the attempt id, NEVER a
+      // manufactured completed handle and never a resend authorization.
+      if (error instanceof DelegationAttemptPendingError) {
+        return c.json(
+          {
+            success: false,
+            error: error.message,
+            code: error.code,
+            attemptId: error.attemptId,
+            outcome: 'pending',
+          },
+          409,
+        );
+      }
+      if (error instanceof DelegationAttemptExistsError) {
+        return c.json(
+          {
+            success: false,
+            error: error.message,
+            code: error.code,
+            attemptId: error.attemptId,
+            taskId: error.taskId,
+            turnId: error.turnId,
+          },
+          409,
+        );
+      }
+      if (
+        error instanceof DelegationAttemptConflictError ||
+        error instanceof DelegationAttemptCapacityError
+      ) {
+        return c.json(
+          {
+            success: false,
+            error: error.message,
+            code: error.code,
+            ...(error instanceof DelegationAttemptConflictError
+              ? { attemptId: error.attemptId }
+              : {}),
+          },
+          409,
+        );
+      }
+      if (error instanceof PeerDelegationAttemptDuplicateError) {
+        // #485: the receiver's duplicate outcome relayed verbatim — same
+        // closed code, same attempt reference (and the exact initial turn
+        // when the receiver named one); never a generic fault.
+        return c.json(
+          {
+            success: false,
+            error: error.message,
+            code: error.code,
+            ...(error.attemptId ? { attemptId: error.attemptId } : {}),
+            ...(error.taskId ? { taskId: error.taskId } : {}),
+            ...(error.turnId ? { turnId: error.turnId } : {}),
+          },
+          409,
+        );
+      }
+      if (error instanceof ReceiverExecutionRefusal)
+        return c.json(
+          {
+            success: false,
+            error: RECEIVER_EXECUTION_REFUSAL_COPY[error.code],
+            code: error.code,
+          },
+          403,
+        );
+      // #484 continuation: a portable refusal raised INSIDE the
+      // provider-effect path arrives wrapped (the dispatch error carries
+      // the closed code, never raw internals) — answer the same exact
+      // 403 rather than degrading it into a 400.
+      const wrappedCode = errorCode(error);
+      if (
+        wrappedCode &&
+        Object.hasOwn(RECEIVER_EXECUTION_REFUSAL_COPY, wrappedCode)
+      )
+        return c.json(
+          {
+            success: false,
+            error:
+              RECEIVER_EXECUTION_REFUSAL_COPY[
+                wrappedCode as ReceiverExecutionRefusal['code']
+              ],
+            code: wrappedCode,
+          },
+          403,
+        );
       return c.json(
         {
           success: false,
@@ -1733,6 +2352,73 @@ export function createOrchestrationRoutes(
       return c.json({ success: true, data });
     } catch (error) {
       return c.json({ success: false, error: errorMessage(error) }, 400);
+    }
+  });
+
+  // #485 receiver request-claim slice: the authorized read-only lookup for
+  // an exact opt-in attempt, served by the ACTUAL executing receiver only.
+  // Authority: the CURRENT verified delegation-kind device grant with the
+  // orchestration operate scope — the exact grant the claim is keyed by.
+  // A non-delegation caller (operator, personal device, internal token) or
+  // a revoked/rotated grant is refused with NO data — the SAME current grant
+  // is re-resolved AFTER the store read, so a revocation landing mid-lookup
+  // is still refused. The projection is the bounded closed shape only —
+  // never a prompt, path, digest, transcript,
+  // or provider output — and `none` is explicitly NOT permission to resend:
+  // absence observed now does not fence a delayed original request. A store
+  // fault answers a fixed 503 with no exception text.
+  app.get('/delegations/attempts/:attemptId', async (c) => {
+    if (!deps.lookupDelegationAttempt) {
+      return c.json(
+        { success: false, error: 'Attempt lookup is unavailable' },
+        503,
+      );
+    }
+    const attemptId = param(c, 'attemptId');
+    if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(attemptId)) {
+      return c.json({ success: false, error: 'Invalid attempt id' }, 400);
+    }
+    const caller = deps.resolveInboundDelegationDevice?.(c);
+    if (!caller) {
+      return c.json(
+        {
+          success: false,
+          error:
+            'Attempt lookup requires a current verified delegation peer grant.',
+          code: 'delegation_attempt_caller_unsupported',
+        },
+        403,
+      );
+    }
+    try {
+      const data = await deps.lookupDelegationAttempt({
+        attemptId,
+        callerDeviceId: caller.id,
+      });
+      // TOCTOU close: the grant above was live BEFORE the store read.
+      // Re-resolve the SAME current grant before disclosing anything — a
+      // revocation or rotation that landed mid-lookup is refused with the
+      // closed caller shape and no task/turn, never the read result.
+      const current = deps.resolveInboundDelegationDevice?.(c);
+      if (!current || current.id !== caller.id) {
+        return c.json(
+          {
+            success: false,
+            error:
+              'Attempt lookup requires a current verified delegation peer grant.',
+            code: 'delegation_attempt_caller_unsupported',
+          },
+          403,
+        );
+      }
+      return c.json({ success: true, data });
+    } catch {
+      // Fixed safe copy: a store/IO fault answers unavailable with NO
+      // exception text — the closed projection never carries fault internals.
+      return c.json(
+        { success: false, error: 'Attempt lookup is temporarily unavailable' },
+        503,
+      );
     }
   });
 
@@ -1811,16 +2497,75 @@ export function createOrchestrationRoutes(
         );
       }
       try {
-        const { principal, userId } = resolveActorPrincipal(deps, c);
+        const fullAccessRefused = refuseUngrantedFullAccess(c, [
+          requestedApprovalMode(
+            (getBody(c) as { modelOptions?: unknown }).modelOptions,
+          ),
+        ]);
+        if (fullAccessRefused) return fullAccessRefused;
+        const { principal, userId, ownerAttribution } = resolveDispatchActor(
+          deps,
+          c,
+        );
+        // #484 continuation: the trusted route-bound mint factory for a
+        // portable follow-up — captured before any await, bound to the
+        // CURRENT request credential. The tool mints through it ONLY when
+        // this Station is the actual local executor of a marked portable
+        // thread (from that thread's OWN persisted marker, never body
+        // ids); a forwarding sender never invokes it. Server-only: a
+        // function cannot cross public JSON, and the follow-up body
+        // carries no portable ids at all — so no new public intent or
+        // capability negotiation was needed: the receiver distinguishes
+        // portable from legacy purely by its own persisted marker, and a
+        // forged or omitted intent cannot bypass the marker's guard.
+        const authorizeReceiverExecution = deps.authorizeReceiverExecution
+          ? (workspace: { portableProjectId: string; resourceId: string }) =>
+              deps.authorizeReceiverExecution!(
+                workspace,
+                () => deps.isRequestPrincipalCurrent?.(c.req.raw) ?? false,
+              )
+          : undefined;
         const data = await deps.continueDelegatedTask({
           ...getBody(c),
           taskId: param(c, 'taskId'),
           userId,
           principal,
+          ownerAttribution,
           clientOrigin: resolveClientOriginForRequest(c.req.raw),
+          ...(authorizeReceiverExecution ? { authorizeReceiverExecution } : {}),
+          // No-onward-hop + sender authority, from the verified
+          // credential — never body/userId. The follow-up body carries
+          // no portable signal, so both ride every follow-up: the tool
+          // enforces the hop guard and the post-resolution currency
+          // probe before any outbound forward.
+          inboundDeviceKind: deps.resolveInboundDeviceKind?.(c),
+          isRequestAuthorityCurrent: () =>
+            deps.isRequestPrincipalCurrent?.(c.req.raw) ?? false,
         });
         return c.json({ success: true, data });
       } catch (error) {
+        // #484 phase A: a portable continuation refused for lack of a
+        // current offer admission is a 403, like the create-path refusal.
+        // Same wrapped-code mapping as the create path.
+        const portableRefusal =
+          error instanceof ReceiverExecutionRefusal
+            ? error.code
+            : (() => {
+                const wrappedCode = errorCode(error);
+                return wrappedCode &&
+                  Object.hasOwn(RECEIVER_EXECUTION_REFUSAL_COPY, wrappedCode)
+                  ? (wrappedCode as ReceiverExecutionRefusal['code'])
+                  : undefined;
+              })();
+        if (portableRefusal)
+          return c.json(
+            {
+              success: false,
+              error: RECEIVER_EXECUTION_REFUSAL_COPY[portableRefusal],
+              code: portableRefusal,
+            },
+            403,
+          );
         return c.json({ success: false, error: errorMessage(error) }, 400);
       }
     },
@@ -1837,16 +2582,54 @@ export function createOrchestrationRoutes(
         );
       }
       try {
-        const { principal, userId } = resolveActorPrincipal(deps, c);
+        const { principal, userId, ownerAttribution } = resolveDispatchActor(
+          deps,
+          c,
+        );
+        // Same trusted mint factory as the continue route.
+        const authorizeReceiverExecution = deps.authorizeReceiverExecution
+          ? (workspace: { portableProjectId: string; resourceId: string }) =>
+              deps.authorizeReceiverExecution!(
+                workspace,
+                () => deps.isRequestPrincipalCurrent?.(c.req.raw) ?? false,
+              )
+          : undefined;
         const data = await deps.respondToDelegatedTaskRequest({
           ...getBody(c),
           taskId: param(c, 'taskId'),
           userId,
           principal,
+          ownerAttribution,
           clientOrigin: resolveClientOriginForRequest(c.req.raw),
+          ...(authorizeReceiverExecution ? { authorizeReceiverExecution } : {}),
+          // Same verified-caller composition as the continue route.
+          inboundDeviceKind: deps.resolveInboundDeviceKind?.(c),
+          isRequestAuthorityCurrent: () =>
+            deps.isRequestPrincipalCurrent?.(c.req.raw) ?? false,
         });
         return c.json({ success: true, data });
       } catch (error) {
+        // #484 phase A: same 403 mapping as the create and continue paths.
+        // Same wrapped-code mapping as the create path.
+        const portableRefusal =
+          error instanceof ReceiverExecutionRefusal
+            ? error.code
+            : (() => {
+                const wrappedCode = errorCode(error);
+                return wrappedCode &&
+                  Object.hasOwn(RECEIVER_EXECUTION_REFUSAL_COPY, wrappedCode)
+                  ? (wrappedCode as ReceiverExecutionRefusal['code'])
+                  : undefined;
+              })();
+        if (portableRefusal)
+          return c.json(
+            {
+              success: false,
+              error: RECEIVER_EXECUTION_REFUSAL_COPY[portableRefusal],
+              code: portableRefusal,
+            },
+            403,
+          );
         return c.json({ success: false, error: errorMessage(error) }, 400);
       }
     },
@@ -1863,12 +2646,16 @@ export function createOrchestrationRoutes(
         );
       }
       try {
-        const { principal, userId } = resolveActorPrincipal(deps, c);
+        const { principal, userId, ownerAttribution } = resolveDispatchActor(
+          deps,
+          c,
+        );
         const data = await deps.interruptDelegatedTask({
           ...getBody(c),
           taskId: param(c, 'taskId'),
           userId,
           principal,
+          ownerAttribution,
           clientOrigin: resolveClientOriginForRequest(c.req.raw),
         });
         return c.json({ success: true, data });
@@ -2013,6 +2800,58 @@ export function createOrchestrationRoutes(
     });
   });
 
+  app.post(
+    '/sessions/:threadId/checkpoints/:turnId/restore-preview',
+    async (c) => {
+      if (!deps.previewThreadCheckpointRestore)
+        return c.json(
+          { success: false, error: 'Workspace restore preview is unavailable' },
+          503,
+        );
+      if (deps.isRequestPrincipalCurrent?.(c.req.raw) !== true)
+        return c.json({ success: false, error: 'Session not found' }, 404);
+      const threadId = param(c, 'threadId');
+      const identity = mutationIdentity(c);
+      if (
+        !orchestrationService.canUserMutateSession(
+          threadId,
+          identity.userId,
+          identity.tenant,
+        )
+      )
+        return c.json({ success: false, error: 'Session not found' }, 404);
+      const body = await c.req.json().catch(() => ({}));
+      const parsed = z
+        .object({ phase: z.enum(['baseline', 'settle']).default('settle') })
+        .safeParse(body);
+      if (!parsed.success)
+        return c.json(
+          { success: false, error: 'Invalid restore preview' },
+          400,
+        );
+      try {
+        return c.json({
+          success: true,
+          data: await deps.previewThreadCheckpointRestore({
+            threadId,
+            turnId: param(c, 'turnId'),
+            phase: parsed.data.phase,
+            ownerKey: identity.ownerKey,
+          }),
+        });
+      } catch (error) {
+        return c.json(
+          {
+            success: false,
+            error: 'Workspace restore preview failed',
+            reason: checkpointRestoreReason(error),
+          },
+          409,
+        );
+      }
+    },
+  );
+
   app.post('/sessions/:threadId/checkpoints/:turnId/restore', async (c) => {
     if (!deps.restoreThreadCheckpoint)
       return c.json(
@@ -2023,18 +2862,32 @@ export function createOrchestrationRoutes(
         503,
       );
     const threadId = param(c, 'threadId');
-    if (!orchestrationService.canUserReadSession(threadId, readAuthorityFor(c)))
+    if (deps.isRequestPrincipalCurrent?.(c.req.raw) !== true)
+      return c.json({ success: false, error: 'Session not found' }, 404);
+    const identity = mutationIdentity(c);
+    if (
+      !orchestrationService.canUserMutateSession(
+        threadId,
+        identity.userId,
+        identity.tenant,
+      )
+    )
       return c.json({ success: false, error: 'Session not found' }, 404);
     const body = await c.req.json().catch(() => null);
     const parsed = z
       .object({
         confirmed: z.literal(true),
-        phase: z.enum(['baseline', 'settle']).default('settle'),
+        previewId: z.string().uuid(),
+        expectedCurrentTreeSha: z.string().regex(/^[0-9a-f]{40,64}$/),
       })
       .safeParse(body);
     if (!parsed.success)
       return c.json(
-        { success: false, error: 'Explicit confirmation is required' },
+        {
+          success: false,
+          error:
+            'A current restore preview and explicit confirmation are required',
+        },
         400,
       );
     try {
@@ -2043,11 +2896,19 @@ export function createOrchestrationRoutes(
         data: await deps.restoreThreadCheckpoint({
           threadId,
           turnId: param(c, 'turnId'),
+          ownerKey: identity.ownerKey,
+          isAuthorized: () =>
+            deps.isRequestPrincipalCurrent?.(c.req.raw) === true &&
+            orchestrationService.canUserMutateSession(
+              threadId,
+              identity.userId,
+              identity.tenant,
+            ),
           ...parsed.data,
         }),
       });
     } catch (error) {
-      const reason = error instanceof Error ? error.message : 'restore_failed';
+      const reason = checkpointRestoreReason(error);
       const status =
         reason === 'checkpoint_missing' || reason === 'checkpoint_pruned'
           ? 404
@@ -2944,11 +3805,22 @@ export function createOrchestrationRoutes(
     }),
     async (c) => {
       const command = getBody(c);
+      // #2436: full access needs the operator in person or a granted device.
+      if (command.type === 'setApprovalMode') {
+        const refused = refuseUngrantedFullAccess(c, [command.approvalMode]);
+        if (refused) return refused;
+      }
       // Resolved once and reused for both the read authority below and the
       // dispatch context further down, rather than calling
       // `readAuthorityFor(c)` a second time — `resolveActorPrincipal` is the
       // single fail-closed resolution point (archive#4075 stage 2).
-      const { principal, userId: actorUserId } = resolveActorPrincipal(deps, c);
+      // Station #90 lane D (R1): a start or adoption this request causes
+      // carries the same agent owner attribution as the dispatch routes.
+      const {
+        principal,
+        userId: actorUserId,
+        ownerAttribution,
+      } = resolveDispatchActor(deps, c);
       const readAuthority = sessionReadAuthorityFromRequest(
         actorUserId,
         getTenantRequestContext(c.req.raw),
@@ -3005,6 +3877,7 @@ export function createOrchestrationRoutes(
         });
         const result = await orchestrationService.dispatchWithReceipt(command, {
           userId: actorUserId,
+          ...(ownerAttribution ? { ownerAttribution } : {}),
           ...(command.type === 'respondToRequest' &&
           command.expectedRequestEventId !== undefined
             ? {
@@ -3160,6 +4033,20 @@ export function createOrchestrationRoutes(
       // connection's whole life — including a setup-time throw, which is
       // exactly the short-lived case a rate problem looks like.
       const connectedAt = Date.now();
+      // station#2301: one line when the connection opens (after the resume
+      // decision is known) and one when it ends, joined by `connectionId`.
+      // The close line is the one that matters most for this defect class —
+      // a stream that dies quietly and is never replaced — and it is the one
+      // the access log never had.
+      const logLifecycle = (deps.logger.info ?? deps.logger.debug).bind(
+        deps.logger,
+      );
+      const connectionId = randomUUID();
+      const client = describeOrchestrationStreamClient(c.req.raw);
+      const rawLastEventId = c.req.header('Last-Event-ID');
+      let framesWritten = 0;
+      let closeReason: 'client-abort' | 'authorization-expired' | undefined;
+      let setupError: string | undefined;
       // archive#1225: register this connection with the presence tracker
       // BEFORE anything else can `await` — the push-on-completion gate
       // (`turn-completion-notifications.ts`) must never see a window where
@@ -3188,6 +4075,33 @@ export function createOrchestrationRoutes(
       let unsub: (() => void) | undefined;
       let stopKeepAlive: (() => void) | undefined;
       try {
+        // station#2301 review (M2): register for the client going away
+        // BEFORE anything below can await. Hono notifies only subscribers
+        // registered before `abort()` runs, so a client that left during a
+        // slow snapshot read used to leave this handler waiting forever: its
+        // presence count, event subscription and keepalive timer leaked, and
+        // no close line was ever written.
+        const clientGone = new Promise<void>((resolve) => {
+          const onGone = () => {
+            closeReason ??= 'client-abort';
+            // Release what the connection holds NOW, not in `finally`: a store
+            // read that never settles would otherwise keep this user counted
+            // as present (suppressing push-on-completion) and subscribed. All
+            // three are idempotent; `finally` repeats them harmlessly.
+            stopKeepAlive?.();
+            unsub?.();
+            releasePresence();
+            resolve();
+          };
+          if (stream.aborted) onGone();
+          else stream.onAbort(onGone);
+        });
+        // ...and keep the connection audibly alive while that read runs. The
+        // client abandons a body that writes nothing for its stall deadline,
+        // and until caught-up this route used to write nothing at all, so a
+        // snapshot slower than the deadline would reconnect forever. Each
+        // frame is a single write, so a ping cannot land inside another frame.
+        stopKeepAlive = sseKeepalive(stream);
         // Ordering fence (R4): subscribe and buffer live events FIRST, before
         // any `await` below can yield to an event that was appended and
         // emitted concurrently. Nothing buffered here is written until after
@@ -3199,10 +4113,12 @@ export function createOrchestrationRoutes(
           id?: string;
         }) => {
           if (deps.isRequestPrincipalCurrent?.(c.req.raw) === false) {
+            closeReason ??= 'authorization-expired';
             stream.abort();
             throw new Error('Orchestration stream authorization expired');
           }
           await stream.writeSSE(frame);
+          framesWritten++;
         };
         let caughtUp = false;
         const pending: Array<{ event: string; data: string; id?: string }> = [];
@@ -3219,6 +4135,7 @@ export function createOrchestrationRoutes(
         };
         unsub = deps.eventBus.subscribe((evt) => {
           if (deps.isRequestPrincipalCurrent?.(c.req.raw) === false) {
+            closeReason ??= 'authorization-expired';
             stream.abort();
             return;
           }
@@ -3322,11 +4239,35 @@ export function createOrchestrationRoutes(
         if (plan.gap !== undefined) {
           orchestrationStreamResumeGap.record(plan.gap);
         }
+        logLifecycle('Orchestration event stream opened', {
+          connectionId,
+          ...client,
+          scope: threadId ? 'thread' : 'all',
+          // Query-string supplied, so bounded like every other client field.
+          ...(threadId ? { threadId: threadId.slice(0, 200) } : {}),
+          // `invalid` = a header was sent but is not a cursor this server
+          // accepts, which the resume plan then treats as no cursor.
+          lastEventId:
+            cursor !== undefined ? cursor : rawLastEventId ? 'invalid' : 'none',
+          head,
+          resumeDecision: plan.decision,
+          resumeReason: plan.reason,
+          ...(plan.gap !== undefined ? { resumeGap: plan.gap } : {}),
+        });
 
-        // The advertised resume cursor for the snapshot/caught-up frames.
-        // Starts at `head` (computed above, before any `await`) and is
-        // refined below if the snapshot branch runs — see that branch.
-        let resolvedHead = head;
+        // The advertised resume cursor for the snapshot/caught-up frames:
+        // `head`, read above BEFORE any `await` and after the live
+        // subscription was armed. It is deliberately never re-read after the
+        // snapshot is built (#2456 D1): an event appended while
+        // `listSessionReadModel` is awaited may be missing from the snapshot,
+        // yet a re-read head would already cover its sequence, so the client's
+        // cursor would drop the buffered live frame and the event would be
+        // lost. With `head`, every such event is newer than the cursor and is
+        // delivered from `pending`; an event the snapshot DID already reflect
+        // is re-applied, which the stream's consumers already tolerate at the
+        // replay/snapshot boundary (resumeCursor.ts) — the snapshot carries
+        // no transcript, and child-work deltas fold idempotently.
+        const resolvedHead = head;
 
         if (plan.decision === 'replay') {
           const replayBudget = orchestrationService.readEventStreamReplayPlan(
@@ -3342,7 +4283,7 @@ export function createOrchestrationRoutes(
           if (!replayBudget.fitsBudget) {
             const sessions =
               await orchestrationService.listSessionReadModel(authority);
-            resolvedHead = orchestrationService.readEventStreamHead();
+            // #2456 D1: `resolvedHead` stays `head` — see its declaration.
             await writeAuthorized({
               event: 'orchestration:snapshot',
               data: JSON.stringify({ sessions }),
@@ -3383,14 +4324,13 @@ export function createOrchestrationRoutes(
         } else {
           const sessions =
             await orchestrationService.listSessionReadModel(authority);
-          // LOW (review): `head` was read before the `await` above — another
-          // await-yielding-tick's worth of appends could have landed by now.
-          // Re-reading here costs one more (cheap, indexed MAX) query and
-          // makes the advertised cursor exact rather than merely safe: a
-          // stale-but-safe cursor still works correctly (anything newer is
-          // buffered and delivered live, see below), but an exact one gives a
-          // reconnecting client a tighter future resume point.
-          resolvedHead = orchestrationService.readEventStreamHead();
+          // #2456 D1: the head is NOT re-read here. An earlier review
+          // ("LOW") re-read it to make the cursor "exact", but an exact
+          // cursor is unsafe: events appended during the `await` above can
+          // be absent from `sessions` while their sequence is ≤ the re-read
+          // head, so the client drops their buffered live frames and loses
+          // them. `head` (read before the await) is stale-but-safe: anything
+          // newer is delivered live from `pending`.
           await writeAuthorized({
             event: 'orchestration:snapshot',
             data: JSON.stringify({ sessions }),
@@ -3411,17 +4351,13 @@ export function createOrchestrationRoutes(
           await writeAuthorized(frame);
         }
 
-        stopKeepAlive = sseKeepalive(stream);
-
-        try {
-          await new Promise((_, reject) => {
-            stream.onAbort(() => reject(new Error('aborted')));
-          });
-        } catch (error) {
-          deps.logger.debug('Orchestration SSE client disconnected', {
-            error: error instanceof Error ? error.message : String(error),
-          });
-        }
+        await clientGone;
+        deps.logger.debug('Orchestration SSE client disconnected');
+      } catch (error) {
+        // Recorded for the close line, then rethrown unchanged: Hono's
+        // `streamSSE` still owns what an uncaught setup throw does.
+        setupError = error instanceof Error ? error.message : String(error);
+        throw error;
       } finally {
         // archive#1225 review (HIGH): this ALWAYS runs — a throw anywhere
         // above (setup, replay/snapshot writes, the abort-wait) still
@@ -3437,6 +4373,20 @@ export function createOrchestrationRoutes(
         orchestrationStreamPresenceOps.add(1, { op: 'disconnect' });
         orchestrationStreamDuration.record(Date.now() - connectedAt, {
           scope: threadId ? 'thread' : 'all',
+        });
+        logLifecycle('Orchestration event stream closed', {
+          connectionId,
+          clientSession: client.clientSession,
+          actor: client.actor,
+          // An authorization expiry mid-write throws into the catch above
+          // too; the specific reason wins over the generic setup failure.
+          reason:
+            closeReason ?? (setupError !== undefined ? 'setup-error' : 'ended'),
+          ...(setupError !== undefined
+            ? { error: setupError.slice(0, 500) }
+            : {}),
+          durationMs: Date.now() - connectedAt,
+          framesWritten,
         });
       }
     });

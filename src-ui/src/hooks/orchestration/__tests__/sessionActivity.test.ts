@@ -14,6 +14,7 @@ import {
 
 let deriveActivityLabel: typeof import('../../../components/chat/StreamingMessage').deriveActivityLabel;
 let isSessionExecutionActive: typeof import('../../../utils/execution').isSessionExecutionActive;
+let isTurnStreamLive: typeof import('../../../utils/execution').isTurnStreamLive;
 let activeChatsStore: import('../../../contexts/active-chats-store').ActiveChatsStore;
 let handleTurnStartedEvent: typeof import('../turnHandlers').handleTurnStartedEvent;
 let handleRuntimeErrorEvent: typeof import('../turnHandlers').handleRuntimeErrorEvent;
@@ -34,7 +35,9 @@ beforeAll(async () => {
   ({ deriveActivityLabel } = await import(
     '../../../components/chat/StreamingMessage'
   ));
-  ({ isSessionExecutionActive } = await import('../../../utils/execution'));
+  ({ isSessionExecutionActive, isTurnStreamLive } = await import(
+    '../../../utils/execution'
+  ));
 });
 
 describe('isSessionExecutionActive — indicator gating', () => {
@@ -735,5 +738,179 @@ describe('handleSessionExitedEvent / handleSessionStateChangedEvent — clearing
       '[SYSTEM_EVENT] [CHAT_ERROR] engine crashed',
     );
     expect(chat?.messages?.at(-1)?.turnId).toBe('turn-compact-2');
+  });
+
+  test('station#2235: an interrupted-turn banner settles a live shell the recovery abort never reached', () => {
+    const at = '2026-09-19T01:22:59.000Z';
+    handleTurnStartedEvent(
+      {
+        eventId: 'evt-turn',
+        provider: 'acp',
+        threadId,
+        createdAt: at,
+        method: 'turn.started',
+        turnId: 'turn-9',
+      } as any,
+      activeChatsStore,
+    );
+    activeChatsStore.updateChat(threadId, {
+      streamingMessage: {
+        role: 'assistant',
+        content: 'partial answer',
+        contentParts: [{ type: 'text', content: 'partial answer' }],
+      },
+      isProcessingStep: true,
+      activityHint: { kind: 'thinking' },
+    });
+
+    handleSessionStateChangedEvent(
+      {
+        eventId: 'turn-interrupted:turn-boundary:b-1',
+        provider: 'acp',
+        threadId,
+        createdAt: at,
+        method: 'session.state-changed',
+        sessionId: 'session-1',
+        from: 'running',
+        to: 'awaiting-approval',
+        sessionState: 'needs_input',
+        interruptedTurnBoundary: {
+          boundaryId: 'b-1',
+          priorState: 'accepted',
+          ownerId: 'dead-owner',
+          boundaryCreatedAt: at,
+          boundaryUpdatedAt: at,
+        },
+      } as any,
+      activeChatsStore,
+    );
+
+    const chat = activeChatsStore.getSnapshot()[threadId];
+    expect(chat?.orchestrationTurnOpen).toBe(false);
+    expect(chat?.openTurnId).toBeUndefined();
+    expect(chat?.streamingMessage).toBeUndefined();
+    expect(chat?.isProcessingStep).toBe(false);
+    expect(chat?.activityHint).toBeUndefined();
+    expect(chat?.orchestrationStatus).toBe('awaiting-approval');
+    expect(chat?.status).toBe('idle');
+    // The STREAMING row's own predicate (archive#3300), not the coarser
+    // session-activity one: awaiting-approval still counts as "doing
+    // something" for activity indicators, but the live row must be gone.
+    expect(
+      isTurnStreamLive({
+        status: chat?.status,
+        orchestrationStatus: chat?.orchestrationStatus,
+        orchestrationSessionStarted: chat?.orchestrationSessionStarted,
+        orchestrationTurnOpen: chat?.orchestrationTurnOpen,
+      } as any),
+    ).toBe(false);
+  });
+
+  test('station#2235: the same banner clears dead approval grants and dismisses their toasts', async () => {
+    const { toastStore } = await import('../../../contexts/ToastContext');
+    const dismissSpy = vi.spyOn(toastStore, 'dismiss');
+    try {
+      const at = '2026-09-19T01:22:59.000Z';
+      handleTurnStartedEvent(
+        {
+          eventId: 'evt-turn',
+          provider: 'acp',
+          threadId,
+          createdAt: at,
+          method: 'turn.started',
+          turnId: 'turn-9',
+        } as any,
+        activeChatsStore,
+      );
+      // A grant the dead turn opened: the approval registry died with the
+      // owning process, so no request.resolved will ever arrive for it.
+      handleRequestOpenedEvent('http://localhost:0', {
+        eventId: 'evt-req',
+        provider: 'acp',
+        threadId,
+        createdAt: at,
+        method: 'request.opened',
+        requestId: 'req-dead',
+        requestType: 'approval',
+        title: 'Allow tool call',
+      } as any);
+      const toastId = activeChatsStore
+        .getSnapshot()
+        [threadId]?.approvalToasts?.get('req-dead');
+      expect(toastId).toBeDefined();
+
+      handleSessionStateChangedEvent(
+        {
+          eventId: 'turn-interrupted:turn-boundary:b-2',
+          provider: 'acp',
+          threadId,
+          createdAt: at,
+          method: 'session.state-changed',
+          sessionId: 'session-1',
+          from: 'running',
+          to: 'awaiting-approval',
+          sessionState: 'needs_input',
+          interruptedTurnBoundary: {
+            boundaryId: 'b-2',
+            priorState: 'accepted',
+            ownerId: 'dead-owner',
+            boundaryCreatedAt: at,
+            boundaryUpdatedAt: at,
+          },
+        } as any,
+        activeChatsStore,
+      );
+
+      const chat = activeChatsStore.getSnapshot()[threadId];
+      expect(chat?.pendingApprovals ?? []).toEqual([]);
+      expect(chat?.approvalToasts?.size ?? 0).toBe(0);
+      expect(dismissSpy).toHaveBeenCalledWith(toastId);
+    } finally {
+      dismissSpy.mockRestore();
+    }
+  });
+
+  test('station#2235: a bare awaiting-approval without the boundary field still parks the shell (mid-turn approval)', () => {
+    // Negative control: the gating is on the provenance field, not on the
+    // status vocabulary. A live approval (no boundary) must keep the open
+    // turn exactly as the #1076 mid-turn test above requires.
+    const at = '2026-09-19T01:22:59.000Z';
+    handleTurnStartedEvent(
+      {
+        eventId: 'evt-turn',
+        provider: 'acp',
+        threadId,
+        createdAt: at,
+        method: 'turn.started',
+        turnId: 'turn-9',
+      } as any,
+      activeChatsStore,
+    );
+    activeChatsStore.updateChat(threadId, {
+      streamingMessage: {
+        role: 'assistant',
+        content: 'partial answer',
+        contentParts: [{ type: 'text', content: 'partial answer' }],
+      },
+    });
+
+    handleSessionStateChangedEvent(
+      {
+        eventId: 'evt-approval',
+        provider: 'acp',
+        threadId,
+        createdAt: at,
+        method: 'session.state-changed',
+        sessionId: 'session-1',
+        from: 'running',
+        to: 'awaiting-approval',
+      } as any,
+      activeChatsStore,
+    );
+
+    const chat = activeChatsStore.getSnapshot()[threadId];
+    expect(chat?.orchestrationTurnOpen).toBe(true);
+    expect(chat?.streamingMessage).toBeDefined();
+    expect(chat?.orchestrationStatus).toBe('awaiting-approval');
   });
 });

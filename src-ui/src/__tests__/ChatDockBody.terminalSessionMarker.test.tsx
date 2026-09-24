@@ -19,6 +19,7 @@ import { describe, expect, test, vi } from 'vitest';
 vi.mock('@kontourai/station-connect', () => ({
   useConnections: () => ({
     activeConnection: { id: 'test', name: 'Test Station' },
+    captureCredentialEvidence: () => undefined,
   }),
 }));
 vi.mock('../contexts/AgentsContext', () => ({
@@ -29,6 +30,7 @@ vi.mock('../contexts/AgentsContext', () => ({
 
 vi.mock('../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://localhost:3242' }),
+  useHostRequestAuthorityScope: () => undefined,
 }));
 
 vi.mock('../contexts/ToastContext', () => ({
@@ -312,6 +314,44 @@ describe('ChatDockBody terminal-session marker (station#1827)', () => {
         },
       ],
     });
+  });
+
+  test('an expired OAuth session offers Switch agent, not Send again, and hides stderr behind Details', async () => {
+    const onNewChat = vi.fn();
+    const session = buildSession({
+      messages: [
+        {
+          role: 'user',
+          content: 'Reply with just the word hello.',
+          timestamp: 1,
+        } as any,
+        {
+          role: 'user',
+          content:
+            '[SYSTEM_EVENT] [CHAT_ERROR:engine-turn-failed] Failed to authenticate: OAuth session expired and could not be refreshed',
+          timestamp: 2,
+        } as any,
+      ],
+    });
+
+    renderDock(session, onNewChat);
+
+    expect(
+      await screen.findByText(
+        /needs to be signed in/i,
+        {},
+        { timeout: LAZY_TRANSCRIPT_TIMEOUT_MS },
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Send again' })).toBeNull();
+    expect(
+      await screen.findByRole(
+        'button',
+        { name: 'Switch agent' },
+        { timeout: LAZY_TRANSCRIPT_TIMEOUT_MS },
+      ),
+    ).toBeTruthy();
+    expect(screen.getByText('Details')).toBeTruthy();
   });
 
   test('an ordinary [CHAT_ERROR] marker (no code) still offers "Send again" exactly as before', async () => {

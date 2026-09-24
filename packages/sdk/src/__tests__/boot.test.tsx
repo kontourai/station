@@ -7,7 +7,9 @@ import {
   BOOT_SEED_KEYS,
   fetchAndSeedBootPayload,
   fetchBootPayload,
+  fetchBootPayloadAt,
   seedBootPayload,
+  seedBootPayloadGuarded,
 } from '../boot';
 import type { AgentCatalogProjection } from '../client/agents';
 import {
@@ -149,6 +151,59 @@ describe('boot payload seeding', () => {
     await fetchAndSeedBootPayload(client);
 
     expect(client.getQueryState(BOOT_SEED_KEYS.agents)).toBeUndefined();
+    fetchSpy.mockRestore();
+  });
+
+  test('guarded seed writes every section while the captured scope stays current', async () => {
+    const client = new QueryClient();
+    await seedBootPayloadGuarded(
+      client,
+      {
+        version: 1,
+        sections: {
+          projects: { data: { success: true, data: ['boot'] } },
+          models: { data: { success: true, data: ['models'] } },
+        },
+      },
+      Date.now(),
+      () => true,
+    );
+    expect(client.getQueryData(BOOT_SEED_KEYS.projects)).toEqual(['boot']);
+    expect(client.getQueryData(BOOT_SEED_KEYS.models)).toEqual(['models']);
+  });
+
+  test('guarded seed drops every write once the captured scope lapses (same-origin rotation)', async () => {
+    // A same-origin identity change passes every origin comparison, so the
+    // per-write guard is the only thing refusing each section here.
+    const client = new QueryClient();
+    await seedBootPayloadGuarded(
+      client,
+      {
+        version: 1,
+        sections: {
+          projects: { data: { success: true, data: ['stale'] } },
+          models: { data: { success: true, data: ['stale'] } },
+        },
+      },
+      Date.now(),
+      () => false,
+    );
+    expect(client.getQueryState(BOOT_SEED_KEYS.projects)).toBeUndefined();
+    expect(client.getQueryState(BOOT_SEED_KEYS.models)).toBeUndefined();
+  });
+
+  test('captured-origin fetch never resolves the module global', async () => {
+    _setApiBase('http://station.other');
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockImplementation(async (input) =>
+        Response.json({ version: 1, sections: {}, fetchedAt: String(input) }),
+      );
+    const payload = await fetchBootPayloadAt('http://station.captured');
+    expect(payload).toMatchObject({ version: 1 });
+    expect(fetchSpy.mock.calls[0]?.[0]).toBe(
+      'http://station.captured/api/boot',
+    );
     fetchSpy.mockRestore();
   });
 

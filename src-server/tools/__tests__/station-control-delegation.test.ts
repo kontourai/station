@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { agentId, engineId } from '@kontourai/station-contracts/agent-identity';
 import { environmentId } from '@kontourai/station-contracts/execution-target';
+import { PORTABLE_EXECUTION_CONSENT_METADATA_KEY } from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import {
   parseHostedTenantRegistry,
@@ -19,6 +20,7 @@ import { EventBus } from '../../services/orchestration/event-bus.js';
 import { EventStore } from '../../services/orchestration/event-store.js';
 import type { ForegroundInvocationAdmission } from '../../services/orchestration/foreground-invocation-admission.js';
 import { OrchestrationService } from '../../services/orchestration/orchestration-service.js';
+import { ReceiverExecutionRefusal } from '../../services/projects/project-contribution-service.js';
 
 process.env.STATION_API_BASE = 'http://control-delegation.test';
 process.env.STATION_INTERNAL_API_TOKEN = 'internal-test-token';
@@ -714,6 +716,36 @@ describe('Station Control canonical Environment + Agent execution', () => {
         }),
         expect.anything(),
       );
+    },
+  );
+
+  // Station #90 lane D (B2/R1): the delegated start hands the route-set
+  // owner attribution to the service's start choke point in its dispatch
+  // context, and only when set.
+  test.each([
+    ['marked', 'unattributed-agent' as const],
+    ['plain', undefined],
+  ])(
+    'a %s delegated start carries the owner attribution in its start context exactly when the route set it',
+    async (_name, ownerAttribution) => {
+      installCurrentStationFetch();
+      const service = localService();
+      const { delegateTask } = await import('../station-control-delegation.js');
+      await delegateTask(
+        {
+          prompt: 'Delegated by an agent',
+          target: currentTarget(),
+          userId: 'shared-user',
+          ...(ownerAttribution ? { ownerAttribution } : {}),
+        },
+        service as never,
+      );
+      const context = service.sessionCommands.execute.mock
+        .calls[0][1] as Record<string, unknown>;
+      expect(context.userId).toBe('shared-user');
+      if (ownerAttribution)
+        expect(context.ownerAttribution).toBe(ownerAttribution);
+      else expect(context).not.toHaveProperty('ownerAttribution');
     },
   );
 
@@ -1424,6 +1456,105 @@ describe('Station Control canonical Environment + Agent execution', () => {
     ).rejects.toMatchObject({
       code: 'foreground_message_indeterminate',
       outcome: 'indeterminate',
+    });
+  });
+
+  /**
+   * #2436 HIGH-1: a Station that predates the approval command validates the
+   * body with a schema that has no `setApprovalMode`, and zod strips unknown
+   * keys. The pick must still reach such a Station through the channel it
+   * has always applied: `model.options.approvalMode`.
+   */
+  describe('an approval pick sent to another Station', () => {
+    async function olderRemoteSees(
+      path:
+        | '/api/orchestration/chat'
+        | '/api/orchestration/chat/conversation-1/continue',
+    ) {
+      const { continueForegroundMessageSchema, foregroundMessageObjectSchema } =
+        await import('../../routes/orchestration/orchestration.js');
+      const call = fetchMock.mock.calls.find(
+        ([url]) => String(url) === `${REMOTE_API}${path}`,
+      );
+      const body = bodyOf(call!);
+      // The pre-#2436 schemas: the same objects without the new keys.
+      const older =
+        path === '/api/orchestration/chat'
+          ? foregroundMessageObjectSchema.omit({
+              setApprovalMode: true,
+              setApprovalModeBasedOn: true,
+            })
+          : continueForegroundMessageSchema;
+      return { sent: body, parsed: older.parse(body) as Record<string, any> };
+    }
+
+    test('a /chat send carries it both as the command and on the options an older Station applies', async () => {
+      installRemoteStationFetch('/api/orchestration/chat', foregroundHandle());
+      const { executeExecutionTargetMessage } = await import(
+        '../station-control-delegation.js'
+      );
+      await executeExecutionTargetMessage({
+        target: savedTarget(),
+        message: 'Tighten this',
+        conversationId: 'conversation-1',
+        setApprovalMode: 'ask',
+        setApprovalModeBasedOn: 7,
+      });
+      const { sent, parsed } = await olderRemoteSees('/api/orchestration/chat');
+      expect(sent).toMatchObject({
+        setApprovalMode: 'ask',
+        setApprovalModeBasedOn: 7,
+      });
+      expect(parsed).not.toHaveProperty('setApprovalMode');
+      expect(parsed.target.model.options.approvalMode).toBe('ask');
+    });
+
+    test('a continue forwards it too, on both channels', async () => {
+      installRemoteStationFetch(
+        '/api/orchestration/chat/conversation-1/continue',
+        foregroundHandle(),
+        {
+          workingDirectory: '/srv/station',
+          existingSessionCwd: '/srv/station',
+        },
+      );
+      const { continueExecutionTargetMessage } = await import(
+        '../station-control-delegation.js'
+      );
+      await continueExecutionTargetMessage({
+        conversationId: 'conversation-1',
+        environment: { kind: 'saved', id: environmentId('environment-remote') },
+        message: 'Continue tighter',
+        setApprovalMode: 'ask',
+        setApprovalModeBasedOn: 3,
+        model: { options: { effort: 'low' } },
+      });
+      const { sent, parsed } = await olderRemoteSees(
+        '/api/orchestration/chat/conversation-1/continue',
+      );
+      expect(sent).toMatchObject({
+        setApprovalMode: 'ask',
+        setApprovalModeBasedOn: 3,
+      });
+      expect(parsed.model.options).toEqual({
+        effort: 'low',
+        approvalMode: 'ask',
+      });
+    });
+
+    test('a send with no pick adds no posture', async () => {
+      installRemoteStationFetch('/api/orchestration/chat', foregroundHandle());
+      const { executeExecutionTargetMessage } = await import(
+        '../station-control-delegation.js'
+      );
+      await executeExecutionTargetMessage({
+        target: savedTarget(),
+        message: 'No pick',
+        conversationId: 'conversation-1',
+      });
+      const { sent } = await olderRemoteSees('/api/orchestration/chat');
+      expect(sent).not.toHaveProperty('setApprovalMode');
+      expect(sent.target).not.toHaveProperty('model');
     });
   });
 
@@ -2595,6 +2726,573 @@ describe('Station Control canonical Environment + Agent execution', () => {
     );
   });
 
+  // Station #90 lane D (D2): the child a follow-up starts carries the
+  // route-set owner attribution, like a fresh delegation.
+  test('a follow-up child Session carries the unattributed-agent marker the route set', async () => {
+    installCurrentStationFetch();
+    const authority = hostedAuthority('alpha');
+    const service = localDelegatedTaskService('completed');
+    const { continueDelegatedTask } = await import(
+      '../station-control-delegation.js'
+    );
+    await continueDelegatedTask(
+      {
+        taskId: 'task-alpha',
+        message: 'One more thing',
+        readAuthority: authority,
+        ownerAttribution: 'unattributed-agent',
+      },
+      service as never,
+    );
+    const [command, context] = service.startSessionInternal.mock
+      .calls[0] as unknown as [
+      { input: { threadId: string } },
+      Record<string, unknown>,
+    ];
+    expect(command.input.threadId).toBe('task-alpha:session:child-1');
+    expect(context.ownerAttribution).toBe('unattributed-agent');
+  });
+
+  test('a foreground start carries the owner attribution in its start context', async () => {
+    installCurrentStationFetch();
+    const service = localService();
+    const { executeExecutionTargetMessage } = await import(
+      '../station-control-delegation.js'
+    );
+    await executeExecutionTargetMessage(
+      {
+        target: currentTarget(),
+        message: 'agent-started foreground',
+        userId: 'shared-user',
+        ownerAttribution: 'unattributed-agent',
+      },
+      service as never,
+    );
+    const context = service.startSessionInternal.mock.calls[0]?.[1] as
+      | Record<string, unknown>
+      | undefined;
+    expect(context?.ownerAttribution).toBe('unattributed-agent');
+  });
+
+  test('a marked portable task refuses continuation without a fresh offer admission', async () => {
+    installCurrentStationFetch();
+    const authority = hostedAuthority('alpha');
+    const base = localDelegatedTaskService('completed');
+    // The persisted session binding carries the server-minted portable
+    // consent marker (stamped at dispatch, re-stamped after the
+    // reserved-key strip) — a follow-up without a freshly re-admitted
+    // offer must refuse BEFORE any provider effect, not silently bypass
+    // the explicit portable mode's contract across the persist boundary.
+    const markedDetail = {
+      session: {
+        threadId: 'task-alpha',
+        lifecycleState: 'completed',
+        eventCount: 2,
+        delegation: {
+          taskId: 'task-alpha',
+          environmentId: 'environment-current',
+          environmentName: 'Current environment',
+          targetKind: 'agent',
+          targetId: 'reviewer',
+        },
+      },
+      events: [
+        {
+          method: 'session.configured',
+          metadata: {
+            taskId: 'task-alpha',
+            environmentId: 'environment-current',
+            environmentName: 'Current environment',
+            targetKind: 'agent',
+            targetId: 'reviewer',
+            userId: 'shared-user',
+            [PORTABLE_EXECUTION_CONSENT_METADATA_KEY]: {
+              portableProjectId: 'prj_shared',
+              resourceId: 'git.example/acme/repo',
+              localProjectId: 'local-project-1',
+            },
+          },
+        },
+      ],
+    };
+    const service = {
+      ...base,
+      readSession: vi.fn(async () => markedDetail),
+      readCurrentConversationSession: vi.fn(async () => markedDetail),
+    };
+    const { continueDelegatedTask } = await import(
+      '../station-control-delegation.js'
+    );
+
+    await expect(
+      continueDelegatedTask(
+        {
+          taskId: 'task-alpha',
+          message: 'One more thing',
+          readAuthority: authority,
+        },
+        service as never,
+      ),
+    ).rejects.toMatchObject({ code: 'receiver_execution_not_offered' });
+    expect(service.dispatchWithReceipt).not.toHaveBeenCalled();
+    expect(service.startSessionInternal).not.toHaveBeenCalled();
+  });
+
+  test.each(
+    [
+      { portableProjectId: 'prj_shared', resourceId: 'git.example/acme/repo' },
+      {
+        portableProjectId: 42,
+        resourceId: 'git.example/acme/repo',
+        localProjectId: 'local-project-1',
+      },
+      {
+        portableProjectId: 'prj_shared',
+        resourceId: null,
+        localProjectId: 'local-project-1',
+      },
+      { portableProjectId: '', resourceId: 'git.example/acme/repo' },
+      null,
+      'corrupted marker',
+      [],
+    ].map((marker) => ({ marker })),
+  )(
+    'an unprovable portable marker fails closed with history retained: %j',
+    async ({ marker }) => {
+      installCurrentStationFetch();
+      const authority = hostedAuthority('alpha');
+      const base = localDelegatedTaskService('completed');
+      // A marker minted before the ORIGINAL-incarnation field existed
+      // cannot prove its association: the follow-up fails closed with the
+      // named stale outcome — never silently upgraded — while the thread's
+      // history stays readable for a new explicit execution.
+      const legacyMarkedDetail = {
+        session: {
+          threadId: 'task-alpha',
+          lifecycleState: 'completed',
+          eventCount: 2,
+          delegation: {
+            taskId: 'task-alpha',
+            environmentId: 'environment-current',
+            environmentName: 'Current environment',
+            targetKind: 'agent',
+            targetId: 'reviewer',
+          },
+        },
+        events: [
+          {
+            method: 'session.configured',
+            metadata: {
+              taskId: 'task-alpha',
+              environmentId: 'environment-current',
+              environmentName: 'Current environment',
+              targetKind: 'agent',
+              targetId: 'reviewer',
+              userId: 'shared-user',
+              [PORTABLE_EXECUTION_CONSENT_METADATA_KEY]: marker,
+            },
+          },
+        ],
+      };
+      const service = {
+        ...base,
+        readSession: vi.fn(async () => legacyMarkedDetail),
+        readCurrentConversationSession: vi.fn(async () => legacyMarkedDetail),
+      };
+      const { continueDelegatedTask, observeDelegatedTask } = await import(
+        '../station-control-delegation.js'
+      );
+
+      await expect(
+        continueDelegatedTask(
+          {
+            taskId: 'task-alpha',
+            message: 'One more thing',
+            readAuthority: authority,
+            // Even a willing factory cannot upgrade a legacy marker.
+            authorizeReceiverExecution: vi.fn(async () => {
+              throw new Error('must not mint for a stale marker');
+            }),
+          },
+          service as never,
+        ),
+      ).rejects.toMatchObject({ code: 'receiver_execution_consent_stale' });
+      expect(service.dispatchWithReceipt).not.toHaveBeenCalled();
+      expect(service.startSessionInternal).not.toHaveBeenCalled();
+      // History is retained: the task still observes as completed.
+      await expect(
+        observeDelegatedTask(
+          { taskId: 'task-alpha', readAuthority: authority },
+          service as never,
+        ),
+      ).resolves.toMatchObject({ status: 'completed' });
+    },
+  );
+
+  test('a marked portable continue mints from the marker and threads admission to the child effects', async () => {
+    installCurrentStationFetch();
+    const authority = hostedAuthority('alpha');
+    const base = localDelegatedTaskService('completed');
+    // The persisted marker names the full association INCLUDING the
+    // ORIGINAL incarnation. The follow-up body carries no portable ids
+    // at all — the mint must name the marker's ids, never caller input.
+    const markedDetail = {
+      session: {
+        threadId: 'task-alpha',
+        lifecycleState: 'completed',
+        eventCount: 2,
+        delegation: {
+          taskId: 'task-alpha',
+          environmentId: 'environment-current',
+          environmentName: 'Current environment',
+          targetKind: 'agent',
+          targetId: 'reviewer',
+        },
+      },
+      events: [
+        {
+          method: 'session.configured',
+          metadata: {
+            taskId: 'task-alpha',
+            environmentId: 'environment-current',
+            environmentName: 'Current environment',
+            targetKind: 'agent',
+            targetId: 'reviewer',
+            userId: 'shared-user',
+            [PORTABLE_EXECUTION_CONSENT_METADATA_KEY]: {
+              portableProjectId: 'prj_shared',
+              resourceId: 'git.example/acme/repo',
+              localProjectId: 'local-project-1',
+            },
+          },
+        },
+      ],
+    };
+    const service = {
+      ...base,
+      readSession: vi.fn(async () => markedDetail),
+      readCurrentConversationSession: vi.fn(async () => markedDetail),
+    };
+    const recheck = vi.fn(async () => {});
+    const authorizeReceiverExecution = vi.fn(
+      async (_workspace: {
+        portableProjectId: string;
+        resourceId: string;
+      }) => ({
+        portableProjectId: 'prj_shared',
+        resourceId: 'git.example/acme/repo',
+        admittedProject: {
+          slug: 'receiver-local',
+          localProjectId: 'local-project-1',
+          resourcePath: '/fixture/checkout',
+        },
+        recheck,
+      }),
+    );
+    const { continueDelegatedTask } = await import(
+      '../station-control-delegation.js'
+    );
+
+    await expect(
+      continueDelegatedTask(
+        {
+          taskId: 'task-alpha',
+          message: 'Follow up on the receiver',
+          readAuthority: authority,
+          authorizeReceiverExecution,
+        },
+        service as never,
+      ),
+    ).resolves.toMatchObject({ sessionId: 'task-alpha:session:child-1' });
+    // Minted exactly once, for the MARKER's ids — the body has no ids.
+    expect(authorizeReceiverExecution).toHaveBeenCalledTimes(1);
+    expect(authorizeReceiverExecution.mock.calls[0]![0]).toEqual({
+      portableProjectId: 'prj_shared',
+      resourceId: 'git.example/acme/repo',
+    });
+    expect(recheck).toHaveBeenCalled();
+    // The new child session starts under the admission, scoped to the
+    // lineage-resolved child thread with the server-minted consent
+    // (identity plus ORIGINAL incarnation) re-stamped.
+    expect(service.startSessionInternal).toHaveBeenCalledTimes(1);
+    const startInternal = (
+      service.startSessionInternal.mock.calls as unknown as Array<
+        [unknown, unknown, Record<string, any> | undefined]
+      >
+    )[0]![2];
+    expect(startInternal?.receiverExecutionAdmission?.admitted).toMatchObject({
+      threadId: 'task-alpha:session:child-1',
+      projectSlug: 'receiver-local',
+      cwd: '/fixture/checkout',
+      portableProjectId: 'prj_shared',
+      resourceId: 'git.example/acme/repo',
+      localProjectId: 'local-project-1',
+    });
+    expect(startInternal?.portableExecutionConsent).toEqual({
+      portableProjectId: 'prj_shared',
+      resourceId: 'git.example/acme/repo',
+      localProjectId: 'local-project-1',
+    });
+    // The turn effect carries the same admission, scoped to the child.
+    const turnInternal = (
+      service.dispatchWithReceipt.mock.calls as unknown as Array<
+        [unknown, unknown, Record<string, any> | undefined]
+      >
+    ).find((call) => (call[0] as { type?: string }).type === 'sendTurn')?.[2];
+    expect(turnInternal?.receiverExecutionAdmission?.admitted).toMatchObject({
+      threadId: 'task-alpha:session:child-1',
+      portableProjectId: 'prj_shared',
+      resourceId: 'git.example/acme/repo',
+      localProjectId: 'local-project-1',
+    });
+  });
+
+  test('a withdrawal between mint and dispatch refuses the portable continue', async () => {
+    installCurrentStationFetch();
+    const authority = hostedAuthority('alpha');
+    const base = localDelegatedTaskService('completed');
+    const markedDetail = {
+      session: {
+        threadId: 'task-alpha',
+        lifecycleState: 'completed',
+        eventCount: 2,
+        delegation: {
+          taskId: 'task-alpha',
+          environmentId: 'environment-current',
+          environmentName: 'Current environment',
+          targetKind: 'agent',
+          targetId: 'reviewer',
+        },
+      },
+      events: [
+        {
+          method: 'session.configured',
+          metadata: {
+            taskId: 'task-alpha',
+            environmentId: 'environment-current',
+            environmentName: 'Current environment',
+            targetKind: 'agent',
+            targetId: 'reviewer',
+            userId: 'shared-user',
+            [PORTABLE_EXECUTION_CONSENT_METADATA_KEY]: {
+              portableProjectId: 'prj_shared',
+              resourceId: 'git.example/acme/repo',
+              localProjectId: 'local-project-1',
+            },
+          },
+        },
+      ],
+    };
+    const service = {
+      ...base,
+      readSession: vi.fn(async () => markedDetail),
+      readCurrentConversationSession: vi.fn(async () => markedDetail),
+    };
+    // The mint succeeds; the operator withdraws the offer before the
+    // dispatch. The mint-time recheck refuses with no provider effect.
+    const authorizeReceiverExecution = vi.fn(
+      async (_workspace: {
+        portableProjectId: string;
+        resourceId: string;
+      }) => ({
+        portableProjectId: 'prj_shared',
+        resourceId: 'git.example/acme/repo',
+        admittedProject: {
+          slug: 'receiver-local',
+          localProjectId: 'local-project-1',
+          resourcePath: '/fixture/checkout',
+        },
+        recheck: async () => {
+          throw new ReceiverExecutionRefusal(
+            'receiver_execution_not_offered',
+            'This Station does not currently offer execution for the requested Project resource.',
+          );
+        },
+      }),
+    );
+    const { continueDelegatedTask } = await import(
+      '../station-control-delegation.js'
+    );
+
+    await expect(
+      continueDelegatedTask(
+        {
+          taskId: 'task-alpha',
+          message: 'Follow up after withdrawal',
+          readAuthority: authority,
+          authorizeReceiverExecution,
+        },
+        service as never,
+      ),
+    ).rejects.toMatchObject({ code: 'receiver_execution_not_offered' });
+    expect(service.dispatchWithReceipt).not.toHaveBeenCalled();
+    expect(service.startSessionInternal).not.toHaveBeenCalled();
+  });
+
+  test('a marked portable respond threads a fresh admission scoped to the current session', async () => {
+    installCurrentStationFetch();
+    const authority = hostedAuthority('alpha');
+    const base = localDelegatedTaskService('running');
+    const markedDetail = {
+      session: {
+        threadId: 'task-alpha',
+        lifecycleState: 'running',
+        eventCount: 3,
+        delegation: {
+          taskId: 'task-alpha',
+          environmentId: 'environment-current',
+          environmentName: 'Current environment',
+          targetKind: 'agent',
+          targetId: 'reviewer',
+        },
+      },
+      events: [
+        {
+          method: 'session.configured',
+          metadata: {
+            taskId: 'task-alpha',
+            environmentId: 'environment-current',
+            environmentName: 'Current environment',
+            targetKind: 'agent',
+            targetId: 'reviewer',
+            userId: 'shared-user',
+            [PORTABLE_EXECUTION_CONSENT_METADATA_KEY]: {
+              portableProjectId: 'prj_shared',
+              resourceId: 'git.example/acme/repo',
+              localProjectId: 'local-project-1',
+            },
+          },
+        },
+        {
+          method: 'request.opened',
+          requestId: 'request-alpha',
+          requestType: 'approval',
+        },
+      ],
+    };
+    const service = {
+      ...base,
+      readSession: vi.fn(async () => markedDetail),
+      readCurrentConversationSession: vi.fn(async () => markedDetail),
+    };
+    const recheck = vi.fn(async () => {});
+    const authorizeReceiverExecution = vi.fn(
+      async (_workspace: {
+        portableProjectId: string;
+        resourceId: string;
+      }) => ({
+        portableProjectId: 'prj_shared',
+        resourceId: 'git.example/acme/repo',
+        admittedProject: {
+          slug: 'receiver-local',
+          localProjectId: 'local-project-1',
+          resourcePath: '/fixture/checkout',
+        },
+        recheck,
+      }),
+    );
+    const { respondToDelegatedTaskRequest } = await import(
+      '../station-control-delegation.js'
+    );
+
+    await expect(
+      respondToDelegatedTaskRequest(
+        {
+          taskId: 'task-alpha',
+          requestId: 'request-alpha',
+          decision: 'accept',
+          readAuthority: authority,
+          authorizeReceiverExecution,
+        },
+        service as never,
+      ),
+    ).resolves.toMatchObject({ requestId: 'request-alpha' });
+    expect(authorizeReceiverExecution).toHaveBeenCalledTimes(1);
+    expect(authorizeReceiverExecution.mock.calls[0]![0]).toEqual({
+      portableProjectId: 'prj_shared',
+      resourceId: 'git.example/acme/repo',
+    });
+    // The thread id is the lineage-resolved current session (the trusted
+    // owner), never a body id — the body carries no thread at all.
+    expect(service.dispatchWithReceipt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'respondToRequest',
+        threadId: 'task-alpha',
+        requestId: 'request-alpha',
+      }),
+      expect.anything(),
+      expect.objectContaining({
+        receiverExecutionAdmission: expect.objectContaining({
+          admitted: expect.objectContaining({
+            threadId: 'task-alpha',
+            portableProjectId: 'prj_shared',
+            resourceId: 'git.example/acme/repo',
+            localProjectId: 'local-project-1',
+          }),
+        }),
+      }),
+    );
+  });
+
+  test('an interrupt on a marked portable session acquires no new authority', async () => {
+    installCurrentStationFetch();
+    const authority = hostedAuthority('alpha');
+    const base = localDelegatedTaskService('running');
+    const markedDetail = {
+      session: {
+        threadId: 'task-alpha',
+        lifecycleState: 'running',
+        eventCount: 2,
+        delegation: {
+          taskId: 'task-alpha',
+          environmentId: 'environment-current',
+          environmentName: 'Current environment',
+          targetKind: 'agent',
+          targetId: 'reviewer',
+        },
+      },
+      events: [
+        {
+          method: 'session.configured',
+          metadata: {
+            taskId: 'task-alpha',
+            environmentId: 'environment-current',
+            environmentName: 'Current environment',
+            targetKind: 'agent',
+            targetId: 'reviewer',
+            userId: 'shared-user',
+            [PORTABLE_EXECUTION_CONSENT_METADATA_KEY]: {
+              portableProjectId: 'prj_shared',
+              resourceId: 'git.example/acme/repo',
+              localProjectId: 'local-project-1',
+            },
+          },
+        },
+      ],
+    };
+    const service = {
+      ...base,
+      readSession: vi.fn(async () => markedDetail),
+      readCurrentConversationSession: vi.fn(async () => markedDetail),
+    };
+    const { interruptDelegatedTask } = await import(
+      '../station-control-delegation.js'
+    );
+
+    // Stopping/cancellation mints nothing and takes no admission input:
+    // the interrupt input has no factory slot at all.
+    await expect(
+      interruptDelegatedTask(
+        { taskId: 'task-alpha', readAuthority: authority },
+        service as never,
+      ),
+    ).resolves.toMatchObject({ interruptRequested: true });
+    expect(service.dispatchWithReceipt).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'interruptTurn' }),
+      expect.anything(),
+    );
+  });
+
   test('defers model-option capability to the current continuation resolver, not the predecessor provider (station#3414)', async () => {
     installCurrentStationFetch();
     const authority = hostedAuthority('alpha');
@@ -3307,5 +4005,426 @@ describe('observeDelegatedTaskEvents production summary binding (station#2843)',
       hostedAuthority('bravo'),
     );
     expect(readSessionEventPage).not.toHaveBeenCalled();
+  });
+
+  describe('#484 peer-hop portable refusal translation', () => {
+    const PORTABLE_WORKSPACE = {
+      kind: 'project-portable' as const,
+      portableProjectId: 'prj_portable-proof',
+      resourceId: 'git-fixture.example.test/portable-proof/repo',
+    };
+
+    function portableInput() {
+      return {
+        prompt: 'Portable dispatch',
+        target: { ...savedTarget(), workspace: PORTABLE_WORKSPACE },
+        isRequestAuthorityCurrent: () => true,
+      };
+    }
+
+    function installPortablePeerFetch(peerPost: () => Response) {
+      fetchMock.mockImplementation(async (input) => {
+        const url = String(input);
+        if (url === `${CURRENT_API}/.well-known/station/v1`) {
+          return json({ environmentId: 'environment-current' });
+        }
+        if (url === `${CURRENT_API}/api/environments/ssh`) {
+          return json({ success: true, data: [] });
+        }
+        if (
+          url ===
+          `${CURRENT_API}/api/environments/peers/environment-remote/credential`
+        ) {
+          return json({
+            success: true,
+            data: {
+              environmentId: 'environment-remote',
+              apiBase: REMOTE_API,
+              scope: 'orchestration:read orchestration:operate',
+              credential: 'peer-secret',
+              label: 'Station B',
+            },
+          });
+        }
+        if (url === `${REMOTE_API}/.well-known/station/v1`) {
+          return json({
+            environmentId: 'environment-remote',
+            capabilities: { portableExecutionOffers: true },
+          });
+        }
+        if (url === `${REMOTE_API}/api/orchestration/delegations`) {
+          return peerPost();
+        }
+        throw new Error(`Unexpected request: ${url}`);
+      });
+    }
+
+    test('keeps a receiver 403 portable refusal as that code/403 at the controller', async () => {
+      installPortablePeerFetch(() =>
+        json(
+          {
+            success: false,
+            error:
+              'This Station does not currently offer execution for the requested Project resource.',
+            code: 'receiver_execution_not_offered',
+          },
+          403,
+        ),
+      );
+      const { delegateTask } = await import('../station-control-delegation.js');
+      const error = await delegateTask(portableInput()).catch(
+        (caught: unknown) => caught,
+      );
+      expect(error).toBeInstanceOf(Error);
+      expect((error as { name?: string }).name).toBe(
+        'ReceiverExecutionRefusal',
+      );
+      expect((error as { code?: string }).code).toBe(
+        'receiver_execution_not_offered',
+      );
+      expect((error as Error).message).toBe(
+        'This Station does not currently offer execution for the requested Project resource.',
+      );
+    });
+
+    test('maps a peer 401 to the actionable authority-changed refusal without relaying peer text', async () => {
+      installPortablePeerFetch(() =>
+        json({ error: { code: 'authentication_required' } }, 401),
+      );
+      const { delegateTask } = await import('../station-control-delegation.js');
+      const error = await delegateTask(portableInput()).catch(
+        (caught: unknown) => caught,
+      );
+      expect((error as { name?: string }).name).toBe(
+        'ReceiverExecutionRefusal',
+      );
+      expect((error as { code?: string }).code).toBe(
+        'receiver_execution_authority_changed',
+      );
+      expect((error as Error).message).toBe(
+        'Portable execution authority changed before forwarding.',
+      );
+    });
+
+    test.each(['insufficient_scope', { code: 'insufficient_scope' }])(
+      'maps a peer insufficient_scope 403 (%j) to the authority-changed refusal',
+      async (errorBody) => {
+        installPortablePeerFetch(() => json({ error: errorBody }, 403));
+        const { delegateTask } = await import(
+          '../station-control-delegation.js'
+        );
+        const error = await delegateTask(portableInput()).catch(
+          (caught: unknown) => caught,
+        );
+        expect((error as { name?: string }).name).toBe(
+          'ReceiverExecutionRefusal',
+        );
+        expect((error as { code?: string }).code).toBe(
+          'receiver_execution_authority_changed',
+        );
+      },
+    );
+
+    test.each(['constructor', 'toString', '__proto__'])(
+      'rejects inherited property %s as an unknown refusal code',
+      async (code) => {
+        installPortablePeerFetch(() =>
+          json({ code, error: 'private peer diagnostic' }, 403),
+        );
+        const { delegateTask } = await import(
+          '../station-control-delegation.js'
+        );
+        const error = await delegateTask(portableInput()).catch(
+          (caught: unknown) => caught,
+        );
+        expect(error).toBeInstanceOf(Error);
+        expect((error as { name?: string }).name).not.toBe(
+          'ReceiverExecutionRefusal',
+        );
+        expect((error as { code?: string }).code).toBeUndefined();
+        expect((error as Error).message).toBe(
+          'The selected Station could not start the delegated task',
+        );
+      },
+    );
+
+    test('does NOT launder an unknown peer 500 into an authorization refusal', async () => {
+      installPortablePeerFetch(() =>
+        json({ success: false, error: 'database on fire' }, 500),
+      );
+      const { delegateTask } = await import('../station-control-delegation.js');
+      const error = await delegateTask(portableInput()).catch(
+        (caught: unknown) => caught,
+      );
+      expect((error as { name?: string }).name).not.toBe(
+        'ReceiverExecutionRefusal',
+      );
+      expect((error as Error).message).toBe(
+        'The selected Station could not start the delegated task',
+      );
+    });
+
+    describe('forwarded follow-ups (#484 continuation)', () => {
+      function installFollowUpPeerFetch(peerPost: () => Response) {
+        fetchMock.mockImplementation(async (input) => {
+          const url = String(input);
+          if (url === `${CURRENT_API}/.well-known/station/v1`) {
+            return json({ environmentId: 'environment-current' });
+          }
+          if (url === `${CURRENT_API}/api/environments/ssh`) {
+            return json({ success: true, data: [] });
+          }
+          if (
+            url ===
+            `${CURRENT_API}/api/environments/peers/environment-remote/credential`
+          ) {
+            return json({
+              success: true,
+              data: {
+                environmentId: 'environment-remote',
+                apiBase: REMOTE_API,
+                scope: 'orchestration:read orchestration:operate',
+                credential: 'peer-secret',
+                label: 'Station B',
+              },
+            });
+          }
+          if (
+            url ===
+              `${REMOTE_API}/api/orchestration/delegations/task-alpha/continue` ||
+            url ===
+              `${REMOTE_API}/api/orchestration/delegations/task-alpha/respond`
+          ) {
+            return peerPost();
+          }
+          throw new Error(`Unexpected request: ${url}`);
+        });
+      }
+
+      function followUpInput() {
+        return {
+          taskId: 'task-alpha',
+          environmentId: 'environment-remote',
+          readAuthority: hostedAuthority('alpha'),
+        };
+      }
+
+      test('keeps a receiver 403 portable refusal on a forwarded continue', async () => {
+        installFollowUpPeerFetch(() =>
+          json(
+            {
+              success: false,
+              error:
+                'This portable task cannot continue without a current execution offer for its Project resource.',
+              code: 'receiver_execution_not_offered',
+            },
+            403,
+          ),
+        );
+        const { continueDelegatedTask } = await import(
+          '../station-control-delegation.js'
+        );
+        const error = await continueDelegatedTask({
+          ...followUpInput(),
+          message: 'One more thing',
+        }).catch((caught: unknown) => caught);
+        expect((error as { name?: string }).name).toBe(
+          'ReceiverExecutionRefusal',
+        );
+        expect((error as { code?: string }).code).toBe(
+          'receiver_execution_not_offered',
+        );
+      });
+
+      test('keeps a receiver 403 stale refusal on a forwarded respond', async () => {
+        installFollowUpPeerFetch(() =>
+          json(
+            {
+              success: false,
+              error:
+                'This portable task predates its Project identity record and cannot continue. Start a new portable execution.',
+              code: 'receiver_execution_consent_stale',
+            },
+            403,
+          ),
+        );
+        const { respondToDelegatedTaskRequest } = await import(
+          '../station-control-delegation.js'
+        );
+        const error = await respondToDelegatedTaskRequest({
+          ...followUpInput(),
+          requestId: 'request-alpha',
+          decision: 'accept',
+        }).catch((caught: unknown) => caught);
+        expect((error as { name?: string }).name).toBe(
+          'ReceiverExecutionRefusal',
+        );
+        expect((error as { code?: string }).code).toBe(
+          'receiver_execution_consent_stale',
+        );
+      });
+
+      test('leaves a peer 401 on a forwarded continue as the generic sentinel, never a portable refusal', async () => {
+        installFollowUpPeerFetch(() =>
+          json({ success: false, error: 'peer credential rejected' }, 401),
+        );
+        const { continueDelegatedTask } = await import(
+          '../station-control-delegation.js'
+        );
+        const error = await continueDelegatedTask({
+          ...followUpInput(),
+          message: 'One more thing',
+        }).catch((caught: unknown) => caught);
+        expect((error as { name?: string }).name).toBe(
+          'PeerPortableFollowUpError',
+        );
+        expect((error as { name?: string }).name).not.toBe(
+          'ReceiverExecutionRefusal',
+        );
+        // Caller-safe generic: the peer's text never crosses the seam.
+        expect((error as Error).message).toBe(
+          'The selected Station could not continue the delegated task',
+        );
+      });
+
+      test.each(['constructor', '__proto__'])(
+        'rejects inherited property %s as an unknown follow-up refusal code',
+        async (code) => {
+          installFollowUpPeerFetch(() =>
+            json({ code, error: 'private peer diagnostic' }, 403),
+          );
+          const { continueDelegatedTask } = await import(
+            '../station-control-delegation.js'
+          );
+          const error = await continueDelegatedTask({
+            ...followUpInput(),
+            message: 'One more thing',
+          }).catch((caught: unknown) => caught);
+          expect((error as { name?: string }).name).toBe(
+            'PeerPortableFollowUpError',
+          );
+          expect((error as { name?: string }).name).not.toBe(
+            'ReceiverExecutionRefusal',
+          );
+          expect((error as Error).message).toBe(
+            'The selected Station could not continue the delegated task',
+          );
+        },
+      );
+
+      test.each([
+        [
+          'malformed JSON body',
+          () => new Response('not json', { status: 200 }),
+        ],
+        [
+          'peer 500 disclosing paths',
+          () =>
+            json(
+              {
+                success: false,
+                error: 'ENOENT /peer/home/secret.ts in prompt "hello"',
+              },
+              500,
+            ),
+        ],
+        ['ok response without a handle', () => json({ success: true }, 200)],
+      ])(
+        'maps %s to the generic sentinel without leaking peer text',
+        async (_label, peerPost) => {
+          installFollowUpPeerFetch(peerPost as () => Response);
+          const { continueDelegatedTask } = await import(
+            '../station-control-delegation.js'
+          );
+          const error = await continueDelegatedTask({
+            ...followUpInput(),
+            message: 'One more thing',
+          }).catch((caught: unknown) => caught);
+          expect((error as { name?: string }).name).toBe(
+            'PeerPortableFollowUpError',
+          );
+          expect((error as Error).message).toBe(
+            'The selected Station could not continue the delegated task',
+          );
+        },
+      );
+    });
+  });
+});
+
+describe('#2324 a delegated task event carries a provider-triggered turn’s trigger', () => {
+  test('forwards trigger on the start and terminal of a turn the engine opened itself, and on nothing else', async () => {
+    const { projectDelegatedTaskEvent } = await import(
+      '../station-control-delegation.js'
+    );
+    const base = {
+      eventId: 'e',
+      provider: 'claude',
+      threadId: 'task:t',
+      createdAt: '2026-09-23T00:00:00.000Z',
+      turnId: 'provider:p',
+    };
+    const trigger = { metadata: { trigger: 'provider' } };
+    expect(
+      projectDelegatedTaskEvent(1, {
+        ...base,
+        method: 'turn.started',
+        ...trigger,
+      }),
+    ).toMatchObject({
+      kind: 'lifecycle',
+      status: 'running',
+      trigger: 'provider',
+    });
+    expect(
+      projectDelegatedTaskEvent(2, {
+        ...base,
+        method: 'turn.completed',
+        outputText: 'finished',
+        ...trigger,
+      }),
+    ).toMatchObject({
+      kind: 'message',
+      status: 'completed',
+      text: 'finished',
+      trigger: 'provider',
+    });
+    expect(
+      projectDelegatedTaskEvent(3, {
+        ...base,
+        method: 'turn.aborted',
+        reason: 'interrupted',
+        ...trigger,
+      }),
+    ).toMatchObject({
+      kind: 'lifecycle',
+      status: 'stopped',
+      trigger: 'provider',
+    });
+    expect(
+      projectDelegatedTaskEvent(4, {
+        ...base,
+        method: 'runtime.error',
+        severity: 'error',
+        message: 'overloaded',
+        ...trigger,
+      }),
+    ).toMatchObject({ kind: 'runtime', trigger: 'provider' });
+    // A caller's turn, and a delta inside the provider turn, carry none.
+    expect(
+      projectDelegatedTaskEvent(4, {
+        ...base,
+        turnId: 'user-turn',
+        method: 'turn.completed',
+      }),
+    ).not.toHaveProperty('trigger');
+    expect(
+      projectDelegatedTaskEvent(5, {
+        ...base,
+        method: 'content.text-delta',
+        delta: 'x',
+        ...trigger,
+      }),
+    ).not.toHaveProperty('trigger');
   });
 });

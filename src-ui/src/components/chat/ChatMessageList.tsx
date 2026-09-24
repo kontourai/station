@@ -1,3 +1,4 @@
+import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import React, {
   useCallback,
   useEffect,
@@ -9,6 +10,7 @@ import React, {
 import { useAgents } from '../../contexts/AgentsContext';
 import { useApiBase } from '../../contexts/ApiBaseContext';
 import type { ChatContentPart } from '../../contexts/active-chats-state';
+import { unansweredApprovalRequests } from '../../hooks/orchestration/pendingRequestRows';
 import { useSendMessage } from '../../hooks/useActiveChatSessions';
 import { useCopyToClipboardToast } from '../../hooks/useCopyToClipboardToast';
 import { useToolApproval } from '../../hooks/useToolApproval';
@@ -21,14 +23,17 @@ import { AgentIcon } from '../icons/AgentIcon';
 import { LoadingDots } from '../LoadingDots';
 import { ChatEmptyState } from './ChatEmptyState';
 import {
+  CHAT_READER_RESTORE_EVENT,
+  type ChatReaderRestoreRequest,
   type ChatScrollAnchor,
   captureChatScrollAnchor,
   createResizeReanchorGate,
   restoreChatScrollAnchor,
 } from './chatScrollAnchor';
-import type { ForkTurnSource } from './fork-turn-source';
+import { type ForkTurnSource, precedingForkSource } from './fork-turn-source';
 import { formatFormSubmission } from './formSubmission';
 import { MessageBubble, type MessageBubbleSession } from './MessageBubble';
+import { PendingApprovalStrip } from './PendingApprovalStrip';
 import { QuoteSelectionToolbar } from './QuoteSelectionToolbar';
 import { ReasoningSection } from './ReasoningSection';
 import { ScrollToBottomButton } from './ScrollToBottomButton';
@@ -60,6 +65,12 @@ interface ChatMessageListProps {
   hasOlderMessages?: boolean;
   historyLoading?: boolean;
   suppressActivity?: boolean;
+  /**
+   * #2309: the host already presents the watchdog's silence for this turn
+   * with an action attached (the dock's stall notice, which offers Stop), so
+   * the streaming row's compact progress omits it rather than saying it twice.
+   */
+  progressSilenceShownElsewhere?: boolean;
   onLoadOlder?: () => Promise<void>;
   /**
    * archive#1301: when provided, the background-tasks banner below
@@ -85,7 +96,16 @@ interface ChatMessageListProps {
    */
   hasSettingsEntryPoint?: boolean;
   onForkFromTurn?: (source: ForkTurnSource) => void;
+  onNewChatFromMessage?: (text: string) => void;
   onQuote?: (quote: SavedAnswerQuote) => void;
+  /**
+   * #2316: the transcript window's runtime events. Open approvals no rendered
+   * row can answer are derived from them here and rendered as the
+   * pending-approvals strip below the transcript (never as messages).
+   */
+  approvalEvents?: readonly { event: CanonicalRuntimeEvent }[];
+  /** Whether `approvalEvents`' window has finished its first read (#2344). */
+  approvalEventsSettled?: boolean;
 }
 
 // Stable fallback so `agent || FALLBACK_AGENT` doesn't allocate a new object
@@ -115,6 +135,7 @@ function backgroundTasksLabel(
 const RESIZE_REANCHOR_THRESHOLD_PX = 4;
 const VIRTUALIZE_AFTER_MESSAGE_COUNT = 40;
 const EMPTY_MESSAGES: ChatMessage[] = [];
+const NO_PENDING_APPROVALS: ReturnType<typeof unansweredApprovalRequests> = [];
 function ChatMessageListComponent({
   activeSession,
   fontSize,
@@ -127,18 +148,34 @@ function ChatMessageListComponent({
   hasOlderMessages,
   historyLoading,
   suppressActivity,
+  progressSilenceShownElsewhere,
   onLoadOlder,
   onOpenBackgroundTasks,
   owner,
   accountableHuman,
   hasSettingsEntryPoint,
   onForkFromTurn,
+  onNewChatFromMessage,
   onQuote,
+  approvalEvents,
+  approvalEventsSettled,
 }: ChatMessageListProps) {
   const agents = useAgents();
   const { apiBase } = useApiBase();
   const handleCopy = useCopyToClipboardToast();
   const handleToolApproval = useToolApproval(apiBase);
+  const pendingApprovalRequests = useMemo(
+    () =>
+      approvalEvents && approvalEvents.length > 0 && !activeSession.replay
+        ? unansweredApprovalRequests(
+            activeSession.messages,
+            approvalEvents
+              .map((item) => item.event)
+              .filter((event) => Boolean(event.eventId)),
+          )
+        : NO_PENDING_APPROVALS,
+    [activeSession.messages, activeSession.replay, approvalEvents],
+  );
   const sendMessage = useSendMessage(apiBase);
   // The store is already live at the shell; reading its scalar snapshot here
   // avoids adding a second subscription/allocation to every streaming row.
@@ -156,6 +193,13 @@ function ChatMessageListComponent({
   const lastClientHeightRef = useRef<number | null>(null);
   const [isUserScrolledUp, setIsUserScrolledUp] = useState(false);
   const [scrollAnchorVersion, setScrollAnchorVersion] = useState(0);
+  const [readerRestoreRequest, setReaderRestoreRequest] = useState<
+    (ChatReaderRestoreRequest & { sessionId: string; version: number }) | null
+  >(null);
+  const currentReaderRestoreRequest =
+    readerRestoreRequest?.sessionId === activeSession.id
+      ? readerRestoreRequest
+      : null;
   const [streamingContentRevision, setStreamingContentRevision] = useState(0);
   const [submittedBlockIds, setSubmittedBlockIds] = useState<Set<string>>(
     () => new Set(),
@@ -247,6 +291,45 @@ function ChatMessageListComponent({
       return undefined;
     }
   })();
+
+  useLayoutEffect(() => {
+    const element = messagesContainerRef.current;
+    if (!element) return;
+    const restoreReader = (event: Event) => {
+      const request = (event as CustomEvent<ChatReaderRestoreRequest>).detail;
+      if (
+        !request ||
+        !Number.isFinite(request.scrollTop) ||
+        (request.anchor &&
+          (!request.anchor.key || !Number.isFinite(request.anchor.offset)))
+      )
+        return;
+      event.preventDefault();
+      isUserScrolledUpRef.current = true;
+      userScrollIntentRef.current = false;
+      visibleAnchorRef.current = request.anchor ?? null;
+      setIsUserScrolledUp(true);
+      setReaderRestoreRequest((current) => ({
+        ...request,
+        sessionId: activeSession.id,
+        version: (current?.version ?? 0) + 1,
+      }));
+    };
+    element.addEventListener(CHAT_READER_RESTORE_EVENT, restoreReader);
+    return () =>
+      element.removeEventListener(CHAT_READER_RESTORE_EVENT, restoreReader);
+  }, [activeSession.id]);
+
+  useLayoutEffect(() => {
+    const element = messagesContainerRef.current;
+    if (!element || !currentReaderRestoreRequest) return;
+    if (messages.length > VIRTUALIZE_AFTER_MESSAGE_COUNT) return;
+    const restored = currentReaderRestoreRequest.anchor
+      ? restoreChatScrollAnchor(element, currentReaderRestoreRequest.anchor)
+      : false;
+    if (!restored) element.scrollTop = currentReaderRestoreRequest.scrollTop;
+    if (restored) visibleAnchorRef.current = captureChatScrollAnchor(element);
+  }, [currentReaderRestoreRequest, messages.length]);
 
   // A command-palette transcript result carries the stable runtime message id
   // in the location hash. Re-run when messages arrive, rather than trusting a
@@ -390,6 +473,7 @@ function ChatMessageListComponent({
     // reader intent. Only wheel/touch/pointer input arms the next scroll.
     if (!userScrollIntentRef.current) return;
     userScrollIntentRef.current = false;
+    setReaderRestoreRequest(null);
     if (hasOlderMessages && target.scrollTop <= 96) void loadOlder();
     setScrollAnchorVersion((version) => version + 1);
     // Resize animations can emit a scroll event between two ResizeObserver
@@ -406,6 +490,8 @@ function ChatMessageListComponent({
 
   const handleScrollToBottom = () => {
     if (messagesContainerRef.current) {
+      setReaderRestoreRequest(null);
+      visibleAnchorRef.current = null;
       messagesContainerRef.current.scrollTop =
         messagesContainerRef.current.scrollHeight;
       isUserScrolledUpRef.current = false;
@@ -472,9 +558,13 @@ function ChatMessageListComponent({
       showToolDetails={showToolDetails}
       onCopy={handleCopy}
       onForkFromTurn={onForkFromTurn}
-      onToolApproval={
-        activeSession.replay ? undefined : (handleToolApproval as any)
+      userForkSource={
+        msg.role === 'user' ? precedingForkSource(messages, idx) : undefined
       }
+      onNewChatFromMessage={
+        msg.role === 'user' ? onNewChatFromMessage : undefined
+      }
+      onToolApproval={activeSession.replay ? undefined : handleToolApproval}
       anchorKey={messageAnchorKey(msg)}
       owner={owner}
       accountableHuman={accountableHuman}
@@ -567,6 +657,8 @@ function ChatMessageListComponent({
                   part.approvalId!,
                   part.toolName || part.name || '',
                   action,
+                  part.approvalThreadId,
+                  part.approvalEventId,
                 )
             : undefined
         }
@@ -652,7 +744,12 @@ function ChatMessageListComponent({
                   renderRow={renderTranscriptRow}
                   followTail={!isUserScrolledUp && !requestedMessageRowId}
                   anchorVersion={scrollAnchorVersion}
-                  revealRowId={requestedMessageRowId}
+                  revealRowId={
+                    requestedMessageRowId ??
+                    currentReaderRestoreRequest?.anchor?.key
+                  }
+                  restoreAnchor={currentReaderRestoreRequest?.anchor}
+                  restoreAnchorVersion={currentReaderRestoreRequest?.version}
                 />
               ) : (
                 transcriptRows.map((row) => (
@@ -676,10 +773,21 @@ function ChatMessageListComponent({
                   renderToolCall={renderToolCall}
                   activityHint={activeSession.activityHint}
                   elapsedMs={activeSession.replay?.elapsedMs}
+                  conversationActivity={activeSession.conversationActivity}
+                  turnStartedAt={activeSession.openTurnStartedAt}
                   suppressActivity={suppressActivity}
+                  hideProgressSilence={progressSilenceShownElsewhere}
                   statusLabel={
                     activeSession.orchestrationStatus === 'awaiting-approval'
-                      ? 'Waiting for approval'
+                      ? // station#2235: the status alone asserts nothing about
+                        // an approval — a crashed turn's needs_input folds to
+                        // this status with no request behind it. Name the
+                        // approval only when a pending grant exists; without
+                        // one the session is waiting on the user, not on a
+                        // decision.
+                        (activeSession.pendingApprovals?.length ?? 0) > 0
+                        ? 'Waiting for approval'
+                        : 'Waiting on you'
                       : undefined
                   }
                   attributionAgent={streamingAttributionAgent}
@@ -732,6 +840,25 @@ function ChatMessageListComponent({
                 </div>
               ))}
           </>
+        )}
+        {/* Mounted while empty too: its live region must exist before the
+            first request arrives (#2344). */}
+        {!activeSession.replay && (
+          <PendingApprovalStrip
+            requests={pendingApprovalRequests}
+            settled={approvalEventsSettled !== false}
+            onApprove={(request, action) =>
+              handleToolApproval(
+                activeSession.id,
+                activeSession.agentSlug,
+                request.approvalId ?? '',
+                request.toolName || request.name || '',
+                action,
+                request.approvalThreadId,
+                request.approvalEventId,
+              )
+            }
+          />
         )}
       </div>
       {isUserScrolledUp && (

@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import { resolve } from 'node:path';
+import { mkdir } from 'node:fs/promises';
+import { join, resolve } from 'node:path';
 import { BUILTIN_KNOWLEDGE_NAMESPACES } from '@kontourai/station-contracts/knowledge';
 import type {
   ProjectConfig,
@@ -23,7 +24,7 @@ import {
 } from '../../telemetry/metrics.js';
 import { execGit } from '../../utils/git-exec.js';
 import { createLogger } from '../../utils/logger.js';
-import { expandTilde } from '../../utils/paths.js';
+import { expandTilde, resolveHomeDir } from '../../utils/paths.js';
 import type { ProjectManifestStore } from './project-manifest-store.js';
 
 const logger = createLogger({ name: 'project-service' });
@@ -230,6 +231,22 @@ function slugifyProjectName(name: string): string {
   );
 }
 
+/** Host-owned folder for a project that did not name another path. */
+function stationOwnedWorkspaceDirectory(
+  slug: string,
+  home: string = resolveHomeDir(),
+): string {
+  return join(home, 'workspaces', slug);
+}
+
+/** Stored spelling of {@link stationOwnedWorkspaceDirectory}. */
+export function defaultedProjectWorkingDirectory(
+  slug: string,
+  home: string = resolveHomeDir(),
+): string {
+  return resolve(expandTilde(stationOwnedWorkspaceDirectory(slug, home)));
+}
+
 export class ProjectService {
   /**
    * `manifests` is optional so a caller that only needs project CRUD (tests,
@@ -271,6 +288,19 @@ export class ProjectService {
     return resolveWorkspaceIsolationMode(
       projectMode,
       await this.stationDefaultWorkspaceIsolation?.(),
+    );
+  }
+
+  /**
+   * The workspace isolation this Project's chats actually run under: its own
+   * override, else the Station default. Read-only.
+   */
+  // Called by the plugin-scaffold routes through a `Pick<ProjectService>`
+  // parameter, which the dead-code audit cannot trace to this class.
+  // fallow-ignore-next-line unused-class-member
+  async workspaceIsolationFor(slug: string): Promise<WorkspaceIsolationMode> {
+    return this.effectiveWorkspaceIsolation(
+      this.storageAdapter.getProject(slug).defaultWorkspaceIsolation,
     );
   }
 
@@ -393,12 +423,22 @@ export class ProjectService {
       }
     }
 
-    if (
-      (await this.effectiveWorkspaceIsolation(
-        input.defaultWorkspaceIsolation,
-      )) === 'worktree'
-    ) {
-      await assertProjectWorktreeDirectory(slug, input.workingDirectory);
+    const isolation = await this.effectiveWorkspaceIsolation(
+      input.defaultWorkspaceIsolation,
+    );
+    const requestedDirectory = input.workingDirectory?.trim()
+      ? resolve(expandTilde(input.workingDirectory.trim()))
+      : undefined;
+    if (!requestedDirectory) {
+      if (isolation === 'worktree') {
+        await assertProjectWorktreeDirectory(slug, undefined);
+      } else {
+        const workspace = defaultedProjectWorkingDirectory(slug);
+        await mkdir(workspace, { recursive: true });
+        input.workingDirectory = resolve(expandTilde(workspace));
+      }
+    } else if (isolation === 'worktree') {
+      await assertProjectWorktreeDirectory(slug, requestedDirectory);
     }
 
     const now = new Date().toISOString();

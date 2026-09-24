@@ -10,6 +10,13 @@ import {
 
 const wrapper = 'scripts/veritas-readiness-evidence.mjs';
 
+/** Every `run()` call re-executes the repo's declared readiness checks in
+ *  child processes, so each of these tests costs ~24-27s even idle. Under
+ *  the full corpus's parallelism those children contend for CPU and the
+ *  default 30s cap timed two of them out on the hosted runner (nightly
+ *  2026-09-18). The budget bounds contention, not the happy path. */
+const WRAPPER_TIMEOUT_MS = 120_000;
+
 function run(command: string, extraArgs: string[] = []) {
   try {
     const stdout = execFileSync(
@@ -138,63 +145,81 @@ describe('Station Veritas readiness evidence boundary', () => {
     ).toBe(engineFailure);
   });
 
-  test('keeps a nested NOT_VERIFIED evidence check as JSON exit 2', () => {
-    const result = run(`${process.execPath} -e "process.exit(2)"`);
-    expect(result.exitCode).toBe(2);
-    expect(result.payload).toMatchObject({
-      schemaVersion: 1,
-      status: 'NOT_VERIFIED',
-      exitCode: 2,
-      evidenceCheckFailure: { exitCode: 2 },
-    });
-  });
+  test(
+    'keeps a nested NOT_VERIFIED evidence check as JSON exit 2',
+    () => {
+      const result = run(`${process.execPath} -e "process.exit(2)"`);
+      expect(result.exitCode).toBe(2);
+      expect(result.payload).toMatchObject({
+        schemaVersion: 1,
+        status: 'NOT_VERIFIED',
+        exitCode: 2,
+        evidenceCheckFailure: { exitCode: 2 },
+      });
+    },
+    WRAPPER_TIMEOUT_MS,
+  );
 
-  test('keeps a failed evidence check red', () => {
-    const result = run(`${process.execPath} -e "process.exit(1)"`);
-    expect(result.exitCode).toBe(1);
-    expect(result.payload).toMatchObject({
-      status: 'FAIL',
-      exitCode: 1,
-      evidenceCheckFailure: { exitCode: 1 },
-    });
-  });
-
-  test('reports a passing evidence check as JSON exit 0', () => {
-    const result = run(`${process.execPath} -e "process.exit(0)"`);
-    expect(result.exitCode).toBe(0);
-    expect(result.payload).toMatchObject({ status: 'PASS', exitCode: 0 });
-  });
-
-  test('keeps a real required report failure red ahead of nested exit 2', () => {
-    const fixtureDir = mkdtempSync(join(tmpdir(), 'station-readiness-policy-'));
-    const standardsPath = join(fixtureDir, 'required-failure.json');
-    const standards = JSON.parse(
-      readFileSync(
-        '.veritas/repo-standards/default.repo-standards.json',
-        'utf8',
-      ),
-    );
-    standards.rules.push({
-      id: 'test-required-missing-artifact',
-      kind: 'required-artifacts',
-      enforcementLevel: 'Require',
-      match: { artifacts: ['this-fixture-must-not-exist'] },
-    });
-    writeFileSync(standardsPath, `${JSON.stringify(standards)}\n`);
-    try {
-      const result = run(`${process.execPath} -e "process.exit(2)"`, [
-        '--repo-standards',
-        standardsPath,
-      ]);
+  test(
+    'keeps a failed evidence check red',
+    () => {
+      const result = run(`${process.execPath} -e "process.exit(1)"`);
       expect(result.exitCode).toBe(1);
       expect(result.payload).toMatchObject({
         status: 'FAIL',
         exitCode: 1,
-        reason: 'readiness-failed',
-        evidenceCheckFailure: { exitCode: 2 },
+        evidenceCheckFailure: { exitCode: 1 },
       });
-    } finally {
-      rmSync(fixtureDir, { recursive: true, force: true });
-    }
-  });
+    },
+    WRAPPER_TIMEOUT_MS,
+  );
+
+  test(
+    'reports a passing evidence check as JSON exit 0',
+    () => {
+      const result = run(`${process.execPath} -e "process.exit(0)"`);
+      expect(result.exitCode).toBe(0);
+      expect(result.payload).toMatchObject({ status: 'PASS', exitCode: 0 });
+    },
+    WRAPPER_TIMEOUT_MS,
+  );
+
+  test(
+    'keeps a real required report failure red ahead of nested exit 2',
+    () => {
+      const fixtureDir = mkdtempSync(
+        join(tmpdir(), 'station-readiness-policy-'),
+      );
+      const standardsPath = join(fixtureDir, 'required-failure.json');
+      const standards = JSON.parse(
+        readFileSync(
+          '.veritas/repo-standards/default.repo-standards.json',
+          'utf8',
+        ),
+      );
+      standards.rules.push({
+        id: 'test-required-missing-artifact',
+        kind: 'required-artifacts',
+        enforcementLevel: 'Require',
+        match: { artifacts: ['this-fixture-must-not-exist'] },
+      });
+      writeFileSync(standardsPath, `${JSON.stringify(standards)}\n`);
+      try {
+        const result = run(`${process.execPath} -e "process.exit(2)"`, [
+          '--repo-standards',
+          standardsPath,
+        ]);
+        expect(result.exitCode).toBe(1);
+        expect(result.payload).toMatchObject({
+          status: 'FAIL',
+          exitCode: 1,
+          reason: 'readiness-failed',
+          evidenceCheckFailure: { exitCode: 2 },
+        });
+      } finally {
+        rmSync(fixtureDir, { recursive: true, force: true });
+      }
+    },
+    WRAPPER_TIMEOUT_MS,
+  );
 });

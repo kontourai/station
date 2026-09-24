@@ -8,10 +8,20 @@ import type {
   WorkspaceFilePreview,
   WorkspaceFilePreviewRequest,
 } from '@kontourai/station-contracts/workspace-file-preview';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import {
+  type MutateOptions,
+  type UseMutationResult,
+  useMutation,
+  useQueryClient,
+} from '@tanstack/react-query';
 import { useEffect } from 'react';
 import { _getApiBase, fetchAvailableLayouts } from '../api';
-import { StationHttpError } from '../client/http';
+import {
+  type ApiRequestScope,
+  isApiRequestScope,
+  StationHttpError,
+  StationRequestAuthorityError,
+} from '../client/http';
 import {
   applyProjectLayout,
   bindProjectResource,
@@ -24,8 +34,9 @@ import {
   getProjectResolution,
   listProjectIconCandidates,
   listProjectLayouts,
-  listProjects,
+  listProjectViews,
   listProjectWorkspacePanes,
+  type ProjectWorkspacePaneCatalog,
   previewProjectWorkspaceFile,
   reorderProjects as reorderProjectsRaw,
   updateProject as updateProjectRaw,
@@ -35,6 +46,7 @@ import {
   type QueryConfig,
   useApiMutation,
   useApiQuery,
+  useApiQueryRefetchingInvalidatedOnMount,
 } from '../query-core';
 import { telemetry } from '../telemetry';
 
@@ -87,25 +99,144 @@ export function layoutCatalogRetryDelay(attemptIndex: number): number {
   ];
 }
 
-export function useProjectsQuery(config?: QueryConfig<any>) {
+export interface ProjectReadQueryConfig<T> extends QueryConfig<T> {
+  requestScope?: ApiRequestScope;
+  /** Fail closed when the host has not established a current authority scope. */
+  requireRequestScope?: boolean;
+  /**
+   * #481 stable data identity, distinct from ephemeral request liveness.
+   * When a non-empty durable id is supplied (the UI passes its verified
+   * authority namespace), the QUERY KEY uses it instead of the live
+   * `authorityKey` segment — which embeds the per-tab activation epoch and
+   * credential generation and therefore can never match a reloaded tab's
+   * persisted snapshot. The WIRE scope is untouched: dispatch and body-read
+   * guards still run against the live captured scope, and `isCurrent`/SDK
+   * authority equality are not weakened. Reads and the reorder mutation MUST
+   * pass the same durable id for one authority, or they address different
+   * entries (safe, but split). Post-repair freshness stays owned by
+   * invalidation (`useInvalidateCachesOnConnectionSwitch` keys on
+   * credential state), not by key churn. Omitted/empty ⇒ legacy live-key
+   * behavior, byte-for-byte.
+   */
+  durableAuthorityId?: string;
+}
+
+/**
+ * Canonical cache key of one authority's Project list. Reads and the reorder
+ * mutation MUST agree on this shape or an optimistic reorder lands in a cache
+ * entry no reader watches. Scalar segments only — react-query hashes them
+ * structurally, so the same authority always resolves to the same entry.
+ */
+function scopedProjectsListKey(
+  requestScope: {
+    apiBase: string;
+    authorityKey: string;
+  },
+  durableAuthorityId?: string,
+): (string | number)[] {
+  return [
+    'projects',
+    'list',
+    requestScope.apiBase,
+    stableAuthoritySegment(requestScope.authorityKey, durableAuthorityId),
+  ];
+}
+
+/**
+ * The key segment that names WHOSE data this is. A live `authorityKey`
+ * (per-tab epoch, credential generation) is correct for dispatch guards and
+ * useless for durable identity; a verified durable id survives reloads.
+ * An empty id can never become a segment — that would merge every authority
+ * into one entry — so it falls back to the live key.
+ */
+function stableAuthoritySegment(
+  authorityKey: string,
+  durableAuthorityId: string | undefined,
+): string {
+  return typeof durableAuthorityId === 'string' && durableAuthorityId.length > 0
+    ? durableAuthorityId
+    : authorityKey;
+}
+
+/** Snapshot of a validated request scope; never retains caller-owned objects. */
+interface CapturedProjectScope {
+  apiBase: string;
+  authorityKey: string;
+}
+
+function captureProjectScope(
+  candidate: ApiRequestScope | undefined,
+): CapturedProjectScope | undefined {
+  return isApiRequestScope(candidate)
+    ? { apiBase: candidate.apiBase, authorityKey: candidate.authorityKey }
+    : undefined;
+}
+
+export function useProjectsQuery(config?: ProjectReadQueryConfig<any>) {
+  const requestScope = captureProjectScope(config?.requestScope);
+  const scoped = requestScope !== undefined;
+  const unavailable = config?.requireRequestScope === true && !scoped;
+  const queryKey = unavailable
+    ? ['projects', 'list', 'unavailable']
+    : scoped
+      ? scopedProjectsListKey(requestScope, config?.durableAuthorityId)
+      : ['projects'];
   return useApiQuery(
-    ['projects'],
-    async () => {
+    queryKey,
+    async (signal) => {
+      if (unavailable) throw new StationRequestAuthorityError();
+      if (scoped)
+        return listProjectViews(requestScope.apiBase, {
+          requestScope,
+          signal,
+        });
       const apiBase = await _getApiBase();
-      return listProjects(apiBase);
+      return listProjectViews(apiBase, { signal });
     },
-    config,
+    { ...config, enabled: !unavailable && (config?.enabled ?? true) },
   );
 }
 
-export function useProjectQuery(slug: string, config?: QueryConfig<any>) {
+export function useProjectQuery(
+  slug: string,
+  config?: ProjectReadQueryConfig<any>,
+) {
+  const candidate = config?.requestScope;
+  const requestScope = isApiRequestScope(candidate)
+    ? { apiBase: candidate.apiBase, authorityKey: candidate.authorityKey }
+    : undefined;
+  const scoped = requestScope !== undefined;
+  const unavailable = config?.requireRequestScope === true && !scoped;
+  const queryKey = unavailable
+    ? ['projects', slug, 'unavailable']
+    : scoped
+      ? [
+          'projects',
+          slug,
+          'detail',
+          requestScope.apiBase,
+          stableAuthoritySegment(
+            requestScope.authorityKey,
+            config?.durableAuthorityId,
+          ),
+        ]
+      : ['projects', slug];
   return useApiQuery(
-    ['projects', slug],
-    async () => {
+    queryKey,
+    async (signal) => {
+      if (unavailable) throw new StationRequestAuthorityError();
+      if (scoped)
+        return getProject(requestScope.apiBase, slug, {
+          requestScope,
+          signal,
+        });
       const apiBase = await _getApiBase();
-      return getProject(apiBase, slug);
+      return getProject(apiBase, slug, { signal });
     },
-    { ...config, enabled: !!slug && (config?.enabled ?? true) },
+    {
+      ...config,
+      enabled: !unavailable && !!slug && (config?.enabled ?? true),
+    },
   );
 }
 
@@ -140,14 +271,18 @@ export function useProjectLayoutsQuery(
   );
 }
 
-/** React read seam for the data-only current Workspace Pane catalog. */
+/**
+ * React read seam for the data-only current Workspace Pane catalog.
+ *
+ * Its contents change outside this client, so an invalidation that lands
+ * while it is unmounted refetches on the next mount
+ * (`refetchOnMountWhenInvalidated` in query-core, #2319).
+ */
 export function useProjectWorkspacePanesQuery(
   projectSlug: string,
-  config?: QueryConfig<
-    import('../client/projects').ProjectWorkspacePaneCatalog
-  >,
+  config?: QueryConfig<ProjectWorkspacePaneCatalog>,
 ) {
-  return useApiQuery(
+  return useApiQueryRefetchingInvalidatedOnMount(
     ['projects', projectSlug, 'panes'],
     async () => {
       const apiBase = await _getApiBase();
@@ -297,7 +432,10 @@ export function useAvailableProjectLayoutsQuery(
 ) {
   const queryClient = useQueryClient();
   const enabled = config?.enabled ?? true;
-  const query = useApiQuery(
+  // Plugins add and remove layouts outside this client, so an invalidation
+  // that lands while the catalog is unmounted must refetch on the next mount
+  // (#2345, the policy #2319 gave the pane catalog).
+  const query = useApiQueryRefetchingInvalidatedOnMount(
     [...LAYOUT_CATALOG_QUERY_KEY],
     async (signal) => fetchAvailableLayouts(signal),
     {
@@ -393,6 +531,8 @@ export function useCreateProjectMutation() {
       description?: string;
       icon?: string;
       workingDirectory?: string;
+      /** Per-Project override of the Station's workspace isolation. */
+      defaultWorkspaceIsolation?: 'shared' | 'worktree';
     }) => {
       const apiBase = await _getApiBase();
       return createProjectRaw(apiBase, data);
@@ -472,22 +612,256 @@ export function useUpdateProjectMutation(
 
 /**
  * station#3315 — server-owned sidebar order. Optimistically applies the new
- * order to the cached `['projects']` list so a drag settles immediately, then
+ * order to the cached Project list so a drag settles immediately, then
  * reconciles with the server's sorted list (rolling back on error) and
  * invalidates so every consumer re-reads the persisted order.
+ *
+ * #481 — captured-authority reorder. The variables accept EITHER a bare
+ * `string[]` (legacy ambient callers: legacy `['projects']` cache, unchanged
+ * behavior) or `{ order, requestScope, requireRequestScope }`. A scoped call
+ * snapshots origin+authority BEFORE any await, targets the optimistic
+ * update/rollback/settle at ONLY that authority's `scopedProjectsListKey()`
+ * cache entry, and never re-resolves an ambient destination on completion —
+ * a slow failed reorder for one home can never roll back or invalidate
+ * another home's list. `requireRequestScope` rejects an absent or invalid
+ * scope before the request and before any cache work.
  */
+export interface ReorderProjectsInput {
+  order: string[];
+  requestScope?: ApiRequestScope;
+  /** Fail closed when no current authority scope is captured. */
+  requireRequestScope?: boolean;
+  /**
+   * #481 stable data identity for the optimistic/rollback/settle cache key.
+   * MUST equal the `durableAuthorityId` the list reader used for this
+   * authority, or the reorder addresses a different entry than the reader
+   * watches. The request itself still travels on the live `requestScope`.
+   */
+  durableAuthorityId?: string;
+}
+
+export type ReorderProjectsVariables = string[] | ReorderProjectsInput;
+
+interface CapturedReorder {
+  order: string[];
+  scope: CapturedProjectScope | undefined;
+  durableAuthorityId: string | undefined;
+}
+
+function captureReorderInput(
+  variables: ReorderProjectsVariables,
+): CapturedReorder {
+  if (Array.isArray(variables))
+    return {
+      order: variables,
+      scope: undefined,
+      durableAuthorityId: undefined,
+    };
+  return {
+    order: variables.order,
+    scope: captureProjectScope(variables.requestScope),
+    durableAuthorityId:
+      typeof variables.durableAuthorityId === 'string' &&
+      variables.durableAuthorityId.length > 0
+        ? variables.durableAuthorityId
+        : undefined,
+  };
+}
+
+/**
+ * One private owned copy, taken ONCE at the public mutate/mutateAsync
+ * invocation. The copy is what every internal callback reads, so a caller
+ * mutating their own input object (order array or scope scalars) during the
+ * mutation lifecycle can neither retarget the request nor corrupt the
+ * optimistic write, rollback, or settle. Internal callbacks re-derive
+ * `scope`/`order` from this private copy — safe by construction.
+ *
+ * The copy is privately owned, not frozen: callers keep full ownership of
+ * their own input (including mutating it, which the race test exercises),
+ * and only this copy travels downstream.
+ */
+function captureReorderVariables<TVariables extends ReorderProjectsVariables>(
+  variables: TVariables,
+): TVariables {
+  if (Array.isArray(variables)) {
+    // Bare-array shape: copy the array itself. The assertion restores the
+    // caller's narrowed shape after a copy that provably preserves it —
+    // an array in, an array out.
+    return [...variables] as TVariables;
+  }
+  // Object shape: the input is provably not an array here, so the
+  // object-shaped read below cannot observe the other variant. Copy the
+  // order array plus the captured scalar scope and the fail-closed flag.
+  const input = variables as ReorderProjectsInput;
+  const captured: ReorderProjectsInput = { order: [...input.order] };
+  // Pin the fail-closed contract: unsetting it on the caller's object
+  // mid-flight must not enable an ambient fallback.
+  if (input.requireRequestScope === true) captured.requireRequestScope = true;
+  // Pin the stable key the same way: unsetting or swapping the durable id
+  // mid-flight must not retarget the optimistic write/rollback/settle.
+  if (
+    typeof input.durableAuthorityId === 'string' &&
+    input.durableAuthorityId.length > 0
+  )
+    captured.durableAuthorityId = input.durableAuthorityId;
+  const scope = captureProjectScope(input.requestScope);
+  if (scope) captured.requestScope = scope;
+  return captured as TVariables;
+}
+
+interface ReorderMutationContext {
+  previous?: any[];
+  cacheKey: (string | number)[];
+  scoped: boolean;
+}
+
+/**
+ * Reorder mutation handle for one declared variables shape. Narrowing the
+ * handle (not widening the callbacks) is what keeps the legacy contract
+ * sound: a caller that declares bare-array callbacks receives a handle
+ * that truthfully accepts only bare arrays, so a scoped object can never
+ * arrive at a callback that cannot read it.
+ */
+interface ReorderProjectsMutation<TVariables extends ReorderProjectsVariables>
+  extends Omit<
+    UseMutationResult<any, Error, TVariables, ReorderMutationContext>,
+    'mutate' | 'mutateAsync'
+  > {
+  mutate: (
+    variables: TVariables,
+    options?: MutateOptions<any, Error, TVariables, ReorderMutationContext>,
+  ) => void;
+  mutateAsync: (
+    variables: TVariables,
+    options?: MutateOptions<any, Error, TVariables, ReorderMutationContext>,
+  ) => Promise<any>;
+}
+
+/**
+ * Union handle: both variables shapes stay available, and each per-call
+ * callback is tied to the variables of its own call, so a legacy per-call
+ * callback observes only the bare array it was passed with.
+ */
+interface UnionReorderProjectsMutation
+  extends Omit<
+    UseMutationResult<
+      any,
+      Error,
+      ReorderProjectsVariables,
+      ReorderMutationContext
+    >,
+    'mutate' | 'mutateAsync'
+  > {
+  mutate: {
+    (
+      variables: string[],
+      options?: MutateOptions<any, Error, string[], ReorderMutationContext>,
+    ): void;
+    (
+      variables: ReorderProjectsInput,
+      options?: MutateOptions<
+        any,
+        Error,
+        ReorderProjectsInput,
+        ReorderMutationContext
+      >,
+    ): void;
+    (
+      variables: ReorderProjectsVariables,
+      options?: MutateOptions<
+        any,
+        Error,
+        ReorderProjectsVariables,
+        ReorderMutationContext
+      >,
+    ): void;
+  };
+  mutateAsync: {
+    (
+      variables: string[],
+      options?: MutateOptions<any, Error, string[], ReorderMutationContext>,
+    ): Promise<any>;
+    (
+      variables: ReorderProjectsInput,
+      options?: MutateOptions<
+        any,
+        Error,
+        ReorderProjectsInput,
+        ReorderMutationContext
+      >,
+    ): Promise<any>;
+    (
+      variables: ReorderProjectsVariables,
+      options?: MutateOptions<
+        any,
+        Error,
+        ReorderProjectsVariables,
+        ReorderMutationContext
+      >,
+    ): Promise<any>;
+  };
+}
+
+export function useReorderProjectsMutation(
+  options?: MutationOptions<any, ReorderProjectsVariables>,
+): UnionReorderProjectsMutation;
 export function useReorderProjectsMutation(
   options?: MutationOptions<any, string[]>,
-) {
+): ReorderProjectsMutation<string[]>;
+export function useReorderProjectsMutation(
+  options?: MutationOptions<any, ReorderProjectsInput>,
+): ReorderProjectsMutation<ReorderProjectsInput>;
+export function useReorderProjectsMutation<
+  TVariables extends ReorderProjectsVariables,
+>(
+  options?: MutationOptions<any, TVariables>,
+): ReorderProjectsMutation<TVariables> {
   const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async (order: string[]) => {
+  const mutation = useMutation<any, Error, TVariables, ReorderMutationContext>({
+    mutationFn: async (variables: TVariables) => {
+      // `variables` is the private copy from `captureReorderVariables`;
+      // deriving scope/order from it can no longer observe caller mutations.
+      const { order, scope } = captureReorderInput(variables);
+      // `Array.isArray` cannot narrow generic `TVariables`; the object
+      // shape is asserted only after the bare-array shape is excluded at
+      // runtime. The assertion is compile-time only and emits no code.
+      if (
+        !Array.isArray(variables) &&
+        (variables as ReorderProjectsInput).requireRequestScope === true &&
+        !scope
+      )
+        throw new StationRequestAuthorityError();
+      if (scope)
+        return reorderProjectsRaw(scope.apiBase, order, {
+          requestScope: scope,
+        });
       const apiBase = await _getApiBase();
       return reorderProjectsRaw(apiBase, order);
     },
-    onMutate: async (order: string[]) => {
-      await queryClient.cancelQueries({ queryKey: ['projects'], exact: true });
-      const previous = queryClient.getQueryData<any[]>(['projects']);
+    onMutate: async (variables: TVariables) => {
+      const { order, scope, durableAuthorityId } =
+        captureReorderInput(variables);
+      // Same guarded object-shape assertion as `mutationFn` above.
+      const required =
+        !Array.isArray(variables) &&
+        (variables as ReorderProjectsInput).requireRequestScope === true;
+      // Reject BEFORE any await or cache work: an absent required scope must
+      // not touch any home's cache.
+      if (required && !scope) throw new StationRequestAuthorityError();
+      const cacheKey: (string | number)[] = scope
+        ? scopedProjectsListKey(scope, durableAuthorityId)
+        : ['projects'];
+      if (scope) {
+        await queryClient.cancelQueries({ queryKey: cacheKey });
+      } else {
+        // Legacy callers keep the exact legacy cancel surface.
+        await queryClient.cancelQueries({ queryKey: ['projects', 'list'] });
+        await queryClient.cancelQueries({
+          queryKey: ['projects'],
+          exact: true,
+        });
+      }
+      const previous = queryClient.getQueryData<any[]>(cacheKey);
       if (Array.isArray(previous)) {
         const byIndex = new Map(order.map((slug, index) => [slug, index]));
         const next = [...previous].sort((a, b) => {
@@ -498,23 +872,54 @@ export function useReorderProjectsMutation(
           if (right !== undefined) return 1;
           return a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
         });
-        queryClient.setQueryData(['projects'], next);
+        queryClient.setQueryData(cacheKey, next);
       }
-      return { previous };
+      return { previous, cacheKey, scoped: scope !== undefined };
     },
-    onError: (error, order, context: { previous?: any[] } | undefined) => {
-      if (context?.previous) {
-        queryClient.setQueryData(['projects'], context.previous);
+    onError: (error, variables, context) => {
+      // Rollback touches ONLY the captured authority's cache entry.
+      if (context && Array.isArray(context.previous)) {
+        queryClient.setQueryData(context.cacheKey, context.previous);
       }
-      options?.onError?.(error as Error, order);
+      options?.onError?.(error as Error, variables);
     },
-    onSuccess: (data, order) => {
-      options?.onSuccess?.(data, order);
+    onSuccess: (data, variables) => {
+      options?.onSuccess?.(data, variables);
     },
-    onSettled: () => {
+    onSettled: (_data, _error, _variables, context) => {
+      // No context ⇒ onMutate rejected before any request or cache work;
+      // there is nothing to reconcile and touching prefixes here would
+      // invalidate OTHER homes' lists.
+      if (!context) return;
+      if (context.scoped) {
+        // Exactly one entry is intended: the captured authority's list.
+        queryClient.invalidateQueries({
+          queryKey: context.cacheKey,
+          exact: true,
+        });
+        return;
+      }
+      // Legacy settle surface, byte-for-byte the station#3315 original:
+      // the list prefix plus the bare legacy list, exact.
+      queryClient.invalidateQueries({ queryKey: ['projects', 'list'] });
       queryClient.invalidateQueries({ queryKey: ['projects'], exact: true });
     },
   });
+  // Capture ONCE at the public invocation. Everything below this wrapper
+  // sees only the private owned copy; the spread preserves the full typed
+  // mutation result (reset/isPending/data/…) and tanstack's per-call options
+  // pass straight through.
+  return {
+    ...mutation,
+    mutate: (
+      variables: TVariables,
+      options?: MutateOptions<any, Error, TVariables, ReorderMutationContext>,
+    ) => mutation.mutate(captureReorderVariables(variables), options),
+    mutateAsync: (
+      variables: TVariables,
+      options?: MutateOptions<any, Error, TVariables, ReorderMutationContext>,
+    ) => mutation.mutateAsync(captureReorderVariables(variables), options),
+  };
 }
 
 export function useDeleteProjectMutation(

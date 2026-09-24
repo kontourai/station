@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const native = vi.hoisted(() => ({
   isTauri: false,
+  isMobile: false,
   productName: 'Station',
 }));
 
@@ -19,6 +20,7 @@ vi.mock('../platform/PlatformProfileContext', () => ({
   usePlatformProfile: () => ({
     isTauri: native.isTauri,
     isDesktop: false,
+    isMobile: native.isMobile,
     productName: native.productName,
   }),
 }));
@@ -28,21 +30,34 @@ vi.mock('@kontourai/station-connect', () => ({
     isOpen,
     initialPanel,
     hostAppName,
+    hasLocalStation,
     onPairingSucceeded,
   }: {
     isOpen: boolean;
     initialPanel?: string;
     hostAppName?: string;
+    hasLocalStation?: boolean;
     onPairingSucceeded?: () => void;
   }) =>
     isOpen ? (
-      <div data-host-app-name={hostAppName} data-testid="connection-manager">
+      <div
+        data-host-app-name={hostAppName}
+        data-has-local-station={String(hasLocalStation)}
+        data-testid="connection-manager"
+      >
         Connection manager: {initialPanel ?? 'list'}
         <button type="button" onClick={onPairingSucceeded}>
           Complete pairing
         </button>
       </div>
     ) : null,
+}));
+vi.mock('../views/connections-hub/BrowserRelayRoutes', () => ({
+  BrowserRelayRoutes: () => (
+    <section aria-label="Browser broker routes">
+      Broker route setup ready
+    </section>
+  ),
 }));
 
 import { GuidedConnect } from '../components/GuidedConnect';
@@ -51,6 +66,7 @@ describe('GuidedConnect', () => {
   beforeEach(() => {
     vi.unstubAllEnvs();
     native.isTauri = false;
+    native.isMobile = false;
     native.productName = 'Station';
   });
 
@@ -77,6 +93,9 @@ describe('GuidedConnect', () => {
       screen.queryByRole('link', { name: 'Open in the Station app' }),
     ).toBeNull();
     expect(screen.queryByRole('link', { name: 'Get Station' })).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: 'Use a broker invitation' }),
+    ).toBeNull();
   });
 
   test('renders the first-run welcome copy without error framing', () => {
@@ -88,6 +107,17 @@ describe('GuidedConnect', () => {
     ).toBeTruthy();
     expect(
       screen.getByRole('region', { name: 'Another Station' }),
+    ).toBeTruthy();
+    expect(screen.queryByTestId('connection-manager')).toBeNull();
+  });
+
+  test('lets a fresh browser open broker trust and invitation setup before pairing', async () => {
+    render(<GuidedConnect />);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Use a broker invitation' }),
+    );
+    expect(
+      await screen.findByRole('region', { name: 'Browser broker routes' }),
     ).toBeTruthy();
     expect(screen.queryByTestId('connection-manager')).toBeNull();
   });
@@ -104,6 +134,27 @@ describe('GuidedConnect', () => {
       fireEvent.click(screen.getByRole('button', { name: label }));
 
       expect(screen.getByText(`Connection manager: ${panel}`)).toBeTruthy();
+    },
+  );
+
+  test.each([
+    ['web browser profile', false, false, 'true'],
+    ['phone client profile', true, true, 'false'],
+    ['desktop app profile', true, false, 'true'],
+  ] as const)(
+    'passes hasLocalStation=%s to the connection manager for a %s',
+    (_label, isTauri, isMobile, expected) => {
+      native.isTauri = isTauri;
+      native.isMobile = isMobile;
+      render(<GuidedConnect />);
+
+      fireEvent.click(screen.getByRole('button', { name: 'Request access' }));
+
+      expect(
+        screen
+          .getByTestId('connection-manager')
+          .getAttribute('data-has-local-station'),
+      ).toBe(expected);
     },
   );
 

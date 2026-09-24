@@ -44,7 +44,16 @@ export async function fetchBootPayload(): Promise<BootPayload> {
   return fetchBootPayloadAt(apiBase);
 }
 
-async function fetchBootPayloadAt(apiBase: string): Promise<BootPayload> {
+/**
+ * Captured-origin fetch: the caller passes the exact origin its authority
+ * scope verified, so the request never resolves a module-global origin that
+ * a switch may have replaced mid-flight. Pair with
+ * `seedBootPayloadGuarded` — the payload must still be guarded at write
+ * time, because a same-origin identity change passes any origin comparison.
+ */
+export async function fetchBootPayloadAt(
+  apiBase: string,
+): Promise<BootPayload> {
   const response = await authenticatedFetch(`${apiBase}/api/boot`);
   if (!response.ok)
     throw new Error('Could not load Station’s startup information');
@@ -67,13 +76,42 @@ export async function seedBootPayload(
     );
     return;
   }
+  await seedBootPayloadGuarded(
+    queryClient,
+    payload,
+    bootRequest.startedAt,
+    () => true,
+  );
+}
+
+export async function fetchAndSeedBootPayload(
+  queryClient: QueryClient,
+): Promise<void> {
+  const request = { startedAt: Date.now(), apiBase: await _getApiBase() };
+  const payload = await fetchBootPayloadAt(request.apiBase);
+  await seedBootPayload(queryClient, payload, request);
+}
+
+/**
+ * Guarded seed: `isCurrent` — the EXACT captured scope's currency plus the
+ * destination client's liveness — is evaluated immediately before EACH
+ * cache write, never once up front. A same-origin principal/credential
+ * rotation that resolves mid-fetch passes every origin comparison yet fails
+ * this guard, so another identity's payload can never be seeded into this
+ * shelf. Synchronous throughout: no await sits between a check and its
+ * write.
+ */
+export async function seedBootPayloadGuarded(
+  queryClient: QueryClient,
+  payload: BootPayload,
+  startedAt: number,
+  isCurrent: () => boolean,
+): Promise<void> {
   const section = (name: string) =>
     payload.sections[name]?.error ? undefined : payload.sections[name]?.data;
   const seed = (key: readonly unknown[], data: unknown) => {
-    if (
-      (queryClient.getQueryState(key)?.dataUpdatedAt ?? 0) <
-      bootRequest.startedAt
-    )
+    if (!isCurrent()) return;
+    if ((queryClient.getQueryState(key)?.dataUpdatedAt ?? 0) < startedAt)
       queryClient.setQueryData(key, data);
   };
   const auth = section('auth');
@@ -94,21 +132,10 @@ export async function seedBootPayload(
     });
   }
   const agents = section('agents');
-  // station#3824: the value under `['agents']` is an AgentCatalogProjection,
-  // not the bare array the boot envelope carries. Built through the SAME
-  // mapping `fetchAgentCatalog` uses, so the seeded value and the fetched one
-  // cannot drift into different shapes again.
+  // Same projection as `fetchAgentCatalog` (station#3824) — see above.
   if (agents?.success) seed(agentsQueryKey(), toAgentCatalogProjection(agents));
   const projects = section('projects');
   if (projects?.success) seed(projectsQueryKey(), projects.data);
   const models = section('models');
   if (models?.success) seed(modelsQueryKey(), models.data);
-}
-
-export async function fetchAndSeedBootPayload(
-  queryClient: QueryClient,
-): Promise<void> {
-  const request = { startedAt: Date.now(), apiBase: await _getApiBase() };
-  const payload = await fetchBootPayloadAt(request.apiBase);
-  await seedBootPayload(queryClient, payload, request);
 }

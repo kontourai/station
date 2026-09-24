@@ -3,24 +3,29 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 type ApprovalToastOptions = {
   toolName: string;
   toolPreview?: string;
-  actions: Array<{ label: string }>;
+  actions: Array<{ label: string; onClick: () => void }>;
 };
 
 const showToolApproval = vi.fn((_options: ApprovalToastOptions) => 'toast-1');
+const showToast = vi.fn();
 const getChatForExecutionSession = vi.fn();
 const updateChat = vi.fn();
 
 vi.mock('@kontourai/station-sdk', () => ({
   resolveOrchestrationRequest: vi.fn().mockResolvedValue(undefined),
+  inspectAttentionRequest: vi.fn(),
 }));
 vi.mock('../../../contexts/ToastContext', () => ({
-  toastStore: { showToolApproval, dismiss: vi.fn() },
+  toastStore: { showToolApproval, show: showToast, dismiss: vi.fn() },
 }));
 vi.mock('../../../contexts/active-chats-store', () => ({
   activeChatsStore: { getChatForExecutionSession, updateChat },
 }));
 
 const { handleRequestOpenedEvent } = await import('../approvalHandlers');
+const { resolveOrchestrationRequest, inspectAttentionRequest } = await import(
+  '@kontourai/station-sdk'
+);
 
 function requestOpened(payload: Record<string, unknown> | undefined) {
   return {
@@ -65,6 +70,21 @@ describe('handleRequestOpenedEvent — the approval toast says what it grants (#
     const toast = approvalToast();
     expect(toast.toolName).toBe('Bash');
     expect(toast.toolPreview).toBe('touch /tmp/ask-settings-probe');
+  });
+
+  test('keeps actual identity and arguments beside optional stated purpose', () => {
+    handleRequestOpenedEvent(
+      'http://localhost:1',
+      requestOpened({
+        toolName: 'Bash',
+        toolPurpose: 'Check the repository status',
+        toolInput: { command: 'git status' },
+      }),
+    );
+    expect(approvalToast()).toMatchObject({
+      toolName: 'Bash',
+      toolPreview: 'Why: Check the repository status · git status',
+    });
   });
 
   test('names the tool in the standing-grant label', () => {
@@ -186,5 +206,214 @@ describe('handleRequestOpenedEvent — the approval toast says what it grants (#
     );
 
     expect(approvalToast().toolPreview).toBeUndefined();
+  });
+});
+
+describe('#2316: the toast answers the exact prompt it shows', () => {
+  beforeEach(() => {
+    showToolApproval.mockClear();
+    vi.mocked(resolveOrchestrationRequest).mockClear();
+    getChatForExecutionSession.mockReturnValue({
+      title: 'Conversation',
+      agentName: 'Claude',
+      pendingApprovals: [],
+    });
+  });
+
+  test.each([
+    [0, 'accept'],
+    [1, 'acceptForSession'],
+    [2, 'decline'],
+  ] as const)(
+    'action %i sends %s bound to the request event id',
+    async (index, decision) => {
+      handleRequestOpenedEvent(
+        'http://localhost:1',
+        requestOpened({ toolName: 'Bash', toolInput: { command: 'ls' } }),
+      );
+      approvalToast().actions[index]?.onClick();
+      // The answer path loads on demand, so the call lands a tick later.
+      await vi.waitFor(() =>
+        expect(resolveOrchestrationRequest).toHaveBeenCalled(),
+      );
+      expect(resolveOrchestrationRequest).toHaveBeenCalledWith({
+        apiBase: 'http://localhost:1',
+        threadId: 'thread-1',
+        requestId: 'req-1',
+        expectedRequestEventId: 'evt-1',
+        decision,
+      });
+    },
+  );
+});
+
+describe('#2344: the toast reports what happened to its answer', () => {
+  beforeEach(() => {
+    showToolApproval.mockClear();
+    showToast.mockClear();
+    vi.mocked(resolveOrchestrationRequest).mockReset();
+    vi.mocked(inspectAttentionRequest).mockReset();
+    getChatForExecutionSession.mockReturnValue({
+      title: 'Conversation',
+      agentName: 'Claude',
+      // The request is still waiting on the user.
+      pendingApprovals: ['req-1'],
+    });
+  });
+
+  /** Clicks a toast action and lets its answer settle. */
+  async function click(label: string) {
+    const action = showToolApproval.mock.calls
+      .at(-1)?.[0]
+      .actions.find((candidate) => candidate.label === label);
+    if (!action) throw new Error(`no ${label} action`);
+    action.onClick();
+    await vi.waitFor(() =>
+      expect(resolveOrchestrationRequest).toHaveBeenCalled(),
+    );
+    // The answer's own awaits (the refusal read) settle on later ticks.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+
+  test('a refused decision names the failure and offers the request again', async () => {
+    vi.mocked(resolveOrchestrationRequest).mockRejectedValue(
+      new Error('Station is not reachable.'),
+    );
+    vi.mocked(inspectAttentionRequest).mockResolvedValue({
+      state: 'open',
+    } as never);
+    handleRequestOpenedEvent(
+      'http://localhost:1',
+      requestOpened({ toolName: 'Bash', toolInput: { command: 'ls' } }),
+    );
+
+    await click('Deny');
+
+    await vi.waitFor(() =>
+      expect(showToast).toHaveBeenCalledWith(
+        'Your decision on Bash was not delivered: Station is not reachable.',
+        'thread-1',
+        9000,
+        undefined,
+        undefined,
+        'error',
+      ),
+    );
+    // Still open, so the prompt comes back with the same three answers.
+    expect(showToolApproval).toHaveBeenCalledTimes(2);
+    expect(
+      showToolApproval.mock.calls[1]?.[0].actions.map((a) => a.label),
+    ).toEqual(['Allow Once', 'Allow Bash for this session', 'Deny']);
+  });
+
+  test('a failure after the request settled elsewhere offers no dead prompt', async () => {
+    vi.mocked(resolveOrchestrationRequest).mockRejectedValue(
+      new Error('Station is not reachable.'),
+    );
+    vi.mocked(inspectAttentionRequest).mockRejectedValue(new Error('offline'));
+    handleRequestOpenedEvent(
+      'http://localhost:1',
+      requestOpened({ toolName: 'Bash', toolInput: { command: 'ls' } }),
+    );
+    // request.resolved arrived meanwhile and took it off the waiting list.
+    getChatForExecutionSession.mockReturnValue({
+      title: 'Conversation',
+      agentName: 'Claude',
+      pendingApprovals: [],
+    });
+
+    await click('Allow Once');
+
+    await vi.waitFor(() =>
+      expect(showToast).toHaveBeenCalledWith(
+        expect.stringMatching(/^Your decision on Bash was not delivered/),
+        'thread-1',
+        9000,
+        undefined,
+        undefined,
+        'error',
+      ),
+    );
+    expect(showToolApproval).toHaveBeenCalledTimes(1);
+  });
+
+  test('an answer to a request already answered says so, and is not an error', async () => {
+    vi.mocked(resolveOrchestrationRequest).mockRejectedValue(
+      new Error('This request was already resolved.'),
+    );
+    vi.mocked(inspectAttentionRequest).mockResolvedValue({
+      state: 'resolved',
+    } as never);
+    handleRequestOpenedEvent(
+      'http://localhost:1',
+      requestOpened({ toolName: 'Bash', toolInput: { command: 'ls' } }),
+    );
+
+    await click('Allow Once');
+
+    await vi.waitFor(() =>
+      expect(showToast).toHaveBeenCalledWith(
+        'Bash: this request was already answered.',
+        'thread-1',
+        5000,
+      ),
+    );
+    // Read from the request itself, bound to the prompt the toast showed.
+    expect(inspectAttentionRequest).toHaveBeenCalledWith('http://localhost:1', {
+      threadId: 'thread-1',
+      requestId: 'req-1',
+      requestEventId: 'evt-1',
+    });
+    expect(showToast).toHaveBeenCalledTimes(1);
+    expect(showToolApproval).toHaveBeenCalledTimes(1);
+  });
+
+  test('a failed load of the answer path is reported like any undelivered decision', async () => {
+    // The answer path is loaded on demand; a chunk that cannot load (an
+    // update while the tab was open, a dropped connection) must not swallow
+    // the click.
+    vi.doMock('../answerRequest', () => {
+      throw new Error('Failed to fetch dynamically imported module');
+    });
+    try {
+      handleRequestOpenedEvent(
+        'http://localhost:1',
+        requestOpened({ toolName: 'Bash', toolInput: { command: 'ls' } }),
+      );
+      showToolApproval.mock.calls
+        .at(-1)?.[0]
+        .actions.find((action) => action.label === 'Deny')
+        ?.onClick();
+
+      await vi.waitFor(() =>
+        expect(showToast).toHaveBeenCalledWith(
+          // vitest wraps a throwing mock factory's error in its own text.
+          expect.stringMatching(/^Your decision on Bash was not delivered: ./),
+          'thread-1',
+          9000,
+          undefined,
+          undefined,
+          'error',
+        ),
+      );
+      // Nothing reached Station, and the request is offered again.
+      expect(resolveOrchestrationRequest).not.toHaveBeenCalled();
+      expect(showToolApproval).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.doUnmock('../answerRequest');
+    }
+  });
+
+  test('an accepted decision adds no notice of its own', async () => {
+    vi.mocked(resolveOrchestrationRequest).mockResolvedValue(undefined);
+    handleRequestOpenedEvent(
+      'http://localhost:1',
+      requestOpened({ toolName: 'Bash', toolInput: { command: 'ls' } }),
+    );
+
+    await click('Allow Once');
+
+    expect(showToast).not.toHaveBeenCalled();
+    expect(showToolApproval).toHaveBeenCalledTimes(1);
   });
 });

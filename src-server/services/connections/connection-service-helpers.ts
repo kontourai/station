@@ -99,6 +99,13 @@ export type ACPConnectionStatus = {
   providerRouting?: ACPProviderInfo[];
   /** False means a provider mutation outdates the retained observation. */
   providerRoutingCurrent?: boolean;
+  /**
+   * Why the most recent probe failed, verbatim from the manager status
+   * (`getACPManagerStatus`); absent when the last probe succeeded or never
+   * ran. The initialize phase's message is the engine's own observation of
+   * WHY the connection is unavailable.
+   */
+  lastError?: { message: string; phase: string };
 };
 
 export const MODEL_CAPABILITY_SET = new Set<ConnectionCapability>([
@@ -300,58 +307,6 @@ export function mergeRuntimeConfig(
   };
 }
 
-function runtimeModelOptionsForAdapter(
-  adapter: ProviderAdapterShape,
-): ModelOption[] | undefined {
-  switch (adapter.provider) {
-    case 'claude':
-      // Bounded built-in catalog — the live path asks the SDK's supportedModels().
-      // Values verified against @anthropic-ai/claude-agent-sdk supportedModels()
-      // on 2026-07-27 (archive#1012): the current family is Claude 5.
-      return [
-        {
-          id: 'claude-sonnet-5',
-          name: 'Claude Sonnet 5',
-          originalId: 'claude-sonnet-5',
-        },
-        {
-          id: 'claude-opus-5',
-          name: 'Claude Opus 5',
-          originalId: 'claude-opus-5',
-        },
-        {
-          id: 'claude-fable-5',
-          name: 'Claude Fable 5',
-          originalId: 'claude-fable-5',
-        },
-      ];
-    case 'codex':
-      // Bounded built-in catalog — the live path asks the app-server's model/list.
-      // Values verified against a live `codex app-server` model/list probe on
-      // 2026-07-27 (archive#1012): the top entries of the current catalog, in the
-      // catalog's own order.
-      return [
-        {
-          id: 'gpt-5.6-sol',
-          name: 'GPT-5.6-Sol',
-          originalId: 'gpt-5.6-sol',
-        },
-        {
-          id: 'gpt-5.6-terra',
-          name: 'GPT-5.6-Terra',
-          originalId: 'gpt-5.6-terra',
-        },
-        {
-          id: 'gpt-5.6-luna',
-          name: 'GPT-5.6-Luna',
-          originalId: 'gpt-5.6-luna',
-        },
-      ];
-    default:
-      return undefined;
-  }
-}
-
 const MODEL_OPTION_MAX_ENTRIES = 1000;
 const MODEL_OPTION_TEXT_MAX_LENGTH = 512;
 const MODEL_OPTION_CAPABILITY_VALUE_MAX_ENTRIES = 32;
@@ -509,7 +464,10 @@ export function buildRuntimeCatalogStatus({
   allowBuiltInOnDiscoveryFailure: boolean;
   now: number;
 }): RuntimeCatalogStatus | undefined {
-  const builtInModels = runtimeModelOptionsForAdapter(adapter) ?? [];
+  // Claude and Codex expose a live catalog. A dated in-repo snapshot here
+  // was still shown when that probe was empty or failed, which hid later
+  // models. Keep the field for schema compatibility; do not populate it.
+  const builtInModels: ModelOption[] = [];
   const normalizedLiveCatalog = normalizeModelOptionsWithBounds(
     liveCatalog?.models,
   );
@@ -530,7 +488,17 @@ export function buildRuntimeCatalogStatus({
     };
   }
 
-  if (liveDiscoveryFailed && !allowBuiltInOnDiscoveryFailure) {
+  if (liveDiscoveryFailed) {
+    if (allowBuiltInOnDiscoveryFailure && builtInModels.length > 0) {
+      return {
+        source: 'built-in',
+        fetchedAt: null,
+        reason:
+          'Live runtime catalog is unavailable, so Station is showing its built-in models.',
+        models: [],
+        builtInModels,
+      };
+    }
     return {
       source: 'none',
       fetchedAt: null,
@@ -559,6 +527,19 @@ export function buildRuntimeCatalogStatus({
     models: [],
     builtInModels: [],
   };
+}
+
+/**
+ * Models a picker may show for this catalog. A live answer — including an
+ * empty one — is authoritative; built-in entries must not replace it.
+ */
+export function visibleRuntimeCatalogModels(
+  catalog: RuntimeCatalogStatus | undefined,
+): ModelOption[] {
+  if (!catalog) return [];
+  if (catalog.source === 'live') return catalog.models;
+  if (catalog.models.length > 0) return catalog.models;
+  return catalog.builtInModels;
 }
 
 export function recordRuntimeCatalogStatus({
@@ -646,10 +627,7 @@ export function buildRuntimeCapabilityInventory({
     ReturnType<NonNullable<ProviderAdapterShape['getCommands']>>
   >;
 }): ProviderCapabilityInventory {
-  const visibleModels =
-    catalog && catalog.models.length > 0
-      ? catalog.models
-      : (catalog?.builtInModels ?? []);
+  const visibleModels = visibleRuntimeCatalogModels(catalog);
   return {
     providerId: adapter.provider,
     connectionId: id,

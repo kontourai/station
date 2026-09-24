@@ -1,5 +1,11 @@
 import { useContext } from 'react';
 import { getPluginHeaders } from '../api-core';
+import type {
+  SDKAuthContext,
+  SDKAuthState,
+  SDKNavigation,
+  SDKToast,
+} from '../host-contexts';
 import { SDKContext } from '../providers';
 import { useProjectQuery, useProjectsQuery } from '../queries';
 import type { AgentSummary } from '../types';
@@ -14,15 +20,15 @@ export function useSDK() {
   };
 }
 
-export function useAgents() {
+export function useAgents(): AgentSummary[] {
   const sdk = useContext(SDKContext);
   if (!sdk?.contexts?.agents) throw new Error('AgentsContext not available');
   return sdk.contexts.agents.useAgents();
 }
 
-export function useAgent(slug: string) {
+export function useAgent(slug: string): AgentSummary | undefined {
   const agents = useAgents();
-  return agents.find((a: AgentSummary) => a.slug === slug);
+  return agents.find((a) => a.slug === slug);
 }
 
 export function useLayouts() {
@@ -131,9 +137,9 @@ export function useApiBase() {
   return sdk.contexts.config.useApiBase();
 }
 
-const fallbackAuth = {
+const fallbackAuth: SDKAuthContext = {
   useAuth: () => ({
-    status: 'missing' as const,
+    status: 'missing',
     user: null,
     expiresAt: null,
     provider: '',
@@ -142,7 +148,7 @@ const fallbackAuth = {
   }),
 };
 
-export function useAuth() {
+export function useAuth(): SDKAuthState {
   const sdk = useContext(SDKContext);
   const authContext = sdk?.contexts?.auth ?? fallbackAuth;
   return authContext.useAuth();
@@ -154,7 +160,7 @@ export function useConfig() {
   return sdk.contexts.config.useConfig();
 }
 
-export function useNavigation() {
+export function useNavigation(): SDKNavigation {
   const sdk = useContext(SDKContext);
   if (!sdk?.contexts?.navigation)
     throw new Error('NavigationContext not available');
@@ -164,13 +170,13 @@ export function useNavigation() {
 export function useDockState() {
   const navigation = useNavigation();
   return {
-    isOpen: navigation.dockState,
+    isOpen: navigation.isDockOpen,
     setOpen: navigation.setDockState,
-    toggle: () => navigation.setDockState(!navigation.dockState),
+    toggle: () => navigation.setDockState(!navigation.isDockOpen),
   };
 }
 
-export function useToast() {
+export function useToast(): SDKToast {
   const sdk = useContext(SDKContext);
   if (!sdk?.contexts?.toast) throw new Error('ToastContext not available');
   return sdk.contexts.toast.useToast();

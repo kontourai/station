@@ -14,6 +14,7 @@ import {
   SESSION_EVENT_WINDOW_UNSUPPORTED_RETRY_MS,
 } from '@kontourai/station-sdk';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { activeChatsStore } from '../../contexts/active-chats-store';
 import {
   publishHistoryForCapture,
   removeHistoryForCapture,
@@ -195,6 +196,10 @@ export function useSessionEventWindow(
       )
         return;
       setUpgradeRequired(false);
+      // #2309: the window read carries its conversation's activity too.
+      activeChatsStore.applyConversationActivity(
+        page.session?.conversationActivity,
+      );
       setCurrentSessionId(page.currentSessionId);
       setSessionLineage(page.sessionLineage);
       setHandoffs(page.handoffs ?? []);
@@ -260,6 +265,9 @@ export function useSessionEventWindow(
         requestSerial !== requestSerialRef.current
       )
         return;
+      activeChatsStore.applyConversationActivity(
+        page.session?.conversationActivity,
+      );
       setCurrentSessionId(page.currentSessionId);
       setSessionLineage(page.sessionLineage);
       setHandoffs(page.handoffs ?? []);

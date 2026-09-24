@@ -1,12 +1,12 @@
 import type { IndependentReviewRequest } from '@kontourai/station-contracts/review-evidence';
 import {
   useAgentsQuery,
-  useProjectsQuery,
   useRunIndependentReviewMutation,
 } from '@kontourai/station-sdk';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { useScopedProjectsQuery } from '../../contexts/ProjectsContext';
 import { Button } from '../Button';
 import {
   ResponsiveDialogSurface,
@@ -45,7 +45,7 @@ export function IndependentReviewRunModal({
 }) {
   const titleId = useId();
   const cancelRef = useRef<HTMLButtonElement>(null);
-  const { data: projectData = [] } = useProjectsQuery();
+  const { data: projectData = [] } = useScopedProjectsQuery();
   const { data: agentData = [] } = useAgentsQuery();
   const projects = projectData as Array<{ slug: string; name?: string }>;
   const agents = agentData as Array<{ slug: string }>;

@@ -8,7 +8,7 @@ import {
 } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { networkInterfaces, tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { type HttpBindings } from '@hono/node-server';
 import {
   DEFAULT_GRANT_PAIRING_SCOPE,
@@ -17,15 +17,21 @@ import {
   PAIRING_SCOPE_HOME_CONTROL,
   type PairedDevice,
   PUBLIC_DEVICE_PAIRING_ACCESS_REQUEST_PATH,
+  PUBLIC_DEVICE_PAIRING_EXCHANGE_PATH,
+  PUBLIC_DEVICE_PAIRING_LOCAL_ACCESS_PATH,
+  PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_ELIGIBILITY_PATH,
   PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_PATH,
   PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_STARTUP_PROOF_PATH,
   PUBLIC_DEVICE_PAIRING_UI_BOOTSTRAP_PATH,
 } from '@kontourai/station-contracts';
+import { humanPrincipal } from '@kontourai/station-contracts/principal';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { PairingFailureLimiter } from '../../security/pairing-failure-limiter.js';
 import { getRuntimeAuthenticatedRequestPrincipal } from '../../security/runtime-request-security.js';
+import { RelayEnrollmentService } from '../../services/identity/relay-enrollment-service.js';
 import type { EventBus } from '../../services/orchestration/event-bus.js';
+import { openRelayEnrollmentJournal } from '../../services/relay/relay-enrollment-journal.js';
 import { ClientConnectionPresence } from '../../services/ssh/client-connection-presence.js';
 import { DevicePairingService } from '../../services/ssh/device-pairing-service.js';
 import {
@@ -50,10 +56,69 @@ import {
   type PairingAuthFailureAuditRecord,
 } from '../routes/runtime-routes.js';
 
+/**
+ * #2315: on Windows every local-grant configure hardens its directory and its
+ * temporary file through PowerShell, and each start is a cold start on a
+ * loaded hosted runner. Twenty-odd harnesses here repeated that product seam
+ * without asserting anything about it, and one start past its timeout failed
+ * the required Windows check. Route tests therefore skip the ACL step; the one
+ * test that owns the local-grant file boundary opts back into the real
+ * implementation, which on Windows sets and reads back both ACLs (and throws
+ * if either is not current-user protected).
+ */
+const windowsTrust = vi.hoisted(() => ({ real: false, hardened: 0 }));
+vi.mock(
+  '@kontourai/station-shared/windows-path-trust',
+  async (importOriginal) => {
+    const actual =
+      await importOriginal<
+        typeof import('@kontourai/station-shared/windows-path-trust')
+      >();
+    return {
+      ...actual,
+      ensureWindowsDirectoriesTrusted: (
+        ...args: Parameters<typeof actual.ensureWindowsDirectoriesTrusted>
+      ) => {
+        if (!windowsTrust.real) return;
+        windowsTrust.hardened += 1;
+        actual.ensureWindowsDirectoriesTrusted(...args);
+      },
+      hardenWindowsPathsTrusted: (
+        ...args: Parameters<typeof actual.hardenWindowsPathsTrusted>
+      ) => {
+        if (!windowsTrust.real) return;
+        windowsTrust.hardened += 1;
+        actual.hardenWindowsPathsTrusted(...args);
+      },
+    };
+  },
+);
+
 const MASTER_CREDENTIAL = 'master-credential';
 const ENVIRONMENT_ID = '11111111-1111-4111-8111-111111111111';
 const REMOTE_PEER = '100.96.12.7';
 const homes: string[] = [];
+
+function markProviderPending(
+  journal: ReturnType<typeof openRelayEnrollmentJournal>,
+  enrollmentId: string,
+  providerSessionId: string,
+  issuer: string,
+  subject: string,
+) {
+  journal.transition({
+    enrollmentId,
+    expectedStates: ['challenge'],
+    nextState: 'provider-creating',
+    patch: { issuer, loginJti: 'L'.repeat(22) },
+  });
+  return journal.transition({
+    enrollmentId,
+    expectedStates: ['provider-creating'],
+    nextState: 'provider-pending',
+    patch: { providerSessionId, issuer, subject },
+  });
+}
 
 type TestBindings = HttpBindings & {
   incoming: HttpBindings['incoming'] & {
@@ -75,6 +140,10 @@ function createHarness(
     clientPresenceAvailable?: boolean;
     resolvePublicIngressOrigin?: () => Promise<readonly string[] | undefined>;
     isRequestPrincipalCurrent?: (request: Request) => boolean;
+    createRelayEnrollment?: (
+      pairing: DevicePairingService,
+      homeDir: string,
+    ) => RelayEnrollmentService;
   } = {},
 ) {
   const homeDir = mkdtempSync(join(tmpdir(), 'station-pairing-routes-'));
@@ -88,6 +157,7 @@ function createHarness(
       options.maxActiveCredentialsWithoutVerifiedIdentity,
     now: options.now,
   });
+  const relayEnrollment = options.createRelayEnrollment?.(pairing, homeDir);
   const logger: Logger = {
     info: vi.fn(),
     warn: vi.fn(),
@@ -127,6 +197,7 @@ function createHarness(
         .digest('base64url'),
     failureLimiter: options.failureLimiter,
     now: options.now,
+    relayEnrollment,
     ...(options.resolvePublicIngressOrigin
       ? { resolvePublicIngressOrigin: options.resolvePublicIngressOrigin }
       : {}),
@@ -182,6 +253,7 @@ function createHarness(
           principal.credential === MASTER_CREDENTIAL
         );
       }),
+    relayEnrollment,
   });
   app.get('/api/projects', (c) => c.json({ projects: [] }));
   app.post('/api/projects', (c) => c.json({ projects: [] }));
@@ -220,6 +292,7 @@ function createHarness(
   return {
     logger,
     pairing,
+    relayEnrollment,
     request,
     requestRaw,
     requestWithoutPeer,
@@ -695,6 +768,514 @@ describe('public pairing abuse hardening (station#2001)', () => {
 });
 
 describe('device pairing routes', () => {
+  test('marked account approval uses pending verifier and records only account-bound approval', async () => {
+    const issuer = 'https://identity.example.test';
+    const subject = 'fresh-relay-person';
+    const pendingVerify = vi.fn(
+      async (enrollmentId: string, sessionId: string) => ({
+        kind: 'pending' as const,
+        session: {
+          enrollmentId,
+          sessionId,
+          subject,
+          displayName: 'Relay person',
+          expiresAt: new Date(Date.now() + 60_000).toISOString(),
+        },
+      }),
+    );
+    const genericVerify = vi.fn(async () => ({ kind: 'unavailable' as const }));
+    let journal: ReturnType<typeof openRelayEnrollmentJournal> | undefined;
+    const harness = createHarness({
+      createRelayEnrollment: (pairing, homeDir) => {
+        journal = openRelayEnrollmentJournal({
+          dbPath: join(homeDir, 'authentication', 'relay-enrollment.sqlite'),
+          stationId: ENVIRONMENT_ID,
+        });
+        const authentication = {
+          pendingEnrollmentCapabilities: () => ({ available: true }),
+          verifyPendingEnrollment: pendingVerify,
+          verifySessionReference: genericVerify,
+          describe: () => ({ issuer }),
+          revokeSessionReference: vi.fn(async () => {}),
+        } as never;
+        return new RelayEnrollmentService({
+          stationId: ENVIRONMENT_ID,
+          requestOrigin: 'https://station.example.test',
+          allowedClientOrigins: ['https://station.example.test'],
+          authentication,
+          pairing,
+          journal,
+        });
+      },
+    });
+    const enrollmentId = 'R'.repeat(43);
+    const providerSessionId = 'fresh-provider-session';
+    journal?.reserveChallenge({
+      enrollmentId,
+      stationId: ENVIRONMENT_ID,
+      clientOrigin: 'https://station.example.test',
+      keyThumbprint: 'T'.repeat(43),
+      publicKey: {
+        kty: 'EC',
+        crv: 'P-256',
+        x: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
+        y: 'BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB',
+      },
+      nonce: 'N'.repeat(43),
+      expiresAt: Date.now() + 60_000,
+    });
+    if (journal)
+      markProviderPending(
+        journal,
+        enrollmentId,
+        providerSessionId,
+        issuer,
+        subject,
+      );
+    const access = harness.pairing.requestRelayEnrollmentAccess({
+      enrollmentId,
+      endpoint: 'https://station.example.test',
+      candidate: { issuer, subject, displayName: 'Relay person' },
+      sessionId: providerSessionId,
+    });
+    journal?.transition({
+      enrollmentId,
+      expectedStates: ['provider-pending'],
+      nextState: 'pairing-requested',
+      patch: {
+        offerId: access.offerId,
+        requestId: access.requestId,
+        offerProof: access.proof,
+      },
+    });
+    expect(harness.pairing.isRelayEnrollmentRequest(access.requestId)).toBe(
+      true,
+    );
+
+    const response = await harness.request(
+      `/api/pairing/requests/${access.requestId}/confirm`,
+      harness.json({ bindAccountIdentity: true }, MASTER_CREDENTIAL),
+    );
+
+    expect(response.status, await response.clone().text()).toBe(200);
+    expect(await response.json()).toMatchObject({
+      requestId: access.requestId,
+      personBindingApproved: true,
+    });
+    expect(pendingVerify).toHaveBeenCalledWith(
+      enrollmentId,
+      providerSessionId,
+      expect.any(AbortSignal),
+    );
+    expect(genericVerify).not.toHaveBeenCalled();
+    expect(journal?.get(enrollmentId)).toMatchObject({ state: 'approved' });
+    harness.relayEnrollment?.close();
+  });
+
+  test('operator denial of a marked request cleans provider state through the route owner', async () => {
+    const issuer = 'https://identity.example.test';
+    const subject = 'denied-relay-person';
+    const discarded = vi.fn(async () => {});
+    const revoked = vi.fn(async () => {});
+    let journal: ReturnType<typeof openRelayEnrollmentJournal> | undefined;
+    const harness = createHarness({
+      createRelayEnrollment: (pairing, homeDir) => {
+        journal = openRelayEnrollmentJournal({
+          dbPath: join(homeDir, 'authentication', 'relay-enrollment.sqlite'),
+          stationId: ENVIRONMENT_ID,
+        });
+        return new RelayEnrollmentService({
+          stationId: ENVIRONMENT_ID,
+          requestOrigin: 'https://station.example.test',
+          allowedClientOrigins: ['https://station.example.test'],
+          authentication: {
+            describe: () => ({ issuer }),
+            pendingEnrollmentCapabilities: () => ({ available: true }),
+            discardPendingEnrollment: discarded,
+            revokeSessionReference: revoked,
+          } as never,
+          pairing,
+          journal,
+        });
+      },
+    });
+    const enrollmentId = 'D'.repeat(43);
+    const providerSessionId = 'denied-provider-session';
+    journal?.reserveChallenge({
+      enrollmentId,
+      stationId: ENVIRONMENT_ID,
+      clientOrigin: 'https://station.example.test',
+      keyThumbprint: 'T'.repeat(43),
+      publicKey: {
+        kty: 'EC',
+        crv: 'P-256',
+        x: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
+        y: 'BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB',
+      },
+      nonce: 'N'.repeat(43),
+      expiresAt: Date.now() + 60_000,
+    });
+    if (journal)
+      markProviderPending(
+        journal,
+        enrollmentId,
+        providerSessionId,
+        issuer,
+        subject,
+      );
+    const access = harness.pairing.requestRelayEnrollmentAccess({
+      enrollmentId,
+      endpoint: 'https://station.example.test',
+      candidate: { issuer, subject, displayName: 'Denied person' },
+      sessionId: providerSessionId,
+    });
+    journal?.transition({
+      enrollmentId,
+      expectedStates: ['provider-pending'],
+      nextState: 'pairing-requested',
+      patch: {
+        offerId: access.offerId,
+        requestId: access.requestId,
+        offerProof: access.proof,
+      },
+    });
+
+    const response = await harness.request(
+      `/api/pairing/requests/${access.requestId}`,
+      {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${MASTER_CREDENTIAL}` },
+      },
+    );
+
+    expect(response.status, await response.clone().text()).toBe(200);
+    expect(await response.json()).toMatchObject({
+      requestId: access.requestId,
+      status: 'denied',
+    });
+    expect(discarded).toHaveBeenCalledWith(
+      enrollmentId,
+      providerSessionId,
+      expect.any(AbortSignal),
+    );
+    expect(revoked).toHaveBeenCalledWith(
+      providerSessionId,
+      expect.any(AbortSignal),
+    );
+    expect(journal?.get(enrollmentId)).toMatchObject({ state: 'denied' });
+    harness.relayEnrollment?.close();
+  });
+
+  test('direct-loopback local denial cleans a marked request through the relay owner', async () => {
+    const issuer = 'https://identity.example.test';
+    const subject = 'local-denied-relay-person';
+    const discarded = vi.fn(async () => {});
+    const revoked = vi.fn(async () => {});
+    let journal: ReturnType<typeof openRelayEnrollmentJournal> | undefined;
+    const harness = createHarness({
+      localGrant: true,
+      createRelayEnrollment: (pairing, homeDir) => {
+        journal = openRelayEnrollmentJournal({
+          dbPath: join(homeDir, 'authentication', 'relay-enrollment.sqlite'),
+          stationId: ENVIRONMENT_ID,
+        });
+        return new RelayEnrollmentService({
+          stationId: ENVIRONMENT_ID,
+          requestOrigin: 'https://station.example.test',
+          allowedClientOrigins: ['https://station.example.test'],
+          authentication: {
+            describe: () => ({ issuer }),
+            pendingEnrollmentCapabilities: () => ({ available: true }),
+            discardPendingEnrollment: discarded,
+            revokeSessionReference: revoked,
+          } as never,
+          pairing,
+          journal,
+        });
+      },
+    });
+    const enrollmentId = 'L'.repeat(43);
+    const providerSessionId = 'local-denied-provider-session';
+    journal?.reserveChallenge({
+      enrollmentId,
+      stationId: ENVIRONMENT_ID,
+      clientOrigin: 'https://station.example.test',
+      keyThumbprint: 'T'.repeat(43),
+      publicKey: {
+        kty: 'EC',
+        crv: 'P-256',
+        x: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
+        y: 'BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB',
+      },
+      nonce: 'N'.repeat(43),
+      expiresAt: Date.now() + 60_000,
+    });
+    if (journal)
+      markProviderPending(
+        journal,
+        enrollmentId,
+        providerSessionId,
+        issuer,
+        subject,
+      );
+    const access = harness.pairing.requestRelayEnrollmentAccess({
+      enrollmentId,
+      endpoint: 'https://station.example.test',
+      candidate: { issuer, subject, displayName: 'Local denied person' },
+      sessionId: providerSessionId,
+    });
+    journal?.transition({
+      enrollmentId,
+      expectedStates: ['provider-pending'],
+      nextState: 'pairing-requested',
+      patch: {
+        offerId: access.offerId,
+        requestId: access.requestId,
+        offerProof: access.proof,
+      },
+    });
+    expect(harness.pairing.isRelayEnrollmentRequest(access.requestId)).toBe(
+      true,
+    );
+
+    const response = await harness.request(
+      PUBLIC_DEVICE_PAIRING_LOCAL_ACCESS_PATH,
+      harness.json({
+        secret: harness.readLocalGrantSecret(),
+        action: 'deny',
+        requestId: access.requestId,
+      }),
+      '127.0.0.12',
+    );
+
+    expect(response.status, await response.clone().text()).toBe(200);
+    expect(await response.json()).toMatchObject({
+      requestId: access.requestId,
+      status: 'denied',
+    });
+    expect(discarded).toHaveBeenCalledWith(
+      enrollmentId,
+      providerSessionId,
+      expect.any(AbortSignal),
+    );
+    expect(revoked).toHaveBeenCalledWith(
+      providerSessionId,
+      expect.any(AbortSignal),
+    );
+    expect(journal?.get(enrollmentId)).toMatchObject({ state: 'denied' });
+    harness.relayEnrollment?.close();
+  });
+
+  test('operator request polling expires and cleans a pending Device without restart', async () => {
+    let now = 50_000;
+    const issuer = 'https://identity.example.test';
+    const subject = 'expired-relay-person';
+    const discarded = vi.fn(async () => {});
+    const revoked = vi.fn(async () => {});
+    let journal: ReturnType<typeof openRelayEnrollmentJournal> | undefined;
+    let registryPath: string | undefined;
+    const harness = createHarness({
+      now: () => now,
+      createRelayEnrollment: (pairing, homeDir) => {
+        registryPath = join(homeDir, 'security', 'paired-devices.json');
+        journal = openRelayEnrollmentJournal({
+          dbPath: join(homeDir, 'authentication', 'relay-enrollment.sqlite'),
+          stationId: ENVIRONMENT_ID,
+          now: () => now,
+        });
+        const authentication = {
+          pendingEnrollmentCapabilities: () => ({ available: true }),
+          verifyPendingEnrollment: async (
+            enrollmentId: string,
+            sessionId: string,
+          ) => ({
+            kind: 'pending' as const,
+            session: {
+              enrollmentId,
+              sessionId,
+              subject,
+              displayName: 'Expired relay person',
+              expiresAt: '2026-09-23T12:00:00.000Z',
+            },
+          }),
+          discardPendingEnrollment: discarded,
+          revokeSessionReference: revoked,
+          describe: () => ({ issuer }),
+        } as never;
+        return new RelayEnrollmentService({
+          stationId: ENVIRONMENT_ID,
+          requestOrigin: 'https://station.example.test',
+          allowedClientOrigins: ['https://station.example.test'],
+          authentication,
+          pairing,
+          journal,
+          now: () => now,
+        });
+      },
+    });
+    const existingDevice = await pairDevice(
+      harness,
+      'Existing unrelated Device',
+    );
+    const enrollmentId = 'E'.repeat(43);
+    const providerSessionId = 'expired-provider-session';
+    journal?.reserveChallenge({
+      enrollmentId,
+      stationId: ENVIRONMENT_ID,
+      clientOrigin: 'https://station.example.test',
+      keyThumbprint: 'T'.repeat(43),
+      publicKey: {
+        kty: 'EC',
+        crv: 'P-256',
+        x: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
+        y: 'BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB',
+      },
+      nonce: 'N'.repeat(43),
+      expiresAt: now + 1_000,
+    });
+    if (journal)
+      markProviderPending(
+        journal,
+        enrollmentId,
+        providerSessionId,
+        issuer,
+        subject,
+      );
+    const access = harness.pairing.requestRelayEnrollmentAccess({
+      enrollmentId,
+      endpoint: 'https://station.example.test',
+      candidate: { issuer, subject, displayName: 'Expired relay person' },
+      sessionId: providerSessionId,
+    });
+    journal?.transition({
+      enrollmentId,
+      expectedStates: ['provider-pending'],
+      nextState: 'pairing-requested',
+      patch: {
+        offerId: access.offerId,
+        requestId: access.requestId,
+        offerProof: access.proof,
+      },
+    });
+    await harness.relayEnrollment?.confirmOperatorBinding({
+      requestId: access.requestId,
+      approval: { kind: 'presented-credential' },
+      principalId: humanPrincipal('operator', 'one', 'Operator').id,
+      signal: new AbortController().signal,
+      isApprovalCurrent: () => true,
+    });
+    const issued = await harness.relayEnrollment?.exchangeApprovedDevice(
+      enrollmentId,
+      new AbortController().signal,
+    );
+    expect(issued).toBeDefined();
+    now += 1_001;
+
+    const response = await harness.request('/api/pairing/requests', {
+      headers: { Authorization: `Bearer ${MASTER_CREDENTIAL}` },
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ requests: [] });
+    expect(discarded).toHaveBeenCalledWith(
+      enrollmentId,
+      providerSessionId,
+      expect.any(AbortSignal),
+    );
+    expect(revoked).toHaveBeenCalledWith(
+      providerSessionId,
+      expect.any(AbortSignal),
+    );
+    expect(harness.pairing.identifyDevice(issued!.credential)).toBeNull();
+    const reopenedPairing = new DevicePairingService({
+      homeDir: dirname(dirname(registryPath!)),
+      environmentId: ENVIRONMENT_ID,
+    });
+    const persistedDevices = JSON.parse(readFileSync(registryPath!, 'utf8'))
+      .devices as Array<{ id: string }>;
+    expect(persistedDevices.map((device) => device.id)).toContain(
+      existingDevice.device.id,
+    );
+    expect(persistedDevices.map((device) => device.id)).not.toContain(
+      issued!.device.id,
+    );
+    expect(reopenedPairing.identifyDevice(existingDevice.credential)?.id).toBe(
+      existingDevice.device.id,
+    );
+    expect(reopenedPairing.identifyDevice(issued!.credential)).toBeNull();
+    expect(journal?.get(enrollmentId)).toMatchObject({ state: 'expired' });
+    harness.relayEnrollment?.close();
+  });
+
+  test('pending relay Device stays hidden from operator inventory and refused by bearer, cookie and legacy exchange routes', async () => {
+    const harness = createHarness();
+    const existing = await pairDevice(harness, 'Existing device');
+    const enrollmentId = 'V'.repeat(43);
+    const candidate = {
+      issuer: 'https://identity.example.test',
+      subject: 'relay-person',
+      displayName: 'Relay person',
+    };
+    const pending = harness.pairing.requestRelayEnrollmentAccess({
+      enrollmentId,
+      endpoint: 'https://station.example.test',
+      candidate,
+      sessionId: 'relay-provider-session',
+    });
+    harness.pairing.confirmRelayEnrollmentRequest(
+      pending.requestId,
+      { kind: 'presented-credential' },
+      'human:deployment:operator',
+      {
+        enrollmentId,
+        sessionId: 'relay-provider-session',
+        issuer: candidate.issuer,
+        subject: candidate.subject,
+      },
+    );
+    const reservedId = 'bbbbbbbb-cccc-4ddd-8eee-ffffffffffff';
+    const pendingDevice = harness.pairing.exchangeRelayEnrollment({
+      offerId: pending.offerId,
+      proof: pending.proof,
+      requestId: pending.requestId,
+      enrollmentId,
+      deviceId: reservedId,
+    });
+
+    const devices = await harness.request('/api/pairing/devices', {
+      headers: { Authorization: `Bearer ${MASTER_CREDENTIAL}` },
+    });
+    expect(devices.status).toBe(200);
+    expect(await devices.json()).toMatchObject({
+      devices: [{ id: existing.device.id }],
+    });
+    expect(harness.pairing.listKnownPrincipals()).not.toContainEqual(
+      expect.objectContaining({ id: `human:device:${reservedId}` }),
+    );
+    expect(harness.pairing.listPushSubscriptions()).toEqual([]);
+
+    for (const headers of [
+      { Authorization: `Bearer ${pendingDevice.credential}` },
+      { Cookie: `station-device=${pendingDevice.credential}` },
+    ]) {
+      const protectedRead = await harness.request('/api/projects', { headers });
+      expect(protectedRead.status).not.toBe(200);
+    }
+    const legacyExchange = await harness.request(
+      '/.well-known/station/v1/pairing/exchange',
+      harness.json({
+        offerId: pending.offerId,
+        proof: pending.proof,
+        requestId: pending.requestId,
+      }),
+    );
+    expect(legacyExchange.status).toBe(409);
+    expect(await legacyExchange.json()).toEqual({
+      error: 'relay_enrollment_finalize_required',
+    });
+    expect(harness.pairing.identifyDevice(existing.credential)).not.toBeNull();
+  });
+
   test('station#1123 slice 1: POST /api/pairing/offers accepts kind and rejects an unknown one', async () => {
     const harness = createHarness();
 
@@ -2163,6 +2744,221 @@ describe('local-grant startup proof', () => {
 });
 
 /**
+ * #2228 — the DECISIVE local-grant eligibility answer. The authenticated
+ * `GET /api/auth/local-grant-eligibility` presupposes a valid bearer, so a
+ * desktop whose stored credential is DEAD is rejected by the auth boundary
+ * before any route runs and must fail closed on the one state its recovery
+ * exists to classify. This loopback owner-secret surface answers even then,
+ * which is what lets `station_local_self_provision` self-heal at boot.
+ */
+describe('local-grant eligibility answer (#2228)', () => {
+  const LOOPBACK_PEER = '127.0.0.1';
+
+  test('answers decisive false for a credential no active device recognizes', async () => {
+    const harness = createHarness({ localGrant: true });
+    const response = await harness.request(
+      PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_ELIGIBILITY_PATH,
+      harness.json({
+        secret: harness.readLocalGrantSecret(),
+        credential: 'stale-keychain-token-that-matches-no-device',
+      }),
+      LOOPBACK_PEER,
+    );
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ eligible: false });
+  });
+
+  test('answers decisive true for a live local-grant credential and false for a plain paired one', async () => {
+    const harness = createHarness({ localGrant: true });
+    const secret = harness.readLocalGrantSecret();
+
+    const minted = await harness.request(
+      PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_PATH,
+      harness.json({ secret, deviceName: 'This Mac' }),
+      LOOPBACK_PEER,
+    );
+    expect(minted.status).toBe(200);
+    const { credential } = (await minted.json()) as { credential: string };
+
+    const eligible = await harness.request(
+      PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_ELIGIBILITY_PATH,
+      harness.json({ secret, credential }),
+      LOOPBACK_PEER,
+    );
+    expect(eligible.status).toBe(200);
+    expect(await eligible.json()).toEqual({ eligible: true });
+
+    // A paired credential with no home-possession mint (the ordinary
+    // ceremony) is live but NOT local-grant: the archive#3677 semantics
+    // must carry through this surface too, not just the bound predicate.
+    const offer = harness.pairing.createOffer({
+      endpoint: 'https://station.example.test',
+    });
+    const request = harness.pairing.requestPairing({
+      requesterPosition: 'off-box',
+      offerId: offer.offerId,
+      proof: offer.challenge,
+      deviceName: 'Paired phone',
+    });
+    harness.pairing.confirmRequest(request.requestId, {
+      kind: 'presented-credential',
+    });
+    const paired = harness.pairing.exchange({
+      offerId: offer.offerId,
+      proof: offer.challenge,
+      requestId: request.requestId,
+    });
+    const pairedEligibility = await harness.request(
+      PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_ELIGIBILITY_PATH,
+      harness.json({ secret, credential: paired.credential }),
+      LOOPBACK_PEER,
+    );
+    expect(pairedEligibility.status).toBe(200);
+    expect(await pairedEligibility.json()).toEqual({ eligible: false });
+  });
+
+  test('keeps wrong secret, missing grant, non-loopback, and malformed input out of the answer', async () => {
+    const noGrant = createHarness();
+    const noGrantResponse = await noGrant.request(
+      PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_ELIGIBILITY_PATH,
+      noGrant.json({ secret: 'anything', credential: 'anything' }),
+      LOOPBACK_PEER,
+    );
+    expect(noGrantResponse.status).toBe(403);
+    expect(await noGrantResponse.json()).toEqual({
+      error: 'local_grant_forbidden',
+    });
+
+    const harness = createHarness({ localGrant: true });
+    const secret = harness.readLocalGrantSecret();
+    const body = { secret, credential: 'some-stored-credential' };
+
+    const wrongSecret = await harness.request(
+      PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_ELIGIBILITY_PATH,
+      harness.json({ ...body, secret: 'not-the-real-secret' }),
+      LOOPBACK_PEER,
+    );
+    expect(wrongSecret.status).toBe(403);
+    expect(await wrongSecret.json()).toEqual({
+      error: 'local_grant_forbidden',
+    });
+
+    const remote = await harness.request(
+      PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_ELIGIBILITY_PATH,
+      harness.json(body),
+      '100.96.12.41',
+    );
+    expect(remote.status).toBe(403);
+
+    const missingCredential = await harness.request(
+      PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_ELIGIBILITY_PATH,
+      harness.json({ secret }),
+      LOOPBACK_PEER,
+    );
+    expect(missingCredential.status).toBe(400);
+
+    const withQuery = await harness.request(
+      `${PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_ELIGIBILITY_PATH}?extra=1`,
+      harness.json(body),
+      LOOPBACK_PEER,
+    );
+    expect(withQuery.status).toBe(400);
+  });
+});
+
+/**
+ * #2228 slice 4, wire half: the joiner's completion loop keys on the exchange
+ * route's error CODE. The service used to answer a consumed or cancelled
+ * offer with `request_not_confirmed` — indistinguishable from "nobody has
+ * approved yet", which is why the joiner polled a dead offer forever. The
+ * route must surface `offer_unavailable` (409) for exactly the definitive
+ * cases, and keep `request_not_confirmed` for the one retryable 409.
+ */
+describe('exchange answers offer_unavailable for definitive conflicts (#2228 slice 4)', () => {
+  const wireExchange = (
+    harness: ReturnType<typeof createHarness>,
+    offerId: string,
+    requestId: string,
+    proof: string,
+  ) =>
+    harness.request(
+      PUBLIC_DEVICE_PAIRING_EXCHANGE_PATH,
+      harness.json({ offerId, proof, requestId }),
+      '198.51.100.77',
+    );
+
+  test('a consumed offer answers offer_unavailable, not request_not_confirmed', async () => {
+    const harness = createHarness();
+    const offer = harness.pairing.createOffer({
+      endpoint: 'https://station.example.test',
+    });
+    const request = harness.pairing.requestPairing({
+      offerId: offer.offerId,
+      proof: offer.challenge,
+      deviceName: 'First device',
+      requesterPosition: 'off-box',
+      source: 'pairing-code',
+    });
+    harness.pairing.confirmRequest(request.requestId, {
+      kind: 'presented-credential',
+    });
+    const first = await wireExchange(
+      harness,
+      offer.offerId,
+      request.requestId,
+      offer.challenge,
+    );
+    expect(first.status).toBe(200);
+
+    // THE replay pin: the second exchange is definitive, not a waiting state.
+    const replay = await wireExchange(
+      harness,
+      offer.offerId,
+      request.requestId,
+      offer.challenge,
+    );
+    expect(replay.status).toBe(409);
+    expect(await replay.json()).toEqual({ error: 'offer_unavailable' });
+  });
+
+  test('a host-cancelled offer answers offer_unavailable while an unapproved request keeps its retryable 409', async () => {
+    const harness = createHarness();
+    const offer = harness.pairing.createOffer({
+      endpoint: 'https://station.example.test',
+    });
+    const request = harness.pairing.requestPairing({
+      offerId: offer.offerId,
+      proof: offer.challenge,
+      deviceName: 'Second device',
+      requesterPosition: 'off-box',
+      source: 'pairing-code',
+    });
+
+    // Before anyone acts: the one 409 a retry can still resolve.
+    const waiting = await wireExchange(
+      harness,
+      offer.offerId,
+      request.requestId,
+      offer.challenge,
+    );
+    expect(waiting.status).toBe(409);
+    expect(await waiting.json()).toEqual({ error: 'request_not_confirmed' });
+
+    // The host cancels the approval (not a deny — request_denied stays its
+    // own answer): the offer is gone, and the joiner must hear that.
+    harness.pairing.cancelOffer(offer.offerId);
+    const cancelled = await wireExchange(
+      harness,
+      offer.offerId,
+      request.requestId,
+      offer.challenge,
+    );
+    expect(cancelled.status).toBe(409);
+    expect(await cancelled.json()).toEqual({ error: 'offer_unavailable' });
+  });
+});
+
+/**
  * archive#1715 — same-user local self-authorization. A direct loopback
  * caller that presents the per-boot local-grant secret runs the full
  * offer/request/confirm/exchange ceremony server-side in one request and
@@ -2414,14 +3210,24 @@ describe('local self-authorization grant exchange (station#1715)', () => {
   });
 
   test('writes the secret file 0600 and mints a different value on every configure (boot)', async () => {
-    const first = createHarness({ localGrant: true });
+    windowsTrust.real = true;
+    windowsTrust.hardened = 0;
+    let first: ReturnType<typeof createHarness>;
+    let second: ReturnType<typeof createHarness>;
+    try {
+      first = createHarness({ localGrant: true });
+      second = createHarness({ localGrant: true });
+    } finally {
+      windowsTrust.real = false;
+    }
+    // Directory and temporary file, per configure: the real boundary ran.
+    expect(windowsTrust.hardened).toBe(4);
     const firstSecret = first.readLocalGrantSecret();
     if (process.platform !== 'win32') {
       const mode = statSync(first.localGrantSecretPath).mode & 0o777;
       expect(mode).toBe(0o600);
     }
 
-    const second = createHarness({ localGrant: true });
     const secondSecret = second.readLocalGrantSecret();
     expect(secondSecret).not.toBe(firstSecret);
 

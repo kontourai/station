@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { WORKSPACE_BASIS_PANE_DESCRIPTOR } from '@kontourai/station-basis-pane/workspace-basis-pane';
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import { agentOwnershipFinding } from '@kontourai/station-contracts/project-reference-integrity';
+import { WORKSPACE_BROWSER_PREVIEW_PANE_DESCRIPTOR_ID } from '@kontourai/station-contracts/workspace-browser-preview';
 import { WORKSPACE_CHAT_PANE_DESCRIPTOR_ID } from '@kontourai/station-contracts/workspace-chat-pane';
 import {
   WORKSPACE_CODING_DIFF_PANE_DESCRIPTOR_ID,
@@ -23,6 +24,7 @@ import {
   WORKSPACE_TRUST_PANE_SOURCE_ID,
 } from '@kontourai/station-contracts/workspace-evidence-panels';
 import { resolveWorkspacePaneAvailability } from '@kontourai/station-contracts/workspace-pane-availability';
+import { WORKSPACE_PLUGIN_DRAFT_PANE_DESCRIPTOR_ID } from '@kontourai/station-contracts/workspace-plugin-draft-pane';
 import { WORKSPACE_SPATIAL_BOARD_PANE_DESCRIPTOR_ID } from '@kontourai/station-contracts/workspace-spatial-board';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
@@ -46,6 +48,18 @@ const FIXED_PROJECT_PANE_DESCRIPTOR_IDS = [
   // binds NO project (see the projectless assertion below), which is why it
   // is named here rather than folded into a count.
   WORKSPACE_DEVICE_PANE_DESCRIPTOR_ID,
+  // Epic #2323 S3: the Plugin preview pane is offered in every Project, so
+  // the route declares it and issues its one Project-bound occurrence.
+  WORKSPACE_PLUGIN_DRAFT_PANE_DESCRIPTOR_ID,
+];
+
+/**
+ * #90 wave 2: the Browser pane's descriptor was already declared; what is
+ * new is its per-Project OCCURRENCE (the Add-pane grid's Open path).
+ */
+const FIXED_PROJECT_PANE_INSTANCE_DESCRIPTOR_IDS = [
+  ...FIXED_PROJECT_PANE_DESCRIPTOR_IDS,
+  WORKSPACE_BROWSER_PREVIEW_PANE_DESCRIPTOR_ID,
 ];
 
 /**
@@ -128,7 +142,11 @@ function createMockProjectService() {
   const projects = new Map<string, any>();
   return {
     listProjects: vi.fn(async () =>
-      [...projects.values()].map((p) => ({ slug: p.slug, name: p.name })),
+      [...projects.values()].map((p) => ({
+        id: p.id,
+        slug: p.slug,
+        name: p.name,
+      })),
     ),
     getProject: vi.fn(async (slug: string) => {
       const p = projects.get(slug);
@@ -285,6 +303,72 @@ function expectProjectEvidencePaneInstances(
 }
 
 describe('Project Routes', () => {
+  test('GET / projects returns only the authenticated member projection', async () => {
+    const service = createMockProjectService();
+    await service.createProject({ slug: 'shared', name: 'Shared' });
+    await service.createProject({ slug: 'private', name: 'Private marker' });
+    const memberProjectAdmissions = vi.fn(async () => [
+      {
+        scope: {
+          stationId: 'station',
+          localProjectId: 'id-1',
+          portableProjectId: 'portable-shared',
+          localProjectSlug: 'shared',
+        },
+        actions: ['view' as const],
+      },
+    ]);
+    const app = createProjectRoutes(
+      service as any,
+      createMockStorageAdapter(['shared', 'private']) as any,
+      '/tmp',
+      {
+        memberProjectAdmissions,
+        projectCatalogueCurrent: async () => true,
+      },
+    );
+
+    const response = await app.request('/');
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('Cache-Control')).toBe('no-store');
+    expect(await json(response)).toEqual({
+      success: true,
+      data: [
+        {
+          version: 'station.member-project/v1',
+          kind: 'member-project',
+          id: 'id-1',
+          slug: 'shared',
+          name: 'Shared',
+          actions: ['view'],
+        },
+      ],
+    });
+    expect(memberProjectAdmissions).toHaveBeenCalledTimes(2);
+  });
+
+  test('GET /:slug cannot fall back to full config when member admission changes after the read', async () => {
+    const service = createMockProjectService();
+    await service.createProject({
+      slug: 'shared',
+      name: 'Replacement',
+      workingDirectory: '/private/marker',
+      defaultProviderId: 'private-provider',
+    });
+    const app = createProjectRoutes(
+      service as any,
+      createMockStorageAdapter(['shared']) as any,
+      '/tmp',
+      { memberProjectAdmission: async () => null },
+    );
+
+    const response = await app.request('/shared');
+
+    expect(response.status).toBe(404);
+    expect(await response.text()).not.toMatch(/private|workingDirectory/);
+  });
+
   const tempDirs: string[] = [];
 
   afterEach(() => {
@@ -1087,6 +1171,47 @@ describe('Project Routes', () => {
     expect(body.success).toBe(true);
   });
 
+  test('GET /:slug/panes derives Browser pane availability from the server deployment fact (#90)', async () => {
+    const browserEntry = async (
+      browserPaneDeployment?: 'supported' | 'unsupported',
+    ) => {
+      const app = createProjectRoutes(
+        createMockProjectService() as any,
+        createMockStorageAdapter() as any,
+        createTempProjectHome(),
+        browserPaneDeployment ? { browserPaneDeployment } : {},
+      );
+      const body = await json(await app.request('/test/panes'));
+      return body.data.availability.find(
+        (entry: any) =>
+          entry.descriptorId === WORKSPACE_BROWSER_PREVIEW_PANE_DESCRIPTOR_ID,
+      );
+    };
+    // A hosted deployment: refused for the deployment, with that reason.
+    const hosted = await browserEntry('unsupported');
+    expect(hosted.input.deployment).toEqual({
+      state: 'supported',
+      capabilities: { 'browser-pane': 'unsupported' },
+    });
+    expect(hosted.availability).toMatchObject({
+      state: 'unsupported',
+      reason: { source: 'deployment' },
+    });
+    // A personal host: the deployment gate passes; what remains is the
+    // renderer proof the client supplies.
+    const personal = await browserEntry('supported');
+    expect(personal.input.deployment.capabilities).toEqual({
+      'browser-pane': 'supported',
+    });
+    expect(personal.availability.reason.source).toBe('renderer');
+    // No fact at all fails closed.
+    const unknown = await browserEntry();
+    expect(unknown.input.deployment.capabilities).toEqual({
+      'browser-pane': 'unknown',
+    });
+    expect(unknown.availability.reason.source).toBe('deployment');
+  });
+
   test('GET /:slug/panes exposes the current data-only built-in Pane catalog', async () => {
     projectOps.add.mockClear();
     projectPaneCatalogDuration.record.mockClear();
@@ -1486,11 +1611,13 @@ describe('Project Routes', () => {
     // The 8 layout/plugin-derived instances this case builds, plus Chat and
     // Work Board, which are fixed Project panes.
     expect(body.data.instances).toHaveLength(
-      8 + FIXED_PROJECT_PANE_DESCRIPTOR_IDS.length,
+      8 + FIXED_PROJECT_PANE_INSTANCE_DESCRIPTOR_IDS.length,
     );
     expect(
       body.data.instances.map((instance: any) => instance.descriptorId),
-    ).toEqual(expect.arrayContaining(FIXED_PROJECT_PANE_DESCRIPTOR_IDS));
+    ).toEqual(
+      expect.arrayContaining(FIXED_PROJECT_PANE_INSTANCE_DESCRIPTOR_IDS),
+    );
     expectProjectEvidencePaneInstances(body.data.instances, 'test');
     expect(
       body.data.instances

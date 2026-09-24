@@ -11,6 +11,7 @@ import {
 } from '@kontourai/station-contracts';
 import { pairingStateCopy } from '@kontourai/station-contracts/pairing-copy';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { isLoopbackUrl } from '../core/connectionProfile';
 import { describeDeviceScope, deviceRevokeError } from '../core/deviceActivity';
 import {
   deriveDefaultDeviceName,
@@ -35,6 +36,10 @@ import {
   encodePairingDeepLink,
   type PairingDeepLinkChannel,
 } from '../core/pairingDeepLink';
+import {
+  rememberPairingEndpoint,
+  suggestPairingEndpoint,
+} from '../core/pairingEndpointSuggestion';
 import { completePendingPairing } from '../core/pendingPairingCompletionLoader';
 import { PairedDeviceList } from './connection-manager-modal/PairedDeviceList';
 import {
@@ -61,6 +66,8 @@ export interface PairingResult {
   /** Native host-allocated target keyring reference. */
   credentialRef?: StationProfileCredentialRef;
   browserSession: boolean;
+  /** Expected account receipt for immutable guest onboarding intent. */
+  requiredAccountBinding?: DevicePairingRequest['accountCandidate'];
 }
 
 function canUseBrowserSession(endpoint: string): boolean {
@@ -161,6 +168,7 @@ export function JoinDevicePairingPanel({
   directLabel,
   initialPairingPayload,
   onReviewDismissed,
+  accountBoundDeviceRequest,
 }: {
   onPaired: (result: PairingResult) => void | Promise<void>;
   onCancel: () => void;
@@ -208,6 +216,8 @@ export function JoinDevicePairingPanel({
   initialPairingPayload?: string;
   /** Safe parser-authored rejection copy displayed beside an accepted review. */
   onReviewDismissed?: () => void;
+  /** Guest onboarding: require an account-bound grant under this fresh correlation. */
+  accountBoundDeviceRequest?: { clientInstanceId: string };
 }) {
   const [mode, setMode] = useState<'direct' | 'scan' | 'manual'>(initialMode);
   const [deviceName, setDeviceName] = useState(
@@ -321,7 +331,13 @@ export function JoinDevicePairingPanel({
         },
         completePaired: async (result) => {
           try {
-            await onPaired({ ...result, endpoint: pending.endpoint });
+            await onPaired({
+              ...result,
+              endpoint: pending.endpoint,
+              ...(pending.requiredAccountBinding
+                ? { requiredAccountBinding: pending.requiredAccountBinding }
+                : {}),
+            });
             return { status: 'completed' } as const;
           } catch {
             return { status: 'failed', failure: null } as const;
@@ -374,9 +390,16 @@ export function JoinDevicePairingPanel({
                     : 'expired-pairing-code',
                   directLabel,
                 ).message
-              : completion.status === 'identity-changed'
-                ? 'The Station identity changed during pairing.'
-                : 'Pairing failed. Check the code and try again.';
+              : completion.status === 'unavailable'
+                ? pairingStateCopy(
+                    pending.requestKind === 'direct'
+                      ? 'unavailable-access-request'
+                      : 'unavailable-pairing-code',
+                    directLabel,
+                  ).message
+                : completion.status === 'identity-changed'
+                  ? 'The Station identity changed during pairing.'
+                  : 'Pairing failed. Check the code and try again.';
         setError(message);
         setPending(null);
       });
@@ -522,6 +545,12 @@ export function JoinDevicePairingPanel({
       const request = await requestCurrentStationAccess({
         endpoint,
         deviceName,
+        ...(accountBoundDeviceRequest
+          ? {
+              clientInstanceId: accountBoundDeviceRequest.clientInstanceId,
+              requireAccountBinding: true as const,
+            }
+          : {}),
       });
       if (
         !request.offerId ||
@@ -531,6 +560,18 @@ export function JoinDevicePairingPanel({
       ) {
         setError(
           'This Station returned an unexpected access-request response.',
+        );
+        return;
+      }
+      const accountCandidate = accountBoundDeviceRequest
+        ? request.accountCandidate
+        : undefined;
+      if (
+        accountBoundDeviceRequest &&
+        (!accountCandidate || request.requireAccountBinding !== true)
+      ) {
+        setError(
+          'This Station did not confirm the signed-in account for Device approval.',
         );
         return;
       }
@@ -554,6 +595,13 @@ export function JoinDevicePairingPanel({
           ? canUseBrowserSession(endpoint)
           : originIsStation || canUseBrowserSession(endpoint),
         requestKind: 'direct',
+        ...(accountBoundDeviceRequest
+          ? {
+              clientInstanceId: accountBoundDeviceRequest.clientInstanceId,
+              requiredAccountBinding: accountCandidate!,
+              requireAccountBinding: true as const,
+            }
+          : {}),
         ...(directConnectionId
           ? {
               targetConnectionId: directConnectionId,
@@ -915,34 +963,56 @@ function authHeaders(credential: string | undefined): HeadersInit {
   return credential ? { Authorization: `Bearer ${credential}` } : {};
 }
 
-async function pairingOfferError(response: Response): Promise<string> {
+async function pairingOfferError(response: Response): Promise<{
+  message: string;
+  /** The rejection answers for THIS device's own access (the 401 class). */
+  auth: boolean;
+}> {
   const body = (await response.json().catch(() => undefined)) as
     | { error?: string | { code?: string } }
     | undefined;
   const code = typeof body?.error === 'string' ? body.error : body?.error?.code;
 
   if (response.status === 401 || code === 'authentication_required') {
-    return "This device's access to this Station needs review. Reconnect it, then try again.";
+    return {
+      auth: true,
+      message:
+        "This device's access to this Station needs review. Reconnect it, then try again.",
+    };
   }
   if (response.status === 403 || code === 'origin_forbidden') {
-    return 'This Station does not allow pairing from the current app address. Update its trusted app address, then try again.';
+    return {
+      auth: false,
+      message:
+        'This Station does not allow pairing from the current app address. Update its trusted app address, then try again.',
+    };
   }
   if (response.status === 429 || code === 'rate_limited') {
     const retryAfter = response.headers.get('Retry-After');
     const retryAfterSeconds =
       retryAfter && /^\d{1,5}$/.test(retryAfter) ? Number(retryAfter) : 0;
-    return retryAfterSeconds > 0 && retryAfterSeconds <= 86_400
-      ? `Too many pairing attempts. Try again in ${retryAfterSeconds} seconds.`
-      : 'Too many pairing attempts. Wait a moment, then try again.';
+    return {
+      auth: false,
+      message:
+        retryAfterSeconds > 0 && retryAfterSeconds <= 86_400
+          ? `Too many pairing attempts. Try again in ${retryAfterSeconds} seconds.`
+          : 'Too many pairing attempts. Wait a moment, then try again.',
+    };
   }
   if (
     response.status === 400 ||
     response.status === 422 ||
     code === 'invalid_request'
   ) {
-    return 'Use a valid HTTPS address that the other device can reach.';
+    return {
+      auth: false,
+      message: 'Use a valid HTTPS address that the other device can reach.',
+    };
   }
-  return `This Station could not create a pairing code (HTTP ${response.status}).`;
+  return {
+    auth: false,
+    message: `This Station could not create a pairing code (HTTP ${response.status}).`,
+  };
 }
 
 function isDevicePairingOffer(value: unknown): value is DevicePairingOffer {
@@ -1014,6 +1084,7 @@ export function HostDevicePairingPanel({
   request = fetch,
   onCancel,
   initialClientChannel = 'stable',
+  onReconnect,
 }: {
   apiBase: string;
   publicEndpoint: string;
@@ -1022,6 +1093,15 @@ export function HostDevicePairingPanel({
   onCancel: () => void;
   /** Host-facing route selector; it never constrains the paired backend. */
   initialClientChannel?: Exclude<PairingDeepLinkChannel, 'dev'>;
+  /**
+   * Re-authorize THIS app's own access to the Station (#2228). Supplied by a
+   * desktop host whose local service can self-provision; when omitted the
+   * auth-rejected state renders its copy without a Reconnect control. The
+   * panel shows the control when an offer creation was refused with an
+   * authentication rejection — the one failure the host can usually fix
+   * itself — and re-enables offer creation once it resolves.
+   */
+  onReconnect?: () => Promise<boolean>;
 }) {
   const [offer, setOffer] = useState<DevicePairingOffer | null>(null);
   const [qrTarget, setQrTarget] = useState<'app' | 'scanner'>('app');
@@ -1034,9 +1114,35 @@ export function HostDevicePairingPanel({
     personBindingSelection.apiBase === apiBase
       ? personBindingSelection.requests
       : new Set<string>();
+  const [accountBindingSelection, setAccountBindingSelection] = useState<{
+    apiBase: string;
+    requests: ReadonlySet<string>;
+  }>(() => ({ apiBase, requests: new Set() }));
+  const accountBindingRequests =
+    accountBindingSelection.apiBase === apiBase
+      ? accountBindingSelection.requests
+      : new Set<string>();
+  const [personalApprovalSelection, setPersonalApprovalSelection] = useState<{
+    apiBase: string;
+    requests: ReadonlySet<string>;
+  }>(() => ({ apiBase, requests: new Set() }));
+  const personalApprovalRequests =
+    personalApprovalSelection.apiBase === apiBase
+      ? personalApprovalSelection.requests
+      : new Set<string>();
   const [devices, setDevices] = useState<PairedDevice[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [endpoint, setEndpoint] = useState(publicEndpoint);
+  // True only when `error` came from an authentication rejection of THIS
+  // device's own access (401 class) — the state `onReconnect` addresses.
+  const [authBlocked, setAuthBlocked] = useState(false);
+  const [reconnecting, setReconnecting] = useState(false);
+  // #2228 slice 3: a remembered reachable address (the tailnet or LAN URL the
+  // operator last created an offer with for this Station) outranks the active
+  // connection's own URL, which is loopback on a desktop host and points the
+  // phone at itself. Seeded at mount; the field stays fully editable.
+  const [endpoint, setEndpoint] = useState(
+    () => suggestPairingEndpoint(apiBase) ?? publicEndpoint,
+  );
   const [scopePreset, setScopePreset] = useState<PairingScopePreset>(
     DEFAULT_PAIRING_SCOPE_PRESET,
   );
@@ -1061,6 +1167,11 @@ export function HostDevicePairingPanel({
       payload ? encodePairingDeepLink({ payload, clientChannel }) : undefined,
     [clientChannel, payload],
   );
+  // #2228 slice 3: the QR embeds this address, so a loopback value is the one
+  // input mistake this surface makes silently fatal — the code scans fine and
+  // then opens the phone against itself. Name it at the field, in the same
+  // vocabulary the field's hint uses, instead of after the scan fails.
+  const endpointIsLoopback = useMemo(() => isLoopbackUrl(endpoint), [endpoint]);
 
   const downloads = MOBILE_APP_DOWNLOADS[clientChannel];
 
@@ -1115,17 +1226,22 @@ export function HostDevicePairingPanel({
     requestActionIdsRef.current.add(request.requestId);
     setRequestActionIds(new Set(requestActionIdsRef.current));
     try {
+      const bindPerson = personBindingRequests.has(request.requestId);
+      const bindAccount = accountBindingRequests.has(request.requestId);
       const response = await authenticatedFetch(
         `/api/pairing/requests/${request.requestId}${
           action === 'approve' ? '/confirm' : ''
         }`,
         {
           method: action === 'approve' ? 'POST' : 'DELETE',
-          ...(action === 'approve' &&
-          personBindingRequests.has(request.requestId)
+          ...(action === 'approve' && (bindPerson || bindAccount)
             ? {
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ bindVerifiedIdentity: true }),
+                body: JSON.stringify(
+                  bindAccount
+                    ? { bindAccountIdentity: true }
+                    : { bindVerifiedIdentity: true },
+                ),
               }
             : {}),
         },
@@ -1133,11 +1249,11 @@ export function HostDevicePairingPanel({
       if (!response.ok) {
         if (
           action === 'approve' &&
-          personBindingRequests.has(request.requestId) &&
+          (bindPerson || bindAccount) &&
           response.status === 409
         ) {
           setError(
-            'Person binding is unavailable in this Station deployment. Ordinary device approval does not link a person.',
+            'Identity binding is no longer available for this request. Refresh the account or verified identity, then pair again. Ordinary device approval does not link an identity.',
           );
           return;
         }
@@ -1151,23 +1267,42 @@ export function HostDevicePairingPanel({
               // remedy is a different, credentialed session, so name the one
               // that always exists on the host.
               response.status === 403 && action === 'approve'
-              ? `Approving “${request.deviceName}” needs a trusted Station session. Run this on the Station: station environment access approve ${request.requestId} --force${personBindingRequests.has(request.requestId) ? ' --bind-person' : ''}`
+              ? `Approving “${request.deviceName}” needs a trusted Station session. Run this on the Station: station environment access approve ${request.requestId} --force${bindPerson ? ' --bind-person' : bindAccount ? ' --bind-account' : ''}`
               : response.status === 404 || response.status === 410
                 ? 'That access request has already expired or been removed.'
                 : `This Station could not ${action} that access request. Try again.`,
         );
         return;
       }
-      if (
-        action === 'approve' &&
-        personBindingRequests.has(request.requestId)
-      ) {
+      if (action === 'approve' && (bindPerson || bindAccount)) {
         const confirmation = (await response.json()) as {
           personBindingApproved?: boolean;
+          principalBinding?: {
+            kind?: string;
+            issuer?: string;
+            subject?: string;
+            displayName?: string;
+            approvalId?: string;
+          };
         };
-        if (confirmation.personBindingApproved !== true) {
+        const account = request.accountCandidate;
+        const accountConfirmed =
+          bindAccount &&
+          account !== undefined &&
+          confirmation.principalBinding?.kind === 'account' &&
+          confirmation.principalBinding.issuer === account.issuer &&
+          confirmation.principalBinding.subject === account.subject &&
+          confirmation.principalBinding.displayName === account.displayName &&
+          typeof confirmation.principalBinding.approvalId === 'string' &&
+          confirmation.principalBinding.approvalId.length > 0;
+        if (
+          (bindPerson && confirmation.personBindingApproved !== true) ||
+          (bindAccount && !accountConfirmed)
+        ) {
           setError(
-            'Device access was approved, but this Station did not confirm person binding. Update this Station and pair the device again to link its identity.',
+            bindAccount
+              ? 'Device access was approved, but this Station did not confirm account binding. Update this Station and pair the device again to link its identity.'
+              : 'Device access was approved, but this Station did not confirm person binding. Update this Station and pair the device again to link its identity.',
           );
         }
       }
@@ -1277,6 +1412,7 @@ export function HostDevicePairingPanel({
 
   const createOffer = async () => {
     setError(null);
+    setAuthBlocked(false);
     try {
       const response = await authenticatedFetch('/api/pairing/offers', {
         method: 'POST',
@@ -1287,16 +1423,37 @@ export function HostDevicePairingPanel({
         }),
       });
       if (!response.ok) {
-        setError(await pairingOfferError(response));
+        const outcome = await pairingOfferError(response);
+        setError(outcome.message);
+        setAuthBlocked(outcome.auth);
         return;
       }
       const value: unknown = await response.json();
       if (!isDevicePairingOffer(value)) throw new Error('Invalid offer');
+      rememberPairingEndpoint(apiBase, endpoint);
       setOffer(value);
     } catch {
       setError(
         'Could not create a pairing code. Check the connection and try again.',
       );
+    }
+  };
+
+  const reconnect = async () => {
+    if (!onReconnect || reconnecting) return;
+    setError(null);
+    setAuthBlocked(false);
+    setReconnecting(true);
+    try {
+      const reconnected = await onReconnect();
+      if (!reconnected) {
+        setError(
+          'Station could not re-authorize this connection. Quit and reopen Station, then try again.',
+        );
+      }
+      await refresh();
+    } finally {
+      setReconnecting(false);
     }
   };
 
@@ -1363,7 +1520,8 @@ export function HostDevicePairingPanel({
               </small>
               {request.status === 'pending' &&
                 request.source === 'tailnet' &&
-                request.requester && (
+                request.requester &&
+                !request.accountCandidate && (
                   <label
                     style={{
                       display: 'flex',
@@ -1386,12 +1544,235 @@ export function HostDevicePairingPanel({
                           else next.delete(request.requestId);
                           return { apiBase, requests: next };
                         });
+                        if (checked)
+                          setAccountBindingSelection((accounts) => {
+                            const withoutRequest = new Set(
+                              accounts.apiBase === apiBase
+                                ? accounts.requests
+                                : [],
+                            );
+                            withoutRequest.delete(request.requestId);
+                            return { apiBase, requests: withoutRequest };
+                          });
+                        if (checked)
+                          setPersonalApprovalSelection((personal) => {
+                            const withoutRequest = new Set(
+                              personal.apiBase === apiBase
+                                ? personal.requests
+                                : [],
+                            );
+                            withoutRequest.delete(request.requestId);
+                            return { apiBase, requests: withoutRequest };
+                          });
                       }}
                     />
                     Recognize this device as {request.requester.login} at this
                     Station (operator approval required)
                   </label>
                 )}
+              {request.status === 'pending' && request.accountCandidate && (
+                <fieldset
+                  style={{
+                    display: 'grid',
+                    gap: 8,
+                    border: '1px solid var(--border-primary, #333)',
+                    borderRadius: 8,
+                    padding: 10,
+                  }}
+                >
+                  <legend>
+                    {request.requireAccountBinding
+                      ? 'Approve account-bound Device'
+                      : 'Choose approval mode'}
+                  </legend>
+                  <label
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'auto minmax(0, 1fr)',
+                      columnGap: 8,
+                      alignItems: 'start',
+                      minHeight: 44,
+                    }}
+                  >
+                    <input
+                      type="radio"
+                      name={`approval-mode-${request.requestId}`}
+                      checked={accountBindingRequests.has(request.requestId)}
+                      disabled={requestActionIds.has(request.requestId)}
+                      onChange={(event) => {
+                        const checked = event.currentTarget.checked;
+                        setAccountBindingSelection((current) => {
+                          const next = new Set(
+                            current.apiBase === apiBase ? current.requests : [],
+                          );
+                          if (checked) next.add(request.requestId);
+                          else next.delete(request.requestId);
+                          return { apiBase, requests: next };
+                        });
+                        if (checked)
+                          setPersonBindingSelection((people) => {
+                            const withoutRequest = new Set(
+                              people.apiBase === apiBase ? people.requests : [],
+                            );
+                            withoutRequest.delete(request.requestId);
+                            return { apiBase, requests: withoutRequest };
+                          });
+                        if (checked)
+                          setPersonalApprovalSelection((personal) => {
+                            const withoutRequest = new Set(
+                              personal.apiBase === apiBase
+                                ? personal.requests
+                                : [],
+                            );
+                            withoutRequest.delete(request.requestId);
+                            return { apiBase, requests: withoutRequest };
+                          });
+                      }}
+                    />
+                    <span>
+                      Use {request.accountCandidate.displayName}’s Project
+                      access
+                      <small
+                        style={{
+                          display: 'block',
+                          color: 'var(--text-secondary, #999)',
+                        }}
+                      >
+                        {request.requireAccountBinding
+                          ? 'The invitee requested account-bound access. Approval can create only this account-bound Device. The pilot can view permitted Projects; editing and running work are unavailable.'
+                          : 'Requires this account to sign in again. This pilot can view permitted Projects; editing and running work are unavailable. It does not grant membership.'}
+                        <span
+                          style={{ display: 'block', overflowWrap: 'anywhere' }}
+                        >
+                          Issuer: {request.accountCandidate.issuer}
+                          <br />
+                          Subject: {request.accountCandidate.subject}
+                        </span>
+                      </small>
+                    </span>
+                  </label>
+                  {!request.requireAccountBinding &&
+                    request.source === 'tailnet' &&
+                    request.requester && (
+                      <label
+                        style={{
+                          display: 'grid',
+                          gridTemplateColumns: 'auto minmax(0, 1fr)',
+                          columnGap: 8,
+                          alignItems: 'start',
+                          minHeight: 44,
+                        }}
+                      >
+                        <input
+                          type="radio"
+                          name={`approval-mode-${request.requestId}`}
+                          checked={personBindingRequests.has(request.requestId)}
+                          disabled={requestActionIds.has(request.requestId)}
+                          onChange={() => {
+                            setPersonBindingSelection((current) => ({
+                              apiBase,
+                              requests: new Set([
+                                ...(current.apiBase === apiBase
+                                  ? current.requests
+                                  : []),
+                                request.requestId,
+                              ]),
+                            }));
+                            setAccountBindingSelection((current) => {
+                              const next = new Set(
+                                current.apiBase === apiBase
+                                  ? current.requests
+                                  : [],
+                              );
+                              next.delete(request.requestId);
+                              return { apiBase, requests: next };
+                            });
+                            setPersonalApprovalSelection((current) => {
+                              const next = new Set(
+                                current.apiBase === apiBase
+                                  ? current.requests
+                                  : [],
+                              );
+                              next.delete(request.requestId);
+                              return { apiBase, requests: next };
+                            });
+                          }}
+                        />
+                        <span>
+                          Use verified Tailscale identity{' '}
+                          {request.requester.login}
+                        </span>
+                      </label>
+                    )}
+                  {!request.requireAccountBinding && (
+                    <label
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'auto minmax(0, 1fr)',
+                        columnGap: 8,
+                        alignItems: 'start',
+                        minHeight: 44,
+                      }}
+                    >
+                      <input
+                        type="radio"
+                        name={`approval-mode-${request.requestId}`}
+                        checked={personalApprovalRequests.has(
+                          request.requestId,
+                        )}
+                        disabled={requestActionIds.has(request.requestId)}
+                        onChange={(event) => {
+                          const checked = event.currentTarget.checked;
+                          setPersonalApprovalSelection((current) => {
+                            const next = new Set(
+                              current.apiBase === apiBase
+                                ? current.requests
+                                : [],
+                            );
+                            if (checked) next.add(request.requestId);
+                            else next.delete(request.requestId);
+                            return { apiBase, requests: next };
+                          });
+                          if (checked) {
+                            setAccountBindingSelection((accounts) => {
+                              const next = new Set(
+                                accounts.apiBase === apiBase
+                                  ? accounts.requests
+                                  : [],
+                              );
+                              next.delete(request.requestId);
+                              return { apiBase, requests: next };
+                            });
+                            setPersonBindingSelection((people) => {
+                              const next = new Set(
+                                people.apiBase === apiBase
+                                  ? people.requests
+                                  : [],
+                              );
+                              next.delete(request.requestId);
+                              return { apiBase, requests: next };
+                            });
+                          }
+                        }}
+                      />
+                      <span>
+                        Approve as an ordinary Personal Device
+                        <small
+                          style={{
+                            display: 'block',
+                            color: 'var(--text-secondary, #999)',
+                          }}
+                        >
+                          Uses the selected device scope without account
+                          relogin. Its access is not limited by this account’s
+                          Project membership and remains until the Device is
+                          revoked.
+                        </small>
+                      </span>
+                    </label>
+                  )}
+                </fieldset>
+              )}
               {request.status === 'pending' ? (
                 <div
                   style={{
@@ -1402,8 +1783,22 @@ export function HostDevicePairingPanel({
                 >
                   <button
                     type="button"
-                    style={primaryBtnStyle}
-                    disabled={requestActionIds.has(request.requestId)}
+                    style={{
+                      ...primaryBtnStyle,
+                      ...(request.accountCandidate !== undefined &&
+                      !accountBindingRequests.has(request.requestId) &&
+                      !personBindingRequests.has(request.requestId) &&
+                      !personalApprovalRequests.has(request.requestId)
+                        ? { opacity: 0.45, cursor: 'not-allowed' }
+                        : {}),
+                    }}
+                    disabled={
+                      requestActionIds.has(request.requestId) ||
+                      (request.accountCandidate !== undefined &&
+                        !accountBindingRequests.has(request.requestId) &&
+                        !personBindingRequests.has(request.requestId) &&
+                        !personalApprovalRequests.has(request.requestId))
+                    }
                     onClick={() => void actOnRequest(request, 'approve')}
                   >
                     Approve
@@ -1491,13 +1886,26 @@ export function HostDevicePairingPanel({
                 autoCapitalize="none"
                 value={endpoint}
                 onChange={(event) => setEndpoint(event.target.value)}
-                style={inputStyle}
+                style={{
+                  ...inputStyle,
+                  ...(endpointIsLoopback
+                    ? { borderColor: 'var(--status-error, #e66)' }
+                    : {}),
+                }}
               />
             </label>
-            <small style={{ color: 'var(--text-secondary, #999)' }}>
-              Use this server’s LAN or tailnet address. Localhost and 127.0.0.1
-              point to the phone itself when opened there.
-            </small>
+            {endpointIsLoopback ? (
+              <small role="note" style={{ color: 'var(--status-error, #e66)' }}>
+                A phone cannot reach this address — localhost and 127.0.0.1
+                point to the phone itself. Use this server’s LAN or tailnet
+                address (for example a Tailscale Serve HTTPS URL).
+              </small>
+            ) : (
+              <small style={{ color: 'var(--text-secondary, #999)' }}>
+                Use this server’s LAN or tailnet address. Localhost and
+                127.0.0.1 point to the phone itself when opened there.
+              </small>
+            )}
           </div>
         </>
       ) : (
@@ -1513,7 +1921,7 @@ export function HostDevicePairingPanel({
               onChange={(event) =>
                 setQrTarget(event.target.value as 'app' | 'scanner')
               }
-              style={inputStyle}
+              className="pairing-select"
             >
               <option value="app">Phone camera — open Station app</option>
               <option value="scanner">Scanner inside Station</option>
@@ -1547,7 +1955,7 @@ export function HostDevicePairingPanel({
                   event.target.value as Exclude<PairingDeepLinkChannel, 'dev'>,
                 )
               }
-              style={inputStyle}
+              className="pairing-select"
             >
               <option value="stable">Station</option>
               <option value="beta">Station Beta</option>
@@ -1615,7 +2023,21 @@ export function HostDevicePairingPanel({
           />
         </section>
       )}
-      {error && <div role="alert">{error}</div>}
+      {error && (
+        <div className="pairing-error" role="alert">
+          <p>{error}</p>
+          {authBlocked && onReconnect && (
+            <button
+              type="button"
+              onClick={() => void reconnect()}
+              disabled={reconnecting}
+              style={primaryBtnStyle}
+            >
+              {reconnecting ? 'Reconnecting…' : 'Reconnect this Station'}
+            </button>
+          )}
+        </div>
+      )}
       <button
         type="button"
         onClick={async () => {

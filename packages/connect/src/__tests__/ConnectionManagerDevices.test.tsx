@@ -27,11 +27,17 @@ function setup({
   hostAppName,
   authenticatedRequest,
   pairingClientChannel,
+  originIsStation,
+  hasLocalStation,
+  initialPanel,
 }: {
   allowManualCredentials?: boolean;
   hostAppName?: string;
   authenticatedRequest?: typeof fetch;
   pairingClientChannel?: 'stable' | 'beta' | 'nightly';
+  originIsStation?: boolean;
+  hasLocalStation?: boolean;
+  initialPanel?: 'list' | 'pair-host';
 } = {}) {
   const store = new ConnectionStore({ storage: memoryAdapter() });
   store.add('Remote Station', 'https://station.example.test');
@@ -44,6 +50,9 @@ function setup({
         hostAppName={hostAppName}
         authenticatedRequest={authenticatedRequest}
         pairingClientChannel={pairingClientChannel}
+        originIsStation={originIsStation}
+        hasLocalStation={hasLocalStation}
+        initialPanel={initialPanel}
       />
     </ConnectionsProvider>,
   );
@@ -173,5 +182,47 @@ describe('Connection Manager paired devices', () => {
       screen.queryByLabelText('Operator credential for device changes'),
     ).toBeNull();
     expect(authenticatedRequest).toHaveBeenCalled();
+  });
+
+  it('hides host-only Station management on a client-only device', () => {
+    // The phone shape: the origin is not a Station and the device has no
+    // Station of its own (station#2205).
+    setup({ originIsStation: false, hasLocalStation: false });
+
+    expect(
+      screen.queryByText('Connect another device to this Station'),
+    ).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Paired devices' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Request access' })).toBeTruthy();
+  });
+
+  it('keeps host Station management on a native desktop that supervises a local Station', () => {
+    // Desktop Tauri: the origin is not a Station either, but the device still
+    // has its own supervised Station — hiding must key on hasLocalStation,
+    // never on originIsStation alone.
+    setup({ originIsStation: false });
+
+    expect(
+      screen.getByText('Connect another device to this Station'),
+    ).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Paired devices' })).toBeTruthy();
+  });
+
+  it('lands a client-only device opened straight onto pair-host on the list', () => {
+    // AddMachineModal's "control this Station" goal mounts initialPanel
+    // "pair-host"; on a client-only device that screen can only report its
+    // own failure, so the list is the honest landing.
+    setup({
+      originIsStation: false,
+      hasLocalStation: false,
+      initialPanel: 'pair-host',
+    });
+
+    expect(
+      screen.queryByRole('button', { name: 'Create pairing code' }),
+    ).toBeNull();
+    expect(
+      screen.getByRole('heading', { name: 'Connect to another computer' }),
+    ).toBeTruthy();
   });
 });

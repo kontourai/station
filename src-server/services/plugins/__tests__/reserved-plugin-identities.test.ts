@@ -80,7 +80,7 @@ describe('STATION_RESERVED_PLUGIN_IDENTITIES', () => {
     ).toEqual([]);
   });
 
-  it('has the nine entries the scan produces, named independently', () => {
+  it('has the ten entries the scan produces, named independently', () => {
     // Pinned by hand ON PURPOSE, and the reason is narrower than "the
     // derivations cannot see a removal" — verified by injection, the first
     // one CAN: it iterates the scanned segments and reports any the constant
@@ -108,6 +108,8 @@ describe('STATION_RESERVED_PLUGIN_IDENTITIES', () => {
       'install',
       'preview',
       'reload',
+      // #2323 S1: `POST /api/plugins/validate` checks a local plugin folder.
+      'validate',
       'visibility',
     ]);
   });

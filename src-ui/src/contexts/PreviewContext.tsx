@@ -16,10 +16,15 @@ import { SkeletonBlock } from '../components/state';
 
 const loadImagePreviewContent = () =>
   import('../components/ImagePreviewContent');
+const loadFilePreviewContent = () => import('../components/FilePreviewContent');
 
 interface PreviewContextType {
   openPreview: (item: PreviewItem, items?: PreviewItem[]) => void;
   closePreview: () => void;
+}
+
+function isImage(item: PreviewItem): boolean {
+  return item.mediaType.startsWith('image/');
 }
 
 const PreviewContext = createContext<PreviewContextType | undefined>(undefined);
@@ -52,7 +57,7 @@ export function PreviewProvider({ children }: { children: ReactNode }) {
   return (
     <PreviewContext.Provider value={value}>
       {children}
-      {current?.mediaType?.startsWith('image/') && (
+      {current && (
         <ResponsiveDialogSurface
           onClose={closePreview}
           ariaLabel="Preview"
@@ -61,23 +66,45 @@ export function PreviewProvider({ children }: { children: ReactNode }) {
           panelClassName="image-preview-panel"
         >
           <ResponsiveDialogHeader
-            title={current.name || 'Image preview'}
+            title={
+              current.name ||
+              (isImage(current) ? 'Image preview' : 'File preview')
+            }
             closeLabel="Close preview"
             onClose={closePreview}
           />
-          <LazyBoundary
-            load={loadImagePreviewContent}
-            componentProps={{
-              current,
-              items,
-              onSelect: setCurrent,
-            }}
-            pending={<SkeletonBlock count={1} label="Loading image preview" />}
-          />
+          {isImage(current) ? (
+            <LazyBoundary
+              load={loadImagePreviewContent}
+              componentProps={{
+                current,
+                items,
+                onSelect: setCurrent,
+              }}
+              pending={
+                <SkeletonBlock count={1} label="Loading image preview" />
+              }
+            />
+          ) : (
+            <LazyBoundary
+              load={loadFilePreviewContent}
+              componentProps={{ current }}
+              pending={<SkeletonBlock count={1} label="Loading file preview" />}
+            />
+          )}
         </ResponsiveDialogSurface>
       )}
     </PreviewContext.Provider>
   );
+}
+
+/**
+ * The previewer when one is mounted, else `undefined` — for renderers (such as
+ * markdown) that also appear outside the chat shell and must degrade to plain
+ * content there rather than throw.
+ */
+export function useOptionalPreview() {
+  return useContext(PreviewContext);
 }
 
 export function usePreview() {

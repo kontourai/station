@@ -78,6 +78,9 @@ export async function buildPlugin(
 ): Promise<void> {
   try {
     const result = await buildPluginBundle(pluginDir, 'production', manifest);
+    for (const warning of result.warnings ?? []) {
+      logger.warn(`Plugin ${name}: ${warning}`);
+    }
     if (result.built) {
       logger.info(`Plugin ${name}: build complete`);
     }

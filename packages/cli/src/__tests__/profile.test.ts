@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import {
   chmodSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -25,6 +26,7 @@ import {
   removeProfile,
   resolveDefaultProfile,
   setDefaultProfile,
+  setProfileStoreLockTimingForTests,
   upsertProfile,
   writeProfileStore,
 } from '../commands/profile-store.js';
@@ -39,8 +41,12 @@ beforeEach(() => {
   previousRoot = process.env.STATION_ROOT;
   process.env.STATION_HOME = home;
   process.env.STATION_ROOT = home;
+  // Tests that expect a live holder to refuse the write do not need the full
+  // production wait to prove it; the wait itself is pinned below.
+  setProfileStoreLockTimingForTests({ storeWaitMs: 250 });
 });
 afterEach(() => {
+  setProfileStoreLockTimingForTests();
   if (previousHome === undefined) delete process.env.STATION_HOME;
   else process.env.STATION_HOME = previousHome;
   if (previousRoot === undefined) delete process.env.STATION_ROOT;
@@ -266,7 +272,11 @@ describe('shared saved Station store', () => {
         import { upsertProfile } from ${JSON.stringify(moduleUrl.href)};
         const [name, port] = process.env.STATION_PROFILE_WORKER.split(':');
         let last;
-        for (let attempt = 0; attempt < 8; attempt += 1) {
+        // Retry the store's documented retryable refusals until a wall-clock
+        // deadline. An attempt count (this used to be 8 x 10ms) measures how
+        // fast the runner is, not whether the store converges.
+        const deadline = Date.now() + 20_000;
+        while (Date.now() < deadline) {
           try {
             upsertProfile({ name, endpoint: 'http://127.0.0.1:' + port, setupSource: 'local', configurationState: 'configured', localService: { instanceId: 'desktop-sidecar-' + name, baseDir: process.env.STATION_HOME + '/instances/' + name.replace('-local', ''), serverPort: Number(port), uiPort: Number(port) - 141 } });
             process.exit(0);
@@ -288,21 +298,34 @@ describe('shared saved Station store', () => {
             STATION_ROOT: home,
             STATION_PROFILE_WORKER: `${name}:${port}`,
           },
-          stdio: 'ignore',
+          stdio: ['ignore', 'ignore', 'pipe'],
           windowsHide: true,
         },
       );
     });
-    const statuses = await Promise.all(
-      workers.map(
-        (worker) =>
-          new Promise<number | null>((resolve, reject) => {
-            worker.once('error', reject);
-            worker.once('exit', resolve);
-          }),
-      ),
-    );
-    expect(statuses).toEqual([0, 0, 0]);
+    const stderr = workers.map(() => '');
+    workers.forEach((worker, index) => {
+      worker.stderr?.on('data', (chunk) => {
+        stderr[index] += String(chunk);
+      });
+    });
+    let statuses: (number | null)[];
+    try {
+      statuses = await Promise.all(
+        workers.map(
+          (worker) =>
+            new Promise<number | null>((resolve, reject) => {
+              worker.once('error', reject);
+              worker.once('close', resolve);
+            }),
+        ),
+      );
+    } finally {
+      for (const worker of workers)
+        if (worker.exitCode === null && worker.signalCode === null)
+          worker.kill();
+    }
+    expect(statuses, stderr.join('\n---\n')).toEqual([0, 0, 0]);
     const store = readProfileStore();
     expect(store.revision).toBe(3);
     expect(store.profiles.map((profile) => profile.name).sort()).toEqual([
@@ -311,7 +334,83 @@ describe('shared saved Station store', () => {
       'stable-local',
     ]);
     expect(JSON.stringify(store)).not.toContain('credentialRef');
-  });
+  }, 60_000);
+
+  test('a cold start waits for a live sibling genesis that outlasts the old attempt budget', async () => {
+    // The genesis winner publishes with several fsyncs. On a loaded runner
+    // that can outlast the loser's old wait (100 naps of 10ms), so
+    // the loser failed with "genesis is busy" and a healthy three-channel
+    // cold start went red. Hold a LIVE (not stale) genesis lock for 5s, the
+    // way a slow winner would, and require the waiting channel to succeed.
+    // 5s because the attempt budget's length depended on the host: each nap
+    // also ran a stale-lock check, which is a /proc read on Linux (estimated
+    // ~1s total) but a `ps` spawn on macOS (~3s measured). 5s outlasts both and leaves
+    // 5s of the 10s wall-clock wait unused.
+    const genesisLock = join(
+      dirname(home),
+      `.${basename(home)}.station-profile-store-genesis.json.lock`,
+    );
+    writeFileSync(
+      genesisLock,
+      JSON.stringify({
+        schemaVersion: 2,
+        pid: process.pid,
+        birth: lookupProcessBirthFingerprint(process.pid),
+        createdAt: Date.now(),
+      }),
+      { mode: 0o600 },
+    );
+    chmodSync(genesisLock, 0o600);
+    // Beside the home, not in it: any entry inside an unpublished home makes
+    // genesis read it as an in-progress root and refuse.
+    const waiting = `${home}.worker-waiting`;
+    const moduleUrl = new URL('../commands/profile-store.ts', import.meta.url);
+    const worker = spawn(
+      process.execPath,
+      [
+        '--import',
+        'tsx/esm',
+        '--input-type=module',
+        '--eval',
+        `import { upsertProfile } from ${JSON.stringify(moduleUrl.href)};
+         import { writeFileSync } from 'node:fs';
+         writeFileSync(process.env.STATION_PROFILE_WAITING, '');
+         upsertProfile({ name: 'beta-local', endpoint: 'http://127.0.0.1:28141' });`,
+      ],
+      {
+        env: {
+          ...process.env,
+          STATION_HOME: home,
+          STATION_ROOT: home,
+          STATION_PROFILE_WAITING: waiting,
+        },
+        stdio: ['ignore', 'ignore', 'pipe'],
+        windowsHide: true,
+      },
+    );
+    let stderr = '';
+    worker.stderr?.on('data', (chunk) => {
+      stderr += String(chunk);
+    });
+    const exited = once(worker, 'close');
+    // Start the hold only once the worker has loaded and is about to contend,
+    // so its import time is not counted against the hold.
+    await expect
+      .poll(() => existsSync(waiting), { timeout: 30_000 })
+      .toBe(true);
+    await new Promise((resolve) => setTimeout(resolve, 5_000));
+    // Still waiting, and the live lock still ours: a waiter that stole the
+    // lock or gave up would have finished by now.
+    expect(worker.exitCode, stderr).toBeNull();
+    expect(existsSync(genesisLock)).toBe(true);
+    unlinkSync(genesisLock);
+    const [status] = await exited;
+    rmSync(waiting, { force: true });
+    expect(status, stderr).toBe(0);
+    expect(readProfileStore().profiles.map((profile) => profile.name)).toEqual([
+      'beta-local',
+    ]);
+  }, 60_000);
 
   test.skipIf(process.platform === 'win32')(
     'rejects saved Station metadata that is symlinked or not owner-only',
@@ -451,13 +550,166 @@ describe('shared saved Station store', () => {
       })}\n`,
       { mode: 0o600 },
     );
+    const started = performance.now();
     expect(() =>
       upsertProfile({
         name: 'live-owner',
         endpoint: 'https://live.example.test',
       }),
     ).toThrow(/store is busy/);
+    // It refused only after waiting out the bound for the live owner.
+    expect(performance.now() - started).toBeGreaterThanOrEqual(250);
   });
+
+  // A lock record naming a real, live child process that releases it (by
+  // unlinking, as a finished writer does) after `holdMs`. The record is the
+  // exact v2 protocol shape, bound to the child's own pid and birth.
+  function holdLiveLock(path: string, holdMs: number) {
+    const holder = spawn(
+      process.execPath,
+      [
+        '--eval',
+        `setTimeout(() => { try { require('node:fs').unlinkSync(process.env.STATION_HELD_LOCK); } catch {} }, ${holdMs});`,
+      ],
+      {
+        env: { ...process.env, STATION_HELD_LOCK: path },
+        stdio: 'ignore',
+        windowsHide: true,
+      },
+    );
+    const birth = lookupProcessBirthFingerprint(holder.pid!);
+    expect(birth).toBeTruthy();
+    mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+    writeFileSync(
+      path,
+      `${JSON.stringify({ schemaVersion: 2, pid: holder.pid, birth, createdAt: Date.now() })}\n`,
+      { mode: 0o600 },
+    );
+    chmodSync(path, 0o600);
+    return { holder, exited: once(holder, 'close') };
+  }
+
+  test('a write waits for a live store-lock holder instead of failing at once', async () => {
+    upsertProfile({ name: 'seed', endpoint: 'https://seed.example.test' });
+    const probes: string[] = [];
+    // Production wait (10s); only the probe observer is added.
+    setProfileStoreLockTimingForTests({
+      onReclaimProbe: (path) => probes.push(path),
+    });
+    const lock = `${profilesPath()}.lock`;
+    // Before the holder exists, so its release (1.5s after it starts) is at
+    // least 1.5s after this by construction.
+    const started = performance.now();
+    const { holder, exited } = holdLiveLock(lock, 1_500);
+    let elapsed: number;
+    try {
+      // A Desktop write holding the lock for 1.5s used to make this CLI write
+      // exit with "store is busy" immediately.
+      upsertProfile({
+        name: 'waited',
+        endpoint: 'https://waited.example.test',
+      });
+      elapsed = performance.now() - started;
+    } finally {
+      holder.kill();
+      await exited;
+    }
+    expect(findProfile('waited')).toBeDefined();
+    // It waited for the holder's release rather than reclaiming a live lock.
+    expect(elapsed).toBeGreaterThanOrEqual(1_500);
+    // The stale-lock probe backs off: once at once, then every 250ms, and
+    // once at the end, so about one per 250ms of the wait (about 7 over
+    // 1.5s). Probing on every 10ms nap measured 24-27 on macOS, where each
+    // probe spawns `ps`, and is far more on Linux. The bound scales with the
+    // measured wait so a slow holder start does not read as a regression.
+    expect(probes.length).toBeGreaterThanOrEqual(2);
+    expect(probes.length).toBeLessThanOrEqual(Math.ceil(elapsed / 250) + 2);
+    expect(new Set(probes)).toEqual(new Set([lock]));
+  }, 30_000);
+
+  test.skipIf(process.platform === 'win32')(
+    'a holder that dies late in the wait is still reclaimed before giving up',
+    async () => {
+      upsertProfile({ name: 'seed', endpoint: 'https://seed.example.test' });
+      // The owner is a long-lived process killed right after the first
+      // probe has seen it alive. With an interval longer than the wait, the
+      // only later probe is the final one taken as the wait runs out, so a
+      // waiter that gave up without it would report "busy" for a lock nobody
+      // holds. The owner's parent is a shell blocked in `wait`, which reaps
+      // it at once; a dead child of this (blocked) process would linger as a
+      // zombie that still answers kill(pid, 0).
+      const results: boolean[] = [];
+      let owner = 0;
+      setProfileStoreLockTimingForTests({
+        storeWaitMs: 1_500,
+        reclaimProbeIntervalMs: 60_000,
+        onReclaimProbe: (_path, reclaimed) => {
+          results.push(reclaimed);
+          if (results.length === 1) process.kill(owner, 'SIGKILL');
+        },
+      });
+      const parent = spawn(
+        'sh',
+        ['-c', 'sleep 30 </dev/null >/dev/null 2>&1 & echo $!; wait'],
+        { stdio: ['ignore', 'pipe', 'ignore'] },
+      );
+      const parentExited = once(parent, 'close');
+      try {
+        const [line] = await once(parent.stdout!, 'data');
+        owner = Number(String(line).trim());
+        expect(owner).toBeGreaterThan(0);
+        const birth = lookupProcessBirthFingerprint(owner);
+        expect(birth).toBeTruthy();
+        const lock = `${profilesPath()}.lock`;
+        writeFileSync(
+          lock,
+          `${JSON.stringify({ schemaVersion: 2, pid: owner, birth, createdAt: Date.now() })}\n`,
+          { mode: 0o600 },
+        );
+        chmodSync(lock, 0o600);
+        upsertProfile({ name: 'late', endpoint: 'https://late.example.test' });
+        expect(findProfile('late')).toBeDefined();
+        // Exactly two probes: the first found a live owner, the final one
+        // reclaimed the dead owner's lock.
+        expect(results).toEqual([false, true]);
+      } finally {
+        try {
+          if (owner > 0) process.kill(owner, 'SIGKILL');
+        } catch {
+          // Already dead: the expected case.
+        }
+        parent.kill('SIGKILL');
+        await parentExited;
+      }
+    },
+    30_000,
+  );
+
+  test('a cold start waits for a live genesis holder with a backed-off probe', async () => {
+    const probes: string[] = [];
+    setProfileStoreLockTimingForTests({
+      onReclaimProbe: (path) => probes.push(path),
+    });
+    const genesisLock = join(
+      dirname(home),
+      `.${basename(home)}.station-profile-store-genesis.json.lock`,
+    );
+    const started = performance.now();
+    const { holder, exited } = holdLiveLock(genesisLock, 1_500);
+    let elapsed: number;
+    try {
+      ensureProfileStoreGenesis(home);
+      elapsed = performance.now() - started;
+    } finally {
+      holder.kill();
+      await exited;
+    }
+    expect(readProfileStore().revision).toBe(0);
+    expect(elapsed).toBeGreaterThanOrEqual(1_500);
+    expect(probes.length).toBeGreaterThanOrEqual(2);
+    expect(probes.length).toBeLessThanOrEqual(Math.ceil(elapsed / 250) + 2);
+    expect(new Set(probes)).toEqual(new Set([genesisLock]));
+  }, 30_000);
 
   test('reclaims a v2 PID-reuse record without waiting five minutes', () => {
     upsertProfile({ name: 'seed', endpoint: 'https://seed.example.test' });

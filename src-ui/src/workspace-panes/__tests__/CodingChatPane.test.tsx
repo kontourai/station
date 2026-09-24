@@ -1,5 +1,6 @@
 /** @vitest-environment jsdom */
 
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { readFilePreviewPaneState } from '../filePreviewPaneStateStorage';
@@ -27,6 +28,9 @@ vi.mock('../../contexts/NavigationContext', () => ({
 }));
 vi.mock('../../hooks/useIsMobile', () => ({
   useIsMobile: () => isMobile(),
+}));
+vi.mock('../../contexts/ApiBaseContext', () => ({
+  useApiBase: () => ({ apiBase: 'http://station.test' }),
 }));
 
 import { CodingChatPane } from '../CodingChatPane';
@@ -150,28 +154,34 @@ describe('CodingChatPane', () => {
 
   test('renders one catalog-admitted Browser Preview creator with its resolved reason', () => {
     render(
-      <WorkspacePaneHostOpenContext.Provider
-        value={{
-          open: vi.fn(
-            (() =>
-              WORKSPACE_PANE_OPENED) satisfies WorkspacePaneHostOpenAction['open'],
-          ),
-        }}
-      >
-        <CodingChatPane
-          projectId="project-uuid"
-          projectSlug="demo"
-          browserPreviewAvailability={{
-            state: 'not-configured',
-            reason: { code: 'configuration-missing', source: 'configuration' },
+      <QueryClientProvider client={new QueryClient()}>
+        <WorkspacePaneHostOpenContext.Provider
+          value={{
+            open: vi.fn(
+              (() =>
+                WORKSPACE_PANE_OPENED) satisfies WorkspacePaneHostOpenAction['open'],
+            ),
           }}
-        />
-      </WorkspacePaneHostOpenContext.Provider>,
+        >
+          <CodingChatPane
+            projectId="project-uuid"
+            projectSlug="demo"
+            browserPreviewAvailability={{
+              state: 'not-configured',
+              reason: {
+                code: 'configuration-missing',
+                source: 'configuration',
+              },
+            }}
+          />
+        </WorkspacePaneHostOpenContext.Provider>
+      </QueryClientProvider>,
     );
 
-    expect(
-      screen.getByRole('button', { name: 'Open Browser Preview' }),
-    ).toHaveProperty('disabled', true);
+    expect(screen.getByRole('button', { name: 'Open Browser' })).toHaveProperty(
+      'disabled',
+      true,
+    );
     expect(screen.getByRole('status').textContent).toContain('configuration');
   });
 });

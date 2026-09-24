@@ -43,6 +43,7 @@ describe('TaskDispatcher runtime composition', () => {
     });
 
     const outcome = await composeTaskDispatcher(service).dispatch(task.id, {
+      fullAccessGrant: null,
       sourceSurface: 'composition-test',
     });
 
@@ -59,7 +60,9 @@ describe('TaskDispatcher runtime composition', () => {
       sessionId: expect.any(String),
     });
     await expect(
-      composeTaskDispatcher(service).dispatch('missing-task', {}),
+      composeTaskDispatcher(service).dispatch('missing-task', {
+        fullAccessGrant: null,
+      }),
     ).resolves.toEqual({
       kind: 'not-found',
       reason: 'Task not found: missing-task',

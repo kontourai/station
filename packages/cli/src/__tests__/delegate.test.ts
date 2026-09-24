@@ -39,6 +39,20 @@ interface DelegatedTaskRecord {
   // failure on --on-request=fail's follow-up probe AFTER a successful
   // dispatch (never a dispatch failure itself).
   failNextStatus?: boolean;
+  // #2269: server-forwarded supervision/reason facts echoed by the status
+  // handler so the human-output rendering is pinned, not re-derived here.
+  supervision?: {
+    provider: string;
+    turnId: string;
+    deadlineAt?: string;
+    elapsedMs: number;
+    remainingMs?: number;
+    idleLimitMs?: number;
+    totalLimitMs?: number;
+    lastProgressEventAt?: string;
+  };
+  reason?: { code: string; detail?: string };
+  transitionReason?: string;
 }
 
 interface ConversationRecord {
@@ -82,6 +96,8 @@ describe('station delegate over HTTP', () => {
     pathname: string;
     body: Record<string, unknown>;
   }> = [];
+  // #2459: the client-origin header each delegation POST carried.
+  const delegationOrigins: Array<string | undefined> = [];
   // Capability-delivery disclosure fixtures: when set, the mock server
   // attaches them to the create/status responses so tests can pin the
   // DEFAULT human output's disclosure lines without a real engine.
@@ -96,6 +112,7 @@ describe('station delegate over HTTP', () => {
     consoleLog = vi.spyOn(console, 'log').mockImplementation(() => {});
     consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
     requestBodies.length = 0;
+    delegationOrigins.length = 0;
     tasks.clear();
     conversations.clear();
     sessionReads.length = 0;
@@ -120,6 +137,13 @@ describe('station delegate over HTTP', () => {
       const body = method === 'POST' ? await readBody(req) : undefined;
       if (method === 'POST' && body) {
         requestBodies.push({ pathname: url.pathname, body });
+      }
+      if (
+        method === 'POST' &&
+        url.pathname === '/api/orchestration/delegations'
+      ) {
+        const origin = req.headers['x-station-client-origin'];
+        delegationOrigins.push(Array.isArray(origin) ? origin[0] : origin);
       }
 
       const sendJson = (status: number, payload: unknown) => {
@@ -221,6 +245,50 @@ describe('station delegate over HTTP', () => {
             : {}),
           ...(body.prompt === 'trigger status probe failure'
             ? { failNextStatus: true }
+            : {}),
+          // #2269: a running muse turn with declared supervision and a
+          // typed reason, exactly as the server forwards them.
+          ...(body.prompt === 'trigger supervised task'
+            ? {
+                supervision: {
+                  provider: 'muse',
+                  turnId: 'turn-supervised-1',
+                  deadlineAt: '2026-09-21T00:00:00.000Z',
+                  elapsedMs: 10 * 60_000,
+                  remainingMs: 110 * 60_000,
+                  idleLimitMs: 30 * 60_000,
+                  totalLimitMs: 2 * 60 * 60_000,
+                  lastProgressEventAt: '2026-09-20T22:10:00.000Z',
+                },
+                reason: {
+                  code: 'muse-turn-idle-timeout',
+                  detail:
+                    'The turn ended after a full window with no verified protocol activity.',
+                },
+                transitionReason: 'runtime_error',
+              }
+            : {}),
+          // #2269: an idle window declared, no total budget.
+          ...(body.prompt === 'trigger idle-only supervised task'
+            ? {
+                supervision: {
+                  provider: 'muse',
+                  turnId: 'turn-idle-only-1',
+                  elapsedMs: 10 * 60_000,
+                  idleLimitMs: 30 * 60_000,
+                },
+              }
+            : {}),
+          // #2269: Muse's production default — no bound declared at all.
+          ...(body.prompt === 'trigger unbounded supervised task'
+            ? {
+                supervision: {
+                  provider: 'muse',
+                  turnId: 'turn-unbounded-1',
+                  elapsedMs: 45 * 60_000,
+                  lastProgressEventAt: '2026-09-20T22:10:00.000Z',
+                },
+              }
             : {}),
         };
         tasks.set(taskId, record);
@@ -335,6 +403,11 @@ describe('station delegate over HTTP', () => {
               : {}),
             ...(record.pendingRequest
               ? { pendingRequest: record.pendingRequest }
+              : {}),
+            ...(record.supervision ? { supervision: record.supervision } : {}),
+            ...(record.reason ? { reason: record.reason } : {}),
+            ...(record.transitionReason
+              ? { transitionReason: record.transitionReason }
               : {}),
             canInterrupt: record.status === 'running',
             resumable: ['queued', 'completed', 'failed', 'canceled'].includes(
@@ -610,6 +683,38 @@ describe('station delegate over HTTP', () => {
   });
 
   /**
+   * #2459: Station can only say a delegation was "Started from the CLI" if
+   * the CLI says so. It declares its surface through the SDK's client-origin
+   * resolver, which attaches the header to authenticated same-Station
+   * requests — so a credential is configured here, as every real Station
+   * request has one.
+   */
+  test('create declares its client surface as the CLI', async () => {
+    vi.stubEnv('STATION_API_CREDENTIAL', 'test-credential');
+    try {
+      const { runCli } = await import('../cli.js');
+      await runCli([
+        'delegate',
+        '--agent=default',
+        '--json',
+        'Ship it',
+        `--api-base=${apiBase}`,
+      ]);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+    const { parseClientReportedOrigin } = await import(
+      '@kontourai/station-contracts/client-origin'
+    );
+    expect(delegationOrigins).toHaveLength(1);
+    expect(parseClientReportedOrigin(delegationOrigins[0])).toEqual({
+      version: 1,
+      surface: 'cli',
+      build: null,
+    });
+  });
+
+  /**
    * station#3409, and the human-readable surface specifically. Every other
    * assertion in this file passes `--json`, so the sentences an operator
    * actually reads were unreviewed — which is how `dispatched (resumable)`
@@ -783,6 +888,131 @@ describe('station delegate over HTTP', () => {
     expect(printed).toContain(
       `Continue this conversation: station delegate --session='${created.data.conversationId}' "<message>"`,
     );
+  });
+
+  /**
+   * #2269: `delegate status` renders the serving Station's forwarded
+   * supervision facts (effective budget, remaining time, idle window) and
+   * the typed reason — and an undeclared budget renders nothing rather
+   * than a client-side invention.
+   */
+  test('status renders forwarded supervision budget and typed reason (#2269)', async () => {
+    const { runCli } = await import('../cli.js');
+
+    await runCli([
+      'delegate',
+      '--agent=default',
+      '--json',
+      'trigger supervised task',
+      `--api-base=${apiBase}`,
+    ]);
+    const created = JSON.parse(
+      consoleLog.mock.calls.map((call) => call[0]).join('\n'),
+    );
+    consoleLog.mockClear();
+
+    await runCli([
+      'delegate',
+      'status',
+      created.data.taskId,
+      `--api-base=${apiBase}`,
+    ]);
+    const printed = consoleLog.mock.calls.map((call) => call[0]).join('\n');
+
+    expect(printed).toContain(
+      'Turn budget (this turn only, not the whole task): 2h total (1h 50m remaining',
+    );
+    expect(printed).toContain('deadline 2026-09-21T00:00:00.000Z');
+    expect(printed).toContain(
+      'Idle limit: 30m with no verified protocol activity',
+    );
+    expect(printed).toContain('may be working quietly');
+    expect(printed).toContain(
+      'Reason: muse-turn-idle-timeout — The turn ended after a full window with no verified protocol activity.',
+    );
+    expect(printed).toContain('Transition: runtime_error');
+    consoleLog.mockClear();
+
+    await runCli([
+      'delegate',
+      'status',
+      created.data.taskId,
+      '--json',
+      `--api-base=${apiBase}`,
+    ]);
+    const jsonOutput = JSON.parse(
+      consoleLog.mock.calls.map((call) => call[0]).join('\n'),
+    );
+    expect(jsonOutput.data.supervision).toMatchObject({
+      provider: 'muse',
+      totalLimitMs: 2 * 60 * 60_000,
+      idleLimitMs: 30 * 60_000,
+    });
+    expect(jsonOutput.data.reason).toEqual({
+      code: 'muse-turn-idle-timeout',
+      detail:
+        'The turn ended after a full window with no verified protocol activity.',
+    });
+  });
+
+  test('status renders a supervision with no declared bound as none declared (#2269)', async () => {
+    const { runCli } = await import('../cli.js');
+
+    await runCli([
+      'delegate',
+      '--agent=default',
+      '--json',
+      'trigger unbounded supervised task',
+      `--api-base=${apiBase}`,
+    ]);
+    const created = JSON.parse(
+      consoleLog.mock.calls.map((call) => call[0]).join('\n'),
+    );
+    consoleLog.mockClear();
+
+    await runCli([
+      'delegate',
+      'status',
+      created.data.taskId,
+      `--api-base=${apiBase}`,
+    ]);
+    const printed = consoleLog.mock.calls.map((call) => call[0]).join('\n');
+    expect(printed).toContain('Turn budget: none declared for this turn');
+    expect(printed).toContain(
+      'Idle limit: none declared for this turn (watchdog last observed activity at 2026-09-20T22:10:00.000Z;',
+    );
+    expect(printed).not.toContain('undefined');
+    expect(printed).not.toContain('NaN');
+  });
+
+  test('status renders an idle-only supervision as no declared budget (#2269)', async () => {
+    const { runCli } = await import('../cli.js');
+
+    await runCli([
+      'delegate',
+      '--agent=default',
+      '--json',
+      'trigger idle-only supervised task',
+      `--api-base=${apiBase}`,
+    ]);
+    const created = JSON.parse(
+      consoleLog.mock.calls.map((call) => call[0]).join('\n'),
+    );
+    consoleLog.mockClear();
+
+    await runCli([
+      'delegate',
+      'status',
+      created.data.taskId,
+      `--api-base=${apiBase}`,
+    ]);
+    const printed = consoleLog.mock.calls.map((call) => call[0]).join('\n');
+    expect(printed).toContain('Turn budget: none declared for this turn');
+    expect(printed).toContain(
+      'Idle limit: 30m with no verified protocol activity',
+    );
+    expect(printed).not.toContain('undefined');
+    expect(printed).not.toContain('deadline');
   });
 
   test('rejects the retired direct connection selector before any request', async () => {

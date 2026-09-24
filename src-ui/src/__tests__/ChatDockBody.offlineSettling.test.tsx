@@ -13,7 +13,7 @@ const transcriptMounts = vi.hoisted(() => vi.fn());
 const queueMounts = vi.hoisted(() => vi.fn());
 const composerProps = vi.hoisted(() => vi.fn());
 
-vi.mock('@kontourai/station-sdk', () => ({
+vi.mock('@kontourai/station-sdk', async () => ({
   fetchSessionEventWindowCapability: (...args: unknown[]) =>
     fetchCapability(...args),
   fetchOrchestrationSessionEventWindow: (...args: unknown[]) =>
@@ -27,9 +27,24 @@ vi.mock('@kontourai/station-sdk', () => ({
   // archive#3764: the empty-transcript filler renders `ChatEmptyState`, which
   // reads system status to decide between the guided rescue and the normal copy.
   useSystemStatusForApiBaseQuery: () => ({ data: undefined }),
+  // station#2236: the checkpoints fetch rides the SDK authenticated
+  // transport. These cases never provoke it; wired to an empty envelope
+  // through the real reader so an accidental call resolves as data, never
+  // as an unlisted-export throw — and with no fetch involved, so the
+  // offline cases stay hermetic.
+  getJson: async () =>
+    new Response(JSON.stringify({ success: true, data: [] }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    }),
+  readEnvelopeOrThrow: (await import('../../../packages/sdk/src/client/http'))
+    .readEnvelopeOrThrow,
 }));
 vi.mock('@kontourai/station-connect', () => ({
-  useConnections: () => ({ activeConnection: null }),
+  useConnections: () => ({
+    activeConnection: null,
+    captureCredentialEvidence: () => undefined,
+  }),
 }));
 vi.mock('../contexts/AgentsContext', () => ({
   useAgents: () => [],
@@ -38,6 +53,7 @@ vi.mock('../contexts/AgentsContext', () => ({
 }));
 vi.mock('../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://station.test' }),
+  useHostRequestAuthorityScope: () => undefined,
 }));
 vi.mock('../contexts/AuthContext', () => ({ useAuth: () => ({ user: null }) }));
 vi.mock('../contexts/NavigationContext', () => {

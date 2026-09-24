@@ -57,6 +57,7 @@ import {
 } from '../plugin-installation-local.js';
 import type { PluginInstallationHost } from '../plugin-installation-service.js';
 import { PluginInstallationService } from '../plugin-installation-service.js';
+import { PluginLifecycleProposalService } from '../plugin-lifecycle-proposals.js';
 import { readPluginManifestFile } from '../plugin-manifest-loader.js';
 import { grantPermissions } from '../plugin-permissions.js';
 import {
@@ -453,6 +454,90 @@ test.each([false, true])(
     expect(existsSync(join(before.packageRoot, 'plugin.json'))).toBe(true);
   },
 );
+
+/**
+ * #2323 S5: an update that names a proposal completes it through the real
+ * store, only when the proposal asked to update the plugin that was updated.
+ */
+test('the Update route completes a matching update proposal and leaves another plugin’s open as a mismatch', async () => {
+  const f = fixture();
+  const git = (...args: string[]) =>
+    execFileSync('git', ['-C', f.source, ...args], {
+      windowsHide: true,
+      stdio: 'ignore',
+    });
+  const commitVersion = (version: string) => {
+    writeFileSync(
+      join(f.source, 'plugin.json'),
+      JSON.stringify({
+        $schema: 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json',
+        name: 'fixture',
+        version,
+      }),
+    );
+    git('add', '.');
+    git(
+      '-c',
+      'user.name=Fixture',
+      '-c',
+      'user.email=fixture@example.test',
+      'commit',
+      '-m',
+      `Fixture ${version}`,
+    );
+  };
+  git('init', '-b', 'main');
+  git('remote', 'add', 'origin', f.source);
+  commitVersion('1.0.0');
+  await installPluginFromSource(f.source, [], f.deps);
+  const proposals = new PluginLifecycleProposalService(f.home);
+  const author = { principal: 'agent' as const };
+  const other = (
+    await proposals.propose({
+      kind: 'update',
+      pluginName: 'other-plugin',
+      rationale: 'r',
+      author,
+    })
+  ).proposal;
+  const matching = (
+    await proposals.propose({
+      kind: 'update',
+      pluginName: 'fixture',
+      rationale: 'r',
+      author,
+    })
+  ).proposal;
+  const app = new Hono();
+  registerPluginLifecycleRoutes(app, { ...f.deps, proposals });
+  const update = (proposalId: string) =>
+    app.request('/fixture/update', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ proposalId }),
+    });
+
+  commitVersion('2.0.0');
+  const mismatched = await update(other.id);
+  const mismatchedBody = await mismatched.json();
+  expect(mismatchedBody, JSON.stringify(mismatchedBody)).toMatchObject({
+    success: true,
+    plugin: { version: '2.0.0' },
+    proposal: { id: other.id, status: 'mismatch' },
+  });
+  expect(proposals.get(other.id)?.status).toBe('open');
+
+  commitVersion('3.0.0');
+  const completed = await update(matching.id);
+  const completedBody = await completed.json();
+  expect(completedBody, JSON.stringify(completedBody)).toMatchObject({
+    success: true,
+    plugin: { version: '3.0.0' },
+    proposal: { id: matching.id, status: 'completed' },
+  });
+  expect(proposals.get(matching.id)?.status).toBe('completed');
+  expect(proposals.get(other.id)?.status).toBe('open');
+});
 
 test.each(['ready', 'pending'] as const)(
   'DELETE withdraws a %s installation without its compatibility alias and retains data',

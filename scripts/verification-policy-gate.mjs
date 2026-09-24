@@ -11,7 +11,11 @@ import {
   renderFullRegressionPhaseSchedule,
   renderLaneCatalogTable,
 } from './verification-lanes.mjs';
-import { discoverVitestResourceGroups } from './vitest-resource-manifest.mjs';
+import {
+  discoverVitestResourceGroups,
+  QUARANTINED_VITEST_FILES,
+  vitestQuarantineErrors,
+} from './vitest-resource-manifest.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 // Exported so it can serve as an independent oracle for other test-file
@@ -83,6 +87,11 @@ export const CI_FAST_STATIC_COMMANDS = Object.freeze([
   Object.freeze([
     process.execPath,
     Object.freeze(['scripts/code-health-gate.mjs']),
+  ]),
+  // Added test lines that wait on real time; a source read of the diff.
+  Object.freeze([
+    process.execPath,
+    Object.freeze(['scripts/test-realtime-wait-gate.mjs']),
   ]),
   Object.freeze(['npm', Object.freeze(['run', 'channel-ports:check'])]),
   Object.freeze(['npm', Object.freeze(['run', 'gate:workflows'])]),
@@ -764,6 +773,8 @@ export function executableVerificationPolicyErrors({
   discoverVitest = discoverVitestResourceGroups,
   discoverTrackedVitest = discoverTrackedVitestTestFiles,
   readFile = (filePath) => readFileSync(filePath, 'utf8'),
+  quarantine = QUARANTINED_VITEST_FILES,
+  now = new Date(),
 } = {}) {
   const errors = [];
   const e2e = validateE2EManifest({ rootDir, readFile });
@@ -787,6 +798,14 @@ export function executableVerificationPolicyErrors({
   if (groups !== undefined && tracked !== undefined) {
     errors.push(...vitestResourceCorpusErrors(groups, tracked));
   }
+  // Test quarantine: an expired, oversized, or unevidenced entry is red here,
+  // on every pull request, until it is removed or renewed.
+  errors.push(
+    ...vitestQuarantineErrors(quarantine, {
+      now,
+      ...(tracked !== undefined ? { trackedFiles: tracked } : {}),
+    }).map((error) => `Test quarantine: ${error}`),
+  );
   return errors;
 }
 

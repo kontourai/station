@@ -355,7 +355,7 @@ test.describe('Paired-device chat round trip', () => {
 
           // 6. Send a real message through the real endpoint and observe the
           // real fixture's streamed reply.
-          const composer = peer.getByPlaceholder('Type a message...');
+          const composer = peer.getByPlaceholder(/^Type a message/);
           await expect(composer).toBeVisible({ timeout: 20_000 });
           await composer.fill('Confirm the paired-device round trip.');
           const dispatchResponse = broadcast
@@ -512,7 +512,7 @@ test.describe('Paired-device chat round trip', () => {
                 transcript.getByText(FIXTURE_REPLY, { exact: false }),
               ).toHaveCount(1);
             }
-            const viewerComposer = viewer.getByPlaceholder('Type a message...');
+            const viewerComposer = viewer.getByPlaceholder(/^Type a message/);
             await viewerComposer.fill(
               'Continue this conversation from the desktop.',
             );
@@ -544,7 +544,7 @@ test.describe('Paired-device chat round trip', () => {
               hostTranscript.locator('.streaming-message'),
             ).toHaveCount(0);
             await expect(
-              peer.getByPlaceholder('Type a message...'),
+              peer.getByPlaceholder(/^Type a message/),
             ).toBeEnabled();
             await expect(
               peer.getByText('Session record missing.', { exact: true }),
@@ -572,7 +572,7 @@ test.describe('Paired-device chat round trip', () => {
             );
             expect(denied.status()).toBe(401);
             await peer
-              .getByPlaceholder('Type a message...')
+              .getByPlaceholder(/^Type a message/)
               .fill('Verify access after revocation.');
             await peer
               .getByRole('button', { name: 'Send', exact: true })

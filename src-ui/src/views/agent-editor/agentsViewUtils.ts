@@ -13,6 +13,7 @@ import {
   requiresAuthoredAgentPrompt,
 } from '@kontourai/station-contracts/agent-validation';
 import { classifyManagedModelBinding } from '@kontourai/station-contracts/managed-model-binding';
+import { isApprovalMode } from '@kontourai/station-contracts/provider';
 import type { ConnectionConfig } from '@kontourai/station-contracts/tool';
 import type { Tool } from '../../types';
 import { connectionStatusLabel } from '../../utils/execution';
@@ -55,6 +56,8 @@ type AgentLike = {
      * an unrelated save is the same failure with credentials attached.
      */
     credentialProfileRef?: string | null;
+    /** #2436: the Agent's default approval posture. */
+    approvalMode?: unknown;
   };
   icon?: string;
   skills?: string[];
@@ -98,7 +101,7 @@ export function createEmptyAgentForm(
     region: '',
     guardrails: null,
     maxSteps: '',
-    tools: { mcpServers: [], available: [], autoApprove: [] },
+    tools: { mcpServers: [], available: [], autoApprove: [], browser: true },
     toolsOriginal: undefined,
     execution: {
       agentConnectionId: defaultRuntimeConnectionId,
@@ -144,6 +147,7 @@ export function formFromAgent(agent: AgentLike): AgentFormData {
       mcpServers: agent.toolsConfig?.mcpServers || [],
       available: agent.toolsConfig?.available || [],
       autoApprove: agent.toolsConfig?.autoApprove || [],
+      browser: agent.toolsConfig?.browser !== false,
     },
     toolsOriginal: agent.toolsConfig,
     ...(agent.delegation ? { delegation: agent.delegation } : {}),
@@ -155,6 +159,10 @@ export function formFromAgent(agent: AgentLike): AgentFormData {
       ...(typeof agent.execution?.credentialProfileRef === 'string' &&
       agent.execution.credentialProfileRef
         ? { credentialProfileRef: agent.execution.credentialProfileRef }
+        : {}),
+      ...(isApprovalMode(agent.execution?.approvalMode) &&
+      agent.execution.approvalMode !== 'connection-default'
+        ? { approvalMode: agent.execution.approvalMode }
         : {}),
     },
     icon: agent.icon || '',
@@ -189,6 +197,7 @@ export function cloneableAgentFields(agent: AgentLike): Partial<AgentFormData> {
       mcpServers: [...(agent.toolsConfig?.mcpServers || [])],
       available: [...(agent.toolsConfig?.available || [])],
       autoApprove: [...(agent.toolsConfig?.autoApprove || [])],
+      browser: agent.toolsConfig?.browser !== false,
     },
     execution: {
       agentConnectionId: agent.execution?.agentConnectionId || '',
@@ -296,6 +305,11 @@ function buildToolsPayload(
   put('mcpServers', form.tools.mcpServers);
   put('available', form.tools.available);
   put('autoApprove', form.tools.autoApprove);
+  // #90 D14: the browser tools are on unless switched off, so only an
+  // explicit `false` (or a value the agent already had) is written.
+  if (form.tools.browser === false) next.browser = false;
+  else if (authored('browser')) next.browser = true;
+  else delete next.browser;
 
   return Object.keys(next).length > 0 ? next : undefined;
 }
@@ -345,6 +359,8 @@ function buildExecutionPayload(form: AgentFormData) {
     // explicit whitelist — omitting it DELETES a pinned account on any
     // unrelated save.
     credentialProfileRef: form.execution.credentialProfileRef || undefined,
+    // #2436: whitelisted like the pin above, or an unrelated save deletes it.
+    approvalMode: form.execution.approvalMode || undefined,
   };
   return Object.values(execution).some((value) => value !== undefined)
     ? execution

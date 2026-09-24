@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { Button } from '../../components/Button';
 import { GitBadge } from '../../components/badges/GitBadge';
 import { splitWorkingDirectoryPath } from '../../components/chat-dock/chat-dock-utils';
 import { EditGlyph, SettingsGlyph } from '../../components/icons/Glyph';
@@ -15,6 +16,7 @@ export function ProjectPageHeader({
   dirDraft,
   setDirDraft,
   updateWorkingDirectory,
+  workingDirectoryError,
   navigateToSettings,
 }: {
   project: {
@@ -29,6 +31,13 @@ export function ProjectPageHeader({
   dirDraft: string;
   setDirDraft: (value: string) => void;
   updateWorkingDirectory: (value: string) => void;
+  /**
+   * Why the last folder change was not saved (#2412: only the operator, or a
+   * device allowed to run commands, may choose a Project's folder). The
+   * editor stays open with the refusal under it rather than closing as if
+   * the change had landed.
+   */
+  workingDirectoryError?: string | null;
   navigateToSettings: () => void;
 }) {
   // "Copied" is only ever shown for a clipboard write that resolved. Station is
@@ -186,8 +195,42 @@ export function ProjectPageHeader({
             placeholder="/path/to/project"
             className="project-page__dir-input"
           />
+          {workingDirectoryError && (
+            <p role="alert" className="project-page__dir-error">
+              {workingDirectoryError}
+            </p>
+          )}
         </div>
       )}
     </>
+  );
+}
+
+/** Member identity shares the unframed Project workspace header, without operator controls. */
+export function MemberProjectHeader({
+  project,
+  onRefresh,
+  refreshDisabled,
+}: {
+  project: { icon?: string; name: string; description?: string };
+  onRefresh: () => void;
+  refreshDisabled: boolean;
+}) {
+  return (
+    <div className="project-page__header">
+      <div className="project-page__identity">
+        <LayoutIcon layout={project} size={48} />
+        <div className="project-page__identity-info">
+          <p>Shared Project</p>
+          <h2 className="project-page__name">{project.name}</h2>
+          {project.description && (
+            <p className="project-page__desc">{project.description}</p>
+          )}
+        </div>
+      </div>
+      <Button onClick={onRefresh} disabled={refreshDisabled}>
+        Refresh shared work
+      </Button>
+    </div>
   );
 }

@@ -45,6 +45,8 @@ interface CredentialProfileRecoveryDeps {
     threadId: string;
     signal: AbortSignal;
     modelId?: string;
+    /** The replay's posture; the restart spawns in the resolved one. */
+    modelOptions?: Record<string, unknown>;
     credentialProfileRef?: string;
   }) => Promise<{
     adapter: ProviderAdapterShape;
@@ -55,6 +57,16 @@ interface CredentialProfileRecoveryDeps {
     turnId: string | undefined,
     provider: EngineId,
   ) => void;
+  /**
+   * #2436 HIGH-2: the replay's `modelOptions` with the conversation's
+   * recorded approval posture applied. The replay otherwise carries the
+   * SOURCE turn's posture, which the user may have tightened since.
+   */
+  replayModelOptions: (
+    threadId: string,
+    provider: EngineId,
+    modelOptions: Record<string, unknown> | undefined,
+  ) => Promise<Record<string, unknown> | undefined>;
   onTurnDispatched: (input: {
     provider: string;
     threadId: string;
@@ -189,6 +201,11 @@ export class CredentialProfileRecovery {
       // in the first place would under-report ('pending' rather than
       // 'delivered') instead of falsely claiming delivery — an accepted,
       // fail-toward-honest gap, not a silent one.
+      const modelOptions = await this.deps.replayModelOptions(
+        input.threadId,
+        adapter.provider,
+        input.modelOptions,
+      );
       result = await adapter.sendTurn({
         threadId: input.threadId,
         input: composeAmbientTurnText(input.ambientContext, input.input),
@@ -198,7 +215,7 @@ export class CredentialProfileRecovery {
           ? { ambientContext: input.ambientContext }
           : {}),
         ...(input.modelId ? { modelId: input.modelId } : {}),
-        ...(input.modelOptions ? { modelOptions: input.modelOptions } : {}),
+        ...(modelOptions ? { modelOptions } : {}),
         recoveryCorrelationId: input.recoveryCorrelationId,
         signal: input.signal,
       });

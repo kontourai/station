@@ -1,12 +1,84 @@
 # Optional Station connection broker
 
-> Status: architecture proposal for [#45](https://github.com/kontourai/station/issues/45).
+> Status: architecture record for [#45](https://github.com/kontourai/station/issues/45).
 > The owner accepted delegated security judgment and required a free local test
 > path on September 12, 2026. Intermediary confidentiality and local testability
-> are requirements; transport selection and implementation remain open.
-> [#1963](https://github.com/kontourai/station/issues/1963) owns implementation
-> after the remaining identity, signing-trust and transport decisions. No broker,
-> tunnel service or internet-facing Station deployment is delivered here.
+> are requirements. The September 20 implementation target below selects the
+> self-operated WebRTC/Pion/TURN path. The local browser UI milestone merged in
+> [#2451](https://github.com/kontourai/station/pull/2451); native client delivery,
+> remote/physical proof and production enablement remain separate.
+> [#1963](https://github.com/kontourai/station/issues/1963) owns the full
+> implementation. No internet-facing deployment is delivered by this decision.
+
+## Implementation target — September 20, 2026
+
+Proceed with a self-operated broker and connector using the existing signed
+WebRTC handshake, the browser's DataChannel implementation, a maintained Pion
+Station peer, and a configurable TURN service. The local profile uses the
+existing pinned coturn fixture. This is an implementation target, not production
+approval for a particular binary, hosted provider, deployment or network.
+Production TURN/TLS, supported native runtimes and actual remote delivery must
+qualify independently. The Node UDP backend remains useful diagnostic evidence;
+it does not acquire TURN/TCP support from Pion's results.
+
+Native desktop has a separate [OS-keyring routing-grant vault](../../src-desktop/src/relay_grant_vault.rs),
+but it does not yet use a grant to connect. The current browser protocol binds
+`browserOrigin` to a canonical HTTP(S) page Origin and the broker checks that
+same Origin on signaling. Packaged Tauri WebViews use different platform
+schemes, so a saved native grant cannot be activated by pretending its WebView
+has an HTTPS browser Origin or by returning the grant secret to renderer JS.
+[#2485](https://github.com/kontourai/station/issues/2485) owns the versioned
+native client identity and host-owned signaling contract required before native
+route activation. Actual packaged WebView Origin behavior remains unverified.
+
+The broker is a separate process and state owner. It carries bounded enrollment,
+reachability and signaling metadata, never decrypted application requests or
+Station/plugin execution. The Station connector dials outbound. Its application
+channel enters the protected Station runtime through the existing virtual
+application seam, with no synthesized socket/loopback identity. HTTP proxying
+through a local privileged connection is not an implementation shortcut.
+
+The first usable self-operated path must include these integrated behaviors:
+
+1. An operator explicitly links one Station to one broker and independently
+   approves its signing key on the Device. The broker's routing credential and
+   the Station's approved Device/account credentials have separate custody and
+   revocation. Neither broker provisioning nor a signaling message can enroll
+   a decrypting endpoint or grant Project membership.
+2. Connector registration and every connection attempt name the exact Station,
+   enrollment and generation. Generation-conditional renewal, withdrawal and
+   cleanup cannot mutate a replacement allocation. Challenges expire and are
+   consumed once; a new connection needs fresh proof after failed setup.
+3. The broker forwards only a closed, size-bounded signaling vocabulary. The
+   Device verifies the independently admitted Station key and signed exact
+   offer/answer before accepting the peer. The Station admits the requesting
+   Device through its existing authority. The broker cannot supply a new trusted
+   signing key, arbitrary dial target, plugin or application credential.
+4. Browser application requests use the existing credential resolver, account
+   continuation signer and bounded channel adapter. Per-call credentials that
+   bypass the configured transport must not turn direct HTTP success into relay
+   evidence. Private Project denial, role changes and account/Device/membership
+   revocation are required on the same real encrypted path.
+5. The connector owns transport startup, cancellation, expiry and teardown;
+   reconnect creates a new connection and never replays an uncertain mutation.
+   The Device reports reachability and authorization separately. A separately
+   configured direct route must work when the broker is stopped.
+
+Deliver a documented local start/check/stop composition without cloud accounts,
+paid identity, billable models or user-wide trust changes. Use current account
+and Project contracts rather than inventing a broker identity product. Later
+hosted account discovery may compose the approved provider contract, but is not
+required to run this self-operated path. A local static credential or synthetic
+account fixture must never be described as production account authentication.
+
+**Enablement gates.** [#2030](https://github.com/kontourai/station/issues/2030)
+owns the reproduced unshared-Project read through an approved read-only Device;
+[#488](https://github.com/kontourai/station/issues/488) owns complete member
+resource authority. A transport-only pass cannot enable shared access while
+those boundaries fail. [#1985](https://github.com/kontourai/station/issues/1985)
+retains integrated lab acceptance, and [#497](https://github.com/kontourai/station/issues/497)
+retains the real two-person/device journey. Separate code, local-runtime,
+remote/native and hostile-tenant isolation receipts throughout delivery.
 
 ## Purpose and boundaries
 
@@ -329,7 +401,9 @@ shutdown prevents late publication and stops pending response delivery.
 
 The owner in `src-server/services/connections/virtual-application.ts` dispatches
 fresh Requests into the same protected Hono application without Node socket or
-proxy metadata. It rejects foreign targets, cookie operations, cookie headers,
+proxy metadata. Station-owned account descriptor/session reads and invitation
+acceptance reach their ordinary authorization owner; provider cookie operations
+remain excluded, and relay login uses the continuation provider flow. It rejects foreign targets, cookie operations, cookie headers,
 trusted ingress/proxy headers and HTTP hop headers. Cookies remain an HTTPS
 mechanism; the connector transports the SDK's opaque account continuation and
 proof with its independently approved Device credential and actual client

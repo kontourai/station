@@ -80,6 +80,7 @@ import {
   isResumeCursor,
   mapApprovalResolutionStatus,
   resolveApprovalOutcome,
+  resolveSessionGrantAutoApproval,
 } from './codex-adapter-events.js';
 import {
   CodexAdapterTransport,
@@ -2165,10 +2166,11 @@ export class CodexAdapter implements ProviderAdapterShape {
     const decodedAttachments = decodeChatAttachments(input.attachments);
     rejectFileAttachments('Codex', decodedAttachments);
     // Resolved fresh from this turn's modelOptions so a mode picked in the
-    // composer takes effect starting with the very next turn — Station
-    // resends the full session override bag on every turn (see
-    // useActiveChatSessionMessaging.ts), so an unset field here means "no
-    // override for this turn," not "clear the previous one."
+    // composer takes effect starting with the very next turn — the
+    // orchestration service applies the conversation's recorded posture on
+    // every turn (#2436, approval-posture.ts), including a Default pick
+    // resolved to a concrete pair (#2409), so an unset field here means "no
+    // posture recorded," not "clear the previous one."
     const approvalKnobs = resolveCodexExecutionKnobs(
       input.modelOptions,
       input.reviewIsolation,
@@ -2384,18 +2386,26 @@ export class CodexAdapter implements ProviderAdapterShape {
     // outcome) silently disarmed it. `runCooperativeStop`'s cooperative-stop
     // deadline branch (the one caller that DOES have its own unconditional
     // fallback) stays safe via `rejectPendingRpcRequests`'s in-flight check.
-    await this.transport.sendRequest(
-      record,
-      'turn/interrupt',
-      {
-        threadId: record.codexThreadId,
-        turnId: targetTurnId,
-      },
-      // archive#3451 fix round D2: tracked so a forced teardown that has to
-      // force-reject this RPC can tell it apart from an abandoned interrupt
-      // targeting a DIFFERENT (earlier) turn.
-      { turnId: targetTurnId },
-    );
+    try {
+      await this.transport.sendRequest(
+        record,
+        'turn/interrupt',
+        {
+          threadId: record.codexThreadId,
+          turnId: targetTurnId,
+        },
+        // archive#3451 fix round D2: tracked so a forced teardown that has to
+        // force-reject this RPC can tell it apart from an abandoned interrupt
+        // targeting a DIFFERENT (earlier) turn.
+        { turnId: targetTurnId },
+      );
+    } finally {
+      // #2316: settle the interrupted turn's open approvals whether or not the
+      // interrupt RPC succeeded. A rejected RPC used to throw past this, and
+      // the approvals stayed pending — a late "Allow <tool> for this session"
+      // then minted a grant for a call that never ran.
+      this.cancelPendingApprovals(record, threadId);
+    }
 
     this.transport.publish({
       eventId: crypto.randomUUID(),
@@ -2409,6 +2419,35 @@ export class CodexAdapter implements ProviderAdapterShape {
     record.activeTurnId = undefined;
     record.terminalPublishedForTurnId = targetTurnId;
     return { outcome: 'cancelled', turnId: targetTurnId } as const;
+  }
+
+  /**
+   * #2316: answer every open approval `cancel` on the wire and settle it
+   * (`request.resolved`), so no later answer lands on a dead request and no
+   * session grant is minted for it.
+   */
+  private cancelPendingApprovals(
+    record: CodexSessionRecord,
+    threadId: string,
+  ): void {
+    for (const [requestId, pending] of record.pendingApprovals) {
+      const outcome = resolveApprovalOutcome(
+        pending.method,
+        pending.payload,
+        'cancel',
+      );
+      this.transport.sendResponse(record, pending.rpcRequestId, outcome.result);
+      this.transport.publish({
+        eventId: crypto.randomUUID(),
+        provider: this.provider,
+        threadId,
+        createdAt: this.now().toISOString(),
+        requestId,
+        method: 'request.resolved',
+        status: mapApprovalResolutionStatus(outcome.decision),
+      });
+    }
+    record.pendingApprovals.clear();
   }
 
   async respondToRequest(
@@ -2428,6 +2467,18 @@ export class CodexAdapter implements ProviderAdapterShape {
       pending.payload,
       decision,
     );
+    // Tool-level session grant (mirrors claude-adapter `approvedTools`): the
+    // command/file-change/elicitation wire responses carry no session scope,
+    // so Station remembers the tool itself. Recorded only when the wire
+    // outcome actually accepts — a data-collecting elicitation declines on
+    // the wire even for `acceptForSession`, and must not mint a grant.
+    if (
+      decision === 'acceptForSession' &&
+      pending.toolName &&
+      resolveSessionGrantAutoApproval(pending.method, pending.payload) !== null
+    ) {
+      record.approvedTools.add(pending.toolName);
+    }
     this.transport.sendResponse(record, pending.rpcRequestId, outcome.result);
 
     this.transport.publish({

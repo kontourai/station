@@ -118,7 +118,7 @@
       },
       {
         "id": "package.cli",
-        "kind": "shared-package-area",
+        "kind": "shared-package",
         "label": "packages/cli",
         "patterns": ["packages/cli/"],
         "owners": ["station-architecture"],
@@ -126,7 +126,7 @@
       },
       {
         "id": "package.connect",
-        "kind": "shared-package-area",
+        "kind": "shared-package",
         "label": "packages/connect",
         "patterns": ["packages/connect/"],
         "owners": ["station-architecture"],
@@ -150,7 +150,7 @@
       },
       {
         "id": "package.shared",
-        "kind": "shared-package-area",
+        "kind": "shared-package",
         "label": "packages/shared",
         "patterns": ["packages/shared/"],
         "owners": ["station-architecture"],
@@ -317,6 +317,12 @@
     "uncoveredPathPolicy": "warn",
     "evidenceChecks": [
       {
+        "id": "style-standard",
+        "command": "npm run lint:check",
+        "method": "validation",
+        "summary": "Owner-approved required evidence check (#2220, promoted to required in-thread 2026-09-17): the style standard gates the readiness verdict. It does not double-fire inside ci:fast — the direct lint:check invariant fails the lane before readiness runs — and in standalone veritas:shadow runs it is what makes a style violation read as not-ready instead of invisible."
+      },
+      {
         "id": "repo-governance",
         "command": "npm run proof:repo-governance",
         "method": "validation",
@@ -371,6 +377,18 @@
         "summary": "Provider and orchestration integration tests for connected agent runtimes (behavioral proof for runtime-contracts)."
       },
       {
+        "id": "session-transition-contract",
+        "command": "npm run proof:session-transition-contract",
+        "method": "validation",
+        "summary": "Changed Session boundary files must preserve durable transition, late-outcome, and recovery behavior."
+      },
+      {
+        "id": "bounded-work-contract",
+        "command": "npm run proof:bounded-work-contract",
+        "method": "validation",
+        "summary": "Changed background-work owners must retain retry, queue, and stall bounds."
+      },
+      {
         "id": "static-verification",
         "command": "npm run verify:static",
         "method": "validation",
@@ -401,19 +419,15 @@
         }
       }
     ],
-    "requiredEvidenceCheckIds": ["repo-governance"],
-    "defaultEvidenceCheckIds": ["repo-governance", "verification-policy"],
+    "requiredEvidenceCheckIds": ["repo-governance", "style-standard"],
+    "defaultEvidenceCheckIds": ["repo-governance", "verification-policy", "style-standard"],
     "evidenceCheckRoutes": [
       {
         "nodeIds": [
           "product.src-server",
           "product.src-server.evidence-services"
         ],
-        "evidenceCheckIds": ["connected-agents"],
-        "componentIds": [
-          "product.src-server",
-          "product.src-server.evidence-services"
-        ]
+        "evidenceCheckIds": ["connected-agents"]
       }
     ],
     "evidenceInventoryManifests": [

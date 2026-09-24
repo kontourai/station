@@ -14,7 +14,12 @@ import {
 } from '@kontourai/station-contracts/project-membership';
 import { z } from 'zod/v3';
 import { apiErrorMessage } from './api-error-message';
-import { getJson, mutateJson, StationHttpError } from './http';
+import {
+  type ClientRequestOptions,
+  getJson,
+  mutateJson,
+  StationHttpError,
+} from './http';
 
 const path = z
   .string()
@@ -102,10 +107,16 @@ export interface AccountSessionView {
 }
 export async function getAccountSession(
   apiBase: string,
+  opts?: Pick<ClientRequestOptions, 'signal'>,
 ): Promise<AccountSessionView | null> {
   const response = await getJson(
     `${apiBase}${DEPLOYMENT_AUTHENTICATION_BASE_PATH}/session`,
-    { authentication: 'omit', timeoutMs: 15_000, maxResponseBytes: 32 * 1024 },
+    {
+      authentication: 'omit',
+      timeoutMs: 15_000,
+      maxResponseBytes: 32 * 1024,
+      signal: opts?.signal,
+    },
   );
   if (response.status === 401) return null;
   const parsed = z

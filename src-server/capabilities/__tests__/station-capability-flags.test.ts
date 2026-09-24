@@ -9,7 +9,7 @@ import { describe, expect, test } from 'vitest';
 import { STATION_CAPABILITY_FLAGS } from '../station-capability-flags.js';
 
 describe('STATION_CAPABILITY_FLAGS (station#1095 registry)', () => {
-  test('seeds exactly the real, existing features this slice + station#1092 + station#1398 claim', () => {
+  test('seeds exactly the implemented protocol capabilities', () => {
     expect(STATION_CAPABILITY_FLAGS).toEqual({
       sshEnvironments: true,
       webPushNotifications: true,
@@ -17,6 +17,8 @@ describe('STATION_CAPABILITY_FLAGS (station#1095 registry)', () => {
       sessionEventWindow: true,
       scopedPairing: true,
       fleetInference: true,
+      portableExecutionOffers: true,
+      delegationAttemptClaims: true,
     });
   });
 

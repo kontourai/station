@@ -76,6 +76,7 @@ export function CodingChatPane({
   return browserPreviewAvailability ? (
     <BrowserPreviewPaneLauncher
       projectId={projectId}
+      projectSlug={projectSlug}
       host={paneHostOpen}
       availability={browserPreviewAvailability}
     />

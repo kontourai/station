@@ -94,6 +94,50 @@ export function observedAssistantMessageId(
     : null;
 }
 
+/**
+ * #2316: a request raised by a subagent rather than the main thread. Claude
+ * stamps the SDK's agent id on it (`claude-adapter.ts` `canUseTool`).
+ */
+export function isSubagentApprovalRequest(
+  payload: Record<string, unknown> | undefined,
+): boolean {
+  return typeof payload?.agentId === 'string' && payload.agentId.length > 0;
+}
+
+/**
+ * #2316: whether an event on a request's thread retires that request while it
+ * is still open — the call it gated can no longer run, so answering it must
+ * not be offered. The projection retires bound cards with this and the UI's
+ * pending-approvals strip applies it too, so no consumer disagrees.
+ *
+ * A session exit or a turn abort retires everything — including a boot
+ * recovery's `turn.aborted` (`recoveryTerminal`), after which no process
+ * holds the request at all, and an interrupt, on which the Claude adapter
+ * settles every open request anyway. Only the MAIN turn's completion spares
+ * a subagent's request: Station declares Claude's per-task stop affordance,
+ * under which a background subagent outlives the turn, so its approval can
+ * still be live; the adapter publishes its `request.resolved` when it
+ * settles it (at the latest when no subagent task is live).
+ */
+export function approvalRetiredBy(
+  method: string,
+  subagentRequest: boolean,
+): boolean {
+  if (method === 'session.exited' || method === 'turn.aborted') return true;
+  return method === 'turn.completed' && !subagentRequest;
+}
+
+/**
+ * #2316: a card whose request can no longer be answered, or was settled as
+ * cancelled: it never ran, and says so ("Cancelled") rather than reading as a
+ * call with "No result recorded".
+ */
+function retireApprovalCard(part: MessagePart): void {
+  part.needsApproval = false;
+  part.cancelled = true;
+  if (part.state === 'awaiting-approval') part.state = 'cancelled';
+}
+
 export function projectRuntimeEventsToMessages(
   events: CanonicalRuntimeEvent[],
   options: { stableIds?: boolean } = {},
@@ -123,6 +167,19 @@ export function projectRuntimeEventsToMessages(
   let turnIdentity: string | undefined;
   let turnAnchorEventId: string | undefined;
   let approvalTargets = new Map<string, MessagePart>();
+  // #2316: every card still awaiting its answer, across turns, keyed by the
+  // requesting thread AND request id (a lineage window folds several
+  // sessions, whose request ids are only unique per session).
+  const openApprovalParts = new Map<
+    string,
+    { part: MessagePart; subagent: boolean }
+  >();
+  // #2316: the session whose `tool.started` created each tool part. Call ids
+  // are only unique per session, and a lineage window folds several, so an
+  // exact-id approval binds only a part from the request's own session.
+  const toolPartThread = new WeakMap<MessagePart, string>();
+  const approvalKey = (threadId: string, requestId: string) =>
+    `${threadId}\u0000${requestId}`;
   /**
    * station#1410: adopt a terminal event's turn id ONLY when it is plausibly
    * about the content we have buffered.
@@ -364,7 +421,41 @@ export function projectRuntimeEventsToMessages(
     return error ?? undefined;
   };
 
+  /**
+   * The images a tool returned, placed directly after the row that shows the
+   * call — the same place the live renderer puts them (`messageParts.ts`'s
+   * `upsertToolResultFiles`, built by the same {@link toolResultFileParts}). A
+   * screenshot the agent took belongs beside the call that took it, in the
+   * transcript rather than inside a collapsible tool row, and a `file` part
+   * breaks a tool-call run so it is never folded into a batch summary. The
+   * caller places them once per terminal event, so a repeat of the same
+   * terminal never doubles them.
+   */
+  const placeToolImages = (
+    toolPart: MessagePart,
+    ev: Extract<CanonicalRuntimeEvent, { method: 'tool.completed' }>,
+  ) => {
+    const files = toolResultFileParts(ev);
+    if (files.length === 0) return;
+    for (const list of [parts, ...messages.map((message) => message.parts)]) {
+      const index = list.indexOf(toolPart);
+      if (index >= 0) return void list.splice(index + 1, 0, ...files);
+    }
+  };
+
   for (const ev of events) {
+    if (
+      ev.method === 'turn.completed' ||
+      ev.method === 'turn.aborted' ||
+      ev.method === 'session.exited'
+    ) {
+      for (const [key, open] of openApprovalParts) {
+        if (open.part.approvalThreadId !== ev.threadId) continue;
+        if (!approvalRetiredBy(ev.method, open.subagent)) continue;
+        retireApprovalCard(open.part);
+        openApprovalParts.delete(key);
+      }
+    }
     switch (ev.method) {
       case 'turn.started': {
         if (ev.inputKind === 'steer') {
@@ -525,6 +616,7 @@ export function projectRuntimeEventsToMessages(
         if (existing) {
           if (ev.toolName !== undefined) existing.toolName = ev.toolName;
           if (ev.arguments !== undefined) existing.args = ev.arguments;
+          if (ev.purpose !== undefined) existing.purpose = ev.purpose;
           existing.state = 'call';
           break;
         }
@@ -533,9 +625,11 @@ export function projectRuntimeEventsToMessages(
           toolCallId: ev.toolCallId,
           toolName: ev.toolName,
           args: ev.arguments,
+          purpose: ev.purpose,
           state: 'call',
         };
         toolsByCallId.set(ev.toolCallId, part);
+        toolPartThread.set(part, ev.threadId);
         parts.push(part);
         break;
       }
@@ -640,12 +734,21 @@ export function projectRuntimeEventsToMessages(
           if (text !== undefined) existing.result = text;
           else if (existing === superseded) delete existing.result;
           existing.isError = isError;
+          if (ev.purpose !== undefined) {
+            existing.purpose = ev.purpose;
+            if (existing.args && typeof existing.args === 'object') {
+              const { __station_tool_purpose: _purpose, ...clean } =
+                existing.args;
+              existing.args = clean;
+            }
+          }
           // Overrides any earlier call-time approvalStatus (e.g. an
           // optimistic 'auto-approved') — Station's own policy can deny a
           // call the client believed pre-approved, and this is the
           // authoritative, later verdict.
           if (policyDenied) existing.approvalStatus = 'policy-denied';
           terminalToolsByEventId.set(ev.eventId, existing);
+          if (!completed) placeToolImages(existing, ev);
           // A terminal settles this call slot. A later terminal reusing the
           // same call id must become a distinct durable result, not overwrite
           // this sourceEventId.
@@ -697,6 +800,7 @@ export function projectRuntimeEventsToMessages(
             toolCallId: ev.toolCallId,
             sourceEventId: ev.eventId,
             toolName: ev.toolName,
+            purpose: ev.purpose,
             state: derivedState,
             output: ev.output,
             ...(ev.outputReceipt?.truncated
@@ -721,6 +825,7 @@ export function projectRuntimeEventsToMessages(
             flushReasoning();
             parts.push(part);
           }
+          placeToolImages(part, ev);
           // station#1569 (H1): a start-less `unresolved` row is settleable
           // too. The row is on the turn the event named when there was one,
           // otherwise on the open turn this fold just pushed it into.
@@ -747,32 +852,65 @@ export function projectRuntimeEventsToMessages(
       case 'request.opened': {
         const toolName = ev.payload?.toolName ?? ev.payload?.tool;
         const toolCallId = ev.payload?.toolCallId;
-        const target = [...toolsByCallId.values()]
-          .reverse()
-          .find(
-            (part) =>
-              (typeof toolCallId === 'string' &&
-                part.toolCallId === toolCallId) ||
-              (typeof toolName === 'string' && part.toolName === toolName),
-          );
+        // #2316: a request id is answerable only by the session that minted
+        // it. A conversation window folds every session in its lineage, and a
+        // name-only match could bind one session's open request onto another
+        // session's same-named call (or onto the wrong one of two parallel
+        // same-named calls) — a card whose buttons answered a request other
+        // than the one it sat beside. Bind by the exact call id when the
+        // adapter reports one. The name fallback, for adapters that report no
+        // id, is confined to the thread whose turn is being folded and never
+        // takes a call already awaiting a different request.
+        const exact =
+          typeof toolCallId === 'string'
+            ? toolsByCallId.get(toolCallId)
+            : undefined;
+        const target =
+          typeof toolCallId === 'string'
+            ? exact &&
+              (toolPartThread.get(exact) ?? ev.threadId) === ev.threadId
+              ? exact
+              : undefined
+            : typeof toolName === 'string' &&
+                (turnSessionId === undefined || turnSessionId === ev.threadId)
+              ? [...toolsByCallId.values()]
+                  .reverse()
+                  .find(
+                    (part) =>
+                      part.toolName === toolName &&
+                      !(
+                        part.needsApproval === true &&
+                        part.approvalId !== undefined &&
+                        part.approvalId !== ev.requestId
+                      ),
+                  )
+              : undefined;
         if (target) {
           target.needsApproval = true;
           target.approvalId = ev.requestId;
+          target.approvalThreadId = ev.threadId;
+          target.approvalEventId = ev.eventId;
           target.state = 'awaiting-approval';
           approvalTargets.set(ev.requestId, target);
+          openApprovalParts.set(approvalKey(ev.threadId, ev.requestId), {
+            part: target,
+            subagent: isSubagentApprovalRequest(ev.payload),
+          });
         }
         break;
       }
       case 'request.resolved': {
-        const target = approvalTargets.get(ev.requestId);
+        const key = approvalKey(ev.threadId, ev.requestId);
+        // The request's own card first — its turn may already be emitted.
+        const target =
+          openApprovalParts.get(key)?.part ?? approvalTargets.get(ev.requestId);
+        openApprovalParts.delete(key);
         if (target) {
           target.needsApproval = false;
-          target.approvalStatus =
-            ev.status === 'approved'
-              ? 'user-approved'
-              : ev.status === 'denied'
-                ? 'user-denied'
-                : undefined;
+          if (ev.status === 'approved') target.approvalStatus = 'user-approved';
+          else if (ev.status === 'denied')
+            target.approvalStatus = 'user-denied';
+          else retireApprovalCard(target);
         }
         break;
       }
@@ -809,17 +947,41 @@ export function projectRuntimeEventsToMessages(
         if (typeof ev.metadata?.reportedModel === 'string') {
           turnReportedModel = ev.metadata.reportedModel;
         }
-        // Fall back to the authoritative outputText only if no text was streamed.
-        const hasText =
-          Boolean(textBuf) || parts.some((p) => p.type === 'text');
-        if (
-          ev.outputText &&
-          (!hasText ||
-            (textBuf &&
-              (ev.outputText.startsWith(textBuf) ||
-                ev.outputText.endsWith(textBuf))))
-        )
-          textBuf = ev.outputText;
+        // #2300: reconcile the authoritative `outputText` against ALL text
+        // this turn already emitted — the text parts flushed around its tool
+        // rows plus the open buffer — the rule the live path applies
+        // (`src-ui/src/hooks/orchestration/assistantTurn.ts`'s
+        // `finalizeAssistantTurn`, whose `receivedText` is every text part
+        // joined):
+        // - equal: everything is already rendered; adopt nothing;
+        // - a strict extension (including "nothing streamed at all"): only
+        //   the missing suffix is new — a reconnect gap, or text an engine
+        //   reported only in its terminal — and it is appended where the
+        //   live path's `upsertTextPart` puts it.
+        // Comparing against `textBuf` alone (the text after the LAST tool
+        // row) duplicated every turn whose `outputText` is its whole text
+        // (Muse) that wrote text before a tool: `outputText` ends with that
+        // tail, so the tail was replaced with the whole turn.
+        const emittedText =
+          parts
+            .filter((p) => p.type === 'text')
+            .map((p) => p.text ?? '')
+            .join('') + textBuf;
+        if (ev.outputText && ev.outputText !== emittedText) {
+          if (ev.outputText.startsWith(emittedText)) {
+            textBuf += ev.outputText.slice(emittedText.length);
+          } else if (
+            // Otherwise the pre-#2300 fallback, unchanged: an engine whose
+            // `outputText` is only its FINAL answer (Claude) replaces a
+            // streamed tail it starts or ends with. The live path keeps what
+            // it streamed in this case; that divergence predates #2300.
+            textBuf &&
+            (ev.outputText.startsWith(textBuf) ||
+              ev.outputText.endsWith(textBuf))
+          ) {
+            textBuf = ev.outputText;
+          }
+        }
         emitAssistantTurn();
         break;
       }
@@ -902,4 +1064,30 @@ export function projectRuntimeEventsToMessages(
     } = message.metadata;
     return { ...message, metadata };
   });
+}
+
+/**
+ * The `file` parts for the images a `tool.completed` carries. `url` is set
+ * only for a legacy/inline read; a normal read has the `blobRef` alone, which
+ * the client resolves through the authenticated attachment route.
+ */
+export function toolResultFileParts(ev: {
+  eventId: string;
+  toolCallId: string;
+  attachments?: readonly {
+    name: string;
+    mimeType: string;
+    dataUrl?: string;
+    blobRef?: string;
+  }[];
+}): MessagePart[] {
+  return (ev.attachments ?? []).map((attachment) => ({
+    type: 'file',
+    url: attachment.dataUrl,
+    blobRef: attachment.blobRef,
+    mediaType: attachment.mimeType,
+    name: attachment.name,
+    toolCallId: ev.toolCallId,
+    sourceEventId: ev.eventId,
+  }));
 }

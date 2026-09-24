@@ -15,6 +15,7 @@
     "./core-update-restart-status": "./src/core-update-restart-status.ts",
     "./workspace-browser-preview": "./src/workspace-browser-preview.ts",
     "./workspace-file-preview": "./src/workspace-file-preview.ts",
+    "./coding-file-mentions-query": "./src/query-domains/chatRuntimeCoding.ts",
     "./workspace-pane": "./src/workspace-pane.ts",
     "./task-outputs": "./src/task-outputs.ts",
     "./session-outputs": "./src/session-outputs.ts",
@@ -30,9 +31,11 @@
     "./task-tool-results": "./src/task-tool-results.ts",
     "./flow-gate-evaluations": "./src/flow-gate-evaluations.ts",
     "./client/flow-gate-evaluations": "./src/client/flow-gate-evaluations.ts",
+    "./client/checkpoint-restore": "./src/client/checkpoint-restore.ts",
     "./client": "./src/client/index.ts",
     "./setup-imports": "./src/client/setup-imports.ts",
     "./setup-imports-query": "./src/query-domains/setupImports.ts",
+    "./plugin-local-sources-query": "./src/query-domains/pluginLocalSources.ts",
     "./secret-bindings": "./src/client/secret-bindings.ts",
     "./secret-bindings-query": "./src/query-domains/secret-bindings.ts",
     "./client-origin": "./src/client-origin.ts",
@@ -45,6 +48,7 @@
     "./project-access-client": "./src/client/project-access.ts",
     "./account-authentication": "./src/client/account-authentication.ts",
     "./project-task-rooms": "./src/query-domains/projectTaskRooms.ts",
+    "./project-shared-tasks": "./src/client/project-shared-tasks.ts",
     "./live-activity": "./src/live-activity.ts",
     "./action-operations": "./src/action-operations.ts",
     "./resource-posture": "./src/query-domains/resourcePosture.ts",
@@ -56,7 +60,9 @@
     "./conversation-pull-request-links": "./src/client/conversation-pull-request-links.ts",
     "./input-reply": "./src/client/input-reply.ts",
     "./local-accounts": "./src/client/local-accounts.ts",
-    "./application-session": "./src/client/application-session.ts"
+    "./authority-observation": "./src/client/authority-observation.ts",
+    "./application-session": "./src/client/application-session.ts",
+    "./relay-enrollment": "./src/client/relay-enrollment.ts"
   },
   "scripts": {
     "build": "tsc && npm run copy-assets",
@@ -91,7 +97,7 @@
   "dependencies": {
     "@kontourai/console-core": "^0.3.0",
     "@kontourai/flow": "5.1.1",
-    "@kontourai/flow-agents": "6.2.0",
+    "@kontourai/flow-agents": "6.4.0",
     "@kontourai/station-contracts": "^0.7.0",
     "@kontourai/station-shared": "^0.7.0",
     "@kontourai/surface": "^3.2.0",

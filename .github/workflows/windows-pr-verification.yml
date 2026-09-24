@@ -39,6 +39,47 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: .nvmrc
+          package-manager-cache: false
+
+      # The cargo compile later in this job is its longest step (202-276s) and
+      # reads only the inputs classify-ci-change.mjs lists for `desktop-rust`.
+      # The classifier is taken from the BASE commit, as build-ios.yml does, so
+      # a candidate cannot rewrite the rule that decides whether its own Rust is
+      # compiled. It runs here, before the first candidate `npm run`: once
+      # candidate code has run it can rewrite $GITHUB_PATH/$GITHUB_ENV and put
+      # its own node or git in front of this step. Every failure path answers
+      # relevant=true, and the cargo step runs unless the answer is exactly
+      # `false`, so a missing output compiles too. The job, and so the required
+      # check, always runs; only the step is skipped.
+      - id: rust_relevance
+        name: Classify desktop Rust inputs
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+          HEAD_SHA: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
+        run: |
+          fail_closed() {
+            echo "::warning::desktop Rust change classification failed closed: $1"
+            echo "relevant=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          }
+
+          classifier="$RUNNER_TEMP/classify-ci-change.mjs"
+          git show "$BASE_SHA:scripts/classify-ci-change.mjs" > "$classifier" || \
+            fail_closed "base-controlled classifier unavailable"
+          output="$RUNNER_TEMP/desktop-rust-change-classification"
+          node "$classifier" --scope desktop-rust --mode candidate \
+            --before "$BASE_SHA" --after "$HEAD_SHA" > "$output" || \
+            fail_closed "classifier execution failed"
+          classification=$(tr -d '\r' < "$output")
+          case "$classification" in
+            relevant=true|relevant=false)
+              printf '%s\n' "$classification" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              fail_closed "classifier returned malformed output"
+              ;;
+          esac
 
       - run: npm run dependencies:ci
 
@@ -60,14 +101,24 @@ jobs:
           if-no-files-found: warn
 
       - name: Compile desktop Rust tests
+        if: ${{ steps.rust_relevance.outputs.relevant != 'false' }}
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force dist-server | Out-Null
           New-Item -ItemType Directory -Force dist-desktop-runtime/node_modules | Out-Null
           cargo test --manifest-path src-desktop/Cargo.toml --no-run
 
-      - name: Typecheck Station contracts
-        run: npm run typecheck
+      # No `npm run typecheck` here. tsc's verdict does not depend on the host
+      # OS: forceConsistentCasingInFileNames (the TypeScript default, and set
+      # explicitly in tsconfig.json) makes a wrong-case import an error on
+      # Windows as well as Linux, and ci:fast's typecheck aggregate runs every
+      # project on each same-repository PR and merge-queue candidate (fork
+      # PRs run ci:fast in fork-smoke). Repeating it here cost 107-159s of
+      # the required check's critical path for no additional verdict.
+      # What this job does not replace: a live Windows run of the aggregate's
+      # win32 spawn path (scripts/lib/npm-lane-aggregate.mjs). That shape is
+      # pinned by injected-platform unit tests and runs for real in a Windows
+      # contributor's pre-push typecheck.
 
       - name: Run focused static ratchets
         run: npm run gate:naming && npm run gate:ui-contracts

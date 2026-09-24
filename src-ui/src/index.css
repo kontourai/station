@@ -1457,9 +1457,11 @@ button:hover {
 .chat-dock.is-collapsed {
   border-top: 1px solid var(--border-primary);
   box-shadow: var(--shadow-sm);
-  /* NOT overflow:hidden (#1046): a collapsed non-chat region surface has
-     real content height (#765 C1), so this would clip the header's escaping
-     upward menu at the dock's own top edge. Chat clips via .chat-dock__body. */
+  /* NOT overflow:hidden (#1046): the collapsed bar's header hosts escaping
+     menus (the move menu, pane toolbars), and clipping at the dock's own top
+     edge would cut them off. The body is handled per region instead — chat
+     via `.chat-dock__body`, the non-chat panes via the collapsed
+     `.dock-slot__body` hide in the desktop block below. */
 }
 
 .chat-dock__file-drop-overlay {
@@ -4547,6 +4549,15 @@ button.tool-call__line:hover {
   white-space: nowrap;
 }
 
+.tool-call__purpose {
+  min-width: 0;
+  max-width: 42%;
+  overflow: hidden;
+  color: var(--text-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .tool-call__chevron {
   flex-shrink: 0;
   opacity: 0.5;
@@ -4784,6 +4795,42 @@ button.tool-call__line:hover {
   opacity: 0.8;
 }
 
+/* #2316: a decision in flight (or already accepted) cannot be sent twice. */
+.tool-call__approve-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* #2316: a decision Station did not accept is named on the card itself,
+   on its own line beneath the buttons. */
+.tool-call__actions:has(.tool-call__approve-error),
+.tool-call__actions:has(.tool-call__approve-status) {
+  flex-wrap: wrap;
+}
+
+.tool-call__approve-error,
+.tool-call__approve-status {
+  flex-basis: 100%;
+  margin: 2px 0 0;
+  font-size: 0.75em;
+}
+
+.tool-call__approve-error {
+  color: var(--error-text);
+}
+
+.tool-call__approve-status {
+  color: var(--color-text-secondary, var(--color-text));
+}
+
+/* #2316: approvals no transcript row can answer, under the transcript. */
+.pending-approvals {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 8px 0;
+}
+
 /* Collapsed tool-call batch — a muted single-line summary that replaces a
    stack of individually-expandable ToolCallDisplay cards ("three shell_exec
    cards fill the phone screen"). Tapping opens ToolCallBatchSheet, which
@@ -4981,11 +5028,21 @@ button.tool-call__line:hover {
 .chat-input__textarea-wrapper {
   position: relative;
   flex: 1;
+  flex-direction: column;
+  gap: var(--space-1);
+  width: 100%;
   min-width: 0;
   display: flex;
   margin: 0;
   padding: 0;
   border: 0;
+}
+
+.chat-input__textarea-wrapper > textarea {
+  box-sizing: border-box;
+  flex: 0 0 auto;
+  width: 100%;
+  min-width: 0;
 }
 
 /* archive#729: the mic sits inside the controls row, grouped with Send at the
@@ -5112,7 +5169,7 @@ button.tool-call__line:hover {
   background: transparent;
   color: var(--text-primary);
   font-family: inherit;
-  font-size: var(--text-lg);
+  font-size: var(--composer-font-size, var(--text-lg));
   resize: none;
   min-height: 48px;
   max-height: 160px;
@@ -6255,6 +6312,31 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
     --app-toolbar-height: 52px;
   }
 
+  /* Mobile Safari zooms the whole page when an editable control below 16px
+     receives focus. Keep browser/user pinch zoom enabled and prevent only
+     that focus-triggered jump. Attribute/not selectors intentionally outrank
+     compact component classes without an !important override. */
+  :is(
+    input:not([type]),
+    input[type="text"],
+    input[type="search"],
+    input[type="email"],
+    input[type="password"],
+    input[type="url"],
+    input[type="tel"],
+    input[type="number"],
+    textarea:not([readonly]),
+    select:not([multiple])
+  ) {
+    font-size: 16px;
+  }
+
+  /* Chat text size is user-configurable from 10–24px. Preserve larger choices
+     while applying the iOS focus floor only on phone-sized/short touch views. */
+  .chat-input textarea {
+    font-size: max(16px, var(--composer-font-size, var(--text-lg)));
+  }
+
   /* The collapsed chat dock renders as a bottom bar on mobile. At the desktop
      38px the "Chat Dock" label + gear / "Start a chat" / send / chevron
      controls are cramped, so give the bar comfortable room on small screens.
@@ -6464,13 +6546,12 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
     white-space: nowrap;
   }
 
-  /* Drop the (potentially long) connection name and the bundled-server note
-     on mobile — the status dot stays. The action cluster's own right-anchor
-     and shrink behaviour live with the rest of `.app-toolbar__actions` in
-     `components/chat/chat.css` (station#3766: two same-specificity rules here
-     and there contradicted each other). */
+  /* Hide the full state and identity spans on mobile. The compact healthy
+     chip keeps its bounded `Station · <saved name>` label in chat.css; the
+     action cluster's right-anchor and shrink behavior live there too
+     (station#3766). */
   .app-toolbar__conn-name,
-  .app-toolbar__conn-note {
+  .app-toolbar__conn-state {
     display: none;
   }
 
@@ -6739,6 +6820,82 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 .image-preview-navigation .button[aria-disabled="true"] {
   opacity: 0.5;
   cursor: default;
+}
+
+/* File Preview (non-image attachments) */
+.file-preview__actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-shrink: 0;
+}
+.file-preview__actions .button {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+}
+.file-preview__body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+}
+.file-preview__frame {
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  border: 0;
+  border-radius: 8px;
+  background: var(--bg-primary);
+}
+.file-preview__text {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+}
+.file-preview__source {
+  margin: 0;
+  padding: 12px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: 8px;
+  font-size: 0.85em;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.file-preview__markdown {
+  padding: 4px 8px;
+  overflow-wrap: anywhere;
+}
+.file-preview__notice {
+  margin: 0;
+  font-size: 0.85em;
+  color: var(--text-muted);
+}
+
+/* Markdown images in chat */
+.markdown-image {
+  max-width: 100%;
+  max-height: 480px;
+  border-radius: 6px;
+}
+.markdown-image-button {
+  position: relative;
+  display: inline-block;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: zoom-in;
+  max-width: 100%;
+}
+/* A 44px hit area without growing the line box: inline badges stay 20px tall
+   in prose, and the target extends invisibly around them. */
+.markdown-image-button::after {
+  content: "";
+  position: absolute;
+  inset: min(0px, calc((100% - 44px) / 2));
 }
 
 /* File Part Preview */
@@ -7474,12 +7631,19 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
      Activity's list ("Act", "Wat host", "Dele are c") stayed visible as a
      clipped sliver on every route. Chat already clips through
      `.chat-dock__body`; a non-chat occupant renders `.dock-slot__body`, which
-     nothing hid. The bottom dock deliberately keeps a collapsed non-chat
-     occupant's height (#765 C1, `.chat-dock.is-collapsed` above) because its
-     content stays reachable there; a vertical rail cannot show content at
-     all, so hiding the body loses nothing. */
+     nothing hid. The bottom dock had kept its collapsed body mounted (#765
+     C1's "content stays reachable" on the v0.1.2 title-only strip), but with
+     a real bar under every region that contract is chat's now: a collapsed
+     dock is the bar alone, so the body hides on every edge — on the bottom
+     the desktop `height: auto !important` rule below otherwise sizes the
+     collapsed dock back to its body, and the pane reappears the moment the
+     region is shown (or dragged from collapsed, which drops `is-collapsed`). */
   .app__main
-    > :is([data-region="left"], [data-region="right"]).is-collapsed
+    > :is(
+      [data-region="left"],
+      [data-region="right"],
+      [data-region="bottom"]
+    ).is-collapsed
     .dock-slot__body {
     display: none;
   }
@@ -7636,11 +7800,12 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
     font-size: var(--text-xs);
   }
 
-  /* Side-mode messages: compact conversation flow */
-  .app__main > :is([data-region="left"], [data-region="right"]) .chat-messages {
-    align-items: flex-end;
-  }
-
+  /* Side-mode messages: compact conversation flow.
+     No `align-items` override: the column keeps the default stretch so the
+     transcript rows lay out exactly as the main view does — `.message-row` is
+     full-width and user rows right-align via `row-reverse`. `flex-end` used to
+     sit here and right-aligned EVERY shrink-wrapped `.chat-message-anchor`,
+     pushing assistant answers (avatar and all) against the dock's far edge. */
   .app__main > :is([data-region="left"], [data-region="right"]) .message {
     max-width: 95%;
     overflow-x: hidden;
@@ -7707,7 +7872,9 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 
   /* Collapsed: size the row to the header's real rendered height instead of
      the 38px height token — the dock carries a 2px accent border on top of
-     the header content, so the fixed token clips the bar's bottom edge. */
+     the header content, so the fixed token clips the bar's bottom edge. The
+     collapsed `.dock-slot__body` hide above is what leaves the header as the
+     only content for `auto` to size to on a non-chat occupant. */
   .app__main > [data-region="bottom"].is-collapsed {
     height: auto !important;
   }
@@ -8248,6 +8415,15 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   flex-shrink: 0;
 }
 
+/* The quiet dot between a workspace name and its directory hint, so
+   "No workspace · Home folder" parses as name + detail instead of one
+   run-on phrase. aria-hidden in the markup; the label and hint carry the
+   meaning themselves. */
+.new-chat-modal__context-sep {
+  flex-shrink: 0;
+  color: var(--text-tertiary);
+}
+
 .new-chat-modal__context-dir {
   display: flex;
   font-family: var(--font-mono);
@@ -8597,7 +8773,12 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 
 .new-chat-modal__model-trigger {
   min-height: 32px;
-  max-width: min(30vw, 130px);
+  /* Wide enough to carry an actual model name ("Default (recommended)",
+     "GPT-5.6-Codex"). The old min(30vw, 130px) ellipsized every one of them
+     mid-name — while the row's own name column had width to spare. The name
+     column keeps priority through the grid's minmax(0, 1fr); the cap only
+     stops one very long catalog id from starving it entirely. */
+  max-width: min(40vw, 200px);
   overflow: hidden;
   padding: 0 10px;
   border: 1px solid var(--border-primary);
@@ -8822,6 +9003,20 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   user-select: none;
 }
 
+/* The region bar's bare surface is a dock drag surface too (`RegionChromeBar`
+   wears the chrome's header gesture), so on the devices whose drags the
+   browser would otherwise claim for panning, it opts out the same way the
+   mobile header above does. Scoped to the mobile breakpoint, byte-identical
+   to `MOBILE_MEDIA_QUERY`'s condition: inside it a region renders no tab
+   strip, and a touch-action on an ancestor intersects down — a `none` here
+   would also strip the strip's own `overflow-x` pan on the wide-coarse
+   tablets that DO render one. */
+@media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
+  .region-chrome {
+    touch-action: none;
+  }
+}
+
 /* archive#3309: at 320px the bar's non-shrinking 44px slots plus the 12px
    grab margin leave the title no width at all. The 44px touch floor is not
    negotiable, so what gives way is the grab margin (12px -> 8px, +8px total)
@@ -8916,6 +9111,18 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   max-width: 44px;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.chat-dock__mobile-conn--details {
+  max-width: 100%;
+  justify-content: flex-start;
+}
+
+.chat-dock__mobile-conn--details .chat-dock__mobile-conn-label {
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
 }
 
 /* The gesture-free dock toggle (archive#1052 follow-up): one glyph, flipped when the
@@ -9074,11 +9281,18 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   display: block;
 }
 
-.chat-dock__mobile-project-name,
-.chat-dock__mobile-title-text {
+.chat-dock__mobile-project-name {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.chat-dock__mobile-title-text {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  white-space: normal;
 }
 
 .chat-dock__mobile-activity.is-active {
@@ -9247,7 +9461,10 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   }
 
   .new-chat-modal__model-trigger {
-    max-width: 116px;
+    /* The side controls own their own full-width line on a phone, so the
+       cap is the container, not an arbitrary 116px that clipped every real
+       model name ("GPT-5.6-…", "Model no…"). */
+    max-width: 100%;
     min-height: 44px;
   }
 
@@ -9392,7 +9609,7 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
    its saved Half/Full preference. The keyboard may leave only ~150 CSS pixels:
    preserve the header and a single-line composer instead of clipping Send. */
 @media (max-height: 540px) and (pointer: coarse) {
-  .app__main > .chat-dock--bottom:not(.is-collapsed):not(.is-dragging) {
+  .app__main .chat-dock--bottom:not(.is-collapsed):not(.is-dragging) {
     top: calc(var(--chat-visual-viewport-top, 0px) + var(--safe-top));
     bottom: auto;
     height: calc(
@@ -9409,49 +9626,112 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   /* This short-window chat fills the work area just like a maximized dock.
      Passive notices yield to its input; explicit system blockers retain
      BannerHost's higher layer and their repair controls. */
-  .app__main:has(> .chat-dock--bottom:not(.is-collapsed):not(.is-dragging))
+  .app__main:has(.chat-dock--bottom:not(.is-collapsed):not(.is-dragging))
   > .banner-host:not(.banner-host--critical-chrome) {
     z-index: var(--layer-notice);
   }
 
-  .app__main > .chat-dock--bottom .chat-input {
+  .app__main .chat-dock--bottom .chat-input {
+    position: relative;
+    z-index: 1;
     flex-shrink: 0;
+    background: var(--bg-secondary);
     padding-bottom: max(
       0px,
       calc(var(--safe-bottom) - var(--chat-visual-viewport-bottom, 0px))
     );
   }
 
-  .app__main > .chat-dock--bottom .chat-input__capsule {
+  .app__main .chat-dock--bottom .chat-input__capsule {
     flex-direction: row;
     align-items: flex-end;
   }
 
-  .app__main > .chat-dock--bottom .chat-input textarea {
+  .app__main .chat-dock--bottom .chat-input textarea {
     max-height: max(44px, calc(1lh + 20px));
     padding: 10px 12px;
   }
 
-  .app__main > .chat-dock--bottom .chat-messages {
+  .app__main .chat-dock--bottom .chat-messages {
     padding-block: 0;
   }
 
   /* A passive connection label does not need a 44px interaction row. Keep
      the message visible while preserving the composer's available height;
      a connection-repair button retains the standard touch target. */
-  .app__main > .chat-dock--bottom .chat-stream-status:not(:has(button)) {
+  .app__main .chat-dock--bottom .chat-stream-status:not(:has(button)) {
     min-height: 0;
     padding: 0 8px;
     line-height: 1.2;
+    pointer-events: none;
   }
 
   /* Editing gets the limited height. Blurring the textarea restores the
      model/agent selectors; input and Send keep their full touch targets. */
   .app__main
-    > .chat-dock--bottom
+    .chat-dock--bottom
     .chat-input:has(textarea:focus)
     > .chat-input__meta {
     display: none;
+  }
+}
+
+/* A short browser viewport can retain a fine primary pointer in automation or
+   desktop responsive mode. Keep the session rail above the capsule and make a
+   passive reconnect label observational, so neither can steal the model and
+   approval controls' hit area. */
+@media (max-width: 600px) and (max-height: 600px) {
+  .chat-messages--empty
+    .empty-state:not([data-testid="chat-empty-state-unconfigured"]) {
+    flex: 0 0 auto;
+    min-height: 0;
+    padding: var(--space-1) var(--space-2);
+  }
+
+  .chat-messages--empty
+    .empty-state:not([data-testid="chat-empty-state-unconfigured"])
+    > h3,
+  .chat-messages--empty
+    .empty-state:not([data-testid="chat-empty-state-unconfigured"])
+    > p:last-child {
+    display: none;
+  }
+
+  .chat-messages--empty
+    .empty-state:not([data-testid="chat-empty-state-unconfigured"])
+    > h3
+    + p {
+    max-width: 100%;
+    margin: 0;
+    overflow: hidden;
+    font-size: var(--text-sm);
+    line-height: 1.2;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .app__main .chat-dock--bottom .chat-input {
+    position: relative;
+    z-index: 3;
+    flex: 0 0 auto;
+    min-height: max-content;
+    background: var(--bg-secondary);
+  }
+
+  .app__main .chat-dock--bottom .chat-input__meta {
+    position: relative;
+    z-index: 2;
+    background: var(--bg-secondary);
+  }
+
+  .app__main .chat-dock--bottom .chat-input textarea {
+    flex: 0 0 auto;
+    height: 44px;
+    max-height: 44px;
+  }
+
+  .app__main .chat-dock--bottom .chat-stream-status:not(:has(button)) {
+    pointer-events: none;
   }
 }
 

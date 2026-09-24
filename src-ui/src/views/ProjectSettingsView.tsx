@@ -6,7 +6,6 @@ import {
 import {
   useDeleteProjectMutation,
   useModelConnectionsQuery,
-  useProjectQuery,
   useUpdateProjectMutation,
 } from '@kontourai/station-sdk';
 import { useEffect, useRef, useState } from 'react';
@@ -26,7 +25,10 @@ import { SectionNav } from '../components/SectionNav';
 import { ErrorState, Skeleton } from '../components/state';
 import { useConfig } from '../contexts/ConfigContext';
 import { useNavigation } from '../contexts/NavigationContext';
-import type { ProjectConfig } from '../contexts/ProjectsContext';
+import {
+  type ProjectConfig,
+  useScopedProjectQuery,
+} from '../contexts/ProjectsContext';
 import { useShowSurface } from '../contexts/useShowSurface';
 import { useCloseShortcut } from '../hooks/useCloseShortcut';
 import { useSectionNavigation } from '../hooks/useSectionNavigation';
@@ -170,7 +172,7 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
     isError: isLoadError,
     error: loadError,
     refetch: refetchProject,
-  } = useProjectQuery(slug) as {
+  } = useScopedProjectQuery(slug) as {
     data?: ProjectConfig;
     isLoading: boolean;
     isError: boolean;

@@ -49,6 +49,7 @@ vi.mock('../platform/native/stationProfileStorage', () => ({
       throw new Error('not used');
     },
     authorizeDefaultProfile: () => state.authorizeDefaultProfile(),
+    hasSavedProfiles: () => true,
     authorizeActiveConnection: (connectionId: string, explicit?: boolean) =>
       state.authorizeActiveConnection(connectionId, explicit),
     credentialEntries: () => [],

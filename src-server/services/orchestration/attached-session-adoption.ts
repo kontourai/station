@@ -33,6 +33,10 @@ import type {
 import { resolveAttachedProjectRoot } from './attached-session-follow-service.js';
 import type { EventStore } from './event-store.js';
 import { readCompletedSourceBoundary } from './external-session-continuation-context.js';
+import {
+  type SessionOwnerAttribution,
+  sessionOwnerAttributionMetadata,
+} from './session-owner-attribution.js';
 
 // Attached-session adoption (epic archive#4024, archive#4143): the C14 cluster
 // from the seam map — 25 of its 27 methods, its reservation/intent state,
@@ -74,6 +78,8 @@ interface AdoptionContext {
   adoption?: OwnedAdoption;
   providerAdoptionStarted: boolean;
   tenantExecutionContext?: TenantExecutionContext;
+  /** Station #90 lane D (R1): stamped on the adopted child's start. */
+  ownerAttribution?: SessionOwnerAttribution;
 }
 
 const liveAdoptionOwners = new Set<string>();
@@ -191,6 +197,7 @@ export class AttachedSessionAdoption {
     userId?: string,
     requestTenantExecutionContext?: TenantExecutionContext,
     idempotencyKey?: string,
+    ownerAttribution?: SessionOwnerAttribution,
   ): Promise<OrchestrationCommandDispatchResult<AdoptedSessionResult>> {
     if (idempotencyKey) {
       // Coalescing must retain the same authority boundary as durable lookup:
@@ -217,6 +224,7 @@ export class AttachedSessionAdoption {
         userId,
         requestTenantExecutionContext,
         idempotencyKey,
+        ownerAttribution,
       );
       this.adoptionIntents.set(intentScope, intent);
       try {
@@ -230,6 +238,8 @@ export class AttachedSessionAdoption {
       receipt,
       userId,
       requestTenantExecutionContext,
+      undefined,
+      ownerAttribution,
     );
   }
 
@@ -239,6 +249,7 @@ export class AttachedSessionAdoption {
     userId?: string,
     requestTenantExecutionContext?: TenantExecutionContext,
     idempotencyKey?: string,
+    ownerAttribution?: SessionOwnerAttribution,
   ): Promise<OrchestrationCommandDispatchResult<AdoptedSessionResult>> {
     await this.reconciliation;
     // Resolve and authorize the source before treating an existing child as
@@ -334,6 +345,7 @@ export class AttachedSessionAdoption {
     context.tenantExecutionContext =
       tenantExecutionContext ?? sourceTenantExecutionContext;
     context.reservation.idempotencyKey = idempotencyKey;
+    context.ownerAttribution = ownerAttribution;
     const reservation = this.deps.adoptionLedger?.reserve(context.reservation);
     if (reservation?.kind !== 'owner') {
       if (idempotencyKey) {
@@ -630,6 +642,7 @@ export class AttachedSessionAdoption {
       metadata: {
         adoptedFromThreadId: reservation.sourceThreadId,
         ...(userId !== undefined ? { userId } : {}),
+        ...sessionOwnerAttributionMetadata(context.ownerAttribution),
       },
       ...(context.tenantExecutionContext
         ? { tenantExecutionContext: context.tenantExecutionContext }

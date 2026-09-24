@@ -53,10 +53,21 @@ interface ConnectionListPanelProps {
    * its state without a Restart control.
    */
   onRestartInjectedConnection?: (connection: SavedConnection) => void;
+  /** Host-owned id of the managed local Station when it stops with the app. */
+  localStationOwnerId?: string;
   onScanQr: () => void;
   onEnterPairingCode: () => void;
   enterPairingCodeRef?: Ref<HTMLButtonElement>;
   onPairPhone?: () => void;
+  /**
+   * station#2205: this device has a Station of its own — the web UI served by
+   * that Station, or a native desktop supervising its local server. On a
+   * client-only device (the phone) there is no "this Station": a paired
+   * device credential cannot mint pairing offers on the remote host, so the
+   * host-access section would be a dead end that can only report its own
+   * absence. Defaults to true so every host surface keeps the section.
+   */
+  hasLocalStation?: boolean;
   onViewDevices: () => void;
   onDiscover: () => void;
   /**
@@ -93,6 +104,7 @@ function ConnectionRow({
   onRequestAccess,
   onMakeDefaultProfile,
   onRestartInjectedConnection,
+  localStationOwnerId,
   getStatus,
   canEditSharedProfiles,
   busy,
@@ -110,6 +122,7 @@ function ConnectionRow({
   onRequestAccess: (connection?: SavedConnection) => void;
   onMakeDefaultProfile?: (connection: SavedConnection) => void;
   onRestartInjectedConnection?: (connection: SavedConnection) => void;
+  localStationOwnerId?: string;
   getStatus: (connection: SavedConnection) => ConnectionStatus;
 }) {
   // station#4512 review (M6) — Forget removed a saved connection on a
@@ -223,6 +236,14 @@ function ConnectionRow({
         ) : (
           <div className="station-connect-row__url" title={connection.url}>
             {connection.url}
+          </div>
+        )}
+        {localStationOwnerId && connection.ownerId === localStationOwnerId && (
+          <div
+            className="station-connect-row__meta"
+            data-testid="local-station-lifetime"
+          >
+            Runs only while the Station app is open.
           </div>
         )}
         {copyStatus && (
@@ -490,10 +511,12 @@ export function ConnectionListPanel({
   onRequestAccess,
   onMakeDefaultProfile,
   onRestartInjectedConnection,
+  localStationOwnerId,
   onScanQr,
   onEnterPairingCode,
   enterPairingCodeRef,
   onPairPhone,
+  hasLocalStation = true,
   onViewDevices,
   onDiscover,
   discoveryAvailable,
@@ -645,6 +668,7 @@ export function ConnectionListPanel({
               canEditSharedProfiles={canEditSharedProfiles}
               busy={editPending}
               onRestartInjectedConnection={onRestartInjectedConnection}
+              localStationOwnerId={localStationOwnerId}
               getStatus={getStatus}
             />
           ),
@@ -718,35 +742,37 @@ export function ConnectionListPanel({
             </button>
           )}
         </section>
-        <section
-          className="station-connect-footer__group"
-          aria-label="Manage access to this Station"
-        >
-          <h3>Connect another device to this Station</h3>
-          <p>
-            Invite your phone to{' '}
-            {connections.find(
-              (connection) => connection.id === activeConnectionId,
-            )?.name ?? 'the selected Station'}
-            . Both devices use the same Station server.
-          </p>
-          {onPairPhone && (
+        {hasLocalStation && (
+          <section
+            className="station-connect-footer__group"
+            aria-label="Manage access to this Station"
+          >
+            <h3>Connect another device to this Station</h3>
+            <p>
+              Invite your phone to{' '}
+              {connections.find(
+                (connection) => connection.id === activeConnectionId,
+              )?.name ?? 'the selected Station'}
+              . Both devices use the same Station server.
+            </p>
+            {onPairPhone && (
+              <button
+                type="button"
+                onClick={onPairPhone}
+                className="station-connect-btn station-connect-btn--primary"
+              >
+                Connect another device
+              </button>
+            )}
             <button
               type="button"
-              onClick={onPairPhone}
-              className="station-connect-btn station-connect-btn--primary"
+              onClick={onViewDevices}
+              className="station-connect-footer__devices"
             >
-              Connect another device
+              Paired devices
             </button>
-          )}
-          <button
-            type="button"
-            onClick={onViewDevices}
-            className="station-connect-footer__devices"
-          >
-            Paired devices
-          </button>
-        </section>
+          </section>
+        )}
       </div>
     </>
   );

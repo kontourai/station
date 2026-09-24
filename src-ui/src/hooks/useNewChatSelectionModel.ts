@@ -3,21 +3,15 @@ import {
   type EngineConnectionId,
   engineConnectionId,
 } from '@kontourai/station-contracts/agent-identity';
-import type {
-  AgentConnectionView,
-  ConnectionConfig,
-} from '@kontourai/station-contracts/tool';
+import type { ConnectionConfig } from '@kontourai/station-contracts/tool';
 import { EXECUTION_MODE } from '@kontourai/station-contracts/tool';
 import {
   useACPConnectionsQuery,
   useAgentsQuery,
-  useEngineConnectionsQuery,
-  useModelConnectionsQuery,
+  useModelPickerCatalogQuery,
   useProjectLayoutQuery,
-  useProjectQuery,
-  useProjectsQuery,
 } from '@kontourai/station-sdk';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   buildNewChatModalViewModel,
   buildNewChatModelOverrideKey,
@@ -31,7 +25,11 @@ import { activeChatsStore } from '../contexts/ActiveChatsContext';
 import type { AgentData } from '../contexts/AgentsContext';
 import { useConfig } from '../contexts/ConfigContext';
 import { useNavigation } from '../contexts/NavigationContext';
-import type { ProjectMetadata } from '../contexts/ProjectsContext';
+import {
+  type ProjectMetadata,
+  useScopedProjectQuery,
+  useScopedProjectsQuery,
+} from '../contexts/ProjectsContext';
 import {
   defaultManagedRuntimeConnection,
   guaranteeConcreteModel,
@@ -46,6 +44,8 @@ import type {
   SelectableModel,
 } from '../utils/modelCapabilities';
 import { getLastChosenModelMap } from './lastChosenModel';
+
+const EMPTY_CONNECTIONS: never[] = [];
 
 /**
  * The engine binding a provider-managed row should carry: the Agent's own, or
@@ -112,6 +112,30 @@ export function acpCatalogModelOptions(
 }
 
 /**
+ * Keep the new-chat picker converging while the server calls its own agents
+ * read reconciling. The enriched list serves its last stable snapshot during
+ * post-write reconciliation, and this surface fetches once per mount with a
+ * multi-minute cache: without a refresh, a just-created agent can miss the
+ * picker for the whole cache lifetime even though the server converges
+ * seconds later. Each reconciling response re-arms exactly one delayed
+ * refetch; a stable read (or unmount) stops the loop, so a wedged server
+ * costs one lightweight read per second only while the picker is open.
+ */
+export function useReconcilingCatalogRefresh(
+  catalogState: string | undefined,
+  data: unknown,
+  refetch: () => void,
+  delayMs = 1000,
+): void {
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `data` is an identity trigger, not a read — each reconciling response must re-arm exactly one delayed refetch or polling stops after the first fire.
+  useEffect(() => {
+    if (catalogState !== 'reconciling') return;
+    const timer = setTimeout(() => refetch(), delayMs);
+    return () => clearTimeout(timer);
+  }, [catalogState, data, refetch, delayMs]);
+}
+
+/**
  * Station's model inventory can retain cached catalogs for connections that
  * are disabled or unhealthy. Only a ready, enabled model connection is a
  * launchable provider; keep this predicate aligned with the active composer.
@@ -158,7 +182,12 @@ export function useNewChatSelectionModel({
     }));
   const appConfig = useConfig();
   const agentCatalog = useAgentsQuery();
-  const projectCatalog = useProjectsQuery();
+  useReconcilingCatalogRefresh(
+    agentCatalog.catalogState,
+    agentCatalog.data,
+    agentCatalog.refetch,
+  );
+  const projectCatalog = useScopedProjectsQuery();
   const qualifiedAgents = useMemo(
     () =>
       revalidateSelection
@@ -188,32 +217,27 @@ export function useNewChatSelectionModel({
     selectedProjectLayout || '',
     { enabled: !!activeLayoutProject && !!selectedProjectLayout },
   );
+  // Same credential-free catalog Home and Chat already persist to IndexedDB.
+  // Raw `connections` queries stay out of persistence because `config` can
+  // hold credentials; using them here left New Chat empty on relaunch until
+  // the network returned.
   const {
-    data: agentConnections = [],
-    isLoading: runtimeLoading,
-    isFetching: runtimeFetching,
-    error: runtimeError,
-    refetch: refetchAgentConnections,
-  } = useEngineConnectionsQuery() as {
-    data?: AgentConnectionView[];
-    isLoading?: boolean;
-    isFetching?: boolean;
-    error?: unknown;
-    refetch: (options?: { throwOnError?: boolean }) => Promise<unknown>;
-  };
-  const {
-    data: modelConnections = [],
-    isLoading: modelsLoading,
-    isFetching: modelsFetching,
-    error: modelsError,
-    refetch: refetchModelConnections,
-  } = useModelConnectionsQuery() as {
-    data?: ConnectionConfig[];
-    isLoading?: boolean;
-    isFetching?: boolean;
-    error?: unknown;
-    refetch: (options?: { throwOnError?: boolean }) => Promise<unknown>;
-  };
+    data: pickerCatalog,
+    isLoading: catalogLoading,
+    isFetching: catalogFetching,
+    error: catalogError,
+    refetch: refetchPickerCatalog,
+  } = useModelPickerCatalogQuery();
+  const agentConnections = pickerCatalog?.agentConnections ?? EMPTY_CONNECTIONS;
+  const modelConnections = pickerCatalog?.modelConnections ?? EMPTY_CONNECTIONS;
+  const runtimeLoading = catalogLoading;
+  const modelsLoading = catalogLoading;
+  const runtimeFetching = catalogFetching;
+  const modelsFetching = catalogFetching;
+  const runtimeError = catalogError;
+  const modelsError = catalogError;
+  const refetchAgentConnections = refetchPickerCatalog;
+  const refetchModelConnections = refetchPickerCatalog;
   const {
     data: acpConnections = [],
     refetch: refreshACPConnections,
@@ -227,9 +251,12 @@ export function useNewChatSelectionModel({
   };
   const selectedProjectSlug =
     selectedContext !== GLOBAL_CONTEXT ? selectedContext : null;
-  const selectedProjectQuery = useProjectQuery(selectedProjectSlug ?? '', {
-    enabled: !!selectedProjectSlug,
-  });
+  const selectedProjectQuery = useScopedProjectQuery(
+    selectedProjectSlug ?? '',
+    {
+      enabled: !!selectedProjectSlug,
+    },
+  );
   const { data: selectedProjectConfig } = selectedProjectQuery as {
     data?: {
       agents?: AgentId[];

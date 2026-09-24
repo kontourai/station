@@ -1,17 +1,10 @@
-import { useState } from 'react';
 import { ChatDockMobileConnection } from './ChatDockMobileConnection';
 import './ChatDockMobileOverflowSheet.css';
-import { LazyBoundary } from '../LazyBoundary';
 import {
   ResponsiveDialogHeader,
   ResponsiveDialogSurface,
 } from '../ResponsiveDialogSurface';
 import type { ChatDockMobileOverflowActions } from './ChatDockMobileHeader';
-
-const loadSessionInventoryFullFallback = () =>
-  import('./SessionInventoryFullFallback').then((module) => ({
-    default: module.SessionInventoryFullFallback,
-  }));
 
 /**
  * The mobile header's overflow sheet.
@@ -26,8 +19,6 @@ export function ChatDockMobileOverflowSheet({
   projectScope,
   showConnection,
   onNewChat,
-  onOpenActivity,
-  activeCount,
   branchLabel,
   returnFocusTarget,
   onClose,
@@ -43,32 +34,10 @@ export function ChatDockMobileOverflowSheet({
   returnFocusTarget?: HTMLElement | null;
   onClose: () => void;
 }) {
-  const [inventoryOpen, setInventoryOpen] = useState(false);
   const run = (action: () => void) => {
     onClose();
     action();
   };
-
-  if (inventoryOpen && overflow.sessionInventory)
-    return (
-      <LazyBoundary
-        load={loadSessionInventoryFullFallback}
-        pending={null}
-        componentProps={{
-          scope: {
-            kind: 'whole-session' as const,
-            sessionId: overflow.sessionInventory.sessionId,
-          },
-          chatStoreId: overflow.sessionInventory.chatStoreId,
-          trigger: returnFocusTarget ?? null,
-          forceFallback: true,
-          onClose: () => {
-            setInventoryOpen(false);
-            onClose();
-          },
-        }}
-      />
-    );
 
   return (
     <ResponsiveDialogSurface
@@ -100,49 +69,26 @@ export function ChatDockMobileOverflowSheet({
             New chat
           </button>
         )}
-        {onOpenActivity && (
-          <button
-            type="button"
-            role="menuitem"
-            className="composer-actions-menu__item"
-            onClick={() => run(onOpenActivity)}
-          >
-            Activity
-            {activeCount ? (
-              <span className="composer-actions-menu__item-hint">
-                {activeCount} working
-              </span>
-            ) : null}
-          </button>
-        )}
         {branchLabel && <p>{branchLabel}</p>}
         {showConnection && <ChatDockMobileConnection showLabel />}
         <button
           type="button"
           role="menuitem"
           className="composer-actions-menu__item"
-          onClick={() => run(overflow.onOpenConversation)}
-        >
-          Open conversation
-        </button>
-        <button
-          type="button"
-          role="menuitem"
-          className="composer-actions-menu__item"
           onClick={() => run(overflow.onToggleHistory)}
         >
-          Conversation history
+          Chats
         </button>
-        {overflow.sessionInventory ? (
+        {overflow.onOpenConversationHistory && (
           <button
             type="button"
             role="menuitem"
             className="composer-actions-menu__item"
-            onClick={() => setInventoryOpen(true)}
+            onClick={() => run(overflow.onOpenConversationHistory!)}
           >
-            Session inventory
+            Conversation history
           </button>
-        ) : null}
+        )}
         {overflow.onOpenProject && (
           <button
             type="button"
@@ -169,6 +115,11 @@ export function ChatDockMobileOverflowSheet({
               </span>
             )}
           </button>
+        )}
+        {overflow.inputOriginLabel && (
+          <div className="composer-actions-menu__item" role="note">
+            {overflow.inputOriginLabel}
+          </div>
         )}
         {/* One named entry point per snap state the drag gesture can reach
             (collapsed / half / full), so the pointer gesture is never the only
@@ -260,22 +211,6 @@ export function ChatDockMobileOverflowSheet({
           onClick={() => run(overflow.onOpenChatSettings)}
         >
           Chat settings
-        </button>
-        <button
-          type="button"
-          role="menuitem"
-          className="composer-actions-menu__item"
-          onClick={() => run(overflow.onOpenProfile)}
-        >
-          Profile
-        </button>
-        <button
-          type="button"
-          role="menuitem"
-          className="composer-actions-menu__item"
-          onClick={() => run(overflow.onOpenAppSettings)}
-        >
-          Settings
         </button>
       </div>
     </ResponsiveDialogSurface>

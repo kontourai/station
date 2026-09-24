@@ -121,12 +121,19 @@ vi.mock('../hooks/useNewChatSelectionModel', () => ({
     modelChoiceKey: (agent: AgentData) => agent.slug,
     defaultEffectiveModelForAgent: () => ({
       id: undefined,
+      label: 'Model not reported',
       source: 'agent default' as const,
     }),
   }),
 }));
 
 const { NewChatModal } = await import('../components/modals/NewChatModal');
+const { composerDraftContext } = await import(
+  '../components/chat-dock/ChatDockModalStack'
+);
+const { pluginAuthoringComposerDraft } = await import(
+  '../views/plugin-management/plugin-authoring-primer'
+);
 
 afterEach(() => {
   cleanup();
@@ -303,6 +310,63 @@ describe('NewChatModal select dispatch invariant (#3013)', () => {
     expect(screen.queryByRole('alert')).toBeNull();
   });
 
+  test('a requested composer draft is offered and handed over verbatim for the composer, not sent (#2323 S2)', () => {
+    // The New plugin flow asks the dock for a primed chat. The dock turns
+    // the request into this picker's draft item; picking an Agent hands the
+    // exact text to `onSelect` as the initial message, which the dock places
+    // in the composer input (`openChatForAgent`'s `updateChat({ input })`).
+    selectionModelState.isGlobal = false;
+    selectionModelState.selectedProject = {
+      slug: 'pulse',
+      name: 'Pulse',
+      workingDirectory: '/tmp/pulse',
+    };
+    const draft = pluginAuthoringComposerDraft({
+      name: 'pulse',
+      displayName: 'Pulse',
+      template: 'pane',
+    });
+    const onSelect = vi.fn();
+    render(
+      <NewChatModal
+        agents={selectionModelState.agents}
+        projects={[]}
+        onSelect={onSelect}
+        onClose={vi.fn()}
+        draftContext={composerDraftContext(draft)}
+      />,
+    );
+
+    expect(screen.getByText('Plugin authoring')).toBeTruthy();
+    clickAgent('assistant');
+
+    expect(onSelect).toHaveBeenCalledTimes(1);
+    expect(onSelect.mock.calls[0][1]).toBe('pulse');
+    // Verbatim: no "Coding context for this chat" framing around it.
+    expect(onSelect.mock.calls[0][3]).toBe(draft.message);
+  });
+
+  test('a deselected composer draft hands over nothing', () => {
+    const draft = pluginAuthoringComposerDraft({
+      name: 'pulse',
+      displayName: 'Pulse',
+      template: 'pane',
+    });
+    const onSelect = vi.fn();
+    render(
+      <NewChatModal
+        agents={selectionModelState.agents}
+        projects={[]}
+        onSelect={onSelect}
+        onClose={vi.fn()}
+        draftContext={composerDraftContext(draft)}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Opening message/ }));
+    clickAgent('assistant');
+    expect(onSelect.mock.calls[0][3]).toBeUndefined();
+  });
+
   test('non-global context with an unresolved project must not be silent', () => {
     // The live archive#3013 state: context names a project the projects list cannot
     // resolve. Dispatching would target a workspace the server cannot
@@ -336,10 +400,33 @@ describe('NewChatModal select dispatch invariant (#3013)', () => {
     const onSelect = renderModal();
     const row = clickAgent('downed');
     expect(row).toHaveProperty('disabled', true);
-    // One visible statement of the refusal (the shared readiness chip) and
-    // one accessible description carrying the server's sentence.
-    expect(screen.getByText('Needs: connection offline')).toBeTruthy();
+    // One visible statement of the refusal (the shared readiness chip, in
+    // the same compact words the Agents list row uses) and one accessible
+    // description carrying the server's sentence.
+    expect(screen.getByText('Not set up')).toBeTruthy();
     expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  test('the model trigger is disabled while the engine reports no catalog', () => {
+    // modelsForAgent is [] for every agent in this harness, so the trigger
+    // must not offer a picker that would open empty; the accessible name
+    // still says what the control is and the tooltip names why.
+    selectionModelState.agents = [AGENT];
+    renderModal();
+    const trigger = document.querySelector(
+      '.new-chat-modal__model-trigger',
+    ) as HTMLButtonElement;
+    expect(trigger.disabled).toBe(true);
+    expect(trigger.getAttribute('aria-label')).toBe(
+      'Model: Model not reported',
+    );
+    expect(trigger.getAttribute('title')).toBe(
+      'This Agent has not reported a model catalog',
+    );
+    fireEvent.click(trigger);
+    expect(
+      document.querySelector('.new-chat-modal__model-picker-backdrop'),
+    ).toBeNull();
   });
 
   test('Enable materializes the engine Agent, announces progress, and selects off the response (#3027)', async () => {
@@ -627,16 +714,19 @@ describe('NewChatModal select dispatch invariant (#3013)', () => {
     });
 
     // DESIGN.md §5: EVERY non-ready row carries a state, in the same words
-    // the Agents list uses — the row that "kept its reason and got no chip"
-    // was the one case the picker and the list described differently. The
-    // sentence is now always the row's accessible description, and the chip
-    // is always the visible statement.
-    test('a row with no enable signal states its need and keeps the sentence for a11y', () => {
+    // the Agents list uses — and the Agents list row renders the COMPACT
+    // badge (agentsViewHelpers `part="status" compact`), so the picker now
+    // does too. The full server sentence used to BE the badge label here; a
+    // paragraph for a chip that squeezed the row's own name to one letter
+    // while the sentence stayed in the accessibility tree either way. The
+    // visible state is short vocabulary; the sentence remains the row's
+    // accessible description.
+    test('a row with no enable signal states its need compactly and keeps the sentence for a11y', () => {
       selectionModelState.agents = [UNAVAILABLE_AGENT];
       renderModal();
 
-      expect(screen.queryByText('Not set up')).toBeNull();
-      expect(screen.getByText('Needs: connection offline')).toBeTruthy();
+      expect(screen.queryByText('Needs: connection offline')).toBeNull();
+      expect(screen.getByText('Not set up')).toBeTruthy();
       const reason = reasonNode('downed');
       expect(reason?.textContent).toBe('connection offline');
       expect(reason?.className).toContain(

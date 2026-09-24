@@ -8,6 +8,10 @@ import {
 } from '@kontourai/station-connect';
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import type { ProjectConfig } from '@kontourai/station-contracts/project';
+import {
+  WORKSPACE_DEVICE_PANE_DESCRIPTOR,
+  WORKSPACE_DEVICE_PANE_INSTANCE,
+} from '@kontourai/station-contracts/workspace-device-pane';
 import { paneAdaptationFromLayoutTab } from '@kontourai/station-contracts/workspace-pane-layout-adapter';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render, screen } from '@testing-library/react';
@@ -17,6 +21,21 @@ import { OPEN_PROJECT_CHATS_EVENT } from '../lib/projectChatEvents';
 
 const sdkMocks = vi.hoisted(() => ({
   project: undefined as ProjectConfig | undefined,
+  projectByAuthority: {} as Record<string, ProjectConfig | undefined>,
+  capturedProjectQueryConfigs: [] as Array<
+    | {
+        requestScope?: { authorityKey: string };
+        requireRequestScope?: boolean;
+      }
+    | undefined
+  >,
+  capturedProjectViewOptions: [] as Array<
+    | {
+        requestScope?: { apiBase: string; authorityKey: string };
+        requireCredential?: boolean;
+      }
+    | undefined
+  >,
   isLoading: false,
   isError: false,
   error: undefined as Error | undefined,
@@ -63,8 +82,25 @@ vi.mock('../contexts/useShowSurface', () => ({
   useShowSurface: () => showSurfaceStub,
 }));
 
-vi.mock('../contexts/ApiBaseContext', () => ({
+// The host authority is mutable so the scope-switching test below can move
+// the mounted page between two same-origin authorities (and to none).
+const authorityRef = vi.hoisted(() => ({
+  current: {
+    apiBase: 'http://localhost:3141',
+    authorityKey: 'project-page-test-authority',
+    isCurrent: () => true,
+  } as
+    | {
+        apiBase: string;
+        authorityKey: string;
+        isCurrent: () => boolean;
+      }
+    | undefined,
+}));
+vi.mock('../contexts/ApiBaseContext', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
   useApiBase: () => ({ apiBase: 'http://localhost:3141' }),
+  useHostRequestAuthorityScope: () => authorityRef.current,
 }));
 
 vi.mock('../contexts/NavigationContext', () => ({
@@ -85,15 +121,65 @@ vi.mock('../hooks/useRecentLayouts', () => ({
   trackRecentLayout: vi.fn(),
 }));
 
+vi.mock('../contexts/ProjectsContext', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  useScopedProjectPageViewQuery: vi.fn(() => {
+    const requestScope = authorityRef.current;
+    if (requestScope)
+      sdkMocks.capturedProjectViewOptions.push({
+        requestScope,
+        requireCredential: true,
+      });
+    const byAuthority = sdkMocks.projectByAuthority as Record<
+      string,
+      ProjectConfig | undefined
+    >;
+    return {
+      data:
+        sdkMocks.isError || sdkMocks.isLoading
+          ? undefined
+          : requestScope
+            ? (byAuthority[requestScope.authorityKey] ?? sdkMocks.project)
+            : undefined,
+      isPending: sdkMocks.isLoading,
+      isError: sdkMocks.isError,
+      error: sdkMocks.error,
+      refetch: sdkMocks.refetch,
+      requestScope,
+      isMemberProject: false,
+    };
+  }),
+}));
+
 vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@kontourai/station-sdk')>()),
-  useProjectQuery: vi.fn(() => ({
-    data: sdkMocks.project,
-    isLoading: sdkMocks.isLoading,
-    isError: sdkMocks.isError,
-    error: sdkMocks.error,
-    refetch: sdkMocks.refetch,
-  })),
+  useProjectQuery: vi.fn(
+    (
+      _slug: string,
+      config?: {
+        requestScope?: { authorityKey: string } | undefined;
+        requireRequestScope?: boolean;
+      },
+    ) => {
+      sdkMocks.capturedProjectQueryConfigs.push(config);
+      // Scope-partitioned fixture store: a project exists per authority, and
+      // NO authority means the fail-closed contract must show no project data.
+      const byAuthority = sdkMocks.projectByAuthority as Record<
+        string,
+        ProjectConfig | undefined
+      >;
+      const data = config?.requestScope
+        ? (byAuthority[config.requestScope.authorityKey] ?? sdkMocks.project)
+        : undefined;
+      return {
+        data,
+        isLoading: sdkMocks.isLoading,
+        isError: sdkMocks.isError,
+        error: sdkMocks.error,
+        refetch: sdkMocks.refetch,
+      };
+    },
+  ),
   useProjectLayoutsQuery: vi.fn(() => ({
     data: sdkMocks.layouts,
     isLoading: sdkMocks.layoutsLoading,
@@ -132,12 +218,17 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
 
 vi.mock('@kontourai/station-sdk/workspace-pane', () => ({
   useProjectWorkspacePanesQuery: () => ({
-    data: {
-      projectId: sdkMocks.project?.id,
-      descriptors: sdkMocks.panes,
-      instances: sdkMocks.paneInstances,
-      availability: sdkMocks.paneAvailability,
-    },
+    // A catalog that failed with no answer has no data (TanStack's
+    // `isLoadingError`); error WITH data is a failed background refresh,
+    // which the picker marks instead of reporting a load failure (#2345).
+    data: sdkMocks.paneCatalogError
+      ? undefined
+      : {
+          projectId: sdkMocks.project?.id,
+          descriptors: sdkMocks.panes,
+          instances: sdkMocks.paneInstances,
+          availability: sdkMocks.paneAvailability,
+        },
     isLoading: false,
     isError: sdkMocks.paneCatalogError,
     refetch: sdkMocks.refetchPanes,
@@ -243,6 +334,7 @@ describe('ProjectPage (#762 query-failure regression)', () => {
   beforeEach(() => {
     pluginRegistryState.loadStatus = {};
     sdkMocks.project = projectFixture;
+    sdkMocks.capturedProjectViewOptions = [];
     sdkMocks.isLoading = false;
     sdkMocks.isError = false;
     sdkMocks.error = undefined;
@@ -408,6 +500,27 @@ describe('ProjectPage (#762 query-failure regression)', () => {
       screen.getByRole('heading', { name: 'Add workspace pane' }),
     ).toBeTruthy();
     expect(screen.getByRole('button', { name: /^Open Files$/ })).toBeTruthy();
+  });
+
+  // #2465: the Device pane is host-global and dock-only (`supportedRegions:
+  // ['docked']`, no Project context). Its catalog entry exists for the dock;
+  // opened from a Project it is refused as "belongs to a different Project",
+  // so the Project's picker does not offer it.
+  test('the Add pane picker does not offer the dock-only Device pane (#2465)', async () => {
+    const placed = codingPaneAdaptation('Files', 'placed');
+    sdkMocks.panes = [placed.descriptor, WORKSPACE_DEVICE_PANE_DESCRIPTOR];
+    sdkMocks.paneInstances = [placed.instance, WORKSPACE_DEVICE_PANE_INSTANCE];
+    sdkMocks.paneAvailability = [
+      availableFor(placed.descriptor.id),
+      availableFor(WORKSPACE_DEVICE_PANE_DESCRIPTOR.id),
+    ];
+
+    await renderProjectPage();
+    fireEvent.click(screen.getByRole('button', { name: '+ Add pane' }));
+
+    expect(screen.getByRole('button', { name: /^Open Files$/ })).toBeTruthy();
+    expect(screen.queryByText('Device')).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Open Device$/ })).toBeNull();
   });
 
   // #1536 E4: with no layouts the section must say so once and keep the two
@@ -707,5 +820,108 @@ describe('ProjectPage (#762 query-failure regression)', () => {
       // the dock shell, which is collapsed while closed.
       expect(navigationMocks.setDockState).toHaveBeenCalledWith(true);
     });
+  });
+});
+
+describe('ProjectPage scope migration (#481 slice A)', () => {
+  afterEach(() => vi.useRealTimers());
+  beforeEach(() => {
+    sdkMocks.isLoading = false;
+    sdkMocks.isError = false;
+    sdkMocks.error = undefined;
+    sdkMocks.capturedProjectQueryConfigs = [];
+    sdkMocks.capturedProjectViewOptions = [];
+    sdkMocks.layouts = [];
+    sdkMocks.layoutsLoading = false;
+    sdkMocks.layoutsError = false;
+    sdkMocks.panes = [];
+    sdkMocks.paneInstances = [];
+    sdkMocks.paneAvailability = [];
+    sdkMocks.paneCatalogError = false;
+    sdkMocks.sessions = [];
+    sdkMocks.agents = [];
+    sdkMocks.engineConnections = [];
+  });
+
+  function renderWithAuthority() {
+    const values = new Map<string, string>();
+    const store = new ConnectionStore({
+      storage: {
+        get: (key) => values.get(key) ?? null,
+        set: (key, value) => values.set(key, value),
+        remove: (key) => values.delete(key),
+      },
+    });
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: {
+          retry: false,
+          refetchOnMount: false,
+          refetchOnReconnect: false,
+          refetchOnWindowFocus: false,
+        },
+      },
+    });
+    queryClient.setQueryData(['config'], {});
+    const buildTree = () => (
+      <QueryClientProvider client={queryClient}>
+        <ConnectionsProvider store={store}>
+          <ProjectPage slug="demo" />
+        </ConnectionsProvider>
+      </QueryClientProvider>
+    );
+    const view = render(buildTree());
+    return { view, queryClient, buildTree };
+  }
+
+  test('a colliding slug under a switched host authority shows the new authority project, never the previous one', async () => {
+    const homeA: ProjectConfig = {
+      ...projectFixture,
+      id: 'home-a-id',
+      name: 'Home A',
+    };
+    const homeB: ProjectConfig = {
+      ...projectFixture,
+      id: 'home-b-id',
+      name: 'Home B',
+    };
+    sdkMocks.projectByAuthority = {
+      'authority-a': homeA,
+      'authority-b': homeB,
+    };
+    authorityRef.current = {
+      apiBase: 'http://localhost:3141',
+      authorityKey: 'authority-a',
+      isCurrent: () => true,
+    };
+    const { view, buildTree } = renderWithAuthority();
+    expect(await screen.findByText('Home A')).toBeTruthy();
+    expect(screen.queryByText('Home B')).toBeNull();
+
+    authorityRef.current = {
+      apiBase: 'http://localhost:3141',
+      authorityKey: 'authority-b',
+      isCurrent: () => true,
+    };
+    view.rerender(buildTree());
+    expect(await screen.findByText('Home B')).toBeTruthy();
+    expect(screen.queryByText('Home A')).toBeNull();
+
+    // Every detail read used the captured authority and SDK-owned auth.
+    for (const options of sdkMocks.capturedProjectViewOptions) {
+      expect(options?.requestScope).toBeDefined();
+      expect(options?.requireCredential).toBe(true);
+    }
+  });
+
+  test('a missing host authority renders no project data (no ambient fallback)', async () => {
+    sdkMocks.projectByAuthority = { 'authority-a': projectFixture };
+    authorityRef.current = undefined;
+    renderWithAuthority();
+    // Fail closed: the page must not paint ANY authority's project body.
+    expect(screen.queryByText('Demo Project')).toBeNull();
+    // No API read starts without a current captured scope, so no ambient
+    // `_getApiBase()` fallback can paint project data.
+    expect(sdkMocks.capturedProjectViewOptions).toEqual([]);
   });
 });

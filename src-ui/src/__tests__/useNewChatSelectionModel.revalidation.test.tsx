@@ -8,7 +8,20 @@ import { useNewChatSelectionModel } from '../hooks/useNewChatSelectionModel';
 const state = vi.hoisted(() => ({
   agents: [] as unknown[],
   projects: [] as unknown[],
+  picker: {
+    agentConnections: [] as unknown[],
+    modelConnections: [] as unknown[],
+  },
 }));
+vi.mock('../contexts/ApiBaseContext', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  useHostRequestAuthorityScope: () => ({
+    apiBase: 'http://station.test',
+    authorityKey: 'ui-scope-test-authority',
+    isCurrent: () => true,
+  }),
+}));
+
 vi.mock('@kontourai/station-sdk', () => ({
   useAgentsQuery: () => ({
     data: state.agents,
@@ -24,14 +37,9 @@ vi.mock('@kontourai/station-sdk', () => ({
     error: null,
     refetch: async () => ({}),
   }),
-  useEngineConnectionsQuery: () => ({
-    data: [],
-    isFetching: false,
-    error: null,
-    refetch: async () => ({}),
-  }),
-  useModelConnectionsQuery: () => ({
-    data: [],
+  useModelPickerCatalogQuery: () => ({
+    data: state.picker,
+    isLoading: false,
     isFetching: false,
     error: null,
     refetch: async () => ({}),
@@ -72,6 +80,7 @@ const PROJECT = {
 beforeEach(() => {
   state.agents = [OLD];
   state.projects = [PROJECT];
+  state.picker = { agentConnections: [], modelConnections: [] };
 });
 
 describe('returned New Chat uses current canonical rows within caller scope', () => {
@@ -123,5 +132,51 @@ describe('returned New Chat uses current canonical rows within caller scope', ()
     expect(view.result.current.viewModel.selectedProject).toBeUndefined();
     expect(view.result.current.viewModel.currentContextOption).toBeUndefined();
     expect(view.result.current.viewModel.isGlobal).toBe(false);
+  });
+
+  test('model list comes from the persisted picker catalog, not raw connections', () => {
+    const agent = {
+      ...OLD,
+      execution: { agentConnectionId: 'codex' },
+    } as AgentData;
+    state.agents = [agent];
+    state.picker = {
+      agentConnections: [
+        {
+          id: 'codex',
+          kind: 'agent',
+          type: 'codex',
+          name: 'Codex',
+          enabled: true,
+          status: 'ready',
+          capabilities: ['agent-runtime'],
+          prerequisites: [],
+          config: {},
+          setup: { state: 'ready', detected: true, configured: true },
+          runtimeCatalog: {
+            source: 'live',
+            models: [
+              {
+                id: 'gpt-6-astra',
+                name: 'GPT-6-Astra',
+                originalId: 'gpt-6-astra',
+              },
+            ],
+            builtInModels: [],
+          },
+        },
+      ],
+      modelConnections: [],
+    };
+    const view = renderHook(() =>
+      useNewChatSelectionModel({
+        agents: [agent],
+        projects: [PROJECT],
+        selectedContext: 'alpha',
+      }),
+    );
+    expect(
+      view.result.current.modelsForAgent(agent).map((model) => model.id),
+    ).toEqual(['gpt-6-astra']);
   });
 });

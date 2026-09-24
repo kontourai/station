@@ -53,7 +53,9 @@ const downLocalServer: SavedConnection = {
   name: 'Local Server',
   url: 'http://127.0.0.1:3141',
   injected: true,
+  injectedSource: 'managed-loopback',
   injectedStatus: 'stopped',
+  ownerId: 'sidecar-one',
 };
 
 function renderPanel(
@@ -61,12 +63,14 @@ function renderPanel(
   {
     connections = [connection],
     onRestartInjectedConnection,
+    localStationOwnerId,
     onMakeDefaultProfile,
     canEditSharedProfiles,
     onStartEdit = vi.fn(),
   }: {
     connections?: SavedConnection[];
     onRestartInjectedConnection?: (connection: SavedConnection) => void;
+    localStationOwnerId?: string;
     onMakeDefaultProfile?: (connection: SavedConnection) => void;
     canEditSharedProfiles?: boolean;
     onStartEdit?: (connection: SavedConnection) => void;
@@ -77,6 +81,7 @@ function renderPanel(
       connections={connections}
       activeConnectionId={connection.id}
       onRestartInjectedConnection={onRestartInjectedConnection}
+      localStationOwnerId={localStationOwnerId}
       canEditSharedProfiles={canEditSharedProfiles}
       editingId={null}
       editName=""
@@ -108,6 +113,42 @@ function renderPanel(
 }
 
 describe('ConnectionListPanel', () => {
+  it('shows the app lifetime on the managed local Station row', () => {
+    renderPanel(vi.fn(), {
+      connections: [downLocalServer],
+      localStationOwnerId: 'sidecar-one',
+    });
+    expect(screen.getByTestId('local-station-lifetime').textContent).toBe(
+      'Runs only while the Station app is open.',
+    );
+  });
+
+  it('shows the app lifetime on the saved profile coalesced with its sidecar', () => {
+    renderPanel(vi.fn(), {
+      connections: [{ ...connection, ownerId: 'sidecar-one' }],
+      localStationOwnerId: 'sidecar-one',
+    });
+    expect(screen.getByTestId('local-station-lifetime').textContent).toBe(
+      'Runs only while the Station app is open.',
+    );
+  });
+
+  it('does not apply the app lifetime detail to unrelated or CLI connections', () => {
+    renderPanel(vi.fn(), {
+      connections: [
+        { ...connection, id: 'remote-profile', ownerId: 'another-sidecar' },
+        {
+          ...downLocalServer,
+          id: 'cli-base',
+          ownerId: undefined,
+          injectedSource: 'cli-base',
+        },
+      ],
+      localStationOwnerId: 'sidecar-one',
+    });
+    expect(screen.queryByTestId('local-station-lifetime')).toBeNull();
+  });
+
   it('copies the complete address and enables managed edits only with the owner capability', async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     vi.stubGlobal('navigator', { clipboard: { writeText } });
@@ -201,6 +242,58 @@ describe('ConnectionListPanel', () => {
       screen.getByRole('button', { name: 'Enter a pairing code' }),
     ).toBeTruthy();
     expect(screen.queryByRole('button', { name: /advanced/i })).toBeNull();
+  });
+
+  it('hides the host-only Station-access section on a client-only device', () => {
+    render(
+      <ConnectionListPanel
+        connections={[connection]}
+        activeConnectionId={connection.id}
+        hasLocalStation={false}
+        editingId={null}
+        editName=""
+        editUrl=""
+        credentialEntry=""
+        getStatus={() => 'connected'}
+        onSelect={() => {}}
+        onCheck={() => {}}
+        onStartEdit={() => {}}
+        onRemove={() => {}}
+        onEditNameChange={() => {}}
+        onEditUrlChange={() => {}}
+        onCredentialEntryChange={() => {}}
+        onRemoveCredential={() => {}}
+        onConfirmEndpoint={() => {}}
+        onSaveEdit={() => {}}
+        onCancelEdit={() => {}}
+        onAddManual={() => {}}
+        onRequestAccess={() => {}}
+        onScanQr={() => {}}
+        onEnterPairingCode={() => {}}
+        onViewDevices={() => {}}
+        discoveryAvailable={false}
+        onDiscover={() => {}}
+      />,
+    );
+
+    expect(
+      screen.queryByText('Connect another device to this Station'),
+    ).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Paired devices' })).toBeNull();
+    // The client-side sections stay: joining another Station and requesting
+    // access to one are the phone's real capabilities (station#2205).
+    expect(screen.getByRole('button', { name: 'Request access' })).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: 'Enter a pairing code' }),
+    ).toBeTruthy();
+  });
+
+  it('renders the Station-access section by default so host surfaces are unchanged', () => {
+    renderPanel();
+    expect(
+      screen.getByText('Connect another device to this Station'),
+    ).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Paired devices' })).toBeTruthy();
   });
 
   it('uses a dedicated native selection button beside the row actions', () => {

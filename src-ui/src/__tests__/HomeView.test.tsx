@@ -1,6 +1,15 @@
 /** @vitest-environment jsdom */
 
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import {
+  act,
+  fireEvent,
+  render,
+  renderHook,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import type { ComponentProps } from 'react';
 import {
   afterEach,
@@ -11,6 +20,7 @@ import {
   test,
   vi,
 } from 'vitest';
+import { activeChatsStore } from '../contexts/active-chats-store';
 import { openChatsStore } from '../contexts/open-chats-store';
 import { writeSnooze } from '../utils/activity-snooze-store';
 import { TERMINAL_LINGER_MS } from '../views/home/home-lane-model';
@@ -20,18 +30,52 @@ import { TERMINAL_LINGER_MS } from '../views/home/home-lane-model';
 // `useShowSurface` reaches the region model through a provider this file does
 // not mount, so the double is both the stand-in and what the assertions read.
 const showSurface = vi.hoisted(() => vi.fn());
+// Mutable so the authority-switching test can move the mounted Home between
+// two same-origin authorities (and to none).
+const authorityRef = vi.hoisted(() => ({
+  current: {
+    apiBase: 'http://station.test',
+    authorityKey: 'ui-scope-test-authority',
+    isCurrent: () => true,
+  } as
+    | {
+        apiBase: string;
+        authorityKey: string;
+        isCurrent: () => boolean;
+      }
+    | undefined,
+}));
+vi.mock('../contexts/ApiBaseContext', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  useApiBase: () => ({ apiBase: 'http://station.test' }),
+  useHostRequestAuthorityScope: () => authorityRef.current,
+}));
+
 vi.mock('../contexts/useShowSurface', () => ({
   useShowSurface: () => showSurface,
 }));
 
 import { HomeView } from '../views/HomeView';
 
-function renderHomeView(props: ComponentProps<typeof HomeView>) {
-  return render(<HomeView {...props} />);
+// #2312: Draft rows carry "Discard draft", a server mutation, so Home renders
+// under the QueryClient production mounts it in.
+function renderHomeView(
+  props: ComponentProps<typeof HomeView>,
+  queryClient = new QueryClient(),
+) {
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <HomeView {...props} />
+    </QueryClientProvider>,
+  );
 }
 
 const fixtures = vi.hoisted(() => ({
   projects: [{ id: 'p1', slug: 'station', name: 'Station' }],
+  projectsByAuthority: {} as Record<
+    string,
+    Array<{ id: string; slug: string; name: string }>
+  >,
   projectsLoading: false,
   sessions: [] as any[],
   tasks: [] as any[],
@@ -46,6 +90,17 @@ const fixtures = vi.hoisted(() => ({
   defaultAgent: { slug: 'codex-agent', name: 'Codex' } as any,
   defaultModelLabel: 'gpt-5.3-codex',
   sessionsRefetch: vi.fn(),
+  // #2312: the server command a Draft row's discard dispatches.
+  discardDraft: vi.fn(async (command: { threadId: string }) => ({
+    receipt: {
+      commandId: 'discard-1',
+      threadId: command.threadId,
+      commandType: 'discardDraft',
+      status: 'accepted',
+      createdAt: '2026-09-23T00:00:00.000Z',
+    },
+    result: null,
+  })),
   tasksRefetch: vi.fn(),
   inventoryRefetch: vi.fn(),
   remoteSessionsResult: undefined as
@@ -121,10 +176,20 @@ vi.mock('@kontourai/station-sdk', () => ({
     refetch: fixtures.inventoryRefetch,
   }),
   useAcknowledgeConversationMutation: () => ({ mutate: vi.fn() }),
-  useProjectsQuery: () => ({
-    data: fixtures.projects,
-    isLoading: fixtures.projectsLoading,
-  }),
+  useProjectsQuery: (config?: {
+    requestScope?: { authorityKey: string } | undefined;
+    requireRequestScope?: boolean;
+  }) => {
+    const byAuthority = fixtures.projectsByAuthority as Record<
+      string,
+      Array<{ id: string; slug: string; name: string }>
+    >;
+    const data = config?.requestScope
+      ? (byAuthority[config.requestScope.authorityKey] ?? fixtures.projects)
+      : undefined;
+    return { data, isLoading: fixtures.projectsLoading };
+  },
+  dispatchOrchestrationCommandWithReceipt: fixtures.discardDraft,
   useOrchestrationSessionsQuery: () => ({
     data: fixtures.sessions,
     isError: fixtures.sessionsError,
@@ -287,6 +352,7 @@ describe('HomeView', () => {
     fixtures.defaultAgent = { slug: 'codex-agent', name: 'Codex' };
     fixtures.defaultModelLabel = 'gpt-5.3-codex';
     fixtures.sessionsRefetch.mockClear();
+    fixtures.discardDraft.mockClear();
     fixtures.tasksRefetch.mockClear();
     fixtures.inventoryRefetch.mockClear();
     fixtures.remoteSessionsResult = undefined;
@@ -306,6 +372,17 @@ describe('HomeView', () => {
       screen.getByRole('button', { name: /Open local project/i }),
     );
     expect(onNavigate).toHaveBeenCalledWith({ type: 'project-new' });
+  });
+
+  test('the project-folder card names this Station, not this computer', () => {
+    renderHomeView({ continuation: null, onNavigate: vi.fn() });
+
+    // The folder lives on the Station host, which is a different machine
+    // when this UI runs as a remote client (e.g. the paired phone app).
+    expect(
+      screen.getByRole('button', { name: /Add a folder on this Station/i }),
+    ).toBeTruthy();
+    expect(screen.queryByText(/from this computer/i)).toBeNull();
   });
 
   test('renders shimmer cards while Home actions are unresolved instead of claiming an agent is absent', () => {
@@ -484,6 +561,186 @@ describe('HomeView', () => {
       session: 'unmapped-thread',
     });
     expect(onNavigate).not.toHaveBeenCalled();
+  });
+
+  // #2310 review M3: the newest session is a Draft (nothing ever sent). The
+  // card must continue the most recent WORK, not an empty session.
+  test('"Continue most recent work" skips a newer Draft', () => {
+    fixtures.agents = [];
+    fixtures.defaultAgent = undefined;
+    fixtures.defaultModelLabel = 'Model not reported';
+    const base = {
+      provider: '',
+      status: 'ready' as const,
+      isLoaded: true,
+      isPersisted: true,
+      answerability: { answerable: true as const },
+      eventCount: 0,
+      hasActiveTurn: false,
+    };
+    fixtures.sessions = [
+      {
+        ...base,
+        threadId: 'worked-thread',
+        lifecycleState: 'running',
+        draft: false,
+        createdAt: '2026-07-13T00:00:00Z',
+        updatedAt: '2026-07-13T00:00:00Z',
+      },
+      {
+        ...base,
+        threadId: 'draft-thread',
+        lifecycleState: 'queued',
+        draft: true,
+        createdAt: '2026-07-14T00:00:00Z',
+        updatedAt: '2026-07-14T00:00:00Z',
+      },
+    ];
+    renderHomeView({ continuation: null, onNavigate: vi.fn() });
+    fireEvent.click(
+      screen.getByRole('button', { name: /Continue most recent work/i }),
+    );
+    expect(showSurface).toHaveBeenCalledWith('activity', {
+      session: 'worked-thread',
+    });
+  });
+
+  // #2310 (verifier finding): the partition routes a Draft ONLY to `drafts`,
+  // so if Home stopped rendering that section the row would vanish from Home
+  // with every other test green. Render it and find the row inside it.
+  test('Home lists a Draft under its own Drafts section, and not under Active now', () => {
+    fixtures.agents = [];
+    fixtures.defaultAgent = undefined;
+    fixtures.defaultModelLabel = 'Model not reported';
+    const base = {
+      provider: '',
+      status: 'ready' as const,
+      isLoaded: true,
+      isPersisted: true,
+      answerability: { answerable: true as const },
+      eventCount: 0,
+      hasActiveTurn: false,
+      createdAt: '2026-07-14T00:00:00Z',
+      updatedAt: '2026-07-14T00:00:00Z',
+    };
+    fixtures.sessions = [
+      {
+        ...base,
+        threadId: 'worked-thread',
+        displayTitle: 'Worked session title',
+        lifecycleState: 'running',
+        draft: false,
+      },
+      {
+        ...base,
+        threadId: 'draft-thread',
+        displayTitle: 'Never prompted title',
+        lifecycleState: 'queued',
+        draft: true,
+      },
+    ];
+    renderHomeView({ continuation: null, onNavigate: vi.fn() });
+
+    const summary = screen.getByText('Drafts (1)');
+    const drafts = summary.closest('details');
+    expect(drafts).not.toBeNull();
+    expect(
+      within(drafts as HTMLElement).getByText('Never prompted title'),
+    ).toBeTruthy();
+    const active = screen.getByRole('region', { name: /Active now/ });
+    expect(within(active).queryByText('Never prompted title')).toBeNull();
+    expect(within(active).getByText('Worked session title')).toBeTruthy();
+  });
+
+  // #2312: a Draft is discarded by the SERVER (so every device agrees), from
+  // the Drafts section, and Drafts untouched for a day fold under their own
+  // disclosure instead of aging out of existence.
+  test('Home discards a Draft through the server and folds day-old Drafts under "N older drafts"', async () => {
+    fixtures.agents = [];
+    fixtures.defaultAgent = undefined;
+    fixtures.defaultModelLabel = 'Model not reported';
+    const at = (ageMs: number) => new Date(Date.now() - ageMs).toISOString();
+    const HOUR = 60 * 60 * 1000;
+    const base = {
+      provider: '',
+      status: 'ready' as const,
+      isLoaded: true,
+      isPersisted: true,
+      answerability: { answerable: true as const },
+      eventCount: 0,
+      hasActiveTurn: false,
+      lifecycleState: 'queued',
+    };
+    fixtures.sessions = [
+      {
+        ...base,
+        threadId: 'worked-thread',
+        displayTitle: 'Worked session title',
+        lifecycleState: 'running',
+        draft: false,
+        createdAt: at(HOUR),
+        updatedAt: at(HOUR),
+      },
+      {
+        ...base,
+        threadId: 'fresh-draft',
+        displayTitle: 'Fresh draft title',
+        draft: true,
+        createdAt: at(23 * HOUR),
+        updatedAt: at(23 * HOUR),
+      },
+      {
+        ...base,
+        threadId: 'stale-draft',
+        displayTitle: 'Stale draft title',
+        draft: true,
+        createdAt: at(25 * HOUR),
+        updatedAt: at(25 * HOUR),
+      },
+    ];
+    const queryClient = new QueryClient();
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries');
+    // #2312 review: a dock tab open on the Draft closes with it.
+    activeChatsStore.initChat('fresh-draft');
+    renderHomeView({ continuation: null, onNavigate: vi.fn() }, queryClient);
+
+    const drafts = screen
+      .getByText('Drafts (2)')
+      .closest('details') as HTMLElement;
+    const older = within(drafts)
+      .getByText('1 older draft')
+      .closest('details') as HTMLDetailsElement;
+    // The 25h Draft is folded, the 23h one is not.
+    expect(older.open).toBe(false);
+    expect(within(older).getByText('Stale draft title')).toBeTruthy();
+    expect(within(older).queryByText('Fresh draft title')).toBeNull();
+    expect(within(drafts).getByText('Fresh draft title')).toBeTruthy();
+    // Only Drafts are discardable.
+    expect(
+      screen.queryByRole('button', {
+        name: 'Discard draft Worked session title',
+      }),
+    ).toBeNull();
+
+    fireEvent.click(
+      within(drafts).getByRole('button', {
+        name: 'Discard draft Fresh draft title',
+      }),
+    );
+
+    await waitFor(() =>
+      expect(invalidate).toHaveBeenCalledWith({
+        queryKey: ['orchestration-sessions'],
+      }),
+    );
+    expect(fixtures.discardDraft).toHaveBeenCalledTimes(1);
+    expect(fixtures.discardDraft).toHaveBeenCalledWith({
+      type: 'discardDraft',
+      threadId: 'fresh-draft',
+    });
+    expect(
+      activeChatsStore.getChatKeyForExecutionSession('fresh-draft'),
+    ).toBeUndefined();
   });
 
   // archive#1297: an orchestration row Station CAN rehydrate (a real
@@ -1207,5 +1464,43 @@ describe('HomeView remote-session read augmentation (station#1097)', () => {
 
     expect(document.querySelector('.home-view__environment-badge')).toBeNull();
     expect(document.querySelector('.home-view__remote-note')).toBeNull();
+  });
+});
+
+describe('Home project data follows the host authority (#481 slice A)', () => {
+  test('a colliding slug resolves to the ACTIVE authority project after a switch, and to nothing without one', async () => {
+    const { useHomeViewModel } = await import('../views/home/useHomeViewModel');
+    fixtures.projectsByAuthority = {
+      'authority-a': [{ id: 'home-a-id', slug: 'station', name: 'Home A' }],
+      'authority-b': [{ id: 'home-b-id', slug: 'station', name: 'Home B' }],
+    };
+    authorityRef.current = {
+      apiBase: 'http://station.test',
+      authorityKey: 'authority-a',
+      isCurrent: () => true,
+    };
+    const { result, rerender } = renderHook(() => useHomeViewModel(vi.fn()));
+    expect(result.current.projects).toEqual([
+      { id: 'home-a-id', slug: 'station', name: 'Home A' },
+    ]);
+
+    authorityRef.current = {
+      apiBase: 'http://station.test',
+      authorityKey: 'authority-b',
+      isCurrent: () => true,
+    };
+    rerender();
+    await waitFor(() => {
+      expect(result.current.projects).toEqual([
+        { id: 'home-b-id', slug: 'station', name: 'Home B' },
+      ]);
+    });
+
+    // Missing authority: fail closed. No ambient data from either home.
+    authorityRef.current = undefined;
+    rerender();
+    await waitFor(() => {
+      expect(result.current.projects).toEqual([]);
+    });
   });
 });

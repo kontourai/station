@@ -27,6 +27,41 @@ function native(
   };
 }
 
+describe('server-derived deployment facts (#90 Browser pane)', () => {
+  const serverInput = (
+    fact: 'supported' | 'unsupported' | 'unknown',
+  ): WorkspacePaneAvailabilityInput => ({
+    rollout: 'available',
+    distribution: 'enabled',
+    renderer: 'present',
+    context: { project: 'present' },
+    requirements: { deploymentCapabilities: ['browser-pane'] },
+    deployment: { state: 'supported', capabilities: { 'browser-pane': fact } },
+  });
+
+  test.each([
+    ['a personal host', 'supported', 'available'],
+    ['a hosted deployment', 'unsupported', 'unsupported'],
+    ['an unknown deployment', 'unknown', 'unsupported'],
+  ] as const)(
+    "keeps the server's own fact for %s: the client cannot observe it",
+    (_label, fact, state) => {
+      // Whatever this client knows about ITS deployment features (here:
+      // nothing), it must not overwrite a fact the server derived.
+      for (const deployment of [undefined, {}]) {
+        expect(
+          resolveWorkspacePaneAvailability(
+            adaptWorkspacePaneAvailabilityInput(serverInput(fact), {
+              ...(deployment ? { deployment } : {}),
+            }),
+            { project: true },
+          ).state,
+        ).toBe(state);
+      }
+    },
+  );
+});
+
 describe('Workspace Pane availability adapters', () => {
   test.each([
     ['web/PWA', native('unsupported'), 'unsupported', 'unsupported-host'],

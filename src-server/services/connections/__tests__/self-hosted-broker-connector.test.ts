@@ -1,0 +1,858 @@
+import { generateKeyPairSync } from 'node:crypto';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import type { ApprovedStationConnectionTrust } from '@kontourai/station-contracts/connection-proof';
+import type {
+  SelfHostedBrokerNativeClientSurfaceV2,
+  SelfHostedBrokerNativeConnectionOfferV2,
+} from '@kontourai/station-contracts/self-hosted-broker';
+import { stationConnectionSigningKeyId } from '@kontourai/station-shared/connection-proof';
+import { Hono } from 'hono';
+import { afterEach, describe, expect, test, vi } from 'vitest';
+import { createSelfHostedBrokerRoutes } from '../../../routes/connections/self-hosted-broker.js';
+import { SelfHostedBrokerRuntime } from '../../../runtime/bootstrap/self-hosted-broker-runtime.js';
+import {
+  BrokerTransientRequestError,
+  SelfHostedBrokerClient,
+} from '../self-hosted-broker-client.js';
+import { SelfHostedBrokerConnector } from '../self-hosted-broker-connector.js';
+import { SelfHostedBrokerService } from '../self-hosted-broker-service.js';
+
+const roots = new Set<string>();
+afterEach(() => {
+  for (const root of roots) rmSync(root, { recursive: true, force: true });
+  roots.clear();
+});
+const scope = {
+  stationId: 'station-12345678',
+  enrollmentId: 'enroll-12345678',
+  routingGeneration: 1,
+  browserOrigin: 'https://client.example',
+};
+const descriptor: ApprovedStationConnectionTrust = {
+  stationId: scope.stationId,
+  enrollmentId: scope.enrollmentId,
+  generation: 7,
+  signingKey: { kty: 'EC', crv: 'P-256', x: 'x'.repeat(43), y: 'y'.repeat(43) },
+};
+const nativeSurface: SelfHostedBrokerNativeClientSurfaceV2 = {
+  kind: 'station-native',
+  appIdentifier: 'io.kontourai.station',
+  channel: 'dev',
+  clientInstanceId: '7c6f49aa-6925-4bb2-b7c4-22bb6e264105',
+  keyThumbprint: 'T'.repeat(43),
+};
+const nativeTrustScope = {
+  ...scope,
+  stationId: '11111111-1111-4111-8111-111111111111',
+  enrollmentId: '22222222-2222-4222-8222-222222222222',
+};
+async function nativeTrustFixture(selectedScope = nativeTrustScope) {
+  const pair = generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
+  const exported = pair.publicKey.export({ format: 'jwk' });
+  const trust: ApprovedStationConnectionTrust = {
+    stationId: selectedScope.stationId,
+    enrollmentId: selectedScope.enrollmentId,
+    generation: 7,
+    signingKey: {
+      kty: 'EC',
+      crv: 'P-256',
+      x: exported.x as string,
+      y: exported.y as string,
+    },
+  };
+  return {
+    trust,
+    stationSigningKeyId: await stationConnectionSigningKeyId(trust),
+  };
+}
+function nativeOffer(
+  trust: ApprovedStationConnectionTrust,
+  stationSigningKeyId: string,
+  overrides: Partial<SelfHostedBrokerNativeConnectionOfferV2> = {},
+  selectedScope = nativeTrustScope,
+): SelfHostedBrokerNativeConnectionOfferV2 {
+  return {
+    version: 'station-broker-native-connection-offer/v2',
+    scope: {
+      stationId: selectedScope.stationId,
+      enrollmentId: selectedScope.enrollmentId,
+      routingGeneration: selectedScope.routingGeneration,
+    },
+    surface: nativeSurface,
+    stationSigningKeyId,
+    stationSigningGeneration: trust.generation,
+    clientId: nativeSurface.clientInstanceId,
+    nonce: 'nonce-native123',
+    offerSdp: 'native-offer',
+    expiresAt: 2_000,
+    ...overrides,
+  };
+}
+function fixture(now: () => number = () => 1_000, selectedScope = scope) {
+  const root = mkdtempSync(join(tmpdir(), 'station-broker-connector-'));
+  roots.add(root);
+  const service = new SelfHostedBrokerService(join(root, 'broker.sqlite'), now);
+  const credentials = service.provision(selectedScope, 600_000);
+  const app = new Hono();
+  app.route('/broker/v1', createSelfHostedBrokerRoutes(service));
+  const request: typeof fetch = async (input, init) =>
+    await app.fetch(new Request(input, init));
+  return { service, credentials, request };
+}
+
+describe.runIf(process.platform !== 'win32')(
+  'self-hosted broker connector',
+  () => {
+    test('reconciles a committed renewal whose response was lost before the next CAS', async () => {
+      const f = fixture(Date.now);
+      const lifetime = new AbortController();
+      let lostReply = false;
+      let renewalRequests = 0;
+      let offerReads = 0;
+      const request: typeof fetch = async (input, init) => {
+        const response = await f.request(input, init);
+        if (String(input).endsWith('/connections/offers') && ++offerReads === 1)
+          throw new TypeError('lost offer-list reply');
+        if (String(input).endsWith('/leases/renew')) {
+          renewalRequests++;
+          if (!lostReply) {
+            lostReply = true;
+            throw new TypeError('lost renewal reply');
+          }
+        }
+        return response;
+      };
+      const connector = new SelfHostedBrokerConnector(
+        scope,
+        new SelfHostedBrokerClient(
+          'https://broker.example',
+          scope,
+          f.credentials.connector,
+          request,
+        ),
+        { current: () => descriptor, isCurrent: () => true },
+        async () => {
+          throw new Error('unexpected offer');
+        },
+      );
+      const runtime = new SelfHostedBrokerRuntime({
+        origin: 'https://station.example',
+        configuredOrigin: scope.browserOrigin,
+        application: { signal: lifetime.signal, fetch: vi.fn() },
+        connector,
+        heartbeatMs: 30_000,
+        renewMs: 1_000,
+        pollMs: 1_000,
+        retryDelayMs: 1,
+      });
+      try {
+        await runtime.start();
+        await vi.waitFor(
+          () =>
+            expect(
+              f.service.register(scope, f.credentials.connector).revision,
+            ).toBe(2),
+          { timeout: 5_000 },
+        );
+        expect(lostReply).toBe(true);
+        expect(renewalRequests).toBe(2);
+        expect(offerReads).toBeGreaterThanOrEqual(2);
+        await runtime.shutdown();
+      } finally {
+        lifetime.abort();
+        await runtime.shutdown().catch(() => undefined);
+        f.service.close();
+      }
+    });
+    test('registers, polls and answers through the real durable broker without conflating routing and signing generations', async () => {
+      const f = fixture();
+      try {
+        f.service.open(scope, f.credentials.routing, {
+          clientId: 'client-12345678',
+          nonce: 'nonce-12345678',
+          offerSdp: 'offer',
+        });
+        f.service.open(scope, f.credentials.routing, {
+          clientId: 'client-second12',
+          nonce: 'nonce-second12',
+          offerSdp: 'offer-two',
+        });
+        let current = true;
+        const answer = vi.fn(async () => ({
+          answerSdp: 'answer',
+          stationProof: 'opaque-proof',
+          dispose: async () => {},
+        }));
+        const connector = new SelfHostedBrokerConnector(
+          scope,
+          new SelfHostedBrokerClient(
+            'https://broker.example',
+            scope,
+            f.credentials.connector,
+            f.request,
+            () => 1_000,
+          ),
+          { current: () => descriptor, isCurrent: () => current },
+          answer,
+        );
+        const signal = new AbortController().signal;
+        await connector.register(signal);
+        expect((await connector.renew(signal)).revision).toBe(1);
+        expect(await connector.poll(signal)).toEqual({
+          observed: 2,
+          answered: 2,
+        });
+        expect(answer).toHaveBeenCalledWith(
+          expect.objectContaining({ offerSdp: 'offer' }),
+          descriptor,
+          expect.any(AbortSignal),
+        );
+        expect(
+          f.service.read(
+            scope,
+            f.credentials.routing,
+            'client-12345678',
+            'nonce-12345678',
+          ),
+        ).toMatchObject({ answerSdp: 'answer', stationProof: 'opaque-proof' });
+        current = false;
+        await expect(connector.poll(signal)).rejects.toThrow(
+          'broker_connector_trust_retired',
+        );
+        current = true;
+        const restarted = new SelfHostedBrokerConnector(
+          scope,
+          new SelfHostedBrokerClient(
+            'https://broker.example',
+            scope,
+            f.credentials.connector,
+            f.request,
+            () => 1_000,
+          ),
+          { current: () => descriptor, isCurrent: () => true },
+          answer,
+        );
+        expect((await restarted.register(signal)).revision).toBe(1);
+        expect((await restarted.renew(signal)).revision).toBe(2);
+        await connector.withdraw(signal);
+        expect(() => f.service.status(scope, f.credentials.routing)).toThrow(
+          'broker_credential_refused',
+        );
+        await expect(connector.renew(signal)).rejects.toThrow(
+          'broker_connector_withdrawn',
+        );
+        await expect(connector.register(signal)).rejects.toThrow(
+          'broker_connector_withdrawn',
+        );
+      } finally {
+        f.service.close();
+      }
+    });
+    test('requires current Station and enrollment trust before reading offers', async () => {
+      const f = fixture();
+      try {
+        const connector = new SelfHostedBrokerConnector(
+          scope,
+          new SelfHostedBrokerClient(
+            'https://broker.example',
+            scope,
+            f.credentials.connector,
+            f.request,
+            () => 1_000,
+          ),
+          {
+            current: () => ({ ...descriptor, stationId: 'station-other123' }),
+            isCurrent: () => true,
+          },
+          vi.fn(),
+        );
+        await connector.register(new AbortController().signal);
+        await expect(
+          connector.poll(new AbortController().signal),
+        ).rejects.toThrow('broker_connector_trust_unavailable');
+      } finally {
+        f.service.close();
+      }
+    });
+    test('the fixed endpoint client refuses redirects, malformed and oversized responses', async () => {
+      const credential = { id: 'credential-12345678', secret: 's'.repeat(43) };
+      const signal = new AbortController().signal;
+      for (const response of [
+        new Response('not-json', { status: 200 }),
+        new Response(JSON.stringify({ registeredAt: 1 }), {
+          status: 302,
+          headers: { Location: 'https://other.example' },
+        }),
+        new Response('x'.repeat(1024 * 1024 + 1), { status: 200 }),
+      ]) {
+        const client = new SelfHostedBrokerClient(
+          'https://broker.example',
+          scope,
+          credential,
+          async () => response,
+        );
+        await expect(client.register(signal)).rejects.toThrow();
+      }
+    });
+    test('classifies only transport outages and retryable HTTP statuses as transient', async () => {
+      const credential = { id: 'credential-12345678', secret: 's'.repeat(43) };
+      const signal = new AbortController().signal;
+      for (const request of [
+        async () => {
+          throw new TypeError('network unavailable');
+        },
+        async () => new Response('', { status: 503 }),
+        async () => new Response('', { status: 429 }),
+      ]) {
+        const client = new SelfHostedBrokerClient(
+          'https://broker.example',
+          scope,
+          credential,
+          request,
+        );
+        await expect(client.register(signal)).rejects.toBeInstanceOf(
+          BrokerTransientRequestError,
+        );
+      }
+      const refused = new SelfHostedBrokerClient(
+        'https://broker.example',
+        scope,
+        credential,
+        async () => Response.json({ error: 'refused' }, { status: 401 }),
+      );
+      await expect(refused.register(signal)).rejects.toThrow(
+        'broker_request_refused_401',
+      );
+      const aborted = new AbortController();
+      aborted.abort(new Error('caller cancelled'));
+      await expect(refused.register(aborted.signal)).rejects.toThrow(
+        'caller cancelled',
+      );
+    });
+    test('cancels refused response streams without reading a broken auth body', async () => {
+      const credential = { id: 'credential-12345678', secret: 's'.repeat(43) };
+      for (const status of [401, 409, 503]) {
+        const cancelled = vi.fn();
+        const body = new ReadableStream<Uint8Array>({
+          pull() {
+            return new Promise<void>(() => {});
+          },
+          cancel: cancelled,
+        });
+        const client = new SelfHostedBrokerClient(
+          'https://broker.example',
+          scope,
+          credential,
+          async () => new Response(body, { status }),
+        );
+        const error = await client
+          .register(new AbortController().signal)
+          .catch((caught: unknown) => caught);
+        if (status === 503)
+          expect(error).toBeInstanceOf(BrokerTransientRequestError);
+        else
+          expect((error as Error).message).toBe(
+            `broker_request_refused_${status}`,
+          );
+        await vi.waitFor(() => expect(cancelled).toHaveBeenCalledOnce());
+      }
+    });
+    test('retries a valid lease that appears expired until the local clock recovers', async () => {
+      let localNow = 30_001;
+      const request = vi.fn(async () =>
+        Response.json({ registeredAt: 1, revision: 0, expiresAt: 30_000 }),
+      );
+      const client = new SelfHostedBrokerClient(
+        'https://broker.example',
+        scope,
+        { id: 'credential-12345678', secret: 's'.repeat(43) },
+        request,
+        () => localNow,
+      );
+      await expect(
+        client.register(new AbortController().signal),
+      ).rejects.toBeInstanceOf(BrokerTransientRequestError);
+      localNow = 1_000;
+      await expect(
+        client.register(new AbortController().signal),
+      ).resolves.toMatchObject({ expiresAt: 30_000 });
+      expect(request).toHaveBeenCalledTimes(2);
+      const renewal = new SelfHostedBrokerClient(
+        'https://broker.example',
+        scope,
+        { id: 'credential-12345678', secret: 's'.repeat(43) },
+        async () => Response.json({ revision: 1, expiresAt: 30_000 }),
+        () => localNow,
+      );
+      localNow = 30_001;
+      await expect(
+        renewal.renew(0, new AbortController().signal),
+      ).rejects.toBeInstanceOf(BrokerTransientRequestError);
+      localNow = 1_000;
+      await expect(
+        renewal.renew(0, new AbortController().signal),
+      ).resolves.toMatchObject({ revision: 1, expiresAt: 30_000 });
+    });
+    test('snapshots routing authority and combines caller cancellation with its request', async () => {
+      const mutableScope = { ...scope };
+      const mutableCredential = {
+        id: 'credential-12345678',
+        secret: 's'.repeat(43),
+      };
+      let observed: Request | undefined;
+      const request: typeof fetch = async (input, init) => {
+        observed = new Request(input, init);
+        return Response.json({
+          registeredAt: 1,
+          revision: 0,
+          expiresAt: 30_000,
+        });
+      };
+      const client = new SelfHostedBrokerClient(
+        'https://broker.example',
+        mutableScope,
+        mutableCredential,
+        request,
+        () => 1_000,
+      );
+      mutableScope.stationId = 'station-mutated1';
+      mutableCredential.secret = 'x'.repeat(43);
+      await client.register(new AbortController().signal);
+      expect(observed?.headers.get('Authorization')).toBe(
+        `Bearer ${'s'.repeat(43)}`,
+      );
+      expect(await observed?.clone().json()).toMatchObject({
+        scope: { stationId: scope.stationId },
+      });
+      const aborted = new AbortController();
+      aborted.abort(new Error('caller stopped'));
+      await expect(client.register(aborted.signal)).rejects.toThrow(
+        'caller stopped',
+      );
+    });
+    test('caller cancellation interrupts a blocked body and requests cleanup', async () => {
+      const cancelled = vi.fn();
+      const response = new Response(
+        new ReadableStream<Uint8Array>({
+          pull: () => new Promise(() => {}),
+          cancel: cancelled,
+        }),
+      );
+      const client = new SelfHostedBrokerClient(
+        'https://broker.example',
+        scope,
+        { id: 'credential-12345678', secret: 's'.repeat(43) },
+        async () => response,
+        () => 1_000,
+      );
+      const controller = new AbortController();
+      const pending = client.register(controller.signal);
+      controller.abort(new Error('caller stopped'));
+      await expect(pending).rejects.toThrow('caller stopped');
+      await vi.waitFor(() => expect(cancelled).toHaveBeenCalled());
+    });
+    test('the chunk-count ceiling cancels the response stream', async () => {
+      const cancelled = vi.fn();
+      const response = new Response(
+        new ReadableStream<Uint8Array>({
+          pull(controller) {
+            controller.enqueue(new Uint8Array([1]));
+          },
+          cancel: cancelled,
+        }),
+      );
+      const client = new SelfHostedBrokerClient(
+        'https://broker.example',
+        scope,
+        { id: 'credential-12345678', secret: 's'.repeat(43) },
+        async () => response,
+        () => 1_000,
+      );
+      await expect(
+        client.register(new AbortController().signal),
+      ).rejects.toThrow('broker_response_too_large');
+      await vi.waitFor(() => expect(cancelled).toHaveBeenCalled());
+    });
+    test('disposes provisional answer resources when publication fails', async () => {
+      const f = fixture();
+      try {
+        f.service.open(scope, f.credentials.routing, {
+          clientId: 'client-dispose1',
+          nonce: 'nonce-dispose1',
+          offerSdp: 'offer',
+        });
+        const dispose = vi.fn();
+        const connector = new SelfHostedBrokerConnector(
+          scope,
+          new SelfHostedBrokerClient(
+            'https://broker.example',
+            scope,
+            f.credentials.connector,
+            f.request,
+            () => 1_000,
+          ),
+          { current: () => descriptor, isCurrent: () => true },
+          async () => {
+            f.service.withdraw(scope, f.credentials.connector);
+            return { answerSdp: 'answer', stationProof: 'proof', dispose };
+          },
+        );
+        const signal = new AbortController().signal;
+        await connector.register(signal);
+        await expect(connector.poll(signal)).rejects.toThrow(
+          'broker_request_refused_401',
+        );
+        expect(dispose).toHaveBeenCalledOnce();
+      } finally {
+        f.service.close();
+      }
+    });
+    test('does not label a committed answer with a lost reply as a replayable offer read', async () => {
+      const f = fixture();
+      try {
+        f.service.open(scope, f.credentials.routing, {
+          clientId: 'client-lostreply',
+          nonce: 'nonce-lostreply',
+          offerSdp: 'offer',
+        });
+        const dispose = vi.fn();
+        const answer = vi.fn(async () => ({
+          answerSdp: 'answer',
+          stationProof: 'proof',
+          dispose,
+        }));
+        const request: typeof fetch = async (input, init) => {
+          const response = await f.request(input, init);
+          if (String(input).endsWith('/connections/answer'))
+            throw new TypeError('lost answer reply');
+          return response;
+        };
+        const connector = new SelfHostedBrokerConnector(
+          scope,
+          new SelfHostedBrokerClient(
+            'https://broker.example',
+            scope,
+            f.credentials.connector,
+            request,
+            () => 1_000,
+          ),
+          { current: () => descriptor, isCurrent: () => true },
+          answer,
+        );
+        const signal = new AbortController().signal;
+        await connector.register(signal);
+        await expect(connector.poll(signal)).rejects.toBeInstanceOf(
+          BrokerTransientRequestError,
+        );
+        expect(answer).toHaveBeenCalledOnce();
+        expect(dispose).toHaveBeenCalledOnce();
+        expect(
+          f.service.read(
+            scope,
+            f.credentials.routing,
+            'client-lostreply',
+            'nonce-lostreply',
+          ),
+        ).toMatchObject({ answerSdp: 'answer' });
+      } finally {
+        f.service.close();
+      }
+    });
+    test('withdraw retires local state immediately and aborts an in-flight poll', async () => {
+      const f = fixture();
+      try {
+        f.service.open(scope, f.credentials.routing, {
+          clientId: 'client-pending1',
+          nonce: 'nonce-pending1',
+          offerSdp: 'offer',
+        });
+        let entered!: () => void;
+        const started = new Promise<void>((resolve) => {
+          entered = resolve;
+        });
+        const connector = new SelfHostedBrokerConnector(
+          scope,
+          new SelfHostedBrokerClient(
+            'https://broker.example',
+            scope,
+            f.credentials.connector,
+            f.request,
+            () => 1_000,
+          ),
+          { current: () => descriptor, isCurrent: () => true },
+          async (_offer, _trust, signal) => {
+            entered();
+            return await new Promise((_resolve, reject) =>
+              signal.addEventListener('abort', () => reject(signal.reason), {
+                once: true,
+              }),
+            );
+          },
+        );
+        const caller = new AbortController().signal;
+        await connector.register(caller);
+        const poll = connector.poll(caller);
+        await started;
+        await connector.withdraw(caller);
+        await expect(poll).rejects.toThrow('broker_connector_withdrawn');
+        await expect(connector.renew(caller)).rejects.toThrow(
+          'broker_connector_withdrawn',
+        );
+      } finally {
+        f.service.close();
+      }
+    });
+    test('a lost withdrawal reply cannot restore local connector authority', async () => {
+      const f = fixture();
+      try {
+        const request: typeof fetch = async (input, init) => {
+          const response = await f.request(input, init);
+          if (String(input).endsWith('/leases/withdraw'))
+            throw new Error('reply lost');
+          return response;
+        };
+        const connector = new SelfHostedBrokerConnector(
+          scope,
+          new SelfHostedBrokerClient(
+            'https://broker.example',
+            scope,
+            f.credentials.connector,
+            request,
+            () => 1_000,
+          ),
+          { current: () => descriptor, isCurrent: () => true },
+          async () => ({
+            answerSdp: 'answer',
+            stationProof: 'proof',
+            dispose: async () => {},
+          }),
+        );
+        const signal = new AbortController().signal;
+        await connector.register(signal);
+        await expect(connector.withdraw(signal)).rejects.toThrow('reply lost');
+        await expect(connector.register(signal)).rejects.toThrow(
+          'broker_connector_withdrawn',
+        );
+      } finally {
+        f.service.close();
+      }
+    });
+    test('control and admission lanes are independent with bounded admission', async () => {
+      const f = fixture();
+      try {
+        let releasePoll!: () => void;
+        const entered = new Promise<void>((resolve) => {
+          releasePoll = () => resolve(undefined);
+        });
+        let enteredResolve!: () => void;
+        const started = new Promise<void>((resolve) => {
+          enteredResolve = resolve;
+        });
+        const connector = new SelfHostedBrokerConnector(
+          scope,
+          new SelfHostedBrokerClient(
+            'https://broker.example',
+            scope,
+            f.credentials.connector,
+            f.request,
+            () => 1_000,
+          ),
+          { current: () => descriptor, isCurrent: () => true },
+          async (_offer, _trust, signal) => {
+            enteredResolve();
+            await entered;
+            signal.throwIfAborted();
+            return {
+              answerSdp: 'answer',
+              stationProof: 'p',
+              dispose: async () => {},
+            };
+          },
+        );
+        f.service.open(scope, f.credentials.routing, {
+          clientId: 'client-lane0001',
+          nonce: 'nonce-lane00001',
+          offerSdp: 'offer',
+        });
+        const caller = new AbortController().signal;
+        await connector.register(caller);
+        const poll = connector.poll(caller);
+        await started;
+        expect((await connector.renew(caller)).revision).toBe(1);
+        await expect(connector.poll(caller)).rejects.toThrow(
+          'broker_connector_busy',
+        );
+        releasePoll();
+        await expect(poll).resolves.toEqual({ observed: 1, answered: 1 });
+      } finally {
+        f.service.close();
+      }
+    });
+    test('legacy poll never requests or forwards native offers without the explicit native lane', async () => {
+      const f = fixture();
+      try {
+        const client = new SelfHostedBrokerClient(
+          'https://broker.example',
+          scope,
+          f.credentials.connector,
+          f.request,
+          () => 1_000,
+        );
+        const nativeOfferSpy = vi
+          .spyOn(client, 'nativeOffers')
+          .mockResolvedValue([]);
+        const v1Answer = vi.fn(async () => {
+          throw new Error('unexpected v1 offer');
+        });
+        const connector = new SelfHostedBrokerConnector(
+          scope,
+          client,
+          { current: () => descriptor, isCurrent: () => true },
+          v1Answer,
+        );
+        const signal = new AbortController().signal;
+        await connector.register(signal);
+        expect(await connector.poll(signal)).toEqual({
+          observed: 0,
+          answered: 0,
+        });
+        expect(nativeOfferSpy).not.toHaveBeenCalled();
+        expect(v1Answer).not.toHaveBeenCalled();
+        await expect(connector.pollNative(signal)).rejects.toThrow(
+          'broker_connector_native_offer_opt_in_required',
+        );
+      } finally {
+        f.service.close();
+      }
+    });
+    test('native lane requires explicit surface and exact current Station key before callback', async () => {
+      const f = fixture(() => 1_000, nativeTrustScope);
+      try {
+        const native = await nativeTrustFixture(nativeTrustScope);
+        const client = new SelfHostedBrokerClient(
+          'https://broker.example',
+          nativeTrustScope,
+          f.credentials.connector,
+          f.request,
+          () => 1_000,
+        );
+        const badKey = nativeOffer(
+          native.trust,
+          'X'.repeat(43),
+          {},
+          nativeTrustScope,
+        );
+        const badGeneration = nativeOffer(
+          native.trust,
+          native.stationSigningKeyId,
+          { stationSigningGeneration: native.trust.generation + 1 },
+          nativeTrustScope,
+        );
+        const nativeOffers = vi
+          .spyOn(client, 'nativeOffers')
+          .mockResolvedValueOnce([badKey])
+          .mockResolvedValueOnce([badGeneration]);
+        const nativeAnswer = vi.fn(async () => ({
+          answerSdp: 'answer',
+          stationProof: 'proof',
+          dispose: async () => {},
+        }));
+        const connector = new SelfHostedBrokerConnector(
+          nativeTrustScope,
+          client,
+          { current: () => native.trust, isCurrent: () => true },
+          async () => {
+            throw new Error('native offer reached v1 callback');
+          },
+          { surface: nativeSurface, answer: nativeAnswer },
+        );
+        const signal = new AbortController().signal;
+        await connector.register(signal);
+        await expect(connector.pollNative(signal)).rejects.toThrow(
+          'broker_connector_native_station_binding_mismatch',
+        );
+        await expect(connector.pollNative(signal)).rejects.toThrow(
+          'broker_connector_native_station_binding_mismatch',
+        );
+        expect(nativeOffers).toHaveBeenCalledTimes(2);
+        expect(nativeAnswer).not.toHaveBeenCalled();
+      } finally {
+        f.service.close();
+      }
+    });
+    test('explicit native callback owns v2 offers and disposes if answer publication fails', async () => {
+      const f = fixture(() => 1_000, nativeTrustScope);
+      try {
+        const native = await nativeTrustFixture(nativeTrustScope);
+        const offer = nativeOffer(
+          native.trust,
+          native.stationSigningKeyId,
+          {},
+          nativeTrustScope,
+        );
+        const client = new SelfHostedBrokerClient(
+          'https://broker.example',
+          nativeTrustScope,
+          f.credentials.connector,
+          f.request,
+          () => 1_000,
+        );
+        const nativeOffers = vi
+          .spyOn(client, 'nativeOffers')
+          .mockResolvedValue([offer]);
+        const answerNative = vi
+          .spyOn(client, 'answerNative')
+          .mockRejectedValue(new Error('answer publication failed'));
+        const dispose = vi.fn(async () => {});
+        const nativeAnswer = vi.fn(async () => ({
+          answerSdp: 'native-answer',
+          stationProof: 'native-proof',
+          dispose,
+        }));
+        const v1Answer = vi.fn(async () => {
+          throw new Error('native offer reached v1 callback');
+        });
+        const connector = new SelfHostedBrokerConnector(
+          nativeTrustScope,
+          client,
+          { current: () => native.trust, isCurrent: () => true },
+          v1Answer,
+          { surface: nativeSurface, answer: nativeAnswer },
+        );
+        const signal = new AbortController().signal;
+        await connector.register(signal);
+        expect(await connector.poll(signal)).toEqual({
+          observed: 0,
+          answered: 0,
+        });
+        expect(nativeOffers).not.toHaveBeenCalled();
+        await expect(connector.pollNative(signal)).rejects.toThrow(
+          'answer publication failed',
+        );
+        expect(nativeAnswer).toHaveBeenCalledWith(
+          offer,
+          native.trust,
+          expect.any(AbortSignal),
+        );
+        expect(answerNative).toHaveBeenCalledWith(
+          {
+            surface: nativeSurface,
+            clientId: nativeSurface.clientInstanceId,
+            nonce: offer.nonce,
+            stationSigningKeyId: native.stationSigningKeyId,
+            stationSigningGeneration: native.trust.generation,
+            answerSdp: 'native-answer',
+            stationProof: 'native-proof',
+          },
+          expect.any(AbortSignal),
+        );
+        expect(dispose).toHaveBeenCalledTimes(1);
+        expect(v1Answer).not.toHaveBeenCalled();
+      } finally {
+        f.service.close();
+      }
+    });
+  },
+);

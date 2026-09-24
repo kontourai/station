@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   DEVICE_ACTIVE_WINDOW_MS,
   describeDelegationStanding,
+  describeDeviceAccountBinding,
   describeDeviceActivity,
   describeDeviceKind,
   describeDeviceProvenance,
@@ -217,10 +218,17 @@ describe('describeDeviceScope', () => {
     // "Every token" is the whole current vocabulary. access:approve joined
     // PAIRING_SCOPES in #1887 slice 1 and consent:decide in #3677;
     // home:transfer brought the set to eight tokens, and home:control and
-    // engine:login (#2035) to ten, so each earlier full set is now Custom.
+    // engine:login (#2035) to ten, coding:exec (#2412) to eleven, and
+    // approval:full-access (#2436) to twelve, so each earlier full set is now
+    // Custom.
     expect(
       describeDeviceScope(
         'orchestration:read orchestration:operate terminal:operate access:manage inference:invoke access:approve consent:decide home:transfer engine:login',
+      ),
+    ).toBe('Custom access');
+    expect(
+      describeDeviceScope(
+        'engine:login home:control home:transfer consent:decide access:approve inference:invoke access:manage terminal:operate orchestration:operate orchestration:read',
       ),
     ).toBe('Custom access');
     // Neither nine-token set is every token.
@@ -229,10 +237,15 @@ describe('describeDeviceScope', () => {
         'orchestration:read orchestration:operate terminal:operate access:manage inference:invoke access:approve consent:decide home:transfer home:control',
       ),
     ).toBe('Custom access');
+    expect(
+      describeDeviceScope(
+        'coding:exec engine:login home:control home:transfer consent:decide access:approve inference:invoke access:manage terminal:operate orchestration:operate orchestration:read',
+      ),
+    ).toBe('Custom access');
     // Order-independent, like every other preset match.
     expect(
       describeDeviceScope(
-        'engine:login home:control home:transfer consent:decide access:approve inference:invoke access:manage terminal:operate orchestration:operate orchestration:read',
+        'approval:full-access coding:exec engine:login home:control home:transfer consent:decide access:approve inference:invoke access:manage terminal:operate orchestration:operate orchestration:read',
       ),
     ).toBe('Full access');
     // A scope missing any single token (here consent:decide) is not Full.
@@ -402,5 +415,44 @@ describe('describeDelegationStanding (station#3845)', () => {
     expect(
       describeDelegationStanding(device('delegation', 'legacy-unparseable')),
     ).toMatchObject({ label: 'Paired for delegation' });
+  });
+});
+
+describe('describeDeviceAccountBinding (#488 invited-admin slice)', () => {
+  it('names the bound account for an account-bound device', () => {
+    expect(
+      describeDeviceAccountBinding(
+        device({
+          principalBinding: {
+            kind: 'account',
+            issuer: 'urn:station:test',
+            subject: 'guest-person',
+            displayName: 'Guest Person',
+            approvedAt: NOW,
+            approvalId: 'approval-1',
+            approvedBy: 'operator',
+          },
+        }),
+      ),
+    ).toBe('Account: Guest Person');
+  });
+
+  it('renders nothing for a non-account person binding or an unbound device', () => {
+    expect(
+      describeDeviceAccountBinding(
+        device({
+          principalBinding: {
+            provider: 'tailscale-serve',
+            subject: 'someone',
+            approvedAt: NOW,
+            approvalId: 'approval-1',
+            approvedBy: 'operator',
+          },
+        }),
+      ),
+    ).toBeNull();
+    expect(
+      describeDeviceAccountBinding(device({ principalBinding: undefined })),
+    ).toBeNull();
   });
 });

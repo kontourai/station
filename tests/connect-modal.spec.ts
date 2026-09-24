@@ -77,7 +77,12 @@ function seedConnection(
 test.describe('Connection Manager Modal', () => {
   test.beforeEach(async ({ page }) => {
     await page.route('**/api/**', async (route) => {
-      if (await fulfillStationShellRead(route)) return;
+      if (
+        await fulfillStationShellRead(route, {
+          environmentId: 'env-connect-modal-suite',
+        })
+      )
+        return;
       await route.fallback();
     });
     await page.addInitScript(seedConnection());
@@ -213,6 +218,28 @@ test.describe('Connection Manager Modal', () => {
   });
 
   test('can add a new connection manually', async ({ page }) => {
+    // Deterministic activation outcome for the fake host below
+    // (http://10.0.0.5:3141: nothing listens there). Activating it fires
+    // the authority observation plus the protected query fan-out; against a
+    // real black hole those hang on TCP timing (environment-dependent: CI
+    // Linux vs a sandbox proxy), holding the tree in pending past the
+    // assertions below. Answer everything except the pre-save handshake
+    // with the same 404 the remote-auth-recovery suite uses for unmatched
+    // hosts, so activation settles promptly into the ephemeral branch and
+    // the suite proves the composition (modal survival, chip identity)
+    // instead of the network's mood. The still-pending flavor is covered
+    // at unit level (authorityRecoveryComposition), and whether an
+    // observation to an unreachable host should time out is a separate
+    // product decision — no assertion below changes either way.
+    await page.route(
+      /^http:\/\/10\.0\.0\.5:3141\/(?!\.well-known\/).*/,
+      (route) =>
+        route.fulfill({
+          status: 404,
+          contentType: 'application/json',
+          body: JSON.stringify({ error: 'fixture route not found' }),
+        }),
+    );
     // archive#945 LOW: a bare "the connection eventually appears" assertion would
     // pass identically even if the app silently stopped calling the archive#942
     // pre-save handshake — `ConnectionManagerModalContent`'s own post-add
@@ -370,6 +397,20 @@ test.describe('Connection Manager Modal', () => {
   });
 
   test('can switch between connections', async ({ page }) => {
+    // Same deterministic-activation fixture as the test above, for this
+    // test's fake host (http://203.0.113.5:3141): without it the activation
+    // reads hang on black-hole TCP timing and the tree never settles past
+    // pending within the chip assertion's budget. See the comment there —
+    // no assertion here changes either way.
+    await page.route(
+      /^http:\/\/203\.0\.113\.5:3141\/(?!\.well-known\/).*/,
+      (route) =>
+        route.fulfill({
+          status: 404,
+          contentType: 'application/json',
+          body: JSON.stringify({ error: 'fixture route not found' }),
+        }),
+    );
     // Add a second connection via the UI
     await page.getByRole('button', { name: /^Manage Stations/ }).click();
     await page

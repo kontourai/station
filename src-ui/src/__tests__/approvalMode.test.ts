@@ -4,7 +4,6 @@ import {
   adapterDefaultApprovalMode,
   approvalModeChipLabel,
   approvalModeDescription,
-  approvalModeForDispatch,
   approvalModeKnobSupported,
   approvalModeLabel,
   resolveEffectiveApprovalMode,
@@ -134,12 +133,12 @@ describe('approvalModeDescription', () => {
 });
 
 describe('resolveEffectiveApprovalMode', () => {
-  test('a concrete session override wins over the connection default and the adapter default', () => {
+  test('a concrete session override wins over the Agent default and the adapter default', () => {
     expect(
       resolveEffectiveApprovalMode({
         engineConnectionId: 'codex',
         sessionOverride: 'ask',
-        connectionDefault: 'never',
+        agentDefault: 'never',
       }),
     ).toEqual({
       mode: 'ask',
@@ -148,31 +147,31 @@ describe('resolveEffectiveApprovalMode', () => {
     });
   });
 
-  test('an absent session override falls back to the connection default, suffixed as a default', () => {
+  test('an absent session override falls back to the Agent default, named as such', () => {
     expect(
       resolveEffectiveApprovalMode({
         engineConnectionId: 'claude',
         sessionOverride: undefined,
-        connectionDefault: 'never',
+        agentDefault: 'never',
       }),
     ).toEqual({
       mode: 'never',
-      label: 'Never ask (full access) — default',
-      source: 'connection default',
+      label: 'Never ask (full access) (agent default)',
+      source: 'agent default',
     });
   });
 
-  test('an explicit connection-default session override also falls back to the connection default', () => {
+  test('an explicit connection-default session override also falls back to the Agent default', () => {
     expect(
       resolveEffectiveApprovalMode({
         engineConnectionId: 'codex',
         sessionOverride: 'connection-default',
-        connectionDefault: 'auto',
+        agentDefault: 'auto',
       }),
     ).toEqual({
       mode: 'auto',
-      label: 'Auto — default',
-      source: 'connection default',
+      label: 'Auto (agent default)',
+      source: 'agent default',
     });
   });
 
@@ -210,7 +209,7 @@ describe('resolveEffectiveApprovalMode', () => {
 
   /**
    * #2144 slice 6 added `AppConfig.defaultApprovalMode` as a FOURTH layer,
-   * between the connection default and the adapter default. Each case below
+   * between the Agent default and the adapter default. Each case below
    * pins one boundary of the order, and the last two pin where the Station
    * value must NOT apply.
    */
@@ -229,17 +228,17 @@ describe('resolveEffectiveApprovalMode', () => {
       });
     });
 
-    test('the connection default wins over it', () => {
+    test('the Agent default wins over it', () => {
       expect(
         resolveEffectiveApprovalMode({
           engineConnectionId: 'codex',
-          connectionDefault: 'auto',
+          agentDefault: 'auto',
           stationDefault: 'never',
         }),
       ).toEqual({
         mode: 'auto',
-        label: 'Auto — default',
-        source: 'connection default',
+        label: 'Auto (agent default)',
+        source: 'agent default',
       });
     });
 
@@ -308,102 +307,12 @@ describe('resolveEffectiveApprovalMode', () => {
       resolveEffectiveApprovalMode({
         engineConnectionId: 'codex',
         sessionOverride: 'yolo',
-        connectionDefault: 'also-not-real',
+        agentDefault: 'also-not-real',
       }),
     ).toEqual({
       mode: 'connection-default',
       label: 'Connection default',
       source: 'adapter default',
     });
-  });
-});
-
-/**
- * The ENFORCEMENT counterpart of `resolveEffectiveApprovalMode`. What the
- * chip displays and what the send path requests must not diverge; the payload
- * assertions live in `foregroundMessageDispatch.test.ts` and
- * `useActiveChatSessionMessaging.test.ts`, which reach the wire.
- */
-describe('approvalModeForDispatch', () => {
-  /** A chat starting its session on an external, knob-capable engine. */
-  const starting = {
-    engineConnectionId: 'codex',
-    executionMode: 'external',
-    sessionAlreadyStarted: false,
-  } as const;
-
-  test("the Station default becomes this turn's request", () => {
-    expect(
-      approvalModeForDispatch({ ...starting, stationDefault: 'never' }),
-    ).toBe('never');
-  });
-
-  test("the connection's default outranks the Station default", () => {
-    expect(
-      approvalModeForDispatch({
-        ...starting,
-        connectionDefault: 'auto',
-        stationDefault: 'never',
-      }),
-    ).toBe('auto');
-  });
-
-  test('a session override is already on the wire, so nothing is added', () => {
-    expect(
-      approvalModeForDispatch({
-        ...starting,
-        sessionOverride: 'ask',
-        stationDefault: 'never',
-      }),
-    ).toBeUndefined();
-  });
-
-  test('an engine with no approval knob is asked for nothing', () => {
-    expect(
-      approvalModeForDispatch({
-        ...starting,
-        engineConnectionId: 'acp',
-        connectionDefault: 'auto',
-        stationDefault: 'never',
-      }),
-    ).toBeUndefined();
-  });
-
-  test('a Station-mode chat is asked for nothing, knob-capable id or not', () => {
-    // It keeps its model provider's id, and no approval control renders.
-    expect(
-      approvalModeForDispatch({
-        ...starting,
-        executionMode: 'station',
-        stationDefault: 'never',
-      }),
-    ).toBeUndefined();
-    expect(
-      approvalModeForDispatch({
-        engineConnectionId: 'codex',
-        stationDefault: 'never',
-      }),
-    ).toBeUndefined();
-  });
-
-  test('a chat whose session is already live is asked for nothing', () => {
-    expect(
-      approvalModeForDispatch({
-        ...starting,
-        sessionAlreadyStarted: true,
-        connectionDefault: 'auto',
-        stationDefault: 'never',
-      }),
-    ).toBeUndefined();
-  });
-
-  test('stating no posture sends no posture', () => {
-    expect(
-      approvalModeForDispatch({
-        ...starting,
-        stationDefault: 'connection-default',
-      }),
-    ).toBeUndefined();
-    expect(approvalModeForDispatch(starting)).toBeUndefined();
   });
 });

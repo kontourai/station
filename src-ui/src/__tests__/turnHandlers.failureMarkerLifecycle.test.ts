@@ -168,4 +168,47 @@ describe('failure marker lifecycle', () => {
     expect(child?.sessionId).toBe(THREAD_ID);
     expect(child?.answerEligible).toBeUndefined();
   });
+
+  test('station#2235: a recovery-synthesized abort settles the shell without stamping a permanent chat error', () => {
+    // The interrupted-turn banner owns the user-visible copy; the abort is
+    // plumbing. Its reason must not become a stuck error bar.
+    activeChatsStore.updateChat(THREAD_ID, {
+      orchestrationTurnOpen: true,
+      openTurnId: 'turn-9',
+      status: 'sending',
+      streamingMessage: {
+        role: 'assistant',
+        content: 'partial',
+        contentParts: [{ type: 'text', content: 'partial' }],
+      } as never,
+    });
+    handleTurnAbortedEvent({
+      threadId: THREAD_ID,
+      turnId: 'turn-9',
+      method: 'turn.aborted',
+      reason: 'The turn was interrupted before it finished.',
+      recoveryTerminal: true,
+    } as never);
+
+    const chat = activeChatsStore.getSnapshot()[THREAD_ID];
+    expect(chat?.orchestrationTurnOpen).toBe(false);
+    expect(chat?.streamingMessage).toBeUndefined();
+    expect(chat?.orchestrationStatus).toBe('aborted');
+    expect(chat?.error).toBeUndefined();
+  });
+
+  test('station#2235: an ordinary abort still stamps the chat error', () => {
+    // Negative control: the skip above is gated on the marker, not on the
+    // method. A real abort's reason keeps reaching the chat error surface.
+    handleTurnAbortedEvent({
+      threadId: THREAD_ID,
+      turnId: 'turn-9',
+      method: 'turn.aborted',
+      reason: 'user stopped the turn',
+    } as never);
+
+    expect(activeChatsStore.getSnapshot()[THREAD_ID]?.error).toBe(
+      'user stopped the turn',
+    );
+  });
 });

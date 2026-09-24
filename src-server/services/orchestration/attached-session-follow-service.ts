@@ -33,6 +33,7 @@ import { expandTilde } from '../../utils/paths.js';
 import type { AdoptionLedger } from './adoption-ledger.js';
 import type { EventBus } from './event-bus.js';
 import type { EventStore } from './event-store.js';
+import { EventStoreIngressError } from './event-store.js';
 import { readCompletedSourceBoundary } from './external-session-continuation-context.js';
 
 const DEFAULT_POLL_INTERVAL_MS = 2_000;
@@ -88,6 +89,8 @@ interface AttachedSessionCursorOwner {
 export interface AttachedProjectRoot {
   slug: string;
   workingDirectory?: string;
+  /** `ProjectConfig.id`, when the source lists it (Station #90 lane D, D5). */
+  id?: string;
 }
 
 /**
@@ -262,8 +265,8 @@ export class AttachedSessionFollowService {
 
   start(): void {
     if (this.timer) return;
-    void this.pollNow();
-    this.timer = setInterval(() => void this.pollNow(), this.pollIntervalMs);
+    void this.pollSafely();
+    this.timer = setInterval(() => void this.pollSafely(), this.pollIntervalMs);
     this.timer.unref?.();
   }
 
@@ -271,6 +274,21 @@ export class AttachedSessionFollowService {
     if (!this.timer) return;
     clearInterval(this.timer);
     this.timer = undefined;
+  }
+
+  /**
+   * station#2210: `pollNow` runs fire-and-forget. A rejection that escaped
+   * used to surface as an unhandled process rejection — the same oversized
+   * event logged ~42k unhandled rejections in one day — while the poll
+   * cursor stayed put, so the failure repeated forever. Every escape is now
+   * a logged, identified poll failure instead.
+   */
+  private pollSafely(): Promise<void> {
+    return this.pollNow().catch((error: unknown) => {
+      this.options.logger?.warn('Attached-session poll failed', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    });
   }
 
   pollNow(): Promise<void> {
@@ -419,8 +437,7 @@ export class AttachedSessionFollowService {
         state.storedAttribution,
       )) {
         if (!state.seen.has(event.eventId)) {
-          this.appendAndPublish(event);
-          rememberEvent(state.seen, event.eventId, this.maxSeenEventIds);
+          this.appendIngestibleEvent(state, event);
           envelopeWrites += 1;
           if (envelopeWrites % APPEND_YIELD_EVERY === 0) {
             await yieldEventLoop();
@@ -485,8 +502,7 @@ export class AttachedSessionFollowService {
       ) {
         continue;
       }
-      this.appendAndPublish(event);
-      rememberEvent(state.seen, event.eventId, this.maxSeenEventIds);
+      this.appendIngestibleEvent(state, event);
       if (!state.latestEventAt || event.createdAt > state.latestEventAt) {
         state.latestEventAt = event.createdAt;
       }
@@ -685,6 +701,37 @@ export class AttachedSessionFollowService {
     const sequence = this.options.eventStore.appendEventIfAbsent(event);
     if (sequence === undefined) return;
     this.options.eventBus.emit(SERVER_EVENTS.ORCHESTRATION_EVENT, { event });
+  }
+
+  /**
+   * station#2210: one event that can never be ingested used to abort the
+   * whole poll — the rejection escaped as unhandled (the same oversized
+   * event logged ~42k unhandled rejections in a day), the in-memory seen
+   * set and the durable cursor never advanced, and every later poll
+   * re-emitted the same event into the same wall. A deterministic
+   * EventStoreIngressError is now a logged, identified skip: the tail stays
+   * alive, the cursor moves past the event, and the log names the subject.
+   * Anything else still throws and surfaces through the poll failure path.
+   */
+  private appendIngestibleEvent(
+    state: FollowState,
+    event: CanonicalRuntimeEvent,
+  ): void {
+    try {
+      this.appendAndPublish(event);
+    } catch (error) {
+      if (!(error instanceof EventStoreIngressError)) throw error;
+      this.options.logger?.warn(
+        'Attached-session event cannot be persisted; skipping it and advancing',
+        {
+          method: event.method,
+          threadId: event.threadId,
+          eventId: event.eventId,
+          error: error.message,
+        },
+      );
+    }
+    rememberEvent(state.seen, event.eventId, this.maxSeenEventIds);
   }
 }
 

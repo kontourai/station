@@ -3,6 +3,7 @@ import type { Dispatch, SetStateAction } from 'react';
 import { Checkbox } from '../../components/Checkbox';
 import { CheckGlyph } from '../../components/icons/Glyph';
 import { IntegrationGlyph } from '../../components/icons/IntegrationGlyph';
+import { Toggle } from '../../components/Toggle';
 import { AGENT_WORKFLOWS_CLI_COMMAND } from './agentWorkflowsCli';
 import type { AgentEditorFormProps } from './types';
 import {
@@ -288,6 +289,30 @@ export function AgentEditorToolsTab({
             })}
           </div>
         )}
+      </div>
+      <div className="editor-field">
+        <div className="editor-label-row">
+          <span className="editor-label" id="agent-browser-tools-label">
+            Browser tools
+          </span>
+          <Toggle
+            checked={form.tools.browser !== false}
+            disabled={effectiveLocked}
+            describedBy="agent-browser-tools-hint"
+            label="Browser tools"
+            onChange={(browser) =>
+              setForm((current) => ({
+                ...current,
+                tools: { ...current.tools, browser },
+              }))
+            }
+          />
+        </div>
+        <span className="editor-hint" id="agent-browser-tools-hint">
+          Lets this agent open and drive its Project's Browser pane, the same
+          browser you can watch and take over. Delivered to Claude agents;
+          browser actions ask for approval like other sensitive tools.
+        </span>
       </div>
       {/*
         station#2693: agent workflow files have live routes

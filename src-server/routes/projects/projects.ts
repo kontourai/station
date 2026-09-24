@@ -29,12 +29,18 @@ import {
   type ProjectConfig,
 } from '@kontourai/station-contracts/project';
 import type { ProjectResourceBindOutcome } from '@kontourai/station-contracts/project-identity';
+import type {
+  ProjectMemberAction,
+  ProjectMembershipScope,
+} from '@kontourai/station-contracts/project-membership';
 import type { AgentOwnershipRef } from '@kontourai/station-contracts/project-reference-integrity';
 import {
   normalizeProjectAgentScope,
   validateLayoutAgentReferences,
   validateProjectAgentScope,
 } from '@kontourai/station-contracts/project-reference-integrity';
+import { BROWSER_PANE_DEPLOYMENT_CAPABILITY } from '@kontourai/station-contracts/workspace-browser-pane';
+import { WORKSPACE_BROWSER_PREVIEW_PANE_DESCRIPTOR_ID } from '@kontourai/station-contracts/workspace-browser-preview';
 import {
   WORKSPACE_CODING_DIFF_PANE_DESCRIPTOR_ID,
   WORKSPACE_CODING_FILE_BROWSER_PANE_DESCRIPTOR_ID,
@@ -51,6 +57,7 @@ import {
   assertSafeLayoutPathSegment,
   type IStorageAdapter,
 } from '../../domain/storage-adapter.js';
+import { mayRunCommandsOnHost } from '../../security/coding-authority.js';
 import {
   grantedPairingScope,
   type PairingScopeContextStore,
@@ -79,6 +86,7 @@ import {
   type ProjectBindingWriter,
   type ProjectManifestReader,
 } from '../../services/projects/project-resource-binder.js';
+import { guardProjectResponse } from '../../services/projects/project-response-guard.js';
 import type { ProjectService } from '../../services/projects/project-service.js';
 import { resolveProjectWorkspacePath } from '../../services/projects/project-workspace-path.js';
 import { workspacePaneAvailabilityMetricAttributes } from '../../services/projects/workspace-pane-availability-resolver.js';
@@ -195,6 +203,26 @@ async function registerPluginNamespaces(
 }
 
 interface ProjectRouteDeps {
+  /** Restricts the Project catalogue for an authenticated shared member. */
+  memberProjectAdmissions?: (c: Context) => Promise<
+    | readonly {
+        scope: ProjectMembershipScope;
+        actions: readonly ProjectMemberAction[];
+      }[]
+    | undefined
+  >;
+  memberProjectAdmission?: (
+    c: Context,
+    slug: string,
+  ) => Promise<
+    | { scope: ProjectMembershipScope; actions: readonly ProjectMemberAction[] }
+    | null
+    | undefined
+  >;
+  projectCatalogueCurrent?: (
+    c: Context,
+    admittedScopes: readonly ProjectMembershipScope[],
+  ) => Promise<boolean>;
   listAgents?: () => Promise<AgentOwnershipRef[]> | AgentOwnershipRef[];
   layoutCatalog?: DistributionProfileService;
   /** Existing Kit lifecycle authority; pane discovery only reads its snapshot. */
@@ -244,6 +272,12 @@ interface ProjectRouteDeps {
    * availability resolves exactly as before.
    */
   canSeePlugin?: (c: Context, pluginId: string) => boolean;
+  /**
+   * #90: whether THIS deployment mounts the Browser pane's server browser
+   * (personal hosts only). The catalogue derives the Browser pane's
+   * availability from it; absent means unknown, which fails closed.
+   */
+  browserPaneDeployment?: 'supported' | 'unsupported';
 }
 
 /**
@@ -548,6 +582,25 @@ export function createProjectRoutes(
     };
   }
 
+  function memberProjectView(
+    project: Pick<
+      ProjectConfig,
+      'id' | 'slug' | 'name' | 'icon' | 'description'
+    >,
+    actions: readonly ProjectMemberAction[],
+  ) {
+    return {
+      version: 'station.member-project/v1' as const,
+      kind: 'member-project' as const,
+      id: project.id,
+      slug: project.slug,
+      name: project.name,
+      ...(project.icon ? { icon: project.icon } : {}),
+      ...(project.description ? { description: project.description } : {}),
+      actions: [...actions],
+    };
+  }
+
   /**
    * #2144 slice 2, decision 4: a project's `defaultWorkspaceIsolation` is a
    * Station setting a project overrides, so writing it requires the scope
@@ -586,6 +639,57 @@ export function createProjectRoutes(
     return 'The workspace new chats start in is a Station setting this project overrides, so changing it needs the same authority as changing it on the Station. No changes were saved.';
   }
 
+  /**
+   * #2412 review: a Project's working directory is what every coding route
+   * is confined to, so whoever may set it decides where the coding routes
+   * read, edit and run. Setting it (create) or changing it (update) is
+   * therefore reserved for the callers who may run commands on this
+   * computer anyway: the operator in person, or a device holding the
+   * operator's `coding:exec` grant (`mayRunCommandsOnHost`, the same
+   * derivation `POST /api/coding/exec` reads). An operate-tier device can
+   * still edit everything else about a Project, and an update that sends the
+   * directory it already has (a settings form saving the whole record) is not
+   * a change. A request no auth boundary saw is refused.
+   */
+  async function refuseUngrantedWorkingDirectoryWrite(
+    c: Context,
+    body: Record<string, unknown>,
+    existing: (() => Promise<{ workingDirectory?: string }>) | undefined,
+  ): Promise<Response | undefined> {
+    if (!Object.hasOwn(body, 'workingDirectory')) return undefined;
+    // Compared as STORED strings, never read from disk: the question is
+    // whether the record changes. A different spelling of the same folder
+    // (`~/x` for `/home/me/x`) counts as a change and is refused, which is
+    // the safe direction.
+    const requested =
+      typeof body.workingDirectory === 'string'
+        ? body.workingDirectory.trim()
+        : '';
+    if (existing) {
+      const current = (await existing()).workingDirectory?.trim() ?? '';
+      if (requested === current) return undefined;
+    } else if (!requested) {
+      return undefined;
+    }
+    if (
+      mayRunCommandsOnHost(
+        c.req.raw,
+        grantedPairingScope(c as unknown as PairingScopeContextStore),
+      )
+    )
+      return undefined;
+    projectOps.add(1, { op: 'working_directory_denied' });
+    return c.json(
+      {
+        success: false,
+        code: 'working-directory-not-granted',
+        error:
+          "Only this Station's operator, or a device the operator allowed to run commands, can choose a Project's folder. Nothing was saved.",
+      },
+      403,
+    );
+  }
+
   function integrityError(
     diagnostics: ReturnType<typeof validateProjectAgentScope>,
   ) {
@@ -607,8 +711,69 @@ export function createProjectRoutes(
   // List all projects
   app.get('/', async (c) => {
     try {
+      const admissions = await deps.memberProjectAdmissions?.(c);
+      const readable = admissions?.map(({ scope }) => scope);
+      const allowed = readable
+        ? new Set(
+            readable.map(
+              (scope) => `${scope.localProjectId}:${scope.localProjectSlug}`,
+            ),
+          )
+        : undefined;
       const projects = await projectService.listProjects();
-      return c.json({ success: true, data: projects });
+      const currentAdmissions = allowed
+        ? ((await deps.memberProjectAdmissions?.(c)) ?? [])
+        : undefined;
+      const currentScopes = currentAdmissions?.map(({ scope }) => scope);
+      const currentReadable = currentScopes
+        ? new Set(
+            currentScopes.map(
+              (scope) => `${scope.localProjectId}:${scope.localProjectSlug}`,
+            ),
+          )
+        : undefined;
+      if (allowed) c.header('Cache-Control', 'no-store');
+      const response = c.json({
+        success: true,
+        data:
+          allowed && currentReadable && currentAdmissions
+            ? projects
+                .filter(
+                  (project) =>
+                    allowed.has(`${project.id}:${project.slug}`) &&
+                    currentReadable.has(`${project.id}:${project.slug}`),
+                )
+                .map((project) => {
+                  const admission = currentAdmissions.find(
+                    ({ scope }) =>
+                      scope.localProjectId === project.id &&
+                      scope.localProjectSlug === project.slug,
+                  )!;
+                  return memberProjectView(project, admission.actions);
+                })
+            : projects,
+      });
+      if (!allowed || !currentReadable || !readable || !currentScopes)
+        return response;
+      const admitted = readable.filter(
+        (scope) =>
+          projects.some(
+            (project) =>
+              project.id === scope.localProjectId &&
+              project.slug === scope.localProjectSlug,
+          ) &&
+          currentScopes.some(
+            (current) =>
+              current.localProjectId === scope.localProjectId &&
+              current.portableProjectId === scope.portableProjectId &&
+              current.localProjectSlug === scope.localProjectSlug,
+          ),
+      );
+      return await guardProjectResponse(response, async () =>
+        deps.projectCatalogueCurrent
+          ? await deps.projectCatalogueCurrent(c, admitted)
+          : false,
+      );
     } catch (error: unknown) {
       logger.error('Project storage list failed', {
         error: error instanceof Error ? error.message : 'non-Error thrown',
@@ -655,6 +820,12 @@ export function createProjectRoutes(
       if (isolationRefusal) {
         return c.json({ success: false, error: isolationRefusal }, 403);
       }
+      const folderRefusal = await refuseUngrantedWorkingDirectoryWrite(
+        c,
+        body,
+        undefined,
+      );
+      if (folderRefusal) return folderRefusal;
       const project = await projectService.createProject(body);
       projectOps.add(1, { op: 'create' });
       return c.json({ success: true, data: project }, 201);
@@ -739,6 +910,17 @@ export function createProjectRoutes(
     try {
       const slug = param(c, 'slug');
       const project = await projectService.getProject(slug);
+      const memberAdmission = await deps.memberProjectAdmission?.(c, slug);
+      if (memberAdmission === null)
+        return c.json({ success: false, error: 'Project not found' }, 404);
+      if (memberAdmission) {
+        if (memberAdmission.scope.localProjectId !== project.id)
+          return c.json({ success: false, error: 'Project not found' }, 404);
+        return c.json({
+          success: true,
+          data: memberProjectView(project, memberAdmission.actions),
+        });
+      }
       const knownAgents = await readKnownAgents();
       const diagnostics = knownAgents
         ? validateProjectAgentScope(project, {
@@ -783,6 +965,12 @@ export function createProjectRoutes(
       if (isolationRefusal) {
         return c.json({ success: false, error: isolationRefusal }, 403);
       }
+      const folderRefusal = await refuseUngrantedWorkingDirectoryWrite(
+        c,
+        body,
+        async () => projectService.getProject(slug),
+      );
+      if (folderRefusal) return folderRefusal;
       const updated = await projectService.updateProject(slug, body);
       projectOps.add(1, { op: 'update' });
       return c.json({ success: true, data: updated });
@@ -1096,13 +1284,24 @@ export function createProjectRoutes(
               {
                 resolveInput: (candidate) =>
                   candidate.descriptor.id ===
-                    WORKSPACE_CODING_FILE_BROWSER_PANE_DESCRIPTOR_ID ||
-                  candidate.descriptor.id ===
-                    WORKSPACE_CODING_DIFF_PANE_DESCRIPTOR_ID ||
-                  candidate.descriptor.id ===
-                    WORKSPACE_CODING_TERMINAL_PANE_DESCRIPTOR_ID
-                    ? { context: projectWorkspacePaneContext(project) }
-                    : {},
+                  WORKSPACE_BROWSER_PREVIEW_PANE_DESCRIPTOR_ID
+                    ? {
+                        deployment: {
+                          state: 'supported' as const,
+                          capabilities: {
+                            [BROWSER_PANE_DEPLOYMENT_CAPABILITY]:
+                              deps.browserPaneDeployment ?? 'unknown',
+                          },
+                        },
+                      }
+                    : candidate.descriptor.id ===
+                          WORKSPACE_CODING_FILE_BROWSER_PANE_DESCRIPTOR_ID ||
+                        candidate.descriptor.id ===
+                          WORKSPACE_CODING_DIFF_PANE_DESCRIPTOR_ID ||
+                        candidate.descriptor.id ===
+                          WORKSPACE_CODING_TERMINAL_PANE_DESCRIPTOR_ID
+                      ? { context: projectWorkspacePaneContext(project) }
+                      : {},
                 recordTelemetry: (event) =>
                   workspacePaneAvailabilityResolutions.add(
                     1,

@@ -1,5 +1,6 @@
 import type { OrchestrationSessionSummary } from '@kontourai/station-sdk';
 import type { AgentSummary } from '../../types';
+import { splitDraftsByAge } from '../home/draft-lane';
 import {
   partitionHomeWorkItems,
   terminalSinceFromRecency,
@@ -30,6 +31,7 @@ export type SessionLaneId =
   | 'needsYou'
   | 'activeNow'
   | 'recentlyFinished'
+  | 'drafts'
   | 'earlier';
 
 /** Reading order: what is blocked on you, then what is moving, then history. */
@@ -37,6 +39,7 @@ export const SESSION_LANE_ORDER: readonly SessionLaneId[] = [
   'needsYou',
   'activeNow',
   'recentlyFinished',
+  'drafts',
   'earlier',
   'external',
 ];
@@ -45,6 +48,7 @@ export const SESSION_LANE_LABELS: Record<SessionLaneId, string> = {
   needsYou: 'Needs you',
   activeNow: 'Active now',
   recentlyFinished: 'Recently finished',
+  drafts: 'Drafts',
   earlier: 'Earlier',
   external: 'From other apps',
 };
@@ -55,6 +59,12 @@ export interface SessionLane {
   /** Rendered heading, count included — an empty lane is never emitted. */
   heading: string;
   sessions: OrchestrationSessionSummary[];
+  /**
+   * #2312, the Drafts lane only: the members untouched for a day, which the
+   * list folds under "N older drafts". Always the lane's trailing members
+   * (the lane is newest-first), so the fold is contiguous.
+   */
+  olderDraftThreadIds?: ReadonlySet<string>;
 }
 
 /**
@@ -134,11 +144,17 @@ export function partitionSessionLanes({
     needsYou: resolve(partition.active.filter(needsYou)),
     activeNow: resolve(partition.active.filter((item) => !needsYou(item))),
     recentlyFinished: resolve(partition.recentlyFinished),
+    // #2310: never-prompted sessions, out of "Active now" but still listed.
+    drafts: resolve(partition.drafts ?? []),
     // The snoozed bucket is folded in rather than dropped: this surface has no
     // snooze store today (see NO_SNOOZE), and a bucket that is silently
     // discarded is how rows vanish the day one is introduced.
     earlier: resolve([...partition.settled, ...partition.snoozed]),
   };
+
+  const olderDraftThreadIds = new Set(
+    splitDraftsByAge(partition.drafts ?? [], now).older.map((item) => item.id),
+  );
 
   return SESSION_LANE_ORDER.filter(
     (lane) => membership[lane].length > 0,
@@ -147,6 +163,9 @@ export function partitionSessionLanes({
     label: SESSION_LANE_LABELS[lane],
     heading: `${SESSION_LANE_LABELS[lane]} · ${membership[lane].length}`,
     sessions: membership[lane],
+    ...(lane === 'drafts' && olderDraftThreadIds.size > 0
+      ? { olderDraftThreadIds }
+      : {}),
   }));
 }
 

@@ -17,6 +17,8 @@
  *   station delegate continue <legacy-id> <message> [--on=<environment>] [--model=<id>] [--json] (deprecated alias)
  *   station delegate respond <task-id> <request-id> <accept|acceptForSession|decline|cancel> [--on=<environment>] [--json]
  *   station delegate interrupt <task-id> [--on=<environment>] [--json]
+ *   station delegate wait <task-id> [--on=<environment>] [--timeout=<seconds>]
+ *     [--interval=<seconds>] [--json]
  *   station delegate targets [--on=<environment>] [--project=<slug> | --project-path=<path>] [--json]
  *
  * `--on=<environment>` is accepted on every sub-verb (not just create/targets,
@@ -31,15 +33,27 @@
  * page returned (`station-task-events:v1:<n>`), never a raw sequence number —
  * see `client/delegations.ts`'s module docblock.
  *
- * Dispatch: the six sub-verb names (`status`, `events`, `continue`,
- * `respond`, `interrupt`, `targets`) are only treated as an action word when
- * `--agent` is not present. `create` is the only verb
+ * Dispatch: the seven sub-verb names (`status`, `events`, `continue`,
+ * `respond`, `interrupt`, `targets`, `wait`) are only treated as an action
+ * word when `--agent` is not present. `create` is the only verb
  * that takes a target flag, so a bare `station delegate --agent=<slug>
  * status ...` prompt (whose text happens to start with a reserved word) is
  * unambiguously a create call, not a mis-dispatch to `delegate status`. A
  * `--agent`-less create call whose prompt's first word is
- * exactly one of the six reserved words is a known, narrow, and disclosed
+ * exactly one of the seven reserved words is a known, narrow, and disclosed
  * ambiguity (the CLI reads it as the sub-verb) — not solved here.
+ *
+ * `wait` (#2264) is OBSERVATION ONLY. It polls the same secret-minimized
+ * status snapshot `status` reads (`observeDelegatedTask`) until the task
+ * reaches an honest outcome or the caller's wait budget expires, and it can
+ * never dispatch another turn: there is no code path from `wait` to
+ * `delegateTask`, `continueDelegatedTask`, `respondToDelegatedTaskRequest`,
+ * or `interruptDelegatedTask`. The caller's wait budget (`--timeout`/
+ * `--interval`) is the CLI's own waiting budget and is entirely separate
+ * from the delegated engine's execution budget (`DelegatedTaskSnapshot`'s
+ * server-forwarded `supervision`): expiring one says nothing about the
+ * other. A wait deadline, Ctrl-C, or a polling failure leaves the delegated
+ * task untouched and running — see `waitOnDelegatedTask` below.
  */
 
 import { agentId } from '@kontourai/station-contracts/agent-identity';
@@ -74,6 +88,17 @@ import {
   type ResolvedApiBase,
   requirePositional,
 } from './core-api.js';
+import {
+  type DelegateWaitResult,
+  formatDurationMs,
+  formatWaitOutcomeLine,
+  parseWaitSeconds,
+  WAIT_DEFAULT_INTERVAL_SECONDS,
+  WAIT_DEFAULT_TIMEOUT_SECONDS,
+  WAIT_MAX_INTERVAL_SECONDS,
+  WAIT_MAX_TIMEOUT_SECONDS,
+  waitOnDelegatedTask,
+} from './delegate-wait.js';
 import { explainRequestFailure } from './errors.js';
 import {
   executionEnvironment,
@@ -125,6 +150,7 @@ const RESERVED_ACTIONS = new Set([
   'respond',
   'interrupt',
   'targets',
+  'wait',
 ]);
 
 function delegateContinuationCommand(conversationId: string): string {
@@ -323,6 +349,40 @@ function formatCreateSummary(handle: DelegatedTaskHandle): string {
   return lines.join('\n');
 }
 
+/**
+ * #2269: renders the serving Station's forwarded supervision facts — the
+ * effective absolute budget, remaining time, and idle window for the current
+ * turn. No forwarded supervision renders nothing (honest unknown, never a
+ * client-side invention); a bound the turn did not declare renders as "none
+ * declared for this turn".
+ */
+function supervisionLines(
+  supervision: DelegatedTaskSnapshot['supervision'],
+): string[] {
+  if (!supervision) return [];
+  const { totalLimitMs, remainingMs, deadlineAt } = supervision;
+  const lines = [
+    totalLimitMs !== undefined &&
+    remainingMs !== undefined &&
+    deadlineAt !== undefined
+      ? `Turn budget (this turn only, not the whole task): ${formatDurationMs(totalLimitMs)} total ` +
+        `(${formatDurationMs(remainingMs)} remaining, ` +
+        `deadline ${deadlineAt})`
+      : 'Turn budget: none declared for this turn',
+    `${
+      supervision.idleLimitMs !== undefined
+        ? `Idle limit: ${formatDurationMs(supervision.idleLimitMs)} with no verified protocol activity`
+        : 'Idle limit: none declared for this turn'
+    }${
+      supervision.lastProgressEventAt
+        ? ` (watchdog last observed activity at ${supervision.lastProgressEventAt}; ` +
+          `no progress observed since — the turn may be working quietly)`
+        : ''
+    }`,
+  ];
+  return lines;
+}
+
 function formatStatusSummary(snapshot: DelegatedTaskSnapshot): string {
   const lines = [
     `Task ${snapshot.taskId}: ${snapshot.status}${
@@ -344,6 +404,17 @@ function formatStatusSummary(snapshot: DelegatedTaskSnapshot): string {
           : ''
       }`,
     );
+  }
+  lines.push(...supervisionLines(snapshot.supervision));
+  if (snapshot.reason) {
+    lines.push(
+      `Reason: ${snapshot.reason.code}${
+        snapshot.reason.detail ? ` — ${snapshot.reason.detail}` : ''
+      }`,
+    );
+  }
+  if (snapshot.transitionReason) {
+    lines.push(`Transition: ${snapshot.transitionReason}`);
   }
   if (snapshot.pendingRequest) {
     lines.push(
@@ -895,6 +966,87 @@ async function runDelegateTargets(
   }
 }
 
+/**
+ * #2264 — `station delegate wait` command seam. The observation loop,
+ * outcome classification, and duration/flag validation live in
+ * `./delegate-wait.ts`; this function owns the CLI seam: argument parsing,
+ * `--on`/environment resolution, SIGINT wiring, and output.
+ *
+ * Ctrl-C is a cooperative observation abort, never a task interrupt: the
+ * handler only flips an AbortSignal that both the wait loop and the
+ * in-flight status read itself observe. The listener is always removed.
+ */
+async function runDelegateWait(
+  apiBase: string,
+  parsed: ParsedCoreArgs,
+  jsonMode: boolean,
+): Promise<void> {
+  const taskId = requirePositional(parsed, 1, 'task id');
+  const environment = executionEnvironment(parsed);
+  const environmentId =
+    environment.kind === 'saved' ? environment.id : undefined;
+  const timeoutSeconds = parseWaitSeconds(
+    parsed,
+    'timeout',
+    WAIT_DEFAULT_TIMEOUT_SECONDS,
+    WAIT_MAX_TIMEOUT_SECONDS,
+  );
+  const intervalSeconds = parseWaitSeconds(
+    parsed,
+    'interval',
+    WAIT_DEFAULT_INTERVAL_SECONDS,
+    WAIT_MAX_INTERVAL_SECONDS,
+  );
+
+  const controller = new AbortController();
+  const onSigint = () => controller.abort();
+  process.on('SIGINT', onSigint);
+  let result: DelegateWaitResult;
+  try {
+    result = await waitOnDelegatedTask({
+      apiBase,
+      taskId,
+      environmentId,
+      timeoutMs: timeoutSeconds * 1000,
+      intervalMs: intervalSeconds * 1000,
+      signal: controller.signal,
+      deps: {
+        onPoll: jsonMode
+          ? undefined
+          : (snapshot, elapsedMs) => {
+              // Progress goes to stderr: stdout stays clean for the final
+              // summary (and stays empty of chatter entirely under --json).
+              process.stderr.write(
+                `Task ${taskId}: ${snapshot.status} (elapsed ${formatDurationMs(elapsedMs)}, Session ${snapshot.currentSessionId})\n`,
+              );
+            },
+      },
+    });
+  } finally {
+    process.removeListener('SIGINT', onSigint);
+  }
+
+  if (jsonMode) {
+    // One clean structured envelope on stdout; no human progress text was
+    // mixed in. `ok` is true only when the task genuinely completed — every
+    // other outcome is readable from `data.outcome` + the exit code.
+    console.log(
+      JSON.stringify({
+        ok: result.outcome === 'completed',
+        kind: 'delegate.wait',
+        data: result,
+      }),
+    );
+  } else {
+    console.log(formatWaitOutcomeLine(result));
+    // Reuse the status summary, including the engine budget and reason.
+    if (result.lastSnapshot) {
+      console.log(formatStatusSummary(result.lastSnapshot));
+    }
+  }
+  process.exit(result.exitCode);
+}
+
 export async function runDelegateCommand(
   apiBase: string,
   parsed: ParsedCoreArgs,
@@ -948,6 +1100,8 @@ export async function runDelegateCommand(
       return runDelegateInterrupt(apiBase, parsed, jsonMode);
     case 'targets':
       return runDelegateTargets(apiBase, parsed, jsonMode);
+    case 'wait':
+      return runDelegateWait(apiBase, parsed, jsonMode);
     default:
       return runDelegateCreate(apiBase, parsed, jsonMode);
   }

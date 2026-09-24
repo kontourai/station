@@ -6,6 +6,7 @@ import {
   DEFAULT_CLIENT_REQUEST_TIMEOUT_MS,
   getClientRequestTimeout,
   setClientCredentialResolver,
+  setClientOriginResolver,
   setClientRequestTimeout,
 } from '@kontourai/station-sdk/client';
 import { readActiveLocalStation } from './active-local-station.js';
@@ -21,6 +22,16 @@ import {
   resolveDefaultProfile,
   resolveProjectProfile,
 } from './profile-store.js';
+
+function requireDirectStationTarget(station: {
+  name: string;
+  relayRoute?: unknown;
+}): void {
+  if (station.relayRoute)
+    throw new Error(
+      `Station "${station.name}" has a saved broker route, not a direct CLI connection. Connect through a separately configured direct Station until CLI broker transport is available.`,
+    );
+}
 
 export interface ParsedCoreArgs {
   flags: Record<string, string | boolean>;
@@ -240,6 +251,7 @@ function computeApiBaseDetailed(parsed: ParsedCoreArgs): ResolvedApiBase {
         `No Station named "${stationFlag}". ${describeKnownProfiles()}`,
       );
     }
+    requireDirectStationTarget(station);
     return {
       apiBase: station.endpoint,
       source: 'station-flag',
@@ -255,6 +267,7 @@ function computeApiBaseDetailed(parsed: ParsedCoreArgs): ResolvedApiBase {
         `STATION_TARGET names no Station "${environmentTarget}". ${describeKnownProfiles()}`,
       );
     }
+    requireDirectStationTarget(station);
     return {
       apiBase: station.endpoint,
       source: 'station-env',
@@ -348,6 +361,18 @@ export function configureRequestTimeout(): void {
     );
   }
   setClientRequestTimeout(parsedMs);
+}
+
+/**
+ * #2459: declare this client's surface as the CLI, through the SDK's one
+ * client-origin mechanism (the same one the web app sets from its platform
+ * profile). The SDK attaches it only to authenticated same-Station requests,
+ * and Station records it as display-only provenance — so a delegation started
+ * here reads "Started from the CLI" rather than "No parent". No build is
+ * claimed.
+ */
+export function configureClientOrigin(): void {
+  setClientOriginResolver(() => ({ version: 1, surface: 'cli', build: null }));
 }
 
 /**

@@ -1,4 +1,4 @@
-import { useProjectQuery } from '@kontourai/station-sdk';
+import { useScopedProjectQuery } from '../contexts/ProjectsContext';
 import { ProjectTasksSection } from '../views/project-page/ProjectTasksSection';
 import './TasksLayout.css';
 
@@ -13,12 +13,13 @@ export function TasksLayout({
   layoutSlug: string;
   config: Record<string, unknown>;
 }) {
-  const { data: project } = useProjectQuery(projectSlug);
+  const { data: project } = useScopedProjectQuery(projectSlug);
 
   return (
     <main className="tasks-layout" aria-label="Tasks">
       <ProjectTasksSection
         slug={projectSlug}
+        projectId={project?.id}
         projectWorkingDirectory={project?.workingDirectory}
         agents={project?.agents}
       />

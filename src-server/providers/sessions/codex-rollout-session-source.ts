@@ -5,7 +5,12 @@ import { join, relative, sep } from 'node:path';
 import type { ProviderSessionSourceAffinity } from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { isRecord } from '../../utils/is-record.js';
-import { projectCodexToolOutput } from '../adapters/codex-tool-output.js';
+import {
+  boundedPrompt,
+  projectBoundedToolOutput,
+  truncateJsonString,
+  utf8Chunks,
+} from '../tool-output-projection.js';
 import type {
   AttachedSessionCursor,
   AttachedSessionDescriptor,
@@ -559,7 +564,10 @@ function mapCodexRecord(
     if (!prompt || !state.turnId) {
       return { events: [], state };
     }
-    const bounded = boundedPrompt(prompt);
+    const bounded = boundedPrompt(prompt, {
+      maxBytes: MAX_PROMPT_BYTES,
+      source: 'codex-rollout',
+    });
     if (pending && pending.turnId === state.turnId) {
       delete state.codex.pendingTurn;
       return {
@@ -732,7 +740,10 @@ function mapCodexRecord(
           lineOffset,
           contentIndex,
         ])}`;
-      for (const [chunkIndex, delta] of utf8Chunks(outputText).entries()) {
+      for (const [chunkIndex, delta] of utf8Chunks(
+        outputText,
+        MAX_TEXT_CHUNK_BYTES,
+      ).entries()) {
         events.push({
           ...base,
           eventId: id(events.length, `assistant-${contentIndex}-${chunkIndex}`),
@@ -767,7 +778,10 @@ function mapCodexRecord(
           relativePath,
           lineOffset,
         ])}`;
-      for (const [chunkIndex, delta] of utf8Chunks(summaryText).entries()) {
+      for (const [chunkIndex, delta] of utf8Chunks(
+        summaryText,
+        MAX_TEXT_CHUNK_BYTES,
+      ).entries()) {
         events.push({
           ...base,
           eventId: id(
@@ -795,7 +809,7 @@ function mapCodexRecord(
     const events = flushPendingTurn(state, session, relativePath);
     const rawArguments =
       payloadType === 'function_call' ? payload.arguments : payload.input;
-    const projectedArguments = projectCodexToolOutput(
+    const projectedArguments = projectBoundedToolOutput(
       decodeJsonString(rawArguments),
     );
     state.codex.activityObserved = true;
@@ -855,7 +869,7 @@ function mapCodexRecord(
     if (!toolName || !turnId) return { events: [], state };
     const sanitized = sanitizeEncryptedOutput(decodeJsonString(payload.output));
     if (turnId === state.turnId) state.codex.activityObserved = true;
-    const preview = projectCodexToolOutput(sanitized.value);
+    const preview = projectBoundedToolOutput(sanitized.value);
     return {
       events: [
         {
@@ -1188,65 +1202,11 @@ function boundedOutputMessage(output: unknown): string {
     : (safeStringify(output) ?? '[output]');
 }
 
-function boundedPrompt(value: string): {
-  value: string;
-  metadata?: Record<string, unknown>;
-} {
-  const result = truncateJsonString(value, MAX_PROMPT_BYTES);
-  return result.omittedBytes > 0
-    ? {
-        value: result.value,
-        metadata: {
-          sourceTextTruncated: true,
-          omittedUtf8Bytes: result.omittedBytes,
-          source: 'codex-rollout',
-        },
-      }
-    : { value: result.value };
-}
-
 function diagnosticText(value: unknown): string | undefined {
   const valueText = text(value);
   return valueText
     ? truncateJsonString(valueText, MAX_DIAGNOSTIC_TEXT_BYTES).value
     : undefined;
-}
-
-function utf8Chunks(value: string): string[] {
-  const chunks: string[] = [];
-  let remaining = value;
-  while (remaining) {
-    const chunk = truncateJsonString(remaining, MAX_TEXT_CHUNK_BYTES).value;
-    if (!chunk) break;
-    chunks.push(chunk);
-    remaining = remaining.slice(chunk.length);
-  }
-  return chunks;
-}
-
-function truncateJsonString(
-  value: string,
-  maxBytes: number,
-): { value: string; omittedBytes: number } {
-  const totalBytes = Buffer.byteLength(value);
-  if (Buffer.byteLength(JSON.stringify(value)) <= maxBytes) {
-    return { value, omittedBytes: 0 };
-  }
-  let low = 0;
-  let high = value.length;
-  while (low < high) {
-    const middle = Math.ceil((low + high) / 2);
-    if (Buffer.byteLength(JSON.stringify(value.slice(0, middle))) <= maxBytes) {
-      low = middle;
-    } else high = middle - 1;
-  }
-  let end = low;
-  if (end > 0 && /[\uD800-\uDBFF]/u.test(value[end - 1] ?? '')) end -= 1;
-  const retained = value.slice(0, end);
-  return {
-    value: retained,
-    omittedBytes: totalBytes - Buffer.byteLength(retained),
-  };
 }
 
 function decodeJsonString(value: unknown): unknown {

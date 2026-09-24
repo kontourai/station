@@ -55,6 +55,13 @@ export interface ConnectionManagerModalProps {
    * preserve the current served-from-Station behavior when unset.
    */
   originIsStation?: boolean;
+  /**
+   * True when this device has a Station of its own (served by one, or a
+   * native desktop supervising its local server). False on client-only
+   * devices such as the phone, where the host-access section has no local
+   * Station to act on (station#2205). Defaults to true when unset.
+   */
+  hasLocalStation?: boolean;
   /** Native shell name, when this UI is not running in a browser. */
   hostAppName?: string;
   pairingClientChannel?: 'stable' | 'beta' | 'nightly';
@@ -68,6 +75,15 @@ export interface ConnectionManagerModalProps {
    * shows its state without a Restart control.
    */
   onRestartInjectedConnection?: (connection: SavedConnection) => void;
+  /** Host-owned id of the managed local Station when it stops with the app. */
+  localStationOwnerId?: string;
+  /**
+   * Re-authorize this app's own access to the active Station (#2228). Passed
+   * only by a host whose local service can self-provision (native desktop);
+   * when omitted the host pairing panel's auth-rejected state renders its
+   * copy without a Reconnect control.
+   */
+  onReconnectLocalService?: () => Promise<boolean>;
   /** Persistent trigger to restore after a parent chooser is replaced. */
   returnFocusTarget?: HTMLElement | null;
   /**
@@ -89,11 +105,14 @@ export function ConnectionManagerModal({
   pairingLinkError,
   onPairingReviewDismissed,
   originIsStation,
+  hasLocalStation,
   hostAppName,
   pairingClientChannel,
   allowManualCredentials,
   authenticatedRequest,
   onRestartInjectedConnection,
+  localStationOwnerId,
+  onReconnectLocalService,
   returnFocusTarget,
   onPairingSucceeded,
   onApprovalPending,
@@ -110,11 +129,14 @@ export function ConnectionManagerModal({
         pairingLinkError={pairingLinkError}
         onPairingReviewDismissed={onPairingReviewDismissed}
         originIsStation={originIsStation}
+        hasLocalStation={hasLocalStation}
         hostAppName={hostAppName}
         pairingClientChannel={pairingClientChannel}
         allowManualCredentials={allowManualCredentials}
         authenticatedRequest={authenticatedRequest}
         onRestartInjectedConnection={onRestartInjectedConnection}
+        localStationOwnerId={localStationOwnerId}
+        onReconnectLocalService={onReconnectLocalService}
         returnFocusTarget={returnFocusTarget}
         onPairingSucceeded={onPairingSucceeded}
         onApprovalPending={onApprovalPending}

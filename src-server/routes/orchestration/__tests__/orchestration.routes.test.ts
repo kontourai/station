@@ -593,6 +593,61 @@ describe('Orchestration Routes', () => {
     );
   });
 
+  test('POST /commands dispatches discardDraft as the caller, and answers a non-Draft refusal with its code (#2312)', async () => {
+    const receipt = {
+      commandId: 'discard-command',
+      threadId: 'thread-draft',
+      commandType: 'discardDraft' as const,
+      status: 'rejected' as const,
+      createdAt: '2026-09-23T00:00:00.000Z',
+    };
+    const dispatchWithReceipt = vi
+      .fn()
+      .mockResolvedValueOnce({
+        receipt: { ...receipt, status: 'accepted' },
+        result: undefined,
+      })
+      .mockRejectedValueOnce(
+        new OrchestrationCommandDispatchError(
+          'Only a Draft can be discarded, and this session is not one: thread-draft',
+          receipt,
+          undefined,
+          'persisted',
+          false,
+          'not_a_draft',
+        ),
+      );
+    const app = createOrchestrationRoutes({ dispatchWithReceipt } as any, {
+      eventBus: new EventBus(),
+      logger: { debug: vi.fn() },
+      getUserId: () => ROUTE_TEST_USER_ID,
+    });
+    const discard = () =>
+      app.request('/commands', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'discardDraft',
+          threadId: 'thread-draft',
+        }),
+      });
+
+    const accepted = await discard();
+    expect(accepted.status).toBe(200);
+    expect(dispatchWithReceipt).toHaveBeenCalledWith(
+      { type: 'discardDraft', threadId: 'thread-draft' },
+      expect.objectContaining({ userId: ROUTE_TEST_USER_ID }),
+    );
+
+    const refused = await discard();
+    expect(refused.status).toBe(400);
+    await expect(refused.json()).resolves.toMatchObject({
+      success: false,
+      code: 'not_a_draft',
+      receipt: { commandType: 'discardDraft', status: 'rejected' },
+    });
+  });
+
   test('POST /commands preserves unavailable receipt durability with accepted data', async () => {
     const dispatchWithReceipt = vi.fn().mockResolvedValue({
       receipt: {
@@ -2125,6 +2180,8 @@ describe('Orchestration Routes', () => {
 
     expect(res.status).toBe(200);
     expect(continueDelegatedTask).toHaveBeenCalledWith({
+      inboundDeviceKind: undefined,
+      isRequestAuthorityCurrent: expect.any(Function),
       clientOrigin: {
         version: 1,
         actor: { kind: 'unknown' },
@@ -2136,6 +2193,9 @@ describe('Orchestration Routes', () => {
       taskId: 'task:2',
       userId: 'bound-user',
     });
+    expect(
+      continueDelegatedTask.mock.calls[0][0].isRequestAuthorityCurrent(),
+    ).toBe(false);
   });
 
   test('POST /delegations rejects direct engine execution before dispatch', async () => {
@@ -2423,6 +2483,8 @@ describe('Orchestration Routes', () => {
       data: { taskId: 'task:1', status: 'dispatched' },
     });
     expect(continueDelegatedTask).toHaveBeenCalledWith({
+      inboundDeviceKind: undefined,
+      isRequestAuthorityCurrent: expect.any(Function),
       clientOrigin: {
         version: 1,
         actor: { kind: 'unknown' },
@@ -2434,6 +2496,9 @@ describe('Orchestration Routes', () => {
       taskId: 'task:1',
       userId: 'bound-user',
     });
+    expect(
+      continueDelegatedTask.mock.calls[0][0].isRequestAuthorityCurrent(),
+    ).toBe(false);
   });
 
   test('POST /delegations/:taskId/continue is unavailable without a bound dep and 400s on rejection', async () => {
@@ -2504,6 +2569,8 @@ describe('Orchestration Routes', () => {
       data: { requestId: 'req-1', decision: 'accept' },
     });
     expect(respondToDelegatedTaskRequest).toHaveBeenCalledWith({
+      inboundDeviceKind: undefined,
+      isRequestAuthorityCurrent: expect.any(Function),
       clientOrigin: {
         version: 1,
         actor: { kind: 'unknown' },
@@ -2515,6 +2582,9 @@ describe('Orchestration Routes', () => {
       taskId: 'task:1',
       userId: 'bound-user',
     });
+    expect(
+      respondToDelegatedTaskRequest.mock.calls[0][0].isRequestAuthorityCurrent(),
+    ).toBe(false);
   });
 
   test('POST /delegations/:taskId/respond is unavailable without a bound dep, rejects an invalid decision, and 400s on rejection', async () => {
@@ -3941,12 +4011,18 @@ describe('Orchestration Routes', () => {
       listProviders: vi.fn(),
       listSessions: vi.fn().mockResolvedValue([]),
       canUserReadSession: vi.fn().mockReturnValue(true),
+      canUserMutateSession: vi.fn().mockReturnValue(true),
       dispatch: vi.fn(),
     };
     const app = createOrchestrationRoutes(service as any, {
       eventBus: new EventBus(),
       logger: { debug: vi.fn() },
       getUserId: () => ROUTE_TEST_USER_ID,
+      isRequestPrincipalCurrent: () => true,
+      previewThreadCheckpointRestore: vi.fn().mockResolvedValue({
+        previewId: '11111111-1111-4111-8111-111111111111',
+        currentTreeSha: 'a'.repeat(40),
+      }),
       listThreadCheckpoints: async (threadId: string) =>
         threadId === 'thread-cp' ? checkpoints : [],
     });
@@ -3987,6 +4063,7 @@ describe('Orchestration Routes', () => {
       listProviders: vi.fn(),
       listSessions: vi.fn().mockResolvedValue([]),
       canUserReadSession: vi.fn().mockReturnValue(true),
+      canUserMutateSession: vi.fn().mockReturnValue(true),
       dispatch: vi.fn(),
     };
     const restore = vi
@@ -3996,6 +4073,11 @@ describe('Orchestration Routes', () => {
       eventBus: new EventBus(),
       logger: { debug: vi.fn() },
       getUserId: () => ROUTE_TEST_USER_ID,
+      isRequestPrincipalCurrent: () => true,
+      previewThreadCheckpointRestore: vi.fn().mockResolvedValue({
+        previewId: '11111111-1111-4111-8111-111111111111',
+        currentTreeSha: 'a'.repeat(40),
+      }),
       restoreThreadCheckpoint: restore,
       listCheckpointRestoreEvents: (threadId) => [
         { id: 'restore-1', threadId },
@@ -4010,22 +4092,47 @@ describe('Orchestration Routes', () => {
       },
     );
     expect(unconfirmed.status).toBe(400);
+    expect(await readJson(unconfirmed)).toEqual({
+      success: false,
+      error: 'A current restore preview and explicit confirmation are required',
+    });
     expect(restore).not.toHaveBeenCalled();
+
+    const missingPreview = await app.request(
+      '/sessions/thread-cp/checkpoints/turn-1/restore',
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ confirmed: true }),
+      },
+    );
+    expect(missingPreview.status).toBe(400);
+    expect(await readJson(missingPreview)).toEqual({
+      success: false,
+      error: 'A current restore preview and explicit confirmation are required',
+    });
 
     const ok = await app.request(
       '/sessions/thread-cp/checkpoints/turn-1/restore',
       {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ confirmed: true, phase: 'baseline' }),
+        body: JSON.stringify({
+          confirmed: true,
+          previewId: '11111111-1111-4111-8111-111111111111',
+          expectedCurrentTreeSha: 'a'.repeat(40),
+        }),
       },
     );
     expect(ok.status).toBe(200);
     expect(restore).toHaveBeenCalledWith({
       threadId: 'thread-cp',
       turnId: 'turn-1',
-      phase: 'baseline',
+      ownerKey: JSON.stringify([ROUTE_TEST_USER_ID, null]),
+      previewId: '11111111-1111-4111-8111-111111111111',
+      expectedCurrentTreeSha: 'a'.repeat(40),
       confirmed: true,
+      isAuthorized: expect.any(Function),
     });
     const audit = await app.request('/sessions/thread-cp/checkpoint-restores');
     expect(audit.status).toBe(200);
@@ -4033,7 +4140,7 @@ describe('Orchestration Routes', () => {
       success: true,
       data: [{ id: 'restore-1', threadId: 'thread-cp' }],
     });
-    service.canUserReadSession.mockReturnValue(false);
+    service.canUserMutateSession.mockReturnValue(false);
     const denied = await app.request(
       '/sessions/thread-other/checkpoints/turn-1/restore',
       {
@@ -4677,6 +4784,113 @@ describe('Orchestration Routes', () => {
           ],
         }),
       });
+    });
+
+    test('pages a ten-session conversation past the route cursor cap without Invalid event window', async () => {
+      // The conversation cursor embedded every lineage session id, so past
+      // ~7 sessions the second page 400'd (`Invalid event window`): the
+      // route schema caps `cursor` at 512 chars while the server minted
+      // ~627. Ten UUID sessions traverse five pages; every one must 200 and
+      // recover every turn.
+      const sessionIds = Array.from(
+        { length: 10 },
+        (_, index) =>
+          `00000000-0000-4000-8000-${String(index).padStart(12, '0')}`,
+      );
+      const [rootId] = sessionIds;
+      eventStore.upsertSession({
+        provider: 'claude',
+        threadId: rootId,
+        status: 'closed',
+        createdAt: '2026-08-24T02:00:00.000Z',
+        updatedAt: '2026-08-24T02:00:01.000Z',
+      });
+      for (const [index, threadId] of sessionIds.entries()) {
+        if (index > 0) {
+          eventStore.reserveNextConversationSession({
+            conversationId: rootId,
+            predecessorSessionId: sessionIds[index - 1],
+            proposedSessionId: threadId,
+            createdAt: `2026-08-24T02:${String(index).padStart(2, '0')}:00.000Z`,
+          });
+          eventStore.upsertSession({
+            provider: 'claude',
+            threadId,
+            status: 'closed',
+            createdAt: `2026-08-24T02:${String(index).padStart(2, '0')}:00.000Z`,
+            updatedAt: `2026-08-24T02:${String(index).padStart(2, '0')}:01.000Z`,
+          });
+        }
+        const turnId = `long-lineage-route-turn-${index}`;
+        eventStore.appendEvent({
+          eventId: `${turnId}-configured`,
+          provider: 'claude',
+          threadId,
+          createdAt: `2026-08-24T02:${String(index).padStart(2, '0')}:02.000Z`,
+          method: 'session.configured',
+          sessionId: threadId,
+          metadata: { userId: 'owner-user' },
+        });
+        eventStore.appendEvent({
+          eventId: `${turnId}-started`,
+          provider: 'claude',
+          threadId,
+          turnId,
+          createdAt: `2026-08-24T02:${String(index).padStart(2, '0')}:03.000Z`,
+          method: 'turn.started',
+          prompt: `route question ${index}`,
+        });
+        eventStore.appendEvent({
+          eventId: `${turnId}-completed`,
+          provider: 'claude',
+          threadId,
+          turnId,
+          createdAt: `2026-08-24T02:${String(index).padStart(2, '0')}:04.000Z`,
+          method: 'turn.completed',
+          outputText: `route answer ${index}`,
+        });
+      }
+      const app = createOrchestrationRoutes(service, {
+        eventBus,
+        logger: { debug: vi.fn() },
+        getUserId: () => 'owner-user',
+      });
+
+      const seen = new Set<string>();
+      let cursor: string | undefined;
+      for (let page = 0; page < 10; page += 1) {
+        const query = cursor
+          ? `?turnLimit=2&cursor=${encodeURIComponent(cursor)}`
+          : '?turnLimit=2';
+        const response = await app.request(
+          `/conversations/${rootId}/event-window${query}`,
+        );
+        expect(response.status).toBe(200);
+        const body = await readJson(response);
+        const data = (
+          body as {
+            data: {
+              events: Array<{ event: { eventId: string; method: string } }>;
+              nextCursor?: string;
+              hasMore: boolean;
+            };
+          }
+        ).data;
+        for (const item of data.events) seen.add(item.event.eventId);
+        cursor = data.nextCursor;
+        if (cursor) expect(cursor.length).toBeLessThanOrEqual(512);
+        if (!data.hasMore) break;
+        expect(cursor).toBeDefined();
+      }
+      expect(cursor).toBeUndefined();
+      // Every turn.started/turn.completed round-trips. (The oldest session's
+      // turn-less session.configured sits before the oldest selected turn
+      // start, outside the turn-bounded range — the same boundary the
+      // neighboring root-conversation test pins at 3 of 4 events.)
+      const turnEvents = [...seen].filter((id) =>
+        /-(started|completed)$/.test(id),
+      );
+      expect(turnEvents).toHaveLength(20);
     });
 
     test.each([
@@ -5858,6 +6072,94 @@ describe('Orchestration Routes', () => {
         text.includes('event: orchestration:snapshot'),
       );
       expect(payload).toContain('event: orchestration:snapshot');
+    });
+
+    /**
+     * #2456 D1: the snapshot's advertised cursor must be older than any event
+     * appended while the snapshot was being built. The client drops every
+     * frame at or behind the cursor (resumeCursor.ts `shouldApplyStreamFrame`:
+     * `sequence > lastAppliedSequence`), so a cursor re-read after the build
+     * would swallow the one frame that carries an event the snapshot missed.
+     */
+    function frameIds(payload: string, marker: string): number[] {
+      return payload
+        .split('\n\n')
+        .filter((frame) => frame.includes(marker))
+        .map((frame) => Number(/\nid: (\d+)/.exec(`\n${frame}`)?.[1]));
+    }
+
+    async function raceEventDuringSnapshot(
+      request: (
+        app: ReturnType<typeof createOrchestrationRoutes>,
+      ) => Response | Promise<Response>,
+    ) {
+      let releaseSnapshotFetch: () => void = () => {};
+      const gate = new Promise<void>((resolve) => {
+        releaseSnapshotFetch = resolve;
+      });
+      const eventBus = new EventBus();
+      const service = makeResumeTestService(eventStore, {
+        listSessionReadModel: vi.fn().mockImplementation(async () => {
+          await gate;
+          return [];
+        }),
+      });
+      const app = createOrchestrationRoutes(service as any, {
+        getUserId: () => ROUTE_TEST_USER_ID,
+        eventBus,
+        logger: { debug: vi.fn() },
+      });
+      const resPromise = Promise.resolve(request(app));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      // Appended and emitted while the snapshot is being built — it is not
+      // in the (already-read) session list.
+      persistEvent('evt-during-snapshot', 'thread-1', 59);
+      eventBus.emit('orchestration:event', {
+        event: {
+          eventId: 'evt-during-snapshot',
+          provider: 'claude',
+          threadId: 'thread-1',
+          createdAt: '2026-03-28T00:00:59.000Z',
+          method: 'content.text-delta',
+          itemId: 'item-1',
+          delta: 'evt-during-snapshot',
+        },
+      });
+      releaseSnapshotFetch();
+      const res = await resPromise;
+      const payload = await readStreamUntil(res.body!, (text) =>
+        text.includes('"eventId":"evt-during-snapshot"'),
+      );
+      const [snapshotId] = frameIds(payload, 'event: orchestration:snapshot');
+      const [caughtUpId] = frameIds(payload, 'event: orchestration:caughtUp');
+      const [eventId] = frameIds(payload, '"eventId":"evt-during-snapshot"');
+      expect(eventId).toBe(
+        eventStore.readGlobalSequence('evt-during-snapshot'),
+      );
+      // The client will ADMIT the live frame: it is newer than the cursor.
+      expect(eventId).toBeGreaterThan(snapshotId);
+      expect(eventId).toBeGreaterThan(caughtUpId);
+    }
+
+    test('#2456 D1: an event appended during a cursor-less snapshot build is still admitted after it', async () => {
+      await raceEventDuringSnapshot((app) => app.request('/events'));
+    });
+
+    test('#2456 D1: an event appended during the replay-overflow snapshot build is still admitted after it', async () => {
+      for (let index = 1; index <= 401; index += 1) {
+        eventStore.appendEvent({
+          eventId: `d1-budget-${index}`,
+          provider: 'claude',
+          threadId: 'thread-d1-budget',
+          createdAt: `2026-08-01T00:00:${String(index % 60).padStart(2, '0')}.000Z`,
+          method: 'content.text-delta',
+          itemId: `item-${index}`,
+          delta: 'x'.repeat(3_000),
+        });
+      }
+      await raceEventDuringSnapshot((app) =>
+        app.request('/events', { headers: { 'Last-Event-ID': '0' } }),
+      );
     });
 
     test('R4 ordering fence: a live event emitted mid-snapshot-fetch never overtakes the caught-up marker', async () => {

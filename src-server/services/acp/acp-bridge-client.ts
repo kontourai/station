@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { readFile, writeFile } from 'node:fs/promises';
+import { readFile, stat, writeFile } from 'node:fs/promises';
 import {
   type Client,
   type CreateTerminalRequest,
@@ -163,6 +163,14 @@ export function createACPBridgeClient(context: ACPBridgeClientContext): Client {
         term.process.on('exit', (code, signal) =>
           resolve({ exitCode: code, signal: signal ?? null }),
         );
+        // A failed spawn emits only `error`, never `exit` — without this
+        // branch a waiter that arrived between createTerminal and the error
+        // event would hang forever on a terminal that never started.
+        term.process.on('error', () => {
+          if (term.spawnFailed) {
+            resolve({ exitCode: term.exitCode, signal: term.signal });
+          }
+        });
       });
     },
 
@@ -238,12 +246,104 @@ interface ACPBridgeTerminalContext {
   nextTerminalId: () => string;
 }
 
+/**
+ * POSIX-shell word split of a composed command line: single quotes are fully
+ * literal, double quotes honor `\"` and `\\` only (a backslash before any
+ * other character stays literal, so quoted Windows paths survive), and an
+ * unquoted backslash escapes the next character. Returns `null` when the
+ * line cannot be split unambiguously (open quote or trailing backslash), so
+ * the caller keeps the raw string and lets the spawn fail honestly.
+ */
+export function splitComposedShellLine(
+  line: string,
+): [string, ...string[]] | null {
+  const tokens: string[] = [];
+  let current = '';
+  let hasToken = false;
+  let quote: '"' | "'" | null = null;
+  let escaped = false;
+  let dquotePendingBackslash = false;
+  for (const char of line) {
+    if (quote === "'") {
+      if (char === "'") quote = null;
+      else current += char;
+      continue;
+    }
+    if (quote === '"') {
+      if (dquotePendingBackslash) {
+        dquotePendingBackslash = false;
+        if (char === '"' || char === '\\') current += char;
+        else current += `\\${char}`;
+        continue;
+      }
+      if (char === '"') {
+        quote = null;
+        continue;
+      }
+      if (char === '\\') {
+        dquotePendingBackslash = true;
+        continue;
+      }
+      current += char;
+      continue;
+    }
+    if (escaped) {
+      current += char;
+      escaped = false;
+      continue;
+    }
+    if (char === '\\') {
+      escaped = true;
+      hasToken = true;
+      continue;
+    }
+    if (char === "'" || char === '"') {
+      quote = char;
+      hasToken = true;
+      continue;
+    }
+    if (/\s/.test(char)) {
+      if (hasToken) {
+        tokens.push(current);
+        current = '';
+        hasToken = false;
+      }
+      continue;
+    }
+    current += char;
+    hasToken = true;
+  }
+  if (quote !== null || escaped || dquotePendingBackslash) return null;
+  if (hasToken) tokens.push(current);
+  if (tokens.length === 0) return null;
+  return tokens as [string, ...string[]];
+}
+
 export async function handleACPBridgeCreateTerminal(
   params: ExtendedCreateTerminalRequest,
   context: ACPBridgeTerminalContext,
 ): Promise<CreateTerminalResponse> {
   const id = context.nextTerminalId();
-  const proc = spawn(params.command, params.args || [], {
+  let command = params.command;
+  let args = params.args ?? [];
+  // Real engines compose shell one-liners into `command` with empty `args` —
+  // 2026-09-18 live incident: the grok CLI sent `bash -lc 'pwd && …'` and the
+  // WHOLE string became the executable path. When the command names no real
+  // file and carries whitespace, read it the way a shell would. A command
+  // that names a file (a path containing spaces, say) is passed through
+  // untouched, so legitimate space-bearing executables keep working.
+  if (args.length === 0 && /\s/.test(command)) {
+    const namesRealFile = await stat(command)
+      .then((info) => info.isFile())
+      .catch(() => false);
+    if (!namesRealFile) {
+      const parts = splitComposedShellLine(command);
+      if (parts) {
+        [command, ...args] = parts;
+      }
+    }
+  }
+  const proc = spawn(command, args, {
     cwd: params.cwd || context.cwd,
     env: childProcessEnvironment(
       params.env
@@ -262,6 +362,20 @@ export async function handleACPBridgeCreateTerminal(
     signal: null,
     exited: false,
   };
+  // A failed spawn emits ONLY `error` — never `exit` — and with no listener
+  // the error escapes as an uncaughtException, which Station's
+  // fatal-uncaught policy turns into a full sidecar shutdown (the exact
+  // mechanism of the 2026-09-18 mid-turn crash: one engine-requested
+  // terminal killed the server and every session on it). Report the failure
+  // through the shell's own failure channel instead: the reason in the
+  // output, and the shell's conventional code — 127 command not found, 126
+  // found but not runnable. `spawn` proves the child actually started;
+  // `error` after that (a kill or send failure) is not a spawn failure and
+  // must not invent an exit status.
+  let spawned = false;
+  proc.on('spawn', () => {
+    spawned = true;
+  });
   proc.stdout?.on('data', (data: Buffer) => {
     term.output += data.toString();
   });
@@ -271,6 +385,14 @@ export async function handleACPBridgeCreateTerminal(
   proc.on('exit', (code, signal) => {
     term.exitCode = code;
     term.signal = signal ?? null;
+    term.exited = true;
+  });
+  proc.on('error', (error: NodeJS.ErrnoException) => {
+    if (spawned || term.exited) return;
+    term.spawnFailed = true;
+    term.output += `spawn failed: ${error.message}\n`;
+    term.exitCode = error.code === 'ENOENT' ? 127 : 126;
+    term.signal = null;
     term.exited = true;
   });
 

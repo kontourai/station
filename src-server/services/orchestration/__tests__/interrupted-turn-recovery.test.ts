@@ -40,6 +40,7 @@ import {
   type InterruptedTurnMemoryAdapter,
   OrchestrationService,
 } from '../orchestration-service.js';
+import { activeTurnIdForEvents } from '../session-lifecycle-service.js';
 
 // archive#4080 follow-up (review round 2, finding 1): spy-wrap the
 // REAL implementation so every other test's behavior is unchanged — this
@@ -1186,5 +1187,481 @@ describe('station#4080 slice 1: interrupted-turn boundary consumption', () => {
     const rebooted = new EventStore(path);
     stores.push(rebooted);
     expect(rebooted.takeInterruptedTurnBoundaries()).toEqual([]);
+  });
+
+  test('station#2235: an accepted boundary closes the dead turn with turn.aborted BEFORE the needs_input banner', async () => {
+    const path = databasePath();
+    const eventStore = bootAfterCrash({
+      path,
+      threadId: 'thread-abort',
+      provider: 'acp',
+      agentSlug: 'demo-agent',
+      boundaryState: 'accepted',
+    });
+    stores.push(eventStore);
+    eventStore.upsertSession({
+      provider: 'acp',
+      threadId: 'thread-abort',
+      status: 'running',
+      createdAt: '2026-08-16T00:00:00.000Z',
+      updatedAt: '2026-08-16T00:00:02.000Z',
+    });
+
+    const adapter = fakeMemoryAdapter({
+      conventionalUserId: 'agent:demo-agent',
+    });
+    const service = new OrchestrationService({
+      adapterRegistry: createRegistry(),
+      eventBus: new EventBus(),
+      eventStore,
+      logger,
+      memoryAdapters: new Map([['demo-agent', adapter]]),
+    });
+
+    await (service as any).interruptedTurns.consume();
+
+    const events = eventStore.listEvents('thread-abort');
+    const abort = events.find((e) => e.payload.method === 'turn.aborted');
+    expect(abort).toBeDefined();
+    // Names the dead turn, not a fresh one — this is what lets every fold
+    // (and every live client) settle the turn that actually died.
+    const abortPayload = abort!.payload as Extract<
+      CanonicalRuntimeEvent,
+      { method: 'turn.aborted' }
+    >;
+    expect(abortPayload.turnId).toBe('turn-1');
+    expect(abortPayload.eventId).toMatch(/^turn-interrupted-abort:/);
+    expect(abortPayload.reason).toContain('interrupted');
+    // The marker the boundary-retirement carve-outs match on: without it
+    // the row dies mid-flow and the H1 crash-window tests below go red.
+    // Asserted on the payload, not inferred from behavior.
+    expect(abortPayload.recoveryTerminal).toBe(true);
+
+    const banner = events.find(
+      (e) => e.payload.method === 'session.state-changed',
+    );
+    expect(banner).toBeDefined();
+    // The terminal turn fact lands BEFORE the banner, so the banner's
+    // explicit sessionState stamp is still the fold's final word.
+    expect(abort!.sequence).toBeLessThan(banner!.sequence);
+
+    // The claim that matters: the turn reads closed AND the session reads
+    // needs_input — neither the stuck-true hasActiveTurn nor the retracted
+    // attention state.
+    const detail = await service.readSession(
+      'thread-abort',
+      INTERNAL_SESSION_READ_SCOPE,
+    );
+    expect(detail?.session.lifecycleState).toBe('needs_input');
+    expect(
+      activeTurnIdForEvents(events.map((row) => row.payload)),
+    ).toBeUndefined();
+  });
+
+  describe('#2324: a turn the engine opened on its own', () => {
+    const providerStart = (threadId: string): CanonicalRuntimeEvent => ({
+      eventId: `provider-start:${threadId}`,
+      provider: 'claude',
+      threadId,
+      turnId: 'provider:turn-1',
+      createdAt: '2026-08-16T00:00:01.000Z',
+      method: 'turn.started',
+      metadata: { trigger: 'provider' },
+    });
+    const serviceOn = (eventStore: EventStore) =>
+      new OrchestrationService({
+        adapterRegistry: createRegistry(),
+        eventBus: new EventBus(),
+        eventStore,
+        logger,
+      });
+
+    test('open at a crash: boot closes it with its trigger and the interrupted banner, like a user turn (D3)', async () => {
+      const path = databasePath();
+      const threadId = 'thread-provider-crash';
+      const dying = new EventStore(path);
+      dying.appendEvent(sessionStartedEvent({ threadId, provider: 'claude' }));
+      // The live path: the service records the boundary as it persists the
+      // provider turn's start.
+      (serviceOn(dying) as any).projectAndPublishEvent(providerStart(threadId));
+      expect(
+        dying.sessionTurnBoundaryAuthority().hasPossibleEffect(threadId),
+      ).toEqual({ kind: 'available', active: true });
+      dying.close();
+
+      const eventStore = new EventStore(path);
+      stores.push(eventStore);
+      eventStore.upsertSession({
+        provider: 'claude',
+        threadId,
+        status: 'running',
+        createdAt: '2026-08-16T00:00:00.000Z',
+        updatedAt: '2026-08-16T00:00:02.000Z',
+      });
+      const service = serviceOn(eventStore);
+      await (service as any).interruptedTurns.consume();
+
+      const events = eventStore.listEvents(threadId);
+      const abort = events.find((e) => e.payload.method === 'turn.aborted');
+      expect(abort?.payload).toMatchObject({
+        turnId: 'provider:turn-1',
+        recoveryTerminal: true,
+        metadata: { trigger: 'provider' },
+      });
+      const banner = events.find(
+        (e) => e.payload.method === 'session.state-changed',
+      );
+      expect(banner?.payload).toMatchObject({ sessionState: 'needs_input' });
+      expect(abort!.sequence).toBeLessThan(banner!.sequence);
+      const detail = await service.readSession(
+        threadId,
+        INTERNAL_SESSION_READ_SCOPE,
+      );
+      expect(detail?.session.lifecycleState).toBe('needs_input');
+      expect(
+        activeTurnIdForEvents(events.map((row) => row.payload)),
+      ).toBeUndefined();
+      expect(
+        eventStore.sessionTurnBoundaryAuthority().hasPossibleEffect(threadId),
+      ).toEqual({ kind: 'available', active: false });
+    });
+
+    test('L4: a send queued behind it when the process died (accepted, never started) still gets its terminal and banner', async () => {
+      const path = databasePath();
+      const threadId = 'thread-queued-behind-provider';
+      const dying = new EventStore(path);
+      dying.appendEvent(sessionStartedEvent({ threadId, provider: 'claude' }));
+      // The send: the engine accepted it (its boundary is `accepted`) but it
+      // was queued, so its `turn.started` was never published.
+      const claimed = dying
+        .sessionTurnBoundaryAuthority()
+        .claim(threadId, '2026-08-16T00:00:00.500Z');
+      if (claimed.kind !== 'owner') throw new Error('expected boundary owner');
+      claimed.claim.beginInvocation('2026-08-16T00:00:00.600Z');
+      claimed.claim.accepted('queued-send', '2026-08-16T00:00:00.700Z');
+      // The engine's own turn, running ahead of it.
+      (serviceOn(dying) as any).projectAndPublishEvent(providerStart(threadId));
+      dying.close();
+
+      const eventStore = new EventStore(path);
+      stores.push(eventStore);
+      await (serviceOn(eventStore) as any).interruptedTurns.consume();
+      const aborts = eventStore
+        .listEvents(threadId)
+        .filter((event) => event.payload.method === 'turn.aborted')
+        .map((event) => event.payload.turnId);
+      expect(aborts.sort()).toEqual(['provider:turn-1', 'queued-send']);
+      expect(
+        eventStore
+          .listEvents(threadId)
+          .filter((event) => event.payload.method === 'session.state-changed'),
+      ).toHaveLength(2);
+      expect(
+        eventStore.sessionTurnBoundaryAuthority().hasPossibleEffect(threadId),
+      ).toEqual({ kind: 'available', active: false });
+    });
+
+    test('a crash before its start was persisted leaves nothing to close: the row resolves silently', async () => {
+      const path = databasePath();
+      const threadId = 'thread-provider-no-start';
+      const dying = new EventStore(path);
+      dying.appendEvent(sessionStartedEvent({ threadId, provider: 'claude' }));
+      // A finished user turn precedes it, so "latest turn start" exists.
+      dying.appendEvent({
+        eventId: `user-start:${threadId}`,
+        provider: 'claude',
+        threadId,
+        turnId: 'user-turn',
+        createdAt: '2026-08-16T00:00:00.500Z',
+        method: 'turn.started',
+        prompt: 'earlier',
+      });
+      expect(
+        dying
+          .sessionTurnBoundaryAuthority()
+          .recordProviderTurn(
+            threadId,
+            'provider:turn-1',
+            '2026-08-16T00:00:01.000Z',
+          ),
+      ).toEqual({ kind: 'applied' });
+      dying.close();
+
+      const eventStore = new EventStore(path);
+      stores.push(eventStore);
+      await (serviceOn(eventStore) as any).interruptedTurns.consume();
+      const methods = eventStore
+        .listEvents(threadId)
+        .map((e) => e.payload.method);
+      expect(methods).not.toContain('turn.aborted');
+      expect(methods).not.toContain('session.state-changed');
+      expect(
+        eventStore.sessionTurnBoundaryAuthority().hasPossibleEffect(threadId),
+      ).toEqual({ kind: 'available', active: false });
+    });
+
+    test('its own terminal retires the row: a completed provider turn leaves nothing for boot', async () => {
+      const path = databasePath();
+      const threadId = 'thread-provider-done';
+      const eventStore = new EventStore(path);
+      stores.push(eventStore);
+      eventStore.appendEvent(
+        sessionStartedEvent({ threadId, provider: 'claude' }),
+      );
+      const service = serviceOn(eventStore) as any;
+      service.projectAndPublishEvent(providerStart(threadId));
+      service.projectAndPublishEvent({
+        eventId: `provider-done:${threadId}`,
+        provider: 'claude',
+        threadId,
+        turnId: 'provider:turn-1',
+        createdAt: '2026-08-16T00:00:02.000Z',
+        method: 'turn.completed',
+        finishReason: 'stop',
+        metadata: { trigger: 'provider' },
+      });
+      expect(
+        eventStore.sessionTurnBoundaryAuthority().hasPossibleEffect(threadId),
+      ).toEqual({ kind: 'available', active: false });
+    });
+  });
+
+  test('#2309: the restarted process reads the dead turn open until consume() closes it, then closed', async () => {
+    const path = databasePath();
+    const eventStore = bootAfterCrash({
+      path,
+      threadId: 'thread-activity',
+      provider: 'acp',
+      agentSlug: 'demo-agent',
+      boundaryState: 'accepted',
+    });
+    stores.push(eventStore);
+    eventStore.upsertSession({
+      provider: 'acp',
+      threadId: 'thread-activity',
+      status: 'running',
+      createdAt: '2026-08-16T00:00:00.000Z',
+      updatedAt: '2026-08-16T00:00:02.000Z',
+    });
+    const service = new OrchestrationService({
+      adapterRegistry: createRegistry(),
+      eventBus: new EventBus(),
+      eventStore,
+      logger,
+      memoryAdapters: new Map([
+        [
+          'demo-agent',
+          fakeMemoryAdapter({ conventionalUserId: 'agent:demo-agent' }),
+        ],
+      ]),
+    });
+    const activity = () =>
+      (
+        service as unknown as {
+          conversationActivity: {
+            readForThread(threadId: string): { openTurn?: { turnId: string } };
+          };
+        }
+      ).conversationActivity.readForThread('thread-activity');
+
+    // Seeded from durable state in the new process: the crashed turn's
+    // `turn.started` is its last turn fact, so it reads open.
+    expect(activity().openTurn?.turnId).toBe('turn-1');
+    await (service as any).interruptedTurns.consume();
+    // The recovery `turn.aborted` reaches the live fold through the store.
+    expect(activity().openTurn).toBeUndefined();
+  });
+
+  test('station#2235: an invoking boundary (no accepted turn) banners without a turn.aborted', async () => {
+    const path = databasePath();
+    const eventStore = bootAfterCrash({
+      path,
+      threadId: 'thread-no-turn',
+      provider: 'acp',
+      agentSlug: 'demo-agent',
+      boundaryState: 'invoking',
+    });
+    stores.push(eventStore);
+    eventStore.upsertSession({
+      provider: 'acp',
+      threadId: 'thread-no-turn',
+      status: 'running',
+      createdAt: '2026-08-16T00:00:00.000Z',
+      updatedAt: '2026-08-16T00:00:02.000Z',
+    });
+
+    const adapter = fakeMemoryAdapter({
+      conventionalUserId: 'agent:demo-agent',
+    });
+    const service = new OrchestrationService({
+      adapterRegistry: createRegistry(),
+      eventBus: new EventBus(),
+      eventStore,
+      logger,
+      memoryAdapters: new Map([['demo-agent', adapter]]),
+    });
+
+    await (service as any).interruptedTurns.consume();
+
+    const events = eventStore.listEvents('thread-no-turn');
+    // No turn was ever accepted, so there is nothing to close — and minting
+    // a turn.aborted for a turn that never opened would be the same label
+    // class this change removes.
+    expect(events.some((e) => e.payload.method === 'turn.aborted')).toBe(false);
+    expect(
+      events.some((e) => e.payload.method === 'session.state-changed'),
+    ).toBe(true);
+  });
+
+  test('station#2235: a declined abort publish (quarantined thread) retains the boundary row and writes neither event', async () => {
+    const path = databasePath();
+    const eventStore = bootAfterCrash({
+      path,
+      threadId: 'thread-quarantined-abort',
+      provider: 'station-agent',
+      agentSlug: 'demo-agent',
+      boundaryState: 'accepted',
+    });
+    stores.push(eventStore);
+    eventStore.upsertSession({
+      provider: 'station-agent',
+      threadId: 'thread-quarantined-abort',
+      status: 'running',
+      createdAt: '2026-08-16T00:00:00.000Z',
+      updatedAt: '2026-08-16T00:00:02.000Z',
+    });
+
+    const adapter = fakeMemoryAdapter({
+      conventionalUserId: 'agent:demo-agent',
+    });
+    const service = new OrchestrationService({
+      adapterRegistry: createRegistry(),
+      eventBus: new EventBus(),
+      eventStore,
+      logger,
+      memoryAdapters: new Map([['demo-agent', adapter]]),
+    });
+    // Same decline mechanism as the M4 banner test: publishCanonicalEvent
+    // refuses any non-session.exited event on a quarantined thread. The
+    // abort is attempted FIRST, so its decline must stop the banner too —
+    // a banner without its abort would reintroduce the stuck turn.
+    (service as any).quarantinedThreads.add('thread-quarantined-abort');
+
+    await (service as any).interruptedTurns.consume();
+
+    const events = eventStore.listEvents('thread-quarantined-abort');
+    expect(events.some((e) => e.payload.method === 'turn.aborted')).toBe(false);
+    expect(
+      events.some((e) => e.payload.method === 'session.state-changed'),
+    ).toBe(false);
+
+    const rebooted = new EventStore(path);
+    stores.push(rebooted);
+    expect(rebooted.takeInterruptedTurnBoundaries()).not.toEqual([]);
+  });
+
+  test('station#2235 (review MEDIUM 1): a boundary the thread moved past resolves silently with no recovery events', async () => {
+    const path = databasePath();
+    const eventStore = bootAfterCrash({
+      path,
+      threadId: 'thread-moved-on',
+      provider: 'acp',
+      agentSlug: 'demo-agent',
+      boundaryState: 'accepted',
+    });
+    stores.push(eventStore);
+    eventStore.upsertSession({
+      provider: 'acp',
+      threadId: 'thread-moved-on',
+      status: 'running',
+      createdAt: '2026-08-16T00:00:00.000Z',
+      updatedAt: '2026-08-16T00:00:02.000Z',
+    });
+    // The user kept going after the crash: a newer turn opened well after
+    // the boundary claim (claim lands ~00:00:02.5 in bootAfterCrash).
+    eventStore.appendEvent({
+      eventId: 'turn-started:turn-2',
+      provider: 'acp',
+      threadId: 'thread-moved-on',
+      turnId: 'turn-2',
+      createdAt: '2026-08-16T00:01:00.000Z',
+      method: 'turn.started',
+      prompt: 'a fresh start after the crash',
+    } as CanonicalRuntimeEvent);
+
+    const adapter = fakeMemoryAdapter({
+      conventionalUserId: 'agent:demo-agent',
+    });
+    const service = new OrchestrationService({
+      adapterRegistry: createRegistry(),
+      eventBus: new EventBus(),
+      eventStore,
+      logger,
+      memoryAdapters: new Map([['demo-agent', adapter]]),
+    });
+
+    await (service as any).interruptedTurns.consume();
+
+    // Neither recovery event: the abort would be anchor-rejected by every
+    // fold, but the banner would force needs_input over the live turn.
+    const events = eventStore.listEvents('thread-moved-on');
+    expect(events.some((e) => e.payload.method === 'turn.aborted')).toBe(false);
+    expect(
+      events.some((e) => e.payload.method === 'session.state-changed'),
+    ).toBe(false);
+    expect(adapter.addMessage).not.toHaveBeenCalled();
+
+    // And the stale row is gone — the next boot has nothing to redo.
+    const rebooted = new EventStore(path);
+    stores.push(rebooted);
+    expect(rebooted.takeInterruptedTurnBoundaries()).toEqual([]);
+  });
+
+  test('station#2235: a second consume never duplicates the abort — exactly one turn.aborted survives a reboot', async () => {
+    const path = databasePath();
+    const eventStore = bootAfterCrash({
+      path,
+      threadId: 'thread-abort-once',
+      provider: 'acp',
+      agentSlug: 'demo-agent',
+      boundaryState: 'accepted',
+    });
+    stores.push(eventStore);
+    eventStore.upsertSession({
+      provider: 'acp',
+      threadId: 'thread-abort-once',
+      status: 'running',
+      createdAt: '2026-08-16T00:00:00.000Z',
+      updatedAt: '2026-08-16T00:00:02.000Z',
+    });
+
+    const adapter = fakeMemoryAdapter({
+      conventionalUserId: 'agent:demo-agent',
+    });
+    const service = new OrchestrationService({
+      adapterRegistry: createRegistry(),
+      eventBus: new EventBus(),
+      eventStore,
+      logger,
+      memoryAdapters: new Map([['demo-agent', adapter]]),
+    });
+
+    await (service as any).interruptedTurns.consume();
+
+    const rebooted = new EventStore(path);
+    stores.push(rebooted);
+    const rebootedService = new OrchestrationService({
+      adapterRegistry: createRegistry(),
+      eventBus: new EventBus(),
+      eventStore: rebooted,
+      logger,
+      memoryAdapters: new Map([['demo-agent', adapter]]),
+    });
+    await (rebootedService as any).interruptedTurns.consume();
+
+    const aborts = rebooted
+      .listEvents('thread-abort-once')
+      .filter((e) => e.payload.method === 'turn.aborted');
+    expect(aborts).toHaveLength(1);
   });
 });

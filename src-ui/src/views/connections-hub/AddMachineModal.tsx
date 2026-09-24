@@ -1,14 +1,17 @@
 /**
  * archive#1134 — one "Add a computer" entry point that asks the GOAL
- * first, then routes into the flow that serves it. Three branches, because
- * three mechanisms exist and the audit found all three reachable by
- * differently-shaped affordances within 300px of each other (CI-R9):
- *   - "control this Station" -> device pairing, via `ConnectionManagerModal`'s
- *     already-shipped `pair-host` panel (create an offer, approve requests,
- *     manage paired devices — `HostDevicePairingPanel` in
- *     `@kontourai/station-connect`). Nothing about that flow changes here;
- *     this is a new call site only, mirroring the existing
- *     `GuidedConnect`/`OnboardingGate` wiring.
+ * first, then routes into the flow that serves it. Three mechanisms exist
+ * and the audit found all three reachable by differently-shaped affordances
+ * within 300px of each other (CI-R9):
+ *   - "control this Station" -> device pairing, via the STABLE recovery
+ *     shell's `ConnectionManagerModal` at its `pair-host` panel (create an
+ *     offer, approve requests, manage paired devices — `HostDevicePairingPanel`
+ *     in `@kontourai/station-connect`). This chooser lives in the
+ *     replaceable protected tree, so it must NOT mount its own modal
+ *     instance here: an authority activation transition (adding the very
+ *     Station being paired, a credential change) would unmount the open
+ *     access-request flow mid-exchange. It fires `openConnectionsModal`
+ *     and closes; the recovery shell owns the one modal state machine.
  *   - "reach another Station" -> `StationAddressDialog`, which absorbs the
  *     sibling inline "Add Station" form this replaced.
  *   - "run work over SSH" -> `SshComputerCreatorDialog` (D7), which replaced
@@ -23,19 +26,16 @@
  * trust / unlock model this copy encodes.
  */
 
-import { ConnectionManagerModal } from '@kontourai/station-connect';
-import { authenticatedFetch } from '@kontourai/station-sdk';
 import { useState } from 'react';
 import { Dialog } from '../../components/Dialog';
-import { checkHostCompatibility } from '../../lib/compatibilityLoader';
-import './AddMachineModal.css';
-import { checkServerHealthDetailed } from '../../lib/serverHealth';
-import { triggerHaptic } from '../../platform/native/haptics';
+import { openConnectionsModal } from '../../lib/connectionModalEvents';
 import { usePlatformProfile } from '../../platform/PlatformProfileContext';
+import './AddMachineModal.css';
+import { RelayRouteProfileDialog } from './RelayRouteProfileDialog';
 import { SshComputerCreatorDialog } from './SshComputerCreatorDialog';
 import { StationAddressDialog } from './StationAddressDialog';
 
-export type AddMachineGoal = 'control' | 'station' | 'delegate';
+export type AddMachineGoal = 'control' | 'station' | 'delegate' | 'relay';
 
 interface AddMachineGoalOption {
   goal: AddMachineGoal;
@@ -91,42 +91,36 @@ export function AddMachineModal({
   returnFocusTarget,
 }: AddMachineModalProps) {
   const [goal, setGoal] = useState<AddMachineGoal | null>(null);
-  const profile = usePlatformProfile();
+  const { isTauri } = usePlatformProfile();
 
   function close() {
     setGoal(null);
     onClose();
   }
 
-  if (!isOpen) return null;
-
-  if (goal === 'control') {
-    return (
-      <ConnectionManagerModal
-        isOpen
-        onClose={close}
-        checkHealth={checkServerHealthDetailed}
-        checkCompatibility={checkHostCompatibility}
-        pairingClientChannel={
-          profile.channel === 'dev' ? 'stable' : profile.channel
-        }
-        initialPanel="pair-host"
-        originIsStation={!profile.isTauri}
-        hostAppName={
-          profile.isTauri ? profile.productName || 'Station' : undefined
-        }
-        allowManualCredentials={!profile.isDesktop}
-        authenticatedRequest={
-          profile.isDesktop ? authenticatedFetch : undefined
-        }
-        returnFocusTarget={returnFocusTarget}
-        onPairingSucceeded={() => triggerHaptic('success')}
-      />
-    );
+  /**
+   * The control goal hands off to the stable recovery shell instead of
+   * mounting a modal here — see the module docblock. Firing the event
+   * before closing keeps exactly one modal on screen: the chooser is gone
+   * by the time the shell's modal opens.
+   */
+  function chooseGoal(option: AddMachineGoal) {
+    if (option === 'control') {
+      openConnectionsModal({ mode: 'pair-host' });
+      close();
+      return;
+    }
+    setGoal(option);
   }
+
+  if (!isOpen) return null;
 
   if (goal === 'station') {
     return <StationAddressDialog onClose={close} />;
+  }
+
+  if (goal === 'relay') {
+    return <RelayRouteProfileDialog onClose={close} />;
   }
 
   if (goal === 'delegate') {
@@ -153,7 +147,7 @@ export function AddMachineModal({
               key={option.goal}
               type="button"
               className="add-machine-modal__option"
-              onClick={() => setGoal(option.goal)}
+              onClick={() => chooseGoal(option.goal)}
             >
               <span className="add-machine-modal__option-title">
                 {option.title}
@@ -166,6 +160,25 @@ export function AddMachineModal({
               </span>
             </button>
           ))}
+          {isTauri && (
+            <button
+              type="button"
+              className="add-machine-modal__option"
+              onClick={() => chooseGoal('relay')}
+            >
+              <span className="add-machine-modal__option-title">
+                Save an encrypted broker route
+              </span>
+              <span className="add-machine-modal__option-detail">
+                Save where the Station is reached and which separately trusted
+                Station identity it must use.
+              </span>
+              <span className="add-machine-modal__option-unlocks">
+                The route stays unconnected until its transport and account
+                setup are available.
+              </span>
+            </button>
+          )}
         </div>
         <a
           className="add-machine-modal__learn-more tap-target"

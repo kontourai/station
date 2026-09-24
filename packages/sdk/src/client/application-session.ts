@@ -6,6 +6,7 @@ import {
   APPLICATION_SESSION_VERSION,
   type ApplicationSessionChallenge,
   type ApplicationSessionContinuation,
+  type ApplicationSessionCookieAdoption,
   type ApplicationSessionPublicKey,
 } from '@kontourai/station-contracts/application-session';
 import {
@@ -73,6 +74,15 @@ const continuationSchema = z
     keyThumbprint: opaque,
     nonce: opaque,
     expiresAt: z.string().datetime(),
+  })
+  .strict();
+const cookieAdoptionSchema = z
+  .object({
+    version: z.literal(APPLICATION_SESSION_VERSION),
+    aliasCredential: opaque,
+    aliasId: z.string().uuid(),
+    aliasExpiresAt: z.string().datetime(),
+    continuation: continuationSchema,
   })
   .strict();
 const base64url = (bytes: Uint8Array) =>
@@ -145,7 +155,7 @@ export async function createApplicationSessionProof(
     'nonce' | 'stationId' | 'requestOrigin'
   >,
   request: { method: string; url: string },
-  purpose: 'request' | 'exchange' | 'login',
+  purpose: 'request' | 'exchange' | 'login' | 'adopt-cookie',
   credential?: string,
 ): Promise<string> {
   const target = new URL(request.url);
@@ -186,6 +196,7 @@ async function read(response: Response): Promise<unknown> {
 }
 /** The caller supplies the actual client Origin and the existing scoped Device transport. */
 export class ApplicationSessionClient {
+  private readonly browserKeyNonExtractable: boolean;
   constructor(
     private readonly apiBase: string,
     private readonly stationId: string,
@@ -193,6 +204,15 @@ export class ApplicationSessionClient {
     private readonly options: ClientRequestOptions,
     readonly key: ApplicationSessionSigner,
   ) {
+    const privateKey = (key as Partial<ApplicationSessionKey>).privateKey;
+    this.browserKeyNonExtractable = Boolean(
+      privateKey &&
+        privateKey.extractable === false &&
+        privateKey.algorithm.name === 'ECDSA' &&
+        'namedCurve' in privateKey.algorithm &&
+        privateKey.algorithm.namedCurve === 'P-256' &&
+        privateKey.usages.includes('sign'),
+    );
     this.options = {
       ...options,
       ...(options.headers ? { headers: { ...options.headers } } : {}),
@@ -210,6 +230,7 @@ export class ApplicationSessionClient {
       .object({
         version: z.literal(APPLICATION_SESSION_VERSION),
         cookieExchange: z.boolean(),
+        cookieAdoption: z.boolean(),
         virtualLogin: z.boolean(),
         proofAlgorithm: z.literal('ES256'),
         stationId: z.literal(this.stationId),
@@ -279,6 +300,119 @@ export class ApplicationSessionClient {
         ...(input ? { credentials: input } : {}),
       }),
     );
+  }
+  /** Adopt same-origin HttpOnly Station and provider cookies without reading or forwarding either cookie value. */
+  async adoptCookies(): Promise<ApplicationSessionCookieAdoption> {
+    const target = new URL(this.apiBase);
+    if (
+      !this.browserKeyNonExtractable ||
+      target.protocol !== 'https:' ||
+      target.username ||
+      target.password ||
+      target.search ||
+      target.hash ||
+      target.origin !== this.clientOrigin ||
+      new URL(this.clientOrigin).origin !== this.clientOrigin
+    )
+      throw new Error(
+        'Cookie adoption requires a same-origin HTTPS Station and a non-extractable P-256 browser key.',
+      );
+    const challenge = challengeSchema.parse(
+      await this.cookiePost('/adopt-cookie/challenge', {
+        publicKey: this.key.publicKey,
+      }),
+    );
+    if (
+      challenge.stationId !== this.stationId ||
+      challenge.requestOrigin !== target.origin
+    )
+      throw new Error('Cookie adoption challenge belongs to another Station.');
+    const path = '/adopt-cookie/complete';
+    const proof = await createApplicationSessionProof(
+      this.key,
+      challenge,
+      {
+        method: 'POST',
+        url: `${this.apiBase}${APPLICATION_SESSION_BASE_PATH}${path}`,
+      },
+      'adopt-cookie',
+    );
+    const result = cookieAdoptionSchema.parse(
+      await this.cookiePost(path, {
+        challengeId: challenge.challengeId,
+        proof,
+      }),
+    );
+    this.continuation(result.continuation);
+    if (result.version !== APPLICATION_SESSION_VERSION)
+      throw new Error('Cookie adoption result belongs to another Station.');
+    return result;
+  }
+  /** Revoke this relay alias while retaining the provider's account session. */
+  async revokeAlias(
+    aliasCredential: string,
+    continuation: ApplicationSessionContinuation,
+  ): Promise<void> {
+    const target = new URL(this.apiBase);
+    if (
+      target.protocol !== 'https:' ||
+      target.username ||
+      target.password ||
+      target.hash ||
+      target.origin !== this.clientOrigin
+    )
+      throw new Error('Relay alias revocation requires same-origin HTTPS.');
+    const path = '/adopt-cookie/revoke-alias';
+    const headers = await this.headers(continuation, {
+      method: 'POST',
+      url: `${this.apiBase}${APPLICATION_SESSION_BASE_PATH}${path}`,
+    });
+    const body = await this.cookiePost(
+      path,
+      {},
+      {
+        ...headers,
+        Authorization: `Bearer ${opaque.parse(aliasCredential)}`,
+      },
+      'omit',
+    );
+    z.object({ revoked: z.literal(true) })
+      .strict()
+      .parse(body);
+  }
+  private async cookiePost(
+    path: string,
+    body: unknown,
+    headers: Record<string, string> = {},
+    credentials: 'same-origin' | 'omit' = 'same-origin',
+  ): Promise<unknown> {
+    const configuredTimeout = this.options.timeoutMs;
+    const timeoutMs =
+      configuredTimeout === null || configuredTimeout === 0
+        ? undefined
+        : typeof configuredTimeout === 'number' &&
+            Number.isFinite(configuredTimeout) &&
+            configuredTimeout > 0
+          ? configuredTimeout
+          : 15_000;
+    const deadline = timeoutMs ? AbortSignal.timeout(timeoutMs) : undefined;
+    const signal =
+      deadline && this.options.signal
+        ? AbortSignal.any([deadline, this.options.signal])
+        : (deadline ?? this.options.signal);
+    const response = await fetch(
+      `${this.apiBase}${APPLICATION_SESSION_BASE_PATH}${path}`,
+      {
+        method: 'POST',
+        credentials,
+        mode: 'same-origin',
+        redirect: 'error',
+        ...(signal ? { signal } : {}),
+        headers: { 'Content-Type': 'application/json', ...headers },
+        body: JSON.stringify(body),
+      },
+    );
+    return read(response);
   }
   async headers(
     continuation: ApplicationSessionContinuation,

@@ -1,8 +1,10 @@
 import type { AgentId, EngineId } from './agent-identity.js';
 import type { AttentionRequestReference } from './attention.js';
+import type { SessionChildWork } from './child-work.js';
 import type { ClientOrigin } from './client-origin.js';
 import type { ConnectionRecoveryProjection } from './connection-recovery.js';
 import type {
+  ApprovalMode,
   AttachedSessionSourceMetadata,
   ModelLaunchPlan,
   ProviderSendTurnInput,
@@ -81,7 +83,62 @@ export type OrchestrationCommand =
       expectedRequestEventId?: string;
       decision: 'accept' | 'acceptForSession' | 'decline' | 'cancel';
     }
-  | { type: 'stopSession'; threadId: string };
+  | { type: 'stopSession'; threadId: string }
+  | {
+      /**
+       * #2436: record the conversation's approval posture. Ordered by server
+       * receipt; applied at the next session start or turn start, whatever
+       * path sends it. Result: {@link SetApprovalModeResult}.
+       */
+      type: 'setApprovalMode';
+      threadId: string;
+      approvalMode: ApprovalMode;
+      /**
+       * Compare-and-set: the sequence of the latest decision the caller had
+       * seen when the user picked, or `null` when it had seen none. The pick
+       * is recorded only if no newer decision exists for the conversation;
+       * otherwise nothing is recorded and the result names the posture that
+       * stands. Only a pick looser than the standing decision is held to it;
+       * one at least as strict is always recorded. Required: a caller that
+       * has seen no decision says so with `null`.
+       */
+      basedOnSequence: number | null;
+    }
+  /**
+   * #2312: remove a Draft (see `OrchestrationSessionSummary.draft`) for every
+   * device. The Draft fact is conversation-wide, so the whole conversation
+   * goes: every Session in its lineage is torn down and deleted server-side,
+   * and the next session-list read on any client no longer returns them. The
+   * server re-derives the fact for every member under their lifecycle locks
+   * and refuses (`not_a_draft`) if any member is not a Draft — a turn (even
+   * one in flight), content or an attempted send — or if the conversation
+   * gains a Session while the discard runs.
+   */
+  | { type: 'discardDraft'; threadId: string };
+
+/** What a `setApprovalMode` command recorded, and where it sits in order. */
+export interface SetApprovalModeResult {
+  threadId: string;
+  /**
+   * `false` when a newer decision had already been recorded (compare-and-set
+   * lost): the pick was dropped, and `approvalMode`/`sequence` name the
+   * decision that stands.
+   */
+  recorded: boolean;
+  approvalMode: ApprovalMode;
+  /**
+   * The standing decision's server global sequence: the SSE `id` its frame
+   * carries. Clients order posture decisions by it, never by arrival.
+   */
+  sequence: number;
+}
+
+/**
+ * #2436: the stable refusal for recording full access (or saving it as an
+ * Agent's default) without the operator in person or `approval:full-access`.
+ */
+export const APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE =
+  'approval-full-access-not-granted' as const;
 
 /**
  * How long the orchestration service waits for the engine to acknowledge a
@@ -281,6 +338,17 @@ export interface OrchestrationDelegationContext {
   title?: string;
   mode?: string;
 }
+
+/**
+ * Server-issued provenance for the input that created or currently drives a
+ * conversation. Absent means Station cannot prove a supported origin.
+ * Client UI source hints and reported device surfaces never populate this.
+ */
+export type OrchestrationInputOrigin = {
+  kind: 'delegation';
+  taskId: string;
+  title?: string;
+};
 
 /**
  * WHICH arm decided a session's open requests cannot be answered here, kept
@@ -519,6 +587,119 @@ export interface TurnProgressObservation {
 }
 
 /**
+ * #2309: the server's one projection of what a conversation is doing right
+ * now, folded from committed canonical events across every execution child
+ * of the conversation. Clients render this instead of re-deriving liveness
+ * from the event stream; a content delta on its own never implies an open
+ * turn.
+ *
+ * `openTurn` is the SAME fold `hasActiveTurn` uses (the shared open-turn step
+ * in `session-lifecycle-service.ts`), so the two cannot disagree for a
+ * thread. Background engine work outside an open turn (a backgrounded
+ * subagent's progress, approvals between turns) never opens a turn here; it
+ * shows only as `lastActivityAt`/`lastTool`.
+ */
+export interface ConversationTurnActivity {
+  conversationId: string;
+  /**
+   * The `global_sequence` of the newest committed event folded into this
+   * value. Several carriers deliver it (snapshot rows, stream frames, list
+   * items, open resolutions); a client keeps the value with the highest
+   * `asOfSequence` and discards older ones.
+   */
+  asOfSequence: number;
+  /**
+   * The open turn of the conversation's CURRENT execution child (the one the
+   * server continues), absent when it has none. An open turn on an earlier,
+   * retired child is never reported here. Continuation, handoff and context
+   * boundaries refuse while a predecessor's turn is active, so on the
+   * product's own paths such a turn is stuck (typically a crash with no
+   * boundary row). Nothing refuses a `sendTurn` addressed directly to a
+   * retired child's thread, though, so an API caller can run a real turn
+   * there that this field will not show.
+   */
+  openTurn?: {
+    turnId: string;
+    /** The execution child (orchestration thread) running the turn. */
+    threadId: string;
+    /** `createdAt` of the turn's first `turn.started`; a steer keeps it. */
+    startedAt: string;
+    /**
+     * #2324: `'provider'` when the engine opened this turn on its own (see
+     * `PROVIDER_TURN_TRIGGER`) — a reply no send asked for. Read from the
+     * turn's first `turn.started`, never inferred. A client must not treat
+     * it as the answer to a send it is still waiting on.
+     */
+    trigger?: 'provider';
+  };
+  /** `createdAt` of the newest committed event on any child. */
+  lastActivityAt?: string;
+  /**
+   * Tool calls started inside the open turn with no terminal yet, oldest
+   * first (the most recently started is last). Absent when the list is
+   * empty. A call still running when its turn closes is dropped, not
+   * settled: its fate is the adapter's to report.
+   */
+  runningTools?: Array<{ name: string; callId: string; startedAt: string }>;
+  /** The newest tool terminal on any child, in or out of a turn. */
+  lastTool?: {
+    name: string;
+    callId: string;
+    outcome: 'success' | 'error' | 'cancelled' | 'unresolved';
+    completedAt: string;
+  };
+  /**
+   * The turn-stall watchdog's own silence marker for `openTurn`, passed
+   * through unchanged. Present only while the watchdog holds it for that
+   * exact turn; never re-derived from `lastActivityAt`.
+   */
+  progressSilence?: TurnProgressSilence;
+}
+
+/**
+ * #2269: the finite per-TURN supervision an adapter declared for one turn
+ * (never an aggregate budget across later continuations or new turns).
+ *
+ * Distinct windows: `totalLimitMs` is an absolute wall-clock ceiling from
+ * `startedAt` that no activity or approval can move; `idleLimitMs` fires
+ * after a full window with no verified protocol activity measured from the
+ * last verified activity (turn start initially), NOT from `startedAt`.
+ * Each bound appears only when one was declared for the turn, because only
+ * then does anything enforce it: `deadlineAt`/`totalLimitMs` together for a
+ * total budget, `idleLimitMs` for an idle bound. Muse declares neither by
+ * default (#2269), so its declaration usually carries no bound at all,
+ * which means exactly that: Station will not end this turn on a schedule of
+ * its own. A provider with no supervision publishes no declaration at all
+ * (honest unknown, never a deadline derived from RPC/discovery timeouts or
+ * request metadata).
+ *
+ * Producer rule: only the adapter that owns the child process may publish
+ * these facts (on its own `turn.started` metadata), and only the delegation
+ * projection may forward them. Request/child/user metadata is never a
+ * source — it is untrusted input, not a budget override.
+ */
+export interface TurnSupervisionFacts {
+  provider: ProviderSession['provider'];
+  turnId: string;
+  startedAt: string;
+  /** Absolute wall-clock deadline (ISO timestamp); only with a declared total. */
+  deadlineAt?: string;
+  /**
+   * Idle window, only when one was declared: full silence of verified
+   * protocol activity this long ends the turn. Declared at turn start; the
+   * owning adapter may suspend it for known in-progress work. Muse suspends
+   * it while a tool is in flight and for the whole time a turn is held open
+   * for background work (#2300); a held turn has no idle or post-terminal
+   * bound and runs until muse finishes it or someone stops it, whatever this
+   * value says. Absent: no idle bound; a silent turn is surfaced as silence
+   * (`TurnProgressObservation.progressSilence`), not ended.
+   */
+  idleLimitMs?: number;
+  /** Declared absolute turn budget in milliseconds; never rescheduled by activity. */
+  totalLimitMs?: number;
+}
+
+/**
  * A compact, server-derived explanation for a session's CURRENT non-clean
  * ending. It is intentionally not a transcript excerpt: `detail`, when
  * present, is already one bounded, human-shaped line suitable for an inbox.
@@ -534,7 +715,18 @@ export interface TerminalAttribution {
     | 'runtime_error'
     | 'timeout'
     | 'no_output'
-    | 'exit';
+    | 'exit'
+    /**
+     * #2310 review M1/F2: the conversation's only sends did not take and no
+     * activity has been recorded since. Derived from `sendTurn` command
+     * receipts, since a send that does not take publishes no runtime event.
+     * `send_refused`: Station refused a send before it started (an
+     * execution-phase refusal; authorization refusals never count).
+     * `send_failed`: a send failed without that certainty — it may have
+     * reached the provider — and nothing has been recorded since.
+     */
+    | 'send_refused'
+    | 'send_failed';
   detail?: string;
 }
 
@@ -570,6 +762,12 @@ export interface OrchestrationSessionSummary extends ProviderSession {
   lastEventMethod?: CanonicalRuntimeEvent['method'];
   /** Present only while this process is watching this session's active turn. */
   turnProgress?: TurnProgressObservation;
+  /**
+   * #2309: the activity of the conversation this session belongs to (every
+   * execution child, not just this one). Absent on servers without the
+   * projection and for sessions with no conversation lineage.
+   */
+  conversationActivity?: ConversationTurnActivity;
   lifecycleState?: SessionLifecycleState;
   previousLifecycleState?: SessionLifecycleState;
   transitionReason?: SessionTransitionReason;
@@ -629,6 +827,15 @@ export interface OrchestrationSessionSummary extends ProviderSession {
   displayTitle?: string;
   delegation?: OrchestrationDelegationContext;
   /**
+   * #2456: this session's child work — `children` (what its engine reports
+   * running under it; process-local like `turnProgress`, absent when nothing
+   * was observed) and `asChild` (a Station delegate as its parent's child).
+   * See `SessionChildWork`.
+   */
+  childWork?: SessionChildWork;
+  /** Closed, server-derived input provenance; unknown origins stay absent. */
+  inputOrigin?: OrchestrationInputOrigin;
+  /**
    * Latest model Station itself requested/configured, from
    * session.configured/turn.started metadata. archive#1182: despite the
    * historical "provider-confirmed" framing, this is a requested value, not
@@ -666,6 +873,43 @@ export interface OrchestrationSessionSummary extends ProviderSession {
    * silently kill an in-flight External-agent subprocess.
    */
   hasActiveTurn?: boolean;
+  /**
+   * #2310: true when this session is a **Draft** — it exists, but no turn has
+   * started and no send was attempted anywhere in its CONVERSATION's lineage
+   * (the root Session and every continuation/handoff child), and nothing in
+   * that lineage produced turn, content or tool events. A session that
+   * carries history from elsewhere is never a Draft: read-only attached, an
+   * adopted continuation, a Station-dispatched delegation (its prompt exists
+   * by construction), or a fork target (it carries copied messages).
+   *
+   * A send that was attempted and did not take is not a Draft either: with
+   * no activity recorded since, that session carries
+   * `terminalAttribution.kind` `send_refused` or `send_failed` with the same
+   * reason in `blockedReason`, and reads Failed through `isFirstSendFailure`
+   * (`@kontourai/station-contracts/session-attention`). `lifecycleState`
+   * is NOT rewritten — it stays the event fold, because control paths
+   * (continuation, manual transitions) read it as runtime truth; a consumer
+   * must not test `lifecycleState === 'failed'` for this case. A send
+   * refused for authorization or ownership (a caller who cannot act on the
+   * session) changes nothing.
+   *
+   * Lineage-aware on purpose: a continuation child minted for the NEXT turn,
+   * or a root whose turns all ran in children, has no activity of its own and
+   * is not a Draft.
+   *
+   * `false` is a derived "not a draft". ABSENT means the reader that built
+   * this summary did not consult the lineage, so no draft claim is made — a
+   * consumer must test `=== true`, never `!== false`.
+   *
+   * Freshness: a client learns that a Draft ended only by re-reading the
+   * summary. The sending device re-reads on its own send; other devices depend
+   * on the event stream refreshing the session read-model while a Chat pane
+   * (docked or full-screen) for that Station is mounted (#2307; superseded by
+   * #2309 Phase B).
+   *
+   * Unrelated to composer draft text (unsent input kept per device).
+   */
+  draft?: boolean;
 }
 
 export interface OrchestrationSessionDetail {
@@ -721,6 +965,18 @@ export interface OrchestrationSessionEventPage {
 export interface OrchestrationConversationStreamBinding {
   conversationId: string;
   currentSessionId: string;
+  /**
+   * #2309: the conversation's activity AS OF DELIVERY — the fold's current
+   * value when the frame is written, not a snapshot taken at this frame's
+   * own commit, so a replayed or buffered frame can carry a newer value than
+   * its event. Present on turn/tool/terminal and session start frames and,
+   * at most once per second per execution child, on other frames (content
+   * deltas, tool progress). That coalescing keeps the first frame of each
+   * window and drops the trailing edge, so `lastActivityAt` delivered here
+   * can lag the newest committed event by up to a second until the next
+   * activity-bearing frame. Keep the value with the highest `asOfSequence`.
+   */
+  activity?: ConversationTurnActivity;
 }
 
 /** Versioned bounded hydration contract for one orchestration session. */
@@ -981,12 +1237,26 @@ export interface ConversationListItem {
   environmentId?: string;
   /** Version of this conversation that the current user has opened. */
   acknowledgedAt?: string;
+  /**
+   * Whether the conversation has an open turn. When `activity` is present
+   * this is exactly `activity.openTurn !== undefined`.
+   */
   hasActiveTurn?: boolean;
+  /** #2309: the conversation's activity; absent from older servers. */
+  activity?: ConversationTurnActivity;
   /** Immutable fork facts folded by the conversation read model. */
   forkProvenance?: {
     forkedFrom?: ConversationForkProvenance;
     forkedTo: ConversationForkProvenance[];
   };
+  /**
+   * Server-derived admission for exposing this row's metadata in another
+   * conversation. Hosted/shared deployments remain refused until their
+   * destination visibility contract can prove the exposure is permitted.
+   */
+  referenceEligibility?:
+    | { eligible: true; visibility: 'personal-private' }
+    | { eligible: false; reason: 'destination-visibility-unavailable' };
 }
 
 /**
@@ -1021,6 +1291,11 @@ export type ConversationOpenResolution =
       canContinue: boolean;
       /** Continuation is temporarily blocked only by the current active turn. */
       continuationPending?: boolean;
+      /**
+       * #2309: the conversation's activity read with this resolution — fresher
+       * than any copy on the `conversation` row the caller supplied.
+       */
+      activity?: ConversationTurnActivity;
       answerability: RequestAnswerability;
       recoveryActions: readonly [];
     }

@@ -1,4 +1,14 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import type {
+  KnowledgeDocumentMeta,
+  KnowledgeNamespaceConfig,
+  KnowledgeTreeNode,
+} from '@kontourai/station-contracts/knowledge';
+import {
+  type QueryClient,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
 import {
   _getApiBase,
   bulkDeleteKnowledgeDocs,
@@ -46,19 +56,40 @@ export type GitStatusResult =
       repoRoot?: string;
     };
 
+/**
+ * Where a git read acts (#2412): the Project and the folder inside it. The
+ * server refuses a folder outside the named Project, so a read without both
+ * does not run.
+ */
+export interface GitReadLocation {
+  projectSlug: string;
+  /** The folder as the client names it; the server expands and confines it. */
+  workingDir: string;
+}
+
+function gitReadQuery(location: GitReadLocation): string {
+  return `projectSlug=${encodeURIComponent(location.projectSlug)}&path=${encodeURIComponent(location.workingDir)}`;
+}
+
+function isGitReadLocation(
+  location: GitReadLocation | null | undefined,
+): location is GitReadLocation {
+  return !!location?.projectSlug && !!location.workingDir;
+}
+
 export function useGitStatusQuery(
-  workingDirectory: string | null | undefined,
+  location: GitReadLocation | null | undefined,
   config?: QueryConfig<any>,
 ) {
   return useApiQuery<GitStatusResult | null>(
-    ['git-status', workingDirectory ?? ''],
+    ['git-status', location?.workingDir ?? ''],
     async () => {
-      if (!workingDirectory) {
+      if (!isGitReadLocation(location)) {
         return null;
       }
       const apiBase = await _getApiBase();
       const response = await authenticatedFetch(
-        `${apiBase}/api/coding/git/status?path=${encodeURIComponent(workingDirectory)}`,
+        `${apiBase}/api/coding/git/status?${gitReadQuery(location)}`,
       );
       const result = await response.json();
       if (!result.success) {
@@ -68,14 +99,14 @@ export function useGitStatusQuery(
     },
     {
       ...config,
-      enabled: !!workingDirectory && (config?.enabled ?? true),
+      enabled: isGitReadLocation(location) && (config?.enabled ?? true),
       staleTime: config?.staleTime ?? 10_000,
     },
   );
 }
 
 export function useGitLogQuery(
-  workingDirectory: string | null | undefined,
+  location: GitReadLocation | null | undefined,
   count = 5,
   config?: QueryConfig<any>,
 ) {
@@ -87,14 +118,14 @@ export function useGitLogQuery(
       message: string;
     }>
   >(
-    ['git-log', workingDirectory ?? '', count],
+    ['git-log', location?.workingDir ?? '', count],
     async () => {
-      if (!workingDirectory) {
+      if (!isGitReadLocation(location)) {
         return [];
       }
       const apiBase = await _getApiBase();
       const response = await authenticatedFetch(
-        `${apiBase}/api/coding/git/log?path=${encodeURIComponent(workingDirectory)}&count=${count}`,
+        `${apiBase}/api/coding/git/log?${gitReadQuery(location)}&count=${count}`,
       );
       const result = await response.json();
       if (!result.success) {
@@ -104,7 +135,7 @@ export function useGitLogQuery(
     },
     {
       ...config,
-      enabled: !!workingDirectory && (config?.enabled ?? true),
+      enabled: isGitReadLocation(location) && (config?.enabled ?? true),
       staleTime: config?.staleTime ?? 30_000,
     },
   );
@@ -112,7 +143,7 @@ export function useGitLogQuery(
 
 export function useKnowledgeNamespacesQuery(
   projectSlug: string,
-  config?: QueryConfig<any>,
+  config?: QueryConfig<KnowledgeNamespaceConfig[]>,
 ) {
   return useQuery({
     ...knowledgeQueries.namespaces(projectSlug),
@@ -124,7 +155,7 @@ export function useKnowledgeNamespacesQuery(
 export function useKnowledgeDocsQuery(
   projectSlug: string,
   namespace?: string,
-  config?: QueryConfig<any>,
+  config?: QueryConfig<KnowledgeDocumentMeta[]>,
 ) {
   return useQuery({
     ...knowledgeQueries.list(projectSlug, namespace),
@@ -146,6 +177,46 @@ export function useKnowledgeSearchQuery(
   });
 }
 
+/**
+ * Every knowledge-document write refreshes the same listings: the document
+ * list, the namespace tree and filtered listings. A write that refreshed only
+ * the list left a created note out of the tree and a deleted one in it
+ * (#2343). What a write does to a document's cached BODY differs by write,
+ * and each mutation says so itself.
+ */
+function refreshKnowledgeListings(
+  queryClient: QueryClient,
+  projectSlug: string,
+): void {
+  for (const view of ['docs', 'tree', 'filtered']) {
+    queryClient.invalidateQueries({
+      queryKey: ['knowledge', view, projectSlug],
+    });
+  }
+}
+
+function knowledgeDocContentKey(projectSlug: string, docId: string) {
+  return ['knowledge', 'doc-content', projectSlug, docId];
+}
+
+/**
+ * A deleted document's body is gone. Drop its cache entry rather than
+ * invalidating it, so no later reader is served the deleted text. A reader
+ * still mounted on that document will fetch once more (and get a 404) on its
+ * next render; callers stop reading a document they delete.
+ */
+function forgetKnowledgeDocBodies(
+  queryClient: QueryClient,
+  projectSlug: string,
+  docIds: readonly string[],
+): void {
+  for (const docId of docIds) {
+    queryClient.removeQueries({
+      queryKey: knowledgeDocContentKey(projectSlug, docId),
+    });
+  }
+}
+
 export function useKnowledgeSaveMutation(
   projectSlug: string,
   namespace?: string,
@@ -161,11 +232,7 @@ export function useKnowledgeSaveMutation(
       content: string;
       metadata?: Record<string, any>;
     }) => uploadKnowledge(projectSlug, filename, content, namespace, metadata),
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ['knowledge', 'docs', projectSlug],
-      });
-    },
+    onSuccess: () => refreshKnowledgeListings(queryClient, projectSlug),
   });
 }
 
@@ -177,10 +244,9 @@ export function useKnowledgeDeleteMutation(
   return useMutation({
     mutationFn: async (docId: string) =>
       deleteKnowledgeDoc(projectSlug, docId, namespace),
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ['knowledge', 'docs', projectSlug],
-      });
+    onSuccess: (_data, docId) => {
+      forgetKnowledgeDocBodies(queryClient, projectSlug, [docId]);
+      refreshKnowledgeListings(queryClient, projectSlug);
     },
   });
 }
@@ -193,10 +259,9 @@ export function useKnowledgeBulkDeleteMutation(
   return useMutation({
     mutationFn: async (ids: string[]) =>
       bulkDeleteKnowledgeDocs(projectSlug, ids, namespace),
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ['knowledge', 'docs', projectSlug],
-      });
+    onSuccess: (_data, ids) => {
+      forgetKnowledgeDocBodies(queryClient, projectSlug, ids);
+      refreshKnowledgeListings(queryClient, projectSlug);
     },
   });
 }
@@ -250,7 +315,7 @@ export function useKnowledgeScanMutation(projectSlug: string) {
 export function useKnowledgeTreeQuery(
   projectSlug: string,
   namespace: string,
-  config?: QueryConfig<any>,
+  config?: QueryConfig<KnowledgeTreeNode>,
 ) {
   return useQuery({
     ...knowledgeQueries.tree(projectSlug, namespace),
@@ -263,7 +328,7 @@ export function useKnowledgeFilteredQuery(
   projectSlug: string,
   namespace: string,
   filters: Record<string, any>,
-  config?: QueryConfig<any>,
+  config?: QueryConfig<KnowledgeDocumentMeta[]>,
 ) {
   return useQuery({
     ...knowledgeQueries.filtered(projectSlug, namespace, filters),
@@ -288,16 +353,15 @@ export function useKnowledgeUpdateMutation(
       metadata?: Record<string, any>;
     }) =>
       updateKnowledgeDoc(projectSlug, docId, { content, metadata }, namespace),
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ['knowledge', 'docs', projectSlug],
-      });
-      queryClient.invalidateQueries({
-        queryKey: ['knowledge', 'tree', projectSlug],
-      });
-      queryClient.invalidateQueries({
-        queryKey: ['knowledge', 'filtered', projectSlug],
-      });
+    onSuccess: (_data, { docId, content }) => {
+      const key = knowledgeDocContentKey(projectSlug, docId);
+      // Seed the body with what was just written before refetching it. A
+      // reader that mounts while the refetch is in flight otherwise gets the
+      // pre-edit body from the cache, and an editor that loads it saves the
+      // next edit over a stale base.
+      if (content !== undefined) queryClient.setQueryData(key, content);
+      queryClient.invalidateQueries({ queryKey: key });
+      refreshKnowledgeListings(queryClient, projectSlug);
     },
   });
 }

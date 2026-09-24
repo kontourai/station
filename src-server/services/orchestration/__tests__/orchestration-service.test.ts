@@ -8,6 +8,7 @@ import {
   readFileSync,
   realpathSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
@@ -18,11 +19,15 @@ import {
   engineConnectionId,
   engineId,
 } from '@kontourai/station-contracts/agent-identity';
+import type { ClientOrigin } from '@kontourai/station-contracts/client-origin';
 import type { OrchestrationCommand } from '@kontourai/station-contracts/orchestration';
 import { PENDING_TURN_INTERRUPT_TTL_MS } from '@kontourai/station-contracts/orchestration';
 import { humanPrincipal } from '@kontourai/station-contracts/principal';
 import type { ProjectTaskRoomGrant } from '@kontourai/station-contracts/project-task-room';
-import { SESSION_CAPABILITY_DELIVERY_METADATA_KEY } from '@kontourai/station-contracts/provider';
+import {
+  PORTABLE_EXECUTION_CONSENT_METADATA_KEY,
+  SESSION_CAPABILITY_DELIVERY_METADATA_KEY,
+} from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import type { SessionReadAuthority } from '@kontourai/station-contracts/tenancy';
 import {
@@ -51,7 +56,12 @@ import type {
   ProviderSessionStartInput,
   ProviderTurnStartResult,
 } from '../../../providers/adapter-shape.js';
-import { ProviderTurnEndedError } from '../../../providers/adapter-shape.js';
+import {
+  ProviderTurnEndedError,
+  ProviderTurnInProgressError,
+  SendTurnRefusedError,
+} from '../../../providers/adapter-shape.js';
+import { MuseTurnSlotReleasingError } from '../../../providers/adapters/muse-adapter.js';
 import { StationAgentAdapter } from '../../../providers/adapters/station-agent-adapter.js';
 import type { IProviderAdapterRegistry } from '../../../providers/provider-interfaces.js';
 import { AsyncEventQueue } from '../../../providers/sessions/async-event-queue.js';
@@ -62,6 +72,10 @@ import {
   INTERNAL_TURN_CORRELATION_HEADER,
   readAuthorizedTurnCorrelationHandoff,
 } from '../../../runtime/conversation/authorized-turn-correlation.js';
+import {
+  createStationControlCallerRecordResolver,
+  stationControlCallerRecordSources,
+} from '../../../runtime/mcp/station-control-caller.js';
 import {
   adapterTurnDuration,
   attachedSessionMutationRejected,
@@ -74,6 +88,7 @@ import {
   orchestrationSteerDispatches,
   orchestrationStoreContentionObserved,
   orchestrationTurnStallDetections,
+  sessionBackgroundTasks,
   sessionOwnerCacheOps,
   tenantExecutionContextOutcomes,
   turnProvenanceProjections,
@@ -96,7 +111,9 @@ import {
   resetServerLogSinkForTests,
 } from '../../infra/server-log-store.js';
 import { NotificationService } from '../../notifications/notification-service.js';
+import { buildSessionFailedItem } from '../../projects/attention-projection.js';
 import { ProjectBindingsStore } from '../../projects/project-binding-store.js';
+import { ReceiverExecutionRefusal } from '../../projects/project-contribution-service.js';
 import { ProjectManifestStore } from '../../projects/project-manifest-store.js';
 import type { CwdShadowSample } from '../../projects/project-resource-shadow.js';
 import { createProjectSessionDirectoryResolver } from '../../projects/project-session-directory.js';
@@ -128,6 +145,7 @@ import {
   wireInternalStopRedispatchFailureNotifications,
   wireTurnCompletionNotifications,
 } from '../turn-completion-notifications.js';
+import { resolveWorkspaceIdentity } from '../workspace-identity.js';
 
 vi.mock('../../../telemetry/metrics.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../../telemetry/metrics.js')>()),
@@ -225,6 +243,7 @@ class FakeAdapter implements ProviderAdapterShape {
         threadId: string,
         requestId: string,
         decision: 'accept' | 'acceptForSession' | 'decline' | 'cancel',
+        context?: { clientOrigin?: ClientOrigin },
       ) => Promise<void>
     >();
   readonly stopSession = vi.fn<(threadId: string) => Promise<void>>();
@@ -312,6 +331,7 @@ class FakeAdapter implements ProviderAdapterShape {
         threadId: input.threadId,
         status: 'ready',
         model: input.modelId,
+        cwd: input.cwd,
         createdAt: now,
         updatedAt: now,
       };
@@ -747,7 +767,11 @@ describe('OrchestrationService', () => {
   let adoptionLedger: AdoptionLedger;
   let flowRunService: FlowRunService;
   let workflowSidecarService: WorkflowSidecarService;
-  let configuredProjects: Array<{ slug: string; workingDirectory?: string }>;
+  let configuredProjects: Array<{
+    slug: string;
+    workingDirectory?: string;
+    id?: string;
+  }>;
   let tmp: string;
 
   beforeEach(() => {
@@ -792,7 +816,493 @@ describe('OrchestrationService', () => {
     });
   });
 
+  // Station #90 lane D (D5/D7): the real start path through the service and
+  // the SQLite event store. The fake adapter publishes `session.started`
+  // with the start input's metadata, as every real adapter does.
+  describe('station-control caller records written at session start', () => {
+    // The fake adapter publishes what real adapters publish: `session.started`
+    // and `session.configured` with the start metadata, then (like Claude's
+    // CLI init, or Codex/Bedrock/Ollama after model application) a later
+    // sparse `session.configured` that carries none of it.
+    function publishStarts() {
+      claude.startSession.mockImplementation(async (input) => {
+        const now = new Date().toISOString();
+        const base = {
+          provider: 'claude' as const,
+          threadId: input.threadId,
+          sessionId: input.threadId,
+          createdAt: now,
+        };
+        claude.events.push({
+          ...base,
+          eventId: `evt-${input.threadId}-started`,
+          method: 'session.started',
+          metadata: input.metadata,
+        } as never);
+        claude.events.push({
+          ...base,
+          eventId: `evt-${input.threadId}-configured`,
+          method: 'session.configured',
+          metadata: input.metadata,
+        } as never);
+        claude.events.push({
+          ...base,
+          eventId: `evt-${input.threadId}-cli-init`,
+          method: 'session.configured',
+          metadata: { permissionMode: 'default', approvalMode: 'ask' },
+        } as never);
+        return {
+          provider: 'claude' as const,
+          threadId: input.threadId,
+          status: 'ready' as const,
+          cwd: input.cwd,
+          createdAt: now,
+          updatedAt: now,
+        };
+      });
+    }
+
+    async function started(
+      threadId: string,
+      metadata: Record<string, unknown>,
+      context: {
+        userId: string;
+        ownerAttribution?: 'unattributed-agent' | 'verified-bound';
+        clientOrigin?: never;
+      } = {
+        userId: 'human:test:alice',
+      },
+    ) {
+      const result = await service.sessionCommands.execute(
+        {
+          type: 'start-session',
+          input: { threadId, provider: 'claude', cwd: tmp, metadata },
+        },
+        context,
+      );
+      expect(result.status).toBe('accepted');
+      await waitFor(
+        () => service.latestStartedMetadataOfThread(threadId),
+        (latest) => latest?.approvalMode === 'ask',
+        5000,
+      );
+    }
+
+    const callerRecord = createStationControlCallerRecordResolver(
+      stationControlCallerRecordSources({
+        orchestrationService: {
+          resolveSessionActingPrincipal: (threadId) =>
+            service.resolveSessionActingPrincipal(threadId),
+          firstStartedMetadataOfThread: (threadId) =>
+            service.firstStartedMetadataOfThread(threadId),
+        },
+        getProject: (slug) => {
+          const project = configuredProjects.find((p) => p.slug === slug);
+          if (!project?.id) throw new Error('no project');
+          return { id: project.id };
+        },
+      }),
+    );
+
+    test('R1: a start whose dispatch context marks it unattributed acts for no one, stamped by the service itself; an ordinary one acts for its owner', async () => {
+      publishStarts();
+      await started(
+        'agent-child',
+        { userId: 'human:test:alice' },
+        { userId: 'human:test:alice', ownerAttribution: 'unattributed-agent' },
+      );
+      await started('owned-session', { userId: 'human:test:alice' });
+
+      expect(service.firstStartedMetadataOfThread('agent-child')).toMatchObject(
+        { ownerAttribution: 'unattributed-agent' },
+      );
+      expect(
+        service.resolveSessionActingPrincipal('agent-child'),
+      ).toBeUndefined();
+      expect(service.resolveSessionActingPrincipal('owned-session')).toEqual({
+        id: 'human:test:alice',
+        source: 'session-owner',
+      });
+    });
+
+    test('S1: an internal-origin start with NO attribution fails closed to unattributed; only an explicit verified-bound keeps its owner', async () => {
+      publishStarts();
+      const internalOrigin = {
+        version: 1,
+        actor: { kind: 'internal' },
+      } as never;
+      await started(
+        'internal-unattributed',
+        { userId: 'human:test:alice' },
+        { userId: 'human:test:alice', clientOrigin: internalOrigin },
+      );
+      await started(
+        'internal-verified',
+        { userId: 'human:test:alice' },
+        {
+          userId: 'human:test:alice',
+          clientOrigin: internalOrigin,
+          ownerAttribution: 'verified-bound',
+        },
+      );
+      expect(
+        service.firstStartedMetadataOfThread('internal-unattributed'),
+      ).toMatchObject({ ownerAttribution: 'unattributed-agent' });
+      expect(
+        service.resolveSessionActingPrincipal('internal-unattributed'),
+      ).toBeUndefined();
+      expect(
+        service.firstStartedMetadataOfThread('internal-verified'),
+      ).not.toHaveProperty('ownerAttribution');
+      expect(
+        service.resolveSessionActingPrincipal('internal-verified'),
+      ).toEqual({
+        id: 'human:test:alice',
+        source: 'session-owner',
+      });
+    });
+
+    test('R2: the caller keeps its stamped project after a sparse CLI-init session.configured, and a caller-supplied id never survives', async () => {
+      publishStarts();
+      configuredProjects.push({
+        slug: 'alpha',
+        workingDirectory: tmp,
+        id: 'project-alpha-id',
+      });
+      await started('project-session', {
+        userId: 'human:test:alice',
+        projectSlug: 'alpha',
+        localProjectId: 'forged-id',
+      });
+      // The latest configured event really is the sparse one.
+      expect(
+        service.latestStartedMetadataOfThread('project-session'),
+      ).not.toHaveProperty('projectSlug');
+      expect(callerRecord('project-session')).toMatchObject({
+        projectSlug: 'alpha',
+        localProjectId: 'project-alpha-id',
+        projectIdSource: 'session-record',
+      });
+
+      await started('slugless-session', {
+        userId: 'human:test:alice',
+        localProjectId: 'forged-id',
+      });
+      expect(callerRecord('slugless-session')).not.toHaveProperty(
+        'localProjectId',
+      );
+    });
+
+    test('R3: a Project named at start whose directory does not contain the start cwd gets no recorded id', async () => {
+      publishStarts();
+      // No working directory: the start runs in the caller's cwd, which the
+      // Project cannot be shown to contain.
+      configuredProjects.push({ slug: 'dirless', id: 'project-dirless-id' });
+      await started('dirless-session', {
+        userId: 'human:test:alice',
+        projectSlug: 'dirless',
+      });
+      const metadata = service.firstStartedMetadataOfThread('dirless-session');
+      expect(metadata).not.toHaveProperty('localProjectId');
+      // S2: the refusal is recorded, and a reader does NOT fall back to
+      // looking the slug up.
+      expect(metadata).toMatchObject({ localProjectIdRefused: true });
+      expect(callerRecord('dirless-session')).not.toHaveProperty(
+        'localProjectId',
+      );
+      expect(callerRecord('dirless-session')).toMatchObject({
+        projectSlug: 'dirless',
+      });
+    });
+
+    test('S2: only a session that predates the stamp gets the slug-lookup fallback', async () => {
+      configuredProjects.push({
+        slug: 'legacy',
+        workingDirectory: tmp,
+        id: 'project-legacy-id',
+      });
+      // A pre-stamp session: its start metadata carries the slug only.
+      eventStore.appendEvent({
+        provider: 'claude',
+        threadId: 'pre-stamp-session',
+        eventId: 'evt-pre-stamp-started',
+        createdAt: new Date().toISOString(),
+        method: 'session.started',
+        sessionId: 'pre-stamp-session',
+        metadata: { userId: 'human:test:alice', projectSlug: 'legacy' },
+      } as CanonicalRuntimeEvent);
+      expect(callerRecord('pre-stamp-session')).toMatchObject({
+        localProjectId: 'project-legacy-id',
+        projectIdSource: 'slug-lookup',
+      });
+    });
+  });
+
+  test('respondToRequest hands the answering device to the adapter (#2344)', async () => {
+    await service.dispatch({
+      type: 'startSession',
+      input: { threadId: 'origin-respond', provider: 'claude' },
+    });
+    const origin = {
+      version: 1 as const,
+      actor: { kind: 'device' as const, deviceId: 'pixel-10' },
+      reported: { version: 1 as const, surface: 'mobile' as const, build: '1' },
+    };
+
+    await service.dispatch(
+      {
+        type: 'respondToRequest',
+        threadId: 'origin-respond',
+        requestId: 'request-1',
+        decision: 'accept',
+      },
+      { clientOrigin: origin },
+    );
+    expect(claude.respondToRequest).toHaveBeenLastCalledWith(
+      'origin-respond',
+      'request-1',
+      'accept',
+      { clientOrigin: origin },
+    );
+
+    // No known origin: the adapter is called exactly as before.
+    await service.dispatch({
+      type: 'respondToRequest',
+      threadId: 'origin-respond',
+      requestId: 'request-2',
+      decision: 'decline',
+    });
+    expect(claude.respondToRequest.mock.lastCall).toEqual([
+      'origin-respond',
+      'request-2',
+      'decline',
+    ]);
+  });
+
+  describe('workspace restore execution exclusion', () => {
+    async function startAndSend(threadId: string, cwd: string) {
+      await service.dispatch({
+        type: 'startSession',
+        input: { threadId, provider: 'bedrock', cwd },
+      });
+      return service.dispatch({
+        type: 'sendTurn',
+        input: { threadId, input: `turn for ${threadId}` },
+      });
+    }
+
+    async function workspaceKey(cwd: string): Promise<string> {
+      const identity = await resolveWorkspaceIdentity(cwd);
+      if (identity.kind === 'remote')
+        throw new Error('expected local workspace');
+      return identity.key;
+    }
+
+    function createGitWorkspace(): {
+      root: string;
+      child: string;
+      link: string;
+    } {
+      const root = join(tmp, `repo-${randomUUID()}`);
+      const child = join(root, 'packages', 'child');
+      const link = join(tmp, `repo-link-${randomUUID()}`);
+      mkdirSync(child, { recursive: true });
+      execGitSync(['init', root]);
+      symlinkSync(root, link, 'dir');
+      return { root, child, link };
+    }
+
+    test('local non-Git chats send turns and unrelated workspaces remain concurrent', async () => {
+      const first = mkdtempSync(join(tmp, 'plain-a-'));
+      const second = mkdtempSync(join(tmp, 'plain-b-'));
+
+      await startAndSend('plain-chat', first);
+
+      expect(bedrock.sendTurn).toHaveBeenCalledWith(
+        expect.objectContaining({ threadId: 'plain-chat' }),
+      );
+      await expect(
+        service.runWorkspaceRestore(
+          await workspaceKey(second),
+          async () => 'restored',
+        ),
+      ).resolves.toBe('restored');
+    });
+
+    test.each(['subdirectory', 'symlink'] as const)(
+      'refuses restore while a turn from a Git %s is active',
+      async (variant) => {
+        const repo = createGitWorkspace();
+        await startAndSend(
+          `git-${variant}`,
+          variant === 'subdirectory' ? repo.child : repo.link,
+        );
+
+        await expect(
+          service.runWorkspaceRestore(
+            await workspaceKey(repo.root),
+            async () => undefined,
+          ),
+        ).rejects.toThrow('workspace_has_active_turn');
+      },
+    );
+
+    test('does not probe inactive deleted history while admitting a restore', async () => {
+      const deleted = mkdtempSync(join(tmp, 'deleted-history-'));
+      eventStore.upsertSession({
+        provider: 'bedrock',
+        threadId: 'inactive-deleted',
+        status: 'ready',
+        cwd: deleted,
+        createdAt: '2026-09-20T00:00:00.000Z',
+        updatedAt: '2026-09-20T00:00:00.000Z',
+      });
+      rmSync(deleted, { recursive: true });
+      const current = mkdtempSync(join(tmp, 'current-workspace-'));
+
+      await expect(
+        service.runWorkspaceRestore(
+          await workspaceKey(current),
+          async () => 'restored',
+        ),
+      ).resolves.toBe('restored');
+    });
+
+    test('holds a new-session turn before provider effect until an exclusive restore releases', async () => {
+      const cwd = mkdtempSync(join(tmp, 'exclusive-'));
+      const release = deferred<void>();
+      let restoreEntered = false;
+      const restoring = service.runWorkspaceRestore(
+        await workspaceKey(cwd),
+        async () => {
+          restoreEntered = true;
+          await release.promise;
+        },
+      );
+      await waitFor(() => restoreEntered, Boolean);
+      await service.dispatch({
+        type: 'startSession',
+        input: { threadId: 'starts-during-restore', provider: 'bedrock', cwd },
+      });
+
+      let turnSettled = false;
+      const turn = service
+        .dispatch({
+          type: 'sendTurn',
+          input: {
+            threadId: 'starts-during-restore',
+            input: 'wait for restore',
+          },
+        })
+        .finally(() => {
+          turnSettled = true;
+        });
+      await new Promise((resolve) => setImmediate(resolve));
+      expect(restoreEntered).toBe(true);
+      expect(turnSettled).toBe(false);
+      expect(bedrock.sendTurn).not.toHaveBeenCalled();
+
+      release.resolve();
+      await restoring;
+      await turn;
+      expect(bedrock.sendTurn).toHaveBeenCalledTimes(1);
+    });
+
+    test('a restarted service refuses restore from the durable possible-effect boundary', async () => {
+      const cwd = mkdtempSync(join(tmp, 'durable-active-'));
+      await startAndSend('durable-active', cwd);
+      const restartedAdapter = new FakeAdapter('bedrock');
+      const restarted = new OrchestrationService({
+        adapterRegistry: createRegistry([restartedAdapter]),
+        eventBus: new EventBus(),
+        eventStore,
+        listProjects: () => [],
+        logger: { debug: vi.fn(), warn: vi.fn() },
+      });
+
+      await expect(
+        restarted.runWorkspaceRestore(
+          await workspaceKey(cwd),
+          async () => undefined,
+        ),
+      ).rejects.toThrow('workspace_has_active_turn');
+    });
+
+    test('an indeterminate provider start keeps restore blocked for deferred recovery', async () => {
+      const cwd = mkdtempSync(join(tmp, 'failed-start-'));
+      await service.dispatch({
+        type: 'startSession',
+        input: { threadId: 'failed-start', provider: 'bedrock', cwd },
+      });
+      bedrock.sendTurn.mockRejectedValueOnce(new Error('provider unavailable'));
+
+      await expect(
+        service.dispatch({
+          type: 'sendTurn',
+          input: { threadId: 'failed-start', input: 'will fail' },
+        }),
+      ).rejects.toThrow('may have started');
+      expect(bedrock.sendTurn).toHaveBeenCalledTimes(1);
+      await expect(
+        service.runWorkspaceRestore(
+          await workspaceKey(cwd),
+          async () => 'restored',
+        ),
+      ).rejects.toThrow('workspace_has_active_turn');
+    });
+
+    test('a terminal observed before provider acceptance cannot resurrect a workspace reservation', async () => {
+      const cwd = mkdtempSync(join(tmp, 'terminal-before-accept-'));
+      await service.dispatch({
+        type: 'startSession',
+        input: { threadId: 'terminal-before-accept', provider: 'bedrock', cwd },
+      });
+      const accepted = deferred<ProviderTurnStartResult>();
+      bedrock.sendTurn.mockReturnValueOnce(accepted.promise);
+      const sending = service.dispatch({
+        type: 'sendTurn',
+        input: {
+          threadId: 'terminal-before-accept',
+          input: 'fast terminal',
+          clientTurnId: 'terminal-before-accept-client',
+        },
+      });
+      await waitFor(() => bedrock.sendTurn.mock.calls.length, Boolean);
+      bedrock.events.push({
+        eventId: 'terminal-before-accept-event',
+        provider: 'bedrock',
+        threadId: 'terminal-before-accept',
+        turnId: 'terminal-before-accept-turn',
+        method: 'turn.completed',
+        createdAt: new Date().toISOString(),
+      });
+      await waitFor(
+        () => eventStore.listEvents('terminal-before-accept'),
+        (events) =>
+          events.some((event) => event.payload.method === 'turn.completed'),
+      );
+      accepted.resolve({
+        threadId: 'terminal-before-accept',
+        turnId: 'terminal-before-accept-turn',
+      });
+
+      await expect(sending).resolves.toMatchObject({
+        threadId: 'terminal-before-accept',
+        turnId: 'terminal-before-accept-turn',
+      });
+      expect(bedrock.sendTurn).toHaveBeenCalledTimes(1);
+      await expect(
+        service.runWorkspaceRestore(
+          await workspaceKey(cwd),
+          async () => 'restored',
+        ),
+      ).resolves.toBe('restored');
+    });
+  });
+
   afterEach(() => {
+    bedrock.events.close();
+    claude.events.close();
     eventStore.close();
     rmSync(tmp, { recursive: true, force: true });
     // archive#1101: drop any dangling waitForReceipt()/subscribeForTest()
@@ -832,7 +1342,13 @@ describe('OrchestrationService', () => {
         threadId: child,
         method: 'session.configured',
       }),
-    ).toEqual({ conversationId: root, currentSessionId: child });
+    ).toEqual({
+      conversationId: root,
+      currentSessionId: child,
+      // #2309: the rebinding frame also carries the conversation's activity
+      // (nothing committed on either child yet).
+      activity: { conversationId: root, asOfSequence: 0 },
+    });
     const lookup = vi.spyOn(eventStore, 'conversationForSession');
     expect(
       service.conversationStreamBinding({
@@ -841,6 +1357,143 @@ describe('OrchestrationService', () => {
       }),
     ).toBeUndefined();
     expect(lookup).not.toHaveBeenCalled();
+  });
+
+  test('#2309: a client connected through a turn and one that reconnects after it read the same conversation activity', async () => {
+    const root = 'activity-reconnect-root';
+    const child = `${root}:session:child`;
+    const createdAt = '2026-09-22T09:00:00.000Z';
+    for (const threadId of [root, child]) {
+      if (threadId === child)
+        eventStore.reserveNextConversationSession({
+          conversationId: root,
+          predecessorSessionId: root,
+          proposedSessionId: child,
+          createdAt,
+        });
+      eventStore.upsertSession({
+        provider: 'claude',
+        threadId,
+        status: 'ready',
+        createdAt,
+        updatedAt: createdAt,
+      });
+      eventStore.appendEvent({
+        eventId: `${threadId}-started`,
+        provider: 'claude',
+        threadId,
+        createdAt,
+        method: 'session.started',
+        sessionId: threadId,
+        metadata: { agentSlug: 'claude', userId: 'owner-user' },
+      });
+    }
+    // Client A is connected: its frames are bound as each event commits.
+    const frameA = (event: CanonicalRuntimeEvent) => {
+      eventStore.appendEvent(event);
+      return service.conversationStreamBinding(event);
+    };
+    frameA({
+      eventId: 'child-turn-started',
+      provider: 'claude',
+      threadId: child,
+      turnId: 'child-turn',
+      createdAt: '2026-09-22T09:00:01.000Z',
+      method: 'turn.started',
+      prompt: 'work',
+    });
+    const lastA = frameA({
+      eventId: 'child-tool-started',
+      provider: 'claude',
+      threadId: child,
+      turnId: 'child-turn',
+      createdAt: '2026-09-22T09:00:02.000Z',
+      method: 'tool.started',
+      itemId: 'call-1',
+      toolCallId: 'call-1',
+      toolName: 'Bash',
+    } as CanonicalRuntimeEvent);
+    expect(lastA?.activity).toMatchObject({
+      conversationId: root,
+      openTurn: { turnId: 'child-turn', threadId: child },
+      runningTools: [{ name: 'Bash', callId: 'call-1' }],
+    });
+
+    // Client B connects afterwards with no cursor: the snapshot rows carry
+    // the same activity, running tool included, with no further events.
+    const snapshot = await service.listSessionReadModel();
+    for (const threadId of [root, child])
+      expect(
+        snapshot.find((session) => session.threadId === threadId)
+          ?.conversationActivity,
+      ).toEqual(lastA?.activity);
+    // The bounded hydration carriers read the same projection.
+    const page = await service.readSessionEventPage(root, {
+      afterSequence: 0,
+      limit: 10,
+    });
+    expect(page?.session.conversationActivity).toEqual(lastA?.activity);
+    const window = await service.readSessionEventWindow(child, {
+      turnLimit: 1,
+      authority: INTERNAL_SESSION_READ_SCOPE,
+    });
+    expect(window?.session.conversationActivity).toEqual(lastA?.activity);
+    // The inventory's summary-fold path (the suite proxy supplies the
+    // internal scope, not a request authority, so it does not take the
+    // indexed history reader) carries it and derives hasActiveTurn from it.
+    const inventory = await service.listAllSessionConversations();
+    const row = inventory.find((item) => item.id === root);
+    expect(row?.activity).toEqual(lastA?.activity);
+    expect(row?.hasActiveTurn).toBe(true);
+    // So does a process that never saw the live events (a restart).
+    const restarted = new OrchestrationService({
+      adapterRegistry: createRegistry([]),
+      eventBus: new EventBus(),
+      eventStore,
+      listProjects: () => [],
+      logger: { debug: vi.fn(), warn: vi.fn() },
+    });
+    try {
+      expect(
+        (
+          await restarted.listSessionReadModel(
+            personalReadAuthority('owner-user'),
+          )
+        ).find((session) => session.threadId === root)?.conversationActivity,
+      ).toEqual(lastA?.activity);
+    } finally {
+      await restarted.shutdown();
+    }
+
+    const completed = frameA({
+      eventId: 'child-tool-completed',
+      provider: 'claude',
+      threadId: child,
+      turnId: 'child-turn',
+      createdAt: '2026-09-22T09:00:03.000Z',
+      method: 'tool.completed',
+      itemId: 'call-1',
+      toolCallId: 'call-1',
+      toolName: 'Bash',
+      status: 'success',
+    } as CanonicalRuntimeEvent);
+    expect(completed?.activity?.runningTools).toBeUndefined();
+    const closed = frameA({
+      eventId: 'child-turn-completed',
+      provider: 'claude',
+      threadId: child,
+      turnId: 'child-turn',
+      createdAt: '2026-09-22T09:00:04.000Z',
+      method: 'turn.completed',
+    } as CanonicalRuntimeEvent);
+    expect(closed?.activity?.openTurn).toBeUndefined();
+    expect(closed!.activity!.asOfSequence).toBeGreaterThan(
+      lastA!.activity!.asOfSequence,
+    );
+    const converged = (await service.listSessionReadModel()).find(
+      (session) => session.threadId === root,
+    )?.conversationActivity;
+    expect(converged).toEqual(closed?.activity);
   });
 
   test('public session metadata cannot mint a room execution binding', async () => {
@@ -909,6 +1562,7 @@ describe('OrchestrationService', () => {
         },
       );
       const dispatched = await dispatcher.dispatch(task.id, {
+        fullAccessGrant: null,
         runtimeConfig: { provider: 'claude', cwd: tmp },
       });
       expect(dispatched.kind).toBe(uncertain ? 'indeterminate' : 'dispatched');
@@ -1107,6 +1761,7 @@ describe('OrchestrationService', () => {
       return original(input);
     });
     const dispatched = dispatcher.dispatch(task.id, {
+      fullAccessGrant: null,
       runtimeConfig: { provider: 'claude', cwd: tmp },
     });
     const scope = {
@@ -2594,6 +3249,1737 @@ describe('OrchestrationService', () => {
     );
   });
 
+  // #484 phase A: the receiver effect admission is honored INSIDE the
+  // provider-effect path of the REAL service — between prepareStart's
+  // awaits and the adapter invocation. The adapter spy is the oracle, not
+  // the recheck mock: a withdrawn offer (or a workspace that is not the
+  // admitted one) must refuse BEFORE adapter.startSession/sendTurn runs.
+  // A passing recheck proves nothing; the spy staying silent does.
+  describe('portable receiver effect admission', () => {
+    const admittedFor = (threadId: string, cwd: string) => ({
+      recheck: async () => {},
+      admitted: {
+        threadId,
+        projectSlug: 'local',
+        cwd,
+        portableProjectId: 'prj_shared',
+        resourceId: 'git.example/acme/repo',
+        localProjectId: 'local-project-1',
+      },
+    });
+
+    test('positive control: the adapter starts in the exact admitted cwd', async () => {
+      configuredProjects.push({ slug: 'local', workingDirectory: tmp });
+      const outcome = await service.startSessionInternal(
+        {
+          type: 'start-session',
+          input: {
+            threadId: 'portable-positive',
+            provider: 'claude',
+            cwd: tmp,
+            metadata: { projectSlug: 'local' },
+          },
+        },
+        { userId: 'owner-user' },
+        { receiverExecutionAdmission: admittedFor('portable-positive', tmp) },
+      );
+      if (outcome.status !== 'accepted') throw new Error(outcome.message);
+      expect(claude.startSession).toHaveBeenCalledTimes(1);
+      expect(claude.startSession.mock.calls[0]![0]).toMatchObject({
+        threadId: 'portable-positive',
+        cwd: tmp,
+      });
+    });
+
+    test('an offer withdrawn while the start is queued refuses before the adapter runs', async () => {
+      configuredProjects.push({ slug: 'local', workingDirectory: tmp });
+      let entered = false;
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      let alive = true;
+      const pending = service.startSessionInternal(
+        {
+          type: 'start-session',
+          input: {
+            threadId: 'portable-withdrawn',
+            provider: 'claude',
+            cwd: tmp,
+            metadata: { projectSlug: 'local' },
+          },
+        },
+        { userId: 'owner-user' },
+        {
+          receiverExecutionAdmission: {
+            recheck: async () => {
+              entered = true;
+              await gate;
+              if (!alive)
+                throw new ReceiverExecutionRefusal(
+                  'receiver_execution_not_offered',
+                  'This Station does not currently offer execution for the requested Project resource.',
+                );
+            },
+            admitted: {
+              threadId: 'portable-withdrawn',
+              projectSlug: 'local',
+              cwd: tmp,
+              portableProjectId: 'prj_shared',
+              resourceId: 'git.example/acme/repo',
+              localProjectId: 'local-project-1',
+            },
+          },
+        },
+      );
+      for (let i = 0; i < 200 && !entered; i++)
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      expect(entered).toBe(true);
+      // The start has passed every prepareStart await and is queued at the
+      // adapter boundary; the offer dies NOW.
+      alive = false;
+      release();
+      const outcome = await pending;
+      expect(outcome.status).toBe('failed');
+      expect(claude.startSession).not.toHaveBeenCalled();
+    });
+
+    test('a workspace that is not the admitted one refuses before the adapter runs', async () => {
+      configuredProjects.push({ slug: 'local', workingDirectory: tmp });
+      const outcome = await service.startSessionInternal(
+        {
+          type: 'start-session',
+          input: {
+            threadId: 'portable-retargeted',
+            provider: 'claude',
+            cwd: tmp,
+            metadata: { projectSlug: 'local' },
+          },
+        },
+        { userId: 'owner-user' },
+        {
+          receiverExecutionAdmission: admittedFor(
+            'portable-retargeted',
+            join(tmp, 'not-the-admitted-checkout'),
+          ),
+        },
+      );
+      expect(outcome.status).toBe('failed');
+      expect(claude.startSession).not.toHaveBeenCalled();
+    });
+
+    test('a turn on a thread the admission never named refuses before sendTurn runs', async () => {
+      const started = await service.startSessionInternal(
+        {
+          type: 'start-session',
+          input: {
+            threadId: 'portable-turn',
+            provider: 'bedrock',
+            cwd: tmp,
+          },
+        },
+        { userId: 'owner-user' },
+        {},
+      );
+      if (started.status !== 'accepted') throw new Error(started.message);
+      await expect(
+        service.dispatchWithReceipt(
+          {
+            type: 'sendTurn',
+            input: { threadId: 'portable-turn', input: 'hello' },
+          },
+          undefined,
+          {
+            receiverExecutionAdmission: admittedFor('some-other-thread', tmp),
+          },
+        ),
+      ).rejects.toThrow('The offered Project resource is unavailable.');
+      expect(bedrock.sendTurn).not.toHaveBeenCalled();
+    });
+
+    test('a colliding task id reattaches only to the exact admitted workspace', async () => {
+      // Every real adapter echoes the start cwd on its session; the fake
+      // does not by default, so this test opts into production shape.
+      claude.startSession.mockImplementation(async (input) => {
+        const now = new Date().toISOString();
+        return {
+          provider: 'claude' as const,
+          threadId: input.threadId,
+          status: 'ready' as const,
+          model: input.modelId,
+          cwd: input.cwd,
+          createdAt: now,
+          updatedAt: now,
+        };
+      });
+      const dirB = join(tmp, 'checkout-b');
+      mkdirSync(dirB, { recursive: true });
+      const existing = await service.startSessionInternal(
+        {
+          type: 'start-session',
+          input: {
+            threadId: 'portable-collide',
+            provider: 'claude',
+            cwd: dirB,
+          },
+        },
+        { userId: 'owner-user' },
+        {},
+      );
+      if (existing.status !== 'accepted') throw new Error(existing.message);
+      expect(claude.startSession).toHaveBeenCalledTimes(1);
+      // Ownership is established by a binding event carrying metadata.userId
+      // (the fake publishes none); without it the reattach refuses as
+      // "not found" before any guard under test runs.
+      eventStore.appendEvent({
+        provider: 'claude',
+        threadId: 'portable-collide',
+        eventId: 'evt-portable-collide-owner',
+        createdAt: new Date().toISOString(),
+        method: 'session.configured',
+        sessionId: 'portable-collide',
+        metadata: { userId: 'owner-user' },
+      } as CanonicalRuntimeEvent);
+      // A portable intent reuses the live thread id but is admitted for a
+      // DIFFERENT checkout: the reattach must refuse — the existing engine
+      // runs checkout-b, never the admitted directory — without spawning.
+      const refused = await service.startSessionInternal(
+        {
+          type: 'start-session',
+          input: {
+            threadId: 'portable-collide',
+            provider: 'claude',
+            cwd: tmp,
+            metadata: { projectSlug: 'local' },
+          },
+        },
+        { userId: 'owner-user' },
+        { receiverExecutionAdmission: admittedFor('portable-collide', tmp) },
+      );
+      expect(refused.status).toBe('failed');
+      expect(refused).toMatchObject({ code: 'receiver_execution_unavailable' });
+      expect(claude.startSession).toHaveBeenCalledTimes(1);
+    });
+
+    test('an exact reattach reuses the admitted session without spawning', async () => {
+      claude.startSession.mockImplementation(async (input) => {
+        const now = new Date().toISOString();
+        return {
+          provider: 'claude' as const,
+          threadId: input.threadId,
+          status: 'ready' as const,
+          model: input.modelId,
+          cwd: input.cwd,
+          createdAt: now,
+          updatedAt: now,
+        };
+      });
+      configuredProjects.push({ slug: 'local', workingDirectory: tmp });
+      const admission = {
+        ...admittedFor('portable-reuse', tmp),
+        recheck: vi.fn(async () => {}),
+      };
+      const first = await service.startSessionInternal(
+        {
+          type: 'start-session',
+          input: {
+            threadId: 'portable-reuse',
+            provider: 'claude',
+            cwd: tmp,
+            metadata: { projectSlug: 'local' },
+          },
+        },
+        { userId: 'owner-user' },
+        {
+          receiverExecutionAdmission: admission,
+          portableExecutionConsent: {
+            portableProjectId: 'prj_shared',
+            resourceId: 'git.example/acme/repo',
+            localProjectId: 'local-project-1',
+          },
+        },
+      );
+      if (first.status !== 'accepted') throw new Error(first.message);
+      eventStore.appendEvent({
+        provider: 'claude',
+        threadId: 'portable-reuse',
+        eventId: 'evt-portable-reuse-owner',
+        createdAt: new Date().toISOString(),
+        method: 'session.configured',
+        sessionId: 'portable-reuse',
+        metadata: { userId: 'owner-user' },
+      } as CanonicalRuntimeEvent);
+      // Retry / duplicate delivery of the same portable intent: the live
+      // session IS the admitted workspace, so the reattach accepts — and
+      // the admission recheck ran at the reattach effect, not just at
+      // first start.
+      const reattached = await service.startSessionInternal(
+        {
+          type: 'start-session',
+          input: {
+            threadId: 'portable-reuse',
+            provider: 'claude',
+            cwd: tmp,
+            metadata: { projectSlug: 'local' },
+          },
+        },
+        { userId: 'owner-user' },
+        { receiverExecutionAdmission: admission },
+      );
+      if (reattached.status !== 'accepted') throw new Error(reattached.message);
+      expect(claude.startSession).toHaveBeenCalledTimes(1);
+      expect(admission.recheck).toHaveBeenCalled();
+    });
+
+    test('a portable-marked source refuses handoff before any marker or provider effect', async () => {
+      configuredProjects.push({ slug: 'local', workingDirectory: tmp });
+      const started = await service.startSessionInternal(
+        {
+          type: 'start-session',
+          input: {
+            threadId: 'portable-handoff-src',
+            provider: 'claude',
+            cwd: tmp,
+            metadata: { projectSlug: 'local' },
+          },
+        },
+        { userId: 'owner-user' },
+        {
+          receiverExecutionAdmission: admittedFor('portable-handoff-src', tmp),
+          portableExecutionConsent: {
+            portableProjectId: 'prj_shared',
+            resourceId: 'git.example/acme/repo',
+            localProjectId: 'local-project-1',
+          },
+        },
+      );
+      if (started.status !== 'accepted') throw new Error(started.message);
+      expect(claude.startSession).toHaveBeenCalledTimes(1);
+      const request = {
+        agentId: 'agent-b',
+        environmentId: 'environment-a',
+        connectionId: 'claude',
+        idempotencyKey: 'portable-handoff-a',
+        messageDigest: 'message-a',
+      };
+      await expect(
+        service.prepareConversationHandoff(
+          'portable-handoff-src',
+          personalReadAuthority('other-user'),
+          request,
+        ),
+      ).rejects.toThrow('not found');
+      let refusal: unknown;
+      try {
+        await service.prepareConversationHandoff(
+          'portable-handoff-src',
+          INTERNAL_SESSION_READ_SCOPE,
+          request,
+        );
+      } catch (error) {
+        refusal = error;
+      }
+      expect(refusal).toBeInstanceOf(ReceiverExecutionRefusal);
+      expect(refusal).toMatchObject({
+        code: 'receiver_execution_not_offered',
+      });
+      // No marker was reserved: the original history is intact and a status
+      // read finds nothing — and no child/provider invocation ran.
+      await expect(
+        service.readConversationHandoffStatus(
+          'portable-handoff-src',
+          request.idempotencyKey,
+          INTERNAL_SESSION_READ_SCOPE,
+        ),
+      ).resolves.toBeNull();
+      expect(claude.startSession).toHaveBeenCalledTimes(1);
+    });
+
+    test('a pre-reserved handoff child of a portable source refuses its start before the adapter', async () => {
+      configuredProjects.push({ slug: 'local', workingDirectory: tmp });
+      const started = await service.startSessionInternal(
+        {
+          type: 'start-session',
+          input: {
+            threadId: 'portable-handoff-pre',
+            provider: 'claude',
+            cwd: tmp,
+            metadata: { projectSlug: 'local' },
+          },
+        },
+        { userId: 'owner-user' },
+        {
+          receiverExecutionAdmission: admittedFor('portable-handoff-pre', tmp),
+          portableExecutionConsent: {
+            portableProjectId: 'prj_shared',
+            resourceId: 'git.example/acme/repo',
+            localProjectId: 'local-project-1',
+          },
+        },
+      );
+      if (started.status !== 'accepted') throw new Error(started.message);
+      // A marker reserved before the guard (or before offer withdrawal)
+      // must still fail closed at the child start — never execute as an
+      // unmarked legacy session.
+      eventStore.reserveConversationHandoff({
+        conversationId: 'portable-handoff-pre',
+        predecessorSessionId: 'portable-handoff-pre',
+        sessionId: 'portable-handoff-pre:child',
+        idempotencyKey: 'portable-handoff-pre-key',
+        targetAgentId: 'agent-b',
+        targetEnvironmentId: 'environment-a',
+        messageDigest: 'message-a',
+        createdAt: new Date().toISOString(),
+      });
+      const refused = await service.startSessionInternal(
+        {
+          type: 'start-session',
+          input: {
+            threadId: 'portable-handoff-pre:child',
+            provider: 'claude',
+            cwd: tmp,
+            metadata: { projectSlug: 'local' },
+          },
+        },
+        { userId: 'owner-user' },
+        {},
+      );
+      expect(refused.status).toBe('failed');
+      expect(refused).toMatchObject({
+        code: 'receiver_execution_not_offered',
+      });
+      expect(claude.startSession).toHaveBeenCalledTimes(1);
+    });
+
+    test('ordinary legacy control: an unmarked source still reserves its handoff', async () => {
+      configuredProjects.push({ slug: 'local', workingDirectory: tmp });
+      const root = await service.startSessionInternal(
+        {
+          type: 'start-session',
+          input: {
+            threadId: 'legacy-handoff-src',
+            provider: 'claude',
+            cwd: tmp,
+            metadata: { projectSlug: 'local' },
+          },
+        },
+        { userId: 'owner-user' },
+        {},
+      );
+      if (root.status !== 'accepted') throw new Error(root.message);
+      eventStore.appendEvent({
+        eventId: 'legacy-handoff-src-complete',
+        provider: 'claude',
+        threadId: 'legacy-handoff-src',
+        sessionId: 'legacy-handoff-src',
+        method: 'session.state-changed',
+        from: 'running',
+        to: 'completed',
+        sessionState: 'completed',
+        previousState: 'running',
+        transitionReason: 'turn_completed',
+        transitionSource: 'runtime',
+        createdAt: '2026-08-24T01:00:00.000Z',
+      } as CanonicalRuntimeEvent);
+      const prepared = await service.prepareConversationHandoff(
+        'legacy-handoff-src',
+        INTERNAL_SESSION_READ_SCOPE,
+        {
+          agentId: 'agent-b',
+          environmentId: 'environment-a',
+          connectionId: 'claude',
+          idempotencyKey: 'legacy-handoff-a',
+          messageDigest: 'message-a',
+        },
+      );
+      expect(prepared.marker.predecessorSessionId).toBe('legacy-handoff-src');
+      expect(typeof prepared.marker.sessionId).toBe('string');
+    });
+
+    test('a rebind that lands while the reattach is queued refuses', async () => {
+      claude.startSession.mockImplementation(async (input) => {
+        const now = new Date().toISOString();
+        return {
+          provider: 'claude' as const,
+          threadId: input.threadId,
+          status: 'ready' as const,
+          model: input.modelId,
+          cwd: input.cwd,
+          createdAt: now,
+          updatedAt: now,
+        };
+      });
+      const first = await service.startSessionInternal(
+        {
+          type: 'start-session',
+          input: {
+            threadId: 'portable-rebind',
+            provider: 'claude',
+            cwd: tmp,
+          },
+        },
+        { userId: 'owner-user' },
+        {},
+      );
+      if (first.status !== 'accepted') throw new Error(first.message);
+      eventStore.appendEvent({
+        provider: 'claude',
+        threadId: 'portable-rebind',
+        eventId: 'evt-portable-rebind-owner',
+        createdAt: new Date().toISOString(),
+        method: 'session.configured',
+        sessionId: 'portable-rebind',
+        metadata: { userId: 'owner-user' },
+      } as CanonicalRuntimeEvent);
+      const refused = await service.startSessionInternal(
+        {
+          type: 'start-session',
+          input: {
+            threadId: 'portable-rebind',
+            provider: 'claude',
+            cwd: tmp,
+          },
+        },
+        { userId: 'owner-user' },
+        {
+          receiverExecutionAdmission: {
+            recheck: async () => {
+              throw new ReceiverExecutionRefusal(
+                'receiver_execution_not_offered',
+                'This Station does not currently offer execution for the requested Project resource.',
+              );
+            },
+            admitted: {
+              threadId: 'portable-rebind',
+              projectSlug: 'local',
+              cwd: tmp,
+              portableProjectId: 'prj_shared',
+              resourceId: 'git.example/acme/repo',
+              localProjectId: 'local-project-1',
+            },
+          },
+        },
+      );
+      expect(refused.status).toBe('failed');
+      expect(refused).toMatchObject({
+        code: 'receiver_execution_not_offered',
+      });
+      expect(claude.startSession).toHaveBeenCalledTimes(1);
+    });
+
+    test('a turn answers for the actual runtime session, not the input coordinate', async () => {
+      claude.startSession.mockImplementation(async (input) => {
+        const now = new Date().toISOString();
+        return {
+          provider: 'claude' as const,
+          threadId: input.threadId,
+          status: 'ready' as const,
+          model: input.modelId,
+          cwd: input.cwd,
+          createdAt: now,
+          updatedAt: now,
+        };
+      });
+      configuredProjects.push({ slug: 'local', workingDirectory: tmp });
+      const started = await service.startSessionInternal(
+        {
+          type: 'start-session',
+          input: {
+            threadId: 'portable-actual-session',
+            provider: 'claude',
+            cwd: tmp,
+            metadata: { projectSlug: 'local' },
+          },
+        },
+        { userId: 'owner-user' },
+        {
+          receiverExecutionAdmission: admittedFor(
+            'portable-actual-session',
+            tmp,
+          ),
+          portableExecutionConsent: {
+            portableProjectId: 'prj_shared',
+            resourceId: 'git.example/acme/repo',
+            localProjectId: 'local-project-1',
+          },
+        },
+      );
+      if (started.status !== 'accepted') throw new Error(started.message);
+      // The admission names this thread but a checkout the runtime session
+      // never ran in: the thread id matches, the provider state does not.
+      await expect(
+        service.dispatchWithReceipt(
+          {
+            type: 'sendTurn',
+            input: { threadId: 'portable-actual-session', input: 'hello' },
+          },
+          undefined,
+          {
+            receiverExecutionAdmission: admittedFor(
+              'portable-actual-session',
+              join(tmp, 'some-other-checkout'),
+            ),
+          },
+        ),
+      ).rejects.toThrow('The offered Project resource is unavailable.');
+      expect(claude.sendTurn).not.toHaveBeenCalled();
+      // Positive control: the admission naming the thread's ACTUAL
+      // workspace dispatches to the provider.
+      await service.dispatchWithReceipt(
+        {
+          type: 'sendTurn',
+          input: { threadId: 'portable-actual-session', input: 'hello' },
+        },
+        undefined,
+        {
+          receiverExecutionAdmission: admittedFor(
+            'portable-actual-session',
+            tmp,
+          ),
+        },
+      );
+      expect(claude.sendTurn).toHaveBeenCalledTimes(1);
+    });
+
+    test('recovery redispatch without admission refuses a marked session while legacy turns flow', async () => {
+      claude.startSession.mockImplementation(async (input) => {
+        const now = new Date().toISOString();
+        return {
+          provider: 'claude' as const,
+          threadId: input.threadId,
+          status: 'ready' as const,
+          model: input.modelId,
+          cwd: input.cwd,
+          createdAt: now,
+          updatedAt: now,
+        };
+      });
+      configuredProjects.push({ slug: 'local', workingDirectory: tmp });
+      const consent = {
+        portableProjectId: 'prj_shared',
+        resourceId: 'git.example/acme/repo',
+        localProjectId: 'local-project-1',
+      };
+      const started = await service.startSessionInternal(
+        {
+          type: 'start-session',
+          input: {
+            threadId: 'portable-recovery',
+            provider: 'claude',
+            cwd: tmp,
+            metadata: { projectSlug: 'local' },
+          },
+        },
+        { userId: 'owner-user' },
+        {
+          receiverExecutionAdmission: admittedFor('portable-recovery', tmp),
+          portableExecutionConsent: consent,
+        },
+      );
+      if (started.status !== 'accepted') throw new Error(started.message);
+      // Direct persistence proof: the fake publishes NOTHING, so this
+      // service-stamped binding event is the only durable marker — the
+      // read a recovery path would take through the canonical store seam.
+      const configured = eventStore.latestEventByMethod(
+        'portable-recovery',
+        'session.configured',
+      );
+      expect(
+        (
+          configured?.payload as
+            | { metadata?: Record<string, unknown> }
+            | undefined
+        )?.metadata?.[PORTABLE_EXECUTION_CONSENT_METADATA_KEY],
+      ).toEqual(consent);
+      expect(
+        service.persistedPortableConsentOfThread('portable-recovery'),
+      ).toEqual(consent);
+      // The interrupted-turn / dispatch-recovery shape: a plain sendTurn
+      // with no admission context. The adapter must never run for the
+      // marked portable session.
+      await expect(
+        service.dispatchWithReceipt(
+          {
+            type: 'sendTurn',
+            input: { threadId: 'portable-recovery', input: 'hello' },
+          },
+          undefined,
+          undefined,
+        ),
+      ).rejects.toThrow(
+        'This portable task cannot continue without a current execution offer',
+      );
+      expect(claude.sendTurn).not.toHaveBeenCalled();
+      // Legacy control: an unmarked session's admission-less turn flows.
+      const legacy = await service.startSessionInternal(
+        {
+          type: 'start-session',
+          input: {
+            threadId: 'portable-recovery-legacy',
+            provider: 'claude',
+            cwd: tmp,
+          },
+        },
+        { userId: 'owner-user' },
+        {},
+      );
+      if (legacy.status !== 'accepted') throw new Error(legacy.message);
+      expect(
+        eventStore.latestEventByMethod(
+          'portable-recovery-legacy',
+          'session.configured',
+        ),
+      ).toBeUndefined();
+      await service.dispatchWithReceipt(
+        {
+          type: 'sendTurn',
+          input: { threadId: 'portable-recovery-legacy', input: 'hello' },
+        },
+        undefined,
+        undefined,
+      );
+      expect(claude.sendTurn).toHaveBeenCalledTimes(1);
+    });
+
+    test('credential recovery restart refuses a marked session before any provider effect', async () => {
+      claude.startSession.mockImplementation(async (input) => {
+        const now = new Date().toISOString();
+        return {
+          provider: 'claude' as const,
+          threadId: input.threadId,
+          status: 'ready' as const,
+          model: input.modelId,
+          cwd: input.cwd,
+          createdAt: now,
+          updatedAt: now,
+        };
+      });
+      configuredProjects.push({ slug: 'local', workingDirectory: tmp });
+      const restart = (threadId: string) =>
+        (
+          service as unknown as {
+            restartCredentialProfileProviderSession: (input: {
+              threadId: string;
+              signal: AbortSignal;
+            }) => Promise<unknown>;
+          }
+        ).restartCredentialProfileProviderSession({
+          threadId,
+          signal: AbortSignal.timeout(5000),
+        });
+      const marked = await service.startSessionInternal(
+        {
+          type: 'start-session',
+          input: {
+            threadId: 'portable-credential-restart',
+            provider: 'claude',
+            cwd: tmp,
+            metadata: { projectSlug: 'local' },
+          },
+        },
+        { userId: 'owner-user' },
+        {
+          receiverExecutionAdmission: admittedFor(
+            'portable-credential-restart',
+            tmp,
+          ),
+          portableExecutionConsent: {
+            portableProjectId: 'prj_shared',
+            resourceId: 'git.example/acme/repo',
+            localProjectId: 'local-project-1',
+          },
+        },
+      );
+      if (marked.status !== 'accepted') throw new Error(marked.message);
+      const startsBefore = claude.startSession.mock.calls.length;
+      // The credential-replay shape bypasses dispatch and ends in a DIRECT
+      // adapter.sendTurn — so the restart seam itself must refuse: no
+      // respawn, no teardown of the live engine, no replay.
+      await expect(restart('portable-credential-restart')).rejects.toThrow(
+        'This portable task cannot continue without a current execution offer',
+      );
+      expect(claude.startSession.mock.calls.length).toBe(startsBefore);
+      expect(claude.stopSession).not.toHaveBeenCalled();
+      // Legacy control: an unmarked session restarts.
+      const legacy = await service.startSessionInternal(
+        {
+          type: 'start-session',
+          input: {
+            threadId: 'portable-credential-restart-legacy',
+            provider: 'claude',
+            cwd: tmp,
+          },
+        },
+        { userId: 'owner-user' },
+        {},
+      );
+      if (legacy.status !== 'accepted') throw new Error(legacy.message);
+      await restart('portable-credential-restart-legacy');
+      expect(claude.startSession.mock.calls.length).toBeGreaterThan(
+        startsBefore,
+      );
+    });
+
+    test('public start metadata can neither forge nor clear portable consent', async () => {
+      const forged = await service.startSessionInternal(
+        {
+          type: 'start-session',
+          input: {
+            threadId: 'portable-forged',
+            provider: 'claude',
+            cwd: tmp,
+            metadata: {
+              [PORTABLE_EXECUTION_CONSENT_METADATA_KEY]: {
+                portableProjectId: 'prj_attacker',
+                resourceId: 'evil',
+              },
+            },
+          },
+        },
+        { userId: 'owner-user' },
+        {},
+      );
+      if (forged.status !== 'accepted') throw new Error(forged.message);
+      // The reserved-key strip removed the forged marker before the
+      // adapter ran: no consent was minted, and none persisted.
+      expect(claude.startSession).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          metadata: expect.not.objectContaining({
+            [PORTABLE_EXECUTION_CONSENT_METADATA_KEY]: expect.anything(),
+          }),
+        }),
+      );
+      expect(
+        service.persistedPortableConsentOfThread('portable-forged'),
+      ).toBeUndefined();
+      // And an unmarked session stays unmarked: its turns flow.
+      await service.dispatchWithReceipt(
+        {
+          type: 'sendTurn',
+          input: { threadId: 'portable-forged', input: 'hello' },
+        },
+        undefined,
+        undefined,
+      );
+      expect(claude.sendTurn).toHaveBeenCalledTimes(1);
+    });
+
+    test('a turn admitted for the same cwd under a different portable project refuses', async () => {
+      claude.startSession.mockImplementation(async (input) => {
+        const now = new Date().toISOString();
+        return {
+          provider: 'claude' as const,
+          threadId: input.threadId,
+          status: 'ready' as const,
+          model: input.modelId,
+          cwd: input.cwd,
+          createdAt: now,
+          updatedAt: now,
+        };
+      });
+      configuredProjects.push({ slug: 'local', workingDirectory: tmp });
+      const started = await service.startSessionInternal(
+        {
+          type: 'start-session',
+          input: {
+            threadId: 'portable-same-cwd',
+            provider: 'claude',
+            cwd: tmp,
+            metadata: { projectSlug: 'local' },
+          },
+        },
+        { userId: 'owner-user' },
+        {
+          receiverExecutionAdmission: admittedFor('portable-same-cwd', tmp),
+          portableExecutionConsent: {
+            portableProjectId: 'prj_shared',
+            resourceId: 'git.example/acme/repo',
+            localProjectId: 'local-project-1',
+          },
+        },
+      );
+      if (started.status !== 'accepted') throw new Error(started.message);
+      // Same thread, same checkout — but admitted for a DIFFERENT portable
+      // project/resource. A directory is not a project identity: refuses
+      // before the provider runs. Behavior lock (refused before this change
+      // too, via the latest-marker mismatch): the proof moved to the
+      // required history association.
+      await expect(
+        service.dispatchWithReceipt(
+          {
+            type: 'sendTurn',
+            input: { threadId: 'portable-same-cwd', input: 'hello' },
+          },
+          undefined,
+          {
+            receiverExecutionAdmission: {
+              recheck: async () => {},
+              admitted: {
+                threadId: 'portable-same-cwd',
+                projectSlug: 'local',
+                cwd: tmp,
+                portableProjectId: 'prj_other',
+                resourceId: 'git.example/other/repo',
+                localProjectId: 'local-project-1',
+              },
+            },
+          },
+        ),
+      ).rejects.toThrow('The offered Project resource is unavailable.');
+      expect(claude.sendTurn).not.toHaveBeenCalled();
+    });
+
+    test('an admission never promotes an unmarked legacy session into a portable project', async () => {
+      claude.startSession.mockImplementation(async (input) => {
+        const now = new Date().toISOString();
+        return {
+          provider: 'claude' as const,
+          threadId: input.threadId,
+          status: 'ready' as const,
+          model: input.modelId,
+          cwd: input.cwd,
+          createdAt: now,
+          updatedAt: now,
+        };
+      });
+      configuredProjects.push({ slug: 'local', workingDirectory: tmp });
+      const started = await service.startSessionInternal(
+        {
+          type: 'start-session',
+          input: {
+            threadId: 'portable-promote',
+            provider: 'claude',
+            cwd: tmp,
+            metadata: { projectSlug: 'local' },
+          },
+        },
+        { userId: 'owner-user' },
+        {},
+      );
+      if (started.status !== 'accepted') throw new Error(started.message);
+      // The admission names the legacy session's EXACT thread and checkout —
+      // still refuses: the thread never started as a portable execution, so
+      // there is no persisted association to prove.
+      await expect(
+        service.dispatchWithReceipt(
+          {
+            type: 'sendTurn',
+            input: { threadId: 'portable-promote', input: 'hello' },
+          },
+          undefined,
+          {
+            receiverExecutionAdmission: admittedFor('portable-promote', tmp),
+          },
+        ),
+      ).rejects.toThrow('The offered Project resource is unavailable.');
+      expect(claude.sendTurn).not.toHaveBeenCalled();
+    });
+
+    test('a reattach to the same cwd under a different portable project refuses without spawning', async () => {
+      claude.startSession.mockImplementation(async (input) => {
+        const now = new Date().toISOString();
+        return {
+          provider: 'claude' as const,
+          threadId: input.threadId,
+          status: 'ready' as const,
+          model: input.modelId,
+          cwd: input.cwd,
+          createdAt: now,
+          updatedAt: now,
+        };
+      });
+      configuredProjects.push({ slug: 'local', workingDirectory: tmp });
+      const first = await service.startSessionInternal(
+        {
+          type: 'start-session',
+          input: {
+            threadId: 'portable-reattach-project',
+            provider: 'claude',
+            cwd: tmp,
+            metadata: { projectSlug: 'local' },
+          },
+        },
+        { userId: 'owner-user' },
+        {
+          receiverExecutionAdmission: admittedFor(
+            'portable-reattach-project',
+            tmp,
+          ),
+          portableExecutionConsent: {
+            portableProjectId: 'prj_shared',
+            resourceId: 'git.example/acme/repo',
+            localProjectId: 'local-project-1',
+          },
+        },
+      );
+      if (first.status !== 'accepted') throw new Error(first.message);
+      eventStore.appendEvent({
+        provider: 'claude',
+        threadId: 'portable-reattach-project',
+        eventId: 'evt-portable-reattach-project-owner',
+        createdAt: new Date().toISOString(),
+        method: 'session.configured',
+        sessionId: 'portable-reattach-project',
+        metadata: { userId: 'owner-user' },
+      } as CanonicalRuntimeEvent);
+      // Adversarial reattach: the caller-supplied task id collides with the
+      // live session's exact thread AND checkout, but the admission names a
+      // different portable project. Thread + cwd match; the persisted
+      // association does not — refuses without spawning.
+      const refused = await service.startSessionInternal(
+        {
+          type: 'start-session',
+          input: {
+            threadId: 'portable-reattach-project',
+            provider: 'claude',
+            cwd: tmp,
+            metadata: { projectSlug: 'local' },
+          },
+        },
+        { userId: 'owner-user' },
+        {
+          receiverExecutionAdmission: {
+            recheck: async () => {},
+            admitted: {
+              threadId: 'portable-reattach-project',
+              projectSlug: 'local',
+              cwd: tmp,
+              portableProjectId: 'prj_other',
+              resourceId: 'git.example/other/repo',
+              localProjectId: 'local-project-1',
+            },
+          },
+        },
+      );
+      expect(refused.status).toBe('failed');
+      expect(refused).toMatchObject({
+        code: 'receiver_execution_unavailable',
+      });
+      expect(claude.startSession).toHaveBeenCalledTimes(1);
+    });
+
+    test('a legacy session is never promoted into a portable project on reattach', async () => {
+      claude.startSession.mockImplementation(async (input) => {
+        const now = new Date().toISOString();
+        return {
+          provider: 'claude' as const,
+          threadId: input.threadId,
+          status: 'ready' as const,
+          model: input.modelId,
+          cwd: input.cwd,
+          createdAt: now,
+          updatedAt: now,
+        };
+      });
+      configuredProjects.push({ slug: 'local', workingDirectory: tmp });
+      const first = await service.startSessionInternal(
+        {
+          type: 'start-session',
+          input: {
+            threadId: 'portable-reattach-legacy',
+            provider: 'claude',
+            cwd: tmp,
+            metadata: { projectSlug: 'local' },
+          },
+        },
+        { userId: 'owner-user' },
+        {},
+      );
+      if (first.status !== 'accepted') throw new Error(first.message);
+      eventStore.appendEvent({
+        provider: 'claude',
+        threadId: 'portable-reattach-legacy',
+        eventId: 'evt-portable-reattach-legacy-owner',
+        createdAt: new Date().toISOString(),
+        method: 'session.configured',
+        sessionId: 'portable-reattach-legacy',
+        metadata: { userId: 'owner-user' },
+      } as CanonicalRuntimeEvent);
+      // Same thread, same checkout, portable admission — still refuses: the
+      // thread carries no server-owned portable consent, and reattach skips
+      // recordStarted, so accepting would leave an unmarked session
+      // executing portable turns.
+      const refused = await service.startSessionInternal(
+        {
+          type: 'start-session',
+          input: {
+            threadId: 'portable-reattach-legacy',
+            provider: 'claude',
+            cwd: tmp,
+            metadata: { projectSlug: 'local' },
+          },
+        },
+        { userId: 'owner-user' },
+        {
+          receiverExecutionAdmission: admittedFor(
+            'portable-reattach-legacy',
+            tmp,
+          ),
+        },
+      );
+      expect(refused.status).toBe('failed');
+      expect(refused).toMatchObject({
+        code: 'receiver_execution_unavailable',
+      });
+      expect(claude.startSession).toHaveBeenCalledTimes(1);
+    });
+
+    test('a metadata-dropping adapter cannot erase the authoritative stamp on reattach', async () => {
+      claude.startSession.mockImplementation(async (input) => {
+        const now = new Date().toISOString();
+        return {
+          provider: 'claude' as const,
+          threadId: input.threadId,
+          status: 'ready' as const,
+          model: input.modelId,
+          cwd: input.cwd,
+          createdAt: now,
+          updatedAt: now,
+        };
+      });
+      configuredProjects.push({ slug: 'local', workingDirectory: tmp });
+      const admission = {
+        ...admittedFor('portable-reattach-stamp', tmp),
+        recheck: vi.fn(async () => {}),
+      };
+      const first = await service.startSessionInternal(
+        {
+          type: 'start-session',
+          input: {
+            threadId: 'portable-reattach-stamp',
+            provider: 'claude',
+            cwd: tmp,
+            metadata: { projectSlug: 'local' },
+          },
+        },
+        { userId: 'owner-user' },
+        {
+          receiverExecutionAdmission: admission,
+          portableExecutionConsent: {
+            portableProjectId: 'prj_shared',
+            resourceId: 'git.example/acme/repo',
+            localProjectId: 'local-project-1',
+          },
+        },
+      );
+      if (first.status !== 'accepted') throw new Error(first.message);
+      // The adapter reconstructs its binding WITHOUT the marker (and without
+      // the project): the service's own stamp earlier in the history is the
+      // authoritative proof, and the reattach still accepts. No-regression
+      // lock (accepted before this change too): metadata-dropping adapters
+      // must never brick an exactly-bound reattach.
+      const at = new Date().toISOString();
+      eventStore.appendEvent({
+        provider: 'claude',
+        threadId: 'portable-reattach-stamp',
+        eventId: 'evt-portable-reattach-stamp-started',
+        createdAt: at,
+        method: 'session.started',
+        sessionId: 'portable-reattach-stamp',
+        metadata: { userId: 'owner-user' },
+      } as CanonicalRuntimeEvent);
+      eventStore.appendEvent({
+        provider: 'claude',
+        threadId: 'portable-reattach-stamp',
+        eventId: 'evt-portable-reattach-stamp-configured',
+        createdAt: at,
+        method: 'session.configured',
+        sessionId: 'portable-reattach-stamp',
+        metadata: { userId: 'owner-user' },
+      } as CanonicalRuntimeEvent);
+      const reattached = await service.startSessionInternal(
+        {
+          type: 'start-session',
+          input: {
+            threadId: 'portable-reattach-stamp',
+            provider: 'claude',
+            cwd: tmp,
+            metadata: { projectSlug: 'local' },
+          },
+        },
+        { userId: 'owner-user' },
+        { receiverExecutionAdmission: admission },
+      );
+      if (reattached.status !== 'accepted') throw new Error(reattached.message);
+      expect(claude.startSession).toHaveBeenCalledTimes(1);
+      expect(admission.recheck).toHaveBeenCalled();
+    });
+
+    test('cold recovery refuses a marked session before any engine spawn, cursor preserved', async () => {
+      claude.startSession.mockImplementation(async (input) => {
+        const now = new Date().toISOString();
+        return {
+          provider: 'claude' as const,
+          threadId: input.threadId,
+          status: 'ready' as const,
+          model: input.modelId,
+          cwd: input.cwd,
+          resumeCursor: 'cursor-1',
+          createdAt: now,
+          updatedAt: now,
+        };
+      });
+      configuredProjects.push({ slug: 'local', workingDirectory: tmp });
+      const started = await service.startSessionInternal(
+        {
+          type: 'start-session',
+          input: {
+            threadId: 'portable-cold',
+            provider: 'claude',
+            cwd: tmp,
+            metadata: { projectSlug: 'local' },
+          },
+        },
+        { userId: 'owner-user' },
+        {
+          receiverExecutionAdmission: admittedFor('portable-cold', tmp),
+          portableExecutionConsent: {
+            portableProjectId: 'prj_shared',
+            resourceId: 'git.example/acme/repo',
+            localProjectId: 'local-project-1',
+          },
+        },
+      );
+      if (started.status !== 'accepted') throw new Error(started.message);
+      // Boot: a FRESH service over the SAME durable store, with a FRESH
+      // adapter holding no live engines — the restored session is dormant.
+      const coldClaude = new FakeAdapter('claude');
+      const cold = new RawOrchestrationService({
+        adapterRegistry: createRegistry([coldClaude]),
+        eventBus: new EventBus(),
+        eventStore,
+        listProjects: () => configuredProjects,
+        logger: { debug: vi.fn(), warn: vi.fn() },
+      });
+      // The interrupted-turn / auto-dispatch shape: a plain turn with no
+      // admission context. No adapter start, adopt, or turn may run for the
+      // marked portable session.
+      await expect(
+        cold.dispatchWithReceipt(
+          {
+            type: 'sendTurn',
+            input: { threadId: 'portable-cold', input: 'hello' },
+          },
+          undefined,
+          undefined,
+        ),
+      ).rejects.toThrow(
+        'This portable task cannot continue without a current execution offer',
+      );
+      expect(coldClaude.startSession).not.toHaveBeenCalled();
+      expect(coldClaude.sendTurn).not.toHaveBeenCalled();
+      if (coldClaude.adoptSession)
+        expect(coldClaude.adoptSession).not.toHaveBeenCalled();
+      // The persisted record and resumeCursor survive untouched: the session
+      // stays dormant and re-routable under a future admission, never
+      // quarantined or closed.
+      const row = eventStore.readSessionByThread('portable-cold');
+      expect(row?.resumeCursor).toBe('cursor-1');
+      expect(row?.status).not.toBe('closed');
+      expect(row?.status).not.toBe('dead');
+      // Legacy control: an unmarked dormant session materializes on the
+      // cold service and its turn flows.
+      const legacyStarted = await service.startSessionInternal(
+        {
+          type: 'start-session',
+          input: {
+            threadId: 'portable-cold-legacy',
+            provider: 'claude',
+            cwd: tmp,
+          },
+        },
+        { userId: 'owner-user' },
+        {},
+      );
+      if (legacyStarted.status !== 'accepted')
+        throw new Error(legacyStarted.message);
+      await cold.dispatchWithReceipt(
+        {
+          type: 'sendTurn',
+          input: { threadId: 'portable-cold-legacy', input: 'hello' },
+        },
+        undefined,
+        undefined,
+      );
+      expect(coldClaude.sendTurn).toHaveBeenCalledTimes(1);
+    });
+
+    test('a pre-incarnation marker fails closed stale on a turn, retaining history', async () => {
+      configuredProjects.push({ slug: 'local', workingDirectory: tmp });
+      const started = await service.startSessionInternal(
+        {
+          type: 'start-session',
+          input: {
+            threadId: 'portable-legacy-marker',
+            provider: 'claude',
+            cwd: tmp,
+          },
+        },
+        { userId: 'owner-user' },
+        {},
+      );
+      if (started.status !== 'accepted') throw new Error(started.message);
+      // A marker minted before the ORIGINAL-incarnation field existed:
+      // the association cannot be proven, so the turn fails closed with
+      // the named stale outcome — never silently upgraded — with no
+      // provider effect.
+      eventStore.appendEvent({
+        provider: 'claude',
+        threadId: 'portable-legacy-marker',
+        eventId: 'evt-portable-legacy-marker',
+        createdAt: new Date().toISOString(),
+        method: 'session.configured',
+        sessionId: 'portable-legacy-marker',
+        metadata: {
+          userId: 'owner-user',
+          [PORTABLE_EXECUTION_CONSENT_METADATA_KEY]: {
+            portableProjectId: 'prj_shared',
+            resourceId: 'git.example/acme/repo',
+          },
+        },
+      } as CanonicalRuntimeEvent);
+      const refused = await service
+        .dispatchWithReceipt(
+          {
+            type: 'sendTurn',
+            input: { threadId: 'portable-legacy-marker', input: 'hello' },
+          },
+          undefined,
+          {
+            receiverExecutionAdmission: admittedFor(
+              'portable-legacy-marker',
+              tmp,
+            ),
+          },
+        )
+        .catch((error) => error);
+      expect(refused).toMatchObject({
+        code: 'receiver_execution_consent_stale',
+      });
+      expect(refused.outcome).toBeUndefined();
+      expect(claude.sendTurn).not.toHaveBeenCalled();
+      // History is retained: the session still reads back.
+      const reread = await service.readSession('portable-legacy-marker');
+      expect(reread?.session.threadId).toBe('portable-legacy-marker');
+    });
+
+    test('a replaced incarnation refuses unavailable even with a fresh admission', async () => {
+      configuredProjects.push({ slug: 'local', workingDirectory: tmp });
+      const started = await service.startSessionInternal(
+        {
+          type: 'start-session',
+          input: {
+            threadId: 'portable-replaced',
+            provider: 'claude',
+            cwd: tmp,
+            metadata: { projectSlug: 'local' },
+          },
+        },
+        { userId: 'owner-user' },
+        {
+          receiverExecutionAdmission: admittedFor('portable-replaced', tmp),
+          portableExecutionConsent: {
+            portableProjectId: 'prj_shared',
+            resourceId: 'git.example/acme/repo',
+            localProjectId: 'local-project-1',
+          },
+        },
+      );
+      if (started.status !== 'accepted') throw new Error(started.message);
+      // Same path, successor Project record: the persisted incarnation no
+      // longer matches the freshly admitted ORIGINAL — a different
+      // association hiding under the same checkout refuses.
+      await expect(
+        service.dispatchWithReceipt(
+          {
+            type: 'sendTurn',
+            input: { threadId: 'portable-replaced', input: 'hello' },
+          },
+          undefined,
+          {
+            receiverExecutionAdmission: {
+              recheck: async () => {},
+              admitted: {
+                threadId: 'portable-replaced',
+                projectSlug: 'local',
+                cwd: tmp,
+                portableProjectId: 'prj_shared',
+                resourceId: 'git.example/acme/repo',
+                localProjectId: 'local-project-9',
+              },
+            },
+          },
+        ),
+      ).rejects.toMatchObject({
+        code: 'receiver_execution_unavailable',
+      });
+      expect(claude.sendTurn).not.toHaveBeenCalled();
+    });
+
+    test('a withdrawal during turn preparation refuses cleanly, never indeterminate', async () => {
+      configuredProjects.push({ slug: 'local', workingDirectory: tmp });
+      const started = await service.startSessionInternal(
+        {
+          type: 'start-session',
+          input: {
+            threadId: 'portable-mid-prep',
+            provider: 'claude',
+            cwd: tmp,
+            metadata: { projectSlug: 'local' },
+          },
+        },
+        { userId: 'owner-user' },
+        {
+          receiverExecutionAdmission: admittedFor('portable-mid-prep', tmp),
+          portableExecutionConsent: {
+            portableProjectId: 'prj_shared',
+            resourceId: 'git.example/acme/repo',
+            localProjectId: 'local-project-1',
+          },
+        },
+      );
+      if (started.status !== 'accepted') throw new Error(started.message);
+      // The mint-time recheck passes; the offer dies during the turn's
+      // own preparation awaits (native-memory/model-selector). The
+      // post-preparation recheck refuses BEFORE the provider effect —
+      // and the refusal keeps its closed code instead of converting to
+      // an indeterminate claim the provider may have started.
+      let rechecks = 0;
+      const refused = await service
+        .dispatchWithReceipt(
+          {
+            type: 'sendTurn',
+            input: { threadId: 'portable-mid-prep', input: 'hello' },
+          },
+          undefined,
+          {
+            receiverExecutionAdmission: {
+              recheck: async () => {
+                rechecks += 1;
+                if (rechecks > 1)
+                  throw new ReceiverExecutionRefusal(
+                    'receiver_execution_not_offered',
+                    'This Station does not currently offer execution for the requested Project resource.',
+                  );
+              },
+              admitted: {
+                threadId: 'portable-mid-prep',
+                projectSlug: 'local',
+                cwd: tmp,
+                portableProjectId: 'prj_shared',
+                resourceId: 'git.example/acme/repo',
+                localProjectId: 'local-project-1',
+              },
+            },
+          },
+        )
+        .catch((error) => error);
+      expect(rechecks).toBeGreaterThanOrEqual(2);
+      expect(refused).toMatchObject({
+        code: 'receiver_execution_not_offered',
+      });
+      expect(refused.outcome).toBeUndefined();
+      expect(claude.sendTurn).not.toHaveBeenCalled();
+      // The refusal retires only its own dispatch row: a subsequent
+      // EXPLICIT continuation with a fresh admission dispatches and turns
+      // normally — the thread is not bricked and no engine start was ever
+      // claimed for the refused work.
+      await service.dispatchWithReceipt(
+        {
+          type: 'sendTurn',
+          input: { threadId: 'portable-mid-prep', input: 'hello again' },
+        },
+        undefined,
+        {
+          receiverExecutionAdmission: admittedFor('portable-mid-prep', tmp),
+        },
+      );
+      expect(claude.sendTurn).toHaveBeenCalledTimes(1);
+    });
+
+    test('a refusal-shaped adapter error after invocation retains uncertainty and blocks redispatch', async () => {
+      configuredProjects.push({ slug: 'local', workingDirectory: tmp });
+      const threadId = 'portable-post-invocation';
+      const started = await service.startSessionInternal(
+        {
+          type: 'start-session',
+          input: {
+            threadId,
+            provider: 'claude',
+            cwd: tmp,
+            metadata: { projectSlug: 'local' },
+          },
+        },
+        { userId: 'owner-user' },
+        {
+          receiverExecutionAdmission: admittedFor(threadId, tmp),
+          portableExecutionConsent: {
+            portableProjectId: 'prj_shared',
+            resourceId: 'git.example/acme/repo',
+            localProjectId: 'local-project-1',
+          },
+        },
+      );
+      if (started.status !== 'accepted') throw new Error(started.message);
+      let effects = 0;
+      claude.sendTurn.mockImplementationOnce(async () => {
+        effects += 1;
+        throw new ReceiverExecutionRefusal(
+          'receiver_execution_not_offered',
+          'refusal after invocation',
+        );
+      });
+      const send = (clientTurnId: string) =>
+        service.dispatchWithReceipt(
+          {
+            type: 'sendTurn',
+            input: {
+              threadId,
+              input: 'perform the action',
+              clientTurnId,
+            },
+          },
+          undefined,
+          { receiverExecutionAdmission: admittedFor(threadId, tmp) },
+        );
+      await expect(send('original-portable-action')).rejects.toMatchObject({
+        code: 'foreground_message_indeterminate',
+      });
+      expect(effects).toBe(1);
+      expect(
+        eventStore.sessionTurnBoundaryAuthority().hasPossibleEffect(threadId),
+      ).toEqual({ kind: 'available', active: true });
+      await expect(send('new-portable-action')).rejects.toBeDefined();
+      expect(claude.sendTurn).toHaveBeenCalledTimes(1);
+    });
+
+    test('a portable request answer runs only under a fresh admission', async () => {
+      configuredProjects.push({ slug: 'local', workingDirectory: tmp });
+      const started = await service.startSessionInternal(
+        {
+          type: 'start-session',
+          input: {
+            threadId: 'portable-respond',
+            provider: 'claude',
+            cwd: tmp,
+            metadata: { projectSlug: 'local' },
+          },
+        },
+        { userId: 'owner-user' },
+        {
+          receiverExecutionAdmission: admittedFor('portable-respond', tmp),
+          portableExecutionConsent: {
+            portableProjectId: 'prj_shared',
+            resourceId: 'git.example/acme/repo',
+            localProjectId: 'local-project-1',
+          },
+        },
+      );
+      if (started.status !== 'accepted') throw new Error(started.message);
+      // Positive control: the admitted answer reaches the adapter.
+      await service.dispatchWithReceipt(
+        {
+          type: 'respondToRequest',
+          threadId: 'portable-respond',
+          requestId: 'request-1',
+          decision: 'accept',
+        },
+        undefined,
+        {
+          receiverExecutionAdmission: admittedFor('portable-respond', tmp),
+        },
+      );
+      expect(claude.respondToRequest).toHaveBeenCalledWith(
+        'portable-respond',
+        'request-1',
+        'accept',
+      );
+      // Withdrawal between mint and the response effect refuses with no
+      // adapter call.
+      await expect(
+        service.dispatchWithReceipt(
+          {
+            type: 'respondToRequest',
+            threadId: 'portable-respond',
+            requestId: 'request-2',
+            decision: 'accept',
+          },
+          undefined,
+          {
+            receiverExecutionAdmission: {
+              recheck: async () => {
+                throw new ReceiverExecutionRefusal(
+                  'receiver_execution_not_offered',
+                  'This Station does not currently offer execution for the requested Project resource.',
+                );
+              },
+              admitted: {
+                threadId: 'portable-respond',
+                projectSlug: 'local',
+                cwd: tmp,
+                portableProjectId: 'prj_shared',
+                resourceId: 'git.example/acme/repo',
+                localProjectId: 'local-project-1',
+              },
+            },
+          },
+        ),
+      ).rejects.toMatchObject({ code: 'receiver_execution_not_offered' });
+      expect(claude.respondToRequest).toHaveBeenCalledTimes(1);
+      // No admission at all on the marked thread refuses the same way.
+      await expect(
+        service.dispatchWithReceipt(
+          {
+            type: 'respondToRequest',
+            threadId: 'portable-respond',
+            requestId: 'request-3',
+            decision: 'accept',
+          },
+          undefined,
+          undefined,
+        ),
+      ).rejects.toMatchObject({ code: 'receiver_execution_not_offered' });
+      expect(claude.respondToRequest).toHaveBeenCalledTimes(1);
+    });
+
+    test('cold recovery under a fresh admission materializes and turns', async () => {
+      configuredProjects.push({ slug: 'local', workingDirectory: tmp });
+      const started = await service.startSessionInternal(
+        {
+          type: 'start-session',
+          input: {
+            threadId: 'portable-cold-admitted',
+            provider: 'claude',
+            cwd: tmp,
+            metadata: { projectSlug: 'local' },
+          },
+        },
+        { userId: 'owner-user' },
+        {
+          receiverExecutionAdmission: admittedFor(
+            'portable-cold-admitted',
+            tmp,
+          ),
+          portableExecutionConsent: {
+            portableProjectId: 'prj_shared',
+            resourceId: 'git.example/acme/repo',
+            localProjectId: 'local-project-1',
+          },
+        },
+      );
+      if (started.status !== 'accepted') throw new Error(started.message);
+      // Boot: a FRESH service over the SAME durable store, with a FRESH
+      // adapter holding no live engines — the restored session is dormant.
+      const coldClaude = new FakeAdapter('claude');
+      const cold = new RawOrchestrationService({
+        adapterRegistry: createRegistry([coldClaude]),
+        eventBus: new EventBus(),
+        eventStore,
+        listProjects: () => configuredProjects,
+        logger: { debug: vi.fn(), warn: vi.fn() },
+      });
+      // The fresh admission authorizes the spawn it needs: the engine
+      // materializes and the turn flows.
+      await cold.dispatchWithReceipt(
+        {
+          type: 'sendTurn',
+          input: { threadId: 'portable-cold-admitted', input: 'hello' },
+        },
+        undefined,
+        {
+          receiverExecutionAdmission: admittedFor(
+            'portable-cold-admitted',
+            tmp,
+          ),
+        },
+      );
+      expect(coldClaude.startSession).toHaveBeenCalledTimes(1);
+      expect(coldClaude.sendTurn).toHaveBeenCalledTimes(1);
+    });
+
+    test('deletion retires the cached marker; a recreated thread id starts clean', async () => {
+      // The default fake registers its sessions (the cwd-echo overrides in
+      // the association tests above deliberately do not, so stop resolution
+      // would not find them); cwd is irrelevant to this lifecycle test.
+      configuredProjects.push({ slug: 'local', workingDirectory: tmp });
+      const consent = {
+        portableProjectId: 'prj_shared',
+        resourceId: 'git.example/acme/repo',
+        localProjectId: 'local-project-1',
+      };
+      const marked = await service.startSessionInternal(
+        {
+          type: 'start-session',
+          input: {
+            threadId: 'portable-cache-reuse',
+            provider: 'bedrock',
+            cwd: tmp,
+            metadata: { projectSlug: 'local' },
+          },
+        },
+        { userId: 'owner-user' },
+        {
+          receiverExecutionAdmission: admittedFor('portable-cache-reuse', tmp),
+          portableExecutionConsent: consent,
+        },
+      );
+      if (marked.status !== 'accepted') throw new Error(marked.message);
+      expect(
+        service.persistedPortableConsentOfThread('portable-cache-reuse'),
+      ).toEqual(consent);
+      // Ownership is established by a binding event carrying metadata.userId.
+      eventStore.appendEvent({
+        provider: 'bedrock',
+        threadId: 'portable-cache-reuse',
+        eventId: 'evt-portable-cache-reuse-owner',
+        createdAt: new Date().toISOString(),
+        method: 'session.configured',
+        sessionId: 'portable-cache-reuse',
+        metadata: { userId: 'owner-user' },
+      } as CanonicalRuntimeEvent);
+      // Stop retires live state through the canonical teardown seam; the
+      // store drop removes the durable history. Either alone must not leave
+      // a stale positive behind for the recreated id.
+      await service.dispatchWithReceipt(
+        { type: 'stopSession', threadId: 'portable-cache-reuse' },
+        { userId: 'owner-user' },
+      );
+      eventStore.deleteThread('portable-cache-reuse');
+      // THE regression assertion: without cache retirement in the teardown
+      // seam this still returns the dead session's positive.
+      expect(
+        service.persistedPortableConsentOfThread('portable-cache-reuse'),
+      ).toBeUndefined();
+      // A same-id legacy recreation is independently refused by the
+      // immutable conversation-lineage guard (fail-closed at an orthogonal
+      // seam, never a wrong accept), so ordinary flow is proven on a fresh
+      // id instead: a legacy start records a clean verdict and its
+      // admission-less turn flows.
+      const legacy = await service.startSessionInternal(
+        {
+          type: 'start-session',
+          input: {
+            threadId: 'portable-cache-reuse-legacy',
+            provider: 'bedrock',
+            cwd: tmp,
+          },
+        },
+        { userId: 'owner-user' },
+        {},
+      );
+      if (legacy.status !== 'accepted') throw new Error(legacy.message);
+      await service.dispatchWithReceipt(
+        {
+          type: 'sendTurn',
+          input: { threadId: 'portable-cache-reuse-legacy', input: 'hello' },
+        },
+        undefined,
+        undefined,
+      );
+      expect(bedrock.sendTurn).toHaveBeenCalledTimes(1);
+    });
+  });
+
   test('public start metadata cannot author conversation or Environment ownership', async () => {
     const outcome = await service.sessionCommands.execute(
       {
@@ -2665,6 +5051,31 @@ describe('OrchestrationService', () => {
         (session) => session.delegation?.taskId === 'task:peer-847',
       ),
     ).toMatchObject({ lifecycleState: 'completed' });
+  });
+
+  test('#2456 R3: a peer Activity record offers no stop because the Station refuses to interrupt it', async () => {
+    const threadId = service.recordPeerDelegationActivityDispatch({
+      taskId: 'task:peer-2456',
+      conversationId: 'task:peer-2456',
+      prompt: 'Run remotely',
+      userId: 'owner-user',
+      environment: { id: 'environment-peer', name: 'Station B', kind: 'peer' },
+      target: { kind: 'agent', id: 'codex' },
+      parentTaskId: 'chat-2456',
+    });
+    // The interrupt a delegate card's Stop would lead to is refused for this
+    // record — so a Stop control on it would be wired to nothing.
+    await expect(
+      service.dispatch({ type: 'interruptTurn', threadId }),
+    ).rejects.toThrow('Peer delegation Activity records are read-only.');
+    const record = (await service.listSessionReadModel()).find(
+      (session) => session.threadId === threadId,
+    );
+    expect(record?.childWork?.asChild).toMatchObject({
+      producer: 'station-delegate',
+      parent: { taskId: 'chat-2456' },
+    });
+    expect(record?.childWork?.asChild).not.toHaveProperty('controls');
   });
 
   test.each(['needs_input', 'review_pending'] as const)(
@@ -3831,6 +6242,565 @@ describe('OrchestrationService', () => {
     expect(subject).toEqual(anyPersonalOrchestrationStreamPresenceSubject());
   });
 
+  test('#2312: discardDraft stops a live Draft engine, and a late session.exited cannot bring the row back', async () => {
+    const draft = 'draft-live-discard';
+    const witness = 'draft-live-witness';
+    for (const threadId of [draft, witness]) {
+      await service.dispatch({
+        type: 'startSession',
+        input: { threadId, provider: 'bedrock', cwd: tmp },
+      });
+    }
+    const listed = async () =>
+      (await service.listSessionReadModel()).map(
+        (session) => [session.threadId, session.draft] as const,
+      );
+    // Fixture guard: the started session must be what the discard targets.
+    expect(await listed()).toContainEqual([draft, true]);
+
+    await service.dispatchWithReceipt({
+      type: 'discardDraft',
+      threadId: draft,
+    });
+
+    expect(bedrock.stopSession).toHaveBeenCalledWith(draft);
+    expect(bedrock.stopSession).not.toHaveBeenCalledWith(witness);
+    expect((await listed()).map(([threadId]) => threadId)).toEqual([witness]);
+
+    // A stopped engine may still deliver its exit after the delete. The
+    // witness's exit, pushed AFTER it, proves the queue drained past it.
+    const now = new Date().toISOString();
+    for (const threadId of [draft, witness]) {
+      const lateExit: CanonicalRuntimeEvent = {
+        eventId: `${threadId}-late-exit`,
+        provider: 'bedrock',
+        threadId,
+        sessionId: threadId,
+        createdAt: now,
+        method: 'session.exited',
+      };
+      bedrock.events.push(lateExit);
+    }
+    await waitFor(
+      () => eventStore.readSessionByThread(witness)?.status,
+      (status) => status === 'closed',
+    );
+    expect(eventStore.readSessionByThread(draft)).toBeUndefined();
+    expect(eventStore.listSessionProjectionEvents(draft)).toEqual([]);
+    expect((await listed()).map(([threadId]) => threadId)).toEqual([witness]);
+  });
+
+  // #2312 review HIGH: a tab still open on a discarded Draft (another device,
+  // or this one) sends to that conversation, which starts a NEW session under
+  // the same id. The late-event gate belongs to the stopped engine, not the
+  // id: the new session's events must persist and its turn must settle.
+  test('#2312: a new session started on a discarded Draft id records its events and completes its turn', async () => {
+    const draft = 'draft-restarted';
+    const start = () =>
+      service.dispatch({
+        type: 'startSession',
+        input: { threadId: draft, provider: 'bedrock', cwd: tmp },
+      });
+    await start();
+    await service.dispatchWithReceipt({
+      type: 'discardDraft',
+      threadId: draft,
+    });
+    expect(eventStore.readSessionByThread(draft)).toBeUndefined();
+
+    await start();
+    await service.dispatch({
+      type: 'sendTurn',
+      input: { threadId: draft, input: 'sent from a tab left open' },
+    });
+    const now = new Date().toISOString();
+    const started: CanonicalRuntimeEvent = {
+      eventId: `${draft}-turn-started`,
+      provider: 'bedrock',
+      threadId: draft,
+      turnId: 'bedrock-turn',
+      createdAt: now,
+      method: 'turn.started',
+      prompt: 'sent from a tab left open',
+    };
+    const completed: CanonicalRuntimeEvent = {
+      eventId: `${draft}-turn-completed`,
+      provider: 'bedrock',
+      threadId: draft,
+      turnId: 'bedrock-turn',
+      createdAt: now,
+      method: 'turn.completed',
+    };
+    bedrock.events.push(started);
+    bedrock.events.push(completed);
+
+    const methods = await waitFor(
+      () =>
+        eventStore
+          .listSessionProjectionEvents(draft)
+          .map((event) => event.method),
+      (recorded) => recorded.includes('turn.completed'),
+    );
+    expect(methods).toContain('turn.started');
+    // The terminal reached the execution coordinator: the turn is settled,
+    // not stuck open behind dropped events.
+    expect(service.hasActiveTurn(draft)).toBe(false);
+    expect(
+      (await service.listSessionReadModel()).map((session) => session.threadId),
+    ).toContain(draft);
+  });
+
+  // #2312 verifier H1: a send that resolved its adapter before the discard
+  // took the lifecycle lock queues behind it and proceeds after the delete.
+  // With an adapter that (like a real one) throws for a stopped engine, the
+  // old code recorded an indeterminate turn that refused the id forever.
+  function refuseStoppedEngineSends() {
+    bedrock.sendTurn.mockImplementation(async (input) => {
+      if (!bedrock.sessions.has(input.threadId))
+        throw new Error(
+          `No provider session found for thread: ${input.threadId}`,
+        );
+      return { threadId: input.threadId, turnId: 'bedrock-turn' };
+    });
+  }
+
+  test('#2312: a send queued behind a discard is refused cleanly, and the id restarts', async () => {
+    refuseStoppedEngineSends();
+    const draft = 'draft-send-queued';
+    const start = () =>
+      service.dispatch({
+        type: 'startSession',
+        input: { threadId: draft, provider: 'bedrock', cwd: tmp },
+      });
+    await start();
+    const stopping = deferred<void>();
+    const stopEntered = deferred<void>();
+    bedrock.stopSession.mockImplementationOnce(async (threadId) => {
+      stopEntered.resolve();
+      await stopping.promise;
+      bedrock.sessions.delete(threadId);
+      const exit: CanonicalRuntimeEvent = {
+        eventId: `${threadId}-exit`,
+        provider: 'bedrock',
+        threadId,
+        sessionId: threadId,
+        createdAt: new Date().toISOString(),
+        method: 'session.exited',
+      };
+      bedrock.events.push(exit);
+    });
+    const discard = service.dispatchWithReceipt({
+      type: 'discardDraft',
+      threadId: draft,
+    });
+    await stopEntered.promise;
+    const send = service
+      .dispatch({
+        type: 'sendTurn',
+        input: { threadId: draft, input: 'sent while discarding' },
+      })
+      .then(
+        () => undefined,
+        (error: unknown) => error as { code?: string; message: string },
+      );
+    // Let the send resolve its adapter and queue on the turn-start lock.
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    stopping.resolve();
+    await discard;
+
+    const refused = await send;
+    expect(refused?.code).toBe('draft_discarded');
+    expect(bedrock.sendTurn).not.toHaveBeenCalled();
+    expect(service.hasActiveTurn(draft)).toBe(false);
+    expect(eventStore.readSessionByThread(draft)).toBeUndefined();
+
+    await start();
+    // Delta MEDIUM: the refused send's receipt survives the delete. Were it
+    // counted as an execution refusal, the new session under the id would
+    // read "Failed: Station refused the send" before anything was sent.
+    const restarted = (await service.listSessionReadModel()).find(
+      (session) => session.threadId === draft,
+    );
+    expect(restarted?.draft).toBe(true);
+    expect(restarted?.terminalAttribution).toBeUndefined();
+    await expect(
+      service.dispatch({
+        type: 'sendTurn',
+        input: { threadId: draft, input: 'a new chat on the old id' },
+      }),
+    ).resolves.toMatchObject({ threadId: draft });
+  });
+
+  test('#2312: a send already underway when the discard arrives wins, and the discard is refused', async () => {
+    refuseStoppedEngineSends();
+    const draft = 'draft-send-first';
+    await service.dispatch({
+      type: 'startSession',
+      input: { threadId: draft, provider: 'bedrock', cwd: tmp },
+    });
+    const accepted = deferred<ProviderTurnStartResult>();
+    const invoked = deferred<void>();
+    bedrock.sendTurn.mockImplementationOnce(async () => {
+      invoked.resolve();
+      return accepted.promise;
+    });
+    const send = service.dispatch({
+      type: 'sendTurn',
+      input: { threadId: draft, input: 'first' },
+    });
+    await invoked.promise;
+
+    const discard = service
+      .dispatchWithReceipt({ type: 'discardDraft', threadId: draft })
+      .then(
+        () => undefined,
+        (error: unknown) => error as { code?: string },
+      );
+    accepted.resolve({ threadId: draft, turnId: 'bedrock-turn' });
+    await send;
+
+    expect((await discard)?.code).toBe('not_a_draft');
+    expect(bedrock.stopSession).not.toHaveBeenCalledWith(draft);
+    expect(eventStore.readSessionByThread(draft)).toBeDefined();
+  });
+
+  // #2312 verifier M2: the stopped engine's own exit, arriving after a
+  // restart on the id, would close the NEW session. The discard consumes it.
+  test("#2312: the discarded engine's late exit is consumed before the delete, so a restart stays open", async () => {
+    const draft = 'draft-late-exit-restart';
+    const start = () =>
+      service.dispatch({
+        type: 'startSession',
+        input: { threadId: draft, provider: 'bedrock', cwd: tmp },
+      });
+    await start();
+    bedrock.stopSession.mockImplementationOnce(async (threadId) => {
+      bedrock.sessions.delete(threadId);
+      setTimeout(() => {
+        const exit: CanonicalRuntimeEvent = {
+          eventId: `${threadId}-slow-exit`,
+          provider: 'bedrock',
+          threadId,
+          sessionId: threadId,
+          createdAt: new Date().toISOString(),
+          method: 'session.exited',
+        };
+        bedrock.events.push(exit);
+      }, 50);
+    });
+    const began = Date.now();
+    await service.dispatchWithReceipt({
+      type: 'discardDraft',
+      threadId: draft,
+    });
+    // The exit ended the wait, not the cap.
+    expect(Date.now() - began).toBeLessThan(1_500);
+    await start();
+
+    const witness = 'draft-late-exit-witness';
+    await service.dispatch({
+      type: 'startSession',
+      input: { threadId: witness, provider: 'bedrock', cwd: tmp },
+    });
+    const witnessExit: CanonicalRuntimeEvent = {
+      eventId: `${witness}-exit`,
+      provider: 'bedrock',
+      threadId: witness,
+      sessionId: witness,
+      createdAt: new Date().toISOString(),
+      method: 'session.exited',
+    };
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    bedrock.events.push(witnessExit);
+    await waitFor(
+      () => eventStore.readSessionByThread(witness)?.status,
+      (status) => status === 'closed',
+    );
+    expect(eventStore.readSessionByThread(draft)?.status).not.toBe('closed');
+  });
+
+  // #2312 review MEDIUM: the lifecycle locks do not cover lineage
+  // reservation, so a successor can be reserved while the discard awaits the
+  // engine stop. It must not survive naming a deleted predecessor.
+  test('#2312: a successor reserved while the discard stops the engine makes it refuse, deleting nothing', async () => {
+    const draft = 'draft-racing';
+    const child = `${draft}:session:successor`;
+    await service.dispatch({
+      type: 'startSession',
+      input: { threadId: draft, provider: 'bedrock', cwd: tmp },
+    });
+    const stopping = deferred<void>();
+    const stopEntered = deferred<void>();
+    bedrock.stopSession.mockImplementationOnce(async (threadId) => {
+      stopEntered.resolve();
+      await stopping.promise;
+      bedrock.sessions.delete(threadId);
+    });
+
+    const discard = service
+      .dispatchWithReceipt({ type: 'discardDraft', threadId: draft })
+      .then(
+        () => undefined,
+        (error: unknown) => error as { code?: string },
+      );
+    await stopEntered.promise;
+    eventStore.reserveNextConversationSession({
+      conversationId: draft,
+      predecessorSessionId: draft,
+      proposedSessionId: child,
+      createdAt: new Date().toISOString(),
+    });
+    stopping.resolve();
+
+    expect((await discard)?.code).toBe('not_a_draft');
+    expect(eventStore.readSessionByThread(draft)).toBeDefined();
+    expect(
+      eventStore.conversationSessions(draft).map((row) => row.sessionId),
+    ).toEqual([draft, child]);
+    // Delta MEDIUM: the refusal lifts the late-event gate it had set, so the
+    // Draft's own events still land (a witness proves the queue drained).
+    const configured: CanonicalRuntimeEvent = {
+      eventId: `${draft}-after-refusal`,
+      provider: 'bedrock',
+      threadId: draft,
+      sessionId: draft,
+      createdAt: new Date().toISOString(),
+      method: 'session.configured',
+    };
+    bedrock.events.push(configured);
+    const witness = 'draft-racing-witness';
+    await service.dispatch({
+      type: 'startSession',
+      input: { threadId: witness, provider: 'bedrock', cwd: tmp },
+    });
+    const witnessExit: CanonicalRuntimeEvent = {
+      eventId: `${witness}-exit`,
+      provider: 'bedrock',
+      threadId: witness,
+      sessionId: witness,
+      createdAt: new Date().toISOString(),
+      method: 'session.exited',
+    };
+    bedrock.events.push(witnessExit);
+    await waitFor(
+      () => eventStore.readSessionByThread(witness)?.status,
+      (status) => status === 'closed',
+    );
+    expect(
+      eventStore
+        .listSessionProjectionEvents(draft)
+        .map((event) => event.payload.eventId),
+    ).toContain(`${draft}-after-refusal`);
+    expect(
+      eventStore
+        .listCommandReceipts(draft)
+        .filter((entry) => entry.commandType === 'discardDraft')
+        .map((entry) => entry.status),
+    ).toEqual(['rejected']);
+  });
+
+  // #2312 delta HIGH: a successor whose start is mid-flight has no row, read
+  // model or events yet — it is not "never started". Deleting it would leave
+  // the start to resolve into a session the discard already removed.
+  test('#2312: a successor mid-start refuses the discard as busy; the start completes normally', async () => {
+    const draft = 'draft-successor-starting';
+    const child = `${draft}:session:starting`;
+    await service.dispatch({
+      type: 'startSession',
+      input: { threadId: draft, provider: 'bedrock', cwd: tmp },
+    });
+    eventStore.reserveNextConversationSession({
+      conversationId: draft,
+      predecessorSessionId: draft,
+      proposedSessionId: child,
+      createdAt: new Date().toISOString(),
+    });
+    const release = deferred<void>();
+    const entered = deferred<void>();
+    const startNormally = bedrock.startSession.getMockImplementation();
+    bedrock.startSession.mockImplementationOnce(async (input) => {
+      entered.resolve();
+      await release.promise;
+      if (!startNormally) throw new Error('fixture: no default start');
+      return startNormally(input);
+    });
+    const starting = service.dispatch({
+      type: 'startSession',
+      input: { threadId: child, provider: 'bedrock', cwd: tmp },
+    });
+    await entered.promise;
+
+    const error = await service
+      .dispatchWithReceipt({ type: 'discardDraft', threadId: draft })
+      .then(
+        () => undefined,
+        (caught: unknown) => caught as { code?: string },
+      );
+    release.resolve();
+    await starting;
+
+    expect(error?.code).toBe('draft_busy');
+    expect(bedrock.stopSession).not.toHaveBeenCalledWith(draft);
+    expect(eventStore.readSessionByThread(draft)).toBeDefined();
+    expect(eventStore.readSessionByThread(child)).toBeDefined();
+    // The started successor's events flow: nothing gated it.
+    const configured: CanonicalRuntimeEvent = {
+      eventId: `${child}-configured`,
+      provider: 'bedrock',
+      threadId: child,
+      sessionId: child,
+      createdAt: new Date().toISOString(),
+      method: 'session.configured',
+    };
+    bedrock.events.push(configured);
+    await waitFor(
+      () =>
+        eventStore
+          .listSessionProjectionEvents(child)
+          .map((event) => event.payload.eventId),
+      (ids) => ids.includes(`${child}-configured`),
+    );
+  });
+
+  // #2312 delta HIGH, the other ordering: once the discard holds the
+  // members' lifecycle claims, a start of the reserved successor cannot
+  // begin — the durable lifecycle claim refuses its start admission before
+  // any provider call. The successor stays never-started and goes with the
+  // Draft; no session is left behind, and none is orphaned.
+  test('#2312: a successor start attempted while the discard runs is refused before the provider, and nothing is orphaned', async () => {
+    const draft = 'draft-successor-started-meanwhile';
+    const child = `${draft}:session:started`;
+    await service.dispatch({
+      type: 'startSession',
+      input: { threadId: draft, provider: 'bedrock', cwd: tmp },
+    });
+    eventStore.reserveNextConversationSession({
+      conversationId: draft,
+      predecessorSessionId: draft,
+      proposedSessionId: child,
+      createdAt: new Date().toISOString(),
+    });
+    const stopping = deferred<void>();
+    const stopEntered = deferred<void>();
+    bedrock.stopSession.mockImplementationOnce(async (threadId) => {
+      stopEntered.resolve();
+      await stopping.promise;
+      bedrock.sessions.delete(threadId);
+    });
+
+    const discard = service.dispatchWithReceipt({
+      type: 'discardDraft',
+      threadId: draft,
+    });
+    await stopEntered.promise;
+    const lateStart = await service
+      .dispatch({
+        type: 'startSession',
+        input: { threadId: child, provider: 'bedrock', cwd: tmp },
+      })
+      .then(
+        () => 'started',
+        (caught: unknown) => (caught as Error).message,
+      );
+    stopping.resolve();
+    await discard;
+
+    expect(lateStart).toContain('no provider call was made');
+    expect(bedrock.startSession).not.toHaveBeenCalledWith(
+      expect.objectContaining({ threadId: child }),
+    );
+    expect(eventStore.readSessionByThread(child)).toBeUndefined();
+    expect(eventStore.readSessionByThread(draft)).toBeUndefined();
+    expect(eventStore.conversationSessions(draft)).toEqual([]);
+    expect(
+      (await service.listSessionReadModel()).map((session) => session.threadId),
+    ).not.toContain(child);
+  });
+
+  // #2312 final delta: a continuation reserves its successor, awaits, then
+  // starts it. A discard completing in that gap removed the reservation; the
+  // start must refuse with the discard's own words, not become an orphan.
+  test('#2312: a successor start after its conversation was discarded is refused as discarded; a new chat on the id still starts', async () => {
+    const draft = 'draft-reserved-then-discarded';
+    const child = `${draft}:session:reserved`;
+    await service.dispatch({
+      type: 'startSession',
+      input: { threadId: draft, provider: 'bedrock', cwd: tmp },
+    });
+    eventStore.reserveNextConversationSession({
+      conversationId: draft,
+      predecessorSessionId: draft,
+      proposedSessionId: child,
+      createdAt: new Date().toISOString(),
+    });
+    await service.dispatchWithReceipt({
+      type: 'discardDraft',
+      threadId: draft,
+    });
+    expect(eventStore.conversationSessions(draft)).toEqual([]);
+
+    const refused = await service
+      .dispatch({
+        type: 'startSession',
+        input: {
+          threadId: child,
+          provider: 'bedrock',
+          cwd: tmp,
+          metadata: { conversationId: draft },
+        },
+      })
+      .then(
+        () => undefined,
+        (caught: unknown) => caught as { code?: string; message: string },
+      );
+
+    expect(refused?.code).toBe('draft_discarded');
+    expect(refused?.message).toContain('This draft was discarded');
+    expect(bedrock.startSession).not.toHaveBeenCalledWith(
+      expect.objectContaining({ threadId: child }),
+    );
+    expect(eventStore.readSessionByThread(child)).toBeUndefined();
+    // Control: the conversation's own id is a new chat, and starts.
+    await expect(
+      service.dispatch({
+        type: 'startSession',
+        input: { threadId: draft, provider: 'bedrock', cwd: tmp },
+      }),
+    ).resolves.toMatchObject({ threadId: draft });
+  });
+
+  // #2312 review LOW: a turn in flight is a turn, so the refusal is the
+  // definitive `not_a_draft` (a rejected receipt), not the lifecycle lock's
+  // generic failure.
+  test('#2312: discarding while a turn runs is refused as not a Draft', async () => {
+    const draft = 'draft-mid-turn';
+    await service.dispatch({
+      type: 'startSession',
+      input: { threadId: draft, provider: 'bedrock', cwd: tmp },
+    });
+    await service.dispatch({
+      type: 'sendTurn',
+      input: { threadId: draft, input: 'still running' },
+    });
+    expect(service.hasActiveTurn(draft)).toBe(true);
+
+    const error = await service
+      .dispatchWithReceipt({ type: 'discardDraft', threadId: draft })
+      .then(
+        () => undefined,
+        (caught: unknown) => caught as { code?: string },
+      );
+
+    expect(error?.code).toBe('not_a_draft');
+    expect(
+      eventStore
+        .listCommandReceipts(draft)
+        .filter((entry) => entry.commandType === 'discardDraft')
+        .map((entry) => entry.status),
+    ).toEqual(['rejected']);
+    expect(eventStore.readSessionByThread(draft)).toBeDefined();
+  });
+
   test('a freshly constructed hosted service authorizes a persisted tenant-bound command before any other call (slice 6 I11 guard)', async () => {
     // `canReadSessionForCommand` hydrates persisted tenant contexts BEFORE
     // its first authorization decision (its own comment: a freshly
@@ -4185,6 +7155,101 @@ describe('OrchestrationService', () => {
       source: 'aggregate',
       outcome: 'skipped',
       reason: 'aggregate_safe',
+    });
+  });
+
+  test('#2456: snapshot rows carry the live Claude subagent set folded from its legacy task tuples', async () => {
+    const threadId = 'child-work-snapshot';
+    const createdAt = '2026-09-23T09:00:00.000Z';
+    eventStore.upsertSession({
+      provider: 'claude',
+      threadId,
+      status: 'ready',
+      createdAt,
+      updatedAt: createdAt,
+    });
+    eventStore.appendEvent({
+      eventId: `${threadId}-started`,
+      provider: 'claude',
+      threadId,
+      createdAt,
+      method: 'session.started',
+      sessionId: threadId,
+      metadata: { agentSlug: 'claude', userId: 'owner-user' },
+    });
+    const publish = (event: CanonicalRuntimeEvent) =>
+      (
+        service as unknown as {
+          projectAndPublishEvent(event: CanonicalRuntimeEvent): boolean;
+        }
+      ).projectAndPublishEvent(event);
+    publish({
+      eventId: 'registry-1',
+      provider: 'claude',
+      threadId,
+      createdAt: '2026-09-23T09:00:01.000Z',
+      method: 'extension.notification',
+      namespace: 'claude-code',
+      type: 'task/registry',
+      payload: {
+        active: [
+          { taskId: 'task-1', description: 'Research', backgrounded: true },
+        ],
+      },
+    });
+    const row = async () =>
+      (await service.listSessionReadModel()).find(
+        (session) => session.threadId === threadId,
+      );
+    expect((await row())?.childWork?.children).toMatchObject({
+      observability: 'reported',
+      running: [{ childId: 'task-1', title: 'Research', status: 'running' }],
+    });
+    // V1: the single-session reads the UI hydrates from carry the same view,
+    // through the one decoration point (the summary builder's reader).
+    const running = {
+      observability: 'reported',
+      running: [{ childId: 'task-1', status: 'running' }],
+    };
+    expect(
+      (await service.readSession(threadId))?.session.childWork?.children,
+    ).toMatchObject(running);
+    expect(
+      (
+        await service.readSessionEventPage(threadId, {
+          afterSequence: 0,
+          limit: 10,
+        })
+      )?.session.childWork?.children,
+    ).toMatchObject(running);
+    expect(
+      (
+        await service.readSessionEventWindow(threadId, {
+          turnLimit: 1,
+          authority: INTERNAL_SESSION_READ_SCOPE,
+        })
+      )?.session.childWork?.children,
+    ).toMatchObject(running);
+
+    publish({
+      eventId: 'settled-1',
+      provider: 'claude',
+      threadId,
+      createdAt: '2026-09-23T09:00:02.000Z',
+      method: 'extension.notification',
+      namespace: 'claude-code',
+      type: 'task/settled',
+      payload: { taskId: 'task-1', status: 'success' },
+    });
+    expect((await row())?.childWork?.children).toMatchObject({
+      observability: 'reported',
+      running: [],
+    });
+    // The metric still counts the legacy tuple exactly as before (#2456
+    // scope: unchanged until the adapter moves onto the contract, #2457).
+    expect(sessionBackgroundTasks.add).toHaveBeenCalledWith(1, {
+      provider: 'claude',
+      status: 'success',
     });
   });
 
@@ -5481,7 +8546,7 @@ describe('OrchestrationService', () => {
       ].map((row) =>
         FLAG_COLUMNS.filter((_flag, index) => row[index + 2] === 'yes').sort(),
       );
-      expect(docblockRows).toHaveLength(6);
+      expect(docblockRows).toHaveLength(7);
       expect(sites).toEqual(docblockRows);
     });
   });
@@ -5970,6 +9035,7 @@ describe('OrchestrationService', () => {
 
     test('applies a per-agent turn-stall window override resolved through the real AgentExecutionConfig seam', async () => {
       vi.useFakeTimers();
+      vi.mocked(orchestrationTurnStallDetections.add).mockClear();
       try {
         const bounded = new OrchestrationService({
           adapterRegistry: createRegistry([bedrock]),
@@ -10674,6 +13740,195 @@ describe('OrchestrationService', () => {
     expect(chatAttachmentsDispatched.add).not.toHaveBeenCalled();
   });
 
+  test('sendTurn surfaces an adapter pre-effect refusal honestly instead of indeterminate', async () => {
+    // A live ACP engine (e.g. grok) whose handshake reports
+    // `promptCapabilities.image: false` passes the static declared
+    // capability gate and then refuses the turn inside `adapter.sendTurn`
+    // — before any provider effect. That refusal must reach the caller
+    // with its message and a `rejected` receipt, never as
+    // `foreground_message_indeterminate`.
+    await service.dispatch({
+      type: 'startSession',
+      input: {
+        threadId: 'thread-refused-turn',
+        provider: 'claude',
+        modelId: 'claude-sonnet',
+      },
+    });
+    claude.sendTurn.mockClear();
+    claude.sendTurn.mockRejectedValueOnce(
+      new SendTurnRefusedError(
+        'This engine did not advertise image attachment support.',
+      ),
+    );
+
+    const failure = await service
+      .dispatchWithReceipt({
+        type: 'sendTurn',
+        input: {
+          threadId: 'thread-refused-turn',
+          input: 'inspect this',
+          attachments: [
+            {
+              kind: 'image',
+              name: 'screen.png',
+              mimeType: 'image/png',
+              size: 5,
+              dataUrl: 'data:image/png;base64,aGVsbG8=',
+            },
+          ],
+        },
+      })
+      .then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+
+    expect(failure).toBeInstanceOf(OrchestrationCommandDispatchError);
+    const dispatchError = failure as OrchestrationCommandDispatchError;
+    expect(dispatchError.message).toContain(
+      'did not advertise image attachment support',
+    );
+    expect(dispatchError.receipt.status).toBe('rejected');
+    expect(dispatchError.code).toBeUndefined();
+    expect(dispatchError.outcome).toBeUndefined();
+
+    // The refusal retired its turn boundary instead of leaving an
+    // indeterminate row behind, so the thread stays usable: a follow-up
+    // text turn dispatches normally.
+    const followUp = await service.dispatch({
+      type: 'sendTurn',
+      input: { threadId: 'thread-refused-turn', input: 'plain follow-up' },
+    });
+    expect(followUp).toMatchObject({ threadId: 'thread-refused-turn' });
+    expect(claude.sendTurn).toHaveBeenCalledTimes(2);
+  });
+
+  test("#2300: Muse's slot-releasing refusal keeps its retryable code through the dispatch wrapper", async () => {
+    await service.dispatch({
+      type: 'startSession',
+      input: {
+        threadId: 'thread-muse-slot',
+        provider: 'claude',
+        modelId: 'claude-sonnet',
+      },
+    });
+    claude.sendTurn.mockClear();
+    claude.sendTurn.mockRejectedValueOnce(
+      new MuseTurnSlotReleasingError('thread-muse-slot'),
+    );
+    const failure = await service
+      .dispatchWithReceipt({
+        type: 'sendTurn',
+        input: { threadId: 'thread-muse-slot', input: 'queued follow-up' },
+      })
+      .then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+    expect(failure).toBeInstanceOf(OrchestrationCommandDispatchError);
+    const dispatchError = failure as OrchestrationCommandDispatchError;
+    // The literal, not the constant: the client's queue keys on this string.
+    expect(dispatchError.code).toBe('muse_turn_slot_releasing');
+    expect(dispatchError.retryable).toBe(true);
+    expect(dispatchError.receipt.status).toBe('rejected');
+    expect(dispatchError.outcome).toBeUndefined();
+  });
+
+  test('#2324 (D4): a send refused while the engine runs its own turn keeps its retryable code, and the thread stays usable', async () => {
+    await service.dispatch({
+      type: 'startSession',
+      input: {
+        threadId: 'thread-provider-turn',
+        provider: 'claude',
+        modelId: 'claude-sonnet',
+      },
+    });
+    claude.sendTurn.mockClear();
+    claude.sendTurn.mockRejectedValueOnce(new ProviderTurnInProgressError());
+    const failure = await service
+      .dispatchWithReceipt({
+        type: 'sendTurn',
+        input: { threadId: 'thread-provider-turn', input: 'during the reply' },
+      })
+      .then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+    expect(failure).toBeInstanceOf(OrchestrationCommandDispatchError);
+    const dispatchError = failure as OrchestrationCommandDispatchError;
+    // The literal, not the constant: the client's queue keys on this string.
+    expect(dispatchError.code).toBe('provider_turn_in_progress');
+    expect(dispatchError.retryable).toBe(true);
+    expect(dispatchError.receipt.status).toBe('rejected');
+    expect(dispatchError.outcome).toBeUndefined();
+    // Retired cleanly, not left indeterminate: the retry dispatches.
+    const retry = await service.dispatch({
+      type: 'sendTurn',
+      input: { threadId: 'thread-provider-turn', input: 'during the reply' },
+    });
+    expect(retry).toMatchObject({ threadId: 'thread-provider-turn' });
+    expect(claude.sendTurn).toHaveBeenCalledTimes(2);
+  });
+
+  // #2310 review F1/F2/F3: the refusal above, seen from the session list. An
+  // execution-phase refusal (post-authorization) with nothing started reads
+  // Failed with its reason on every surface — but the event fold is left
+  // alone, so the user's retry continues THIS session instead of being
+  // re-routed to a fresh continuation child as if the session had stopped.
+  test('#2310: a refused first send reads Failed with its reason, and a retry continues the same session', async () => {
+    await service.dispatch({
+      type: 'startSession',
+      input: {
+        threadId: 'thread-refused-first',
+        provider: 'claude',
+        modelId: 'claude-sonnet',
+      },
+    });
+    claude.sendTurn.mockClear();
+    claude.sendTurn.mockRejectedValueOnce(
+      new SendTurnRefusedError(
+        'This engine did not advertise image attachment support.',
+      ),
+    );
+    await expect(
+      service.dispatch({
+        type: 'sendTurn',
+        input: { threadId: 'thread-refused-first', input: 'inspect this' },
+      }),
+    ).rejects.toThrow('did not advertise image attachment support');
+
+    // Checked FIRST: the retry must continue this session, not a fresh
+    // continuation child. Round 1 rewrote the fold to 'failed', which routed
+    // exactly this retry to a new child.
+    await expect(
+      service.resolveConversationContinuation(
+        'thread-refused-first',
+        INTERNAL_SESSION_READ_SCOPE,
+        { provider: 'claude' },
+      ),
+    ).resolves.toMatchObject({
+      sessionId: 'thread-refused-first',
+      startRequired: false,
+    });
+
+    const refused = (await service.listSessionReadModel()).find(
+      (session) => session.threadId === 'thread-refused-first',
+    );
+    expect(refused?.draft).toBe(false);
+    expect(refused?.terminalAttribution).toEqual({
+      kind: 'send_refused',
+      detail: 'Station refused the send before it started.',
+    });
+    expect(refused?.blockedReason).toBe(
+      'Station refused the send before it started.',
+    );
+    expect(refused?.lifecycleState).not.toBe('failed');
+    expect(buildSessionFailedItem(refused!).body).toBe(
+      'Station refused the send before it started.',
+    );
+  });
+
   describe('station#1885 — station-agent image attachments', () => {
     // Uses the REAL StationAgentAdapter (not FakeAdapter) so the capability
     // declaration under test is the production one; only the inner /chat relay
@@ -10768,6 +14023,85 @@ describe('OrchestrationService', () => {
         (part: { type: string }) => part.type === 'text',
       );
       expect(textPart).toEqual({ type: 'text', text: 'describe this image' });
+      await stationService.shutdown();
+    });
+
+    test('#2415: a send racing the active turn is rejected definitively and leaves no indeterminate boundary behind', async () => {
+      // The REAL adapter's concurrent-send refusal, through the real
+      // turn-start boundary: before #2415 the adapter threw a plain error
+      // after `providerInvoked` was set, the boundary row was recorded
+      // indeterminate, and the thread then read as mid-turn for good — for a
+      // send that never started.
+      const encoder = new TextEncoder();
+      let streamController!: ReadableStreamDefaultController<Uint8Array>;
+      const fetchMock = vi.fn<typeof fetch>().mockResolvedValueOnce(
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              streamController = controller;
+            },
+          }),
+          { status: 200, headers: { 'Content-Type': 'text/event-stream' } },
+        ),
+      );
+      const stationService = buildStationAgentService(fetchMock);
+      const threadId = 'thread-2415-concurrent';
+      const boundaries = () =>
+        eventStore.sessionTurnBoundaryAuthority().hasPossibleEffect(threadId);
+
+      await stationService.dispatch({
+        type: 'startSession',
+        input: {
+          threadId,
+          provider: 'station-agent',
+          modelId: 'claude-sonnet',
+          metadata: { agentId: 'reviewer' },
+        },
+      });
+      const first = await stationService.dispatch({
+        type: 'sendTurn',
+        input: { threadId, input: 'first' },
+      });
+
+      const failure = await stationService
+        .dispatchWithReceipt({
+          type: 'sendTurn',
+          input: { threadId, input: 'raced send' },
+        })
+        .then(
+          () => undefined,
+          (error: unknown) => error,
+        );
+      expect(failure).toBeInstanceOf(OrchestrationCommandDispatchError);
+      const dispatchError = failure as OrchestrationCommandDispatchError;
+      expect(dispatchError.message).toContain('already running');
+      expect(dispatchError.receipt.status).toBe('rejected');
+      expect(dispatchError.outcome).toBeUndefined();
+      expect(dispatchError.code).toBeUndefined();
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+
+      // End the active turn. Its accepted boundary row is retired by the
+      // terminal; an indeterminate row from the refused send would not be,
+      // and would keep the thread reading as mid-turn.
+      streamController.enqueue(
+        encoder.encode(
+          `data: ${JSON.stringify({ type: 'finish', finishReason: 'stop' })}\n\ndata: [DONE]\n\n`,
+        ),
+      );
+      streamController.close();
+      await waitFor(
+        boundaries,
+        (value) => value.kind === 'available' && value.active === false,
+      );
+      // `hasActiveTurn` is what gates a continuation of this thread
+      // (`assertNoActiveTurn`) and workspace restore; a lingering
+      // indeterminate row keeps it true for good. (A completed turn folds the
+      // session to completed, so the next message on this conversation is a
+      // continuation rather than another `sendTurn` on this thread; the
+      // adapter tests prove the adapter itself accepts the next send.)
+      expect(stationService.hasActiveTurn(threadId)).toBe(false);
+      expect(first).toMatchObject({ threadId });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
       await stationService.shutdown();
     });
 
@@ -11288,7 +14622,11 @@ describe('OrchestrationService', () => {
       });
       claude.sendTurn.mockClear();
       const inFlight = deferred<ProviderTurnStartResult>();
-      claude.sendTurn.mockReturnValueOnce(inFlight.promise);
+      const providerEntered = deferred<void>();
+      claude.sendTurn.mockImplementationOnce(() => {
+        providerEntered.resolve();
+        return inFlight.promise;
+      });
 
       const firstDispatch = service.dispatch({
         type: 'sendTurn',
@@ -11298,12 +14636,9 @@ describe('OrchestrationService', () => {
           clientTurnId: 'client-turn-inflight',
         },
       });
-      // Let the first dispatch's claim land (everything up to
-      // `adapter.sendTurn` is synchronous/microtask work; the deferred
-      // `inFlight` promise is the only thing actually pending) before the
-      // second one starts, so it observes an in-flight (not yet resolved)
-      // claim rather than racing the first claim.
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      // Workspace identity resolution is intentionally asynchronous. Observe
+      // the actual provider boundary instead of assuming it fits in a timer.
+      await providerEntered.promise;
       expect(claude.sendTurn).toHaveBeenCalledTimes(1);
 
       const secondDispatch = service.dispatch({
@@ -11341,7 +14676,7 @@ describe('OrchestrationService', () => {
   });
 
   describe('destination Project bindings at the actual engine start', () => {
-    async function fixture(bind = true) {
+    async function fixture(bind = true, executionRoot?: string) {
       const home = join(tmp, 'binding-home');
       const oldPath = join(tmp, 'old-checkout');
       const boundPath = join(tmp, 'bound-checkout');
@@ -11363,6 +14698,21 @@ describe('OrchestrationService', () => {
       await storage.createProject(project);
       const manifests = new ProjectManifestStore(home, storage);
       await manifests.ensureProjectManifest(project);
+      if (executionRoot) {
+        const path = manifests.manifestPath(project.slug);
+        const record = JSON.parse(readFileSync(path, 'utf8')) as Record<
+          string,
+          unknown
+        >;
+        const repos = record.repos as Array<{ id: string }>;
+        writeFileSync(
+          path,
+          JSON.stringify({
+            ...record,
+            executionRoot: { repoId: repos[0]?.id, path: executionRoot },
+          }),
+        );
+      }
       const manifest = manifests.readProjectManifest(project.slug);
       if (!manifest) throw new Error('fixture did not create its manifest');
       const bindings = new ProjectBindingsStore(home);
@@ -11407,6 +14757,17 @@ describe('OrchestrationService', () => {
       await start();
       expect(engine.startSession).toHaveBeenCalledWith(
         expect.objectContaining({ cwd: boundPath }),
+      );
+    });
+
+    test('starts the engine in the portable repo-relative directory on the destination binding', async () => {
+      const relativeRoot = join('apps', 'web');
+      const { engine, start, boundPath } = await fixture(true, relativeRoot);
+      const expected = join(boundPath, relativeRoot);
+      mkdirSync(expected, { recursive: true });
+      await start();
+      expect(engine.startSession).toHaveBeenCalledWith(
+        expect.objectContaining({ cwd: realpathSync(expected) }),
       );
     });
 
@@ -12997,6 +16358,45 @@ describe('OrchestrationService', () => {
       service.dispatch({ type: 'adoptSession', sourceThreadId }),
     ).rejects.toThrow(/configured as more than one project \(alpha, beta\)/);
     expect(claude.adoptSession).not.toHaveBeenCalled();
+  });
+
+  // Station #90 lane D (R1): an adoption an unverified agent requested
+  // starts its child marked, like every other start.
+  test('an adoption whose dispatch context marks it unattributed stamps the child start', async () => {
+    const sourceThreadId = 'external:claude:agent-source';
+    const projectRoot = join(tmp, 'agent-project');
+    mkdirSync(projectRoot, { recursive: true });
+    configuredProjects.push({
+      slug: 'agent-project',
+      workingDirectory: projectRoot,
+    });
+    eventStore.upsertSession({
+      provider: 'claude',
+      threadId: sourceThreadId,
+      status: 'ready',
+      cwd: projectRoot,
+      controlMode: 'read-only-attached',
+      attachedSource: {
+        kind: 'claude-transcript',
+        externalSessionId: 'vendor-agent-source',
+        affinity: { kind: 'test', ref: 'fixture' },
+      },
+      createdAt: '2026-07-22T00:00:00.000Z',
+      updatedAt: '2026-07-22T00:00:00.000Z',
+    });
+    await service.dispatch(
+      { type: 'adoptSession', sourceThreadId },
+      { ownerAttribution: 'unattributed-agent' },
+    );
+    expect(claude.adoptSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          adoptedFromThreadId: sourceThreadId,
+          ownerAttribution: 'unattributed-agent',
+        }),
+      }),
+      expect.anything(),
+    );
   });
 
   test('adopts an attached source into a new writable child without mutating the source', async () => {
@@ -15137,27 +18537,36 @@ describe('OrchestrationService', () => {
    * projection before the timeout's `stopSession` dispatch tears it down).
    */
   test('arms internal-stop suppression for a smoke turn that times out mid-flight', async () => {
+    const startedAt = Date.now();
+    let observedNow = startedAt;
+    const now = vi.spyOn(Date, 'now').mockImplementation(() => observedNow);
     claude.sendTurn.mockImplementationOnce(async (input) => {
-      queueMicrotask(() => {
-        claude.events.push({
-          eventId: 'suppressed-smoke-started',
-          provider: 'claude',
-          threadId: input.threadId,
-          turnId: 'suppressed-smoke-turn',
-          createdAt: new Date().toISOString(),
-          method: 'turn.started',
-          prompt: input.input,
-        });
+      claude.events.push({
+        eventId: 'suppressed-smoke-started',
+        provider: 'claude',
+        threadId: input.threadId,
+        turnId: 'suppressed-smoke-turn',
+        createdAt: new Date().toISOString(),
+        method: 'turn.started',
+        prompt: input.input,
       });
+      await waitFor(
+        () => eventStore.listEvents(input.threadId),
+        (events) =>
+          events.some((event) => event.payload.method === 'turn.started'),
+      );
+      observedNow = startedAt + 1_001;
       return { threadId: input.threadId, turnId: 'suppressed-smoke-turn' };
     });
-    const result = await service.runConnectionSmoke({
-      connectionId: 'claude',
-      provider: 'claude',
-      modelId: 'claude-sonnet',
-      cwd: tmp,
-      timeoutMs: 20,
-    });
+    const result = await service
+      .runConnectionSmoke({
+        connectionId: 'claude',
+        provider: 'claude',
+        modelId: 'claude-sonnet',
+        cwd: tmp,
+        timeoutMs: 1_000,
+      })
+      .finally(() => now.mockRestore());
 
     expect(result).toMatchObject({ ok: false, reasonCode: 'timeout' });
     expect(claude.stopSession).toHaveBeenCalledOnce();
@@ -15208,6 +18617,95 @@ describe('OrchestrationService', () => {
     expect(eventStore.readSessions()).toEqual([]);
   });
 
+  test('oversized provider output cannot fail another active turn and later terminals still settle', async () => {
+    const events = new AsyncEventQueue<CanonicalRuntimeEvent>(16);
+    (claude as any).events = events;
+    const isolated = new OrchestrationService({
+      adapterRegistry: createRegistry([claude]),
+      eventBus,
+      eventStore,
+      logger: { debug: vi.fn(), warn: vi.fn() },
+    });
+    isolated.initialize();
+    try {
+      for (const threadId of ['oversized-owner', 'unrelated-owner']) {
+        await isolated.dispatch({
+          type: 'startSession',
+          input: { threadId, provider: 'claude', modelId: 'claude-sonnet' },
+        });
+        events.push({
+          eventId: `start-${threadId}`,
+          provider: 'claude',
+          threadId,
+          createdAt: new Date().toISOString(),
+          method: 'turn.started',
+          turnId: `turn-${threadId}`,
+        });
+        await vi.waitFor(async () =>
+          expect(await isolated.readSession(threadId)).toMatchObject({
+            session: { lifecycleState: 'running' },
+          }),
+        );
+      }
+      events.push({
+        eventId: 'oversized-result',
+        provider: 'claude',
+        threadId: 'oversized-owner',
+        createdAt: new Date().toISOString(),
+        method: 'tool.completed',
+        turnId: 'turn-oversized-owner',
+        toolCallId: 'huge-tool',
+        itemId: 'huge-tool',
+        toolName: 'read_file',
+        status: 'success',
+        output: 'x'.repeat(100000),
+      });
+      await vi.waitFor(() =>
+        expect(
+          eventStore
+            .listEvents('unrelated-owner')
+            .some(
+              (entry) =>
+                entry.payload.method === 'runtime.warning' &&
+                entry.payload.code === 'adapter-event-stream-interrupted',
+            ),
+        ).toBe(true),
+      );
+      const unrelatedWarning = eventStore
+        .listEvents('unrelated-owner')
+        .find((entry) => entry.payload.method === 'runtime.warning');
+      expect(JSON.stringify(unrelatedWarning?.payload)).not.toContain(
+        'oversized-owner',
+      );
+      for (const threadId of ['oversized-owner', 'unrelated-owner']) {
+        expect(await isolated.readSession(threadId)).toMatchObject({
+          session: { lifecycleState: 'running' },
+        });
+        expect(
+          eventStore
+            .listEvents(threadId)
+            .some((entry) => entry.payload.method === 'runtime.error'),
+        ).toBe(false);
+        events.push({
+          eventId: `complete-${threadId}`,
+          provider: 'claude',
+          threadId,
+          createdAt: new Date().toISOString(),
+          method: 'turn.completed',
+          turnId: `turn-${threadId}`,
+        });
+        await vi.waitFor(async () =>
+          expect(await isolated.readSession(threadId)).toMatchObject({
+            session: { lifecycleState: 'completed' },
+          }),
+        );
+      }
+      expect(claude.sendTurn).not.toHaveBeenCalled();
+    } finally {
+      await isolated.shutdown();
+    }
+  });
+
   test('restarts adapter event consumption after a bounded queue overflow', async () => {
     const events = new AsyncEventQueue<CanonicalRuntimeEvent>(1);
     (claude as any).events = events;
@@ -15251,8 +18749,8 @@ describe('OrchestrationService', () => {
       eventStore
         .listEvents('overflow-thread')
         .map((event) => event.payload)
-        .find((event) => event.method === 'runtime.error'),
-    ).toMatchObject({ retriable: true });
+        .find((event) => event.method === 'runtime.warning'),
+    ).toMatchObject({ code: 'adapter-event-stream-interrupted' });
 
     expect(events.push(runtimeEvent('after-overflow'))).toBe(true);
     await vi.waitFor(() =>
@@ -15331,8 +18829,10 @@ describe('OrchestrationService', () => {
     const contentionError = eventStore
       .listEvents('store-busy-thread')
       .map((event) => event.payload)
-      .find((event) => event.method === 'runtime.error');
-    expect(contentionError).toMatchObject({ retriable: true });
+      .find((event) => event.method === 'runtime.warning');
+    expect(contentionError).toMatchObject({
+      code: 'adapter-event-stream-interrupted',
+    });
     expect((contentionError as { message?: string })?.message).toContain(
       'Orchestration event store is locked (orchestration.sqlite)',
     );
@@ -15362,19 +18862,19 @@ describe('OrchestrationService', () => {
         eventStore
           .listEvents('store-busy-thread')
           .map((event) => event.payload)
-          .filter((event) => event.method === 'runtime.error'),
+          .filter((event) => event.method === 'runtime.warning'),
       ).toHaveLength(2),
     );
     const errcodeOnlyError = eventStore
       .listEvents('store-busy-thread')
       .map((event) => event.payload)
-      .filter((event) => event.method === 'runtime.error')
+      .filter((event) => event.method === 'runtime.warning')
       .at(-1);
     expect((errcodeOnlyError as { message?: string })?.message).toContain(
       'Orchestration event store is locked (orchestration.sqlite)',
     );
 
-    // Control: a non-BUSY stream failure keeps the agent-connection wording.
+    // Raw stream errors stay in operator logs, not every affected transcript.
     vi.spyOn(eventStore, 'listSessionProjectionEvents').mockImplementationOnce(
       () => {
         throw new Error('adapter stream exploded');
@@ -15386,16 +18886,19 @@ describe('OrchestrationService', () => {
         eventStore
           .listEvents('store-busy-thread')
           .map((event) => event.payload)
-          .filter((event) => event.method === 'runtime.error'),
+          .filter((event) => event.method === 'runtime.warning'),
       ).toHaveLength(3),
     );
     const genericError = eventStore
       .listEvents('store-busy-thread')
       .map((event) => event.payload)
-      .filter((event) => event.method === 'runtime.error')
+      .filter((event) => event.method === 'runtime.warning')
       .at(-1);
-    expect((genericError as { message?: string })?.message).toBe(
-      'Agent connection error: adapter stream exploded',
+    expect((genericError as { message?: string })?.message).toContain(
+      'Agent event observation was interrupted.',
+    );
+    expect(JSON.stringify(genericError)).not.toContain(
+      'adapter stream exploded',
     );
     await isolated.shutdown();
   });
@@ -15446,7 +18949,7 @@ describe('OrchestrationService', () => {
         .spyOn(eventStore, 'appendEvent')
         .mockImplementation((event) => {
           if (
-            event.method === 'runtime.error' &&
+            event.method === 'runtime.warning' &&
             event.threadId === 'surfacing-blocked-thread'
           ) {
             throw Object.assign(new Error('database is locked'), {
@@ -15481,13 +18984,13 @@ describe('OrchestrationService', () => {
           eventStore
             .listEvents('surfacing-healthy-thread')
             .map((event) => event.payload)
-            .filter((event) => event.method === 'runtime.error'),
+            .filter((event) => event.method === 'runtime.warning'),
         ).toHaveLength(1),
       );
       const healthyError = eventStore
         .listEvents('surfacing-healthy-thread')
         .map((event) => event.payload)
-        .find((event) => event.method === 'runtime.error');
+        .find((event) => event.method === 'runtime.warning');
       expect((healthyError as { message?: string })?.message).toContain(
         'Orchestration event store is locked (orchestration.sqlite)',
       );
@@ -15945,17 +19448,14 @@ describe('OrchestrationService', () => {
     await expect(service.getProviderModels('codex')).resolves.toEqual([]);
   });
 
-  test("falls back to the adapter knownModels catalog when the picker's live catalog is empty (station#977)", async () => {
+  test('does not substitute knownModels when the picker live catalog is empty', async () => {
     (claude.metadata as any).knownModels = [
       { id: 'sonnet', name: 'Sonnet' },
       { id: 'opus', name: 'Opus' },
     ];
     claude.listModels.mockResolvedValue([]);
 
-    await expect(service.getProviderModels('claude')).resolves.toEqual([
-      { id: 'sonnet', name: 'Sonnet', originalId: 'sonnet' },
-      { id: 'opus', name: 'Opus', originalId: 'opus' },
-    ]);
+    await expect(service.getProviderModels('claude')).resolves.toEqual([]);
   });
 
   // Guard (archive#977): the connected-CLI softening above is scoped to
@@ -16400,7 +19900,11 @@ describe('OrchestrationService', () => {
     );
   });
 
-  test('bounds connected runtime selector validation at the service deadline', async () => {
+  // #2424: the deadline still bounds the catalog read, but a read that misses
+  // it no longer fails the start. Validation for an external engine is
+  // advisory (a selector the catalog does not list already goes to the
+  // engine), so a slow catalog is treated like an empty one.
+  test('bounds connected runtime selector validation at the service deadline without failing the start', async () => {
     vi.useFakeTimers();
     try {
       let operationSignal: AbortSignal | undefined;
@@ -16424,17 +19928,74 @@ describe('OrchestrationService', () => {
           modelId: 'claude-sonnet-4-6',
         },
       });
-      const assertion = expect(pending).rejects.toThrow(
-        'claude model validation timed out.',
-      );
       await vi.advanceTimersByTimeAsync(5_000);
 
-      await assertion;
+      await expect(pending).resolves.toBeDefined();
       expect(operationSignal?.aborted).toBe(true);
-      expect(claude.startSession).not.toHaveBeenCalled();
+      expect(operationSignal?.reason).toMatchObject({
+        message: 'claude model validation timed out.',
+      });
+      expect(claude.startSession).toHaveBeenCalledWith(
+        expect.objectContaining({
+          threadId: 'stalled-model-validation',
+          modelId: 'claude-sonnet-4-6',
+        }),
+      );
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  test('a turn selector whose catalog misses the deadline still reaches the engine', async () => {
+    await service.dispatch({
+      type: 'startSession',
+      input: { threadId: 'stalled-turn-validation', provider: 'claude' },
+    });
+    vi.useFakeTimers();
+    try {
+      claude.listModels.mockImplementation(
+        (options) =>
+          new Promise((_, reject) => {
+            options?.signal?.addEventListener(
+              'abort',
+              () => reject(options.signal?.reason),
+              { once: true },
+            );
+          }),
+      );
+      const pending = service.dispatch({
+        type: 'sendTurn',
+        input: {
+          threadId: 'stalled-turn-validation',
+          input: 'hello',
+          modelId: 'claude-sonnet-4-6',
+        },
+      });
+      await vi.advanceTimersByTimeAsync(5_000);
+
+      await expect(pending).resolves.toBeDefined();
+      expect(claude.sendTurn).toHaveBeenCalledWith(
+        expect.objectContaining({ modelId: 'claude-sonnet-4-6' }),
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test('a catalog failure other than the deadline still fails the start', async () => {
+    claude.listModels.mockRejectedValue(new Error('catalog exploded'));
+
+    await expect(
+      service.dispatch({
+        type: 'startSession',
+        input: {
+          threadId: 'broken-model-validation',
+          provider: 'claude',
+          modelId: 'claude-sonnet-4-6',
+        },
+      }),
+    ).rejects.toThrow('catalog exploded');
+    expect(claude.startSession).not.toHaveBeenCalled();
   });
 
   /**
@@ -17043,6 +20604,7 @@ describe('OrchestrationService', () => {
   });
 
   test('recoverOrchestrationSessions replays the persisted session.started metadata (minus the reserved capabilityDelivery key) and applies resolveSessionAgent before adapter.startSession (#895 wave B)', async () => {
+    const recoveryCwd = mkdtempSync(join(tmp, 'recovery-project-'));
     eventStore.appendEvent({
       eventId: 'evt-session-started-recovery',
       provider: 'claude',
@@ -17053,7 +20615,7 @@ describe('OrchestrationService', () => {
       initialState: 'created',
       metadata: {
         agentSlug: 'my-agent',
-        cwd: '/workspace/project',
+        cwd: recoveryCwd,
         [SESSION_CAPABILITY_DELIVERY_METADATA_KEY]: {
           agentSlug: 'my-agent',
           skills: { source: 'agent', requested: ['writing'], undelivered: [] },
@@ -17065,7 +20627,7 @@ describe('OrchestrationService', () => {
       threadId: 'thread-recovery-agent',
       status: 'running',
       model: 'claude-sonnet',
-      cwd: '/workspace/project',
+      cwd: recoveryCwd,
       persistSession: true,
       createdAt: '2026-03-01T00:00:00.000Z',
       updatedAt: '2026-03-01T00:00:05.000Z',
@@ -17099,7 +20661,7 @@ describe('OrchestrationService', () => {
         threadId: 'thread-recovery-agent',
         metadata: expect.objectContaining({
           agentSlug: 'my-agent',
-          cwd: '/workspace/project',
+          cwd: recoveryCwd,
         }),
       }),
     );
@@ -17108,7 +20670,7 @@ describe('OrchestrationService', () => {
         threadId: 'thread-recovery-agent',
         metadata: expect.objectContaining({
           agentSlug: 'my-agent',
-          cwd: '/workspace/project',
+          cwd: recoveryCwd,
         }),
         agent: {
           slug: 'my-agent',
@@ -17119,6 +20681,8 @@ describe('OrchestrationService', () => {
   });
 
   test('recoverOrchestrationSessions replays the LATEST persisted session.started metadata when multiple exist for a thread (#895 wave B review LOW)', async () => {
+    const oldCwd = mkdtempSync(join(tmp, 'recovery-old-'));
+    const newCwd = mkdtempSync(join(tmp, 'recovery-new-'));
     eventStore.appendEvent({
       eventId: 'evt-session-started-old',
       provider: 'claude',
@@ -17127,7 +20691,7 @@ describe('OrchestrationService', () => {
       method: 'session.started',
       sessionId: 'thread-recovery-latest-metadata',
       initialState: 'created',
-      metadata: { agentSlug: 'agent-old', cwd: '/workspace/old' },
+      metadata: { agentSlug: 'agent-old', cwd: oldCwd },
     } as any);
     eventStore.appendEvent({
       eventId: 'evt-session-started-new',
@@ -17137,14 +20701,14 @@ describe('OrchestrationService', () => {
       method: 'session.started',
       sessionId: 'thread-recovery-latest-metadata',
       initialState: 'created',
-      metadata: { agentSlug: 'agent-new', cwd: '/workspace/new' },
+      metadata: { agentSlug: 'agent-new', cwd: newCwd },
     } as any);
     eventStore.upsertSession({
       provider: 'claude',
       threadId: 'thread-recovery-latest-metadata',
       status: 'running',
       model: 'claude-sonnet',
-      cwd: '/workspace/new',
+      cwd: newCwd,
       createdAt: '2026-03-01T00:00:00.000Z',
       updatedAt: '2026-03-01T01:00:05.000Z',
     });
@@ -17168,19 +20732,20 @@ describe('OrchestrationService', () => {
         threadId: 'thread-recovery-latest-metadata',
         metadata: expect.objectContaining({
           agentSlug: 'agent-new',
-          cwd: '/workspace/new',
+          cwd: newCwd,
         }),
       }),
     );
   });
 
   test('a throwing resolveSessionAgent logs and recovery continues into adapter.startSession (#895 wave B review LOW)', async () => {
+    const recoveryCwd = mkdtempSync(join(tmp, 'recovery-resolver-'));
     eventStore.upsertSession({
       provider: 'claude',
       threadId: 'thread-recovery-resolver-throws',
       status: 'running',
       model: 'claude-sonnet',
-      cwd: '/workspace/project',
+      cwd: recoveryCwd,
       createdAt: '2026-03-01T00:00:00.000Z',
       updatedAt: '2026-03-01T00:00:05.000Z',
     });
@@ -18807,8 +22372,8 @@ describe('OrchestrationService', () => {
       eventId: 'window-elided-turn',
       createdAt: '2026-08-19T00:00:01.000Z',
       method: 'turn.started',
-      // Past `snapshotEvent`'s serialized ceiling.
-      prompt: 'p'.repeat(8_000),
+      // Past `snapshotEvent`'s serialized ceiling (24 KiB).
+      prompt: 'p'.repeat(32_000),
     } as never);
     eventStore.appendEvent({
       provider: 'claude',

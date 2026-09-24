@@ -108,6 +108,8 @@ export async function startStation(
     runtimeFramework?: 'voltagent' | 'strands';
     deterministicReadiness?: boolean;
     logFile?: string;
+    /** Explicit inherited environment; live security fixtures pass a sanitized set. */
+    environment?: NodeJS.ProcessEnv;
   } = {},
 ): Promise<string> {
   const args = [
@@ -120,14 +122,15 @@ export async function startStation(
   ];
   if (options.logFile) args.push(`--log=${options.logFile}`);
   if (clean) args.splice(3, 0, '--clean');
+  const inherited = options.environment ?? process.env;
   const startup = await runCommand(...stationCommand(args), {
     // The diagnostic production UI is intentionally a distinct tree-shaken
     // build. A cold Windows or low-disk cache can exceed the ordinary helper's
     // two-minute command budget without the Station process being unhealthy.
     timeoutMs: options.performanceReference ? 300_000 : 120_000,
     env: {
-      ...process.env,
-      PATH: `${NODE_BIN}${delimiter}${process.env.PATH ?? ''}`,
+      ...inherited,
+      PATH: `${NODE_BIN}${delimiter}${inherited.PATH ?? process.env.PATH ?? ''}`,
       STATION_ROOT: stationRootForLiveHome(live.home),
       STATION_HOME: live.home,
       STATION_E2E_SYSTEM_STATUS_READY:
@@ -135,7 +138,7 @@ export async function startStation(
       ...(options.runtimeFramework
         ? {
             STATION_FEATURES: [
-              ...(process.env.STATION_FEATURES ?? '')
+              ...(inherited.STATION_FEATURES ?? '')
                 .split(',')
                 .filter((feature) => feature && feature !== 'strands-runtime'),
               ...(options.runtimeFramework === 'strands'
@@ -243,7 +246,10 @@ function isTaskRoomAgentEditReceipt(
   );
 }
 
-export async function stopStation(live: LiveStation): Promise<void> {
+export async function stopStation(
+  live: LiveStation,
+  options: { environment?: NodeJS.ProcessEnv } = {},
+): Promise<void> {
   const args = [
     'stop',
     `--instance=${live.instance}`,
@@ -251,10 +257,11 @@ export async function stopStation(live: LiveStation): Promise<void> {
     `--port=${live.serverPort}`,
     `--ui-port=${live.uiPort}`,
   ];
+  const inherited = options.environment ?? process.env;
   await runCommand(...stationCommand(args), {
     env: {
-      ...process.env,
-      PATH: `${NODE_BIN}${delimiter}${process.env.PATH ?? ''}`,
+      ...inherited,
+      PATH: `${NODE_BIN}${delimiter}${inherited.PATH ?? process.env.PATH ?? ''}`,
       STATION_ROOT: stationRootForLiveHome(live.home),
       STATION_HOME: live.home,
     },
@@ -334,6 +341,14 @@ export async function createTaskFromProject(
   branch: string,
 ): Promise<string> {
   await page.goto(`${live.ui}/projects/${slug}`);
+  // A navigation the old page cancels (a history traversal from a dialog
+  // unmounting mid-`goto`) resolves without error and leaves the page where it
+  // was. Say so here, rather than as a missing branch label on the wrong page
+  // (Windows reference run 35865166445).
+  await expect(
+    page,
+    'goto was superseded before the Project page loaded',
+  ).toHaveURL((url) => url.pathname === `/projects/${slug}`);
   const gitStatus = await apiJson<{
     success: boolean;
     data: { isRepo: boolean; branch?: string };

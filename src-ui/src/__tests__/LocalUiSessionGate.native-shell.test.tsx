@@ -24,13 +24,24 @@ describe('LocalUiSessionGate native shell boundary', () => {
     );
 
     expect(main).not.toContain('hadBootstrapToken');
-    expect(main).toContain(
+    // #2278 moved the boot fast path from main.tsx into the authority
+    // provider's verified effect. The invariant survives the move: the
+    // identity resolution happens first, seeding is gated on the
+    // authenticated kind (and scope currency), and the seed follows both.
+    const authority = readFileSync(
+      resolve(import.meta.dirname, '../contexts/AuthorityQueryContext.tsx'),
+      'utf8',
+    );
+    expect(authority).toContain(
       'const resolution = await resolveLocalUiSession(localUiApiBase);',
     );
-    expect(main).toContain("if (resolution.kind === 'authenticated') {");
-    expect(main).toContain('await fetchAndSeedBootPayload(queryClient);');
+    expect(authority).toContain("resolution.kind !== 'authenticated'");
+    expect(authority).toContain('seedBootPayloadGuarded(');
     expect(
-      main.indexOf('const resolution = await resolveLocalUiSession'),
-    ).toBeLessThan(main.indexOf('await fetchAndSeedBootPayload(queryClient);'));
+      authority.indexOf('const resolution = await resolveLocalUiSession'),
+    ).toBeLessThan(authority.indexOf("resolution.kind !== 'authenticated'"));
+    expect(
+      authority.indexOf("resolution.kind !== 'authenticated'"),
+    ).toBeLessThan(authority.indexOf('seedBootPayloadGuarded('));
   });
 });

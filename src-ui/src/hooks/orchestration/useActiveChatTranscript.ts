@@ -1,15 +1,17 @@
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import { getJson, readEnvelopeOrThrow } from '@kontourai/station-sdk';
 import { projectRuntimeEventsToMessages } from '@kontourai/station-shared/runtime-event-projection';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { activeChatsStore } from '../../contexts/active-chats-store';
-import { apiRequest, unwrapApiData } from '../../lib/apiClient';
 import type { ChatMessage, ChatSession } from '../../types';
+import { serverTurnLive } from '../../utils/conversation-activity';
 import { isSessionExecutionActive } from '../../utils/execution';
 import { CHAT_ERROR_MARKER_PREFIX } from '../../utils/sessionFailure';
 import { extractUIBlocks } from '../../utils/uiBlocks';
 import { upsertToolResultBlocks } from './messageParts';
 import { requestReplayHistory, useReplayHistory } from './replay/history';
 import { isReplayThread } from './replay/replay-registry';
+import { parseTurnStartedAt } from './turnHandlers';
 import { useSessionEventWindow } from './useSessionEventWindow';
 
 const EMPTY_MESSAGES: ChatMessage[] = [];
@@ -52,6 +54,59 @@ function isLiveSupplementalMessage(message: ChatMessage): boolean {
           part.type === 'flow-gate-verdict',
       ),
   );
+}
+
+/** Events that end a turn by its id. */
+const TURN_TERMINAL_METHODS = [
+  'turn.completed',
+  'runtime.error',
+  'turn.aborted',
+];
+
+/**
+ * #2304: the turn still open at the end of this window, by its newest
+ * non-steer `turn.started`, or undefined when the window cannot say: that
+ * `turn.started` is outside the page, or the turn already ended in it (a
+ * terminal for that turn, or an interrupted-turn boundary, which the
+ * projection also treats as closing whatever turn is open).
+ */
+function openTurnInWindow(
+  events: readonly { event: CanonicalRuntimeEvent }[],
+  threadId: string,
+): { turnId?: string; createdAt: string } | undefined {
+  let open: { turnId?: string; createdAt: string } | undefined;
+  for (const { event } of events) {
+    if (event.threadId !== threadId) continue;
+    if (event.method === 'turn.started' && event.inputKind !== 'steer') {
+      open = { turnId: event.turnId, createdAt: event.createdAt };
+    } else if (
+      (TURN_TERMINAL_METHODS.includes(event.method) &&
+        event.turnId === open?.turnId) ||
+      (event.method === 'session.state-changed' &&
+        event.interruptedTurnBoundary?.boundaryId)
+    ) {
+      open = undefined;
+    }
+  }
+  return open;
+}
+
+/**
+ * #2304: the server's start time for the turn still open at the end of this
+ * window. A client that attached to an already-running turn never saw its
+ * `turn.started` live, so the bounded read is the only place that start
+ * exists. Undefined when the window cannot say, or its open turn is not
+ * `openTurnId` when one is given.
+ */
+function openTurnStartFromWindow(
+  events: readonly { event: CanonicalRuntimeEvent }[],
+  threadId: string,
+  openTurnId: string | undefined,
+): number | undefined {
+  const open = openTurnInWindow(events, threadId);
+  if (!open) return undefined;
+  if (openTurnId && open.turnId !== openTurnId) return undefined;
+  return parseTurnStartedAt(open.createdAt);
 }
 
 function mergeTranscriptMessages(...groups: ChatMessage[][]): ChatMessage[] {
@@ -151,6 +206,64 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
     session.id,
     window.currentSessionId,
   ]);
+  // #2304: seed the open turn's server start when this client attached to a
+  // turn already running (fresh load, reconnect), so the "Working for" clock
+  // reads the turn's duration rather than this view's. A live `turn.started`
+  // stamps it directly and wins.
+  //
+  // When a stamp is CLEARED while this reader is mounted (the fold closed, or
+  // a reconnect catch-up discarded it), or a catch-up supersedes the shell
+  // when there was no stamp to clear, the page on screen is the one read
+  // before that happened — after a gap it can still show the previous turn
+  // open. Seed only from a page read after it.
+  const executionSessionId = session.currentSessionId ?? session.id;
+  const previousTurnStartedAt = useRef(session.openTurnStartedAt);
+  const previousShellSuperseded = useRef(session.openTurnShellSuperseded);
+  const eventsReadBeforeClear = useRef<unknown>(undefined);
+  useEffect(() => {
+    if (
+      (previousTurnStartedAt.current !== undefined &&
+        session.openTurnStartedAt === undefined) ||
+      (!previousShellSuperseded.current && session.openTurnShellSuperseded)
+    ) {
+      eventsReadBeforeClear.current = window.events;
+    }
+    previousTurnStartedAt.current = session.openTurnStartedAt;
+    previousShellSuperseded.current = session.openTurnShellSuperseded;
+    if (!enabled || replay || !session.orchestrationTurnOpen) return;
+    // #2309: with a server activity record the clock reads the record's
+    // open-turn start; this seed is only the older-server fallback.
+    if (session.conversationActivity) return;
+    if (session.openTurnStartedAt !== undefined) return;
+    if (window.events === eventsReadBeforeClear.current) return;
+    const startedAt = openTurnStartFromWindow(
+      window.events,
+      executionSessionId,
+      // A superseded shell's `openTurnId` is the last turn THIS connection
+      // saw start; after a gap the server may have moved on, and the
+      // refetched page is the authority for which turn is open.
+      session.openTurnShellSuperseded ? undefined : session.openTurnId,
+    );
+    if (startedAt === undefined) return;
+    const latest = activeChatsStore.getSnapshot()[session.id];
+    if (
+      !latest?.orchestrationTurnOpen ||
+      latest.openTurnStartedAt !== undefined
+    )
+      return;
+    activeChatsStore.updateChat(session.id, { openTurnStartedAt: startedAt });
+  }, [
+    enabled,
+    replay,
+    executionSessionId,
+    session.id,
+    session.openTurnId,
+    session.openTurnShellSuperseded,
+    session.openTurnStartedAt,
+    session.orchestrationTurnOpen,
+    session.conversationActivity,
+    window.events,
+  ]);
   const checkpointKey = `${apiBase}\0${session.id}\0${checkpointRevision}`;
   const [changedFilesState, setChangedFilesState] = useState<{
     key: string;
@@ -169,25 +282,32 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
       return;
     }
     const controller = new AbortController();
-    void apiRequest<{
-      success: true;
-      data: Array<{
-        turnId: string;
-        changedFiles: NonNullable<ChatMessage['changedFiles']>;
-      }>;
-    }>(
+    // station#2236: this fetch MUST ride the SDK authenticated transport
+    // (`getJson`), never a bare fetch — the legacy `apiRequest` helper sent
+    // no Authorization header and no cookie attaches on native shells, so
+    // this call 401'd (`credential_missing`) on every native client and the
+    // changed-files data silently dropped.
+    void getJson(
       `${apiBase}/api/orchestration/sessions/${encodeURIComponent(session.id)}/checkpoints?revision=${checkpointRevision}`,
-      {
-        signal: controller.signal,
-      },
+      { signal: controller.signal },
     )
-      .then((response) => unwrapApiData(response))
+      .then((response) =>
+        readEnvelopeOrThrow<
+          Array<{
+            turnId: string;
+            changedFiles: NonNullable<ChatMessage['changedFiles']>;
+          }>
+        >(response),
+      )
       .then((records) => {
         if (!controller.signal.aborted) {
           setChangedFilesState({
             key: checkpointKey,
             byTurn: new Map(
-              records.map((record) => [record.turnId, record.changedFiles]),
+              (records ?? []).map((record) => [
+                record.turnId,
+                record.changedFiles,
+              ]),
             ),
           });
         }
@@ -271,6 +391,8 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
             runtimeErrorCode: part.runtimeErrorCode,
             needsApproval: part.needsApproval,
             approvalId: part.approvalId,
+            approvalThreadId: part.approvalThreadId,
+            approvalEventId: part.approvalEventId,
             approvalStatus: part.approvalStatus,
           };
           // Preserve the same tool-result identity and sanitized blocks as
@@ -305,16 +427,20 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
         sourceEventId: message.metadata?.sourceEventId,
         answerEligible: message.metadata?.answerEligible,
         provenance: message.metadata?.provenance,
-        changedFiles: message.metadata?.turnId
-          ? changedFilesByTurn.get(message.metadata.turnId)
-          : undefined,
       }));
+    // #2309: the server's record when it sent one; the legacy fold otherwise.
     const active =
-      session.orchestrationTurnOpen ||
-      isSessionExecutionActive({
-        orchestrationStatus: session.orchestrationStatus,
+      serverTurnLive({
+        conversationActivity: session.conversationActivity,
         status: session.status,
-      });
+        sendAwaitingTurnStart: session.sendAwaitingTurnStart,
+        stopSettledTurnId: session.stopSettledTurnId,
+      }) ??
+      (session.orchestrationTurnOpen ||
+        isSessionExecutionActive({
+          orchestrationStatus: session.orchestrationStatus,
+          status: session.status,
+        }));
     const currentPendingClientId = active
       ? [...session.messages]
           .reverse()
@@ -322,30 +448,97 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
           ?.clientId
       : undefined;
     const claimedProjectedUsers = new Set<number>();
-    const hiddenProjectedUsers = new Set<number>();
+    // The live prompt row, keyed by the index of the canonical row it stands
+    // in for (#2304). It takes that row's position, and — when that row is
+    // its own turn's prompt — its timestamp, keeping its own identity and
+    // content. (Any other content match keeps the row's own time.)
+    // The merge sorts by timestamp, then
+    // by input order: the projection stamps a turn's prompt and its activity
+    // with the one `turn.started` time, and emits the prompt first, so in the
+    // canonical row's slot with the canonical time the prompt wins the tie.
+    // Appended in a later group it lost that tie; keeping its own time (the
+    // composer's send time on this client's clock) it sorted below its own
+    // activity whenever this clock ran ahead of the server's.
+    const liveProjectedUsers = new Map<number, ChatMessage>();
+    // The turn the window shows open. A sender whose `turn.started` fell in
+    // a reconnect gap never had its prompt row stamped with a turn id, so it
+    // can only match by content; when its text is the open turn's prompt,
+    // that row IS its canonical copy. (`openTurnId` is not the key: across a
+    // gap it still names the last turn this connection saw start.)
+    const windowOpenTurnId = active
+      ? openTurnInWindow(window.events, executionSessionId)?.turnId
+      : undefined;
+    const unclaimedUser = (candidate: ChatMessage, index: number) =>
+      !claimedProjectedUsers.has(index) && candidate.role === 'user';
+    // Only the CURRENT pending send can be the open turn's prompt, and it is
+    // resolved FIRST: an older unstamped local row with the same text would
+    // otherwise claim the open turn's row (hiding its own older prompt and
+    // duplicating this one). It can still adopt an identical-text open turn
+    // that another client sent; the live `turn.started` handler
+    // (`turnHandlers.ts`) is looser still: while a send is pending it adopts
+    // the newest composer row for the next turn regardless of its text.
+    const currentPending = session.messages.find(
+      (message) =>
+        message.role === 'user' &&
+        message.clientId !== undefined &&
+        message.clientId === currentPendingClientId &&
+        !message.turnId,
+    );
+    const openTurnPromptMatch =
+      currentPending && windowOpenTurnId
+        ? projected.findIndex(
+            (candidate, index) =>
+              unclaimedUser(candidate, index) &&
+              candidate.turnId === windowOpenTurnId &&
+              candidate.content === currentPending.content,
+          )
+        : -1;
+    if (openTurnPromptMatch >= 0)
+      claimedProjectedUsers.add(openTurnPromptMatch);
     const pendingUsers = session.messages.filter((message) => {
       if (message.role !== 'user' || !message.clientId) return false;
-      const match = projected.findIndex(
-        (candidate, index) =>
-          !claimedProjectedUsers.has(index) &&
-          candidate.role === 'user' &&
-          (message.turnId
-            ? candidate.turnId === message.turnId
-            : candidate.content === message.content),
-      );
+      let match = message.turnId
+        ? projected.findIndex(
+            (candidate, index) =>
+              unclaimedUser(candidate, index) &&
+              candidate.turnId === message.turnId,
+          )
+        : -1;
+      let ownTurn = match >= 0;
+      if (message === currentPending && openTurnPromptMatch >= 0) {
+        match = openTurnPromptMatch;
+        ownTurn = true;
+      }
+      if (!message.turnId && match < 0) {
+        match = projected.findIndex(
+          (candidate, index) =>
+            unclaimedUser(candidate, index) &&
+            candidate.content === message.content,
+        );
+      }
       if (match < 0) return true;
       claimedProjectedUsers.add(match);
       // The local row owns the prompt's stable identity until the turn has
       // settled. If the bounded newest page already contains turn.started,
-      // suppress that one canonical duplicate during the live interval.
+      // the local row replaces that one canonical duplicate — in the
+      // canonical row's position — during the live interval.
       if (active && message.clientId === currentPendingClientId) {
-        hiddenProjectedUsers.add(match);
-        return true;
+        liveProjectedUsers.set(match, {
+          ...message,
+          id: message.id ?? message.clientId,
+          // Only this prompt's OWN turn's row lends its time: matched by
+          // turn id, or by content against the turn the window shows open.
+          // Any other content match can be an older turn that sent the same
+          // text, and its time is not ours.
+          timestamp: ownTurn
+            ? (projected[match]?.timestamp ?? message.timestamp)
+            : message.timestamp,
+        });
       }
       return false;
     });
-    let visibleProjected = projected.filter(
-      (_message, index) => !hiddenProjectedUsers.has(index),
+    let visibleProjected = projected.map(
+      (message, index) => liveProjectedUsers.get(index) ?? message,
     );
     // Flow events and provider notices are appended by the single app-wide
     // orchestration stream. They are not turn rows, so the bounded turn
@@ -449,9 +642,7 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
       latestLiveAnswer &&
       !window.events.some(
         ({ event, elided }) =>
-          ['turn.completed', 'runtime.error', 'turn.aborted'].includes(
-            event.method,
-          ) &&
+          TURN_TERMINAL_METHODS.includes(event.method) &&
           event.turnId === latestLiveAnswer.turnId &&
           !elided,
       )
@@ -476,15 +667,23 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
       })),
       supplementalMessages,
       retainedLiveAnswer ? [retainedLiveAnswer] : [],
-    );
+    ).map((message) => {
+      if (message.changedFiles || !message.turnId) return message;
+      const changedFiles = changedFilesByTurn.get(message.turnId);
+      return changedFiles ? { ...message, changedFiles } : message;
+    });
   }, [
     enabled,
+    executionSessionId,
     session.messages,
     session.openTurnId,
     session.openTurnShellSuperseded,
     session.orchestrationStatus,
     session.orchestrationTurnOpen,
     session.status,
+    session.conversationActivity,
+    session.sendAwaitingTurnStart,
+    session.stopSettledTurnId,
     changedFilesByTurn,
     window.events,
     window.sessionLineage,

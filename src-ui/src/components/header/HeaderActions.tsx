@@ -18,9 +18,7 @@ import {
   checkServerHealth,
   probeServerConnection,
 } from '../../lib/serverHealth';
-import { usePlatformProfile } from '../../platform/PlatformProfileContext';
-import { useBundledServerStatus } from '../../platform/useBundledServerStatus';
-import { BellGlyph, SettingsGlyph } from '../icons/Glyph';
+import { BellGlyph } from '../icons/Glyph';
 import { LazyBoundary } from '../LazyBoundary';
 import type { HeaderHelpPrompt } from './utils';
 
@@ -120,11 +118,10 @@ export function HeaderActions({
 }: HeaderActionsProps) {
   const { activeConnection, connections } = useConnections();
   const { apiBase } = useApiBase();
-  const profile = usePlatformProfile();
-  const bundledStatus = useBundledServerStatus(profile.supervisesBundledServer);
   const {
     status: connStatus,
     reason: connReason,
+    failureStreak: connFailureStreak,
     recheck: connRecheck,
   } = useConnectionStatus({
     checkHealth: checkServerHealth,
@@ -145,6 +142,7 @@ export function HeaderActions({
     status: connStatus,
     reason: connReason,
     pendingApproval: pendingApproval !== null,
+    failureStreak: connFailureStreak,
   });
   const { data: attention } = useAttentionQuery(apiBase);
   const notificationDestination = APP_DESTINATION_REGISTRY.get('notifications');
@@ -247,20 +245,18 @@ export function HeaderActions({
       // `ConnectionIndicatorState` rather than an unsafe cast.
       'awaiting-approval': 'Awaiting approval',
       'needs-repair': 'Needs re-pairing',
+      busy: 'Station is busy',
     }[connState];
-  // The sidecar fact is about the locally supervised bundled server, not about
-  // which Station the active connection points at — they are independent, so a
-  // desktop app supervising its sidecar while pointed at a REMOTE station used
-  // to render "Connected · App only", naming the wrong endpoint on the one
-  // surface whose job is to say which Station this is. It qualifies the
-  // identity now instead of replacing it.
-  //
   // Both are suppressed in `idle`: that state asserts there is no Station, so
-  // naming one — or qualifying its lifetime — beside it contradicts the very
-  // sentence next to it.
+  // naming one beside it contradicts the very sentence next to it.
   const isIdle = connState === 'idle';
-  const isSidecar = !isIdle && bundledStatus?.ownership === 'sidecar';
   const connIdentity = isIdle ? undefined : activeConnection?.name;
+  // This is the user's saved connection label, not verified server identity.
+  const connDisplayLabel = connIdentity
+    ? `Station · ${connIdentity}`
+    : activeConnection?.injectedSource === 'managed-loopback'
+      ? 'Local Station'
+      : 'Station';
   // The accessible name must contain the visible text (WCAG 2.5.3), and since
   // archive#3311 the visible text is state + identity. `connectionIndicatorLabel`
   // already satisfies that for the states it words — including
@@ -278,41 +274,19 @@ export function HeaderActions({
     connState === 'idle'
       ? `Manage Stations — ${connStateLabel}`
       : connectionIndicatorLabel(connState);
+  const compactConn = connState === 'connected';
   const connAccessibleName = [
     connState === 'connected'
       ? `Manage Stations — ${connStateLabel}`
       : connTitle,
-    connIdentity,
-    isSidecar ? 'App only' : null,
+    compactConn ? connDisplayLabel : connIdentity,
   ]
     .filter(Boolean)
     .join(' · ');
-  // #1536 F: the steady state — connected, one Station, nothing qualifying it
-  // — is a 203px chip restating a fact that never changes while you work, in
-  // the row that runs out of width first. It collapses to its status dot
-  // there and keeps every word in the accessible name and the tooltip.
-  //
-  // Four conditions, and each one is a thing the chip would otherwise be the
-  // only place to read:
-  //   `connected`: every other state is NEWS. `connectionIndicatorState` owns
-  //     that distinction, so this adds no second opinion about health.
-  //   one Station known: with two, the identity is what tells you WHICH one
-  //     you are talking to, and a dot cannot carry it. `connections.length`,
-  //     not `hasRealSavedConnection`, is the right count here — an injected
-  //     host connection (`cli-base`, `managed-loopback`) is not a "real saved
-  //     host" but IS a second thing this chip could be pointed at.
-  //   Sidecar lifetime remains in the tooltip and accessible name; it does
-  //   not need a permanent banner beside a healthy single connection.
-  //   an identity to fall back on: the collapsed form promises "Connected ·
-  //     <name>" in its tooltip and accessible name, so it is only taken when
-  //     there is a name to put there.
-  // The mobile breakpoint already rendered `connected` dot-only (chat.css,
-  // archive#3311); this is the same rule, now that the desktop row has the
-  // same problem.
-  const compactConn =
-    connState === 'connected' &&
-    (connections ?? []).length <= 1 &&
-    Boolean(connIdentity);
+  // The healthy state needs a compact, visible Station name. The status stays
+  // in the dot and accessible name; every state that needs action retains its
+  // visible state/remedy text. The connection manager gives the full chooser
+  // and distinguishes the saved display label from host identity.
 
   return (
     <div className="app-toolbar__actions">
@@ -384,7 +358,9 @@ export function HeaderActions({
         aria-label={connAccessibleName}
       >
         <ConnectionStatusDot status={connState} size={7} />
-        {compactConn ? null : (
+        {compactConn ? (
+          <span className="app-toolbar__conn-label">{connDisplayLabel}</span>
+        ) : (
           <>
             <span
               className={`app-toolbar__conn-state${
@@ -399,18 +375,6 @@ export function HeaderActions({
             </span>
             {connIdentity && (
               <span className="app-toolbar__conn-name">{connIdentity}</span>
-            )}
-            {isSidecar && (
-              <span
-                className="app-toolbar__conn-note"
-                data-testid="desktop-sidecar-indicator"
-                // The sidecar's lifetime explanation has no room inline and no
-                // longer fits in the button's own title, which archive#3297
-                // owns.
-                title="Runs while the Station app is open"
-              >
-                App only
-              </span>
             )}
           </>
         )}
@@ -437,9 +401,9 @@ export function HeaderActions({
                (chat.css) is a FLOOR, not a ceiling: measured in a real
                Chromium page with the real stylesheets, the badge renders 18px
                at one digit, 23.91px at "99", 28.59px at three digits and
-               35.58px at four — and every pixel past 18 pushes `Open settings`
-               closer to the viewport edge, which is the whole subject of
-               #1132. Capping bounds it at the two-character worst case
+               35.58px at four — and every pixel past 18 pushes the trailing
+               controls closer to the viewport edge, which is the whole subject
+               of #1132. Capping bounds it at the two-character worst case
                ("9+" measures 23.80px, just inside "99"), which is what makes
                the breakpoint in chat.css a derived bound rather than an
                assumption about how many notifications a person has.
@@ -555,21 +519,12 @@ export function HeaderActions({
         )}
       </div>
 
-      {/* Phone only since #1552 D1 — see `.app-toolbar__action--compact-only` in
-          chat.css for why the fine-pointer row can drop it and a phone cannot:
-          the avatar that carries the Settings row is itself `--secondary` there,
-          so a phone has no avatar menu, and this gear is its route. */}
-      <div className="app-toolbar__action--compact-only">
-        <button
-          type="button"
-          className={`app-toolbar__icon-btn ${currentViewType === 'settings' ? 'is-active' : ''}`}
-          onClick={onToggleSettings}
-          title={`Settings (${settingsShortcut})`}
-          aria-label="Open settings"
-        >
-          <SettingsGlyph />
-        </button>
-      </div>
+      {/* No phone-only Settings gear: Settings lives in the sidebar drawer's
+          footer (`ProjectSidebarFooter`), which the hamburger beside the brand
+          opens on every viewport — so a phone reaches it in two taps without
+          spending a permanent slot in the row that runs out of width first.
+          `onToggleSettings` stays a prop because the desktop avatar menu's
+          Settings row still dispatches through it. */}
     </div>
   );
 }

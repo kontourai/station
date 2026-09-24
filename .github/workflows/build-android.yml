@@ -43,6 +43,14 @@ jobs:
     # on PATH: setup-android exports cmdline-tools and platform-tools only.
     env:
       ANDROID_BUILD_TOOLS_VERSION: '36.0.0'
+      # Firebase client identity for agent-activity push (public values that
+      # ship in every APK; repository variables keep them out of source so
+      # secret scanners do not flag the API key). All four or none: the
+      # plugin's Gradle build refuses a partial set.
+      STATION_FIREBASE_API_KEY: ${{ vars.STATION_FIREBASE_API_KEY }}
+      STATION_FIREBASE_PROJECT_ID: ${{ vars.STATION_FIREBASE_PROJECT_ID }}
+      STATION_FIREBASE_SENDER_ID: ${{ vars.STATION_FIREBASE_SENDER_ID }}
+      STATION_FIREBASE_APP_ID: ${{ vars.STATION_FIREBASE_APP_ID_DEBUG }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -55,6 +63,21 @@ jobs:
         with: { node-version-file: .nvmrc }
       - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
         with: { targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android }
+      # Dependency crates for the four Android targets were recompiled from
+      # scratch on every run (the Tauri build step took 715s in run
+      # 35768638658). rust-cache keys on the rustc version, Cargo.lock and the
+      # target/env set, so a hit is only ever this build's own inputs. This
+      # workflow has no pull_request or pull_request_target trigger, so only
+      # trusted main pushes and dispatches can write the entry; `save-if`
+      # keeps a dispatch on another branch from writing one too. The key is
+      # separate from nightly-native-stage.yml's `android-aarch64` (release,
+      # one ABI), whose artifacts this debug four-ABI build cannot reuse.
+      # Same reviewed commit as nightly-native-stage.yml's other pins.
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: src-desktop
+          key: android-debug-four-abi
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
         with: { distribution: temurin, java-version: 17 }
       # `packages` defaults to `tools platform-tools`, and `tools` is the

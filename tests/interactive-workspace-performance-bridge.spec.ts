@@ -13,7 +13,13 @@ import {
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { promisify } from 'node:util';
-import { type Browser, expect, type Page, test } from '@playwright/test';
+import {
+  type Browser,
+  type BrowserContext,
+  expect,
+  type Page,
+  test,
+} from '@playwright/test';
 import {
   evaluateInteractiveWorkspacePerformance,
   performanceReportReceipt,
@@ -21,7 +27,10 @@ import {
 } from '../scripts/interactive-workspace-performance.mjs';
 import { INTERACTIVE_WORKSPACE_REFERENCE_TIMEOUT_MS } from '../scripts/verification-lanes.mjs';
 import { WORK_BOARD_200_PIN_MIX } from '../src-ui/src/performance/work-board-performance-bridge';
-import { readE2EOperatorCredential } from './helpers/e2e-operator-credential';
+import {
+  e2eOperatorAuthorizationHeaders,
+  readE2EOperatorCredential,
+} from './helpers/e2e-operator-credential';
 import {
   allocateLiveStation,
   apiJson,
@@ -198,6 +207,13 @@ function exactSameProvenance(
  * Telemetry consent may appear after bootstrap navigation. A locator handler
  * runs before each following UI action, so fixture provisioning cannot race a
  * late modal and accidentally exercise the Home page instead of the Task room.
+ *
+ * Two surfaces carry this dialog name. The standalone disclosure offers "Not
+ * now"; Home's first-run chapter, whose disclosure step has the same title,
+ * offers only its header's "Close setup" — both defer. Clicking "Not now"
+ * alone waited forever on the chapter, blocking every later action until the
+ * branch-label wait expired and the context closed under the handler
+ * (Windows reference run 35624233388).
  */
 async function installTelemetryDialogDismissal(
   page: Page,
@@ -206,11 +222,67 @@ async function installTelemetryDialogDismissal(
   await page.addLocatorHandler(
     dialog,
     async () => {
-      await dialog.getByRole('button', { name: 'Not now' }).click();
+      await dialog
+        .getByRole('button', { name: /^(Not now|Close setup)$/ })
+        .click();
     },
     { noWaitAfter: true },
   );
   return () => page.removeLocatorHandler(dialog);
+}
+
+/**
+ * Record this fresh home's first-run decision before any page loads, so the
+ * provisioning browser never mounts Home's first-run chapter.
+ *
+ * The chapter is a modal with a history layer. When the fixture creates the
+ * home's first project, `/` briefly swaps Home for its pending skeleton while
+ * that project's layouts load (`resolveHomeSurface`). That unmounts the
+ * chapter, and its dialog-history cleanup calls `history.back()`. If that
+ * lands while `createTaskFromProject`'s `goto('/projects/<slug>')` is still in
+ * flight, the traversal cancels the navigation: `goto` resolves with no
+ * response and the page stays on Home. That is what happened to fixture 5 of
+ * Windows reference run 35865166445, and it reproduced locally at about 1 in 6.
+ *
+ * Deferring the run writes the same record as the chapter's own "Close setup".
+ * A deferred home then offers the usage-telemetry disclosure on every route,
+ * including the Task room the evaluator measures. The snooze below is the
+ * record the disclosure's own "Not now" writes, and it reaches the evaluator
+ * through the saved storage state. The locator handler stays as a backstop.
+ */
+async function settleFirstRunBeforeBrowsing(
+  live: LiveStation,
+  context: BrowserContext,
+): Promise<void> {
+  const headers = {
+    ...e2eOperatorAuthorizationHeaders(readE2EOperatorCredential(live.home)),
+    'Content-Type': 'application/json',
+  };
+  const decision = await fetch(`${live.api}/config/first-run`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ status: 'skipped' }),
+  });
+  expect(decision.status, await decision.text()).toBe(200);
+  const disclosure = await fetch(`${live.api}/api/usage-telemetry/disclosure`, {
+    headers,
+  });
+  expect(disclosure.status).toBe(200);
+  const { data } = (await disclosure.json()) as {
+    data: { acknowledged: boolean; inventoryRevision: string };
+  };
+  expect(typeof data.inventoryRevision).toBe('string');
+  if (data.acknowledged) return;
+  await context.addInitScript(
+    ({ key, record }) => localStorage.setItem(key, JSON.stringify(record)),
+    {
+      key: 'station.usage-telemetry-disclosure.snoozed',
+      record: {
+        until: Date.now() + 7 * 24 * 60 * 60 * 1000,
+        inventoryRevision: data.inventoryRevision,
+      },
+    },
+  );
 }
 
 async function runFixtureTarget(input: {
@@ -258,7 +330,19 @@ async function runFixtureTarget(input: {
   );
   let succeeded = false;
   try {
+    await settleFirstRunBeforeBrowsing(live, context);
+    // Await the app's own bootstrap exchange before any authenticated API
+    // call: `goto` resolves on load, and a request that beats the exchange's
+    // session cookie is refused 401 (Linux smoke-live run 35449087505, second
+    // fixture: POST /api/projects answered authentication_required).
+    const exchange = page.waitForResponse(
+      (response) =>
+        response.url().endsWith('/pairing/ui-bootstrap') &&
+        response.request().method() === 'POST',
+      { timeout: 30_000 },
+    );
     await page.goto(`${live.ui}/#station-ui-bootstrap=${bootstrapToken}`);
+    expect((await exchange).status()).toBe(200);
     await page.evaluate(() =>
       localStorage.setItem('station:onboarding-setup-dismissed', '1'),
     );

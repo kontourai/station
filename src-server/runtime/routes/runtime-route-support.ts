@@ -1,4 +1,5 @@
 import { ACPStatus } from '@kontourai/station-contracts/acp';
+import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import type { HomeRecoveryDisclosure } from '@kontourai/station-contracts/system-status';
 import { readStationHomeRecovery } from '@kontourai/station-shared/station-home-archive';
 import { getNotificationProviders } from '../../providers/registries/registry.js';
@@ -13,7 +14,12 @@ import {
 import type { FlowRunService } from '../../services/flow/flow-run-service.js';
 import { createEnvironmentRuntimeResourcePostureProbe } from '../../services/infra/resource-posture.js';
 import { createServerLogReader } from '../../services/infra/server-log-reader.js';
+import {
+  resolvePushGatewayConfig,
+  wireAgentActivityPublisher,
+} from '../../services/notifications/agent-activity-publisher.js';
 import { NotificationService } from '../../services/notifications/notification-service.js';
+import { PushSigningKeyStore } from '../../services/notifications/push-signing-key-store.js';
 import { VapidKeyService } from '../../services/notifications/vapid-key-service.js';
 import { wireWebPushDelivery } from '../../services/notifications/web-push-delivery.js';
 import { WebPushService } from '../../services/notifications/web-push-service.js';
@@ -22,6 +28,7 @@ import {
   wireInternalStopRedispatchFailureNotifications,
   wireTurnCompletionNotifications,
 } from '../../services/orchestration/turn-completion-notifications.js';
+import { PluginLifecycleProposalService } from '../../services/plugins/plugin-lifecycle-proposals.js';
 import {
   AttentionProjectionService,
   type PausedGateReviewAggregate,
@@ -38,6 +45,7 @@ import {
   createStationEngineAvailabilityReader,
   resolveManagedChatBinding,
 } from '../plugins/runtime-provider-resolution.js';
+import { createAgentActivitySessionReader } from './agent-activity-session-reader.js';
 import type { ConfigureRuntimeRoutesContext } from './runtime-routes.js';
 
 const WEB_PUSH_FALLBACK_SUBJECT = 'mailto:push@station.local';
@@ -434,6 +442,7 @@ export function configureRuntimeSupportServices(
             context.taskDispatcher.dispatch(task.id, {
               agentId: input.agentId,
               sourceSurface: 'external-monitor',
+              fullAccessGrant: null,
               monitor: {
                 agentId: input.agentId,
                 signal: input.monitor.signal,
@@ -543,6 +552,56 @@ export function configureRuntimeSupportServices(
     { enabled: webPushEnabled },
   );
 
+  // Agent-activity push to registered phones through the Kontour push
+  // gateway (docs/design/notification-delivery.md, "Station contract").
+  // Off exactly where Web Push is off: hosted paired-device records have no
+  // tenant binding. The key store only reads here; the first registration
+  // creates the key.
+  const pushSigningKeyStore = new PushSigningKeyStore(
+    context.configLoader.getProjectHomeDir(),
+    () => context.environmentSecurityService.devicePairing.environmentId(),
+  );
+  const pushGateway = resolvePushGatewayConfig();
+  if (!pushGateway)
+    context.logger.warn(
+      'STATION_PUSH_GATEWAY_URL must be an https origin with no path, query or credentials; agent-activity push is off',
+    );
+  const agentActivityPublisher = wireAgentActivityPublisher({
+    eventBus: context.eventBus,
+    devicePairing: context.environmentSecurityService.devicePairing,
+    signingKey: pushSigningKeyStore,
+    gateway: pushGateway ?? { sendUrl: '', audience: '' },
+    enabled: webPushEnabled && pushGateway !== null,
+    logger: context.logger,
+    // Each phone reads what its own paired device may read (see
+    // agent-activity-session-reader.ts); hosted mode never reaches this.
+    sessionReaderFor: createAgentActivitySessionReader({
+      listDevices: () =>
+        context.environmentSecurityService.devicePairing.listDevices(),
+      listSessionReadModel: (authority) =>
+        context.orchestrationService.listSessionReadModel(authority),
+      listProjectionEvents: (threadIds) => {
+        const byThread = new Map<string, CanonicalRuntimeEvent[]>();
+        const persisted =
+          context.orchestrationEventStore?.listSessionProjectionEventsForThreads(
+            threadIds,
+          );
+        for (const [threadId, events] of persisted ?? [])
+          byThread.set(
+            threadId,
+            events.map((event) => event.payload),
+          );
+        return byThread;
+      },
+      projectNames: () =>
+        new Map(
+          context.projectService
+            .listProjects()
+            .map((project) => [project.slug, project.name] as const),
+        ),
+    }),
+  });
+
   const attentionProjection = new AttentionProjectionService(
     notificationService,
     context.orchestrationService,
@@ -574,6 +633,12 @@ export function configureRuntimeSupportServices(
     // bell's count and the Review page cannot disagree about what is pending.
     context.proposedChangeService,
     options.listGateReviews,
+    // #2323 S5: open plugin lifecycle proposals. A fresh instance over the
+    // SAME file the `/api/plugin-proposals` and `/api/plugins` routes write;
+    // the store is stateless per call, the established pattern above.
+    new PluginLifecycleProposalService(
+      context.configLoader.getProjectHomeDir(),
+    ),
   );
   return {
     schedulerService,
@@ -582,5 +647,8 @@ export function configureRuntimeSupportServices(
     attentionProjection,
     webPushService,
     webPushEnabled,
+    pushSigningKeyStore,
+    pushGatewayAvailable: pushGateway !== null,
+    agentActivityPublisher,
   };
 }

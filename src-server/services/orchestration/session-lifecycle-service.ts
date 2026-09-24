@@ -4,6 +4,7 @@ import type { ProviderSession } from '@kontourai/station-contracts/provider';
 import {
   type CanonicalRuntimeEvent,
   isDeferredRetriableTurnError,
+  isProviderTriggeredTurn,
   type SessionState,
 } from '@kontourai/station-contracts/runtime-events';
 import type {
@@ -424,7 +425,14 @@ function stripTerminalControlCharacters(value: string): string {
 }
 
 function isTimeoutEvidence(code: string | undefined): boolean {
-  return code === 'muse-turn-timeout' || code === 'turn-timeout';
+  // #2269: the muse absolute-budget code keeps its pre-existing string so
+  // this mapping is unchanged; the distinct idle code maps to the same
+  // typed `timeout` attribution (never a raw provider message).
+  return (
+    code === 'muse-turn-timeout' ||
+    code === 'muse-turn-idle-timeout' ||
+    code === 'turn-timeout'
+  );
 }
 
 function isNoOutputEvidence(code: string | undefined): boolean {
@@ -446,6 +454,20 @@ export function activeTurnIdForEvents(
     activeTurnId = nextActiveTurnId(activeTurnId, event);
   }
   return activeTurnId;
+}
+
+/**
+ * #2309: one step of the exact fold `activeTurnIdForEvents` (and so
+ * `hasOpenTurn`) runs, for a consumer that folds incrementally instead of
+ * re-reading a list — the conversation activity projection. It is the same
+ * function, not a copy: `activeTurnIdForEvents(events)` equals reducing
+ * `events` with this step from `undefined`.
+ */
+export function advanceOpenTurnId(
+  openTurnId: string | undefined,
+  event: CanonicalRuntimeEvent,
+): string | undefined {
+  return nextActiveTurnId(openTurnId, event);
 }
 
 /**
@@ -964,7 +986,18 @@ function deriveLifecycleTransition(
       };
     }
     case 'turn.started':
-      return { from, to: 'running', reason: 'turn_started', source: 'runtime' };
+      // #2324 (owner decision D2): a turn the engine opened on its own moves
+      // the session like any turn — running while it works, completed after
+      // — with its own reason, so a consumer that must act on a caller's
+      // turn once can tell the later unprompted reply apart.
+      return {
+        from,
+        to: 'running',
+        reason: isProviderTriggeredTurn(event)
+          ? 'provider_turn_started'
+          : 'turn_started',
+        source: 'runtime',
+      };
     case 'turn.completed':
       if (!acceptsTurnTerminalEvent(event, turnIdentityAnchor)) return null;
       // archive#3557/#3558 fix-round review BLOCK 3: codex's own Stop
@@ -987,7 +1020,9 @@ function deriveLifecycleTransition(
       return {
         from,
         to: 'completed',
-        reason: 'turn_completed',
+        reason: isProviderTriggeredTurn(event)
+          ? 'provider_turn_completed'
+          : 'turn_completed',
         source: 'runtime',
       };
     case 'turn.aborted':
@@ -1022,7 +1057,15 @@ function deriveLifecycleTransition(
         isSessionLifecycleStateStopped(from)
       )
         return null;
-      return { from, to: 'failed', reason: 'runtime_error', source: 'runtime' };
+      return {
+        from,
+        to: 'failed',
+        // #2324: a turn the engine opened on its own failed.
+        reason: isProviderTriggeredTurn(event)
+          ? 'provider_turn_failed'
+          : 'runtime_error',
+        source: 'runtime',
+      };
     case 'session.exited': {
       // archive#3442: `exitCode` is the only field here an adapter ever sets
       // from an actual observation (see `codex-adapter-transport.ts`'s

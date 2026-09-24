@@ -224,13 +224,21 @@ const profileReady: Promise<PlatformProfile> = resolvePlatformProfile().then(
       if (!profile.isDesktop && !nativeBootstrapRecoveryError) {
         await profileRepository.authorizeDefaultProfile();
       }
-    }
-    if (profile.isTauri) {
       // Ask for notification permission here rather than when one arrives: a
       // permission dialog that appears because a stranger's device asked to
       // pair is confusing, and it nudges the user to tap through whatever is
       // behind it. Failure is not fatal — notifications degrade to in-app.
-      void primeNativeNotifications();
+      //
+      // But only when there is a Station to watch. On a fresh device with no
+      // saved profile the prompt arrives before any in-app context and buys
+      // nothing — there is no connection to watch yet. The pairing-success
+      // paths (`OnboardingGate`'s modal success and pending-exchange
+      // completion, `LocalUiSessionGate`'s session establishment) prime then,
+      // so the dialog lands behind the primer of a completed connection
+      // instead of in front of a first-run screen.
+      if (profileRepository.hasSavedProfiles()) {
+        void primeNativeNotifications();
+      }
     }
     cachedProfile = profile;
     return profile;

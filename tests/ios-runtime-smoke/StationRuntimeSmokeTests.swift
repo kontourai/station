@@ -42,7 +42,42 @@ final class StationRuntimeSmokeTests: XCTestCase {
             "Connect to a Station disappeared after dismissing the notification sheet. Accessibility hierarchy:\n\(app.debugDescription)"
         )
         XCTAssertTrue(connect.isHittable)
-        XCTAssertTrue(app.buttons["Open settings"].isHittable)
+        // Settings lives in the sidebar drawer's footer, not the header: open
+        // the drawer, prove the route exists, then close it again so the
+        // connection flow below starts from the undrawered shell.
+        //
+        // Interaction model, learned from two red runs: a tap that OPENS the
+        // drawer covers the Toggle menu button behind it, so tapping Toggle
+        // again throws "not hittable" instead of closing anything. The Toggle
+        // therefore stays hittable exactly while the drawer is closed — a
+        // still-hittable Toggle after a tap means the tap was dropped (tap
+        // again); a covered one means it applied (stop tapping, wait for the
+        // footer). The loop below never taps a covered control, which is what
+        // both red runs did. Close with the drawer's own Close navigation
+        // button, which stays hittable while the drawer is open.
+        let toggle = app.buttons["Toggle menu"]
+        let settings = app.buttons["Settings"]
+        let openDeadline = Date().addingTimeInterval(20)
+        while !settings.exists && Date() < openDeadline {
+            if toggle.isHittable {
+                toggle.tap()
+            }
+            _ = settings.waitForExistence(timeout: 2)
+        }
+        XCTAssertTrue(
+            settings.waitForExistence(timeout: 5),
+            "Settings route missing from the drawer. Accessibility hierarchy:\n\(app.debugDescription)"
+        )
+        XCTAssertTrue(settings.isHittable)
+        let closeNav = app.buttons["Close navigation"]
+        XCTAssertTrue(
+            closeNav.waitForExistence(timeout: 5),
+            "Drawer close control missing. Accessibility hierarchy:\n\(app.debugDescription)"
+        )
+        XCTAssertTrue(
+            dismissDrawer(closeNav, untilGone: settings),
+            "Drawer did not close after proving the Settings route. Accessibility hierarchy:\n\(app.debugDescription)"
+        )
         XCTAssertFalse(app.staticTexts["That doesn't look like a Station address."].exists)
 
         connect.tap()
@@ -109,9 +144,27 @@ final class StationRuntimeSmokeTests: XCTestCase {
         )
     }
 
-    /// A tap on a WKWebView control can be delivered and dropped. XCUITest
-    /// reports the button hittable as soon as it is laid out, which is before
-    /// the WebView has attached its handler; the tap then lands on nothing.
+    // UIKit gesture acknowledgement does not prove a WKWebView DOM click.
+    // Match the existing bounded opening-action recovery: at most two taps,
+    // only while the close control is hittable, with the same real outcome.
+    // Attempt activities remain in xcresult; a recovery is not first-tap proof.
+    private func dismissDrawer(
+        _ close: XCUIElement,
+        untilGone target: XCUIElement
+    ) -> Bool {
+        for attempt in 1...2 {
+            if !target.exists { return true }
+            guard close.exists && close.isHittable else { return !target.exists }
+            XCTContext.runActivity(named: "Drawer close attempt \(attempt)") { _ in
+                close.tap()
+            }
+            if target.waitForNonExistence(timeout: 5) { return true }
+        }
+        return !target.exists
+    }
+
+    /// A native tap can be acknowledged without the intended WebView transition.
+    /// Accessibility hittability is not a receipt that a DOM handler committed.
     /// A single `waitForExistence` afterwards can only observe the absence —
     /// it cannot separate "the handler was not ready" from "this surface never
     /// opens", and both read as a failing assertion. #1174 recorded that twice

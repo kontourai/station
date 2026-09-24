@@ -146,3 +146,17 @@
   min-width: 0;
   overflow-wrap: anywhere;
 }
+
+/* #2309: "Send now" rides the label row, right-aligned, in the label's own
+   case rather than its uppercase caption style. */
+.queued-messages__label:has(.queued-messages__send-now) {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.queued-messages__send-now {
+  margin-left: auto;
+  text-transform: none;
+  letter-spacing: normal;
+}

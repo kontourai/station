@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import type { AgentDelegationContext } from '@kontourai/station-contracts/agent';
 import { engineId } from '@kontourai/station-contracts/agent-identity';
 import type { ChatAttachmentInput } from '@kontourai/station-contracts/chat-attachment';
+import type { ClientOrigin } from '@kontourai/station-contracts/client-origin';
 import { stripReservedOrchestrationMetadata } from '@kontourai/station-contracts/provider';
 import {
   type ApprovalStatus,
@@ -30,6 +31,11 @@ import {
   currentNativeForegroundRelay,
   INTERNAL_NATIVE_FOREGROUND_HEADER,
 } from '../../runtime/conversation/native-foreground-invocation.js';
+import {
+  extractToolPurpose,
+  takeToolPurpose,
+  toolPurposeForCall,
+} from '../../runtime/frameworks/tool-purpose.js';
 import { stripOutputDeclarationHandle } from '../../runtime/native-output-declaration.js';
 import { currentNativeOutputRelayCompanion } from '../../runtime/native-output-turn-grant.js';
 import type { ApprovalRegistry } from '../../services/approvals/approval-registry.js';
@@ -48,12 +54,13 @@ import {
   INTERNAL_PROXY_CALLER_HEADER,
   INTERNAL_TENANT_HEADER,
 } from '../../utils/internal-api-token.js';
-import type {
-  ProviderAdapterShape,
-  ProviderSendTurnInput,
-  ProviderSession,
-  ProviderSessionStartInput,
-  ProviderTurnStartResult,
+import {
+  type ProviderAdapterShape,
+  type ProviderSendTurnInput,
+  type ProviderSession,
+  type ProviderSessionStartInput,
+  type ProviderTurnStartResult,
+  SendTurnRefusedError,
 } from '../adapter-shape.js';
 import { effectiveModelMetadata } from '../llm/effective-model-metadata.js';
 import { AsyncEventQueue } from '../sessions/async-event-queue.js';
@@ -526,6 +533,8 @@ export function mapStationAgentStreamEvent(options: {
    * way, and nothing in the chunks that would distinguish them.
    */
   pendingIdlessToolCalls: PendingIdlessToolCall[];
+  /** Test/internal explicit scope; production resolves the native relay ALS. */
+  purposeScope?: object;
 }): {
   outputDelta?: string;
   finishReason?: ReturnType<typeof finishReason>;
@@ -597,6 +606,10 @@ export function mapStationAgentStreamEvent(options: {
     // "no result was reported". Paired, the call is ordinary: tracked at the
     // start, deleted by its result, and settled honestly if neither arrives.
     const toolCallId = reportedCallId ?? crypto.randomUUID();
+    const trustedPurpose = toolPurposeForCall(toolCallId, options.purposeScope);
+    const purposeful = trustedPurpose
+      ? extractToolPurpose(event.input)
+      : { input: event.input };
     if (!reportedCallId) {
       const openedName = reportedToolName(event);
       options.pendingIdlessToolCalls.push({
@@ -610,7 +623,8 @@ export function mapStationAgentStreamEvent(options: {
       method: 'tool.started',
       toolCallId,
       toolName: safeToolName(event),
-      arguments: event.input,
+      arguments: purposeful.input,
+      ...(trustedPurpose ? { purpose: trustedPurpose } : {}),
     });
     return {
       toolOpened: {
@@ -634,6 +648,7 @@ export function mapStationAgentStreamEvent(options: {
           reportedToolName(event),
         )?.toolCallId;
     const toolCallId = reportedCallId ?? pairedCallId ?? crypto.randomUUID();
+    const purpose = takeToolPurpose(toolCallId, options.purposeScope);
     const error = stringField(event.error);
     // archive#3113/#3117: `event.error` reaching this relay is ALREADY the
     // safe text — both engine adapters (voltagent-adapter.ts's
@@ -658,6 +673,7 @@ export function mapStationAgentStreamEvent(options: {
       method: 'tool.completed',
       toolCallId,
       toolName: safeToolName(event),
+      ...(purpose ? { purpose } : {}),
       status: error ? 'error' : 'success',
       ...(error
         ? { error, ...(policyDenied ? { policyDenied: true } : {}) }
@@ -681,12 +697,14 @@ export function mapStationAgentStreamEvent(options: {
     const requestId = stringField(event.approvalId);
     if (!requestId) return {};
     const toolName = stringField(event.toolName);
+    const purpose = stringField(event.purpose);
     publish({
       ...base,
       method: 'request.opened',
       requestId,
       requestType: 'approval',
       title: stringField(event.tool) ?? toolName ?? 'Allow tool call',
+      ...(purpose ? { purpose } : {}),
       ...(stringField(event.toolDescription)
         ? { description: stringField(event.toolDescription) }
         : {}),
@@ -697,6 +715,7 @@ export function mapStationAgentStreamEvent(options: {
           : {}),
         ...(stringField(event.tool) ? { tool: stringField(event.tool) } : {}),
         ...(event.toolArgs !== undefined ? { toolArgs: event.toolArgs } : {}),
+        ...(purpose ? { purpose } : {}),
       },
     });
     return { approvalOpened: { requestId, ...(toolName ? { toolName } : {}) } };
@@ -867,8 +886,13 @@ export class StationAgentAdapter implements ProviderAdapterShape {
     if (!(await this.options.hasAgent(record.agentId))) {
       throw new Error(`Unknown Station agent: ${record.agentId}`);
     }
+    // #2415: refusing a send that races the running turn happens before any
+    // effect (no relay request, no `turn.started`), so it is a
+    // `SendTurnRefusedError`. A plain error was recorded by orchestration as
+    // an indeterminate turn start, which then blocked every later send on
+    // the thread.
     if (record.activeController && !record.activeController.signal.aborted) {
-      throw new Error(
+      throw new SendTurnRefusedError(
         `Station agent task is already running: ${input.threadId}`,
       );
     }
@@ -1161,14 +1185,12 @@ export class StationAgentAdapter implements ProviderAdapterShape {
     threadId: string,
     requestId: string,
     decision: 'accept' | 'acceptForSession' | 'decline' | 'cancel',
+    context?: { clientOrigin?: ClientOrigin },
   ): Promise<void> {
     const record = this.requireSession(threadId);
     const pending = record.pendingRequests.get(requestId);
     if (!pending) {
       throw new Error(`Unknown Station agent approval request: ${requestId}`);
-    }
-    if (decision === 'acceptForSession' && pending.toolName) {
-      record.approvedTools.add(pending.toolName);
     }
     this.resolutionOverrides.set(
       requestId,
@@ -1178,14 +1200,22 @@ export class StationAgentAdapter implements ProviderAdapterShape {
           ? 'denied'
           : 'cancelled',
     );
+    // #2344: `approval.resolved` records which device answered.
     const resolved = this.options.approvalRegistry.resolve(
       requestId,
       decision === 'accept' || decision === 'acceptForSession',
+      context?.clientOrigin,
     );
     if (!resolved) {
       record.pendingRequests.delete(requestId);
       this.resolutionOverrides.delete(requestId);
       throw new Error(`Stale Station agent approval request: ${requestId}`);
+    }
+    // #2316: the session grant is minted only by a decision that actually
+    // resolved its request. A stale entry refuses above without widening
+    // what this session auto-approves.
+    if (decision === 'acceptForSession' && pending.toolName) {
+      record.approvedTools.add(pending.toolName);
     }
   }
 

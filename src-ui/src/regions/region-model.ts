@@ -725,8 +725,10 @@ export interface RegisteredSurface {
    * reveals either kind.
    */
   exposure?: 'shell' | 'catalog';
-  /** Repository-relative renderer source, used by the architecture ratchet. */
-  sourceFile: string;
+  // No `sourceFile`: a surface's renderer source is the architecture
+  // ratchet's input and nothing at runtime reads it, so it lives in
+  // `region-surface-panes.ts` (`REGION_SURFACE_SOURCE_FILES`), which ships
+  // it to no one, rather than in this entry-chunk registry (#90 D9).
 }
 
 export function createSurfaceRegistry(
@@ -757,7 +759,6 @@ export const REGION_SURFACE_REGISTRY = createSurfaceRegistry([
     // mount would advertise a placement the outlet cannot render (#928 C2a).
     regions: DOCK_REGION_IDS,
     defaultRegion: 'bottom',
-    sourceFile: 'src-ui/src/components/chat-dock/ChatDock.tsx',
   },
   {
     id: 'activity',
@@ -770,7 +771,6 @@ export const REGION_SURFACE_REGISTRY = createSurfaceRegistry([
     },
     regions: REGION_IDS,
     defaultRegion: 'right',
-    sourceFile: 'src-ui/src/views/activity/ActivityWorkspacePane.tsx',
   },
   {
     // #2050: the work this conversation set running. Dock regions only, and
@@ -782,7 +782,6 @@ export const REGION_SURFACE_REGISTRY = createSurfaceRegistry([
     regions: DOCK_REGION_IDS,
     defaultRegion: 'right',
     exposure: 'catalog',
-    sourceFile: 'src-ui/src/workspace-panes/AgentsWorkspacePane.tsx',
   },
   {
     // Home is a surface whose only placement is the primary area: its default
@@ -795,7 +794,6 @@ export const REGION_SURFACE_REGISTRY = createSurfaceRegistry([
     icon: 'home',
     regions: ['main'],
     defaultRegion: 'main',
-    sourceFile: 'src-ui/src/views/home/HomeSurface.tsx',
   },
   // The three coding panes as dock surfaces (#2047): one of each per region
   // set, bound to the dock's active project (`REGION_SURFACE_PANES`). Ids
@@ -817,7 +815,6 @@ export const REGION_SURFACE_REGISTRY = createSurfaceRegistry([
     regions: DOCK_REGION_IDS,
     defaultRegion: 'right',
     exposure: 'catalog',
-    sourceFile: 'src-ui/src/workspace-panes/DeviceWorkspacePane.tsx',
   },
   {
     id: 'coding:terminal',
@@ -828,7 +825,6 @@ export const REGION_SURFACE_REGISTRY = createSurfaceRegistry([
     // default, not a rule.
     defaultRegion: 'bottom',
     exposure: 'catalog',
-    sourceFile: 'src-ui/src/components/coding-layout/CodingTerminalPane.tsx',
   },
   {
     id: 'coding:diff',
@@ -837,7 +833,6 @@ export const REGION_SURFACE_REGISTRY = createSurfaceRegistry([
     regions: DOCK_REGION_IDS,
     defaultRegion: 'right',
     exposure: 'catalog',
-    sourceFile: 'src-ui/src/components/coding-layout/DiffPanel.tsx',
   },
   {
     id: 'coding:file-browser',
@@ -846,7 +841,6 @@ export const REGION_SURFACE_REGISTRY = createSurfaceRegistry([
     regions: DOCK_REGION_IDS,
     defaultRegion: 'left',
     exposure: 'catalog',
-    sourceFile: 'src-ui/src/components/coding-layout/FileTreePanel.tsx',
   },
 ]);
 
@@ -910,8 +904,8 @@ export interface InstanceSurfacePrefix {
   icon: string;
   regions: readonly RegionId[];
   defaultRegion: RegionId;
-  /** Repository-relative renderer source, used by the architecture ratchet. */
-  sourceFile: string;
+  // No `sourceFile`, for the reason `RegisteredSurface` gives: see
+  // `INSTANCE_SURFACE_SOURCE_FILES` in `region-surface-panes.ts`.
 }
 
 /**
@@ -937,10 +931,6 @@ const UUID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
 const BOARD_SURFACE_ID = new RegExp(`^board:${UUID}$`);
 const PROJECT_LAYOUT_SURFACE_ID = new RegExp(`^layout:${UUID}/${UUID}$`);
 
-/** The renderer both Layout families mount: one Board or project Layout as a tab. */
-const LAYOUT_PANE_SOURCE_FILE =
-  'src-ui/src/workspace-panes/LayoutWorkspacePane.tsx';
-
 export const INSTANCE_SURFACE_PREFIXES: readonly InstanceSurfacePrefix[] = [
   {
     prefix: 'pr:',
@@ -950,8 +940,6 @@ export const INSTANCE_SURFACE_PREFIXES: readonly InstanceSurfacePrefix[] = [
     icon: 'diff',
     regions: DOCK_REGION_IDS,
     defaultRegion: 'right',
-    sourceFile:
-      'src-ui/src/components/coding-layout/PullRequestReviewPanel.tsx',
   },
   {
     prefix: 'file-preview:',
@@ -961,7 +949,18 @@ export const INSTANCE_SURFACE_PREFIXES: readonly InstanceSurfacePrefix[] = [
     icon: 'files',
     regions: DOCK_REGION_IDS,
     defaultRegion: 'right',
-    sourceFile: 'src-ui/src/workspace-panes/FilePreviewPane.tsx',
+  },
+  // #90 D9: a Browser pane attached to one server-owned session (the nonce
+  // `createBrowserPreviewPaneInstance` mints; the session is in its stored
+  // state), placed by the float-over-chat's "Open in right panel".
+  {
+    prefix: 'browser-preview:',
+    matches: (id) => /^browser-preview:[0-9a-f]{32}$/.test(id),
+    descriptorId: 'pane:builtin:workspace-preview:browser-preview',
+    title: 'Browser',
+    icon: 'globe',
+    regions: DOCK_REGION_IDS,
+    defaultRegion: 'right',
   },
   // #2157: a Board (a principal-owned Layout) and a project Layout as dock
   // tabs. The titles here are the family's FALLBACK — the tab shows the
@@ -978,7 +977,6 @@ export const INSTANCE_SURFACE_PREFIXES: readonly InstanceSurfacePrefix[] = [
     icon: 'board',
     regions: DOCK_REGION_IDS,
     defaultRegion: 'right',
-    sourceFile: LAYOUT_PANE_SOURCE_FILE,
   },
   {
     prefix: 'layout:',
@@ -988,7 +986,6 @@ export const INSTANCE_SURFACE_PREFIXES: readonly InstanceSurfacePrefix[] = [
     icon: 'board',
     regions: DOCK_REGION_IDS,
     defaultRegion: 'right',
-    sourceFile: LAYOUT_PANE_SOURCE_FILE,
   },
 ];
 
@@ -1048,10 +1045,9 @@ export function resolveRegionSurface(
   surfaceId: string,
   registry: ReadonlyMap<string, RegisteredSurface> = REGION_SURFACE_REGISTRY,
 ): RegisteredSurface | undefined {
-  const registered = registry.get(surfaceId);
-  if (registered) return registered;
-  const cached = INSTANCE_SURFACE_CACHE.get(surfaceId);
-  if (cached) return cached;
+  const known =
+    registry.get(surfaceId) ?? INSTANCE_SURFACE_CACHE.get(surfaceId);
+  if (known) return known;
   const prefix = INSTANCE_SURFACE_PREFIXES.find((entry) =>
     entry.matches(surfaceId),
   );
@@ -1066,7 +1062,6 @@ export function resolveRegionSurface(
     // toolbar's Layout picker, the chords and the unplaced Show rows must
     // not offer a pane that exists only because a link was clicked.
     exposure: 'catalog',
-    sourceFile: prefix.sourceFile,
   });
   INSTANCE_SURFACE_CACHE.set(surfaceId, surface);
   return surface;

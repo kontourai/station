@@ -185,6 +185,94 @@ account identity is carried through the runtime's bounded-body replacement and
 used by its principal-resolution owner. Project sharing still needs the separate
 member/resource authorization implementation.
 
+### Account-bound collaborator Devices
+
+A collaborator Device uses an explicit second pairing ceremony after account
+authentication. Ordinary requests retain the existing pairing shape. Guest
+entry sends `requireAccountBinding: true` with a fresh client-instance
+correlation; Station attaches an optional
+`accountCandidate` containing the provider-verified `issuer`, opaque `subject`
+and display name. A client cannot nominate or replace that candidate. The
+operator reviews it and confirms with `{ "bindAccountIdentity": true }`.
+This flag is mutually exclusive with the existing
+`bindVerifiedIdentity` Tailnet-person approval. Confirmation returns the
+bounded `principalBinding` receipt, including its account kind, issuer,
+subject, display name, approval ID, approver and time. Station rechecks the
+provider session and operator credential after reading the confirmation body.
+
+The exchanged Device must present a current account for that exact
+issuer/subject on every protected request. Missing, revoked or conflicting
+account proof is refused before resource authorization. Cookie-only signup and
+login remain available so a person can authenticate before receiving such a
+Device; authentication itself grants neither the Device nor Project access.
+An existing unbound personal Device is not silently converted by login. The
+operator must explicitly approve and exchange the account-bound replacement,
+then revoke any older broad grant retained for that client.
+
+The direct request-access endpoint also accepts `requireAccountBinding: true`
+after sign-in. Station attaches the verified account candidate and makes this
+intent immutable: approval and exchange cannot issue a personal or Tailnet-bound
+Device for that request. Existing ordinary pairing requests remain available.
+
+The first collaborator profile is deliberately read-only. It admits account
+controls and membership-filtered Project catalogue/detail reads, sets
+`Cache-Control: no-store`, and binds response delivery to the exact local and
+portable Project incarnation. Membership is rechecked before delivery and each
+streamed chunk. The audited administration endpoints below are the only
+additional Project mutations admitted here. Unrelated personal configuration,
+plugin, terminal, coding, secret and orchestration surfaces remain denied even
+if the Device scope is broader. Existing unbound local/operator Devices retain
+their prior behavior. Existing Tailnet person bindings remain a separate
+personal-device mechanism; they do not become Project membership through this
+account contract.
+
+#### Invited administrators through the API
+
+An accepted Project administrator can read `GET /api/projects/:slug/access`
+with an approved account-bound Device carrying `orchestration:read`. To manage
+members or invitation links, the operator must independently approve
+`orchestration:operate` on that Device through the existing
+`POST /api/pairing/devices/:deviceId/scope` endpoint. Grant exactly
+`["orchestration:read", "orchestration:operate"]`; the standard personal-device
+preset includes terminal access and is not the collaborator-management grant.
+The person remains signed in as their own account throughout this workflow.
+
+The audited POST leaves beneath `/api/projects/:slug/access` are
+`invitations`, `invitations/:invitationId/revoke`, `members`, and `transfer`.
+Read the current administration response for its exact Project scope and member
+revisions before submitting a change. Current membership must independently
+permit the action: an operate grant does not turn a viewer into an admin, and
+ownership transfer remains owner-only. Enabling sharing is operator-only.
+Stale revisions and replaced Project scopes refuse rather than overwrite.
+
+Administration views and invitation tokens recheck current account, Device,
+Project incarnation, and management permission before delivery and each queued
+body chunk. A committed mutation is not retried if its response becomes
+unauthorized. Self-demotion or self-revocation can still return the contentless
+`{ "changed": true }` acknowledgement while the same request credential/account
+and Project incarnation remain valid; this acknowledgement carries no protected
+member or token data. Already downloaded plaintext cannot be recalled.
+
+These are backend API capabilities. The invited-admin controls in the guest UI
+and the independent-person browser journey have separate qualification work;
+the backend tests do not establish that user journey.
+
+For authenticated members, the existing Project catalogue/detail endpoints
+return `station.member-project/v1` views: Project ID, slug, name, optional icon
+and description, and currently effective actions (`view` in this profile).
+Local workspace paths, provider/model configuration, knowledge settings and
+layout metadata are excluded. Unaudited nested Project resources remain denied.
+Personal/operator callers retain their full Project configuration.
+
+SDK consumers use `listProjectViews` and `getProjectView` to handle the typed
+member/full-view union. Legacy `listProjects` and `getProject` refuse member
+projections rather than pretending they contain full configuration. Unknown
+versions, extra fields and malformed member views fail validation.
+
+The full browser/native UI, shared content, compute-offer and two-person journey
+remain owned by #483/#488. Tailnet member integration remains under #1513 and
+#488.
+
 ## Browser invitation entry
 
 `/account/join#invitation=<token>` previews the current Project, inviter and
@@ -208,8 +296,13 @@ A new invitation fragment received in an already open tab replaces the current
 entry and clears its form state. An earlier acceptance finishing afterward clears
 only its own saved continuation, never the newly received invitation.
 
-This entry currently confirms membership; the complete shared-work/device
-admission journey remains under #488. Optional native opening, compatible
+After acceptance, this entry requests an immutable account-bound Device and
+shows only validated `station.member-project/v1` catalogue and detail metadata.
+It rechecks the exact signed-in principal around each read, removes stale query
+authority when the Station or account changes, and returns to Device approval
+when that grant is revoked. It never mounts the personal Station provider tree
+or treats a personal Device receipt as guest access. Shared Task content,
+mutation and execution remain outside this metadata-only entry. Optional native opening, compatible
 platform downloads and installation continuation are required follow-up
 acceptance under #488 and #497. Their completion requires real browser/native
 evidence and published artifacts; the account page does not establish that an
@@ -222,7 +315,15 @@ app is installed or that a device has been approved.
 `@kontourai/station-contracts/application-session` defines
 `station.application-session/v1`. The SDK implementation is
 `@kontourai/station-sdk/application-session`. Ordinary HTTPS keeps native
-HttpOnly cookies. A virtual transport uses a separate Station-issued continuation
+HttpOnly cookies. A same-origin HTTPS browser can explicitly adopt its current
+`__Host-station-device` cookie and provider account cookie into a read-only alias
+for that same approved Device plus an exact alias-bound continuation. The SDK's
+`ApplicationSessionClient.adoptCookies()` sends them only through the browser's
+same-origin cookie handling; cookie values are never read by JavaScript or
+returned in JSON. The provider must verify the current exact session reference
+before and after issuance. No new Device grant is created.
+
+A virtual transport uses a separate Station-issued continuation
 and a non-extractable P-256 signing key; it does not process `Set-Cookie` or extract
 provider cookies into JavaScript. The existing approved Device credential remains
 independently required. Transport/Station connection proof grants neither one.
@@ -254,23 +355,30 @@ request profile, not a claim that a DataChannel is HTTPS or implements OAuth DPo
 The encrypted transport still owns message/body integrity. Do not prebuffer a
 response outside its authorized delivery boundary or rewrite its target/query.
 
-`GET /api/account-auth/continuations` advertises cookie exchange and virtual login
-separately. The remaining operations are POST:
+`GET /api/account-auth/continuations` advertises cookie exchange, cookie adoption
+and virtual login separately. The operations are POST:
 
 | Path suffix | Input and effect |
 | --- | --- |
 | `/challenge` | Public P-256 JWK; checks the Device and origin, returns a nonce/challenge valid for two minutes |
 | `/exchange` | Challenge id and proof; requires the current HTTPS account cookie |
 | `/login` | Challenge id, proof and provider credentials; uses a provider-native server login without exporting cookies |
+| `/adopt-cookie/challenge` | Same-origin HTTPS only; reads the existing secure Device cookie and current provider account cookie, then binds the challenge to both identities and the key |
+| `/adopt-cookie/complete` | Challenge id and proof; rechecks the same Device and exact provider session, then atomically records the continuation with its bounded Device alias |
 | `/renew` | Current continuation/proof headers; rechecks the source session and Device, retains the authority key |
 | `/revoke` | Current continuation/proof headers; revokes the provider session and its continuation renewal family |
+| `/adopt-cookie/revoke-alias` | Current alias and exact continuation/proof; revokes only that alias, not the provider account session or parent Device |
 
 Controls have a 16 KiB body limit. Login attempts are bounded per Device credential.
 Continuations last at most 15 minutes and never outlive their provider session.
 Renew before expiry; an expired continuation requires fresh login or cookie
 exchange. Older renewed credentials remain bounded by their original expiry,
 and source-session logout invalidates all of them. Challenges, continuations and
-consumed proof ids are bounded and stored privately in SQLite. Repeated verification
+consumed proof ids are bounded and stored privately in SQLite. Alias issuance
+uses a durable private journal: startup revokes an alias if issuance was
+interrupted before the continuation's first successful request; a continuation
+already used remains valid across restart. The alias is limited by the pairing
+store to eight active aliases per Device and thirty days. Repeated verification
 of the same admitted server Request rechecks live authority without consuming the
 proof twice; a new request replay is refused, including after process restart.
 

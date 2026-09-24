@@ -34,7 +34,6 @@ import {
   BANNER_PRIORITY,
   bannerStore,
 } from '../contexts/banner-store';
-import { useConfig } from '../contexts/ConfigContext';
 import { useNavigation } from '../contexts/NavigationContext';
 import {
   shouldRenderSetupLauncher,
@@ -43,8 +42,8 @@ import {
   useOnboardingSetupState,
 } from '../contexts/onboarding-setup-store';
 import { useToast } from '../contexts/ToastContext';
-import { useInvalidateCachesOnConnectionSwitch } from '../hooks/useInvalidateCachesOnConnectionSwitch';
 import { usePairingDeepLink } from '../hooks/usePairingDeepLink';
+import { useRecoveryConfig } from '../hooks/useRecoveryConfig';
 import { useSystemStatus } from '../hooks/useSystemStatus';
 import { checkHostCompatibility } from '../lib/compatibilityLoader';
 import {
@@ -54,6 +53,8 @@ import {
 } from '../lib/connectionModalEvents';
 import { hasRealSavedConnection } from '../lib/saved-connections';
 import { checkServerHealthDetailed } from '../lib/serverHealth';
+import { hasLocalStationForProfile } from '../platform/client-origin-surface';
+import { reconnectLocalService } from '../platform/native/localServiceReconnect';
 import { invokeTauri } from '../platform/native/tauriInvoke';
 import {
   nativeProfileBootstrapRecoveryError,
@@ -68,6 +69,7 @@ import { Button } from './Button';
 import { buildSetupBannerContent } from './onboardingGateUtils';
 import './OnboardingGate.css';
 import { triggerHaptic } from '../platform/native/haptics';
+import { primeNativeNotifications } from '../platform/native/notify';
 import { LazyBoundary } from './LazyBoundary';
 import { UsageTelemetryDisclosure } from './UsageTelemetryDisclosure';
 
@@ -102,31 +104,15 @@ const loadBundledServiceBanner = () =>
 export function OnboardingGate({ children }: { children: ReactNode }) {
   const { refetch } = useSystemStatus();
   const { apiBase, activeConnection, connections } = useConnections();
-  // archive#1290: every server-scoped query cache (agents, model
-  // connections, sessions,...) keeps serving the previous server's data
-  // after a switch unless it's explicitly invalidated here — OnboardingGate
-  // is the one place mounted at the app root, above the connected/
-  // disconnected branch below, that observes every apiBase change regardless
-  // of current connection status. `activeConnection != null` lets the hook
-  // tell initial connection establishment (boot) apart from a real switch —
-  // see the hook's doc comment for why that specific signal, read from the
-  // same context snapshot as `apiBase`, is what closes the native
-  // two-stage-boot false positive.
-  const activeConnectionScope = activeConnection
-    ? [
-        activeConnection.id,
-        activeConnection.credentialRef?.kind ?? '',
-        activeConnection.credentialRef?.id ?? '',
-        activeConnection.environmentId ?? '',
-        activeConnection.credentialState,
-        activeConnection.lastError?.reason ?? '',
-      ].join(':')
-    : null;
-  useInvalidateCachesOnConnectionSwitch(
-    apiBase,
-    activeConnection != null,
-    activeConnectionScope,
-  );
+  // COMPOSITION BOUNDARY (hosted connect-modal regression): this gate mounts
+  // ABOVE `AuthorityQueryProvider` inside `RecoveryQueryBoundary`, so the
+  // open access-request flow survives activation transitions that replace
+  // the entire protected subtree. Its queries are recovery-scoped
+  // (keyed by apiBase, or dropped on switch by the boundary) — and the
+  // archive#1290 protected-cache invalidation this gate used to host moved
+  // with the client it targets (`AuthoritySwitchInvalidator`, inside the
+  // authority tree): invalidating from here would mark the recovery cache
+  // stale while the protected one kept serving the previous server.
   const forceRefetch = useForceRefetchSystemStatus(apiBase);
   const profile = usePlatformProfile();
   const bundledStatus = useBundledServerStatus(profile.supervisesBundledServer);
@@ -177,7 +163,9 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
     rearm: rearmSetupBanner,
   } = useOnboardingSetupState();
   const firstRunChapterOpen = useFirstRunChapterOpen();
-  const config = useConfig();
+  // Identity-scoped recovery read (not the shared bare-key `useConfig`):
+  // under the stable boundary a bare entry would survive its connection.
+  const { data: config } = useRecoveryConfig();
   const wasInConnections = useRef(pathname.startsWith('/connections'));
   const credentialRequired = activeConnection?.credentialState === 'required';
   const connectionEvidence = `${activeConnection?.id ?? ''}:${activeConnection?.lastSuccessAt ?? ''}:${activeConnection?.credentialState ?? ''}`;
@@ -785,6 +773,11 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
               setWaitingForTransport(false);
               void refetch();
               triggerHaptic('success');
+              // First usable connection in this session: the moment the
+              // boot-time prime skips on a fresh device. Idempotent
+              // (`ready ??=`), so a boot prime on a non-fresh device makes
+              // this a no-op.
+              void primeNativeNotifications();
             },
             // archive#3387: the request is over, so retire the
             // waiting-for-approval claim as well as reporting the outcome.
@@ -847,12 +840,16 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
           setPairingLinkError(undefined);
         }}
         originIsStation={!profile.isTauri}
+        hasLocalStation={hasLocalStationForProfile(profile)}
         hostAppName={
           profile.isTauri ? profile.productName || 'Station' : undefined
         }
         allowManualCredentials={!profile.isDesktop}
         authenticatedRequest={
           profile.isDesktop ? authenticatedFetch : undefined
+        }
+        onReconnectLocalService={
+          profile.isDesktop ? reconnectLocalService : undefined
         }
         onRestartInjectedConnection={
           // Ownership, not just "this build supervises a bundled server".
@@ -866,7 +863,17 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
             ? handleRestartBundledServer
             : undefined
         }
-        onPairingSucceeded={() => triggerHaptic('success')}
+        localStationOwnerId={
+          bundledStatus?.ownership === 'sidecar'
+            ? (bundledStatus.instanceId ?? undefined)
+            : undefined
+        }
+        onPairingSucceeded={() => {
+          triggerHaptic('success');
+          // Same first-connection prime as the reconciler path above: the
+          // modal's own success never passes through it.
+          void primeNativeNotifications();
+        }}
         onApprovalPending={(pending) => {
           setPairingFailure(null);
           setPendingExchange(pending);

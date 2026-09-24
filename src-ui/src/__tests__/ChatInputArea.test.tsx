@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import { CHAT_INPUT_MAX_CHARS } from '@shared/chat-input-limits';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   fireEvent,
   render,
@@ -11,6 +12,13 @@ import {
 import { createRef, useState } from 'react';
 import { beforeAll, describe, expect, test, vi } from 'vitest';
 import { ChatInputArea } from '../components/chat/ChatInputArea';
+import { mentionToken } from '../components/chat/composer-mentions';
+
+const fetchConversationInventory = vi.hoisted(() => vi.fn());
+vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@kontourai/station-sdk')>()),
+  fetchConversationInventory,
+}));
 
 vi.mock('../components/conversation-stats/ConversationStats', () => ({
   ContextPercentage: () => null,
@@ -26,6 +34,20 @@ vi.mock('../components/ModelSelector', () => ({
 
 vi.mock('../components/chat/SlashCommandSelector', () => ({
   SlashCommandSelector: () => null,
+}));
+
+vi.mock('@kontourai/station-sdk/coding-file-mentions-query', () => ({
+  useCodingFileMentionCandidatesQuery: () => ({
+    data: {
+      entries: [
+        { name: 'alpha.ts', path: 'src/alpha.ts', type: 'file' },
+        { name: 'folder (odd)', path: 'src/folder (odd)', type: 'directory' },
+      ],
+      partial: false,
+    },
+    isLoading: false,
+    isError: false,
+  }),
 }));
 
 vi.mock('../components/voice/VoiceOrb', () => ({
@@ -99,6 +121,417 @@ function renderChatInputArea(overrides: Record<string, unknown> = {}) {
 }
 
 describe('ChatInputArea', () => {
+  test('exposes the configured composer size for the responsive mobile floor', () => {
+    renderChatInputArea({ fontSize: 20 });
+
+    expect(
+      screen
+        .getByRole('textbox')
+        .style.getPropertyValue('--composer-font-size'),
+    ).toBe('20px');
+    expect(screen.getByRole('textbox').style.fontSize).toBe('');
+  });
+
+  test('drops dragged conversation custody when the composer authority changes', async () => {
+    fetchConversationInventory.mockResolvedValueOnce({
+      items: [
+        {
+          id: 'conversation-a',
+          title: 'Conversation A',
+          referenceEligibility: {
+            eligible: true,
+            visibility: 'personal-private',
+          },
+        },
+      ],
+      hasMore: false,
+    });
+    const scopeA = {
+      apiBase: 'http://station-a.test',
+      authorityKey: 'owner-a',
+      isCurrent: () => true,
+    };
+    const scopeB = {
+      apiBase: 'http://station-b.test',
+      authorityKey: 'owner-b',
+      isCurrent: () => true,
+    };
+    const onInputChange = vi.fn();
+    const actions = {
+      triggerRef: createRef<HTMLButtonElement>(),
+      commandLauncherDisabled: false,
+      commandLauncherShortcut: '',
+      filesActive: false,
+      taskContextActive: false,
+      onOpenDelegation: vi.fn(),
+      onOpenCommandLauncher: vi.fn(),
+      onToggleFiles: vi.fn(),
+      onToggleTaskContext: vi.fn(),
+    };
+    const first = renderProps({
+      sessionId: 'session-a',
+      input: '',
+      onInputChange,
+      mentionAuthority: 'authority-a',
+      mentionRequestScope: scopeA,
+      secondaryActions: actions,
+    });
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const view = render(
+      <QueryClientProvider client={queryClient}>
+        <ChatInputArea {...first} />
+      </QueryClientProvider>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Composer actions' }));
+    fireEvent.click(
+      screen.getByRole('menuitem', { name: 'Reference conversation…' }),
+    );
+    const option = await screen.findByRole('option', {
+      name: /Conversation A/,
+    });
+    const values = new Map<string, string>();
+    const dataTransfer = {
+      types: ['application/x-station-conversation-reference'],
+      setData: (type: string, value: string) => values.set(type, value),
+      getData: (type: string) => values.get(type) ?? '',
+    };
+    fireEvent.dragStart(option, { dataTransfer });
+
+    view.rerender(
+      <QueryClientProvider client={queryClient}>
+        <ChatInputArea
+          {...first}
+          sessionId="session-b"
+          mentionAuthority="authority-b"
+          mentionRequestScope={scopeB}
+        />
+      </QueryClientProvider>,
+    );
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('dialog', { name: 'Reference a conversation' }),
+      ).toBeNull(),
+    );
+    fireEvent.drop(screen.getByRole('textbox'), { dataTransfer });
+
+    expect(onInputChange).not.toHaveBeenCalled();
+  });
+
+  test('closes the picker and returns focus after a conversation reference drop', async () => {
+    fetchConversationInventory.mockResolvedValueOnce({
+      items: [
+        {
+          id: 'conversation-a',
+          title: 'Conversation A',
+          referenceEligibility: {
+            eligible: true,
+            visibility: 'personal-private',
+          },
+        },
+      ],
+      hasMore: false,
+    });
+    const onInputChange = vi.fn();
+    const props = renderProps({
+      sessionId: 'session-a',
+      input: '',
+      onInputChange,
+      mentionAuthority: 'authority-a',
+      activeConversationId: 'current-conversation',
+      mentionRequestScope: {
+        apiBase: 'http://station.test',
+        authorityKey: 'owner-a',
+        isCurrent: () => true,
+      },
+      secondaryActions: {
+        triggerRef: createRef<HTMLButtonElement>(),
+        commandLauncherDisabled: false,
+        commandLauncherShortcut: '',
+        filesActive: false,
+        taskContextActive: false,
+        onOpenDelegation: vi.fn(),
+        onOpenCommandLauncher: vi.fn(),
+        onToggleFiles: vi.fn(),
+        onToggleTaskContext: vi.fn(),
+      },
+    });
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ChatInputArea {...props} />
+      </QueryClientProvider>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Composer actions' }));
+    fireEvent.click(
+      screen.getByRole('menuitem', { name: 'Reference conversation…' }),
+    );
+    const option = await screen.findByRole('option', {
+      name: /Conversation A/,
+    });
+    const values = new Map<string, string>();
+    const dataTransfer = {
+      types: ['application/x-station-conversation-reference'],
+      setData: (type: string, value: string) => values.set(type, value),
+      getData: (type: string) => values.get(type) ?? '',
+    };
+    fireEvent.dragStart(option, { dataTransfer });
+    const textarea = screen
+      .getByRole('group', { name: 'Message composer' })
+      .querySelector('textarea')!;
+    fireEvent.drop(textarea, { dataTransfer });
+
+    expect(onInputChange).toHaveBeenCalledWith(
+      '@[r:Conversation%20A|conversation-a||authority-a] ',
+    );
+    expect(
+      screen.queryByRole('dialog', { name: 'Reference a conversation' }),
+    ).toBeNull();
+    expect(document.activeElement).toBe(textarea);
+  });
+
+  test('keeps textarea focus while keyboard-selecting the second mention result', async () => {
+    function ControlledComposer() {
+      const [input, setInput] = useState('');
+      return (
+        <ChatInputArea
+          {...renderProps({
+            input,
+            onInputChange: setInput,
+            workingDirectory: '/repo',
+            mentionProjectSlug: 'station',
+            mentionRequestScope: {
+              apiBase: 'http://station.test',
+              authorityKey: 'owner',
+              isCurrent: () => true,
+            },
+            mentionAuthority: 'station-stable',
+          })}
+        />
+      );
+    }
+    render(<ControlledComposer />);
+    const textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
+    textarea.focus();
+    fireEvent.change(textarea, {
+      target: { value: 'Review @src', selectionStart: 11 },
+    });
+    expect(
+      await screen.findByRole('listbox', { name: 'Files and folders' }),
+    ).toBeTruthy();
+    const editor = screen.getByRole('textbox');
+    const listbox = screen.getByRole('listbox', {
+      name: 'Files and folders',
+    });
+    await waitFor(() =>
+      expect(editor.getAttribute('aria-activedescendant')).toBe(
+        screen.getAllByRole('option')[0].id,
+      ),
+    );
+    expect(editor.getAttribute('aria-autocomplete')).toBe('list');
+    expect(editor.getAttribute('aria-haspopup')).toBe('listbox');
+    expect(editor.getAttribute('aria-controls')).toBe(listbox.id);
+    fireEvent.keyDown(textarea, { key: 'ArrowDown' });
+    await waitFor(() =>
+      expect(editor.getAttribute('aria-activedescendant')).toBe(
+        screen.getAllByRole('option')[1].id,
+      ),
+    );
+    fireEvent.keyDown(textarea, { key: 'Enter' });
+    await waitFor(() => expect(textarea.value).toBe('Review @folder (odd) '));
+    expect(document.activeElement).toBe(textarea);
+    expect(textarea.getAttribute('aria-controls')).toBeNull();
+    expect(textarea.getAttribute('aria-activedescendant')).toBeNull();
+    expect(textarea.getAttribute('aria-autocomplete')).toBe('list');
+  });
+
+  test('leaves active mention navigation and Enter to the IME until composition ends', async () => {
+    const onSend = vi.fn(async () => {});
+    const onHistoryUp = vi.fn();
+    function ControlledComposer() {
+      const [input, setInput] = useState('');
+      return (
+        <ChatInputArea
+          {...renderProps({
+            input,
+            onInputChange: setInput,
+            onSend,
+            onHistoryUp,
+            workingDirectory: '/repo',
+            mentionProjectSlug: 'station',
+            mentionRequestScope: {
+              apiBase: 'http://station.test',
+              authorityKey: 'owner',
+              isCurrent: () => true,
+            },
+            mentionAuthority: 'station-stable',
+          })}
+        />
+      );
+    }
+    render(<ControlledComposer />);
+    const textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
+    fireEvent.change(textarea, {
+      target: { value: 'Review @src', selectionStart: 11 },
+    });
+    await screen.findByRole('listbox', { name: 'Files and folders' });
+
+    fireEvent.compositionStart(textarea);
+    fireEvent.keyDown(textarea, { key: 'ArrowDown' });
+    fireEvent.keyDown(textarea, { key: 'ArrowUp', isComposing: true });
+    fireEvent.keyDown(textarea, { key: 'Enter', keyCode: 229 });
+    expect(textarea.value).toBe('Review @src');
+    expect(onSend).not.toHaveBeenCalled();
+    expect(onHistoryUp).not.toHaveBeenCalled();
+
+    fireEvent.compositionEnd(textarea);
+    fireEvent.keyDown(textarea, { key: 'ArrowDown' });
+    fireEvent.keyDown(textarea, { key: 'Enter' });
+    await waitFor(() => expect(textarea.value).toBe('Review @folder (odd) '));
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
+  test('drops mention offsets when the mounted composer switches chats', async () => {
+    const onInputChange = vi.fn();
+    const first = renderProps({
+      sessionId: 'one',
+      input: '',
+      onInputChange,
+      workingDirectory: '/repo',
+      mentionProjectSlug: 'station',
+      mentionRequestScope: {
+        apiBase: 'http://station.test',
+        authorityKey: 'owner',
+        isCurrent: () => true,
+      },
+      mentionAuthority: 'station-stable',
+    });
+    const view = render(<ChatInputArea {...first} />);
+    const textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
+    fireEvent.change(textarea, {
+      target: { value: '@src', selectionStart: 4 },
+    });
+    expect(
+      await screen.findByRole('listbox', { name: 'Files and folders' }),
+    ).toBeTruthy();
+
+    view.rerender(
+      <ChatInputArea {...first} sessionId="two" input="second draft" />,
+    );
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('listbox', { name: 'Files and folders' }),
+      ).toBeNull(),
+    );
+    fireEvent.keyDown(textarea, { key: 'Enter' });
+    expect(onInputChange).not.toHaveBeenCalledWith(
+      expect.stringContaining('folder'),
+    );
+  });
+
+  test('renders persisted file mentions as removable compact chips without exposing encoded metadata', async () => {
+    const onInputChange = vi.fn();
+    const mention = mentionToken({
+      label: 'ChatInputArea.tsx',
+      path: 'src-ui/src/components/chat/ChatInputArea.tsx',
+      workspace: '/repo/station',
+      authority: 'http://station.test',
+      type: 'file',
+    });
+    renderChatInputArea({
+      input: `Review ${mention}`,
+      workingDirectory: '/repo/station',
+      mentionProjectSlug: 'station',
+      mentionRequestScope: {
+        apiBase: 'http://station.test',
+        authorityKey: 'owner',
+        isCurrent: () => true,
+      },
+      onInputChange,
+    });
+
+    expect((screen.getByRole('textbox') as HTMLTextAreaElement).value).toBe(
+      'Review @ChatInputArea.tsx',
+    );
+    const chip = await screen.findByRole('button', {
+      name: 'Remove file mention src-ui/src/components/chat/ChatInputArea.tsx',
+    });
+    expect(chip.textContent).toContain('ChatInputArea.tsx');
+    fireEvent.click(chip);
+    expect(onInputChange).toHaveBeenCalledWith('Review ');
+  });
+
+  test('backspace beside a compact mention removes the whole token', () => {
+    const onInputChange = vi.fn();
+    const mention = mentionToken({
+      label: 'ChatInputArea.tsx',
+      path: 'src-ui/src/components/chat/ChatInputArea.tsx',
+      workspace: '/repo/station',
+      authority: 'http://station.test',
+      type: 'file',
+    });
+    renderChatInputArea({
+      input: `Review ${mention} next`,
+      workingDirectory: '/repo/station',
+      mentionProjectSlug: 'station',
+      mentionRequestScope: {
+        apiBase: 'http://station.test',
+        authorityKey: 'owner',
+        isCurrent: () => true,
+      },
+      onInputChange,
+    });
+    const textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
+    const cursor = 'Review @ChatInputArea.tsx'.length;
+    textarea.setSelectionRange(cursor, cursor);
+
+    fireEvent.keyDown(textarea, { key: 'Backspace' });
+
+    expect(onInputChange).toHaveBeenCalledWith('Review  next');
+  });
+
+  test.each([
+    { key: 'Backspace', cursor: 'end' as const },
+    { key: 'Delete', cursor: 'start' as const },
+  ])(
+    'does not remove a compact mention with $key during composition',
+    ({ key, cursor }) => {
+      const onInputChange = vi.fn();
+      const mention = mentionToken({
+        label: 'ChatInputArea.tsx',
+        path: 'src-ui/src/components/chat/ChatInputArea.tsx',
+        workspace: '/repo/station',
+        authority: 'http://station.test',
+        type: 'file',
+      });
+      renderChatInputArea({
+        input: `Review ${mention} next`,
+        workingDirectory: '/repo/station',
+        mentionProjectSlug: 'station',
+        mentionRequestScope: {
+          apiBase: 'http://station.test',
+          authorityKey: 'owner',
+          isCurrent: () => true,
+        },
+        onInputChange,
+      });
+      const textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
+      const start = 'Review '.length;
+      const end = 'Review @ChatInputArea.tsx'.length;
+      const position = cursor === 'start' ? start : end;
+      textarea.setSelectionRange(position, position);
+
+      fireEvent.compositionStart(textarea);
+      fireEvent.keyDown(textarea, { key });
+      fireEvent.compositionEnd(textarea);
+
+      expect(onInputChange).not.toHaveBeenCalled();
+    },
+  );
+
   test('surfaces a microphone permission failure in the composer', () => {
     renderChatInputArea({
       voiceState: 'error',
@@ -265,6 +698,41 @@ describe('ChatInputArea', () => {
     expect(onSend).toHaveBeenCalledTimes(1);
   });
 
+  test('keeps the mobile steering placeholder free of desktop keyboard instructions', () => {
+    vi.mocked(window.matchMedia).mockImplementation(
+      () =>
+        ({
+          matches: true,
+          addEventListener: vi.fn(),
+          removeEventListener: vi.fn(),
+          addListener: vi.fn(),
+          removeListener: vi.fn(),
+          dispatchEvent: vi.fn(),
+          media: '',
+          onchange: null,
+        }) as unknown as MediaQueryList,
+    );
+    renderChatInputArea({
+      turnInFlight: true,
+      busyFollowUp: 'steer',
+      input: 'course correct',
+    });
+    expect(screen.getByPlaceholderText('Steer this turn…')).toBeTruthy();
+    vi.mocked(window.matchMedia).mockImplementation(
+      () =>
+        ({
+          matches: false,
+          addEventListener: vi.fn(),
+          removeEventListener: vi.fn(),
+          addListener: vi.fn(),
+          removeListener: vi.fn(),
+          dispatchEvent: vi.fn(),
+          media: '',
+          onchange: null,
+        }) as unknown as MediaQueryList,
+    );
+  });
+
   test('queue-only busy composer has no Queue control', () => {
     renderChatInputArea({
       turnInFlight: true,
@@ -302,14 +770,21 @@ describe('ChatInputArea', () => {
     const agent = screen.getByRole('button', {
       name: 'Agent: Codex reviewer. Change Agent',
     });
-    expect(agent.textContent).toBe('Codex reviewer');
+    expect(agent.querySelector('.chat-input__agent-name')?.textContent).toBe(
+      'Codex reviewer',
+    );
+    expect(agent.querySelector('.chat-input__chip-caption')?.textContent).toBe(
+      'Agent',
+    );
     expect(agent.querySelector('svg[aria-hidden="true"]')).not.toBeNull();
     expect(agent.title).toBe('Agent: Codex reviewer. Change Agent');
     expect(agentHandoffTriggerRef.current).toBe(agent);
     expect(agent.getAttribute('aria-haspopup')).toBe('dialog');
     expect(
-      screen.getByRole('button', { name: /^Model:/ }).textContent,
-    ).not.toContain('Model');
+      screen
+        .getByRole('button', { name: /^Model:/ })
+        .querySelector('.chat-input__model-name')?.textContent,
+    ).not.toBe('Model');
     expect(
       screen.getByRole('button', { name: /^Model:/ }).getAttribute('title'),
     ).toMatch(/^Model:/);
@@ -366,7 +841,9 @@ describe('ChatInputArea', () => {
 
     expect(await screen.findByRole('dialog', { name: 'Model' })).toBeTruthy();
     expect(
-      screen.getByText('Models unavailable while this Station is unreachable'),
+      await screen.findByText(
+        'Models unavailable while this Station is unreachable',
+      ),
     ).toBeTruthy();
   });
 
@@ -454,7 +931,12 @@ describe('ChatInputArea', () => {
     expect(modelButton.getAttribute('aria-label')).toContain('OpenCode');
     expect(modelButton.getAttribute('aria-label')).toContain('Big Pickle');
     expect(modelButton.title).toContain('OpenCode');
-    expect(modelButton.textContent).toBe('Big Pickle');
+    expect(
+      modelButton.querySelector('.chat-input__model-name')?.textContent,
+    ).toBe('Big Pickle');
+    expect(
+      modelButton.querySelector('.chat-input__chip-caption')?.textContent,
+    ).toBe('Model');
     // The source moved from a second visible line into the accessible name:
     // that subline is what made this pill two rows tall on a phone, and the
     // override state stays visible via the pill's own variant class.
@@ -641,7 +1123,7 @@ describe('ChatInputArea', () => {
 
     // The paperclip popover is mocked out in this file, so anything found
     // here is the composer's own strip, not the menu behind a click.
-    const strip = screen.getByRole('list', { name: 'Attached files' });
+    const strip = await screen.findByRole('list', { name: 'Attached files' });
     const thumbnail = within(strip).getByRole('img', { name: 'screen.png' });
     expect(thumbnail.getAttribute('src')).toBe('data:image/png;base64,YWJj');
 
@@ -654,7 +1136,7 @@ describe('ChatInputArea', () => {
   // a single-attachment fixture cannot tell "removes the one
   // I clicked" from "removes whatever is first". Two attachments, and the
   // second one's button, is what gives the assertion power.
-  test('removing one chip removes that attachment, not its neighbour', () => {
+  test('removing one chip removes that attachment, not its neighbour', async () => {
     const onRemoveAttachment = vi.fn();
     renderChatInputArea({
       onRemoveAttachment,
@@ -678,7 +1160,7 @@ describe('ChatInputArea', () => {
       ],
     });
 
-    const strip = screen.getByRole('list', { name: 'Attached files' });
+    const strip = await screen.findByRole('list', { name: 'Attached files' });
     expect(within(strip).getAllByRole('listitem')).toHaveLength(2);
 
     fireEvent.click(
@@ -754,7 +1236,7 @@ describe('ChatInputArea', () => {
           sessionId: 'session-a',
           executionMode: 'external',
           agentConnectionId: 'codex',
-          modelRuntimeOptions: { approvalMode: 'ask' },
+          approvalModeOverride: { mode: 'ask', pending: false },
           onApprovalModeChange,
         })}
       />,
@@ -780,7 +1262,7 @@ describe('ChatInputArea', () => {
           sessionId: 'session-b',
           executionMode: 'external',
           agentConnectionId: 'codex',
-          modelRuntimeOptions: { approvalMode: 'ask' },
+          approvalModeOverride: { mode: 'ask', pending: false },
           onApprovalModeChange,
         })}
       />,

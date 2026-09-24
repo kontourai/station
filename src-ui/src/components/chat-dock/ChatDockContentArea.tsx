@@ -18,6 +18,7 @@ const loadConversationHistory = () =>
 
 interface ChatDockContentAreaProps {
   activeSession: ChatSession | null;
+  workingDirectory?: string | null;
   /**
    * station#3213: the serving Station's own record of this chat, correlated
    * once in `useChatDockViewModel`. `null` when the dock is showing a chat the
@@ -43,7 +44,7 @@ interface ChatDockContentAreaProps {
   modelProviderLabel?: string;
   modelProviders: ComponentProps<typeof ChatDockBody>['modelProviders'];
   agentDefaultModelId: string | null;
-  connectionApprovalModeDefault?: unknown;
+  agentApprovalModeDefault?: unknown;
   /** This Station's `AppConfig.defaultApprovalMode` (#2144 slice 6). */
   stationApprovalModeDefault?: unknown;
   toolPolicyDelivery?: ComponentProps<
@@ -86,6 +87,7 @@ interface ChatDockContentAreaProps {
 
 function ChatDockContentAreaImpl({
   activeSession,
+  workingDirectory,
   activeOrchestrationSession,
   activeOrchestrationSessionRead,
   onRetryOrchestrationSessions,
@@ -104,7 +106,7 @@ function ChatDockContentAreaImpl({
   modelProviderLabel,
   modelProviders,
   agentDefaultModelId,
-  connectionApprovalModeDefault,
+  agentApprovalModeDefault,
   stationApprovalModeDefault,
   toolPolicyDelivery,
   availableModels,
@@ -205,6 +207,7 @@ function ChatDockContentAreaImpl({
         {activeSession ? (
           <ChatDockBody
             activeSession={activeSession}
+            workingDirectory={workingDirectory}
             activeOrchestrationSession={activeOrchestrationSession}
             activeOrchestrationSessionRead={activeOrchestrationSessionRead}
             onRetryOrchestrationSessions={onRetryOrchestrationSessions}
@@ -218,7 +221,7 @@ function ChatDockContentAreaImpl({
             modelProviderLabel={modelProviderLabel}
             modelProviders={modelProviders}
             agentDefaultModelId={agentDefaultModelId ?? undefined}
-            connectionApprovalModeDefault={connectionApprovalModeDefault}
+            agentApprovalModeDefault={agentApprovalModeDefault}
             stationApprovalModeDefault={stationApprovalModeDefault}
             toolPolicyDelivery={toolPolicyDelivery}
             availableModels={availableModels}

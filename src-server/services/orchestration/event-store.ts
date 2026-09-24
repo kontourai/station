@@ -1,4 +1,5 @@
 import {
+  createHash,
   createHmac,
   randomBytes,
   randomUUID,
@@ -19,6 +20,7 @@ import {
   CHAT_ATTACHMENT_MAX_TOTAL_BYTES,
   type PersistedChatAttachment,
   parseChatAttachmentDataUrl,
+  sniffChatImageMimeType,
   validateChatAttachments,
   validatePersistedChatAttachmentDescriptor,
 } from '@kontourai/station-contracts/chat-attachment';
@@ -39,7 +41,11 @@ import {
   SESSION_AGENT_ICON_METADATA_KEY,
 } from '@kontourai/station-contracts/provider';
 import type { RunSummary } from '@kontourai/station-contracts/runs';
-import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import {
+  type CanonicalRuntimeEvent,
+  isProviderTriggeredTurn,
+  PROVIDER_TURN_TRIGGER,
+} from '@kontourai/station-contracts/runtime-events';
 import {
   parseSessionWorkItemAssociation,
   type SessionWorkItemAssociation,
@@ -91,6 +97,7 @@ import {
   RevisionEvidenceModule,
 } from '../../domain/revision-bound-evidence.js';
 import { PROVIDER_PROVEN_FINISH_REASONS } from '../../providers/finish-reason-authority.js';
+import { appendToolOutputNote } from '../../providers/tool-output-projection.js';
 import type { NativeOutputTerminalAdmission } from '../../runtime/native-output-declaration.js';
 import {
   attachmentBytesStripped,
@@ -147,6 +154,7 @@ import {
 } from './adoption-ledger.js';
 import {
   AttachmentBlobStore,
+  attachmentBlobRefFor,
   isAttachmentBlobRef,
 } from './attachment-blob-store.js';
 import {
@@ -180,7 +188,10 @@ import {
   releaseNativeInvocationOwner,
 } from './native-invocation-runs.js';
 import {
+  type ConversationDraftFacts,
   clientOriginIdentity,
+  DRAFT_ENDING_METHOD_PREFIXES,
+  DRAFT_ENDING_TURN_METHODS,
   projectionFactKeysForEvent,
 } from './orchestration-session-state.js';
 import {
@@ -216,6 +227,10 @@ import {
   type RecoveryTransition,
   releaseRecoveryLedgerOwner,
 } from './recovery-ledger.js';
+import {
+  SESSION_OWNER_ATTRIBUTION_METADATA_KEY,
+  UNATTRIBUTED_AGENT_OWNER_ATTRIBUTION,
+} from './session-owner-attribution.js';
 import type {
   SessionBasisTurnDescriptorEvent,
   SessionBasisTurnDescriptorWindow,
@@ -388,6 +403,8 @@ export type SessionInventoryEventDescriptor =
       method: 'turn.started';
       turnId: string;
       inputKind?: 'steer';
+      /** #2324: the engine opened this turn itself; no input was provided. */
+      trigger?: 'provider';
       attachments: readonly {
         name: string;
         mediaType: string;
@@ -515,7 +532,9 @@ type EventStoreIngressJson =
 /**
  * A deliberately tiny path state, not a general path matcher. The only
  * in-memory bytes EventStore may receive above its ordinary event ceiling are
- * the request attachment bytes at this exact canonical event path.
+ * attachment bytes at this exact canonical event path: a `turn.started`'s
+ * request attachments, or the images a `tool.completed` returned to the model.
+ * Both are replaced by blob references before anything persists.
  */
 type EventStoreIngressLocation =
   | 'ordinary'
@@ -524,12 +543,71 @@ type EventStoreIngressLocation =
   | 'canonical-attachment'
   | 'canonical-attachment-data-url';
 
+/** How many live tool events' pending blob refs/charges are remembered. */
+const LIVE_TOOL_IMAGE_REF_MEMORY = 256;
+
+/** An event as it will persist, plus the tool-image ledger entry to settle. */
+type PersistedIngressForm = {
+  payload: CanonicalRuntimeEvent;
+  blobRefs: string[];
+  toolImageKey?: string;
+};
+
+/**
+ * Tell the reader of a tool's output which of its images were not kept, and
+ * why. An adapter marks a kept image `[image: <name>]` where its bytes were;
+ * that marker is rewritten in place, so the output never promises an image
+ * the transcript cannot show. Images no marker names get one summary line.
+ */
+function withToolImageNotes(
+  output: unknown,
+  notes: ReadonlyArray<{ name: string; reason: string }>,
+): unknown {
+  const unplaced = new Set(notes);
+  const rewrite = (value: unknown, depth: number): unknown => {
+    if (typeof value === 'string') {
+      let text = value;
+      for (const note of notes) {
+        const marker = `[image: ${note.name}]`;
+        if (!text.includes(marker)) continue;
+        text = text
+          .split(marker)
+          .join(`[image not shown: ${note.name} ${note.reason}]`);
+        unplaced.delete(note);
+      }
+      return text;
+    }
+    if (!value || typeof value !== 'object' || depth > 8) return value;
+    if (Array.isArray(value)) return value.map((v) => rewrite(v, depth + 1));
+    return Object.fromEntries(
+      Object.entries(value).map(([k, v]) => [k, rewrite(v, depth + 1)]),
+    );
+  };
+  const rewritten = rewrite(output, 0);
+  if (unplaced.size === 0) return rewritten;
+  const line = [...unplaced]
+    .map((note) => `[image not shown: ${note.name} ${note.reason}]`)
+    .join('\n');
+  // Every output shape the tool row renders gets the note (see
+  // appendToolOutputNote), including a plain object, which the row shows as
+  // its JSON.
+  return appendToolOutputNote(rewritten, line);
+}
+
 class EventStoreIngressError extends Error {
   constructor(reason: string) {
     super(`Runtime event cannot be safely persisted by EventStore: ${reason}.`);
     this.name = 'EventStoreIngressError';
   }
 }
+
+/**
+ * station#2210: a deterministic ingress rejection used to carry no identity —
+ * the same oversized event failed on every poll and the log could not say
+ * WHICH event or WHO published it. Exported so the follow service can tell a
+ * deterministic "this value can never fit" failure from a transient one.
+ */
+export { EventStoreIngressError };
 
 function eventStoreIngressCeilingError(): EventStoreIngressError {
   return new EventStoreIngressError(
@@ -555,7 +633,7 @@ class BoundedEventStoreIngressProjector {
   ): EventStoreIngressJson {
     const location =
       options.allowCanonicalAttachmentDataUrls &&
-      this.isCanonicalTurnStartedEvent(value)
+      this.isCanonicalAttachmentBearingEvent(value)
         ? 'event-root'
         : 'ordinary';
     const projected = this.projectValue(value, 0, false, location);
@@ -619,14 +697,14 @@ class BoundedEventStoreIngressProjector {
    * receive the narrow attachment allowance without invoking a getter or
    * proxy-provided value read; the full traversal still validates everything.
    */
-  private isCanonicalTurnStartedEvent(value: unknown): boolean {
+  private isCanonicalAttachmentBearingEvent(value: unknown): boolean {
     if (!value || typeof value !== 'object') return false;
     const method = this.ownDescriptor(value, 'method');
     return (
       !!method &&
       method.enumerable === true &&
       'value' in method &&
-      method.value === 'turn.started'
+      (method.value === 'turn.started' || method.value === 'tool.completed')
     );
   }
 
@@ -864,6 +942,8 @@ const { DatabaseSync } = require('node:sqlite') as {
     path: string,
     options?: { timeout?: number; readOnly?: boolean },
   ) => {
+    /** node:sqlite: true while any transaction or savepoint is open. */
+    readonly isTransaction: boolean;
     exec(sql: string): void;
     prepare(sql: string): {
       run: (...args: unknown[]) => unknown;
@@ -1017,7 +1097,23 @@ const SESSION_EVENT_WINDOW_MAX_EVENTS = 150;
  */
 const ATTACHMENT_CANDIDATE_THREAD_LIMIT = 4;
 const SNAPSHOT_TOOL_OUTPUT_MAX_CHARS = 84;
-const SNAPSHOT_EVENT_MAX_SERIALIZED_BYTES = 4_096;
+/**
+ * Per-event ceiling for a window read. Sized to clear the 16 KiB transcript
+ * chunks the session sources persist (`MAX_TEXT_CHUNK_BYTES` in
+ * `claude-transcript-session-source.ts` / `codex-rollout-session-source.ts`):
+ * at 4 KiB every one of those deltas stripped to identity fields and any
+ * turn whose text lived only in them vanished from the transcript while its
+ * short user prompt survived. The window-wide
+ * `SESSION_EVENT_WINDOW_MAX_SERIALIZED_BYTES` budget still bounds each page;
+ * this ceiling only decides when a single event stops being an event.
+ */
+const SNAPSHOT_EVENT_MAX_SERIALIZED_BYTES = 24_576;
+/**
+ * A `turn.completed` carries the turn's full reply text, so it gets the same
+ * headroom on every window path (the newest-first path always allowed it;
+ * the turn and conversation paths did not, and dropped long replies there).
+ */
+const TURN_COMPLETED_SNAPSHOT_MAX_BYTES = 48_000;
 const SESSION_EVENT_WINDOW_MAX_SERIALIZED_BYTES = 56_000;
 /** Hard complete JSON response budget for one authenticated event window. */
 export const SESSION_EVENT_WINDOW_MAX_RESPONSE_BYTES = 64_000;
@@ -1062,6 +1158,77 @@ interface EventWindowCursor {
   newestTurnId?: string;
 }
 
+/**
+ * A lineage pin names the immutable lineage prefix a cursor was minted
+ * against WITHOUT embedding every session id: the cursor grows with the
+ * lineage otherwise (one ~36-char id per continued session), and past ~7
+ * sessions the route's 512-char cursor cap rejects the server's own cursor
+ * with `Invalid event window` on the next page. `size` is the pinned prefix
+ * length; `hash` authenticates it against the live lineage at decode time,
+ * so a cursor minted for one conversation can never page another's prefix.
+ */
+interface LineagePin {
+  lineageSize: number;
+  lineageHash: string;
+}
+
+/** 128-bit lineage authenticator: collision-infeasible, cursor-compact. */
+const LINEAGE_HASH_HEX_CHARS = 32;
+
+function hashLineageThreadIds(threadIds: readonly string[]): string {
+  return createHash('sha256')
+    .update(threadIds.join('\0'), 'utf8')
+    .digest('hex')
+    .slice(0, LINEAGE_HASH_HEX_CHARS);
+}
+
+function pinLineageThreadIds(threadIds: readonly string[]): LineagePin {
+  return {
+    lineageSize: threadIds.length,
+    lineageHash: hashLineageThreadIds(threadIds),
+  };
+}
+
+/**
+ * Resolve the immutable lineage prefix a cursor pins: cursors minted before
+ * the pin carry the ids themselves (accepted unchanged); newer ones carry
+ * the pin and resolve against the live lineage. Either way the result is
+ * the pinned prefix, or the cursor is invalid. A continuation that appended
+ * a child since the cursor was minted keeps paging the pinned prefix; the
+ * next head reload discovers the child separately.
+ */
+function resolvePinnedLineagePrefix(
+  parsed: Record<string, unknown>,
+  threadIds: readonly string[],
+): string[] | undefined {
+  if (parsed.threadIds !== undefined) {
+    if (
+      !Array.isArray(parsed.threadIds) ||
+      parsed.threadIds.length === 0 ||
+      !parsed.threadIds.every((id: unknown) => typeof id === 'string') ||
+      parsed.threadIds.length > threadIds.length ||
+      (parsed.threadIds as string[]).some(
+        (id: string, index: number) => id !== threadIds[index],
+      )
+    ) {
+      return undefined;
+    }
+    return [...(parsed.threadIds as string[])];
+  }
+  if (
+    !Number.isSafeInteger(parsed.lineageSize) ||
+    typeof parsed.lineageHash !== 'string' ||
+    (parsed.lineageSize as number) < 1 ||
+    (parsed.lineageSize as number) > threadIds.length ||
+    (parsed.lineageHash as string).length !== LINEAGE_HASH_HEX_CHARS
+  ) {
+    return undefined;
+  }
+  const prefix = threadIds.slice(0, parsed.lineageSize as number);
+  if (hashLineageThreadIds(prefix) !== parsed.lineageHash) return undefined;
+  return [...prefix];
+}
+
 /** Opaque global-sequence cursor for an ordered conversation lineage window. */
 interface ConversationEventWindowCursor {
   threadIds: string[];
@@ -1076,7 +1243,11 @@ interface ConversationEventWindowCursor {
 function encodeConversationEventWindowCursor(
   cursor: ConversationEventWindowCursor,
 ): string {
-  return Buffer.from(JSON.stringify(cursor), 'utf8').toString('base64url');
+  const { threadIds, ...rest } = cursor;
+  return Buffer.from(
+    JSON.stringify({ ...rest, ...pinLineageThreadIds(threadIds) }),
+    'utf8',
+  ).toString('base64url');
 }
 
 function decodeConversationEventWindowCursor(
@@ -1089,24 +1260,37 @@ function decodeConversationEventWindowCursor(
     if (
       !parsed ||
       typeof parsed !== 'object' ||
-      !Array.isArray(parsed.threadIds) ||
-      parsed.threadIds.length === 0 ||
-      !parsed.threadIds.every((id: unknown) => typeof id === 'string') ||
       !Number.isSafeInteger(parsed.beforeGlobalSequence) ||
       !Number.isSafeInteger(parsed.watermark) ||
       parsed.beforeGlobalSequence < 1 ||
       parsed.watermark < parsed.beforeGlobalSequence ||
-      parsed.threadIds.length > threadIds.length ||
-      parsed.threadIds.some(
-        (id: string, index: number) => id !== threadIds[index],
-      ) ||
       (parsed.olderTurnsRemain !== undefined &&
         typeof parsed.olderTurnsRemain !== 'boolean') ||
       !validConversationRangeCursor(parsed)
     ) {
       throw new Error('invalid');
     }
-    return parsed as ConversationEventWindowCursor;
+    const pinned = resolvePinnedLineagePrefix(
+      parsed as Record<string, unknown>,
+      threadIds,
+    );
+    if (!pinned) throw new Error('invalid');
+    // Rebuild explicitly: the pin fields and any other unknown members of
+    // the opaque token must not ride along into the reader.
+    const cursor: ConversationEventWindowCursor = {
+      threadIds: pinned,
+      beforeGlobalSequence: parsed.beforeGlobalSequence,
+      watermark: parsed.watermark,
+    };
+    if (parsed.rangeStartGlobalSequence !== undefined)
+      cursor.rangeStartGlobalSequence = parsed.rangeStartGlobalSequence;
+    if (parsed.rangeEndExclusive !== undefined)
+      cursor.rangeEndExclusive = parsed.rangeEndExclusive;
+    if (parsed.afterGlobalSequence !== undefined)
+      cursor.afterGlobalSequence = parsed.afterGlobalSequence;
+    if (parsed.olderTurnsRemain !== undefined)
+      cursor.olderTurnsRemain = parsed.olderTurnsRemain;
+    return cursor;
   } catch {
     throw new Error('Conversation event window cursor is invalid');
   }
@@ -1191,9 +1375,10 @@ function sliceSnapshotText(value: unknown): { text: string; cut: boolean } {
 /**
  * Bounds one event for a window read, and — archive#3386 — SAYS SO when it
  * bounded it. Both budgets here used to be silent: a `tool.completed` came
- * back cut to 84 characters with no mark, and any payload over the 4 KB
- * ceiling came back as identity fields alone, which is how a pasted image
- * over ~3 KB lost both its prompt and its chip on restore (archive#3374).
+ * back cut to 84 characters with no mark, and any payload over the
+ * per-event ceiling came back as identity fields alone, which is how a
+ * pasted image over ~3 KB lost both its prompt and its chip on restore
+ * (archive#3374).
  * From the client, a stripped payload and a payload that never had those
  * fields are the same bytes.
  */
@@ -1443,6 +1628,12 @@ export class VoiceTurnStartupUnavailableError extends Error {
  * constructor whose migration dies on a corrupt store translates that verdict
  * into this error, with the raw SQLite failure as `cause`.
  */
+/**
+ * #2310 review F3: the phase that refused a `rejected` command. Server-
+ * internal (persisted, never returned on a receipt).
+ */
+export type CommandRefusalPhase = 'authorization' | 'execution';
+
 export class EventStoreIntegrityError extends Error {
   readonly code = 'STATION_EVENT_STORE_CORRUPT';
 
@@ -1494,6 +1685,55 @@ type SessionWorkItemTerminalAdmission =
 
 type SessionWorkItemAssociationMetadataRow = Record<string, unknown>;
 
+/**
+ * #2309: a process-local observer of this store's committed writes, for an
+ * in-memory projection that must see EVERY writer — not only the service's
+ * `publishCanonicalEvent` (attached-follow, fork provenance and boot recovery
+ * append here directly).
+ *
+ * Callbacks run synchronously after the row is durable and are isolated: a
+ * throwing observer never fails the write, so an observer owns its own error
+ * reporting. `deferred`
+ * is true when the append ran inside a caller's still-open outer
+ * transaction, whose rollback could still retract it; an observer must not
+ * fold such an event and should instead re-read the thread's durable state.
+ */
+export interface EventStoreCommitObserver {
+  eventCommitted?(input: {
+    event: CanonicalRuntimeEvent;
+    globalSequence: number;
+    deferred: boolean;
+  }): void;
+  /** `deleteThread` removed every durable fact of `threadId`. */
+  threadDeleted?(threadId: string): void;
+  /**
+   * Conversation lineage may have gained or confirmed `sessionId` under
+   * `conversationId`. Invalidation only; re-read the lineage to learn more.
+   */
+  lineageChanged?(input: { conversationId: string; sessionId: string }): void;
+}
+
+/** #2309: see {@link EventStore.readTurnActivitySeed}. */
+export interface TurnActivitySeed {
+  head?: { globalSequence: number; createdAt: string };
+  /** #2324: `trigger` is read from the turn's first `turn.started`. */
+  openTurn?: { startedAt: string; trigger?: 'provider' };
+  tools: Array<{
+    method: 'tool.started' | 'tool.completed';
+    callId: string;
+    name: string;
+    status?: string;
+    createdAt: string;
+  }>;
+  toolsTruncated: boolean;
+  lastTool?: {
+    callId: string;
+    name: string;
+    status?: string;
+    createdAt: string;
+  };
+}
+
 export class EventStore {
   /** Kept private: room history receives a separate connection, never this DB. */
   private readonly databasePath: string;
@@ -1537,6 +1777,7 @@ export class EventStore {
   private readonly conversationContextBoundaries: ConversationContextBoundaryModule;
   private readonly operationalEventConsumers =
     new Set<OperationalEventConsumer>();
+  private readonly commitObservers = new Set<EventStoreCommitObserver>();
   private readonly operationalEventSubscriptionRegistries =
     new Set<OperationalEventSubscriptionRegistry>();
   private readonly projectTaskRoomHistories = new Set<ProjectTaskRoomHistory>();
@@ -2122,6 +2363,7 @@ export class EventStore {
           `SELECT id, provider, turn_id, method, sequence,
              json_extract(payload, '$.turnId') AS event_turn_id,
              json_extract(payload, '$.inputKind') AS input_kind,
+             json_extract(payload, '$.metadata.trigger') AS turn_trigger,
              json_extract(payload, '$.toolCallId') AS tool_call_id,
              json_extract(payload, '$.toolName') AS tool_name,
              json_extract(payload, '$.status') AS status,
@@ -2186,6 +2428,9 @@ export class EventStore {
           turnId: (row.event_turn_id ?? row.turn_id) as string,
           ...(row.input_kind === 'steer'
             ? { inputKind: 'steer' as const }
+            : {}),
+          ...(row.turn_trigger === PROVIDER_TURN_TRIGGER
+            ? { trigger: PROVIDER_TURN_TRIGGER }
             : {}),
           attachments: JSON.parse((row.attachments as string) || '[]') as {
             name: string;
@@ -2498,18 +2743,19 @@ export class EventStore {
   }
 
   /**
-   * The persisted form of an event: identical, except that a `turn.started`'s
-   * attachment bytes are replaced by a content-addressed reference
-   * (archive#3374).
+   * The persisted form of an event: identical, except that attachment bytes
+   * are replaced by a content-addressed reference (archive#3374) — a
+   * `turn.started`'s request attachments, and the images a `tool.completed`
+   * returned to the model ({@link persistedToolImages}).
    *
-   * This projection is also used for the live event bus. A blob write failure
-   * therefore rejects the turn event before it can persist or reach SSE; raw
-   * attachment bytes are never an acceptable fallback projection.
+   * This projection is also used for the live event bus, so raw attachment
+   * bytes are never an acceptable fallback projection. A blob write failure
+   * rejects a `turn.started` before it can persist or reach SSE.
    */
-  private persistedForm(event: CanonicalRuntimeEvent): {
-    payload: CanonicalRuntimeEvent;
-    blobRefs: string[];
-  } {
+  private persistedForm(event: CanonicalRuntimeEvent): PersistedIngressForm {
+    if (event.method === 'tool.completed' && event.attachments?.length) {
+      return this.persistedToolImages(event);
+    }
     if (event.method !== 'turn.started' || !event.attachments?.length) {
       return { payload: event, blobRefs: [] };
     }
@@ -2551,15 +2797,261 @@ export class EventStore {
       },
     );
     if (stripped === 0) return { payload: event, blobRefs };
+    this.observeAttachmentBytesStripped(stripped, event.provider);
+    return { payload: { ...event, attachments }, blobRefs };
+  }
+
+  private observeAttachmentBytesStripped(bytes: number, provider: string) {
     try {
       // Guarded, and the reference is inside the try: a partial test double of
       // the metrics module makes the NAME throw on access, not the `.add`.
       // Telemetry observes persistence; it never decides it.
-      attachmentBytesStripped.add(stripped, { provider: event.provider });
+      attachmentBytesStripped.add(bytes, { provider });
     } catch {
       // Observation only.
     }
-    return { payload: { ...event, attachments }, blobRefs };
+  }
+
+  /**
+   * Per live tool event (thread + event id): the blob refs this ingress wrote
+   * and the quota its images will be charged, until the append that persists
+   * the event settles them.
+   *
+   * - `refs` let the append of the same projected event — which arrives
+   *   reference-only — bind what this store itself wrote.
+   * - `charges` are PLANNED, not written. Projection only reads the budget to
+   *   decide whether an image is kept; the charge is written by the append,
+   *   inside the same savepoint as the event row
+   *   ({@link chargeCommittedToolImages}). So a thrown append rolls it back, a
+   *   duplicate event id never reaches it, and a crash between projection and
+   *   append leaves nothing charged — no refund bookkeeping exists to lose.
+   *   Keyed by blob ref, so one (event, blob) pair is charged at most once.
+   *
+   * An entry that ages out only costs the image its preview and its charge
+   * (the append then finds nothing to bind or charge), never an unauthorized
+   * binding.
+   */
+  private readonly pendingToolImages = new Map<
+    string,
+    { threadId: string; refs: Set<string>; charges: Map<string, number> }
+  >();
+
+  private toolImageKey(event: CanonicalRuntimeEvent): string {
+    return `${event.threadId}\u0000${event.eventId}`;
+  }
+
+  private pendingToolImagesFor(event: CanonicalRuntimeEvent) {
+    const key = this.toolImageKey(event);
+    let pending = this.pendingToolImages.get(key);
+    if (!pending) {
+      pending = {
+        threadId: event.threadId,
+        refs: new Set(),
+        charges: new Map(),
+      };
+      this.pendingToolImages.set(key, pending);
+      while (this.pendingToolImages.size > LIVE_TOOL_IMAGE_REF_MEMORY) {
+        const oldest = this.pendingToolImages.keys().next().value;
+        if (oldest === undefined) break;
+        this.settleToolImageCharges(oldest);
+      }
+    }
+    return pending;
+  }
+
+  /**
+   * Forget a tool event's pending entry once its append has finished (either
+   * way): whatever was charged was charged inside the append's own savepoint.
+   */
+  private settleToolImageCharges(key: string | undefined) {
+    if (key !== undefined) this.pendingToolImages.delete(key);
+  }
+
+  /**
+   * Whether `encodedBytes` more would still fit the per-chat and per-Station
+   * attachment budget user uploads draw on. Read-only: projection decides with
+   * it, and the append writes the charge.
+   */
+  private toolImageCapacityAllows(
+    threadId: string,
+    encodedBytes: number,
+  ): boolean {
+    const row = this.db
+      .prepare(
+        `SELECT
+           COALESCE((SELECT encoded_bytes FROM orchestration_attachment_quota
+                      WHERE thread_id = ?), 0) AS thread_bytes,
+           (SELECT COALESCE(SUM(encoded_bytes), 0)
+              FROM orchestration_attachment_quota) AS store_bytes`,
+      )
+      .get(threadId) as { thread_bytes: number; store_bytes: number };
+    return (
+      Number(row.thread_bytes) + encodedBytes <=
+        CHAT_ATTACHMENT_MAX_SESSION_ENCODED_BYTES &&
+      Number(row.store_bytes) + encodedBytes <=
+        CHAT_ATTACHMENT_MAX_STORE_ENCODED_BYTES
+    );
+  }
+
+  /**
+   * Write the planned charges of the tool event being appended. Called only
+   * inside the append's savepoint, on the path that inserts the event row, so
+   * the charge commits and rolls back with the event.
+   *
+   * Unconditional by design: the keep-or-drop decision was made at projection
+   * from the same budget, and in this process projection and append run
+   * synchronously back to back (`orchestration-service.ts` `projectLiveEvent`
+   * then `appendEvent`), so nothing charges in between. A second process
+   * writing the same home between the two could overshoot by one event's
+   * images.
+   */
+  private chargeCommittedToolImages(key: string | undefined): void {
+    const pending =
+      key === undefined ? undefined : this.pendingToolImages.get(key);
+    if (!pending || pending.charges.size === 0) return;
+    const insert = this.db.prepare(
+      `INSERT INTO orchestration_attachment_quota (thread_id, encoded_bytes)
+       VALUES (?, ?)
+       ON CONFLICT(thread_id) DO UPDATE SET
+         encoded_bytes = encoded_bytes + excluded.encoded_bytes`,
+    );
+    for (const bytes of pending.charges.values()) {
+      insert.run(pending.threadId, bytes);
+    }
+  }
+
+  private isAttachmentBoundToThread(ref: string, threadId: string): boolean {
+    return (
+      this.db
+        .prepare(
+          `SELECT 1 FROM orchestration_attachment_refs
+            WHERE blob_ref = ? AND thread_id = ? LIMIT 1`,
+        )
+        .get(ref, threadId) !== undefined
+    );
+  }
+
+  /**
+   * The persisted form of the images a `tool.completed` returned.
+   *
+   * Only bytes that reach THIS ingress become a binding. A reference that
+   * arrives without bytes is bound only when this store wrote it while
+   * projecting the same live event, or when it is already bound to the same
+   * thread. Anything else — a replayed, imported, or relayed event naming a
+   * digest — would otherwise bind a blob that may belong to someone else's
+   * private thread to this one, and the attachment route would then serve it.
+   * Content addressing makes that digest computable by anyone holding the
+   * bytes, so possession of the reference proves nothing.
+   *
+   * An image is never allowed to lose the tool's only terminal (the row would
+   * run forever). When it cannot be kept — its bytes are not the type it
+   * declares, the chat's attachment budget is spent, the blob write failed, or
+   * a bare reference cannot be bound — the event keeps the descriptor WITHOUT
+   * bytes or reference (the "no preview" chip) and the output a reader sees
+   * says which image was not kept and why.
+   */
+  private persistedToolImages(
+    event: Extract<CanonicalRuntimeEvent, { method: 'tool.completed' }>,
+  ): PersistedIngressForm {
+    const attachments = event.attachments ?? [];
+    if (attachments.some((attachment) => attachment.dataUrl !== undefined)) {
+      const attachmentError = validateChatAttachments(
+        attachments as Parameters<typeof validateChatAttachments>[0],
+      );
+      if (attachmentError) throw new EventStoreIngressError(attachmentError);
+    }
+    const live = this.pendingToolImages.get(this.toolImageKey(event));
+    const blobRefs: string[] = [];
+    const notKept: Array<{ name: string; reason: string }> = [];
+    let stripped = 0;
+    let changed = false;
+    const persisted = attachments.map((attachment): PersistedChatAttachment => {
+      const { dataUrl, blobRef, ...descriptor } = attachment;
+      if (dataUrl === undefined) {
+        if (
+          isAttachmentBlobRef(blobRef) &&
+          (live?.refs.has(blobRef) ||
+            this.isAttachmentBoundToThread(blobRef, event.threadId))
+        ) {
+          blobRefs.push(blobRef);
+          return attachment;
+        }
+        if (blobRef !== undefined) {
+          changed = true;
+          notKept.push({
+            name: attachment.name,
+            reason: 'is not stored on this Station',
+          });
+        }
+        return descriptor;
+      }
+      changed = true;
+      stripped += dataUrl.length;
+      const parsed = parseChatAttachmentDataUrl(dataUrl);
+      if (!parsed)
+        throw new Error('Attachment projection rejected an invalid data URL.');
+      if (
+        sniffChatImageMimeType(
+          Buffer.from(parsed.base64.slice(0, 24), 'base64'),
+        ) !== attachment.mimeType
+      ) {
+        notKept.push({
+          name: attachment.name,
+          reason: `is not a valid ${attachment.mimeType} image`,
+        });
+        return descriptor;
+      }
+      const bytes = Buffer.from(parsed.base64, 'base64');
+      const ref = attachmentBlobRefFor(bytes);
+      const pending = this.pendingToolImagesFor(event);
+      // The digest is known before any write, so a spent budget writes
+      // nothing, and one (event, blob) pair is planned at most once. Images
+      // already planned for this event count against the budget too.
+      if (!pending.charges.has(ref)) {
+        let planned = 0;
+        for (const bytes of pending.charges.values()) planned += bytes;
+        if (
+          !this.toolImageCapacityAllows(
+            event.threadId,
+            planned + dataUrl.length,
+          )
+        ) {
+          notKept.push({
+            name: attachment.name,
+            reason:
+              "could not be stored: this chat's attachment storage is full",
+          });
+          return descriptor;
+        }
+        pending.charges.set(ref, dataUrl.length);
+      }
+      if (this.attachmentBlobs.writeBytes(bytes) !== ref) {
+        pending.charges.delete(ref);
+        notKept.push({ name: attachment.name, reason: 'could not be stored' });
+        return descriptor;
+      }
+      pending.refs.add(ref);
+      blobRefs.push(ref);
+      return { ...descriptor, blobRef: ref };
+    });
+    const key = this.toolImageKey(event);
+    const pending = this.pendingToolImages.get(key);
+    if (pending && pending.refs.size === 0 && pending.charges.size === 0)
+      this.pendingToolImages.delete(key);
+    if (!changed) return { payload: event, blobRefs, toolImageKey: key };
+    if (stripped > 0)
+      this.observeAttachmentBytesStripped(stripped, event.provider);
+    return {
+      payload: {
+        ...event,
+        attachments: persisted,
+        ...(notKept.length > 0
+          ? { output: withToolImageNotes(event.output, notKept) }
+          : {}),
+      },
+      blobRefs,
+      toolImageKey: key,
+    };
   }
 
   /**
@@ -2571,21 +3063,50 @@ export class EventStore {
   private prepareEventIngress(event: CanonicalRuntimeEvent): {
     event: CanonicalRuntimeEvent;
     requestId: ReturnType<typeof persistedRequestId>;
-    persisted: { payload: CanonicalRuntimeEvent; blobRefs: string[] };
+    persisted: PersistedIngressForm;
     serializedPayload: string;
   } {
-    const projectedEvent = new BoundedEventStoreIngressProjector().project(
-      event,
-      { allowCanonicalAttachmentDataUrls: true },
-    ) as unknown as CanonicalRuntimeEvent;
+    // station#2210: every deterministic ingress rejection names its subject.
+    // A canonical event's method and thread are the minimum a log reader
+    // needs to find the producer; the reason itself stays verbatim.
+    const projectWithIdentity = (
+      value: unknown,
+      options?: { allowCanonicalAttachmentDataUrls?: boolean },
+    ): EventStoreIngressJson => {
+      try {
+        return new BoundedEventStoreIngressProjector().project(value, options);
+      } catch (error) {
+        if (error instanceof EventStoreIngressError) {
+          const prefix =
+            'Runtime event cannot be safely persisted by EventStore: ';
+          const reason = error.message.startsWith(prefix)
+            ? error.message.slice(prefix.length).replace(/\.$/, '')
+            : error.message;
+          const identity =
+            typeof (event as { method?: unknown }).method === 'string'
+              ? `method=${event.method}, threadId=${event.threadId}`
+              : 'shape unavailable';
+          throw new EventStoreIngressError(`(${identity}) ${reason}`);
+        }
+        throw error;
+      }
+    };
+    const projectedEvent = projectWithIdentity(event, {
+      allowCanonicalAttachmentDataUrls: true,
+    }) as unknown as CanonicalRuntimeEvent;
     this.assertOwnershipImmutable(projectedEvent);
     const persisted = this.persistedForm(projectedEvent);
     // Attachment projection can replace a very small inline data URL with a
     // longer digest reference, so measure its persisted shape independently.
     // It is now a plain projected value, not caller-controlled structure.
-    const persistedPayload = new BoundedEventStoreIngressProjector().project(
-      persisted.payload,
-    );
+    let persistedPayload: EventStoreIngressJson;
+    try {
+      persistedPayload = projectWithIdentity(persisted.payload);
+    } catch (error) {
+      // Refused after its images were planned: the event will never persist.
+      this.settleToolImageCharges(persisted.toolImageKey);
+      throw error;
+    }
     return {
       event: projectedEvent,
       requestId: persistedRequestId(projectedEvent),
@@ -2757,7 +3278,20 @@ export class EventStore {
       );
     }
     const ingress = this.prepareEventIngress(event);
-    event = ingress.event;
+    // A tool image's quota charge is written inside this append's savepoint
+    // (`chargeCommittedToolImages`); afterwards the pending entry is dropped.
+    try {
+      return this.appendIngressedEvent(ingress, declaredOutputs);
+    } finally {
+      this.settleToolImageCharges(ingress.persisted.toolImageKey);
+    }
+  }
+
+  private appendIngressedEvent(
+    ingress: ReturnType<EventStore['prepareEventIngress']>,
+    declaredOutputs: readonly NativeOutputTerminalAdmission[],
+  ): number {
+    const event = ingress.event;
     const startedAt = performance.now();
     const { requestId, persisted, serializedPayload } = ingress;
     // Blob writes happen here, before the savepoint: they are filesystem work
@@ -2773,6 +3307,7 @@ export class EventStore {
     // been taken yet, so there is no process-local claim to settle.
     this.openAppendEventSavepoint();
     let nextSequence: number;
+    let globalSequence: number;
     try {
       // Persisted event time is the sole replay authority. A new terminal gets
       // exactly one host observation time, shared by its event and association.
@@ -2781,6 +3316,7 @@ export class EventStore {
         new Date().toISOString();
       workItemAdmission = this.takeSessionWorkItemAdmission(event, observedAt);
       nextSequence = this.nextSequence(event.threadId);
+      globalSequence = this.nextGlobalSequence();
       const insert = this.db
         .prepare(
           `${declaredOutputs.length || event.method === 'tool.completed' ? 'INSERT OR IGNORE' : 'INSERT'} INTO orchestration_events
@@ -2799,7 +3335,7 @@ export class EventStore {
           event.createdAt,
           observedAt,
           nextSequence,
-          this.nextGlobalSequence(),
+          globalSequence,
         ) as { changes: number };
       if (insert.changes === 0) {
         // Exact terminal event replay is idempotent only when every opaque
@@ -2888,6 +3424,7 @@ export class EventStore {
         return Number(existing.sequence);
       }
       this.recordAttachmentRefs(event.threadId, persisted.blobRefs);
+      this.chargeCommittedToolImages(persisted.toolImageKey);
       this.projectConversationHistoryEvent(event);
       this.projectMessageSearchEvent(event);
       this.projectRequestState(event, requestId, nextSequence);
@@ -2925,7 +3462,51 @@ export class EventStore {
       performance.now() - startedAt,
       { provider: event.provider, method: event.method },
     );
+    this.notifyEventCommitted(event, globalSequence);
     return nextSequence;
+  }
+
+  /**
+   * #2309: register a process-local observer of committed writes (see
+   * {@link EventStoreCommitObserver}). Returns the unsubscribe function.
+   */
+  observeCommits(observer: EventStoreCommitObserver): () => void {
+    this.commitObservers.add(observer);
+    return () => {
+      this.commitObservers.delete(observer);
+    };
+  }
+
+  private notifyCommitObservers(
+    call: (observer: EventStoreCommitObserver) => void,
+  ): void {
+    for (const observer of this.commitObservers) {
+      try {
+        call(observer);
+      } catch {
+        // Observation only: the write already committed.
+      }
+    }
+  }
+
+  private notifyEventCommitted(
+    event: CanonicalRuntimeEvent,
+    globalSequence: number,
+  ): void {
+    if (this.commitObservers.size === 0) return;
+    // Our own savepoint is released; a transaction still open here belongs
+    // to a caller and can still roll this row back.
+    const deferred = this.db.isTransaction;
+    this.notifyCommitObservers((observer) =>
+      observer.eventCommitted?.({ event, globalSequence, deferred }),
+    );
+  }
+
+  private notifyLineageChanged(conversationId: string, sessionId: string) {
+    if (this.commitObservers.size === 0) return;
+    this.notifyCommitObservers((observer) =>
+      observer.lineageChanged?.({ conversationId, sessionId }),
+    );
   }
 
   /** Stages a reviewed, pre-terminal candidate without exposing the registry. */
@@ -3452,14 +4033,26 @@ export class EventStore {
 
   appendEventIfAbsent(event: CanonicalRuntimeEvent): number | undefined {
     const ingress = this.prepareEventIngress(event);
-    event = ingress.event;
+    try {
+      return this.appendIngressedEventIfAbsent(ingress);
+    } finally {
+      this.settleToolImageCharges(ingress.persisted.toolImageKey);
+    }
+  }
+
+  private appendIngressedEventIfAbsent(
+    ingress: ReturnType<EventStore['prepareEventIngress']>,
+  ): number | undefined {
+    const event = ingress.event;
     const startedAt = performance.now();
     const { requestId, persisted, serializedPayload } = ingress;
     this.db.exec('SAVEPOINT append_event_if_absent_history');
     let nextSequence: number;
+    let globalSequence: number;
     let absent: boolean;
     try {
       nextSequence = this.nextSequence(event.threadId);
+      globalSequence = this.nextGlobalSequence();
       const result = this.db
         .prepare(
           `INSERT OR IGNORE INTO orchestration_events
@@ -3478,11 +4071,12 @@ export class EventStore {
           event.createdAt,
           new Date().toISOString(),
           nextSequence,
-          this.nextGlobalSequence(),
+          globalSequence,
         ) as { changes: number };
       absent = result.changes === 0;
       if (!absent) {
         this.recordAttachmentRefs(event.threadId, persisted.blobRefs);
+        this.chargeCommittedToolImages(persisted.toolImageKey);
         this.projectConversationHistoryEvent(event);
         this.projectMessageSearchEvent(event);
         this.projectRequestState(event, requestId, nextSequence);
@@ -3508,6 +4102,7 @@ export class EventStore {
       performance.now() - startedAt,
       { provider: event.provider, method: event.method },
     );
+    this.notifyEventCommitted(event, globalSequence);
     return nextSequence;
   }
 
@@ -4002,6 +4597,9 @@ export class EventStore {
                        AND length(CAST(json_extract(payload, '$.inputKind') AS BLOB)) <= ?
                      THEN json_extract(payload, '$.inputKind') END AS input_kind,
                 CASE WHEN json_valid(payload) THEN json_type(payload, '$.attachments') END AS attachments_type,
+                CASE WHEN c.method = 'turn.started' AND json_valid(payload)
+                       AND json_extract(payload, '$.metadata.trigger') = ?
+                     THEN 1 ELSE 0 END AS provider_trigger,
                 a.key AS attachment_key,
                 CASE WHEN a.key IS NULL THEN NULL ELSE json_type(a.value) END AS attachment_type,
                 CASE WHEN a.key IS NULL THEN NULL ELSE json_extract(a.value, '$.kind') END AS attachment_kind,
@@ -4044,6 +4642,7 @@ export class EventStore {
         MAX_BASIS_OUTPUT_TEXT_BYTES,
         MAX_BASIS_PROMPT_BYTES,
         MAX_BASIS_INPUT_KIND_BYTES,
+        PROVIDER_TURN_TRIGGER,
         MAX_BASIS_ATTACHMENT_NAME_BYTES,
         MAX_BASIS_ATTACHMENT_MIME_BYTES,
         MAX_TOOL_RESULT_DESCRIPTOR_ID_BYTES,
@@ -4112,11 +4711,15 @@ export class EventStore {
             (row.input_kind_type !== 'text' || row.input_kind !== 'steer')
           )
             return { status: 'corrupt' };
-          event.input = {
-            kind: row.input_kind === 'steer' ? 'steer' : 'initial',
-            prompt: typeof row.prompt === 'string' ? row.prompt : '',
-            attachments: [],
-          };
+          // #2324: a turn the engine opened on its own has no input; its
+          // start must not read as an empty message the user sent.
+          if (row.provider_trigger !== 1) {
+            event.input = {
+              kind: row.input_kind === 'steer' ? 'steer' : 'initial',
+              prompt: typeof row.prompt === 'string' ? row.prompt : '',
+              attachments: [],
+            };
+          }
         }
         if (row.method === 'tool.completed') {
           if (
@@ -4304,6 +4907,48 @@ export class EventStore {
       )
       .get(threadId) as any;
     return row ? this.mapEventRow(row) : undefined;
+  }
+
+  /**
+   * #2436: the latest recorded approval-posture decision across `threadIds`
+   * (a conversation's sessions), ordered by the server's global sequence —
+   * the one order every client and the turn-start resolution agree on. One
+   * indexed lookup per thread (`thread_id, method, sequence`), then the
+   * newest by global sequence; a conversation has a handful of sessions.
+   */
+  latestApprovalModeDecision(
+    threadIds: readonly string[],
+  ):
+    | { threadId: string; approvalMode: unknown; globalSequence: number }
+    | undefined {
+    const statement = this.db.prepare(
+      `SELECT thread_id, json_extract(payload, '$.approvalMode') AS approval_mode, global_sequence
+       FROM orchestration_events
+       WHERE thread_id = ? AND method = 'session.approval-mode-set'
+       ORDER BY sequence DESC
+       LIMIT 1`,
+    );
+    let latest:
+      | { threadId: string; approvalMode: unknown; globalSequence: number }
+      | undefined;
+    for (const threadId of new Set(threadIds)) {
+      const row = statement.get(threadId) as
+        | {
+            thread_id: string;
+            approval_mode: unknown;
+            global_sequence: number;
+          }
+        | undefined;
+      if (!row) continue;
+      if (!latest || row.global_sequence > latest.globalSequence) {
+        latest = {
+          threadId: row.thread_id,
+          approvalMode: row.approval_mode,
+          globalSequence: row.global_sequence,
+        };
+      }
+    }
+    return latest;
   }
 
   latestEventForSessionState(
@@ -5250,6 +5895,244 @@ export class EventStore {
     ).map((row: any) => this.mapEventRow(row));
   }
 
+  /**
+   * #2309: the durable facts the conversation activity projection seeds a
+   * thread from, once per thread per process. Every read is index-backed
+   * (`thread_id, sequence` / `thread_id, turn_id, sequence`) and reads tool
+   * identity through `json_extract`, never a tool's (unbounded) output.
+   *
+   * - `head`: the thread's newest event (its global sequence and time).
+   * - `openTurn`/`tools`: see {@link readOpenTurnActivitySeed}.
+   * - `lastTool`: the thread's newest `tool.completed`.
+   */
+  readTurnActivitySeed(
+    threadId: string,
+    openTurnId: string | undefined,
+  ): TurnActivitySeed {
+    const head = this.db
+      .prepare(
+        `SELECT global_sequence, created_at FROM orchestration_events
+         WHERE thread_id = ? ORDER BY sequence DESC LIMIT 1`,
+      )
+      .get(threadId) as
+      | { global_sequence: number; created_at: string }
+      | undefined;
+    const lastTool = this.latestToolTerminalsForThreads([threadId]).get(
+      threadId,
+    );
+    const open = openTurnId
+      ? this.readOpenTurnActivitySeed(threadId, openTurnId)
+      : { tools: [], toolsTruncated: false };
+    return {
+      ...(head
+        ? {
+            head: {
+              globalSequence: Number(head.global_sequence),
+              createdAt: head.created_at,
+            },
+          }
+        : {}),
+      ...open,
+      ...(lastTool ? { lastTool } : {}),
+    };
+  }
+
+  /**
+   * #2309: the FIRST `turn.started` of `turnId` (a steer re-emits
+   * `turn.started` under the same id and must not move the start), and the tool starts/terminals after it in order, bounded
+   * by `toolLimit` (`toolsTruncated` says the bound fired).
+   */
+  readOpenTurnActivitySeed(
+    threadId: string,
+    turnId: string,
+    toolLimit = 2_000,
+  ): Pick<TurnActivitySeed, 'openTurn' | 'tools' | 'toolsTruncated'> {
+    const started = this.db
+      .prepare(
+        `SELECT sequence, created_at,
+                json_extract(payload, '$.metadata.trigger') AS turn_trigger
+         FROM orchestration_events
+         WHERE thread_id = ? AND turn_id = ? AND method = 'turn.started'
+         ORDER BY sequence ASC LIMIT 1`,
+      )
+      .get(threadId, turnId) as
+      | { sequence: number; created_at: string; turn_trigger: unknown }
+      | undefined;
+    if (!started) return { tools: [], toolsTruncated: false };
+    const rows = this.db
+      .prepare(
+        `SELECT method,
+                json_extract(payload, '$.toolCallId') AS call_id,
+                json_extract(payload, '$.toolName') AS tool_name,
+                json_extract(payload, '$.status') AS status,
+                created_at
+         FROM orchestration_events
+         WHERE thread_id = ? AND method IN ('tool.started', 'tool.completed')
+           AND sequence > ?
+         ORDER BY sequence ASC LIMIT ?`,
+      )
+      .all(threadId, started.sequence, toolLimit + 1) as Array<{
+      method: 'tool.started' | 'tool.completed';
+      call_id: unknown;
+      tool_name: unknown;
+      status: unknown;
+      created_at: string;
+    }>;
+    const tools: TurnActivitySeed['tools'] = [];
+    for (const row of rows.slice(0, toolLimit)) {
+      if (typeof row.call_id !== 'string' || typeof row.tool_name !== 'string')
+        continue;
+      tools.push({
+        method: row.method,
+        callId: row.call_id,
+        name: row.tool_name,
+        ...(typeof row.status === 'string' ? { status: row.status } : {}),
+        createdAt: row.created_at,
+      });
+    }
+    return {
+      openTurn: {
+        startedAt: started.created_at,
+        ...(started.turn_trigger === PROVIDER_TURN_TRIGGER
+          ? { trigger: PROVIDER_TURN_TRIGGER }
+          : {}),
+      },
+      tools,
+      toolsTruncated: rows.length > toolLimit,
+    };
+  }
+
+  /**
+   * #2309: each thread's newest `tool.completed` identity, batched: one
+   * statement per chunk, each thread resolved by an indexed backward seek.
+   */
+  latestToolTerminalsForThreads(
+    threadIds: readonly string[],
+  ): Map<string, NonNullable<TurnActivitySeed['lastTool']>> {
+    const result = new Map<string, NonNullable<TurnActivitySeed['lastTool']>>();
+    for (
+      let offset = 0;
+      offset < threadIds.length;
+      offset += EVENT_STORE_BATCH_CHUNK_SIZE
+    ) {
+      const chunk = threadIds.slice(
+        offset,
+        offset + EVENT_STORE_BATCH_CHUNK_SIZE,
+      );
+      if (chunk.length === 0) continue;
+      const rows = this.db
+        .prepare(
+          `WITH tool_threads(thread_id) AS (VALUES ${chunk.map(() => '(?)').join(', ')})
+           SELECT event.thread_id AS thread_id,
+                  json_extract(event.payload, '$.toolCallId') AS call_id,
+                  json_extract(event.payload, '$.toolName') AS tool_name,
+                  json_extract(event.payload, '$.status') AS status,
+                  event.created_at AS created_at
+           FROM tool_threads
+           JOIN orchestration_events AS event ON event.id = (
+             SELECT latest.id FROM orchestration_events AS latest
+             WHERE latest.thread_id = tool_threads.thread_id
+               AND latest.method = 'tool.completed'
+             ORDER BY latest.sequence DESC LIMIT 1
+           )`,
+        )
+        .all(...chunk) as Array<{
+        thread_id: string;
+        call_id: unknown;
+        tool_name: unknown;
+        status: unknown;
+        created_at: string;
+      }>;
+      for (const row of rows) {
+        if (
+          typeof row.call_id !== 'string' ||
+          typeof row.tool_name !== 'string'
+        )
+          continue;
+        result.set(row.thread_id, {
+          callId: row.call_id,
+          name: row.tool_name,
+          ...(typeof row.status === 'string' ? { status: row.status } : {}),
+          createdAt: row.created_at,
+        });
+      }
+    }
+    return result;
+  }
+
+  /**
+   * #2309: the conversation and ordered execution children of each thread
+   * that has lineage, batched — the same facts `conversationForSession` and
+   * `conversationSessions` answer one at a time. A thread without lineage is
+   * absent from the result.
+   */
+  conversationLineageForThreads(
+    threadIds: readonly string[],
+  ): Map<string, { conversationId: string; sessionIds: string[] }> {
+    const conversationByThread = new Map<string, string>();
+    for (
+      let offset = 0;
+      offset < threadIds.length;
+      offset += EVENT_STORE_BATCH_CHUNK_SIZE
+    ) {
+      const chunk = threadIds.slice(
+        offset,
+        offset + EVENT_STORE_BATCH_CHUNK_SIZE,
+      );
+      if (chunk.length === 0) continue;
+      const rows = this.db
+        .prepare(
+          `SELECT session_id, conversation_id
+           FROM orchestration_conversation_sessions
+           WHERE session_id IN (${chunk.map(() => '?').join(', ')})`,
+        )
+        .all(...chunk) as Array<{
+        session_id: string;
+        conversation_id: string;
+      }>;
+      for (const row of rows)
+        conversationByThread.set(row.session_id, row.conversation_id);
+    }
+    const conversationIds = [...new Set(conversationByThread.values())];
+    const sessionsByConversation = new Map<string, string[]>();
+    for (
+      let offset = 0;
+      offset < conversationIds.length;
+      offset += EVENT_STORE_BATCH_CHUNK_SIZE
+    ) {
+      const chunk = conversationIds.slice(
+        offset,
+        offset + EVENT_STORE_BATCH_CHUNK_SIZE,
+      );
+      const rows = this.db
+        .prepare(
+          `SELECT conversation_id, session_id
+           FROM orchestration_conversation_sessions
+           WHERE conversation_id IN (${chunk.map(() => '?').join(', ')})
+           ORDER BY conversation_id ASC, ordinal ASC`,
+        )
+        .all(...chunk) as Array<{
+        conversation_id: string;
+        session_id: string;
+      }>;
+      for (const row of rows) {
+        const sessions = sessionsByConversation.get(row.conversation_id) ?? [];
+        sessions.push(row.session_id);
+        sessionsByConversation.set(row.conversation_id, sessions);
+      }
+    }
+    const result = new Map<
+      string,
+      { conversationId: string; sessionIds: string[] }
+    >();
+    for (const [threadId, conversationId] of conversationByThread)
+      result.set(threadId, {
+        conversationId,
+        sessionIds: sessionsByConversation.get(conversationId) ?? [],
+      });
+    return result;
+  }
+
   readConsoleDeliveryProgress(threadId: string, scopeId: string): number {
     const row = this.db
       .prepare(
@@ -6057,6 +6940,45 @@ export class EventStore {
     return querySessionOwner(this.db, threadId);
   }
 
+  /**
+   * Station #90 lane D (B2): the session owner AND whether any
+   * ownership-shaped event marks the session as started by an
+   * unattributed agent (`session-owner-attribution.ts`), in ONE statement,
+   * so the acting-principal derivation cannot read the two facts from
+   * different store states. The owner half is the exact predicate and
+   * ordering of `querySessionOwner`.
+   */
+  findSessionOwnerAttribution(threadId: string): {
+    ownerUserId?: string;
+    unattributedAgent: boolean;
+  } {
+    const row = this.db
+      .prepare(
+        `SELECT
+           (SELECT json_extract(payload, '$.metadata.userId')
+              FROM orchestration_events
+             WHERE thread_id = ?1
+               AND json_valid(payload)
+               AND json_type(payload, '$.metadata.userId') = 'text'
+               AND method IN ('session.started', 'session.configured')
+             ORDER BY created_at DESC, sequence DESC
+             LIMIT 1) AS user_id,
+           EXISTS (SELECT 1
+              FROM orchestration_events
+             WHERE thread_id = ?1
+               AND json_valid(payload)
+               AND json_extract(payload, '$.metadata.${SESSION_OWNER_ATTRIBUTION_METADATA_KEY}') = '${UNATTRIBUTED_AGENT_OWNER_ATTRIBUTION}'
+               AND method IN ('session.started', 'session.configured')) AS unattributed`,
+      )
+      .get(threadId) as
+      | { user_id?: unknown; unattributed?: number }
+      | undefined;
+    return {
+      ...(typeof row?.user_id === 'string' ? { ownerUserId: row.user_id } : {}),
+      unattributedAgent: row?.unattributed === 1,
+    };
+  }
+
   sessionAgentPresentation(
     threadId: string,
   ): { agentDisplayName?: string; agentIcon?: string } | undefined {
@@ -6216,26 +7138,29 @@ export class EventStore {
   ): PersistedRuntimeEventWindow {
     type Cursor = {
       kind: 'newest-event-window-v1';
-      threadIds: string[];
       watermark: number;
       before: number;
       rangeStart?: number;
       olderTurnsRemain?: boolean;
     };
     let cursor: Cursor | undefined;
+    let ids: string[];
     if (options.cursor) {
       const value = JSON.parse(
         Buffer.from(options.cursor, 'base64url').toString('utf8'),
       );
+      // Cursors minted before the lineage pin carry the ids themselves;
+      // newer ones resolve the pinned prefix against the live lineage.
+      const pinned =
+        value && typeof value === 'object'
+          ? resolvePinnedLineagePrefix(
+              value as Record<string, unknown>,
+              threadIds,
+            )
+          : undefined;
       if (
-        !value ||
-        value.kind !== 'newest-event-window-v1' ||
-        !Array.isArray(value.threadIds) ||
-        !value.threadIds.length ||
-        !value.threadIds.every(
-          (id: unknown, index: number) =>
-            typeof id === 'string' && id === threadIds[index],
-        ) ||
+        value?.kind !== 'newest-event-window-v1' ||
+        !pinned ||
         !Number.isSafeInteger(value.watermark) ||
         value.watermark < 0 ||
         !Number.isSafeInteger(value.before) ||
@@ -6249,9 +7174,21 @@ export class EventStore {
           typeof value.olderTurnsRemain !== 'boolean')
       )
         throw new Error('Invalid newest event window cursor');
-      cursor = value;
+      cursor = {
+        kind: 'newest-event-window-v1',
+        watermark: value.watermark,
+        before: value.before,
+        ...(value.rangeStart !== undefined
+          ? { rangeStart: value.rangeStart }
+          : {}),
+        ...(value.olderTurnsRemain !== undefined
+          ? { olderTurnsRemain: value.olderTurnsRemain }
+          : {}),
+      };
+      ids = pinned;
+    } else {
+      ids = [...threadIds];
     }
-    const ids = cursor?.threadIds ?? [...threadIds];
     if (!ids.length || new Set(ids).size !== ids.length)
       throw new Error('Invalid event window lineage');
     const placeholders = ids.map(() => '?').join(', ');
@@ -6310,7 +7247,7 @@ export class EventStore {
         const event = snapshotEvent(
           mapPersistedEventRow(row),
           row.method === 'turn.completed'
-            ? 48_000
+            ? TURN_COMPLETED_SNAPSHOT_MAX_BYTES
             : SNAPSHOT_EVENT_MAX_SERIALIZED_BYTES,
         );
         const size = Buffer.byteLength(
@@ -6351,11 +7288,11 @@ export class EventStore {
         if (anchor) events.push(snapshotEvent(mapPersistedEventRow(anchor)));
       }
       const hasMore = moreInRange || olderTurnsRemain;
-      const next: Cursor | undefined =
+      const nextCursorValue =
         hasMore && oldest
           ? {
-              kind: 'newest-event-window-v1',
-              threadIds: ids,
+              kind: 'newest-event-window-v1' as const,
+              ...pinLineageThreadIds(ids),
               watermark,
               before: moreInRange ? oldest.globalSequence : rangeStart,
               ...(moreInRange ? { rangeStart, olderTurnsRemain } : {}),
@@ -6364,9 +7301,9 @@ export class EventStore {
       const result = {
         events: events.reverse(),
         hasMore,
-        ...(next
+        ...(nextCursorValue
           ? {
-              nextCursor: Buffer.from(JSON.stringify(next)).toString(
+              nextCursor: Buffer.from(JSON.stringify(nextCursorValue)).toString(
                 'base64url',
               ),
             }
@@ -6488,11 +7425,18 @@ export class EventStore {
         )
         // Deliberately NOT `mapEventRow`: this window is byte-budgeted, and
         // rehydrating an attachment here would push its `turn.started` past
-        // `snapshotEvent`'s 4 KB ceiling — which strips the payload down to
-        // its identity fields, taking the prompt and the attachment with it.
-        // Handing on the reference is what lets the transcript keep rendering
-        // the chip (archive#3374).
-        .map((row) => snapshotEvent(mapPersistedEventRow(row)));
+        // `snapshotEvent`'s per-event ceiling — which strips the payload down
+        // to its identity fields, taking the prompt and the attachment with
+        // it. Handing on the reference is what lets the transcript keep
+        // rendering the chip (archive#3374).
+        .map((row) =>
+          snapshotEvent(
+            mapPersistedEventRow(row),
+            row.method === 'turn.completed'
+              ? TURN_COMPLETED_SNAPSHOT_MAX_BYTES
+              : SNAPSHOT_EVENT_MAX_SERIALIZED_BYTES,
+          ),
+        );
       const completed = new Set(
         raw
           .filter((item) => item.method === 'tool.completed')
@@ -6697,7 +7641,12 @@ export class EventStore {
         // Reuse the same attachment-safe snapshot projection as the
         // session-window reader. A conversation aggregate must not turn an
         // attachment reference back into an oversized inline payload.
-        const event = snapshotEvent(mapPersistedEventRow(row));
+        const event = snapshotEvent(
+          mapPersistedEventRow(row),
+          row.method === 'turn.completed'
+            ? TURN_COMPLETED_SNAPSHOT_MAX_BYTES
+            : SNAPSHOT_EVENT_MAX_SERIALIZED_BYTES,
+        );
         const eventBytes = Buffer.byteLength(
           JSON.stringify({
             sequence: event.globalSequence,
@@ -6959,6 +7908,7 @@ export class EventStore {
           sessionId: session.threadId,
           createdAt: session.createdAt,
         });
+        this.notifyLineageChanged(conversationId, session.threadId);
       }
       // #1536 B4: `conversationId` is the ROOT thread for a continuation
       // child, so writing this session's `createdAt` here stamped the child's
@@ -7028,6 +7978,7 @@ export class EventStore {
           sessionId: threadId,
           createdAt: existing?.created_at ?? now,
         });
+        this.notifyLineageChanged(threadId, threadId);
       }
       this.db.exec('RELEASE SAVEPOINT mark_session_closed_lineage');
     } catch (error) {
@@ -7090,6 +8041,16 @@ export class EventStore {
       )
       .get(threadId);
     return row ? mapPersistedSessionRow(row as any) : undefined;
+  }
+
+  /** Internal workspace-mutation barrier inventory; never exposed to callers. */
+  listSessionIdsByCwd(cwd: string): string[] {
+    const rows = this.db
+      .prepare(
+        `SELECT thread_id FROM provider_session_state WHERE cwd = ? ORDER BY created_at ASC`,
+      )
+      .all(cwd) as Array<{ thread_id: string }>;
+    return rows.map((row) => row.thread_id);
   }
 
   /**
@@ -7181,6 +8142,162 @@ export class EventStore {
     return result;
   }
 
+  /**
+   * #2310: what the store knows about each thread's whole CONVERSATION that
+   * the thread's own events cannot say — the lineage half of the Draft
+   * derivation (`deriveSessionDraft`). Over every Session of the conversation
+   * (the root and every continuation/handoff child):
+   *
+   * - `activityObserved`: any turn fact, or any `content.*`/`tool.*` event;
+   * - `sendAccepted` / `sendRejected` / `sendFailed`: the `sendTurn` command
+   *   receipts, which are the only record of a send that did not take (a
+   *   refused send publishes no event). Only EXECUTION-phase rejections
+   *   count (`refusal_phase = 'execution'`); an authorization or ownership
+   *   refusal says nothing about the session (#2310 review F3);
+   * - `hasCopiedHistory`: the conversation is the target of a
+   *   `conversation.forked` fact, so it carries copied messages.
+   *
+   * A child minted for the next turn, or a root whose turns all ran in
+   * children, therefore still reads as having activity.
+   *
+   * Every thread asked about gets an entry. A thread with no lineage row is
+   * its own conversation (the store registers every persisted Session as the
+   * root of one — `upsertSession`/`markSessionClosed`). Chunked like
+   * {@link conversationRootFirstPromptedTurnForThreads}, and for the same
+   * reason: the caller is the batched session-list read.
+   *
+   * Cost, per `EXPLAIN QUERY PLAN` on a copy of a real home (#2310 review
+   * F6), per chunk:
+   * - activity: one SEEK on `thread_id` per lineage member through the
+   *   covering index `idx_events_history_projection`; the method predicate
+   *   (turn facts plus the `content.`/`tool.` ranges) is FILTERED over that
+   *   member's index entries, not sought. `EXISTS` stops at the first hit, so
+   *   a member with activity costs little; a quiet member costs its (small)
+   *   event count.
+   * - receipts: `orchestration_command_receipts` has no thread index, so the
+   *   `sendTurn` rows are SCANNED and grouped once (materialized), then probed
+   *   per member through an automatic index. The scan grows by one row per
+   *   command.
+   * - forks: a SEEK on `idx_events_method` for `conversation.forked`.
+   * Measured: 6.2 ms warm, 40.7 ms cold, over 276 threads.
+   */
+  conversationDraftFactsForThreads(
+    threadIds: readonly string[],
+  ): Map<string, ConversationDraftFacts> {
+    const unique = [...new Set(threadIds)];
+    const result = new Map<string, ConversationDraftFacts>(
+      unique.map((threadId) => [
+        threadId,
+        {
+          activityObserved: false,
+          sendAccepted: false,
+          sendRejected: false,
+          sendFailed: false,
+          hasCopiedHistory: false,
+        },
+      ]),
+    );
+    const turnMethods = DRAFT_ENDING_TURN_METHODS.map(() => '?').join(', ');
+    // A half-open range per prefix ('content.' <= m < 'content/'), not LIKE:
+    // it is exact regardless of case_sensitive_like. The plan filters it over
+    // the member's index entries rather than seeking (see the docblock).
+    const prefixRanges = DRAFT_ENDING_METHOD_PREFIXES.map(
+      () => '(event.method >= ? AND event.method < ?)',
+    ).join(' OR ');
+    const prefixBounds = DRAFT_ENDING_METHOD_PREFIXES.flatMap((prefix) => [
+      prefix,
+      `${prefix.slice(0, -1)}/`,
+    ]);
+    for (const chunk of this.chunkArray(unique, EVENT_STORE_BATCH_CHUNK_SIZE)) {
+      const rows = this.db
+        .prepare(
+          `WITH asked(thread_id, conversation_id) AS (
+             SELECT candidate.value,
+                    COALESCE(lineage.conversation_id, candidate.value)
+             FROM json_each(?) candidate
+             LEFT JOIN orchestration_conversation_sessions lineage
+               ON lineage.session_id = candidate.value
+           ),
+           member(thread_id, session_id) AS (
+             SELECT thread_id, thread_id FROM asked
+             UNION
+             SELECT thread_id, conversation_id FROM asked
+             UNION
+             SELECT asked.thread_id, sibling.session_id
+             FROM asked
+             INNER JOIN orchestration_conversation_sessions sibling
+               ON sibling.conversation_id = asked.conversation_id
+           ),
+           sends(thread_id, accepted, rejected, failed) AS (
+             SELECT thread_id,
+                    MAX(status = 'accepted'),
+                    MAX(status = 'rejected' AND refusal_phase = 'execution'),
+                    MAX(status = 'failed')
+             FROM orchestration_command_receipts
+             WHERE command_type = 'sendTurn'
+             GROUP BY thread_id
+           )
+           SELECT asked.thread_id AS thread_id,
+             EXISTS (
+               SELECT 1 FROM member
+               INNER JOIN orchestration_events event
+                 ON event.thread_id = member.session_id
+               WHERE member.thread_id = asked.thread_id
+                 AND (event.method IN (${turnMethods}) OR ${prefixRanges})
+             ) AS activity_observed,
+             COALESCE((
+               SELECT MAX(sends.accepted) FROM member
+               INNER JOIN sends ON sends.thread_id = member.session_id
+               WHERE member.thread_id = asked.thread_id
+             ), 0) AS send_accepted,
+             COALESCE((
+               SELECT MAX(sends.rejected) FROM member
+               INNER JOIN sends ON sends.thread_id = member.session_id
+               WHERE member.thread_id = asked.thread_id
+             ), 0) AS send_rejected,
+             COALESCE((
+               SELECT MAX(sends.failed) FROM member
+               INNER JOIN sends ON sends.thread_id = member.session_id
+               WHERE member.thread_id = asked.thread_id
+             ), 0) AS send_failed,
+             EXISTS (
+               SELECT 1 FROM orchestration_events fork
+               WHERE fork.method = 'conversation.forked'
+                 AND json_extract(fork.payload, '$.targetConversationId')
+                   = asked.conversation_id
+             ) AS has_copied_history
+           FROM asked`,
+        )
+        .all(
+          JSON.stringify(chunk),
+          ...DRAFT_ENDING_TURN_METHODS,
+          ...prefixBounds,
+        ) as Array<{
+        thread_id: string;
+        activity_observed: number;
+        send_accepted: number;
+        send_rejected: number;
+        send_failed: number;
+        has_copied_history: number;
+      }>;
+      for (const row of rows) {
+        result.set(row.thread_id, {
+          activityObserved: row.activity_observed === 1,
+          sendAccepted: row.send_accepted === 1,
+          sendRejected: row.send_rejected === 1,
+          sendFailed: row.send_failed === 1,
+          hasCopiedHistory: row.has_copied_history === 1,
+        });
+      }
+    }
+    return result;
+  }
+
+  /** Single-thread {@link conversationDraftFactsForThreads}. */
+  conversationDraftFacts(threadId: string): ConversationDraftFacts {
+    return this.conversationDraftFactsForThreads([threadId]).get(threadId)!;
+  }
+
   reserveNextConversationSession(input: {
     conversationId: string;
     predecessorSessionId: string;
@@ -7190,7 +8307,12 @@ export class EventStore {
     lineage: Readonly<ConversationSessionLineage>;
     outcome: 'created' | 'existing';
   } {
-    return this.conversationSessionLineage.reserveNextSession(input);
+    const reserved = this.conversationSessionLineage.reserveNextSession(input);
+    this.notifyLineageChanged(
+      reserved.lineage.conversationId,
+      reserved.lineage.sessionId,
+    );
+    return reserved;
   }
 
   /**
@@ -7818,6 +8940,7 @@ export class EventStore {
                 input.predecessorSessionId,
                 input.createdAt,
               );
+              this.notifyLineageChanged(input.conversationId, input.sessionId);
             }
             insertMarker.run(
               input.conversationId,
@@ -7948,6 +9071,10 @@ export class EventStore {
                 input.predecessorSessionId,
                 input.createdAt,
               );
+              this.notifyLineageChanged(
+                input.conversationId,
+                input.successorSessionId,
+              );
             }
             insert.run(
               input.boundaryId,
@@ -8067,6 +9194,10 @@ export class EventStore {
                 marker.successorSessionId,
                 marker.predecessorSessionId,
               ) as { changes?: number };
+            this.notifyLineageChanged(
+              marker.conversationId,
+              marker.successorSessionId,
+            );
             if (cancelled.changes !== 1 || retired.changes !== 1) {
               this.db.exec('ROLLBACK');
               return undefined;
@@ -8835,6 +9966,54 @@ export class EventStore {
           return { kind: 'unavailable' };
         }
       },
+      recordAccepted: (record) => {
+        try {
+          this.db.exec('BEGIN IMMEDIATE');
+          const { rows } = this.db
+            .prepare(
+              `SELECT COUNT(*) AS rows FROM orchestration_turn_boundaries
+                WHERE thread_id = ?`,
+            )
+            .get(record.threadId) as { rows: number };
+          if (rows >= SESSION_TURN_ACCEPTED_CAPACITY) {
+            this.db.exec('ROLLBACK');
+            return { kind: 'busy' };
+          }
+          this.db
+            .prepare(
+              `INSERT INTO orchestration_turn_boundaries
+                (boundary_id, thread_id, state, provider_turn_id, owner_id,
+                 owner_pid, owner_birth, owner_identity_kind, created_at, updated_at, purpose)
+               VALUES (?, ?, 'accepted', ?, ?, ?, ?, ?, ?, ?, 'turn')`,
+            )
+            .run(
+              record.boundaryId,
+              record.threadId,
+              record.providerTurnId,
+              record.ownerId,
+              record.ownerPid,
+              record.ownerBirth ?? null,
+              record.ownerIdentityKind,
+              record.createdAt,
+              record.updatedAt,
+            );
+          this.db.exec('COMMIT');
+          return { kind: 'applied' };
+        } catch {
+          try {
+            this.db.exec('ROLLBACK');
+          } catch {
+            // The transaction may already have committed.
+          }
+          return exact({
+            boundaryId: record.boundaryId,
+            ownerId: record.ownerId,
+            state: 'accepted',
+          })
+            ? { kind: 'applied' }
+            : { kind: 'unavailable' };
+        }
+      },
       hasPossibleEffect: (threadId) => {
         this.reconcileSessionTurnTerminalsFromEvents(threadId);
         return Boolean(
@@ -8998,6 +10177,22 @@ export class EventStore {
                      orchestration_turn_boundaries.state = 'accepted'
                      AND event.turn_id = orchestration_turn_boundaries.provider_turn_id
                      AND event.method IN ('turn.completed', 'turn.aborted', 'runtime.error')
+                     -- station#2235: a recovery-synthesized abort
+                     -- (the recoveryTerminal marker field) is the recovery's
+                     -- own terminal fact for the dead turn, published mid-flow
+                     -- before its banner/FileMemory/explicit-close sequence
+                     -- completes. Retiring the row on it would delete the very
+                     -- record the next boot needs to finish that sequence
+                     -- after a mid-flow crash. Matched on the marker field,
+                     -- never on prose, same precedent as the code extraction
+                     -- one clause up.
+                     AND NOT (
+                       event.method = 'turn.aborted'
+                       AND COALESCE(
+                         json_extract(event.payload, '$.recoveryTerminal'),
+                         0
+                       ) = 1
+                     )
                    )
                  )
             )`,
@@ -9415,12 +10610,22 @@ export class EventStore {
     });
   }
 
-  appendCommandReceipt(receipt: OrchestrationCommandReceipt): void {
+  /**
+   * `refusalPhase` (#2310 review F3) is server-internal and never read back
+   * onto the public receipt: it records whether a `rejected` command was
+   * refused at the authorization gate or after it, so a derivation that
+   * reads receipts as evidence about a session (`conversationDraftFacts`)
+   * can ignore refusals that say nothing about the session itself.
+   */
+  appendCommandReceipt(
+    receipt: OrchestrationCommandReceipt,
+    options: { refusalPhase?: CommandRefusalPhase } = {},
+  ): void {
     this.db
       .prepare(
         `INSERT OR REPLACE INTO orchestration_command_receipts
-          (command_id, thread_id, command_type, status, created_at, client_origin)
-         VALUES (?, ?, ?, ?, ?, ?)`,
+          (command_id, thread_id, command_type, status, created_at, client_origin, refusal_phase)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         receipt.commandId,
@@ -9429,6 +10634,7 @@ export class EventStore {
         receipt.status,
         receipt.createdAt,
         receipt.clientOrigin ? JSON.stringify(receipt.clientOrigin) : null,
+        receipt.status === 'rejected' ? (options.refusalPhase ?? null) : null,
       );
   }
 
@@ -9929,6 +11135,52 @@ export class EventStore {
     return recoveryTransition(result);
   }
 
+  /**
+   * #2312: every Session in `threadId`'s conversation lineage, `threadId`
+   * included, sorted. A thread with no lineage row is its own conversation.
+   */
+  conversationSessionIds(threadId: string): string[] {
+    const rows = this.db
+      .prepare(
+        `SELECT member.session_id AS session_id
+         FROM orchestration_conversation_sessions member
+         WHERE member.conversation_id = COALESCE(
+           (SELECT conversation_id FROM orchestration_conversation_sessions
+            WHERE session_id = ?),
+           ?)`,
+      )
+      .all(threadId, threadId) as Array<{ session_id: string }>;
+    return [
+      ...new Set([threadId, ...rows.map((row) => row.session_id)]),
+    ].sort();
+  }
+
+  /**
+   * #2312: retire the conversation-level rows naming Sessions a discard
+   * deleted — lineage, and any handoff or context-boundary record between
+   * them. `deleteThread` leaves these alone (its other callers own that
+   * decision); a discarded Draft conversation must not leave records behind
+   * that name Sessions which no longer exist.
+   */
+  deleteConversationLineageRows(sessionIds: readonly string[]): void {
+    const statements = [
+      'DELETE FROM orchestration_conversation_sessions WHERE session_id = ?',
+      `DELETE FROM orchestration_conversation_handoffs
+       WHERE session_id = ?1 OR predecessor_session_id = ?1`,
+      `DELETE FROM orchestration_conversation_context_boundaries
+       WHERE successor_session_id = ?1 OR predecessor_session_id = ?1`,
+    ].map((sql) => this.db.prepare(sql));
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      for (const sessionId of sessionIds)
+        for (const statement of statements) statement.run(sessionId);
+      this.db.exec('COMMIT');
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+  }
+
   /** Remove a deliberately ephemeral diagnostic session and all of its receipts. */
   deleteThread(threadId: string): void {
     // Captured before the deletes, resolved after the commit: deleting a file
@@ -10009,6 +11261,15 @@ export class EventStore {
       this.db
         .prepare('DELETE FROM provider_session_state WHERE thread_id = ?')
         .run(threadId);
+      // #2312 verifier H1: a possible-effect record for a thread that no
+      // longer exists would keep reporting an active turn and refuse every
+      // later start under the id. Lifecycle claims are left to their holder,
+      // which releases them itself (a discard deletes while holding one).
+      this.db
+        .prepare(
+          "DELETE FROM orchestration_turn_boundaries WHERE thread_id = ? AND state != 'lifecycle'",
+        )
+        .run(threadId);
       this.db
         .prepare(
           'DELETE FROM orchestration_conversation_history WHERE thread_id = ?',
@@ -10049,6 +11310,10 @@ export class EventStore {
       this.db.exec('ROLLBACK');
       throw error;
     }
+    if (this.commitObservers.size > 0)
+      this.notifyCommitObservers((observer) =>
+        observer.threadDeleted?.(threadId),
+      );
     // Deleting a conversation must delete the pasted screenshot, not merely
     // make it unreachable. Content addressing means the bytes may still belong
     // to another thread, so only a blob with no bindings left is reclaimed —
@@ -10183,9 +11448,16 @@ export class EventStore {
               .prepare(
                 `SELECT COUNT(*) AS count FROM orchestration_events
                  WHERE thread_id = ?
-                   AND method IN ('turn.started', 'turn.completed')`,
+                   AND method IN ('turn.started', 'turn.completed')
+                   AND NOT (
+                     method = 'turn.started'
+                     AND json_valid(payload)
+                     AND json_extract(payload, '$.metadata.trigger') IS ?
+                   )`,
               )
-              .get(session.thread_id) as { count: number }
+              .get(session.thread_id, PROVIDER_TURN_TRIGGER) as {
+              count: number;
+            }
           ).count;
           let ownerUserId: string | undefined;
           let agentSlug: string | undefined;
@@ -10342,9 +11614,13 @@ export class EventStore {
       (typeof metadata?.projectSlug === 'string'
         ? metadata.projectSlug
         : undefined);
+    // A start is the user's message and a completion the agent's reply. A
+    // turn the engine opened on its own (#2324) has a reply but no message
+    // of the user's, so its start is not counted.
     const messageCount =
       (existing?.message_count ?? 0) +
-      (event.method === 'turn.started' || event.method === 'turn.completed'
+      ((event.method === 'turn.started' && !isProviderTriggeredTurn(event)) ||
+      event.method === 'turn.completed'
         ? 1
         : 0);
     this.db

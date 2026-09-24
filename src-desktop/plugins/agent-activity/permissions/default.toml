@@ -1,0 +1,11 @@
+"$schema" = "schemas/schema.json"
+
+[default]
+description = "Read capability status, register the device for agent-activity delivery, and open Live Update settings. `preview` is not included: it renders an arbitrary payload and exists for device verification only."
+permissions = [
+  "allow-status",
+  "allow-configure",
+  "allow-clear",
+  "allow-push-token",
+  "allow-open-live-update-settings",
+]

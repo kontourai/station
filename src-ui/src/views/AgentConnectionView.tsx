@@ -60,6 +60,7 @@ import {
   prerequisiteStatusLabel,
   runtimeCatalogSourceLabel,
   runtimeCatalogSourceSentence,
+  runtimeCatalogVisibleModels,
 } from '../utils/execution';
 import { CredentialProfileEnrolment } from './CredentialProfileEnrolment';
 import {
@@ -351,9 +352,8 @@ export function AgentConnectionView({
     { label: 'Connect', complete: !blocker },
     { label: 'Ready', complete: providerPresentation?.readiness === 'Ready' },
   ];
-  const reportedModelCount = runtimeCatalog
-    ? runtimeCatalog.models.length || runtimeCatalog.builtInModels.length
-    : 0;
+  const visibleModels = runtimeCatalogVisibleModels(form);
+  const reportedModelCount = visibleModels.length;
 
   return (
     <SplitPaneLayout
@@ -676,17 +676,14 @@ export function AgentConnectionView({
                   <div className="editor-field">
                     <span className="editor-label">Models</span>
                     <p className="editor-help">
-                      {runtimeCatalog.models.length > 0
-                        ? `${runtimeCatalog.models.length} live or cached models available.`
-                        : runtimeCatalog.builtInModels.length > 0
-                          ? `${runtimeCatalog.builtInModels.length} built-in models available.`
-                          : 'No models reported.'}
+                      {visibleModels.length > 0
+                        ? runtimeCatalog.source === 'built-in'
+                          ? `${visibleModels.length} built-in models available.`
+                          : `${visibleModels.length} live or cached models available.`
+                        : 'No models reported.'}
                     </p>
                     <div className="plugins__caps">
-                      {(runtimeCatalog.models.length > 0
-                        ? runtimeCatalog.models
-                        : runtimeCatalog.builtInModels
-                      ).map((model) => (
+                      {visibleModels.map((model) => (
                         <span key={model.id} className="plugins__cap">
                           {model.name}
                         </span>

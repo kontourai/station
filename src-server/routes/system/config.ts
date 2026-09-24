@@ -2,6 +2,7 @@
  * Config Routes - app configuration management
  */
 
+import { isDeepStrictEqual } from 'node:util';
 import { parseEngineConnectionId } from '@kontourai/station-contracts/agent-identity';
 import {
   describeFirstRunTransitionViolation,
@@ -30,6 +31,7 @@ import {
 import type { IStorageAdapter } from '../../domain/storage-adapter.js';
 import { InvalidPathSegmentError } from '../../knowledge-index/path-safety.js';
 import type { AgentConfigurationMutationRunner } from '../../runtime/types.js';
+import { mayGrantFullAccess } from '../../security/coding-authority.js';
 import {
   grantedPairingScope,
   type PairingScopeContextStore,
@@ -43,6 +45,11 @@ import type { EventBus } from '../../services/orchestration/event-bus.js';
 import { defaultTerminalShell } from '../../services/terminal/terminal-shells.js';
 import { configOps } from '../../telemetry/metrics.js';
 import type { Logger } from '../../utils/logger.js';
+import { APPROVAL_FULL_ACCESS_NOT_GRANTED } from '../orchestration/approval-authority.js';
+
+/** Thrown inside the serialized config mutation; mapped to the 403 below. */
+const FULL_ACCESS_DEFAULT_NOT_GRANTED = 'FULL_ACCESS_DEFAULT_NOT_GRANTED';
+
 import {
   appConfigUpdateSchema,
   errorMessage,
@@ -200,6 +207,7 @@ export function createConfigRoutes(
   // supplies `createConfigProjectReader` above. Optional so callers and tests
   // that never ask about a project see no behavior change.
   readProject?: (slug: string) => ProjectConfig | undefined,
+  authorizeContributionMutation?: (request: Request) => boolean,
 ) {
   const app = new Hono();
   const logLevelEdits = new LogLevelEditService(configLoader);
@@ -549,11 +557,50 @@ export function createConfigRoutes(
       // The onboarding picker (archive#1194) sends a delta with a genuinely new
       // value, so change-gating preserves its contract exactly.
       const priorConfig = await configLoader.loadAppConfig();
+      // #2436: the Station default applies to every session start, the
+      // unattended ones included, so raising it to full access needs the
+      // same grant as starting one session there. The authority is read
+      // here; whether this write RAISES it is decided inside the serialized
+      // mutation below, against the config it actually replaces.
+      const mayRaiseDefaultToFullAccess = mayGrantFullAccess(
+        c.req.raw,
+        grantedPairingScope(c as unknown as PairingScopeContextStore),
+      );
       const priorBuiltinEngineConnectionId =
         priorConfig.builtinAgentEngineConnectionId;
+      const contributionRequested = Object.hasOwn(accepted, 'contribution');
       const update = (beginMutation: () => void) => {
         beginMutation();
-        return configLoader.updateAppConfig(accepted);
+        return configLoader.mutateAppConfig((current) => {
+          // A semantic contribution change needs the BOUND-OPERATOR verdict,
+          // whatever scope the presenting credential claims — an absent
+          // presented scope is NOT an operator, it is an unscoped caller, so
+          // it must not widen the exemption. The equality check runs INSIDE
+          // the serialized mutation against the CURRENT config, so a
+          // full-settings round-trip that is still byte-equal when it lands
+          // is permitted, while a queued save whose target changed under it
+          // refuses here rather than racing the operator's newer offer.
+          if (
+            contributionRequested &&
+            !isDeepStrictEqual(accepted.contribution, current.contribution) &&
+            authorizeContributionMutation?.(c.req.raw) !== true
+          ) {
+            throw new Error('PROJECT_CONTRIBUTION_OPERATOR_REQUIRED');
+          }
+          // Same shape (#2436): compared with the CURRENT config inside the
+          // serialized mutation, so a save that read `never` and resends it
+          // cannot land after the operator lowered it. Resending a `never`
+          // that still stands (Settings round-trips the whole config) is
+          // not a raise.
+          if (
+            accepted.defaultApprovalMode === 'never' &&
+            current.defaultApprovalMode !== 'never' &&
+            !mayRaiseDefaultToFullAccess
+          ) {
+            throw new Error(FULL_ACCESS_DEFAULT_NOT_GRANTED);
+          }
+          return accepted;
+        });
       };
       const mutation = await captureConfigurationMutation(
         applyConfigurationMutation,
@@ -595,6 +642,25 @@ export function createConfigRoutes(
         configurationMutationStatus(mutation.activation, 200),
       );
     } catch (error: unknown) {
+      if (
+        error instanceof Error &&
+        error.message === FULL_ACCESS_DEFAULT_NOT_GRANTED
+      ) {
+        configOps.add(1, { op: 'update_app_full_access_default_refused' });
+        return c.json(APPROVAL_FULL_ACCESS_NOT_GRANTED, 403);
+      }
+      if (
+        error instanceof Error &&
+        error.message === 'PROJECT_CONTRIBUTION_OPERATOR_REQUIRED'
+      )
+        return c.json(
+          {
+            success: false,
+            error:
+              'Only this Station’s local operator can change Project execution offers.',
+          },
+          403,
+        );
       logger.error('Failed to update app config', { error });
       return c.json({ success: false, error: errorMessage(error) }, 400);
     }

@@ -92,7 +92,9 @@ export function ComposerAttachmentStrip({
                       ? 'Accepted; waiting for reply'
                       : stage.needsFile
                         ? 'Choose file again to retry'
-                        : stage.state;
+                        : stage.state === 'retryable'
+                          ? 'Retry required before sending'
+                          : stage.state;
             return (
               <span className="composer-attachments__stage" role="status">
                 {label}

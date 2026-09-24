@@ -10,6 +10,7 @@ const handleOrchestrationEvent = vi.fn();
 vi.mock('../eventHandlers', () => ({
   handleOrchestrationEvent: (...args: unknown[]) =>
     handleOrchestrationEvent(...args),
+  settleSemanticDeliveryBuffer: vi.fn(),
 }));
 
 const mocks = vi.hoisted(() => ({
@@ -97,6 +98,15 @@ describe('ensureOrchestrationEventStream reconnect-fallback snapshot gating (sta
       { sessions: [] },
       { apiBase: 'http://api-1225-b', isReconnectFallback: true },
     );
+  });
+
+  test('station#2301: the orchestration stream sets a stall deadline of 2.5 server keepalives', () => {
+    ensureOrchestrationEventStream('http://api-2301-stall');
+    const options = mocks.fetchSSE.mock.calls.at(-1)?.[1] as {
+      stallTimeoutMs?: number;
+    };
+    // SSE_KEEPALIVE_INTERVAL_MS is 30s (src-server/constants.ts).
+    expect(options.stallTimeoutMs).toBe(75_000);
   });
 
   test('a second call for the SAME apiBase is a no-op (existing dedup guard) — no new snapshot state', () => {

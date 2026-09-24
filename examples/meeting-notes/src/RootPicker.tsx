@@ -18,7 +18,7 @@ export interface RootPickerProps {
 }
 
 export function RootPicker({ value, onChange }: RootPickerProps) {
-  const navigation = useNavigation() as { selectedProject?: string | null };
+  const navigation = useNavigation();
   const selectedProject = navigation.selectedProject ?? null;
   const rootsQuery = useKnowledgeRootsQuery();
 

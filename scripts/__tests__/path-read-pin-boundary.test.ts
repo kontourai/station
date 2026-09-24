@@ -129,7 +129,6 @@ const UNREPORTED_PATH_READING_SUITES: readonly string[] = Object.freeze([
   'scripts/__tests__/verification-lanes.test.ts',
   'scripts/__tests__/verification-reporter.test.ts',
   'src-server/knowledge-store/adapters/__tests__/file-transactions.test.ts',
-  'src-server/providers/__tests__/agent-tool-server-mapping.test.ts',
   'src-server/providers/__tests__/claude-adapter.test.ts',
   'src-server/routes/__tests__/smart-routing-plugin.test.ts',
   'src-server/routes/__tests__/sse-response-tripwire.test.ts',
@@ -144,6 +143,13 @@ const UNREPORTED_PATH_READING_SUITES: readonly string[] = Object.freeze([
   'src-server/runtime/__tests__/orchestration-transfer-budget.integration.test.ts',
   'src-server/security/__tests__/svg-response-tripwire.test.ts',
   'src-server/services/__tests__/flow-agents-skills.test.ts',
+  // Device hosts: these read only their own fixtures (real OpenSSH
+  // transcripts, anchored to the test file) or, for the resolver, walk the
+  // server source tree to prove a structural rule. Neither names a source
+  // file the scanner could pin, so there is nothing to report.
+  'src-server/services/devices/__tests__/device-host-resolver.test.ts',
+  'src-server/services/devices/hosts/__tests__/ssh-device-hub.test.ts',
+  'src-server/services/devices/hosts/__tests__/ssh-device-target.test.ts',
   'src-server/services/evidence/__tests__/console-bridge-service.test.ts',
   'src-server/services/orchestration/__tests__/event-store.test.ts',
   'src-server/services/orchestration/__tests__/orchestration-source-invariants.test.ts',
@@ -155,23 +161,13 @@ const UNREPORTED_PATH_READING_SUITES: readonly string[] = Object.freeze([
   'src-server/services/search/__tests__/isolated-task-search.test.ts',
   'src-server/tools/__tests__/station-docs-mcp-server.test.ts',
   'src-ui/src/__tests__/activity-rename-sweep.test.ts',
-  'src-ui/src/__tests__/chat-input-model-loading-surface.test.tsx',
   'src-ui/src/__tests__/connection-host-copy.test.ts',
-  'src-ui/src/__tests__/copy-affordance-cascade.test.ts',
-  'src-ui/src/__tests__/dev-build-identity.test.ts',
   'src-ui/src/__tests__/keepPreviousDataConsumers.test.ts',
-  'src-ui/src/__tests__/mobile-chrome-safety.test.ts',
-  'src-ui/src/__tests__/outbound-queue-css-boundary.test.ts',
   'src-ui/src/__tests__/package-css-fork.test.ts',
-  'src-ui/src/__tests__/responsive-dialog-header.test.tsx',
-  'src-ui/src/__tests__/session-history-error-css.test.ts',
   'src-ui/src/__tests__/sessionStatusWordCallers.test.ts',
   'src-ui/src/__tests__/shell-chrome-notice-primitive.test.ts',
-  'src-ui/src/__tests__/toolbar-safe-area-geometry.test.ts',
   'src-ui/src/app-shell/__tests__/RoutePendingSkeleton.test.tsx',
-  'src-ui/src/components/__tests__/PageCallout.test.tsx',
   'src-ui/src/components/first-run/__tests__/tour-steps.test.ts',
-  'src-ui/src/views/connections-hub/__tests__/peer-credential-command-parity.test.ts',
   'src-ui/src/views/project-settings/__tests__/ResourcesSection.test.tsx',
   'tests/basis-mcp-interop.spec.ts',
   'tests/builder-delivery-viewer.spec.ts',
@@ -267,6 +263,18 @@ describe('path-read pins are discovered', () => {
     );
     expect(dialogsPin?.tests).toContain(
       'src-ui/src/__tests__/conversationContextBoundaryStatusCache.test.tsx',
+    );
+
+    // The helper-parameter idiom (#2221's blind spot): the suite reads
+    // chat.css through `read(...)`, so no import edge reaches it and the
+    // call site alone names nothing. mobile-chrome-safety was the suite
+    // whose stale pins only the nightly corpus saw while three redesigns
+    // of the chip landed green.
+    const chatCssPin = pins.find(
+      ({ pin }) => pin === 'src-ui/src/components/chat/chat.css',
+    );
+    expect(chatCssPin?.tests).toContain(
+      'src-ui/src/__tests__/mobile-chrome-safety.test.ts',
     );
   });
 });
@@ -622,10 +630,101 @@ describe('the scanner resolves only what it can justify', () => {
     ).toEqual(['src-ui/src/main.tsx']);
   });
 
+  it('resolves a read-helper parameter (arrow and function forms)', () => {
+    // The idiom behind #2221's blind spot: the literal sits at the CALL, the
+    // anchor sits in the helper body, and no import edge connects them.
+    const helperForms = [
+      "const read = (p) => readFileSync(join(__dirname, '..', p), 'utf8');\n" +
+        "read('App.tsx');\n",
+      'const read = (p: string): string =>\n' +
+        "  readFileSync(join(__dirname, '..', p), 'utf-8');\n" +
+        "read('App.tsx');\n",
+      'function read(p: string): string {\n' +
+        "  return readFileSync(join(__dirname, '..', p), 'utf-8');\n" +
+        '}\n' +
+        "read('App.tsx');\n",
+    ];
+    for (const source of helperForms)
+      expect(scan(source), source).toEqual(['src-ui/src/App.tsx']);
+  });
+
+  it('resolves a helper whose parameter sits mid-path', () => {
+    expect(
+      scan(
+        'const read = (p) => readFileSync(join(__dirname, p, "k.ts"));\n' +
+          "read('..');\n",
+      ),
+    ).toEqual(['src-ui/src/k.ts']);
+  });
+
+  it('refuses a helper it cannot justify', () => {
+    // Two parameters: which one carries the path is a guess, so no pin.
+    expect(
+      scan(
+        "const read = (a, b) => readFileSync(join(__dirname, '..', a, b));\n" +
+          "read('x', 'App.tsx');\n",
+      ),
+    ).toEqual([]);
+    // The parameter used twice across TWO read calls: each call yields its
+    // own justifiable template, so both reads pin.
+    expect(
+      scan(
+        "const pair = (p) => [readFileSync(join(__dirname, p)), readFileSync(join(__dirname, '..', p))];\n" +
+          "pair('App.tsx');\n",
+      ).sort(),
+    ).toEqual(['src-ui/src/App.tsx', 'src-ui/src/__tests__/App.tsx']);
+    // The parameter used twice within ONE read argument: the template is
+    // ambiguous, so that read resolves nothing.
+    expect(
+      scan(
+        'const doubled = (p) => readFileSync(join(__dirname, p, p));\n' +
+          "doubled('x');\n",
+      ),
+    ).toEqual([]);
+    // A non-literal call site cannot be substituted.
+    expect(
+      scan(
+        "const read = (p) => readFileSync(join(__dirname, '..', p));\n" +
+          "read(nameFor('App.tsx'));\n",
+      ),
+    ).toEqual([]);
+    // A name defined twice is poisoned, mirroring collectBindings.
+    expect(
+      scan(
+        "const read = (p) => readFileSync(join(__dirname, '..', p));\n" +
+          'const read = (p) => readFileSync(join(__dirname, p));\n' +
+          "read('App.tsx');\n",
+      ),
+    ).toEqual([]);
+    // The read lives in a nested definition, so the outer body's read is
+    // not the outer helper's own.
+    expect(
+      scan(
+        'const outer = (p) => {\n' +
+          "  const inner = (q) => readFileSync(join(__dirname, '..', q));\n" +
+          '  return inner(p);\n' +
+          '};\n' +
+          "outer('App.tsx');\n",
+      ),
+    ).toEqual([]);
+  });
+
+  it('does not pin a helper read of a file the test writes', () => {
+    expect(
+      scan(
+        "const read = (p) => readFileSync(join(__dirname, '..', p), 'utf8');\n" +
+          "const planted = 'planted.ts';\n" +
+          "writeFileSync(join(__dirname, '..', planted), 'x');\n" +
+          'read(planted);\n',
+      ),
+    ).toEqual([]);
+  });
+
   it('resolves a path written inside a template interpolation', () => {
     expect(
       scan(
         'readFileSync(__filename);\n' +
+          // biome-ignore lint/suspicious/noTemplateCurlyInString: the placeholder IS the fixture — the scan matches this text shape.
           "const entry = `export * from ${JSON.stringify(join(__dirname, '..', 'App.tsx'))};`;\n",
       ),
     ).toEqual(['src-ui/src/App.tsx']);

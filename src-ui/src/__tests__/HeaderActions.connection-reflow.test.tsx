@@ -37,9 +37,11 @@ import {
  * connection states into a real Chromium page carrying the real, cascade-
  * resolved `index.css` + `components/chat/chat.css` (`.app-toolbar__conn*`
  * lives there, not in a component-local stylesheet — `HeaderActions.tsx`
- * imports no CSS of its own), and measures the actual rendered x-offset of a
- * fixed sibling control (`Open settings`, the last item in the action
- * cluster).
+ * imports no CSS of its own). Desktop tests measure the rendered x-offset of
+ * the avatar (the last laid-out control there — the `⋯` overflow is
+ * `display: none` at desktop widths, and the phone-only Settings gear that
+ * used to trail it is gone; Settings lives in the sidebar drawer's footer).
+ * Phone tests measure the action cluster's own width across states.
  *
  * Root cause: `.app-toolbar__conn-state` (`components/chat/chat.css`) was
  * `white-space: nowrap` with no reserved width, and the visible label text
@@ -47,32 +49,15 @@ import {
  * vs "Can't connect" vs "No Station" vs "Pair" — `HeaderActions.tsx`'s own
  * `connStateLabel`). `.app-toolbar__conn-name` (the identity chip, which
  * would otherwise be a second variable-width sibling) is hidden entirely
- * under the shell's mobile breakpoint (`index.css`, archive#3766), so on a
- * phone the STATE LABEL alone drives the connection chip's width — and every
- * other toolbar icon sitting after it in the same flex row
- * (`.app-toolbar__actions`) shifts horizontally when it changes.
+ * under the shell's mobile breakpoint (`index.css`, archive#3766).
  *
- * Two separate assertions, because the mobile breakpoint has a genuine,
- * documented exception this fix must not fight: `chat.css` deliberately
- * hides the state text for `connected`/`idle` on mobile ("the toolbar chip
- * stays compact … dot only while healthy"), so `connected` is narrower than
- * every news-carrying state THERE by design. The desktop-width test is the
- * full reproduction (state text is always shown, so `connected` participates
- * too).
- *
- * #1401 replaced the phone-width half. It used to pin that the states which
- * DO show text on mobile agree with each other in width — which they did,
- * via a 116px reservation, while agreeing on a position OUTSIDE the viewport:
- * `.app-toolbar__actions` is `flex-shrink: 0` and the brand bottoms out, so
- * the row's content width is viewport-independent and Settings sat at
- * x=377..421 at every phone width. Clipped on a 412px Pixel 7; past its own
- * centre, and so unreachable rather than merely clipped, below 399px. The two
- * properties are not both attainable here — holding the states to a common
- * width means reserving the longest (~102px natural), which still leaves the
- * row wider than a 390 or 402px viewport — so the reservation is released at
- * this breakpoint and the phone-width test now pins the property that was
- * being traded away. The agreement property is unaffected at desktop widths,
- * where the row has the room and the test above still enforces it.
+ * Two viewports, because the two rows now hold the contract differently. At
+ * desktop widths the state text always shows, so the chip reserves its own
+ * width (the 116px `min-width`) and the tests pin every label-bearing state
+ * to one trailing-control position. On a phone the healthy chip keeps a short
+ * "Station" label while the banner layer announces states that need a
+ * decision. It reserves that label's width in every state so connection
+ * changes cannot move neighboring controls.
  */
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -285,12 +270,12 @@ describe.skipIf(!chromiumAvailable)(
      * The x of the row's TRAILING control — the sibling furthest from the chip,
      * so any width the chip fails to reserve shows up here.
      *
-     * It used to be the Settings gear. #1552 D1 moved Settings into the avatar's
-     * menu on a fine pointer (the gear is `--compact-only`, phone-only, and this
-     * fixture is 1280px wide), so the gear is legitimately absent here and the
-     * avatar is now the trailing control. Retargeted rather than deleted: the
-     * contract station#4474 pinned is about the chip not reflowing its siblings,
-     * and it holds for whichever sibling is last.
+     * The avatar: the `⋯` overflow is `display: none` at desktop widths and
+     * the phone-only Settings gear that used to trail the avatar is gone
+     * (Settings lives in the sidebar drawer's footer), so on this 1280px
+     * fixture the avatar is the last laid-out control. The contract
+     * station#4474 pinned is about the chip not reflowing its siblings, and
+     * it holds for whichever sibling is last.
      */
     async function trailingControlX(
       markup: string,
@@ -310,97 +295,87 @@ describe.skipIf(!chromiumAvailable)(
     }
 
     /**
-     * station#1401. The breakpoint above is only correct while the widest
-     * cluster still FITS at the first width that keeps the label. Nothing tied
-     * those two together: the media query decides the label on its own, so
-     * removing the padding trim that bought the width would leave the
-     * breakpoint where it is and silently restore the over-subscription it was
-     * moved for. Removing that rule reddens this.
-     *
-     * Expressed as the row's own arithmetic rather than as transcribed pixels:
-     * the left side ends at its documented 126px floor, the trailing control's
-     * centre is 22px inside the cluster's right edge, and that centre has to
-     * land inside the viewport at 375.
+     * station#1401, retired arithmetic. This used to pin that the widest
+     * labelled cluster still fits at the first width that keeps the label
+     * (375px), against a 396px row budget derived term by term. There is no
+     * Remedy labels stay hidden on the toolbar at phone widths, while the
+     * healthy state retains the active saved Station label. The reserved
+     * width must keep the whole cluster invariant across every connection
+     * state, and the chip must meet the 44px target floor.
      */
-    test('the widest cluster still fits at the first width that keeps the label (#1401)', async () => {
-      // The two constants `chat.css`'s bound is written from, and the total it
-      // computes. What this asserts is that the RENDERED row still fits the
-      // width that arithmetic reserves — the breakpoint is only correct while
-      // it does.
-      const LEFT_SIDE_FLOOR_PX = 126;
-      const DOCUMENTED_WIDEST_TOTAL_PX = 396;
-      const CLUSTER_BUDGET_PX = DOCUMENTED_WIDEST_TOTAL_PX - LEFT_SIDE_FLOOR_PX;
-      // The badge is measured OUT of both sides. It is the only member whose
-      // width depends on glyph metrics, and those differ by renderer: this
-      // file's own note records the capped badge at 23.80px on macOS and
-      // 25.34px on the Linux runner. Comparing a whole-cluster measurement
-      // against a budget derived on one platform makes the assertion a
-      // platform claim — #1132's transcription trap, arriving through the
-      // front door. What is left after the badge comes out is padding,
-      // borders, gaps, the 44px floors and a label hard-clamped at its
-      // `max-width`: CSS pixels, identical on any renderer — with one term
-      // absorbed rather than excluded, the `⋯` glyph, which is glyph-driven
-      // but sits ~16px inside its 44px floor.
-      //
-      // This split is LOSSY, deliberately, and saying so is the point. The
-      // "stops growing at the cap" test above bounds the badge in the COUNT —
-      // constant past the cap — not in pixels; it says so in its own docblock,
-      // because two attempts to assert a pixel figure there both red on CI.
-      // So `members` fitting its budget does not prove the whole cluster fits
-      // 270: that also needs the badge's actual pixels to fit the 23.91
-      // allowance, which is a per-platform measurement nothing here asserts
-      // and which this file records as 25.34px on the Linux runner. Whether
-      // that over-runs the row is station#1721, not this assertion.
-      const DOCUMENTED_BADGE_BUDGET_PX = 23.91;
-      const FIRST_LABELLED_WIDTH_PX = 375;
-
-      attentionPendingCount = 123; // the badge at its capped, widest form
-      // `awaiting-approval` is the longest label, so `max-width` clamps it and
-      // the chip sits at its ceiling — the state the bound is written for.
-      const markup = await renderMarkupForState('awaiting-approval');
-      const page = await browser.newPage({
-        viewport: { width: FIRST_LABELLED_WIDTH_PX, height: 200 },
-      });
-      try {
-        await page.setContent(buildFixtureHtml(markup));
-        const measured = await page.evaluate(() => {
-          const cluster = document.querySelector<HTMLElement>(
-            '.app-toolbar__actions',
+    test('the phone cluster is invariant across every state with a compact Station label (#1401, #2406)', async () => {
+      const viewport = { width: 390, height: 200 };
+      const states: ChipState[] = [
+        'connected',
+        'connecting',
+        'error',
+        'needs-credential',
+        'needs-repair',
+        'awaiting-approval',
+      ];
+      const clusterWidths: number[] = [];
+      for (const state of states) {
+        const page = await browser.newPage({ viewport });
+        try {
+          await page.setContent(
+            buildFixtureHtml(await renderMarkupForState(state)),
           );
-          const boxes = Array.from(cluster?.children ?? [])
-            .map((child) => child.getBoundingClientRect())
-            .filter((box) => box.width > 0);
-          if (!boxes.length) throw new Error('no toolbar controls rendered');
-          const badge = document.querySelector<HTMLElement>(
-            '.app-toolbar__notification-badge',
-          );
-          if (!badge) throw new Error('no notification badge rendered');
-          return {
-            content:
-              Math.max(...boxes.map((box) => box.right)) -
-              Math.min(...boxes.map((box) => box.left)),
-            badge: badge.getBoundingClientRect().width,
-          };
-        });
-        const withoutBadge = measured.content - measured.badge;
-        const budgetWithoutBadge =
-          CLUSTER_BUDGET_PX - DOCUMENTED_BADGE_BUDGET_PX;
-        expect(
-          withoutBadge,
-          `the widest cluster's platform-independent members measure ` +
-            `${withoutBadge.toFixed(2)}px against the ` +
-            `${budgetWithoutBadge.toFixed(2)}px chat.css reserves for them ` +
-            `(its ${DOCUMENTED_WIDEST_TOTAL_PX}px bound, less the ` +
-            `${LEFT_SIDE_FLOOR_PX}px left side, less the ` +
-            `${DOCUMENTED_BADGE_BUDGET_PX}px budgeted for the badge, which is ` +
-            `measured out because its width is font-dependent). The label ` +
-            `breakpoint is derived from that bound, so a row this wide keeps ` +
-            `its label at a width it cannot hold — re-measure the row and ` +
-            `move both together.`,
-        ).toBeLessThanOrEqual(budgetWithoutBadge);
-      } finally {
-        await page.close();
+          const measured = await page.evaluate(() => {
+            const cluster = document.querySelector<HTMLElement>(
+              '.app-toolbar__actions',
+            );
+            const boxes = Array.from(cluster?.children ?? [])
+              .map((child) => child.getBoundingClientRect())
+              .filter((box) => box.width > 0);
+            if (!boxes.length) throw new Error('no toolbar controls rendered');
+            const chip =
+              document.querySelector<HTMLElement>('.app-toolbar__conn');
+            if (!chip) throw new Error('connection chip not found');
+            // Hidden at this breakpoint; the compact healthy state has its
+            // own short visible Station label.
+            const label = document.querySelector<HTMLElement>(
+              '.app-toolbar__conn-state',
+            );
+            const compactLabel = document.querySelector<HTMLElement>(
+              '.app-toolbar__conn-label',
+            );
+            return {
+              content:
+                Math.max(...boxes.map((box) => box.right)) -
+                Math.min(...boxes.map((box) => box.left)),
+              chipWidth: chip.getBoundingClientRect().width,
+              // Laid out, not merely present: `display: none` is exactly what
+              // this test is about, and a hidden span has no boxes.
+              labelBoxes: label?.getClientRects().length ?? 0,
+              compactLabel: compactLabel?.textContent ?? '',
+              accessibleName: chip.getAttribute('aria-label'),
+            };
+          });
+          expect(
+            measured.labelBoxes,
+            `the ${state} state lays out desktop remedy text on a phone`,
+          ).toBe(0);
+          expect(
+            Math.round(measured.chipWidth),
+            `the ${state} chip must meet the 44px touch floor on a phone`,
+          ).toBeGreaterThanOrEqual(44);
+          expect(
+            measured.compactLabel,
+            `the connected chip must visibly identify the Station on a phone`,
+          ).toBe(state === 'connected' ? 'Station · Default' : '');
+          expect(
+            measured.accessibleName,
+            `the ${state} chip must keep its words in the accessible name`,
+          ).toBeTruthy();
+          clusterWidths.push(Math.round(measured.content * 100) / 100);
+        } finally {
+          await page.close();
+        }
       }
+      expect(
+        clusterWidths,
+        'The phone action cluster changed width as the connection chip flipped state — the chip must not reflow the toolbar.',
+      ).toEqual(states.map(() => clusterWidths[0]));
     });
 
     test('the trailing control holds its position across every label-bearing state on a desktop-width toolbar', async () => {
@@ -412,7 +387,7 @@ describe.skipIf(!chromiumAvailable)(
       // an oversight: its single-Station form now renders NO label at all
       // (`compactConn` in `HeaderActions.tsx`), so a connect or a drop moves
       // the cluster once by design — the same trade #1401 already made at
-      // phone width, where `connected` has been dot-only since archive#3311.
+      // phone width, where the short saved Station label takes its place.
       // What that buys is measured by the test below. The reservation this
       // file pinned is still what holds the remaining states to one width, and
       // `connected` is the only state leaving the set.
@@ -438,11 +413,9 @@ describe.skipIf(!chromiumAvailable)(
       ).toEqual(states.map(() => xs[0]));
     });
 
-    test('the collapsed connected chip reclaims the width the label-bearing states reserve (#1536 F)', async () => {
-      // The point of collapsing it: a fact that never changes while you work
-      // stops holding ~150px of the row that runs out of width first. Measured
-      // against the widest label-bearing state in the same fixture, so this
-      // cannot pass on an absolute number that drifts with the font.
+    test('the compact connected chip shows Station and reclaims header width', async () => {
+      // The short label makes the connection control clear while retaining
+      // most of the width freed by collapsing the full state and identity.
       const viewport = { width: 1280, height: 400 };
       const chipWidth = async (state: ChipState): Promise<number> => {
         const page = await browser.newPage({ viewport });
@@ -479,39 +452,87 @@ describe.skipIf(!chromiumAvailable)(
       const widest = await chipWidth('awaiting-approval');
       const sibling = await siblingWidth();
 
-      // #1552 D1: the collapsed chip is the SAME size as its siblings, which is
-      // the whole of "one button size" — asserted as an equality against a
-      // measured sibling rather than as the literal 44px this used to pin, so it
-      // cannot pass while the row holds two different box sizes and cannot red
-      // merely because the shared size changed. (It was 44px on every pointer,
-      // making the smallest-content control the largest box in the row; the 44px
-      // floor still applies under the coarse-pointer query, where it is a WCAG
-      // 2.5.5 obligation rather than a look.)
-      expect(Math.round(collapsed)).toBe(Math.round(sibling));
-      // And it must not have grown a label back: a chip still rendering
-      // "Connected · Default" measures ~200px.
-      expect(collapsed).toBeLessThan(widest - 80);
+      const page = await browser.newPage({ viewport });
+      try {
+        await page.setContent(
+          buildFixtureHtml(await renderMarkupForState('connected')),
+        );
+        expect(
+          await page.locator('.app-toolbar__conn-label').textContent(),
+        ).toBe('Station · Default');
+      } finally {
+        await page.close();
+      }
+      expect(collapsed).toBeGreaterThan(sibling);
+      // Font metrics differ between macOS and Linux. Require the compact
+      // control to save at least a quarter of the wide attention state's
+      // width, rather than baking one host's pixel difference into CI.
+      expect(collapsed).toBeLessThan(widest * 0.75);
     });
 
+    test.each(['dark', 'light'] as const)(
+      'the mobile Station label stays readable and touchable in the %s theme',
+      async (theme) => {
+        const viewport = { width: 320, height: 568 };
+        const page = await browser.newPage({ viewport });
+        try {
+          await page.setContent(
+            buildFixtureHtml(await renderMarkupForState('connected')),
+          );
+          const measured = await page.evaluate((activeTheme) => {
+            document.documentElement.setAttribute('data-theme', activeTheme);
+            const button =
+              document.querySelector<HTMLElement>('.app-toolbar__conn');
+            const label = button?.querySelector<HTMLElement>(
+              '.app-toolbar__conn-label',
+            );
+            if (!button || !label) throw new Error('Station label missing');
+            const box = button.getBoundingClientRect();
+            return {
+              label: label.textContent,
+              color: getComputedStyle(label).color,
+              background: getComputedStyle(document.documentElement)
+                .getPropertyValue('--bg-primary')
+                .trim(),
+              x: box.x,
+              right: box.right,
+              width: box.width,
+              height: box.height,
+              labelFits: label.scrollWidth <= label.clientWidth,
+            };
+          }, theme);
+          expect(measured.label).toBe('Station · Default');
+          expect(measured.labelFits).toBe(true);
+          expect(measured.color).not.toBe('rgba(0, 0, 0, 0)');
+          expect(measured.background).toBe(
+            theme === 'light' ? '#f5f4ef' : '#0a0e13',
+          );
+          expect(measured.x).toBeGreaterThanOrEqual(0);
+          expect(measured.right).toBeLessThanOrEqual(viewport.width);
+          expect(measured.width).toBeGreaterThanOrEqual(44);
+          expect(measured.height).toBeGreaterThanOrEqual(44);
+        } finally {
+          await page.close();
+        }
+      },
+    );
+
     /**
-     * #1552 D1's headline claim, and the only thing that holds it: the
-     * fine-pointer row is FOUR controls (Layout, the status dot, Notifications,
-     * the avatar), and the Settings gear is phone-only.
+     * The row's membership, both directions. The desktop row is three named
+     * controls (Layout, the status dot, Notifications, the avatar — of which
+     * `HeaderActions` renders three; Layout is `RegionToolbarControls`, a
+     * sibling in the toolbar, not in this cluster). The phone row is the
+     * connection dot, Notifications, and the `⋯` overflow — no avatar (it is
+     * `--secondary` there) and no Settings gear: Settings lives in the
+     * sidebar drawer's footer, which the hamburger opens.
      *
-     * Added because a fault injection went green without it. Flipping
-     * `.app-toolbar__action--compact-only` from `display: none` to `display:
-     * flex` — the whole mechanism keeping the gear off the desktop row — broke
-     * nothing in this suite, so "four controls" was an assertion nobody made.
-     * `HeaderActions` renders three of the four (Layout is
-     * `RegionToolbarControls`, a sibling in the toolbar, not in this cluster),
-     * so the count here is three and the claim is about which three.
-     *
-     * Both directions, because a `display` rule can fail either way: the gear
-     * must be absent on a fine pointer AND present on a phone, where the avatar
-     * that carries its menu row is itself hidden and
-     * `tests/toolbar-reachability.spec.ts` requires the gear in its inventory.
+     * Added because a fault injection went green without it, and kept
+     * because a `display` rule can fail either way: a regressed gear (or a
+     * regressed avatar/overflow) changes this inventory, and
+     * `tests/toolbar-reachability.spec.ts` measures the same inventory
+     * against the running app.
      */
-    test('the fine-pointer row holds three named controls and no Settings gear; a phone is the mirror', async () => {
+    test('the fine-pointer row holds three named controls; a phone holds the dot, the bell, and the overflow', async () => {
       const inventory = async (viewport: {
         width: number;
         height: number;
@@ -544,19 +565,22 @@ describe.skipIf(!chromiumAvailable)(
 
       const desktop = await inventory({ width: 1280, height: 400 });
       expect(desktop).toEqual([
-        'Manage Stations — Connected · Default',
+        'Manage Stations — Connected · Station · Default',
         'Notifications',
         'Profile and settings',
       ]);
       expect(desktop).not.toContain('Open settings');
 
+      // The `connected` fixture renders its active saved Station label in a
+      // compact chip at both widths; the accessible name also carries status.
       const phone = await inventory({ width: 390, height: 600 });
-      expect(
-        phone,
-        'a phone has no avatar menu (the avatar is --secondary there), so the gear IS its route to Settings',
-      ).toContain('Open settings');
-      expect(phone).toContain('More actions');
+      expect(phone).toEqual([
+        'Manage Stations — Connected · Station · Default',
+        'Notifications',
+        'More actions',
+      ]);
       expect(phone).not.toContain('Profile and settings');
+      expect(phone).not.toContain('Open settings');
     });
 
     /**
@@ -636,59 +660,38 @@ describe.skipIf(!chromiumAvailable)(
       expect(chip.gapBetweenPhrases as number).toBeLessThanOrEqual(24);
     });
 
-    test('prints no separator on a phone, where the part it leads into is hidden', async () => {
-      // `:has()` cannot see `display: none`, so the breakpoint that hides the
-      // identity has to suppress the dot as well — otherwise the fix trades a
-      // leading dot for a trailing one. `needs-credential` keeps its label
-      // there ("dot only while healthy" only covers connected/idle).
+    test('lays out no chip text on a phone, so there is no separator to place', async () => {
+      // The state span itself is `display: none` at this breakpoint, and a
+      // `::after` on a hidden element renders nothing — so the trailing "· "
+      // the desktop chip prints after the state cannot appear here either.
+      // `measureChip` still finds the span in the DOM (it is hidden, not
+      // absent) and reads zero text geometry out of it.
       const chip = await measureChip('needs-credential', {
         width: 390,
         height: 200,
       });
 
       expect(chip.nameVisible).toBe(false);
-      expect(chip.stateAfter).toBe('none');
+      expect(chip.gapBetweenPhrases).toBeNull();
     });
 
     /**
-     * #1132. The companion to the test below: that one pins the chip inside the
-     * budget a 390px row can spare, this one pins what happens BELOW the width
-     * at which the row's last control keeps its own centre.
+     * #1132, retired breakpoint. This used to pin that the chip drops its
+     * label below the width the row can hold (375px keeps it, 374px drops
+     * it). The compact Station label stays only in the healthy state; error
+     * remedy text stays in the accessible name and banner, while the reserved
+     * width holds the same mobile toolbar geometry. A
+     * screen reader reads the same sentence whatever the viewport, because
+     * the name is the button's `aria-label` and never this span's text.
      *
-     * Derived, not chosen, and ARITHMETIC rather than swept:
-     * `.app-toolbar__actions` is `flex-shrink: 0` and the brand has bottomed
-     * out, so the row's content width is viewport-independent and the left side
-     * ends at x=126. The widest the cluster can reach is 126 + 112 (this chip
-     * at its 85px label ceiling plus 27px of furniture) + 4 + 58 (notifications
-     * at their widest badge — 34px of button plus 23.91px, which is "99"'s
-     * width rather than the cap's own "9+" (23.80px), so the budget is ~1px
-     * conservative. The two-character
-     * ceiling `HeaderActions.tsx`'s "9+" cap creates) + 4 + 44 + 4 + 44 = 396,
-     * putting `Open settings`'s centre at 374. Every term above is post-#1401:
-     * that change trimmed this row's button padding by 2px a side, which the
-     * 44px floor absorbs for the glyph-only controls and the two content-sized
-     * members give back — the chip was 116 and notifications 62, for a 404
-     * total and a 382 centre.
-     *
-     * The live sweep is narrower, because the state it drove renders a 79px
-     * label beside a one-digit badge: at 360px that centre is x=362 and
-     * `document.elementFromPoint` returns null; at 367px and above, in that
-     * state, it resolves to the control itself. 374 is where the WORST case
-     * lands, so the label goes at 374 and below.
-     *
-     * WHAT THIS FIXTURE CAN SEE: the chip's own box, the badge's box, and the
-     * button's accessible name, in a real Chromium page with the real
-     * stylesheets. It cannot see the row's absolute geometry — `HeaderActions`
-     * mounts alone here, so every control is "inside the viewport" whatever the
-     * chip does (the note on the test below). The reachability claim itself is
-     * browser-measured against the whole app in
-     * `tests/toolbar-reachability.spec.ts`, whose 360px case is the one that
-     * exercises this breakpoint. NOT in
-     * `tests/connect-reconnect-banner.spec.ts`: every mobile case there runs at
-     * 390px, which is above this breakpoint, so those runs never evaluate this
-     * rule at all.
+     * WHAT THIS FIXTURE CAN SEE: the chip's own box and the button's
+     * accessible name, in a real Chromium page with the real stylesheets. It
+     * cannot see the row's absolute geometry — `HeaderActions` mounts alone
+     * here, so every control is "inside the viewport" whatever the chip does.
+     * The reachability claim itself is browser-measured against the whole app
+     * in `tests/toolbar-reachability.spec.ts`.
      */
-    test('the connection chip drops its label below the width the row can hold, keeping its accessible name (#1132)', async () => {
+    test('the error chip lays out no text at phone widths, keeping its accessible name (#1132)', async () => {
       const measure = async (width: number) => {
         const page = await browser.newPage({
           viewport: { width, height: 200 },
@@ -707,8 +710,7 @@ describe.skipIf(!chromiumAvailable)(
             if (!button || !label) throw new Error('connection chip not found');
             return {
               chipWidth: Math.round(button.getBoundingClientRect().width),
-              labelWidth: Math.round(label.getBoundingClientRect().width),
-              labelText: label.textContent,
+              labelBoxes: label.getClientRects().length,
               accessibleName: button.getAttribute('aria-label'),
             };
           });
@@ -717,42 +719,27 @@ describe.skipIf(!chromiumAvailable)(
         }
       };
 
-      // 375px: the first width at which the last control keeps its centre in
-      // the worst case, so the label stays. Was 383 until station#1401's
-      // padding trim gave the row 8px back (chip 105 -> 101, badged
-      // notifications 62 -> 58, both measured); the floored controls are
-      // unchanged, which is why the trim buys exactly those two.
-      const held = await measure(375);
-      expect(held.labelWidth).toBeGreaterThan(0);
-      expect(held.labelText).toBe("Can't connect");
-
-      // 374px: the last width at which it does not, so the label goes.
-      const dropped = await measure(374);
-      expect(
-        dropped.labelWidth,
-        'the state label must not lay out below the breakpoint',
-      ).toBe(0);
-      // The 44px touch floor, not the ~110px the labelled chip measures: the
-      // 66px this reclaims is what puts `Open settings` back on screen.
-      expect(dropped.chipWidth).toBeLessThanOrEqual(44);
-      expect(dropped.chipWidth).toBeLessThan(held.chipWidth);
-
-      // The whole point of hiding it VISUALLY: a screen reader reads the same
-      // sentence at both widths, because the name is the button's `aria-label`
-      // and never this span's text.
-      expect(dropped.accessibleName).toBe(held.accessibleName);
-      expect(dropped.accessibleName).toContain("Can't connect");
+      // Both sides of the retired breakpoint: the error label stays gone and
+      // the chip reserves the same 136px width below it.
+      for (const width of [375, 374, 360]) {
+        const measured = await measure(width);
+        expect(
+          measured.labelBoxes,
+          `the error state lays out remedy text at ${width}px`,
+        ).toBe(0);
+        expect(measured.chipWidth).toBe(136);
+        expect(measured.accessibleName).toContain("Can't connect");
+      }
     });
 
     /**
-     * #1132. The breakpoint above is a BOUND only if every member of the row is
+     * #1132. The dot-only chip is a BOUND only if every member of the row is
      * bounded, and one was not: the notification badge is an in-flow flex child
      * of the same `flex-shrink: 0` cluster, and `chat.css`'s
      * `min-width: 18px; padding: 0 5px` is a floor. Measured in this fixture
      * before the cap: 18.00px at one digit, 21.80px at "12", 23.91px at "99",
      * 28.59px at "123", 35.58px at "1234" — so a person with a hundred pending
-     * items moved `Open settings`'s centre ~10px right and reopened
-     * unreachability in a band the breakpoint had just closed.
+     * items grew the cluster ~10px past the width the tests above pin.
      *
      * Both halves, because either alone is satisfiable while the row is still
      * unbounded: the GLYPH is capped at two characters, and the resulting BOX
@@ -774,7 +761,7 @@ describe.skipIf(!chromiumAvailable)(
      * suppressed anyway, so the row there sits nowhere near the bound. That
      * gap is station#1721.
      */
-    test('the notification badge is bounded, so the row arithmetic is a bound (#1132)', async () => {
+    test('the notification badge is bounded, so the row stays bounded (#1132)', async () => {
       const measureBadge = async (pendingCount: number) => {
         attentionPendingCount = pendingCount;
         const page = await browser.newPage({
@@ -811,7 +798,7 @@ describe.skipIf(!chromiumAvailable)(
       ).toBe('9+');
 
       // The bound itself: past the cap the badge is a constant, so no count a
-      // person can accumulate moves `Open settings` any further right.
+      // person can accumulate moves the trailing controls any further right.
       const far = await measureBadge(999999);
       expect(far.text).toBe('9+');
       expect(
@@ -825,50 +812,8 @@ describe.skipIf(!chromiumAvailable)(
       expect(many.accessibleName).toContain('123 need attention');
     });
 
-    test('the connection chip fits the width a phone row can spare', async () => {
-      // #1401. NOT a position assertion: this fixture mounts `HeaderActions`
-      // alone, so the cluster starts at x=0 and the Settings control is
-      // always "inside the viewport" here no matter how wide the chip grows —
-      // an earlier version of this test asserted its right edge and passed
-      // with the defect restored, which is how that was found. The chip's own
-      // width is the thing this fixture can actually see, so pin that against
-      // the budget the real row leaves it.
-      //
-      // Budget at 390px, measured on a running app in the `error` state:
-      // the row's left side (hamburger, logo, brand at its floor, gaps) ends
-      // at x=126 and `.app-toolbar__actions` carries three further 44px
-      // controls plus three 4px gaps = 144. 390 - 126 - 144 leaves **120px**
-      // for the connection chip. With the 116px reservation it rendered at
-      // 151px and put Settings at x=377..421 — past a 390px viewport, past a
-      // 412px Pixel 7, and past its own centre (x≈399) below 399px, which is
-      // unreachable rather than merely clipped. Released, the chip renders at
-      // 114px in this state and the row ends at 384.
-      const viewport = { width: 390, height: 200 };
-      const CHIP_BUDGET_PX = 120;
-      const states: ChipState[] = [
-        'connecting',
-        'error',
-        'needs-credential',
-        'needs-repair',
-        'awaiting-approval',
-      ];
-      for (const state of states) {
-        const page = await browser.newPage({ viewport });
-        try {
-          await page.setContent(
-            buildFixtureHtml(await renderMarkupForState(state)),
-          );
-          const box = await page.locator('.app-toolbar__conn').boundingBox();
-          expect(box, `connection chip not visible in ${state}`).not.toBe(null);
-          expect(
-            Math.round(box!.width),
-            `The connection chip is wider than the ${CHIP_BUDGET_PX}px a ${viewport.width}px row can spare in the ${state} state, which pushes the Settings control off the screen (#1401).`,
-          ).toBeLessThanOrEqual(CHIP_BUDGET_PX);
-        } finally {
-          await page.close();
-        }
-      }
-    });
+    // The old #1401 dot-only chip budget retired with its behavior; the
+    // fixed label width and 44px target are now measured above.
   },
 );
 

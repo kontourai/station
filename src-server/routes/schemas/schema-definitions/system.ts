@@ -67,26 +67,37 @@ export const answerShareMintSchema = z.object({
 });
 
 // Coding
+// #2412: every coding route that takes a client path names the Project it
+// acts in; the route refuses a path outside that Project's folder.
+const codingProjectSlug = z.string().min(1).max(200);
+
 export const execCommandSchema = z.object({
+  projectSlug: codingProjectSlug,
   command: z.string().min(1),
   cwd: z.string().optional(),
 });
 
 export const gitCheckoutSchema = z.object({
+  projectSlug: codingProjectSlug,
   path: z.string().min(1),
   branch: z.string().min(1),
   create: z.boolean().optional(),
 });
 
+// #2363: commit and push act on a Project's own folder. `path` only selects
+// a repository inside it (a multi-repo workspace); the route refuses one
+// outside the Project.
 export const gitCommitSchema = z.object({
-  path: z.string().min(1),
-  message: z.string().min(1),
+  projectSlug: z.string().min(1).max(200),
+  path: z.string().min(1).optional(),
+  message: z.string().min(1).max(10_000),
 });
 
 export const gitPushSchema = z.object({
-  path: z.string().min(1),
-  remote: z.string().optional(),
-  branch: z.string().optional(),
+  projectSlug: z.string().min(1).max(200),
+  path: z.string().min(1).optional(),
+  remote: z.string().min(1).max(200).optional(),
+  branch: z.string().min(1).max(250).optional(),
   setUpstream: z.boolean().optional(),
 });
 
@@ -115,6 +126,54 @@ export const pluginPreviewSchema = z.object({
   source: z.string().min(1).optional(),
   registryId: z.string().min(1).optional(),
 });
+
+/**
+ * `POST /api/plugins/validate` (#2323 S1) names a source only. It has no
+ * registry form and no consent field, because it is an authoring check and
+ * never the first half of an install.
+ */
+export const pluginValidateSchema = z
+  .object({
+    source: z.string().trim().min(1).max(4096),
+  })
+  .strict();
+
+/**
+ * `POST /api/plugin-proposals` (#2323 S5): an agent asks a person to install,
+ * update or remove a plugin. No consent field, by construction: a proposal is
+ * an ask, and the person's decision is taken later on the ordinary preview.
+ *
+ * `_sourceContext` is the agent/conversation the tool call reported
+ * (`mcp-manager.ts` stamps it for Station's own agents). The route honours it
+ * only for Station's internal caller class, and only as display provenance.
+ */
+const pluginProposalSourceContextSchema = z
+  .object({
+    agentSlug: z.string().trim().min(1).max(128).optional(),
+    conversationId: z.string().trim().min(1).max(256).optional(),
+    attestation: z.string().min(1).max(128).optional(),
+  })
+  .strict()
+  .optional();
+
+export const pluginProposalCreateSchema = z.discriminatedUnion('kind', [
+  z
+    .object({
+      kind: z.literal('install'),
+      source: z.string().trim().min(1).max(4096),
+      rationale: z.string().trim().min(1).max(2000),
+      _sourceContext: pluginProposalSourceContextSchema,
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.enum(['update', 'remove']),
+      pluginName: z.string().trim().min(1).max(128),
+      rationale: z.string().trim().min(1).max(2000),
+      _sourceContext: pluginProposalSourceContextSchema,
+    })
+    .strict(),
+]);
 
 /**
  * `consent` is the operator's pre-install decision (archive#4288): the derived
@@ -183,6 +242,13 @@ export const pluginInstallSchema = z.object({
   source: z.string().min(1),
   skip: z.array(z.string()).optional(),
   consent: pluginInstallConsentSchema.optional(),
+  /**
+   * #2323 S5: the plugin lifecycle proposal this install completes. Carries
+   * no authority: the install is decided by `consent` exactly as without it,
+   * and the proposal is marked completed only after the install succeeded
+   * and only when it asked for this source.
+   */
+  proposalId: z.string().uuid().optional(),
 });
 
 /**
@@ -333,18 +399,21 @@ export const skillCreateSchema = z.object({
 // are paths relative to it. The service enforces that they resolve inside the
 // root (no traversal) before touching disk.
 export const fileCreateSchema = z.object({
+  projectSlug: codingProjectSlug,
   path: z.string().min(1),
   target: z.string().min(1),
   type: z.enum(['file', 'directory']),
 });
 
 export const fileRenameSchema = z.object({
+  projectSlug: codingProjectSlug,
   path: z.string().min(1),
   from: z.string().min(1),
   to: z.string().min(1),
 });
 
 export const fileDeleteSchema = z.object({
+  projectSlug: codingProjectSlug,
   path: z.string().min(1),
   target: z.string().min(1),
 });

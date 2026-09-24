@@ -1,7 +1,11 @@
 import type { EngineId } from '@kontourai/station-contracts/provider';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { PROVIDER_PROVEN_FINISH_REASONS } from '../../providers/finish-reason-authority.js';
+import { createLogger } from '../../utils/logger.js';
+import { JsonFileStore } from '../infra/json-store.js';
 import type { EventBus, ServerEvent } from '../orchestration/event-bus.js';
+
+const logger = createLogger({ name: 'runtime-auth-health' });
 
 const DEFAULT_AUTH_FAILURE_TTL_MS = 60_000;
 const MAX_AUTH_FAILURE_TTL_MS = 15 * 60 * 1000;
@@ -18,6 +22,10 @@ interface RuntimeAuthenticationFailureEntry {
   freshUntilMonotonicMs: number;
 }
 
+interface RuntimeAuthHealthDocument {
+  providers: Record<string, { observedAt: string }>;
+}
+
 interface RuntimeAuthHealthMonitorOptions {
   /** Base failure window. Kept as ttlMs for the existing local test seam. */
   ttlMs?: number;
@@ -25,6 +33,11 @@ interface RuntimeAuthHealthMonitorOptions {
   now?: () => Date;
   monotonicNow?: () => number;
   maxProviders?: number;
+  /**
+   * Last observed auth failure per engine. Survives process restart and the
+   * in-memory recheck window; only a proven successful turn clears it.
+   */
+  persistPath?: string;
 }
 
 class RuntimeAuthHealthTimingError extends Error {
@@ -368,6 +381,14 @@ export class RuntimeAuthHealthMonitor {
     EngineId,
     RuntimeAuthenticationFailureEntry
   >();
+  /**
+   * Last observed auth failure per engine. Independent of the in-memory
+   * recheck TTL: Ready stays false until a proven successful turn.
+   */
+  private readonly durableFailures = new Map<
+    EngineId,
+    RuntimeAuthenticationFailure
+  >();
   /** Persisted across an expired window; only proven recovery resets it. */
   private readonly failureStreaks = new Map<EngineId, number>();
   private readonly expiryTimers = new Map<
@@ -380,6 +401,7 @@ export class RuntimeAuthHealthMonitor {
   private readonly maxProviders: number;
   private readonly now: () => Date;
   private readonly monotonicNow: () => number;
+  private readonly persistStore: JsonFileStore<RuntimeAuthHealthDocument> | null;
   private lastMonotonicNow: number | undefined;
   private disposed = false;
 
@@ -399,17 +421,33 @@ export class RuntimeAuthHealthMonitor {
     );
     this.now = options.now ?? (() => new Date());
     this.monotonicNow = options.monotonicNow ?? (() => performance.now());
+    this.persistStore = options.persistPath
+      ? new JsonFileStore<RuntimeAuthHealthDocument>(
+          options.persistPath,
+          { providers: {} },
+          {
+            onCorruption: 'default-value',
+            durableAtomicWrite: true,
+            atomicWriteDurability: 'tear-safe',
+            maxReadBytes: 64 * 1024,
+          },
+        )
+      : null;
+    this.loadDurableFailures();
     this.unsubscribe = eventBus.subscribe((event) => this.onServerEvent(event));
   }
 
   getFailure(provider: EngineId): RuntimeAuthenticationFailure | null {
     const entry = this.failures.get(provider);
-    if (!entry) return null;
-    if (this.readMonotonicNow() >= entry.freshUntilMonotonicMs) {
-      this.expire(provider, entry, false);
-      return null;
+    if (entry) {
+      if (this.readMonotonicNow() >= entry.freshUntilMonotonicMs) {
+        this.expire(provider, entry, false);
+      } else {
+        return { ...entry.failure };
+      }
     }
-    return { ...entry.failure };
+    const durable = this.durableFailures.get(provider);
+    return durable ? { ...durable } : null;
   }
 
   dispose(): void {
@@ -419,6 +457,7 @@ export class RuntimeAuthHealthMonitor {
     for (const timer of this.expiryTimers.values()) clearTimeout(timer);
     this.expiryTimers.clear();
     this.failures.clear();
+    this.durableFailures.clear();
     this.failureStreaks.clear();
   }
 
@@ -490,6 +529,10 @@ export class RuntimeAuthHealthMonitor {
     };
     this.failureStreaks.set(failure.provider, streak);
     this.failures.set(failure.provider, entry);
+    if (this.persistStore) {
+      this.durableFailures.set(failure.provider, { ...entry.failure });
+      this.persistDurableFailures();
+    }
     this.scheduleExpiry(failure.provider, entry, observedMonotonicMs);
     this.eventBus.emit(SERVER_EVENTS.RUNTIME_HEALTH_CHANGED, {
       provider: failure.provider,
@@ -574,12 +617,57 @@ export class RuntimeAuthHealthMonitor {
     const timer = this.expiryTimers.get(provider);
     if (timer) clearTimeout(timer);
     this.expiryTimers.delete(provider);
-    const didClear = this.failures.delete(provider);
+    const didClearLive = this.failures.delete(provider);
+    const didClearDurable = this.persistStore
+      ? this.durableFailures.delete(provider)
+      : false;
+    if (didClearDurable) this.persistDurableFailures();
     if (options.resetStreak) this.failureStreaks.delete(provider);
-    if (!didClear || !options.notify) return;
+    if ((!didClearLive && !didClearDurable) || !options.notify) return;
     this.eventBus.emit(SERVER_EVENTS.RUNTIME_HEALTH_CHANGED, {
       provider,
       status: 'healthy',
     });
+  }
+
+  private loadDurableFailures(): void {
+    if (!this.persistStore) return;
+    let document: RuntimeAuthHealthDocument;
+    try {
+      document = this.persistStore.read();
+    } catch (error) {
+      logger.warn('Failed to read persisted runtime auth health', { error });
+      return;
+    }
+    const providers = document.providers;
+    if (!providers || typeof providers !== 'object' || Array.isArray(providers))
+      return;
+    for (const [provider, value] of Object.entries(providers)) {
+      if (
+        this.durableFailures.size >= this.maxProviders ||
+        !isCanonicalProviderId(provider) ||
+        !isPlainRecord(value) ||
+        !isCanonicalUtcTimestamp(value.observedAt)
+      ) {
+        continue;
+      }
+      this.durableFailures.set(provider, {
+        observedAt: value.observedAt,
+        expiresAt: value.observedAt,
+      });
+    }
+  }
+
+  private persistDurableFailures(): void {
+    if (!this.persistStore) return;
+    const providers: RuntimeAuthHealthDocument['providers'] = {};
+    for (const [provider, failure] of this.durableFailures) {
+      providers[provider] = { observedAt: failure.observedAt };
+    }
+    try {
+      this.persistStore.write({ providers });
+    } catch (error) {
+      logger.warn('Failed to persist runtime auth health', { error });
+    }
   }
 }

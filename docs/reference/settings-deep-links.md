@@ -124,3 +124,20 @@ configures:
 `scope` is worth reading before answering: a `device` control changes only the
 browser or app in front of the person asking, and a `station` control changes
 Station for everybody using it.
+
+## Answer delivery
+
+The device-scoped **Answer delivery** control offers three display modes. “Show
+text as it arrives” applies each canonical text delta immediately. “Reveal text
+at a steady pace” smooths paint cadence. “Show text at action boundaries” holds
+text and reasoning only in this device's chat projection, then reveals it before
+the next tool event, approval request or resolution, terminal event, or error.
+It also spills before accepting a delta that would take the local buffer past
+24,000 characters, and flushes on a mode change or stream interruption.
+
+Buffered display does not suppress or rewrite the server's durable event stream.
+Replay capture and another connected device continue to receive canonical events
+in order, so two viewers can choose different display modes for the same turn.
+Client captures record the selected delivery mode for fidelity disclosure, but
+event replay deliberately steps the raw canonical frames and does not recreate
+buffered or smooth presentation timing.

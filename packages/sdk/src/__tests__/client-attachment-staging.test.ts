@@ -9,6 +9,7 @@ import {
   getAttachmentStagingCapability,
   uploadAttachmentStage,
 } from '../client/attachment-staging.js';
+import { setClientRawEgressPolicyResolver } from '../client/http.js';
 
 const validHandshake = {
   schemaVersion: PUBLIC_HANDSHAKE_SCHEMA_VERSION,
@@ -30,7 +31,10 @@ const validHandshake = {
 };
 
 describe('attachment staging client', () => {
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    setClientRawEgressPolicyResolver(undefined);
+  });
 
   test('allows inline fallback only after a valid Station handshake', async () => {
     vi.stubGlobal(
@@ -72,6 +76,14 @@ describe('attachment staging client', () => {
 
   test('uses an injected upload transport and forwards native progress', async () => {
     const progress = vi.fn();
+    setClientRawEgressPolicyResolver(() => ({
+      kind: 'direct',
+      apiBase: 'http://station.test',
+      connectionId: 'direct-1',
+      activationEpoch: 'selection-1',
+      authorityKey: 'authority-1',
+      isCurrent: () => true,
+    }));
     const transport = vi.fn(async (request) => {
       request.onProgress?.({ loaded: 4, total: 8 });
       return new Response(
@@ -103,12 +115,89 @@ describe('attachment staging client', () => {
           size: 8,
         },
         'data:text/plain;base64,aGk=',
-        { transport, onProgress: progress },
+        {
+          transport,
+          onProgress: progress,
+          requestScope: {
+            apiBase: 'http://station.test',
+            authorityKey: 'authority-1',
+          },
+        },
       ),
     ).resolves.toMatchObject({ stageId: 'stage-1' });
     expect(transport).toHaveBeenCalledWith(
       expect.objectContaining({ grant: 'short-lived' }),
     );
     expect(progress).toHaveBeenCalledWith({ loaded: 4, total: 8 });
+  });
+
+  test('refuses the explicit upload grant before raw transport on a broker route', async () => {
+    const transport = vi.fn();
+    setClientRawEgressPolicyResolver(() => ({
+      kind: 'broker',
+      apiBase: 'http://station.test',
+      connectionId: 'broker-1',
+      activationEpoch: 'selection-1',
+      authorityKey: 'authority-1',
+      isCurrent: () => true,
+    }));
+
+    await expect(
+      uploadAttachmentStage(
+        'http://station.test',
+        {
+          stageId: 'stage-1',
+          uploadGrant: 'short-lived',
+          expiresAt: '2030-01-01T00:00:00.000Z',
+          clientAttachmentId: 'file-1',
+          kind: 'file',
+          name: 'notes.txt',
+          mimeType: 'text/plain',
+          size: 8,
+        },
+        'data:text/plain;base64,aGk=',
+        { transport },
+      ),
+    ).rejects.toThrow(
+      'Browser broker routes do not support direct attachment upload',
+    );
+    expect(transport).not.toHaveBeenCalled();
+  });
+
+  test('rejects a stale selection binding immediately before raw upload', async () => {
+    const transport = vi.fn();
+    setClientRawEgressPolicyResolver(() => ({
+      kind: 'direct',
+      apiBase: 'http://station.test',
+      connectionId: 'direct-2',
+      activationEpoch: 'selection-2',
+      authorityKey: 'authority-2',
+      isCurrent: () => true,
+    }));
+
+    await expect(
+      uploadAttachmentStage(
+        'http://station.test',
+        {
+          stageId: 'stage-1',
+          uploadGrant: 'old-station-grant',
+          expiresAt: '2030-01-01T00:00:00.000Z',
+          clientAttachmentId: 'file-1',
+          kind: 'file',
+          name: 'notes.txt',
+          mimeType: 'text/plain',
+          size: 8,
+        },
+        'data:text/plain;base64,aGk=',
+        {
+          transport,
+          requestScope: {
+            apiBase: 'http://station.test',
+            authorityKey: 'authority-1',
+          },
+        },
+      ),
+    ).rejects.toThrow('requested Station authority is no longer available');
+    expect(transport).not.toHaveBeenCalled();
   });
 });

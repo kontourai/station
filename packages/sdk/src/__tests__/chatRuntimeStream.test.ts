@@ -9,6 +9,26 @@ import {
 } from '../query-domains/chatRuntimeStream';
 
 describe('chatRuntimeStream', () => {
+  it('preserves canonical and compatibility purpose fields from history', () => {
+    const [message] = mapConversationMessages([
+      {
+        role: 'assistant',
+        parts: [
+          {
+            type: 'tool-read_file',
+            toolCallId: 'purpose-call',
+            purpose: 'Inspect docs',
+            toolPurpose: 'Legacy inspect docs',
+          },
+        ],
+      },
+    ]);
+    expect(message.contentParts?.[0]).toMatchObject({
+      purpose: 'Inspect docs',
+      toolPurpose: 'Legacy inspect docs',
+    });
+  });
+
   it('maps conversation messages with tool metadata fallbacks', () => {
     const messages = mapConversationMessages(
       [

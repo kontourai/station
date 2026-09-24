@@ -93,6 +93,14 @@ interface UseChatDockViewModelArgs {
    * once the read has SUCCEEDED.
    */
   orchestrationSessionsStatus?: 'pending' | 'error' | 'success';
+  /**
+   * Whether the sessions query currently has a request in flight — including
+   * a background refetch where `status` stays `success` with stale data.
+   * After a send invalidates `orchestration-sessions`, the dock looks for the
+   * new child session in the pre-child cache until that refetch lands; that
+   * window must read as `pending`, never as established `absent`.
+   */
+  orchestrationSessionsFetching?: boolean;
 }
 
 export function useChatDockViewModel({
@@ -104,6 +112,7 @@ export function useChatDockViewModel({
   sessions,
   orchestrationSessions = EMPTY_ORCHESTRATION_SESSIONS,
   orchestrationSessionsStatus = 'success',
+  orchestrationSessionsFetching = false,
 }: UseChatDockViewModelArgs) {
   const activeSession =
     sessions.find((session) => session.id === activeSessionId) || null;
@@ -125,7 +134,10 @@ export function useChatDockViewModel({
     null;
   // station#1146: git stays bound to the PROJECT's directory, deliberately —
   // see `sessionDisplayCwd` below for the split and its reasoning.
-  const { data: gitStatus } = useGitStatus(sessionWorkingDir);
+  const { data: gitStatus } = useGitStatus(
+    sessionProjectSlug,
+    sessionWorkingDir,
+  );
   // station#1146: the dock reports on a session that has ALREADY started, so
   // the directory it names must be the one that session was started in, not
   // the one this project would hand a NEW chat. A chat on an engine
@@ -176,7 +188,8 @@ export function useChatDockViewModel({
     | 'absent' =
     !sessionThreadId || activeOrchestrationSession
       ? 'present'
-      : orchestrationSessionsStatus === 'pending'
+      : orchestrationSessionsStatus === 'pending' ||
+          orchestrationSessionsFetching
         ? 'pending'
         : orchestrationSessionsStatus === 'error'
           ? 'error'
@@ -258,12 +271,10 @@ export function useChatDockViewModel({
     provider: activeSessionForHook?.provider,
     agentName: activeSessionForHook?.agentName,
   });
-  // The Agent app connection's configured approval-mode default (#727) —
-  // generic `config` bag field, additive, mirrors `config.defaultModel`.
-  const connectionApprovalModeDefault =
-    typeof runtimeConnection?.config.approvalMode === 'string'
-      ? runtimeConnection.config.approvalMode
-      : undefined;
+  // The session's Agent's own default approval posture (#2436,
+  // `AgentSpec.execution.approvalMode`): the layer the server applies below
+  // the session's own pick.
+  const agentApprovalModeDefault = agentForHook?.execution?.approvalMode;
   // The connection object, not its display/id string, is the authoritative
   // input to the matrix resolver. Undefined remains visibly unknown in the
   // composer while the connection query has not resolved.
@@ -462,7 +473,7 @@ export function useChatDockViewModel({
     agentDefaultModelId,
     chatEngineConnection,
     bindingStatus,
-    connectionApprovalModeDefault,
+    agentApprovalModeDefault,
     toolPolicyDelivery,
     effectiveModels,
     executionSummary,

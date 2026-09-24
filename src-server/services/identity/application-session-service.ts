@@ -8,15 +8,18 @@ import {
   type ApplicationSessionCapabilities,
   type ApplicationSessionChallenge,
   type ApplicationSessionContinuation,
+  type ApplicationSessionCookieAdoption,
 } from '@kontourai/station-contracts/application-session';
 import type { PairedDevice } from '@kontourai/station-contracts/environment-security';
+import { PAIRING_SCOPE_ORCHESTRATION_READ } from '@kontourai/station-contracts/environment-security';
 import { humanPrincipal } from '@kontourai/station-contracts/principal';
 import { calculateJwkThumbprint, importJWK, jwtVerify } from 'jose';
 import { z } from 'zod/v3';
 import { parseStrictBearer } from '../../security/runtime-request-security.js';
-import type {
-  DeploymentAuthenticationService,
-  ResolvedDeploymentAuthentication,
+import {
+  type DeploymentAuthenticationService,
+  deploymentAccountPrincipal,
+  type ResolvedDeploymentAuthentication,
 } from './deployment-authentication-service.js';
 
 const digest = (value: string) =>
@@ -30,9 +33,20 @@ const publicKey = z
     y: opaque,
   })
   .strict();
+const cookieAdoptionBinding = z
+  .object({
+    parentCredentialHash: opaque,
+    issuer: z.string(),
+    sessionId: z.string(),
+    principalId: z.string(),
+  })
+  .strict();
 const challengeRecord = z
   .object({
     deviceId: z.string(),
+    aliasId: z.string().uuid().optional(),
+    adoption: cookieAdoptionBinding.optional(),
+    adoptionId: z.string().uuid().optional(),
     origin: z.string(),
     key: publicKey,
     keyThumbprint: opaque,
@@ -46,6 +60,10 @@ const continuationRecord = challengeRecord
     sessionId: z.string(),
     principalId: z.string(),
     authorityKey: z.string(),
+    relayEnrollmentId: z.string().optional(),
+    relayApprovalId: z.string().optional(),
+    relayApprovedBy: z.string().optional(),
+    relaySubject: z.string().optional(),
   })
   .strict();
 type Continuation = z.infer<typeof continuationRecord>;
@@ -54,6 +72,34 @@ type Authenticated = Extract<
   ResolvedDeploymentAuthentication,
   { kind: 'authenticated' }
 >;
+type RelayAliasIssue = {
+  aliasId: string;
+  credential: string;
+  deviceId: string;
+  expiresAt: number;
+};
+export type ApplicationSessionCookieAdoptionCallbacks = {
+  readSecureDeviceCookie: (request: Request) => string | undefined;
+  issueAlias: (
+    parentCredential: string,
+    deviceId: string,
+    aliasId: string,
+  ) => RelayAliasIssue;
+  revokeAlias: (deviceId: string, aliasId: string) => boolean;
+};
+
+/** Private, read-only assertion returned only for one reserved relay Device. */
+interface PendingRelayDeviceAssertion {
+  deviceId: string;
+  enrollmentId: string;
+  issuer: string;
+  subject: string;
+  approvalId: string;
+  approvedBy: string;
+  scope: readonly string[];
+}
+
+const relayEnrollmentId = z.string().regex(/^[A-Za-z0-9_-]{43}$/);
 
 export class ApplicationSessionRefusal extends Error {
   constructor(
@@ -82,6 +128,18 @@ export class ApplicationSessionService {
     ) => PairedDevice | null,
     private readonly origins: readonly string[] = [requestOrigin],
     private readonly now: () => number = Date.now,
+    private readonly resolvePendingRelayDevice?: (
+      deviceId: string,
+      enrollmentId: string,
+    ) => PendingRelayDeviceAssertion | null,
+    private readonly resolveActiveRelayDevice?: (
+      deviceId: string,
+      enrollmentId: string,
+    ) => PendingRelayDeviceAssertion | null,
+    private readonly credentialAliasId: (
+      credential: string,
+    ) => string | undefined = () => undefined,
+    private readonly adoption?: ApplicationSessionCookieAdoptionCallbacks,
   ) {
     if (!stationId.trim() || new URL(requestOrigin).origin !== requestOrigin)
       throw new ApplicationSessionRefusal('unavailable');
@@ -92,18 +150,23 @@ export class ApplicationSessionService {
         )
         .all();
       if (tables.length) {
+        const tableNames = tables.map((row) => row.name);
+        const requiredTables = [
+          'application_session_authority',
+          'application_session_challenges',
+          'application_sessions',
+          'application_session_proofs',
+        ];
         if (
-          tables.length !== 4 ||
-          !tables.every(
-            (row) =>
-              typeof row.name === 'string' &&
-              [
-                'application_session_authority',
-                'application_session_challenges',
-                'application_sessions',
-                'application_session_proofs',
-              ].includes(row.name),
-          )
+          (tables.length !== 4 && tables.length !== 5) ||
+          !tableNames.every(
+            (name) =>
+              typeof name === 'string' &&
+              [...requiredTables, 'application_session_adoptions'].includes(
+                name,
+              ),
+          ) ||
+          !requiredTables.every((name) => tableNames.includes(name))
         )
           throw new ApplicationSessionRefusal('unavailable');
         const authority = db
@@ -118,9 +181,17 @@ export class ApplicationSessionService {
         CREATE TABLE IF NOT EXISTS application_session_challenges (id TEXT PRIMARY KEY, expires_at INTEGER NOT NULL, record TEXT NOT NULL) STRICT;
         CREATE TABLE IF NOT EXISTS application_sessions (token_hash TEXT PRIMARY KEY, expires_at INTEGER NOT NULL, record TEXT NOT NULL) STRICT;
         CREATE TABLE IF NOT EXISTS application_session_proofs (token_hash TEXT NOT NULL, jti TEXT NOT NULL, expires_at INTEGER NOT NULL, PRIMARY KEY(token_hash,jti)) STRICT;
+        CREATE TABLE IF NOT EXISTS application_session_adoptions (id TEXT PRIMARY KEY, device_id TEXT NOT NULL, alias_id TEXT NOT NULL UNIQUE, expires_at INTEGER NOT NULL, state TEXT NOT NULL CHECK(state IN ('prepared','issued','active','revoking'))) STRICT;
         CREATE INDEX IF NOT EXISTS application_challenge_expiry ON application_session_challenges(expires_at);
         CREATE INDEX IF NOT EXISTS application_session_expiry ON application_sessions(expires_at);
-        CREATE INDEX IF NOT EXISTS application_proof_expiry ON application_session_proofs(expires_at);`);
+        CREATE INDEX IF NOT EXISTS application_proof_expiry ON application_session_proofs(expires_at);
+        CREATE INDEX IF NOT EXISTS application_adoption_expiry ON application_session_adoptions(expires_at);`);
+      db.exec(
+        "CREATE UNIQUE INDEX IF NOT EXISTS application_session_relay_authority ON application_sessions(json_extract(record, '$.authorityKey')) WHERE json_extract(record, '$.relayEnrollmentId') IS NOT NULL",
+      );
+      db.exec(
+        "CREATE UNIQUE INDEX IF NOT EXISTS application_session_relay_enrollment ON application_sessions(json_extract(record, '$.relayEnrollmentId')) WHERE json_extract(record, '$.relayEnrollmentId') IS NOT NULL",
+      );
       const row = db
         .prepare(
           'SELECT version, station_id FROM application_session_authority WHERE singleton=1',
@@ -133,12 +204,17 @@ export class ApplicationSessionService {
       else if (row.version !== 1 || row.station_id !== stationId)
         throw new ApplicationSessionRefusal('unavailable');
     });
+    this.recoverInterruptedAdoptions();
   }
   capabilities(): ApplicationSessionCapabilities {
     const capabilities = this.authentication.sessionReferenceCapabilities();
     return {
       version: APPLICATION_SESSION_VERSION,
       cookieExchange: capabilities.verify,
+      cookieAdoption:
+        capabilities.verify &&
+        this.adoption !== undefined &&
+        new URL(this.requestOrigin).protocol === 'https:',
       virtualLogin: capabilities.verify && capabilities.login,
       proofAlgorithm: 'ES256',
       stationId: this.stationId,
@@ -152,11 +228,74 @@ export class ApplicationSessionService {
     if (!this.capabilities().cookieExchange)
       throw new ApplicationSessionRefusal('unsupported');
     const device = this.device(request);
+    const aliasId = this.currentAliasId(request);
+    const adoptionId = this.activeAdoptionId(device.id, aliasId);
     const origin = this.origin(request);
     const parsed = publicKey.parse(key);
     await importJWK(parsed, 'ES256');
     const keyThumbprint = await calculateJwkThumbprint(parsed);
     this.device(request, device.id);
+    this.assertAdoptionBinding(device.id, aliasId, adoptionId);
+    const challengeId = randomBytes(32).toString('base64url');
+    const value: Challenge = {
+      deviceId: device.id,
+      ...(aliasId ? { aliasId } : {}),
+      ...(adoptionId ? { adoptionId } : {}),
+      origin,
+      key: parsed,
+      keyThumbprint,
+      nonce: randomBytes(32).toString('base64url'),
+      expiresAt: this.now() + 120_000,
+    };
+    this.transaction(() => {
+      this.prune();
+      const total = this.db
+        .prepare('SELECT count(*) AS n FROM application_session_challenges')
+        .get()?.n;
+      if (typeof total !== 'number' || total >= 1000)
+        throw new ApplicationSessionRefusal('unavailable');
+      this.db
+        .prepare('INSERT INTO application_session_challenges VALUES (?,?,?)')
+        .run(digest(challengeId), value.expiresAt, JSON.stringify(value));
+    });
+    return {
+      version: APPLICATION_SESSION_VERSION,
+      challengeId,
+      nonce: value.nonce,
+      expiresAt: new Date(value.expiresAt).toISOString(),
+      stationId: this.stationId,
+      requestOrigin: this.requestOrigin,
+    };
+  }
+  async cookieAdoptionChallenge(
+    request: Request,
+    key: unknown,
+  ): Promise<ApplicationSessionChallenge> {
+    if (!this.capabilities().cookieAdoption)
+      throw new ApplicationSessionRefusal('unsupported');
+    const origin = this.cookieAdoptionOrigin(request);
+    const { credential, device } = this.cookieDevice(request);
+    if (this.credentialAliasId(credential) !== undefined)
+      throw new ApplicationSessionRefusal('invalid');
+    const account = await this.currentProviderSession(request);
+    this.deviceCredential(credential, device.id, account.principal.id);
+    const parsed = publicKey.parse(key);
+    await importJWK(parsed, 'ES256');
+    const keyThumbprint = await calculateJwkThumbprint(parsed);
+    const current = await this.currentProviderSession(request);
+    if (
+      current.session.sessionId !== account.session.sessionId ||
+      current.issuer !== account.issuer ||
+      current.principal.id !== account.principal.id
+    )
+      throw new ApplicationSessionRefusal('invalid');
+    const latest = this.cookieDevice(request);
+    if (
+      latest.device.id !== device.id ||
+      digest(latest.credential) !== digest(credential)
+    )
+      throw new ApplicationSessionRefusal('invalid');
+    this.deviceCredential(credential, device.id, current.principal.id);
     const challengeId = randomBytes(32).toString('base64url');
     const value: Challenge = {
       deviceId: device.id,
@@ -165,6 +304,12 @@ export class ApplicationSessionService {
       keyThumbprint,
       nonce: randomBytes(32).toString('base64url'),
       expiresAt: this.now() + 120_000,
+      adoption: {
+        parentCredentialHash: digest(credential),
+        issuer: current.issuer,
+        sessionId: current.session.sessionId,
+        principalId: current.principal.id,
+      },
     };
     this.transaction(() => {
       this.prune();
@@ -202,6 +347,7 @@ export class ApplicationSessionService {
       .get(id);
     const challenge = this.parse(row?.record, challengeRecord);
     this.device(request, challenge.deviceId);
+    this.assertAlias(request, challenge.aliasId);
     if (
       this.origin(request) !== challenge.origin ||
       challenge.expiresAt <= this.now()
@@ -240,7 +386,298 @@ export class ApplicationSessionService {
     )
       throw new ApplicationSessionRefusal('invalid');
     this.device(request, challenge.deviceId, current.principal.id);
+    this.assertAlias(request, challenge.aliasId);
+    this.assertAdoptionBinding(
+      challenge.deviceId,
+      challenge.aliasId,
+      challenge.adoptionId,
+    );
     return this.issue(challenge, current);
+  }
+  async completeCookieAdoption(
+    request: Request,
+    input: { challengeId: string; proof: string },
+  ): Promise<ApplicationSessionCookieAdoption> {
+    if (!this.capabilities().cookieAdoption || !this.adoption)
+      throw new ApplicationSessionRefusal('unsupported');
+    const id = digest(opaque.parse(input.challengeId));
+    const row = this.db
+      .prepare('SELECT record FROM application_session_challenges WHERE id=?')
+      .get(id);
+    const challenge = this.parse(row?.record, challengeRecord);
+    const binding = challenge.adoption;
+    if (!binding || challenge.expiresAt <= this.now())
+      throw new ApplicationSessionRefusal('invalid');
+    this.cookieAdoptionOrigin(request);
+    const { credential, device } = this.cookieDevice(request);
+    if (
+      device.id !== challenge.deviceId ||
+      digest(credential) !== binding.parentCredentialHash ||
+      this.credentialAliasId(credential) !== undefined
+    )
+      throw new ApplicationSessionRefusal('invalid');
+    const account = await this.currentProviderSession(request);
+    if (
+      account.session.sessionId !== binding.sessionId ||
+      account.issuer !== binding.issuer ||
+      account.principal.id !== binding.principalId
+    )
+      throw new ApplicationSessionRefusal('invalid');
+    await this.proof(request, input.proof, challenge, 'adopt-cookie');
+    const current = await this.currentProviderSession(request);
+    if (
+      current.session.sessionId !== binding.sessionId ||
+      current.issuer !== binding.issuer ||
+      current.principal.id !== binding.principalId
+    )
+      throw new ApplicationSessionRefusal('invalid');
+    const latestDevice = this.cookieDevice(request);
+    if (
+      latestDevice.device.id !== device.id ||
+      latestDevice.credential !== credential
+    )
+      throw new ApplicationSessionRefusal('invalid');
+    this.deviceCredential(credential, device.id, current.principal.id);
+
+    const adoptionId = randomUUID();
+    const aliasId = randomUUID();
+    const expiresAt = this.now() + 30 * 24 * 60 * 60_000 + 60_000;
+    this.transaction(() => {
+      if (
+        this.db
+          .prepare(
+            'DELETE FROM application_session_challenges WHERE id=? AND expires_at>?',
+          )
+          .run(id, this.now()).changes !== 1
+      )
+        throw new ApplicationSessionRefusal('invalid');
+      this.db
+        .prepare('INSERT INTO application_session_adoptions VALUES (?,?,?,?,?)')
+        .run(adoptionId, device.id, aliasId, expiresAt, 'prepared');
+    });
+
+    let alias: RelayAliasIssue | undefined;
+    try {
+      alias = this.adoption.issueAlias(credential, device.id, aliasId);
+      if (
+        alias.aliasId !== aliasId ||
+        alias.deviceId !== device.id ||
+        alias.expiresAt <= this.now() ||
+        alias.expiresAt > expiresAt
+      )
+        throw new ApplicationSessionRefusal('unavailable');
+      this.transaction(() => {
+        if (
+          this.db
+            .prepare(
+              "UPDATE application_session_adoptions SET expires_at=? WHERE id=? AND state='prepared' AND alias_id=?",
+            )
+            .run(alias!.expiresAt, adoptionId, aliasId).changes !== 1
+        )
+          throw new ApplicationSessionRefusal('unavailable');
+      });
+      const afterMint = await this.currentProviderSession(request);
+      if (
+        afterMint.session.sessionId !== binding.sessionId ||
+        afterMint.issuer !== binding.issuer ||
+        afterMint.principal.id !== binding.principalId
+      )
+        throw new ApplicationSessionRefusal('invalid');
+      const cookieDevice = this.cookieDevice(request);
+      this.deviceCredential(
+        cookieDevice.credential,
+        device.id,
+        afterMint.principal.id,
+      );
+      if (cookieDevice.credential !== credential)
+        throw new ApplicationSessionRefusal('invalid');
+      const { adoption: _binding, ...continuationChallenge } = challenge;
+      const continuation = await this.issue(
+        { ...continuationChallenge, aliasId },
+        afterMint,
+        randomUUID(),
+        undefined,
+        adoptionId,
+      );
+      return {
+        version: APPLICATION_SESSION_VERSION,
+        aliasCredential: alias.credential,
+        aliasId,
+        aliasExpiresAt: new Date(alias.expiresAt).toISOString(),
+        continuation,
+      };
+    } catch (error) {
+      try {
+        this.adoption.revokeAlias(device.id, alias?.aliasId ?? aliasId);
+        this.removeAdoption(adoptionId);
+      } catch {
+        // Retain the prepared/issued journal for startup compensation.
+        throw new ApplicationSessionRefusal('unavailable');
+      }
+      if (error instanceof ApplicationSessionRefusal) throw error;
+      throw new ApplicationSessionRefusal('unavailable');
+    }
+  }
+
+  /**
+   * Trusted relay coordinator only. Pending provider identity and the exact
+   * reserved Device are independently rechecked before one proof-bound
+   * continuation is persisted. This method has no route adapter.
+   */
+  async issuePendingRelayContinuation(input: {
+    enrollmentId: string;
+    deviceId: string;
+    providerSessionId: string;
+    issuer: string;
+    subject: string;
+    approvalId: string;
+    approvedBy: string;
+    authorityKey: string;
+    stationId: string;
+    clientOrigin: string;
+    key: unknown;
+    keyThumbprint: string;
+    nonce: string;
+    expiresAt: number;
+    signal: AbortSignal;
+  }): Promise<ApplicationSessionContinuation> {
+    if (this.closed || input.signal.aborted)
+      throw new ApplicationSessionRefusal('unavailable');
+    const enrollmentId = relayEnrollmentId.parse(input.enrollmentId);
+    const deviceId = z.string().uuid().parse(input.deviceId);
+    const authorityKey = z.string().uuid().parse(input.authorityKey);
+    const issuerAssertion = z.string().min(1).max(512).parse(input.issuer);
+    const subjectAssertion = z.string().min(1).max(2048).parse(input.subject);
+    const approvalId = z.string().uuid().parse(input.approvalId);
+    const approvedBy = z.string().min(1).max(512).parse(input.approvedBy);
+    const station = z.string().min(1).parse(input.stationId);
+    const origin = z.string().url().parse(input.clientOrigin);
+    const key = publicKey.parse(input.key);
+    const keyThumbprint = await calculateJwkThumbprint(key);
+    if (
+      station !== this.stationId ||
+      new URL(origin).origin !== origin ||
+      !this.origins.includes(origin) ||
+      keyThumbprint !== opaque.parse(input.keyThumbprint) ||
+      !Number.isFinite(input.expiresAt) ||
+      input.expiresAt <= this.now()
+    )
+      throw new ApplicationSessionRefusal('invalid');
+    await importJWK(key, 'ES256');
+
+    const authentication = this.authentication;
+    if (!authentication.pendingEnrollmentCapabilities().available)
+      throw new ApplicationSessionRefusal('unsupported');
+    const pending = await authentication.verifyPendingEnrollment(
+      enrollmentId,
+      input.providerSessionId,
+      input.signal,
+    );
+    if (pending.kind === 'unavailable')
+      throw new ApplicationSessionRefusal('unavailable');
+    const providerIssuer = authentication.describe().issuer;
+    if (
+      pending.kind !== 'pending' ||
+      pending.session.enrollmentId !== enrollmentId ||
+      pending.session.sessionId !== input.providerSessionId ||
+      pending.session.subject !== subjectAssertion ||
+      providerIssuer !== issuerAssertion
+    )
+      throw new ApplicationSessionRefusal('invalid');
+
+    const expiresAt = Math.min(
+      input.expiresAt,
+      Date.parse(pending.session.expiresAt),
+      this.now() + 15 * 60_000,
+    );
+    if (!Number.isFinite(expiresAt) || expiresAt <= this.now())
+      throw new ApplicationSessionRefusal('invalid');
+    const record: Continuation = {
+      deviceId,
+      origin,
+      key,
+      keyThumbprint,
+      nonce: opaque.parse(input.nonce),
+      expiresAt,
+      issuer: providerIssuer,
+      sessionId: pending.session.sessionId,
+      principalId: deploymentAccountPrincipal(
+        providerIssuer,
+        pending.session.subject,
+        pending.session.displayName,
+      ).id,
+      authorityKey,
+      relayEnrollmentId: enrollmentId,
+      relayApprovalId: approvalId,
+      relayApprovedBy: approvedBy,
+      relaySubject: pending.session.subject,
+    };
+    const assertion = this.resolvePendingRelayDevice?.(deviceId, enrollmentId);
+    this.assertPendingRelayDevice(
+      assertion,
+      deviceId,
+      enrollmentId,
+      providerIssuer,
+      pending.session.subject,
+      approvalId,
+      approvedBy,
+    );
+    const credential = randomBytes(32).toString('base64url');
+    this.transaction(() => {
+      if (input.signal.aborted || this.closed)
+        throw new ApplicationSessionRefusal('unavailable');
+      this.assertPendingRelayDevice(
+        this.resolvePendingRelayDevice?.(deviceId, enrollmentId),
+        deviceId,
+        enrollmentId,
+        providerIssuer,
+        pending.session.subject,
+        approvalId,
+        approvedBy,
+      );
+      if (
+        this.db
+          .prepare(
+            "SELECT 1 FROM application_sessions WHERE json_extract(record, '$.authorityKey')=?",
+          )
+          .get(authorityKey)
+      )
+        throw new ApplicationSessionRefusal('invalid');
+      if (
+        this.db
+          .prepare(
+            "SELECT 1 FROM application_sessions WHERE json_extract(record, '$.relayEnrollmentId')=?",
+          )
+          .get(enrollmentId)
+      )
+        throw new ApplicationSessionRefusal('invalid');
+      this.prune();
+      const count = this.db
+        .prepare('SELECT count(*) AS n FROM application_sessions')
+        .get()?.n;
+      if (typeof count !== 'number' || count >= 10_000)
+        throw new ApplicationSessionRefusal('unavailable');
+      this.db
+        .prepare('INSERT INTO application_sessions VALUES (?,?,?)')
+        .run(digest(credential), expiresAt, JSON.stringify(record));
+    });
+    return {
+      version: APPLICATION_SESSION_VERSION,
+      credential,
+      authorityKey,
+      stationId: this.stationId,
+      deviceId,
+      principal: deploymentAccountPrincipal(
+        providerIssuer,
+        pending.session.subject,
+        pending.session.displayName,
+      ),
+      requestOrigin: this.requestOrigin,
+      clientOrigin: origin,
+      keyThumbprint,
+      nonce: record.nonce,
+      expiresAt: new Date(expiresAt).toISOString(),
+    };
   }
   async authenticate(
     request: Request,
@@ -252,6 +689,7 @@ export class ApplicationSessionService {
       const hash = digest(opaque.parse(token));
       const record = this.read(hash);
       this.device(request, record.deviceId, record.principalId);
+      this.assertAlias(request, record.aliasId);
       if (this.origin(request) !== record.origin)
         throw new ApplicationSessionRefusal('invalid');
       const fingerprint = digest(
@@ -293,12 +731,14 @@ export class ApplicationSessionService {
       );
       this.read(hash);
       this.device(request, record.deviceId, record.principalId);
+      this.assertAlias(request, record.aliasId);
       if (
         result.principal.id !== record.principalId ||
         result.issuer !== record.issuer ||
         request.signal.aborted
       )
         throw new ApplicationSessionRefusal('invalid');
+      this.markAdoptionActive(record);
       return {
         ...result,
         session: {
@@ -344,14 +784,20 @@ export class ApplicationSessionService {
         request.signal,
       ),
     );
-    this.read(hash);
-    this.device(request, current.deviceId, account.principal.id);
+    const live = this.read(hash);
+    this.device(request, live.deviceId, account.principal.id);
+    this.assertAlias(request, live.aliasId);
     if (
-      source.principal.id !== current.principalId ||
-      source.issuer !== current.issuer
+      source.principal.id !== live.principalId ||
+      source.issuer !== live.issuer
     )
       throw new ApplicationSessionRefusal('invalid');
-    return this.issue(current, source, current.authorityKey);
+    return this.issue(
+      live,
+      source,
+      live.authorityKey,
+      live.relayEnrollmentId ? hash : undefined,
+    );
   }
   async revoke(request: Request): Promise<void> {
     const account = this.account(await this.authenticate(request));
@@ -367,6 +813,250 @@ export class ApplicationSessionService {
       )
       .run(record.authorityKey);
   }
+  async revokeAlias(request: Request): Promise<{ revoked: true }> {
+    if (!this.adoption) throw new ApplicationSessionRefusal('unsupported');
+    this.account(await this.authenticate(request));
+    const hash = digest(request.headers.get(APPLICATION_SESSION_HEADER)!);
+    const record = this.read(hash);
+    this.device(request, record.deviceId, record.principalId);
+    this.assertAlias(request, record.aliasId);
+    const aliasId = record.aliasId;
+    const adoptionId = record.adoptionId;
+    if (!aliasId || !adoptionId)
+      throw new ApplicationSessionRefusal('unsupported');
+    this.transaction(() => {
+      if (
+        this.db
+          .prepare(
+            "UPDATE application_session_adoptions SET state='revoking' WHERE id=? AND device_id=? AND alias_id=? AND state='active'",
+          )
+          .run(adoptionId, record.deviceId, aliasId).changes !== 1
+      )
+        throw new ApplicationSessionRefusal('invalid');
+    });
+    try {
+      if (!this.adoption.revokeAlias(record.deviceId, aliasId))
+        throw new ApplicationSessionRefusal('unavailable');
+      this.removeAdoption(adoptionId);
+    } catch (error) {
+      if (error instanceof ApplicationSessionRefusal) throw error;
+      throw new ApplicationSessionRefusal('unavailable');
+    }
+    return { revoked: true };
+  }
+  /** Server recovery only: remove one never-committed relay continuation authority. */
+  discardUncommittedAuthority(
+    authorityKey: string,
+    enrollmentId: string,
+  ): number {
+    if (this.closed) throw new ApplicationSessionRefusal('unavailable');
+    if (!/^[0-9a-f-]{36}$/i.test(authorityKey))
+      throw new ApplicationSessionRefusal('invalid');
+    return Number(
+      this.db
+        .prepare(
+          "DELETE FROM application_sessions WHERE json_extract(record, '$.authorityKey')=? AND json_extract(record, '$.relayEnrollmentId')=?",
+        )
+        .run(authorityKey, relayEnrollmentId.parse(enrollmentId)).changes,
+    );
+  }
+
+  /** Verify one inert continuation still matches a pending Device and approval. */
+  verifyPendingRelayContinuation(input: {
+    authorityKey: string;
+    enrollmentId: string;
+    deviceId: string;
+    issuer: string;
+    subject: string;
+    approvalId: string;
+    approvedBy: string;
+    clientOrigin: string;
+    keyThumbprint: string;
+  }): boolean {
+    return this.verifyRelayContinuation(input, this.resolvePendingRelayDevice);
+  }
+
+  /** Verify the same continuation and grant after the exact Device activates. */
+  async verifyActiveRelayContinuation(input: {
+    authorityKey: string;
+    enrollmentId: string;
+    deviceId: string;
+    clientOrigin: string;
+    keyThumbprint: string;
+    signal: AbortSignal;
+  }): Promise<boolean> {
+    if (this.closed || input.signal.aborted) return false;
+    const parsed = z
+      .object({
+        authorityKey: z.string().uuid(),
+        enrollmentId: relayEnrollmentId,
+        deviceId: z.string().uuid(),
+        clientOrigin: z.string().url(),
+        keyThumbprint: opaque,
+      })
+      .safeParse(input);
+    if (!parsed.success) return false;
+    const row = this.db
+      .prepare(
+        "SELECT record FROM application_sessions WHERE json_extract(record, '$.authorityKey')=? AND json_extract(record, '$.relayEnrollmentId')=?",
+      )
+      .get(input.authorityKey, input.enrollmentId);
+    if (typeof row?.record !== 'string') return false;
+    const persistedRecord = row.record;
+    let raw: unknown;
+    try {
+      raw = JSON.parse(persistedRecord);
+    } catch {
+      return false;
+    }
+    const continuation = continuationRecord.safeParse(raw);
+    if (
+      !continuation.success ||
+      continuation.data.expiresAt <= this.now() ||
+      continuation.data.authorityKey !== parsed.data.authorityKey ||
+      continuation.data.relayEnrollmentId !== parsed.data.enrollmentId ||
+      continuation.data.deviceId !== parsed.data.deviceId ||
+      continuation.data.origin !== parsed.data.clientOrigin ||
+      continuation.data.keyThumbprint !== parsed.data.keyThumbprint ||
+      !continuation.data.relayApprovalId ||
+      !continuation.data.relayApprovedBy
+    )
+      return false;
+    const assertion = this.resolveActiveRelayDevice?.(
+      parsed.data.deviceId,
+      parsed.data.enrollmentId,
+    );
+    try {
+      this.assertPendingRelayDevice(
+        assertion,
+        parsed.data.deviceId,
+        parsed.data.enrollmentId,
+        continuation.data.issuer,
+        continuation.data.relaySubject!,
+        continuation.data.relayApprovalId,
+        continuation.data.relayApprovedBy,
+      );
+    } catch {
+      return false;
+    }
+    const active = await this.authentication.verifySessionReference(
+      continuation.data.sessionId,
+      input.signal,
+    );
+    if (this.closed || input.signal.aborted || active.kind !== 'authenticated')
+      return false;
+    if (
+      active.issuer !== continuation.data.issuer ||
+      active.session.subject !== continuation.data.relaySubject
+    )
+      return false;
+    const currentRow = this.db
+      .prepare(
+        "SELECT record FROM application_sessions WHERE json_extract(record, '$.authorityKey')=? AND json_extract(record, '$.relayEnrollmentId')=?",
+      )
+      .get(parsed.data.authorityKey, parsed.data.enrollmentId);
+    if (
+      currentRow?.record !== persistedRecord ||
+      continuation.data.expiresAt <= this.now()
+    )
+      return false;
+    const currentDevice = this.resolveActiveRelayDevice?.(
+      parsed.data.deviceId,
+      parsed.data.enrollmentId,
+    );
+    try {
+      this.assertPendingRelayDevice(
+        currentDevice,
+        parsed.data.deviceId,
+        parsed.data.enrollmentId,
+        continuation.data.issuer,
+        continuation.data.relaySubject!,
+        continuation.data.relayApprovalId,
+        continuation.data.relayApprovedBy,
+      );
+    } catch {
+      return false;
+    }
+    return !this.closed && !input.signal.aborted;
+  }
+
+  private verifyRelayContinuation(
+    input: {
+      authorityKey: string;
+      enrollmentId: string;
+      deviceId: string;
+      issuer: string;
+      subject: string;
+      approvalId: string;
+      approvedBy: string;
+      clientOrigin: string;
+      keyThumbprint: string;
+    },
+    resolveDevice:
+      | ApplicationSessionService['resolvePendingRelayDevice']
+      | ApplicationSessionService['resolveActiveRelayDevice'],
+  ): boolean {
+    if (this.closed) return false;
+    const parsed = z
+      .object({
+        authorityKey: z.string().uuid(),
+        enrollmentId: relayEnrollmentId,
+        deviceId: z.string().uuid(),
+        issuer: z.string().min(1).max(512),
+        subject: z.string().min(1).max(2048),
+        approvalId: z.string().uuid(),
+        approvedBy: z.string().min(1).max(512),
+        clientOrigin: z.string().url(),
+        keyThumbprint: opaque,
+      })
+      .safeParse(input);
+    if (!parsed.success) return false;
+    const row = this.db
+      .prepare(
+        "SELECT record FROM application_sessions WHERE json_extract(record, '$.authorityKey')=? AND json_extract(record, '$.relayEnrollmentId')=?",
+      )
+      .get(parsed.data.authorityKey, parsed.data.enrollmentId);
+    if (typeof row?.record !== 'string') return false;
+    let raw: unknown;
+    try {
+      raw = JSON.parse(row.record);
+    } catch {
+      return false;
+    }
+    const continuation = continuationRecord.safeParse(raw);
+    if (
+      !continuation.success ||
+      continuation.data.expiresAt <= this.now() ||
+      continuation.data.authorityKey !== parsed.data.authorityKey ||
+      continuation.data.relayEnrollmentId !== parsed.data.enrollmentId ||
+      continuation.data.deviceId !== parsed.data.deviceId ||
+      continuation.data.issuer !== parsed.data.issuer ||
+      continuation.data.relaySubject !== parsed.data.subject ||
+      continuation.data.relayApprovalId !== parsed.data.approvalId ||
+      continuation.data.relayApprovedBy !== parsed.data.approvedBy ||
+      continuation.data.origin !== parsed.data.clientOrigin ||
+      continuation.data.keyThumbprint !== parsed.data.keyThumbprint
+    )
+      return false;
+    const assertion = resolveDevice?.(
+      parsed.data.deviceId,
+      parsed.data.enrollmentId,
+    );
+    try {
+      this.assertPendingRelayDevice(
+        assertion,
+        parsed.data.deviceId,
+        parsed.data.enrollmentId,
+        parsed.data.issuer,
+        parsed.data.subject,
+        parsed.data.approvalId,
+        parsed.data.approvedBy,
+      );
+      return true;
+    } catch {
+      return false;
+    }
+  }
   close(): void {
     if (!this.closed) {
       this.closed = true;
@@ -374,10 +1064,18 @@ export class ApplicationSessionService {
     }
   }
   private async issue(
-    challenge: Challenge,
+    challenge: Challenge | Continuation,
     account: Authenticated,
     authorityKey: string = randomUUID(),
+    rotateRelayTokenHash?: string,
+    adoptionId?: string,
   ): Promise<ApplicationSessionContinuation> {
+    const relayEnrollmentId =
+      'relayEnrollmentId' in challenge
+        ? challenge.relayEnrollmentId
+        : undefined;
+    if (!!relayEnrollmentId !== !!rotateRelayTokenHash)
+      throw new ApplicationSessionRefusal('invalid');
     const credential = randomBytes(32).toString('base64url');
     const keyThumbprint = challenge.keyThumbprint;
     const expiresAt = Math.min(
@@ -393,9 +1091,45 @@ export class ApplicationSessionService {
       authorityKey,
       keyThumbprint,
       nonce: randomBytes(32).toString('base64url'),
+      ...(adoptionId ? { adoptionId } : {}),
     };
     this.transaction(() => {
       this.prune();
+      if (rotateRelayTokenHash && relayEnrollmentId) {
+        const previousRow = this.db
+          .prepare(
+            'SELECT record FROM application_sessions WHERE token_hash=? AND expires_at>? ',
+          )
+          .get(rotateRelayTokenHash, this.now());
+        const previous = this.parse(previousRow?.record, continuationRecord);
+        if (
+          previous.relayEnrollmentId !== relayEnrollmentId ||
+          previous.authorityKey !== authorityKey ||
+          previous.deviceId !== record.deviceId ||
+          previous.issuer !== record.issuer ||
+          previous.principalId !== record.principalId ||
+          // verifySessionReference refuses a changed sessionId as a conflicting identity.
+          previous.sessionId !== record.sessionId ||
+          previous.keyThumbprint !== record.keyThumbprint ||
+          previous.nonce !== challenge.nonce ||
+          previous.relayApprovalId !== record.relayApprovalId ||
+          previous.relayApprovedBy !== record.relayApprovedBy ||
+          previous.relaySubject !== record.relaySubject
+        )
+          throw new ApplicationSessionRefusal('invalid');
+        if (
+          this.db
+            .prepare(
+              "DELETE FROM application_sessions WHERE token_hash=? AND json_extract(record, '$.authorityKey')=? AND json_extract(record, '$.relayEnrollmentId')=?",
+            )
+            .run(rotateRelayTokenHash, authorityKey, relayEnrollmentId)
+            .changes !== 1
+        )
+          throw new ApplicationSessionRefusal('invalid');
+        this.db
+          .prepare('DELETE FROM application_session_proofs WHERE token_hash=?')
+          .run(rotateRelayTokenHash);
+      }
       const count = this.db
         .prepare('SELECT count(*) AS n FROM application_sessions')
         .get()?.n;
@@ -404,6 +1138,17 @@ export class ApplicationSessionService {
       this.db
         .prepare('INSERT INTO application_sessions VALUES (?,?,?)')
         .run(digest(credential), expiresAt, JSON.stringify(record));
+      if (adoptionId !== undefined) {
+        if (!record.aliasId) throw new ApplicationSessionRefusal('unavailable');
+        if (
+          this.db
+            .prepare(
+              "UPDATE application_session_adoptions SET state='issued' WHERE id=? AND device_id=? AND alias_id=? AND state='prepared'",
+            )
+            .run(adoptionId, record.deviceId, record.aliasId).changes !== 1
+        )
+          throw new ApplicationSessionRefusal('unavailable');
+      }
     });
     return {
       version: APPLICATION_SESSION_VERSION,
@@ -435,7 +1180,7 @@ export class ApplicationSessionService {
     request: Request,
     proof: string,
     record: Challenge,
-    purpose: 'request' | 'exchange' | 'login',
+    purpose: 'request' | 'exchange' | 'login' | 'adopt-cookie',
     credential?: string,
   ): Promise<string> {
     if (proof.length > 4096 || request.signal.aborted)
@@ -459,7 +1204,7 @@ export class ApplicationSessionService {
         .object({
           v: z.literal(APPLICATION_SESSION_VERSION),
           stationId: z.string(),
-          purpose: z.enum(['request', 'exchange', 'login']),
+          purpose: z.enum(['request', 'exchange', 'login', 'adopt-cookie']),
           nonce: opaque,
           htm: z.string(),
           htu: z.string(),
@@ -495,18 +1240,168 @@ export class ApplicationSessionService {
     const bearer = parseStrictBearer(
       request.headers.get('Authorization') ?? undefined,
     );
-    const device = bearer ? this.identifyDevice(bearer) : null;
+    if (!bearer) throw new ApplicationSessionRefusal('invalid');
+    return this.deviceCredential(bearer, expected, principalId);
+  }
+  private deviceCredential(
+    credential: string,
+    expected?: string,
+    principalId?: string,
+  ): PairedDevice {
+    if (this.closed) throw new ApplicationSessionRefusal('unavailable');
+    const device = this.identifyDevice(credential);
     if (device?.kind !== 'device' || (expected && device.id !== expected))
       throw new ApplicationSessionRefusal('invalid');
     const binding = device.principalBinding;
-    if (
-      binding &&
-      principalId &&
-      humanPrincipal(binding.provider, binding.subject, binding.subject).id !==
-        principalId
-    )
+    const accountBinding =
+      binding && 'kind' in binding && binding.kind === 'account'
+        ? binding
+        : undefined;
+    const ingressBinding =
+      binding && !('kind' in binding) ? binding : undefined;
+    const bindingPrincipalId = accountBinding
+      ? deploymentAccountPrincipal(
+          accountBinding.issuer,
+          accountBinding.subject,
+          accountBinding.displayName,
+        ).id
+      : ingressBinding
+        ? humanPrincipal(
+            ingressBinding.provider,
+            ingressBinding.subject,
+            ingressBinding.subject,
+          ).id
+        : undefined;
+    if (bindingPrincipalId && principalId && bindingPrincipalId !== principalId)
       throw new ApplicationSessionRefusal('invalid');
     return device;
+  }
+  private cookieAdoptionOrigin(request: Request): string {
+    if (
+      this.closed ||
+      request.signal.aborted ||
+      request.method !== 'POST' ||
+      new URL(this.requestOrigin).protocol !== 'https:' ||
+      request.headers.get('Origin') !== this.requestOrigin ||
+      request.headers.has('Authorization') ||
+      request.headers.has(APPLICATION_SESSION_HEADER) ||
+      request.headers.has(APPLICATION_SESSION_PROOF_HEADER)
+    )
+      throw new ApplicationSessionRefusal('origin_forbidden');
+    return this.requestOrigin;
+  }
+  private cookieDevice(request: Request): {
+    credential: string;
+    device: PairedDevice;
+  } {
+    if (!this.adoption) throw new ApplicationSessionRefusal('unsupported');
+    const credential = this.adoption.readSecureDeviceCookie(request);
+    if (!credential) throw new ApplicationSessionRefusal('invalid');
+    const device = this.deviceCredential(credential);
+    if (this.credentialAliasId(credential) !== undefined)
+      throw new ApplicationSessionRefusal('invalid');
+    return { credential, device };
+  }
+  private async currentProviderSession(
+    request: Request,
+  ): Promise<Authenticated> {
+    const observed = this.account(
+      await this.authentication.authenticate(request),
+    );
+    const current = this.account(
+      await this.authentication.verifySessionReference(
+        observed.session.sessionId,
+        request.signal,
+      ),
+    );
+    if (
+      current.session.sessionId !== observed.session.sessionId ||
+      current.issuer !== observed.issuer ||
+      current.principal.id !== observed.principal.id
+    )
+      throw new ApplicationSessionRefusal('invalid');
+    return current;
+  }
+  private removeAdoption(adoptionId: string): void {
+    this.transaction(() => {
+      const sessions = this.db
+        .prepare(
+          "SELECT token_hash FROM application_sessions WHERE json_extract(record, '$.adoptionId')=?",
+        )
+        .all(adoptionId);
+      for (const session of sessions)
+        this.db
+          .prepare('DELETE FROM application_session_proofs WHERE token_hash=?')
+          .run(session.token_hash);
+      this.db
+        .prepare(
+          "DELETE FROM application_sessions WHERE json_extract(record, '$.adoptionId')=?",
+        )
+        .run(adoptionId);
+      this.db
+        .prepare('DELETE FROM application_session_adoptions WHERE id=?')
+        .run(adoptionId);
+    });
+  }
+  private recoverInterruptedAdoptions(): void {
+    const pending = this.db
+      .prepare(
+        "SELECT id, device_id, alias_id FROM application_session_adoptions WHERE state IN ('prepared','issued','revoking') ORDER BY id",
+      )
+      .all();
+    if (pending.length && !this.adoption)
+      throw new ApplicationSessionRefusal('unavailable');
+    for (const row of pending) {
+      if (
+        typeof row.id !== 'string' ||
+        typeof row.device_id !== 'string' ||
+        typeof row.alias_id !== 'string'
+      )
+        throw new ApplicationSessionRefusal('unavailable');
+      try {
+        this.adoption!.revokeAlias(row.device_id, row.alias_id);
+        this.removeAdoption(row.id);
+      } catch {
+        throw new ApplicationSessionRefusal('unavailable');
+      }
+    }
+  }
+  private currentAliasId(request: Request): string | undefined {
+    const bearer = parseStrictBearer(
+      request.headers.get('Authorization') ?? undefined,
+    );
+    if (!bearer) return undefined;
+    const aliasId = this.credentialAliasId(bearer);
+    if (aliasId !== undefined && !z.string().uuid().safeParse(aliasId).success)
+      throw new ApplicationSessionRefusal('invalid');
+    return aliasId;
+  }
+  private assertAlias(request: Request, expected?: string): void {
+    if (this.currentAliasId(request) !== expected)
+      throw new ApplicationSessionRefusal('invalid');
+  }
+  private activeAdoptionId(
+    deviceId: string,
+    aliasId?: string,
+  ): string | undefined {
+    if (!aliasId || !this.adoption) return undefined;
+    const row = this.db
+      .prepare(
+        "SELECT id FROM application_session_adoptions WHERE device_id=? AND alias_id=? AND state IN ('issued','active') AND expires_at>?",
+      )
+      .get(deviceId, aliasId, this.now());
+    if (row === undefined) return undefined;
+    if (typeof row.id !== 'string')
+      throw new ApplicationSessionRefusal('unavailable');
+    return row.id;
+  }
+  private assertAdoptionBinding(
+    deviceId: string,
+    aliasId: string | undefined,
+    expectedAdoptionId: string | undefined,
+  ): void {
+    if (this.activeAdoptionId(deviceId, aliasId) !== expectedAdoptionId)
+      throw new ApplicationSessionRefusal('invalid');
   }
   private origin(request: Request): string {
     const origin = request.headers.get('Origin');
@@ -520,6 +1415,28 @@ export class ApplicationSessionService {
         value.kind === 'unavailable' ? 'unavailable' : 'invalid',
       );
     return value;
+  }
+  private assertPendingRelayDevice(
+    assertion: PendingRelayDeviceAssertion | null | undefined,
+    deviceId: string,
+    enrollmentId: string,
+    issuer: string,
+    subject: string,
+    approvalId: string,
+    approvedBy: string,
+  ): asserts assertion is PendingRelayDeviceAssertion {
+    if (
+      !assertion ||
+      assertion.deviceId !== deviceId ||
+      assertion.enrollmentId !== enrollmentId ||
+      assertion.issuer !== issuer ||
+      assertion.subject !== subject ||
+      assertion.approvalId !== approvalId ||
+      assertion.approvedBy !== approvedBy ||
+      assertion.scope.length !== 1 ||
+      assertion.scope[0] !== PAIRING_SCOPE_ORCHESTRATION_READ
+    )
+      throw new ApplicationSessionRefusal('invalid');
   }
   private parse<T extends z.ZodTypeAny>(value: unknown, schema: T): z.infer<T> {
     if (value === undefined) throw new ApplicationSessionRefusal('invalid');
@@ -536,10 +1453,27 @@ export class ApplicationSessionService {
       'application_session_challenges',
       'application_sessions',
       'application_session_proofs',
+      'application_session_adoptions',
     ])
       this.db
         .prepare(`DELETE FROM ${table} WHERE expires_at<=?`)
         .run(this.now());
+  }
+  private markAdoptionActive(record: Continuation): void {
+    const adoptionId = record.adoptionId;
+    const aliasId = record.aliasId;
+    if (!adoptionId) return;
+    if (!aliasId) throw new ApplicationSessionRefusal('invalid');
+    this.transaction(() => {
+      if (
+        this.db
+          .prepare(
+            "UPDATE application_session_adoptions SET state='active' WHERE id=? AND device_id=? AND alias_id=? AND state IN ('issued','active') AND expires_at>?",
+          )
+          .run(adoptionId, record.deviceId, aliasId, this.now()).changes !== 1
+      )
+        throw new ApplicationSessionRefusal('invalid');
+    });
   }
   private transaction<T>(operation: () => T): T {
     this.db.exec('BEGIN IMMEDIATE');

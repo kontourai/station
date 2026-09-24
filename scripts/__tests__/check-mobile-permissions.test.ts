@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, test } from 'vitest';
 import { auditMobilePermissions } from '../check-mobile-permissions.mjs';
 
@@ -6,6 +7,8 @@ const androidManifest = `
   <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
   <uses-permission android:name="android.permission.CAMERA" />
   <uses-feature android:name="android.hardware.camera.any" android:required="false" />
+  <uses-feature android:name="android.hardware.camera" android:required="false" />
+  <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
   <uses-permission android:name="android.permission.RECORD_AUDIO" />
   <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
   <uses-feature android:name="android.hardware.microphone" android:required="false" />
@@ -75,6 +78,60 @@ describe('mobile permission audit', () => {
     );
   });
 
+  const withLibraryPermissions = androidManifest.replace(
+    '<activity',
+    [
+      'android.permission.VIBRATE',
+      'android.permission.POST_PROMOTED_NOTIFICATIONS',
+      'com.google.android.c2dm.permission.RECEIVE',
+      'io.kontourai.station.nightly.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION',
+    ]
+      .map((name) => `<uses-permission android:name="${name}" />\n`)
+      .join('') + '<activity',
+  );
+
+  test('accepts reviewed library permissions in a merged/package manifest', () => {
+    expect(() =>
+      auditMobilePermissions({
+        androidManifest,
+        packagedAndroidManifests: [
+          ['release/AndroidManifest.xml', withLibraryPermissions],
+        ],
+        androidDataExtractionRules,
+        iosInfo,
+      }),
+    ).not.toThrow();
+  });
+
+  test('rejects library permissions declared in the source manifest', () => {
+    expect(() =>
+      auditMobilePermissions({
+        androidManifest: withLibraryPermissions,
+        androidDataExtractionRules,
+        iosInfo,
+      }),
+    ).toThrow(/Android source manifest permissions drifted/);
+  });
+
+  test('rejects a dynamic-receiver permission owned by another app', () => {
+    expect(() =>
+      auditMobilePermissions({
+        androidManifest,
+        packagedAndroidManifests: [
+          [
+            'release/AndroidManifest.xml',
+            androidManifest.replace(
+              '<activity',
+              '<uses-permission android:name="com.example.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION" />\n<activity',
+            ),
+          ],
+        ],
+        androidDataExtractionRules,
+        iosInfo,
+      }),
+    ).toThrow(/permissions drifted/);
+  });
+
   test('keeps the maintained native keyboard resize contract', () => {
     expect(() =>
       auditMobilePermissions({
@@ -117,4 +174,21 @@ describe('mobile permission audit', () => {
       }),
     ).toThrow(/sharedpref domain/);
   });
+});
+
+test('release iOS configuration uses durable privacy descriptions outside gen/apple', () => {
+  const config = JSON.parse(
+    readFileSync('src-desktop/tauri.conf.json', 'utf8'),
+  );
+  expect(config.bundle.iOS.infoPlist).toBe('Info.ios.plist');
+  expect(() =>
+    auditMobilePermissions({
+      androidManifest,
+      androidDataExtractionRules,
+      iosInfo: readFileSync(
+        `src-desktop/${config.bundle.iOS.infoPlist}`,
+        'utf8',
+      ),
+    }),
+  ).not.toThrow();
 });

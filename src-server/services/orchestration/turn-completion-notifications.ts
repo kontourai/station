@@ -32,6 +32,7 @@
 
 import {
   type CanonicalRuntimeEvent,
+  isProviderTriggeredTurn,
   SERVER_EVENTS,
 } from '@kontourai/station-contracts/runtime-events';
 import { turnCompletionNotificationOps } from '../../telemetry/metrics.js';
@@ -51,7 +52,19 @@ import {
 const TURN_COMPLETION_SOURCE = 'turn-completion';
 const SESSION_KIND = 'runtime';
 
-type TurnOutcome = 'done' | 'failed' | 'stopped';
+/**
+ * `replied` (#2324, owner decision D1): a turn the engine opened on its own
+ * finished — a reply nobody sent a message for, such as after background
+ * work. Delivered in the `turn-completed` category, worded as a reply.
+ * `reply-failed` (#2324 review F1): such a turn failed — its own error
+ * result, or the recovery abort boot publishes for one a crashed process
+ * left open. Still a failure worth an offline push, worded as the agent's
+ * reply failing rather than a turn the user started needing attention. A
+ * provider turn the live process closes without its result (the engine
+ * ended, or moved on) is `turn.completed` with `closedWithoutResult` and
+ * pushes nothing.
+ */
+type TurnOutcome = 'done' | 'failed' | 'stopped' | 'replied' | 'reply-failed';
 
 interface TurnCompletionOrchestrationService {
   resolveSessionPresenceSubject(
@@ -108,7 +121,7 @@ async function deliverTurnCompletionPush(input: {
 
   await notificationService.schedule(TURN_COMPLETION_SOURCE, {
     category:
-      outcome === 'failed'
+      outcome === 'failed' || outcome === 'reply-failed'
         ? 'turn-failed'
         : outcome === 'stopped'
           ? 'turn-stopped'
@@ -116,11 +129,19 @@ async function deliverTurnCompletionPush(input: {
     title:
       outcome === 'failed'
         ? 'Your agent needs attention'
-        : outcome === 'stopped'
-          ? 'Your agent stopped'
-          : 'Your agent finished',
-    body: `Agent ${outcome === 'failed' ? 'failed' : outcome === 'stopped' ? 'stopped' : 'finished'} in session ${threadId}`,
-    priority: outcome === 'failed' ? 'high' : 'normal',
+        : outcome === 'reply-failed'
+          ? "Your agent's reply failed"
+          : outcome === 'stopped'
+            ? 'Your agent stopped'
+            : outcome === 'replied'
+              ? 'Your agent replied'
+              : 'Your agent finished',
+    body:
+      outcome === 'reply-failed'
+        ? `Your agent's reply on its own failed in session ${threadId}`
+        : `Agent ${outcome === 'failed' ? 'failed' : outcome === 'stopped' ? 'stopped' : outcome === 'replied' ? 'replied' : 'finished'} in session ${threadId}`,
+    priority:
+      outcome === 'failed' || outcome === 'reply-failed' ? 'high' : 'normal',
     dedupeTag: `turn-completion:${threadId}:${turnId}`,
     metadata: {
       sessionId: threadId,
@@ -144,6 +165,14 @@ export function resolveTurnCompletionOutcome(
   },
 ): TurnOutcome | undefined {
   if (event.method === 'turn.completed') return 'done';
+  // station#2235: a recovery-synthesized abort (`recoveryTerminal`) maps
+  // here like any abort — deliberately, not by omission. The needs_input
+  // attention path schedules no offline push, so this is the crash's ONLY
+  // offline signal ("Agent failed in session …"), the same payoff
+  // archive#3473 claims for the codex-crash push above. The in-app copy is
+  // owned by the interrupted-turn banner, and connected clients never see
+  // this push (the presence gate below skips live subscribers) — so the two
+  // framings never meet on one surface.
   if (event.method === 'turn.aborted') return 'failed';
   // archive#3442: `runtime.error` is the ONLY canonical event a genuine
   // turn/stream failure publishes while a turnId is still known — see
@@ -412,6 +441,7 @@ export function wireTurnCompletionNotifications(
 
           let outcome = resolveTurnCompletionOutcome(event);
           if (!outcome || !event.turnId) return;
+          const providerTurn = isProviderTriggeredTurn(event);
 
           // archive#3573: a stale `turn.completed`/`turn.aborted` naming a
           // turn the session has already moved past (codex's own protocol
@@ -442,8 +472,33 @@ export function wireTurnCompletionNotifications(
               event.method === 'turn.aborted') &&
             consumeSettledStop(event.threadId, event.turnId)
           ) {
+            // #2324 (D1): a provider turn is never reported "stopped" — the
+            // Stop was the user's own act on a reply they did not ask for.
+            if (providerTurn) {
+              turnCompletionNotificationOps.add(1, {
+                outcome: 'stopped',
+                result: 'skipped_provider_turn',
+              });
+              return;
+            }
             outcome = 'stopped';
           }
+          if (providerTurn && event.method === 'turn.completed') {
+            // Closed without its own result (a send the engine folded into
+            // it, a new turn, the session ending): whatever came next carries
+            // the news, so this one does not add a push of its own. Read
+            // from the adapter's own marker, not `finishReason`: a reply that
+            // ended on a deferred tool is `'other'` too, and is a reply.
+            if (event.metadata?.closedWithoutResult !== undefined) {
+              turnCompletionNotificationOps.add(1, {
+                outcome,
+                result: 'skipped_provider_turn',
+              });
+              return;
+            }
+            outcome = 'replied';
+          }
+          if (providerTurn && outcome === 'failed') outcome = 'reply-failed';
 
           // archive#3525: a stop this process initiated as internal machinery
           // (not a user action, not an unattended mid-turn death) armed this
@@ -463,7 +518,9 @@ export function wireTurnCompletionNotifications(
           // reclaimed later by the leak-prevention timer, never by a real
           // event) and always schedules normally.
           if (
-            (outcome === 'failed' || outcome === 'stopped') &&
+            (outcome === 'failed' ||
+              outcome === 'reply-failed' ||
+              outcome === 'stopped') &&
             orchestrationService.consumeInternalStopSuppression?.(event.turnId)
           ) {
             turnCompletionNotificationOps.add(1, {

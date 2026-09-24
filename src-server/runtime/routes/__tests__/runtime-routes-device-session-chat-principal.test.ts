@@ -45,6 +45,7 @@
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import { ACCOUNT_AUTHENTICATION_FAILURE_HEADER } from '@kontourai/station-contracts/application-session';
 import {
   DEPLOYMENT_AUTHENTICATION_VERSION,
@@ -52,6 +53,7 @@ import {
 } from '@kontourai/station-contracts/deployment-authentication';
 import {
   DEFAULT_GRANT_PAIRING_SCOPE,
+  PUBLIC_DEVICE_PAIRING_ACCESS_REQUEST_PATH,
   pairingScopePresetString,
 } from '@kontourai/station-contracts/environment-security';
 import type { LocalAccountView } from '@kontourai/station-contracts/local-accounts';
@@ -191,15 +193,42 @@ const ATTACHMENT_DESCRIPTOR = {
  */
 const OPERATOR_SECRET = 'operator-secret-remote-fixture';
 
+/**
+ * #2460: cleanup that stops at its first throw leaks everything after it —
+ * `orchestration.shutdown()` can reject with `Transcript reader retirement is
+ * still pending` when a worker takes >100ms to terminate, and the store it
+ * preceded was then never closed, leaking into every later test in the file.
+ * Every step runs; the FIRST failure is rethrown so the test still reports it.
+ */
+async function runEveryStep(
+  steps: ReadonlyArray<() => unknown>,
+): Promise<void> {
+  const failures: unknown[] = [];
+  for (const step of steps) {
+    try {
+      await step();
+    } catch (error) {
+      failures.push(error);
+    }
+  }
+  if (failures.length > 0) throw failures[0];
+}
+
 describe('device-session chat principal resolution over the REAL auth path (station#4518)', () => {
   const directories: string[] = [];
   const searchCleanup: Array<() => Promise<void>> = [];
-  afterEach(async () => {
-    for (const close of searchCleanup.splice(0)) await close();
-    vi.restoreAllMocks();
-    for (const directory of directories.splice(0))
-      rmSync(directory, { recursive: true, force: true });
-  });
+  afterEach(() =>
+    runEveryStep([
+      ...searchCleanup.splice(0),
+      () => vi.restoreAllMocks(),
+      ...directories
+        .splice(0)
+        .map(
+          (directory) => () =>
+            rmSync(directory, { recursive: true, force: true }),
+        ),
+    ]),
+  );
 
   /**
    * Pairs a real device through the REAL `DevicePairingService` — the exact
@@ -370,11 +399,13 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       // so the runtime and its SQLite handle leak into every later test in
       // the file. `runtimeSearch` is deliberately optional here — it does not
       // exist yet, and a barrier that never resolved means it never will.
-      searchCleanup.push(async () => {
-        await runtimeSearch?.close();
-        await orchestration!.shutdown();
-        await expect.poll(() => store.close().kind).toBe('closed');
-      });
+      searchCleanup.push(() =>
+        runEveryStep([
+          () => runtimeSearch?.close(),
+          () => orchestration!.shutdown(),
+          () => expect.poll(() => store.close().kind).toBe('closed'),
+        ]),
+      );
       await awaitSessionAttachmentSettled(orchestration);
       runtimeSearch = createRuntimeSearch({
         stationId: '22222222-2222-4222-8222-222222222222',
@@ -384,23 +415,6 @@ describe('device-session chat principal resolution over the REAL auth path (stat
         transcripts: orchestration,
       });
     }
-    const project = {
-      id: task.projectId,
-      slug: task.projectId,
-      name: 'Project',
-      workingDirectory: roomHomeDir,
-      createdAt: task.createdAt,
-      updatedAt: task.updatedAt,
-    };
-    const taskGraph = taskReferences
-      ? new TaskGraphService(roomHomeDir, {
-          projectService: { getProject: () => project },
-        })
-      : undefined;
-    const referenceTask = await taskGraph?.createTask({
-      projectId: task.projectId,
-      title: 'Kept answer',
-    });
     const membershipStorage = withMembership
       ? new FileStorageAdapter(roomHomeDir)
       : undefined;
@@ -413,6 +427,31 @@ describe('device-session chat principal resolution over the REAL auth path (stat
     const sharedProject = await membershipProjects?.createProject({
       name: 'Example shared Project',
       slug: 'example',
+      workingDirectory: roomHomeDir,
+      defaultProviderId: 'private-provider-marker',
+      defaultModel: 'private-model-marker',
+    });
+    const privateProject = await membershipProjects?.createProject({
+      name: 'Private marker',
+      slug: 'private-project',
+    });
+    const project = sharedProject ?? {
+      id: task.projectId,
+      slug: task.projectId,
+      name: 'Project',
+      workingDirectory: roomHomeDir,
+      createdAt: task.createdAt,
+      updatedAt: task.updatedAt,
+    };
+    const taskGraph =
+      taskReferences || withMembership
+        ? new TaskGraphService(roomHomeDir, {
+            projectService: { getProject: () => project },
+          })
+        : undefined;
+    const referenceTask = await taskGraph?.createTask({
+      projectId: project.id,
+      title: 'Kept answer',
     });
     const membership = membershipStorage
       ? createProjectMembershipRuntime(
@@ -440,6 +479,7 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       : undefined;
     const context = deepStub({
       projectMembership: membership?.service,
+      projectSharedTasks: membership?.sharedTasks,
       ...(membershipStorage ? { storageAdapter: membershipStorage } : {}),
       deploymentAuthentication: localAccounts ?? deploymentAuthentication,
       localAccounts,
@@ -453,6 +493,7 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       },
       logger: { debug() {}, info() {}, warn() {}, error() {} },
       activeAgents: new Map(),
+      agentService: { listAgents: () => [] },
       agentMetadataMap: new Map(),
       agentFixedTokens: new Map(),
       agentTools: new Map(),
@@ -492,13 +533,18 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       app,
       store,
       membership,
+      membershipProjects,
+      membershipStorage,
+      roomHomeDir,
       localAccounts,
       sharedProject,
+      privateProject,
       applicationSessions,
       roomRuntime: result.projectTaskRoomRuntime!,
       pairing,
       paired,
       referenceTask,
+      taskGraph,
     };
   }
 
@@ -688,6 +734,35 @@ describe('device-session chat principal resolution over the REAL auth path (stat
     }
   });
 
+  test('portable execution-root mutation is bounded before its route reads an oversized body', async () => {
+    const { app, roomRuntime } = await setup('device');
+    searchCleanup.unshift(async () => {
+      await roomRuntime.close();
+    });
+    const cancel = vi.fn();
+    const oversized = new ReadableStream({
+      pull(controller) {
+        controller.enqueue(new Uint8Array(256 * 1024));
+      },
+      cancel,
+    });
+    const response = await app.request(
+      '/api/projects/example/identity/execution-root',
+      {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${OPERATOR_SECRET}`,
+        },
+        body: oversized,
+        duplex: 'half',
+      } as RequestInit,
+      REMOTE_TAILNET_ENV,
+    );
+    expect(response.status).toBe(413);
+    expect(cancel).toHaveBeenCalledOnce();
+  });
+
   test('explicit operator pairing binds two devices to one person through real HTTP authorization and refuses conflicting identity', async () => {
     const { app, store, roomRuntime, pairing } = await setup();
     const prepareSpy = vi.spyOn(AttachmentStagingService.prototype, 'prepare');
@@ -806,8 +881,8 @@ describe('device-session chat principal resolution over the REAL auth path (stat
     const h = await setup(undefined, false, undefined, true, true);
     let producer: ReadableStreamDefaultController<Uint8Array> | undefined;
     const cancelled = vi.fn();
-    const streamPath = '/api/projects/example/account-session-stream';
-    const expiryPath = '/api/projects/example/account-expiry-result';
+    const streamPath = '/api/orchestration/account-session-stream';
+    const expiryPath = '/api/orchestration/account-expiry-result';
     h.app.get(expiryPath, () => {
       const later = Date.now() + 16 * 60_000;
       vi.setSystemTime(later);
@@ -854,6 +929,15 @@ describe('device-session chat principal resolution over the REAL auth path (stat
           { localProjectId: h.sharedProject!.id },
           operator,
         ),
+      );
+      const operatorProject = await request(
+        '/api/projects/example',
+        undefined,
+        operator,
+      );
+      expect(operatorProject.status).toBe(200);
+      expect(JSON.stringify(await operatorProject.json())).toContain(
+        'private-provider-marker',
       );
       const offer = await responseData<{ token: string }>(
         await request(
@@ -912,6 +996,406 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       expect(session.deviceId).toBe(h.paired.device.id);
       expect(session.principal.id).toMatch(/^human:deployment:/);
       expect(outgoing.every((headers) => !headers.has('Cookie'))).toBe(true);
+      const acceptPath = '/api/account-auth/accept-invitation';
+      const acceptedMembership = await request(
+        acceptPath,
+        { token: offer.token },
+        {
+          ...(await client.headers(session, {
+            method: 'POST',
+            url: origin + acceptPath,
+          })),
+          Authorization: `Bearer ${h.paired.credential}`,
+        },
+      );
+      expect(
+        acceptedMembership.status,
+        await acceptedMembership.clone().text(),
+      ).toBe(200);
+      const pairingBody = {
+        deviceName: 'Bound collaborator',
+        requireAccountBinding: true,
+      };
+      const pairingRequest = await request(
+        PUBLIC_DEVICE_PAIRING_ACCESS_REQUEST_PATH,
+        pairingBody,
+        {
+          ...(await client.headers(session, {
+            method: 'POST',
+            url: origin + PUBLIC_DEVICE_PAIRING_ACCESS_REQUEST_PATH,
+          })),
+          Authorization: `Bearer ${h.paired.credential}`,
+        },
+      );
+      expect(pairingRequest.status, await pairingRequest.clone().text()).toBe(
+        202,
+      );
+      const pending = (await pairingRequest.json()) as {
+        requestId: string;
+        offerId: string;
+        proof: string;
+        requireAccountBinding: true;
+        accountCandidate: { issuer: string; subject: string };
+      };
+      expect(pending).toMatchObject({
+        requireAccountBinding: true,
+        accountCandidate: {
+          issuer: h.localAccounts!.service.describe().issuer,
+          subject: expect.any(String),
+        },
+      });
+      const confirmed = await request(
+        `/api/pairing/requests/${pending.requestId}/confirm`,
+        { bindAccountIdentity: true },
+        operator,
+      );
+      expect(confirmed.status, await confirmed.clone().text()).toBe(200);
+      expect(await confirmed.json()).toMatchObject({
+        principalBinding: {
+          kind: 'account',
+          issuer: h.localAccounts!.service.describe().issuer,
+          approvalId: expect.any(String),
+        },
+      });
+      const replacement = h.pairing.exchange({
+        offerId: pending.offerId,
+        proof: pending.proof,
+        requestId: pending.requestId,
+      });
+      expect(replacement.device.principalBinding).toMatchObject({
+        kind: 'account',
+      });
+      expect(
+        (
+          await request('/api/projects/example', undefined, {
+            Authorization: `Bearer ${replacement.credential}`,
+          })
+        ).status,
+      ).toBe(401);
+      setClientCredentialResolver(() => ({
+        credential: replacement.credential,
+        origin,
+        onUnauthorized: onDeviceUnauthorized,
+        onAccountUnauthorized,
+      }));
+      const boundClient = new ApplicationSessionClient(
+        origin,
+        'environment-local',
+        origin,
+        {},
+        await createApplicationSessionKey(),
+      );
+      const boundSession = await boundClient.establish(user);
+      const projectRead = async (path: string) =>
+        await request(path, undefined, {
+          ...(await boundClient.headers(boundSession, {
+            method: 'GET',
+            url: origin + path,
+          })),
+          Authorization: `Bearer ${replacement.credential}`,
+        });
+      const sharedTaskId = h.referenceTask!.id;
+      expect(
+        (
+          await h.app.request(`${origin}/api/tasks/${sharedTaskId}/room`, {
+            headers: {
+              Origin: origin,
+              Authorization: `Bearer ${OPERATOR_SECRET}`,
+            },
+          })
+        ).status,
+      ).toBe(200);
+      const operatorHeaders = {
+        Origin: origin,
+        Authorization: `Bearer ${OPERATOR_SECRET}`,
+        'Content-Type': 'application/json',
+      };
+      const messageMarker = 'explicit-shared-room-message';
+      expect(
+        (
+          await h.app.request(
+            `${origin}/api/tasks/${sharedTaskId}/room/messages`,
+            {
+              method: 'POST',
+              headers: operatorHeaders,
+              body: JSON.stringify({
+                proposalId: 'shared-message-1',
+                text: messageMarker,
+              }),
+            },
+          )
+        ).status,
+      ).toBe(200);
+      const documentMarker = 'explicit shared document';
+      const planResponse = await h.app.request(
+        `${origin}/api/tasks/${sharedTaskId}/room/edit-plan`,
+        {
+          method: 'POST',
+          headers: operatorHeaders,
+          body: JSON.stringify({
+            intentId: 'shared-document-1',
+            desiredText: documentMarker,
+            selection: { anchor: 0, focus: 0 },
+          }),
+        },
+      );
+      const planEnvelope = (await planResponse.json()) as {
+        data?: unknown;
+      } & Record<string, unknown>;
+      const plan = (planEnvelope.data ?? planEnvelope) as {
+        kind: string;
+        intentId: string;
+        digest: string;
+      };
+      expect(plan.kind).toBe('planned');
+      expect(
+        (
+          await h.app.request(
+            `${origin}/api/tasks/${sharedTaskId}/room/batches`,
+            {
+              method: 'POST',
+              headers: operatorHeaders,
+              body: JSON.stringify({
+                intentId: plan.intentId,
+                intentDigest: plan.digest,
+              }),
+            },
+          )
+        ).status,
+      ).toBe(200);
+      const sharedTask = await h.app.request(
+        `${origin}/api/projects/example/shared-work/${sharedTaskId}`,
+        {
+          method: 'PUT',
+          headers: {
+            Origin: origin,
+            Authorization: `Bearer ${OPERATOR_SECRET}`,
+          },
+        },
+      );
+      expect(sharedTask.status, await sharedTask.clone().text()).toBe(201);
+      const sharedTaskReceipt = (await sharedTask.json()) as {
+        data: { shareId: string };
+      };
+      const operatorPublication = await h.app.request(
+        `${origin}/api/projects/example/shared-work/${sharedTaskId}/publication`,
+        { headers: operatorHeaders },
+      );
+      expect(
+        operatorPublication.status,
+        await operatorPublication.clone().text(),
+      ).toBe(200);
+      expect(await operatorPublication.json()).toMatchObject({
+        data: {
+          kind: 'shared',
+          publication: {
+            project: {
+              localProjectId: expect.any(String),
+            },
+            task: { id: sharedTaskId },
+            shareId: sharedTaskReceipt.data.shareId,
+          },
+        },
+      });
+      expect(
+        (await projectRead('/api/projects/example/shared-work')).status,
+      ).toBe(200);
+      const sharedHistory = await projectRead(
+        `/api/projects/example/shared-work/${sharedTaskId}/history`,
+      );
+      expect(sharedHistory.status).toBe(200);
+      expect(await sharedHistory.text()).toContain(messageMarker);
+      const sharedDocument = await projectRead(
+        `/api/projects/example/shared-work/${sharedTaskId}/document`,
+      );
+      expect(sharedDocument.status).toBe(200);
+      expect(await sharedDocument.text()).toContain(documentMarker);
+      expect(
+        (
+          await projectRead(
+            '/api/projects/example/shared-work/private-task/history',
+          )
+        ).status,
+      ).toBe(404);
+      expect(
+        (await projectRead(`/api/tasks/${sharedTaskId}/room/history`)).status,
+      ).toBe(403);
+      expect(
+        (
+          await projectRead(
+            `/api/projects/example/shared-work/${sharedTaskId}/publication`,
+          )
+        ).status,
+      ).toBe(403);
+      expect(
+        (
+          await h.app.request(
+            `${origin}/api/projects/example/shared-work/${sharedTaskId}`,
+            {
+              method: 'DELETE',
+              headers: {
+                Origin: origin,
+                Authorization: `Bearer ${OPERATOR_SECRET}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                shareId: sharedTaskReceipt.data.shareId,
+              }),
+            },
+          )
+        ).status,
+      ).toBe(200);
+      expect(
+        (
+          await projectRead(
+            `/api/projects/example/shared-work/${sharedTaskId}/history`,
+          )
+        ).status,
+      ).toBe(404);
+      const shared = await projectRead('/api/projects/example');
+      expect(shared.status, await shared.clone().text()).toBe(200);
+      const sharedBody = await shared.json();
+      expect(sharedBody).toMatchObject({
+        data: {
+          version: 'station.member-project/v1',
+          kind: 'member-project',
+          slug: 'example',
+          actions: ['view'],
+        },
+      });
+      expect(JSON.stringify(sharedBody)).not.toMatch(
+        /workingDirectory|private-provider-marker|private-model-marker/,
+      );
+      // Execution offers (review 5, correction 4): the SAME fully
+      // authenticated account-bound collaborator — project read admitted,
+      // session live, device current — is still NOT a delegation receiver.
+      // Shared-human authorization never satisfies the receiver authority,
+      // so the contribution query refuses with the route's own 403 (an
+      // entirely different sentence from the unauthenticated 401 a bare
+      // account-bound bearer earns).
+      const contributionQuery = await request(
+        '/api/project-contributions/query',
+        {
+          portableProjectId: 'prj_shared',
+          resourceId: 'git.example/acme/repo',
+        },
+        {
+          ...(await boundClient.headers(boundSession, {
+            method: 'POST',
+            url: origin + '/api/project-contributions/query',
+          })),
+          Authorization: `Bearer ${replacement.credential}`,
+        },
+      );
+      expect(
+        contributionQuery.status,
+        await contributionQuery.clone().text(),
+      ).toBe(403);
+      const guestMutationPath = '/api/projects/example/identity/execution-root';
+      const guestMutation = await h.app.request(
+        origin + guestMutationPath,
+        {
+          method: 'PUT',
+          headers: {
+            ...(await boundClient.headers(boundSession, {
+              method: 'PUT',
+              url: origin + guestMutationPath,
+            })),
+            Authorization: `Bearer ${replacement.credential}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            expectedIdentity: {},
+            expectedLocalProjectId: h.sharedProject!.id,
+            executionRoot: null,
+          }),
+        },
+        REMOTE_TAILNET_ENV,
+      );
+      expect(guestMutation.status).toBe(403);
+      const privateProject = await projectRead('/api/projects/private-project');
+      expect(privateProject.status).toBe(404);
+      expect(JSON.stringify(await privateProject.json())).not.toContain(
+        'Private marker',
+      );
+      const catalogue = await projectRead('/api/projects');
+      expect(catalogue.status, await catalogue.clone().text()).toBe(200);
+      expect(await catalogue.json()).toMatchObject({
+        data: [
+          {
+            version: 'station.member-project/v1',
+            kind: 'member-project',
+            slug: 'example',
+            actions: ['view'],
+          },
+        ],
+      });
+      const staleDetail = await projectRead('/api/projects/example');
+      expect(staleDetail.status).toBe(200);
+      const membershipDb = new DatabaseSync(
+        join(h.roomHomeDir, 'security', 'project-membership.sqlite'),
+      );
+      membershipDb.exec(
+        `DELETE FROM project_invitations;
+         DELETE FROM project_members;
+         DELETE FROM shared_projects;`,
+      );
+      membershipDb.close();
+      await h.membershipStorage!.projectRevision('example').remove();
+      const replacementProject = await h.membershipProjects!.createProject({
+        name: 'Replacement shared Project',
+        slug: 'example',
+        workingDirectory: h.roomHomeDir,
+        defaultProviderId: 'replacement-private-provider',
+      });
+      const replacementAccess =
+        await responseData<ProjectAccessAdministrationView>(
+          await request(
+            '/api/projects/example/access/enable',
+            { localProjectId: replacementProject.id },
+            operator,
+          ),
+        );
+      const replacementOffer = await responseData<{ token: string }>(
+        await request(
+          '/api/projects/example/access/invitations',
+          {
+            scope: replacementAccess.scope,
+            email: null,
+            role: 'viewer',
+            expiresAt: new Date(Date.now() + 3600_000).toISOString(),
+          },
+          operator,
+        ),
+      );
+      const replacementAcceptPath = '/api/account-auth/accept-invitation';
+      const replacementAccepted = await request(
+        replacementAcceptPath,
+        { token: replacementOffer.token },
+        {
+          ...(await boundClient.headers(boundSession, {
+            method: 'POST',
+            url: origin + replacementAcceptPath,
+          })),
+          Authorization: `Bearer ${replacement.credential}`,
+        },
+      );
+      expect(
+        replacementAccepted.status,
+        await replacementAccepted.clone().text(),
+      ).toBe(200);
+      await expect(staleDetail.text()).rejects.toThrow(
+        'Project authorization ended before response delivery',
+      );
+      expect((await projectRead('/api/projects/example/layouts')).status).toBe(
+        403,
+      );
+      setClientCredentialResolver(() => ({
+        credential: h.paired.credential,
+        origin,
+        onUnauthorized: onDeviceUnauthorized,
+        onAccountUnauthorized,
+      }));
       const path = '/api/orchestration/attachment-staging/prepare';
       const proof = await client.headers(session, {
         method: 'POST',
@@ -971,7 +1455,10 @@ describe('device-session chat principal resolution over the REAL auth path (stat
         })),
         Authorization: `Bearer ${h.paired.credential}`,
       });
-      expect(stream.status).toBe(200);
+      expect(
+        stream.status,
+        stream.status === 200 ? '' : await stream.text(),
+      ).toBe(200);
       const reader = stream.body!.getReader();
       expect(new TextDecoder().decode((await reader.read()).value)).toBe(
         'first',

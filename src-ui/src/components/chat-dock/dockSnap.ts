@@ -277,6 +277,27 @@ export function shouldRestoreDockOnNavigation({
 }
 
 /**
+ * On a phone, leaving Chat for Settings/Home/Engines must collapse the
+ * dock entirely — a half-open sheet over the next route is the desktop
+ * overlay leaking onto a destination. Query-only updates (chat=, dock=)
+ * stay on the same pathname and must not collapse.
+ */
+export function shouldCollapseDockOnMobileNavigation({
+  previousPathname,
+  pathname,
+  isMobile,
+  isDockOpen,
+}: {
+  previousPathname: string;
+  pathname: string;
+  isMobile: boolean;
+  isDockOpen: boolean;
+}): boolean {
+  if (!isMobile || !isDockOpen) return false;
+  return previousPathname !== pathname;
+}
+
+/**
  * The snap a navigation-restore should leave behind, or `null` when the
  * current one is already coherent.
  *

@@ -16,12 +16,15 @@ import {
   DEFAULT_GRANT_PAIRING_SCOPE,
   DEVICE_PAIRING_SCOPE,
   PAIRING_SCOPE_HOME_CONTROL,
+  PAIRING_SCOPE_ORCHESTRATION_OPERATE,
+  PAIRING_SCOPE_ORCHESTRATION_READ,
   pairingScopeIncludes,
   pairingScopePresetString,
 } from '@kontourai/station-contracts';
 import { humanPrincipal } from '@kontourai/station-contracts/principal';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { WebSocket } from 'ws';
+import { credentialAuthorizedForScope } from '../../../security/pairing-route-scopes.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../identity/principal-resolver.js';
 import { skipIfCannotChmod } from '../../infra/__tests__/helpers/store-faults.js';
 import { TerminalWebSocketServer } from '../../terminal/terminal-ws-server.js';
@@ -56,6 +59,8 @@ afterEach(() => {
 });
 
 const ENVIRONMENT_ID = '11111111-1111-4111-8111-111111111111';
+const MAX_RELAY_ALIAS_TTL_MS = 30 * 24 * 60 * 60_000;
+const MAX_RELAY_ALIASES_PER_DEVICE = 8;
 /**
  * The operator approving from a session that presented a credential — what
  * every pre-archive#1490 `confirmRequest()` call implicitly assumed it was.
@@ -109,6 +114,337 @@ describe('manual pairing-code entropy (station#2060)', () => {
     expect(() => manualCodeFromEntropy(() => new Uint8Array(31))).toThrow(
       'Manual pairing-code entropy source returned wrong size',
     );
+  });
+});
+
+describe('same-device relay credential aliases (station#2386)', () => {
+  test('issues a read-only alias for the same Device without exposing it in inventory or local authority', async () => {
+    const { service, homeDir } = harness();
+    const offer = service.createOffer({
+      endpoint: 'https://station.example.test',
+    });
+    const request = service.requestPairing({
+      requesterPosition: 'off-box',
+      offerId: offer.offerId,
+      proof: offer.challenge,
+      deviceName: 'Owner browser',
+    });
+    service.confirmRequest(request.requestId, OPERATOR_APPROVAL);
+    const parent = service.exchange({
+      offerId: offer.offerId,
+      proof: offer.challenge,
+      requestId: request.requestId,
+      locality: 'home-possession',
+      mintKind: 'local-grant',
+    });
+
+    const alias = service.issueRelayCredentialAlias(
+      parent.credential,
+      parent.device.id,
+    );
+    expect(alias).toMatchObject({
+      deviceId: parent.device.id,
+      scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+      expiresAt: 1_000 + MAX_RELAY_ALIAS_TTL_MS,
+    });
+    expect(service.identifyDevice(alias.credential)).toMatchObject({
+      id: parent.device.id,
+      scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+    });
+    expect(service.verifyCredential(alias.credential)).toBe(true);
+    expect(service.verifyCredential(parent.credential)).toBe(true);
+    expect(service.credentialAliasId(alias.credential)).toBe(alias.aliasId);
+    expect(service.credentialAliasId(parent.credential)).toBeUndefined();
+    expect(service.credentialLocality(parent.credential)).toBe(
+      'home-possession',
+    );
+    expect(service.credentialMintKind(parent.credential)).toBe('local-grant');
+    expect(service.credentialLocality(alias.credential)).toBeUndefined();
+    expect(service.credentialMintKind(alias.credential)).toBeUndefined();
+    expect(service.listDevices()).toHaveLength(1);
+    expect(service.listDevices()[0]).not.toHaveProperty('credentialAliases');
+
+    const websocketScopeOwner = {
+      verifyCredential: (credential: string) =>
+        service.verifyCredential(credential),
+      resolveGrantedScope: (credential: string) =>
+        service.identifyDevice(credential)?.scope,
+    };
+    expect(
+      await credentialAuthorizedForScope(
+        websocketScopeOwner,
+        PAIRING_SCOPE_ORCHESTRATION_READ,
+        alias.credential,
+      ),
+    ).toBe(true);
+    expect(
+      await credentialAuthorizedForScope(
+        websocketScopeOwner,
+        PAIRING_SCOPE_ORCHESTRATION_OPERATE,
+        alias.credential,
+      ),
+    ).toBe(false);
+
+    const registry = readFileSync(
+      join(homeDir, 'security', 'paired-devices.json'),
+      'utf8',
+    );
+    expect(registry).not.toContain(alias.credential);
+    expect(registry).toContain(alias.aliasId);
+    const persisted = JSON.parse(registry);
+    expect(persisted.devices[0].credentialAliases[0]).toMatchObject({
+      id: alias.aliasId,
+      credentialHash: expect.any(String),
+      scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+      expiresAt: alias.expiresAt,
+      revokedAt: null,
+    });
+    expect(persisted.devices[0].credentialAliases[0].credentialHash).not.toBe(
+      alias.credential,
+    );
+  });
+
+  test('rejects wrong parent, nested aliases, broader parent scope, and unbounded lifetimes', () => {
+    const { service } = harness();
+    const parent = pair(service).result;
+    expect(() =>
+      service.issueRelayCredentialAlias(
+        parent.credential,
+        'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',
+      ),
+    ).toThrowError(new DevicePairingError('invalid_request'));
+    expect(() =>
+      service.issueRelayCredentialAlias('A'.repeat(43), parent.device.id),
+    ).toThrowError(new DevicePairingError('invalid_request'));
+    const alias = service.issueRelayCredentialAlias(
+      parent.credential,
+      parent.device.id,
+    );
+    expect(() =>
+      service.issueRelayCredentialAlias(alias.credential, parent.device.id),
+    ).toThrowError(new DevicePairingError('invalid_request'));
+    expect(() =>
+      service.issueRelayCredentialAlias(
+        parent.credential,
+        parent.device.id,
+        MAX_RELAY_ALIAS_TTL_MS + 1,
+      ),
+    ).toThrowError(new DevicePairingError('invalid_request'));
+    for (let index = 1; index < MAX_RELAY_ALIASES_PER_DEVICE; index += 1)
+      service.issueRelayCredentialAlias(parent.credential, parent.device.id);
+    expect(() =>
+      service.issueRelayCredentialAlias(parent.credential, parent.device.id),
+    ).toThrowError(new DevicePairingError('invalid_request'));
+
+    const noReadOffer = service.createOffer({
+      endpoint: 'https://station.example.test',
+      scope: PAIRING_SCOPE_ORCHESTRATION_OPERATE,
+    });
+    const noReadRequest = service.requestPairing({
+      requesterPosition: 'off-box',
+      offerId: noReadOffer.offerId,
+      proof: noReadOffer.challenge,
+      deviceName: 'Operate-only device',
+    });
+    service.confirmRequest(noReadRequest.requestId, OPERATOR_APPROVAL);
+    const noRead = service.exchange({
+      offerId: noReadOffer.offerId,
+      proof: noReadOffer.challenge,
+      requestId: noReadRequest.requestId,
+    });
+    expect(() =>
+      service.issueRelayCredentialAlias(noRead.credential, noRead.device.id),
+    ).toThrowError(new DevicePairingError('invalid_scope'));
+  });
+
+  test('an account-bound Device alias preserves the exact approved issuer and subject', () => {
+    const { service } = harness();
+    const issuer = 'https://accounts.example.test';
+    const subject = 'stable-provider-subject-7';
+    const candidate = {
+      issuer,
+      subject,
+      displayName: 'Verified collaborator',
+    };
+    const offer = service.createOffer({
+      endpoint: 'https://station.example.test',
+      scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+    });
+    const request = service.requestPairing({
+      requesterPosition: 'off-box',
+      offerId: offer.offerId,
+      proof: offer.challenge,
+      deviceName: 'Bound browser',
+      accountCandidate: candidate,
+      accountCandidateSessionId: 'provider-session-opaque',
+      requireAccountBinding: true,
+    });
+    service.confirmRequest(request.requestId, OPERATOR_APPROVAL, {
+      principalId: 'human:deployment:operator',
+      kind: 'account',
+    });
+    const parent = service.exchange({
+      offerId: offer.offerId,
+      proof: offer.challenge,
+      requestId: request.requestId,
+    });
+    const alias = service.issueRelayCredentialAlias(
+      parent.credential,
+      parent.device.id,
+    );
+
+    expect(service.identifyDevice(alias.credential)).toMatchObject({
+      id: parent.device.id,
+      scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+      principalBinding: {
+        kind: 'account',
+        issuer,
+        subject,
+        displayName: candidate.displayName,
+      },
+    });
+    expect(service.credentialAliasId(alias.credential)).toBe(alias.aliasId);
+  });
+
+  test('alias expiry and alias-only revocation preserve the parent, while parent scope/revocation cascades', () => {
+    const { service, homeDir, advance } = harness();
+    const parent = pair(service).result;
+    const expiring = service.issueRelayCredentialAlias(
+      parent.credential,
+      parent.device.id,
+      100,
+    );
+    const first = service.issueRelayCredentialAlias(
+      parent.credential,
+      parent.device.id,
+    );
+    const second = service.issueRelayCredentialAlias(
+      parent.credential,
+      parent.device.id,
+    );
+
+    expect(
+      service.revokeRelayCredentialAlias(parent.device.id, first.aliasId),
+    ).toBe(true);
+    expect(service.verifyCredential(first.credential)).toBe(false);
+    expect(service.verifyCredential(second.credential)).toBe(true);
+    expect(service.verifyCredential(parent.credential)).toBe(true);
+    expect(service.listDevices()).toHaveLength(1);
+    expect(
+      service.revokeRelayCredentialAlias(parent.device.id, first.aliasId),
+    ).toBe(false);
+
+    advance(101);
+    expect(service.verifyCredential(expiring.credential)).toBe(false);
+    expect(service.verifyCredential(parent.credential)).toBe(true);
+
+    service.setDeviceScope(
+      parent.device.id,
+      [PAIRING_SCOPE_ORCHESTRATION_OPERATE],
+      OPERATOR_APPROVAL,
+    );
+    expect(service.verifyCredential(second.credential)).toBe(false);
+    const narrowed = JSON.parse(
+      readFileSync(join(homeDir, 'security', 'paired-devices.json'), 'utf8'),
+    ).devices[0].credentialAliases;
+    expect(
+      narrowed.find((item: { id: string }) => item.id === second.aliasId)
+        ?.revokedAt,
+    ).toBe(1_101);
+    service.revokeDevice(parent.device.id, 'operator-credential');
+    expect(service.verifyCredential(parent.credential)).toBe(false);
+    const restarted = new DevicePairingService({
+      homeDir,
+      environmentId: ENVIRONMENT_ID,
+      now: () => 1_101,
+    });
+    expect(restarted.verifyCredential(expiring.credential)).toBe(false);
+    expect(restarted.verifyCredential(first.credential)).toBe(false);
+    expect(restarted.verifyCredential(second.credential)).toBe(false);
+  });
+
+  test('credential aliases survive restart and v2 registry migration without changing the approved Device', () => {
+    const { service, homeDir } = harness();
+    const parent = pair(service).result;
+    const alias = service.issueRelayCredentialAlias(
+      parent.credential,
+      parent.device.id,
+    );
+    const restarted = new DevicePairingService({
+      homeDir,
+      environmentId: ENVIRONMENT_ID,
+      now: () => 1_000,
+    });
+    expect(restarted.verifyCredential(alias.credential)).toBe(true);
+    expect(restarted.identifyDevice(alias.credential)).toMatchObject({
+      id: parent.device.id,
+      scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+    });
+    expect(restarted.listDevices()).toHaveLength(1);
+    const meaningBeforeMigration = restarted.listDevices()[0];
+
+    const registryPath = join(homeDir, 'security', 'paired-devices.json');
+    const versionTwo = JSON.parse(readFileSync(registryPath, 'utf8'));
+    versionTwo.schemaVersion = 2;
+    delete versionTwo.devices[0].credentialAliases;
+    writeFileSync(registryPath, `${JSON.stringify(versionTwo)}\n`, {
+      mode: 0o600,
+    });
+    const migrated = new DevicePairingService({
+      homeDir,
+      environmentId: ENVIRONMENT_ID,
+      now: () => 1_000,
+    });
+    expect(migrated.listDevices()[0]).toEqual(meaningBeforeMigration);
+    expect(migrated.verifyCredential(parent.credential)).toBe(true);
+    expect(migrated.identifyDevice(parent.credential)).toMatchObject({
+      id: parent.device.id,
+      scope: parent.device.scope,
+    });
+    expect(JSON.parse(readFileSync(registryPath, 'utf8'))).toMatchObject({
+      schemaVersion: 3,
+    });
+  });
+
+  test('corrupt or broadened alias records fail closed on startup', () => {
+    const { service, homeDir } = harness();
+    const parent = pair(service).result;
+    service.issueRelayCredentialAlias(parent.credential, parent.device.id);
+    const registryPath = join(homeDir, 'security', 'paired-devices.json');
+    const registry = JSON.parse(readFileSync(registryPath, 'utf8'));
+    registry.devices[0].credentialAliases[0].scope =
+      'orchestration:read terminal:operate';
+    writeFileSync(registryPath, `${JSON.stringify(registry)}\n`, {
+      mode: 0o600,
+    });
+    expect(
+      () =>
+        new DevicePairingService({
+          homeDir,
+          environmentId: ENVIRONMENT_ID,
+          now: () => 1_000,
+        }),
+    ).toThrow('Invalid paired-device record');
+  });
+
+  test('duplicate root or alias credential hashes fail closed on startup', () => {
+    const { service, homeDir } = harness();
+    pair(service, 'First approved Device');
+    pair(service, 'Second approved Device');
+    const registryPath = join(homeDir, 'security', 'paired-devices.json');
+    const registry = JSON.parse(readFileSync(registryPath, 'utf8'));
+    registry.devices[1].credentialHash = registry.devices[0].credentialHash;
+    writeFileSync(registryPath, `${JSON.stringify(registry)}\n`, {
+      mode: 0o600,
+    });
+    expect(
+      () =>
+        new DevicePairingService({
+          homeDir,
+          environmentId: ENVIRONMENT_ID,
+          now: () => 1_000,
+        }),
+    ).toThrow('Invalid paired-device credential');
   });
 });
 
@@ -210,6 +546,174 @@ afterEach(() => {
 });
 
 describe('DevicePairingService', () => {
+  test('relay enrollment uses a private proof, account-only approval and an inadmissible reserved Device until activation', () => {
+    const { service, homeDir } = harness();
+    const enrollmentId = 'E'.repeat(43);
+    const candidate = {
+      issuer: 'https://identity.example.test',
+      subject: 'provider-subject-123',
+      displayName: 'Relay account',
+    };
+    const pending = service.requestRelayEnrollmentAccess({
+      enrollmentId,
+      endpoint: 'https://station.example.test',
+      candidate,
+      sessionId: 'provider-session-record-123',
+    });
+    const publicRequest = service
+      .listRequests()
+      .find((request) => request.requestId === pending.requestId)!;
+    expect(publicRequest).toMatchObject({
+      accountCandidate: candidate,
+      requireAccountBinding: true,
+      scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+      status: 'pending',
+    });
+    expect(publicRequest).not.toHaveProperty('relayEnrollmentId');
+    expect(publicRequest).not.toHaveProperty('accountCandidateSessionId');
+    expect(service.isRelayEnrollmentRequest(pending.requestId)).toBe(true);
+    expect(service.relayEnrollmentForRequest(pending.requestId)).toMatchObject({
+      enrollmentId,
+      offerId: pending.offerId,
+      proof: pending.proof,
+      sessionId: 'provider-session-record-123',
+      candidate,
+    });
+
+    expect(() =>
+      service.confirmRequest(pending.requestId, OPERATOR_APPROVAL, {
+        principalId: 'human:deployment:operator',
+        kind: 'account',
+      }),
+    ).toThrowError(
+      new DevicePairingError('relay_enrollment_finalize_required'),
+    );
+    expect(
+      service
+        .listRequests()
+        .find((request) => request.requestId === pending.requestId)?.status,
+    ).toBe('pending');
+
+    service.confirmRelayEnrollmentRequest(
+      pending.requestId,
+      OPERATOR_APPROVAL,
+      'human:deployment:operator',
+      {
+        enrollmentId,
+        sessionId: 'provider-session-record-123',
+        issuer: candidate.issuer,
+        subject: candidate.subject,
+      },
+    );
+    expect(() =>
+      service.exchange({
+        offerId: pending.offerId,
+        proof: pending.proof,
+        requestId: pending.requestId,
+      }),
+    ).toThrowError(
+      new DevicePairingError('relay_enrollment_finalize_required'),
+    );
+
+    const deviceId = '11111111-2222-4333-8444-555555555555';
+    const exchanged = service.exchangeRelayEnrollment({
+      offerId: pending.offerId,
+      proof: pending.proof,
+      requestId: pending.requestId,
+      enrollmentId,
+      deviceId,
+    });
+    expect(exchanged.device.id).toBe(deviceId);
+    expect(exchanged.device.scope).toBe(PAIRING_SCOPE_ORCHESTRATION_READ);
+    expect(exchanged.device).not.toHaveProperty('relayEnrollmentId');
+    expect(exchanged.device).not.toHaveProperty('pendingEnrollmentId');
+    expect(service.identifyDevice(exchanged.credential)).toBeNull();
+    expect(service.verifyCredential(exchanged.credential)).toBe(false);
+    expect(service.listDevices()).toEqual([]);
+    expect(service.listKnownPrincipals()).toEqual([]);
+    const pendingBinding = exchanged.device.principalBinding;
+    if (!pendingBinding || !('kind' in pendingBinding))
+      throw new Error('relay exchange did not retain account approval');
+    expect(service.resolvePendingRelayDevice(deviceId, enrollmentId)).toEqual({
+      deviceId,
+      enrollmentId,
+      issuer: candidate.issuer,
+      subject: candidate.subject,
+      approvalId: pendingBinding.approvalId,
+      approvedBy: pendingBinding.approvedBy,
+      scope: [PAIRING_SCOPE_ORCHESTRATION_READ],
+    });
+    expect(
+      service.resolvePendingRelayDevice(deviceId, 'F'.repeat(43)),
+    ).toBeNull();
+
+    const reopened = new DevicePairingService({
+      homeDir,
+      environmentId: ENVIRONMENT_ID,
+    });
+    expect(reopened.identifyDevice(exchanged.credential)).toBeNull();
+    expect(reopened.verifyCredential(exchanged.credential)).toBe(false);
+    expect(reopened.listDevices()).toEqual([]);
+
+    reopened.activateRelayEnrollmentDevice(deviceId, enrollmentId);
+    expect(
+      reopened.resolvePendingRelayDevice(deviceId, enrollmentId),
+    ).toBeNull();
+    expect(reopened.identifyDevice(exchanged.credential)).toMatchObject({
+      id: deviceId,
+      principalBinding: {
+        kind: 'account',
+        issuer: candidate.issuer,
+        subject: candidate.subject,
+      },
+    });
+    expect(reopened.listDevices()).toHaveLength(1);
+    expect(reopened.discardRelayEnrollmentDevice(deviceId, enrollmentId)).toBe(
+      true,
+    );
+    expect(reopened.identifyDevice(exchanged.credential)).toBeNull();
+    expect(reopened.listDevices()).toEqual([]);
+  });
+
+  test('relay enrollment refuses a caller-selected or reused Device ID without consuming its offer', () => {
+    const { service } = harness();
+    const existing = pair(service, 'Existing device').result;
+    const pending = service.requestRelayEnrollmentAccess({
+      enrollmentId: 'R'.repeat(43),
+      endpoint: 'https://station.example.test',
+      candidate: {
+        issuer: 'https://identity.example.test',
+        subject: 'relay-person',
+        displayName: 'Relay person',
+      },
+      sessionId: 'pending-session-record',
+    });
+    service.confirmRelayEnrollmentRequest(
+      pending.requestId,
+      OPERATOR_APPROVAL,
+      'human:deployment:operator',
+      {
+        enrollmentId: 'R'.repeat(43),
+        sessionId: 'pending-session-record',
+        issuer: 'https://identity.example.test',
+        subject: 'relay-person',
+      },
+    );
+    expect(() =>
+      service.exchangeRelayEnrollment({
+        offerId: pending.offerId,
+        proof: pending.proof,
+        requestId: pending.requestId,
+        enrollmentId: 'R'.repeat(43),
+        deviceId: existing.device.id,
+      }),
+    ).toThrowError(new DevicePairingError('invalid_request'));
+    expect(service.identifyDevice(existing.credential)?.id).toBe(
+      existing.device.id,
+    );
+    expect(service.isRelayEnrollmentRequest(pending.requestId)).toBe(true);
+  });
+
   test('approved personal devices share conversation owners without merging device identities', () => {
     const { service } = harness();
     const first = pair(service, 'Phone').result;
@@ -381,7 +885,7 @@ describe('DevicePairingService', () => {
       revocation: { state: 'not-revoked' },
     });
     expect(JSON.parse(readFileSync(registryPath, 'utf8'))).toMatchObject({
-      schemaVersion: 2,
+      schemaVersion: 3,
     });
   });
 
@@ -987,13 +1491,17 @@ describe('DevicePairingService', () => {
     expect(service.listDevices()).toEqual([
       expect.objectContaining({ name: 'Brian phone', revokedAt: null }),
     ]);
+    // A replayed exchange is definitive — the offer was consumed, and no
+    // amount of retrying revives it (#2228: the joiner's completion loop
+    // settles offer_unavailable instead of polling it as "waiting for
+    // approval" forever).
     expect(() =>
       service.exchange({
         offerId: offer.offerId,
         proof: offer.challenge,
         requestId: request.requestId,
       }),
-    ).toThrowError(new DevicePairingError('request_not_confirmed'));
+    ).toThrowError(new DevicePairingError('offer_unavailable'));
 
     const persisted = readFileSync(
       join(homeDir, 'security', 'paired-devices.json'),
@@ -1940,6 +2448,38 @@ describe('DevicePairingService', () => {
       expect(
         pairingScopeIncludes(result.device.scope, 'orchestration:operate'),
       ).toBe(false);
+    });
+
+    test('rejects a wider issued session scope and leaves the confirmed offer usable', () => {
+      const { service } = harness();
+      const readOnlyScope = pairingScopePresetString('read-only');
+      const offer = service.createOffer({
+        endpoint: 'https://station.example.test',
+        scope: readOnlyScope,
+      });
+      const request = service.requestPairing({
+        requesterPosition: 'off-box',
+        offerId: offer.offerId,
+        proof: offer.challenge,
+        deviceName: 'Read-only phone',
+      });
+      service.confirmRequest(request.requestId, OPERATOR_APPROVAL);
+
+      expect(() =>
+        service.exchange({
+          offerId: offer.offerId,
+          proof: offer.challenge,
+          requestId: request.requestId,
+          sessionScope: DEFAULT_GRANT_PAIRING_SCOPE,
+        }),
+      ).toThrowError(new DevicePairingError('invalid_request'));
+
+      const result = service.exchange({
+        offerId: offer.offerId,
+        proof: offer.challenge,
+        requestId: request.requestId,
+      });
+      expect(result.device.scope).toBe(readOnlyScope);
     });
 
     test('the standard preset excludes access:manage even though it grants terminal:operate', () => {

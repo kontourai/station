@@ -5,10 +5,14 @@
  * assistant chat row — the fold and the card can both be correct while the
  * row never renders one. Uses the REAL MessageBubble; only the dependencies
  * that would drag in react-query/markdown are mocked.
+ *
+ * #2211: the card no longer renders inline in the turn footer. The row keeps
+ * the transcript focused on the answer: the footer is icon-copy + rating +
+ * overflow, and "Turn provenance" opens the SAME card in a dialog.
  */
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import type { ReactElement } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ChatMessage } from '../types';
@@ -115,7 +119,16 @@ function renderRow(
   );
 }
 
-describe('MessageBubble turn provenance (station#1410)', () => {
+/** #2211: provenance opens from the overflow menu, as a dialog. */
+async function openProvenanceDialog() {
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'More answer actions' }),
+  );
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Turn provenance' }));
+  await screen.findByLabelText(/^Answer provenance/);
+}
+
+describe('MessageBubble turn provenance (station#1410, #2211)', () => {
   afterEach(() => {
     developerTools.enabled = false;
   });
@@ -167,8 +180,9 @@ describe('MessageBubble turn provenance (station#1410)', () => {
 
   // archive#1423: the share affordance must be reachable from the same real
   // row as the card — a mint button that only renders in its own unit test
-  // is a feature nobody can use.
-  it('keeps one inline action row and puts sharing in the provenance disclosure', async () => {
+  // is a feature nobody can use. #2211: it rides inside the provenance
+  // dialog, reached from the overflow menu.
+  it('keeps the overflow as the only chrome; the menu lists the turn record, the dialog hosts it', async () => {
     renderRow({
       role: 'assistant',
       content: 'Here is the answer.',
@@ -181,34 +195,38 @@ describe('MessageBubble turn provenance (station#1410)', () => {
     expect(
       screen.queryByRole('button', { name: /Share this answer/ }),
     ).toBeNull();
+    // No inline provenance disclosure in the footer any more.
+    expect(screen.queryByRole('button', { name: 'Provenance' })).toBeNull();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Provenance' }));
+    // The MENU lists both the record and the action…
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'More answer actions' }),
+    );
+    expect(
+      await screen.findByRole(
+        'menuitem',
+        { name: 'Add this answer to a Task (turn turn-7)' },
+        // The attach affordance mounts beside a lazy message chunk; under
+        // full-corpus worker load its dynamic import can exceed findByRole's
+        // 1s default, redding this file corpus-only while isolation stays
+        // green (the archive#1045 load-composition class). The longer bound
+        // changes nothing about test power: an absent affordance still fails.
+        { timeout: 10_000 },
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole('menuitem', { name: 'Turn provenance' }),
+    ).toBeTruthy();
+
+    // …and choosing provenance swaps the menu for the dialog that hosts the
+    // card, share affordance included.
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Turn provenance' }));
+    await screen.findByLabelText('Answer provenance for turn turn-7');
     expect(
       await screen.findByRole('button', {
         name: 'Share this answer (turn turn-7)',
       }),
     ).toBeTruthy();
-
-    const overflow = await screen.findByRole('button', {
-      name: 'More answer actions',
-    });
-    expect(overflow.getAttribute('aria-expanded')).toBe('false');
-    fireEvent.click(overflow);
-    expect(overflow.getAttribute('aria-expanded')).toBe('true');
-    expect(
-      // The attach affordance mounts beside a lazy message chunk; under full-
-      // corpus worker load its dynamic import can exceed findByRole's 1s
-      // default, redding this file corpus-only while isolation stays green
-      // (the archive#1045 load-composition class). The longer bound changes
-      // nothing about test power: an absent affordance still fails here.
-      await screen.findByRole(
-        'menuitem',
-        { name: 'Add this answer to a Task (turn turn-7)' },
-        { timeout: 10_000 },
-      ),
-    ).toBeTruthy();
-    fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' });
-    expect(overflow.getAttribute('aria-expanded')).toBe('false');
     expect(document.querySelector('.turn-footer [disabled]')).toBeNull();
   });
 
@@ -264,20 +282,24 @@ describe('MessageBubble turn provenance (station#1410)', () => {
     expect(on.container.querySelector('.message__trace')).not.toBeNull();
   });
 
-  it('does not render an empty overflow menu for provenance without an eligible answer', async () => {
-    // The trigger arrives through LazyBoundary, so a synchronous query finds
-    // nothing whether or not the gate admits it. Import the chunk first and
-    // flush, so absence here means the gate refused rather than the import
-    // not having landed yet.
+  it('offers the provenance dialog for an ineligible answer even when Task attachment is unavailable', async () => {
+    // #2211 changed what the overflow is FOR: it is the per-turn record's
+    // home, so a row with only a readable envelope (not eligible for Task)
+    // still gets the menu, with only the provenance item in it.
     await import('../components/chat/TurnActionsMenu');
     renderRow({
       role: 'assistant',
       content: 'Still working.',
       provenance: envelope,
     });
-    await act(async () => {});
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'More answer actions' }),
+    );
     expect(
-      screen.queryByRole('button', { name: 'More answer actions' }),
+      screen.getByRole('menuitem', { name: 'Turn provenance' }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole('menuitem', { name: /Add this answer to a Task/ }),
     ).toBeNull();
   });
 
@@ -334,7 +356,7 @@ describe('MessageBubble turn provenance (station#1410)', () => {
     ).toBeNull();
   });
 
-  it('renders the provenance card on an assistant row that carries an envelope', () => {
+  it('opens the provenance card in a dialog on demand and keeps it out of the resting row', async () => {
     const { container } = renderRow({
       role: 'assistant',
       content: 'Here is the answer.',
@@ -342,23 +364,26 @@ describe('MessageBubble turn provenance (station#1410)', () => {
       provenance: envelope,
     });
 
+    // Resting row: no card anywhere.
+    expect(screen.queryByLabelText(/^Answer provenance/)).toBeNull();
+
+    await openProvenanceDialog();
+
     const card = screen.getByLabelText('Answer provenance for turn turn-7');
-    expect(card).toBeTruthy();
-    // SF7: the engine's product name, not its internal slug. archive#1434
-    // moved that statement to the row's own attribution strip so the row
-    // makes it exactly ONCE; the card's expanded Engine row still carries
-    // the checkable raw slug.
+    // #2211: the dialog IS the disclosure — the card opens expanded, and its
+    // detail carries the checkable raw slug the collapsed headline used to
+    // stand down from ("Codex (codex)").
+    expect(card.textContent).toContain('(codex)');
+    // SF7: the ROW still states the engine exactly once — the attribution
+    // chip's product name, with no duplicate statement on the row itself.
+    expect(container.querySelectorAll('.engine-chip')).toHaveLength(1);
     expect(container.querySelector('.engine-chip')?.textContent).toBe('Codex');
-    expect(card.textContent).not.toContain('Codex');
     // archive#1802: the badge used to read "7 gaps" here, counting Station's
     // own not-yet-captured signals as if they were findings about this answer.
-    // They read identically under every answer, so they are not per-answer
-    // information and no longer reach the badge. This envelope describes a
-    // healthy turn, so there is nothing notable to badge at all.
     expect(card.textContent).not.toMatch(/\d+ gaps?/);
   });
 
-  it('keeps the accountable human in expanded provenance, not the row chip', async () => {
+  it('keeps the accountable human in the provenance dialog, not the row chip', async () => {
     renderRow(
       {
         role: 'assistant',
@@ -370,7 +395,7 @@ describe('MessageBubble turn provenance (station#1410)', () => {
     );
 
     expect(screen.queryByText('Operator Person')).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Provenance' }));
+    await openProvenanceDialog();
     expect(screen.getByText('Accountable human')).toBeTruthy();
     expect(screen.getByText('Operator Person')).toBeTruthy();
   });
@@ -385,7 +410,7 @@ describe('MessageBubble turn provenance (station#1410)', () => {
     });
 
     expect(screen.queryByRole('button', { name: /^Basis/ })).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Provenance' }));
+    await openProvenanceDialog();
     expect(
       await screen.findByRole(
         'button',
@@ -400,7 +425,7 @@ describe('MessageBubble turn provenance (station#1410)', () => {
     ).toBe(true);
   });
 
-  it('renders no provenance card on a user row', () => {
+  it('renders no provenance affordance on a user row', () => {
     renderRow({
       role: 'user',
       content: 'Ask something.',
@@ -408,17 +433,66 @@ describe('MessageBubble turn provenance (station#1410)', () => {
     });
 
     expect(screen.queryByLabelText(/^Answer provenance/)).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: 'More answer actions' }),
+    ).toBeNull();
   });
 
-  it('renders no provenance card, and claims nothing, when the turn has no envelope', () => {
+  it('renders no provenance affordance, and claims nothing, when the turn has no envelope', () => {
     renderRow({ role: 'assistant', content: 'Here is the answer.' });
 
     expect(screen.queryByLabelText(/^Answer provenance/)).toBeNull();
     expect(
-      screen.queryByRole('button', { name: /Add this answer to a Task/ }),
+      screen.queryByRole('button', { name: 'More answer actions' }),
     ).toBeNull();
     expect(screen.getByText('Here is the answer.')).toBeTruthy();
   });
+
+  // #2211: settled reasoning leaves the bubble. The record stays reachable
+  // through the same overflow menu, as a dialog.
+  describe('settled reasoning (#2211)', () => {
+    const reasoningRow = {
+      role: 'assistant' as const,
+      content: 'The answer, briefly.',
+      turnId: 'turn-reasoned',
+      contentParts: [
+        {
+          type: 'reasoning' as const,
+          content: 'Two words of thought.',
+        },
+        { type: 'text' as const, content: 'The answer, briefly.' },
+      ],
+    };
+
+    it('renders no inline reasoning section on a settled row, and offers it in the overflow', async () => {
+      renderRow(reasoningRow);
+
+      expect(screen.queryByText(/Reasoning ·/)).toBeNull();
+      expect(screen.queryByText('Two words of thought.')).toBeNull();
+
+      fireEvent.click(
+        await screen.findByRole('button', { name: 'More answer actions' }),
+      );
+      expect(
+        screen.getByRole('menuitem', { name: 'Reasoning (4 words)' }),
+      ).toBeTruthy();
+    });
+
+    it('opens the reasoning text in a dialog from the overflow', async () => {
+      renderRow(reasoningRow);
+
+      fireEvent.click(
+        await screen.findByRole('button', { name: 'More answer actions' }),
+      );
+      fireEvent.click(
+        screen.getByRole('menuitem', { name: 'Reasoning (4 words)' }),
+      );
+
+      expect(await screen.findByText('Two words of thought.')).toBeTruthy();
+      expect(screen.getByText('Reasoning')).toBeTruthy();
+    });
+  });
+
   /**
    * #1536 B3. `GET …/turns/:turnId/basis` answers 404 unless the turn's own
    * ordered lifecycle says it completed normally, and 404 there is an answer
@@ -428,11 +502,9 @@ describe('MessageBubble turn provenance (station#1410)', () => {
    * refusal as "Basis · Unavailable" on a healthy instance.
    */
   describe('the Basis affordance asks only what the route can answer', () => {
-    /** The affordance lives inside the card's expanded detail. */
+    /** The affordance lives inside the dialog-hosted card's detail. */
     async function expandProvenance() {
-      fireEvent.click(
-        within(screen.getByLabelText(/^Answer provenance/)).getByRole('button'),
-      );
+      await openProvenanceDialog();
       await act(async () => {});
     }
 
@@ -446,7 +518,14 @@ describe('MessageBubble turn provenance (station#1410)', () => {
       });
       await expandProvenance();
 
-      expect(screen.getByRole('button', { name: 'Basis' })).toBeTruthy();
+      // The Basis affordance mounts through a lazy chunk inside the dialog.
+      expect(
+        await screen.findByRole(
+          'button',
+          { name: 'Basis' },
+          { timeout: 10_000 },
+        ),
+      ).toBeTruthy();
     });
 
     it('offers no Basis for an aborted turn, however eligible its answer', async () => {

@@ -770,9 +770,13 @@ describe('native release workflow topology', () => {
           (entry: any) => entry.name === '@cyclonedx/cyclonedx-npm',
         ),
       ).toBe(false);
+      const conduitVersion = JSON.parse(
+        readFileSync(resolve(root, 'package.json'), 'utf8'),
+      ).dependencies['@kontourai/conduit'] as string;
       expect(
         inventory.components.some(
-          (entry: any) => entry.purl === 'pkg:npm/%40kontourai/conduit@0.6.0',
+          (entry: any) =>
+            entry.purl === `pkg:npm/%40kontourai/conduit@${conduitVersion}`,
         ),
       ).toBe(true);
       // Read from the workspace manifest rather than restated: release-please

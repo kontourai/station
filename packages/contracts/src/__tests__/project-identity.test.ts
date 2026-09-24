@@ -69,9 +69,67 @@ describe('validateProjectManifest — valid input', () => {
     const result = validateProjectManifest(manifest);
     expect(result.ok).toBe(true);
   });
+
+  test('a portable execution root names a declared repo and relative directory', () => {
+    const result = validateProjectManifest({
+      ...minimalManifest(),
+      executionRoot: {
+        repoId: 'github.com/kontourai/station',
+        path: 'packages/contracts',
+      },
+    });
+    expect(result.ok).toBe(true);
+  });
 });
 
 describe('validateProjectManifest — the five rejection classes', () => {
+  test.each([
+    ['/private/work', 'repo-relative'],
+    ['../outside', 'must stay inside'],
+    ['packages//contracts', 'empty path segment'],
+  ])('refuses hostile executionRoot path %s', (path, message) => {
+    const result = validateProjectManifest({
+      ...minimalManifest(),
+      executionRoot: {
+        repoId: 'github.com/kontourai/station',
+        path,
+      },
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors.join('\n')).toContain('executionRoot.path');
+      expect(result.errors.join('\n')).toContain(message);
+    }
+  });
+
+  test('refuses an executionRoot resource absent from repos', () => {
+    const result = validateProjectManifest({
+      ...minimalManifest(),
+      executionRoot: { repoId: 'github.com/example/other', path: 'app' },
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok)
+      expect(result.errors.join('\n')).toContain(
+        'executionRoot.repoId: names no resource',
+      );
+  });
+
+  test('refuses unknown executionRoot fields that could carry a local path', () => {
+    const result = validateProjectManifest({
+      ...minimalManifest(),
+      executionRoot: {
+        repoId: 'github.com/kontourai/station',
+        path: 'apps/web',
+        localPath: '/private/checkout/apps/web',
+      },
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok)
+      expect(result.errors.join('\n')).toContain(
+        'executionRoot: unknown fields are not allowed (localPath)',
+      );
+  });
+
   test('class 1: unknown/absent schemaVersion is refused with a NAMED error, never cast', () => {
     const manifest = { ...minimalManifest(), schemaVersion: 999 };
     const result = validateProjectManifest(manifest);

@@ -1,12 +1,13 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { getAgent } from '../client/agents';
+import { confirmCheckpointRestore } from '../client/checkpoint-restore';
 import {
   listAgentConversationPage,
   listAgentConversations,
   listConversationInventory,
 } from '../client/conversations';
-import { StationHttpError } from '../client/http';
+import { StationHttpError, setClientCredentialResolver } from '../client/http';
 import { listIntegrations } from '../client/integrations';
 import {
   getOrchestrationSessionEventWindow,
@@ -40,6 +41,68 @@ function nonOkJsonResponse(body: unknown, status = 500): Response {
 describe('client/** fetcher failure paths (#167 iteration-2)', () => {
   beforeEach(() => {
     vi.stubGlobal('fetch', vi.fn());
+  });
+
+  afterEach(() => {
+    setClientCredentialResolver(undefined);
+  });
+
+  function installCheckpointAuthority() {
+    setClientCredentialResolver(() => ({
+      origin: 'http://example.test',
+      requestAuthority: {
+        apiBase: 'http://example.test',
+        authorityKey: 'authority-1',
+        isCurrent: () => true,
+      },
+    }));
+  }
+
+  it('checkpoint restore preserves a bounded server refusal reason', async () => {
+    installCheckpointAuthority();
+    vi.mocked(fetch).mockResolvedValue(
+      nonOkJsonResponse(
+        {
+          success: false,
+          error: 'Workspace checkpoint restore failed',
+          reason: 'workspace_changed',
+        },
+        409,
+      ),
+    );
+
+    const failure = await confirmCheckpointRestore(
+      'http://example.test',
+      'thread-1',
+      'turn-1',
+      { previewId: 'preview-1', currentTreeSha: 'a'.repeat(40) },
+      { apiBase: 'http://example.test', authorityKey: 'authority-1' },
+    ).catch((cause: unknown) => cause);
+
+    expect(failure).toBeInstanceOf(StationHttpError);
+    expect(failure).toMatchObject({
+      status: 409,
+      message: 'Workspace checkpoint restore failed',
+      reason: 'workspace_changed',
+    });
+  });
+
+  it('checkpoint restore keeps a non-JSON transport response unclassified', async () => {
+    installCheckpointAuthority();
+    vi.mocked(fetch).mockResolvedValue(nonJsonResponse(502));
+
+    const failure = await confirmCheckpointRestore(
+      'http://example.test',
+      'thread-1',
+      'turn-1',
+      { previewId: 'preview-1', currentTreeSha: 'a'.repeat(40) },
+      { apiBase: 'http://example.test', authorityKey: 'authority-1' },
+    ).catch((cause: unknown) => cause);
+
+    expect(failure).toMatchObject({
+      status: 502,
+    });
+    expect((failure as { reason?: unknown }).reason).toBeUndefined();
   });
 
   it('skills import dispatches one POST with the selected markdown files', async () => {

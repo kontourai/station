@@ -50,6 +50,7 @@ const refetch = vi.fn();
 const forceRefetch = vi.fn();
 const restartBundledServerMock = vi.fn(() => Promise.resolve(true));
 const toastMocks = vi.hoisted(() => ({ showToast: vi.fn() }));
+const primeNativeNotificationsMock = vi.hoisted(() => vi.fn());
 const pairingDeepLinkHookMock = vi.hoisted(() => ({
   options: undefined as
     | {
@@ -101,6 +102,30 @@ vi.mock('../components/UsageTelemetryDisclosure', () => ({
 // behavior from the toast implementation while retaining the hook contract.
 vi.mock('../contexts/ToastContext', () => ({
   useToast: () => ({ showToast: toastMocks.showToast }),
+}));
+
+// The gate reads config through the identity-scoped recovery hook (never
+// the shared bare-key query under the stable boundary). Mock at this seam
+// with the same mutable `configData` the SDK mock above serves, so the
+// firstRun-driven tests below keep their meaning; scoping itself is covered
+// against the real boundary in authorityRecoveryComposition.
+vi.mock('../hooks/useRecoveryConfig', () => ({
+  useRecoveryConfig: () => ({ data: configData }),
+  recoveryConfigKey: (...parts: unknown[]) => parts,
+}));
+
+vi.mock('../platform/native/notify', () => ({
+  primeNativeNotifications: (...args: unknown[]) =>
+    primeNativeNotificationsMock(...args),
+}));
+
+// The success paths under test call this beside the prime; the adapter seam
+// is covered elsewhere, so keep it a no-op here like every other native call.
+// Passthrough: DeviceSettingsContext in this tree imports its sibling
+// `setHapticsUserEnabled` from the same module.
+vi.mock('../platform/native/haptics', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../platform/native/haptics')>()),
+  triggerHaptic: vi.fn(),
 }));
 
 // The native adapter is covered at its own seam. This captures the shell's
@@ -187,12 +212,14 @@ vi.mock('@kontourai/station-connect', async (importOriginal) => {
       initialPairingPayload,
       pairingLinkError,
       onRestartInjectedConnection,
+      onPairingSucceeded,
     }: {
       isOpen: boolean;
       initialPanel?: string;
       initialPairingPayload?: string;
       pairingLinkError?: string;
       onRestartInjectedConnection?: () => void;
+      onPairingSucceeded?: () => void;
     }) =>
       isOpen ? (
         <div data-testid="connection-manager">
@@ -208,6 +235,15 @@ vi.mock('@kontourai/station-connect', async (importOriginal) => {
               onClick={() => onRestartInjectedConnection()}
             >
               restart
+            </button>
+          )}
+          {onPairingSucceeded && (
+            <button
+              type="button"
+              data-testid="cm-pairing-succeeded"
+              onClick={() => onPairingSucceeded()}
+            >
+              pairing succeeded
             </button>
           )}
         </div>
@@ -227,18 +263,26 @@ vi.mock('../contexts/NavigationContext', () => ({
 // actually decides: what the shell shows once a request reaches a terminal
 // outcome. `null` (the default) keeps every other test's reconciler inert.
 let pairingReconcilerOutcome: { title: string; message: string } | null = null;
+let pairingReconcilerSucceeded = false;
 vi.mock('../components/PendingPairingReconciler', async () => {
   const { useEffect } = await import('react');
   return {
     PendingPairingReconciler: ({
       enabled,
       onTerminalFailure,
+      onCompleted,
     }: {
       enabled: boolean;
       onTerminalFailure: (title: string, message: string) => void;
+      onCompleted: () => void;
     }) => {
       useEffect(() => {
-        if (!enabled || !pairingReconcilerOutcome) return;
+        if (!enabled) return;
+        if (pairingReconcilerSucceeded) {
+          onCompleted();
+          return;
+        }
+        if (!pairingReconcilerOutcome) return;
         onTerminalFailure(
           pairingReconcilerOutcome.title,
           pairingReconcilerOutcome.message,
@@ -408,6 +452,8 @@ describe('OnboardingGate', () => {
     attemptLocalSelfProvisionOnceMock.mockReset();
     attemptLocalSelfProvisionOnceMock.mockResolvedValue(false);
     pairingReconcilerOutcome = null;
+    pairingReconcilerSucceeded = false;
+    primeNativeNotificationsMock.mockReset();
     bootstrapRecoveryError = undefined;
     toastMocks.showToast.mockReset();
   });
@@ -1888,6 +1934,77 @@ describe('OnboardingGate', () => {
           screen.queryByText(/Tailnet Station declined this device/),
         ).toBeNull();
       });
+    });
+  });
+
+  describe('notification priming on first connection', () => {
+    // The boot-time prime skips fresh devices (see PlatformProfileContext),
+    // so the first usable connection has to prime instead — otherwise the
+    // permission dialog never appears before the first backgroundable watch,
+    // or it appears as a side effect of an incoming pairing approval, which
+    // `notifier.ts` forbids.
+    test('primes native notifications when pairing succeeds through the modal', async () => {
+      render(
+        <OnboardingGate>
+          <div>App</div>
+        </OnboardingGate>,
+      );
+      fireEvent(window, new Event(OPEN_CONNECTIONS_MODAL_EVENT));
+      fireEvent.click(await screen.findByTestId('cm-pairing-succeeded'));
+      await waitFor(() =>
+        expect(primeNativeNotificationsMock).toHaveBeenCalledOnce(),
+      );
+    });
+
+    test('primes native notifications when a pending exchange completes', async () => {
+      platformProfile = {
+        isTauri: false,
+        target: 'web',
+        isMobile: true,
+        isDesktop: false,
+        supervisesBundledServer: false,
+      };
+      activeConnectionUrl = 'http://localhost:3242';
+      activeConnectionId = 'saved-lan';
+      credentialState = 'required';
+      connections = [
+        {
+          id: 'saved-lan',
+          name: 'Tailnet Station',
+          url: 'http://localhost:3242',
+          endpoints: [{ id: 'endpoint-1', kind: 'lan-http' }],
+          selectedEndpointId: 'endpoint-1',
+          environmentId: null,
+          credentialState: 'required',
+        },
+      ];
+      currentStatus = null;
+      const now = Date.now();
+      globalThis.localStorage.setItem(
+        'station-pairing-pending-exchange:v1:http://localhost:3242:direct',
+        JSON.stringify({
+          endpoint: 'http://localhost:3242',
+          offerId: 'offer-1',
+          proof: 'proof-1',
+          requestId: 'request-1',
+          requestedAt: now - 60_000,
+          expiresAt: now + 240_000,
+          browserSession: false,
+          requestKind: 'direct',
+          targetConnectionId: 'saved-lan',
+          targetConnectionLabel: 'Tailnet Station',
+        }),
+      );
+      pairingReconcilerSucceeded = true;
+
+      render(
+        <OnboardingGate>
+          <div>App</div>
+        </OnboardingGate>,
+      );
+      await waitFor(() =>
+        expect(primeNativeNotificationsMock).toHaveBeenCalledOnce(),
+      );
     });
   });
 

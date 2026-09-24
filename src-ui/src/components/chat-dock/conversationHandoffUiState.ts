@@ -10,6 +10,8 @@ export function beginConversationHandoffUiState(
   const messages = state?.messages ?? [];
   return {
     status: 'sending',
+    // #2309: the handoff's first turn has not been opened by the server yet.
+    sendAwaitingTurnStart: true,
     pendingClientTurnId: input.clientTurnId,
     messages: messages.some(
       (candidate) => candidate.clientId === input.clientTurnId,
@@ -87,7 +89,11 @@ export function acceptConversationHandoffUiState(
     abortController: undefined,
     stopPending: undefined,
     pendingClientTurnId: undefined,
+    // The engine's reports belong to the predecessor. The recorded posture
+    // is the conversation's, and the server applies it to the successor; a
+    // queued pick still rides the next send (#2436).
     lastAppliedApprovalMode: undefined,
+    approvalEscalationRejected: undefined,
     isProcessingStep: false,
     error: null,
     orchestrationTurnOpen: false,
@@ -103,6 +109,7 @@ export function acceptConversationHandoffUiState(
     backgroundTasks: [],
     liveUsage: undefined,
     status: 'sending',
+    sendAwaitingTurnStart: true,
     orchestrationSessionStarted: true,
     orchestrationHistoryRevision:
       (state?.orchestrationHistoryRevision ?? 0) + 1,

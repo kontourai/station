@@ -1,9 +1,10 @@
 import { createSocket, type Socket } from 'node:dgram';
 import { once } from 'node:events';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
+import { browserFinalizeAndActivateFreshRelayEnrollment } from '../lib/browser-application-account.mjs';
 import { startPionFixture } from '../lib/browser-transport-pion.js';
 import {
   runLabCommand,
@@ -14,6 +15,14 @@ const roots: string[] = [];
 afterEach(() => {
   for (const root of roots.splice(0))
     rmSync(root, { recursive: true, force: true });
+});
+
+it('resolves the fresh relay continuation client from the application-session SDK surface', () => {
+  const implementation =
+    browserFinalizeAndActivateFreshRelayEnrollment.toString();
+  expect(implementation).toContain('window.stationApplicationChannel');
+  expect(implementation).toContain('new sessionApi.ApplicationSessionClient');
+  expect(implementation).not.toContain('new api.ApplicationSessionClient');
 });
 function temporaryRoot() {
   const root = mkdtempSync(join(tmpdir(), 'station-browser-fixture-test-'));
@@ -124,7 +133,18 @@ it('refuses a missing Pion binary and an exited child before reporting a ready p
   );
   // Node cannot execute a directory containing only config.json as a module;
   // this deliberately exercises a real failed process, not a timer-only mock.
+  // The adapter reads cert/key content (not paths), so the exited-child case
+  // needs real temp files to reach the spawn stage at all.
+  const certificate = join(root, 'fixture-cert.pem');
+  const key = join(root, 'fixture-key.pem');
+  writeFileSync(certificate, 'fixture certificate');
+  writeFileSync(key, 'fixture key');
   await expect(
-    startPionFixture({ ...input, executable: process.execPath }),
-  ).rejects.toThrow('Pion fixture startup failed');
+    startPionFixture({
+      ...input,
+      executable: process.execPath,
+      certificate,
+      key,
+    }),
+  ).rejects.toThrow('pion_process_exited');
 }, 30000);

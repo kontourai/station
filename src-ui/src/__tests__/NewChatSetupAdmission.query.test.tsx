@@ -24,6 +24,12 @@ import { NavigationProvider } from '../contexts/NavigationContext';
 import { navigationStore } from '../contexts/navigation-store';
 import type { ProjectMetadata } from '../contexts/ProjectsContext';
 
+// Keep the real SDK observers and bind their Project reads to this fixture's authority.
+vi.mock('../contexts/ApiBaseContext', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../contexts/ApiBaseContext')>()),
+  useHostRequestAuthorityScope: () => authority,
+}));
+
 vi.mock('../contexts/ConfigContext', () => ({ useConfig: () => undefined }));
 vi.mock('../hooks/useIsMobile', () => ({ useIsMobile: () => false }));
 vi.mock('../hooks/useDevicePresentation', () => ({
@@ -73,7 +79,10 @@ function BannerControls() {
 }
 beforeEach(() => {
   _setApiBase('https://station.test');
-  setClientCredentialResolver(undefined);
+  setClientCredentialResolver(() => ({
+    origin: authority.apiBase,
+    requestAuthority: authority,
+  }));
   window.matchMedia = vi.fn().mockReturnValue({ matches: false });
   Element.prototype.scrollIntoView = vi.fn();
   navigationStore.navigate('/');
@@ -90,6 +99,7 @@ afterEach(() => {
 
 test('real SDK observers cannot admit stale ready rows when notifications lag failed refetch', async () => {
   let stage: 'initial' | 'offline' | 'changed' = 'initial';
+  const unexpectedPaths: string[] = [];
   const fresh = {
     ...OLD_READY,
     available: false,
@@ -116,12 +126,23 @@ test('real SDK observers cannot admit stale ready rows when notifications lag fa
           }),
           { status: 503, headers: { 'Content-Type': 'application/json' } },
         );
-      let data: unknown = [];
+      let data: unknown;
       if (path === '/api/agents')
         data = stage === 'changed' ? [NEEDS, fresh] : [NEEDS, OLD_READY];
-      if (path === '/api/projects') data = [PROJECT];
-      if (path === '/api/projects/alpha')
+      else if (path === '/api/projects') data = [PROJECT];
+      else if (path === '/api/projects/alpha')
         data = { ...PROJECT, agents: ['needs-setup', 'other'] };
+      else if (
+        path === '/api/connections/agents' ||
+        path === '/api/connections/models' ||
+        path === '/acp/connections'
+      )
+        // This setup journey starts with no configured connections.
+        data = [];
+      else {
+        unexpectedPaths.push(path);
+        throw new Error(`Unexpected admission fixture request: ${path}`);
+      }
       return new Response(JSON.stringify({ success: true, data }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
@@ -179,6 +200,7 @@ test('real SDK observers cannot admit stale ready rows when notifications lag fa
   await act(async () => {
     await vi.advanceTimersByTimeAsync(0);
   });
+  expect(unexpectedPaths).toEqual([]);
   expect(
     document.querySelector<HTMLButtonElement>('[data-agent-slug="other"]')
       ?.disabled,
@@ -188,5 +210,6 @@ test('real SDK observers cannot admit stale ready rows when notifications lag fa
   await act(async () => {
     queued.splice(0).forEach((callback) => callback());
   });
+  expect(unexpectedPaths).toEqual([]);
   client.clear();
 });

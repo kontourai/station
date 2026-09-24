@@ -12,8 +12,10 @@ import {
   isStationProfileStore,
   type StationProfile,
   type StationProfileCredentialRef,
+  type StationProfileRelayRoute,
   type StationProfileStore,
 } from '@kontourai/station-contracts';
+import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { invokeTauri } from './tauriInvoke';
 
 const CONNECTIONS_KEY = 'station-connect-connections';
@@ -110,6 +112,92 @@ export interface NativeProfileRequestBinding {
   exactOrigin: string;
 }
 
+export interface SaveRelayRouteProfileInput {
+  connectionId?: string;
+  expectedUpdatedAt?: number;
+  name: string;
+  endpoint: string;
+  relayRoute: StationProfileRelayRoute;
+}
+
+function existingRelayRouteProfile(
+  profiles: readonly StationProfile[],
+  input: SaveRelayRouteProfileInput,
+): StationProfile | undefined {
+  if (!input.connectionId) return undefined;
+  const profile = profiles.find(
+    (candidate) =>
+      profileConnectionId(candidate) === input.connectionId &&
+      candidate.relayRoute !== undefined,
+  );
+  if (!profile || profile.updatedAt !== input.expectedUpdatedAt)
+    throw new Error('This saved relay route changed; reopen it and retry.');
+  return profile;
+}
+
+function hasUniqueProfileName(
+  profiles: readonly StationProfile[],
+  name: string,
+  existing?: StationProfile,
+): boolean {
+  return !profiles.some(
+    (candidate) =>
+      candidate !== existing &&
+      candidate.name.toLowerCase() === name.toLowerCase(),
+  );
+}
+
+function normalizeRelayRouteProfileInput(
+  input: SaveRelayRouteProfileInput,
+  profiles: readonly StationProfile[],
+  existing?: StationProfile,
+): Omit<StationProfile, 'schemaVersion' | 'createdAt' | 'updatedAt'> {
+  if (
+    Object.keys(input.relayRoute).sort().join(',') !==
+    'brokerOrigin,enrollmentId,stationId'
+  )
+    throw new Error(
+      'Relay profiles accept only broker origin and Station enrollment identifiers.',
+    );
+  const endpoint = normalizedPairingEndpoint(input.endpoint.trim());
+  const name = input.name.trim() || new URL(endpoint).hostname;
+  const brokerOrigin = normalizedPairingEndpoint(
+    input.relayRoute.brokerOrigin.trim(),
+  );
+  if (!hasUniqueProfileName(profiles, name, existing))
+    throw new Error('Choose a unique Station name.');
+  // Native route-grant custody binds to this stable, secret-free local owner.
+  // An older saved route gains one on its next deliberate edit. Never fall
+  // back to Math.random for a keyring account namespace.
+  if (!existing?.clientInstanceId && !globalThis.crypto?.getRandomValues)
+    throw new Error('Secure local identity is unavailable for this route.');
+  return {
+    name,
+    endpoint,
+    clientInstanceId: existing?.clientInstanceId ?? randomCorrelationId(),
+    relayRoute: {
+      brokerOrigin,
+      stationId: input.relayRoute.stationId,
+      enrollmentId: input.relayRoute.enrollmentId,
+    },
+    setupSource: 'manual',
+    configurationState: 'unconfigured',
+  };
+}
+
+function relayRouteProfile(
+  normalized: Omit<StationProfile, 'schemaVersion' | 'createdAt' | 'updatedAt'>,
+  existing?: StationProfile,
+): StationProfile {
+  const now = Date.now();
+  return {
+    schemaVersion: 1,
+    ...normalized,
+    createdAt: existing?.createdAt ?? now,
+    updatedAt: existing ? Math.max(now, existing.updatedAt + 1) : now,
+  };
+}
+
 function parseNativeProfileAuthorizationReceipt(
   value: unknown,
   exactOrigin: string,
@@ -166,6 +254,13 @@ export interface NativeStationProfileRepository {
   updateProfile(
     input: import('@kontourai/station-connect').SavedStationEdit,
   ): Promise<void>;
+  getRelayRouteProfiles(): readonly StationProfile[];
+  subscribeRelayRouteProfiles(listener: () => void): () => void;
+  saveRelayRouteProfile(input: SaveRelayRouteProfileInput): Promise<string>;
+  removeRelayRouteProfile(
+    connectionId: string,
+    expectedUpdatedAt: number,
+  ): Promise<void>;
   /**
    * Makes a saved Station the native credential projection for this UI
    * client only. `explicit` records deliberate per-client intent without
@@ -183,6 +278,13 @@ export interface NativeStationProfileRepository {
   selectProfileForProcess(profileName: string): string | undefined;
   /** Re-authorizes the CLI-owned default after each native process start. */
   authorizeDefaultProfile(): Promise<boolean>;
+  /**
+   * Whether the hydrated store holds any saved Station. Lets boot paths
+   * that only make sense with a Station to watch (notification priming)
+   * stay silent on a fresh device instead of prompting for a permission
+   * nothing can yet use.
+   */
+  hasSavedProfiles(): boolean;
   /** Returns a receipt only for the already-authorized exact connection/base. */
   captureNativeRequestBinding(
     connectionId: string,
@@ -234,6 +336,10 @@ function profileConnectionId(profile: StationProfile): string {
 export function savedConnectionFromStationProfile(
   profile: StationProfile,
 ): SavedConnection {
+  if (profile.relayRoute)
+    throw new Error(
+      'Relay route profiles require the broker transport and cannot use direct HTTP.',
+    );
   const endpoint = createAccessEndpoint(profile.endpoint);
   const accessMethod = createDirectHttpAccessMethod(endpoint);
   const credentialRefId =
@@ -277,6 +383,8 @@ export class NativeStationProfileStorage
 {
   private values = new Map<string, string>();
   private profileStore: StationProfileStore = emptyStationProfileStore();
+  private relayRouteProfileSnapshot: readonly StationProfile[] = [];
+  private relayRouteProfileListeners = new Set<() => void>();
   /**
    * The shared default initially projects into `ACTIVE_KEY` for the legacy
    * connection-store view, but it is not an explicit choice made by this
@@ -346,16 +454,29 @@ export class NativeStationProfileStorage
     if (!preservesBinding) this.activeRequestBinding = undefined;
     this.profileStore = store;
     this.hydrateClientSelectionProvenance();
-    const connections = store.profiles.map(savedConnectionFromStationProfile);
+    const directProfiles = store.profiles.filter(
+      (profile) => profile.relayRoute === undefined,
+    );
+    const connections = directProfiles.map(savedConnectionFromStationProfile);
     this.values.set(CONNECTIONS_KEY, JSON.stringify(connections));
+    this.relayRouteProfileSnapshot = Object.freeze(
+      store.profiles
+        .filter((profile) => profile.relayRoute !== undefined)
+        .map((profile) =>
+          Object.freeze({
+            ...profile,
+            relayRoute: Object.freeze({ ...profile.relayRoute! }),
+          }),
+        ),
+    );
     const selectedConnectionId = this.values.get(ACTIVE_KEY);
     const selectedStillExists = selectedConnectionId
-      ? store.profiles.some(
+      ? directProfiles.some(
           (profile) => profileConnectionId(profile) === selectedConnectionId,
         )
       : false;
     const explicitStillExists = this.explicitProcessSelection
-      ? store.profiles.some(
+      ? directProfiles.some(
           (profile) =>
             profileConnectionId(profile) === this.explicitProcessSelection,
         )
@@ -367,6 +488,7 @@ export class NativeStationProfileStorage
     const defaultProfile = store.defaultProfile
       ? store.profiles.find(
           (profile) =>
+            profile.relayRoute === undefined &&
             profile.name.toLowerCase() === store.defaultProfile!.toLowerCase(),
         )
       : undefined;
@@ -379,6 +501,7 @@ export class NativeStationProfileStorage
     } else {
       this.values.delete(ACTIVE_KEY);
     }
+    for (const listener of this.relayRouteProfileListeners) listener();
   }
 
   /**
@@ -409,6 +532,7 @@ export class NativeStationProfileStorage
       const profile = persisted
         ? this.profileStore.profiles.find(
             (candidate) =>
+              candidate.relayRoute === undefined &&
               profileConnectionId(candidate) === persisted.connectionId,
           )
         : undefined;
@@ -422,6 +546,7 @@ export class NativeStationProfileStorage
       const inheritedDefault = Boolean(
         legacyProfile &&
           this.profileStore.defaultProfile &&
+          legacyProfile.relayRoute === undefined &&
           legacyProfile.name.toLowerCase() ===
             this.profileStore.defaultProfile.toLowerCase(),
       );
@@ -477,7 +602,9 @@ export class NativeStationProfileStorage
     };
     if (legacy.environmentId) {
       const matches = this.profileStore.profiles.filter(
-        (profile) => profile.environmentId === legacy.environmentId,
+        (profile) =>
+          profile.relayRoute === undefined &&
+          profile.environmentId === legacy.environmentId,
       );
       return matches.length === 1 ? matches[0] : undefined;
     }
@@ -488,6 +615,7 @@ export class NativeStationProfileStorage
       return undefined;
     }
     const matches = this.profileStore.profiles.filter((profile) => {
+      if (profile.relayRoute) return false;
       try {
         return (
           normalizedPairingEndpoint(
@@ -576,7 +704,7 @@ export class NativeStationProfileStorage
     const profile = this.profileStore.profiles.find(
       (candidate) => candidate.name.toLowerCase() === profileName.toLowerCase(),
     );
-    if (!profile) return undefined;
+    if (!profile || profile.relayRoute) return undefined;
     if (this.explicitProcessSelection) {
       const explicit = this.profileStore.profiles.find(
         (candidate) =>
@@ -625,7 +753,7 @@ export class NativeStationProfileStorage
       const profile = current.profiles.find(
         (candidate) => profileConnectionId(candidate) === input.connectionId,
       );
-      if (!profile || profile.localService)
+      if (!profile || profile.localService || profile.relayRoute)
         throw new Error('This Station cannot be edited here.');
       if (
         profile.name !== input.expected.name ||
@@ -717,15 +845,92 @@ export class NativeStationProfileStorage
     }
   }
 
+  getRelayRouteProfiles(): readonly StationProfile[] {
+    return this.relayRouteProfileSnapshot;
+  }
+
+  subscribeRelayRouteProfiles(listener: () => void): () => void {
+    this.relayRouteProfileListeners.add(listener);
+    return () => this.relayRouteProfileListeners.delete(listener);
+  }
+
+  /** Saves routing intent only; this never adds a direct HTTP connection. */
+  async saveRelayRouteProfile(
+    input: SaveRelayRouteProfileInput,
+  ): Promise<string> {
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const current = await this.readProfileStore();
+      const existing = existingRelayRouteProfile(current.profiles, input);
+      const normalized = normalizeRelayRouteProfileInput(
+        input,
+        current.profiles,
+        existing,
+      );
+      const profile = relayRouteProfile(normalized, existing);
+
+      const profiles = existing
+        ? current.profiles.map((candidate) =>
+            candidate === existing ? profile : candidate,
+          )
+        : [...current.profiles, profile];
+      const next: StationProfileStore = {
+        ...current,
+        revision: current.revision + 1,
+        profiles,
+      };
+      if (!isStationProfileStore(next))
+        throw new Error('The Station relay route is invalid.');
+      try {
+        await this.writeProfileStore(next, current.revision);
+        this.replaceProfileStore(next);
+        return profileConnectionId(profile);
+      } catch (error) {
+        if (!this.isRevisionConflict(error) || attempt === 2) throw error;
+      }
+    }
+    throw new Error('saved Station routes changed concurrently; retry.');
+  }
+
+  async removeRelayRouteProfile(
+    connectionId: string,
+    expectedUpdatedAt: number,
+  ): Promise<void> {
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const current = await this.readProfileStore();
+      const profile = current.profiles.find(
+        (candidate) =>
+          profileConnectionId(candidate) === connectionId &&
+          candidate.relayRoute !== undefined,
+      );
+      if (!profile || profile.updatedAt !== expectedUpdatedAt)
+        throw new Error('This saved relay route changed; reopen it and retry.');
+      const next: StationProfileStore = {
+        ...current,
+        revision: current.revision + 1,
+        profiles: current.profiles.filter((candidate) => candidate !== profile),
+      };
+      if (!isStationProfileStore(next))
+        throw new Error('The saved Station routes are invalid.');
+      try {
+        await this.writeProfileStore(next, current.revision);
+        this.replaceProfileStore(next);
+        return;
+      } catch (error) {
+        if (!this.isRevisionConflict(error) || attempt === 2) throw error;
+      }
+    }
+    throw new Error('saved Station routes changed concurrently; retry.');
+  }
+
   async makeDefault(connectionId: string): Promise<StationProfile> {
     for (let attempt = 0; attempt < 3; attempt += 1) {
       const current = await this.readProfileStore();
       const profile = current.profiles.find(
         (candidate) => profileConnectionId(candidate) === connectionId,
       );
-      if (!profile) {
+      if (!profile || profile.relayRoute) {
         throw new Error(
-          'Only a shared saved Station can become the CLI default.',
+          'Only a direct shared saved Station can become the CLI default.',
         );
       }
       const next: StationProfileStore = {
@@ -756,7 +961,7 @@ export class NativeStationProfileStorage
     const profile = this.profileStore.profiles.find(
       (candidate) => profileConnectionId(candidate) === connectionId,
     );
-    if (!profile) return false;
+    if (!profile || profile.relayRoute) return false;
 
     const previousActive = this.values.get(ACTIVE_KEY);
     // ConnectionStore republishes ACTIVE_KEY during ordinary metadata writes,
@@ -808,11 +1013,18 @@ export class NativeStationProfileStorage
     if (!defaultProfile) return false;
     const profile = this.profileStore.profiles.find(
       (candidate) =>
+        candidate.relayRoute === undefined &&
         candidate.name.toLowerCase() === defaultProfile.toLowerCase(),
     );
     return profile
       ? this.authorizeActiveConnection(profileConnectionId(profile))
       : false;
+  }
+
+  hasSavedProfiles(): boolean {
+    return this.profileStore.profiles.some(
+      (profile) => profile.relayRoute === undefined,
+    );
   }
 
   captureNativeRequestBinding(
@@ -898,13 +1110,16 @@ export class NativeStationProfileStorage
       const current = await this.readProfileStore();
       const matchingProfiles = current.profiles.filter(
         (profile) =>
-          profileConnectionId(profile) === pairing.connectionId ||
-          profile.environmentId === pairing.handshake.environmentId ||
-          profile.endpoint === endpoint,
+          profile.relayRoute === undefined &&
+          (profileConnectionId(profile) === pairing.connectionId ||
+            profile.environmentId === pairing.handshake.environmentId ||
+            profile.endpoint === endpoint),
       );
       const previous =
         current.profiles.find(
-          (profile) => profileConnectionId(profile) === pairing.connectionId,
+          (profile) =>
+            profile.relayRoute === undefined &&
+            profileConnectionId(profile) === pairing.connectionId,
         ) ?? (matchingProfiles.length === 1 ? matchingProfiles[0] : undefined);
       const profileIndex = previous ? current.profiles.indexOf(previous) : -1;
       const now = Date.now();

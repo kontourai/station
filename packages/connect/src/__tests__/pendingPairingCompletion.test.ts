@@ -167,6 +167,22 @@ describe('completePendingPairing interface', () => {
     expect(clearPending).toHaveBeenCalledWith(endpoint, 'direct');
   });
 
+  test('refuses an incomplete restored account-bound request before exchange', async () => {
+    const exchange = vi.fn().mockResolvedValue(pairedResult());
+    const { clearPending, complete } = harness(exchange);
+    await expect(
+      complete(
+        pending({
+          requireAccountBinding: true,
+          clientInstanceId: '22222222-2222-4222-8222-222222222222',
+        }),
+        completionOptions(),
+      ),
+    ).resolves.toEqual({ status: 'failed' });
+    expect(exchange).not.toHaveBeenCalled();
+    expect(clearPending).toHaveBeenCalledWith(endpoint, 'direct');
+  });
+
   test('runs one completion owner for concurrent subscribers and clears only after it settles', async () => {
     const durableCompletion = deferred<{ status: 'completed' }>();
     const completePaired = vi.fn(() => durableCompletion.promise);
@@ -304,6 +320,13 @@ describe('completePendingPairing interface', () => {
     [{ status: 403, code: 'request_denied' }, 'declined'],
     [{ status: 410 }, 'expired'],
     [{ code: 'offer_expired' }, 'expired'],
+    [
+      // #2228 slice 4: the offer was consumed, cancelled, or pruned (offers
+      // are in-memory, so a Station restart lands here too). Definitive —
+      // the old behavior retried it as "waiting for approval" forever.
+      { status: 409, code: 'offer_unavailable' },
+      'unavailable',
+    ],
     [new Error('malformed response'), 'failed'],
   ] as const)(
     'settles terminal exchange failure %# as %s and clears it',
@@ -318,6 +341,26 @@ describe('completePendingPairing interface', () => {
       expect(clearPending).toHaveBeenCalledOnce();
     },
   );
+
+  test('keeps retrying a coded request_not_confirmed 409 as waiting for approval (#2228 slice 4)', async () => {
+    // The distinction the slice turns on: offer_unavailable settles, while a
+    // request that exists and is merely unapproved keeps polling.
+    const exchange = vi
+      .fn()
+      .mockRejectedValueOnce({ status: 409, code: 'request_not_confirmed' })
+      .mockResolvedValueOnce(pairedResult());
+    const progress = vi.fn();
+    const { complete, waits } = harness(exchange);
+
+    await expect(
+      complete(pending(), completionOptions({ onProgress: progress })),
+    ).resolves.toMatchObject({ status: 'paired' });
+    expect(waits).toEqual([500, 1_250]);
+    expect(progress.mock.calls.map(([value]) => value.status)).toEqual([
+      'waiting-for-approval',
+    ]);
+    expect(exchange).toHaveBeenCalledTimes(2);
+  });
 
   test('expires before exchanging and clears the unusable request', async () => {
     const exchange = vi.fn();

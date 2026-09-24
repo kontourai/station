@@ -17,6 +17,11 @@ import { execFileSync, spawn } from 'node:child_process';
 import { rmSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import {
+  ACCOUNT_DISABLED_HEADING,
+  ACCOUNT_DISABLED_REASON,
+  parseE2EDisabledLines,
+} from './lib/account-requirement.mjs';
 import { projectLatestE2EEvidence } from './lib/e2e-latest-evidence.mjs';
 import {
   executeOwnedProcess,
@@ -207,6 +212,7 @@ function runnerFailure(
     seconds: Math.round((Date.now() - started) / 1000),
     counts: {},
     specs: [],
+    disabled: [],
     output: '',
     interrupted,
     failureKind,
@@ -416,6 +422,7 @@ export function startBucket(
       seconds: Math.round((Date.now() - started) / 1000),
       counts,
       specs: failingSpecs(captured.output),
+      disabled: parseE2EDisabledLines(captured.output),
       output: captured.output,
       interrupted: cleanupCause === 'interrupted',
       failureKind,
@@ -783,6 +790,18 @@ export async function main() {
     }
     for (const spec of r.specs) console.log(`          ${spec}`);
   }
+  const disabled = results.flatMap((r) =>
+    (r.disabled ?? []).map((entry) => ({ bucket: r.name, ...entry })),
+  );
+  if (disabled.length > 0) {
+    console.log(
+      `\n  ${ACCOUNT_DISABLED_HEADING} — not run, not counted as passing (${ACCOUNT_DISABLED_REASON}):`,
+    );
+    for (const entry of disabled)
+      console.log(
+        `  DISABLED ${entry.bucket.padEnd(11)} ${entry.path} (requires ${entry.requires})`,
+      );
+  }
 
   const failed = results.filter((r) => r.verdict === 'FAIL');
   const empty = results.filter((r) => r.verdict === 'EMPTY');
@@ -801,7 +820,7 @@ export async function main() {
   }
   const total = results.reduce((n, r) => n + executedCount(r.counts), 0);
   console.log(
-    `\nOK: all ${results.length} bucket(s) passed — ${total} test(s) executed.`,
+    `\nOK: all ${results.length} bucket(s) passed — ${total} test(s) executed${disabled.length > 0 ? `; ${disabled.length} spec(s) disabled (requires account), not counted` : ''}.`,
   );
 }
 

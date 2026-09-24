@@ -403,6 +403,44 @@ describe('SessionTurnBoundaryAuthority', () => {
     }
   });
 
+  test('a rejected provider start retains possible effect and refuses replay after restart', async () => {
+    const path = databasePath();
+    const first = new EventStore(path);
+    try {
+      await expect(
+        runSessionStartWithBoundary(
+          first.sessionTurnBoundaryAuthority(),
+          'possibly-started',
+          async () => {
+            throw new Error('connection lost after provider accepted');
+          },
+        ),
+      ).rejects.toMatchObject({ code: SESSION_START_INDETERMINATE_CODE });
+      expect(
+        first
+          .sessionTurnBoundaryAuthority()
+          .hasPossibleEffect('possibly-started'),
+      ).toEqual({ kind: 'available', active: true });
+    } finally {
+      expect(first.close()).toEqual({ kind: 'closed' });
+    }
+    const restarted = new EventStore(path);
+    try {
+      expect(
+        restarted
+          .sessionTurnBoundaryAuthority()
+          .hasPossibleEffect('possibly-started'),
+      ).toEqual({ kind: 'available', active: true });
+      expect(
+        restarted
+          .sessionTurnBoundaryAuthority()
+          .claimSessionStart('possibly-started', '2026-09-05T00:05:00.000Z'),
+      ).toEqual({ kind: 'busy' });
+    } finally {
+      expect(restarted.close()).toEqual({ kind: 'closed' });
+    }
+  });
+
   test('reconciles a dead invoking owner to indeterminate and never replays it after restart', () => {
     const path = databasePath();
     const first = new EventStore(path);
@@ -474,6 +512,47 @@ describe('SessionTurnBoundaryAuthority', () => {
       .observe(terminal('thread-shared', 'provider-turn-1'));
     expect(
       second.sessionTurnBoundaryAuthority().hasPossibleEffect('thread-shared'),
+    ).toEqual({ kind: 'available', active: false });
+    first.close();
+    second.close();
+  });
+
+  test('station#2235: a recovery-synthesized abort does not retire the row; the engine abort still does', () => {
+    // The recovery publishes its terminal fact mid-flow, before the banner
+    // and the explicit close land. Retiring here would delete the record
+    // the next boot needs to finish that sequence after a mid-flow crash —
+    // so the marker opts this one event out, matched on the field, never
+    // on the reason prose.
+    const path = databasePath();
+    const first = new EventStore(path);
+    const second = new EventStore(path);
+    const claimed = first
+      .sessionTurnBoundaryAuthority()
+      .claim('thread-recovery', '2026-08-16T00:00:00.000Z');
+    expect(claimed.kind).toBe('owner');
+    if (claimed.kind !== 'owner') throw new Error('expected boundary owner');
+    claimed.claim.beginInvocation('2026-08-16T00:00:01.000Z');
+    claimed.claim.accepted('provider-turn-9', '2026-08-16T00:00:02.000Z');
+
+    second.sessionTurnBoundaryAuthority().observe({
+      ...terminal('thread-recovery', 'provider-turn-9'),
+      method: 'turn.aborted',
+      recoveryTerminal: true,
+    } as CanonicalRuntimeEvent);
+    expect(
+      second
+        .sessionTurnBoundaryAuthority()
+        .hasPossibleEffect('thread-recovery'),
+    ).toEqual({ kind: 'available', active: true });
+
+    second.sessionTurnBoundaryAuthority().observe({
+      ...terminal('thread-recovery', 'provider-turn-9'),
+      method: 'turn.aborted',
+    } as CanonicalRuntimeEvent);
+    expect(
+      second
+        .sessionTurnBoundaryAuthority()
+        .hasPossibleEffect('thread-recovery'),
     ).toEqual({ kind: 'available', active: false });
     first.close();
     second.close();
@@ -717,6 +796,7 @@ describe('SessionTurnBoundaryAuthority', () => {
       removeTerminal: () => ({ kind: 'applied' }),
       hasPossibleEffect: () => Boolean(record),
       active: () => (record ? [{ ...record }] : []),
+      recordAccepted: () => ({ kind: 'unavailable' }),
     };
     const authority = createSessionTurnBoundaryAuthority({
       coordinator,
@@ -756,6 +836,7 @@ describe('SessionTurnBoundaryAuthority', () => {
         transition: () => ({ kind: 'unavailable' }),
         remove: () => ({ kind: 'unavailable' }),
         removeTerminal: () => ({ kind: 'unavailable' }),
+        recordAccepted: () => ({ kind: 'unavailable' }),
         hasPossibleEffect: () => {
           throw new Error('sqlite unavailable');
         },

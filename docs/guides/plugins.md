@@ -15,13 +15,17 @@ available for project use without changing the plugin itself; see
 
 ## Directory Structure
 
+A new plugin (what `station plugin create` and **Plugins → New plugin**
+scaffold, from `packages/shared/src/plugin-scaffold.ts`):
+
 ```
 my-plugin/
-├── plugin.json              # Manifest (required)
+├── plugin.json              # Agent Plugins 1.0 manifest (required)
 ├── package.json             # Node package
-├── layout.json              # Layout config (tabs, prompts)
+├── build.ts                 # Calls buildPlugin() from @kontourai/station-shared
 ├── src/
-│   └── index.tsx            # UI entry point — exports `components` map
+│   ├── index.tsx            # UI entry point — exports a `components` map
+│   └── pane.css             # Imported by index.tsx; bundled to dist/bundle.css
 ├── agents/                  # Agent configs (optional)
 │   └── assistant/
 │       └── agent.json
@@ -32,8 +36,53 @@ my-plugin/
     └── my-auth.js
 ```
 
+A legacy layout plugin also carries a `layout.json` (see
+[layout.json](#layoutjson)); new plugins declare Workspace Panes instead.
+
 ## plugin.json — Manifest
 
+New plugins use an [Agent Plugins 1.0](https://agent-plugins.org) manifest.
+The portable fields sit at the root; everything Station reads sits under
+`extensions["io.kontourai.station"]`, and the UI is declared as
+`workspacePanes`. This is the shape the scaffolds emit:
+
+```json
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "my-plugin",
+  "version": "0.1.0",
+  "description": "What this plugin does",
+  "extensions": {
+    "io.kontourai.station": {
+      "schemaVersion": "1.0",
+      "title": "My Plugin",
+      "sdkVersion": "^0.7.0",
+      "entrypoint": "./src/index.tsx",
+      "capabilities": ["chat", "navigation"],
+      "permissions": ["navigation.dock"],
+      "workspacePanes": [
+        {
+          "version": "1.0",
+          "id": "pane:plugin%3Amy-plugin:main:workspace",
+          "name": "My Plugin",
+          "rendererId": "renderer:plugin%3Amy-plugin:plugin-component:workspace",
+          "renderer": { "kind": "plugin-component", "name": "my-plugin-workspace" },
+          "placement": { "supportedRegions": ["primary"], "preferredRegion": "primary" },
+          "modes": [{ "id": "default", "contextRequirement": { "project": true } }],
+          "provenance": { "origin": "plugin", "pluginId": "my-plugin" },
+          "lifecycle": { "stage": "stable" }
+        }
+      ]
+    }
+  }
+}
+```
+
+An Agent Plugins manifest refuses the legacy `layout` and `layouts` fields.
+
+### Legacy root manifest
+
+Station still loads a manifest without `$schema`, with its fields at the root.
 All fields:
 
 ```json
@@ -277,6 +326,9 @@ installation requires a new review, never reuse of an earlier decision.
 
 ## layout.json
 
+Legacy layout plugins only. A plugin that declares `workspacePanes` has no
+`layout.json`, and an Agent Plugins manifest refuses the `layout` field.
+
 ```json
 {
   "name": "My Layout",
@@ -437,7 +489,11 @@ export const components = {
 export default Main;
 ```
 
-- Export a `components` map — keys match layout.json tab `component` fields
+- Export a `components` map. Its keys match each Workspace Pane's
+  `renderer.name` (or, in a legacy layout plugin, the layout.json tab
+  `component` fields). Every plugin's components share one host registry, so
+  prefix the keys with the plugin name (`my-plugin-workspace`); two plugins
+  exporting the same key would replace each other.
 - Components receive `LayoutComponentProps`: `{ layout, activeTab, onShowChat, onLaunchPrompt }`
 - Use any hook from `@kontourai/station-sdk`
 - `@tanstack/react-query` hooks share the host's QueryClient
@@ -448,26 +504,43 @@ Import everything from `@kontourai/station-sdk`. Key hooks:
 
 ### Agents & Chat
 
+- `useAgents()` lists every available Agent; `useAgent(slug)` reads one.
+- `useSendToChat(agent)` sends a message to chat as a specific Agent and opens
+  the dock. Name your own plugin's Agent as `'<plugin>:<agent>'`; the hook
+  derives the Agent's identity from it and sends only when the named plugin
+  contributed that Agent.
+- `useSendMessage()` sends to the active conversation; `useCreateChatSession()`
+  and `useOpenConversation()` start or reopen one in the chat dock.
+- `useConversations()`, `useConversation(id)` and
+  `useConversationMessages(id)` read conversations.
+
+<!-- compile-checked: examples/docs-snippets/src/plugins-agents-and-chat.tsx -->
 ```tsx
-import {
-  useAgents,           // list of all available agents
-  useAgent,            // single agent by slug
-  useSendToChat,       // send a message to chat as a specific agent
-  useSendMessage,      // send a message to the active conversation
-  useConversations,    // list conversations
-  useConversation,     // single conversation
-  useConversationMessages, // messages in a conversation
-  useCreateChatSession,    // create a new chat session
-  useOpenConversation,     // open a conversation in the chat dock
-} from '@kontourai/station-sdk';
+import { useAgentInvokeMutation, useSendToChat } from '@kontourai/station-sdk';
 
-// Send a message to a specific agent
-const sendToChat = useSendToChat('my-plugin:assistant');
-sendToChat('Summarize this document');
+export function SummarizeActions() {
+  // Send a message to an Agent your plugin contributes. The qualified form
+  // names the plugin too, and sends only when the named plugin contributed
+  // that Agent.
+  const sendToChat = useSendToChat('my-plugin:assistant');
 
-// Invoke an agent programmatically (no UI)
-const { mutate: invoke } = useInvokeAgent();
-invoke({ slug: 'my-plugin:assistant', message: 'Hello' });
+  // Invoke an Agent programmatically (no chat UI), by its Agent id.
+  const invoke = useAgentInvokeMutation('assistant');
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => sendToChat('Summarize this document')}
+      >
+        Summarize in chat
+      </button>
+      <button type="button" onClick={() => invoke.mutate('Hello')}>
+        Invoke without chat
+      </button>
+    </>
+  );
+}
 ```
 
 ### Auth & User
@@ -1326,7 +1399,7 @@ Plugins can inject external links into the host UI:
 | `examples/custom-branding/` | Branding provider only |
 | `examples/elevenlabs-voice/` | STT/TTS voice provider |
 | `examples/nova-sonic-voice/` | Nova Sonic voice provider |
-| `examples/meeting-transcription/` | Context provider for meeting transcription |
+| `examples/meeting-transcription/` | Meeting transcription over a registered STT provider |
 | `examples/builder-delivery-viewer/` | Read-only Builder Kit lifecycle artifacts, Surface report, and exact Flow-run join |
 
 The Builder Delivery Viewer composes only published contracts: Flow Agents'

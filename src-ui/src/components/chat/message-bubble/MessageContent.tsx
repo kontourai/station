@@ -1,11 +1,16 @@
 import { memo, useMemo } from 'react';
 import type { ChatMessage } from '../../../types';
-import { translateProjectedRuntimeError } from '../../../utils/chatErrorTranslation';
+import {
+  projectedRuntimeErrorRaw,
+  translateChatError,
+  translateProjectedRuntimeError,
+} from '../../../utils/chatErrorTranslation';
 import { FilePartPreview } from '../FilePartPreview';
 import { LazyMarkdown } from '../LazyMarkdown';
 import { ReasoningSection } from '../ReasoningSection';
+import { ChatErrorDetails } from '../SystemEventMessage';
 import { ToolCallBatchBoundary } from '../ToolCallBatchBoundary';
-import { ToolCallDisplay } from '../ToolCallDisplay';
+import { type ToolApprovalOutcome, ToolCallDisplay } from '../ToolCallDisplay';
 import { splitToolCallRuns } from '../tool-call-runs';
 import { UIBlockRenderer } from '../UIBlockRenderer';
 
@@ -31,7 +36,7 @@ interface MessageContentProps {
   onToolApproval?: (
     part: MessageContentPart,
     action: 'once' | 'trust' | 'deny',
-  ) => void;
+  ) => Promise<ToolApprovalOutcome>;
 }
 
 function MessageContentComponent({
@@ -67,8 +72,14 @@ function MessageContentComponent({
       toolCall={part as any}
       showDetails={showToolDetails}
       onApprove={
-        isStreamingMessage && part.needsApproval
-          ? (action) => onToolApproval?.(part, action)
+        // #2316: a card bound to its request by the projection answers from
+        // wherever its row sits — the server verifies the exact prompt
+        // (`expectedRequestEventId`), which is what the last-row gate stood
+        // in for. A part without that binding keeps the last-row gate.
+        part.needsApproval && (isStreamingMessage || part.approvalEventId)
+          ? (action) =>
+              onToolApproval?.(part, action) ??
+              Promise.reject(new Error('This chat cannot answer requests.'))
           : undefined
       }
     />
@@ -103,6 +114,13 @@ function MessageContentComponent({
 
           const { index, part } = block;
           if (part.type === 'reasoning' && part.content) {
+            // #2211: reasoning is the STREAMING row's follow-along surface.
+            // Once a row settles, the reasoning record opens from the turn's
+            // overflow menu (TurnActionsMenu) instead of occupying a
+            // disclosure row inside the answer bubble. StreamingMessage owns
+            // the live path; this component renders settled rows, so only the
+            // last-message-while-active case keeps the section here.
+            if (!isStreamingMessage) return null;
             return (
               <ReasoningSection
                 key={index}
@@ -126,7 +144,17 @@ function MessageContentComponent({
                 part.runtimeErrorCode,
               );
               if (translated) {
-                return <LazyMarkdown key={index}>{translated}</LazyMarkdown>;
+                const raw = projectedRuntimeErrorRaw(part.content);
+                const wantsDetails = translateChatError({
+                  message: raw,
+                  code: part.runtimeErrorCode,
+                }).disclosureRaw;
+                return (
+                  <div key={index}>
+                    <LazyMarkdown>{translated}</LazyMarkdown>
+                    {wantsDetails ? <ChatErrorDetails raw={raw} /> : null}
+                  </div>
+                );
               }
             }
             // archive#3354: persisted text parts keep their highlighting —

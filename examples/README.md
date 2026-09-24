@@ -13,6 +13,7 @@ prove.
 | [Coding Starter](coding-starter/README.md) | Coding-oriented starter layout |
 | [Minimal Layout](minimal-layout/README.md) | Small TypeScript layout and SDK basics |
 | [Demo Layout](demo-layout/README.md) | Local layout installation and registry fixture |
+| [Documentation Snippets](docs-snippets/README.md) | Compile-checked copies of guide code blocks; not a plugin |
 
 ## Workspace And Review
 
@@ -72,6 +73,13 @@ then builds every example that declares a build. Example unit tests run in the
 normal test corpus. Credential-gated live-provider examples are reported as
 `NOT PROVEN AT RUNTIME`; a successful static build does not prove an external
 service or credential path.
+
+`typecheck:examples` compiles every example that ships TypeScript, including
+its tests. `examples:conformance` fails when an example's TypeScript is outside
+every project that script names. The only way to opt out is an entry in
+`TYPECHECK_EXCLUDED` in `scripts/examples-conformance.mjs`, together with a
+README note that marks the example as unmaintained reference code. No example
+is excluded today.
 
 ## Coverage Still Needed
 

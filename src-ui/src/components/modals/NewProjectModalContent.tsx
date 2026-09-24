@@ -1,6 +1,8 @@
 import { type RefObject, useEffect, useId, useRef } from 'react';
 import { useNewProjectFormSubmit } from '../../hooks/useNewProjectFormSubmit';
 import type { useNewProjectModalState } from '../../hooks/useNewProjectModalState';
+import { hasLocalStationForProfile } from '../../platform/client-origin-surface';
+import { usePlatformProfile } from '../../platform/PlatformProfileContext';
 import { Button } from '../Button';
 import { registerDialogHistory } from '../dialog-history';
 import {
@@ -92,6 +94,8 @@ function NewProjectFormActions({
 
 function NewProjectDirectoryInput({ state }: { state: NewProjectModalState }) {
   const { draft, starter, submission } = state;
+  const profile = usePlatformProfile();
+  if (!hasLocalStationForProfile(profile)) return null;
   return (
     <NewProjectDirectoryField
       directory={draft.directory}
@@ -113,6 +117,8 @@ function NewProjectDirectoryInput({ state }: { state: NewProjectModalState }) {
 
 function NewProjectIdentityInput({ state }: { state: NewProjectModalState }) {
   const { draft, iconCandidates, nameAdvisory, submission } = state;
+  const profile = usePlatformProfile();
+  const hostOwnedWorkspace = !hasLocalStationForProfile(profile);
   return (
     <NewProjectIdentityField
       candidates={iconCandidates.data ?? []}
@@ -130,6 +136,11 @@ function NewProjectIdentityInput({ state }: { state: NewProjectModalState }) {
       }}
       onToggleIconChoices={() =>
         draft.setShowIconChoices(!draft.showIconChoices)
+      }
+      identityHint={
+        hostOwnedWorkspace
+          ? 'Created on this Station. You pick the name; the host keeps the folder.'
+          : undefined
       }
     />
   );

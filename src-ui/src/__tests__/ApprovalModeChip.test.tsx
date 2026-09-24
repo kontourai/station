@@ -49,12 +49,17 @@ function option(name: RegExp) {
   return screen.getByRole('radio', { name });
 }
 
+function chipValue() {
+  return trigger().querySelector('.chat-input__approval-chip-label')
+    ?.textContent;
+}
+
 describe('ApprovalModeChip', () => {
   test('an inherited mode keeps Default visible when the engine receipt arrives', () => {
     const { rerender } = render(
       <ApprovalModeChip engineConnectionId="codex" onChange={vi.fn()} />,
     );
-    expect(trigger().textContent).toBe('Default');
+    expect(chipValue()).toBe('Default');
     rerender(
       <ApprovalModeChip
         engineConnectionId="codex"
@@ -62,7 +67,7 @@ describe('ApprovalModeChip', () => {
         onChange={vi.fn()}
       />,
     );
-    expect(trigger().textContent).toBe('Default');
+    expect(chipValue()).toBe('Default');
     expect(trigger().getAttribute('title')).toContain(
       'Never ask (full access)',
     );
@@ -130,7 +135,7 @@ describe('ApprovalModeChip', () => {
       <ApprovalModeChip
         engineConnectionId="codex"
         sessionOverride={undefined}
-        connectionDefault="ask"
+        stationDefault="ask"
         onChange={vi.fn()}
       />,
     );
@@ -142,12 +147,58 @@ describe('ApprovalModeChip', () => {
     ).toBeTruthy();
   });
 
+  // #2436 owner request: an Agent's own default is shown as such, so a member
+  // using an Agent set to full access sees it before sending.
+  test("an Agent's full-access default reads Full access (agent default), above the Station default", () => {
+    render(
+      <ApprovalModeChip
+        engineConnectionId="claude"
+        agentDefault="never"
+        stationDefault="ask"
+        onChange={vi.fn()}
+      />,
+    );
+    expect(chipValue()).toBe('Full access (agent default)');
+    expect(trigger().getAttribute('aria-label')).toMatch(
+      /^Approval mode: Full access \(agent default\) — Never ask \(full access\)\./,
+    );
+  });
+
+  test("a session's own pick outranks the Agent's default", () => {
+    render(
+      <ApprovalModeChip
+        engineConnectionId="claude"
+        sessionOverride="ask"
+        sessionOverrideState="confirmed"
+        agentDefault="never"
+        lastAppliedApprovalMode="ask"
+        onChange={vi.fn()}
+      />,
+    );
+    expect(chipValue()).toBe('Ask');
+  });
+
+  test("an engine reporting something else than the Agent's default is not labelled with it", () => {
+    render(
+      <ApprovalModeChip
+        engineConnectionId="claude"
+        agentDefault="never"
+        lastAppliedApprovalMode="ask"
+        onChange={vi.fn()}
+      />,
+    );
+    expect(chipValue()).toBe('Default');
+    expect(trigger().getAttribute('aria-label')).toMatch(
+      /^Approval mode: Default — Ask first\./,
+    );
+  });
+
   test('the open sheet marks the effective mode as the checked option', async () => {
     render(
       <ApprovalModeChip
         engineConnectionId="codex"
         sessionOverride={undefined}
-        connectionDefault="ask"
+        stationDefault="ask"
         onChange={vi.fn()}
       />,
     );
@@ -157,12 +208,12 @@ describe('ApprovalModeChip', () => {
     expect(option(/^Auto/).getAttribute('aria-checked')).toBe('false');
   });
 
-  test('a session override takes priority over the connection default', async () => {
+  test('a session override takes priority over the Station default', async () => {
     render(
       <ApprovalModeChip
         engineConnectionId="claude"
         sessionOverride="never"
-        connectionDefault="ask"
+        stationDefault="ask"
         onChange={vi.fn()}
       />,
     );
@@ -178,7 +229,6 @@ describe('ApprovalModeChip', () => {
       <ApprovalModeChip
         engineConnectionId="claude"
         sessionOverride={undefined}
-        connectionDefault={undefined}
         lastAppliedApprovalMode="auto"
         onChange={vi.fn()}
       />,
@@ -199,7 +249,6 @@ describe('ApprovalModeChip', () => {
       <ApprovalModeChip
         engineConnectionId="codex"
         sessionOverride={undefined}
-        connectionDefault={undefined}
         onChange={vi.fn()}
       />,
     );
@@ -221,7 +270,6 @@ describe('ApprovalModeChip', () => {
       <ApprovalModeChip
         engineConnectionId="codex"
         sessionOverride="ask"
-        connectionDefault={undefined}
         onChange={onChange}
       />,
     );
@@ -240,7 +288,6 @@ describe('ApprovalModeChip', () => {
       <ApprovalModeChip
         engineConnectionId="codex"
         sessionOverride="ask"
-        connectionDefault={undefined}
         onChange={onChange}
       />,
     );
@@ -267,7 +314,6 @@ describe('ApprovalModeChip', () => {
       <ApprovalModeChip
         engineConnectionId="codex"
         sessionOverride="ask"
-        connectionDefault={undefined}
         onChange={onChange}
       />,
     );
@@ -288,7 +334,6 @@ describe('ApprovalModeChip', () => {
       <ApprovalModeChip
         engineConnectionId="codex"
         sessionOverride="ask"
-        connectionDefault={undefined}
         onChange={onChange}
       />,
     );
@@ -309,7 +354,6 @@ describe('ApprovalModeChip', () => {
       <ApprovalModeChip
         engineConnectionId="codex"
         sessionOverride="never"
-        connectionDefault={undefined}
         onChange={onChange}
       />,
     );
@@ -326,7 +370,6 @@ describe('ApprovalModeChip', () => {
       <ApprovalModeChip
         engineConnectionId="codex"
         sessionOverride="never"
-        connectionDefault={undefined}
         onChange={onChange}
       />,
     );
@@ -346,7 +389,6 @@ describe('ApprovalModeChip', () => {
       <ApprovalModeChip
         engineConnectionId="claude"
         sessionOverride={undefined}
-        connectionDefault={undefined}
         lastAppliedApprovalMode="ask"
         onChange={onChange}
       />,
@@ -367,7 +409,6 @@ describe('ApprovalModeChip', () => {
       <ApprovalModeChip
         engineConnectionId="claude"
         sessionOverride="auto"
-        connectionDefault={undefined}
         lastAppliedApprovalMode="ask"
         onChange={onChange}
       />,
@@ -386,7 +427,6 @@ describe('ApprovalModeChip', () => {
       <ApprovalModeChip
         engineConnectionId="codex"
         sessionOverride="never"
-        connectionDefault={undefined}
         lastAppliedApprovalMode="ask"
         onChange={vi.fn()}
       />,
@@ -406,7 +446,6 @@ describe('ApprovalModeChip', () => {
       <ApprovalModeChip
         engineConnectionId="codex"
         sessionOverride="never"
-        connectionDefault={undefined}
         lastAppliedApprovalMode={undefined}
         onChange={vi.fn()}
       />,
@@ -424,7 +463,6 @@ describe('ApprovalModeChip', () => {
       <ApprovalModeChip
         engineConnectionId="codex"
         sessionOverride="never"
-        connectionDefault={undefined}
         lastAppliedApprovalMode="never"
         onChange={vi.fn()}
       />,
@@ -442,7 +480,6 @@ describe('ApprovalModeChip', () => {
       <ApprovalModeChip
         engineConnectionId="codex"
         sessionOverride="ask"
-        connectionDefault={undefined}
         lastAppliedApprovalMode="ask"
         onChange={vi.fn()}
       />,
@@ -456,7 +493,6 @@ describe('ApprovalModeChip', () => {
       <ApprovalModeChip
         engineConnectionId="codex"
         sessionOverride="auto"
-        connectionDefault={undefined}
         lastAppliedApprovalMode="never"
         onChange={vi.fn()}
       />,
@@ -471,12 +507,86 @@ describe('ApprovalModeChip', () => {
     ).toBeTruthy();
   });
 
+  // #2334 decision on the #1933 pin: a requested pick STRICTER than the
+  // full access the engine last reported says so, because the engine keeps
+  // running with full access until the next turn applies it. The test above
+  // (a confirmed override, a stale receipt) keeps the plain label.
+  test('a requested stricter pick while the engine reports full access shows pending', () => {
+    render(
+      <ApprovalModeChip
+        engineConnectionId="codex"
+        sessionOverride="auto"
+        sessionOverrideState="requested"
+        lastAppliedApprovalMode="never"
+        onChange={vi.fn()}
+      />,
+    );
+
+    const chip = screen.getByRole('button', {
+      name: /^Approval mode: Auto · pending — the engine still reports full access; takes effect next turn\./,
+    });
+    expect(chip.className).toContain('chat-input__approval-chip--pending');
+    expect(chipValue()).toBe('Auto · pending');
+  });
+
+  test('a requested pick that is not stricter than the receipt keeps the plain label (station#1933)', () => {
+    render(
+      <ApprovalModeChip
+        engineConnectionId="codex"
+        sessionOverride="auto"
+        sessionOverrideState="requested"
+        lastAppliedApprovalMode="ask"
+        onChange={vi.fn()}
+      />,
+    );
+
+    expect(chipValue()).toBe('Auto');
+    expect(trigger().className).toContain(
+      'chat-input__approval-chip--override',
+    );
+  });
+
+  // #2436: the server applies a recorded full access at every turn start,
+  // and Claude refuses it on a session not spawned with it. "Takes effect
+  // next turn" would promise an escalation that is not going to happen.
+  test('a refused full access says it needs a restart, and never promises the next turn', () => {
+    render(
+      <ApprovalModeChip
+        engineConnectionId="claude"
+        sessionOverride="never"
+        sessionOverrideState="refused"
+        lastAppliedApprovalMode="ask"
+        onChange={vi.fn()}
+      />,
+    );
+    expect(chipValue()).toBe('Full access · needs restart');
+    expect(trigger().getAttribute('aria-label')).toMatch(
+      /^Approval mode: Full access · needs restart — the engine refused it because this session did not start with full access; it applies when the session restarts\./,
+    );
+    expect(trigger().getAttribute('aria-label')).not.toMatch(/next turn/);
+  });
+
+  test('a requested full access still promises the next turn, which the server now keeps on every send path', () => {
+    render(
+      <ApprovalModeChip
+        engineConnectionId="claude"
+        sessionOverride="never"
+        sessionOverrideState="requested"
+        lastAppliedApprovalMode="ask"
+        onChange={vi.fn()}
+      />,
+    );
+    expect(chipValue()).toBe('Full access · pending');
+    expect(trigger().getAttribute('aria-label')).toMatch(
+      /takes effect next turn/,
+    );
+  });
+
   test('#727 review item 4: auto is provider-aware in its description, and never mentions "safe"', async () => {
     render(
       <ApprovalModeChip
         engineConnectionId="codex"
         sessionOverride="ask"
-        connectionDefault={undefined}
         onChange={vi.fn()}
       />,
     );
@@ -501,11 +611,7 @@ describe('ApprovalModeChip', () => {
 
   test('renders nothing when no engineConnectionId is known at all', () => {
     const { container } = render(
-      <ApprovalModeChip
-        sessionOverride="ask"
-        connectionDefault={undefined}
-        onChange={vi.fn()}
-      />,
+      <ApprovalModeChip sessionOverride="ask" onChange={vi.fn()} />,
     );
 
     expect(container.firstChild).toBeNull();
@@ -517,12 +623,12 @@ describe('ApprovalModeChip', () => {
    * generic `config.approvalMode` must not announce a governing posture,
    * and the long inert "Set by engine" substitute is gone too.
    */
-  test('a no-knob engine never reports a mode, even when the connection carries an approvalMode default', () => {
+  test('a no-knob engine never reports a mode, even when its Agent carries an approval default', () => {
     const { container } = render(
       <ApprovalModeChip
         engineConnectionId="kiro"
         sessionOverride={undefined}
-        connectionDefault="ask"
+        agentDefault="ask"
         onChange={vi.fn()}
       />,
     );
@@ -537,7 +643,6 @@ describe('ApprovalModeChip', () => {
       <ApprovalModeChip
         engineConnectionId="kiro"
         sessionOverride="never"
-        connectionDefault={undefined}
         onChange={vi.fn()}
       />,
     );
@@ -557,7 +662,6 @@ describe('ApprovalModeChip', () => {
       <ApprovalModeChip
         engineConnectionId="codex"
         sessionOverride="never"
-        connectionDefault={undefined}
         lastAppliedApprovalMode="never"
         onChange={vi.fn()}
       />,
@@ -577,7 +681,6 @@ describe('ApprovalModeChip', () => {
       <ApprovalModeChip
         engineConnectionId="claude"
         sessionOverride={undefined}
-        connectionDefault={undefined}
         onChange={vi.fn()}
       />,
     );
@@ -597,17 +700,27 @@ describe('ApprovalModeChip', () => {
   // pending" was not a substring of "Never ask (full access) — pending next
   // turn" — and no assertion noticed, because every test pinned one string or
   // the other rather than their relationship.
-  for (const [name, sessionOverride] of [
-    ['default', undefined],
-    ['override', 'auto'],
-    ['pending', 'never'],
+  for (const [name, sessionOverride, applied] of [
+    ['default', undefined, undefined],
+    ['override', 'auto', undefined],
+    ['pending', 'never', undefined],
+    // #2334: a stricter pick in flight while the engine reports full access.
+    ['pending-restrict', 'ask', 'never'],
+    ['refused', 'never', 'ask'],
   ] as const) {
     test(`the ${name} chip's visible text is contained in its accessible name`, () => {
       render(
         <ApprovalModeChip
           engineConnectionId="claude"
           sessionOverride={sessionOverride}
-          connectionDefault={undefined}
+          sessionOverrideState={
+            name === 'pending-restrict'
+              ? 'requested'
+              : name === 'refused'
+                ? 'refused'
+                : undefined
+          }
+          lastAppliedApprovalMode={applied}
           onChange={vi.fn()}
         />,
       );

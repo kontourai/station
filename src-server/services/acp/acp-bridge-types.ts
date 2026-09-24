@@ -18,6 +18,14 @@ export interface ManagedTerminal {
   signal: string | null;
   /** True once the child has exited, whichever way it went. */
   exited: boolean;
+  /**
+   * Set when the child never started — the spawn itself failed. The failure
+   * is reported through the shell's failure channel (`output` plus the
+   * conventional 127/126 `exitCode`); this flag lets a waiter distinguish
+   * that terminal death from a live child's post-spawn `error` event (a
+   * kill or send failure), which must not be read as an exit.
+   */
+  spawnFailed?: boolean;
 }
 
 export interface ToolCall {

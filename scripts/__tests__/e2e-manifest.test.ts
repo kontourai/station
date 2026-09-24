@@ -156,6 +156,7 @@ describe('e2e manifest', () => {
       'tests/chat-multi-turn-context.spec.ts',
       'tests/agents-new-cli-turn.spec.ts',
       'tests/agents-new-muse-echo-turn.spec.ts',
+      'tests/portable-receiver-live-proof.spec.ts',
       'tests/csp-shell.spec.ts',
       'tests/plugin-bundle-csp.spec.ts',
       'tests/coding-workspace-example.spec.ts',
@@ -166,6 +167,9 @@ describe('e2e manifest', () => {
       'tests/knowledge-onboarding-smoke.spec.ts',
       'tests/task-workspace.spec.ts',
       'tests/project-task-room-collaboration.spec.ts',
+      'tests/client-authority-live.spec.ts',
+      'tests/project-guest-shared-task-live.spec.ts',
+      'tests/project-guest-admin-live.spec.ts',
       'tests/interactive-workspace-performance-bridge.spec.ts',
     ]);
     // #2144 slice 4 (#2146): Settings left `extended` for `product` so that
@@ -210,10 +214,14 @@ describe('e2e manifest', () => {
       // dock-chrome settings a region write mirrors.
       'tests/activity-pane.spec.ts': expect.any(String),
       'tests/project-architecture.spec.ts': expect.any(String),
+      'tests/browser-relay-route-acceptance.spec.ts': expect.any(String),
+      'tests/buffered-answer-delivery.spec.ts': expect.any(String),
     });
     expect(new Set(classified).size).toBe(classified.length);
     expect(new Set(classified)).toEqual(new Set(productSpecs));
     expect(PRODUCT_E2E_EXECUTION_PROFILE.sharedInstanceExclusive).toEqual([
+      'tests/conversation-timeline.spec.ts',
+      'tests/mobile-chat-composer.spec.ts',
       'tests/agents-readiness-board.spec.ts',
       // station#3843: seeds a live non-ready agent and opens a second browser
       // context holding the runner's own browser-session credential.
@@ -441,8 +449,10 @@ describe('e2e manifest', () => {
   it('requires the bounded smoke lane on pull requests with diagnostics', () => {
     const workflow = readFileSync('.github/workflows/ci.yml', 'utf8');
 
-    expect(workflow).toContain('browser-smoke:');
-    expect(workflow).toContain('name: Deterministic Browser Smoke');
+    // The smoke runs as a step of the required fast-checks job.
+    expect(workflow).toContain(
+      'name: Verify critical browser journeys before merge',
+    );
     expect(workflow).toContain('timeout-minutes: 10');
     expect(workflow).toContain('run: npm run test:e2e:pr-smoke');
     expect(workflow).toContain('playwright-report/');

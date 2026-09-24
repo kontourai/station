@@ -14,6 +14,7 @@ import { describe, expect, test, vi } from 'vitest';
 
 vi.mock('@kontourai/station-sdk', () => ({
   useEngineConnectionsQuery: () => ({ data: [] }),
+  useProjectQuery: () => ({ data: undefined, isLoading: false }),
   // #2144 slice 6: the panel reads the Station-scope default approval
   // mode through `useConfig`. No stored value is the neutral answer here.
   useConfigQuery: () => ({ data: undefined, dataUpdatedAt: 0 }),
@@ -40,10 +41,12 @@ vi.mock('../build-info', () => ({
 vi.mock('@kontourai/station-connect', () => ({
   useConnections: () => ({
     activeConnection: connectionState.active,
+    captureCredentialEvidence: () => undefined,
   }),
 }));
 vi.mock('../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://station.test' }),
+  useHostRequestAuthorityScope: () => undefined,
 }));
 vi.mock('../contexts/AgentsContext', () => ({
   useAgents: () => [{ slug: 'codex', name: 'Codex' }],

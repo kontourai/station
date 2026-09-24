@@ -576,6 +576,11 @@ Shape (illustrative; the contract lands in `packages/contracts` at slice 1):
     { "id": "local:scratch", "kind": "local-only", "label": "Scratch notes" }
   ],
 
+  "executionRoot": {
+    "repoId": "github.com/kontourai/station",
+    "path": "apps/station"
+  },
+
   "knowledge": [
     { "namespaceId": "default", "root": { "kind": "station-managed" } },
     { "namespaceId": "rules",   "root": { "kind": "repo", "repoId": "github.com/kontourai/station", "path": "docs" } }
@@ -778,14 +783,28 @@ Adapters without this atomic creation capability refuse attachment before
 creating an ordinary Project. An occupied directory is preserved.
 
 The snapshot has a closed field set and uses the existing manifest/resource
-validator. It carries no local path, account, membership, credential or home
-authority. The SDK also validates the receiving association and retains the
+validator. Its optional `executionRoot` carries only a named resource and a
+repo-relative path. Slash and backslash separators have the same portable
+meaning and are converted to the destination platform at resolution. It carries
+no local path, account, membership, credential or home authority. The SDK also
+validates the receiving association and retains the
 original request through asynchronous work. The API does not merge same-remote
 Projects, import private history, select among multiple local realizations,
-clone files or authorize execution. Receiver admission, resource-relative
-execution roots, home location, membership and the integrated target picker
+clone files or authorize execution. At engine start, the destination resolves
+the named resource through its private binding, requires the selected path to
+exist as a directory, and realpath-checks containment so a symlink cannot leave
+the checkout. Binding and directory resolution still do not authorize compute.
+Receiver admission, home location, membership and the integrated target picker
 retain their separate implementation and acceptance boundaries. See the
 [SDK identity API](../reference/sdk.md#portable-project-identity).
+
+The authenticated execution-root mutation carries the caller's complete current
+portable identity and receiver-local Project ID as optimistic guards. The
+Project storage owner checks both and the current local Project revision under one mutation lock before
+atomically replacing the sidecar. Setting a root validates only its declared
+resource and relative path; the resource may be intentionally unbound. Clearing
+removes only the selection, and an exact replay performs no write. Neither action
+changes the portable ID, bindings, membership, history, or compute authority.
 
 `POST /api/projects/:slug/bind` holds the selected Project revision while it
 verifies the checkout, publishes the binding and derives the response view.
@@ -1303,6 +1322,99 @@ Three consequences, each checkable:
 
 The migration rule in §5 is the same invariant expressed in data: an existing
 project does not acquire a contribution because it had a path.
+
+### Receiver execution offers
+
+Project execution offers are stored only in
+`AppConfig.contribution["project:<portableProjectId>"]` and default off. The
+dedicated offer mutation requires Station's bound local-operator authority and
+an exact current local/portable Project association plus the expected current
+offer. A remote operate credential may round-trip an unchanged contribution map
+while saving another setting, but cannot add, remove, replace, enable, or disable
+consent. The comparison occurs inside ConfigLoader's serialized mutation owner,
+so a queued stale save cannot overwrite a newer local offer.
+
+The scoped query accepts only a portable Project ID and resource ID. Its caller
+identity comes from a current authenticated paired-device credential whose
+server record is `kind: "delegation"`; the body carries no Station or environment
+identity. This is the existing broad personal-peer grant narrowed by the exact
+receiver-owned offer. It is not shared-human membership authorization.
+Disabled or unnamed queries return no association or inventory. Offered entries
+carry the stored binding `verifiedAt`, or `null` for the compatibility working
+directory; `projectedAt` is never substituted for source observation time.
+This projection does not invoke a provider or authorize a Task attempt. The
+explicit execution mode below uses a separate receiver admission.
+
+### Explicit portable execution requests
+
+For already-enrolled personal peer Stations, a delegation can select the
+receiver's offered resource without sending a receiver-local directory:
+
+```json
+{
+  "prompt": "Inspect the selected checkout",
+  "target": {
+    "environment": { "kind": "saved", "id": "receiver-environment-id" },
+    "agent": "receiver-agent-id",
+    "workspace": {
+      "kind": "project-portable",
+      "portableProjectId": "shared-project-id",
+      "resourceId": "git.example.org/team/repository"
+    }
+  }
+}
+```
+
+Submit this body through the authenticated `POST /api/orchestration/delegations`
+route on the controlling Station. Enroll and verify the peer through the existing
+pairing and saved-peer workflow first. Both endpoints must support the
+`portableExecutionOffers` handshake capability. Prepare/attach the portable
+Project identity explicitly, bind the receiver's checkout, and have the receiver
+operator enable that exact resource through `PUT /api/project-contributions/offer`.
+The offer body requires `portableProjectId`, the receiver's `localProjectId`,
+`resourceId`, `enabled`, and `expected` (the previous offer, or `null` when absent).
+A stale offer update is a conflict, never an overwrite.
+
+The controller needs no local execution offer. The receiver resolves the exact
+portable Project/resource association, uses the checked resource directory and
+its applicable repository-relative execution root, and checks current consent
+and request authority adjacent to provider start and turn dispatch. Replacing
+the Project, manifest, binding or execution-root selection invalidates the
+captured admission even when the new directory has the same path. A delegation
+arriving from a peer cannot be forwarded onward with the receiver's saved peer
+credentials.
+
+Named 403 outcomes are `receiver_execution_not_offered`,
+`receiver_execution_unavailable`, `receiver_execution_forwarding_refused`, and
+`receiver_execution_authority_changed`. A persisted marker without its original
+receiver-local Project identity returns `receiver_execution_consent_stale`;
+history remains readable, but a new explicit execution is required.
+The sender rechecks its own request
+authority after peer discovery and immediately before forwarding.
+An older receiver without the capability and direct SSH portable dispatch are
+refused; neither substitutes a directory or local execution. Ordinary existing
+non-portable requests retain their current behavior.
+
+This mode narrows execution by explicit consent within existing personal-peer
+authority. It does not make a broad peer credential suitable for an invited
+collaborator, grant Project membership, or complete restricted shared-person
+execution. Portable sessions persist their server-issued association, including
+the original receiver-local Project identity. Continue and request-response
+routes obtain fresh admission from that marker and check it at provider effects;
+a same-path replacement Project cannot inherit the old conversation's consent.
+Continuation-created sessions preserve the marker, and cold restoration requires
+fresh admission. Answering a dormant engine request does not spawn an engine.
+Portable Agent/engine handoff remains unsupported and refuses before creating
+its successor; ordinary unmarked handoffs retain their existing behavior.
+Durable attempts, cancellation and reconnect reconciliation remain separate
+work. A resource binding can supply
+its checked directory without a legacy Project working directory. The receiver
+retains its Project and Station workspace-isolation policy: portable worktree
+execution currently refuses before provisioning or provider effects instead of
+silently selecting a shared checkout. Admission-backed worktree provisioning
+remains required work in #483/#484. Consult the live issues for
+qualification evidence; API and service tests do not prove two physical machines
+or independent people.
 
 ### 4.7 The backing view (sketch, not a full design)
 

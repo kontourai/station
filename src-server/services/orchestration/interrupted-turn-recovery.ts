@@ -1,5 +1,8 @@
 import crypto from 'node:crypto';
-import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import {
+  type CanonicalRuntimeEvent,
+  PROVIDER_TURN_TRIGGER,
+} from '@kontourai/station-contracts/runtime-events';
 import { TURN_INTERRUPTED_MESSAGE } from '@kontourai/station-shared/runtime-event-projection';
 // Same directory depth as the service, so this specifier resolves to the id
 // `interrupted-turn-recovery.test.ts` already `vi.mock`s. A module at a
@@ -8,6 +11,7 @@ import { TURN_INTERRUPTED_MESSAGE } from '@kontourai/station-shared/runtime-even
 import { resolveConversationTranscriptSource } from '../../runtime/conversation/conversation-transcript-source.js';
 import { errorMessage } from '../../utils/error-message.js';
 import type { EventStore } from './event-store.js';
+import { isProviderTurnBoundary } from './session-turn-boundary.js';
 
 /** Narrow structural logger: this module warns, never debugs. */
 type InterruptedTurnRecoveryLogger = {
@@ -18,11 +22,11 @@ interface InterruptedTurnRecoveryDeps {
   /**
    * Called, not captured: the store is optional on the service options and a
    * swap after construction must be honoured. The handle crosses here
-   * deliberately — the four operations this module needs
-   * (`takeInterruptedTurnBoundaries`, `latestEventByMethod`, `hasEventId`,
-   * `resolveInterruptedTurnBoundary`) are one transactional unit over the
-   * boundary table and event log, and fanning them into four unrelated
-   * arrows would hide that. No Map crosses (T13).
+   * deliberately — the five operations this module needs
+   * (`takeInterruptedTurnBoundaries`, `latestEventByMethod`,
+   * `listEventsForTurn`, `hasEventId`, `resolveInterruptedTurnBoundary`) are
+   * one transactional unit over the boundary table and event log, and
+   * fanning them into five unrelated arrows would hide that. No Map crosses (T13).
    */
   eventStore: () => EventStore | undefined;
   /**
@@ -194,6 +198,22 @@ export class InterruptedTurnRecovery {
    * on the (sessionState, transitionReason, transitionSource) vocabulary
    * triple — see that field's own doc in `runtime-events.ts`.
    *
+   * station#2235: the banner alone does not settle the TURN. Nothing else
+   * closes `turn.started`'s open window, so `hasActiveTurn` reads true
+   * forever and a live client's streaming shell never engages the banner —
+   * it keeps rendering a running turn under a "Waiting for approval" the
+   * store cannot back (no `request.opened` exists). consume() therefore
+   * publishes a `turn.aborted` (`turn-interrupted-abort:<boundaryId>`,
+   * `turnId` = the boundary's `providerTurnId`) BEFORE the banner, for the
+   * same reason an adapter publishes one on failure: it is the terminal
+   * turn fact every fold already honors. Same idempotence (deterministic
+   * id + `hasEventId`) and same M4 refusal semantics as the banner. The
+   * abort accepts through the turn-identity guard any real abort for that
+   * turn would, and because the banner lands after it, the banner's
+   * explicit `sessionState` stamp still decides the lifecycle: the turn
+   * reads closed AND the session reads needs_input. Skipped (banner only)
+   * when the boundary never accepted a turn and names none.
+   *
    * IDEMPOTENCE (review round 1, H1): the write→delete gap between a
    * banner landing and `resolveInterruptedTurnBoundary` closing its row is
    * a real crash window — a process that dies in it leaves the row for a
@@ -230,6 +250,63 @@ export class InterruptedTurnRecovery {
         continue;
       }
       try {
+        // station#2235 (review MEDIUM 1): the row outlives the crash, not the
+        // session's future. If the thread opened a NEWER turn after this
+        // boundary was claimed — a new owner attached and the user kept
+        // going before this boot's consume ran — both recovery events would
+        // be stale: the abort is anchor-rejected by every fold (harmless),
+        // but the banner still forces needs_input over a genuinely running
+        // turn (and the live client would tear down that turn's shell and
+        // grants). Resolve the row silently and publish nothing: the folds
+        // moved on. Compared by creation time, not by turn identity alone:
+        // the dead turn's own turn.started necessarily predates its
+        // boundary claim. Inside the per-record try like everything else:
+        // a throwing resolve must strand this row, not the whole loop.
+        const latestTurnStarted = eventStore.latestEventByMethod(
+          record.threadId,
+          'turn.started',
+        );
+        // #2324: a turn the engine opened on its own records its row just
+        // BEFORE its `turn.started` is persisted. If that start is not the
+        // thread's latest turn start, the process died before it landed (or
+        // the thread moved on): there is no turn to close or banner.
+        const providerTurn = isProviderTurnBoundary(record);
+        // #2324 review L4: a send the engine accepted but never started (it
+        // was queued behind a turn the engine opened itself when the process
+        // died) has no `turn.started` of its own — the start is published
+        // only when the engine starts it. A newer start on the thread is then
+        // not "the thread moved on past it": that send still needs its
+        // terminal and banner, or it vanishes without a trace. Disclosed:
+        // if a NEWER turn is genuinely running by the time this runs (the
+        // same window the moved-on check above exists for), that send's
+        // banner still lands and forces needs_input over it — accepted
+        // because the alternative loses the user's message silently, and
+        // consume runs once, at boot, before live traffic normally arrives.
+        const ownTurnStarted =
+          record.providerTurnId !== undefined &&
+          eventStore
+            .listEventsForTurn(record.threadId, record.providerTurnId, 64)
+            .some((event) => event.payload.method === 'turn.started');
+        if (
+          (providerTurn &&
+            latestTurnStarted?.turnId !== record.providerTurnId) ||
+          (!providerTurn &&
+            (record.providerTurnId === undefined || ownTurnStarted) &&
+            latestTurnStarted?.turnId !== undefined &&
+            latestTurnStarted.turnId !== record.providerTurnId &&
+            latestTurnStarted.createdAt > record.createdAt)
+        ) {
+          this.deps.logger.warn(
+            'Interrupted-turn boundary is stale; the thread moved on — resolving without recovery events',
+            { threadId: record.threadId, boundaryId: record.boundaryId },
+          );
+          eventStore.resolveInterruptedTurnBoundary({
+            boundaryId: record.boundaryId,
+            ownerId: record.ownerId,
+            state: record.state,
+          });
+          continue;
+        }
         const startEvent = eventStore.latestEventByMethod(
           record.threadId,
           'session.started',
@@ -281,6 +358,58 @@ export class InterruptedTurnRecovery {
 
         // ---- H1(a) + M3 + M5: idempotent, provenance-gated,
         // fact-carrying lifecycle/banner event. ----
+        //
+        // station#2235: close the dead turn FIRST. A crashed turn otherwise
+        // leaves `turn.started` as its last turn fact, so `hasActiveTurn`
+        // reads true forever and every live client keeps its streaming shell
+        // open under the needs_input banner below ('Waiting for approval'
+        // with nothing to approve). The abort rides the SAME acceptance
+        // folds a real adapter abort rides (`acceptsTurnTerminalEvent` on
+        // the anchor both folds track), and the banner lands AFTER it, so
+        // the banner's explicit `sessionState:'needs_input'` stamp is still
+        // the fold's final word — the turn reads closed AND the session
+        // reads needs_input. Skipped when the boundary never accepted a
+        // turn (`record.providerTurnId` absent): there is no turn to close.
+        const providerTurnId = record.providerTurnId;
+        if (providerTurnId !== undefined) {
+          const abortEventId = `turn-interrupted-abort:${record.boundaryId}`;
+          if (!eventStore.hasEventId(abortEventId)) {
+            const published = this.deps.publishEvent({
+              eventId: abortEventId,
+              provider: provider ?? 'unknown',
+              threadId: record.threadId,
+              turnId: providerTurnId,
+              createdAt: now,
+              method: 'turn.aborted',
+              reason: TURN_INTERRUPTED_MESSAGE,
+              // Carries the marker `TurnAbortedEvent.recoveryTerminal`
+              // documents: the boundary-retirement machinery must NOT treat
+              // this abort as the turn's own terminal fact (which would
+              // delete this row mid-flow and void the crash-window
+              // guarantees below), while every turn fold still settles the
+              // dead turn on it.
+              recoveryTerminal: true as const,
+              // #2324: the abort carries the trigger its turn's start did,
+              // so every consumer reads it as that provider turn's end.
+              ...(providerTurn
+                ? { metadata: { trigger: PROVIDER_TURN_TRIGGER } }
+                : {}),
+            });
+            if (!published) {
+              // M4 parity with the banner below: a declined publish must
+              // not be treated as done — retain the row for the next boot.
+              this.deps.logger.warn(
+                'Interrupted-turn abort event was declined; leaving the boundary row for the next boot',
+                {
+                  threadId: record.threadId,
+                  boundaryId: record.boundaryId,
+                  reason: 'projectAndPublishEvent returned false',
+                },
+              );
+              continue;
+            }
+          }
+        }
         const bannerEventId = `turn-interrupted:${record.boundaryId}`;
         if (!eventStore.hasEventId(bannerEventId)) {
           const published = this.deps.publishEvent({

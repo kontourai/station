@@ -13,7 +13,13 @@ import {
 import { render, screen, waitFor } from '@testing-library/react';
 import { expect, test, vi } from 'vitest';
 import { LazyBoundary } from '../../components/LazyBoundary';
-import { RegionBuiltinPane } from '../RegionBuiltinPane';
+import { INSTANCE_SURFACE_PREFIXES } from '../../regions/region-model';
+import { createBrowserPreviewPaneInstance } from '../browserPreviewPaneInstance';
+import { writeBrowserPreviewPaneState } from '../browserPreviewPaneStateStorage';
+import {
+  REGION_BUILTIN_DESCRIPTORS,
+  RegionBuiltinPane,
+} from '../RegionBuiltinPane';
 
 // The Device pane's own render graph is not what is under test here — it
 // reads the host authority from a provider this file does not mount — so the
@@ -21,6 +27,15 @@ import { RegionBuiltinPane } from '../RegionBuiltinPane';
 // region's built-in map admits the Device descriptor at all.
 vi.mock('../DeviceWorkspacePane', () => ({
   DeviceWorkspacePane: () => <div>device pane mounted</div>,
+}));
+// Same reason for the Browser pane: its binding and its session reads are
+// its own tests'; here it is enough that the region map reaches it.
+vi.mock('../BrowserPreviewWorkspacePane', () => ({
+  BrowserPreviewWorkspacePane: ({
+    instance,
+  }: {
+    instance: { instanceId: string };
+  }) => <div>browser pane mounted for {String(instance.instanceId)}</div>,
 }));
 
 /**
@@ -122,4 +137,58 @@ test('the Device occurrence resolves to a renderer and an impostor does not', as
   } finally {
     errors.mockRestore();
   }
+});
+
+/**
+ * #90 D9 B1: a Browser pane placed in a region (the float-over-chat's "Open
+ * in right panel") reaches its renderer. Without the Browser descriptor in
+ * `REGION_BUILTIN_DESCRIPTORS` this renders the boundary's "Unable to load"
+ * — what the live verify saw, and what survived a reload.
+ */
+test('a Browser occurrence placed in a region resolves to its renderer', async () => {
+  const state = {
+    version: '2.0' as const,
+    projectId: 'project-uuid',
+    browserSessionId: 'bs_00000000-0000-4000-8000-000000000001',
+    updatedAt: '2026-09-22T00:00:00.000Z',
+  };
+  const instance = createBrowserPreviewPaneInstance(
+    state,
+    'project-uuid',
+    'c'.repeat(32),
+  );
+  if (!instance) throw new Error('fixture must mint');
+  writeBrowserPreviewPaneState(window.localStorage, instance.stateKey, state);
+  const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+  try {
+    render(
+      <LazyBoundary
+        load={() => Promise.resolve({ default: RegionBuiltinPane })}
+        componentProps={{ instance }}
+        pending={<span>Loading pane</span>}
+      />,
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByText(`browser pane mounted for ${instance.instanceId}`),
+      ).toBeTruthy(),
+    );
+    expect(screen.queryByRole('alert')).toBeNull();
+  } finally {
+    errors.mockRestore();
+    window.localStorage.clear();
+  }
+});
+
+/**
+ * The class B1 belonged to: every instance family a region can hold (the
+ * entry chunk's `INSTANCE_SURFACE_PREFIXES`) must have a region renderer. A
+ * family added without one reds here, not in a user's dock.
+ */
+test('every instance family a region can hold has a region renderer', () => {
+  for (const family of INSTANCE_SURFACE_PREFIXES)
+    expect(
+      REGION_BUILTIN_DESCRIPTORS.has(family.descriptorId),
+      family.prefix,
+    ).toBe(true);
 });

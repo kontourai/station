@@ -21,6 +21,15 @@ export type SessionTransitionReason =
   | 'session_configured'
   | 'turn_started'
   | 'turn_completed'
+  /**
+   * #2324: a turn the engine opened on its own (see `PROVIDER_TURN_TRIGGER`)
+   * moved the session. Kept apart from `turn_started`/`turn_completed` so a
+   * consumer that must act on a caller's turn only once can tell a later
+   * unprompted reply apart.
+   */
+  | 'provider_turn_started'
+  | 'provider_turn_completed'
+  | 'provider_turn_failed'
   | 'approval_requested'
   | 'review_requested'
   | 'input_requested'
@@ -33,6 +42,43 @@ export type SessionTransitionReason =
   | 'system_recovered'
   | 'manual_update'
   | 'unknown';
+
+/**
+ * #2269: runtime-readable form of the `SessionTransitionReason` vocabulary.
+ * Cross-seam projections (notably the delegation snapshot) validate a
+ * `transitionReason` string against this list before forwarding it, so a
+ * forged or misspelled value is dropped rather than relayed as fact.
+ */
+export const SESSION_TRANSITION_REASONS: readonly SessionTransitionReason[] = [
+  'session_started',
+  'session_configured',
+  'turn_started',
+  'turn_completed',
+  'provider_turn_started',
+  'provider_turn_completed',
+  'provider_turn_failed',
+  'approval_requested',
+  'review_requested',
+  'input_requested',
+  'request_resolved',
+  'blocked_by_user',
+  'retry_requested',
+  'runtime_error',
+  'runtime_exit',
+  'user_canceled',
+  'system_recovered',
+  'manual_update',
+  'unknown',
+];
+
+export function isSessionTransitionReason(
+  value: unknown,
+): value is SessionTransitionReason {
+  return (
+    typeof value === 'string' &&
+    (SESSION_TRANSITION_REASONS as readonly string[]).includes(value)
+  );
+}
 
 export type SessionLifecycleTransitionMap = Record<
   SessionLifecycleState,

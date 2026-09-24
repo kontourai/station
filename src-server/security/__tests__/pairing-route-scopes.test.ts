@@ -749,6 +749,11 @@ describe('pairing-route-scopes: table-driven lookups', () => {
     ['POST', '/api/tasks/task-1/references', 'orchestration:operate'],
     ['GET', '/api/projects/my-proj/knowledge/status', 'orchestration:read'],
     ['POST', '/api/projects', 'orchestration:operate'],
+    [
+      'PUT',
+      '/api/projects/my-proj/identity/execution-root',
+      'orchestration:operate',
+    ],
     ['GET', '/api/usage-telemetry/disclosure', 'orchestration:read'],
     [
       'POST',
@@ -761,6 +766,7 @@ describe('pairing-route-scopes: table-driven lookups', () => {
       '/api/projects/my-proj/file-preview/download',
       'orchestration:read',
     ],
+    ['POST', '/api/projects/my-proj/file-preview/exists', 'orchestration:read'],
     [
       'DELETE',
       '/api/projects/my-proj/terminals/terminal-1',
@@ -1003,6 +1009,19 @@ describe('pairing-route-scopes: table-driven lookups', () => {
     });
   });
 
+  test('declares the path-existence check as its own exact project read leaf', () => {
+    expect(
+      matchPairingScopeRule('POST', '/api/projects/:slug/file-preview/exists'),
+    ).toMatchObject({
+      origin: 'explicit',
+      prefix: '/api/projects/:slug/file-preview/exists',
+      scope: 'orchestration:read',
+    });
+    expect(
+      isLeafScopeDeclared('POST', '/api/projects/:slug/file-preview/exists'),
+    ).toBe(true);
+  });
+
   test('keeps Project preview and its attachment handoff at read authority', () => {
     expect(
       requiredPairingScope('POST', '/api/projects/my-proj/file-preview'),
@@ -1118,6 +1137,43 @@ describe('pairing-route-scopes: table-driven lookups', () => {
     );
     expect(requiredPairingScope('POST', '/api/plugins/install')).toBe(
       'orchestration:operate',
+    );
+  });
+
+  test('#2323 S5: plugin proposals read on the read tier and are created or dismissed on the operate tier', () => {
+    expect(requiredPairingScope('GET', '/api/plugin-proposals')).toBe(
+      'orchestration:read',
+    );
+    expect(requiredPairingScope('GET', '/api/plugin-proposals/p1')).toBe(
+      'orchestration:read',
+    );
+    expect(requiredPairingScope('POST', '/api/plugin-proposals')).toBe(
+      'orchestration:operate',
+    );
+    expect(
+      requiredPairingScope('POST', '/api/plugin-proposals/p1/dismiss'),
+    ).toBe('orchestration:operate');
+  });
+
+  test('#2323 S4: local plugin source status is a read-tier leaf of its own family', () => {
+    expect(requiredPairingScope('GET', '/api/plugin-sources')).toBe(
+      'orchestration:read',
+    );
+    // The reinstall it offers stays on the operate tier.
+    expect(requiredPairingScope('POST', '/api/plugins/install')).toBe(
+      'orchestration:operate',
+    );
+  });
+
+  test('#2323 S1: plugin validation is not a read-tier route, because its body names a host path', () => {
+    // Validation installs nothing, which reads like a case for the read
+    // tier. It is not one: the caller supplies an arbitrary host path whose
+    // manifest is read back. Same tier as `/preview`, which reads the same.
+    expect(requiredPairingScope('POST', '/api/plugins/validate')).toBe(
+      'orchestration:operate',
+    );
+    expect(requiredPairingScope('POST', '/api/plugins/validate')).toBe(
+      requiredPairingScope('POST', '/api/plugins/preview'),
     );
   });
 

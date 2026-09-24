@@ -472,7 +472,7 @@ describe('MCPToolUIFrame', () => {
     expect(screen.getByText('MCP server is not installed')).toBeTruthy();
     expect(fetchMock).toHaveBeenCalledWith(
       'http://localhost:3141/integrations/github/ui/create_issue',
-      undefined,
+      { method: 'GET' },
     );
   });
 
@@ -609,6 +609,15 @@ describe('MCPToolUIFrame', () => {
     expect(screen.getByText('resolver failed')).toBeTruthy();
   });
 
+  test('station#2236: a non-string envelope error renders what the server computed, not [object Object]', async () => {
+    mockResolver({ success: false, error: { code: 'missing_server' } });
+
+    renderFrame({ ref: 'github/create_issue' });
+
+    expect(await screen.findByText('MCP UI failed to load')).toBeTruthy();
+    expect(screen.getByText('{"code":"missing_server"}')).toBeTruthy();
+  });
+
   test('renders a sandboxed iframe with a deny-all CSP when mcpUiHost is enabled', async () => {
     mockConfig = { mcpUiHost: true };
     fetchMock.mockImplementation(async (url: string) => {
@@ -657,7 +666,7 @@ describe('MCPToolUIFrame', () => {
     expect(screen.queryByText('MCP UI unsupported')).toBeNull();
     expect(fetchMock).toHaveBeenCalledWith(
       'http://localhost:3141/integrations/github/ui/create_issue/resource',
-      undefined,
+      { method: 'GET' },
     );
   });
 
@@ -924,7 +933,7 @@ describe('MCPToolUIFrame', () => {
     // the reserved sandbox-resource-ready notification.
     expect(fetchMock).toHaveBeenCalledWith(
       'http://localhost:3141/integrations/github/ui/create_issue/resource',
-      undefined,
+      { method: 'GET' },
     );
   });
 
@@ -1027,11 +1036,11 @@ describe('MCPToolUIFrame', () => {
     // It fetched the embedded endpoint, not the SEP-1865 /resource endpoint.
     expect(fetchMock).toHaveBeenCalledWith(
       'http://localhost:3141/integrations/github/ui/create_issue/embedded',
-      undefined,
+      { method: 'GET' },
     );
     expect(fetchMock).not.toHaveBeenCalledWith(
       'http://localhost:3141/integrations/github/ui/create_issue/resource',
-      undefined,
+      { method: 'GET' },
     );
   });
 
@@ -1143,7 +1152,7 @@ describe('MCPToolUIFrame', () => {
     expect(await screen.findByText('MCP UI resource missing')).toBeTruthy();
     expect(fetchMock).not.toHaveBeenCalledWith(
       'http://localhost:3141/integrations/github/ui/create_issue/embedded',
-      undefined,
+      { method: 'GET' },
     );
   });
 

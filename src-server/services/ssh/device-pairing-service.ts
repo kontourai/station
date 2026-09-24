@@ -21,6 +21,9 @@ import {
   DEFAULT_GRANT_PAIRING_SCOPE,
   DEVICE_PAIRING_PROTOCOL_VERSION,
   DEVICE_PAIRING_SCOPE,
+  type DeviceAccountBindingCandidate,
+  type DevicePairingAccessRequestResponse,
+  type DevicePairingConfirmation,
   type DevicePairingOffer,
   type DevicePairingRequest,
   type DevicePrincipalBinding,
@@ -40,6 +43,7 @@ import {
   PAIRING_SCOPE_ORCHESTRATION_READ,
   pairingScopeIncludes,
 } from '@kontourai/station-contracts/environment-security';
+import type { NativePushRegistrationRequest } from '@kontourai/station-contracts/native-push';
 import {
   humanPrincipal,
   isPrincipalRef,
@@ -47,11 +51,19 @@ import {
 } from '@kontourai/station-contracts/principal';
 import { renameFileSyncRetrying } from '@kontourai/station-shared/fs-windows-compat';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../identity/principal-resolver.js';
+import {
+  isValidNativePushRequest,
+  type NativePushRegistration,
+  NativePushRegistrationStore,
+} from '../notifications/native-push-registration-store.js';
 
-const REGISTRY_SCHEMA_VERSION = 2 as const;
+const REGISTRY_SCHEMA_VERSION = 3 as const;
 const PRE_ACTIVITY_REGISTRY_SCHEMA_VERSION = 1;
+const PRE_CREDENTIAL_ALIAS_REGISTRY_SCHEMA_VERSION = 2;
 const REGISTRY_FILE = 'paired-devices.json';
 const PRIVATE_FILE_MODE = 0o600;
+const MAX_RELAY_CREDENTIAL_ALIAS_TTL_MS = 30 * 24 * 60 * 60_000;
+const MAX_RELAY_CREDENTIAL_ALIASES_PER_DEVICE = 8;
 const DEFAULT_OFFER_TTL_MS = 5 * 60_000;
 const DEFAULT_MAX_ACTIVE_OFFERS = 256;
 const DEFAULT_MAX_ACTIVE_CREDENTIALS_PER_VERIFIED_IDENTITY = 5;
@@ -102,6 +114,7 @@ const PUSH_ENDPOINT_PATTERN = /^https:\/\/.{1,2000}$/;
 const PUSH_KEY_PATTERN = /^[A-Za-z0-9_-]{1,256}$/;
 const CLIENT_INSTANCE_ID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const RELAY_ENROLLMENT_ID_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 const REGISTRY_KEYS = new Set(['schemaVersion', 'environmentId', 'devices']);
 const DEVICE_RECORD_KEYS = new Set([
   'id',
@@ -129,7 +142,18 @@ const DEVICE_RECORD_KEYS = new Set([
   'mintKind',
   'homeControlGrantRevision',
   'principalBinding',
+  'credentialAliases',
+  'relayEnrollmentId',
+  'pendingEnrollmentId',
+  // Tolerated, never written: a pre-release build of native push kept its
+  // registration here. It is dropped on load, so the next persist leaves a
+  // registry that older Stations can still read. Registrations now live in
+  // `native-push-registrations.json`.
+  'nativePush',
 ]);
+const PRE_CREDENTIAL_ALIAS_DEVICE_RECORD_KEYS = new Set(
+  [...DEVICE_RECORD_KEYS].filter((key) => key !== 'credentialAliases'),
+);
 const PRE_ACTIVITY_DEVICE_RECORD_KEYS = new Set([
   'id',
   'name',
@@ -146,12 +170,23 @@ const PRE_ACTIVITY_DEVICE_RECORD_KEYS = new Set([
   'requester',
 ]);
 const TAILNET_REQUESTER_KEYS = new Set(['provider', 'login', 'displayName']);
+const ACCOUNT_CANDIDATE_KEYS = new Set(['issuer', 'subject', 'displayName']);
 const NOT_REVOKED_KEYS = new Set(['state']);
 const UNOBSERVED_REVOCATION_KEYS = new Set(['state']);
 const RECORDED_REVOCATION_KEYS = new Set(['state', 'actor', 'reason']);
+const CREDENTIAL_ALIAS_KEYS = new Set([
+  'id',
+  'credentialHash',
+  'scope',
+  'issuedAt',
+  'expiresAt',
+  'revokedAt',
+]);
 
 interface StoredDevice extends PairedDevice {
   credentialHash: string;
+  /** PRIVATE bearer aliases for the same approved Device ID. */
+  credentialAliases?: StoredCredentialAlias[];
   /** PRIVATE — never surfaced through publicDevice()/PairedDevice. */
   clientInstanceId?: string;
   /** PRIVATE — never surfaced through publicDevice()/PairedDevice. */
@@ -174,6 +209,32 @@ interface StoredDevice extends PairedDevice {
   mintKind?: 'local-grant' | 'ui-bootstrap';
   /** PRIVATE — changes whenever home-control scope membership changes. */
   homeControlGrantRevision?: number;
+  /** PRIVATE, durable owner of a Device created by relay enrollment. */
+  relayEnrollmentId?: string;
+  /** PRIVATE admission fence cleared only after the signed activation ACK. */
+  pendingEnrollmentId?: string;
+}
+
+interface StoredCredentialAlias {
+  id: string;
+  credentialHash: string;
+  scope: typeof PAIRING_SCOPE_ORCHESTRATION_READ;
+  issuedAt: number;
+  expiresAt: number;
+  revokedAt: number | null;
+}
+
+interface CredentialMatch {
+  device: StoredDevice;
+  alias?: StoredCredentialAlias;
+}
+
+export interface RelayCredentialAliasIssue {
+  aliasId: string;
+  credential: string;
+  deviceId: string;
+  scope: typeof PAIRING_SCOPE_ORCHESTRATION_READ;
+  expiresAt: number;
 }
 
 interface DeviceRegistry {
@@ -202,6 +263,10 @@ interface PairingOfferState extends DevicePairingOffer {
    * network identity; `station.device_pairing.requests` holds the same line.
    */
   requesterPosition?: PairingRequesterPosition;
+  /** PRIVATE provider session used to revalidate an account candidate at approval. */
+  accountCandidateSessionId?: string;
+  /** PRIVATE marker: these requests can be approved/exchanged only by relay enrollment. */
+  relayEnrollmentId?: string;
 }
 
 type PairingProvenance =
@@ -210,6 +275,48 @@ type PairingProvenance =
       source?: 'same-origin' | 'pairing-code';
       requester?: never;
     };
+
+interface DevicePairingExchangeInput {
+  offerId: string;
+  proof: string;
+  requestId: string;
+  /** Server-selected narrowing; HTTP exchange routes do not accept this. */
+  sessionScope?: string;
+  clientInstanceId?: string;
+  /** Server-only mint stamps. */
+  locality?: 'home-possession';
+  mintKind?: 'local-grant' | 'ui-bootstrap';
+}
+
+interface RelayEnrollmentDeviceReservation {
+  enrollmentId: string;
+  deviceId: string;
+}
+
+export interface VerifiedRelayEnrollmentCandidate {
+  enrollmentId: string;
+  sessionId: string;
+  issuer: string;
+  subject: string;
+}
+
+/** Minimal assertion over one exact reserved pending Device for continuation issuance. */
+export interface PendingRelayDeviceAssertion {
+  readonly deviceId: string;
+  readonly enrollmentId: string;
+  readonly issuer: string;
+  readonly subject: string;
+  readonly approvalId: string;
+  readonly approvedBy: string;
+  readonly scope: readonly string[];
+}
+
+interface DevicePairingExchangeResult {
+  environmentId: string;
+  device: PairedDevice;
+  credential: string;
+  replacement: 'none' | 'superseded';
+}
 
 /**
  * Who is asking for a pending pairing request to be APPROVED (archive#1490).
@@ -353,6 +460,7 @@ export class DevicePairingError extends Error {
       | 'device_revoked'
       | 'device_active'
       | 'device_not_found'
+      | 'relay_enrollment_finalize_required'
       // archive#3816: a requested scope outside the closed vocabulary, or
       // empty. Distinct from `scope_not_grantable`, which is a well-formed
       // token that has no legitimate promotion path.
@@ -451,11 +559,14 @@ function requesterPrincipal(device: StoredDevice): PrincipalRef | null {
 function publicDevice(device: StoredDevice): PairedDevice {
   const {
     credentialHash: _credentialHash,
+    credentialAliases: _credentialAliases,
     clientInstanceId: _clientInstanceId,
     pushSubscription: _pushSubscription,
     locality: _locality,
     mintKind: _mintKind,
     homeControlGrantRevision: _homeControlGrantRevision,
+    relayEnrollmentId: _relayEnrollmentId,
+    pendingEnrollmentId: _pendingEnrollmentId,
     ...safe
   } = device;
   return {
@@ -468,23 +579,44 @@ function publicDevice(device: StoredDevice): PairedDevice {
   };
 }
 
-function isValidPrincipalBinding(value: unknown, requester: unknown): boolean {
-  if (!value || typeof value !== 'object' || !isValidStoredRequester(requester))
-    return false;
-  const binding = value as Record<string, unknown>;
+function isValidAccountCandidate(value: unknown): boolean {
+  if (!value || typeof value !== 'object') return false;
+  const candidate = value as Record<string, unknown>;
   return (
+    hasOnlyKnownKeys(candidate, ACCOUNT_CANDIDATE_KEYS) &&
+    typeof candidate.issuer === 'string' &&
+    safeRequesterText(candidate.issuer, 254) &&
+    typeof candidate.subject === 'string' &&
+    safeRequesterText(candidate.subject, 254) &&
+    typeof candidate.displayName === 'string' &&
+    safeRequesterText(candidate.displayName, 128)
+  );
+}
+
+function isValidPrincipalBinding(value: unknown, requester: unknown): boolean {
+  if (!value || typeof value !== 'object') return false;
+  const binding = value as Record<string, unknown>;
+  const common =
     hasOnlyKnownKeys(
       binding,
-      new Set([
-        'provider',
-        'subject',
-        'approvedAt',
-        'approvalId',
-        'approvedBy',
-      ]),
+      binding.kind === 'account'
+        ? new Set([
+            'kind',
+            'issuer',
+            'subject',
+            'displayName',
+            'approvedAt',
+            'approvalId',
+            'approvedBy',
+          ])
+        : new Set([
+            'provider',
+            'subject',
+            'approvedAt',
+            'approvalId',
+            'approvedBy',
+          ]),
     ) &&
-    binding.provider === 'tailscale-serve' &&
-    binding.subject === (requester as TailscaleServeRequester).login &&
     typeof binding.approvedAt === 'number' &&
     Number.isSafeInteger(binding.approvedAt) &&
     binding.approvedAt >= 0 &&
@@ -494,7 +626,23 @@ function isValidPrincipalBinding(value: unknown, requester: unknown): boolean {
       id: binding.approvedBy,
       kind: 'human',
       display: 'approver',
-    })
+    });
+  if (!common) return false;
+  if (binding.kind === 'account') {
+    return (
+      typeof binding.issuer === 'string' &&
+      safeRequesterText(binding.issuer, 254) &&
+      typeof binding.subject === 'string' &&
+      safeRequesterText(binding.subject, 254) &&
+      typeof binding.displayName === 'string' &&
+      safeRequesterText(binding.displayName, 128)
+    );
+  }
+  return (
+    binding.kind === undefined &&
+    isValidStoredRequester(requester) &&
+    binding.provider === 'tailscale-serve' &&
+    binding.subject === (requester as TailscaleServeRequester).login
   );
 }
 
@@ -547,9 +695,13 @@ function pairingProvenance(input: {
 }
 
 function cloneRequest(request: DevicePairingRequest): DevicePairingRequest {
-  return request.source === 'tailnet'
-    ? { ...request, requester: { ...request.requester } }
-    : { ...request };
+  const cloned =
+    request.source === 'tailnet'
+      ? { ...request, requester: { ...request.requester } }
+      : { ...request };
+  return request.accountCandidate
+    ? { ...cloned, accountCandidate: { ...request.accountCandidate } }
+    : cloned;
 }
 
 function safeRequesterText(value: string, maxLength: number): boolean {
@@ -627,6 +779,55 @@ function isValidRevocation(value: unknown, revokedAt: unknown): boolean {
   );
 }
 
+function isValidCredentialAliases(
+  value: unknown,
+  parentScope: string,
+  parentRevokedAt: unknown,
+): boolean {
+  if (value === undefined) return true;
+  if (
+    !Array.isArray(value) ||
+    value.length > MAX_RELAY_CREDENTIAL_ALIASES_PER_DEVICE
+  )
+    return false;
+  return value.every((item) => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) return false;
+    const alias = item as Record<string, unknown>;
+    return (
+      hasOnlyKnownKeys(alias, CREDENTIAL_ALIAS_KEYS) &&
+      typeof alias.id === 'string' &&
+      CLIENT_INSTANCE_ID_PATTERN.test(alias.id) &&
+      typeof alias.credentialHash === 'string' &&
+      BASE64URL_32_PATTERN.test(alias.credentialHash) &&
+      alias.scope === PAIRING_SCOPE_ORCHESTRATION_READ &&
+      Number.isSafeInteger(alias.issuedAt) &&
+      Number.isSafeInteger(alias.expiresAt) &&
+      (alias.expiresAt as number) > (alias.issuedAt as number) &&
+      (alias.expiresAt as number) <=
+        (alias.issuedAt as number) + MAX_RELAY_CREDENTIAL_ALIAS_TTL_MS &&
+      (alias.revokedAt === null || Number.isSafeInteger(alias.revokedAt)) &&
+      (alias.revokedAt !== null ||
+        isPairingScopeSubset(alias.scope, parentScope)) &&
+      (parentRevokedAt === null || alias.revokedAt !== null)
+    );
+  });
+}
+
+function cascadeCredentialAliasRevocation(
+  device: StoredDevice,
+  revokedAt: number,
+): void {
+  for (const alias of device.credentialAliases ?? [])
+    alias.revokedAt ??= revokedAt;
+}
+
+function narrowCredentialAliasesToParent(device: StoredDevice, now: number) {
+  for (const alias of device.credentialAliases ?? []) {
+    if (!isPairingScopeSubset(alias.scope, device.scope))
+      alias.revokedAt ??= now;
+  }
+}
+
 function validateRegistry(
   value: unknown,
   environmentId: string,
@@ -638,9 +839,12 @@ function validateRegistry(
   const schemaVersion: unknown = record.schemaVersion;
   const migratesPreActivityRegistry =
     schemaVersion === PRE_ACTIVITY_REGISTRY_SCHEMA_VERSION;
+  const migratesPreCredentialAliasRegistry =
+    schemaVersion === PRE_CREDENTIAL_ALIAS_REGISTRY_SCHEMA_VERSION;
   if (
     !hasOnlyKnownKeys(record, REGISTRY_KEYS) ||
     (!migratesPreActivityRegistry &&
+      !migratesPreCredentialAliasRegistry &&
       schemaVersion !== REGISTRY_SCHEMA_VERSION) ||
     record.environmentId !== environmentId ||
     !Array.isArray(record.devices)
@@ -655,7 +859,9 @@ function validateRegistry(
         deviceRecord,
         migratesPreActivityRegistry
           ? PRE_ACTIVITY_DEVICE_RECORD_KEYS
-          : DEVICE_RECORD_KEYS,
+          : migratesPreCredentialAliasRegistry
+            ? PRE_CREDENTIAL_ALIAS_DEVICE_RECORD_KEYS
+            : DEVICE_RECORD_KEYS,
       ) ||
       typeof device.id !== 'string' ||
       typeof device.name !== 'string' ||
@@ -714,8 +920,9 @@ function validateRegistry(
       (device.source === 'tailnet' &&
         !isValidStoredRequester(device.requester)) ||
       (device.principalBinding !== undefined &&
-        (device.source !== 'tailnet' ||
-          device.kind !== 'device' ||
+        (device.kind !== 'device' ||
+          ((device.principalBinding as { kind?: string }).kind !== 'account' &&
+            device.source !== 'tailnet') ||
           !isValidPrincipalBinding(
             device.principalBinding,
             device.requester,
@@ -737,7 +944,26 @@ function validateRegistry(
       (device.homeControlGrantRevision !== undefined &&
         (!Number.isSafeInteger(device.homeControlGrantRevision) ||
           device.homeControlGrantRevision <= 0 ||
-          device.homeControlGrantRevision >= Number.MAX_SAFE_INTEGER))
+          device.homeControlGrantRevision >= Number.MAX_SAFE_INTEGER)) ||
+      (!migratesPreActivityRegistry &&
+        !migratesPreCredentialAliasRegistry &&
+        !isValidCredentialAliases(
+          device.credentialAliases,
+          device.scope,
+          device.revokedAt,
+        )) ||
+      (device.relayEnrollmentId !== undefined &&
+        (typeof device.relayEnrollmentId !== 'string' ||
+          !RELAY_ENROLLMENT_ID_PATTERN.test(device.relayEnrollmentId))) ||
+      (device.pendingEnrollmentId !== undefined &&
+        (typeof device.pendingEnrollmentId !== 'string' ||
+          !RELAY_ENROLLMENT_ID_PATTERN.test(device.pendingEnrollmentId) ||
+          device.pendingEnrollmentId !== device.relayEnrollmentId ||
+          device.scope !== PAIRING_SCOPE_ORCHESTRATION_READ ||
+          device.clientInstanceId !== undefined ||
+          !device.principalBinding ||
+          !('kind' in device.principalBinding) ||
+          device.principalBinding.kind !== 'account'))
     ) {
       throw new Error('Invalid paired-device record');
     }
@@ -751,6 +977,21 @@ function validateRegistry(
       throw new Error('Invalid paired-device push subscription');
     }
   }
+  const aliasIds = new Set<string>();
+  const credentialHashes = new Set<string>();
+  for (const device of record.devices as StoredDevice[]) {
+    if (credentialHashes.has(device.credentialHash))
+      throw new Error('Invalid paired-device credential');
+    credentialHashes.add(device.credentialHash);
+  }
+  for (const device of record.devices as StoredDevice[]) {
+    for (const alias of device.credentialAliases ?? []) {
+      if (aliasIds.has(alias.id) || credentialHashes.has(alias.credentialHash))
+        throw new Error('Invalid paired-device credential alias');
+      aliasIds.add(alias.id);
+      credentialHashes.add(alias.credentialHash);
+    }
+  }
   return {
     ...record,
     schemaVersion: REGISTRY_SCHEMA_VERSION,
@@ -758,7 +999,12 @@ function validateRegistry(
       // Null was the old on-disk spelling for never used. Normalize it (and
       // any non-number value) to ABSENT here so no later projection can leak
       // null to consumers whose contract is absent-never-null.
-      const { issuedAt, lastUsedAt, ...device } = rawDevice;
+      const {
+        issuedAt,
+        lastUsedAt,
+        nativePush: _retiredNativePush,
+        ...device
+      } = rawDevice as typeof rawDevice & { nativePush?: unknown };
       return {
         ...device,
         // R4/AC3 migration: a pre-scoping device reads as full access, in
@@ -773,6 +1019,7 @@ function validateRegistry(
         kind: device.kind === 'delegation' ? 'delegation' : 'device',
         ...(typeof issuedAt === 'number' ? { issuedAt } : {}),
         ...(typeof lastUsedAt === 'number' ? { lastUsedAt } : {}),
+        credentialAliases: device.credentialAliases ?? [],
         pushSubscription: device.pushSubscription ?? null,
         ...(migratesPreActivityRegistry
           ? {
@@ -798,6 +1045,9 @@ function cloneRegistry(registry: DeviceRegistry): DeviceRegistry {
     ...registry,
     devices: registry.devices.map((device) => ({
       ...device,
+      credentialAliases: (device.credentialAliases ?? []).map((alias) => ({
+        ...alias,
+      })),
       ...(device.requester ? { requester: { ...device.requester } } : {}),
       ...(device.principalBinding
         ? { principalBinding: { ...device.principalBinding } }
@@ -846,10 +1096,13 @@ export class DevicePairingService {
   readonly #maxActiveCredentialsWithoutVerifiedIdentity: number;
   readonly #offers = new Map<string, PairingOfferState>();
   #registry: DeviceRegistry;
-  #pendingLegacyScopeMigrationPersist = false;
+  #pendingRegistryMigrationPersist = false;
+  /** Native push registrations: a sidecar, never a registry field. */
+  readonly #nativePush: NativePushRegistrationStore;
 
   constructor(options: DevicePairingServiceOptions) {
     this.#registryPath = join(options.homeDir, 'security', REGISTRY_FILE);
+    this.#nativePush = new NativePushRegistrationStore(options.homeDir);
     this.#environmentId = options.environmentId;
     this.#now = options.now ?? Date.now;
     this.#offerTtlMs = options.offerTtlMs ?? DEFAULT_OFFER_TTL_MS;
@@ -881,10 +1134,10 @@ export class DevicePairingService {
       );
     }
     this.#registry = this.#loadRegistry();
-    // Durably migrate a pre-scoping registry (archive#1098 R4) on first load
-    // rather than waiting for an unrelated mutation to persist it.
-    if (this.#pendingLegacyScopeMigrationPersist) {
-      this.#pendingLegacyScopeMigrationPersist = false;
+    // Durably persist registry migrations on first load rather than waiting
+    // for an unrelated mutation to write the replacement schema.
+    if (this.#pendingRegistryMigrationPersist) {
+      this.#pendingRegistryMigrationPersist = false;
       this.#persistRegistry();
     }
   }
@@ -975,6 +1228,11 @@ export class DevicePairingService {
       deviceName: string;
       clientInstanceId?: string;
       requesterPosition: PairingRequesterPosition;
+      accountCandidate?: DeviceAccountBindingCandidate;
+      accountCandidateSessionId?: string;
+      requireAccountBinding?: true;
+      /** Server-only; HTTP pairing routes never accept this field. */
+      relayEnrollmentId?: string;
     } & PairingProvenance,
   ): DevicePairingRequest {
     const offer = input.offerId
@@ -990,11 +1248,26 @@ export class DevicePairingService {
         !CLIENT_INSTANCE_ID_PATTERN.test(input.clientInstanceId)) ||
       (input.offerId !== '' && !OFFER_ID_PATTERN.test(input.offerId)) ||
       (!equalSecret(input.proof, offer.challenge) &&
-        !equalSecret(input.proof.toUpperCase(), offer.manualCode))
+        !equalSecret(input.proof.toUpperCase(), offer.manualCode)) ||
+      (input.accountCandidate === undefined) !==
+        (input.accountCandidateSessionId === undefined) ||
+      (input.requireAccountBinding === true &&
+        input.accountCandidate === undefined) ||
+      (input.accountCandidate !== undefined &&
+        (!isValidAccountCandidate(input.accountCandidate) ||
+          !safeRequesterText(input.accountCandidateSessionId!, 512))) ||
+      (input.relayEnrollmentId !== undefined &&
+        (!RELAY_ENROLLMENT_ID_PATTERN.test(input.relayEnrollmentId) ||
+          input.requireAccountBinding !== true ||
+          input.accountCandidate === undefined ||
+          input.clientInstanceId !== undefined ||
+          input.source === 'tailnet'))
     ) {
       throw new DevicePairingError('invalid_request');
     }
     offer.clientInstanceId = input.clientInstanceId;
+    offer.accountCandidateSessionId = input.accountCandidateSessionId;
+    offer.relayEnrollmentId = input.relayEnrollmentId;
     const provenance = pairingProvenance(input);
     const request: DevicePairingRequest = {
       requestId: randomUUID(),
@@ -1008,6 +1281,12 @@ export class DevicePairingService {
       createdAt: this.#now(),
       expiresAt: offer.expiresAt,
       ...provenance,
+      ...(input.accountCandidate
+        ? { accountCandidate: structuredClone(input.accountCandidate) }
+        : {}),
+      ...(input.requireAccountBinding === true
+        ? { requireAccountBinding: true as const }
+        : {}),
       status: 'pending',
     };
     offer.request = request;
@@ -1023,14 +1302,11 @@ export class DevicePairingService {
       clientInstanceId?: string;
       scope?: string;
       requesterPosition: PairingRequesterPosition;
+      accountCandidate?: DeviceAccountBindingCandidate;
+      accountCandidateSessionId?: string;
+      requireAccountBinding?: true;
     } & PairingProvenance,
-  ): {
-    environmentId: string;
-    offerId: string;
-    proof: string;
-    requestId: string;
-    expiresAt: number;
-  } {
+  ): DevicePairingAccessRequestResponse {
     const offer = this.createOffer({
       endpoint: input.endpoint,
       scope: input.scope,
@@ -1046,6 +1322,9 @@ export class DevicePairingService {
         offerId: offer.offerId,
         proof: offer.challenge,
         requesterPosition: input.requesterPosition,
+        accountCandidate: input.accountCandidate,
+        accountCandidateSessionId: input.accountCandidateSessionId,
+        requireAccountBinding: input.requireAccountBinding,
         ...provenance,
       });
       return {
@@ -1054,11 +1333,101 @@ export class DevicePairingService {
         proof: offer.challenge,
         requestId: request.requestId,
         expiresAt: offer.expiresAt,
+        ...(request.accountCandidate
+          ? { accountCandidate: structuredClone(request.accountCandidate) }
+          : {}),
+        ...(request.requireAccountBinding
+          ? { requireAccountBinding: true as const }
+          : {}),
       };
     } catch (error) {
       this.#offers.delete(offer.offerId);
       throw error;
     }
+  }
+
+  /**
+   * Server-only pairing request for an already provider-verified relay
+   * candidate. The returned offer proof is private to the enrollment owner;
+   * public pairing routes never call this method or accept its marker.
+   */
+  requestRelayEnrollmentAccess(input: {
+    enrollmentId: string;
+    endpoint: string;
+    candidate: DeviceAccountBindingCandidate;
+    sessionId: string;
+  }) {
+    if (
+      !RELAY_ENROLLMENT_ID_PATTERN.test(input.enrollmentId) ||
+      !isValidAccountCandidate(input.candidate) ||
+      !safeRequesterText(input.sessionId, 512)
+    )
+      throw new DevicePairingError('invalid_request');
+    const offer = this.createOffer({
+      endpoint: input.endpoint,
+      // This is the only scope a fresh relay enrollment may receive. The
+      // exchange still runs the issued-session subset invariant.
+      scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+    });
+    try {
+      const request = this.requestPairing({
+        offerId: offer.offerId,
+        proof: offer.challenge,
+        deviceName: 'Encrypted relay browser',
+        requesterPosition: 'unproven',
+        source: 'same-origin',
+        accountCandidate: structuredClone(input.candidate),
+        accountCandidateSessionId: input.sessionId,
+        requireAccountBinding: true,
+        relayEnrollmentId: input.enrollmentId,
+      });
+      return {
+        offerId: offer.offerId,
+        proof: offer.challenge,
+        requestId: request.requestId,
+        expiresAt: offer.expiresAt,
+      };
+    } catch (error) {
+      this.discardOffer(offer.offerId);
+      throw error;
+    }
+  }
+
+  /** Private metadata required by the relay owner; never included in listRequests(). */
+  relayEnrollmentForRequest(requestId: string) {
+    const offer = [...this.#offers.values()].find(
+      (candidate) => candidate.request?.requestId === requestId,
+    );
+    if (!offer?.relayEnrollmentId) return undefined;
+    if (
+      !offer.request?.accountCandidate ||
+      !offer.accountCandidateSessionId ||
+      offer.request.requireAccountBinding !== true
+    )
+      throw new DevicePairingError('invalid_request');
+    return {
+      enrollmentId: offer.relayEnrollmentId,
+      offerId: offer.offerId,
+      proof: offer.challenge,
+      requestId,
+      candidate: structuredClone(offer.request.accountCandidate),
+      sessionId: offer.accountCandidateSessionId,
+      scope: offer.scope,
+      status: offer.status,
+      ...(offer.principalBinding &&
+      'kind' in offer.principalBinding &&
+      offer.principalBinding.kind === 'account'
+        ? { principalBinding: structuredClone(offer.principalBinding) }
+        : {}),
+    };
+  }
+
+  isRelayEnrollmentRequest(requestId: string): boolean {
+    return [...this.#offers.values()].some(
+      (candidate) =>
+        candidate.request?.requestId === requestId &&
+        candidate.relayEnrollmentId !== undefined,
+    );
   }
 
   listRequests(): DevicePairingRequest[] {
@@ -1070,6 +1439,38 @@ export class DevicePairingService {
       .flatMap((offer) => (offer.request ? [cloneRequest(offer.request)] : []));
   }
 
+  accountCandidateForRequest(requestId: string) {
+    const offer = [...this.#offers.values()].find(
+      (candidate) => candidate.request?.requestId === requestId,
+    );
+    if (!offer?.request?.accountCandidate || !offer.accountCandidateSessionId)
+      return undefined;
+    return {
+      candidate: structuredClone(offer.request.accountCandidate),
+      sessionId: offer.accountCandidateSessionId,
+    };
+  }
+
+  /** Return identity evidence only when the operator actually bound this Device. */
+  approvedAccountBindingForRequest(requestId: string) {
+    const offer = [...this.#offers.values()].find(
+      (candidate) => candidate.request?.requestId === requestId,
+    );
+    const binding = offer?.principalBinding;
+    if (!binding || !('kind' in binding) || binding.kind !== 'account')
+      return undefined;
+    // #offers is private, in-memory state. Supported request creation always
+    // validates candidate/session as a pair and account confirmation copies
+    // that same candidate; an account binding without either field is an
+    // inconsistent internal record and must never mint a Device.
+    if (!offer?.request?.accountCandidate || !offer.accountCandidateSessionId)
+      throw new DevicePairingError('invalid_request');
+    return {
+      candidate: structuredClone(offer.request.accountCandidate),
+      sessionId: offer.accountCandidateSessionId,
+    };
+  }
+
   /**
    * @param approval Who is approving — see {@link PairingApproval}. Required
    *   on purpose: archive#1490 historically found an approval with no caller
@@ -1079,8 +1480,38 @@ export class DevicePairingService {
   confirmRequest(
     requestId: string,
     approval: PairingApproval,
-    personBindingApproval?: { readonly principalId: string },
-  ): DevicePairingRequest {
+    personBindingApproval?: {
+      readonly principalId: string;
+      readonly kind?: 'verified-ingress' | 'account';
+    },
+  ): DevicePairingConfirmation {
+    return this.#confirmRequest(requestId, approval, personBindingApproval);
+  }
+
+  /** Dedicated server path after the pending provider hook verified this exact attempt. */
+  confirmRelayEnrollmentRequest(
+    requestId: string,
+    approval: PairingApproval,
+    principalId: string,
+    verified: VerifiedRelayEnrollmentCandidate,
+  ): DevicePairingConfirmation {
+    return this.#confirmRequest(
+      requestId,
+      approval,
+      { principalId, kind: 'account' },
+      verified,
+    );
+  }
+
+  #confirmRequest(
+    requestId: string,
+    approval: PairingApproval,
+    personBindingApproval?: {
+      readonly principalId: string;
+      readonly kind?: 'verified-ingress' | 'account';
+    },
+    relayVerification?: VerifiedRelayEnrollmentCandidate,
+  ): DevicePairingConfirmation {
     const offer = [...this.#offers.values()].find(
       (candidate) => candidate.request?.requestId === requestId,
     );
@@ -1088,6 +1519,20 @@ export class DevicePairingService {
     this.#ensureNotExpired(offer);
     if (offer.status !== 'requested' || !offer.request) {
       throw new DevicePairingError('offer_unavailable');
+    }
+    if (offer.relayEnrollmentId) {
+      const candidate = offer.request.accountCandidate;
+      if (
+        !relayVerification ||
+        relayVerification.enrollmentId !== offer.relayEnrollmentId ||
+        relayVerification.sessionId !== offer.accountCandidateSessionId ||
+        relayVerification.issuer !== candidate?.issuer ||
+        relayVerification.subject !== candidate?.subject ||
+        personBindingApproval?.kind !== 'account'
+      )
+        throw new DevicePairingError('relay_enrollment_finalize_required');
+    } else if (relayVerification) {
+      throw new DevicePairingError('invalid_request');
     }
     // Anything that is not a verified presented credential or an equally
     // strong local-grant secret is treated as the unauthenticated floor, so a
@@ -1101,12 +1546,17 @@ export class DevicePairingService {
     ) {
       throw new DevicePairingError('approval_requires_operator');
     }
+    if (
+      offer.request.requireAccountBinding &&
+      personBindingApproval?.kind !== 'account'
+    )
+      throw new DevicePairingError('invalid_request');
+    if (offer.relayEnrollmentId && personBindingApproval?.kind !== 'account')
+      throw new DevicePairingError('invalid_request');
     if (personBindingApproval) {
       if (
         approval.kind !== 'presented-credential' ||
         offer.kind !== 'device' ||
-        offer.request.source !== 'tailnet' ||
-        !isValidStoredRequester(offer.request.requester) ||
         !isPrincipalRef({
           id: personBindingApproval.principalId,
           kind: 'human',
@@ -1115,17 +1565,40 @@ export class DevicePairingService {
       ) {
         throw new DevicePairingError('invalid_request');
       }
-      offer.principalBinding = {
-        provider: 'tailscale-serve',
-        subject: offer.request.requester.login,
+      const common = {
         approvedAt: this.#now(),
         approvalId: randomUUID(),
         approvedBy: personBindingApproval.principalId,
       };
+      if (personBindingApproval.kind === 'account') {
+        if (!isValidAccountCandidate(offer.request.accountCandidate))
+          throw new DevicePairingError('invalid_request');
+        offer.principalBinding = {
+          kind: 'account',
+          ...offer.request.accountCandidate!,
+          ...common,
+        };
+      } else {
+        if (
+          offer.request.source !== 'tailnet' ||
+          !isValidStoredRequester(offer.request.requester)
+        )
+          throw new DevicePairingError('invalid_request');
+        offer.principalBinding = {
+          provider: 'tailscale-serve',
+          subject: offer.request.requester.login,
+          ...common,
+        };
+      }
     }
     offer.status = 'confirmed';
     offer.request.status = 'confirmed';
-    return cloneRequest(offer.request);
+    return {
+      ...cloneRequest(offer.request),
+      ...(offer.principalBinding
+        ? { principalBinding: structuredClone(offer.principalBinding) }
+        : {}),
+    };
   }
 
   denyRequest(requestId: string): DevicePairingRequest {
@@ -1145,33 +1618,69 @@ export class DevicePairingService {
     return cloneRequest(offer.request);
   }
 
-  exchange(input: {
-    offerId: string;
-    proof: string;
-    requestId: string;
-    clientInstanceId?: string;
-    /**
-     * Server-only mint stamp. Written solely by the local-grant route and
-     * by a UI-bootstrap exchange that was direct loopback with no proxy
-     * attestation. Access-request, pairing-code, tailnet, and operator
-     * paths must omit it.
-     */
-    locality?: 'home-possession';
-    /** Server-only mint stamp — see StoredDevice.mintKind. */
-    mintKind?: 'local-grant' | 'ui-bootstrap';
-  }): {
-    environmentId: string;
-    device: PairedDevice;
-    credential: string;
-    replacement: 'none' | 'superseded';
-  } {
-    const offer = this.#activeOffer(input.offerId);
+  exchange(input: DevicePairingExchangeInput): DevicePairingExchangeResult {
+    return this.#exchange(input);
+  }
+
+  /** Trusted relay coordinator only; ordinary HTTP exchange cannot supply this reservation. */
+  exchangeRelayEnrollment(
+    input: DevicePairingExchangeInput & RelayEnrollmentDeviceReservation,
+  ): DevicePairingExchangeResult {
+    return this.#exchange(input, {
+      enrollmentId: input.enrollmentId,
+      deviceId: input.deviceId,
+    });
+  }
+
+  #exchange(
+    input: DevicePairingExchangeInput,
+    relayReservation?: RelayEnrollmentDeviceReservation,
+  ): DevicePairingExchangeResult {
+    const offer = this.#offers.get(input.offerId);
+    if (!offer) {
+      // #2228: the joiner polls a saved request, so an offer that is not in
+      // the map — a Station restart wiped the in-memory offers, it was pruned
+      // after expiry elsewhere, or the id is foreign — is a definitive "no
+      // longer available", not a malformed request. Exchange is the one
+      // caller whose absent-offer answer means that; requestPairing's manual
+      // code path keeps invalid_offer's "no open offer matches that code".
+      throw new DevicePairingError('offer_unavailable');
+    }
+    this.#ensureNotExpired(offer);
+    if (
+      (offer.relayEnrollmentId !== undefined &&
+        relayReservation?.enrollmentId !== offer.relayEnrollmentId) ||
+      (offer.relayEnrollmentId === undefined && relayReservation !== undefined)
+    )
+      throw new DevicePairingError('relay_enrollment_finalize_required');
+    if (
+      relayReservation &&
+      (!RELAY_ENROLLMENT_ID_PATTERN.test(relayReservation.enrollmentId) ||
+        !CLIENT_INSTANCE_ID_PATTERN.test(relayReservation.deviceId) ||
+        input.clientInstanceId !== undefined ||
+        input.locality !== undefined ||
+        input.mintKind !== undefined ||
+        input.sessionScope !== undefined ||
+        offer.scope !== PAIRING_SCOPE_ORCHESTRATION_READ ||
+        this.#registry.devices.some(
+          (device) => device.id === relayReservation.deviceId,
+        ))
+    )
+      throw new DevicePairingError('invalid_request');
     if (
       offer.status === 'cancelled' &&
       offer.request?.requestId === input.requestId &&
       offer.request.status === 'denied'
     ) {
       throw new DevicePairingError('request_denied');
+    }
+    if (offer.status === 'used' || offer.status === 'cancelled') {
+      // Definitive: another exchange already consumed this offer, or the host
+      // cancelled it without a deny (the arm above). Both are unrecoverable
+      // by retrying, which is exactly why they must not share the
+      // request_not_confirmed "nobody has approved yet" answer the joiner's
+      // completion loop polls through (#2228 slice 4).
+      throw new DevicePairingError('offer_unavailable');
     }
     if (
       offer.status !== 'confirmed' ||
@@ -1184,6 +1693,27 @@ export class DevicePairingService {
     // exchange decisions.
     const request = offer.request;
     if (!request) throw new DevicePairingError('request_not_confirmed');
+    if (
+      request.requireAccountBinding &&
+      (!offer.principalBinding ||
+        !('kind' in offer.principalBinding) ||
+        offer.principalBinding.kind !== 'account')
+    )
+      throw new DevicePairingError('invalid_request');
+    if (
+      relayReservation &&
+      (!RELAY_ENROLLMENT_ID_PATTERN.test(relayReservation.enrollmentId) ||
+        !CLIENT_INSTANCE_ID_PATTERN.test(relayReservation.deviceId) ||
+        input.clientInstanceId !== undefined ||
+        input.locality !== undefined ||
+        input.mintKind !== undefined ||
+        input.sessionScope !== undefined ||
+        offer.scope !== PAIRING_SCOPE_ORCHESTRATION_READ ||
+        this.#registry.devices.some(
+          (device) => device.id === relayReservation.deviceId,
+        ))
+    )
+      throw new DevicePairingError('invalid_request');
     const requestProvenance = pairingProvenance(request);
     if (
       !equalSecret(input.proof, offer.challenge) &&
@@ -1191,12 +1721,13 @@ export class DevicePairingService {
     ) {
       throw new DevicePairingError('invalid_request');
     }
-    // R1 invariant: the session (device) scope can never exceed the grant
-    // (offer) scope it was exchanged from. Today the two are always equal by
-    // construction (the line below copies offer.scope verbatim), but this
-    // stays an explicit, tested check rather than a silent assumption so a
-    // future narrower-session exchange cannot regress it unnoticed.
-    if (!isPairingScopeSubset(offer.scope, offer.scope)) {
+    // The issued Device scope can be narrower than the approved grant, but
+    // must never carry authority the offer did not grant. Ordinary exchanges
+    // retain the offer scope; server-owned callers may explicitly narrow it.
+    const sessionScope = relayReservation
+      ? PAIRING_SCOPE_ORCHESTRATION_READ
+      : (input.sessionScope ?? offer.scope);
+    if (!isPairingScopeSubset(sessionScope, offer.scope)) {
       throw new DevicePairingError('invalid_request');
     }
     if (
@@ -1232,6 +1763,7 @@ export class DevicePairingService {
             actor: 'same-client-replacement',
             reason: 'same-client-replacement',
           };
+          cascadeCredentialAliasRevocation(item, revokedAt);
           item.pushSubscription = null;
         }
       }
@@ -1273,9 +1805,9 @@ export class DevicePairingService {
     }
     const issuedAt = this.#now();
     const device: StoredDevice = {
-      id: randomUUID(),
+      id: relayReservation?.deviceId ?? randomUUID(),
       name: request.deviceName,
-      scope: offer.scope,
+      scope: sessionScope,
       kind: offer.kind,
       createdAt: issuedAt,
       activityTracking: 'tracked-since-issued',
@@ -1288,6 +1820,12 @@ export class DevicePairingService {
       issuedAt,
       ...(offer.principalBinding
         ? { principalBinding: { ...offer.principalBinding } }
+        : {}),
+      ...(relayReservation
+        ? {
+            relayEnrollmentId: relayReservation.enrollmentId,
+            pendingEnrollmentId: relayReservation.enrollmentId,
+          }
         : {}),
       ...(input.clientInstanceId
         ? { clientInstanceId: input.clientInstanceId }
@@ -1319,6 +1857,7 @@ export class DevicePairingService {
     // supersession (old active grant revoked without its replacement).
     this.#persistRegistry(nextRegistry);
     this.#registry = nextRegistry;
+    this.#dropStaleNativePush();
     offer.status = 'used';
     return {
       environmentId: this.#environmentId,
@@ -1326,6 +1865,117 @@ export class DevicePairingService {
       credential,
       replacement: replacement ? 'superseded' : 'none',
     };
+  }
+
+  /** Activate exactly the reserved Device after the signed relay ACK commits. */
+  activateRelayEnrollmentDevice(
+    deviceId: string,
+    enrollmentId: string,
+  ): PairedDevice {
+    const nextRegistry = cloneRegistry(this.#registry);
+    const device = nextRegistry.devices.find((item) => item.id === deviceId);
+    if (
+      !device ||
+      device.relayEnrollmentId !== enrollmentId ||
+      device.pendingEnrollmentId !== enrollmentId ||
+      device.revokedAt !== null
+    )
+      throw new DevicePairingError('invalid_request');
+    delete device.pendingEnrollmentId;
+    this.#persistRegistry(nextRegistry);
+    this.#registry = nextRegistry;
+    return publicDevice(device);
+  }
+
+  /** Resolve only a pending relay Device owned by this exact enrollment attempt. */
+  resolvePendingRelayDevice(
+    deviceId: string,
+    enrollmentId: string,
+  ): PendingRelayDeviceAssertion | null {
+    if (
+      !CLIENT_INSTANCE_ID_PATTERN.test(deviceId) ||
+      !RELAY_ENROLLMENT_ID_PATTERN.test(enrollmentId)
+    )
+      return null;
+    const device = this.#registry.devices.find(
+      (candidate) => candidate.id === deviceId,
+    );
+    const binding = device?.principalBinding;
+    if (
+      device?.kind !== 'device' ||
+      device.revokedAt !== null ||
+      device.relayEnrollmentId !== enrollmentId ||
+      device.pendingEnrollmentId !== enrollmentId ||
+      device.scope !== PAIRING_SCOPE_ORCHESTRATION_READ ||
+      !binding ||
+      !('kind' in binding) ||
+      binding.kind !== 'account'
+    )
+      return null;
+    return Object.freeze({
+      deviceId: device.id,
+      enrollmentId,
+      issuer: binding.issuer,
+      subject: binding.subject,
+      approvalId: binding.approvalId,
+      approvedBy: binding.approvedBy,
+      scope: Object.freeze([PAIRING_SCOPE_ORCHESTRATION_READ]),
+    });
+  }
+
+  /** Resolve only an active relay Device retained by this exact committed attempt. */
+  resolveActiveRelayEnrollmentDevice(
+    deviceId: string,
+    enrollmentId: string,
+  ): PendingRelayDeviceAssertion | null {
+    if (
+      !CLIENT_INSTANCE_ID_PATTERN.test(deviceId) ||
+      !RELAY_ENROLLMENT_ID_PATTERN.test(enrollmentId)
+    )
+      return null;
+    const device = this.#registry.devices.find(
+      (candidate) => candidate.id === deviceId,
+    );
+    const binding = device?.principalBinding;
+    if (
+      device?.kind !== 'device' ||
+      device.revokedAt !== null ||
+      device.relayEnrollmentId !== enrollmentId ||
+      device.pendingEnrollmentId !== undefined ||
+      device.scope !== PAIRING_SCOPE_ORCHESTRATION_READ ||
+      !binding ||
+      !('kind' in binding) ||
+      binding.kind !== 'account'
+    )
+      return null;
+    return Object.freeze({
+      deviceId: device.id,
+      enrollmentId,
+      issuer: binding.issuer,
+      subject: binding.subject,
+      approvalId: binding.approvalId,
+      approvedBy: binding.approvedBy,
+      scope: Object.freeze([PAIRING_SCOPE_ORCHESTRATION_READ]),
+    });
+  }
+  /** Roll back only the uncommitted Device owned by this exact enrollment. */
+  discardRelayEnrollmentDevice(
+    deviceId: string,
+    enrollmentId: string,
+  ): boolean {
+    const existing = this.#registry.devices.find(
+      (item) => item.id === deviceId,
+    );
+    if (!existing) return false;
+    if (existing.relayEnrollmentId !== enrollmentId)
+      throw new DevicePairingError('invalid_request');
+    const nextRegistry = cloneRegistry(this.#registry);
+    nextRegistry.devices = nextRegistry.devices.filter(
+      (item) => item.id !== deviceId,
+    );
+    this.#persistRegistry(nextRegistry);
+    this.#registry = nextRegistry;
+    return true;
   }
 
   cancelOffer(offerId: string): void {
@@ -1337,6 +1987,16 @@ export class DevicePairingService {
   /** Remove a server-owned offer that must never be resumed by a caller. */
   discardOffer(offerId: string): void {
     this.#offers.delete(offerId);
+  }
+
+  /** Discard only the private offer belonging to one relay enrollment attempt. */
+  discardRelayEnrollmentOffer(offerId: string, enrollmentId: string): boolean {
+    const offer = this.#offers.get(offerId);
+    if (!offer) return false;
+    if (offer.relayEnrollmentId !== enrollmentId)
+      throw new DevicePairingError('invalid_request');
+    this.#offers.delete(offerId);
+    return true;
   }
 
   /** Personal-home conversation membership; grants and attribution stay per device. */
@@ -1352,7 +2012,8 @@ export class DevicePairingService {
       return undefined;
     const owners = new Set<string>([LOCAL_OPERATOR_PRINCIPAL_ID]);
     for (const device of this.#registry.devices) {
-      if (device.kind !== 'device') continue;
+      if (device.kind !== 'device' || device.pendingEnrollmentId !== undefined)
+        continue;
       owners.add(devicePrincipal(device).id);
       const requester = requesterPrincipal(device);
       if (requester) owners.add(requester.id);
@@ -1368,6 +2029,7 @@ export class DevicePairingService {
     return this.#registry.devices.some((device) => {
       if (
         device.kind !== 'device' ||
+        device.pendingEnrollmentId !== undefined ||
         (!historicalOwner &&
           (device.revokedAt !== null ||
             !pairingScopeIncludes(
@@ -1384,13 +2046,16 @@ export class DevicePairingService {
   }
 
   listDevices(): PairedDevice[] {
-    return this.#registry.devices.map(publicDevice);
+    return this.#registry.devices
+      .filter((device) => device.pendingEnrollmentId === undefined)
+      .map(publicDevice);
   }
 
   /** Private current incarnation for an explicitly promoted home-control grant. */
   homeControlGrantRevision(deviceId: string): number | undefined {
     const device = this.#registry.devices.find((item) => item.id === deviceId);
     return device?.revokedAt === null &&
+      device.pendingEnrollmentId === undefined &&
       pairingScopeIncludes(device.scope, PAIRING_SCOPE_HOME_CONTROL) &&
       typeof device.homeControlGrantRevision === 'number'
       ? device.homeControlGrantRevision
@@ -1424,7 +2089,8 @@ export class DevicePairingService {
       { id: string; display: string; revoked: boolean }
     >();
     for (const device of this.#registry.devices) {
-      if (device.kind !== 'device') continue;
+      if (device.kind !== 'device' || device.pendingEnrollmentId !== undefined)
+        continue;
       const revoked = device.revokedAt !== null;
       for (const principal of [
         devicePrincipal(device),
@@ -1456,8 +2122,12 @@ export class DevicePairingService {
     const nextRegistry = cloneRegistry(this.#registry);
     const device = nextRegistry.devices.find((item) => item.id === deviceId);
     if (!device) throw new DevicePairingError('device_not_found');
+    if (device.pendingEnrollmentId !== undefined)
+      throw new DevicePairingError('device_not_found');
     if (device.revokedAt === null) {
-      device.revokedAt = this.#now();
+      const revokedAt = this.#now();
+      device.revokedAt = revokedAt;
+      cascadeCredentialAliasRevocation(device, revokedAt);
       device.revocation = {
         state: 'recorded',
         actor,
@@ -1468,8 +2138,147 @@ export class DevicePairingService {
       device.pushSubscription = null;
       this.#persistRegistry(nextRegistry);
       this.#registry = nextRegistry;
+      this.#dropStaleNativePush();
     }
     return publicDevice(device);
+  }
+
+  /**
+   * Mints a short-lived bearer alias for the same already-approved Device.
+   * The alias is intentionally limited to orchestration:read, even when its
+   * parent Device carries broader or host-local authority.
+   *
+   * A route must not deliver this credential to a browser until runtime
+   * admission also requires the exact account continuation and proof bound to
+   * this Device and alias; the read scope alone is not the relay contract.
+   */
+  issueRelayCredentialAlias(
+    parentCredential: string,
+    expectedDeviceId: string,
+    ttlMs = MAX_RELAY_CREDENTIAL_ALIAS_TTL_MS,
+    requestedAliasId: string = randomUUID(),
+  ): RelayCredentialAliasIssue {
+    if (
+      !BASE64URL_32_PATTERN.test(parentCredential) ||
+      !CLIENT_INSTANCE_ID_PATTERN.test(expectedDeviceId) ||
+      !CLIENT_INSTANCE_ID_PATTERN.test(requestedAliasId) ||
+      !Number.isSafeInteger(ttlMs) ||
+      ttlMs < 1 ||
+      ttlMs > MAX_RELAY_CREDENTIAL_ALIAS_TTL_MS
+    )
+      throw new DevicePairingError('invalid_request');
+    const parent = this.#findActiveCredential(this.#registry, parentCredential);
+    if (
+      !parent ||
+      parent.alias ||
+      parent.device.id !== expectedDeviceId ||
+      parent.device.revokedAt !== null ||
+      this.#isPendingRelayDevice(parent.device)
+    )
+      throw new DevicePairingError('invalid_request');
+    if (
+      !isPairingScopeSubset(
+        PAIRING_SCOPE_ORCHESTRATION_READ,
+        parent.device.scope,
+      )
+    )
+      throw new DevicePairingError('invalid_scope');
+
+    const now = this.#now();
+    if (!Number.isSafeInteger(now) || !Number.isSafeInteger(now + ttlMs))
+      throw new DevicePairingError('invalid_request');
+    const nextRegistry = cloneRegistry(this.#registry);
+    const device = nextRegistry.devices.find(
+      (item) => item.id === expectedDeviceId,
+    );
+    if (
+      !device ||
+      device.revokedAt !== null ||
+      this.#isPendingRelayDevice(device)
+    )
+      throw new DevicePairingError('invalid_request');
+    const activeAliases = (device.credentialAliases ?? []).filter(
+      (alias) =>
+        alias.revokedAt === null &&
+        alias.expiresAt > now &&
+        isPairingScopeSubset(alias.scope, device.scope),
+    );
+    if (activeAliases.length >= MAX_RELAY_CREDENTIAL_ALIASES_PER_DEVICE)
+      throw new DevicePairingError('invalid_request');
+
+    const credential = randomBytes(32).toString('base64url');
+    const credentialHash = digest(credential).toString('base64url');
+    if (
+      nextRegistry.devices.some(
+        (candidate) =>
+          candidate.credentialHash === credentialHash ||
+          candidate.credentialAliases?.some(
+            (alias) => alias.credentialHash === credentialHash,
+          ),
+      )
+    )
+      throw new DevicePairingError('invalid_request');
+    if (
+      nextRegistry.devices.some((candidate) =>
+        candidate.credentialAliases?.some(
+          (alias) => alias.id === requestedAliasId,
+        ),
+      )
+    )
+      throw new DevicePairingError('invalid_request');
+    const aliasId = requestedAliasId;
+    const expiresAt = now + ttlMs;
+    device.credentialAliases = [
+      ...activeAliases,
+      {
+        id: aliasId,
+        credentialHash,
+        scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+        issuedAt: now,
+        expiresAt,
+        revokedAt: null,
+      },
+    ];
+    this.#persistRegistry(nextRegistry);
+    this.#registry = nextRegistry;
+    return {
+      aliasId,
+      credential,
+      deviceId: expectedDeviceId,
+      scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+      expiresAt,
+    };
+  }
+
+  /** Revokes one alias while preserving its parent Device and other aliases. */
+  revokeRelayCredentialAlias(deviceId: string, aliasId: string): boolean {
+    if (
+      !CLIENT_INSTANCE_ID_PATTERN.test(deviceId) ||
+      !CLIENT_INSTANCE_ID_PATTERN.test(aliasId)
+    )
+      throw new DevicePairingError('invalid_request');
+    const current = this.#registry.devices.find(
+      (device) => device.id === deviceId,
+    );
+    const currentAlias = current?.credentialAliases?.find(
+      (alias) => alias.id === aliasId,
+    );
+    if (
+      !current ||
+      current.revokedAt !== null ||
+      !currentAlias ||
+      currentAlias.revokedAt !== null
+    )
+      return false;
+    const nextRegistry = cloneRegistry(this.#registry);
+    const device = nextRegistry.devices.find((item) => item.id === deviceId)!;
+    const alias = device.credentialAliases!.find(
+      (item) => item.id === aliasId,
+    )!;
+    alias.revokedAt = this.#now();
+    this.#persistRegistry(nextRegistry);
+    this.#registry = nextRegistry;
+    return true;
   }
 
   /**
@@ -1486,6 +2295,8 @@ export class DevicePairingService {
     }
     const device = this.#registry.devices.find((item) => item.id === deviceId);
     if (!device) throw new DevicePairingError('device_not_found');
+    if (device.pendingEnrollmentId !== undefined)
+      throw new DevicePairingError('device_not_found');
     if (device.revokedAt === null)
       throw new DevicePairingError('device_active');
     const nextRegistry: DeviceRegistry = {
@@ -1574,6 +2385,8 @@ export class DevicePairingService {
     const nextRegistry = cloneRegistry(this.#registry);
     const device = nextRegistry.devices.find((item) => item.id === deviceId);
     if (!device) throw new DevicePairingError('device_not_found');
+    if (device.pendingEnrollmentId !== undefined)
+      throw new DevicePairingError('device_not_found');
     if (device.revokedAt !== null) {
       throw new DevicePairingError('device_revoked');
     }
@@ -1596,6 +2409,7 @@ export class DevicePairingService {
       device.homeControlGrantRevision = revision + 1;
     }
     device.scope = canonical;
+    narrowCredentialAliasesToParent(device, this.#now());
     // Persisted before it is exposed in memory, for the same reason the
     // approval-authority setter does it: a write fault must not leave a
     // device narrowed in this process and wide open on disk, where a restart
@@ -1619,6 +2433,8 @@ export class DevicePairingService {
     const nextRegistry = cloneRegistry(this.#registry);
     const device = nextRegistry.devices.find((item) => item.id === deviceId);
     if (!device) throw new DevicePairingError('device_not_found');
+    if (device.pendingEnrollmentId !== undefined)
+      throw new DevicePairingError('device_not_found');
     if (device.revokedAt !== null) {
       throw new DevicePairingError('device_revoked');
     }
@@ -1633,6 +2449,7 @@ export class DevicePairingService {
     device.scope = PAIRING_SCOPES.filter((scope) => next.includes(scope)).join(
       ' ',
     );
+    narrowCredentialAliasesToParent(device, this.#now());
     // Persist the authority change before exposing it in memory (archive#3324): a
     // write fault must not leave approval authority granted in this process
     // and absent on disk, where a restart would silently withdraw it.
@@ -1667,6 +2484,8 @@ export class DevicePairingService {
     const nextRegistry = cloneRegistry(this.#registry);
     const device = nextRegistry.devices.find((item) => item.id === deviceId);
     if (!device) throw new DevicePairingError('device_not_found');
+    if (device.pendingEnrollmentId !== undefined)
+      throw new DevicePairingError('device_not_found');
     device.pushSubscription = subscription;
     // Persist before exposing (archive#3324): a subscription live in memory but
     // absent on disk stops receiving pushes at the next restart, with no
@@ -1681,6 +2500,8 @@ export class DevicePairingService {
     const nextRegistry = cloneRegistry(this.#registry);
     const device = nextRegistry.devices.find((item) => item.id === deviceId);
     if (!device) throw new DevicePairingError('device_not_found');
+    if (device.pendingEnrollmentId !== undefined)
+      throw new DevicePairingError('device_not_found');
     if (device.pushSubscription === null) return publicDevice(device);
     device.pushSubscription = null;
     // Persist before exposing (archive#3324). This direction is the one revocation
@@ -1701,7 +2522,11 @@ export class DevicePairingService {
       subscription: WebPushSubscription;
     }> = [];
     for (const device of this.#registry.devices) {
-      if (device.revokedAt === null && device.pushSubscription !== null) {
+      if (
+        device.revokedAt === null &&
+        device.pendingEnrollmentId === undefined &&
+        device.pushSubscription !== null
+      ) {
         results.push({
           deviceId: device.id,
           subscription: device.pushSubscription,
@@ -1709,6 +2534,81 @@ export class DevicePairingService {
       }
     }
     return results;
+  }
+
+  /**
+   * Stores (or replaces the token of) the caller's own native push
+   * registration. Callers must resolve the caller's device via
+   * {@link identifyDevice} first — this trusts the deviceId it is given, but
+   * refuses a revoked or not-yet-activated one.
+   */
+  setNativePush(
+    deviceId: string,
+    request: NativePushRegistrationRequest,
+    stationKey: string,
+  ): NativePushRegistration {
+    if (!isValidNativePushRequest(request))
+      throw new DevicePairingError('invalid_request');
+    if (!this.#activeDeviceIds().has(deviceId))
+      throw new DevicePairingError('device_not_found');
+    return this.#nativePush.upsert(deviceId, request, stationKey, this.#now());
+  }
+
+  /**
+   * Idempotent. With `expectedToken`, clears only if the stored token is
+   * still that one — a gateway "unregistered" answer for an old token must
+   * not erase a registration the phone has since refreshed.
+   */
+  clearNativePush(deviceId: string, expectedToken?: string): boolean {
+    return this.#nativePush.delete(deviceId, expectedToken);
+  }
+
+  /** Remembers alerts a registration was sent (see the store). */
+  recordNativePushAlerts(
+    deviceId: string,
+    registrationId: string,
+    alertIds: readonly string[],
+  ): void {
+    this.#nativePush.recordAlerted(deviceId, registrationId, alertIds);
+  }
+
+  /**
+   * Fan-out source for the agent-activity publisher. Joined against the
+   * registry on every read, so a registration whose device was revoked is
+   * never listed even if dropping it failed.
+   */
+  listNativePushRegistrations(): Array<{
+    deviceId: string;
+    registration: NativePushRegistration;
+  }> {
+    const active = this.#activeDeviceIds();
+    return [...this.#nativePush.list()]
+      .filter(([deviceId]) => active.has(deviceId))
+      .map(([deviceId, registration]) => ({ deviceId, registration }));
+  }
+
+  #activeDeviceIds(): Set<string> {
+    return new Set(
+      this.#registry.devices
+        .filter(
+          (device) =>
+            device.revokedAt === null &&
+            device.pendingEnrollmentId === undefined,
+        )
+        .map((device) => device.id),
+    );
+  }
+
+  /**
+   * Called after a revocation, replacement or reset is committed. Best
+   * effort: the listing join above already hides a stale entry.
+   */
+  #dropStaleNativePush(keep: ReadonlySet<string> = this.#activeDeviceIds()) {
+    try {
+      this.#nativePush.retain(keep);
+    } catch {
+      // An unreadable store is reported where it is read (publisher, route).
+    }
   }
 
   resetEnvironment(environmentId: string): void {
@@ -1723,13 +2623,19 @@ export class DevicePairingService {
     // restart. Offers are in-memory only, so they are cleared after the
     // durable write succeeds.
     this.#persistRegistry(nextRegistry);
+    this.#dropStaleNativePush(new Set());
     this.#environmentId = environmentId;
     this.#registry = nextRegistry;
     this.#offers.clear();
   }
 
   verifyCredential(candidate: string): boolean {
-    return this.#resolveActiveDevice(candidate) !== undefined;
+    return this.#resolveActiveCredential(candidate) !== undefined;
+  }
+
+  /** Private runtime signal: aliases require their bound continuation + PoP. */
+  credentialAliasId(candidate: string): string | undefined {
+    return this.#findActiveCredential(this.#registry, candidate)?.alias?.id;
   }
 
   /**
@@ -1766,8 +2672,11 @@ export class DevicePairingService {
    * becomes an oracle distinguishable from a plain boolean check.
    */
   identifyDevice(candidate: string): PairedDevice | null {
-    const device = this.#resolveActiveDevice(candidate);
-    return device ? publicDevice(device) : null;
+    const match = this.#resolveActiveCredential(candidate);
+    if (!match) return null;
+    const device = publicDevice(match.device);
+    if (match.alias) device.scope = match.alias.scope;
+    return device;
   }
 
   /**
@@ -1777,8 +2686,8 @@ export class DevicePairingService {
    * path). Never reads pairing `source` or network position.
    */
   credentialLocality(candidate: string): 'home-possession' | undefined {
-    const device = this.#findActiveDevice(this.#registry, candidate);
-    return device?.locality === 'home-possession'
+    const match = this.#findActiveCredential(this.#registry, candidate);
+    return !match?.alias && match?.device.locality === 'home-possession'
       ? 'home-possession'
       : undefined;
   }
@@ -1792,8 +2701,23 @@ export class DevicePairingService {
   credentialMintKind(
     candidate: string,
   ): 'local-grant' | 'ui-bootstrap' | undefined {
-    const device = this.#findActiveDevice(this.#registry, candidate);
-    return device?.locality === 'home-possession' ? device.mintKind : undefined;
+    const match = this.#findActiveCredential(this.#registry, candidate);
+    return !match?.alias && match?.device.locality === 'home-possession'
+      ? match.device.mintKind
+      : undefined;
+  }
+
+  /**
+   * The credential-level mirror of the auth boundary's bound
+   * local-grant-minted-operator predicate (archive#3677 PR 3): true only when
+   * the credential is active, mint-time home-possession, AND minted through
+   * the local-grant path. This service owns the derivation — consumers answer
+   * it through this method rather than re-deriving mint-kind from raw fields,
+   * so the public eligibility answer and the boundary's bound flag cannot
+   * drift apart (#2228).
+   */
+  isLocalGrantMintedCredential(candidate: string): boolean {
+    return this.credentialMintKind(candidate) === 'local-grant';
   }
 
   /**
@@ -1801,17 +2725,17 @@ export class DevicePairingService {
    * verifyCredential and identifyDevice. Touches lastUsedAt at the same
    * bounded write cadence either primitive is called through.
    */
-  #resolveActiveDevice(
+  #resolveActiveCredential(
     candidate: string,
     touchLastUsed = true,
-  ): StoredDevice | undefined {
-    const device = this.#findActiveDevice(this.#registry, candidate);
-    if (!device) return undefined;
+  ): CredentialMatch | undefined {
+    const match = this.#findActiveCredential(this.#registry, candidate);
+    if (!match) return undefined;
     const now = this.#now();
     if (
       touchLastUsed &&
-      (device.lastUsedAt == null ||
-        now - device.lastUsedAt >= LAST_USED_WRITE_INTERVAL_MS)
+      (match.device.lastUsedAt == null ||
+        now - match.device.lastUsedAt >= LAST_USED_WRITE_INTERVAL_MS)
     ) {
       // This is a bookkeeping write on a READ path (archive#3324): the callers are
       // verifyCredential and identifyDevice, whose contract is to answer a
@@ -1838,19 +2762,59 @@ export class DevicePairingService {
       // retries happen per call rather than once per interval — self-healing
       // for a transient fault, unbounded re-attempts under a lasting one.
       const nextRegistry = cloneRegistry(this.#registry);
-      const pending = this.#findActiveDevice(nextRegistry, candidate);
+      const pending = this.#findActiveCredential(nextRegistry, candidate);
       if (pending) {
-        pending.lastUsedAt = now;
+        pending.device.lastUsedAt = now;
         try {
           this.#persistRegistry(nextRegistry);
           this.#registry = nextRegistry;
-          return pending;
+          return this.#findActiveCredential(this.#registry, candidate);
         } catch {
           // Keep serving from the unmutated registry; the next call retries.
         }
       }
     }
-    return device;
+    return match;
+  }
+
+  #isPendingRelayDevice(device: StoredDevice): boolean {
+    return (
+      (device as StoredDevice & { pendingEnrollmentId?: unknown })
+        .pendingEnrollmentId !== undefined
+    );
+  }
+
+  #findActiveCredential(
+    registry: DeviceRegistry,
+    candidate: string,
+  ): CredentialMatch | undefined {
+    const candidateHash = digest(candidate);
+    const now = this.#now();
+    let match: CredentialMatch | undefined;
+    for (const device of registry.devices) {
+      const parentMatches = timingSafeEqual(
+        candidateHash,
+        Buffer.from(device.credentialHash, 'base64url'),
+      );
+      const parentActive =
+        device.revokedAt === null && !this.#isPendingRelayDevice(device);
+      if (parentMatches && parentActive) match = { device };
+      for (const alias of device.credentialAliases ?? []) {
+        const aliasMatches = timingSafeEqual(
+          candidateHash,
+          Buffer.from(alias.credentialHash, 'base64url'),
+        );
+        if (
+          aliasMatches &&
+          parentActive &&
+          alias.revokedAt === null &&
+          alias.expiresAt > now &&
+          isPairingScopeSubset(alias.scope, device.scope)
+        )
+          match = { device, alias };
+      }
+    }
+    return match;
   }
 
   /**
@@ -1869,15 +2833,7 @@ export class DevicePairingService {
     registry: DeviceRegistry,
     candidate: string,
   ): StoredDevice | undefined {
-    const candidateHash = digest(candidate);
-    return registry.devices.find(
-      (item) =>
-        item.revokedAt === null &&
-        timingSafeEqual(
-          candidateHash,
-          Buffer.from(item.credentialHash, 'base64url'),
-        ),
-    );
+    return this.#findActiveCredential(registry, candidate)?.device;
   }
 
   #uniqueDeviceName(
@@ -1999,10 +2955,14 @@ export class DevicePairingService {
       : [];
     // validateRegistry maps devices 1:1 without reordering, so index-aligned
     // comparison against the pre-migration raw scope is safe here.
-    this.#pendingLegacyScopeMigrationPersist =
-      (parsed as { schemaVersion?: unknown }).schemaVersion ===
-        PRE_ACTIVITY_REGISTRY_SCHEMA_VERSION ||
-      rawDevices.some((device) => device.scope === DEVICE_PAIRING_SCOPE);
+    this.#pendingRegistryMigrationPersist =
+      (parsed as { schemaVersion?: unknown }).schemaVersion !==
+        REGISTRY_SCHEMA_VERSION ||
+      rawDevices.some((device) => device.scope === DEVICE_PAIRING_SCOPE) ||
+      // The retired pre-release native push field: rewrite now, so the file
+      // an older Station may read next is clean without waiting for an
+      // unrelated write.
+      rawDevices.some((device) => Object.hasOwn(device, 'nativePush'));
     return registry;
   }
 

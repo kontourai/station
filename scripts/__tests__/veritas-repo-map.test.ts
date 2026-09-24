@@ -1,5 +1,5 @@
 /**
- * Repo Map contract test (Veritas 1.5).
+ * Repo Map contract test (Veritas 1.7).
  *
  * Replaces the retired scripts/veritas-report.mjs test. Its load-bearing
  * protection is route selection: runtime/server changes must keep selecting
@@ -13,6 +13,8 @@ import { resolve } from 'node:path';
 import { classifyNodes } from '@kontourai/veritas';
 import { describe, expect, it } from 'vitest';
 import {
+  codexHookFeatureFindings,
+  codexPreEditHookFindings,
   findUnexecutableRoutedProofFamilyIds,
   runRepoGovernanceChecks,
 } from '../proof-family-lane.mjs';
@@ -39,7 +41,6 @@ const veritasReadme = readFileSync(
 
 interface EvidenceCheckRoute {
   nodeIds: string[];
-  componentIds?: string[];
   evidenceCheckIds: string[];
 }
 
@@ -47,11 +48,9 @@ function routes(): EvidenceCheckRoute[] {
   return repoMap.evidence.evidenceCheckRoutes ?? [];
 }
 
-// 0.5.0 runtime matches routes on componentIds while the published schema
-// documents nodeIds; the repo-map carries both. Route on the runtime key.
 function routedCheckIdsFor(nodeId: string): string[] {
   return routes()
-    .filter((route) => (route.componentIds ?? []).includes(nodeId))
+    .filter((route) => route.nodeIds.includes(nodeId))
     .flatMap((route) => route.evidenceCheckIds);
 }
 
@@ -112,15 +111,23 @@ describe('veritas repo map (1.5)', () => {
     expect(result.unmatchedFiles).toEqual(['package.json.backup']);
   });
 
-  it('keeps repo-governance required and verification-policy default-only', () => {
+  it('keeps repo-governance and the style standard required, verification-policy default-only', () => {
+    // #2220: the style standard is a REQUIRED evidence check — the readiness
+    // verdict carries the style standard, so a lint violation reads as
+    // not-ready (owner-approved 2026-09-17, attested policy-change
+    // policy-change-2026-09-18T03-59-57-595Z / -04-06-56-449Z).
     expect(repoMap.evidence.requiredEvidenceCheckIds).toEqual([
       'repo-governance',
+      'style-standard',
     ]);
     expect(repoMap.evidence.defaultEvidenceCheckIds).toContain(
       'repo-governance',
     );
     expect(repoMap.evidence.defaultEvidenceCheckIds).toContain(
       'verification-policy',
+    );
+    expect(repoMap.evidence.defaultEvidenceCheckIds).toContain(
+      'style-standard',
     );
     expect(repoMap.evidence.requiredEvidenceCheckIds).not.toContain(
       'verification-policy',
@@ -174,9 +181,74 @@ describe('veritas repo map (1.5)', () => {
     }
   });
 
-  it('routes runtime server changes to connected-agents as replacement proof', () => {
+  it('routes runtime server changes to connected-agents as replacement proof', async () => {
     const routed = routedCheckIdsFor('product.src-server');
     expect(routed).toEqual(['connected-agents']);
+    // @ts-expect-error -- @kontourai/veritas ships untyped ESM
+    const veritas = await import('@kontourai/veritas');
+    const runtimePlan = veritas.resolveEvidenceCheckCommands({
+      repoMapPath: resolve(rootDir, '.veritas/repo-map.json'),
+      files: ['src-server/services/orchestration/session-lifecycle-module.ts'],
+      rootDir,
+    });
+    expect(
+      runtimePlan.evidenceChecks.map((check: { id: string }) => check.id),
+    ).toContain('connected-agents');
+  });
+
+  it('keeps the installed Veritas edit hook singular and scoped while allowing other handlers', () => {
+    const installed = readJson('.codex/hooks.json');
+    expect(codexPreEditHookFindings(installed)).toEqual([]);
+    const withUserHandler = structuredClone(installed);
+    withUserHandler.hooks.PostToolUse = [
+      { hooks: [{ type: 'command', command: 'user-owned-hook' }] },
+    ];
+    expect(codexPreEditHookFindings(withUserHandler)).toEqual([]);
+
+    const duplicate = structuredClone(installed);
+    duplicate.hooks.PreToolUse.push(duplicate.hooks.PreToolUse[0]);
+    expect(codexPreEditHookFindings(duplicate)).toHaveLength(1);
+    expect(codexPreEditHookFindings({ hooks: {} })).toHaveLength(1);
+    expect(
+      runRepoGovernanceChecks({
+        codexHookConfig: duplicate,
+        routeErrorEgressCheck: () => [],
+      }),
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'veritas-codex-preedit-hook',
+          severity: 'block',
+        }),
+      ]),
+    );
+  });
+
+  it('enables Codex project hooks through the tracked project config', () => {
+    const config = readFileSync(resolve(rootDir, '.codex/config.toml'), 'utf8');
+    expect(codexHookFeatureFindings(config)).toEqual([]);
+    expect(
+      codexHookFeatureFindings(`${config}\n[tools]\nview_image = true\n`),
+    ).toEqual([]);
+    expect(
+      codexHookFeatureFindings('[features]\nhooks = false\n'),
+    ).toHaveLength(1);
+    expect(
+      codexHookFeatureFindings('[features]\nhooks = true\nhooks = false\n'),
+    ).toHaveLength(1);
+    expect(
+      runRepoGovernanceChecks({
+        codexConfigToml: '[features]\nhooks = false\n',
+        routeErrorEgressCheck: () => [],
+      }),
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'codex-project-hooks-enabled',
+          severity: 'block',
+        }),
+      ]),
+    );
   });
 
   it('keeps assertion-free proof families out of readiness routing', () => {
@@ -191,7 +263,6 @@ describe('veritas repo map (1.5)', () => {
   it('rejects a fault-injected assertion-free proof-family route', () => {
     const nonConformantRoute: EvidenceCheckRoute = {
       nodeIds: ['package.sdk'],
-      componentIds: ['package.sdk'],
       evidenceCheckIds: ['architecture-boundaries'],
     };
 
@@ -222,9 +293,10 @@ describe('veritas repo map (1.5)', () => {
     );
   });
 
-  it('keeps schema nodeIds and runtime componentIds in sync on every route', () => {
+  it('uses only schema nodeIds on every route', () => {
     for (const route of routes()) {
-      expect(route.componentIds).toEqual(route.nodeIds);
+      expect(route).not.toHaveProperty('componentIds');
+      expect(route.nodeIds.length).toBeGreaterThan(0);
     }
   });
 
@@ -287,6 +359,38 @@ describe('veritas repo map (1.5)', () => {
         `rule ${String(rule.id)}`,
       ).toContain(rule.enforcementLevel);
     }
+  });
+
+  it('binds scoped issue-class rules to focused behavioral evidence', () => {
+    for (const [id, checkId] of [
+      ['session-lifecycle-recovery-contract', 'session-transition-contract'],
+      ['bounded-background-work-contract', 'bounded-work-contract'],
+    ]) {
+      const rule = standards.rules.find(
+        (candidate: { id: string }) => candidate.id === id,
+      );
+      expect(rule, `missing advisory rule ${id}`).toBeDefined();
+      expect(rule.enforcementLevel).toBe('Require');
+      expect(rule.kind).toBe('required-artifacts');
+      expect(rule.evidenceCheckIds).toEqual([checkId]);
+      expect(
+        repoMap.evidence.evidenceChecks.some(
+          (check: { id: string }) => check.id === checkId,
+        ),
+      ).toBe(true);
+      expect(rule.explain.contextLinks).toContain(
+        'docs/plans/issue-class-prevention.md',
+      );
+      expect(rule.match.artifacts.length).toBeGreaterThan(0);
+      for (const artifact of rule.match.artifacts) {
+        expect(
+          existsSync(resolve(rootDir, artifact)),
+          `${id} references missing artifact ${artifact}`,
+        ).toBe(true);
+      }
+    }
+    expect(veritasReadme).toContain('session-lifecycle-recovery-contract');
+    expect(veritasReadme).toContain('bounded-background-work-contract');
   });
 
   it('keeps the delivery-conduct standards routable, and blocking only where attested', () => {
