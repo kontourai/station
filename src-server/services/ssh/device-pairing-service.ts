@@ -53,6 +53,9 @@ import { renameFileSyncRetrying } from '@kontourai/station-shared/fs-windows-com
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../identity/principal-resolver.js';
 import {
   isValidNativePushRequest,
+  type NativePushIosRegistration,
+  NativePushIosRegistrationStore,
+  type NativePushLiveActivityRecord,
   type NativePushRegistration,
   NativePushRegistrationStore,
 } from '../notifications/native-push-registration-store.js';
@@ -1097,12 +1100,14 @@ export class DevicePairingService {
   readonly #offers = new Map<string, PairingOfferState>();
   #registry: DeviceRegistry;
   #pendingRegistryMigrationPersist = false;
-  /** Native push registrations: a sidecar, never a registry field. */
+  /** Native push registrations: sidecars, never a registry field. */
   readonly #nativePush: NativePushRegistrationStore;
+  readonly #nativePushIos: NativePushIosRegistrationStore;
 
   constructor(options: DevicePairingServiceOptions) {
     this.#registryPath = join(options.homeDir, 'security', REGISTRY_FILE);
     this.#nativePush = new NativePushRegistrationStore(options.homeDir);
+    this.#nativePushIos = new NativePushIosRegistrationStore(options.homeDir);
     this.#environmentId = options.environmentId;
     this.#now = options.now ?? Date.now;
     this.#offerTtlMs = options.offerTtlMs ?? DEFAULT_OFFER_TTL_MS;
@@ -2551,16 +2556,33 @@ export class DevicePairingService {
       throw new DevicePairingError('invalid_request');
     if (!this.#activeDeviceIds().has(deviceId))
       throw new DevicePairingError('device_not_found');
+    // One registration per device: a device that registers on one platform
+    // leaves the other's file. Cleared first, so a failure leaves the old
+    // registration rather than two.
+    if (request.platform === 'ios') {
+      this.#nativePush.delete(deviceId);
+      return this.#nativePushIos.upsert(
+        deviceId,
+        request,
+        stationKey,
+        this.#now(),
+      );
+    }
+    this.#nativePushIos.delete(deviceId);
     return this.#nativePush.upsert(deviceId, request, stationKey, this.#now());
   }
 
   /**
    * Idempotent. With `expectedToken`, clears only if the stored token is
    * still that one — a gateway "unregistered" answer for an old token must
-   * not erase a registration the phone has since refreshed.
+   * not erase a registration the phone has since refreshed. Clears the
+   * device from both platforms' files.
    */
   clearNativePush(deviceId: string, expectedToken?: string): boolean {
-    return this.#nativePush.delete(deviceId, expectedToken);
+    return onBothNativePushFiles([
+      () => this.#nativePush.delete(deviceId, expectedToken),
+      () => this.#nativePushIos.delete(deviceId, expectedToken),
+    ]).some(Boolean);
   }
 
   /** Remembers alerts a registration was sent (see the store). */
@@ -2569,7 +2591,33 @@ export class DevicePairingService {
     registrationId: string,
     alertIds: readonly string[],
   ): void {
-    this.#nativePush.recordAlerted(deviceId, registrationId, alertIds);
+    // Each file ignores a registrationId it does not hold.
+    onBothNativePushFiles([
+      () => this.#nativePush.recordAlerted(deviceId, registrationId, alertIds),
+      () =>
+        this.#nativePushIos.recordAlerted(deviceId, registrationId, alertIds),
+    ]);
+  }
+
+  /**
+   * Records an iOS registration's broadcast channel and started activity
+   * (null clears). Never creates a registration: ignored when the device no
+   * longer holds `registrationId`.
+   */
+  updateNativePushLiveActivity(
+    deviceId: string,
+    registrationId: string,
+    update: {
+      channelId?: string | null;
+      activity?: NativePushLiveActivityRecord | null;
+      expectedRunId?: string;
+    },
+  ): NativePushIosRegistration | undefined {
+    return this.#nativePushIos.updateLiveActivity(
+      deviceId,
+      registrationId,
+      update,
+    );
   }
 
   /**
@@ -2582,7 +2630,13 @@ export class DevicePairingService {
     registration: NativePushRegistration;
   }> {
     const active = this.#activeDeviceIds();
-    return [...this.#nativePush.list()]
+    // Both files or neither: an unreadable one fails the whole listing
+    // rather than reading as "nobody on that platform is registered".
+    const all: Array<[string, NativePushRegistration]> = [
+      ...this.#nativePush.list(),
+      ...this.#nativePushIos.list(),
+    ];
+    return all
       .filter(([deviceId]) => active.has(deviceId))
       .map(([deviceId, registration]) => ({ deviceId, registration }));
   }
@@ -2604,11 +2658,14 @@ export class DevicePairingService {
    * effort: the listing join above already hides a stale entry.
    */
   #dropStaleNativePush(keep: ReadonlySet<string> = this.#activeDeviceIds()) {
-    try {
-      this.#nativePush.retain(keep);
-    } catch {
-      // An unreadable store is reported where it is read (publisher, route).
-    }
+    // Each file on its own: one unreadable file must not keep a revoked
+    // device in the other.
+    for (const store of [this.#nativePush, this.#nativePushIos])
+      try {
+        store.retain(keep);
+      } catch {
+        // An unreadable store is reported where it is read (publisher, route).
+      }
   }
 
   resetEnvironment(environmentId: string): void {
@@ -2990,4 +3047,21 @@ export class DevicePairingService {
       rmSync(temporaryPath, { force: true });
     }
   }
+}
+
+/**
+ * Runs an operation on both native push files: the second still runs when
+ * the first throws, and the first failure is rethrown after both.
+ */
+function onBothNativePushFiles<T>(runs: ReadonlyArray<() => T>): T[] {
+  const results: T[] = [];
+  let failure: { error: unknown } | undefined;
+  for (const run of runs)
+    try {
+      results.push(run());
+    } catch (error) {
+      failure ??= { error };
+    }
+  if (failure) throw failure.error;
+  return results;
 }
