@@ -1,0 +1,16 @@
+[package]
+name = "tauri-plugin-station-agent-activity"
+version = "0.1.0"
+description = "Native agent-activity notifications (Android Live Updates) for Station"
+edition = "2021"
+publish = false
+# Tauri's build helper exports the plugin's Android library path through this
+# links key; the app's tauri-build reads it to include `android/` in the
+# regenerated Gradle project, so no gen/android edit is needed.
+links = "tauri-plugin-station-agent-activity"
+
+[build-dependencies]
+tauri-plugin = { version = "=2.6.3", features = ["build"] }
+
+[dependencies]
+tauri = { version = "=2.11.5" }

@@ -1,0 +1,8 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "identifier": "android-agent-activity",
+  "description": "Agent-activity registration and Live Update settings. Android-only because the plugin is compiled only there; a shared capability would fail ACL resolution on other targets (station#575). `preview` is deliberately absent — it renders arbitrary payloads and is reachable only through the debug-build broadcast receiver.",
+  "windows": ["main"],
+  "platforms": ["android"],
+  "permissions": ["station-agent-activity:default"]
+}

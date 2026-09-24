@@ -248,6 +248,7 @@ import { createAnalyticsRoutes } from '../../routes/operations/analytics.js';
 import { createFeedbackRoutes } from '../../routes/operations/feedback.js';
 import { createInsightsRoutes } from '../../routes/operations/insights.js';
 import { createMonitoringRoutes } from '../../routes/operations/monitoring.js';
+import { createNativePushRoutes } from '../../routes/operations/native-push-routes.js';
 import { createNotificationRoutes } from '../../routes/operations/notifications.js';
 import { createPushRoutes } from '../../routes/operations/push-routes.js';
 import { createSchedulerRoutes } from '../../routes/operations/scheduler.js';
@@ -428,6 +429,7 @@ import { StationKitObservabilityHost } from '../../services/kits/kit-observabili
 import { StationKitObservabilityRegistry } from '../../services/kits/kit-observability-registry.js';
 import type { KnowledgeService } from '../../services/knowledge/knowledge-service.js';
 import { ownedLayoutStore } from '../../services/layouts/personal-layout-service.js';
+import type { AgentActivityPublisher } from '../../services/notifications/agent-activity-publisher.js';
 import type { NotificationService } from '../../services/notifications/notification-service.js';
 import type { WebPushService } from '../../services/notifications/web-push-service.js';
 import { actionOperationActorForRequest } from '../../services/operations/action-operation-authority.js';
@@ -779,6 +781,8 @@ interface ConfigureRuntimeRoutesResult {
   notificationService: NotificationService;
   attentionProjection: AttentionProjectionService;
   webPushService: WebPushService;
+  /** Agent-activity push; the runtime stops it (and its timer) on shutdown. */
+  agentActivityPublisher: AgentActivityPublisher;
   kitLifecycleReady: Promise<void>;
   projectTaskRoomRuntime?: ProjectTaskRoomRuntime;
   /**
@@ -5109,6 +5113,9 @@ export function configureRuntimeRoutes(
     attentionProjection,
     webPushService,
     webPushEnabled,
+    pushSigningKeyStore,
+    pushGatewayAvailable,
+    agentActivityPublisher,
   } = configureRuntimeSupportServices(context, flowRunService, {
     // #2064 (D4): the same aggregate `/api/survey-flow-reviews` serves, over
     // the same live project inventory — one read, so a paused review counted
@@ -5368,6 +5375,32 @@ export function configureRuntimeRoutes(
     }),
   );
   context.app.route(
+    '/api/system',
+    createNativePushRoutes({
+      enabled: webPushEnabled,
+      deliverable: pushGatewayAvailable,
+      logger: context.logger,
+      identifyDevice: (credential) =>
+        context.environmentSecurityService.identifyDevice(credential),
+      loadOrCreateStationKey: async () =>
+        (await pushSigningKeyStore.loadOrCreate()).thumbprint,
+      stationId: () =>
+        context.environmentSecurityService.devicePairing.environmentId(),
+      setNativePush: (deviceId, request, stationKey) =>
+        context.environmentSecurityService.devicePairing.setNativePush(
+          deviceId,
+          request,
+          stationKey,
+        ),
+      clearNativePush: (deviceId) => {
+        context.environmentSecurityService.devicePairing.clearNativePush(
+          deviceId,
+        );
+      },
+      onRegistered: () => agentActivityPublisher.requestFlush(),
+    }),
+  );
+  context.app.route(
     '/scheduler',
     createSchedulerRoutes(schedulerService, context.logger, {
       readAuthorityForRequest,
@@ -5499,6 +5532,7 @@ export function configureRuntimeRoutes(
     notificationService,
     attentionProjection,
     webPushService,
+    agentActivityPublisher,
     kitLifecycleReady,
     projectTaskRoomRuntime,
     liveSurfaceRegistry,
