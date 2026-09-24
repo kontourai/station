@@ -54,6 +54,13 @@ describe('ChildWorkProjection', () => {
       observability: 'not-reported',
       reason: 'The engine reports no subagent identity.',
     });
+    // A declared engine whose signals Station does not map yet: no
+    // "nothing running" claim — not-reported, naming the gap.
+    expect(projection.read(THREAD, 'codex')).toEqual({
+      observability: 'not-reported',
+      reason:
+        'The engine reports subagents, but Station does not map them yet (#2458).',
+    });
     // A provider the matrix does not know: no claim either way.
     expect(projection.read(THREAD, 'bedrock')).toBeUndefined();
     expect(projection.read(THREAD, undefined)).toBeUndefined();

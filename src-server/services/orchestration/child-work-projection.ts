@@ -40,6 +40,18 @@ import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime
  *   a client holding a stale running child must be told so;
  * - a provider with no matrix entry → no view (no claim either way).
  */
+/**
+ * Engines whose matrix cell DECLARES subagent signals that Station does not
+ * yet map into child work, keyed to the tracking issue. For these the view is
+ * `not-reported`: a `reported` view with nothing running would be a claim no
+ * Station code derives. `child-work-conformance.test.ts` asserts this set
+ * equals the engines whose declared `lifecycle` is a known-gap `test.fails`,
+ * so wiring the engine flips that test and forces the entry out.
+ */
+export const STATION_UNMAPPED_SUBAGENT_ENGINES: Readonly<
+  Record<string, string>
+> = { codex: '#2458' };
+
 export class ChildWorkProjection {
   private state: ChildWorkRegistryState = createEmptyChildWorkRegistry();
   /** reporterThreadId → createdAt of the last child-work delta it reported. */
@@ -93,6 +105,15 @@ export class ChildWorkProjection {
       : undefined;
     if (cell?.state === 'none') {
       return { observability: 'not-reported', reason: cell.reason };
+    }
+    const unmapped = provider
+      ? STATION_UNMAPPED_SUBAGENT_ENGINES[provider]
+      : undefined;
+    if (cell?.state === 'declared' && unmapped) {
+      return {
+        observability: 'not-reported',
+        reason: `The engine reports subagents, but Station does not map them yet (${unmapped}).`,
+      };
     }
     const observedAt = this.observedAt.get(threadId);
     if (observedAt === undefined && cell?.state !== 'declared')

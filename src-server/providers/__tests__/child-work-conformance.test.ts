@@ -34,6 +34,7 @@ import {
 } from '@kontourai/station-contracts/engine-capability-matrix';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { describe, expect, test } from 'vitest';
+import { STATION_UNMAPPED_SUBAGENT_ENGINES } from '../../services/orchestration/child-work-projection.js';
 import { mapAcpExtensionNotification } from '../adapters/acp-adapter-events.js';
 import {
   type ClaudeMessageState,
@@ -389,6 +390,15 @@ const KNOWN_SIGNAL_GAPS: Record<
 const KNOWN_MODULE_GAPS: Record<string, string> = { codex: '#2458' };
 
 describe('#2456 child-work conformance tripwire', () => {
+  test("the projection's unmapped-engine set is exactly the engines whose declared lifecycle is a known gap", () => {
+    const lifecycleGaps = Object.fromEntries(
+      Object.entries(KNOWN_SIGNAL_GAPS).flatMap(([key, gaps]) =>
+        gaps?.lifecycle ? [[key, gaps.lifecycle]] : [],
+      ),
+    );
+    expect(STATION_UNMAPPED_SUBAGENT_ENGINES).toEqual(lifecycleGaps);
+  });
+
   test('there is exactly one driver per matrix engine key', () => {
     expect(Object.keys(DRIVERS).sort()).toEqual(
       Object.keys(ENGINE_CAPABILITY_MATRICES).sort(),
