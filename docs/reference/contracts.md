@@ -326,6 +326,16 @@ authority. A capture is one observed frame, not stream health or app/build
 identity. Runtime validation belongs to the helper, route, and SDK boundaries;
 see [Mobile device inspection](../guides/mobile-device-workspace.md).
 
+## Native push registration
+
+`@kontourai/station-contracts/native-push` owns the agent-activity push
+registration routes (`NATIVE_PUSH_REGISTER_PATH`,
+`NATIVE_PUSH_REGISTRATION_PATH`), the Android package allowlist the push
+gateway delivers to, and the request/response shapes. The response's
+`registrationId`, `stationId` and `stationKey` are the values the phone checks
+on every push; none of them is a credential. See
+[Notification delivery](../design/notification-delivery.md#station-contract).
+
 ## System status and update provenance
 
 `@kontourai/station-contracts/system-status` owns `DevicePresentation`
