@@ -100,9 +100,13 @@ export function createSelfHostedBrokerRoutes(service: SelfHostedBrokerService) {
       c.req.header('content-type')?.toLowerCase() !== 'application/json'
     )
       throw new Error('broker_credential_refused');
+    let rawBody: Uint8Array;
     let body: unknown;
     try {
-      body = await c.req.json();
+      rawBody = new Uint8Array(await c.req.arrayBuffer());
+      body = JSON.parse(
+        new TextDecoder('utf-8', { fatal: true }).decode(rawBody),
+      );
     } catch {
       throw new Error('invalid_request');
     }
@@ -112,10 +116,13 @@ export function createSelfHostedBrokerRoutes(service: SelfHostedBrokerService) {
       .header('authorization')
       ?.match(/^Bearer ([A-Za-z0-9_-]{43})$/)?.[1];
     const id = c.req.header('x-broker-credential-id');
-    if (!secret || !id) throw new Error('broker_credential_refused');
+    const proof = c.req.header('x-station-native-proof');
+    if (!secret || !id || !proof) throw new Error('broker_credential_refused');
     return {
       body: body as Record<string, unknown>,
       credential: { id, secret },
+      proof,
+      rawBody,
     };
   };
   function exact(
@@ -159,12 +166,14 @@ export function createSelfHostedBrokerRoutes(service: SelfHostedBrokerService) {
           'stale_generation',
           'lease_conflict',
           'pending_limit',
+          'native_proof_limit',
           'invitation_limit',
           'grant_limit',
           'invitation_refused',
           'native_invitation_refused',
           'grant_unavailable',
           'connection_replayed',
+          'native_proof_replayed',
           'connection_unavailable',
         ]);
         const message = known.has(candidate) ? candidate : 'broker_unavailable';
@@ -185,50 +194,87 @@ export function createSelfHostedBrokerRoutes(service: SelfHostedBrokerService) {
   app.post(
     '/native/connections/open',
     invoke(async (c) => {
-      const { body, credential } = await parseNativeClient(c);
+      const { body, credential, proof, rawBody } = await parseNativeClient(c);
       exact(body, ['scope', 'surface', 'connection']);
       const connection = body.connection;
       exact(connection, ['version', 'nonce', 'offerSdp']);
-      return service.openNativeConnection(
-        body.scope as SelfHostedBrokerNativeScopeV2,
+      const nativeScope = body.scope as SelfHostedBrokerNativeScopeV2;
+      const surface = body.surface as SelfHostedBrokerNativeClientSurfaceV2;
+      return service.withNativeRequestProof({
+        scope: nativeScope,
         credential,
-        body.surface as SelfHostedBrokerNativeClientSurfaceV2,
-        connection as unknown as SelfHostedBrokerNativeConnectionOpenV2,
-      );
+        surface,
+        compactProof: proof,
+        exactBody: rawBody,
+        brokerOrigin: new URL(c.req.url).origin,
+        path: '/broker/v1/native/connections/open',
+        purpose: 'station-native-connection-open-v2',
+        operation: () =>
+          service.openNativeConnection(
+            nativeScope,
+            credential,
+            surface,
+            connection as unknown as SelfHostedBrokerNativeConnectionOpenV2,
+          ),
+      });
     }),
   );
   app.post(
     '/native/connections/read',
     invoke(async (c) => {
-      const { body, credential } = await parseNativeClient(c);
+      const { body, credential, proof, rawBody } = await parseNativeClient(c);
       exact(body, ['version', 'scope', 'surface', 'nonce']);
       if (body.version !== SELF_HOSTED_BROKER_NATIVE_CONNECTION_READ_VERSION)
         throw new Error('invalid_native_connection');
       if (typeof body.nonce !== 'string') throw new Error('invalid_nonce');
-      return service.readNativeConnection(
-        body.scope as SelfHostedBrokerNativeScopeV2,
+      const nativeScope = body.scope as SelfHostedBrokerNativeScopeV2;
+      const surface = body.surface as SelfHostedBrokerNativeClientSurfaceV2;
+      return service.withNativeRequestProof({
+        scope: nativeScope,
         credential,
-        body.surface as SelfHostedBrokerNativeClientSurfaceV2,
-        body.nonce,
-      );
+        surface,
+        compactProof: proof,
+        exactBody: rawBody,
+        brokerOrigin: new URL(c.req.url).origin,
+        path: '/broker/v1/native/connections/read',
+        purpose: 'station-native-connection-read-v2',
+        operation: () =>
+          service.readNativeConnection(
+            nativeScope,
+            credential,
+            surface,
+            body.nonce as string,
+          ),
+      });
     }),
   );
   app.post(
     '/native/grants/retire',
     invoke(async (c) => {
-      const { body, credential } = await parseNativeClient(c);
+      const { body, credential, proof, rawBody } = await parseNativeClient(c);
       exact(body, ['version', 'scope', 'surface']);
       if (body.version !== SELF_HOSTED_BROKER_NATIVE_GRANT_RETIRE_VERSION)
         throw new Error('invalid_native_connection');
-      service.retireOwnNativeClientGrant(
-        body.scope as SelfHostedBrokerNativeScopeV2,
+      const nativeScope = body.scope as SelfHostedBrokerNativeScopeV2;
+      const surface = body.surface as SelfHostedBrokerNativeClientSurfaceV2;
+      return service.withNativeRequestProof({
+        scope: nativeScope,
         credential,
-        body.surface as SelfHostedBrokerNativeClientSurfaceV2,
-      );
-      return {
-        version: SELF_HOSTED_BROKER_NATIVE_GRANT_RETIRE_VERSION,
-        retired: true,
-      };
+        surface,
+        compactProof: proof,
+        exactBody: rawBody,
+        brokerOrigin: new URL(c.req.url).origin,
+        path: '/broker/v1/native/grants/retire',
+        purpose: 'station-native-grant-retire-v2',
+        allowRetired: true,
+        operation: () => {
+          service.retireOwnNativeClientGrant(nativeScope, credential, surface);
+          return {
+            version: SELF_HOSTED_BROKER_NATIVE_GRANT_RETIRE_VERSION,
+            retired: true,
+          };
+        },
+      });
     }),
   );
   app.post(

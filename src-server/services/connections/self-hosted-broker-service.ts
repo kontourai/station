@@ -12,6 +12,8 @@ import {
   SELF_HOSTED_BROKER_NATIVE_CONNECTION_OPEN_VERSION,
   SELF_HOSTED_BROKER_NATIVE_CONNECTION_OPENED_VERSION,
   SELF_HOSTED_BROKER_NATIVE_INVITATION_VERSION,
+  SELF_HOSTED_BROKER_NATIVE_REQUEST_PROOF_TYPE,
+  SELF_HOSTED_BROKER_NATIVE_REQUEST_PROOF_VERSION,
   type SelfHostedBrokerClientGrantV1,
   type SelfHostedBrokerNativeClientGrantV2,
   type SelfHostedBrokerNativeClientSurfaceV2,
@@ -20,6 +22,7 @@ import {
   type SelfHostedBrokerNativeConnectionOpenedV2,
   type SelfHostedBrokerNativeConnectionOpenV2,
   type SelfHostedBrokerNativeRedemptionProofV2,
+  type SelfHostedBrokerNativeRequestProofClaimsV1,
   type SelfHostedBrokerNativeRouteInvitationV2,
   type SelfHostedBrokerNativeScopeV2,
   type SelfHostedBrokerRouteInvitationV1,
@@ -33,6 +36,8 @@ const SDP_LIMIT = 128 * 1024;
 const INVITATION_MAX_AGE_MS = 5 * 60_000;
 const GRANT_MAX_AGE_MS = 30 * 24 * 60 * 60_000;
 const NATIVE_GRANT_MAX_AGE_MS = 24 * 60 * 60_000;
+const NATIVE_PROOF_MAX_AGE_SECONDS = 30;
+const NATIVE_PROOF_RETENTION_MS = 5 * 60_000;
 const SIGNING_KEY_ID = /^[A-Za-z0-9_-]{43}$/;
 const CLIENT_INSTANCE_ID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -415,6 +420,7 @@ export function validateBrokerScope(value: unknown): BrokerScope {
 /** Metadata-only broker authority. It never stores Station credentials, account identity or content. */
 export class SelfHostedBrokerService {
   private readonly db: DatabaseSync;
+  private transactionDepth = 0;
   private nativeConnectionMaintenance: NodeJS.Timeout | undefined;
   constructor(
     path: string,
@@ -461,7 +467,7 @@ export class SelfHostedBrokerService {
     const version = this.db.prepare('PRAGMA user_version').get() as {
       user_version: number;
     };
-    if (![0, 1, 2, 3, 4].includes(version.user_version)) {
+    if (![0, 1, 2, 3, 4, 5].includes(version.user_version)) {
       this.db.close();
       throw new Error('broker_database_version_refused');
     }
@@ -485,8 +491,11 @@ export class SelfHostedBrokerService {
                     'broker_native_client_grants',
                   ]
                 : []),
-              ...(version.user_version === 4
+              ...(version.user_version >= 4
                 ? ['broker_native_connections']
+                : []),
+              ...(version.user_version >= 5
+                ? ['broker_native_request_proofs']
                 : []),
             ];
       const present = this.db
@@ -580,8 +589,14 @@ export class SelfHostedBrokerService {
         ON broker_native_connections(expires_at);
       CREATE INDEX IF NOT EXISTS broker_native_connection_grant
         ON broker_native_connections(grant_id);
+      CREATE TABLE IF NOT EXISTS broker_native_request_proofs(
+        grant_id TEXT NOT NULL, jti TEXT NOT NULL, expires_at INTEGER NOT NULL,
+        PRIMARY KEY(grant_id,jti),
+        FOREIGN KEY(grant_id) REFERENCES broker_native_client_grants(grant_id) ON DELETE CASCADE);
+      CREATE INDEX IF NOT EXISTS broker_native_request_proof_expiry
+        ON broker_native_request_proofs(expires_at);
       PRAGMA application_id=1398030930;
-      PRAGMA user_version=4;
+      PRAGMA user_version=5;
       COMMIT;`);
     } catch (error) {
       try {
@@ -634,7 +649,9 @@ export class SelfHostedBrokerService {
     return row?.allowed === 1;
   }
   private transaction<T>(operation: () => T): T {
+    if (this.transactionDepth > 0) return operation();
     this.db.exec('BEGIN IMMEDIATE');
+    this.transactionDepth++;
     try {
       const result = operation();
       this.db.exec('COMMIT');
@@ -642,7 +659,198 @@ export class SelfHostedBrokerService {
     } catch (error) {
       this.db.exec('ROLLBACK');
       throw error;
+    } finally {
+      this.transactionDepth--;
     }
+  }
+  /** Verifies one exact native request and atomically consumes its JTI with the operation. */
+  async withNativeRequestProof<T>(input: {
+    scope: SelfHostedBrokerNativeScopeV2;
+    credential: BrokerCredential;
+    surface: SelfHostedBrokerNativeClientSurfaceV2;
+    compactProof: string;
+    exactBody: Uint8Array;
+    brokerOrigin: string;
+    path: SelfHostedBrokerNativeRequestProofClaimsV1['path'];
+    purpose: SelfHostedBrokerNativeRequestProofClaimsV1['purpose'];
+    allowRetired?: boolean;
+    operation: () => T;
+  }): Promise<T> {
+    const scope = validateNativeScope(input.scope);
+    const surface = validateNativeSurface(input.surface);
+    const brokerOrigin = canonicalBrokerOrigin(input.brokerOrigin);
+    if (
+      typeof input.compactProof !== 'string' ||
+      input.compactProof.length > 8192 ||
+      input.exactBody.byteLength > 256 * 1024
+    )
+      throw new Error('invalid_native_proof');
+    if (
+      !input.credential ||
+      typeof input.credential.id !== 'string' ||
+      !ID.test(input.credential.id) ||
+      typeof input.credential.secret !== 'string' ||
+      !SECRET.test(input.credential.secret)
+    )
+      throw new Error('broker_credential_refused');
+    const grant = this.db
+      .prepare('SELECT * FROM broker_native_client_grants WHERE grant_id=?')
+      .get(input.credential.id) as NativeGrantRow | undefined;
+    if (
+      !grant ||
+      grant.station_id !== scope.stationId ||
+      grant.enrollment_id !== scope.enrollmentId ||
+      grant.generation !== scope.routingGeneration ||
+      grant.broker_origin !== brokerOrigin ||
+      grant.app_identifier !== surface.appIdentifier ||
+      grant.channel !== surface.channel ||
+      grant.client_instance_id !== surface.clientInstanceId ||
+      grant.key_thumbprint !== surface.keyThumbprint ||
+      (!input.allowRetired &&
+        (grant.revoked_at !== null || grant.expires_at <= this.now())) ||
+      !timingSafeEqual(
+        Buffer.from(grant.secret_hash),
+        nativeGrantDigest(input.credential.secret),
+      )
+    )
+      throw new Error('broker_credential_refused');
+    let publicKey: ReturnType<typeof validateNativePublicKey>['jwk'];
+    try {
+      publicKey = validateNativePublicKey(
+        JSON.parse(grant.proof_public_key),
+      ).jwk;
+    } catch {
+      throw new Error('broker_credential_refused');
+    }
+    const imported = await importJWK(publicKey, 'ES256');
+    if ((await calculateJwkThumbprint(publicKey)) !== grant.key_thumbprint)
+      throw new Error('broker_credential_refused');
+    let payload: Record<string, unknown>;
+    try {
+      const verified = await compactVerify(input.compactProof, imported, {
+        algorithms: ['ES256'],
+      });
+      if (
+        Object.keys(verified.protectedHeader).sort().join(',') !== 'alg,typ' ||
+        verified.protectedHeader.typ !==
+          SELF_HOSTED_BROKER_NATIVE_REQUEST_PROOF_TYPE ||
+        verified.protectedHeader.alg !== 'ES256'
+      )
+        throw new Error('invalid_native_proof');
+      const parsed: unknown = JSON.parse(
+        new TextDecoder('utf-8', { fatal: true }).decode(verified.payload),
+      );
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed))
+        throw new Error('invalid_native_proof');
+      payload = parsed as Record<string, unknown>;
+    } catch {
+      throw new Error('invalid_native_proof');
+    }
+    const claims =
+      payload as Partial<SelfHostedBrokerNativeRequestProofClaimsV1>;
+    const expectedKeys = [
+      'ath',
+      'aud',
+      'bodySha256',
+      'brokerOrigin',
+      'exp',
+      'grantId',
+      'iat',
+      'jti',
+      'method',
+      'path',
+      'purpose',
+      'scope',
+      'stationSigningGeneration',
+      'stationSigningKeyId',
+      'surface',
+      'version',
+    ];
+    const nowSeconds = Math.floor(this.now() / 1000);
+    if (
+      Object.keys(payload).sort().join(',') !== expectedKeys.join(',') ||
+      claims.version !== SELF_HOSTED_BROKER_NATIVE_REQUEST_PROOF_VERSION ||
+      claims.aud !== brokerOrigin ||
+      claims.purpose !== input.purpose ||
+      claims.brokerOrigin !== brokerOrigin ||
+      claims.method !== 'POST' ||
+      claims.path !== input.path ||
+      claims.grantId !== grant.grant_id ||
+      Object.keys(claims.scope ?? {})
+        .sort()
+        .join(',') !== 'enrollmentId,routingGeneration,stationId' ||
+      claims.scope?.stationId !== scope.stationId ||
+      claims.scope?.enrollmentId !== scope.enrollmentId ||
+      claims.scope?.routingGeneration !== scope.routingGeneration ||
+      Object.keys(claims.surface ?? {})
+        .sort()
+        .join(',') !==
+        'appIdentifier,channel,clientInstanceId,keyThumbprint,kind' ||
+      claims.surface?.kind !== surface.kind ||
+      claims.surface?.appIdentifier !== surface.appIdentifier ||
+      claims.surface?.channel !== surface.channel ||
+      claims.surface?.clientInstanceId !== surface.clientInstanceId ||
+      claims.surface?.keyThumbprint !== surface.keyThumbprint ||
+      claims.stationSigningKeyId !== grant.signing_key_id ||
+      claims.stationSigningGeneration !== grant.signing_generation ||
+      claims.bodySha256 !==
+        createHash('sha256').update(input.exactBody).digest('base64url') ||
+      claims.ath !== digest(input.credential.secret).toString('base64url') ||
+      typeof claims.jti !== 'string' ||
+      !SECRET.test(claims.jti) ||
+      !Number.isSafeInteger(claims.iat) ||
+      !Number.isSafeInteger(claims.exp) ||
+      (claims.iat as number) > nowSeconds + 5 ||
+      (claims.iat as number) < nowSeconds - NATIVE_PROOF_MAX_AGE_SECONDS ||
+      (claims.exp as number) <= nowSeconds ||
+      (claims.exp as number) <= (claims.iat as number) ||
+      (claims.exp as number) - (claims.iat as number) >
+        NATIVE_PROOF_MAX_AGE_SECONDS
+    )
+      throw new Error('invalid_native_proof');
+    return this.transaction(() => {
+      const { grant: current } = this.nativeRoutingOwner(
+        scope,
+        input.credential,
+        surface,
+        input.allowRetired ?? false,
+      );
+      if (
+        current.grant_id !== grant.grant_id ||
+        current.proof_public_key !== grant.proof_public_key ||
+        current.signing_key_id !== claims.stationSigningKeyId ||
+        current.signing_generation !== claims.stationSigningGeneration
+      )
+        throw new Error('broker_credential_refused');
+      this.db
+        .prepare('DELETE FROM broker_native_request_proofs WHERE expires_at<=?')
+        .run(this.now());
+      const counts = this.db
+        .prepare(
+          `SELECT count(*) AS total,
+             sum(CASE WHEN grant_id=? THEN 1 ELSE 0 END) AS per_grant
+           FROM broker_native_request_proofs`,
+        )
+        .get(current.grant_id) as { total: number; per_grant: number | null };
+      if (counts.total >= 100_000 || (counts.per_grant ?? 0) >= 4096)
+        throw new Error('native_proof_limit');
+      const replay = this.db
+        .prepare(
+          'SELECT 1 AS found FROM broker_native_request_proofs WHERE grant_id=? AND jti=?',
+        )
+        .get(current.grant_id, claims.jti as string);
+      if (replay) throw new Error('native_proof_replayed');
+      this.db
+        .prepare(
+          'INSERT INTO broker_native_request_proofs(grant_id,jti,expires_at) VALUES(?,?,?)',
+        )
+        .run(
+          current.grant_id,
+          claims.jti as string,
+          this.now() + NATIVE_PROOF_RETENTION_MS,
+        );
+      return input.operation();
+    });
   }
   /** A connector must never receive or finish work after its client grant retires. */
   private retireUnavailableClientConnections() {

@@ -1,7 +1,9 @@
+import { createHash, randomBytes } from 'node:crypto';
 import type {
   SelfHostedBrokerNativeClientGrantV2,
   SelfHostedBrokerNativeClientSurfaceV2,
   SelfHostedBrokerNativeConnectionOfferV2,
+  SelfHostedBrokerNativeRequestProofClaimsV1,
   SelfHostedBrokerScopeV1,
 } from '@kontourai/station-contracts/self-hosted-broker';
 import {
@@ -11,6 +13,7 @@ import {
   SELF_HOSTED_BROKER_NATIVE_CONNECTION_OPENED_VERSION,
   SELF_HOSTED_BROKER_NATIVE_CONNECTION_READ_VERSION,
   SELF_HOSTED_BROKER_NATIVE_GRANT_RETIRE_VERSION,
+  SELF_HOSTED_BROKER_NATIVE_REQUEST_PROOF_VERSION,
 } from '@kontourai/station-contracts/self-hosted-broker';
 import type { BrokerCredential } from './self-hosted-broker-service.js';
 
@@ -391,9 +394,16 @@ async function postNativeJson(
   credential: BrokerCredential,
   body: Record<string, unknown>,
   signal: AbortSignal,
+  claims: Omit<SelfHostedBrokerNativeRequestProofClaimsV1, 'bodySha256'>,
+  sign: (claims: SelfHostedBrokerNativeRequestProofClaimsV1) => Promise<string>,
 ) {
   signal.throwIfAborted();
   const boundedSignal = AbortSignal.any([signal, AbortSignal.timeout(15_000)]);
+  const exactBody = Buffer.from(JSON.stringify(body), 'utf8');
+  const compactProof = await sign({
+    ...claims,
+    bodySha256: createHash('sha256').update(exactBody).digest('base64url'),
+  });
   let response: Response;
   try {
     response = await request(`${base}/broker/v1${path}`, {
@@ -401,9 +411,10 @@ async function postNativeJson(
       headers: {
         Authorization: `Bearer ${credential.secret}`,
         'X-Broker-Credential-Id': credential.id,
+        'X-Station-Native-Proof': compactProof,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(body),
+      body: exactBody,
       redirect: 'error',
       signal: boundedSignal,
     });
@@ -441,6 +452,9 @@ export class SelfHostedBrokerNativeClient {
   #state: 'active' | 'retiring' | 'retired' = 'active';
   constructor(
     grant: SelfHostedBrokerNativeClientGrantV2,
+    private readonly sign: (
+      claims: SelfHostedBrokerNativeRequestProofClaimsV1,
+    ) => Promise<string>,
     private readonly request: typeof fetch = fetch,
     private readonly now: () => number = Date.now,
   ) {
@@ -460,6 +474,31 @@ export class SelfHostedBrokerNativeClient {
       throw new Error('broker_native_client_retired');
     if (this.#grant.expiresAt <= this.now())
       throw new Error('broker_native_grant_expired');
+  }
+  #requestClaims(
+    path: SelfHostedBrokerNativeRequestProofClaimsV1['path'],
+    purpose: SelfHostedBrokerNativeRequestProofClaimsV1['purpose'],
+  ): Omit<SelfHostedBrokerNativeRequestProofClaimsV1, 'bodySha256'> {
+    const now = Math.floor(this.now() / 1000);
+    return {
+      version: SELF_HOSTED_BROKER_NATIVE_REQUEST_PROOF_VERSION,
+      aud: this.#grant.brokerOrigin,
+      purpose,
+      brokerOrigin: this.#grant.brokerOrigin,
+      method: 'POST',
+      path,
+      grantId: this.#grant.credential.id,
+      scope: this.#grant.scope,
+      surface: this.#grant.surface,
+      stationSigningKeyId: this.#grant.stationSigningKeyId,
+      stationSigningGeneration: this.#grant.stationSigningGeneration,
+      ath: createHash('sha256')
+        .update(this.#grant.credential.secret)
+        .digest('base64url'),
+      jti: randomBytes(32).toString('base64url'),
+      iat: now,
+      exp: now + 30,
+    };
   }
   async open(input: { nonce: string; offerSdp: string }, signal: AbortSignal) {
     this.#assertActive();
@@ -486,6 +525,11 @@ export class SelfHostedBrokerNativeClient {
           },
         },
         signal,
+        this.#requestClaims(
+          '/broker/v1/native/connections/open',
+          'station-native-connection-open-v2',
+        ),
+        this.sign,
       ),
       ['version', 'expiresAt'],
     );
@@ -516,6 +560,11 @@ export class SelfHostedBrokerNativeClient {
           nonce,
         },
         signal,
+        this.#requestClaims(
+          '/broker/v1/native/connections/read',
+          'station-native-connection-read-v2',
+        ),
+        this.sign,
       ),
       ['version', 'answerSdp', 'stationProof', 'expiresAt'],
     );
@@ -560,6 +609,11 @@ export class SelfHostedBrokerNativeClient {
           surface: this.#grant.surface,
         },
         signal,
+        this.#requestClaims(
+          '/broker/v1/native/grants/retire',
+          'station-native-grant-retire-v2',
+        ),
+        this.sign,
       ),
       ['version', 'retired'],
     );

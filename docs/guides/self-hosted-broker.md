@@ -54,10 +54,21 @@ signature. The one-use invite secret and key proof authorize only routing.
 
 Native grants can be independently inventoried and revoked by the broker
 service, and their stored credential is hashed. The native grant defaults to
-and is capped at 24 hours; browser v1 retains its separate 30-day cap. There is
-no native grant renewal flow yet. Ongoing native onboarding needs
-operator-backed renewal or per-request proof-of-possession before general
-enablement. Native invitations and grants are retired with their Station
+and is capped at 24 hours; browser v1 retains its separate 30-day cap. Each
+native `open`, `read`, and `retire` request requires an ES256 proof from the
+invitation-bound P-256 key. Its claims bind the canonical broker origin as the
+audience, method and full path, grant, scope, native surface, Station signing
+key and generation, exact transmitted UTF-8 body digest, bearer digest, a
+single-use JTI, and Unix-second issue/expiry times no more than 30 seconds
+apart. The proof is sent in `X-Station-Native-Proof`; no browser Origin or
+cookie is accepted. The broker atomically consumes the JTI with the signaling
+operation and retains replay entries for five minutes. There is no native
+renewal receipt flow yet, so the current pilot requires operator-backed grant
+re-issuance after expiry and is not ready for general native onboarding.
+The Rust keyring host does not yet produce these request proofs, and no
+packaged native client enables these routes; the typed TypeScript signer seam
+is protocol scaffolding and test coverage only.
+Native invitations and grants are retired with their Station
 routing generation. V1 redemption rejects v2
 invitations, and native-v2 redemption rejects v1 invitations. This foundation
 adds versioned v2 native `open`, `read`, and `retire` operations. Host requests
@@ -111,9 +122,9 @@ response to 1 MiB and 15 seconds.
 | `/native/grants/list` | Operator routing credential | Native grant binding metadata and expiry/revocation state; no credentials |
 | `/native/grants/revoke` | Operator routing credential | Exact native `grantId`; retires only that routing grant |
 | `/native/grants/redeem` | Bound native P-256 key | V2 invitation plus exact ES256 proof; no browser Origin |
-| `/native/connections/open` | Native grant bearer | Exact v2 open record and native surface; no Origin or cookies |
-| `/native/connections/read` | Native grant bearer | Own attempt by nonce and exact surface; no Origin or cookies |
-| `/native/grants/retire` | Native grant bearer | Retires only the caller's native grant; no Origin or cookies |
+| `/native/connections/open` | Native grant plus ES256 PoP | Exact body bytes, request path, scope, surface, Station key/generation and one-use JTI |
+| `/native/connections/read` | Native grant plus ES256 PoP | Own attempt by nonce; same request and surface binding |
+| `/native/grants/retire` | Native grant plus ES256 PoP | Retires only the caller's native grant; idempotent after revocation |
 | `/native/connections/offers` | Connector | Versioned native offers for one exact surface |
 | `/native/connections/answer` | Connector | Answer SDP and Station proof for the bound native offer |
 | `/connections` | Routing | `connection: {clientId, nonce, offerSdp}` opens one attempt |

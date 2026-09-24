@@ -6,6 +6,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { Worker } from 'node:worker_threads';
 import type {
   SelfHostedBrokerNativeClientSurfaceV2,
+  SelfHostedBrokerNativeRequestProofClaimsV1,
   SelfHostedBrokerNativeRouteInvitationV2,
 } from '@kontourai/station-contracts/self-hosted-broker';
 import { Hono } from 'hono';
@@ -91,6 +92,33 @@ async function createNativeProof(
     })
     .sign(client.privateKey);
   return { publicKey: client.publicKey, nonce, jws };
+}
+async function signNativeRequest(
+  claims: SelfHostedBrokerNativeRequestProofClaimsV1,
+  client: Awaited<ReturnType<typeof createNativeClient>>,
+) {
+  return new CompactSign(Buffer.from(JSON.stringify(claims)))
+    .setProtectedHeader({
+      alg: 'ES256',
+      typ: 'station-broker-native-request+jws',
+    })
+    .sign(client.privateKey);
+}
+async function rewriteNativeRequestProof(
+  compact: string,
+  client: Awaited<ReturnType<typeof createNativeClient>>,
+  mutate: (claims: Record<string, unknown>) => void,
+) {
+  const claims = JSON.parse(
+    Buffer.from(compact.split('.')[1] ?? '', 'base64url').toString('utf8'),
+  ) as Record<string, unknown>;
+  mutate(claims);
+  return new CompactSign(Buffer.from(JSON.stringify(claims)))
+    .setProtectedHeader({
+      alg: 'ES256',
+      typ: 'station-broker-native-request+jws',
+    })
+    .sign(client.privateKey);
 }
 test('fails closed where private path custody is not implemented', () => {
   expect(() => assertSelfHostedBrokerPlatform('win32')).toThrow(
@@ -377,7 +405,7 @@ describe.runIf(process.platform !== 'win32')(
         'broker.sqlite',
       );
       const database = new DatabaseSync(path);
-      database.exec('PRAGMA user_version=5');
+      database.exec('PRAGMA user_version=6');
       database.close();
       chmodSync(path, 0o600);
       expect(() => new SelfHostedBrokerService(path)).toThrow(
@@ -666,6 +694,7 @@ describe.runIf(process.platform !== 'win32')(
           DROP TABLE broker_native_connections;
           DROP TABLE broker_native_client_grants;
           DROP TABLE broker_native_route_invitations;
+          DROP TABLE broker_native_request_proofs;
           PRAGMA user_version=1;`);
         old.close();
         service = new SelfHostedBrokerService(path, () => 1_000);
@@ -686,7 +715,7 @@ describe.runIf(process.platform !== 'win32')(
               user_version: number;
             }
           ).user_version,
-        ).toBe(4);
+        ).toBe(5);
         expect(
           (
             upgraded
@@ -725,6 +754,7 @@ describe.runIf(process.platform !== 'win32')(
         service = undefined;
         const old = new DatabaseSync(path);
         old.exec(`DROP TABLE broker_native_connections;
+          DROP TABLE broker_native_request_proofs;
           DROP TABLE broker_native_client_grants;
           DROP TABLE broker_native_route_invitations;
           PRAGMA user_version=2;`);
@@ -744,7 +774,54 @@ describe.runIf(process.platform !== 'win32')(
               user_version: number;
             }
           ).user_version,
+        ).toBe(5);
+        migrated.close();
+      } finally {
+        service?.close();
+        rmSync(root, { recursive: true, force: true });
+      }
+    });
+    test('v4 to v5 PoP migration rolls back atomically and resumes on restart', () => {
+      const root = mkdtempSync(join(tmpdir(), 'station-broker-upgrade-v5-'));
+      const path = join(root, 'broker.sqlite');
+      let service: SelfHostedBrokerService | undefined;
+      try {
+        service = new SelfHostedBrokerService(path, () => 1_000);
+        const issued = service.provision(scope, 600_000);
+        service.close();
+        service = undefined;
+        const legacy = new DatabaseSync(path);
+        legacy.exec(`DROP TABLE broker_native_request_proofs;
+          PRAGMA user_version=4;
+          CREATE VIEW broker_native_request_proofs AS SELECT 1 AS ignored;`);
+        legacy.close();
+
+        expect(() => new SelfHostedBrokerService(path, () => 1_000)).toThrow();
+        const failed = new DatabaseSync(path, { readOnly: true });
+        expect(
+          (
+            failed.prepare('PRAGMA user_version').get() as {
+              user_version: number;
+            }
+          ).user_version,
         ).toBe(4);
+        failed.close();
+
+        const repair = new DatabaseSync(path);
+        repair.exec('DROP VIEW broker_native_request_proofs');
+        repair.close();
+        service = new SelfHostedBrokerService(path, () => 1_000);
+        expect(service.status(scope, issued.routing).state).toBe('offline');
+        service.close();
+        service = undefined;
+        const migrated = new DatabaseSync(path, { readOnly: true });
+        expect(
+          (
+            migrated.prepare('PRAGMA user_version').get() as {
+              user_version: number;
+            }
+          ).user_version,
+        ).toBe(5);
         migrated.close();
       } finally {
         service?.close();
@@ -775,6 +852,7 @@ describe.runIf(process.platform !== 'win32')(
         service = undefined;
         const old = new DatabaseSync(path);
         old.exec(`DROP TABLE broker_native_connections;
+          DROP TABLE broker_native_request_proofs;
           PRAGMA user_version=3;`);
         old.close();
         service = new SelfHostedBrokerService(path, () => 1_000);
@@ -810,7 +888,7 @@ describe.runIf(process.platform !== 'win32')(
               user_version: number;
             }
           ).user_version,
-        ).toBe(4);
+        ).toBe(5);
         migrated.close();
       } finally {
         service?.close();
@@ -1880,16 +1958,96 @@ describe.runIf(process.platform !== 'win32')(
         const app = new Hono();
         app.route('/broker/v1', createSelfHostedBrokerRoutes(service));
         const observedHeaders: Headers[] = [];
+        const observedRequests: {
+          input: Request | string | URL;
+          init?: RequestInit;
+        }[] = [];
         const request: typeof fetch = async (input, init) => {
           observedHeaders.push(new Headers(init?.headers));
+          observedRequests.push({ input, init });
           return app.fetch(new Request(input, init));
         };
         const native = new SelfHostedBrokerNativeClient(
           grant,
+          (claims) => signNativeRequest(claims, client),
           request,
           () => 1_000,
         );
         const signal = new AbortController().signal;
+        const faultPath = '/broker/v1/native/connections/open';
+        const faultBody = JSON.stringify({
+          scope: nativeScope,
+          surface: client.surface,
+          connection: {
+            version: 'station-broker-native-connection-open/v2',
+            nonce: 'nonce-native-proof-fault',
+            offerSdp: 'native-fault-offer',
+          },
+        });
+        const faultClaims: SelfHostedBrokerNativeRequestProofClaimsV1 = {
+          version: 'station-broker-native-request-proof/v1',
+          aud: 'https://broker.example',
+          purpose: 'station-native-connection-open-v2',
+          brokerOrigin: 'https://broker.example',
+          method: 'POST',
+          path: faultPath,
+          grantId: grant.credential.id,
+          scope: nativeScope,
+          surface: client.surface,
+          stationSigningKeyId: grant.stationSigningKeyId,
+          stationSigningGeneration: grant.stationSigningGeneration,
+          bodySha256: createHash('sha256')
+            .update(faultBody)
+            .digest('base64url'),
+          ath: createHash('sha256')
+            .update(grant.credential.secret)
+            .digest('base64url'),
+          jti: randomBytes(32).toString('base64url'),
+          iat: 1,
+          exp: 31,
+        };
+        const faultProof = await signNativeRequest(faultClaims, client);
+        const db = new DatabaseSync(path);
+        db.exec(`CREATE TRIGGER reject_native_proof_insert
+          BEFORE INSERT ON broker_native_request_proofs
+          BEGIN SELECT RAISE(ABORT, 'injected proof insert failure'); END;`);
+        db.close();
+        const faultRequest: RequestInit = {
+          method: 'POST',
+          headers: {
+            authorization: `Bearer ${grant.credential.secret}`,
+            'x-broker-credential-id': grant.credential.id,
+            'x-station-native-proof': faultProof,
+            'content-type': 'application/json',
+          },
+          body: faultBody,
+        };
+        const failedInsert = await app.request(
+          `https://broker.example${faultPath}`,
+          faultRequest,
+        );
+        expect(failedInsert.status).toBe(500);
+        expect(await failedInsert.json()).toEqual({
+          error: 'broker_unavailable',
+        });
+        const removeTrigger = new DatabaseSync(path);
+        removeTrigger.exec('DROP TRIGGER reject_native_proof_insert');
+        removeTrigger.close();
+        const retryAfterStorageFailure = await app.request(
+          `https://broker.example${faultPath}`,
+          faultRequest,
+        );
+        expect(retryAfterStorageFailure.status).toBe(200);
+        service.answerNativeConnection(scope, issued.connector, {
+          version: 'station-broker-native-connection-answer/v2',
+          surface: client.surface,
+          stationSigningKeyId: 'K'.repeat(43),
+          stationSigningGeneration: 1,
+          clientId: client.surface.clientInstanceId,
+          nonce: 'nonce-native-proof-fault',
+          answerSdp: 'fault-answer',
+          stationProof: 'fault-station-proof',
+        });
         const opened = await native.open(
           { nonce: 'nonce-native-signaling', offerSdp: 'native-offer' },
           signal,
@@ -1900,6 +2058,83 @@ describe.runIf(process.platform !== 'win32')(
         });
         expect(observedHeaders[0]?.has('origin')).toBe(false);
         expect(observedHeaders[0]?.has('cookie')).toBe(false);
+        const openedRequest = observedRequests[0];
+        expect(openedRequest).toBeDefined();
+        const originalHeaders = new Headers(openedRequest!.init?.headers);
+        const originalProof = originalHeaders.get('x-station-native-proof');
+        expect(originalProof).toBeTruthy();
+        const invalidClaims: Array<(claims: Record<string, unknown>) => void> =
+          [
+            (claims) => {
+              claims.aud = 'https://wrong.example';
+            },
+            (claims) => {
+              claims.path = '/broker/v1/native/connections/read';
+            },
+            (claims) => {
+              claims.purpose = 'station-native-connection-read-v2';
+            },
+            (claims) => {
+              claims.stationSigningGeneration = 2;
+            },
+            (claims) => {
+              claims.scope = {
+                stationId: 'station-other123',
+                enrollmentId: scope.enrollmentId,
+                routingGeneration: 1,
+              };
+            },
+            (claims) => {
+              claims.surface = { ...client.surface, channel: 'stable' };
+            },
+            (claims) => {
+              claims.bodySha256 = 'B'.repeat(43);
+            },
+            (claims) => {
+              claims.ath = 'C'.repeat(43);
+            },
+            (claims) => {
+              claims.method = 'GET';
+            },
+            (claims) => {
+              claims.exp = 0;
+            },
+          ];
+        for (const mutate of invalidClaims) {
+          const proof = await rewriteNativeRequestProof(
+            originalProof!,
+            client,
+            mutate,
+          );
+          const headers = new Headers(originalHeaders);
+          headers.set('x-station-native-proof', proof);
+          const invalid = await app.request(openedRequest!.input, {
+            ...openedRequest!.init,
+            headers,
+          });
+          expect(invalid.status).toBe(400);
+        }
+        const replayedOpen = await app.request(
+          openedRequest!.input,
+          openedRequest!.init,
+        );
+        expect(replayedOpen.status).toBe(409);
+        const changedBody = `${String(openedRequest!.init?.body)} `;
+        const changedBodyRequest = await app.request(openedRequest!.input, {
+          ...openedRequest!.init,
+          body: changedBody,
+        });
+        expect(changedBodyRequest.status).toBe(400);
+        const wrongBearerHeaders = new Headers(originalHeaders);
+        wrongBearerHeaders.set('authorization', `Bearer ${'Z'.repeat(43)}`);
+        expect(
+          (
+            await app.request(openedRequest!.input, {
+              ...openedRequest!.init,
+              headers: wrongBearerHeaders,
+            })
+          ).status,
+        ).toBe(401);
         const disallowedNativeHeaders = {
           'content-type': 'application/json',
           authorization: `Bearer ${grant.credential.secret}`,
@@ -1925,6 +2160,14 @@ describe.runIf(process.platform !== 'win32')(
             body: disallowedNativeBody,
           },
         );
+        const bearerOnlyRefusal = await app.request(
+          '/broker/v1/native/connections/open',
+          {
+            method: 'POST',
+            headers: disallowedNativeHeaders,
+            body: disallowedNativeBody,
+          },
+        );
         const cookieRefusal = await app.request(
           '/broker/v1/native/connections/open',
           {
@@ -1934,6 +2177,7 @@ describe.runIf(process.platform !== 'win32')(
           },
         );
         expect(browserOriginRefusal.status).toBe(401);
+        expect(bearerOnlyRefusal.status).toBe(401);
         expect(cookieRefusal.status).toBe(401);
 
         const operator = new SelfHostedBrokerClient(
@@ -2042,6 +2286,7 @@ describe.runIf(process.platform !== 'win32')(
         expect(await operator.nativeOffers(client.surface, signal)).toEqual([]);
         const staleNativeClient = new SelfHostedBrokerNativeClient(
           grant,
+          (claims) => signNativeRequest(claims, client),
           request,
           () => 1_000,
         );
