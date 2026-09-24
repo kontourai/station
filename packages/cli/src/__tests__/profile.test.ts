@@ -615,10 +615,13 @@ describe('shared saved Station store', () => {
     expect(findProfile('waited')).toBeDefined();
     // It waited for the holder's release rather than reclaiming a live lock.
     expect(elapsed).toBeGreaterThanOrEqual(1_000);
-    // The stale-lock probe backs off: once at once, then every 250ms (about
-    // 7 over 1.5s), not on every 10ms nap (well over 50 on any host).
+    // The stale-lock probe backs off: once at once, then every 250ms, and
+    // once at the end, so about one per 250ms of the wait (about 7 over
+    // 1.5s). Probing on every 10ms nap measured 24-27 on macOS, where each
+    // probe spawns `ps`, and is far more on Linux. The bound scales with the
+    // measured wait so a slow holder start does not read as a regression.
     expect(probes.length).toBeGreaterThanOrEqual(2);
-    expect(probes.length).toBeLessThanOrEqual(12);
+    expect(probes.length).toBeLessThanOrEqual(Math.ceil(elapsed / 250) + 2);
     expect(new Set(probes)).toEqual(new Set([lock]));
   }, 30_000);
 
@@ -686,7 +689,7 @@ describe('shared saved Station store', () => {
     expect(readProfileStore().revision).toBe(0);
     expect(elapsed).toBeGreaterThanOrEqual(1_000);
     expect(probes.length).toBeGreaterThanOrEqual(2);
-    expect(probes.length).toBeLessThanOrEqual(12);
+    expect(probes.length).toBeLessThanOrEqual(Math.ceil(elapsed / 250) + 2);
     expect(new Set(probes)).toEqual(new Set([genesisLock]));
   }, 30_000);
 
