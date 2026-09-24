@@ -1254,11 +1254,26 @@ test('seeded clients converge through live, replay, and snapshot reconnects', as
         entry.method === 'POST' &&
         typeof entry.body === 'string' &&
         entry.body.includes('follow-up-199');
+      // station#2530 review 3: the drain dispatches behind a real
+      // `setTimeout(100)` in queueDrain.ts, not synchronously with the turn
+      // closing above — a bare synchronous assertion here only passed
+      // because the earlier `await`s in this seed happened to burn more than
+      // 100ms of real wall-clock time first. Poll instead, recomputing
+      // `sends` each time; the "never while a turn is open" property is
+      // still what this whole block runs after — the queue.completed check
+      // above (`activity?.asOfSequence === head` for the CLOSED turn) is
+      // what proves the turn was already closed before any of this fires.
+      await vi.waitFor(
+        () => {
+          const sends = requests.filter(isFollowupSend);
+          expect(
+            sends.length,
+            `${seedLabel} queued follow-up sent once/client`,
+          ).toBe(2);
+        },
+        { timeout: 5_000 },
+      );
       const sends = requests.filter(isFollowupSend);
-      expect(
-        sends.length,
-        `${seedLabel} queued follow-up sent once/client`,
-      ).toBe(2);
       const clientTurnIds = new Set(
         sends.map((entry) => {
           try {
