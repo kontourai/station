@@ -224,6 +224,7 @@ describe('browser relay fresh enrollment controller', () => {
     const transport = requestTransport(handler);
     const credentials = { username: 'zach', password: 'secret' };
     const states: string[] = [];
+    const pendingIds: string[] = [];
     const controller = new BrowserRelayEnrollmentController({
       route: makeRoute(transport),
       pollIntervalMs: 250,
@@ -253,11 +254,13 @@ describe('browser relay fresh enrollment controller', () => {
         steps.push('provisional-removed');
       },
       onState: (state) => states.push(state),
+      onPending: (request) => pendingIds.push(request.requestId),
     });
     const activated = await controller.enroll(credentials);
     expect(activated.state).toBe('active');
     expect(controller.state).toBe('enrolled');
     expect(states.at(-1)).toBe('enrolled');
+    expect(pendingIds).toEqual(['pairing-request-1']);
     expect(credentials).toEqual({ username: '', password: '' });
     expect(steps).toEqual([
       RELAY_ENROLLMENT_BEGIN_PATH,

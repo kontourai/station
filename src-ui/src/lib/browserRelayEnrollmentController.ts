@@ -61,6 +61,8 @@ export interface BrowserRelayEnrollmentControllerOptions {
   /** Remove the exact staged or just-published authority, including partial writes. */
   removeProvisionalAuthority(stageId: string): Promise<void>;
   onState?(state: BrowserRelayEnrollmentState): void;
+  /** Non-secret handle the operator uses to identify the pending Device request. */
+  onPending?(request: RelayEnrollmentPendingResponse): void;
   pollIntervalMs?: number;
   now?: () => number;
   wait?: (milliseconds: number, signal: AbortSignal) => Promise<void>;
@@ -443,6 +445,7 @@ export class BrowserRelayEnrollmentController {
         challenge,
       );
       setState('awaiting-approval');
+      this.options.onPending?.(pending);
 
       const wait = this.options.wait ?? defaultWait;
       const interval = Math.max(250, this.options.pollIntervalMs ?? 1500);

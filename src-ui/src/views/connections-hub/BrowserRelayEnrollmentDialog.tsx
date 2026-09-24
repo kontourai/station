@@ -28,6 +28,7 @@ export function BrowserRelayEnrollmentDialog({
   const [password, setPassword] = useState('');
   const [state, setState] = useState<BrowserRelayEnrollmentState>('idle');
   const [error, setError] = useState<string | null>(null);
+  const [pendingRequestId, setPendingRequestId] = useState<string | null>(null);
   const enrollmentAbort = useRef<AbortController | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -45,6 +46,7 @@ export function BrowserRelayEnrollmentDialog({
     const route = connection.brokerRoute;
     if (busy || enrollmentAbort.current || !route) return;
     setError(null);
+    setPendingRequestId(null);
     const selected = captureBrowserRelayRoute(
       connection.id,
       connection.url,
@@ -120,6 +122,7 @@ export function BrowserRelayEnrollmentDialog({
           });
         },
         onState: setState,
+        onPending: (request) => setPendingRequestId(request.requestId),
       });
       await owner.enroll(submitted, operation.signal);
     } catch (cause) {
@@ -186,6 +189,12 @@ export function BrowserRelayEnrollmentDialog({
         />
       </label>
       <p role="status">{STATUS[state]}</p>
+      {state === 'awaiting-approval' && pendingRequestId && (
+        <p className="connections-computers__note">
+          Device approval request ID:{' '}
+          <code>{pendingRequestId}</code>
+        </p>
+      )}
       {error && (
         <p className="connections-computers__alert" role="alert">
           {error}

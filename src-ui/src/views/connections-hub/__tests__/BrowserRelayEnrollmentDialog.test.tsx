@@ -18,6 +18,7 @@ vi.mock('../../../lib/browserRelayEnrollmentController', () => ({
     constructor(
       private readonly options: {
         onState(state: string): void;
+        onPending(request: { requestId: string }): void;
       },
     ) {}
     enroll(
@@ -27,6 +28,7 @@ vi.mock('../../../lib/browserRelayEnrollmentController', () => ({
       mocks.credentials = { ...credentials };
       mocks.signal = signal;
       this.options.onState('awaiting-approval');
+      this.options.onPending({ requestId: 'operator-request-123' });
       return new Promise((_resolve, reject) => {
         signal.addEventListener('abort', () => reject(signal.reason), {
           once: true,
@@ -111,6 +113,7 @@ it('clears the password while waiting for operator Device approval and cancels o
       'Waiting for the Station operator to approve this Device…',
     ),
   ).toBeTruthy();
+  expect(screen.getByText('operator-request-123')).toBeTruthy();
   expect(mocks.credentials).toEqual({
     username: 'zach',
     password: 'local-password',
