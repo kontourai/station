@@ -17,12 +17,34 @@ export function hostOwnsExternalLinks(): boolean {
 
 /** The live refusal notice per URL: one at a time, however often it is clicked. */
 const liveRefusalNotices = new Map<string, string>();
+let stopWatchingNotices: (() => void) | null = null;
+
+/**
+ * Forget notices that are gone (dismissed, copied), so the map holds only
+ * live ones. Watches the toast store only while something is tracked.
+ */
+function pruneRefusalNotices() {
+  const liveIds = new Set(toastStore.getSnapshot().map((toast) => toast.id));
+  for (const [link, id] of liveRefusalNotices)
+    if (!liveIds.has(id)) liveRefusalNotices.delete(link);
+  if (liveRefusalNotices.size === 0 && stopWatchingNotices) {
+    stopWatchingNotices();
+    stopWatchingNotices = null;
+  }
+}
 
 /** A long link shortened for reading; the notice's Copy keeps the whole. */
 export function displayedExternalLink(url: string): string {
-  const MAX = 80;
-  if (url.length <= MAX) return url;
-  return `${url.slice(0, 60)}…${url.slice(-15)}`;
+  // By code points, not UTF-16 units: a cut through a surrogate pair would
+  // print half a character (an emoji or CJK extension in a path or query).
+  const points = Array.from(url);
+  if (points.length <= 80) return url;
+  return `${points.slice(0, 60).join('')}…${points.slice(-15).join('')}`;
+}
+
+/** How many refusal notices this module still tracks — for the tests. */
+export function trackedRefusalNoticeCount(): number {
+  return liveRefusalNotices.size;
 }
 
 /**
@@ -38,9 +60,8 @@ export function reportUnopenedExternalLink(
   url: string,
   reason: 'host-refused' | 'unsupported-scheme',
 ): void {
-  const live = liveRefusalNotices.get(url);
-  if (live && toastStore.getSnapshot().some((toast) => toast.id === live))
-    return;
+  pruneRefusalNotices();
+  if (liveRefusalNotices.has(url)) return;
   const why =
     reason === 'host-refused'
       ? 'The Station app cannot open this link.'
@@ -75,6 +96,8 @@ export function reportUnopenedExternalLink(
     'warning',
   );
   liveRefusalNotices.set(url, id);
+  if (!stopWatchingNotices)
+    stopWatchingNotices = toastStore.subscribe(pruneRefusalNotices);
 }
 
 async function invokeNativeExternalLink(url: string): Promise<boolean | null> {

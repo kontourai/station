@@ -56,7 +56,11 @@ import { ChatMarkdownAnchor } from '../../components/chat/ChatMarkdownAnchor';
 import { MarkdownLinkContext } from '../../components/chat/MarkdownLinkContext';
 import { NotificationContainer } from '../../components/notifications/NotificationContainer';
 import { ToastProvider, toastStore } from '../../contexts/ToastContext';
-import { openExternalLink } from '../openExternalLink';
+import {
+  displayedExternalLink,
+  openExternalLink,
+  trackedRefusalNoticeCount,
+} from '../openExternalLink';
 
 const PR_URL = 'https://github.com/kontourai/station/pull/2049';
 const writeText = vi.fn(async (_text: string) => {});
@@ -127,6 +131,21 @@ describe('a refused native open is shown, with the link and a Copy action', () =
     expect(notices[0]?.textContent).toContain('…');
     fireEvent.click(screen.getByRole('button', { name: 'Copy link' }));
     await waitFor(() => expect(writeText).toHaveBeenCalledWith(long));
+    // Round-4 L4: the notice is gone (its action dismissed it), and so is the
+    // module's record of it — the map holds live notices only.
+    await waitFor(() => expect(trackedRefusalNoticeCount()).toBe(0));
+  });
+
+  // Round-4 L4: a UTF-16 slice through a surrogate pair printed half a
+  // character; the shortening counts code points.
+  test('a long link is shortened by code points, never splitting a character', () => {
+    const url = `https://x.test/${'a'.repeat(44)}😀${'b'.repeat(40)}`;
+    expect(url.slice(0, 60)).toMatch(/[\uD800-\uDBFF]$/);
+    const shown = displayedExternalLink(url);
+    expect(shown).toContain('😀…');
+    expect(shown).not.toMatch(
+      /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/,
+    );
   });
 
   test('a chat link the host refuses is shown too, not dropped', async () => {
