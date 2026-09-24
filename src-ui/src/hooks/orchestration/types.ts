@@ -1,3 +1,4 @@
+import type { SessionChildWork } from '@kontourai/station-contracts/child-work';
 import type {
   ConversationTurnActivity,
   OrchestrationDelegationContext,
@@ -64,5 +65,7 @@ export type OrchestrationSnapshotPayload = {
      * conversation, so this is how a turn running in a child reaches its chat.
      */
     conversationId?: string;
+    /** #2456: see `OrchestrationSessionSummary.childWork`. Absent from older servers. */
+    childWork?: SessionChildWork;
   }>;
 };

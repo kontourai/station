@@ -1,5 +1,6 @@
 import type {
   LiveSurfaceFrameHeader,
+  LiveSurfaceFrameRotation,
   LiveSurfaceInput,
   LiveSurfaceModifiers,
   LiveSurfacePointerButton,
@@ -7,9 +8,11 @@ import type {
 } from '@kontourai/station-contracts/live-surface';
 import type { authenticatedFetch } from '@kontourai/station-sdk';
 import {
+  type CSSProperties,
   type FormEvent,
   type CompositionEvent as ReactCompositionEvent,
   type KeyboardEvent as ReactKeyboardEvent,
+  type ReactNode,
   type PointerEvent as ReactPointerEvent,
   useCallback,
   useEffect,
@@ -64,6 +67,34 @@ export interface LiveSurfaceCanvasProps {
   /** Test seam; defaults to the SDK's `authenticatedFetch`. */
   transport?: typeof authenticatedFetch;
   now?: () => number;
+  /** The Project the surface is reached from (see `useLiveSurface`). */
+  projectSlug?: string;
+  /**
+   * Optional (added by the Device pane lane, #1970): a host's own chrome,
+   * rendered above the controller line and given the surface — so a toolbar
+   * of hardware buttons sends its input through THIS surface's lease and
+   * disables itself exactly when this canvas stops taking input.
+   */
+  renderHeader?: (surface: LiveSurfaceHeaderApi) => ReactNode;
+  /**
+   * Optional (Device pane lane): size the drawn surface to the LARGEST box
+   * that fits the stage at the frame's aspect ratio (a ResizeObserver on the
+   * stage), instead of filling the stage and letterboxing inside it. Before
+   * the first frame the box uses `aspect` (width / height). `cornerRadius`
+   * rounds that box, in CSS pixels, from its measured size.
+   */
+  fit?: {
+    aspect: number;
+    cornerRadius?: (box: { width: number; height: number }) => number;
+  };
+  /**
+   * Optional (added by the Device tools lane, #1971; fit mode only): a layer
+   * drawn exactly over the drawn frame's box — never taking pointers — and
+   * given the SHOWN frame's size and the rotation it was drawn with, so an
+   * overlay (the accessibility frames) can line up with a turned screen.
+   * `visible` is true only while the stream is live.
+   */
+  renderOverlay?: (geometry: LiveSurfaceOverlayGeometry) => ReactNode;
   /**
    * The host draws the control line and "Take control" itself (the
    * float-over-chat's pill, #90 D9), so the canvas omits its own copy of
@@ -83,6 +114,49 @@ export interface LiveSurfaceCanvasProps {
    * anyone meaning to drive it.
    */
   inputRequiresLease?: boolean;
+}
+
+/** What `renderOverlay` receives. */
+export interface LiveSurfaceOverlayGeometry {
+  /** The frame as shown (axes swapped on a quarter turn), in frame pixels. */
+  shown: { width: number; height: number };
+  /** The clockwise turn the canvas drew the raw frame with. */
+  rotation: LiveSurfaceFrameRotation;
+  visible: boolean;
+}
+
+/** What `renderHeader` receives. */
+export interface LiveSurfaceHeaderApi {
+  surface: UseLiveSurfaceResult;
+  /**
+   * Input would be delivered right now: the stream is live, the surface is
+   * not wedged, and the producer's input channel (when it reports one) is
+   * connected. Controls that send input are disabled while this is false.
+   */
+  inputReady: boolean;
+  sendInput: (events: LiveSurfaceInput[]) => void;
+}
+
+/** A frame turned by `rotation` is shown with its axes swapped on a quarter turn. */
+function shownSize(header: {
+  width: number;
+  height: number;
+  rotation?: LiveSurfaceFrameRotation;
+}): { width: number; height: number } {
+  return header.rotation === 90 || header.rotation === 270
+    ? { width: header.height, height: header.width }
+    : { width: header.width, height: header.height };
+}
+
+/** The largest box of `aspect` (w/h) that fits inside `box`. */
+function largestBoxAtAspect(
+  box: { width: number; height: number },
+  aspect: number,
+): { width: number; height: number } {
+  if (box.width <= 0 || box.height <= 0 || !(aspect > 0))
+    return { width: 0, height: 0 };
+  const width = Math.min(box.width, box.height * aspect);
+  return { width, height: width / aspect };
 }
 
 /** What a host needs to show and change who controls the surface. */
@@ -197,6 +271,8 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
     width: number;
     height: number;
   } | null>(null);
+  const [frameRotation, setFrameRotation] =
+    useState<LiveSurfaceFrameRotation>(0);
   const decodingRef = useRef(false);
   const nextFrameRef = useRef<LiveSurfaceFrame | null>(null);
   const composingRef = useRef(false);
@@ -220,20 +296,43 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
       const { header, body } = current;
       const canvas = canvasRef.current;
       if (canvas) {
-        if (canvas.width !== header.width) canvas.width = header.width;
-        if (canvas.height !== header.height) canvas.height = header.height;
+        // A rotated frame is drawn turned, so the canvas has the SHOWN size
+        // and input maps in the shown frame's pixels (see `toSurface`).
+        const shown = shownSize(header);
+        if (canvas.width !== shown.width) canvas.width = shown.width;
+        if (canvas.height !== shown.height) canvas.height = shown.height;
         headerRef.current = header;
+        setFrameRotation(header.rotation ?? 0);
         setFrameSize((previous) =>
-          previous?.width === header.width && previous.height === header.height
+          previous?.width === shown.width && previous.height === shown.height
             ? previous
-            : { width: header.width, height: header.height },
+            : shown,
         );
         if (typeof createImageBitmap === 'function') {
           try {
             const bitmap = await createImageBitmap(
               new Blob([body.slice()], { type: `image/${header.codec}` }),
             );
-            canvas.getContext('2d')?.drawImage(bitmap, 0, 0);
+            const context = canvas.getContext('2d');
+            if (context && !header.rotation) {
+              context.drawImage(bitmap, 0, 0);
+            } else if (context) {
+              // Turn the drawing clockwise about the canvas origin, then
+              // shift it back into the (already swapped) canvas box.
+              context.save();
+              if (header.rotation === 90) {
+                context.translate(header.height, 0);
+                context.rotate(Math.PI / 2);
+              } else if (header.rotation === 180) {
+                context.translate(header.width, header.height);
+                context.rotate(Math.PI);
+              } else {
+                context.translate(0, header.width);
+                context.rotate(-Math.PI / 2);
+              }
+              context.drawImage(bitmap, 0, 0);
+              context.restore();
+            }
             bitmap.close?.();
           } catch {
             // An undecodable frame is skipped; the next one replaces it.
@@ -254,15 +353,62 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
     onFrame: (frame) => void draw(frame),
     transport: props.transport,
     now,
+    ...(props.projectSlug ? { projectSlug: props.projectSlug } : {}),
   });
   const { sendInput } = surface;
   const surfaceRef = useRef(surface);
   surfaceRef.current = surface;
-  const canInteract = surface.status === 'live' && frameSize !== null;
+  const inputChannel = surface.producerStatus.inputChannel;
+  const inputReady =
+    surface.status === 'live' &&
+    !surface.wedged &&
+    (inputChannel === undefined || inputChannel === 'connected');
+  const canInteract = inputReady && frameSize !== null;
+
   const holding = holdsControl(surface);
   /** A claiming interaction may be sent: always, unless the host requires the lease first. */
   const mayClaim = () =>
     !props.inputRequiresLease || holdsControl(surfaceRef.current);
+
+  // Fit: the stage's size, measured, so the surface is the largest box at
+  // the frame's aspect (a device screen is drawn exactly, never letterboxed).
+  const stageRef = useRef<HTMLDivElement>(null);
+  const [stageBox, setStageBox] = useState<{
+    width: number;
+    height: number;
+  } | null>(null);
+  const fitting = props.fit !== undefined;
+  useEffect(() => {
+    const stage = stageRef.current;
+    if (!fitting || !stage) return;
+    const measure = () => {
+      const rect = stage.getBoundingClientRect();
+      setStageBox((previous) =>
+        previous?.width === rect.width && previous.height === rect.height
+          ? previous
+          : { width: rect.width, height: rect.height },
+      );
+    };
+    measure();
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(stage);
+    return () => observer.disconnect();
+  }, [fitting]);
+  let fitStyle: CSSProperties | undefined;
+  if (props.fit && stageBox) {
+    const aspect = frameSize
+      ? frameSize.width / frameSize.height
+      : props.fit.aspect;
+    const box = largestBoxAtAspect(stageBox, aspect);
+    fitStyle = {
+      width: `${box.width}px`,
+      height: `${box.height}px`,
+      ...(props.fit.cornerRadius
+        ? { borderRadius: `${props.fit.cornerRadius(box)}px` }
+        : {}),
+    };
+  }
 
   // A once-a-second clock for the honest age line, only while it can matter.
   const [clock, setClock] = useState(() => now());
@@ -293,7 +439,7 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
           width: rect.width,
           height: rect.height,
         },
-        header,
+        { ...shownSize(header), deviceScaleFactor: header.deviceScaleFactor },
         { clamp },
       );
     },
@@ -555,8 +701,33 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
   )
     statusText = `The stream has stalled. The frame shown is ${frameAge ?? recordAge} s old.`;
 
+  // Video and input are separate channels: a device can keep streaming
+  // while the socket that carries taps is down, and saying so is the
+  // difference between "the device ignores me" and "wait a moment".
+  // "The picture is still live" is said only when something shows it: a
+  // real stream (not polled stills) that delivered a frame recently.
+  const pictureLive =
+    surface.producerStatus.videoMode !== 'snapshot-poll' &&
+    frameAge !== null &&
+    frameAge * 1000 < LIVE_SURFACE_STALL_MS;
+  let inputLine: string | null = null;
+  if (surface.status === 'live' && inputChannel === 'reconnecting')
+    inputLine = pictureLive
+      ? 'Input disconnected, reconnecting… The picture is still live.'
+      : 'Input disconnected, reconnecting…';
+  else if (surface.status === 'live' && inputChannel === 'down')
+    inputLine =
+      'Input is not reaching this surface. Controls are paused until it reconnects.';
+  const videoLine =
+    surface.producerStatus.videoMode === 'snapshot-poll'
+      ? surface.producerStatus.videoDegradedReason === 'decoder-unavailable'
+        ? 'Showing a still screenshot about once a second: live video needs a video decoder (ffmpeg) that is not installed on the Station host.'
+        : 'Showing a still screenshot about once a second: live video stopped working on the Station host.'
+      : null;
+
   return (
     <div className="live-surface" ref={containerRef}>
+      {props.renderHeader?.({ surface, inputReady, sendInput })}
       {/* With host controls the toolbar is left only for "Try again". */}
       {props.hostControls &&
       surface.status !== 'unavailable' &&
@@ -599,6 +770,20 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
           The page is not responding to input (it may be showing a dialog).
         </p>
       ) : null}
+      {inputLine ? (
+        <p
+          className="live-surface__notice live-surface__liveness"
+          role="status"
+          data-testid="live-surface-input-liveness"
+        >
+          {inputLine}
+        </p>
+      ) : null}
+      {videoLine ? (
+        <p className="live-surface__notice" role="status">
+          {videoLine}
+        </p>
+      ) : null}
       {surface.inputNotice === 'control-changed' ? (
         <p className="live-surface__notice" role="status">
           Control changed before your input arrived, so it was not sent.
@@ -608,10 +793,14 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
           Your input could not be delivered.
         </p>
       ) : null}
-      <div className="live-surface__stage">
+      <div
+        className={`live-surface__stage${fitting ? ' live-surface__stage--fit' : ''}`}
+        ref={stageRef}
+      >
         <canvas
           ref={canvasRef}
-          className="live-surface__canvas"
+          style={fitStyle}
+          className={`live-surface__canvas${fitting ? ' live-surface__canvas--fit' : ''}`}
           role="img"
           aria-label={`Live view of ${label}`}
           data-testid="live-surface-canvas"
@@ -643,6 +832,20 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
           onCompositionEnd={onCompositionEnd}
           onBlur={() => releaseEverything()}
         />
+        {props.renderOverlay && fitStyle && frameSize ? (
+          <div
+            aria-hidden="true"
+            className="live-surface__overlay"
+            data-testid="live-surface-overlay"
+            style={fitStyle}
+          >
+            {props.renderOverlay({
+              shown: frameSize,
+              rotation: frameRotation,
+              visible: surface.status === 'live',
+            })}
+          </div>
+        ) : null}
         {statusText ? (
           <p className="live-surface__status" role="status">
             {statusText}

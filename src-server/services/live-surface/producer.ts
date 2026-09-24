@@ -4,6 +4,7 @@ import type {
   LiveSurfaceInput,
   LiveSurfacePointerButton,
   LiveSurfacePointerType,
+  LiveSurfaceProducerStatus,
   LiveSurfaceStreamParams,
 } from '@kontourai/station-contracts/live-surface';
 
@@ -21,6 +22,20 @@ export interface LiveSurfaceHeldInput {
   buttonPointerTypes: Partial<
     Record<LiveSurfacePointerButton, LiveSurfacePointerType>
   >;
+}
+
+/**
+ * Passed with each dispatch (added by the Device pane lane, #1970). The
+ * registry fences before every EVENT; a producer that turns one event into
+ * several sends (a typed string on a keyboard that only takes keystrokes, a
+ * touch that is a move and a lift) asks `isCurrent` before each send, so a
+ * human taking control mid-event stops it at the next send, not after the
+ * whole event. A producer free to ignore it: the registry's own fence still
+ * holds between events.
+ */
+export interface LiveSurfaceDispatchContext {
+  /** The controller this dispatch runs for still holds the lease at its fence. */
+  isCurrent(): boolean;
 }
 
 /**
@@ -66,7 +81,10 @@ export interface LiveSurfaceProducer {
   ): Promise<void>;
   ack(seq: number): void;
   stop(): Promise<void>;
-  dispatch(input: LiveSurfaceInput): Promise<void>;
+  dispatch(
+    input: LiveSurfaceInput,
+    context?: LiveSurfaceDispatchContext,
+  ): Promise<void>;
   /**
    * Optional (added by the live-surface lane, not in the v1 brief): apply new
    * params to a running stream without a restart, e.g. when adaptive
@@ -92,4 +110,14 @@ export interface LiveSurfaceProducer {
    * with `type: 'touchCancel'`, which ends the gesture without a tap.
    */
   cancelHeldInput?(held: LiveSurfaceHeldInput): Promise<void>;
+  /**
+   * Optional (added by the Device pane lane, #1970): liveness the producer
+   * owns and viewers must see — whether input can reach the surface, whether
+   * video is a real stream or a polled fallback, the device orientation. The
+   * hub merges it into every state record, and re-sends state to every
+   * viewer when `onStatusChange` fires. Must not throw.
+   */
+  status?(): LiveSurfaceProducerStatus;
+  /** Subscribe to `status` changes; returns an unsubscribe function. */
+  onStatusChange?(listener: () => void): () => void;
 }

@@ -483,52 +483,71 @@ fn unix_time_ms() -> Result<u64, String> {
 }
 
 #[tauri::command]
-pub(crate) fn relay_client_grant_store(
+pub(crate) async fn relay_client_grant_store(
     app: AppHandle,
     profile_name: String,
     grant: RelayClientGrant,
 ) -> Result<RelayGrantMetadata, String> {
-    with_profile_and_vault(
-        || profile_lock_for_app(&app),
-        || {
-            let owner = owner_for_profile(&app, &profile_name, &grant)?;
-            store_grant(&mut OsKeyring, owner, grant, unix_time_ms()?)
-        },
-    )
+    run_vault_command(move || {
+        with_profile_and_vault(
+            || profile_lock_for_app(&app),
+            || {
+                let owner = owner_for_profile(&app, &profile_name, &grant)?;
+                store_grant(&mut OsKeyring, owner, grant, unix_time_ms()?)
+            },
+        )
+    })
+    .await
 }
 
 #[tauri::command]
-pub(crate) fn relay_client_grant_revoke(
+pub(crate) async fn relay_client_grant_revoke(
     app: AppHandle,
     profile_name: String,
     route: RelayGrantRouteKey,
 ) -> Result<(), String> {
-    with_profile_and_vault(
-        || profile_lock_for_app(&app),
-        || {
-            let owner = owner_for_route(&app, &profile_name, &route)?;
-            revoke_grant(&mut OsKeyring, &RelayGrantBinding { route, owner })
-        },
-    )
+    run_vault_command(move || {
+        with_profile_and_vault(
+            || profile_lock_for_app(&app),
+            || {
+                let owner = owner_for_route(&app, &profile_name, &route)?;
+                revoke_grant(&mut OsKeyring, &RelayGrantBinding { route, owner })
+            },
+        )
+    })
+    .await
 }
 
 #[tauri::command]
-pub(crate) fn relay_client_grant_metadata(
+pub(crate) async fn relay_client_grant_metadata(
     app: AppHandle,
     profile_name: String,
     route: RelayGrantRouteKey,
 ) -> Result<Option<RelayGrantMetadata>, String> {
-    with_profile_and_vault(
-        || profile_lock_for_app(&app),
-        || {
-            let owner = owner_for_route(&app, &profile_name, &route)?;
-            read_metadata(
-                &mut OsKeyring,
-                &RelayGrantBinding { route, owner },
-                unix_time_ms()?,
-            )
-        },
-    )
+    run_vault_command(move || {
+        with_profile_and_vault(
+            || profile_lock_for_app(&app),
+            || {
+                let owner = owner_for_route(&app, &profile_name, &route)?;
+                read_metadata(
+                    &mut OsKeyring,
+                    &RelayGrantBinding { route, owner },
+                    unix_time_ms()?,
+                )
+            },
+        )
+    })
+    .await
+}
+
+/// Move profile locking, validation, and OS keyring access off the Tauri
+/// command executor. Keyring backends may block while waiting for an OS prompt.
+async fn run_vault_command<T: Send + 'static>(
+    operation: impl FnOnce() -> Result<T, String> + Send + 'static,
+) -> Result<T, String> {
+    tauri::async_runtime::spawn_blocking(operation)
+        .await
+        .map_err(|_| "native relay grant task failed".to_string())?
 }
 
 fn owner_for_profile(
@@ -626,6 +645,22 @@ mod tests {
             route: route_key(),
             owner: owner(channel, id),
         }
+    }
+
+    #[test]
+    fn command_work_runs_on_blocking_pool_and_preserves_operation_errors() {
+        let command_thread = std::thread::current().id();
+        let operation_thread =
+            tauri::async_runtime::block_on(run_vault_command(|| Ok(std::thread::current().id())))
+                .unwrap();
+
+        assert_ne!(operation_thread, command_thread);
+        assert_eq!(
+            tauri::async_runtime::block_on(run_vault_command(|| {
+                Err::<(), String>("keyring denied".to_string())
+            })),
+            Err("keyring denied".to_string())
+        );
     }
 
     fn grant(secret: &str, expires_at: u64) -> RelayClientGrant {
