@@ -925,10 +925,20 @@ describe('AcpToolUpdateSupervisor — embedded and nested image data', () => {
   test.each([
     ['a data-URL property', (pad: string) => ({ pad, screenshot: dataUri })],
     [
-      'an image-shaped property',
+      'an image-shaped nested property',
       (pad: string) => ({
         pad,
         image: { type: 'image', data: `${'QUJD'.repeat(200)}${tail}` },
+      }),
+    ],
+    [
+      // The reachable fallback for the image shape: its `data` is a direct
+      // property of the object whose budget is nearly spent.
+      'an image-shaped top-level payload',
+      (pad: string) => ({
+        pad,
+        type: 'image',
+        data: `${'QUJD'.repeat(200)}${tail}`,
       }),
     ],
   ])(

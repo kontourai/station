@@ -318,6 +318,13 @@ describe('redactInlineData', () => {
       `data:${'a'.repeat(64)}/${'b'.repeat(64)};`.repeat(40_000),
     ],
     ['repeated ;base64, markers', ';base64,'.repeat(700_000)],
+    // The shape that breaks a backtracking pattern: many `data:` starts, each
+    // of which could only fail after scanning to a far delimiter, with a
+    // `;base64,` present so the literal pre-check does not short-circuit.
+    [
+      'many failing data: starts before a marker',
+      `${'data:x'.repeat(400_000)},;base64,`,
+    ],
     [
       'one 5 MB data URL',
       `data:image/png;base64,${'A'.repeat(5 * 1024 * 1024)}`,
