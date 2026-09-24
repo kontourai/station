@@ -323,7 +323,7 @@ export interface ExecutionTargetExecutionDependencies
       threadId: string;
       provider: EngineId;
       approvalMode: ApprovalMode;
-      basedOnSequence?: number | null;
+      basedOnSequence: number | null;
       clientOrigin?: ClientOrigin;
       principal?: PrincipalRef;
     },
@@ -602,14 +602,19 @@ export async function executeForegroundMessage(
   // #2436 MEDIUM-1: a carried pick is recorded before anything starts, so the
   // session this send starts (or continues) is already in it, and it is
   // ordered by this receipt against every other decision (compare-and-set).
+  if (input.setApprovalMode && input.setApprovalModeBasedOn === undefined) {
+    // The routes refuse this shape; an in-process caller that forgets the
+    // basis must fail loudly rather than skip compare-and-set.
+    throw new Error(
+      'A carried approval pick needs setApprovalModeBasedOn (null when no decision had been seen).',
+    );
+  }
   const approvalMode = input.setApprovalMode
     ? await deps.recordApprovalMode?.(resolved.access, {
         threadId: sessionId,
         provider: resolved.provider,
         approvalMode: input.setApprovalMode,
-        ...(input.setApprovalModeBasedOn !== undefined
-          ? { basedOnSequence: input.setApprovalModeBasedOn }
-          : {}),
+        basedOnSequence: input.setApprovalModeBasedOn ?? null,
         ...(input.clientOrigin ? { clientOrigin: input.clientOrigin } : {}),
         ...(input.principal ? { principal: input.principal } : {}),
       })

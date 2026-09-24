@@ -180,7 +180,7 @@ the design as built.
   `approvalMode: ApprovalMode`) is added to the `CanonicalRuntimeEvent` union.
   Station emits it. No engine does.
 - **The command.** A new
-  `{ type: 'setApprovalMode'; threadId; approvalMode; basedOnSequence? }` is
+  `{ type: 'setApprovalMode'; threadId; approvalMode; basedOnSequence }` is
   added to `OrchestrationCommand` and to the `/commands` body schema.
   - The result is `SetApprovalModeResult`, which is
     `{ threadId, recorded, approvalMode, sequence }`.
@@ -320,7 +320,14 @@ A session spawned before this change has nothing recorded.
   - The client folds that decision, clears the queue, and adds a one-line
     note: "Your approval pick was not applied: another device had already set
     it to …".
-  - An API caller that sends no basis records unconditionally.
+  - **The basis is required** (nullable, never optional) on `/commands` and
+    on every carried pick (`setApprovalModeBasedOn` on `/chat`,
+    `/chat/delegated`, `/chat/background`, the continue and the handoff). A
+    pick without one is refused with 400 rather than recorded
+    unconditionally, so a client bug cannot skip compare-and-set silently.
+    The SDK's `ApprovalPickCarry` makes the pick and its basis one value, so
+    a caller cannot send one without the other; the foreground executor also
+    refuses an in-process pick with no basis.
   - The check and the append are one synchronous step.
 - **What this closes.**
   - **G-off.** An offline full access that never saw the phone's later Ask is

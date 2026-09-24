@@ -1526,12 +1526,16 @@ describe('Station Control canonical Environment + Agent execution', () => {
         environment: { kind: 'saved', id: environmentId('environment-remote') },
         message: 'Continue tighter',
         setApprovalMode: 'ask',
+        setApprovalModeBasedOn: 3,
         model: { options: { effort: 'low' } },
       });
       const { sent, parsed } = await olderRemoteSees(
         '/api/orchestration/chat/conversation-1/continue',
       );
-      expect(sent).toMatchObject({ setApprovalMode: 'ask' });
+      expect(sent).toMatchObject({
+        setApprovalMode: 'ask',
+        setApprovalModeBasedOn: 3,
+      });
       expect(parsed.model.options).toEqual({
         effort: 'low',
         approvalMode: 'ask',

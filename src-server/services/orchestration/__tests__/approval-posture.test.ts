@@ -201,18 +201,28 @@ describe('server-ordered approval posture (#2436)', () => {
     }
   }
 
+  /** The latest decision recorded on `threadId`: what an up-to-date client folded. */
+  function latestDecisionSequence(threadId: string): number | null {
+    const sequences = store
+      .listEvents(threadId)
+      .filter((row) => row.payload.method === 'session.approval-mode-set')
+      .map((row) => row.globalSequence);
+    return sequences.length > 0 ? Math.max(...sequences) : null;
+  }
+
+  /** A pick; without an explicit basis, made having seen every decision. */
   async function decide(
     threadId: string,
     approvalMode: ApprovalMode,
     clientOrigin?: ClientOrigin,
-    basedOnSequence?: number | null,
+    basedOnSequence: number | null = latestDecisionSequence(threadId),
   ): Promise<SetApprovalModeResult> {
     return (await service.dispatch(
       {
         type: 'setApprovalMode',
         threadId,
         approvalMode,
-        ...(basedOnSequence !== undefined ? { basedOnSequence } : {}),
+        basedOnSequence,
       },
       clientOrigin ? { clientOrigin } : undefined,
     )) as SetApprovalModeResult;

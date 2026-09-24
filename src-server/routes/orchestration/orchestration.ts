@@ -360,8 +360,9 @@ const setApprovalModeCommandSchema = z.object({
   threadId: z.string().min(1).max(512),
   approvalMode: approvalModeSchema,
   // Compare-and-set: the latest decision's sequence the client had folded
-  // when the user picked (`null`: none). Absent records unconditionally.
-  basedOnSequence: z.number().int().nonnegative().nullable().optional(),
+  // when the user picked (`null`: none). Required, so a client that forgets
+  // it is refused rather than recorded unconditionally.
+  basedOnSequence: z.number().int().nonnegative().nullable(),
 });
 
 const sessionTransitionSchema = z.object({
@@ -583,12 +584,44 @@ function requireMessageOrAttachment(
   });
 }
 
+/**
+ * #2436: a carried approval pick must name its compare-and-set basis
+ * (`setApprovalModeBasedOn`, `null` when the client had seen no decision).
+ * Without one, a client bug would skip compare-and-set silently.
+ */
+function requireApprovalPickBasis(
+  value: { setApprovalMode?: unknown; setApprovalModeBasedOn?: unknown },
+  ctx: z.RefinementCtx,
+): void {
+  if (
+    value.setApprovalMode !== undefined &&
+    value.setApprovalModeBasedOn === undefined
+  )
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['setApprovalModeBasedOn'],
+      message:
+        'setApprovalModeBasedOn is required with setApprovalMode (null when no decision had been seen).',
+    });
+}
+
+function requireForegroundBody(
+  value: Parameters<typeof requireMessageOrAttachment>[0] & {
+    setApprovalMode?: unknown;
+    setApprovalModeBasedOn?: unknown;
+  },
+  ctx: z.RefinementCtx,
+): void {
+  requireApprovalPickBasis(value, ctx);
+  requireMessageOrAttachment(value, ctx);
+}
+
 const foregroundMessageSchema = foregroundMessageObjectSchema.superRefine(
-  requireMessageOrAttachment,
+  requireForegroundBody,
 );
 const delegatedForegroundMessageSchema = foregroundMessageObjectSchema
   .extend({ delegation: agentDelegationContextSchema })
-  .superRefine(requireMessageOrAttachment);
+  .superRefine(requireForegroundBody);
 
 // Exported (archive#2831) for the structural derivation pin in
 // __tests__/orchestration-chat-input-limits.test.ts: this continuation body
@@ -615,14 +648,16 @@ export const continueForegroundMessageSchema = foregroundMessageObjectSchema
       executionTargetSchema.shape.model,
     ),
   })
-  .superRefine(requireMessageOrAttachment);
+  .superRefine(requireForegroundBody);
 
-export const conversationHandoffSchema = foregroundMessageObjectSchema.extend({
-  // A handoff may target another Station; current-host staged references
-  // have no portable byte authority and must be refused at validation.
-  attachmentRefs: z.never().optional(),
-  idempotencyKey: z.string().min(1).max(200),
-});
+export const conversationHandoffSchema = foregroundMessageObjectSchema
+  .extend({
+    // A handoff may target another Station; current-host staged references
+    // have no portable byte authority and must be refused at validation.
+    attachmentRefs: z.never().optional(),
+    idempotencyKey: z.string().min(1).max(200),
+  })
+  .superRefine(requireApprovalPickBasis);
 
 const conversationContextBoundarySchema = z.object({
   policy: z.enum(['continue-from-history', 'empty-next-cold-start']),

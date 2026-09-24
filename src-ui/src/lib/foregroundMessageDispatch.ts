@@ -1,5 +1,8 @@
 import { agentId } from '@kontourai/station-contracts/agent-identity';
-import { sendExecutionMessage } from '@kontourai/station-sdk/client';
+import {
+  type ApprovalPickCarry,
+  sendExecutionMessage,
+} from '@kontourai/station-sdk/client';
 import type { ComposerAttachmentStageSnapshot, FileAttachment } from '../types';
 import { resolveTurnModel } from './turnModel';
 
@@ -8,39 +11,31 @@ import { resolveTurnModel } from './turnModel';
  * attachment mapping beside the canonical `/api/orchestration/chat` call and
  * is loaded only when a user actually sends a message.
  */
-export async function dispatchForeground(input: {
-  apiBase: string;
-  sessionId: string;
-  agentSlug: string;
-  projectSlug?: string;
-  conversationId?: string;
-  requestedModel?: string | null;
-  requestedProviderOptions?: Record<string, unknown>;
-  model?: string;
-  providerOptions?: Record<string, unknown>;
-  /**
-   * #2436: an approval pick the server has not received yet (the chat's
-   * `queuedApprovalMode`). It is a server-ordered decision, not a model
-   * option: it travels as the message's own `setApprovalMode`, which the
-   * server records on receipt before the turn, and it survives the
-   * `engine-selected` branch below — resetting the model does not withdraw
-   * an approval pick.
-   */
-  setApprovalMode?: import('@kontourai/station-contracts/provider').ApprovalMode;
-  /**
-   * The sequence of the latest decision the chat had folded when the user
-   * picked (`null`: none): the server records the pick only if no newer
-   * decision exists (compare-and-set).
-   */
-  setApprovalModeBasedOn?: number | null;
-  message: string;
-  attachments?: FileAttachment[];
-  attachmentStages?: ComposerAttachmentStageSnapshot[];
-  ambientContext?: string;
-  clientTurnId: string;
-  automaticBackground?: boolean;
-  signal?: AbortSignal;
-}) {
+export async function dispatchForeground(
+  input: {
+    apiBase: string;
+    sessionId: string;
+    agentSlug: string;
+    projectSlug?: string;
+    conversationId?: string;
+    requestedModel?: string | null;
+    requestedProviderOptions?: Record<string, unknown>;
+    model?: string;
+    providerOptions?: Record<string, unknown>;
+    message: string;
+    attachments?: FileAttachment[];
+    attachmentStages?: ComposerAttachmentStageSnapshot[];
+    ambientContext?: string;
+    clientTurnId: string;
+    automaticBackground?: boolean;
+    signal?: AbortSignal;
+  } & ApprovalPickCarry,
+) {
+  // #2436: an approval pick the server has not received yet (the chat's
+  // `queuedApprovalMode`) travels as the message's own `setApprovalMode`
+  // with its compare-and-set basis, never as a model option. It survives the
+  // `engine-selected` branch below: resetting the model does not withdraw
+  // an approval pick.
   const resolved = resolveTurnModel(input);
   const defaultRequested = resolved.kind === 'engine-selected';
   // No approval posture rides the options (#2436): the server applies the
@@ -107,6 +102,13 @@ export async function dispatchForeground(input: {
       };
     }
   }
+  const approvalPick: ApprovalPickCarry =
+    input.setApprovalMode !== undefined
+      ? {
+          setApprovalMode: input.setApprovalMode,
+          setApprovalModeBasedOn: input.setApprovalModeBasedOn,
+        }
+      : {};
   return sendExecutionMessage(
     input.apiBase,
     {
@@ -138,12 +140,7 @@ export async function dispatchForeground(input: {
       ambientContext: input.ambientContext,
       clientTurnId: input.clientTurnId,
       automaticBackground: input.automaticBackground,
-      ...(input.setApprovalMode
-        ? {
-            setApprovalMode: input.setApprovalMode,
-            setApprovalModeBasedOn: input.setApprovalModeBasedOn ?? null,
-          }
-        : {}),
+      ...approvalPick,
     },
     { signal: input.signal },
   );

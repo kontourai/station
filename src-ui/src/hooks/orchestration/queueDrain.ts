@@ -1,7 +1,10 @@
 import { MUSE_TURN_SLOT_RELEASING_CODE } from '@kontourai/station-contracts/provider';
 import { SESSION_ENDED_REJECTION_CODE } from '@kontourai/station-contracts/session-lifecycle';
 import { contextRegistry } from '@kontourai/station-sdk';
-import { ChatHttpError } from '@kontourai/station-sdk/client';
+import {
+  type ApprovalPickCarry,
+  ChatHttpError,
+} from '@kontourai/station-sdk/client';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import { conversationCanMutate } from '../../contexts/conversation-open-policy';
@@ -205,6 +208,13 @@ export function drainQueuedMessageOnTurnCompleted(
       return;
     }
 
+    const approvalPick: ApprovalPickCarry = current.queuedApprovalMode
+      ? {
+          setApprovalMode: current.queuedApprovalMode,
+          // `null`: this chat has folded no decision yet.
+          setApprovalModeBasedOn: current.approvalPostureSequence ?? null,
+        }
+      : {};
     dispatchForeground({
       apiBase,
       sessionId: threadId,
@@ -216,8 +226,7 @@ export function drainQueuedMessageOnTurnCompleted(
       // #2436: the server applies the recorded posture to this turn. A pick
       // it has not received yet rides along, compare-and-set against the
       // decision this chat had folded.
-      setApprovalMode: current.queuedApprovalMode,
-      setApprovalModeBasedOn: current.approvalPostureSequence ?? null,
+      ...approvalPick,
       message: nextMessage,
       conversationId: current.conversationId ?? threadId,
       // Queued sends recompute ambient context at drain time so the model

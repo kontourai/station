@@ -181,11 +181,20 @@ async function fixture() {
     });
     return { status: res.status, body: (await res.json()) as any };
   };
+  // Each decision is made having seen every decision so far.
+  const latestSequence = () => {
+    const sequences = store
+      .listEvents(THREAD)
+      .filter((row) => row.payload.method === 'session.approval-mode-set')
+      .map((row) => row.globalSequence);
+    return sequences.length > 0 ? Math.max(...sequences) : null;
+  };
   const decide = (credential: string, approvalMode: string) =>
     post(credential, '/api/orchestration/commands', {
       type: 'setApprovalMode',
       threadId: THREAD,
       approvalMode,
+      basedOnSequence: latestSequence(),
     });
   const recorded = () =>
     store
@@ -246,6 +255,39 @@ test('the same device may tighten to Ask or Auto, and pick Default', async () =>
   expect(f.recorded()).toEqual(['ask', 'auto', 'connection-default']);
 });
 
+test('a pick without its compare-and-set basis is refused, never recorded unconditionally', async () => {
+  const f = await fixture();
+  const bare = await f.post(
+    f.operator.credential,
+    '/api/orchestration/commands',
+    {
+      type: 'setApprovalMode',
+      threadId: THREAD,
+      approvalMode: 'ask',
+    },
+  );
+  expect(bare.status).toBe(400);
+  const carried = await f.post(
+    f.operator.credential,
+    '/api/orchestration/chat',
+    {
+      message: 'go',
+      target: { agent: 'claude' },
+      setApprovalMode: 'ask',
+    },
+  );
+  expect(carried.status).toBe(400);
+  const continued = await f.post(
+    f.operator.credential,
+    `/api/orchestration/chat/${THREAD}/continue`,
+    { message: 'go', setApprovalMode: 'ask' },
+  );
+  expect(continued.status).toBe(400);
+  expect(f.recorded()).toEqual([]);
+  expect(f.executeForegroundMessage).not.toHaveBeenCalled();
+  expect(f.continueForegroundMessage).not.toHaveBeenCalled();
+});
+
 test('the operator in person needs no grant', async () => {
   const f = await fixture();
   expect((await f.decide(f.operator.credential, 'never')).status).toBe(200);
@@ -277,6 +319,7 @@ test('a send that carries full access, or asks for it on the options, is refused
     message: 'go',
     target: { agent: 'claude' },
     setApprovalMode: 'never',
+    setApprovalModeBasedOn: null,
   });
   expect(carried).toEqual({ status: 403, body: REFUSAL });
 

@@ -132,8 +132,7 @@ export class ApprovalPosture {
    * Compare-and-set (#2436 MEDIUM-1, narrowed by the orchestrator's decision
    * of 2026-09-23): the decision that stands against a pick made having seen
    * `basedOnSequence` (`null`: having seen none), or `undefined` when the pick
-   * may be recorded. `basedOnSequence === undefined` is an unconditional
-   * caller.
+   * may be recorded.
    *
    * Only a pick LOOSER than the standing decision is held to the basis. A
    * pick at least as strict (ask < auto < never) is always recorded: it can
@@ -148,10 +147,9 @@ export class ApprovalPosture {
   supersedingDecision(
     threadId: string,
     pick: ApprovalMode,
-    basedOnSequence: number | null | undefined,
+    basedOnSequence: number | null,
     defaultResolution: ApprovalMode | undefined,
   ): ApprovalPostureDecision | undefined {
-    if (basedOnSequence === undefined) return undefined;
     const standing = this.decision(threadId);
     if (!standing) return undefined;
     if (basedOnSequence !== null && standing.sequence <= basedOnSequence)

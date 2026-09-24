@@ -20,7 +20,25 @@ import {
 import { apiErrorMessage } from './api-error-message';
 import { ChatHttpError } from './chatHttpError';
 import { type ClientRequestOptions, getJson, mutateJson } from './http';
-export interface ForegroundMessageInput {
+/**
+ * #2436: an approval-posture decision a send carries (a pick made before the
+ * chat had a session, or while offline), and its compare-and-set basis: the
+ * sequence of the latest decision the client had folded when the user
+ * picked, `null` when it had folded none. The two travel together; a pick
+ * without its basis is refused by the server rather than recorded
+ * unconditionally.
+ */
+export type ApprovalPickCarry =
+  | { setApprovalMode?: undefined; setApprovalModeBasedOn?: undefined }
+  | {
+      setApprovalMode: import('@kontourai/station-contracts/provider').ApprovalMode;
+      setApprovalModeBasedOn: number | null;
+    };
+
+export type ForegroundMessageInput = ForegroundMessageFields &
+  ApprovalPickCarry;
+
+interface ForegroundMessageFields {
   expectedInputRequest?: AttentionRequestReference;
   target: Omit<ExecutionTarget, 'environment'> & {
     environment?: EnvironmentRef;
@@ -36,14 +54,6 @@ export interface ForegroundMessageInput {
   clientTurnId?: string;
   /** Uses the fixed, more-restrictive automatic replay route. */
   automaticBackground?: boolean;
-  /**
-   * #2436: an approval-posture decision this send carries (a pick made before
-   * the chat had a session, or while offline). The server records it on
-   * receipt, before the turn applies.
-   */
-  setApprovalMode?: import('@kontourai/station-contracts/provider').ApprovalMode;
-  /** Compare-and-set basis for `setApprovalMode` (`null`: none seen). */
-  setApprovalModeBasedOn?: number | null;
 }
 
 export interface ForegroundMessageReceipt {
@@ -196,8 +206,8 @@ export async function sendExecutionMessage(
 }
 
 export type ContinueForegroundMessageInput = Omit<
-  ForegroundMessageInput,
-  'target' | 'conversationId' | 'setApprovalMode' | 'setApprovalModeBasedOn'
+  ForegroundMessageFields,
+  'target' | 'conversationId'
 > & { environment?: EnvironmentRef; model?: ExecutionModelRequest };
 
 /** Continue an existing conversation through its server-verified Agent binding. */
@@ -221,9 +231,10 @@ export async function continueExecutionMessage(
 export async function handoffExecutionMessage(
   apiBase: string,
   conversationId: string,
-  input: Omit<ForegroundMessageInput, 'conversationId'> & {
-    idempotencyKey: string;
-  },
+  input: Omit<ForegroundMessageFields, 'conversationId'> &
+    ApprovalPickCarry & {
+      idempotencyKey: string;
+    },
   opts?: ClientRequestOptions,
 ): Promise<ForegroundMessageReceipt & { handoff: ConversationHandoffReceipt }> {
   const response = await mutateJson(

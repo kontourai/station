@@ -97,9 +97,11 @@ export type OrchestrationCommand =
        * seen when the user picked, or `null` when it had seen none. The pick
        * is recorded only if no newer decision exists for the conversation;
        * otherwise nothing is recorded and the result names the posture that
-       * stands. Absent records unconditionally (API and CLI callers).
+       * stands. Only a pick looser than the standing decision is held to it;
+       * one at least as strict is always recorded. Required: a caller that
+       * has seen no decision says so with `null`.
        */
-      basedOnSequence?: number | null;
+      basedOnSequence: number | null;
     };
 
 /** What a `setApprovalMode` command recorded, and where it sits in order. */

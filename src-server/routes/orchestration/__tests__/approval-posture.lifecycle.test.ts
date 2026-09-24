@@ -382,14 +382,23 @@ async function createHarness(roots: string[], stationDefault?: ApprovalMode) {
       expect(response.status, await response.text()).toBe(200);
       await turnsSettled();
     },
-    /** Any device's decision, through the public command route. */
+    /**
+     * Any other device's decision, through the public command route, made
+     * having seen every decision so far (its basis is the latest one).
+     */
     async decide(approvalMode: ApprovalMode) {
       const threadId = currentThread();
       expect(threadId).toBeDefined();
+      const sequences = store
+        .conversationSessions(CONVERSATION)
+        .flatMap(({ sessionId }) => store.listEvents(sessionId))
+        .filter((row) => row.payload.method === 'session.approval-mode-set')
+        .map((row) => row.globalSequence);
       const response = await post('/api/orchestration/commands', {
         type: 'setApprovalMode',
         threadId,
         approvalMode,
+        basedOnSequence: sequences.length > 0 ? Math.max(...sequences) : null,
       });
       const text = await response.text();
       expect(response.status, text).toBe(200);
@@ -449,6 +458,7 @@ describe('approval posture probe table under server order (#2436)', () => {
       type: 'setApprovalMode',
       threadId: h.currentThread(),
       approvalMode: 'yolo',
+      basedOnSequence: null,
     });
     expect(response.status).toBe(400);
   });

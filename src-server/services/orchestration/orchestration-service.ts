@@ -7512,7 +7512,7 @@ export class OrchestrationService {
    * sequence, which is the order every client folds and the order
    * `ApprovalPosture.resolve` applies.
    *
-   * Compare-and-set: with `basedOnSequence` given, a pick LOOSER than the
+   * Compare-and-set: a pick LOOSER than the
    * standing decision is recorded only if no newer decision exists for the
    * conversation; otherwise nothing is written and the result names the
    * decision that stands. A pick at least as strict is always recorded
@@ -7529,7 +7529,7 @@ export class OrchestrationService {
     threadId: string;
     provider: EngineId;
     approvalMode: ApprovalMode;
-    basedOnSequence?: number | null;
+    basedOnSequence: number | null;
     clientOrigin?: ClientOrigin;
     principal?: PrincipalRef;
   }): Promise<SetApprovalModeResult> {

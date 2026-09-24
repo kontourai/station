@@ -39,6 +39,8 @@ const { dispatchForeground } = await import('../lib/foregroundMessageDispatch');
 type DispatchInput = Parameters<typeof dispatchForeground>[0];
 
 function baseInput(overrides: Partial<DispatchInput> = {}): DispatchInput {
+  // Partial of the pick union loses its coupling; the tests below always pass
+  // a pick together with its basis.
   return {
     apiBase: 'http://localhost:3242',
     sessionId: 'session-1',
@@ -47,7 +49,7 @@ function baseInput(overrides: Partial<DispatchInput> = {}): DispatchInput {
     clientTurnId: 'turn-1',
     signal: new AbortController().signal,
     ...overrides,
-  };
+  } as DispatchInput;
 }
 
 function dispatchedTarget(): Record<string, unknown> {
@@ -255,7 +257,11 @@ describe('dispatchForeground target', () => {
 
     test('survives an engine-selected turn, which carries no options at all', async () => {
       await dispatchForeground(
-        baseInput({ requestedModel: null, setApprovalMode: 'auto' }),
+        baseInput({
+          requestedModel: null,
+          setApprovalMode: 'auto',
+          setApprovalModeBasedOn: null,
+        }),
       );
       expect(dispatchedTarget()).not.toHaveProperty('model');
       expect(sendExecutionMessage.mock.calls[0]?.[1]).toMatchObject({

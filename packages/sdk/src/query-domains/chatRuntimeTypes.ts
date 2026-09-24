@@ -158,7 +158,7 @@ export type OrchestrationCommandInput =
       threadId: string;
       approvalMode: ApprovalMode;
       /** Compare-and-set basis; see the contract's `basedOnSequence`. */
-      basedOnSequence?: number | null;
+      basedOnSequence: number | null;
     };
 
 export interface OrchestrationCommandReceipt {
