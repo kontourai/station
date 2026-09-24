@@ -421,6 +421,48 @@ export function projectRuntimeEventsToMessages(
     return error ?? undefined;
   };
 
+  /**
+   * The images a tool returned, as `file` parts placed directly after the row
+   * that shows the call — the same place the live renderer puts them
+   * (`streamHandlers.ts`'s `upsertToolResultFiles`). A screenshot the agent
+   * took belongs beside the call that took it, in the transcript rather than
+   * inside a collapsible tool row, and a `file` part breaks a tool-call run so
+   * it is never folded into a batch summary.
+   *
+   * They carry the terminal's `sourceEventId`, so a repeat of the same
+   * terminal is recognised and never doubles them.
+   */
+  const placeToolImages = (
+    toolPart: MessagePart,
+    ev: Extract<CanonicalRuntimeEvent, { method: 'tool.completed' }>,
+  ) => {
+    if (!ev.attachments?.length) return;
+    const files: MessagePart[] = ev.attachments.map((attachment) => ({
+      type: 'file',
+      ...(attachment.dataUrl === undefined ? {} : { url: attachment.dataUrl }),
+      ...(attachment.blobRef === undefined
+        ? {}
+        : { blobRef: attachment.blobRef }),
+      mediaType: attachment.mimeType,
+      name: attachment.name,
+      toolCallId: ev.toolCallId,
+      sourceEventId: ev.eventId,
+    }));
+    const holders = [parts, ...messages.map((message) => message.parts)];
+    for (const list of holders) {
+      const index = list.indexOf(toolPart);
+      if (index < 0) continue;
+      if (
+        list.some(
+          (part) => part.type === 'file' && part.sourceEventId === ev.eventId,
+        )
+      )
+        return;
+      list.splice(index + 1, 0, ...files);
+      return;
+    }
+  };
+
   for (const ev of events) {
     if (
       ev.method === 'turn.completed' ||
@@ -726,6 +768,7 @@ export function projectRuntimeEventsToMessages(
           // authoritative, later verdict.
           if (policyDenied) existing.approvalStatus = 'policy-denied';
           terminalToolsByEventId.set(ev.eventId, existing);
+          placeToolImages(existing, ev);
           // A terminal settles this call slot. A later terminal reusing the
           // same call id must become a distinct durable result, not overwrite
           // this sourceEventId.
@@ -802,6 +845,7 @@ export function projectRuntimeEventsToMessages(
             flushReasoning();
             parts.push(part);
           }
+          placeToolImages(part, ev);
           // station#1569 (H1): a start-less `unresolved` row is settleable
           // too. The row is on the turn the event named when there was one,
           // otherwise on the open turn this fold just pushed it into.

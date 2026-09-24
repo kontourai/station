@@ -422,9 +422,16 @@ describe('AcpToolUpdateSupervisor', () => {
           uri: 'https://image.example/a',
           omitted: 'image-bytes',
         },
+        // `secret-bytes` is not base64, so it becomes no attachment — and the
+        // output says so rather than dropping it silently.
+        {
+          type: 'text',
+          text: '[image not shown: the image data was not valid]',
+        },
       ],
       outputReceipt: { truncated: true, fullOutput: 'unavailable' },
     });
+    expect(events.at(-1)).not.toHaveProperty('attachments');
     expect(JSON.stringify(events.at(-1))).not.toContain('secret-bytes');
   });
 
@@ -638,5 +645,148 @@ describe('AcpToolUpdateSupervisor', () => {
       expect(terminals).toHaveLength(1);
       expect(terminals[0]).toMatchObject({ status: 'success' });
     });
+  });
+});
+
+describe('AcpToolUpdateSupervisor — images a tool returned', () => {
+  const PNG_1X1_BASE64 =
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+  const imageBlock = (data = PNG_1X1_BASE64, mimeType = 'image/png') => ({
+    type: 'content',
+    content: { type: 'image', data, mimeType },
+  });
+
+  test('an image from an earlier content redraw is published with the bare terminal', () => {
+    const { events, supervisor } = harness();
+    supervisor.acceptStarted({ toolCallId: 'shot', title: 'Screenshot' });
+    supervisor.acceptUpdate({
+      toolCallId: 'shot',
+      hasContent: true,
+      content: [...text('captured'), imageBlock()],
+    });
+    supervisor.acceptUpdate({
+      toolCallId: 'shot',
+      status: 'completed',
+      hasStatus: true,
+    });
+    const completed = events.at(-1) as any;
+    expect(completed).toMatchObject({
+      method: 'tool.completed',
+      status: 'success',
+      attachments: [
+        {
+          kind: 'image',
+          name: 'image-1.png',
+          mimeType: 'image/png',
+          dataUrl: `data:image/png;base64,${PNG_1X1_BASE64}`,
+        },
+      ],
+    });
+    // Progress redraws and the text output never carry the bytes.
+    for (const event of events.slice(0, -1))
+      expect(JSON.stringify(event)).not.toContain(PNG_1X1_BASE64);
+    expect(JSON.stringify(completed.output)).not.toContain(PNG_1X1_BASE64);
+  });
+
+  test('a later content redraw replaces the images of the earlier one', () => {
+    const { events, supervisor } = harness();
+    supervisor.acceptStarted({ toolCallId: 'redraw' });
+    supervisor.acceptUpdate({
+      toolCallId: 'redraw',
+      hasContent: true,
+      content: [imageBlock()],
+    });
+    supervisor.acceptUpdate({
+      toolCallId: 'redraw',
+      hasContent: true,
+      content: text('no image any more'),
+    });
+    supervisor.acceptUpdate({
+      toolCallId: 'redraw',
+      status: 'completed',
+      hasStatus: true,
+    });
+    expect(events.at(-1)).not.toHaveProperty('attachments');
+  });
+
+  test('images beyond the session hold budget are named, not kept', () => {
+    const budget = new AcpToolUpdateGlobalBudget();
+    const { events, supervisor } = harness({ budget });
+    // Five 4 MiB images fit one result's count limit but not the 15 MiB
+    // per-session hold: the collector already refuses past 15 MiB combined,
+    // so fill the session from a second open call instead.
+    const big = Buffer.concat([
+      Buffer.from(PNG_1X1_BASE64, 'base64'),
+      Buffer.alloc(4 * 1024 * 1024),
+    ]).toString('base64');
+    supervisor.acceptStarted({ toolCallId: 'first' });
+    supervisor.acceptUpdate({
+      toolCallId: 'first',
+      hasContent: true,
+      content: [imageBlock(big), imageBlock(big), imageBlock(big)],
+    });
+    supervisor.acceptStarted({ toolCallId: 'second' });
+    supervisor.acceptUpdate({
+      toolCallId: 'second',
+      hasContent: true,
+      content: [imageBlock(big)],
+    });
+    supervisor.acceptUpdate({
+      toolCallId: 'second',
+      status: 'completed',
+      hasStatus: true,
+    });
+    const second = events.at(-1) as any;
+    expect(second).not.toHaveProperty('attachments');
+    expect(second.output).toContainEqual({
+      type: 'text',
+      text: '[image not shown: 1 image(s) exceeded what Station holds for open tool calls]',
+    });
+    // Releasing the first call frees its hold for the next result.
+    supervisor.acceptUpdate({
+      toolCallId: 'first',
+      status: 'completed',
+      hasStatus: true,
+    });
+    expect((events.at(-1) as any).attachments).toHaveLength(3);
+    supervisor.acceptStarted({ toolCallId: 'third' });
+    supervisor.acceptUpdate({
+      toolCallId: 'third',
+      hasContent: true,
+      content: [imageBlock(big)],
+      status: 'completed',
+      hasStatus: true,
+    });
+    expect((events.at(-1) as any).attachments).toHaveLength(1);
+  });
+
+  test('the terminal persists through EventStore as a blob reference', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'acp-image-'));
+    const store = new EventStore(join(dir, 'orchestration.sqlite'));
+    try {
+      const supervisor = new AcpToolUpdateSupervisor(session(), (event) =>
+        store.appendEvent(store.projectLiveEvent(event)),
+      );
+      supervisor.acceptStarted({ toolCallId: 'persist' });
+      supervisor.acceptUpdate({
+        toolCallId: 'persist',
+        hasContent: true,
+        content: [imageBlock()],
+        status: 'completed',
+        hasStatus: true,
+      });
+      const terminal = store
+        .listEvents('thread-1')
+        .map((event) => event.payload)
+        .find((event) => event.method === 'tool.completed') as any;
+      expect(terminal.attachments[0].blobRef).toMatch(/^sha256-[0-9a-f]{64}$/);
+      expect(terminal.attachments[0]).not.toHaveProperty('dataUrl');
+      expect(
+        store.listAttachmentThreads(terminal.attachments[0].blobRef),
+      ).toEqual(['thread-1']);
+    } finally {
+      store.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

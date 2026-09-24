@@ -2467,3 +2467,113 @@ describe('settleUnresolvedClaudeToolCalls (station#1558)', () => {
     expect(publish).not.toHaveBeenCalled();
   });
 });
+
+describe('claude-adapter-events — images a tool returned', () => {
+  const PNG_1X1_BASE64 =
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+
+  const runToolCycle = (content: unknown) => {
+    const publish = vi.fn();
+    const record = makeRecord();
+    mapClaudeSdkMessage({
+      provider: 'claude',
+      record,
+      publish,
+      message: {
+        type: 'assistant',
+        parent_tool_use_id: null,
+        message: {
+          content: [
+            {
+              type: 'tool_use',
+              id: 'toolu-img',
+              name: 'Read',
+              input: { file_path: '/tmp/chart.png' },
+            },
+          ],
+        },
+        uuid: 'u-img-1',
+        session_id: 's-1',
+      } as any,
+    });
+    mapClaudeSdkMessage({
+      provider: 'claude',
+      record,
+      publish,
+      message: {
+        type: 'user',
+        parent_tool_use_id: null,
+        message: {
+          content: [{ type: 'tool_result', tool_use_id: 'toolu-img', content }],
+        },
+        uuid: 'u-img-2',
+        session_id: 's-1',
+      } as any,
+    });
+    return publish.mock.calls
+      .map(([event]) => event)
+      .find((event) => event.method === 'tool.completed');
+  };
+
+  test('a Read of a PNG publishes the image as an attachment, not as nothing', () => {
+    // The real shape the Agent SDK delivers for Read on an image file.
+    const completed = runToolCycle([
+      {
+        type: 'image',
+        source: {
+          type: 'base64',
+          media_type: 'image/png',
+          data: PNG_1X1_BASE64,
+        },
+      },
+    ]);
+    expect(completed).toMatchObject({
+      toolCallId: 'toolu-img',
+      status: 'success',
+      attachments: [
+        {
+          kind: 'image',
+          name: 'image-1.png',
+          mimeType: 'image/png',
+          dataUrl: `data:image/png;base64,${PNG_1X1_BASE64}`,
+        },
+      ],
+    });
+    // The text output stays text: no base64 in it.
+    expect(completed.output).toBeUndefined();
+  });
+
+  test('an MCP screenshot beside text keeps the text and adds the image', () => {
+    const completed = runToolCycle([
+      { type: 'text', text: 'Screenshot of the login page' },
+      {
+        type: 'image',
+        source: {
+          type: 'base64',
+          media_type: 'image/png',
+          data: PNG_1X1_BASE64,
+        },
+      },
+    ]);
+    expect(completed.output).toBe('Screenshot of the login page');
+    expect(completed.attachments).toHaveLength(1);
+  });
+
+  test('an unsupported image is named in the output, never attached', () => {
+    const completed = runToolCycle([
+      { type: 'text', text: 'Rendered diagram' },
+      {
+        type: 'image',
+        source: {
+          type: 'base64',
+          media_type: 'image/tiff',
+          data: PNG_1X1_BASE64,
+        },
+      },
+    ]);
+    expect(completed).not.toHaveProperty('attachments');
+    expect(completed.output).toBe(
+      'Rendered diagram\n[image not shown: image/tiff is not a supported image type]',
+    );
+  });
+});

@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import type { ChatAttachmentInput } from '@kontourai/station-contracts/chat-attachment';
 import {
   acpToolUpdateSupervisorBytes,
   acpToolUpdateSupervisorOperations,
@@ -9,6 +10,7 @@ import type {
   CanonicalRuntimeEvent,
   ProviderSession,
 } from '../adapter-shape.js';
+import { ModelImageCollector } from '../model-image-attachments.js';
 import { UNRESOLVED_TOOL_OUTPUT } from './unresolved-tool-output.js';
 
 /** ACP redraws are untrusted input, never a second event store. */
@@ -24,6 +26,15 @@ export const ACP_TOOL_UPDATE_LIMITS = {
   maxDepth: 4,
   maxProperties: 32,
   maxContentBlocks: 32,
+  /**
+   * Image bytes held for open calls until their terminal publishes them as
+   * attachments. They are the one thing this supervisor keeps that is not a
+   * bounded text projection, so they have their own ceilings: one tool
+   * result's worth per session (the chat attachment combined limit) and a
+   * fixed adapter-wide total.
+   */
+  maxImageBytesPerSession: 15 * 1024 * 1024,
+  maxImageBytesAdapter: 64 * 1024 * 1024,
   cadenceMs: 100,
 } as const;
 
@@ -96,6 +107,10 @@ type CallState = {
   retainedBytes: number;
   pending?: CanonicalRuntimeEvent;
   lastPublishedAt?: number;
+  /** Images from the call's latest content, published with its terminal. */
+  images?: ChatAttachmentInput[];
+  imageOmissions: string[];
+  imageBytes: number;
 };
 
 /** Adapter-wide capacity accounting. No caller or tool identifier is retained. */
@@ -103,6 +118,14 @@ export class AcpToolUpdateGlobalBudget {
   private sessions = 0;
   private calls = 0;
   private bytes = 0;
+  private imageBytes = 0;
+
+  replaceImageBytes(previous: number, next: number): boolean {
+    const candidate = this.imageBytes - previous + next;
+    if (candidate > ACP_TOOL_UPDATE_LIMITS.maxImageBytesAdapter) return false;
+    this.imageBytes = Math.max(0, candidate);
+    return true;
+  }
 
   acquireSession(): boolean {
     if (this.sessions >= ACP_TOOL_UPDATE_LIMITS.maxCallsPerSession)
@@ -540,6 +563,44 @@ function projectContent(content: unknown): {
   };
 }
 
+/**
+ * The images in an ACP tool content array — `{type: 'content', content:
+ * {type: 'image', data, mimeType}}`, or a bare image block — as attachments.
+ * Read through the same descriptor-only accessors as the text projection, so
+ * a getter or proxy in agent-supplied content is never invoked.
+ */
+function collectContentImages(content: unknown): {
+  images?: ChatAttachmentInput[];
+  omissions: string[];
+  bytes: number;
+} {
+  const array = safeArrayEntries(content);
+  const collector = new ModelImageCollector();
+  const omissions: string[] = [];
+  for (const item of array.entries) {
+    const block =
+      dataProperty(item, 'type') === 'content'
+        ? dataProperty(item, 'content')
+        : item;
+    if (dataProperty(block, 'type') !== 'image') continue;
+    const data = dataProperty(block, 'data');
+    const outcome =
+      typeof data === 'string' && data.length > 0
+        ? collector.addBase64(dataProperty(block, 'mimeType'), data)
+        : ({
+            kind: 'omitted',
+            marker: '[image not shown: only inline image data can be shown]',
+          } as const);
+    if (outcome.kind === 'omitted') omissions.push(outcome.marker);
+  }
+  const images = collector.result();
+  return {
+    images,
+    omissions,
+    bytes: (images ?? []).reduce((total, image) => total + image.size, 0),
+  };
+}
+
 function displayContent(
   content: AcpToolContentProjection | undefined,
 ): string | undefined {
@@ -592,6 +653,7 @@ export class AcpToolUpdateSupervisor {
   private timer: ReturnType<typeof setTimeout> | undefined;
   private disposed = false;
   private retainedBytes = 0;
+  private imageBytes = 0;
   private readonly admitted: boolean;
 
   constructor(
@@ -639,6 +701,8 @@ export class AcpToolUpdateSupervisor {
         updateCount: 0,
         omittedUpdates: 0,
         retainedBytes: 0,
+        imageOmissions: [],
+        imageBytes: 0,
       };
       this.calls.set(update.toolCallId, call);
     }
@@ -720,6 +784,7 @@ export class AcpToolUpdateSupervisor {
           call.content = undefined;
           call.contentReceipt = undefined;
           call.contentBytes = 0;
+          this.replaceImages(call, { omissions: [], bytes: 0 });
         } else {
           call.omittedUpdates += 1;
           this.observe('byte_limit');
@@ -736,6 +801,8 @@ export class AcpToolUpdateSupervisor {
           call.content = projected.content;
           call.contentReceipt = projected.receipt;
           call.contentBytes = projected.bytes;
+          // Content is a redraw: its images replace the previous content's.
+          this.replaceImages(call, collectContentImages(update.content));
           this.observe(projected.receipt ? 'truncated' : 'retained');
           this.observeBytes('retained', projected.bytes);
           if (projected.receipt)
@@ -756,6 +823,39 @@ export class AcpToolUpdateSupervisor {
     if (!update.hasContent || !call.hasContent) return;
     const message = displayContent(call.content);
     if (message) this.enqueue(update.toolCallId, call, message);
+  }
+
+  private replaceImages(
+    call: CallState,
+    next: {
+      images?: ChatAttachmentInput[];
+      omissions: string[];
+      bytes: number;
+    },
+  ): void {
+    const previous = call.imageBytes;
+    const sessionCandidate = this.imageBytes - previous + next.bytes;
+    if (
+      sessionCandidate <= ACP_TOOL_UPDATE_LIMITS.maxImageBytesPerSession &&
+      this.budget.replaceImageBytes(previous, next.bytes)
+    ) {
+      this.imageBytes = sessionCandidate;
+      call.images = next.images;
+      call.imageBytes = next.bytes;
+      call.imageOmissions = next.omissions;
+      return;
+    }
+    // Over budget: hold nothing for this redraw, and say so where the result
+    // will be read rather than dropping the images silently.
+    this.budget.replaceImageBytes(previous, 0);
+    this.imageBytes = Math.max(0, this.imageBytes - previous);
+    call.images = undefined;
+    call.imageBytes = 0;
+    call.imageOmissions = [
+      ...next.omissions,
+      `[image not shown: ${next.images?.length ?? 0} image(s) exceeded what Station holds for open tool calls]`,
+    ];
+    this.observe('byte_limit');
   }
 
   private replaceRetained(call: CallState, next: number): boolean {
@@ -800,11 +900,22 @@ export class AcpToolUpdateSupervisor {
     this.schedule();
   }
   private complete(id: string, call: CallState, status: string): void {
-    const output = call.hasContent
+    const projectedOutput = call.hasContent
       ? call.content
       : call.hasRawOutput
         ? call.rawOutput
         : undefined;
+    // What was not kept is stated in the output a reader already sees.
+    const output =
+      call.imageOmissions.length > 0 && Array.isArray(projectedOutput)
+        ? [
+            ...projectedOutput,
+            ...call.imageOmissions.map((text) => ({
+              type: 'text' as const,
+              text,
+            })),
+          ]
+        : projectedOutput;
     const receipt = receiptFor(call);
     this.publish(
       this.event({
@@ -824,6 +935,7 @@ export class AcpToolUpdateSupervisor {
             ? {}
             : { output }),
         ...(receipt ? { outputReceipt: receipt } : {}),
+        ...(call.images ? { attachments: call.images } : {}),
       }),
     );
     this.observe('terminal');
@@ -831,6 +943,10 @@ export class AcpToolUpdateSupervisor {
   }
   private releaseCall(id: string, call: CallState): void {
     this.calls.delete(id);
+    this.budget.replaceImageBytes(call.imageBytes, 0);
+    this.imageBytes = Math.max(0, this.imageBytes - call.imageBytes);
+    call.images = undefined;
+    call.imageBytes = 0;
     this.retainedBytes = Math.max(0, this.retainedBytes - call.retainedBytes);
     this.budget.releaseCall(call.retainedBytes);
     this.tombstones.set(id, this.now() + ACP_TOOL_UPDATE_LIMITS.tombstoneTtlMs);

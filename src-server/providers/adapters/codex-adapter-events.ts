@@ -1,10 +1,17 @@
 import crypto from 'node:crypto';
+import type { ChatAttachmentInput } from '@kontourai/station-contracts/chat-attachment';
 import type { ProviderSessionSourceAffinity } from '@kontourai/station-contracts/provider';
 import type {
   RequestOpenedEvent,
   RequestResolvedEvent,
 } from '@kontourai/station-contracts/runtime-events';
 import type { ProviderSession } from '../adapter-shape.js';
+import {
+  addHostImageFile,
+  ModelImageCollector,
+  type ModelImageOutcome,
+  sniffImageMimeType,
+} from '../model-image-attachments.js';
 import { isSessionSourceAffinity } from '../sessions/session-source-affinity.js';
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
@@ -436,6 +443,13 @@ export function deriveToolName(item: Record<string, unknown>): string | null {
       return extractString(item.tool) ?? 'dynamic_tool';
     case 'fileChange':
       return 'apply_patch';
+    // Codex's own vocabulary for these tools (`view_image`, `image_gen`
+    // → image generation). Both put an image in front of the model; surfacing
+    // them as tool rows is what gives that image somewhere to appear.
+    case 'imageView':
+      return 'view_image';
+    case 'imageGeneration':
+      return 'image_generation';
     default:
       return null;
   }
@@ -455,6 +469,8 @@ export function deriveToolArguments(item: Record<string, unknown>): unknown {
       return {
         changes: item.changes,
       };
+    case 'imageView':
+      return { path: extractString(item.path) };
     default:
       return undefined;
   }
@@ -479,7 +495,112 @@ export function deriveToolOutput(item: Record<string, unknown>): unknown {
   }
 }
 
+/**
+ * A generated image's bytes. Codex reports them as base64 (`result`), with no
+ * type beside them, so the type is read from the decoded bytes themselves; a
+ * data URL is accepted as well. With no inline bytes, the file Codex saved is
+ * read instead.
+ */
+function addGeneratedImage(
+  collector: ModelImageCollector,
+  item: Record<string, unknown>,
+): ModelImageOutcome {
+  const result = extractString(item.result);
+  if (result?.startsWith('data:')) return collector.addDataUrl(result);
+  if (result) {
+    const head = Buffer.from(result.slice(0, 16), 'base64');
+    const mimeType = sniffImageMimeType(head);
+    if (!mimeType) {
+      return {
+        kind: 'omitted',
+        marker:
+          '[image not shown: the generated image is not a supported image type]',
+      };
+    }
+    return collector.addBase64(mimeType, result);
+  }
+  if (extractString(item.savedPath))
+    return addHostImageFile(collector, item.savedPath);
+  return {
+    kind: 'omitted',
+    marker: '[image not shown: no image was returned]',
+  };
+}
+
+/**
+ * The tool's output with every image lifted out as an attachment.
+ *
+ * Image bytes never stay in `output`: that field is bounded to a text tail
+ * (`projectBoundedToolOutput`), which would have kept a meaningless slice of
+ * base64 — and before this, `imageView` and image generation were not
+ * surfaced at all. Each image is replaced in place by a short marker naming
+ * the attachment it became, or saying why it was not kept.
+ */
+export function deriveToolOutputAndImages(item: Record<string, unknown>): {
+  output: unknown;
+  attachments?: ChatAttachmentInput[];
+} {
+  const collector = new ModelImageCollector();
+  switch (item.type) {
+    case 'imageView': {
+      const outcome = addHostImageFile(collector, item.path);
+      return { output: outcome.marker, attachments: collector.result() };
+    }
+    case 'imageGeneration': {
+      const outcome = addGeneratedImage(collector, item);
+      const revisedPrompt = extractString(item.revisedPrompt);
+      return {
+        output: [revisedPrompt, outcome.marker].filter(Boolean).join('\n'),
+        attachments: collector.result(),
+      };
+    }
+    case 'mcpToolCall': {
+      const result = item.result;
+      if (!isRecord(result) || !Array.isArray(result.content)) {
+        return { output: deriveToolOutput(item) };
+      }
+      const content = result.content.map((block) =>
+        isRecord(block) && block.type === 'image'
+          ? {
+              type: 'text',
+              text: collector.addBase64(block.mimeType, block.data).marker,
+            }
+          : block,
+      );
+      return {
+        output: { ...result, content },
+        attachments: collector.result(),
+      };
+    }
+    case 'dynamicToolCall': {
+      if (!Array.isArray(item.contentItems)) {
+        return { output: deriveToolOutput(item) };
+      }
+      const contentItems = item.contentItems.map((entry) =>
+        isRecord(entry) && entry.type === 'inputImage'
+          ? {
+              type: 'inputText',
+              text: collector.addDataUrl(entry.imageUrl).marker,
+            }
+          : entry,
+      );
+      return { output: contentItems, attachments: collector.result() };
+    }
+    default:
+      return { output: deriveToolOutput(item) };
+  }
+}
+
 export function extractToolStatus(item: Record<string, unknown>): unknown {
+  // An `imageView` item carries no status: it is reported once the image is
+  // in front of the model, which is its success.
+  if (item.type === 'imageView') return 'completed';
+  if (item.type === 'imageGeneration') {
+    if (item.failure != null) return 'failed';
+    return item.status === 'completed' || extractString(item.result)
+      ? 'completed'
+      : item.status;
+  }
   return item.status;
 }
 
@@ -488,6 +609,11 @@ export function extractToolError(
 ): string | undefined {
   if (item.type === 'mcpToolCall' && isRecord(item.error)) {
     return extractString(item.error.message) ?? undefined;
+  }
+  if (item.type === 'imageGeneration' && isRecord(item.failure)) {
+    return item.failure.type === 'usageLimitExceeded'
+      ? 'Image generation usage limit reached.'
+      : 'Image generation failed.';
   }
   return undefined;
 }

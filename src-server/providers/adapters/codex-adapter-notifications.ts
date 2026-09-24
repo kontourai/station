@@ -6,7 +6,7 @@ import {
   codexResumeCursor,
   deriveToolArguments,
   deriveToolName,
-  deriveToolOutput,
+  deriveToolOutputAndImages,
   extractString,
   extractTokenFigure,
   extractToolError,
@@ -447,9 +447,20 @@ function handleCodexItemCompleted(
   const turnId = extractString(params.turnId);
   const itemId = extractString(params.item.id);
   if (!turnId || !itemId) return;
+  // An image item may be reported only on completion, with no `item/started`
+  // before it. Open its row here so the image still has one to land on; a
+  // start that did arrive is not repeated.
+  const type = extractString(params.item.type);
+  if (
+    (type === 'imageView' || type === 'imageGeneration') &&
+    !record.toolNames.has(itemId)
+  ) {
+    handleCodexItemStarted(record, params, nowIso, publish);
+  }
   const toolName = record.toolNames.get(itemId);
   if (!toolName || !record.openToolCalls.has(itemId)) return;
-  const preview = projectBoundedToolOutput(deriveToolOutput(params.item));
+  const { output, attachments } = deriveToolOutputAndImages(params.item);
+  const preview = projectBoundedToolOutput(output);
   record.openToolCalls.delete(itemId);
   publish({
     eventId: crypto.randomUUID(),
@@ -465,5 +476,6 @@ function handleCodexItemCompleted(
     output: preview.value,
     ...(preview.receipt ? { outputReceipt: preview.receipt } : {}),
     error: extractToolError(params.item),
+    ...(attachments ? { attachments } : {}),
   });
 }

@@ -523,7 +523,9 @@ type EventStoreIngressJson =
 /**
  * A deliberately tiny path state, not a general path matcher. The only
  * in-memory bytes EventStore may receive above its ordinary event ceiling are
- * the request attachment bytes at this exact canonical event path.
+ * attachment bytes at this exact canonical event path: a `turn.started`'s
+ * request attachments, or the images a `tool.completed` returned to the model.
+ * Both are replaced by blob references before anything persists.
  */
 type EventStoreIngressLocation =
   | 'ordinary'
@@ -571,7 +573,7 @@ class BoundedEventStoreIngressProjector {
   ): EventStoreIngressJson {
     const location =
       options.allowCanonicalAttachmentDataUrls &&
-      this.isCanonicalTurnStartedEvent(value)
+      this.isCanonicalAttachmentBearingEvent(value)
         ? 'event-root'
         : 'ordinary';
     const projected = this.projectValue(value, 0, false, location);
@@ -635,14 +637,14 @@ class BoundedEventStoreIngressProjector {
    * receive the narrow attachment allowance without invoking a getter or
    * proxy-provided value read; the full traversal still validates everything.
    */
-  private isCanonicalTurnStartedEvent(value: unknown): boolean {
+  private isCanonicalAttachmentBearingEvent(value: unknown): boolean {
     if (!value || typeof value !== 'object') return false;
     const method = this.ownDescriptor(value, 'method');
     return (
       !!method &&
       method.enumerable === true &&
       'value' in method &&
-      method.value === 'turn.started'
+      (method.value === 'turn.started' || method.value === 'tool.completed')
     );
   }
 
@@ -2676,21 +2678,31 @@ export class EventStore {
   }
 
   /**
-   * The persisted form of an event: identical, except that a `turn.started`'s
-   * attachment bytes are replaced by a content-addressed reference
-   * (archive#3374).
+   * The persisted form of an event: identical, except that attachment bytes
+   * are replaced by a content-addressed reference (archive#3374) — a
+   * `turn.started`'s request attachments, and the images a `tool.completed`
+   * returned to the model.
    *
-   * This projection is also used for the live event bus. A blob write failure
-   * therefore rejects the turn event before it can persist or reach SSE; raw
-   * attachment bytes are never an acceptable fallback projection.
+   * This projection is also used for the live event bus, so raw attachment
+   * bytes are never an acceptable fallback projection. A blob write failure
+   * rejects a `turn.started` before it can persist or reach SSE. A
+   * `tool.completed` instead keeps the image's descriptor WITHOUT any bytes or
+   * reference: rejecting it would lose the tool's only terminal and leave its
+   * row running forever, and a descriptor with neither `dataUrl` nor `blobRef`
+   * is the existing "no preview available" chip — it names what the tool
+   * returned and claims nothing more. The blob store counts the failure.
    */
   private persistedForm(event: CanonicalRuntimeEvent): {
     payload: CanonicalRuntimeEvent;
     blobRefs: string[];
   } {
-    if (event.method !== 'turn.started' || !event.attachments?.length) {
+    if (
+      (event.method !== 'turn.started' && event.method !== 'tool.completed') ||
+      !event.attachments?.length
+    ) {
       return { payload: event, blobRefs: [] };
     }
+    const toolImages = event.method === 'tool.completed';
     if (
       event.attachments.some((attachment) => attachment.dataUrl !== undefined)
     ) {
@@ -2718,13 +2730,15 @@ export class EventStore {
             'Attachment projection rejected an invalid data URL.',
           );
         const ref = this.attachmentBlobs.write(parsed.base64);
-        if (!ref)
+        stripped += attachment.dataUrl.length;
+        const { dataUrl: _bytes, ...metadata } = attachment;
+        if (!ref) {
+          if (toolImages) return metadata;
           throw new Error(
             'Attachment projection could not store attachment bytes.',
           );
+        }
         blobRefs.push(ref);
-        stripped += attachment.dataUrl.length;
-        const { dataUrl: _bytes, ...metadata } = attachment;
         return { ...metadata, blobRef: ref };
       },
     );

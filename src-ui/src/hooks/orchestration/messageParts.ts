@@ -169,6 +169,57 @@ export function upsertToolResultBlocks(
   return next;
 }
 
+/**
+ * The images a tool returned, placed directly after the row that shows the
+ * call — the live twin of `runtime-event-projection.ts`'s `placeToolImages`,
+ * so a turn reads the same before and after it settles. Keyed by the terminal
+ * event, so a repeated terminal replaces rather than doubles them.
+ *
+ * Each part carries only the descriptor and the blob reference the server
+ * stored: EventStore strips the bytes before the event reaches SSE, and
+ * `FilePartPreview` fetches them through the authenticated attachment route —
+ * which is what makes the image viewable from a remote device.
+ */
+export function upsertToolResultFiles(
+  parts: Array<OrchestrationContentPart> | undefined,
+  toolCallId: string,
+  sourceEventId: string,
+  attachments: ReadonlyArray<{
+    name: string;
+    mimeType: string;
+    blobRef?: string;
+    dataUrl?: string;
+  }>,
+) {
+  const next = [...(parts || [])].filter(
+    (part) => !(part.type === 'file' && part.sourceEventId === sourceEventId),
+  );
+  if (attachments.length === 0) return next;
+  const fileParts = attachments.map(
+    (attachment): OrchestrationContentPart => ({
+      type: 'file',
+      ...(attachment.dataUrl === undefined ? {} : { url: attachment.dataUrl }),
+      ...(attachment.blobRef === undefined
+        ? {}
+        : { blobRef: attachment.blobRef }),
+      mediaType: attachment.mimeType,
+      name: attachment.name,
+      toolCallId,
+      sourceEventId,
+    }),
+  );
+  const toolIndex = next.findIndex(
+    (part) =>
+      part.type === 'tool-invocation' && part.sourceEventId === sourceEventId,
+  );
+  if (toolIndex === -1) {
+    next.push(...fileParts);
+    return next;
+  }
+  next.splice(toolIndex + 1, 0, ...fileParts);
+  return next;
+}
+
 export function buildAssistantTurnContent(
   streamingMessage: OrchestrationStreamingMessage | undefined,
   fallbackText?: string,

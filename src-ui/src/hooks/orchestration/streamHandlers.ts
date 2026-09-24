@@ -10,6 +10,7 @@ import {
   upsertTextPart,
   upsertToolPart,
   upsertToolResultBlocks,
+  upsertToolResultFiles,
 } from './messageParts';
 import { notifyToolCompletion } from './toolActivityNotifications';
 import type { OrchestrationEvent } from './types';
@@ -356,14 +357,21 @@ export function handleToolCompletedEvent(
     // is a corrupt/incomplete result, not a license to coalesce its blocks
     // by the reusable tool-call id; retain the terminal result above but
     // omit unpinnable UI blocks.
-    return event.eventId
-      ? upsertToolResultBlocks(
-          next,
+    if (!event.eventId) return next;
+    const withBlocks = upsertToolResultBlocks(
+      next,
+      event.toolCallId,
+      event.eventId,
+      extractUIBlocks(event.output),
+    );
+    return event.attachments?.length
+      ? upsertToolResultFiles(
+          withBlocks,
           event.toolCallId,
           event.eventId,
-          extractUIBlocks(event.output),
+          event.attachments,
         )
-      : next;
+      : withBlocks;
   };
 
   // station#1558: a result belongs to the turn that ISSUED the call, which
