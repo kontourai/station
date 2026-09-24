@@ -423,15 +423,20 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
   // id, so the marker `dialog-history` orphans on a Back can never match a
   // LATER layer's live entry and skip it.
   const [layerEntry, setLayerEntry] = useState(0);
+  // `toggleSurface` is declared above the layer's exits; it reaches the
+  // current one through this.
+  const closePhoneLayerRef = useRef<() => void>(() => {});
   // The Back an unsaved-changes guard is deciding, if any
   // (`leavePhoneLayerByBack`). While set, the layer is reinstated and neither
   // navigation's inbound sync nor the dismissal effect may act on it.
   const layerBackDecisionRef = useRef<object | null>(null);
-  // `toggleSurface` is declared above the layer's exits; it reaches the
-  // current one through this.
-  const closePhoneLayerRef = useRef<() => void>(() => {});
   const setPhoneLayer = useCallback((layer: PhonePaneLayer | null) => {
     phoneLayerRef.current = layer;
+    // Whatever ends a layer ends any Back decision about it. A guard that
+    // never answers (its component unmounted with the prompt up) would
+    // otherwise leave the decision set for the session, and navigation's
+    // inbound sync and the dismissal effect both stand down while it is.
+    if (!layer) layerBackDecisionRef.current = null;
     setPhoneLayerState(layer);
   }, []);
   const regionsRef = useRef(regions);

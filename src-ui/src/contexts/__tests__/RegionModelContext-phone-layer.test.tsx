@@ -544,6 +544,55 @@ describe('a pane opened on a phone opens over Chat', () => {
     expect(record()).toBe(before);
   });
 
+  // Round-4 review M1: a guard that never answers (its component unmounted
+  // with the prompt up) left the Back decision set, and navigation's inbound
+  // sync stood down for the rest of the session. Ending the layer — here the
+  // fold opening — must end the decision too.
+  test('a Back decision that never settles does not outlive the layer: ?dock still drives the regions', async () => {
+    Object.defineProperty(window, 'innerWidth', {
+      configurable: true,
+      value: 600,
+    });
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: query === MOBILE_MEDIA_QUERY,
+      media: query,
+      onchange: null,
+      addListener: () => {},
+      removeListener: () => {},
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      dispatchEvent: () => false,
+    }));
+    await mount();
+    const unregister = navigationStore.registerNavigationGuard(
+      Symbol('never-answers'),
+      () => {},
+    );
+    try {
+      act(() => {
+        current().openSurfaceInRegion(PR);
+      });
+      await waitFor(() => expect(onLayerEntry()).toBe(true));
+      act(() => window.history.back());
+      // Reinstated while the (silent) guard "decides".
+      await waitFor(() => expect(onLayerEntry()).toBe(true));
+      expect(current().phoneLayer).not.toBeNull();
+    } finally {
+      unregister();
+    }
+    Object.defineProperty(window, 'innerWidth', {
+      configurable: true,
+      value: 1200,
+    });
+    act(() => window.dispatchEvent(new Event('resize')));
+    await waitFor(() => expect(current().phoneLayer).toBeNull());
+
+    act(() => navigationStore.setDockState(false));
+    await waitFor(() => expect(current().regions.bottom.visible).toBe(false));
+    act(() => navigationStore.setDockState(true, false));
+    await waitFor(() => expect(current().regions.bottom.visible).toBe(true));
+  });
+
   test('a fine-pointer desktop keeps its own rule: a side region, no layer, no history', async () => {
     stubDevice({ phone: false });
     await mount();
