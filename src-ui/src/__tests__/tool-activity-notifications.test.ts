@@ -60,30 +60,26 @@ describe('tool activity notifications', () => {
     ).toBe('directory listing complete');
   });
 
-  test('suppresses success toasts for the foreground chat', () => {
-    getSnapshot.mockReturnValue({
-      activeChat: 'conv-1',
-      activeConversation: 'conv-1',
-      isDockOpen: true,
-    });
+  test.each(['success', 'cancelled', 'unresolved'] as const)(
+    'does not toast routine %s tool outcomes',
+    (status) => {
+      const event = {
+        provider: 'codex' as const,
+        threadId: 'session-1',
+        createdAt: '2026-04-11T00:00:00.000Z',
+        method: 'tool.completed' as const,
+        itemId: 'tool-1',
+        toolCallId: 'tool-1',
+        toolName: 'shell_exec',
+        status,
+        output: { output: 'done' },
+      };
 
-    expect(
-      shouldNotifyForToolCompletion(
-        {
-          provider: 'codex',
-          threadId: 'session-1',
-          createdAt: '2026-04-11T00:00:00.000Z',
-          method: 'tool.completed',
-          itemId: 'tool-1',
-          toolCallId: 'tool-1',
-          toolName: 'shell_exec',
-          status: 'success',
-          output: { output: 'done' },
-        },
-        baseChat,
-      ),
-    ).toBe(false);
-  });
+      expect(shouldNotifyForToolCompletion(event)).toBe(false);
+      notifyToolCompletion(event, baseChat);
+      expect(showToolActivity).not.toHaveBeenCalled();
+    },
+  );
 
   test('always surfaces error tool outcomes and wires navigation back to the session', () => {
     notifyToolCompletion(
@@ -118,35 +114,5 @@ describe('tool activity notifications', () => {
     onNavigate();
     expect(setDockState).toHaveBeenCalledWith(true);
     expect(setActiveChat).toHaveBeenCalledWith('conv-1');
-  });
-
-  // station#1558: an unresolved call is surfaced (the reader should learn the
-  // session ended mid-tool) but never as an ERROR — Station observed no
-  // failure, only that no result will arrive.
-  test('an unresolved tool outcome raises a neutral note, not the error toast', () => {
-    notifyToolCompletion(
-      {
-        provider: 'claude',
-        threadId: 'session-1',
-        createdAt: '2026-04-11T00:00:00.000Z',
-        method: 'tool.completed',
-        itemId: 'tool-1',
-        toolCallId: 'tool-1',
-        toolName: 'shell_exec',
-        status: 'unresolved',
-        output:
-          'No result was reported before the session ended; whether the tool ran is unknown.',
-      },
-      baseChat,
-    );
-
-    expect(showToolActivity).toHaveBeenCalledWith(
-      expect.objectContaining({
-        sessionId: 'session-1',
-        toolName: 'shell exec',
-        status: 'unresolved',
-      }),
-    );
-    expect(showToolActivity.mock.calls[0][0].status).not.toBe('error');
   });
 });

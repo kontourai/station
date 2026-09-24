@@ -130,10 +130,23 @@ export function resolveClaudeImports(
 }
 
 const DISCOVERY_IGNORES = new Set(['.git', 'node_modules', 'vendor']);
-function isGeneratedDirectory(relativePath) {
-  return (
-    relativePath === 'src-desktop/gen' ||
-    relativePath.startsWith('src-desktop/gen/')
+// Directories the toolchain writes into, never a place a human adds
+// AGENTS.md/CLAUDE.md. A mobile compile (`npm run check:mobile-compile`)
+// leaves directory symlinks under src-desktop/target (swift-rs) and
+// src-desktop/binaries; walking into them trips the symlinked-directory
+// guard below for build output, not real source (station#2543). Keep this
+// list narrow and path-anchored rather than matching by basename, so a
+// real source directory that happens to share a build tool's folder name
+// is never silently skipped.
+const BUILD_OUTPUT_DIRECTORIES = [
+  'src-desktop/gen',
+  'src-desktop/target',
+  'src-desktop/binaries',
+];
+function isBuildOutputDirectory(relativePath) {
+  return BUILD_OUTPUT_DIRECTORIES.some(
+    (directory) =>
+      relativePath === directory || relativePath.startsWith(`${directory}/`),
   );
 }
 /** Recurses the on-disk tree so untracked descendants are part of the contract. */
@@ -161,7 +174,7 @@ export function discoverOnDiskInstructionFiles({
       if (entry.isDirectory()) {
         if (
           !DISCOVERY_IGNORES.has(entry.name) &&
-          !isGeneratedDirectory(relativePath)
+          !isBuildOutputDirectory(relativePath)
         )
           visit(resolve(directory, entry.name), relativePath);
       } else if (/^(?:AGENTS(?:\.override)?|CLAUDE)\.md$/.test(entry.name))
