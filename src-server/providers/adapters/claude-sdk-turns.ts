@@ -88,7 +88,7 @@ export type ProviderTurnCloseReason =
   | 'session-ended';
 
 /** The CLI capability that makes `command_lifecycle` messages available. */
-export const CLAUDE_MSG_LIFECYCLE_CAPABILITY = 'msg_lifecycle_v1';
+const CLAUDE_MSG_LIFECYCLE_CAPABILITY = 'msg_lifecycle_v1';
 
 /**
  * The CLI's per-message lifecycle frame. Not in the SDK's typings (0.3.261)
@@ -125,7 +125,7 @@ export function readClaudeCommandLifecycle(
 }
 
 /** The user-message uuids a reply frame or result names, in order. */
-export function claudeMessageUserUuids(message: unknown): string[] {
+function claudeMessageUserUuids(message: unknown): string[] {
   if (!message || typeof message !== 'object') return [];
   const candidate = message as {
     user_message_uuid?: unknown;
@@ -146,20 +146,7 @@ export function claudeMessageUserUuids(message: unknown): string[] {
   return uuids;
 }
 
-/** The SDK marks a turn a background task's completion started. */
-export function isClaudeTaskNotificationOrigin(message: unknown): boolean {
-  if (!message || typeof message !== 'object') return false;
-  const origin = (message as { origin?: unknown }).origin;
-  return (
-    !!origin &&
-    typeof origin === 'object' &&
-    (origin as { kind?: unknown }).kind === 'task-notification'
-  );
-}
-
-export function claudeSdkTurns(
-  record: ClaudeSdkTurnState,
-): ClaudeSdkTurnLedger {
+function claudeSdkTurns(record: ClaudeSdkTurnState): ClaudeSdkTurnLedger {
   record.sdkTurns ??= {
     queued: [],
     startedAwaitingInit: false,

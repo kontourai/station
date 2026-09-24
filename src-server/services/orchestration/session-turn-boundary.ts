@@ -37,7 +37,7 @@ export const SESSION_TURN_ACCEPTED_CAPACITY = 64;
  * durable fact a crashed user turn does. Identified by the id Station minted
  * (like `session-start-boundary:`), never by caller metadata.
  */
-export const PROVIDER_TURN_BOUNDARY_PREFIX = 'provider-turn-boundary:';
+const PROVIDER_TURN_BOUNDARY_PREFIX = 'provider-turn-boundary:';
 
 export function isProviderTurnBoundary(record: {
   boundaryId: string;
