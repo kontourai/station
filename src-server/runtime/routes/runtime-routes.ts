@@ -4104,6 +4104,33 @@ export function configureRuntimeRoutes(
         layoutCatalog,
         kitObservabilityRegistry,
         terminalService: context.terminalService,
+        sessionWorkspaceDirectory: async (
+          routeContext,
+          projectSlug,
+          thread,
+        ) => {
+          // Authority first: a thread id the caller may not read is refused,
+          // never answered from the checkout instead.
+          if (
+            !context.orchestrationService.canUserReadSession(
+              thread,
+              readAuthorityForRequest(routeContext.req.raw),
+            )
+          )
+            return null;
+          const session = pullRequestThreadForProject(
+            await context.orchestrationService.listSessions(
+              INTERNAL_SESSION_READ_SCOPE,
+            ),
+            thread,
+            projectSlug,
+          );
+          if (!session) return null;
+          const isolation = session.workspaceIsolation;
+          return isolation?.mode === 'worktree' && isolation.path
+            ? isolation.path
+            : undefined;
+        },
         // station#3778: the SAME service instance the Board's availability
         // route answers from, so the Pane catalogue, the nav entry and the
         // route guard cannot drift into three answers.

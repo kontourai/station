@@ -54,13 +54,14 @@ export interface WorkspaceFilePreviewDownload {
 export async function downloadProjectWorkspaceFilePreview(
   projectSlug: string,
   path: string,
+  thread?: string,
 ): Promise<WorkspaceFilePreviewDownload> {
   const apiBase = await _getApiBase();
   const response = await mutateJson(
     `${apiBase}/api/projects/${encodeURIComponent(projectSlug)}/file-preview/download`,
     'POST',
     undefined,
-    { path },
+    thread ? { path, thread } : { path },
   );
   if (!response.ok) {
     throw new Error('Station could not prepare the file handoff.');

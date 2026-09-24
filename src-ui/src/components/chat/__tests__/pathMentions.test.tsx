@@ -11,12 +11,16 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 const existing = new Set<string>();
-const existenceAsks: [string | null, string | null][] = [];
+const existenceAsks: [string | null, string | null, string | undefined][] = [];
 const openFilePreviewInRegion = vi.fn(() => ({ ok: true }) as never);
 
 vi.mock('../useWorkspaceFileExists', () => ({
-  useWorkspaceFileExists: (projectSlug: string | null, path: string | null) => {
-    existenceAsks.push([projectSlug, path]);
+  useWorkspaceFileExists: (
+    projectSlug: string | null,
+    path: string | null,
+    thread?: string | null,
+  ) => {
+    existenceAsks.push([projectSlug, path, thread ?? undefined]);
     return path !== null && existing.has(path);
   },
 }));
@@ -123,8 +127,8 @@ describe('path mentions in a rendered chat message', () => {
     expect(screen.queryByRole('link', { name: /gone/ })).toBeNull();
     expect(screen.getByText(/src\/gone\.ts:3/)).toBeTruthy();
     // Each mention asked about its own path, in the conversation's project.
-    expect(existenceAsks).toContainEqual(['alpha', 'src/app.ts']);
-    expect(existenceAsks).toContainEqual(['alpha', 'src/gone.ts']);
+    expect(existenceAsks).toContainEqual(['alpha', 'src/app.ts', undefined]);
+    expect(existenceAsks).toContainEqual(['alpha', 'src/gone.ts', undefined]);
   });
 
   test('a bare file name with a line survives the renderer and opens at that line', () => {
@@ -172,9 +176,9 @@ describe('path mentions in a rendered chat message', () => {
     expect(existenceAsks).toEqual([]);
   });
 
-  test('a session in an isolated worktree links no mentions and asks nothing', () => {
-    // The preview reads the project checkout; the model's paths name the
-    // worktree's files, which may differ.
+  test('an isolated worktree session with no thread id to read it through links nothing', () => {
+    // Without the thread there is no way to read the worktree, and the
+    // checkout's copy of the file may differ.
     existing.add('src/app.ts');
     render(
       <MarkdownLinkContext.Provider
@@ -188,6 +192,36 @@ describe('path mentions in a rendered chat message', () => {
     );
     expect(screen.queryByRole('link')).toBeNull();
     expect(existenceAsks).toEqual([]);
+  });
+
+  test('an isolated worktree session reads its own directory through its thread (#2476)', () => {
+    existing.add('src/app.ts');
+    render(
+      <MarkdownLinkContext.Provider
+        value={{
+          ...CONVERSATION,
+          sessionDirectory: '/work/worktrees/lane',
+          threadId: 'thread-7',
+        }}
+      >
+        <MarkdownRenderer>
+          Edit src/app.ts:3 and /work/worktrees/lane/src/app.ts:9 now.
+        </MarkdownRenderer>
+      </MarkdownLinkContext.Provider>,
+    );
+    // Every check names the session, so the server answers from its worktree.
+    expect(existenceAsks.length).toBeGreaterThan(0);
+    for (const [, , thread] of existenceAsks) expect(thread).toBe('thread-7');
+    // An absolute path under the worktree is that worktree's file.
+    fireEvent.click(screen.getByRole('link', { name: /app\.ts:9/ }));
+    expect(openFilePreviewInRegion).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        path: 'src/app.ts',
+        lineRange: { start: 9, end: 9 },
+        thread: 'thread-7',
+      }),
+    );
   });
 
   test('outside a conversation a mention stays text and asks nothing', () => {

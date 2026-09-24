@@ -2007,17 +2007,14 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       projectId: conversationProjectId,
       dockProjectSlug,
       bottomOnly: dockBottomOnly,
-      // Where an absolute path in this conversation can point: the project's
-      // checkout only. A session in an isolated worktree writes paths under
-      // THAT directory, but the preview and the existence check read the
-      // project checkout, so linking them would open the checkout's copy of
-      // a file the model edited elsewhere.
+      // The project checkout, and the directory the session runs in: when
+      // they differ (an isolated worktree) the anchor reads that session's
+      // files through `threadId` (#2476).
       projectRoots: conversationProjectDirectory
         ? [conversationProjectDirectory]
         : [],
-      // The same holds for RELATIVE paths in an isolated worktree; the anchor
-      // compares this with the checkout.
       sessionDirectory: sessionDisplayCwd,
+      threadId: activeOrchestrationSession?.threadId ?? null,
       conversationId,
       openPathInMain:
         conversationProjectSlug && codingLayoutSlug
@@ -2040,6 +2037,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       dockBottomOnly,
       dockProjectSlug,
       sessionDisplayCwd,
+      activeOrchestrationSession?.threadId,
       setLayout,
     ],
   );

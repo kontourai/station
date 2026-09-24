@@ -51,6 +51,31 @@ import { useWorkspaceFileExists } from './useWorkspaceFileExists';
  * activatable, and what it activates is the pane, not a webview navigation to
  * a relative URL that resolves against Station's own routes.
  */
+/**
+ * Where this conversation's file paths live (#2476). A session in the project
+ * checkout: the checkout. A session in an isolated worktree: that worktree,
+ * read through its thread id. Without a thread id there is no way to read the
+ * worktree, and a mention is not linked (`resolvable: false`).
+ */
+function fileScope(link: MarkdownLinkContextValue | null): {
+  roots: readonly string[];
+  thread?: string;
+  resolvable: boolean;
+} {
+  if (!link) return { roots: [], resolvable: false };
+  if (
+    sessionRunsInProjectDirectory(link.sessionDirectory, link.projectRoots?.[0])
+  )
+    return { roots: link.projectRoots ?? [], resolvable: true };
+  if (link.threadId && link.sessionDirectory)
+    return {
+      roots: [link.sessionDirectory],
+      thread: link.threadId,
+      resolvable: true,
+    };
+  return { roots: [], resolvable: false };
+}
+
 function activate(
   event: MouseEvent<HTMLAnchorElement>,
   target: MarkdownLinkTarget | null,
@@ -102,11 +127,13 @@ function activate(
   }
   if (dockCanHold) {
     event.preventDefault();
+    const thread = fileScope(link).thread;
     const outcome = openFilePreviewInRegion(model, {
       projectId: link.projectId,
       projectSlug: link.projectSlug,
       path: target.path,
       ...(target.lineRange ? { lineRange: target.lineRange } : {}),
+      ...(thread ? { thread } : {}),
     });
     if (outcome.ok) return;
     // The model refused (a device fold, a region rule). The preview still
@@ -145,19 +172,14 @@ export function ChatMarkdownAnchor({ href, children, ...props }: AnchorProps) {
   const { [PATH_MENTION_ATTRIBUTE]: mentionMarker, ...anchorProps } =
     props as AnchorProps & { [PATH_MENTION_ATTRIBUTE]?: unknown };
   const isMention = mentionMarker !== undefined;
-  const target = classifyMarkdownLink(href, { roots: link?.projectRoots });
+  const scope = fileScope(link);
+  const target = classifyMarkdownLink(href, { roots: scope.roots });
   if (isMention) {
     // A path written in prose is a link only inside a conversation, only when
-    // it names a file in that conversation's checkout, and only once the
-    // server has said the file is there. Until then it is the text it was.
-    if (
-      !link?.projectSlug ||
-      !sessionRunsInProjectDirectory(
-        link.sessionDirectory,
-        link.projectRoots?.[0],
-      ) ||
-      target?.kind !== 'path'
-    )
+    // it names a file in the directory that conversation's session works in,
+    // and only once the server has said the file is there. Until then it is
+    // the text it was.
+    if (!link?.projectSlug || !scope.resolvable || target?.kind !== 'path')
       return <>{children}</>;
     return (
       <PathMentionAnchor
@@ -288,7 +310,11 @@ function PathMentionAnchor({
   link: MarkdownLinkContextValue;
   target: Extract<MarkdownLinkTarget, { kind: 'path' }>;
 }) {
-  const exists = useWorkspaceFileExists(rest.link.projectSlug, target.path);
+  const exists = useWorkspaceFileExists(
+    rest.link.projectSlug,
+    target.path,
+    fileScope(rest.link).thread,
+  );
   if (exists !== true) return <>{rest.children}</>;
   return <LinkAnchor {...rest} target={target} clickTarget={target} />;
 }
