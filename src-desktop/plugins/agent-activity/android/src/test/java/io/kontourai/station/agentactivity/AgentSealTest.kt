@@ -59,6 +59,25 @@ class AgentSealTest {
   }
 
   @Test
+  fun aSealedCardCannotOverrideRoutingFields() {
+    // Same key and registration, but the sealed card itself claims another
+    // registration, another Station key and another kind (also from Node).
+    val hostile = "Dw4NDAsKCQgHBgUE3xLELz6l8MeP_Yt9S-7odQAJcU3-e91GIznKnkZv1HVl_uF6CXhDvhCFHN2jPBg1JzDXfUrZO52dPyOpGhNnsJBFIm4-P8zRM31e0zZOEte1VCvi83Br2z_pfPVgIecRfd6joYExxMuIiOG6fMHyji9AqH9CMjur3VMvkqiM0aLb78pHYIjKK6O6ldFWCf29d0FlDe0OGPloXq5Cy8dJbKd5A0cNRsQUR3uq5Jiy6FHMfoZyPP0lHlIK"
+    val card = openPush(
+      registration,
+      mapOf(
+        "station_kind" to "agent_activity",
+        "device_id" to registrationId,
+        "station_key" to "K".repeat(43),
+        "sealed" to hostile,
+      )
+    )
+    assertEquals(registrationId, card?.get("device_id"))
+    assertEquals("K".repeat(43), card?.get("station_key"))
+    assertEquals("agent_activity", card?.get("station_kind"))
+  }
+
+  @Test
   fun decodesUnpaddedBase64Url() {
     assertArrayEquals(ByteArray(32) { it.toByte() }, decodeBase64Url(payloadKey))
     assertArrayEquals(byteArrayOf(-5, -1), decodeBase64Url("-_8"))
