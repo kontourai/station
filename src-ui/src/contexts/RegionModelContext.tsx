@@ -789,11 +789,10 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
   // Every deliberate exit — Back, "‹ Chat" (`closePhoneLayer`), the folded
   // menu's hide of the layer's pane, a chat-focus intent — asks the
   // unsaved-changes guards first (a pull request review draft is component
-  // state; the restore unmounts it). KNOWN LIMITATION (review M-a): the
-  // guards are the navigation store's app-wide set, not the layer pane's, so
-  // an unrelated dirty form mounted elsewhere also asks, and its answer
-  // decides whether the layer closes. Scoping guards to a surface is design
-  // work that is not done here. Back has already left the entry when it
+  // state; the restore unmounts it). Only the layer pane's own guards are
+  // asked (`owner`: the region host scopes each pane's `useUnsavedGuard` to
+  // its surface through `UnsavedGuardOwnerContext`), so an unrelated dirty
+  // form elsewhere neither prompts nor decides whether the layer closes. Back has already left the entry when it
   // asks; `leavePhoneLayerByBack` keeps the layer as it was while the guard
   // decides.
   const phoneLayerOpen = phoneLayer !== null;
@@ -844,6 +843,8 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
         layerBackDecisionRef.current = null;
         if (!reinstated) reinstate();
       },
+      // The layer's pane's guards only — not every dirty form in the app.
+      { owner: layer.surfaceId },
     );
     if (current() && !reinstated) reinstate();
   }, [restorePhoneLayer]);
@@ -853,7 +854,9 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
     // layer would put a "Discard?" in front of an unrelated dirty form
     // whose answer changes nothing.
     if (!phoneLayerRef.current) return;
-    navigationStore.runNavigationGuards(restorePhoneLayer);
+    navigationStore.runNavigationGuards(restorePhoneLayer, undefined, {
+      owner: phoneLayerRef.current.surfaceId,
+    });
   }, [restorePhoneLayer]);
   closePhoneLayerRef.current = closePhoneLayer;
   useEffect(() => {

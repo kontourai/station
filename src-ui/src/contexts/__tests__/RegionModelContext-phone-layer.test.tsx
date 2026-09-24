@@ -570,9 +570,12 @@ describe('a pane opened on a phone opens over Chat', () => {
       dispatchEvent: () => false,
     }));
     await mount();
+    // Owned by the layer's pane, as `RegionPaneHost` scopes it: only such a
+    // guard is asked when the layer is left (gap G2).
     const unregister = navigationStore.registerNavigationGuard(
       Symbol('never-answers'),
       () => {},
+      PR,
     );
     try {
       act(() => {

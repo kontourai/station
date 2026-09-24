@@ -21,6 +21,7 @@ import { LazyBoundary } from '../components/LazyBoundary';
 import { SkeletonBlock } from '../components/Skeleton';
 import { Empty } from '../components/state';
 import { useRegionModelOptional } from '../contexts/RegionModelContext';
+import { UnsavedGuardOwnerContext } from '../contexts/UnsavedGuardOwnerContext';
 import type { DockShellChrome } from '../hooks/useDockShellChrome';
 import { reportRegionClearance } from '../regions/region-clearance';
 import {
@@ -432,6 +433,21 @@ function RegionPaneFailed({
 }
 
 /**
+ * A pane's unsaved-changes guards belong to its surface
+ * (`UnsavedGuardOwnerContext`): leaving that one pane — a phone layer's Back
+ * or "‹ Chat" — asks only them.
+ */
+function ownedByPane(instance: WorkspacePaneInstance, pane: ReactNode) {
+  return (
+    <UnsavedGuardOwnerContext.Provider
+      value={regionSurfaceOfPane(instance) ?? String(instance.instanceId)}
+    >
+      {pane}
+    </UnsavedGuardOwnerContext.Provider>
+  );
+}
+
+/**
  * One dock region's pane host (#2045): `DockShell` (the one dock chrome shell
  * — root box, resize handle, geometry/snap/drag state,
  * `dock.toggle`/`dock.maximize`) around the region's chrome bar
@@ -813,15 +829,22 @@ export function RegionPaneHost({
               renderPane={(instance) => {
                 switch (regionSurfaceOfPane(instance)) {
                   case 'chat':
-                    return renderChatPane(instance, onRequestAuth, shellChrome);
+                    return ownedByPane(
+                      instance,
+                      renderChatPane(instance, onRequestAuth, shellChrome),
+                    );
                   case 'activity':
                     if (!renderActivityPane)
                       throw new Error(
                         'Region host holds Activity but was given no Activity renderer',
                       );
-                    return renderActivityPane(instance, shellChrome);
+                    return ownedByPane(
+                      instance,
+                      renderActivityPane(instance, shellChrome),
+                    );
                   default:
-                    return (
+                    return ownedByPane(
+                      instance,
                       <LazyBoundary
                         load={loadRegionBuiltinPane}
                         componentProps={{ instance }}
@@ -841,7 +864,7 @@ export function RegionPaneHost({
                             }
                           />
                         )}
-                      />
+                      />,
                     );
                 }
               }}

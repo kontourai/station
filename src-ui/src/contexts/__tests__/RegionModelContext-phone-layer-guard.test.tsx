@@ -87,6 +87,7 @@ import { KeyboardShortcutsProvider } from '../KeyboardShortcutsContext';
 import { NavigationProvider } from '../NavigationContext';
 import { navigationStore } from '../navigation-store';
 import { RegionModelProvider, useRegionModel } from '../RegionModelContext';
+import { UnsavedGuardOwnerContext } from '../UnsavedGuardOwnerContext';
 
 const PR = 'pr:github.com/kontourai/station#2049';
 let model: ReturnType<typeof useRegionModel> | null = null;
@@ -111,23 +112,27 @@ function onLayerEntry(): boolean {
   return typeof marker === 'string' && marker.startsWith('phone-pane-layer:');
 }
 
-async function mountWithDraft() {
+async function mountWithDraft(draft = 'Half-written review') {
   render(
     <QueryClientProvider client={new QueryClient()}>
       <KeyboardShortcutsProvider>
         <NavigationProvider>
           <RegionModelProvider>
             <Probe />
-            <PullRequestReviewPanel
-              target={{
-                provider: 'github',
-                host: 'github.com',
-                owner: 'kontourai',
-                repository: 'station',
-                ref: '2049',
-                project: 'station',
-              }}
-            />
+            {/* As the region host renders it: the pane's guards belong to
+                its surface (`RegionPaneHost`'s `ownedByPane`). */}
+            <UnsavedGuardOwnerContext.Provider value={PR}>
+              <PullRequestReviewPanel
+                target={{
+                  provider: 'github',
+                  host: 'github.com',
+                  owner: 'kontourai',
+                  repository: 'station',
+                  ref: '2049',
+                  project: 'station',
+                }}
+              />
+            </UnsavedGuardOwnerContext.Provider>
           </RegionModelProvider>
         </NavigationProvider>
       </KeyboardShortcutsProvider>
@@ -141,7 +146,7 @@ async function mountWithDraft() {
   const comment = (await screen.findByLabelText(
     'Comment',
   )) as HTMLTextAreaElement;
-  fireEvent.change(comment, { target: { value: 'Half-written review' } });
+  if (draft) fireEvent.change(comment, { target: { value: draft } });
   return comment;
 }
 
@@ -304,6 +309,36 @@ describe('leaving a phone layer asks before discarding a review draft', () => {
     expect(
       screen.queryByRole('dialog', { name: /Unsaved Changes/ }),
     ).toBeNull();
+  });
+
+  // Gap G2: leaving the layer asked EVERY registered guard app-wide, so an
+  // unrelated dirty form elsewhere prompted — and decided — on Back and
+  // "‹ Chat". Only the layer pane's own guards are asked now.
+  test('an unrelated dirty guard elsewhere is not asked on Back or "‹ Chat"', async () => {
+    const unrelated = vi.fn();
+    const unregister = navigationStore.registerNavigationGuard(
+      Symbol('dirty-settings-form'),
+      unrelated,
+    );
+    try {
+      await mountWithDraft('');
+      act(() => window.history.back());
+      await waitFor(() => expect(current().phoneLayer).toBeNull());
+      expect(current().regions.bottom.occupant).toBe('chat');
+
+      act(() => {
+        current().openSurfaceInRegion(PR);
+      });
+      await waitFor(() => expect(onLayerEntry()).toBe(true));
+      act(() => current().closePhoneLayer());
+      await waitFor(() => expect(current().phoneLayer).toBeNull());
+      expect(unrelated).not.toHaveBeenCalled();
+      expect(
+        screen.queryByRole('dialog', { name: /Unsaved Changes/ }),
+      ).toBeNull();
+    } finally {
+      unregister();
+    }
   });
 
   test('"‹ Chat" asks too; Cancel keeps the layer, Discard closes it', async () => {
