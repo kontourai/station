@@ -544,13 +544,14 @@ export const PROVIDER_MODEL_OPTION_SUPPORT: Record<string, readonly string[]> =
     [PROVIDER_ACP]: ['mode'],
     [PROVIDER_OLLAMA]: [],
     [PROVIDER_BEDROCK]: [],
-    // `muse-adapter.ts` reads `modelOptions` nowhere at all: `sendTurn` uses
-    // only `input.modelId`, and `buildMuseExecArgs` emits `--session-id`,
-    // `--model`, `--workspace` and the prompt. An ABSENT entry would mean "no
-    // known restriction", so a caller's `approvalMode`/`effort` would be
-    // accepted and then silently ignored — the empty list is what makes the
-    // rejection honest.
-    [PROVIDER_MUSE]: [],
+    // #2452: `muse-adapter.ts` reads `approvalMode` (`readApprovalMode`) at
+    // session start and on every turn, and a `muse serve` session applies it
+    // (`museServeApprovalPlan`: MSP approval mode + host sandbox posture). A
+    // session on the `muse exec` fallback cannot: it runs `--approval-mode
+    // never` in muse's sandbox, and reports `approvalMode: 'auto'` as what
+    // applied, beside a `muse-serve-unavailable` warning. Nothing else in
+    // `modelOptions` is read, so nothing else is listed.
+    [PROVIDER_MUSE]: ['approvalMode'],
   };
 
 /**
@@ -693,6 +694,30 @@ export const MUSE_HELD_TURN_UNFINISHED_CODE = 'muse-held-turn-unfinished';
  * (no code; stop the session to recover).
  */
 export const MUSE_TURN_SLOT_RELEASING_CODE = 'muse_turn_slot_releasing';
+
+/**
+ * #2452: `runtime.warning` code for a Muse (`muse serve`) approval nobody
+ * answered within Station's approval deadline. `muse serve` never times an
+ * unanswered approval out on its own (probed for 360 s), so Station declines
+ * it (`approval/decide` `abort`, with feedback the model reads) and resolves
+ * the request `expired`. The turn, or the subagent that asked, continues.
+ */
+export const MUSE_APPROVAL_EXPIRED_CODE = 'muse-approval-expired';
+
+/**
+ * #2452: `runtime.warning` code for a Muse session that runs on the `muse
+ * exec` fallback because `muse serve` could not be used (no such subcommand,
+ * a failed handshake, or a protocol schema this Station has not verified).
+ * On that path no approval can reach Station: tools run under `--approval-mode
+ * never`, whatever approval mode was requested.
+ */
+export const MUSE_SERVE_UNAVAILABLE_CODE = 'muse-serve-unavailable';
+
+/**
+ * #2452: `runtime.error` code for a `muse serve` turn the host process ended
+ * by exiting (it is respawned, and the session resumed, on the next send).
+ */
+export const MUSE_SERVE_HOST_EXITED_CODE = 'muse-serve-host-exited';
 
 /**
  * #2324: refusal code for a send that arrived while the engine is running a
