@@ -834,6 +834,72 @@ pub(crate) struct NativeKeyCandidateResponse {
     pub(crate) body: Zeroizing<Vec<u8>>,
 }
 
+/// Parsed courier shape only. The compact JWS must still be independently
+/// verified and explicitly approved before any Station trust is persisted.
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub(crate) struct UntrustedNativeKeyCandidate {
+    pub(crate) version: String,
+    pub(crate) compact_jws: String,
+}
+
+pub(crate) struct NativeKeyCandidateResult {
+    /// Effective deadline clamped to the original host request lifetime.
+    pub(crate) expires_at: u64,
+    pub(crate) candidate: Option<UntrustedNativeKeyCandidate>,
+}
+
+impl NativeKeyCandidateResponse {
+    pub(crate) fn parse(
+        &self,
+        challenge: &NativeBrokerKeyCandidateChallenge,
+        now_ms: u64,
+        request_deadline_ms: u64,
+    ) -> ProofResult<NativeKeyCandidateResult> {
+        #[derive(Deserialize)]
+        #[serde(deny_unknown_fields, rename_all = "camelCase")]
+        struct Envelope {
+            version: String,
+            expires_at: u64,
+            // Require the field even for pending (null) responses.
+            #[serde(deserialize_with = "required_nullable_candidate")]
+            candidate: Option<UntrustedNativeKeyCandidate>,
+        }
+        fn required_nullable_candidate<'de, D: serde::Deserializer<'de>>(
+            deserializer: D,
+        ) -> Result<Option<UntrustedNativeKeyCandidate>, D::Error> {
+            Option::deserialize(deserializer)
+        }
+        if self.status != 200 || self.body.len() > 64 * 1024 {
+            return Err(ProofKeyError::BrokerTransport);
+        }
+        let result: Envelope =
+            serde_json::from_slice(&self.body).map_err(|_| ProofKeyError::BrokerTransport)?;
+        if result.version != "station-broker-native-key-candidate-result/v1"
+            || result.expires_at > 9_007_199_254_740_991
+            || result.expires_at <= now_ms
+            || request_deadline_ms <= now_ms
+            || result.expires_at > challenge.invitation.expires_at
+            || result.expires_at > now_ms.saturating_add(60_000)
+        {
+            return Err(ProofKeyError::BrokerTransport);
+        }
+        if let Some(candidate) = &result.candidate {
+            if candidate.version != "station-connection-key-candidate/v1"
+                || candidate.compact_jws.is_empty()
+                || candidate.compact_jws.len() > 4096
+                || matches!(challenge.action, NativeBrokerKeyCandidateAction::Request)
+            {
+                return Err(ProofKeyError::BrokerTransport);
+            }
+        }
+        Ok(NativeKeyCandidateResult {
+            expires_at: result.expires_at.min(request_deadline_ms),
+            candidate: result.candidate,
+        })
+    }
+}
+
 pub(crate) struct NativeKeyCandidateTransport {
     timeout: std::time::Duration,
 }
@@ -843,6 +909,29 @@ impl NativeKeyCandidateTransport {
         Self {
             timeout: std::time::Duration::from_secs(10),
         }
+    }
+
+    /// Carry the host's original request deadline through every read; a broker
+    /// response cannot extend the request lifetime. Check again after I/O.
+    pub(crate) fn send_result(
+        &self,
+        challenge: &NativeBrokerKeyCandidateChallenge,
+        signature: &[u8],
+        request_deadline_ms: u64,
+        now: impl Fn() -> u64,
+    ) -> ProofResult<NativeKeyCandidateResult> {
+        let remaining = request_deadline_ms
+            .checked_sub(now())
+            .filter(|remaining| *remaining > 0 && *remaining <= 60_000)
+            .ok_or(ProofKeyError::BrokerTransport)?;
+        let bounded = Self {
+            timeout: self
+                .timeout
+                .min(std::time::Duration::from_millis(remaining)),
+        };
+        bounded
+            .send(challenge, signature)?
+            .parse(challenge, now(), request_deadline_ms)
     }
 
     /// No generic URL, bearer, grant, renderer input or caller-selected headers.
@@ -1728,6 +1817,180 @@ mod tests {
             "{\"aud\":\"station-self-hosted-broker\",\"purpose\":\"redeem-native-route-invitation\",\"version\":\"station-broker-native-route-invitation/v2\",\"brokerOrigin\":\"https://broker.example\",\"scope\":{\"stationId\":\"station-12345678\",\"enrollmentId\":\"enroll-12345678\",\"routingGeneration\":9},\"stationSigningKeyId\":\"KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK\",\"stationSigningGeneration\":4,\"surface\":{\"kind\":\"station-native\",\"appIdentifier\":\"io.kontourai.station\",\"channel\":\"nightly\",\"clientInstanceId\":\"7c6f49aa-6925-4bb2-b7c4-22bb6e264105\",\"keyThumbprint\":\"TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT\"},\"invitationId\":\"invite-12345678\",\"invitationSecretDigest\":\"cwNHKhO8UqbEmG63NB3wWnIRQaHNpk7z6r78WuCtcPs\",\"expiresAt\":1700000000123,\"nonce\":\"NNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNN\"}"
         );
         assert!(!challenge.signing_input.contains(&"A".repeat(43)));
+    }
+
+    #[test]
+    fn key_candidate_result_parser_requires_closed_live_envelopes_and_keeps_candidate_untrusted() {
+        let vault = MemoryNativeRelayProofKeyVault::new();
+        let owner = make_owner(
+            NativeProofKeyChannel::Stable,
+            "11111111-1111-4111-8111-111111111111",
+        );
+        let public = vault.create(&owner).unwrap();
+        let challenge = NativeBrokerKeyCandidateChallenge::from_invitation(
+            &owner,
+            &public,
+            invitation(&"A".repeat(43)),
+            &URL_SAFE_NO_PAD.encode([7_u8; 32]),
+            NativeBrokerKeyCandidateAction::Read,
+        )
+        .unwrap();
+        let envelope = serde_json::json!({
+            "version": "station-broker-native-key-candidate-result/v1", "expiresAt": 2000, "candidate": null,
+        });
+        let response = |status, value: &serde_json::Value| NativeKeyCandidateResponse {
+            status,
+            body: Zeroizing::new(serde_json::to_vec(value).unwrap()),
+        };
+        let parsed = response(200, &envelope)
+            .parse(&challenge, 1000, 2000)
+            .unwrap();
+        assert_eq!(parsed.expires_at, 2000);
+        assert!(parsed.candidate.is_none());
+        let mut answered = envelope.clone();
+        answered["candidate"] = serde_json::json!({"version":"station-connection-key-candidate/v1", "compactJws":"opaque-not-yet-verified"});
+        let parsed = response(200, &answered)
+            .parse(&challenge, 1000, 2000)
+            .unwrap();
+        assert_eq!(
+            parsed.candidate.unwrap().compact_jws,
+            "opaque-not-yet-verified"
+        );
+        for status in [201, 302, 401, 500] {
+            assert!(response(status, &envelope)
+                .parse(&challenge, 1000, 2000)
+                .is_err());
+        }
+        for (now, deadline) in [(2000, 3000), (1000, 1000)] {
+            assert!(response(200, &envelope)
+                .parse(&challenge, now, deadline)
+                .is_err());
+        }
+        // The broker starts its queue after network transit. Its later expiry
+        // must not extend the host's independently carried request lifetime.
+        assert_eq!(
+            response(200, &envelope)
+                .parse(&challenge, 1000, 1999)
+                .unwrap()
+                .expires_at,
+            1999
+        );
+        let mut too_far = envelope.clone();
+        too_far["expiresAt"] = serde_json::json!(61001);
+        assert!(response(200, &too_far)
+            .parse(&challenge, 1000, 90000)
+            .is_err());
+        let mut invalid = Vec::new();
+        for key in ["version", "expiresAt", "candidate"] {
+            let mut value = envelope.clone();
+            value.as_object_mut().unwrap().remove(key);
+            invalid.push(value);
+        }
+        let mut extra = envelope.clone();
+        extra["trust"] = serde_json::json!("approved");
+        invalid.push(extra);
+        for expires in [
+            serde_json::json!(-1),
+            serde_json::json!(1.5),
+            serde_json::json!("2000"),
+            serde_json::json!(9_007_199_254_740_992_u64),
+        ] {
+            let mut value = envelope.clone();
+            value["expiresAt"] = expires;
+            invalid.push(value);
+        }
+        let mut version = envelope.clone();
+        version["version"] = serde_json::json!("other");
+        invalid.push(version);
+        for candidate in [
+            serde_json::json!({}),
+            serde_json::json!({"version":"other","compactJws":"x"}),
+            serde_json::json!({"version":"station-connection-key-candidate/v1","compactJws":""}),
+            serde_json::json!({"version":"station-connection-key-candidate/v1","compactJws":"x".repeat(4097)}),
+            serde_json::json!({"version":"station-connection-key-candidate/v1","compactJws":"x","approved":true}),
+        ] {
+            let mut value = envelope.clone();
+            value["candidate"] = candidate;
+            invalid.push(value);
+        }
+        for value in invalid {
+            assert!(
+                response(200, &value).parse(&challenge, 1000, 2000).is_err(),
+                "accepted {value}"
+            );
+        }
+        for bytes in [b"{".to_vec(), vec![b' '; 65537], br#"{"version":"station-broker-native-key-candidate-result/v1","expiresAt":2000,"expiresAt":2000,"candidate":null}"#.to_vec(), br#"{"version":"station-broker-native-key-candidate-result/v1","expiresAt":2000,"candidate":{"version":"station-connection-key-candidate/v1","compactJws":"a","compactJws":"b"}}"#.to_vec()] {
+            assert!(NativeKeyCandidateResponse { status:200, body: Zeroizing::new(bytes) }.parse(&challenge, 1000, 2000).is_err());
+        }
+        let mut expired_invitation = invitation(&"A".repeat(43));
+        expired_invitation.expires_at = 1999;
+        let challenge = NativeBrokerKeyCandidateChallenge::from_invitation(
+            &owner,
+            &public,
+            expired_invitation,
+            &URL_SAFE_NO_PAD.encode([7_u8; 32]),
+            NativeBrokerKeyCandidateAction::Read,
+        )
+        .unwrap();
+        assert!(response(200, &envelope)
+            .parse(&challenge, 1000, 2000)
+            .is_err());
+    }
+
+    #[test]
+    fn key_candidate_transport_checks_the_carried_deadline_after_http() {
+        let vault = MemoryNativeRelayProofKeyVault::new();
+        let owner = make_owner(
+            NativeProofKeyChannel::Stable,
+            "11111111-1111-4111-8111-111111111111",
+        );
+        let public = vault.create(&owner).unwrap();
+        for completed_at in [1000, 2000] {
+            let body = r#"{"version":"station-broker-native-key-candidate-result/v1","expiresAt":2000,"candidate":null}"#;
+            let (origin, server) = candidate_http_server(
+                format!(
+                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                    body.len(),
+                    body
+                )
+                .into_bytes(),
+                std::time::Duration::ZERO,
+            );
+            let mut input = invitation(&"A".repeat(43));
+            input.broker_origin = origin;
+            let challenge = NativeBrokerKeyCandidateChallenge::from_invitation(
+                &owner,
+                &public,
+                input,
+                &URL_SAFE_NO_PAD.encode([7_u8; 32]),
+                NativeBrokerKeyCandidateAction::Request,
+            )
+            .unwrap();
+            let signature = vault
+                .sign_key_candidate_es256_p1363(&owner, &challenge)
+                .unwrap();
+            let calls = std::cell::Cell::new(0);
+            let result = NativeKeyCandidateTransport::new().send_result(
+                &challenge,
+                &signature,
+                2000,
+                || {
+                    let first = calls.get() == 0;
+                    calls.set(calls.get() + 1);
+                    if first {
+                        1000
+                    } else {
+                        completed_at
+                    }
+                },
+            );
+            assert_eq!(result.is_ok(), completed_at < 2000);
+            assert_eq!(calls.get(), 2);
+            server.join().unwrap();
+            assert!(NativeKeyCandidateTransport::new()
+                .send_result(&challenge, &signature, 1000, || 1000)
+                .is_err());
+        }
     }
 
     #[test]
