@@ -229,8 +229,13 @@ The Station side mirrors Web Push (`push-routes.ts`, `wireWebPushDelivery`):
   `@kontourai/station-contracts/native-push` is the known-answer vector for
   the phone's opener.
 - **Publisher.** An `ORCHESTRATION_EVENT` subscriber marks the card dirty on
-  lifecycle events (never streamed content), coalesces per Station, reads the
-  session read model, and sends one card per registered phone: at most five
+  lifecycle events (never streamed content), coalesces per Station, and reads
+  the session read model once per reading principal: each phone reads with
+  the authority a request carrying its own device credential resolves to
+  (`pairedDevicePrincipal` — the device's tailnet person binding, else the
+  device itself), so its card holds exactly what that phone may list and
+  never a session its device cannot read. It sends one card per registered
+  phone: at most five
   rows, attention first (approval, input), then failed, then live, then
   sessions finished in the last 15 minutes. Lifecycle maps to the plugin's
   phases through `sessionAttentionDisposition`, the adjudication the bell
