@@ -538,6 +538,17 @@ class NavigationStore {
     };
   }
 
+  /**
+   * A synchronous read for a caller that must not open the async
+   * confirm-and-continue flow `navigate()` runs when a guard is registered
+   * (kontourai/station#1418, #1419: a plugin-command navigation settles
+   * `aborted` with a notice instead of prompting, so the local effect stays
+   * one synchronous step).
+   */
+  hasActiveNavigationGuard(): boolean {
+    return this.navigationGuards.size > 0;
+  }
+
   registerNavigationGuard(
     identity: symbol,
     guard: (

@@ -122,6 +122,7 @@ import {
   PersistQueryClientProvider,
 } from '@tanstack/react-query-persist-client';
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
+import { notifyPluginCommandEffectAuthoritySwitch } from '../components/plugin-command-effect-switch-signal';
 import { SkeletonBlock } from '../components/state';
 import {
   useConnectionSwitchScope,
@@ -357,6 +358,9 @@ export function AuthorityQueryProvider({
       lastVerifiedNamespaceRef.current !== verifiedNamespace
     ) {
       activeChatsStore.clearConversationActivity();
+      // #1418/#1419: a different Station's ledger is not this document's to
+      // settle. Flush what the old identity owes, then mint a fresh one.
+      notifyPluginCommandEffectAuthoritySwitch();
     }
     lastVerifiedNamespaceRef.current = verifiedNamespace;
     if (activeRef.current?.namespace === verifiedNamespace) return;
