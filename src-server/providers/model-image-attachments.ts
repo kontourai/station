@@ -252,11 +252,21 @@ export const INLINE_IMAGE_DATA_PLACEHOLDER = '[inline image data omitted]';
  * failed attempt costs a bounded number of steps and the scan is linear in
  * the input — no catastrophic backtracking on multi-megabyte output.
  *
- * Base64 wrapped across lines is only redacted up to its first line break;
- * text after a break cannot be told apart from ordinary words.
+ * The base64 body continues across whitespace, exactly as the collector
+ * accepts it (`addBase64` strips `\s` inside base64), so a line-wrapped data
+ * URL is redacted whole. The body alternates base64 runs and whitespace runs
+ * from disjoint classes, so every split is unambiguous and the scan stays
+ * linear; a whitespace run is never crossed into a following `data:`, so two
+ * adjacent data URLs are each redacted rather than the second one's prefix
+ * being swallowed by the first.
+ *
+ * The price is over-redaction: an unpadded data URL followed only by
+ * whitespace and a base64-looking word (`…QUJD done`) swallows that word too.
+ * Nothing distinguishes a wrapped base64 line from a word, and leaking image
+ * bytes is the worse error. Padding (`=`) or any other character ends it.
  */
 const INLINE_DATA_URL_SPAN =
-  /data:(?:[\w.+-]{1,64}\/[\w.+-]{1,64})?(?:;[\w.+-]{1,64}=[\w.+-]{1,64}){0,4};base64,[A-Za-z0-9+/]*={0,2}/giu;
+  /data:(?:[\w.+-]{1,64}\/[\w.+-]{1,64})?(?:;[\w.+-]{1,64}=[\w.+-]{1,64}){0,4};base64,(?:[A-Za-z0-9+/]+(?:\s+(?!data:)[A-Za-z0-9+/]+)*)?={0,2}/giu;
 
 /**
  * `value` with every inline data-URL span replaced by

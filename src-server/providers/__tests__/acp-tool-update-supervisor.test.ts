@@ -905,7 +905,7 @@ describe('AcpToolUpdateSupervisor — embedded and nested image data', () => {
     supervisor.acceptUpdate({
       toolCallId: 'prose',
       hasContent: true,
-      content: text(`Screenshot: ${dataUri} saved`),
+      content: text(`Screenshot: ${dataUri}== saved`),
     });
     supervisor.acceptUpdate({
       toolCallId: 'prose',
