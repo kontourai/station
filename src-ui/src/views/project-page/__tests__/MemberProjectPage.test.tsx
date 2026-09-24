@@ -72,7 +72,11 @@ vi.mock('@kontourai/station-sdk/project-shared-tasks', () => ({
   },
 }));
 
-import { StationHttpError } from '@kontourai/station-sdk';
+import {
+  _setApiBase,
+  StationHttpError,
+  useUpdateProjectMutation,
+} from '@kontourai/station-sdk';
 import { ProjectPage } from '../../ProjectPage';
 
 const project: MemberProjectView = {
@@ -114,7 +118,26 @@ function renderPage() {
   return { ...rendered, queryClient };
 }
 
+function UpdateProjectControl() {
+  const mutation = useUpdateProjectMutation();
+  return (
+    <button
+      type="button"
+      onClick={() =>
+        void mutation.mutateAsync({
+          slug: project.slug,
+          workingDirectory: '/work/shared',
+        })
+      }
+    >
+      Update Project settings
+    </button>
+  );
+}
+
 afterEach(() => {
+  vi.unstubAllGlobals();
+  _setApiBase('');
   authority.current = {
     apiBase: 'https://station.example.test',
     authorityKey: 'relay-account:device-generation-3',
@@ -149,6 +172,36 @@ test('renders the member-safe Project view and shared summaries through one capt
     maxResponseBytes: 64 * 1024,
   });
   expect(sdk.projectOptions[0]).not.toHaveProperty('authentication', 'omit');
+});
+
+test('an operator Project update invalidates the member-aware Project page detail cache', async () => {
+  sdk.memberView = project;
+  sharedWork.read.mockResolvedValue([summary]);
+  _setApiBase('https://station.example.test');
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () =>
+      Response.json({ success: true, data: { updated: true } }),
+    ),
+  );
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false, gcTime: 0 } },
+  });
+  render(
+    <QueryClientProvider client={queryClient}>
+      <ProjectPage slug={project.slug} />
+      <UpdateProjectControl />
+    </QueryClientProvider>,
+  );
+
+  expect(await screen.findByText('Review the shared design')).toBeTruthy();
+  const initialDetailReads = sdk.projectOptions.length;
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Update Project settings' }),
+  );
+  await waitFor(() =>
+    expect(sdk.projectOptions.length).toBeGreaterThan(initialDetailReads),
+  );
 });
 
 test('withholds previously loaded shared work after Station refuses the member scope', async () => {

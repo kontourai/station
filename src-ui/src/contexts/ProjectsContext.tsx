@@ -4,12 +4,10 @@ import type { ProjectMemberAction } from '@kontourai/station-contracts/project-m
 import type { ProjectSharedTaskSummary } from '@kontourai/station-contracts/project-shared-task';
 import type { WorkspaceIsolationMode } from '@kontourai/station-contracts/workspace-isolation';
 import {
-  getProjectView,
   type ProjectReadQueryConfig,
   useProjectQuery,
   useProjectsQuery,
 } from '@kontourai/station-sdk';
-import { listProjectSharedTasks } from '@kontourai/station-sdk/project-shared-tasks';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { type ReactNode, useEffect, useMemo } from 'react';
 import { useHostRequestAuthorityScope } from './ApiBaseContext';
@@ -94,7 +92,7 @@ export function useScopedProjectPageViewQuery(slug: string) {
   const apiBase = requestScope?.apiBase ?? 'unavailable';
   const authorityKey = requestScope?.authorityKey ?? 'unavailable';
   const queryKey = useMemo(
-    () => ['project-page-view', apiBase, authorityKey, slug] as const,
+    () => ['projects', slug, 'page-view', apiBase, authorityKey] as const,
     [apiBase, authorityKey, slug],
   );
   const query = useQuery<ProjectPageView>({
@@ -103,6 +101,7 @@ export function useScopedProjectPageViewQuery(slug: string) {
       const captured = requestScope;
       if (!captured?.isCurrent())
         throw new Error('The selected Station authority is unavailable.');
+      const { getProjectView } = await import('@kontourai/station-sdk');
       const value = (await getProjectView(captured.apiBase, slug, {
         requestScope: captured,
         requireCredential: true,
@@ -166,6 +165,9 @@ export function useScopedMemberProjectSharedTasksQuery(
       const captured = requestScope;
       if (!captured?.isCurrent())
         throw new Error('The selected Station authority is unavailable.');
+      const { listProjectSharedTasks } = await import(
+        '@kontourai/station-sdk/project-shared-tasks'
+      );
       const values = await listProjectSharedTasks(
         captured.apiBase,
         project.slug,
