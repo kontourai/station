@@ -31,7 +31,10 @@ import {
   MODEL_LAUNCH_PLAN_METADATA_KEY,
   MODEL_SELECTION_RECEIPT_METADATA_KEY,
 } from '@kontourai/station-contracts/provider';
-import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import {
+  type CanonicalRuntimeEvent,
+  isDeferredRetriableTurnError,
+} from '@kontourai/station-contracts/runtime-events';
 import type { SessionLifecycleState } from '@kontourai/station-contracts/session-lifecycle';
 import {
   type TenantExecutionContext,
@@ -648,6 +651,7 @@ export function buildOrchestrationSessionSummary(options: {
   // disagree with the members it is computed from.
   const asChild = projectDelegateChildWork(summary, {
     depth: extractDelegationDepth(events),
+    endedAt: extractTerminalTurnAt(events),
   });
   const children = options.readChildWork?.(base.threadId, base.provider);
   return children || asChild
@@ -1137,6 +1141,30 @@ function stringMeta(
  * on `metadata.delegation` — read from the same binding event
  * `extractDelegationContext` reads. Absent unless a positive finite number.
  */
+/**
+ * #2459: when the session's latest turn actually ended — the time of its own
+ * terminal turn fact, if one follows the latest `turn.started`. Undefined
+ * when none was observed. Deliberately not `lastEventAt`: after a Station
+ * restart the last event is the restart's, and a finished delegate would
+ * read as having run until then.
+ */
+function extractTerminalTurnAt(
+  events: CanonicalRuntimeEvent[],
+): string | undefined {
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index];
+    if (!event) continue;
+    if (event.method === 'turn.started') return undefined;
+    if (
+      event.method === 'turn.completed' ||
+      event.method === 'turn.aborted' ||
+      (event.method === 'runtime.error' && !isDeferredRetriableTurnError(event))
+    )
+      return event.createdAt;
+  }
+  return undefined;
+}
+
 function extractDelegationDepth(
   events: CanonicalRuntimeEvent[],
 ): number | undefined {
