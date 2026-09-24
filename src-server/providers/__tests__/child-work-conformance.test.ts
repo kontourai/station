@@ -40,10 +40,13 @@ import {
   mapClaudeSdkMessage,
 } from '../adapters/claude-adapter-events.js';
 import { recordClaudeTurnDispatched } from '../adapters/claude-sdk-turns.js';
-import { handleCodexNotification } from '../adapters/codex-adapter-notifications.js';
-import type { CodexSessionRecord } from '../adapters/codex-adapter-types.js';
 import { MuseAdapter } from '../adapters/muse-adapter.js';
 import type { MuseProcessLike } from '../adapters/muse-adapter-types.js';
+import {
+  CODEX_COLLAB_V1_SPAWN_WAIT_COMPLETED,
+  CODEX_COLLAB_V2_SPAWN_WAIT_COMPLETED,
+  replayCodexCapture,
+} from './codex-collab-fixtures.js';
 import {
   MUSE_13_BACKGROUND_WORKFLOW_TURN_LINES,
   MUSE_13_BASH_TOOL_TURN_LINES,
@@ -54,6 +57,13 @@ type Driver = {
   adapterModule?: string;
   /** Replays the engine's captured output; returns everything published. */
   run: () => Promise<CanonicalRuntimeEvent[]>;
+  /**
+   * When the engine reports subagents in more than one wire format, each
+   * format's replay on its own. `run` is their union, so a signal lost in
+   * ONE format would still pass the union check; each format is checked
+   * separately below.
+   */
+  formats?: Record<string, () => Promise<CanonicalRuntimeEvent[]>>;
 };
 
 const CLAUDE_TASK_SUBAGENTS_FIXTURE = readFileSync(
@@ -181,76 +191,25 @@ async function replayAcpKiroSubagentTuple(): Promise<CanonicalRuntimeEvent[]> {
 }
 
 /**
- * Codex: NOT a live capture. A `collabAgentToolCall` thread item shaped from
- * the protocol schema codex-cli 0.155.1 itself generates
- * (`codex app-server generate-ts`, `v2/ThreadItem.ts`): a `spawnAgent` call
- * starting and then completing with its receiver `completed`. Station has no
- * collab handling (#2458), so this is the known-gap input, not evidence of
- * the wire.
+ * Codex: the REAL codex-cli 0.155.1 captures (`codex-collab-fixtures.ts`),
+ * one per subagent item format — v1 `collabAgentToolCall` and v2
+ * `subAgentActivity` — each a spawn the parent waits on and the child
+ * completes. Replayed through `CodexAdapterTransport`'s own stdout routing,
+ * because that is where a child thread's notifications used to be dropped:
+ * a notifications-only replay could not see the child's stream at all.
  */
-async function replayCodexCollabSchemaShape(): Promise<
-  CanonicalRuntimeEvent[]
-> {
-  const events: CanonicalRuntimeEvent[] = [];
-  const record = {
-    externalThreadId: 'thread-codex',
-    session: {
-      provider: 'codex',
-      threadId: 'thread-codex',
-      status: 'running',
-      createdAt: '2026-09-23T00:00:00.000Z',
-      updatedAt: '2026-09-23T00:00:00.000Z',
-    },
-    lastSessionState: 'running',
-    turnOutput: new Map(),
-    toolNames: new Map(),
-    openToolCalls: new Map(),
-    pendingRpcRequests: new Map(),
-    pendingApprovals: new Map(),
-    approvedTools: new Set(),
-    activeTurnId: 'turn-1',
-    stopped: false,
-  } as unknown as CodexSessionRecord;
-  const item = (status: string, agentStatus: string) => ({
-    type: 'collabAgentToolCall',
-    id: 'collab-1',
-    tool: 'spawnAgent',
-    status,
-    senderThreadId: 'thread-codex',
-    receiverThreadIds: ['thread-codex-child'],
-    prompt: 'Summarise the repo',
-    model: null,
-    reasoningEffort: null,
-    agentsStates: {
-      'thread-codex-child': { status: agentStatus, message: null },
-    },
-  });
-  for (const [method, params] of [
-    [
-      'item/started',
-      {
-        threadId: 'thread-codex',
-        turnId: 'turn-1',
-        item: item('inProgress', 'running'),
-      },
-    ],
-    [
-      'item/completed',
-      {
-        threadId: 'thread-codex',
-        turnId: 'turn-1',
-        item: item('completed', 'completed'),
-      },
-    ],
-  ] as const) {
-    handleCodexNotification({
-      notification: { method, params },
-      nowIso: () => '2026-09-23T00:00:01.000Z',
-      publish: (event) => events.push(event),
-      record,
-    });
-  }
-  return events;
+const CODEX_FORMATS = {
+  'v1 collabAgentToolCall': async () =>
+    replayCodexCapture(CODEX_COLLAB_V1_SPAWN_WAIT_COMPLETED).events,
+  'v2 subAgentActivity': async () =>
+    replayCodexCapture(CODEX_COLLAB_V2_SPAWN_WAIT_COMPLETED).events,
+};
+
+async function replayCodexCollabCaptures(): Promise<CanonicalRuntimeEvent[]> {
+  return [
+    ...(await CODEX_FORMATS['v1 collabAgentToolCall']()),
+    ...(await CODEX_FORMATS['v2 subAgentActivity']()),
+  ];
 }
 
 /**
@@ -278,10 +237,9 @@ const DRIVERS: Record<string, Driver> = {
     run: replayClaudeCapture,
   },
   codex: {
-    // Where Codex notifications are actually mapped; the matrix cell names
-    // `codex-adapter-events.ts` (see the known-gap tests below).
-    adapterModule: 'codex-adapter-notifications.ts',
-    run: replayCodexCollabSchemaShape,
+    adapterModule: 'codex-adapter-child-work.ts',
+    run: replayCodexCollabCaptures,
+    formats: CODEX_FORMATS,
   },
   muse: { run: replayMuseCaptures },
   acp: { run: replayAcpKiroSubagentTuple },
@@ -377,17 +335,40 @@ const KNOWN_SIGNAL_GAPS: Record<
   // clients only as `tool.progress`; no child-work progress exists until the
   // adapter emits the contract's `upsert`.
   claude: { progress: '#2457' },
-  // #2458: Codex declares `lifecycle`, but Station has no collabAgent
-  // handling, so no child work is emitted at all.
-  codex: { lifecycle: '#2458' },
 };
 
 /**
- * #2458: the Codex cell names `codex-adapter-events.ts`, but Codex
- * notifications are mapped in `codex-adapter-notifications.ts`. Registered
- * with the Codex gap; the cell should name wherever collab handling lands.
+ * Engines whose cell names an adapter module the driver does not run,
+ * keyed to the tracking issue. Empty since #2458 moved Codex onto
+ * `codex-adapter-child-work.ts`.
  */
-const KNOWN_MODULE_GAPS: Record<string, string> = { codex: '#2458' };
+const KNOWN_MODULE_GAPS: Record<string, string> = {};
+
+/**
+ * Engines whose emitted child work offers a control its matrix
+ * `subagentControl` cell does not declare wired (or the reverse), keyed to
+ * the tracking issue. Each is a `test.fails`.
+ */
+const KNOWN_CONTROL_GAPS: Record<string, string> = {
+  // The legacy Claude translator stamps `controls.stop: 'provider-task-stop'`
+  // on every running task (the adapter's station#1877 per-task stop), while
+  // Claude's `subagentControl` cell says `none`. One of the two is wrong;
+  // the Claude move onto the contract (#2457) owns resolving it.
+  claude: '#2457',
+};
+
+/** Every control any delta offers, on an item or a settle's identity. */
+function offeredControls(deltas: ChildWorkDelta[]): string[] {
+  return deltas.flatMap((delta) => {
+    const controls = [
+      ...itemsOf(delta).map((item) => item.controls),
+      delta.kind === 'settle' ? delta.identity?.controls : undefined,
+    ];
+    return controls.flatMap((control) =>
+      control ? [control.stop ?? 'controls-without-stop'] : [],
+    );
+  });
+}
 
 describe('#2456 child-work conformance tripwire', () => {
   test("the projection's unmapped-engine set is exactly the engines whose declared lifecycle is a known gap", () => {
@@ -408,6 +389,29 @@ describe('#2456 child-work conformance tripwire', () => {
   for (const [key, matrix] of Object.entries(ENGINE_CAPABILITY_MATRICES)) {
     const cell = matrix.subagentObservability;
     const driver = DRIVERS[key];
+    // A control is what a client renders a stop button from, so the emitted
+    // child work and the matrix must agree: a `none` cell offers no control
+    // on any delta, and a `wired` cell's stop is actually offered.
+    const control = matrix.subagentControl;
+    const controlTest = KNOWN_CONTROL_GAPS[key] ? test.fails : test;
+    controlTest(
+      `${key}: emitted controls match subagentControl \`${control.state}\`${
+        KNOWN_CONTROL_GAPS[key] ? ` (known gap ${KNOWN_CONTROL_GAPS[key]})` : ''
+      }`,
+      async () => {
+        const runs = [driver.run, ...Object.values(driver.formats ?? {})];
+        const stopOffered =
+          control.state === 'wired' && control.stop.state === 'available';
+        for (const run of runs) {
+          const offered = offeredControls(childWorkDeltas(await run()));
+          if (stopOffered) {
+            expect(offered.length).toBeGreaterThan(0);
+          } else {
+            expect(offered).toEqual([]);
+          }
+        }
+      },
+    );
     if (cell.state === 'none') {
       test(`${key}: declared none — real output emits no child work`, async () => {
         const events = await driver.run();
@@ -432,6 +436,12 @@ describe('#2456 child-work conformance tripwire', () => {
       const observed = observedSignals(childWorkDeltas(await driver.run()));
       expect([...observed].sort()).toEqual([...expected].sort());
     });
+    for (const [format, run] of Object.entries(driver.formats ?? {})) {
+      test(`${key} (${format}): this format alone delivers every declared signal`, async () => {
+        const observed = observedSignals(childWorkDeltas(await run()));
+        expect([...observed].sort()).toEqual([...expected].sort());
+      });
+    }
     for (const [signal, issue] of Object.entries(gaps)) {
       test.fails(`${key}: delivers declared ${signal} (known gap ${issue})`, async () => {
         const observed = observedSignals(childWorkDeltas(await driver.run()));
