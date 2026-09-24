@@ -405,6 +405,7 @@
     "fallow": "^3.22.0",
     "glob": "^13.0.6",
     "js-tiktoken": "1.0.21",
+    "jsdom": "^30.0.1",
     "node-datachannel": "0.33.3",
     "node-gyp": "13.0.2",
     "object-hash": "3.0.0",
