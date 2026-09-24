@@ -79,8 +79,8 @@ class AgentActivityPlugin(private val activity: Activity) : Plugin(activity) {
   @Command
   fun clear(invoke: Invoke) {
     val registrationId = invoke.parseArgs(ClearArgs::class.java).registrationId
-    AgentNotifications.clear(context, registrationId)
-    if (registrationId != null && AgentNotifications.isConfigured(context)) {
+    val remaining = AgentNotifications.clear(context, registrationId)
+    if (remaining) {
       // Other Stations still use push on this phone; keep the token.
       invoke.resolve()
       return

@@ -13,6 +13,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
+import android.net.Uri
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
@@ -90,10 +91,16 @@ object AgentNotifications {
     registration: Registration,
     ongoingEnabled: Boolean
   ) {
-    // A Station re-registering (new install, or registration rotated) replaces
-    // its previous registration rather than leaving a second card behind.
+    // The same Station re-registering (new install, registration rotated)
+    // replaces its previous registration rather than leaving a second card.
+    // Both id and key must match: a Station id alone is only a claim, and
+    // another Station reporting it must not be able to evict this one.
     registrationIds(context)
-      .filter { it != registration.id && state(context, it).getString("stationId", null) == registration.stationId }
+      .filter {
+        it != registration.id &&
+          state(context, it).getString("stationId", null) == registration.stationId &&
+          state(context, it).getString("stationKey", null) == registration.stationKey
+      }
       .forEach { remove(context, it) }
 
     val prefs = state(context, registration.id)
@@ -114,20 +121,37 @@ object AgentNotifications {
     channels(context)
   }
 
-  /** Removes one registration, or every registration when [registrationId] is null. */
+  /**
+   * Removes one registration, or every registration when [registrationId] is
+   * null, and reports whether any registration remains. Only known ids are
+   * touched: an unknown id must not create a preferences file.
+   */
   @Synchronized
-  fun clear(context: Context, registrationId: String? = null) {
-    val targets = registrationId?.let { setOf(it) } ?: registrationIds(context)
-    targets.forEach { remove(context, it) }
+  fun clear(context: Context, registrationId: String? = null): Boolean {
+    if (registrationId == null) {
+      registrationIds(context).forEach { remove(context, it) }
+      // Also sweeps the preview card and any card an earlier version posted
+      // under an unsuffixed tag.
+      val manager = manager(context)
+      manager.activeNotifications
+        .filter { it.tag?.startsWith(ACTIVITY_TAG) == true || it.tag?.startsWith(ALERT_TAG) == true }
+        .forEach { manager.cancel(it.tag, it.id) }
+    } else if (registrationId in registrationIds(context)) {
+      remove(context, registrationId)
+    }
+    return registrationIds(context).isNotEmpty()
   }
 
   private fun remove(context: Context, registrationId: String) {
+    // Index first: a crash after this leaves an orphan file, never an index
+    // entry without data that would keep the push token alive.
+    index(context).edit().putStringSet("registrations", registrationIds(context) - registrationId).apply()
     cancelActivity(context, registrationId)
     val manager = manager(context)
     manager.activeNotifications.filter { it.tag == alertTag(registrationId) }
       .forEach { manager.cancel(it.tag, it.id) }
-    state(context, registrationId).edit().clear().apply()
-    index(context).edit().putStringSet("registrations", registrationIds(context) - registrationId).apply()
+    state(context, registrationId).edit().clear().commit()
+    context.deleteSharedPreferences("$INDEX_STORE.$registrationId")
   }
 
   /** True once `configure` stored a registration here; says nothing about the Station's side. */
@@ -135,6 +159,10 @@ object AgentNotifications {
 
   @Synchronized
   fun dismiss(context: Context, registrationId: String) {
+    if (registrationId == PREVIEW) {
+      cancelActivity(context, PREVIEW)
+      return
+    }
     if (registrationId !in registrationIds(context)) return
     state(context, registrationId).edit().putBoolean("dismissed", true).apply()
     cancelActivity(context, registrationId)
@@ -252,7 +280,11 @@ object AgentNotifications {
       // Request codes must differ per registration, or one card's dismiss
       // action would be overwritten by another's.
       registrationId.hashCode(),
-      Intent(context, receiver).putExtra(EXTRA_REGISTRATION, registrationId),
+      // PendingIntent identity ignores extras, and hashCode values collide:
+      // the data URI keeps each registration's intent distinct.
+      Intent(context, receiver)
+        .setData(Uri.fromParts("station-registration", registrationId, null))
+        .putExtra(EXTRA_REGISTRATION, registrationId),
       PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
     )
 

@@ -154,10 +154,13 @@ self-hosted product today, adapted where Station differs.
   accepts only a data-only agent-activity message for a Station package, and
   forwards it to FCM at high priority. The Station owns device tokens, builds
   the card, and drops a token when the gateway answers 410.
-- **What stops a stranger.** Anyone can mint a key, so a key alone proves
-  nothing. A sender also needs the phone's FCM token, and the phone drops any
-  payload whose `device_id`/`user_id` differ from what its own Station
-  configured, so those must be unguessable per-registration values.
+- **What stops a stranger.** Anyone can mint a key, so passing the gateway
+  proves only possession of *some* key. The gateway therefore stamps the
+  verified key's thumbprint into every message (`station_key`, which callers
+  cannot supply), and the phone accepts a push only when `station_key`,
+  `device_id` (a random per-registration value) and `user_id` all match what
+  its own Station returned at registration. Per-address, global, per-key and
+  per-push-token rate limits bound the rest.
 - **Android.** FCM *data* messages are received by a native
   `FirebaseMessagingService` that renders the card itself — no WebView, no
   JavaScript. While work runs the card requests promotion
@@ -198,10 +201,11 @@ The Station side mirrors Web Push (`push-routes.ts`, `wireWebPushDelivery`):
 - **Registration.** `POST /api/system/native-push/register` from a paired
   device, body `{ token, packageName, platform: 'android' }`, stores
   `{ token, packageName, platform, registrationId, updatedAt }` privately on
-  that device's record and returns `{ registrationId, stationId }`.
+  that device's record and returns `{ registrationId, stationId, stationKey }`.
   `registrationId` is 128 random bits, kept across token rotation, and is the
   value the phone checks on every push (`device_id`); `stationId` is the
-  environment id (`user_id`). `DELETE /api/system/native-push` clears the
+  environment id (`user_id`); `stationKey` is the push key's RFC 7638
+  thumbprint, which the phone pins. `DELETE /api/system/native-push` clears the
   caller's own registration only. Unpairing a device drops it with the rest of
   the record. Hosted-tenant mode disables both routes, as it does Web Push.
 - **Publisher.** An `ORCHESTRATION_EVENT` subscriber keeps a per-session
@@ -240,7 +244,7 @@ The Station side mirrors Web Push (`push-routes.ts`, `wireWebPushDelivery`):
 | Push gateway (`deploy/push-gateway`) | built and deployed; FCM only. Verified end to end with a throwaway Station key |
 | Station publisher (push key, device tokens, card building, session state → gateway) | not started. FCM rotates tokens without the app open and the plugin has no `onNewToken` hook yet, so it must re-register from `pushToken` on every foreground or add one |
 | Web registration (`configure`, `pushToken`, settings UI) | not started |
-| One card per Station on the phone | not started; the plugin has one card slot, so two Stations would overwrite each other |
+| One card per Station on the phone | built: each registration has its own card, replay state and intents, and pins its Station's key |
 | iOS Live Activity (widget extension in `gen/apple/project.yml`) and APNs in the gateway | not started |
 
 The Android plugin builds with or without Firebase. Its Firebase identity comes
