@@ -70,6 +70,10 @@ function toChatBackgroundTask(item: ChildWorkItem): ChatBackgroundTask {
     // station#1877: the EXECUTION SESSION that reported the child, which a
     // task-scoped stop must address.
     sessionThreadId: item.reporterThreadId,
+    // #2459: only a seam the child itself carries becomes a stop.
+    ...(item.controls?.stop === 'provider-task-stop'
+      ? { stop: 'provider-task-stop' as const }
+      : {}),
   };
 }
 

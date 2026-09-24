@@ -213,7 +213,10 @@ function providerTaskChildWork(task: ChatBackgroundTask): ChildWorkItem {
     status: 'running',
     ...(task.description ? { title: task.description } : {}),
     ...(task.subagentType ? { kindLabel: task.subagentType } : {}),
-    ...(task.sessionThreadId
+    // #2459: a stop only for a child that carried the seam itself, and only
+    // with a session to address it to. A session thread alone is not a seam:
+    // deriving one from it offered a Codex child a Stop wired to nothing.
+    ...(task.sessionThreadId && task.stop === 'provider-task-stop'
       ? { controls: { stop: 'provider-task-stop' as const } }
       : {}),
   };

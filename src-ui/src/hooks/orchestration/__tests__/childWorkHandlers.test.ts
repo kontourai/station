@@ -93,6 +93,8 @@ describe('child-work client path (legacy Claude tuples → contract reducer)', (
         backgrounded: true,
         spawnDepth: 2,
         sessionThreadId: threadId,
+        // #2459: the legacy Claude translator's per-task stop seam, carried.
+        stop: 'provider-task-stop',
       },
       {
         taskId: 'b',
@@ -100,6 +102,7 @@ describe('child-work client path (legacy Claude tuples → contract reducer)', (
         description: 'Lint',
         backgrounded: false,
         sessionThreadId: threadId,
+        stop: 'provider-task-stop',
       },
     ]);
 

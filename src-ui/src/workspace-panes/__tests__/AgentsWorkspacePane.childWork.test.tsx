@@ -324,6 +324,7 @@ test('Claude’s per-chat Stop survives on the TaskRow bridge, with no invented 
         description: 'Investigate flaky test',
         backgrounded: true,
         sessionThreadId: 'exec-1',
+        stop: 'provider-task-stop',
       },
     ],
   });
@@ -392,6 +393,7 @@ test('a settle the chat registry has not caught up with shows the child once, fi
         description: 'Investigate flaky test',
         backgrounded: true,
         sessionThreadId: 'exec-1',
+        stop: 'provider-task-stop',
       },
     ],
   });

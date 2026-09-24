@@ -210,6 +210,8 @@ const SCENARIOS: Record<string, (decorate?: (row: Row) => Row) => unknown> = {
         backgrounded: true,
         spawnDepth: 1,
         sessionThreadId: 'exec-1',
+        // #2459: a Claude task, which carries its stop seam.
+        stop: 'provider-task-stop',
       },
       {
         taskId: 'task-b',

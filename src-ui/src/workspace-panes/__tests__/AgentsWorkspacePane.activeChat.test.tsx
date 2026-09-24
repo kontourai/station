@@ -104,6 +104,7 @@ beforeEach(() => {
         description: 'Investigate flaky test',
         subagentType: 'general-purpose',
         sessionThreadId: 'exec-1',
+        stop: 'provider-task-stop',
       },
     ],
   });
