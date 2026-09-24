@@ -203,6 +203,15 @@ test('seeded clients converge through live, replay, and snapshot reconnects', as
   for (const seed of seeds) {
     const random = mulberry32(seed);
     const trace: string[] = [];
+    if (seed === 199) {
+      a.activeChatsStore.updateChat(conversationId, {
+        queuedMessages: ['follow-up-199'],
+      });
+      b.activeChatsStore.updateChat(conversationId, {
+        queuedMessages: ['follow-up-199'],
+      });
+      trace.push('queue.follow-up');
+    }
     const before = requests.length;
     const cursor = store.headGlobalSequence();
     b.disconnect();
@@ -465,6 +474,8 @@ test('seeded clients converge through live, replay, and snapshot reconnects', as
       orchestrationStatus: chat.orchestrationStatus,
       pendingApprovals: chat.pendingApprovals ?? [],
       queuedMessages: chat.queuedMessages,
+      queueDrainHeldForOpen: chat.queueDrainHeldForOpen,
+      queueDrainSettling: chat.queueDrainSettling,
       backgroundTasks: chat.backgroundTasks ?? [],
       currentSessionId: chat.currentSessionId,
     });
