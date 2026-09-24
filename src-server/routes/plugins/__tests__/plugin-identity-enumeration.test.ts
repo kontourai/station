@@ -562,6 +562,12 @@ const ELSEWHERE = new Map<string, string>([
     'GET /api/plugins/home-role/candidates',
     'src-server/routes/plugins/__tests__/plugin-home-role-routes.test.ts',
   ],
+  // A POST: its "L1" case drives the real admission route and asserts an
+  // invisible plugin's refusal is byte-identical to an absent one's.
+  [
+    'POST /api/plugins/:name/command-effects',
+    'src-server/routes/plugins/__tests__/plugin-command-effect-lifecycle.test.ts',
+  ],
 ]);
 
 describe('every route that returns plugin identity is projected or operator-only', () => {

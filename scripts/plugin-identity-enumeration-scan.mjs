@@ -103,6 +103,11 @@ const ENUMERATING_READERS = [
   'readCurrentWorkspacePaneCatalog',
   'deriveWorkspaceHomeRoleStatus',
   'listPluginCatalogIdentities',
+  // The command effect ledger's readers: every withdrawal and outstanding
+  // effect they return names the `pluginId` it belongs to (#1419).
+  'listWithdrawals',
+  'listUncapturedEffects',
+  'withdrawal',
 ];
 
 /**
@@ -125,6 +130,8 @@ const SCAN_EXCLUSIONS = {
     'A mutation addressed by id. The `plugins/` signal is the removal path.',
   'POST /api/plugins/home-role/requests':
     'A mutation: it creates a grant request for a pane the caller named, and returns the transaction, not a catalog. The candidate LIST it is paired with is the enumerator, and that one is projected.',
+  'GET /api/plugins/host-approvals/:id':
+    'Re-reads the command effect withdrawal an approval already recorded, by the withdrawal id stored on that approval, and returns only its `withdrawalId`, `status` and `outstanding` count (`projectApprovalCommandEffects`). The ledger read adds no plugin name to what the approval itself returns.',
   'POST /api/plugins/host-approvals':
     'A mutation naming its own target; it returns the approval transaction. The `installed+name` signal is the approval record it writes, not a listing of other plugins.',
   'POST /api/projects/:slug/plugin-scaffold':
