@@ -195,7 +195,7 @@ pub(crate) async fn station_native_relay_key_approval_begin(
     let state = state.inner().clone();
     let label = window.label().to_owned();
     if profile_name.is_empty() || profile_name.len() > 256 {
-        return Err("The selected Station profile name is invalid.".into());
+        return Err("The selected saved Station name is invalid.".into());
     }
     let cancelled = reserve_begin(&state, &profile_name)?;
     tauri::async_runtime::spawn_blocking(move || {
@@ -548,7 +548,7 @@ fn pending(
     requested_name: &str,
 ) -> Result<Option<PendingCandidateDto>, String> {
     if requested_name.is_empty() || requested_name.len() > 256 {
-        return Err("The selected Station profile name is invalid.".into());
+        return Err("The selected saved Station name is invalid.".into());
     }
     let now = now_ms()?;
     let mut state = state
@@ -579,7 +579,7 @@ fn cancel(
     profile_name: &str,
 ) -> Result<(), String> {
     if profile_name.is_empty() || profile_name.len() > 256 {
-        return Err("The selected Station profile name is invalid.".into());
+        return Err("The selected saved Station name is invalid.".into());
     }
     let mut state = state
         .0
@@ -818,7 +818,7 @@ fn current_profile_binding(
     requested_name: &str,
 ) -> Result<(TrustProfileBinding, u64), String> {
     if requested_name.is_empty() || requested_name.len() > 256 {
-        return Err("The selected Station profile name is invalid.".into());
+        return Err("The selected saved Station name is invalid.".into());
     }
     let path = station_profiles_path(app)?;
     let _lock = lock_station_profiles_for_app(app, &path)?;
@@ -838,13 +838,13 @@ fn binding_from_store(
     let route = profile
         .relay_route
         .as_ref()
-        .ok_or_else(|| "The selected Station profile has no saved relay route.".to_owned())?;
+        .ok_or_else(|| "The selected saved Station has no saved relay route.".to_owned())?;
     let binding = TrustProfileBinding {
         profile_owner_id: profile.name.clone(),
         app_identifier: app.config().identifier.clone(),
         channel: native_app_channel(&app.config().identifier, cfg!(debug_assertions)).to_owned(),
         client_instance_id: profile.client_instance_id.clone().ok_or_else(|| {
-            "The selected Station profile has no client instance identity.".to_owned()
+            "The selected saved Station has no client instance identity.".to_owned()
         })?,
         broker_origin: route.broker_origin.clone(),
         station_id: route.station_id.clone(),
@@ -859,7 +859,7 @@ fn binding_from_store(
     )
     .map_err(|error| match error {
         TrustError::ProfileStale => {
-            "The selected Station profile changed or is not eligible for native relay-key trust."
+            "The selected saved Station changed or is not eligible for native relay-key trust."
                 .to_owned()
         }
         other => map_candidate_error(other),
@@ -929,7 +929,7 @@ fn invitation_for_host(
 fn map_candidate_error(error: CandidateError) -> String {
     match error {
         CandidateError::ProfileStale => {
-            "The selected Station profile changed. Refresh and try again.".into()
+            "The selected saved Station changed. Refresh and try again.".into()
         }
         CandidateError::TrustRevisionConflict => {
             "Native Station-key trust changed. Refresh and try again.".into()

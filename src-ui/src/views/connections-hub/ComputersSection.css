@@ -221,18 +221,20 @@
 }
 
 .relay-route-key-approval dl > div {
-  display: grid;
-  grid-template-columns: minmax(7rem, 0.35fr) minmax(0, 1fr);
+  display: flex;
+  flex-wrap: wrap;
   gap: var(--space-2);
   min-width: 0;
 }
 
 .relay-route-key-approval dt {
+  flex: 1 1 7rem;
   color: var(--text-tertiary);
   font-size: var(--text-sm);
 }
 
 .relay-route-key-approval dd {
+  flex: 2 1 13rem;
   min-width: 0;
   margin: 0;
   overflow-wrap: anywhere;
@@ -271,11 +273,4 @@
 .relay-route-key-approval :is(button, input):focus-visible {
   outline: 2px solid var(--focus-ring, var(--accent-primary));
   outline-offset: 2px;
-}
-
-@media (max-width: 600px) {
-  .relay-route-key-approval dl > div {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 0;
-  }
 }

@@ -450,7 +450,6 @@ export function RelayRouteKeyApproval({
           <Button
             disabled={!invitation.trim() || busy}
             pending={begin.isPending}
-            pendingLabel="Checking Station…"
             onClick={() => {
               const attemptId = ++activeAttemptId.current;
               const oneTimeInvitation = invitation;
