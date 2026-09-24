@@ -12,6 +12,7 @@ import {
   replaceModelControlOptions,
 } from '../../utils/modelCapabilities';
 import { finalizeAssistantTurn } from './assistantTurn';
+import { backgroundTasksAfterSessionEnds } from './childWorkHandlers';
 import { eventStreamPosition } from './streamPosition';
 import type { OrchestrationEvent } from './types';
 
@@ -54,6 +55,7 @@ export function handleSessionLifecycleEvent(
       currentChat,
       approvalMode,
       eventStreamPosition(event),
+      event.threadId,
     ),
     ...(event.method === 'session.configured' &&
     typeof event.metadata?.acpSessionMode === 'string'
@@ -170,7 +172,12 @@ export function handleSessionStateChangedEvent(
         }
       : {}),
     ...(TERMINAL_SESSION_STATES.has(event.to)
-      ? { activityHint: undefined, backgroundTasks: undefined }
+      ? {
+          activityHint: undefined,
+          // #2456: this session's children end with it; a sibling session of
+          // the same chat keeps its own (R1).
+          backgroundTasks: backgroundTasksAfterSessionEnds(event.threadId),
+        }
       : {}),
   });
 }
@@ -195,7 +202,7 @@ export function handleSessionExitedEvent(
     orchestrationTurnOpen: false,
     orchestrationSessionStarted: false,
     activityHint: undefined,
-    backgroundTasks: undefined,
+    backgroundTasks: backgroundTasksAfterSessionEnds(event.threadId),
   });
 }
 

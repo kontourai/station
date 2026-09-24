@@ -45,6 +45,12 @@ export interface BrowserServiceOptions {
   /** The resolved allowed-origin list (`resolveConfiguredRuntimeOrigins`). */
   configuredOrigins: readonly string[];
   /**
+   * More Station-owned listener ports, read LIVE on every check and never
+   * cached: the managed device hub and its stream helpers (#1970), whose
+   * ports change on every restart.
+   */
+  extraListenerPorts?: () => readonly number[];
+  /**
    * Where live sessions publish their screencast surfaces, and who may reach
    * them (D5 + D7). Absent: sessions run with no live view.
    */
@@ -103,7 +109,7 @@ export function createBrowserService(
 ): BrowserService {
   const acquisition = new ChromiumAcquisition(options.stationHome);
   let cached: { at: number; listeners: StationListeners } | undefined;
-  const listeners = (): StationListeners => {
+  const baseListeners = (): StationListeners => {
     const now = Date.now();
     if (!cached || now - cached.at > INSTANCE_REFRESH_MS) {
       cached = {
@@ -121,6 +127,8 @@ export function createBrowserService(
     }
     return cached.listeners;
   };
+  const listeners = (): StationListeners =>
+    withExtraListenerPorts(baseListeners(), options.extraListenerPorts?.());
   const localTargets = new LocalTargetStore(options.stationHome);
   const registry = new BrowserSessionRegistry({
     stationHome: options.stationHome,
@@ -180,6 +188,21 @@ export function createBrowserService(
       await surfaces?.dispose();
       await registry.shutdown();
     },
+  };
+}
+
+/** Union a live set of extra Station-owned ports into the listener set. */
+export function withExtraListenerPorts(
+  base: StationListeners,
+  extra: readonly number[] | undefined,
+): StationListeners {
+  const valid = (extra ?? []).filter(
+    (port) => Number.isInteger(port) && port >= 1 && port <= 65_535,
+  );
+  if (valid.length === 0) return base;
+  return {
+    ports: [...new Set([...base.ports, ...valid])].sort((a, b) => a - b),
+    hostnames: base.hostnames,
   };
 }
 

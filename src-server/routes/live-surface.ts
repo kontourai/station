@@ -19,6 +19,7 @@ import type { HumanController } from '../services/live-surface/control-lease.js'
 import {
   claimHumanControl,
   dispatchHumanInput,
+  type LiveSurfaceDecision,
   type LiveSurfaceEntry,
   type LiveSurfaceRegistry,
   releaseHumanControl,
@@ -65,8 +66,38 @@ export interface LiveSurfaceRouteOptions {
   ) => { principal: string; device: string } | null;
   /** How often a running frames stream re-checks the credential. */
   principalRecheckMs?: number;
+  /**
+   * How long one frames pull waits on a `view` re-check before delivering
+   * under the decision it already has (#2433). The re-check keeps running
+   * and its answer applies when it lands; a deny still ends the stream.
+   */
+  viewRecheckWaitMs?: number;
+  /**
+   * The longest a stream may run past its last CONFIRMED allow (#2433):
+   * through `busy` re-checks, and through a re-check that has not answered
+   * at all. Past it the stream ends; the viewer reconnects, and a still-busy
+   * host answers that reconnect 503 `surface-busy`.
+   *
+   * The budget is spent by waiting, not only by `busy`, so it also cuts a
+   * HEALTHY stream in two cases: one allowing check that takes longer than
+   * about the grace (30 s by default) to answer, and a consumer that pulls
+   * so rarely that its single re-check starts after the budget is nearly
+   * spent and does not answer within the pull's short wait. Both end in a
+   * reconnect, not a refusal: that is the price of never delivering on an
+   * allow older than the grace.
+   */
+  viewBusyGraceMs?: number;
   now?: () => number;
 }
+
+/**
+ * Added by the Device pane lane (#1970, D12): `?projectSlug=` names the
+ * Project a request is made from. The routes never read it; it is context
+ * for the surface's AUTHORIZER, which receives the request (a device shared
+ * with a Project is reachable by that Project's admins only when the
+ * request names it). It never grants anything by itself.
+ */
+const AUTHORIZATION_CONTEXT_QUERY_KEY = 'projectSlug';
 
 const STREAM_QUERY_KEYS: readonly (keyof LiveSurfaceStreamParams)[] = [
   'maxFps',
@@ -78,7 +109,7 @@ const STREAM_QUERY_KEYS: readonly (keyof LiveSurfaceStreamParams)[] = [
 function failure(
   c: Context,
   code: LiveSurfaceRouteErrorCode,
-  status: 400 | 403 | 404 | 413,
+  status: 400 | 403 | 404 | 413 | 503,
 ) {
   return c.json({ success: false, code }, status);
 }
@@ -89,6 +120,8 @@ export function createLiveSurfaceRoutes(
 ) {
   const now = options.now ?? Date.now;
   const recheckMs = options.principalRecheckMs ?? 1_000;
+  const recheckWaitMs = options.viewRecheckWaitMs ?? 1_000;
+  const busyGraceMs = options.viewBusyGraceMs ?? 30_000;
   const app = new Hono();
 
   app.use('*', async (c, next) => {
@@ -129,7 +162,9 @@ export function createLiveSurfaceRoutes(
   /**
    * Resolve the human caller and require every named action (D5). Viewing,
    * input and control are separate grants; the entry's authorizer denies
-   * everything when its registrant supplied none.
+   * everything when its registrant supplied none. An authorizer that cannot
+   * answer right now is a retryable 503 `surface-busy`, never a 403 (#2433);
+   * it admits nothing.
    */
   const authorize = async (
     c: Context,
@@ -140,11 +175,14 @@ export function createLiveSurfaceRoutes(
     if (!caller)
       return { ok: false, response: failure(c, 'principal-unresolved', 403) };
     for (const action of actions) {
-      if (
-        !(await entry.authorize(caller.principal, action, {
-          request: c.req.raw,
-        }))
-      )
+      const decision = await entry.decide(caller.principal, action, {
+        request: c.req.raw,
+      });
+      if (decision === 'busy') {
+        c.header('Retry-After', '1');
+        return { ok: false, response: failure(c, 'surface-busy', 503) };
+      }
+      if (decision !== 'allow')
         return { ok: false, response: failure(c, 'access-denied', 403) };
     }
     return {
@@ -168,7 +206,8 @@ export function createLiveSurfaceRoutes(
     if (
       queryKeys.some(
         (key) =>
-          !STREAM_QUERY_KEYS.includes(key as keyof LiveSurfaceStreamParams) ||
+          (!STREAM_QUERY_KEYS.includes(key as keyof LiveSurfaceStreamParams) &&
+            key !== AUTHORIZATION_CONTEXT_QUERY_KEY) ||
           (c.req.queries(key)?.length ?? 0) > 1,
       )
     )
@@ -193,6 +232,44 @@ export function createLiveSurfaceRoutes(
     };
     request.signal?.addEventListener('abort', end, { once: true });
     let lastCheckAt = now();
+    // The stream opened on an allow; `busy` keeps that allow only while it
+    // is recent (#2433). A deny, or any other failure, ends the stream. The
+    // same budget binds a re-check that has not answered at all: every pull
+    // refuses to deliver once the last confirmed allow is older than
+    // `busyGraceMs`, pending or not, so a hung authorizer fails closed.
+    let lastAllowAt = now();
+    let revoked = false;
+    let rechecking = false;
+    const apply = (decision: LiveSurfaceDecision) => {
+      if (decision === 'allow') lastAllowAt = now();
+      else if (decision === 'deny' || now() - lastAllowAt > busyGraceMs)
+        revoked = true;
+    };
+    /**
+     * Start a `view` re-check. The first pull waits for it up to
+     * `recheckWaitMs`, so an ordinary answer still lands before the next
+     * frame; a slow one (a saturated host can hold it for its whole queue
+     * wait) no longer stalls the stream, and applies when it settles.
+     */
+    const startRecheck = (): Promise<void> => {
+      rechecking = true;
+      const done = entry
+        .decide(human.principal, 'view', { request })
+        .then(apply, () => {
+          revoked = true;
+        })
+        .finally(() => {
+          rechecking = false;
+          if (revoked) end();
+        });
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      return Promise.race([
+        done,
+        new Promise<void>((resolve) => {
+          timer = setTimeout(resolve, recheckWaitMs);
+        }),
+      ]).finally(() => clearTimeout(timer));
+    };
     const stream = new ReadableStream<Uint8Array>(
       {
         async pull(controller) {
@@ -201,18 +278,19 @@ export function createLiveSurfaceRoutes(
             controller.close();
             return;
           }
-          if (now() - lastCheckAt >= recheckMs) {
+          if (!revoked && now() - lastCheckAt >= recheckMs) {
             lastCheckAt = now();
             // Both the credential and the grant can be withdrawn while a
-            // stream runs (scope narrowed, Project admin removed).
-            if (
-              !options.isRequestPrincipalCurrent(request) ||
-              !(await entry.authorize(human.principal, 'view', { request }))
-            ) {
-              end();
-              controller.close();
-              return;
-            }
+            // stream runs (scope narrowed, Project admin removed). One
+            // `view` re-check at a time; the credential every interval.
+            if (!options.isRequestPrincipalCurrent(request)) revoked = true;
+            else if (!rechecking) await startRecheck();
+          }
+          if (now() - lastAllowAt > busyGraceMs) revoked = true;
+          if (revoked) {
+            end();
+            controller.close();
+            return;
           }
           controller.enqueue(encodeLiveSurfaceRecord(record));
         },

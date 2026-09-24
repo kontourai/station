@@ -12,6 +12,10 @@
     {
       "prefix": "src-ui/src/views/",
       "owner": "Product Views"
+    },
+    {
+      "prefix": "src-ui/src/workspace-panes/",
+      "owner": "Workspace Panes"
     }
   ],
   "actionInventory": "docs/ui/responsive-action-surfaces.txt",
@@ -245,6 +249,11 @@
       "path": "src-ui/src/views/project-page/ProjectKnowledgeViewerModal.tsx",
       "strategy": "covered",
       "evidence": "responsive-surface-panel adoption; contained long-content scroll"
+    },
+    {
+      "path": "src-ui/src/workspace-panes/device/DeviceToolsDrawer.tsx",
+      "strategy": "covered",
+      "evidence": "#1971 Device Tools drawer. tests/device-pane.spec.ts \"Device Tools drawer at 390x844\" opens the drawer in a real browser (session and read-back values supplied through page.route in the server's envelopes; the live surface unintercepted) and MEASURES it: it overlays the stage (data-layout overlay) inside the 390px viewport at no more than 288px, the document does not scroll sideways, and every button, input, select and textarea in the drawer (20+) is at least 44px tall and inside the drawer's right edge. src-ui/src/workspace-panes/__tests__/DeviceToolsDrawer.test.tsx drives the overlay/docked switch from the measured pane width, focus on open and its return to the Tools button, Escape, and every section."
     }
   ]
 }

@@ -74,6 +74,8 @@ function parsePlacement(value: unknown): FloatPlacement {
 
 let placement: FloatPlacement | null = null;
 const floating = new Map<string, FloatSource>();
+/** Why a floater went away on its own, per conversation (see `setFloatNotice`). */
+const notices = new Map<string, FloatNotice>();
 let dismissed: Record<string, string[]> | null = null;
 const listeners = new Set<() => void>();
 let version = 0;
@@ -132,7 +134,31 @@ export function getFloatingSource(conversation: string): FloatSource | null {
   return floating.get(conversation) ?? null;
 }
 
-export function openFloat(conversation: string, source: FloatSource): void {
+/**
+ * Which float this is, per conversation: a new number whenever a DIFFERENT
+ * source starts floating (or any source starts after none). Reads about a
+ * float are keyed by it, so a new float is never judged by what was read
+ * for an earlier one — its cached list, or its final error. The same
+ * source following its reopened surface keeps its number.
+ */
+const generations = new Map<string, number>();
+let lastGeneration = 0;
+
+export function getFloatGeneration(conversation: string): number {
+  return generations.get(conversation) ?? 0;
+}
+
+export function openFloat(
+  conversation: string,
+  source: FloatSource,
+  /**
+   * `requested`: a person asked for this source (not the float following
+   * its own read). A request naming another surface of the SAME source —
+   * the device reopened as a new session while it floats — is a new float
+   * too, so it is not judged by the old session's cached list (LOW-1).
+   */
+  options: { requested?: boolean } = {},
+): void {
   const current = floating.get(conversation);
   if (
     current &&
@@ -140,6 +166,14 @@ export function openFloat(conversation: string, source: FloatSource): void {
     current.surfaceId === source.surfaceId
   )
     return;
+  if (
+    !current ||
+    floatSourceKey(current) !== floatSourceKey(source) ||
+    options.requested === true
+  ) {
+    lastGeneration += 1;
+    generations.set(conversation, lastGeneration);
+  }
   floating.set(conversation, source);
   emit();
 }
@@ -230,6 +264,113 @@ export function isFloatHandedOff(
   return true;
 }
 
+/**
+ * A person asked for a source to float (the Device pane's "Float over
+ * chat"): the pane cannot know which conversation to float into, so the
+ * request waits here for a chat's floater to take it. Only a chat that can
+ * show a floater (one with a Project, whose floater is mounted) registers,
+ * and `requestFloat` refuses when none is mounted — the pane disables its
+ * action then, rather than offering one that does nothing. The asker is
+ * told when a chat TOOK the request (`onTaken`), so it lets go of the
+ * source only once the float has it; a request no chat takes in time is
+ * dropped and the asker keeps it.
+ */
+const REQUEST_TTL_MS = 5_000;
+let pendingRequest: {
+  source: FloatSource;
+  onTaken: (() => void) | undefined;
+  at: number;
+} | null = null;
+let mountedHosts = 0;
+
+/** A chat's floater is mounted and can take a request; returns its release. */
+export function registerFloatHost(): () => void {
+  mountedHosts += 1;
+  emit();
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    mountedHosts -= 1;
+    if (mountedHosts === 0) pendingRequest = null;
+    emit();
+  };
+}
+
+/** Whether any chat's floater could take a request right now. */
+export function isFloatHostAvailable(): boolean {
+  return mountedHosts > 0;
+}
+
+/**
+ * Ask a mounted chat to float `source`; false when no chat can. `onTaken`
+ * runs once a chat has taken it (and is floating it).
+ */
+export function requestFloat(
+  source: FloatSource,
+  onTaken?: () => void,
+  now = Date.now(),
+): boolean {
+  if (mountedHosts === 0) return false;
+  pendingRequest = { source, onTaken, at: now };
+  emit();
+  return true;
+}
+
+/** The waiting request, taken (so exactly one chat floats it). */
+export function takeFloatRequest(
+  now = Date.now(),
+): { source: FloatSource; onTaken: (() => void) | undefined } | null {
+  const request = pendingRequest;
+  pendingRequest = null;
+  if (!request || now - request.at > REQUEST_TTL_MS) return null;
+  return { source: request.source, onTaken: request.onTaken };
+}
+
+/**
+ * Why a floater went away on its own, per conversation, until the person
+ * dismisses it or asks for something else to float there: a source that
+ * cannot be shown here is never dropped silently. An auto-float that
+ * follows does not clear it (the person has not seen it yet).
+ */
+
+export interface FloatNotice {
+  /** What went away: names the notice ("Floating device notice"). */
+  readonly subject: 'device' | 'browser';
+  readonly text: string;
+  /** The device that could not float here, so its pane is one click away. */
+  readonly device?: {
+    readonly hostId: string;
+    readonly platform: 'ios' | 'android';
+    readonly deviceId: string;
+  };
+}
+
+export function setFloatNotice(
+  conversation: string,
+  notice: FloatNotice,
+): void {
+  notices.set(conversation, notice);
+  emit();
+}
+
+export function getFloatNotice(conversation: string): FloatNotice | null {
+  return notices.get(conversation) ?? null;
+}
+
+export function clearFloatNotice(conversation: string): void {
+  if (notices.delete(conversation)) emit();
+}
+
+/** {@link isFloatHostAvailable}, re-rendered as chats mount and unmount. */
+export function useFloatHostAvailable(): boolean {
+  return useSyncExternalStore(
+    subscribe,
+    () => mountedHosts > 0,
+    () => false,
+  );
+}
+
 export function isFloatDismissed(
   conversation: string,
   sourceKey: string,
@@ -250,7 +391,12 @@ export function migrateFloatConversation(from: string, to: string): void {
   const source = floating.get(from);
   if (source) {
     floating.delete(from);
-    if (!floating.has(to)) floating.set(to, source);
+    if (!floating.has(to)) {
+      floating.set(to, source);
+      const generation = generations.get(from);
+      if (generation !== undefined) generations.set(to, generation);
+    }
+    generations.delete(from);
     changed = true;
   }
   const record = dismissedRecord();
@@ -290,5 +436,9 @@ export function resetFloatStoreForTests(): void {
   dismissed = null;
   floating.clear();
   handoffs.clear();
+  pendingRequest = null;
+  mountedHosts = 0;
+  notices.clear();
+  generations.clear();
   emit();
 }

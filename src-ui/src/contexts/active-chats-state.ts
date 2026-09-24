@@ -414,6 +414,10 @@ export type ChatUIState = {
    * cannot loosen a session another device tightened.
    */
   approvalModeOverride?: ApprovalMode;
+  /** See `ApprovalPickState` (#2423). Not persisted. */
+  approvalModeOverrideSessionId?: string;
+  /** See `ApprovalPickState` (#2423). Not persisted. */
+  fullAccessNotCarriedSessionId?: string;
   orchestrationSessionStarted?: boolean;
   orchestrationProvider?: EngineId;
   orchestrationModel?: string;

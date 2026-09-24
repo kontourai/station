@@ -34,6 +34,18 @@ import {
 const PROVIDER_MODEL_DISCOVERY_TIMEOUT_MS = 4_350;
 const PROVIDER_MODEL_ABORT_SETTLEMENT_MS = 650;
 
+/**
+ * The catalog read hit Station's own deadline. Distinct from a caller's
+ * cancellation, which keeps its own reason, so a caller can tell "the engine
+ * was too slow to answer" apart from "stop".
+ */
+class ProviderModelCatalogDeadlineError extends Error {
+  constructor(provider: string, operation: 'discovery' | 'validation') {
+    super(`${provider} model ${operation} timed out.`);
+    this.name = 'ProviderModelCatalogDeadlineError';
+  }
+}
+
 function boundedAdapterModels(
   catalog: ProviderAdapterModelCatalog,
 ): ProviderAdapterModelCatalog['models'] {
@@ -75,8 +87,9 @@ export async function listLaunchableAdapterModels(
   const timer = setTimeout(
     () =>
       controller.abort(
-        new Error(
-          `${adapter.provider} model ${options?.operation ?? 'discovery'} timed out.`,
+        new ProviderModelCatalogDeadlineError(
+          adapter.provider,
+          options?.operation ?? 'discovery',
         ),
       ),
     PROVIDER_MODEL_DISCOVERY_TIMEOUT_MS,
@@ -149,6 +162,39 @@ export function knownModelsCatalog(
   }));
 }
 
+/**
+ * #2424: the live catalog a selector is validated against, or the adapter's
+ * known-models list when the live read cannot answer in time.
+ *
+ * Validation for an external engine is advisory: a selector the catalog does
+ * not list is passed through for the engine to judge (archive#977), so the
+ * only thing the live read can change is an alias's wire id. It is also the
+ * expensive part of a start — Claude Code answers it by spawning a whole CLI
+ * process — so on a loaded host it is the first thing to miss its deadline.
+ * Failing the start there turned "the engine was slow to list its models"
+ * into "the chat could not start". A deadline is therefore treated exactly
+ * like the empty catalog a cold engine already reports. A caller's own
+ * cancellation, and any other catalog failure, still propagate.
+ */
+async function catalogForSelectorValidation(
+  adapter: ProviderAdapterShape,
+): Promise<ProviderAdapterModelCatalog['models']> {
+  let liveModels: ProviderAdapterModelCatalog['models'];
+  try {
+    liveModels = await listLaunchableAdapterModels(adapter, {
+      operation: 'validation',
+    });
+  } catch (error) {
+    if (!(error instanceof ProviderModelCatalogDeadlineError)) throw error;
+    liveModels = [];
+  }
+  // Fall back to the adapter's hand-curated known-models list when the
+  // live/cached catalog is empty (a common steady state — see archive#977's
+  // problem statement) instead of treating an empty catalog as "nothing
+  // is launchable".
+  return liveModels.length ? liveModels : knownModelsCatalog(adapter);
+}
+
 /** A stable shared-dispatch error for a capability-unavailable model change. */
 export class ModelLaunchPlanUnavailableError extends Error {
   readonly code = MODEL_OVERRIDE_UNSUPPORTED_CODE;
@@ -216,16 +262,7 @@ export class ModelLaunchPlanning {
       // exactly as it does when launched with no --model at all.
       return input;
     }
-    const liveModels = await listLaunchableAdapterModels(adapter, {
-      operation: 'validation',
-    });
-    // Fall back to the adapter's hand-curated known-models list when the
-    // live/cached catalog is empty (a common steady state — see archive#977's
-    // problem statement) instead of treating an empty catalog as "nothing
-    // is launchable".
-    const catalog = liveModels.length
-      ? liveModels
-      : knownModelsCatalog(adapter);
+    const catalog = await catalogForSelectorValidation(adapter);
     const match = catalog.find((model) => model.id === requested);
     if (!match) {
       // Defer to the engine rather than rejecting: Station's catalog (live
@@ -261,12 +298,7 @@ export class ModelLaunchPlanning {
       // default is not an error for an external engine; defer to it.
       return input;
     }
-    const liveModels = await listLaunchableAdapterModels(adapter, {
-      operation: 'validation',
-    });
-    const catalog = liveModels.length
-      ? liveModels
-      : knownModelsCatalog(adapter);
+    const catalog = await catalogForSelectorValidation(adapter);
     const match = catalog.find((model) => model.id === requested);
     if (!match) {
       return { ...input, modelId: requested };

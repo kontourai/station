@@ -215,6 +215,7 @@ const PUBLISHED_SCOPE_BY_ID: Readonly<Record<string, string>> = {
   'default-skill-registries': 'station',
   'workspace-checkpoints': 'station',
   'default-workspace-isolation': 'station',
+  'device-hosts': 'station',
   'default-approval-mode': 'station',
   'registry-url': 'station',
   'distribution-profile': 'station',

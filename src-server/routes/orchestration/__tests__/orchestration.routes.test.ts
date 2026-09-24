@@ -6019,6 +6019,94 @@ describe('Orchestration Routes', () => {
       expect(payload).toContain('event: orchestration:snapshot');
     });
 
+    /**
+     * #2456 D1: the snapshot's advertised cursor must be older than any event
+     * appended while the snapshot was being built. The client drops every
+     * frame at or behind the cursor (resumeCursor.ts `shouldApplyStreamFrame`:
+     * `sequence > lastAppliedSequence`), so a cursor re-read after the build
+     * would swallow the one frame that carries an event the snapshot missed.
+     */
+    function frameIds(payload: string, marker: string): number[] {
+      return payload
+        .split('\n\n')
+        .filter((frame) => frame.includes(marker))
+        .map((frame) => Number(/\nid: (\d+)/.exec(`\n${frame}`)?.[1]));
+    }
+
+    async function raceEventDuringSnapshot(
+      request: (
+        app: ReturnType<typeof createOrchestrationRoutes>,
+      ) => Response | Promise<Response>,
+    ) {
+      let releaseSnapshotFetch: () => void = () => {};
+      const gate = new Promise<void>((resolve) => {
+        releaseSnapshotFetch = resolve;
+      });
+      const eventBus = new EventBus();
+      const service = makeResumeTestService(eventStore, {
+        listSessionReadModel: vi.fn().mockImplementation(async () => {
+          await gate;
+          return [];
+        }),
+      });
+      const app = createOrchestrationRoutes(service as any, {
+        getUserId: () => ROUTE_TEST_USER_ID,
+        eventBus,
+        logger: { debug: vi.fn() },
+      });
+      const resPromise = Promise.resolve(request(app));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      // Appended and emitted while the snapshot is being built — it is not
+      // in the (already-read) session list.
+      persistEvent('evt-during-snapshot', 'thread-1', 59);
+      eventBus.emit('orchestration:event', {
+        event: {
+          eventId: 'evt-during-snapshot',
+          provider: 'claude',
+          threadId: 'thread-1',
+          createdAt: '2026-03-28T00:00:59.000Z',
+          method: 'content.text-delta',
+          itemId: 'item-1',
+          delta: 'evt-during-snapshot',
+        },
+      });
+      releaseSnapshotFetch();
+      const res = await resPromise;
+      const payload = await readStreamUntil(res.body!, (text) =>
+        text.includes('"eventId":"evt-during-snapshot"'),
+      );
+      const [snapshotId] = frameIds(payload, 'event: orchestration:snapshot');
+      const [caughtUpId] = frameIds(payload, 'event: orchestration:caughtUp');
+      const [eventId] = frameIds(payload, '"eventId":"evt-during-snapshot"');
+      expect(eventId).toBe(
+        eventStore.readGlobalSequence('evt-during-snapshot'),
+      );
+      // The client will ADMIT the live frame: it is newer than the cursor.
+      expect(eventId).toBeGreaterThan(snapshotId);
+      expect(eventId).toBeGreaterThan(caughtUpId);
+    }
+
+    test('#2456 D1: an event appended during a cursor-less snapshot build is still admitted after it', async () => {
+      await raceEventDuringSnapshot((app) => app.request('/events'));
+    });
+
+    test('#2456 D1: an event appended during the replay-overflow snapshot build is still admitted after it', async () => {
+      for (let index = 1; index <= 401; index += 1) {
+        eventStore.appendEvent({
+          eventId: `d1-budget-${index}`,
+          provider: 'claude',
+          threadId: 'thread-d1-budget',
+          createdAt: `2026-08-01T00:00:${String(index % 60).padStart(2, '0')}.000Z`,
+          method: 'content.text-delta',
+          itemId: `item-${index}`,
+          delta: 'x'.repeat(3_000),
+        });
+      }
+      await raceEventDuringSnapshot((app) =>
+        app.request('/events', { headers: { 'Last-Event-ID': '0' } }),
+      );
+    });
+
     test('R4 ordering fence: a live event emitted mid-snapshot-fetch never overtakes the caught-up marker', async () => {
       // Adversarial timing: hold `listSessionReadModel`'s promise open so a
       // live event fired *during* the historical-frame fetch has every

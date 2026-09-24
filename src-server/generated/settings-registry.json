@@ -81,6 +81,13 @@
       "route": "/settings?view=plugin-visibility&highlight=plugin-visibility"
     },
     {
+      "id": "device-hosts",
+      "label": "Device hosts",
+      "scope": "station",
+      "section": "device-hosts",
+      "route": "/settings?view=device-hosts&highlight=device-hosts"
+    },
+    {
       "id": "host-runtime",
       "label": "Station host",
       "scope": "informational",

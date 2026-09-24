@@ -31,6 +31,12 @@ export function createConversationOpenResolver(deps: {
     authority: SessionReadAuthority;
   }): Promise<{
     sessionId: string;
+    /**
+     * #2424: set when `sessionId` is the authorized predecessor of a reserved
+     * lineage child that has not started yet. The conversation is then
+     * described by that predecessor; the reservation is the next send's.
+     */
+    reservedSuccessorSessionId?: string;
     execution?: ConversationOpenExecution;
     messages: readonly ConversationMessage[];
     answerability: ConversationListItem['answerability'];
@@ -77,18 +83,22 @@ export function createConversationOpenResolver(deps: {
             recoveryActions: ['retry', 'start-new'],
           };
         }
+        const describedSessionId =
+          current.reservedSuccessorSessionId === currentSessionId
+            ? current.sessionId
+            : currentSessionId;
         if (
-          current.sessionId !== currentSessionId ||
+          current.sessionId !== describedSessionId ||
           deps.currentSessionId(conversation.id) !== currentSessionId ||
           (current.execution &&
-            (current.execution.sessionId !== currentSessionId ||
+            (current.execution.sessionId !== describedSessionId ||
               current.execution.agentId !== conversation.agentSlug))
         )
           throw new Error('Conversation child changed during open');
         return {
           status: 'resolved',
           conversation,
-          currentSessionId,
+          currentSessionId: describedSessionId,
           ...(current.execution ? { execution: current.execution } : {}),
           transcript: {
             available: true,

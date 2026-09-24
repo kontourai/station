@@ -212,9 +212,15 @@ export function WorkspacePaneHostTree({
     onOpenActionChange?.({
       open: controller.open,
       focusExisting: controller.focusExisting,
+      close: controller.close,
     });
     return () => onOpenActionChange?.(null);
-  }, [controller.focusExisting, controller.open, onOpenActionChange]);
+  }, [
+    controller.close,
+    controller.focusExisting,
+    controller.open,
+    onOpenActionChange,
+  ]);
   useEffect(() => {
     onDockSlotActionChange?.(controller.replace);
     return () => onDockSlotActionChange?.(null);

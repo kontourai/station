@@ -358,6 +358,27 @@ export class ConversationLineage {
     );
   }
 
+  /**
+   * #2424: the predecessor of a PLAIN continuation reservation — a lineage
+   * tail with no handoff marker and no context boundary. Only that tail is
+   * one the next ordinary send reuses (`resolveConversationContinuation`
+   * refuses a handoff tail and an unstartable boundary, and starts a
+   * fresh-context child for a startable one), so only it may be described by
+   * its predecessor when the conversation is opened. Says nothing about
+   * whether the tail has started; callers establish that separately.
+   */
+  plainReservationPredecessor(conversationId: string): string | undefined {
+    const store = this.deps.eventStore;
+    const tail = store?.conversationSessions(conversationId).at(-1);
+    if (!store || !tail?.predecessorSessionId) return undefined;
+    if (
+      store.conversationHandoffForSession(tail.sessionId) ||
+      store.conversationContextBoundaryForSuccessor(tail.sessionId)
+    )
+      return undefined;
+    return tail.predecessorSessionId;
+  }
+
   reservedConversationHandoff(sessionId: string) {
     return this.deps.eventStore?.conversationHandoffForSession(sessionId);
   }

@@ -151,6 +151,13 @@ describe('the Device pane state parser (#1969)', () => {
     expect(parseWorkspaceDevicePaneState({ ...valid, hostId: 'remote' })).toBe(
       null,
     );
+    // #1973: an SSH device host id is remembered; nothing else shaped like one.
+    expect(
+      parseWorkspaceDevicePaneState({ ...valid, hostId: 'ssh-0123456789ab' })
+        ?.hostId,
+    ).toBe('ssh-0123456789ab');
+    for (const hostId of ['ssh-0123456789AB', 'ssh-', '../local', 'LOCAL'])
+      expect(parseWorkspaceDevicePaneState({ ...valid, hostId })).toBeNull();
     expect(
       parseWorkspaceDevicePaneState({ ...valid, platform: 'web' }),
     ).toBeNull();

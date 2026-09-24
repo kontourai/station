@@ -206,6 +206,7 @@ import { AdapterRetirement } from './adapter-retirement.js';
 import type { AdoptionLedger, AdoptionReservation } from './adoption-ledger.js';
 import { AttachedSessionAdoption } from './attached-session-adoption.js';
 import { type AttachedProjectRoot } from './attached-session-follow-service.js';
+import { ChildWorkProjection } from './child-work-projection.js';
 import {
   ClientOriginTurnPropagation,
   withClientOrigin,
@@ -1418,6 +1419,16 @@ export class OrchestrationService {
    */
   private readonly turnProgress: TurnProgressTracker;
   /**
+   * #2456: process-local child work (engine subagents), served on session
+   * summaries beside `turnProgress` so the reconnect snapshot carries it.
+   */
+  private readonly childWork = new ChildWorkProjection();
+  /** #2456: the one reader every session-summary emission path hands over. */
+  private readonly readChildWork = (
+    threadId: string,
+    provider: string | undefined,
+  ) => this.childWork.read(threadId, provider);
+  /**
    * #2309: the conversation activity projection. Absent without an event
    * store: it folds committed events and has nothing to fold without one.
    */
@@ -1742,6 +1753,7 @@ export class OrchestrationService {
       canUserReadSession: (threadId, authority) =>
         this.canUserReadSession(threadId, authority),
       readTurnProgress: (threadId) => this.turnProgress.read(threadId),
+      readChildWork: this.readChildWork,
       readConversationActivity: (threadId) =>
         this.conversationActivity?.readForThread(threadId),
       observeAnswerability: (threadId, provider, observedAt) =>
@@ -1920,6 +1932,7 @@ export class OrchestrationService {
           turnProgress: this.turnProgress.read(
             persisted?.threadId ?? loaded?.threadId ?? '',
           ),
+          readChildWork: this.readChildWork,
           answerability: this.observeAnswerability(
             persisted?.threadId ?? loaded?.threadId ?? '',
             (loaded ?? persisted)?.provider,
@@ -2079,6 +2092,8 @@ export class OrchestrationService {
           );
         if (!detail) return null;
         const session = detail.session;
+        const lineageTail =
+          this.conversationLineage.currentConversationSessionId(conversationId);
         const recordedConnection = this.readLatestSessionStartMetadata(
           session.threadId,
           detail.events,
@@ -2087,6 +2102,15 @@ export class OrchestrationService {
         const model = session.reportedModel ?? session.model;
         return {
           sessionId: session.threadId,
+          // Only `readCurrentConversationSession`'s reserved-tail fallback
+          // answers with a Session other than the lineage tail, and only a
+          // plain reservation may be described by it (#2424). A handoff or
+          // context-boundary tail stays a mismatch, as before.
+          ...(session.threadId !== lineageTail &&
+          session.threadId ===
+            this.conversationLineage.plainReservationPredecessor(conversationId)
+            ? { reservedSuccessorSessionId: lineageTail }
+            : {}),
           ...(session.assignedAgentSlug
             ? {
                 execution: {
@@ -3432,6 +3456,7 @@ export class OrchestrationService {
           eventCount,
           ...(conversationDraftFacts ? { conversationDraftFacts } : {}),
           turnProgress: this.turnProgress.read(threadId),
+          readChildWork: this.readChildWork,
           ...(conversationActivity ? { conversationActivity } : {}),
           ...(conversationFirstPromptedTurn
             ? { conversationFirstPromptedTurn }
@@ -3763,6 +3788,7 @@ export class OrchestrationService {
         events,
         ...(conversationDraftFacts ? { conversationDraftFacts } : {}),
         turnProgress: this.turnProgress.read(threadId),
+        readChildWork: this.readChildWork,
         ...(conversationActivity ? { conversationActivity } : {}),
         ...(conversationFirstPromptedTurn
           ? { conversationFirstPromptedTurn }
@@ -4487,8 +4513,30 @@ export class OrchestrationService {
   ) {
     this.initialize();
     const currentSessionId = this.currentConversationSessionId(conversationId);
+    const detail = await this.readCurrentConversationSession(
+      conversationId,
+      authority,
+    );
+    // #2424: a continuation reserves its child in the lineage BEFORE starting
+    // it, so a start that fails (a model-validation deadline on a loaded
+    // host) leaves a tail with no Session yet. `readCurrentConversationSession`
+    // already follows exactly that tail to its authorized predecessor; the
+    // open read must describe the same Session, or it reports the whole
+    // conversation "not found" and the client paints it read-only. The next
+    // send reuses the reservation. Only a PLAIN reservation: a handoff tail
+    // waits for its target and a context-boundary tail starts a fresh-context
+    // child, so describing either by its predecessor would claim a
+    // continuation the send path does not perform. Those keep reading the
+    // tail itself, as before.
+    const subjectSessionId =
+      detail &&
+      detail.session.threadId !== currentSessionId &&
+      detail.session.threadId ===
+        this.conversationLineage.plainReservationPredecessor(conversationId)
+        ? detail.session.threadId
+        : currentSessionId;
     const query = await this.sessionQueries.read(
-      { type: 'conversation', threadId: currentSessionId },
+      { type: 'conversation', threadId: subjectSessionId },
       authority,
     );
     if (query.status === 'unavailable') return null;
@@ -4498,15 +4546,11 @@ export class OrchestrationService {
     // an id collision cannot open a foreign Session.
     if (
       query.conversation.id !== conversationId &&
-      this.options.eventStore?.conversationForSession(currentSessionId)
+      this.options.eventStore?.conversationForSession(subjectSessionId)
         ?.conversationId !== conversationId
     ) {
       return null;
     }
-    const detail = await this.readCurrentConversationSession(
-      conversationId,
-      authority,
-    );
     const conversation: ConversationListItem = {
       id: conversationId,
       source: 'runtime',
@@ -7378,6 +7422,8 @@ export class OrchestrationService {
     if (divergent.ownerCache)
       this.sessionAuthz.invalidateSessionOwner(threadId);
     if (divergent.turnProgress) this.turnProgress.forgetThread(threadId);
+    // #2456: new state, so unconditional — no caller ever kept it.
+    this.childWork.forgetThread(threadId);
   }
 
   private async readPrerequisites(
@@ -7744,6 +7790,10 @@ export class OrchestrationService {
         );
       }
     }
+    // #2456: child work (engine subagents) folds here, beside turnProgress,
+    // so session summaries — and the reconnect snapshot built from them —
+    // carry the live set.
+    this.childWork.observe(event);
     const projectedEvent = this.options.eventStore
       ? this.options.eventStore.projectLiveEvent(event)
       : event;
@@ -8271,6 +8321,7 @@ export class OrchestrationService {
         loaded,
         events,
         turnProgress: this.turnProgress.read(id),
+        readChildWork: this.readChildWork,
         answerability: this.observeAnswerability(
           id,
           (loaded ?? persisted)?.provider,

@@ -2,6 +2,7 @@ import {
   LIVE_SURFACE_RECORD_MAX_BODY_BYTES,
   LIVE_SURFACE_STREAM_PARAM_BOUNDS,
   type LiveSurfaceFrameHeader,
+  type LiveSurfaceProducerStatus,
   type LiveSurfaceRecord,
   type LiveSurfaceStreamParams,
   type LiveSurfaceStreamState,
@@ -195,6 +196,7 @@ export class LiveSurfaceHub {
   private idleTimer: ReturnType<typeof setTimeout> | null = null;
   private disposed = false;
   private readonly unsubscribeLease: () => void;
+  private readonly unsubscribeStatus: () => void;
   private inputHealth: () => { wedged: boolean; wedgedSince: number | null } =
     () => ({ wedged: false, wedgedSince: null });
 
@@ -210,6 +212,8 @@ export class LiveSurfaceHub {
     this.idleStopMs = options.idleStopMs ?? 0;
     this.onError = options.onError ?? (() => {});
     this.unsubscribeLease = lease.onChange(() => this.markStatePending());
+    this.unsubscribeStatus =
+      producer.onStatusChange?.(() => this.markStatePending()) ?? (() => {});
   }
 
   get surfaceId(): string {
@@ -308,7 +312,33 @@ export class LiveSurfaceHub {
       ...(viewer ? { viewer: { ...viewer } } : {}),
       wedged: health.wedged,
       wedgedSince: health.wedgedSince,
+      ...this.producerStatus(),
     };
+  }
+
+  /**
+   * The producer's own status fields, copied field by field so a producer
+   * can never add (or overwrite) anything else in the state record. A throw
+   * is reported and treated as "no status", never as a broken stream.
+   */
+  private producerStatus(): LiveSurfaceProducerStatus {
+    let status: LiveSurfaceProducerStatus | undefined;
+    try {
+      status = this.producer.status?.();
+    } catch (error) {
+      this.onError('live surface producer status failed', error);
+      return {};
+    }
+    if (!status) return {};
+    const out: LiveSurfaceProducerStatus = {};
+    if (status.inputChannel !== undefined)
+      out.inputChannel = status.inputChannel;
+    if (status.videoMode !== undefined) out.videoMode = status.videoMode;
+    if (status.videoDegradedReason !== undefined)
+      out.videoDegradedReason = status.videoDegradedReason;
+    if (status.orientation !== undefined) out.orientation = status.orientation;
+    if (status.hostId !== undefined) out.hostId = status.hostId;
+    return out;
   }
 
   /** Where the input side reports whether it is wedged (the registry). */
@@ -339,6 +369,7 @@ export class LiveSurfaceHub {
   async dispose(): Promise<void> {
     this.disposed = true;
     this.unsubscribeLease();
+    this.unsubscribeStatus();
     for (const viewer of [...this.viewers]) viewer.close();
     if (this.idleTimer) clearTimeout(this.idleTimer);
     this.idleTimer = null;

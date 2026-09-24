@@ -7,6 +7,7 @@ import {
   type LiveSurfaceInput,
   type LiveSurfaceInputResult,
   type LiveSurfaceLeaseResult,
+  type LiveSurfaceProducerStatus,
   LiveSurfaceRecordDecoder,
   type LiveSurfaceStreamParams,
   type LiveSurfaceViewerIdentity,
@@ -65,7 +66,26 @@ export type LiveSurfaceConnectionStatus =
   | 'unavailable'
   | 'denied';
 
-export type LiveSurfaceInputNotice = 'control-changed' | 'input-failed' | null;
+/**
+ * `host-busy` (#2433): the server could not authorize the input or claim
+ * right now (503 `surface-busy`, e.g. a saturated SSH device host). Nothing
+ * was sent; trying again may work. Not a refusal.
+ */
+export type LiveSurfaceInputNotice =
+  | 'control-changed'
+  | 'input-failed'
+  | 'host-busy'
+  | null;
+
+/** A retryable 503 `surface-busy` answer (#2433). */
+function isSurfaceBusy(response: Response, envelope: unknown): boolean {
+  return (
+    response.status === 503 &&
+    typeof envelope === 'object' &&
+    envelope !== null &&
+    (envelope as { code?: unknown }).code === 'surface-busy'
+  );
+}
 
 export interface LiveSurfaceFrame {
   header: LiveSurfaceFrameHeader;
@@ -84,6 +104,12 @@ export interface UseLiveSurfaceOptions {
   /** Test seam; defaults to the SDK's `authenticatedFetch`. */
   transport?: typeof authenticatedFetch;
   now?: () => number;
+  /**
+   * Optional (Device pane lane, D12): the Project this surface is reached
+   * from, sent as `?projectSlug=` on every request so the surface's
+   * authorizer can admit that Project's admins to a device shared with it.
+   */
+  projectSlug?: string;
 }
 
 export interface UseLiveSurfaceResult {
@@ -97,11 +123,19 @@ export interface UseLiveSurfaceResult {
   self: LiveSurfaceViewerIdentity | null;
   /** The server reports the surface is not taking input (see state.wedged). */
   wedged: boolean;
+  /**
+   * What the producer reported about its own channels (input liveness,
+   * video mode, orientation); empty for a producer that reports nothing.
+   */
+  producerStatus: LiveSurfaceProducerStatus;
   inputNotice: LiveSurfaceInputNotice;
   sendInput: (events: LiveSurfaceInput[]) => void;
   claimControl: () => Promise<void>;
   retry: () => void;
 }
+
+/** How long "the host is busy" stays up without a newer outcome. */
+const HOST_BUSY_NOTICE_MS = 5_000;
 
 const LIVE_SURFACE_RECONNECT_DELAYS_MS = [
   500, 1_000, 2_000, 4_000, 8_000, 10_000,
@@ -135,16 +169,25 @@ function useIntersecting(ref: RefObject<Element | null>): boolean {
   return intersecting;
 }
 
+/** `?projectSlug=` (or '') for a surface reached from a Project (D12). */
+function contextQuery(projectSlug: string | undefined): string {
+  return projectSlug
+    ? `?${new URLSearchParams({ projectSlug }).toString()}`
+    : '';
+}
+
 function streamUrl(
   apiBase: string,
   surfaceId: string,
   params: Partial<LiveSurfaceStreamParams> | undefined,
+  projectSlug: string | undefined,
 ): string {
   const query = new URLSearchParams();
   for (const key of ['maxFps', 'quality', 'maxWidth', 'maxHeight'] as const) {
     const value = params?.[key];
     if (value !== undefined) query.set(key, String(Math.round(value)));
   }
+  if (projectSlug) query.set('projectSlug', projectSlug);
   const suffix = query.size > 0 ? `?${query}` : '';
   return `${apiBase}/api/live-surfaces/${encodeURIComponent(surfaceId)}/frames${suffix}`;
 }
@@ -198,6 +241,7 @@ export function useLiveSurface(
     visibilityRef,
     transport = authenticatedFetch,
     now = Date.now,
+    projectSlug,
   } = options;
   const onFrameRef = useRef(options.onFrame);
   onFrameRef.current = options.onFrame;
@@ -220,6 +264,8 @@ export function useLiveSurface(
   const [lastFrameAt, setLastFrameAt] = useState<number | null>(null);
   const [self, setSelf] = useState<LiveSurfaceViewerIdentity | null>(null);
   const [wedged, setWedged] = useState(false);
+  const [producerStatus, setProducerStatus] =
+    useState<LiveSurfaceProducerStatus>({});
   const [inputNotice, setInputNotice] = useState<LiveSurfaceInputNotice>(null);
   const [retryToken, setRetryToken] = useState(0);
   const epochRef = useRef(0);
@@ -247,7 +293,7 @@ export function useLiveSurface(
     let attempt = 0;
     let timer: ReturnType<typeof setTimeout> | null = null;
     let stopped = false;
-    const url = streamUrl(apiBase, surfaceId, params);
+    const url = streamUrl(apiBase, surfaceId, params, projectSlug);
 
     const scheduleReconnect = () => {
       if (stopped) return;
@@ -302,6 +348,28 @@ export function useLiveSurface(
               adoptLease(record.state.lease);
               setEffectiveParams(record.state.effectiveParams);
               setWedged(record.state.wedged === true);
+              const {
+                inputChannel,
+                videoMode,
+                videoDegradedReason,
+                orientation,
+                hostId,
+              } = record.state;
+              setProducerStatus((previous) =>
+                previous.inputChannel === inputChannel &&
+                previous.videoMode === videoMode &&
+                previous.videoDegradedReason === videoDegradedReason &&
+                previous.orientation === orientation &&
+                previous.hostId === hostId
+                  ? previous
+                  : {
+                      ...(inputChannel ? { inputChannel } : {}),
+                      ...(videoMode ? { videoMode } : {}),
+                      ...(videoDegradedReason ? { videoDegradedReason } : {}),
+                      ...(orientation ? { orientation } : {}),
+                      ...(hostId ? { hostId } : {}),
+                    },
+              );
               if (record.state.viewer) {
                 const viewer = record.state.viewer;
                 setSelf((previous) =>
@@ -342,6 +410,7 @@ export function useLiveSurface(
     apiBase,
     surfaceId,
     paramsKey,
+    projectSlug,
     visible,
     retryToken,
     adoptLease,
@@ -356,7 +425,23 @@ export function useLiveSurface(
   const orphanedRef = useRef(new Set<string>());
   const inFlightRef = useRef(false);
   const flushScheduledRef = useRef(false);
-  const inputUrl = `${apiBase}/api/live-surfaces/${encodeURIComponent(surfaceId)}/input`;
+  const busyNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (busyNoticeTimerRef.current) clearTimeout(busyNoticeTimerRef.current);
+    },
+    [],
+  );
+  /** Say the host is busy; a successful send or 5 s later, stop saying it. */
+  const showHostBusy = useCallback(() => {
+    setInputNotice('host-busy');
+    if (busyNoticeTimerRef.current) clearTimeout(busyNoticeTimerRef.current);
+    busyNoticeTimerRef.current = setTimeout(() => {
+      busyNoticeTimerRef.current = null;
+      setInputNotice((current) => (current === 'host-busy' ? null : current));
+    }, HOST_BUSY_NOTICE_MS);
+  }, []);
+  const inputUrl = `${apiBase}/api/live-surfaces/${encodeURIComponent(surfaceId)}/input${contextQuery(projectSlug)}`;
   const inputUrlRef = useRef(inputUrl);
   inputUrlRef.current = inputUrl;
 
@@ -395,6 +480,12 @@ export function useLiveSurface(
       const envelope = (await response.json().catch(() => null)) as {
         data?: LiveSurfaceInputResult;
       } | null;
+      if (isSurfaceBusy(response, envelope)) {
+        // Not sent, and not replayed later onto a view that may have moved on.
+        queueRef.current = [];
+        showHostBusy();
+        return;
+      }
       const result = envelope?.data;
       const nextLease = result
         ? parseLiveSurfaceControlLease(result.lease)
@@ -422,7 +513,7 @@ export function useLiveSurface(
       inFlightRef.current = false;
     }
     if (queueRef.current.length > 0) void flush();
-  }, [adoptLease]);
+  }, [adoptLease, showHostBusy]);
 
   const sendInput = useCallback(
     (events: LiveSurfaceInput[]) => {
@@ -460,7 +551,7 @@ export function useLiveSurface(
   const claimControl = useCallback(async () => {
     try {
       const response = await transportRef.current(
-        `${apiBase}/api/live-surfaces/${encodeURIComponent(surfaceId)}/lease`,
+        `${apiBase}/api/live-surfaces/${encodeURIComponent(surfaceId)}/lease${contextQuery(projectSlug)}`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -470,6 +561,10 @@ export function useLiveSurface(
       const envelope = (await response.json().catch(() => null)) as {
         data?: LiveSurfaceLeaseResult;
       } | null;
+      if (isSurfaceBusy(response, envelope)) {
+        showHostBusy();
+        return;
+      }
       const nextLease = envelope?.data
         ? parseLiveSurfaceControlLease(envelope.data.lease)
         : null;
@@ -478,7 +573,7 @@ export function useLiveSurface(
     } catch {
       setInputNotice('input-failed');
     }
-  }, [apiBase, surfaceId, adoptLease]);
+  }, [apiBase, surfaceId, projectSlug, adoptLease, showHostBusy]);
 
   const retry = useCallback(() => setRetryToken((value) => value + 1), []);
 
@@ -490,6 +585,7 @@ export function useLiveSurface(
     lastFrameAt,
     self,
     wedged,
+    producerStatus,
     inputNotice,
     sendInput,
     claimControl,

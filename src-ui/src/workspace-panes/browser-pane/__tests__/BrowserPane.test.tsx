@@ -593,8 +593,8 @@ describe('BrowserPane agent access (D4)', () => {
     // assistive tech, which reads aria-checked), not by colour alone.
     const switchState = () =>
       toggle
-        .closest('.browser-pane__switch')
-        ?.querySelector('.browser-pane__switch-state');
+        .closest('.station-toggle-field')
+        ?.querySelector('.station-toggle__state');
     expect(switchState()?.textContent).toBe('Off');
     expect(switchState()?.getAttribute('aria-hidden')).toBe('true');
     // The disclosure is the switch's own description (S6).
@@ -624,8 +624,8 @@ describe('BrowserPane agent access (D4)', () => {
         .getByRole('switch', {
           name: "Let agents run JavaScript in this Project's pages",
         })
-        .closest('.browser-pane__switch')
-        ?.querySelector('.browser-pane__switch-state')?.textContent,
+        .closest('.station-toggle-field')
+        ?.querySelector('.station-toggle__state')?.textContent,
     ).toBe('On');
   });
 });

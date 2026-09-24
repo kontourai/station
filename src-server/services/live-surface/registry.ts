@@ -22,7 +22,9 @@ import { LiveSurfaceHub, type LiveSurfaceHubOptions } from './surface-hub.js';
  * `control` one surface (D5). The live-surface layer is host-neutral and knows
  * nothing about Projects: whoever registers a producer supplies this (the
  * Browser lane answers "operator or Project admin of the session's Project").
- * It must itself fail closed on any error; a throw here is treated as deny.
+ * It must itself fail closed on any error; a throw here is treated as deny —
+ * except `LiveSurfaceAuthorizerBusyError`, which says "cannot answer right
+ * now" (#2433) and is never an admission either.
  */
 export type LiveSurfaceAuthorizer = (
   principal: string,
@@ -30,6 +32,27 @@ export type LiveSurfaceAuthorizer = (
   action: LiveSurfaceAction,
   context?: LiveSurfaceAuthorizationContext,
 ) => boolean | Promise<boolean>;
+
+/**
+ * Thrown by an authorizer that cannot answer RIGHT NOW (#2433): the thing it
+ * must consult is briefly saturated (an SSH device host's AVD lookup queue).
+ * It is neither an allow nor a deny. `decide` reports it as `busy`, so the
+ * HTTP routes can answer a retryable 503 and a running stream can keep the
+ * decision it already had; `authorize` (the boolean form) still reads it as
+ * deny. Busy never grants anything that was not already granted.
+ */
+export class LiveSurfaceAuthorizerBusyError extends Error {
+  constructor(options?: { cause?: unknown }) {
+    super(
+      'The live surface cannot be authorized right now; try again.',
+      options,
+    );
+    this.name = 'LiveSurfaceAuthorizerBusyError';
+  }
+}
+
+/** One authorization answer: `busy` is transient, never an admission. */
+export type LiveSurfaceDecision = 'allow' | 'deny' | 'busy';
 
 /**
  * What the caller can offer an authorizer beyond the principal (added by the
@@ -80,6 +103,15 @@ export interface LiveSurfaceEntry {
     action: LiveSurfaceAction,
     context?: LiveSurfaceAuthorizationContext,
   ) => Promise<boolean>;
+  /**
+   * The same decision, telling a transient `busy` apart from a deny (#2433).
+   * Every other throw, and anything but `true`, is `deny`.
+   */
+  readonly decide: (
+    principal: string,
+    action: LiveSurfaceAction,
+    context?: LiveSurfaceAuthorizationContext,
+  ) => Promise<LiveSurfaceDecision>;
 }
 
 export interface LiveSurfaceRegistryOptions {
@@ -147,13 +179,18 @@ class PressedInput {
       this.pointer = { x: event.x, y: event.y };
       if (event.type === 'down')
         this.pointerType = event.pointerType ?? 'mouse';
-      if (event.type === 'down' && event.button)
-        this.buttons.set(event.button, {
+      // A down/up with no `button` is the primary one (a raw client's touch
+      // names none). Recording it as nothing would leave that press
+      // uncancelled at a handoff (Device pane lane, #1970).
+      const button =
+        event.button ??
+        (event.type === 'down' || event.type === 'up' ? 'left' : undefined);
+      if (event.type === 'down' && button)
+        this.buttons.set(button, {
           pointerType: event.pointerType ?? 'mouse',
           owner,
         });
-      if (event.type === 'up' && event.button)
-        this.buttons.delete(event.button);
+      if (event.type === 'up' && button) this.buttons.delete(button);
     } else if (event.kind === 'key') {
       const id = event.code || event.key;
       if (event.type === 'down')
@@ -270,25 +307,34 @@ export class LiveSurfaceRegistry {
     );
     const hub = new LiveSurfaceHub(producer, lease, this.options.hub);
     const authorizer = registration.authorize;
+    const decide = async (
+      principal: string,
+      action: LiveSurfaceAction,
+      context?: LiveSurfaceAuthorizationContext,
+    ): Promise<LiveSurfaceDecision> => {
+      if (!authorizer) return 'deny';
+      try {
+        return (await authorizer(
+          principal,
+          producer.surfaceId,
+          action,
+          context,
+        )) === true
+          ? 'allow'
+          : 'deny';
+      } catch (error) {
+        return error instanceof LiveSurfaceAuthorizerBusyError
+          ? 'busy'
+          : 'deny';
+      }
+    };
     const entry: LiveSurfaceEntry = {
       producer,
       hub,
       lease,
-      authorize: async (principal, action, context) => {
-        if (!authorizer) return false;
-        try {
-          return (
-            (await authorizer(
-              principal,
-              producer.surfaceId,
-              action,
-              context,
-            )) === true
-          );
-        } catch {
-          return false;
-        }
-      },
+      decide,
+      authorize: async (principal, action, context) =>
+        (await decide(principal, action, context)) === 'allow',
     };
     const own: EntryInternals = {
       lease,
@@ -470,7 +516,9 @@ async function dispatchFenced(
     // out and lands later, is still accounted for by the cancel.
     own.pressed.record(event, controller);
     const outcome = await dispatchWithTimeout(entry, () =>
-      entry.producer.dispatch(event),
+      entry.producer.dispatch(event, {
+        isCurrent: () => entry.lease.isCurrent(fence, controller).ok,
+      }),
     );
     if (outcome !== 'ok')
       return {

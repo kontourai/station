@@ -1,6 +1,13 @@
+import {
+  encodeLiveSurfaceRecord,
+  type LiveSurfaceProducerStatus,
+  type LiveSurfaceRecord,
+} from '@kontourai/station-contracts/live-surface';
 import type {
+  DeviceHostSummary,
   MobileDeviceHostFailure,
   MobileDeviceInventory,
+  MobileDeviceSession,
   MobileDeviceSummary,
 } from '@kontourai/station-contracts/mobile-device';
 import { setClientCredentialResolver } from '@kontourai/station-sdk/client';
@@ -10,46 +17,23 @@ import type { ReactElement } from 'react';
 import { vi } from 'vitest';
 
 /**
- * The Device pane's test harness (#1969).
+ * The Device pane's test harness (#1969, #1970).
  *
  * Deliberately NOT a mock of the SDK query hooks: the pane is mounted over a
  * real `QueryClient` and a stubbed `fetch`, so every fixture below goes
- * through the SDK client's own parser, and a fixture it refuses fails here as
- * a `MobileDeviceRequestError(200)` rather than being quietly believed.
+ * through the SDK client's own parser (inventory, sessions, start, open,
+ * close, power off) and through the live-surface record decoder (the frame
+ * stream). A fixture either parser refuses fails here instead of being
+ * quietly believed.
  *
- * What that parser checks is exactly the ENVELOPE and each row's TYPES
- * (`packages/sdk/src/mobile-device.ts`): `hostId === 'local'`, one of the
- * three states, a parseable `observedAt`, at most 256 devices, a `failure`
- * iff `unavailable`, and per row a `platform` literal plus a non-empty,
- * control-character-free `deviceId` / `name` / `runtime` and a boolean
- * `booted`. It does NOT look at id SPELLINGS — `summary` never applies the
- * UDID or `emulator-<n>` rules — so a `deviceId` no real helper would emit
- * passes it silently.
- *
- * Fidelity past that is this file's own job, not something a parser enforces.
- * The fixtures are copied from what the service ACCEPTS
- * (`src-server/services/mobile-device/mobile-device-host.ts`, and the rows in
- * its own test): `runtime` is the helper's `version`, `deviceId` is the
- * helper's `id`, every iOS id is a UDID, and an Android id must be an
- * `emulator-<n>` serial when the row is `booted` — the host applies that rule
- * only to a booted row, so an unbooted Android row under an AVD name is a
- * shape it lists. A fixture that contradicts those rules describes an
- * inventory the server answers `invalid-response` for, so a test built on it
- * proves nothing about a state a reader can reach.
- *
- * That is a statement about which ENVELOPES the server admits, which is all
- * that was probed here (flipping `booted` on a fixed id). It is not a claim
- * about what a real helper emits when a device starts: whether
- * `expo-device-hub` reports a different id once an emulator is booted is not
- * recorded anywhere in this repository and cannot be settled from it.
+ * Fixtures copy what the service ACCEPTS
+ * (`src-server/services/mobile-device/mobile-device-host.ts`): every iOS id
+ * is a UDID, a booted Android id is an `emulator-<n>` serial, and a stopped
+ * Android row is listed under its AVD name.
  */
 
-export const IOS_DEVICE_ID = '6E8C08FA-3A81-4347-90B9-AD41B7FAE876';
+const IOS_DEVICE_ID = '6E8C08FA-3A81-4347-90B9-AD41B7FAE876';
 export const ANDROID_DEVICE_ID = 'emulator-5584';
-
-/** A 1x1 PNG — the same bytes the service test captures. */
-export const ONE_BY_ONE_PNG =
-  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aDWQAAAAASUVORK5CYII=';
 
 export const IOS_DEVICE: MobileDeviceSummary = {
   hostId: 'local',
@@ -67,6 +51,15 @@ export const ANDROID_DEVICE: MobileDeviceSummary = {
   name: 'Pixel 10 Pro XL',
   runtime: 'Android 16',
   booted: true,
+};
+
+export const STOPPED_AVD: MobileDeviceSummary = {
+  hostId: 'local',
+  platform: 'android',
+  deviceId: 'station-test',
+  name: 'station-test',
+  runtime: 'Android 16',
+  booted: false,
 };
 
 const OBSERVED_AT = '2026-09-14T10:00:00.000Z';
@@ -101,44 +94,29 @@ export function unavailableInventory(
   };
 }
 
-export interface CaptureFixture {
-  captureId?: string;
-  platform?: 'ios' | 'android';
-  deviceId?: string;
-  capturedAt?: string;
-  width?: number;
-  height?: number;
-}
-
-/**
- * A capture answer. `capturedAt` defaults to the CLOCK, not to a written-down
- * instant: the pane decorates a frame past a 30-second threshold and adds a
- * date once the frame is not from the pane's own day, so any literal here is
- * a fixture that changes meaning on a calendar date — it was "from today"
- * when it was written and is a dated, stale frame from the next day on. A
- * case that needs a specific age passes its own `capturedAt`; the default is
- * a frame that has just been taken.
- */
-export function captureBody(fixture: CaptureFixture = {}) {
-  const platform = fixture.platform ?? 'ios';
+let sessionCounter = 0;
+/** A session answer, as the open route returns it. */
+export function sessionFor(device: {
+  hostId?: string;
+  platform: 'ios' | 'android';
+  deviceId: string;
+  name: string;
+  runtime: string;
+}): MobileDeviceSession {
+  sessionCounter += 1;
+  const sessionId = `${String(sessionCounter).padStart(8, '0')}-aaaa-4bbb-8ccc-dddddddddddd`;
   return {
-    captureId: fixture.captureId ?? 'a0ea1f6e-0000-4000-8000-000000000001',
-    target: {
-      hostId: 'local',
-      platform,
-      deviceId:
-        fixture.deviceId ??
-        (platform === 'ios' ? IOS_DEVICE_ID : ANDROID_DEVICE_ID),
-    },
-    capturedAt: fixture.capturedAt ?? new Date().toISOString(),
-    mimeType: 'image/png',
-    width: fixture.width ?? 1179,
-    height: fixture.height ?? 2556,
-    pngBase64: ONE_BY_ONE_PNG,
+    sessionId,
+    surfaceId: `device:${device.platform}:${sessionId}`,
+    hostId: device.hostId ?? 'local',
+    platform: device.platform,
+    deviceId: device.deviceId,
+    name: device.name,
+    runtime: device.runtime,
+    openedAt: new Date().toISOString(),
   };
 }
 
-/** `authorizeScope`'s default argument, a few dozen lines below. */
 const SCOPE = {
   apiBase: 'http://station.test',
   authorityKey: 'authority-1',
@@ -146,54 +124,277 @@ const SCOPE = {
 
 export interface DeviceFetchPlan {
   inventory?: MobileDeviceInventory | (() => MobileDeviceInventory);
-  /** A thrown transport failure for the inventory read. */
   inventoryThrows?: Error;
   inventoryStatus?: number;
-  /** Successive capture answers; the last one repeats. */
-  captures?: ({ status: number } | ReturnType<typeof captureBody>)[];
+  /** The open sessions list (the harness keeps it current on open/close). */
+  sessions?: MobileDeviceSession[];
+  /** A failing answer for the session list reads (read per request). */
+  sessionsStatus?: () => number | undefined;
+  /** Answer for POST …/start; defaults to an already-running device. */
+  start?: () => Promise<
+    { deviceId: string; state: 'running' | 'starting' } | { status: number }
+  >;
+  /** Answer for POST …/sessions; defaults to a fresh session. */
+  open?: (target: {
+    platform: 'ios' | 'android';
+    deviceId: string;
+  }) => Promise<MobileDeviceSession | { status: number; code?: string }>;
+  /** A non-200 answer for the frames stream (404: the surface is gone). */
+  framesStatus?: number;
+  /**
+   * The Tools drawer's routes (#1971, `…/tools…`): return the answer, or
+   * undefined for a request this plan does not model (which then fails).
+   */
+  tools?: (request: {
+    method: string;
+    path: string;
+    search: URLSearchParams;
+    body: unknown;
+  }) => { status?: number; body: unknown } | undefined;
+  /** The host picker's list (#1973); `local` only by default. */
+  hosts?: DeviceHostSummary[];
+  /** An SSH device host's inventory, by host id. */
+  remoteInventory?: Record<string, MobileDeviceInventory>;
+}
+
+export interface OpenFrameStream {
+  url: string;
+  push(record: LiveSurfaceRecord): Promise<void>;
 }
 
 export interface DeviceFetchLog {
   inventoryReads: number;
-  captureRequests: string[];
+  requests: { method: string; url: string; body: unknown }[];
+  streams: OpenFrameStream[];
+  inputs: { epoch: number; events: unknown[] }[];
 }
 
-export function stubDeviceFetch(plan: DeviceFetchPlan): DeviceFetchLog {
-  const log: DeviceFetchLog = { inventoryReads: 0, captureRequests: [] };
-  let captureIndex = 0;
+const json = (data: unknown, status = 200) =>
+  new Response(JSON.stringify(data), {
+    status,
+    headers: { 'Content-Type': 'application/json' },
+  });
+
+const HOST = '(local|ssh-[0-9a-f]{12})';
+const DEVICE_ACTION = new RegExp(
+  `/hosts/${HOST}/devices/(ios|android)/([^/]+)/([a-z-]+)$`,
+);
+
+export function stubDeviceFetch(plan: DeviceFetchPlan = {}): DeviceFetchLog {
+  const log: DeviceFetchLog = {
+    inventoryReads: 0,
+    requests: [],
+    streams: [],
+    inputs: [],
+  };
+  const sessions: MobileDeviceSession[] = plan.sessions ?? [];
+  const remove = (keep: (session: MobileDeviceSession) => boolean) =>
+    sessions.splice(0, sessions.length, ...sessions.filter(keep));
   vi.stubGlobal(
     'fetch',
-    vi.fn(async (input: RequestInfo | URL) => {
+    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
-      if (url.endsWith('/hosts/local/devices')) {
+      // Route on the PATH: a Project's requests carry `?projectSlug=`.
+      const path = new URL(url).pathname;
+      const method = (init?.method ?? 'GET').toUpperCase();
+      const body = init?.body ? JSON.parse(String(init.body)) : undefined;
+      log.requests.push({ method, url, body });
+      if (path.endsWith('/api/mobile-devices/hosts') && method === 'GET')
+        return json({
+          success: true,
+          data: {
+            hosts: plan.hosts ?? [
+              { hostId: 'local', label: 'This Station', kind: 'local' },
+            ],
+          },
+        });
+      const remote = /\/hosts\/(ssh-[0-9a-f]{12})\/devices$/.exec(path);
+      if (remote) {
+        log.inventoryReads += 1;
+        const data = plan.remoteInventory?.[remote[1]!];
+        return data
+          ? json({ success: true, data })
+          : json({ success: false }, 404);
+      }
+      if (/\/hosts\/ssh-[0-9a-f]{12}\/sessions$/.test(path) && method === 'GET')
+        return json({
+          success: true,
+          data: {
+            sessions: sessions.filter((session) =>
+              path.includes(`/hosts/${session.hostId}/`),
+            ),
+          },
+        });
+      if (path.endsWith('/hosts/local/devices')) {
         log.inventoryReads += 1;
         if (plan.inventoryThrows) throw plan.inventoryThrows;
         if (plan.inventoryStatus && plan.inventoryStatus >= 400)
-          return new Response('{}', { status: plan.inventoryStatus });
-        const body =
+          return json({}, plan.inventoryStatus);
+        const data =
           typeof plan.inventory === 'function'
             ? plan.inventory()
             : (plan.inventory ?? readyInventory());
-        return new Response(JSON.stringify({ success: true, data: body }), {
-          headers: { 'Content-Type': 'application/json' },
+        return json({ success: true, data });
+      }
+      if (
+        path.endsWith('/sessions') &&
+        method === 'GET' &&
+        (plan.sessionsStatus?.() ?? 200) >= 400
+      )
+        return json(
+          { success: false, code: 'hub-unavailable' },
+          plan.sessionsStatus?.(),
+        );
+      if (path.endsWith('/hosts/local/sessions') && method === 'GET')
+        return json({
+          success: true,
+          data: {
+            sessions: sessions.filter((session) => session.hostId === 'local'),
+          },
+        });
+      if (plan.tools && /\/devices\/(ios|android)\/[^/]+\/tools/.test(path)) {
+        const answer = plan.tools({
+          method,
+          path,
+          search: new URL(url).searchParams,
+          body,
+        });
+        if (answer) return json(answer.body, answer.status ?? 200);
+      }
+      const device = DEVICE_ACTION.exec(path);
+      if (device && method === 'POST') {
+        const hostId = device[1]!;
+        const platform = device[2] as 'ios' | 'android';
+        const deviceId = decodeURIComponent(device[3]!);
+        const action = device[4];
+        if (action === 'start') {
+          const answer = plan.start
+            ? await plan.start()
+            : { deviceId: 'emulator-5554', state: 'running' as const };
+          if ('status' in answer)
+            return json({ success: false }, answer.status);
+          return json(
+            { success: true, data: answer },
+            answer.state === 'starting' ? 202 : 200,
+          );
+        }
+        if (action === 'sessions') {
+          const answer = plan.open
+            ? await plan.open({ platform, deviceId })
+            : sessionFor({
+                hostId,
+                platform,
+                deviceId,
+                name: platform === 'ios' ? 'iPhone 17 Pro' : 'station-test',
+                runtime: platform === 'ios' ? 'iOS 26.5' : 'Android 16',
+              });
+          if ('status' in answer)
+            return json({ success: false, code: answer.code }, answer.status);
+          sessions.push(answer);
+          return json({ success: true, data: answer });
+        }
+        if (action === 'power-off') {
+          remove((session) => session.deviceId !== deviceId);
+          return json({ success: true, data: { poweredOff: true } });
+        }
+      }
+      const closed = new RegExp(`/hosts/${HOST}/sessions/([0-9a-f-]+)$`).exec(
+        path,
+      );
+      if (closed && method === 'DELETE') {
+        remove((session) => session.sessionId !== closed[2]);
+        return json({ success: true, data: { closed: true } });
+      }
+      if (path.includes('/api/live-surfaces/') && path.endsWith('/frames')) {
+        if (plan.framesStatus)
+          return json({ success: false }, plan.framesStatus);
+        let controller!: ReadableStreamDefaultController<Uint8Array>;
+        const stream = new ReadableStream<Uint8Array>({
+          start(c) {
+            controller = c;
+          },
+        });
+        init?.signal?.addEventListener('abort', () => {
+          try {
+            controller.error(new DOMException('aborted', 'AbortError'));
+          } catch {}
+        });
+        log.streams.push({
+          url,
+          push: async (record) => {
+            await act(async () => {
+              controller.enqueue(encodeLiveSurfaceRecord(record));
+              await new Promise((resolve) => setTimeout(resolve, 0));
+            });
+          },
+        });
+        return new Response(stream, { status: 200 });
+      }
+      if (path.includes('/api/live-surfaces/') && path.endsWith('/input')) {
+        log.inputs.push(body);
+        const surfaceId = decodeURIComponent(path.split('/').at(-2)!);
+        return json({
+          success: true,
+          data: {
+            ok: true,
+            accepted: body.events.length,
+            lease: {
+              surfaceId,
+              epoch: 1,
+              holder: { kind: 'human', principal: 'me', device: 'd' },
+              expiresAt: 9e12,
+            },
+          },
         });
       }
-      if (url.endsWith('/capture')) {
-        log.captureRequests.push(url);
-        const answers = plan.captures ?? [captureBody()];
-        const answer =
-          answers[Math.min(captureIndex, answers.length - 1)] ?? captureBody();
-        captureIndex += 1;
-        if ('status' in answer)
-          return new Response('{}', { status: answer.status });
-        return new Response(JSON.stringify({ success: true, data: answer }), {
-          headers: { 'Content-Type': 'application/json' },
-        });
-      }
-      throw new Error(`Unexpected request ${url}`);
+      throw new Error(`Unexpected request ${method} ${url}`);
     }),
   );
   return log;
+}
+
+/** A state record for `surfaceId`, with the producer status given. */
+export function stateRecord(
+  surfaceId: string,
+  status: LiveSurfaceProducerStatus = {},
+): LiveSurfaceRecord {
+  return {
+    kind: 'state',
+    state: {
+      surfaceId,
+      lease: { surfaceId, epoch: 0, holder: null, expiresAt: null, fence: 0 },
+      effectiveParams: {
+        maxFps: 15,
+        quality: 70,
+        maxWidth: 1600,
+        maxHeight: 1600,
+      },
+      viewer: { principal: 'me', device: 'd' },
+      wedged: false,
+      wedgedSince: null,
+      ...status,
+    },
+  };
+}
+
+export function frameRecord(
+  surfaceId: string,
+  seq = 1,
+  size = { width: 390, height: 844 },
+): LiveSurfaceRecord {
+  return {
+    kind: 'frame',
+    header: {
+      surfaceId,
+      seq,
+      epoch: 0,
+      codec: 'jpeg',
+      ...size,
+      deviceScaleFactor: 1,
+      capturedAt: 1,
+    },
+    body: new Uint8Array([seq]),
+  };
 }
 
 export function authorizeScope(scope = SCOPE) {
@@ -203,11 +404,7 @@ export function authorizeScope(scope = SCOPE) {
   }));
 }
 
-/**
- * A click, awaited to the next flush. `fireEvent` rather than `user-event`:
- * this repository does not ship that package, and every interaction here is
- * an ordinary click on an enabled control.
- */
+/** A click, awaited to the next flush (the repository ships no user-event). */
 export async function click(element: Element) {
   fireEvent.click(element);
   await act(async () => {
@@ -217,17 +414,14 @@ export async function click(element: Element) {
 
 export function renderInQueryClient(element: ReactElement) {
   const client = new QueryClient({
-    // `retryDelay: 0` as well as `retry: false`: `useApiQuery` passes an
-    // explicit `retry: undefined`, which wins over the client default, so a
-    // refused read still runs React Query's three retries — just instantly.
-    defaultOptions: { queries: { retry: false, retryDelay: 0 } },
+    defaultOptions: {
+      queries: { retry: false, retryDelay: 0 },
+      mutations: { retry: false },
+    },
   });
   const utils = render(
     <QueryClientProvider client={client}>{element}</QueryClientProvider>,
   );
-  // RTL's own `rerender` replaces the ROOT, which would drop the provider and
-  // throw "No QueryClient set". This one keeps the same client, which is what
-  // a re-render under a changed authority actually looks like.
   const rerenderWrapped = (next: ReactElement) =>
     utils.rerender(
       <QueryClientProvider client={client}>{next}</QueryClientProvider>,
