@@ -949,7 +949,16 @@ export class NativeStationProfileStorage
           profiles
             .filter((candidate) => candidate.relayRoute === undefined)
             .map(profileConnectionId)[0];
-        if (fallback) {
+        const next = profiles.find(
+          (candidate) => profileConnectionId(candidate) === fallback,
+        );
+        // The host authorizes only a configured Station with a credential;
+        // any other is selected as-is, as the rest of the app treats it.
+        if (
+          fallback &&
+          next?.configurationState === 'configured' &&
+          next.credentialRef
+        ) {
           try {
             await this.authorizeActiveConnection(fallback);
           } catch (error) {
@@ -957,6 +966,8 @@ export class NativeStationProfileStorage
               `switching to the next Station failed (${message(error)})`,
             );
           }
+        } else if (fallback) {
+          this.values.set(ACTIVE_KEY, fallback);
         }
       }
       if (failures.length > 0)

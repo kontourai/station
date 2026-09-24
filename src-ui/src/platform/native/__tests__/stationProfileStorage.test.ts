@@ -117,6 +117,8 @@ function storageWithKeyring(
     clientSelectionStorage?: StorageAdapter;
     failProfileWrite?: boolean;
     failProfileWriteOnce?: boolean;
+    /** Authorize only what the host would: a configured Station with a credential. */
+    hostRules?: boolean;
     failOldReferenceDelete?: boolean;
     conflictOnceBeforeWrite?: (
       store: StationProfileStore,
@@ -146,6 +148,14 @@ function storageWithKeyring(
       calls.push(command);
       if (command === 'station_profile_store_read') return store as T;
       if (command === 'station_profile_authorize_active') {
+        const target = store.profiles.find(
+          (profile) => profile.name === args?.profileName,
+        );
+        if (
+          options.hostRules &&
+          (target?.configurationState !== 'configured' || !target.credentialRef)
+        )
+          throw new Error('not a configured host-observed credential');
         activeProfileName = args?.profileName as string;
         return {
           bindingId: '11111111-1111-4111-8111-111111111111',
@@ -1567,14 +1577,32 @@ describe('NativeStationProfileStorage', () => {
   describe('forgetting a saved Station (#2525)', () => {
     const KONTOUR = 'station-profile:kontour';
     const HOSTED = 'station-profile:station.kontourai.io';
+    // Both Stations configured, as a store the host has observed would be,
+    // and the fake held to the host's authorization rule.
+    const forgetStore = () => {
+      const store = structuredClone(
+        PROFILE_STORE,
+      ) as unknown as StationProfileStore;
+      store.profiles[1] = {
+        ...store.profiles[1],
+        configurationState: 'configured',
+        environmentId: 'environment-hosted',
+      };
+      return store;
+    };
+    const keyring = (options: Parameters<typeof storageWithKeyring>[0] = {}) =>
+      storageWithKeyring({
+        hostRules: true,
+        ...options,
+        initialStore: options.initialStore ?? forgetStore(),
+      });
     const expectedFor = (index: number) => ({
       name: PROFILE_STORE.profiles[index].name,
       url: PROFILE_STORE.profiles[index].endpoint,
     });
 
     it('removes a Station that is not active, then deletes its now-unused credential', async () => {
-      const { storage, currentStore, credentials, calls } =
-        storageWithKeyring();
+      const { storage, currentStore, credentials, calls } = keyring();
       credentials.set('station-bearer:hosted-token', 'hosted');
       await storage.hydrate();
       await storage.removeProfile({
@@ -1598,14 +1626,12 @@ describe('NativeStationProfileStorage', () => {
     });
 
     it('clears the CLI default and project mappings that named it', async () => {
-      const initial = structuredClone(
-        PROFILE_STORE,
-      ) as unknown as StationProfileStore;
+      const initial = forgetStore();
       initial.projectProfiles = {
         '/project': 'kontour',
         '/other': 'station.kontourai.io',
       };
-      const { storage, currentStore, credentials } = storageWithKeyring({
+      const { storage, currentStore, credentials } = keyring({
         initialStore: initial,
       });
       await storage.hydrate();
@@ -1621,12 +1647,10 @@ describe('NativeStationProfileStorage', () => {
     });
 
     it('forgets the active Station like any other, then switches to the default', async () => {
-      const initial = structuredClone(
-        PROFILE_STORE,
-      ) as unknown as StationProfileStore;
+      const initial = forgetStore();
       initial.defaultProfile = 'station.kontourai.io';
       const { storage, currentStore, credentials, calls, activeProfile } =
-        storageWithKeyring({ initialStore: initial });
+        keyring({ initialStore: initial });
       await storage.hydrate();
       await storage.authorizeActiveConnection(KONTOUR, true);
       expect(activeProfile()).toBe('kontour');
@@ -1650,7 +1674,7 @@ describe('NativeStationProfileStorage', () => {
     });
 
     it('selects the next Station for this session when the forgotten one was also the default', async () => {
-      const { storage, currentStore, activeProfile } = storageWithKeyring();
+      const { storage, currentStore, activeProfile } = keyring();
       await storage.hydrate();
       await storage.authorizeActiveConnection(KONTOUR, true);
       await storage.removeProfile({
@@ -1663,8 +1687,9 @@ describe('NativeStationProfileStorage', () => {
     });
 
     it('changes nothing when the write fails, so forgetting again finishes the job', async () => {
-      const { storage, currentStore, credentials, activeProfile } =
-        storageWithKeyring({ failProfileWriteOnce: true });
+      const { storage, currentStore, credentials, activeProfile } = keyring({
+        failProfileWriteOnce: true,
+      });
       await storage.hydrate();
       await storage.authorizeActiveConnection(KONTOUR, true);
       await expect(
@@ -1687,9 +1712,7 @@ describe('NativeStationProfileStorage', () => {
     });
 
     it('keeps a credential another saved Station still uses', async () => {
-      const initial = structuredClone(
-        PROFILE_STORE,
-      ) as unknown as StationProfileStore;
+      const initial = forgetStore();
       initial.profiles = [
         ...initial.profiles,
         {
@@ -1698,7 +1721,7 @@ describe('NativeStationProfileStorage', () => {
           setupSource: 'manual',
         },
       ];
-      const { storage, currentStore, credentials, calls } = storageWithKeyring({
+      const { storage, currentStore, credentials, calls } = keyring({
         initialStore: initial,
       });
       await storage.hydrate();
@@ -1717,9 +1740,7 @@ describe('NativeStationProfileStorage', () => {
     });
 
     it('forgets a Station that is not active without touching a credential it shares', async () => {
-      const initial = structuredClone(
-        PROFILE_STORE,
-      ) as unknown as StationProfileStore;
+      const initial = forgetStore();
       initial.profiles = [
         ...initial.profiles,
         {
@@ -1728,7 +1749,7 @@ describe('NativeStationProfileStorage', () => {
           setupSource: 'manual',
         },
       ];
-      const { storage, currentStore, credentials, calls } = storageWithKeyring({
+      const { storage, currentStore, credentials, calls } = keyring({
         initialStore: initial,
       });
       await storage.hydrate();
@@ -1748,9 +1769,7 @@ describe('NativeStationProfileStorage', () => {
     });
 
     it('refuses a Station that changed since the user confirmed, and the bundled local Station', async () => {
-      const initial = structuredClone(
-        PROFILE_STORE,
-      ) as unknown as StationProfileStore;
+      const initial = forgetStore();
       initial.profiles[0] = {
         ...initial.profiles[0],
         localService: {
@@ -1760,7 +1779,7 @@ describe('NativeStationProfileStorage', () => {
           uiPort: 3000,
         },
       };
-      const { storage, currentStore, credentials, calls } = storageWithKeyring({
+      const { storage, currentStore, credentials, calls } = keyring({
         initialStore: initial,
       });
       await storage.hydrate();
@@ -1783,6 +1802,41 @@ describe('NativeStationProfileStorage', () => {
       expect(currentStore().profiles).toHaveLength(2);
       expect(currentStore().revision).toBe(0);
       expect(credentials.get('station-bearer:kontour-token')).toBe('old-token');
+    });
+
+    it('selects a fallback the host cannot authorize without calling it a failure', async () => {
+      // The original fixture: the other Station still needs sign-in.
+      const { storage, activeProfile } = storageWithKeyring({
+        hostRules: true,
+      });
+      await storage.hydrate();
+      await storage.authorizeActiveConnection(KONTOUR, true);
+      await storage.removeProfile({
+        connectionId: KONTOUR,
+        expected: expectedFor(0),
+      });
+      expect(storage.get('station-connect-connections-active')).toBe(HOSTED);
+      expect(activeProfile()).toBeUndefined();
+    });
+
+    it('keeps the fallback to this session and still switches when the credential delete fails', async () => {
+      const selection = memoryStorage();
+      const { storage, activeProfile } = keyring({
+        clientSelectionStorage: selection,
+        failOldReferenceDelete: true,
+      });
+      await storage.hydrate();
+      await storage.authorizeActiveConnection(KONTOUR, true);
+      await expect(
+        storage.removeProfile({
+          connectionId: KONTOUR,
+          expected: expectedFor(0),
+        }),
+      ).rejects.toThrow(
+        'Station forgotten, but its saved credential could not be deleted (keyring delete denied).',
+      );
+      expect(activeProfile()).toBe('station.kontourai.io');
+      expect(selection.get('station-native-profile-selection-v1')).toBeNull();
     });
   });
 

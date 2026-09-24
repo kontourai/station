@@ -671,7 +671,7 @@ describe('Connection Manager forgets a shared saved Station', () => {
     );
     expect(
       await screen.findByText(
-        'Could not forget Remote Station: This Station cannot be forgotten here.',
+        'Remote Station: This Station cannot be forgotten here.',
       ),
     ).toBeTruthy();
   });
