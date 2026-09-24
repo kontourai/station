@@ -618,50 +618,45 @@ layer the same way and consumes its entry; "Hide <pane>" for the layer's own
 pane is the way back to Chat rather than a hide of Chat's region. A
 chat-focus intent (`focusSession`, `openChatForAgent`, opening a
 conversation) dismisses the layer through `useDismissPhoneLayer`. When the
-fold opens (a narrow window widened) the layer ends in place
-(`endPhonePaneLayerInPlace`): its pane stays where it is — visible, selected
-and mounted as an ordinary tab of Chat's region — and only its maximize is
-undone. That live arrangement is exactly what is saved, so a reload finds
-the pane as a tab there too. A pane the layer had moved out of another
-region is NOT returned to it, live or in the record: moving it would remount
-it (dropping an unguarded draft) and hide what the user was reading, and the
-user can move it. Every exit leaves `lastDockMaximized` as the layer found
-it.
+fold opens (a narrow window widened) the layer ends
+(`endPhonePaneLayerInPlace`) and its maximize is undone. A pane the layer
+had moved out of another region goes back there — its origin region shown
+with it selected if the reader was looking at it — unless the pane's own
+unsaved-changes guard is registered: the move remounts the pane, so a dirty
+pane stays where it is, an ordinary tab of Chat's region, until the user
+moves it. Any other pane stays a tab of Chat's region. The live arrangement
+that results is exactly what is saved. Every exit leaves `lastDockMaximized`
+as the layer found it.
 
 Back, "‹ Chat" (`closePhoneLayer`), the folded menu's hide of the layer's
-own pane, and a chat-focus intent ask the unsaved-changes guards first
-(`navigationStore.runNavigationGuards`) — only while a layer is open; with
-no layer `closePhoneLayer` returns before asking, so a chat click never
-prompts about an unrelated form. The restore unmounts the pane, and a pull
-request review's typed comment is component state behind `useUnsavedGuard`.
-"‹ Chat" simply waits for the answer. Back has already left the layer's
-entry when it asks, so the layer is reinstated at once — shown, selected,
-maximized, under a fresh entry — and stays that way until the answer:
-Discard is the in-app restore, Cancel changes nothing, and a second Back
-while the prompt is up lands on the layer's own entry, so repeated
-Back→Cancel neither grows the history nor leaves the page. The entry is
-registered before the `?maximize` mirror writes (effect declaration order),
-so Back travels to the pre-layer URL and an in-app close travels back over
-the entry rather than collapsing it.
+own pane, and a chat-focus intent ask the unsaved-changes guards first —
+only while a layer is open, and only the layer pane's OWN guards: the region
+host provides each pane's surface id (`UnsavedGuardOwnerContext`),
+`useUnsavedGuard` registers with it, and
+`navigationStore.runNavigationGuards(…, { owner })` asks only guards of that
+owner. An unrelated dirty form elsewhere neither prompts nor decides whether
+the layer closes; route navigation still asks every guard. With no layer
+`closePhoneLayer` returns before asking. The restore unmounts the pane, and
+a pull request review's typed comment is component state behind
+`useUnsavedGuard`. "‹ Chat" simply waits for the answer. Back has already
+left the layer's entry when it asks, so the layer is reinstated at once —
+shown, selected, maximized, under a fresh entry pushed SYNCHRONOUSLY inside
+the popstate that asked, so even a second `history.back()` queued in the
+same tick lands on it — and stays that way until the answer: Discard is the
+in-app restore, Cancel changes nothing, and repeated Back→Cancel neither
+grows the history nor leaves the page. A layer's first entry is registered
+before the `?maximize` mirror writes (effect declaration order), so Back
+travels to the pre-layer URL and an in-app close travels back over the entry
+rather than collapsing it.
 
-Known limitations, disclosed rather than designed here:
-
-- **Guards are app-wide.** The guards asked are the navigation store's whole
-  registered set, not the layer pane's. An unrelated dirty form mounted
-  elsewhere (under the layer, in `main`) also asks when the layer closes,
-  and its answer decides whether the layer closes. Scoping guards to a
-  surface is design work (review M-a).
-- **A reload while layered keeps Chat maximized.** The layer's maximize is
-  Chat's region's, mirrored into the URL's `?maximize=true`, and a reload
-  has no layer to undo it: Chat comes back Full rather than at the size it
-  had before the layer. Telling a layer's maximize from the user's at load
-  would need the layer's state to survive the reload, which it deliberately
-  does not.
-- **Two Backs in the same tick can pass the layer.** While the
-  unsaved-changes prompt is up, the layer's entry is re-pushed from the
-  popstate that asked; two `history.back()` calls issued in the same tick
-  (script, not a person — presses 20–150 ms apart are fine) can travel past
-  that entry to the page before the layer before it is re-pushed.
+A reload with a layer open lands in the pre-layer dock state. The layer's
+maximize (and a dock open it adds) ride Chat's `?dock`/`?maximize` params,
+so the provider keeps Chat's pre-layer visibility, maximize and
+`lastDockMaximized` in the tab's session storage for the life of the layer
+(`station.phoneLayer.preLayerDock.v1`), keyed to the layer's history entry:
+a load on that entry seeds the arrangement from it and writes navigation
+back once; a load anywhere else discards it. Every ending of a layer removes
+it. The layer itself does not survive a reload.
 
 **Owner decision 2026-09-24 (#928 comment).** This supersedes #928's
 2026-09-03 phone decision in one respect: showing Activity (or any pane) on
