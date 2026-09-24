@@ -1,0 +1,158 @@
+/* #2459: the Agents pane's child-work row. Lazy: reachable only from the
+   AgentsWorkspacePane chunk. */
+
+.child-work-row {
+  padding-inline-start: calc(var(--child-work-level, 0) * var(--space-4));
+}
+
+.child-work-row + .child-work-row {
+  margin-top: 2px;
+}
+
+.child-work-row__main {
+  display: flex;
+  width: 100%;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+
+.child-work-row__main:disabled {
+  cursor: default;
+}
+
+.child-work-row__main:not(:disabled):hover {
+  background: var(--bg-tertiary);
+}
+
+.child-work-row__main:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: -2px;
+}
+
+.child-work-row__glyph {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  padding-top: 2px;
+  color: var(--text-secondary);
+}
+
+.child-work-row__text {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.child-work-row__title {
+  overflow: hidden;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.child-work-row__meta,
+.child-work-row__provenance {
+  overflow: hidden;
+  color: var(--text-tertiary);
+  font-size: var(--text-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.child-work-row__progress {
+  overflow: hidden;
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.child-work-row__chip {
+  flex-shrink: 0;
+  max-width: 45%;
+  padding: 1px 8px;
+  border-radius: var(--radius-pill);
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  font-size: var(--text-2xs);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-align: center;
+}
+
+.child-work-row__chip--running {
+  background: color-mix(in srgb, var(--accent-primary) 16%, transparent);
+  color: var(--accent-primary);
+}
+
+.child-work-row__chip--completed {
+  background: color-mix(in srgb, var(--success-text, #2e7d32) 16%, transparent);
+  color: var(--success-text, #2e7d32);
+}
+
+.child-work-row__chip--failed {
+  background: color-mix(in srgb, var(--error-text, #c62828) 16%, transparent);
+  color: var(--error-text, #c62828);
+}
+
+/* Unresolved and unconfirmed-stop are observations of an ABSENCE: dashed,
+   so neither reads as the solid outcome chips above. */
+.child-work-row__chip--unresolved,
+.child-work-row__chip--stopped-unconfirmed {
+  border: 1px dashed var(--border-secondary);
+  background: transparent;
+}
+
+.child-work-row__chevron {
+  flex-shrink: 0;
+  color: var(--text-tertiary);
+  font-size: var(--text-xs);
+}
+
+.child-work-row__detail {
+  margin: 0 var(--space-3) var(--space-2);
+  padding: var(--space-2);
+  overflow-wrap: anywhere;
+  border-radius: var(--radius-sm);
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+}
+
+.child-work-row__summary {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.child-work-row__note,
+.child-work-row__usage {
+  margin: var(--space-1) 0 0;
+  color: var(--text-tertiary);
+  font-size: var(--text-2xs);
+}
+
+.child-work-row__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0 var(--space-3) var(--space-2) 34px;
+}
+
+.child-work-row__error {
+  width: 100%;
+  color: var(--error-text, #c62828);
+  font-size: var(--text-2xs);
+}

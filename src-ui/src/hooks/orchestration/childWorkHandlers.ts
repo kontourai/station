@@ -97,12 +97,21 @@ function hasResult(item: ChildWorkItem | undefined): boolean {
   return Boolean(item?.result?.summary || item?.result?.handle);
 }
 
+/**
+ * #2459: only `completed` is "finished". `unresolved` (no outcome observed)
+ * and `stopped-unconfirmed` (a stop nobody confirmed) used to fall through to
+ * "finished" and so announced an outcome Station never saw.
+ */
+const SETTLE_HEADING: Record<ChildWorkTerminalStatus, string> = {
+  completed: 'Background task finished',
+  failed: 'Background task failed',
+  cancelled: '⏹ Background task stopped',
+  'stopped-unconfirmed': 'Background task stop requested — not confirmed',
+  unresolved: 'Background task ended — outcome unknown',
+};
+
 function settleHeading(status: ChildWorkTerminalStatus): string {
-  return status === 'failed'
-    ? 'Background task failed'
-    : status === 'cancelled'
-      ? '⏹ Background task stopped'
-      : 'Background task finished';
+  return SETTLE_HEADING[status];
 }
 
 /**

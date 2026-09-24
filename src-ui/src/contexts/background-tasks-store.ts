@@ -46,6 +46,11 @@ export type BackgroundTaskState =
    * outcome.
    */
   | 'unresolved'
+  /**
+   * #2459: a stop was requested and the engine never confirmed it. Not
+   * `stopped` — that would claim the stop took effect.
+   */
+  | 'stopped-unconfirmed'
   | 'failed';
 
 export interface BackgroundTaskEntry {
@@ -112,8 +117,8 @@ const CHILD_WORK_CARD_STATE: Record<ChildWorkStatus, BackgroundTaskState> = {
   completed: 'completed',
   failed: 'failed',
   cancelled: 'stopped',
-  // A stop nobody confirmed still reads as the stop the user asked for.
-  'stopped-unconfirmed': 'stopped',
+  // #2459: a stop nobody confirmed is not a stop that happened.
+  'stopped-unconfirmed': 'stopped-unconfirmed',
   unresolved: 'unresolved',
 };
 

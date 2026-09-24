@@ -44,6 +44,8 @@ const OUTCOME_LABEL: Partial<Record<BackgroundTaskState, string>> = {
   // station#1558: not "Stopped" and not "Failed" — the session ended before
   // any result arrived, and whether the tool ran is unknown.
   unresolved: 'No result',
+  // #2459: never "Stopped" — nothing confirmed the stop took effect.
+  'stopped-unconfirmed': 'Stop requested — not confirmed',
   failed: 'Failed',
 };
 
