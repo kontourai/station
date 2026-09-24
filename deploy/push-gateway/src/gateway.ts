@@ -7,6 +7,11 @@ import {
   verifyChannelAuth,
 } from './apns-channel-auth.ts';
 import {
+  forgetChannel,
+  type LedgerStore,
+  recordChannel,
+} from './apns-ledger.ts';
+import {
   buildLiveActivityPayload,
   parseChannelRequest,
   parseLiveActivityRequest,
@@ -28,6 +33,8 @@ export interface ApnsGatewayConfig {
   credentials: ApnsCredentials;
   allowedBundles: readonly string[];
   channelAuth: ChannelAuthSecrets;
+  /** Every channel the gateway created; the sweep deletes the rest. */
+  ledger: LedgerStore;
   /**
    * Every start creates a channel, which spends a finite per-app Apple quota
    * that never refills by itself, so starts have their own ceilings, narrowest
@@ -112,6 +119,44 @@ async function withinLimits(
 
 const hashKey = (value: string) => bodyHash(new TextEncoder().encode(value));
 
+/** The Worker's execution context: work that must outlive the response. */
+export interface ExecutionContextLike {
+  waitUntil(work: Promise<unknown>): void;
+}
+
+/**
+ * The rate-limit key for a client address. One IPv6 subscriber usually holds
+ * a whole /64, so keying on the full address would let a single client rotate
+ * through unlimited budgets; IPv4 addresses are used as they are.
+ */
+export function addressBucket(address: string): string {
+  if (!address.includes(':')) return address;
+  const [head, tail] = address.toLowerCase().split('::', 2) as [
+    string,
+    string | undefined,
+  ];
+  const groups = (part: string) =>
+    part === ''
+      ? []
+      : part
+          .split(':')
+          // An embedded IPv4 suffix (::ffff:1.2.3.4) stands for two groups.
+          .flatMap((group) => (group.includes('.') ? ['0', '0'] : [group]));
+  const left = groups(head);
+  const right = tail === undefined ? [] : groups(tail);
+  const zeros =
+    tail === undefined
+      ? []
+      : Array(Math.max(0, 8 - left.length - right.length)).fill('0');
+  const full = [...left, ...zeros, ...right];
+  const prefix = full.slice(0, 4).map((group) => group.replace(/^0+(?=.)/, ''));
+  return `${prefix.join(':')}::/64`;
+}
+
+// The channel id shape Apple issues (verified 2026-09-24), for sizing a start
+// before its channel exists.
+const PLACEHOLDER_CHANNEL_ID = `${'A'.repeat(22)}==`;
+
 const FCM_ROUTE = '/v1/fcm/send';
 const LIVE_ACTIVITY_ROUTE = '/v1/apns/live-activity';
 const CHANNELS_ROUTE = '/v1/apns/channels';
@@ -155,6 +200,7 @@ async function readBounded(
 export async function handleRequest(
   request: Request,
   config: GatewayConfig,
+  ctx?: ExecutionContextLike,
 ): Promise<Response> {
   const url = new URL(request.url);
   if (url.pathname === '/health' && request.method === 'GET')
@@ -167,7 +213,9 @@ export async function handleRequest(
   if (!configured)
     return json(503, { error: 'push delivery is not configured' });
 
-  const clientIp = request.headers.get('cf-connecting-ip') ?? 'unknown';
+  const clientIp = addressBucket(
+    request.headers.get('cf-connecting-ip') ?? 'unknown',
+  );
   if (!(await config.perIpLimiter.limit({ key: clientIp })).success) {
     return json(429, { error: 'rate limited' });
   }
@@ -195,6 +243,8 @@ export async function handleRequest(
     stationKey: auth.keyThumbprint,
     clientIp,
     nowSeconds,
+    // Without a Worker context (tests, other hosts) deferred work is awaited.
+    defer: ctx ? (work) => ctx.waitUntil(work) : undefined,
   };
   if (route !== FCM_ROUTE) {
     if (!apns) return json(503, { error: 'push delivery is not configured' });
@@ -239,6 +289,7 @@ interface Signed {
   stationKey: string;
   clientIp: string;
   nowSeconds: number;
+  defer?: (work: Promise<unknown>) => void;
 }
 
 async function liveActivity(
@@ -271,9 +322,40 @@ async function liveActivity(
       ]))
     )
       return RATE_LIMITED();
-    const outcome = await sender.start(request, (channelId) =>
-      payloadBytes(buildLiveActivityPayload(request, stationKey, channelId)),
+    // Refuse an oversized start before it spends a channel.
+    if (
+      !payloadBytes(
+        buildLiveActivityPayload(request, stationKey, PLACEHOLDER_CHANNEL_ID),
+      )
+    )
+      return json(422, { result: 'rejected' });
+    const pending: Promise<unknown>[] = [];
+    const channelOf = (channelId: string) => ({
+      bundleId: request.bundleId,
+      environment: request.environment,
+      channelId,
+    });
+    const outcome = await sender.start(
+      request,
+      (channelId) =>
+        payloadBytes(buildLiveActivityPayload(request, stationKey, channelId)),
+      {
+        record: (channelId) =>
+          recordChannel(
+            apns.ledger,
+            channelOf(channelId),
+            stationKey,
+            signed.nowSeconds,
+          ),
+        forget: (channelId) => forgetChannel(apns.ledger, channelOf(channelId)),
+        defer: (work) => {
+          const settled = work.catch(() => {});
+          if (signed.defer) signed.defer(settled);
+          else pending.push(settled);
+        },
+      },
     );
+    await Promise.all(pending);
     if (outcome.kind !== 'started') return apnsResponse(outcome);
     const channelAuth = await signChannelAuth(apns.channelAuth, {
       bundleId: request.bundleId,
@@ -336,6 +418,7 @@ async function channels(
     request.environment,
     request.channelId,
   );
+  if (outcome.kind === 'deleted') await forgetChannel(apns.ledger, request);
   return apnsResponse(outcome, proof);
 }
 

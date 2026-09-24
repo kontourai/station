@@ -128,24 +128,60 @@ APNs team and key ids (`APNS_TEAM_ID`, `APNS_KEY_ID`), and the rate limits.
 
 | Limit | Keyed on | Applies to |
 | --- | --- | --- |
-| `PER_IP_LIMITER` | client address | every route, before any work |
+| `PER_IP_LIMITER` | client address (IPv6: its /64) | every route, before any work |
 | `PER_TOKEN_LIMITER` | hash of the FCM token or broadcast channel | FCM sends, updates, ends |
 | `PER_KEY_LIMITER` | Station key thumbprint | FCM sends, updates, ends |
 | `GLOBAL_LIMITER` | one bucket | FCM sends, updates, ends |
-| `CHANNEL_PER_IP_LIMITER` | client address | starts (each creates a channel) |
+| `CHANNEL_PER_IP_LIMITER` | client address (IPv6: its /64) | starts (each creates a channel) |
 | `CHANNEL_PER_DEVICE_LIMITER` | hash of the push-to-start token | starts |
 | `CHANNEL_PER_KEY_LIMITER` | Station key thumbprint | starts |
-| `CHANNEL_GLOBAL_LIMITER` | one bucket | starts |
+| `CHANNEL_GLOBAL_LIMITER` | one bucket, 10/min | starts |
 | `CHANNEL_DELETE_LIMITER` | Station key thumbprint | channel deletes |
 
 Rows are listed in the order each route checks them. Workers rate-limit
 bindings only offer 10 s and 60 s periods, so every ceiling is per minute; a
-per-day device ceiling would need storage the gateway does not have.
+per-day device ceiling would need storage the gateway does not have. An IPv6
+subscriber usually holds a whole /64, so IPv6 addresses are limited per /64
+prefix; IPv4 addresses as they are.
 
 APNs ships dark: until both the `APNS_AUTH_KEY` and `APNS_CHANNEL_AUTH_SECRET`
-secrets are set (and the ids, bundle list and channel limiters are present),
-both `/v1/apns` routes answer 503 without doing any work, and the FCM route is
-unaffected.
+secrets are set and the `CHANNEL_LEDGER` KV namespace is bound (and the ids,
+bundle list and channel limiters are present), both `/v1/apns` routes answer
+503 without doing any work, the channel sweep does nothing, and the FCM route
+is unaffected.
+
+To turn APNs on, beyond the two secrets:
+
+```sh
+npx --yes wrangler@4 kv namespace create CHANNEL_LEDGER
+# then uncomment "kv_namespaces" in wrangler.jsonc with the printed id
+```
+
+The cron trigger (`*/15 * * * *`) is always deployed; the sweep it runs is a
+no-op while APNs is dark.
+
+### Channel ledger and sweep
+
+Apple lets an app hold a finite number of broadcast channels per environment
+and never expires them, so a channel nobody deletes is quota lost for good.
+Every channel the gateway creates is recorded in the `CHANNEL_LEDGER` KV
+namespace the moment Apple creates it (`ch:<environment>:<bundle>:<channel>` →
+`{ createdAt, bundleId, environment, stationKeyHash }`), for 12 hours: an
+activity lasts at most eight hours and stays dismissible for four more. A start
+whose channel cannot be recorded does not go ahead and gives the channel back.
+A successful delete, explicit or compensating, removes the entry. The
+compensating delete after a refused start runs through `ctx.waitUntil`, so a
+caller that disconnects cannot cancel it.
+
+Every 15 minutes the sweep lists each allowed bundle's channels in both
+environments (`GET /1/apps/<bundle>/all-channels`) and deletes the ones the
+ledger does not record. KV is eventually consistent, so a channel is only
+marked the first time it is found unrecorded and deleted if the next run still
+finds it unrecorded; an unreadable ledger aborts the run rather than looking
+empty. A run deletes at most 200 channels and logs its counts
+(`apns channel sweep: {...}`). So every leak (a Station that never deletes, a
+failed compensating delete, a crash between create and record) heals within
+about 13 hours.
 
 ## Credentials
 
@@ -206,9 +242,16 @@ token and APNs never sees more than one new token per window (it answers 429
 Apple limits how many broadcast channels an app may hold per environment
 (about 10,000; not yet verified live), channels do not expire, and anyone can
 mint a Station key, so channel creation is the resource worth defending. It
-happens only inside a start, which must name a real push-to-start token, and
-the start limits (per address, per device, per key, global) bound the rate. A
-refused start gives its channel back at once.
+happens only inside a start, which must name a real push-to-start token; the
+start limits (per address, per device, per key, global) bound the rate, and
+the ledger sweep bounds the lifetime. At `CHANNEL_GLOBAL_LIMITER`'s 10 per
+minute, even a caller who never deletes can hold at most 7,200 channels (12
+hours of ledger) in an environment, under the quota.
+
+**Scaling.** When legitimate starts approach 10 per minute, either ask Apple
+for a larger channel quota and raise the global limit to stay under
+quota ÷ 720, or replace the per-minute ceilings with a daily per-device
+counter in a Durable Object. Do not raise the limit alone.
 
 If starts begin failing with 503 (the channel create is refused) or quota
 looks low:
@@ -225,6 +268,17 @@ looks low:
    `channel-gone` on its next update and starts a fresh activity.
 4. If it recurs, the durable fix is a longer-horizon per-device ceiling (a
    Durable Object or similar), not a larger quota.
+
+**After a bad secret deploy.** If `APNS_AUTH_KEY` is wrong or revoked, every
+Apple call answers 403: starts, pushes and deletes all fail with 503 and the
+reason is logged (`apns 403 (gateway fault)`). Channels created before the
+break, and any whose delete failed, are orphaned but still ledgered. Put the
+correct key and deploy; the next sweeps reclaim every orphan once its ledger
+entry expires, with no manual clean-up. If `APNS_CHANNEL_AUTH_SECRET` was
+changed by mistake, every update, end and delete answers 403
+`channel-unauthorized`; Stations then drop their activities and start fresh,
+and the sweep reclaims the abandoned channels the same way. Restore the old
+value as `APNS_CHANNEL_AUTH_SECRET_PREVIOUS` to avoid that churn.
 
 ## Logs
 

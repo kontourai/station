@@ -1,8 +1,11 @@
+import { ApnsSender } from './apns.ts';
 import { parseChannelAuthSecrets } from './apns-channel-auth.ts';
+import { type LedgerStore, sweepChannels } from './apns-ledger.ts';
 import { parseApnsCredentials } from './apns-token.ts';
 import { parseServiceAccount, type ServiceAccount } from './fcm.ts';
 import {
   type ApnsGatewayConfig,
+  type ExecutionContextLike,
   handleRequest,
   type RateLimiter,
 } from './gateway.ts';
@@ -33,6 +36,8 @@ export interface Env {
   CHANNEL_PER_KEY_LIMITER?: RateLimiter;
   CHANNEL_GLOBAL_LIMITER?: RateLimiter;
   CHANNEL_DELETE_LIMITER?: RateLimiter;
+  /** Workers KV: the ledger of channels this gateway created. */
+  CHANNEL_LEDGER?: LedgerStore;
 }
 
 // Parsed once per isolate: handleRequest keys its sender (and the cached
@@ -47,23 +52,40 @@ const list = (value: string) =>
     .filter(Boolean);
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(
+    request: Request,
+    env: Env,
+    ctx?: ExecutionContextLike,
+  ): Promise<Response> {
     if (!parsed || parsed.raw !== env.FCM_SERVICE_ACCOUNT) {
       parsed = {
         raw: env.FCM_SERVICE_ACCOUNT,
         account: parseServiceAccount(env.FCM_SERVICE_ACCOUNT),
       };
     }
-    return handleRequest(request, {
-      audiences: list(env.AUDIENCES),
-      allowedPackages: list(env.ALLOWED_PACKAGES),
-      serviceAccount: parsed.account,
-      perIpLimiter: env.PER_IP_LIMITER,
-      globalLimiter: env.GLOBAL_LIMITER,
-      perKeyLimiter: env.PER_KEY_LIMITER,
-      perTokenLimiter: env.PER_TOKEN_LIMITER,
-      apns: apnsConfig(env),
-    });
+    return handleRequest(
+      request,
+      {
+        audiences: list(env.AUDIENCES),
+        allowedPackages: list(env.ALLOWED_PACKAGES),
+        serviceAccount: parsed.account,
+        perIpLimiter: env.PER_IP_LIMITER,
+        globalLimiter: env.GLOBAL_LIMITER,
+        perKeyLimiter: env.PER_KEY_LIMITER,
+        perTokenLimiter: env.PER_TOKEN_LIMITER,
+        apns: apnsConfig(env),
+      },
+      ctx,
+    );
+  },
+
+  /** Cron: reclaim every channel Apple holds that the ledger does not. */
+  async scheduled(
+    _controller: unknown,
+    env: Env,
+    ctx: ExecutionContextLike,
+  ): Promise<void> {
+    ctx.waitUntil(sweep(env));
   },
 };
 
@@ -89,6 +111,7 @@ function apnsConfig(env: Env): ApnsGatewayConfig | null {
     CHANNEL_PER_KEY_LIMITER: channelPerKeyLimiter,
     CHANNEL_GLOBAL_LIMITER: channelGlobalLimiter,
     CHANNEL_DELETE_LIMITER: channelDeleteLimiter,
+    CHANNEL_LEDGER: ledger,
   } = env;
   if (
     !credentials ||
@@ -98,7 +121,8 @@ function apnsConfig(env: Env): ApnsGatewayConfig | null {
     !channelPerDeviceLimiter ||
     !channelPerKeyLimiter ||
     !channelGlobalLimiter ||
-    !channelDeleteLimiter
+    !channelDeleteLimiter ||
+    !ledger
   )
     return null;
   return {
@@ -110,5 +134,25 @@ function apnsConfig(env: Env): ApnsGatewayConfig | null {
     channelPerKeyLimiter,
     channelGlobalLimiter,
     channelDeleteLimiter,
+    ledger,
   };
+}
+
+/** Ships dark with the routes: no APNs configuration or ledger, no sweep. */
+export async function sweep(env: Env, fetchImpl?: typeof fetch): Promise<void> {
+  const apns = apnsConfig(env);
+  if (!apns) return;
+  try {
+    const report = await sweepChannels({
+      store: apns.ledger,
+      sender: new ApnsSender(apns.credentials, fetchImpl),
+      bundles: apns.allowedBundles,
+    });
+    console.error(`apns channel sweep: ${JSON.stringify(report)}`);
+  } catch (error) {
+    console.error(
+      'apns channel sweep aborted:',
+      error instanceof Error ? error.message : 'unknown error',
+    );
+  }
 }

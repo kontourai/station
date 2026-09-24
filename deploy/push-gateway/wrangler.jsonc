@@ -50,7 +50,9 @@
     {
       "name": "CHANNEL_GLOBAL_LIMITER",
       "namespace_id": "4105",
-      "simple": { "limit": 30, "period": 60 }
+      // 10/min is 7,200 channels per 12 h ledger window, under Apple's
+      // ~10,000 per environment even if nothing is ever deleted.
+      "simple": { "limit": 10, "period": 60 }
     },
     {
       "name": "CHANNEL_PER_KEY_LIMITER",
@@ -73,6 +75,13 @@
       "simple": { "limit": 10, "period": 60 }
     }
   ],
+  // The channel sweep (src/apns-ledger.ts): reclaims every broadcast channel
+  // Apple holds that the ledger does not record. A no-op while APNs is dark.
+  "triggers": { "crons": ["*/15 * * * *"] },
+  // The channel ledger, a Workers KV namespace. APNs stays dark (routes 503,
+  // sweep off) until it is bound. Create it once, then uncomment with its id:
+  //   npx --yes wrangler@4 kv namespace create CHANNEL_LEDGER
+  // "kv_namespaces": [{ "binding": "CHANNEL_LEDGER", "id": "<namespace id>" }],
   // Error lines only: invocation logs would record request headers, which
   // include the Station's signed authorization.
   "observability": { "enabled": true, "logs": { "invocation_logs": false } }

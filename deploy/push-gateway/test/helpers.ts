@@ -158,3 +158,42 @@ export function liveActivityBody(
 
 export const encodeBody = (value: unknown): Uint8Array<ArrayBuffer> =>
   new TextEncoder().encode(JSON.stringify(value));
+
+/**
+ * An in-memory Workers KV stand-in. `list` pages two keys at a time so
+ * callers must follow the cursor.
+ */
+export function fakeLedger() {
+  const entries = new Map<string, { value: string; ttl?: number }>();
+  const store = {
+    entries,
+    failPut: false,
+    failList: false,
+    async put(
+      key: string,
+      value: string,
+      options?: { expirationTtl?: number },
+    ) {
+      if (store.failPut) throw new Error('kv put failed');
+      entries.set(key, { value, ttl: options?.expirationTtl });
+    },
+    async delete(key: string) {
+      entries.delete(key);
+    },
+    async list({ prefix, cursor }: { prefix: string; cursor?: string }) {
+      if (store.failList) throw new Error('kv list failed');
+      const names = [...entries.keys()]
+        .filter((name) => name.startsWith(prefix))
+        .sort();
+      const start = cursor ? Number(cursor) : 0;
+      const page = names.slice(start, start + 2);
+      const done = start + 2 >= names.length;
+      return {
+        keys: page.map((name) => ({ name })),
+        list_complete: done,
+        ...(done ? {} : { cursor: String(start + 2) }),
+      };
+    },
+  };
+  return store;
+}

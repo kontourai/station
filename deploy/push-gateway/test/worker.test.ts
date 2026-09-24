@@ -6,6 +6,7 @@ import {
   allow,
   CHANNEL_AUTH_SECRET,
   fakeApnsKey,
+  fakeLedger,
   IOS_BUNDLE,
   KEY_ID,
   TEAM_ID,
@@ -29,6 +30,7 @@ async function fullEnv(): Promise<Env> {
     CHANNEL_PER_KEY_LIMITER: allow,
     CHANNEL_GLOBAL_LIMITER: allow,
     CHANNEL_DELETE_LIMITER: allow,
+    CHANNEL_LEDGER: fakeLedger(),
   };
 }
 
@@ -62,6 +64,7 @@ test('APNs ships dark when any setting is missing or unusable', async () => {
     ['CHANNEL_PER_KEY_LIMITER', undefined],
     ['CHANNEL_GLOBAL_LIMITER', undefined],
     ['CHANNEL_DELETE_LIMITER', undefined],
+    ['CHANNEL_LEDGER', undefined],
   ];
   for (const [name, value] of missing) {
     const env = { ...(await fullEnv()), [name]: value } as Env;

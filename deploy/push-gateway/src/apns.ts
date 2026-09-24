@@ -40,6 +40,16 @@ export type ApnsFailure =
   | { kind: 'unavailable'; status: number };
 
 export type ApnsOutcome = { kind: 'sent' } | { kind: 'deleted' } | ApnsFailure;
+
+/** What a start needs from its caller besides Apple. */
+export interface StartHooks {
+  /** Records a newly created channel; a throw abandons the start. */
+  record(channelId: string): Promise<void>;
+  /** Forgets a channel the start gave back. */
+  forget(channelId: string): Promise<void>;
+  /** Runs work past the response (the Worker's ctx.waitUntil). */
+  defer(work: Promise<unknown>): void;
+}
 type Failure = ApnsFailure;
 
 const pushHost = (environment: ApnsEnvironment) =>
@@ -82,12 +92,14 @@ export class ApnsSender {
   }
 
   /**
-   * Creates the activity's channel, then sends the push-to-start naming it.
-   * `bodyFor` builds the APNs body for the new channel (null: too large).
+   * Creates the activity's channel, records it in the ledger, then sends the
+   * push-to-start naming it. `bodyFor` builds the APNs body for the new
+   * channel (null: too large).
    */
   async start(
     request: LiveActivityRequest,
     bodyFor: (channelId: string) => Uint8Array<ArrayBuffer> | null,
+    hooks: StartHooks,
   ): Promise<{ kind: 'started'; channelId: string } | Failure> {
     const created = await this.createChannel(
       request.bundleId,
@@ -95,6 +107,21 @@ export class ApnsSender {
     );
     if (created.kind !== 'created') return created;
     const { channelId } = created;
+    const channel = {
+      bundleId: request.bundleId,
+      environment: request.environment,
+      channelId,
+    };
+
+    // An unrecorded channel would be swept from under a live activity, so a
+    // start whose channel cannot be recorded does not go ahead.
+    try {
+      await hooks.record(channelId);
+    } catch {
+      console.error('apns channel ledger write failed; start abandoned');
+      hooks.defer(this.giveBack(channel, hooks));
+      return { kind: 'unavailable', status: 503 };
+    }
 
     const body = bodyFor(channelId);
     const outcome = body
@@ -113,17 +140,72 @@ export class ApnsSender {
     // Nothing will ever listen on this channel: give the quota back. A start
     // that timed out may have been delivered; the Station starts afresh
     // either way, and the phone ends an older activity for the same
-    // registration when it launches.
+    // registration when it launches. Deferred past the response, so a caller
+    // that disconnects cannot cancel it; if it fails anyway, the sweep
+    // reclaims the channel once its ledger entry expires.
+    hooks.defer(this.giveBack(channel, hooks));
+    return outcome;
+  }
+
+  private async giveBack(
+    channel: {
+      bundleId: string;
+      environment: ApnsEnvironment;
+      channelId: string;
+    },
+    hooks: StartHooks,
+  ): Promise<void> {
     const deleted = await this.deleteChannel(
-      request.bundleId,
-      request.environment,
-      channelId,
+      channel.bundleId,
+      channel.environment,
+      channel.channelId,
     );
-    if (deleted.kind !== 'deleted')
+    if (deleted.kind === 'deleted') await hooks.forget(channel.channelId);
+    else
       console.error(
         `apns channel left behind after a refused start (${deleted.kind})`,
       );
-    return outcome;
+  }
+
+  /**
+   * The ids of every channel Apple holds for this app and environment, or
+   * null when they cannot be read. Response shape verified 2026-09-24 as
+   * {"channels":[...]}; the element shape and any paging are not.
+   */
+  async listChannels(
+    bundleId: string,
+    environment: ApnsEnvironment,
+  ): Promise<string[] | null> {
+    const response = await this.call(
+      `${manageHost(environment)}/1/apps/${bundleId}/all-channels`,
+      'GET',
+      {},
+    );
+    if (!response?.ok) {
+      const reason = response ? await reasonOf(response) : 'unreachable';
+      console.error(
+        `apns channel list failed for ${environment}:${bundleId}: ${response?.status ?? ''} ${reason ?? ''}`.trim(),
+      );
+      return null;
+    }
+    const body = (await response.json().catch(() => null)) as {
+      channels?: unknown;
+    } | null;
+    if (!Array.isArray(body?.channels)) return null;
+    const ids: string[] = [];
+    for (const entry of body.channels) {
+      const id =
+        typeof entry === 'string'
+          ? entry
+          : entry && typeof entry === 'object'
+            ? ((entry as Record<string, unknown>)['apns-channel-id'] ??
+              (entry as Record<string, unknown>).channelId ??
+              (entry as Record<string, unknown>)['channel-id'])
+            : undefined;
+      // An entry this code cannot read is left alone, never deleted.
+      if (isApnsChannelId(id)) ids.push(id);
+    }
+    return ids;
   }
 
   /** Update or end: a broadcast to the activity's channel. */
@@ -210,7 +292,7 @@ export class ApnsSender {
 
   private async call(
     url: string,
-    method: 'POST' | 'DELETE',
+    method: 'GET' | 'POST' | 'DELETE',
     headers: Record<string, string>,
     body?: Uint8Array<ArrayBuffer>,
   ): Promise<Response | null> {

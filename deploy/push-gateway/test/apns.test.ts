@@ -9,6 +9,8 @@ import { parseLiveActivityRequest } from '../src/apns-request.ts';
 import { resetProviderTokenCacheForTest } from '../src/apns-token.ts';
 import {
   type ApnsGatewayConfig,
+  addressBucket,
+  type ExecutionContextLike,
   type GatewayConfig,
   handleRequest,
   type RateLimiter,
@@ -21,6 +23,7 @@ import {
   CHANNEL_ID,
   encodeBody,
   fakeApnsKey,
+  fakeLedger,
   fakeServiceAccount,
   IOS_BUNDLE,
   liveActivityBody,
@@ -134,6 +137,7 @@ async function config(
       channelPerKeyLimiter: allow,
       channelGlobalLimiter: allow,
       channelDeleteLimiter: allow,
+      ledger: fakeLedger(),
       ...apns,
     },
     nowSeconds: () => NOW,
@@ -146,6 +150,7 @@ async function post(
   path: string,
   value: unknown,
   key: Key,
+  options: { ip?: string; ctx?: ExecutionContextLike } = {},
 ) {
   const body = encodeBody(value);
   return handleRequest(
@@ -153,11 +158,12 @@ async function post(
       method: 'POST',
       headers: {
         authorization: await signRequest(body, key),
-        'cf-connecting-ip': '203.0.113.7',
+        'cf-connecting-ip': options.ip ?? '203.0.113.7',
       },
       body,
     }),
     cfg,
+    options.ctx,
   );
 }
 
@@ -843,4 +849,137 @@ test('calls the global fetch unbound, as the Workers runtime requires', async ()
   } finally {
     globalThis.fetch = original;
   }
+});
+
+const ledgerOf = (cfg: GatewayConfig) =>
+  cfg.apns?.ledger as ReturnType<typeof fakeLedger>;
+const ledgerKey = (channelId: string, environment = 'sandbox') =>
+  `ch:${environment}:${IOS_BUNDLE}:${channelId}`;
+
+test('a created channel is recorded in the ledger for 12 hours', async () => {
+  const { fetchImpl } = upstream();
+  const cfg = await config({ fetchImpl });
+  const station = await stationKey();
+  assert.equal((await live(cfg, 'start', {}, station)).status, 200);
+  const entry = ledgerOf(cfg).entries.get(ledgerKey(NEW_CHANNEL));
+  assert.ok(entry, 'recorded under environment, bundle and channel');
+  assert.equal(entry.ttl, 12 * 60 * 60);
+  const value = JSON.parse(entry.value);
+  assert.equal(value.createdAt, NOW);
+  assert.equal(value.bundleId, IOS_BUNDLE);
+  assert.equal(value.environment, 'sandbox');
+  const thumbprint = await jwkThumbprint(station.publicJwk);
+  assert.match(value.stationKeyHash, /^[\w-]{43}$/);
+  assert.notEqual(value.stationKeyHash, thumbprint, 'the key is hashed');
+});
+
+test('a channel given back or deleted leaves the ledger', async () => {
+  const refused = upstream({
+    start: () => Response.json({ reason: 'BadDeviceToken' }, { status: 400 }),
+  });
+  const refusedCfg = await config({ fetchImpl: refused.fetchImpl });
+  assert.equal((await live(refusedCfg, 'start')).status, 410);
+  assert.equal(ledgerOf(refusedCfg).entries.size, 0);
+
+  const { fetchImpl } = upstream();
+  const cfg = await config({ fetchImpl });
+  await ledgerOf(cfg).put(ledgerKey(CHANNEL_ID), '{}');
+  assert.equal((await del(cfg)).status, 200);
+  assert.equal(ledgerOf(cfg).entries.has(ledgerKey(CHANNEL_ID)), false);
+
+  // A delete Apple refuses keeps the entry: the channel may still exist.
+  const failing = upstream({
+    delete: () => new Response(null, { status: 500 }),
+  });
+  const failingCfg = await config({ fetchImpl: failing.fetchImpl });
+  await ledgerOf(failingCfg).put(ledgerKey(CHANNEL_ID), '{}');
+  assert.equal((await del(failingCfg)).status, 503);
+  assert.equal(ledgerOf(failingCfg).entries.has(ledgerKey(CHANNEL_ID)), true);
+});
+
+test('a start whose channel cannot be recorded gives the channel back and pushes nothing', async () => {
+  const { apple, fetchImpl } = upstream();
+  const cfg = await config({ fetchImpl });
+  ledgerOf(cfg).failPut = true;
+  const response = await live(cfg, 'start');
+  assert.equal(response.status, 503);
+  assert.deepEqual(apple().map(kindOf), ['create', 'delete']);
+  assert.ok(errors.some((line) => line.includes('ledger write failed')));
+});
+
+test('the compensating delete runs through waitUntil, past the response', async () => {
+  let release: () => void = () => {};
+  const released = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const { apple, fetchImpl } = upstream({
+    start: () => Response.json({ reason: 'Unregistered' }, { status: 410 }),
+    delete: () => new Response(null, { status: 204 }),
+  });
+  // Apple's delete answers only once released: a response that waited for it
+  // would never arrive.
+  const gated = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    if (init?.method === 'DELETE') await released;
+    return fetchImpl(input, init);
+  }) as typeof fetch;
+  const cfg = await config({ fetchImpl: gated });
+  const deferred: Promise<unknown>[] = [];
+  const ctx = { waitUntil: (work: Promise<unknown>) => deferred.push(work) };
+  const station = await stationKey();
+
+  const response = await post(
+    cfg,
+    '/v1/apns/live-activity',
+    liveActivityBody(),
+    station,
+    { ctx },
+  );
+  assert.equal(response.status, 410);
+  assert.equal(deferred.length, 1, 'the delete was handed to waitUntil');
+  assert.ok(ledgerOf(cfg).entries.has(ledgerKey(NEW_CHANNEL)), 'not yet');
+
+  release();
+  await Promise.all(deferred);
+  assert.deepEqual(apple().map(kindOf), ['create', 'start', 'delete']);
+  assert.equal(ledgerOf(cfg).entries.size, 0);
+});
+
+test('client addresses are limited per IPv6 /64, IPv4 as they are', async () => {
+  assert.equal(addressBucket('203.0.113.7'), '203.0.113.7');
+  assert.equal(addressBucket('2001:db8:1:2:aaaa::1'), '2001:db8:1:2::/64');
+  assert.equal(
+    addressBucket('2001:0DB8:0001:0002:ffff:ffff:ffff:ffff'),
+    '2001:db8:1:2::/64',
+  );
+  assert.equal(addressBucket('2001:db8::1'), '2001:db8:0:0::/64');
+  assert.equal(addressBucket('::ffff:192.0.2.1'), '0:0:0:0::/64');
+  assert.equal(addressBucket('fe80::'), 'fe80:0:0:0::/64');
+
+  const log: string[] = [];
+  const cfg = await config(
+    { fetchImpl: upstream().fetchImpl, perIpLimiter: recording(log, 'any') },
+    { channelPerIpLimiter: recording(log, 'ip') },
+  );
+  const station = await stationKey();
+  for (const ip of [
+    '2001:db8:1:2::1',
+    '2001:db8:1:2:ffff::9',
+    '2001:db8:1:3::1',
+  ]) {
+    await post(cfg, '/v1/apns/live-activity', liveActivityBody(), station, {
+      ip,
+    });
+  }
+  const channelKeys = log.filter((entry) => entry.startsWith('ip:'));
+  assert.deepEqual(channelKeys, [
+    'ip:2001:db8:1:2::/64',
+    'ip:2001:db8:1:2::/64',
+    'ip:2001:db8:1:3::/64',
+  ]);
+  assert.ok(
+    log
+      .filter((entry) => entry.startsWith('any:'))
+      .every((entry) => entry.endsWith('/64')),
+    'the pre-work per-address limit uses the same bucket',
+  );
 });
