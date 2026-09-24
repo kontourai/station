@@ -964,6 +964,24 @@ export function ensureOrchestrationEventStoreColumns(
       }
     }
   }
+  // #2310 review F3: which phase refused a `rejected` command — 'authorization'
+  // (the caller may not act on this session) or 'execution' (an authorized
+  // caller's command was refused after that gate). Nullable and additive:
+  // rows written before this column are NULL and are counted by no reader.
+  if (!receiptColumns.some((column) => column.name === 'refusal_phase')) {
+    try {
+      db.exec(
+        'ALTER TABLE orchestration_command_receipts ADD COLUMN refusal_phase TEXT',
+      );
+    } catch (error) {
+      if (
+        !(error instanceof Error) ||
+        !error.message.includes('duplicate column name')
+      ) {
+        throw error;
+      }
+    }
+  }
   // v3 deliberately reruns the complete projection build once so existing v2
   // stores receive the JavaScript (rather than SQLite trim) request-identity
   // check. V4's much narrower settled-stop repair runs below.

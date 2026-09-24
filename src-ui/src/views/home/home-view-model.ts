@@ -1,6 +1,7 @@
 import { parseEngineId } from '@kontourai/station-contracts/agent-identity';
 import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import { unanswerableRequestNotice } from '@kontourai/station-contracts/orchestration';
+import { isFirstSendFailure } from '@kontourai/station-contracts/session-attention';
 import type {
   OrchestrationSessionSummary,
   SessionControlMode,
@@ -11,6 +12,7 @@ import {
   type ChatUIState,
 } from '../../contexts/active-chats-state';
 import type { AgentSummary } from '../../types';
+import { serverTurnLive } from '../../utils/conversation-activity';
 import type { HomeLifecycleLabel } from '../../utils/lifecycle-priority';
 import {
   LIFECYCLE_PRIORITY,
@@ -391,7 +393,15 @@ function buildSessionWorkItem(
     model: session.reportedModel ?? session.effectiveModel ?? session.model,
     ...(cwdLabel ? { cwdLabel: `…/${cwdLabel}` } : {}),
     turnProgress: activeTurnProgress(session),
-    updatedAt: sessionRecency(session),
+    // #2312 review: a Draft's own clocks move without anyone touching it — a
+    // stop (idle reaper, shutdown) rewrites `updatedAt`, engine housekeeping
+    // bumps `lastEventAt` — and would keep an abandoned Draft out of the
+    // 24h "older drafts" fold forever. Nothing user-visible has happened to a
+    // Draft since it was created, so its recency is its creation.
+    updatedAt:
+      lifecycleLabel === 'Draft'
+        ? Date.parse(session.createdAt) || sessionRecency(session)
+        : sessionRecency(session),
     lifecycleLabel,
     // The basis behind an `'Unanswerable'` chip. Carried on the item rather
     // than recomputed at render so the row and the label come from one read
@@ -536,13 +546,23 @@ function mergeHomeWorkItems(
     // even if the server execution has not caught up. Otherwise the newest
     // execution owns this conversation's status: predecessor sessions must
     // not keep a completed/failed chip after a later handoff child runs.
-    const mergedLifecycleLabel =
+    const serverOrNewestLabel =
       chat && isLocalActionableLifecycle(chat)
         ? moreImportantLifecycle(
             chat.lifecycleLabel,
             orchestration?.lifecycleLabel ?? newest.lifecycleLabel,
           )
         : (orchestration?.lifecycleLabel ?? newest.lifecycleLabel);
+    // #2310 review H1: the server says Draft (nothing was ever sent) but this
+    // device's chat does not agree. `chatLifecycleLabel` reads a correlated
+    // Draft as 'Draft' ONLY while the chat holds no transcript message, so any
+    // other chat label here is first-hand evidence that a turn was sent, and
+    // the server's Draft is a summary fetched before it. The chat's own label
+    // is the honest answer until the server re-reads.
+    const mergedLifecycleLabel =
+      serverOrNewestLabel === 'Draft' && chat && chat.lifecycleLabel !== 'Draft'
+        ? chat.lifecycleLabel
+        : serverOrNewestLabel;
     // archive#3724: the notice's iff contract must survive the
     // merge. The spread carried the CHAT side's notice regardless of which
     // side's label won — an errored chat under a winning 'Needs attention'
@@ -789,6 +809,8 @@ function chatFailureNotice(chat: ChatUIState): string | null {
 interface ChatSessionCorrelation {
   hasActiveTurn: boolean;
   failed: boolean;
+  /** #2310: the server's lineage-aware Draft fold for this conversation. */
+  draft: boolean;
   updatedAt: string;
 }
 
@@ -816,13 +838,24 @@ function chatLifecycleLabel(
     chat.orchestrationStatus === 'awaiting-approval'
   )
     return 'Needs attention';
-  if (chat.status === 'sending') return 'Running';
+  // #2309: the conversation's server record, when there is one, is THE
+  // running answer — the same record every device reads. A local `status:
+  // 'sending'` counts only inside this composer's unacknowledged send.
+  const serverLive = serverTurnLive(chat);
+  if (serverLive === true) return 'Running';
+  if (serverLive === undefined && chat.status === 'sending') return 'Running';
   // #765 A2: the server recorded this conversation's current session as
   // failed and no newer local activity (send/approval above) supersedes it.
   // Before this branch a chat whose client store missed the `runtime.error`
   // (dropped SSE, other device, reload) stayed on the local-state fallbacks
   // below and read "Active" while the server said failed.
   if (correlated?.failed) return 'Failed';
+  // #2310: the server says nothing was ever sent, and this chat holds no
+  // transcript message to contradict it. A chat WITH one has sent a turn the
+  // cached summary predates (review H1), so it falls through to its own
+  // idle/running reading instead — and `mergeHomeWorkItems` lets that win.
+  if (correlated?.draft && (chat.messages?.length ?? 0) === 0) return 'Draft';
+  if (serverLive === false) return 'Recent';
   if (chat.orchestrationStatus !== 'running') return 'Recent';
   // No correlated session means no better signal than the chat store itself —
   // notably chats on non-orchestration send paths, which never have one.
@@ -867,8 +900,17 @@ export function buildActiveChatTaskItems({
   );
   for (const session of sessions) {
     const entry: ChatSessionCorrelation = {
-      hasActiveTurn: session.hasActiveTurn === true,
-      failed: session.lifecycleState === 'failed',
+      // #2309: the conversation's record answers for every lineage child;
+      // this row's own fold is the older-server path. The entry is keyed
+      // below by both this row's thread and its conversation, so the record
+      // is read per thread (its open turn is on THIS thread) for the first
+      // and per conversation for the second.
+      hasActiveTurn: session.conversationActivity
+        ? session.conversationActivity.openTurn?.threadId === session.threadId
+        : session.hasActiveTurn === true,
+      failed:
+        session.lifecycleState === 'failed' || isFirstSendFailure(session),
+      draft: session.draft === true,
       updatedAt: session.updatedAt,
     };
     turnByThread.set(session.threadId, entry);
@@ -880,7 +922,16 @@ export function buildActiveChatTaskItems({
     if (session.conversationId) {
       const current = turnByThread.get(session.conversationId);
       if (!current || session.updatedAt.localeCompare(current.updatedAt) >= 0) {
-        turnByThread.set(session.conversationId, entry);
+        turnByThread.set(
+          session.conversationId,
+          session.conversationActivity
+            ? {
+                ...entry,
+                hasActiveTurn:
+                  session.conversationActivity.openTurn !== undefined,
+              }
+            : entry,
+        );
       }
     }
   }

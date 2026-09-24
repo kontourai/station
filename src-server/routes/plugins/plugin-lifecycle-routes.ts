@@ -25,6 +25,7 @@ import { isContextSafetyError } from '../../services/orchestration/context-safet
 import type { PackageMcpAdmissionJournal } from '../../services/plugins/package-mcp-admission.js';
 import { scanPluginPromptGeneration } from '../../services/plugins/plugin-command-skill-source.js';
 import {
+  copyPluginTree,
   forgetPluginContentDigest,
   PLUGIN_TREE_COPY,
   withPluginContentLock,
@@ -46,6 +47,11 @@ import {
 } from '../../services/plugins/plugin-installation-local.js';
 import type { PluginInstallationHost } from '../../services/plugins/plugin-installation-service.js';
 import { PluginInstallationPending } from '../../services/plugins/plugin-installation-service.js';
+import type { PluginLifecycleProposalService } from '../../services/plugins/plugin-lifecycle-proposals.js';
+import {
+  PluginManifestReadRefusedError,
+  readUntrustedPluginManifestSyncWithFormat,
+} from '../../services/plugins/plugin-manifest-bounded-read.js';
 import { readPluginManifestFileWithFormat } from '../../services/plugins/plugin-manifest-loader.js';
 import {
   createPluginGrantMutationScope,
@@ -80,6 +86,11 @@ import {
   type PluginPrincipalResolution,
 } from './plugin-identity-enumeration.js';
 import { loadPluginProviders } from './plugin-loader.js';
+import { personOnly } from './plugin-person-approval.js';
+import {
+  readLifecycleProposalId,
+  recordProposalCompletion,
+} from './plugin-proposal-routes.js';
 
 interface PluginLifecycleRouteDeps {
   /**
@@ -115,6 +126,11 @@ interface PluginLifecycleRouteDeps {
   quiesceEventSubscriptions?: (
     pluginName?: string,
   ) => Promise<{ release(): void }>;
+  /**
+   * #2323 S5: the proposal store update and remove complete when the request
+   * carries `?proposalId=`. Optional; see the install route's twin.
+   */
+  proposals?: PluginLifecycleProposalService;
 }
 
 class PluginUpdateRejectedError extends Error {}
@@ -411,7 +427,7 @@ export function registerPluginLifecycleRoutes(
     };
   };
 
-  app.post('/:name/update', async (c) => {
+  app.post('/:name/update', personOnly('update a plugin'), async (c) => {
     const name = param(c, 'name');
     try {
       assertPluginNameSegment(name);
@@ -590,11 +606,20 @@ export function registerPluginLifecycleRoutes(
             ),
           { rediscoverSkills: true },
         );
+        const proposalOutcome = await recordProposalCompletion(
+          deps.proposals,
+          await readLifecycleProposalId(c),
+          mutation.value.success === true &&
+            mutation.activation?.status !== 'pending',
+          { kind: 'update', pluginName: name },
+          logger,
+        );
         return c.json(
           {
             ...mutation.value,
             success: mutation.activation?.status !== 'pending',
             ...configurationActivationPayload(mutation.activation),
+            ...proposalOutcome,
           },
           configurationMutationStatus(mutation.activation, 200),
         );
@@ -653,7 +678,11 @@ export function registerPluginLifecycleRoutes(
                 );
               backupRoot = createStationTempDirSync('plugin-update');
               const backupDir = join(backupRoot, 'plugin');
-              cpSync(pluginDir, backupDir, PLUGIN_TREE_COPY);
+              // The installed tree is plugin-writable (its build runs
+              // install scripts); `cpSync` aborts on an unreadable directory.
+              await copyPluginTree(pluginDir, backupDir, {
+                skipSpecialFiles: true,
+              });
               const {
                 manifest: originalManifest,
                 format: originalManifestFormat,
@@ -707,6 +736,10 @@ export function registerPluginLifecycleRoutes(
                     await execGit(['pull', '--ff-only'], {
                       cwd: pluginDir,
                       timeout: 30000,
+                      // Station-owned plugin directory; its origin is the
+                      // source the operator installed from, which may be a
+                      // local git path (#2363).
+                      hardening: { allowFileProtocol: true },
                     });
                   } else {
                     throw new PluginUpdateRejectedError(
@@ -714,9 +747,22 @@ export function registerPluginLifecycleRoutes(
                     );
                   }
 
+                  // Pulled or re-fetched content is unvetted: the bounded
+                  // reader refuses a symlinked, special or oversized
+                  // plugin.json (#2342 review).
                   const manifestPath = join(pluginDir, 'plugin.json');
-                  const { manifest, format: manifestFormat } =
-                    await readPluginManifestFileWithFormat(manifestPath);
+                  let pulled: ReturnType<
+                    typeof readUntrustedPluginManifestSyncWithFormat
+                  >;
+                  try {
+                    pulled =
+                      readUntrustedPluginManifestSyncWithFormat(manifestPath);
+                  } catch (error) {
+                    if (error instanceof PluginManifestReadRefusedError)
+                      throw new PluginUpdateRejectedError(error.message);
+                    throw error;
+                  }
+                  const { manifest, format: manifestFormat } = pulled;
                   updatedManifest = manifest;
                   if (manifestFormat !== originalManifestFormat)
                     throw new PluginUpdateRejectedError(
@@ -900,12 +946,21 @@ export function registerPluginLifecycleRoutes(
           });
         }
       }
+      const proposalOutcome = await recordProposalCompletion(
+        deps.proposals,
+        await readLifecycleProposalId(c),
+        mutation.value.success === true &&
+          mutation.activation?.status !== 'pending',
+        { kind: 'update', pluginName: name },
+        logger,
+      );
 
       return c.json(
         {
           ...mutation.value,
           success: mutation.activation?.status !== 'pending',
           ...configurationActivationPayload(mutation.activation),
+          ...proposalOutcome,
         },
         configurationMutationStatus(mutation.activation, 200),
       );
@@ -936,7 +991,7 @@ export function registerPluginLifecycleRoutes(
     }
   });
 
-  app.delete('/:name', async (c) => {
+  app.delete('/:name', personOnly('remove a plugin'), async (c) => {
     const name = param(c, 'name');
     try {
       assertPluginNameSegment(name);
@@ -1034,11 +1089,20 @@ export function registerPluginLifecycleRoutes(
           });
         }
       }
+      const proposalOutcome = await recordProposalCompletion(
+        deps.proposals,
+        await readLifecycleProposalId(c),
+        mutation.value.success === true &&
+          mutation.activation?.status !== 'pending',
+        { kind: 'remove', pluginName: name },
+        logger,
+      );
       return c.json(
         {
           ...mutation.value,
           success: mutation.activation?.status !== 'pending',
           ...configurationActivationPayload(mutation.activation),
+          ...proposalOutcome,
         },
         configurationMutationStatus(mutation.activation, 200),
       );

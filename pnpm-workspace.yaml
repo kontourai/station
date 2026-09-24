@@ -27,8 +27,15 @@ allowBuilds:
   ssh2@1.17.0: false
 minimumReleaseAge: 1440
 minimumReleaseAgeExclude:
+  - '@kontourai/conduit'
+  - '@kontourai/flow-agents'
   - '@kontourai/veritas'
 pmOnFail: ignore
+# pdfjs-dist renders in the browser; its optional @napi-rs/canvas binding is
+# only for Node-side rendering, which Station never does. Keep the native
+# binary out of every install.
+ignoredOptionalDependencies:
+  - '@napi-rs/canvas'
 overrides:
   adm-zip: ^0.6.0
   axios: ^1.18.1
@@ -62,10 +69,10 @@ patchedDependencies:
   "@voltagent/server-hono@2.0.14": patches/voltagent-server-hono-2.0.14.patch
 strictPeerDependencies: true
 enableGlobalVirtualStore: false
-# flow-agents 6.2 hosts dispatch 0.3, whose optional datum peer requires 0.7.
+# flow-agents 6.4 hosts dispatch 0.3, whose optional datum peer requires 0.7.
 # Give that parent its own datum instead of inheriting contracts' 0.8.
 packageExtensions:
-  "@kontourai/flow-agents@6.2.0":
+  "@kontourai/flow-agents@6.4.0":
     dependencies:
       "@kontourai/datum": 0.7.0
 

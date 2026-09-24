@@ -39,11 +39,13 @@ import { openConnectionsModal } from '../../lib/connectionModalEvents';
 import { isWorkspaceRefusedTurn } from '../../lib/workspaceRefusal';
 import type { ChatMessage, ChatSession, FileAttachment } from '../../types';
 import { advertisedAcpSessionModesFromConnection } from '../../utils/acpSessionMode';
+import { sessionApprovalOverride } from '../../utils/approvalMode';
 import { ambientContextForSend } from '../../utils/chatAmbientContext';
 import {
   formatChatErrorDisplay,
   translateChatError,
 } from '../../utils/chatErrorTranslation';
+import { queueSendNowOffered } from '../../utils/conversation-activity';
 import {
   elidedHistoryNoticeText,
   summarizeElidedReasons,
@@ -116,6 +118,10 @@ const loadSourceQuoteDrafts = () =>
     default: module.SourceQuoteDrafts,
   }));
 
+// #90 D9: a live Browser session an agent in this conversation drives
+// floats over the transcript. Its own chunk, loaded only for a Project chat.
+const loadFloatOverChat = () => import('../../float-over-chat/FloatOverChat');
+
 const loadQueuedMessages = () =>
   import('../chat/QueuedMessages').then(({ QueuedMessages }) => ({
     default: QueuedMessages,
@@ -166,7 +172,7 @@ interface ChatDockBodyProps {
   modelProviderLabel?: string;
   modelProviders?: ModelProviderOption[];
   agentDefaultModelId?: string;
-  connectionApprovalModeDefault?: unknown;
+  agentApprovalModeDefault?: unknown;
   /** This Station's `AppConfig.defaultApprovalMode` (#2144 slice 6). */
   stationApprovalModeDefault?: unknown;
   toolPolicyDelivery?: ToolPolicyDelivery;
@@ -251,7 +257,7 @@ export function ChatDockBody({
   modelProviderLabel,
   modelProviders,
   agentDefaultModelId,
-  connectionApprovalModeDefault,
+  agentApprovalModeDefault,
   stationApprovalModeDefault,
   toolPolicyDelivery,
   availableModels,
@@ -316,11 +322,14 @@ export function ChatDockBody({
   // tab. Provider/model availability today cannot convert a recovery view
   // into a writable continuation of a different child session.
   const openPhase = conversationOpenPhase(activeSession);
-  // Split deliberately. `resolvingOpen` blocks the same writes `readOnlyOpen`
+  // Split deliberately. `resolvingOpen` blocks the same writes `recoveryOpen`
   // does — you cannot send into a conversation whose continuation is unproven —
   // but it is the only one of the two that may not claim anything is wrong
   // (#1582 E3/B6).
-  const readOnlyOpen = openPhase === 'read-only';
+  // #2424: `unverified` refuses writes and shows the same recovery notice, but
+  // is a failed check rather than a verdict — only `read-only` may say so.
+  const unverifiedOpen = openPhase === 'unverified';
+  const recoveryOpen = openPhase === 'read-only' || unverifiedOpen;
   const busyOpen = openPhase === 'busy';
   const resolvingOpen = openPhase === 'resolving';
   const transcript = useActiveChatTranscript(apiBase, activeSession);
@@ -560,6 +569,12 @@ export function ChatDockBody({
       ? 'steer'
       : 'queue';
   const isExecutionActive = isSessionExecutionActive(activeSession);
+  // #2309: the conversation's record carries the watchdog's silence for its
+  // open turn, whichever lineage child runs it. Without a record, the current
+  // session's own projection (the pre-#2309 source) is read instead.
+  const turnProgressSilence = activeSession.conversationActivity
+    ? activeSession.conversationActivity.progressSilence
+    : activeOrchestrationSession?.turnProgress?.progressSilence;
 
   // TTS readback when streaming ends
   const prevStatusRef = useRef(isExecutionActive);
@@ -935,8 +950,17 @@ export function ChatDockBody({
             emptyState: historyFailureNotice,
             historyNotice: historyElisionNotice,
             hasOlderMessages: transcript.enabled && transcript.hasMore,
+            // #2316: the pending-approvals strip derives from the window's
+            // events inside the lazily loaded list.
+            approvalEvents: transcript.enabled ? transcript.events : undefined,
+            approvalEventsSettled: transcript.settled,
             historyLoading: transcript.loading,
             suppressActivity: Boolean(streamStatus),
+            // #2309: the stall notice below presents the silence (with its
+            // Stop action); the streaming row does not repeat it.
+            progressSilenceShownElsewhere: Boolean(
+              turnProgressSilence && isTurnInFlight(activeSession),
+            ),
             onLoadOlder: transcript.loadOlder,
             onOpenBackgroundTasks,
             owner,
@@ -1005,7 +1029,18 @@ export function ChatDockBody({
                 apiBase,
                 activeSession.id,
                 true,
+                // #2309: an explicit request; not held back by the record.
+                true,
               ),
+            onSendNow: queueSendNowOffered(activeSession)
+              ? () =>
+                  drainQueuedMessageOnTurnCompleted(
+                    apiBase,
+                    activeSession.id,
+                    true,
+                    true,
+                  )
+              : undefined,
             canSteer:
               isExecutionActive &&
               !!activeSession.orchestrationProvider &&
@@ -1017,9 +1052,17 @@ export function ChatDockBody({
                   // Steering is a command on the live execution Session. The
                   // tab id remains the durable conversation identity after a
                   // continuation child becomes current.
-                  threadId: activeSession.currentSessionId ?? activeSession.id,
+                  //
+                  // #2309: the server's open turn names the exact lineage
+                  // child and turn; the local stamp is the older-server path.
+                  threadId:
+                    activeSession.conversationActivity?.openTurn?.threadId ??
+                    activeSession.currentSessionId ??
+                    activeSession.id,
                   text: message,
-                  turnId: activeSession.openTurnId,
+                  turnId:
+                    activeSession.conversationActivity?.openTurn?.turnId ??
+                    activeSession.openTurnId,
                   apiBase,
                 });
                 if (result.outcome === 'steered') return true;
@@ -1200,12 +1243,12 @@ export function ChatDockBody({
         only"), reused rather than given a class of its own — the entry
         stylesheet is at its budget ceiling to the byte.
 
-        `!readOnlyOpen` because the read-only recovery notice below carries its
+        `!recoveryOpen` because the recovery notice below carries its
         own "Start new chat": a reload whose point-read lands `unavailable`
         BEFORE the transcript's first read satisfies both conditions at once,
         and rendered the control twice (delta-review L1).
       */}
-      {conversationLoading && !readOnlyOpen ? (
+      {conversationLoading && !recoveryOpen ? (
         <div className="session-history-controls">
           {onNewChat ? (
             <button
@@ -1220,17 +1263,16 @@ export function ChatDockBody({
           ) : null}
         </div>
       ) : null}
-      {readOnlyOpen ? (
+      {recoveryOpen ? (
         <LazyBoundary
           load={loadConversationOpenRecoveryNotice}
           componentProps={{
             title:
               activeSession.conversationOpenState?.conversation.title ??
               activeSession.title,
-            state:
-              activeSession.conversationOpenState?.status === 'missing-session'
-                ? 'missing-session'
-                : 'unavailable',
+            state: unverifiedOpen
+              ? 'unverified'
+              : activeSession.conversationOpenState?.status,
             onRetry: onRetryConversationOpen
               ? () => void onRetryConversationOpen()
               : undefined,
@@ -1243,8 +1285,7 @@ export function ChatDockBody({
           }}
           pending={
             <div className="session-history-error" role="status">
-              Conversation recovery is loading. This conversation remains
-              read-only.
+              Conversation recovery is loading. Sending is paused.
             </div>
           }
         />
@@ -1262,40 +1303,35 @@ export function ChatDockBody({
         `isTurnInFlight` gates it so a stale projection read after the turn
         settled cannot claim a live stall.
       */}
-      {activeOrchestrationSession?.turnProgress?.progressSilence &&
-        isTurnInFlight(activeSession) && (
-          <div
-            role="status"
-            data-testid="chat-dock-turn-stall-notice"
-            style={{
-              padding: '8px 12px',
-              margin: '0 12px 8px',
-              background: 'var(--bg-warning, var(--bg-secondary))',
-              border: '1px solid var(--border-warning, var(--border-primary))',
-              borderRadius: '6px',
-              fontSize: '0.85em',
-              color: 'var(--text-muted)',
-            }}
+      {turnProgressSilence && isTurnInFlight(activeSession) && (
+        <div
+          role="status"
+          data-testid="chat-dock-turn-stall-notice"
+          style={{
+            padding: '8px 12px',
+            margin: '0 12px 8px',
+            background: 'var(--bg-warning, var(--bg-secondary))',
+            border: '1px solid var(--border-warning, var(--border-primary))',
+            borderRadius: '6px',
+            fontSize: '0.85em',
+            color: 'var(--text-muted)',
+          }}
+        >
+          <strong>The engine appears stalled.</strong>{' '}
+          <ProgressSilenceObservation observation={turnProgressSilence} />
+          {'. '}
+          You can wait, or{' '}
+          <button
+            type="button"
+            onClick={() => void chatInput.handleCancel()}
+            disabled={!!activeSession.stopPending}
+            style={BANNER_LINK_BUTTON_STYLE}
           >
-            <strong>The engine appears stalled.</strong>{' '}
-            <ProgressSilenceObservation
-              observation={
-                activeOrchestrationSession.turnProgress.progressSilence
-              }
-            />
-            {'. '}
-            You can wait, or{' '}
-            <button
-              type="button"
-              onClick={() => void chatInput.handleCancel()}
-              disabled={!!activeSession.stopPending}
-              style={BANNER_LINK_BUTTON_STYLE}
-            >
-              stop this turn
-            </button>
-            .
-          </div>
-        )}
+            stop this turn
+          </button>
+          .
+        </div>
+      )}
       {activeSession.replay?.mode === 'timeline' ? (
         <LazyBoundary
           load={loadConversationTimeline}
@@ -1313,6 +1349,21 @@ export function ChatDockBody({
         />
       ) : (
         <>
+          {/*
+            Mounted HERE, between the transcript and everything docked at the
+            bottom (quotes, composer): the floater floats over its parent
+            (this chat body, not the history sidebar beside it) and keeps
+            clear of everything below its own position, which is exactly the
+            composer stack. A seam this component owns, not a class name.
+          */}
+          {activeSession.projectSlug ? (
+            <LazyBoundary
+              load={loadFloatOverChat}
+              componentProps={{ session: activeSession }}
+              pending={null}
+              unavailable={() => null}
+            />
+          ) : null}
           {chatInput.quotes.length > 0 && (
             <LazyBoundary
               load={loadSourceQuoteDrafts}
@@ -1334,11 +1385,12 @@ export function ChatDockBody({
             activeConversationId={activeSession.conversationId}
             input={chatInput.input}
             workingDirectory={workingDirectory}
+            mentionProjectSlug={activeSession.projectSlug}
             mentionRequestScope={mentionRequestScope}
             mentionAuthority={mentionAuthority}
             attachments={chatInput.attachments}
             textareaRef={chatInput.textareaRef}
-            disabled={!agent || readOnlyOpen || resolvingOpen || busyOpen}
+            disabled={!agent || recoveryOpen || resolvingOpen || busyOpen}
             isSending={isExecutionActive}
             turnInFlight={isTurnInFlight(activeSession)}
             busyFollowUp={busyFollowUp}
@@ -1372,7 +1424,7 @@ export function ChatDockBody({
               activeSession.providerOptions
             }
             secondaryActions={
-              readOnlyOpen || resolvingOpen || busyOpen
+              recoveryOpen || resolvingOpen || busyOpen
                 ? undefined
                 : secondaryActions
             }
@@ -1386,10 +1438,11 @@ export function ChatDockBody({
             agentHandoffDisabled={secondaryActions?.handoffDisabled}
             agentHandoffDisabledReason={secondaryActions?.handoffDisabledReason}
             executionMode={activeSession.executionMode}
-            approvalModeConnectionDefault={connectionApprovalModeDefault}
+            approvalModeAgentDefault={agentApprovalModeDefault}
             approvalModeStationDefault={stationApprovalModeDefault}
             toolPolicyDelivery={toolPolicyDelivery}
             lastAppliedApprovalMode={activeSession.lastAppliedApprovalMode}
+            approvalModeOverride={sessionApprovalOverride(activeSession)}
             acpSessionModes={advertisedAcpSession.modes}
             acpCurrentModeId={
               activeSession.currentModeId ?? advertisedAcpSession.currentModeId
@@ -1404,13 +1457,14 @@ export function ChatDockBody({
             attachmentError={chatInput.attachmentError}
             attachmentStages={chatInput.attachmentStages}
             sendBlockedReason={
-              readOnlyOpen
+              recoveryOpen && !unverifiedOpen
                 ? 'This conversation is available read-only. Retry resolution or start a new chat.'
-                : resolvingOpen || busyOpen
+                : recoveryOpen || resolvingOpen || busyOpen
                   ? // The banner above already says this; repeating the SENTENCE
                     // under the composer is what made one ordinary reload read as
                     // three separate problems. `undefined` leaves the composer
-                    // quietly disabled.
+                    // quietly disabled. An `unverified` check (#2424) is the same:
+                    // its notice says what failed and carries the Retry.
                     undefined
                   : chatInput.sendBlockedReason
             }

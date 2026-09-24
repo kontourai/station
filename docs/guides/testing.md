@@ -363,6 +363,14 @@ physical Windows
 workflow remains a separate post-merge hardware-reference diagnostic and does
 not replace the PR gate.
 
+The floor's desktop Rust compile (`cargo test --no-run`) runs only when the
+candidate changes an input that crate reads: `src-desktop/`, any Cargo
+manifest, lockfile or toolchain file, and the few outside files the crate
+pulls in (listed as `desktop-rust` in `scripts/classify-ci-change.mjs`). The
+classifier is taken from the base commit, and every failure to classify
+compiles. The job, and so the required check, runs either way. TypeScript is
+not re-checked on Windows; `ci:fast`'s typecheck aggregate owns that verdict.
+
 The hosted Windows floor always uploads its existing redacted verification
 receipts and output, including failed runs. A cleanup record with one surviving
 owned child is a boolean failure to prove settlement, not an enumerated live PID.
@@ -399,8 +407,38 @@ records their SHA-256 hashes, and requires an acknowledgement of every image.
 Missing credentials, missing artifacts, invalid output, incomplete responses,
 and unexercised journeys are `NOT_VERIFIED`. Exit 0 means all reported checks
 passed; 1 means a failure or candidate visual finding; 2 means incomplete
-coverage. Local callers must provide `UI_SWEEP_RESULT=success` only after
-actually running the UI sweep.
+coverage. `DISABLED` is the one exception to exit 2 (next section): it is
+listed, never counted as a pass, and does not move the exit code. Local
+callers must provide `UI_SWEEP_RESULT=success` only after actually running the
+UI sweep.
+
+#### Checks that require a signed-in account
+
+CI runners hold no engine CLI login and no funded review credential. Until
+#2318 lets CI use the owner's Station, a check that needs one is disabled in
+CI, visibly, rather than left to fail or time out. The decision and rendering
+live in `scripts/lib/account-requirement.mjs`; each check declares its
+requirement where its own metadata lives:
+
+- an E2E spec: `requiresAccount: '<the account>'` on its `tests/e2e-manifest.mjs`
+  entry;
+- a core-loop journey: the `requiresAccount` option of `runJourney` in
+  `tests/live/core-loop-journeys.mjs`;
+- the semantic image review in `scripts/usability-feedback.mjs`.
+
+Accounts are absent when `STATION_CI_ACCOUNTS=absent`, or when it is unset and
+`CI=true` or `GITHUB_ACTIONS=true`; `STATION_CI_ACCOUNTS=present` runs them
+anyway, and any other value is refused. The affected workflows set `absent`
+explicitly. A declared check is then skipped before it starts (a spec is
+dropped before any Station boots; a journey never begins; the image reviewer
+makes no request), with the reason "requires a signed-in account; disabled in
+CI until #2318". It appears under **Disabled in CI (requires account)** in the
+step summary, the coverage coordinator's summary and the latest-E2E manifest
+(`buckets[].disabled`), and the usability report, where its status is
+`DISABLED`. It is not a pass, and it does not make the job exit non-zero;
+`NOT_VERIFIED` from any other cause still exits 2. Outside CI, declared checks
+run as before. Declare a check only when it cannot run for want of an
+account, not when a tool is merely missing from the runner.
 
 For a local review using the installed Muse CLI and its configured provider,
 set `UI_REVIEW_BACKEND=muse`. This does not require the CI review API key.
@@ -757,6 +795,32 @@ reported separately from test failures.
 Use `npm run test:prepush:repeat` to measure 20 consecutive attempts. This tier
 is diagnostic and does not replace the final `npm run full:regression` receipt.
 
+### Host typecheck slots and incremental compiles
+
+Every `typecheck:*` lane compiles through `scripts/tsc-slot.mjs`, which holds
+one of N host-wide slots for the life of the compiler and adds `--incremental`
+with a per-project build info file under the ignored
+`node_modules/.cache/station-tsbuildinfo/`. The slots are lock files in
+`/tmp/station-typecheck-slots-<uid>` on macOS and Linux (a fixed path, not
+`$TMPDIR`, so sandboxes and sudo join the same pool; private to the user and
+refused if another user owns it) and in the per-user temp directory on Windows.
+Every caller must resolve the same directory: a second directory is a second
+pool with its own N. N is one slot per 8 GiB of RAM, rounded, between 1 and 4
+(2 on a ~15.6 GiB hosted runner, 4 on a 48 GB workstation); the `typecheck`
+aggregate prints it once per run and never runs more lanes at once than there
+are slots. `--watch`, `--help`, `--version` and similar non-compiling modes take
+no slot. A crashed or killed compiler's slot is reclaimed from its dead pid.
+Overrides: `STATION_TYPECHECK_SLOTS` (count), `STATION_TYPECHECK_SLOT_WAIT_MS`
+(bounded wait, default 45 minutes, then the lane fails naming the holders),
+`STATION_TYPECHECK_SLOT_DIR` (set it identically for every caller), and
+`STATION_TYPECHECK_INCREMENTAL=0` for a cold compile. A warm run reports the
+same diagnostics as a cold one: TypeScript checks every input's content hash
+and replays stored errors for unchanged files.
+
+The pre-push hook and pull-request CI own the full typecheck. Locally, iterate
+with `npm run gate:for` evidence and a single `typecheck:<lane>`; do not start
+the full aggregate or `ci:fast` in the background and poll for its result.
+
 ### Shared Vitest worker policy
 
 Ordinary and focused Vitest invocations inherit the checked-in four-worker
@@ -801,7 +865,7 @@ This scheduling contract is rendered from `scripts/verification-lanes.mjs`; do n
 | `prepush` | `npm run test:prepush` | pre-push / focused floor | prepare:verify-static + prepush test tier | focused floor | diagnostic | prepush test-group manifest |
 | `test-full` | `npm run test:full` | diagnostic full corpus | resource-profiled Vitest corpus + dogfood-reconcile | static / integration | diagnostic | command only |
 | `test-full-audit` | `npm run test:full:audit` | repository-wide diagnostic audit | complete Vitest corpus, retaining independent failures | static / integration | diagnostic | command only |
-| `test-coverage` | `npm run test:coverage` | explicit coverage / risk | serialized coverage corpus + dogfood-reconcile | static / integration | diagnostic | command only |
+| `test-coverage` | `npm run test:coverage` | explicit coverage / risk | resource-profiled coverage slices, merged, thresholds on the merge | static / integration | diagnostic | command only |
 | `verify-static` | `npm run verify:static` | diagnostic static gate | node-runtime, naming, UI-contract, platform, workflow ratchets, lint, typecheck | static / integration | diagnostic | command only |
 | `verify-local` | `npm run verify:local` | diagnostic native / local | verify:static + desktop Rust + mobile Cargo compile | static / integration | diagnostic | command only |
 | `verify-e2e-full` | `npm run verify:e2e:full` | diagnostic full E2E | product, first-run, starter-clean-install, smoke-live, extended, screenshot, Android buckets | full E2E | diagnostic | E2E spec→bucket assignment |
@@ -890,7 +954,7 @@ Unreviewed PR code belongs on hosted or genuinely one-job ephemeral runners.
 
 Linux CI, Android, publish, and secret-scan jobs run on GitHub-hosted
 images. A private native Windows host remains for the hardware-reference
-performance lane, the native Windows portable floor, the Windows Vitest
+performance lane, the Windows Vitest
 diagnostic, container-smoke Playwright, and recovering a leaked
 physical-host capacity lease. If a Linux job is reintroduced on that host, `ci:fast` alone
 requests `fast-feedback` and every other leased Linux job requests
@@ -901,6 +965,106 @@ feedback listener before its lease is admitted. The actionlint policy still
 enforces that partition for any persistent Linux job. See
 [the private-runner partition guide](private-runner-partition.md) before
 changing fleet labels or adding a capacity-leased workflow.
+
+### Merge-queue regression (required)
+
+`Merge-queue regression` is a required check (since 2026-09-23). On every queue
+candidate it runs Nightly's full-regression phases, sharded across hosted jobs
+by `scripts/run-full-regression-phases.mjs`, plus the Android viewport suite.
+On pull requests it reports skipped, which the ruleset counts as passing. A red
+aggregate names real failing tests in the failed job's log: diagnose the test
+and fix it at source rather than requeueing until green. If the same failure
+appears on unrelated candidates, main itself is red, so fix main first. Flaky
+tests go through the quarantine policy below.
+
+### Real-time waits in tests
+
+A test that waits a fixed amount of real time and then asserts passes on an
+idle machine and fails some of the time on a saturated CI runner. The merge
+queue runs each test once, so such a test usually lands and reds Nightly
+later. Four did on 2026-09-23: a 50ms sleep assumed an install had started, a
+40ms real-time hold lapsed between a click's two events, a 90ms sleep ran past
+a 120ms ceiling, and an eight-attempt 10ms retry gave up. Running tests
+repeatedly under CPU pressure did not reproduce any of them; each was visible
+in the line that added it.
+
+`scripts/test-realtime-wait-gate.mjs` runs in `ci:fast` and reads only the
+lines a change adds to test files. It flags three shapes: a promise settled by
+a timer (`setTimeout(resolve, N)`, `setTimeout(() => resolve(x), N)`), a
+`sleep`/`delay` helper call (`sleep(90)`, `delay(delayMs)`), and
+`Atomics.wait(..., N)`. A literal `0` is a task yield and is not flagged, and
+neither is a timer resolving with a string or UPPER_CASE sentinel, the
+`Promise.race([op, timeout('TIMED_OUT')])` shape. That exemption is safe only
+when the test expects the sentinel; `.not.toBe('TIMED_OUT')` asserts `op`
+finished in time, which load can fail. Existing lines are never flagged.
+
+It reports rather than blocks. In a one-off replay over the 150 main commits
+before 2026-09-24, about 40% of what it flagged was the hazard (a sleep, then an assertion that something did
+happen); the rest sleep before a negative assertion, which load can only make
+pass, or sleep inside a loop that already polls. So each finding is an inline
+warning on the pull request's added line and a step-summary entry, and the
+check stays green. `--strict` exits 1 for a caller that wants to enforce it.
+
+Prefer, in order:
+
+1. Wait for the event itself: resolve a promise from the code under test, or
+   use `expect.poll` / `vi.waitFor`.
+2. Drive time: an injected clock (`now`), or `vi.useFakeTimers()` with
+   `vi.advanceTimersByTimeAsync()`.
+3. Bound a retry by a wall-clock deadline, never by an attempt count.
+
+When a line genuinely needs real time (a negative assertion that something
+does not happen within a window, or a test of a timeout itself), put a
+`real-time: <reason>` comment on that line or the line above, which silences
+the warning. The gate is a prompt, not a proof: it sees these textual shapes,
+not every way to wait.
+
+### Test quarantine
+
+The merge-queue regression gate (`.github/workflows/merge-queue-regression.yml`)
+runs the full-regression phases on every queued candidate. One flaky test
+would otherwise hold every queued pull request, so the queue has a bounded
+escape valve: `QUARANTINED_VITEST_FILES` in `scripts/vitest-resource-manifest.mjs`.
+
+**When to quarantine.** Only a test that is flaky, not broken: the *same
+commit* both passed and failed it. A test that fails every time is a defect to
+fix or revert, never a quarantine entry. Diagnose first; quarantine is for the
+window between a diagnosed flake and its fix, not for a red lane nobody has
+read.
+
+**What it does.** The merge-queue shards pass `--exclude-quarantined`, which
+drops the listed files from every queue corpus group. Nightly's canonical
+`full:regression` never passes that flag, so quarantined files still run every
+night and Nightly stays exposed to the flake. A quarantined file keeps its
+resource group; quarantine is an overlay on the partition, not a group of its
+own.
+
+**How to add an entry.** Open (or reuse) an issue in this repository labelled
+`flaky` that records the diagnosis, then append to the list:
+
+```js
+export const QUARANTINED_VITEST_FILES = Object.freeze([
+  {
+    file: 'scripts/__tests__/example.test.ts',
+    issue: 'https://github.com/kontourai/station/issues/<number>',
+    expires: 'YYYY-MM-DD', // at most 14 days from today
+    evidence:
+      'commit <40-hex sha> passed in actions/runs/<id> and failed in actions/runs/<id>',
+  },
+]);
+```
+
+`verification:policy:gate` (part of `ci:fast`, so every pull request) checks each entry
+offline, without calling GitHub: the file is a tracked Vitest test file; `issue`
+is the full URL of a station issue (that it is open and labelled `flaky` is a
+reviewer's check); `expires` is a real date no more than 14 days after the day
+the gate runs; `evidence` names the commit SHA and two distinct run ids that
+disagreed on it; and the list holds at most 5 entries.
+
+**Expiry makes the gate red.** From the `expires` date onward the entry fails
+`verification:policy:gate`, and with it every pull request. Remove the entry
+when the fix lands, or renew it in a reviewed change with fresh same-commit
+evidence. Renewal is a deliberate decision, never an automatic extension.
 
 ### Opt-in load reliability evidence
 

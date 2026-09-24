@@ -22,6 +22,7 @@ import {
   wireInternalStopRedispatchFailureNotifications,
   wireTurnCompletionNotifications,
 } from '../../services/orchestration/turn-completion-notifications.js';
+import { PluginLifecycleProposalService } from '../../services/plugins/plugin-lifecycle-proposals.js';
 import {
   AttentionProjectionService,
   type PausedGateReviewAggregate,
@@ -434,6 +435,7 @@ export function configureRuntimeSupportServices(
             context.taskDispatcher.dispatch(task.id, {
               agentId: input.agentId,
               sourceSurface: 'external-monitor',
+              fullAccessGrant: null,
               monitor: {
                 agentId: input.agentId,
                 signal: input.monitor.signal,
@@ -574,6 +576,12 @@ export function configureRuntimeSupportServices(
     // bell's count and the Review page cannot disagree about what is pending.
     context.proposedChangeService,
     options.listGateReviews,
+    // #2323 S5: open plugin lifecycle proposals. A fresh instance over the
+    // SAME file the `/api/plugin-proposals` and `/api/plugins` routes write;
+    // the store is stateless per call, the established pattern above.
+    new PluginLifecycleProposalService(
+      context.configLoader.getProjectHomeDir(),
+    ),
   );
   return {
     schedulerService,

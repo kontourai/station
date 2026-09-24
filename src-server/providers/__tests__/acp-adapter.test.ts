@@ -43,6 +43,7 @@ import {
 } from '../../services/acp/acp-process.js';
 import { normalizeCanonicalRuntimeEventLifecycle } from '../../services/orchestration/session-lifecycle-service.js';
 import type { CanonicalRuntimeEvent } from '../adapter-shape.js';
+import { SendTurnRefusedError } from '../adapter-shape.js';
 import {
   AcpAdapter,
   type AcpAdapterOptions,
@@ -486,6 +487,58 @@ describe('AcpAdapter', () => {
         (item) => item.name.includes('Cursor') && item.status !== 'installed',
       ),
     ).toBe(true);
+  });
+
+  test('#2316: an interrupt settles the open permission request; a late answer is refused and grants nothing', async () => {
+    const { adapter, processes } = createAdapter();
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+    await adapter.startSession({
+      provider: 'acp',
+      threadId: 'thread-interrupt-approval',
+      cwd: '/tmp/project',
+      metadata: { connectionId: 'kiro' },
+    });
+    await nextEvent(iterator, 'session.started');
+    await nextEvent(iterator, 'session.configured');
+    const proc = processes[0];
+    await adapter.sendTurn({
+      threadId: 'thread-interrupt-approval',
+      input: 'Write it',
+    });
+    await nextEvent(iterator, 'turn.started');
+    const requestPromise = requestPermission(proc.client, 'tool-1', 'write');
+    const opened = await nextEvent(iterator, 'request.opened');
+
+    await adapter.interruptTurn('thread-interrupt-approval');
+    await expect(requestPromise).resolves.toEqual({
+      outcome: { outcome: 'cancelled' },
+    });
+    expect(await nextEvent(iterator, 'request.resolved')).toMatchObject({
+      requestId: opened.requestId,
+      status: 'cancelled',
+    });
+    expect(await nextEvent(iterator, 'turn.aborted')).toMatchObject({
+      reason: 'interrupted',
+    });
+    await expect(
+      adapter.respondToRequest(
+        'thread-interrupt-approval',
+        String(opened.requestId),
+        'acceptForSession',
+      ),
+    ).rejects.toThrow('Unknown ACP permission request');
+
+    // No grant: the next call to the same tool still asks.
+    await adapter.sendTurn({
+      threadId: 'thread-interrupt-approval',
+      input: 'Again',
+    });
+    await nextEvent(iterator, 'turn.started');
+    void requestPermission(proc.client, 'tool-2', 'write');
+    expect(await nextEvent(iterator, 'request.opened')).toMatchObject({
+      payload: { toolCallId: 'tool-2' },
+    });
+    await adapter.stopAll();
   });
 
   test('rejects a duplicate session while the first start owns the thread', async () => {
@@ -2518,8 +2571,8 @@ describe('AcpAdapter', () => {
       metadata: { connectionId: 'kiro' },
     });
 
-    await expect(
-      adapter.sendTurn({
+    const failure = await adapter
+      .sendTurn({
         threadId: 'thread-image-unsupported',
         input: 'Inspect this',
         attachments: [
@@ -2531,8 +2584,20 @@ describe('AcpAdapter', () => {
             dataUrl: 'data:image/png;base64,YWJj',
           },
         ],
-      }),
-    ).rejects.toThrow('did not advertise image attachment support');
+      })
+      .then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+    // A pre-effect refusal, not an ambiguous provider failure: no prompt
+    // reached the engine, so orchestration must surface this honestly
+    // instead of reporting the turn as possibly started.
+    expect(failure).toBeInstanceOf(SendTurnRefusedError);
+    expect(failure).toMatchObject({
+      message: expect.stringContaining(
+        'did not advertise image attachment support',
+      ),
+    });
     expect(processes[0].promptContents).toEqual([]);
     await adapter.stopAll();
   });
@@ -2594,6 +2659,41 @@ describe('AcpAdapter', () => {
         status,
       });
     }
+  });
+
+  test('acceptForSession grants the whole tool: a later call auto-allows with no prompt', async () => {
+    const { adapter, processes } = createAdapter();
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+    await adapter.startSession({
+      provider: 'acp',
+      threadId: 'thread-session-grant',
+      cwd: '/tmp/project',
+      metadata: { connectionId: 'kiro' },
+    });
+    await nextEvent(iterator, 'session.started');
+    await nextEvent(iterator, 'session.configured');
+
+    const proc = processes[0];
+    const first = requestPermission(proc.client, 'tool-first', 'my-tool');
+    const opened = await nextEvent(iterator, 'request.opened');
+    await adapter.respondToRequest(
+      'thread-session-grant',
+      String(opened.requestId),
+      'acceptForSession',
+    );
+    await expect(first).resolves.toEqual({
+      outcome: { outcome: 'selected', optionId: 'allow-always' },
+    });
+    await nextEvent(iterator, 'request.resolved');
+
+    // Same tool, different call: no request.opened, and the auto-allow maps
+    // through the offered options (`accept` prefers `allow_once`).
+    const second = requestPermission(proc.client, 'tool-second', 'my-tool');
+    await expect(second).resolves.toEqual({
+      outcome: { outcome: 'selected', optionId: 'allow-once' },
+    });
+    expect(await nextEventOrTimeout(iterator, 150)).toBe('TIMED_OUT');
+    await adapter.stopAll();
   });
 
   test('multiplexes two concurrent sessions against two different ACP connections', async () => {
@@ -3265,12 +3365,21 @@ describe('AcpAdapter', () => {
     });
     await nextEvent(iterator, 'first turn.started');
 
-    await expect(
-      adapter.sendTurn({
+    // #2415: the refusal is a definitive pre-effect refusal, not a plain
+    // error orchestration would record as an indeterminate turn start.
+    const refusal = await adapter
+      .sendTurn({
         threadId: 'thread-single-owner',
         input: 'second',
-      }),
-    ).rejects.toThrow('already has an active turn');
+      })
+      .then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+    expect(refusal).toBeInstanceOf(SendTurnRefusedError);
+    expect((refusal as Error).message).toContain('already has an active turn');
+    // Nothing reached the engine for the refused send.
+    expect(processes[0].promptContents).toHaveLength(1);
 
     processes[0].resolvePrompt('end_turn');
     await expect(
@@ -3279,6 +3388,20 @@ describe('AcpAdapter', () => {
       method: 'turn.completed',
       turnId: first.turnId,
     });
+
+    // Once the active turn ends, the session accepts the next send.
+    const next = await adapter.sendTurn({
+      threadId: 'thread-single-owner',
+      input: 'third',
+    });
+    await expect(
+      nextEvent(iterator, 'next turn.started'),
+    ).resolves.toMatchObject({ method: 'turn.started', turnId: next.turnId });
+    expect(next.turnId).not.toBe(first.turnId);
+    expect(processes[0].promptContents).toHaveLength(2);
+    processes[0].resolvePrompt('end_turn');
+    await nextEvent(iterator, 'next turn.completed');
+    await adapter.stopAll();
   });
 });
 
@@ -4835,6 +4958,57 @@ describe('AcpAdapter.steerTurn', () => {
       method: 'turn.completed',
       turnId: turn.turnId,
     });
+    await adapter.stopAll();
+  });
+
+  test('#2316: cancel-and-reprompt settles the open permission request; a late answer is refused and grants nothing', async () => {
+    const { adapter, processes } = createAdapter({
+      connectionOverrides: [{ id: 'kiro', command: 'other-cli' }],
+    });
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+    await adapter.startSession({
+      provider: 'acp',
+      threadId: 'thread-acp-steer-approval',
+      cwd: '/tmp/project',
+      metadata: { connectionId: 'kiro' },
+    });
+    await nextEvent(iterator, 'session.started');
+    await nextEvent(iterator, 'session.configured');
+    const turn = await adapter.sendTurn({
+      threadId: 'thread-acp-steer-approval',
+      input: 'start',
+    });
+    await nextEvent(iterator, 'turn.started');
+    const requestPromise = requestPermission(
+      processes[0]!.client,
+      'tool-1',
+      'write',
+    );
+    const opened = await nextEvent(iterator, 'request.opened');
+
+    await adapter.steerTurn(
+      'thread-acp-steer-approval',
+      'take this instead',
+      turn.turnId,
+    );
+
+    expect(processes[0]?.cancelCalls).toBe(1);
+    await expect(requestPromise).resolves.toEqual({
+      outcome: { outcome: 'cancelled' },
+    });
+    expect(await nextEvent(iterator, 'request.resolved')).toMatchObject({
+      requestId: opened.requestId,
+      status: 'cancelled',
+    });
+    await expect(
+      adapter.respondToRequest(
+        'thread-acp-steer-approval',
+        String(opened.requestId),
+        'acceptForSession',
+      ),
+    ).rejects.toThrow('Unknown ACP permission request');
+    const record = (adapter as any).sessions.get('thread-acp-steer-approval');
+    expect([...record.approvedTools]).toEqual([]);
     await adapter.stopAll();
   });
 

@@ -16,9 +16,11 @@ import type {
 import {
   FOREGROUND_MESSAGE_INDETERMINATE_CODE,
   type ForegroundMessageIndeterminate,
+  type SetApprovalModeResult,
 } from '@kontourai/station-contracts/orchestration';
 import type { PrincipalRef } from '@kontourai/station-contracts/principal';
 import type {
+  ApprovalMode,
   EngineId,
   ProviderSendTurnInput,
   ProviderSessionStartInput,
@@ -30,6 +32,7 @@ import type {
 } from '@kontourai/station-contracts/workspace-isolation';
 import { errorMessage } from '../../utils/error-message.js';
 import { createLogger } from '../../utils/logger.js';
+import type { StartOwnerAttribution } from '../orchestration/session-owner-attribution.js';
 import { assertProjectWorktreeDirectory } from '../projects/project-service.js';
 import {
   WorktreeProvisioningService,
@@ -75,6 +78,15 @@ export interface ForegroundMessageInput {
   }) => ChatAttachmentInput[];
   ambientContext?: string;
   clientTurnId?: string;
+  /**
+   * #2436: an approval-posture decision this send carries (made before the
+   * chat had a session, or while its client was offline). It is recorded
+   * BEFORE this send's session start and turn, so the spawn is already in it,
+   * compare-and-set against `setApprovalModeBasedOn` (see
+   * `SetApprovalModeCommand.basedOnSequence`).
+   */
+  setApprovalMode?: ApprovalMode;
+  setApprovalModeBasedOn?: number | null;
   /** Opaque, expiring capability returned by a critical admission challenge. */
   /** Server-owned fixed-route identity for durable automatic queue replay. */
   automaticBackground?: true;
@@ -90,6 +102,13 @@ export interface ForegroundMessageInput {
    * `principal`, an additive/optional field everywhere it lands.
    */
   principal?: PrincipalRef;
+  /**
+   * Station #90 lane D (B2/R1): set only by the dispatch routes, for an
+   * internal-principal request with no verified-bound caller. It rides the
+   * start's dispatch context, and `OrchestrationService` stamps it on the
+   * new session so it acts for no one (`session-owner-attribution.ts`).
+   */
+  ownerAttribution?: StartOwnerAttribution;
   /** Resolved at the HTTP/auth seam; not accepted by public JSON schemas. */
   clientOrigin?: ClientOrigin;
   /**
@@ -182,6 +201,12 @@ export interface ForegroundMessageHandle {
     carried: readonly string[];
     reset: readonly string[];
   };
+  /**
+   * #2436: what became of the approval pick this send carried: recorded, or
+   * dropped because a newer decision stands (`recorded: false`). Absent when
+   * the send carried none, or the Station that ran it predates the command.
+   */
+  approvalMode?: SetApprovalModeResult;
 }
 
 /**
@@ -286,6 +311,23 @@ export interface ExecutionTargetExecutionDependencies
     input: ProviderSendTurnInput,
     context?: { clientOrigin?: ClientOrigin; principal?: PrincipalRef },
   ) => Promise<{ turnId: string }>;
+  /**
+   * #2436: record the approval pick a send carries on the session it is
+   * about to start or continue, before either happens. Absent: a Station
+   * seam that does not speak the command (the pick is then not recorded,
+   * and no result is reported).
+   */
+  recordApprovalMode?: (
+    access: EnvironmentAccess,
+    input: {
+      threadId: string;
+      provider: EngineId;
+      approvalMode: ApprovalMode;
+      basedOnSequence: number | null;
+      clientOrigin?: ClientOrigin;
+      principal?: PrincipalRef;
+    },
+  ) => SetApprovalModeResult | undefined;
   /**
    * Server-owned durable conversation/session resolution. It is optional for
    * remote compatibility until every Station speaks lineage, but the current
@@ -557,6 +599,26 @@ export async function executeForegroundMessage(
         )
       : undefined;
   const sessionId = continuation?.sessionId ?? conversationId;
+  // #2436 MEDIUM-1: a carried pick is recorded before anything starts, so the
+  // session this send starts (or continues) is already in it, and it is
+  // ordered by this receipt against every other decision (compare-and-set).
+  if (input.setApprovalMode && input.setApprovalModeBasedOn === undefined) {
+    // The routes refuse this shape; an in-process caller that forgets the
+    // basis must fail loudly rather than skip compare-and-set.
+    throw new Error(
+      'A carried approval pick needs setApprovalModeBasedOn (null when no decision had been seen).',
+    );
+  }
+  const approvalMode = input.setApprovalMode
+    ? deps.recordApprovalMode?.(resolved.access, {
+        threadId: sessionId,
+        provider: resolved.provider,
+        approvalMode: input.setApprovalMode,
+        basedOnSequence: input.setApprovalModeBasedOn ?? null,
+        ...(input.clientOrigin ? { clientOrigin: input.clientOrigin } : {}),
+        ...(input.principal ? { principal: input.principal } : {}),
+      })
+    : undefined;
   const resumeModel =
     continuation && 'resumeModel' in continuation
       ? continuation.resumeModel
@@ -891,6 +953,7 @@ export async function executeForegroundMessage(
     providerTurnId: turn.turnId,
     target: { kind: 'agent', id: resolved.agentId },
     resolution: resolved.receipt,
+    ...(approvalMode ? { approvalMode } : {}),
     ...(preparedHandoff
       ? {
           handoff: {

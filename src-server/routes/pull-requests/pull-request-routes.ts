@@ -42,22 +42,41 @@ export function createPullRequestRoutes(
   },
 ) {
   const app = new Hono();
-  const resolve = async (c: any) => {
+  // A refusal carries WHY: the panel shows it, and "Provider unavailable"
+  // for a checkout the resolver refused sent the reader to a Refresh that
+  // could never fix it.
+  const resolve = async (
+    c: any,
+  ): Promise<
+    { refused: string } | { provider: IPullRequestProvider; context: any }
+  > => {
     const resolution = await context(c);
-    if (!resolution?.available) return undefined;
+    if (!resolution?.available)
+      return {
+        refused: resolution?.reason ?? 'Pull request context is unavailable',
+      };
     const provider = providers().find(
       (x) =>
         x.id === c.req.param('provider') &&
         x.canServeHost(c.req.param('host')) &&
         x.getHost(resolution.context) === c.req.param('host'),
     );
-    if (!provider) return undefined;
+    if (!provider)
+      return {
+        refused: "No provider serves this pull request's host for the project",
+      };
     const { owner, repo } = c.req.param();
+    // Forges treat owner and repository names case-insensitively, so a link
+    // written `Kontourai/Station` names this checkout's `kontourai/station`.
     if (
-      owner !== resolution.context.repository.owner ||
-      repo !== resolution.context.repository.name
+      owner.toLowerCase() !==
+        resolution.context.repository.owner.toLowerCase() ||
+      repo.toLowerCase() !== resolution.context.repository.name.toLowerCase()
     ) {
-      return { mismatch: true };
+      return {
+        refused:
+          "This pull request belongs to a different repository than the project's checkout",
+      };
     }
     return { provider, context: resolution.context };
   };
@@ -118,8 +137,8 @@ export function createPullRequestRoutes(
   });
   app.get('/:provider/:host/:owner/:repo', async (c) => {
     const x = await resolve(c);
-    if (!x || 'mismatch' in x)
-      return c.json({ success: false, error: 'Provider unavailable' }, 404);
+    if ('refused' in x)
+      return c.json({ success: false, error: x.refused }, 404);
     pullRequestOps.add(1, {
       operation: 'list',
       repo: `${x.context.repository.owner}/${x.context.repository.name}`,
@@ -137,8 +156,8 @@ export function createPullRequestRoutes(
   });
   app.get('/:provider/:host/:owner/:repo/:ref', async (c) => {
     const x = await resolve(c);
-    if (!x || 'mismatch' in x)
-      return c.json({ success: false, error: 'Provider unavailable' }, 404);
+    if ('refused' in x)
+      return c.json({ success: false, error: x.refused }, 404);
     return c.json({
       success: true,
       data: narrow(
@@ -151,8 +170,8 @@ export function createPullRequestRoutes(
     if (!current(c))
       return c.json({ success: false, error: 'Station access changed' }, 403);
     const x = await resolve(c);
-    if (!x || 'mismatch' in x)
-      return c.json({ success: false, error: 'Provider unavailable' }, 404);
+    if ('refused' in x)
+      return c.json({ success: false, error: x.refused }, 404);
     if (!/^[1-9]\d*$/.test(param(c, 'ref')))
       return c.json(
         { success: false, error: 'An exact pull request number is required' },
@@ -189,8 +208,8 @@ export function createPullRequestRoutes(
           403,
         );
       const x = await resolve(c);
-      if (!x || 'mismatch' in x)
-        return c.json({ success: false, error: 'Provider unavailable' }, 404);
+      if ('refused' in x)
+        return c.json({ success: false, error: x.refused }, 404);
       if (!/^[1-9]\d*$/.test(param(c, 'ref')))
         return c.json(
           { success: false, error: 'An exact pull request number is required' },
@@ -237,8 +256,8 @@ export function createPullRequestRoutes(
         403,
       );
     const x = await resolve(c);
-    if (!x || 'mismatch' in x)
-      return c.json({ success: false, error: 'Provider unavailable' }, 404);
+    if ('refused' in x)
+      return c.json({ success: false, error: x.refused }, 404);
     pullRequestOps.add(1, {
       operation: 'open',
       repo: `${x.context.repository.owner}/${x.context.repository.name}`,
@@ -258,8 +277,8 @@ export function createPullRequestRoutes(
         403,
       );
     const x = await resolve(c);
-    if (!x || 'mismatch' in x)
-      return c.json({ success: false, error: 'Provider unavailable' }, 404);
+    if ('refused' in x)
+      return c.json({ success: false, error: x.refused }, 404);
     pullRequestOps.add(1, {
       operation: 'comment',
       repo: `${x.context.repository.owner}/${x.context.repository.name}`,
@@ -283,8 +302,8 @@ export function createPullRequestRoutes(
         403,
       );
     const x = await resolve(c);
-    if (!x || 'mismatch' in x)
-      return c.json({ success: false, error: 'Provider unavailable' }, 404);
+    if ('refused' in x)
+      return c.json({ success: false, error: x.refused }, 404);
     pullRequestOps.add(1, {
       operation: 'approve',
       repo: `${x.context.repository.owner}/${x.context.repository.name}`,
@@ -312,8 +331,8 @@ export function createPullRequestRoutes(
           403,
         );
       const x = await resolve(c);
-      if (!x || 'mismatch' in x)
-        return c.json({ success: false, error: 'Provider unavailable' }, 404);
+      if ('refused' in x)
+        return c.json({ success: false, error: x.refused }, 404);
       const input = getBody(c);
       const availability = await x.provider.getAvailability(x.context);
       const capability = input.autoMerge ? 'autoMerge' : 'merge';

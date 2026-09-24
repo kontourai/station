@@ -11,7 +11,12 @@ const LANE_ROOTS = Object.freeze([
   'test:prepush',
   'verify',
 ]);
-const CLASSIFICATIONS = new Set(['enforced', 'candidate', 'advisory']);
+const CLASSIFICATIONS = new Set([
+  'enforced',
+  'candidate',
+  'advisory',
+  'scoped',
+]);
 const NPM_RUN_PATTERN = /\bnpm\s+run\s+([A-Za-z0-9][A-Za-z0-9:._-]*)/g;
 const EXACT_NPM_RUN_PATTERN = /^npm\s+run\s+([A-Za-z0-9][A-Za-z0-9:._-]*)$/;
 // The npm-run graph and the workflow run blocks are not the only things that
@@ -289,6 +294,11 @@ function validate(repoRoot) {
     '.veritas/repo-map.json',
     errors,
   );
+  const standards = readJson(
+    resolve(repoRoot, '.veritas/repo-standards/default.repo-standards.json'),
+    '.veritas/repo-standards/default.repo-standards.json',
+    errors,
+  );
   const mapping = readJson(
     resolve(repoRoot, 'scripts/evidence-check-execution.json'),
     'scripts/evidence-check-execution.json',
@@ -299,7 +309,7 @@ function validate(repoRoot) {
     'package.json',
     errors,
   );
-  if (!repoMap || !mapping || !packageJson) return errors;
+  if (!repoMap || !standards || !mapping || !packageJson) return errors;
 
   const checks = repoMap.evidence?.evidenceChecks;
   if (!Array.isArray(checks)) {
@@ -386,11 +396,38 @@ function validate(repoRoot) {
   const reachable = new Set([...laneReachable, ...workflowReachable]);
   const corpusIndex = corpusExecutionIndex(repoRoot, errors);
   const resourceManifest = readResourceManifest(repoRoot);
+  const scopedCheckIds = new Set(
+    (standards.rules ?? [])
+      .filter((rule) => rule.enforcementLevel === 'Require')
+      .flatMap((rule) => rule.evidenceCheckIds ?? []),
+  );
+  const readinessScript = scripts['veritas:readiness'];
+  let fastLaneSource = '';
+  let prePushSource = '';
+  try {
+    fastLaneSource = readFileSync(
+      resolve(repoRoot, 'scripts/run-ci-fast.mjs'),
+      'utf8',
+    );
+    prePushSource = readFileSync(
+      resolve(repoRoot, '.githooks/pre-push'),
+      'utf8',
+    );
+  } catch (error) {
+    errors.push(
+      `scoped evidence routing must read the fast lane and pre-push hook: ${error.message}`,
+    );
+  }
+  const readinessRouted =
+    typeof readinessScript === 'string' &&
+    /\bveritas\s+readiness\b/.test(readinessScript) &&
+    fastLaneSource.includes("['run', 'veritas:readiness']") &&
+    prePushSource.includes('npm run --silent veritas:readiness');
 
   for (const [id, classification] of mappingEntries) {
     if (!CLASSIFICATIONS.has(classification)) {
       errors.push(
-        `evidence check "${id}" has invalid execution classification ${JSON.stringify(classification)}; expected enforced, candidate, or advisory`,
+        `evidence check "${id}" has invalid execution classification ${JSON.stringify(classification)}; expected enforced, scoped, candidate, or advisory`,
       );
       continue;
     }
@@ -402,6 +439,23 @@ function validate(repoRoot) {
       errors.push(
         `evidence check "${id}" is enforced but "npm run ${scriptName}" is unreachable from every lane root and workflow run block`,
       );
+    }
+    if (classification === 'scoped') {
+      if (!scopedCheckIds.has(id)) {
+        errors.push(
+          `evidence check "${id}" is scoped but no Require rule binds it through evidenceCheckIds`,
+        );
+      }
+      if (!readinessRouted) {
+        errors.push(
+          `evidence check "${id}" is scoped but Veritas readiness is not wired to both ci:fast and pre-push`,
+        );
+      }
+      if (isReachable) {
+        errors.push(
+          `evidence check "${id}" is scoped but "npm run ${scriptName}" is directly reachable; classify it as enforced`,
+        );
+      }
     }
     if (classification === 'candidate') {
       if (isReachable) {

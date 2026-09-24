@@ -133,6 +133,7 @@ describe('environment endpoint profiles', () => {
       'origin-not-allowed',
       'unexpected-response',
       'undetermined',
+      'busy',
     ];
     expect([...DETERMINISTIC_FAILURE_REASONS].sort()).toEqual(
       [...expected].sort(),
@@ -301,6 +302,18 @@ describe('environment endpoint profiles', () => {
     // Pairing cannot change an allow-list decision — offering it would be a
     // fix that cannot work, the exact hazard station#1776 recorded for 403.
     expect(`${copy.summary} ${copy.action}`).not.toMatch(/pair/i);
+  });
+
+  // station#2327: `busy` can hold for a whole outage — the home route and the
+  // Manage Stations card show it for as long as it lasts — so its copy must
+  // not promise the wait is short, and must say what to do if it is not.
+  it('makes no time promise for a busy Station and names a next step', () => {
+    const copy = connectionFailureCopy('busy', 'Living Room Mac');
+    expect(copy.summary).toBe(
+      'Living Room Mac is answering, but not keeping up.',
+    );
+    expect(`${copy.summary} ${copy.action}`).not.toMatch(/shortly|in line/i);
+    expect(copy.action).toMatch(/restart/i);
   });
 
   it('asserts no cause at all for a failure nothing determined', () => {

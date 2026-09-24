@@ -22,6 +22,7 @@ import {
   terminalWorktreeStateForExit,
   validateWorktreePolicy,
   WorktreeProvisioningService,
+  WorktreeRepositoryConfigError,
 } from '../worktree-provisioning-service.js';
 
 vi.mock('../../../telemetry/metrics.js', () => ({
@@ -234,6 +235,7 @@ describe('WorktreeProvisioningService', () => {
       async run(args) {
         if (args.includes('--show-toplevel'))
           return { stdout: `${repoPath}\n`, stderr: '', code: 0 };
+        if (args.includes('config')) return { stdout: '', stderr: '', code: 0 };
         if (args.includes('status')) return { stdout: '', stderr: '', code: 0 };
         if (args.includes('--verify'))
           return { stdout: '', stderr: '', code: 1 };
@@ -275,6 +277,9 @@ describe('WorktreeProvisioningService', () => {
         if (args.includes('--show-toplevel')) {
           return { stdout: `${repoPath}\n`, stderr: '', code: 0 };
         }
+        if (args.includes('config')) {
+          return { stdout: '', stderr: '', code: 0 };
+        }
         if (args.includes('status')) {
           return { stdout: '', stderr: '', code: 0 };
         }
@@ -304,6 +309,7 @@ describe('WorktreeProvisioningService', () => {
     expect(metadata?.path).toBe(join(worktreeBaseDir, segment));
     expect(calls.map((call) => call.args.join(' '))).toEqual([
       `-C ${repoPath} rev-parse --show-toplevel`,
+      `-C ${repoPath} config --show-scope --null --list`,
       `-C ${repoPath} status --porcelain`,
       `-C ${repoPath} rev-parse --verify --quiet refs/heads/${branch}`,
       `-C ${repoPath} worktree add -b ${branch} ${join(
@@ -311,7 +317,7 @@ describe('WorktreeProvisioningService', () => {
         segment,
       )} HEAD`,
     ]);
-    expect(calls[2]?.allowCodes).toEqual([0, 1]);
+    expect(calls[3]?.allowCodes).toEqual([0, 1]);
   });
 
   test('provisions and cleans up an isolated worktree', async () => {
@@ -529,5 +535,75 @@ describe('WorktreeProvisioningService', () => {
 
     await service.cleanup({ metadata: first!, terminalState: 'completed' });
     await service.cleanup({ metadata: second!, terminalState: 'completed' });
+  });
+});
+
+describe('repository-defined programs (#2411)', () => {
+  test('refuses to provision from a repository whose own config defines a smudge filter, and runs nothing', async () => {
+    const repoPath = createRepo();
+    // Committed BEFORE the filter exists, so setup never runs it; only a
+    // checkout into a new worktree would.
+    writeFileSync(join(repoPath, '.gitattributes'), '*.txt filter=marker\n');
+    writeFileSync(join(repoPath, 'payload.txt'), 'payload\n');
+    git(repoPath, ['add', '.gitattributes', 'payload.txt']);
+    git(repoPath, ['commit', '-m', 'attributes']);
+    const marker = `${repoPath}.smudge-ran`;
+    tmpRoots.push(marker);
+    git(repoPath, [
+      'config',
+      'filter.marker.smudge',
+      `sh -c 'touch "${marker}"; cat'`,
+    ]);
+    const service = new WorktreeProvisioningService();
+
+    const provisioning = service.provision({
+      repoPath,
+      threadId: 'session-smudge',
+      providerKind: 'codex',
+      isolation: { mode: 'worktree' },
+    });
+
+    await expect(provisioning).rejects.toBeInstanceOf(
+      WorktreeRepositoryConfigError,
+    );
+    await expect(provisioning).rejects.toThrow(
+      "this repository's own .git/config sets filter.marker.smudge, which git would run while checking files out. Remove them, or start the chat without worktree isolation.",
+    );
+    expect(existsSync(marker)).toBe(false);
+    const branch = buildWorktreeBranchName({ threadId: 'session-smudge' });
+    expect(git(repoPath, ['branch', '--list', branch]).trim()).toBe('');
+    expect(git(repoPath, ['worktree', 'list', '--porcelain'])).not.toContain(
+      'session-smudge',
+    );
+    expect(worktreeProvisionTotal.add).toHaveBeenCalledWith(1, {
+      outcome: 'failure',
+      provider_kind: 'codex',
+      reason: 'repository_config_refused',
+    });
+  });
+
+  test('refuses rather than proceeding when the configuration cannot be read', async () => {
+    const repoPath = mkdtempSync(join(tmpdir(), 'station-worktree-config-'));
+    tmpRoots.push(repoPath);
+    const calls: string[] = [];
+    const runner: GitCommandRunner = {
+      async run(args) {
+        calls.push(args.join(' '));
+        if (args.includes('--show-toplevel'))
+          return { stdout: `${repoPath}\n`, stderr: '', code: 0 };
+        if (args.includes('config')) throw new Error('bad config line 3');
+        throw new Error(`unexpected git call: ${args.join(' ')}`);
+      },
+    };
+
+    await expect(
+      new WorktreeProvisioningService(runner).provision({
+        repoPath,
+        threadId: 'session-unreadable',
+        providerKind: 'codex',
+        isolation: { mode: 'worktree' },
+      }),
+    ).rejects.toBeInstanceOf(WorktreeRepositoryConfigError);
+    expect(calls.some((call) => call.includes('worktree add'))).toBe(false);
   });
 });

@@ -173,6 +173,10 @@ const EXECUTED_BY_OWN_TEST: ReadonlyArray<readonly [string, string]> = [
     'scripts/__tests__/test-import-existence-gate.test.ts',
   ],
   [
+    'test-path-import-gate.mjs',
+    'scripts/__tests__/test-path-import-gate.test.ts',
+  ],
+  [
     'ui-glyph-coverage-ratchet.mjs',
     'scripts/__tests__/ui-glyph-coverage-gate.cli.test.ts',
   ],

@@ -15,6 +15,9 @@ export interface UseConnectionStatusOptions {
     credential: string | undefined,
     expectedEnvironmentId: string | null,
     signal: AbortSignal,
+    brokerRoute?: NonNullable<
+      import('../core/types').SavedConnection['brokerRoute']
+    >,
   ) => Promise<ConnectionHealthCheckResult>;
   /** Healthy poll interval in ms (default: 10_000). Failures use bounded backoff. */
   pollInterval?: number;
@@ -92,6 +95,7 @@ export function useConnectionStatus({
     activeConnection,
     credentialProvider,
     recordEndpointSuccess,
+    recordBrokerRouteSuccess,
     recordEndpointFailure,
     credentialAuthorityGeneration,
     nativeShell,
@@ -108,6 +112,19 @@ export function useConnectionStatus({
   );
   entry.coordinator.updateOptions({
     endpoints: () => {
+      if (activeConnection?.brokerRoute) {
+        // Keep one logical probe target for the selected encrypted route. It
+        // is never a direct AccessEndpoint persisted on the broker profile.
+        return [
+          {
+            endpointVersion: 1,
+            id: `endpoint:broker-route:${activeConnection.id}`,
+            url: activeConnection.url,
+            kind: 'broker-route' as const,
+            priority: -1,
+          },
+        ];
+      }
       const selected = activeConnection?.selectedEndpointId;
       return (
         activeConnection?.endpoints ??
@@ -146,16 +163,32 @@ export function useConnectionStatus({
       online: true,
     }),
     check: (endpoint, signal) =>
-      probeEndpoint
-        ? probeEndpoint(
-            endpoint.url,
-            credentialProvider.getCredential(),
-            activeConnection?.environmentId ?? null,
-            signal,
-          )
-        : checkHealth(endpoint.url, credentialProvider.getCredential()),
+      activeConnection?.brokerRoute
+        ? probeEndpoint
+          ? probeEndpoint(
+              endpoint.url,
+              undefined,
+              null,
+              signal,
+              activeConnection.brokerRoute,
+            )
+          : Promise.resolve({ ok: false, reason: 'unreachable' })
+        : probeEndpoint
+          ? probeEndpoint(
+              endpoint.url,
+              credentialProvider.getCredential(),
+              activeConnection?.environmentId ?? null,
+              signal,
+            )
+          : checkHealth(endpoint.url, credentialProvider.getCredential()),
     onSuccess: (endpoint, result) => {
       if (!activeConnection) return;
+      // The logical broker target is not an HTTP endpoint and must never be
+      // committed as one of the Station's direct endpoint candidates.
+      if (activeConnection.brokerRoute) {
+        recordBrokerRouteSuccess(activeConnection.id, undefined, result.bootId);
+        return;
+      }
       recordEndpointSuccess(
         activeConnection.id,
         endpoint.url,

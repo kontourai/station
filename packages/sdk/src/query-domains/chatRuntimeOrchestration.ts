@@ -13,6 +13,7 @@ import {
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { useMutation } from '@tanstack/react-query';
 import { apiErrorMessage } from '../api-core';
+import { ChatHttpError } from '../client/chatHttpError';
 import {
   type DelegatedTaskHandle,
   type DelegatedTaskInterruptResult,
@@ -382,9 +383,15 @@ export async function dispatchOrchestrationCommand<T = unknown>(
     success: boolean;
     data?: T;
     error?: string;
+    code?: string;
   };
   if (!response.ok || !result.success) {
-    throw new Error(apiErrorMessage(result, `HTTP ${response.status}`));
+    const message = apiErrorMessage(result, `HTTP ${response.status}`);
+    // A stable refusal code (e.g. #2436's `approval-full-access-not-granted`)
+    // is kept, so a caller can tell a refusal from a transport failure.
+    throw typeof result.code === 'string'
+      ? new ChatHttpError(response.status, message, result.code)
+      : new Error(message);
   }
   return result.data as T;
 }
@@ -519,9 +526,15 @@ export async function dispatchOrchestrationCommandWithReceipt<T = unknown>(
     receipt?: OrchestrationCommandReceipt;
     receiptStatus?: unknown;
     error?: string;
+    code?: unknown;
   };
   if (!response.ok || !result.success) {
-    throw new Error(apiErrorMessage(result, `HTTP ${response.status}`));
+    // The server's typed refusal code (e.g. #2312's `draft_busy`) rides on
+    // the error, so a caller can tell a retryable refusal from a failure.
+    throw Object.assign(
+      new Error(apiErrorMessage(result, `HTTP ${response.status}`)),
+      typeof result.code === 'string' ? { code: result.code } : {},
+    );
   }
   if (!result.receipt) {
     throw new Error('Orchestration command response missing receipt');
@@ -886,6 +899,37 @@ export async function interruptOrchestrationTurn(input: {
     },
     input.apiBase,
     input.timeoutMs ?? STOP_REQUEST_BUDGET_MS,
+  );
+}
+
+/**
+ * #2436: record the conversation's approval posture. The server orders it by
+ * receipt and applies it at the next session start or turn start, whatever
+ * path sends that turn; every client folds it from the event stream. The
+ * result's `sequence` is the recorded event's server global sequence.
+ */
+export async function setOrchestrationApprovalMode(input: {
+  threadId: string;
+  approvalMode: import('@kontourai/station-contracts/provider').ApprovalMode;
+  /**
+   * The sequence of the latest decision this client had folded when the
+   * user picked (`null`: none). The server records the pick only if no newer
+   * decision exists; otherwise the result has `recorded: false` and names
+   * the decision that stands.
+   */
+  basedOnSequence: number | null;
+  apiBase?: string;
+}): Promise<
+  import('@kontourai/station-contracts/orchestration').SetApprovalModeResult
+> {
+  return dispatchOrchestrationCommand(
+    {
+      type: 'setApprovalMode',
+      threadId: input.threadId,
+      approvalMode: input.approvalMode,
+      basedOnSequence: input.basedOnSequence,
+    },
+    input.apiBase,
   );
 }
 

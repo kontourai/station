@@ -100,6 +100,48 @@ describe('useChatDockActions placement-aware actions', () => {
     });
   });
 
+  test('a fullscreen pane places the initial message in the new chat without revealing the ambient dock', () => {
+    // Epic #2323 S2 review M2: the composer draft must reach the input in a
+    // fullscreen placement too, where the dock is not revealed.
+    const setActiveSessionId = vi.fn();
+    const { result } = renderHook(() =>
+      useChatDockActions({
+        sessions: [],
+        agents: [],
+        activeSessionId: null,
+        setActiveSessionId,
+      }),
+    );
+
+    act(() =>
+      result.current.openChatForAgent(
+        { slug: 'agent-a', name: 'Agent A' } as never,
+        'pulse',
+        'Pulse',
+        'Read the plugin-authoring topic.',
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        false,
+      ),
+    );
+
+    expect(createChatSession).toHaveBeenCalledWith(
+      'agent-a',
+      'Agent A',
+      undefined,
+      'pulse',
+      'Pulse',
+      expect.anything(),
+    );
+    expect(setDockState).not.toHaveBeenCalled();
+    expect(updateChat).toHaveBeenCalledWith('new-session', {
+      input: 'Read the plugin-authoring topic.',
+    });
+  });
+
   test('opening a chat on mobile always maximizes the dock', () => {
     isMobile.value = true;
     lastDockMaximized.value = false;

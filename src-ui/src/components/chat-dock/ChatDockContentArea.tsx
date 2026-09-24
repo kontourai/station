@@ -44,7 +44,7 @@ interface ChatDockContentAreaProps {
   modelProviderLabel?: string;
   modelProviders: ComponentProps<typeof ChatDockBody>['modelProviders'];
   agentDefaultModelId: string | null;
-  connectionApprovalModeDefault?: unknown;
+  agentApprovalModeDefault?: unknown;
   /** This Station's `AppConfig.defaultApprovalMode` (#2144 slice 6). */
   stationApprovalModeDefault?: unknown;
   toolPolicyDelivery?: ComponentProps<
@@ -106,7 +106,7 @@ function ChatDockContentAreaImpl({
   modelProviderLabel,
   modelProviders,
   agentDefaultModelId,
-  connectionApprovalModeDefault,
+  agentApprovalModeDefault,
   stationApprovalModeDefault,
   toolPolicyDelivery,
   availableModels,
@@ -221,7 +221,7 @@ function ChatDockContentAreaImpl({
             modelProviderLabel={modelProviderLabel}
             modelProviders={modelProviders}
             agentDefaultModelId={agentDefaultModelId ?? undefined}
-            connectionApprovalModeDefault={connectionApprovalModeDefault}
+            agentApprovalModeDefault={agentApprovalModeDefault}
             stationApprovalModeDefault={stationApprovalModeDefault}
             toolPolicyDelivery={toolPolicyDelivery}
             availableModels={availableModels}

@@ -1,4 +1,9 @@
-import type { InterruptTurnResult } from '@kontourai/station-contracts/orchestration';
+import type {
+  InterruptTurnResult,
+  OrchestrationSessionSummary,
+} from '@kontourai/station-contracts/orchestration';
+import { PROVIDER_TURN_IN_PROGRESS_CODE } from '@kontourai/station-contracts/provider';
+import { isFirstSendFailure } from '@kontourai/station-contracts/session-attention';
 import type { ConnectionConfig } from '@kontourai/station-contracts/tool';
 import {
   type ChatHttpError,
@@ -8,11 +13,11 @@ import {
   steerOrchestrationTurn,
   useEngineConnectionsQuery,
   useInvalidateQuery,
+  useQueryClient,
 } from '@kontourai/station-sdk';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { useCallback } from 'react';
 import { useActiveChatActions } from '../contexts/ActiveChatsContext';
-import { useAgents } from '../contexts/AgentsContext';
 import {
   type ChatMessage,
   isTurnInFlight,
@@ -21,23 +26,25 @@ import {
   activeChatsStore,
   type ChatUIState,
 } from '../contexts/active-chats-store';
-import { useConfig } from '../contexts/ConfigContext';
 import type {
   OutboundDispatchClaim,
   OutboundDispatchTransportResult,
 } from '../lib/outboundQueue';
 import type { ComposerAttachmentStageSnapshot, FileAttachment } from '../types';
-import { approvalModeForDispatch } from '../utils/approvalMode';
+import {
+  approvalPickReceived,
+  fullAccessRefusalNote,
+  isFullAccessRefusal,
+  supersededPickNote,
+} from '../utils/approvalMode';
 import {
   type ChatErrorTranslation,
   translateChatError,
 } from '../utils/chatErrorTranslation';
-import {
-  chatSessionIsLive,
-  resolveSessionEngineConnectionId,
-  sessionAdapterSupportsSteering,
-} from '../utils/execution';
+import { liveTurnTarget, serverTurnLive } from '../utils/conversation-activity';
+import { sessionAdapterSupportsSteering } from '../utils/execution';
 import { steerRefusalMessage } from '../utils/steerTurn';
+import { drainQueuedMessageOnTurnCompleted } from './orchestration/queueDrain';
 import { isReplayThread } from './orchestration/replay/replay-registry';
 import { buildOutgoingUserMessage } from './useActiveChatSessions.helpers';
 import { useStreamingMessage } from './useStreamingMessage';
@@ -129,6 +136,31 @@ function rejectedSendRollback(
   };
 }
 
+/**
+ * #2310 review H1/F4: whether the cached session list still describes one of
+ * these identities as having never taken a send — a Draft, or a Failed row
+ * whose only failure is that its sends did not take (`send_refused` /
+ * `send_failed`). Either answer is stale the moment a send is accepted, so
+ * the send path must re-read the list. Read-only; `undefined` ids skipped.
+ */
+function cachedSummaryAwaitsFirstTurn(
+  queryClient: ReturnType<typeof useQueryClient>,
+  ids: ReadonlyArray<string | undefined>,
+): boolean {
+  const wanted = new Set(ids.filter((id): id is string => Boolean(id)));
+  const cached =
+    queryClient.getQueryData<OrchestrationSessionSummary[]>([
+      'orchestration-sessions',
+    ]) ?? [];
+  return cached.some(
+    (session) =>
+      (wanted.has(session.threadId) ||
+        (session.conversationId !== undefined &&
+          wanted.has(session.conversationId))) &&
+      (session.draft === true || isFirstSendFailure(session)),
+  );
+}
+
 export function useSendMessage(
   apiBase: string,
   onActiveSessionChange?: (newSessionId: string) => void,
@@ -152,15 +184,7 @@ export function useSendMessage(
     data: ConnectionConfig[];
   };
   const invalidate = useInvalidateQuery();
-  // #2144 slice 6 fix round 1: the two default layers below a session
-  // override (the engine connection's own default, then this Station's
-  // `defaultApprovalMode`) were display-only — the composer chip read them
-  // and nothing put them on the wire. This is the one send path that starts a
-  // conversation, so it is where the whole resolved chain becomes a request.
-  const stationApprovalModeDefault = useConfig()?.defaultApprovalMode;
-  // Only for the Agent-record link of the engine-connection chain the
-  // composer resolves its approval chip from (round 2 LOW-5).
-  const agents = useAgents();
+  const queryClient = useQueryClient();
   const sendMessage = useCallback(
     async (
       sessionId: string,
@@ -210,8 +234,13 @@ export function useSendMessage(
       // Durable outbound replay stays durable either way — it must not
       // collapse into either the in-memory queue or a live steer.
       let steerOpenTurn = false;
+      // #2309: "is a turn busy" is the server's open turn (on any device, in
+      // any lineage child) or this composer's own unacknowledged send. A
+      // server that sends no activity record keeps the legacy local status.
+      const turnBusy =
+        serverTurnLive(currentState) ?? currentState?.status === 'sending';
 
-      if (currentState?.status === 'sending') {
+      if (turnBusy && currentState) {
         if (options?.skipInMemoryQueueOnBusy) {
           return options?.dispatch
             ? ({
@@ -219,8 +248,12 @@ export function useSendMessage(
               } satisfies OutboundDispatchTransportResult)
             : undefined;
         }
+        // #2324 (D4): a turn the engine opened on its own is not a turn the
+        // user is steering. Their message waits for it to finish, queued,
+        // rather than being folded into a reply they did not ask for.
         const steeringCapable =
           !options?.queueOnBusy &&
+          currentState.conversationActivity?.openTurn?.trigger !== 'provider' &&
           sessionAdapterSupportsSteering(
             currentState.agentConnectionId,
             agentConnections,
@@ -260,10 +293,14 @@ export function useSendMessage(
         // would start a second turn and wipe the in-flight stream.
         clearInput(sessionId);
         try {
+          // #2309: the server's open turn names the lineage child running
+          // it and the exact turn; the local stamp is the older-server path.
+          const openTurn = currentState.conversationActivity?.openTurn;
           const result = await steerOrchestrationTurn({
-            threadId: currentState.currentSessionId ?? sessionId,
+            threadId:
+              openTurn?.threadId ?? currentState.currentSessionId ?? sessionId,
             text: content,
-            turnId: currentState.openTurnId,
+            turnId: openTurn?.turnId ?? currentState.openTurnId,
             apiBase,
           });
           if (result.outcome === 'steered') {
@@ -313,6 +350,8 @@ export function useSendMessage(
       clearInput(sessionId);
       updateChat(sessionId, {
         status: 'sending',
+        // #2309: the optimistic window the server has not acknowledged yet.
+        sendAwaitingTurnStart: true,
         messages: transaction.optimisticMessages,
         abortController,
         // The window a Stop has to be held through, named (
@@ -326,43 +365,19 @@ export function useSendMessage(
         const { dispatchForeground } = await import(
           '../lib/foregroundMessageDispatch'
         );
-        // The chip's own chain, shared (round 2 LOW-5).
-        const sessionEngineConnectionId = resolveSessionEngineConnectionId({
-          conversationOpenState: currentState?.conversationOpenState,
-          currentSessionId: currentState?.currentSessionId,
-          chatStateConnectionId: currentState?.agentConnectionId,
-          agentBoundConnectionId: agents.find(
-            (agent) => agent.slug === agentSlug,
-          )?.execution?.agentConnectionId,
-        });
-        const dispatchedProviderOptions = options?.executionSnapshot
-          ? (options.executionSnapshot.requestedProviderOptions ??
-            options.executionSnapshot.providerOptions)
-          : (currentState?.requestedProviderOptions ??
-            currentState?.providerOptions);
+        // #2436: the server applies the conversation's recorded posture to
+        // this turn. The only posture this send carries is a pick the server
+        // has not received yet (no session yet, or picked offline); it is
+        // recorded on receipt, before the turn. A replayed turn carries the
+        // chat's CURRENT queued pick, never one captured when it was queued.
+        const carriedApprovalPick = currentState?.queuedApprovalMode;
         const receipt = await dispatchForeground({
           apiBase,
           sessionId,
           agentSlug,
           projectSlug: currentState?.projectSlug,
-          // The layers below the session override, resolved here because this
-          // is where the engine identity, the connection record and the app
-          // config all exist at once. `undefined` unless this turn STARTS the
-          // chat's session on an external engine whose adapter has the knob —
-          // see `approvalModeForDispatch` for every gate and why.
-          approvalModeFallback: approvalModeForDispatch({
-            engineConnectionId: sessionEngineConnectionId,
-            executionMode: currentState?.executionMode,
-            // Liveness, not the existence of an id: `currentSessionId`
-            // outlives its session, and a reopened conversation is marked
-            // started whether or not anything is running (round 3 F1).
-            sessionAlreadyStarted: chatSessionIsLive(currentState),
-            sessionOverride: dispatchedProviderOptions?.approvalMode,
-            connectionDefault: agentConnections.find(
-              (connection) => connection.id === sessionEngineConnectionId,
-            )?.config.approvalMode,
-            stationDefault: stationApprovalModeDefault,
-          }),
+          setApprovalMode: carriedApprovalPick,
+          setApprovalModeBasedOn: currentState?.approvalPostureSequence ?? null,
           requestedModel: options?.executionSnapshot
             ? options.executionSnapshot.requestedModel
             : currentState?.requestedModel,
@@ -397,7 +412,25 @@ export function useSendMessage(
           // durable tab keyed by its conversation while routing subsequent
           // live controls/events to the server-receipted child identity.
           currentSessionId: receipt.sessionId,
+          // #2436: the carried pick is settled only by what the server
+          // reports became of it, never by the send's success alone. A
+          // Station that reports nothing (an older one, or another Station
+          // this send was forwarded to) leaves it queued, and the next send
+          // carries it again, as the options channel always did there.
+          ...(carriedApprovalPick && receipt.approvalMode
+            ? approvalPickReceived(
+                activeChatsStore.getSnapshot()[sessionId],
+                carriedApprovalPick,
+                receipt.approvalMode,
+              )
+            : {}),
         });
+        if (carriedApprovalPick && receipt.approvalMode?.recorded === false) {
+          addEphemeralMessage(sessionId, {
+            role: 'system',
+            content: supersededPickNote(receipt.approvalMode.approvalMode),
+          });
+        }
         // The send above can bring either the conversation's root Session or
         // a later continuation Session into existence. A newly current child
         // is not in the cached list every reader of
@@ -408,9 +441,20 @@ export function useSendMessage(
         // receipted execution identity changes; otherwise the dock looks for
         // the new child in a pre-child cache and falsely reports "Session
         // record missing" even though that record is durable on the server.
+        //
+        // #2310 review H1/F4: also when the cached list still calls this
+        // conversation a Draft, or Failed only because its earlier sends did
+        // not take. Opening either marks the chat started, so neither
+        // condition above fires on this send, and every surface would keep
+        // the pre-send answer.
         if (
           !currentState?.orchestrationSessionStarted ||
-          currentState.currentSessionId !== receipt.sessionId
+          currentState.currentSessionId !== receipt.sessionId ||
+          cachedSummaryAwaitsFirstTurn(queryClient, [
+            receipt.sessionId,
+            receipt.conversationId,
+            currentState?.conversationId,
+          ])
         ) {
           invalidate(['orchestration-sessions']);
           invalidate(conversationQueries.inventory().queryKey);
@@ -423,6 +467,18 @@ export function useSendMessage(
             } satisfies OutboundDispatchTransportResult)
           : true;
       } catch (error) {
+        // #2436: a carried full access this device may not grant refused the
+        // whole send. The pick is dropped (resending it could only be
+        // refused again) and the send's own failure handling below runs.
+        if (isFullAccessRefusal(error)) {
+          const latest = activeChatsStore.getSnapshot()[sessionId];
+          if (latest?.queuedApprovalMode === 'never')
+            updateChat(sessionId, { queuedApprovalMode: undefined });
+          addEphemeralMessage(sessionId, {
+            role: 'system',
+            content: fullAccessRefusalNote,
+          });
+        }
         // Stop deliberately releases the browser's foreground observer after
         // the server has settled the interrupt. Fetch rejects with the abort
         // reason (a string in browsers), which used to fall through as an
@@ -544,6 +600,40 @@ export function useSendMessage(
           return false;
         }
 
+        // #2324 (D4): the engine began a turn of its own before this send
+        // reached it (the composer queues when it already sees one). The
+        // refusal is retryable: move the message into the queue that drains
+        // when that turn finishes, rather than calling it failed. A send with
+        // attachments cannot ride the text queue, so it keeps the ordinary
+        // error and Retry below.
+        if (
+          err.code === PROVIDER_TURN_IN_PROGRESS_CODE &&
+          !options?.dispatch &&
+          !(attachments && attachments.length > 0)
+        ) {
+          const { input: _restoredDraft, ...rollback } = rejectedSendRollback(
+            transaction,
+            latestState,
+          );
+          updateChat(sessionId, {
+            ...rollback,
+            status: 'idle',
+            error: undefined,
+            abortController: undefined,
+            pendingClientTurnId: undefined,
+            sendAwaitingTurnStart: undefined,
+            queuedMessages: [...(latestState?.queuedMessages ?? []), content],
+          });
+          // The turn it waited on may already have ended while this refusal
+          // was in flight; its end was the queue's only trigger.
+          if (
+            serverTurnLive(activeChatsStore.getSnapshot()[sessionId]) !== true
+          ) {
+            drainQueuedMessageOnTurnCompleted(apiBase, sessionId);
+          }
+          return false;
+        }
+
         // This error-only loader keeps the foreground receipt classifier out
         // of the initial chat shell. Classification still runs before any
         // observer or retry affordance is exposed.
@@ -661,7 +751,6 @@ export function useSendMessage(
     [
       addEphemeralMessage,
       agentConnections,
-      agents,
       apiBase,
       assignConversationId,
       clearEphemeralMessages,
@@ -669,9 +758,9 @@ export function useSendMessage(
       clearStreamingMessage,
       handleSlashCommand,
       invalidate,
+      queryClient,
       onActiveSessionChange,
       onError,
-      stationApprovalModeDefault,
       updateChat,
     ],
   );
@@ -765,6 +854,7 @@ export function useCancelMessage(apiBase?: string) {
           true;
       }
       updateChat(sessionId, { stopPending: true });
+      const target = liveTurnTarget(state, sessionId);
       let settledResult: InterruptTurnResult | undefined;
       try {
         // The browser stream is only an observer of the engine turn. Ask the
@@ -773,9 +863,11 @@ export function useCancelMessage(apiBase?: string) {
         // that continues spending tokens and can later be reported Done.
         const result = await interruptOrchestrationTurn({
           // A conversation may advance through multiple execution Sessions.
-          // Interrupt the exact receipted current Session, not its durable
-          // conversation/root identity.
-          threadId: state.currentSessionId ?? state.conversationId ?? sessionId,
+          // Interrupt the exact Session running the turn, not its durable
+          // conversation/root identity: the server's open turn names it (and
+          // the turn) when a record exists (#2309); otherwise the receipted
+          // current Session.
+          ...target,
           // Only meaningful while the engine has not started this turn: it
           // binds a held cancel to THIS dispatch
           ...(state.pendingClientTurnId
@@ -820,7 +912,13 @@ export function useCancelMessage(apiBase?: string) {
           abortController: undefined,
           stopPending: false,
           ...(turnSettled
-            ? { orchestrationTurnOpen: false, error: undefined }
+            ? {
+                orchestrationTurnOpen: false,
+                error: undefined,
+                // #2309: the same receipt closes the server-named turn for
+                // this client until the record itself moves on.
+                ...(target.turnId ? { stopSettledTurnId: target.turnId } : {}),
+              }
             : {}),
         });
       }

@@ -1,5 +1,8 @@
 import { agentId } from '@kontourai/station-contracts/agent-identity';
-import { sendExecutionMessage } from '@kontourai/station-sdk/client';
+import {
+  type ApprovalPickCarry,
+  sendExecutionMessage,
+} from '@kontourai/station-sdk/client';
 import type { ComposerAttachmentStageSnapshot, FileAttachment } from '../types';
 import { resolveTurnModel } from './turnModel';
 
@@ -19,19 +22,13 @@ export async function dispatchForeground(input: {
   model?: string;
   providerOptions?: Record<string, unknown>;
   /**
-   * The approval posture resolved from the layers BELOW a session override —
-   * the engine connection's default, then this Station's
-   * `AppConfig.defaultApprovalMode` (#2144 slice 6). Supplied already
-   * resolved (`approvalModeForDispatch`) so this module stays a mapper.
-   *
-   * It is folded into the outgoing `model.options` because
-   * `modelOptions.approvalMode` is the only channel the server reads
-   * (`readApprovalMode`, packages/contracts/src/provider.ts;
-   * `resolveClaudePermissionMode`, src-server/providers/adapters/
-   * claude-approval-mode.ts). A concrete override already present in the
-   * options bag outranks it and is left untouched.
+   * #2436: an approval pick the server has not received yet (the chat's
+   * `queuedApprovalMode`), with its compare-and-set basis: the sequence of
+   * the latest decision the chat had folded when the user picked, `null`
+   * when it had folded none. A pick without its basis is refused below.
    */
-  approvalModeFallback?: string;
+  setApprovalMode?: import('@kontourai/station-contracts/provider').ApprovalMode;
+  setApprovalModeBasedOn?: number | null;
   message: string;
   attachments?: FileAttachment[];
   attachmentStages?: ComposerAttachmentStageSnapshot[];
@@ -40,25 +37,25 @@ export async function dispatchForeground(input: {
   automaticBackground?: boolean;
   signal?: AbortSignal;
 }) {
+  // #2436: the pick travels as the message's own `setApprovalMode` with its
+  // basis, never as a model option. It survives the `engine-selected` branch
+  // below: resetting the model does not withdraw an approval pick.
+  if (
+    input.setApprovalMode !== undefined &&
+    input.setApprovalModeBasedOn === undefined
+  ) {
+    throw new Error(
+      'An approval pick needs the decision it was based on (null when none had been seen).',
+    );
+  }
   const resolved = resolveTurnModel(input);
   const defaultRequested = resolved.kind === 'engine-selected';
-  const modelOptions = ((): Record<string, unknown> | undefined => {
-    const requested = defaultRequested
-      ? undefined
-      : (input.requestedProviderOptions ?? input.providerOptions);
-    if (!input.approvalModeFallback) return requested;
-    // A session override travels in the options bag itself and wins; the
-    // fallback fills only the gap. `'connection-default'` in the bag is the
-    // user CLEARING their override, so the layer below it applies.
-    const override = requested?.approvalMode;
-    if (typeof override === 'string' && override !== 'connection-default') {
-      return requested;
-    }
-    // Deliberately survives the `engine-selected` branch above: dropping the
-    // whole bag with no model override is about not claiming a model, and
-    // must not silently drop the posture the Station does state.
-    return { ...(requested ?? {}), approvalMode: input.approvalModeFallback };
-  })();
+  // No approval posture rides the options (#2436): the server applies the
+  // conversation's recorded pick, else the Agent's and this Station's
+  // defaults at a session start, whatever path sends the turn.
+  const modelOptions = defaultRequested
+    ? undefined
+    : (input.requestedProviderOptions ?? input.providerOptions);
   const requestedModel = defaultRequested ? undefined : resolved.modelId;
   const attachments = input.attachments ?? [];
   const stages = input.attachmentStages ?? [];
@@ -117,6 +114,13 @@ export async function dispatchForeground(input: {
       };
     }
   }
+  const approvalPick: ApprovalPickCarry =
+    input.setApprovalMode !== undefined
+      ? {
+          setApprovalMode: input.setApprovalMode,
+          setApprovalModeBasedOn: input.setApprovalModeBasedOn ?? null,
+        }
+      : {};
   return sendExecutionMessage(
     input.apiBase,
     {
@@ -148,6 +152,7 @@ export async function dispatchForeground(input: {
       ambientContext: input.ambientContext,
       clientTurnId: input.clientTurnId,
       automaticBackground: input.automaticBackground,
+      ...approvalPick,
     },
     { signal: input.signal },
   );

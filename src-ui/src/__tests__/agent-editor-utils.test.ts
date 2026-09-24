@@ -44,6 +44,7 @@ function buildForm(): AgentFormData {
       mcpServers: ['github'],
       available: [],
       autoApprove: [],
+      browser: true,
     },
     execution: {
       agentConnectionId: 'bedrock-runtime',
@@ -138,6 +139,7 @@ describe('agent-editor utils', () => {
         mcpServers: ['github'],
         available: ['github_run', 'github_find'],
         autoApprove: ['github_*', 'github_run'],
+        browser: true,
       },
     };
 
@@ -145,6 +147,8 @@ describe('agent-editor utils', () => {
       mcpServers: [],
       available: [],
       autoApprove: [],
+      // Removing an integration leaves the built-in browser tools alone.
+      browser: true,
     });
   });
 

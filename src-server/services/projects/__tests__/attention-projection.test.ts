@@ -1,4 +1,9 @@
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { isAcknowledgeableAttentionKind } from '@kontourai/station-contracts/attention';
 import type { Notification } from '@kontourai/station-contracts/notification';
+import { pluginProposalHref } from '@kontourai/station-contracts/plugin';
 import type { ProviderSession } from '@kontourai/station-contracts/provider';
 import { sessionAttentionDisposition } from '@kontourai/station-contracts/session-attention';
 import {
@@ -10,8 +15,9 @@ import {
   parseHostedTenantRegistry,
   sessionReadAuthorityFromRequest,
 } from '@kontourai/station-contracts/tenancy';
-import { describe, expect, test, vi } from 'vitest';
+import { afterAll, describe, expect, test, vi } from 'vitest';
 import { projectRequestAnswerability } from '../../orchestration/open-requests.js';
+import { PluginLifecycleProposalService } from '../../plugins/plugin-lifecycle-proposals.js';
 import {
   AttentionProjectionService,
   buildSessionFailedItem,
@@ -113,6 +119,8 @@ function makeService(opts: {
    * rather than stamped.
    */
   proposedChanges?: unknown[];
+  /** #2323 S5: the real proposal store, read live on every `list()`. */
+  pluginProposals?: Pick<PluginLifecycleProposalService, 'listOpen'>;
   gateReviews?:
     | (() => Promise<PausedGateReviewAggregate>)
     | readonly PausedGateReviewSource[];
@@ -130,6 +138,7 @@ function makeService(opts: {
     pairingRequests,
     stationSetupRequirement,
     proposedChanges,
+    pluginProposals,
     gateReviews,
   } = opts;
   // Production receives a complete registry dependency. Keep older fixtures
@@ -188,6 +197,7 @@ function makeService(opts: {
       : typeof gateReviews === 'function'
         ? gateReviews
         : async () => ({ items: gateReviews, unavailableProjects: [] }),
+    pluginProposals,
   );
 }
 
@@ -3117,6 +3127,201 @@ describe('AttentionProjectionService proposed changes and gate reviews', () => {
       items.filter(
         (item) =>
           item.kind === 'proposed-change' || item.kind === 'gate-review',
+      ),
+    ).toEqual([]);
+  });
+});
+
+const OPERATOR = { isOperator: true };
+
+describe('#2323 S5 plugin lifecycle proposal attention', () => {
+  const homes: string[] = [];
+  afterAll(() => {
+    for (const home of homes) rmSync(home, { recursive: true, force: true });
+  });
+  function proposalStore() {
+    const home = mkdtempSync(join(tmpdir(), 'station-s5-attention-'));
+    homes.push(home);
+    return new PluginLifecycleProposalService(home);
+  }
+
+  test('an open proposal projects for the operator with a deep link into Plugins, and stops once dismissed', async () => {
+    const store = proposalStore();
+    const { proposal } = await store.propose({
+      kind: 'install',
+      source: '/tmp/plugins/pulse',
+      rationale: 'Adds the pulse pane.',
+      author: {
+        principal: 'agent',
+        agentSlug: 'station',
+        conversationId: 'c1',
+      },
+    });
+    const projection = makeService({ pluginProposals: store });
+
+    const items = (await projection.list(undefined, OPERATOR)).items.filter(
+      (item) => item.kind === 'plugin-lifecycle-proposal',
+    );
+    expect(items).toEqual([
+      expect.objectContaining({
+        id: `plugin-lifecycle-proposal:${proposal.id}`,
+        kind: 'plugin-lifecycle-proposal',
+        title: 'Install plugin from a local folder',
+        rationale: 'Adds the pulse pane.',
+        proposalKind: 'install',
+        pluginSource: '/tmp/plugins/pulse',
+        author: {
+          principal: 'agent',
+          agentSlug: 'station',
+          conversationId: 'c1',
+        },
+        openHref: pluginProposalHref(proposal.id),
+        source: { proposalId: proposal.id },
+      }),
+    ]);
+    expect(items[0]!.openHref).toBe(`/plugins?proposal=${proposal.id}`);
+    // Not a session-derived item: the conversation is the tool's report.
+    expect(items[0]).not.toHaveProperty('sessionId');
+    // The agent's words are never Station's own `body` sentence (L1).
+    expect(items[0]).not.toHaveProperty('body');
+    expect((await projection.list(undefined, OPERATOR)).pendingCount).toBe(1);
+
+    await store.dismiss(proposal.id);
+    expect(
+      (await projection.list(undefined, OPERATOR)).items.filter(
+        (item) => item.kind === 'plugin-lifecycle-proposal',
+      ),
+    ).toEqual([]);
+  });
+
+  test('an update proposal names the plugin; a completed one no longer projects', async () => {
+    const store = proposalStore();
+    const { proposal } = await store.propose({
+      kind: 'update',
+      pluginName: 'pulse',
+      rationale: 'v2.',
+      author: { principal: 'agent' },
+    });
+    const projection = makeService({ pluginProposals: store });
+    expect(
+      (await projection.list(undefined, OPERATOR)).items.find(
+        (item) => item.kind === 'plugin-lifecycle-proposal',
+      ),
+    ).toMatchObject({ title: 'Update plugin: pulse', pluginName: 'pulse' });
+    await store.complete(proposal.id, { kind: 'update', pluginName: 'pulse' });
+    expect(
+      (await projection.list(undefined, OPERATOR)).items.filter(
+        (item) => item.kind === 'plugin-lifecycle-proposal',
+      ),
+    ).toEqual([]);
+  });
+
+  test('a person’s proposal names only that a person asked, never which one', async () => {
+    const store = proposalStore();
+    await store.propose({
+      kind: 'remove',
+      pluginName: 'pulse',
+      rationale: 'Unused.',
+      author: { principal: 'person', principalId: 'human:device:phone-1' },
+    });
+    const projection = makeService({ pluginProposals: store });
+    const item = (await projection.list(undefined, OPERATOR)).items.find(
+      (candidate) => candidate.kind === 'plugin-lifecycle-proposal',
+    );
+    // Strict: no principal id rides along into the inbox.
+    expect(item && 'author' in item ? item.author : undefined).toStrictEqual({
+      principal: 'person',
+    });
+  });
+
+  test('review M6: proposals project for the operator only', async () => {
+    const store = proposalStore();
+    await store.propose({
+      kind: 'update',
+      pluginName: 'pulse',
+      rationale: 'v2.',
+      author: { principal: 'agent' },
+    });
+    const projection = makeService({ pluginProposals: store });
+    const kinds = async (viewer?: { isOperator?: boolean }) =>
+      (await projection.list(undefined, viewer)).items.map((item) => item.kind);
+    expect(await kinds(OPERATOR)).toContain('plugin-lifecycle-proposal');
+    expect(await kinds({ isOperator: false })).not.toContain(
+      'plugin-lifecycle-proposal',
+    );
+    // Unknown viewer fails closed.
+    expect(await kinds()).not.toContain('plugin-lifecycle-proposal');
+    expect(
+      (await projection.list(undefined, { isOperator: false })).pendingCount,
+    ).toBe(0);
+  });
+
+  test('a git proposal’s title names only the host it would come from', async () => {
+    const store = proposalStore();
+    await store.propose({
+      kind: 'install',
+      source: 'https://github.com/org/pulse',
+      rationale: 'r',
+      author: { principal: 'agent' },
+    });
+    const projection = makeService({ pluginProposals: store });
+    expect(
+      (await projection.list(undefined, OPERATOR)).items.find(
+        (item) => item.kind === 'plugin-lifecycle-proposal',
+      ),
+    ).toMatchObject({
+      title: 'Install plugin from github.com',
+      pluginSource: 'https://github.com/org/pulse',
+    });
+  });
+
+  test('a proposal cannot be acknowledged away; only completing or dismissing resolves it', async () => {
+    expect(isAcknowledgeableAttentionKind('plugin-lifecycle-proposal')).toBe(
+      false,
+    );
+    const store = proposalStore();
+    const { proposal } = await store.propose({
+      kind: 'remove',
+      pluginName: 'pulse',
+      rationale: 'Unused.',
+      author: { principal: 'agent' },
+    });
+    const acknowledged = new Map<string, string>();
+    const projection = makeService({
+      pluginProposals: store,
+      acknowledgementStore: {
+        getMany: () => acknowledged,
+        acknowledge: ({ conversationId, updatedAt }) =>
+          void acknowledged.set(conversationId, updatedAt),
+      },
+    });
+    expect(
+      await projection.acknowledge(`plugin-lifecycle-proposal:${proposal.id}`),
+    ).toBe(false);
+    expect(acknowledged.size).toBe(0);
+  });
+
+  test('hosted reads project no plugin proposals', async () => {
+    const store = proposalStore();
+    await store.propose({
+      kind: 'remove',
+      pluginName: 'pulse',
+      rationale: 'Unused.',
+      author: { principal: 'agent' },
+    });
+    const registry = parseHostedTenantRegistry({
+      schemaVersion: 1,
+      tenants: [{ id: 'alpha', authority: 'alpha.example.test' }],
+    });
+    const projection = makeService({ pluginProposals: store });
+    const hosted = sessionReadAuthorityFromRequest(
+      'alpha',
+      { tenantId: registry.tenants[0].id },
+      registry,
+    );
+    expect(
+      (await projection.list(hosted, OPERATOR)).items.filter(
+        (item) => item.kind === 'plugin-lifecycle-proposal',
       ),
     ).toEqual([]);
   });

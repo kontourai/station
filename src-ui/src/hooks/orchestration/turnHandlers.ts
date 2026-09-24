@@ -4,6 +4,7 @@ import {
   ENGINE_TURN_FAILED_CODE,
   isApprovalMode,
 } from '@kontourai/station-contracts/provider';
+import { isProviderTriggeredTurn } from '@kontourai/station-contracts/runtime-events';
 import {
   type ActiveChatsStore,
   activeChatsStore,
@@ -51,6 +52,15 @@ function reconcileDurableTurn(sessionId: string, providerTurnId: string): void {
         error: `Could not reconcile the durable offline turn: ${error instanceof Error ? error.message : String(error)}`,
       });
     });
+}
+
+/** Epoch ms of a `turn.started.createdAt`, or undefined when unparseable. */
+export function parseTurnStartedAt(
+  createdAt: string | undefined,
+): number | undefined {
+  if (!createdAt) return undefined;
+  const ms = Date.parse(createdAt);
+  return Number.isNaN(ms) ? undefined : ms;
 }
 
 export function handleTurnStartedEvent(
@@ -126,6 +136,8 @@ export function handleTurnStartedEvent(
     }
     store.updateChat(event.threadId, {
       pendingClientTurnId: undefined,
+      // #2309: a witnessed turn start closes the optimistic send window.
+      sendAwaitingTurnStart: undefined,
       status: 'sending',
       orchestrationTurnOpen: true,
       openTurnId: event.turnId ?? currentChat?.openTurnId,
@@ -170,13 +182,48 @@ export function handleTurnStartedEvent(
       });
     }
   }
+  // station#2305: a send that failed client-side (e.g. `transport_timeout`
+  // expiring before response headers arrive) may still have landed
+  // server-side. When its `turn.started` arrives late, the failure claim is
+  // disproved — reconcile the failure artifacts it left behind, and only in
+  // the shape that proves this turn IS the failed send: `status === 'error'`
+  // means no newer local send intervened, the Retry-action ephemeral is only
+  // ever written by the send-failure path, and the held draft still equaling
+  // the started turn's prompt ties them together. An edited composer, an
+  // unechoed prompt, or another client's turn all fail closed to today's
+  // behavior.
+  const ephemerals = currentChat?.ephemeralMessages ?? [];
+  const reconciledEphemerals = ephemerals.filter(
+    (message) => message.action?.label !== 'Retry',
+  );
+  const lateAfterFailedSend =
+    currentChat?.status === 'error' &&
+    reconciledEphemerals.length < ephemerals.length &&
+    (currentChat?.input ?? '') === event.prompt;
   store.updateChat(event.threadId, {
     ...(userMessages !== currentChat?.messages
       ? { messages: userMessages }
       : {}),
+    ...(lateAfterFailedSend
+      ? {
+          error: undefined,
+          input: '',
+          ephemeralMessages: reconciledEphemerals,
+        }
+      : {}),
     // The dispatch this turn came from has started; the pre-start cancel
-    // window it named is over
-    pendingClientTurnId: undefined,
+    // window it named is over. #2324: a turn the engine opened on its own
+    // came from no dispatch — a send this client still has in flight keeps
+    // its pre-start window and its optimistic send window.
+    ...(isProviderTriggeredTurn(event)
+      ? {}
+      : {
+          pendingClientTurnId: undefined,
+          // #2309: a witnessed turn start closes the optimistic send window,
+          // even when the frame's as-of-delivery activity already shows the
+          // turn ended.
+          sendAwaitingTurnStart: undefined,
+        }),
     status: 'sending',
     orchestrationTurnOpen: true,
     // archive#1410: the identity of the turn whose text is about to be
@@ -187,6 +234,10 @@ export function handleTurnStartedEvent(
     // is authoritative again — a reconnect catch-up for the PREVIOUS turn must
     // not leave the projection rendering this one alongside it.
     openTurnShellSuperseded: false,
+    // #2304: the turn's clock reads the server's start, not this client's
+    // first render of the streaming row. Unparseable → undefined, and the
+    // row shows no working duration until a parseable start arrives.
+    openTurnStartedAt: parseTurnStartedAt(event.createdAt),
     isProcessingStep: false,
     // Optimistic: the turn has started, so the session is running. Without
     // this, a stale `orchestrationStatus: 'idle'` from the previous turn
@@ -202,7 +253,16 @@ export function handleTurnStartedEvent(
       content: '',
       contentParts: [],
     },
-    ...(approvalMode ? { lastAppliedApprovalMode: approvalMode } : {}),
+    ...(approvalMode
+      ? {
+          lastAppliedApprovalMode: approvalMode,
+          // #2436: the server applies the recorded posture at every turn
+          // start, so a refused full access is refused again each turn; the
+          // chip says it needs a restart rather than "next turn".
+          approvalEscalationRejected:
+            event.metadata?.approvalEscalationRejected === true,
+        }
+      : {}),
     ...(effectiveModel
       ? { model: effectiveModel, orchestrationModel: effectiveModel }
       : {}),
@@ -306,6 +366,22 @@ export function handleTurnAbortedEvent(
     activeChatsStore.getChatForExecutionSession(event.threadId)
       ?.orchestrationHistoryRevision ?? 0;
   const chat = activeChatsStore.getChatForExecutionSession(event.threadId);
+  // #2324 delta review M-2: the same turn-identity guard the completion
+  // handler applies. A send withdrawn or cancelled while it was still queued
+  // behind another turn ends with a bare `turn.aborted` for ITS id while that
+  // other turn — often one the engine opened on its own — is open and
+  // streaming. That abort must not tear down the open turn's stream or mark
+  // the chat idle; it only ends the waiting send.
+  const openTurnId = chat?.openTurnId;
+  if (openTurnId && openTurnId !== event.turnId) {
+    activeChatsStore.updateChat(chatKey, {
+      orchestrationHistoryRevision: historyRevision + 1,
+      ...(chat?.sendAwaitingTurnStart
+        ? { sendAwaitingTurnStart: undefined, pendingClientTurnId: undefined }
+        : {}),
+    });
+    return;
+  }
   activeChatsStore.updateChat(chatKey, {
     // A late provider abort revokes a previously committed same-turn answer.
     // Keeping it would leave Add to Task on an answer the lifecycle rejects.
@@ -551,27 +627,18 @@ export function handleRuntimeWarningEvent(
   // that the adapter rejected (no allowDangerouslySkipPermissions granted
   // at spawn) must not leave the composer chip showing a posture that
   // never actually applied. The adapter reports which mode IS actually in
-  // effect; revert the client's stored override to match reality.
+  // effect.
   if (event.code === APPROVAL_ESCALATION_REQUIRES_RESTART_CODE) {
+    // The refusal is the engine's report of what still applies (#2436). The
+    // recorded full access stays the conversation's decision — the server
+    // will apply it to the next session that spawns — so the chip shows it
+    // refused, not reverted.
     const revertTo = event.details?.revertToApprovalMode;
-    if (isApprovalMode(revertTo)) {
-      const chat = activeChatsStore.getChatForExecutionSession(event.threadId);
-      // The composer chip reads requestedProviderOptions first (station#1933).
-      // Reverting only providerOptions left a rejected 'never' still painted
-      // as the session override.
-      const nextRequested = chat?.requestedProviderOptions
-        ? {
-            ...chat.requestedProviderOptions,
-            approvalMode: revertTo,
-          }
-        : undefined;
-      activeChatsStore.updateChat(event.threadId, {
-        providerOptions: {
-          ...(chat?.providerOptions ?? {}),
-          approvalMode: revertTo,
-        },
-        ...(nextRequested ? { requestedProviderOptions: nextRequested } : {}),
-      });
-    }
+    activeChatsStore.updateChat(event.threadId, {
+      approvalEscalationRejected: true,
+      ...(isApprovalMode(revertTo) && revertTo !== 'connection-default'
+        ? { lastAppliedApprovalMode: revertTo }
+        : {}),
+    });
   }
 }

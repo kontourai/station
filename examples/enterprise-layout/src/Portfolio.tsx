@@ -41,7 +41,7 @@ function splitByRecency<T extends { id: string }>(
 
 export function Portfolio() {
   const nav = useNavigation();
-  const { sendToChat } = useSendToChat(AGENT_SLUG);
+  const sendToChat = useSendToChat(AGENT_SLUG);
   const { record } = useAccountAccess();
 
   const accounts = useMyAccounts();

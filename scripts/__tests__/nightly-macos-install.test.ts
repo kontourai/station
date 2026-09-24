@@ -46,6 +46,9 @@ describe('macOS nightly lane', () => {
       [...infoPlist.matchAll(/<key>([^<]+)<\/key>/g)].map((match) => match[1]),
     ).toEqual([
       'CFBundleIdentifier',
+      'NSCameraUsageDescription',
+      'NSMicrophoneUsageDescription',
+      'NSLocalNetworkUsageDescription',
       'StationChannel',
       'StationServerPort',
       'LSEnvironment',
@@ -138,8 +141,9 @@ describe('macOS nightly lane', () => {
       'node "$build_root/ops/nightly/macos-embedded-signing.mjs" "$candidate" "$signing_identity"',
     );
     expect(installer).toContain(
-      'codesign --force --sign "$signing_identity" --options runtime --timestamp "$candidate"',
+      'codesign --force --sign "$signing_identity" --options runtime --entitlements "$build_root/src-desktop/Entitlements.plist" --timestamp "$candidate"',
     );
+    expect(installer).toContain('codesign -d --entitlements :- "$candidate"');
     expect(installer).not.toContain(
       'codesign --force --deep --sign "$signing_identity" --options runtime',
     );
@@ -338,4 +342,38 @@ describe('macOS nightly lane', () => {
     expect(installer).toContain('receipt records notarization as failed');
     expect(installer).not.toContain('notarytool store-credentials');
   });
+});
+
+it('ships only camera and audio-input entitlements for media capture', () => {
+  const config = JSON.parse(
+    readFileSync(resolve(root, 'src-desktop/tauri.conf.json'), 'utf8'),
+  );
+  expect(config.bundle.macOS.entitlements).toBe('Entitlements.plist');
+  const entitlements = readFileSync(
+    resolve(root, 'src-desktop/Entitlements.plist'),
+    'utf8',
+  );
+  expect(
+    [...entitlements.matchAll(/<key>([^<]+)<\/key>\s*<true\s*\/>/g)].map(
+      (match) => match[1],
+    ),
+  ).toEqual([
+    'com.apple.security.device.camera',
+    'com.apple.security.device.audio-input',
+  ]);
+  for (const channel of ['stable', 'beta', 'nightly']) {
+    const info = readFileSync(
+      resolve(root, `src-desktop/Info.${channel}.plist`),
+      'utf8',
+    );
+    for (const key of [
+      'NSCameraUsageDescription',
+      'NSMicrophoneUsageDescription',
+      'NSLocalNetworkUsageDescription',
+    ]) {
+      expect(info).toMatch(
+        new RegExp(`<key>${key}</key>\\s*<string>[^<]+</string>`),
+      );
+    }
+  }
 });

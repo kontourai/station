@@ -109,14 +109,7 @@ export class PullRequestRepositoryContextResolver {
             cause: 'no-remote' as PullRequestUnavailableCause,
           }
         : { available: false, reason: remotes.reason };
-    if (remotes.remotes.length === 1) {
-      const unsupportedForge = knownUnsupportedForge(remotes.remotes[0].url);
-      if (unsupportedForge)
-        return {
-          available: false,
-          reason: `Checkout uses unsupported forge ${unsupportedForge}`,
-        };
-    }
+
     // Unknown authorities remain provider candidates. The route's provider and
     // literal-host match lets the selected CLI reject a wrong self-managed forge.
     const candidates = remotes.remotes
@@ -129,10 +122,28 @@ export class PullRequestRepositoryContextResolver {
           repository: { owner: string; name: string };
         } => candidate.repository !== undefined,
       );
-    if (candidates.length !== 1 || candidates.length !== remotes.remotes.length)
+    if (
+      candidates.length !== remotes.remotes.length ||
+      distinctRepositories(candidates).length !== 1
+    )
       return {
         available: false,
         reason: 'Checkout forge host is ambiguous or unsupported',
+      };
+    // Several remotes for ONE repository (an https `origin` beside an ssh
+    // push remote) are one forge identity, not an ambiguity. `origin` names
+    // the base branch when it is among them.
+    candidates.sort(
+      (a, b) =>
+        Number(b.remote.name === 'origin') - Number(a.remote.name === 'origin'),
+    );
+    // After the collapse, not before: several remotes for one Bitbucket
+    // repository are still Bitbucket.
+    const unsupportedForge = knownUnsupportedForge(candidates[0]!.remote.url);
+    if (unsupportedForge)
+      return {
+        available: false,
+        reason: `Checkout uses unsupported forge ${unsupportedForge}`,
       };
     try {
       const [branch, upstream, ahead, base] = await Promise.all([
@@ -179,6 +190,18 @@ export class PullRequestRepositoryContextResolver {
           available: false,
           reason: 'Checkout has no recorded base branch',
         };
+      const head = await upstreamHead(
+        git,
+        workingDirectory,
+        currentBranch,
+        candidates[0].remote,
+      );
+      if (head === 'unknown')
+        return {
+          available: false,
+          reason:
+            'Cannot tell which repository the current branch is pushed to; open this pull request from a terminal',
+        };
       return {
         available: true,
         context: {
@@ -189,6 +212,7 @@ export class PullRequestRepositoryContextResolver {
           workingDirectory,
           branch: currentBranch,
           baseRef,
+          ...(head ? { head } : {}),
         },
       };
     } catch {
@@ -235,14 +259,28 @@ export class PullRequestRepositoryContextResolver {
     const remotes = await (this.deps.readRemotes ?? readCheckoutRemotes)(
       workingDirectory,
     );
-    if (!remotes.ok || remotes.remotes.length !== 1)
+    if (!remotes.ok || remotes.remotes.length === 0)
       return {
         available: false,
         reason: remotes.ok
           ? 'Checkout forge host is ambiguous or unsupported'
           : remotes.reason,
       };
-    const remote = remotes.remotes[0]!;
+    // As in `resolve`: remotes that all name one repository are one identity.
+    const identities = distinctRepositories(
+      remotes.remotes.map((candidate) => ({
+        remote: candidate,
+        repository: providerRepository(candidate.url),
+      })),
+    );
+    if (identities.length !== 1)
+      return {
+        available: false,
+        reason: 'Checkout forge host is ambiguous or unsupported',
+      };
+    const remote =
+      remotes.remotes.find((candidate) => candidate.name === 'origin') ??
+      remotes.remotes[0]!;
     const repository = providerRepository(remote.url);
     if (!repository || knownUnsupportedForge(remote.url))
       return {
@@ -287,19 +325,96 @@ export class PullRequestRepositoryContextResolver {
   }
 }
 
+/**
+ * The distinct forge repositories a set of remotes names, keyed on host,
+ * owner and name compared case-insensitively. A remote that does not parse
+ * keeps its own key, so it can never be absorbed into a parsed one.
+ */
+function distinctRepositories(
+  candidates: readonly {
+    remote: CheckoutRemote;
+    repository?: { owner: string; name: string };
+  }[],
+): string[] {
+  return [
+    ...new Set(
+      candidates.map(({ remote, repository }) =>
+        repository
+          ? JSON.stringify([
+              remoteHost(remote.url)?.toLowerCase() ?? `?${remote.url}`,
+              repository.owner.toLowerCase(),
+              repository.name.toLowerCase(),
+            ])
+          : `unparsed:${remote.url}`,
+      ),
+    ),
+  ];
+}
+
 function knownUnsupportedForge(url: string): string | undefined {
-  const match = /^(?:git@([^/:\s]+):|https?:\/\/([^/\s]+)\/)/.exec(url);
-  const host = (match?.[1] ?? match?.[2])
-    ?.toLowerCase()
-    .replace(/:\d+$/, '')
-    .replace(/\.$/, '');
+  const host = remoteHost(url);
   return host === 'bitbucket.org' ? host : undefined;
 }
 
 function remoteHost(url: string): string | undefined {
   const match = /^(?:git@([^/:\s]+):|https?:\/\/([^/\s]+)\/)/.exec(url);
   const host = match?.[1] ?? match?.[2];
-  return host?.toLowerCase().replace(/:\d+$/, '').replace(/\.$/, '');
+  // `https://token@github.com/o/r` names github.com: credentials are not host.
+  return host
+    ?.replace(/^.*@/, '')
+    .toLowerCase()
+    .replace(/:\d+$/, '')
+    .replace(/\.$/, '');
+}
+
+/**
+ * The branch a pull request opens from (#2363 round 4). The forge needs
+ * the PUSHED branch, which Station names now that gh/glab no longer read
+ * the checkout: the upstream's branch (`branch.<name>.merge`), which a
+ * local `fx` tracking `origin/feature-x` names differently, and, when the
+ * upstream's remote is not the context's repository, the fork's owner and
+ * name from that remote's configured URL (same host required). `undefined`
+ * when there is no upstream (the local branch applies); `'unknown'` when
+ * the upstream cannot be named safely.
+ */
+async function upstreamHead(
+  git: typeof execGit,
+  cwd: string,
+  branch: string,
+  contextRemote: CheckoutRemote,
+): Promise<PullRequestRepositoryContext['head'] | 'unknown' | undefined> {
+  const read = async (key: string) => {
+    try {
+      const { stdout } = await git(['config', '--get', key], {
+        cwd,
+        timeout: PULL_REQUEST_RESOLVER_GIT_TIMEOUT_MS,
+      });
+      return stdout.trim() || undefined;
+    } catch {
+      return undefined; // unset
+    }
+  };
+  const remoteName = await read(`branch.${branch}.remote`);
+  const merge = await read(`branch.${branch}.merge`);
+  if (!remoteName || !merge) return undefined;
+  const upstreamBranch = merge.replace(/^refs\/heads\//, '');
+  if (!upstreamBranch || upstreamBranch === merge || remoteName === '.') {
+    return 'unknown';
+  }
+  if (remoteName === contextRemote.name) return { branch: upstreamBranch };
+  const forkUrl = await read(`remote.${remoteName}.url`);
+  const fork = forkUrl ? providerRepository(forkUrl) : undefined;
+  if (!forkUrl || !fork || urlHost(forkUrl) !== urlHost(contextRemote.url)) {
+    return 'unknown';
+  }
+  return { branch: upstreamBranch, owner: fork.owner, repository: fork.name };
+}
+
+/** The host of an https or scp-style remote, lowercased. */
+function urlHost(url: string): string | undefined {
+  const match =
+    /^(?:git@([^/:\s]+):|https?:\/\/(?:[^@/\s]+@)?([^/:\s]+))/i.exec(url);
+  return (match?.[1] ?? match?.[2])?.toLowerCase();
 }
 
 function providerRepository(

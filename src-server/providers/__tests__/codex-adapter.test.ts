@@ -112,6 +112,16 @@ class DeferredExitCodexProcess extends FakeCodexProcess {
   }
 }
 
+/** The next event, or null if none arrives within 200ms. */
+async function nextEventOrNull(
+  iterator: AsyncIterator<any>,
+): Promise<any | null> {
+  return Promise.race([
+    iterator.next().then((result) => result.value ?? null),
+    new Promise<null>((resolve) => setTimeout(() => resolve(null), 200)),
+  ]);
+}
+
 function parseLine(line: string): any {
   return JSON.parse(line);
 }
@@ -2658,6 +2668,216 @@ describe('CodexAdapter', () => {
       status: 'approved',
     });
   });
+
+  test('acceptForSession grants the whole tool: a later different command auto-approves', async () => {
+    processHandle = new FakeCodexProcess();
+    const adapter = new CodexAdapter({
+      processFactory: () => processHandle!,
+    });
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+    const sessionPromise = adapter.startSession({
+      provider: 'codex',
+      threadId: 'thread-session-grant',
+      cwd: '/tmp/project',
+    });
+    await flushIo();
+    writeServerMessage(adapter, 'thread-session-grant', {
+      id: '1',
+      result: { userAgent: 'test' },
+    });
+    await flushIo();
+    writeServerMessage(adapter, 'thread-session-grant', {
+      id: '2',
+      result: { thread: { id: 'codex-session-grant' } },
+    });
+    await withTimeout(sessionPromise, 'startSession session grant');
+    await nextEvent(iterator, 'session.started');
+    await nextEvent(iterator, 'session.configured');
+
+    writeServerMessage(adapter, 'thread-session-grant', {
+      id: 'approval-1',
+      method: 'item/commandExecution/requestApproval',
+      params: {
+        threadId: 'codex-session-grant',
+        turnId: 'turn-1',
+        itemId: 'cmd-1',
+        command: 'git grep -n foo',
+        reason: 'Search the tree',
+      },
+    });
+    await flushIo();
+    const opened = await nextEvent(iterator, 'request.opened');
+    await adapter.respondToRequest(
+      'thread-session-grant',
+      opened.requestId,
+      'acceptForSession',
+    );
+    await flushIo();
+    expect(await nextEvent(iterator, 'request.resolved')).toMatchObject({
+      requestId: opened.requestId,
+      status: 'approved',
+    });
+
+    // A different command must NOT publish another request.opened — the
+    // grant covers `shell_exec`, and the wire answer goes out as a plain
+    // one-call accept.
+    const linesBefore = processHandle.stdin.lines.length;
+    writeServerMessage(adapter, 'thread-session-grant', {
+      id: 'approval-2',
+      method: 'item/commandExecution/requestApproval',
+      params: {
+        threadId: 'codex-session-grant',
+        turnId: 'turn-1',
+        itemId: 'cmd-2',
+        command: 'git log --oneline -5',
+        reason: 'Recent history',
+      },
+    });
+    let autoResponse: any;
+    for (let i = 0; i < 50 && autoResponse === undefined; i++) {
+      await flushIo();
+      const fresh = processHandle.stdin.lines
+        .slice(linesBefore)
+        .map(parseLine)
+        .find((line) => line.id === 'approval-2');
+      if (fresh) autoResponse = fresh;
+    }
+    expect(autoResponse).toMatchObject({
+      id: 'approval-2',
+      result: { decision: 'accept' },
+    });
+    const noPrompt = await Promise.race([
+      iterator.next().then((result) => result.value),
+      new Promise<'TIMED_OUT'>((resolve) =>
+        setTimeout(() => resolve('TIMED_OUT'), 150),
+      ),
+    ]);
+    expect(noPrompt).toBe('TIMED_OUT');
+    await adapter.stopAll();
+  });
+
+  test.each([
+    ['succeeds', false],
+    ['rejects', true],
+  ] as const)(
+    '#2316: an interrupt whose RPC %s settles the open approval (cancel on the wire); a late answer is refused and grants nothing',
+    async (_name, rpcRejects) => {
+      processHandle = new FakeCodexProcess();
+      const adapter = new CodexAdapter({
+        processFactory: () => processHandle!,
+      });
+      const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+      const sessionPromise = adapter.startSession({
+        provider: 'codex',
+        threadId: 'thread-interrupt-approval',
+        cwd: '/tmp/project',
+      });
+      await flushIo();
+      writeServerMessage(adapter, 'thread-interrupt-approval', {
+        id: '1',
+        result: { userAgent: 'test' },
+      });
+      await flushIo();
+      writeServerMessage(adapter, 'thread-interrupt-approval', {
+        id: '2',
+        result: { thread: { id: 'codex-interrupt-approval' } },
+      });
+      await withTimeout(sessionPromise, 'startSession');
+      await nextEvent(iterator, 'session.started');
+      await nextEvent(iterator, 'session.configured');
+      const sendTurnPromise = adapter.sendTurn({
+        threadId: 'thread-interrupt-approval',
+        input: 'do something',
+      });
+      writeServerMessage(adapter, 'thread-interrupt-approval', {
+        id: '3',
+        result: { turn: { id: 'turn-1' } },
+      });
+      await withTimeout(sendTurnPromise, 'sendTurn');
+      await flushIo();
+      writeServerMessage(adapter, 'thread-interrupt-approval', {
+        id: 'approval-1',
+        method: 'item/commandExecution/requestApproval',
+        params: {
+          threadId: 'codex-interrupt-approval',
+          turnId: 'turn-1',
+          itemId: 'cmd-1',
+          command: 'rm -rf build',
+        },
+      });
+      await flushIo();
+      const until = async (method: string) => {
+        for (let seen = 0; seen < 20; seen++) {
+          const event = await nextEvent(iterator, method);
+          if (event.method === method) return event as any;
+        }
+        throw new Error(`${method} never arrived`);
+      };
+      const opened = await until('request.opened');
+
+      const record = (adapter as any).transport.requireSession(
+        'thread-interrupt-approval',
+      );
+      const interruptPromise = adapter.interruptTurn(
+        'thread-interrupt-approval',
+        'turn-1',
+      );
+      await flushIo();
+      const [interruptRpc] = [
+        ...(record.pendingRpcRequests as Map<string, unknown>).keys(),
+      ];
+      writeServerMessage(
+        adapter,
+        'thread-interrupt-approval',
+        rpcRejects
+          ? { id: interruptRpc, error: { code: -32_000, message: 'busy' } }
+          : { id: interruptRpc, result: {} },
+      );
+      if (rpcRejects) {
+        await expect(
+          withTimeout(interruptPromise, 'interruptTurn'),
+        ).rejects.toThrow();
+      } else {
+        await withTimeout(interruptPromise, 'interruptTurn');
+      }
+      await flushIo();
+
+      expect(
+        processHandle.stdin.lines
+          .map(parseLine)
+          .find((line) => line.id === 'approval-1'),
+      ).toMatchObject({ id: 'approval-1', result: { decision: 'cancel' } });
+      const settledMethods: string[] = [];
+      for (let seen = 0; seen < 20; seen++) {
+        const event = await nextEventOrNull(iterator);
+        if (!event) break;
+        settledMethods.push(event.method);
+        if (event.method === 'request.resolved') {
+          expect(event).toMatchObject({
+            requestId: opened.requestId,
+            status: 'cancelled',
+          });
+        }
+        if (event.method === 'turn.aborted') break;
+      }
+      expect(settledMethods).toContain('request.resolved');
+      if (!rpcRejects) {
+        // Settled BEFORE the turn reads aborted.
+        expect(settledMethods.indexOf('request.resolved')).toBeLessThan(
+          settledMethods.indexOf('turn.aborted'),
+        );
+      }
+      await expect(
+        adapter.respondToRequest(
+          'thread-interrupt-approval',
+          opened.requestId,
+          'acceptForSession',
+        ),
+      ).rejects.toThrow('Unknown Codex approval request');
+      expect([...record.approvedTools]).toEqual([]);
+      await adapter.stopAll();
+    },
+  );
 
   test('declines a data-required MCP elicitation on the wire and in the canonical event', async () => {
     processHandle = new FakeCodexProcess();

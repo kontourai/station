@@ -1171,6 +1171,9 @@ describe('orchestration-session-state', () => {
       lastEventAt: '2026-04-11T00:00:05.000Z',
       lastEventMethod: 'turn.completed',
       hasActiveTurn: false,
+      // #2310: the thread's own turn settles "not a Draft" without the
+      // lineage read this caller does not supply.
+      draft: false,
       lifecycleState: 'completed',
       previousLifecycleState: 'running',
       transitionReason: 'turn_completed',
@@ -1189,6 +1192,23 @@ describe('orchestration-session-state', () => {
       inputOrigin: {
         kind: 'delegation',
         taskId: 'task-worker-1',
+      },
+      // #2456: a delegate carries itself as its parent's child work, derived
+      // from the delegation + turn fold above (idle, lifecycle completed).
+      childWork: {
+        asChild: {
+          producer: 'station-delegate',
+          reporterThreadId: 'thread-4',
+          childId: 'thread-4',
+          status: 'completed',
+          parent: { taskId: 'parent-task' },
+          // "Open the full session": this delegate's own thread. The launch
+          // stamped `delegation: { mode }` with no depth, so none is claimed.
+          result: { handle: { kind: 'session', threadId: 'thread-4' } },
+          startedAt: '2026-04-11T00:00:00.000Z',
+          endedAt: '2026-04-11T00:00:05.000Z',
+          controls: { stop: 'delegate-interrupt' },
+        },
       },
     });
   });

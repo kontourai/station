@@ -29,6 +29,8 @@ const LANE_TICK_MS = 30_000;
 export interface HomeWorkLanes {
   active: HomeLaneItem[];
   external?: HomeLaneItem[];
+  /** #2310: never-prompted sessions — see `partitionHomeWorkItems`. */
+  drafts?: HomeLaneItem[];
   recentlyFinished: HomeLaneItem[];
   snoozed: HomeLaneItem[];
   settled: HomeLaneItem[];
@@ -182,6 +184,7 @@ export function useHomeWorkLanes(items: HomeWorkItem[]): HomeWorkLanes {
 
   return {
     external: partition.external,
+    drafts: partition.drafts,
     active,
     recentlyFinished,
     snoozed,

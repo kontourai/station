@@ -132,6 +132,7 @@ import {
   buildAuthorityNamespace,
 } from '../lib/authorityNamespace';
 import { resolveLocalUiSession } from '../lib/local-ui-bootstrap';
+import { stationQueryDefaults } from '../lib/queryDefaults';
 import {
   applyPersistedQueryGcTimeDefaults,
   buildPersistOptions,
@@ -139,6 +140,7 @@ import {
 import { usePlatformProfile } from '../platform/PlatformProfileContext';
 import { useHostRequestAuthorityScope } from './ApiBaseContext';
 import { AuthorityPersistenceContext } from './AuthorityPersistenceContext';
+import { activeChatsStore } from './active-chats-store';
 
 export interface AuthorityObservationRequest {
   apiBase: string;
@@ -188,17 +190,9 @@ interface ActiveAuthorityClient {
   queryClient: QueryClient;
 }
 
-function createAuthorityClient(): QueryClient {
+export function createAuthorityClient(): QueryClient {
   const queryClient = new QueryClient({
-    defaultOptions: {
-      queries: {
-        staleTime: 5 * 60 * 1000,
-        gcTime: 10 * 60 * 1000,
-        refetchOnWindowFocus: false,
-        refetchOnMount: false,
-        retry: 1,
-      },
-    },
+    defaultOptions: { queries: stationQueryDefaults() },
   });
   applyPersistedQueryGcTimeDefaults(queryClient);
   return queryClient;
@@ -344,6 +338,7 @@ export function AuthorityQueryProvider({
   // old client's data.
   const [active, setActive] = useState<ActiveAuthorityClient | null>(null);
   const activeRef = useRef<ActiveAuthorityClient | null>(null);
+  const lastVerifiedNamespaceRef = useRef<string | undefined>(undefined);
   useEffect(() => {
     if (!verifiedNamespace) {
       const previous = activeRef.current;
@@ -354,6 +349,16 @@ export function AuthorityQueryProvider({
       }
       return;
     }
+    // #2309: another Station's activity sequences are not comparable, so the
+    // records go when the verified authority CHANGES — not when it is only
+    // unverified for a moment during a re-verify of the same one.
+    if (
+      lastVerifiedNamespaceRef.current !== undefined &&
+      lastVerifiedNamespaceRef.current !== verifiedNamespace
+    ) {
+      activeChatsStore.clearConversationActivity();
+    }
+    lastVerifiedNamespaceRef.current = verifiedNamespace;
     if (activeRef.current?.namespace === verifiedNamespace) return;
     const previous = activeRef.current;
     const next: ActiveAuthorityClient = {

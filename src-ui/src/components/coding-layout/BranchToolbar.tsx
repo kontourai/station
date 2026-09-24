@@ -32,17 +32,20 @@ import { SkeletonList } from '../state';
  * reflects the new repository state.
  */
 export function BranchToolbar({
+  projectSlug,
   workingDir,
   activeFile,
   onActiveRepoChange,
 }: {
+  /** The Project whose folder commit and push act on (#2363). */
+  projectSlug: string;
   workingDir: string;
   activeFile?: string | null;
   // Reports the resolved active-repo root upward so sibling panels (e.g. the
   // diff view) operate on the same repo instead of the raw workspace.
   onActiveRepoChange?: (root: string | null) => void;
 }) {
-  const reposQuery = useReposQuery(workingDir || null);
+  const reposQuery = useReposQuery(workingDir || null, { projectSlug });
   const reposResult = reposQuery.data;
   const repos = reposResult?.repos ?? [];
 
@@ -70,11 +73,11 @@ export function BranchToolbar({
     onActiveRepoChange?.(repoRoot);
   }, [repoRoot, onActiveRepoChange]);
 
-  const status = useGitStatus(repoRoot);
-  const branchesQuery = useGitBranchesQuery(repoRoot);
-  const checkout = useGitCheckoutMutation(repoRoot ?? '');
-  const commit = useGitCommitMutation(repoRoot ?? '');
-  const push = useGitPushMutation(repoRoot ?? '');
+  const status = useGitStatus(projectSlug, repoRoot);
+  const branchesQuery = useGitBranchesQuery(projectSlug, repoRoot);
+  const checkout = useGitCheckoutMutation(projectSlug, repoRoot ?? '');
+  const commit = useGitCommitMutation(projectSlug, repoRoot ?? '');
+  const push = useGitPushMutation(projectSlug, repoRoot ?? '');
 
   const gitStatus = status.data?.isRepo ? status.data : null;
   const currentBranch = gitStatus?.branch ?? activeRepo?.branch ?? null;

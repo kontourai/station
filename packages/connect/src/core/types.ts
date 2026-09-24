@@ -1,3 +1,5 @@
+import type { SelfHostedBrokerScopeV1 } from '@kontourai/station-contracts/self-hosted-broker';
+
 export interface SavedConnection {
   profileVersion: 4;
   id: string;
@@ -80,6 +82,11 @@ export interface SavedConnection {
       capturedAt: string;
     };
   };
+  /** Secret-free browser routing metadata; the route grant lives in IndexedDB. */
+  brokerRoute?: {
+    brokerOrigin: string;
+    scope: SelfHostedBrokerScopeV1;
+  };
 }
 
 export interface DirectHttpAccessMethod {
@@ -125,6 +132,7 @@ export type AccessEndpointKind =
   // adapter has emitted this kind at runtime since before it joined this
   // union — the union was lying about the runtime vocabulary.
   | 'ssh-forward'
+  | 'broker-route'
   | 'manual';
 
 /**
@@ -237,6 +245,16 @@ export type ConnectionFailureReason =
    * a later probe usually produces a real reason.
    */
   | 'undetermined'
+  /**
+   * station#2327 — the Station has requests from this device waiting in line
+   * and did not give the health check a turn in time. Reached two ways: the
+   * desktop broker refused a request because its per-Station queue was full
+   * (`transport_capacity`), or the probe's public handshake ANSWERED and the
+   * authenticated identity read that follows it then timed out. Neither is a
+   * network claim — the second proves the address answered seconds earlier —
+   * so it must not read as "Can't connect". Transient; never a decision.
+   */
+  | 'busy'
   /**
    * station#1713 — a healthy host that is simply waiting on a human to
    * approve this device (a native Station mid-authorization, or an access

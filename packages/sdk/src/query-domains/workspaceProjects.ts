@@ -36,6 +36,7 @@ import {
   listProjectLayouts,
   listProjectViews,
   listProjectWorkspacePanes,
+  type ProjectWorkspacePaneCatalog,
   previewProjectWorkspaceFile,
   reorderProjects as reorderProjectsRaw,
   updateProject as updateProjectRaw,
@@ -45,6 +46,7 @@ import {
   type QueryConfig,
   useApiMutation,
   useApiQuery,
+  useApiQueryRefetchingInvalidatedOnMount,
 } from '../query-core';
 import { telemetry } from '../telemetry';
 
@@ -269,14 +271,18 @@ export function useProjectLayoutsQuery(
   );
 }
 
-/** React read seam for the data-only current Workspace Pane catalog. */
+/**
+ * React read seam for the data-only current Workspace Pane catalog.
+ *
+ * Its contents change outside this client, so an invalidation that lands
+ * while it is unmounted refetches on the next mount
+ * (`refetchOnMountWhenInvalidated` in query-core, #2319).
+ */
 export function useProjectWorkspacePanesQuery(
   projectSlug: string,
-  config?: QueryConfig<
-    import('../client/projects').ProjectWorkspacePaneCatalog
-  >,
+  config?: QueryConfig<ProjectWorkspacePaneCatalog>,
 ) {
-  return useApiQuery(
+  return useApiQueryRefetchingInvalidatedOnMount(
     ['projects', projectSlug, 'panes'],
     async () => {
       const apiBase = await _getApiBase();
@@ -426,7 +432,10 @@ export function useAvailableProjectLayoutsQuery(
 ) {
   const queryClient = useQueryClient();
   const enabled = config?.enabled ?? true;
-  const query = useApiQuery(
+  // Plugins add and remove layouts outside this client, so an invalidation
+  // that lands while the catalog is unmounted must refetch on the next mount
+  // (#2345, the policy #2319 gave the pane catalog).
+  const query = useApiQueryRefetchingInvalidatedOnMount(
     [...LAYOUT_CATALOG_QUERY_KEY],
     async (signal) => fetchAvailableLayouts(signal),
     {
@@ -522,6 +531,8 @@ export function useCreateProjectMutation() {
       description?: string;
       icon?: string;
       workingDirectory?: string;
+      /** Per-Project override of the Station's workspace isolation. */
+      defaultWorkspaceIsolation?: 'shared' | 'worktree';
     }) => {
       const apiBase = await _getApiBase();
       return createProjectRaw(apiBase, data);

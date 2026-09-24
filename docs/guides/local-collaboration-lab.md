@@ -254,12 +254,18 @@ operation; the bounded public result is its receipt.
 
 ### Device-side signing trust
 
-The browser fixture consumes `@kontourai/station-connect/connection-trust`.
+The browser client consumes `@kontourai/station-connect/connection-trust`.
 Its `openDeviceConnectionTrustStore()` stores only public signing trust in the
-current browser origin/storage partition. The trusted caller supplies a descriptor
-and key ID from independently authenticated operator approval; neither broker
-discovery nor account login is that approval ceremony. Production approval UI and
-account/session transport are not enabled by this module.
+current browser origin/storage partition. In **Manage Stations → Broker
+routes**, a user can paste the public report from the Station operator's
+`connection:key inspect` command into the separate Station signing key step.
+The browser recomputes the JWK thumbprint, shows the complete key ID, and
+requires the user to confirm that it was compared through a separate trusted
+channel. This is an explicit user-attested ceremony; Station cannot establish
+which human or channel supplied pasted text. Broker invitation data is never
+used to create trust. The UI handles higher-generation rotation and revocation
+through the existing revision-checked store. This does not implement account or
+session transport.
 
 The store exposes `read`, `approve`, `revoke`, `isCurrent`, and `close`.
 `approve(descriptor, expectedRevision, approvedKeyId)` requires `null` for first
@@ -484,21 +490,91 @@ npm run lab:browser-transport -- --peer=pion --browser-turn=tcp --application-ac
 npm run lab:browser-transport -- --peer=pion --browser-turn=udp --application-accounts --self-hosted-broker --keep
 ```
 
+The additional `--station-ui` mode drives the actual Station SPA through
+operator key-report approval, invitation acceptance, TURN setup, Connect,
+fresh account login, operator Device approval, invitation redemption, and
+in-app Project navigation. It serves the UI on the lab-owned HTTPS client
+Origin and blocks/counts direct Station `/api` requests after route acceptance.
+It reuses the free local broker, Pion, and TURN fixtures above; no hosted
+identity or paid TURN service is needed. Run one transport at a time:
+
+This is a separate UI-only acceptance mode. It stops after the visible Project
+and shared-work checks; it does not run the account continuation, cookie
+adoption, or revocation matrix from the commands above. Use those commands
+without `--station-ui` for the full account/protocol receipt.
+
+```sh
+npm run lab:browser-transport -- --peer=pion --browser-turn=tcp --application-accounts --self-hosted-broker --station-ui --keep
+```
+
+The UI-mode receipt requires the selected browser ICE pair and Station answer
+to contain TURN relay candidates, and the protected Project to open through
+the live UI. This is a browser acceptance check only; it does not establish a
+second physical machine, two-person access, internet reachability, or native
+client behavior. The journey passed for source revision `a36f390151f4dcebda3219c09e36413bc11ac971`; its machine-readable receipt also records the source SHA and clean-worktree status. The full account, cookie-adoption, and revocation matrix remains covered by the commands above without `--station-ui`.
+
 Build the pinned Pion executable as described above first. This mode starts the
 actual broker CLI in a separate owned process with private SQLite state and
-separate routing/connector credentials. The Station-side factory uses the real
-Pion adapter; the browser uses the production self-hosted transport entry point.
+separate routing/connector credentials. Its controller issues two one-use
+invitations, each with a distinct broker routing grant; the operator routing
+credential never enters either browser profile. The browser profiles run on
+two different test-owned HTTPS Origins, both explicitly listed in the Station
+authentication-Origin allowlist. The Station-side factory uses the real Pion
+adapter; the browser uses the production self-hosted transport entry point.
 The full protected Station remains behind private process IPC, with direct browser
 HTTP application requests blocked and counted. No account or Device authority is
 injected into production authentication.
 
 The checks cover account login and continuation, explicit account-bound Device
-approval, permitted/private Project reads, independent revocations, lease renewal,
-fresh-peer reconnect, wrong routing credentials, actual browser CORS, proof tamper
-refusal before remote-description acceptance, and trust retirement. A separate
+approval, permitted/private Project reads, independent Device and broker-grant
+revocations, lease renewal, fresh-peer reconnect, wrong routing credentials,
+actual browser CORS, proof tamper refusal before remote-description acceptance,
+and trust retirement. A separate
 HTTP preflight control checks the broker's exact response. Withdrawal can hide its
 401 behind browser CORS; an independent HTTP control must still observe that exact
 refusal, so an unrelated network failure cannot pass the test.
+
+The source operator command in `scripts/self-hosted-broker.ts` also accepts
+`invite`, `grants` and `revoke`. `invite` takes its existing private broker
+configuration (with one exact Station scope), a private JSON request, and a new
+private output path. The request is:
+
+```json
+{
+  "version": "station-broker-invitation-request/v1",
+  "brokerOrigin": "https://broker.example",
+  "clientOrigin": "https://client.example",
+  "stationSigningKeyId": "43-character approved Station key thumbprint",
+  "stationSigningGeneration": 1
+}
+```
+
+The CLI writes a mode-0600 typed invitation file under a private directory;
+the one-use secret never enters a query string or CLI output. The browser
+contract can encode it into a `/connections/computers#relay-invite=...`
+fragment. The browser's Broker routes form accepts that link or the CLI's
+private JSON invitation after that browser already has independently approved
+Station-key trust; it does not
+auto-consume an incoming fragment or establish that trust. Keep the CLI's JSON
+file private and deliver it through an operator-approved channel. Invitations
+expire within five minutes. A redeemed grant lasts at most 30 days and permits
+broker signaling only; expiry, a lost successful redemption response, or lost
+local custody requires a newly issued invitation. `grants` lists secret-free
+grant IDs and state; `revoke` retires one grant and its pending signaling while
+leaving the Station connector and other grants live. Existing encrypted peers
+are not forcibly closed by broker revocation.
+
+The Station operator must separately list each recipient Origin in
+`ALLOWED_ORIGINS` and `STATION_AUTHENTICATION_BROWSER_ORIGINS` (the latter has a
+bounded maximum of 16). Broker issuance cannot expand Station application
+authority. The current desktop saved-route UI remains a metadata/trust readout;
+native grant custody does not by itself make a route selectable or prove a real
+Tauri connection. The browser route picker currently uses local ICE host
+candidates and has no remote TURN setup. Its source-level fresh-account Device
+ceremony requires provider support and explicit operator approval, but the
+positive joined ordinary-UI browser journey has not yet passed this lab.
+Browser and native onboarding UI/runtime evidence are tracked
+separately under [#2388](https://github.com/kontourai/station/issues/2388).
 
 The broker receives signaling only. The separate TURN recording relay observes
 nonempty encrypted traffic, checked alongside actual DTLS and application delivery;

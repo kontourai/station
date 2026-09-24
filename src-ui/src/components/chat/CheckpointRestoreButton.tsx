@@ -17,6 +17,12 @@ function restoreFailureMessage(cause: unknown): string {
     cause && typeof cause === 'object'
       ? (cause as { reason?: unknown })
       : undefined;
+  // #2410: refused before any file was touched, because the repository's
+  // own git config defines a program restoring would run.
+  if (refusal?.reason === 'repository_config_refused')
+    return "This repository's own git configuration defines a filter or diff program that Station will not run for you. Restore it from a terminal. No files were changed.";
+  if (refusal?.reason === 'repository_config_unreadable')
+    return "git could not read this repository's configuration, so Station did not restore it. No files were changed.";
   if (
     typeof refusal?.reason === 'string' &&
     /^(?:workspace_(?:changed|has_active_turn)|preview_invalid|checkpoint_(?:missing|pruned|identity_mismatch)|authorization_changed)$/u.test(

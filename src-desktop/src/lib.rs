@@ -14,6 +14,14 @@ mod notification_watch;
 mod local_access_watch;
 #[cfg(not(mobile))]
 mod desktop_companion;
+// Foundation only: this module owns native proof-key custody and signing but
+// is intentionally not registered as renderer IPC or wired to app traffic.
+#[cfg(not(mobile))]
+pub(crate) mod native_relay_proof_key;
+#[cfg(not(mobile))]
+mod native_relay_redemption;
+#[cfg(not(mobile))]
+mod relay_grant_vault;
 mod pairing_deep_link_channels_generated;
 mod service_state;
 #[cfg(not(mobile))]
@@ -293,6 +301,37 @@ const NATIVE_HTTP_PENDING_READ_LIMIT: usize = 64;
 const NATIVE_HTTP_PER_ORIGIN_REQUEST_LIMIT: usize = 8;
 /// Long-lived event streams per origin, budgeted separately from the above.
 const NATIVE_HTTP_PER_ORIGIN_STREAM_LIMIT: usize = 12;
+/// station#2327 — abandoned-but-still-running ordinary and stream calls per
+/// origin.
+///
+/// A cancel releases its admission slot at once even while the blocking
+/// network call (resolve, connect, request send, response headers) is still in
+/// flight; the call finishes on a worker thread and its late result is
+/// discarded. How long an orphan lives is bounded only by the phase timeouts
+/// (see `native_http_agent_config` and `native_http_send_body_budget`): at most
+/// resolve 10s + connect 15s (+ up to 15s more for a TLS handshake whose peer
+/// goes silent) + request headers 15s + response headers 20s = 75s for a
+/// bodiless request. A request with a body adds its send-body budget,
+/// `max(120s, body_len / 32 KiB/s)`, plus ureq's 1s `Expect: 100-continue`
+/// wait: 196s up to 3.75 MiB, rising to about 14 minutes (75s + 768s + 1s)
+/// for the 24 MiB `NATIVE_HTTP_BODY_LIMIT`.
+///
+/// Each orphan still holds a socket, so orphans are capped by count. At the
+/// cap a cancel keeps its slot until its call returns (the pre-fix
+/// behaviour), so a client that aborts in a loop meets the ordinary admission
+/// limits instead of opening unbounded sockets: per origin, at most this many
+/// orphans plus one liveness orphan plus the active allowances; across all
+/// origins, at most `NATIVE_HTTP_GLOBAL_ORPHAN_LIMIT` ordinary and stream
+/// orphans plus one liveness orphan per authorized origin.
+const NATIVE_HTTP_PER_ORIGIN_ORPHAN_LIMIT: usize = NATIVE_HTTP_PER_ORIGIN_REQUEST_LIMIT;
+const NATIVE_HTTP_GLOBAL_ORPHAN_LIMIT: usize = NATIVE_HTTP_GLOBAL_REQUEST_LIMIT;
+/// Orphans of the reserved liveness slot, counted outside the two limits
+/// above: once ordinary orphans fill the shared allowance a cancelled health
+/// probe must still hand its slot back, or the probe reads `busy` locally
+/// without reaching the server — the #2327 symptom.
+const NATIVE_HTTP_PER_ORIGIN_LIVENESS_ORPHAN_LIMIT: usize = 1;
+/// How often a request waiting on its network call re-reads its cancel flag.
+const NATIVE_HTTP_CANCEL_POLL_INTERVAL: Duration = Duration::from_millis(20);
 const NATIVE_PAIRING_EXCHANGE_GLOBAL_REQUEST_LIMIT: usize = 8;
 const NATIVE_PAIRING_EXCHANGE_PER_ORIGIN_REQUEST_LIMIT: usize = 2;
 const NATIVE_PAIRING_EXCHANGE_BODY_LIMIT: usize = 1024 * 1024;
@@ -394,6 +433,10 @@ struct CredentialProfile {
     _environment_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     local_service: Option<NativeLocalService>,
+    /// Secret-free routing intent. The browser's independently approved
+    /// Station signing key lives in its device trust store, never here.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    relay_route: Option<NativeStationRelayRoute>,
     setup_source: String,
     configuration_state: String,
     created_at: f64,
@@ -407,6 +450,15 @@ struct CredentialProfile {
     /// which never sets it) still parses under `deny_unknown_fields`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     client_instance_id: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[serde(deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
+struct NativeStationRelayRoute {
+    broker_origin: String,
+    station_id: String,
+    enrollment_id: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -562,6 +614,13 @@ struct NativeHttpRequest {
     /// unscoped for compatibility; they omit this field.
     #[serde(default)]
     expected_binding_id: Option<String>,
+    /// station#2327 — set only by the webview's connection-health probe for
+    /// its authenticated identity read. Admitted through the reserved
+    /// liveness slot (`reserve_native_http_liveness_probe`) instead of the
+    /// ordinary-read FIFO, and accepted only for `GET /api/system/identity`
+    /// (`validate_native_liveness_probe`).
+    #[serde(default)]
+    liveness_probe: bool,
 }
 
 #[derive(Serialize)]
@@ -619,6 +678,21 @@ struct NativeHttpCancellation(
 struct NativeHttpAdmissionState {
     active: std::collections::HashMap<String, NativeActiveHttpRequest>,
     pending_reads: std::collections::VecDeque<NativePendingHttpRequest>,
+    /// station#2327 — network calls whose request was cancelled and whose
+    /// admission slot was already released, keyed by a per-call token (never
+    /// the request id, which a later request may reuse).
+    orphaned_calls: std::collections::HashMap<u64, NativeOrphanedHttpCall>,
+    next_call_token: u64,
+    /// Every admission-slot release made through `NativeHttpSlot` or an
+    /// abandon, so tests can prove a slot is released exactly once.
+    #[cfg(test)]
+    slot_releases: usize,
+}
+
+struct NativeOrphanedHttpCall {
+    origin: String,
+    /// Orphaned from the reserved liveness slot, which has its own allowance.
+    liveness: bool,
 }
 
 struct NativePendingHttpRequest {
@@ -633,6 +707,11 @@ struct NativeActiveHttpRequest {
     /// Whether this reservation draws on the stream allowance rather than the
     /// ordinary-request one (station#2282).
     stream: bool,
+    /// Whether this reservation holds the origin's reserved liveness slot
+    /// (station#2327). Liveness reservations are not counted against the
+    /// ordinary or global allowances, so no ordinary read or stream can ever
+    /// be admitted into the slot or displaced by it.
+    liveness: bool,
 }
 
 /// Native pairing exchange has an independent, deliberately small admission
@@ -734,6 +813,7 @@ fn parse_station_profile_store(contents: &str) -> Result<CredentialProfileStore,
         return Err("saved Station revision exceeds the shared safe-integer range".to_string());
     }
     let mut names = std::collections::HashSet::new();
+    let mut selectable_names = std::collections::HashSet::new();
     let mut references = std::collections::HashSet::new();
     for profile in &store.profiles {
         if profile.schema_version != 1
@@ -754,6 +834,34 @@ fn parse_station_profile_store(contents: &str) -> Result<CredentialProfileStore,
         }
         if !names.insert(profile.name.to_lowercase()) {
             return Err("Station names must be unique".to_string());
+        }
+        if let Some(route) = &profile.relay_route {
+            let safe_origin = |value: &str| {
+                exact_origin(value).ok().as_deref() == Some(value)
+                    && credential_endpoint_uses_secure_transport(value)
+            };
+            let safe_identifier = |value: &str| {
+                let bytes = value.as_bytes();
+                bytes.len() == 36
+                    && [8, 13, 18, 23].iter().all(|index| bytes[*index] == b'-')
+                    && bytes.iter().enumerate().all(|(index, byte)| {
+                        [8, 13, 18, 23].contains(&index) || byte.is_ascii_hexdigit()
+                    })
+                    && matches!(bytes[14].to_ascii_lowercase(), b'1'..=b'8')
+                    && matches!(bytes[19].to_ascii_lowercase(), b'8' | b'9' | b'a' | b'b')
+            };
+            if profile.credential_ref.is_some()
+                || profile.configuration_state != "unconfigured"
+                || profile.setup_source != "manual"
+                || !safe_origin(&profile.endpoint)
+                || !safe_origin(&route.broker_origin)
+                || !safe_identifier(&route.station_id)
+                || !safe_identifier(&route.enrollment_id)
+            {
+                return Err("invalid or configured Station relay profile".to_string());
+            }
+        } else {
+            selectable_names.insert(profile.name.to_lowercase());
         }
         if let Some(service) = &profile.local_service {
             if service.instance_id.is_empty()
@@ -783,12 +891,14 @@ fn parse_station_profile_store(contents: &str) -> Result<CredentialProfileStore,
     if store
         .default_profile
         .as_ref()
-        .is_some_and(|name| !names.contains(&name.to_lowercase()))
+        .is_some_and(|name| !selectable_names.contains(&name.to_lowercase()))
     {
         return Err("the default Station is missing from saved Station metadata".to_string());
     }
     if store.project_profiles.iter().any(|(project, profile)| {
-        project.is_empty() || profile.is_empty() || !names.contains(&profile.to_lowercase())
+        project.is_empty()
+            || profile.is_empty()
+            || !selectable_names.contains(&profile.to_lowercase())
     }) {
         return Err("the project Station selection is invalid".to_string());
     }
@@ -2308,11 +2418,13 @@ fn admit_native_http_request(
     let same_class_for_origin = active
         .values()
         .filter(|active_request| {
-            active_request.origin == origin && active_request.stream == is_stream
+            !active_request.liveness
+                && active_request.origin == origin
+                && active_request.stream == is_stream
         })
         .count();
     if active.contains_key(request_id)
-        || active.len() >= NATIVE_HTTP_GLOBAL_REQUEST_LIMIT
+        || native_http_non_liveness_active_count(active) >= NATIVE_HTTP_GLOBAL_REQUEST_LIMIT
         || same_class_for_origin >= per_origin_limit
     {
         return Err("native Station request capacity reached".to_string());
@@ -2323,19 +2435,26 @@ fn admit_native_http_request(
             cancel,
             origin: origin.to_string(),
             stream: is_stream,
+            liveness: false,
         },
     );
     Ok(())
+}
+
+fn native_http_non_liveness_active_count(
+    active: &std::collections::HashMap<String, NativeActiveHttpRequest>,
+) -> usize {
+    active.values().filter(|request| !request.liveness).count()
 }
 
 fn native_http_request_has_capacity(
     active: &std::collections::HashMap<String, NativeActiveHttpRequest>,
     origin: &str,
 ) -> bool {
-    active.len() < NATIVE_HTTP_GLOBAL_REQUEST_LIMIT
+    native_http_non_liveness_active_count(active) < NATIVE_HTTP_GLOBAL_REQUEST_LIMIT
         && active
             .values()
-            .filter(|request| request.origin == origin && !request.stream)
+            .filter(|request| request.origin == origin && !request.stream && !request.liveness)
             .count()
             < NATIVE_HTTP_PER_ORIGIN_REQUEST_LIMIT
 }
@@ -2348,14 +2467,15 @@ fn native_http_capacity_refusal(message: String) -> NativeCommandError {
 
 /// Reserve a request slot before opening the response channel. This small seam
 /// keeps the invoke-boundary error coding testable without needing a Tauri app
-/// handle or OS credential setup.
+/// handle or OS credential setup. The slot comes back as the guard that
+/// releases it, so an admission without its release is unwritable.
 fn reserve_native_http_request(
     cancellations: &NativeHttpCancellation,
     request_id: &str,
     origin: &str,
     is_stream_request: bool,
     cancel: std::sync::Arc<std::sync::atomic::AtomicBool>,
-) -> Result<(), NativeCommandError> {
+) -> Result<NativeHttpSlot, NativeCommandError> {
     use std::sync::atomic::Ordering;
 
     let (state_lock, changed) = &*cancellations.0;
@@ -2374,6 +2494,7 @@ fn reserve_native_http_request(
     }
     if is_stream_request {
         return admit_native_http_request(&mut state.active, request_id, origin, true, cancel)
+            .map(|()| NativeHttpSlot::admitted(cancellations, request_id))
             .map_err(native_http_capacity_refusal);
     }
 
@@ -2414,10 +2535,11 @@ fn reserve_native_http_request(
                     cancel: pending.cancel,
                     origin: pending.origin,
                     stream: false,
+                    liveness: false,
                 },
             );
             changed.notify_all();
-            return Ok(());
+            return Ok(NativeHttpSlot::admitted(cancellations, request_id));
         }
         state = changed
             .wait(state)
@@ -2425,6 +2547,76 @@ fn reserve_native_http_request(
     }
 }
 
+/// The one path the reserved liveness slot serves (station#2327).
+const NATIVE_LIVENESS_PROBE_PATH: &str = "/api/system/identity";
+
+/// Keeps the liveness flag from becoming a general-purpose priority knob: the
+/// slot exists so the health probe can tell a busy Station from an
+/// unreachable one, and a flagged request of any other shape is refused.
+fn validate_native_liveness_probe(
+    method: &str,
+    is_stream_request: bool,
+    url: &url::Url,
+) -> Result<(), NativeCommandError> {
+    if method != "GET" || is_stream_request || url.path() != NATIVE_LIVENESS_PROBE_PATH {
+        return Err(NativeCommandError::new(
+            "invalid_request",
+            "the liveness slot is reserved for the Station identity probe",
+        ));
+    }
+    Ok(())
+}
+
+/// Admission for the connection-health probe's identity read (station#2327).
+///
+/// On a stalled Station the ordinary-read FIFO fills with background polls,
+/// and the probe's identity read used to wait there until its own deadline —
+/// so a slow Station read as an unreachable one. A liveness read instead takes
+/// one reserved slot per origin, above the ordinary and global allowances: it
+/// is admitted immediately when no other liveness read for the origin is
+/// active, and otherwise refused with `transport_capacity`. It never queues —
+/// an answer that arrives after the probe's deadline is worthless — and
+/// because the slot is not counted against the ordinary allowance, ordinary
+/// reads can neither enter it nor be displaced by it.
+fn reserve_native_http_liveness_probe(
+    cancellations: &NativeHttpCancellation,
+    request_id: &str,
+    origin: &str,
+    cancel: std::sync::Arc<std::sync::atomic::AtomicBool>,
+) -> Result<NativeHttpSlot, NativeCommandError> {
+    let (state_lock, _) = &*cancellations.0;
+    let mut state = state_lock
+        .lock()
+        .map_err(|_| "native request cancellation state unavailable".to_string())?;
+    let duplicate = state.active.contains_key(request_id)
+        || state
+            .pending_reads
+            .iter()
+            .any(|pending| pending.request_id == request_id);
+    let slot_in_use = state
+        .active
+        .values()
+        .any(|active| active.liveness && active.origin == origin);
+    if duplicate || slot_in_use {
+        return Err(native_http_capacity_refusal(
+            "native Station liveness slot is in use".to_string(),
+        ));
+    }
+    state.active.insert(
+        request_id.to_string(),
+        NativeActiveHttpRequest {
+            cancel,
+            origin: origin.to_string(),
+            stream: false,
+            liveness: true,
+        },
+    );
+    Ok(NativeHttpSlot::admitted(cancellations, request_id))
+}
+
+/// Test-side release of a slot a test reserved directly. Production requests
+/// release through `NativeHttpSlot`, which owns the exactly-once decision.
+#[cfg(test)]
 fn release_native_http_request(
     cancellations: &NativeHttpCancellation,
     request_id: &str,
@@ -2461,8 +2653,292 @@ fn cancel_native_http_request(
     Ok(())
 }
 
-pub(crate) fn native_http_agent() -> ureq::Agent {
-    let config = ureq::Agent::config_builder()
+/// An admitted request's slot. Dropping it releases the slot exactly once —
+/// on success, on error, and on a panic anywhere between admission and the
+/// end of the exchange — unless an abandon already handed the slot back.
+struct NativeHttpSlot {
+    cancellations: NativeHttpCancellation,
+    request_id: String,
+    held: bool,
+}
+
+impl std::fmt::Debug for NativeHttpSlot {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("NativeHttpSlot")
+            .field("request_id", &self.request_id)
+            .field("held", &self.held)
+            .finish()
+    }
+}
+
+impl NativeHttpSlot {
+    /// Wraps a slot just inserted into `active`. Only the reserve functions
+    /// call this in production.
+    fn admitted(cancellations: &NativeHttpCancellation, request_id: &str) -> Self {
+        Self {
+            cancellations: cancellations.clone(),
+            request_id: request_id.to_string(),
+            held: true,
+        }
+    }
+}
+
+impl Drop for NativeHttpSlot {
+    fn drop(&mut self) {
+        if !self.held {
+            return;
+        }
+        self.held = false;
+        let (state_lock, changed) = &*self.cancellations.0;
+        let mut state = state_lock
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        state.active.remove(&self.request_id);
+        #[cfg(test)]
+        {
+            state.slot_releases += 1;
+        }
+        changed.notify_all();
+    }
+}
+
+/// Outcome of a network call run under `run_native_http_call_cancellable`.
+enum NativeHttpCallOutcome<T> {
+    Completed(T),
+    /// The request was cancelled while its call was still blocked. Its
+    /// admission slot has already been released (the `NativeHttpSlot` no
+    /// longer holds it) and the caller should report `cancelled`.
+    Abandoned,
+}
+
+/// Removes a call's orphan entry when its worker thread ends, including by
+/// panic. Keyed by the call token, so a second removal is a no-op and a late
+/// completion can never touch another request's accounting.
+struct NativeHttpOrphanGuard {
+    cancellations: NativeHttpCancellation,
+    token: u64,
+}
+
+impl Drop for NativeHttpOrphanGuard {
+    fn drop(&mut self) {
+        let (state_lock, changed) = &*self.cancellations.0;
+        let mut state = state_lock
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if state.orphaned_calls.remove(&self.token).is_some() {
+            changed.notify_all();
+        }
+    }
+}
+
+/// station#2327 — runs an admitted request's blocking network call (resolve,
+/// connect, request send, response headers) on a worker thread so a cancel can
+/// release the admission slot within one poll interval. The cancel flag is
+/// otherwise only observed between body reads, so during a server stall every
+/// abandoned request kept its slot for as long as the call blocked, starving
+/// new reads and pinning the reserved liveness slot.
+///
+/// On cancel, the slot is released and the call becomes an orphan only while
+/// its orphan allowance has room (liveness: its own per-origin allowance;
+/// everything else: the per-origin and global orphan limits); otherwise the
+/// request keeps its slot and waits for the call as before. The orphan's late
+/// result is dropped by its worker (closing the connection) without touching
+/// admission state beyond its own orphan entry. The orphan lives until the
+/// call returns — see `NATIVE_HTTP_PER_ORIGIN_ORPHAN_LIMIT` for that bound.
+fn run_native_http_call_cancellable<T, F>(
+    slot: &mut NativeHttpSlot,
+    cancel: &std::sync::atomic::AtomicBool,
+    call: F,
+) -> Result<NativeHttpCallOutcome<T>, String>
+where
+    T: Send + 'static,
+    F: FnOnce() -> T + Send + 'static,
+{
+    use std::sync::atomic::Ordering;
+    use std::sync::mpsc::RecvTimeoutError;
+
+    let cancellations = slot.cancellations.clone();
+    let (state_lock, changed) = &*cancellations.0;
+    let token = {
+        let mut state = state_lock
+            .lock()
+            .map_err(|_| "admission state lock poisoned".to_string())?;
+        state.next_call_token = state.next_call_token.wrapping_add(1);
+        state.next_call_token
+    };
+    // Capacity 1: the worker's single send never blocks, so it can happen
+    // under the state lock and race-free against the orphan decision below.
+    let (result_tx, result_rx) = std::sync::mpsc::sync_channel::<T>(1);
+    let guard = NativeHttpOrphanGuard {
+        cancellations: cancellations.clone(),
+        token,
+    };
+    std::thread::Builder::new()
+        .name("station-native-http".to_string())
+        .spawn(move || {
+            let result = call();
+            let late_result = {
+                let (state_lock, _) = &*guard.cancellations.0;
+                let state = state_lock
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner());
+                if state.orphaned_calls.contains_key(&guard.token) {
+                    Some(result)
+                } else {
+                    result_tx.send(result).err().map(|error| error.0)
+                }
+            };
+            // Close an abandoned connection outside the state lock; the guard
+            // then retires the orphan entry.
+            drop(late_result);
+            drop(guard);
+        })
+        .map_err(|error| format!("network worker thread failed to start: {error}"))?;
+
+    loop {
+        match result_rx.recv_timeout(NATIVE_HTTP_CANCEL_POLL_INTERVAL) {
+            Ok(result) => return Ok(NativeHttpCallOutcome::Completed(result)),
+            Err(RecvTimeoutError::Timeout) => {}
+            Err(RecvTimeoutError::Disconnected) => {
+                return Err("network worker ended without a result".to_string())
+            }
+        }
+        if !cancel.load(Ordering::SeqCst) {
+            continue;
+        }
+        let mut state = state_lock
+            .lock()
+            .map_err(|_| "admission state lock poisoned".to_string())?;
+        // The worker delivers under this lock, so a result that has already
+        // arrived is seen here and the call is never orphaned after the fact.
+        if let Ok(result) = result_rx.try_recv() {
+            return Ok(NativeHttpCallOutcome::Completed(result));
+        }
+        let Some((origin, liveness)) = state
+            .active
+            .get(&slot.request_id)
+            .map(|active| (active.origin.clone(), active.liveness))
+        else {
+            continue;
+        };
+        let has_room = if liveness {
+            state
+                .orphaned_calls
+                .values()
+                .filter(|orphan| orphan.liveness && orphan.origin == origin)
+                .count()
+                < NATIVE_HTTP_PER_ORIGIN_LIVENESS_ORPHAN_LIMIT
+        } else {
+            let shared = || {
+                state
+                    .orphaned_calls
+                    .values()
+                    .filter(|orphan| !orphan.liveness)
+            };
+            shared().filter(|orphan| orphan.origin == origin).count()
+                < NATIVE_HTTP_PER_ORIGIN_ORPHAN_LIMIT
+                && shared().count() < NATIVE_HTTP_GLOBAL_ORPHAN_LIMIT
+        };
+        if has_room {
+            state.active.remove(&slot.request_id);
+            slot.held = false;
+            #[cfg(test)]
+            {
+                state.slot_releases += 1;
+            }
+            state
+                .orphaned_calls
+                .insert(token, NativeOrphanedHttpCall { origin, liveness });
+            changed.notify_all();
+            return Ok(NativeHttpCallOutcome::Abandoned);
+        }
+        // Orphan allowance full: keep the slot until the call returns.
+    }
+}
+
+/// The part of a native request that runs while it holds an admission slot:
+/// the blocking network call, then `handle` on its result (headers and body).
+/// It owns the release decision — `slot` is consumed and released exactly once
+/// on every path, including a panic in `call` or `handle`, and never after an
+/// abandon already released it.
+fn run_admitted_native_http_exchange<T, C, H>(
+    mut slot: NativeHttpSlot,
+    cancel: &std::sync::atomic::AtomicBool,
+    call: C,
+    handle: H,
+) -> Result<(), NativeHttpBrokerFailure>
+where
+    T: Send + 'static,
+    C: FnOnce() -> T + Send + 'static,
+    H: FnOnce(T) -> Result<(), NativeHttpBrokerFailure>,
+{
+    use std::sync::atomic::Ordering;
+    let outcome = run_native_http_call_cancellable(&mut slot, cancel, call).map_err(|detail| {
+        NativeHttpBrokerFailure {
+            code: "transport",
+            detail: Some(format!("native Station request broker failed: {detail}")),
+        }
+    })?;
+    match outcome {
+        NativeHttpCallOutcome::Abandoned => Err(NativeHttpBrokerFailure::coded("cancelled")),
+        // A cancel that waited out a full orphan allowance still wins: the
+        // webview abandoned this request, so do not revalidate or send it
+        // response headers.
+        NativeHttpCallOutcome::Completed(_) if cancel.load(Ordering::SeqCst) => {
+            Err(NativeHttpBrokerFailure::coded("cancelled"))
+        }
+        NativeHttpCallOutcome::Completed(result) => handle(result),
+    }
+}
+
+/// Timeouts for every phase of a native request before its response body.
+/// ureq leaves each one unbounded unless set, and an abandoned call holds an
+/// orphan slot until it returns (`NATIVE_HTTP_PER_ORIGIN_ORPHAN_LIMIT`).
+const NATIVE_HTTP_RESOLVE_TIMEOUT: Duration = Duration::from_secs(10);
+/// In ureq 3.4.2 this also covers the TLS handshake, which runs inside the
+/// connect phase with the connect budget remaining when connecting began as
+/// its per-read/write wait: a peer that goes silent mid-handshake is bounded
+/// by at most one more such wait; a peer that trickles bytes is not.
+const NATIVE_HTTP_CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
+const NATIVE_HTTP_SEND_REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
+/// Floor of a request's send-body budget, and the agent-level default for
+/// callers that do not set a per-request budget.
+const NATIVE_HTTP_SEND_BODY_MIN_TIMEOUT: Duration = Duration::from_secs(120);
+/// The slowest sustained upload (32 KiB/s, about 256 kbit/s — a weak cellular
+/// or relayed link) that a large body is still given time to finish at.
+const NATIVE_HTTP_SEND_BODY_MIN_RATE_BYTES_PER_SEC: u64 = 32 * 1024;
+
+/// ureq's send-body timeout is a TOTAL deadline for the whole body, so one
+/// flat value either fails a slow large upload mid-body or lets a small
+/// stalled one hold a socket for minutes. The budget therefore scales with
+/// the body: `max(floor, body_len / min_rate)`, rounded up to the millisecond.
+/// 24 MiB at 32 KiB/s is 768s.
+fn native_http_send_body_budget(body_len: usize, floor: Duration, min_rate: u64) -> Duration {
+    let at_min_rate_ms = (body_len as u64)
+        .saturating_mul(1000)
+        .div_ceil(min_rate.max(1));
+    floor.max(Duration::from_millis(at_min_rate_ms))
+}
+
+/// Applies the per-request send-body budget through ureq's request-level
+/// configuration; every other timeout stays the agent's.
+fn native_http_request_with_send_body_budget(
+    agent: &ureq::Agent,
+    request: ureq::http::Request<Vec<u8>>,
+    floor: Duration,
+    min_rate: u64,
+) -> ureq::http::Request<Vec<u8>> {
+    let budget = native_http_send_body_budget(request.body().len(), floor, min_rate);
+    agent
+        .configure_request(request)
+        .timeout_send_body(Some(budget))
+        .build()
+}
+const NATIVE_HTTP_RECV_RESPONSE_TIMEOUT: Duration = Duration::from_secs(20);
+
+fn native_http_agent_config() -> ureq::config::ConfigBuilder<ureq::typestate::AgentScope> {
+    ureq::Agent::config_builder()
         .max_redirects(0)
         // SSE bodies are intentionally open-ended, so the body phase must have
         // NO budget. ureq's `timeout_recv_body` is a TOTAL budget for the whole
@@ -2476,11 +2952,24 @@ pub(crate) fn native_http_agent() -> ureq::Agent {
         // body reads, and an idle SSE delivers its next keepalive frame within
         // the server's SSE_KEEPALIVE_INTERVAL_MS, so a cancel takes effect at
         // worst one keepalive later.
-        .timeout_connect(Some(Duration::from_secs(15)))
-        .timeout_recv_response(Some(Duration::from_secs(20)))
+        //
+        // Every phase before the body is bounded (station#2327): a cancelled
+        // call keeps running as an orphan until it returns, so an unbounded
+        // resolve or request send would hold an orphan slot forever.
+        .timeout_resolve(Some(NATIVE_HTTP_RESOLVE_TIMEOUT))
+        .timeout_connect(Some(NATIVE_HTTP_CONNECT_TIMEOUT))
+        .timeout_send_request(Some(NATIVE_HTTP_SEND_REQUEST_TIMEOUT))
+        .timeout_send_body(Some(NATIVE_HTTP_SEND_BODY_MIN_TIMEOUT))
+        .timeout_recv_response(Some(NATIVE_HTTP_RECV_RESPONSE_TIMEOUT))
         .timeout_recv_body(None)
         .http_status_as_error(false)
-        .build();
+}
+
+pub(crate) fn native_http_agent() -> ureq::Agent {
+    native_http_agent_with(native_http_agent_config().build())
+}
+
+fn native_http_agent_with(config: ureq::config::Config) -> ureq::Agent {
     #[cfg(target_os = "android")]
     return ureq::Agent::with_parts(
         config,
@@ -2728,14 +3217,29 @@ fn station_native_http_request_blocking(
     } else {
         None
     };
+    if request.liveness_probe {
+        validate_native_liveness_probe(&method, is_stream_request, &parsed_url)?;
+    }
     let cancel = Arc::new(AtomicBool::new(false));
-    reserve_native_http_request(
-        &cancellations,
-        &request_id,
-        &origin,
-        is_stream_request,
-        Arc::clone(&cancel),
-    )?;
+    // The slot guard owns the admission from here on: moved into the exchange
+    // below and released exactly once on every path, including a panic
+    // (station#2327).
+    let slot = if request.liveness_probe {
+        reserve_native_http_liveness_probe(
+            &cancellations,
+            &request_id,
+            &origin,
+            Arc::clone(&cancel),
+        )?
+    } else {
+        reserve_native_http_request(
+            &cancellations,
+            &request_id,
+            &origin,
+            is_stream_request,
+            Arc::clone(&cancel),
+        )?
+    };
     let result = (|| -> Result<(), NativeHttpBrokerFailure> {
         // Scoped callers enter the capacity queue before we resolve their
         // receipt. That makes an A -> B switch while queued fail closed rather
@@ -2771,78 +3275,102 @@ fn station_native_http_request_blocking(
         revalidate_native_http_profile(&app, &authority, expected_binding_id, &origin, &reference)
             .map_err(|error| NativeHttpBrokerFailure::coded(error.code))?;
         let agent = native_http_agent();
-        let mut response = agent.run(request).map_err(|error| {
-            NativeHttpBrokerFailure::transport(native_request_transport_detail(&error))
-        })?;
-        revalidate_native_http_profile(&app, &authority, expected_binding_id, &origin, &reference)
-            .map_err(|error| NativeHttpBrokerFailure::coded(error.code))?;
-        let open_stream = native_response_is_open_stream(response.headers());
-        let status = response.status().as_u16();
-        channel
-            .send(NativeHttpMessage::Response {
-                status,
-                headers: native_response_headers(response.headers()),
-                // Chunked, close-delimited, and transparently decompressed
-                // responses do not have an exact wire length. Preserve a
-                // declared ordinary body length so the WebView can reject a
-                // clean-looking EOF that actually truncated JSON (#2265).
-                body_length: response.body().content_length(),
-            })
-            .map_err(|_| NativeHttpBrokerFailure::coded("cancelled"))?;
-        let mut reader = response.body_mut().as_reader();
-        let mut buffer = [0_u8; 16 * 1024];
-        let mut total = 0_usize;
-        loop {
-            if cancel.load(Ordering::SeqCst) {
-                return Err(NativeHttpBrokerFailure::coded("cancelled"));
-            }
-            let read = match reader.read(&mut buffer) {
-                Ok(read) => read,
-                // A short body receive timeout gives cancellation a bounded
-                // rendezvous without imposing a lifetime on an SSE stream.
-                Err(error)
-                    if matches!(
-                        error.kind(),
-                        std::io::ErrorKind::TimedOut | std::io::ErrorKind::WouldBlock
-                    ) =>
-                {
-                    continue
+        let request = native_http_request_with_send_body_budget(
+            &agent,
+            request,
+            NATIVE_HTTP_SEND_BODY_MIN_TIMEOUT,
+            NATIVE_HTTP_SEND_BODY_MIN_RATE_BYTES_PER_SEC,
+        );
+        run_admitted_native_http_exchange(
+            slot,
+            &cancel,
+            move || agent.run(request),
+            |result| {
+                let mut response = result.map_err(|error| {
+                    NativeHttpBrokerFailure::transport(native_request_transport_detail(&error))
+                })?;
+                revalidate_native_http_profile(
+                    &app,
+                    &authority,
+                    expected_binding_id,
+                    &origin,
+                    &reference,
+                )
+                .map_err(|error| NativeHttpBrokerFailure::coded(error.code))?;
+                let open_stream = native_response_is_open_stream(response.headers());
+                let status = response.status().as_u16();
+                channel
+                    .send(NativeHttpMessage::Response {
+                        status,
+                        headers: native_response_headers(response.headers()),
+                        // Chunked, close-delimited, and transparently decompressed
+                        // responses do not have an exact wire length. Preserve a
+                        // declared ordinary body length so the WebView can reject a
+                        // clean-looking EOF that actually truncated JSON (#2265).
+                        body_length: response.body().content_length(),
+                    })
+                    .map_err(|_| NativeHttpBrokerFailure::coded("cancelled"))?;
+                let mut reader = response.body_mut().as_reader();
+                let mut buffer = [0_u8; 16 * 1024];
+                let mut total = 0_usize;
+                loop {
+                    if cancel.load(Ordering::SeqCst) {
+                        return Err(NativeHttpBrokerFailure::coded("cancelled"));
+                    }
+                    let read = match reader.read(&mut buffer) {
+                        Ok(read) => read,
+                        // A short body receive timeout gives cancellation a bounded
+                        // rendezvous without imposing a lifetime on an SSE stream.
+                        Err(error)
+                            if matches!(
+                                error.kind(),
+                                std::io::ErrorKind::TimedOut | std::io::ErrorKind::WouldBlock
+                            ) =>
+                        {
+                            continue
+                        }
+                        Err(error) => {
+                            return Err(NativeHttpBrokerFailure::transport(
+                                native_response_transport_detail(&error),
+                            ))
+                        }
+                    };
+                    if read == 0 {
+                        break;
+                    }
+                    total += read;
+                    if !open_stream && total > 64 * 1024 * 1024 {
+                        return Err(NativeHttpBrokerFailure::coded("response_too_large"));
+                    }
+                    revalidate_native_http_profile(
+                        &app,
+                        &authority,
+                        expected_binding_id,
+                        &origin,
+                        &reference,
+                    )
+                    .map_err(|error| NativeHttpBrokerFailure::coded(error.code))?;
+                    channel
+                        .send(NativeHttpMessage::Chunk {
+                            bytes: buffer[..read].to_vec(),
+                        })
+                        .map_err(|_| NativeHttpBrokerFailure::coded("cancelled"))?;
                 }
-                Err(error) => {
-                    return Err(NativeHttpBrokerFailure::transport(
-                        native_response_transport_detail(&error),
-                    ))
-                }
-            };
-            if read == 0 {
-                break;
-            }
-            total += read;
-            if !open_stream && total > 64 * 1024 * 1024 {
-                return Err(NativeHttpBrokerFailure::coded("response_too_large"));
-            }
-            revalidate_native_http_profile(
-                &app,
-                &authority,
-                expected_binding_id,
-                &origin,
-                &reference,
-            )
-            .map_err(|error| NativeHttpBrokerFailure::coded(error.code))?;
-            channel
-                .send(NativeHttpMessage::Chunk {
-                    bytes: buffer[..read].to_vec(),
-                })
-                .map_err(|_| NativeHttpBrokerFailure::coded("cancelled"))?;
-        }
-        revalidate_native_http_profile(&app, &authority, expected_binding_id, &origin, &reference)
-            .map_err(|error| NativeHttpBrokerFailure::coded(error.code))?;
-        channel
-            .send(NativeHttpMessage::End)
-            .map_err(|_| NativeHttpBrokerFailure::coded("cancelled"))?;
-        Ok(())
+                revalidate_native_http_profile(
+                    &app,
+                    &authority,
+                    expected_binding_id,
+                    &origin,
+                    &reference,
+                )
+                .map_err(|error| NativeHttpBrokerFailure::coded(error.code))?;
+                channel
+                    .send(NativeHttpMessage::End)
+                    .map_err(|_| NativeHttpBrokerFailure::coded("cancelled"))?;
+                Ok(())
+            },
+        )
     })();
-    release_native_http_request(&cancellations, &request_id)?;
     if let Err(failure) = result {
         let _ = channel.send(NativeHttpMessage::Error {
             code: failure.code,
@@ -3727,6 +4255,28 @@ enum ParsedStationProfileLockRecord {
 }
 
 const PROFILE_LOCK_STALE_AFTER: Duration = Duration::from_secs(5 * 60);
+// How long a desktop writer keeps retrying a saved Station lock (the
+// profiles.json lock and the genesis lock) held by a LIVE owner. Wall-clock,
+// not an attempt count: each attempt also runs the stale-lock probe, whose
+// cost varies by host, so a fixed number of naps measured the host rather
+// than the holder. The deadline stops new retries; the call can still run
+// past it by a probe already in flight plus the final probe taken at expiry.
+// The CLI uses the same bound for the same locks (packages/cli
+// profile-store.ts).
+const PROFILE_LOCK_WAIT: Duration = Duration::from_secs(10);
+// Mobile takes the profile lock on every saved Station READ, from Tauri sync
+// commands on the main thread, where Android reports an ANR after 5s. Keep
+// its wait at the old nominal budget (500 naps of 10ms), never the desktop
+// bound: a crashed v1 lock stays unreclaimable for five minutes, and each
+// read in that window waits this long before reporting busy.
+#[cfg(any(mobile, test))]
+const PROFILE_LOCK_MOBILE_WAIT: Duration = Duration::from_secs(5);
+// The stale-lock probe creates and fsyncs a guard lock and resolves the
+// owner's birth. It runs once on first contention (a dead holder is reclaimed
+// at once), then at this interval, and once more before giving up, rather than
+// on every 10ms nap where it competes with the holder being waited for.
+const PROFILE_LOCK_RECLAIM_PROBE_INTERVAL: Duration = Duration::from_millis(250);
+const PROFILE_LOCK_NAP: Duration = Duration::from_millis(10);
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum ProfileLockOwnerLiveness {
@@ -3951,7 +4501,7 @@ fn profile_lock_record_bytes(birth: &str) -> Result<Vec<u8>, String> {
     Ok(contents)
 }
 
-#[cfg(mobile)]
+#[cfg(any(mobile, test))]
 fn legacy_profile_lock_record_bytes() -> Result<Vec<u8>, String> {
     let created_at = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -3977,9 +4527,15 @@ fn lock_station_profiles_with_identity(
     lock_station_profiles_with_record(path, &|| profile_lock_record_bytes(birth), birth_for_pid)
 }
 
-#[cfg(mobile)]
+#[cfg(any(mobile, test))]
 fn lock_station_profiles_legacy(path: &std::path::Path) -> Result<StationProfileLock, String> {
-    lock_station_profiles_with_record(path, &legacy_profile_lock_record_bytes, &|_| Ok(None))
+    lock_station_profiles_with_record_within(
+        path,
+        &legacy_profile_lock_record_bytes,
+        &|_| Ok(None),
+        PROFILE_LOCK_MOBILE_WAIT,
+        PROFILE_LOCK_RECLAIM_PROBE_INTERVAL,
+    )
 }
 
 fn lock_station_profiles_with_record(
@@ -3987,17 +4543,34 @@ fn lock_station_profiles_with_record(
     record_bytes: &dyn Fn() -> Result<Vec<u8>, String>,
     birth_for_pid: &dyn Fn(u32) -> Result<Option<String>, String>,
 ) -> Result<StationProfileLock, String> {
+    lock_station_profiles_with_record_within(
+        path,
+        record_bytes,
+        birth_for_pid,
+        PROFILE_LOCK_WAIT,
+        PROFILE_LOCK_RECLAIM_PROBE_INTERVAL,
+    )
+}
+
+fn lock_station_profiles_with_record_within(
+    path: &std::path::Path,
+    record_bytes: &dyn Fn() -> Result<Vec<u8>, String>,
+    birth_for_pid: &dyn Fn(u32) -> Result<Option<String>, String>,
+    wait: Duration,
+    probe_interval: Duration,
+) -> Result<StationProfileLock, String> {
     #[cfg(unix)]
     use std::os::unix::fs::OpenOptionsExt;
 
     let lock_path = path.with_extension("json.lock");
     let mut reclaimed_stale_lock = false;
     // Windows hardens and verifies each newly-created lock through the ACL
-    // authority. A competing bundled channel can therefore hold the lock for
-    // longer than the old one-second poll window; keep the wait bounded to
-    // five seconds rather than turning ordinary Stable/Beta/Nightly startup
-    // contention into a false "busy" failure.
-    for _ in 0..500 {
+    // authority, and a competing CLI or bundled channel may be fsyncing its
+    // publication. Wait boundedly for that live holder rather than turning
+    // ordinary Stable/Beta/Nightly/CLI contention into a false "busy" failure.
+    let started = std::time::Instant::now();
+    let mut next_probe_at: Option<std::time::Instant> = None;
+    loop {
         let mut options = std::fs::OpenOptions::new();
         options.write(true).create_new(true);
         #[cfg(unix)]
@@ -4017,13 +4590,22 @@ fn lock_station_profiles_with_record(
                 return Ok(lock);
             }
             Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+                let now = std::time::Instant::now();
+                let expired = now.duration_since(started) >= wait;
                 if !reclaimed_stale_lock
-                    && reclaim_stale_profile_lock(&lock_path, record_bytes, birth_for_pid)?
+                    && (expired || next_probe_at.is_none_or(|at| now >= at))
                 {
-                    reclaimed_stale_lock = true;
-                    continue;
+                    next_probe_at = Some(now + probe_interval);
+                    if reclaim_stale_profile_lock(&lock_path, record_bytes, birth_for_pid)? {
+                        reclaimed_stale_lock = true;
+                        continue;
+                    }
                 }
-                std::thread::sleep(Duration::from_millis(10));
+                let elapsed = started.elapsed();
+                if expired || elapsed >= wait {
+                    break;
+                }
+                std::thread::sleep(PROFILE_LOCK_NAP.min(wait - elapsed));
             }
             Err(error) => return Err(format!("lock saved Station metadata: {error}")),
         }
@@ -4373,15 +4955,95 @@ fn station_profile_store_write_internal(
     expected_revision: u64,
     pairing_handle: Option<String>,
 ) -> Result<(), String> {
+    station_profile_store_write_with_host(
+        &AppProfileWriteHost(app),
+        authority,
+        pending,
+        contents,
+        expected_revision,
+        pairing_handle,
+    )
+}
+
+// Only host I/O varies in tests. The CAS, pending-handle transitions, cleanup,
+// and publication boundary below are the same function used by Tauri commands.
+trait ProfileWriteHost {
+    fn path(&self) -> Result<std::path::PathBuf, String>;
+    fn genesis(&self, root: &std::path::Path) -> Result<(), String>;
+    fn lock(&self, path: &std::path::Path) -> Result<StationProfileLock, String>;
+    fn invalidate_removed_routes(
+        &self,
+        current: &CredentialProfileStore,
+        next: &CredentialProfileStore,
+    ) -> Result<(), String>;
+    fn postpublication_trust(&self, path: &std::path::Path) -> Result<(), String>;
+    fn staged_path(&self, generated: std::path::PathBuf) -> std::path::PathBuf {
+        generated
+    }
+    fn notify(&self) {}
+}
+
+struct AppProfileWriteHost<'a>(&'a AppHandle);
+
+impl ProfileWriteHost for AppProfileWriteHost<'_> {
+    fn path(&self) -> Result<std::path::PathBuf, String> {
+        station_profiles_path(self.0)
+    }
+    fn genesis(&self, root: &std::path::Path) -> Result<(), String> {
+        #[cfg(not(mobile))]
+        {
+            ensure_station_profile_store_genesis(self.0, root)
+        }
+        #[cfg(mobile)]
+        {
+            let _ = root;
+            Ok(())
+        }
+    }
+    fn lock(&self, path: &std::path::Path) -> Result<StationProfileLock, String> {
+        lock_station_profiles_for_app(self.0, path)
+    }
+    fn invalidate_removed_routes(
+        &self,
+        current: &CredentialProfileStore,
+        next: &CredentialProfileStore,
+    ) -> Result<(), String> {
+        #[cfg(not(mobile))]
+        {
+            relay_grant_vault::invalidate_removed_routes(self.0, current, next)
+        }
+        #[cfg(mobile)]
+        {
+            let _ = (current, next);
+            Ok(())
+        }
+    }
+    fn postpublication_trust(&self, path: &std::path::Path) -> Result<(), String> {
+        crate::windows_path_trust::ensure(&[(crate::windows_path_trust::TrustKind::File, path)])
+    }
+    fn notify(&self) {
+        #[cfg(not(mobile))]
+        notify_startup_readiness_if_waiting(self.0);
+    }
+}
+
+fn station_profile_store_write_with_host(
+    host: &impl ProfileWriteHost,
+    authority: &NativeProfileAuthority,
+    pending: &NativePendingPairingCredentials,
+    contents: String,
+    expected_revision: u64,
+    pairing_handle: Option<String>,
+) -> Result<(), String> {
     if contents.len() > 1024 * 1024 {
         return Err("saved Station metadata is too large".to_string());
     }
     let next_store = parse_station_profile_store(&contents)?;
-    let path = station_profiles_path(app)?;
+    let path = host.path()?;
     #[cfg(not(mobile))]
     {
         let root = station_profile_store_root(&path)?;
-        ensure_station_profile_store_genesis(app, root)?;
+        host.genesis(root)?;
     }
     let parent = path
         .parent()
@@ -4399,7 +5061,7 @@ fn station_profile_store_write_internal(
             .map_err(|error| format!("secure saved Station directory: {error}"))?;
     }
     validate_station_profile_store(&path)?;
-    let _lock = lock_station_profiles_for_app(app, &path)?;
+    let _lock = host.lock(&path)?;
     // Serialize all pairing-handle phases across the durable CAS. This keeps a
     // handle one-use without ever consuming it before the write it authorizes.
     let mut pending_entries = if pairing_handle.is_some() {
@@ -4504,15 +5166,22 @@ fn station_profile_store_write_internal(
             renderer_store_references_are_authorized(&state, &next_store)?;
         }
     }
-    let temporary = path.with_extension(format!(
-        "{}.{}.tmp",
-        std::process::id(),
-        SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map_err(|error| format!("clock for profile write: {error}"))?
-            .as_nanos()
-    ));
+    let mut temporary = None;
+    let mut published = false;
     let write_result = (|| -> Result<(), String> {
+        // Post-transition prepublication errors must reach the rollback below.
+        // Grant invalidation still precedes profile publication: a failed
+        // later write must never revive a revoked grant.
+        host.invalidate_removed_routes(&current_store, &next_store)?;
+        let generated_staged = path.with_extension(format!(
+            "{}.{}.tmp",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map_err(|error| format!("clock for profile write: {error}"))?
+                .as_nanos()
+        ));
+        let staged = host.staged_path(generated_staged);
         #[cfg(unix)]
         use std::os::unix::fs::OpenOptionsExt;
         let mut options = std::fs::OpenOptions::new();
@@ -4520,11 +5189,14 @@ fn station_profile_store_write_internal(
         #[cfg(unix)]
         options.mode(0o600);
         let mut file = options
-            .open(&temporary)
+            .open(&staged)
             .map_err(|error| format!("create saved Station temp file: {error}"))?;
+        // Only this successful create_new() owns the staging path. A
+        // collision must never delete another writer's existing file.
+        temporary = Some(staged.clone());
         crate::windows_path_trust::ensure(&[(
             crate::windows_path_trust::TrustKind::File,
-            &temporary,
+            &staged,
         )])?;
         file.write_all(contents.as_bytes())
             .map_err(|error| format!("write saved Station temp file: {error}"))?;
@@ -4533,12 +5205,13 @@ fn station_profile_store_write_internal(
         // Windows ReplaceFileW cannot consume a replacement file while this
         // process still owns its descriptor; POSIX permits the old ordering.
         drop(file);
-        replace_station_profile_store(&temporary, &path)?;
-        crate::windows_path_trust::ensure(&[(crate::windows_path_trust::TrustKind::File, &path)])?;
+        replace_station_profile_store(&staged, &path)?;
+        published = true;
+        host.postpublication_trust(&path)?;
         Ok(())
     })();
-    if temporary.exists() {
-        let _ = std::fs::remove_file(&temporary);
+    if let Some(temporary) = temporary.filter(|temporary| temporary.exists()) {
+        let _ = std::fs::remove_file(temporary);
     }
     if write_result.is_ok() {
         let mut state = authority
@@ -4566,7 +5239,7 @@ fn station_profile_store_write_internal(
                 entries.remove(handle);
             }
         }
-    } else if let Some((reference_key, handle)) = transition_rollback {
+    } else if let Some((reference_key, handle)) = transition_rollback.filter(|_| !published) {
         let mut state = authority
             .0
             .lock()
@@ -4579,12 +5252,11 @@ fn station_profile_store_write_internal(
             entry.phase = NativePairingPhase::AwaitingRequiresAuth;
         }
     }
-    #[cfg(not(mobile))]
     if write_result.is_ok() {
         // A cold first run may create or repair this channel's bundled
         // credential after the first readiness attempt. Wake the existing
         // bounded proof without coupling it to renderer hydration order.
-        notify_startup_readiness_if_waiting(app);
+        host.notify();
     }
     write_result
 }
@@ -4745,6 +5417,7 @@ fn reconciled_bundled_local_profile_store(
                 server_port,
                 ui_port,
             }),
+            relay_route: None,
             setup_source: "local".to_string(),
             configuration_state: "configured".to_string(),
             created_at: now_ms,
@@ -7096,6 +7769,11 @@ fn build_sidecar_command(
         .env("STATION_HOME", &context.station_home)
         .env("STATION_HOST", "127.0.0.1")
         .env("STATION_STDOUT_HANDSHAKE", "1")
+        // Only the handshake line is read from stdout; every other line is
+        // discarded. Pretty-printed logs there cost CPU per line, and a pipe
+        // left full after this process dies wedges the server's exit hooks
+        // (#2327). The durable log store still records everything.
+        .env("STATION_STDOUT_LOGS", "0")
         .env("STATION_INSTANCE_ID", &context.instance_id)
         .env_remove("STATION_ROOT")
         // A boot identifies one concrete Node process. Generate it at the
@@ -9898,6 +10576,9 @@ If a stable instance is running, this launch will focus its window and exit.",
     #[cfg(not(mobile))]
     let builder = builder.invoke_handler(tauri::generate_handler![
         native_capability_report,
+        relay_grant_vault::relay_client_grant_store,
+        relay_grant_vault::relay_client_grant_revoke,
+        relay_grant_vault::relay_client_grant_metadata,
         credential_vault_delete,
         credential_vault_delete_unreferenced,
         credential_vault_commit_pairing,
@@ -10202,6 +10883,110 @@ If a stable instance is running, this launch will focus its window and exit.",
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(not(mobile))]
+    struct WriterTestHost {
+        path: std::path::PathBuf,
+        staged_path: Option<std::path::PathBuf>,
+        fail_invalidation: bool,
+        fail_postpublication_trust: bool,
+    }
+
+    #[cfg(not(mobile))]
+    impl ProfileWriteHost for WriterTestHost {
+        fn path(&self) -> Result<std::path::PathBuf, String> { Ok(self.path.clone()) }
+        fn genesis(&self, root: &std::path::Path) -> Result<(), String> {
+            assert!(station_profile_store_is_initialized(root)?);
+            Ok(())
+        }
+        fn lock(&self, path: &std::path::Path) -> Result<StationProfileLock, String> { lock_station_profiles(path) }
+        fn invalidate_removed_routes(&self, _: &CredentialProfileStore, _: &CredentialProfileStore) -> Result<(), String> {
+            if self.fail_invalidation { Err("injected relay grant invalidation failure".into()) } else { Ok(()) }
+        }
+        fn postpublication_trust(&self, path: &std::path::Path) -> Result<(), String> {
+            if self.fail_postpublication_trust { Err("injected postpublication trust failure".into()) }
+            else { crate::windows_path_trust::ensure(&[(crate::windows_path_trust::TrustKind::File, path)]) }
+        }
+        fn staged_path(&self, generated: std::path::PathBuf) -> std::path::PathBuf {
+            self.staged_path.clone().unwrap_or(generated)
+        }
+    }
+
+    #[cfg(not(mobile))]
+    fn writer_pairing_fixture() -> (
+        tempfile::TempDir,
+        std::path::PathBuf,
+        NativeProfileAuthority,
+        NativePendingPairingCredentials,
+        String,
+        String,
+        WriterTestHost,
+    ) {
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory.path();
+        ensure_station_profile_store_root(root).unwrap();
+        std::fs::create_dir(root.join("config")).unwrap();
+        write_profile_store_genesis_marker(root).unwrap();
+        let path = root.join("config/profiles.json");
+        write_empty_station_profile_store(&path).unwrap();
+        let reference = NativeCredentialReference {
+            kind: "station-bearer".into(),
+            id: "test-host-allocated".into(),
+        };
+        let handle = "test-pairing-handle".to_string();
+        let pending = NativePendingPairingCredentials::default();
+        pending.0.lock().unwrap().insert(handle.clone(), PendingPairingCredential {
+            credential: "secret-never-leaves-native-state".into(),
+            reference,
+            exact_origin: "https://one.example".into(),
+            environment_id: "environment-one".into(),
+            client_instance_id: "11111111-1111-4111-8111-111111111111".into(),
+            expires_at: SystemTime::now() + Duration::from_secs(120),
+            phase: NativePairingPhase::AwaitingRequiresAuth,
+        });
+        let contents = r#"{"schemaVersion":1,"revision":1,"defaultProfile":null,"projectProfiles":{},"profiles":[{"schemaVersion":1,"name":"pending","endpoint":"https://one.example","credentialRef":{"kind":"station-bearer","id":"test-host-allocated"},"environmentId":"environment-one","clientInstanceId":"11111111-1111-4111-8111-111111111111","setupSource":"paired","configurationState":"requires-auth","createdAt":1,"updatedAt":1}]}"#.to_string();
+        let host = WriterTestHost { path: path.clone(), staged_path: None, fail_invalidation: false, fail_postpublication_trust: false };
+        (directory, path, NativeProfileAuthority::default(), pending, handle, contents, host)
+    }
+
+    #[cfg(not(mobile))]
+    #[test]
+    fn profile_writer_rolls_back_prepublication_failure_and_retries_same_handle() {
+        let (_directory, path, authority, pending, handle, contents, mut host) = writer_pairing_fixture();
+        host.fail_invalidation = true;
+        let error = station_profile_store_write_with_host(&host, &authority, &pending, contents.clone(), 0, Some(handle.clone())).unwrap_err();
+        assert!(error.contains("injected relay grant invalidation failure"));
+        assert_eq!(parse_station_profile_store(&read_station_profile_store(&path).unwrap()).unwrap().revision, 0);
+        assert!(authority.0.lock().unwrap().transitioning.is_empty());
+        assert!(matches!(pending.0.lock().unwrap().get(&handle).unwrap().phase, NativePairingPhase::AwaitingRequiresAuth));
+        host.fail_invalidation = false;
+        station_profile_store_write_with_host(&host, &authority, &pending, contents, 0, Some(handle.clone())).unwrap();
+        assert_eq!(parse_station_profile_store(&read_station_profile_store(&path).unwrap()).unwrap().revision, 1);
+        assert!(matches!(pending.0.lock().unwrap().get(&handle).unwrap().phase, NativePairingPhase::RequiresAuthPersisted { .. }));
+    }
+
+    #[cfg(not(mobile))]
+    #[test]
+    fn profile_writer_does_not_roll_back_after_publication_or_delete_foreign_stage() {
+        let (_directory, path, authority, pending, handle, contents, mut host) = writer_pairing_fixture();
+        host.fail_postpublication_trust = true;
+        let error = station_profile_store_write_with_host(&host, &authority, &pending, contents.clone(), 0, Some(handle.clone())).unwrap_err();
+        assert!(error.contains("injected postpublication trust failure"));
+        assert_eq!(parse_station_profile_store(&read_station_profile_store(&path).unwrap()).unwrap().revision, 1);
+        assert!(!authority.0.lock().unwrap().transitioning.is_empty());
+        assert!(matches!(pending.0.lock().unwrap().get(&handle).unwrap().phase, NativePairingPhase::RequiresAuthPersisted { .. }));
+
+        // A second isolated writer hits create_new on a path already owned by
+        // another process. Its cleanup may remove only a stage it created.
+        let (_other_directory, other_path, other_authority, other_pending, other_handle, other_contents, mut other_host) = writer_pairing_fixture();
+        let staged = other_path.with_extension("foreign.tmp");
+        std::fs::write(&staged, "foreign writer's staged bytes").unwrap();
+        other_host.staged_path = Some(staged.clone());
+        assert!(station_profile_store_write_with_host(&other_host, &other_authority, &other_pending, other_contents, 0, Some(other_handle.clone())).unwrap_err().contains("create saved Station temp file"));
+        assert_eq!(std::fs::read_to_string(&staged).unwrap(), "foreign writer's staged bytes");
+        assert_eq!(parse_station_profile_store(&read_station_profile_store(&other_path).unwrap()).unwrap().revision, 0);
+        assert!(matches!(other_pending.0.lock().unwrap().get(&other_handle).unwrap().phase, NativePairingPhase::AwaitingRequiresAuth));
+    }
 
     #[test]
     #[cfg(not(mobile))]
@@ -11903,6 +12688,7 @@ mod tests {
             ("STATION_HOME", "/home/example/.station-nightly"),
             ("STATION_HOST", "127.0.0.1"),
             ("STATION_STDOUT_HANDSHAKE", "1"),
+            ("STATION_STDOUT_LOGS", "0"),
             ("STATION_INSTANCE_ID", "desktop-sidecar-nightly"),
             ("STATION_BOOT_ID", "018f8f10-1df4-7d5b-b1f1-3a5c5dc7a111"),
             ("STATION_DESKTOP_CHANNEL", "nightly"),
@@ -12619,7 +13405,7 @@ mod tests {
         let cancellations = NativeHttpCancellation::default();
         let cancel = || std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
 
-        reserve_native_http_request(
+        let _first = reserve_native_http_request(
             &cancellations,
             "request-1",
             "https://station.example.test",
@@ -12667,6 +13453,7 @@ mod tests {
                     cancel: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
                     origin: origin.to_string(),
                     stream: false,
+                    liveness: false,
                 },
             );
         }
@@ -12682,7 +13469,7 @@ mod tests {
         let first_cancellations = cancellations.clone();
         let first_tx = admitted_tx.clone();
         let first = std::thread::spawn(move || {
-            reserve_native_http_request(
+            let slot = reserve_native_http_request(
                 &first_cancellations,
                 "queued-first",
                 origin,
@@ -12691,12 +13478,13 @@ mod tests {
             )
             .unwrap();
             first_tx.send("queued-first").unwrap();
+            slot
         });
         wait_for_pending_native_reads(&cancellations, 1);
 
         let second_cancellations = cancellations.clone();
         let second = std::thread::spawn(move || {
-            reserve_native_http_request(
+            let slot = reserve_native_http_request(
                 &second_cancellations,
                 "queued-second",
                 origin,
@@ -12705,6 +13493,7 @@ mod tests {
             )
             .unwrap();
             admitted_tx.send("queued-second").unwrap();
+            slot
         });
         wait_for_pending_native_reads(&cancellations, 2);
 
@@ -12717,14 +13506,214 @@ mod tests {
             admitted_rx.try_recv().is_err(),
             "the second read must not barge"
         );
-        release_native_http_request(&cancellations, "queued-first").unwrap();
+        // Dropping the admitted read's slot guard is its release.
+        drop(first.join().unwrap());
         assert_eq!(
             admitted_rx.recv_timeout(Duration::from_secs(2)).unwrap(),
             "queued-second"
         );
-        release_native_http_request(&cancellations, "queued-second").unwrap();
-        first.join().unwrap();
-        second.join().unwrap();
+        drop(second.join().unwrap());
+        let (state_lock, _) = &*cancellations.0;
+        let state = state_lock.lock().unwrap();
+        assert!(!state.active.contains_key("queued-first"));
+        assert!(!state.active.contains_key("queued-second"));
+    }
+
+    /// Spawns an ordinary read that waits in the FIFO; returns its join handle
+    /// and a receiver that fires once it is admitted.
+    fn spawn_queued_native_read(
+        cancellations: &NativeHttpCancellation,
+        origin: &'static str,
+        request_id: &'static str,
+    ) -> (
+        std::thread::JoinHandle<NativeHttpSlot>,
+        std::sync::mpsc::Receiver<&'static str>,
+    ) {
+        let (admitted_tx, admitted_rx) = std::sync::mpsc::channel();
+        let queued_cancellations = cancellations.clone();
+        let handle = std::thread::spawn(move || {
+            let slot = reserve_native_http_request(
+                &queued_cancellations,
+                request_id,
+                origin,
+                false,
+                std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            )
+            .unwrap();
+            admitted_tx.send(request_id).unwrap();
+            slot
+        });
+        (handle, admitted_rx)
+    }
+
+    #[test]
+    fn native_http_liveness_probe_is_admitted_past_a_full_read_queue() {
+        // station#2327: the health probe's identity read used to wait in this
+        // FIFO behind every background poll, so a stalled Station timed the
+        // probe out and read as unreachable.
+        let cancellations = NativeHttpCancellation::default();
+        let origin = "https://station.example.test";
+        fill_native_read_allowance(&cancellations, origin);
+        let (queued, _admitted) = spawn_queued_native_read(&cancellations, origin, "queued-read");
+        wait_for_pending_native_reads(&cancellations, 1);
+
+        let liveness = reserve_native_http_liveness_probe(
+            &cancellations,
+            "liveness-1",
+            origin,
+            std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        )
+        .expect("the liveness read takes the reserved slot without queueing");
+        {
+            let (state_lock, _) = &*cancellations.0;
+            let state = state_lock.lock().unwrap();
+            assert!(state.active.contains_key("liveness-1"));
+            assert_eq!(
+                state.pending_reads.len(),
+                1,
+                "the ordinary read is still queued"
+            );
+        }
+
+        drop(liveness);
+        release_native_http_request(&cancellations, "seed-0").unwrap();
+        drop(queued.join().unwrap());
+        let (state_lock, _) = &*cancellations.0;
+        let state = state_lock.lock().unwrap();
+        assert!(!state.active.contains_key("liveness-1"));
+        assert!(!state.active.contains_key("queued-read"));
+    }
+
+    #[test]
+    fn native_http_second_concurrent_liveness_probe_is_refused_not_queued() {
+        let cancellations = NativeHttpCancellation::default();
+        let origin = "https://station.example.test";
+        fill_native_read_allowance(&cancellations, origin);
+        let cancel = || std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+
+        let first =
+            reserve_native_http_liveness_probe(&cancellations, "liveness-1", origin, cancel())
+                .expect("the first liveness read is admitted");
+        let refusal =
+            reserve_native_http_liveness_probe(&cancellations, "liveness-2", origin, cancel())
+                .expect_err("only one liveness read per origin at a time");
+        assert_eq!(refusal.code, "transport_capacity");
+        {
+            let (state_lock, _) = &*cancellations.0;
+            let state = state_lock.lock().unwrap();
+            assert!(
+                state.pending_reads.is_empty(),
+                "a liveness read never queues"
+            );
+        }
+
+        // The slot is per origin, and it frees on release.
+        let _other_origin = reserve_native_http_liveness_probe(
+            &cancellations,
+            "liveness-other-origin",
+            "https://other.example.test",
+            cancel(),
+        )
+        .expect("another origin has its own slot");
+        drop(first);
+        let _third =
+            reserve_native_http_liveness_probe(&cancellations, "liveness-3", origin, cancel())
+                .expect("a released slot can be taken again");
+    }
+
+    #[test]
+    fn native_http_ordinary_reads_never_enter_the_liveness_slot() {
+        let cancellations = NativeHttpCancellation::default();
+        let origin = "https://station.example.test";
+        fill_native_read_allowance(&cancellations, origin);
+        let (queued, admitted) = spawn_queued_native_read(&cancellations, origin, "queued-read");
+        wait_for_pending_native_reads(&cancellations, 1);
+
+        // The reserved slot is free, yet the ordinary read must keep waiting:
+        // its allowance is full.
+        assert!(
+            admitted.recv_timeout(Duration::from_millis(100)).is_err(),
+            "an ordinary read was admitted into the reserved slot"
+        );
+        // Taking and releasing the slot wakes the queue; it must still wait.
+        let liveness = reserve_native_http_liveness_probe(
+            &cancellations,
+            "liveness-1",
+            origin,
+            std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        )
+        .unwrap();
+        drop(liveness);
+        assert!(
+            admitted.recv_timeout(Duration::from_millis(100)).is_err(),
+            "releasing the liveness slot admitted an ordinary read"
+        );
+
+        // Only an ordinary release admits it.
+        release_native_http_request(&cancellations, "seed-0").unwrap();
+        assert_eq!(
+            admitted.recv_timeout(Duration::from_secs(2)).unwrap(),
+            "queued-read"
+        );
+        drop(queued.join().unwrap());
+    }
+
+    #[test]
+    fn native_http_liveness_slot_does_not_displace_ordinary_reads() {
+        let cancellations = NativeHttpCancellation::default();
+        let origin = "https://station.example.test";
+        fill_native_read_allowance(&cancellations, origin);
+        release_native_http_request(&cancellations, "seed-0").unwrap();
+        let _liveness = reserve_native_http_liveness_probe(
+            &cancellations,
+            "liveness-1",
+            origin,
+            std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        )
+        .unwrap();
+
+        // Seven ordinary reads plus the liveness read: the eighth ordinary
+        // read still has its slot and is admitted without waiting.
+        let (queued, admitted) = spawn_queued_native_read(&cancellations, origin, "eighth-read");
+        assert_eq!(
+            admitted.recv_timeout(Duration::from_secs(2)).unwrap(),
+            "eighth-read",
+            "the liveness read took an ordinary slot"
+        );
+        queued.join().unwrap();
+    }
+
+    #[test]
+    fn native_http_request_reads_the_webview_liveness_flag() {
+        // The struct denies unknown fields, so a spelling drift between the
+        // webview transport and this struct would refuse every probe.
+        let flagged: NativeHttpRequest = serde_json::from_str(
+            r#"{"requestId":"probe","url":"https://station.example.test/api/system/identity","method":"GET","livenessProbe":true}"#,
+        )
+        .unwrap();
+        assert!(flagged.liveness_probe);
+        let ordinary: NativeHttpRequest = serde_json::from_str(
+            r#"{"requestId":"read","url":"https://station.example.test/api/tasks","method":"GET"}"#,
+        )
+        .unwrap();
+        assert!(!ordinary.liveness_probe);
+    }
+
+    #[test]
+    fn native_http_liveness_flag_is_refused_outside_the_identity_probe() {
+        let identity = url::Url::parse("https://station.example.test/api/system/identity").unwrap();
+        let other =
+            url::Url::parse("https://station.example.test/api/system/capabilities").unwrap();
+        assert!(validate_native_liveness_probe("GET", false, &identity).is_ok());
+        for (method, is_stream, url) in [
+            ("GET", false, &other),
+            ("POST", false, &identity),
+            ("GET", true, &identity),
+        ] {
+            let refusal = validate_native_liveness_probe(method, is_stream, url)
+                .expect_err("a flagged request of any other shape is refused");
+            assert_eq!(refusal.code, "invalid_request");
+        }
     }
 
     #[test]
@@ -12754,6 +13743,827 @@ mod tests {
         assert!(!state.active.contains_key("queued-cancelled"));
     }
 
+    /// A network call that blocks until the test releases it, standing in for
+    /// `agent.run` stuck in connect / response headers on a stalled Station.
+    fn blocked_native_call() -> (
+        std::sync::mpsc::Sender<()>,
+        impl FnOnce() -> &'static str + Send,
+    ) {
+        let (release_tx, release_rx) = std::sync::mpsc::channel::<()>();
+        (release_tx, move || {
+            let _ = release_rx.recv();
+            "late response"
+        })
+    }
+
+    /// Runs `call` under the cancellable seam on its own thread, as the
+    /// request task does, and returns a receiver for the seam's outcome.
+    fn spawn_cancellable_native_call<F>(
+        mut slot: NativeHttpSlot,
+        cancel: std::sync::Arc<std::sync::atomic::AtomicBool>,
+        call: F,
+    ) -> std::sync::mpsc::Receiver<Result<Option<&'static str>, String>>
+    where
+        F: FnOnce() -> &'static str + Send + 'static,
+    {
+        let (outcome_tx, outcome_rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let outcome =
+                run_native_http_call_cancellable(&mut slot, &cancel, call).map(|outcome| {
+                    match outcome {
+                        NativeHttpCallOutcome::Completed(value) => Some(value),
+                        NativeHttpCallOutcome::Abandoned => None,
+                    }
+                });
+            // Hand the slot back before reporting, so a completed call's slot
+            // is still held when the test observes the outcome.
+            let _ = outcome_tx.send(outcome);
+            drop(slot);
+        });
+        outcome_rx
+    }
+
+    fn native_slot_releases(cancellations: &NativeHttpCancellation) -> usize {
+        let (state_lock, _) = &*cancellations.0;
+        state_lock.lock().unwrap().slot_releases
+    }
+
+    fn native_orphan_count(cancellations: &NativeHttpCancellation) -> usize {
+        let (state_lock, _) = &*cancellations.0;
+        state_lock.lock().unwrap().orphaned_calls.len()
+    }
+
+    fn wait_for_native_orphans(cancellations: &NativeHttpCancellation, expected: usize) {
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        loop {
+            let observed = native_orphan_count(cancellations);
+            if observed == expected {
+                return;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "expected {expected} orphaned native calls, observed {observed}"
+            );
+            std::thread::sleep(Duration::from_millis(5));
+        }
+    }
+
+    fn new_cancel_flag() -> std::sync::Arc<std::sync::atomic::AtomicBool> {
+        std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false))
+    }
+
+    /// Reserves an ordinary read that the test expects to be admitted at once.
+    /// Fails instead of blocking forever if the slot is (wrongly) still held.
+    fn reserve_native_read_promptly(
+        cancellations: &NativeHttpCancellation,
+        request_id: &'static str,
+        origin: &'static str,
+        cancel: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    ) -> NativeHttpSlot {
+        let (admitted_tx, admitted_rx) = std::sync::mpsc::channel();
+        let task_cancellations = cancellations.clone();
+        std::thread::spawn(move || {
+            let _ = admitted_tx.send(reserve_native_http_request(
+                &task_cancellations,
+                request_id,
+                origin,
+                false,
+                cancel,
+            ));
+        });
+        admitted_rx
+            .recv_timeout(Duration::from_secs(2))
+            .unwrap_or_else(|_| panic!("{request_id} was not admitted: its slot is still held"))
+            .unwrap()
+    }
+
+    #[test]
+    fn native_http_cancel_releases_a_slot_blocked_in_its_network_call() {
+        // station#2327: the cancel flag was only read between body reads, so a
+        // request stuck in connect/headers kept its slot for up to ~35s after
+        // the webview aborted it, and a stalled Station pinned every slot.
+        let cancellations = NativeHttpCancellation::default();
+        let origin = "https://station.example.test";
+        fill_native_read_allowance(&cancellations, origin);
+        // `seed-0` is the admitted request whose call is blocked.
+        let blocked_cancel = {
+            let (state_lock, _) = &*cancellations.0;
+            std::sync::Arc::clone(&state_lock.lock().unwrap().active["seed-0"].cancel)
+        };
+        let (release_call, call) = blocked_native_call();
+        let outcome = spawn_cancellable_native_call(
+            NativeHttpSlot::admitted(&cancellations, "seed-0"),
+            std::sync::Arc::clone(&blocked_cancel),
+            call,
+        );
+        let (waiter, admitted) = spawn_queued_native_read(&cancellations, origin, "queued-read");
+        wait_for_pending_native_reads(&cancellations, 1);
+        assert!(
+            outcome.recv_timeout(Duration::from_millis(100)).is_err(),
+            "an uncancelled call keeps waiting for its response"
+        );
+
+        let cancelled_at = std::time::Instant::now();
+        cancel_native_http_request(&cancellations, "seed-0").unwrap();
+        assert_eq!(
+            outcome.recv_timeout(Duration::from_secs(1)).unwrap(),
+            Ok(None),
+            "the cancelled request is abandoned while its call is still blocked"
+        );
+        assert_eq!(
+            admitted.recv_timeout(Duration::from_secs(1)).unwrap(),
+            "queued-read",
+            "the freed slot admits the next FIFO waiter"
+        );
+        assert!(cancelled_at.elapsed() < Duration::from_secs(1));
+        {
+            let (state_lock, _) = &*cancellations.0;
+            let state = state_lock.lock().unwrap();
+            assert!(!state.active.contains_key("seed-0"));
+            assert_eq!(state.orphaned_calls.len(), 1);
+        }
+
+        release_call.send(()).unwrap();
+        wait_for_native_orphans(&cancellations, 0);
+        drop(waiter.join().unwrap());
+    }
+
+    #[test]
+    fn native_http_uncancelled_call_returns_its_result_and_keeps_its_slot() {
+        let cancellations = NativeHttpCancellation::default();
+        let origin = "https://station.example.test";
+        let mut slot =
+            reserve_native_http_request(&cancellations, "read", origin, false, new_cancel_flag())
+                .unwrap();
+        let outcome =
+            run_native_http_call_cancellable(&mut slot, &new_cancel_flag(), || "response").unwrap();
+        assert!(matches!(
+            outcome,
+            NativeHttpCallOutcome::Completed("response")
+        ));
+        {
+            let (state_lock, _) = &*cancellations.0;
+            let state = state_lock.lock().unwrap();
+            assert!(
+                state.active.contains_key("read"),
+                "the slot owner, not the seam, releases a completed call's slot"
+            );
+            assert!(state.orphaned_calls.is_empty());
+        }
+        drop(slot);
+        let (state_lock, _) = &*cancellations.0;
+        assert!(state_lock.lock().unwrap().active.is_empty());
+    }
+
+    #[test]
+    fn native_http_orphan_cap_bounds_abandoned_calls_per_origin() {
+        let cancellations = NativeHttpCancellation::default();
+        let origin = "https://station.example.test";
+        let mut releases = Vec::new();
+        for index in 0..NATIVE_HTTP_PER_ORIGIN_ORPHAN_LIMIT {
+            let request_id: &'static str = Box::leak(format!("orphan-{index}").into_boxed_str());
+            let cancel = new_cancel_flag();
+            let slot_to_run = reserve_native_read_promptly(
+                &cancellations,
+                request_id,
+                origin,
+                std::sync::Arc::clone(&cancel),
+            );
+            let (release_call, call) = blocked_native_call();
+            let outcome = spawn_cancellable_native_call(slot_to_run, cancel, call);
+            cancel_native_http_request(&cancellations, request_id).unwrap();
+            assert_eq!(
+                outcome.recv_timeout(Duration::from_secs(1)).unwrap(),
+                Ok(None)
+            );
+            releases.push(release_call);
+        }
+        assert_eq!(
+            native_orphan_count(&cancellations),
+            NATIVE_HTTP_PER_ORIGIN_ORPHAN_LIMIT
+        );
+
+        // One more abandoned call at the cap keeps its slot instead of
+        // opening another orphaned socket.
+        let over_cancel = new_cancel_flag();
+        let slot_to_run = reserve_native_read_promptly(
+            &cancellations,
+            "over-cap",
+            origin,
+            std::sync::Arc::clone(&over_cancel),
+        );
+        let (release_over, over_call) = blocked_native_call();
+        let over_outcome = spawn_cancellable_native_call(slot_to_run, over_cancel, over_call);
+        cancel_native_http_request(&cancellations, "over-cap").unwrap();
+        assert!(
+            over_outcome
+                .recv_timeout(Duration::from_millis(300))
+                .is_err(),
+            "at the orphan cap a cancelled call must not be abandoned"
+        );
+        {
+            let (state_lock, _) = &*cancellations.0;
+            let state = state_lock.lock().unwrap();
+            assert!(state.active.contains_key("over-cap"));
+            assert_eq!(
+                state.orphaned_calls.len(),
+                NATIVE_HTTP_PER_ORIGIN_ORPHAN_LIMIT
+            );
+        }
+
+        // A different origin has its own orphan allowance.
+        let other_cancel = new_cancel_flag();
+        let slot_to_run = reserve_native_read_promptly(
+            &cancellations,
+            "other-origin",
+            "https://other.example.test",
+            std::sync::Arc::clone(&other_cancel),
+        );
+        let (release_other, other_call) = blocked_native_call();
+        let other_outcome = spawn_cancellable_native_call(slot_to_run, other_cancel, other_call);
+        cancel_native_http_request(&cancellations, "other-origin").unwrap();
+        assert_eq!(
+            other_outcome.recv_timeout(Duration::from_secs(1)).unwrap(),
+            Ok(None)
+        );
+
+        // Once an orphan retires, the waiting cancel is abandoned too.
+        releases.pop().unwrap().send(()).unwrap();
+        assert_eq!(
+            over_outcome.recv_timeout(Duration::from_secs(2)).unwrap(),
+            Ok(None)
+        );
+        {
+            let (state_lock, _) = &*cancellations.0;
+            assert!(!state_lock.lock().unwrap().active.contains_key("over-cap"));
+        }
+
+        for release in releases {
+            release.send(()).unwrap();
+        }
+        release_over.send(()).unwrap();
+        release_other.send(()).unwrap();
+        wait_for_native_orphans(&cancellations, 0);
+    }
+
+    #[test]
+    fn native_http_late_orphan_completion_touches_only_its_own_entry() {
+        let cancellations = NativeHttpCancellation::default();
+        let origin = "https://station.example.test";
+        let cancel = new_cancel_flag();
+        let slot_to_run = reserve_native_read_promptly(
+            &cancellations,
+            "reused-id",
+            origin,
+            std::sync::Arc::clone(&cancel),
+        );
+        let (release_call, call) = blocked_native_call();
+        let outcome = spawn_cancellable_native_call(slot_to_run, cancel, call);
+        cancel_native_http_request(&cancellations, "reused-id").unwrap();
+        assert_eq!(
+            outcome.recv_timeout(Duration::from_secs(1)).unwrap(),
+            Ok(None)
+        );
+
+        // A later request reuses the id and another origin's call is orphaned
+        // too; the first orphan's late completion must disturb neither.
+        let reused =
+            reserve_native_read_promptly(&cancellations, "reused-id", origin, new_cancel_flag());
+        let other_cancel = new_cancel_flag();
+        let slot_to_run = reserve_native_read_promptly(
+            &cancellations,
+            "other",
+            "https://other.example.test",
+            std::sync::Arc::clone(&other_cancel),
+        );
+        let (release_other, other_call) = blocked_native_call();
+        let other_outcome = spawn_cancellable_native_call(slot_to_run, other_cancel, other_call);
+        cancel_native_http_request(&cancellations, "other").unwrap();
+        assert_eq!(
+            other_outcome.recv_timeout(Duration::from_secs(1)).unwrap(),
+            Ok(None)
+        );
+        assert_eq!(native_orphan_count(&cancellations), 2);
+
+        release_call.send(()).unwrap();
+        wait_for_native_orphans(&cancellations, 1);
+        {
+            let (state_lock, _) = &*cancellations.0;
+            let state = state_lock.lock().unwrap();
+            assert!(
+                state.active.contains_key("reused-id"),
+                "the late completion must not release the request that reused its id"
+            );
+            assert_eq!(
+                state
+                    .orphaned_calls
+                    .values()
+                    .map(|orphan| orphan.origin.as_str())
+                    .collect::<Vec<_>>(),
+                vec!["https://other.example.test"]
+            );
+        }
+        release_other.send(()).unwrap();
+        wait_for_native_orphans(&cancellations, 0);
+        drop(reused);
+        let (state_lock, _) = &*cancellations.0;
+        assert!(state_lock.lock().unwrap().active.is_empty());
+    }
+
+    #[test]
+    fn native_http_cancelled_liveness_probe_frees_the_liveness_slot() {
+        let cancellations = NativeHttpCancellation::default();
+        let origin = "https://station.example.test";
+        let cancel = new_cancel_flag();
+        let slot_to_run = reserve_native_http_liveness_probe(
+            &cancellations,
+            "liveness-1",
+            origin,
+            std::sync::Arc::clone(&cancel),
+        )
+        .unwrap();
+        let (release_call, call) = blocked_native_call();
+        let outcome = spawn_cancellable_native_call(slot_to_run, cancel, call);
+        cancel_native_http_request(&cancellations, "liveness-1").unwrap();
+        assert_eq!(
+            outcome.recv_timeout(Duration::from_secs(1)).unwrap(),
+            Ok(None)
+        );
+        let next_probe = reserve_native_http_liveness_probe(
+            &cancellations,
+            "liveness-2",
+            origin,
+            new_cancel_flag(),
+        )
+        .expect("the next probe takes the slot the cancelled probe released");
+        release_call.send(()).unwrap();
+        wait_for_native_orphans(&cancellations, 0);
+        drop(next_probe);
+    }
+
+    #[test]
+    fn native_http_cancel_abandons_a_real_request_to_a_silent_station() {
+        // A listener that accepts and never answers: `agent.run` blocks in
+        // the response-header wait exactly as it does on a stalled Station.
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let (close_tx, close_rx) = std::sync::mpsc::channel::<()>();
+        let server = std::thread::spawn(move || {
+            let (connection, _) = listener.accept().unwrap();
+            let _ = close_rx.recv_timeout(Duration::from_secs(30));
+            drop(connection);
+        });
+        let cancellations = NativeHttpCancellation::default();
+        let origin = format!("http://{address}");
+        let cancel = new_cancel_flag();
+        let slot = reserve_native_http_request(
+            &cancellations,
+            "silent",
+            &origin,
+            false,
+            std::sync::Arc::clone(&cancel),
+        )
+        .unwrap();
+        let request = ureq::http::Request::builder()
+            .method("GET")
+            .uri(format!("{origin}/api/system/status"))
+            .body(Vec::<u8>::new())
+            .unwrap();
+        // The production agent configuration, minus any HTTP_PROXY from the
+        // environment that could route this loopback call elsewhere.
+        let agent = native_http_agent_with(native_http_agent_config().proxy(None).build());
+        let (outcome_tx, outcome_rx) = std::sync::mpsc::channel();
+        let task_cancel = std::sync::Arc::clone(&cancel);
+        std::thread::spawn(move || {
+            let outcome = run_admitted_native_http_exchange(
+                slot,
+                &task_cancel,
+                move || agent.run(request),
+                |_| panic!("a silent Station never produces a response"),
+            )
+            .err()
+            .map(|failure| failure.code);
+            let _ = outcome_tx.send(outcome);
+        });
+        assert!(
+            outcome_rx.recv_timeout(Duration::from_millis(300)).is_err(),
+            "the silent Station has not answered"
+        );
+        cancel_native_http_request(&cancellations, "silent").unwrap();
+        assert_eq!(
+            outcome_rx.recv_timeout(Duration::from_secs(1)).unwrap(),
+            Some("cancelled"),
+            "cancel abandons the real blocked call"
+        );
+        {
+            let (state_lock, _) = &*cancellations.0;
+            let state = state_lock.lock().unwrap();
+            assert!(!state.active.contains_key("silent"));
+            assert_eq!(state.orphaned_calls.len(), 1);
+        }
+        close_tx.send(()).unwrap();
+        server.join().unwrap();
+        wait_for_native_orphans(&cancellations, 0);
+    }
+
+    /// Abandons `count` ordinary calls on `origin`, filling its shared orphan
+    /// allowance. Returns the senders that let each orphan's call finish.
+    fn fill_native_orphan_allowance(
+        cancellations: &NativeHttpCancellation,
+        origin: &'static str,
+        count: usize,
+    ) -> Vec<std::sync::mpsc::Sender<()>> {
+        let mut releases = Vec::new();
+        for index in 0..count {
+            let request_id: &'static str =
+                Box::leak(format!("{origin}-orphan-{index}").into_boxed_str());
+            let cancel = new_cancel_flag();
+            let slot_to_run = reserve_native_read_promptly(
+                cancellations,
+                request_id,
+                origin,
+                std::sync::Arc::clone(&cancel),
+            );
+            let (release_call, call) = blocked_native_call();
+            let outcome = spawn_cancellable_native_call(slot_to_run, cancel, call);
+            cancel_native_http_request(cancellations, request_id).unwrap();
+            assert_eq!(
+                outcome.recv_timeout(Duration::from_secs(1)).unwrap(),
+                Ok(None)
+            );
+            releases.push(release_call);
+        }
+        releases
+    }
+
+    #[test]
+    fn native_http_liveness_probe_has_its_own_orphan_allowance() {
+        // Ordinary orphans filling the shared allowance must not make a
+        // cancelled health probe keep the reserved slot again (#2327).
+        let cancellations = NativeHttpCancellation::default();
+        let origin = "https://station.example.test";
+        let releases = fill_native_orphan_allowance(
+            &cancellations,
+            origin,
+            NATIVE_HTTP_PER_ORIGIN_ORPHAN_LIMIT,
+        );
+
+        let cancel = new_cancel_flag();
+        let slot_to_run = reserve_native_http_liveness_probe(
+            &cancellations,
+            "liveness-1",
+            origin,
+            std::sync::Arc::clone(&cancel),
+        )
+        .unwrap();
+        let (release_probe, probe_call) = blocked_native_call();
+        let outcome = spawn_cancellable_native_call(slot_to_run, cancel, probe_call);
+        cancel_native_http_request(&cancellations, "liveness-1").unwrap();
+        assert_eq!(
+            outcome.recv_timeout(Duration::from_secs(1)).unwrap(),
+            Ok(None),
+            "a cancelled probe is abandoned even with the shared allowance full"
+        );
+        let second_slot = reserve_native_http_liveness_probe(
+            &cancellations,
+            "liveness-2",
+            origin,
+            new_cancel_flag(),
+        )
+        .expect("the next probe takes the slot the cancelled probe released");
+
+        // The liveness allowance is one per origin: a second abandoned probe
+        // waits for its call rather than opening another orphaned socket.
+        let second_cancel = {
+            let (state_lock, _) = &*cancellations.0;
+            std::sync::Arc::clone(&state_lock.lock().unwrap().active["liveness-2"].cancel)
+        };
+        let (release_second, second_call) = blocked_native_call();
+        let second = spawn_cancellable_native_call(second_slot, second_cancel, second_call);
+        cancel_native_http_request(&cancellations, "liveness-2").unwrap();
+        assert!(
+            second.recv_timeout(Duration::from_millis(300)).is_err(),
+            "the liveness orphan allowance is one per origin"
+        );
+
+        release_probe.send(()).unwrap();
+        assert_eq!(
+            second.recv_timeout(Duration::from_secs(2)).unwrap(),
+            Ok(None)
+        );
+        release_second.send(()).unwrap();
+        for release in releases {
+            release.send(()).unwrap();
+        }
+        wait_for_native_orphans(&cancellations, 0);
+    }
+
+    #[test]
+    fn native_http_exchange_releases_a_completed_slot_once() {
+        let cancellations = NativeHttpCancellation::default();
+        let origin = "https://station.example.test";
+        let slot =
+            reserve_native_http_request(&cancellations, "done", origin, false, new_cancel_flag())
+                .unwrap();
+        let handled = std::cell::Cell::new(false);
+        run_admitted_native_http_exchange(
+            slot,
+            &new_cancel_flag(),
+            || "response",
+            |response| {
+                assert_eq!(response, "response");
+                handled.set(true);
+                Ok(())
+            },
+        )
+        .unwrap_or_else(|failure| panic!("unexpected failure {}", failure.code));
+        assert!(handled.get());
+        assert_eq!(native_slot_releases(&cancellations), 1);
+        let (state_lock, _) = &*cancellations.0;
+        assert!(state_lock.lock().unwrap().active.is_empty());
+    }
+
+    #[test]
+    fn native_http_exchange_releases_an_abandoned_slot_exactly_once() {
+        let cancellations = NativeHttpCancellation::default();
+        let origin = "https://station.example.test";
+        let cancel = new_cancel_flag();
+        let slot = reserve_native_http_request(
+            &cancellations,
+            "abandoned",
+            origin,
+            false,
+            std::sync::Arc::clone(&cancel),
+        )
+        .unwrap();
+        let (release_call, call) = blocked_native_call();
+        let (code_tx, code_rx) = std::sync::mpsc::channel();
+        let task_cancel = std::sync::Arc::clone(&cancel);
+        std::thread::spawn(move || {
+            let code = run_admitted_native_http_exchange(slot, &task_cancel, call, |_| {
+                panic!("an abandoned exchange must not handle a response")
+            })
+            .err()
+            .map(|failure| failure.code);
+            let _ = code_tx.send(code);
+        });
+        cancel_native_http_request(&cancellations, "abandoned").unwrap();
+        assert_eq!(
+            code_rx.recv_timeout(Duration::from_secs(1)).unwrap(),
+            Some("cancelled")
+        );
+        assert_eq!(
+            native_slot_releases(&cancellations),
+            1,
+            "the abandon released the slot and the exchange did not release it again"
+        );
+        release_call.send(()).unwrap();
+        wait_for_native_orphans(&cancellations, 0);
+        assert_eq!(native_slot_releases(&cancellations), 1);
+    }
+
+    #[test]
+    fn native_http_exchange_releases_the_slot_when_the_call_or_handler_panics() {
+        let cancellations = NativeHttpCancellation::default();
+        let origin = "https://station.example.test";
+        let slot = reserve_native_http_request(
+            &cancellations,
+            "call-panics",
+            origin,
+            false,
+            new_cancel_flag(),
+        )
+        .unwrap();
+        let failure = run_admitted_native_http_exchange(
+            slot,
+            &new_cancel_flag(),
+            || -> &'static str { panic!("network call panicked") },
+            |_| Ok(()),
+        )
+        .err()
+        .expect("a panicked call is a broker failure");
+        assert_eq!(failure.code, "transport");
+        assert!(failure
+            .detail
+            .as_deref()
+            .is_some_and(|detail| detail.contains("network worker ended without a result")));
+        assert_eq!(native_slot_releases(&cancellations), 1);
+
+        let slot = reserve_native_http_request(
+            &cancellations,
+            "handler-panics",
+            origin,
+            false,
+            new_cancel_flag(),
+        )
+        .unwrap();
+        let panicked = std::thread::spawn(move || {
+            let _ = run_admitted_native_http_exchange(
+                slot,
+                &new_cancel_flag(),
+                || "response",
+                |_| panic!("response handling panicked"),
+            );
+        })
+        .join();
+        assert!(panicked.is_err());
+        assert_eq!(native_slot_releases(&cancellations), 2);
+        let (state_lock, _) = &*cancellations.0;
+        assert!(state_lock.lock().unwrap().active.is_empty());
+    }
+
+    #[test]
+    fn native_http_exchange_reports_cancelled_when_a_capped_cancel_completes() {
+        // At a full orphan allowance a cancel keeps its slot until the call
+        // returns; the webview abandoned the request, so the late response
+        // must not be revalidated or handed back.
+        let cancellations = NativeHttpCancellation::default();
+        let origin = "https://station.example.test";
+        let releases = fill_native_orphan_allowance(
+            &cancellations,
+            origin,
+            NATIVE_HTTP_PER_ORIGIN_ORPHAN_LIMIT,
+        );
+        let cancel = new_cancel_flag();
+        let slot_to_run = reserve_native_read_promptly(
+            &cancellations,
+            "capped",
+            origin,
+            std::sync::Arc::clone(&cancel),
+        );
+        let (release_call, call) = blocked_native_call();
+        let (code_tx, code_rx) = std::sync::mpsc::channel();
+        let slot = slot_to_run;
+        let task_cancel = std::sync::Arc::clone(&cancel);
+        std::thread::spawn(move || {
+            let code = run_admitted_native_http_exchange(slot, &task_cancel, call, |_| Ok(()))
+                .err()
+                .map(|failure| failure.code);
+            let _ = code_tx.send(code);
+        });
+        cancel_native_http_request(&cancellations, "capped").unwrap();
+        assert!(
+            code_rx.recv_timeout(Duration::from_millis(300)).is_err(),
+            "at the cap the cancel waits for its call"
+        );
+        release_call.send(()).unwrap();
+        assert_eq!(
+            code_rx.recv_timeout(Duration::from_secs(2)).unwrap(),
+            Some("cancelled"),
+            "a response that arrives after the cancel is not handed back"
+        );
+        for release in releases {
+            release.send(()).unwrap();
+        }
+        wait_for_native_orphans(&cancellations, 0);
+    }
+
+    #[test]
+    fn native_http_send_body_budget_scales_with_the_body() {
+        let budget = |body_len| {
+            native_http_send_body_budget(
+                body_len,
+                NATIVE_HTTP_SEND_BODY_MIN_TIMEOUT,
+                NATIVE_HTTP_SEND_BODY_MIN_RATE_BYTES_PER_SEC,
+            )
+        };
+        // Small bodies get the floor.
+        assert_eq!(budget(0), Duration::from_secs(120));
+        assert_eq!(budget(1024), Duration::from_secs(120));
+        // The floor holds exactly up to 120s worth of body at 32 KiB/s ...
+        assert_eq!(budget(32 * 1024 * 120), Duration::from_secs(120));
+        // ... and one byte more is given its own time, rounded up.
+        assert_eq!(budget(32 * 1024 * 120 + 1), Duration::from_millis(120_001));
+        // The largest body the broker accepts: 24 MiB at 32 KiB/s.
+        assert_eq!(budget(NATIVE_HTTP_BODY_LIMIT), Duration::from_secs(768));
+    }
+
+    /// A loopback Station that reads its request body slowly (`chunk` bytes
+    /// every `pause`), then answers 204. Returns the listener's origin.
+    fn spawn_slow_reading_station(
+        chunk: usize,
+        pause: Duration,
+    ) -> (String, std::thread::JoinHandle<()>) {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let origin = format!("http://{}", listener.local_addr().unwrap());
+        let server = std::thread::spawn(move || {
+            let (mut connection, _) = listener.accept().unwrap();
+            let mut received = Vec::new();
+            let mut buffer = vec![0_u8; chunk];
+            let mut body_start = None;
+            let mut body_len = None;
+            loop {
+                match connection.read(&mut buffer) {
+                    Ok(0) | Err(_) => return,
+                    Ok(read) => received.extend_from_slice(&buffer[..read]),
+                }
+                if body_start.is_none() {
+                    if let Some(end) = received.windows(4).position(|w| w == b"\r\n\r\n") {
+                        let head = String::from_utf8_lossy(&received[..end]).to_ascii_lowercase();
+                        body_len = head.lines().find_map(|line| {
+                            line.strip_prefix("content-length:")
+                                .and_then(|value| value.trim().parse::<usize>().ok())
+                        });
+                        body_start = Some(end + 4);
+                    }
+                }
+                if let (Some(start), Some(len)) = (body_start, body_len) {
+                    if received.len() - start >= len {
+                        let _ = connection
+                            .write_all(b"HTTP/1.1 204 No Content\r\nconnection: close\r\n\r\n");
+                        return;
+                    }
+                }
+                std::thread::sleep(pause);
+            }
+        });
+        (origin, server)
+    }
+
+    /// Uploads `body_len` bytes to a slow-reading loopback Station with the
+    /// production per-request send-body budget, computed from `floor` and
+    /// `min_rate` instead of the production constants so it runs in seconds.
+    fn upload_to_slow_station(
+        body_len: usize,
+        floor: Duration,
+        min_rate: u64,
+    ) -> Result<u16, ureq::Error> {
+        // About 6 MiB/s: 16 MiB takes roughly 2.6s to drain, far longer than
+        // loopback socket buffers can absorb.
+        let (origin, server) = spawn_slow_reading_station(64 * 1024, Duration::from_millis(10));
+        let agent = native_http_agent_with(native_http_agent_config().proxy(None).build());
+        let request = ureq::http::Request::builder()
+            .method("POST")
+            .uri(format!("{origin}/api/uploads"))
+            .body(vec![0_u8; body_len])
+            .unwrap();
+        let request = native_http_request_with_send_body_budget(&agent, request, floor, min_rate);
+        let result = agent
+            .run(request)
+            .map(|response| response.status().as_u16());
+        drop(agent);
+        server.join().unwrap();
+        result
+    }
+
+    #[test]
+    fn native_http_slow_upload_within_its_body_budget_completes() {
+        // 16 MiB at a 1 MiB/s floor rate is a 16s budget; the Station drains
+        // it in about 3s (generous headroom for a loaded host). A flat budget
+        // of the 100ms floor would fail it.
+        let status =
+            upload_to_slow_station(16 * 1024 * 1024, Duration::from_millis(100), 1024 * 1024)
+                .expect("an upload slower than the floor but within its budget completes");
+        assert_eq!(status, 204);
+    }
+
+    #[test]
+    fn native_http_slow_upload_past_its_body_budget_times_out() {
+        // 16 MiB at a 1 GiB/s floor rate is under the 200ms floor, so the
+        // budget is 200ms; the Station cannot drain the body that fast.
+        let error = upload_to_slow_station(
+            16 * 1024 * 1024,
+            Duration::from_millis(200),
+            1024 * 1024 * 1024,
+        )
+        .expect_err("an upload that outlives its budget fails");
+        assert!(
+            matches!(error, ureq::Error::Timeout(ureq::Timeout::SendBody)),
+            "expected a send-body timeout, got {error:?}"
+        );
+    }
+
+    #[test]
+    fn native_http_agent_bounds_every_phase_before_the_body() {
+        // An abandoned call lives until it returns, so each phase before the
+        // body needs a bound; the body itself must stay open-ended for SSE.
+        let timeouts = native_http_agent().config().timeouts();
+        assert_eq!(timeouts.resolve, Some(NATIVE_HTTP_RESOLVE_TIMEOUT));
+        assert_eq!(timeouts.connect, Some(NATIVE_HTTP_CONNECT_TIMEOUT));
+        assert_eq!(
+            timeouts.send_request,
+            Some(NATIVE_HTTP_SEND_REQUEST_TIMEOUT)
+        );
+        assert_eq!(timeouts.send_body, Some(NATIVE_HTTP_SEND_BODY_MIN_TIMEOUT));
+        assert_eq!(
+            timeouts.recv_response,
+            Some(NATIVE_HTTP_RECV_RESPONSE_TIMEOUT)
+        );
+        for bound in [
+            timeouts.resolve,
+            timeouts.connect,
+            timeouts.send_request,
+            timeouts.send_body,
+            timeouts.recv_response,
+        ] {
+            assert!(bound.is_some_and(|bound| bound <= Duration::from_secs(120)));
+        }
+        assert_eq!(timeouts.recv_body, None);
+        assert_eq!(timeouts.global, None);
+        assert_eq!(timeouts.per_call, None);
+    }
+
     #[test]
     fn native_http_global_cap_queues_reads_but_still_rejects_streams() {
         let cancellations = NativeHttpCancellation::default();
@@ -12767,6 +14577,7 @@ mod tests {
                         cancel: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
                         origin: format!("https://station-{index}.example.test"),
                         stream: true,
+                        liveness: false,
                     },
                 );
             }
@@ -12793,8 +14604,13 @@ mod tests {
         });
         wait_for_pending_native_reads(&cancellations, 1);
         release_native_http_request(&cancellations, "global-0").unwrap();
-        waiter.join().unwrap().unwrap();
-        release_native_http_request(&cancellations, "queued-global").unwrap();
+        drop(waiter.join().unwrap().unwrap());
+        let (state_lock, _) = &*cancellations.0;
+        assert!(!state_lock
+            .lock()
+            .unwrap()
+            .active
+            .contains_key("queued-global"));
     }
 
     #[test]
@@ -13013,6 +14829,41 @@ mod tests {
     }
 
     #[test]
+    fn relay_route_profiles_round_trip_without_keys_and_cannot_be_selected() {
+        let contents = r#"{
+          "schemaVersion":1,"revision":1,"defaultProfile":null,"projectProfiles":{},
+          "profiles":[{"schemaVersion":1,"name":"relay-home","endpoint":"https://station.example","relayRoute":{"brokerOrigin":"https://broker.example","stationId":"11111111-1111-4111-8111-111111111111","enrollmentId":"22222222-2222-4222-8222-222222222222"},"setupSource":"manual","configurationState":"unconfigured","createdAt":1,"updatedAt":2}]
+        }"#;
+        let parsed = parse_station_profile_store(contents).unwrap();
+        let encoded = serde_json::to_string(&parsed).unwrap();
+        assert!(encoded.contains("\"relayRoute\""));
+        assert!(encoded.contains("\"brokerOrigin\":\"https://broker.example\""));
+        assert!(!encoded.contains("signingKey"));
+        assert!(!encoded.contains("secret"));
+        assert!(parse_station_profile_store(&encoded).is_ok());
+
+        let selected_as_default = contents.replace(
+            "\"defaultProfile\":null",
+            "\"defaultProfile\":\"relay-home\"",
+        );
+        assert!(parse_station_profile_store(&selected_as_default)
+            .unwrap_err()
+            .contains("default Station is missing"));
+
+        let insecure_public_broker = contents.replace(
+            "https://broker.example",
+            "http://broker.example",
+        );
+        assert!(parse_station_profile_store(&insecure_public_broker).is_err());
+
+        let embedded_key = contents.replace(
+            "\"stationId\":\"11111111-1111-4111-8111-111111111111\"",
+            "\"stationId\":\"11111111-1111-4111-8111-111111111111\",\"signingKey\":{\"kty\":\"EC\"}",
+        );
+        assert!(parse_station_profile_store(&embedded_key).is_err());
+    }
+
+    #[test]
     fn host_observed_credential_binding_rejects_metadata_reassignment() {
         let trusted = parse_station_profile_store(
             r#"{
@@ -13178,7 +15029,7 @@ mod tests {
 
         authorize_active_profile_in_state(&mut authority, &store, "B").unwrap();
         release_native_http_request(&cancellations, "seed-0").unwrap();
-        queued.join().unwrap().unwrap();
+        let queued_slot = queued.join().unwrap().unwrap();
         let stale = scoped_profile_for_origin_in_store(
             &authority,
             &store,
@@ -13187,7 +15038,7 @@ mod tests {
         )
         .unwrap_err();
         assert_eq!(stale.code, "request_binding_stale");
-        release_native_http_request(&cancellations, "basis-queued").unwrap();
+        drop(queued_slot);
         let (state_lock, _) = &*cancellations.0;
         assert!(!state_lock
             .lock()
@@ -14131,8 +15982,8 @@ mod tests {
             .expect("native profile writer exists")..source
             .find("fn station_profile_store_write(")
             .expect("native command wrapper follows writer")];
-        assert!(production.contains("replace_station_profile_store(&temporary, &path)?"));
-        assert!(!production.contains("std::fs::rename(&temporary, &path)"));
+        assert!(production.contains("replace_station_profile_store(&staged, &path)?"));
+        assert!(!production.contains("std::fs::rename(&staged, &path)"));
         let worker = &source[source
             .find("fn write_native_bootstrap_process_store(")
             .expect("native worker publisher exists")..source
@@ -15535,6 +17386,163 @@ mod tests {
         let lock = lock_station_profiles(&profile_path).expect("reclaims stale lock");
         drop(lock);
         assert!(!lock_path.exists());
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[cfg(unix)]
+    fn profile_lock_wait_test_directory(label: &str) -> std::path::PathBuf {
+        let directory = std::env::temp_dir().join(format!(
+            "station-profile-{label}-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&directory).unwrap();
+        directory
+    }
+
+    /// A slow stale-lock probe must not stretch the wait: the bound is wall
+    /// clock, and the probe backs off instead of running on every nap. The
+    /// held lock is a real v2 record naming this live process with the birth
+    /// the probe reports, so it is never reclaimable and the wait runs out.
+    #[cfg(unix)]
+    #[test]
+    fn live_profile_lock_wait_is_wall_clock_bounded_with_a_backed_off_probe() {
+        let directory = profile_lock_wait_test_directory("lock-wait-bound");
+        let profile_path = directory.join("profiles.json");
+        let held = lock_station_profiles(&profile_path).expect("first writer holds the lock");
+        let own_pid = std::process::id();
+        let probes = std::cell::Cell::new(0_u32);
+        let slow_probe = |pid: u32| -> Result<Option<String>, String> {
+            if pid == own_pid {
+                probes.set(probes.get() + 1);
+            }
+            // Stands in for a loaded host where each owner-birth probe
+            // (a `ps` spawn on macOS) takes tens of milliseconds.
+            std::thread::sleep(Duration::from_millis(40));
+            Ok((pid == own_pid).then(|| "test-process-birth".to_string()))
+        };
+        let started = std::time::Instant::now();
+        let error = lock_station_profiles_with_record_within(
+            &profile_path,
+            &|| profile_lock_record_bytes("test-process-birth"),
+            &slow_probe,
+            Duration::from_millis(1_000),
+            Duration::from_millis(250),
+        )
+        .err()
+        .expect("a live holder is never reclaimed");
+        let elapsed = started.elapsed();
+        assert!(error.contains("busy"), "{error}");
+        assert!(elapsed >= Duration::from_millis(1_000), "{elapsed:?}");
+        // An attempt count of 10ms naps plus a 40ms probe each would run far
+        // past this; the wall-clock bound ends near 1s.
+        assert!(elapsed < Duration::from_millis(2_500), "{elapsed:?}");
+        // First contention, every 250ms, and a final probe: about one per
+        // 250ms waited (5-6 here). Probing on every nap measured 14 here. The
+        // bound scales with the measured wait so a loaded host is not a
+        // false regression.
+        let probe_budget = u32::try_from(elapsed.as_millis().div_ceil(250)).unwrap() + 2;
+        assert!(
+            (2..=probe_budget).contains(&probes.get()),
+            "probes: {} (budget {probe_budget})",
+            probes.get()
+        );
+        drop(held);
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    /// The probe backs off, so the only probe after a holder's late death may
+    /// be the one taken as the wait runs out. It must still happen: giving up
+    /// without it reports "busy" for a lock that is provably stale.
+    #[cfg(unix)]
+    #[test]
+    fn profile_lock_wait_probes_once_more_before_giving_up() {
+        let directory = profile_lock_wait_test_directory("lock-wait-final-probe");
+        let profile_path = directory.join("profiles.json");
+        let held = lock_station_profiles(&profile_path).expect("first writer holds the lock");
+        let own_pid = std::process::id();
+        let started = std::time::Instant::now();
+        // Until 200ms in, the owner is this live process; afterwards the probe
+        // reports a different birth for the pid, i.e. proven PID reuse.
+        let reused_later = |pid: u32| -> Result<Option<String>, String> {
+            let birth = if started.elapsed() < Duration::from_millis(200) {
+                "test-process-birth"
+            } else {
+                "reused-process-birth"
+            };
+            Ok((pid == own_pid).then(|| birth.to_string()))
+        };
+        let lock = lock_station_profiles_with_record_within(
+            &profile_path,
+            &|| profile_lock_record_bytes("test-process-birth"),
+            &reused_later,
+            Duration::from_millis(600),
+            Duration::from_secs(60),
+        )
+        .expect("the final probe reclaims the now-stale lock");
+        // The reclaim already removed the holder's file; forget it so its drop
+        // does not unlink the new owner's lock.
+        std::mem::forget(held);
+        drop(lock);
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    /// station#2461 review: mobile locks on every read from the main thread.
+    /// A crashed v1 owner younger than five minutes is not reclaimable, so a
+    /// read waits the full bound; it must stay at the mobile budget, not the
+    /// desktop one.
+    #[cfg(unix)]
+    #[test]
+    fn mobile_legacy_lock_wait_stays_within_the_mobile_budget() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let directory = profile_lock_wait_test_directory("lock-wait-mobile");
+        let profile_path = directory.join("profiles.json");
+        let lock_path = profile_path.with_extension("json.lock");
+        let created_at = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_millis();
+        // A dead owner (an unrepresentable pid) that crashed just now.
+        std::fs::write(
+            &lock_path,
+            format!("{{\"schemaVersion\":1,\"pid\":4294967295,\"createdAt\":{created_at}}}\n"),
+        )
+        .unwrap();
+        std::fs::set_permissions(&lock_path, std::fs::Permissions::from_mode(0o600)).unwrap();
+        let started = std::time::Instant::now();
+        let error = lock_station_profiles_legacy(&profile_path)
+            .err()
+            .expect("a fresh v1 lock is not reclaimable");
+        let elapsed = started.elapsed();
+        assert!(error.contains("busy"), "{error}");
+        assert!(elapsed >= PROFILE_LOCK_MOBILE_WAIT, "{elapsed:?}");
+        // Well under the desktop bound, and no longer than the old nominal
+        // 5s budget plus the final probe and scheduling slack.
+        assert!(elapsed < Duration::from_millis(6_500), "{elapsed:?}");
+        assert!(lock_path.exists(), "the fresh v1 lock is retained");
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn profile_lock_waits_for_a_live_holder_to_release() {
+        let directory = profile_lock_wait_test_directory("lock-wait-release");
+        let profile_path = directory.join("profiles.json");
+        let held = lock_station_profiles(&profile_path).expect("first writer holds the lock");
+        // Taken before the releaser starts, so the release cannot precede it.
+        let started = std::time::Instant::now();
+        let releaser = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(400));
+            drop(held);
+        });
+        let lock = lock_station_profiles(&profile_path).expect("waits for the live holder");
+        assert!(started.elapsed() >= Duration::from_millis(300));
+        releaser.join().unwrap();
+        drop(lock);
         std::fs::remove_dir_all(directory).unwrap();
     }
 

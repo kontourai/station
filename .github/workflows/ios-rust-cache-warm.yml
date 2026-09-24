@@ -1,0 +1,106 @@
+name: Warm iOS Rust build cache
+
+# The only writer of the `ios-rust-*` cache that build-ios.yml's
+# build-ios-verification job restores. build-ios runs on pull_request_target
+# and merge_group, which must never write a shared cache (untrusted candidate
+# code runs there, and a poisoned entry would be restored by later runs), so
+# that job is restore-only and this trusted main-only workflow saves instead.
+#
+# Cargo fingerprints include the exact rustc, target, profile, features, env
+# and paths, so a warm entry is only useful if it comes from the SAME build
+# invocation. The steps below therefore repeat build-ios's pipeline up to and
+# including `tauri ios build`, byte for byte where it matters;
+# scripts/__tests__/ci-workflow-contract.test.ts pins the shared steps and the
+# cache key so the two cannot drift apart silently.
+#
+# Cadence: a cache key is immutable, so a run whose exact key already exists
+# stops after a lookup (about a minute of macOS) instead of rebuilding. The
+# daily schedule picks up new stable toolchains; the path-filtered push picks
+# up Cargo.lock changes on main as soon as they land.
+on:
+  schedule:
+    - cron: '23 5 * * *'
+  push:
+    branches: [main]
+    paths:
+      - 'src-desktop/Cargo.lock'
+      - '.github/workflows/ios-rust-cache-warm.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-rust-cache-warm
+  cancel-in-progress: false
+
+jobs:
+  warm:
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: rust
+        uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+        with: { targets: aarch64-apple-ios-sim }
+      - id: lookup
+        name: Check whether this key is already warm
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          lookup-only: true
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            src-desktop/target
+          key: ios-rust-${{ runner.os }}-${{ runner.arch }}-${{ steps.rust.outputs.cachekey }}-aarch64-apple-ios-sim-${{ hashFiles('src-desktop/Cargo.lock') }}
+      - name: Setup pinned pnpm
+        if: steps.lookup.outputs.cache-hit != 'true'
+        uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2.1.0
+        with: { install: false }
+      - if: steps.lookup.outputs.cache-hit != 'true'
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with: { node-version-file: .nvmrc }
+      - name: Select the reviewed Xcode
+        if: steps.lookup.outputs.cache-hit != 'true'
+        run: |
+          sudo xcode-select -s /Applications/Xcode_26.6.app/Contents/Developer
+          xcodebuild -version
+      - if: steps.lookup.outputs.cache-hit != 'true'
+        run: brew install xcodegen
+      - if: steps.lookup.outputs.cache-hit != 'true'
+        run: npm run dependencies:ci && npm run build:native-client
+      - if: steps.lookup.outputs.cache-hit != 'true'
+        working-directory: src-desktop
+        run: npx tauri ios init --ci --skip-targets-install --config tauri.conf.json
+      - if: steps.lookup.outputs.cache-hit != 'true'
+        run: node scripts/write-ios-build-manifest.mjs
+      - if: steps.lookup.outputs.cache-hit != 'true'
+        working-directory: src-desktop
+        run: rm -rf gen/apple/build && STATION_CLIENT_BUILD_REUSE=1 npx tauri ios build --target aarch64-sim --no-sign --ci --config tauri.conf.json
+      # The Station crate itself is rebuilt on every run anyway (a fresh
+      # checkout's mtimes dirty its fingerprint), so its own outputs are only
+      # dead weight in an entry the repository's cache quota has to hold.
+      - name: Drop the Station crate's own outputs before saving
+        if: steps.lookup.outputs.cache-hit != 'true'
+        working-directory: src-desktop/target
+        run: >-
+          rm -rf --
+          ./*/release/libstation_ai_lib.*
+          ./*/release/deps/*station_ai_lib*
+          ./*/release/.fingerprint/station-*
+          ./*/release/build/station-*
+          ./release/.fingerprint/station-*
+          ./release/build/station-*
+      - name: Save iOS Rust build cache
+        if: github.ref == 'refs/heads/main' && steps.lookup.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            src-desktop/target
+          key: ${{ steps.lookup.outputs.cache-primary-key }}

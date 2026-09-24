@@ -54,12 +54,10 @@ import {
  * Two viewports, because the two rows now hold the contract differently. At
  * desktop widths the state text always shows, so the chip reserves its own
  * width (the 116px `min-width`) and the tests pin every label-bearing state
- * to one trailing-control position. On a phone the chip is dot-only in EVERY
- * state — the banner layer announces the states that need a decision, and
- * the drawer footer owns Settings — so there is no label width left to
- * reserve and station#4474's contract holds there by construction: the tests
- * pin that no state lays out any text and the cluster measures identical
- * across states.
+ * to one trailing-control position. On a phone the healthy chip keeps a short
+ * "Station" label while the banner layer announces states that need a
+ * decision. It reserves that label's width in every state so connection
+ * changes cannot move neighboring controls.
  */
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -300,16 +298,12 @@ describe.skipIf(!chromiumAvailable)(
      * station#1401, retired arithmetic. This used to pin that the widest
      * labelled cluster still fits at the first width that keeps the label
      * (375px), against a 396px row budget derived term by term. There is no
-     * label anymore: the phone chip is dot-only in every state, so the
-     * cluster cannot grow with the connection state and the property worth
-     * pinning is invariance, not fit. Every news-carrying state — including
-     * the two longest labels the old budget was written for ("Needs
-     * re-pairing", "Awaiting approval") — must lay out zero text and measure
-     * the same cluster width, and the chip must sit at the 44px touch floor.
-     * A regressed label (or a re-added reservation) shows up here as a wider
-     * cluster in exactly that state.
+     * Remedy labels stay hidden on the toolbar at phone widths, while the
+     * healthy state retains the active saved Station label. The reserved
+     * width must keep the whole cluster invariant across every connection
+     * state, and the chip must meet the 44px target floor.
      */
-    test('the phone cluster is invariant across every state — dot-only by construction (#1401)', async () => {
+    test('the phone cluster is invariant across every state with a compact Station label (#1401, #2406)', async () => {
       const viewport = { width: 390, height: 200 };
       const states: ChipState[] = [
         'connected',
@@ -337,11 +331,13 @@ describe.skipIf(!chromiumAvailable)(
             const chip =
               document.querySelector<HTMLElement>('.app-toolbar__conn');
             if (!chip) throw new Error('connection chip not found');
-            // Absent in the collapsed `connected` form (`compactConn`
-            // renders no span at all); `display: none` in every other state
-            // at this breakpoint. Either way it lays out no boxes.
+            // Hidden at this breakpoint; the compact healthy state has its
+            // own short visible Station label.
             const label = document.querySelector<HTMLElement>(
               '.app-toolbar__conn-state',
+            );
+            const compactLabel = document.querySelector<HTMLElement>(
+              '.app-toolbar__conn-label',
             );
             return {
               content:
@@ -351,17 +347,22 @@ describe.skipIf(!chromiumAvailable)(
               // Laid out, not merely present: `display: none` is exactly what
               // this test is about, and a hidden span has no boxes.
               labelBoxes: label?.getClientRects().length ?? 0,
+              compactLabel: compactLabel?.textContent ?? '',
               accessibleName: chip.getAttribute('aria-label'),
             };
           });
           expect(
             measured.labelBoxes,
-            `the ${state} state lays out chip text on a phone — the chip is dot-only there`,
+            `the ${state} state lays out desktop remedy text on a phone`,
           ).toBe(0);
           expect(
             Math.round(measured.chipWidth),
-            `the ${state} chip is wider than the 44px touch floor on a phone`,
-          ).toBeLessThanOrEqual(44);
+            `the ${state} chip must meet the 44px touch floor on a phone`,
+          ).toBeGreaterThanOrEqual(44);
+          expect(
+            measured.compactLabel,
+            `the connected chip must visibly identify the Station on a phone`,
+          ).toBe(state === 'connected' ? 'Station · Default' : '');
           expect(
             measured.accessibleName,
             `the ${state} chip must keep its words in the accessible name`,
@@ -386,7 +387,7 @@ describe.skipIf(!chromiumAvailable)(
       // an oversight: its single-Station form now renders NO label at all
       // (`compactConn` in `HeaderActions.tsx`), so a connect or a drop moves
       // the cluster once by design — the same trade #1401 already made at
-      // phone width, where `connected` has been dot-only since archive#3311.
+      // phone width, where the short saved Station label takes its place.
       // What that buys is measured by the test below. The reservation this
       // file pinned is still what holds the remaining states to one width, and
       // `connected` is the only state leaving the set.
@@ -412,11 +413,9 @@ describe.skipIf(!chromiumAvailable)(
       ).toEqual(states.map(() => xs[0]));
     });
 
-    test('the collapsed connected chip reclaims the width the label-bearing states reserve (#1536 F)', async () => {
-      // The point of collapsing it: a fact that never changes while you work
-      // stops holding ~150px of the row that runs out of width first. Measured
-      // against the widest label-bearing state in the same fixture, so this
-      // cannot pass on an absolute number that drifts with the font.
+    test('the compact connected chip shows Station and reclaims header width', async () => {
+      // The short label makes the connection control clear while retaining
+      // most of the width freed by collapsing the full state and identity.
       const viewport = { width: 1280, height: 400 };
       const chipWidth = async (state: ChipState): Promise<number> => {
         const page = await browser.newPage({ viewport });
@@ -453,19 +452,70 @@ describe.skipIf(!chromiumAvailable)(
       const widest = await chipWidth('awaiting-approval');
       const sibling = await siblingWidth();
 
-      // #1552 D1: the collapsed chip is the SAME size as its siblings, which is
-      // the whole of "one button size" — asserted as an equality against a
-      // measured sibling rather than as the literal 44px this used to pin, so it
-      // cannot pass while the row holds two different box sizes and cannot red
-      // merely because the shared size changed. (It was 44px on every pointer,
-      // making the smallest-content control the largest box in the row; the 44px
-      // floor still applies under the coarse-pointer query, where it is a WCAG
-      // 2.5.5 obligation rather than a look.)
-      expect(Math.round(collapsed)).toBe(Math.round(sibling));
-      // And it must not have grown a label back: a chip still rendering
-      // "Connected · Default" measures ~200px.
-      expect(collapsed).toBeLessThan(widest - 80);
+      const page = await browser.newPage({ viewport });
+      try {
+        await page.setContent(
+          buildFixtureHtml(await renderMarkupForState('connected')),
+        );
+        expect(
+          await page.locator('.app-toolbar__conn-label').textContent(),
+        ).toBe('Station · Default');
+      } finally {
+        await page.close();
+      }
+      expect(collapsed).toBeGreaterThan(sibling);
+      // Font metrics differ between macOS and Linux. Require the compact
+      // control to save at least a quarter of the wide attention state's
+      // width, rather than baking one host's pixel difference into CI.
+      expect(collapsed).toBeLessThan(widest * 0.75);
     });
+
+    test.each(['dark', 'light'] as const)(
+      'the mobile Station label stays readable and touchable in the %s theme',
+      async (theme) => {
+        const viewport = { width: 320, height: 568 };
+        const page = await browser.newPage({ viewport });
+        try {
+          await page.setContent(
+            buildFixtureHtml(await renderMarkupForState('connected')),
+          );
+          const measured = await page.evaluate((activeTheme) => {
+            document.documentElement.setAttribute('data-theme', activeTheme);
+            const button =
+              document.querySelector<HTMLElement>('.app-toolbar__conn');
+            const label = button?.querySelector<HTMLElement>(
+              '.app-toolbar__conn-label',
+            );
+            if (!button || !label) throw new Error('Station label missing');
+            const box = button.getBoundingClientRect();
+            return {
+              label: label.textContent,
+              color: getComputedStyle(label).color,
+              background: getComputedStyle(document.documentElement)
+                .getPropertyValue('--bg-primary')
+                .trim(),
+              x: box.x,
+              right: box.right,
+              width: box.width,
+              height: box.height,
+              labelFits: label.scrollWidth <= label.clientWidth,
+            };
+          }, theme);
+          expect(measured.label).toBe('Station · Default');
+          expect(measured.labelFits).toBe(true);
+          expect(measured.color).not.toBe('rgba(0, 0, 0, 0)');
+          expect(measured.background).toBe(
+            theme === 'light' ? '#f5f4ef' : '#0a0e13',
+          );
+          expect(measured.x).toBeGreaterThanOrEqual(0);
+          expect(measured.right).toBeLessThanOrEqual(viewport.width);
+          expect(measured.width).toBeGreaterThanOrEqual(44);
+          expect(measured.height).toBeGreaterThanOrEqual(44);
+        } finally {
+          await page.close();
+        }
+      },
+    );
 
     /**
      * The row's membership, both directions. The desktop row is three named
@@ -515,18 +565,17 @@ describe.skipIf(!chromiumAvailable)(
 
       const desktop = await inventory({ width: 1280, height: 400 });
       expect(desktop).toEqual([
-        'Manage Stations — Connected · Default',
+        'Manage Stations — Connected · Station · Default',
         'Notifications',
         'Profile and settings',
       ]);
       expect(desktop).not.toContain('Open settings');
 
-      // The `connected` fixture renders the chip compact (dot-only) at both
-      // widths, so the phone inventory names the chip by its accessible
-      // name — the same string as desktop here.
+      // The `connected` fixture renders its active saved Station label in a
+      // compact chip at both widths; the accessible name also carries status.
       const phone = await inventory({ width: 390, height: 600 });
       expect(phone).toEqual([
-        'Manage Stations — Connected · Default',
+        'Manage Stations — Connected · Station · Default',
         'Notifications',
         'More actions',
       ]);
@@ -629,10 +678,9 @@ describe.skipIf(!chromiumAvailable)(
     /**
      * #1132, retired breakpoint. This used to pin that the chip drops its
      * label below the width the row can hold (375px keeps it, 374px drops
-     * it). There is no label to drop anymore: the phone chip is dot-only in
-     * every state, so what this pins instead is that the error state — the
-     * one whose "Can't connect" text used to survive here — lays out no text
-     * at any phone width while keeping its words in the accessible name. A
+     * it). The compact Station label stays only in the healthy state; error
+     * remedy text stays in the accessible name and banner, while the reserved
+     * width holds the same mobile toolbar geometry. A
      * screen reader reads the same sentence whatever the viewport, because
      * the name is the button's `aria-label` and never this span's text.
      *
@@ -671,15 +719,15 @@ describe.skipIf(!chromiumAvailable)(
         }
       };
 
-      // Both sides of the retired breakpoint: the label stays gone above and
-      // below it, and the chip stays at the touch floor.
+      // Both sides of the retired breakpoint: the error label stays gone and
+      // the chip reserves the same 136px width below it.
       for (const width of [375, 374, 360]) {
         const measured = await measure(width);
         expect(
           measured.labelBoxes,
-          `the error state lays out chip text at ${width}px — the phone chip is dot-only`,
+          `the error state lays out remedy text at ${width}px`,
         ).toBe(0);
-        expect(measured.chipWidth).toBeLessThanOrEqual(44);
+        expect(measured.chipWidth).toBe(136);
         expect(measured.accessibleName).toContain("Can't connect");
       }
     });
@@ -764,9 +812,8 @@ describe.skipIf(!chromiumAvailable)(
       expect(many.accessibleName).toContain('123 need attention');
     });
 
-    // The old 120px chip-budget test (#1401) retired with the label it
-    // bounded: the dot-only chip sits at the 44px touch floor in every
-    // state, which the invariance test above pins directly.
+    // The old #1401 dot-only chip budget retired with its behavior; the
+    // fixed label width and 44px target are now measured above.
   },
 );
 

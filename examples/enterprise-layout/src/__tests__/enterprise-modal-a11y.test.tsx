@@ -8,20 +8,18 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import * as React from 'react';
+import { useState } from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 
-const { useState } = React;
-
-// The enterprise example predates the root Vitest JSX-runtime convention and
-// intentionally has no TypeScript project. Keep this compatibility local to
-// the focused regression instead of declaring the entire example type-safe.
-Object.assign(globalThis, { React });
+// `useSendToChat` returns the send function itself (packages/sdk
+// src/hooks/operations.ts), not an object holding it. The mock mirrors that
+// shape so a component that destructures the result gets `undefined` here too.
+const sendToChat = vi.hoisted(() => vi.fn());
 
 vi.mock('@kontourai/station-sdk', () => ({
   useToast: () => ({ showToast: vi.fn() }),
   useNavigation: () => ({ setLayoutTab: vi.fn() }),
-  useSendToChat: () => ({ sendToChat: vi.fn() }),
+  useSendToChat: () => sendToChat,
 }));
 
 vi.mock('../hooks/useProjectSlug', () => ({
@@ -51,14 +49,15 @@ vi.mock('../data/notes-hooks', () => ({
   useFilteredNotes: () => ({
     data: [
       {
+        docId: 'doc-alpha',
         path: 'notes/alpha.md',
-        name: 'alpha.md',
+        title: 'Alpha',
         frontmatter: { title: 'Alpha', territory: 'West', type: 'brief' },
       },
     ],
     isLoading: false,
   }),
-  useNoteContent: () => ({ data: null }),
+  useNoteContent: () => ({ data: undefined }),
   useSaveNote: () => idleMutation,
   useUpdateNote: () => idleMutation,
   useDeleteNote: () => idleMutation,
@@ -242,7 +241,7 @@ describe('native row buttons use phrasing content', () => {
     const onSearch = vi
       .fn()
       .mockResolvedValue([
-        { id: 'r-1', name: 'Acme', website: 'acme.test', type: 'account' },
+        { id: 'r-1', name: 'Acme', website: 'acme.test', kind: 'account' },
       ]);
     const { container } = render(
       <SearchModal
@@ -384,5 +383,18 @@ describe('topmost dialog keyboard behavior', () => {
 
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(document.activeElement).toBe(opener);
+  });
+});
+
+describe('Portfolio chat actions', () => {
+  test('Portfolio quick actions send their prompt through useSendToChat', () => {
+    sendToChat.mockClear();
+    render(<Portfolio />);
+    fireEvent.click(
+      screen.getByRole('button', { name: /Account health check/ }),
+    );
+    expect(sendToChat).toHaveBeenCalledWith(
+      'Review my accounts and flag any that need attention.',
+    );
   });
 });

@@ -7,11 +7,17 @@ import { childProcessEnvironment } from '../../utils/child-process-environment.j
 import { findCliBinary } from '../auth/cli-auth.js';
 import { AsyncEventQueue } from '../sessions/async-event-queue.js';
 import {
+  routeCodexChildNotification,
+  settleOpenCodexChildren,
+} from './codex-adapter-child-work.js';
+import {
+  deriveApprovalToolName,
   extractThreadId,
   hasId,
   hasMethod,
   mapApprovalResolutionStatus,
   mapServerRequestToEvent,
+  resolveSessionGrantAutoApproval,
 } from './codex-adapter-events.js';
 import {
   handleCodexNotification,
@@ -92,6 +98,7 @@ export function createCodexSessionRecord(options: {
     rpcRequestCounter: 0,
     pendingRpcRequests: new Map(),
     pendingApprovals: new Map(),
+    approvedTools: new Set(),
     lastSessionState: 'idle',
     turnOutput: new Map(),
     toolNames: new Map(),
@@ -100,10 +107,39 @@ export function createCodexSessionRecord(options: {
   };
 }
 
+/**
+ * The most notifications that ever wait behind a pending host image read.
+ * Reaching it settles that read synchronously (as if its deadline passed) and
+ * drains the queue in order. The read's own deadline normally drains it long
+ * before this.
+ *
+ * It MUST stay well below `ASYNC_EVENT_QUEUE_DEFAULT_CAPACITY` (4,096), the
+ * capacity of the event queue this transport publishes into. A drain pushes
+ * every queued notification's events in ONE synchronous run, before the
+ * consumer can take any; a drain larger than that queue's free space
+ * overflows it, which clears its buffer and rejects the iterator ("Async
+ * event queue capacity exceeded."). 1,024 leaves room for the events the
+ * consumer has not taken yet plus the rest of the stdout chunk being
+ * handled — and a single chunk of JSON-RPC lines holds only a few hundred
+ * lines, so the cap is reached across chunks, not within one.
+ */
+export const MAX_QUEUED_NOTIFICATIONS = 1_024;
+
 export class CodexAdapterTransport {
   private readonly events = new AsyncEventQueue<CanonicalRuntimeEvent>();
   private readonly sessions = new Map<string, CodexSessionRecord>();
-  private readonly threadLookup = new Map<string, CodexSessionRecord>();
+  /**
+   * #2458 fix round (P1a): codex thread id → record, PER EMITTING PROCESS.
+   * Each session runs its own app-server, and a thread id is only meaningful
+   * on the process streaming it: two sessions may resume the same codex
+   * thread, and a process may stream, as its own child, a thread id another
+   * session owns. A single global map let the later registration capture the
+   * earlier session's events (and, with a process guard on top, drop them).
+   */
+  private readonly threadLookup = new Map<
+    CodexProcessLike,
+    Map<string, CodexSessionRecord>
+  >();
 
   constructor(
     private readonly now: () => Date,
@@ -134,14 +170,23 @@ export class CodexAdapterTransport {
 
   unregisterSession(record: CodexSessionRecord): void {
     this.sessions.delete(record.externalThreadId);
-    if (record.codexThreadId) {
-      this.threadLookup.delete(record.codexThreadId);
+    const threads = this.threadLookup.get(record.process);
+    if (threads) {
+      for (const [threadId, owner] of threads) {
+        if (owner === record) threads.delete(threadId);
+      }
+      if (threads.size === 0) this.threadLookup.delete(record.process);
     }
   }
 
   setCodexThreadId(record: CodexSessionRecord, codexThreadId: string): void {
     record.codexThreadId = codexThreadId;
-    this.threadLookup.set(codexThreadId, record);
+    let threads = this.threadLookup.get(record.process);
+    if (!threads) {
+      threads = new Map();
+      this.threadLookup.set(record.process, threads);
+    }
+    threads.set(codexThreadId, record);
   }
 
   handleProcess(record: CodexSessionRecord): void {
@@ -594,12 +639,30 @@ export class CodexAdapterTransport {
       return;
     }
 
+    const payload = (request.params ?? {}) as Record<string, unknown>;
+    const toolName = deriveApprovalToolName(request.method, payload);
+    // Tool-level session grant: "Allow for this session" covers every later
+    // call of the tool, not just the one call the engine asked about (the
+    // command/file-change/elicitation wire responses carry no session
+    // scope). Granted tools never re-prompt; denies are never cached. A
+    // data-collecting elicitation has no truthful auto-acceptance, so it
+    // always re-prompts even under a grant.
+    const grantedAutoApproval =
+      toolName && record.approvedTools.has(toolName)
+        ? resolveSessionGrantAutoApproval(request.method, payload)
+        : null;
+    if (grantedAutoApproval !== null) {
+      this.sendResponse(record, requestId, grantedAutoApproval);
+      return;
+    }
+
     record.pendingApprovals.set(canonicalRequestId, {
       rpcRequestId: requestId,
       method: request.method,
       title: event.title,
       threadId: record.externalThreadId,
-      payload: (request.params ?? {}) as Record<string, unknown>,
+      payload,
+      ...(toolName ? { toolName } : {}),
     });
     this.publish(event);
   }
@@ -622,29 +685,164 @@ export class CodexAdapterTransport {
       return;
     }
     const threadId = extractThreadId(notification.params);
+    // #2458: resolved only among the threads of the process that EMITTED
+    // the line (see `threadLookup`). A miss is a thread this process streams
+    // but no session registered on it: a subagent's stream.
+    const ownHit = threadId
+      ? this.threadLookup.get(emittingRecord.process)?.get(threadId)
+      : undefined;
     const record = ACCOUNT_SCOPED_NOTIFICATION_METHODS.has(notification.method)
       ? emittingRecord
       : threadId
-        ? this.threadLookup.get(threadId)
+        ? ownHit
         : emittingRecord;
 
     if (!record && threadId) {
+      // #2458: a thread this transport does not own is a Codex subagent's
+      // stream on the emitting process's stdio. It goes to the child-work
+      // mapper and NEVER to `handleCodexNotification`: a child's
+      // `turn/completed` would close the parent's turn and its token usage
+      // would be counted as the parent's.
+      try {
+        routeCodexChildNotification(
+          {
+            record: emittingRecord,
+            nowIso: () => this.now().toISOString(),
+            publish: (event) => this.publish(event),
+          },
+          threadId,
+          notification,
+        );
+      } catch {
+        this.onNotificationError?.(notification.method);
+      }
       return;
     }
 
-    try {
-      handleCodexNotification({
-        record,
-        notification,
-        nowIso: () => this.now().toISOString(),
-        publish: (event) => this.publish(event),
-        onQuotaUpdate: this.onQuotaUpdate,
-      });
-    } catch {
-      // Readline notification delivery is a transport boundary: malformed
-      // provider data must never escape and disrupt subsequent messages.
-      this.onNotificationError?.(notification.method);
+    const deliver = () => {
+      try {
+        return handleCodexNotification({
+          record,
+          notification,
+          nowIso: () => this.now().toISOString(),
+          publish: (event) => this.publish(event),
+          onQuotaUpdate: this.onQuotaUpdate,
+        });
+      } catch {
+        // Readline notification delivery is a transport boundary: malformed
+        // provider data must never escape and disrupt subsequent messages.
+        this.onNotificationError?.(notification.method);
+        return undefined;
+      }
+    };
+    // Handling is synchronous except for an image read from the host. While
+    // one is pending, this session's later NOTIFICATIONS wait in an explicit
+    // queue, so their publish order stays the engine's order (a tool's
+    // terminal never lands after the turn that contains it). The common path
+    // never waits.
+    //
+    // Bounded three ways:
+    // - time: the read itself has a deadline (`HOST_IMAGE_READ_DEADLINE_MS`)
+    //   after which it settles as an omission marker, and the queue drains;
+    // - size: the queue never holds more than `MAX_QUEUED_NOTIFICATIONS`. At
+    //   the cap the pending read's terminal is published NOW, synchronously,
+    //   with the deadline's outcome (the "could not be read in time" note),
+    //   and the queue drains in order in the same call — so the bound holds
+    //   even when one stdout callback delivers thousands of lines before any
+    //   microtask can run, and order is never broken (a turn's terminal
+    //   passing its own image tool would close the tool card as stopped in
+    //   `background-tasks-store.ts` and drop the real result);
+    // - lifetime: queued work for a session that has since stopped or been
+    //   unregistered is discarded, never run against a closed record.
+    //
+    // Ordering contract for what does NOT go through this queue: server
+    // REQUESTS (approval prompts, `handleServerRequest`) and RPC responses
+    // are handled as they arrive. A request.opened can therefore be published
+    // before the terminal of an image tool whose read is still pending. That
+    // is safe because approvals bind to their call by request/call id, never
+    // by position, and the approval must not wait on an unrelated file read.
+    if (!record) {
+      deliver();
+      return;
     }
+    // Read fresh each time: settling below clears it through a method call.
+    const readPending = () => record.pendingHostImageRead !== undefined;
+    if (readPending()) {
+      const run = () =>
+        record.stopped || this.sessions.get(record.externalThreadId) !== record
+          ? undefined
+          : deliver();
+      // Each pass settles one pending read and delivers at least one queued
+      // notification, so this loop ends; afterwards the queue has room or
+      // nothing is pending any more.
+      while (
+        readPending() &&
+        (record.queuedNotifications?.length ?? 0) >= MAX_QUEUED_NOTIFICATIONS
+      ) {
+        this.settlePendingHostImageReadNow(record);
+      }
+      if (readPending()) {
+        record.queuedNotifications ??= [];
+        record.queuedNotifications.push(run);
+        return;
+      }
+    }
+    this.awaitHostImageRead(record, deliver(), notification.method);
+  }
+
+  /** Hold this session's later notifications until `pending` settles. */
+  private awaitHostImageRead(
+    record: CodexSessionRecord,
+    pending: Promise<void> | undefined,
+    method: string,
+  ): void {
+    if (!pending) return;
+    record.pendingHostImageRead = pending;
+    void pending
+      .catch(() => {
+        this.onNotificationError?.(method);
+      })
+      .then(() => {
+        // Settled early (queue bound) and already drained past it.
+        if (record.pendingHostImageRead !== pending) return;
+        record.pendingHostImageRead = undefined;
+        this.drainQueuedNotifications(record);
+      });
+  }
+
+  /**
+   * Deliver queued notifications in order until one starts another host read
+   * (which then holds the rest) or the queue is empty.
+   */
+  private drainQueuedNotifications(record: CodexSessionRecord): void {
+    const queue = record.queuedNotifications;
+    if (!queue) return;
+    let next = 0;
+    while (next < queue.length && !record.pendingHostImageRead) {
+      const run = queue[next];
+      next += 1;
+      this.awaitHostImageRead(record, run?.(), 'queued');
+    }
+    queue.splice(0, next);
+    if (queue.length === 0 && record.queuedNotifications === queue) {
+      record.queuedNotifications = undefined;
+    }
+  }
+
+  /**
+   * Publish the pending host read's terminal now (its deadline outcome), stop
+   * waiting for it, and drain the queue behind it in order.
+   */
+  private settlePendingHostImageReadNow(record: CodexSessionRecord): void {
+    const settleNow = record.settleHostImageReadNow;
+    record.settleHostImageReadNow = undefined;
+    record.pendingHostImageRead = undefined;
+    try {
+      settleNow?.();
+    } catch {
+      this.onNotificationError?.('item/completed');
+    }
+    this.drainQueuedNotifications(record);
   }
 
   private terminateRecord(record: CodexSessionRecord): Promise<void> {
@@ -798,6 +996,13 @@ export class CodexAdapterTransport {
     settleUnresolvedCodexToolCalls({
       record,
       nowIso,
+      publish: (event) => this.publish(event),
+    });
+    // #2458: a subagent still running when its session ends can never
+    // report again, so it settles `unresolved` — same doors, same moment.
+    settleOpenCodexChildren({
+      record,
+      nowIso: () => nowIso,
       publish: (event) => this.publish(event),
     });
   }

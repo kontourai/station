@@ -1,4 +1,5 @@
 import './SettingsView.css';
+import { APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE } from '@kontourai/station-contracts/orchestration';
 import {
   PROJECT_OVERRIDABLE_APP_SETTING_KEYS,
   type ProjectOverridableAppSettingKey,
@@ -66,6 +67,7 @@ import {
 import { AccentColorPicker } from './settings/AccentColorPicker';
 import { AgentDefaultsSection } from './settings/AgentDefaultsSection';
 import { AnswerSharesSection } from './settings/AnswerSharesSection';
+import { DeviceHostsSection } from './settings/DeviceHostsSection';
 import { downloadDiagnosticsBundle } from './settings/diagnostics-download';
 import { EnvironmentStatus } from './settings/EnvironmentStatus';
 import { FeaturePreviewsSection } from './settings/FeaturePreviewsSection';
@@ -144,6 +146,19 @@ const ALL_SETTINGS_VIEWS = ['overview', ...ALL_LEAF_SECTION_IDS];
  * deadline does not cancel the write (it may still land); it releases the UI
  * and keeps the drafts so the user can retry.
  */
+/**
+ * #2436: the server's message when this device may not set the Station's
+ * default approval mode to full access, or `undefined` for any other
+ * failure.
+ */
+function fullAccessRefusal(reason: unknown): string | undefined {
+  return reason instanceof Error &&
+    (reason as { code?: unknown }).code ===
+      APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE
+    ? reason.message
+    : undefined;
+}
+
 export const SETTINGS_SAVE_DEADLINE_MS = 30_000;
 
 /**
@@ -802,7 +817,10 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
             : plainFailed
               ? plainOutcome.reason instanceof StationReadOnlyError
                 ? 'Save failed — Station is unreachable. Your changes are kept here until you retry; they are not saved yet.'
-                : 'Some settings could not be saved. Your changes are kept here until you retry.'
+                : fullAccessRefusal(plainOutcome.reason)
+                  ? // #2436: a retry would be refused again; say why instead.
+                    `${fullAccessRefusal(plainOutcome.reason)} Nothing in this save was stored. Choose a stricter default approval mode to save your other changes.`
+                  : 'Some settings could not be saved. Your changes are kept here until you retry.'
               : null;
       const messages = [
         stationMessage,
@@ -1026,6 +1044,9 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                 {sectionVisible('plugin-visibility') && (
                   <PluginVisibilitySection />
                 )}
+                {/* #1973: SSH device hosts. Operator-only (the same gate as
+              plugin visibility); the panel itself is lazy-loaded. */}
+                {sectionVisible('device-hosts') && <DeviceHostsSection />}
                 {sectionVisible('host-runtime') && (
                   <EnvironmentStatus apiBase={currentApiBase}>
                     {/* #2182: three settings whose subject is the machine,
@@ -1482,6 +1503,26 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                             setDeviceSetting('chatDockAutoHide', checked)
                           }
                           label={settingsRow('chat-dock-auto-hide').title}
+                        />
+                      }
+                    />
+                    {/* #90 D9: the same key the in-chat gear panel sets. */}
+                    <PageRow
+                      {...settingsRow('chat-auto-float-browser')}
+                      description="When an agent in a chat opens or drives a browser and no pane shows it, the browser floats over that chat. A session you close stays closed in that chat."
+                      control={
+                        <Toggle
+                          checked={
+                            featureSettings?.autoFloatAgentBrowserSessions !==
+                            false
+                          }
+                          onChange={(checked) =>
+                            setDeviceSetting('featureSettings', {
+                              ...featureSettings,
+                              autoFloatAgentBrowserSessions: checked,
+                            })
+                          }
+                          label={settingsRow('chat-auto-float-browser').title}
                         />
                       }
                     />

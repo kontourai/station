@@ -82,6 +82,83 @@ describe('saved Station contract', () => {
     });
   });
 
+  test('keeps a relay profile secret-free and outside selectable CLI defaults', () => {
+    const relayProfile = {
+      ...profile,
+      name: 'relay-home',
+      endpoint: 'https://station.example',
+      credentialRef: undefined,
+      setupSource: 'manual',
+      configurationState: 'unconfigured',
+      relayRoute: {
+        brokerOrigin: 'https://broker.example',
+        stationId: '11111111-1111-4111-8111-111111111111',
+        enrollmentId: '22222222-2222-4222-8222-222222222222',
+      },
+    };
+    expect(isStationProfile(relayProfile)).toBe(true);
+    expect(
+      isStationProfileStore({
+        schemaVersion: 1,
+        revision: 0,
+        defaultProfile: null,
+        projectProfiles: {},
+        profiles: [relayProfile],
+      }),
+    ).toBe(true);
+    expect(
+      isStationProfileStore({
+        schemaVersion: 1,
+        revision: 0,
+        defaultProfile: 'relay-home',
+        projectProfiles: {},
+        profiles: [relayProfile],
+      }),
+    ).toBe(false);
+    expect(
+      isStationProfileStore({
+        schemaVersion: 1,
+        revision: 0,
+        defaultProfile: null,
+        projectProfiles: { '/workspace': 'relay-home' },
+        profiles: [relayProfile],
+      }),
+    ).toBe(false);
+    expect(
+      isStationProfile({
+        ...relayProfile,
+        relayRoute: {
+          ...relayProfile.relayRoute,
+          signingKey: { kty: 'EC', crv: 'P-256', x: 'x', y: 'y' },
+        },
+      }),
+    ).toBe(false);
+    expect(
+      isStationProfile({
+        ...relayProfile,
+        relayRoute: {
+          ...relayProfile.relayRoute,
+          brokerOrigin: 'http://broker.example',
+        },
+      }),
+    ).toBe(false);
+    expect(
+      isStationProfile({
+        ...relayProfile,
+        configurationState: 'configured',
+      }),
+    ).toBe(false);
+    expect(
+      isStationProfile({
+        ...relayProfile,
+        relayRoute: {
+          ...relayProfile.relayRoute,
+          stationId: 'broker-advertised-text',
+        },
+      }),
+    ).toBe(false);
+  });
+
   test('rejects unknown versions, plaintext credential fields, dangling defaults, and case collisions', () => {
     expect(isStationProfile({ ...profile, schemaVersion: 2 })).toBe(false);
     expect(isStationProfile({ ...profile, credential: 'bearer-secret' })).toBe(

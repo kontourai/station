@@ -1,12 +1,12 @@
 import {
+  type LayoutComponentProps,
   useAgents,
   useNavigation,
   useToast,
-  type WorkspaceComponentProps,
 } from '@kontourai/station-sdk';
 import './layout.css';
 
-function GettingStartedHome({ onShowChat }: WorkspaceComponentProps) {
+function GettingStartedHome({ onShowChat }: LayoutComponentProps) {
   const agents = useAgents();
   const { setDockState } = useNavigation();
   const { showToast } = useToast();

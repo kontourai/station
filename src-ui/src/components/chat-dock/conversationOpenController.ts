@@ -4,6 +4,7 @@ import type {
 } from '@kontourai/station-contracts/orchestration';
 import { EXECUTION_MODE } from '@kontourai/station-contracts/tool';
 import type { ChatUIState } from '../../contexts/active-chats-state';
+import { newerConversationActivity } from '../../utils/conversation-activity';
 
 export type ConversationOpenRecovery = {
   conversation: ConversationListItem;
@@ -174,7 +175,11 @@ export function conversationOpenPatch(
               sessionAutoApprove: [],
               pendingApprovals: [],
               approvalToasts: new Map(),
+              // Engine reports about the predecessor's session. The
+              // recorded posture is the CONVERSATION's and stays, as does a
+              // queued pick (#2436).
               lastAppliedApprovalMode: undefined,
+              approvalEscalationRejected: undefined,
               currentModeId: null,
               planArtifact: null,
               flowRun: null,
@@ -228,11 +233,22 @@ export function conversationOpenPatch(
           requestedModel: null,
           requestedProviderOptions: {},
           providerOptions: {},
+          queuedApprovalMode: undefined,
+          approvalPosture: undefined,
+          approvalPostureSequence: undefined,
           error:
             'The current Session execution binding is unavailable. Retry opening this conversation before sending.',
         }
       : {};
+  // #2309: the resolution's own activity read is fresher than the row's copy;
+  // `mergeChatUpdates` keeps whichever is newest of these and what the chat
+  // already holds.
+  const activity = newerConversationActivity(
+    resolution.conversation.activity,
+    resolved?.activity,
+  );
   return {
+    ...(activity ? { conversationActivity: activity } : {}),
     conversationOpenPending: pendingChoice,
     conversationOpenFailed: unknownReplacement,
     conversationOpenState: resolution,

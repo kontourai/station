@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ChatDockInboxPanel } from '../components/chat-dock/ChatDockInboxPanel';
 import { deviceSettingsStore } from '../lib/device-settings-store';
@@ -90,6 +96,43 @@ describe('ChatDockInboxPanel', () => {
     expect(screen.getByText('Active')).not.toBeNull();
     expect(screen.getByText('Attention needed')).not.toBeNull();
     expect(screen.getByText('Done')).not.toBeNull();
+  });
+
+  it('#2310: lists a Draft under its own group, chipped, not in Active now, and still openable', async () => {
+    const onFocusChat = vi.fn();
+    const draft = item('never-prompted', 'Draft', NOW - 5 * 60_000);
+    renderPanel({
+      items: [...items, draft],
+      openChatSessionIds: [...items, draft].map((entry) => entry.id),
+      onFocusChat,
+    });
+
+    const panel = screen.getByRole('complementary', { name: 'Inbox chats' });
+    const labels = Array.from(
+      panel.querySelectorAll(
+        '.chat-dock-inbox__group-label, .chat-dock-inbox__section-toggle',
+      ),
+    ).map((node) => node.textContent?.replace(/^[+−]/, ''));
+    expect(labels).toEqual([
+      'Active now',
+      'Just finished',
+      'Drafts',
+      'Snoozed (0)',
+      'Earlier',
+    ]);
+
+    const rowName = 'never-prompted title, never-prompted project';
+    const activeNow = screen.getByRole('region', { name: 'Active now' });
+    expect(
+      within(activeNow).queryByRole('button', { name: rowName }),
+    ).toBeNull();
+    const drafts = screen.getByRole('region', { name: 'Drafts' });
+    expect(within(drafts).getByText('Draft')).not.toBeNull();
+
+    fireEvent.click(within(drafts).getByRole('button', { name: rowName }));
+    await waitFor(() =>
+      expect(onFocusChat).toHaveBeenCalledWith('never-prompted'),
+    );
   });
 
   it('marks the active chat and focuses a clicked row', () => {

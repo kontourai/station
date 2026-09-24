@@ -8,7 +8,11 @@ import {
   resolveApiBase,
 } from '../commands/core-api.js';
 import { DEFAULT_SERVER_PORT } from '../commands/helpers.js';
-import { upsertProfile } from '../commands/profile-store.js';
+import {
+  readProfileStore,
+  upsertProfile,
+  writeProfileStore,
+} from '../commands/profile-store.js';
 
 describe('resolveApiBase', () => {
   const originalProfile = process.env.STATION_TARGET;
@@ -73,6 +77,38 @@ describe('resolveApiBase', () => {
     process.env.STATION_TARGET = 'remote';
     const parsed = parseCoreArgs([]);
     expect(resolveApiBase(parsed)).toBe('http://host.example:3350');
+  });
+
+  it('refuses explicit CLI selection of an inert broker route instead of using its Station origin directly', () => {
+    const store = readProfileStore();
+    const now = Date.now();
+    writeProfileStore({
+      ...store,
+      profiles: [
+        ...store.profiles,
+        {
+          schemaVersion: 1,
+          name: 'broker-route',
+          endpoint: 'https://private-station.example',
+          relayRoute: {
+            brokerOrigin: 'https://broker.example',
+            stationId: '11111111-1111-4111-8111-111111111111',
+            enrollmentId: '22222222-2222-4222-8222-222222222222',
+          },
+          setupSource: 'manual',
+          configurationState: 'unconfigured',
+          createdAt: now,
+          updatedAt: now,
+        },
+      ],
+    });
+    expect(() =>
+      resolveApiBase(parseCoreArgs(['--station=broker-route'])),
+    ).toThrow(/saved broker route, not a direct CLI connection/);
+    process.env.STATION_TARGET = 'broker-route';
+    expect(() => resolveApiBase(parseCoreArgs([]))).toThrow(
+      /saved broker route, not a direct CLI connection/,
+    );
   });
 
   it('prefers the explicit --api-base flag over STATION_TARGET', () => {

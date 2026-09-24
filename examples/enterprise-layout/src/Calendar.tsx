@@ -1,6 +1,7 @@
 import {
+  callTool,
   invoke,
-  transformTool,
+  type ToastAction,
   useKnowledgeSaveMutation,
   useNotifications,
   useSendToChat,
@@ -23,11 +24,11 @@ import {
   setCache,
 } from './calendar-utils';
 import { ConfirmModal } from './components/ConfirmModal';
-import { SearchModal } from './components/SearchModal';
-import { CRM_BASE_URL } from './constants';
+import { CrmSearchModal } from './components/CrmSearchModal';
+import type { SearchResult } from './components/SearchModal';
+import { AGENT_SLUG, CRM_BASE_URL } from './constants';
 import {
-  calendarProvider,
-  crmProvider,
+  provider,
   useCalendarEvents,
   useCreateEvent,
   useDeleteEvent,
@@ -41,7 +42,32 @@ import { useCalendarNavigation } from './useCalendarNavigation';
 import { useSalesContext } from './useSalesContext';
 import './layout.css';
 
-export function Calendar({ activeTab }: CalendarProps) {
+/**
+ * Meeting bodies are HTML from the mail server. Strip inline styling, and drop
+ * inline attachment images (`cid:` and Exchange GetFileAttachment URLs): they
+ * cannot load outside the mail client and render as broken images.
+ */
+function sanitizeMeetingBody(body: string): string {
+  const dropAttachmentImages = (node: Element) => {
+    if (node.tagName !== 'IMG') return;
+    const src = node.getAttribute('src');
+    if (src?.startsWith('cid:') || src?.includes('GetFileAttachment')) {
+      node.remove();
+    }
+  };
+  // DOMPurify hooks are global, so add this one only for this call.
+  DOMPurify.addHook('afterSanitizeAttributes', dropAttachmentImages);
+  try {
+    return DOMPurify.sanitize(body, {
+      FORBID_ATTR: ['style', 'bgcolor', 'background', 'color'],
+      FORBID_TAGS: ['style'],
+    });
+  } finally {
+    DOMPurify.removeHook('afterSanitizeAttributes', dropAttachmentImages);
+  }
+}
+
+export function Calendar(_props: CalendarProps) {
   const salesContext = useSalesContext();
   const { state: salesState, setState: setSalesState } = useSales();
   const projectSlug = useProjectSlug();
@@ -49,7 +75,7 @@ export function Calendar({ activeTab }: CalendarProps) {
 
   const { showToast } = useToast();
   const { notify } = useNotifications();
-  const sendToChat = useSendToChat('enterprise-assistant');
+  const sendToChat = useSendToChat(AGENT_SLUG);
   const notesSave = useKnowledgeSaveMutation(projectSlug!, 'notes');
 
   const {
@@ -69,7 +95,7 @@ export function Calendar({ activeTab }: CalendarProps) {
     allDayExpanded,
     setAllDayExpanded,
     formatLocalDate,
-  } = useCalendarNavigation(activeTab);
+  } = useCalendarNavigation();
 
   const {
     data: rawEvents = [],
@@ -123,7 +149,7 @@ export function Calendar({ activeTab }: CalendarProps) {
   const updateEvent = useUpdateEvent();
   const deleteEvent = useDeleteEvent();
   const [selectedSfdcItem, setSelectedSfdcItem] = useState<{
-    type: 'account' | 'opportunity' | 'campaign';
+    type: 'account' | 'opportunity';
     data: any;
   } | null>(null);
   const [activityFormData, setActivityFormData] = useState({
@@ -139,9 +165,6 @@ export function Calendar({ activeTab }: CalendarProps) {
   const [loadingOpportunities, setLoadingOpportunities] = useState(false);
   const [hideClosedOpportunities, setHideClosedOpportunities] = useState(true);
   const [showSearchModal, setShowSearchModal] = useState(false);
-  const [searchModalType, _setSearchModalType] = useState<
-    'account' | 'campaign' | 'opportunity'
-  >('account');
   const [accountFilter, setAccountFilter] = useState('');
   const [showActivityDetailModal, setShowActivityDetailModal] = useState(false);
   const [selectedActivity, setSelectedActivity] = useState<any>(null);
@@ -284,7 +307,7 @@ export function Calendar({ activeTab }: CalendarProps) {
         return;
       }
       try {
-        const evts = await calendarProvider.getEvents(today);
+        const evts = await provider('calendar').getEvents(today);
         const mapped = (evts as any[]).map((e) => ({
           meetingId: e.id,
           meetingChangeKey: e.changeKey || '',
@@ -327,7 +350,7 @@ export function Calendar({ activeTab }: CalendarProps) {
     }
     setLoadingDetails(true);
     try {
-      const vm = await calendarProvider.getMeetingDetails(
+      const vm = await provider('calendar').getMeetingDetails(
         meetingId,
         event.meetingChangeKey,
       );
@@ -497,7 +520,7 @@ export function Calendar({ activeTab }: CalendarProps) {
     _keyword: string,
   ) => {
     try {
-      const opps = await crmProvider.getAccountOpportunities(accountId);
+      const opps = await provider('crm').getAccountOpportunities(accountId);
       const opportunities = opps
         .map((opp: any) => ({
           id: opp.id,
@@ -526,37 +549,41 @@ export function Calendar({ activeTab }: CalendarProps) {
     }
   };
 
-  const handleSelectSearchResult = (item: any) => {
-    if (searchModalType === 'account') {
-      setSfdcContext((prev) => {
-        const exists = prev?.accounts?.some((a) => a.id === item.id);
-        if (exists) return prev;
-        return { ...prev, accounts: [...(prev?.accounts || []), item] };
-      });
-      const accountItem = { type: 'account' as const, data: item };
-      setSelectedSfdcItem(accountItem);
-      fetchTasksForItem(accountItem);
-      prefillActivityData(accountItem);
-      setLoadingOpportunities(true);
-      fetchOpportunitiesForAccount(item.id, '').finally(() =>
-        setLoadingOpportunities(false),
-      );
-    } else {
-      setSfdcContext((prev) => {
-        const exists = prev?.campaigns?.some((c) => c.id === item.id);
-        if (exists) return prev;
-        return { ...prev, campaigns: [...(prev?.campaigns || []), item] };
-      });
-      const campaignItem = { type: 'campaign' as const, data: item };
-      setSelectedSfdcItem(campaignItem);
-      fetchTasksForItem(campaignItem);
-      prefillActivityData(campaignItem);
-    }
+  const handleSelectSearchAccount = (item: SearchResult) => {
+    setSfdcContext((prev) => {
+      const exists = prev?.accounts?.some((a) => a.id === item.id);
+      if (exists) return prev;
+      return { ...prev, accounts: [...(prev?.accounts || []), item] };
+    });
+    const accountItem = { type: 'account' as const, data: item };
+    setSelectedSfdcItem(accountItem);
+    fetchTasksForItem(accountItem);
+    prefillActivityData(accountItem);
+    setLoadingOpportunities(true);
+    fetchOpportunitiesForAccount(item.id, '').finally(() =>
+      setLoadingOpportunities(false),
+    );
+    setShowSearchModal(false);
+  };
+
+  const handleSelectSearchOpportunity = (item: SearchResult) => {
+    setSfdcContext((prev) => {
+      const exists = prev?.opportunities?.some((o) => o.id === item.id);
+      if (exists) return prev;
+      return {
+        ...prev,
+        opportunities: [...(prev?.opportunities || []), item],
+      };
+    });
+    const opportunityItem = { type: 'opportunity' as const, data: item };
+    setSelectedSfdcItem(opportunityItem);
+    fetchTasksForItem(opportunityItem);
+    prefillActivityData(opportunityItem);
     setShowSearchModal(false);
   };
 
   const fetchTasksForItem = async (item: {
-    type: 'account' | 'opportunity' | 'campaign';
+    type: 'account' | 'opportunity';
     data: any;
   }) => {
     setLoadingTasks(true);
@@ -573,7 +600,7 @@ export function Calendar({ activeTab }: CalendarProps) {
         log('No user ID available for task fetch');
         return;
       }
-      const result = await crmProvider.getUserTasks(userId, filters);
+      const result = await provider('crm').getUserTasks(userId, filters);
       const mappedTasks = result.tasks.map((t: any) => ({
         id: t.id,
         subject: t.subject,
@@ -602,7 +629,7 @@ export function Calendar({ activeTab }: CalendarProps) {
   };
 
   const prefillActivityData = async (item: {
-    type: 'account' | 'opportunity' | 'campaign';
+    type: 'account' | 'opportunity';
     data: any;
   }) => {
     if (!selectedEvent || !meetingDetails) return;
@@ -1103,11 +1130,12 @@ export function Calendar({ activeTab }: CalendarProps) {
                                 let cached = getFromCache<MeetingDetails>(ck);
                                 if (!cached && event.meetingChangeKey) {
                                   try {
-                                    const vm =
-                                      await calendarProvider.getMeetingDetails(
-                                        event.meetingId,
-                                        event.meetingChangeKey,
-                                      );
+                                    const vm = await provider(
+                                      'calendar',
+                                    ).getMeetingDetails(
+                                      event.meetingId,
+                                      event.meetingChangeKey,
+                                    );
                                     cached = {
                                       meetingId: (vm as any).id,
                                       meetingChangeKey:
@@ -1397,11 +1425,12 @@ export function Calendar({ activeTab }: CalendarProps) {
                               let cached = getFromCache<MeetingDetails>(ck);
                               if (!cached && event.meetingChangeKey) {
                                 try {
-                                  const vm =
-                                    await calendarProvider.getMeetingDetails(
-                                      event.meetingId,
-                                      event.meetingChangeKey,
-                                    );
+                                  const vm = await provider(
+                                    'calendar',
+                                  ).getMeetingDetails(
+                                    event.meetingId,
+                                    event.meetingChangeKey,
+                                  );
                                   cached = {
                                     meetingId: (vm as any).id,
                                     meetingChangeKey:
@@ -1732,7 +1761,7 @@ export function Calendar({ activeTab }: CalendarProps) {
                                   key={resp}
                                   onClick={async () => {
                                     try {
-                                      await transformTool(
+                                      await callTool(
                                         'enterprise-assistant',
                                         'calendar-mcp_calendar_meeting',
                                         {
@@ -1744,7 +1773,6 @@ export function Calendar({ activeTab }: CalendarProps) {
                                             meetingDetails.meetingChangeKey,
                                           rsvpResponse: resp,
                                         },
-                                        'data => data',
                                       );
                                       showToast(`Meeting ${resp}ed`, 'success');
                                       meetingDetails.responseStatus =
@@ -1830,30 +1858,8 @@ export function Calendar({ activeTab }: CalendarProps) {
                               <div
                                 className={`meeting-body-content cal-content-body ${!contentExpanded ? 'cal-content-body--collapsed' : ''}`}
                                 dangerouslySetInnerHTML={{
-                                  __html: DOMPurify.sanitize(
+                                  __html: sanitizeMeetingBody(
                                     meetingDetails.body,
-                                    {
-                                      FORBID_ATTR: [
-                                        'style',
-                                        'bgcolor',
-                                        'background',
-                                        'color',
-                                      ],
-                                      FORBID_TAGS: ['style'],
-                                      HOOKS: {
-                                        afterSanitizeAttributes: (node) => {
-                                          if (node.tagName === 'IMG') {
-                                            const src =
-                                              node.getAttribute('src');
-                                            if (
-                                              src?.startsWith('cid:') ||
-                                              src?.includes('GetFileAttachment')
-                                            )
-                                              node.remove();
-                                          }
-                                        },
-                                      },
-                                    },
                                   ),
                                 }}
                               />
@@ -1918,10 +1924,9 @@ export function Calendar({ activeTab }: CalendarProps) {
                                 setAiLoading(true);
                                 try {
                                   const context = `Meeting: ${meetingDetails.subject}\nDate: ${new Date(meetingDetails.start).toLocaleString()}\nAttendees: ${meetingDetails.attendees?.map((a) => a.name || a.email).join(', ') || 'None'}\n\nRaw notes:\n${meetingNotes}`;
-                                  const r = await invoke(
-                                    'enterprise-assistant',
-                                    `Clean up and enhance these meeting notes. Keep the original meaning but improve structure, fix typos, and add any useful formatting. Return ONLY the improved notes, no preamble:\n\n${context}`,
-                                  );
+                                  const r = await invoke({
+                                    prompt: `Clean up and enhance these meeting notes. Keep the original meaning but improve structure, fix typos, and add any useful formatting. Return ONLY the improved notes, no preamble:\n\n${context}`,
+                                  });
                                   const text =
                                     typeof r === 'string'
                                       ? r
@@ -1994,7 +1999,7 @@ export function Calendar({ activeTab }: CalendarProps) {
                                     },
                                   });
                                   const diskPath = (result as any)?.storagePath;
-                                  const actions: any[] = [
+                                  const actions: ToastAction[] = [
                                     {
                                       label: 'View',
                                       variant: 'primary',
@@ -2022,14 +2027,13 @@ export function Calendar({ activeTab }: CalendarProps) {
                                         );
                                       },
                                     });
-                                  showToast(
-                                    diskPath
+                                  showToast({
+                                    message: diskPath
                                       ? `Saved → ${diskPath}`
                                       : 'Notes saved to knowledge base',
-                                    undefined,
-                                    8000,
+                                    duration: 8000,
                                     actions,
-                                  );
+                                  });
                                   setSavedEventIds((prev) =>
                                     new Set(prev).add(selectedEventId!),
                                   );
@@ -2265,19 +2269,11 @@ export function Calendar({ activeTab }: CalendarProps) {
                 const items: Array<{
                   id: string;
                   name: string;
-                  type: 'Account' | 'Campaign' | 'Opportunity';
+                  type: 'Account' | 'Opportunity';
                   meta?: string;
                 }> = [];
                 (sfdcContext.accounts || []).forEach((acc: any) =>
                   items.push({ id: acc.id, name: acc.name, type: 'Account' }),
-                );
-                (sfdcContext.campaigns || []).forEach((camp: any) =>
-                  items.push({
-                    id: camp.id,
-                    name: camp.name,
-                    type: 'Campaign',
-                    meta: camp.type,
-                  }),
                 );
                 (sfdcContext.opportunities || []).forEach((opp: any) =>
                   items.push({
@@ -2301,7 +2297,7 @@ export function Calendar({ activeTab }: CalendarProps) {
                     onClick={async () => {
                       setAssigningActivity(true);
                       try {
-                        await crmProvider.updateTask(activityToAssign.id, {
+                        await provider('crm').updateTask(activityToAssign.id, {
                           relatedTo: {
                             type: item.type,
                             id: item.id,
@@ -2349,12 +2345,11 @@ export function Calendar({ activeTab }: CalendarProps) {
         </div>
       )}
 
-      <SearchModal
+      <CrmSearchModal
         isOpen={showSearchModal}
         onClose={() => setShowSearchModal(false)}
-        onSelect={handleSelectSearchResult}
-        type={searchModalType}
-        agentSlug="enterprise-assistant"
+        onSelectAccount={handleSelectSearchAccount}
+        onSelectOpportunity={handleSelectSearchOpportunity}
       />
 
       {/* Log Activity Modal */}
@@ -2428,8 +2423,8 @@ export function Calendar({ activeTab }: CalendarProps) {
                           setShowSearchModal(true);
                         }}
                         className="log-activity__search-btn"
-                        title="Search accounts or campaigns"
-                        aria-label="Search accounts or campaigns"
+                        title="Search accounts or opportunities"
+                        aria-label="Search accounts or opportunities"
                       >
                         <svg
                           aria-hidden="true"
@@ -2511,7 +2506,7 @@ export function Calendar({ activeTab }: CalendarProps) {
                         onClick={() => setShowSearchModal(true)}
                         className="log-activity__search-accounts-btn"
                       >
-                        Search Accounts/Campaigns
+                        Search Accounts/Opportunities
                       </button>
                     </div>
                   </div>
@@ -2623,42 +2618,6 @@ export function Calendar({ activeTab }: CalendarProps) {
                       )}
                     </div>
                   )}
-
-                {sfdcContext.campaigns && sfdcContext.campaigns.length > 0 && (
-                  <div className="log-activity__campaigns-section">
-                    <details open>
-                      <summary className="log-activity__section-summary">
-                        <span>▼</span> Campaigns ({sfdcContext.campaigns.length}
-                        )
-                      </summary>
-                      {sfdcContext.campaigns.map((campaign: any) => (
-                        <button
-                          type="button"
-                          key={campaign.id}
-                          onClick={() => {
-                            const item = {
-                              type: 'campaign' as const,
-                              data: campaign,
-                            };
-                            setSelectedSfdcItem(item);
-                            fetchTasksForItem(item);
-                            prefillActivityData(item);
-                          }}
-                          className={`log-activity__campaign-btn ${selectedSfdcItem?.type === 'campaign' && selectedSfdcItem.data.id === campaign.id ? 'log-activity__campaign-btn--selected' : 'log-activity__campaign-btn--default'}`}
-                        >
-                          <div className="log-activity__opp-name">
-                            {campaign.name}
-                          </div>
-                          {campaign.type && (
-                            <div className="log-activity__opp-stage">
-                              {campaign.type}
-                            </div>
-                          )}
-                        </button>
-                      ))}
-                    </details>
-                  </div>
-                )}
               </div>
 
               {/* Right: Activity Form */}
@@ -2667,7 +2626,7 @@ export function Calendar({ activeTab }: CalendarProps) {
                   <div className="log-activity__form-fields">
                     <div className="log-activity__context-card">
                       <a
-                        href={`${CRM_BASE_URL}/r/${selectedSfdcItem.type === 'account' ? 'Account' : selectedSfdcItem.type === 'campaign' ? 'Campaign' : 'Opportunity'}/${selectedSfdcItem.data.id}/view`}
+                        href={`${CRM_BASE_URL}/r/${selectedSfdcItem.type === 'account' ? 'Account' : 'Opportunity'}/${selectedSfdcItem.data.id}/view`}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="log-activity__context-sfdc"
@@ -2678,9 +2637,7 @@ export function Calendar({ activeTab }: CalendarProps) {
                       <div className="log-activity__context-type">
                         {selectedSfdcItem.type === 'account'
                           ? 'Account'
-                          : selectedSfdcItem.type === 'campaign'
-                            ? 'Campaign'
-                            : 'Opportunity'}
+                          : 'Opportunity'}
                       </div>
                       <div className="log-activity__context-name">
                         {selectedSfdcItem.data.name}
@@ -2692,12 +2649,6 @@ export function Calendar({ activeTab }: CalendarProps) {
                         selectedSfdcItem.data.stageName && (
                           <div className="log-activity__context-stage">
                             Stage: {selectedSfdcItem.data.stageName}
-                          </div>
-                        )}
-                      {selectedSfdcItem.type === 'campaign' &&
-                        selectedSfdcItem.data.type && (
-                          <div className="log-activity__context-stage">
-                            Type: {selectedSfdcItem.data.type}
                           </div>
                         )}
                     </div>
@@ -2898,7 +2849,7 @@ export function Calendar({ activeTab }: CalendarProps) {
                           if (!selectedSfdcItem) return;
                           setSubmittingActivity(true);
                           try {
-                            const task = await crmProvider.createTask({
+                            const task = await provider('crm').createTask({
                               subject: activityFormData.subject,
                               activityType: activityFormData.activityType,
                               dueDate: activityFormData.activityDate
@@ -2926,23 +2877,12 @@ export function Calendar({ activeTab }: CalendarProps) {
                               });
                             }
                             if (taskId) {
-                              notify({
-                                title: 'Activity logged successfully',
-                                message: (
-                                  <a
-                                    href={`${CRM_BASE_URL}/r/Task/${taskId}/view`}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    style={{
-                                      color: 'var(--color-primary)',
-                                      textDecoration: 'underline',
-                                    }}
-                                  >
-                                    {activityFormData.subject}
-                                  </a>
-                                ) as any,
-                                type: 'success',
-                              });
+                              // Toasts render plain text, so name the task
+                              // rather than linking it.
+                              notify(
+                                `Activity logged: ${activityFormData.subject}`,
+                                { type: 'success' },
+                              );
                             } else {
                               showToast(
                                 'Activity logged successfully',
@@ -3009,7 +2949,7 @@ export function Calendar({ activeTab }: CalendarProps) {
                                         setOppFilterText('');
                                       }}
                                       className="log-activity__task-assign-btn"
-                                      title="Assign to account, opportunity, or campaign"
+                                      title="Assign to account or opportunity"
                                     >
                                       Assign To...
                                     </button>
@@ -3031,10 +2971,9 @@ export function Calendar({ activeTab }: CalendarProps) {
                                       setShowActivityDetailModal(true);
                                       setLoadingActivityDetails(true);
                                       try {
-                                        const taskVM =
-                                          await crmProvider.getTaskDetails(
-                                            task.id,
-                                          );
+                                        const taskVM = await provider(
+                                          'crm',
+                                        ).getTaskDetails(task.id);
                                         setSelectedActivity({
                                           id: taskVM.id,
                                           subject: taskVM.subject,
@@ -3124,10 +3063,9 @@ export function Calendar({ activeTab }: CalendarProps) {
                                   else if (selectedSfdcItem.type === 'account')
                                     filters.accountId =
                                       selectedSfdcItem.data.id;
-                                  const result = await crmProvider.getUserTasks(
-                                    userId,
-                                    filters,
-                                  );
+                                  const result = await provider(
+                                    'crm',
+                                  ).getUserTasks(userId, filters);
                                   const mapped = result.tasks.map((t: any) => ({
                                     id: t.id,
                                     subject: t.subject,

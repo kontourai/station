@@ -35,6 +35,7 @@
     "./client": "./src/client/index.ts",
     "./setup-imports": "./src/client/setup-imports.ts",
     "./setup-imports-query": "./src/query-domains/setupImports.ts",
+    "./plugin-local-sources-query": "./src/query-domains/pluginLocalSources.ts",
     "./secret-bindings": "./src/client/secret-bindings.ts",
     "./secret-bindings-query": "./src/query-domains/secret-bindings.ts",
     "./client-origin": "./src/client-origin.ts",
@@ -60,7 +61,8 @@
     "./input-reply": "./src/client/input-reply.ts",
     "./local-accounts": "./src/client/local-accounts.ts",
     "./authority-observation": "./src/client/authority-observation.ts",
-    "./application-session": "./src/client/application-session.ts"
+    "./application-session": "./src/client/application-session.ts",
+    "./relay-enrollment": "./src/client/relay-enrollment.ts"
   },
   "scripts": {
     "build": "tsc && npm run copy-assets",
@@ -95,7 +97,7 @@
   "dependencies": {
     "@kontourai/console-core": "^0.3.0",
     "@kontourai/flow": "5.1.1",
-    "@kontourai/flow-agents": "6.2.0",
+    "@kontourai/flow-agents": "6.4.0",
     "@kontourai/station-contracts": "^0.7.0",
     "@kontourai/station-shared": "^0.7.0",
     "@kontourai/surface": "^3.2.0",

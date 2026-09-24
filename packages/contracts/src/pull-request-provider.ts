@@ -43,6 +43,14 @@ export interface PullRequestRepositoryContext {
   workingDirectory: string;
   branch: string;
   baseRef: string;
+  /**
+   * Where a new pull request opens FROM, as the forge names it: the
+   * branch the checkout's branch is pushed to (its upstream, which may be
+   * named differently from the local branch), and, when that upstream lives
+   * in another repository (a fork), that repository's owner and name.
+   * Absent: the local branch, on the context's own repository.
+   */
+  head?: { branch: string; owner?: string; repository?: string };
 }
 /**
  * Portable exact repository identity for a point detail read. It deliberately

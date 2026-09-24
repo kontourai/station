@@ -420,10 +420,202 @@ describe('changed verification selection', () => {
       ]),
     );
   });
+  test.each([
+    'packages/sdk/src/client/http.ts',
+    'packages/sdk/src/client/bounded-response.ts',
+    'packages/sdk/src/client/client-origin.ts',
+  ])(
+    'selects the SDK transport suites for %s instead of its import graph (#2301)',
+    (path) => {
+      const selection = selectChangedVerification([path]);
+      // Nearly the whole UI imports the transport; its graph must not reach
+      // the fast lane, where 9,035 tests overran the hosted budget.
+      expect(selection.relatedPaths).not.toContain(path);
+      expect(selection.tests.map((entry) => entry.path)).toEqual(
+        expect.arrayContaining([
+          'packages/sdk/src/__tests__/fetch-sse.test.ts',
+          'packages/sdk/src/__tests__/authenticated-client-transport.test.ts',
+          'packages/sdk/src/__tests__/client-entry-portability.test.ts',
+          'src-ui/src/contexts/__tests__/ApiBaseContext.native-transport-order.test.tsx',
+        ]),
+      );
+      // No lane: a lane would switch the WHOLE diff to deferred execution.
+      expect(selection.lanes).toEqual([]);
+    },
+  );
+  test('a transport change still EXECUTES the related suites of the files changed with it (#2301)', async () => {
+    const discovered: string[][] = [];
+    const run = reportedRun();
+    const result = await runChangedVerification(['--base=origin/main'], {
+      root: process.cwd(),
+      run,
+      changedPathsFn: () => ({
+        mergeBase: 'base-sha',
+        paths: [
+          'packages/sdk/src/client/http.ts',
+          'src-ui/src/hooks/useServerEvents.ts',
+        ],
+      }),
+      discoverRelatedFiles: async (_root: string, relatedPaths: string[]) => {
+        discovered.push([...relatedPaths]);
+        return [
+          'src-ui/src/hooks/orchestration/__tests__/ensureOrchestrationEventStream.test.ts',
+        ];
+      },
+      collectProvenance: provenance,
+      writeReceipt: vi.fn(),
+    });
+    // The co-changed file's graph is discovered; the transport's is not.
+    expect(discovered).toEqual([['src-ui/src/hooks/useServerEvents.ts']]);
+    // Both reached the runner: the transport's own suites AND the related
+    // suite discovered for the co-changed file.
+    const runArgs = run.mock.calls.flatMap(([, args]) => args as string[]);
+    expect(runArgs).toEqual(
+      expect.arrayContaining([
+        './packages/sdk/src/__tests__/fetch-sse.test.ts',
+        './src-ui/src/hooks/orchestration/__tests__/ensureOrchestrationEventStream.test.ts',
+      ]),
+    );
+    // Nothing was deferred, so the result can complete rather than read
+    // provisional on a selection that dropped the rest of the diff.
+    expect(result.receipt.terminal.status).toBe('completed');
+  });
+  test.each([
+    [
+      'a pattern it cannot match',
+      {
+        pattern: 'packages/sdk/src/client/**',
+        except: ['packages/sdk/src/clients/http.ts'],
+        related: true,
+      },
+      'impact edge exception outside its pattern: packages/sdk/src/client/** except packages/sdk/src/clients/http.ts',
+    ],
+    [
+      'a wildcard entry',
+      {
+        pattern: 'packages/sdk/src/client/**',
+        except: ['packages/sdk/src/client/*.ts'],
+        related: true,
+      },
+      'impact edge exception must be an exact path: packages/sdk/src/client/** except packages/sdk/src/client/*.ts',
+    ],
+    [
+      'an excepted path no other edge owns',
+      {
+        pattern: 'packages/cli/src/**',
+        except: ['packages/cli/src/unowned-module.ts'],
+        related: true,
+      },
+      'impact edge exception has no explicit owner: packages/cli/src/** except packages/cli/src/unowned-module.ts',
+    ],
+    [
+      'a supplemental edge',
+      {
+        pattern: 'packages/sdk/src/client/**',
+        except: ['packages/sdk/src/client/http.ts'],
+        supplemental: true,
+        tests: ['x.test.ts'],
+      },
+      'supplemental impact edge may not declare exceptions: packages/sdk/src/client/**',
+    ],
+  ])(
+    'an impact-edge exception on %s is a validation error',
+    (_name, edge, message) => {
+      expect(
+        validateTestImpactManifest([
+          ...TEST_IMPACT_MANIFEST,
+          { ...edge, reason: 'exception guard' },
+        ]),
+      ).toContain(message);
+    },
+  );
+  test.each([
+    ['conditional', { whenAll: ['packages/sdk/src/queries.ts'] }],
+    ['related', { related: true }],
+    ['lane-carrying', { lanes: ['test-full'] }],
+  ])('a %s owner does not own an excepted path', (_name, shape) => {
+    // Each shape lets the excepted path fall back to (or re-add) the graph,
+    // or defer the whole diff, so none may stand in for an explicit owner.
+    const withoutOwner = TEST_IMPACT_MANIFEST.filter(
+      (edge) => edge.pattern !== 'packages/sdk/src/client/http.ts',
+    );
+    expect(
+      validateTestImpactManifest([
+        ...withoutOwner,
+        {
+          pattern: 'packages/sdk/src/client/http.ts',
+          tests: ['packages/sdk/src/__tests__/fetch-sse.test.ts'],
+          ...shape,
+          reason: 'owner-shape guard',
+        },
+      ]),
+    ).toContain(
+      'impact edge exception has no explicit owner: packages/sdk/src/client/** except packages/sdk/src/client/http.ts',
+    );
+  });
+  test.each([
+    [
+      'packages/sdk/src/client/api-error-message.ts',
+      [
+        'packages/sdk/src/__tests__/api-error-message.test.ts',
+        'packages/sdk/src/__tests__/client-entry-portability.test.ts',
+        'packages/sdk/src/__tests__/client-fetchers-failure-paths.test.ts',
+      ],
+    ],
+    [
+      'packages/sdk/src/client/chatHttpError.ts',
+      [
+        'packages/sdk/src/__tests__/chatRuntimeStream.test.ts',
+        'packages/sdk/src/__tests__/client-entry-portability.test.ts',
+        'packages/sdk/src/__tests__/client-execution.test.ts',
+        'src-ui/src/hooks/orchestration/__tests__/queueDrain.test.ts',
+      ],
+    ],
+    [
+      'packages/sdk/src/client/index.ts',
+      ['packages/sdk/src/__tests__/client-entry-portability.test.ts'],
+    ],
+  ])(
+    'a broad-graph SDK module (%s) selects its own suites, not its import graph (#2326)',
+    (path, suites) => {
+      // Each of these reaches 626–744 test files through the import graph,
+      // which overruns the fast lane; consumers run in the merge-queue full
+      // regression instead. No lane: a lane would defer the whole diff.
+      const selection = selectChangedVerification([path]);
+      expect(selection.relatedPaths).not.toContain(path);
+      expect(selection.tests.map((entry) => entry.path).sort()).toEqual(
+        [...suites].sort(),
+      );
+      expect(selection.lanes).toEqual([]);
+    },
+  );
+  test('the SDK transport edge names exactly its own-behaviour suites', () => {
+    // Pinned in full: trimming a suite from the list is a coverage loss that
+    // a sampled arrayContaining would not notice.
+    expect(
+      selectChangedVerification(['packages/sdk/src/client/http.ts'])
+        .tests.map((entry) => entry.path)
+        .sort(),
+    ).toEqual([
+      'packages/sdk/src/__tests__/authenticated-client-transport.test.ts',
+      'packages/sdk/src/__tests__/client-entry-portability.test.ts',
+      'packages/sdk/src/__tests__/client-fetchers-failure-paths.test.ts',
+      'packages/sdk/src/__tests__/client-origin.test.ts',
+      'packages/sdk/src/__tests__/client-request-timeout.test.ts',
+      'packages/sdk/src/__tests__/fetch-sse.test.ts',
+      'packages/sdk/src/__tests__/request-inspection.test.ts',
+      'packages/sdk/src/__tests__/scoped-request-authority.test.ts',
+      'packages/sdk/src/__tests__/scoped-request-invocation-boundaries.test.tsx',
+      'src-ui/src/__tests__/useServerEvents-authority-stability.test.tsx',
+      'src-ui/src/contexts/__tests__/ApiBaseContext.credential-wake.test.tsx',
+      'src-ui/src/contexts/__tests__/ApiBaseContext.native-transport-order.test.tsx',
+    ]);
+  });
   test('selects portable client source scans and accepted-turn CLI consumers', () => {
+    // bounded-response.ts / client-origin.ts / http.ts are the transport:
+    // see the SDK transport test above.
     for (const path of [
-      'packages/sdk/src/client/http.ts',
-      'packages/sdk/src/client/bounded-response.ts',
+      'packages/sdk/src/client/projects.ts',
       'packages/sdk/src/client/future-client.ts',
     ]) {
       expect(
@@ -448,11 +640,23 @@ describe('changed verification selection', () => {
         .relatedPaths,
     ).toContain('packages/cli/src/commands/session-client.ts');
   });
+  test('selects the capability-matrix suites instead of its import graph (#2458)', () => {
+    const path = 'packages/contracts/src/engine-capability-matrix.ts';
+    const selection = selectChangedVerification([path]);
+    // contracts/agent.ts, config.ts and tool.ts import the matrix, so its
+    // graph is most of the corpus and overran the hosted fast-lane budget.
+    expect(selection.relatedPaths).not.toContain(path);
+    expect(selection.tests.map((entry) => entry.path)).toEqual(
+      expect.arrayContaining([
+        'packages/contracts/src/__tests__/engine-capability-matrix.test.ts',
+        'src-server/providers/__tests__/child-work-conformance.test.ts',
+        'src-server/services/orchestration/__tests__/attached-session-adoption.test.ts',
+        'src-server/services/orchestration/__tests__/orchestration-service.test.ts',
+      ]),
+    );
+    expect(selection.lanes).toEqual([]);
+  });
   test.each([
-    [
-      'packages/contracts/src/engine-capability-matrix.ts',
-      'src-server/services/orchestration/__tests__/orchestration-service.test.ts',
-    ],
     [
       'src-server/services/orchestration/attached-session-adoption.ts',
       'src-server/services/orchestration/__tests__/orchestration-service.test.ts',
@@ -923,7 +1127,7 @@ describe('changed verification selection', () => {
     // so the literal never appears inside a spawn call. That judgement stays
     // with the reviewer of the edge; the pin-only candidates were rejected by
     // hand and the docblock on SPAWNED_SCRIPT_EDGES records the rule.
-    expect(SPAWNED_SCRIPT_EDGES.length).toBe(11);
+    expect(SPAWNED_SCRIPT_EDGES.length).toBe(12);
     for (const edge of SPAWNED_SCRIPT_EDGES) {
       expect(existsSync(edge.pattern), edge.pattern).toBe(true);
       expect(edge.related, edge.pattern).toBe(true);

@@ -138,3 +138,46 @@ describe('owned search read worker readiness (station#1707)', () => {
     expect(waited).toBeLessThan(deadlineMs * 6);
   });
 });
+
+/**
+ * #2460: a read that produces no result reports WHICH lifecycle branch
+ * produced it, so a fast refusal is distinguishable from a deadline in the
+ * owner's log. Driven against real threads, not a stubbed lifecycle.
+ */
+describe('owned search read worker names why a read produced nothing (#2460)', () => {
+  const read = (worker: ReturnType<typeof readinessWorker>) => {
+    const reported: unknown[] = [];
+    const result = worker.execute(
+      (id) => JSON.stringify({ id, type: 'session-owner', threadId: 't' }),
+      (value) => value as { state: string },
+      undefined,
+      (refusal) => reported.push(refusal),
+    );
+    return { result, reported };
+  };
+
+  test('a worker that throws reports worker-error with its class, not its message', async () => {
+    const worker = readinessWorker({ mode: 'throw' });
+    const { result, reported } = read(worker);
+
+    expect(await result).toBeNull();
+    expect(reported).toEqual([{ kind: 'worker-error', name: 'Error' }]);
+  });
+
+  test('a worker that never answers reports the deadline', async () => {
+    const worker = readinessWorker({ mode: 'never', deadlineMs: 200 });
+    const { result, reported } = read(worker);
+
+    expect(await result).toBeNull();
+    expect(reported).toEqual([{ kind: 'deadline' }]);
+  });
+
+  test('a closed owner reports closed without starting a thread', async () => {
+    const worker = readinessWorker({});
+    await worker.close();
+    const { result, reported } = read(worker);
+
+    expect(await result).toBeNull();
+    expect(reported).toEqual([{ kind: 'closed' }]);
+  });
+});

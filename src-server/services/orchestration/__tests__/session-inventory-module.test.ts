@@ -457,6 +457,47 @@ describe('SessionInventoryModule', () => {
     ]);
     expect(JSON.stringify(result.projection)).not.toContain('never returned');
   });
+  test('#2324: lists no authored input for a turn the engine opened on its own', async () => {
+    const module = createSessionInventoryModule({
+      sessionOutputs: {
+        list: vi.fn().mockResolvedValue({
+          status: 'found',
+          page: { version: 'session-outputs/v1', items: [], partial: false },
+        }),
+      } as never,
+      canReadSession: () => true,
+      readWholeSessionEvents: () => ({
+        events: [
+          {
+            id: 'user-input',
+            method: 'turn.started',
+            turnId: 'turn-a',
+            attachments: [],
+          },
+          {
+            id: 'provider-start',
+            method: 'turn.started',
+            turnId: 'provider:p',
+            trigger: 'provider',
+            attachments: [],
+          },
+        ] as never,
+        highWater: 2,
+      }),
+    });
+    const result = await module.read({
+      scope: { kind: 'whole-session', sessionId: 'session-a' },
+      authority,
+      current: () => true,
+    });
+    expect(result.status).toBe('found');
+    if (result.status !== 'found') throw new Error('expected projection');
+    expect(
+      result.projection.groups
+        .find((group) => group.id === 'inputs')
+        ?.items.map((item) => ('eventId' in item ? item.eventId : undefined)),
+    ).toEqual(['user-input']);
+  });
   // station#1558 (fix round, M4): `ThreadToolResultRow.terminalStatus` is a
   // published, exactly-validated vocabulary of outcomes Station observed. An
   // unresolved completion is not one of them, and the old else-branch would

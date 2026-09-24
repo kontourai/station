@@ -1,16 +1,17 @@
 /**
  * @vitest-environment jsdom
  *
- * archive#1094: a stream that terminal-stops (401/403) must
- * be `.close`d, not just dropped from `ensureOrchestrationEventStream`'s
- * dedup map — otherwise it becomes an orphan that stays strongly referenced
- * by the SDK's origin-scoped credential-change wake registry
- * (`packages/sdk/src/client/http.ts`) and silently reactivates alongside
- * whatever live stream a later call created, double-applying events. This
- * test proves the fix using the REAL (unmocked) `fetchSSE` transport against
- * a mocked global `fetch`, only stubbing the sibling event-handler modules
- * so event application can be counted without a full `activeChatsStore`
- * fixture.
+ * archive#1094, amended by station#2301: a stream that terminal-stops
+ * (401/403) must never become an ORPHAN — a connection that the dedup map no
+ * longer owns but that the SDK's origin-scoped credential-change wake
+ * (`packages/sdk/src/client/http.ts`) can still resume, double-applying
+ * events alongside whatever stream a later call created. archive#1094 closed
+ * the stream to achieve that; station#2301 keeps it PARKED and registered
+ * instead, because closing is what made a fixed credential unable to revive
+ * the feed at all. The invariant pinned here is the one that matters either
+ * way: exactly one owner, and every event applied once. Uses the REAL
+ * (unmocked) `fetchSSE` transport against a mocked global `fetch`, stubbing
+ * only the sibling event-handler modules so application can be counted.
  */
 import { notifyCredentialChanged } from '@kontourai/station-sdk';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -27,7 +28,10 @@ vi.mock('../hooks/orchestration/eventHandlers', () => ({
   settleSemanticDeliveryBuffer,
 }));
 
-import { ensureOrchestrationEventStream } from '../hooks/orchestration/ensureOrchestrationEventStream';
+import {
+  ensureOrchestrationEventStream,
+  resetSessionReadModelRefreshForTests,
+} from '../hooks/orchestration/ensureOrchestrationEventStream';
 
 const APP_ORIGIN = 'https://ensure-orchestration-orphan-case.example.test';
 
@@ -72,41 +76,79 @@ describe('ensureOrchestrationEventStream — station#1094 terminal-orphan regres
     vi.unstubAllGlobals();
   });
 
-  it('a terminal-stopped stream is closed, not orphaned: a later credential change does not wake it or double-apply events', async () => {
+  it('a terminal-stopped stream is never orphaned: a remount opens no second stream, and the credential wake resumes the one owner exactly once', async () => {
     vi.useFakeTimers();
     const fetchMock = vi
       .fn()
-      // Stream #1 (first mount): 401 — terminal, must close+deregister.
+      // First mount: 401 — terminal, the stream parks in place.
       .mockResolvedValueOnce(new Response('', { status: 401 }))
-      // Stream #2 (remount after #1's dedup entry frees up): connects and
-      // delivers exactly one event, then stays open.
+      // The credential wake resumes THAT stream: it connects and delivers
+      // exactly one event, then stays open.
       .mockResolvedValueOnce(
         openSseResponseWithOneFrame(orchestrationEventFrame('evt-live')),
       )
-      // Only reached if the orphan bug is present: stream #1 reconnecting.
-      .mockResolvedValueOnce(new Response('', { status: 401 }));
+      // Only reached if a second, orphaned or duplicate stream exists.
+      .mockResolvedValueOnce(
+        openSseResponseWithOneFrame(orchestrationEventFrame('evt-live')),
+      );
     vi.stubGlobal('fetch', fetchMock);
 
     ensureOrchestrationEventStream(APP_ORIGIN);
     await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
-    // Let the terminal catch handler's synchronous close+delete run
-    // before "remounting" — mirrors a real unmount/remount tick.
     await Promise.resolve();
     await Promise.resolve();
     expect(settleSemanticDeliveryBuffer).toHaveBeenCalledWith(APP_ORIGIN, true);
     expect(settleSemanticDeliveryBuffer).not.toHaveBeenCalledWith(APP_ORIGIN);
 
+    // A remount while parked finds the owner and opens nothing new.
     ensureOrchestrationEventStream(APP_ORIGIN);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    // The credential wake resumes the one owner.
+    notifyCredentialChanged(APP_ORIGIN);
     await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
     await vi.waitFor(() =>
       expect(handleOrchestrationEvent).toHaveBeenCalledTimes(1),
     );
 
-    // The credential-change wake that resumes a genuinely blocked stream
-    // must NOT reach stream #1: it was closed, not parked.
+    // Nothing else is alive to reconnect or re-apply.
+    ensureOrchestrationEventStream(APP_ORIGIN);
     notifyCredentialChanged(APP_ORIGIN);
     await vi.advanceTimersByTimeAsync(60_000);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(handleOrchestrationEvent).toHaveBeenCalledTimes(1);
+  });
 
+  it('past the retry floor, a remount retries the SAME parked stream — still one owner', async () => {
+    vi.useFakeTimers();
+    const origin = 'https://ensure-orchestration-orphan-late.example.test';
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response('', { status: 401 }))
+      // The remount's retry of the one owner.
+      .mockResolvedValueOnce(
+        openSseResponseWithOneFrame(orchestrationEventFrame('evt-late')),
+      )
+      // Only reached if a second stream exists alongside it.
+      .mockResolvedValueOnce(
+        openSseResponseWithOneFrame(orchestrationEventFrame('evt-late')),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+
+    ensureOrchestrationEventStream(origin);
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+
+    await vi.advanceTimersByTimeAsync(31_000);
+    ensureOrchestrationEventStream(origin);
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() =>
+      expect(handleOrchestrationEvent).toHaveBeenCalledTimes(1),
+    );
+
+    // A credential wake finds nothing else parked to resume.
+    notifyCredentialChanged(origin);
+    await vi.advanceTimersByTimeAsync(60_000);
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(handleOrchestrationEvent).toHaveBeenCalledTimes(1);
   });
@@ -170,6 +212,26 @@ describe('ensureOrchestrationEventStream — turn provenance sibling (station#14
     expect(passedProvenance).toEqual(provenance);
   });
 
+  it('passes the frame id as the event stream position (#2334)', async () => {
+    // The approval-pick model orders a report against the user's pick by
+    // this server sequence, never by a clock.
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        openSseResponseWithOneFrame(orchestrationEventFrame('41')),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+
+    ensureOrchestrationEventStream(
+      'https://ensure-orchestration-position.example.test',
+    );
+    await vi.waitFor(() =>
+      expect(handleOrchestrationEvent).toHaveBeenCalledTimes(1),
+    );
+
+    expect(handleOrchestrationEvent.mock.calls[0]?.[4]).toBe(41);
+  });
+
   it('passes undefined when the frame carries no sibling', async () => {
     const fetchMock = vi
       .fn()
@@ -195,9 +257,18 @@ describe('ensureOrchestrationEventStream — turn provenance sibling (station#14
 // read-model, whose cached copy still said `lifecycleState: 'running'` because
 // nothing invalidated it when the session failed. The chip and the reason were
 // reading two different sources.
-describe('ensureOrchestrationEventStream — session read-model freshness', () => {
+// HELPER-LEVEL (#2310 review H2): every test below injects a QueryClient by
+// hand, so these prove the refresh logic only. That production supplies one —
+// `ChatDock` registering its `useQueryClient()` — is proven through the real
+// mount in `ChatWorkspacePaneStreamQueryClient.test.tsx` (#2307).
+describe('ensureOrchestrationEventStream — session read-model refresh (helper-level, injected QueryClient)', () => {
   beforeEach(() => {
     handleOrchestrationEvent.mockReset();
+    // The throttle and client registrations are module-global; each test starts
+    // from a quiet window with nothing bound (review L3), on fake clocks so
+    // the window is advanced rather than waited out.
+    resetSessionReadModelRefreshForTests();
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
   });
   afterEach(() => {
     vi.useRealTimers();
@@ -272,34 +343,62 @@ describe('ensureOrchestrationEventStream — session read-model freshness', () =
     );
   });
 
-  // The mount-order trap this refresh has to survive: `ChatDock.tsx` creates
-  // the stream WITHOUT a client while `useOrchestration` creates it WITH one,
-  // and only the first call for an apiBase takes effect.
-  it('still refreshes when the stream was created by the caller that has no client', async () => {
+  // #2307: a client belongs to ONE authority's apiBase. Another apiBase's
+  // stream — e.g. the previous authority's, still alive after a switch — must
+  // not write into it.
+  it("never refreshes a client registered for a different apiBase's stream", async () => {
     const invalidateQueries = vi.fn();
-    // A prior call binds the app's one client...
-    ensureOrchestrationEventStream(
-      'https://ensure-orchestration-bound.example.test',
-      {
-        invalidateQueries,
-      } as never,
-    );
-    // The refresh is throttled to at most once a second; the preceding test
-    // fired one, so wait past that window rather than racing it.
-    await new Promise((resolve) => setTimeout(resolve, 1100));
+    const boundOrigin = 'https://ensure-orchestration-bound.example.test';
+    const unboundOrigin = 'https://ensure-orchestration-unbound.example.test';
     vi.stubGlobal(
       'fetch',
       vi
         .fn()
-        .mockResolvedValue(
-          openSseResponseWithOneFrame(
-            terminalFrame('evt-kill-2', 'session.exited'),
-          ),
+        .mockImplementation((input: RequestInfo | URL) =>
+          String(input).startsWith(unboundOrigin)
+            ? Promise.resolve(
+                openSseResponseWithOneFrame(
+                  terminalFrame('evt-kill-2', 'session.exited'),
+                ),
+              )
+            : new Promise<Response>(() => undefined),
         ),
     );
-    //.and a DIFFERENT origin's stream, created with no client, still uses it.
-    ensureOrchestrationEventStream(
-      'https://ensure-orchestration-unbound.example.test',
+    ensureOrchestrationEventStream(boundOrigin, {
+      invalidateQueries,
+    } as never);
+    ensureOrchestrationEventStream(unboundOrigin);
+    await vi.waitFor(() =>
+      expect(handleOrchestrationEvent).toHaveBeenCalledTimes(1),
+    );
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(invalidateQueries).not.toHaveBeenCalled();
+  });
+
+  // #2307: a docked and a full-screen Chat can both be mounted on one
+  // authority's client; closing one must not unregister the other.
+  it('keeps refreshing while another registration of the same client is live', async () => {
+    const invalidateQueries = vi.fn();
+    let resolveResponse: ((response: Response) => void) | undefined;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(
+        () =>
+          new Promise<Response>((resolve) => {
+            resolveResponse = resolve;
+          }),
+      ),
+    );
+    const origin = 'https://ensure-orchestration-two-docks.example.test';
+    const client = { invalidateQueries } as never;
+    const releaseFirst = ensureOrchestrationEventStream(origin, client);
+    ensureOrchestrationEventStream(origin, client);
+    releaseFirst();
+    await vi.waitFor(() => expect(resolveResponse).toBeTypeOf('function'));
+    resolveResponse?.(
+      openSseResponseWithOneFrame(
+        terminalFrame('evt-kill-3', 'session.exited'),
+      ),
     );
     await vi.waitFor(() =>
       expect(invalidateQueries).toHaveBeenCalledWith({
@@ -329,5 +428,66 @@ describe('ensureOrchestrationEventStream — session read-model freshness', () =
       expect(handleOrchestrationEvent).toHaveBeenCalledTimes(1),
     );
     expect(invalidateQueries).not.toHaveBeenCalled();
+  });
+
+  // #2310: a Draft (nothing ever sent) sits outside "Active now". Its first
+  // `turn.started` is the only moment that changes, so it must re-read the
+  // projection — and a first turn that lands inside the throttle window of
+  // some other session's terminal event must be deferred, not dropped, or the
+  // promotion stays unseen until an unrelated refetch.
+  it('re-reads the read-model on turn.started, deferring one that lands inside the window', async () => {
+    const invalidateQueries = vi.fn();
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValueOnce(
+          openSseResponseWithOneFrame(
+            terminalFrame('evt-other-session-done', 'turn.completed') +
+              terminalFrame('evt-first-turn', 'turn.started'),
+          ),
+        ),
+    );
+
+    ensureOrchestrationEventStream(
+      'https://ensure-orchestration-readmodel-first-turn.example.test',
+      { invalidateQueries } as never,
+    );
+    await vi.waitFor(() =>
+      expect(handleOrchestrationEvent).toHaveBeenCalledTimes(2),
+    );
+    // The terminal event refreshed immediately; the turn.started fell inside
+    // its window...
+    expect(invalidateQueries).toHaveBeenCalledTimes(1);
+    // ...and is deferred, not dropped: it fires once the window closes.
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(invalidateQueries).toHaveBeenCalledTimes(2);
+    expect(invalidateQueries).toHaveBeenLastCalledWith({
+      queryKey: ['orchestration-sessions'],
+    });
+  });
+
+  it('re-reads the read-model on a lone turn.started', async () => {
+    const invalidateQueries = vi.fn();
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValueOnce(
+          openSseResponseWithOneFrame(
+            terminalFrame('evt-lone-first-turn', 'turn.started'),
+          ),
+        ),
+    );
+
+    ensureOrchestrationEventStream(
+      'https://ensure-orchestration-readmodel-lone-turn.example.test',
+      { invalidateQueries } as never,
+    );
+    await vi.waitFor(() =>
+      expect(invalidateQueries).toHaveBeenCalledWith({
+        queryKey: ['orchestration-sessions'],
+      }),
+    );
   });
 });

@@ -261,10 +261,14 @@ jobs:
           # npm's registry read lags its write: the first Nightly through this
           # step read E404 for a version the publish had just confirmed
           # (#1498). Bounded retry; a persistent miss still fails closed.
+          # Run 35890429058 published successfully but the version was still
+          # 404 after 12 reads (3 minutes). --prefer-online skips npm's local
+          # metadata cache, so a cached 404 cannot be re-served, and the
+          # window is 40 reads (10 minutes).
           attempt=0
-          until npm view "@kontourai/station-cli@$CLI_VERSION" gitHead --json > "$registry_record" 2> "$RUNNER_TEMP/nightly-cli-registry-view.err"; do
+          until npm view --prefer-online "@kontourai/station-cli@$CLI_VERSION" gitHead --json > "$registry_record" 2> "$RUNNER_TEMP/nightly-cli-registry-view.err"; do
             attempt=$((attempt + 1))
-            if [ "$attempt" -ge 12 ]; then
+            if [ "$attempt" -ge 40 ]; then
               cat "$RUNNER_TEMP/nightly-cli-registry-view.err" >&2
               echo "::error::npm registry never returned @kontourai/station-cli@$CLI_VERSION after $attempt reads" >&2
               exit 1

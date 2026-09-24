@@ -81,6 +81,13 @@
       "route": "/settings?view=plugin-visibility&highlight=plugin-visibility"
     },
     {
+      "id": "device-hosts",
+      "label": "Device hosts",
+      "scope": "station",
+      "section": "device-hosts",
+      "route": "/settings?view=device-hosts&highlight=device-hosts"
+    },
+    {
       "id": "host-runtime",
       "label": "Station host",
       "scope": "informational",
@@ -176,7 +183,7 @@
     {
       "id": "default-approval-mode",
       "label": "Default approval mode",
-      "help": "New chats start in this approval posture unless the chat or its engine connection names its own.",
+      "help": "New chats start in this approval posture unless the chat or its Agent names its own.",
       "scope": "station",
       "section": "permissions",
       "route": "/settings?view=permissions&highlight=default-approval-mode",
@@ -316,6 +323,15 @@
       "section": "chat",
       "route": "/settings?view=chat&highlight=chat-dock-auto-hide",
       "configKey": "chatDockAutoHide"
+    },
+    {
+      "id": "chat-auto-float-browser",
+      "label": "Automatically show agent browser sessions",
+      "help": "Only the optional features turned on here are active on this device, and this is where each notification category’s sound is kept.",
+      "scope": "device",
+      "section": "chat",
+      "route": "/settings?view=chat&highlight=chat-auto-float-browser",
+      "configKey": "featureSettings"
     },
     {
       "id": "diff-style",

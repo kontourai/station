@@ -17,10 +17,10 @@ Models: `us.amazon.nova-lite-v1:0`, `us.amazon.nova-pro-v1:0`
 
 ## Files
 
-- `plugin.json` — declares `conversational` provider type, requires `aws:bedrock` permission
+- `plugin.json` — entrypoint, server module (`plugin.server` permission) and the `region` and `model` settings the relay reads
 - `plugin.mjs` — structural-only server WS relay endpoint at `/api/plugins/nova-sonic-voice/relay`
 - `src/NovaSonicProvider.ts` — preview ConversationalVoiceProvider shape for STT + TTS in one bidirectional session
-- `src/index.ts` — registers provider into `voiceRegistry` on load
+- `src/index.ts` — `activate({ apiBase })` registers the provider into `voiceRegistry` and returns the disposer the plugin host calls on reload or disable
 
 ## Status
 

@@ -44,11 +44,11 @@ interface DelegatedTaskRecord {
   supervision?: {
     provider: string;
     turnId: string;
-    deadlineAt: string;
+    deadlineAt?: string;
     elapsedMs: number;
-    remainingMs: number;
-    idleLimitMs: number;
-    totalLimitMs: number;
+    remainingMs?: number;
+    idleLimitMs?: number;
+    totalLimitMs?: number;
     lastProgressEventAt?: string;
   };
   reason?: {
@@ -290,6 +290,28 @@ describe('station delegate over HTTP', () => {
                   code: 'provider-plan-quota-exhausted',
                   quotaWindow: '0 hour',
                   resetReported: '2026-09-21 18:55:29',
+                },
+              }
+            : {}),
+          // #2269: an idle window declared, no total budget.
+          ...(body.prompt === 'trigger idle-only supervised task'
+            ? {
+                supervision: {
+                  provider: 'muse',
+                  turnId: 'turn-idle-only-1',
+                  elapsedMs: 10 * 60_000,
+                  idleLimitMs: 30 * 60_000,
+                },
+              }
+            : {}),
+          // #2269: Muse's production default — no bound declared at all.
+          ...(body.prompt === 'trigger unbounded supervised task'
+            ? {
+                supervision: {
+                  provider: 'muse',
+                  turnId: 'turn-unbounded-1',
+                  elapsedMs: 45 * 60_000,
+                  lastProgressEventAt: '2026-09-20T22:10:00.000Z',
                 },
               }
             : {}),
@@ -924,6 +946,66 @@ describe('station delegate over HTTP', () => {
       detail:
         'The turn ended after a full window with no verified protocol activity.',
     });
+  });
+
+  test('status renders a supervision with no declared bound as none declared (#2269)', async () => {
+    const { runCli } = await import('../cli.js');
+
+    await runCli([
+      'delegate',
+      '--agent=default',
+      '--json',
+      'trigger unbounded supervised task',
+      `--api-base=${apiBase}`,
+    ]);
+    const created = JSON.parse(
+      consoleLog.mock.calls.map((call) => call[0]).join('\n'),
+    );
+    consoleLog.mockClear();
+
+    await runCli([
+      'delegate',
+      'status',
+      created.data.taskId,
+      `--api-base=${apiBase}`,
+    ]);
+    const printed = consoleLog.mock.calls.map((call) => call[0]).join('\n');
+    expect(printed).toContain('Turn budget: none declared for this turn');
+    expect(printed).toContain(
+      'Idle limit: none declared for this turn (watchdog last observed activity at 2026-09-20T22:10:00.000Z;',
+    );
+    expect(printed).not.toContain('undefined');
+    expect(printed).not.toContain('NaN');
+  });
+
+  test('status renders an idle-only supervision as no declared budget (#2269)', async () => {
+    const { runCli } = await import('../cli.js');
+
+    await runCli([
+      'delegate',
+      '--agent=default',
+      '--json',
+      'trigger idle-only supervised task',
+      `--api-base=${apiBase}`,
+    ]);
+    const created = JSON.parse(
+      consoleLog.mock.calls.map((call) => call[0]).join('\n'),
+    );
+    consoleLog.mockClear();
+
+    await runCli([
+      'delegate',
+      'status',
+      created.data.taskId,
+      `--api-base=${apiBase}`,
+    ]);
+    const printed = consoleLog.mock.calls.map((call) => call[0]).join('\n');
+    expect(printed).toContain('Turn budget: none declared for this turn');
+    expect(printed).toContain(
+      'Idle limit: 30m with no verified protocol activity',
+    );
+    expect(printed).not.toContain('undefined');
+    expect(printed).not.toContain('deadline');
   });
 
   /**

@@ -300,6 +300,15 @@ saved Station persistence for bootstrap and diagnostics; it never changes the
 default. A named override or merely viewing a Station also never changes the
 default.
 
+A native Desktop may save an inert broker route in this same store. It has no
+CLI transport or credential reference: `--station` and `STATION_TARGET` refuse
+that route instead of sending a direct request to its recorded Station origin.
+The strict schema means an older CLI or Desktop build that predates the
+`relayRoute` field refuses the shared profile file. Update readers sharing the
+root before saving a broker route; see [#2404](https://github.com/kontourai/station/issues/2404)
+for the mixed-version compatibility work. Current readers fail closed without
+overwriting unknown metadata.
+
 Project selection is an explicit, secret-free pointer to a saved Station:
 `station stations project use <name>` maps the canonical invoked directory in
 the owner-controlled store, `show` reports it, and `clear` removes it.
@@ -2587,20 +2596,30 @@ station plugin init my-plugin
 Scaffold a new plugin project using a specific template.
 
 ```
-station plugin create [name] [--template=<full|layout|provider>]
+station plugin create [name] [--template=<pane|full|provider>]
 ```
+
+Every template writes an Agent Plugins 1.0 `plugin.json` whose Station
+settings live under `extensions["io.kontourai.station"]`. The same templates
+back the in-app **Plugins → New plugin** action
+(`packages/shared/src/plugin-scaffold.ts`). The name must match the Agent
+Plugins name grammar: lowercase letters, digits, hyphens or periods.
 
 | Template | Description |
 |----------|-------------|
-| `full` | Layout + agent + build config starter |
-| `layout` | UI-focused starter with layout manifest and entrypoint |
-| `provider` | Server-side starter with `serverModule`, provider files, and request hooks |
+| `pane` | One `plugin-component` Workspace Pane (`src/index.tsx`, `src/pane.css`) and a build script |
+| `full` (default) | Two Workspace Panes, an Agent definition, and a build script |
+| `provider` | Server-side starter with `serverModule`, a branding provider, and a setting |
+| `layout` | Alias for `pane`, kept for existing scripts |
 
 ```bash
 station plugin create my-plugin --template=full
-station plugin create my-layout --template=layout
+station plugin create my-pane --template=pane
 station plugin create my-provider --template=provider
 ```
+
+`station plugin dev` previews legacy layout tabs only; it does not render
+`workspacePanes`. Install the scaffold to see its Pane.
 
 ### `plugin build`
 

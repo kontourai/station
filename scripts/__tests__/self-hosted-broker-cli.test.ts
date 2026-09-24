@@ -6,6 +6,7 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from 'node:fs';
 import { createServer } from 'node:http';
@@ -13,6 +14,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { describe, expect, test } from 'vitest';
+import { SelfHostedBrokerService } from '../../src-server/services/connections/self-hosted-broker-service.js';
 import {
   captureOwnedProcessOutput,
   executeOwnedCommand,
@@ -39,6 +41,92 @@ test.runIf(process.platform === 'win32')(
   },
 );
 describe.runIf(process.platform !== 'win32')('self-hosted broker CLI', () => {
+  test('issues a private one-time invitation and lists/revokes one client grant', () => {
+    const root = mkdtempSync(join(tmpdir(), 'station-broker-invite-cli-'));
+    const configPath = join(root, 'config.json');
+    const databasePath = join(root, 'broker.sqlite');
+    const credentialsPath = join(root, 'credentials.json');
+    const requestPath = join(root, 'request.json');
+    const invitationPath = join(root, 'invitation.json');
+    const exactScope = {
+      stationId: 'station-12345678',
+      enrollmentId: 'enroll-12345678',
+      routingGeneration: 1,
+      browserOrigin: 'http://localhost:4173',
+    };
+    const clientOrigin = 'http://localhost:4174';
+    writeFileSync(
+      configPath,
+      JSON.stringify({
+        version: 'station-self-hosted-broker/v1',
+        databasePath,
+        credentialsPath,
+        port: 0,
+        provision: [exactScope],
+      }),
+      { mode: 0o600 },
+    );
+    const run = (mode: string, ...args: string[]) =>
+      execFileSync(
+        resolve('node_modules/.bin/tsx'),
+        ['scripts/self-hosted-broker.ts', mode, configPath, ...args],
+        {
+          cwd: resolve(import.meta.dirname, '../..'),
+          windowsHide: true,
+          timeout: 10_000,
+          maxBuffer: 64 * 1024,
+          encoding: 'utf8',
+        },
+      );
+    try {
+      run('init');
+      writeFileSync(
+        requestPath,
+        JSON.stringify({
+          version: 'station-broker-invitation-request/v1',
+          brokerOrigin: 'http://localhost:4312',
+          clientOrigin,
+          stationSigningKeyId: 'K'.repeat(43),
+          stationSigningGeneration: 2,
+        }),
+        { mode: 0o600 },
+      );
+      const output = run('invite', requestPath, invitationPath);
+      const invitation = JSON.parse(readFileSync(invitationPath, 'utf8')) as {
+        invitationId: string;
+        invitationSecret: string;
+        scope: typeof exactScope;
+      };
+      expect(output).toContain('STATION_BROKER_INVITATION_WRITTEN');
+      expect(output).not.toContain(invitation.invitationSecret);
+      expect(statSync(invitationPath).mode & 0o077).toBe(0);
+      expect(invitation.scope).toEqual({
+        ...exactScope,
+        browserOrigin: clientOrigin,
+      });
+      expect(() => run('invite', requestPath, invitationPath)).toThrow();
+      const service = new SelfHostedBrokerService(databasePath);
+      const grant = service.redeemInvitation(
+        invitation as Parameters<typeof service.redeemInvitation>[0],
+        clientOrigin,
+      );
+      service.close();
+      const inventory = run('grants');
+      expect(inventory).toContain(grant.credential.id);
+      expect(inventory).toContain(invitation.invitationId);
+      expect(inventory).not.toContain(grant.credential.secret);
+      expect(run('revoke', grant.credential.id)).toContain(
+        'STATION_BROKER_GRANT_REVOKED',
+      );
+      const reopened = new SelfHostedBrokerService(databasePath);
+      expect(() => reopened.status(invitation.scope, grant.credential)).toThrow(
+        'broker_credential_refused',
+      );
+      reopened.close();
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
   test('publishes one private bundle and reuses it on an exact init retry', () => {
     const root = mkdtempSync(join(tmpdir(), 'station-broker-cli-'));
     const configPath = join(root, 'config.json');

@@ -1,10 +1,16 @@
 import {
-  parseWorkspaceBrowserPreviewPaneState,
-  type WorkspaceBrowserPreviewPaneState,
-} from '@kontourai/station-contracts/workspace-browser-preview';
+  parseStoredWorkspaceBrowserPaneState,
+  parseWorkspaceBrowserPaneState,
+  type StoredWorkspaceBrowserPaneState,
+  type WorkspaceBrowserPaneState,
+} from '@kontourai/station-contracts/workspace-browser-pane';
 import { toWorkspacePaneStateKey } from '@kontourai/station-contracts/workspace-pane';
 import type { WorkspacePaneHostOpenPreparation } from './WorkspacePaneHostOpenContext';
 
+/**
+ * The key namespace predates pane state v2 and is kept so a v1 record is
+ * found and migrated in place; each record carries its own `version`.
+ */
 const BROWSER_PREVIEW_PANE_STATE_STORAGE_PREFIX =
   'station:browser-preview-pane-state:v1';
 const MAX_BROWSER_PREVIEW_PANE_STATE_BYTES = 4 * 1024;
@@ -47,11 +53,15 @@ function clearInvalidState(
   }
 }
 
-/** One malformed record is removed in isolation; unrelated pane state survives. */
+/**
+ * One malformed record is removed in isolation; unrelated pane state
+ * survives. A v1 record is returned as a migration for the pane to perform
+ * on mount; a v2 record as the session reference it is.
+ */
 export function readBrowserPreviewPaneState(
   storage: BrowserPreviewPaneStateStorage,
   stateKey: string,
-): WorkspaceBrowserPreviewPaneState | null {
+): StoredWorkspaceBrowserPaneState | null {
   const key = browserPreviewPaneStateStorageKey(stateKey);
   try {
     const raw = storage.getItem(key);
@@ -61,7 +71,7 @@ export function readBrowserPreviewPaneState(
     ) {
       throw new Error('state is absent or exceeds the byte bound');
     }
-    const state = parseWorkspaceBrowserPreviewPaneState(JSON.parse(raw));
+    const state = parseStoredWorkspaceBrowserPaneState(JSON.parse(raw));
     if (!state) throw new Error('state is invalid');
     return state;
   } catch {
@@ -81,7 +91,7 @@ function reclaimCapacity(storage: BrowserPreviewPaneStateStorage): void {
         clearInvalidState(storage, key);
         continue;
       }
-      if (!parseWorkspaceBrowserPreviewPaneState(JSON.parse(raw))) {
+      if (!parseStoredWorkspaceBrowserPaneState(JSON.parse(raw))) {
         clearInvalidState(storage, key);
       }
     } catch {
@@ -93,11 +103,11 @@ function reclaimCapacity(storage: BrowserPreviewPaneStateStorage): void {
 export function writeBrowserPreviewPaneState(
   storage: BrowserPreviewPaneStateStorage,
   stateKey: string,
-  state: WorkspaceBrowserPreviewPaneState,
+  state: WorkspaceBrowserPaneState,
 ): boolean {
   const key = browserPreviewPaneStateStorageKey(stateKey);
   try {
-    const normalized = parseWorkspaceBrowserPreviewPaneState(state);
+    const normalized = parseWorkspaceBrowserPaneState(state);
     if (!normalized) return false;
     const encoded = JSON.stringify(normalized);
     if (
@@ -141,10 +151,20 @@ export function removeBrowserPreviewPaneState(
 export function createBrowserPreviewPaneStatePreparation(
   storage: BrowserPreviewPaneStateStorage,
   stateKey: string,
-  state: WorkspaceBrowserPreviewPaneState,
+  state: WorkspaceBrowserPaneState,
 ): WorkspacePaneHostOpenPreparation {
   return {
     prepare: () => writeBrowserPreviewPaneState(storage, stateKey, state),
     rollback: () => removeBrowserPreviewPaneState(storage, stateKey),
   };
+}
+
+/** The Project a stored record of either version belongs to. */
+export function storedBrowserPaneProjectId(
+  stored: StoredWorkspaceBrowserPaneState | null,
+): string | null {
+  if (!stored) return null;
+  return stored.version === '2.0'
+    ? stored.state.projectId
+    : stored.migration.projectId;
 }

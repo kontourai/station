@@ -44,6 +44,91 @@ read-only; they can still display and copy the complete address. Ordinary
 browser-local saved Stations retain their existing edit and endpoint-verification
 flow.
 
+On native Desktop, **Add computer → Save an encrypted broker route** records
+the Station address, broker address and exact Station enrollment. **Saved broker
+routes** lists, edits and removes those records and reports whether this device
+has a separately approved Station signing key. Saving a route does not connect,
+sign in, pair a Device or grant Project access. Until the broker transport is
+wired into the ordinary client, these records remain unconnected and cannot be
+selected as direct Station connections or CLI defaults. The CLI also refuses
+`--station` and `STATION_TARGET` when they name one of these inert routes.
+
+In the browser, **Manage Stations → Broker routes** first has a **Station
+signing key** step. A fresh browser with no Device cookie can reach the same
+setup from **Connect to a Station → Use a broker invitation**. The operator can run
+`npm run --silent connection:key -- inspect --home=<absolute-home-path>` and
+send its public JSON report through a separate trusted channel. Compare the
+complete SHA-256 JWK thumbprint shown by the browser with the operator before
+checking the approval box. A broker invitation, its URL, or its contents cannot
+approve this key. The browser records only public trust metadata in its
+origin-local trust store. Rotation requires a higher key generation for the
+same enrollment; revoked trust stays revoked until a higher-generation key is
+independently approved. A different enrollment cannot be reset from this form.
+
+After that separate approval, the browser can accept a one-time invitation
+link or the operator's private JSON invitation. Enter the Station application
+origin separately. For a route that must cross networks, enter the operator's
+**TURN server URL**, **TURN username**, and **TURN credential** with the
+invitation. The fields are optional for same-network host-candidate testing;
+when supplied, all three are required and the browser uses relay-only ICE. The
+versioned credentials live in a separate origin-local IndexedDB record bound to
+the exact broker, Station enrollment and generation, application origin, and
+browser origin. They do not enter the saved Station entry, invitation, broker
+grant, account or Device authority. **Forget route** removes that record.
+After a route is saved, its **Configure TURN** action can add, replace or clear
+these settings without another invitation. Station retires the active browser
+peer before changing the credentials, then reconnects the selected route. To
+avoid replacing live route settings with an invitation that may fail, an
+already-saved route cannot be accepted again; use **Configure TURN** to change
+its ICE service.
+
+Then select the saved route. The routing grant stays in browser IndexedDB,
+outside the saved Station entry. A selected route uses an encrypted browser
+channel for the Station handshake and application requests; a missing grant,
+retired key or failed peer connection refuses instead of falling back to direct
+HTTP. After selecting the route, **Verify account and
+Device** offers a fresh username/password account flow where the Station's
+provider supports pending Device enrollment. The Station operator must approve
+that Device; only a signed activation completes the account continuation.
+Unsupported providers refuse, and Project access remains a separate grant.
+If you also have a Project invitation, enter its token in that dialog before
+verification. After the operator approves the Device and Station activates its
+account session, the browser accepts the invitation through the encrypted
+channel; the response must confirm Project membership without granting Device
+access. Close the dialog to open the newly permitted Project.
+The local/free `--station-ui` acceptance drives this ordinary browser flow on
+two distinct HTTPS Origins on one host. It verifies operator key approval,
+invitation acceptance, TURN relay selection, fresh account login, explicit
+Device approval, Project access, and a published Task through the Station UI;
+the unpublished Task remains hidden, and the browser sends no direct Station
+`/api` requests after accepting the route. This fixture does not prove Internet
+NAT traversal, a second physical machine, or the real two-person journey.
+Cookie-session adoption, native route selection, and the full account,
+cookie-adoption, and revocation matrix remain separate checks. Browser broker
+routes also disable attachment staging uploads, interactive terminal WebSockets
+and Nova voice sockets for now: those features still require direct browser
+XHR, fetch or WebSocket access, so Station reports them unavailable before
+sending attachment bytes, upload grants, terminal input or voice audio.
+
+One broker can serve several Stations, and one Station can be reached through
+more than one route. A broker route belongs beneath the Station it reaches; it
+is not another Station or a person. A short-lived invitation can enroll one
+Device's separate routing grant without sharing the operator's long-lived
+broker credential. That grant permits signaling only. The Device must still
+approve the Station signing key independently and complete Station account,
+Device and Project authorization. The Station operator must explicitly allow
+the Device's application Origin; possession of an invitation does not change
+that allowlist. See the [local broker lab](local-collaboration-lab.md#separate-self-hosted-broker-and-production-browser-consumer)
+for the source-level pilot and its current UI/native limits.
+
+Native Desktop and the CLI share a strict saved-profile file. An older build
+that predates broker-route metadata refuses the updated file instead of
+discarding fields it does not understand. Update both clients that use the
+shared profile root before saving a broker route; [#2404](https://github.com/kontourai/station/issues/2404)
+tracks a mixed-version migration. Removing the route in the newer Desktop
+removes its metadata without changing the Station or its trust record; other
+newer profile fields may still require an updated reader.
+
 ## Local first: Ollama (no credentials)
 
 This is the easiest path and needs no cloud account, API key, or AWS setup.

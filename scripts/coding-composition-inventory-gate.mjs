@@ -7,6 +7,11 @@ import { REQUIRED_CODING_COMPOSITION_CATEGORIES } from './coding-composition-pol
 const expectedDependencies = new Map(
   Object.entries({
     'packages/contracts/src/diff-comment.ts': 'contract',
+    // #2412: the pairing scope vocabulary names `/api/coding/exec` because
+    // its `coding:exec` token is the per-device grant that route requires.
+    // `route-authorization`, like the route-scope table beside it: it is a
+    // grant vocabulary, and renders and runs nothing.
+    'packages/contracts/src/environment-security.ts': 'route-authorization',
     'packages/contracts/src/distribution.ts': 'distribution',
     'packages/contracts/src/index.ts': 'contract-export',
     'packages/contracts/src/layout.ts': 'distribution',
@@ -44,6 +49,11 @@ const expectedDependencies = new Map(
     // decides what may be written and normalizes the record, and it grants
     // nothing and renders nothing.
     'src-server/routes/projects/project-layout-admission.ts': 'persistence',
+    // #2363: the coding toolbar's Commit and Push, moved out of the route so
+    // the route keeps validation and the operator check. `git-review`,
+    // beside the toolbar that calls it: it runs git in the Project's own
+    // repository and refuses what Station will not commit or push.
+    'src-server/services/projects/coding-git-actions.ts': 'git-review',
     'src-server/routes/projects/projects.ts': 'project-route',
     'src-server/runtime/routes/runtime-routes.ts': 'route-registration',
     'src-server/security/pairing-route-scopes.ts': 'route-authorization',
@@ -160,23 +170,20 @@ const expectedDependencies = new Map(
     // accepted layout types AND retained-LayoutTab/parser adaptation checks;
     // a UI-only field would make contributed routing metadata unverifiable.
     'src-ui/src/views/ProjectPage.tsx': 'navigation',
-    // #2047: the region model registers the three coding panes as dock
-    // surfaces (`coding:terminal`, `coding:diff`, `coding:file-browser`);
-    // the semantic scan sees the `sourceFile` paths the architecture ratchet
-    // reads. It is pure over ids — no pane contract, no renderer — and
-    // grants nothing; which pane a surface renders as is the inventory's.
-    'src-ui/src/regions/region-model.ts': 'pane-declaration',
-    // #2047: the surface → pane inventory joins those surfaces to the
+    // #2047: the surface → pane inventory joins the coding dock surfaces
+    // (`coding:terminal`, `coding:diff`, `coding:file-browser`) to the
     // coding pane contracts' fixed per-project instances and canonical
     // predicates (`workspace-coding-panels.ts`), the same contract role
-    // `builtinWorkspacePaneCanonical.ts` plays for the built-in host.
+    // `builtinWorkspacePaneCanonical.ts` plays for the built-in host. Since
+    // #90 D9 it also holds the renderer `sourceFile` paths the architecture
+    // ratchet reads, moved out of `region-model.ts` (the entry chunk), which
+    // no longer names a Coding renderer and so is no longer declared here.
     'src-ui/src/regions/region-surface-panes.ts': 'pane-contract',
     // #2047: a docked coding pane's renderer, behind the region host's lazy
     // boundary — it hands the region's project-bound instance to
     // `getBuiltinWorkspacePaneRenderer`, the registry declared below.
     'src-ui/src/workspace-panes/RegionBuiltinPane.tsx': 'private-import',
     'src-ui/src/views/TaskWorkspaceView.tsx': 'private-import',
-    'src-ui/src/workspace-panes/BrowserPreviewPaneLauncher.tsx': 'presentation',
     'src-ui/src/workspace-panes/FilePreviewPane.tsx': 'privileged-renderer',
     'src-ui/src/workspace-panes/WorkspacePaneHost.css': 'presentation',
     'src-ui/src/workspace-panes/builtinWorkspacePaneCanonical.ts':

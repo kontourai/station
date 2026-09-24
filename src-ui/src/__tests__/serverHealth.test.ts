@@ -4,6 +4,7 @@ import {
   checkServerHealth,
   checkServerHealthDetailed,
   probeServerConnection,
+  setStationHealthRouteResolver,
 } from '../lib/serverHealth';
 
 const handshake = {
@@ -18,7 +19,10 @@ const handshake = {
   },
 };
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  setStationHealthRouteResolver(undefined);
+  vi.restoreAllMocks();
+});
 
 describe('checkServerHealth', () => {
   it('propagates a caller-owned abort signal to the status request', async () => {
@@ -40,6 +44,119 @@ describe('checkServerHealth', () => {
 });
 
 describe('probeServerConnection', () => {
+  const brokerRoute = {
+    brokerOrigin: 'https://broker.example.test',
+    scope: {
+      stationId: '11111111-1111-4111-8111-111111111111',
+      enrollmentId: '22222222-2222-4222-8222-222222222222',
+      routingGeneration: 1,
+      browserOrigin: 'https://client.example.test',
+    },
+  };
+
+  it('sends both public and protected health requests through the selected encrypted route', async () => {
+    const direct = vi
+      .spyOn(globalThis, 'fetch')
+      .mockRejectedValue(new Error('direct Station HTTP must not be used'));
+    const transport = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(Response.json(handshake))
+      .mockResolvedValueOnce(Response.json({ bootId: 'broker-boot' }));
+    setStationHealthRouteResolver((_origin, route, authenticated) =>
+      route === brokerRoute
+        ? {
+            kind: 'relay',
+            transport,
+            isCurrent: () => true,
+            clientOrigin: brokerRoute.scope.browserOrigin,
+            ...(authenticated
+              ? {
+                  identityTransport: (url, init) =>
+                    transport(url, {
+                      ...init,
+                      headers: {
+                        ...Object.fromEntries(new Headers(init?.headers)),
+                        Authorization: 'Bearer approved-device-credential',
+                        'X-Station-Account-Continuation': 'continuation',
+                        'X-Station-Account-Proof': 'fresh-proof',
+                      },
+                    }),
+                }
+              : {}),
+          }
+        : { kind: 'reject' },
+    );
+    await expect(
+      probeServerConnection(
+        'https://station.example.test',
+        undefined,
+        null,
+        new AbortController().signal,
+        brokerRoute,
+      ),
+    ).resolves.toEqual({ ok: true, bootId: 'broker-boot' });
+    expect(transport).toHaveBeenCalledTimes(2);
+    expect(
+      new Headers(transport.mock.calls[0]?.[1]?.headers).has('Authorization'),
+    ).toBe(false);
+    expect(
+      new Headers(transport.mock.calls[0]?.[1]?.headers).get('Origin'),
+    ).toBe(brokerRoute.scope.browserOrigin);
+    expect(
+      new Headers(transport.mock.calls[1]?.[1]?.headers).get('Authorization'),
+    ).toBe('Bearer approved-device-credential');
+    expect(
+      new Headers(transport.mock.calls[1]?.[1]?.headers).get(
+        'X-Station-Account-Proof',
+      ),
+    ).toBe('fresh-proof');
+    expect(direct).not.toHaveBeenCalled();
+  });
+
+  it('refuses a broker probe without a current route resolver', async () => {
+    const direct = vi.spyOn(globalThis, 'fetch');
+    await expect(
+      probeServerConnection(
+        'https://station.example.test',
+        undefined,
+        null,
+        new AbortController().signal,
+        brokerRoute,
+      ),
+    ).resolves.toEqual({ ok: false, reason: 'unreachable' });
+    expect(direct).not.toHaveBeenCalled();
+  });
+
+  it('reports missing application authority as authentication failure after the public relay handshake', async () => {
+    const direct = vi
+      .spyOn(globalThis, 'fetch')
+      .mockRejectedValue(new Error('direct Station HTTP must not be used'));
+    const transport = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(Response.json(handshake));
+    setStationHealthRouteResolver((_origin, route) =>
+      route === brokerRoute
+        ? {
+            kind: 'relay',
+            transport,
+            isCurrent: () => true,
+            clientOrigin: brokerRoute.scope.browserOrigin,
+          }
+        : { kind: 'reject' },
+    );
+    await expect(
+      probeServerConnection(
+        'https://station.example.test',
+        undefined,
+        null,
+        new AbortController().signal,
+        brokerRoute,
+      ),
+    ).resolves.toEqual({ ok: false, reason: 'authentication-failed' });
+    expect(transport).toHaveBeenCalledTimes(1);
+    expect(direct).not.toHaveBeenCalled();
+  });
+
   it('returns verified boot identity after an authenticated handshake', async () => {
     vi.spyOn(globalThis, 'fetch')
       .mockResolvedValueOnce(Response.json(handshake))
@@ -111,6 +228,85 @@ describe('probeServerConnection', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  /**
+   * station#2327 — the handshake answered, so the address is proven to
+   * respond; the authenticated identity read that follows it then waited in
+   * the desktop broker's queue behind a stalled Station. That is "busy", not
+   * "Can't connect".
+   */
+  describe('a Station that answered the handshake but not the identity read is busy (station#2327)', () => {
+    it('reads the probe deadline on the identity step as busy', async () => {
+      vi.useFakeTimers();
+      try {
+        vi.spyOn(globalThis, 'fetch')
+          .mockResolvedValueOnce(Response.json(handshake))
+          .mockImplementationOnce(
+            (_input, init?: RequestInit) =>
+              new Promise((_resolve, reject) => {
+                init?.signal?.addEventListener('abort', () =>
+                  reject(
+                    Object.assign(
+                      new Error('Native Station request failed: cancelled'),
+                      { code: 'cancelled' },
+                    ),
+                  ),
+                );
+              }),
+          );
+        const pending = probeServerConnection(
+          'https://station.example.test',
+          'fixture-credential',
+          'environment-1',
+          new AbortController().signal,
+        );
+        await vi.advanceTimersByTimeAsync(HEALTH_PROBE_TIMEOUT_MS);
+        await expect(pending).resolves.toEqual({ ok: false, reason: 'busy' });
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it.each(['transport_capacity', 'transport_timeout'])(
+      'reads a %s refusal of the identity read as busy',
+      async (code) => {
+        vi.spyOn(globalThis, 'fetch')
+          .mockResolvedValueOnce(Response.json(handshake))
+          .mockRejectedValueOnce(
+            Object.assign(new Error(`Native Station request failed: ${code}`), {
+              code,
+            }),
+          );
+        await expect(
+          probeServerConnection(
+            'https://station.example.test',
+            'fixture-credential',
+            'environment-1',
+            new AbortController().signal,
+          ),
+        ).resolves.toEqual({ ok: false, reason: 'busy' });
+      },
+    );
+
+    it('keeps a transport_timeout on the handshake itself as unreachable', async () => {
+      // No answer was ever observed, so a timeout here cannot be told apart
+      // from a host that is off or asleep.
+      vi.spyOn(globalThis, 'fetch').mockRejectedValueOnce(
+        Object.assign(
+          new Error('Native Station request failed: transport_timeout'),
+          { code: 'transport_timeout' },
+        ),
+      );
+      await expect(
+        probeServerConnection(
+          'https://station.example.test',
+          'fixture-credential',
+          'environment-1',
+          new AbortController().signal,
+        ),
+      ).resolves.toEqual({ ok: false, reason: 'unreachable' });
+    });
   });
 
   /**
@@ -571,6 +767,27 @@ describe('checkServerHealthDetailed (401 must not read as unreachable)', () => {
     await expect(
       checkServerHealthDetailed('http://station.example:3141'),
     ).resolves.toEqual({ ok: false, reason: 'unreachable' });
+  });
+
+  // station#2327: a full desktop request queue is busy; a native timeout with
+  // no prior answer is not distinguishable from a sleeping host and stays
+  // unreachable.
+  it.each([
+    ['transport_capacity', 'busy'],
+    ['transport_timeout', 'unreachable'],
+  ] as const)('reads a native %s refusal as %s', async (code, reason) => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw Object.assign(
+          new Error(`Native Station request failed: ${code}`),
+          { code },
+        );
+      }),
+    );
+    await expect(
+      checkServerHealthDetailed('http://station.example:3141'),
+    ).resolves.toEqual({ ok: false, reason });
   });
 
   /**

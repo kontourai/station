@@ -21,6 +21,8 @@ describe('static gate input detection', () => {
       'tests/home.spec.ts',
       'examples/minimal-layout/src/index.ts',
       'schemas/agent-plugins/1.0.0/plugin.schema.json',
+      // The root manifest names the typecheck:examples chain (#2343).
+      'package.json',
     ]) {
       expect(isStaticGateInput(path), path).toBe(true);
     }
@@ -41,6 +43,9 @@ describe('static gate input detection', () => {
       'README.md',
       '.github/workflows/ci.yml',
       'src-desktop/tauri.conf.json',
+      // Only the ROOT manifest is an input.
+      'src-desktop/package.json',
+      'package.json.bak',
     ]) {
       expect(isStaticGateInput(path), path).toBe(false);
     }

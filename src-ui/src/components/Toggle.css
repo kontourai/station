@@ -14,25 +14,71 @@
   border: none;
   padding: 0;
   cursor: pointer;
-  background: var(--border-primary);
+  /* Off: outlined track. See "Track and thumb" below. */
+  box-shadow: inset 0 0 0 2px var(--text-tertiary);
   border-radius: 999px;
-  transition: background var(--motion-base);
+  transition:
+    background var(--motion-base),
+    box-shadow var(--motion-base);
   flex-shrink: 0;
 }
 .station-toggle:disabled {
   opacity: 0.4;
   cursor: default;
 }
-.station-toggle--on {
+
+/* ── Track and thumb (#2441, folded in from #2425's Browser-pane fix) ──
+   The track used to be a `--border-primary` fill, well under the 3:1
+   non-text minimum against every panel surface, and on/off differed mainly
+   by colour. Now the two states differ in three ways at once:
+   - off: an OUTLINED track (transparent fill, 2px inset ring) with the thumb
+     on the left;
+   - on: a FILLED accent track with the thumb on the right.
+   Against the page, panel, modal, elevated and hover surfaces, the
+   `--text-tertiary` ring measured 5.1–10:1 and the `--accent-primary` fill
+   4.2–11.9:1 across both themes (3:1 is the minimum);
+   tests/toggle-contrast.spec.ts re-measures both in a real browser. The ring is an inset box-shadow, not a border, so
+   the track keeps its exact outer size and the thumb geometry below is
+   unchanged for every consumer.
+
+   Each fill is also declared for `:hover`. The global `button:hover`
+   (index.css) repaints every button `--bg-tertiary` and outranks a single
+   class, so without these a hovered ON track lost its accent fill and read
+   as off — the state this component exists to show. */
+.station-toggle,
+.station-toggle:hover {
+  background: transparent;
+}
+.station-toggle--on,
+.station-toggle--on:hover {
   background: var(--accent-primary);
+  box-shadow: none;
 }
 
 .station-toggle__thumb {
   display: block;
-  background: #fff;
+  background: var(--text-tertiary);
   border-radius: 50%;
-  transition: transform var(--motion-base);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  transition:
+    transform var(--motion-base),
+    background var(--motion-base);
+}
+.station-toggle--on .station-toggle__thumb {
+  background: var(--bg-secondary);
+}
+
+/* Optional state word (`<Toggle showStateLabel>`). aria-hidden: the switch's
+   own `aria-checked` is what assistive tech reads. */
+.station-toggle-field {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: var(--space-2, 8px);
+}
+.station-toggle__state {
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+  min-width: 2ch;
 }
 
 /* md (default) — 36×20 */
@@ -82,5 +128,45 @@
     width: 44px;
     height: 44px;
     transform: translate(-50%, -50%);
+  }
+}
+
+/* ── Forced colors (Windows High Contrast and friends) ──
+   Forced colors drop box-shadow and repaint backgrounds as Canvas, so without
+   this block the outlined off track and the filled on track rendered
+   identically: no ring, same fill, the thumb invisible on both. Opt the track
+   and thumb out of the forcing and paint them in system colours instead:
+   off = ButtonText outline + ButtonText thumb on Canvas, on = Highlight fill +
+   HighlightText thumb. The 1px border sits inside the track's border-box, so
+   the outer size is unchanged; the thumb margin drops 2px → 1px to keep it
+   centred, and the on-state translateX above still lands it on the far edge. */
+@media (forced-colors: active) {
+  .station-toggle,
+  .station-toggle:hover {
+    forced-color-adjust: none;
+    background: Canvas;
+    border: 1px solid ButtonText;
+  }
+  .station-toggle--on,
+  .station-toggle--on:hover {
+    background: Highlight;
+    border-color: Highlight;
+  }
+  .station-toggle .station-toggle__thumb {
+    forced-color-adjust: none;
+    background: ButtonText;
+  }
+  .station-toggle--on .station-toggle__thumb {
+    background: HighlightText;
+  }
+  .station-toggle--md .station-toggle__thumb,
+  .station-toggle--sm .station-toggle__thumb {
+    margin: 1px;
+  }
+  .station-toggle:disabled {
+    border-color: GrayText;
+  }
+  .station-toggle:disabled .station-toggle__thumb {
+    background: GrayText;
   }
 }

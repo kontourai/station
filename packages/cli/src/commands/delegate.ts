@@ -353,24 +353,33 @@ function formatCreateSummary(handle: DelegatedTaskHandle): string {
 /**
  * #2269: renders the serving Station's forwarded supervision facts — the
  * effective absolute budget, remaining time, and idle window for the current
- * turn. Rendered only when the server declared them; an undeclared budget
- * renders nothing (honest unknown, never a client-side invention).
+ * turn. No forwarded supervision renders nothing (honest unknown, never a
+ * client-side invention); a bound the turn did not declare renders as "none
+ * declared for this turn".
  */
 function supervisionLines(
   supervision: DelegatedTaskSnapshot['supervision'],
 ): string[] {
   if (!supervision) return [];
+  const { totalLimitMs, remainingMs, deadlineAt } = supervision;
   const lines = [
-    `Turn budget (this turn only, not the whole task): ${formatDurationMs(supervision.totalLimitMs)} total ` +
-      `(${formatDurationMs(supervision.remainingMs)} remaining, ` +
-      `deadline ${supervision.deadlineAt})`,
-    `Idle limit: ${formatDurationMs(supervision.idleLimitMs)} ` +
-      `with no verified protocol activity${
-        supervision.lastProgressEventAt
-          ? ` (watchdog last observed activity at ${supervision.lastProgressEventAt}; ` +
-            `no progress observed since — the turn may be working quietly)`
-          : ''
-      }`,
+    totalLimitMs !== undefined &&
+    remainingMs !== undefined &&
+    deadlineAt !== undefined
+      ? `Turn budget (this turn only, not the whole task): ${formatDurationMs(totalLimitMs)} total ` +
+        `(${formatDurationMs(remainingMs)} remaining, ` +
+        `deadline ${deadlineAt})`
+      : 'Turn budget: none declared for this turn',
+    `${
+      supervision.idleLimitMs !== undefined
+        ? `Idle limit: ${formatDurationMs(supervision.idleLimitMs)} with no verified protocol activity`
+        : 'Idle limit: none declared for this turn'
+    }${
+      supervision.lastProgressEventAt
+        ? ` (watchdog last observed activity at ${supervision.lastProgressEventAt}; ` +
+          `no progress observed since — the turn may be working quietly)`
+        : ''
+    }`,
   ];
   return lines;
 }

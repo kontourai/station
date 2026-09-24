@@ -9,6 +9,7 @@
 - Managed installs use pinned pnpm; `npm run` is the script interface. Never run raw npm installs in this workspace.
 - Never `git push --no-verify`; no required CI check re-runs the pre-push gates. The transfer gate reads `STATION_TRANSFER_BASELINE_ROOT`; slow hardware raises `STATION_TRANSFER_CAPTURE_TIMEOUT_MS` (see docs/guides/testing.md).
 - `npm run test:changed -- --base=origin/main --explain` selects a diagnostic lane; exit 3 is provisional/deferred, not completion. For ordinary pull requests, run focused evidence and `npm run ci:fast`; GitHub's merge queue verifies the synthesized latest-main candidate. Do not run `npm run full:regression` locally merely because `main` moved.
+- Pre-push and PR CI own the full typecheck; locally use `gate:for` evidence or one `typecheck:<lane>`, and never background a full `typecheck` or `ci:fast` to poll its sentinel. Every lane shares host-wide tsc slots ([testing guide](docs/guides/testing.md#host-typecheck-slots-and-incremental-compiles)).
 - The reusable hosted full-regression workflow owns canonical completion receipts for Nightly and tagged preview/stable promotions. CI `workflow_dispatch` is the explicit diagnostic escape hatch. Builder `tests-evidence` uses that exact-SHA promotion receipt; focused test evidence remains diagnostic.
 - Diagnose the failure rather than rerun-to-green: a red lane is a signal to diagnose, not a request to rerun until green. For a redundant same-digest run, join or reuse the existing lease.
 - If an explicit submission handoff is active, freeze the worktree. Never use shell background or relaunch loops, and do not edit or remove a worktree with a live handoff.
@@ -47,7 +48,8 @@ queue is part of it. What that means in practice:
   Several PRs waiting is the queue working, not the queue stuck. Its
   check-response timeout is 120 minutes.
 - **Required checks**: `fast-checks`, `CodeQL JavaScript and TypeScript`,
-  `Dependency review`, `Windows PR portable floor`, `build-ios-verification`
+  `Dependency review`, `Windows PR portable floor`, `build-ios-verification`,
+  `Merge-queue regression`
   (the ruleset is the authority: `gh api repos/kontourai/station/rules/branches/main`).
   Branches are NOT required
   to be up to date (`strict: false`), so you do not have to rebase onto every

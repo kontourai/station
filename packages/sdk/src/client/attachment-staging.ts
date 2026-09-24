@@ -10,7 +10,12 @@ import {
   parsePublicStationHandshake,
 } from '@kontourai/station-contracts/environment-security';
 import { ChatHttpError } from './chatHttpError';
-import { type ClientRequestOptions, getJson, mutateJson } from './http';
+import {
+  assertClientRawEgressAllowed,
+  type ClientRequestOptions,
+  getJson,
+  mutateJson,
+} from './http';
 
 const ROOT = '/api/orchestration/attachment-staging';
 
@@ -194,6 +199,14 @@ export async function uploadAttachmentStage(
   dataUrl: string,
   opts?: AttachmentStageUploadOptions,
 ): Promise<StagedAttachmentReference> {
+  // Upload grants are explicit per-call authority and would otherwise bypass
+  // the ambient SDK transport resolver. Keep this check immediately adjacent
+  // to both injected XHR and the fetch fallback.
+  assertClientRawEgressAllowed(
+    apiBase,
+    'attachment upload',
+    opts?.requestScope,
+  );
   const url = `${apiBase}${ROOT}/${encodeURIComponent(preparation.stageId)}`;
   const response = opts?.transport
     ? await opts.transport({

@@ -22,7 +22,7 @@ import {
   createPersistentReviewSessionEventStore,
   mountReviewWorkbench,
   type ReviewQueueSessionState,
-  type ReviewSessionEvent,
+  type ReviewSessionPersistenceRequest,
   type ReviewSessionPersistenceStatus,
 } from '@kontourai/survey/review-workbench';
 import '@kontourai/survey/review-workbench.css';
@@ -32,6 +32,11 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import './workbench.css';
 
 const PLUGIN_NAME = 'survey-review-workbench';
+
+// The review-workbench subpath uses this type but does not export it by name,
+// so derive it from the persistence contract instead of reaching into
+// Survey's main export.
+type ReviewSessionEvent = ReviewSessionPersistenceRequest['events'][number];
 
 interface SessionListEntry {
   name: string;
@@ -73,7 +78,7 @@ async function fetchJson(
 
 export function SurveyReviewWorkbench(_props: LayoutComponentProps) {
   const { apiBase } = useApiBase();
-  const navigation = useNavigation() as { selectedProject?: string | null };
+  const navigation = useNavigation();
   const projectSlug = navigation.selectedProject ?? null;
 
   const mountRef = useRef<HTMLDivElement | null>(null);

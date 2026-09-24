@@ -1,6 +1,6 @@
 # Veritas For Station
 
-Station is governed by `@kontourai/veritas` 1.5: a Repo Map (`repo-map.json`) describing work areas and evidence checks, Repo Standards (`repo-standards/default.repo-standards.json`) as executable requirements, authority settings, and attestations for Protected Standards. Durable governance remains under `.veritas/`; generated evidence, claim inputs, standards feedback, recommendations, and conformance output live under `.kontourai/veritas/`. The current contract inventory is in `docs/strategy/veritas/migration-1.5-record.md`; the 0.3-to-0.5 history remains in `migration-0.5-record.md` beside it.
+Station is governed by `@kontourai/veritas`: a Repo Map (`repo-map.json`) describing work areas and evidence checks, Repo Standards (`repo-standards/default.repo-standards.json`) as executable requirements, authority settings, and attestations for Protected Standards. Durable governance remains under `.veritas/`; generated evidence, claim inputs, standards feedback, recommendations, and conformance output live under `.kontourai/veritas/`. The baseline contract inventory is in `docs/strategy/veritas/migration-1.5-record.md`; the 0.3-to-0.5 history remains in `migration-0.5-record.md` beside it.
 
 ## Gate
 
@@ -44,6 +44,31 @@ Read them with `veritas explain --file <path>` (or `--work-area product.src-ui.t
 These add **no new gate**. Each rule's deterministic part is the existence of the surface it governs and of the pinned regression tests that already prove it inside `npm run ci:fast`; the conduct itself is held by the review layer described in the protocol. `scripts/__tests__/veritas-repo-map.test.ts` pins all of that: the rules exist, hold the enforcement level a human attested, every referenced path exists, and the new work areas route to nothing new.
 
 They were authored at `enforcementLevel: Guide` (advisory) per `.veritas/authority` (`new_rule_stage: recommend`). Two have since been promoted to `Require` on catch evidence under the Promotion Rule below (#1480): `trust-surfaces-name-their-gaps`, and `verification-conduct-sentinels-and-fault-injection` after its artifact list was narrowed to entries a plausible change could remove silently. **`Require` buys exactly one thing here — a deleted pinned artifact is a readiness `FAIL` (exit 1) instead of a `WARN` (exit 0). It does not make a rule detect the conduct it is named for**; that gap is the subject of #1762. The remaining two graduate on evidence rather than a date: their `explain.summary` names the catch-log classes that trigger an assessment, and `evidence-claims-anchor-to-executed-commands`'s trigger has already fired (#1763).
+
+## Issue-class prevention guidance
+
+Two scoped Repo Standards rules route recurring failure-boundary review:
+`session-lifecycle-recovery-contract` covers session commands, durable turn
+boundaries, and recovery; `bounded-background-work-contract` covers delivery,
+queues, large projections, and stalled turns. Both are `Require`: a change to
+one of their named files selects a focused Evidence Check through
+`evidenceCheckIds`, and a missing, skipped, or failed check blocks readiness.
+Their artifact checks still prove only presence. The remaining behavioral work and exit criteria live
+in [the issue-class prevention plan](../docs/plans/issue-class-prevention.md).
+Use `veritas explain --file <path>` before editing a routed seam.
+The pre-edit `gate:for` route presents matching guidance. Station's tracked
+`.codex/hooks.json` contains the Veritas Governance Kit's Codex `PreToolUse`
+definition. Tracked `.codex/config.toml` enables the hooks feature. Install the
+user-level, repository-scoped dispatcher once with
+`npm run veritas:codex-hook:install`; Flow Agents provisions it through Conduit
+and preserves other handlers. Review and trust its exact definition in Codex.
+The dispatcher uses the shared Git directory, so it covers Station worktrees and
+stays silent in unrelated repositories. The required governance artifact rule
+rejects missing project files; `proof:repo-governance` checks their structure.
+A Conduit receipt proves installed bytes, while a normal Codex edit proves host
+execution. Run readiness for edits outside the hook's coverage. Veritas 1.7.4
+handles `apply_patch` Add File under routed content rules; the plan records the
+published-package host probe.
 
 ## Brownfield Rule
 

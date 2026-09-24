@@ -49,6 +49,36 @@ describe('connectionIndicatorState', () => {
     ).toBe('needs-repair');
   });
 
+  // station#2327: busy is honest for a stall, not for a Station that has
+  // not answered for about a minute. The reason stays busy; only the
+  // indicator's claim escalates. The boundary is pinned literally.
+  it('stops calling a Station busy once the outage streak passes six probes', () => {
+    expect(
+      connectionIndicatorState({
+        status: 'error',
+        reason: 'busy',
+        failureStreak: 6,
+      }),
+    ).toBe('busy');
+    expect(
+      connectionIndicatorState({
+        status: 'error',
+        reason: 'busy',
+        failureStreak: 7,
+      }),
+    ).toBe('error');
+  });
+
+  // station#2327 — a Station answering slowly is not "Can't connect".
+  it('names a busy Station as busy, not a plain error', () => {
+    expect(connectionIndicatorState({ status: 'error', reason: 'busy' })).toBe(
+      'busy',
+    );
+    expect(
+      connectionIndicatorState({ status: 'connected', reason: 'busy' }),
+    ).toBe('connected');
+  });
+
   it('never shows the repair badge for a connection that is not failing', () => {
     expect(
       connectionIndicatorState({
@@ -261,6 +291,18 @@ describe('connection indicator labels', () => {
       expect(connectionIndicatorActionLabel(state)).toBeNull();
       expect(connectionIndicatorLabel(state)).toMatch(/manage stations/i);
     }
+  });
+
+  // station#2327 — distinct copy from "Can't connect", and no action word:
+  // nothing here needs the reader to decide anything.
+  it('names busy distinctly from an unreachable Station, with no action word', () => {
+    expect(connectionIndicatorLabel('busy')).toBe(
+      'Manage Stations — Station is busy',
+    );
+    expect(connectionIndicatorLabel('busy')).not.toBe(
+      connectionIndicatorLabel('error'),
+    );
+    expect(connectionIndicatorActionLabel('busy')).toBeNull();
   });
 
   // station#4512

@@ -54,6 +54,7 @@ import {
   WORKSPACE_AGENTS_PANE_DESCRIPTOR,
   WORKSPACE_AGENTS_PANE_INSTANCE,
 } from '@kontourai/station-contracts/workspace-agents-pane';
+import { WORKSPACE_BROWSER_PREVIEW_PANE_DESCRIPTOR_ID } from '@kontourai/station-contracts/workspace-browser-preview';
 import {
   createWorkspaceChatPaneInstance,
   isCanonicalWorkspaceChatPaneInstance,
@@ -102,12 +103,21 @@ import {
   WORKSPACE_PULL_REQUEST_PANE_DESCRIPTOR,
 } from '@kontourai/station-contracts/workspace-pull-request-pane';
 import {
+  createBrowserPreviewPaneInstance,
+  isCanonicalBrowserPreviewPaneInstance,
+} from '../workspace-panes/browserPreviewPaneInstance';
+import {
+  readBrowserPreviewPaneState,
+  removeBrowserPreviewPaneState,
+} from '../workspace-panes/browserPreviewPaneStateStorage';
+import {
   createFilePreviewPaneInstance,
   isCanonicalFilePreviewPaneInstance,
 } from '../workspace-panes/filePreviewPaneInstance';
 import {
   type FilePreviewPaneStateStorage,
   readFilePreviewPaneState,
+  removeFilePreviewPaneState,
 } from '../workspace-panes/filePreviewPaneStateStorage';
 
 /**
@@ -306,6 +316,44 @@ export const REGION_SURFACE_PANES: ReadonlyMap<string, RegionSurfacePane> =
     ),
   ]);
 
+/**
+ * The renderer source each REGISTERED surface mounts, by surface id: the
+ * architecture ratchet's input (`region-surface-boundary.test.ts` requires
+ * that no surface renderer reads the region model). Kept here rather than
+ * on `REGION_SURFACE_REGISTRY`, which is in the entry chunk: nothing at
+ * runtime reads it, so it is dropped from the build here, where there it
+ * cost every user the bytes on every cold load (#90 D9).
+ */
+export const REGION_SURFACE_SOURCE_FILES: Readonly<Record<string, string>> = {
+  chat: 'src-ui/src/components/chat-dock/ChatDock.tsx',
+  activity: 'src-ui/src/views/activity/ActivityWorkspacePane.tsx',
+  'workspace-agents': 'src-ui/src/workspace-panes/AgentsWorkspacePane.tsx',
+  home: 'src-ui/src/views/home/HomeSurface.tsx',
+  device: 'src-ui/src/workspace-panes/DeviceWorkspacePane.tsx',
+  'coding:terminal':
+    'src-ui/src/components/coding-layout/CodingTerminalPane.tsx',
+  'coding:diff': 'src-ui/src/components/coding-layout/DiffPanel.tsx',
+  'coding:file-browser':
+    'src-ui/src/components/coding-layout/FileTreePanel.tsx',
+};
+
+/**
+ * The renderer source each instance family mounts, by prefix: the
+ * architecture ratchet's input (`region-instance-panes.test.ts` requires
+ * that no pane renderer reads the region model). Kept here rather than on
+ * `INSTANCE_SURFACE_PREFIXES`, which is in the entry chunk: nothing at
+ * runtime reads it, so it costs no user a byte here (an unused export is
+ * dropped from the build), where it cost every user one there (#90 D9).
+ */
+export const INSTANCE_SURFACE_SOURCE_FILES: Readonly<Record<string, string>> = {
+  'pr:': 'src-ui/src/components/coding-layout/PullRequestReviewPanel.tsx',
+  'file-preview:': 'src-ui/src/workspace-panes/FilePreviewPane.tsx',
+  'browser-preview:':
+    'src-ui/src/workspace-panes/BrowserPreviewWorkspacePane.tsx',
+  'board:': 'src-ui/src/workspace-panes/LayoutWorkspacePane.tsx',
+  'layout:': 'src-ui/src/workspace-panes/LayoutWorkspacePane.tsx',
+};
+
 /** The exact shape `createFilePreviewPaneInstance` mints its identity in. */
 const FILE_PREVIEW_PANE_ID = /^file-preview:[0-9a-f]{32}$/;
 
@@ -379,6 +427,41 @@ function filePreviewSurfacePane(
   };
 }
 
+/** The exact shape `createBrowserPreviewPaneInstance` mints its identity in. */
+const BROWSER_PREVIEW_PANE_ID = /^browser-preview:[0-9a-f]{32}$/;
+
+/**
+ * One Browser pane, resolved from its id (#90 D9). Like a file preview, the
+ * id is only a nonce: the session it shows lives in its stored v2 state
+ * (`{projectId, browserSessionId}`), which the float-over-chat's "Open in
+ * right panel" writes before placing it. An occurrence exists only while
+ * that state does and names the dock's own Project; a Browser pane of
+ * another Project keeps its tab and renders the host's "choose a project"
+ * placeholder rather than being rebound to a Project it does not belong to.
+ * A v1 record (a URL awaiting migration) has no session to show here.
+ */
+function browserPreviewSurfacePane(surfaceId: string): RegionSurfacePane {
+  const nonce = surfaceId.slice('browser-preview:'.length);
+  const storage = filePreviewStorage();
+  const stored = storage
+    ? readBrowserPreviewPaneState(storage, surfaceId)
+    : null;
+  const state = stored?.version === '2.0' ? stored.state : null;
+  return {
+    surfaceId,
+    descriptorId: WORKSPACE_BROWSER_PREVIEW_PANE_DESCRIPTOR_ID,
+    instanceId: toWorkspacePaneInstanceId(surfaceId),
+    title: 'Browser',
+    instance: ({ projectId }) =>
+      state && projectId !== null && state.projectId === projectId
+        ? createBrowserPreviewPaneInstance(state, projectId, nonce)
+        : null,
+    isCanonical: (instance) =>
+      String(instance.instanceId) === surfaceId &&
+      isCanonicalBrowserPreviewPaneInstance(instance, state),
+  };
+}
+
 /**
  * One Layout's pane — a Board or a project Layout — resolved from its id
  * alone (#2157). No dock-project dependency: a project Layout carries its
@@ -426,9 +509,31 @@ export function regionSurfacePane(
   if (surfaceId.startsWith('pr:')) return pullRequestSurfacePane(surfaceId);
   if (FILE_PREVIEW_PANE_ID.test(surfaceId))
     return filePreviewSurfacePane(surfaceId);
+  if (BROWSER_PREVIEW_PANE_ID.test(surfaceId))
+    return browserPreviewSurfacePane(surfaceId);
   if (surfaceId.startsWith('board:') || surfaceId.startsWith('layout:'))
     return layoutSurfacePane(surfaceId);
   return undefined;
+}
+
+/**
+ * Forget the per-device state an instance-keyed pane rendered from, when the
+ * user removes it (#90 D9: a pane that cannot render here, removed with
+ * "Remove this pane"). Best effort: storage that throws, or a pane with no
+ * state of its own, is nothing to clean up. Without it the record the pane
+ * stood for would outlive the only thing that could ever read it.
+ */
+export function forgetRegionPaneState(surfaceId: string): void {
+  const storage = filePreviewStorage();
+  if (!storage) return;
+  try {
+    if (FILE_PREVIEW_PANE_ID.test(surfaceId))
+      removeFilePreviewPaneState(storage, surfaceId);
+    else if (BROWSER_PREVIEW_PANE_ID.test(surfaceId))
+      removeBrowserPreviewPaneState(storage, surfaceId);
+  } catch {
+    /* per-device storage is optional */
+  }
 }
 
 /**
@@ -453,10 +558,11 @@ export function regionSurfaceOfPane(
 
 /**
  * The surface a descriptor is placed as, or null for a descriptor no region
- * surface renders. No production reader since #2154 retired the dock
- * catalog; kept for its ONE reader, the inventory pin
- * (`region-surface-panes.test.ts`), which asserts the descriptor→surface
- * fold both ways and that an instance-keyed descriptor folds to no surface.
+ * surface renders. Read by `DockOnlyWorkspacePaneNotice` (#2465: "Open in
+ * dock" for a dock-only pane a Project layout still holds) and by the
+ * inventory pin (`region-surface-panes.test.ts`), which asserts the
+ * descriptor→surface fold both ways and that an instance-keyed descriptor
+ * folds to no surface.
  */
 export function regionSurfaceOfDescriptor(descriptorId: string): string | null {
   for (const pane of REGION_SURFACE_PANES.values()) {

@@ -11,6 +11,7 @@ import type {
   ConversationListItem,
   ConversationOpenExecution,
   ConversationOpenResolution,
+  ConversationTurnActivity,
 } from '@kontourai/station-contracts/orchestration';
 import type { SessionReadAuthority } from '@kontourai/station-contracts/tenancy';
 import type { ConversationMessage } from '@kontourai/station-shared/conversation-message';
@@ -30,11 +31,19 @@ export function createConversationOpenResolver(deps: {
     authority: SessionReadAuthority;
   }): Promise<{
     sessionId: string;
+    /**
+     * #2424: set when `sessionId` is the authorized predecessor of a reserved
+     * lineage child that has not started yet. The conversation is then
+     * described by that predecessor; the reservation is the next send's.
+     */
+    reservedSuccessorSessionId?: string;
     execution?: ConversationOpenExecution;
     messages: readonly ConversationMessage[];
     answerability: ConversationListItem['answerability'];
     canContinue: boolean;
     continuationPending?: boolean;
+    /** #2309: the conversation's activity, read with the current child. */
+    activity?: ConversationTurnActivity;
   } | null>;
   reportUnavailable?(error: unknown): void;
 }): ConversationOpenResolver {
@@ -74,18 +83,22 @@ export function createConversationOpenResolver(deps: {
             recoveryActions: ['retry', 'start-new'],
           };
         }
+        const describedSessionId =
+          current.reservedSuccessorSessionId === currentSessionId
+            ? current.sessionId
+            : currentSessionId;
         if (
-          current.sessionId !== currentSessionId ||
+          current.sessionId !== describedSessionId ||
           deps.currentSessionId(conversation.id) !== currentSessionId ||
           (current.execution &&
-            (current.execution.sessionId !== currentSessionId ||
+            (current.execution.sessionId !== describedSessionId ||
               current.execution.agentId !== conversation.agentSlug))
         )
           throw new Error('Conversation child changed during open');
         return {
           status: 'resolved',
           conversation,
-          currentSessionId,
+          currentSessionId: describedSessionId,
           ...(current.execution ? { execution: current.execution } : {}),
           transcript: {
             available: true,
@@ -96,6 +109,7 @@ export function createConversationOpenResolver(deps: {
           ...(!current.canContinue && current.continuationPending
             ? { continuationPending: true }
             : {}),
+          ...(current.activity ? { activity: current.activity } : {}),
           answerability: current.answerability,
           recoveryActions: [],
         };

@@ -1,8 +1,10 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { PERMISSION_TIERS } from '@kontourai/station-contracts/plugin';
+import { WORKSPACE_PANE_REGIONS } from '@kontourai/station-contracts/workspace-pane';
 import { describe, expect, test } from 'vitest';
-
 import packageJson from '../../../package.json' with { type: 'json' };
+import { parsePluginManifestDocumentWithFormat } from '../../services/plugins/plugin-manifest-loader.js';
 import { STATION_DOCS_TOPICS } from '../station-docs-content.js';
 import {
   createStationDocsMcpServer,
@@ -99,6 +101,17 @@ describe('station-docs content', () => {
     expect(body.toLowerCase()).toMatch(/explain/);
   });
 
+  test('the install topics name where a person approves a plugin install', () => {
+    // station-control's install_plugin refuses with operator-approval-required
+    // (station-control-platform-tools.ts). Which sentences may pair install with
+    // plugin at all is the explicit allow-list in the plugin-authoring block.
+    for (const id of ['station-docs', 'builtin-assistant']) {
+      const body = findStationDocsTopic(id)?.body ?? '';
+      expect(body, id).toContain('station plugin install');
+      expect(body, id).toContain('Plugins page');
+    }
+  });
+
   test('no topic claims to describe the reader’s own Station', () => {
     // A content-level check on the same boundary the tool descriptions state:
     // shipped prose must never present itself as live state.
@@ -106,6 +119,316 @@ describe('station-docs content', () => {
       expect(topic.body.toLowerCase()).not.toMatch(
         /your (agents|runs|jobs|sessions) (are|is) currently/,
       );
+    }
+  });
+});
+
+/**
+ * #2323 S1. The plugin-authoring topic is what an agent on an installed
+ * Station reads instead of a source checkout, so it has to stay true as the
+ * SDK and the manifest loader move. Each test below binds a claim in the
+ * prose to the code that decides it.
+ */
+describe('station-docs plugin-authoring topic', () => {
+  const topic = () => {
+    const found = findStationDocsTopic('plugin-authoring');
+    expect(found, 'plugin-authoring topic is missing').toBeDefined();
+    return found!;
+  };
+  const paragraphs = () => topic().body.split('\n\n');
+  /**
+   * An install or set-up verb and a plugin (or "it for them/you/the person")
+   * in one clause, whatever the subject. Subject-agnostic on purpose: rather
+   * than guess which subjects are agents, every match must be pinned below.
+   * Known limit: a pronoun that refers to a plugin across sentences ("Write
+   * the plugin. Then install it.") is not caught.
+   */
+  const install =
+    /\b(?:install(?:s|ing|ed|ation)?|set(?:s|ting)?\s+up)\b[^.;:\n]*?\b(?:plugins?|it\s+for\s+(?:them|you|the\s+person))\b/i;
+
+  /** The paragraph that starts with `heading`, as written in the body. */
+  const paragraph = (heading: string) => {
+    const match = paragraphs().find((block) => block.startsWith(heading));
+    expect(match, `no paragraph starting '${heading}'`).toBeDefined();
+    return match!;
+  };
+
+  /** A line inside `block` starting with `prefix`. */
+  const line = (block: string, prefix: string) => {
+    const match = block.split('\n').find((entry) => entry.startsWith(prefix));
+    expect(match, `no line starting '${prefix}'`).toBeDefined();
+    return match!;
+  };
+
+  const quoted = (text: string) =>
+    [...text.matchAll(/"([^"]+)"/g)].map((match) => match[1]!);
+
+  const exampleManifests = () =>
+    paragraphs()
+      .filter((block) => block.startsWith('A complete minimal manifest'))
+      .map((block) => JSON.parse(block.slice(block.indexOf('\n{') + 1)));
+
+  const load = (manifest: unknown) =>
+    parsePluginManifestDocumentWithFormat(
+      JSON.stringify(manifest),
+      '/docs/plugin.json',
+    );
+
+  /** The plugin-component example with one pane field replaced. */
+  const withPane = (patch: Record<string, unknown>) => {
+    const [example] = exampleManifests();
+    const copy = JSON.parse(JSON.stringify(example));
+    Object.assign(
+      copy.extensions['io.kontourai.station'].workspacePanes[0],
+      patch,
+    );
+    return load(copy);
+  };
+
+  test('every SDK hook the topic names is a real export of @kontourai/station-sdk', async () => {
+    const named = [
+      ...new Set(topic().body.match(/\buse[A-Z][A-Za-z]+\b/g) ?? []),
+    ];
+    // The curated set the topic exists to teach, required IN the SDK HOOKS
+    // paragraph itself: a hook also mentioned elsewhere (useSendToChat in
+    // COMMON MISTAKES) must not keep this green after its table line is
+    // deleted.
+    const table = [
+      ...new Set(
+        paragraph('SDK HOOKS A PANE CAN USE').match(/\buse[A-Z][A-Za-z]+\b/g) ??
+          [],
+      ),
+    ];
+    expect(table).toEqual(
+      expect.arrayContaining([
+        'useAgents',
+        'useIntegrationsQuery',
+        'useOrchestrationSessionsQuery',
+        'useSendToChat',
+        'useLaunchChat',
+        'useNavigation',
+        'useToast',
+      ]),
+    );
+    // A non-literal specifier keeps the SDK's React sources out of the
+    // server-tests `tsc` program (no JSX there); vitest still loads the real
+    // public barrel at runtime.
+    const sdkSpecifier: string = '@kontourai/station-sdk';
+    const sdk = (await import(sdkSpecifier)) as Record<string, unknown>;
+    const missing = named.filter((hook) => typeof sdk[hook] !== 'function');
+    expect(
+      missing,
+      'the plugin-authoring topic names hooks the SDK does not export',
+    ).toEqual([]);
+  }, 60_000);
+
+  test('there is one example manifest per documented renderer kind, and each loads with its pane intact', () => {
+    const documentedKinds = [
+      ...paragraph('RENDERER KINDS').matchAll(/Use "([a-z-]+)"/g),
+    ].map((match) => match[1]!);
+    expect(documentedKinds.sort()).toEqual(['mcp-tool-ui', 'plugin-component']);
+
+    const examples = exampleManifests();
+    const covered: string[] = [];
+    for (const example of examples) {
+      const { manifest, format, stationExtension } = load(example);
+      expect(format, example.name).toBe('agent-plugin-1.0');
+      // `disabled` would mean Station drops every pane the example declares
+      // while still reporting a successful load.
+      expect(stationExtension, example.name).toEqual({ status: 'validated' });
+      expect(manifest.workspacePanes, example.name).toHaveLength(1);
+      covered.push(manifest.workspacePanes![0]!.renderer.kind);
+    }
+    expect(covered.sort()).toEqual(documentedKinds);
+  });
+
+  test('the mcp-tool-ui example requires the integration its renderer ref names', () => {
+    const example = exampleManifests().find(
+      (candidate) =>
+        candidate.extensions['io.kontourai.station'].workspacePanes[0].renderer
+          .kind === 'mcp-tool-ui',
+    );
+    expect(example).toBeDefined();
+    const station = example.extensions['io.kontourai.station'];
+    const [serverId] = station.workspacePanes[0].renderer.ref.split('/');
+    expect(station.integrations.required).toContain(serverId);
+    expect(station.workspacePanes[0].provenance.mcpServerId).toBe(serverId);
+  });
+
+  test('the plugin-component example declares the entrypoint and renderer name its code exports', () => {
+    const [example] = exampleManifests();
+    const { manifest } = load(example);
+    expect(manifest.entrypoint).toBe('./src/index.tsx');
+    expect(manifest.workspacePanes?.[0]?.renderer).toEqual({
+      kind: 'plugin-component',
+      name: 'my-pulse-workspace',
+    });
+    expect(paragraph('THE ENTRYPOINT AND THE COMPONENTS EXPORT')).toContain(
+      'export const components = { "my-pulse-workspace": MyPulse };',
+    );
+  });
+
+  test('the permission list is exactly Station’s permission vocabulary, in the right tiers', () => {
+    const block = paragraph('PERMISSIONS.');
+    for (const tier of ['passive', 'active', 'trusted'] as const) {
+      const documented = quoted(line(block, `- ${tier} `)).sort();
+      const actual = Object.entries(PERMISSION_TIERS)
+        .filter(([, value]) => value === tier)
+        .map(([permission]) => permission)
+        .sort();
+      expect(documented, `${tier} permissions`).toEqual(actual);
+    }
+  });
+
+  test('the documented regions are exactly the contract’s regions', () => {
+    const regions = line(
+      paragraph('WORKSPACE PANE FIELDS'),
+      '- placement.supportedRegions',
+    ).split('.')[1]!;
+    expect(quoted(regions).sort()).toEqual([...WORKSPACE_PANE_REGIONS].sort());
+  });
+
+  test('every documented lifecycle stage and context key is accepted by the loader', () => {
+    const fields = paragraph('WORKSPACE PANE FIELDS');
+    const stages = quoted(line(fields, '- lifecycle.stage'));
+    expect(stages.length).toBeGreaterThan(0);
+    for (const stage of stages) {
+      expect(
+        withPane({ lifecycle: { stage } }).stationExtension,
+        stage,
+      ).toEqual({ status: 'validated' });
+    }
+    // The control: the substitution really reaches the parser.
+    expect(
+      withPane({ lifecycle: { stage: 'beta' } }).stationExtension?.status,
+    ).toBe('disabled');
+
+    const modes = line(fields, '- modes');
+    const keys = quoted(
+      modes.slice(modes.indexOf('these keys'), modes.indexOf('"default"')),
+    );
+    expect(keys).toEqual(
+      expect.arrayContaining(['project', 'task', 'session']),
+    );
+    for (const key of keys) {
+      const { manifest, stationExtension } = withPane({
+        modes: [{ id: 'default', contextRequirement: { [key]: true } }],
+      });
+      expect(stationExtension, key).toEqual({ status: 'validated' });
+      // Unknown keys are dropped rather than refused, so presence in the
+      // parsed mode is the proof the loader knows the key.
+      expect(
+        manifest.workspacePanes?.[0]?.modes[0]?.contextRequirement,
+        key,
+      ).toEqual({ [key]: true });
+    }
+  });
+
+  test('it says agents must not install, and names the validate tool and the person’s paths', () => {
+    const body = topic().body;
+    expect(body).toContain('validate_plugin');
+    expect(body).toMatch(/agents must not install plugins/i);
+    expect(body).toContain('Plugins → Install plugin');
+    expect(body).toContain('station plugin install');
+    expect(body).toContain('--yes');
+    // Validation is a subset of the preview; the prose must not say otherwise.
+    expect(body).not.toMatch(/same checks/i);
+    expect(body).toContain('dependencies-not-checked');
+    // The #2321 mistake: the hook returns the function itself.
+    expect(body).toContain('const sendToChat = useSendToChat(');
+    expect(body).not.toMatch(
+      /const \{ sendToChat \} = useSendToChat\((?!\.\.\.)/,
+    );
+  });
+
+  test('#2323 S5: it tells an agent to propose, and describes what the person sees', () => {
+    const block = paragraph("INSTALL IS A PERSON'S DECISION.");
+    // The tool names are the ones station-control registers; the platform
+    // tools test pins those registrations.
+    expect(block).toContain('`propose_plugin_install`');
+    expect(block).toContain(
+      '`update_plugin` and `remove_plugin` record proposals',
+    );
+    // What the review shows, as the preview renders it.
+    expect(block).toMatch(/names the agent that proposed it/);
+    expect(block).toMatch(
+      /warns when the folder changed after you proposed it/,
+    );
+    // A proposal is not an install, and the prose must not blur that.
+    expect(block).toContain('changes nothing else');
+    expect(block).not.toMatch(/propos\w*[^.]*\binstalls?\b[^.]*\bfor\b/i);
+    // Review H1: the refusals are scoped to Station's agent tools, and the
+    // same-user shell limit is said plainly rather than implied away.
+    expect(block).toContain("Those refusals cover Station's agent tools only.");
+    expect(block).toMatch(/not a sandbox/);
+    expect(block).toMatch(/same operating-system user/);
+    const assistant = findStationDocsTopic('builtin-assistant')!.body;
+    expect(assistant).toContain('It proposes instead');
+  });
+
+  test('every sentence pairing install with plugin is one a person approved, word for word', () => {
+    // An explicit allow-list, not a heuristic. Any sentence that pairs
+    // install/installs/installing/installed/installation with plugin(s) in
+    // the same clause, whatever sits between them ("install your plugin"),
+    // must appear below verbatim. A new or reworded one fails until someone
+    // adds it on purpose, which is the review this guard exists to force: a
+    // docs line saying an agent installs plugins is exactly the claim
+    // station-control refuses.
+    const PERMITTED = [
+      [
+        'station-docs',
+        'Installing a plugin is not among those operations: it needs a person to approve the install preview, on the Plugins page or with `station plugin install <source>`, so no agent can install one (see the `plugin-authoring` topic).',
+      ],
+      ['builtin-assistant', 'It cannot install a plugin.'],
+      [
+        'builtin-assistant',
+        'An install is approved by a person who has read its preview — its permissions and the parts that run in Station’s own page — on the Plugins page or with `station plugin install <source>`.',
+      ],
+      [
+        'plugins',
+        'The registry is the unified place to browse and install agents, skills, integrations, and plugins (a plugin only with a person’s approval of its preview), with an install lifecycle that includes updates and removal.',
+      ],
+      [
+        'plugin-authoring',
+        'Station builds the bundle itself when the plugin is installed, so a plugin ships source, not a `dist/` folder.',
+      ],
+      [
+        'plugin-authoring',
+        'Pane ids and renderer ids are opaque strings, but they are global across every installed plugin: follow the `pane:plugin%3A<plugin-name>:<group>:<name>` and `renderer:plugin%3A<plugin-name>:<renderer kind>:<name>` pattern above so yours cannot collide, write the parts you choose in lowercase, and give every pane its own `id` and its own `rendererId`.',
+      ],
+      [
+        'plugin-authoring',
+        'For local typechecking, `npm install @kontourai/station-sdk react @types/react typescript` in the plugin folder is enough.',
+      ],
+      [
+        'plugin-authoring',
+        'Agents must not install plugins, and `install_plugin` refuses.',
+      ],
+      [
+        'plugin-authoring',
+        'A person installs from Plugins → Install plugin, entering the folder path or git URL, or runs `station plugin install <path-or-url>` in a terminal.',
+      ],
+    ];
+    const found = STATION_DOCS_TOPICS.flatMap((entry) =>
+      entry.body
+        .split(/(?<=[.!?])\s+|\n+/)
+        .filter((sentence) => install.test(sentence))
+        .map((sentence) => [entry.id, sentence]),
+    );
+    expect(found).toEqual(PERMITTED);
+  });
+
+  test('the install guard catches the phrasings the allow-list exists for', () => {
+    for (const claim of [
+      'The assistant installs plugins for a person.',
+      'It can install plugins, not just list them.',
+      'Ask the agent to install your plugin.',
+      'The agent installed the new plugin.',
+      'The assistant sets up plugins for you.',
+      'Write it, then install it for them.',
+      'Setting up your plugin is automatic.',
+    ]) {
+      expect(install.test(claim), claim).toBe(true);
     }
   });
 });

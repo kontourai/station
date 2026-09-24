@@ -7,6 +7,7 @@ import {
   engineConnectionId,
   engineId,
   parseEngineId,
+  parseQualifiedPluginAgentId,
 } from '../agent-identity.js';
 import type { EnrichedAgentProjection } from '../enriched-agent.js';
 
@@ -71,5 +72,34 @@ describe('clean agent identities', () => {
   it('accepts grammar boundaries and hyphenated plugin IDs', () => {
     expect(agentId('a'.repeat(64))).toBe('a'.repeat(64));
     expect(engineConnectionId('plugin-engine')).toBe('plugin-engine');
+  });
+});
+
+describe('plugin-qualified Agent references', () => {
+  it('splits a qualified reference into its plugin and clean Agent identity', () => {
+    expect(parseQualifiedPluginAgentId('my-plugin:assistant')).toEqual({
+      pluginId: 'my-plugin',
+      agentId: 'assistant',
+    });
+  });
+
+  it('splits at the last colon, since only the plugin half may hold one', () => {
+    expect(parseQualifiedPluginAgentId('scope:my-plugin:assistant')).toEqual({
+      pluginId: 'scope:my-plugin',
+      agentId: 'assistant',
+    });
+  });
+
+  it('refuses a reference that names no plugin or no clean Agent', () => {
+    for (const value of [
+      'assistant',
+      ':assistant',
+      'my-plugin:',
+      'my-plugin:Assistant',
+      ' my-plugin:assistant',
+      'my-plugin:123e4567-e89b-12d3-a456-426614174000',
+    ]) {
+      expect(parseQualifiedPluginAgentId(value), value).toBeUndefined();
+    }
   });
 });

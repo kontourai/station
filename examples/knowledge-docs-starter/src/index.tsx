@@ -1,7 +1,7 @@
 import {
   type LayoutComponent,
+  type LayoutComponentProps,
   useNavigation,
-  type WorkspaceComponentProps,
 } from '@kontourai/station-sdk';
 import './layout.css';
 
@@ -38,7 +38,7 @@ function KnowledgeLibrary() {
   );
 }
 
-function KnowledgeAsk({ onShowChat }: WorkspaceComponentProps) {
+function KnowledgeAsk({ onShowChat }: LayoutComponentProps) {
   const { setDockState } = useNavigation();
 
   const askQuestion = () => {

@@ -48,18 +48,144 @@ const SCOPED_INSTRUCTION_EDGES = Object.freeze(
   ]),
 );
 
+/**
+ * station#2301: the SDK's HTTP transport — `http.ts` and the two modules it
+ * imports, `bounded-response.ts` and `client-origin.ts` — is imported by every
+ * client fetcher, so each of the three has the SAME import graph: ~771 test
+ * files, 9,035 tests, nearly the whole UI. That cannot fit ci:fast's
+ * affected-test window on a two-core hosted runner (`run-ci-fast.mjs`: the
+ * 720s lane minus its 220s static reserve), so fast-checks died with
+ * "ci:fast exceeded its 12-minute feedback budget" and zero failures,
+ * deterministically, for any change to these files.
+ *
+ * So each gets an explicit boundary instead of the related graph: the suites
+ * that exercise the transport's OWN behaviour — streams, authentication and
+ * native transport order, credential wake, timeouts, origin headers, failure
+ * mapping, request authority, portability. The transport's CONSUMERS' unit
+ * and component suites leave the fast lane — and still run before merge:
+ * the required `Merge-queue regression` check runs the full-regression
+ * corpus on every merge-queue candidate (since 2026-09-23). Fast feedback
+ * covers the module's own behaviour; the queue covers everything that
+ * imports it.
+ *
+ * Deliberately NOT a `test-full` lane. Any lane switches the whole diff to
+ * deferred execution (`executionSelection` in `run-changed-verification.mjs`):
+ * it drops the related suites of every OTHER changed file and runs no
+ * explicit test at all above 32 — so a transport change would silently stop
+ * testing the rest of its own pull request.
+ */
+const SDK_TRANSPORT_TESTS = Object.freeze([
+  'packages/sdk/src/__tests__/authenticated-client-transport.test.ts',
+  'packages/sdk/src/__tests__/client-entry-portability.test.ts',
+  'packages/sdk/src/__tests__/client-fetchers-failure-paths.test.ts',
+  'packages/sdk/src/__tests__/client-origin.test.ts',
+  'packages/sdk/src/__tests__/client-request-timeout.test.ts',
+  'packages/sdk/src/__tests__/fetch-sse.test.ts',
+  'packages/sdk/src/__tests__/request-inspection.test.ts',
+  'packages/sdk/src/__tests__/scoped-request-authority.test.ts',
+  'packages/sdk/src/__tests__/scoped-request-invocation-boundaries.test.tsx',
+  'src-ui/src/__tests__/useServerEvents-authority-stability.test.tsx',
+  'src-ui/src/contexts/__tests__/ApiBaseContext.credential-wake.test.tsx',
+  'src-ui/src/contexts/__tests__/ApiBaseContext.native-transport-order.test.tsx',
+]);
+const SDK_TRANSPORT_PATHS = Object.freeze([
+  'packages/sdk/src/client/bounded-response.ts',
+  'packages/sdk/src/client/client-origin.ts',
+  'packages/sdk/src/client/http.ts',
+]);
+const SDK_TRANSPORT_EDGES = Object.freeze(
+  SDK_TRANSPORT_PATHS.map((pattern) =>
+    Object.freeze({
+      pattern,
+      tests: SDK_TRANSPORT_TESTS,
+      reason:
+        'SDK transport: own-behaviour suites; its import graph is too broad ' +
+        'for the fast lane, so consumers are covered by the merge-queue ' +
+        'full regression (#2301)',
+    }),
+  ),
+);
+
+/**
+ * station#2326: the same overflow class, one layer out. Each of these single
+ * SDK modules is imported directly by client fetchers or re-exports them, so
+ * its related graph approaches the transport's (measured by the repo's own
+ * related discovery on 2026-09-23: api-error-message 744 test files,
+ * chatHttpError 642, the client barrel 626, against the 771 that overran the
+ * fast lane). The package barrel (`packages/sdk/src/index.ts`, 498) is
+ * deliberately NOT here: an isolated root-barrel change keeps the conservative
+ * related selection the repo already pins, and it is the smallest of the four
+ * and unmeasured against the window. Revisit only if a barrel-only change
+ * overruns. Each module here gets the same shape as the
+ * transport: the suites that exercise the module's own behaviour run in the
+ * fast lane, and its consumers run in the required merge-queue full
+ * regression. Tests-only edges, never a lane (see SDK_TRANSPORT_EDGES).
+ */
+const SDK_BROAD_MODULE_EDGES = Object.freeze([
+  Object.freeze({
+    pattern: 'packages/sdk/src/client/api-error-message.ts',
+    tests: Object.freeze([
+      'packages/sdk/src/__tests__/api-error-message.test.ts',
+      'packages/sdk/src/__tests__/client-entry-portability.test.ts',
+      'packages/sdk/src/__tests__/client-fetchers-failure-paths.test.ts',
+    ]),
+    reason:
+      'SDK error-message mapping: own-behaviour suites; consumers run in ' +
+      'the merge-queue full regression (#2326)',
+  }),
+  Object.freeze({
+    pattern: 'packages/sdk/src/client/chatHttpError.ts',
+    tests: Object.freeze([
+      'packages/sdk/src/__tests__/chatRuntimeStream.test.ts',
+      'packages/sdk/src/__tests__/client-entry-portability.test.ts',
+      'packages/sdk/src/__tests__/client-execution.test.ts',
+      'src-ui/src/hooks/orchestration/__tests__/queueDrain.test.ts',
+    ]),
+    reason:
+      'SDK chat HTTP error: own-behaviour suites; consumers run in the ' +
+      'merge-queue full regression (#2326)',
+  }),
+  // The client barrel has NO suite of its own: nothing asserts which modules
+  // it re-exports (publicBarrel.test.ts covers the PACKAGE root barrel, not
+  // this one). The portability scan only proves its import syntax stays
+  // portable. A dropped re-export is caught by the consumers that import it,
+  // which run in the merge-queue full regression — before merge, not here.
+  Object.freeze({
+    pattern: 'packages/sdk/src/client/index.ts',
+    tests: Object.freeze([
+      'packages/sdk/src/__tests__/client-entry-portability.test.ts',
+    ]),
+    reason:
+      'SDK client barrel: portability scan only (no own export-contract ' +
+      'suite exists); consumers run in the merge-queue full regression (#2326)',
+  }),
+]);
+
 /** Repository data readers and explicit runtime seams supplementing import analysis. */
 export const GOVERNED_REPO_DATA_EDGES = Object.freeze([
   {
+    // #2458: the same overflow class as SDK_TRANSPORT_EDGES (#2301). The
+    // matrix is imported by `contracts/agent.ts`, `config.ts` and `tool.ts`,
+    // so its related graph is most of the UI and server corpus, and a
+    // matrix-only change ran fast-checks past its 12-minute budget with zero
+    // failures. The suites that exercise the matrix's own declarations run
+    // here; its consumers run in the required merge-queue full regression.
     pattern: 'packages/contracts/src/engine-capability-matrix.ts',
-    related: true,
     tests: [
       'packages/contracts/src/__tests__/engine-capability-matrix.test.ts',
+      'packages/contracts/src/__tests__/agent-capability-profile.test.ts',
+      'src-server/providers/__tests__/child-work-conformance.test.ts',
+      'src-server/providers/__tests__/engine-image-input-declaration.test.ts',
+      'src-server/providers/__tests__/tool-policy-delivery-tripwire.test.ts',
       'src-server/services/orchestration/__tests__/attached-session-adoption.test.ts',
+      'src-server/services/orchestration/__tests__/engine-capability-basis-vocabulary.test.ts',
       'src-server/services/orchestration/__tests__/orchestration-service.test.ts',
+      'src-ui/src/components/acp-connections/__tests__/EngineCapabilitySummary.test.tsx',
     ],
     reason:
-      'engine continuation declarations control adoption command admission',
+      'engine capability declarations: own-behaviour suites; the import ' +
+      'graph is too broad for the fast lane, so consumers run in the ' +
+      'merge-queue full regression (#2458)',
   },
   {
     pattern: 'src-server/services/orchestration/attached-session-adoption.ts',
@@ -105,11 +231,21 @@ export const GOVERNED_REPO_DATA_EDGES = Object.freeze([
   },
   {
     pattern: 'packages/sdk/src/client/**',
+    // The transport and broad-graph modules have their own edges: see
+    // SDK_TRANSPORT_EDGES and SDK_BROAD_MODULE_EDGES.
+    except: [
+      ...SDK_TRANSPORT_PATHS,
+      'packages/sdk/src/client/api-error-message.ts',
+      'packages/sdk/src/client/chatHttpError.ts',
+      'packages/sdk/src/client/index.ts',
+    ],
     related: true,
     tests: ['packages/sdk/src/__tests__/client-entry-portability.test.ts'],
     reason:
       'portable client dependency scan reads source outside the import graph',
   },
+  ...SDK_TRANSPORT_EDGES,
+  ...SDK_BROAD_MODULE_EDGES,
   {
     pattern: 'packages/cli/src/commands/session-client.ts',
     related: true,
@@ -340,6 +476,12 @@ export const SPAWNED_SCRIPT_EDGES = Object.freeze([
     reason: EXECUTED_SCRIPT_EDGE_REASON,
   }),
   Object.freeze({
+    pattern: 'scripts/test-realtime-wait-gate.mjs',
+    related: true,
+    tests: Object.freeze(['scripts/__tests__/test-realtime-wait-gate.test.ts']),
+    reason: EXECUTED_SCRIPT_EDGE_REASON,
+  }),
+  Object.freeze({
     pattern: 'scripts/literal-swap-gate.mjs',
     related: true,
     tests: Object.freeze(['scripts/__tests__/literal-swap-gate.test.ts']),
@@ -470,8 +612,20 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
   },
   {
     pattern: 'scripts/orchestration-transfer-gate.mjs',
-    tests: ['scripts/__tests__/orchestration-transfer-gate.test.ts'],
+    tests: [
+      'scripts/__tests__/orchestration-transfer-gate.test.ts',
+      'scripts/__tests__/transfer-baselines.test.ts',
+    ],
     reason: 'exact-main transfer comparison gate',
+  },
+  {
+    pattern: 'scripts/lib/transfer-baselines.mjs',
+    tests: [
+      'scripts/__tests__/transfer-baselines.test.ts',
+      'scripts/__tests__/orchestration-transfer-gate.test.ts',
+      'scripts/__tests__/worktree-hygiene.test.ts',
+    ],
+    reason: 'transfer baseline naming, reuse, and pruning',
   },
   {
     pattern: 'scripts/check-prepush-orchestration-transfer.mjs',
@@ -699,6 +853,18 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
     supplemental: true,
     tests: ['src-ui/src/__tests__/station-vocabulary.test.ts'],
     reason: 'glossary copy ratchet scans all src-ui sources by path',
+  },
+  {
+    // #2401: the example-manifest field check reads every examples/*/plugin.json
+    // by path, so no import edge reaches it. Supplemental: it ADDS the check to
+    // an examples change without replacing that change's own selection, which
+    // today escalates as an unmapped path.
+    pattern: 'examples/**',
+    supplemental: true,
+    tests: [
+      'src-server/services/plugins/__tests__/example-manifest-fields.test.ts',
+    ],
+    reason: 'example manifests are read by path, outside the import graph',
   },
   {
     pattern: 'justfile',
@@ -1384,6 +1550,7 @@ export function isEscalationPath(path) {
  *   related?: boolean,
  *   supplemental?: boolean,
  *   whenAll?: readonly string[],
+ *   except?: readonly string[],
  *   reason?: string,
  * }} ImpactEdge
  */
@@ -1407,6 +1574,46 @@ export function validateTestImpactManifest(manifest = TEST_IMPACT_MANIFEST) {
       errors.push(
         `supplemental impact edge may only add tests: ${edge.pattern}`,
       );
+    // `except` is an exact-path list. A glob-shaped entry, one its pattern
+    // cannot match, or one on a supplemental edge (whose boundary role it
+    // cannot change) would each leave the path on the broad edge silently —
+    // exactly the typo class this field exists to stop.
+    if (edge?.except?.length && edge.supplemental)
+      errors.push(
+        `supplemental impact edge may not declare exceptions: ${edge.pattern}`,
+      );
+    for (const excepted of edge?.except ?? []) {
+      if (excepted.includes('*'))
+        errors.push(
+          `impact edge exception must be an exact path: ${edge.pattern} except ${excepted}`,
+        );
+      else if (!matches(edge.pattern, excepted))
+        errors.push(
+          `impact edge exception outside its pattern: ${edge.pattern} except ${excepted}`,
+        );
+      // An excepted path must still have an EXPLICIT owner, or it falls back
+      // to whatever broader edge is left — usually a `related` one, which
+      // re-selects the very graph the exception exists to keep out. The owner
+      // must be unconditional (`whenAll` can leave the path unowned), carry
+      // tests, and add neither `related` (re-adds the graph) nor a lane (any
+      // lane defers execution of the whole diff).
+      else if (
+        !manifest.some(
+          (other) =>
+            other !== edge &&
+            !other.supplemental &&
+            !other.whenAll &&
+            !other.related &&
+            !other.lanes?.length &&
+            !other.except?.includes(excepted) &&
+            matches(other.pattern, excepted) &&
+            other.tests?.length,
+        )
+      )
+        errors.push(
+          `impact edge exception has no explicit owner: ${edge.pattern} except ${excepted}`,
+        );
+    }
   }
   // These dynamic seams cannot be inferred from Vitest imports. Deleting one
   // is an unsafe silent narrowing, so validation is intentionally explicit.

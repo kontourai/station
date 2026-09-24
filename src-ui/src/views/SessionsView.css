@@ -1037,3 +1037,29 @@
   justify-content: flex-end;
   padding: 0 12px 12px;
 }
+
+/* #2312: "Discard draft" in a Drafts row's trailing slot. Same family as
+   `.session-evidence-button`, sized for a glyph rather than a word. */
+.session-discard-draft {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  padding: 0.15rem 0.3rem;
+  border: 1px solid var(--border-primary);
+  border-radius: 4px;
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.session-discard-draft:hover {
+  border-color: var(--accent-primary);
+  color: var(--text-primary);
+}
+
+.session-discard-draft:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}

@@ -81,9 +81,88 @@ describe('classifying a link in a chat message (#2049)', () => {
       '/etc/passwd',
       '//github.com/o/r',
       'a\\b.ts',
-      './x.ts',
+      './../x.ts',
     ])
       expect(classifyMarkdownLink(escaping), escaping).toBeNull();
+  });
+
+  test('a leading ./ names the same file, not a traversal', () => {
+    expect(classifyMarkdownLink('./src/app.ts')).toEqual({
+      kind: 'path',
+      path: 'src/app.ts',
+    });
+  });
+
+  test('a :line suffix is a position, in every form a model writes it', () => {
+    expect(classifyMarkdownLink('src/app.ts:42')).toEqual({
+      kind: 'path',
+      path: 'src/app.ts',
+      lineRange: { start: 42, end: 42 },
+    });
+    // Column numbers are dropped: a preview addresses lines.
+    expect(classifyMarkdownLink('src/app.ts:42:7')).toEqual({
+      kind: 'path',
+      path: 'src/app.ts',
+      lineRange: { start: 42, end: 42 },
+    });
+    expect(classifyMarkdownLink('src/app.ts:10-20')).toEqual({
+      kind: 'path',
+      path: 'src/app.ts',
+      lineRange: { start: 10, end: 20 },
+    });
+    // An impossible range keeps the file and drops the position.
+    expect(classifyMarkdownLink('src/app.ts:20-10')).toEqual({
+      kind: 'path',
+      path: 'src/app.ts',
+    });
+  });
+
+  test('an absolute path is a file only inside one of the conversation roots', () => {
+    const roots = ['/work/repo', '/work/worktrees/lane/'];
+    expect(classifyMarkdownLink('/work/repo/src/app.ts:3', { roots })).toEqual({
+      kind: 'path',
+      path: 'src/app.ts',
+      lineRange: { start: 3, end: 3 },
+    });
+    expect(
+      classifyMarkdownLink('/work/worktrees/lane/README.md', { roots }),
+    ).toEqual({ kind: 'path', path: 'README.md' });
+    for (const outside of [
+      // A sibling whose name merely starts with the root's.
+      '/work/repository/src/app.ts',
+      '/etc/passwd',
+      // Inside by prefix, out by traversal: the validator still refuses it.
+      '/work/repo/../secret.env',
+      // `file:` is not a link scheme here, inside a root or not.
+      'file:///work/repo/src/app.ts',
+    ])
+      expect(classifyMarkdownLink(outside, { roots }), outside).toBeNull();
+    // No roots, no absolute file links at all.
+    expect(classifyMarkdownLink('/work/repo/src/app.ts')).toBeNull();
+  });
+
+  test('a forge file view is a repo file, identified by its repository', () => {
+    expect(
+      classifyMarkdownLink(
+        'https://github.com/kontourai/station/blob/main/src/app.ts#L4-L9',
+      ),
+    ).toEqual({
+      kind: 'repo-file',
+      host: 'github.com',
+      owner: 'kontourai',
+      repository: 'station',
+      ref: 'main',
+      path: 'src/app.ts',
+      lineRange: { start: 4, end: 9 },
+      url: 'https://github.com/kontourai/station/blob/main/src/app.ts#L4-L9',
+    });
+    expect(
+      classifyMarkdownLink('https://gitlab.com/g/p/-/blob/abc123/lib/x.rb'),
+    ).toMatchObject({ kind: 'repo-file', repository: 'p', path: 'lib/x.rb' });
+    // A path the preview could not address is an ordinary external link.
+    expect(
+      classifyMarkdownLink('https://github.com/o/r/blob/main/a%2F..%2Fb.ts'),
+    ).toMatchObject({ kind: 'external' });
   });
 
   test('an href no placement applies to is left to the anchor', () => {

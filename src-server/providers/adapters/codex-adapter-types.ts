@@ -1,4 +1,5 @@
 import type { ProviderSession } from '../adapter-shape.js';
+import type { CodexChildWorkState } from './codex-adapter-child-work.js';
 
 export interface CodexProcessLike {
   readonly pid?: number;
@@ -47,6 +48,12 @@ export interface PendingApprovalRequest {
   title: string;
   threadId: string;
   payload: Record<string, unknown>;
+  /**
+   * Tool-level session-grant identity (`deriveApprovalToolName`), stored so
+   * `respondToRequest` can remember an `acceptForSession` grant without
+   * re-deriving it. Absent when the method has no stable tool identity.
+   */
+  toolName?: string;
 }
 
 export interface CodexSessionRecord {
@@ -57,6 +64,14 @@ export interface CodexSessionRecord {
   rpcRequestCounter: number;
   pendingRpcRequests: Map<string, PendingRpcRequest>;
   pendingApprovals: Map<string, PendingApprovalRequest>;
+  /**
+   * Tool-level session grants from `acceptForSession` (mirrors
+   * claude-adapter/station-agent-adapter `approvedTools`). The Codex wire
+   * responses for `commandExecution`/`fileChange`/elicitation carry no
+   * session scope, so Station remembers the tool name itself and
+   * auto-accepts later calls without re-prompting. Dies with the session.
+   */
+  approvedTools: Set<string>;
   activeTurnId?: string;
   activeTurnStartedAt?: number;
   /**
@@ -105,6 +120,22 @@ export interface CodexSessionRecord {
    * doubles).
    */
   stopped: boolean;
+  /**
+   * Set while a notification is waiting on I/O (an image read from the host);
+   * the transport delivers this session's later notifications after it.
+   */
+  pendingHostImageRead?: Promise<void>;
+  /**
+   * Notifications waiting, in arrival order, behind
+   * {@link pendingHostImageRead}. Never longer than the transport's
+   * `MAX_QUEUED_NOTIFICATIONS`.
+   */
+  queuedNotifications?: Array<() => Promise<void> | undefined>;
+  /**
+   * Publishes the pending host image read's terminal NOW, synchronously, with
+   * the deadline's outcome. Set only while such a read is pending.
+   */
+  settleHostImageReadNow?: () => void;
   terminationPromise?: Promise<void>;
   /** Total raw stdout bytes accepted while a bounded adoption/recovery phase is active. */
   stdoutIngressLimit?: {
@@ -115,4 +146,9 @@ export interface CodexSessionRecord {
   /** Forked cumulative usage includes source history and is withheld until a durable baseline exists. */
   withholdCumulativeUsage?: boolean;
   cumulativeUsageWithheldWarningPublished?: boolean;
+  /**
+   * #2458: this session's Codex subagents as child work
+   * (`codex-adapter-child-work.ts`). Created on first use.
+   */
+  childWork?: CodexChildWorkState;
 }

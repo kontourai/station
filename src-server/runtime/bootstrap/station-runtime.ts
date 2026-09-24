@@ -13,6 +13,7 @@ import {
   loadLocalAccounts,
   readLocalAccountConfiguration,
 } from '../../services/identity/local-account-runtime.js';
+import { createRelayEnrollmentRuntime } from '../../services/identity/relay-enrollment-service.js';
 import {
   closePluginActivationSession,
   completePluginActivationComposition,
@@ -30,6 +31,7 @@ import {
 import { createProjectMembershipRuntime } from '../../services/projects/project-membership-runtime.js';
 import { awaitSettlementWithin } from '../../utils/bounded-async.js';
 import { errorMessage } from '../../utils/error-message.js';
+import { parseSecureDeviceSessionCookie } from './runtime-http.js';
 /**
  * VoltAgent runtime integration for Station
  * Handles dynamic agent loading, switching, and MCP tool management
@@ -103,6 +105,7 @@ import {
 import { BedrockModelCatalog } from '../../providers/llm/bedrock-models.js';
 import { disposeRetainedPreparedPluginProviders } from '../../providers/registries/registry.js';
 import type { BuildProvenanceSnapshot } from '../../routes/system/build-provenance.js';
+import { resolveStationBrowserOrigins } from '../../security/station-browser-origins.js';
 import type { ACPManager } from '../../services/acp/acp-bridge.js';
 import { getAgentPolicyService } from '../../services/agents/agent-policy-service.js';
 import type { AgentService } from '../../services/agents/agent-service.js';
@@ -369,12 +372,17 @@ interface AgentConfigurationGeneration {
 }
 
 import { getCachedUser } from '../../routes/system/auth.js';
+import type { BrowserService } from '../../services/browser/browser-service.js';
+import type { DeviceSessionService } from '../../services/devices/device-session-service.js';
+import type { DeviceToolchainService } from '../../services/devices/toolchain/device-toolchain-service.js';
 import { DiscordGatewayService } from '../../services/discord/discord-gateway-service.js';
+import type { LiveSurfaceRegistry } from '../../services/live-surface/registry.js';
 import {
   ActionOperationService,
   FileActionOperationStore,
 } from '../../services/operations/action-operation-service.js';
 import { FleetDispatchActionOperationObserver } from '../../services/operations/fleet-dispatch-action-operation-observer.js';
+import { FileDelegationAttemptClaimStore } from '../../services/orchestration/delegation-attempt-claim-store.js';
 import {
   createMCPToolProvenanceGeneration,
   type MCPToolProvenanceGeneration,
@@ -393,6 +401,11 @@ import { RuntimeEventLog } from '../conversation/runtime-event-log.js';
 import { StrandsFramework } from '../frameworks/strands-adapter.js';
 import { releaseAllNativeStationControlClients } from '../frameworks/strands-tool-loader.js';
 import { VoltAgentFramework } from '../frameworks/voltagent-adapter.js';
+import {
+  createStationControlCallerRecordResolver,
+  stationControlCallerRecordSources,
+} from '../mcp/station-control-caller.js';
+import { claudeInProcessStationControlOptions } from '../mcp/station-control-in-process.js';
 import {
   buildStationControlMcpUrl,
   mintStationControlMcpToken,
@@ -439,6 +452,7 @@ import {
   checkOllamaAvailability,
   getActiveRuntimeProjectSlug,
 } from './runtime-startup.js';
+import { readVerifiedPionApplicationRequest } from './self-hosted-broker-pion-runtime.js';
 import {
   BUILTIN_STATION_DOCS_TOOL_SERVER_ID,
   stationControlRuntimeIdentity,
@@ -515,6 +529,9 @@ export class StationRuntime {
   private localAccounts?: LoadedLocalAccounts;
   private applicationSessions?: ReturnType<
     typeof createApplicationSessionRuntime
+  >;
+  private relayEnrollment?: Awaited<
+    ReturnType<typeof createRelayEnrollmentRuntime>
   >;
   private readonly pluginInstallationHost: PluginInstallationHost;
   private configLoader: ConfigLoader;
@@ -675,6 +692,17 @@ export class StationRuntime {
   private kitLifecycleReady: Promise<void> = Promise.resolve();
   private notificationService?: NotificationService;
   private projectTaskRoomRuntime?: ProjectTaskRoomRuntime;
+  /** #90 Browser pane (personal hosts only); its Chromium processes stop with us. */
+  private browserService?: BrowserService;
+  private deviceToolchainService?: DeviceToolchainService;
+  /** #1970 device sessions (personal hosts only); their decoders stop with us. */
+  private deviceSessions?: DeviceSessionService;
+  /** #90 live surfaces (personal hosts only); disposed after the browsers. */
+  private liveSurfaceRegistry?: LiveSurfaceRegistry;
+  /** Epic #2323 S3: draft watchers and built drafts, released on shutdown. */
+  private pluginDraftService?: { dispose(): void };
+  /** #1973 SSH device hosts: their sessions, ssh sessions and forwards. */
+  private deviceHosts?: { dispose(): Promise<void> };
   private taskRoomAcceptanceControl?: TaskRoomAcceptanceControl;
   private metricsLog: Array<{
     timestamp: number;
@@ -788,6 +816,32 @@ export class StationRuntime {
     // this closure is only invoked at `startSession` time, well after
     // construction completes.
     getStationControlEnv: () => stationControlSpawnEnv(this.port),
+    // Station #90 lane D (station #122): station-control runs IN-PROCESS for
+    // Claude (`station-control-in-process.ts`), so neither the internal API
+    // token nor a caller token ever reaches the CLI's `--mcp-config` argv.
+    // The record resolver is read lazily: the orchestration service is
+    // assigned after this field initializer runs. The same options serve the
+    // built-in browser tools (`station-browser`, #90 D14) in-process too.
+    ...claudeInProcessStationControlOptions(() =>
+      this.orchestrationService
+        ? createStationControlCallerRecordResolver(
+            stationControlCallerRecordSources({
+              orchestrationService: {
+                resolveSessionActingPrincipal: (threadId) =>
+                  this.orchestrationService.resolveSessionActingPrincipal(
+                    threadId,
+                  ),
+                firstStartedMetadataOfThread: (threadId) =>
+                  this.orchestrationService.firstStartedMetadataOfThread(
+                    threadId,
+                  ),
+              },
+              eventStore: this.orchestrationEventStore,
+              getProject: (slug) => this.storageAdapter.getProject(slug),
+            }),
+          )
+        : undefined,
+    ),
     // `this.logger` is not assigned until later in the constructor body
     // (field initializers run first) — wrap it in a lazily-evaluated shim
     // rather than capturing `this.logger` (which would freeze in as
@@ -998,6 +1052,8 @@ export class StationRuntime {
   private usageTelemetry?: UsageTelemetryService;
   /** One durable operation authority shared by route and fleet composition. */
   private actionOperations!: ActionOperationService;
+  /** #485: durable receiver request-claim owner for opt-in attempts. */
+  private delegationAttemptClaims!: FileDelegationAttemptClaimStore;
 
   private async resolveExternalPreToolPolicy(
     input: ProviderSessionStartInput,
@@ -1186,6 +1242,12 @@ export class StationRuntime {
         });
       this.actionOperations = new ActionOperationService(
         new FileActionOperationStore(projectHomeDir),
+      );
+      // #485 receiver request-claim slice: the durable execution-domain
+      // owner for opt-in portable delegation attempts — deliberately a
+      // separate store from the prunable UI ActionOperation ledger.
+      this.delegationAttemptClaims = new FileDelegationAttemptClaimStore(
+        projectHomeDir,
       );
       // Reported at the first moment there is a logger to report it with. The
       // quarantine itself has to run before this — before the EventStore that
@@ -3206,6 +3268,7 @@ export class StationRuntime {
     const virtualApplication = this.virtualApplicationConfiguration
       ? new VirtualApplicationIngress(
           this.virtualApplicationConfiguration.origin,
+          readVerifiedPionApplicationRequest,
         )
       : undefined;
     this.virtualApplication = virtualApplication;
@@ -3220,7 +3283,15 @@ export class StationRuntime {
         if (this.selfHostedBrokerConfiguration) {
           const broker = this.selfHostedBrokerConfiguration.create(application);
           this.selfHostedBroker = broker;
-          await broker.start();
+          // The broker is optional connectivity. Keep local Station ready
+          // while its registration retries; shutdown joins this exact owner.
+          void broker.start().catch(() => {
+            if (this.selfHostedBrokerShutdown || application.signal.aborted)
+              return;
+            // The broker status observer owns a fixed-code reason. Raw
+            // transport/provider errors must not enter a shared log.
+            this.logger?.warn?.('Optional broker connector failed');
+          });
         }
       }
     } catch (error) {
@@ -3289,7 +3360,58 @@ export class StationRuntime {
         this.deploymentAuthentication,
         (credential) =>
           this.environmentSecurityService.identifyDevice(credential),
+        this.environmentSecurityService.devicePairing.resolvePendingRelayDevice.bind(
+          this.environmentSecurityService.devicePairing,
+        ),
+        this.environmentSecurityService.devicePairing.resolveActiveRelayEnrollmentDevice.bind(
+          this.environmentSecurityService.devicePairing,
+        ),
+        Date.now,
+        (credential) =>
+          this.environmentSecurityService.devicePairing.credentialAliasId(
+            credential,
+          ),
+        {
+          readSecureDeviceCookie: (request) =>
+            parseSecureDeviceSessionCookie(
+              request.headers.get('cookie') ?? undefined,
+            ),
+          issueAlias: (parentCredential, deviceId, aliasId) =>
+            this.environmentSecurityService.devicePairing.issueRelayCredentialAlias(
+              parentCredential,
+              deviceId,
+              undefined,
+              aliasId,
+            ),
+          revokeAlias: (deviceId, aliasId) =>
+            this.environmentSecurityService.devicePairing.revokeRelayCredentialAlias(
+              deviceId,
+              aliasId,
+            ),
+        },
       );
+    }
+    if (!this.relayEnrollment) {
+      const allowedClientOrigins = [
+        ...new Set([
+          ...resolveStationBrowserOrigins({ port: this.port, host: this.host }),
+          ...(this.deploymentAuthentication?.allowedBrowserOrigins ?? []),
+        ]),
+      ];
+      this.relayEnrollment = await createRelayEnrollmentRuntime({
+        home: this.configLoader.getProjectHomeDir(),
+        stationId: identity.environmentId,
+        requestOrigin:
+          this.deploymentAuthentication?.publicOrigin ??
+          allowedClientOrigins[0] ??
+          `http://localhost:${this.port}`,
+        allowedClientOrigins,
+        authentication: this.deploymentAuthentication?.service,
+        applicationSessions: this.applicationSessions,
+        pairing: this.environmentSecurityService.devicePairing,
+      });
+    } else {
+      await this.relayEnrollment.recoverBeforeAdmission();
     }
     const packageProjections = await this.pluginInstallationHost.reconcile();
     if (packageProjections.status === 'pending')
@@ -3301,7 +3423,12 @@ export class StationRuntime {
     // binding. A hosted tenant-isolated runtime must not bind the separate
     // terminal port until that transport has tenant authorization.
     if (!this.terminalWsStarted && !isHostedTenantExecutionRequired()) {
-      this.terminalWsServer.start(this.port + 1, this.host);
+      this.terminalWsServer.start(this.port + 1, this.host, {
+        allowedBrowserOrigins: resolveStationBrowserOrigins({
+          port: this.port,
+          host: this.host,
+        }),
+      });
       this.terminalWsStarted = true;
     }
     let initialized: Awaited<ReturnType<typeof initializeRuntime>>;
@@ -3618,6 +3745,22 @@ export class StationRuntime {
     await attempt(() => this.retireFailedSearch());
     await attempt(() => this.sshEnvironmentService.shutdown());
     await attempt(() => this.discordGatewayService.stop());
+    await attempt(() => this.pluginDraftService?.dispose());
+    this.pluginDraftService = undefined;
+    // #2443: route composition may have built these before the failure. The
+    // same order as shutdown(): browsers, then device sessions (their
+    // producers read the hub the toolchain stops), SSH device hosts, the
+    // toolchain, and the live-surface registry once every producer stopped.
+    if (await attempt(() => this.browserService?.shutdown()))
+      this.browserService = undefined;
+    if (await attempt(() => this.deviceSessions?.dispose()))
+      this.deviceSessions = undefined;
+    if (await attempt(() => this.deviceHosts?.dispose()))
+      this.deviceHosts = undefined;
+    if (await attempt(() => this.deviceToolchainService?.shutdown()))
+      this.deviceToolchainService = undefined;
+    if (await attempt(() => this.liveSurfaceRegistry?.dispose()))
+      this.liveSurfaceRegistry = undefined;
     await attempt(() => this.taskRoomAcceptanceControl?.close());
     this.taskRoomAcceptanceControl = undefined;
     const scheduler = this.schedulerService;
@@ -3711,6 +3854,7 @@ export class StationRuntime {
           agentId: input.agentId,
           provider: 'task-dispatch',
           sourceSurface: 'e2e-task-room-control',
+          fullAccessGrant: null,
         });
         if (dispatched.kind !== 'dispatched')
           throw new Error(`Task dispatch was ${dispatched.kind}`);
@@ -3875,12 +4019,19 @@ export class StationRuntime {
       notificationService,
       kitLifecycleReady,
       projectTaskRoomRuntime,
+      browserService,
+      deviceToolchainService,
+      deviceSessions,
+      liveSurfaceRegistry,
+      pluginDraftService,
+      deviceHosts,
     } = configureRuntimeRoutes({
       projectMembership: this.projectMembership?.service,
       projectSharedTasks: this.projectMembership?.sharedTasks,
       deploymentAuthentication: this.deploymentAuthentication,
       localAccounts: this.localAccounts,
       applicationSessions: this.applicationSessions,
+      relayEnrollment: this.relayEnrollment,
       app,
       logger: this.logger,
       eventBus: this.eventBus,
@@ -3920,6 +4071,7 @@ export class StationRuntime {
       taskDispatcher: this.taskDispatcher,
       terminalService: this.terminalService,
       actionOperations: this.actionOperations,
+      delegationAttemptClaims: this.delegationAttemptClaims,
       orchestrationService: this.orchestrationService,
       resourcePosture: this.resourcePosture,
       orchestrationEventStore: this.orchestrationEventStore,
@@ -3980,6 +4132,12 @@ export class StationRuntime {
     this.notificationService = notificationService;
     this.kitLifecycleReady = kitLifecycleReady;
     this.projectTaskRoomRuntime = projectTaskRoomRuntime;
+    this.browserService = browserService;
+    this.deviceToolchainService = deviceToolchainService;
+    this.deviceSessions = deviceSessions;
+    this.liveSurfaceRegistry = liveSurfaceRegistry;
+    this.pluginDraftService = pluginDraftService;
+    this.deviceHosts = deviceHosts;
   }
 
   /**
@@ -4431,6 +4589,12 @@ export class StationRuntime {
     const consentListener = this.consentListener;
     const failures: unknown[] = [];
     try {
+      this.relayEnrollment?.close();
+      this.relayEnrollment = undefined;
+    } catch (error) {
+      failures.push(error);
+    }
+    try {
       this.applicationSessions?.close();
       this.applicationSessions = undefined;
     } catch (error) {
@@ -4455,7 +4619,45 @@ export class StationRuntime {
         failures.push(new Error('Task search reader shutdown pending'));
     }
     try {
+      await this.browserService?.shutdown();
+      this.browserService = undefined;
+    } catch (error) {
+      failures.push(error);
+    }
+    try {
+      // Sessions first: their producers read the hub the toolchain stops.
+      await this.deviceSessions?.dispose();
+      this.deviceSessions = undefined;
+    } catch (error) {
+      failures.push(error);
+    }
+    try {
+      await this.deviceHosts?.dispose();
+      this.deviceHosts = undefined;
+    } catch (error) {
+      failures.push(error);
+    }
+    try {
+      await this.deviceToolchainService?.shutdown();
+      this.deviceToolchainService = undefined;
+    } catch (error) {
+      failures.push(error);
+    }
+    try {
+      // Last: every producer above (browsers, device sessions) is stopped.
+      await this.liveSurfaceRegistry?.dispose();
+      this.liveSurfaceRegistry = undefined;
+    } catch (error) {
+      failures.push(error);
+    }
+    try {
       await this.discordGatewayService?.stop();
+    } catch (error) {
+      failures.push(error);
+    }
+    try {
+      this.pluginDraftService?.dispose();
+      this.pluginDraftService = undefined;
     } catch (error) {
       failures.push(error);
     }

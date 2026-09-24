@@ -15,6 +15,7 @@ import {
   useRef,
   useState,
 } from 'react';
+import { Button } from '../components/Button';
 import { DockShell } from '../components/chat-dock/DockShell';
 import { LazyBoundary } from '../components/LazyBoundary';
 import { SkeletonBlock } from '../components/Skeleton';
@@ -29,6 +30,7 @@ import {
   resolveRegionSurface,
 } from '../regions/region-model';
 import {
+  forgetRegionPaneState,
   type RegionPaneContext,
   regionSurfaceOfPane,
   regionSurfacePane,
@@ -370,13 +372,60 @@ function RegionPaneNeedsProject({ title }: { title: string }) {
  * belongs to, and renders. "Saved state" is this code's word for it; the
  * user's is which project it was opened for and which file it showed.
  */
-function RegionPaneUnavailable({ title }: { title: string }) {
+function RegionPaneUnavailable({
+  title,
+  onRemove,
+}: {
+  title: string;
+  onRemove: () => void;
+}) {
   return (
     <div className="dock-slot__body">
       <Empty
         variant="compact"
         label={`${title} is not available in this dock`}
-        description="It was opened for a different project, or Station no longer remembers which file it showed. Open it again from the chat that linked it."
+        description="Not available in this Project: it was opened for another one, where it still works, or Station no longer remembers what it showed. Removing it closes this tab. Open it again from the chat that linked it."
+        action={<RemoveRegionPaneButton onRemove={onRemove} />}
+      />
+    </div>
+  );
+}
+
+/**
+ * #90 D9 (live verify): a pane that can never render in this dock must
+ * still be removable. A LONE pane has no tab strip and so no tab close
+ * (`tabs.length > 1`), and the record keeps it across reloads — without this
+ * a broken pane is a permanent tenant of the region. Removing it is the
+ * model's `removePane`, the same act as a tab's close.
+ */
+function RemoveRegionPaneButton({ onRemove }: { onRemove: () => void }) {
+  return <Button onClick={onRemove}>Remove this pane</Button>;
+}
+
+/**
+ * A built-in pane whose code failed to load or threw while rendering: the
+ * boundary's retry, plus the same removal, so one broken pane cannot hold
+ * its region across reloads.
+ */
+function RegionPaneFailed({
+  onRetry,
+  onRemove,
+}: {
+  onRetry: () => void;
+  onRemove: () => void;
+}) {
+  return (
+    <div className="dock-slot__body">
+      <Empty
+        variant="compact"
+        label="This pane could not be shown"
+        description="Try again, or remove it from this region."
+        action={
+          <>
+            <Button onClick={onRetry}>Try again</Button>
+            <RemoveRegionPaneButton onRemove={onRemove} />
+          </>
+        }
       />
     </div>
   );
@@ -617,6 +666,15 @@ export function RegionPaneHost({
     },
     [model, regionId],
   );
+  // "Remove this pane" (#90 D9): the tab's close, plus the per-device state
+  // the pane rendered from, which nothing can read once it is gone.
+  const removePane = useCallback(
+    (surfaceId: string) => {
+      closeTab(surfaceId);
+      forgetRegionPaneState(surfaceId);
+    },
+    [closeTab],
+  );
   const reorderTab = useCallback(
     (surfaceId: string, toIndex: number) => {
       if (!regionId || !model) return;
@@ -765,6 +823,19 @@ export function RegionPaneHost({
                         pending={
                           <SkeletonBlock count={3} label="Loading pane" />
                         }
+                        unavailable={(onRetry) => (
+                          <RegionPaneFailed
+                            onRetry={onRetry}
+                            onRemove={() =>
+                              removePane(
+                                // An occurrence no surface claims is still
+                                // placed under its own instance id.
+                                regionSurfaceOfPane(instance) ??
+                                  String(instance.instanceId),
+                              )
+                            }
+                          />
+                        )}
                       />
                     );
                 }
@@ -781,7 +852,10 @@ export function RegionPaneHost({
             projectId === null ? (
               <RegionPaneNeedsProject title={selectedTitle} />
             ) : (
-              <RegionPaneUnavailable title={selectedTitle} />
+              <RegionPaneUnavailable
+                title={selectedTitle}
+                onRemove={() => removePane(selected)}
+              />
             )
           ) : null}
         </RegionChromeSlotsContext.Provider>

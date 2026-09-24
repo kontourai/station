@@ -5,6 +5,9 @@
  * that passes here is a test against a shape muse actually emits.
  */
 
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+
 /** `--provider echo`, prompt "say hello". */
 export const MUSE_ECHO_COMMAND_ACCEPTED =
   '{"schema_version":1,"id":"018f0000-0000-7000-8000-00000000c350","stream":{"kind":"session","id":"de67bd1d-949a-4552-8362-30c06b1991d0"},"sequence":1,"recorded_at":1780531400000000,"record_type":"reconciliation","durability":"durable","causation_id":"109b6f40-7261-430b-ad17-bed7b80c7ebe","payload_type":"runtime.command.accepted","payload_schema_version":1,"payload":{"kind":"command_accepted","command_id":"109b6f40-7261-430b-ad17-bed7b80c7ebe","client_id":null,"command_kind":"turn.submit"}}';
@@ -47,3 +50,71 @@ export const MUSE_META_FULL_TEXT = 'hi — what can I help with?';
  */
 export const MUSE_TOOL_RESULT =
   '{"schema_version":1,"id":"018f0000-0000-7000-8000-00000000c382","stream":{"kind":"session","id":"00000000-0000-4000-8000-000000000001"},"sequence":27,"recorded_at":1780531400000050,"record_type":"event","durability":"durable","causation_id":"a41cc0bf-db1b-4e0c-b949-d914073121a1","payload_type":"tool.result","payload_schema_version":1,"payload":{"kind":"tool_result","command_id":"a41cc0bf-db1b-4e0c-b949-d914073121a1","run_stream":{"kind":"run","id":"a41cc0bf-db1b-4e0c-b949-d914073121a1"},"call_id":"call_019feab717fd75639b5a008d7b2c3e09","text":"Read text file `probe.txt`.\\n1|hello from probe","correlation_facts":{"tool_name":"read_file","outcome":"success"}}}';
+
+/**
+ * #2308: a complete, unedited `muse exec --json` stream from muse
+ * 1.3.0-R3401.1 (meta provider) for the prompt "Run exactly one bash command:
+ * sleep 2 && echo done. Then reply with the single word ok." — one per line,
+ * in emission order. It contains no machine or workspace paths. It is
+ * the evidence that 1.3 names a tool task's tool (`task_kind: tool.bash`) and
+ * `call_id` (`idempotency_key: tool:<call_id>`) before its `tool_result`.
+ */
+export const MUSE_13_BASH_TOOL_TURN_LINES: readonly string[] = readFileSync(
+  fileURLToPath(
+    new URL('./fixtures/muse-1.3-bash-tool-turn.jsonl', import.meta.url),
+  ),
+  'utf8',
+)
+  .split('\n')
+  .filter((line) => line.length > 0);
+
+/** The one tool call in {@link MUSE_13_BASH_TOOL_TURN_LINES}. */
+export const MUSE_13_BASH_CALL_ID = 'call_01a0cab25b8574738854e0ab29288aac';
+
+/**
+ * #2300: a `muse exec --json` stream from muse 1.3.0-R3401.1 (meta provider,
+ * untrusted scratch workspace) for a prompt asking it to launch a background
+ * workflow running `sleep 60 && echo done > …` and end its turn at once.
+ *
+ * SCRUBBED, not byte-identical to the capture: four lines had machine paths
+ * rewritten and nothing else changed — the prompt's scratch path (lines 4-5,
+ * now `/workspace/muse-probe`) and the persisted workflow script path under
+ * the user's muse session store (lines 27 and 29, now under
+ * `/home/user/.local/share/muse/sessions/`), inside JSON strings that stay
+ * validly escaped. Line numbers here are 1-based; the tests index the array
+ * 0-based, so the launch `tool_result` on line 29 is `[28]` there, and line
+ * 28 (the workflow task's `completed`) carries no path and is unchanged. `scriptBytes`/`scriptHash` still describe the original
+ * script. Timing is not in the file: the live run took 104 s (first
+ * `run_terminal` at ~15 s, the task's completion at ~83 s, the follow-up
+ * run's terminal at ~104 s); tests inject whatever timing they exercise.
+ *
+ * Shape (1-based lines): the workflow tool's task (22-28) and its
+ * `tool_result` announcing `{"status":"launched","taskId":…}` (29); run 1's
+ * `run_terminal`, `completed` with empty text (31); the background task's
+ * only lifecycle record, `completed` (32); muse's automatic follow-up run,
+ * opened by `command_accepted` from `muse-runtime-background-terminal` (33),
+ * with two text deltas (51-52) and its own completed `run_terminal` (63).
+ */
+export const MUSE_13_BACKGROUND_WORKFLOW_TURN_LINES: readonly string[] =
+  readFileSync(
+    fileURLToPath(
+      new URL(
+        './fixtures/muse-1.3-background-workflow-turn.jsonl',
+        import.meta.url,
+      ),
+    ),
+    'utf8',
+  )
+    .split('\n')
+    .filter((line) => line.length > 0);
+
+/** The `workflow` tool call that launched the background task. */
+export const MUSE_13_WORKFLOW_CALL_ID = 'call_01a0ca900c4775408c646b301a421a63';
+
+/** The background task the launch announced (its `taskId`). */
+export const MUSE_13_BACKGROUND_TASK_ID =
+  'f6557c75-bf74-498f-b63e-e1df8767d768';
+
+/** The follow-up run's full text (its two deltas, and its terminal's text). */
+export const MUSE_13_BACKGROUND_FOLLOW_UP_TEXT =
+  'Workflow completed: sleep 60 && echo done > workflow-finished.txt finished with exit 0.';

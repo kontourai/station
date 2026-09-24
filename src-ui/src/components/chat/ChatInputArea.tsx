@@ -20,6 +20,7 @@ import type { SavedAnswerQuote } from '../../utils/answer-quotes';
 import {
   type ApprovalMode,
   approvalModeKnobSupported,
+  type SessionApprovalOverride,
 } from '../../utils/approvalMode';
 import { filesFromDataTransfer } from '../../utils/attachment-file-transfer';
 import {
@@ -136,6 +137,12 @@ interface ChatInputAreaProps {
   quoteContext?: readonly SavedAnswerQuote[];
   input: string;
   workingDirectory?: string | null;
+  /**
+   * The Project `workingDirectory` belongs to (#2412: file lookups name
+   * their Project, and the server refuses a folder outside it). Without one,
+   * `@` file mentions are not offered.
+   */
+  mentionProjectSlug?: string | null;
   mentionRequestScope?: {
     apiBase: string;
     authorityKey: string;
@@ -196,11 +203,17 @@ interface ChatInputAreaProps {
   modelRuntimeOptions?: Record<string, unknown>;
   // Approval mode (archive#727) — External-agent sessions only
   executionMode?: ExecutionMode;
-  approvalModeConnectionDefault?: unknown;
+  approvalModeAgentDefault?: unknown;
   /** This Station's `AppConfig.defaultApprovalMode` (#2144 slice 6). */
   approvalModeStationDefault?: unknown;
   toolPolicyDelivery?: ToolPolicyDelivery;
   lastAppliedApprovalMode?: unknown;
+  /**
+   * The session approval override: the pending pick, else the confirmed one
+   * (`sessionApprovalOverride`, #2334). Not read from `modelRuntimeOptions`,
+   * which holds model controls only.
+   */
+  approvalModeOverride?: SessionApprovalOverride;
   acpSessionModes?: AdvertisedAcpMode[];
   acpCurrentModeId?: string;
   // Slash commands
@@ -273,6 +286,7 @@ export function ChatInputArea({
   activeConversationId,
   input,
   workingDirectory,
+  mentionProjectSlug,
   mentionRequestScope,
   mentionAuthority,
   hasQuotedContext = false,
@@ -306,10 +320,11 @@ export function ChatInputArea({
   agentConnectionId,
   modelRuntimeOptions,
   executionMode,
-  approvalModeConnectionDefault,
+  approvalModeAgentDefault,
   approvalModeStationDefault,
   toolPolicyDelivery,
   lastAppliedApprovalMode,
+  approvalModeOverride,
   acpSessionModes = [],
   acpCurrentModeId,
   commandQuery,
@@ -457,6 +472,10 @@ export function ChatInputArea({
   const agentAccessibleLabel = `Agent: ${agentLabel ?? 'current Agent'}. ${agentHandoffDisabled ? (agentHandoffDisabledReason ?? 'Unavailable') : 'Change Agent'}`;
   // A turn is in flight. Steer is the default on engines that can take
   // mid-turn input; otherwise Enter queues until this turn finishes.
+  const mentionLocation =
+    workingDirectory && mentionProjectSlug
+      ? { projectSlug: mentionProjectSlug, workingDir: workingDirectory }
+      : null;
   const placeholder = workspaceRefused
     ? 'This conversation continues from its original workspace — start a new chat to work here'
     : turnInFlight
@@ -465,7 +484,7 @@ export function ChatInputArea({
           ? 'Steer this turn…'
           : 'Steer this turn… (Enter steers; Queue waits)'
         : 'Queue a follow-up…'
-      : workingDirectory && mentionRequestScope
+      : mentionLocation && mentionRequestScope
         ? 'Type a message — @ files, / for commands…'
         : 'Type a message — / for commands…';
   const composerTokens = parseComposerTokens(input);
@@ -482,7 +501,7 @@ export function ChatInputArea({
       : composerMentionWireLength(draftText)) - CHAT_INPUT_MAX_CHARS;
   const isOverLimit = overLimitBy > 0;
   const mentionAutocompleteAvailable = Boolean(
-    workingDirectory && mentionRequestScope,
+    mentionLocation && mentionRequestScope,
   );
   const mentionAutocompleteOpen = Boolean(
     mentionQuery && mentionAutocompleteAvailable,
@@ -660,8 +679,9 @@ export function ChatInputArea({
               key={sessionId}
               engineConnectionId={agentConnectionId}
               toolPolicyDelivery={toolPolicyDelivery}
-              sessionOverride={modelRuntimeOptions?.approvalMode}
-              connectionDefault={approvalModeConnectionDefault}
+              sessionOverride={approvalModeOverride?.mode}
+              sessionOverrideState={approvalModeOverride?.state}
+              agentDefault={approvalModeAgentDefault}
               stationDefault={approvalModeStationDefault}
               lastAppliedApprovalMode={lastAppliedApprovalMode}
               onChange={onApprovalModeChange}
@@ -708,7 +728,7 @@ export function ChatInputArea({
               />
             </React.Suspense>
           )}
-          {mentionQuery && workingDirectory && mentionRequestScope && (
+          {mentionQuery && mentionLocation && mentionRequestScope && (
             <div>
               <React.Suspense
                 fallback={
@@ -718,7 +738,7 @@ export function ChatInputArea({
                 }
               >
                 <FileMentionAutocomplete
-                  workingDirectory={workingDirectory}
+                  location={mentionLocation}
                   requestScope={mentionRequestScope}
                   query={mentionQuery.query}
                   listboxId={mentionListboxId}
@@ -733,7 +753,7 @@ export function ChatInputArea({
                       {
                         label: entry.name,
                         path: entry.path,
-                        workspace: workingDirectory,
+                        workspace: mentionLocation.workingDir,
                         authority: mentionAuthority ?? '',
                         type: entry.type,
                       },
@@ -811,7 +831,7 @@ export function ChatInputArea({
               updateFromInput(next);
               const cursor = e.target.selectionStart ?? e.target.value.length;
               const trigger =
-                workingDirectory && mentionRequestScope
+                mentionLocation && mentionRequestScope
                   ? mentionQueryAt(next, cursor)
                   : null;
               setMentionQuery(trigger ? { ...trigger, end: cursor } : null);

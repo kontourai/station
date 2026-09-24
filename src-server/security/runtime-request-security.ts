@@ -4,7 +4,10 @@ import {
   type ClientOrigin,
   parseClientReportedOrigin,
 } from '@kontourai/station-contracts/client-origin';
-import { pairingScopeIncludes } from '@kontourai/station-contracts/environment-security';
+import {
+  PAIRING_SCOPE_ORCHESTRATION_OPERATE,
+  pairingScopeIncludes,
+} from '@kontourai/station-contracts/environment-security';
 import type { DeploymentAuthenticationService } from '../services/identity/deployment-authentication-service.js';
 
 export type RuntimePeerClass = 'loopback' | 'remote' | 'absent';
@@ -65,6 +68,12 @@ export interface RuntimeAuthenticatedRequestPrincipal {
   readonly authority: RuntimeCredentialAuthority | undefined;
   /** Server-resolved paired-device identity; never request supplied. */
   readonly deviceId?: string;
+  /**
+   * Server-resolved paired-device KIND (#2323 S5): `delegation` for another
+   * Station's delegation grant, `device` for a person's device. Present only
+   * alongside `deviceId`, read off the verified device record.
+   */
+  readonly deviceKind?: 'device' | 'delegation';
   readonly source: 'bearer' | 'session';
   /** Present only for a device credential whose pairing request recorded a source. */
   readonly pairingSource?: RuntimeDevicePairingSource;
@@ -125,6 +134,41 @@ export function resolveInboundDeviceKindForRequest(
   if (principal?.authority !== 'device-credential') return undefined;
   const kind = identifyDevice(principal.credential)?.kind;
   return kind === 'delegation' || kind === 'device' ? kind : undefined;
+}
+
+/**
+ * #485 receiver request-claim slice: resolves the VERIFIED delegation-kind
+ * device grant for the inbound request, for use as a durable attempt-claim
+ * key component and as the lookup authority — the exact pattern
+ * `currentHomeTransferDevice` established: the principal must be a live
+ * device credential, the credential must still resolve to the SAME device
+ * record (a revoked or rotated grant resolves `undefined`), the record must
+ * be `delegation` kind, and it must carry `orchestration:operate` (the
+ * create/operate tier). Everything here is server-derived from the
+ * middleware-owned Request; no body field, user label, or reported origin
+ * is transport identity. Operator credentials, internal tokens, ordinary
+ * personal devices, and revoked grants all resolve `undefined` — those
+ * callers can never claim attempts and can never look one up.
+ */
+export function resolveInboundDelegationDeviceForRequest(
+  request: Request,
+  identifyDevice: (
+    credential: string,
+  ) => { id: string; kind?: string; scope?: string } | null | undefined,
+): { readonly id: string } | undefined {
+  const principal = getRuntimeAuthenticatedRequestPrincipal(request);
+  if (principal?.authority !== 'device-credential' || !principal.deviceId)
+    return undefined;
+  const device = identifyDevice(principal.credential);
+  if (
+    !device ||
+    device.id !== principal.deviceId ||
+    device.kind !== 'delegation' ||
+    typeof device.scope !== 'string' ||
+    !pairingScopeIncludes(device.scope, PAIRING_SCOPE_ORCHESTRATION_OPERATE)
+  )
+    return undefined;
+  return { id: device.id };
 }
 
 export function resolveClientOriginForRequest(request: Request): ClientOrigin {
@@ -190,6 +234,16 @@ export interface RuntimeHttpSecurityOptions {
   ) => RuntimeCredentialAuthority | undefined;
   /** Server-side paired-device lookup used only for durable provenance. */
   resolveCredentialDeviceId?: (credential: string) => string | undefined;
+  /** Alias credentials require their exact account continuation on every request. */
+  resolveCredentialAliasId?: (credential: string) => string | undefined;
+  /**
+   * #2323 S5: the paired device's kind, from the same record as the id.
+   * Person-only plugin lifecycle routes refuse `delegation` (another Station
+   * is not a person). Operator credentials resolve `undefined`.
+   */
+  resolveCredentialDeviceKind?: (
+    credential: string,
+  ) => 'device' | 'delegation' | undefined;
   /**
    * Resolves a device credential's pairing-request source. Operator
    * credentials and historical devices without a source resolve `undefined`.
