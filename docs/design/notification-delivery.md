@@ -301,9 +301,9 @@ The Station side mirrors Web Push (`push-routes.ts`, `wireWebPushDelivery`):
 ### iOS: Live Activities over broadcast channels
 
 iOS 18 and later get the same card as a Live Activity (the design record for
-issue #2513). The Station side is built; the gateway's APNs routes, the widget
-extension and App Store signing are separate slices, so nothing reaches an
-iPhone yet.
+issue #2513). The Station side and the gateway's APNs routes are built (the
+gateway ships dark until its APNs secrets are set); the widget extension and
+App Store signing are separate slices, so nothing reaches an iPhone yet.
 
 - **Architecture.** Each Live Activity has its own APNs broadcast channel,
   created by the gateway inside the start: the Station sends
@@ -405,7 +405,7 @@ iPhone yet.
   is the Station. Alert text is fixed by the gateway, so no session title
   ever reaches APNs in clear. Channels are a per-app quota shared by every
   Station: no request creates a channel except a start, which the gateway
-  (slice A) rate limits per address, per device, per key and globally, and
+  rate limits per address, per device, per key and globally, and
   only the Station whose key the `channelAuth` was minted for can update,
   end or delete a channel. The Station deletes each activity's channel after
   it ends. A channel whose registration was cleared (unregistered, revoked,
@@ -433,8 +433,9 @@ iPhone yet.
 | Station publisher (push key, device tokens, card building, session state → gateway) | built; cards are sealed to each phone. Verified against the gateway's own verifier and request parser, and against the phone's opener through a shared known-answer vector. FCM rotates tokens without the app open and the plugin has no `onNewToken` hook, so the app re-registers on start and on return to the foreground |
 | Web registration (`configure`, `pushToken`, settings UI) | built: Settings → Notifications → "Agent activity on this phone", shown only when an Android build reports `remote-push` enabled (it has all four `STATION_FIREBASE_*` values). Registrations are kept per Station; the card key goes from the Station's response straight to the plugin and is never kept in WebView storage. The app re-registers on start and return to the foreground when the token changed or the registration is a day old |
 | One card per Station on the phone | built: each registration has its own card, replay state and intents; cards open only with that registration's key and must carry its Station's key thumbprint |
-| iOS Station side (registration, `native-push-ios-registrations.json`, planner, channel and live-activity requests) | built; request bodies checked against the documented shape, not yet against the gateway's parser |
-| iOS APNs routes in the gateway, widget extension, App Store signing | pending (#2513 slices A, C and D) |
+| APNs in the gateway (`/v1/apns/live-activity`, `/v1/apns/channels`) | built: one broadcast channel per activity, created inside its start, bound to the Station key by `channelAuth`, and recorded in a KV ledger that a 15-minute sweep reconciles against Apple so no channel outlives 13 hours unrecorded; an end may carry the fixed alert. Ships dark until the `APNS_AUTH_KEY` and `APNS_CHANNEL_AUTH_SECRET` secrets are set and the `CHANNEL_LEDGER` namespace is bound; tested against a fake APNs only |
+| iOS Station side (registration, `native-push-ios-registrations.json`, planner, tombstones, live-activity and channel requests) | built; every request body is checked against the gateway's own APNs request parsers, and every gateway answer against the Station's handling |
+| iOS Live Activity (widget extension in `gen/apple/project.yml`), App Store signing | not started (#2513 slices C and D) |
 
 The Android plugin builds with or without Firebase. Its Firebase identity comes
 from `STATION_FIREBASE_APP_ID`, `_API_KEY`, `_PROJECT_ID` and `_SENDER_ID` at

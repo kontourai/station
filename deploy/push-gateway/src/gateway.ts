@@ -1,5 +1,23 @@
 // Request handling for the Station push gateway, independent of the Worker
 // runtime so it can be exercised directly in tests.
+import { type ApnsOutcome, ApnsSender } from './apns.ts';
+import {
+  type ChannelAuthSecrets,
+  signChannelAuth,
+  verifyChannelAuth,
+} from './apns-channel-auth.ts';
+import {
+  forgetChannel,
+  type LedgerStore,
+  recordChannel,
+} from './apns-ledger.ts';
+import {
+  buildLiveActivityPayload,
+  parseChannelRequest,
+  parseLiveActivityRequest,
+  payloadBytes,
+} from './apns-request.ts';
+import type { ApnsCredentials } from './apns-token.ts';
 import { FcmSender, type SendOutcome, type ServiceAccount } from './fcm.ts';
 import { parseSendRequest } from './send-request.ts';
 import { bodyHash, verifyStationRequest } from './station-auth.ts';
@@ -8,6 +26,27 @@ const MAX_BODY_BYTES = 8 * 1024;
 
 export interface RateLimiter {
   limit(options: { key: string }): Promise<{ success: boolean }>;
+}
+
+/** APNs delivery; absent until the key is configured, and the routes answer 503. */
+export interface ApnsGatewayConfig {
+  credentials: ApnsCredentials;
+  allowedBundles: readonly string[];
+  channelAuth: ChannelAuthSecrets;
+  /** Every channel the gateway created; the sweep deletes the rest. */
+  ledger: LedgerStore;
+  /**
+   * Every start creates a channel, which spends a finite per-app Apple quota
+   * that never refills by itself, so starts have their own ceilings, narrowest
+   * first: per client address, per device (push-to-start token), per key,
+   * then across the gateway.
+   */
+  channelPerIpLimiter: RateLimiter;
+  channelPerDeviceLimiter: RateLimiter;
+  channelPerKeyLimiter: RateLimiter;
+  channelGlobalLimiter: RateLimiter;
+  /** Deletes, per Station key: they give quota back, so kept apart from creates. */
+  channelDeleteLimiter: RateLimiter;
 }
 
 export interface GatewayConfig {
@@ -21,6 +60,7 @@ export interface GatewayConfig {
   perKeyLimiter: RateLimiter;
   /** Keyed on the push token: key rotation cannot evade it. */
   perTokenLimiter: RateLimiter;
+  apns?: ApnsGatewayConfig | null;
   fetchImpl?: typeof fetch;
   nowSeconds?: () => number;
 }
@@ -43,6 +83,99 @@ const OUTCOME_RESPONSES: Record<SendOutcome['kind'], [number, string]> = {
   rejected: [422, 'rejected'],
   unavailable: [503, 'unavailable'],
 };
+
+const APNS_OUTCOME_RESPONSES: Record<ApnsOutcome['kind'], [number, string]> = {
+  sent: [200, 'sent'],
+  deleted: [200, 'deleted'],
+  unregistered: [410, 'unregistered'],
+  'channel-gone': [410, 'channel-gone'],
+  rejected: [422, 'rejected'],
+  unavailable: [503, 'unavailable'],
+};
+
+/** `extra` rides only on a 200 (a new or refreshed channelAuth). */
+function apnsResponse(
+  outcome: ApnsOutcome,
+  extra: Record<string, string> = {},
+): Response {
+  const [status, result] = APNS_OUTCOME_RESPONSES[outcome.kind];
+  return json(status, status === 200 ? { result, ...extra } : { result });
+}
+
+const RATE_LIMITED = () => json(429, { error: 'rate limited' });
+
+/**
+ * Checks limiters narrowest first and stops at the first refusal, so a
+ * request refused by a narrow limiter never spends a wider (shared) budget.
+ */
+async function withinLimits(
+  checks: ReadonlyArray<readonly [RateLimiter, string]>,
+): Promise<boolean> {
+  for (const [limiter, key] of checks) {
+    if (!(await limiter.limit({ key })).success) return false;
+  }
+  return true;
+}
+
+const hashKey = (value: string) => bodyHash(new TextEncoder().encode(value));
+
+/** The Worker's execution context: work that must outlive the response. */
+export interface ExecutionContextLike {
+  waitUntil(work: Promise<unknown>): void;
+}
+
+/**
+ * The rate-limit key for a client address. One IPv6 subscriber usually holds
+ * a whole /64, so keying on the full address would let a single client rotate
+ * through unlimited budgets; IPv4 addresses are used as they are.
+ */
+export function addressBucket(address: string): string {
+  if (!address.includes(':')) return address;
+  const [head, tail] = address.toLowerCase().split('::', 2) as [
+    string,
+    string | undefined,
+  ];
+  const groups = (part: string) =>
+    part === ''
+      ? []
+      : part.split(':').flatMap((group) => {
+          // An embedded dotted IPv4 (::ffff:192.0.2.1) is the last two groups.
+          if (!group.includes('.')) return [group];
+          const octets = group.split('.').map(Number);
+          return [
+            ((octets[0] << 8) | octets[1]).toString(16),
+            ((octets[2] << 8) | octets[3]).toString(16),
+          ];
+        });
+  const left = groups(head);
+  const right = tail === undefined ? [] : groups(tail);
+  const zeros =
+    tail === undefined
+      ? []
+      : Array(Math.max(0, 8 - left.length - right.length)).fill('0');
+  const full = [...left, ...zeros, ...right].map(
+    (group) => Number.parseInt(group, 16) || 0,
+  );
+  // IPv4-mapped (::ffff:0:0/96) and NAT64 (64:ff9b::/96) addresses carry one
+  // IPv4 client in their last 32 bits: limit that client, not the prefix.
+  const mapped = full.slice(0, 6).join(':') === '0:0:0:0:0:65535';
+  const nat64 = full.slice(0, 6).join(':') === '100:65435:0:0:0:0';
+  if (mapped || nat64)
+    return [full[6] >> 8, full[6] & 255, full[7] >> 8, full[7] & 255].join('.');
+  return `${full
+    .slice(0, 4)
+    .map((group) => group.toString(16))
+    .join(':')}::/64`;
+}
+
+// The channel id shape Apple issues (verified 2026-09-24), for sizing a start
+// before its channel exists.
+const PLACEHOLDER_CHANNEL_ID = `${'A'.repeat(22)}==`;
+
+const FCM_ROUTE = '/v1/fcm/send';
+const LIVE_ACTIVITY_ROUTE = '/v1/apns/live-activity';
+const CHANNELS_ROUTE = '/v1/apns/channels';
+const ROUTES = new Set([FCM_ROUTE, LIVE_ACTIVITY_ROUTE, CHANNELS_ROUTE]);
 
 // Senders are cached per isolate so the Google access token is reused.
 const senders = new WeakMap<ServiceAccount, FcmSender>();
@@ -82,49 +215,71 @@ async function readBounded(
 export async function handleRequest(
   request: Request,
   config: GatewayConfig,
+  ctx?: ExecutionContextLike,
 ): Promise<Response> {
   const url = new URL(request.url);
   if (url.pathname === '/health' && request.method === 'GET')
     return json(200, { ok: true });
-  if (url.pathname !== '/v1/fcm/send') return json(404, { error: 'not found' });
+  const route = url.pathname;
+  if (!ROUTES.has(route)) return json(404, { error: 'not found' });
   if (request.method !== 'POST')
     return json(405, { error: 'method not allowed' });
-  if (!config.serviceAccount)
+  const configured = route === FCM_ROUTE ? config.serviceAccount : config.apns;
+  if (!configured)
     return json(503, { error: 'push delivery is not configured' });
 
-  const clientIp = request.headers.get('cf-connecting-ip') ?? 'unknown';
+  const clientIp = addressBucket(
+    request.headers.get('cf-connecting-ip') ?? 'unknown',
+  );
   if (!(await config.perIpLimiter.limit({ key: clientIp })).success) {
     return json(429, { error: 'rate limited' });
   }
   const body = await readBounded(request, MAX_BODY_BYTES);
   if (!body) return json(413, { error: 'body too large' });
 
+  const nowSeconds = (
+    config.nowSeconds ?? (() => Math.floor(Date.now() / 1000))
+  )();
   const auth = await verifyStationRequest({
     authorization: request.headers.get('authorization'),
     body,
     audiences: config.audiences,
-    nowSeconds: (config.nowSeconds ?? (() => Math.floor(Date.now() / 1000)))(),
+    nowSeconds,
   });
   // Reasons are returned to the caller, who holds the key and needs them to
   // debug; they reveal nothing about other Stations.
   if (!auth.ok) return json(401, { error: auth.reason });
-  if (!(await config.globalLimiter.limit({ key: 'global' })).success) {
-    return json(429, { error: 'rate limited' });
+
+  // Both were checked before any work; re-read here so each route is typed
+  // against its own configuration.
+  const { apns, serviceAccount } = config;
+  const signed: Signed = {
+    body,
+    stationKey: auth.keyThumbprint,
+    clientIp,
+    nowSeconds,
+    // Without a Worker context (tests, other hosts) deferred work is awaited.
+    defer: ctx ? (work) => ctx.waitUntil(work) : undefined,
+  };
+  if (route !== FCM_ROUTE) {
+    if (!apns) return json(503, { error: 'push delivery is not configured' });
+    return route === LIVE_ACTIVITY_ROUTE
+      ? liveActivity(signed, config, apns)
+      : channels(signed, config, apns);
   }
-  if (
-    !(await config.perKeyLimiter.limit({ key: auth.keyThumbprint })).success
-  ) {
-    return json(429, { error: 'rate limited' });
-  }
+  if (!serviceAccount)
+    return json(503, { error: 'push delivery is not configured' });
 
   const parsed = parseSendRequest(body, config.allowedPackages);
   if (!parsed.ok) return json(400, { error: parsed.reason });
-  const tokenKey = await bodyHash(
-    new TextEncoder().encode(parsed.request.token),
-  );
-  if (!(await config.perTokenLimiter.limit({ key: tokenKey })).success) {
-    return json(429, { error: 'rate limited' });
-  }
+  if (
+    !(await withinLimits([
+      [config.perTokenLimiter, await hashKey(parsed.request.token)],
+      [config.perKeyLimiter, auth.keyThumbprint],
+      [config.globalLimiter, 'global'],
+    ]))
+  )
+    return RATE_LIMITED();
 
   // The phone pins its own Station's key thumbprint and drops anything else,
   // so a key that verified here still cannot speak for another Station.
@@ -133,12 +288,178 @@ export async function handleRequest(
     data: { ...parsed.request.data, station_key: auth.keyThumbprint },
   };
 
-  let sender = senders.get(config.serviceAccount);
+  let sender = senders.get(serviceAccount);
   if (!sender) {
-    sender = new FcmSender(config.serviceAccount, config.fetchImpl);
-    senders.set(config.serviceAccount, sender);
+    sender = new FcmSender(serviceAccount, config.fetchImpl);
+    senders.set(serviceAccount, sender);
   }
   const outcome = await sender.send(stamped);
   const [status, result] = OUTCOME_RESPONSES[outcome.kind];
   return json(status, { result });
+}
+
+interface Signed {
+  body: Uint8Array<ArrayBuffer>;
+  /** The verified signing key's thumbprint. */
+  stationKey: string;
+  clientIp: string;
+  nowSeconds: number;
+  defer?: (work: Promise<unknown>) => void;
+}
+
+async function liveActivity(
+  signed: Signed,
+  config: GatewayConfig,
+  apns: ApnsGatewayConfig,
+): Promise<Response> {
+  const parsed = parseLiveActivityRequest(
+    signed.body,
+    apns.allowedBundles,
+    signed.nowSeconds,
+  );
+  if (!parsed.ok) return json(400, { error: parsed.reason });
+  const { request } = parsed;
+  const { stationKey } = signed;
+  const sender = new ApnsSender(
+    apns.credentials,
+    config.fetchImpl,
+    () => signed.nowSeconds,
+  );
+
+  if (request.event === 'start') {
+    const device = request.pushToStartToken ?? '';
+    if (
+      !(await withinLimits([
+        [apns.channelPerIpLimiter, signed.clientIp],
+        [apns.channelPerDeviceLimiter, await hashKey(device)],
+        [apns.channelPerKeyLimiter, stationKey],
+        [apns.channelGlobalLimiter, 'global'],
+      ]))
+    )
+      return RATE_LIMITED();
+    // Refuse an oversized start before it spends a channel.
+    if (
+      !payloadBytes(
+        buildLiveActivityPayload(request, stationKey, PLACEHOLDER_CHANNEL_ID),
+      )
+    )
+      return json(422, { result: 'rejected' });
+    const pending: Promise<unknown>[] = [];
+    const channelOf = (channelId: string) => ({
+      bundleId: request.bundleId,
+      environment: request.environment,
+      channelId,
+    });
+    const outcome = await sender.start(
+      request,
+      (channelId) =>
+        payloadBytes(buildLiveActivityPayload(request, stationKey, channelId)),
+      {
+        record: (channelId) =>
+          recordChannel(
+            apns.ledger,
+            channelOf(channelId),
+            stationKey,
+            signed.nowSeconds,
+          ),
+        forget: (channelId) => forgetChannel(apns.ledger, channelOf(channelId)),
+        defer: (work) => {
+          const settled = work.catch(() => {});
+          if (signed.defer) signed.defer(settled);
+          else pending.push(settled);
+        },
+      },
+    );
+    await Promise.all(pending);
+    if (outcome.kind !== 'started') return apnsResponse(outcome);
+    const channelAuth = await signChannelAuth(apns.channelAuth, {
+      bundleId: request.bundleId,
+      environment: request.environment,
+      channelId: outcome.channelId,
+      stationKey,
+    });
+    return json(200, {
+      result: 'sent',
+      channelId: outcome.channelId,
+      channelAuth,
+    });
+  }
+
+  const channelId = request.channelId ?? '';
+  const proof = await authorizeChannel(apns, {
+    bundleId: request.bundleId,
+    environment: request.environment,
+    channelId,
+    stationKey,
+    channelAuth: request.channelAuth ?? '',
+  });
+  if (proof instanceof Response) return proof;
+  if (
+    !(await withinLimits([
+      [config.perTokenLimiter, await hashKey(channelId)],
+      [config.perKeyLimiter, stationKey],
+      [config.globalLimiter, 'global'],
+    ]))
+  )
+    return RATE_LIMITED();
+  const payload = payloadBytes(buildLiveActivityPayload(request, stationKey));
+  if (!payload) return json(422, { result: 'rejected' });
+  const outcome = await sender.broadcast(request, payload);
+  return apnsResponse(outcome, proof);
+}
+
+async function channels(
+  signed: Signed,
+  config: GatewayConfig,
+  apns: ApnsGatewayConfig,
+): Promise<Response> {
+  const parsed = parseChannelRequest(signed.body, apns.allowedBundles);
+  if (!parsed.ok) return json(400, { error: parsed.reason });
+  const { request } = parsed;
+  const proof = await authorizeChannel(apns, {
+    ...request,
+    stationKey: signed.stationKey,
+  });
+  if (proof instanceof Response) return proof;
+  if (!(await withinLimits([[apns.channelDeleteLimiter, signed.stationKey]])))
+    return RATE_LIMITED();
+  const sender = new ApnsSender(
+    apns.credentials,
+    config.fetchImpl,
+    () => signed.nowSeconds,
+  );
+  const outcome = await sender.deleteChannel(
+    request.bundleId,
+    request.environment,
+    request.channelId,
+  );
+  if (outcome.kind === 'deleted') await forgetChannel(apns.ledger, request);
+  return apnsResponse(outcome, proof);
+}
+
+/**
+ * Checks `channelAuth` before any per-channel limiter, so a stranger holding
+ * only a channel id can neither use the channel nor spend its budget.
+ * Returns the fields to add to a 200 (a fresh token after secret rotation),
+ * or the 403 to send.
+ */
+async function authorizeChannel(
+  apns: ApnsGatewayConfig,
+  input: {
+    bundleId: string;
+    environment: string;
+    channelId: string;
+    stationKey: string;
+    channelAuth: string;
+  },
+): Promise<Record<string, string> | Response> {
+  const { channelAuth, ...binding } = input;
+  const matched = await verifyChannelAuth(
+    apns.channelAuth,
+    binding,
+    channelAuth,
+  );
+  if (!matched) return json(403, { result: 'channel-unauthorized' });
+  if (matched === 'current') return {};
+  return { channelAuth: await signChannelAuth(apns.channelAuth, binding) };
 }

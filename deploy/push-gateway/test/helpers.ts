@@ -103,3 +103,107 @@ export async function fakeServiceAccount() {
 }
 
 export const allow = { limit: async () => ({ success: true }) };
+
+export const IOS_BUNDLE = 'io.kontourai.station.beta';
+export const TEAM_ID = 'TEAM123456';
+export const KEY_ID = 'KEY1234567';
+
+/** A throwaway P-256 key shaped like an Apple .p8 file. Never a real key. */
+export async function fakeApnsKey() {
+  const pair = (await crypto.subtle.generateKey(
+    { name: 'ECDSA', namedCurve: 'P-256' },
+    true,
+    ['sign', 'verify'],
+  )) as CryptoKeyPair;
+  const der = new Uint8Array(
+    await crypto.subtle.exportKey('pkcs8', pair.privateKey),
+  );
+  let binary = '';
+  for (const byte of der) binary += String.fromCharCode(byte);
+  const pem = `-----BEGIN PRIVATE KEY-----\n${btoa(binary).replace(/(.{64})/g, '$1\n')}\n-----END PRIVATE KEY-----\n`;
+  return {
+    credentials: { teamId: TEAM_ID, keyId: KEY_ID, privateKeyPem: pem },
+    publicKey: pair.publicKey,
+  };
+}
+
+export const PUSH_TO_START_TOKEN = 'ab'.repeat(40);
+// The shape Apple issues (verified 2026-09-24): 24 characters of standard base64.
+export const CHANNEL_ID = 'Pj/jgLx+Qk2dW9sTfQ0zAA==';
+export const REGISTRATION_ID = 'r'.repeat(22);
+export const SEALED = 'S'.repeat(400);
+/** Well-formed but proves nothing; tests that need a valid one sign it. */
+export const PLACEHOLDER_CHANNEL_AUTH = `v1.${'A'.repeat(43)}`;
+export const CHANNEL_AUTH_SECRET = 'test-channel-auth-secret-0123456789abcdef';
+
+export function liveActivityBody(
+  overrides: Record<string, unknown> = {},
+  event: 'start' | 'update' | 'end' = 'start',
+): Record<string, unknown> {
+  return {
+    bundleId: IOS_BUNDLE,
+    environment: 'sandbox',
+    event,
+    ...(event === 'start'
+      ? { pushToStartToken: PUSH_TO_START_TOKEN }
+      : { channelId: CHANNEL_ID, channelAuth: PLACEHOLDER_CHANNEL_AUTH }),
+    registrationId: REGISTRATION_ID,
+    sealed: SEALED,
+    alert: false,
+    timestamp: NOW,
+    ...(event === 'end' ? { dismissAt: NOW + 900 } : { staleAt: NOW + 7200 }),
+    ...overrides,
+  };
+}
+
+export const encodeBody = (value: unknown): Uint8Array<ArrayBuffer> =>
+  new TextEncoder().encode(JSON.stringify(value));
+
+/**
+ * An in-memory Workers KV stand-in. `list` pages two keys at a time so
+ * callers must follow the cursor.
+ */
+export function fakeLedger() {
+  const entries = new Map<
+    string,
+    { value: string; ttl?: number; metadata?: unknown }
+  >();
+  const store = {
+    entries,
+    failPut: false,
+    failList: false,
+    async put(
+      key: string,
+      value: string,
+      options?: { expirationTtl?: number; metadata?: unknown },
+    ) {
+      if (store.failPut) throw new Error('kv put failed');
+      entries.set(key, {
+        value,
+        ttl: options?.expirationTtl,
+        metadata: options?.metadata,
+      });
+    },
+    async delete(key: string) {
+      entries.delete(key);
+    },
+    async list({ prefix, cursor }: { prefix: string; cursor?: string }) {
+      if (store.failList) throw new Error('kv list failed');
+      const names = [...entries.keys()]
+        .filter((name) => name.startsWith(prefix))
+        .sort();
+      const start = cursor ? Number(cursor) : 0;
+      const page = names.slice(start, start + 2);
+      const done = start + 2 >= names.length;
+      return {
+        keys: page.map((name) => ({
+          name,
+          metadata: entries.get(name)?.metadata,
+        })),
+        list_complete: done,
+        ...(done ? {} : { cursor: String(start + 2) }),
+      };
+    },
+  };
+  return store;
+}

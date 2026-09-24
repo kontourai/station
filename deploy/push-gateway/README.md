@@ -1,11 +1,106 @@
 # Station push gateway
 
 A Cloudflare Worker at `https://push.kontourai.io` that forwards Station-signed
-agent-activity messages to Firebase Cloud Messaging. Design and threat model:
+agent-activity messages to Firebase Cloud Messaging (Android) and to APNs as
+iOS Live Activity pushes. Design and threat model:
 [docs/design/notification-delivery.md](../../docs/design/notification-delivery.md).
 
-It is deliberately outside the pnpm workspace: it has no dependencies, and
-Wrangler bundles its TypeScript for deploys.
+It is deliberately outside the pnpm workspace. Its only dependencies,
+`@noble/curves` and `@noble/hashes` (deterministic ES256 for the APNs provider
+token), are pinned to the same exact versions as root `devDependencies` of the
+repository, so a root `npm run dependencies:ci` installs them for the tests,
+`tsc` and Wrangler, which bundles them into the Worker on deploy.
+
+## Routes
+
+Every `POST` route takes the same Station-signed `Authorization: Station <jws>`
+header (ES256, the body hash bound into the token, at most 120 s lifetime) and
+the same per-address limit before any work. Unknown body keys are refused on
+every route. After the body is parsed, each route checks its own rate limits
+narrowest first and stops at the first refusal, so a request refused by a
+narrow limit never spends a wider, shared budget.
+
+| Route | Body | Answers |
+| --- | --- | --- |
+| `/v1/fcm/send` | `{ token, packageName, data, collapseKey? }` | 200 `sent`, 410 `unregistered`, 422 `rejected`, 503 `unavailable` |
+| `/v1/apns/live-activity`, start | `{ bundleId, environment, event: "start", pushToStartToken, registrationId, sealed, alert, timestamp, staleAt }` (no channel) | 200 `{ result: "sent", channelId, channelAuth }`, 410 `unregistered`, 422 `rejected`, 503 `unavailable` |
+| `/v1/apns/live-activity`, update | `{ bundleId, environment, event: "update", channelId, channelAuth, registrationId, sealed, alert, timestamp, staleAt }` | 200 `{ result: "sent" }` (plus a fresh `channelAuth` after secret rotation), 403 `channel-unauthorized`, 410 `channel-gone`, 422, 503 |
+| `/v1/apns/live-activity`, end | as update, with `dismissAt` instead of `staleAt` | as update |
+| `/v1/apns/channels` | `{ op: "delete", bundleId, environment, channelId, channelAuth }` | 200 `{ result: "deleted" }` (a channel Apple no longer has, `404 BadPath` on a delete, counts as deleted), 403 `channel-unauthorized`, 422, 503 |
+
+Rate-limit refusals are 429 `{ error: "rate limited" }` and malformed bodies
+400 `{ error: <reason> }` on every route.
+
+**Channels belong to one activity and are created only inside its start.** A
+start creates a broadcast channel on Apple's management host, sends the
+push-to-start naming it (`input-push-channel`), and answers with the channel id
+and `channelAuth`. If Apple refuses the start, or it never reaches Apple, the
+gateway deletes the channel before answering, so a refused start never keeps
+quota. The Station deletes an activity's channel through `/v1/apns/channels`
+once the activity has ended and been dismissed.
+
+**`channelAuth`** is `"v1." + base64url(HMAC-SHA256(APNS_CHANNEL_AUTH_SECRET,
+"station-apns-channel:v1\n" + bundleId + "\n" + environment + "\n" +
+channelId + "\n" + <signing key thumbprint>))`. Update, end and delete require
+it and it is checked before any per-channel limit, so someone who has only
+learned a channel id can neither use the channel nor spend its budget. A token
+made with `APNS_CHANNEL_AUTH_SECRET_PREVIOUS` is still accepted, and the 200
+then carries a fresh `channelAuth` for the Station to store.
+
+A Station never sends APNs JSON. The gateway builds the `aps` payload itself:
+the content state is `{ v: 1, rid, sk, sealed }`, where `sk` is the verified
+signing key's thumbprint (a caller-supplied `sk` is refused), and the only
+readable text is the fixed alert `Station` / `Agent activity`, which the
+Station can only switch on or off (`alert`). A start always carries the alert,
+with a sound only when `alert` is true; an update or an end carries it (with
+the sound) only when `alert` is true, so a finished run can end its activity
+with an alert. Priority is derived, never supplied: 10 for start, end and an
+alerting update, otherwise 5. Pushes expire after 300 s. The final APNs body
+is held to 4096 bytes.
+
+A start is a push-to-start to `/3/device/<token>` (topic
+`<bundle>.push-type.liveactivity`); updates and ends are broadcasts to
+`/4/broadcasts/apps/<bundle>` with `apns-channel-id`. Channels are created and
+deleted on `api-manage-broadcast[.sandbox].push.apple.com` (port 2196
+production, 2195 sandbox).
+
+APNs' own status and reason are never relayed: they would make the gateway an
+oracle for whether a token or channel is live. Outcomes follow Apple's reason,
+not its bare status: `Unregistered`, `BadDeviceToken` and
+`DeviceTokenNotForTopic` on a start mean `unregistered`; `BadChannelId` and
+`ChannelNotRegistered` mean `channel-gone` whatever the status (Apple sends
+them with 400). On a delete, `404 BadPath` is Apple's answer for a channel it
+no longer has, so it counts as deleted; the path is built by this code, and a
+wrong one would already fail every create and start. Any other 404 is
+`rejected` and logged. A 403 (a bad or expired provider token, a revoked key),
+a 429 (Apple throttling the gateway) or `BroadcastFeatureNotEnabled` (the
+bundle's app id lacks the broadcast capability) is the gateway's own fault:
+the caller gets a retryable 503 and the reason goes to the error log.
+
+### Verified against the APNs sandbox (2026-09-24)
+
+Probed with the real key on a push- and broadcast-enabled test bundle:
+
+- Channel create: `POST …:2195/1/apps/<bundle>/channels` with
+  `{"message-storage-policy":1,"push-type":"LiveActivity"}` answers 201 with an
+  empty body and the id in the `apns-channel-id` header (24 characters of
+  standard base64, `/`, `+` and `=` included). Read (`GET`, same path and
+  header) answers 200 with the channel's policy; list is `GET
+  /1/apps/<bundle>/all-channels` → `{"channels":[…]}`.
+- Delete: `DELETE`, same path and header → 204; an unknown or already-deleted
+  channel → 404 `BadPath`.
+- Broadcast: `POST /4/broadcasts/apps/<bundle>` with `apns-channel-id`,
+  `apns-push-type: liveactivity`, `apns-priority` and `apns-expiration`, no
+  `apns-topic` → 200. Without `apns-expiration` → 400 `BadExpirationDate`.
+  An `end` carrying the alert at priority 10 → 200.
+- Broadcast to a deleted channel → 400 `ChannelNotRegistered`; to an id that
+  never existed → 400 `BadChannelId`.
+- Push-to-start to a bogus token → 400 `BadDeviceToken`.
+- Channel create for a bundle without the broadcast capability → 400
+  `BroadcastFeatureNotEnabled`.
+
+Not yet observed live: a successful push-to-start reaching a device, a
+production-environment call, and Apple's channel quota.
 
 ## Check
 
@@ -19,6 +114,11 @@ npx tsc -p deploy/push-gateway/tsconfig.json
 
 ## Deploy
 
+The gateway needs the **Workers Paid plan**. KV writes (deletes count as writes)
+are one per start, one per channel delete, and up to about 700 per sweep run
+(500 marks, 200 marker removals); the Free plan's 1,000 writes a day would
+make starts fail with 503 within hours.
+
 ```sh
 cd deploy/push-gateway
 npx --yes wrangler@4 deploy
@@ -28,8 +128,85 @@ curl -s https://push.kontourai.io/health          # {"ok":true}
 The Worker runs on the Cloudflare account that owns the `kontourai.io` zone,
 served only on the custom domain (`workers_dev` and preview URLs are off).
 Configuration lives in `wrangler.jsonc`: allowed audiences, allowed Android
-packages, and four rate limits (per client address before any work, then
-global, per Station key and per push token on signed requests only).
+packages (`ALLOWED_PACKAGES`), allowed iOS bundles (`ALLOWED_IOS_BUNDLES`), the
+APNs team and key ids (`APNS_TEAM_ID`, `APNS_KEY_ID`), and the rate limits.
+
+| Limit | Keyed on | Applies to |
+| --- | --- | --- |
+| `PER_IP_LIMITER` | client address (IPv6: its /64) | every route, before any work |
+| `PER_TOKEN_LIMITER` | hash of the FCM token or broadcast channel | FCM sends, updates, ends |
+| `PER_KEY_LIMITER` | Station key thumbprint | FCM sends, updates, ends |
+| `GLOBAL_LIMITER` | one bucket | FCM sends, updates, ends |
+| `CHANNEL_PER_IP_LIMITER` | client address (IPv6: its /64) | starts (each creates a channel) |
+| `CHANNEL_PER_DEVICE_LIMITER` | hash of the push-to-start token | starts |
+| `CHANNEL_PER_KEY_LIMITER` | Station key thumbprint | starts |
+| `CHANNEL_GLOBAL_LIMITER` | one bucket, 10/min | starts |
+| `CHANNEL_DELETE_LIMITER` | Station key thumbprint | channel deletes |
+
+Rows are listed in the order each route checks them. Workers rate-limit
+bindings only offer 10 s and 60 s periods, so every ceiling is per minute; a
+per-day device ceiling would need storage the gateway does not have. An IPv6
+subscriber usually holds a whole /64, so IPv6 addresses are limited per /64
+prefix; IPv4 addresses as they are.
+
+APNs ships dark: until both the `APNS_AUTH_KEY` and `APNS_CHANNEL_AUTH_SECRET`
+secrets are set and the `CHANNEL_LEDGER` KV namespace is bound (and the ids,
+bundle list and channel limiters are present), both `/v1/apns` routes answer
+503 without doing any work, the channel sweep does nothing, and the FCM route
+is unaffected.
+
+To turn APNs on, beyond the two secrets:
+
+```sh
+npx --yes wrangler@4 kv namespace create CHANNEL_LEDGER
+# then uncomment "kv_namespaces" in wrangler.jsonc with the printed id
+```
+
+The cron trigger (`*/15 * * * *`) is always deployed; the sweep it runs is a
+no-op while APNs is dark.
+
+### Channel ledger and sweep
+
+Apple lets an app hold a finite number of broadcast channels per environment
+and never expires them, so a channel nobody deletes is quota lost for good.
+Every channel the gateway creates is recorded in the `CHANNEL_LEDGER` KV
+namespace the moment Apple creates it (`ch:<environment>:<bundle>:<channel>` →
+`{ createdAt, bundleId, environment, stationKeyHash }`), for 12 hours: an
+activity lasts at most eight hours and stays dismissible for four more. A start
+whose channel cannot be recorded does not go ahead and gives the channel back.
+A successful delete, explicit or compensating, removes the entry. The
+compensating delete after a refused start runs through `ctx.waitUntil`, so a
+caller that disconnects cannot cancel it.
+
+Every 15 minutes the sweep lists the channels of each scope named in
+`SWEEP_SCOPES` (`GET /1/apps/<bundle>/all-channels`) and deletes the ones the
+ledger does not record. KV is eventually consistent, so the first time a
+channel is found unrecorded it is only marked (with the time, in the marker's
+metadata), and it is deleted only if a later run still finds it unrecorded at
+least ten minutes after the mark. A scope whose ledger or channel list cannot
+be read is skipped (an unreadable ledger must never look empty) without
+stopping the other scopes. A run deletes at most 200 channels, marks at most
+500, and logs its counts (`apns channel sweep: {...}`). Apple's list is not
+known to page; if it answers with any key besides `channels`, or a length that
+is a round hundred of at least 1,000, the sweep logs `may be paged`.
+
+In steady state every leak (a Station that never deletes, a failed
+compensating delete, a crash between create and record) heals within about 13
+hours: 12 hours of ledger, then two sweeps. That bound assumes the sweep keeps
+up. Under the full create load the global limit allows (10 a minute, 150 per
+run) a backlog only drains by about 50 channels per run, so a large backlog
+(after an outage, or when a scope is first swept) takes correspondingly longer.
+
+**Sweep scopes.** The sweep deletes every channel in a swept scope that this
+deployment's ledger does not record, so each swept environment and bundle
+must have exactly one ledger: never create channels in a swept scope from
+anywhere else (`wrangler dev`, a staging deploy, a manual test with the real
+key), or they will be deleted. `SWEEP_SCOPES` defaults to production for the
+three shipping bundles (`io.kontourai.station`, `.beta`, `.nightly`); the
+sandbox environment and `io.kontourai.station.dev.instance` are never swept,
+so do development and testing there. An entry naming another environment or a
+bundle outside `ALLOWED_IOS_BUNDLES` is ignored and logged, and an empty value
+sweeps nothing. Channels leaked in unswept scopes are not reclaimed.
 
 ## Credentials
 
@@ -56,11 +233,85 @@ gcloud iam service-accounts keys delete <old-key-id> \
 Use `set -o pipefail` when scripting this: a failed `wrangler secret put`
 otherwise leaves a created key that nothing holds.
 
+The APNs secret is `APNS_AUTH_KEY`: the `.p8` file of the team-scoped
+(sandbox and production) Apple key named by `APNS_KEY_ID`. It never enters
+the repository. Load it straight from the downloaded file, then delete the
+file:
+
+```sh
+npx --yes wrangler@4 secret put APNS_AUTH_KEY < AuthKey_<key id>.p8
+```
+
+`APNS_CHANNEL_AUTH_SECRET` is a random secret of at least 32 characters that
+signs `channelAuth`:
+
+```sh
+openssl rand -base64 48 | tr -d '\n' | npx --yes wrangler@4 secret put APNS_CHANNEL_AUTH_SECRET
+```
+
+To rotate it, put the current value into `APNS_CHANNEL_AUTH_SECRET_PREVIOUS`,
+put a new `APNS_CHANNEL_AUTH_SECRET`, and delete the previous secret once the
+longest Live Activity has had time to refresh its token (eight hours plus the
+dismissal window). Every accepted old token is answered with a new one.
+
+To rotate the APNs key, create a new key in the Apple developer account, put it, change
+`APNS_KEY_ID` in `wrangler.jsonc` in the same deploy, then revoke the old key.
+The provider-token cache is keyed on the key's fingerprint, so a new key never
+reuses the old key's token. Provider tokens are signed deterministically with
+`iat` floored to 45-minute windows, so every Worker isolate presents the same
+token and APNs never sees more than one new token per window (it answers 429
+`TooManyProviderTokenUpdates` otherwise).
+
+## Channel quota abuse
+
+Apple limits how many broadcast channels an app may hold per environment
+(about 10,000; not yet verified live), channels do not expire, and anyone can
+mint a Station key, so channel creation is the resource worth defending. It
+happens only inside a start, which must name a real push-to-start token; the
+start limits (per address, per device, per key, global) bound the rate, and
+the ledger sweep bounds the lifetime. At `CHANNEL_GLOBAL_LIMITER`'s 10 per
+minute, even a caller who never deletes can hold at most 7,200 channels (12
+hours of ledger) in an environment, under the quota.
+
+**Scaling.** When legitimate starts approach 10 per minute, either ask Apple
+for a larger channel quota and raise the global limit to stay under
+quota ÷ 720, or replace the per-minute ceilings with a daily per-device
+counter in a Durable Object. Do not raise the limit alone.
+
+If starts begin failing with 503 (the channel create is refused) or quota
+looks low:
+
+1. Check the Worker's request metrics in the Cloudflare dashboard. The gateway
+   does not log rate-limited requests (invocation logs are off), so a
+   sustained burst of 429s on `/v1/apns/live-activity` is the signature of key
+   minting.
+2. Lower `CHANNEL_GLOBAL_LIMITER` (and `CHANNEL_PER_IP_LIMITER`) and deploy.
+   Running activities keep working; Stations back off and retry their starts.
+3. List the app's channels with a provider token
+   (`GET https://api-manage-broadcast.push.apple.com:2196/1/apps/<bundle>/all-channels`)
+   and delete stale ones. A Station whose channel was deleted gets 410
+   `channel-gone` on its next update and starts a fresh activity.
+4. If it recurs, the durable fix is a longer-horizon per-device ceiling (a
+   Durable Object or similar), not a larger quota.
+
+**After a bad secret deploy.** If `APNS_AUTH_KEY` is wrong or revoked, every
+Apple call answers 403: starts, pushes and deletes all fail with 503 and the
+reason is logged (`apns 403 (gateway fault)`). Channels created before the
+break, and any whose delete failed, are orphaned but still ledgered. Put the
+correct key and deploy; the next sweeps reclaim every orphan once its ledger
+entry expires, with no manual clean-up. If `APNS_CHANNEL_AUTH_SECRET` was
+changed by mistake, every update, end and delete answers 403
+`channel-unauthorized`; Stations then drop their activities and start fresh,
+and the sweep reclaims the abandoned channels the same way. Restore the old
+value as `APNS_CHANNEL_AUTH_SECRET_PREVIOUS` to avoid that churn.
+
 ## Logs
 
 Invocation logs are off (they would record the signed `Authorization`
 header). Only `console.error` lines are kept, and they carry Google's error
-code for a failed token exchange, never keys, tokens or payloads:
+code for a failed token exchange and Apple's reason for a refused provider
+token, throttling, an unrecognised 404, or a channel left behind after a
+refused start, never keys, tokens or payloads:
 
 ```sh
 npx --yes wrangler@4 tail station-push-gateway --format pretty
