@@ -614,18 +614,27 @@ describe('what each route asks of the checkout (#2474, #2475)', () => {
     return { routes, requests };
   }
 
-  test('reads resolve without branch state and name the repository in the URL', async () => {
+  test('reads and actions on pull request #N resolve without branch state', async () => {
     const { routes, requests } = recording();
     await routes.request('/github/github.com/o/r?project=p');
     await routes.request('/github/github.com/o/r/7?project=p');
     await routes.request('/github/github.com/o/r/7/review?project=p');
     await routes.request('/context?project=p');
-    expect(requests.map((r) => r.requireBranchState)).toEqual([
-      false,
-      false,
-      false,
-      false,
-    ]);
+    const post = (path: string, body: unknown) =>
+      routes.request(`/github/github.com/o/r/7/${path}?project=p`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+    const sha = 'a'.repeat(40);
+    await post('comments', { body: 'hi' });
+    await post('approve', {});
+    await post('merge', { method: 'merge' });
+    await post('review', { action: 'approve', expectedHeadSha: sha });
+    expect(requests).toHaveLength(8);
+    expect(requests.map((r) => r.requireBranchState)).toEqual(
+      Array(8).fill(false),
+    );
     expect(requests[2]?.repository).toEqual({
       host: 'github.com',
       owner: 'o',

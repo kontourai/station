@@ -1,4 +1,10 @@
-import { mkdirSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import {
+  mkdirSync,
+  mkdtempSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, test, vi } from 'vitest';
@@ -348,8 +354,17 @@ describe('PullRequestRepositoryContextResolver', () => {
       mkdtempSync(join(tmpdir(), 'station-umbrella-')),
     );
     try {
+      // Checkouts carry a `.git` entry; a plain folder is never asked.
       for (const name of ['station', 'flow', 'notes', '.hidden'])
-        mkdirSync(join(umbrella, name));
+        mkdirSync(join(umbrella, name, '.git'), { recursive: true });
+      mkdirSync(join(umbrella, 'plain-folder'));
+      // A symlinked child points outside the project and is never followed.
+      const outside = realpathSync(
+        mkdtempSync(join(tmpdir(), 'station-outside-')),
+      );
+      mkdirSync(join(outside, '.git'));
+      symlinkSync(outside, join(umbrella, 'linked'));
+      const asked: string[] = [];
       const remotesByPath: Record<string, { name: string; url: string }[]> = {
         [join(umbrella, 'station')]: [
           { name: 'origin', url: 'https://github.com/kontourai/station.git' },
@@ -361,10 +376,16 @@ describe('PullRequestRepositoryContextResolver', () => {
           { name: 'origin', url: 'https://github.com/kontourai/station.git' },
         ],
       };
-      const readRemotes = async (path: string) => ({
-        ok: true as const,
-        remotes: remotesByPath[path] ?? [],
-      });
+      remotesByPath[join(umbrella, 'linked')] = [
+        { name: 'origin', url: 'https://github.com/kontourai/station.git' },
+      ];
+      remotesByPath[join(umbrella, 'plain-folder')] = [
+        { name: 'origin', url: 'https://github.com/kontourai/station.git' },
+      ];
+      const readRemotes = async (path: string) => {
+        asked.push(path);
+        return { ok: true as const, remotes: remotesByPath[path] ?? [] };
+      };
       const make = () =>
         new PullRequestRepositoryContextResolver({
           git: git() as any,
@@ -387,6 +408,11 @@ describe('PullRequestRepositoryContextResolver', () => {
           repository: { owner: 'kontourai', name: 'station' },
         },
       });
+      // Neither the symlink nor the folder without `.git` was asked — each
+      // claims the same repository, so asking would have made it ambiguous.
+      expect(asked).not.toContain(join(umbrella, 'linked'));
+      expect(asked).not.toContain(join(umbrella, 'plain-folder'));
+      rmSync(outside, { recursive: true, force: true });
       // A repository no child holds, or a request naming none, stays refused.
       for (const repository of [
         { host: 'github.com', owner: 'kontourai', name: 'absent' },

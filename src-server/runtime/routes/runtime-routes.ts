@@ -477,6 +477,7 @@ import { ProjectResourceResolver } from '../../services/projects/project-resourc
 import type { ProjectService } from '../../services/projects/project-service.js';
 import { resolveProjectWorkspacePath } from '../../services/projects/project-workspace-path.js';
 import type { ProposedChangeService } from '../../services/projects/proposed-change-service.js';
+import { sessionWorkspaceDirectoryFor } from '../../services/projects/session-workspace-directory.js';
 import { createTaskBasisAppReadModule } from '../../services/projects/task-basis-app-read-module.js';
 import { createTaskBasisRuntimeComposition } from '../../services/projects/task-basis-runtime-composition.js';
 import type { TaskDispatcher } from '../../services/projects/task-dispatcher.js';
@@ -4104,33 +4105,22 @@ export function configureRuntimeRoutes(
         layoutCatalog,
         kitObservabilityRegistry,
         terminalService: context.terminalService,
-        sessionWorkspaceDirectory: async (
-          routeContext,
-          projectSlug,
-          thread,
-        ) => {
-          // Authority first: a thread id the caller may not read is refused,
-          // never answered from the checkout instead.
-          if (
-            !context.orchestrationService.canUserReadSession(
-              thread,
-              readAuthorityForRequest(routeContext.req.raw),
-            )
-          )
-            return null;
-          const session = pullRequestThreadForProject(
-            await context.orchestrationService.listSessions(
-              INTERNAL_SESSION_READ_SCOPE,
-            ),
-            thread,
+        sessionWorkspaceDirectory: (routeContext, projectSlug, thread) =>
+          sessionWorkspaceDirectoryFor(
+            {
+              canRead: (id) =>
+                context.orchestrationService.canUserReadSession(
+                  id,
+                  readAuthorityForRequest(routeContext.req.raw),
+                ),
+              listSessions: () =>
+                context.orchestrationService.listSessions(
+                  INTERNAL_SESSION_READ_SCOPE,
+                ),
+            },
             projectSlug,
-          );
-          if (!session) return null;
-          const isolation = session.workspaceIsolation;
-          return isolation?.mode === 'worktree' && isolation.path
-            ? isolation.path
-            : undefined;
-        },
+            thread,
+          ),
         // station#3778: the SAME service instance the Board's availability
         // route answers from, so the Pane catalogue, the nav entry and the
         // route guard cannot drift into three answers.
@@ -4377,6 +4367,16 @@ export function configureRuntimeRoutes(
           return { available: false, reason: 'Project is unavailable' };
         }
         const threadId = routeContext.req.query('thread');
+        // A session's worktree names its branch and remote: resolve it only
+        // for a caller allowed to read that session.
+        if (
+          threadId &&
+          !context.orchestrationService.canUserReadSession(
+            threadId,
+            readAuthorityForRequest(routeContext.req.raw),
+          )
+        )
+          return { available: false, reason: 'Session is unavailable' };
         const session = threadId
           ? pullRequestThreadForProject(
               await context.orchestrationService.listSessions(

@@ -52,10 +52,13 @@ import { useWorkspaceFileExists } from './useWorkspaceFileExists';
  * a relative URL that resolves against Station's own routes.
  */
 /**
- * Where this conversation's file paths live (#2476). A session in the project
- * checkout: the checkout. A session in an isolated worktree: that worktree,
- * read through its thread id. Without a thread id there is no way to read the
- * worktree, and a mention is not linked (`resolvable: false`).
+ * Where this conversation's file paths live (#2476). A session in an isolated
+ * worktree: that worktree, read through its thread id — the one directory
+ * other than the checkout the server will read for a session. A session in the
+ * project checkout: the checkout. Anything else (a subfolder, another
+ * directory, a worktree with no thread id to read it): mentions are not
+ * linked (`resolvable: false`), because the server would read a different
+ * directory than the one the model's paths name.
  */
 function fileScope(link: MarkdownLinkContextValue | null): {
   roots: readonly string[];
@@ -63,16 +66,18 @@ function fileScope(link: MarkdownLinkContextValue | null): {
   resolvable: boolean;
 } {
   if (!link) return { roots: [], resolvable: false };
+  if (link.sessionWorktree)
+    return link.threadId
+      ? {
+          roots: [link.sessionWorktree],
+          thread: link.threadId,
+          resolvable: true,
+        }
+      : { roots: [], resolvable: false };
   if (
     sessionRunsInProjectDirectory(link.sessionDirectory, link.projectRoots?.[0])
   )
     return { roots: link.projectRoots ?? [], resolvable: true };
-  if (link.threadId && link.sessionDirectory)
-    return {
-      roots: [link.sessionDirectory],
-      thread: link.threadId,
-      resolvable: true,
-    };
   return { roots: [], resolvable: false };
 }
 
@@ -137,8 +142,9 @@ function activate(
     });
     if (outcome.ok) return;
     // The model refused (a device fold, a region rule). The preview still
-    // has the route it had before #2049, if this session has a layout.
-    link.openPathInMain?.(target.path, target.lineRange);
+    // has the route it had before #2049, if this session has a layout — but
+    // that route reads the CHECKOUT, so a worktree's file never takes it.
+    if (!thread) link.openPathInMain?.(target.path, target.lineRange);
     return;
   }
   // No dock that may hold it: a bottom-only fold, or a dock bound to a
@@ -158,7 +164,9 @@ function activate(
   // better than either of those, and it is the same on both hosts, which is
   // one behaviour to reason about instead of two wrong ones.
   event.preventDefault();
-  link.openPathInMain?.(target.path, target.lineRange);
+  // The layout route reads the checkout: a worktree file does not take it.
+  if (!fileScope(link).thread)
+    link.openPathInMain?.(target.path, target.lineRange);
 }
 
 type AnchorProps = AnchorHTMLAttributes<HTMLAnchorElement> & {
@@ -334,8 +342,12 @@ function RepoFileAnchor({
   link: MarkdownLinkContextValue;
   target: Extract<MarkdownLinkTarget, { kind: 'repo-file' }>;
 }) {
+  // In a worktree session the ref to compare is the WORKTREE's branch, which
+  // is also the copy the preview then reads.
+  const thread = fileScope(rest.link).thread;
   const context = usePullRequestContextQuery({
     project: rest.link.projectSlug ?? '',
+    ...(thread ? { thread } : {}),
   });
   const identity = context.data?.available ? context.data : undefined;
   const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();

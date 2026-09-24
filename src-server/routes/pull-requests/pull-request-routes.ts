@@ -57,7 +57,9 @@ export function createPullRequestRoutes(
   // could never fix it.
   const resolve = async (
     c: any,
-    requireBranchState = false,
+    // Explicit at every call site: a new route must decide whether it acts on
+    // the current branch, not inherit either answer by default.
+    requireBranchState: boolean,
   ): Promise<
     { refused: string } | { provider: IPullRequestProvider; context: any }
   > => {
@@ -156,7 +158,7 @@ export function createPullRequestRoutes(
     });
   });
   app.get('/:provider/:host/:owner/:repo', async (c) => {
-    const x = await resolve(c);
+    const x = await resolve(c, false);
     if ('refused' in x)
       return c.json({ success: false, error: x.refused }, 404);
     pullRequestOps.add(1, {
@@ -175,7 +177,7 @@ export function createPullRequestRoutes(
     });
   });
   app.get('/:provider/:host/:owner/:repo/:ref', async (c) => {
-    const x = await resolve(c);
+    const x = await resolve(c, false);
     if ('refused' in x)
       return c.json({ success: false, error: x.refused }, 404);
     return c.json({
@@ -189,7 +191,7 @@ export function createPullRequestRoutes(
   app.get('/:provider/:host/:owner/:repo/:ref/review', async (c) => {
     if (!current(c))
       return c.json({ success: false, error: 'Station access changed' }, 403);
-    const x = await resolve(c);
+    const x = await resolve(c, false);
     if ('refused' in x)
       return c.json({ success: false, error: x.refused }, 404);
     if (!/^[1-9]\d*$/.test(param(c, 'ref')))
@@ -227,7 +229,7 @@ export function createPullRequestRoutes(
           { success: false, error: 'Operator authentication required' },
           403,
         );
-      const x = await resolve(c);
+      const x = await resolve(c, false);
       if ('refused' in x)
         return c.json({ success: false, error: x.refused }, 404);
       if (!/^[1-9]\d*$/.test(param(c, 'ref')))
@@ -296,7 +298,7 @@ export function createPullRequestRoutes(
         { success: false, error: 'Operator authentication required' },
         403,
       );
-    const x = await resolve(c);
+    const x = await resolve(c, false);
     if ('refused' in x)
       return c.json({ success: false, error: x.refused }, 404);
     pullRequestOps.add(1, {
@@ -321,7 +323,7 @@ export function createPullRequestRoutes(
         { success: false, error: 'Operator authentication required' },
         403,
       );
-    const x = await resolve(c);
+    const x = await resolve(c, false);
     if ('refused' in x)
       return c.json({ success: false, error: x.refused }, 404);
     pullRequestOps.add(1, {
@@ -350,7 +352,7 @@ export function createPullRequestRoutes(
           { success: false, error: 'Operator authentication required' },
           403,
         );
-      const x = await resolve(c);
+      const x = await resolve(c, false);
       if ('refused' in x)
         return c.json({ success: false, error: x.refused }, 404);
       const input = getBody(c);

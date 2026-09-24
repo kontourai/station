@@ -1,4 +1,5 @@
-import { readdirSync, realpathSync } from 'node:fs';
+import { existsSync, readdirSync, realpathSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import type {
   PullRequestRepositoryContext,
@@ -204,7 +205,11 @@ export class PullRequestRepositoryContextResolver {
   /**
    * The one direct child of an umbrella directory whose remotes name
    * `repository`, or undefined when none or several do. Symlinks are not
-   * followed, so the lookup stays inside the project directory.
+   * followed, so the lookup stays inside the project directory. Only children
+   * holding a `.git` entry are asked for remotes (one `stat` each, no spawn),
+   * and those asks run in parallel. A home directory is never scanned: its
+   * children are the user's Documents and Desktop, not checkouts, and on
+   * macOS merely stat-ing inside them can raise a privacy prompt.
    */
   private async umbrellaChild(
     directory: string,
@@ -212,10 +217,12 @@ export class PullRequestRepositoryContextResolver {
   ): Promise<{ path: string; remotes: CheckoutRemote[] } | undefined> {
     let entries: string[];
     try {
+      if (realpathSync(directory) === realpathSync(homedir())) return undefined;
       entries = readdirSync(directory, { withFileTypes: true })
         .filter((entry) => entry.isDirectory() && !entry.name.startsWith('.'))
         .map((entry) => entry.name)
-        .slice(0, UMBRELLA_MAX_CHILDREN);
+        .slice(0, UMBRELLA_MAX_CHILDREN)
+        .filter((name) => existsSync(join(directory, name, '.git')));
     } catch {
       return undefined;
     }
@@ -224,22 +231,24 @@ export class PullRequestRepositoryContextResolver {
       repository.owner.toLowerCase(),
       repository.name.toLowerCase(),
     ]);
-    const matches: { path: string; remotes: CheckoutRemote[] }[] = [];
-    for (const name of entries) {
-      const path = join(directory, name);
-      const remotes = await (this.deps.readRemotes ?? readCheckoutRemotes)(
-        path,
-      );
-      if (!remotes.ok || remotes.remotes.length === 0) continue;
-      const names = distinctRepositories(
-        remotes.remotes.map((remote) => ({
-          remote,
-          repository: providerRepository(remote.url),
-        })),
-      );
-      if (names.length === 1 && names[0] === want)
-        matches.push({ path, remotes: remotes.remotes });
-    }
+    const read = this.deps.readRemotes ?? readCheckoutRemotes;
+    const found = await Promise.all(
+      entries.map(async (name) => {
+        const path = join(directory, name);
+        const remotes = await read(path);
+        if (!remotes.ok || remotes.remotes.length === 0) return undefined;
+        const names = distinctRepositories(
+          remotes.remotes.map((remote) => ({
+            remote,
+            repository: providerRepository(remote.url),
+          })),
+        );
+        return names.length === 1 && names[0] === want
+          ? { path, remotes: remotes.remotes }
+          : undefined;
+      }),
+    );
+    const matches = found.filter((match) => match !== undefined);
     return matches.length === 1 ? matches[0] : undefined;
   }
 

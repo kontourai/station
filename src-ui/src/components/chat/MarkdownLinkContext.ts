@@ -54,16 +54,17 @@ export interface MarkdownLinkContextValue {
    */
   conversationId?: string | null;
   /**
-   * The directory the session runs in. When it is not the project checkout
-   * (an isolated worktree), the model's paths name THAT directory's files:
-   * they resolve against it and are read through `threadId`.
+   * The directory the session runs in. When it is neither the checkout nor
+   * an isolated worktree (a subfolder, another directory), the model's paths
+   * name files the preview cannot address, so mentions stay text.
    */
   sessionDirectory?: string | null;
   /**
-   * The session's thread id. When the session runs outside the checkout, a
-   * file it names is checked and previewed from its own directory through
-   * this (#2476); without it such paths stay text.
+   * The session's isolated worktree, when it has one: the model's paths name
+   * its files, which the server reads through `threadId` (#2476).
    */
+  sessionWorktree?: string | null;
+  /** The session's thread id; reads a worktree's files, never anything else. */
   threadId?: string | null;
 }
 

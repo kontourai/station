@@ -185,6 +185,7 @@ describe('path mentions in a rendered chat message', () => {
         value={{
           ...CONVERSATION,
           sessionDirectory: '/work/worktrees/lane',
+          sessionWorktree: '/work/worktrees/lane',
         }}
       >
         <MarkdownRenderer>Edit src/app.ts now.</MarkdownRenderer>
@@ -201,6 +202,7 @@ describe('path mentions in a rendered chat message', () => {
         value={{
           ...CONVERSATION,
           sessionDirectory: '/work/worktrees/lane',
+          sessionWorktree: '/work/worktrees/lane',
           threadId: 'thread-7',
         }}
       >
@@ -222,6 +224,50 @@ describe('path mentions in a rendered chat message', () => {
         thread: 'thread-7',
       }),
     );
+  });
+
+  test('a session in a subfolder or another directory links nothing, thread or not', () => {
+    // The server reads a thread's WORKTREE only; for any other directory it
+    // would answer from the checkout root, a different file than the model
+    // named (review H1).
+    existing.add('src/app.ts');
+    existing.add('app.ts');
+    render(
+      <MarkdownLinkContext.Provider
+        value={{
+          ...CONVERSATION,
+          sessionDirectory: '/work/repo/pkg',
+          threadId: 'thread-7',
+        }}
+      >
+        <MarkdownRenderer>Edit app.ts and src/app.ts now.</MarkdownRenderer>
+      </MarkdownLinkContext.Provider>,
+    );
+    expect(screen.queryByRole('link')).toBeNull();
+    expect(existenceAsks).toEqual([]);
+  });
+
+  test('a refused worktree preview never falls back to the checkout route', () => {
+    existing.add('src/app.ts');
+    openFilePreviewInRegion.mockReturnValueOnce({ ok: false } as never);
+    const openPathInMain = vi.fn();
+    render(
+      <MarkdownLinkContext.Provider
+        value={{
+          ...CONVERSATION,
+          openPathInMain,
+          sessionDirectory: '/work/worktrees/lane',
+          sessionWorktree: '/work/worktrees/lane',
+          threadId: 'thread-7',
+        }}
+      >
+        <MarkdownRenderer>Edit src/app.ts now.</MarkdownRenderer>
+      </MarkdownLinkContext.Provider>,
+    );
+    fireEvent.click(screen.getByRole('link', { name: /app\.ts/ }));
+    expect(openFilePreviewInRegion).toHaveBeenCalled();
+    // The layout route reads the checkout: a worktree file does not take it.
+    expect(openPathInMain).not.toHaveBeenCalled();
   });
 
   test('outside a conversation a mention stays text and asks nothing', () => {

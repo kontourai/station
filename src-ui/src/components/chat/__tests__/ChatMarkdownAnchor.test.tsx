@@ -30,8 +30,12 @@ vi.mock('../../../contexts/RegionModelContext', () => ({
   useRegionModelOptional: () => model,
 }));
 let repositoryContext: unknown;
+const contextQueries: unknown[] = [];
 vi.mock('@kontourai/station-sdk', () => ({
-  usePullRequestContextQuery: () => ({ data: repositoryContext }),
+  usePullRequestContextQuery: (context: unknown) => {
+    contextQueries.push(context);
+    return { data: repositoryContext };
+  },
 }));
 vi.mock('../../../platform/openExternalLink', () => ({
   hostOwnsExternalLinks: () => tauri,
@@ -377,5 +381,19 @@ describe('a forge file link (github.com/.../blob/...)', () => {
     }
     expect(openFilePreviewInRegion).not.toHaveBeenCalled();
     expect(openNativeExternalLink).toHaveBeenCalledTimes(4);
+  });
+
+  test('in a worktree session the ref is compared with the WORKTREE branch', () => {
+    contextQueries.length = 0;
+    mount(url, {
+      ...CONVERSATION,
+      sessionDirectory: '/wt/lane',
+      sessionWorktree: '/wt/lane',
+      threadId: 'thread-7',
+    });
+    expect(contextQueries).toContainEqual({
+      project: 'alpha',
+      thread: 'thread-7',
+    });
   });
 });
