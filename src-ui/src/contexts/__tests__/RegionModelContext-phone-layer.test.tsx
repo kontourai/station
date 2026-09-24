@@ -265,6 +265,32 @@ describe('a pane opened on a phone opens over Chat', () => {
     expect(navigationStore.lastDockMaximized).toBe(false);
   });
 
+  // G1's key is the layer's entry's: a stale key on any OTHER entry (the tab
+  // unloaded mid-layer and has navigated since) must not override the URL.
+  test('a stale pre-layer record on an ordinary entry leaves the URL’s dock state alone', async () => {
+    sessionStorage.setItem(
+      'station.phoneLayer.preLayerDock.v1',
+      JSON.stringify({ visible: true, maximized: false, dockMemory: false }),
+    );
+    window.history.replaceState({}, '', '/?dock=open&maximize=true');
+    navigationStore.navigate('/', { dock: 'open', maximize: 'true' });
+    render(
+      <KeyboardShortcutsProvider>
+        <NavigationProvider>
+          <RegionModelProvider>
+            <Probe />
+          </RegionModelProvider>
+        </NavigationProvider>
+      </KeyboardShortcutsProvider>,
+    );
+    await waitFor(() => expect(model).not.toBeNull());
+    expect(current().regions.bottom.maximized).toBe(true);
+    expect(maximizeParam()).toBe('true');
+    expect(sessionStorage.getItem('station.phoneLayer.preLayerDock.v1')).toBe(
+      null,
+    );
+  });
+
   test('a Chat that was maximized comes back maximized', async () => {
     window.history.replaceState({}, '', '/?dock=open&maximize=true');
     navigationStore.navigate('/', { dock: 'open', maximize: 'true' });
