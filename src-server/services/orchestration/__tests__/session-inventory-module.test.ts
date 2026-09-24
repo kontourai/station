@@ -495,7 +495,7 @@ describe('SessionInventoryModule', () => {
     expect(
       result.projection.groups
         .find((group) => group.id === 'inputs')
-        ?.items.map((item: { eventId?: string }) => item.eventId),
+        ?.items.map((item) => ('eventId' in item ? item.eventId : undefined)),
     ).toEqual(['user-input']);
   });
   // station#1558 (fix round, M4): `ThreadToolResultRow.terminalStatus` is a

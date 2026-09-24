@@ -798,6 +798,7 @@ describe('SessionTurnBoundaryAuthority', () => {
         transition: () => ({ kind: 'unavailable' }),
         remove: () => ({ kind: 'unavailable' }),
         removeTerminal: () => ({ kind: 'unavailable' }),
+        recordAccepted: () => ({ kind: 'unavailable' }),
         hasPossibleEffect: () => {
           throw new Error('sqlite unavailable');
         },
