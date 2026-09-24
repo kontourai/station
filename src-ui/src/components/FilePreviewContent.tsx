@@ -22,6 +22,7 @@ import { MarkdownImage } from './chat/markdown-images';
 import { classifyMarkdownLink } from './chat/markdownLinkTarget';
 import type { PreviewItem } from './ImagePreviewContent';
 import { LazyBoundary } from './LazyBoundary';
+import { Button } from './Button';
 import { PreviewDownloadLink } from './PreviewDownloadLink';
 import { Empty, SkeletonBlock } from './state';
 
@@ -261,7 +262,28 @@ export default function FilePreviewContent({
       <LazyBoundary
         load={loadPdfCanvasViewer}
         componentProps={{ blob: pdfBlob, actions: download }}
-        pending={<SkeletonBlock count={3} label="Loading PDF preview" />}
+        // Until the viewer's own toolbar exists, and if its code never
+        // arrives, Download keeps a row here: it is the way out of both.
+        pending={
+          <>
+            <div className="file-preview__toolbar file-preview__toolbar--end">
+              {download}
+            </div>
+            <SkeletonBlock count={3} label="Loading PDF preview" />
+          </>
+        }
+        unavailable={(retry) => (
+          <>
+            <div className="file-preview__toolbar file-preview__toolbar--end">
+              {download}
+            </div>
+            <Empty
+              label="Preview unavailable"
+              description="Station could not load the PDF viewer. Download the file, or try again."
+              action={<Button onClick={retry}>Try again</Button>}
+            />
+          </>
+        )}
       />
     ) : (
       <Empty

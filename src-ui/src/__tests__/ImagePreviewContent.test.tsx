@@ -42,6 +42,19 @@ describe('ImagePreviewContent', () => {
     expect(download.closest('.image-inspector__toolbar')).not.toBeNull();
   });
 
+  test('an unnamed image downloads with an extension', () => {
+    const item = { url: 'blob:unnamed', mediaType: 'image/jpeg' };
+    render(
+      <ImagePreviewContent current={item} items={[item]} onSelect={() => {}} />,
+    );
+
+    expect(
+      screen
+        .getByRole('link', { name: 'Download image.jpg' })
+        .getAttribute('download'),
+    ).toBe('image.jpg');
+  });
+
   test('holds every gallery image, so prev/next never lands on a revoked sibling', () => {
     storeAttachmentObjectUrl('a', 'blob:a');
     storeAttachmentObjectUrl('b', 'blob:b');

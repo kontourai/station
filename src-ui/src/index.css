@@ -4320,6 +4320,8 @@ button.background-tasks-banner:focus-visible {
   height: 1px;
   overflow: hidden;
   clip: rect(0 0 0 0);
+  /* Wrapped inside the 1px box, some screen readers run the words together. */
+  white-space: nowrap;
 }
 
 /* archive#3341: the two shapes every clipboard call site needs once its copy
@@ -6830,13 +6832,19 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   gap: 8px;
   flex-shrink: 0;
 }
+.file-preview__toolbar--end {
+  justify-content: flex-end;
+}
 .file-preview__kind {
   font-size: 0.85em;
-  color: var(--text-muted);
+  color: var(--text-secondary);
 }
 /* The preview's Download: an icon at the end of whichever toolbar the viewer
    shows, with a full 44px target. */
 .preview-download {
+  /* Ends the row; if a narrow toolbar wraps, it stays at the trailing edge
+     rather than centred alone on a second line. */
+  margin-inline-start: auto;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -6908,6 +6916,9 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 }
 .file-preview__markdown ol {
   list-style: decimal;
+}
+.file-preview__markdown li:has(> input[type="checkbox"]) {
+  list-style: none;
 }
 .file-preview__notice {
   margin: 0;

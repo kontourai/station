@@ -9,6 +9,11 @@ export interface PreviewItem {
   name?: string;
 }
 
+function imageExtension(mediaType: string): string {
+  const subtype = mediaType.toLowerCase().split(';')[0].split('/')[1] ?? '';
+  return subtype === 'jpeg' ? 'jpg' : subtype || 'png';
+}
+
 /** Gallery controls and inspection load only when an image preview is opened. */
 export default function ImagePreviewContent({
   current,
@@ -62,7 +67,7 @@ export default function ImagePreviewContent({
         actions={
           <PreviewDownloadLink
             href={current.url}
-            name={current.name || 'image'}
+            name={current.name || `image.${imageExtension(current.mediaType)}`}
           />
         }
       />

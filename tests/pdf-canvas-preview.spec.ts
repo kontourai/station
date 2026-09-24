@@ -86,6 +86,7 @@ const harness = `
       <button onClick={() => openPreview({ url: asDataUrl(pdf), name: 'report.pdf', mediaType: 'application/pdf' })}>Open PDF</button>
       <button onClick={() => openPreview({ url: asDataUrl(broken), name: 'broken.pdf', mediaType: 'application/pdf' })}>Open broken PDF</button>
       <button onClick={() => openPreview({ url: 'data:application/pdf;base64,${LOCKED_PDF_BASE64}', name: 'locked.pdf', mediaType: 'application/pdf' })}>Open locked PDF</button>
+      <button onClick={() => openPreview({ url: 'data:text/markdown;base64,' + btoa('# Notes\\n\\n- one\\n- two\\n'), name: 'notes.md', mediaType: 'text/markdown' })}>Open short note</button>
     </>;
   }
   createRoot(document.getElementById('root')).render(<PreviewProvider><Open /></PreviewProvider>);
@@ -345,6 +346,26 @@ test('keeps the page count, zoom and Download on one row at phone width', async 
   expect(download.x + download.width).toBeLessThanOrEqual(390);
   expect(download.height).toBeGreaterThanOrEqual(44);
   expect(download.width).toBeGreaterThanOrEqual(44);
+});
+
+test('a short text preview fits its content and keeps list markers', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mount(page);
+
+  await page
+    .getByRole('button', { name: 'Open short note', exact: true })
+    .click();
+  const dialog = page.getByRole('dialog', { name: 'Preview' });
+  const item = dialog.getByRole('listitem').first();
+  await expect(item).toHaveText('one', { timeout: 20_000 });
+  // Sized to the note, not the 90dvh panel an image or PDF gets.
+  const panel = (await page.locator('.image-preview-panel').boundingBox())!;
+  expect(panel.height).toBeLessThan(844 * 0.5);
+  expect(
+    await item.evaluate((element) => getComputedStyle(element).listStyleType),
+  ).toBe('disc');
 });
 
 test('a page zoomed wider than the dialog can be scrolled to both of its edges', async ({

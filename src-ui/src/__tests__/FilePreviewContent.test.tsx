@@ -377,6 +377,33 @@ describe('FilePreviewContent', () => {
     expect(screen.getByRole('link', { name: 'Download a.zip' })).toBeTruthy();
   });
 
+  test('offers Download while the PDF viewer is still loading', () => {
+    pdfViewerEnabled = false;
+    renderablePdf(1);
+    storeAttachmentObjectUrl(
+      'loading',
+      'blob:loading-pdf',
+      new Blob(['%PDF-1.7'], { type: 'application/pdf' }),
+    );
+    render(
+      <FilePreviewContent
+        current={{
+          url: 'blob:loading-pdf',
+          mediaType: 'application/pdf',
+          name: 'slow.pdf',
+        }}
+      />,
+    );
+
+    // Synchronously, before the lazy viewer (and its toolbar) exists.
+    expect(screen.getByLabelText('Loading PDF preview')).toBeTruthy();
+    expect(
+      screen
+        .getByRole('link', { name: 'Download slow.pdf' })
+        .getAttribute('href'),
+    ).toBe('blob:loading-pdf');
+  });
+
   test('keeps Download reachable when pdf.js cannot open the PDF', async () => {
     pdfViewerEnabled = false;
     const locked = Promise.reject(

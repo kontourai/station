@@ -16,7 +16,7 @@ export function PreviewDownloadLink({
       className="button button--ghost preview-download"
       href={href}
       download={name}
-      title="Download"
+      title={`Download ${name}`}
     >
       <svg aria-hidden="true" viewBox="0 0 20 20" focusable="false">
         <path d="M10 3v10M5.5 8.5 10 13l4.5-4.5M4 16.5h12" />
