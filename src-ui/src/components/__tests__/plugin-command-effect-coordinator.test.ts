@@ -484,7 +484,7 @@ describe('plugin command effect coordinator', () => {
     second.dispose();
   });
 
-  test('pagehide flushes immediately with keepalive; a bfcache pageshow resumes a failed flush', async () => {
+  test('pagehide flushes immediately with keepalive ONLY when told this document is same-origin-cookie-auth-eligible; a bfcache pageshow resumes a failed flush', async () => {
     const { transport, admitCalls, settleCalls } = scriptedTransport();
     const windowLike = fakeWindow();
     const coordinator = createPluginCommandEffectCoordinator({
@@ -492,6 +492,11 @@ describe('plugin command effect coordinator', () => {
       storage: fakeStorage(),
       windowLike,
     });
+    // Production wiring calls this from a live signal derived from
+    // credentialState/isTauri/brokerRoute (#1418/#1419 review, MEDIUM). The
+    // false-default case (native, browser-relay, or no signal yet) is its
+    // own test below.
+    coordinator.setCookieAuthEligible(true);
     coordinator.runCommand(baseInput());
     await vi.waitFor(() => expect(admitCalls).toHaveLength(1));
     admitCalls[0].resolve({
@@ -520,6 +525,30 @@ describe('plugin command effect coordinator', () => {
       },
     ]);
     await vi.waitFor(() => expect(coordinator._debug.inFlightCount).toBe(0));
+  });
+
+  test('pagehide attempts the normal authenticated transport (no keepalive) by DEFAULT — before any cookie-auth-eligibility signal has ever arrived (#1418/#1419 review, MEDIUM)', async () => {
+    const { transport, admitCalls, settleCalls } = scriptedTransport();
+    const windowLike = fakeWindow();
+    const coordinator = createPluginCommandEffectCoordinator({
+      transport,
+      storage: fakeStorage(),
+      windowLike,
+    });
+    // `setCookieAuthEligible` is never called: this is native, a
+    // browser-relay/broker connection, or simply too early for the live
+    // signal to have arrived yet. `credentials: 'include'` cannot carry any
+    // of those, so a bare `keepalive` fetch must never be used for them.
+    coordinator.runCommand(baseInput());
+    await vi.waitFor(() => expect(admitCalls).toHaveLength(1));
+    admitCalls[0].resolve({
+      kind: 'admitted',
+      receipt: receiptFor(admitCalls[0]),
+    });
+    await flushMicrotasks();
+    windowLike.fire('pagehide');
+    expect(settleCalls).toHaveLength(1);
+    expect(settleCalls[0].options.keepalive).toBe(false);
   });
 
   test('a Station/authority switch drops in-flight state and mints a fresh identity', async () => {
