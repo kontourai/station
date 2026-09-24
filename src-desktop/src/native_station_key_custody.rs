@@ -684,6 +684,19 @@ impl<B: StationTrustBackend, C: StationTrustClock> NativeStationTrustStore<B, C>
             if stored.revision != expected_store_revision {
                 return Err(CandidateError::TrustRevisionConflict);
             }
+            if stored.status == Some(StationTrustStatus::Approved)
+                && stored.approved_bindings.contains(&binding)
+            {
+                let floor = stored
+                    .generation_floor
+                    .as_ref()
+                    .ok_or(CandidateError::TrustStore)?;
+                if candidate.claims.candidate.generation <= floor.generation
+                    || candidate.claims.key_id == floor.key_id
+                {
+                    return Err(CandidateError::GenerationRollback);
+                }
+            }
             apply_generation_floor(
                 &mut stored,
                 &candidate.claims.candidate,
@@ -1727,5 +1740,85 @@ mod tests {
             Err(CandidateError::GenerationRollback)
         );
         assert_eq!(store.current_revision(&profile, &trust_binding, 7), Ok(1));
+    }
+
+    #[test]
+    fn approved_route_requires_a_newer_generation_and_new_signing_key_to_rotate() {
+        let backend = MemoryTrustBackend::default();
+        let route = binding();
+        let profile = locked_profile(&route);
+        let trust_binding = trust_binding(&route);
+        let account = trust_account(&trust_binding).unwrap();
+        let mut store = NativeStationTrustStore::with_backend(backend.clone());
+
+        let original = verified_for_store(0, 3);
+        let original_code = original.confirmation_code().to_owned();
+        let original_key_id = original.key_id().to_owned();
+        let mut same_key = original.clone();
+        same_key.expected_trust_revision = 1;
+        let mut higher_generation_old_key = original.clone();
+        higher_generation_old_key.expected_trust_revision = 1;
+        let approved = store
+            .approve(&profile, original, &original_code, &original_key_id)
+            .unwrap();
+        assert_eq!(approved.revision, 1);
+        let committed = backend.0.lock().unwrap().get(&account).unwrap().clone();
+
+        let same_code = same_key.confirmation_code().to_owned();
+        assert_eq!(
+            store.approve(&profile, same_key, &same_code, &original_key_id),
+            Err(CandidateError::GenerationRollback)
+        );
+        assert_eq!(backend.0.lock().unwrap().get(&account), Some(&committed));
+
+        // Even a higher advertised generation cannot rotate trust while
+        // reusing the already-approved Station signing key.
+        higher_generation_old_key.claims.candidate.generation = 4;
+        let old_key_code = higher_generation_old_key.confirmation_code().to_owned();
+        assert_eq!(
+            store.approve(
+                &profile,
+                higher_generation_old_key,
+                &old_key_code,
+                &original_key_id,
+            ),
+            Err(CandidateError::GenerationRollback)
+        );
+        assert_eq!(backend.0.lock().unwrap().get(&account), Some(&committed));
+
+        let same_generation_new_key = verified_for_store(1, 3);
+        let same_generation_code = same_generation_new_key.confirmation_code().to_owned();
+        let same_generation_key = same_generation_new_key.key_id().to_owned();
+        assert_ne!(same_generation_key, original_key_id);
+        assert_eq!(
+            store.approve(
+                &profile,
+                same_generation_new_key,
+                &same_generation_code,
+                &same_generation_key,
+            ),
+            Err(CandidateError::GenerationRollback)
+        );
+        assert_eq!(backend.0.lock().unwrap().get(&account), Some(&committed));
+
+        let older = verified_for_store(1, 2);
+        let older_code = older.confirmation_code().to_owned();
+        let older_key = older.key_id().to_owned();
+        assert_eq!(
+            store.approve(&profile, older, &older_code, &older_key),
+            Err(CandidateError::GenerationRollback)
+        );
+        assert_eq!(backend.0.lock().unwrap().get(&account), Some(&committed));
+
+        let rotated = verified_for_store(1, 4);
+        let rotated_code = rotated.confirmation_code().to_owned();
+        let rotated_key = rotated.key_id().to_owned();
+        assert_ne!(rotated_key, original_key_id);
+        let receipt = store
+            .approve(&profile, rotated, &rotated_code, &rotated_key)
+            .unwrap();
+        assert_eq!(receipt.revision, 2);
+        assert_eq!(receipt.generation, 4);
+        assert_eq!(receipt.key_id, rotated_key);
     }
 }

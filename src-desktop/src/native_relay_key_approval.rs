@@ -427,9 +427,6 @@ fn begin_network(
     let existing = trust
         .current_state(&provider, &binding, profile_revision)
         .map_err(map_candidate_error)?;
-    if existing.status == Some(StationTrustStatus::Approved) {
-        return Err("This Station route already has approved relay-key trust.".into());
-    }
     let candidate_binding = CandidateBinding {
         profile_owner_id: binding.profile_owner_id.clone(),
         app_identifier: binding.app_identifier.clone(),
@@ -944,7 +941,7 @@ fn map_candidate_error(error: CandidateError) -> String {
             "The signed Station-key candidate expired. Request a new invitation.".into()
         }
         CandidateError::GenerationRollback => {
-            "The Station-key candidate is older than the trusted generation.".into()
+            "The Station-key candidate must use a newer generation and a new signing key.".into()
         }
         CandidateError::TrustStore => {
             "The native Station-key trust store is unavailable or invalid.".into()
