@@ -2978,6 +2978,189 @@ describe('ClaudeAdapter', () => {
     expect(mockQuery).not.toHaveBeenCalled();
   });
 
+  describe('#2482 model catalog cache', () => {
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    /** A probe that answers after `answer()` is called, or fails with `fail`. */
+    function deferredProbe(
+      models: Array<{ value: string; displayName: string }>,
+    ) {
+      const query = createMockQuery([], models);
+      let answer: () => void = () => {};
+      const answered = new Promise<void>((resolve) => {
+        answer = resolve;
+      });
+      query.supportedModels.mockImplementation(async () => {
+        await answered;
+        return models;
+      });
+      return { query, answer };
+    }
+
+    test('declares its catalog identity-mapped, and every entry it builds keeps originalId === id', async () => {
+      // The declaration lets selector validation skip the catalog read. It
+      // is only true while the catalog never rewrites: a model whose
+      // `resolvedModel` differs is exactly where a rewrite would appear.
+      mockQuery.mockReturnValue(
+        createMockQuery(
+          [],
+          [
+            {
+              value: 'sonnet',
+              displayName: 'Sonnet',
+              resolvedModel: 'claude-sonnet-4-6-20260701',
+            },
+            { value: 'claude-opus-4-6', displayName: 'Opus' },
+          ],
+        ),
+      );
+      const adapter = new ClaudeAdapter();
+
+      expect(adapter.metadata.modelCatalogIdentityMapped).toBe(true);
+      const { models } = await adapter.listModelCatalog();
+      expect(models.map((model) => model.id)).toEqual([
+        'sonnet',
+        'claude-opus-4-6',
+      ]);
+      for (const model of models) expect(model.originalId).toBe(model.id);
+    });
+
+    test('ten concurrent readers share one probe', async () => {
+      const probe = deferredProbe([{ value: 'sonnet', displayName: 'Sonnet' }]);
+      mockQuery.mockReturnValue(probe.query);
+      const adapter = new ClaudeAdapter();
+
+      const pending = Array.from({ length: 10 }, () =>
+        adapter.listModelCatalog(),
+      );
+      // Let every reader reach the shared flight before the probe answers.
+      await vi.waitFor(() =>
+        expect(probe.query.supportedModels).toHaveBeenCalled(),
+      );
+      probe.answer();
+      const results = await Promise.all(pending);
+
+      expect(mockQuery).toHaveBeenCalledTimes(1);
+      expect(probe.query.supportedModels).toHaveBeenCalledTimes(1);
+      for (const result of results) {
+        expect(result.models).toEqual([
+          { id: 'sonnet', name: 'Sonnet', originalId: 'sonnet' },
+        ]);
+      }
+    });
+
+    test('reuses an answer inside the TTL and probes again after it', async () => {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(new Date('2026-09-24T00:00:00.000Z'));
+      mockQuery.mockImplementation(() =>
+        createMockQuery([], [{ value: 'sonnet', displayName: 'Sonnet' }]),
+      );
+      const adapter = new ClaudeAdapter();
+
+      await adapter.listModelCatalog();
+      vi.setSystemTime(new Date('2026-09-24T00:00:29.999Z'));
+      await adapter.listModelCatalog();
+      expect(mockQuery).toHaveBeenCalledTimes(1);
+
+      vi.setSystemTime(new Date('2026-09-24T00:00:30.000Z'));
+      await adapter.listModelCatalog();
+      expect(mockQuery).toHaveBeenCalledTimes(2);
+    });
+
+    test('a failed probe is not cached', async () => {
+      const failing = createMockQuery([]);
+      failing.supportedModels.mockRejectedValue(new Error('probe exploded'));
+      mockQuery
+        .mockReturnValueOnce(failing)
+        .mockReturnValueOnce(
+          createMockQuery([], [{ value: 'sonnet', displayName: 'Sonnet' }]),
+        );
+      const adapter = new ClaudeAdapter();
+
+      await expect(adapter.listModelCatalog()).rejects.toThrow(
+        'probe exploded',
+      );
+      await expect(adapter.listModelCatalog()).resolves.toEqual({
+        models: [{ id: 'sonnet', name: 'Sonnet', originalId: 'sonnet' }],
+      });
+      expect(mockQuery).toHaveBeenCalledTimes(2);
+    });
+
+    test('a probe its only reader abandoned is not cached', async () => {
+      const abandoned = deferredProbe([
+        { value: 'stale', displayName: 'Stale' },
+      ]);
+      mockQuery
+        .mockReturnValueOnce(abandoned.query)
+        .mockReturnValueOnce(
+          createMockQuery([], [{ value: 'sonnet', displayName: 'Sonnet' }]),
+        );
+      const adapter = new ClaudeAdapter();
+      const controller = new AbortController();
+
+      const first = adapter.listModelCatalog({ signal: controller.signal });
+      await vi.waitFor(() =>
+        expect(abandoned.query.supportedModels).toHaveBeenCalled(),
+      );
+      controller.abort(new Error('reader left'));
+      // The probe answers anyway, after its last reader is gone.
+      abandoned.answer();
+      await expect(first).rejects.toThrow('reader left');
+
+      await expect(adapter.listModelCatalog()).resolves.toEqual({
+        models: [{ id: 'sonnet', name: 'Sonnet', originalId: 'sonnet' }],
+      });
+      expect(mockQuery).toHaveBeenCalledTimes(2);
+    });
+
+    test('one reader leaving does not cancel the probe another reader shares', async () => {
+      const probe = deferredProbe([{ value: 'sonnet', displayName: 'Sonnet' }]);
+      mockQuery.mockReturnValue(probe.query);
+      const adapter = new ClaudeAdapter();
+      const leaving = new AbortController();
+
+      const left = adapter.listModelCatalog({ signal: leaving.signal });
+      const staying = adapter.listModelCatalog();
+      await vi.waitFor(() =>
+        expect(probe.query.supportedModels).toHaveBeenCalled(),
+      );
+      leaving.abort(new Error('reader left'));
+      await expect(left).rejects.toThrow('reader left');
+      probe.answer();
+
+      await expect(staying).resolves.toEqual({
+        models: [{ id: 'sonnet', name: 'Sonnet', originalId: 'sonnet' }],
+      });
+      expect(mockQuery).toHaveBeenCalledTimes(1);
+      expect(
+        mockQuery.mock.calls[0][0].options.abortController.signal.aborted,
+      ).toBe(false);
+    });
+
+    test('a different connection routing is a different catalog', async () => {
+      mockQuery.mockImplementation(() =>
+        createMockQuery([], [{ value: 'sonnet', displayName: 'Sonnet' }]),
+      );
+      let baseUrl = 'http://127.0.0.1:8318';
+      const adapter = new ClaudeAdapter({
+        getConnectionEnv: async () => ({ ANTHROPIC_BASE_URL: baseUrl }),
+      });
+
+      await adapter.listModelCatalog();
+      await adapter.listModelCatalog();
+      expect(mockQuery).toHaveBeenCalledTimes(1);
+
+      baseUrl = 'http://127.0.0.1:9999';
+      await adapter.listModelCatalog();
+      expect(mockQuery).toHaveBeenCalledTimes(2);
+      expect(mockQuery.mock.calls[1][0].options.env.ANTHROPIC_BASE_URL).toBe(
+        'http://127.0.0.1:9999',
+      );
+    });
+  });
+
   test('rejects approval responses for unknown requests', async () => {
     mockQuery.mockReturnValue(createMockQuery([]));
     const adapter = new ClaudeAdapter();

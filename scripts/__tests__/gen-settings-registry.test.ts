@@ -257,6 +257,7 @@ const PUBLISHED_SCOPE_BY_ID: Readonly<Record<string, string>> = {
   'message-context': 'temporary',
   'voice-pill': 'device',
   'mobile-pairing': 'device',
+  'open-last-station': 'device',
   'tts-readback': 'device',
   'personal-knowledge-store': 'station',
 };

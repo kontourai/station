@@ -197,7 +197,9 @@ const profileReady: Promise<PlatformProfile> = resolvePlatformProfile().then(
       const [{ nativeStationProfileStorage }] = await Promise.all([
         import('./native/stationProfileStorage'),
       ]);
-      profileRepository = nativeStationProfileStorage(profile.isDesktop);
+      // Both desktop and mobile own their selection locally; neither changes
+      // the shared CLI default when someone switches Stations in the app.
+      profileRepository = nativeStationProfileStorage(true);
       await profileRepository.hydrate();
       if (profile.isDesktop) {
         const [{ bootstrapBundledLocalProfile }, { invokeTauri }] =
@@ -215,14 +217,21 @@ const profileReady: Promise<PlatformProfile> = resolvePlatformProfile().then(
       }
       // Rust's active-profile authority is process-local. Desktop bootstrap
       // already selected this runtime's owner (or the confirmed-unowned shared
-      // default); mobile still binds the shared default here before any health
-      // probe. The OS credential never crosses this boundary.
+      // default); mobile restores its own choice here before any health probe.
+      // The OS credential never crosses this boundary.
       // A failed replacement write leaves the profile intentionally in its
       // requires-auth transition. Do not throw the shell back into its loader
       // by trying to authorize it; let OnboardingGate present the concrete
       // keychain remedy recorded above.
       if (!profile.isDesktop && !nativeBootstrapRecoveryError) {
-        await profileRepository.authorizeDefaultProfile();
+        const { deviceSettingsStore } = await import(
+          '../lib/device-settings-store'
+        );
+        if (deviceSettingsStore.get('openLastStationOnLaunch')) {
+          await profileRepository.authorizeRememberedProfile();
+        } else {
+          await profileRepository.authorizeDefaultProfile(true);
+        }
       }
       // Ask for notification permission here rather than when one arrives: a
       // permission dialog that appears because a stranger's device asked to

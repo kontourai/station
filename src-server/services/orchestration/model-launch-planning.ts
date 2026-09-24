@@ -175,6 +175,9 @@ export function knownModelsCatalog(
  * into "the chat could not start". A deadline is therefore treated exactly
  * like the empty catalog a cold engine already reports. A caller's own
  * cancellation, and any other catalog failure, still propagate.
+ *
+ * #2482: an adapter declaring `modelCatalogIdentityMapped` (Claude, Codex)
+ * never reaches this read — its catalog has no alias to rewrite.
  */
 async function catalogForSelectorValidation(
   adapter: ProviderAdapterShape,
@@ -262,6 +265,13 @@ export class ModelLaunchPlanning {
       // exactly as it does when launched with no --model at all.
       return input;
     }
+    if (adapter.metadata.modelCatalogIdentityMapped === true) {
+      // #2482: this adapter's catalog lists every model under the id it is
+      // launched with, so the read below could only confirm `requested` —
+      // and an unlisted selector is passed through regardless. Skip it: for
+      // Claude Code it is a whole CLI spawn before every start.
+      return { ...input, modelId: requested };
+    }
     const catalog = await catalogForSelectorValidation(adapter);
     const match = catalog.find((model) => model.id === requested);
     if (!match) {
@@ -297,6 +307,10 @@ export class ModelLaunchPlanning {
       // pass-through — an explicit-but-blank turn override with no local
       // default is not an error for an external engine; defer to it.
       return input;
+    }
+    if (adapter.metadata.modelCatalogIdentityMapped === true) {
+      // #2482: as in validateConnectedCliModelSelector.
+      return { ...input, modelId: requested };
     }
     const catalog = await catalogForSelectorValidation(adapter);
     const match = catalog.find((model) => model.id === requested);
