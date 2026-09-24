@@ -103,7 +103,7 @@ function handleClaudeNotification(
   ) {
     // #2456: the adapter's legacy task tuples, through the contract's one
     // translator into the same reducer path a `child-work.updated` takes.
-    // Until #2457 this is the live Claude path, not only replayed history.
+    // Replay only since #2457: persisted pre-#2457 Claude history.
     const delta = childWorkDeltaFromLegacyClaudeTaskNotification(
       event,
       event.threadId,
