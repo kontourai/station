@@ -18,9 +18,15 @@ import com.google.firebase.messaging.FirebaseMessaging
 
 @InvokeArg
 class ConfigureArgs {
-  lateinit var deviceId: String
-  lateinit var userId: String
+  lateinit var registrationId: String
+  lateinit var stationId: String
+  lateinit var stationKey: String
   var ongoingEnabled: Boolean = true
+}
+
+@InvokeArg
+class ClearArgs {
+  var registrationId: String? = null
 }
 
 /**
@@ -56,11 +62,12 @@ class AgentActivityPlugin(private val activity: Activity) : Plugin(activity) {
   @Command
   fun configure(invoke: Invoke) {
     val args = invoke.parseArgs(ConfigureArgs::class.java)
-    if (args.deviceId.isBlank() || args.userId.isBlank()) {
-      invoke.reject("deviceId and userId are required")
+    val registration = Registration.validOrNull(args.registrationId, args.stationId, args.stationKey)
+    if (registration == null) {
+      invoke.reject("registrationId, stationId and stationKey must be what the Station returned")
       return
     }
-    AgentNotifications.configure(context, args.deviceId, args.userId, args.ongoingEnabled)
+    AgentNotifications.configure(context, registration, args.ongoingEnabled)
     invoke.resolve()
   }
 
@@ -71,7 +78,13 @@ class AgentActivityPlugin(private val activity: Activity) : Plugin(activity) {
    */
   @Command
   fun clear(invoke: Invoke) {
-    AgentNotifications.clear(context)
+    val registrationId = invoke.parseArgs(ClearArgs::class.java).registrationId
+    AgentNotifications.clear(context, registrationId)
+    if (registrationId != null && AgentNotifications.isConfigured(context)) {
+      // Other Stations still use push on this phone; keep the token.
+      invoke.resolve()
+      return
+    }
     if (!firebaseConfigured()) {
       invoke.resolve()
       return

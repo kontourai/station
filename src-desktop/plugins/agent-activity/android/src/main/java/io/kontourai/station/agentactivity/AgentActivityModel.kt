@@ -11,7 +11,9 @@ package io.kontourai.station.agentactivity
  *
  * Payload wire format (FCM data message, all values strings):
  * - `station_kind` = `agent_activity`
- * - `device_id`, `user_id`: must match the registration from `configure`
+ * - `device_id`, `user_id`: the registration id and Station id from `configure`
+ * - `station_key`: stamped by the push gateway; must equal the Station key
+ *   thumbprint from `configure` (see [acceptsPush])
  * - `updated_at`: epoch millis; stale or reordered messages are dropped
  * - `active`: `true` while any agent is working or waiting on the user
  * - `activity_phase`: one of [ActivityPhase.wire]
@@ -27,6 +29,42 @@ package io.kontourai.station.agentactivity
  *   surface the same attention events from its own server stream.
  */
 internal data class ActivityRow(val status: String, val title: String, val project: String)
+
+/**
+ * What a Station returned when this phone registered: `id` is the random
+ * per-registration value carried as `device_id`, `stationId` travels as
+ * `user_id`, and `stationKey` is the thumbprint of the Station's push key,
+ * which the gateway stamps as `station_key` after verifying the signature.
+ */
+data class Registration(val id: String, val stationId: String, val stationKey: String) {
+  companion object {
+    private val ID = Regex("^[A-Za-z0-9_-]{16,128}$")
+    private val THUMBPRINT = Regex("^[A-Za-z0-9_-]{43}$")
+
+    fun validOrNull(id: String, stationId: String, stationKey: String): Registration? =
+      if (ID.matches(id) && stationId.isNotBlank() && stationId.length <= 128 && THUMBPRINT.matches(stationKey)) {
+        Registration(id, stationId, stationKey)
+      } else {
+        null
+      }
+  }
+}
+
+internal const val MAX_MESSAGE_AGE_MS = 10 * 60 * 1000L
+
+/**
+ * Whether a push speaks for the Station this phone registered with. The key
+ * pin is what stops someone else's Station, which can also get a signature
+ * past the gateway, from writing on this phone's cards.
+ */
+internal fun acceptsPush(registration: Registration?, data: Map<String, String>): Boolean =
+  registration != null &&
+    data["device_id"] == registration.id &&
+    data["user_id"] == registration.stationId &&
+    data["station_key"] == registration.stationKey
+
+internal fun isFresh(updatedAt: Long, now: Long): Boolean =
+  now - updatedAt in -MAX_MESSAGE_AGE_MS..MAX_MESSAGE_AGE_MS
 
 internal enum class ActivityPhase(
   val wire: String,
