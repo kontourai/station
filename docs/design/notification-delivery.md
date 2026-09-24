@@ -129,19 +129,35 @@ matters for a self-hosted product.
 **iOS** has no foreground-service equivalent either, and is foreground-only
 until push lands.
 
-## Decision: push through a Kontour-operated relay
+## Decision: push through a Kontour-operated push gateway
 
 Decided September 23, 2026 by the owner: follow
 [T3 Code](https://github.com/pingdotgg/t3code), which ships this for a
-self-hosted product today. Its shape:
+self-hosted product today, adapted where Station differs.
 
-- **Relay.** Push credentials belong to whoever publishes the app (the
-  Firebase project and the APNs key are bound to its package and bundle IDs), so
-  a self-hosted server cannot send to the published app directly. T3 runs a
-  hosted relay (`infra/relay/src/agentActivity/`) that holds the FCM service
-  account and APNs key, stores device tokens, and re-checks registration and
-  preferences before every send. Each self-hosted server publishes signed
-  activity state to it (`apps/server/src/relay/AgentAwarenessRelay.ts`).
+- **Why a hosted service at all.** Push credentials belong to whoever publishes
+  the app (the Firebase project and the APNs key are bound to its package and
+  bundle IDs), so a self-hosted Station cannot send to the published app
+  directly. T3 runs a hosted relay (`infra/relay/src/agentActivity/`).
+- **Named "push gateway", not relay.** In Station, relay and
+  [broker](connection-broker.md) name the path a Device uses to *reach* a
+  Station. The push gateway does the opposite job, Station to phone through
+  Google or Apple, and only the app's publisher can run it. The broker design
+  already kept notifications apart ("a separate payload policy and delivery
+  grant").
+- **Stateless, Station-signed.** T3's relay links servers to Clerk user
+  accounts, stores device tokens and builds each card itself. Station has no
+  hosted accounts, and a Station already knows its paired phones, so the
+  gateway (`deploy/push-gateway`) keeps nothing: every request is signed by the
+  Station's own P-256 push key (ES256, body hash bound into the token, at most
+  120 s lifetime). The gateway verifies it, rate limits per key and globally,
+  accepts only a data-only agent-activity message for a Station package, and
+  forwards it to FCM at high priority. The Station owns device tokens, builds
+  the card, and drops a token when the gateway answers 410.
+- **What stops a stranger.** Anyone can mint a key, so a key alone proves
+  nothing. A sender also needs the phone's FCM token, and the phone drops any
+  payload whose `device_id`/`user_id` differ from what its own Station
+  configured, so those must be unguessable per-registration values.
 - **Android.** FCM *data* messages are received by a native
   `FirebaseMessagingService` that renders the card itself — no WebView, no
   JavaScript. While work runs the card requests promotion
@@ -155,27 +171,44 @@ The payload carries status, thread titles and project names, never
 transcripts, code or tool output (the same rule as the
 [connection broker](connection-broker.md)).
 
+**What doing without hosted accounts costs**, compared with T3: no single card
+merging several Stations (each Station owns its own card), revocation happens
+at the Station rather than centrally, and the gateway cannot restrict senders
+to known people, so abuse is bounded by rate limits and the phone-side check
+rather than by sign-up. Revisit when a Station has more than one person, or a
+cross-Station inbox is wanted.
+
 Push avoids the failures above for a backgrounded or swiped-away app: the
 platform wakes the process to deliver, so nothing has to stay alive, and
 neither the freezer nor tauri#11609/#15671 is involved. Rust does no
 networking, so the DNS failure does not apply either. Two limits remain. FCM
 does not deliver to an app the user force-stopped (Settings → Force stop)
 until it is opened again. And normal-priority data messages wait out Doze,
-while the client drops activity older than ten minutes, so the relay must send
+while the client drops activity older than ten minutes, so the gateway sends
 activity as high-priority messages.
-The one Tauri-specific risk is launch-after-wake: FCM starts the process
-without `MainActivity`, which is the same lifecycle family as tauri#11609 and
-must be proven on a device.
+
+### Provisioning
+
+- Firebase project `kontour-station` under the kontourai.io organization,
+  Spark plan, Analytics and Gemini off. Android apps are registered for
+  `io.kontourai.station` and its `.nightly`, `.beta` and `.debug` variants.
+- Service account `station-push-gateway`, whose only role is Firebase Cloud
+  Messaging API Admin. The organization blocks service-account keys; the
+  project alone carries an exception (`iam.managed.disableServiceAccountKeyCreation`
+  not enforced) so the Worker can hold one key, which lives only in the Worker
+  secret `FCM_SERVICE_ACCOUNT`.
+- Worker `station-push-gateway` on Cloudflare (workers.dev for now).
 
 ### Delivery status
 
 | Slice | State |
 |---|---|
-| Android rendering + FCM receipt (`src-desktop/plugins/agent-activity`) | built; ported from T3's Kotlin module. Verified on a Pixel 10 Pro XL (Android 16) through the debug receiver: delivery to a killed process, promoted chip, launch after that wake. Real FCM delivery is unverified until a Firebase project exists |
-| Relay (token registry, FCM/APNs send, signed publish) | not started; needs a Firebase project, an APNs key and a hosting decision. FCM rotates tokens without the app open, and the plugin has no `onNewToken` hook yet: the relay slice must either re-register from `pushToken` on every foreground or add one |
-| Server publisher (session state → relay) | not started |
+| Android rendering + FCM receipt (`src-desktop/plugins/agent-activity`) | built; ported from T3's Kotlin module. Verified on a Pixel 10 Pro XL (Android 16): real FCM delivery, and delivery through the deployed gateway, to a killed process; promoted chip; launch after that wake |
+| Push gateway (`deploy/push-gateway`) | built and deployed; FCM only. Verified end to end with a throwaway Station key |
+| Station publisher (push key, device tokens, card building, session state → gateway) | not started. FCM rotates tokens without the app open and the plugin has no `onNewToken` hook yet, so it must re-register from `pushToken` on every foreground or add one |
 | Web registration (`configure`, `pushToken`, settings UI) | not started |
-| iOS Live Activity (widget extension in `gen/apple/project.yml`) | not started |
+| One card per Station on the phone | not started; the plugin has one card slot, so two Stations would overwrite each other |
+| iOS Live Activity (widget extension in `gen/apple/project.yml`) and APNs in the gateway | not started |
 
 The Android plugin builds with or without Firebase. Its Firebase identity comes
 from `STATION_FIREBASE_APP_ID`, `_API_KEY`, `_PROJECT_ID` and `_SENDER_ID` at
@@ -187,7 +220,7 @@ deletes the token. The plugin's Kotlin unit tests run only
 locally (`./gradlew :tauri-plugin-station-agent-activity:testDebugUnitTest` in
 a generated `gen/android`); no workflow runs them yet. Debug builds include a broadcast receiver,
 restricted to the `adb` shell, that stands in for FCM so rendering and
-wake-from-cold can be verified before the relay exists — see
+wake-from-cold can be verified without a sender — see
 `DebugAgentActivityReceiver.kt`.
 
 ## Rules this area has earned
