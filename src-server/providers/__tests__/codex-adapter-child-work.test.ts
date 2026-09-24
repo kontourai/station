@@ -565,6 +565,29 @@ describe('#2458 Codex agent status mapping (capture-shaped streams)', () => {
     });
   });
 
+  test('past the hold bound a late claim still gets the newest facts, including the outcome', () => {
+    const early = Array.from({ length: 40 }, (_, index) =>
+      childUsage(index + 1),
+    );
+    const { events } = replayCodexCapture(
+      synthetic([
+        ...early,
+        childTurnCompleted({
+          status: 'completed',
+          items: [
+            { type: 'agentMessage', text: 'late', phase: 'final_answer' },
+          ],
+        }),
+        spawn(),
+      ]),
+    );
+    expect(child(events)).toMatchObject({
+      status: 'completed',
+      usage: { totalTokens: 40 },
+      result: { summary: 'late' },
+    });
+  });
+
   test('notifications for a thread nobody ever claims produce nothing', () => {
     const { events } = replayCodexCapture(
       synthetic([

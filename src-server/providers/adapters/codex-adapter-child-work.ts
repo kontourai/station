@@ -571,9 +571,10 @@ export function routeCodexChildNotification(
     held = [];
     state.pending.set(threadId, held);
   }
-  if (held.length < PENDING_NOTIFICATIONS_PER_THREAD_MAX) {
-    held.push(notification);
-  }
+  // Past the bound the OLDEST goes: a child's outcome (`turn/completed`) and
+  // latest usage come last, and are what a late claim most needs.
+  if (held.length >= PENDING_NOTIFICATIONS_PER_THREAD_MAX) held.shift();
+  held.push(notification);
 }
 
 function handleKnownChildNotification(
