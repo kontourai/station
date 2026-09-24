@@ -41,6 +41,8 @@ export function BrowserRelayRoutes({
     addBrokerRoute,
     removeConnection,
     setActiveConnection,
+    captureSelectionIntent,
+    reconnectActiveIfSelectionCurrent,
   } = useConnections();
   const [name, setName] = useState('');
   const [applicationOrigin, setApplicationOrigin] = useState('');
@@ -285,6 +287,7 @@ export function BrowserRelayRoutes({
     const route = connection.brokerRoute;
     if (!route || busy) return;
     const reconnect = activeConnection?.id === connection.id;
+    const selectionIntent = captureSelectionIntent();
     const canReconnect = () => {
       if (!reconnect || !isMounted.current) return false;
       if (activeConnectionRef.current?.id !== connection.id) return false;
@@ -315,7 +318,8 @@ export function BrowserRelayRoutes({
       if (value === null) await turnCustody.forget();
       else await turnCustody.save(value);
       updated = true;
-      if (canReconnect()) await setActiveConnection(connection.id);
+      if (canReconnect())
+        await reconnectActiveIfSelectionCurrent(connection.id, selectionIntent);
       if (!isMounted.current) return;
       setSavedTurnUrl('');
       setSavedTurnUsername('');
@@ -332,7 +336,10 @@ export function BrowserRelayRoutes({
       // selected route with its previous saved settings when they still exist.
       if (!updated && canReconnect()) {
         try {
-          await setActiveConnection(connection.id);
+          await reconnectActiveIfSelectionCurrent(
+            connection.id,
+            selectionIntent,
+          );
         } catch {
           /* The visible TURN error already keeps this failure in view. */
         }

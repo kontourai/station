@@ -236,6 +236,57 @@ describe('useConnections', () => {
     expect(result.current.activeConnection?.id).toBe(idB);
   });
 
+  it('does not let an older TURN update cancel a newer selection still preparing', async () => {
+    const store = makeStore();
+    let releaseB: (() => void) | undefined;
+    const prepareActiveConnection = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          releaseB = resolve;
+        }),
+    );
+    const { result } = renderHook(() => useConnections(), {
+      wrapper: ({ children }) => (
+        <ConnectionsProvider
+          store={store}
+          defaultUrl="http://localhost:3141"
+          prepareActiveConnection={prepareActiveConnection}
+        >
+          {children}
+        </ConnectionsProvider>
+      ),
+    });
+    let idA = '';
+    let idB = '';
+    act(() => {
+      idA = result.current.addConnection('A', 'http://a:3141').id;
+      idB = result.current.addConnection('B', 'http://b:3141').id;
+    });
+    expect(result.current.activeConnection?.id).toBe(idA);
+    const turnWriteSelection = result.current.captureSelectionIntent();
+    let selectingB!: Promise<void>;
+    act(() => {
+      selectingB = result.current.setActiveConnection(idB);
+    });
+    expect(result.current.activeConnection?.id).toBe(idA);
+
+    let reconnected = true;
+    await act(async () => {
+      reconnected = await result.current.reconnectActiveIfSelectionCurrent(
+        idA,
+        turnWriteSelection,
+      );
+    });
+    expect(reconnected).toBe(false);
+    expect(prepareActiveConnection).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      releaseB?.();
+      await selectingB;
+    });
+    expect(result.current.activeConnection?.id).toBe(idB);
+  });
+
   it('does not allow setApiBase or resetToDefault to select a broker route', () => {
     const store = makeStore();
     const { result } = renderHook(() => useConnections(), {

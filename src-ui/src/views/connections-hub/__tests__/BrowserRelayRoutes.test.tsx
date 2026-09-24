@@ -17,6 +17,8 @@ const mocks = vi.hoisted(() => ({
   removeConnection: vi.fn(),
   removeAuthority: vi.fn(),
   select: vi.fn(),
+  captureSelectionIntent: vi.fn(),
+  conditionalReconnect: vi.fn(),
   readTrust: vi.fn(),
   approveTrust: vi.fn(),
   closeTrust: vi.fn(),
@@ -36,6 +38,8 @@ vi.mock('@kontourai/station-connect', () => ({
     addBrokerRoute: mocks.addBrokerRoute,
     removeConnection: mocks.removeConnection,
     setActiveConnection: mocks.select,
+    captureSelectionIntent: mocks.captureSelectionIntent,
+    reconnectActiveIfSelectionCurrent: mocks.conditionalReconnect,
   }),
 }));
 vi.mock('../../../platform/PlatformProfileContext', () => ({
@@ -159,6 +163,8 @@ describe('browser broker route acceptance', () => {
       mocks.removeConnection,
       mocks.removeAuthority,
       mocks.select,
+      mocks.captureSelectionIntent,
+      mocks.conditionalReconnect,
       mocks.readTrust,
       mocks.approveTrust,
       mocks.closeTrust,
@@ -178,6 +184,11 @@ describe('browser broker route acceptance', () => {
     mocks.forgetTurn.mockResolvedValue(undefined);
     mocks.removeAuthority.mockResolvedValue(undefined);
     mocks.forget.mockResolvedValue(undefined);
+    mocks.captureSelectionIntent.mockReturnValue(0);
+    mocks.conditionalReconnect.mockImplementation(async (id: string) => {
+      await mocks.select(id);
+      return true;
+    });
   });
 
   it('refuses an invitation before redemption when Station trust is absent', async () => {

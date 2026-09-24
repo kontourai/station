@@ -163,6 +163,13 @@ interface ConnectionsContextType {
    * available to the credential provider before callers start a health probe.
    */
   setActiveConnection: (id: string) => Promise<void>;
+  /** Capture the current selection intent before an unrelated async operation. */
+  captureSelectionIntent: () => number;
+  /** Reconnect only if no newer selection has started in the meantime. */
+  reconnectActiveIfSelectionCurrent: (
+    id: string,
+    selectionIntent: number,
+  ) => Promise<boolean>;
   /** Convenience: upsert a connection by URL and activate it */
   setApiBase: (url: string) => void;
   resetToDefault: () => void;
@@ -381,8 +388,44 @@ export function ConnectionsProvider({
   const connections = useSyncExternalStore(subscribe, getAll);
   const activeConnection = useSyncExternalStore(subscribe, getActive);
 
-  const value = useMemo<ConnectionsContextType>(
-    () => ({
+  const value = useMemo<ConnectionsContextType>(() => {
+    const selectActiveConnection = async (
+      id: string,
+      expectedSelectionIntent?: number,
+    ): Promise<boolean> => {
+      // This check and the epoch advance are synchronous. A pending newer
+      // selection cannot be cancelled by an older async settings write.
+      if (
+        expectedSelectionIntent !== undefined &&
+        (selectionEpoch.current !== expectedSelectionIntent ||
+          resolvedStore.getActive()?.id !== id)
+      )
+        return false;
+      const epoch = ++selectionEpoch.current;
+      const beforeConnection = resolvedStore.getActive();
+      const before = beforeConnection?.id ?? null;
+      const target = resolvedStore
+        .getAll()
+        .find((connection) => connection.id === id);
+      const isSelectionCurrent = () =>
+        epoch === selectionEpoch.current &&
+        (resolvedStore.getActive()?.id ?? null) === before;
+      if (target?.brokerRoute && !prepareActiveConnection)
+        throw new Error(
+          'A broker route cannot be selected until its encrypted transport is prepared.',
+        );
+      await prepareActiveConnection?.(id, target, epoch, isSelectionCurrent);
+      if (!isSelectionCurrent()) {
+        retirePreparedConnection?.(id, epoch);
+        return false;
+      }
+      if (beforeConnection?.brokerRoute && beforeConnection.id !== id)
+        retirePreparedConnection?.(beforeConnection.id);
+      if (target?.brokerRoute) resolvedStore.setPreparedBrokerRouteActive(id);
+      else resolvedStore.setActive(id);
+      return true;
+    };
+    return {
       connections,
       activeConnection,
       apiBase: activeConnection?.url ?? defaultUrl,
@@ -494,29 +537,11 @@ export function ConnectionsProvider({
           resolvedStore.getActive()?.authProtocolVersion ?? undefined,
       },
       setActiveConnection: async (id) => {
-        const epoch = ++selectionEpoch.current;
-        const beforeConnection = resolvedStore.getActive();
-        const before = beforeConnection?.id ?? null;
-        const target = resolvedStore
-          .getAll()
-          .find((connection) => connection.id === id);
-        const isSelectionCurrent = () =>
-          epoch === selectionEpoch.current &&
-          (resolvedStore.getActive()?.id ?? null) === before;
-        if (target?.brokerRoute && !prepareActiveConnection)
-          throw new Error(
-            'A broker route cannot be selected until its encrypted transport is prepared.',
-          );
-        await prepareActiveConnection?.(id, target, epoch, isSelectionCurrent);
-        if (!isSelectionCurrent()) {
-          retirePreparedConnection?.(id, epoch);
-          return;
-        }
-        if (beforeConnection?.brokerRoute && beforeConnection.id !== id)
-          retirePreparedConnection?.(beforeConnection.id);
-        if (target?.brokerRoute) resolvedStore.setPreparedBrokerRouteActive(id);
-        else resolvedStore.setActive(id);
+        await selectActiveConnection(id);
       },
+      captureSelectionIntent: () => selectionEpoch.current,
+      reconnectActiveIfSelectionCurrent: (id, selectionIntent) =>
+        selectActiveConnection(id, selectionIntent),
       setApiBase: (url) => {
         selectionEpoch.current += 1;
         const connections = resolvedStore.getAll();
@@ -563,21 +588,20 @@ export function ConnectionsProvider({
         }
       },
       isCustom: (activeConnection?.url ?? defaultUrl) !== defaultUrl,
-    }),
-    [
-      connections,
-      activeConnection,
-      resolvedStore,
-      defaultUrl,
-      nativeShell,
-      commitVerifiedPairing,
-      makeDefaultProfile,
-      updateSharedProfile,
-      prepareActiveConnection,
-      retirePreparedConnection,
-      advanceActivation,
-    ],
-  );
+    };
+  }, [
+    connections,
+    activeConnection,
+    resolvedStore,
+    defaultUrl,
+    nativeShell,
+    commitVerifiedPairing,
+    makeDefaultProfile,
+    updateSharedProfile,
+    prepareActiveConnection,
+    retirePreparedConnection,
+    advanceActivation,
+  ]);
 
   return (
     <ConnectionsContext.Provider value={value}>
