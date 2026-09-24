@@ -1,11 +1,13 @@
 import { describe, expect, test, vi } from 'vitest';
 
-const { prepare, upload, capability } = vi.hoisted(() => ({
+const { prepare, upload, capability, assertRawEgress } = vi.hoisted(() => ({
   prepare: vi.fn(),
   upload: vi.fn(),
   capability: vi.fn(),
+  assertRawEgress: vi.fn(),
 }));
 vi.mock('@kontourai/station-sdk/client', () => ({
+  assertClientRawEgressAllowed: assertRawEgress,
   getAttachmentStagingCapability: capability,
   prepareAttachmentStage: prepare,
   uploadAttachmentStage: upload,
@@ -22,6 +24,24 @@ const attachment = (id: string) => ({
 });
 
 describe('stageComposerAttachments', () => {
+  test('refuses before querying or preparing a grant when raw egress is blocked', async () => {
+    capability.mockReset();
+    assertRawEgress.mockReset();
+    assertRawEgress.mockImplementationOnce(() => {
+      throw new Error(
+        'Browser broker routes do not support direct attachment upload yet.',
+      );
+    });
+
+    await expect(
+      stageComposerAttachments('http://station.test', [attachment('blocked')]),
+    ).rejects.toThrow(
+      'Browser broker routes do not support direct attachment upload',
+    );
+    expect(capability).not.toHaveBeenCalled();
+    expect(prepare).not.toHaveBeenCalled();
+  });
+
   test('uses the only explicit legacy handshake and otherwise caps concurrent uploads at three', async () => {
     capability.mockResolvedValueOnce({ state: 'legacy' });
     await expect(

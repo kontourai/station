@@ -35,9 +35,14 @@ interface NovaSessionBinding {
 function createNovaSessionBinding(
   apiBase: string,
   credentialProvider: ReturnType<typeof useApiBase>['credentialProvider'],
+  connectionId?: string,
 ): NovaSessionBinding {
   const adapter = new NovaVoiceSessionAdapter(
-    createNovaVoiceSessionAdapterDependencies(apiBase, credentialProvider),
+    createNovaVoiceSessionAdapterDependencies(
+      apiBase,
+      credentialProvider,
+      connectionId,
+    ),
   );
   const registry = new VoiceSessionAdapterRegistry();
   const registration = registry.register(adapter);
@@ -75,10 +80,10 @@ function projectState(snapshot: VoiceSessionSnapshot): VoiceState {
  * NovaVoiceSessionAdapter and is serialized by VoiceSessionManager.
  */
 export function useVoiceSession(): UseVoiceSessionResult {
-  const { apiBase, credentialProvider } = useApiBase();
+  const { apiBase, connectionId, credentialProvider } = useApiBase();
   const binding = useMemo(
-    () => createNovaSessionBinding(apiBase, credentialProvider),
-    [apiBase, credentialProvider],
+    () => createNovaSessionBinding(apiBase, credentialProvider, connectionId),
+    [apiBase, connectionId, credentialProvider],
   );
   const snapshot = useSyncExternalStore(
     binding.manager.subscribe,

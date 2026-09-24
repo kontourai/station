@@ -1,5 +1,161 @@
 [
   {
+    "timestampUtc": "2026-09-24T05:19:34Z",
+    "channel": "nightly-desktop",
+    "version": "0.1.11-nightly.2458.3",
+    "sha": "3ab9ce1ba0024c97ed5aa3c73461e3bea1a2758f",
+    "artifactBuiltAt": "2026-09-24T04:34:45.607Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/35955520672",
+    "artifacts": [
+      "github-release:nightly-desktop (cohort-finalized)"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 35955520672)"
+    ],
+    "changelog": {
+      "previousSha": "7bc3cc6dfb7947f68ab7c4884b189e71101e7061",
+      "groups": {
+        "feat": [],
+        "fix": [
+          "[#2479](https://github.com/kontourai/station/pull/2479) fix(pull-requests,chat): the PR review loads on a two-remote checkout, and chat links become chips",
+          "[#2472](https://github.com/kontourai/station/pull/2472) fix(profiles): bound every saved Station lock wait by wall clock",
+          "[#2468](https://github.com/kontourai/station/pull/2468) fix(search): name the cause of a refused message read in the server log",
+          "[#2449](https://github.com/kontourai/station/pull/2449) fix: plugin-workbench follow-ups: approval pick truth, untrusted plugin trees, pane honesty, examples typecheck, hardened git (#2334 #2342 #2343 #2344 #2345 #2348 #2363)"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 4
+    }
+  },
+  {
+    "timestampUtc": "2026-09-24T05:19:31Z",
+    "channel": "nightly-android",
+    "version": "0.1.11-nightly.2458.3",
+    "sha": "3ab9ce1ba0024c97ed5aa3c73461e3bea1a2758f",
+    "artifactBuiltAt": "2026-09-24T04:34:31.219Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/35955520672",
+    "artifacts": [
+      "play-internal-aab:cohort-finalized"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 35955520672)"
+    ],
+    "changelog": {
+      "previousSha": "7bc3cc6dfb7947f68ab7c4884b189e71101e7061",
+      "groups": {
+        "feat": [],
+        "fix": [
+          "[#2479](https://github.com/kontourai/station/pull/2479) fix(pull-requests,chat): the PR review loads on a two-remote checkout, and chat links become chips",
+          "[#2472](https://github.com/kontourai/station/pull/2472) fix(profiles): bound every saved Station lock wait by wall clock",
+          "[#2468](https://github.com/kontourai/station/pull/2468) fix(search): name the cause of a refused message read in the server log",
+          "[#2449](https://github.com/kontourai/station/pull/2449) fix: plugin-workbench follow-ups: approval pick truth, untrusted plugin trees, pane honesty, examples typecheck, hardened git (#2334 #2342 #2343 #2344 #2345 #2348 #2363)"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 4
+    }
+  },
+  {
+    "timestampUtc": "2026-09-24T05:16:07Z",
+    "channel": "nightly-npm",
+    "version": "0.6.0-nightly.2458.35955520672",
+    "sha": "3ab9ce1ba0024c97ed5aa3c73461e3bea1a2758f",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/35955520672",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.6.0-nightly.2458.35955520672 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "7bc3cc6dfb7947f68ab7c4884b189e71101e7061",
+      "groups": {
+        "feat": [],
+        "fix": [
+          "[#2479](https://github.com/kontourai/station/pull/2479) fix(pull-requests,chat): the PR review loads on a two-remote checkout, and chat links become chips",
+          "[#2472](https://github.com/kontourai/station/pull/2472) fix(profiles): bound every saved Station lock wait by wall clock",
+          "[#2468](https://github.com/kontourai/station/pull/2468) fix(search): name the cause of a refused message read in the server log",
+          "[#2449](https://github.com/kontourai/station/pull/2449) fix: plugin-workbench follow-ups: approval pick truth, untrusted plugin trees, pane honesty, examples typecheck, hardened git (#2334 #2342 #2343 #2344 #2345 #2348 #2363)"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 4
+    }
+  },
+  {
+    "timestampUtc": "2026-09-24T03:22:42Z",
+    "channel": "nightly-desktop",
+    "version": "0.1.11-nightly.2458.2",
+    "sha": "7bc3cc6dfb7947f68ab7c4884b189e71101e7061",
+    "artifactBuiltAt": "2026-09-24T02:40:17.047Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/35945178538",
+    "artifacts": [
+      "github-release:nightly-desktop (cohort-finalized)"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 35945178538)"
+    ],
+    "changelog": {
+      "previousSha": "1bfdde4c7935155996e685e582cff9c5a0551c6e",
+      "groups": {
+        "feat": [],
+        "fix": [],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#2466](https://github.com/kontourai/station/pull/2466) test(browser): drive the control lease clock by hand in hold tests",
+          "[#2454](https://github.com/kontourai/station/pull/2454) perf(windows): skip ACL setter for freshly verified paths"
+        ]
+      },
+      "note": null,
+      "commitCount": 2
+    }
+  },
+  {
+    "timestampUtc": "2026-09-24T03:22:39Z",
+    "channel": "nightly-android",
+    "version": "0.1.11-nightly.2458.2",
+    "sha": "7bc3cc6dfb7947f68ab7c4884b189e71101e7061",
+    "artifactBuiltAt": "2026-09-24T02:40:10.399Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/35945178538",
+    "artifacts": [
+      "play-internal-aab:cohort-finalized"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 35945178538)"
+    ],
+    "changelog": {
+      "previousSha": "1bfdde4c7935155996e685e582cff9c5a0551c6e",
+      "groups": {
+        "feat": [],
+        "fix": [],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#2466](https://github.com/kontourai/station/pull/2466) test(browser): drive the control lease clock by hand in hold tests",
+          "[#2454](https://github.com/kontourai/station/pull/2454) perf(windows): skip ACL setter for freshly verified paths"
+        ]
+      },
+      "note": null,
+      "commitCount": 2
+    }
+  },
+  {
     "timestampUtc": "2026-09-24T03:16:24Z",
     "channel": "nightly-npm",
     "version": "0.6.0-nightly.2458.35945178538",

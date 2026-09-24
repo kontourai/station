@@ -8,6 +8,69 @@ import type {
   SavedConnection,
 } from './types';
 
+const BROKER_SAFE_ID = /^[A-Za-z0-9_-]{8,128}$/;
+
+function secureCanonicalOrigin(value: unknown): value is string {
+  if (typeof value !== 'string' || value.length > 2048) return false;
+  try {
+    const url = new URL(value);
+    const loopback = ['localhost', '127.0.0.1', '[::1]', '::1'].includes(
+      url.hostname.toLowerCase(),
+    );
+    return (
+      url.origin === value &&
+      url.pathname === '/' &&
+      !url.search &&
+      !url.hash &&
+      !url.username &&
+      !url.password &&
+      (url.protocol === 'https:' || (url.protocol === 'http:' && loopback))
+    );
+  } catch {
+    return false;
+  }
+}
+
+function normalizeBrokerRoute(
+  value: unknown,
+  applicationOrigin: string,
+): NonNullable<SavedConnection['brokerRoute']> {
+  if (!secureCanonicalOrigin(applicationOrigin))
+    throw new Error('Invalid broker Station application origin.');
+  if (!value || typeof value !== 'object' || Array.isArray(value))
+    throw new Error('Invalid broker route metadata.');
+  const route = value as Record<string, unknown>;
+  if (Object.keys(route).sort().join(',') !== 'brokerOrigin,scope')
+    throw new Error('Invalid broker route metadata.');
+  if (!secureCanonicalOrigin(route.brokerOrigin))
+    throw new Error('Invalid broker origin.');
+  const scope = route.scope;
+  if (!scope || typeof scope !== 'object' || Array.isArray(scope))
+    throw new Error('Invalid broker routing scope.');
+  const fields = scope as Record<string, unknown>;
+  if (
+    Object.keys(fields).sort().join(',') !==
+      'browserOrigin,enrollmentId,routingGeneration,stationId' ||
+    typeof fields.stationId !== 'string' ||
+    !BROKER_SAFE_ID.test(fields.stationId) ||
+    typeof fields.enrollmentId !== 'string' ||
+    !BROKER_SAFE_ID.test(fields.enrollmentId) ||
+    !Number.isSafeInteger(fields.routingGeneration) ||
+    (fields.routingGeneration as number) < 1 ||
+    !secureCanonicalOrigin(fields.browserOrigin)
+  )
+    throw new Error('Invalid broker routing scope.');
+  return Object.freeze({
+    brokerOrigin: route.brokerOrigin,
+    scope: Object.freeze({
+      stationId: fields.stationId,
+      enrollmentId: fields.enrollmentId,
+      routingGeneration: fields.routingGeneration as number,
+      browserOrigin: fields.browserOrigin,
+    }),
+  });
+}
+
 export function isLoopbackUrl(value: string | undefined): boolean {
   try {
     const hostname = new URL(value ?? '').hostname;
@@ -194,6 +257,14 @@ function persistedDisplacedCredentialState(
     : undefined;
 }
 
+function brokerRouteProfileEvidence(
+  connection: Partial<SavedConnection>,
+): Partial<SavedConnection> {
+  const { endpointCandidate: _ignored, ...evidence } =
+    preservedProfileEvidence(connection);
+  return evidence;
+}
+
 function preservedProfileEvidence(
   connection: Partial<SavedConnection>,
 ): Partial<SavedConnection> {
@@ -224,35 +295,63 @@ export function normalizeConnectionProfile(
   id: string,
 ): SavedConnection {
   const rawUrl = connection.url ?? '';
+  const brokerRoute =
+    connection.brokerRoute === undefined
+      ? undefined
+      : normalizeBrokerRoute(connection.brokerRoute, rawUrl);
   const environmentId = connection.environmentId ?? null;
   return {
     profileVersion: 4,
     id,
     name: connection.name || rawUrl || 'Station',
-    ...reconcileAccessState(connection, rawUrl, legacyEndpoint),
-    environmentId,
+    ...(brokerRoute
+      ? {
+          // A broker profile has a Station application origin, but no direct
+          // HTTP endpoint. This prevents legacy probing or a malformed route
+          // from silently falling back to the Station's public listener.
+          url: rawUrl,
+          endpoints: [],
+          selectedEndpointId: '',
+          accessMethods: [],
+          selectedAccessMethodId: '',
+        }
+      : reconcileAccessState(connection, rawUrl, legacyEndpoint)),
+    environmentId: connection.environmentId ?? null,
     authProtocolVersion: connection.authProtocolVersion ?? null,
     // Native saved Stations carry the opaque OS-keyring reference selected
     // during pairing. Keep that reference intact rather than replacing it
     // with the Environment ID while normalizing the runtime projection.
-    credentialRef: connection.credentialRef ?? {
-      credentialVersion: 1,
-      kind: environmentId ? 'environment' : 'connection',
-      id: environmentId ?? id,
-    },
+    credentialRef:
+      connection.credentialRef ??
+      (brokerRoute
+        ? { credentialVersion: 1, kind: 'connection', id }
+        : {
+            credentialVersion: 1,
+            kind: environmentId ? 'environment' : 'connection',
+            id: environmentId ?? id,
+          }),
     capabilities: connection.capabilities ?? null,
-    credentialState:
-      connection.credentialState ??
-      (environmentId || isLoopbackUrl(connection.url)
-        ? 'not-required'
-        : 'required'),
-    ...(connection.hostOwnedCredential === true
+    credentialState: brokerRoute
+      ? connection.credentialState === 'saved' ||
+        connection.credentialState === 'device-session'
+        ? connection.credentialState
+        : 'required'
+      : (connection.credentialState ??
+        (environmentId || isLoopbackUrl(connection.url)
+          ? 'not-required'
+          : 'required')),
+    ...(brokerRoute ? { brokerRoute } : {}),
+    ...(!brokerRoute && connection.hostOwnedCredential === true
       ? { hostOwnedCredential: true as const }
       : {}),
-    ...(typeof connection.ownerId === 'string' && connection.ownerId.length > 0
+    ...(!brokerRoute &&
+    typeof connection.ownerId === 'string' &&
+    connection.ownerId.length > 0
       ? { ownerId: connection.ownerId }
       : {}),
-    ...preservedProfileEvidence(connection),
+    ...(brokerRoute
+      ? brokerRouteProfileEvidence(connection)
+      : preservedProfileEvidence(connection)),
   };
 }
 
