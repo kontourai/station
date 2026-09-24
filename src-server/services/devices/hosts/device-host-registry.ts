@@ -15,6 +15,12 @@
  *   browser's Station-listener deny set.
  * - `resolveAndroidAvd(hostId, serial)`: the AVD an emulator serial runs on
  *   THAT host (D12 shares are keyed by AVD name).
+ * - `runTool(hostId, request)`: one Device Tools / rotation vector on THAT
+ *   host (#2442), only once the operator enabled it there.
+ *
+ * AVD lookups and tool runs are each one ssh process, and share one bounded
+ * per-host queue of slots (D2): a host past it answers `DeviceHostBusyError`
+ * (503 `device-host-busy`), never a refusal.
  */
 import { createHash } from 'node:crypto';
 import type {
@@ -42,22 +48,49 @@ import {
 } from './ssh-device-hub-bundle.js';
 import { runSshDeviceScript, type SpawnSsh } from './ssh-device-session.js';
 import { parseSshDeviceTarget } from './ssh-device-target.js';
+import {
+  clampSshToolRequest,
+  isValidSshToolRequest,
+  runSshDeviceTool,
+  type SshToolControl,
+  type SshToolOutcome,
+  type SshToolRequest,
+} from './ssh-device-tools.js';
 
 const PROBE_TIMEOUT_MS = 45_000;
 const INSTALL_TIMEOUT_MS = 10 * 60_000;
 const AVD_TIMEOUT_MS = 15_000;
 const AVD_CACHE_MS = 5_000;
-/** Concurrent AVD lookups (each one an ssh process) per host (M1). */
-const MAX_AVD_LOOKUPS_PER_HOST = 2;
+/**
+ * Concurrent ssh runs per host (M1): AVD lookups and Device Tools runs
+ * (#2442) share these slots, and each kind may hold at most two. Tool runs
+ * never hold them all (#2442 review M2): a tool run re-checks D12 access
+ * once its slot is granted, and for an Android emulator that can need an
+ * AVD lookup — which must still find a slot, or every such run would wait
+ * on the others until the queue gave up.
+ */
+const MAX_SSH_RUNS_PER_HOST = 3;
+const MAX_SSH_RUNS_PER_KIND: Readonly<Record<SshRunKind, number>> = {
+  avd: 2,
+  tool: 2,
+};
 /** AVD answers kept, all hosts together (M1). */
 const MAX_AVD_CACHE = 64;
 /**
- * Lookups waiting for a slot on one host (D2), and how long one may wait.
- * Beyond either, the lookup fails TYPED and transient (`DeviceHostBusyError`
+ * Runs waiting for a slot on one host (D2), and how long one may wait.
+ * Beyond either, the run fails TYPED and transient (`DeviceHostBusyError`
  * → 503 `device-host-busy`), never as a refusal.
  */
-const MAX_AVD_QUEUE_PER_HOST = 16;
-const AVD_QUEUE_WAIT_MS = 20_000;
+const MAX_SSH_QUEUE_PER_HOST = 16;
+const SSH_QUEUE_WAIT_MS = 20_000;
+
+type SshRunKind = 'avd' | 'tool';
+/** How a wait for a slot ended (a full queue or a long wait throws busy). */
+type SlotResult = 'granted' | 'flushed' | 'deadline' | 'cancelled';
+interface SlotWaiter {
+  kind: SshRunKind;
+  settle(result: SlotResult): void;
+}
 
 /** Station's own verified hub install, if there is one. */
 export interface LocalHubInstall {
@@ -102,15 +135,16 @@ export class DeviceHostRegistry {
   readonly #generations = new Map<string, number>();
   readonly #installAbort = new Map<string, AbortController>();
   readonly #avdInflight = new Map<string, Promise<string | undefined>>();
-  readonly #avdActive = new Map<string, number>();
+  readonly #sshActive = new Map<string, Record<SshRunKind, number>>();
   /**
-   * Per-host FIFO of lookups waiting for a slot (D2). A waiter is granted
-   * (`true`) or flushed (`false`: the host changed or Station is shutting
-   * down, N1) — never left to run against a host that is no longer it.
+   * Per-host FIFO of runs (AVD lookups, tool runs) waiting for a slot (D2).
+   * A waiter is granted (`true`) or flushed (`false`: the host changed or
+   * Station is shutting down, N1) — never left to run against a host that
+   * is no longer it.
    */
-  readonly #avdQueue = new Map<string, Array<(granted: boolean) => void>>();
-  /** In-flight AVD lookups' cancel handles, by host (L-e, N1). */
-  readonly #avdAbort = new Map<AbortController, string>();
+  readonly #sshQueue = new Map<string, SlotWaiter[]>();
+  /** In-flight AVD lookups' and tool runs' cancel handles, by host (L-e, N1). */
+  readonly #sshAbort = new Map<AbortController, string>();
   /** Set by shutdown(): no new hub, install or lookup starts after it (N2). */
   #closed = false;
   /**
@@ -264,15 +298,15 @@ export class DeviceHostRegistry {
     this.#installing.delete(hostId);
     if (this.#installs.get(hostId)?.state === 'installing')
       this.#installs.delete(hostId);
-    // N1: AVD lookups for what this host WAS: queued ones are flushed
-    // unrun, running ones killed, and none may be joined or cached.
-    for (const waiter of this.#avdQueue.get(hostId)?.splice(0) ?? [])
-      waiter(false);
-    this.#avdQueue.delete(hostId);
-    for (const [abort, owner] of [...this.#avdAbort])
+    // N1: AVD lookups and tool runs for what this host WAS: queued ones are
+    // flushed unrun, running ones killed, and none may be joined or cached.
+    for (const waiter of this.#sshQueue.get(hostId)?.splice(0) ?? [])
+      waiter.settle('flushed');
+    this.#sshQueue.delete(hostId);
+    for (const [abort, owner] of [...this.#sshAbort])
       if (owner === hostId) {
         abort.abort();
-        this.#avdAbort.delete(abort);
+        this.#sshAbort.delete(abort);
       }
     for (const key of [...this.#avdInflight.keys()])
       if (key.startsWith(`${hostId}\0`)) this.#avdInflight.delete(key);
@@ -523,14 +557,14 @@ export class DeviceHostRegistry {
       this.#o.store.get(hostId)?.hubEnabled === true &&
       this.#o.store.get(hostId)?.sshTarget === sshTarget;
     const lookup = (async () => {
-      if (!(await this.#avdSlot(hostId))) return undefined;
+      if ((await this.#hostSlot(hostId, 'avd')) !== 'granted') return undefined;
       try {
         // Re-checked AFTER the wait: consent, target or Station may have
         // changed while this lookup was queued.
         if (!stillSame()) return undefined;
         return await this.#lookupAvd(hostId, sshTarget, serial);
       } finally {
-        this.#releaseAvdSlot(hostId);
+        this.#releaseHostSlot(hostId, 'avd');
       }
     })().finally(() => {
       if (this.#avdInflight.get(key) === lookup) this.#avdInflight.delete(key);
@@ -550,46 +584,190 @@ export class DeviceHostRegistry {
     return avd;
   }
 
+  /** Changes whenever the host stops being the machine it was (L4). */
+  generation(hostId: string): number {
+    return this.#generation(hostId);
+  }
+
   /**
-   * Wait for one of the host's lookup slots (D2): bounded queue and wait.
-   * Resolves true with a slot held, or false (no slot) when flushed (N1).
+   * Run one Device Tools vector (or a rotation's short sequence) on the host
+   * (#2442).
+   *
+   * Consent first: nothing — not even an ssh connection — for a host the
+   * operator has not enabled (`hubEnabled`), the same consent that lets the
+   * host's hub start. A vector outside the allowlist is refused here too,
+   * before it takes a slot. Then one of the host's slots, shared with AVD
+   * lookups (a full queue or a long wait throws `DeviceHostBusyError`).
+   *
+   * After the wait (review M1/M2), before any ssh: consent and target are
+   * re-checked; a caller whose deadline passed or who cancelled gets
+   * `tool-timeout` / `cancelled` and nothing runs; then the caller's own
+   * `beforeRun` decides (the lease, D12 access) and may refuse by throwing.
+   * The run gets only the time left before the caller's deadline, and the
+   * caller's signal kills its ssh. A host that changed meanwhile
+   * (retargeted, disabled, removed, Station stopping) cancels the run.
    */
-  #avdSlot(hostId: string): Promise<boolean> {
-    const active = this.#avdActive.get(hostId) ?? 0;
-    if (active < MAX_AVD_LOOKUPS_PER_HOST) {
-      this.#avdActive.set(hostId, active + 1);
-      return Promise.resolve(true);
+  async runTool(
+    hostId: string,
+    input: SshToolRequest,
+    control: SshToolControl = {},
+  ): Promise<SshToolOutcome> {
+    const unavailable = { ok: false, failure: 'host-unavailable' } as const;
+    const timedOut = { ok: false, failure: 'tool-timeout' } as const;
+    const cancelled = { ok: false, failure: 'cancelled' } as const;
+    const request = clampSshToolRequest(input);
+    if (this.#closed) return unavailable;
+    const host = this.#o.store.get(hostId);
+    if (!host) return unavailable;
+    if (host.hubEnabled !== true) return { ok: false, failure: 'not-enabled' };
+    if (!isValidSshToolRequest(request))
+      return { ok: false, failure: 'tool-refused' };
+    const left = () =>
+      control.deadlineAt === undefined
+        ? request.timeoutMs
+        : Math.min(request.timeoutMs, control.deadlineAt - Date.now());
+    if (control.signal?.aborted) return cancelled;
+    if (left() <= 0) return timedOut;
+    const sshTarget = host.sshTarget;
+    const generation = this.#generation(hostId);
+    const slot = await this.#hostSlot(hostId, 'tool', control);
+    if (slot === 'flushed') return unavailable;
+    if (slot === 'deadline') return timedOut;
+    if (slot === 'cancelled') return cancelled;
+    try {
+      const now = this.#o.store.get(hostId);
+      if (
+        this.#closed ||
+        this.#generation(hostId) !== generation ||
+        now?.sshTarget !== sshTarget
+      )
+        return unavailable;
+      if (now.hubEnabled !== true) return { ok: false, failure: 'not-enabled' };
+      if (control.signal?.aborted) return cancelled;
+      if (left() <= 0) return timedOut;
+      // The caller's last word, now that the run could start (M1: the
+      // lease; M2: D12 access). A refusal throws, and nothing runs.
+      await control.beforeRun?.();
+      if (control.signal?.aborted) return cancelled;
+      const timeoutMs = left();
+      if (timeoutMs <= 0) return timedOut;
+      const abort = new AbortController();
+      this.#sshAbort.set(abort, hostId);
+      try {
+        const outcome = await runSshDeviceTool({
+          target: parseSshDeviceTarget(sshTarget),
+          request: { ...request, timeoutMs },
+          signal: control.signal
+            ? AbortSignal.any([abort.signal, control.signal])
+            : abort.signal,
+          ...(this.#o.spawn ? { spawn: this.#o.spawn } : {}),
+        });
+        // Cancelled by the host changing, not by the caller.
+        if (
+          outcome.ok === false &&
+          outcome.failure === 'cancelled' &&
+          !control.signal?.aborted
+        )
+          return unavailable;
+        return outcome;
+      } finally {
+        this.#sshAbort.delete(abort);
+      }
+    } finally {
+      this.#releaseHostSlot(hostId, 'tool');
     }
-    const queue = this.#avdQueue.get(hostId) ?? [];
-    if (queue.length >= MAX_AVD_QUEUE_PER_HOST)
+  }
+
+  #counts(hostId: string): Record<SshRunKind, number> {
+    let counts = this.#sshActive.get(hostId);
+    if (!counts) {
+      counts = { avd: 0, tool: 0 };
+      this.#sshActive.set(hostId, counts);
+    }
+    return counts;
+  }
+
+  #mayRun(counts: Record<SshRunKind, number>, kind: SshRunKind): boolean {
+    return (
+      counts.avd + counts.tool < MAX_SSH_RUNS_PER_HOST &&
+      counts[kind] < MAX_SSH_RUNS_PER_KIND[kind]
+    );
+  }
+
+  /**
+   * Wait for one of the host's ssh slots (D2): bounded queue and wait.
+   * `granted` holds a slot. `flushed` (the host changed, N1), `deadline`
+   * (the caller's deadline passed first) and `cancelled` (its signal) hold
+   * none, and leave the queue. A full queue or a wait past
+   * `SSH_QUEUE_WAIT_MS` throws `DeviceHostBusyError`.
+   */
+  #hostSlot(
+    hostId: string,
+    kind: SshRunKind,
+    bound: { signal?: AbortSignal; deadlineAt?: number } = {},
+  ): Promise<SlotResult> {
+    const counts = this.#counts(hostId);
+    const queue = this.#sshQueue.get(hostId) ?? [];
+    // First come, first served within a kind; a kind with room does not
+    // wait behind the other kind's full share.
+    if (
+      this.#mayRun(counts, kind) &&
+      !queue.some((waiter) => waiter.kind === kind)
+    ) {
+      counts[kind] += 1;
+      return Promise.resolve('granted');
+    }
+    if (queue.length >= MAX_SSH_QUEUE_PER_HOST)
       return Promise.reject(new DeviceHostBusyError());
-    this.#avdQueue.set(hostId, queue);
+    this.#sshQueue.set(hostId, queue);
     return new Promise((resolve, reject) => {
-      const waiter = (granted: boolean) => {
+      const untilDeadline =
+        bound.deadlineAt === undefined
+          ? Number.POSITIVE_INFINITY
+          : bound.deadlineAt - Date.now();
+      const leave = () => {
         clearTimeout(timer);
-        resolve(granted);
-      };
-      const timer = setTimeout(() => {
+        bound.signal?.removeEventListener('abort', onAbort);
         const at = queue.indexOf(waiter);
         if (at !== -1) queue.splice(at, 1);
-        reject(new DeviceHostBusyError());
-      }, AVD_QUEUE_WAIT_MS);
+      };
+      const waiter: SlotWaiter = {
+        kind,
+        settle: (result) => {
+          leave();
+          resolve(result);
+        },
+      };
+      const onAbort = () => waiter.settle('cancelled');
+      const timer = setTimeout(
+        () => {
+          if (untilDeadline < SSH_QUEUE_WAIT_MS) {
+            waiter.settle('deadline');
+            return;
+          }
+          leave();
+          reject(new DeviceHostBusyError());
+        },
+        Math.max(0, Math.min(untilDeadline, SSH_QUEUE_WAIT_MS)),
+      );
       timer.unref?.();
+      bound.signal?.addEventListener('abort', onAbort, { once: true });
       queue.push(waiter);
     });
   }
 
-  /** Hand the slot to the next waiter, or free it. */
-  #releaseAvdSlot(hostId: string): void {
-    const next = this.#avdQueue.get(hostId)?.shift();
-    if (next) {
-      next(true);
-      return;
-    }
-    this.#avdQueue.delete(hostId);
-    const left = (this.#avdActive.get(hostId) ?? 1) - 1;
-    if (left > 0) this.#avdActive.set(hostId, left);
-    else this.#avdActive.delete(hostId);
+  /** Free the slot, then grant every waiter that now may run, in order. */
+  #releaseHostSlot(hostId: string, kind: SshRunKind): void {
+    const counts = this.#counts(hostId);
+    counts[kind] = Math.max(0, counts[kind] - 1);
+    const queue = this.#sshQueue.get(hostId) ?? [];
+    for (const waiter of [...queue])
+      if (this.#mayRun(counts, waiter.kind)) {
+        counts[waiter.kind] += 1;
+        waiter.settle('granted');
+      }
+    if (queue.length === 0) this.#sshQueue.delete(hostId);
+    if (counts.avd + counts.tool === 0) this.#sshActive.delete(hostId);
   }
 
   async #lookupAvd(
@@ -598,14 +776,14 @@ export class DeviceHostRegistry {
     serial: string,
   ): Promise<string | undefined> {
     const abort = new AbortController();
-    this.#avdAbort.set(abort, hostId);
+    this.#sshAbort.set(abort, hostId);
     const run = await runSshDeviceScript({
       target: parseSshDeviceTarget(sshTarget),
       params: { mode: 'avd', serial },
       timeoutMs: AVD_TIMEOUT_MS,
       signal: abort.signal,
       ...(this.#o.spawn ? { spawn: this.#o.spawn } : {}),
-    }).finally(() => this.#avdAbort.delete(abort));
+    }).finally(() => this.#sshAbort.delete(abort));
     const event = run.events.find((candidate) => candidate.event === 'avd');
     const avd =
       !run.failure &&
@@ -624,15 +802,15 @@ export class DeviceHostRegistry {
   async shutdown(): Promise<void> {
     this.#closed = true;
     for (const hostId of new Set([
-      ...this.#avdQueue.keys(),
-      ...this.#avdAbort.values(),
+      ...this.#sshQueue.keys(),
+      ...this.#sshAbort.values(),
       ...this.#generations.keys(),
       ...this.#installAbort.keys(),
       ...this.#o.store.list().map((host) => host.hostId),
     ]))
       this.#bump(hostId);
-    for (const abort of [...this.#avdAbort.keys()]) abort.abort();
-    this.#avdAbort.clear();
+    for (const abort of [...this.#sshAbort.keys()]) abort.abort();
+    this.#sshAbort.clear();
     await Promise.allSettled([
       ...[...this.#hubs.values()].map(({ hub }) => hub.stop()),
       ...[...this.#retiringHubs].map((hub) => hub.stop()),

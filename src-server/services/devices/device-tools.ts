@@ -66,6 +66,7 @@ import {
   standardAdbDirs,
 } from './device-host-tools.js';
 import type { DeviceHubEndpoint } from './device-hub-endpoint.js';
+import { DeviceHostBusyError } from './device-shares.js';
 
 export type DeviceTool = 'xcrun' | 'adb';
 
@@ -77,12 +78,36 @@ export type DeviceToolsErrorCode =
   | 'tool-unavailable'
   | 'tool-failed'
   | 'tool-timeout'
-  | 'hub-unavailable';
+  | 'hub-unavailable'
+  /** The SSH device host's operator has not enabled its hub (#2442). */
+  | 'device-host-not-enabled'
+  /** ssh could not reach the SSH device host, or it left mid-run (#2442). */
+  | 'device-host-unavailable';
 
 export class DeviceToolsError extends Error {
   constructor(readonly code: DeviceToolsErrorCode) {
     super(`Device tool refused: ${code}`);
     this.name = 'DeviceToolsError';
+  }
+}
+
+/**
+ * The route's admission, re-decided after a wait for the device host
+ * (#2442 review M2): the caller lost drive access, or someone else took
+ * control, while the action waited. Nothing ran. The route answers it
+ * exactly as its first admission would have (403, or 409 with `heldBy`).
+ */
+export class DeviceToolsAdmissionError extends Error {
+  constructor(
+    readonly refusal:
+      | { code: 'access-denied' }
+      | {
+          code: 'device-controlled-by-other';
+          heldBy: 'same-person-elsewhere' | 'other';
+        },
+  ) {
+    super(`Device tool refused: ${refusal.code}`);
+    this.name = 'DeviceToolsAdmissionError';
   }
 }
 
@@ -204,7 +229,7 @@ function deviceToolsCapabilities(
 
 // ---- argument vectors ---------------------------------------------------
 
-type ArgPart = string | RegExp;
+export type ArgPart = string | RegExp;
 
 function oneOf(values: readonly string[]): RegExp {
   return new RegExp(
@@ -263,8 +288,20 @@ export function isAllowedDeviceToolArgv(
   tool: DeviceTool,
   args: readonly string[],
 ): boolean {
-  const shapes = DEVICE_TOOL_ARGV_SHAPES[tool];
-  if (!shapes) return false;
+  return matchesArgvShapes(
+    Object.hasOwn(DEVICE_TOOL_ARGV_SHAPES, tool)
+      ? DEVICE_TOOL_ARGV_SHAPES[tool]
+      : undefined,
+    args,
+  );
+}
+
+/** Whether `args` matches one of `shapes` part for part (see above). */
+export function matchesArgvShapes(
+  shapes: readonly (readonly ArgPart[])[] | undefined,
+  args: readonly string[],
+): boolean {
+  if (!shapes || !Array.isArray(args)) return false;
   return shapes.some(
     (shape) =>
       shape.length === args.length &&
@@ -735,8 +772,29 @@ export interface DeviceToolRunner {
   run(
     tool: DeviceTool,
     args: readonly string[],
-    options: { timeoutMs: number; stdin?: string; maxBuffer?: number },
+    options: {
+      timeoutMs: number;
+      stdin?: string;
+      maxBuffer?: number;
+      /**
+       * Asked once the runner may run (after any wait for the host) and
+       * before anything runs; throws to refuse. A runner that never waits
+       * (this machine's) runs at once and need not ask again.
+       */
+      beforeRun?: () => Promise<void>;
+    },
   ): Promise<string>;
+  /**
+   * Optional: run several vectors of one tool as ONE run, in order, going on
+   * past a vector the tool refuses (an Android permission group). Rejects
+   * when none applied. A runner that waits for its host provides it, so a
+   * group waits once and is re-admitted once, right before it runs.
+   */
+  runSequence?(
+    tool: DeviceTool,
+    commands: readonly (readonly string[])[],
+    options: { timeoutMs: number; beforeRun?: () => Promise<void> },
+  ): Promise<void>;
 }
 
 /** The host runner: finds `xcrun` (macOS) and `adb`, runs with no shell. */
@@ -756,7 +814,7 @@ export function createDeviceToolRunner(
         : locateExecutable('adb', standardAdbDirs()));
   const run = options.run ?? runBoundedToolCapture;
   return {
-    async run(tool, args, runOptions) {
+    async run(tool, args, { beforeRun: _noWait, ...runOptions }) {
       const command = await locate(tool);
       if (!command)
         throw new DeviceToolError(
@@ -770,9 +828,10 @@ export function createDeviceToolRunner(
 
 export interface DeviceToolsTarget {
   /**
-   * The device host (#1973). This service runs THIS machine's `xcrun`/`adb`
-   * and reads the hub it was given, so it serves exactly one host: a target
-   * naming any other is refused before anything runs.
+   * The device host (#1973). A service runs ONE host's `xcrun`/`adb`
+   * (this machine's, or an SSH device host's through its remote `tool` mode,
+   * #2442) and reads that host's hub, so it serves exactly one host: a
+   * target naming any other is refused before anything runs.
    */
   hostId: string;
   platform: MobileDevicePlatform;
@@ -801,6 +860,7 @@ function unreadable(reason: DeviceToolsUnreadableReason) {
 }
 
 function reasonOf(error: unknown): DeviceToolsUnreadableReason {
+  if (error instanceof DeviceHostBusyError) return 'device-host-busy';
   if (error instanceof DeviceToolsError) {
     switch (error.code) {
       case 'unsupported':
@@ -808,6 +868,8 @@ function reasonOf(error: unknown): DeviceToolsUnreadableReason {
       case 'tool-failed':
       case 'tool-timeout':
       case 'hub-unavailable':
+      case 'device-host-not-enabled':
+      case 'device-host-unavailable':
         return error.code;
       default:
         return 'tool-failed';
@@ -840,7 +902,11 @@ export class DeviceToolsService {
   private async exec(
     tool: DeviceTool,
     args: readonly string[],
-    options: { stdin?: string; maxBuffer?: number } = {},
+    options: {
+      stdin?: string;
+      maxBuffer?: number;
+      beforeRun?: () => Promise<void>;
+    } = {},
   ): Promise<string> {
     if (!isAllowedDeviceToolArgv(tool, args))
       throw new DeviceToolsError('invalid-request');
@@ -850,7 +916,45 @@ export class DeviceToolsService {
         ...options,
       });
     } catch (error) {
+      // A busy SSH device host is transient, never a tool failure: the route
+      // answers it 503 `device-host-busy` (#2442, as D2 does for access).
       if (error instanceof DeviceToolsError) throw error;
+      if (error instanceof DeviceHostBusyError) throw error;
+      if (error instanceof DeviceToolsAdmissionError) throw error;
+      if (error instanceof DeviceToolError)
+        throw new DeviceToolsError(error.code);
+      throw new DeviceToolsError('tool-failed');
+    }
+  }
+
+  /**
+   * Run several vectors of one tool as one run of the runner (an Android
+   * permission group on a runner that waits for its host). Every vector must
+   * match the fixed shapes. Resolves when at least one applied (the
+   * read-back says what holds); rejects when none did, or when the run
+   * could not start.
+   */
+  private async execSequence(
+    tool: DeviceTool,
+    commands: readonly (readonly string[])[],
+    options: { beforeRun?: () => Promise<void> } = {},
+  ): Promise<void> {
+    const runner = this.options.runner;
+    if (
+      !runner.runSequence ||
+      commands.length === 0 ||
+      !commands.every((args) => isAllowedDeviceToolArgv(tool, args))
+    )
+      throw new DeviceToolsError('invalid-request');
+    try {
+      await runner.runSequence(tool, commands, {
+        timeoutMs: this.timeoutMs,
+        ...options,
+      });
+    } catch (error) {
+      if (error instanceof DeviceToolsError) throw error;
+      if (error instanceof DeviceHostBusyError) throw error;
+      if (error instanceof DeviceToolsAdmissionError) throw error;
       if (error instanceof DeviceToolError)
         throw new DeviceToolsError(error.code);
       throw new DeviceToolsError('tool-failed');
@@ -971,7 +1075,7 @@ export class DeviceToolsService {
       this.readLocation(target),
     ]);
     return {
-      hostId: 'local',
+      hostId: this.hostId,
       platform: target.platform,
       deviceId: target.deviceId,
       readAt: new Date(this.now()).toISOString(),
@@ -1055,10 +1159,35 @@ export class DeviceToolsService {
   async act(
     target: DeviceToolsTarget,
     action: DeviceToolAction,
+    options: {
+      /**
+       * The route's admission, re-decided once the host can run the action
+       * and before its first command (#2442 review M2). Asked ONCE per
+       * action: a permission group is one decision, never re-judged
+       * between its commands.
+       */
+      beforeRun?: () => Promise<void>;
+    } = {},
   ): Promise<DeviceToolActionResult> {
     this.assertOwnHost(target);
     assertTarget(target.platform, target.deviceId);
     const { platform, deviceId } = target;
+    // Asked once; its SETTLED result — a refusal, a busy host, any error —
+    // is what every later ask gets (review round 3, D1). A latch set before
+    // the first ask resolved would hand later commands a pass instead.
+    const first = options.beforeRun;
+    let decided: Promise<void> | undefined;
+    let refused: { error: unknown } | undefined;
+    const beforeRun = first
+      ? () => {
+          decided ??= first().catch((error: unknown) => {
+            refused = { error };
+            throw error;
+          });
+          return decided;
+        }
+      : undefined;
+    const run = { ...(beforeRun ? { beforeRun } : {}) };
     const ios = platform === 'ios';
     switch (action.type) {
       case 'set-appearance':
@@ -1068,10 +1197,12 @@ export class DeviceToolsService {
           ? this.exec(
               'xcrun',
               deviceToolArgv.iosAppearance(deviceId, action.appearance),
+              run,
             )
           : this.exec(
               'adb',
               deviceToolArgv.androidNight(deviceId, action.appearance),
+              run,
             ));
         return { action: action.type, snapshot: await this.snapshot(target) };
       case 'set-location': {
@@ -1083,10 +1214,12 @@ export class DeviceToolsService {
           ? this.exec(
               'xcrun',
               deviceToolArgv.iosSetLocation(deviceId, location),
+              run,
             )
           : this.exec(
               'adb',
               deviceToolArgv.androidSetLocation(deviceId, location),
+              run,
             ));
         this.lastLocation.set(this.key(target), {
           value: location,
@@ -1096,7 +1229,11 @@ export class DeviceToolsService {
       }
       case 'clear-location':
         if (!ios) throw new DeviceToolsError('unsupported');
-        await this.exec('xcrun', deviceToolArgv.iosClearLocation(deviceId));
+        await this.exec(
+          'xcrun',
+          deviceToolArgv.iosClearLocation(deviceId),
+          run,
+        );
         this.lastLocation.set(this.key(target), {
           value: null,
           setAt: new Date(this.now()).toISOString(),
@@ -1112,6 +1249,7 @@ export class DeviceToolsService {
               action.permission,
               action.appId,
             ),
+            run,
           );
         } else {
           // An app need not declare every permission in a group, and `pm`
@@ -1124,17 +1262,27 @@ export class DeviceToolsService {
             action.permission,
             action.appId,
           );
-          let firstError: unknown;
-          let changed = 0;
-          for (const args of commands) {
-            try {
-              await this.exec('adb', args);
-              changed += 1;
-            } catch (error) {
-              firstError ??= error;
+          if (this.options.runner.runSequence) {
+            // A runner that waits for its host (an SSH device host) runs the
+            // whole group as ONE run: one wait, one re-admission after it,
+            // one deadline, nothing waiting after the decision (round 3, D2).
+            await this.execSequence('adb', commands, run);
+          } else {
+            let firstError: unknown;
+            let changed = 0;
+            for (const args of commands) {
+              try {
+                await this.exec('adb', args, run);
+                changed += 1;
+              } catch (error) {
+                // The re-admission failed, whatever the reason: nothing
+                // more of the group runs, and the action fails with it.
+                if (refused) throw refused.error;
+                firstError ??= error;
+              }
             }
+            if (changed === 0) throw firstError;
           }
-          if (changed === 0) throw firstError;
         }
         const [permissions, snapshot] = await Promise.all([
           this.permissions(target, action.appId),
@@ -1146,7 +1294,7 @@ export class DeviceToolsService {
         if (!ios) throw new DeviceToolsError('unsupported');
         const argv = deviceToolArgv.iosPush(deviceId, action.appId);
         const stdin = encodeDevicePushPayload(action.payload);
-        await this.exec('xcrun', argv, { stdin });
+        await this.exec('xcrun', argv, { stdin, ...run });
         return {
           action: action.type,
           snapshot: await this.snapshot(target),

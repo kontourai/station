@@ -162,7 +162,8 @@ function harness(
       if (url === INPUT_URL) {
         const body = JSON.parse(String(init?.body));
         inputs.push(body);
-        return Response.json(await inputReply(body));
+        const reply = await inputReply(body);
+        return reply instanceof Response ? reply : Response.json(reply);
       }
       return Response.json({ success: false }, { status: 500 });
     },
@@ -712,6 +713,32 @@ describe('LiveSurfaceCanvas', () => {
     expect(h.inputs).toHaveLength(1);
   });
 
+  test('a producer failure of any kind (dispatch-failed) says the input was not delivered', async () => {
+    // #2442: an SSH-host rotation that timed out (tool-timeout) or hit the
+    // producer's own deadline (dispatch-timeout) both arrive as this code.
+    const h = harness({
+      inputReply: (body) => ({
+        success: true,
+        data: {
+          ok: false,
+          code: 'dispatch-failed',
+          accepted: 0,
+          lease: lease(body.epoch, MY_HOLD),
+        },
+      }),
+    });
+    await renderLive(h);
+    layoutCanvas({ left: 0, top: 0, width: 640, height: 400 });
+    fireEvent.pointerDown(screen.getByTestId('live-surface-canvas'), {
+      clientX: 10,
+      clientY: 10,
+      button: 0,
+      pointerId: 1,
+    });
+    await flush();
+    expect(screen.getByText('Your input could not be delivered.')).toBeTruthy();
+  });
+
   test('losing focus releases held keys and buttons while this client holds control', async () => {
     const h = harness();
     await renderLive(h);
@@ -989,6 +1016,176 @@ describe('LiveSurfaceCanvas', () => {
     expect(
       screen.getByText(
         'An agent is in control. Click or type to take control from it.',
+      ),
+    ).toBeTruthy();
+  });
+});
+
+/**
+ * #2433: an SSH device host too busy to answer who a device is makes the
+ * server answer input 503 `surface-busy`. That is a retryable "try again",
+ * not a refusal: the viewer says the host is busy, never that the input was
+ * refused or undeliverable, and a 403 still reads as undeliverable.
+ */
+describe('LiveSurfaceCanvas: a busy host is not a refusal (#2433)', () => {
+  function pressOnce() {
+    layoutCanvas({ left: 0, top: 0, width: 640, height: 400 });
+    fireEvent.pointerDown(screen.getByTestId('live-surface-canvas'), {
+      clientX: 10,
+      clientY: 10,
+      button: 0,
+      pointerId: 1,
+    });
+  }
+
+  const busy = () =>
+    Response.json({ success: false, code: 'surface-busy' }, { status: 503 });
+  const wait = (ms: number) =>
+    act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, ms));
+    });
+
+  test('input answered 503 surface-busy says the host is busy, and what queued behind it is not replayed', async () => {
+    let answer!: (reply: Response) => void;
+    const h = harness({
+      inputReply: () =>
+        new Promise<Response>((resolve) => {
+          answer = resolve;
+        }),
+    });
+    await renderLive(h);
+    pressOnce();
+    await flush();
+    expect(h.inputs).toHaveLength(1);
+    // Queued behind the in-flight batch: a move, and a key press and release.
+    const canvas = screen.getByTestId('live-surface-canvas');
+    fireEvent.pointerMove(canvas, { clientX: 30, clientY: 30, pointerId: 1 });
+    const keyboard = screen.getByLabelText(
+      'Keyboard input for Browser: example.com',
+    );
+    fireEvent.keyDown(keyboard, { key: 'a', code: 'KeyA' });
+    fireEvent.keyUp(keyboard, { key: 'a', code: 'KeyA' });
+    await flush();
+    answer(busy());
+    await flush();
+    await wait(700);
+    // Dropped with the busy batch: nothing more was sent...
+    expect(h.inputs).toHaveLength(1);
+    // ...and the next input goes alone, not behind the dropped events.
+    pressOnce();
+    await flush();
+    answer(busy());
+    await flush();
+    expect(h.inputs).toHaveLength(2);
+    expect(h.inputs[1].events).toEqual([
+      expect.objectContaining({ kind: 'pointer', type: 'down' }),
+    ]);
+    expect(
+      screen.getByText(
+        'The host is busy, so nothing was sent. Try again in a moment.',
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText('Your input could not be delivered.')).toBeNull();
+  });
+
+  test('the busy notice clears by itself when nothing newer answers', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const h = harness({ inputReply: () => busy() });
+      await renderLive(h);
+      pressOnce();
+      await flush();
+      expect(screen.getByText(/The host is busy/)).toBeTruthy();
+      await act(async () => {
+        vi.advanceTimersByTime(5_100);
+      });
+      expect(screen.queryByText(/The host is busy/)).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test('the busy notice clears on the next successful send', async () => {
+    let call = 0;
+    const h = harness({
+      inputReply: (body) => {
+        call += 1;
+        return call === 1
+          ? busy()
+          : {
+              success: true,
+              data: {
+                ok: true,
+                accepted: body.events.length,
+                lease: lease(body.epoch + 1, MY_HOLD),
+              },
+            };
+      },
+    });
+    await renderLive(h);
+    pressOnce();
+    await flush();
+    expect(screen.getByText(/The host is busy/)).toBeTruthy();
+    pressOnce();
+    await flush();
+    expect(h.inputs).toHaveLength(2);
+    expect(screen.queryByText(/The host is busy/)).toBeNull();
+  });
+
+  test('input answered 403 access-denied is still undeliverable, not busy', async () => {
+    const h = harness({
+      inputReply: () =>
+        Response.json(
+          { success: false, code: 'access-denied' },
+          { status: 403 },
+        ),
+    });
+    await renderLive(h);
+    pressOnce();
+    await flush();
+    expect(screen.getByText('Your input could not be delivered.')).toBeTruthy();
+    expect(screen.queryByText(/The host is busy/)).toBeNull();
+  });
+
+  test('Take control answered 503 surface-busy says the host is busy', async () => {
+    const h = harness();
+    const claims: unknown[] = [];
+    const transport = vi.fn(
+      async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
+        if (String(input).endsWith('/lease')) {
+          claims.push(JSON.parse(String(init?.body)));
+          return Response.json(
+            { success: false, code: 'surface-busy' },
+            { status: 503 },
+          );
+        }
+        return h.transport(input, init);
+      },
+    );
+    render(
+      <LiveSurfaceCanvas
+        apiBase={API}
+        surfaceId={SURFACE}
+        label="Browser: example.com"
+        transport={transport as never}
+        inputRequiresLease
+      />,
+    );
+    await flush();
+    const stream = h.streams.at(-1)!;
+    const agentHold = {
+      kind: 'agent',
+      principal: 'agent:x',
+      sessionId: 'agent-1',
+    } as const;
+    await stream.push(stateRecord(lease(4, agentHold)));
+    await stream.push(frameRecord(1, 4));
+    fireEvent.click(screen.getByRole('button', { name: 'Take control' }));
+    await flush();
+    expect(claims).toEqual([{ action: 'claim' }]);
+    expect(
+      screen.getByText(
+        'The host is busy, so nothing was sent. Try again in a moment.',
       ),
     ).toBeTruthy();
   });

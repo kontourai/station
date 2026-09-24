@@ -1,5 +1,5 @@
 {
-  "pageLocalMediaQueryCeiling": 105,
+  "pageLocalMediaQueryCeiling": 106,
   "pageLocal": {
     "src-ui/src/components/Checkbox.css": {
       "count": 1,
@@ -26,8 +26,8 @@
       "reason": "One tighter page gutter at 640px."
     },
     "src-ui/src/components/Toggle.css": {
-      "count": 1,
-      "reason": "The shared toggle's 44px pseudo-element hit box on touch \u2014 deliberately larger than the switch it wraps."
+      "count": 2,
+      "reason": "Two blocks. The shared toggle's 44px pseudo-element hit box on touch \u2014 deliberately larger than the switch it wraps. And #2441's `@media (forced-colors: active)`, a CAPABILITY query rather than responsive layout (the same shape as the `(hover: hover)` block recorded for ChatInputArea): forced colors drop the track's box-shadow ring and repaint its fill as Canvas, so off and on rendered identically until this block repainted them in system colours. It belongs to the one component whose state it keeps readable; no layout primitive owns forced colors."
     },
     "src-ui/src/components/acp-connections/ACPConnections.css": {
       "count": 1,
