@@ -277,6 +277,47 @@ export function parseWorkspaceFilePreviewRequest(
   };
 }
 
+/**
+ * How many paths one existence check may name. A chat message that mentions
+ * more files than this links the first ones only; the cap bounds the
+ * filesystem work a single request can ask of the server.
+ */
+export const WORKSPACE_FILE_EXISTENCE_MAX_PATHS = 64;
+
+/**
+ * Which of a set of workspace-relative paths name regular files the preview
+ * route would serve. Used to decide whether a path a model wrote in prose is
+ * a link at all: a path that does not resolve is left as text, so a
+ * hallucinated or stale path never renders as something clickable.
+ */
+export interface WorkspaceFileExistenceRequest {
+  paths: string[];
+}
+
+export interface WorkspaceFileExistence {
+  /** The subset of the requested paths that are previewable regular files. */
+  files: string[];
+}
+
+/** Parse untrusted transport input; paths are validated, not normalized. */
+export function parseWorkspaceFileExistenceRequest(
+  value: unknown,
+): WorkspaceFileExistenceRequest {
+  if (!isRecord(value) || !Array.isArray(value.paths)) {
+    throw new Error('paths is required');
+  }
+  if (Object.keys(value).some((key) => key !== 'paths')) {
+    throw new Error('unknown existence request field');
+  }
+  if (value.paths.length > WORKSPACE_FILE_EXISTENCE_MAX_PATHS) {
+    throw new Error('too many paths');
+  }
+  if (!value.paths.every(isWorkspaceFilePreviewRelativePath)) {
+    throw new Error('paths must be workspace-relative');
+  }
+  return { paths: [...new Set(value.paths)] };
+}
+
 /** Strictly admits only the declared state fields from browser persistence. */
 export function parseWorkspaceFilePreviewPaneState(
   value: unknown,

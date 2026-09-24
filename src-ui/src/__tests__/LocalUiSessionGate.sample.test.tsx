@@ -1,11 +1,12 @@
 /** @vitest-environment jsdom */
 
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, screen } from '@testing-library/react';
 import { useEffect } from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { firstRunStore } from '../components/first-run/first-run-store';
 import { LocalUiSessionGate } from '../components/LocalUiSessionGate';
 import { resetLocalUiBootstrapForTests } from '../lib/local-ui-bootstrap';
+import { renderWithIsolatedConnections } from './renderWithIsolatedConnections';
 
 vi.mock('../lib/serverHealth', () => ({
   checkServerHealth: vi.fn(),
@@ -36,7 +37,7 @@ describe('LocalUiSessionGate unpaired sample (station#2652)', () => {
     const protectedMount = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
 
-    render(
+    renderWithIsolatedConnections(
       <LocalUiSessionGate apiBase="http://127.0.0.1:42693">
         <ProtectedDataProbe onMount={protectedMount} />
       </LocalUiSessionGate>,

@@ -150,6 +150,8 @@ export class ConnectionStore {
   // Host-injected connection (bundled-server loopback or CLI base). Never
   // persisted; composed into the connection list at read time.
   private injected: SavedConnection | null = null;
+  /** Broker routes may be active only after this document's host preparation. */
+  private preparedBrokerRouteId: string | null = null;
 
   constructor(
     opts: {
@@ -412,7 +414,17 @@ export class ConnectionStore {
         // serialized.
         this.storage.set(this.storageKey, JSON.stringify(connections));
       }
-      const activeId = this.storage.get(this.activeKey);
+      const persistedActiveId = this.storage.get(this.activeKey);
+      const active = connections.find(
+        (connection) => connection.id === persistedActiveId,
+      );
+      // A broker route needs an async trust/grant/Pion preparation step before
+      // it is active. Never restore it from the synchronous active pointer;
+      // the host must explicitly select it again through ConnectionsProvider.
+      const activeId =
+        active?.brokerRoute && this.preparedBrokerRouteId !== persistedActiveId
+          ? null
+          : persistedActiveId;
       return { connections, activeId };
     } catch {
       return { connections: [], activeId: null };
@@ -484,7 +496,7 @@ export class ConnectionStore {
       injectedActive ??
       matchingMobileDefault ??
       matchingManagedLoopback ??
-      connections[0] ??
+      connections.find((connection) => !connection.brokerRoute) ??
       null;
     this._cacheValid = true;
   }
@@ -614,7 +626,9 @@ export class ConnectionStore {
     const snapshot = this.read();
     const { connections, activeId } = snapshot;
     // Avoid duplicate URLs
-    const existing = connections.find((c) => c.url === url);
+    const existing = connections.find(
+      (connection) => connection.url === url && !connection.brokerRoute,
+    );
     if (existing) {
       // Just activate it
       this.write(connections, existing.id, snapshot);
@@ -628,6 +642,48 @@ export class ConnectionStore {
     const updated = [...connections, conn];
     this.write(updated, activeId ?? conn.id, snapshot);
     return conn;
+  }
+
+  /** Saves a broker-only Station route without selecting or probing it. */
+  addBrokerRoute(input: {
+    name: string;
+    applicationOrigin: string;
+    brokerRoute: NonNullable<SavedConnection['brokerRoute']>;
+  }): SavedConnection {
+    const snapshot = this.read();
+    const { connections, activeId } = snapshot;
+    const existing = connections.find(
+      (connection) =>
+        connection.brokerRoute?.brokerOrigin ===
+          input.brokerRoute.brokerOrigin &&
+        connection.brokerRoute.scope.stationId ===
+          input.brokerRoute.scope.stationId &&
+        connection.brokerRoute.scope.enrollmentId ===
+          input.brokerRoute.scope.enrollmentId &&
+        connection.brokerRoute.scope.routingGeneration ===
+          input.brokerRoute.scope.routingGeneration &&
+        connection.brokerRoute.scope.browserOrigin ===
+          input.brokerRoute.scope.browserOrigin,
+    );
+    if (existing) {
+      if (existing.url !== input.applicationOrigin)
+        throw new Error(
+          'This invitation scope is already saved for a different Station application origin.',
+        );
+      return existing;
+    }
+    const id = uuid();
+    const connection = this.normalize({
+      id,
+      name: input.name.trim() || input.applicationOrigin,
+      url: input.applicationOrigin,
+      brokerRoute: input.brokerRoute,
+      credentialState: 'required',
+    });
+    // Route acceptance must not activate it. The explicit selection API runs
+    // the host-owned preparation hook before publishing it as active.
+    this.write([...connections, connection], activeId, snapshot);
+    return connection;
   }
 
   addHostTunnel(
@@ -692,6 +748,7 @@ export class ConnectionStore {
   remove(id: string): void {
     const snapshot = this.read();
     const { connections, activeId } = snapshot;
+    if (this.preparedBrokerRouteId === id) this.preparedBrokerRouteId = null;
     const removed = connections.find((c) => c.id === id);
     if (removed) {
       const credentials = this.readCredentials();
@@ -702,7 +759,10 @@ export class ConnectionStore {
       );
     }
     const updated = connections.filter((c) => c.id !== id);
-    const newActive = activeId === id ? (updated[0]?.id ?? null) : activeId;
+    const newActive =
+      activeId === id
+        ? (updated.find((connection) => !connection.brokerRoute)?.id ?? null)
+        : activeId;
     // Retire the counters globally rather than merely deleting them here: a
     // deleted key reads as 0 in shared storage while other documents keep
     // their own higher view, and an id recreated exactly would inherit it.
@@ -728,6 +788,11 @@ export class ConnectionStore {
   ): void {
     const snapshot = this.read();
     const { connections, activeId } = snapshot;
+    const original = connections.find((connection) => connection.id === id);
+    if (original?.brokerRoute && changes.url !== undefined)
+      throw new Error(
+        'A broker route application origin can only be changed by replacing its trusted invitation.',
+      );
     // Changing the address changes what the connection MEANS, so nothing in
     // flight against the previous one is evidence about it any more.
     if (changes.url) this.invalidateCredentialGeneration(id);
@@ -1450,6 +1515,26 @@ export class ConnectionStore {
     );
   }
 
+  /** Records broker application-path reachability without inventing a direct endpoint or Device authority. */
+  recordBrokerRouteSuccess(id: string, at = Date.now(), bootId?: string): void {
+    const snapshot = this.read();
+    const { connections, activeId } = snapshot;
+    this.write(
+      connections.map((item) => {
+        if (item.id !== id || !item.brokerRoute) return item;
+        const { lastError: _lastError, ...current } = item;
+        return {
+          ...current,
+          lastConnected: at,
+          lastSuccessAt: at,
+          ...(bootId ? { lastBootId: bootId } : {}),
+        };
+      }),
+      activeId,
+      snapshot,
+    );
+  }
+
   /**
    * Records that this Station accepted an AUTHENTICATED request on `url`.
    *
@@ -1725,13 +1810,33 @@ export class ConnectionStore {
       // pointer: ensureCache()'s active-resolution precedence already falls
       // back to the injected connection whenever no explicit activeId is
       // set, which is exactly what "activate the injected connection" means.
+      this.preparedBrokerRouteId = null;
       this.write(connections, null, snapshot);
       return true;
     }
     const found = connections.find((c) => c.id === id);
     if (!found) return false;
+    if (found.brokerRoute) return false;
+    this.preparedBrokerRouteId = null;
     const updated = connections.map((c) =>
       c.id === id ? { ...c, lastConnected: Date.now() } : c,
+    );
+    this.write(updated, id, snapshot);
+    return true;
+  }
+
+  /** Called only after ConnectionsProvider's asynchronous route preparation. */
+  setPreparedBrokerRouteActive(id: string): boolean {
+    const snapshot = this.read();
+    const route = snapshot.connections.find(
+      (connection) => connection.id === id && connection.brokerRoute,
+    );
+    if (!route) return false;
+    this.preparedBrokerRouteId = id;
+    const updated = snapshot.connections.map((connection) =>
+      connection.id === id
+        ? { ...connection, lastConnected: Date.now() }
+        : connection,
     );
     this.write(updated, id, snapshot);
     return true;

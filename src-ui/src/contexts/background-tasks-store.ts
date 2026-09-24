@@ -21,6 +21,10 @@
 //   `ChatUIState.backgroundTasks` registry (`selectChatBackgroundTasks`),
 //   deduped by `toolCallId` (a provider task suppresses the raw tool card it
 //   was spawned from).
+import type {
+  ChildWorkItem,
+  ChildWorkStatus,
+} from '@kontourai/station-contracts/child-work';
 import type { OrchestrationDelegationContext } from '@kontourai/station-contracts/orchestration';
 import type {
   OrchestrationEvent,
@@ -101,6 +105,106 @@ function firstLine(text: string | undefined, limit = 80): string | undefined {
   const line = text.split('\n')[0]?.trim();
   if (!line) return undefined;
   return line.length > limit ? `${line.slice(0, limit - 1)}…` : line;
+}
+
+const CHILD_WORK_CARD_STATE: Record<ChildWorkStatus, BackgroundTaskState> = {
+  running: 'running',
+  completed: 'completed',
+  failed: 'failed',
+  cancelled: 'stopped',
+  // A stop nobody confirmed still reads as the stop the user asked for.
+  'stopped-unconfirmed': 'stopped',
+  unresolved: 'unresolved',
+};
+
+/**
+ * #2456: the ONE renderer from provider-neutral child work to a card. Every
+ * delegate card and every provider-subagent card is built here; the per-
+ * producer branches keep each card's members (and their order) exactly what
+ * the pre-contract builders produced, which
+ * `background-tasks-child-work-parity.test.ts` pins byte for byte.
+ *
+ * `placement` carries what a child-work item does not know about the card:
+ * which chat shows it, the card's start time on this client's clock basis,
+ * and a title the caller already resolved.
+ */
+function backgroundTaskEntryFromChildWork(
+  item: ChildWorkItem,
+  placement: {
+    chatThreadId: string;
+    startedAt: number;
+    title?: string;
+  },
+): BackgroundTaskEntry {
+  const state = CHILD_WORK_CARD_STATE[item.status];
+  if (item.producer === 'station-delegate') {
+    return {
+      id: item.childId,
+      kind: 'agent',
+      source: 'delegate-session',
+      chatThreadId: placement.chatThreadId,
+      delegateThreadId: item.childId,
+      ...(item.controls?.stop ? { stop: { kind: item.controls.stop } } : {}),
+      title: placement.title ?? item.title ?? 'Delegated task',
+      startedAt: placement.startedAt,
+      state,
+    };
+  }
+  return {
+    id: item.childId,
+    kind: 'agent',
+    source: 'provider-task',
+    chatThreadId: placement.chatThreadId,
+    title: placement.title || item.title || item.kindLabel || 'Background task',
+    detail: item.kindLabel,
+    startedAt: placement.startedAt,
+    state,
+    ...(item.controls?.stop && item.reporterThreadId
+      ? {
+          sessionThreadId: item.reporterThreadId,
+          // station#1877: task-scoped, so stopping one subagent leaves its
+          // siblings and the turn running. Deliberately NOT 'turn-interrupt'
+          // as a fallback — that ends every other subagent too. Offered only
+          // when the reporting session is known, since without it there is
+          // nothing to address and a dead button is worse than none.
+          stop: { kind: item.controls.stop },
+        }
+      : {}),
+  };
+}
+
+/** A delegate this client is binding from its own events, as child work. */
+function delegateChildWork(
+  delegateThreadId: string,
+  parentTaskId: string,
+): ChildWorkItem {
+  return {
+    producer: 'station-delegate',
+    reporterThreadId: delegateThreadId,
+    childId: delegateThreadId,
+    status: 'running',
+    parent: { taskId: parentTaskId },
+    controls: { stop: 'delegate-interrupt' },
+  };
+}
+
+/**
+ * A pre-contract CLIENT-TRANSLATED provider task (`ChatUIState.backgroundTasks`)
+ * back as child work, for the one renderer. Absent `sessionThreadId` leaves
+ * no stop control, exactly as before.
+ */
+function providerTaskChildWork(task: ChatBackgroundTask): ChildWorkItem {
+  return {
+    producer: 'engine-subagent',
+    reporterThreadId: task.sessionThreadId ?? '',
+    childId: task.taskId,
+    status: 'running',
+    ...(task.description ? { title: task.description } : {}),
+    ...(task.subagentType ? { kindLabel: task.subagentType } : {}),
+    ...(task.sessionThreadId
+      ? { controls: { stop: 'provider-task-stop' as const } }
+      : {}),
+  };
 }
 
 /** Bounds a chat's finished list, dropping the oldest-ended entries first. */
@@ -243,17 +347,13 @@ function foldSessionLifecycle(
     return { ...state, delegateParents };
   }
 
-  const entry: BackgroundTaskEntry = {
-    id: taskId,
-    kind: 'agent',
-    source: 'delegate-session',
-    chatThreadId: parentTaskId,
-    delegateThreadId: taskId,
-    stop: { kind: 'delegate-interrupt' },
-    title: 'Delegated task',
-    startedAt: parseTime(event.createdAt, Date.now()),
-    state: 'running',
-  };
+  const entry = backgroundTaskEntryFromChildWork(
+    delegateChildWork(taskId, parentTaskId),
+    {
+      chatThreadId: parentTaskId,
+      startedAt: parseTime(event.createdAt, Date.now()),
+    },
+  );
   return {
     ...state,
     delegateParents,
@@ -297,17 +397,14 @@ function foldDelegateTurnStarted(
 
   // Bind event was missed this connection (e.g. a fresh reconnect) but the
   // snapshot already recorded the parent binding — open the card now.
-  const entry: BackgroundTaskEntry = {
-    id: event.threadId,
-    kind: 'agent',
-    source: 'delegate-session',
-    chatThreadId: parentTaskId!,
-    delegateThreadId: event.threadId,
-    stop: { kind: 'delegate-interrupt' },
-    title,
-    startedAt: parseTime(event.createdAt, Date.now()),
-    state: 'running',
-  };
+  const entry = backgroundTaskEntryFromChildWork(
+    delegateChildWork(event.threadId, parentTaskId!),
+    {
+      chatThreadId: parentTaskId!,
+      startedAt: parseTime(event.createdAt, Date.now()),
+      title,
+    },
+  );
   return { ...state, entries: { ...state.entries, [entry.id]: entry } };
 }
 
@@ -400,6 +497,33 @@ function snapshotSessionDelegateThreadId(session: {
 }
 
 /**
+ * #2456: a snapshot row's delegate as child work. A current server sends
+ * `childWork.asChild` (`projectDelegateChildWork`); an older one sends only
+ * `delegation`, read exactly as this reconcile always read it — any
+ * `hasActiveTurn` other than an explicit `false` counts as live, and the
+ * interrupt is offered unconditionally.
+ */
+function snapshotDelegateChildWork(
+  session: OrchestrationSnapshotPayload['sessions'][number],
+): ChildWorkItem | undefined {
+  const asChild = session.childWork?.asChild;
+  if (asChild?.producer === 'station-delegate') return asChild;
+  const delegation = session.delegation;
+  if (!delegation) return undefined;
+  return {
+    producer: 'station-delegate',
+    reporterThreadId: session.threadId,
+    childId: session.threadId,
+    status: session.hasActiveTurn !== false ? 'running' : 'unresolved',
+    ...(delegation.parentTaskId
+      ? { parent: { taskId: delegation.parentTaskId } }
+      : {}),
+    ...(delegation.targetId ? { kindLabel: delegation.targetId } : {}),
+    controls: { stop: 'delegate-interrupt' },
+  };
+}
+
+/**
  * Snapshot reconciliation — seeds/reconciles delegate bindings and terminal
  * states from the connect-time (or reconnect-fallback) `orchestration:snapshot`
  * frame. Per the plan's risk note: a snapshot's `hasActiveTurn === false`
@@ -413,8 +537,9 @@ export function reconcileBackgroundTasksSnapshot(
 ): BackgroundTasksState {
   let next = state;
   for (const session of payload.sessions) {
-    const parentTaskId = session.delegation?.parentTaskId;
-    if (!parentTaskId) continue;
+    const child = snapshotDelegateChildWork(session);
+    const parentTaskId = child?.parent?.taskId;
+    if (!child || !parentTaskId) continue;
     const taskId = snapshotSessionDelegateThreadId(session);
 
     if (next.delegateParents[taskId] !== parentTaskId) {
@@ -425,28 +550,22 @@ export function reconcileBackgroundTasksSnapshot(
     }
 
     const existing = next.entries[session.threadId];
-    const isActive = session.hasActiveTurn !== false;
+    const isActive = child.status === 'running';
 
     if (!existing) {
       // A bare status snapshot carries no turn history — only seed a card
       // for a delegate the snapshot itself says is still active. A finished
       // one this client never saw live has nothing worth backfilling.
       if (!isActive) continue;
-      const entry: BackgroundTaskEntry = {
-        id: session.threadId,
-        kind: 'agent',
-        source: 'delegate-session',
+      const entry = backgroundTaskEntryFromChildWork(child, {
         chatThreadId: parentTaskId,
-        delegateThreadId: session.threadId,
-        stop: { kind: 'delegate-interrupt' },
+        startedAt: parseTime(session.createdAt, Date.now()),
         // The sheet replaces this reconnect fallback with the persisted first
         // turn prompt once its bounded session-detail query resolves.
-        title: session.delegation?.targetId
-          ? `Delegated task — ${session.delegation.targetId}`
+        title: child.kindLabel
+          ? `Delegated task — ${child.kindLabel}`
           : 'Delegated task',
-        startedAt: parseTime(session.createdAt, Date.now()),
-        state: 'running',
-      };
+      });
       next = { ...next, entries: { ...next.entries, [entry.id]: entry } };
       continue;
     }
@@ -493,34 +612,6 @@ export interface ChatBackgroundTasksView {
   finished: BackgroundTaskEntry[];
 }
 
-function makeProviderEntry(
-  task: ChatBackgroundTask,
-  chatThreadId: string,
-  startedAt: number,
-): BackgroundTaskEntry {
-  return {
-    id: task.taskId,
-    kind: 'agent',
-    source: 'provider-task',
-    chatThreadId,
-    title: task.description || task.subagentType || 'Background task',
-    detail: task.subagentType,
-    startedAt,
-    state: 'running',
-    ...(task.sessionThreadId
-      ? {
-          sessionThreadId: task.sessionThreadId,
-          // station#1877: task-scoped, so stopping one subagent leaves its
-          // siblings and the turn running. Deliberately NOT 'turn-interrupt'
-          // as a fallback — that ends every other subagent too. Offered only
-          // when the reporting session is known, since without it there is
-          // nothing to address and a dead button is worse than none.
-          stop: { kind: 'provider-task-stop' as const },
-        }
-      : {}),
-  };
-}
-
 /**
  * The one read the UI consumes: this chat's Running/Finished entries, with
  * provider background subagents (`ChatUIState.backgroundTasks`, tracked
@@ -551,11 +642,10 @@ export function selectChatBackgroundTasks(
     const matchedTool = task.toolCallId
       ? state.entries[task.toolCallId]
       : undefined;
-    return makeProviderEntry(
-      task,
+    return backgroundTaskEntryFromChildWork(providerTaskChildWork(task), {
       chatThreadId,
-      matchedTool?.startedAt ?? Date.now(),
-    );
+      startedAt: matchedTool?.startedAt ?? Date.now(),
+    });
   });
 
   const running = [

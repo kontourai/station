@@ -64,5 +64,10 @@ export async function _getApiBase(): Promise<string> {
   return _apiBase;
 }
 
+/** Immediate host snapshot for best-effort work that must not retarget later. */
+export function _getApiBaseSnapshot(): string {
+  return _apiBase;
+}
+
 export { apiErrorMessage } from './client/api-error-message';
 export { getPluginHeaders } from './client/plugin-headers';

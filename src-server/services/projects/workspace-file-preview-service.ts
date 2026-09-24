@@ -592,4 +592,26 @@ export class WorkspaceFilePreviewService {
       return null;
     }
   }
+
+  /**
+   * Which of `paths` preview() would resolve to a regular file. Every path
+   * goes through the same root, traversal and anti-symlink resolution as a
+   * preview; one it would refuse is simply absent from the answer, so this
+   * route discloses nothing a preview of the same path would not. Returns the
+   * paths as the caller spelled them, so the client can match its own input.
+   */
+  existingFiles(workingDirectory: string, paths: readonly string[]): string[] {
+    const files: string[] = [];
+    for (const input of paths) {
+      try {
+        const path = normalizedRelativePath(input).split(sep).join('/');
+        const resolved = resolvePreviewTarget(this.fs, workingDirectory, path);
+        if ('status' in resolved) continue;
+        if (resolved.expectedIdentity.isFile()) files.push(input);
+      } catch {
+        // Refused (escape, symlink) or unreadable: not a file we would serve.
+      }
+    }
+    return files;
+  }
 }

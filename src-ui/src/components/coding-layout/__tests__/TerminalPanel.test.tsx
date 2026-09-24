@@ -20,18 +20,23 @@ import {
 } from '../../../contexts/NavigationContext';
 import { TerminalPanel } from '../TerminalPanel';
 
-const { fetchTerminalPort, credentialProvider } = vi.hoisted(() => ({
-  fetchTerminalPort: vi.fn(),
-  credentialProvider: { getCredential: () => null },
-}));
+const { fetchTerminalPort, credentialProvider, assertRawEgress } = vi.hoisted(
+  () => ({
+    fetchTerminalPort: vi.fn(),
+    assertRawEgress: vi.fn(),
+    credentialProvider: { getCredential: () => null },
+  }),
+);
 
 vi.mock('@kontourai/station-sdk', () => ({
+  assertClientRawEgressAllowed: assertRawEgress,
   executeCodingCommand: vi.fn(),
   fetchTerminalPort,
 }));
 vi.mock('../../../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({
     apiBase: 'http://localhost',
+    connectionId: 'direct-1',
     credentialProvider,
   }),
 }));
@@ -73,6 +78,10 @@ const { FakeFitAddon, FakeTerminal } = vi.hoisted(() => {
 
   return { FakeTerminal, FakeFitAddon };
 });
+const originalScrollTo = Object.getOwnPropertyDescriptor(
+  HTMLElement.prototype,
+  'scrollTo',
+);
 
 vi.mock('@xterm/xterm', () => ({ Terminal: FakeTerminal }));
 vi.mock('@xterm/addon-fit', () => ({ FitAddon: FakeFitAddon }));
@@ -115,6 +124,11 @@ class FakeResizeObserver {
 }
 
 beforeEach(() => {
+  assertRawEgress.mockReset().mockImplementation(() => undefined);
+  Object.defineProperty(HTMLElement.prototype, 'scrollTo', {
+    configurable: true,
+    value: vi.fn(),
+  });
   fetchTerminalPort.mockResolvedValue(4310);
   FakeWebSocket.instances = [];
   FakeWebSocket.liveCwd = '/workspace/live';
@@ -135,6 +149,11 @@ afterEach(() => {
   navigationStore.setActiveChat(null);
   vi.unstubAllGlobals();
   vi.clearAllMocks();
+  if (originalScrollTo)
+    Object.defineProperty(HTMLElement.prototype, 'scrollTo', originalScrollTo);
+  else
+    delete (HTMLElement.prototype as unknown as { scrollTo?: unknown })
+      .scrollTo;
 });
 
 function renderTerminal() {
@@ -181,6 +200,65 @@ test('renderer unmount detaches its WebSocket without sending a terminal close c
       sessionId: 'project-a:terminal-one',
     }),
   );
+});
+
+test('does not query a terminal port or open a raw socket when route policy blocks egress', async () => {
+  assertRawEgress.mockImplementationOnce(() => {
+    throw new Error(
+      'Browser broker routes do not support direct terminal connections yet. Select a direct Station connection to use this feature.',
+    );
+  });
+
+  renderTerminal();
+
+  expect((await screen.findByRole('alert')).textContent).toContain(
+    'Browser broker routes do not support direct terminal connections',
+  );
+  expect(fetchTerminalPort).not.toHaveBeenCalled();
+  expect(FakeWebSocket.instances).toHaveLength(0);
+});
+
+test('rechecks route binding after terminal port lookup before opening the socket', async () => {
+  let releasePort!: (port: number) => void;
+  fetchTerminalPort.mockImplementationOnce(
+    () => new Promise<number>((resolve) => (releasePort = resolve)),
+  );
+  assertRawEgress.mockImplementationOnce(() => undefined);
+  assertRawEgress.mockImplementationOnce(() => {
+    throw new Error(
+      'Browser broker routes do not support direct terminal connections yet. Select a direct Station connection to use this feature.',
+    );
+  });
+
+  renderTerminal();
+  await waitFor(() => expect(fetchTerminalPort).toHaveBeenCalledTimes(1));
+  releasePort(4310);
+
+  expect((await screen.findByRole('alert')).textContent).toContain(
+    'Browser broker routes do not support direct terminal connections',
+  );
+  expect(assertRawEgress).toHaveBeenCalledTimes(2);
+  expect(FakeWebSocket.instances).toHaveLength(0);
+});
+
+test('closes a socket selected before a route change without sending terminal open content', async () => {
+  assertRawEgress.mockImplementationOnce(() => undefined);
+  assertRawEgress.mockImplementationOnce(() => undefined);
+  assertRawEgress.mockImplementationOnce(() => {
+    throw new Error('The selected Station authority is no longer available.');
+  });
+  renderTerminal();
+  await waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
+
+  const socket = FakeWebSocket.instances[0]!;
+  socket.onopen?.();
+
+  expect(socket.close).toHaveBeenCalled();
+  expect(
+    socket.send.mock.calls.some(
+      ([raw]) => JSON.parse(raw as string).type === 'open',
+    ),
+  ).toBe(false);
 });
 
 test('scans one selection spanning two PTY reads without redacting the live terminal', async () => {

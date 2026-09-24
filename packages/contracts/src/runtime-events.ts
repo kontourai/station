@@ -1,4 +1,5 @@
 import type { PersistedChatAttachment } from './chat-attachment.js';
+import type { ChildWorkDelta } from './child-work.js';
 import type { ClientOrigin } from './client-origin.js';
 import type { PrincipalRef } from './principal.js';
 import { type EngineId, PROVIDER_CODEX } from './provider.js';
@@ -996,6 +997,17 @@ export interface ExtensionEvent extends CanonicalRuntimeEventBase {
 }
 
 /**
+ * #2456: a change to the child work (engine subagents, Station delegates)
+ * reported under `threadId`. The delta is folded with `applyChildWorkDelta`
+ * from `@kontourai/station-contracts/child-work`; this event carries no
+ * semantics beyond that fold.
+ */
+export interface ChildWorkUpdatedEvent extends CanonicalRuntimeEventBase {
+  method: 'child-work.updated';
+  delta: ChildWorkDelta;
+}
+
+/**
  * An immutable cross-conversation provenance fact. It is deliberately an
  * orchestration event (rather than conversation metadata) so every engine
  * family has one append-only source of truth.
@@ -1041,4 +1053,5 @@ export type CanonicalRuntimeEvent =
   | WorkflowStateChangedEvent
   | PlanUpdatedEvent
   | ExtensionEvent
+  | ChildWorkUpdatedEvent
   | ConversationForkedEvent;

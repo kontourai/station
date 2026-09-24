@@ -310,7 +310,7 @@ describe('project-page-frame.css import guard (#1636)', () => {
    * two to one.
    */
   const FRAME_SCAN_ROOTS = [
-    { dir: 'views', frameClassedCount: 2 },
+    { dir: 'views', frameClassedCount: 3 },
     { dir: 'pages', frameClassedCount: 0 },
     { dir: 'components', frameClassedCount: 0 },
     { dir: 'workspace-panes', frameClassedCount: 1 },
@@ -375,6 +375,7 @@ describe('project-page-frame.css import guard (#1636)', () => {
   const FRAME_CLASSED_FIXTURES = [
     'views/ProjectPage.tsx',
     'views/project-page/ProjectLayoutsSection.tsx',
+    'views/project-page/MemberProjectPage.tsx',
     'workspace-panes/WorkspacePaneRouteView.tsx',
   ];
 

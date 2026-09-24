@@ -457,6 +457,16 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     scope: PAIRING_SCOPE_ORCHESTRATION_READ,
     origin: 'explicit',
   },
+  // Which of a message's path mentions are previewable files: the same
+  // project-owned, root-contained read as the preview itself, answering only
+  // with the subset of the caller's own paths that resolve.
+  {
+    id: '/api/projects/:slug/file-preview/exists:read',
+    method: 'POST',
+    prefix: '/api/projects/:slug/file-preview/exists',
+    scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+    origin: 'explicit',
+  },
   // Inspection reads a single already-addressed session output. Its event ID
   // is part of the URL and the route requires a strict empty body; it does
   // not mutate owner state. Match only this leaf so any future nested POST
@@ -478,6 +488,128 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     prefix:
       '/api/mobile-devices/hosts/:hostId/devices/:platform/:deviceId/capture',
     exact: true,
+    scope: PAIRING_SCOPE_TERMINAL_OPERATE,
+    origin: 'explicit',
+  },
+  // #1970 managed device toolchain (personal hosts only). Status and the
+  // read-only version check sit at read. Every mutation installs software
+  // onto, or starts a process on, the Station host, so it needs the terminal
+  // authority. The routes additionally require the operator (D5).
+  ...READ_METHODS.map(
+    (method): PairingScopeRouteRule => ({
+      id: '/api/mobile-devices/toolchain:read',
+      method,
+      prefix: '/api/mobile-devices/toolchain',
+      scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+      origin: 'explicit',
+    }),
+  ),
+  ...MUTATING_METHODS.map(
+    (method): PairingScopeRouteRule => ({
+      id: '/api/mobile-devices/toolchain:terminal-operate',
+      method,
+      prefix: '/api/mobile-devices/toolchain',
+      scope: PAIRING_SCOPE_TERMINAL_OPERATE,
+      origin: 'explicit',
+    }),
+  ),
+  // D12 device shares. Reading which devices a Project may use is a read;
+  // sharing or unsharing hands out (or withdraws) a host device's screen and
+  // input, so it needs the terminal authority. The routes are operator-only.
+  ...READ_METHODS.map(
+    (method): PairingScopeRouteRule => ({
+      id: '/api/mobile-devices/shares:read',
+      method,
+      prefix: '/api/mobile-devices/shares',
+      scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+      origin: 'explicit',
+    }),
+  ),
+  ...MUTATING_METHODS.map(
+    (method): PairingScopeRouteRule => ({
+      id: '/api/mobile-devices/shares:terminal-operate',
+      method,
+      prefix: '/api/mobile-devices/shares',
+      scope: PAIRING_SCOPE_TERMINAL_OPERATE,
+      origin: 'explicit',
+    }),
+  ),
+  // The device hub proxy streams a device screen and tunes or captures it —
+  // the same standing as frame capture above, for every method, on every
+  // device host (`local`, or an SSH device host, #1973).
+  {
+    id: '/api/mobile-devices/hosts/:hostId/hub:terminal-operate',
+    method: '*',
+    prefix: '/api/mobile-devices/hosts/:hostId/hub',
+    scope: PAIRING_SCOPE_TERMINAL_OPERATE,
+    origin: 'explicit',
+  },
+  // #1973 SSH device hosts (operator-only routes). Listing them is a read.
+  // Adding, editing, removing, testing (runs ssh with the operator's keys),
+  // enabling (installs onto and runs a process on that machine) and
+  // starting all need the terminal authority, like the toolchain's own.
+  ...READ_METHODS.map(
+    (method): PairingScopeRouteRule => ({
+      id: '/api/mobile-devices/device-hosts:read',
+      method,
+      prefix: '/api/mobile-devices/device-hosts',
+      scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+      origin: 'explicit',
+    }),
+  ),
+  ...MUTATING_METHODS.map(
+    (method): PairingScopeRouteRule => ({
+      id: '/api/mobile-devices/device-hosts:terminal-operate',
+      method,
+      prefix: '/api/mobile-devices/device-hosts',
+      scope: PAIRING_SCOPE_TERMINAL_OPERATE,
+      origin: 'explicit',
+    }),
+  ),
+  // Live device sessions (#1970). Starting or powering off a device changes
+  // what runs on the operator's host; opening a session registers a live
+  // surface that streams the device's screen and takes control input; closing
+  // one ends it for every viewer. All sit on the terminal authority, like the
+  // frame capture above. Reading the session list inherits the family's read
+  // tier (see PAIRING_SCOPE_FAMILY_INHERITED_LEAVES).
+  ...(
+    [
+      [
+        'POST',
+        '/api/mobile-devices/hosts/:hostId/devices/:platform/:deviceId/start',
+      ],
+      [
+        'POST',
+        '/api/mobile-devices/hosts/:hostId/devices/:platform/:deviceId/sessions',
+      ],
+      [
+        'POST',
+        '/api/mobile-devices/hosts/:hostId/devices/:platform/:deviceId/power-off',
+      ],
+      ['DELETE', '/api/mobile-devices/hosts/:hostId/sessions/:sessionId'],
+    ] as const
+  ).map(
+    ([method, prefix]): PairingScopeRouteRule => ({
+      id: `${prefix}:terminal-operate`,
+      method,
+      prefix,
+      exact: true,
+      scope: PAIRING_SCOPE_TERMINAL_OPERATE,
+      origin: 'explicit',
+    }),
+  ),
+  // #1971 device Tools drawer. Every leaf, reads included, sits on the
+  // terminal authority: the accessibility tree and the foreground app disclose
+  // what is on the device's screen (the standing of a frame capture), and the
+  // actions change a device on the operator's host (appearance, location,
+  // app permissions, a push). The routes additionally authorize per device
+  // (D12: view for reads, drive for actions) and refuse an action while
+  // another controller holds the device's live-surface lease.
+  {
+    id: '/api/mobile-devices/hosts/:hostId/devices/:platform/:deviceId/tools:terminal-operate',
+    method: '*',
+    prefix:
+      '/api/mobile-devices/hosts/:hostId/devices/:platform/:deviceId/tools',
     scope: PAIRING_SCOPE_TERMINAL_OPERATE,
     origin: 'explicit',
   },
@@ -2957,7 +3089,9 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'GET', path: '/api/starter-work/:starterId/observation' },
     { method: 'POST', path: '/api/starter-work/bind' },
     { method: 'DELETE', path: '/api/starter-work/:starterId/binding' },
-    { method: 'GET', path: '/api/mobile-devices/hosts/local/devices' },
+    { method: 'GET', path: '/api/mobile-devices/hosts' },
+    { method: 'GET', path: '/api/mobile-devices/hosts/:hostId/devices' },
+    { method: 'GET', path: '/api/mobile-devices/hosts/:hostId/sessions' },
     { method: 'GET', path: '/api/spatial-board' },
     { method: 'GET', path: '/api/spatial-board/resolved' },
     { method: 'POST', path: '/api/spatial-board/pins' },

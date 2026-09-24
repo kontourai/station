@@ -311,6 +311,8 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
       'read-only against the isolated temp-home instance; the only writes are this browser context’s own localStorage — the regionArrangement device setting, plus the dock-chrome settings a region write mirrors (station.chatDock.snap, chatDockHeight/chatDockWidth)',
     'tests/project-architecture.spec.ts':
       'browser-local page.route mocks installed before navigation; the only writes are this browser context’s own localStorage — the same regionArrangement and dock-chrome device settings its placement journeys drive',
+    'tests/browser-relay-route-acceptance.spec.ts':
+      'read-only Connections UI against the runner-owned temporary Station; trust refusal occurs before server enrollment, with only this browser context’s request observation and local page state',
     'tests/buffered-answer-delivery.spec.ts':
       'browser-local orchestration SSE and API fixtures installed before navigation; the only write is this browser context’s device-local Answer delivery preference',
   },
@@ -352,6 +354,7 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/registry.spec.ts',
     'tests/registry-install.spec.ts',
     'tests/connections-crud.spec.ts',
+    'tests/browser-relay-route-acceptance.spec.ts',
     'tests/credential-recovery-groups.spec.ts',
     'tests/ssh-environments-ui.spec.ts',
     'tests/connect-modal.spec.ts',
@@ -822,7 +825,7 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale:
-      "#1969: the Device pane had five jsdom suites and no browser journey, so its aspect-ratio assertions read a CSS custom property off an inline style and NOTHING had observed the pane lay out — which is why docs/ui/responsive-action-surfaces.txt listed it as an exception. This is the render. The setup state is un-intercepted: the suite instance runs with STATION_MOBILE_DEVICE_HUB_URL unset, so the real LocalMobileDeviceHost answers not-configured through the real route and the pane's first-run card is the pane's own reading of it — asserted to offer no retry and to render no device list, so an unconfigured Station can never read as 'no devices'. The populated states need a booted simulator and a booted emulator no runner has, so they are supplied through page.route in the exact envelope mobile-device-host.ts emits (a UDID iOS row and an emulator-<n> Android row, the only spellings that host admits for booted devices) with REAL PNGs built in the spec — valid signature/IHDR/IEND, so the SDK client's base64 check and the host's own reader both accept them. Desktop: both native app targets selectable and captured in turn; the frame's ratio read from getBoundingClientRect rather than getComputedStyle, because the computed property is the declaration echoed back and only the laid out box can fail; a second iOS capture with swapped dimensions relayouts the frame from taller-than-wide to wider-than-tall; caption and image alt both carry 'Snapshot' and the browser's rendering of the capture's own capturedAt, stamped ten seconds in the past so a time taken from Date.now() would differ; switching devices drops the frame rather than hiding it. A 403 on capture renders the access-denied copy and leaves Capture ENABLED — the amended decision on the issue, because a changed sign-in is repairable in place and Capture is the retry — while adding no second button. 390x844 isMobile variant measures the picker rows and Capture against the 44px floor from their laid out boxes, with one hundredth of a pixel of slack because a composited min-height:44px row reports 43.99999237060547 (#2086) and an exact integer comparison would encode the compositor's rounding rather than the CSS. It reaches no device helper and proves nothing about expo-device-hub or the capture route's own authorization; tests/tauri-shell/device-pane.e2e.ts is the lane that drives the real service against a real hub.",
+      '#1969/#1970: the Device pane in a real browser. The setup state is un-intercepted: the suite instance runs with STATION_MOBILE_DEVICE_HUB_URL unset, so the real LocalMobileDeviceHost answers not-configured through the real route and the pane renders its setup slot, with no retry and no device groups. The populated picker needs booted devices no runner has, so the device list and the empty session list are supplied through page.route in the exact envelopes the server emits; the render is the evidence: both platforms grouped (iOS Simulators, Android Emulators), each device offered for opening. The 390x844 isMobile variant measures the picker rows and their Open controls against the 44px floor from laid-out boxes (one hundredth of a pixel of slack, #2086) and checks the phone document does not scroll sideways. It opens no live session: the live stream and input are proven against a real hub by src-server/services/devices/__tests__/device-live.real.test.ts.',
     exceptions: [],
   },
   {
@@ -1099,6 +1102,16 @@ export const e2eManifest = [
     primary: true,
     rationale:
       'Connections CRUD plus Agent app discovery hit, miss, Add-catalog placement, and Model-only first-run honesty.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/browser-relay-route-acceptance.spec.ts',
+    bucket: 'product',
+    surface: 'Connections',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Real browser UI action proving a broker invitation cannot be saved before this browser independently approves the exact Station enrollment; the full local grant/Pion protocol remains covered by the browser transport lab.',
     exceptions: [],
   },
   {

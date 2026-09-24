@@ -128,3 +128,127 @@ test('capture rejects path-shaped targets before making a request', async () => 
   ).rejects.toMatchObject({ status: 400 });
   expect(fetch).not.toHaveBeenCalled();
 });
+
+// ---- device hosts (#1973) ---------------------------------------------------
+
+const REMOTE = 'ssh-0123456789ab';
+
+test('an SSH device host is addressed by its id, and its answer must be for that host', async () => {
+  const {
+    fetchMobileDeviceHosts,
+    fetchMobileDeviceSessions,
+    openMobileDeviceSession,
+  } = await import('../mobile-device');
+  const fetch = vi
+    .fn<typeof globalThis.fetch>()
+    .mockResolvedValueOnce(
+      Response.json({
+        success: true,
+        data: {
+          hostId: REMOTE,
+          state: 'ready',
+          observedAt: frame.capturedAt,
+          devices: [],
+        },
+      }),
+    )
+    // A server answering for the wrong host is refused.
+    .mockResolvedValueOnce(
+      Response.json({
+        success: true,
+        data: {
+          hostId: 'local',
+          state: 'ready',
+          observedAt: frame.capturedAt,
+          devices: [],
+        },
+      }),
+    )
+    .mockResolvedValueOnce(
+      Response.json({ success: true, data: { sessions: [] } }),
+    )
+    .mockResolvedValueOnce(
+      Response.json({
+        success: true,
+        data: {
+          hosts: [
+            { hostId: 'local', label: 'This Station', kind: 'local' },
+            { hostId: REMOTE, label: 'Mac mini', kind: 'ssh' },
+          ],
+        },
+      }),
+    );
+  vi.stubGlobal('fetch', fetch);
+  expect(
+    (
+      await fetchMobileDeviceInventory(
+        'https://station.test',
+        undefined,
+        null,
+        REMOTE,
+      )
+    ).hostId,
+  ).toBe(REMOTE);
+  await expect(
+    fetchMobileDeviceInventory('https://station.test', undefined, null, REMOTE),
+  ).rejects.toBeInstanceOf(MobileDeviceRequestError);
+  await fetchMobileDeviceSessions(
+    'https://station.test',
+    undefined,
+    'alpha',
+    REMOTE,
+  );
+  expect(
+    (await fetchMobileDeviceHosts('https://station.test')).map((h) => h.hostId),
+  ).toEqual(['local', REMOTE]);
+  expect(fetch.mock.calls.map(([url]) => String(url))).toEqual([
+    `https://station.test/api/mobile-devices/hosts/${REMOTE}/devices`,
+    `https://station.test/api/mobile-devices/hosts/${REMOTE}/devices`,
+    `https://station.test/api/mobile-devices/hosts/${REMOTE}/sessions?projectSlug=alpha`,
+    'https://station.test/api/mobile-devices/hosts',
+  ]);
+  // A malformed host id never leaves the client.
+  const before = fetch.mock.calls.length;
+  for (const hostId of ['../local', 'ssh-XYZ', 'LOCAL', ''])
+    await expect(
+      fetchMobileDeviceInventory(
+        'https://station.test',
+        undefined,
+        null,
+        hostId,
+      ),
+    ).rejects.toBeInstanceOf(MobileDeviceRequestError);
+  await expect(
+    openMobileDeviceSession('https://station.test', {
+      hostId: 'ssh-..',
+      platform: 'android',
+      deviceId: 'emulator-5554',
+    }),
+  ).rejects.toBeInstanceOf(MobileDeviceRequestError);
+  expect(fetch.mock.calls.length).toBe(before);
+});
+
+test('the operator device host client surfaces typed refusals', async () => {
+  const { addDeviceSshHost, checkDeviceSshHost, DeviceHostRequestError } =
+    await import('../mobile-device');
+  vi.stubGlobal(
+    'fetch',
+    vi
+      .fn()
+      .mockResolvedValue(
+        Response.json(
+          { success: false, code: 'invalid-target' },
+          { status: 400 },
+        ),
+      ),
+  );
+  await expect(
+    addDeviceSshHost('https://station.test', {
+      label: 'x',
+      sshTarget: '-oProxyCommand=sh',
+    }),
+  ).rejects.toMatchObject({ status: 400, code: 'invalid-target' });
+  await expect(
+    checkDeviceSshHost('https://station.test', 'local'),
+  ).rejects.toBeInstanceOf(DeviceHostRequestError);
+});

@@ -15,6 +15,7 @@ import {
 import { createLogger, type Logger } from '../../utils/logger.js';
 import type { OrchestrationService } from '../orchestration/orchestration-service.js';
 import type { TaskGraphService } from '../projects/task-graph-service.js';
+import { describeSearchReadRefusal } from './search-read-refusal.js';
 import { createStationMessageSearchProvider } from './station-search-providers.js';
 import { UnifiedSearchService } from './unified-search-service.js';
 
@@ -254,8 +255,14 @@ export function createRuntimeSearch(input: {
                 ...request,
                 signal,
               });
+              // #2460: the refusal's cause rides in the message so the
+              // unified service's provider-threw log names it. That service
+              // still answers with the closed `provider-timeout-or-error`
+              // reason; this text never reaches a response.
               if (result.state !== 'available')
-                throw new Error('Search unavailable');
+                throw new Error(
+                  `Search unavailable: ${describeSearchReadRefusal(result.cause)}`,
+                );
               return result.matches;
             },
           },
