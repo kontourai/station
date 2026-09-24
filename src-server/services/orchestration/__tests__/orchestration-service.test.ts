@@ -120,6 +120,7 @@ import { createProjectSessionDirectoryResolver } from '../../projects/project-se
 import { composeTaskDispatcher } from '../../projects/task-dispatch-composition.js';
 import { TaskGraphService } from '../../projects/task-graph-service.js';
 import type { AdoptionLedger } from '../adoption-ledger.js';
+import type { ChildWorkProjection } from '../child-work-projection.js';
 import { recoverCompletedTaskDispatches } from '../completed-task-dispatch-recovery.js';
 import { canResolveConversationContinuation } from '../conversation-lineage.js';
 import { EventBus } from '../event-bus.js';
@@ -7295,6 +7296,75 @@ describe('OrchestrationService', () => {
     expect((sessionBackgroundTasks.add as any).mock.calls.length).toBe(
       settlesBefore,
     );
+  });
+
+  test('matrix-none engine child deltas never become conversation running work through service wiring', async () => {
+    const muse = new FakeAdapter('muse');
+    const isolated = new OrchestrationService({
+      adapterRegistry: createRegistry([muse]),
+      eventBus,
+      eventStore,
+      logger: { debug: vi.fn(), warn: vi.fn() },
+    });
+    const threadId = 'matrix-none-child-work';
+    await isolated.dispatch({
+      type: 'startSession',
+      input: { threadId, provider: 'muse' },
+    });
+    const publish = (
+      isolated as unknown as {
+        projectAndPublishEvent(event: CanonicalRuntimeEvent): boolean;
+      }
+    ).projectAndPublishEvent.bind(isolated);
+    publish({
+      eventId: 'matrix-none-child-delta',
+      provider: 'muse',
+      threadId,
+      createdAt: new Date().toISOString(),
+      method: 'child-work.updated',
+      delta: {
+        kind: 'snapshot',
+        producer: 'engine-subagent',
+        reporterThreadId: threadId,
+        running: [
+          {
+            producer: 'engine-subagent',
+            reporterThreadId: threadId,
+            childId: 'unexpected-child',
+            status: 'running',
+          },
+        ],
+      },
+    });
+    const childWork = (
+      isolated as unknown as { childWork: ChildWorkProjection }
+    ).childWork;
+    expect(childWork.read(threadId, 'muse')?.observability).toBe(
+      'not-reported',
+    );
+    expect(
+      (await isolated.readSession(threadId))?.session.conversationActivity
+        ?.runningChildWork,
+    ).toBeUndefined();
+    // Exercise the service's own readRunningChildWork wiring under a
+    // contradictory projection result. The matrix-none read above is real;
+    // this injected extra field proves the service gate still rejects child
+    // rows if a future projection accidentally includes them on that view.
+    vi.spyOn(childWork, 'read').mockReturnValue({
+      observability: 'not-reported',
+      reason: 'The engine does not report subagents.',
+      running: [
+        {
+          producer: 'engine-subagent',
+          reporterThreadId: threadId,
+          childId: 'unexpected-child',
+          status: 'running',
+        },
+      ],
+    } as unknown as ReturnType<ChildWorkProjection['read']>);
+    const session = (await isolated.readSession(threadId))?.session;
+    expect(session?.childWork?.children?.observability).toBe('not-reported');
+    expect(session?.conversationActivity?.runningChildWork).toBeUndefined();
   });
 
   test('fails closed for hosted starts without a server-owned tenant context', async () => {

@@ -70,6 +70,21 @@ describe('HomeWorkRow turn progress observation (station#4054)', () => {
     expect(screen.getByText('Background work running')).toBeTruthy();
   });
 
+  test('a stopped parent with a running child still shows Running and the background reason', () => {
+    renderSession({
+      lifecycleState: 'canceled',
+      hasActiveTurn: false,
+      conversationActivity: {
+        conversationId: 'turn-progress-observation',
+        asOfSequence: 5,
+        runningChildWork: { count: 1, producers: ['engine-subagent'] },
+      },
+    });
+    expect(screen.getByText('Active')).toBeTruthy();
+    expect(screen.getByText('Background work running')).toBeTruthy();
+    expect(screen.queryByText('Stopped')).toBeNull();
+  });
+
   test('renders the exact watchdog silence marker and its last-progress timestamp', async () => {
     vi.spyOn(Date, 'now').mockReturnValue(
       new Date('2026-08-24T12:04:12.000Z').valueOf(),

@@ -135,11 +135,6 @@ export function activeTurnProgress(
 export function orchestrationLifecycleLabel(
   session: OrchestrationSessionSummary,
 ): SessionStateLabel {
-  // `canceled` is a recorded stopped outcome, not a completed run. The shared
-  // attention fold intentionally files both under its coarse `finished`
-  // bucket; this client vocabulary refinement is what keeps that bucket from
-  // claiming success for an interrupted session.
-  if (session.lifecycleState === 'canceled') return 'Stopped';
   // The ordered failed → finished → awaiting → active adjudication is the
   // SHARED fold (archive#3227): `sessionAttentionDisposition` in
   // `@kontourai/station-contracts/session-attention`, the same derivation the
@@ -169,15 +164,20 @@ export function orchestrationLifecycleLabel(
   //   Observed live: 13 of 24 sessions labelled Running with
   //   `hasActiveTurn: false` on every one.
   const disposition = sessionAttentionDisposition(session);
-  // A completed parent turn may leave reported children running. Keep the
-  // attention fold unchanged: background work is not a request to the user.
+  // A completed or stopped parent turn may leave reported children running.
+  // Keep the attention fold unchanged: background work is not a request to
+  // the user. A closed or failed session retains its terminal outcome.
   if (
-    session.lifecycleState === 'completed' &&
+    (session.lifecycleState === 'completed' ||
+      session.lifecycleState === 'canceled') &&
     session.status !== 'closed' &&
     session.conversationActivity?.runningChildWork &&
     disposition.state === 'finished'
   )
     return 'Running';
+  // The shared attention fold files a canceled turn under `finished`. Refine
+  // that recorded outcome to Stopped when no child work remains.
+  if (session.lifecycleState === 'canceled') return 'Stopped';
   switch (disposition.state) {
     case 'failed':
       return 'Failed';

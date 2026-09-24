@@ -5,6 +5,7 @@ import type {
 import { describe, expect, test } from 'vitest';
 import { createDefaultChatState } from '../contexts/active-chats-state';
 import { buildOutgoingUserMessage } from '../hooks/useActiveChatSessions.helpers';
+import { orchestrationLifecycleLabel } from '../utils/session-state';
 import {
   buildActiveChatTaskItems,
   buildHomeWorkItems,
@@ -976,6 +977,32 @@ describe('orchestration Running is gated on an in-flight turn (#1069)', () => {
     expect(item.lifecycleLabel).toBe('Stopped');
   });
 
+  test('a stopped turn with a running child is Running until that child settles', () => {
+    const session = {
+      ...attachedButIdle,
+      lifecycleState: 'canceled',
+      conversationActivity: {
+        conversationId: attachedButIdle.threadId,
+        asOfSequence: 7,
+        runningChildWork: { count: 1, producers: ['engine-subagent'] },
+      },
+    } as OrchestrationSessionSummary;
+    expect(orchestrationLifecycleLabel(session)).toBe('Running');
+    const [item] = buildHomeWorkItems({
+      chats: {},
+      agents: [],
+      sessions: [session],
+    });
+    expect(item.lifecycleLabel).toBe('Running');
+    expect(item.activeReason).toBe('background');
+    expect(orchestrationLifecycleLabel({ ...session, status: 'closed' })).toBe(
+      'Stopped',
+    );
+    expect(
+      orchestrationLifecycleLabel({ ...session, lifecycleState: 'failed' }),
+    ).toBe('Failed');
+  });
+
   // A genuinely failed run is terminal and must never borrow the actionable
   // label reserved for approval/input/review/blocked work.
   test('a failed session reads Failed', () => {
@@ -1168,6 +1195,28 @@ describe('chat items borrow the session turn fold (#1074 review finding)', () =>
       sessions: [],
     });
     expect(item.lifecycleLabel).toBe('Running');
+  });
+
+  test('a session-less chat with reported child work reads Running for background work', () => {
+    const [item] = buildHomeWorkItems({
+      chats: {
+        local: {
+          conversationId: 'no-session-child-work',
+          title: 'Background chat',
+          status: 'idle',
+          conversationActivity: {
+            conversationId: 'no-session-child-work',
+            asOfSequence: 8,
+            runningChildWork: { count: 1, producers: ['engine-subagent'] },
+          },
+          messages: [{ timestamp: 20 }],
+        },
+      } as any,
+      agents: [],
+      sessions: [],
+    });
+    expect(item.lifecycleLabel).toBe('Running');
+    expect(item.activeReason).toBe('background');
   });
 });
 

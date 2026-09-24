@@ -623,6 +623,12 @@ describe('#2457: Claude child work through OrchestrationService', () => {
       );
       expect(childOnlyFrame).toBeGreaterThanOrEqual(0);
       expect(providerFrame).toBeGreaterThan(childOnlyFrame);
+      // The provider turn.started binding is the immediate read after the
+      // provider takes over. Its pending fact must already be cleared there,
+      // before the eventual result/end-of-turn cleanup can mask a stale fact.
+      expect(
+        bindings[providerFrame].activity?.runningChildWork?.followUpPending,
+      ).toBeUndefined();
       expect(
         bindings
           .slice(childOnlyFrame, providerFrame + 1)
@@ -644,6 +650,70 @@ describe('#2457: Claude child work through OrchestrationService', () => {
       await settle();
     },
   );
+
+  test('provider turn.started clears a pending follow-up before its result', async () => {
+    const { service, threadId, pushMessage, bindings, persisted, query } =
+      await startService();
+    const capture = loadClaudeTaskCapture('background-agent');
+    const init = capture.find(
+      (line) =>
+        line.message?.type === 'system' && line.message.subtype === 'init',
+    )?.message;
+    const reply = capture.find(
+      (line) =>
+        line.message?.type === 'stream_event' &&
+        line.message.event.type === 'message_start',
+    )?.message;
+    expect(init).toBeDefined();
+    expect(reply).toBeDefined();
+    await pushMessage(init!);
+    expect(
+      (await service.readSession(threadId, INTERNAL_SESSION_READ_SCOPE))
+        ?.session.conversationActivity?.runningChildWork?.followUpPending,
+    ).toBe(true);
+    const providerReply = JSON.parse(JSON.stringify(reply)) as Record<
+      string,
+      unknown
+    >;
+    delete providerReply.user_message_uuid;
+    delete providerReply.user_message_uuids;
+    await pushMessage(providerReply as SDKMessage);
+    const started = bindings.find(
+      (frame) =>
+        frame.method === 'turn.started' &&
+        frame.activity?.openTurn?.trigger === 'provider',
+    );
+    expect(started).toBeDefined();
+    expect(
+      started?.activity?.runningChildWork?.followUpPending,
+    ).toBeUndefined();
+    expect(
+      (await service.readSession(threadId, INTERNAL_SESSION_READ_SCOPE))
+        ?.session.conversationActivity?.runningChildWork?.followUpPending,
+    ).toBeUndefined();
+    // The activity projection also clears on turn.started. Require the
+    // adapter's explicit false fact before any result/end cleanup, so that
+    // projection behavior cannot hide a missing publisher call.
+    const events = persisted();
+    const startedIndex = events.findIndex(
+      (event) =>
+        event.method === 'turn.started' &&
+        event.turnId === started?.activity?.openTurn?.turnId,
+    );
+    expect(startedIndex).toBeGreaterThanOrEqual(0);
+    expect(
+      events
+        .slice(startedIndex + 1)
+        .some(
+          (event) =>
+            event.method === 'extension.notification' &&
+            event.type === 'provider/follow-up-pending' &&
+            (event.payload as { pending?: boolean }).pending === false,
+        ),
+    ).toBe(true);
+    query.end();
+    await settle();
+  });
 
   test('stop-task: POST …/provider-tasks/:taskId/stop reaches Query.stopTask and the engine’s stopped settle cancels the child', async () => {
     const { query, threadId, routes, children, persisted, pushMessage } =
