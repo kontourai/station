@@ -46,6 +46,20 @@ const transport = createSelfHostedApplicationTransport({
 });
 ```
 
+The optional `createConnectionIdentity(signal)` input to
+`createBrowserPionConnection` is for a host-owned native signaling adapter. It
+returns one closed `{ clientId, nonce }` pair before peer or SDP creation; the
+client ID must be the native installation's pinned `clientInstanceId`, and the
+nonce must be a fresh canonical 32-byte base64url value. Connect copies and
+validates both values once, then uses that exact pair for broker open/read and
+Station-proof verification. An invalid, late, or failed provider refuses the
+attempt without falling back to browser-generated identity. The callback must
+not allocate a broker session or another resource: the connection owner cannot
+promise to cancel such an allocation through this public-identity seam. When
+the option is omitted, the browser continues to generate its own per-attempt
+ID and nonce. Supplying identity does not grant Station, Device, account, or
+Project authority.
+
 This is a composition example, not enrollment. Supply the returned transport to
 the application's existing SDK credential resolver. The package does not install
 a second resolver, persist routing secrets, approve keys, mint Device grants, or
