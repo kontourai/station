@@ -4397,17 +4397,14 @@ export function configureRuntimeRoutes(
             return [];
           return declaredPullRequestsForConversation(
             {
-              taskIds: () =>
-                context.taskGraphService.listTasks().map((task) => task.id),
               lineageSessionIds: (id) =>
                 (
                   context.orchestrationEventStore?.conversationSessions(id) ??
                   []
                 ).map((linked) => linked.sessionId),
-              keptForSession: (taskId, sessionId) =>
-                context.taskGraphService.listKeptDeclaredPullRequestsForSession(
-                  taskId,
-                  sessionId,
+              keptForSessions: (sessionIds) =>
+                context.taskGraphService.listKeptDeclaredPullRequestsForSessions(
+                  sessionIds,
                 ),
             },
             conversationId,

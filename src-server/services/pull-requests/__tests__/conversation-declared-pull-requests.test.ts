@@ -1,28 +1,32 @@
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import { declaredPullRequestsForConversation } from '../conversation-declared-pull-requests.js';
 
-const pr = (ref: string, owner = 'o') => ({
+const pr = (ref: string, session: string, owner = 'o') => ({
   provider: 'github',
   host: 'github.com',
   repository: { owner, name: 'r' },
   ref,
   keptAt: '2026-09-24T00:00:00Z',
+  session,
 });
 
 describe('pull requests a conversation declared', () => {
-  test('come from every Session in its lineage, once each', () => {
-    const kept: Record<string, ReturnType<typeof pr>[]> = {
-      'task-1|root': [pr('1')],
-      'task-1|successor': [pr('2'), pr('1', 'O')],
-      'task-2|handoff': [pr('3')],
-      'task-2|unrelated': [pr('9')],
-    };
+  test('come from every Session in its lineage, once each, in one read', () => {
+    const kept = [
+      pr('1', 'root'),
+      pr('2', 'successor'),
+      pr('1', 'successor', 'O'),
+      pr('3', 'handoff'),
+      pr('9', 'unrelated'),
+    ];
+    const keptForSessions = vi.fn((ids: readonly string[]) =>
+      kept.filter((keep) => ids.includes(keep.session)),
+    );
     const links = declaredPullRequestsForConversation(
       {
-        taskIds: () => ['task-1', 'task-2'],
         lineageSessionIds: (id) =>
           id === 'root' ? ['root', 'successor', 'handoff'] : [],
-        keptForSession: (task, session) => kept[`${task}|${session}`] ?? [],
+        keptForSessions,
       },
       'root',
     );
@@ -31,15 +35,15 @@ describe('pull requests a conversation declared', () => {
       source: 'task-declared',
       linkedBy: 'station.task-graph',
     });
+    expect(keptForSessions).toHaveBeenCalledTimes(1);
   });
 
   test('a conversation with no lineage asks its own id', () => {
     const links = declaredPullRequestsForConversation(
       {
-        taskIds: () => ['task-1'],
         lineageSessionIds: () => [],
-        keptForSession: (_task, session) =>
-          session === 'legacy' ? [pr('5')] : [],
+        keptForSessions: (ids) =>
+          ids.includes('legacy') ? [pr('5', 'legacy')] : [],
       },
       'legacy',
     );

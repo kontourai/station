@@ -16,11 +16,9 @@ interface KeptDeclaredPullRequest {
  */
 export function declaredPullRequestsForConversation(
   deps: {
-    taskIds: () => readonly string[];
     lineageSessionIds: (conversationId: string) => readonly string[];
-    keptForSession: (
-      taskId: string,
-      sessionId: string,
+    keptForSessions: (
+      sessionIds: readonly string[],
     ) => readonly KeptDeclaredPullRequest[];
   },
   conversationId: string,
@@ -30,27 +28,25 @@ export function declaredPullRequestsForConversation(
   ];
   const seen = new Set<string>();
   const links: ConversationPullRequestLink[] = [];
-  for (const taskId of deps.taskIds())
-    for (const sessionId of sessionIds)
-      for (const reference of deps.keptForSession(taskId, sessionId)) {
-        const key = JSON.stringify([
-          reference.provider,
-          reference.host.toLowerCase(),
-          reference.repository.owner.toLowerCase(),
-          reference.repository.name.toLowerCase(),
-          reference.ref,
-        ]);
-        if (seen.has(key)) continue;
-        seen.add(key);
-        links.push({
-          provider: reference.provider,
-          host: reference.host,
-          repository: reference.repository,
-          ref: reference.ref,
-          source: 'task-declared',
-          linkedAt: reference.keptAt,
-          linkedBy: 'station.task-graph',
-        });
-      }
+  for (const reference of deps.keptForSessions(sessionIds)) {
+    const key = JSON.stringify([
+      reference.provider,
+      reference.host.toLowerCase(),
+      reference.repository.owner.toLowerCase(),
+      reference.repository.name.toLowerCase(),
+      reference.ref,
+    ]);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    links.push({
+      provider: reference.provider,
+      host: reference.host,
+      repository: reference.repository,
+      ref: reference.ref,
+      source: 'task-declared',
+      linkedAt: reference.keptAt,
+      linkedBy: 'station.task-graph',
+    });
+  }
   return links;
 }
