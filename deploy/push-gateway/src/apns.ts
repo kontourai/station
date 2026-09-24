@@ -21,9 +21,15 @@ const UNREGISTERED_REASONS = new Set([
   'BadDeviceToken',
   'DeviceTokenNotForTopic',
 ]);
-// A channel that no longer exists (UNVERIFIED: names from Apple's broadcast
-// documentation, not yet observed live).
+// A channel that no longer exists. Verified against the sandbox 2026-09-24:
+// a broadcast to a deleted channel answers 400 ChannelNotRegistered, to an id
+// that never existed 400 BadChannelId. Mapped by reason, whatever the status.
 const CHANNEL_GONE_REASONS = new Set(['BadChannelId', 'ChannelNotRegistered']);
+// The app id lacks a capability the gateway needs (verified 2026-09-24: a
+// channel create for a bundle without broadcast answers 400
+// BroadcastFeatureNotEnabled). The gateway's configuration, not the Station's
+// request, is wrong: retryable for the caller, logged for the operator.
+const GATEWAY_CONFIG_REASONS = new Set(['BroadcastFeatureNotEnabled']);
 
 export type ApnsFailure =
   /** The push-to-start token no longer reaches an install. */
@@ -127,7 +133,9 @@ export class ApnsSender {
   ): Promise<{ kind: 'sent' } | Failure> {
     return this.push(
       `${pushHost(request.environment)}/4/broadcasts/apps/${request.bundleId}`,
-      // Broadcasts are addressed by channel; no apns-topic (UNVERIFIED).
+      // Broadcasts are addressed by channel and need no apns-topic; Apple
+      // refuses one without apns-expiration (400 BadExpirationDate), which
+      // liveHeaders always sets. Both verified 2026-09-24.
       {
         ...this.liveHeaders(request),
         'apns-channel-id': request.channelId ?? '',
@@ -149,7 +157,7 @@ export class ApnsSender {
     );
     if (!response) return { kind: 'unavailable', status: 504 };
     if (response.ok) return { kind: 'deleted' };
-    const outcome = await this.failure(response, false);
+    const outcome = await this.failure(response, 'delete');
     // Deleting a channel Apple says it does not have is what the caller wanted.
     return outcome.kind === 'channel-gone' ? { kind: 'deleted' } : outcome;
   }
@@ -170,7 +178,7 @@ export class ApnsSender {
       ),
     );
     if (!response) return { kind: 'unavailable', status: 504 };
-    if (!response.ok) return this.failure(response, false);
+    if (!response.ok) return this.failure(response, 'channel');
     const channelId = response.headers.get('apns-channel-id');
     if (!channelId || !isApnsChannelId(channelId)) {
       console.error('apns channel create returned no usable channel id');
@@ -197,7 +205,7 @@ export class ApnsSender {
     const response = await this.call(url, 'POST', headers, body);
     if (!response) return { kind: 'unavailable', status: 504 };
     if (response.ok) return { kind: 'sent' };
-    return this.failure(response, deviceAddressed);
+    return this.failure(response, deviceAddressed ? 'device' : 'channel');
   }
 
   private async call(
@@ -225,17 +233,31 @@ export class ApnsSender {
     }).catch(() => null);
   }
 
-  /** Mapped by Apple's reason; a bare status only decides retryability. */
+  /**
+   * Mapped by Apple's reason; a bare status only decides retryability.
+   * `target` is what the request addressed: a device (push-to-start), a
+   * channel (create or broadcast), or a channel being deleted.
+   */
   private async failure(
     response: Response,
-    deviceAddressed: boolean,
+    target: 'device' | 'channel' | 'delete',
   ): Promise<Failure> {
     const reason = await reasonOf(response);
     const { status } = response;
     if (reason && CHANNEL_GONE_REASONS.has(reason))
       return { kind: 'channel-gone' };
-    if (deviceAddressed && reason && UNREGISTERED_REASONS.has(reason))
+    // Verified 2026-09-24: deleting an unknown or already-deleted channel
+    // answers 404 BadPath, not BadChannelId. The path is a constant this code
+    // builds, and a genuinely wrong one would already fail every create and
+    // start, so on a delete it means the channel is gone.
+    if (target === 'delete' && status === 404 && reason === 'BadPath')
+      return { kind: 'channel-gone' };
+    if (target === 'device' && reason && UNREGISTERED_REASONS.has(reason))
       return { kind: 'unregistered' };
+    if (reason && GATEWAY_CONFIG_REASONS.has(reason)) {
+      console.error(`apns ${status} (gateway configuration fault): ${reason}`);
+      return { kind: 'unavailable', status: 503 };
+    }
     if (status === 403 || status === 429) {
       // A provider-token, key or throttling problem is the gateway's own, not
       // the Station's: retryable for the caller, the reason stays in the log.

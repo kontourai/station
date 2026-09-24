@@ -128,7 +128,8 @@ export async function fakeApnsKey() {
 }
 
 export const PUSH_TO_START_TOKEN = 'ab'.repeat(40);
-export const CHANNEL_ID = 'dHN0LXNyY2gtY2hubA==';
+// The shape Apple issues (verified 2026-09-24): 24 characters of standard base64.
+export const CHANNEL_ID = 'Pj/jgLx+Qk2dW9sTfQ0zAA==';
 export const REGISTRATION_ID = 'r'.repeat(22);
 export const SEALED = 'S'.repeat(400);
 /** Well-formed but proves nothing; tests that need a valid one sign it. */

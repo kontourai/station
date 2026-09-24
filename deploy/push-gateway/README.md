@@ -26,7 +26,7 @@ narrow limit never spends a wider, shared budget.
 | `/v1/apns/live-activity`, start | `{ bundleId, environment, event: "start", pushToStartToken, registrationId, sealed, alert, timestamp, staleAt }` (no channel) | 200 `{ result: "sent", channelId, channelAuth }`, 410 `unregistered`, 422 `rejected`, 503 `unavailable` |
 | `/v1/apns/live-activity`, update | `{ bundleId, environment, event: "update", channelId, channelAuth, registrationId, sealed, alert, timestamp, staleAt }` | 200 `{ result: "sent" }` (plus a fresh `channelAuth` after secret rotation), 403 `channel-unauthorized`, 410 `channel-gone`, 422, 503 |
 | `/v1/apns/live-activity`, end | as update, with `dismissAt` instead of `staleAt` | as update |
-| `/v1/apns/channels` | `{ op: "delete", bundleId, environment, channelId, channelAuth }` | 200 `{ result: "deleted" }` (a channel Apple reports as `BadChannelId`/`ChannelNotRegistered` counts as deleted), 403 `channel-unauthorized`, 422, 503 |
+| `/v1/apns/channels` | `{ op: "delete", bundleId, environment, channelId, channelAuth }` | 200 `{ result: "deleted" }` (a channel Apple no longer has, `404 BadPath` on a delete, counts as deleted), 403 `channel-unauthorized`, 422, 503 |
 
 Rate-limit refusals are 429 `{ error: "rate limited" }` and malformed bodies
 400 `{ error: <reason> }` on every route.
@@ -68,11 +68,39 @@ APNs' own status and reason are never relayed: they would make the gateway an
 oracle for whether a token or channel is live. Outcomes follow Apple's reason,
 not its bare status: `Unregistered`, `BadDeviceToken` and
 `DeviceTokenNotForTopic` on a start mean `unregistered`; `BadChannelId` and
-`ChannelNotRegistered` mean `channel-gone`. A 404 with any other reason is
-`rejected` and logged, because a wrong path answers 404 too. A 403 (a bad or
-expired provider token, a revoked key) or a 429 (Apple throttling the gateway)
-is the gateway's own fault: the caller gets a retryable 503 and the reason goes
-to the error log.
+`ChannelNotRegistered` mean `channel-gone` whatever the status (Apple sends
+them with 400). On a delete, `404 BadPath` is Apple's answer for a channel it
+no longer has, so it counts as deleted; the path is built by this code, and a
+wrong one would already fail every create and start. Any other 404 is
+`rejected` and logged. A 403 (a bad or expired provider token, a revoked key),
+a 429 (Apple throttling the gateway) or `BroadcastFeatureNotEnabled` (the
+bundle's app id lacks the broadcast capability) is the gateway's own fault:
+the caller gets a retryable 503 and the reason goes to the error log.
+
+### Verified against the APNs sandbox (2026-09-24)
+
+Probed with the real key on a push- and broadcast-enabled test bundle:
+
+- Channel create: `POST …:2195/1/apps/<bundle>/channels` with
+  `{"message-storage-policy":1,"push-type":"LiveActivity"}` answers 201 with an
+  empty body and the id in the `apns-channel-id` header (24 characters of
+  standard base64, `/`, `+` and `=` included). Read (`GET`, same path and
+  header) answers 200 with the channel's policy; list is `GET
+  /1/apps/<bundle>/all-channels` → `{"channels":[…]}`.
+- Delete: `DELETE`, same path and header → 204; an unknown or already-deleted
+  channel → 404 `BadPath`.
+- Broadcast: `POST /4/broadcasts/apps/<bundle>` with `apns-channel-id`,
+  `apns-push-type: liveactivity`, `apns-priority` and `apns-expiration`, no
+  `apns-topic` → 200. Without `apns-expiration` → 400 `BadExpirationDate`.
+  An `end` carrying the alert at priority 10 → 200.
+- Broadcast to a deleted channel → 400 `ChannelNotRegistered`; to an id that
+  never existed → 400 `BadChannelId`.
+- Push-to-start to a bogus token → 400 `BadDeviceToken`.
+- Channel create for a bundle without the broadcast capability → 400
+  `BroadcastFeatureNotEnabled`.
+
+Not yet observed live: a successful push-to-start reaching a device, a
+production-environment call, and Apple's channel quota.
 
 ## Check
 

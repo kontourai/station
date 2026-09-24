@@ -44,7 +44,7 @@ interface Recorded {
   body: string;
 }
 
-const NEW_CHANNEL = 'bmV3LWNoYW5uZWwtaWQ=';
+const NEW_CHANNEL = 'n3w+Ch4nNel/Id0123456A==';
 const SECRETS = { current: CHANNEL_AUTH_SECRET };
 
 function headerRecord(init: HeadersInit | undefined): Record<string, string> {
@@ -507,7 +507,9 @@ test('maps each APNs answer by reason, not bare status', async () => {
       : Response.json({ reason }, { status });
   const cases: Array<[Event, () => Response, number, string]> = [
     ['update', apns(400, 'BadChannelId'), 410, 'channel-gone'],
-    ['end', apns(410, 'ChannelNotRegistered'), 410, 'channel-gone'],
+    // Apple answers both with 400 (verified 2026-09-24): the reason decides.
+    ['end', apns(400, 'ChannelNotRegistered'), 410, 'channel-gone'],
+    ['update', apns(410, 'ChannelNotRegistered'), 410, 'channel-gone'],
     // A bare 404 or 410 is not evidence the channel is gone.
     ['update', apns(404), 422, 'rejected'],
     ['end', apns(404, 'BadPath'), 422, 'rejected'],
@@ -547,18 +549,49 @@ test('maps each APNs answer by reason, not bare status', async () => {
 });
 
 test('delete: an already-gone channel is deleted, a bare 404 is not', async () => {
-  const gone = upstream({
-    delete: () => Response.json({ reason: 'BadChannelId' }, { status: 400 }),
-  });
-  const deleted = await del(await config({ fetchImpl: gone.fetchImpl }));
-  assert.equal(deleted.status, 200);
-  assert.deepEqual(await deleted.json(), { result: 'deleted' });
+  // Apple's answer for an unknown or already-deleted channel (verified
+  // 2026-09-24) is 404 BadPath; BadChannelId is accepted as well.
+  for (const reply of [
+    () => Response.json({ reason: 'BadPath' }, { status: 404 }),
+    () => Response.json({ reason: 'BadChannelId' }, { status: 400 }),
+  ]) {
+    const gone = upstream({ delete: reply });
+    const deleted = await del(await config({ fetchImpl: gone.fetchImpl }));
+    assert.equal(deleted.status, 200);
+    assert.deepEqual(await deleted.json(), { result: 'deleted' });
+  }
 
-  const bare = upstream({ delete: () => new Response(null, { status: 404 }) });
-  const refused = await del(await config({ fetchImpl: bare.fetchImpl }));
-  assert.equal(refused.status, 422);
-  assert.deepEqual(await refused.json(), { result: 'rejected' });
+  for (const reply of [
+    () => new Response(null, { status: 404 }),
+    () => Response.json({ reason: 'NotFound' }, { status: 404 }),
+    // BadPath means "gone" only for a delete, whatever the status.
+    () => Response.json({ reason: 'BadPath' }, { status: 400 }),
+  ]) {
+    const bare = upstream({ delete: reply });
+    const refused = await del(await config({ fetchImpl: bare.fetchImpl }));
+    assert.equal(refused.status, 422);
+    assert.deepEqual(await refused.json(), { result: 'rejected' });
+  }
   assert.ok(errors.some((line) => line.includes('404')));
+});
+
+test('a bundle without the broadcast capability is a gateway configuration fault', async () => {
+  const { apple, fetchImpl } = upstream({
+    create: () =>
+      Response.json({ reason: 'BroadcastFeatureNotEnabled' }, { status: 400 }),
+  });
+  const response = await live(await config({ fetchImpl }), 'start');
+  assert.equal(response.status, 503);
+  assert.deepEqual(await response.json(), { result: 'unavailable' });
+  // No channel was created, so there is nothing to delete and no start.
+  assert.deepEqual(apple().map(kindOf), ['create']);
+  assert.ok(
+    errors.some(
+      (line) =>
+        line.includes('configuration fault') &&
+        line.includes('BroadcastFeatureNotEnabled'),
+    ),
+  );
 });
 
 test('the channel route no longer creates channels', async () => {

@@ -25,8 +25,10 @@ const MAX_STALE_AHEAD_SECONDS = 8 * 60 * 60;
 const MAX_DISMISS_AHEAD_SECONDS = 4 * 60 * 60;
 
 const TOKEN = /^(?:[0-9a-f]{2}){32,100}$/i;
-// Apple's broadcast channel ids are base64 (UNVERIFIED beyond observed shape).
-// The id travels in a header, so the pattern also excludes CR/LF.
+// Apple's broadcast channel ids are standard base64 (observed 2026-09-24: 24
+// characters, e.g. with '/', '+' and '=' padding). The length bound is kept
+// loose in case Apple lengthens them. The id travels in a header, so the
+// pattern also excludes CR/LF.
 const CHANNEL_ID = /^[A-Za-z0-9+/]{4,128}={0,2}$/;
 const REGISTRATION_ID = /^[A-Za-z0-9_-]{22,64}$/;
 const BASE64URL = /^[A-Za-z0-9_-]+$/;
