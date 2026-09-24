@@ -127,6 +127,7 @@ function harness(
     registered,
     unregistered,
     store,
+    storage,
     setToken: (next: string) => {
       token = next;
     },
@@ -172,9 +173,8 @@ describe('agent activity controller', () => {
     });
     expect(outcome.status).toBe('enabled');
     // The card key goes to the plugin only; WebView storage never holds it.
-    expect(JSON.stringify(h.controller.registration(STATION))).not.toContain(
-      PAYLOAD_KEY,
-    );
+    // Check the stored text itself: reading back strips unknown fields.
+    expect([...h.storage.values()].join('')).not.toContain(PAYLOAD_KEY);
     expect(h.controller.registration(STATION)).toEqual({
       registrationId: REGISTRATION_ID,
       stationId: STATION,
