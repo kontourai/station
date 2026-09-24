@@ -210,6 +210,7 @@ import type { AdoptionLedger, AdoptionReservation } from './adoption-ledger.js';
 import { ApprovalPosture, approvalKnobSupported } from './approval-posture.js';
 import { AttachedSessionAdoption } from './attached-session-adoption.js';
 import { type AttachedProjectRoot } from './attached-session-follow-service.js';
+import { ChildWorkProjection } from './child-work-projection.js';
 import {
   ClientOriginTurnPropagation,
   withClientOrigin,
@@ -1430,6 +1431,16 @@ export class OrchestrationService {
    */
   private readonly turnProgress: TurnProgressTracker;
   /**
+   * #2456: process-local child work (engine subagents), served on session
+   * summaries beside `turnProgress` so the reconnect snapshot carries it.
+   */
+  private readonly childWork = new ChildWorkProjection();
+  /** #2456: the one reader every session-summary emission path hands over. */
+  private readonly readChildWork = (
+    threadId: string,
+    provider: string | undefined,
+  ) => this.childWork.read(threadId, provider);
+  /**
    * #2309: the conversation activity projection. Absent without an event
    * store: it folds committed events and has nothing to fold without one.
    */
@@ -1762,6 +1773,7 @@ export class OrchestrationService {
       canUserReadSession: (threadId, authority) =>
         this.canUserReadSession(threadId, authority),
       readTurnProgress: (threadId) => this.turnProgress.read(threadId),
+      readChildWork: this.readChildWork,
       readConversationActivity: (threadId) =>
         this.conversationActivity?.readForThread(threadId),
       observeAnswerability: (threadId, provider, observedAt) =>
@@ -1940,6 +1952,7 @@ export class OrchestrationService {
           turnProgress: this.turnProgress.read(
             persisted?.threadId ?? loaded?.threadId ?? '',
           ),
+          readChildWork: this.readChildWork,
           answerability: this.observeAnswerability(
             persisted?.threadId ?? loaded?.threadId ?? '',
             (loaded ?? persisted)?.provider,
@@ -3462,6 +3475,7 @@ export class OrchestrationService {
           eventCount,
           ...(conversationDraftFacts ? { conversationDraftFacts } : {}),
           turnProgress: this.turnProgress.read(threadId),
+          readChildWork: this.readChildWork,
           ...(conversationActivity ? { conversationActivity } : {}),
           ...(conversationFirstPromptedTurn
             ? { conversationFirstPromptedTurn }
@@ -3793,6 +3807,7 @@ export class OrchestrationService {
         events,
         ...(conversationDraftFacts ? { conversationDraftFacts } : {}),
         turnProgress: this.turnProgress.read(threadId),
+        readChildWork: this.readChildWork,
         ...(conversationActivity ? { conversationActivity } : {}),
         ...(conversationFirstPromptedTurn
           ? { conversationFirstPromptedTurn }
@@ -7495,6 +7510,8 @@ export class OrchestrationService {
     if (divergent.ownerCache)
       this.sessionAuthz.invalidateSessionOwner(threadId);
     if (divergent.turnProgress) this.turnProgress.forgetThread(threadId);
+    // #2456: new state, so unconditional — no caller ever kept it.
+    this.childWork.forgetThread(threadId);
   }
 
   private async readPrerequisites(
@@ -7989,6 +8006,10 @@ export class OrchestrationService {
         );
       }
     }
+    // #2456: child work (engine subagents) folds here, beside turnProgress,
+    // so session summaries — and the reconnect snapshot built from them —
+    // carry the live set.
+    this.childWork.observe(event);
     const projectedEvent = this.options.eventStore
       ? this.options.eventStore.projectLiveEvent(event)
       : event;
@@ -8518,6 +8539,7 @@ export class OrchestrationService {
         loaded,
         events,
         turnProgress: this.turnProgress.read(id),
+        readChildWork: this.readChildWork,
         answerability: this.observeAnswerability(
           id,
           (loaded ?? persisted)?.provider,

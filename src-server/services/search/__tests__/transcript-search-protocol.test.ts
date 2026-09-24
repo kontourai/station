@@ -1,6 +1,7 @@
 import { expect, test, vi } from 'vitest';
 import {
   parseTranscriptReadRequest,
+  parseTranscriptReadResult,
   transcriptMessageRequest,
 } from '../transcript-search-protocol.js';
 
@@ -55,4 +56,42 @@ test('owner alias lists are bounded and cannot execute accessors', () => {
     parseTranscriptReadRequest({ ...request, ownerUserIds: aliases }),
   ).toBeNull();
   expect(read).not.toHaveBeenCalled();
+});
+
+/**
+ * #2460: the worker's refusal carries its error CLASS so the owner's log can
+ * name it. The wire accepts exactly the bounded class fields — a message, or
+ * any free text that could quote a query or a transcript, is refused.
+ */
+test('an unavailable reply carries only a bounded worker-authored cause', () => {
+  const parsed = parseTranscriptReadRequest(request)!;
+  const cause = {
+    kind: 'query-error',
+    name: 'Error',
+    code: 'ERR_SQLITE_ERROR',
+    errcode: 1,
+  };
+  expect(
+    parseTranscriptReadResult({ state: 'unavailable', cause }, parsed),
+  ).toEqual({ state: 'unavailable', cause });
+  expect(parseTranscriptReadResult({ state: 'unavailable' }, parsed)).toEqual({
+    state: 'unavailable',
+  });
+  for (const invalid of [
+    { ...cause, message: 'no such table: secret query' },
+    { ...cause, kind: 'worker-exit' },
+    { ...cause, name: 'has spaces and a query' },
+    { ...cause, code: 'lowercase' },
+    { ...cause, errcode: 1.5 },
+    { name: 'Error' },
+  ])
+    expect(
+      parseTranscriptReadResult(
+        { state: 'unavailable', cause: invalid },
+        parsed,
+      ),
+    ).toBeNull();
+  expect(
+    parseTranscriptReadResult({ state: 'available', rows: [], cause }, parsed),
+  ).toBeNull();
 });

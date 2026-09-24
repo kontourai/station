@@ -1,4 +1,5 @@
 import { _getApiBase, getPluginHeaders } from './api-core';
+import { authenticatedFetch } from './client/http';
 
 function isJsonRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -41,7 +42,7 @@ export async function requestKnowledgeJson<T>(
   }
   const apiBase = await _getApiBase();
   const hasBody = options?.body !== undefined;
-  const res = await fetch(`${apiBase}${path}`, {
+  const res = await authenticatedFetch(`${apiBase}${path}`, {
     method: options?.method,
     headers: getPluginHeaders(
       hasBody ? { 'Content-Type': 'application/json' } : undefined,

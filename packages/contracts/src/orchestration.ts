@@ -1,5 +1,6 @@
 import type { AgentId, EngineId } from './agent-identity.js';
 import type { AttentionRequestReference } from './attention.js';
+import type { SessionChildWork } from './child-work.js';
 import type { ClientOrigin } from './client-origin.js';
 import type { ConnectionRecoveryProjection } from './connection-recovery.js';
 import type {
@@ -803,6 +804,13 @@ export interface OrchestrationSessionSummary extends ProviderSession {
    */
   displayTitle?: string;
   delegation?: OrchestrationDelegationContext;
+  /**
+   * #2456: this session's child work — `children` (what its engine reports
+   * running under it; process-local like `turnProgress`, absent when nothing
+   * was observed) and `asChild` (a Station delegate as its parent's child).
+   * See `SessionChildWork`.
+   */
+  childWork?: SessionChildWork;
   /** Closed, server-derived input provenance; unknown origins stay absent. */
   inputOrigin?: OrchestrationInputOrigin;
   /**

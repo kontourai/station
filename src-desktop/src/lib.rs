@@ -4249,6 +4249,28 @@ enum ParsedStationProfileLockRecord {
 }
 
 const PROFILE_LOCK_STALE_AFTER: Duration = Duration::from_secs(5 * 60);
+// How long a desktop writer keeps retrying a saved Station lock (the
+// profiles.json lock and the genesis lock) held by a LIVE owner. Wall-clock,
+// not an attempt count: each attempt also runs the stale-lock probe, whose
+// cost varies by host, so a fixed number of naps measured the host rather
+// than the holder. The deadline stops new retries; the call can still run
+// past it by a probe already in flight plus the final probe taken at expiry.
+// The CLI uses the same bound for the same locks (packages/cli
+// profile-store.ts).
+const PROFILE_LOCK_WAIT: Duration = Duration::from_secs(10);
+// Mobile takes the profile lock on every saved Station READ, from Tauri sync
+// commands on the main thread, where Android reports an ANR after 5s. Keep
+// its wait at the old nominal budget (500 naps of 10ms), never the desktop
+// bound: a crashed v1 lock stays unreclaimable for five minutes, and each
+// read in that window waits this long before reporting busy.
+#[cfg(any(mobile, test))]
+const PROFILE_LOCK_MOBILE_WAIT: Duration = Duration::from_secs(5);
+// The stale-lock probe creates and fsyncs a guard lock and resolves the
+// owner's birth. It runs once on first contention (a dead holder is reclaimed
+// at once), then at this interval, and once more before giving up, rather than
+// on every 10ms nap where it competes with the holder being waited for.
+const PROFILE_LOCK_RECLAIM_PROBE_INTERVAL: Duration = Duration::from_millis(250);
+const PROFILE_LOCK_NAP: Duration = Duration::from_millis(10);
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum ProfileLockOwnerLiveness {
@@ -4473,7 +4495,7 @@ fn profile_lock_record_bytes(birth: &str) -> Result<Vec<u8>, String> {
     Ok(contents)
 }
 
-#[cfg(mobile)]
+#[cfg(any(mobile, test))]
 fn legacy_profile_lock_record_bytes() -> Result<Vec<u8>, String> {
     let created_at = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -4499,9 +4521,15 @@ fn lock_station_profiles_with_identity(
     lock_station_profiles_with_record(path, &|| profile_lock_record_bytes(birth), birth_for_pid)
 }
 
-#[cfg(mobile)]
+#[cfg(any(mobile, test))]
 fn lock_station_profiles_legacy(path: &std::path::Path) -> Result<StationProfileLock, String> {
-    lock_station_profiles_with_record(path, &legacy_profile_lock_record_bytes, &|_| Ok(None))
+    lock_station_profiles_with_record_within(
+        path,
+        &legacy_profile_lock_record_bytes,
+        &|_| Ok(None),
+        PROFILE_LOCK_MOBILE_WAIT,
+        PROFILE_LOCK_RECLAIM_PROBE_INTERVAL,
+    )
 }
 
 fn lock_station_profiles_with_record(
@@ -4509,17 +4537,34 @@ fn lock_station_profiles_with_record(
     record_bytes: &dyn Fn() -> Result<Vec<u8>, String>,
     birth_for_pid: &dyn Fn(u32) -> Result<Option<String>, String>,
 ) -> Result<StationProfileLock, String> {
+    lock_station_profiles_with_record_within(
+        path,
+        record_bytes,
+        birth_for_pid,
+        PROFILE_LOCK_WAIT,
+        PROFILE_LOCK_RECLAIM_PROBE_INTERVAL,
+    )
+}
+
+fn lock_station_profiles_with_record_within(
+    path: &std::path::Path,
+    record_bytes: &dyn Fn() -> Result<Vec<u8>, String>,
+    birth_for_pid: &dyn Fn(u32) -> Result<Option<String>, String>,
+    wait: Duration,
+    probe_interval: Duration,
+) -> Result<StationProfileLock, String> {
     #[cfg(unix)]
     use std::os::unix::fs::OpenOptionsExt;
 
     let lock_path = path.with_extension("json.lock");
     let mut reclaimed_stale_lock = false;
     // Windows hardens and verifies each newly-created lock through the ACL
-    // authority. A competing bundled channel can therefore hold the lock for
-    // longer than the old one-second poll window; keep the wait bounded to
-    // five seconds rather than turning ordinary Stable/Beta/Nightly startup
-    // contention into a false "busy" failure.
-    for _ in 0..500 {
+    // authority, and a competing CLI or bundled channel may be fsyncing its
+    // publication. Wait boundedly for that live holder rather than turning
+    // ordinary Stable/Beta/Nightly/CLI contention into a false "busy" failure.
+    let started = std::time::Instant::now();
+    let mut next_probe_at: Option<std::time::Instant> = None;
+    loop {
         let mut options = std::fs::OpenOptions::new();
         options.write(true).create_new(true);
         #[cfg(unix)]
@@ -4539,13 +4584,22 @@ fn lock_station_profiles_with_record(
                 return Ok(lock);
             }
             Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+                let now = std::time::Instant::now();
+                let expired = now.duration_since(started) >= wait;
                 if !reclaimed_stale_lock
-                    && reclaim_stale_profile_lock(&lock_path, record_bytes, birth_for_pid)?
+                    && (expired || next_probe_at.is_none_or(|at| now >= at))
                 {
-                    reclaimed_stale_lock = true;
-                    continue;
+                    next_probe_at = Some(now + probe_interval);
+                    if reclaim_stale_profile_lock(&lock_path, record_bytes, birth_for_pid)? {
+                        reclaimed_stale_lock = true;
+                        continue;
+                    }
                 }
-                std::thread::sleep(Duration::from_millis(10));
+                let elapsed = started.elapsed();
+                if expired || elapsed >= wait {
+                    break;
+                }
+                std::thread::sleep(PROFILE_LOCK_NAP.min(wait - elapsed));
             }
             Err(error) => return Err(format!("lock saved Station metadata: {error}")),
         }
@@ -4895,15 +4949,95 @@ fn station_profile_store_write_internal(
     expected_revision: u64,
     pairing_handle: Option<String>,
 ) -> Result<(), String> {
+    station_profile_store_write_with_host(
+        &AppProfileWriteHost(app),
+        authority,
+        pending,
+        contents,
+        expected_revision,
+        pairing_handle,
+    )
+}
+
+// Only host I/O varies in tests. The CAS, pending-handle transitions, cleanup,
+// and publication boundary below are the same function used by Tauri commands.
+trait ProfileWriteHost {
+    fn path(&self) -> Result<std::path::PathBuf, String>;
+    fn genesis(&self, root: &std::path::Path) -> Result<(), String>;
+    fn lock(&self, path: &std::path::Path) -> Result<StationProfileLock, String>;
+    fn invalidate_removed_routes(
+        &self,
+        current: &CredentialProfileStore,
+        next: &CredentialProfileStore,
+    ) -> Result<(), String>;
+    fn postpublication_trust(&self, path: &std::path::Path) -> Result<(), String>;
+    fn staged_path(&self, generated: std::path::PathBuf) -> std::path::PathBuf {
+        generated
+    }
+    fn notify(&self) {}
+}
+
+struct AppProfileWriteHost<'a>(&'a AppHandle);
+
+impl ProfileWriteHost for AppProfileWriteHost<'_> {
+    fn path(&self) -> Result<std::path::PathBuf, String> {
+        station_profiles_path(self.0)
+    }
+    fn genesis(&self, root: &std::path::Path) -> Result<(), String> {
+        #[cfg(not(mobile))]
+        {
+            ensure_station_profile_store_genesis(self.0, root)
+        }
+        #[cfg(mobile)]
+        {
+            let _ = root;
+            Ok(())
+        }
+    }
+    fn lock(&self, path: &std::path::Path) -> Result<StationProfileLock, String> {
+        lock_station_profiles_for_app(self.0, path)
+    }
+    fn invalidate_removed_routes(
+        &self,
+        current: &CredentialProfileStore,
+        next: &CredentialProfileStore,
+    ) -> Result<(), String> {
+        #[cfg(not(mobile))]
+        {
+            relay_grant_vault::invalidate_removed_routes(self.0, current, next)
+        }
+        #[cfg(mobile)]
+        {
+            let _ = (current, next);
+            Ok(())
+        }
+    }
+    fn postpublication_trust(&self, path: &std::path::Path) -> Result<(), String> {
+        crate::windows_path_trust::ensure(&[(crate::windows_path_trust::TrustKind::File, path)])
+    }
+    fn notify(&self) {
+        #[cfg(not(mobile))]
+        notify_startup_readiness_if_waiting(self.0);
+    }
+}
+
+fn station_profile_store_write_with_host(
+    host: &impl ProfileWriteHost,
+    authority: &NativeProfileAuthority,
+    pending: &NativePendingPairingCredentials,
+    contents: String,
+    expected_revision: u64,
+    pairing_handle: Option<String>,
+) -> Result<(), String> {
     if contents.len() > 1024 * 1024 {
         return Err("saved Station metadata is too large".to_string());
     }
     let next_store = parse_station_profile_store(&contents)?;
-    let path = station_profiles_path(app)?;
+    let path = host.path()?;
     #[cfg(not(mobile))]
     {
         let root = station_profile_store_root(&path)?;
-        ensure_station_profile_store_genesis(app, root)?;
+        host.genesis(root)?;
     }
     let parent = path
         .parent()
@@ -4921,7 +5055,7 @@ fn station_profile_store_write_internal(
             .map_err(|error| format!("secure saved Station directory: {error}"))?;
     }
     validate_station_profile_store(&path)?;
-    let _lock = lock_station_profiles_for_app(app, &path)?;
+    let _lock = host.lock(&path)?;
     // Serialize all pairing-handle phases across the durable CAS. This keeps a
     // handle one-use without ever consuming it before the write it authorizes.
     let mut pending_entries = if pairing_handle.is_some() {
@@ -5026,17 +5160,22 @@ fn station_profile_store_write_internal(
             renderer_store_references_are_authorized(&state, &next_store)?;
         }
     }
-    #[cfg(not(mobile))]
-    relay_grant_vault::invalidate_removed_routes(app, &current_store, &next_store)?;
-    let temporary = path.with_extension(format!(
-        "{}.{}.tmp",
-        std::process::id(),
-        SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map_err(|error| format!("clock for profile write: {error}"))?
-            .as_nanos()
-    ));
+    let mut temporary = None;
+    let mut published = false;
     let write_result = (|| -> Result<(), String> {
+        // Post-transition prepublication errors must reach the rollback below.
+        // Grant invalidation still precedes profile publication: a failed
+        // later write must never revive a revoked grant.
+        host.invalidate_removed_routes(&current_store, &next_store)?;
+        let generated_staged = path.with_extension(format!(
+            "{}.{}.tmp",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map_err(|error| format!("clock for profile write: {error}"))?
+                .as_nanos()
+        ));
+        let staged = host.staged_path(generated_staged);
         #[cfg(unix)]
         use std::os::unix::fs::OpenOptionsExt;
         let mut options = std::fs::OpenOptions::new();
@@ -5044,11 +5183,14 @@ fn station_profile_store_write_internal(
         #[cfg(unix)]
         options.mode(0o600);
         let mut file = options
-            .open(&temporary)
+            .open(&staged)
             .map_err(|error| format!("create saved Station temp file: {error}"))?;
+        // Only this successful create_new() owns the staging path. A
+        // collision must never delete another writer's existing file.
+        temporary = Some(staged.clone());
         crate::windows_path_trust::ensure(&[(
             crate::windows_path_trust::TrustKind::File,
-            &temporary,
+            &staged,
         )])?;
         file.write_all(contents.as_bytes())
             .map_err(|error| format!("write saved Station temp file: {error}"))?;
@@ -5057,12 +5199,13 @@ fn station_profile_store_write_internal(
         // Windows ReplaceFileW cannot consume a replacement file while this
         // process still owns its descriptor; POSIX permits the old ordering.
         drop(file);
-        replace_station_profile_store(&temporary, &path)?;
-        crate::windows_path_trust::ensure(&[(crate::windows_path_trust::TrustKind::File, &path)])?;
+        replace_station_profile_store(&staged, &path)?;
+        published = true;
+        host.postpublication_trust(&path)?;
         Ok(())
     })();
-    if temporary.exists() {
-        let _ = std::fs::remove_file(&temporary);
+    if let Some(temporary) = temporary.filter(|temporary| temporary.exists()) {
+        let _ = std::fs::remove_file(temporary);
     }
     if write_result.is_ok() {
         let mut state = authority
@@ -5090,7 +5233,7 @@ fn station_profile_store_write_internal(
                 entries.remove(handle);
             }
         }
-    } else if let Some((reference_key, handle)) = transition_rollback {
+    } else if let Some((reference_key, handle)) = transition_rollback.filter(|_| !published) {
         let mut state = authority
             .0
             .lock()
@@ -5103,12 +5246,11 @@ fn station_profile_store_write_internal(
             entry.phase = NativePairingPhase::AwaitingRequiresAuth;
         }
     }
-    #[cfg(not(mobile))]
     if write_result.is_ok() {
         // A cold first run may create or repair this channel's bundled
         // credential after the first readiness attempt. Wake the existing
         // bounded proof without coupling it to renderer hydration order.
-        notify_startup_readiness_if_waiting(app);
+        host.notify();
     }
     write_result
 }
@@ -10736,6 +10878,110 @@ If a stable instance is running, this launch will focus its window and exit.",
 mod tests {
     use super::*;
 
+    #[cfg(not(mobile))]
+    struct WriterTestHost {
+        path: std::path::PathBuf,
+        staged_path: Option<std::path::PathBuf>,
+        fail_invalidation: bool,
+        fail_postpublication_trust: bool,
+    }
+
+    #[cfg(not(mobile))]
+    impl ProfileWriteHost for WriterTestHost {
+        fn path(&self) -> Result<std::path::PathBuf, String> { Ok(self.path.clone()) }
+        fn genesis(&self, root: &std::path::Path) -> Result<(), String> {
+            assert!(station_profile_store_is_initialized(root)?);
+            Ok(())
+        }
+        fn lock(&self, path: &std::path::Path) -> Result<StationProfileLock, String> { lock_station_profiles(path) }
+        fn invalidate_removed_routes(&self, _: &CredentialProfileStore, _: &CredentialProfileStore) -> Result<(), String> {
+            if self.fail_invalidation { Err("injected relay grant invalidation failure".into()) } else { Ok(()) }
+        }
+        fn postpublication_trust(&self, path: &std::path::Path) -> Result<(), String> {
+            if self.fail_postpublication_trust { Err("injected postpublication trust failure".into()) }
+            else { crate::windows_path_trust::ensure(&[(crate::windows_path_trust::TrustKind::File, path)]) }
+        }
+        fn staged_path(&self, generated: std::path::PathBuf) -> std::path::PathBuf {
+            self.staged_path.clone().unwrap_or(generated)
+        }
+    }
+
+    #[cfg(not(mobile))]
+    fn writer_pairing_fixture() -> (
+        tempfile::TempDir,
+        std::path::PathBuf,
+        NativeProfileAuthority,
+        NativePendingPairingCredentials,
+        String,
+        String,
+        WriterTestHost,
+    ) {
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory.path();
+        ensure_station_profile_store_root(root).unwrap();
+        std::fs::create_dir(root.join("config")).unwrap();
+        write_profile_store_genesis_marker(root).unwrap();
+        let path = root.join("config/profiles.json");
+        write_empty_station_profile_store(&path).unwrap();
+        let reference = NativeCredentialReference {
+            kind: "station-bearer".into(),
+            id: "test-host-allocated".into(),
+        };
+        let handle = "test-pairing-handle".to_string();
+        let pending = NativePendingPairingCredentials::default();
+        pending.0.lock().unwrap().insert(handle.clone(), PendingPairingCredential {
+            credential: "secret-never-leaves-native-state".into(),
+            reference,
+            exact_origin: "https://one.example".into(),
+            environment_id: "environment-one".into(),
+            client_instance_id: "11111111-1111-4111-8111-111111111111".into(),
+            expires_at: SystemTime::now() + Duration::from_secs(120),
+            phase: NativePairingPhase::AwaitingRequiresAuth,
+        });
+        let contents = r#"{"schemaVersion":1,"revision":1,"defaultProfile":null,"projectProfiles":{},"profiles":[{"schemaVersion":1,"name":"pending","endpoint":"https://one.example","credentialRef":{"kind":"station-bearer","id":"test-host-allocated"},"environmentId":"environment-one","clientInstanceId":"11111111-1111-4111-8111-111111111111","setupSource":"paired","configurationState":"requires-auth","createdAt":1,"updatedAt":1}]}"#.to_string();
+        let host = WriterTestHost { path: path.clone(), staged_path: None, fail_invalidation: false, fail_postpublication_trust: false };
+        (directory, path, NativeProfileAuthority::default(), pending, handle, contents, host)
+    }
+
+    #[cfg(not(mobile))]
+    #[test]
+    fn profile_writer_rolls_back_prepublication_failure_and_retries_same_handle() {
+        let (_directory, path, authority, pending, handle, contents, mut host) = writer_pairing_fixture();
+        host.fail_invalidation = true;
+        let error = station_profile_store_write_with_host(&host, &authority, &pending, contents.clone(), 0, Some(handle.clone())).unwrap_err();
+        assert!(error.contains("injected relay grant invalidation failure"));
+        assert_eq!(parse_station_profile_store(&read_station_profile_store(&path).unwrap()).unwrap().revision, 0);
+        assert!(authority.0.lock().unwrap().transitioning.is_empty());
+        assert!(matches!(pending.0.lock().unwrap().get(&handle).unwrap().phase, NativePairingPhase::AwaitingRequiresAuth));
+        host.fail_invalidation = false;
+        station_profile_store_write_with_host(&host, &authority, &pending, contents, 0, Some(handle.clone())).unwrap();
+        assert_eq!(parse_station_profile_store(&read_station_profile_store(&path).unwrap()).unwrap().revision, 1);
+        assert!(matches!(pending.0.lock().unwrap().get(&handle).unwrap().phase, NativePairingPhase::RequiresAuthPersisted { .. }));
+    }
+
+    #[cfg(not(mobile))]
+    #[test]
+    fn profile_writer_does_not_roll_back_after_publication_or_delete_foreign_stage() {
+        let (_directory, path, authority, pending, handle, contents, mut host) = writer_pairing_fixture();
+        host.fail_postpublication_trust = true;
+        let error = station_profile_store_write_with_host(&host, &authority, &pending, contents.clone(), 0, Some(handle.clone())).unwrap_err();
+        assert!(error.contains("injected postpublication trust failure"));
+        assert_eq!(parse_station_profile_store(&read_station_profile_store(&path).unwrap()).unwrap().revision, 1);
+        assert!(!authority.0.lock().unwrap().transitioning.is_empty());
+        assert!(matches!(pending.0.lock().unwrap().get(&handle).unwrap().phase, NativePairingPhase::RequiresAuthPersisted { .. }));
+
+        // A second isolated writer hits create_new on a path already owned by
+        // another process. Its cleanup may remove only a stage it created.
+        let (_other_directory, other_path, other_authority, other_pending, other_handle, other_contents, mut other_host) = writer_pairing_fixture();
+        let staged = other_path.with_extension("foreign.tmp");
+        std::fs::write(&staged, "foreign writer's staged bytes").unwrap();
+        other_host.staged_path = Some(staged.clone());
+        assert!(station_profile_store_write_with_host(&other_host, &other_authority, &other_pending, other_contents, 0, Some(other_handle.clone())).unwrap_err().contains("create saved Station temp file"));
+        assert_eq!(std::fs::read_to_string(&staged).unwrap(), "foreign writer's staged bytes");
+        assert_eq!(parse_station_profile_store(&read_station_profile_store(&other_path).unwrap()).unwrap().revision, 0);
+        assert!(matches!(other_pending.0.lock().unwrap().get(&other_handle).unwrap().phase, NativePairingPhase::AwaitingRequiresAuth));
+    }
+
     #[test]
     #[cfg(not(mobile))]
     fn service_attachment_never_claims_an_unprepared_home_after_service_exit() {
@@ -15730,8 +15976,8 @@ mod tests {
             .expect("native profile writer exists")..source
             .find("fn station_profile_store_write(")
             .expect("native command wrapper follows writer")];
-        assert!(production.contains("replace_station_profile_store(&temporary, &path)?"));
-        assert!(!production.contains("std::fs::rename(&temporary, &path)"));
+        assert!(production.contains("replace_station_profile_store(&staged, &path)?"));
+        assert!(!production.contains("std::fs::rename(&staged, &path)"));
         let worker = &source[source
             .find("fn write_native_bootstrap_process_store(")
             .expect("native worker publisher exists")..source
@@ -17134,6 +17380,163 @@ mod tests {
         let lock = lock_station_profiles(&profile_path).expect("reclaims stale lock");
         drop(lock);
         assert!(!lock_path.exists());
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[cfg(unix)]
+    fn profile_lock_wait_test_directory(label: &str) -> std::path::PathBuf {
+        let directory = std::env::temp_dir().join(format!(
+            "station-profile-{label}-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&directory).unwrap();
+        directory
+    }
+
+    /// A slow stale-lock probe must not stretch the wait: the bound is wall
+    /// clock, and the probe backs off instead of running on every nap. The
+    /// held lock is a real v2 record naming this live process with the birth
+    /// the probe reports, so it is never reclaimable and the wait runs out.
+    #[cfg(unix)]
+    #[test]
+    fn live_profile_lock_wait_is_wall_clock_bounded_with_a_backed_off_probe() {
+        let directory = profile_lock_wait_test_directory("lock-wait-bound");
+        let profile_path = directory.join("profiles.json");
+        let held = lock_station_profiles(&profile_path).expect("first writer holds the lock");
+        let own_pid = std::process::id();
+        let probes = std::cell::Cell::new(0_u32);
+        let slow_probe = |pid: u32| -> Result<Option<String>, String> {
+            if pid == own_pid {
+                probes.set(probes.get() + 1);
+            }
+            // Stands in for a loaded host where each owner-birth probe
+            // (a `ps` spawn on macOS) takes tens of milliseconds.
+            std::thread::sleep(Duration::from_millis(40));
+            Ok((pid == own_pid).then(|| "test-process-birth".to_string()))
+        };
+        let started = std::time::Instant::now();
+        let error = lock_station_profiles_with_record_within(
+            &profile_path,
+            &|| profile_lock_record_bytes("test-process-birth"),
+            &slow_probe,
+            Duration::from_millis(1_000),
+            Duration::from_millis(250),
+        )
+        .err()
+        .expect("a live holder is never reclaimed");
+        let elapsed = started.elapsed();
+        assert!(error.contains("busy"), "{error}");
+        assert!(elapsed >= Duration::from_millis(1_000), "{elapsed:?}");
+        // An attempt count of 10ms naps plus a 40ms probe each would run far
+        // past this; the wall-clock bound ends near 1s.
+        assert!(elapsed < Duration::from_millis(2_500), "{elapsed:?}");
+        // First contention, every 250ms, and a final probe: about one per
+        // 250ms waited (5-6 here). Probing on every nap measured 14 here. The
+        // bound scales with the measured wait so a loaded host is not a
+        // false regression.
+        let probe_budget = u32::try_from(elapsed.as_millis().div_ceil(250)).unwrap() + 2;
+        assert!(
+            (2..=probe_budget).contains(&probes.get()),
+            "probes: {} (budget {probe_budget})",
+            probes.get()
+        );
+        drop(held);
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    /// The probe backs off, so the only probe after a holder's late death may
+    /// be the one taken as the wait runs out. It must still happen: giving up
+    /// without it reports "busy" for a lock that is provably stale.
+    #[cfg(unix)]
+    #[test]
+    fn profile_lock_wait_probes_once_more_before_giving_up() {
+        let directory = profile_lock_wait_test_directory("lock-wait-final-probe");
+        let profile_path = directory.join("profiles.json");
+        let held = lock_station_profiles(&profile_path).expect("first writer holds the lock");
+        let own_pid = std::process::id();
+        let started = std::time::Instant::now();
+        // Until 200ms in, the owner is this live process; afterwards the probe
+        // reports a different birth for the pid, i.e. proven PID reuse.
+        let reused_later = |pid: u32| -> Result<Option<String>, String> {
+            let birth = if started.elapsed() < Duration::from_millis(200) {
+                "test-process-birth"
+            } else {
+                "reused-process-birth"
+            };
+            Ok((pid == own_pid).then(|| birth.to_string()))
+        };
+        let lock = lock_station_profiles_with_record_within(
+            &profile_path,
+            &|| profile_lock_record_bytes("test-process-birth"),
+            &reused_later,
+            Duration::from_millis(600),
+            Duration::from_secs(60),
+        )
+        .expect("the final probe reclaims the now-stale lock");
+        // The reclaim already removed the holder's file; forget it so its drop
+        // does not unlink the new owner's lock.
+        std::mem::forget(held);
+        drop(lock);
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    /// station#2461 review: mobile locks on every read from the main thread.
+    /// A crashed v1 owner younger than five minutes is not reclaimable, so a
+    /// read waits the full bound; it must stay at the mobile budget, not the
+    /// desktop one.
+    #[cfg(unix)]
+    #[test]
+    fn mobile_legacy_lock_wait_stays_within_the_mobile_budget() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let directory = profile_lock_wait_test_directory("lock-wait-mobile");
+        let profile_path = directory.join("profiles.json");
+        let lock_path = profile_path.with_extension("json.lock");
+        let created_at = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_millis();
+        // A dead owner (an unrepresentable pid) that crashed just now.
+        std::fs::write(
+            &lock_path,
+            format!("{{\"schemaVersion\":1,\"pid\":4294967295,\"createdAt\":{created_at}}}\n"),
+        )
+        .unwrap();
+        std::fs::set_permissions(&lock_path, std::fs::Permissions::from_mode(0o600)).unwrap();
+        let started = std::time::Instant::now();
+        let error = lock_station_profiles_legacy(&profile_path)
+            .err()
+            .expect("a fresh v1 lock is not reclaimable");
+        let elapsed = started.elapsed();
+        assert!(error.contains("busy"), "{error}");
+        assert!(elapsed >= PROFILE_LOCK_MOBILE_WAIT, "{elapsed:?}");
+        // Well under the desktop bound, and no longer than the old nominal
+        // 5s budget plus the final probe and scheduling slack.
+        assert!(elapsed < Duration::from_millis(6_500), "{elapsed:?}");
+        assert!(lock_path.exists(), "the fresh v1 lock is retained");
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn profile_lock_waits_for_a_live_holder_to_release() {
+        let directory = profile_lock_wait_test_directory("lock-wait-release");
+        let profile_path = directory.join("profiles.json");
+        let held = lock_station_profiles(&profile_path).expect("first writer holds the lock");
+        // Taken before the releaser starts, so the release cannot precede it.
+        let started = std::time::Instant::now();
+        let releaser = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(400));
+            drop(held);
+        });
+        let lock = lock_station_profiles(&profile_path).expect("waits for the live holder");
+        assert!(started.elapsed() >= Duration::from_millis(300));
+        releaser.join().unwrap();
+        drop(lock);
         std::fs::remove_dir_all(directory).unwrap();
     }
 

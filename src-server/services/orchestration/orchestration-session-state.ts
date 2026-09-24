@@ -1,6 +1,10 @@
 import { createHash } from 'node:crypto';
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import {
+  type ChildWorkSessionView,
+  projectDelegateChildWork,
+} from '@kontourai/station-contracts/child-work';
+import {
   type ClientOrigin,
   isClientOrigin,
 } from '@kontourai/station-contracts/client-origin';
@@ -466,6 +470,16 @@ export function buildOrchestrationSessionSummary(options: {
   /** #2309: the conversation activity projection's read for this thread. */
   conversationActivity?: ConversationTurnActivity;
   /**
+   * #2456: the child-work projection's process-local read, handed over like
+   * `turnProgress` — never reconstructed from events. A READER rather than a
+   * value so this builder is the one place every emission path decorates:
+   * it calls it with the summary's own thread and provider.
+   */
+  readChildWork?: (
+    threadId: string,
+    provider: string | undefined,
+  ) => ChildWorkSessionView | undefined;
+  /**
    * The CONVERSATION's first prompted turn, supplied only when this thread is a
    * continuation child (`EventStore.conversationRootFirstPromptedTurn`).
    *
@@ -554,7 +568,7 @@ export function buildOrchestrationSessionSummary(options: {
         }
       : undefined;
 
-  return {
+  const summary: OrchestrationSessionSummary = {
     provider: base.provider,
     threadId: base.threadId,
     status: base.status,
@@ -629,6 +643,22 @@ export function buildOrchestrationSessionSummary(options: {
     hasActiveTurn: hasOpenTurn(events),
     ...(draft !== undefined ? { draft } : {}),
   };
+  // #2456: a delegated session, as its parent's child work. Derived from the
+  // summary's own folds (delegation + open turn + lifecycle), so it can never
+  // disagree with the members it is computed from.
+  const asChild = projectDelegateChildWork(summary, {
+    depth: extractDelegationDepth(events),
+  });
+  const children = options.readChildWork?.(base.threadId, base.provider);
+  return children || asChild
+    ? {
+        ...summary,
+        childWork: {
+          ...(children ? { children } : {}),
+          ...(asChild ? { asChild } : {}),
+        },
+      }
+    : summary;
 }
 
 export function clientOriginIdentity(origin: ClientOrigin): string {
@@ -1100,6 +1130,38 @@ function stringMeta(
 ): string | undefined {
   const value = metadata?.[key];
   return typeof value === 'string' && value.trim() ? value : undefined;
+}
+
+/**
+ * #2456: `AgentDelegationContext.depth`, as the delegate's launch stamped it
+ * on `metadata.delegation` — read from the same binding event
+ * `extractDelegationContext` reads. Absent unless a positive finite number.
+ */
+function extractDelegationDepth(
+  events: CanonicalRuntimeEvent[],
+): number | undefined {
+  for (const event of [...events].reverse()) {
+    if (
+      event.method !== 'session.configured' &&
+      event.method !== 'session.started'
+    ) {
+      continue;
+    }
+    const metadata =
+      event.metadata && typeof event.metadata === 'object'
+        ? (event.metadata as Record<string, unknown>)
+        : undefined;
+    if (!stringMeta(metadata, 'taskId')) continue;
+    const delegation = metadata?.delegation;
+    const depth =
+      delegation && typeof delegation === 'object'
+        ? (delegation as { depth?: unknown }).depth
+        : undefined;
+    return typeof depth === 'number' && Number.isFinite(depth) && depth > 0
+      ? depth
+      : undefined;
+  }
+  return undefined;
 }
 
 function delegationMode(

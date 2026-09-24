@@ -33,6 +33,7 @@ const UI_FOLDED_ORCHESTRATION_METHODS = [
   'flow.gate-verdict',
   'plan.updated',
   'extension.notification',
+  'child-work.updated',
   'token-usage.updated',
   'session.stop-settled',
   'policy.hooks-attached',

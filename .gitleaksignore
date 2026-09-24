@@ -20,3 +20,7 @@ d23831f8a93620c2266ba9851043a256eaf7f17a:packages/cli/src/commands/delegate.ts:g
 # #2342: a fake AWS-key-shaped sentinel ("AKIASECRET0123456789") planted outside
 # a symlinked plugin.json to prove preview never echoes the linked file.
 4431a2ad5b76f6e49683dbeed3bd3381124a5659:src-server/routes/plugins/__tests__/plugin-preview-untrusted-manifest.test.ts:generic-api-key:33
+# The latest-main merge replayed the same two verified synthetic test fixtures
+# at new historical fingerprints; neither is a credential or a private key.
+face98c2f17115cf37450f5fb83b377e4a5e45cb:src-server/routes/plugins/__tests__/plugin-preview-untrusted-manifest.test.ts:generic-api-key:34
+face98c2f17115cf37450f5fb83b377e4a5e45cb:src-server/services/projects/__tests__/git-guards.test.ts:private-key:141

@@ -1996,12 +1996,29 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     setIsBackgroundTasksOpen((open) => !open);
   }, [backgroundTasksOpensPane, setIsBackgroundTasksOpen, showSurface]);
   const codingLayoutSlug = sessionCodingLayout?.slug ?? null;
+  const conversationProjectDirectory = conversationProjectSlug
+    ? (projects.find((project) => project.slug === conversationProjectSlug)
+        ?.workingDirectory ?? null)
+    : null;
+  const conversationId = activeSession?.conversationId ?? null;
   const markdownLinkContext = useMemo(
     () => ({
       projectSlug: conversationProjectSlug,
       projectId: conversationProjectId,
       dockProjectSlug,
       bottomOnly: dockBottomOnly,
+      // Where an absolute path in this conversation can point: the project's
+      // checkout only. A session in an isolated worktree writes paths under
+      // THAT directory, but the preview and the existence check read the
+      // project checkout, so linking them would open the checkout's copy of
+      // a file the model edited elsewhere.
+      projectRoots: conversationProjectDirectory
+        ? [conversationProjectDirectory]
+        : [],
+      // The same holds for RELATIVE paths in an isolated worktree; the anchor
+      // compares this with the checkout.
+      sessionDirectory: sessionDisplayCwd,
+      conversationId,
       openPathInMain:
         conversationProjectSlug && codingLayoutSlug
           ? (path: string, lineRange?: { start: number; end: number }) =>
@@ -2016,10 +2033,13 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     }),
     [
       codingLayoutSlug,
+      conversationId,
+      conversationProjectDirectory,
       conversationProjectId,
       conversationProjectSlug,
       dockBottomOnly,
       dockProjectSlug,
+      sessionDisplayCwd,
       setLayout,
     ],
   );

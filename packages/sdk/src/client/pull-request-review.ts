@@ -41,12 +41,24 @@ async function read<T>(response: Response): Promise<PullRequestResult<T>> {
     !response.ok ||
     value?.success !== true ||
     typeof value.data?.available !== 'boolean'
-  )
+  ) {
+    // The server's refusal names its cause (a checkout it cannot resolve, a
+    // pull request from another repository); Refresh fixes none of those, so
+    // saying only "refresh" sent the reader in a loop.
+    const reason =
+      !response.ok && typeof value?.error === 'string' && value.error.trim()
+        ? value.error.trim().replace(/\.$/, '').slice(0, 300)
+        : null;
     throw Error(
-      'Pull request review unavailable. Refresh to inspect current provider state.',
+      reason
+        ? `Pull request review unavailable: ${reason}.`
+        : 'Pull request review unavailable. Refresh to inspect current provider state.',
     );
+  }
   return value.data;
 }
+/** Forges compare owner and repository names case-insensitively. */
+const sameName = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
 export async function getPullRequestReview(
   apiBase: string,
   target: PullRequestReviewTarget,
@@ -62,8 +74,8 @@ export async function getPullRequestReview(
     !pr ||
     pr.provider !== target.provider ||
     pr.host !== target.host ||
-    pr.repository.owner !== target.owner ||
-    pr.repository.name !== target.repository ||
+    !sameName(pr.repository.owner, target.owner) ||
+    !sameName(pr.repository.name, target.repository) ||
     pr.ref !== target.ref ||
     !snapshot ||
     !/^[a-f0-9]{40,64}$/i.test(snapshot.headSha) ||

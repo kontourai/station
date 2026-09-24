@@ -943,6 +943,10 @@ Adds a layout from an installed plugin to a project.
 
 ### Knowledge API Functions
 
+Project Knowledge reads and writes use the active Station's authenticated
+transport. A saved encrypted broker route never sends Knowledge documents or
+rules through a direct Station HTTP request.
+
 #### `fetchKnowledgeDocs(projectSlug: string, namespace?: string): Promise<any[]>`
 
 Lists knowledge documents for a project.
@@ -2285,6 +2289,9 @@ with the existing 500 ms failure bound; later reads observe the latest configure
 base. Best-effort SDK telemetry retains at most 1,000 events per flush interval
 and drops additional events in that interval. Flushes are single-flight with a
 five-second request timeout. It is not an accounting ledger.
+Events captured under a different selected Station or account authority are
+dropped rather than retargeted at flush time. Browser broker routes currently
+drop optional telemetry; they never send it by direct Station HTTP.
 
 ## Telemetry
 
@@ -2448,6 +2455,25 @@ superseded host binding from being attributed to the current native connection.
 It is intentionally separate from `requestAuthority`: a valid authenticated
 recovery may advance credential generation while its host binding remains live.
 Ordinary unscoped SDK calls do not gain a host binding requirement.
+
+### Selected-route raw browser egress
+
+Browser hosts that have features using direct XHR, fetch or WebSocket outside
+the SDK transport can install `setClientRawEgressPolicyResolver` from the
+`@kontourai/station-sdk/client` entry. The resolver returns the current
+`ClientRawEgressPolicy`: `kind` is explicitly `direct` or `broker`, and the
+policy carries the selected API base, connection id, activation epoch and an
+`isCurrent()` check. `getClientRawEgressPolicy()` exposes that snapshot to
+host-owned features such as telemetry. Do not infer route kind from whether a
+transport callback is present.
+
+Call `assertClientRawEgressAllowed(apiBase, channel, expectedBinding)` directly
+before raw content dispatch and after any asynchronous setup. It throws
+`StationRawEgressUnavailableError` for a broker route and
+`StationRequestAuthorityError` when the captured connection or request scope
+has changed. Normal SDK requests continue through their configured transport;
+this guard exists for browser features that cannot use it. Clear the resolver
+when the host connection provider is disposed.
 
 ### Package host actions
 

@@ -381,7 +381,20 @@ export class ActiveChatsStore {
     // A chat re-created under the same id is a different chat, and is owed its
     // own storage-refusal notice.
     this.storageFailureReportedFor.delete(sessionId);
+    for (const listener of this.chatRemovedListeners) listener(sessionId);
     this.notify(true);
+  }
+
+  private readonly chatRemovedListeners = new Set<(chatKey: string) => void>();
+
+  /**
+   * #2456 R5: state keyed by the chat's execution sessions (the child-work
+   * registry) must be dropped when the chat closes; after removal those
+   * sessions no longer resolve to any chat, so nothing else could reach it.
+   */
+  onChatRemoved(listener: (chatKey: string) => void): () => void {
+    this.chatRemovedListeners.add(listener);
+    return () => this.chatRemovedListeners.delete(listener);
   }
 
   clearInput(sessionId: string) {

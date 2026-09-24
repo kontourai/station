@@ -7,6 +7,10 @@ import {
   handleRequestOpenedEvent,
   handleRequestResolvedEvent,
 } from './approvalHandlers';
+import {
+  handleChildWorkUpdatedEvent,
+  observeChildWorkLifecycle,
+} from './childWorkHandlers';
 import { handleExtensionNotificationEvent } from './extensionHandlers';
 import {
   handleFlowGateVerdictEvent,
@@ -140,6 +144,10 @@ export function handleOrchestrationEvent(
   const replayThread = isReplayThread(event.threadId);
   if (!replayThread) {
     backgroundTasksStore.ingest(event);
+    // #2456 D2: a session's end must reach the child-work registry even when
+    // its chat was since rebound to a newer session (the guard below would
+    // drop it), or the chat keeps the dead session's children.
+    observeChildWorkLifecycle(event);
   }
 
   if (replayThread) {
@@ -275,6 +283,9 @@ function dispatchProjectedOrchestrationEvent(
       return;
     case 'extension.notification':
       handleExtensionNotificationEvent(event);
+      return;
+    case 'child-work.updated':
+      handleChildWorkUpdatedEvent(event);
       return;
     case 'token-usage.updated':
       handleTokenUsageUpdatedEvent(event);
