@@ -73,6 +73,7 @@ import {
   isCanonicalBuiltinReadinessDescriptor,
   isCanonicalBuiltinTrustDescriptor,
 } from '../workspace-panes/builtinWorkspacePaneRegistry';
+import { DockOnlyWorkspacePaneNotice } from '../workspace-panes/DockOnlyWorkspacePaneNotice';
 import {
   admitRestoredFilePreviewPaneInstance,
   filePreviewPanePresentationLabel,
@@ -92,7 +93,10 @@ import type {
 import type { WorkspacePaneHostOpenAction } from '../workspace-panes/WorkspacePaneHostOpenContext';
 import type { WorkspacePaneAvailabilityCatalogEntry } from '../workspace-panes/workspacePaneAvailabilityPresentation';
 import { presentWorkspacePaneAvailability } from '../workspace-panes/workspacePaneAvailabilityPresentation';
-import { isWorkspacePaneInstanceOwnedByProject } from '../workspace-panes/workspacePaneHostAdmission';
+import {
+  isProjectPlaceableWorkspacePane,
+  isWorkspacePaneInstanceOwnedByProject,
+} from '../workspace-panes/workspacePaneHostAdmission';
 import {
   describeWorkspacePaneOpenRefusal,
   type WorkspacePaneHostOpenRefusal,
@@ -1081,6 +1085,28 @@ function BuiltinCodingLayoutHost({
         onInstanceRemoved={onInstanceRemoved}
         presentationLabel={presentationLabel}
         renderPane={(instance, presentation) => {
+          // #2465: a dock-only pane (the host-global Device pane) is not
+          // another Project's — it is no Project's. Say where it lives. The
+          // same predicate keeps the picker from offering it.
+          const dockOnly = catalog.entries.find(
+            (candidate) =>
+              candidate.descriptor.id === instance.descriptorId &&
+              !isProjectPlaceableWorkspacePane(candidate.descriptor),
+          )?.descriptor;
+          if (dockOnly) {
+            const remove =
+              hostOpen?.close && (hostInstanceIds?.size ?? 0) > 1
+                ? hostOpen.close
+                : undefined;
+            return (
+              <DockOnlyWorkspacePaneNotice
+                descriptor={dockOnly}
+                {...(remove
+                  ? { onRemove: () => void remove(instance.instanceId) }
+                  : {})}
+              />
+            );
+          }
           if (!isWorkspacePaneInstanceOwnedByProject(instance, projectId)) {
             return (
               <Empty
