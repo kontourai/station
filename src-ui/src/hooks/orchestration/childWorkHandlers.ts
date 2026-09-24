@@ -40,8 +40,6 @@ let registry: ChildWorkRegistryState = createEmptyChildWorkRegistry();
 const reporterChat = new Map<string, string>();
 
 /** Read-only view for tests and diagnostics. */
-// childWorkHandlers.test.ts reads it through a dynamic import (vi.resetModules isolation) that fallow cannot trace.
-// fallow-ignore-next-line unused-export
 export function childWorkRegistrySnapshot(): ChildWorkRegistryState {
   return registry;
 }
