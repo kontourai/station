@@ -3,7 +3,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { sessionAttentionDisposition } from '@kontourai/station-contracts/session-attention';
-import { INTERNAL_SESSION_READ_SCOPE } from '@kontourai/station-contracts/tenancy';
+import {
+  INTERNAL_SESSION_READ_SCOPE,
+  sessionReadAuthorityFromRequest,
+} from '@kontourai/station-contracts/tenancy';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { awaitSessionAttachmentSettled } from '../../../__test-utils__/session-runtime-barriers.js';
 import type { ProviderSession } from '../../../providers/adapter-shape.js';
@@ -691,5 +694,175 @@ describe('Draft lifecycle derivation (#2310)', () => {
       authority: INTERNAL_SESSION_READ_SCOPE,
     });
     expect(childPage?.session.draft).toBe(false);
+  });
+  /**
+   * #2312: discarding a Draft is a SERVER action, so every device agrees —
+   * the next session-list read anywhere no longer returns it. The server
+   * re-derives the Draft fact itself and refuses anything else.
+   */
+  describe('discardDraft (#2312)', () => {
+    const SOMEONE_ELSE = 'human:local:someone-else';
+    const ownerRead = () =>
+      sessionReadAuthorityFromRequest(OWNER, undefined, undefined);
+
+    async function listedIds(
+      instance: OrchestrationService,
+    ): Promise<string[]> {
+      return (await instance.listSessionReadModel(ownerRead())).map(
+        (session) => session.threadId,
+      );
+    }
+
+    async function refusal(promise: Promise<unknown>) {
+      return promise.then(
+        () => {
+          throw new Error('expected the discard to be refused');
+        },
+        (error: unknown) => error as { message: string; code?: string },
+      );
+    }
+
+    test('deletes the Draft for every reader: the owner, and a fresh process over the same store', async () => {
+      upsert(ROOT);
+      seedNeverPrompted(ROOT);
+      const instance = await service();
+      expect(await listedIds(instance)).toEqual([ROOT]);
+
+      const { receipt: accepted } = await instance.dispatchWithReceipt(
+        { type: 'discardDraft', threadId: ROOT },
+        { userId: OWNER },
+      );
+
+      expect(accepted).toMatchObject({
+        threadId: ROOT,
+        commandType: 'discardDraft',
+        status: 'accepted',
+      });
+      expect(await listedIds(instance)).toEqual([]);
+      expect(await instance.readSession(ROOT, ownerRead())).toBeNull();
+      // Another device is another read of the same store — a second service
+      // instance proves nothing is left in memory that the list relied on.
+      const otherDevice = await service();
+      expect(await listedIds(otherDevice)).toEqual([]);
+      expect(store.listSessionProjectionEvents(ROOT)).toEqual([]);
+      // No conversation lineage is left naming the deleted Session.
+      expect(store.conversationSessions(ROOT)).toEqual([]);
+      // The discard itself stays on record.
+      expect(
+        store.listCommandReceipts(ROOT).map((entry) => entry.commandType),
+      ).toEqual(['discardDraft']);
+    });
+
+    test('a caller who cannot read the session cannot discard it', async () => {
+      upsert(ROOT);
+      seedNeverPrompted(ROOT);
+      const instance = await service();
+
+      const error = await refusal(
+        instance.dispatchWithReceipt(
+          { type: 'discardDraft', threadId: ROOT },
+          { userId: SOMEONE_ELSE },
+        ),
+      );
+
+      expect(error.message).toBe(`Session not found: ${ROOT}`);
+      expect(await listedIds(instance)).toEqual([ROOT]);
+      const kept = (await instance.listSessionReadModel(ownerRead()))[0];
+      expect(kept?.draft).toBe(true);
+    });
+
+    test('a session that took a turn is not a Draft and is not discarded', async () => {
+      upsert(ROOT);
+      seedNeverPrompted(ROOT);
+      turn(ROOT, 'turn-1');
+      const instance = await service();
+      const eventsBefore = store.listSessionProjectionEvents(ROOT).length;
+
+      const error = await refusal(
+        instance.dispatchWithReceipt(
+          { type: 'discardDraft', threadId: ROOT },
+          { userId: OWNER },
+        ),
+      );
+
+      expect(error.code).toBe('not_a_draft');
+      expect(error.message).toContain('Only a Draft can be discarded');
+      expect(await listedIds(instance)).toEqual([ROOT]);
+      expect(store.listSessionProjectionEvents(ROOT)).toHaveLength(
+        eventsBefore,
+      );
+      expect(
+        store
+          .listCommandReceipts(ROOT)
+          .filter((entry) => entry.commandType === 'discardDraft')
+          .map((entry) => entry.status),
+      ).toEqual(['rejected']);
+    });
+
+    test('a first send that failed reads Failed, not Draft, and is not discarded', async () => {
+      upsert(ROOT);
+      seedNeverPrompted(ROOT);
+      receipt(ROOT, 'failed', 1);
+      const instance = await service();
+
+      const error = await refusal(
+        instance.dispatchWithReceipt(
+          { type: 'discardDraft', threadId: ROOT },
+          { userId: OWNER },
+        ),
+      );
+
+      expect(error.code).toBe('not_a_draft');
+      expect(await listedIds(instance)).toEqual([ROOT]);
+    });
+
+    test('a quiet child whose conversation ran turns elsewhere is not discarded', async () => {
+      upsert(ROOT);
+      seedNeverPrompted(ROOT);
+      turn(ROOT, 'turn-1');
+      const child = `${ROOT}:session:3329a9d6-acde-4143-8421-b0b99bf6f0da`;
+      store.reserveNextConversationSession({
+        conversationId: ROOT,
+        predecessorSessionId: ROOT,
+        proposedSessionId: child,
+        createdAt: at(5_000),
+      });
+      upsert(child, { createdAt: at(5_000) });
+      seedNeverPrompted(child, ROOT);
+      const instance = await service();
+
+      const error = await refusal(
+        instance.dispatchWithReceipt(
+          { type: 'discardDraft', threadId: child },
+          { userId: OWNER },
+        ),
+      );
+
+      expect(error.code).toBe('not_a_draft');
+      expect((await listedIds(instance)).sort()).toEqual([ROOT, child].sort());
+    });
+
+    test('a Draft conversation is discarded whole: no member is left naming a deleted Session', async () => {
+      upsert(ROOT);
+      seedNeverPrompted(ROOT);
+      const child = `${ROOT}:session:0f0f0f0f-0000-4000-8000-000000000000`;
+      store.reserveNextConversationSession({
+        conversationId: ROOT,
+        predecessorSessionId: ROOT,
+        proposedSessionId: child,
+        createdAt: at(5_000),
+      });
+      upsert(child, { createdAt: at(5_000) });
+      seedNeverPrompted(child, ROOT);
+      const instance = await service();
+
+      await instance.dispatchWithReceipt(
+        { type: 'discardDraft', threadId: child },
+        { userId: OWNER },
+      );
+
+      expect(await listedIds(instance)).toEqual([]);
+      expect(store.conversationSessions(ROOT)).toEqual([]);
+    });
   });
 });

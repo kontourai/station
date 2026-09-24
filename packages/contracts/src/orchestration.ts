@@ -81,7 +81,16 @@ export type OrchestrationCommand =
       expectedRequestEventId?: string;
       decision: 'accept' | 'acceptForSession' | 'decline' | 'cancel';
     }
-  | { type: 'stopSession'; threadId: string };
+  | { type: 'stopSession'; threadId: string }
+  /**
+   * #2312: remove a Draft (see `OrchestrationSessionSummary.draft`) for every
+   * device — the session is torn down and deleted server-side, so the next
+   * session-list read on any client no longer returns it. The server
+   * re-derives the Draft fact under the thread's lifecycle lock and refuses a
+   * session that is not a Draft (anything with a turn, content or an
+   * attempted send), and one whose conversation has other sessions.
+   */
+  | { type: 'discardDraft'; threadId: string };
 
 /**
  * How long the orchestration service waits for the engine to acknowledge a

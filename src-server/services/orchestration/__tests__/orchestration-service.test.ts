@@ -6170,6 +6170,53 @@ describe('OrchestrationService', () => {
     expect(subject).toEqual(anyPersonalOrchestrationStreamPresenceSubject());
   });
 
+  test('#2312: discardDraft stops a live Draft engine, and a late session.exited cannot bring the row back', async () => {
+    const draft = 'draft-live-discard';
+    const witness = 'draft-live-witness';
+    for (const threadId of [draft, witness]) {
+      await service.dispatch({
+        type: 'startSession',
+        input: { threadId, provider: 'bedrock', cwd: tmp },
+      });
+    }
+    const listed = async () =>
+      (await service.listSessionReadModel()).map(
+        (session) => [session.threadId, session.draft] as const,
+      );
+    // Fixture guard: the started session must be what the discard targets.
+    expect(await listed()).toContainEqual([draft, true]);
+
+    await service.dispatchWithReceipt({
+      type: 'discardDraft',
+      threadId: draft,
+    });
+
+    expect(bedrock.stopSession).toHaveBeenCalledWith(draft);
+    expect(bedrock.stopSession).not.toHaveBeenCalledWith(witness);
+    expect((await listed()).map(([threadId]) => threadId)).toEqual([witness]);
+
+    // A stopped engine may still deliver its exit after the delete. The
+    // witness's exit, pushed AFTER it, proves the queue drained past it.
+    const now = new Date().toISOString();
+    for (const threadId of [draft, witness]) {
+      bedrock.events.push({
+        eventId: `${threadId}-late-exit`,
+        provider: 'bedrock',
+        threadId,
+        sessionId: threadId,
+        createdAt: now,
+        method: 'session.exited',
+      } as CanonicalRuntimeEvent);
+    }
+    await waitFor(
+      () => eventStore.readSessionByThread(witness)?.status,
+      (status) => status === 'closed',
+    );
+    expect(eventStore.readSessionByThread(draft)).toBeUndefined();
+    expect(eventStore.listSessionProjectionEvents(draft)).toEqual([]);
+    expect((await listed()).map(([threadId]) => threadId)).toEqual([witness]);
+  });
+
   test('a freshly constructed hosted service authorizes a persisted tenant-bound command before any other call (slice 6 I11 guard)', async () => {
     // `canReadSessionForCommand` hydrates persisted tenant contexts BEFORE
     // its first authorization decision (its own comment: a freshly
@@ -7820,7 +7867,7 @@ describe('OrchestrationService', () => {
       ].map((row) =>
         FLAG_COLUMNS.filter((_flag, index) => row[index + 2] === 'yes').sort(),
       );
-      expect(docblockRows).toHaveLength(6);
+      expect(docblockRows).toHaveLength(7);
       expect(sites).toEqual(docblockRows);
     });
   });

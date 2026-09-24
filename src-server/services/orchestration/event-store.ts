@@ -10685,6 +10685,39 @@ export class EventStore {
     return recoveryTransition(result);
   }
 
+  /**
+   * #2312: every Session in `threadId`'s conversation lineage, `threadId`
+   * included, sorted. A thread with no lineage row is its own conversation.
+   */
+  conversationSessionIds(threadId: string): string[] {
+    const rows = this.db
+      .prepare(
+        `SELECT member.session_id AS session_id
+         FROM orchestration_conversation_sessions member
+         WHERE member.conversation_id = COALESCE(
+           (SELECT conversation_id FROM orchestration_conversation_sessions
+            WHERE session_id = ?),
+           ?)`,
+      )
+      .all(threadId, threadId) as Array<{ session_id: string }>;
+    return [
+      ...new Set([threadId, ...rows.map((row) => row.session_id)]),
+    ].sort();
+  }
+
+  /**
+   * #2312: retire the lineage rows of Sessions a discard deleted.
+   * `deleteThread` leaves lineage alone (its other callers own that
+   * decision); a discarded Draft conversation must not leave lineage behind
+   * that names Sessions which no longer exist.
+   */
+  deleteConversationLineageRows(sessionIds: readonly string[]): void {
+    const remove = this.db.prepare(
+      'DELETE FROM orchestration_conversation_sessions WHERE session_id = ?',
+    );
+    for (const sessionId of sessionIds) remove.run(sessionId);
+  }
+
   /** Remove a deliberately ephemeral diagnostic session and all of its receipts. */
   deleteThread(threadId: string): void {
     // Captured before the deletes, resolved after the commit: deleting a file
