@@ -348,8 +348,9 @@ export interface DelegatedTaskSnapshot {
   /**
    * #2269: effective per-turn supervision for the current turn, when the
    * serving Station's owning adapter declared any. Absent is honest unknown
-   * — never a synthesized deadline. An idle-only value (no `deadlineAt`)
-   * means no total budget was declared for the turn.
+   * — never a synthesized deadline. Each bound is present only when it was
+   * declared: no `deadlineAt` means no total budget, no `idleLimitMs` means
+   * no idle bound (a silent turn is not ended by Station).
    */
   supervision?: DelegatedTaskTurnSupervision;
   /** #2269: the serving Station's typed terminal attribution, when any. */
@@ -366,7 +367,8 @@ export interface DelegatedTaskTurnSupervision {
   provider: string;
   turnId: string;
   elapsedMs: number;
-  idleLimitMs: number;
+  /** Present only when an idle bound was declared for the turn. */
+  idleLimitMs?: number;
   /** Present together with `remainingMs`/`totalLimitMs` only for a declared total budget. */
   deadlineAt?: string;
   remainingMs?: number;

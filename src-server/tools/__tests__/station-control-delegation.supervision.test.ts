@@ -143,10 +143,10 @@ describe('delegation supervision projection (#2269)', () => {
     });
   });
 
-  test('a Muse turn with no declared budget reports its live idle window and no deadline', () => {
-    // Owner direction on #2269: with no `turnTimeoutMs` the Muse adapter
-    // declares only `idleLimitMs`. The idle deadline can still end the turn,
-    // so the projection forwards it — and invents no deadline or total.
+  test('a Muse turn with only a declared idle bound reports that window and no deadline', () => {
+    // A caller that declares `turnIdleTimeoutMs` and no `turnTimeoutMs`: the
+    // idle deadline can end the turn, so the projection forwards it — and
+    // invents no deadline or total.
     const {
       deadlineAt: _deadline,
       totalLimitMs: _total,
@@ -165,6 +165,33 @@ describe('delegation supervision projection (#2269)', () => {
       turnId: 'turn-1',
       elapsedMs: expect.any(Number),
       idleLimitMs: 30 * 60_000,
+      lastProgressEventAt: '2026-09-20T22:10:00.000Z',
+    });
+  });
+
+  test('#2269: a Muse turn with no declared bound is forwarded with neither an idle limit nor a deadline', () => {
+    // The production default since #2269: no caller declares either bound,
+    // so the adapter's declaration carries none, and the projection must not
+    // invent one (nor drop the declaration, which says something true: this
+    // turn has no Station-imposed bound).
+    const {
+      deadlineAt: _deadline,
+      totalLimitMs: _total,
+      idleLimitMs: _idle,
+      ...unbounded
+    } = museDeclaration('turn-1');
+    const snapshot = snapshotFor({
+      target: TARGET,
+      detail: {
+        session: { ...observingSession('turn-1'), provider: 'muse' },
+        events: [turnStartedEvent('turn-1', unbounded)],
+      },
+      metadata: METADATA,
+    });
+    expect(snapshot.supervision).toEqual({
+      provider: 'muse',
+      turnId: 'turn-1',
+      elapsedMs: expect.any(Number),
       lastProgressEventAt: '2026-09-20T22:10:00.000Z',
     });
   });

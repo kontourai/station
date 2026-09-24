@@ -658,10 +658,10 @@ export const MUSE_TURN_IDLE_TIMEOUT_CODE = 'muse-turn-idle-timeout';
 export const MUSE_TURN_TOTAL_TIMEOUT_CODE = 'muse-turn-timeout';
 
 /**
- * #2300: `runtime.warning` code for a Muse child that Station's idle deadline
- * reaped AFTER its turn had already ended, while background work the turn
- * launched may still have been running in it (the turn closed that work's
- * rows as unresolved). Stopping the child ends that work, so the reap is
+ * #2300: `runtime.warning` code for a Muse child that Station's
+ * lingering-child reap stopped AFTER its turn had already ended, while
+ * background work the turn launched may still have been running in it (the
+ * turn closed that work's rows as unresolved). Stopping the child ends that work, so the reap is
  * announced rather than done silently. A warning, not an error: the turn's
  * own outcome was already published and is not changed by it.
  */

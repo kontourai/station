@@ -733,10 +733,11 @@ export function delegatedCapabilityDelivery(
  * the live watchdog observation (`turnProgress`) so a stale prior turn's
  * facts are never presented as current. Request/child/user metadata is
  * never a source. Adapters that declare no supervision omit this entirely.
- * A declaration with an idle window but no total budget (Muse's default:
- * no caller declares `turnTimeoutMs` today) is forwarded as exactly that —
- * `idleLimitMs` with no `deadlineAt`/`remainingMs`/`totalLimitMs` —
- * because the idle deadline is live and can still end the turn.
+ * Each bound is forwarded only when the adapter declared it: an idle window
+ * as `idleLimitMs`, a total budget as `deadlineAt`/`remainingMs`/
+ * `totalLimitMs`. A declaration with neither (Muse's default since #2269: no
+ * production caller declares `turnIdleTimeoutMs` or `turnTimeoutMs`) is
+ * forwarded as exactly that — the turn has no Station-imposed bound.
  */
 export interface DelegatedTurnSupervision {
   provider: string;
@@ -744,10 +745,10 @@ export interface DelegatedTurnSupervision {
   /** Milliseconds elapsed since turn start at read time (>= 0). */
   elapsedMs: number;
   /**
-   * Idle window: a full silence of verified activity (with no tool reported
-   * running) this long ends the turn.
+   * Idle window, only when one was declared: a full silence of verified
+   * activity (with no tool reported running) this long ends the turn.
    */
-  idleLimitMs: number;
+  idleLimitMs?: number;
   /**
    * Absolute wall-clock ceiling for the turn (ISO timestamp). Present only
    * with a declared total budget, together with `remainingMs` and
@@ -803,8 +804,10 @@ function optionalIsoTimestamp(value: unknown): string | undefined {
  * is Station-authored while event metadata from a non-owning adapter may
  * repeat caller input. Returns `undefined` when there is no usable
  * declaration (honest unknown) — including when the status event window no
- * longer contains the turn's start event after a long history. An idle-only
- * declaration (no total budget) is returned as idle-only.
+ * longer contains the turn's start event after a long history. Each bound
+ * is returned only when declared; a declaration with neither is returned
+ * with neither (no Station-imposed bound), and a bound that is present but
+ * malformed drops the whole declaration rather than being repaired.
  */
 export function delegatedTurnSupervision(
   session: Record<string, unknown>,
@@ -845,7 +848,7 @@ export function delegatedTurnSupervision(
   const idleLimitMs = optionalPositiveBoundedMs(supervision.idleLimitMs);
   const startedAt = optionalIsoTimestamp(supervision.startedAt);
   if (
-    idleLimitMs === undefined ||
+    (supervision.idleLimitMs !== undefined && idleLimitMs === undefined) ||
     startedAt === undefined ||
     typeof supervision.provider !== 'string' ||
     !supervision.provider
@@ -895,7 +898,7 @@ export function delegatedTurnSupervision(
     provider: supervision.provider,
     turnId: observedTurnId,
     elapsedMs: Math.max(0, nowMs - startedMs),
-    idleLimitMs,
+    ...(idleLimitMs === undefined ? {} : { idleLimitMs }),
     ...total,
     ...(lastProgressEventAt ? { lastProgressEventAt } : {}),
   };
