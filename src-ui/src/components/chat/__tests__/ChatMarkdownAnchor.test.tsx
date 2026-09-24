@@ -519,7 +519,8 @@ describe('a link whose text names another host than it goes to', () => {
         'gitlab.com',
       ],
       // A port is part of the host a reader is promised.
-      ['https://github.com:8443/o/r', 'github.com/o/r', 'github.com:8443'],
+      ['https://github.com:8443/o/r', 'github.com:443/o/r', 'github.com:8443'],
+      ['http://localhost:9000/', 'localhost:5173', 'localhost:9000'],
       ['https://github.com/x', 'github.com:8443/x', 'github.com'],
       // localhost, IP literals, with or without scheme and port.
       ['https://evil.test/', 'localhost:3000', 'evil.test'],
@@ -560,6 +561,10 @@ describe('a link whose text names another host than it goes to', () => {
       ['https://github.com/o/r', 'github.com/o/r'],
       ['https://www.github.com/o/r', 'github.com/o/r'],
       ['https://github.com/o/r/pull/1', 'src/app.ts'],
+      // Text that writes no port promises none.
+      ['http://localhost:5173', 'localhost'],
+      ['http://127.0.0.1:8080/', '127.0.0.1'],
+      ['https://github.com:8443/o/r', 'github.com/o/r'],
       // A default port is not a difference.
       ['https://github.com/x', 'github.com:443/x'],
       ['https://github.com/x', 'https://github.com:443/x'],

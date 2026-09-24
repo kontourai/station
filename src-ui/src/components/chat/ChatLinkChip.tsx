@@ -215,10 +215,11 @@ function normalisedAuthority(authority: string, protocol: string) {
  * The host a link REALLY goes to, when its visible text names a different
  * one (`[github.com/o/r](https://evil.test/x)`), else null. A WebView shows no
  * status-bar URL on hover, so without this the reader has no signal before
- * clicking. `www.` and a default port (`github.com:443` on https) are not a
- * difference; any other port, a subdomain, or a Unicode look-alike (compared
- * in its punycode form) is. Text that does not read as a host returns null:
- * prose link text is not a claim.
+ * clicking. `www.` is not a difference; a subdomain or a Unicode look-alike
+ * (compared in its punycode form) is. A port is compared only when the text
+ * writes one (`github.com:8443` against `github.com:9000`; a default port such
+ * as `:443` on https equals none). Text that does not read as a host returns
+ * null: prose link text is not a claim.
  *
  * `external` is true for a link to an ordinary external site, false for a
  * pull request or forge file; `claimCounts` says what it changes.
@@ -245,9 +246,10 @@ export function mismatchedLinkHost(
     host: real.hostname.replace(/\.$/, '').replace(/^www\./, ''),
     port: real.port,
   };
-  return claimed.host === actual.host && claimed.port === actual.port
-    ? null
-    : real.host;
+  // Text that writes no port promises none: `[localhost](http://localhost:5173)`
+  // names the host it goes to. A port the text DOES write must match.
+  const portMatches = claim.port === null || claimed.port === actual.port;
+  return claimed.host === actual.host && portMatches ? null : real.host;
 }
 
 /**
