@@ -676,8 +676,10 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
       await screen.findAllByRole('button', { name: 'Start new chat' }),
     ).toHaveLength(1);
     // ...and it is the recovery notice's, which is the surface that also
-    // explains WHY, and offers the Retry this state can actually use.
-    expect(screen.getByText(/is read-only/)).toBeTruthy();
+    // explains WHY, and offers the Retry this state can actually use. A
+    // failed open is a failed check, so it does not claim "read-only" (#2424).
+    expect(screen.getByText(/couldn't confirm/)).toBeTruthy();
+    expect(screen.queryByText(/is read-only/)).toBeNull();
     expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
   });
 
@@ -747,7 +749,7 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
   // The mirror: once the read lands on a genuine verdict the error chrome is
   // exactly what must appear. Without this, suppressing the banner in the
   // resolving case would be indistinguishable from suppressing it always.
-  test('#1582 E3 a failed resolution still gets the red banner and the empty state', async () => {
+  test('#1582 E3 a failed resolution still gets the red banner and the empty state, without a read-only verdict (#2424)', async () => {
     renderDock({
       orchestrationSession: buildOrchestrationSession({
         status: 'idle',
@@ -761,14 +763,20 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
       }),
     });
 
-    expect(await screen.findByText(/is read-only/)).toBeTruthy();
+    expect(
+      await screen.findByText(
+        "Station couldn't confirm A healthy session being reloaded can continue.",
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText(/is read-only/)).toBeNull();
     expect(screen.queryByLabelText('Loading conversation')).toBeNull();
-    expect(chatInputPropsMock.current?.sendBlockedReason).toBe(
-      'This conversation is available read-only. Retry resolution or start a new chat.',
-    );
+    expect(chatInputPropsMock.current?.disabled).toBe(true);
+    // The notice carries the explanation and the Retry; the composer does not
+    // repeat it, and above all does not call the chat read-only.
+    expect(chatInputPropsMock.current?.sendBlockedReason).toBeUndefined();
   });
 
-  test('#749 transport failure remains read-only and exposes recovery actions', async () => {
+  test('#749 transport failure stays fail-closed (unverified, #2424) and exposes recovery actions', async () => {
     const onRetryConversationOpen = vi.fn();
     const onNewChat = vi.fn();
     render(
@@ -800,6 +808,85 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
     );
     expect(onRetryConversationOpen).toHaveBeenCalledOnce();
     expect(onNewChat).toHaveBeenCalledOnce();
+  });
+
+  // A re-read that fails after an earlier one succeeded leaves the earlier
+  // resolution on the chat. The failure is what is current, and it is not a
+  // verdict — the stale `resolved` must not turn it into "read-only".
+  test('#2424 a failed re-read over a stale resolution is not a read-only verdict', async () => {
+    renderDock({
+      orchestrationSession: buildOrchestrationSession({
+        status: 'idle',
+        lifecycleState: 'idle',
+      }),
+      session: buildSession({
+        title: 'Rechecked chat',
+        conversationId: 'cool',
+        conversationOpenFailed: true,
+        conversationOpenState: {
+          status: 'resolved',
+          conversation: {
+            id: 'cool',
+            source: 'runtime',
+            agentSlug: agentId('codex'),
+            title: 'Rechecked chat',
+            createdAt: '2026-08-01T00:00:00.000Z',
+            updatedAt: '2026-08-01T00:01:00.000Z',
+            messageCount: 2,
+            mutable: false,
+            answerability: { answerable: true },
+          },
+          currentSessionId: 'cool',
+          transcript: { available: true, owner: 'runtime', messageCount: 2 },
+          canContinue: true,
+          answerability: { answerable: true },
+          recoveryActions: [],
+        },
+      }),
+    });
+
+    expect(
+      await screen.findByText(
+        "Station couldn't confirm Rechecked chat can continue.",
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText(/is read-only/)).toBeNull();
+    expect(chatInputPropsMock.current?.disabled).toBe(true);
+  });
+
+  test('#2424 a continuation the server denied still reads as read-only', async () => {
+    renderDock({
+      orchestrationSession: buildOrchestrationSession({
+        status: 'idle',
+        lifecycleState: 'idle',
+      }),
+      session: buildSession({
+        title: 'Denied chat',
+        conversationId: 'cool',
+        conversationOpenState: {
+          status: 'resolved',
+          conversation: {
+            id: 'cool',
+            source: 'runtime',
+            agentSlug: agentId('codex'),
+            title: 'Denied chat',
+            createdAt: '2026-08-01T00:00:00.000Z',
+            updatedAt: '2026-08-01T00:01:00.000Z',
+            messageCount: 2,
+            mutable: false,
+            answerability: { answerable: true },
+          },
+          currentSessionId: 'cool',
+          transcript: { available: true, owner: 'runtime', messageCount: 2 },
+          canContinue: false,
+          answerability: { answerable: true },
+          recoveryActions: [],
+        },
+      }),
+    });
+
+    expect(await screen.findByText('Denied chat is read-only.')).toBeTruthy();
+    expect(screen.queryByText(/couldn't confirm/)).toBeNull();
   });
 
   test('#749 respects canContinue rather than Agent availability', () => {
@@ -836,6 +923,11 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
     });
     expect(screen.queryByTestId('chat-dock-session-record-missing')).toBeNull();
     expect(chatInputPropsMock.current?.disabled).toBe(true);
+    // #2424 mirror: a continuation the server DENIED is a derived verdict, and
+    // is the case that keeps the read-only wording.
+    expect(chatInputPropsMock.current?.sendBlockedReason).toBe(
+      'This conversation is available read-only. Retry resolution or start a new chat.',
+    );
     rerender(
       <QueryClientProvider client={new QueryClient()}>
         <ChatDockBody
