@@ -12,8 +12,6 @@ import { NATIVE_PUSH_SEALED_AAD_PREFIX } from '@kontourai/station-contracts/nati
 const KEY_BYTES = 32;
 const NONCE_BYTES = 12;
 const TAG_BYTES = 16;
-/** nonce + tag: what sealing adds to the plaintext before base64url. */
-export const SEAL_OVERHEAD_BYTES = NONCE_BYTES + TAG_BYTES;
 
 export function sealAgentActivityCard(input: {
   /** The card fields, serialized as one JSON object of strings. */

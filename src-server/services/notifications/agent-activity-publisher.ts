@@ -194,7 +194,7 @@ function latestOf(
  * finished one. Two approvals on one session are two entries, even when
  * nothing observed the session between them.
  */
-export function phaseEntryFromEvents(
+function phaseEntryFromEvents(
   phase: AgentActivityPhase,
   events: readonly CanonicalRuntimeEvent[],
 ): { key: string; at: number } | undefined {

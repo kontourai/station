@@ -29,7 +29,7 @@ import {
 const PRIVATE_FILE_MODE = 0o600;
 
 /** A present file that fails any custody or parse check. Carries no content. */
-export class PrivateJsonFileError extends Error {
+class PrivateJsonFileError extends Error {
   constructor(readonly label: string) {
     super(`${label} is unreadable or unsafe`);
   }

@@ -67,7 +67,7 @@ export interface PushSigningKey {
   ): string;
 }
 
-export class PushSigningKeyStoreError extends Error {
+class PushSigningKeyStoreError extends Error {
   constructor(readonly code: 'key_store_invalid') {
     super(`Station push signing key unavailable: ${code}`);
   }
