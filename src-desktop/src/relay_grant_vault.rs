@@ -517,7 +517,7 @@ pub(crate) async fn relay_client_grant_store(
         with_profile_and_vault(
             || locked_profile_store_for_app(&app),
             |locked| {
-                let owner = owner_for_profile(&app, &locked.contents, &profile_name, &grant)?;
+                let owner = owner_for_profile(&app.config().identifier, &locked.contents, &profile_name, &grant)?;
                 store_grant(&mut OsKeyring, owner, grant, unix_time_ms()?)
             },
         )
@@ -535,7 +535,7 @@ pub(crate) async fn relay_client_grant_revoke(
         with_profile_and_vault(
             || locked_profile_store_for_app(&app),
             |locked| {
-                let owner = owner_for_route(&app, &locked.contents, &profile_name, &route)?;
+                let owner = owner_for_route(&app.config().identifier, &locked.contents, &profile_name, &route)?;
                 revoke_grant(&mut OsKeyring, &RelayGrantBinding { route, owner })
             },
         )
@@ -553,7 +553,7 @@ pub(crate) async fn relay_client_grant_metadata(
         with_profile_and_vault(
             || locked_profile_store_for_app(&app),
             |locked| {
-                let owner = owner_for_route(&app, &locked.contents, &profile_name, &route)?;
+                let owner = owner_for_route(&app.config().identifier, &locked.contents, &profile_name, &route)?;
                 read_metadata(
                     &mut OsKeyring,
                     &RelayGrantBinding { route, owner },
@@ -576,21 +576,24 @@ async fn run_vault_command<T: Send + 'static>(
 }
 
 fn owner_for_profile(
-    app: &AppHandle,
+    app_identifier: &str,
     contents: &str,
     profile_name: &str,
     grant: &RelayClientGrant,
 ) -> Result<RelayGrantOwner, String> {
     let route = route_for(grant);
-    owner_for_route(app, contents, profile_name, &route)
+    owner_for_route(app_identifier, contents, profile_name, &route)
 }
 
 /// `contents` must be the profile store already read while the caller's
 /// `profiles.json.lock` is held (see `with_profile_and_vault`). This never
 /// resolves the store itself: on mobile that would re-take the same lock
 /// and self-deadlock (station#2542).
+/// Takes the app identifier rather than the `AppHandle`: with no handle it
+/// cannot re-read the saved Stations, so a regression of #2542 does not
+/// compile.
 fn owner_for_route(
-    app: &AppHandle,
+    app_identifier: &str,
     contents: &str,
     profile_name: &str,
     route: &RelayGrantRouteKey,
@@ -620,7 +623,7 @@ fn owner_for_route(
         .clone()
         .ok_or_else(|| "saved Station has no client instance id".to_string())?;
     let owner = RelayGrantOwner {
-        channel: super::native_app_channel(&app.config().identifier, cfg!(debug_assertions))
+        channel: super::native_app_channel(app_identifier, cfg!(debug_assertions))
             .to_string(),
         client_instance_id,
     };
@@ -634,6 +637,42 @@ fn owner_for_route(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const RELAY_STORE: &str = r#"{
+      "schemaVersion":1,"revision":1,"defaultProfile":null,"projectProfiles":{},
+      "profiles":[{"schemaVersion":1,"name":"relay-home","endpoint":"https://station.example","relayRoute":{"brokerOrigin":"https://broker.example","stationId":"11111111-1111-4111-8111-111111111111","enrollmentId":"22222222-2222-4222-8222-222222222222"},"clientInstanceId":"33333333-3333-4333-8333-333333333333","setupSource":"manual","configurationState":"unconfigured","createdAt":1,"updatedAt":2}]
+    }"#;
+
+    fn relay_route(enrollment_id: &str) -> RelayGrantRouteKey {
+        RelayGrantRouteKey {
+            broker_origin: "https://broker.example".to_string(),
+            station_id: "11111111-1111-4111-8111-111111111111".to_string(),
+            enrollment_id: enrollment_id.to_string(),
+            routing_generation: 1,
+            grant_id: "AAAAAAAAAAAAAAAAAAAAAA".to_string(),
+        }
+    }
+
+    #[test]
+    fn owner_for_route_reads_only_the_store_it_is_handed() {
+        // The caller read these contents under the held profiles.json.lock;
+        // the owner is derived from them alone (#2542).
+        let owner = owner_for_route(
+            "ai.kontour.station",
+            RELAY_STORE,
+            "relay-home",
+            &relay_route("22222222-2222-4222-8222-222222222222"),
+        )
+        .expect("owner for the saved relay route");
+        assert_eq!(owner.client_instance_id, "33333333-3333-4333-8333-333333333333");
+        assert!(owner_for_route(
+            "ai.kontour.station",
+            RELAY_STORE,
+            "relay-home",
+            &relay_route("44444444-4444-4444-8444-444444444444"),
+        )
+        .is_err());
+    }
     use std::collections::HashMap;
 
     #[derive(Default)]
