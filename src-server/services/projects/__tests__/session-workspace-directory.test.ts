@@ -87,7 +87,17 @@ describe('which directory a file read for a session targets (#2476)', () => {
   test('a directory the project cannot vouch for is refused, not read', async () => {
     // Not inside the checkout and not one of its worktrees: whatever the
     // session was started with, the server does not read it.
-    const d = deps({ stray: elsewhere, gone: join(root, 'missing') });
+    // A sibling whose name merely starts with the checkout's is not inside it.
+    const sibling = join(root, 'repo-2');
+    mkdirSync(sibling, { recursive: true });
+    const d = deps({
+      stray: elsewhere,
+      gone: join(root, 'missing'),
+      sibling,
+    });
+    await expect(
+      sessionWorkspaceDirectoryFor(d, 'alpha', 'sibling'),
+    ).resolves.toBeNull();
     await expect(
       sessionWorkspaceDirectoryFor(d, 'alpha', 'stray'),
     ).resolves.toBeNull();
