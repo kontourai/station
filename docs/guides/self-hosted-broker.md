@@ -53,8 +53,12 @@ and publishing a grant in one SQLite transaction. The endpoint refuses
 signature. The one-use invite secret and key proof authorize only routing.
 
 Native grants can be independently inventoried and revoked by the broker
-service, and their stored credential is hashed. Native invitations and grants
-are retired with their Station routing generation. V1 redemption rejects v2
+service, and their stored credential is hashed. The native grant defaults to
+and is capped at 24 hours; browser v1 retains its separate 30-day cap. There is
+no native grant renewal flow yet. Ongoing native onboarding needs
+operator-backed renewal or per-request proof-of-possession before general
+enablement. Native invitations and grants are retired with their Station
+routing generation. V1 redemption rejects v2
 invitations, and native-v2 redemption rejects v1 invitations. This foundation
 adds versioned v2 native `open`, `read`, and `retire` operations. Host requests
 carry the exact Station/enrollment/routing generation and native surface with

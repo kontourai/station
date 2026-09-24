@@ -32,6 +32,7 @@ const SECRET = /^[A-Za-z0-9_-]{43}$/;
 const SDP_LIMIT = 128 * 1024;
 const INVITATION_MAX_AGE_MS = 5 * 60_000;
 const GRANT_MAX_AGE_MS = 30 * 24 * 60 * 60_000;
+const NATIVE_GRANT_MAX_AGE_MS = 24 * 60 * 60_000;
 const SIGNING_KEY_ID = /^[A-Za-z0-9_-]{43}$/;
 const CLIENT_INSTANCE_ID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -414,6 +415,7 @@ export function validateBrokerScope(value: unknown): BrokerScope {
 /** Metadata-only broker authority. It never stores Station credentials, account identity or content. */
 export class SelfHostedBrokerService {
   private readonly db: DatabaseSync;
+  private nativeConnectionMaintenance: NodeJS.Timeout | undefined;
   constructor(
     path: string,
     private readonly now = () => Date.now(),
@@ -591,8 +593,18 @@ export class SelfHostedBrokerService {
       throw error;
     }
     for (const suffix of ['-wal', '-shm']) assertPrivateFile(path + suffix);
+    this.retireUnavailableNativeConnections();
+    this.nativeConnectionMaintenance = setInterval(
+      () => this.retireUnavailableNativeConnections(),
+      10_000,
+    );
+    this.nativeConnectionMaintenance.unref();
   }
   close() {
+    if (this.nativeConnectionMaintenance) {
+      clearInterval(this.nativeConnectionMaintenance);
+      this.nativeConnectionMaintenance = undefined;
+    }
     this.db.close();
   }
   isOriginAllowed(origin: string) {
@@ -657,13 +669,19 @@ export class SelfHostedBrokerService {
       .prepare(
         `UPDATE broker_native_connections
          SET offer_sdp='',answer_sdp=NULL,station_proof=NULL,expires_at=MIN(expires_at,?)
-         WHERE expires_at<=? OR EXISTS (
+         WHERE (expires_at<=? OR EXISTS (
            SELECT 1 FROM broker_native_client_grants g
            WHERE g.grant_id=broker_native_connections.grant_id
              AND (g.revoked_at IS NOT NULL OR g.expires_at<=?)
-         )`,
+         ))
+           AND (offer_sdp<>'' OR answer_sdp IS NOT NULL OR station_proof IS NOT NULL)`,
       )
       .run(now, now, now);
+    this.db
+      .prepare(
+        'DELETE FROM broker_native_connections WHERE created_at + 330000 <=?',
+      )
+      .run(now);
   }
   provision(
     input: BrokerScope,
@@ -857,14 +875,14 @@ export class SelfHostedBrokerService {
     )
       throw new Error('invalid_signing_generation');
     const invitationTtlMs = input.invitationTtlMs ?? INVITATION_MAX_AGE_MS;
-    const grantTtlMs = input.grantTtlMs ?? GRANT_MAX_AGE_MS;
+    const grantTtlMs = input.grantTtlMs ?? NATIVE_GRANT_MAX_AGE_MS;
     if (
       !Number.isSafeInteger(invitationTtlMs) ||
       invitationTtlMs < 1 ||
       invitationTtlMs > INVITATION_MAX_AGE_MS ||
       !Number.isSafeInteger(grantTtlMs) ||
       grantTtlMs < 1 ||
-      grantTtlMs > GRANT_MAX_AGE_MS
+      grantTtlMs > NATIVE_GRANT_MAX_AGE_MS
     )
       throw new Error('invalid_invitation_lifetime');
     const invitationId = randomBytes(16).toString('base64url');
@@ -1313,11 +1331,6 @@ export class SelfHostedBrokerService {
       const { grant } = this.nativeRoutingOwner(scope, credential, surface);
       const now = this.now();
       this.retireUnavailableNativeConnections();
-      this.db
-        .prepare(
-          'DELETE FROM broker_native_connections WHERE created_at + 330000 <=?',
-        )
-        .run(now);
       const total = (
         this.db
           .prepare(
@@ -1376,12 +1389,20 @@ export class SelfHostedBrokerService {
     credential: BrokerCredential,
     surface: SelfHostedBrokerNativeClientSurfaceV2,
     nonce: string,
-  ): SelfHostedBrokerNativeConnectionAnswerV2 | null {
+  ): SelfHostedBrokerNativeConnectionAnswerV2 {
     scope = validateNativeScope(scope);
     surface = validateNativeSurface(surface);
     assertText(nonce, 'nonce');
-    return this.transaction(() => {
-      const { grant } = this.nativeRoutingOwner(scope, credential, surface);
+    const result = this.transaction(() => {
+      const { grant } = this.nativeRoutingOwner(
+        scope,
+        credential,
+        surface,
+        true,
+      );
+      this.retireUnavailableNativeConnections();
+      if (grant.revoked_at !== null || grant.expires_at <= this.now())
+        return { kind: 'refused' as const };
       const row = this.db
         .prepare(
           `SELECT answer_sdp,station_proof,expires_at
@@ -1404,14 +1425,21 @@ export class SelfHostedBrokerService {
           }
         | undefined;
       if (!row || row.expires_at <= this.now())
-        throw new Error('connection_unavailable');
+        return { kind: 'unavailable' as const };
       return {
-        version: SELF_HOSTED_BROKER_NATIVE_CONNECTION_ANSWER_VERSION,
-        answerSdp: row.answer_sdp,
-        stationProof: row.station_proof,
-        expiresAt: row.expires_at,
+        kind: 'answer' as const,
+        answer: {
+          version: SELF_HOSTED_BROKER_NATIVE_CONNECTION_ANSWER_VERSION,
+          answerSdp: row.answer_sdp,
+          stationProof: row.station_proof,
+          expiresAt: row.expires_at,
+        },
       };
     });
+    if (result.kind === 'refused') throw new Error('broker_credential_refused');
+    if (result.kind === 'unavailable')
+      throw new Error('connection_unavailable');
+    return result.answer;
   }
   /** Only the opted-in Station connector can see native v2 offers. */
   nativeOffers(
@@ -1681,7 +1709,7 @@ export class SelfHostedBrokerService {
     scope: SelfHostedBrokerNativeScopeV2,
     credential: BrokerCredential,
     surface: SelfHostedBrokerNativeClientSurfaceV2,
-    allowRevoked = false,
+    allowRetired = false,
   ) {
     scope = validateNativeScope(scope);
     surface = validateNativeSurface(surface);
@@ -1716,8 +1744,8 @@ export class SelfHostedBrokerService {
       grant.channel !== surface.channel ||
       grant.client_instance_id !== surface.clientInstanceId ||
       grant.key_thumbprint !== surface.keyThumbprint ||
-      (!allowRevoked && grant.revoked_at !== null) ||
-      grant.expires_at <= this.now() ||
+      (!allowRetired && grant.revoked_at !== null) ||
+      (!allowRetired && grant.expires_at <= this.now()) ||
       !timingSafeEqual(
         Buffer.from(grant.secret_hash),
         nativeGrantDigest(credential.secret),

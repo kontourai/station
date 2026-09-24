@@ -10,7 +10,7 @@ import type {
 } from '@kontourai/station-contracts/self-hosted-broker';
 import { Hono } from 'hono';
 import { CompactSign, calculateJwkThumbprint } from 'jose';
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import { createSelfHostedBrokerRoutes } from '../../../routes/connections/self-hosted-broker.js';
 import {
   SelfHostedBrokerClient,
@@ -1913,6 +1913,297 @@ describe.runIf(process.platform !== 'win32')(
         });
       } finally {
         service.close();
+        rmSync(root, { recursive: true, force: true });
+      }
+    });
+    test('native grant defaults to and is capped at 24 hours while browser v1 stays at 30 days', async () => {
+      const root = mkdtempSync(join(tmpdir(), 'station-broker-native-ttl-'));
+      const path = join(root, 'broker.sqlite');
+      const maxNativeGrantAgeMs = 24 * 60 * 60_000;
+      let now = 1_000;
+      let service = new SelfHostedBrokerService(path, () => now);
+      try {
+        const issued = service.provision(scope, maxNativeGrantAgeMs * 2);
+        const client = await createNativeClient();
+        const nativeIssue = {
+          scope,
+          routingCredential: issued.routing,
+          brokerOrigin: 'https://broker.example',
+          surface: client.surface,
+          stationSigningKeyId: 'K'.repeat(43),
+          stationSigningGeneration: 1,
+        };
+        expect(() =>
+          service.issueNativeInvitation({
+            ...nativeIssue,
+            grantTtlMs: maxNativeGrantAgeMs + 1,
+          }),
+        ).toThrow('invalid_invitation_lifetime');
+        const nativeInvitation = service.issueNativeInvitation(nativeIssue);
+        const nativeGrant = await service.redeemNativeInvitation(
+          nativeInvitation,
+          await createNativeProof(nativeInvitation, client),
+        );
+        expect(nativeGrant.expiresAt - now).toBe(maxNativeGrantAgeMs);
+
+        const browserInvitation = service.issueInvitation({
+          scope,
+          routingCredential: issued.routing,
+          brokerOrigin: 'https://broker.example',
+          clientOrigin: scope.browserOrigin,
+          stationSigningKeyId: 'K'.repeat(43),
+          stationSigningGeneration: 1,
+        });
+        const browserGrant = service.redeemInvitation(
+          browserInvitation,
+          scope.browserOrigin,
+        );
+        expect(browserGrant.expiresAt - now).toBe(30 * 24 * 60 * 60_000);
+
+        service.close();
+        service = new SelfHostedBrokerService(path, () => now);
+        expect(
+          service.listNativeClientGrants(scope, issued.routing),
+        ).toMatchObject([
+          {
+            grantId: nativeGrant.credential.id,
+            expiresAt: nativeGrant.expiresAt,
+          },
+        ]);
+        service.revokeNativeClientGrant(
+          scope,
+          issued.routing,
+          nativeGrant.credential.id,
+        );
+        expect(
+          service.listNativeClientGrants(scope, issued.routing),
+        ).toMatchObject([
+          { grantId: nativeGrant.credential.id, revokedAt: now },
+        ]);
+
+        const expiringClient = await createNativeClient();
+        const expiringInvitation = service.issueNativeInvitation({
+          ...nativeIssue,
+          surface: expiringClient.surface,
+        });
+        const expiringGrant = await service.redeemNativeInvitation(
+          expiringInvitation,
+          await createNativeProof(expiringInvitation, expiringClient),
+        );
+        now = expiringGrant.expiresAt + 1;
+        expect(() =>
+          service.readNativeConnection(
+            nativeScope,
+            expiringGrant.credential,
+            expiringClient.surface,
+            'nonce-native-expired',
+          ),
+        ).toThrow('broker_credential_refused');
+      } finally {
+        service.close();
+        rmSync(root, { recursive: true, force: true });
+      }
+    });
+    test('read-only access scrubs expired native offer and answer bytes durably', async () => {
+      const root = mkdtempSync(join(tmpdir(), 'station-broker-native-scrub-'));
+      const path = join(root, 'broker.sqlite');
+      let now = 1_000;
+      let service = new SelfHostedBrokerService(path, () => now);
+      try {
+        const issued = service.provision(scope, 60_000);
+        const client = await createNativeClient();
+        const invitation = service.issueNativeInvitation({
+          scope,
+          routingCredential: issued.routing,
+          brokerOrigin: 'https://broker.example',
+          surface: client.surface,
+          stationSigningKeyId: 'K'.repeat(43),
+          stationSigningGeneration: 1,
+          grantTtlMs: 40_000,
+        });
+        const grant = await service.redeemNativeInvitation(
+          invitation,
+          await createNativeProof(invitation, client),
+        );
+        service.openNativeConnection(
+          nativeScope,
+          grant.credential,
+          client.surface,
+          {
+            version: 'station-broker-native-connection-open/v2',
+            nonce: 'nonce-native-read-scrub',
+            offerSdp: 'sensitive-native-offer',
+          },
+        );
+        service.answerNativeConnection(scope, issued.connector, {
+          version: 'station-broker-native-connection-answer/v2',
+          surface: client.surface,
+          stationSigningKeyId: 'K'.repeat(43),
+          stationSigningGeneration: 1,
+          clientId: client.surface.clientInstanceId,
+          nonce: 'nonce-native-read-scrub',
+          answerSdp: 'sensitive-native-answer',
+          stationProof: 'sensitive-native-station-proof',
+        });
+        now = 31_001;
+        expect(() =>
+          service.readNativeConnection(
+            nativeScope,
+            grant.credential,
+            client.surface,
+            'nonce-native-read-scrub',
+          ),
+        ).toThrow('connection_unavailable');
+        const beforeRestart = new DatabaseSync(path, { readOnly: true });
+        expect(
+          beforeRestart
+            .prepare(
+              'SELECT offer_sdp,answer_sdp,station_proof FROM broker_native_connections WHERE nonce=?',
+            )
+            .get('nonce-native-read-scrub'),
+        ).toEqual({ offer_sdp: '', answer_sdp: null, station_proof: null });
+        beforeRestart.close();
+        service.close();
+        service = new SelfHostedBrokerService(path, () => now);
+        const afterRestart = new DatabaseSync(path, { readOnly: true });
+        expect(
+          afterRestart
+            .prepare(
+              'SELECT offer_sdp,answer_sdp,station_proof FROM broker_native_connections WHERE nonce=?',
+            )
+            .get('nonce-native-read-scrub'),
+        ).toEqual({ offer_sdp: '', answer_sdp: null, station_proof: null });
+        afterRestart.close();
+      } finally {
+        service.close();
+        rmSync(root, { recursive: true, force: true });
+      }
+    });
+    test('idle native expiry sweep scrubs only native rows and stops when broker closes', async () => {
+      vi.useFakeTimers();
+      const root = mkdtempSync(
+        join(tmpdir(), 'station-broker-native-maintenance-'),
+      );
+      const path = join(root, 'broker.sqlite');
+      let now = 1_000;
+      let service: SelfHostedBrokerService | undefined;
+      try {
+        service = new SelfHostedBrokerService(path, () => now);
+        const issued = service.provision(scope, 100_000);
+        const client = await createNativeClient();
+        const invitation = service.issueNativeInvitation({
+          scope,
+          routingCredential: issued.routing,
+          brokerOrigin: 'https://broker.example',
+          surface: client.surface,
+          stationSigningKeyId: 'K'.repeat(43),
+          stationSigningGeneration: 1,
+          grantTtlMs: 90_000,
+        });
+        const grant = await service.redeemNativeInvitation(
+          invitation,
+          await createNativeProof(invitation, client),
+        );
+        service.openNativeConnection(
+          nativeScope,
+          grant.credential,
+          client.surface,
+          {
+            version: 'station-broker-native-connection-open/v2',
+            nonce: 'nonce-native-idle-sweep',
+            offerSdp: 'native-expiring-offer',
+          },
+        );
+        service.answerNativeConnection(scope, issued.connector, {
+          version: 'station-broker-native-connection-answer/v2',
+          surface: client.surface,
+          stationSigningKeyId: 'K'.repeat(43),
+          stationSigningGeneration: 1,
+          clientId: client.surface.clientInstanceId,
+          nonce: 'nonce-native-idle-sweep',
+          answerSdp: 'native-expiring-answer',
+          stationProof: 'native-expiring-proof',
+        });
+        service.open(scope, issued.routing, {
+          clientId: 'client-browser-idle',
+          nonce: 'nonce-browser-idle',
+          offerSdp: 'browser-v1-offer',
+        });
+        expect(vi.getTimerCount()).toBe(1);
+        now = 31_001;
+        await vi.advanceTimersByTimeAsync(10_000);
+        const snapshot = new DatabaseSync(path, { readOnly: true });
+        expect(
+          snapshot
+            .prepare(
+              'SELECT offer_sdp,answer_sdp,station_proof,created_at,expires_at FROM broker_native_connections WHERE nonce=?',
+            )
+            .get('nonce-native-idle-sweep'),
+        ).toEqual({
+          offer_sdp: '',
+          answer_sdp: null,
+          station_proof: null,
+          created_at: 1_000,
+          expires_at: 31_000,
+        });
+        expect(
+          snapshot
+            .prepare(
+              'SELECT offer_sdp,answer_sdp,station_proof FROM broker_connections WHERE nonce=?',
+            )
+            .get('nonce-browser-idle'),
+        ).toEqual({
+          offer_sdp: 'browser-v1-offer',
+          answer_sdp: null,
+          station_proof: null,
+        });
+        snapshot.close();
+        await vi.advanceTimersByTimeAsync(10_000);
+        const repeatedSweep = new DatabaseSync(path, { readOnly: true });
+        expect(
+          repeatedSweep
+            .prepare(
+              'SELECT offer_sdp,answer_sdp,station_proof,created_at,expires_at FROM broker_native_connections WHERE nonce=?',
+            )
+            .get('nonce-native-idle-sweep'),
+        ).toEqual({
+          offer_sdp: '',
+          answer_sdp: null,
+          station_proof: null,
+          created_at: 1_000,
+          expires_at: 31_000,
+        });
+        repeatedSweep.close();
+        now = 331_001;
+        await vi.advanceTimersByTimeAsync(10_000);
+        const afterTombstoneWindow = new DatabaseSync(path, { readOnly: true });
+        expect(
+          (
+            afterTombstoneWindow
+              .prepare('SELECT count(*) n FROM broker_native_connections')
+              .get() as { n: number }
+          ).n,
+        ).toBe(0);
+        expect(
+          afterTombstoneWindow
+            .prepare(
+              'SELECT offer_sdp,answer_sdp,station_proof FROM broker_connections WHERE nonce=?',
+            )
+            .get('nonce-browser-idle'),
+        ).toEqual({
+          offer_sdp: 'browser-v1-offer',
+          answer_sdp: null,
+          station_proof: null,
+        });
+        afterTombstoneWindow.close();
+        service.close();
+        service = undefined;
+        expect(vi.getTimerCount()).toBe(0);
+        now += 20_000;
+        await vi.advanceTimersByTimeAsync(20_000);
+      } finally {
+        service?.close();
+        vi.useRealTimers();
         rmSync(root, { recursive: true, force: true });
       }
     });
