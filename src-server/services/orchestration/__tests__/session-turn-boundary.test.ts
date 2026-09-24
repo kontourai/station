@@ -796,6 +796,7 @@ describe('SessionTurnBoundaryAuthority', () => {
       removeTerminal: () => ({ kind: 'applied' }),
       hasPossibleEffect: () => Boolean(record),
       active: () => (record ? [{ ...record }] : []),
+      recordAccepted: () => ({ kind: 'unavailable' }),
     };
     const authority = createSessionTurnBoundaryAuthority({
       coordinator,
@@ -835,6 +836,7 @@ describe('SessionTurnBoundaryAuthority', () => {
         transition: () => ({ kind: 'unavailable' }),
         remove: () => ({ kind: 'unavailable' }),
         removeTerminal: () => ({ kind: 'unavailable' }),
+        recordAccepted: () => ({ kind: 'unavailable' }),
         hasPossibleEffect: () => {
           throw new Error('sqlite unavailable');
         },

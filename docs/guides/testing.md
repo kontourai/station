@@ -977,6 +977,48 @@ and fix it at source rather than requeueing until green. If the same failure
 appears on unrelated candidates, main itself is red, so fix main first. Flaky
 tests go through the quarantine policy below.
 
+### Real-time waits in tests
+
+A test that waits a fixed amount of real time and then asserts passes on an
+idle machine and fails some of the time on a saturated CI runner. The merge
+queue runs each test once, so such a test usually lands and reds Nightly
+later. Four did on 2026-09-23: a 50ms sleep assumed an install had started, a
+40ms real-time hold lapsed between a click's two events, a 90ms sleep ran past
+a 120ms ceiling, and an eight-attempt 10ms retry gave up. Running tests
+repeatedly under CPU pressure did not reproduce any of them; each was visible
+in the line that added it.
+
+`scripts/test-realtime-wait-gate.mjs` runs in `ci:fast` and reads only the
+lines a change adds to test files. It flags three shapes: a promise settled by
+a timer (`setTimeout(resolve, N)`, `setTimeout(() => resolve(x), N)`), a
+`sleep`/`delay` helper call (`sleep(90)`, `delay(delayMs)`), and
+`Atomics.wait(..., N)`. A literal `0` is a task yield and is not flagged, and
+neither is a timer resolving with a string or UPPER_CASE sentinel, the
+`Promise.race([op, timeout('TIMED_OUT')])` shape. That exemption is safe only
+when the test expects the sentinel; `.not.toBe('TIMED_OUT')` asserts `op`
+finished in time, which load can fail. Existing lines are never flagged.
+
+It reports rather than blocks. In a one-off replay over the 150 main commits
+before 2026-09-24, about 40% of what it flagged was the hazard (a sleep, then an assertion that something did
+happen); the rest sleep before a negative assertion, which load can only make
+pass, or sleep inside a loop that already polls. So each finding is an inline
+warning on the pull request's added line and a step-summary entry, and the
+check stays green. `--strict` exits 1 for a caller that wants to enforce it.
+
+Prefer, in order:
+
+1. Wait for the event itself: resolve a promise from the code under test, or
+   use `expect.poll` / `vi.waitFor`.
+2. Drive time: an injected clock (`now`), or `vi.useFakeTimers()` with
+   `vi.advanceTimersByTimeAsync()`.
+3. Bound a retry by a wall-clock deadline, never by an attempt count.
+
+When a line genuinely needs real time (a negative assertion that something
+does not happen within a window, or a test of a timeout itself), put a
+`real-time: <reason>` comment on that line or the line above, which silences
+the warning. The gate is a prompt, not a proof: it sees these textual shapes,
+not every way to wait.
+
 ### Test quarantine
 
 The merge-queue regression gate (`.github/workflows/merge-queue-regression.yml`)

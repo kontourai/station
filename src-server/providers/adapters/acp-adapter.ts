@@ -1416,8 +1416,16 @@ export class AcpAdapter implements ProviderAdapterShape {
     input: ProviderSendTurnInput,
   ): Promise<ProviderTurnStartResult> {
     const record = this.requireSession(input.threadId);
+    // #2415: a send that races the session's active turn is refused here,
+    // before any provider-visible effect, so it must be a
+    // `SendTurnRefusedError`. A plain error is recorded by orchestration as
+    // an INDETERMINATE turn start, and that lingering boundary row reads as
+    // an in-flight turn that blocks every later send on the thread — for a
+    // send that provably never started. The turn-start coordinator does not
+    // refuse this case first: it serializes turn STARTS, and an accepted
+    // turn that is still running does not block its claim.
     if (record.activeTurnId) {
-      throw new Error(
+      throw new SendTurnRefusedError(
         `ACP session '${input.threadId}' already has an active turn.`,
       );
     }

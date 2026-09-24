@@ -2,6 +2,7 @@ import type {
   InterruptTurnResult,
   OrchestrationSessionSummary,
 } from '@kontourai/station-contracts/orchestration';
+import { PROVIDER_TURN_IN_PROGRESS_CODE } from '@kontourai/station-contracts/provider';
 import { isFirstSendFailure } from '@kontourai/station-contracts/session-attention';
 import type { ConnectionConfig } from '@kontourai/station-contracts/tool';
 import {
@@ -43,6 +44,7 @@ import {
 import { liveTurnTarget, serverTurnLive } from '../utils/conversation-activity';
 import { sessionAdapterSupportsSteering } from '../utils/execution';
 import { steerRefusalMessage } from '../utils/steerTurn';
+import { drainQueuedMessageOnTurnCompleted } from './orchestration/queueDrain';
 import { isReplayThread } from './orchestration/replay/replay-registry';
 import { buildOutgoingUserMessage } from './useActiveChatSessions.helpers';
 import { useStreamingMessage } from './useStreamingMessage';
@@ -246,8 +248,12 @@ export function useSendMessage(
               } satisfies OutboundDispatchTransportResult)
             : undefined;
         }
+        // #2324 (D4): a turn the engine opened on its own is not a turn the
+        // user is steering. Their message waits for it to finish, queued,
+        // rather than being folded into a reply they did not ask for.
         const steeringCapable =
           !options?.queueOnBusy &&
+          currentState.conversationActivity?.openTurn?.trigger !== 'provider' &&
           sessionAdapterSupportsSteering(
             currentState.agentConnectionId,
             agentConnections,
@@ -591,6 +597,40 @@ export function useSendMessage(
               },
             },
           });
+          return false;
+        }
+
+        // #2324 (D4): the engine began a turn of its own before this send
+        // reached it (the composer queues when it already sees one). The
+        // refusal is retryable: move the message into the queue that drains
+        // when that turn finishes, rather than calling it failed. A send with
+        // attachments cannot ride the text queue, so it keeps the ordinary
+        // error and Retry below.
+        if (
+          err.code === PROVIDER_TURN_IN_PROGRESS_CODE &&
+          !options?.dispatch &&
+          !(attachments && attachments.length > 0)
+        ) {
+          const { input: _restoredDraft, ...rollback } = rejectedSendRollback(
+            transaction,
+            latestState,
+          );
+          updateChat(sessionId, {
+            ...rollback,
+            status: 'idle',
+            error: undefined,
+            abortController: undefined,
+            pendingClientTurnId: undefined,
+            sendAwaitingTurnStart: undefined,
+            queuedMessages: [...(latestState?.queuedMessages ?? []), content],
+          });
+          // The turn it waited on may already have ended while this refusal
+          // was in flight; its end was the queue's only trigger.
+          if (
+            serverTurnLive(activeChatsStore.getSnapshot()[sessionId]) !== true
+          ) {
+            drainQueuedMessageOnTurnCompleted(apiBase, sessionId);
+          }
           return false;
         }
 

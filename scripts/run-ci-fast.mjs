@@ -93,6 +93,13 @@ export const FAST_STATIC_COMMANDS = Object.freeze([
     process.execPath,
     Object.freeze(['scripts/code-health-gate.mjs']),
   ]),
+  // A fixed real-time wait added to a test passes once in the queue and
+  // reds Nightly later under load (four did on 2026-09-23). Flag the added
+  // line while its author still owns it; a `real-time: <reason>` waives it.
+  Object.freeze([
+    process.execPath,
+    Object.freeze(['scripts/test-realtime-wait-gate.mjs']),
+  ]),
   Object.freeze(['npm', Object.freeze(['run', 'channel-ports:check'])]),
   Object.freeze(['npm', Object.freeze(['run', 'gate:workflows'])]),
   CONTENT_INTEGRITY_FAST_COMMAND,

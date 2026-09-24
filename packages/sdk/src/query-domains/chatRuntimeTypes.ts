@@ -159,6 +159,11 @@ export type OrchestrationCommandInput =
       approvalMode: ApprovalMode;
       /** Compare-and-set basis; see the contract's `basedOnSequence`. */
       basedOnSequence: number | null;
+    }
+  | {
+      /** #2312: delete a Draft server-side, for every device. */
+      type: 'discardDraft';
+      threadId: string;
     };
 
 export interface OrchestrationCommandReceipt {

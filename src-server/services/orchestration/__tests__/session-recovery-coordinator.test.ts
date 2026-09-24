@@ -1633,6 +1633,77 @@ describe('SessionRecoveryCoordinator', () => {
     vi.useRealTimers();
   });
 
+  test('#2324: a failed turn the engine opened on its own is never armed for replay — a user turn with the same failure is', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'recovery-coordinator-'));
+    dirs.push(dir);
+    const store = new EventStore(join(dir, 'orchestration.sqlite'));
+    const outcomes = vi.fn();
+    const coordinator = new SessionRecoveryCoordinator({
+      eventStore: store,
+      adapterForProvider: () =>
+        ({ metadata: { recovery: { sameSession: true } } }) as any,
+      sendTurn: async () => ({ turnId: 'unused' }),
+      onOutcome: outcomes,
+      now: () => new Date('2026-08-11T12:00:00.000Z'),
+    });
+    const at = '2026-08-11T12:00:00.000Z';
+    const failure = (threadId: string, turnId: string) =>
+      coordinator.observe({
+        eventId: `error-${threadId}`,
+        provider: 'claude',
+        threadId,
+        turnId,
+        createdAt: at,
+        method: 'runtime.error',
+        severity: 'error',
+        message: 'capacity exhausted',
+        details: { retryAfterMs: 0 },
+      });
+    // The provider turn, then a steer on it: the steer adds a start of its
+    // own with the steer's text and no trigger.
+    store.appendEvent({
+      eventId: 'provider-started',
+      provider: 'claude',
+      threadId: 'provider-thread',
+      turnId: 'provider:turn',
+      createdAt: at,
+      method: 'turn.started',
+      metadata: { trigger: 'provider' },
+    });
+    store.appendEvent({
+      eventId: 'provider-steered',
+      provider: 'claude',
+      threadId: 'provider-thread',
+      turnId: 'provider:turn',
+      createdAt: at,
+      method: 'turn.started',
+      prompt: 'steer text',
+      inputKind: 'steer',
+    });
+    failure('provider-thread', 'provider:turn');
+    expect(outcomes).not.toHaveBeenCalled();
+    expect(recoveryLedger(store).pending()).toEqual([]);
+    // Control: the identical failure on a user turn is armed, so the
+    // refusal above is the provider trigger, not the fixture.
+    store.appendEvent({
+      eventId: 'user-started',
+      provider: 'claude',
+      threadId: 'user-thread',
+      turnId: 'user-turn',
+      createdAt: at,
+      method: 'turn.started',
+      prompt: 'typed input',
+    });
+    failure('user-thread', 'user-turn');
+    expect(outcomes).toHaveBeenCalledTimes(1);
+    expect(outcomes).toHaveBeenCalledWith({
+      failureKind: 'capacity',
+      decision: 'retry-now',
+      outcome: 'armed',
+    });
+    store.close();
+  });
+
   test('replays the canonical turn envelope through sendTurn without recovery-side content', async () => {
     vi.useFakeTimers();
     const dir = mkdtempSync(join(tmpdir(), 'recovery-coordinator-'));

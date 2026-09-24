@@ -12,6 +12,7 @@ import { rememberToolPurpose } from '../../runtime/frameworks/tool-purpose.js';
 import { ApprovalRegistry } from '../../services/approvals/approval-registry.js';
 import { EventBus } from '../../services/orchestration/event-bus.js';
 import { tenantExecutionContextOutcomes } from '../../telemetry/metrics.js';
+import { SendTurnRefusedError } from '../adapter-shape.js';
 import type { PendingIdlessToolCall } from '../adapters/station-agent-adapter.js';
 import {
   mapStationAgentStreamEvent,
@@ -1265,6 +1266,75 @@ describe('StationAgentAdapter', () => {
     ]);
     expect(await adapter.hasSession('task-interrupt')).toBe(true);
     expect((await adapter.listSessions())[0]?.status).toBe('ready');
+  });
+
+  test('#2415: a send racing the running turn is refused definitively, and the next send after it ends is accepted', async () => {
+    const encoder = new TextEncoder();
+    let streamController!: ReadableStreamDefaultController<Uint8Array>;
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              streamController = controller;
+            },
+          }),
+          { status: 200, headers: { 'Content-Type': 'text/event-stream' } },
+        ),
+      )
+      .mockResolvedValueOnce(
+        sseResponse([{ type: 'finish', finishReason: 'stop' }, '[DONE]']),
+      );
+    const adapter = new StationAgentAdapter({
+      apiBase: 'http://127.0.0.1:3141',
+      hasAgent: () => true,
+      ...approvalDeps(),
+      fetch: fetchMock,
+    });
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+    await adapter.startSession({
+      threadId: 'task-concurrent-send',
+      provider: 'station-agent',
+      metadata: { agentId: 'reviewer' },
+    });
+    const first = await adapter.sendTurn({
+      threadId: 'task-concurrent-send',
+      input: 'first',
+    });
+    await nextEvents(iterator, 4); // session.*, state-changed, turn.started
+
+    // A plain error here is what orchestration records as an indeterminate
+    // turn start; the refusal type is what keeps the thread usable.
+    const refusal = await adapter
+      .sendTurn({ threadId: 'task-concurrent-send', input: 'second' })
+      .then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+    expect(refusal).toBeInstanceOf(SendTurnRefusedError);
+    expect((refusal as Error).message).toContain('already running');
+    // The refused send never reached the relay.
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    streamController.enqueue(
+      encoder.encode(
+        `data: ${JSON.stringify({ type: 'finish', finishReason: 'stop' })}\n\ndata: [DONE]\n\n`,
+      ),
+    );
+    streamController.close();
+    const settled = await nextEvents(iterator, 2);
+    expect(settled.map((event) => event.method)).toContain('turn.completed');
+    expect(
+      settled.find((event) => event.method === 'turn.completed'),
+    ).toMatchObject({ turnId: first.turnId });
+
+    const next = await adapter.sendTurn({
+      threadId: 'task-concurrent-send',
+      input: 'third',
+    });
+    expect(next.turnId).not.toBe(first.turnId);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   /**

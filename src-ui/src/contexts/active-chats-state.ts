@@ -1101,9 +1101,14 @@ export function mergeChatUpdates(
       current.conversationActivity?.openTurn?.turnId;
   }
   const openTurnId = chat.conversationActivity?.openTurn?.turnId;
+  // #2324: a turn the engine opened on its own is never this send's turn,
+  // however it races the send; its reply is not the send's answer.
+  const openTurnIsProviders =
+    chat.conversationActivity?.openTurn?.trigger === 'provider';
   if (
     chat.status !== 'sending' ||
     (openTurnId !== undefined &&
+      !openTurnIsProviders &&
       openTurnId !== chat.sendAwaitingPriorTurnId &&
       openTurnId !== chat.stopSettledTurnId)
   ) {

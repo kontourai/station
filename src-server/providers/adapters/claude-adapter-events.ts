@@ -28,6 +28,20 @@ import {
   claudeResultFailureText,
 } from './claude-result-outcome.js';
 import { claudeSourceResumeCursor } from './claude-resume-cursor.js';
+import {
+  type ClaudeSdkTurnContext,
+  type ClaudeSdkTurnLedger,
+  claudeTurnTerminalMetadata,
+  clearClaudeSdkTurns,
+  ensureClaudeTurnStartPublished,
+  observeClaudeCommandLifecycle,
+  observeClaudeEmptyResult,
+  observeClaudeInit,
+  observeClaudeReplyFrame,
+  readClaudeCommandLifecycle,
+  resolveClaudeResultTarget,
+  settleClaudeResultTarget,
+} from './claude-sdk-turns.js';
 import { UNRESOLVED_TOOL_OUTPUT } from './unresolved-tool-output.js';
 
 /** A token figure is only usable when it is a finite, non-negative count. */
@@ -178,21 +192,21 @@ export interface ClaudeMessageState {
   /** Live SDK permission mode; unset until Station sent one or init reported it. */
   currentPermissionMode?: PermissionMode;
   allowsBypassPermissions?: boolean;
+  /**
+   * The turn the SDK is running now, which frames and results attribute to.
+   * Derived: only the turn ledger (`sdkTurns`) writes it.
+   */
   activeTurnId?: string;
   /**
-   * The one local turn whose prompt has actually entered the SDK queue.
-   * `activeTurnId` is allocated earlier so setup can correlate activity, but
-   * it is not provenance for an SDK result until this marker is set.
+   * #2324: every turn the SDK holds — the running one and the sends queued
+   * behind it — each with its own Stop mark. The one owner of Claude turn
+   * identity; see `claude-sdk-turns.ts`. A requested Stop is marked on the
+   * stopped turn's own entry, because Claude reports that intentional
+   * interruption as an `is_error: true` result with `stop_reason: null`, and
+   * without it the terminal-result mapper would turn the stop receipt into a
+   * `runtime.error` and overwrite the canceled lifecycle with Failed.
    */
-  dispatchedTurnId?: string;
-  /**
-   * The exact turn for which Station has an in-flight, user-requested SDK
-   * interrupt. Claude reports that intentional interruption as an
-   * `is_error: true` result with `stop_reason: null`; without this identity,
-   * the normal terminal-result mapper turns the stop receipt into a
-   * `runtime.error` and overwrites the canceled lifecycle with Failed.
-   */
-  interruptingTurnId?: string;
+  sdkTurns?: ClaudeSdkTurnLedger;
   /**
    * The SDK result mapper consumed the structured error receipt for a
    * requested interruption. Claude can immediately rethrow that same receipt
@@ -205,9 +219,10 @@ export interface ClaudeMessageState {
    * archive#1182: the model reported by the most recent top-level
    * `assistant` SDK message's `message.model` (the actual Anthropic API
    * response field, not the `init` message's requested-model echo). Reset
-   * to `undefined` at the start of each turn (`claude-adapter.ts`'s
-   * `sendTurn`) so a turn that produces no assistant message before
-   * completing does not inherit a stale value from the previous turn.
+   * to `undefined` whenever the SDK starts running a different turn (the
+   * turn ledger, `claude-sdk-turns.ts`) so a turn that produces no assistant
+   * message before completing does not inherit a stale value from the
+   * previous turn.
    */
   lastReportedModel?: string;
   /**
@@ -375,6 +390,8 @@ interface MapClaudeMessageParams {
   publish: (event: CanonicalRuntimeEvent) => void;
   /** Adapter-owned observability seam for dropped non-turn result messages. */
   logInfo?: (message: string, details: Record<string, unknown>) => void;
+  /** Interrupts the SDK (see `ClaudeSdkTurnContext.interruptEngine`). */
+  interruptEngine?: () => void;
 }
 
 export function mapClaudeSdkMessage({
@@ -383,8 +400,17 @@ export function mapClaudeSdkMessage({
   message,
   publish,
   logInfo,
+  interruptEngine,
 }: MapClaudeMessageParams): void {
   const createdAt = new Date().toISOString();
+  const turnContext: ClaudeSdkTurnContext = {
+    provider,
+    record,
+    publish,
+    createdAt,
+    logInfo,
+    interruptEngine,
+  };
 
   if (message.type === 'system' && message.subtype === 'init') {
     const sourceCursor = claudeSourceResumeCursor(record.session.resumeCursor);
@@ -420,6 +446,15 @@ export function mapClaudeSdkMessage({
         ...(appliedApprovalMode ? { approvalMode: appliedApprovalMode } : {}),
       },
     });
+    // #2324: every SDK turn begins with `init`; one no `command_lifecycle`
+    // `started` preceded is a turn the engine opened itself.
+    observeClaudeInit(turnContext, message.capabilities);
+    return;
+  }
+
+  const lifecycle = readClaudeCommandLifecycle(message);
+  if (lifecycle) {
+    observeClaudeCommandLifecycle(turnContext, lifecycle);
     return;
   }
 
@@ -667,6 +702,14 @@ export function mapClaudeSdkMessage({
 
   if (message.type === 'stream_event') {
     const streamEvent = message.event as any;
+    if (
+      message.parent_tool_use_id === null &&
+      CLAUDE_REPLY_STREAM_EVENTS.has(streamEvent?.type)
+    ) {
+      // #2324: a top-level reply frame names the turn it belongs to, or —
+      // with nothing running — is a reply the engine began on its own.
+      observeClaudeReplyFrame(turnContext, message);
+    }
     if (streamEvent?.type === 'message_start') {
       // A new assistant message opens: every content-block index that
       // follows belongs to it, not to the previous message's blocks.
@@ -729,10 +772,18 @@ export function mapClaudeSdkMessage({
   }
 
   if (message.type === 'result') {
-    const resultTurnId =
-      message.is_error && record.interruptingTurnId
-        ? record.interruptingTurnId
-        : record.activeTurnId;
+    // #2324: the result closes the turn it names (its user uuids), else the
+    // running turn — never "whichever turn Station allocated last". Resolved
+    // before anything is published so its usage lands on the same turn.
+    const target = resolveClaudeResultTarget(record, message);
+    const resultTurn =
+      target.kind === 'turn' && target.turn.kind !== 'untracked'
+        ? target.turn
+        : undefined;
+    const resultTurnId = resultTurn?.turnId;
+    // A send the ledger still holds as queued (no lifecycle messages) gets
+    // its start before any fact about its end.
+    if (resultTurn) ensureClaudeTurnStartPublished(turnContext, resultTurn);
     publish({
       eventId: crypto.randomUUID(),
       provider,
@@ -780,36 +831,29 @@ export function mapClaudeSdkMessage({
       record.attemptedResumeCursor,
     );
     if (outcome !== 'ok') {
-      const turnId = record.activeTurnId;
-      const interruptingTurnId = record.interruptingTurnId;
-      if (interruptingTurnId) {
-        record.interruptingTurnId = undefined;
+      if (target.kind === 'turn' && target.turn.stopRequested) {
+        // The receipt for a requested Stop, which already published this
+        // turn's `turn.aborted`. Only the stopped turn's own entry is
+        // consumed: a send queued behind the Stop keeps its own.
         record.interruptedResultObserved = true;
-        // A new turn can be queued before Claude emits the stopped turn's
-        // result. Consume the older interruption receipt without clearing the
-        // newer turn's provenance.
-        if (
-          turnId === interruptingTurnId &&
-          record.dispatchedTurnId === interruptingTurnId
-        ) {
-          clearClaudeDispatchedTurn(record);
-        }
+        settleClaudeResultTarget(turnContext, target);
         logInfo?.('Dropped Claude error result for requested interruption', {
           threadId: record.session.threadId,
-          turnId: interruptingTurnId,
+          turnId: target.turn.turnId,
           resultKind: 'requested-interruption',
         });
         return;
       }
       record.terminalResultObserved = outcome;
       record.session.status = outcome === 'binding-dead' ? 'dead' : 'error';
-      clearClaudeDispatchedTurn(record);
+      if (target.kind === 'turn') settleClaudeResultTarget(turnContext, target);
+      clearClaudeSdkTurns(turnContext);
       publish({
         eventId: crypto.randomUUID(),
         provider,
         threadId: record.session.threadId,
         createdAt,
-        turnId,
+        turnId: resultTurnId,
         method: 'runtime.error',
         severity: 'error',
         code:
@@ -818,33 +862,55 @@ export function mapClaudeSdkMessage({
             : ENGINE_TURN_FAILED_CODE,
         retriable: false,
         message: claudeResultFailureText(message),
+        // #2324 review F1: a failed turn the engine opened on its own ends
+        // with this error; it carries the trigger its start did.
+        ...(resultTurn?.kind === 'provider'
+          ? { metadata: claudeTurnTerminalMetadata(resultTurn) }
+          : {}),
       });
       return;
     }
     // Claude emits a successful `result` for resume/init handshakes. It has
     // normal result fields (including usage), but `num_turns: 0` proves the
-    // runtime did not execute Station's queued prompt. In particular, do not
-    // let an ID allocated while sendTurn was doing async setup lend this
-    // handshake false provenance.
+    // runtime did not execute Station's queued prompt, so it closes nothing.
     if (message.num_turns === 0) {
+      // Whatever turn the engine was beginning did not happen.
+      observeClaudeEmptyResult(turnContext);
       logInfo?.('Dropped Claude handshake result before lifecycle mapping', {
         threadId: record.session.threadId,
         resultKind: 'resume-init-handshake',
         numTurns: message.num_turns,
         inheritedActiveTurnId: record.activeTurnId,
-        dispatchedTurnId: record.dispatchedTurnId,
       });
       return;
     }
-    // A non-error result proves the in-flight exchange completed normally.
-    // An older Stop marker cannot apply to a later result after this ordered
-    // stream point, so do not let it suppress a future genuine failure.
-    record.interruptingTurnId = undefined;
-    if (
-      record.activeTurnId &&
-      record.dispatchedTurnId === record.activeTurnId
-    ) {
-      const turnId = record.activeTurnId;
+    if (target.kind === 'none' || !resultTurn) {
+      if (target.kind === 'turn') settleClaudeResultTarget(turnContext, target);
+      // No turn Station holds asked for this: usage remains useful; a
+      // lifecycle completion would be fabricated.
+      logInfo?.('Dropped Claude result without a dispatched local turn', {
+        threadId: record.session.threadId,
+        resultKind: 'non-dispatched-terminal',
+        inheritedActiveTurnId: record.activeTurnId,
+      });
+      return;
+    }
+    if (resultTurn.stopRequested) {
+      // A stopped turn that finished on its own before the interrupt landed.
+      // Its `turn.aborted` is already published; this result must not be
+      // published under a send queued after the Stop.
+      settleClaudeResultTarget(turnContext, target);
+      logInfo?.('Dropped Claude result for a stopped turn', {
+        threadId: record.session.threadId,
+        turnId: resultTurn.turnId,
+        resultKind: 'stopped-turn-result',
+      });
+      return;
+    }
+    {
+      const turnId = resultTurn.turnId;
+      // Read before the ledger moves: a turn that stops running resets it.
+      const reportedModel = record.lastReportedModel;
       // A turn the engine ended by handing a tool call back to its host: the
       // call is unresolved and will stay that way. Settle it as the error it
       // is, before the completion, so the transcript carries a reason instead
@@ -877,7 +943,7 @@ export function mapClaudeSdkMessage({
           error: CLAUDE_DEFERRED_TOOL_ERROR,
         });
       }
-      clearClaudeDispatchedTurn(record);
+      settleClaudeResultTarget(turnContext, target);
       publish({
         eventId: crypto.randomUUID(),
         provider,
@@ -899,32 +965,47 @@ export function mapClaudeSdkMessage({
           message.type === 'result' && 'result' in message
             ? message.result
             : undefined,
-        // archive#1182: `record.lastReportedModel` is the SDK's own
-        // `assistant` message's `message.model` (the Anthropic Messages API
-        // response's resolved model, e.g. an alias like the "fable" family
-        // resolves to its underlying snapshot) — a structured API field,
-        // never text parsed out of the assistant's own reply. Absent when no
-        // assistant message arrived this turn (e.g. an immediate error).
-        ...(record.lastReportedModel
-          ? { metadata: reportedModelMetadata(record.lastReportedModel) }
+        // archive#1182: `reportedModel` is the SDK's own `assistant`
+        // message's `message.model` (the Anthropic Messages API response's
+        // resolved model) — a structured API field, never text parsed out of
+        // the assistant's own reply. Absent when no assistant message arrived
+        // this turn (e.g. an immediate error). #2324: a provider-triggered
+        // turn's terminal carries `trigger`, like its start.
+        ...(reportedModel || resultTurn.kind === 'provider'
+          ? {
+              metadata: {
+                ...(reportedModel ? reportedModelMetadata(reportedModel) : {}),
+                ...claudeTurnTerminalMetadata(resultTurn),
+              },
+            }
           : {}),
       });
+      // Sends the engine merged into this one reply are answered by it too.
+      // The send guard makes this rare (it takes a send racing a Stop), but
+      // a merged send that is not closed would stay open forever.
+      for (const folded of target.folded) {
+        if (folded.stopRequested) continue;
+        publish({
+          eventId: crypto.randomUUID(),
+          provider,
+          threadId: record.session.threadId,
+          createdAt,
+          turnId: folded.turnId,
+          method: 'turn.completed',
+          finishReason: 'other',
+        });
+      }
       if (!record.activeTasks?.size) record.onNoLiveTasks?.();
-    } else {
-      // A result can arrive while sendTurn has allocated an ID but not yet
-      // queued its prompt, or after a previous result cleared that marker.
-      // Usage remains useful; a lifecycle completion would be fabricated.
-      logInfo?.('Dropped Claude result without a dispatched local turn', {
-        threadId: record.session.threadId,
-        resultKind: 'non-dispatched-terminal',
-        inheritedActiveTurnId: record.activeTurnId,
-        dispatchedTurnId: record.dispatchedTurnId,
-      });
     }
     return;
   }
 
   if (message.type === 'assistant') {
+    // #2324: before the model capture below — a frame that starts a turn
+    // resets the previous turn's reported model.
+    if (message.parent_tool_use_id === null) {
+      observeClaudeReplyFrame(turnContext, message);
+    }
     // archive#1182: capture the runtime-reported model off every top-level
     // assistant message (the `init` system message's `model` merely echoes
     // what Station requested — see effective-model-metadata.ts's docblock
@@ -1163,10 +1244,15 @@ export function settleUnresolvedClaudeToolCalls({
   }
 }
 
-function clearClaudeDispatchedTurn(record: ClaudeMessageState): void {
-  record.activeTurnId = undefined;
-  record.dispatchedTurnId = undefined;
-}
+/**
+ * #2309/#2324: stream events that mean the model is producing a reply.
+ * `ping`, `message_delta` and `message_stop` do not begin one.
+ */
+const CLAUDE_REPLY_STREAM_EVENTS: ReadonlySet<unknown> = new Set([
+  'message_start',
+  'content_block_start',
+  'content_block_delta',
+]);
 
 function claudeTaskToolName(message: {
   subagent_type?: string;

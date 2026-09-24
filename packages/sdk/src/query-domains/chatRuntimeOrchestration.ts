@@ -526,9 +526,15 @@ export async function dispatchOrchestrationCommandWithReceipt<T = unknown>(
     receipt?: OrchestrationCommandReceipt;
     receiptStatus?: unknown;
     error?: string;
+    code?: unknown;
   };
   if (!response.ok || !result.success) {
-    throw new Error(apiErrorMessage(result, `HTTP ${response.status}`));
+    // The server's typed refusal code (e.g. #2312's `draft_busy`) rides on
+    // the error, so a caller can tell a retryable refusal from a failure.
+    throw Object.assign(
+      new Error(apiErrorMessage(result, `HTTP ${response.status}`)),
+      typeof result.code === 'string' ? { code: result.code } : {},
+    );
   }
   if (!result.receipt) {
     throw new Error('Orchestration command response missing receipt');

@@ -1263,6 +1263,183 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     ).toBe('partial answer');
   });
 
+  it('#2324 (D4): queues, never steers, while the engine runs a turn of its own', async () => {
+    activeChatsStore.updateChat(sessionId, {
+      status: 'sending',
+      orchestrationProvider: 'claude',
+      currentSessionId: 'exec-claude-1',
+      conversationId: 'conversation-p',
+      conversationActivity: {
+        conversationId: 'conversation-p',
+        asOfSequence: 7,
+        openTurn: {
+          turnId: 'provider:p',
+          threadId: 'exec-claude-1',
+          startedAt: '2026-09-23T00:00:00.000Z',
+          trigger: 'provider',
+        },
+      },
+    });
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+
+    await act(async () => {
+      await result.current(sessionId, 'claude', sessionId, 'after it');
+    });
+
+    expect(steerOrchestrationTurnMock).not.toHaveBeenCalled();
+    expect(sendExecutionMessageMock).not.toHaveBeenCalled();
+    expect(activeChatsStore.getSnapshot()[sessionId].queuedMessages).toEqual([
+      'after it',
+    ]);
+  });
+
+  it('#2324 (D4): a send refused because the engine began its own turn moves into the queue instead of failing', async () => {
+    sendExecutionMessageMock.mockRejectedValueOnce(
+      new CodedOrchestrationError(
+        400,
+        'The agent is replying on its own; your message will be sent when it finishes.',
+        'provider_turn_in_progress',
+      ),
+    );
+    // The server shows the provider turn open by the time the refusal lands,
+    // so the queue waits for its end rather than draining at once.
+    activeChatsStore.updateChat(sessionId, {
+      conversationId: 'conversation-q',
+    });
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+    const sent = act(async () => {
+      await result.current(sessionId, 'claude', sessionId, 'raced it');
+    });
+    activeChatsStore.updateChat(sessionId, {
+      conversationActivity: {
+        conversationId: 'conversation-q',
+        asOfSequence: 9,
+        openTurn: {
+          turnId: 'provider:q',
+          threadId: sessionId,
+          startedAt: '2026-09-23T00:00:00.000Z',
+          trigger: 'provider',
+        },
+      },
+    });
+    await sent;
+
+    const chat = activeChatsStore.getSnapshot()[sessionId];
+    expect(chat.queuedMessages).toEqual(['raced it']);
+    expect(chat.status).not.toBe('error');
+    expect(chat.error).toBeUndefined();
+    // Not left as a sent row, and not restored as a draft too.
+    expect(
+      chat.messages?.some(
+        (message) => message.role === 'user' && message.content === 'raced it',
+      ),
+    ).toBe(false);
+    expect(chat.input ?? '').toBe('');
+    expect(chat.ephemeralMessages ?? []).toEqual([]);
+  });
+
+  it('#2324 (D4): a refused send whose provider turn already ended by the time the refusal lands starts draining from the queue at once', async () => {
+    // Only the drain's settle timer is faked, so its send never runs here:
+    // what is under test is that the drain STARTED (it pops the head and
+    // marks itself settling synchronously), not the drained send.
+    vi.useFakeTimers({ toFake: ['setTimeout'] });
+    try {
+      sendExecutionMessageMock.mockRejectedValueOnce(
+        new CodedOrchestrationError(
+          400,
+          'The agent is replying on its own; your message will be sent when it finishes.',
+          'provider_turn_in_progress',
+        ),
+      );
+      // The server shows no open turn: the provider turn's end — the queue's
+      // only trigger — has already passed.
+      activeChatsStore.updateChat(sessionId, {
+        conversationId: 'conversation-r',
+        conversationActivity: {
+          conversationId: 'conversation-r',
+          asOfSequence: 3,
+        },
+      });
+      const { result } = renderHook(() => useSendMessage('http://api.test'));
+      await act(async () => {
+        await result.current(sessionId, 'claude', sessionId, 'after it ended');
+      });
+      const chat = activeChatsStore.getSnapshot()[sessionId];
+      expect(chat.queuedMessages).toEqual([]);
+      expect(chat.queueDrainSettling).toBe(true);
+    } finally {
+      vi.clearAllTimers();
+      vi.useRealTimers();
+    }
+  });
+
+  it('#2324 review J4: a refused send WITH attachments is not dropped into the text queue — it keeps its attachments and the ordinary error', async () => {
+    activeChatsStore.updateChat(sessionId, {
+      attachments: [stagedAttachment],
+      attachmentStages: [stagedSnapshot],
+    });
+    sendExecutionMessageMock.mockRejectedValueOnce(
+      new CodedOrchestrationError(
+        400,
+        'The agent is replying on its own; your message will be sent when it finishes.',
+        'provider_turn_in_progress',
+      ),
+    );
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+    await act(async () => {
+      await result.current(sessionId, 'claude', undefined, 'with a file', [
+        stagedAttachment,
+      ]);
+    });
+    const chat = activeChatsStore.getSnapshot()[sessionId];
+    expect(chat.queuedMessages ?? []).toEqual([]);
+    expect(chat).toMatchObject({
+      attachments: [stagedAttachment],
+      attachmentStages: [stagedSnapshot],
+    });
+    expect(chat.ephemeralMessages?.at(-1)?.content).toBeTruthy();
+  });
+
+  it('#2324 review J4b: a durable dispatch refused by a provider turn is not also put in the in-memory queue', async () => {
+    // Only the drain's settle timer is faked: a conversion would start a
+    // drain (popping the head at once), which is what this must not do.
+    vi.useFakeTimers({ toFake: ['setTimeout'] });
+    try {
+      sendExecutionMessageMock.mockRejectedValueOnce(
+        new CodedOrchestrationError(
+          400,
+          'The agent is replying on its own; your message will be sent when it finishes.',
+          'provider_turn_in_progress',
+        ),
+      );
+      const claim = { indeterminate: vi.fn(async () => 'applied' as const) };
+      const { result } = renderHook(() => useSendMessage('http://api.test'));
+      await act(async () => {
+        await result
+          .current(
+            sessionId,
+            'claude',
+            undefined,
+            'durable send',
+            undefined,
+            undefined,
+            'claimed-turn',
+            { skipInMemoryQueueOnBusy: true, dispatch: claim },
+          )
+          .catch(() => undefined);
+      });
+      const chat = activeChatsStore.getSnapshot()[sessionId];
+      // The durable claim owns the outcome; the in-memory queue took nothing
+      // and started no drain of its own.
+      expect(claim.indeterminate).toHaveBeenCalledOnce();
+      expect(chat.queuedMessages ?? []).toEqual([]);
+      expect(chat.queueDrainSettling).toBeUndefined();
+    } finally {
+      vi.clearAllTimers();
+      vi.useRealTimers();
+    }
+  });
+
   it('queues on a steering engine when queueOnBusy is requested', async () => {
     activeChatsStore.updateChat(sessionId, {
       status: 'sending',

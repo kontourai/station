@@ -534,8 +534,11 @@ export function buildMuseExecArgs(input: {
   // Headless `exec` has no channel to answer a tool approval: no approval
   // event reaches stdout and nothing can decide one. Under muse's default
   // (`on-request` plus an LLM judge), any call the judge escalates — including
-  // one made by a background `workflow` subagent — waits forever, and the turn
-  // ends only when Station's idle timeout kills it. `never` stops nothing for
+  // one made by a background `workflow` subagent — waits forever. In the #2300
+  // incident only Station's idle timer ended such a turn; with no default idle
+  // bound (#2269) it would stay open, visibly silent, until the user pressed
+  // Stop, since the waiting subagent writes only to its own session log and
+  // nothing reaches the parent's stdout. `never` stops nothing for
   // approval and leaves muse's sandbox as the containment. Live-verified
   // against Muse Code 1.3.0-R3401.1: the same workflow-subagent `bash` call
   // hangs under `untrusted` or the default mode with the judge off, and

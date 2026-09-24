@@ -120,6 +120,28 @@ describe('chatRuntimeOrchestration', () => {
     );
   });
 
+  it('keeps the server refusal code on a rejected command (#2312)', async () => {
+    mockJsonResponse(
+      {
+        success: false,
+        error: 'This draft is starting on another device or tab.',
+        code: 'draft_busy',
+      },
+      false,
+    );
+    const refused = await dispatchOrchestrationCommandWithReceipt({
+      type: 'discardDraft',
+      threadId: 'thread-draft',
+    }).then(
+      () => undefined,
+      (error: unknown) => error as Error & { code?: unknown },
+    );
+    expect(refused?.message).toBe(
+      'This draft is starting on another device or tab.',
+    );
+    expect(refused?.code).toBe('draft_busy');
+  });
+
   it('sends ambient context out-of-band on sendTurn and omits it when absent (#685)', async () => {
     mockJsonResponse({
       success: true,
