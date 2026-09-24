@@ -13,9 +13,14 @@ import {
   useState,
 } from 'react';
 import {
+  DIALOG_HISTORY_KEY,
+  registerDialogHistory,
+} from '../components/dialog-history';
+import {
   availablePlacements,
   dockFoldsToOneRegion,
   useDockSlotDevice,
+  useIsMobile,
 } from '../hooks/useIsMobile';
 import {
   isDefaultRegionArrangementRecord,
@@ -31,6 +36,8 @@ import {
   isDockRegion,
   moveRegionPanes as moveRegionPanesInArrangement,
   occupiedRegion,
+  openPhonePaneLayer,
+  type PhonePaneLayer,
   placeSurface as placeSurfaceInArrangement,
   REGION_SURFACE_REGISTRY,
   type RegionArrangement,
@@ -38,6 +45,7 @@ import {
   type RegionState,
   removeRegionPane,
   resolveRegionSurface,
+  restorePhonePaneLayer,
   revealSurface,
   seedRegionArrangementFromDock,
   selectRegionPane,
@@ -220,7 +228,23 @@ interface RegionModelValue {
   canRenderRegionSurfaces: boolean;
   /** Called by a mounted region surface host; returns its unregister. */
   registerRegionSurfaceHost(): () => void;
+  /**
+   * The pane open OVER Chat on a bottom-only device, if any (the phone
+   * layer, `openPhonePaneLayer`): which region and which pane, for the
+   * region chrome's "‹ Chat" control. Transient; never persisted.
+   */
+  phoneLayer: { region: DockRegionId; surfaceId: string } | null;
+  /**
+   * Leave the phone layer, the same as the device's Back: travels back over
+   * the layer's history entry when it is the live one (so the entry is
+   * consumed rather than left for a later Back to trip over), else restores
+   * directly.
+   */
+  closePhoneLayer(): void;
 }
+
+/** The layer's `registerDialogHistory` id: one phone layer at a time. */
+const PHONE_LAYER_HISTORY_ID = 'phone-pane-layer';
 
 const RegionModelContext = createContext<RegionModelValue | null>(null);
 
@@ -362,6 +386,9 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
   } = useNavigation();
   const available = availablePlacements(useDockSlotDevice());
   const bottomOnly = dockFoldsToOneRegion(available);
+  // Phone-sized, not merely folded: a phone layer maximizes its region so the
+  // pane reads full screen; a wide coarse device keeps the region's size.
+  const isMobile = useIsMobile();
   const { setDeviceSetting } = useDeviceSettingsActions();
   const [regions, setRegions] = useState<RegionArrangement>(() =>
     initialRegionArrangement(settings, dockMode, isDockOpen, isDockMaximized),
@@ -369,10 +396,23 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
   const [lastShownRegion, setLastShownRegion] = useState<RegionId | null>(
     () => chatRegion(regions) ?? null,
   );
+  const lastShownRegionRef = useRef(lastShownRegion);
+  lastShownRegionRef.current = lastShownRegion;
   const [surfaceIntents, setSurfaceIntents] = useState<SurfaceIntents>({});
   const [mountedSurfaceHosts, setMountedSurfaceHosts] = useState(0);
   const surfaceIntentTokenRef = useRef(0);
   const adoptedIntentKeyRef = useRef<string | null>(null);
+  // The phone layer (`openPhonePaneLayer`). A ref beside the state for the
+  // same reason `regionsRef` is: opens and restores read the latest value
+  // inside one event, before React re-renders.
+  const [phoneLayer, setPhoneLayerState] = useState<PhonePaneLayer | null>(
+    null,
+  );
+  const phoneLayerRef = useRef<PhonePaneLayer | null>(null);
+  const setPhoneLayer = useCallback((layer: PhonePaneLayer | null) => {
+    phoneLayerRef.current = layer;
+    setPhoneLayerState(layer);
+  }, []);
   const regionsRef = useRef(regions);
   const mirroredRegionsRef = useRef(regions);
   regionsRef.current = regions;
@@ -477,6 +517,38 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
       const current = regionsRef.current;
       const held = occupiedRegion(current, surfaceId);
       const target = options.region;
+      // The phone layer: on a bottom-only device, a pane opened with no
+      // explicit region — or with a side region the fold does not offer,
+      // which used to be refused `region-unavailable` — opens OVER Chat, as
+      // a selected tab of Chat's region, with a history entry so Back
+      // returns to the conversation. `main` keeps its own rule (a Home
+      // reveal, a pane the user put in the primary area), and so does an
+      // explicit `bottom`: that is the user placing a pane (#2158), not
+      // looking at one.
+      const overChat =
+        bottomOnly &&
+        held !== 'main' &&
+        (target === undefined
+          ? surface.defaultRegion !== 'main' || held !== undefined
+          : isDockRegion(target) &&
+            !(available as readonly RegionId[]).includes(target));
+      if (overChat) {
+        const opened = openPhonePaneLayer(current, surfaceId, {
+          lastShownRegion: lastShownRegionRef.current,
+          maximize: isMobile,
+          layer: phoneLayerRef.current,
+        });
+        if (opened) {
+          commit(opened.arrangement, opened.layer.region);
+          setPhoneLayer(opened.layer);
+          return {
+            ok: true,
+            region: opened.layer.region,
+            surfaceId,
+            existing: held !== undefined,
+          };
+        }
+      }
       // Already open somewhere, and not asked to go elsewhere: reveal it
       // there (region shown, tab selected) rather than opening a second time.
       if (
@@ -520,7 +592,7 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
         existing: held !== undefined,
       };
     },
-    [available, bottomOnly, commit],
+    [available, bottomOnly, commit, isMobile, setPhoneLayer],
   );
 
   const showSurface = useCallback(
@@ -599,8 +671,70 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  // The way back from a phone layer (`restorePhonePaneLayer`): Back's
+  // `close`, the "‹ Chat" control's fallback, and the dismissal effect below.
+  const restorePhoneLayer = useCallback(() => {
+    const layer = phoneLayerRef.current;
+    if (!layer) return;
+    setPhoneLayer(null);
+    const next = restorePhonePaneLayer(regionsRef.current, layer);
+    if (next === regionsRef.current) return;
+    regionsRef.current = next;
+    setRegions(next);
+  }, [setPhoneLayer]);
+
+  const closePhoneLayer = useCallback(() => {
+    if (!phoneLayerRef.current) return;
+    const state: unknown = window.history.state;
+    const onLayerEntry =
+      state !== null &&
+      typeof state === 'object' &&
+      (state as Record<string, unknown>)[DIALOG_HISTORY_KEY] ===
+        PHONE_LAYER_HISTORY_ID;
+    // Travelling back is what consumes the entry: the popstate reaches the
+    // layer's `close` (restore) through `dialog-history`, exactly as the
+    // device's own Back does, so the two exits cannot differ.
+    if (onLayerEntry) window.history.back();
+    else restorePhoneLayer();
+  }, [restorePhoneLayer]);
+
+  // Anything else that takes the layer's pane off screen — "Show Chat" in the
+  // folded menu, the tab closed, the region hidden, another tab adopting a
+  // record — dismisses the layer: the tab it minted goes, and its history
+  // entry is consumed by the registration's cleanup below.
+  useEffect(() => {
+    const layer = phoneLayerRef.current;
+    if (!layer || layer !== phoneLayer) return;
+    const state = regions[layer.region];
+    if (state.visible && state.occupant === layer.surfaceId) return;
+    restorePhoneLayer();
+  }, [phoneLayer, regions, restorePhoneLayer]);
+
+  // One history entry per layer, not per pane: a replacement keeps the entry
+  // (the effect is keyed on whether a layer is open), so one Back returns to
+  // Chat however many panes were opened over it. DECLARED BEFORE the mirror
+  // effect below on purpose: effects run in declaration order within a
+  // commit, so the marker is pushed at the pre-layer URL and the mirror's
+  // `?maximize=true` then lands on the marker entry by `replaceState`. Back
+  // therefore travels to the entry without it; and on an in-app close the
+  // mirror's clearing write lands before `dialog-history`'s deferred cleanup
+  // compares URLs, so the entry is travelled back over, not collapsed.
+  const phoneLayerOpen = phoneLayer !== null;
+  useEffect(() => {
+    if (!phoneLayerOpen) return;
+    return registerDialogHistory(PHONE_LAYER_HISTORY_ID, restorePhoneLayer);
+  }, [phoneLayerOpen, restorePhoneLayer]);
+
   const persistRegionArrangement = useCallback(() => {
-    const latest = toRegionArrangementRecord(regionsRef.current);
+    // A phone layer is transient: the record is written as if it were not
+    // open, so a reload never finds a pane over Chat with no layer (and no
+    // tab strip) to take it away again.
+    const layer = phoneLayerRef.current;
+    const latest = toRegionArrangementRecord(
+      layer
+        ? restorePhonePaneLayer(regionsRef.current, layer)
+        : regionsRef.current,
+    );
     if (
       persistedRecordRef.current &&
       regionArrangementRecordsEqual(latest, persistedRecordRef.current)
@@ -824,6 +958,13 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
     updateParams(clearSurfaceDeepLinkParams());
   }, [intentKey]);
 
+  const phoneLayerView = useMemo(
+    () =>
+      phoneLayer
+        ? { region: phoneLayer.region, surfaceId: phoneLayer.surfaceId }
+        : null,
+    [phoneLayer],
+  );
   const value = useMemo(
     () => ({
       regions,
@@ -841,6 +982,8 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
       consumeSurfaceIntent,
       canRenderRegionSurfaces: mountedSurfaceHosts > 0,
       registerRegionSurfaceHost,
+      phoneLayer: phoneLayerView,
+      closePhoneLayer,
     }),
     [
       regions,
@@ -857,6 +1000,8 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
       consumeSurfaceIntent,
       mountedSurfaceHosts,
       registerRegionSurfaceHost,
+      phoneLayerView,
+      closePhoneLayer,
     ],
   );
   return (
