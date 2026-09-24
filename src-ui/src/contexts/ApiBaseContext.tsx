@@ -187,6 +187,14 @@ export function ApiBaseProvider({ children }: { children: ReactNode }) {
           ? (input) => nativeProfileRepository().updateProfile(input)
           : undefined
       }
+      removeSharedProfile={
+        profile.isTauri
+          ? async (input) => {
+              await nativeProfileRepository().removeProfile(input);
+              notifyCredentialChanged(new URL(input.expected.url).origin);
+            }
+          : undefined
+      }
       makeDefaultProfile={
         profile.isTauri
           ? async (connectionId) => {

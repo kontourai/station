@@ -22,6 +22,7 @@ interface ConnectionListPanelProps {
   activeConnectionId?: string;
   editingId: string | null;
   canEditSharedProfiles?: boolean;
+  canRemoveSharedProfiles?: boolean;
   editError?: string;
   editPending?: boolean;
   editName: string;
@@ -107,10 +108,12 @@ function ConnectionRow({
   localStationOwnerId,
   getStatus,
   canEditSharedProfiles,
+  canRemoveSharedProfiles,
   busy,
 }: {
   connection: SavedConnection;
   canEditSharedProfiles?: boolean;
+  canRemoveSharedProfiles?: boolean;
   busy?: boolean;
   activeConnectionId?: string;
   pendingConnectionId?: string;
@@ -309,7 +312,9 @@ function ConnectionRow({
             role="status"
             className="station-connect-row__meta station-connect-row__meta--warning"
           >
-            Removes it from this device only.
+            {isSharedStationProfile
+              ? 'Removes it and its saved credential from this device, including for the station CLI if you use it here.'
+              : 'Removes it from this device only.'}
           </div>
         )}
         {connection.endpointCandidate && (
@@ -463,14 +468,14 @@ function ConnectionRow({
                 <button
                   type="button"
                   role="menuitem"
-                  disabled={isSharedStationProfile}
+                  disabled={isSharedStationProfile && !canRemoveSharedProfiles}
                   className="station-connect-row__menu-danger"
                   onClick={() => {
                     closeActions();
                     setForgetArmed(true);
                   }}
                 >
-                  {isSharedStationProfile
+                  {isSharedStationProfile && !canRemoveSharedProfiles
                     ? 'Forget in the CLI'
                     : 'Forget Station'}
                 </button>
@@ -488,6 +493,7 @@ export function ConnectionListPanel({
   activeConnectionId,
   editingId,
   canEditSharedProfiles,
+  canRemoveSharedProfiles,
   editError,
   editPending,
   editName,
@@ -666,6 +672,7 @@ export function ConnectionListPanel({
               onRequestAccess={onRequestAccess}
               onMakeDefaultProfile={onMakeDefaultProfile}
               canEditSharedProfiles={canEditSharedProfiles}
+              canRemoveSharedProfiles={canRemoveSharedProfiles}
               busy={editPending}
               onRestartInjectedConnection={onRestartInjectedConnection}
               localStationOwnerId={localStationOwnerId}

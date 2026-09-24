@@ -213,6 +213,7 @@ export function ConnectionManagerModalContent({
     commitVerifiedPairing,
     makeDefaultProfile,
     updateSharedProfile,
+    removeSharedProfile,
     getConnectionCredential,
     commitEndpointCandidate,
     failEndpointCandidate,
@@ -280,6 +281,7 @@ export function ConnectionManagerModalContent({
     string | null
   >(null);
   const [selectionError, setSelectionError] = useState<string | null>(null);
+  const [removeError, setRemoveError] = useState<string | null>(null);
   // The saved Station the shared request-access flow targets. First-run and
   // saved-but-unpaired rows use the same exchange and differ only in whether
   // a profile already exists.
@@ -953,6 +955,14 @@ export function ConnectionManagerModalContent({
             {defaultMutationError}
           </div>
         )}
+        {removeError && (
+          <div
+            role="status"
+            className="station-connect-row__meta station-connect-row__meta--warning"
+          >
+            {removeError}
+          </div>
+        )}
         {selectionError && panel !== 'request-access' && (
           <div
             role="status"
@@ -989,7 +999,27 @@ export function ConnectionManagerModalContent({
             }}
             onCheck={checkOne}
             onStartEdit={startEdit}
-            onRemove={removeConnection}
+            onRemove={(id) => {
+              setRemoveError(null);
+              const connection = connections.find(
+                (candidate) => candidate.id === id,
+              );
+              if (!id.startsWith('station-profile:')) {
+                removeConnection(id);
+                return;
+              }
+              if (!removeSharedProfile || !connection) return;
+              void removeSharedProfile({
+                connectionId: id,
+                expected: { name: connection.name, url: connection.url },
+              }).catch((error) => {
+                setRemoveError(
+                  `Could not forget ${connection.name}: ${
+                    error instanceof Error ? error.message : String(error)
+                  }`,
+                );
+              });
+            }}
             onEditNameChange={setEditName}
             onEditUrlChange={setEditUrl}
             onCredentialEntryChange={setCredentialEntry}
@@ -1002,6 +1032,7 @@ export function ConnectionManagerModalContent({
               void saveEdit();
             }}
             canEditSharedProfiles={Boolean(updateSharedProfile)}
+            canRemoveSharedProfiles={Boolean(removeSharedProfile)}
             editError={editError}
             editPending={editPending}
             onCancelEdit={() => {

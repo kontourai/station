@@ -66,14 +66,18 @@ function renderPanel(
     localStationOwnerId,
     onMakeDefaultProfile,
     canEditSharedProfiles,
+    canRemoveSharedProfiles,
     onStartEdit = vi.fn(),
+    onRemove = () => {},
   }: {
     connections?: SavedConnection[];
     onRestartInjectedConnection?: (connection: SavedConnection) => void;
     localStationOwnerId?: string;
     onMakeDefaultProfile?: (connection: SavedConnection) => void;
     canEditSharedProfiles?: boolean;
+    canRemoveSharedProfiles?: boolean;
     onStartEdit?: (connection: SavedConnection) => void;
+    onRemove?: (connectionId: string) => void;
   } = {},
 ) {
   render(
@@ -83,6 +87,7 @@ function renderPanel(
       onRestartInjectedConnection={onRestartInjectedConnection}
       localStationOwnerId={localStationOwnerId}
       canEditSharedProfiles={canEditSharedProfiles}
+      canRemoveSharedProfiles={canRemoveSharedProfiles}
       editingId={null}
       editName=""
       editUrl=""
@@ -91,7 +96,7 @@ function renderPanel(
       onSelect={onSelect}
       onCheck={() => {}}
       onStartEdit={onStartEdit}
-      onRemove={() => {}}
+      onRemove={onRemove}
       onEditNameChange={() => {}}
       onEditUrlChange={() => {}}
       onCredentialEntryChange={() => {}}
@@ -773,6 +778,48 @@ describe('ConnectionListPanel', () => {
    * restores the sheet's only remaining statement of Forget's blast radius
    * (station#4513 deleted the header subtitle that used to carry it).
    */
+  // #2525: a shared saved Station (the profile file the station CLI also
+  // reads) could only be forgotten "in the CLI", which a phone does not have.
+  describe('forgetting a shared saved Station (#2525)', () => {
+    const sharedProfile = { ...connection, id: 'station-profile:kontour' };
+
+    it('stays a pointer to the CLI when the host cannot remove shared profiles', () => {
+      renderPanel(vi.fn(), { connections: [sharedProfile] });
+      fireEvent.click(
+        screen.getByRole('button', { name: 'More actions for Station One' }),
+      );
+      const forget = screen.getByRole('menuitem', {
+        name: 'Forget in the CLI',
+      }) as HTMLButtonElement;
+      expect(forget.disabled).toBe(true);
+    });
+
+    it('confirms, says what it removes, and hands the shared id to the host', () => {
+      const onRemove = vi.fn();
+      renderPanel(vi.fn(), {
+        connections: [sharedProfile],
+        canRemoveSharedProfiles: true,
+        onRemove,
+      });
+      fireEvent.click(
+        screen.getByRole('button', { name: 'More actions for Station One' }),
+      );
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Forget Station' }));
+      expect(onRemove).not.toHaveBeenCalled();
+      expect(
+        screen.getByText(
+          'Removes it and its saved credential from this device, including for the station CLI if you use it here.',
+        ),
+      ).toBeTruthy();
+      fireEvent.click(
+        screen.getByRole('button', {
+          name: `Confirm forgetting ${sharedProfile.name}`,
+        }),
+      );
+      expect(onRemove).toHaveBeenCalledWith('station-profile:kontour');
+    });
+  });
+
   describe('Forget confirmation (station#4512 M6)', () => {
     it('arms on the first tap without removing anything, then requires a second, explicit tap', () => {
       const onRemove = vi.fn();

@@ -16,6 +16,7 @@ import type {
   InjectedConnection,
   SavedConnection,
   SavedStationEdit,
+  SavedStationRemoval,
   StationHandshakeIdentity,
   StorageAdapter,
 } from '../core/types';
@@ -87,6 +88,8 @@ interface ConnectionsContextType {
   /** Explicit host action that promotes one shared Station to the CLI default. */
   makeDefaultProfile?: (connectionId: string) => Promise<void>;
   updateSharedProfile?: (input: SavedStationEdit) => Promise<void>;
+  /** Host-owned removal of a shared saved Station from this device. */
+  removeSharedProfile?: (input: SavedStationRemoval) => Promise<void>;
   setCredential: (id: string, credential: string) => void;
   markDeviceSession: (id: string) => void;
   removeCredential: (id: string) => void;
@@ -262,6 +265,7 @@ export function ConnectionsProvider({
   commitVerifiedPairing,
   makeDefaultProfile,
   updateSharedProfile,
+  removeSharedProfile,
   prepareActiveConnection,
   retirePreparedConnection,
   nativeShell,
@@ -290,6 +294,7 @@ export function ConnectionsProvider({
   /** Host-owned explicit shared-default mutation. Never called by selection. */
   makeDefaultProfile?: ConnectionsContextType['makeDefaultProfile'];
   updateSharedProfile?: ConnectionsContextType['updateSharedProfile'];
+  removeSharedProfile?: ConnectionsContextType['removeSharedProfile'];
   /**
    * Optional host-owned preparation for a transient active-connection choice.
    * It must not persist a CLI/shared default. The provider awaits it before
@@ -464,6 +469,18 @@ export function ConnectionsProvider({
             },
           }
         : {}),
+      ...(removeSharedProfile
+        ? {
+            removeSharedProfile: async (input: SavedStationRemoval) => {
+              selectionEpoch.current += 1;
+              try {
+                await removeSharedProfile(input);
+              } finally {
+                resolvedStore.reload();
+              }
+            },
+          }
+        : {}),
       setCredential: (id, credential) =>
         resolvedStore.setCredential(id, credential),
       markDeviceSession: (id) => resolvedStore.markDeviceSession(id),
@@ -598,6 +615,7 @@ export function ConnectionsProvider({
     commitVerifiedPairing,
     makeDefaultProfile,
     updateSharedProfile,
+    removeSharedProfile,
     prepareActiveConnection,
     retirePreparedConnection,
     advanceActivation,

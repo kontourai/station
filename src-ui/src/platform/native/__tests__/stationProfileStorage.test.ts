@@ -134,6 +134,8 @@ function storageWithKeyring(
     ['station-bearer:kontour-token', 'old-token'],
   ]);
   const calls: string[] = [];
+  // The host's active binding, as station_profile_authorize_active sets it.
+  let activeProfileName: string | undefined;
   const bridge = {
     async invoke<T>(
       command: string,
@@ -142,6 +144,7 @@ function storageWithKeyring(
       calls.push(command);
       if (command === 'station_profile_store_read') return store as T;
       if (command === 'station_profile_authorize_active') {
+        activeProfileName = args?.profileName as string;
         return {
           bindingId: '11111111-1111-4111-8111-111111111111',
           exactOrigin: store.profiles.find(
@@ -166,8 +169,33 @@ function storageWithKeyring(
         );
         return undefined as T;
       }
+      if (command === 'credential_vault_delete') {
+        // Like the host: resolves the active Station through the store, so
+        // the profile must still be there, and clears the active binding.
+        const active = store.profiles.find(
+          (profile) => profile.name === activeProfileName,
+        );
+        if (!active?.credentialRef)
+          throw new Error('Station has no host-authorized active Station');
+        credentials.delete(
+          `${active.credentialRef.kind}:${active.credentialRef.id}`,
+        );
+        activeProfileName = undefined;
+        return undefined as T;
+      }
       if (command === 'credential_vault_delete_unreferenced') {
         const reference = args?.reference as { kind: string; id: string };
+        // Like the host: never deletes a credential a profile still owns.
+        if (
+          store.profiles.some(
+            (profile) =>
+              profile.credentialRef?.kind === reference.kind &&
+              profile.credentialRef?.id === reference.id,
+          )
+        )
+          throw new Error(
+            'refusing to delete a credential still owned by a saved Station',
+          );
         if (
           options.failOldReferenceDelete &&
           reference.id === 'kontour-token'
@@ -215,6 +243,7 @@ function storageWithKeyring(
   return {
     calls,
     credentials,
+    activeProfile: () => activeProfileName,
     currentStore: () => store,
     replaceStore: (next: StationProfileStore) => {
       store = next;
@@ -1521,6 +1550,156 @@ describe('NativeStationProfileStorage', () => {
       'changed while you were editing',
     );
     expect(currentStore().revision).toBe(2);
+  });
+
+  describe('forgetting a saved Station (#2525)', () => {
+    const KONTOUR = 'station-profile:kontour';
+    const HOSTED = 'station-profile:station.kontourai.io';
+    const expectedFor = (index: number) => ({
+      name: PROFILE_STORE.profiles[index].name,
+      url: PROFILE_STORE.profiles[index].endpoint,
+    });
+
+    it('removes a Station that is not active, then deletes its now-unused credential', async () => {
+      const { storage, currentStore, credentials, calls } =
+        storageWithKeyring();
+      credentials.set('station-bearer:hosted-token', 'hosted');
+      await storage.hydrate();
+      await storage.removeProfile({
+        connectionId: HOSTED,
+        expected: expectedFor(1),
+      });
+      expect(currentStore().profiles.map((profile) => profile.name)).toEqual([
+        'kontour',
+      ]);
+      expect(currentStore().defaultProfile).toBe('kontour');
+      expect(credentials.has('station-bearer:hosted-token')).toBe(false);
+      expect(credentials.get('station-bearer:kontour-token')).toBe('old-token');
+      expect(calls).not.toContain('credential_vault_delete');
+      expect(calls.lastIndexOf('station_profile_store_write')).toBeLessThan(
+        calls.indexOf('credential_vault_delete_unreferenced'),
+      );
+      await storage.refresh();
+      expect(
+        new ConnectionStore({ storage }).getAll().map((c) => c.id),
+      ).toEqual([KONTOUR]);
+    });
+
+    it('clears the CLI default and project mappings that named it', async () => {
+      const initial = structuredClone(
+        PROFILE_STORE,
+      ) as unknown as StationProfileStore;
+      initial.projectProfiles = {
+        '/project': 'kontour',
+        '/other': 'station.kontourai.io',
+      };
+      const { storage, currentStore, credentials } = storageWithKeyring({
+        initialStore: initial,
+      });
+      await storage.hydrate();
+      await storage.removeProfile({
+        connectionId: KONTOUR,
+        expected: expectedFor(0),
+      });
+      expect(currentStore().defaultProfile).toBeNull();
+      expect(currentStore().projectProfiles).toEqual({
+        '/other': 'station.kontourai.io',
+      });
+      expect(credentials.has('station-bearer:kontour-token')).toBe(false);
+    });
+
+    it('deletes the active Station credential through the active path, then switches to the default', async () => {
+      const initial = structuredClone(
+        PROFILE_STORE,
+      ) as unknown as StationProfileStore;
+      initial.defaultProfile = 'station.kontourai.io';
+      const { storage, currentStore, credentials, calls, activeProfile } =
+        storageWithKeyring({ initialStore: initial });
+      await storage.hydrate();
+      await storage.authorizeActiveConnection(KONTOUR, true);
+      expect(activeProfile()).toBe('kontour');
+      calls.length = 0;
+      await storage.removeProfile({
+        connectionId: KONTOUR,
+        expected: expectedFor(0),
+      });
+      // The host resolves the active credential through the stored profile,
+      // so the delete has to happen while the profile is still there.
+      expect(calls.indexOf('credential_vault_delete')).toBeGreaterThan(-1);
+      expect(calls.indexOf('credential_vault_delete')).toBeLessThan(
+        calls.indexOf('station_profile_store_write'),
+      );
+      expect(credentials.has('station-bearer:kontour-token')).toBe(false);
+      expect(currentStore().profiles.map((profile) => profile.name)).toEqual([
+        'station.kontourai.io',
+      ]);
+      expect(storage.get('station-connect-connections-active')).toBe(HOSTED);
+      expect(activeProfile()).toBe('station.kontourai.io');
+    });
+
+    it('keeps a credential another saved Station still uses', async () => {
+      const initial = structuredClone(
+        PROFILE_STORE,
+      ) as unknown as StationProfileStore;
+      initial.profiles = [
+        ...initial.profiles,
+        {
+          ...initial.profiles[0],
+          name: 'kontour-alias',
+          setupSource: 'manual',
+        },
+      ];
+      const { storage, currentStore, credentials, calls } = storageWithKeyring({
+        initialStore: initial,
+      });
+      await storage.hydrate();
+      await storage.authorizeActiveConnection(KONTOUR, true);
+      await storage.removeProfile({
+        connectionId: KONTOUR,
+        expected: expectedFor(0),
+      });
+      expect(currentStore().profiles.map((profile) => profile.name)).toEqual([
+        'station.kontourai.io',
+        'kontour-alias',
+      ]);
+      expect(credentials.get('station-bearer:kontour-token')).toBe('old-token');
+      expect(calls).not.toContain('credential_vault_delete');
+      expect(calls).not.toContain('credential_vault_delete_unreferenced');
+    });
+
+    it('refuses a Station that changed since the user confirmed, and the bundled local Station', async () => {
+      const initial = structuredClone(
+        PROFILE_STORE,
+      ) as unknown as StationProfileStore;
+      initial.profiles[0] = {
+        ...initial.profiles[0],
+        localService: {
+          instanceId: 'inst',
+          baseDir: '/home/station',
+          serverPort: 3141,
+          uiPort: 3000,
+        },
+      };
+      const { storage, currentStore, credentials } = storageWithKeyring({
+        initialStore: initial,
+      });
+      await storage.hydrate();
+      await expect(
+        storage.removeProfile({
+          connectionId: HOSTED,
+          expected: { ...expectedFor(1), url: 'https://elsewhere.test' },
+        }),
+      ).rejects.toThrow('changed while you were confirming');
+      await expect(
+        storage.removeProfile({
+          connectionId: KONTOUR,
+          expected: expectedFor(0),
+        }),
+      ).rejects.toThrow('cannot be forgotten here');
+      expect(currentStore().profiles).toHaveLength(2);
+      expect(currentStore().revision).toBe(0);
+      expect(credentials.get('station-bearer:kontour-token')).toBe('old-token');
+    });
   });
 
   it('writes the shared default only through the explicit action', async () => {

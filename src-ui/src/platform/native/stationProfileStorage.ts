@@ -254,6 +254,9 @@ export interface NativeStationProfileRepository {
   updateProfile(
     input: import('@kontourai/station-connect').SavedStationEdit,
   ): Promise<void>;
+  removeProfile(
+    input: import('@kontourai/station-connect').SavedStationRemoval,
+  ): Promise<void>;
   getRelayRouteProfiles(): readonly StationProfile[];
   subscribeRelayRouteProfiles(listener: () => void): () => void;
   saveRelayRouteProfile(input: SaveRelayRouteProfileInput): Promise<string>;
@@ -847,6 +850,107 @@ export class NativeStationProfileStorage
         if (!this.isRevisionConflict(error) || attempt === 2) throw error;
       }
     }
+  }
+
+  /**
+   * Forgets a direct saved Station on this device: its profile, its project
+   * mappings, the CLI default if it named it, and its credential unless
+   * another profile still uses that credential.
+   *
+   * The active Station's credential is deleted first, through the active
+   * path: the host resolves that path from the profile, so it must still be
+   * in the store, and the same call clears the host's active binding. If the
+   * store write then fails, the Station stays listed without a credential,
+   * and forgetting it again finishes the job. Any other Station is written
+   * out first and its credential deleted after, once the host can see nothing
+   * references it. Forgetting the active Station falls back to the default,
+   * which is authorized here so the app is not left with no active Station.
+   */
+  async removeProfile(
+    input: import('@kontourai/station-connect').SavedStationRemoval,
+  ): Promise<void> {
+    const matches = (profile: StationProfile) =>
+      profileConnectionId(profile) === input.connectionId;
+    const initial = await this.readProfileStore();
+    const target = initial.profiles.find(matches);
+    if (!target || target.localService || target.relayRoute)
+      throw new Error('This Station cannot be forgotten here.');
+    const reference = target.credentialRef;
+    const sharesCredential = (profiles: readonly StationProfile[]) =>
+      reference !== undefined &&
+      profiles.some(
+        (profile) =>
+          !matches(profile) &&
+          profile.credentialRef?.kind === reference.kind &&
+          profile.credentialRef?.id === reference.id,
+      );
+    const wasActive =
+      this.activeRequestBinding?.connectionId === input.connectionId;
+    if (wasActive && reference && !sharesCredential(initial.profiles)) {
+      await this.bridge.invoke('credential_vault_delete');
+    }
+
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const current = await this.readProfileStore();
+      const profile = current.profiles.find(matches);
+      if (
+        !profile ||
+        profile.name !== input.expected.name ||
+        profile.endpoint !== input.expected.url
+      )
+        throw new Error(
+          'This Station changed while you were confirming. Reopen it and try again.',
+        );
+      const named = (value: string) =>
+        value.toLowerCase() === profile.name.toLowerCase();
+      const profiles = current.profiles.filter(
+        (candidate) => candidate !== profile,
+      );
+      const next: StationProfileStore = {
+        ...current,
+        revision: current.revision + 1,
+        profiles,
+        defaultProfile:
+          current.defaultProfile && !named(current.defaultProfile)
+            ? current.defaultProfile
+            : null,
+        projectProfiles: Object.fromEntries(
+          Object.entries(current.projectProfiles).filter(
+            ([, value]) => !named(value),
+          ),
+        ),
+      };
+      if (!isStationProfileStore(next))
+        throw new Error('The saved Stations are invalid.');
+      try {
+        await this.writeProfileStore(next, current.revision);
+      } catch (error) {
+        if (!this.isRevisionConflict(error) || attempt === 2) throw error;
+        continue;
+      }
+      this.replaceProfileStore(next);
+      const fallback = this.values.get(ACTIVE_KEY);
+      if (wasActive && fallback) {
+        try {
+          await this.authorizeActiveConnection(fallback);
+        } catch (error) {
+          throw new Error(
+            `Station forgotten, but switching to the next Station failed: ${String(error)}`,
+          );
+        }
+      }
+      if (reference && !wasActive && !sharesCredential(profiles)) {
+        try {
+          await this.deleteUnreferencedCredential(reference);
+        } catch (error) {
+          throw new Error(
+            `Station forgotten, but its saved credential could not be deleted: ${String(error)}`,
+          );
+        }
+      }
+      return;
+    }
+    throw new Error('saved Stations changed concurrently; retry.');
   }
 
   getRelayRouteProfiles(): readonly StationProfile[] {
