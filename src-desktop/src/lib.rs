@@ -10739,9 +10739,10 @@ If a stable instance is running, this launch will focus its window and exit.",
     // haptics unsupported off-mobile so the webview never calls it there.
     #[cfg(mobile)]
     let builder = builder.plugin(tauri_plugin_haptics::init());
-    // Android-only: its capability file is scoped to android, and the iOS
-    // counterpart (a Live Activity widget extension) does not exist yet.
-    #[cfg(target_os = "android")]
+    // Mobile-only, with one capability file per platform (a shared one would
+    // fail ACL resolution where the plugin is not compiled, station#575). On
+    // iOS the native half exists only in STATION_IOS_LIVE_ACTIVITY=1 builds.
+    #[cfg(mobile)]
     let builder = builder.plugin(tauri_plugin_station_agent_activity::init());
     let builder = builder
         .manage(NativeProfileAuthority::default())

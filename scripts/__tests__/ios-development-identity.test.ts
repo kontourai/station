@@ -13,6 +13,7 @@ import { normalizeDevPairingDeepLinkSuffix } from '../channel-platform-matrix.mj
 import {
   prepareIosSimulator,
   readSimulatorEntitlementSection,
+  simulatorAgentActivityEntitlements,
   simulatorEntitlements,
   verifyIosSimulator,
 } from '../ios-simulator-build.mjs';
@@ -123,6 +124,53 @@ test('preparation is idempotent, preserves existing flags, and changes only simu
     '--project',
     apple,
   ]);
+});
+
+test('preparation gives the Live Activity extension the development identity and the shared keychain group', () => {
+  const { root, apple } = fixture();
+  const project = {
+    targets: {
+      station_iOS: {
+        type: 'application',
+        platform: 'iOS',
+        settings: { base: {} },
+      },
+      StationAgentActivity: {
+        type: 'app-extension',
+        platform: 'iOS',
+        settings: {
+          base: { STATION_APP_BUNDLE_IDENTIFIER: 'io.kontourai.station' },
+        },
+      },
+    },
+  };
+  writeFileSync(join(apple, 'project.yml'), YAML.stringify(project));
+  prepareIosSimulator({ root, run: vi.fn(() => '') });
+  const prepared = YAML.parse(readFileSync(join(apple, 'project.yml'), 'utf8'));
+  const extension = prepared.targets.StationAgentActivity.settings.base;
+  expect(extension.STATION_APP_BUNDLE_IDENTIFIER).toBe(id);
+  expect(extension['OTHER_LDFLAGS[sdk=iphonesimulator*]'].at(-1)).toBe(
+    '"$(PROJECT_DIR)/station_iOS/StationAgentActivitySimulator.entitlements"',
+  );
+  const app = readFileSync(
+    join(apple, 'station_iOS/StationSimulator.entitlements'),
+    'utf8',
+  );
+  expect(app).toContain(
+    `<array><string>${id}</string><string>${id}.agentactivity</string></array>`,
+  );
+  const widget = readFileSync(
+    join(apple, 'station_iOS/StationAgentActivitySimulator.entitlements'),
+    'utf8',
+  );
+  expect(widget).toContain(`<string>${id}.AgentActivity</string>`);
+  expect(widget).toContain(
+    `<array><string>${id}.agentactivity</string></array>`,
+  );
+  expect(simulatorAgentActivityEntitlements(id)).toEqual({
+    'application-identifier': `${id}.AgentActivity`,
+    'keychain-access-groups': [`${id}.agentactivity`],
+  });
 });
 
 test('a stable identifier cannot receive development simulator preparation', () => {
