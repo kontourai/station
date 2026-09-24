@@ -579,7 +579,8 @@ describe('pull request reads say why they cannot be served', () => {
       '/github/github.com/o/other/7/review?project=station',
     );
     expect(response.status).toBe(404);
-    expect((await response.json()).error).toMatch(/different repository/);
+    const body = (await response.json()) as { error: string };
+    expect(body.error).toMatch(/different repository/);
   });
 
   test('owner and repository match case-insensitively, as on the forge', async () => {
