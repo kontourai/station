@@ -230,7 +230,30 @@ test('refreshes at most four exact links concurrently', async () => {
   expect((await read).status).toBe(200);
 });
 
-test('a link stored under a successor Session id is read with its conversation, once', async () => {
+test('a link stored under a successor Session id is read with its conversation', async () => {
+  const x = fixture(
+    async () => [],
+    (id) =>
+      id === 'conversation-1'
+        ? ['conversation-1', 'conversation-1:session:2']
+        : [],
+  );
+  const store = new ConversationPullRequestLinkStore(x.root);
+  // Stored ONLY under the successor's own id (the old session-detail key).
+  await store.link(
+    'conversation-1:session:2',
+    identity,
+    'operator',
+    () => true,
+  );
+  const response = await x.app.request('/conversation-1');
+  expect(response.status).toBe(200);
+  const body = (await response.json()) as { data: { links: unknown[] } };
+  expect(body.data.links).toHaveLength(1);
+  expect(body.data.links[0]).toMatchObject({ ref: '17' });
+});
+
+test('the same link stored under the conversation and a successor is read once', async () => {
   const x = fixture(
     async () => [],
     (id) =>
@@ -246,9 +269,8 @@ test('a link stored under a successor Session id is read with its conversation, 
     () => true,
   );
   await store.link('conversation-1', identity, 'operator', () => true);
-  const response = await x.app.request('/conversation-1');
-  expect(response.status).toBe(200);
-  const body = (await response.json()) as { data: { links: unknown[] } };
+  const body = (await (await x.app.request('/conversation-1')).json()) as {
+    data: { links: unknown[] };
+  };
   expect(body.data.links).toHaveLength(1);
-  expect(body.data.links[0]).toMatchObject({ ref: '17' });
 });
