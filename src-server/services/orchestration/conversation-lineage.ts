@@ -129,6 +129,14 @@ interface ConversationLineageDeps {
     provider: EngineId;
     connectionId?: string;
   }) => boolean | undefined;
+  /**
+   * #2540: whether this engine applies a model override on an ordinary turn
+   * of a LIVE session (`modelLaunch.overridePerTurn`). A follow-up that asks
+   * for a different model on an engine that cannot take it per turn needs a
+   * successor started with that model, not the idle session. Absent means
+   * the idle session is reused as-is.
+   */
+  perTurnModelOverride?: (provider: EngineId) => boolean;
   readSessionMessages: (
     threadId: string,
     authority: SessionReadScope,
@@ -172,7 +180,11 @@ export class ConversationLineage {
   async resolveConversationContinuation(
     conversationId: string,
     authority: SessionReadScope,
-    requested: { provider: EngineId; connectionId?: string },
+    requested: {
+      provider: EngineId;
+      connectionId?: string;
+      modelOverride?: string;
+    },
   ): Promise<{
     sessionId: string;
     startRequired: boolean;
@@ -275,7 +287,20 @@ export class ConversationLineage {
     // way a stopped session always has.
     const bindingEnded =
       detail.session.status === 'closed' || detail.session.status === 'dead';
-    if (!isSessionLifecycleStateStopped(lifecycle) && !bindingEnded) {
+    // Likewise a model switch the live session cannot apply to a turn: the
+    // successor starts with the requested model, as every follow-up did
+    // before sessions stayed reusable.
+    const requestedModel = requested.modelOverride?.trim();
+    const needsModelRestart =
+      lifecycle === 'idle' &&
+      !!requestedModel &&
+      requestedModel !== detail.session.model?.trim() &&
+      this.deps.perTurnModelOverride?.(requested.provider) === false;
+    if (
+      !isSessionLifecycleStateStopped(lifecycle) &&
+      !bindingEnded &&
+      !needsModelRestart
+    ) {
       observeConversationContinuation('current_open');
       return { sessionId: current.sessionId, startRequired: false };
     }
@@ -996,7 +1021,11 @@ const CONTINUATION_TRANSCRIPT_SEED_MAX_CHARS = 6_000;
 
 function continuationLaunchContext(
   detail: Pick<OrchestrationSessionDetail, 'session' | 'events'>,
-  requested: { provider: EngineId; connectionId?: string },
+  requested: {
+    provider: EngineId;
+    connectionId?: string;
+    modelOverride?: string;
+  },
   messages: readonly ConversationMessage[],
   resumeSupported?: boolean,
 ): { resumeCursor?: unknown; resumeModel?: string; transcriptSeed?: string } {

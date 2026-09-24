@@ -5293,7 +5293,11 @@ export async function executeExecutionTargetMessage(
     resolveConversationSession: async (
       _access: EnvironmentAccess,
       conversationId: string,
-      requested: { provider: EngineId; connectionId?: string },
+      requested: {
+        provider: EngineId;
+        connectionId?: string;
+        modelOverride?: string;
+      },
     ) => {
       // The runtime service always owns this seam. Keep explicitly scoped
       // lightweight compatibility doubles (and an older remote Station

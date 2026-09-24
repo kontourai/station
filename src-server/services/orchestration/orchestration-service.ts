@@ -2229,6 +2229,9 @@ export class OrchestrationService {
       ...(options.resumeCursorSupport
         ? { resumeCursorSupport: options.resumeCursorSupport }
         : {}),
+      perTurnModelOverride: (provider) =>
+        options.adapterRegistry.get(provider)?.metadata.modelLaunch
+          ?.overridePerTurn !== false,
       ...(this.turnDeduplicator
         ? { turnDeduplicator: this.turnDeduplicator }
         : {}),
@@ -3981,7 +3984,11 @@ export class OrchestrationService {
   async resolveConversationContinuation(
     conversationId: string,
     authority: SessionReadScope,
-    requested: { provider: EngineId; connectionId?: string },
+    requested: {
+      provider: EngineId;
+      connectionId?: string;
+      modelOverride?: string;
+    },
   ): Promise<{
     sessionId: string;
     startRequired: boolean;
