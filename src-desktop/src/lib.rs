@@ -7063,15 +7063,24 @@ fn open_local_browser_preview(app: AppHandle, url: String) -> Result<(), String>
 const EXTERNAL_LINK_MAX_LENGTH: usize = 8 * 1024;
 
 /// The web links Station hands to the operating system (#2480, owner decision
-/// 2026-09-24): any `https:` link with a host and no credentials. The WebView
-/// asks only when the user clicks a link; there is no other caller. Plain
-/// `http:`, custom schemes (`file:`, `javascript:`, app deep links) and links
-/// carrying a username or password are refused, and the UI shows the refusal.
+/// 2026-09-24): any `https:` link with a host and no credentials — IP and
+/// loopback hosts included, as "any https link" says. Plain `http:`, custom
+/// schemes (`file:`, `javascript:`, app deep links) and links carrying a
+/// username or password are refused with an error; showing that refusal is the
+/// caller's job.
+///
+/// This command does not check for a user gesture. Only Station's own local
+/// origin can invoke it (Tauri ACL-checks app commands from any other origin,
+/// and none has a capability), and its UI callers run on link clicks. The MCP
+/// app frame's `onopenlink` also reaches it, but MCP frames are not rendered on
+/// native (`nativeIframeBlocked`), and that path keeps its own narrow allowlist.
 fn admitted_external_link(url: &str) -> Result<url::Url, String> {
-    if url.len() > EXTERNAL_LINK_MAX_LENGTH {
+    let parsed = url::Url::parse(url).map_err(|_| "invalid external URL".to_string())?;
+    // Measured after parsing: normalisation percent-encodes, and the string
+    // the OS receives is the serialised one.
+    if parsed.as_str().len() > EXTERNAL_LINK_MAX_LENGTH {
         return Err("Station refused an overlong external link".to_string());
     }
-    let parsed = url::Url::parse(url).map_err(|_| "invalid external URL".to_string())?;
     if parsed.scheme() != "https"
         || parsed.host_str().is_none_or(str::is_empty)
         || !parsed.username().is_empty()
@@ -7113,6 +7122,8 @@ mod external_link_tests {
     #[test]
     fn refuses_other_schemes_credentials_and_overlong_links() {
         let overlong = format!("https://example.test/{}", "a".repeat(9000));
+        // Under the bound as typed, over it once each byte is percent-encoded.
+        let encodes_long = format!("https://example.test/{}x", "<".repeat(3000));
         for url in [
             "http://example.test/",
             "file:///etc/passwd",
@@ -7122,6 +7133,7 @@ mod external_link_tests {
             "https://token@github.com/o/r",
             "not a url",
             overlong.as_str(),
+            encodes_long.as_str(),
         ] {
             assert!(admitted_external_link(url).is_err(), "{url}");
         }
