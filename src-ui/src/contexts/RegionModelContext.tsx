@@ -251,9 +251,12 @@ interface RegionModelValue {
  * life of the layer in this tab's session storage. The layer's maximize (and
  * the dock open it may add) ride Chat's `?dock`/`?maximize` URL params, so a
  * reload with a layer open would otherwise come back with Chat maximized and
- * no layer to undo it. Every ending of a layer removes the key; a key found
- * at mount therefore means the page unloaded with a layer open, and the load
- * restores the pre-layer dock state instead of the URL's.
+ * no layer to undo it. The record names the layer's LIVE history entry id
+ * (rewritten whenever the layer pushes a new entry); every ending of a layer
+ * removes it, and so does the provider unmounting with a layer open. A
+ * record found at mount whose entry is exactly the entry being loaded
+ * therefore means a reload with that layer open, and the load restores the
+ * pre-layer dock state instead of the URL's.
  */
 const PHONE_LAYER_PRE_STATE_KEY = 'station.phoneLayer.preLayerDock.v1';
 
@@ -263,26 +266,27 @@ interface PhoneLayerPreState {
   dockMemory: boolean;
 }
 
+interface StoredPhoneLayerPreState extends PhoneLayerPreState {
+  /** The `registerDialogHistory` id of the layer's live entry. */
+  entry: string;
+}
+
 function takePhoneLayerPreState(): PhoneLayerPreState | null {
   try {
     const raw = window.sessionStorage.getItem(PHONE_LAYER_PRE_STATE_KEY);
     if (raw === null) return null;
     window.sessionStorage.removeItem(PHONE_LAYER_PRE_STATE_KEY);
-    // Keyed to the layer's history entry: only a load ON that entry (a
-    // reload with the layer open) is the layer's. Any other load finds a
-    // stale key — a tab that unloaded mid-layer and navigated since — and
-    // the URL it was given stands.
+    // Keyed to the layer's live history entry, exactly: only a load ON that
+    // entry (a reload with the layer open) is the layer's. Any other load
+    // finds a stale record — a tab that unloaded mid-layer and navigated
+    // since — and the URL it was given stands.
     const state: unknown = window.history.state;
     const marker =
       state !== null && typeof state === 'object'
         ? (state as Record<string, unknown>)[DIALOG_HISTORY_KEY]
         : undefined;
-    if (
-      typeof marker !== 'string' ||
-      !marker.startsWith(`${PHONE_LAYER_HISTORY_ID}:`)
-    )
-      return null;
-    const value = JSON.parse(raw) as Partial<PhoneLayerPreState>;
+    const value = JSON.parse(raw) as Partial<StoredPhoneLayerPreState>;
+    if (typeof marker !== 'string' || marker !== value.entry) return null;
     return typeof value.visible === 'boolean' &&
       typeof value.maximized === 'boolean' &&
       typeof value.dockMemory === 'boolean'
@@ -297,7 +301,7 @@ function takePhoneLayerPreState(): PhoneLayerPreState | null {
   }
 }
 
-function writePhoneLayerPreState(state: PhoneLayerPreState | null) {
+function writePhoneLayerPreState(state: StoredPhoneLayerPreState | null) {
   try {
     if (state)
       window.sessionStorage.setItem(
@@ -510,11 +514,16 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
   // queued in the same tick lands on it rather than on the page before.
   const layerHistoryRef = useRef<(() => void) | null>(null);
   const leavePhoneLayerByBackRef = useRef<() => void>(() => {});
+  // The open layer's pre-layer dock state (gap G1), stored against each
+  // entry the layer registers.
+  const layerPreStateRef = useRef<PhoneLayerPreState | null>(null);
   const registerLayerEntry = useCallback(() => {
-    layerHistoryRef.current = registerDialogHistory(
-      `${PHONE_LAYER_HISTORY_ID}:${PHONE_LAYER_LOAD_NONCE}-${layerEntryRef.current}`,
-      () => leavePhoneLayerByBackRef.current(),
+    const entry = `${PHONE_LAYER_HISTORY_ID}:${PHONE_LAYER_LOAD_NONCE}-${layerEntryRef.current}`;
+    layerHistoryRef.current = registerDialogHistory(entry, () =>
+      leavePhoneLayerByBackRef.current(),
     );
+    if (layerPreStateRef.current)
+      writePhoneLayerPreState({ ...layerPreStateRef.current, entry });
   }, []);
   // `toggleSurface` is declared above the layer's exits; it reaches the
   // current one through this.
@@ -531,6 +540,7 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
     // inbound sync and the dismissal effect both stand down while it is.
     if (!layer) {
       layerBackDecisionRef.current = null;
+      layerPreStateRef.current = null;
       writePhoneLayerPreState(null);
     }
     setPhoneLayerState(layer);
@@ -668,11 +678,11 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
             layerDockMemoryRef.current = navigationStore.lastDockMaximized;
             layerEntryRef.current += 1;
             const chatAt = chatRegion(current);
-            writePhoneLayerPreState({
+            layerPreStateRef.current = {
               visible: chatAt ? current[chatAt].visible : false,
               maximized: chatAt ? current[chatAt].maximized : false,
               dockMemory: navigationStore.lastDockMaximized,
-            });
+            };
           }
           layerMaximizedRef.current =
             opened.arrangement[opened.layer.region].maximized;
@@ -1142,6 +1152,14 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
     setDockState(reloadedOverLayer.visible, reloadedOverLayer.maximized);
     navigationStore.lastDockMaximized = reloadedOverLayer.dockMemory;
   }, []);
+  // The provider going away with a layer open (not a reload — a reload runs
+  // no cleanup) takes the layer with it, so its pre-layer record goes too.
+  useEffect(
+    () => () => {
+      if (phoneLayerRef.current) writePhoneLayerPreState(null);
+    },
+    [],
+  );
 
   // Navigation remains an inbound source for deep links and browser history.
   // biome-ignore lint/correctness/useExhaustiveDependencies: device-setting notifications are mirror traffic, not inbound navigation.
