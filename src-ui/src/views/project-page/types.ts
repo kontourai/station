@@ -1,8 +1,11 @@
+import type { KnowledgeDocumentMeta } from '@kontourai/station-contracts/knowledge';
+
 export interface DocMeta {
   id: string;
   filename: string;
   namespace?: string;
-  source?: 'upload' | 'directory-scan';
+  /** Every origin the knowledge contract names, `sync` included. */
+  source?: KnowledgeDocumentMeta['source'];
   chunkCount: number;
   createdAt: string;
 }

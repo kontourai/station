@@ -4909,6 +4909,48 @@ export class EventStore {
     return row ? this.mapEventRow(row) : undefined;
   }
 
+  /**
+   * #2436: the latest recorded approval-posture decision across `threadIds`
+   * (a conversation's sessions), ordered by the server's global sequence —
+   * the one order every client and the turn-start resolution agree on. One
+   * indexed lookup per thread (`thread_id, method, sequence`), then the
+   * newest by global sequence; a conversation has a handful of sessions.
+   */
+  latestApprovalModeDecision(
+    threadIds: readonly string[],
+  ):
+    | { threadId: string; approvalMode: unknown; globalSequence: number }
+    | undefined {
+    const statement = this.db.prepare(
+      `SELECT thread_id, json_extract(payload, '$.approvalMode') AS approval_mode, global_sequence
+       FROM orchestration_events
+       WHERE thread_id = ? AND method = 'session.approval-mode-set'
+       ORDER BY sequence DESC
+       LIMIT 1`,
+    );
+    let latest:
+      | { threadId: string; approvalMode: unknown; globalSequence: number }
+      | undefined;
+    for (const threadId of new Set(threadIds)) {
+      const row = statement.get(threadId) as
+        | {
+            thread_id: string;
+            approval_mode: unknown;
+            global_sequence: number;
+          }
+        | undefined;
+      if (!row) continue;
+      if (!latest || row.global_sequence > latest.globalSequence) {
+        latest = {
+          threadId: row.thread_id,
+          approvalMode: row.approval_mode,
+          globalSequence: row.global_sequence,
+        };
+      }
+    }
+    return latest;
+  }
+
   latestEventForSessionState(
     threadId: string,
     sessionState: string,

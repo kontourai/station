@@ -4224,6 +4224,7 @@ name = "station"
 version = "0.1.11"
 dependencies = [
  "apple-native-keyring-store",
+ "base64 0.22.1",
  "dirs 7.0.0",
  "dunce",
  "jni 0.21.1",
@@ -4235,6 +4236,7 @@ dependencies = [
  "objc2",
  "objc2-app-kit",
  "objc2-foundation",
+ "ring",
  "security-framework",
  "serde",
  "serde_json",
@@ -4258,6 +4260,7 @@ dependencies = [
  "windows-native-keyring-store",
  "windows-sys 0.61.2",
  "zbus-secret-service-keyring-store",
+ "zeroize",
 ]
 
 [[package]]

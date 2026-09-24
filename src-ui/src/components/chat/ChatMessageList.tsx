@@ -30,7 +30,6 @@ import {
   createResizeReanchorGate,
   restoreChatScrollAnchor,
 } from './chatScrollAnchor';
-import FullAccessNotCarriedNotice from './FullAccessNotCarriedNotice';
 import { type ForkTurnSource, precedingForkSource } from './fork-turn-source';
 import { formatFormSubmission } from './formSubmission';
 import { MessageBubble, type MessageBubbleSession } from './MessageBubble';
@@ -841,13 +840,6 @@ function ChatMessageListComponent({
                 </div>
               ))}
           </>
-        )}
-        {/* #2423: renders only for the Session it names. */}
-        {!activeSession.replay && (
-          <FullAccessNotCarriedNotice
-            session={activeSession}
-            fontSize={fontSize}
-          />
         )}
         {/* Mounted while empty too: its live region must exist before the
             first request arrives (#2344). */}

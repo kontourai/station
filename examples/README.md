@@ -13,6 +13,7 @@ prove.
 | [Coding Starter](coding-starter/README.md) | Coding-oriented starter layout |
 | [Minimal Layout](minimal-layout/README.md) | Small TypeScript layout and SDK basics |
 | [Demo Layout](demo-layout/README.md) | Local layout installation and registry fixture |
+| [Documentation Snippets](docs-snippets/README.md) | Compile-checked copies of guide code blocks; not a plugin |
 
 ## Workspace And Review
 

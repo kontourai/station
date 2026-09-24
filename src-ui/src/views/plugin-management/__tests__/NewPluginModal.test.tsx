@@ -333,6 +333,27 @@ test('when this device may not set the override, it says so plainly', async () =
   expect(mutateJsonMock).not.toHaveBeenCalled();
 });
 
+// #2412 review: a 403 that carries its own code is the folder refusal, not
+// the workspace-mode one, and must be shown as itself.
+test("a refusal of the Project's folder is shown in its own words", async () => {
+  stationConfig.value = { defaultWorkspaceIsolation: 'worktree' };
+  const refusal =
+    "Only this Station's operator, or a device the operator allowed to run commands, can choose a Project's folder. Nothing was saved.";
+  createProjectMock.mockRejectedValue(
+    Object.assign(new Error(refusal), {
+      status: 403,
+      code: 'working-directory-not-granted',
+    }),
+  );
+  renderModal();
+  fireEvent.change(screen.getByLabelText('Plugin name'), {
+    target: { value: 'pulse' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Create plugin' }));
+  expect((await screen.findByRole('alert')).textContent).toBe(refusal);
+  expect(mutateJsonMock).not.toHaveBeenCalled();
+});
+
 test('when no chat pane takes the request, the opening message stays to copy', async () => {
   createProjectMock.mockResolvedValue({ slug: 'pulse', name: 'Pulse' });
   mutateJsonMock.mockResolvedValue(

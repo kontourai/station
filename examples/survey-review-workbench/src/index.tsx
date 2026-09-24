@@ -78,7 +78,7 @@ async function fetchJson(
 
 export function SurveyReviewWorkbench(_props: LayoutComponentProps) {
   const { apiBase } = useApiBase();
-  const navigation = useNavigation() as { selectedProject?: string | null };
+  const navigation = useNavigation();
   const projectSlug = navigation.selectedProject ?? null;
 
   const mountRef = useRef<HTMLDivElement | null>(null);

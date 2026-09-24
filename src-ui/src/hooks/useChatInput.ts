@@ -3,6 +3,7 @@ import {
   resolveEngineCapabilityMatrix,
 } from '@kontourai/station-contracts/engine-capability-matrix';
 import { EXECUTION_MODE } from '@kontourai/station-contracts/tool';
+import { setOrchestrationApprovalMode } from '@kontourai/station-sdk';
 import { CHAT_INPUT_MAX_CHARS } from '@shared/chat-input-limits';
 import {
   useCallback,
@@ -33,7 +34,14 @@ import {
   type SavedAnswerQuote,
 } from '../utils/answer-quotes';
 import type { ApprovalMode } from '../utils/approvalMode';
-import { approvalModeLabel, approvalPickUpdate } from '../utils/approvalMode';
+import {
+  approvalModeLabel,
+  approvalPickReceived,
+  approvalPickUpdate,
+  fullAccessRefusalNote,
+  isFullAccessRefusal,
+  supersededPickNote,
+} from '../utils/approvalMode';
 import {
   type BindingStatus,
   type EffectiveModelSource,
@@ -45,7 +53,6 @@ import {
 } from '../utils/modelCapabilities';
 import { sanitizeChatInput } from '../utils/sanitizeChatInput';
 import { clearLastChosenModel } from './lastChosenModel';
-import { latestStreamPosition } from './orchestration/streamPosition';
 import { describeStopTurnOutcome } from './useActiveChatSessionMessaging';
 import { useCancelMessage, useSendMessage } from './useActiveChatSessions';
 import { useAutocompleteState } from './useAutocompleteState';
@@ -72,8 +79,6 @@ type ComposerChatSlice = Pick<
   | 'requestedModel'
   | 'requestedModelSource'
   | 'requestedProviderOptions'
-  | 'pendingApprovalMode'
-  | 'approvalModeOverride'
   | 'agentConnectionId'
   | 'currentModeId'
   | 'providerOptions'
@@ -99,8 +104,6 @@ function selectComposerSlice(
     requestedModel: state.requestedModel,
     requestedModelSource: state.requestedModelSource,
     requestedProviderOptions: state.requestedProviderOptions,
-    pendingApprovalMode: state.pendingApprovalMode,
-    approvalModeOverride: state.approvalModeOverride,
     agentConnectionId: state.agentConnectionId,
     currentModeId: state.currentModeId,
     providerOptions: state.providerOptions,
@@ -861,23 +864,56 @@ export function useChatInput({
   const handleApprovalModeChange = useCallback(
     (mode: ApprovalMode) => {
       if (!sessionId) return;
-      // The pick lives in its own field, never in the model-options request
-      // bag (#2334): a report acknowledging the model clears that bag, and
-      // every reader of it treats it as the whole send. It is stamped with
-      // where this client stood, so a later decision elsewhere can retire it
-      // (see `settleApprovalPick`). Read from the store, not the render
-      // slice: the in-flight dispatch and the receipt are not in the slice.
+      // #2436: a pick is a server-ordered command. It is queued until the
+      // server has it; with a session to record it on, it is sent now, so
+      // every device and every send path (#2418) sees it at once. Offline,
+      // or before the chat has a session, it rides the next send instead.
+      // Read from the store, not the render slice.
       const current = activeChatsStore.getSnapshot()[sessionId];
-      const update = approvalPickUpdate(current, mode, {
-        pickedAt: latestStreamPosition(apiBase),
-        behindTurn: current?.pendingClientTurnId,
-      });
+      const update = approvalPickUpdate(current, mode);
       if (!update) return;
       updateChat(sessionId, update);
       addEphemeralMessage(sessionId, {
         role: 'system',
-        content: `Approval mode changed to **${approvalModeLabel(mode)}**`,
+        content: `Approval mode set to **${approvalModeLabel(mode)}**; it applies from the next turn.`,
       });
+      const threadId = current?.orchestrationSessionStarted
+        ? (current.currentSessionId ?? sessionId)
+        : undefined;
+      if (!threadId) return;
+      void setOrchestrationApprovalMode({
+        threadId,
+        approvalMode: mode,
+        // Compare-and-set: the decision this chat had folded when the user
+        // picked. A newer one it has not seen stands instead (#2436).
+        basedOnSequence: current?.approvalPostureSequence ?? null,
+        apiBase,
+      })
+        .then((result) => {
+          const latest = activeChatsStore.getSnapshot()[sessionId];
+          if (!latest) return;
+          updateChat(sessionId, approvalPickReceived(latest, mode, result));
+          if (!result.recorded) {
+            addEphemeralMessage(sessionId, {
+              role: 'system',
+              content: supersededPickNote(result.approvalMode),
+            });
+          }
+        })
+        .catch((error: unknown) => {
+          if (isFullAccessRefusal(error)) {
+            // Refused, not failed: resending it could only be refused again.
+            const latest = activeChatsStore.getSnapshot()[sessionId];
+            if (latest?.queuedApprovalMode === mode)
+              updateChat(sessionId, { queuedApprovalMode: undefined });
+            addEphemeralMessage(sessionId, {
+              role: 'system',
+              content: fullAccessRefusalNote,
+            });
+          }
+          // Otherwise still queued: the next send carries it, and the server
+          // records it on receipt.
+        });
     },
     [apiBase, sessionId, updateChat, addEphemeralMessage],
   );

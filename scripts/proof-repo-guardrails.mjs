@@ -4539,8 +4539,16 @@ if (!codingLayoutDiff.includes('useCodingDiffQuery')) {
 const codingLayoutFileContent = readRequiredSource(
   '../src-ui/src/components/coding-layout/FileContentViewer.tsx',
 );
-if (!codingLayoutFileContent.includes('useCodingFileContentQuery')) {
-  errors.push('FileContentViewer must use useCodingFileContentQuery.');
+// #2412: every coding read names its Project, so the viewer reads through
+// the Project-bound FilePreviewPane (its own SDK query) rather than a
+// path-only coding read. It must never fetch on its own.
+if (
+  !codingLayoutFileContent.includes('FilePreviewPane') ||
+  /\bfetch\(/.test(codingLayoutFileContent)
+) {
+  errors.push(
+    'FileContentViewer must read through the Project-bound FilePreviewPane and never fetch directly.',
+  );
 }
 
 const codingLayoutTerminal = readRequiredSource(

@@ -157,10 +157,7 @@ function KnowledgeContent({
 }
 
 export function KnowledgeLibrary() {
-  const navigation = useNavigation() as {
-    selectedProject?: string | null;
-    navigate?: (path: string) => void;
-  };
+  const navigation = useNavigation();
   const rootsQuery = useKnowledgeRootsQuery();
   const selectedProject = navigation.selectedProject ?? null;
   const [selectedRoot, setSelectedRoot] = useState<KnowledgeStoreRoot | null>(

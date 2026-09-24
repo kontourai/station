@@ -108,6 +108,19 @@ export async function checkRepositoryConfig(
   } catch {
     return { ok: false, code: 'repository-config-unreadable' };
   }
+  return judgeRepositoryConfig(stdout, purpose);
+}
+
+/**
+ * Judges the output of `git config --show-scope --null --list` taken in the
+ * repository. Separate from {@link checkRepositoryConfig} so a caller that
+ * runs git through its own injectable runner (worktree provisioning) applies
+ * the same rules to the same bytes rather than a second copy of them.
+ */
+export function judgeRepositoryConfig(
+  stdout: string,
+  purpose: RepositoryConfigPurpose,
+): RepositoryConfigVerdict {
   const tokens = stdout.split('\0');
   const keys = new Set<string>();
   for (let index = 0; index + 1 < tokens.length; index += 2) {

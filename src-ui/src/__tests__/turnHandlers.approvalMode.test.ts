@@ -10,6 +10,9 @@ vi.mock('@kontourai/station-sdk', () => ({
 
 import { activeChatsStore } from '../contexts/active-chats-store';
 import { handleOrchestrationEvent } from '../hooks/orchestration/eventHandlers';
+import { sessionApprovalOverride } from '../utils/approvalMode';
+
+const RESTART_CODE = 'approval-escalation-requires-restart';
 
 const THREAD_ID = 'approval-mode-warning-thread';
 
@@ -21,94 +24,55 @@ describe('runtime.warning approval-escalation-requires-restart handling (#727 re
       agentName: 'Claude Code',
       title: 'Claude Chat',
     });
+    // #2436: the posture is the server's recorded decision; the chat folds it.
     activeChatsStore.updateChat(THREAD_ID, {
-      providerOptions: { approvalMode: 'never' },
-      requestedProviderOptions: { approvalMode: 'never', effort: 'high' },
+      approvalPosture: 'never',
+      lastAppliedApprovalMode: 'ask',
     });
   });
 
-  test('reverts the stored session override to the mode that actually applied', () => {
+  function warn(details: Record<string, unknown>, code = RESTART_CODE) {
     handleOrchestrationEvent('http://localhost', {
       provider: 'claude',
       threadId: THREAD_ID,
       createdAt: '2026-07-23T00:00:00.000Z',
       method: 'runtime.warning',
       severity: 'warning',
-      message:
-        'Full-access mode requires restarting the session with that mode enabled from the start. Approval mode was not changed.',
-      code: 'approval-escalation-requires-restart',
-      details: {
-        requestedApprovalMode: 'never',
-        revertToApprovalMode: 'ask',
-      },
-    });
-
-    const chat = activeChatsStore.getSnapshot()[THREAD_ID];
-    // The chip must not go on showing 'never' for a mode that never
-    // actually applied — it reflects the adapter-reported real mode.
-    // station#1933: the chip reads requestedProviderOptions first, so a
-    // providerOptions-only revert would still paint full access.
-    expect(chat.providerOptions?.approvalMode).toBe('ask');
-    expect(chat.requestedProviderOptions).toEqual({
-      approvalMode: 'ask',
-      effort: 'high',
-    });
-  });
-
-  test('does not invent a requested bag when the client never wrote one', () => {
-    activeChatsStore.updateChat(THREAD_ID, {
-      requestedProviderOptions: undefined,
-      providerOptions: { approvalMode: 'never' },
-    });
-    handleOrchestrationEvent('http://localhost', {
-      provider: 'claude',
-      threadId: THREAD_ID,
-      createdAt: '2026-07-23T00:00:00.500Z',
-      method: 'runtime.warning',
-      severity: 'warning',
-      message:
-        'Full-access mode requires restarting the session with that mode enabled from the start. Approval mode was not changed.',
-      code: 'approval-escalation-requires-restart',
-      details: {
-        requestedApprovalMode: 'never',
-        revertToApprovalMode: 'ask',
-      },
-    });
-
-    const chat = activeChatsStore.getSnapshot()[THREAD_ID];
-    expect(chat.providerOptions?.approvalMode).toBe('ask');
-    expect(chat.requestedProviderOptions).toBeUndefined();
-  });
-
-  test('an unrelated runtime.warning does not touch the stored approval override', () => {
-    handleOrchestrationEvent('http://localhost', {
-      provider: 'claude',
-      threadId: THREAD_ID,
-      createdAt: '2026-07-23T00:00:01.000Z',
-      method: 'runtime.warning',
-      severity: 'warning',
-      message: 'Some unrelated warning.',
-      code: 'some-other-code',
-    });
-
-    const chat = activeChatsStore.getSnapshot()[THREAD_ID];
-    expect(chat.providerOptions?.approvalMode).toBe('never');
-  });
-
-  test('a malformed revertToApprovalMode is ignored rather than corrupting the stored override', () => {
-    handleOrchestrationEvent('http://localhost', {
-      provider: 'claude',
-      threadId: THREAD_ID,
-      createdAt: '2026-07-23T00:00:02.000Z',
-      method: 'runtime.warning',
-      severity: 'warning',
       message: 'Full-access mode requires restarting the session.',
-      code: 'approval-escalation-requires-restart',
-      details: { requestedApprovalMode: 'never' },
+      code,
+      details,
     });
+    return activeChatsStore.getSnapshot()[THREAD_ID];
+  }
 
-    const chat = activeChatsStore.getSnapshot()[THREAD_ID];
-    expect(chat.providerOptions?.approvalMode).toBe('never');
+  test('the chip reads the mode that actually applied, and marks the recorded full access refused', () => {
+    const chat = warn({
+      requestedApprovalMode: 'never',
+      revertToApprovalMode: 'ask',
+    });
+    expect(chat.lastAppliedApprovalMode).toBe('ask');
+    expect(chat.approvalEscalationRejected).toBe(true);
+    // The decision itself stays recorded: the next session spawns in it.
+    expect(chat.approvalPosture).toBe('never');
+    expect(sessionApprovalOverride(chat)).toEqual({
+      mode: 'never',
+      state: 'refused',
+    });
+  });
+
+  test('an unrelated runtime.warning does not touch the approval state', () => {
+    const chat = warn({}, 'some-other-code');
+    expect(chat.approvalEscalationRejected).toBeUndefined();
+    expect(chat.lastAppliedApprovalMode).toBe('ask');
+  });
+
+  test('a malformed revertToApprovalMode is ignored rather than corrupting the applied mode', () => {
+    activeChatsStore.updateChat(THREAD_ID, { lastAppliedApprovalMode: 'auto' });
+    const chat = warn({
+      requestedApprovalMode: 'never',
+      revertToApprovalMode: 'bogus',
+    });
+    expect(chat.lastAppliedApprovalMode).toBe('auto');
   });
 });
 

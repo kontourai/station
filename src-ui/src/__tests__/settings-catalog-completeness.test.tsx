@@ -925,6 +925,31 @@ describe('settings catalog completeness', () => {
     ).toBeTruthy();
   });
 
+  test('#2436: a full-access default this device may not set says why, not "retry"', async () => {
+    const refusal =
+      "This device is not allowed to give an agent full access. The Station's operator can allow it: Devices, this device's access, Allow full access.";
+    updateConfig.mockRejectedValueOnce(
+      Object.assign(new Error(refusal), {
+        code: 'approval-full-access-not-granted',
+      }),
+    );
+    await renderedCatalogIds();
+
+    fireEvent.change(screen.getByLabelText('Default approval mode'), {
+      target: { value: 'never' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    const banner = await screen.findByText(
+      `${refusal} Nothing in this save was stored. Choose a stricter default approval mode to save your other changes.`,
+    );
+    expect(banner).toBeTruthy();
+    expect(updateConfig).toHaveBeenCalledWith(
+      expect.objectContaining({ defaultApprovalMode: 'never' }),
+    );
+    expect(screen.queryByText(/until you retry/)).toBeNull();
+  });
+
   test('prevents a second Log Level-only save while the first is pending', async () => {
     const sdk = await import('@kontourai/station-sdk/app-config');
     let release:

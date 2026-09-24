@@ -374,6 +374,10 @@ describe('handleExtensionNotificationEvent', () => {
         // station#1877: the execution-session thread that reported the task,
         // which is what a task-scoped stop has to address.
         sessionThreadId: threadId,
+        // #2459: the stop seam the child itself carries (Claude's legacy
+        // translator offers the per-task stop), not one inferred from the
+        // session thread alone.
+        stop: 'provider-task-stop',
       },
     ]);
 

@@ -359,6 +359,21 @@
       "entry": "src-server/tools/station-control-delegation.ts :: workingDirectory :: projectPath ??= project.workingDirectory;",
       "category": 4,
       "reason": "Deliberately NOT locally expanded, by design: this value names a directory on a REMOTE Station (target.apiBase), documented at lines 1119-1126 (\"this resolves a project belonging to target.apiBase, which is routinely a remote Station... The remote Station applies its own check when it starts the session\"). Applying local expandTilde()/homedir() here would resolve against the WRONG (local operator's) home directory."
+    },
+    {
+      "entry": "src-server/routes/projects/projects.ts :: workingDirectory :: ? body.workingDirectory.trim()",
+      "category": 1,
+      "reason": "#2412 working-directory gate: compares the requested value to the stored one as strings to decide whether the record changes. Never touches the filesystem; a different spelling of the same folder counts as a change and is refused, the safe direction."
+    },
+    {
+      "entry": "src-server/routes/projects/projects.ts :: workingDirectory :: const current = (await existing()).workingDirectory?.trim() ?? '';",
+      "category": 1,
+      "reason": "#2412 working-directory gate: compares the requested value to the stored one as strings to decide whether the record changes. Never touches the filesystem; a different spelling of the same folder counts as a change and is refused, the safe direction."
+    },
+    {
+      "entry": "src-server/routes/projects/projects.ts :: workingDirectory :: typeof body.workingDirectory === 'string'",
+      "category": 1,
+      "reason": "#2412 working-directory gate: compares the requested value to the stored one as strings to decide whether the record changes. Never touches the filesystem; a different spelling of the same folder counts as a change and is refused, the safe direction."
     }
   ]
 }

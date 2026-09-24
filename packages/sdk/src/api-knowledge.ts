@@ -1,4 +1,9 @@
 import type { LayoutCatalogItem } from '@kontourai/station-contracts/distribution';
+import type {
+  KnowledgeDocumentMeta,
+  KnowledgeNamespaceConfig,
+  KnowledgeTreeNode,
+} from '@kontourai/station-contracts/knowledge';
 import { _getApiBase, apiErrorMessage, getPluginHeaders } from './api-core';
 import {
   buildKnowledgeFilterQuery,
@@ -8,7 +13,7 @@ import {
 import { authenticatedFetch, StationHttpError } from './client/http';
 export async function fetchKnowledgeNamespaces(
   projectSlug: string,
-): Promise<any[]> {
+): Promise<KnowledgeNamespaceConfig[]> {
   return requestKnowledgeJson(
     `/api/projects/${encodeURIComponent(projectSlug)}/knowledge/namespaces`,
     { errorPrefix: 'Failed to fetch namespaces' },
@@ -18,7 +23,7 @@ export async function fetchKnowledgeNamespaces(
 export async function fetchKnowledgeDocs(
   projectSlug: string,
   namespace?: string,
-): Promise<any[]> {
+): Promise<KnowledgeDocumentMeta[]> {
   return requestKnowledgeJson(knowledgeBase(projectSlug, namespace), {
     errorPrefix: 'Failed to fetch knowledge docs',
   });
@@ -252,7 +257,7 @@ export async function updateKnowledgeNamespace(
 export async function fetchKnowledgeTree(
   projectSlug: string,
   namespace: string,
-): Promise<any> {
+): Promise<KnowledgeTreeNode> {
   return requestKnowledgeJson(`${knowledgeBase(projectSlug, namespace)}/tree`, {
     errorPrefix: 'Failed to fetch tree',
   });
@@ -262,7 +267,7 @@ export async function fetchKnowledgeFiltered(
   projectSlug: string,
   namespace: string,
   filters: Record<string, any>,
-): Promise<any[]> {
+): Promise<KnowledgeDocumentMeta[]> {
   const qs = buildKnowledgeFilterQuery(filters);
   const url =
     `${knowledgeBase(projectSlug, namespace)}${qs ? `?${qs}` : ''}` as const;

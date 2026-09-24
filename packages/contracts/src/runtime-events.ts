@@ -2,7 +2,11 @@ import type { PersistedChatAttachment } from './chat-attachment.js';
 import type { ChildWorkDelta } from './child-work.js';
 import type { ClientOrigin } from './client-origin.js';
 import type { PrincipalRef } from './principal.js';
-import { type EngineId, PROVIDER_CODEX } from './provider.js';
+import {
+  type ApprovalMode,
+  type EngineId,
+  PROVIDER_CODEX,
+} from './provider.js';
 import type {
   SessionLifecycleState,
   SessionTransitionReason,
@@ -438,6 +442,24 @@ export interface SessionStopSettledEvent extends CanonicalRuntimeEventBase {
    * forward sets it.
    */
   initiatedBy?: 'user' | 'stall';
+}
+
+/**
+ * #2436: a user's approval-posture decision, recorded by Station (never by an
+ * engine) when it receives a `setApprovalMode` command or a send that carries
+ * one. Its global sequence orders it against every other decision; the latest
+ * one across the conversation is what the server applies at the next session
+ * start and turn start (`OrchestrationService.resolveApprovalMode`). It is a
+ * decision, not a report: what the engine actually applied is still reported
+ * on `session.configured` / `turn.started` metadata.
+ *
+ * `'connection-default'` records a Default pick. The server resolves it to a
+ * concrete posture at application time; the event does not claim one.
+ */
+export interface SessionApprovalModeSetEvent extends CanonicalRuntimeEventBase {
+  method: 'session.approval-mode-set';
+  sessionId: string;
+  approvalMode: ApprovalMode;
 }
 
 export interface ContentTextDeltaEvent extends CanonicalRuntimeEventBase {
@@ -1091,6 +1113,7 @@ export type CanonicalRuntimeEvent =
   | TurnCompletedEvent
   | TurnAbortedEvent
   | SessionStopSettledEvent
+  | SessionApprovalModeSetEvent
   | ContentTextDeltaEvent
   | ContentReasoningDeltaEvent
   | ToolStartedEvent

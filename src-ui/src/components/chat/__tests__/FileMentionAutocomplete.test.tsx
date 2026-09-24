@@ -42,7 +42,7 @@ describe('FileMentionAutocomplete', () => {
     >();
     render(
       <FileMentionAutocomplete
-        workingDirectory="/repo/station"
+        location={{ projectSlug: 'station', workingDir: '/repo/station' }}
         requestScope={{
           apiBase: 'http://station.test',
           authorityKey: 'owner',
@@ -70,7 +70,7 @@ describe('FileMentionAutocomplete', () => {
     >();
     render(
       <FileMentionAutocomplete
-        workingDirectory="/repo/station"
+        location={{ projectSlug: 'station', workingDir: '/repo/station' }}
         requestScope={{
           apiBase: 'http://station.test',
           authorityKey: 'owner',
@@ -102,7 +102,7 @@ describe('FileMentionAutocomplete', () => {
     >();
     render(
       <FileMentionAutocomplete
-        workingDirectory="/repo/station"
+        location={{ projectSlug: 'station', workingDir: '/repo/station' }}
         requestScope={{
           apiBase: 'http://station.test',
           authorityKey: 'owner',
@@ -137,7 +137,7 @@ describe('FileMentionAutocomplete', () => {
     } as unknown as typeof ready;
     const view = render(
       <FileMentionAutocomplete
-        workingDirectory="/repo/station"
+        location={{ projectSlug: 'station', workingDir: '/repo/station' }}
         requestScope={{
           apiBase: 'http://station.test',
           authorityKey: 'owner',
@@ -155,7 +155,7 @@ describe('FileMentionAutocomplete', () => {
     mentionQuery.result = ready;
     view.rerender(
       <FileMentionAutocomplete
-        workingDirectory="/repo/station"
+        location={{ projectSlug: 'station', workingDir: '/repo/station' }}
         requestScope={{
           apiBase: 'http://station.test',
           authorityKey: 'owner',

@@ -14,7 +14,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
   createBrowserService,
   egressPolicyFor,
@@ -724,27 +724,57 @@ describe('L-a: a hub being stopped keeps its ports denied', () => {
 
 describe('L-e: shutdown leaves no ssh child and no timer', () => {
   test('an install and an AVD lookup in flight are killed; no timer holds the process', async () => {
-    const timeouts = () =>
-      process.getActiveResourcesInfo().filter((kind) => kind === 'Timeout')
-        .length;
-    const before = timeouts();
-    const s = setup();
-    const host = s.registry.add({ label: 'Mac', sshTarget: 'machine-a' });
-    await s.registry.setHubEnabled(host.hostId, {
-      enabled: true,
-      consent: true,
-    });
-    const lookup = s.registry.resolveAndroidAvd(host.hostId, 'emulator-5554');
-    for (let i = 0; i < 20 && s.spawned.length < 2; i++)
+    // Track the timers created during this test rather than counting every
+    // Timeout in the process: an unrelated timer from an earlier test in the
+    // same worker can fire mid-test and move a process-wide count (#2488).
+    const realSetTimeout = globalThis.setTimeout;
+    const realClearTimeout = globalThis.clearTimeout;
+    const created: NodeJS.Timeout[] = [];
+    const settled = new Set<unknown>();
+    const setSpy = vi.spyOn(globalThis, 'setTimeout').mockImplementation(((
+      callback: (...args: unknown[]) => void,
+      ms?: number,
+      ...args: unknown[]
+    ) => {
+      const handle = realSetTimeout(() => {
+        settled.add(handle);
+        callback(...args);
+      }, ms);
+      created.push(handle);
+      return handle;
+    }) as typeof setTimeout);
+    const clearSpy = vi.spyOn(globalThis, 'clearTimeout').mockImplementation(((
+      handle?: NodeJS.Timeout,
+    ) => {
+      settled.add(handle);
+      realClearTimeout(handle);
+    }) as typeof clearTimeout);
+    try {
+      const s = setup();
+      const host = s.registry.add({ label: 'Mac', sshTarget: 'machine-a' });
+      await s.registry.setHubEnabled(host.hostId, {
+        enabled: true,
+        consent: true,
+      });
+      const lookup = s.registry.resolveAndroidAvd(host.hostId, 'emulator-5554');
+      for (let i = 0; i < 20 && s.spawned.length < 2; i++)
+        await new Promise((resolve) => setImmediate(resolve));
+      expect(s.spawned).toHaveLength(2);
+      // Their deadlines exist and are unref'd: none keeps the process alive
+      // even now.
+      const live = created.filter((handle) => !settled.has(handle));
+      expect(live.length).toBeGreaterThan(0);
+      expect(live.filter((handle) => handle.hasRef())).toEqual([]);
+      await s.registry.shutdown();
+      expect(await lookup).toBeUndefined();
+      for (const child of s.spawned) expect(child.killed).toContain('SIGKILL');
       await new Promise((resolve) => setImmediate(resolve));
-    expect(s.spawned).toHaveLength(2);
-    // Their deadlines are unref'd: none keeps the process alive even now.
-    expect(timeouts()).toBe(before);
-    await s.registry.shutdown();
-    expect(await lookup).toBeUndefined();
-    for (const child of s.spawned) expect(child.killed).toContain('SIGKILL');
-    await new Promise((resolve) => setImmediate(resolve));
-    expect(timeouts()).toBe(before);
+      // Every timer the shutdown path created or inherited is gone.
+      expect(created.filter((handle) => !settled.has(handle))).toEqual([]);
+    } finally {
+      setSpy.mockRestore();
+      clearSpy.mockRestore();
+    }
   });
 });
 

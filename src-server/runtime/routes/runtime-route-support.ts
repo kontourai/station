@@ -435,6 +435,7 @@ export function configureRuntimeSupportServices(
             context.taskDispatcher.dispatch(task.id, {
               agentId: input.agentId,
               sourceSurface: 'external-monitor',
+              fullAccessGrant: null,
               monitor: {
                 agentId: input.agentId,
                 signal: input.monitor.signal,

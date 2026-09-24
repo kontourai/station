@@ -15,6 +15,7 @@ import { fsyncDirectorySync } from '@kontourai/station-shared/fs-windows-compat'
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
 import { assertSafeContextText } from '../services/orchestration/context-safety.js';
 import { createLogger } from '../utils/logger.js';
+import { withEffectiveAgentApprovalMode } from './agent-approval-overrides.js';
 import {
   acquireAgentIdentityMutationLockAtHome,
   assertCustomAgentIdentity,
@@ -167,7 +168,24 @@ export function isAgentConfigNotFound(error: unknown): boolean {
   );
 }
 
+/**
+ * The Agent as its readers see it: for a plugin-owned Agent, the default
+ * approval posture is the effective one (#2436, `agent-approval-overrides.ts`).
+ * Writers merge onto `loadAgentConfigAsStored` instead, so an unrelated save
+ * never copies the effective value into the plugin's own `agent.json`.
+ */
 export async function loadAgentConfig(
+  projectHomeDir: string,
+  slug: string,
+): Promise<AgentSpec> {
+  return withEffectiveAgentApprovalMode(
+    projectHomeDir,
+    slug,
+    await loadAgentConfigAsStored(projectHomeDir, slug),
+  );
+}
+
+async function loadAgentConfigAsStored(
   projectHomeDir: string,
   slug: string,
 ): Promise<AgentSpec> {
@@ -261,7 +279,14 @@ export async function capturePluginAgentInvocation(
   let spec: AgentSpec;
   try {
     original = readOwnedBytes();
-    spec = parseAgentConfigContent(original, cleanId);
+    // #2436: captured with its EFFECTIVE default approval posture (the
+    // operator's override, else the plugin's own value short of full
+    // access), so the start never rereads anything.
+    spec = withEffectiveAgentApprovalMode(
+      projectHomeDir,
+      cleanId,
+      parseAgentConfigContent(original, cleanId),
+    );
   } finally {
     await release();
   }
@@ -522,7 +547,7 @@ export async function updateAgentConfig(
   return withAgentPersistenceLock(projectHomeDir, slug, async () => {
     assertCustomAgentIdentity(slug);
     assertRegistryIntegrityAtHomeSync(projectHomeDir);
-    const existing = await loadAgentConfig(projectHomeDir, slug);
+    const existing = await loadAgentConfigAsStored(projectHomeDir, slug);
     const updated = mergeAgentConfigUpdate(existing, updates);
     // The WRITE is what decides the record, not the merge: the reserved
     // Station identity's binding is stripped there (archive#3662 delta H3),
@@ -560,7 +585,7 @@ export async function mutateAgentConfig(
   return withAgentPersistenceLock(projectHomeDir, slug, async () => {
     assertCustomAgentIdentity(slug);
     assertRegistryIntegrityAtHomeSync(projectHomeDir);
-    const existing = await loadAgentConfig(projectHomeDir, slug);
+    const existing = await loadAgentConfigAsStored(projectHomeDir, slug);
     const next = updater(structuredClone(existing));
     if (next === null) return null;
     return saveAgentConfigWithOwnedLock(projectHomeDir, slug, next);
