@@ -336,12 +336,19 @@ iPhone yet.
   A device holds one registration; registering on one platform clears the
   other (best effort: an unreadable file for the other platform does not
   block this one, and should both ever hold the device the newer one is
-  served), and `DELETE`, revocation and replacement clear both files. A
+  served; a later re-registration on the stale record's own platform then
+  wins again, and the other record lingers until the device is cleared or
+  revoked), and `DELETE`, revocation and replacement clear both files. A
   removed iOS record that still has a live activity or queued channels
   leaves a tombstone in the file (`tombstones`, at most 32, drops logged):
   the publisher is told at once, ends that activity with an empty card
   dismissed now, then deletes its channels, so a revoked phone stops
-  showing sessions even when the Station restarted in between. A token
+  showing sessions even when the Station restarted in between. A phone
+  revoked while its start is in flight has that start's activity retired
+  the same way once the start answers. A tombstone older than 24 hours is
+  dropped: the activity has ended on the phone, and the sweep reclaims its
+  channels. While one registration file is unreadable, its phones keep
+  their state but are only looked at on the stalled-flush minute. A token
   for another bundle or APNs environment queues the live activity's channel
   for deletion under its old topic.
 - **Card.** `content-state` is `{ v: 1, rid, sk, sealed }`: `sealed` is the
@@ -380,7 +387,9 @@ iPhone yet.
   of its id. A start that fails after a rollover's end forgets what the
   phone was sent, so the next attempt starts again rather than waiting on a
   rollover that already happened. A 200 start that names no channel is
-  retried like a 503. Each activity keeps its last `timestamp` in the file,
+  retried like a 503; that start may already have put an activity on the
+  phone, so a retry can show a second one while the first, unreachable,
+  goes stale — preferred over a card nothing can update or end. Each activity keeps its last `timestamp` in the file,
   so a restart never sends it an older one. An unreadable registration file
   stops only its own platform's cards. A registration pinned to a previous
   push key cannot have its activity ended (its `channelAuth` is bound to

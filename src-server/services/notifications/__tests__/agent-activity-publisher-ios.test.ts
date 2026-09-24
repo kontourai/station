@@ -37,7 +37,10 @@ import {
   wireAgentActivityPublisher,
 } from '../agent-activity-publisher.js';
 import { LIVE_ACTIVITY_ROLLOVER_AFTER_MS } from '../live-activity-planner.js';
-import type { NativePushRegistration } from '../native-push-registration-store.js';
+import {
+  NativePushIosRegistrationStore,
+  type NativePushRegistration,
+} from '../native-push-registration-store.js';
 import { PushSigningKeyStore } from '../push-signing-key-store.js';
 
 const ENVIRONMENT_ID = '11111111-1111-4111-8111-111111111111';
@@ -1049,6 +1052,122 @@ describe('agent-activity publisher: iOS review regressions', () => {
     expect(retry.at).toBe(START + 5_000);
     expect(h.iosCalls().map(kind)).toEqual(['start', 'start']);
     expect(h.iosFile()?.registrations[deviceId]?.activity).toBeDefined();
+    await h.publisher.stop();
+  });
+
+  test.each(['ios', 'android'] as const)(
+    'with the %s file unreadable, the publisher keeps the stalled cadence instead of re-flushing every millisecond',
+    async (broken) => {
+      const h = harness();
+      await h.registerAndroid();
+      await h.registerIos();
+      await h.change([row('s1', 'running', START - 1000)]);
+      writeFileSync(
+        join(
+          h.homeDir,
+          'security',
+          broken === 'ios'
+            ? 'native-push-ios-registrations.json'
+            : 'native-push-registrations.json',
+        ),
+        '{not json',
+        { mode: 0o600 },
+      );
+      h.advance(10_000);
+      await h.change([row('s1', 'running', START - 1000)]);
+      // Through the boot wake and past both phones' refresh time (+1 h 30 m),
+      // when the broken platform's own wakes are all past due.
+      const fired: number[] = [];
+      while (fired.length < 400 && h.now() < START + 3 * HOUR) {
+        if (h.liveTimers().length === 0) break;
+        fired.push((await h.fireNextTimer()).at);
+      }
+      const gaps = fired.slice(1).map((at, i) => at - (fired[i] ?? 0));
+      expect(Math.min(...gaps)).toBeGreaterThanOrEqual(1_000);
+      // About one stalled re-check a minute, not thousands.
+      expect(fired.length).toBeLessThan(250);
+      await h.publisher.stop();
+    },
+  );
+
+  test('a phone on an unreadable platform keeps its state: once the file reads again, an unchanged card is not re-sent', async () => {
+    const h = harness();
+    await h.registerAndroid();
+    await h.registerIos();
+    await h.change([row('s1', 'running', START - 1000)]);
+    const path = join(
+      h.homeDir,
+      'security',
+      'native-push-ios-registrations.json',
+    );
+    const good = readFileSync(path, 'utf8');
+    writeFileSync(path, '{not json', { mode: 0o600 });
+    h.advance(10_000);
+    await h.change([row('s1', 'running', START - 1000)]);
+    writeFileSync(path, good, { mode: 0o600 });
+    h.advance(10_000);
+    const before = h.iosCalls().length;
+    await h.change([row('s1', 'running', START - 1000)]);
+    expect(h.iosCalls()).toHaveLength(before);
+    await h.publisher.stop();
+  });
+
+  test('revoked while its start is in flight: the activity that start made is still ended and its channel deleted', async () => {
+    let deviceId = '';
+    let revoked = false;
+    const h = harness({
+      answer: (call) => {
+        if (call.body.event === 'start' && !revoked) {
+          revoked = true;
+          h.pairing.revokeDevice(deviceId, 'operator-credential');
+        }
+        return undefined;
+      },
+    });
+    ({ deviceId } = await h.registerIos());
+    await h.change([row('s1', 'running', START - 1000)]);
+    await h.publisher.drain();
+    expect(h.iosCalls().map(kind)).toEqual(['start', 'end', 'delete']);
+    expect(h.channels.size).toBe(0);
+    expect(h.iosFile()?.tombstones).toBeUndefined();
+    await h.publisher.stop();
+  });
+
+  test('a retired activity older than 24 h is dropped without a request', async () => {
+    const h = harness();
+    await h.registerIos(); // the push key
+    const old = new NativePushIosRegistrationStore(
+      h.homeDir,
+      () => START - 25 * HOUR,
+    );
+    const token = 'ef'.repeat(40);
+    const stale = old.upsert(
+      'gone-device',
+      {
+        token,
+        packageName: 'io.kontourai.station',
+        platform: 'ios',
+        apnsEnvironment: 'production',
+      },
+      'k'.repeat(43),
+      1,
+    );
+    old.updateLiveActivity('gone-device', stale.registrationId, {
+      activity: {
+        startedAt: START - 26 * HOUR,
+        runId: 'r'.repeat(22),
+        channelId: 'Y2hhbm5lbC1vbGQ=',
+        channelAuth: `v1.${'O'.repeat(43)}`,
+      },
+    });
+    old.delete('gone-device');
+    expect(h.iosFile()?.tombstones).toHaveLength(1);
+    await h.flush();
+    expect(h.iosCalls()).toEqual([]);
+    expect(h.iosFile()?.tombstones).toBeUndefined();
+    expect(h.warn).toHaveBeenCalledWith(
+      'agent-activity: dropped a retired live activity after 24 h',
+    );
     await h.publisher.stop();
   });
 });

@@ -2624,6 +2624,11 @@ export class DevicePairingService {
     this.#nativePushIos.updateTombstone(registrationId, next);
   }
 
+  /** Retires an activity whose registration is already gone (see the store). */
+  retireNativePushLiveActivity(tombstone: NativePushIosTombstone): void {
+    this.#nativePushIos.retireLiveActivity(tombstone);
+  }
+
   /**
    * Calls `listener` after a change that can retire an iOS registration
    * (clear, revoke, replace, reset, a move to Android), so the publisher
@@ -2727,7 +2732,11 @@ export class DevicePairingService {
         if (!active.has(deviceId)) continue;
         const other = byDevice.get(deviceId);
         // Both files hold the device only after a best-effort clear failed:
-        // the newer registration is the phone's current one.
+        // the newer registration is the phone's current one. Edge: until
+        // that stale record is cleared, a later re-registration on its own
+        // platform (newer again) revives it over the other one — the phone
+        // really did register there last, so this serves it, but the other
+        // record lingers until the device is cleared or revoked.
         if (!other || registration.updatedAt > other.updatedAt)
           byDevice.set(deviceId, registration);
       }

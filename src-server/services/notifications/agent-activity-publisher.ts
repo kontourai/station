@@ -108,6 +108,8 @@ const REFRESH_BEFORE_EXPIRY_MS = 30 * 60_000;
 const BOOT_FLUSH_DELAY_MS = 5_000;
 /** Earliest re-check after a flush that could not reach the devices. */
 const STALLED_FLUSH_RETRY_MS = 60_000;
+/** A retired activity still not cleaned up after this long is dropped. */
+const TOMBSTONE_MAX_AGE_MS = 24 * 60 * 60_000;
 /** Alert ids remembered per device, so an alert is raised once. */
 const ALERTED_MEMORY = 256;
 const CARD_KEY = 'card';
@@ -362,6 +364,8 @@ export interface AgentActivityDevicePairing {
     registrationId: string,
     next: NativePushIosTombstone | null,
   ): void;
+  /** Retires an activity whose registration is already gone. */
+  retireNativePushLiveActivity?(tombstone: NativePushIosTombstone): void;
   /** Told when an iOS registration may have been retired. */
   onNativePushRetired?(
     listener: (event: { dropped: number }) => void,
@@ -824,6 +828,12 @@ export function wireAgentActivityPublisher(
     else delete state.nextDeleteAt;
   }
 
+  /**
+   * The last Live Activity timestamp sent per registrationId, beyond its
+   * device state: a retired registration's end must still follow it.
+   */
+  const lastTimestamps = new Map<string, number>();
+
   /** Per retired registration: its end's and deletions' backoff. */
   const tombstoneStates = new Map<
     string,
@@ -854,8 +864,25 @@ export function wireAgentActivityPublisher(
     for (const id of [...tombstoneStates.keys()])
       if (!retired.some((entry) => entry.registrationId === id))
         tombstoneStates.delete(id);
+    const live: NativePushIosTombstone[] = [];
+    for (const tombstone of retired) {
+      if (at - tombstone.retiredAt <= TOMBSTONE_MAX_AGE_MS) {
+        live.push(tombstone);
+        continue;
+      }
+      // Its activity has long ended on the phone, and the gateway's sweep
+      // reclaims its channels: nothing left worth a request.
+      logger.warn('agent-activity: dropped a retired live activity after 24 h');
+      try {
+        devicePairing.updateNativePushTombstone?.(
+          tombstone.registrationId,
+          null,
+        );
+      } catch {}
+      tombstoneStates.delete(tombstone.registrationId);
+    }
     await Promise.all(
-      retired.map(async (tombstone) => {
+      live.map(async (tombstone) => {
         let state = tombstoneStates.get(tombstone.registrationId);
         if (!state) {
           state = { failures: 0 };
@@ -892,7 +919,9 @@ export function wireAgentActivityPublisher(
           const timestamp = Math.max(
             Math.ceil(at / 1000),
             (activity.lastTimestamp ?? 0) + 1,
+            (lastTimestamps.get(tombstone.registrationId) ?? 0) + 1,
           );
+          lastTimestamps.set(tombstone.registrationId, timestamp);
           const { outcome } = await sendApns(
             options.gateway.liveActivityUrl,
             buildLiveActivityGatewayRequest({
@@ -984,6 +1013,10 @@ export function wireAgentActivityPublisher(
     // nothing is looked at again.
     if (stalledWakeAt !== undefined) wakes.push(stalledWakeAt);
     for (const state of devices.values()) {
+      // Kept while its file is unreadable, but nothing about it can be done
+      // until the file reads again: the stalled wake above covers it. Its
+      // own wakes, already due, would otherwise re-flush every millisecond.
+      if (unreadablePlatforms.has(state.platform)) continue;
       if (state.retryAt !== undefined) wakes.push(state.retryAt);
       if (
         state.deliveredActive &&
@@ -1060,21 +1093,25 @@ export function wireAgentActivityPublisher(
     }
   }
 
+  /** False when the registration is gone or was re-registered. */
   function persistLiveActivity(
     deviceId: string,
     registrationId: string,
     update: NativePushLiveActivityUpdate,
-  ) {
+  ): boolean {
     try {
-      devicePairing.updateNativePushLiveActivity(
-        deviceId,
-        registrationId,
-        update,
+      return (
+        devicePairing.updateNativePushLiveActivity(
+          deviceId,
+          registrationId,
+          update,
+        ) !== undefined
       );
     } catch (error) {
       logger.warn('agent-activity: could not record a live activity', {
         error: errorMessage(error),
       });
+      return true;
     }
   }
 
@@ -1090,6 +1127,7 @@ export function wireAgentActivityPublisher(
       (activity?.lastTimestamp ?? 0) + 1,
     );
     state.lastTimestamp = timestamp;
+    lastTimestamps.set(state.registrationId, timestamp);
     return timestamp;
   }
 
@@ -1230,6 +1268,11 @@ export function wireAgentActivityPublisher(
           APNS_CHANNEL_ID_PATTERN.test(startedChannel.channelId) &&
           startedChannel.channelAuth
         );
+      // Tradeoff: a 200 start that names no channel may still have put an
+      // activity on the phone. Retrying can show a second one (the old
+      // one, unreachable, goes stale and the gateway's sweep reclaims its
+      // channel); taking it as started would leave a card nothing can
+      // update or end. The duplicate is the lesser fault.
       if (malformedStart)
         logger.warn(
           'agent-activity: the gateway started a live activity without naming its channel; retrying',
@@ -1261,7 +1304,25 @@ export function wireAgentActivityPublisher(
           channelAuth: startedChannel.channelAuth,
           lastTimestamp: timestamp,
         };
-        persistLiveActivity(deviceId, registrationId, { activity });
+        if (!persistLiveActivity(deviceId, registrationId, { activity })) {
+          // Revoked (or replaced) while this start was in flight: the
+          // tombstone written then could not know this activity. Retire it
+          // now, so the drain below ends it and deletes its channel.
+          try {
+            devicePairing.retireNativePushLiveActivity?.({
+              registrationId,
+              payloadKey: registration.payloadKey,
+              ...topic,
+              retiredAt: at,
+              activity,
+            });
+          } catch (error) {
+            logger.warn('agent-activity: could not retire a live activity', {
+              error: errorMessage(error),
+            });
+          }
+          activity = undefined;
+        }
       }
       if (step.event === 'update' && outcome === 'sent' && activity) {
         // Durable: a restart must never send this activity an older
@@ -1699,6 +1760,12 @@ export function wireAgentActivityPublisher(
       return updatedAt;
     });
     forgetUnregistered(targets);
+    const referenced = new Set([
+      ...[...devices.values()].map((state) => state.registrationId),
+      ...tombstoneStates.keys(),
+    ]);
+    for (const id of [...lastTimestamps.keys()])
+      if (!referenced.has(id)) lastTimestamps.delete(id);
     return failedPrincipals.size > 0 || unreadablePlatforms.size > 0
       ? 'partial'
       : 'complete';

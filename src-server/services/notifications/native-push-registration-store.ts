@@ -769,6 +769,46 @@ export class NativePushIosRegistrationStore extends RegistrationFileStore<
   }
 
   /**
+   * Retires an activity whose registration is already gone (it was revoked
+   * while the activity's start was in flight): it joins that registration's
+   * tombstone, or starts one. A tombstone that already holds another
+   * activity takes this one's channel as a deletion instead (this activity
+   * then goes stale on the phone).
+   */
+  retireLiveActivity(tombstone: NativePushIosTombstone): void {
+    const { registrations, tombstones } = this.readAll();
+    const current = tombstones as NativePushIosTombstone[];
+    const existing = current.find(
+      (entry) => entry.registrationId === tombstone.registrationId,
+    );
+    if (!existing) {
+      this.writeAll(registrations, [...current, tombstone]);
+      return;
+    }
+    let merged: NativePushIosTombstone = { ...existing };
+    if (tombstone.activity && !existing.activity)
+      merged.activity = tombstone.activity;
+    else if (tombstone.activity)
+      merged = {
+        ...merged,
+        channelDeletes: [
+          ...(merged.channelDeletes ?? []),
+          {
+            bundleId: tombstone.bundleId,
+            environment: tombstone.environment,
+            channelId: tombstone.activity.channelId,
+            channelAuth: tombstone.activity.channelAuth,
+            deleteAt: tombstone.retiredAt,
+          },
+        ].slice(-CHANNEL_DELETES_MAX),
+      };
+    this.writeAll(
+      registrations,
+      current.map((entry) => (entry === existing ? merged : entry)),
+    );
+  }
+
+  /**
    * Sets (a value) or clears (null) the registration's activity, and queues
    * or drops channel deletions, in one write. Ignored — returning
    * undefined — once the device holds another registrationId, or when
