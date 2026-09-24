@@ -743,7 +743,8 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
       // `controls.stop: 'provider-task-stop'` on every running child. The
       // live `stop-task` capture (claude 2.1.281) shows the engine honouring
       // it with `task_updated` `killed` + `task_notification` `stopped`,
-      // which settles the child `cancelled`; claude-adapter.test.ts drives
+      // which settles the child `cancelled`. claude-adapter.test.ts drives
+      // the adapter's stop; claude-provider-turns.service.test.ts drives
       // route → service → adapter.
       stop: {
         state: 'available',
