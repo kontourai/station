@@ -840,6 +840,51 @@ describe('check-mobile-permissions rejects an unreviewed Android permission', ()
       'Android source manifest must retain the reviewed credential backup boundary android:allowBackup="false".',
     );
   });
+
+  // The package print names the rules file only by compiled id, so the
+  // release audit is sound only while a symbolic merged manifest from the
+  // same build is audited beside it (#2473). Real captures from a debug build.
+  const FIXTURES = resolve('scripts/__tests__/fixtures/android-manifests');
+  const MERGED =
+    'src-desktop/gen/android/app/build/intermediates/merged_manifest/universalRelease/AndroidManifest.xml';
+  const RELEASE_ENV = {
+    STATION_ANDROID_PACKAGE_MANIFEST: join(
+      FIXTURES,
+      'apkanalyzer-debug-apk.xml',
+    ),
+    STATION_REQUIRE_PACKAGED_PERMISSION_AUDIT: '1',
+  };
+
+  it('passes the release audit with the build merged manifest present', {
+    timeout: CASE_TIMEOUT,
+  }, () => {
+    const dir = scratchRepo({
+      script: SCRIPT,
+      git: false,
+      files: {
+        ...files(manifest),
+        [MERGED]: readFileSync(join(FIXTURES, 'merged-debug.xml'), 'utf8'),
+      },
+    });
+    const result = runGuardrail(dir, SCRIPT, RELEASE_ENV);
+    expect(result.status, result.output).toBe(0);
+    expect(result.stdout).toContain('mobile permission audit: PASS');
+  });
+
+  it('refuses the release audit without a merged manifest', {
+    timeout: CASE_TIMEOUT,
+  }, () => {
+    const dir = scratchRepo({
+      script: SCRIPT,
+      git: false,
+      files: files(manifest),
+    });
+    const result = runGuardrail(dir, SCRIPT, RELEASE_ENV);
+    expect(result.status, result.output).toBe(1);
+    expect(result.stderr).toContain(
+      'A merged Android manifest from the build is required for packaged permission audit.',
+    );
+  });
 });
 
 describe('font-origin:ratchet rejects an external font origin', () => {
