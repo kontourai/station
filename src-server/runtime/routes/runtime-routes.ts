@@ -4361,13 +4361,13 @@ export function configureRuntimeRoutes(
             : undefined;
         },
         canRead: (request, conversationId) =>
-          context.orchestrationService.canUserReadSession(
+          context.orchestrationService.canUserReadConversation(
             conversationId,
             readAuthorityForRequest(request),
           ),
         declared: async (request, conversationId) => {
           if (
-            !context.orchestrationService.canUserReadSession(
+            !context.orchestrationService.canUserReadConversation(
               conversationId,
               readAuthorityForRequest(request),
             )
