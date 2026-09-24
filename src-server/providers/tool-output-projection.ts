@@ -201,7 +201,7 @@ export function boundedPrompt(
 }
 
 /** The key a note takes on an object-shaped output with no `content` list. */
-export const TOOL_OUTPUT_NOTE_KEY = 'stationNote';
+const TOOL_OUTPUT_NOTE_KEY = 'stationNote';
 
 /**
  * Append a note to a tool's output so it appears wherever the output renders.
