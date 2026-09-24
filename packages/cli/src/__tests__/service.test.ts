@@ -2,12 +2,10 @@ import * as nodeFs from 'node:fs';
 import {
   chmodSync,
   mkdirSync,
-  mkdtempSync,
   readFileSync,
   statSync,
   writeFileSync,
 } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   readInstanceRegistry,
@@ -19,7 +17,10 @@ import {
   STATION_HOME_SCHEMA_FILE,
 } from '@kontourai/station-shared/station-home-schema';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../../src-server/__test-utils__/temp-dirs.js';
 import type { ServiceFs } from '../commands/service.js';
+
+const makeTempDir = trackTempDirs();
 
 const buildApplication = vi.fn();
 const collectInstanceStatus = vi.fn();
@@ -230,7 +231,7 @@ describe('station service dispatch', () => {
 
   test('dispatches Windows services and rejects ephemeral service commands', async () => {
     const { runServiceCommand } = await import('../commands/service.js');
-    const baseDir = mkdtempSync(join(tmpdir(), 'station-service-test-'));
+    const baseDir = makeTempDir('station-service-test-');
     await runServiceCommand(['status'], lifecycle(baseDir), {
       platform: 'win32',
     });
@@ -260,7 +261,7 @@ describe('station service dispatch', () => {
     const { inspectServiceInstallation } = await import(
       '../commands/service.js'
     );
-    const baseDir = mkdtempSync(join(tmpdir(), 'station-service-target-'));
+    const baseDir = makeTempDir('station-service-target-');
     const serviceDir = join(baseDir, 'service');
     mkdirSync(serviceDir, { recursive: true, mode: 0o700 });
     writeFileSync(
@@ -301,7 +302,7 @@ describe('station service dispatch', () => {
 
   test('rejects the normalized dogfood identity before every service action', async () => {
     const { runServiceCommand } = await import('../commands/service.js');
-    const baseDir = mkdtempSync(join(tmpdir(), 'station-service-test-'));
+    const baseDir = makeTempDir('station-service-test-');
     for (const platform of ['darwin', 'linux', 'win32'] as const) {
       for (const action of [
         'install',
@@ -339,7 +340,7 @@ describe('station service dispatch', () => {
 
   test('refuses a safe manifest that targets the reserved dogfood unit', async () => {
     const { runServiceCommand } = await import('../commands/service.js');
-    const baseDir = mkdtempSync(join(tmpdir(), 'station-service-test-'));
+    const baseDir = makeTempDir('station-service-test-');
     ensureStationHomeSchemaSync(baseDir);
     const serviceDir = join(baseDir, 'service');
     mkdirSync(serviceDir, { recursive: true });
@@ -372,7 +373,7 @@ describe('station service dispatch', () => {
 
   test('reports a corrupt pre-existing manifest clearly', async () => {
     const { runServiceCommand } = await import('../commands/service.js');
-    const baseDir = mkdtempSync(join(tmpdir(), 'station-service-test-'));
+    const baseDir = makeTempDir('station-service-test-');
     const serviceDir = join(baseDir, 'service');
     mkdirSync(serviceDir, { recursive: true });
     writeFileSync(join(serviceDir, 'service-test.json'), '{broken', {
@@ -388,7 +389,7 @@ describe('station service dispatch', () => {
 
   test('writes a private manifest and makes reinstall idempotent', async () => {
     const { runServiceCommand } = await import('../commands/service.js');
-    const baseDir = mkdtempSync(join(tmpdir(), 'station-service-test-'));
+    const baseDir = makeTempDir('station-service-test-');
     ensureStationHomeSchemaSync(baseDir);
     const serviceDir = join(baseDir, 'service');
     mkdirSync(serviceDir, { mode: 0o777 });
@@ -424,7 +425,7 @@ describe('station service dispatch', () => {
 
   test('persists allowed origins, preserves them across a flagless reinstall, and replaces or clears on request (#1672)', async () => {
     const { runServiceCommand } = await import('../commands/service.js');
-    const baseDir = mkdtempSync(join(tmpdir(), 'station-service-test-'));
+    const baseDir = makeTempDir('station-service-test-');
     ensureStationHomeSchemaSync(baseDir);
     const run = vi.fn(() => ({ status: 0, stdout: '/usr/bin:/bin\n' }));
     const deps = {
@@ -498,7 +499,7 @@ describe('station service dispatch', () => {
 
   test('re-validates manifest-sourced origins at install so a hand-edited manifest cannot reach unit content (#1672)', async () => {
     const { runServiceCommand } = await import('../commands/service.js');
-    const baseDir = mkdtempSync(join(tmpdir(), 'station-service-test-'));
+    const baseDir = makeTempDir('station-service-test-');
     ensureStationHomeSchemaSync(baseDir);
     const run = vi.fn(() => ({ status: 0, stdout: '/usr/bin:/bin\n' }));
     const deps = {
@@ -548,7 +549,7 @@ describe('station service dispatch', () => {
 
   test('re-validates manifest origins during the pre-registry migration bridge, failing closed before any backend mutation (#1672)', async () => {
     const { runServiceCommand } = await import('../commands/service.js');
-    const baseDir = mkdtempSync(join(tmpdir(), 'station-service-test-'));
+    const baseDir = makeTempDir('station-service-test-');
     ensureStationHomeSchemaSync(baseDir);
     const run = vi.fn(() => ({ status: 0, stdout: '/usr/bin:/bin\n' }));
     const deps = {
@@ -597,7 +598,7 @@ describe('station service dispatch', () => {
     // priors only; a foreign entry is invisible to the bridge — including
     // its fail-closed re-validation, which now also applies here.
     const { runServiceCommand } = await import('../commands/service.js');
-    const baseDir = mkdtempSync(join(tmpdir(), 'station-service-test-'));
+    const baseDir = makeTempDir('station-service-test-');
     ensureStationHomeSchemaSync(baseDir);
     upsertInstance(
       'service-test',
@@ -640,7 +641,7 @@ describe('station service dispatch', () => {
 
   test('service status prints the persisted origins line (#1672)', async () => {
     const { runServiceCommand } = await import('../commands/service.js');
-    const baseDir = mkdtempSync(join(tmpdir(), 'station-service-test-'));
+    const baseDir = makeTempDir('station-service-test-');
     ensureStationHomeSchemaSync(baseDir);
     const run = vi.fn(() => ({ status: 0, stdout: '/usr/bin:/bin\n' }));
     const deps = {
@@ -670,7 +671,7 @@ describe('station service dispatch', () => {
 
   test('reports stale launchd scheduling in text and JSON without changing the registration', async () => {
     const { runServiceCommand } = await import('../commands/service.js');
-    const baseDir = mkdtempSync(join(tmpdir(), 'station-service-test-'));
+    const baseDir = makeTempDir('station-service-test-');
     const unitPath = join(baseDir, 'installed.plist');
     const registration = {
       label: 'io.kontourai.station.service-test',
@@ -757,7 +758,7 @@ describe('station service dispatch', () => {
 
   test('status --json never serializes registry secrets, only identity and allowed origins (#1983)', async () => {
     const { runServiceCommand } = await import('../commands/service.js');
-    const baseDir = mkdtempSync(join(tmpdir(), 'station-service-test-'));
+    const baseDir = makeTempDir('station-service-test-');
     ensureStationHomeSchemaSync(baseDir);
     // A registry entry whose env carries an operator secret alongside the
     // origins policy. Status output must never disclose the secret.
@@ -805,7 +806,7 @@ describe('station service dispatch', () => {
 
   test('reads and migrates a legacy-labelled manifest on a real upgrade instead of throwing (#1983)', async () => {
     const { runServiceCommand } = await import('../commands/service.js');
-    const baseDir = mkdtempSync(join(tmpdir(), 'station-service-test-'));
+    const baseDir = makeTempDir('station-service-test-');
     ensureStationHomeSchemaSync(baseDir);
     const serviceDir = join(baseDir, 'service');
     mkdirSync(serviceDir, { mode: 0o700, recursive: true });
@@ -884,7 +885,7 @@ describe('station service dispatch', () => {
 
   test('does not persist a registry origin change when the backend install fails (#1983)', async () => {
     const { runServiceCommand } = await import('../commands/service.js');
-    const baseDir = mkdtempSync(join(tmpdir(), 'station-service-test-'));
+    const baseDir = makeTempDir('station-service-test-');
     ensureStationHomeSchemaSync(baseDir);
     installLaunchd.mockImplementationOnce(() => {
       throw new Error('backend install boom');
@@ -914,7 +915,7 @@ describe('station service dispatch', () => {
     // process's pid/birth — which Desktop's home-ownership decision read as
     // a live service. The pre-check refuses BEFORE any backend mutation.
     const { runServiceCommand } = await import('../commands/service.js');
-    const baseDir = mkdtempSync(join(tmpdir(), 'station-service-test-'));
+    const baseDir = makeTempDir('station-service-test-');
     ensureStationHomeSchemaSync(baseDir);
     upsertInstance(
       'service-test',
@@ -953,7 +954,7 @@ describe('station service dispatch', () => {
     // service-typed entry at this id is this unit's own supervisor, which
     // the backend install protocol stops and replaces itself.
     const { runServiceCommand } = await import('../commands/service.js');
-    const baseDir = mkdtempSync(join(tmpdir(), 'station-service-test-'));
+    const baseDir = makeTempDir('station-service-test-');
     ensureStationHomeSchemaSync(baseDir);
     upsertInstance(
       'service-test',
@@ -993,7 +994,7 @@ describe('station service dispatch', () => {
     // carry NONE of the dead entry's fields (pid/birth/checkout/status) —
     // an inherited pid is exactly what flipped Desktop's ownership decision.
     const { runServiceCommand } = await import('../commands/service.js');
-    const baseDir = mkdtempSync(join(tmpdir(), 'station-service-test-'));
+    const baseDir = makeTempDir('station-service-test-');
     ensureStationHomeSchemaSync(baseDir);
     upsertInstance(
       'service-test',
@@ -1031,7 +1032,7 @@ describe('station service dispatch', () => {
 
   test('rejects a manifest whose allowedOrigins field is malformed (#1672)', async () => {
     const { runServiceCommand } = await import('../commands/service.js');
-    const baseDir = mkdtempSync(join(tmpdir(), 'station-service-test-'));
+    const baseDir = makeTempDir('station-service-test-');
     ensureStationHomeSchemaSync(baseDir);
     const serviceDir = join(baseDir, 'service');
     mkdirSync(serviceDir, { mode: 0o700, recursive: true });
@@ -1064,7 +1065,7 @@ describe('station service dispatch', () => {
 
   test('installs, starts, stops, and uninstalls the Windows backend', async () => {
     const { runServiceCommand } = await import('../commands/service.js');
-    const baseDir = mkdtempSync(join(tmpdir(), 'station-service-test-'));
+    const baseDir = makeTempDir('station-service-test-');
     const run = vi.fn(() => ({ status: 0, stdout: '/usr/bin:/bin\n' }));
     await runServiceCommand(['install'], lifecycle(baseDir), {
       fs: serviceFs,
@@ -1113,7 +1114,7 @@ describe('station service dispatch', () => {
 
   test('converges the exact Windows instance before reinstalling its task', async () => {
     const { runServiceCommand } = await import('../commands/service.js');
-    const baseDir = mkdtempSync(join(tmpdir(), 'station-service-test-'));
+    const baseDir = makeTempDir('station-service-test-');
     const run = vi.fn(() => ({ status: 0, stdout: '/usr/bin:/bin\n' }));
     await runServiceCommand(['install'], lifecycle(baseDir), {
       fs: serviceFs,
@@ -1160,7 +1161,7 @@ describe('station service dispatch', () => {
 
   test('reconciles an orphan registration without a manifest on status and uninstall', async () => {
     const { runServiceCommand } = await import('../commands/service.js');
-    const baseDir = mkdtempSync(join(tmpdir(), 'station-service-test-'));
+    const baseDir = makeTempDir('station-service-test-');
     const log = vi.spyOn(console, 'log').mockImplementation(() => {});
 
     await runServiceCommand(['status', '--json'], lifecycle(baseDir), {
@@ -1193,7 +1194,7 @@ describe('station service dispatch', () => {
       { active: true, present: false },
       { active: false, enabled: true, present: false },
     ]) {
-      const baseDir = mkdtempSync(join(tmpdir(), 'station-service-test-'));
+      const baseDir = makeTempDir('station-service-test-');
       launchdStatus.mockReturnValue(unit);
       await runServiceCommand(['status', '--json'], lifecycle(baseDir), {
         platform: 'darwin',
@@ -1212,7 +1213,7 @@ describe('station service dispatch', () => {
 
   test('fails closed when scheduling policy cannot be read', async () => {
     const { runServiceCommand } = await import('../commands/service.js');
-    const baseDir = mkdtempSync(join(tmpdir(), 'station-service-test-'));
+    const baseDir = makeTempDir('station-service-test-');
     const run = vi.fn((command: string) =>
       command === 'plutil'
         ? { status: 1, stderr: 'plutil unavailable' }
@@ -1273,7 +1274,7 @@ describe('station service dispatch', () => {
 
   test('treats a systemd operator override as healthy without a reinstall remedy', async () => {
     const { runServiceCommand } = await import('../commands/service.js');
-    const baseDir = mkdtempSync(join(tmpdir(), 'station-service-test-'));
+    const baseDir = makeTempDir('station-service-test-');
     const unitPath = join(baseDir, 'station-service-test.service');
     const registration = {
       platform: 'linux' as const,
@@ -1334,7 +1335,7 @@ describe('station service dispatch', () => {
 
   test('rolls back the backend when manifest publication fails', async () => {
     const { runServiceCommand } = await import('../commands/service.js');
-    const baseDir = mkdtempSync(join(tmpdir(), 'station-service-test-'));
+    const baseDir = makeTempDir('station-service-test-');
     const manifestPath = join(baseDir, 'service', 'service-test.json');
     const failingFs = {
       ...serviceFs,
@@ -1365,7 +1366,7 @@ describe('station service dispatch', () => {
 
   test('restores a working backend and preserves its manifest when reinstall publication fails', async () => {
     const { runServiceCommand } = await import('../commands/service.js');
-    const baseDir = mkdtempSync(join(tmpdir(), 'station-service-test-'));
+    const baseDir = makeTempDir('station-service-test-');
     ensureStationHomeSchemaSync(baseDir);
     const serviceDir = join(baseDir, 'service');
     mkdirSync(serviceDir, { recursive: true });
@@ -1414,7 +1415,7 @@ describe('station service dispatch', () => {
 
   test('restores the prior manifest and backend when post-rename ACL hardening fails', async () => {
     const { runServiceCommand } = await import('../commands/service.js');
-    const baseDir = mkdtempSync(join(tmpdir(), 'station-service-test-'));
+    const baseDir = makeTempDir('station-service-test-');
     ensureStationHomeSchemaSync(baseDir);
     const serviceDir = join(baseDir, 'service');
     mkdirSync(serviceDir, { recursive: true });
@@ -1461,7 +1462,7 @@ describe('station service dispatch', () => {
 
   test('returns an idempotent install receipt that restores backend and prior manifest', async () => {
     const { runServiceCommand } = await import('../commands/service.js');
-    const baseDir = mkdtempSync(join(tmpdir(), 'station-service-test-'));
+    const baseDir = makeTempDir('station-service-test-');
     ensureStationHomeSchemaSync(baseDir);
     const serviceDir = join(baseDir, 'service');
     mkdirSync(serviceDir, { recursive: true });
@@ -1507,7 +1508,7 @@ describe('station service dispatch', () => {
 
   test('waits for this instance server and UI identity before reporting install success', async () => {
     const { runServiceCommand } = await import('../commands/service.js');
-    const baseDir = mkdtempSync(join(tmpdir(), 'station-service-test-'));
+    const baseDir = makeTempDir('station-service-test-');
     const sleep = vi.fn();
     collectInstanceStatus
       .mockResolvedValueOnce({
@@ -1547,7 +1548,7 @@ describe('station service dispatch', () => {
 
   test('finishes a stale build before installing, so readiness starts with an adoptable build', async () => {
     const { runServiceCommand } = await import('../commands/service.js');
-    const baseDir = mkdtempSync(join(tmpdir(), 'station-service-test-'));
+    const baseDir = makeTempDir('station-service-test-');
     isBuildStale.mockReturnValueOnce(true);
     let releaseBuild: (() => void) | undefined;
     buildApplication.mockImplementationOnce(
@@ -1586,7 +1587,7 @@ describe('station service dispatch', () => {
     const { resolveLifecycleInstanceId } = await import(
       '../commands/helpers.js'
     );
-    const baseDir = mkdtempSync(join(tmpdir(), 'station-service-test-'));
+    const baseDir = makeTempDir('station-service-test-');
     const anonymous = { ...lifecycle(baseDir), instanceName: undefined };
     const expectedId = resolveLifecycleInstanceId({
       cwd: process.cwd(),
@@ -1620,7 +1621,7 @@ describe('station service dispatch', () => {
 
   test('honors the readiness hard cap when a generation stays wedged', async () => {
     const { runServiceCommand } = await import('../commands/service.js');
-    const baseDir = mkdtempSync(join(tmpdir(), 'station-service-test-'));
+    const baseDir = makeTempDir('station-service-test-');
     let elapsedMs = 0;
     const sleep = vi.fn((milliseconds: number) => {
       elapsedMs += milliseconds;
@@ -1653,7 +1654,7 @@ describe('station service dispatch', () => {
 
   test('requires a new boot identity before a reinstall reports readiness', async () => {
     const { runServiceCommand } = await import('../commands/service.js');
-    const baseDir = mkdtempSync(join(tmpdir(), 'station-service-test-'));
+    const baseDir = makeTempDir('station-service-test-');
     const run = vi.fn(() => ({ status: 0, stdout: '/usr/bin:/bin\n' }));
     await runServiceCommand(['install'], lifecycle(baseDir), {
       fs: serviceFs,
@@ -1701,7 +1702,7 @@ describe('station service dispatch', () => {
 
   test('compensates backend and prior manifest when service readiness times out', async () => {
     const { runServiceCommand } = await import('../commands/service.js');
-    const baseDir = mkdtempSync(join(tmpdir(), 'station-service-test-'));
+    const baseDir = makeTempDir('station-service-test-');
     ensureStationHomeSchemaSync(baseDir);
     const serviceDir = join(baseDir, 'service');
     mkdirSync(serviceDir, { recursive: true });
@@ -1759,7 +1760,7 @@ describe('station service dispatch', () => {
 
   test('attempts a replacement generation when readiness and compensation both fail', async () => {
     const { runServiceCommand } = await import('../commands/service.js');
-    const baseDir = mkdtempSync(join(tmpdir(), 'station-service-test-'));
+    const baseDir = makeTempDir('station-service-test-');
     const rollback = vi.fn(() => {
       throw new Error('old generation drain timed out');
     });
@@ -1831,7 +1832,7 @@ describe('station service dispatch', () => {
 
   test('stops a running Windows replacement and restores the active prior generation after readiness times out', async () => {
     const { runServiceCommand } = await import('../commands/service.js');
-    const baseDir = mkdtempSync(join(tmpdir(), 'station-service-test-'));
+    const baseDir = makeTempDir('station-service-test-');
     ensureStationHomeSchemaSync(baseDir);
     const serviceDir = join(baseDir, 'service');
     mkdirSync(serviceDir, { recursive: true });
@@ -1942,7 +1943,7 @@ describe('station service dispatch', () => {
 
   test('surfaces backend probe execution errors and exits non-zero', async () => {
     const { runServiceCommand } = await import('../commands/service.js');
-    const baseDir = mkdtempSync(join(tmpdir(), 'station-service-test-'));
+    const baseDir = makeTempDir('station-service-test-');
     launchdStatus.mockReturnValue({
       active: null,
       error: 'launchctl print failed: backend unavailable',
@@ -1960,7 +1961,7 @@ describe('station service dispatch', () => {
 
   test('preserves the manifest and instance when backend uninstall fails', async () => {
     const { runServiceCommand } = await import('../commands/service.js');
-    const baseDir = mkdtempSync(join(tmpdir(), 'station-service-test-'));
+    const baseDir = makeTempDir('station-service-test-');
     await runServiceCommand(['install'], lifecycle(baseDir), {
       fs: serviceFs,
       platform: 'darwin',
@@ -1983,7 +1984,7 @@ describe('station service dispatch', () => {
 
   test('returns non-zero JSON status for an installed unhealthy service', async () => {
     const { runServiceCommand } = await import('../commands/service.js');
-    const baseDir = mkdtempSync(join(tmpdir(), 'station-service-test-'));
+    const baseDir = makeTempDir('station-service-test-');
     const run = vi.fn(() => ({ status: 0, stdout: '/usr/bin:/bin\n' }));
     await runServiceCommand(['install'], lifecycle(baseDir), {
       fs: serviceFs,
@@ -2013,7 +2014,7 @@ describe('station service dispatch', () => {
 
   test('uninstall converges when no manifest exists', async () => {
     const { runServiceCommand } = await import('../commands/service.js');
-    const baseDir = mkdtempSync(join(tmpdir(), 'station-service-test-'));
+    const baseDir = makeTempDir('station-service-test-');
     await runServiceCommand(['uninstall'], lifecycle(baseDir), {
       platform: 'darwin',
     });
@@ -2023,7 +2024,7 @@ describe('station service dispatch', () => {
 
   test('starts an installed service and prints its post-action JSON status', async () => {
     const { runServiceCommand } = await import('../commands/service.js');
-    const baseDir = mkdtempSync(join(tmpdir(), 'station-service-test-'));
+    const baseDir = makeTempDir('station-service-test-');
     const run = vi.fn(() => ({ status: 0, stdout: '/usr/bin:/bin\n' }));
     const log = vi.spyOn(console, 'log').mockImplementation(() => {});
     await runServiceCommand(['install'], lifecycle(baseDir), {
@@ -2046,7 +2047,7 @@ describe('station service dispatch', () => {
 
   test('stops a stranded live identity even when its supervisor reports inactive', async () => {
     const { runServiceCommand } = await import('../commands/service.js');
-    const baseDir = mkdtempSync(join(tmpdir(), 'station-service-test-'));
+    const baseDir = makeTempDir('station-service-test-');
     const run = vi.fn(() => ({ status: 0, stdout: '/usr/bin:/bin\n' }));
     await runServiceCommand(['install'], lifecycle(baseDir), {
       fs: serviceFs,
@@ -2082,7 +2083,7 @@ describe('station service dispatch', () => {
     });
     const error = vi.spyOn(console, 'error').mockImplementation(() => {});
     for (const action of ['start', 'stop'] as const) {
-      const missingBase = mkdtempSync(join(tmpdir(), 'station-service-test-'));
+      const missingBase = makeTempDir('station-service-test-');
       await runServiceCommand([action], lifecycle(missingBase), {
         platform: 'darwin',
       });
@@ -2099,7 +2100,7 @@ describe('station service dispatch', () => {
 
   test('keeps a missing-manifest backend probe failure generic', async () => {
     const { runServiceCommand } = await import('../commands/service.js');
-    const baseDir = mkdtempSync(join(tmpdir(), 'station-service-test-'));
+    const baseDir = makeTempDir('station-service-test-');
     launchdStatus.mockReturnValue({
       active: null,
       error: 'launchctl unavailable',
@@ -2121,7 +2122,7 @@ describe('station service dispatch', () => {
 
   test('fails closed when a post-action backend probe is unknown', async () => {
     const { runServiceCommand } = await import('../commands/service.js');
-    const baseDir = mkdtempSync(join(tmpdir(), 'station-service-test-'));
+    const baseDir = makeTempDir('station-service-test-');
     const run = vi.fn(() => ({ status: 0, stdout: '/usr/bin:/bin\n' }));
     await runServiceCommand(['install'], lifecycle(baseDir), {
       fs: serviceFs,

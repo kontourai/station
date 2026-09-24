@@ -1,8 +1,8 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { engineId } from '@kontourai/station-contracts/agent-identity';
-import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { ConfigLoader } from '../../domain/config-loader.js';
 import type { ProviderAdapterShape } from '../adapter-shape.js';
 import { BedrockAdapter } from '../adapters/bedrock-adapter.js';
@@ -34,15 +34,14 @@ import { resolvePluginProviders } from '../resolver.js';
 describe('Provider System', () => {
   let tempDir: string;
 
-  beforeEach(() => {
-    tempDir = mkdtempSync(join(tmpdir(), 'provider-test-'));
-    clearAll();
-  });
+  // One directory per test, removed after each. The previous `afterAll`
+  // removed only the last test's directory and leaked every other one
+  // (#2421).
+  const makeTempDir = trackTempDirs();
 
-  afterAll(() => {
-    if (tempDir) {
-      rmSync(tempDir, { recursive: true, force: true });
-    }
+  beforeEach(() => {
+    tempDir = makeTempDir('provider-test-');
+    clearAll();
   });
 
   describe('resolver.ts', () => {

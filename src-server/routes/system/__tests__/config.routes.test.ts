@@ -1,15 +1,9 @@
-import {
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Hono } from 'hono';
-import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { readJson as json } from '../../../__test-utils__/read-json.js';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { setGrantedPairingScope } from '../../../security/pairing-route-scopes.js';
 
 vi.mock('../../../telemetry/metrics.js', () => ({
@@ -30,6 +24,8 @@ const { defaultTerminalShell } = await import(
   '../../../services/terminal/terminal-shells.js'
 );
 
+const makeTempDir = trackTempDirs();
+
 function createMockConfigLoader(
   initial: Record<string, any> = {
     defaultModel: 'claude-3',
@@ -37,7 +33,7 @@ function createMockConfigLoader(
   },
 ) {
   let config = initial;
-  const projectHome = mkdtempSync(join(tmpdir(), 'station-config-route-'));
+  const projectHome = makeTempDir('station-config-route-');
   const loader = {
     getProjectHomeDir: vi.fn(() => projectHome),
     loadAppConfig: vi.fn().mockImplementation(async () => ({ ...config })),
@@ -862,11 +858,7 @@ describe('Config Routes (real ConfigLoader + filesystem)', () => {
   let tempDir: string;
 
   beforeEach(() => {
-    tempDir = mkdtempSync(join(tmpdir(), 'station-config-routes-'));
-  });
-
-  afterEach(() => {
-    rmSync(tempDir, { recursive: true, force: true });
+    tempDir = makeTempDir('station-config-routes-');
   });
 
   test('finding 1: GET /app never leaks a persisted runtime-derived field back when the live flag is off, even from a home polluted by the pre-fix round trip', async () => {

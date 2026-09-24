@@ -89,6 +89,7 @@ describe('verification policy gate', () => {
       expect.arrayContaining([
         'node scripts/verification-policy-gate.mjs',
         'node scripts/product-law-gate.mjs',
+        'node scripts/test-temp-dir-ratchet.mjs',
         'npm run test:fixtures:guard',
       ]),
     );
