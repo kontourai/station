@@ -11,12 +11,16 @@
  * of the composition consumes the same resolved binding, so capturing the
  * constructor input is capturing the seam.
  */
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+// #2421: new temp dirs route through the self-removing tracker, not raw
+// mkdtempSync — cleanup lands in a vitest hook even when an assertion fails.
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { configureRuntimeRoutes } from '../runtime-routes.js';
+
+const makeTempDir = trackTempDirs();
 
 const constructed = vi.hoisted(() => ({
   configuredHubUrls: [] as (string | undefined)[],
@@ -73,7 +77,7 @@ function deepStub<T extends object>(overrides: T): T {
 }
 
 async function composedHarness(appConfig: Record<string, unknown>) {
-  const homeDir = mkdtempSync(join(tmpdir(), 'station-device-hub-setting-'));
+  const homeDir = makeTempDir('station-device-hub-setting-');
   // The kit-observability registry the composition arms writes its lifecycle
   // ledger under <home>/config; create it or its atomic writes reject.
   mkdirSync(join(homeDir, 'config'), { mode: 0o700 });
@@ -116,20 +120,15 @@ async function composedHarness(appConfig: Record<string, unknown>) {
   const result = await configureRuntimeRoutes(
     context as unknown as Parameters<typeof configureRuntimeRoutes>[0],
   );
-  createdHomes.push(homeDir);
   // The composition arms background writers into <home>; let them land
   // before afterEach removes the directory out from under them.
   await result.kitLifecycleReady;
   return result;
 }
 
-const createdHomes: string[] = [];
-
 describe('runtime routes: the device helper address resolves through the settings registry', () => {
-  afterEach(async () => {
+  afterEach(() => {
     delete process.env.STATION_MOBILE_DEVICE_HUB_URL;
-    for (const directory of createdHomes.splice(0))
-      rmSync(directory, { recursive: true, force: true });
   });
 
   test('an unconfigured Station composes with no explicit hub URL', async () => {
