@@ -39,8 +39,9 @@ import {
 } from '@kontourai/station-contracts/runtime-events';
 import {
   isSessionLifecycleState,
-  isSessionLifecycleStateStopped,
+  isSessionLifecycleStateAtRest,
   isSessionTransitionReason,
+  sessionLifecycleOutcome,
 } from '@kontourai/station-contracts/session-lifecycle';
 import {
   type SessionReadAuthority,
@@ -1026,7 +1027,11 @@ export function delegatedTaskReason(
 ): DelegatedTaskReason | undefined {
   // A clean success carries no reason: an older turn's budget code must
   // never label it (root review 00:40 — observable wrong status, not style).
-  if (session.lifecycleState === 'completed') return undefined;
+  if (
+    isSessionLifecycleState(session.lifecycleState) &&
+    sessionLifecycleOutcome(session.lifecycleState) === 'completed'
+  )
+    return undefined;
   const reversed = [...events].reverse();
   // The CURRENT outcome is the newest terminal event, not the newest budget
   // code anywhere in history: a prior budget failure followed by a newer
@@ -2803,6 +2808,9 @@ function taskStatus(
   session: Record<string, unknown>,
 ): DelegatedTaskSnapshot['status'] {
   const lifecycle = session.lifecycleState;
+  // #2540: a delegated session whose turn finished is at rest and reusable;
+  // to the delegator the task is done.
+  if (lifecycle === 'idle') return 'completed';
   if (
     lifecycle === 'queued' ||
     lifecycle === 'running' ||
@@ -2944,7 +2952,7 @@ function conversationCanAcceptFollowUp(
   // made only for a state the contract recognizes.
   return (
     isSessionLifecycleState(status) &&
-    (status === 'queued' || isSessionLifecycleStateStopped(status))
+    (status === 'queued' || isSessionLifecycleStateAtRest(status))
   );
 }
 
@@ -3813,7 +3821,7 @@ export async function refreshPeerDelegationActivity(
       (session) =>
         session.delegation?.environmentKind === 'peer' &&
         session.delegation.environmentId &&
-        !isSessionLifecycleStateStopped(session.lifecycleState ?? 'queued'),
+        !isSessionLifecycleStateAtRest(session.lifecycleState ?? 'queued'),
     )
     .slice(-20);
   await Promise.allSettled(

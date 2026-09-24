@@ -36,6 +36,7 @@ import {
   isDeferredRetriableTurnError,
 } from '@kontourai/station-contracts/runtime-events';
 import type { SessionLifecycleState } from '@kontourai/station-contracts/session-lifecycle';
+import { sessionLifecycleOutcome } from '@kontourai/station-contracts/session-lifecycle';
 import {
   type TenantExecutionContext,
   tenantExecutionContextFromSession,
@@ -282,9 +283,7 @@ function foldFirstSendOutcome<
 >(folded: L, outcome: FirstSendOutcome | undefined): L {
   if (
     !outcome ||
-    folded.lifecycleState === 'failed' ||
-    folded.lifecycleState === 'completed' ||
-    folded.lifecycleState === 'canceled'
+    sessionLifecycleOutcome(folded.lifecycleState) !== undefined
   ) {
     return folded;
   }
@@ -2037,10 +2036,7 @@ function deriveAgentRunStatus(options: {
 function agentRunStatusFromSessionState(
   state: SessionLifecycleState | undefined,
 ): AgentRunStatus | null {
-  if (state === 'canceled') return 'cancelled';
-  if (state === 'completed') return 'completed';
-  if (state === 'failed') return 'failed';
-  return null;
+  return state ? (sessionLifecycleOutcome(state) ?? null) : null;
 }
 
 function isTerminalAgentRunStatus(status: AgentRunStatus): boolean {

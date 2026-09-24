@@ -1,4 +1,5 @@
 import { humanPrincipal as deploymentHumanPrincipal } from '@kontourai/station-contracts/principal';
+import { sessionLifecycleOutcome } from '@kontourai/station-contracts/session-lifecycle';
 import { createBrowserRoutes } from '../../routes/browser.js';
 import { createBrowserAgentRoutes } from '../../routes/browser-agent.js';
 import { createDeviceHostRoutes } from '../../routes/device-hosts.js';
@@ -3070,14 +3071,7 @@ export function configureRuntimeRoutes(
           session: detail.session,
           events: detail.events,
         });
-        const outcome =
-          lifecycle.lifecycleState === 'completed'
-            ? 'completed'
-            : lifecycle.lifecycleState === 'failed'
-              ? 'failed'
-              : lifecycle.lifecycleState === 'canceled'
-                ? 'cancelled'
-                : undefined;
+        const outcome = sessionLifecycleOutcome(lifecycle.lifecycleState);
         return {
           provider: detail.session.provider,
           ...(outcome ? { outcome } : {}),

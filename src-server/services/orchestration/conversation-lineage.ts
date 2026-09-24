@@ -13,6 +13,7 @@ import type { EngineId } from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import {
   foldedSessionLifecycleState,
+  isSessionLifecycleStateAtRest,
   isSessionLifecycleStateStopped,
 } from '@kontourai/station-contracts/session-lifecycle';
 import type { SessionReadAuthority } from '@kontourai/station-contracts/tenancy';
@@ -266,7 +267,15 @@ export class ConversationLineage {
         'This conversation is not writable under its current control state.',
       );
     }
-    if (!isSessionLifecycleStateStopped(lifecycle)) {
+    // #2540: an `idle` session (a finished turn) is not stopped, so the
+    // follow-up runs in it — its engine is still resident, or dispatch
+    // restarts it in place from its resume cursor. The exception is an idle
+    // session whose engine binding was explicitly closed or died: dispatch
+    // cannot restart a closed/dead row, so it continues in a successor, the
+    // way a stopped session always has.
+    const bindingEnded =
+      detail.session.status === 'closed' || detail.session.status === 'dead';
+    if (!isSessionLifecycleStateStopped(lifecycle) && !bindingEnded) {
       observeConversationContinuation('current_open');
       return { sessionId: current.sessionId, startRequired: false };
     }
@@ -423,8 +432,10 @@ export class ConversationLineage {
       }
       return projectConversationContextBoundary(existing);
     }
+    // #2540: at rest — an `idle` session (a finished turn) qualifies like a
+    // stopped one; its explicit stop leaves it `idle`, not `canceled`.
     if (
-      !isSessionLifecycleStateStopped(
+      !isSessionLifecycleStateAtRest(
         foldedSessionLifecycleState(detail.session.lifecycleState),
       ) ||
       detail.session.hasActiveTurn
@@ -620,7 +631,7 @@ export class ConversationLineage {
       detail.session.lifecycleState,
     );
     if (
-      !isSessionLifecycleStateStopped(lifecycle) ||
+      !isSessionLifecycleStateAtRest(lifecycle) ||
       detail.session.hasActiveTurn
     ) {
       throw new Error(
