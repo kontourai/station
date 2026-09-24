@@ -927,13 +927,25 @@ test('the compensating delete runs through waitUntil, past the response', async 
   const ctx = { waitUntil: (work: Promise<unknown>) => deferred.push(work) };
   const station = await stationKey();
 
-  const response = await post(
+  const answered = post(
     cfg,
     '/v1/apns/live-activity',
     liveActivityBody(),
     station,
     { ctx },
   );
+  const first = await Promise.race([
+    answered,
+    new Promise<'still waiting'>((resolve) =>
+      setTimeout(() => resolve('still waiting'), 2_000),
+    ),
+  ]);
+  if (first === 'still waiting') {
+    release();
+    await answered;
+    assert.fail('the response waited for the compensating delete');
+  }
+  const response = first;
   assert.equal(response.status, 410);
   assert.equal(deferred.length, 1, 'the delete was handed to waitUntil');
   assert.ok(ledgerOf(cfg).entries.has(ledgerKey(NEW_CHANNEL)), 'not yet');
