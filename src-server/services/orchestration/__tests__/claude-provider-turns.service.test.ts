@@ -2,7 +2,11 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk';
-import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import type { ConversationTurnActivity } from '@kontourai/station-contracts/orchestration';
+import {
+  type CanonicalRuntimeEvent,
+  SERVER_EVENTS,
+} from '@kontourai/station-contracts/runtime-events';
 import { INTERNAL_SESSION_READ_SCOPE } from '@kontourai/station-contracts/tenancy';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
@@ -42,7 +46,10 @@ import {
   type ClaudeProviderTurnFixtureLine,
   loadClaudeProviderTurnFixture,
 } from '../../../providers/__tests__/claude-provider-turns-fixtures.js';
-import { loadClaudeTaskCapture } from '../../../providers/__tests__/claude-task-captures.js';
+import {
+  loadClaudeBackgroundBashCapture,
+  loadClaudeTaskCapture,
+} from '../../../providers/__tests__/claude-task-captures.js';
 import type { ProviderAdapterShape } from '../../../providers/adapter-shape.js';
 import { ClaudeAdapter } from '../../../providers/adapters/claude-adapter.js';
 import type { IProviderAdapterRegistry } from '../../../providers/provider-interfaces.js';
@@ -400,6 +407,19 @@ describe('#2457: Claude child work through OrchestrationService', () => {
       eventStore,
       logger: { debug: vi.fn(), warn: vi.fn() },
     });
+    const bindings: Array<{
+      method: string;
+      activity: ConversationTurnActivity | undefined;
+    }> = [];
+    eventBus.subscribe((frame) => {
+      if (frame.event !== SERVER_EVENTS.ORCHESTRATION_EVENT) return;
+      const payload = frame.data?.event as CanonicalRuntimeEvent | undefined;
+      if (!payload) return;
+      bindings.push({
+        method: payload.method,
+        activity: service.conversationStreamBinding(payload)?.activity,
+      });
+    });
     const threadId = `service-${crypto.randomUUID()}`;
     await service.dispatch({
       type: 'startSession',
@@ -432,6 +452,7 @@ describe('#2457: Claude child work through OrchestrationService', () => {
       children,
       persisted,
       pushMessage,
+      bindings,
     };
   }
 
@@ -497,6 +518,132 @@ describe('#2457: Claude child work through OrchestrationService', () => {
     );
     expect(settles).toEqual(['completed', 'completed']);
   });
+
+  test.each(['background-bash', 'background-agent'] as const)(
+    '%s: parent activity stays live from the first turn through child settlement and provider follow-up',
+    async (capture) => {
+      const { service, threadId, pushMessage, query, persisted, bindings } =
+        await startService();
+      const lines =
+        capture === 'background-bash'
+          ? loadClaudeBackgroundBashCapture()
+          : loadClaudeTaskCapture(capture);
+      const capturedSend = lines.find((line) => {
+        const message = line.message as unknown as
+          | { type?: string; state?: string }
+          | undefined;
+        return (
+          message?.type === 'command_lifecycle' && message.state === 'queued'
+        );
+      })?.message as { command_uuid: string } | undefined;
+      expect(capturedSend).toBeDefined();
+      const prompts = mockQuery.mock.calls
+        .at(-1)![0]
+        .prompt[Symbol.asyncIterator]() as AsyncIterator<{ uuid: string }>;
+      let actualSend = '';
+      const states: Array<'turn' | 'child' | 'pending' | 'idle'> = [];
+      let sawChildOnly = false;
+      let sawPendingOnly = false;
+      let sawProviderTurn = false;
+      let firstResultSeen = false;
+      for (const line of lines) {
+        if (line.probe?.startsWith('PUSH ')) {
+          await service.dispatch({
+            type: 'sendTurn',
+            input: { threadId, input: line.probe.slice(5) },
+          });
+          actualSend = (await prompts.next()).value.uuid;
+          await settle();
+          continue;
+        }
+        if (
+          line.probe?.startsWith('CLOSE INPUT') ||
+          line.probe === 'ITERATOR END'
+        )
+          continue;
+        if (!line.message) continue;
+        let encoded = JSON.stringify(line.message);
+        encoded = encoded.split(capturedSend!.command_uuid).join(actualSend);
+        const message = JSON.parse(encoded) as SDKMessage;
+        await pushMessage(message);
+        const activity = (
+          await service.readSession(threadId, INTERNAL_SESSION_READ_SCOPE)
+        )?.session.conversationActivity;
+        expect(activity).toBeDefined();
+        const state = activity?.openTurn
+          ? 'turn'
+          : (activity?.runningChildWork?.count ?? 0) > 0
+            ? 'child'
+            : activity?.runningChildWork?.followUpPending
+              ? 'pending'
+              : 'idle';
+        states.push(state);
+        if (activity?.openTurn?.trigger === 'provider') sawProviderTurn = true;
+        if (state === 'pending') sawPendingOnly = true;
+        if (state === 'child') sawChildOnly = true;
+        if (message.type === 'result' && !firstResultSeen) {
+          firstResultSeen = true;
+          expect(state).toBe('child');
+          expect(activity?.openTurn).toBeUndefined();
+          expect(
+            (await service.readSession(threadId, INTERNAL_SESSION_READ_SCOPE))
+              ?.session.conversationActivity?.runningChildWork?.count,
+          ).toBeGreaterThan(0);
+          expect(
+            await service.dispatch({ type: 'interruptTurn', threadId }),
+          ).toMatchObject({ outcome: 'no-active-turn' });
+        }
+      }
+      expect(sawChildOnly).toBe(true);
+      expect(sawPendingOnly).toBe(true);
+      expect(sawProviderTurn).toBe(true);
+      const firstTurn = states.indexOf('turn');
+      expect(firstTurn).toBeGreaterThanOrEqual(0);
+      expect(states.slice(firstTurn, -1)).not.toContain('idle');
+      expect(states.at(-1)).toBe('idle');
+      expect(
+        bindings.filter((frame) => frame.method === 'child-work.updated')
+          .length,
+      ).toBeGreaterThan(0);
+      expect(
+        bindings
+          .filter((frame) => frame.method === 'child-work.updated')
+          .every((frame) => frame.activity !== undefined),
+      ).toBe(true);
+      const childOnlyFrame = bindings.findIndex(
+        (frame) =>
+          !frame.activity?.openTurn &&
+          (frame.activity?.runningChildWork?.count ?? 0) > 0,
+      );
+      const providerFrame = bindings.findIndex(
+        (frame, index) =>
+          index > childOnlyFrame &&
+          frame.method === 'turn.started' &&
+          frame.activity?.openTurn?.trigger === 'provider',
+      );
+      expect(childOnlyFrame).toBeGreaterThanOrEqual(0);
+      expect(providerFrame).toBeGreaterThan(childOnlyFrame);
+      expect(
+        bindings
+          .slice(childOnlyFrame, providerFrame + 1)
+          .filter((frame) => frame.activity)
+          .every(
+            (frame) =>
+              frame.activity?.openTurn !== undefined ||
+              frame.activity?.runningChildWork !== undefined,
+          ),
+      ).toBe(true);
+      expect(
+        persisted().some(
+          (event) =>
+            event.method === 'extension.notification' &&
+            event.type === 'provider/follow-up-pending',
+        ),
+      ).toBe(true);
+      query.end();
+      await settle();
+    },
+  );
 
   test('stop-task: POST …/provider-tasks/:taskId/stop reaches Query.stopTask and the engine’s stopped settle cancels the child', async () => {
     const { query, threadId, routes, children, persisted, pushMessage } =

@@ -62,10 +62,18 @@ export type ClaudeTaskCaptureLine =
 export function loadClaudeTaskCapture(
   name: ClaudeTaskCaptureName,
 ): ClaudeTaskCaptureLine[] {
+  return loadCaptureFile(CLAUDE_TASK_CAPTURE_FILES[name]);
+}
+
+/** The Bash-only capture is a provider-turn gap fixture, not an agent-format
+ * conformance fixture (`CLAUDE_TASK_CAPTURES` exercises agent signals). */
+export function loadClaudeBackgroundBashCapture(): ClaudeTaskCaptureLine[] {
+  return loadCaptureFile('claude-2.1.281-background-bash.jsonl');
+}
+
+function loadCaptureFile(filename: string): ClaudeTaskCaptureLine[] {
   return readFileSync(
-    fileURLToPath(
-      new URL(`./fixtures/${CLAUDE_TASK_CAPTURE_FILES[name]}`, import.meta.url),
-    ),
+    fileURLToPath(new URL(`./fixtures/${filename}`, import.meta.url)),
     'utf8',
   )
     .split('\n')

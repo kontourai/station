@@ -169,6 +169,15 @@ export function orchestrationLifecycleLabel(
   //   Observed live: 13 of 24 sessions labelled Running with
   //   `hasActiveTurn: false` on every one.
   const disposition = sessionAttentionDisposition(session);
+  // A completed parent turn may leave reported children running. Keep the
+  // attention fold unchanged: background work is not a request to the user.
+  if (
+    session.lifecycleState === 'completed' &&
+    session.status !== 'closed' &&
+    session.conversationActivity?.runningChildWork &&
+    disposition.state === 'finished'
+  )
+    return 'Running';
   switch (disposition.state) {
     case 'failed':
       return 'Failed';
@@ -186,7 +195,11 @@ export function orchestrationLifecycleLabel(
       // reader did not consult the lineage, not "is a draft". Only the
       // active arm refines to it: a never-prompted session that failed,
       // finished or is waiting on the user keeps that more specific word.
-      if (session.hasActiveTurn) return 'Running';
+      if (
+        session.hasActiveTurn ||
+        session.conversationActivity?.runningChildWork
+      )
+        return 'Running';
       return session.draft === true ? 'Draft' : 'Ready';
   }
 }

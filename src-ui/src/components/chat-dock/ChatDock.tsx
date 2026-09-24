@@ -78,7 +78,7 @@ import {
 import type { ChatSession, DockMode, FileAttachment } from '../../types';
 import {
   type EffectiveModelSource,
-  isSessionExecutionActive,
+  isSessionWorkActive,
 } from '../../utils/execution';
 import { displayProvider, sessionTitle } from '../../utils/sessionDisplay';
 import {
@@ -616,7 +616,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     },
     [acknowledgeConversation],
   );
-  const activeSessionCount = sessions.filter(isSessionExecutionActive).length;
+  const activeSessionCount = sessions.filter(isSessionWorkActive).length;
 
   // Dock CHROME (snap/geometry/dragging) lives in `chrome` now — owned by
   // the persistent DockShell (or, for a full-screen placement, this

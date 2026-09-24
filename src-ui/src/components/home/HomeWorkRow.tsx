@@ -106,6 +106,12 @@ export function renderHomeWorkRow({
                   {task.unanswerableNotice}
                 </small>
               )}
+              {task.lifecycleLabel === 'Running' &&
+                task.activeReason === 'background' && (
+                  <small className="home-view__unanswerable">
+                    Background work running
+                  </small>
+                )}
               {/* The compact terminal-attribution detail is the basis for a
                   Failed/Stopped chip. It is server-derived and already
                   bounded; omitting it here would leave Home with a label but

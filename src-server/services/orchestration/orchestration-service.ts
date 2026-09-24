@@ -1852,6 +1852,16 @@ export class OrchestrationService {
       ? new ConversationTurnActivityProjection({
           eventStore: options.eventStore,
           readTurnProgress: (threadId) => this.turnProgress.read(threadId),
+          readRunningChildWork: (threadId) => {
+            const provider = this.sessionAdapters.get(threadId)?.provider;
+            const view = this.childWork.read(threadId, provider);
+            return view?.observability === 'reported' ? view.running : [];
+          },
+          publishProjectionChange: (threadId) =>
+            this.options.eventBus.emit(
+              SERVER_EVENTS.ORCHESTRATION_SESSION_PROJECTION_UPDATED,
+              { threadId },
+            ),
           logger: options.logger,
         })
       : undefined;
@@ -4016,6 +4026,8 @@ export class OrchestrationService {
   conversationStreamBinding(event: {
     threadId: string;
     method?: string;
+    namespace?: string;
+    type?: string;
   }):
     | import('@kontourai/station-contracts/orchestration').OrchestrationConversationStreamBinding
     | undefined {

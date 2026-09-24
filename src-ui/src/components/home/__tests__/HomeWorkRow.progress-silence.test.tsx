@@ -57,6 +57,19 @@ function renderSession(
 describe('HomeWorkRow turn progress observation (station#4054)', () => {
   afterEach(() => vi.restoreAllMocks());
 
+  test('a completed parent with a running child explains its Running label', () => {
+    renderSession({
+      lifecycleState: 'completed',
+      hasActiveTurn: false,
+      conversationActivity: {
+        conversationId: 'turn-progress-observation',
+        asOfSequence: 4,
+        runningChildWork: { count: 1, producers: ['engine-subagent'] },
+      },
+    });
+    expect(screen.getByText('Background work running')).toBeTruthy();
+  });
+
   test('renders the exact watchdog silence marker and its last-progress timestamp', async () => {
     vi.spyOn(Date, 'now').mockReturnValue(
       new Date('2026-08-24T12:04:12.000Z').valueOf(),
