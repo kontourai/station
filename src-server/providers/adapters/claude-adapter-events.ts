@@ -19,6 +19,7 @@ import type { ProviderSession } from '../adapter-shape.js';
 import { reportedModelMetadata } from '../llm/effective-model-metadata.js';
 import {
   ModelImageCollector,
+  redactInlineData,
   summarizeImageOmissions,
 } from '../model-image-attachments.js';
 import { mapPermissionModeToApprovalMode } from './claude-approval-mode.js';
@@ -1495,35 +1496,42 @@ export function claudeToolResultOutputReceipt(
 
 /** The untruncated text {@link summarizeClaudeToolResult} slices. */
 function fullClaudeToolResultText(content: unknown): string {
-  if (typeof content === 'string') return content;
+  // Redacted BEFORE any slice: a head slice of `Screenshot: data:…;base64,…`
+  // would otherwise persist the first bytes of the image as text. Both the
+  // summary and its receipt measure this redacted text.
+  if (typeof content === 'string') return redactInlineData(content);
   if (Array.isArray(content)) {
-    return content
-      .map((part) =>
-        part && typeof part === 'object' && 'text' in part
-          ? String((part as { text: unknown }).text)
-          : '',
-      )
-      .filter(Boolean)
-      .join('\n');
+    return redactInlineData(
+      content
+        .map((part) =>
+          part && typeof part === 'object' && 'text' in part
+            ? String((part as { text: unknown }).text)
+            : '',
+        )
+        .filter(Boolean)
+        .join('\n'),
+    );
   }
   return '';
 }
 
+/**
+ * The text a Claude tool result shows, head-sliced to
+ * `CLAUDE_TOOL_RESULT_OUTPUT_LIMIT`. Shared by the live adapter and the
+ * transcript source (`claude-transcript-session-source.ts`), so both redact
+ * inline image data before slicing.
+ */
 export function summarizeClaudeToolResult(
   content: unknown,
 ): string | undefined {
   if (typeof content === 'string') {
-    return content.slice(0, CLAUDE_TOOL_RESULT_OUTPUT_LIMIT);
+    return fullClaudeToolResultText(content).slice(
+      0,
+      CLAUDE_TOOL_RESULT_OUTPUT_LIMIT,
+    );
   }
   if (Array.isArray(content)) {
-    const text = content
-      .map((part) =>
-        part && typeof part === 'object' && 'text' in part
-          ? String((part as { text: unknown }).text)
-          : '',
-      )
-      .filter(Boolean)
-      .join('\n');
+    const text = fullClaudeToolResultText(content);
     return text ? text.slice(0, CLAUDE_TOOL_RESULT_OUTPUT_LIMIT) : undefined;
   }
   return undefined;

@@ -2651,3 +2651,63 @@ describe('claude-adapter-events — many rejected images', () => {
     }
   });
 });
+
+describe('claude-adapter-events — inline image data in tool_result text', () => {
+  test.each([
+    [
+      'a string result',
+      `Screenshot: data:image/png;base64,${'QUJD'.repeat(5_000)}WFla==`,
+    ],
+    [
+      'a text-block result',
+      [
+        {
+          type: 'text',
+          text: `Screenshot: data:image/png;base64,${'QUJD'.repeat(5_000)}WFla==`,
+        },
+      ],
+    ],
+  ])('%s is redacted before the head slice', (_label, content) => {
+    const publish = vi.fn();
+    const record = makeRecord();
+    mapClaudeSdkMessage({
+      provider: 'claude',
+      record,
+      publish,
+      message: {
+        type: 'assistant',
+        parent_tool_use_id: null,
+        message: {
+          content: [
+            { type: 'tool_use', id: 'toolu-text', name: 'mcp__x', input: {} },
+          ],
+        },
+        uuid: 'u-text-1',
+        session_id: 's-1',
+      } as any,
+    });
+    mapClaudeSdkMessage({
+      provider: 'claude',
+      record,
+      publish,
+      message: {
+        type: 'user',
+        parent_tool_use_id: null,
+        message: {
+          content: [
+            { type: 'tool_result', tool_use_id: 'toolu-text', content },
+          ],
+        },
+        uuid: 'u-text-2',
+        session_id: 's-1',
+      } as any,
+    });
+    const completed = publish.mock.calls
+      .map(([event]) => event)
+      .find((event) => event.method === 'tool.completed');
+    expect(completed.output).toBe('Screenshot: [inline image data omitted]');
+    // The redacted text fits the limit: no truncation receipt, no bytes.
+    expect(completed).not.toHaveProperty('outputReceipt');
+    expect(JSON.stringify(completed)).not.toContain('QUJD');
+  });
+});
