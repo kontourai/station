@@ -22,7 +22,7 @@
  *
  * Requires built `dist-server/` (`npm run build:server`).
  */
-import { execFileSync, spawn } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import {
   existsSync,
   mkdirSync,
@@ -35,6 +35,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { findFreePort } from '../lib/free-ports.mjs';
+import { executeOwnedProcess } from '../lib/owned-process.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const args = Object.fromEntries(
@@ -55,6 +56,7 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 function processTree(rootPid) {
   const rows = execFileSync('ps', ['-A', '-o', 'pid=,ppid=,rss=,command='], {
     encoding: 'utf8',
+    windowsHide: true,
   })
     .split('\n')
     .map((line) => line.trim().match(/^(\d+)\s+(\d+)\s+(\d+)\s+(.*)$/))
@@ -103,19 +105,27 @@ async function main() {
   mkdirSync(home, { recursive: true });
   const workdir = join(root, 'work');
   mkdirSync(workdir, { recursive: true });
-  execFileSync('git', ['init', '-q', workdir]);
+  execFileSync('git', ['init', '-q', workdir], { windowsHide: true });
 
-  const server = spawn('node', ['dist-server/command-station.js'], {
-    cwd: ROOT,
-    env: {
-      ...process.env,
-      STATION_ROOT: root,
-      STATION_HOME: home,
-      PORT: String(port),
-      MCP_UI_FRAME_PORT: '0',
+  // Owned process group: engines the server spawns die with it.
+  const owned = executeOwnedProcess(
+    process.execPath,
+    ['dist-server/command-station.js'],
+    undefined,
+    'station bench server',
+    {
+      cwd: ROOT,
+      env: {
+        ...process.env,
+        STATION_ROOT: root,
+        STATION_HOME: home,
+        PORT: String(port),
+        MCP_UI_FRAME_PORT: '0',
+      },
+      stdio: ['ignore', 'pipe', 'pipe'],
     },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  });
+  );
+  const server = owned.child;
   let serverLog = '';
   server.stdout.on('data', (d) => (serverLog += d));
   server.stderr.on('data', (d) => (serverLog += d));
@@ -303,14 +313,8 @@ async function main() {
     results.finalProcesses = sampleProcesses(server.pid);
   } finally {
     abort.abort();
-    try {
-      for (const row of processTree(server.pid)) {
-        try {
-          process.kill(row.pid, 'SIGKILL');
-        } catch {}
-      }
-    } catch {}
-    server.kill('SIGKILL');
+    await owned.forceTerminate().catch(() => {});
+    await owned.completion;
     if (args.keep !== 'true') rmSync(root, { recursive: true, force: true });
   }
 
