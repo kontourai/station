@@ -47,9 +47,14 @@ const dom = new JSDOM('<!doctype html><html><body></body></html>', {
 vi.stubGlobal('document', dom.window.document);
 vi.stubGlobal('navigator', dom.window.navigator);
 vi.stubGlobal('getComputedStyle', dom.window.getComputedStyle);
-if (
-  (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT === undefined
-) {
+// station#2530 review 5 (LOW): restored in `afterEach` below — this file
+// sets a bare global directly (not through `vi.stubGlobal`, which
+// `unstubAllGlobals` already restores), so leaving it set after the last
+// test here would leak into a sibling test file sharing this worker's realm.
+const hadActEnvironmentBeforeThisFile =
+  (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT !==
+  undefined;
+if (!hadActEnvironmentBeforeThisFile) {
   // Test-only global React reads to silence act() warnings.
   (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
 }
@@ -99,6 +104,9 @@ function publicHandshakeResponse() {
 
 afterEach(async () => {
   vi.unstubAllGlobals();
+  if (!hadActEnvironmentBeforeThisFile) {
+    delete (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT;
+  }
   for (const service of services.splice(0)) await service.shutdown();
   for (const store of stores.splice(0)) store.close();
   for (const root of roots.splice(0))
