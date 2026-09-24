@@ -348,6 +348,21 @@ describe('redactInlineData', () => {
     ).toBe(`${PLACEHOLDER}\n\nNext step`);
   });
 
+  test('only a full wrapped line (at least 60 characters, a multiple of 4) continues', () => {
+    // 61 characters: long enough, but not a multiple of 4 — not a wrap.
+    expect(
+      redactInlineData(`data:image/png;base64,${'A'.repeat(61)}\nNext`),
+    ).toBe(`${PLACEHOLDER}\nNext`);
+    // 56 characters: a multiple of 4, but shorter than any MIME/PEM line.
+    expect(
+      redactInlineData(`data:image/png;base64,${'A'.repeat(56)}\nNext`),
+    ).toBe(`${PLACEHOLDER}\nNext`);
+    // 60 characters, a multiple of 4: a full wrapped line, so it continues.
+    expect(
+      redactInlineData(`data:image/png;base64,${'A'.repeat(60)}\nBBBB==`),
+    ).toBe(PLACEHOLDER);
+  });
+
   test('spaces and tabs never continue a data URL (documented limit)', () => {
     const full = 'QUJD'.repeat(19);
     for (const separator of [' ', '\t']) {
