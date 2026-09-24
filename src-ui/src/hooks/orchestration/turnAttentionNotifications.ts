@@ -82,7 +82,7 @@ export function resetTurnAttentionNotifications(): void {
  * First ~100 characters of an answer as plain text: markdown syntax,
  * code fences and ANSI escapes removed, whitespace collapsed.
  */
-export function plainTextSnippet(
+function plainTextSnippet(
   text: string | undefined,
   max = SNIPPET_MAX,
 ): string | undefined {
@@ -110,7 +110,7 @@ function agentLabel(
 }
 
 /** The toast's one-line outcome, in plain words. */
-export function describeTurnOutcome(
+function describeTurnOutcome(
   who: string,
   outcome: TurnAttentionOutcome,
   reason?: string,
