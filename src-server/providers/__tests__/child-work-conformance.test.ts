@@ -11,7 +11,7 @@
  *   real output.
  *
  * A signal is only counted when the delta carries it:
- *   lifecycle = a running snapshot AND a terminal settle
+ *   lifecycle = a settle for a child a same-reporter snapshot listed running
  *   progress  = an upsert with a progress line
  *   usage     = child usage on a settle or upsert
  *   result    = a summary or a result handle on a settle
@@ -26,6 +26,7 @@ import {
   type ChildWorkDelta,
   type ChildWorkItem,
   childWorkDeltaFromLegacyClaudeTaskNotification,
+  childWorkKey,
 } from '@kontourai/station-contracts/child-work';
 import {
   ENGINE_CAPABILITY_MATRICES,
@@ -312,11 +313,30 @@ function itemsOf(delta: ChildWorkDelta): ChildWorkItem[] {
 
 function observedSignals(deltas: ChildWorkDelta[]): Set<SubagentSignal> {
   const signals = new Set<SubagentSignal>();
-  const listedRunning = deltas.some(
-    (delta) => delta.kind === 'snapshot' && delta.running.length > 0,
+  // Lifecycle is ONE child's start and end: a settle for a key that a
+  // snapshot from the same reporter listed as running. Any running snapshot
+  // plus any unrelated settle proves nothing about either.
+  const listedRunning = new Set(
+    deltas.flatMap((delta) =>
+      delta.kind === 'snapshot'
+        ? delta.running
+            .filter(
+              (item) =>
+                item.reporterThreadId === delta.reporterThreadId &&
+                item.producer === delta.producer,
+            )
+            .map((item) => childWorkKey(item))
+        : [],
+    ),
   );
-  const settled = deltas.some((delta) => delta.kind === 'settle');
-  if (listedRunning && settled) signals.add('lifecycle');
+  if (
+    deltas.some(
+      (delta) =>
+        delta.kind === 'settle' && listedRunning.has(childWorkKey(delta)),
+    )
+  ) {
+    signals.add('lifecycle');
+  }
   for (const delta of deltas) {
     if (delta.kind === 'upsert' && delta.item.progress) {
       signals.add('progress');

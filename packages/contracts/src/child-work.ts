@@ -531,6 +531,8 @@ export function forgetChildWorkReporter(
  */
 export interface DelegateChildWorkSource {
   threadId: string;
+  /** The durable conversation this delegated session belongs to. */
+  conversationId?: string;
   createdAt?: string;
   lastEventAt?: string;
   hasActiveTurn?: boolean;
@@ -572,10 +574,19 @@ function delegateTerminalStatus(
  */
 export function projectDelegateChildWork(
   summary: DelegateChildWorkSource,
+  facts: {
+    /**
+     * The delegate's nesting depth as its own launch recorded it
+     * (`AgentDelegationContext.depth` on the session's metadata). Absent when
+     * the launch carried no delegation context — never defaulted to 1.
+     */
+    depth?: number;
+  } = {},
 ): ChildWorkItem | undefined {
   const delegation = summary.delegation;
   if (!delegation) return undefined;
   const running = summary.hasActiveTurn === true;
+  const peer = delegation.environmentKind === 'peer';
   return normalizeItem({
     producer: 'station-delegate',
     reporterThreadId: summary.threadId,
@@ -586,15 +597,33 @@ export function projectDelegateChildWork(
     ...(delegation.parentTaskId
       ? { parent: { taskId: delegation.parentTaskId } }
       : {}),
+    depth: facts.depth,
     ...(delegation.title ? { title: delegation.title } : {}),
     ...(delegation.targetId ? { kindLabel: delegation.targetId } : {}),
+    // "Open the full session": the delegate's own session on this Station.
+    // A peer record is only a compact local receipt of work running on the
+    // other Station, so it names no session to open here.
+    ...(peer
+      ? {}
+      : {
+          result: {
+            handle: {
+              kind: 'session' as const,
+              threadId: summary.threadId,
+              ...(summary.conversationId
+                ? { conversationId: summary.conversationId }
+                : {}),
+            },
+          },
+        }),
     ...(summary.createdAt ? { startedAt: summary.createdAt } : {}),
     ...(!running && summary.lastEventAt
       ? { endedAt: summary.lastEventAt }
       : {}),
-    ...(delegation.environmentKind === 'peer'
-      ? {}
-      : { controls: { stop: 'delegate-interrupt' as const } }),
+    // A peer record is read-only on this Station: the orchestration command
+    // gate rejects every command for it (including interruptTurn), and the
+    // delegate interrupt route refuses its binding. So no stop is offered.
+    ...(peer ? {} : { controls: { stop: 'delegate-interrupt' as const } }),
   });
 }
 

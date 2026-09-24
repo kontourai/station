@@ -5007,6 +5007,31 @@ describe('OrchestrationService', () => {
     ).toMatchObject({ lifecycleState: 'completed' });
   });
 
+  test('#2456 R3: a peer Activity record offers no stop because the Station refuses to interrupt it', async () => {
+    const threadId = service.recordPeerDelegationActivityDispatch({
+      taskId: 'task:peer-2456',
+      conversationId: 'task:peer-2456',
+      prompt: 'Run remotely',
+      userId: 'owner-user',
+      environment: { id: 'environment-peer', name: 'Station B', kind: 'peer' },
+      target: { kind: 'agent', id: 'codex' },
+      parentTaskId: 'chat-2456',
+    });
+    // The interrupt a delegate card's Stop would lead to is refused for this
+    // record — so a Stop control on it would be wired to nothing.
+    await expect(
+      service.dispatch({ type: 'interruptTurn', threadId }),
+    ).rejects.toThrow('Peer delegation Activity records are read-only.');
+    const record = (await service.listSessionReadModel()).find(
+      (session) => session.threadId === threadId,
+    );
+    expect(record?.childWork?.asChild).toMatchObject({
+      producer: 'station-delegate',
+      parent: { taskId: 'chat-2456' },
+    });
+    expect(record?.childWork?.asChild).not.toHaveProperty('controls');
+  });
+
   test.each(['needs_input', 'review_pending'] as const)(
     'advances a queued peer Activity record through contract-derived hops to %s (#847 fix round)',
     async (status) => {
@@ -6575,6 +6600,31 @@ describe('OrchestrationService', () => {
       observability: 'reported',
       running: [{ childId: 'task-1', title: 'Research', status: 'running' }],
     });
+    // V1: the single-session reads the UI hydrates from carry the same view,
+    // through the one decoration point (the summary builder's reader).
+    const running = {
+      observability: 'reported',
+      running: [{ childId: 'task-1', status: 'running' }],
+    };
+    expect(
+      (await service.readSession(threadId))?.session.childWork?.children,
+    ).toMatchObject(running);
+    expect(
+      (
+        await service.readSessionEventPage(threadId, {
+          afterSequence: 0,
+          limit: 10,
+        })
+      )?.session.childWork?.children,
+    ).toMatchObject(running);
+    expect(
+      (
+        await service.readSessionEventWindow(threadId, {
+          turnLimit: 1,
+          authority: INTERNAL_SESSION_READ_SCOPE,
+        })
+      )?.session.childWork?.children,
+    ).toMatchObject(running);
 
     publish({
       eventId: 'settled-1',

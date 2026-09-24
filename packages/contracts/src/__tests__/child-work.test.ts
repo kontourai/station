@@ -289,28 +289,52 @@ describe('projectDelegateChildWork', () => {
 
   test('a delegate with a parent is a running child of that parent while its turn is open', () => {
     expect(
-      projectDelegateChildWork({
-        ...base,
-        hasActiveTurn: true,
-        lifecycleState: 'running',
-        delegation: {
-          taskId: 'del-1',
-          parentTaskId: 'chat-1',
-          title: 'Review the diff',
-          targetId: 'reviewer',
+      projectDelegateChildWork(
+        {
+          ...base,
+          conversationId: 'conv-1',
+          hasActiveTurn: true,
+          lifecycleState: 'running',
+          delegation: {
+            taskId: 'del-1',
+            parentTaskId: 'chat-1',
+            title: 'Review the diff',
+            targetId: 'reviewer',
+          },
         },
-      }),
+        { depth: 2 },
+      ),
     ).toEqual({
       producer: 'station-delegate',
       reporterThreadId: 'del-1',
       childId: 'del-1',
       status: 'running',
       parent: { taskId: 'chat-1' },
+      depth: 2,
       title: 'Review the diff',
       kindLabel: 'reviewer',
+      result: {
+        handle: {
+          kind: 'session',
+          threadId: 'del-1',
+          conversationId: 'conv-1',
+        },
+      },
       startedAt: '2026-09-23T10:00:00.000Z',
       controls: { stop: 'delegate-interrupt' },
     });
+  });
+
+  test('depth is only what the launch recorded: absent and non-positive stay absent', () => {
+    const source = {
+      ...base,
+      hasActiveTurn: true,
+      delegation: { taskId: 'del-1', parentTaskId: 'chat-1' },
+    };
+    expect(projectDelegateChildWork(source)).not.toHaveProperty('depth');
+    expect(projectDelegateChildWork(source, { depth: 0 })).not.toHaveProperty(
+      'depth',
+    );
   });
 
   test('a CLI delegate with no parent is a root-level child (no parent)', () => {
@@ -340,18 +364,18 @@ describe('projectDelegateChildWork', () => {
     expect(status('needs_input')).toBe('unresolved');
   });
 
-  test('a peer delegation carries no local stop control', () => {
-    expect(
-      projectDelegateChildWork({
-        ...base,
-        hasActiveTurn: true,
-        delegation: {
-          taskId: 'del-1',
-          parentTaskId: 'chat-1',
-          environmentKind: 'peer',
-        },
-      }),
-    ).not.toHaveProperty('controls');
+  test('a peer delegation carries no local stop control and no local session handle', () => {
+    const peer = projectDelegateChildWork({
+      ...base,
+      hasActiveTurn: true,
+      delegation: {
+        taskId: 'del-1',
+        parentTaskId: 'chat-1',
+        environmentKind: 'peer',
+      },
+    });
+    expect(peer).not.toHaveProperty('controls');
+    expect(peer).not.toHaveProperty('result');
   });
 
   test('a session that is not a delegate projects nothing', () => {

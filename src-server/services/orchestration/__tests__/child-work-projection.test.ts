@@ -40,8 +40,23 @@ const legacy = (type: string, payload: unknown, threadId = THREAD) =>
   );
 
 describe('ChildWorkProjection', () => {
-  test('nothing observed reads as absent — neither reported-empty nor not-reported', () => {
-    expect(new ChildWorkProjection().read(THREAD)).toBeUndefined();
+  test('R2: with no report of its own (a fresh process after a restart) the view still speaks for every engine session', () => {
+    const projection = new ChildWorkProjection();
+    // A declared engine: reported, nothing running — truthful, because an
+    // engine's children die with the process that ran them.
+    expect(projection.read(THREAD, 'claude', 'now')).toEqual({
+      observability: 'reported',
+      running: [],
+      observedAt: 'now',
+    });
+    // A `none` engine: not-reported, with the matrix's own reason.
+    expect(projection.read(THREAD, 'muse')).toEqual({
+      observability: 'not-reported',
+      reason: 'The engine reports no subagent identity.',
+    });
+    // A provider the matrix does not know: no claim either way.
+    expect(projection.read(THREAD, 'bedrock')).toBeUndefined();
+    expect(projection.read(THREAD, undefined)).toBeUndefined();
   });
 
   test("folds the Claude adapter's legacy task tuples through the contract translator", () => {
@@ -59,7 +74,7 @@ describe('ChildWorkProjection', () => {
         ],
       }),
     );
-    const live = projection.read(THREAD);
+    const live = projection.read(THREAD, 'claude');
     expect(live).toMatchObject({
       observability: 'reported',
       running: [
@@ -79,7 +94,7 @@ describe('ChildWorkProjection', () => {
       legacy('task/settled', { taskId: 'a', status: 'success' }),
     );
     projection.observe(legacy('task/registry', { active: [] }));
-    expect(projection.read(THREAD)).toMatchObject({
+    expect(projection.read(THREAD, 'claude')).toMatchObject({
       observability: 'reported',
       running: [],
     });
@@ -95,33 +110,17 @@ describe('ChildWorkProjection', () => {
         payload: { active: [{ taskId: 'a' }] },
       }),
     );
-    expect(projection.read(THREAD)).toBeUndefined();
-  });
-
-  test('a session on an engine whose matrix cell is none is not-reported; claude and matrix-less providers make no such claim', () => {
-    const projection = new ChildWorkProjection();
-    projection.observe(
-      event({ method: 'session.started' }, 'thread-muse', 'muse'),
-    );
-    projection.observe(
-      event({ method: 'session.started' }, 'thread-claude', 'claude'),
-    );
-    projection.observe(
-      event({ method: 'session.started' }, 'thread-bedrock', 'bedrock'),
-    );
-    expect(projection.read('thread-muse')).toEqual({
-      observability: 'not-reported',
-      reason: 'The engine reports no subagent identity.',
-    });
-    expect(projection.read('thread-claude')).toBeUndefined();
-    expect(projection.read('thread-bedrock')).toBeUndefined();
+    expect(projection.read(THREAD, 'bedrock')).toBeUndefined();
   });
 
   test('session.exited forgets the thread', () => {
     const projection = new ChildWorkProjection();
     projection.observe(legacy('task/registry', { active: [{ taskId: 'a' }] }));
     projection.observe(event({ method: 'session.exited' }));
-    expect(projection.read(THREAD)).toBeUndefined();
+    expect(projection.read(THREAD, 'claude')).toMatchObject({
+      observability: 'reported',
+      running: [],
+    });
   });
 
   test('a child-work delta naming another reporter is not recorded under this thread', () => {
@@ -137,8 +136,8 @@ describe('ChildWorkProjection', () => {
         },
       }),
     );
-    expect(projection.read(THREAD)).toBeUndefined();
-    expect(projection.read('other')).toBeUndefined();
+    expect(projection.read(THREAD, 'bedrock')).toBeUndefined();
+    expect(projection.read('other', 'bedrock')).toBeUndefined();
   });
 
   test('the real captured Claude run: the backgrounded task reads as running mid-run and nothing is left running at the end', () => {
@@ -172,7 +171,7 @@ describe('ChildWorkProjection', () => {
         message: JSON.parse(line) as SDKMessage,
         publish: (published) => projection.observe(published),
       });
-      const view = projection.read(THREAD);
+      const view = projection.read(THREAD, 'claude');
       if (
         view?.observability === 'reported' &&
         view.running.some(
@@ -183,7 +182,7 @@ describe('ChildWorkProjection', () => {
       }
     }
     expect(sawBackgroundRunning).toBe(true);
-    expect(projection.read(THREAD)).toMatchObject({
+    expect(projection.read(THREAD, 'claude')).toMatchObject({
       observability: 'reported',
       running: [],
     });
@@ -200,15 +199,15 @@ describe('session summary child work', () => {
       updatedAt: '2026-09-23T00:00:00.000Z',
     }) as never;
 
-  test('carries the projection read as childWork.children', () => {
+  test('reads the projection with its own thread and provider into childWork.children', () => {
     const summary = buildOrchestrationSessionSummary({
       persisted: persisted(THREAD),
       events: [],
       answerability: { answerable: false } as never,
-      childWork: {
-        observability: 'not-reported',
-        reason: 'r',
-      },
+      readChildWork: (threadId, provider) =>
+        threadId === THREAD && provider === 'claude'
+          ? { observability: 'not-reported', reason: 'r' }
+          : undefined,
     });
     expect(summary.childWork).toEqual({
       children: { observability: 'not-reported', reason: 'r' },
@@ -226,7 +225,12 @@ describe('session summary child work', () => {
           createdAt: '2026-09-23T00:00:01.000Z',
           method: 'session.started',
           sessionId: 'del-1',
-          metadata: { taskId: 'del-1', parentTaskId: 'chat-1' },
+          metadata: {
+            taskId: 'del-1',
+            parentTaskId: 'chat-1',
+            // AgentDelegationContext, as the launch stamps it.
+            delegation: { mode: 'isolated-child', depth: 2, maxDepth: 3 },
+          },
         } as CanonicalRuntimeEvent,
         {
           eventId: 't',
@@ -245,6 +249,8 @@ describe('session summary child work', () => {
       childId: 'del-1',
       status: 'running',
       parent: { taskId: 'chat-1' },
+      depth: 2,
+      result: { handle: { kind: 'session', threadId: 'del-1' } },
       controls: { stop: 'delegate-interrupt' },
     });
 

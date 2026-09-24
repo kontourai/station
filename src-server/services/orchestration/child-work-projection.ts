@@ -29,9 +29,16 @@ import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime
  * registry rebuilt from the log after a restart would report children
  * nobody is running.
  *
- * `not-reported` is recorded from the engine capability matrix when a session
- * starts on an engine whose `subagentObservability` is `none`. A provider with
- * no matrix entry gets no claim either way.
+ * #2456 fix round (R2): every engine session gets a view, derived at READ
+ * time from the engine capability matrix, not only sessions this process saw
+ * report:
+ * - `none` engine → `not-reported` with the matrix's reason;
+ * - `declared` engine → `reported`, with whatever running set this process
+ *   holds — possibly empty. Empty is TRUTHFUL for a session this process
+ *   never heard from: an engine's children die with the process that ran
+ *   them, so after a restart nothing reported earlier is still running, and
+ *   a client holding a stale running child must be told so;
+ * - a provider with no matrix entry → no view (no claim either way).
  */
 export class ChildWorkProjection {
   private state: ChildWorkRegistryState = createEmptyChildWorkRegistry();
@@ -42,21 +49,6 @@ export class ChildWorkProjection {
   observe(event: CanonicalRuntimeEvent): void {
     if (event.method === 'session.exited') {
       this.forgetThread(event.threadId);
-      return;
-    }
-    if (event.method === 'session.started') {
-      const observability =
-        ENGINE_CAPABILITY_MATRICES[event.provider]?.subagentObservability;
-      if (observability?.state === 'none') {
-        this.apply(
-          {
-            kind: 'not-reported',
-            reporterThreadId: event.threadId,
-            reason: observability.reason,
-          },
-          event.createdAt,
-        );
-      }
       return;
     }
     const delta =
@@ -82,20 +74,36 @@ export class ChildWorkProjection {
     this.apply(delta, event.createdAt);
   }
 
-  read(threadId: string): ChildWorkSessionView | undefined {
-    const reason = this.state.notReported[threadId];
-    if (reason !== undefined) {
-      return { observability: 'not-reported', reason };
+  /**
+   * The session view for `threadId`, whose engine is `provider`. `now` stamps
+   * a declared engine's view when this process holds no report of its own:
+   * the claim is "nothing running, as observed by this process now".
+   */
+  read(
+    threadId: string,
+    provider: string | undefined,
+    now: string = new Date().toISOString(),
+  ): ChildWorkSessionView | undefined {
+    const reported = this.state.notReported[threadId];
+    if (reported !== undefined) {
+      return { observability: 'not-reported', reason: reported };
+    }
+    const cell = provider
+      ? ENGINE_CAPABILITY_MATRICES[provider]?.subagentObservability
+      : undefined;
+    if (cell?.state === 'none') {
+      return { observability: 'not-reported', reason: cell.reason };
     }
     const observedAt = this.observedAt.get(threadId);
-    if (observedAt === undefined) return undefined;
+    if (observedAt === undefined && cell?.state !== 'declared')
+      return undefined;
     return {
       observability: 'reported',
       running: childWorkForReporter(this.state, threadId).filter(
         (item) =>
           item.producer === 'engine-subagent' && item.status === 'running',
       ),
-      observedAt,
+      observedAt: observedAt ?? now,
     };
   }
 

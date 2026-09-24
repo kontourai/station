@@ -1423,6 +1423,11 @@ export class OrchestrationService {
    * summaries beside `turnProgress` so the reconnect snapshot carries it.
    */
   private readonly childWork = new ChildWorkProjection();
+  /** #2456: the one reader every session-summary emission path hands over. */
+  private readonly readChildWork = (
+    threadId: string,
+    provider: string | undefined,
+  ) => this.childWork.read(threadId, provider);
   /**
    * #2309: the conversation activity projection. Absent without an event
    * store: it folds committed events and has nothing to fold without one.
@@ -1748,7 +1753,7 @@ export class OrchestrationService {
       canUserReadSession: (threadId, authority) =>
         this.canUserReadSession(threadId, authority),
       readTurnProgress: (threadId) => this.turnProgress.read(threadId),
-      readChildWork: (threadId) => this.childWork.read(threadId),
+      readChildWork: this.readChildWork,
       readConversationActivity: (threadId) =>
         this.conversationActivity?.readForThread(threadId),
       observeAnswerability: (threadId, provider, observedAt) =>
@@ -1927,9 +1932,7 @@ export class OrchestrationService {
           turnProgress: this.turnProgress.read(
             persisted?.threadId ?? loaded?.threadId ?? '',
           ),
-          childWork: this.childWork.read(
-            persisted?.threadId ?? loaded?.threadId ?? '',
-          ),
+          readChildWork: this.readChildWork,
           answerability: this.observeAnswerability(
             persisted?.threadId ?? loaded?.threadId ?? '',
             (loaded ?? persisted)?.provider,
@@ -3442,7 +3445,7 @@ export class OrchestrationService {
           eventCount,
           ...(conversationDraftFacts ? { conversationDraftFacts } : {}),
           turnProgress: this.turnProgress.read(threadId),
-          childWork: this.childWork.read(threadId),
+          readChildWork: this.readChildWork,
           ...(conversationActivity ? { conversationActivity } : {}),
           ...(conversationFirstPromptedTurn
             ? { conversationFirstPromptedTurn }
@@ -3774,7 +3777,7 @@ export class OrchestrationService {
         events,
         ...(conversationDraftFacts ? { conversationDraftFacts } : {}),
         turnProgress: this.turnProgress.read(threadId),
-        childWork: this.childWork.read(threadId),
+        readChildWork: this.readChildWork,
         ...(conversationActivity ? { conversationActivity } : {}),
         ...(conversationFirstPromptedTurn
           ? { conversationFirstPromptedTurn }
@@ -8278,7 +8281,7 @@ export class OrchestrationService {
         loaded,
         events,
         turnProgress: this.turnProgress.read(id),
-        childWork: this.childWork.read(id),
+        readChildWork: this.readChildWork,
         answerability: this.observeAnswerability(
           id,
           (loaded ?? persisted)?.provider,
