@@ -137,7 +137,6 @@ import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { parseStationTaskBasisCollection } from '@kontourai/station-contracts/task-basis';
 import {
   INTERNAL_SESSION_READ_SCOPE,
-  isSessionReadAuthority,
   sessionReadAuthorityFromRequest,
 } from '@kontourai/station-contracts/tenancy';
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
@@ -2082,6 +2081,12 @@ export function configureRuntimeRoutes(
   context.app.use('/api/search/*', bindConversationReadAuthority);
   context.app.use('/api/tasks', bindConversationReadAuthority);
   context.app.use('/api/tasks/*', bindConversationReadAuthority);
+  // Attachment bytes authorize through the thread that carried them, so they
+  // must resolve the same principal that owns that thread. The OS alias never
+  // matches a principal-owned Session, and every stored attachment 404'd.
+  // GET only: the route has one leaf, and `use` would register every method
+  // with the route-coverage guard.
+  context.app.get('/api/attachments/:ref', bindConversationReadAuthority);
   context.app.route(
     '/agents',
     createAgentRoutes(
@@ -5134,17 +5139,15 @@ export function configureRuntimeRoutes(
     createAttachmentRoutes({
       readAttachment: (ref) =>
         runtimeContext.orchestrationEventStore.readAttachmentBlob(ref),
-      threadsForAttachment: (ref, request) => {
-        const authority = readAuthorityForRequest(request);
-        return runtimeContext.orchestrationEventStore.listAttachmentCandidateThreads(
+      threadsForAttachment: (ref, request) =>
+        runtimeContext.orchestrationEventStore.listAttachmentCandidateThreads(
           ref,
-          isSessionReadAuthority(authority) ? authority.userId : undefined,
-        );
-      },
+          conversationReadAuthorityForRequest(request).userId,
+        ),
       canReadSession: (threadId, request) =>
         context.orchestrationService.canUserReadSession(
           threadId,
-          readAuthorityForRequest(request),
+          conversationReadAuthorityForRequest(request),
         ),
     }),
   );
