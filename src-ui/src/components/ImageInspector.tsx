@@ -1,4 +1,5 @@
 import {
+  type ReactNode,
   type PointerEvent as ReactPointerEvent,
   useCallback,
   useEffect,
@@ -20,11 +21,14 @@ export function ImageInspector({
   name,
   errorMessage = 'This image could not be loaded. Close the preview and try again.',
   onNavigate,
+  actions,
 }: {
   src: string;
   name: string;
   errorMessage?: string;
   onNavigate?: (direction: -1 | 1) => void;
+  /** Rendered at the end of the zoom toolbar (e.g. the preview's Download). */
+  actions?: ReactNode;
 }) {
   const viewportRef = useRef<HTMLElement>(null);
   const [natural, setNatural] = useState({ width: 0, height: 0 });
@@ -180,37 +184,48 @@ export function ImageInspector({
     }
   };
 
+  const zoomControls = (
+    <fieldset className="image-inspector__controls" aria-label="Image zoom">
+      <Button disabled={!ready} onClick={reset}>
+        Fit
+      </Button>
+      <Button disabled={!ready} onClick={() => zoom(1)}>
+        Actual size
+      </Button>
+      <Button
+        className="image-inspector__zoom-step"
+        disabled={!ready || scale <= minimum}
+        onClick={() => zoom(scale / 1.25)}
+        aria-label="Zoom out"
+        title="Zoom out"
+      >
+        <span aria-hidden="true">−</span>
+      </Button>
+      <output aria-label="Image zoom level">
+        {ready ? `${Math.round(scale * 100)}%` : '—'}
+      </output>
+      <Button
+        className="image-inspector__zoom-step"
+        disabled={!ready || scale >= 8}
+        onClick={() => zoom(scale * 1.25)}
+        aria-label="Zoom in"
+        title="Zoom in"
+      >
+        <span aria-hidden="true">+</span>
+      </Button>
+    </fieldset>
+  );
+
   return (
     <section className="image-inspector" aria-label="Image inspection">
-      <fieldset className="image-inspector__controls" aria-label="Image zoom">
-        <Button disabled={!ready} onClick={reset}>
-          Fit
-        </Button>
-        <Button disabled={!ready} onClick={() => zoom(1)}>
-          Actual size
-        </Button>
-        <Button
-          className="image-inspector__zoom-step"
-          disabled={!ready || scale <= minimum}
-          onClick={() => zoom(scale / 1.25)}
-          aria-label="Zoom out"
-          title="Zoom out"
-        >
-          <span aria-hidden="true">−</span>
-        </Button>
-        <output aria-label="Image zoom level">
-          {ready ? `${Math.round(scale * 100)}%` : '—'}
-        </output>
-        <Button
-          className="image-inspector__zoom-step"
-          disabled={!ready || scale >= 8}
-          onClick={() => zoom(scale * 1.25)}
-          aria-label="Zoom in"
-          title="Zoom in"
-        >
-          <span aria-hidden="true">+</span>
-        </Button>
-      </fieldset>
+      {actions ? (
+        <div className="image-inspector__toolbar">
+          {zoomControls}
+          {actions}
+        </div>
+      ) : (
+        zoomControls
+      )}
       {/* A scrollable image region needs keyboard focus for pan and zoom. */}
       <section
         ref={viewportRef}
