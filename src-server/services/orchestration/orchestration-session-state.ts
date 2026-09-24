@@ -1989,9 +1989,10 @@ function deriveAgentRunStatus(options: {
         //
         // `isTerminalAgentRunStatus` is the SAME predicate
         // `deriveLifecycleTransition` expresses as
-        // `isSessionLifecycleStateStopped(from)`; the two folds must answer
-        // this event identically or they diverge exactly as archive#3451/#3581
-        // catalogue.
+        // `isSessionLifecycleStateAtRest(from)` (#2540: an `idle` session's
+        // finished turn is a completed run, via `sessionLifecycleOutcome`);
+        // the two folds must answer this event identically or they diverge
+        // exactly as archive#3451/#3581 catalogue.
         if (status && isTerminalAgentRunStatus(status)) break;
         const impliedFailed =
           !status &&
