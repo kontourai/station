@@ -7,7 +7,7 @@ import { CHAT_ATTACHMENT_MAX_SESSION_ENCODED_BYTES } from '@kontourai/station-co
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { projectRuntimeEventsToMessages } from '@kontourai/station-shared/runtime-event-projection';
 import { Hono } from 'hono';
-import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { createAttachmentRoutes } from '../../../routes/orchestration/attachments.js';
 import { EventStore, MAX_EVENT_STORE_INGRESS_BYTES } from '../event-store.js';
 
@@ -393,6 +393,76 @@ describe('EventStore ingress for tool-returned images', () => {
       .payload as Extract<CanonicalRuntimeEvent, { method: 'tool.completed' }>;
     expect(replayed.attachments?.[0]?.blobRef).toBe(ref);
     expect(replayed.output).toBe('Captured the page.');
+  });
+
+  const chargedBytes = (threadId: string): number => {
+    const db = new DatabaseSync(join(dir, 'orchestration.sqlite'));
+    try {
+      const row = db
+        .prepare(
+          'SELECT encoded_bytes FROM orchestration_attachment_quota WHERE thread_id = ?',
+        )
+        .get(threadId) as { encoded_bytes?: number } | undefined;
+      return Number(row?.encoded_bytes ?? 0);
+    } finally {
+      db.close();
+    }
+  };
+
+  test('the live path charges a tool image once, and the append keeps the charge', () => {
+    store.appendEvent(store.projectLiveEvent(screenshotResult('thread-a')));
+    expect(chargedBytes('thread-a')).toBe(dataUrl.length);
+  });
+
+  test('replaying the same raw event id charges nothing more (duplicate refunds)', () => {
+    store.appendEvent(screenshotResult('thread-a'));
+    store.appendEvent(screenshotResult('thread-a'));
+    expect(store.appendEventIfAbsent(screenshotResult('thread-a'))).toBe(
+      undefined,
+    );
+    expect(chargedBytes('thread-a')).toBe(dataUrl.length);
+  });
+
+  test('an append that fails refunds the charge, and its retry charges once', () => {
+    const spy = vi
+      .spyOn(
+        store as unknown as { appendIngressedEvent: () => number },
+        'appendIngressedEvent',
+      )
+      .mockImplementationOnce(() => {
+        throw new Error('simulated append failure');
+      });
+    expect(() => store.appendEvent(screenshotResult('thread-a'))).toThrow(
+      'simulated append failure',
+    );
+    expect(chargedBytes('thread-a')).toBe(0);
+    spy.mockRestore();
+    store.appendEvent(screenshotResult('thread-a'));
+    expect(chargedBytes('thread-a')).toBe(dataUrl.length);
+  });
+
+  test('projecting the same live event twice charges once', () => {
+    store.projectLiveEvent(screenshotResult('thread-a'));
+    const projected = store.projectLiveEvent(screenshotResult('thread-a'));
+    store.appendEvent(projected);
+    expect(chargedBytes('thread-a')).toBe(dataUrl.length);
+  });
+
+  test('an object-shaped output without a content list still tells the viewer', () => {
+    mkdirSync(join(dir, 'attachments'), { recursive: true });
+    writeFileSync(join(dir, 'attachments', digest.slice(0, 2)), 'occupied');
+    store.appendEvent({
+      ...(screenshotResult('thread-a') as Extract<
+        CanonicalRuntimeEvent,
+        { method: 'tool.completed' }
+      >),
+      output: { url: 'https://example.test', width: 1280 },
+    });
+    expect(persistedToolRow('thread-a').payload.output).toEqual({
+      url: 'https://example.test',
+      width: 1280,
+      stationNote: '[image not shown: image-1.png could not be stored]',
+    });
   });
 
   test('a non-allowlisted tool image is refused at ingress, never persisted', () => {

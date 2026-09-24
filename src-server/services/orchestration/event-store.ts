@@ -93,6 +93,7 @@ import {
   RevisionEvidenceModule,
 } from '../../domain/revision-bound-evidence.js';
 import { PROVIDER_PROVEN_FINISH_REASONS } from '../../providers/finish-reason-authority.js';
+import { appendToolOutputNote } from '../../providers/tool-output-projection.js';
 import type { NativeOutputTerminalAdmission } from '../../runtime/native-output-declaration.js';
 import {
   attachmentBytesStripped,
@@ -149,6 +150,7 @@ import {
 } from './adoption-ledger.js';
 import {
   AttachmentBlobStore,
+  attachmentBlobRefFor,
   isAttachmentBlobRef,
 } from './attachment-blob-store.js';
 import {
@@ -535,8 +537,15 @@ type EventStoreIngressLocation =
   | 'canonical-attachment'
   | 'canonical-attachment-data-url';
 
-/** How many live tool events' written blob refs are remembered for append. */
+/** How many live tool events' pending blob refs/charges are remembered. */
 const LIVE_TOOL_IMAGE_REF_MEMORY = 256;
+
+/** An event as it will persist, plus the tool-image ledger entry to settle. */
+type PersistedIngressForm = {
+  payload: CanonicalRuntimeEvent;
+  blobRefs: string[];
+  toolImageKey?: string;
+};
 
 /**
  * Tell the reader of a tool's output which of its images were not kept, and
@@ -573,22 +582,10 @@ function withToolImageNotes(
   const line = [...unplaced]
     .map((note) => `[image not shown: ${note.name} ${note.reason}]`)
     .join('\n');
-  if (rewritten === undefined || rewritten === null) return line;
-  if (typeof rewritten === 'string')
-    return rewritten ? `${rewritten}\n${line}` : line;
-  if (Array.isArray(rewritten))
-    return [...rewritten, { type: 'text', text: line }];
-  if (
-    typeof rewritten === 'object' &&
-    Array.isArray((rewritten as { content?: unknown }).content)
-  ) {
-    const record = rewritten as { content: unknown[] };
-    return {
-      ...record,
-      content: [...record.content, { type: 'text', text: line }],
-    };
-  }
-  return rewritten;
+  // Every output shape the tool row renders gets the note (see
+  // appendToolOutputNote), including a plain object, which the row shows as
+  // its JSON.
+  return appendToolOutputNote(rewritten, line);
 }
 
 class EventStoreIngressError extends Error {
@@ -2744,10 +2741,7 @@ export class EventStore {
    * bytes are never an acceptable fallback projection. A blob write failure
    * rejects a `turn.started` before it can persist or reach SSE.
    */
-  private persistedForm(event: CanonicalRuntimeEvent): {
-    payload: CanonicalRuntimeEvent;
-    blobRefs: string[];
-  } {
+  private persistedForm(event: CanonicalRuntimeEvent): PersistedIngressForm {
     if (event.method === 'tool.completed' && event.attachments?.length) {
       return this.persistedToolImages(event);
     }
@@ -2808,25 +2802,65 @@ export class EventStore {
   }
 
   /**
-   * Blob references this ingress wrote while projecting a live event, keyed
-   * by thread and event, so the append of that same projected event (which
-   * arrives reference-only) may bind them. Bounded; an entry that ages out
-   * only costs the image its preview, never an unauthorized binding.
+   * Per live tool event (thread + event id): the blob refs this ingress wrote
+   * and the quota it charged for them, until the append that persists the
+   * event settles them.
+   *
+   * - `refs` let the append of the same projected event — which arrives
+   *   reference-only — bind what this store itself wrote.
+   * - `charges` make the quota charge idempotent per (event, blob ref): a
+   *   second projection of the same event charges nothing more. The append
+   *   commits them; a failed append, a duplicate event id, or eviction from
+   *   this bounded ledger refunds them, so a retry or a replay never charges
+   *   twice and an event that never persists holds no budget.
+   *
+   * An entry that ages out only costs the image its preview (the append then
+   * finds no ref it may bind), never an unauthorized binding.
    */
-  private readonly liveToolImageRefs = new Map<string, ReadonlySet<string>>();
+  private readonly pendingToolImages = new Map<
+    string,
+    { threadId: string; refs: Set<string>; charges: Map<string, number> }
+  >();
 
-  private rememberLiveToolImageRefs(
-    event: CanonicalRuntimeEvent,
-    refs: readonly string[],
-  ): void {
-    if (refs.length === 0) return;
-    const key = `${event.threadId}\u0000${event.eventId}`;
-    this.liveToolImageRefs.delete(key);
-    this.liveToolImageRefs.set(key, new Set(refs));
-    while (this.liveToolImageRefs.size > LIVE_TOOL_IMAGE_REF_MEMORY) {
-      const oldest = this.liveToolImageRefs.keys().next().value;
-      if (oldest === undefined) break;
-      this.liveToolImageRefs.delete(oldest);
+  private toolImageKey(event: CanonicalRuntimeEvent): string {
+    return `${event.threadId}\u0000${event.eventId}`;
+  }
+
+  private pendingToolImagesFor(event: CanonicalRuntimeEvent) {
+    const key = this.toolImageKey(event);
+    let pending = this.pendingToolImages.get(key);
+    if (!pending) {
+      pending = {
+        threadId: event.threadId,
+        refs: new Set(),
+        charges: new Map(),
+      };
+      this.pendingToolImages.set(key, pending);
+      while (this.pendingToolImages.size > LIVE_TOOL_IMAGE_REF_MEMORY) {
+        const oldest = this.pendingToolImages.keys().next().value;
+        if (oldest === undefined) break;
+        this.settleToolImageCharges(oldest, false);
+      }
+    }
+    return pending;
+  }
+
+  /**
+   * Settle a tool event's pending quota charges: keep them when the event
+   * committed, refund them otherwise (append failure, duplicate, eviction).
+   */
+  private settleToolImageCharges(key: string | undefined, committed: boolean) {
+    if (key === undefined) return;
+    const pending = this.pendingToolImages.get(key);
+    if (!pending) return;
+    this.pendingToolImages.delete(key);
+    if (committed) return;
+    for (const bytes of pending.charges.values()) {
+      try {
+        this.refundToolImageCapacity(pending.threadId, bytes);
+      } catch {
+        // Over-counting is the safe direction; a refund never fails a caller.
+      }
     }
   }
 
@@ -2905,7 +2939,7 @@ export class EventStore {
    */
   private persistedToolImages(
     event: Extract<CanonicalRuntimeEvent, { method: 'tool.completed' }>,
-  ): { payload: CanonicalRuntimeEvent; blobRefs: string[] } {
+  ): PersistedIngressForm {
     const attachments = event.attachments ?? [];
     if (attachments.some((attachment) => attachment.dataUrl !== undefined)) {
       const attachmentError = validateChatAttachments(
@@ -2913,11 +2947,8 @@ export class EventStore {
       );
       if (attachmentError) throw new EventStoreIngressError(attachmentError);
     }
-    const live = this.liveToolImageRefs.get(
-      `${event.threadId}\u0000${event.eventId}`,
-    );
+    const live = this.pendingToolImages.get(this.toolImageKey(event));
     const blobRefs: string[] = [];
-    const written: string[] = [];
     const notKept: Array<{ name: string; reason: string }> = [];
     let stripped = 0;
     let changed = false;
@@ -2926,7 +2957,7 @@ export class EventStore {
       if (dataUrl === undefined) {
         if (
           isAttachmentBlobRef(blobRef) &&
-          (live?.has(blobRef) ||
+          (live?.refs.has(blobRef) ||
             this.isAttachmentBoundToThread(blobRef, event.threadId))
         ) {
           blobRefs.push(blobRef);
@@ -2957,25 +2988,39 @@ export class EventStore {
         });
         return descriptor;
       }
-      if (!this.chargeToolImageCapacity(event.threadId, dataUrl.length)) {
-        notKept.push({
-          name: attachment.name,
-          reason: "could not be stored: this chat's attachment storage is full",
-        });
-        return descriptor;
+      const bytes = Buffer.from(parsed.base64, 'base64');
+      const ref = attachmentBlobRefFor(bytes);
+      const pending = this.pendingToolImagesFor(event);
+      // The digest is known before any write, so a spent budget writes
+      // nothing, and one (event, blob) pair is charged at most once.
+      if (!pending.charges.has(ref)) {
+        if (!this.chargeToolImageCapacity(event.threadId, dataUrl.length)) {
+          notKept.push({
+            name: attachment.name,
+            reason:
+              "could not be stored: this chat's attachment storage is full",
+          });
+          return descriptor;
+        }
+        pending.charges.set(ref, dataUrl.length);
       }
-      const ref = this.attachmentBlobs.write(parsed.base64);
-      if (!ref) {
-        this.refundToolImageCapacity(event.threadId, dataUrl.length);
+      if (this.attachmentBlobs.writeBytes(bytes) !== ref) {
+        const charged = pending.charges.get(ref);
+        pending.charges.delete(ref);
+        if (charged !== undefined)
+          this.refundToolImageCapacity(event.threadId, charged);
         notKept.push({ name: attachment.name, reason: 'could not be stored' });
         return descriptor;
       }
+      pending.refs.add(ref);
       blobRefs.push(ref);
-      written.push(ref);
       return { ...descriptor, blobRef: ref };
     });
-    if (!changed) return { payload: event, blobRefs };
-    this.rememberLiveToolImageRefs(event, written);
+    const key = this.toolImageKey(event);
+    const pending = this.pendingToolImages.get(key);
+    if (pending && pending.refs.size === 0 && pending.charges.size === 0)
+      this.pendingToolImages.delete(key);
+    if (!changed) return { payload: event, blobRefs, toolImageKey: key };
     if (stripped > 0)
       this.observeAttachmentBytesStripped(stripped, event.provider);
     return {
@@ -2987,6 +3032,7 @@ export class EventStore {
           : {}),
       },
       blobRefs,
+      toolImageKey: key,
     };
   }
 
@@ -2999,7 +3045,7 @@ export class EventStore {
   private prepareEventIngress(event: CanonicalRuntimeEvent): {
     event: CanonicalRuntimeEvent;
     requestId: ReturnType<typeof persistedRequestId>;
-    persisted: { payload: CanonicalRuntimeEvent; blobRefs: string[] };
+    persisted: PersistedIngressForm;
     serializedPayload: string;
   } {
     // station#2210: every deterministic ingress rejection names its subject.
@@ -3035,7 +3081,14 @@ export class EventStore {
     // Attachment projection can replace a very small inline data URL with a
     // longer digest reference, so measure its persisted shape independently.
     // It is now a plain projected value, not caller-controlled structure.
-    const persistedPayload = projectWithIdentity(persisted.payload);
+    let persistedPayload: EventStoreIngressJson;
+    try {
+      persistedPayload = projectWithIdentity(persisted.payload);
+    } catch (error) {
+      // Refused after its images were charged: the event will never persist.
+      this.settleToolImageCharges(persisted.toolImageKey, false);
+      throw error;
+    }
     return {
       event: projectedEvent,
       requestId: persistedRequestId(projectedEvent),
@@ -3207,7 +3260,24 @@ export class EventStore {
       );
     }
     const ingress = this.prepareEventIngress(event);
-    event = ingress.event;
+    // A tool image's quota charge is kept only if THIS append commits the
+    // event; a failure or a duplicate event id refunds it.
+    let committed = false;
+    try {
+      return this.appendIngressedEvent(ingress, declaredOutputs, () => {
+        committed = true;
+      });
+    } finally {
+      this.settleToolImageCharges(ingress.persisted.toolImageKey, committed);
+    }
+  }
+
+  private appendIngressedEvent(
+    ingress: ReturnType<EventStore['prepareEventIngress']>,
+    declaredOutputs: readonly NativeOutputTerminalAdmission[],
+    markCommitted: () => void,
+  ): number {
+    const event = ingress.event;
     const startedAt = performance.now();
     const { requestId, persisted, serializedPayload } = ingress;
     // Blob writes happen here, before the savepoint: they are filesystem work
@@ -3352,6 +3422,7 @@ export class EventStore {
           workItemAdmission.association,
         );
       this.db.exec('RELEASE SAVEPOINT append_event_history');
+      markCommitted();
       this.commitSessionWorkItemAdmission(workItemAdmission);
     } catch (error) {
       try {
@@ -3948,7 +4019,20 @@ export class EventStore {
 
   appendEventIfAbsent(event: CanonicalRuntimeEvent): number | undefined {
     const ingress = this.prepareEventIngress(event);
-    event = ingress.event;
+    let committed = false;
+    try {
+      const sequence = this.appendIngressedEventIfAbsent(ingress);
+      committed = sequence !== undefined;
+      return sequence;
+    } finally {
+      this.settleToolImageCharges(ingress.persisted.toolImageKey, committed);
+    }
+  }
+
+  private appendIngressedEventIfAbsent(
+    ingress: ReturnType<EventStore['prepareEventIngress']>,
+  ): number | undefined {
+    const event = ingress.event;
     const startedAt = performance.now();
     const { requestId, persisted, serializedPayload } = ingress;
     this.db.exec('SAVEPOINT append_event_if_absent_history');

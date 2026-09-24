@@ -477,3 +477,27 @@ test('disabling tool details preserves the compact running row without a payload
   expect(view.container.querySelector('.tool-call__details')).toBeNull();
   expect(screen.queryByRole('button')).toBeNull();
 });
+
+describe('ToolCallDisplay — image notes on object-shaped output', () => {
+  test('a note added to an object output is visible in the expanded result', () => {
+    render(
+      <ToolCallDisplay
+        toolCall={{
+          type: 'tool-invocation',
+          toolCallId: 'shot-1',
+          toolName: 'screenshot',
+          state: 'result',
+          result: {
+            url: 'https://example.test',
+            stationNote: '[image not shown: image-1.png could not be stored]',
+          },
+        }}
+        showDetails
+      />,
+    );
+    fireEvent.click(document.querySelector('button.tool-call__line')!);
+    expect(document.body.textContent).toContain(
+      '[image not shown: image-1.png could not be stored]',
+    );
+  });
+});

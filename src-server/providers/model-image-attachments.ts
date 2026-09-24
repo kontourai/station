@@ -245,13 +245,34 @@ export function summarizeImageOmissions(
 /** The text that replaces inline image bytes found where text belongs. */
 export const INLINE_IMAGE_DATA_PLACEHOLDER = '[inline image data omitted]';
 
-/** A `data:…;base64,` URL: image bytes, however they are labelled. */
-export function isInlineDataUrl(value: unknown): value is string {
-  return (
-    typeof value === 'string' &&
-    /^\s*data:[^,]{0,256};base64,/iu.test(value.slice(0, 300))
-  );
+/**
+ * One `data:[type/subtype][;param=value]*;base64,<base64>` span, anywhere in a
+ * string. Every quantifier is bounded or runs over a class that excludes the
+ * delimiter after it (`:`, `/`, `;`, `=`, `,` are outside `[\w.+-]`), so a
+ * failed attempt costs a bounded number of steps and the scan is linear in
+ * the input — no catastrophic backtracking on multi-megabyte output.
+ *
+ * Base64 wrapped across lines is only redacted up to its first line break;
+ * text after a break cannot be told apart from ordinary words.
+ */
+const INLINE_DATA_URL_SPAN =
+  /data:(?:[\w.+-]{1,64}\/[\w.+-]{1,64})?(?:;[\w.+-]{1,64}=[\w.+-]{1,64}){0,4};base64,[A-Za-z0-9+/]*={0,2}/giu;
+
+/**
+ * `value` with every inline data-URL span replaced by
+ * {@link INLINE_IMAGE_DATA_PLACEHOLDER}: image bytes are not text, wherever in
+ * a string they appear (`Screenshot: data:image/png;base64,…`). Returns the
+ * same string when there is nothing to redact. Callers redact BEFORE any
+ * truncation, so a tail can never keep a slice of the bytes.
+ */
+export function redactInlineData(value: string): string {
+  // Cheap literal pre-check: most output carries no data URL at all.
+  if (!/;base64,/iu.test(value)) return value;
+  return value.replace(INLINE_DATA_URL_SPAN, INLINE_IMAGE_DATA_PLACEHOLDER);
 }
+
+/** How long a host image read may take before it is abandoned. */
+export const HOST_IMAGE_READ_DEADLINE_MS = 5_000;
 
 /**
  * Where bytes of an image an engine reported may be read from on this host.
@@ -261,6 +282,8 @@ export function isInlineDataUrl(value: unknown): value is string {
 export interface HostImageReadScope {
   /** Absolute workspace root(s). None known means nothing is readable. */
   roots: readonly string[];
+  /** Defaults to {@link HOST_IMAGE_READ_DEADLINE_MS}. */
+  deadlineMs?: number;
 }
 
 function isInside(path: string, root: string): boolean {
@@ -270,22 +293,45 @@ function isInside(path: string, root: string): boolean {
 }
 
 /**
- * Read an image an engine reports having viewed on this host, asynchronously
- * and bounded:
+ * Read an image an engine reports having viewed on this host, asynchronously,
+ * within a deadline, and bounded:
  * - the path must resolve (realpath) inside the realpath of a workspace root;
- * - the final component must not be a symbolic link, and the file is opened
- *   `O_NOFOLLOW`, then its device/inode must match the checked path, so a swap
- *   after the check reads nothing;
+ * - the final component must not be a symbolic link;
  * - it must be a regular file within the per-image limit whose leading bytes
  *   are one of the chat image types. The extension is never trusted.
  *
- * Anything else yields a marker naming why, never the file's contents.
+ * Anything else — including a read that has not finished by the deadline —
+ * yields a marker naming why, never the file's contents. A read abandoned at
+ * the deadline adds nothing to `collector` if it finishes later.
  */
 export async function addWorkspaceImageFile(
   collector: ModelImageCollector,
   path: unknown,
   scope: HostImageReadScope,
 ): Promise<ModelImageOutcome> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<ModelImageOutcome>((resolve) => {
+    timer = setTimeout(
+      () => resolve(omitted('the viewed image could not be read in time')),
+      scope.deadlineMs ?? HOST_IMAGE_READ_DEADLINE_MS,
+    );
+    timer.unref?.();
+  });
+  try {
+    const read = await Promise.race([
+      readWorkspaceImage(path, scope),
+      deadline,
+    ]);
+    return 'kind' in read ? read : collector.addBytes(read.bytes, read.name);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function readWorkspaceImage(
+  path: unknown,
+  scope: HostImageReadScope,
+): Promise<ModelImageOutcome | { bytes: Buffer; name: string }> {
   if (typeof path !== 'string' || path.length === 0 || path.length > 4096) {
     return omitted('no image path was reported');
   }
@@ -304,6 +350,24 @@ export async function addWorkspaceImageFile(
     const realRoots = (
       await Promise.all(roots.map((root) => realpath(root).catch(() => null)))
     ).filter((root): root is string => root !== null);
+    // What this check does and does not defend:
+    // - DOES: refuse any path that, when checked, resolves outside the
+    //   workspace — absolute paths elsewhere, `..` climbs, and symlinked
+    //   files or directories that lead out.
+    // - DOES: open the resolved path with O_NOFOLLOW, so its final component
+    //   cannot be a symlink at open time, and require the opened file's
+    //   device/inode to equal an lstat of that same resolved path taken just
+    //   before the open — catching the final file being replaced between
+    //   those two calls.
+    // - DOES NOT: defend against an INTERMEDIATE directory of the resolved
+    //   path being replaced with a symlink after `realpath`. The lstat and
+    //   the open would both follow it, agree with each other, and read a
+    //   file outside the workspace. Doing this correctly needs
+    //   directory-handle-relative no-follow opens (openat/O_BENEATH), which
+    //   Node does not expose portably, and Windows junctions behave
+    //   differently again. Accepted residual: triggering it requires write
+    //   access inside the session workspace during the read — i.e. the agent
+    //   itself, which can already read the same files through its shell.
     if (!realRoots.some((root) => isInside(real, root))) {
       return omitted('the viewed file is outside the session workspace');
     }
@@ -341,7 +405,7 @@ export async function addWorkspaceImageFile(
     if (length === 0 || length > stat.size) {
       return omitted('the image file changed while it was read');
     }
-    return collector.addBytes(buffer.subarray(0, length), basename(real));
+    return { bytes: buffer.subarray(0, length), name: basename(real) };
   } catch {
     return omitted('the viewed image could not be read');
   } finally {

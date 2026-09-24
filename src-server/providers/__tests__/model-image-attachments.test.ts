@@ -15,8 +15,10 @@ import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import {
   addWorkspaceImageFile,
   ModelImageCollector,
+  redactInlineData,
   summarizeImageOmissions,
 } from '../model-image-attachments.js';
+import { projectBoundedToolOutput } from '../tool-output-projection.js';
 
 const PNG_1X1_BASE64 =
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
@@ -288,5 +290,54 @@ describe('addWorkspaceImageFile', () => {
       marker: '[image not shown: larger than the 5 MB limit]',
     });
     expect(collector.result()).toBeUndefined();
+  });
+});
+
+describe('redactInlineData', () => {
+  const b64 = `${'QUJD'.repeat(50)}WFla`;
+
+  test('redacts data-URL spans anywhere in a string, keeping the surrounding text', () => {
+    expect(
+      redactInlineData(
+        `Screenshot: data:image/png;base64,${b64} done; also DATA:;base64,${b64}==`,
+      ),
+    ).toBe(
+      'Screenshot: [inline image data omitted] done; also [inline image data omitted]',
+    );
+    expect(
+      redactInlineData(`x data:image/svg+xml;charset=utf-8;base64,${b64}`),
+    ).toBe('x [inline image data omitted]');
+    const plain = 'no inline data here, just ;base64, mentioned';
+    expect(redactInlineData(plain)).toBe(plain);
+  });
+
+  test.each([
+    ['repeated data: prefixes', 'data:'.repeat(1_000_000)],
+    [
+      'near-miss media types',
+      `data:${'a'.repeat(64)}/${'b'.repeat(64)};`.repeat(40_000),
+    ],
+    ['repeated ;base64, markers', ';base64,'.repeat(700_000)],
+    [
+      'one 5 MB data URL',
+      `data:image/png;base64,${'A'.repeat(5 * 1024 * 1024)}`,
+    ],
+  ])(
+    'stays linear on a multi-megabyte adversarial input: %s',
+    (_label, input) => {
+      const started = performance.now();
+      const output = redactInlineData(input);
+      expect(performance.now() - started).toBeLessThan(2_000);
+      expect(output).not.toContain('AAAAAAAA');
+    },
+  );
+
+  test('the shared tool-output projector redacts before it tails', () => {
+    const projected = projectBoundedToolOutput({
+      text: `Screenshot: data:image/png;base64,${'QUJD'.repeat(10_000)}WFla`,
+    });
+    expect(projected.value).toEqual({
+      text: 'Screenshot: [inline image data omitted]',
+    });
   });
 });

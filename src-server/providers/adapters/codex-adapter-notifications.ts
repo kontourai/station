@@ -477,8 +477,9 @@ function handleCodexItemCompleted(
     attachments,
   }: ReturnType<typeof deriveToolOutputAndImages>) => {
     // A session that ended while the image was being read has already
-    // settled this call as `unresolved`; the late read publishes nothing.
-    if (!record.openToolCalls.has(itemId)) return;
+    // settled this call as `unresolved` (or is closing); the late read
+    // publishes nothing against a closed record.
+    if (record.stopped || !record.openToolCalls.has(itemId)) return;
     const preview = projectBoundedToolOutput(output);
     record.openToolCalls.delete(itemId);
     publish({

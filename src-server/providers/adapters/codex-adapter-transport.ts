@@ -103,6 +103,13 @@ export function createCodexSessionRecord(options: {
   };
 }
 
+/**
+ * How many notifications may wait behind a pending host image read before
+ * later ones are delivered out of order instead of queued. The read's own
+ * deadline normally drains the queue long before this.
+ */
+export const MAX_QUEUED_NOTIFICATIONS = 10_000;
+
 export class CodexAdapterTransport {
   private readonly events = new AsyncEventQueue<CanonicalRuntimeEvent>();
   private readonly sessions = new Map<string, CodexSessionRecord>();
@@ -670,18 +677,58 @@ export class CodexAdapterTransport {
       }
     };
     // Handling is synchronous except for an image read from the host. While
-    // one is pending, this session's later notifications queue behind it, so
-    // publish order stays the engine's order (a tool's terminal never lands
-    // after the turn that contains it). The common path never waits.
+    // one is pending, this session's later NOTIFICATIONS queue behind it, so
+    // their publish order stays the engine's order (a tool's terminal never
+    // lands after the turn that contains it). The common path never waits.
+    //
+    // Bounded three ways:
+    // - time: the read itself has a deadline (`HOST_IMAGE_READ_DEADLINE_MS`)
+    //   after which it settles as an omission marker, so the queue drains;
+    // - size: past `MAX_QUEUED_NOTIFICATIONS` a notification is delivered
+    //   immediately, out of order, rather than growing the chain further;
+    // - lifetime: queued work for a session that has since stopped or been
+    //   unregistered is discarded, never run against a closed record.
+    //
+    // Ordering contract for what does NOT go through this queue: server
+    // REQUESTS (approval prompts, `handleServerRequest`) and RPC responses
+    // are handled as they arrive. A request.opened can therefore be published
+    // before the terminal of an image tool whose read is still pending. That
+    // is safe because approvals bind to their call by request/call id, never
+    // by position, and the approval must not wait on an unrelated file read.
     const barrier = record?.notificationBarrier;
-    const pending = barrier
-      ? barrier.then(deliver)
-      : (deliver() as Promise<void> | undefined);
-    if (!record || !pending) return;
+    if (
+      record &&
+      barrier &&
+      (record.queuedNotifications ?? 0) < MAX_QUEUED_NOTIFICATIONS
+    ) {
+      record.queuedNotifications = (record.queuedNotifications ?? 0) + 1;
+      const queued = barrier.then(() => {
+        record.queuedNotifications = (record.queuedNotifications ?? 1) - 1;
+        if (
+          record.stopped ||
+          this.sessions.get(record.externalThreadId) !== record
+        )
+          return undefined;
+        return deliver();
+      });
+      this.holdNotificationsBehind(record, queued, notification.method);
+      return;
+    }
+    const pending = deliver();
+    if (record && pending) {
+      this.holdNotificationsBehind(record, pending, notification.method);
+    }
+  }
+
+  private holdNotificationsBehind(
+    record: CodexSessionRecord,
+    pending: Promise<void>,
+    method: string,
+  ): void {
     const settled: Promise<void> = pending.then(
       () => undefined,
       () => {
-        this.onNotificationError?.(notification.method);
+        this.onNotificationError?.(method);
       },
     );
     record.notificationBarrier = settled;

@@ -124,6 +124,8 @@ export interface CodexSessionRecord {
    * the transport delivers this session's later notifications after it.
    */
   notificationBarrier?: Promise<void>;
+  /** Notifications currently queued behind {@link notificationBarrier}. */
+  queuedNotifications?: number;
   terminationPromise?: Promise<void>;
   /** Total raw stdout bytes accepted while a bounded adoption/recovery phase is active. */
   stdoutIngressLimit?: {

@@ -894,3 +894,96 @@ describe('AcpToolUpdateSupervisor — redaction under a nearly spent budget', ()
     expect(JSON.stringify(events)).not.toContain('QUJD');
   });
 });
+
+describe('AcpToolUpdateSupervisor — embedded and nested image data', () => {
+  const tail = 'WFla';
+  const dataUri = `data:image/png;base64,${'QUJD'.repeat(200)}${tail}`;
+
+  test('a data URL inside prose is redacted in progress text and rawOutput', () => {
+    const { events, supervisor } = harness();
+    supervisor.acceptStarted({ toolCallId: 'prose' });
+    supervisor.acceptUpdate({
+      toolCallId: 'prose',
+      hasContent: true,
+      content: text(`Screenshot: ${dataUri} saved`),
+    });
+    supervisor.acceptUpdate({
+      toolCallId: 'prose',
+      hasRawOutput: true,
+      rawOutput: `Screenshot: ${dataUri}`,
+      status: 'completed',
+      hasStatus: true,
+    });
+    expect(
+      events.find((event) => event.method === 'tool.progress'),
+    ).toMatchObject({
+      message: 'Screenshot: [inline image data omitted] saved',
+    });
+    expect(JSON.stringify(events)).not.toContain(tail);
+  });
+
+  test.each([
+    ['a data-URL property', (pad: string) => ({ pad, screenshot: dataUri })],
+    [
+      'an image-shaped property',
+      (pad: string) => ({
+        pad,
+        image: { type: 'image', data: `${'QUJD'.repeat(200)}${tail}` },
+      }),
+    ],
+  ])(
+    '%s never leaks a base64 suffix when earlier properties nearly fill the budget',
+    (_label, build) => {
+      // Sweep the padding so the nested property lands on every leftover
+      // budget from "fits" down to "nothing left": the fallback that tails a
+      // string must only ever see the redacted text.
+      for (
+        let padLength = ACP_TOOL_UPDATE_LIMITS.maxRetainedBytesPerCall - 80;
+        padLength < ACP_TOOL_UPDATE_LIMITS.maxRetainedBytesPerCall;
+        padLength += 1
+      ) {
+        const { events, supervisor } = harness();
+        supervisor.acceptStarted({ toolCallId: 'nested' });
+        supervisor.acceptUpdate({
+          toolCallId: 'nested',
+          hasRawOutput: true,
+          rawOutput: build('x'.repeat(padLength)),
+          status: 'completed',
+          hasStatus: true,
+        });
+        const serialized = JSON.stringify(events);
+        expect(serialized, `pad ${padLength}`).not.toContain(tail);
+        expect(serialized, `pad ${padLength}`).not.toContain('QUJD');
+      }
+    },
+  );
+});
+
+describe('AcpToolUpdateSupervisor — omission notes on a failed call', () => {
+  test('a failed call states the omission in its error text', () => {
+    const { events, supervisor } = harness();
+    supervisor.acceptStarted({ toolCallId: 'failed' });
+    supervisor.acceptUpdate({
+      toolCallId: 'failed',
+      hasContent: true,
+      content: [
+        ...text('capture failed'),
+        {
+          type: 'content',
+          content: {
+            type: 'image',
+            data: 'PHN2Zy8+',
+            mimeType: 'image/svg+xml',
+          },
+        },
+      ],
+      status: 'failed',
+      hasStatus: true,
+    });
+    const terminal = events.at(-1) as any;
+    expect(terminal.status).toBe('error');
+    expect(terminal.error).toBe(
+      'capture failed\n[image omitted]\n[image not shown: image/svg+xml is not a supported image type]',
+    );
+  });
+});

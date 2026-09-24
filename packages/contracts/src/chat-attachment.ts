@@ -145,8 +145,15 @@ export function sniffChatImageMimeType(
   if (starts(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a))
     return 'image/png';
   if (starts(0xff, 0xd8, 0xff)) return 'image/jpeg';
-  if (starts(0x47, 0x49, 0x46, 0x38) && (head[4] === 0x37 || head[4] === 0x39))
+  // `GIF87a` / `GIF89a` in full: a lookalike such as `GIF87Z` is not a GIF.
+  if (
+    starts(0x47, 0x49, 0x46, 0x38) &&
+    (head[4] === 0x37 || head[4] === 0x39) &&
+    head[5] === 0x61
+  )
     return 'image/gif';
+  // `RIFF` at 0-3, a little-endian size at 4-7, `WEBP` at 8-11. A truncated
+  // head reads `undefined` at the missing offsets and fails every check.
   if (
     starts(0x52, 0x49, 0x46, 0x46) &&
     head[8] === 0x57 &&

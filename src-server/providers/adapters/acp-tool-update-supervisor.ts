@@ -12,10 +12,11 @@ import type {
 } from '../adapter-shape.js';
 import {
   INLINE_IMAGE_DATA_PLACEHOLDER,
-  isInlineDataUrl,
   ModelImageCollector,
+  redactInlineData,
   summarizeImageOmissions,
 } from '../model-image-attachments.js';
+import { appendToolOutputNote } from '../tool-output-projection.js';
 import { UNRESOLVED_TOOL_OUTPUT } from './unresolved-tool-output.js';
 
 /** ACP redraws are untrusted input, never a second event store. */
@@ -279,9 +280,10 @@ class BoundedStructuralProjector {
   }
 
   private redacted(input: unknown): unknown {
-    if (!isInlineDataUrl(input)) return input;
-    this.omit('unsupported');
-    return INLINE_IMAGE_DATA_PLACEHOLDER;
+    if (typeof input !== 'string') return input;
+    const redacted = redactInlineData(input);
+    if (redacted !== input) this.omit('unsupported');
+    return redacted;
   }
 
   private walk(input: unknown, depth: number, container: unknown): unknown {
@@ -350,6 +352,11 @@ class BoundedStructuralProjector {
         typeof descriptor.value === 'string' &&
         dataProperty(input, 'type') === 'image';
       if (imageBytes) this.omit('unsupported');
+      // The text any fallback below may tail: the REDACTED string, never the
+      // original, so a tight budget cannot publish a base64 suffix.
+      const source = imageBytes
+        ? INLINE_IMAGE_DATA_PLACEHOLDER
+        : this.redacted(descriptor.value);
       const candidate = imageBytes
         ? INLINE_IMAGE_DATA_PLACEHOLDER
         : this.walk(descriptor.value, depth + 1, result);
@@ -358,12 +365,12 @@ class BoundedStructuralProjector {
         this.recordStringOmission(descriptor.value, candidate);
         continue;
       }
-      if (typeof descriptor.value === 'string') {
+      if (typeof source === 'string') {
         const base = (result as Record<string, unknown>)[key];
         (result as Record<string, unknown>)[key] = '';
         const structuralBytes = this.encodedBytes(result) ?? this.maximum;
         const tail = tailBytes(
-          descriptor.value,
+          source,
           Math.max(0, this.maximum - structuralBytes),
         );
         (result as Record<string, unknown>)[key] = tail.value;
@@ -451,10 +458,8 @@ class ProjectionAccumulator {
     // A data URL (an image `uri`, a resource text) is bytes, not text: it is
     // replaced whole rather than tail-truncated into a base64 slice that would
     // reach progress text, errors, SSE and the event log.
-    if (isInlineDataUrl(input)) this.omit('unsupported');
-    const value = isInlineDataUrl(input)
-      ? INLINE_IMAGE_DATA_PLACEHOLDER
-      : input;
+    const value = redactInlineData(input);
+    if (value !== input) this.omit('unsupported');
     const bounded = tailBytes(
       value,
       Math.max(
@@ -936,12 +941,13 @@ export class AcpToolUpdateSupervisor {
       : call.hasRawOutput
         ? call.rawOutput
         : undefined;
-    // What was not kept is stated in the output a reader already sees.
+    // What was not kept is stated wherever the result renders: in the output
+    // for every output shape, and in the error text of a failed call.
     const omissions = summarizeImageOmissions(call.imageOmissions);
     const output =
-      omissions && Array.isArray(projectedOutput)
-        ? [...projectedOutput, { type: 'text' as const, text: omissions }]
-        : projectedOutput;
+      omissions && projectedOutput !== undefined
+        ? appendToolOutputNote(projectedOutput, omissions)
+        : (projectedOutput ?? omissions);
     const receipt = receiptFor(call);
     this.publish(
       this.event({
@@ -956,7 +962,12 @@ export class AcpToolUpdateSupervisor {
               ? 'cancelled'
               : 'error',
         ...(status === 'failed'
-          ? { error: displayContent(call.content) }
+          ? {
+              error:
+                [displayContent(call.content), omissions]
+                  .filter(Boolean)
+                  .join('\n') || undefined,
+            }
           : output === undefined
             ? {}
             : { output }),
