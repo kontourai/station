@@ -5080,17 +5080,22 @@ fn station_profile_store_write_internal(
             renderer_store_references_are_authorized(&state, &next_store)?;
         }
     }
-    #[cfg(not(mobile))]
-    relay_grant_vault::invalidate_removed_routes(app, &current_store, &next_store)?;
-    let temporary = path.with_extension(format!(
-        "{}.{}.tmp",
-        std::process::id(),
-        SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map_err(|error| format!("clock for profile write: {error}"))?
-            .as_nanos()
-    ));
+    let mut temporary = None;
     let write_result = (|| -> Result<(), String> {
+        // Post-transition prepublication errors must reach the rollback below.
+        // Grant invalidation still precedes profile publication: a failed
+        // later write must never revive a revoked grant.
+        #[cfg(not(mobile))]
+        relay_grant_vault::invalidate_removed_routes(app, &current_store, &next_store)?;
+        let staged = path.with_extension(format!(
+            "{}.{}.tmp",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map_err(|error| format!("clock for profile write: {error}"))?
+                .as_nanos()
+        ));
+        temporary = Some(staged.clone());
         #[cfg(unix)]
         use std::os::unix::fs::OpenOptionsExt;
         let mut options = std::fs::OpenOptions::new();
@@ -5098,11 +5103,11 @@ fn station_profile_store_write_internal(
         #[cfg(unix)]
         options.mode(0o600);
         let mut file = options
-            .open(&temporary)
+            .open(&staged)
             .map_err(|error| format!("create saved Station temp file: {error}"))?;
         crate::windows_path_trust::ensure(&[(
             crate::windows_path_trust::TrustKind::File,
-            &temporary,
+            &staged,
         )])?;
         file.write_all(contents.as_bytes())
             .map_err(|error| format!("write saved Station temp file: {error}"))?;
@@ -5111,12 +5116,12 @@ fn station_profile_store_write_internal(
         // Windows ReplaceFileW cannot consume a replacement file while this
         // process still owns its descriptor; POSIX permits the old ordering.
         drop(file);
-        replace_station_profile_store(&temporary, &path)?;
+        replace_station_profile_store(&staged, &path)?;
         crate::windows_path_trust::ensure(&[(crate::windows_path_trust::TrustKind::File, &path)])?;
         Ok(())
     })();
-    if temporary.exists() {
-        let _ = std::fs::remove_file(&temporary);
+    if let Some(temporary) = temporary.filter(|temporary| temporary.exists()) {
+        let _ = std::fs::remove_file(temporary);
     }
     if write_result.is_ok() {
         let mut state = authority
@@ -15784,8 +15789,8 @@ mod tests {
             .expect("native profile writer exists")..source
             .find("fn station_profile_store_write(")
             .expect("native command wrapper follows writer")];
-        assert!(production.contains("replace_station_profile_store(&temporary, &path)?"));
-        assert!(!production.contains("std::fs::rename(&temporary, &path)"));
+        assert!(production.contains("replace_station_profile_store(&staged, &path)?"));
+        assert!(!production.contains("std::fs::rename(&staged, &path)"));
         let worker = &source[source
             .find("fn write_native_bootstrap_process_store(")
             .expect("native worker publisher exists")..source
