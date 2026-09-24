@@ -1,0 +1,10 @@
+{
+  "name": "station-push-gateway",
+  "private": true,
+  "type": "module",
+  "description": "Forwards Station-signed agent-activity pushes to FCM. Deployed by Kontour; not part of the Station workspace.",
+  "scripts": {
+    "test": "node --test test/*.test.ts",
+    "deploy": "npx --yes wrangler@4 deploy"
+  }
+}

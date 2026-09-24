@@ -1,0 +1,27 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "station-push-gateway",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-09-01",
+  "workers_dev": true,
+  "vars": {
+    // Every origin the gateway is reachable at. A Station token names one.
+    "AUDIENCES": "https://station-push-gateway.brian-anderson1222.workers.dev",
+    "ALLOWED_PACKAGES": "io.kontourai.station,io.kontourai.station.nightly,io.kontourai.station.beta,io.kontourai.station.debug"
+  },
+  // Per-location and eventually consistent: a cost ceiling, not an accounting system.
+  "ratelimits": [
+    {
+      "name": "PER_KEY_LIMITER",
+      "namespace_id": "4101",
+      "simple": { "limit": 120, "period": 60 }
+    },
+    {
+      "name": "GLOBAL_LIMITER",
+      "namespace_id": "4102",
+      "simple": { "limit": 3000, "period": 60 }
+    }
+  ],
+  // Request metadata only; the gateway never logs payloads or tokens.
+  "observability": { "enabled": true }
+}
