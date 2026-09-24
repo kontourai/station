@@ -176,10 +176,10 @@ class AgentActivityPlugin: Plugin {
 }
 
 /// Which APNs environment this build's `aps-environment` entitlement names.
-/// Entitlements cannot be read back at runtime on iOS, so the build writes
-/// the same value into Info.plist (`StationApsEnvironment`) from the one
-/// build setting that also writes the entitlement. Absent means the build is
-/// not signed for push.
+/// Entitlements cannot be read back at runtime on iOS, so
+/// scripts/ensure-ios-agent-activity-extension.mjs writes the entitlement
+/// and Info.plist `StationApsEnvironment` from its one `--aps-environment`
+/// argument. Absent means the build is not signed for push.
 enum ApnsEnvironment {
   static var current: String? {
     switch Bundle.main.object(forInfoDictionaryKey: "StationApsEnvironment") as? String {
@@ -227,19 +227,7 @@ enum LiveActivities {
 
   static func pushToStartToken(timeout seconds: Double) async -> Data? {
     if let token = StationActivity.pushToStartToken { return token }
-    return await withTaskGroup(of: Data?.self) { group in
-      group.addTask {
-        for await token in StationActivity.pushToStartTokenUpdates { return token }
-        return nil
-      }
-      group.addTask {
-        try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
-        return nil
-      }
-      let first = await group.next() ?? nil
-      group.cancelAll()
-      return first
-    }
+    return await firstValue(of: StationActivity.pushToStartTokenUpdates, timeout: seconds)
   }
 
   #if DEBUG
@@ -262,7 +250,8 @@ enum LiveActivities {
   /// starts a local Live Activity once the app is active, so the widget can
   /// be checked on a simulator without a Station or APNs. The registration is
   /// NATIVE_PUSH_SEALED_TEST_VECTOR's (packages/contracts/src/native-push.ts).
-  /// Cases: `kat` (renders), `bad-seal`, `bad-key` (placeholder), `stale`.
+  /// Cases: `kat` (renders), `bad-seal`, `bad-key` (placeholder), `stale`
+  /// (goes stale 5 s in), `stale-past` (stale from the first render).
   enum DebugPreview {
     static let registrationId = "AAECAwQFBgcICQoLDA0ODw"
     static let payloadKey = "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8"
@@ -318,6 +307,8 @@ enum LiveActivities {
             key = String(repeating: "J", count: 43)
           case "stale":
             staleAfter = 5
+          case "stale-past":
+            staleAfter = -60
           default:
             break
           }

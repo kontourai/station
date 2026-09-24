@@ -8,12 +8,14 @@
 
 /* Begin PBXBuildFile section */
 		076CC86EEE89BBD756A0C660 /* StationAgentActivityWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = D40C7F8B6048F3B5A32C2B66 /* StationAgentActivityWidget.swift */; };
+		07F1DA7937CACF7FCAF063D2 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 9C364EC575248172C94D9F36 /* Assets.xcassets */; };
 		0D80FAB4324FD87181983189 /* assets in Resources */ = {isa = PBXBuildFile; fileRef = 8D5E67359C63F739BA3D9A2D /* assets */; };
 		36B40623207C6637AB23A941 /* main.mm in Sources */ = {isa = PBXBuildFile; fileRef = 681BC26D1152661AEBA7B5F3 /* main.mm */; };
 		36EA9649946F5301F24F66E0 /* UIKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D59DE748810D013D359DCE4E /* UIKit.framework */; };
 		3A2610D39B73DBB3218B0E2A /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = EDD857CFCBE58A31D3354F2B /* LaunchScreen.storyboard */; };
 		3AE1FEC5EE6FC45DA204DA54 /* StationAgentActivity.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = AED4AC48A6B4CB61C93B8D80 /* StationAgentActivity.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		4AD0A53E7A7FCBD0F25452A5 /* StationAgentActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACE21876AC634F5E68F78B76 /* StationAgentActivityAttributes.swift */; };
+		4B15850AF6140B9A0DAC385A /* FirstValue.swift in Sources */ = {isa = PBXBuildFile; fileRef = 598FDDDD17FE817358AE0011 /* FirstValue.swift */; };
 		51F47EFE1B3D39F493E29EF4 /* QuartzCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 15ED59BCC609CA49A13CD77D /* QuartzCore.framework */; };
 		68D65DC65E64AFD4E9100EC1 /* AgentActivityCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3D24F674981EBDA6B8A6AE3 /* AgentActivityCard.swift */; };
 		7DCA57135B98D9B29B1B5A18 /* CardOpener.swift in Sources */ = {isa = PBXBuildFile; fileRef = 097F180D70A7F9BD3DC699DC /* CardOpener.swift */; };
@@ -73,6 +75,7 @@
 		4FD1543B7D7363F59EFC809F /* startup_readiness.rs */ = {isa = PBXFileReference; path = startup_readiness.rs; sourceTree = "<group>"; };
 		50ECFC2E25BAEA0C34D69D43 /* windows_path_trust.rs */ = {isa = PBXFileReference; path = windows_path_trust.rs; sourceTree = "<group>"; };
 		5846F69BCDF7A7941E78AAF4 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		598FDDDD17FE817358AE0011 /* FirstValue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirstValue.swift; sourceTree = "<group>"; };
 		5A90D0604A2EC28CA1AFBB25 /* local_access_watch.rs */ = {isa = PBXFileReference; path = local_access_watch.rs; sourceTree = "<group>"; };
 		630318A6C42EE06BE935DD54 /* channel_ports_generated.rs */ = {isa = PBXFileReference; path = channel_ports_generated.rs; sourceTree = "<group>"; };
 		681BC26D1152661AEBA7B5F3 /* main.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = main.mm; sourceTree = "<group>"; };
@@ -82,6 +85,7 @@
 		8F2CA78C54A20EA0EEA824AB /* tray.rs */ = {isa = PBXFileReference; path = tray.rs; sourceTree = "<group>"; };
 		91A3051A548341308DF5DECC /* relay_grant_vault.rs */ = {isa = PBXFileReference; path = relay_grant_vault.rs; sourceTree = "<group>"; };
 		92CF7A7FF6A28CC53BDBAE4B /* station_iOS.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = station_iOS.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		9C364EC575248172C94D9F36 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		A0E082AB576E782C5B7F42FE /* Base64URL.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Base64URL.swift; sourceTree = "<group>"; };
 		A3A6E4C2C130FC18D4CBBA25 /* station_iOS.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = station_iOS.entitlements; sourceTree = "<group>"; };
 		A7393132A0B53A78E8BA46E1 /* CoreGraphics.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreGraphics.framework; path = System/Library/Frameworks/CoreGraphics.framework; sourceTree = SDKROOT; };
@@ -174,6 +178,7 @@
 		6E0B15B56DCA1E1FF70C4E2C /* StationAgentActivity */ = {
 			isa = PBXGroup;
 			children = (
+				9C364EC575248172C94D9F36 /* Assets.xcassets */,
 				D40C7F8B6048F3B5A32C2B66 /* StationAgentActivityWidget.swift */,
 			);
 			name = StationAgentActivity;
@@ -223,6 +228,7 @@
 				434E64909DB4E7E2090AD7F2 /* AgentActivityModel.swift */,
 				A0E082AB576E782C5B7F42FE /* Base64URL.swift */,
 				097F180D70A7F9BD3DC699DC /* CardOpener.swift */,
+				598FDDDD17FE817358AE0011 /* FirstValue.swift */,
 				E84F9AA9B4C9A6BBD84E68BD /* RegistrationKeychain.swift */,
 				ACE21876AC634F5E68F78B76 /* StationAgentActivityAttributes.swift */,
 			);
@@ -304,7 +310,9 @@
 			buildConfigurationList = 35ED13583FAD744A5C9DC660 /* Build configuration list for PBXNativeTarget "StationAgentActivity" */;
 			buildPhases = (
 				7B6D4E70DC8086F062342043 /* Sources */,
+				11854212104BA35CDF2EDD56 /* Resources */,
 				EF73B7AAB66410830370C7A8 /* Frameworks */,
+				775B11B1CC8DAD3267725962 /* Use the app version */,
 			);
 			buildRules = (
 			);
@@ -349,6 +357,14 @@
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		11854212104BA35CDF2EDD56 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				07F1DA7937CACF7FCAF063D2 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		2206E3A7836688BD302F3287 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -384,6 +400,26 @@
 			shellPath = /bin/sh;
 			shellScript = "npm run -- tauri ios xcode-script -v --platform ${PLATFORM_DISPLAY_NAME:?} --sdk-root ${SDKROOT:?} --framework-search-paths \"${FRAMEWORK_SEARCH_PATHS:?}\" --header-search-paths \"${HEADER_SEARCH_PATHS:?}\" --gcc-preprocessor-definitions \"${GCC_PREPROCESSOR_DEFINITIONS:-}\" --configuration ${CONFIGURATION:?} ${FORCE_COLOR} ${ARCHS:?}";
 		};
+		775B11B1CC8DAD3267725962 /* Use the app version */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(PROJECT_DIR)/station_iOS/Info.plist",
+			);
+			name = "Use the app version";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -eu\napp_plist=\"$PROJECT_DIR/station_iOS/Info.plist\"\nbuilt_plist=\"$TARGET_BUILD_DIR/$INFOPLIST_PATH\"\nfor key in CFBundleShortVersionString CFBundleVersion; do\n  value=$(/usr/libexec/PlistBuddy -c \"Print :$key\" \"$app_plist\")\n  case \"$value\" in\n    ''|*'$('*) echo \"error: the app's $key is not a literal version: $value\" >&2; exit 1 ;;\n  esac\n  /usr/libexec/PlistBuddy -c \"Set :$key $value\" \"$built_plist\"\ndone\n";
+		};
 /* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -395,6 +431,7 @@
 				EF9BEC1C2ECEBA5B1063FC92 /* AgentActivityModel.swift in Sources */,
 				A9DD2F714094B442446F1592 /* Base64URL.swift in Sources */,
 				7DCA57135B98D9B29B1B5A18 /* CardOpener.swift in Sources */,
+				4B15850AF6140B9A0DAC385A /* FirstValue.swift in Sources */,
 				E17356213A7022D3EAF0CCF7 /* RegistrationKeychain.swift in Sources */,
 				4AD0A53E7A7FCBD0F25452A5 /* StationAgentActivityAttributes.swift in Sources */,
 				076CC86EEE89BBD756A0C660 /* StationAgentActivityWidget.swift in Sources */,
@@ -458,7 +495,6 @@
 					arm64,
 				);
 				CODE_SIGN_ENTITLEMENTS = ../../ios/StationAgentActivity/StationAgentActivity.entitlements;
-				CURRENT_PROJECT_VERSION = 0.1.0;
 				ENABLE_BITCODE = NO;
 				INFOPLIST_FILE = ../../ios/StationAgentActivity/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
@@ -467,7 +503,6 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 0.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(STATION_APP_BUNDLE_IDENTIFIER).AgentActivity";
 				PRODUCT_NAME = StationAgentActivity;
 				SDKROOT = iphoneos;
@@ -541,7 +576,6 @@
 					arm64,
 				);
 				CODE_SIGN_ENTITLEMENTS = ../../ios/StationAgentActivity/StationAgentActivity.entitlements;
-				CURRENT_PROJECT_VERSION = 0.1.0;
 				ENABLE_BITCODE = NO;
 				INFOPLIST_FILE = ../../ios/StationAgentActivity/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
@@ -550,7 +584,6 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 0.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(STATION_APP_BUNDLE_IDENTIFIER).AgentActivity";
 				PRODUCT_NAME = StationAgentActivity;
 				SDKROOT = iphoneos;

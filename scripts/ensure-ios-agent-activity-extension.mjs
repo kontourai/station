@@ -5,10 +5,22 @@
 // in the app, a weak ActivityKit link (the app still deploys below iOS 16.1),
 // and the app's keychain groups (default first, then the group shared with
 // the widget). `tauri ios init` renders gen/apple from its template, so the
-// committed spec carries this already and CI re-applies it after rendering.
+// committed spec carries this already; testflight-delivery.yml does not run
+// this yet, and slice D of #2513 will re-apply it after rendering there.
+//
+// `--aps-environment` names the APNs environment once and writes it to both
+// places that must agree: the app's `aps-environment` entitlement and the
+// Info.plist `StationApsEnvironment` the plugin reads it back from (iOS
+// cannot read its own entitlements at runtime).
+//
+// The extension's bundle id cannot be derived from the app's in build
+// settings: Tauri's project sync writes PRODUCT_BUNDLE_IDENTIFIER only onto
+// the station_iOS target's configurations, so `--app-bundle-id` (and the
+// simulator preparation in ios-simulator-build.mjs) sets it explicitly.
 //
 //   node scripts/ensure-ios-agent-activity-extension.mjs <project.yml> \
-//     --app-bundle-id <id> [--aps-environment development|production]
+//     --app-bundle-id <id> \
+//     [--aps-environment development|production --info-plist <Info.plist>]
 
 import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -43,8 +55,6 @@ export function agentActivityExtensionTarget(appBundleId) {
         INFOPLIST_FILE: '../../ios/StationAgentActivity/Info.plist',
         CODE_SIGN_ENTITLEMENTS:
           '../../ios/StationAgentActivity/StationAgentActivity.entitlements',
-        MARKETING_VERSION: '0.1.0',
-        CURRENT_PROJECT_VERSION: '0.1.0',
         TARGETED_DEVICE_FAMILY: '1,2',
         SWIFT_VERSION: '5.0',
         ENABLE_BITCODE: false,
@@ -52,12 +62,56 @@ export function agentActivityExtensionTarget(appBundleId) {
         SKIP_INSTALL: true,
       },
     },
+    // App Store validation requires an extension's versions to equal its
+    // app's. Tauri writes the app's into station_iOS/Info.plist before
+    // xcodebuild runs, so copy them from there into the built extension.
+    postBuildScripts: [
+      {
+        name: 'Use the app version',
+        basedOnDependencyAnalysis: false,
+        inputFiles: ['$(PROJECT_DIR)/station_iOS/Info.plist'],
+        script: VERSION_SCRIPT,
+      },
+    ],
     dependencies: [
       { sdk: 'ActivityKit.framework' },
       { sdk: 'SwiftUI.framework' },
       { sdk: 'WidgetKit.framework' },
     ],
   };
+}
+
+const VERSION_SCRIPT = `set -eu
+app_plist="$PROJECT_DIR/station_iOS/Info.plist"
+built_plist="$TARGET_BUILD_DIR/$INFOPLIST_PATH"
+for key in CFBundleShortVersionString CFBundleVersion; do
+  value=$(/usr/libexec/PlistBuddy -c "Print :$key" "$app_plist")
+  case "$value" in
+    ''|*'$('*) echo "error: the app's $key is not a literal version: $value" >&2; exit 1 ;;
+  esac
+  /usr/libexec/PlistBuddy -c "Set :$key $value" "$built_plist"
+done
+`;
+
+function apsEnvironmentValue(apsEnvironment) {
+  if (!APS_ENVIRONMENTS.has(apsEnvironment))
+    throw new Error('aps-environment must be development or production');
+  return apsEnvironment;
+}
+
+/**
+ * Info.plist `StationApsEnvironment`, the runtime copy of the
+ * `aps-environment` entitlement. Replaces an existing value.
+ */
+export function ensureIosApsEnvironmentInfoPlist(plist, apsEnvironment) {
+  const value = apsEnvironmentValue(apsEnvironment);
+  const entry = `<key>StationApsEnvironment</key>\n\t<string>${value}</string>`;
+  const existing =
+    /<key>StationApsEnvironment<\/key>\s*<string>[^<]*<\/string>/;
+  if (existing.test(plist)) return plist.replace(existing, entry);
+  const end = /\n?<\/dict>\s*<\/plist>\s*$/;
+  if (!end.test(plist)) throw new Error('Unrecognized Info.plist shape');
+  return plist.replace(end, `\n\t${entry}\n</dict>\n</plist>\n`);
 }
 
 export function appEntitlementProperties(apsEnvironment) {
@@ -67,11 +121,8 @@ export function appEntitlementProperties(apsEnvironment) {
       '$(AppIdentifierPrefix)$(PRODUCT_BUNDLE_IDENTIFIER).agentactivity',
     ],
   };
-  if (apsEnvironment !== undefined) {
-    if (!APS_ENVIRONMENTS.has(apsEnvironment))
-      throw new Error('aps-environment must be development or production');
-    properties['aps-environment'] = apsEnvironment;
-  }
+  if (apsEnvironment !== undefined)
+    properties['aps-environment'] = apsEnvironmentValue(apsEnvironment);
   return properties;
 }
 
@@ -136,16 +187,53 @@ function valueAfter(argv, flag) {
   return index === -1 ? undefined : argv[index + 1];
 }
 
+/**
+ * Applies the spec and, when an APNs environment is named, the Info.plist
+ * copy of it: the one argument feeds both, so they cannot disagree.
+ */
+export function ensureIosAgentActivity(
+  { project, infoPlist },
+  { appBundleId, apsEnvironment } = {},
+) {
+  if ((apsEnvironment === undefined) !== (infoPlist === undefined))
+    throw new Error(
+      'An APNs environment and the app Info.plist are required together',
+    );
+  return {
+    project: ensureIosAgentActivityExtension(project, {
+      appBundleId,
+      apsEnvironment,
+    }),
+    infoPlist:
+      infoPlist === undefined
+        ? undefined
+        : ensureIosApsEnvironmentInfoPlist(infoPlist, apsEnvironment),
+  };
+}
+
+function rewrite(path, next) {
+  if (next !== readFileSync(path, 'utf8')) writeFileSync(path, next, 'utf8');
+}
+
 function main(argv) {
   const [projectPath] = argv;
   if (!projectPath) throw new Error('Expected an iOS project.yml path');
-  const resolved = resolve(projectPath);
-  const current = readFileSync(resolved, 'utf8');
-  const next = ensureIosAgentActivityExtension(current, {
-    appBundleId: valueAfter(argv, '--app-bundle-id'),
-    apsEnvironment: valueAfter(argv, '--aps-environment'),
-  });
-  if (next !== current) writeFileSync(resolved, next, 'utf8');
+  const project = resolve(projectPath);
+  const plistPath = valueAfter(argv, '--info-plist');
+  const infoPlist = plistPath === undefined ? undefined : resolve(plistPath);
+  const next = ensureIosAgentActivity(
+    {
+      project: readFileSync(project, 'utf8'),
+      infoPlist:
+        infoPlist === undefined ? undefined : readFileSync(infoPlist, 'utf8'),
+    },
+    {
+      appBundleId: valueAfter(argv, '--app-bundle-id'),
+      apsEnvironment: valueAfter(argv, '--aps-environment'),
+    },
+  );
+  rewrite(project, next.project);
+  if (infoPlist !== undefined) rewrite(infoPlist, next.infoPlist);
 }
 
 if (

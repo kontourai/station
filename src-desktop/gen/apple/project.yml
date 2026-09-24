@@ -123,14 +123,28 @@ targets:
         PRODUCT_NAME: StationAgentActivity
         INFOPLIST_FILE: ../../ios/StationAgentActivity/Info.plist
         CODE_SIGN_ENTITLEMENTS: ../../ios/StationAgentActivity/StationAgentActivity.entitlements
-        MARKETING_VERSION: 0.1.0
-        CURRENT_PROJECT_VERSION: 0.1.0
         TARGETED_DEVICE_FAMILY: 1,2
         SWIFT_VERSION: "5.0"
         ENABLE_BITCODE: false
         ARCHS:
           - arm64
         SKIP_INSTALL: true
+    postBuildScripts:
+      - name: Use the app version
+        basedOnDependencyAnalysis: false
+        inputFiles:
+          - $(PROJECT_DIR)/station_iOS/Info.plist
+        script: |
+          set -eu
+          app_plist="$PROJECT_DIR/station_iOS/Info.plist"
+          built_plist="$TARGET_BUILD_DIR/$INFOPLIST_PATH"
+          for key in CFBundleShortVersionString CFBundleVersion; do
+            value=$(/usr/libexec/PlistBuddy -c "Print :$key" "$app_plist")
+            case "$value" in
+              ''|*'$('*) echo "error: the app's $key is not a literal version: $value" >&2; exit 1 ;;
+            esac
+            /usr/libexec/PlistBuddy -c "Set :$key $value" "$built_plist"
+          done
     dependencies:
       - sdk: ActivityKit.framework
       - sdk: SwiftUI.framework

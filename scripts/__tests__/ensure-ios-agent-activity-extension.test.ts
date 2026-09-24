@@ -3,8 +3,20 @@ import { describe, expect, test } from 'vitest';
 import YAML from 'yaml';
 import {
   EXTENSION_TARGET,
+  ensureIosAgentActivity,
   ensureIosAgentActivityExtension,
 } from '../ensure-ios-agent-activity-extension.mjs';
+
+const appInfoPlist = readFileSync(
+  'src-desktop/gen/apple/station_iOS/Info.plist',
+  'utf8',
+);
+
+function plistString(plist: string, key: string) {
+  return plist.match(
+    new RegExp(`<key>${key}</key>\\s*<string>([^<]*)</string>`),
+  )?.[1];
+}
 
 // The shape `tauri ios init` renders (see the committed spec before #2513).
 const renderedProject = `name: station
@@ -89,14 +101,72 @@ describe('iOS agent-activity extension project spec', () => {
     expect(entitlements.properties['aps-environment']).toBeUndefined();
   });
 
-  test('names the APNs environment only when asked to', () => {
-    const entitlements = ensure(renderedProject, {
-      apsEnvironment: 'production',
-    }).targets.station_iOS.entitlements;
-    expect(entitlements.properties['aps-environment']).toBe('production');
+  test.each(['development', 'production'])(
+    'writes the %s entitlement and its Info.plist copy from one argument',
+    (apsEnvironment) => {
+      const once = ensureIosAgentActivity(
+        { project: renderedProject, infoPlist: appInfoPlist },
+        { appBundleId: 'io.kontourai.station', apsEnvironment },
+      );
+      const entitlements = YAML.parse(once.project).targets.station_iOS
+        .entitlements.properties;
+      expect(entitlements['aps-environment']).toBe(apsEnvironment);
+      expect(plistString(once.infoPlist, 'StationApsEnvironment')).toBe(
+        apsEnvironment,
+      );
+      // Re-running with the other environment moves both together.
+      const other =
+        apsEnvironment === 'production' ? 'development' : 'production';
+      const again = ensureIosAgentActivity(
+        { project: once.project, infoPlist: once.infoPlist },
+        { appBundleId: 'io.kontourai.station', apsEnvironment: other },
+      );
+      expect(
+        YAML.parse(again.project).targets.station_iOS.entitlements.properties[
+          'aps-environment'
+        ],
+      ).toBe(other);
+      expect(plistString(again.infoPlist, 'StationApsEnvironment')).toBe(other);
+      expect(again.infoPlist.match(/StationApsEnvironment/g)).toHaveLength(1);
+      // The rest of the Info.plist is untouched.
+      expect(plistString(again.infoPlist, 'NSCameraUsageDescription')).toBe(
+        plistString(appInfoPlist, 'NSCameraUsageDescription'),
+      );
+    },
+  );
+
+  test('refuses an environment without its Info.plist copy, and the reverse', () => {
     expect(() =>
-      ensure(renderedProject, { apsEnvironment: 'sandbox' }),
+      ensureIosAgentActivity(
+        { project: renderedProject },
+        { appBundleId: 'io.kontourai.station', apsEnvironment: 'production' },
+      ),
+    ).toThrow('required together');
+    expect(() =>
+      ensureIosAgentActivity(
+        { project: renderedProject, infoPlist: appInfoPlist },
+        { appBundleId: 'io.kontourai.station' },
+      ),
+    ).toThrow('required together');
+    expect(() =>
+      ensureIosAgentActivity(
+        { project: renderedProject, infoPlist: appInfoPlist },
+        { appBundleId: 'io.kontourai.station', apsEnvironment: 'sandbox' },
+      ),
     ).toThrow('aps-environment');
+  });
+
+  test('the extension takes its versions from the app at build time', () => {
+    const extension = ensure(renderedProject).targets[EXTENSION_TARGET];
+    expect(extension.settings.base.MARKETING_VERSION).toBeUndefined();
+    expect(extension.settings.base.CURRENT_PROJECT_VERSION).toBeUndefined();
+    const [script] = extension.postBuildScripts;
+    expect(script.inputFiles).toEqual([
+      '$(PROJECT_DIR)/station_iOS/Info.plist',
+    ]);
+    for (const key of ['CFBundleShortVersionString', 'CFBundleVersion'])
+      expect(script.script).toContain(key);
+    expect(script.script).toContain('"$TARGET_BUILD_DIR/$INFOPLIST_PATH"');
   });
 
   test('is idempotent', () => {

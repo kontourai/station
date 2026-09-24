@@ -44,7 +44,7 @@ struct StationAgentActivityWidget: Widget {
       let resolved = ResolvedCard(context)
       return DynamicIsland {
         DynamicIslandExpandedRegion(.leading) {
-          PhaseSymbol(resolved: resolved).font(.title2)
+          AppIcon(size: 28)
         }
         DynamicIslandExpandedRegion(.trailing) {
           ChipLabel(resolved: resolved)
@@ -56,12 +56,13 @@ struct StationAgentActivityWidget: Widget {
           ExpandedDetail(resolved: resolved)
         }
       } compactLeading: {
-        PhaseSymbol(resolved: resolved)
+        // Whose activity this is; the trailing label carries the phase.
+        AppIcon(size: 20)
       } compactTrailing: {
         Text(compactLabel(resolved)).font(.caption2.weight(.semibold)).lineLimit(1)
           .foregroundStyle(phaseTint(resolved))
       } minimal: {
-        PhaseSymbol(resolved: resolved)
+        MinimalView(resolved: resolved)
       }
       .keylineTint(phaseTint(resolved))
     }
@@ -101,6 +102,37 @@ private func symbolName(_ resolved: ResolvedCard) -> String {
   case .completed?: return "checkmark.circle.fill"
   case .stale?: return "pause.circle"
   default: return "sparkles"
+  }
+}
+
+/// The Station app icon (the brand artwork the app's AppIcon is built from),
+/// full colour, with the platform's rounded-rect mask.
+struct AppIcon: View {
+  let size: CGFloat
+  var body: some View {
+    Image("StationAppIcon")
+      .resizable()
+      .interpolation(.high)
+      .frame(width: size, height: size)
+      .clipShape(RoundedRectangle(cornerRadius: size * 0.225, style: .continuous))
+      .accessibilityLabel("Station")
+  }
+}
+
+/// The minimal slot is all that shows while another app's activity shares
+/// the island, so it is the one place a phase must win over identity: an
+/// agent waiting on the person (or a failure) shows its phase symbol, and
+/// anything else shows the app icon.
+struct MinimalView: View {
+  let resolved: ResolvedCard
+  var body: some View {
+    if let phase = resolved.model?.phase, !resolved.stale,
+      phase.needsUser || phase == .failed
+    {
+      PhaseSymbol(resolved: resolved)
+    } else {
+      AppIcon(size: 20)
+    }
   }
 }
 
@@ -165,7 +197,10 @@ struct LockScreenView: View {
       HStack(alignment: .center, spacing: 10) {
         PhaseSymbol(resolved: resolved).font(.title3)
         VStack(alignment: .leading, spacing: 1) {
-          Text("Station").font(.caption2.weight(.semibold)).foregroundStyle(.secondary)
+          HStack(spacing: 5) {
+            AppIcon(size: 16)
+            Text("Station").font(.caption2.weight(.semibold)).foregroundStyle(.secondary)
+          }
           Text(headline(resolved)).font(.headline).lineLimit(1)
           if let hero = resolved.model?.hero, resolved.model?.rows.count == 1 {
             Text(hero.project).font(.caption).foregroundStyle(.secondary).lineLimit(1)
