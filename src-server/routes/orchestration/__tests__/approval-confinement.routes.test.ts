@@ -709,7 +709,8 @@ describe('#2493: who may start a session unconfined', () => {
     const child = f.claude.starts.at(-1)!;
     expect(child.threadId).not.toBe(root);
     // Host through the recorded never; the stamp is the phone's own grant.
-    expect(lastStart(f, 'claude-agent')).toEqual({
+    // Soft, so a wrong stamp also shows its consequence below.
+    expect.soft(lastStart(f, 'claude-agent')).toEqual({
       confinement: 'host',
       approvalMode: 'never',
       stamp: 'workspace',
