@@ -86,10 +86,11 @@ final class ResumeOnce<Value: Sendable>: @unchecked Sendable {
       lock.unlock()
       return
     }
+    // `answered` is the only thing that makes this exactly-once: every
+    // later call returns at the guard above.
     answered = true
     answer = value
     let deliver = self.deliver
-    self.deliver = nil
     let tasks = self.tasks
     self.tasks = []
     lock.unlock()
