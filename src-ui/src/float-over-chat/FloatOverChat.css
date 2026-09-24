@@ -1,0 +1,273 @@
+/*
+ * Float over chat (#90 D9). Co-located with the component so it rides the
+ * lazy chunk that mounts it, not the eager `index.css`. The narrow-width
+ * fallback is decided in the component from the measured chat width, not
+ * by a viewport media query: a narrow dock on a wide screen is just as
+ * narrow.
+ */
+
+/* The zero-height marker ChatDockBody mounts between the transcript and the
+   composer stack: the floater's seam, taking no room in the column. */
+.float-over-chat__anchor {
+  flex: none;
+  height: 0;
+}
+
+/* The chat body's overlay layer, placed over the body by measurement (left,
+   top, width, height inline): it passes every pointer through except where
+   the player or the notice is. A local z-index, not a shell `--layer-*`
+   token: those start at 100 (`--layer-sticky`), which would put the player
+   over the mobile history drawer (19/20) that opens over the same body. */
+.float-over-chat {
+  pointer-events: none;
+  position: absolute;
+  z-index: 10;
+}
+
+.float-over-chat__player {
+  background: var(--bg-secondary);
+  border-radius: var(--radius-md, 12px);
+  box-shadow:
+    0 0 0 1px var(--border-primary),
+    0 12px 32px rgb(0 0 0 / 0.35);
+  pointer-events: auto;
+  position: absolute;
+}
+
+.float-over-chat__surface {
+  border-radius: inherit;
+  height: 100%;
+  overflow: hidden;
+  width: 100%;
+}
+
+/* In the player the live view is the whole box: no gap for a toolbar the
+   pill replaces, and no second rounded stage inside the rounded player. */
+.float-over-chat__surface .live-surface {
+  gap: 0;
+}
+
+.float-over-chat__surface .live-surface__stage {
+  border-radius: 0;
+}
+
+.float-over-chat__chrome {
+  position: absolute;
+  right: 8px;
+  top: 8px;
+  z-index: 2;
+}
+
+/* The collapsed chrome: a dot. The button is a 24px target around it. */
+.float-over-chat__dot {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  height: 24px;
+  justify-content: center;
+  padding: 0;
+  width: 24px;
+}
+
+.float-over-chat__dot:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+
+.float-over-chat__dot-mark {
+  background: var(--text-muted);
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px var(--bg-primary);
+  display: block;
+  height: 10px;
+  width: 10px;
+}
+
+/* An agent holds control: the dot says so before anyone opens the pill. */
+.float-over-chat__dot[data-tone="agent"] .float-over-chat__dot-mark {
+  background: var(--warning-text, var(--accent-primary));
+}
+
+.float-over-chat__dot[data-tone="you"] .float-over-chat__dot-mark {
+  background: var(--accent-primary);
+}
+
+.float-over-chat__pill {
+  align-items: center;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-md, 12px);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.3);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  justify-content: flex-end;
+  padding: 4px;
+  position: absolute;
+  right: 0;
+  top: 0;
+  width: max-content;
+  /* Never wider than the smallest player (240) less its inset. */
+  max-width: 224px;
+}
+
+.float-over-chat__handle {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm, 6px);
+  color: var(--text-muted);
+  cursor: grab;
+  display: flex;
+  font-size: 1rem;
+  height: 44px;
+  justify-content: center;
+  min-width: 44px;
+  padding: 0;
+  touch-action: none;
+}
+
+.float-over-chat__handle:active {
+  cursor: grabbing;
+}
+
+.float-over-chat__handle:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: -2px;
+}
+
+.float-over-chat__controller {
+  color: var(--text-secondary);
+  flex: 1 1 auto;
+  font-size: 0.8125rem;
+  margin: 0;
+  min-width: 0;
+}
+
+.float-over-chat__controller[data-tone="agent"] {
+  color: var(--warning-text, var(--text-primary));
+}
+
+.float-over-chat__action {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+.float-over-chat__icon {
+  align-items: center;
+  display: inline-flex;
+  justify-content: center;
+}
+
+.float-over-chat__notice {
+  flex-basis: 100%;
+  font-size: 0.8125rem;
+  margin: 0;
+}
+
+/* Invisible grab zones straddling each edge and corner. */
+.float-over-chat__resize {
+  position: absolute;
+  touch-action: none;
+  z-index: 1;
+}
+
+.float-over-chat__resize--north,
+.float-over-chat__resize--south {
+  cursor: ns-resize;
+  height: 8px;
+  left: 0;
+  right: 0;
+}
+
+.float-over-chat__resize--north {
+  top: -4px;
+}
+
+.float-over-chat__resize--south {
+  bottom: -4px;
+}
+
+.float-over-chat__resize--east,
+.float-over-chat__resize--west {
+  bottom: 0;
+  cursor: ew-resize;
+  top: 0;
+  width: 8px;
+}
+
+.float-over-chat__resize--west {
+  left: -4px;
+}
+
+.float-over-chat__resize--east {
+  right: -4px;
+}
+
+.float-over-chat__resize--northwest,
+.float-over-chat__resize--northeast,
+.float-over-chat__resize--southwest,
+.float-over-chat__resize--southeast {
+  height: 16px;
+  width: 16px;
+}
+
+.float-over-chat__resize--northwest {
+  cursor: nwse-resize;
+  left: -8px;
+  top: -8px;
+}
+
+.float-over-chat__resize--northeast {
+  cursor: nesw-resize;
+  right: -8px;
+  top: -8px;
+}
+
+.float-over-chat__resize--southwest {
+  bottom: -8px;
+  cursor: nesw-resize;
+  left: -8px;
+}
+
+.float-over-chat__resize--southeast {
+  bottom: -8px;
+  cursor: nwse-resize;
+  right: -8px;
+}
+
+/* The narrow-width fallback: a notice at the top of the chat. */
+.float-over-chat__narrow {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-md, 12px);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.25);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  left: 12px;
+  /* max-height (inline) keeps it above the composer stack; a short chat
+     scrolls the notice rather than covering the composer's controls. */
+  box-sizing: border-box;
+  overflow: auto;
+  padding: 8px 12px;
+  pointer-events: auto;
+  position: absolute;
+  right: 12px;
+  top: 12px;
+  z-index: 10;
+}
+
+.float-over-chat__narrow-text {
+  font-size: 0.8125rem;
+  margin: 0;
+}
+
+.float-over-chat__narrow-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}

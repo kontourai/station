@@ -40,6 +40,19 @@ import './LiveSurfaceCanvas.css';
  * Input: the canvas takes pointer and wheel; a visually hidden textarea
  * over it takes focus and receives keys, text and IME composition, which a
  * canvas cannot. Tab is left to the host page so keyboard focus can leave.
+ *
+ * Who may take control, and how (#90 D9, orchestrator decision): any human
+ * input the server accepts claims the lease, so what this canvas SENDS is
+ * what decides whether passing over it steals control from an agent.
+ * - A hover move (no button held) and a wheel scroll never claim: they are
+ *   sent only while this viewer already holds control. Moving the pointer
+ *   across an agent's page, or scrolling the chat past it, takes nothing.
+ * - A press (pointer down), a key down and typed text are the claiming
+ *   interactions, and whatever they started (the drag, the release) follows.
+ * - With `inputRequiresLease` even those are withheld until this viewer
+ *   holds control through an explicit Take control, and the keyboard target
+ *   leaves the tab order until then (the float-over-chat, which can sit
+ *   under the pointer and in the tab order without anyone meaning to drive).
  */
 
 export interface LiveSurfaceCanvasProps {
@@ -51,7 +64,35 @@ export interface LiveSurfaceCanvasProps {
   /** Test seam; defaults to the SDK's `authenticatedFetch`. */
   transport?: typeof authenticatedFetch;
   now?: () => number;
+  /**
+   * The host draws the control line and "Take control" itself (the
+   * float-over-chat's pill, #90 D9), so the canvas omits its own copy of
+   * both. Everything else — status, notices, input — is unchanged.
+   */
+  hostControls?: boolean;
+  /**
+   * Who controls the surface and how to take control, as this canvas's one
+   * stream reports it. A host that shows control state reads it here rather
+   * than opening a second stream for the same lease (ADR 0018 budget).
+   */
+  onControlState?: (state: LiveSurfaceControlState) => void;
+  /**
+   * No input at all — not even a click or a key — until this viewer holds
+   * control (through `claimControl`, the host's Take control). For a
+   * surface that can sit under the pointer or in the tab order without
+   * anyone meaning to drive it.
+   */
+  inputRequiresLease?: boolean;
 }
+
+/** What a host needs to show and change who controls the surface. */
+export interface LiveSurfaceControlState {
+  status: UseLiveSurfaceResult['status'];
+  tone: LiveSurfaceControllerTone;
+  claimControl: () => Promise<void>;
+}
+
+export type LiveSurfaceControllerTone = 'you' | 'agent' | 'other' | 'none';
 
 /** Heartbeats arrive every ~5 s; two missed ones is a stall worth saying. */
 const LIVE_SURFACE_STALL_MS = 12_000;
@@ -100,17 +141,17 @@ function isTextKey(event: ReactKeyboardEvent): boolean {
 
 function controllerLine(surface: UseLiveSurfaceResult): {
   text: string;
-  tone: 'you' | 'agent' | 'other' | 'none';
+  tone: LiveSurfaceControllerTone;
 } {
   const holder = surface.lease?.holder;
   if (!holder)
     return {
-      text: 'No one is in control. Interacting takes control.',
+      text: 'No one is in control. Click or type to take control.',
       tone: 'none',
     };
   if (holder.kind === 'agent')
     return {
-      text: 'An agent is in control. Interacting takes control from it.',
+      text: 'An agent is in control. Click or type to take control from it.',
       tone: 'agent',
     };
   // Identity comes from the server (each viewer's state record names it),
@@ -120,14 +161,26 @@ function controllerLine(surface: UseLiveSurfaceResult): {
     if (holder.device === self.device)
       return { text: 'You are in control.', tone: 'you' };
     return {
-      text: 'You are in control from another device. Interacting here takes control.',
+      text: 'You are in control from another device. Click or type here to take control.',
       tone: 'other',
     };
   }
   return {
-    text: 'Another person is in control. Interacting takes control.',
+    text: 'Another person is in control. Click or type to take control.',
     tone: 'other',
   };
+}
+
+/** This viewer (principal AND device) holds control, per the server. */
+function holdsControl(surface: UseLiveSurfaceResult): boolean {
+  const holder = surface.lease?.holder;
+  const self = surface.self;
+  return (
+    holder?.kind === 'human' &&
+    !!self &&
+    holder.principal === self.principal &&
+    holder.device === self.device
+  );
 }
 
 function secondsAgo(now: number, at: number | null): number | null {
@@ -206,6 +259,10 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
   const surfaceRef = useRef(surface);
   surfaceRef.current = surface;
   const canInteract = surface.status === 'live' && frameSize !== null;
+  const holding = holdsControl(surface);
+  /** A claiming interaction may be sent: always, unless the host requires the lease first. */
+  const mayClaim = () =>
+    !props.inputRequiresLease || holdsControl(surfaceRef.current);
 
   // A once-a-second clock for the honest age line, only while it can matter.
   const [clock, setClock] = useState(() => now());
@@ -244,6 +301,7 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
   );
 
   const onPointerDown = (event: ReactPointerEvent<HTMLCanvasElement>) => {
+    if (!mayClaim()) return;
     const point = toSurface(event.clientX, event.clientY);
     keyboardRef.current?.focus({ preventScroll: true });
     if (!point) return;
@@ -281,6 +339,9 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
   const onPointerUp = (event: ReactPointerEvent<HTMLCanvasElement>) => {
     const button = buttonOf(event.button);
     const held = button !== undefined && heldRef.current.has(button);
+    // Only the release of a press this client sent, or any release while it
+    // holds control: a stray up is input too, and input claims.
+    if (!held && !holdsControl(surfaceRef.current)) return;
     // A release of a held button must reach the surface wherever it happens
     // (pointer capture keeps delivering it here): clamp, don't drop.
     const point = toSurface(event.clientX, event.clientY, held);
@@ -361,6 +422,9 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
   };
 
   const onPointerMove = (event: ReactPointerEvent<HTMLCanvasElement>) => {
+    // A hover (no button this client pressed) is sent only while it already
+    // holds control: passing the pointer over the surface claims nothing.
+    if (heldRef.current.size === 0 && !holdsControl(surfaceRef.current)) return;
     const point = toSurface(
       event.clientX,
       event.clientY,
@@ -384,6 +448,9 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const onWheel = (event: WheelEvent) => {
+      // Scrolling never claims: without control the wheel is the host
+      // page's (the chat scrolls past the surface), not the surface's.
+      if (!holdsControl(surfaceRef.current)) return;
       const point = toSurface(event.clientX, event.clientY);
       if (!point) return;
       event.preventDefault();
@@ -417,6 +484,15 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
     )
       return;
     if (isTextKey(event)) return; // delivered by the input event as text
+    const id = event.code || event.key;
+    // A key down claims (unless the host requires the lease first); a key up
+    // goes only for a key this client pressed, or while it holds control.
+    if (
+      type === 'down'
+        ? !mayClaim()
+        : !heldKeysRef.current.has(id) && !holdsControl(surfaceRef.current)
+    )
+      return;
     event.preventDefault();
     const input: LiveSurfaceInput = {
       kind: 'key',
@@ -426,7 +502,6 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
     };
     const modifiers = modifiersOf(event);
     if (modifiers) input.modifiers = modifiers;
-    const id = event.code || event.key;
     if (type === 'down')
       heldKeysRef.current.set(id, { key: event.key, code: event.code });
     else heldKeysRef.current.delete(id);
@@ -437,7 +512,8 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
     const native = event.nativeEvent as InputEvent;
     const target = event.currentTarget;
     if (composingRef.current || native.isComposing) return;
-    if (target.value) sendInput([{ kind: 'text', text: target.value }]);
+    if (target.value && mayClaim())
+      sendInput([{ kind: 'text', text: target.value }]);
     target.value = '';
   };
 
@@ -445,11 +521,18 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
     event: ReactCompositionEvent<HTMLTextAreaElement>,
   ) => {
     composingRef.current = false;
-    if (event.data) sendInput([{ kind: 'text', text: event.data }]);
+    if (event.data && mayClaim())
+      sendInput([{ kind: 'text', text: event.data }]);
     event.currentTarget.value = '';
   };
 
   const controller = controllerLine(surface);
+  const { onControlState } = props;
+  const { status, claimControl } = surface;
+  const tone = controller.tone;
+  useEffect(() => {
+    onControlState?.({ status, tone, claimControl });
+  }, [onControlState, status, tone, claimControl]);
   const recordAge = secondsAgo(clock, surface.lastActivityAt);
   const frameAge = secondsAgo(clock, surface.lastFrameAt);
   let statusText: string | null = null;
@@ -474,34 +557,43 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
 
   return (
     <div className="live-surface" ref={containerRef}>
-      <div className="live-surface__toolbar">
-        <p
-          className={`live-surface__controller live-surface__controller--${controller.tone}`}
-          aria-live="polite"
-        >
-          {controller.text}
-        </p>
-        <div className="live-surface__actions">
-          {controller.tone !== 'you' && surface.status === 'live' ? (
-            <Button
-              size="sm"
-              className="live-surface__claim"
-              onClick={() => void surface.claimControl()}
+      {/* With host controls the toolbar is left only for "Try again". */}
+      {props.hostControls &&
+      surface.status !== 'unavailable' &&
+      surface.status !== 'denied' ? null : (
+        <div className="live-surface__toolbar">
+          {props.hostControls ? null : (
+            <p
+              className={`live-surface__controller live-surface__controller--${controller.tone}`}
+              aria-live="polite"
             >
-              Take control
-            </Button>
-          ) : null}
-          {surface.status === 'unavailable' || surface.status === 'denied' ? (
-            <Button
-              size="sm"
-              className="live-surface__claim"
-              onClick={surface.retry}
-            >
-              Try again
-            </Button>
-          ) : null}
+              {controller.text}
+            </p>
+          )}
+          <div className="live-surface__actions">
+            {!props.hostControls &&
+            controller.tone !== 'you' &&
+            surface.status === 'live' ? (
+              <Button
+                size="sm"
+                className="live-surface__claim"
+                onClick={() => void surface.claimControl()}
+              >
+                Take control
+              </Button>
+            ) : null}
+            {surface.status === 'unavailable' || surface.status === 'denied' ? (
+              <Button
+                size="sm"
+                className="live-surface__claim"
+                onClick={surface.retry}
+              >
+                Try again
+              </Button>
+            ) : null}
+          </div>
         </div>
-      </div>
+      )}
       {surface.wedged && surface.status === 'live' ? (
         <p className="live-surface__notice" role="status">
           The page is not responding to input (it may be showing a dialog).
@@ -538,7 +630,10 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
           autoComplete="off"
           autoCorrect="off"
           spellCheck={false}
-          readOnly={!canInteract}
+          readOnly={!canInteract || (props.inputRequiresLease && !holding)}
+          // Out of the tab order until this viewer may drive: tabbing through
+          // a floated surface must not land keys on an agent's page.
+          tabIndex={props.inputRequiresLease && !holding ? -1 : undefined}
           onKeyDown={(event) => sendKey('down', event)}
           onKeyUp={(event) => sendKey('up', event)}
           onInput={onKeyboardInput}

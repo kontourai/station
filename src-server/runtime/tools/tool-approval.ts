@@ -1,5 +1,9 @@
 import type { ResolvedAgentToolServer } from '@kontourai/station-contracts/provider';
 import type { ToolDef } from '@kontourai/station-contracts/tool';
+import {
+  classifyStationBrowserTool,
+  STATION_BROWSER_MCP_SERVER_ID,
+} from '../../tools/station-browser-policy.js';
 import { isBuiltinStationControl } from '../bootstrap/station-control-runtime-env.js';
 
 export function isAutoApproved(toolName: string, patterns: string[]): boolean {
@@ -55,7 +59,47 @@ export function canonicalizeExternalToolName(toolName: string): string {
  * (reserving the id at the integration-store layer, protecting delivery + the
  * token for every engine incl. Station's own) is tracked as a follow-up.
  */
-const RESERVED_BUILTIN_SERVER_IDS = new Set(['station-control']);
+const RESERVED_BUILTIN_SERVER_IDS = new Set([
+  'station-control',
+  // #90 D14: the built-in browser tools, delivered in-process by Station
+  // itself (never through an authored integration).
+  STATION_BROWSER_MCP_SERVER_ID,
+]);
+
+/**
+ * #90 N2: whether an auto-approve match may cover a `station-browser` tool.
+ * Only on an authentic name, never with an authored integration squatting
+ * on the id, and — for every sensitive tool — only when a matching pattern
+ * names `station-browser` itself: `*` or `station-*` never silently covers
+ * a tool that reads or drives a logged-in page.
+ */
+function stationBrowserAutoApproval(
+  toolName: string,
+  patterns: string[],
+  resolvedToolServers: readonly ResolvedAgentToolServer[] | undefined,
+  toolNameProvenance: ExternalToolNameProvenance,
+): boolean {
+  if (toolNameProvenance !== 'authentic') return false;
+  if (
+    (resolvedToolServers ?? []).some(
+      (server) => server.id === STATION_BROWSER_MCP_SERVER_ID,
+    )
+  )
+    return false;
+  const canonical = canonicalizeExternalToolName(toolName);
+  const tool = canonical.startsWith(`${STATION_BROWSER_MCP_SERVER_ID}_`)
+    ? canonical.slice(STATION_BROWSER_MCP_SERVER_ID.length + 1)
+    : canonical;
+  if (classifyStationBrowserTool(tool) === 'read-only') return true;
+  const explicit = patterns.filter(
+    (pattern) =>
+      pattern.startsWith(`${STATION_BROWSER_MCP_SERVER_ID}_`) ||
+      pattern.startsWith(`mcp__${STATION_BROWSER_MCP_SERVER_ID}__`),
+  );
+  return (
+    isAutoApproved(toolName, explicit) || isAutoApproved(canonical, explicit)
+  );
+}
 
 /**
  * If `toolName` is an external-engine tool call whose owning MCP server id is a
@@ -130,6 +174,13 @@ export function isAutoApprovedExternalTool(
   if (!matched) return false;
 
   const reservedServer = reservedBuiltinServerForTool(toolName);
+  if (reservedServer === STATION_BROWSER_MCP_SERVER_ID)
+    return stationBrowserAutoApproval(
+      toolName,
+      patterns,
+      resolvedToolServers,
+      toolNameProvenance,
+    );
   if (reservedServer !== null) {
     // A privileged reserved name never auto-approves on an unverifiable
     // (self-reported) tool name — this is the ACP case (Probe A).

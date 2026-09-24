@@ -917,6 +917,22 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Runs the full-regression phase driver CLI and real npm children, including
   // one it must kill at a deadline.
   'scripts/__tests__/run-full-regression-phases.test.ts',
+  // #90 wave 2: launches a REAL installed Chrome/Edge (headless, pipe CDP,
+  // temporary profile, one loopback fixture server) to prove the Browser
+  // pane's live surface end to end: a screencast frame reaches a viewer,
+  // human input changes the page, and an alert() is answered without
+  // wedging. Explicit skip when no browser is installed; never downloads.
+  'src-server/services/browser/__tests__/chromium-screencast-producer.real.test.ts',
+  // #90 #122/#123: launches a REAL installed Chrome/Edge (headless, pipe CDP,
+  // temporary profile, one loopback fixture server) to prove the browser
+  // tools end to end: an agent opens, snapshots, clicks a ref, types through
+  // a Playwright locator and waits, and a person's input interrupts it.
+  // Explicit skip when no browser is installed; never downloads.
+  'src-server/services/browser/__tests__/browser-agent-tools.real.test.ts',
+  // #90 review S1–S3: the same real Chromium against hostile pages (lying
+  // geometry, a squatted locator global, a covered button, 300,000
+  // elements, a page spinning forever). Explicit skip without a browser.
+  'src-server/services/browser/__tests__/browser-agent-hostile.real.test.ts',
 ]);
 
 export const DOGFOOD_RECONCILE_PREFIX =

@@ -318,6 +318,15 @@
       "configKey": "chatDockAutoHide"
     },
     {
+      "id": "chat-auto-float-browser",
+      "label": "Automatically show agent browser sessions",
+      "help": "Only the optional features turned on here are active on this device, and this is where each notification category’s sound is kept.",
+      "scope": "device",
+      "section": "chat",
+      "route": "/settings?view=chat&highlight=chat-auto-float-browser",
+      "configKey": "featureSettings"
+    },
+    {
       "id": "diff-style",
       "label": "Diff view style",
       "help": "Changed files on this device show as one column or as two side-by-side columns.",

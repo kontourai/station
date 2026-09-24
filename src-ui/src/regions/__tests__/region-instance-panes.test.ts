@@ -14,6 +14,7 @@ import {
   workspacePullRequestPaneId,
 } from '@kontourai/station-contracts/workspace-pull-request-pane';
 import { beforeEach, describe, expect, test } from 'vitest';
+import { writeBrowserPreviewPaneState } from '../../workspace-panes/browserPreviewPaneStateStorage';
 import { createFilePreviewPaneInstance } from '../../workspace-panes/filePreviewPaneInstance';
 import { writeFilePreviewPaneState } from '../../workspace-panes/filePreviewPaneStateStorage';
 import {
@@ -26,6 +27,7 @@ import {
   surfaceMayOccupy,
 } from '../region-model';
 import {
+  INSTANCE_SURFACE_SOURCE_FILES,
   REGION_SURFACE_PANES,
   regionSurfaceOfPane,
   regionSurfacePane,
@@ -33,6 +35,7 @@ import {
 
 const NONCE = 'a'.repeat(32);
 const PREVIEW_ID = `file-preview:${NONCE}`;
+const BROWSER_ID = `browser-preview:${NONCE}`;
 const PR_ID = 'pr:github.com/kontourai/station#2049';
 const PROJECT = { projectId: 'project-uuid', projectSlug: 'station' };
 const LAYOUT_UUID = '1d61ce22-7f4b-4282-86f0-019ef1bc223c';
@@ -77,6 +80,19 @@ const FAMILIES: readonly {
       `file-preview:${'z'.repeat(32)}`,
       `file-preview:${'a'.repeat(31)}`,
       `file-preview:${'a'.repeat(33)}`,
+    ],
+  },
+  // #90 D9: a Browser pane attached to one session.
+  {
+    prefix: 'browser-preview:',
+    descriptorId: 'pane:builtin:workspace-preview:browser-preview',
+    admitted: [BROWSER_ID],
+    refused: [
+      'browser-preview:',
+      'browser-preview:abc',
+      `browser-preview:${'z'.repeat(32)}`,
+      `browser-preview:${'a'.repeat(31)}`,
+      `browser-preview:${'a'.repeat(33)}`,
     ],
   },
   // #2157: a Board and a project Layout share one descriptor.
@@ -182,7 +198,7 @@ describe('instance-keyed dock panes (#2049)', () => {
     const admitted = FAMILIES.flatMap((family) => family.admitted);
     const refused = [
       // A prefix no family declares.
-      'browser-preview:abc',
+      'web-preview:abc',
       // Per family: bare prefixes and same-prefix shapes the minter could
       // never produce.
       ...FAMILIES.flatMap((family) => family.refused),
@@ -397,6 +413,30 @@ describe('instance-keyed dock panes (#2049)', () => {
     ).toBeNull();
   });
 
+  test("a Browser pane binds its session's Project, refuses another's, and has no occurrence without state", () => {
+    const pane = () => regionSurfacePane(BROWSER_ID);
+    // No stored session: the tab survives (the id stays in the record) but
+    // there is nothing to render.
+    expect(pane()?.surfaceId).toBe(BROWSER_ID);
+    expect(pane()?.instance(PROJECT)).toBeNull();
+    writeBrowserPreviewPaneState(window.localStorage, BROWSER_ID, {
+      version: '2.0',
+      projectId: 'project-uuid',
+      browserSessionId: 'bs_00000000-0000-4000-8000-000000000001',
+      updatedAt: '2026-09-22T00:00:00.000Z',
+    });
+    expect(pane()?.title).toBe('Browser');
+    const instance = pane()?.instance(PROJECT);
+    expect(String(instance?.instanceId)).toBe(BROWSER_ID);
+    expect(instance?.boundContext?.projectId).toBe('project-uuid');
+    if (!instance) throw new Error('the occurrence must mint');
+    expect(regionSurfaceOfPane(instance)).toBe(BROWSER_ID);
+    // A dock bound to another Project does not rebind this session to it.
+    expect(
+      pane()?.instance({ projectId: 'other-uuid', projectSlug: 'other' }),
+    ).toBeNull();
+  });
+
   test('a file preview whose state is gone keeps its tab and has no occurrence', () => {
     window.localStorage.clear();
     const pane = regionSurfacePane(PREVIEW_ID);
@@ -475,13 +515,17 @@ describe('instance-keyed dock panes (#2049)', () => {
   test('each prefix names a renderer source that reads no region state', () => {
     // The same rule `region-surface-boundary.test.ts` applies to every
     // registered surface: a pane renderer must not read the region model, or
-    // placement and rendering become two authorities.
+    // placement and rendering become two authorities. The sources are kept
+    // out of the entry chunk's table (#90 D9), so first: exactly one per
+    // family, no family without one and no source for a family that is gone.
+    expect(Object.keys(INSTANCE_SURFACE_SOURCE_FILES)).toEqual(
+      INSTANCE_SURFACE_PREFIXES.map((prefix) => prefix.prefix),
+    );
     for (const prefix of INSTANCE_SURFACE_PREFIXES) {
-      const source = readFileSync(
-        resolve(process.cwd(), prefix.sourceFile),
-        'utf8',
-      );
-      expect(source, prefix.sourceFile).not.toMatch(
+      const sourceFile = INSTANCE_SURFACE_SOURCE_FILES[prefix.prefix];
+      if (!sourceFile) throw new Error(`${prefix.prefix} names no renderer`);
+      const source = readFileSync(resolve(process.cwd(), sourceFile), 'utf8');
+      expect(source, sourceFile).not.toMatch(
         /from ['"][^'"]*(?:RegionModelContext|regions\/region-model)['"]|useRegionModel(?:Optional)?\s*\(/,
       );
     }

@@ -586,7 +586,7 @@ describe('FilePreviewPane', () => {
   });
 
   test.each(['html', 'pdf'] as const)(
-    'keeps ready %s files out of the trusted origin without inventing a Browser Preview target',
+    'keeps ready %s files out of the trusted origin without inventing a Browser pane target',
     (renderKind) => {
       previewQuery.mockReturnValue({
         isLoading: false,

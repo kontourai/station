@@ -560,3 +560,76 @@ describe('live surface registry', () => {
     expect(entry.lease.snapshot().holder).toBeNull();
   });
 });
+
+describe('onExplicitControl (#90: only a person’s explicit claim or release)', () => {
+  function withListener(listener: Parameters<typeof register>[2]) {
+    const registry = new LiveSurfaceRegistry();
+    const producer = new SyntheticLiveSurfaceProducer('surface-x');
+    register(registry, producer, listener);
+    return registry.get('surface-x')!;
+  }
+  function register(
+    registry: LiveSurfaceRegistry,
+    producer: SyntheticLiveSurfaceProducer,
+    onExplicitControl: (event: {
+      action: 'claim' | 'release';
+      fence: number;
+    }) => void,
+  ) {
+    registry.register(producer, { authorize: () => true, onExplicitControl });
+  }
+
+  test('a claim made by input never calls it; Take control and an explicit release do, with the lease fence', async () => {
+    const calls: Array<{ action: string; fence: number }> = [];
+    const entry = withListener((event) =>
+      calls.push({ action: event.action, fence: event.fence }),
+    );
+    const byInput = await dispatchHumanInput(
+      entry,
+      human,
+      entry.lease.snapshot().epoch,
+      [move(3)],
+    );
+    expect(byInput.ok).toBe(true);
+    expect(entry.lease.snapshot().holder).toMatchObject({ kind: 'human' });
+    expect(calls).toEqual([]);
+    const claim = claimHumanControl(entry, human);
+    expect(claim.ok).toBe(true);
+    const release = releaseHumanControl(
+      entry,
+      human,
+      entry.lease.snapshot().epoch,
+    );
+    expect(release.ok).toBe(true);
+    expect(calls).toEqual([
+      { action: 'claim', fence: claim.lease.fence },
+      { action: 'release', fence: release.lease.fence },
+    ]);
+  });
+
+  test('a listener that throws leaves the claim and release results unchanged', () => {
+    const quiet = withListener(() => {});
+    const throwing = withListener(() => {
+      throw new Error('listener fault');
+    });
+    const results = [quiet, throwing].map((entry) => {
+      const claim = claimHumanControl(entry, human);
+      const release = releaseHumanControl(
+        entry,
+        human,
+        entry.lease.snapshot().epoch,
+      );
+      return {
+        claim: { ok: claim.ok, holder: claim.lease.holder?.kind },
+        release: { ok: release.ok, holder: release.lease.holder },
+        after: entry.lease.snapshot().holder,
+      };
+    });
+    expect(results[1]).toEqual(results[0]);
+    expect(results[1]).toEqual({
+      claim: { ok: true, holder: 'human' },
+      release: { ok: true, holder: null },
+      after: null,
+    });
+  });
+});

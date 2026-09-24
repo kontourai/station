@@ -26,6 +26,7 @@ import {
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { SyntheticLiveSurfaceProducer } from '../../../__test-utils__/synthetic-live-surface-producer.js';
+import { authorizeBrowserSurfaceAction } from '../../../services/browser/browser-live-surfaces.js';
 import { DevicePairingService } from '../../../services/ssh/device-pairing-service.js';
 import {
   getInternalApiToken,
@@ -108,7 +109,7 @@ describe('live surface routes in the runtime composition', () => {
     });
   }
 
-  async function setup() {
+  async function setup(options: { projectMembership?: object } = {}) {
     const homeDir = mkdtempSync(join(tmpdir(), 'station-live-surface-'));
     directories.push(homeDir);
     mkdirSync(join(homeDir, 'security'), { mode: 0o700 });
@@ -127,7 +128,7 @@ describe('live surface routes in the runtime composition', () => {
     const context = deepStub({
       // Explicitly absent (a deep stub would otherwise answer these with a
       // callable proxy and the auth pipeline would treat them as installed).
-      projectMembership: undefined,
+      projectMembership: options.projectMembership,
       projectSharedTasks: undefined,
       deploymentAuthentication: undefined,
       localAccounts: undefined,
@@ -320,6 +321,79 @@ describe('live surface routes in the runtime composition', () => {
       holder: null,
     });
     await registry.dispose();
+  });
+
+  test('a browser surface judges the REQUEST: operator by credential, a paired admin by membership through the captured principal (#90)', async () => {
+    // Membership that, like the real service, first resolves the caller from
+    // the request (`authority.current()`), which reads the request principal
+    // the /api/live-surfaces middleware captured. Whoever it resolves is an
+    // admin of `alpha` here; what is under test is whether it CAN resolve.
+    const resolved: string[] = [];
+    const projectMembership = deepStub({
+      readableProjectAdmissions: async (authority: {
+        current(): Promise<{ principal: { id: string } }>;
+      }) => {
+        const actor = await authority.current();
+        resolved.push(actor.principal.id);
+        return [
+          {
+            scope: { localProjectId: 'alpha' },
+            member: {
+              status: 'active',
+              role: 'admin',
+              principal: { id: actor.principal.id },
+            },
+          },
+        ];
+      },
+    });
+    const { app, result, device } = await setup({ projectMembership });
+    const authorizeProject = result.browserProjectAuthorizer!;
+    expect(authorizeProject).toBeDefined();
+    const actors: Array<{ kind: string } | undefined> = [];
+    const recordingAuthorizer: typeof authorizeProject = async (...args) => {
+      const actor = await authorizeProject(...args);
+      actors.push(actor);
+      return actor;
+    };
+    result.liveSurfaceRegistry!.register(
+      new SyntheticLiveSurfaceProducer(SURFACE),
+      {
+        // The browser binder's REAL decision over the composition's REAL
+        // Project authorizer. The session is in the caller's own profile
+        // (keyed by the live-surface principal), so what decides is whether
+        // the caller has Project standing at all.
+        authorize: (principal, _surface, action, context) =>
+          authorizeBrowserSurfaceAction(
+            recordingAuthorizer,
+            { projectId: 'alpha', principalKey: `principal:${principal}` },
+            principal,
+            action,
+            context,
+          ),
+      },
+    );
+    const lease = `/api/live-surfaces/${encodeURIComponent(SURFACE)}/lease`;
+    const operator = await app.request(
+      lease,
+      { headers: { Authorization: `Bearer ${OPERATOR_SECRET}` } },
+      REMOTE,
+    );
+    expect(operator.status).toBe(200);
+    expect(actors.at(-1)).toEqual({ kind: 'operator' });
+    // A paired device is NOT the operator (no operator credential, not home
+    // possession), but resolves through membership — which needs the
+    // principal the middleware captured for this request.
+    const phone = await app.request(
+      lease,
+      { headers: { Authorization: `Bearer ${device.credential}` } },
+      REMOTE,
+    );
+    expect(phone.status).toBe(200);
+    expect(actors.at(-1)).toMatchObject({ kind: 'project-admin' });
+    expect(resolved).toHaveLength(1);
+    await result.liveSurfaceRegistry!.dispose();
+    await result.browserService?.shutdown();
   });
 
   test('a read-only paired credential is refused by the pairing scope', async () => {

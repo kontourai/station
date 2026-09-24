@@ -140,7 +140,11 @@ export function createLiveSurfaceRoutes(
     if (!caller)
       return { ok: false, response: failure(c, 'principal-unresolved', 403) };
     for (const action of actions) {
-      if (!(await entry.authorize(caller.principal, action)))
+      if (
+        !(await entry.authorize(caller.principal, action, {
+          request: c.req.raw,
+        }))
+      )
         return { ok: false, response: failure(c, 'access-denied', 403) };
     }
     return {
@@ -203,7 +207,7 @@ export function createLiveSurfaceRoutes(
             // stream runs (scope narrowed, Project admin removed).
             if (
               !options.isRequestPrincipalCurrent(request) ||
-              !(await entry.authorize(human.principal, 'view'))
+              !(await entry.authorize(human.principal, 'view', { request }))
             ) {
               end();
               controller.close();

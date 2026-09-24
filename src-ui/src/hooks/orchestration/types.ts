@@ -1,4 +1,7 @@
-import type { OrchestrationDelegationContext } from '@kontourai/station-contracts/orchestration';
+import type {
+  ConversationTurnActivity,
+  OrchestrationDelegationContext,
+} from '@kontourai/station-contracts/orchestration';
 import type { EngineId } from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 
@@ -45,6 +48,12 @@ export type OrchestrationSnapshotPayload = {
     delegation?: OrchestrationDelegationContext;
     createdAt?: string;
     lastEventAt?: string;
+    /**
+     * #2309: the activity of the conversation this row's session belongs
+     * to — every execution child, not just this row's. Absent from older
+     * servers and for sessions with no conversation lineage.
+     */
+    conversationActivity?: ConversationTurnActivity;
     /**
      * #2303: the durable conversation this execution thread belongs to — the
      * root for the root row AND for every `<root>:session:<uuid>`

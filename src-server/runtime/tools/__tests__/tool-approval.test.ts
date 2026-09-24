@@ -198,3 +198,65 @@ describe('tool-approval', () => {
     });
   });
 });
+
+describe('station-browser approval (#90 N2)', () => {
+  const click = 'mcp__station-browser__browser_click';
+  const snapshot = 'mcp__station-browser__browser_snapshot';
+  const status = 'mcp__station-browser__browser_status';
+
+  test('a wildcard or station-* pattern never covers a tool that reads or drives a page', () => {
+    for (const pattern of ['*', 'station-*', 'mcp__*', 'station-browser*']) {
+      for (const tool of [click, snapshot])
+        expect(
+          isAutoApprovedExternalTool(tool, [pattern], [], 'authentic'),
+        ).toBe(false);
+    }
+  });
+
+  test('only a pattern that names station-browser itself approves it, on an authentic name, with no squatting integration', () => {
+    expect(
+      isAutoApprovedExternalTool(click, ['station-browser_*'], [], 'authentic'),
+    ).toBe(true);
+    expect(
+      isAutoApprovedExternalTool(
+        snapshot,
+        ['station-browser_browser_snapshot'],
+        [],
+        'authentic',
+      ),
+    ).toBe(true);
+    expect(
+      isAutoApprovedExternalTool(
+        click,
+        ['mcp__station-browser__*'],
+        [],
+        'authentic',
+      ),
+    ).toBe(true);
+    // An ACP self-reported name is never trusted for it.
+    expect(
+      isAutoApprovedExternalTool(
+        click,
+        ['station-browser_*'],
+        [],
+        'self-reported',
+      ),
+    ).toBe(false);
+    // An authored integration reusing the id is not the built-in.
+    expect(
+      isAutoApprovedExternalTool(
+        click,
+        ['station-browser_*'],
+        [{ id: 'station-browser', command: 'node', args: ['/tmp/x.js'] }],
+        'authentic',
+      ),
+    ).toBe(false);
+  });
+
+  test('browser_status, a read of Station records, follows ordinary patterns', () => {
+    expect(isAutoApprovedExternalTool(status, ['*'], [], 'authentic')).toBe(
+      true,
+    );
+    expect(isAutoApprovedExternalTool(status, [], [], 'authentic')).toBe(false);
+  });
+});

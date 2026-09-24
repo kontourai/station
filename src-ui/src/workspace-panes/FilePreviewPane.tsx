@@ -216,9 +216,8 @@ function PreviewStatus({ preview }: { preview: WorkspaceFilePreview }) {
     return (
       <p role="status">
         This {preview.renderKind.toUpperCase()} file is not mounted in
-        Station&apos;s trusted origin. Browser Preview accepts a separately
-        configured, validated local address; this workspace file does not supply
-        one.
+        Station&apos;s trusted origin. The Browser pane opens pages from an
+        http(s) address; this workspace file does not supply one.
       </p>
     );
   if (preview.renderKind !== 'source' && preview.renderKind !== 'text')

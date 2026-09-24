@@ -199,12 +199,15 @@ describe('docked is a derived capability, pinned to the shell surface registry',
         descriptor,
       ]),
     );
-    // Exact, in declaration order: #2049's two families and #2157's two
-    // (a Board and a project Layout, which share one descriptor — two
-    // prefixes for one `descriptorId` is the shape this pin admits).
+    // Exact, in declaration order: #2049's two families, #90's Browser pane
+    // and #2157's two (a Board and a project Layout, which share one
+    // descriptor — two prefixes for one `descriptorId` is the shape this pin
+    // admits).
     expect(INSTANCE_SURFACE_PREFIXES.map((prefix) => prefix.prefix)).toEqual([
       'pr:',
       'file-preview:',
+      // #90 D9: a Browser pane attached to one session.
+      'browser-preview:',
       'board:',
       'layout:',
     ]);

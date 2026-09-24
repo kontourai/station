@@ -19,18 +19,24 @@ import type {
   CdpTransport,
 } from '../../services/browser/browser-host.js';
 import { LocalTargetStore } from '../../services/browser/browser-local-targets.js';
+import { isStationInternalRequest } from '../../services/browser/browser-request-origin.js';
 import {
   type BrowserSessionActor,
   BrowserSessionRegistry,
 } from '../../services/browser/browser-session-registry.js';
+import { CdpProtocolError } from '../../services/browser/cdp-pipe-transport.js';
 import type { ChromiumAcquisitionStatus } from '../../services/browser/chromium-acquisition.js';
+import { BrowserHostPolicyError } from '../../services/browser/hosts/chromium-server-host.js';
 import { EventBus } from '../../services/orchestration/event-bus.js';
 import { createBrowserRoutes } from '../browser.js';
 
-function fakeHost(): BrowserHost {
+type CdpResponder = (method: string, params?: object) => unknown;
+
+function fakeHost(respond: CdpResponder = () => ({})): BrowserHost {
   let seq = 0;
   const cdp: CdpTransport = {
-    send: async <R>() => ({}) as R,
+    send: async <R>(method: string, params?: object) =>
+      (await respond(method, params)) as R,
     on: () => () => {},
     close: async () => {},
     closed: new Promise(() => {}),
@@ -63,6 +69,8 @@ function harness(
     acquisition?: ChromiumAcquisitionStatus;
     /** Which principals are admins of which Projects (D5 stand-in). */
     admins?: Record<string, string[]>;
+    surfaceIdFor?: (browserSessionId: string) => string | undefined;
+    cdp?: CdpResponder;
   } = {},
 ) {
   const credentials = new Map([
@@ -103,7 +111,7 @@ function harness(
   homes.push(stationHome);
   const registry = new BrowserSessionRegistry({
     stationHome,
-    createHost: () => fakeHost(),
+    createHost: () => fakeHost(options.cdp),
   });
   const acquisitionStatus: ChromiumAcquisitionStatus = options.acquisition ?? {
     state: 'found-system',
@@ -127,6 +135,10 @@ function harness(
   };
   const admins = options.admins ?? { 'p-alpha': ['admin-alpha'] };
   let principalCurrent = true;
+  // Review M3 power: current at the middleware, gone by the time the route
+  // publishes — only a route's own re-check can refuse then.
+  let expireAfterFirstCheck = false;
+  const checks = new WeakMap<Request, number>();
   const localTargets = new LocalTargetStore(stationHome);
   const suggestLocalTargets = vi.fn(async () => ({
     state: 'ok' as const,
@@ -166,8 +178,17 @@ function harness(
       listeners: () => ({ ports: [4100, 4101, 4102, 4103], hostnames: [] }),
       suggestLocalTargets,
       resolveProject: (slug) => projects[slug],
-      isRequestPrincipalCurrent: (request) =>
-        principalCurrent && isRuntimeRequestPrincipalCurrent(request, security),
+      isStationInternalRequest,
+      ...(options.surfaceIdFor ? { surfaceIdFor: options.surfaceIdFor } : {}),
+      isRequestPrincipalCurrent: (request) => {
+        const seen = checks.get(request) ?? 0;
+        checks.set(request, seen + 1);
+        if (expireAfterFirstCheck && seen >= 1) return false;
+        return (
+          principalCurrent &&
+          isRuntimeRequestPrincipalCurrent(request, security)
+        );
+      },
     }),
   );
   const request = (
@@ -208,6 +229,9 @@ function harness(
     suggestLocalTargets,
     setPrincipalCurrent: (value: boolean) => {
       principalCurrent = value;
+    },
+    expireAfterFirstCheck: () => {
+      expireAfterFirstCheck = true;
     },
   };
 }
@@ -522,6 +546,18 @@ describe('browser routes: a principal that stopped being current (review M3)', (
         { host: 'localhost', port: 5173, label: 'x' },
       ],
       ['GET', '/projects/alpha/local-target-suggestions', undefined],
+      ['POST', `/sessions/${id}/history`, { action: 'reload' }],
+      [
+        'POST',
+        `/sessions/${id}/viewport`,
+        { viewport: { width: 400, height: 800, deviceScaleFactor: 1 } },
+      ],
+      ['GET', '/projects/alpha/access', undefined],
+      [
+        'DELETE',
+        '/projects/alpha/local-targets/lt_00000000-0000-4000-8000-000000000001',
+        undefined,
+      ],
     ] as const) {
       const response = await h.request(method, path, 'operator', body);
       expect(response.status, `${method} ${path}`).toBe(403);
@@ -532,6 +568,45 @@ describe('browser routes: a principal that stopped being current (review M3)', (
     expect(h.acquisition.startDownload).not.toHaveBeenCalled();
     expect(h.localTargets.list('p-alpha')).toEqual([]);
     expect(h.suggestLocalTargets).not.toHaveBeenCalled();
+  });
+});
+
+describe('browser routes: a principal that expires mid-request (review M3)', () => {
+  test('each route re-checks at its publication boundary, and nothing changes', async () => {
+    const h = harness();
+    const created = (await (await h.create('operator')).json()) as {
+      data: { browserSessionId: string };
+    };
+    const id = created.data.browserSessionId;
+    const target = h.localTargets.add(
+      'p-alpha',
+      { host: 'localhost', port: 5173, label: 'vite' },
+      'operator',
+      { ports: [4100, 4101, 4102, 4103], hostnames: [] },
+    );
+    const before = h.registry.getSession(id);
+    h.expireAfterFirstCheck();
+    for (const [method, path, body] of [
+      ['POST', `/sessions/${id}/history`, { action: 'reload' }],
+      [
+        'POST',
+        `/sessions/${id}/viewport`,
+        { viewport: { width: 400, height: 800, deviceScaleFactor: 1 } },
+      ],
+      ['GET', '/projects/alpha/access', undefined],
+      ['DELETE', `/projects/alpha/local-targets/${target.id}`, undefined],
+      ['POST', `/sessions/${id}/navigate`, { url: 'https://example.org' }],
+      ['DELETE', `/sessions/${id}`, undefined],
+    ] as const) {
+      const response = await h.request(method, path, 'operator', body);
+      expect(response.status, `${method} ${path}`).toBe(403);
+      expect(await response.json()).toMatchObject({ code: 'access-denied' });
+    }
+    const after = h.registry.getSession(id);
+    expect(after?.state).toBe('live');
+    expect(after?.viewport).toEqual(before?.viewport);
+    expect(after?.history.total).toBe(before?.history.total);
+    expect(h.localTargets.list('p-alpha')).toHaveLength(1);
   });
 });
 
@@ -663,5 +738,365 @@ describe('browser routes: registered local targets (D7)', () => {
       workspaceRoot: '/work/alpha',
     });
     expect(h.localTargets.list('p-alpha')).toEqual([]);
+  });
+});
+
+describe('browser routes: pane v2 surface (#90 wave 2)', () => {
+  test('the access route answers role and browser readiness, and refuses a contributor', async () => {
+    const h = harness();
+    const operator = await h.request(
+      'GET',
+      '/projects/alpha/access',
+      'operator',
+    );
+    expect(operator.status).toBe(200);
+    expect(await operator.json()).toEqual({
+      success: true,
+      data: {
+        projectId: 'p-alpha',
+        role: 'operator',
+        principalKey: 'operator',
+        operator: true,
+        browser: 'ready',
+      },
+    });
+    const admin = await h.request(
+      'GET',
+      '/projects/alpha/access',
+      'admin-alpha',
+    );
+    expect(((await admin.json()) as { data: unknown }).data).toMatchObject({
+      role: 'project-admin',
+      principalKey: 'principal:admin-alpha',
+      operator: false,
+    });
+    expect(
+      (await h.request('GET', '/projects/alpha/access', 'contributor-alpha'))
+        .status,
+    ).toBe(403);
+    expect(
+      (await h.request('GET', '/projects/missing/access', 'operator')).status,
+    ).toBe(403);
+  });
+
+  test('the access route reports a browser that is not set up yet', async () => {
+    const h = harness({
+      acquisition: {
+        state: 'needs-consent',
+        version: '1',
+        platform: 'mac-arm64',
+        downloadBytes: 150_000_000,
+        installDir: '/x',
+      },
+    });
+    const response = await h.request(
+      'GET',
+      '/projects/alpha/access',
+      'admin-alpha',
+    );
+    expect(((await response.json()) as { data: unknown }).data).toMatchObject({
+      browser: 'not-ready',
+    });
+  });
+
+  test('a live session carries its surface id; a closed one does not', async () => {
+    const h = harness({ surfaceIdFor: (id) => `browser:${id.slice(3)}:g1` });
+    const created = (await (await h.create('operator')).json()) as {
+      data: { browserSessionId: string; surfaceId?: string };
+    };
+    const id = created.data.browserSessionId;
+    expect(created.data.surfaceId).toBe(`browser:${id.slice(3)}:g1`);
+    const read = (await (
+      await h.request('GET', `/sessions/${id}`, 'operator')
+    ).json()) as { data: { surfaceId?: string } };
+    expect(read.data.surfaceId).toBe(`browser:${id.slice(3)}:g1`);
+    const list = (await (
+      await h.request('GET', '/sessions?projectSlug=alpha', 'operator')
+    ).json()) as { data: Array<{ surfaceId?: string }> };
+    expect(list.data[0]?.surfaceId).toBe(`browser:${id.slice(3)}:g1`);
+    const closed = (await (
+      await h.request('DELETE', `/sessions/${id}`, 'operator')
+    ).json()) as { data: { surfaceId?: string; state: string } };
+    expect(closed.data.state).toBe('closed');
+    expect(closed.data.surfaceId).toBeUndefined();
+  });
+
+  test('history and viewport drive the session; a contributor is refused both', async () => {
+    const h = harness();
+    const created = (await (await h.create('admin-alpha')).json()) as {
+      data: { browserSessionId: string };
+    };
+    const id = created.data.browserSessionId;
+    const reload = await h.request(
+      'POST',
+      `/sessions/${id}/history`,
+      'admin-alpha',
+      {
+        action: 'reload',
+      },
+    );
+    expect(reload.status).toBe(200);
+    expect(
+      (
+        (await reload.json()) as {
+          data: { history: { entries: Array<{ kind: string }> } };
+        }
+      ).data.history.entries.at(-1)?.kind,
+    ).toBe('reloaded');
+    // No earlier page: a typed refusal, not a crash.
+    const back = await h.request(
+      'POST',
+      `/sessions/${id}/history`,
+      'admin-alpha',
+      {
+        action: 'back',
+      },
+    );
+    expect(back.status).toBe(409);
+    expect(((await back.json()) as { code: string }).code).toBe(
+      'no-history-entry',
+    );
+    expect(
+      (
+        await h.request('POST', `/sessions/${id}/history`, 'admin-alpha', {
+          action: 'sideways',
+        })
+      ).status,
+    ).toBe(400);
+    const phone = {
+      width: 393,
+      height: 852,
+      deviceScaleFactor: 3,
+      mobile: true,
+    };
+    const resized = await h.request(
+      'POST',
+      `/sessions/${id}/viewport`,
+      'admin-alpha',
+      {
+        viewport: phone,
+      },
+    );
+    expect(resized.status).toBe(200);
+    expect(
+      ((await resized.json()) as { data: { viewport: unknown } }).data.viewport,
+    ).toEqual(phone);
+    expect(
+      (
+        await h.request('POST', `/sessions/${id}/viewport`, 'admin-alpha', {
+          viewport: { width: 5, height: 852, deviceScaleFactor: 3 },
+        })
+      ).status,
+    ).toBe(400);
+    for (const [path, body] of [
+      ['history', { action: 'reload' }],
+      ['viewport', { viewport: phone }],
+    ] as const) {
+      expect(
+        (
+          await h.request(
+            'POST',
+            `/sessions/${id}/${path}`,
+            'contributor-alpha',
+            body,
+          )
+        ).status,
+      ).toBe(403);
+    }
+  });
+
+  test('a refused URL names why (the pane turns it into a sentence)', async () => {
+    const h = harness();
+    const created = (await (await h.create('operator')).json()) as {
+      data: { browserSessionId: string };
+    };
+    const refused = await h.request(
+      'POST',
+      `/sessions/${created.data.browserSessionId}/navigate`,
+      'operator',
+      { url: 'file:///etc/passwd' },
+    );
+    expect(refused.status).toBe(400);
+    expect(await refused.json()).toEqual({
+      success: false,
+      code: 'url-not-allowed',
+      detail: { urlRejection: 'unsupported-scheme' },
+    });
+  });
+});
+
+describe('browser routes: wave 2 fix round', () => {
+  test("reuse restores only the CALLER's own open session for exactly that URL (S1)", async () => {
+    const h = harness();
+    const url = 'http://localhost:5173/app?tab=1';
+    const open = async (credential: string, reuse: boolean) =>
+      (await (
+        await h.request('POST', '/sessions', credential, {
+          projectSlug: 'alpha',
+          url,
+          ...(reuse ? { reuse: true } : {}),
+        })
+      ).json()) as { data: { browserSessionId: string; principalKey: string } };
+    const operators = await open('operator', false);
+    // An admin asking to reuse gets a NEW session in their own profile, not
+    // the operator's session for the same URL.
+    const admins = await open('admin-alpha', true);
+    expect(admins.data.browserSessionId).not.toBe(
+      operators.data.browserSessionId,
+    );
+    expect(admins.data.principalKey).toBe('principal:admin-alpha');
+    // The operator reusing gets its own session back, matched on the FULL
+    // normalized URL (the list view's redacted URL would not match it).
+    const again = await open('operator', true);
+    expect(again.data.browserSessionId).toBe(operators.data.browserSessionId);
+    // A different query is a different page: not reused.
+    const other = (await (
+      await h.request('POST', '/sessions', 'operator', {
+        projectSlug: 'alpha',
+        url: 'http://localhost:5173/app?tab=2',
+        reuse: true,
+      })
+    ).json()) as { data: { browserSessionId: string } };
+    expect(other.data.browserSessionId).not.toBe(
+      operators.data.browserSessionId,
+    );
+    // A closed session is never reused.
+    await h.request(
+      'DELETE',
+      `/sessions/${operators.data.browserSessionId}`,
+      'operator',
+    );
+    const fresh = await open('operator', true);
+    expect(fresh.data.browserSessionId).not.toBe(
+      operators.data.browserSessionId,
+    );
+  });
+
+  test('the summary view carries the latest few actions and the server-derived activity (S4, S5)', async () => {
+    const h = harness();
+    const created = (await (await h.create('operator')).json()) as {
+      data: { browserSessionId: string };
+    };
+    const id = created.data.browserSessionId;
+    for (let i = 0; i < 8; i += 1)
+      await h.request('POST', `/sessions/${id}/navigate`, 'operator', {
+        url: `https://example.com/${i}?secret=${i}`,
+      });
+    const summary = (await (
+      await h.request('GET', `/sessions/${id}?view=summary`, 'operator')
+    ).json()) as {
+      data: {
+        history: { entries: Array<{ url?: string }>; total: number };
+        activity: { lastDriver: { kind: string }; agentDriven: boolean };
+      };
+    };
+    expect(summary.data.history.entries).toHaveLength(5);
+    expect(summary.data.history.total).toBe(9);
+    expect(summary.data.history.entries.at(-1)?.url).toBe(
+      'https://example.com/7',
+    );
+    expect(summary.data.activity).toMatchObject({
+      lastDriver: { kind: 'operator' },
+      agentDriven: false,
+    });
+    const full = (await (
+      await h.request('GET', `/sessions/${id}`, 'operator')
+    ).json()) as { data: { history: { entries: unknown[] } } };
+    expect(full.data.history.entries).toHaveLength(9);
+    expect(
+      (await h.request('GET', `/sessions/${id}?view=everything`, 'operator'))
+        .status,
+    ).toBe(400);
+  });
+
+  test('Back onto an entry the host refuses is a typed 409, and a browser protocol error a 502 (S7)', async () => {
+    const h = harness({
+      cdp: (method) => {
+        if (method === 'Page.getNavigationHistory')
+          return {
+            currentIndex: 1,
+            entries: [
+              { id: 1, url: 'chrome://settings' },
+              { id: 2, url: 'https://example.com/' },
+            ],
+          };
+        if (method === 'Page.navigateToHistoryEntry')
+          throw new BrowserHostPolicyError(method, 'url-not-allowed');
+        if (method === 'Page.reload')
+          throw new CdpProtocolError(method, -32000, 'Not attached');
+        return {};
+      },
+    });
+    const created = (await (await h.create('operator')).json()) as {
+      data: { browserSessionId: string };
+    };
+    const id = created.data.browserSessionId;
+    const back = await h.request(
+      'POST',
+      `/sessions/${id}/history`,
+      'operator',
+      {
+        action: 'back',
+      },
+    );
+    expect(back.status).toBe(409);
+    expect(await back.json()).toEqual({
+      success: false,
+      code: 'url-not-allowed',
+    });
+    const reload = await h.request(
+      'POST',
+      `/sessions/${id}/history`,
+      'operator',
+      { action: 'reload' },
+    );
+    expect(reload.status).toBe(502);
+    expect(await reload.json()).toEqual({
+      success: false,
+      code: 'browser-error',
+    });
+  });
+
+  test('a navigation Station refused (its own listener) is credited to Station (D2)', async () => {
+    const h = harness({
+      cdp: (method) =>
+        method === 'Page.navigate'
+          ? { errorText: 'net::ERR_BLOCKED_BY_CLIENT' }
+          : {},
+    });
+    const created = (await (await h.create('operator')).json()) as {
+      data: { browserSessionId: string };
+    };
+    const id = created.data.browserSessionId;
+    const own = (await (
+      await h.request('POST', `/sessions/${id}/navigate`, 'operator', {
+        url: 'http://127.0.0.1:4101/',
+      })
+    ).json()) as { data: { blocked?: string; errorText?: string } };
+    expect(own.data).toMatchObject({
+      blocked: 'station-listener',
+      errorText: 'net::ERR_BLOCKED_BY_CLIENT',
+    });
+    const elsewhere = (await (
+      await h.request('POST', `/sessions/${id}/navigate`, 'operator', {
+        url: 'http://127.0.0.1:9999/',
+      })
+    ).json()) as { data: { blocked?: string } };
+    expect(elsewhere.data.blocked).toBeUndefined();
+    // A Project admin gets the generic refusal: telling them which
+    // addresses are Station's would map this host's interfaces (S-N3).
+    const adminSession = (await (await h.create('admin-alpha')).json()) as {
+      data: { browserSessionId: string };
+    };
+    const admin = (await (
+      await h.request(
+        'POST',
+        `/sessions/${adminSession.data.browserSessionId}/navigate`,
+        'admin-alpha',
+        { url: 'http://127.0.0.1:4101/' },
+      )
+    ).json()) as { data: { blocked?: string; errorText?: string } };
+    expect(admin.data.errorText).toBe('net::ERR_BLOCKED_BY_CLIENT');
+    expect(admin.data.blocked).toBeUndefined();
   });
 });
