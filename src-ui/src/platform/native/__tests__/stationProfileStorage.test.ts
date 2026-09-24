@@ -140,13 +140,26 @@ function storageWithKeyring(
   const calls: string[] = [];
   // The host's active binding, as station_profile_authorize_active sets it.
   let activeProfileName: string | undefined;
+  // Credentials the host has observed: it records those of configured
+  // profiles when it reads the store (observe_configured_profile_bindings).
+  const observed = new Set<string>();
+  const observe = () => {
+    for (const profile of store.profiles)
+      if (profile.configurationState === 'configured' && profile.credentialRef)
+        observed.add(
+          `${profile.credentialRef.kind}:${profile.credentialRef.id}`,
+        );
+  };
   const bridge = {
     async invoke<T>(
       command: string,
       args?: Record<string, unknown>,
     ): Promise<T> {
       calls.push(command);
-      if (command === 'station_profile_store_read') return store as T;
+      if (command === 'station_profile_store_read') {
+        observe();
+        return store as T;
+      }
       if (command === 'station_profile_authorize_active') {
         const target = store.profiles.find(
           (profile) => profile.name === args?.profileName,
@@ -232,6 +245,21 @@ function storageWithKeyring(
           throw new Error('saved Station revision conflict');
         }
         const next = JSON.parse(args?.contents as string);
+        // Like the host (renderer_store_references_are_authorized): a write
+        // may not keep a credential reference it never observed.
+        if (
+          options.hostRules &&
+          next.profiles.some(
+            (profile: StationProfile) =>
+              profile.credentialRef &&
+              !observed.has(
+                `${profile.credentialRef.kind}:${profile.credentialRef.id}`,
+              ),
+          )
+        )
+          throw new Error(
+            'Station renderer writes cannot add an unobserved credential reference',
+          );
         if (
           !injectedConfiguredConflict &&
           options.conflictOnceBeforeConfiguredWrite &&
@@ -1805,18 +1833,45 @@ describe('NativeStationProfileStorage', () => {
     });
 
     it('selects a fallback the host cannot authorize without calling it a failure', async () => {
-      // The original fixture: the other Station still needs sign-in.
-      const { storage, activeProfile } = storageWithKeyring({
-        hostRules: true,
-      });
+      // Reachable state: the fallback was configured when the app read the
+      // store (so the host observed its credential), then the CLI marked it
+      // as needing sign-in again.
+      const { storage, activeProfile, currentStore, replaceStore } = keyring();
       await storage.hydrate();
       await storage.authorizeActiveConnection(KONTOUR, true);
+      replaceStore({
+        ...currentStore(),
+        profiles: currentStore().profiles.map((profile) =>
+          profile.name === 'station.kontourai.io'
+            ? { ...profile, configurationState: 'requires-auth' }
+            : profile,
+        ),
+      });
       await storage.removeProfile({
         connectionId: KONTOUR,
         expected: expectedFor(0),
       });
+      expect(currentStore().profiles.map((profile) => profile.name)).toEqual([
+        'station.kontourai.io',
+      ]);
       expect(storage.get('station-connect-connections-active')).toBe(HOSTED);
       expect(activeProfile()).toBeUndefined();
+    });
+
+    it('surfaces the host refusing the write while another Station holds an unobserved credential', async () => {
+      // The original fixture: the other Station needs sign-in, so the host
+      // never observed its credential and refuses any write that keeps it.
+      const { storage, currentStore } = storageWithKeyring({
+        hostRules: true,
+      });
+      await storage.hydrate();
+      await expect(
+        storage.removeProfile({
+          connectionId: KONTOUR,
+          expected: expectedFor(0),
+        }),
+      ).rejects.toThrow('unobserved credential reference');
+      expect(currentStore().profiles).toHaveLength(2);
     });
 
     it('keeps the fallback to this session and still switches when the credential delete fails', async () => {

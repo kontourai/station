@@ -1013,7 +1013,8 @@ export function ConnectionManagerModalContent({
                 connectionId: id,
                 expected: { name: connection.name, url: connection.url },
               }).catch((error) => {
-                // The host's message says whether anything was forgotten.
+                // A failure after the Station was forgotten starts "Station
+                // forgotten, but"; any other message means nothing changed.
                 setRemoveError(
                   `${connection.name}: ${
                     error instanceof Error ? error.message : String(error)
