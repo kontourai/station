@@ -1,4 +1,5 @@
 import type { UIBlock } from '@kontourai/station-contracts/ui-block';
+import { toolResultFileParts } from '@kontourai/station-shared/runtime-event-projection';
 import type { ChatContentPart } from '../../contexts/active-chats-state';
 
 type OrchestrationContentPart = ChatContentPart;
@@ -129,27 +130,38 @@ export function upsertToolPart(
   return next;
 }
 
+/**
+ * Replace the `type` parts a terminal result produced (keyed by its event id)
+ * and place the new ones directly after that result's tool row.
+ */
+function placeToolResultParts(
+  parts: Array<OrchestrationContentPart> | undefined,
+  type: string,
+  sourceEventId: string,
+  placed: OrchestrationContentPart[],
+) {
+  const next = [...(parts || [])].filter(
+    (part) => !(part.type === type && part.sourceEventId === sourceEventId),
+  );
+  const toolIndex = next.findIndex(
+    (part) =>
+      part.type === 'tool-invocation' && part.sourceEventId === sourceEventId,
+  );
+  next.splice(toolIndex === -1 ? next.length : toolIndex + 1, 0, ...placed);
+  return next;
+}
+
 export function upsertToolResultBlocks(
   parts: Array<OrchestrationContentPart> | undefined,
   toolCallId: string,
   sourceEventId: string,
   blocks: UIBlock[],
 ) {
-  const next = [...(parts || [])].filter(
-    (part) =>
-      !(part.type === 'ui-block' && part.sourceEventId === sourceEventId),
-  );
-
-  if (blocks.length === 0) {
-    return next;
-  }
-
-  const toolIndex = next.findIndex(
-    (part) =>
-      part.type === 'tool-invocation' && part.sourceEventId === sourceEventId,
-  );
-  const blockParts = blocks.map(
-    (block, index): OrchestrationContentPart => ({
+  return placeToolResultParts(
+    parts,
+    'ui-block',
+    sourceEventId,
+    blocks.map((block, index) => ({
       type: 'ui-block',
       toolCallId,
       sourceEventId,
@@ -157,23 +169,16 @@ export function upsertToolResultBlocks(
         ...block,
         id: block.id || `${sourceEventId}-block-${index}`,
       },
-    }),
+    })),
   );
-
-  if (toolIndex === -1) {
-    next.push(...blockParts);
-    return next;
-  }
-
-  next.splice(toolIndex + 1, 0, ...blockParts);
-  return next;
 }
 
 /**
  * The images a tool returned, placed directly after the row that shows the
- * call — the live twin of `runtime-event-projection.ts`'s `placeToolImages`,
- * so a turn reads the same before and after it settles. Keyed by the terminal
- * event, so a repeated terminal replaces rather than doubles them.
+ * call — the same parts, built by the same function, as the durable
+ * projection (`runtime-event-projection.ts`), so a turn reads the same before
+ * and after it settles. Keyed by the terminal event, so a repeated terminal
+ * replaces rather than doubles them.
  *
  * Each part carries only the descriptor and the blob reference the server
  * stored: EventStore strips the bytes before the event reaches SSE, and
@@ -182,42 +187,14 @@ export function upsertToolResultBlocks(
  */
 export function upsertToolResultFiles(
   parts: Array<OrchestrationContentPart> | undefined,
-  toolCallId: string,
-  sourceEventId: string,
-  attachments: ReadonlyArray<{
-    name: string;
-    mimeType: string;
-    blobRef?: string;
-    dataUrl?: string;
-  }>,
+  event: Parameters<typeof toolResultFileParts>[0],
 ) {
-  const next = [...(parts || [])].filter(
-    (part) => !(part.type === 'file' && part.sourceEventId === sourceEventId),
+  return placeToolResultParts(
+    parts,
+    'file',
+    event.eventId,
+    toolResultFileParts(event),
   );
-  if (attachments.length === 0) return next;
-  const fileParts = attachments.map(
-    (attachment): OrchestrationContentPart => ({
-      type: 'file',
-      ...(attachment.dataUrl === undefined ? {} : { url: attachment.dataUrl }),
-      ...(attachment.blobRef === undefined
-        ? {}
-        : { blobRef: attachment.blobRef }),
-      mediaType: attachment.mimeType,
-      name: attachment.name,
-      toolCallId,
-      sourceEventId,
-    }),
-  );
-  const toolIndex = next.findIndex(
-    (part) =>
-      part.type === 'tool-invocation' && part.sourceEventId === sourceEventId,
-  );
-  if (toolIndex === -1) {
-    next.push(...fileParts);
-    return next;
-  }
-  next.splice(toolIndex + 1, 0, ...fileParts);
-  return next;
 }
 
 export function buildAssistantTurnContent(

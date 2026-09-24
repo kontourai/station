@@ -365,12 +365,10 @@ export function handleToolCompletedEvent(
       extractUIBlocks(event.output),
     );
     return event.attachments?.length
-      ? upsertToolResultFiles(
-          withBlocks,
-          event.toolCallId,
-          event.eventId,
-          event.attachments,
-        )
+      ? upsertToolResultFiles(withBlocks, {
+          ...event,
+          eventId: event.eventId,
+        })
       : withBlocks;
   };
 
