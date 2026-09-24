@@ -4,6 +4,7 @@ import { Empty, ErrorState, SkeletonBlock } from '../../components/state';
 import type { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { useScopedMemberProjectSharedTasksQuery } from '../../contexts/ProjectsContext';
 import { MemberProjectHeader } from './ProjectPageHeader';
+import '../project-page-frame.css';
 
 type RequestScope = ReturnType<typeof useHostRequestAuthorityScope>;
 
