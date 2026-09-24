@@ -566,11 +566,11 @@ a path, not the dock's binding; where they differ the link keeps the
 `setLayout` route it had, because a dock pane binds the DOCK's project and
 rebinding would name a file in a checkout the conversation never mentioned.
 (Bottom-only devices used to keep that route too; since the phone layer they
-open the pane like any other device — see below.) A path with NEITHER a dock pane nor
-that route is refused rather than followed, on both hosts: a repo-relative
-href resolved against Station's own origin is a route Station does not have,
-which on Tauri replaces the running application and on the web is a
-same-origin route-miss that drops the conversation pointer.
+open the pane like any other device — see below.) A path with NEITHER a dock
+pane nor that route is refused rather than followed, on both hosts: a
+repo-relative href resolved against Station's own origin is a route Station
+does not have, which on Tauri replaces the running application and on the
+web is a same-origin route-miss that drops the conversation pointer.
 
 External links open in the host's browser ON TAURI, where a plain anchor
 navigated the webview away from the running application — that is the fix
@@ -609,26 +609,24 @@ restored, and the tab the layer minted removed (a phone has no tab strip, so
 a tab left behind Chat would be one nobody can see or close;
 `restorePhonePaneLayer`). A minted pane the layer moved out of another
 (hidden) dock region goes back to its tab slot there on Back, "‹ Chat" or a
-dismissal. When the fold opens instead, the pane stays on screen (below)
-and only the persisted record returns it, so the record never loses it. (A pane held in `main` never opens a layer, so a
-layer pane's origin is always a dock region.) Opening another pane while a layer is open replaces the layer's pane and
-keeps the ORIGINAL previous state, so one Back always returns to Chat.
-Anything else that takes the pane off screen — "Show Chat" in the folded
-menu, closing the tab, hiding the region — dismisses the layer the same way
-and consumes its entry; "Hide <pane>" for the layer's own pane is the way
-back to Chat rather than a hide of Chat's region. A chat-focus intent
-(`focusSession`, `openChatForAgent`, opening a conversation) dismisses the
-layer through `useDismissPhoneLayer`. When the fold opens (a narrow window
-widened) the layer ends in place (`endPhonePaneLayerInPlace`): its pane
-stays visible, selected and mounted as an ordinary tab of Chat's region —
-moving it would remount it (dropping an unguarded draft) and hide what the
-user was reading — and only its maximize is undone. For a pane the layer
-moved out of another region, the persisted record keeps projecting it into
-that origin (`projectPhoneLayerPaneToOrigin`, applied by the provider's
-persist) for as long as it is still a tab of Chat's region, so a reload
-finds it where the user put it; the projection is dropped once the user
-moves or closes the tab. Every exit leaves `lastDockMaximized` as the
-layer found it.
+dismissal. (A pane held in `main` never opens a layer, so a layer pane's
+origin is always a dock region.) Opening another pane while a layer is open
+replaces the layer's pane and keeps the ORIGINAL previous state, so one Back
+always returns to Chat. Anything else that takes the pane off screen — "Show
+Chat" in the folded menu, closing the tab, hiding the region — dismisses the
+layer the same way and consumes its entry; "Hide <pane>" for the layer's own
+pane is the way back to Chat rather than a hide of Chat's region. A
+chat-focus intent (`focusSession`, `openChatForAgent`, opening a
+conversation) dismisses the layer through `useDismissPhoneLayer`. When the
+fold opens (a narrow window widened) the layer ends in place
+(`endPhonePaneLayerInPlace`): its pane stays where it is — visible, selected
+and mounted as an ordinary tab of Chat's region — and only its maximize is
+undone. That live arrangement is exactly what is saved, so a reload finds
+the pane as a tab there too. A pane the layer had moved out of another
+region is NOT returned to it, live or in the record: moving it would remount
+it (dropping an unguarded draft) and hide what the user was reading, and the
+user can move it. Every exit leaves `lastDockMaximized` as the layer found
+it.
 
 Back, "‹ Chat" (`closePhoneLayer`), the folded menu's hide of the layer's
 own pane, and a chat-focus intent ask the unsaved-changes guards first
@@ -659,11 +657,16 @@ Known limitations, disclosed rather than designed here:
   had before the layer. Telling a layer's maximize from the user's at load
   would need the layer's state to survive the reload, which it deliberately
   does not.
+- **Two Backs in the same tick can pass the layer.** While the
+  unsaved-changes prompt is up, the layer's entry is re-pushed from the
+  popstate that asked; two `history.back()` calls issued in the same tick
+  (script, not a person — presses 20–150 ms apart are fine) can travel past
+  that entry to the page before the layer before it is re-pushed.
 
 **Owner decision 2026-09-24 (#928 comment).** This supersedes #928's
-2026-09-03 phone decision in one respect: showing Activity (or any pane) on a phone no longer
-takes the folded region from Chat and swaps Chat back from the toolbar; it
-opens over Chat, and Back or "‹ Chat" returns.
+2026-09-03 phone decision in one respect: showing Activity (or any pane) on
+a phone no longer takes the folded region from Chat and swaps Chat back from
+the toolbar; it opens over Chat, and Back or "‹ Chat" returns.
 
 The pull request pane's "Open on GitHub" ("Open on GitLab" for gitlab.com,
 "Open in browser" otherwise) opens the PR's URL outside Station
@@ -674,9 +677,9 @@ clicks, landing separately; before that it is a narrower allowlist that does
 not include pull requests. Whichever policy is running, every refusal or
 host error, from this button or a chat link, is shown as a notice with the
 link and a Copy action (`reportUnopenedExternalLink`) rather than being a
-click that does nothing. One notice is live per link however often it is clicked; a long
-link is shortened on screen while Copy copies the whole, and a copy that
-worked says "Link copied".
+click that does nothing. One notice is live per link however often it is
+clicked; a long link is shortened on screen while Copy copies the whole, and
+a copy that worked says "Link copied".
 
 **Implemented by #2050 (slice 6: the Agents pane), 2026-09-14.** The
 background work of the conversation on screen — tool calls, delegated
