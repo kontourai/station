@@ -2872,6 +2872,12 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'GET', path: '/api/system/instance' },
     { method: 'POST', path: '/api/system/push-subscribe' },
     { method: 'POST', path: '/api/system/push-unsubscribe' },
+    // Native agent-activity push: like the Web Push leaves above, the
+    // handler additionally requires a paired device and touches only that
+    // device's own registration. The operate tier is right: registering
+    // sends session titles and project names off the machine to this phone.
+    { method: 'POST', path: '/api/system/native-push/register' },
+    { method: 'DELETE', path: '/api/system/native-push' },
     // A diagnostic read of this Station's currently observed CPU utilization.
     // No other Environment's or Station's
     // data, no mutation — no more sensitive than the surrounding `/api/system`
