@@ -36,6 +36,19 @@ function confinesFullAccessNatively(provider: EngineId): boolean {
   return provider === PROVIDER_CODEX;
 }
 
+/** #2493: the mode an engine can apply for `mode` under `confinement`. */
+function applicableMode(
+  mode: ApprovalMode,
+  provider: EngineId,
+  confinement: StationConfinement,
+): ApprovalMode {
+  return mode === 'never' &&
+    confinement !== 'host' &&
+    !confinesFullAccessNatively(provider)
+    ? 'auto'
+    : mode;
+}
+
 export interface ApprovalPostureStore {
   latestApprovalModeDecision(
     threadIds: readonly string[],
@@ -269,14 +282,11 @@ export class ApprovalPosture {
           : undefined);
     }
     if (!mode) return Object.keys(rest).length > 0 ? rest : undefined;
-    if (
-      mode === 'never' &&
-      input.confinement !== 'host' &&
-      !confinesFullAccessNatively(input.provider)
-    )
-      mode = 'auto';
     this.stationApplied.add(input.threadId);
-    return { ...rest, approvalMode: mode };
+    return {
+      ...rest,
+      approvalMode: applicableMode(mode, input.provider, input.confinement),
+    };
   }
 
   /**
