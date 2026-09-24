@@ -82,10 +82,38 @@ describe('mobile chat visual viewport', () => {
           }),
       },
     } as unknown as Window;
+    // 1000 device px at 2x is 500 CSS px of glass below the WebView's top
+    // edge. The 8px pan moves which page rows fill that glass, not how much of
+    // it is visible, so the height is 500, not 500 - 8.
     expect(readMobileVisualViewport(target)).toEqual({
-      height: 492,
+      height: 500,
       offsetTop: 8,
-      bottomInset: 415,
+      bottomInset: 407,
+    });
+  });
+
+  test('a keyboard pan over an unresized WebView leaves the dock flush with the keyboard', () => {
+    // The phone case: the WebView keeps its full 915px, the IME covers 337px,
+    // and the page pans 300px to bring the composer into view. The dock must
+    // span exactly the 578px of glass above the keyboard; the old reader
+    // subtracted the pan again and left a 300px band of page below it.
+    const target = {
+      innerWidth: 412,
+      innerHeight: 915,
+      visualViewport: { height: 915, offsetTop: 300 },
+      StationAndroidInsets: {
+        safeArea: () =>
+          JSON.stringify({
+            viewportWidth: 412,
+            viewportHeight: 915,
+            visibleHeight: 578,
+          }),
+      },
+    } as unknown as Window;
+    expect(readMobileVisualViewport(target)).toEqual({
+      height: 578,
+      offsetTop: 300,
+      bottomInset: 37,
     });
   });
 

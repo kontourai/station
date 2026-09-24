@@ -15,12 +15,17 @@ export function readMobileVisualViewport(
 ): MobileVisualViewportMetrics {
   const viewport = target.visualViewport;
   const offsetTop = Math.max(0, viewport?.offsetTop ?? 0);
-  const nativeBottom = readAndroidVisibleHeight(target);
+  // The native figure is measured from the WebView's top edge ON SCREEN, and
+  // the visual viewport always starts at that edge — `offsetTop` places it in
+  // the page, not on the glass. Subtracting the pan again counted it twice:
+  // with the keyboard open and the page panned to the composer, the chat dock
+  // ended a pan's height above the keyboard with the page showing through.
+  const nativeVisibleHeight = readAndroidVisibleHeight(target);
   const height = Math.max(
     0,
     Math.min(
       viewport?.height ?? target.innerHeight,
-      nativeBottom === undefined ? Infinity : nativeBottom - offsetTop,
+      nativeVisibleHeight ?? Infinity,
     ),
   );
   return {
