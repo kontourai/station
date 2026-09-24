@@ -1436,9 +1436,9 @@ export function configureRuntimeRoutes(
   // must use the request's principal, exactly like the chat routes bound
   // further down. `readAuthorityForRequest` names the cached OS alias, which
   // owns no UI-created chat. Registered here, ahead of every mount, because
-  // Hono runs middleware in registration order and `/api/analytics` mounts
-  // before the chat block. A request whose principal cannot be resolved fails
-  // here rather than reading as the OS alias.
+  // Hono runs middleware in registration order: a binding registered after
+  // its route's mount never runs. A request whose principal cannot be
+  // resolved fails here rather than reading as the OS alias.
   for (const path of [
     '/integrations/:serverId/ui/:toolName/initial-result',
     '/tool-approval/:approvalId',
