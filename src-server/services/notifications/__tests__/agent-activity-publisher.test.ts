@@ -1528,6 +1528,34 @@ describe('agent-activity publisher: a device narrowed below read access (#2517)'
     await fresh.publisher.stop();
   });
 
+  test('only a card the phone accepted changes the persisted bit', async () => {
+    // A refused final empty card: the phone still shows rows.
+    const h = await harness({ readerFromPairing: true, answers: [200, 422] });
+    h.sessions.set('s1', sessionEvents('s1', 'running', START));
+    const { deviceId } = await h.pairAndRegister();
+    h.emit('turn.started');
+    await h.settle();
+    expect(stored(h, deviceId)?.cardShown).toBe(true);
+    h.advance(5000);
+    h.pairing.setDeviceScope(deviceId, [...NO_READ], operator);
+    await h.settle();
+    expect(h.fetchImpl).toHaveBeenCalledTimes(2);
+    expect(h.delivered).toHaveLength(1);
+    expect(stored(h, deviceId)?.cardShown).toBe(true);
+    await h.publisher.stop();
+
+    // A refused card with rows: the phone never showed one.
+    const refused = await harness({ readerFromPairing: true, answers: [422] });
+    refused.sessions.set('s1', sessionEvents('s1', 'running', START));
+    const other = await refused.pairAndRegister();
+    refused.emit('turn.started');
+    await refused.settle();
+    expect(refused.fetchImpl).toHaveBeenCalledTimes(1);
+    expect(refused.delivered).toEqual([]);
+    expect(stored(refused, other.deviceId)?.cardShown).toBeUndefined();
+    await refused.publisher.stop();
+  });
+
   test('widening sends no spurious empty card, and re-widening restores the real card', async () => {
     const h = await harness({ readerFromPairing: true });
     h.sessions.set('s1', sessionEvents('s1', 'running', START));

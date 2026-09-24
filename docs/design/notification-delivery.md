@@ -211,7 +211,12 @@ The Station side mirrors Web Push (`push-routes.ts`, `wireWebPushDelivery`):
   rotation and replaced after a `DELETE`. The registration is stored in its
   own 0600 sidecar, `security/native-push-registrations.json`, keyed by
   device id — not on the paired-device record, which older Stations read
-  with a strict key check and would refuse whole. The package must be one the
+  with a strict key check and would refuse whole. The same strictness applies
+  to this file: once any registration carries `cardShown`, a Station built
+  before that field (for example after a rollback to an older nightly)
+  cannot read the file at all and answers 503 for native push until it is
+  upgraded again, or `security/native-push-registrations.json` is deleted and
+  agent activity is turned on again on the phone. The package must be one the
   gateway delivers to, and the route sits on the `/api/system` operate tier.
   `DELETE /api/system/native-push` clears the caller's own registration only.
   Revoking or replacing a device drops its registration, and a registration
