@@ -709,7 +709,10 @@ export function useSendMessage(
         clearEphemeralMessages(sessionId);
         addEphemeralMessage(sessionId, {
           role: 'system',
-          content: `${translated.title}: ${translated.body}${
+          // Title on its own line, as `formatChatErrorDisplay` shapes the
+          // transcript's error markers: "Error: thread … Provider session…"
+          // ran the label into the engine's text.
+          content: `**${translated.title}**\n\n${translated.body}${
             translated.hint ? `\n\n${translated.hint}` : ''
           }`,
           ...(terminalSession ? { terminalSession: true } : {}),
