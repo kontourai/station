@@ -15,14 +15,31 @@
  */
 import type { LiveSurfaceAction } from '@kontourai/station-contracts/live-surface';
 import type { MobileDevicePlatform } from '@kontourai/station-contracts/mobile-device';
+import { LiveSurfaceAuthorizerBusyError } from '../live-surface/registry.js';
 import {
   type DeviceAccessDeps,
   DeviceHostBusyError,
-  mayUseNamedDevice,
+  deviceShareKey,
+  mayPerformDeviceAction,
   resolveDeviceCaller,
 } from './device-shares.js';
 
 export type DeviceAccessPurpose = 'view' | 'drive';
+
+/**
+ * The share key (an Android AVD name, or the device id itself) a check last
+ * resolved for ONE open device session (#2433). Every check still resolves
+ * the key afresh, and only the fresh key ever admits. The memo decides one
+ * thing: what a BUSY host means. When the caller no longer holds a share of
+ * the remembered key and the fresh resolve reports the host busy, the check
+ * refuses rather than answering busy — so a revoked share ends a stream at
+ * once even while the host cannot say which AVD runs. When the fresh
+ * resolve answers, its key decides and replaces the memo, so a stale key
+ * (the emulator now runs another AVD) refuses nothing once the host answers.
+ */
+export interface DeviceShareKeyMemo {
+  key?: string;
+}
 
 export interface DeviceAccess {
   /** The request carries Station operator authority. */
@@ -45,6 +62,7 @@ export interface DeviceAccess {
     deviceId: string,
     purpose: DeviceAccessPurpose,
     hostId: string,
+    shareKeyMemo?: DeviceShareKeyMemo,
   ): Promise<boolean>;
 }
 
@@ -70,7 +88,14 @@ export function failClosedDeviceAccess(access: DeviceAccess): DeviceAccess {
         return false;
       }
     },
-    mayAccessDevice: async (request, platform, deviceId, purpose, hostId) => {
+    mayAccessDevice: async (
+      request,
+      platform,
+      deviceId,
+      purpose,
+      hostId,
+      shareKeyMemo,
+    ) => {
       try {
         return (
           (await access.mayAccessDevice(
@@ -79,6 +104,7 @@ export function failClosedDeviceAccess(access: DeviceAccess): DeviceAccess {
             deviceId,
             purpose,
             hostId,
+            shareKeyMemo,
           )) === true
         );
       } catch (error) {
@@ -95,6 +121,11 @@ export function failClosedDeviceAccess(access: DeviceAccess): DeviceAccess {
  * access to the device; `input` and `control` need drive access (kept
  * separate for a future read-only role). A check with no request (a bare
  * principal) is refused: this layer cannot verify a principal string.
+ *
+ * A busy device host is neither answer: it is thrown as the live-surface
+ * layer's `LiveSurfaceAuthorizerBusyError` (#2433), so the routes answer a
+ * retryable 503 and a running stream keeps its last decision. Every other
+ * failure has already become a refusal in `failClosedDeviceAccess`.
  */
 export async function authorizeDeviceSurfaceAction(
   access: DeviceAccess,
@@ -103,18 +134,27 @@ export async function authorizeDeviceSurfaceAction(
     platform: MobileDevicePlatform;
     deviceId: string;
     isOpen: () => boolean;
+    /** Per-session (#2433): lets a re-check refuse a revoked share while busy. */
+    shareKeyMemo?: DeviceShareKeyMemo;
   },
   action: LiveSurfaceAction,
   request: Request | undefined,
 ): Promise<boolean> {
   if (!request || !session.isOpen()) return false;
-  return access.mayAccessDevice(
-    request,
-    session.platform,
-    session.deviceId,
-    action === 'view' ? 'view' : 'drive',
-    session.hostId,
-  );
+  try {
+    return await access.mayAccessDevice(
+      request,
+      session.platform,
+      session.deviceId,
+      action === 'view' ? 'view' : 'drive',
+      session.hostId,
+      session.shareKeyMemo,
+    );
+  } catch (error) {
+    if (error instanceof DeviceHostBusyError)
+      throw new LiveSurfaceAuthorizerBusyError({ cause: error });
+    throw error;
+  }
 }
 
 /**
@@ -129,15 +169,38 @@ export function deviceAccessFromShares(deps: DeviceAccessDeps): DeviceAccess {
       (await deps.authorizeOperator(request)) === true,
     hasStanding: async (request, purpose) =>
       (await resolveDeviceCaller(deps, request, purpose)) !== undefined,
-    mayAccessDevice: async (request, platform, deviceId, purpose, hostId) => {
+    mayAccessDevice: async (
+      request,
+      platform,
+      deviceId,
+      purpose,
+      hostId,
+      shareKeyMemo,
+    ) => {
       const caller = await resolveDeviceCaller(deps, request, purpose);
       if (!caller) return false;
-      return mayUseNamedDevice(
-        deps,
+      if (caller.kind === 'operator') return true;
+      // The remembered key only decides what a BUSY host means: a share
+      // already withdrawn refuses then. The fresh key below still admits.
+      const known = shareKeyMemo?.key;
+      const memoRefuses =
+        known !== undefined &&
+        !mayPerformDeviceAction(caller, purpose, platform, known, hostId);
+      let shareKey: string | undefined;
+      try {
+        shareKey = await deviceShareKey(deps, platform, deviceId, hostId);
+      } catch (error) {
+        // Busy is not an answer; with the remembered share already gone,
+        // it is not a reason to keep the stream either.
+        if (memoRefuses && error instanceof DeviceHostBusyError) return false;
+        throw error;
+      }
+      if (shareKey !== undefined && shareKeyMemo) shareKeyMemo.key = shareKey;
+      return mayPerformDeviceAction(
         caller,
         purpose,
         platform,
-        deviceId,
+        shareKey,
         hostId,
       );
     },

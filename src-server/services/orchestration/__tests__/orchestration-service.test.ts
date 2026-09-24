@@ -19223,7 +19223,11 @@ describe('OrchestrationService', () => {
     );
   });
 
-  test('bounds connected runtime selector validation at the service deadline', async () => {
+  // #2424: the deadline still bounds the catalog read, but a read that misses
+  // it no longer fails the start. Validation for an external engine is
+  // advisory (a selector the catalog does not list already goes to the
+  // engine), so a slow catalog is treated like an empty one.
+  test('bounds connected runtime selector validation at the service deadline without failing the start', async () => {
     vi.useFakeTimers();
     try {
       let operationSignal: AbortSignal | undefined;
@@ -19247,17 +19251,74 @@ describe('OrchestrationService', () => {
           modelId: 'claude-sonnet-4-6',
         },
       });
-      const assertion = expect(pending).rejects.toThrow(
-        'claude model validation timed out.',
-      );
       await vi.advanceTimersByTimeAsync(5_000);
 
-      await assertion;
+      await expect(pending).resolves.toBeDefined();
       expect(operationSignal?.aborted).toBe(true);
-      expect(claude.startSession).not.toHaveBeenCalled();
+      expect(operationSignal?.reason).toMatchObject({
+        message: 'claude model validation timed out.',
+      });
+      expect(claude.startSession).toHaveBeenCalledWith(
+        expect.objectContaining({
+          threadId: 'stalled-model-validation',
+          modelId: 'claude-sonnet-4-6',
+        }),
+      );
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  test('a turn selector whose catalog misses the deadline still reaches the engine', async () => {
+    await service.dispatch({
+      type: 'startSession',
+      input: { threadId: 'stalled-turn-validation', provider: 'claude' },
+    });
+    vi.useFakeTimers();
+    try {
+      claude.listModels.mockImplementation(
+        (options) =>
+          new Promise((_, reject) => {
+            options?.signal?.addEventListener(
+              'abort',
+              () => reject(options.signal?.reason),
+              { once: true },
+            );
+          }),
+      );
+      const pending = service.dispatch({
+        type: 'sendTurn',
+        input: {
+          threadId: 'stalled-turn-validation',
+          input: 'hello',
+          modelId: 'claude-sonnet-4-6',
+        },
+      });
+      await vi.advanceTimersByTimeAsync(5_000);
+
+      await expect(pending).resolves.toBeDefined();
+      expect(claude.sendTurn).toHaveBeenCalledWith(
+        expect.objectContaining({ modelId: 'claude-sonnet-4-6' }),
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test('a catalog failure other than the deadline still fails the start', async () => {
+    claude.listModels.mockRejectedValue(new Error('catalog exploded'));
+
+    await expect(
+      service.dispatch({
+        type: 'startSession',
+        input: {
+          threadId: 'broken-model-validation',
+          provider: 'claude',
+          modelId: 'claude-sonnet-4-6',
+        },
+      }),
+    ).rejects.toThrow('catalog exploded');
+    expect(claude.startSession).not.toHaveBeenCalled();
   });
 
   /**

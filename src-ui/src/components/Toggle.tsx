@@ -19,6 +19,14 @@ interface ToggleProps {
    * name, it just isn't a second tab stop.
    */
   tabIndex?: number;
+  /**
+   * Also say the state in a word ("On"/"Off") beside the track (#2425/#2441).
+   * The word is `aria-hidden` — assistive tech reads `aria-checked` — so it is
+   * purely visual reinforcement. Off by default: the track already differs by
+   * fill and thumb position, and most consumers sit in dense rows whose
+   * width was laid out around the bare 36px/28px track.
+   */
+  showStateLabel?: boolean;
 }
 
 export function Toggle({
@@ -30,8 +38,9 @@ export function Toggle({
   describedBy,
   label,
   tabIndex,
+  showStateLabel = false,
 }: ToggleProps) {
-  return (
+  const control = (
     <button
       type="button"
       id={id}
@@ -46,5 +55,14 @@ export function Toggle({
     >
       <span className="station-toggle__thumb" />
     </button>
+  );
+  if (!showStateLabel) return control;
+  return (
+    <span className="station-toggle-field">
+      {control}
+      <span className="station-toggle__state" aria-hidden="true">
+        {checked ? 'On' : 'Off'}
+      </span>
+    </span>
   );
 }

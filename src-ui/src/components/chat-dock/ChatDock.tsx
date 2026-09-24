@@ -2508,17 +2508,15 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                       load={loadConversationOpenRecoveryNotice}
                       componentProps={{
                         title: conversationOpenRecovery.conversation.title,
-                        state:
-                          conversationOpenRecovery.status === 'error'
-                            ? 'unavailable'
-                            : conversationOpenRecovery.status,
+                        // #2424: passed through unmapped; the notice decides
+                        // which statuses are verdicts.
+                        state: conversationOpenRecovery.status,
                         onRetry: () => void retryConversationOpenRecovery(),
                         onStartNew: startNewFromConversationRecovery,
                       }}
                       pending={
                         <div className="session-history-error" role="status">
-                          Conversation recovery is loading. This conversation
-                          remains read-only.
+                          Conversation recovery is loading. Sending is paused.
                         </div>
                       }
                     />

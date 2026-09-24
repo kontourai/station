@@ -102,6 +102,7 @@ vi.mock('../hooks/useActiveChatSessions', () => ({
 }));
 
 import { ApprovalModeChip } from '../components/badges/ApprovalModeChip';
+import FullAccessNotCarriedNotice from '../components/chat/FullAccessNotCarriedNotice';
 import {
   hydrateActiveChats,
   serializeActiveChats,
@@ -141,12 +142,15 @@ let streamSeq = 1000;
  * Folds one event as the stream delivers it: with the next server position,
  * unless the test names one (a report delivered out of order).
  */
+/** The engine the folded events come from; the #2423 block runs as Claude. */
+let engine = 'codex';
+
 function fold(event: Record<string, unknown>, position = ++streamSeq) {
   clock += 1;
   handleOrchestrationEvent(
     'http://station.test',
     {
-      provider: 'codex',
+      provider: engine,
       threadId: SESSION_ID,
       createdAt: new Date(Date.UTC(2026, 8, 22, 0, 0, clock)).toISOString(),
       ...event,
@@ -208,7 +212,7 @@ function renderComposer() {
       useChatInput({
         apiBase: 'http://station.test',
         sessionId: SESSION_ID,
-        agentSlug: 'codex',
+        agentSlug: engine,
         conversationId: 'conv-1',
         availableModels: [modelX, modelY],
         agentDefaultModel: 'model-x',
@@ -229,7 +233,7 @@ function renderComposer() {
   const send = async (text = 'go') => {
     sendExecutionMessage.mockClear();
     await act(async () => {
-      await sender.result.current(SESSION_ID, 'codex', 'conv-1', text);
+      await sender.result.current(SESSION_ID, engine, 'conv-1', text);
     });
     composer.rerender();
     expect(sendExecutionMessage).toHaveBeenCalledTimes(1);
@@ -1057,4 +1061,254 @@ describe('an approval pick beside the model options (#2334)', () => {
     });
     expect(chatSessionIsLive(chat())).toBe(true);
   }
+});
+
+/**
+ * #2423 (decided: by design, #2449): a confirmed full access is not carried
+ * into a new Session, so that Session starts at the defaults. The chat says
+ * so — derived from what it KNOWS: (a) the confirmed pick is full access,
+ * (b) the report comes from a different Session than the one whose report
+ * confirmed it, (c) that Session reports a posture stricter than never.
+ *
+ * Runs as Claude: its adapter reports the posture a new Session starts in
+ * (the SDK-init `session.configured`, `default` → Ask, and every
+ * `turn.started`). Codex reports no posture for a Session sent no approval
+ * knobs, so no notice appears there — disclosed, not tested as a positive.
+ * A new Session is the server receipting a different execution Session id.
+ */
+describe('#2423: full access does not carry into a new session, and the chat says so', () => {
+  const CHILD = 'approval-pick-child-2';
+
+  beforeEach(() => {
+    clock = 0;
+    engine = 'claude';
+    activeChatsStore.removeChat(SESSION_ID);
+    activeChatsStore.initChat(SESSION_ID, {
+      agentSlug: 'claude',
+      agentName: 'Claude Code',
+      title: 'Approval pick chat',
+    });
+    activeChatsStore.updateChat(SESSION_ID, {
+      agentConnectionId: 'claude',
+      provider: 'claude',
+      executionMode: 'external',
+      conversationId: 'conv-1',
+    });
+    receiptFor(SESSION_ID);
+  });
+
+  afterEach(() => {
+    engine = 'codex';
+    unmountNotice = undefined;
+    cleanup();
+    activeChatsStore.removeChat(SESSION_ID);
+    vi.clearAllMocks();
+  });
+
+  function receiptFor(sessionId: string) {
+    sendExecutionMessage.mockResolvedValue({
+      conversationId: 'conv-1',
+      sessionId,
+      providerTurnId: 'provider-turn',
+      target: { kind: 'agent', id: 'claude' },
+      resolution: {},
+    });
+  }
+
+  /** A posture report from the NEW child Session, as Claude publishes it. */
+  function childReport(
+    method: 'session.configured' | 'turn.started',
+    turnId: string,
+    applied: string | undefined,
+  ) {
+    fold({
+      method,
+      threadId: CHILD,
+      ...(method === 'turn.started' ? { turnId } : { sessionId: CHILD }),
+      metadata: {
+        ...(applied ? { approvalMode: applied } : {}),
+        effectiveModel: 'model-x',
+        effectiveModelOptions: {},
+      },
+    });
+  }
+
+  /** Picks `mode` and runs one turn on the root Session that reports it. */
+  async function runRootTurn(
+    harness: ReturnType<typeof renderComposer>,
+    mode: 'never' | 'ask' | 'auto' | undefined,
+    applied: string,
+  ) {
+    harness.step(() =>
+      harness.composer.result.current.handleModelSelect(modelX),
+    );
+    if (mode)
+      harness.step(() =>
+        harness.composer.result.current.handleApprovalModeChange(mode),
+      );
+    await harness.send();
+    harness.step(() => turnStarted('t1', applied));
+    harness.step(() => turnCompleted('t1'));
+  }
+
+  /**
+   * The root Session ends; the next send is receipted as a new child, which
+   * reports its init posture and then its first turn's.
+   */
+  async function continueInNewSession(
+    harness: ReturnType<typeof renderComposer>,
+    applied: string | undefined,
+  ) {
+    harness.step(() => fold({ method: 'session.exited', exitCode: 0 }));
+    receiptFor(CHILD);
+    const wire = await harness.send();
+    expect(chat().currentSessionId).toBe(CHILD);
+    harness.step(() => childReport('session.configured', 'init', applied));
+    harness.step(() => childReport('turn.started', 'c1', applied));
+    return wire;
+  }
+
+  const NOTICE = /Full access didn't carry over to this new session/;
+  let unmountNotice: (() => void) | undefined;
+  function renderNotice(
+    session: Parameters<typeof FullAccessNotCarriedNotice>[0]['session'],
+  ) {
+    // Only the previous notice: `cleanup()` would also unmount the hooks.
+    unmountNotice?.();
+    ({ unmount: unmountNotice } = render(
+      <FullAccessNotCarriedNotice session={session} fontSize={14} />,
+    ));
+    return screen.queryByText(NOTICE);
+  }
+
+  test('never, then a new session at the defaults: an informational notice, with no re-grant action', async () => {
+    const harness = renderComposer();
+    await runRootTurn(harness, 'never', 'never');
+    const wire = await continueInNewSession(harness, 'ask');
+    // #2449's rule, unchanged: the new session was not sent full access.
+    expect(wire?.options ?? {}).not.toHaveProperty('approvalMode');
+    expect(chat().fullAccessNotCarriedSessionId).toBe(CHILD);
+
+    expect(renderNotice({ ...chat(), id: SESSION_ID })).not.toBeNull();
+    expect(
+      screen.getByText(
+        /start a new chat and choose Never ask before your first message/,
+      ),
+    ).toBeTruthy();
+    // Only the dismiss control: re-granting inside this Session cannot work
+    // on Claude (a mid-session escalation to never is refused).
+    expect(
+      screen.getAllByRole('button').map((b) => b.getAttribute('aria-label')),
+    ).toEqual(['Dismiss']);
+    expect(screen.queryByRole('button', { name: /full access/i })).toBeNull();
+  });
+
+  test('dismissing the notice does not bring it back for the same session', async () => {
+    const harness = renderComposer();
+    await runRootTurn(harness, 'never', 'never');
+    await continueInNewSession(harness, 'ask');
+    renderNotice({ ...chat(), id: SESSION_ID });
+    act(() => screen.getByRole('button', { name: 'Dismiss' }).click());
+    expect(chat().fullAccessNotCarriedSessionId).toBeUndefined();
+    harness.step(() =>
+      fold({ method: 'turn.completed', threadId: CHILD, turnId: 'c1' }),
+    );
+    harness.step(() => childReport('turn.started', 'c2', 'ask'));
+    expect(chat().fullAccessNotCarriedSessionId).toBeUndefined();
+    expect(renderNotice({ ...chat(), id: SESSION_ID })).toBeNull();
+  });
+
+  // Review BLOCKING-1: both ids undefined is not a match.
+  test('a fresh chat with no session and no pick: no notice', () => {
+    expect(chat().currentSessionId).toBeUndefined();
+    expect(renderNotice({ ...chat(), id: SESSION_ID })).toBeNull();
+    expect(renderNotice({ id: SESSION_ID })).toBeNull();
+  });
+
+  test('never on the SAME session, tightened by another device: no notice', async () => {
+    const harness = renderComposer();
+    await runRootTurn(harness, 'never', 'never');
+    harness.step(() => otherDeviceTurn('phone-1', 'ask'));
+    expect(chat().fullAccessNotCarriedSessionId).toBeUndefined();
+  });
+
+  test('a new session after picking Ask: no notice', async () => {
+    const harness = renderComposer();
+    await runRootTurn(harness, 'never', 'never');
+    harness.step(() =>
+      harness.composer.result.current.handleApprovalModeChange('ask'),
+    );
+    await continueInNewSession(harness, 'ask');
+    expect(chat().fullAccessNotCarriedSessionId).toBeUndefined();
+  });
+
+  test('a confirmed Auto carried into a new session: no notice', async () => {
+    const harness = renderComposer();
+    await runRootTurn(harness, 'auto', 'auto');
+    const wire = await continueInNewSession(harness, 'auto');
+    expect(wire?.options?.approvalMode).toBe('auto');
+    expect(chat().fullAccessNotCarriedSessionId).toBeUndefined();
+  });
+
+  test('a confirmed Auto retired by a new session reporting Ask: no notice', async () => {
+    const harness = renderComposer();
+    await runRootTurn(harness, 'auto', 'auto');
+    await continueInNewSession(harness, 'ask');
+    expect(chat().approvalModeOverride).toBeUndefined();
+    expect(chat().fullAccessNotCarriedSessionId).toBeUndefined();
+  });
+
+  test('after a reload the confirming session is unknown: no notice rather than a guess', async () => {
+    const harness = renderComposer();
+    await runRootTurn(harness, 'never', 'never');
+    harness.composer.unmount();
+    const rehydrated = hydrateActiveChats(
+      serializeActiveChats(activeChatsStore.getSnapshot()),
+    )[SESSION_ID];
+    activeChatsStore.removeChat(SESSION_ID);
+    activeChatsStore.initChat(SESSION_ID, {
+      agentSlug: 'claude',
+      agentName: 'Claude Code',
+      title: 'Approval pick chat',
+    });
+    activeChatsStore.updateChat(SESSION_ID, rehydrated!);
+    expect(chat().approvalModeOverride).toBe('never');
+    const fresh = renderComposer();
+    await continueInNewSession(fresh, 'ask');
+    expect(chat().fullAccessNotCarriedSessionId).toBeUndefined();
+  });
+
+  test('a new session that actually reports never: no notice', async () => {
+    const harness = renderComposer();
+    await runRootTurn(harness, 'never', 'never');
+    await continueInNewSession(harness, 'never');
+    expect(chat().fullAccessNotCarriedSessionId).toBeUndefined();
+  });
+
+  test('a new session whose posture is not reported: no notice', async () => {
+    const harness = renderComposer();
+    await runRootTurn(harness, 'never', 'never');
+    await continueInNewSession(harness, undefined);
+    harness.step(() => childReport('turn.started', 'c2', 'connection-default'));
+    expect(chat().fullAccessNotCarriedSessionId).toBeUndefined();
+  });
+
+  test('no pick at all: no notice', async () => {
+    const harness = renderComposer();
+    await runRootTurn(harness, undefined, 'ask');
+    await continueInNewSession(harness, 'ask');
+    expect(chat().fullAccessNotCarriedSessionId).toBeUndefined();
+  });
+
+  test('a revoke to Default, then a new session: no notice', async () => {
+    const harness = renderComposer();
+    await runRootTurn(harness, 'never', 'never');
+    harness.step(() =>
+      harness.composer.result.current.handleApprovalModeChange(
+        'connection-default',
+      ),
+    );
+    await continueInNewSession(harness, 'ask');
+    expect(chat().fullAccessNotCarriedSessionId).toBeUndefined();
+  });
 });
