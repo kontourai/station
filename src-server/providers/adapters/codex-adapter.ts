@@ -1655,6 +1655,12 @@ export class CodexAdapter implements ProviderAdapterShape {
     const resumeCursor = isResumeCursor(input.resumeCursor)
       ? input.resumeCursor
       : undefined;
+    if (resumeCursor && !adoption) {
+      await this.releaseIdleThreadHolder(
+        input.threadId,
+        resumeCursor.codexThreadId,
+      );
+    }
     const sourceAffinity =
       adoption?.input.sourceAffinity ?? resumeCursor?.sourceAffinity;
     let appHomeEnv: Record<string, string> | undefined;
@@ -2490,6 +2496,41 @@ export class CodexAdapter implements ProviderAdapterShape {
       method: 'request.resolved',
       status: mapApprovalResolutionStatus(outcome.decision),
     });
+  }
+
+  /**
+   * Codex allows ONE writer per native thread: its app-server refuses a
+   * `thread/resume` from a second process with "thread … already has an
+   * active writer". A conversation continues in a new Station session once
+   * its current one has finished a turn, but that finished session's
+   * app-server stays resident and still holds the thread — so every Codex
+   * follow-up after a completed turn failed to start. Release the holder
+   * first when it is idle; refuse, before spawning anything, when it is
+   * still running a turn rather than cut that turn off.
+   */
+  private async releaseIdleThreadHolder(
+    threadId: string,
+    codexThreadId: string,
+  ): Promise<void> {
+    const holders = this.transport
+      .listSessions()
+      .filter(
+        (candidate) =>
+          candidate.externalThreadId !== threadId &&
+          !candidate.stopped &&
+          candidate.codexThreadId === codexThreadId,
+      );
+    const running = holders.find((holder) => holder.activeTurnId);
+    if (running) {
+      throw new Error(
+        `Codex thread ${codexThreadId} is still running a turn in session ${running.externalThreadId}; stop that turn before continuing the conversation.`,
+      );
+    }
+    for (const holder of holders) {
+      await this.transport.stopSession(holder.externalThreadId, () =>
+        this.now().toISOString(),
+      );
+    }
   }
 
   async stopSession(threadId: string): Promise<void> {

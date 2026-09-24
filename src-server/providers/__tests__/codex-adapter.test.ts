@@ -4812,3 +4812,80 @@ test('external adoption forks the native thread and records its distinct child b
   process.stdout.write(`${JSON.stringify({ id: '3', result: {} })}\n`);
   await cleanup;
 });
+
+describe('a continuation takes the Codex thread over from its predecessor', () => {
+  // Codex allows one writer per native thread. A conversation continues in a
+  // new Station session after a finished turn, while the finished session's
+  // app-server stays resident — observed live as every Codex follow-up
+  // failing with "thread … already has an active writer".
+  async function startFresh(
+    adapter: CodexAdapter,
+    process: FakeCodexProcess,
+    threadId: string,
+    codexThreadId: string,
+  ): Promise<void> {
+    const session = adapter.startSession({
+      provider: 'codex',
+      threadId,
+      modelId: 'gpt-5-codex',
+    });
+    await flushIo();
+    process.stdout.write(`${JSON.stringify({ id: '1', result: {} })}\n`);
+    await flushIo();
+    process.stdout.write(
+      `${JSON.stringify({ id: '2', result: { thread: { id: codexThreadId } } })}\n`,
+    );
+    await session;
+  }
+
+  test('an idle predecessor is stopped before the new session resumes its thread', async () => {
+    const parent = new FakeCodexProcess();
+    const child = new FakeCodexProcess();
+    const processes = [parent, child];
+    const adapter = new CodexAdapter({
+      processFactory: () => processes.shift()!,
+    });
+    await startFresh(adapter, parent, 'conversation-1', 'codex-thread-1');
+
+    const continuation = adapter.startSession({
+      provider: 'codex',
+      threadId: 'conversation-1:session:child',
+      modelId: 'gpt-5-codex',
+      resumeCursor: { codexThreadId: 'codex-thread-1' },
+    });
+    await flushIo();
+    // The holder was released BEFORE the new process asked for the thread.
+    expect(parent.killed).toBe(true);
+    child.stdout.write(`${JSON.stringify({ id: '1', result: {} })}\n`);
+    await flushIo();
+    const resume = child.stdin.lines
+      .map((line) => JSON.parse(line))
+      .find((call) => call.method === 'thread/resume');
+    expect(resume?.params.threadId).toBe('codex-thread-1');
+    child.stdout.write(
+      `${JSON.stringify({ id: '2', result: { thread: { id: 'codex-thread-1' } } })}\n`,
+    );
+    await expect(continuation).resolves.toMatchObject({ status: 'ready' });
+    await expect(adapter.hasSession('conversation-1')).resolves.toBe(false);
+  });
+
+  test('a predecessor still running a turn is not cut off, and nothing is spawned', async () => {
+    const parent = new FakeCodexProcess();
+    const processFactory = vi.fn(() => parent);
+    const adapter = new CodexAdapter({ processFactory });
+    await startFresh(adapter, parent, 'conversation-2', 'codex-thread-2');
+    (adapter as any).transport.requireSession('conversation-2').activeTurnId =
+      'turn-live';
+
+    await expect(
+      adapter.startSession({
+        provider: 'codex',
+        threadId: 'conversation-2:session:child',
+        modelId: 'gpt-5-codex',
+        resumeCursor: { codexThreadId: 'codex-thread-2' },
+      }),
+    ).rejects.toThrow(/still running a turn/);
+    expect(parent.killed).toBe(false);
+    expect(processFactory).toHaveBeenCalledTimes(1);
+  });
+});
