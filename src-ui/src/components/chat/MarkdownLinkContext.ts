@@ -26,12 +26,6 @@ export interface MarkdownLinkContextValue {
   /** The project this dock is bound to, for the same comparison. */
   dockProjectSlug: string | null;
   /**
-   * True when this device's fold offers one dock region only (a phone). A
-   * side-region pane is not available there, so paths keep the main route and
-   * a pull request opens in the host's browser.
-   */
-  bottomOnly: boolean;
-  /**
    * The route a file preview took before #2049 and still takes wherever a
    * dock pane is not the answer: navigate `main` to the session's coding
    * layout with an open-preview intent. Null when the session has no coding

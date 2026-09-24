@@ -1956,7 +1956,8 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   // the dock's alongside it, because a dock pane binds the dock's project and
   // the two differing is what makes the pane route wrong rather than merely
   // unavailable. `openPathInMain` is the route a preview took before #2049
-  // and still takes on a bottom-only device or a mismatched binding.
+  // and still takes on a mismatched binding or when the model refuses the
+  // pane; a bottom-only device opens the pane over Chat (the phone layer).
   const conversationProjectSlug = activeSession?.projectSlug ?? null;
   const conversationProjectId = conversationProjectSlug
     ? (projects.find((project) => project.slug === conversationProjectSlug)
@@ -2006,7 +2007,6 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       projectSlug: conversationProjectSlug,
       projectId: conversationProjectId,
       dockProjectSlug,
-      bottomOnly: dockBottomOnly,
       // Where an absolute path in this conversation can point: the project's
       // checkout only. A session in an isolated worktree writes paths under
       // THAT directory, but the preview and the existence check read the
@@ -2037,7 +2037,6 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       conversationProjectDirectory,
       conversationProjectId,
       conversationProjectSlug,
-      dockBottomOnly,
       dockProjectSlug,
       sessionDisplayCwd,
       setLayout,
