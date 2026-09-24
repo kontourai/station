@@ -4,15 +4,17 @@ A Cloudflare Worker at `https://push.kontourai.io` that forwards Station-signed
 agent-activity messages to Firebase Cloud Messaging. Design and threat model:
 [docs/design/notification-delivery.md](../../docs/design/notification-delivery.md).
 
-It is deliberately outside the pnpm workspace: no dependencies, TypeScript run
-directly by Node's type stripping for tests and bundled by Wrangler for deploys.
+It is deliberately outside the pnpm workspace: it has no dependencies, and
+Wrangler bundles its TypeScript for deploys.
 
 ## Check
 
+The tests run in Station's own vitest corpus, so the merge queue runs them.
+From the repository root:
+
 ```sh
-cd deploy/push-gateway
-node --test test/*.test.ts                       # unit and handler tests
-npx tsc -p deploy/push-gateway/tsconfig.json     # from the repository root
+npm run test:focused -- deploy/push-gateway/test/*.test.ts
+npx tsc -p deploy/push-gateway/tsconfig.json
 ```
 
 ## Deploy

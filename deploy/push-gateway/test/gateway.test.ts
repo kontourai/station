@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { test } from 'node:test';
+import { test } from 'vitest';
 import { type GatewayConfig, handleRequest } from '../src/gateway.ts';
 import { jwkThumbprint } from '../src/station-auth.ts';
 import {

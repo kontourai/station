@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { test } from 'node:test';
+import { test } from 'vitest';
 import { parseSendRequest } from '../src/send-request.ts';
 import { PACKAGE, sendBody } from './helpers.ts';
 

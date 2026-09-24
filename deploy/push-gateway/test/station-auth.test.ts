@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { test } from 'node:test';
+import { test } from 'vitest';
 import { jwkThumbprint, verifyStationRequest } from '../src/station-auth.ts';
 import { AUDIENCE, NOW, sendBody, signRequest, stationKey } from './helpers.ts';
 
