@@ -2116,6 +2116,170 @@ describe('OrchestrationService', () => {
     ).toBe('conversation-idle');
   });
 
+  // #2540 slice 4: an idle engine nobody is using is parked — the process
+  // stops, the Session stays dormant (never `closed`, never "ended"), and the
+  // next turn restarts it in place. Nothing that listens for an ending may see
+  // one: no worktree finalization, no claim release, no "agent finished".
+  test('an unused idle session is parked without an ending, and its next turn restarts it in place', async () => {
+    const parkService = new OrchestrationService({
+      adapterRegistry: createRegistry([claude]),
+      eventBus,
+      eventStore,
+      flowRunService,
+      listProjects: () => configuredProjects,
+      workflowSidecarService,
+      logger: { debug: vi.fn(), warn: vi.fn() },
+      idleSessionParkAfterMs: 60_000,
+      idleSessionSweepMs: 3_600_000,
+    });
+    // Like every real adapter: stopping an engine publishes its exit.
+    claude.stopSession.mockImplementation(async (threadId) => {
+      claude.sessions.delete(threadId);
+      claude.events.push({
+        eventId: `${threadId}:exited`,
+        provider: 'claude',
+        threadId,
+        sessionId: threadId,
+        method: 'session.exited',
+        reason: 'stopped',
+        createdAt: new Date().toISOString(),
+      } as CanonicalRuntimeEvent);
+    });
+    const published: string[] = [];
+    const unsubscribe = eventBus.subscribe((message) => {
+      const data = (message as { data?: { method?: string } }).data;
+      if (data?.method) published.push(data.method);
+    });
+    const runTurn = async (threadId: string, turnId: string) => {
+      claude.events.push({
+        eventId: `${threadId}-configured`,
+        provider: 'claude',
+        threadId,
+        sessionId: threadId,
+        method: 'session.configured',
+        metadata: { userId: 'owner-user' },
+        createdAt: new Date().toISOString(),
+      } as CanonicalRuntimeEvent);
+      claude.events.push({
+        eventId: `${threadId}-${turnId}-started`,
+        provider: 'claude',
+        threadId,
+        turnId,
+        method: 'turn.started',
+        prompt: 'work',
+        createdAt: new Date().toISOString(),
+      } as CanonicalRuntimeEvent);
+      // A turn in flight is never parked.
+      await vi.waitFor(async () =>
+        expect(
+          (await parkService.readSession(threadId))?.session.lifecycleState,
+        ).toBe('running'),
+      );
+      await expect(
+        parkService.sweepIdleSessions(Date.now() + 120_000),
+      ).resolves.toEqual([]);
+      claude.events.push({
+        eventId: `${threadId}-${turnId}-completed`,
+        provider: 'claude',
+        threadId,
+        turnId,
+        method: 'turn.completed',
+        finishReason: 'stop',
+        createdAt: new Date().toISOString(),
+      } as CanonicalRuntimeEvent);
+      await vi.waitFor(async () =>
+        expect(
+          (await parkService.readSession(threadId))?.session.lifecycleState,
+        ).toBe('idle'),
+      );
+    };
+    try {
+      // No resume cursor: restarting it would lose the conversation's
+      // context, so it is never parked.
+      const withoutCursor = await parkService.sessionCommands.execute(
+        {
+          type: 'start-session',
+          input: {
+            threadId: 'unresumable-conversation',
+            provider: 'claude',
+            metadata: { userId: 'owner-user' },
+          },
+        },
+        { userId: 'owner-user' },
+      );
+      if (withoutCursor.status !== 'accepted')
+        throw new Error(withoutCursor.message);
+      await runTurn('unresumable-conversation', 'turn-u');
+
+      claude.startSession.mockImplementationOnce(async (input) => {
+        const session = {
+          provider: 'claude' as const,
+          threadId: input.threadId,
+          status: 'ready' as const,
+          resumeCursor: { claudeSessionId: 'native-parked' },
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+        claude.sessions.set(input.threadId, session);
+        return session;
+      });
+      const started = await parkService.sessionCommands.execute(
+        {
+          type: 'start-session',
+          input: {
+            threadId: 'parked-conversation',
+            provider: 'claude',
+            metadata: { userId: 'owner-user' },
+          },
+        },
+        { userId: 'owner-user' },
+      );
+      if (started.status !== 'accepted') throw new Error(started.message);
+      await runTurn('parked-conversation', 'turn-one');
+
+      // Recently used: kept.
+      await expect(parkService.sweepIdleSessions()).resolves.toEqual([]);
+      expect(claude.stopSession).not.toHaveBeenCalled();
+
+      // Unused past the threshold: parked.
+      await expect(
+        parkService.sweepIdleSessions(Date.now() + 120_000),
+      ).resolves.toEqual(['parked-conversation']);
+      expect(claude.stopSession).toHaveBeenCalledWith('parked-conversation');
+      // Let the engine's exit reach the service before judging it absorbed.
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(
+        eventStore
+          .listEvents('parked-conversation')
+          .some((event) => event.payload.method === 'session.exited'),
+      ).toBe(false);
+      expect(published).not.toContain('session.exited');
+      const parked = await parkService.readSession('parked-conversation');
+      expect(parked?.session.lifecycleState).toBe('idle');
+      expect(parked?.session.status).not.toBe('closed');
+
+      // The next turn restarts the engine in place: same Session, no child.
+      const startsBefore = claude.startSession.mock.calls.length;
+      await parkService.dispatchWithReceipt(
+        {
+          type: 'sendTurn',
+          input: { threadId: 'parked-conversation', input: 'again' },
+        },
+        { userId: 'owner-user' },
+      );
+      expect(claude.startSession.mock.calls.length).toBe(startsBefore + 1);
+      expect(claude.startSession.mock.calls.at(-1)?.[0].threadId).toBe(
+        'parked-conversation',
+      );
+      expect(claude.sendTurn.mock.calls.at(-1)?.[0].threadId).toBe(
+        'parked-conversation',
+      );
+    } finally {
+      unsubscribe();
+      await parkService.shutdown();
+    }
+  });
+
   test('an idle session whose engine binding was closed continues in a successor', async () => {
     claude.startSession.mockImplementationOnce(async (input) => {
       const session = {

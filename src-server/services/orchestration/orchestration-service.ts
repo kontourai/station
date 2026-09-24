@@ -586,6 +586,12 @@ class DraftDiscardRefusedError extends Error {
 
 /** #2312 verifier M2: cap on waiting for a discarded engine's exit. */
 const DRAFT_DISCARD_EXIT_WAIT_MS = 2_000;
+/** #2540: an idle session's engine is parked after this long unused. */
+export const IDLE_SESSION_PARK_AFTER_MS = 30 * 60_000;
+/** #2540: how often idle sessions are checked for parking. */
+export const IDLE_SESSION_SWEEP_MS = 5 * 60_000;
+/** A parked engine's exit that has not arrived by then no longer belongs to the park. */
+const PARKED_EXIT_GRACE_MS = 60_000;
 /** #2312: most discarded ids the late-event gate remembers at once. */
 const DISCARDED_DRAFT_GATE_MAX = 256;
 
@@ -704,6 +710,15 @@ interface OrchestrationServiceOptions {
     provider: EngineId;
     connectionId?: string;
   }) => boolean | undefined;
+  /**
+   * #2540: an `idle` session whose engine has been unused this long is
+   * parked — its engine process stops, the session stays dormant and
+   * restarts in place on its next turn. `0` disables parking. Default
+   * {@link IDLE_SESSION_PARK_AFTER_MS}.
+   */
+  idleSessionParkAfterMs?: number;
+  /** How often idle sessions are checked. Default {@link IDLE_SESSION_SWEEP_MS}. */
+  idleSessionSweepMs?: number;
   /** Real connection Adapter composed by StationRuntime; never a recovery protocol. */
   credentialProfileRecoveryAdapter?: CredentialProfileRecoveryAdapter;
   /** Hosted deployments fail closed for direct/internal starts without a server binding. */
@@ -1719,6 +1734,15 @@ export class OrchestrationService {
   private readonly turnAdmissions = new Set<OrchestrationTurnAdmission>();
   private started = false;
   /**
+   * #2540: threads whose engine this service is parking. Their engine's
+   * `session.exited` is absorbed, not projected: a park is resource
+   * management, not an ending — no listener may finalize a worktree, release
+   * a claim, or announce the agent finished, and the row must stay dormant
+   * (not `closed`) so the next turn restarts it in place.
+   */
+  private readonly parkingThreads = new Set<string>();
+  private idleSweepTimer: ReturnType<typeof setInterval> | undefined;
+  /**
    * archive#1745: whether this process's startup attachment pass has FINISHED
    * — not whether it succeeded.
    *
@@ -2535,6 +2559,18 @@ export class OrchestrationService {
     if (this.started) return;
     this.started = true;
     this.adoption.registerOwner();
+    const parkAfterMs =
+      this.options.idleSessionParkAfterMs ?? IDLE_SESSION_PARK_AFTER_MS;
+    if (parkAfterMs > 0) {
+      this.idleSweepTimer = setInterval(() => {
+        void this.sweepIdleSessions().catch((error) => {
+          this.options.logger.warn('Idle session sweep failed', {
+            error: errorMessage(error),
+          });
+        });
+      }, this.options.idleSessionSweepMs ?? IDLE_SESSION_SWEEP_MS);
+      this.idleSweepTimer.unref?.();
+    }
 
     this.consumeCurrentAdapterEvents();
     this.adapterRegistryUnsubscribe = this.options.adapterRegistry.onChange?.(
@@ -3213,6 +3249,8 @@ export class OrchestrationService {
   }
 
   async shutdown(): Promise<void> {
+    if (this.idleSweepTimer) clearInterval(this.idleSweepTimer);
+    this.idleSweepTimer = undefined;
     this.transcriptSearchStopped = true;
     this.sessionAuthz.stopTranscriptReads();
     const transcriptRetirement = this.isolatedTranscriptSearch?.close();
@@ -7779,6 +7817,15 @@ export class OrchestrationService {
           previousState,
           turnIdentityAnchor,
         );
+        // #2540: the exit of an engine this service parked is absorbed — see
+        // `parkingThreads`. The session stays dormant and restarts in place.
+        if (
+          normalized.method === 'session.exited' &&
+          this.parkingThreads.delete(normalized.threadId)
+        ) {
+          this.sessionAdapters.delete(normalized.threadId);
+          continue;
+        }
         if (!this.quarantinedThreads.has(normalized.threadId)) {
           this.sessionAdapters.set(normalized.threadId, adapter);
         }
@@ -8765,6 +8812,109 @@ export class OrchestrationService {
   // source of a stale terminal from the same bounded set this method reads,
   // so this call site is a beneficiary of that fix, not a second place that
   // needed its own change.
+  /**
+   * #2540: park every `idle` session whose engine has been unused for
+   * `idleSessionParkAfterMs`. Parking stops the engine process and leaves
+   * the session dormant — its next turn restarts it in place from its resume
+   * cursor — so an unused conversation holds no process, and a used one never
+   * holds more than one. Returns the parked thread ids.
+   */
+  async sweepIdleSessions(now = Date.now()): Promise<string[]> {
+    const parkAfterMs =
+      this.options.idleSessionParkAfterMs ?? IDLE_SESSION_PARK_AFTER_MS;
+    if (parkAfterMs <= 0) return [];
+    const parked: string[] = [];
+    for (const [threadId, adapter] of [...this.sessionAdapters]) {
+      if (!this.isParkableIdleSession(threadId, now, parkAfterMs)) continue;
+      try {
+        if (await this.parkIdleSession(threadId, adapter, now, parkAfterMs))
+          parked.push(threadId);
+      } catch (error) {
+        this.options.logger.warn('Idle session was not parked', {
+          threadId,
+          error: errorMessage(error),
+        });
+      }
+    }
+    return parked;
+  }
+
+  private isParkableIdleSession(
+    threadId: string,
+    now: number,
+    parkAfterMs: number,
+  ): boolean {
+    if (
+      this.parkingThreads.has(threadId) ||
+      this.materializingSessions.has(threadId) ||
+      this.quarantinedThreads.has(threadId) ||
+      this.isReadOnlyAttachedSession(threadId) ||
+      this.isPeerDelegationActivityRecord(threadId) ||
+      this.sessionExecutionCoordinator.hasActiveTurn(threadId)
+    )
+      return false;
+    const session = this.sessionReadModel.get(threadId);
+    if (!session || session.status === 'closed' || session.status === 'dead')
+      return false;
+    const lastActivity = Date.parse(session.updatedAt);
+    if (!Number.isFinite(lastActivity) || now - lastActivity < parkAfterMs)
+      return false;
+    // Only an engine that can pick the conversation back up is parked: the
+    // in-place restart resumes from this cursor, and without one (or on an
+    // engine observed unable to resume) it would restart without the
+    // conversation's context.
+    if (session.resumeCursor === undefined || session.resumeCursor === null)
+      return false;
+    const connectionId =
+      this.latestStartedMetadataOfThread(threadId)?.connectionId;
+    if (
+      this.options.resumeCursorSupport?.({
+        provider: session.provider,
+        ...(typeof connectionId === 'string' ? { connectionId } : {}),
+      }) === false
+    )
+      return false;
+    return this.readCurrentLifecycleState(threadId) === 'idle';
+  }
+
+  private parkIdleSession(
+    threadId: string,
+    adapter: ProviderAdapterShape,
+    now: number,
+    parkAfterMs: number,
+  ): Promise<boolean> {
+    // Serialized with turn starts: a send that arrives first wins, and the
+    // park re-checks everything under the lock before touching the engine.
+    return this.sessionExecutionCoordinator.runLifecycleTransition(
+      threadId,
+      async () => {
+        if (
+          this.sessionAdapters.get(threadId) !== adapter ||
+          !this.isParkableIdleSession(threadId, now, parkAfterMs)
+        )
+          return false;
+        this.parkingThreads.add(threadId);
+        try {
+          await adapter.stopSession(threadId);
+        } catch (error) {
+          this.parkingThreads.delete(threadId);
+          throw error;
+        }
+        this.sessionAdapters.delete(threadId);
+        // What the absorbed exit would have cleared: a respawned engine
+        // starts at whatever its own start resolves.
+        this.clientOriginTurns.clearThread(threadId);
+        this.approvalPosture.forgetThread(threadId);
+        setTimeout(
+          () => this.parkingThreads.delete(threadId),
+          PARKED_EXIT_GRACE_MS,
+        ).unref?.();
+        this.options.logger.debug('Parked idle session engine', { threadId });
+        return true;
+      },
+    );
+  }
+
   private readCurrentLifecycleState(
     threadId: string,
   ): SessionLifecycleState | undefined {
@@ -8944,6 +9094,8 @@ export class OrchestrationService {
   ): Promise<ProviderAdapterShape | undefined> {
     const inFlight = this.materializingSessions.get(threadId);
     if (inFlight) return inFlight;
+    // A restarted engine's exits are its own, never the parked one's.
+    this.parkingThreads.delete(threadId);
     const started = this.materializeRecoveredSessionOnce(
       threadId,
       admission,
