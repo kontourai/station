@@ -1598,6 +1598,8 @@ export class OrchestrationService {
    * its conversation is here.
    */
   private readonly startsUnderway = new Map<string, number>();
+  /** #2312: see `rememberDiscardedConversation`. */
+  private readonly discardedConversations = new Set<string>();
   /** #2312 verifier M2: see `awaitDiscardedEngineExit`. */
   private readonly discardedEngineExitWaiters = new Map<string, () => void>();
   /**
@@ -5241,6 +5243,11 @@ export class OrchestrationService {
     context: SessionCommandContext,
     internal: SessionCommandInternalOptions,
   ): Promise<SessionCommandOutcome> {
+    const refused = this.refusedDiscardedSuccessorStart(
+      command.input,
+      context.clientOrigin,
+    );
+    if (refused) return refused;
     return this.trackStartUnderway(command.input.threadId, () =>
       this.sessionCommandImplementation.executeInternal(
         command,
@@ -5359,9 +5366,12 @@ export class OrchestrationService {
     >
   > {
     if (command.type === 'startSession') {
-      const outcome = await this.trackStartUnderway(
-        command.input.threadId,
-        () =>
+      const outcome =
+        this.refusedDiscardedSuccessorStart(
+          command.input,
+          context?.clientOrigin,
+        ) ??
+        (await this.trackStartUnderway(command.input.threadId, () =>
           internal
             ? this.sessionCommandImplementation.executeInternal(
                 { type: 'start-session', input: command.input },
@@ -5372,7 +5382,7 @@ export class OrchestrationService {
                 { type: 'start-session', input: command.input },
                 context ?? {},
               ),
-      );
+        ));
       if (outcome.status === 'accepted') {
         return { receipt: outcome.receipt, result: outcome.session };
       }
@@ -6881,11 +6891,16 @@ export class OrchestrationService {
     const eventStore = this.options.eventStore;
     if (!eventStore) throw new DraftDiscardRefusedError(threadId);
     const members = eventStore.conversationSessionIds(threadId);
+    const conversationId =
+      eventStore.conversationForSession(threadId)?.conversationId ?? threadId;
     // Delta HIGH: a start underway is not "never started" — a fresh start
     // has no row, read model or events until it resolves. Such a
     // conversation is refused outright (`draft_busy`), never exempted.
     const startUnderway = (member: string) =>
-      this.startsUnderway.has(member) || this.materializingSessions.has(member);
+      this.startsUnderway.has(member) ||
+      // Recovery marks `materializingSessions` before its preparation; its
+      // engine start is counted only once it reaches `runEngineSessionStart`.
+      this.materializingSessions.has(member);
     const assertNoStartUnderway = () => {
       if (members.some(startUnderway)) throw new DraftDiscardBusyError();
     };
@@ -6990,6 +7005,7 @@ export class OrchestrationService {
         });
       }
       eventStore.deleteConversationLineageRows(members);
+      this.rememberDiscardedConversation(conversationId);
     };
     // Review LOW: a turn in flight is a turn, which ends a Draft by
     // definition — a definitive refusal (`not_a_draft`, a rejected receipt),
@@ -7007,12 +7023,15 @@ export class OrchestrationService {
     try {
       await locked();
     } catch (error) {
-      if (
-        !(error instanceof DraftDiscardRefusedError) &&
-        !(error instanceof DraftDiscardNotAuthorizedError) &&
-        !(error instanceof DraftDiscardBusyError) &&
-        turnInFlight()
-      )
+      const refusal =
+        error instanceof DraftDiscardRefusedError ||
+        error instanceof DraftDiscardNotAuthorizedError ||
+        error instanceof DraftDiscardBusyError;
+      // A lock refused because a member is starting is busy, not "not a
+      // Draft": the start's boundary claim reads as possible effect.
+      if (!refusal && members.some(startUnderway))
+        throw new DraftDiscardBusyError();
+      if (!refusal && turnInFlight())
         throw new DraftDiscardRefusedError(threadId);
       throw error;
     }
@@ -7031,6 +7050,62 @@ export class OrchestrationService {
       if (oldest === undefined) break;
       this.discardedDraftThreads.delete(oldest);
     }
+  }
+
+  /**
+   * #2312 final delta: a continuation reserves its successor synchronously
+   * but starts it only after further awaits. A discard landing in that gap
+   * deletes the conversation (the reservation included), and the start would
+   * then succeed as an orphan session nobody's chat points at. That start is
+   * refused instead, with the discard's own words.
+   */
+  private rememberDiscardedConversation(conversationId: string): void {
+    this.discardedConversations.delete(conversationId);
+    this.discardedConversations.add(conversationId);
+    while (this.discardedConversations.size > DISCARDED_DRAFT_GATE_MAX) {
+      const oldest = this.discardedConversations.values().next().value;
+      if (oldest === undefined) break;
+      this.discardedConversations.delete(oldest);
+    }
+  }
+
+  /**
+   * A start for a SUCCESSOR (its conversation is not itself) of a discarded
+   * conversation, whose reservation the discard removed. A successor
+   * reserved again later has its lineage row, and starts normally; a start
+   * on the conversation's own id is a new chat on that id, and starts too.
+   */
+  private refusedDiscardedSuccessorStart(
+    input: SessionCommand['input'],
+    clientOrigin?: ClientOrigin,
+  ): SessionCommandOutcome | undefined {
+    const conversationId = input.metadata?.conversationId;
+    if (
+      typeof conversationId !== 'string' ||
+      conversationId === input.threadId ||
+      !this.discardedConversations.has(conversationId) ||
+      this.options.eventStore?.conversationForSession(input.threadId)
+    )
+      return undefined;
+    const receipt = withClientOrigin<OrchestrationCommandReceipt>(
+      {
+        commandId: crypto.randomUUID(),
+        threadId: input.threadId,
+        commandType: 'startSession',
+        status: 'rejected',
+        createdAt: new Date().toISOString(),
+      },
+      clientOrigin,
+    );
+    this.persistReceipt(receipt, 'authorization');
+    const refused = new DraftDiscardedError();
+    return {
+      status: 'rejected',
+      receipt,
+      receiptStatus: 'persisted',
+      message: refused.message,
+      code: refused.code,
+    };
   }
 
   /** Resolves on the discarded engine's `session.exited`, or at the cap. */

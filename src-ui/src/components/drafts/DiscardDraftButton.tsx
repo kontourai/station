@@ -66,6 +66,19 @@ function useDiscardDraft(
 /** More local chats than one device ever holds for one session. */
 const MAX_CHATS_CLOSED_PER_SESSION = 64;
 
+/**
+ * `draft_busy` is the one refusal worth its own words: it is retryable
+ * (a start was underway on another device or tab), and the server's
+ * sentence says so. Anything else reads as the generic failure.
+ */
+function discardFailureText(error: unknown): string {
+  return error instanceof Error &&
+    (error as { code?: unknown }).code === 'draft_busy' &&
+    error.message.trim()
+    ? error.message
+    : DISCARD_DRAFT_FAILED;
+}
+
 export const DISCARD_DRAFT_FAILED =
   'Could not discard this draft. It may have started since this list was read.';
 
@@ -118,7 +131,7 @@ export function DiscardDraftButton({
       </button>
       {discard.isError && (
         <span className="discard-draft__error" role="alert">
-          {DISCARD_DRAFT_FAILED}
+          {discardFailureText(discard.error)}
         </span>
       )}
     </>

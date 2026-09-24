@@ -6645,6 +6645,58 @@ describe('OrchestrationService', () => {
     ).not.toContain(child);
   });
 
+  // #2312 final delta: a continuation reserves its successor, awaits, then
+  // starts it. A discard completing in that gap removed the reservation; the
+  // start must refuse with the discard's own words, not become an orphan.
+  test('#2312: a successor start after its conversation was discarded is refused as discarded; a new chat on the id still starts', async () => {
+    const draft = 'draft-reserved-then-discarded';
+    const child = `${draft}:session:reserved`;
+    await service.dispatch({
+      type: 'startSession',
+      input: { threadId: draft, provider: 'bedrock', cwd: tmp },
+    });
+    eventStore.reserveNextConversationSession({
+      conversationId: draft,
+      predecessorSessionId: draft,
+      proposedSessionId: child,
+      createdAt: new Date().toISOString(),
+    });
+    await service.dispatchWithReceipt({
+      type: 'discardDraft',
+      threadId: draft,
+    });
+    expect(eventStore.conversationSessions(draft)).toEqual([]);
+
+    const refused = await service
+      .dispatch({
+        type: 'startSession',
+        input: {
+          threadId: child,
+          provider: 'bedrock',
+          cwd: tmp,
+          metadata: { conversationId: draft },
+        },
+      })
+      .then(
+        () => undefined,
+        (caught: unknown) => caught as { code?: string; message: string },
+      );
+
+    expect(refused?.code).toBe('draft_discarded');
+    expect(refused?.message).toContain('This draft was discarded');
+    expect(bedrock.startSession).not.toHaveBeenCalledWith(
+      expect.objectContaining({ threadId: child }),
+    );
+    expect(eventStore.readSessionByThread(child)).toBeUndefined();
+    // Control: the conversation's own id is a new chat, and starts.
+    await expect(
+      service.dispatch({
+        type: 'startSession',
+        input: { threadId: draft, provider: 'bedrock', cwd: tmp },
+      }),
+    ).resolves.toMatchObject({ threadId: draft });
+  });
+
   // #2312 review LOW: a turn in flight is a turn, so the refusal is the
   // definitive `not_a_draft` (a rejected receipt), not the lifecycle lock's
   // generic failure.

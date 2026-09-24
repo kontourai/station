@@ -274,6 +274,24 @@ describe('#2312 discarding Drafts from the inbox', () => {
     expect(onCloseChat).not.toHaveBeenCalled();
   });
 
+  it("a busy refusal shows the server's retryable wording, not the generic failure", async () => {
+    const BUSY =
+      'This draft is starting on another device or tab, so it was not discarded. Try again in a moment.';
+    dispatch.mockRejectedValue(
+      Object.assign(new Error(BUSY), { code: 'draft_busy' }),
+    );
+    const rows = items([FRESH]);
+    renderPanel(rows);
+
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: `Discard draft ${titleOf(rows, FRESH.threadId)}`,
+      }),
+    );
+
+    expect((await screen.findByRole('alert')).textContent).toBe(BUSY);
+  });
+
   it('a Draft untouched for more than a day folds under "N older drafts" until opened', () => {
     const rows = items([FRESH, STALE]);
     renderPanel(rows);
