@@ -227,7 +227,7 @@ enum LiveActivities {
 
   static func pushToStartToken(timeout seconds: Double) async -> Data? {
     if let token = StationActivity.pushToStartToken { return token }
-    return await firstValue(of: StationActivity.pushToStartTokenUpdates, timeout: seconds)
+    return await firstValue(timeout: seconds) { StationActivity.pushToStartTokenUpdates }
   }
 
   #if DEBUG

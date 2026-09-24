@@ -1,46 +1,99 @@
 import Foundation
 
-/// The first element `sequence` produces, or nil once `seconds` pass.
+/// The first element of the sequence `makeSequence` builds, or nil once
+/// `seconds` pass, the sequence ends, or the calling task is cancelled.
 ///
 /// A task group cannot express this: it returns only after every child
 /// finishes, and a sequence that ignores cancellation (ActivityKit's
 /// `pushToStartTokenUpdates` is not documented to honour it) would keep the
-/// caller waiting forever. Here the reader runs in its own task, whichever
-/// of value, end or deadline comes first resumes the caller exactly once,
-/// and the reader is cancelled and left behind if it never returns.
-public func firstValue<S: AsyncSequence>(of sequence: S, timeout seconds: Double) async -> S.Element? {
-  await withCheckedContinuation { (continuation: CheckedContinuation<S.Element?, Never>) in
-    let resume = ResumeOnce(continuation)
-    let reader = Task {
-      do {
-        for try await value in sequence {
-          resume(value)
-          return
-        }
-      } catch {}
-      resume(nil)
+/// caller waiting forever. Here the reader and the deadline run as their own
+/// tasks, whichever outcome comes first answers the caller exactly once, and
+/// both tasks are then cancelled; a reader that never returns is left behind.
+///
+/// The sequence is built inside the reader task, so it need not be Sendable
+/// (ActivityKit's `PushTokenUpdates` is not); only its elements cross tasks.
+public func firstValue<S: AsyncSequence>(
+  timeout seconds: Double,
+  of makeSequence: @escaping @Sendable () -> S
+) async -> S.Element?
+where S: SendableMetatype, S.AsyncIterator: SendableMetatype, S.Element: Sendable {
+  let once = ResumeOnce<S.Element>()
+  return await withTaskCancellationHandler {
+    await withCheckedContinuation { (continuation: CheckedContinuation<S.Element?, Never>) in
+      once.install { continuation.resume(returning: $0) }
+      once.track(
+        Task {
+          do {
+            for try await value in makeSequence() {
+              once.resume(value)
+              return
+            }
+          } catch {}
+          once.resume(nil)
+        })
+      once.track(
+        Task {
+          do {
+            try await Task.sleep(nanoseconds: UInt64(max(0, seconds) * 1_000_000_000))
+          } catch {
+            return  // Cancelled because another outcome already answered.
+          }
+          once.resume(nil)
+        })
     }
-    Task {
-      try? await Task.sleep(nanoseconds: UInt64(max(0, seconds) * 1_000_000_000))
-      resume(nil)
-      reader.cancel()
-    }
+  } onCancel: {
+    once.resume(nil)
   }
 }
 
-private final class ResumeOnce<Value> {
+/// Delivers one answer and cancels the tasks racing to give it. Every member
+/// is read and written under `lock`, hence the unchecked Sendable.
+final class ResumeOnce<Value: Sendable>: @unchecked Sendable {
   private let lock = NSLock()
-  private var continuation: CheckedContinuation<Value?, Never>?
+  private var answered = false
+  private var answer: Value?
+  private var deliver: (@Sendable (Value?) -> Void)?
+  private var tasks: [Task<Void, Never>] = []
 
-  init(_ continuation: CheckedContinuation<Value?, Never>) {
-    self.continuation = continuation
+  /// Where the answer goes. An answer given before this (the caller was
+  /// cancelled first) is delivered at once.
+  func install(_ deliver: @escaping @Sendable (Value?) -> Void) {
+    lock.lock()
+    if answered {
+      let answer = self.answer
+      lock.unlock()
+      deliver(answer)
+      return
+    }
+    self.deliver = deliver
+    lock.unlock()
   }
 
-  func callAsFunction(_ value: Value?) {
+  func track(_ task: Task<Void, Never>) {
     lock.lock()
-    let pending = continuation
-    continuation = nil
+    if answered {
+      lock.unlock()
+      task.cancel()
+      return
+    }
+    tasks.append(task)
     lock.unlock()
-    pending?.resume(returning: value)
+  }
+
+  func resume(_ value: Value?) {
+    lock.lock()
+    guard !answered else {
+      lock.unlock()
+      return
+    }
+    answered = true
+    answer = value
+    let deliver = self.deliver
+    self.deliver = nil
+    let tasks = self.tasks
+    self.tasks = []
+    lock.unlock()
+    for task in tasks { task.cancel() }
+    deliver?(value)
   }
 }

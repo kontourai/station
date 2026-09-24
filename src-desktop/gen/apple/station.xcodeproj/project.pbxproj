@@ -95,11 +95,9 @@
 		AED4AC48A6B4CB61C93B8D80 /* StationAgentActivity.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = StationAgentActivity.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		AFC2B8495E29FD157E17EEAD /* WebKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WebKit.framework; path = System/Library/Frameworks/WebKit.framework; sourceTree = SDKROOT; };
 		BB85CE7E4851316560BE5099 /* bundled_server_state.rs */ = {isa = PBXFileReference; path = bundled_server_state.rs; sourceTree = "<group>"; };
-		BD0505145B0C90ECCD18969D /* StationSimulator.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = StationSimulator.entitlements; sourceTree = "<group>"; };
 		CB41E9A4D283F509B6AD9307 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
 		CEADBA2F0FC0432181CF6049 /* notification_watch.rs */ = {isa = PBXFileReference; path = notification_watch.rs; sourceTree = "<group>"; };
 		D12D8AFF0E5136982B70DEF7 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
-		D18697E18A312FF0B04BBAB7 /* StationAgentActivitySimulator.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = StationAgentActivitySimulator.entitlements; sourceTree = "<group>"; };
 		D40C7F8B6048F3B5A32C2B66 /* StationAgentActivityWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StationAgentActivityWidget.swift; sourceTree = "<group>"; };
 		D59DE748810D013D359DCE4E /* UIKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UIKit.framework; path = System/Library/Frameworks/UIKit.framework; sourceTree = SDKROOT; };
 		DEEC8FDAE0A0484BFBFE00E4 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
@@ -173,8 +171,6 @@
 			children = (
 				5846F69BCDF7A7941E78AAF4 /* Info.plist */,
 				A3A6E4C2C130FC18D4CBBA25 /* station_iOS.entitlements */,
-				D18697E18A312FF0B04BBAB7 /* StationAgentActivitySimulator.entitlements */,
-				BD0505145B0C90ECCD18969D /* StationSimulator.entitlements */,
 			);
 			path = station_iOS;
 			sourceTree = "<group>";
