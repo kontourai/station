@@ -1295,7 +1295,9 @@ fn release_provisional_quarantine_after_commit_locked(
     else {
         return Err(NativeRedemptionError::GrantStore);
     };
-    if entry.route != binding.route {
+    if entry.route != binding.route
+        || entry.grant_secret_digest != native_grant_secret_digest(expected_grant)
+    {
         return Err(NativeRedemptionError::GrantStore);
     }
     let record_account = native_grant_cleanup_record_account(owner, cleanup_id)?;
@@ -3052,6 +3054,69 @@ mod tests {
     }
 
     #[test]
+    fn provisional_record_delete_then_error_recovers_from_active_grant_after_restart() {
+        let prepared = prepared("https://broker.example".to_owned(), 7);
+        let backend = MemoryNativeGrantBackend::default();
+        backend.shared.lock().unwrap().fail_after_delete_number = Some(1);
+        let first_vault = NativeRelayGrantVault::new(backend.clone());
+        let grant = sample_grant(&prepared, NOW + 3_600_000);
+        let route = native_route_for_grant(&grant);
+        let failure = first_vault.store(&prepared.owner, &grant, NOW).unwrap_err();
+        assert_eq!(
+            failure.write_disposition,
+            NativeGrantStoreWriteDisposition::MayHaveWritten
+        );
+        let cleanup_id = failure.cleanup_id.unwrap();
+        let record_account =
+            native_grant_cleanup_record_account(&prepared.owner, &cleanup_id).unwrap();
+        {
+            let backend = first_vault.backend.lock().unwrap();
+            let shared = backend.shared.lock().unwrap();
+            assert!(!shared.values.contains_key(&record_account));
+            assert!(shared
+                .values
+                .get(&native_grant_cleanup_index_account(&prepared.owner))
+                .unwrap()
+                .contains(&cleanup_id));
+        }
+        assert!(first_vault
+            .metadata(&prepared.owner, &route, NOW)
+            .unwrap()
+            .is_none());
+        drop(first_vault);
+
+        let restarted_vault = NativeRelayGrantVault::new(backend);
+        assert!(restarted_vault
+            .metadata(&prepared.owner, &route, NOW)
+            .unwrap()
+            .is_none());
+        let transport = SuccessfulRetirement;
+        let service = service(
+            &prepared.authority,
+            &prepared.proof_keys,
+            &transport,
+            &restarted_vault,
+        );
+        service
+            .retry_pending_cleanup(&prepared.owner, &cleanup_id)
+            .unwrap();
+        assert!(restarted_vault
+            .pending_cleanups(&prepared.owner)
+            .unwrap()
+            .is_empty());
+        assert!(restarted_vault
+            .metadata(&prepared.owner, &route, NOW)
+            .unwrap()
+            .is_none());
+        let backend = restarted_vault.backend.lock().unwrap();
+        let shared = backend.shared.lock().unwrap();
+        assert!(shared
+            .values
+            .values()
+            .all(|value| !value.contains(&"S".repeat(43))));
+    }
+
+    #[test]
     fn native_grant_maximum_age_is_twenty_four_hours() {
         let prepared = prepared("https://broker.example".to_owned(), 7);
         let too_long = sample_grant(&prepared, NOW + MAX_GRANT_AGE_MS + 1);
@@ -3122,6 +3187,7 @@ struct MemoryNativeGrantBackendState {
     fail_after_set_number: Option<usize>,
     sets: usize,
     fail_delete_number: Option<usize>,
+    fail_after_delete_number: Option<usize>,
     deletes: usize,
 }
 
@@ -3161,6 +3227,9 @@ impl NativeGrantBackend for MemoryNativeGrantBackend {
             return Err(NativeRedemptionError::GrantStore);
         }
         shared.values.remove(account);
+        if shared.fail_after_delete_number == Some(shared.deletes) {
+            return Err(NativeRedemptionError::GrantStore);
+        }
         Ok(())
     }
 }
