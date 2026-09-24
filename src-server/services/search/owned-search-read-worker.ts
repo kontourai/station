@@ -1,13 +1,22 @@
 import { isAbsolute } from 'node:path';
 import { Worker } from 'node:worker_threads';
+import {
+  errorClassFields,
+  type SearchReadRefusal,
+} from './search-read-refusal.js';
 
 type Phase = 'idle' | 'running' | 'retiring' | 'incomplete' | 'closed';
 export interface OwnedSearchReadWorker {
-  /** Only fixed built-in adapters supply these bounded encoders/decoders; neither crosses the port. */
+  /**
+   * Only fixed built-in adapters supply these bounded encoders/decoders;
+   * neither crosses the port. `report` is told which branch produced a
+   * `null` (#2460) — for the owner's log, never for a response.
+   */
   execute<T>(
     encode: (id: number) => string | null,
     decode: (value: unknown) => T | null,
     signal?: AbortSignal,
+    report?: (refusal: SearchReadRefusal) => void,
   ): Promise<T | null>;
   /**
    * Start the worker if it is not started, and resolve once it has posted the
@@ -73,6 +82,8 @@ export function createOwnedSearchReadWorker(
     decode: (value: unknown) => unknown | null;
     signal?: AbortSignal;
     finish: (page: unknown) => void;
+    /** Settles with no result; the first recorded cause wins. */
+    refuse: (refusal: SearchReadRefusal) => void;
   };
   type OwnedWorker = {
     worker: Worker;
@@ -85,11 +96,14 @@ export function createOwnedSearchReadWorker(
   };
   let owned: OwnedWorker | undefined;
 
-  function retire(record: OwnedWorker) {
+  function retire(
+    record: OwnedWorker,
+    refusal: SearchReadRefusal = { kind: 'retired' },
+  ) {
     if (record.exited) return Promise.resolve();
     if (record.termination) return record.termination;
     record.phase = 'retiring';
-    record.flight?.finish(null);
+    record.flight?.refuse(refusal);
     // Capture the single cleanup promise before invoking an injected terminator.
     const settlement = Promise.resolve()
       .then(() => terminate(record.worker))
@@ -157,7 +171,9 @@ export function createOwnedSearchReadWorker(
         return;
       const flight = record.flight;
       if (flight.signal?.aborted || performance.now() >= flight.deadline) {
-        void retire(record);
+        void retire(record, {
+          kind: flight.signal?.aborted ? 'aborted' : 'late-reply',
+        });
         return;
       }
       try {
@@ -175,28 +191,36 @@ export function createOwnedSearchReadWorker(
           throw new TypeError('Invalid Task response');
         // An out-of-generation reply never completes another request.
         if (reply.id !== flight.id) {
-          void retire(record);
+          void retire(record, { kind: 'reply-mismatch' });
           return;
         }
         const page = flight.decode(reply[resultKey]);
-        if (page === null) throw new TypeError('Invalid read result');
+        if (page === null) {
+          void retire(record, { kind: 'result-invalid' });
+          return;
+        }
         if (flight.signal?.aborted || performance.now() >= flight.deadline) {
-          void retire(record);
+          void retire(record, {
+            kind: flight.signal?.aborted ? 'aborted' : 'late-reply',
+          });
           return;
         }
         flight.finish(page);
       } catch {
-        void retire(record);
+        void retire(record, { kind: 'reply-invalid' });
       }
     });
-    worker.on('error', () => {
+    worker.on('error', (error) => {
       settleReady();
-      void retire(record);
+      void retire(record, { kind: 'worker-error', ...errorClassFields(error) });
     });
-    worker.on('exit', () => {
+    worker.on('exit', (exitCode) => {
       settleReady();
       record.exited = true;
-      record.flight?.finish(null);
+      record.flight?.refuse({
+        kind: 'worker-exit',
+        ...(Number.isSafeInteger(exitCode) ? { exitCode } : {}),
+      });
       if (owned === record) owned = undefined;
     });
     return record;
@@ -206,22 +230,35 @@ export function createOwnedSearchReadWorker(
     encode: (id: number) => string | null,
     decode: (value: unknown) => T | null,
     signal?: AbortSignal,
+    report?: (refusal: SearchReadRefusal) => void,
   ): Promise<T | null> {
-    if (closed || signal?.aborted || (owned && owned.phase !== 'idle'))
+    const refused = (refusal: SearchReadRefusal) => {
+      try {
+        report?.(refusal);
+      } catch {
+        /* A reporting failure never changes the read's outcome. */
+      }
       return null;
+    };
+    if (closed) return refused({ kind: 'closed' });
+    if (signal?.aborted) return refused({ kind: 'aborted' });
+    if (owned && owned.phase !== 'idle')
+      return refused({ kind: 'busy', component: owned.phase });
     const id = ++sequence;
     let wire: string | null;
     try {
       wire = encode(id);
     } catch {
-      return null;
+      return refused({ kind: 'request-invalid' });
     }
-    if (wire === null || Buffer.byteLength(wire) > requestBytes) return null;
+    if (wire === null) return refused({ kind: 'request-invalid' });
+    if (Buffer.byteLength(wire) > requestBytes)
+      return refused({ kind: 'request-too-large' });
     let record: OwnedWorker;
     try {
       record = acquire();
-    } catch {
-      return null;
+    } catch (error) {
+      return refused({ kind: 'spawn-failed', ...errorClassFields(error) });
     }
     // AFTER `acquire()`, which excludes exactly one thing: the synchronous
     // `new Worker(...)` constructor call. It does NOT mean a ready worker —
@@ -245,10 +282,13 @@ export function createOwnedSearchReadWorker(
       record.phase = 'running';
       let settled = false;
       const abort = () => {
-        void retire(record);
+        void retire(record, { kind: 'aborted' });
+      };
+      const expire = () => {
+        void retire(record, { kind: 'deadline' });
       };
       const timer = setTimeout(
-        abort,
+        expire,
         Math.max(0, deadline - performance.now()),
       );
       const finish = (page: unknown) => {
@@ -260,22 +300,35 @@ export function createOwnedSearchReadWorker(
         if (record.phase === 'running') record.phase = 'idle';
         resolve(page as T | null);
       };
+      const refuse = (refusal: SearchReadRefusal) => {
+        if (settled) return;
+        refused(refusal);
+        finish(null);
+      };
       record.flight = {
         id,
         deadline,
         decode,
         signal,
         finish,
+        refuse,
       };
       signal?.addEventListener('abort', abort, { once: true });
-      if (signal?.aborted || performance.now() >= deadline) {
+      if (signal?.aborted) {
         abort();
+        return;
+      }
+      if (performance.now() >= deadline) {
+        expire();
         return;
       }
       try {
         record.worker.postMessage(wire);
-      } catch {
-        abort();
+      } catch (error) {
+        void retire(record, {
+          kind: 'post-failed',
+          ...errorClassFields(error),
+        });
       }
     });
   }

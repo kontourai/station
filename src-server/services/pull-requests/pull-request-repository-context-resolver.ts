@@ -109,14 +109,7 @@ export class PullRequestRepositoryContextResolver {
             cause: 'no-remote' as PullRequestUnavailableCause,
           }
         : { available: false, reason: remotes.reason };
-    if (remotes.remotes.length === 1) {
-      const unsupportedForge = knownUnsupportedForge(remotes.remotes[0].url);
-      if (unsupportedForge)
-        return {
-          available: false,
-          reason: `Checkout uses unsupported forge ${unsupportedForge}`,
-        };
-    }
+
     // Unknown authorities remain provider candidates. The route's provider and
     // literal-host match lets the selected CLI reject a wrong self-managed forge.
     const candidates = remotes.remotes
@@ -129,10 +122,28 @@ export class PullRequestRepositoryContextResolver {
           repository: { owner: string; name: string };
         } => candidate.repository !== undefined,
       );
-    if (candidates.length !== 1 || candidates.length !== remotes.remotes.length)
+    if (
+      candidates.length !== remotes.remotes.length ||
+      distinctRepositories(candidates).length !== 1
+    )
       return {
         available: false,
         reason: 'Checkout forge host is ambiguous or unsupported',
+      };
+    // Several remotes for ONE repository (an https `origin` beside an ssh
+    // push remote) are one forge identity, not an ambiguity. `origin` names
+    // the base branch when it is among them.
+    candidates.sort(
+      (a, b) =>
+        Number(b.remote.name === 'origin') - Number(a.remote.name === 'origin'),
+    );
+    // After the collapse, not before: several remotes for one Bitbucket
+    // repository are still Bitbucket.
+    const unsupportedForge = knownUnsupportedForge(candidates[0]!.remote.url);
+    if (unsupportedForge)
+      return {
+        available: false,
+        reason: `Checkout uses unsupported forge ${unsupportedForge}`,
       };
     try {
       const [branch, upstream, ahead, base] = await Promise.all([
@@ -248,14 +259,28 @@ export class PullRequestRepositoryContextResolver {
     const remotes = await (this.deps.readRemotes ?? readCheckoutRemotes)(
       workingDirectory,
     );
-    if (!remotes.ok || remotes.remotes.length !== 1)
+    if (!remotes.ok || remotes.remotes.length === 0)
       return {
         available: false,
         reason: remotes.ok
           ? 'Checkout forge host is ambiguous or unsupported'
           : remotes.reason,
       };
-    const remote = remotes.remotes[0]!;
+    // As in `resolve`: remotes that all name one repository are one identity.
+    const identities = distinctRepositories(
+      remotes.remotes.map((candidate) => ({
+        remote: candidate,
+        repository: providerRepository(candidate.url),
+      })),
+    );
+    if (identities.length !== 1)
+      return {
+        available: false,
+        reason: 'Checkout forge host is ambiguous or unsupported',
+      };
+    const remote =
+      remotes.remotes.find((candidate) => candidate.name === 'origin') ??
+      remotes.remotes[0]!;
     const repository = providerRepository(remote.url);
     if (!repository || knownUnsupportedForge(remote.url))
       return {
@@ -300,19 +325,46 @@ export class PullRequestRepositoryContextResolver {
   }
 }
 
+/**
+ * The distinct forge repositories a set of remotes names, keyed on host,
+ * owner and name compared case-insensitively. A remote that does not parse
+ * keeps its own key, so it can never be absorbed into a parsed one.
+ */
+function distinctRepositories(
+  candidates: readonly {
+    remote: CheckoutRemote;
+    repository?: { owner: string; name: string };
+  }[],
+): string[] {
+  return [
+    ...new Set(
+      candidates.map(({ remote, repository }) =>
+        repository
+          ? JSON.stringify([
+              remoteHost(remote.url)?.toLowerCase() ?? `?${remote.url}`,
+              repository.owner.toLowerCase(),
+              repository.name.toLowerCase(),
+            ])
+          : `unparsed:${remote.url}`,
+      ),
+    ),
+  ];
+}
+
 function knownUnsupportedForge(url: string): string | undefined {
-  const match = /^(?:git@([^/:\s]+):|https?:\/\/([^/\s]+)\/)/.exec(url);
-  const host = (match?.[1] ?? match?.[2])
-    ?.toLowerCase()
-    .replace(/:\d+$/, '')
-    .replace(/\.$/, '');
+  const host = remoteHost(url);
   return host === 'bitbucket.org' ? host : undefined;
 }
 
 function remoteHost(url: string): string | undefined {
   const match = /^(?:git@([^/:\s]+):|https?:\/\/([^/\s]+)\/)/.exec(url);
   const host = match?.[1] ?? match?.[2];
-  return host?.toLowerCase().replace(/:\d+$/, '').replace(/\.$/, '');
+  // `https://token@github.com/o/r` names github.com: credentials are not host.
+  return host
+    ?.replace(/^.*@/, '')
+    .toLowerCase()
+    .replace(/:\d+$/, '')
+    .replace(/\.$/, '');
 }
 
 /**

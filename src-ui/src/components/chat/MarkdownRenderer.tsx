@@ -11,6 +11,7 @@ import {
   splitMarkdownBlocks,
 } from './markdown-blocks';
 import { QuoteSourceLink } from './QuoteSourceLink';
+import { remarkPathMentions } from './remarkPathMentions';
 
 export type MarkdownRenderProbe = {
   onBlockMount?: (startLine: number) => void;
@@ -48,7 +49,12 @@ const sourceAwareComponents: NonNullable<Options['components']> = {
     );
   },
 };
-const remarkPlugins: NonNullable<Options['remarkPlugins']> = [remarkGfm];
+// After GFM, so a URL it autolinks is already a link and is not re-scanned
+// for path mentions.
+const remarkPlugins: NonNullable<Options['remarkPlugins']> = [
+  remarkGfm,
+  remarkPathMentions,
+];
 
 function FullMarkdown(options: Options) {
   return (
