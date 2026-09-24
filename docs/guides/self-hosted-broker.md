@@ -62,12 +62,22 @@ key and generation, exact transmitted UTF-8 body digest, bearer digest, a
 single-use JTI, and Unix-second issue/expiry times no more than 30 seconds
 apart. The proof is sent in `X-Station-Native-Proof`; no browser Origin or
 cookie is accepted. The broker atomically consumes the JTI with the signaling
-operation and retains replay entries for five minutes. There is no native
-renewal receipt flow yet, so the current pilot requires operator-backed grant
-re-issuance after expiry and is not ready for general native onboarding.
+operation and retains replay entries for five minutes. Native grants can be
+renewed with a fresh request proof at or after half-life (the final 12 hours)
+and for up to seven days after expiry. The renewal body binds a closed
+8-128-character URL-safe `renewalId` and the expected expiry in Unix
+milliseconds. A private SQLite receipt binds that ID to the exact body digest
+and the committed expiry, so retrying the same body after a lost reply returns
+the same receipt. Reusing the ID for another body conflicts; a receipt
+superseded by a later renewal returns the current expiry. Receipt and JTI
+records have bounded retention and grant-row cleanup cascades them safely.
+Renewal grace is proof-only: `open` and `read` remain unavailable after grant
+expiry, and revocation, withdrawal, or a replaced Station generation makes a
+receipt unusable. Grants not renewed within seven days need operator
+re-issuance.
 The Rust keyring host does not yet produce these request proofs, and no
 packaged native client enables these routes; the typed TypeScript signer seam
-is protocol scaffolding and test coverage only.
+and renewal API remain protocol scaffolding and server-side tests only.
 Native invitations and grants are retired with their Station
 routing generation. V1 redemption rejects v2
 invitations, and native-v2 redemption rejects v1 invitations. This foundation
@@ -122,6 +132,7 @@ response to 1 MiB and 15 seconds.
 | `/native/grants/list` | Operator routing credential | Native grant binding metadata and expiry/revocation state; no credentials |
 | `/native/grants/revoke` | Operator routing credential | Exact native `grantId`; retires only that routing grant |
 | `/native/grants/redeem` | Bound native P-256 key | V2 invitation plus exact ES256 proof; no browser Origin |
+| `/native/grants/renew` | Native grant plus ES256 PoP | Exact request proof and body-bound renewal ID; returns committed expiry or a typed current-expiry conflict |
 | `/native/connections/open` | Native grant plus ES256 PoP | Exact body bytes, request path, scope, surface, Station key/generation and one-use JTI |
 | `/native/connections/read` | Native grant plus ES256 PoP | Own attempt by nonce; same request and surface binding |
 | `/native/grants/retire` | Native grant plus ES256 PoP | Retires only the caller's native grant; idempotent after revocation |

@@ -176,13 +176,20 @@ export interface SelfHostedBrokerNativeGrantRenewV2 {
   readonly version: 'station-broker-native-grant-renew/v2';
   readonly scope: SelfHostedBrokerNativeScopeV2;
   readonly surface: SelfHostedBrokerNativeClientSurfaceV2;
+  /** Client-generated idempotency key: 8-128 URL-safe ASCII characters. */
   readonly renewalId: string;
+  /** Expected grant expiry in Unix epoch milliseconds. */
   readonly expectedExpiresAt: number;
 }
 export interface SelfHostedBrokerNativeGrantRenewedV2 {
   readonly version: 'station-broker-native-grant-renewed/v2';
   readonly renewalId: string;
   readonly expiresAt: number;
+}
+export interface SelfHostedBrokerNativeGrantRenewalConflictV2 {
+  readonly version: 'station-broker-native-grant-renewal-conflict/v2';
+  readonly renewalId: string;
+  readonly currentExpiresAt: number;
 }
 
 export const SELF_HOSTED_BROKER_INVITATION_VERSION =
@@ -215,5 +222,7 @@ export const SELF_HOSTED_BROKER_NATIVE_GRANT_RENEW_VERSION =
   'station-broker-native-grant-renew/v2' as const;
 export const SELF_HOSTED_BROKER_NATIVE_GRANT_RENEWED_VERSION =
   'station-broker-native-grant-renewed/v2' as const;
+export const SELF_HOSTED_BROKER_NATIVE_GRANT_RENEWAL_CONFLICT_VERSION =
+  'station-broker-native-grant-renewal-conflict/v2' as const;
 export const SELF_HOSTED_BROKER_NATIVE_REQUEST_PROOF_HEADER =
   'X-Station-Native-Proof' as const;

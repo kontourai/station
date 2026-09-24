@@ -11,6 +11,8 @@ import {
   SELF_HOSTED_BROKER_NATIVE_CONNECTION_OFFER_VERSION,
   SELF_HOSTED_BROKER_NATIVE_CONNECTION_OPEN_VERSION,
   SELF_HOSTED_BROKER_NATIVE_CONNECTION_OPENED_VERSION,
+  SELF_HOSTED_BROKER_NATIVE_GRANT_RENEW_VERSION,
+  SELF_HOSTED_BROKER_NATIVE_GRANT_RENEWED_VERSION,
   SELF_HOSTED_BROKER_NATIVE_INVITATION_VERSION,
   SELF_HOSTED_BROKER_NATIVE_REQUEST_PROOF_TYPE,
   SELF_HOSTED_BROKER_NATIVE_REQUEST_PROOF_VERSION,
@@ -21,6 +23,8 @@ import {
   type SelfHostedBrokerNativeConnectionOfferV2,
   type SelfHostedBrokerNativeConnectionOpenedV2,
   type SelfHostedBrokerNativeConnectionOpenV2,
+  type SelfHostedBrokerNativeGrantRenewedV2,
+  type SelfHostedBrokerNativeGrantRenewV2,
   type SelfHostedBrokerNativeRedemptionProofV2,
   type SelfHostedBrokerNativeRequestProofClaimsV1,
   type SelfHostedBrokerNativeRouteInvitationV2,
@@ -36,11 +40,19 @@ const SDP_LIMIT = 128 * 1024;
 const INVITATION_MAX_AGE_MS = 5 * 60_000;
 const GRANT_MAX_AGE_MS = 30 * 24 * 60 * 60_000;
 const NATIVE_GRANT_MAX_AGE_MS = 24 * 60 * 60_000;
+const NATIVE_GRANT_RENEWAL_GRACE_MS = 7 * 24 * 60 * 60_000;
+const NATIVE_GRANT_RENEWAL_EARLY_WINDOW_MS = 12 * 60 * 60_000;
+const NATIVE_REVOKED_GRANT_RETENTION_MS = 330_000;
+const NATIVE_GRANT_RENEWAL_RECEIPTS_PER_GRANT = 16;
+const NATIVE_GRANT_RENEWAL_RECEIPTS_TOTAL = 65_536;
+const NATIVE_GRANTS_PER_STATION_RETAINED = 512;
+const NATIVE_GRANTS_TOTAL_RETAINED = 16_384;
 const NATIVE_PROOF_MAX_AGE_SECONDS = 30;
 const NATIVE_PROOF_RETENTION_MS = 5 * 60_000;
 const SIGNING_KEY_ID = /^[A-Za-z0-9_-]{43}$/;
 const CLIENT_INSTANCE_ID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const NATIVE_RENEWAL_ID = /^[A-Za-z0-9_-]{8,128}$/;
 const APP_IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9.-]{0,254}$/;
 type NativeChannel = SelfHostedBrokerNativeClientSurfaceV2['channel'];
 const NATIVE_CHANNELS: ReadonlySet<NativeChannel> = new Set([
@@ -164,6 +176,15 @@ function posixUid() {
   return process.getuid!();
 }
 export type BrokerScope = SelfHostedBrokerScopeV1;
+
+export class NativeGrantRenewalConflict extends Error {
+  constructor(
+    readonly renewalId: string,
+    readonly currentExpiresAt: number,
+  ) {
+    super('native_grant_renewal_conflict');
+  }
+}
 
 function digest(secret: string) {
   return createHash('sha256').update(secret).digest();
@@ -467,7 +488,7 @@ export class SelfHostedBrokerService {
     const version = this.db.prepare('PRAGMA user_version').get() as {
       user_version: number;
     };
-    if (![0, 1, 2, 3, 4, 5].includes(version.user_version)) {
+    if (![0, 1, 2, 3, 4, 5, 6].includes(version.user_version)) {
       this.db.close();
       throw new Error('broker_database_version_refused');
     }
@@ -496,6 +517,9 @@ export class SelfHostedBrokerService {
                 : []),
               ...(version.user_version >= 5
                 ? ['broker_native_request_proofs']
+                : []),
+              ...(version.user_version >= 6
+                ? ['broker_native_grant_renewals']
                 : []),
             ];
       const present = this.db
@@ -595,8 +619,16 @@ export class SelfHostedBrokerService {
         FOREIGN KEY(grant_id) REFERENCES broker_native_client_grants(grant_id) ON DELETE CASCADE);
       CREATE INDEX IF NOT EXISTS broker_native_request_proof_expiry
         ON broker_native_request_proofs(expires_at);
+      CREATE TABLE IF NOT EXISTS broker_native_grant_renewals(
+        grant_id TEXT NOT NULL, renewal_id TEXT NOT NULL,
+        expected_expires_at INTEGER NOT NULL, request_digest TEXT NOT NULL,
+        result_expires_at INTEGER NOT NULL, receipt_expires_at INTEGER NOT NULL,
+        PRIMARY KEY(grant_id,renewal_id),
+        FOREIGN KEY(grant_id) REFERENCES broker_native_client_grants(grant_id) ON DELETE CASCADE);
+      CREATE INDEX IF NOT EXISTS broker_native_grant_renewal_expiry
+        ON broker_native_grant_renewals(receipt_expires_at);
       PRAGMA application_id=1398030930;
-      PRAGMA user_version=5;
+      PRAGMA user_version=6;
       COMMIT;`);
     } catch (error) {
       try {
@@ -608,9 +640,9 @@ export class SelfHostedBrokerService {
       throw error;
     }
     for (const suffix of ['-wal', '-shm']) assertPrivateFile(path + suffix);
-    this.retireUnavailableNativeConnections();
+    this.runNativeMaintenance();
     this.nativeConnectionMaintenance = setInterval(
-      () => this.retireUnavailableNativeConnections(),
+      () => this.runNativeMaintenance(),
       10_000,
     );
     this.nativeConnectionMaintenance.unref();
@@ -674,7 +706,8 @@ export class SelfHostedBrokerService {
     path: SelfHostedBrokerNativeRequestProofClaimsV1['path'];
     purpose: SelfHostedBrokerNativeRequestProofClaimsV1['purpose'];
     allowRetired?: boolean;
-    operation: () => T;
+    allowExpired?: boolean;
+    operation: (claims: SelfHostedBrokerNativeRequestProofClaimsV1) => T;
   }): Promise<T> {
     const scope = validateNativeScope(input.scope);
     const surface = validateNativeSurface(input.surface);
@@ -706,8 +739,8 @@ export class SelfHostedBrokerService {
       grant.channel !== surface.channel ||
       grant.client_instance_id !== surface.clientInstanceId ||
       grant.key_thumbprint !== surface.keyThumbprint ||
-      (!input.allowRetired &&
-        (grant.revoked_at !== null || grant.expires_at <= this.now())) ||
+      (!input.allowRetired && grant.revoked_at !== null) ||
+      (!input.allowExpired && grant.expires_at <= this.now()) ||
       !timingSafeEqual(
         Buffer.from(grant.secret_hash),
         nativeGrantDigest(input.credential.secret),
@@ -814,6 +847,7 @@ export class SelfHostedBrokerService {
         input.credential,
         surface,
         input.allowRetired ?? false,
+        input.allowExpired ?? false,
       );
       if (
         current.grant_id !== grant.grant_id ||
@@ -849,7 +883,9 @@ export class SelfHostedBrokerService {
           claims.jti as string,
           this.now() + NATIVE_PROOF_RETENTION_MS,
         );
-      return input.operation();
+      return input.operation(
+        claims as SelfHostedBrokerNativeRequestProofClaimsV1,
+      );
     });
   }
   /** A connector must never receive or finish work after its client grant retires. */
@@ -890,6 +926,41 @@ export class SelfHostedBrokerService {
         'DELETE FROM broker_native_connections WHERE created_at + 330000 <=?',
       )
       .run(now);
+  }
+  private runNativeMaintenance() {
+    this.transaction(() => {
+      this.retireUnavailableNativeConnections();
+      this.purgeNativeGrantHistory();
+    });
+  }
+  private purgeNativeGrantHistory() {
+    const now = this.now();
+    this.db
+      .prepare('DELETE FROM broker_native_request_proofs WHERE expires_at<=?')
+      .run(now);
+    this.db
+      .prepare(
+        'DELETE FROM broker_native_grant_renewals WHERE receipt_expires_at<?',
+      )
+      .run(now);
+    const expiredBefore = now - NATIVE_GRANT_RENEWAL_GRACE_MS;
+    const revokedBefore = now - NATIVE_REVOKED_GRANT_RETENTION_MS;
+    this.db
+      .prepare(
+        `DELETE FROM broker_native_connections WHERE grant_id IN (
+           SELECT grant_id FROM broker_native_client_grants
+           WHERE (revoked_at IS NOT NULL AND revoked_at<=?)
+              OR (revoked_at IS NULL AND expires_at<=?)
+         )`,
+      )
+      .run(revokedBefore, expiredBefore);
+    this.db
+      .prepare(
+        `DELETE FROM broker_native_client_grants
+         WHERE (revoked_at IS NOT NULL AND revoked_at<=?)
+            OR (revoked_at IS NULL AND expires_at<?)`,
+      )
+      .run(revokedBefore, expiredBefore);
   }
   provision(
     input: BrokerScope,
@@ -1219,33 +1290,42 @@ export class SelfHostedBrokerService {
         lease.expires_at <= this.now()
       )
         throw new Error('native_invitation_refused');
-      this.db
-        .prepare(
-          `DELETE FROM broker_native_connections
-           WHERE grant_id IN (
-             SELECT grant_id FROM broker_native_client_grants
-             WHERE expires_at<=? OR revoked_at IS NOT NULL
-           )`,
-        )
-        .run(this.now());
-      this.db
-        .prepare(
-          'DELETE FROM broker_native_client_grants WHERE expires_at<=? OR revoked_at IS NOT NULL',
-        )
-        .run(this.now());
+      this.retireUnavailableNativeConnections();
+      this.purgeNativeGrantHistory();
+      const now = this.now();
       const stationCount = (
+        this.db
+          .prepare(
+            `SELECT count(*) n FROM broker_native_client_grants
+             WHERE station_id=? AND revoked_at IS NULL AND expires_at>?`,
+          )
+          .get(scope.stationId, now) as { n: number }
+      ).n;
+      const totalCount = (
+        this.db
+          .prepare(
+            'SELECT count(*) n FROM broker_native_client_grants WHERE revoked_at IS NULL AND expires_at>?',
+          )
+          .get(now) as { n: number }
+      ).n;
+      const retainedStationCount = (
         this.db
           .prepare(
             'SELECT count(*) n FROM broker_native_client_grants WHERE station_id=?',
           )
           .get(scope.stationId) as { n: number }
       ).n;
-      const totalCount = (
+      const retainedTotalCount = (
         this.db
           .prepare('SELECT count(*) n FROM broker_native_client_grants')
           .get() as { n: number }
       ).n;
-      if (stationCount >= 256 || totalCount >= 4096)
+      if (
+        stationCount >= 256 ||
+        totalCount >= 4096 ||
+        retainedStationCount >= NATIVE_GRANTS_PER_STATION_RETAINED ||
+        retainedTotalCount >= NATIVE_GRANTS_TOTAL_RETAINED
+      )
         throw new Error('grant_limit');
       const credential = {
         id: randomBytes(16).toString('base64url'),
@@ -1475,6 +1555,164 @@ export class SelfHostedBrokerService {
         );
       if (changed.changes !== 1) throw new Error('grant_unavailable');
       this.retireNativeGrantConnections(grantId);
+    });
+  }
+  renewNativeClientGrant(
+    scope: SelfHostedBrokerNativeScopeV2,
+    credential: BrokerCredential,
+    surface: SelfHostedBrokerNativeClientSurfaceV2,
+    request: SelfHostedBrokerNativeGrantRenewV2,
+    requestDigest: string,
+  ): SelfHostedBrokerNativeGrantRenewedV2 {
+    scope = validateNativeScope(scope);
+    surface = validateNativeSurface(surface);
+    if (
+      !request ||
+      request.version !== SELF_HOSTED_BROKER_NATIVE_GRANT_RENEW_VERSION ||
+      typeof request.renewalId !== 'string' ||
+      !NATIVE_RENEWAL_ID.test(request.renewalId) ||
+      !Number.isSafeInteger(request.expectedExpiresAt) ||
+      request.expectedExpiresAt < 1 ||
+      !SECRET.test(requestDigest)
+    )
+      throw new Error('invalid_native_connection');
+    const requestScope = validateNativeScope(request.scope);
+    const requestSurface = validateNativeSurface(request.surface);
+    if (
+      requestScope.stationId !== scope.stationId ||
+      requestScope.enrollmentId !== scope.enrollmentId ||
+      requestScope.routingGeneration !== scope.routingGeneration ||
+      requestSurface.appIdentifier !== surface.appIdentifier ||
+      requestSurface.channel !== surface.channel ||
+      requestSurface.clientInstanceId !== surface.clientInstanceId ||
+      requestSurface.keyThumbprint !== surface.keyThumbprint
+    )
+      throw new Error('invalid_native_connection');
+    return this.transaction(() => {
+      const { grant } = this.nativeRoutingOwner(
+        scope,
+        credential,
+        surface,
+        false,
+        true,
+      );
+      const now = this.now();
+      if (grant.revoked_at !== null)
+        throw new Error('broker_credential_refused');
+      if (grant.expires_at + NATIVE_GRANT_RENEWAL_GRACE_MS < now)
+        throw new Error('native_grant_renewal_expired');
+      this.db
+        .prepare(
+          'DELETE FROM broker_native_grant_renewals WHERE receipt_expires_at<?',
+        )
+        .run(now);
+      const receipt = this.db
+        .prepare(
+          `SELECT expected_expires_at AS expectedExpiresAt,
+                  request_digest AS requestDigest,
+                  result_expires_at AS resultExpiresAt
+           FROM broker_native_grant_renewals
+           WHERE grant_id=? AND renewal_id=?`,
+        )
+        .get(grant.grant_id, request.renewalId) as
+        | {
+            expectedExpiresAt: number;
+            requestDigest: string;
+            resultExpiresAt: number;
+          }
+        | undefined;
+      if (receipt) {
+        if (
+          receipt.expectedExpiresAt !== request.expectedExpiresAt ||
+          receipt.requestDigest !== requestDigest
+        )
+          throw new NativeGrantRenewalConflict(
+            request.renewalId,
+            grant.expires_at,
+          );
+        if (grant.expires_at !== receipt.resultExpiresAt)
+          throw new NativeGrantRenewalConflict(
+            request.renewalId,
+            grant.expires_at,
+          );
+        return {
+          version: SELF_HOSTED_BROKER_NATIVE_GRANT_RENEWED_VERSION,
+          renewalId: request.renewalId,
+          expiresAt: receipt.resultExpiresAt,
+        };
+      }
+      if (request.expectedExpiresAt !== grant.expires_at)
+        throw new NativeGrantRenewalConflict(
+          request.renewalId,
+          grant.expires_at,
+        );
+      if (grant.expires_at - now > NATIVE_GRANT_RENEWAL_EARLY_WINDOW_MS)
+        throw new NativeGrantRenewalConflict(
+          request.renewalId,
+          grant.expires_at,
+        );
+      const receiptCounts = this.db
+        .prepare(
+          `SELECT count(*) AS total,
+             sum(CASE WHEN grant_id=? THEN 1 ELSE 0 END) AS per_grant
+           FROM broker_native_grant_renewals`,
+        )
+        .get(grant.grant_id) as { total: number; per_grant: number | null };
+      if (
+        receiptCounts.total >= NATIVE_GRANT_RENEWAL_RECEIPTS_TOTAL ||
+        (receiptCounts.per_grant ?? 0) >=
+          NATIVE_GRANT_RENEWAL_RECEIPTS_PER_GRANT
+      )
+        throw new Error('native_grant_renewal_limit');
+      const expiresAt = now + NATIVE_GRANT_MAX_AGE_MS;
+      const changed = this.db
+        .prepare(
+          `UPDATE broker_native_client_grants SET expires_at=?
+           WHERE grant_id=? AND expires_at=? AND revoked_at IS NULL
+             AND station_id=? AND enrollment_id=? AND generation=?
+             AND signing_key_id=? AND signing_generation=?
+             AND app_identifier=? AND channel=? AND client_instance_id=?
+             AND key_thumbprint=?`,
+        )
+        .run(
+          expiresAt,
+          grant.grant_id,
+          request.expectedExpiresAt,
+          scope.stationId,
+          scope.enrollmentId,
+          scope.routingGeneration,
+          grant.signing_key_id,
+          grant.signing_generation,
+          surface.appIdentifier,
+          surface.channel,
+          surface.clientInstanceId,
+          surface.keyThumbprint,
+        );
+      if (changed.changes !== 1)
+        throw new NativeGrantRenewalConflict(
+          request.renewalId,
+          grant.expires_at,
+        );
+      this.db
+        .prepare(
+          `INSERT INTO broker_native_grant_renewals
+           (grant_id,renewal_id,expected_expires_at,request_digest,
+            result_expires_at,receipt_expires_at)
+           VALUES(?,?,?,?,?,?)`,
+        )
+        .run(
+          grant.grant_id,
+          request.renewalId,
+          request.expectedExpiresAt,
+          requestDigest,
+          expiresAt,
+          expiresAt + NATIVE_GRANT_RENEWAL_GRACE_MS,
+        );
+      return {
+        version: SELF_HOSTED_BROKER_NATIVE_GRANT_RENEWED_VERSION,
+        renewalId: request.renewalId,
+        expiresAt,
+      };
     });
   }
   /** A native client can retire only its own grant using its bearer credential. */
@@ -1918,6 +2156,7 @@ export class SelfHostedBrokerService {
     credential: BrokerCredential,
     surface: SelfHostedBrokerNativeClientSurfaceV2,
     allowRetired = false,
+    allowExpired = false,
   ) {
     scope = validateNativeScope(scope);
     surface = validateNativeSurface(surface);
@@ -1953,7 +2192,7 @@ export class SelfHostedBrokerService {
       grant.client_instance_id !== surface.clientInstanceId ||
       grant.key_thumbprint !== surface.keyThumbprint ||
       (!allowRetired && grant.revoked_at !== null) ||
-      (!allowRetired && grant.expires_at <= this.now()) ||
+      (!allowExpired && !allowRetired && grant.expires_at <= this.now()) ||
       !timingSafeEqual(
         Buffer.from(grant.secret_hash),
         nativeGrantDigest(credential.secret),

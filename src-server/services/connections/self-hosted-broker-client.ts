@@ -3,6 +3,7 @@ import type {
   SelfHostedBrokerNativeClientGrantV2,
   SelfHostedBrokerNativeClientSurfaceV2,
   SelfHostedBrokerNativeConnectionOfferV2,
+  SelfHostedBrokerNativeGrantRenewedV2,
   SelfHostedBrokerNativeRequestProofClaimsV1,
   SelfHostedBrokerScopeV1,
 } from '@kontourai/station-contracts/self-hosted-broker';
@@ -12,6 +13,9 @@ import {
   SELF_HOSTED_BROKER_NATIVE_CONNECTION_OPEN_VERSION,
   SELF_HOSTED_BROKER_NATIVE_CONNECTION_OPENED_VERSION,
   SELF_HOSTED_BROKER_NATIVE_CONNECTION_READ_VERSION,
+  SELF_HOSTED_BROKER_NATIVE_GRANT_RENEW_VERSION,
+  SELF_HOSTED_BROKER_NATIVE_GRANT_RENEWAL_CONFLICT_VERSION,
+  SELF_HOSTED_BROKER_NATIVE_GRANT_RENEWED_VERSION,
   SELF_HOSTED_BROKER_NATIVE_GRANT_RETIRE_VERSION,
   SELF_HOSTED_BROKER_NATIVE_REQUEST_PROOF_VERSION,
 } from '@kontourai/station-contracts/self-hosted-broker';
@@ -396,6 +400,7 @@ async function postNativeJson(
   signal: AbortSignal,
   claims: Omit<SelfHostedBrokerNativeRequestProofClaimsV1, 'bodySha256'>,
   sign: (claims: SelfHostedBrokerNativeRequestProofClaimsV1) => Promise<string>,
+  allowConflict = false,
 ) {
   signal.throwIfAborted();
   const boundedSignal = AbortSignal.any([signal, AbortSignal.timeout(15_000)]);
@@ -430,6 +435,17 @@ async function postNativeJson(
       new Error(`broker_request_refused_${response.status}`),
     );
   }
+  if (response.status === 409 && allowConflict) {
+    const bytes = await readBounded(response, boundedSignal);
+    boundedSignal.throwIfAborted();
+    try {
+      return record(
+        JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes)),
+      );
+    } catch {
+      throw new Error('broker_response_invalid');
+    }
+  }
   if (!response.ok) {
     void response.body?.cancel().catch(() => undefined);
     throw new Error(`broker_request_refused_${response.status}`);
@@ -445,10 +461,17 @@ async function postNativeJson(
   }
 }
 
+export class BrokerNativeGrantRenewalConflictError extends Error {
+  constructor(readonly currentExpiresAt: number) {
+    super('broker_native_grant_renewal_conflict');
+  }
+}
+
 /** Fixed native signaling client. It has no Origin, cookie or proxy operation. */
 export class SelfHostedBrokerNativeClient {
   readonly #base: string;
   readonly #grant: Readonly<SelfHostedBrokerNativeClientGrantV2>;
+  #expiresAt: number;
   #state: 'active' | 'retiring' | 'retired' = 'active';
   constructor(
     grant: SelfHostedBrokerNativeClientGrantV2,
@@ -468,11 +491,12 @@ export class SelfHostedBrokerNativeClient {
       throw new Error('broker_native_grant_invalid');
     this.#base = canonicalBase(grant.brokerOrigin);
     this.#grant = Object.freeze(structuredClone(grant));
+    this.#expiresAt = grant.expiresAt;
   }
   #assertActive() {
     if (this.#state !== 'active')
       throw new Error('broker_native_client_retired');
-    if (this.#grant.expiresAt <= this.now())
+    if (this.#expiresAt <= this.now())
       throw new Error('broker_native_grant_expired');
   }
   #requestClaims(
@@ -588,6 +612,70 @@ export class SelfHostedBrokerNativeClient {
       answerSdp: value.answerSdp as string | null,
       stationProof: value.stationProof as string | null,
       expiresAt: value.expiresAt as number,
+    };
+  }
+  /** Proof-bound renewal is allowed from half-life and through the 7-day grace. */
+  async renew(
+    renewalId: string,
+    signal: AbortSignal,
+  ): Promise<SelfHostedBrokerNativeGrantRenewedV2> {
+    if (this.#state !== 'active')
+      throw new Error('broker_native_client_retired');
+    if (!/^[A-Za-z0-9_-]{8,128}$/.test(renewalId))
+      throw new Error('broker_request_invalid');
+    const body = {
+      version: SELF_HOSTED_BROKER_NATIVE_GRANT_RENEW_VERSION,
+      scope: this.#grant.scope,
+      surface: this.#grant.surface,
+      renewalId,
+      expectedExpiresAt: this.#expiresAt,
+    };
+    const response = await postNativeJson(
+      this.request,
+      this.#base,
+      '/native/grants/renew',
+      this.#grant.credential,
+      body,
+      signal,
+      this.#requestClaims(
+        '/broker/v1/native/grants/renew',
+        'station-native-grant-renew-v2',
+      ),
+      this.sign,
+      true,
+    );
+    if (
+      response.version ===
+      SELF_HOSTED_BROKER_NATIVE_GRANT_RENEWAL_CONFLICT_VERSION
+    ) {
+      const conflict = exact(response, [
+        'version',
+        'renewalId',
+        'currentExpiresAt',
+      ]);
+      if (
+        conflict.renewalId !== renewalId ||
+        !Number.isSafeInteger(conflict.currentExpiresAt) ||
+        (conflict.currentExpiresAt as number) < 1
+      )
+        throw new Error('broker_response_invalid');
+      this.#expiresAt = conflict.currentExpiresAt as number;
+      throw new BrokerNativeGrantRenewalConflictError(this.#expiresAt);
+    }
+    const value = exact(response, ['version', 'renewalId', 'expiresAt']);
+    if (
+      value.version !== SELF_HOSTED_BROKER_NATIVE_GRANT_RENEWED_VERSION ||
+      value.renewalId !== renewalId ||
+      !Number.isSafeInteger(value.expiresAt) ||
+      (value.expiresAt as number) <= body.expectedExpiresAt ||
+      (value.expiresAt as number) > this.now() + 24 * 60 * 60_000 + 5_000
+    )
+      throw new Error('broker_response_invalid');
+    this.#expiresAt = value.expiresAt as number;
+    return {
+      version: SELF_HOSTED_BROKER_NATIVE_GRANT_RENEWED_VERSION,
+      renewalId,
+      expiresAt: this.#expiresAt,
     };
   }
   async retire(signal: AbortSignal) {
