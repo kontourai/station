@@ -549,6 +549,124 @@ export function showSurfaceAlone(
   return { arrangement: next, region: revealed.region };
 }
 
+/**
+ * What the region showing Chat looked like before a phone layer opened over
+ * it — the state one Back returns to.
+ */
+export interface PhonePaneLayerPrevious {
+  selected: string | null;
+  maximized: boolean;
+  visible: boolean;
+}
+
+/**
+ * A pane opened OVER Chat on a bottom-only device (the phone layer): a tab in
+ * the folded region that holds Chat, selected, with Chat left in place behind
+ * it. Transient — the provider holds it beside the arrangement and never
+ * persists it; Back (`restorePhonePaneLayer`) returns to `previous`.
+ *
+ * `mintedTab` is whether the layer PUT the pane in `region` (it was unplaced,
+ * or held in another region, which a phone never shows). A minted tab is
+ * removed again on the way back: a phone has no tab strip, so a tab left
+ * behind Chat would be one nobody can see or close.
+ */
+export interface PhonePaneLayer {
+  region: DockRegionId;
+  surfaceId: string;
+  mintedTab: boolean;
+  previous: PhonePaneLayerPrevious;
+}
+
+/**
+ * Open `surfaceId` over Chat on a bottom-only device (the phone layer): a tab
+ * in the folded region that holds Chat (`chatRegion`, else the folded region,
+ * else `bottom`), selected and shown, maximized when `maximize` (a
+ * phone-sized viewport), so the pane reads full screen over a conversation
+ * that stays mounted in its region's record rather than being folded away
+ * the way `showSurfaceAlone` folds it.
+ *
+ * `layer` is the one already open, if any. Opening another pane on top of it
+ * REPLACES the layer's pane — the tab it minted is removed first — and keeps
+ * the layer's ORIGINAL `previous`, so one Back always returns to Chat.
+ *
+ * Returns null when the layer does not apply and the caller keeps its own
+ * rule: Chat itself (Chat is what the layer returns to), or a surface that
+ * does not declare the region Chat is in.
+ */
+export function openPhonePaneLayer(
+  arrangement: RegionArrangement,
+  surfaceId: string,
+  options: {
+    lastShownRegion: RegionId | null;
+    maximize: boolean;
+    layer: PhonePaneLayer | null;
+  },
+): { arrangement: RegionArrangement; layer: PhonePaneLayer } | null {
+  if (surfaceId === 'chat') return null;
+  const active = options.layer;
+  const region =
+    active?.region ??
+    chatRegion(arrangement) ??
+    foldedDockRegion(arrangement, options.lastShownRegion) ??
+    'bottom';
+  if (!surfaceMayOccupy(surfaceId, region)) return null;
+  const replacing = active !== null && active.surfaceId !== surfaceId;
+  const base =
+    replacing && active.mintedTab
+      ? removeRegionPane(arrangement, active.region, active.surfaceId)
+      : arrangement;
+  const previous: PhonePaneLayerPrevious = active?.previous ?? {
+    selected: base[region].occupant,
+    maximized: base[region].maximized,
+    visible: base[region].visible,
+  };
+  const mintedTab =
+    active !== null && !replacing
+      ? active.mintedTab
+      : !base[region].panes.includes(surfaceId);
+  let next = placeSurface(base, surfaceId, region, true);
+  if (options.maximize) next = updateRegion(next, region, { maximized: true });
+  return {
+    arrangement: next,
+    layer: { region, surfaceId, mintedTab, previous },
+  };
+}
+
+/**
+ * Close a phone layer: the way back to Chat. The tab the layer minted leaves
+ * the region, and — when the layer's pane is still what the region shows
+ * (Back, the "‹ Chat" control) — the previous selection, visibility and
+ * maximize come back. When something else already dismissed it (the user
+ * switched to Chat from the menu, closed the tab, hid the region) their
+ * choice of selection and visibility stands and only the maximize the layer
+ * added is returned to what it was.
+ */
+export function restorePhonePaneLayer(
+  arrangement: RegionArrangement,
+  layer: PhonePaneLayer,
+): RegionArrangement {
+  const { region, surfaceId, previous } = layer;
+  const wasShowing =
+    arrangement[region].visible && arrangement[region].occupant === surfaceId;
+  const next = layer.mintedTab
+    ? removeRegionPane(arrangement, region, surfaceId)
+    : arrangement;
+  const state = next[region];
+  if (wasShowing) {
+    const selected =
+      previous.selected !== null && state.panes.includes(previous.selected)
+        ? previous.selected
+        : state.occupant;
+    return updateRegion(next, region, {
+      ...(selected !== null ? { occupant: selected } : {}),
+      visible: previous.visible,
+      maximized: previous.maximized,
+    });
+  }
+  if (!state.visible) return next;
+  return updateRegion(next, region, { maximized: previous.maximized });
+}
+
 export interface DockMirrorDiff {
   placement?: DockRegionId;
   visible?: boolean;
