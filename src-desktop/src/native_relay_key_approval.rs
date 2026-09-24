@@ -30,7 +30,7 @@ use tauri::{State, WebviewWindow};
 use zeroize::{Zeroize, Zeroizing};
 
 const MAX_PENDING: usize = 32;
-const MAX_COURIER_WINDOW_MS: u64 = 60_000;
+const MAX_OPERATOR_WINDOW_MS: u64 = 60_000;
 const MAX_READ_WAIT_MS: u64 = 10_000;
 const READ_RETRY_MS: u64 = 250;
 
@@ -194,8 +194,12 @@ pub(crate) async fn station_native_relay_key_approval_begin(
     require_main_app_window(&window, &app)?;
     let state = state.inner().clone();
     let label = window.label().to_owned();
+    if profile_name.is_empty() || profile_name.len() > 256 {
+        return Err("The selected Station profile name is invalid.".into());
+    }
+    let cancelled = reserve_begin(&state, &profile_name)?;
     tauri::async_runtime::spawn_blocking(move || {
-        begin(
+        begin_reserved(
             &app,
             &state,
             &label,
@@ -203,6 +207,7 @@ pub(crate) async fn station_native_relay_key_approval_begin(
                 profile_name,
                 invitation,
             },
+            &cancelled,
         )
     })
     .await
@@ -307,15 +312,25 @@ fn require_main_app_window(window: &WebviewWindow, app: &AppHandle) -> Result<()
         Some(dev_url) => url::Url::parse(dev_url.as_str()).ok(),
         None => None,
     };
-    if !main_app_origin_admitted(window.label(), &actual, app_url.as_ref()) {
+    if !main_app_origin_admitted(
+        window.label(),
+        &actual,
+        app_url.as_ref(),
+        cfg!(debug_assertions),
+    ) {
         return Err("Native relay-key approval requires Station's local app document.".into());
     }
     Ok(())
 }
 
-fn main_app_origin_admitted(label: &str, actual: &url::Url, dev_url: Option<&url::Url>) -> bool {
+fn main_app_origin_admitted(
+    label: &str,
+    actual: &url::Url,
+    dev_url: Option<&url::Url>,
+    allow_dev_origin: bool,
+) -> bool {
     renderer_mount_label_admitted(label)
-        && (dev_url.is_some_and(|url| url.origin() == actual.origin())
+        && ((allow_dev_origin && dev_url.is_some_and(|url| url.origin() == actual.origin()))
             || matches!(
                 (actual.scheme(), actual.host_str()),
                 ("tauri", Some("localhost"))
@@ -366,20 +381,29 @@ fn prepared_metadata(
     }
 }
 
-fn begin(
+fn begin_reserved(
     app: &AppHandle,
     state: &NativeRelayKeyApprovalState,
     caller_label: &str,
     request: BeginRequest,
+    cancelled: &Arc<AtomicBool>,
 ) -> Result<PendingCandidateDto, String> {
-    if request.profile_name.is_empty() || request.profile_name.len() > 256 {
-        return Err("The selected Station profile name is invalid.".into());
-    }
-    let binding_name = request.profile_name.clone();
-    let cancelled = reserve_begin(state, &binding_name)?;
-    let result = begin_network(app, state, caller_label, request, &cancelled);
-    clear_inflight(state, &binding_name, &cancelled);
+    let profile_name = request.profile_name.clone();
+    let result = run_if_active(cancelled, || {
+        begin_network(app, state, caller_label, request, cancelled)
+    });
+    clear_inflight(state, &profile_name, cancelled);
     result
+}
+
+fn run_if_active<T>(
+    cancelled: &Arc<AtomicBool>,
+    operation: impl FnOnce() -> Result<T, String>,
+) -> Result<T, String> {
+    if cancelled.load(Ordering::Acquire) {
+        return Err("Native relay-key enrollment was cancelled.".into());
+    }
+    operation()
 }
 
 fn begin_network(
@@ -420,6 +444,8 @@ fn begin_network(
         expected_station_signing_key_id: invitation.station_signing_key_id.clone(),
         expected_station_signing_generation: invitation.station_signing_generation,
     };
+    let invitation_expires_at = invitation.expires_at;
+    let challenge_started_ms = now_ms()?;
     let challenge =
         PendingStationKeyChallenge::begin(candidate_binding).map_err(map_candidate_error)?;
     let nonce = challenge.challenge().to_owned();
@@ -431,11 +457,9 @@ fn begin_network(
         NativeBrokerKeyCandidateAction::Request,
     )
     .map_err(|_| "Station rejected the selected broker invitation.".to_owned())?;
-    let started_ms = now_ms()?;
     let fixed_deadline_ms = request_challenge
         .expires_at()
-        .min(started_ms.saturating_add(MAX_COURIER_WINDOW_MS))
-        .min(started_ms.saturating_add(MAX_READ_WAIT_MS));
+        .min(challenge_started_ms.saturating_add(MAX_READ_WAIT_MS));
     let request_signature = vault
         .sign_key_candidate_es256_p1363(&owner, &request_challenge)
         .map_err(|_| "Station could not sign the fixed native candidate request.".to_owned())?;
@@ -479,7 +503,8 @@ fn begin_network(
                 .expires_at()
                 .checked_mul(1000)
                 .ok_or_else(|| "The Station-key candidate expiry is invalid.".to_owned())?
-                .min(result.expires_at);
+                .min(invitation_expires_at)
+                .min(challenge_started_ms.saturating_add(MAX_OPERATOR_WINDOW_MS));
             if cancelled.load(Ordering::Acquire) {
                 return Err("Native relay-key enrollment was cancelled.".into());
             }
@@ -605,11 +630,12 @@ fn approve(
     let provider = AppNativeTrustProfileProvider::enrollment(app);
     let mut trust = NativeStationTrustStore::system();
     let receipt = trust
-        .approve(
+        .approve_until(
             &provider,
             pending.candidate,
             &request.confirmation_code,
             &request.full_key_id,
+            pending.expires_at,
         )
         .map_err(map_candidate_error)?;
     Ok(status_from_receipt(&pending.profile_name, binding, receipt))
@@ -1015,19 +1041,32 @@ mod tests {
         let external = url::Url::parse("https://example.com/index.html").unwrap();
         let dev = url::Url::parse("http://localhost:1420/").unwrap();
         let dev_page = url::Url::parse("http://localhost:1420/#/relay").unwrap();
-        assert!(main_app_origin_admitted("main", &packaged, None));
+        assert!(main_app_origin_admitted("main", &packaged, None, false));
         assert!(!main_app_origin_admitted(
             "workspace-pane-pop-out-x",
             &packaged,
-            None
+            None,
+            false,
         ));
-        assert!(!main_app_origin_admitted("main", &external, None));
-        assert!(main_app_origin_admitted("main", &dev_page, Some(&dev)));
+        assert!(!main_app_origin_admitted("main", &external, None, false));
+        assert!(main_app_origin_admitted(
+            "main",
+            &dev_page,
+            Some(&dev),
+            true
+        ));
+        assert!(!main_app_origin_admitted(
+            "main",
+            &dev_page,
+            Some(&dev),
+            false
+        ));
         let other_dev = url::Url::parse("http://localhost:1421/").unwrap();
         assert!(!main_app_origin_admitted(
             "main",
             &dev_page,
-            Some(&other_dev)
+            Some(&other_dev),
+            true,
         ));
     }
 
@@ -1041,6 +1080,24 @@ mod tests {
         cancel(&state, "main", "zAch's sTation").unwrap();
         assert!(second.load(Ordering::Acquire));
         assert!(state.0.lock().unwrap().inflight.is_empty());
+    }
+
+    #[test]
+    fn cancel_before_spawn_prevents_late_worker_from_staging() {
+        let state = NativeRelayKeyApprovalState::default();
+        let token = reserve_begin(&state, "Zach's Station").unwrap();
+        // The native command reserves before it schedules spawn_blocking.
+        cancel(&state, "main", "Zach's Station").unwrap();
+        let mut worker_ran = false;
+        let outcome = run_if_active(&token, || {
+            worker_ran = true;
+            Ok(())
+        });
+        assert!(outcome.is_err());
+        assert!(!worker_ran);
+        let state = state.0.lock().unwrap();
+        assert!(state.pending.is_empty());
+        assert!(state.inflight.is_empty());
     }
 
     #[test]

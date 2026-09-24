@@ -41,6 +41,12 @@ static STATION_TRUST_OPERATION: Mutex<()> = Mutex::new(());
 
 pub(crate) trait StationTrustClock: Send + Sync {
     fn now_seconds(&self) -> CandidateResult<u64>;
+
+    fn now_millis(&self) -> CandidateResult<u64> {
+        self.now_seconds()?
+            .checked_mul(1000)
+            .ok_or(CandidateError::Stale)
+    }
 }
 
 pub(crate) struct SystemStationTrustClock;
@@ -51,6 +57,14 @@ impl StationTrustClock for SystemStationTrustClock {
             .duration_since(UNIX_EPOCH)
             .map(|duration| duration.as_secs())
             .map_err(|_| CandidateError::Stale)
+    }
+
+    fn now_millis(&self) -> CandidateResult<u64> {
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .ok()
+            .and_then(|duration| u64::try_from(duration.as_millis()).ok())
+            .ok_or(CandidateError::Stale)
     }
 }
 
@@ -630,6 +644,27 @@ impl<B: StationTrustBackend, C: StationTrustClock> NativeStationTrustStore<B, C>
         operator_code: &str,
         operator_full_key_id: &str,
     ) -> CandidateResult<StationTrustMutationReceipt> {
+        let deadline_ms = candidate
+            .expires_at()
+            .checked_mul(1000)
+            .ok_or(CandidateError::Stale)?;
+        self.approve_until(
+            provider,
+            candidate,
+            operator_code,
+            operator_full_key_id,
+            deadline_ms,
+        )
+    }
+
+    pub(crate) fn approve_until<P: LockedTrustProfileProvider>(
+        &mut self,
+        provider: &P,
+        candidate: VerifiedStationKeyCandidate,
+        operator_code: &str,
+        operator_full_key_id: &str,
+        operator_deadline_ms: u64,
+    ) -> CandidateResult<StationTrustMutationReceipt> {
         let confirmed = candidate.confirm_operator(operator_code, operator_full_key_id)?;
         let candidate = confirmed.candidate;
         let binding = candidate.profile_binding.clone();
@@ -643,6 +678,7 @@ impl<B: StationTrustBackend, C: StationTrustClock> NativeStationTrustStore<B, C>
                 .lock()
                 .map_err(|_| CandidateError::TrustStore)?;
             ensure_candidate_fresh(&candidate.claims, self.clock.now_seconds()?)?;
+            ensure_operator_deadline(self.clock.now_millis()?, operator_deadline_ms)?;
             let account = trust_account(&binding)?;
             let mut stored = self.read_record(&account, &binding.station_id)?;
             if stored.revision != expected_store_revision {
@@ -670,6 +706,7 @@ impl<B: StationTrustBackend, C: StationTrustClock> NativeStationTrustStore<B, C>
             // Recheck while both host profile and trust-store locks remain held,
             // immediately before committing the OS-keyring record.
             ensure_candidate_fresh(&candidate.claims, self.clock.now_seconds()?)?;
+            ensure_operator_deadline(self.clock.now_millis()?, operator_deadline_ms)?;
             self.write_record(&account, &stored)?;
             Ok(receipt)
         })
@@ -768,6 +805,13 @@ impl<B: StationTrustBackend, C: StationTrustClock> NativeStationTrustStore<B, C>
         }
         Ok(())
     }
+}
+
+fn ensure_operator_deadline(now_ms: u64, deadline_ms: u64) -> CandidateResult<()> {
+    if now_ms >= deadline_ms {
+        return Err(CandidateError::Stale);
+    }
+    Ok(())
 }
 
 fn trust_account(binding: &TrustProfileBinding) -> CandidateResult<String> {
@@ -1555,6 +1599,41 @@ mod tests {
             Err(CandidateError::Stale)
         );
         assert!(backend.0.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn operator_approval_outlives_network_poll_but_not_signed_candidate() {
+        let profile = locked_profile(&binding());
+        let first_backend = MemoryTrustBackend::default();
+        let first_clock = TestStationTrustClock::new(NOW);
+        let mut first =
+            NativeStationTrustStore::with_backend_and_clock(first_backend.clone(), first_clock);
+        let candidate = verified_for_store(0, 3);
+        let approval_deadline_ms = candidate.expires_at() * 1000;
+        let code = candidate.confirmation_code().to_owned();
+        let key_id = candidate.key_id().to_owned();
+        // The courier's polling window is ten seconds, while the verified
+        // operator candidate remains valid until its signed sixty-second exp.
+        first.clock.set(NOW + 11);
+        let approved = first
+            .approve_until(&profile, candidate, &code, &key_id, approval_deadline_ms)
+            .unwrap();
+        assert_eq!(approved.revision, 1);
+        assert_eq!(first_backend.0.lock().unwrap().len(), 1);
+
+        let expired_backend = MemoryTrustBackend::default();
+        let expired_clock = TestStationTrustClock::new(NOW);
+        let mut expired =
+            NativeStationTrustStore::with_backend_and_clock(expired_backend.clone(), expired_clock);
+        let candidate = verified_for_store(0, 3);
+        let code = candidate.confirmation_code().to_owned();
+        let key_id = candidate.key_id().to_owned();
+        expired.clock.set(NOW + 60);
+        assert_eq!(
+            expired.approve_until(&profile, candidate, &code, &key_id, approval_deadline_ms,),
+            Err(CandidateError::Stale)
+        );
+        assert!(expired_backend.0.lock().unwrap().is_empty());
     }
 
     #[test]
