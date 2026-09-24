@@ -1,5 +1,50 @@
 [
   {
+    "timestampUtc": "2026-09-24T12:27:21Z",
+    "channel": "nightly-npm",
+    "version": "0.6.0-nightly.2458.35993578648",
+    "sha": "847ec8d05e6cea06d33706e8eb8bbd168f875bfb",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/35993578648",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.6.0-nightly.2458.35993578648 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "3ab9ce1ba0024c97ed5aa3c73461e3bea1a2758f",
+      "groups": {
+        "feat": [
+          "[#2502](https://github.com/kontourai/station/pull/2502) feat(relay): add gated native v2 signaling and custody",
+          "[#2504](https://github.com/kontourai/station/pull/2504) feat(chat): persist and show images that tools return to the model",
+          "[#2503](https://github.com/kontourai/station/pull/2503) feat(devices): device follow-ups: Tools drawer on SSH hosts, busy-host honesty, cleanup and pane placement (#2442, #2433, #2443, #2465)",
+          "[#2500](https://github.com/kontourai/station/pull/2500) feat(ui): draw attachment PDFs with pdf.js where the engine has no viewer",
+          "[#2498](https://github.com/kontourai/station/pull/2498) feat(codex): map Codex subagents onto the child-work contract (#2458)",
+          "[#2477](https://github.com/kontourai/station/pull/2477) feat(ui): preview every chat attachment type and model-returned markdown images",
+          "[#2467](https://github.com/kontourai/station/pull/2467) feat(devices): a live Device pane, device tools, SSH device hosts and device float over chat",
+          "[#2478](https://github.com/kontourai/station/pull/2478) feat(child-work): provider-neutral child-work contract for subagents and delegates (#2456)",
+          "[#2451](https://github.com/kontourai/station/pull/2451) feat(relay): onboard browsers through trusted encrypted Station routes"
+        ],
+        "fix": [
+          "[#2491](https://github.com/kontourai/station/pull/2491) fix: turn-liveness follow-ups — Draft discard/aging, definitive concurrent-send refusals, no silent-turn kill, provider-triggered Claude turns",
+          "[#2499](https://github.com/kontourai/station/pull/2499) fix: follow-ups from the browser and device batches (#2423, #2424, #2441)",
+          "[#2489](https://github.com/kontourai/station/pull/2489) fix(desktop): keep relay grant custody responsive and pairing writes recoverable"
+        ],
+        "ci": [
+          "[#2490](https://github.com/kontourai/station/pull/2490) ci(test): warn on real-time waits added to tests"
+        ],
+        "docs": [],
+        "other": [
+          "[#2520](https://github.com/kontourai/station/pull/2520) test(devices): track the registry's own timers, not every Timeout in the process"
+        ]
+      },
+      "note": null,
+      "commitCount": 14
+    }
+  },
+  {
     "timestampUtc": "2026-09-24T05:19:34Z",
     "channel": "nightly-desktop",
     "version": "0.1.11-nightly.2458.3",

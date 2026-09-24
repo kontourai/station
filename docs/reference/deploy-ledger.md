@@ -28,6 +28,7 @@ This file decides nothing about how `station.kontourai.io` will read the ledger 
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-09-24T12:27:21Z | nightly-npm | 0.6.0-nightly.2458.35993578648 | `847ec8d` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/35993578648) |
 | 2026-09-24T05:19:34Z | nightly-desktop | 0.1.11-nightly.2458.3 | `3ab9ce1` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/35955520672) |
 | 2026-09-24T05:19:31Z | nightly-android | 0.1.11-nightly.2458.3 | `3ab9ce1` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/35955520672) |
 | 2026-09-24T05:16:07Z | nightly-npm | 0.6.0-nightly.2458.35955520672 | `3ab9ce1` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/35955520672) |
@@ -136,6 +137,43 @@ This file decides nothing about how `station.kontourai.io` will read the ledger 
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-09-24T12:27:21Z · nightly-npm · 0.6.0-nightly.2458.35993578648
+
+- Ship SHA: `847ec8d05e6cea06d33706e8eb8bbd168f875bfb`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.6.0-nightly.2458.35993578648 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `3ab9ce1` ([full sha](https://github.com/kontourai/station/commit/3ab9ce1ba0024c97ed5aa3c73461e3bea1a2758f)):
+
+**Features**
+
+- [#2502](https://github.com/kontourai/station/pull/2502) feat(relay): add gated native v2 signaling and custody
+- [#2504](https://github.com/kontourai/station/pull/2504) feat(chat): persist and show images that tools return to the model
+- [#2503](https://github.com/kontourai/station/pull/2503) feat(devices): device follow-ups: Tools drawer on SSH hosts, busy-host honesty, cleanup and pane placement (#2442, #2433, #2443, #2465)
+- [#2500](https://github.com/kontourai/station/pull/2500) feat(ui): draw attachment PDFs with pdf.js where the engine has no viewer
+- [#2498](https://github.com/kontourai/station/pull/2498) feat(codex): map Codex subagents onto the child-work contract (#2458)
+- [#2477](https://github.com/kontourai/station/pull/2477) feat(ui): preview every chat attachment type and model-returned markdown images
+- [#2467](https://github.com/kontourai/station/pull/2467) feat(devices): a live Device pane, device tools, SSH device hosts and device float over chat
+- [#2478](https://github.com/kontourai/station/pull/2478) feat(child-work): provider-neutral child-work contract for subagents and delegates (#2456)
+- [#2451](https://github.com/kontourai/station/pull/2451) feat(relay): onboard browsers through trusted encrypted Station routes
+
+**Fixes**
+
+- [#2491](https://github.com/kontourai/station/pull/2491) fix: turn-liveness follow-ups — Draft discard/aging, definitive concurrent-send refusals, no silent-turn kill, provider-triggered Claude turns
+- [#2499](https://github.com/kontourai/station/pull/2499) fix: follow-ups from the browser and device batches (#2423, #2424, #2441)
+- [#2489](https://github.com/kontourai/station/pull/2489) fix(desktop): keep relay grant custody responsive and pairing writes recoverable
+
+**CI / workflow**
+
+- [#2490](https://github.com/kontourai/station/pull/2490) ci(test): warn on real-time waits added to tests
+
+**Other**
+
+- [#2520](https://github.com/kontourai/station/pull/2520) test(devices): track the registry's own timers, not every Timeout in the process
 
 ## 2026-09-24T05:19:34Z · nightly-desktop · 0.1.11-nightly.2458.3
 
