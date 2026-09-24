@@ -11,7 +11,7 @@ import {
   replaceModelControlOptions,
 } from '../../utils/modelCapabilities';
 import { finalizeAssistantTurn } from './assistantTurn';
-import { forgetChildWorkForThread } from './childWorkHandlers';
+import { backgroundTasksAfterSessionEnds } from './childWorkHandlers';
 import type { OrchestrationEvent } from './types';
 
 export function handleSessionLifecycleEvent(
@@ -163,11 +163,14 @@ export function handleSessionStateChangedEvent(
         }
       : {}),
     ...(TERMINAL_SESSION_STATES.has(event.to)
-      ? { activityHint: undefined, backgroundTasks: undefined }
+      ? {
+          activityHint: undefined,
+          // #2456: this session's children end with it; a sibling session of
+          // the same chat keeps its own (R1).
+          backgroundTasks: backgroundTasksAfterSessionEnds(event.threadId),
+        }
       : {}),
   });
-  if (TERMINAL_SESSION_STATES.has(event.to))
-    forgetChildWorkForThread(event.threadId);
 }
 
 export function handleSessionExitedEvent(
@@ -190,9 +193,8 @@ export function handleSessionExitedEvent(
     orchestrationTurnOpen: false,
     orchestrationSessionStarted: false,
     activityHint: undefined,
-    backgroundTasks: undefined,
+    backgroundTasks: backgroundTasksAfterSessionEnds(event.threadId),
   });
-  forgetChildWorkForThread(event.threadId);
 }
 
 export function handleSessionStopSettledEvent(

@@ -9,6 +9,7 @@ import {
   childWorkKey,
   createEmptyChildWorkRegistry,
   forgetChildWorkReporter,
+  type SessionChildWork,
 } from '@kontourai/station-contracts/child-work';
 import type { ChatBackgroundTask } from '../../contexts/active-chats-state';
 import { activeChatsStore } from '../../contexts/active-chats-store';
@@ -163,6 +164,22 @@ function deltaReporter(delta: ChildWorkDelta): string {
  * The one path every child-work source goes through: fold, then derive the
  * chat's `backgroundTasks` and announce a newly-resulted settle.
  */
+/**
+ * The chat a reporter's children belong to: the one it resolves to now, else
+ * the one it resolved to when it last reported (D2). A reconnect can rebind a
+ * chat to a newer session, after which the former session no longer resolves
+ * — but its children still sit in that chat's union until something about
+ * that session (its empty view, its exit) is folded against the same key.
+ */
+function chatKeyForReporter(threadId: string): string | undefined {
+  const resolved = activeChatsStore.getChatKeyForExecutionSession(threadId);
+  if (resolved) return resolved;
+  const recorded = reporterChat.get(threadId);
+  return recorded && activeChatsStore.getSnapshot()[recorded]
+    ? recorded
+    : undefined;
+}
+
 export function applyChildWorkToChat(
   threadId: string,
   delta: ChildWorkDelta,
@@ -170,7 +187,7 @@ export function applyChildWorkToChat(
   // A delta names its own reporter; one arriving on another session's thread
   // is not that session's to record (the server applies the same rule).
   if (deltaReporter(delta) !== threadId) return;
-  const chatKey = activeChatsStore.getChatKeyForExecutionSession(threadId);
+  const chatKey = chatKeyForReporter(threadId);
   if (!chatKey) return;
   hookChatRemoval();
   reporterChat.set(threadId, chatKey);
@@ -183,7 +200,7 @@ export function applyChildWorkToChat(
   });
   if (delta.kind === 'settle') {
     const key = childWorkKey(delta);
-    announceSettle(threadId, before.items[key], next.items[key]);
+    announceSettle(chatKey, before.items[key], next.items[key]);
   }
 }
 
@@ -204,7 +221,6 @@ export function applySnapshotChildWork(
   view: ChildWorkSessionView | undefined,
 ): void {
   if (!view) return;
-  if (!activeChatsStore.getChatForExecutionSession(threadId)) return;
   if (view.observability === 'not-reported') {
     applyChildWorkToChat(threadId, {
       kind: 'not-reported',
@@ -222,23 +238,84 @@ export function applySnapshotChildWork(
 }
 
 /**
- * The session ended: nothing it reported can still be running. The session
- * handler clears the chat's `backgroundTasks`; forgetting here keeps a later
- * delta from re-deriving the dead set, and restores any children a SIBLING
- * session of the same chat still has running.
+ * The session ended: nothing it reported can still be running. Forgetting it
+ * re-derives its chat's list from the reporters that remain, so a SIBLING
+ * session's children stay (R1) and this session's go. Safe to call more than
+ * once, and for a session that never reported.
  */
 export function forgetChildWorkForThread(threadId: string): void {
   const chatKey = reporterChat.get(threadId);
+  if (chatKey === undefined) {
+    registry = forgetChildWorkReporter(registry, threadId);
+    return;
+  }
   registry = forgetChildWorkReporter(registry, threadId);
   reporterChat.delete(threadId);
-  // Another session of the same chat may still have children running (R1);
-  // re-derive rather than leave the chat's list empty.
-  if (chatKey && activeChatsStore.getSnapshot()[chatKey]) {
-    const remaining = chatBackgroundTasksForChatKey(registry, chatKey);
-    if (remaining.length > 0) {
-      activeChatsStore.updateChat(chatKey, { backgroundTasks: remaining });
-    }
+  if (activeChatsStore.getSnapshot()[chatKey]) {
+    activeChatsStore.updateChat(chatKey, {
+      backgroundTasks: chatBackgroundTasksForChatKey(registry, chatKey),
+    });
   }
+}
+
+/**
+ * D2: the lifecycle half that must NOT wait for the chat guard. A session's
+ * exit (or terminal state) can arrive after its chat was rebound to a newer
+ * session, when `getChatForExecutionSession` no longer finds it; the event
+ * dispatcher calls this before that guard.
+ */
+export function observeChildWorkLifecycle(event: OrchestrationEvent): void {
+  if (
+    event.method === 'session.exited' ||
+    (event.method === 'session.state-changed' &&
+      TERMINAL_CHILD_WORK_STATES.has(event.to))
+  ) {
+    forgetChildWorkForThread(event.threadId);
+  }
+}
+
+/** The session states `sessionHandlers` treats as terminal. */
+const TERMINAL_CHILD_WORK_STATES = new Set([
+  'completed',
+  'aborted',
+  'errored',
+  'exited',
+]);
+
+/**
+ * D2: a FULL snapshot lists every session this client can read. A reporter it
+ * recorded that is absent from the list no longer exists, so its children are
+ * gone with it. Each present row's view is folded first (keyed by the
+ * reporter, through its recorded chat when it no longer resolves).
+ */
+export function reconcileChildWorkSnapshot(
+  sessions: ReadonlyArray<{ threadId: string; childWork?: SessionChildWork }>,
+): void {
+  for (const session of sessions) {
+    applySnapshotChildWork(session.threadId, session.childWork?.children);
+  }
+  const listed = new Set(sessions.map((session) => session.threadId));
+  for (const reporter of [...reporterChat.keys()]) {
+    if (!listed.has(reporter)) forgetChildWorkForThread(reporter);
+  }
+}
+
+/**
+ * For the session handlers' own terminal write: forget `threadId` and return
+ * what its chat should still show — a sibling session's running children —
+ * or `undefined` when nothing remains, as that write always produced.
+ */
+export function backgroundTasksAfterSessionEnds(
+  threadId: string,
+): ChatBackgroundTask[] | undefined {
+  const chatKey =
+    reporterChat.get(threadId) ??
+    activeChatsStore.getChatKeyForExecutionSession(threadId);
+  registry = forgetChildWorkReporter(registry, threadId);
+  reporterChat.delete(threadId);
+  if (!chatKey) return undefined;
+  const remaining = chatBackgroundTasksForChatKey(registry, chatKey);
+  return remaining.length > 0 ? remaining : undefined;
 }
 
 /** R5: a closed chat forgets every reporter that fed it. */

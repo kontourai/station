@@ -4142,10 +4142,19 @@ export function createOrchestrationRoutes(
           ...(plan.gap !== undefined ? { resumeGap: plan.gap } : {}),
         });
 
-        // The advertised resume cursor for the snapshot/caught-up frames.
-        // Starts at `head` (computed above, before any `await`) and is
-        // refined below if the snapshot branch runs — see that branch.
-        let resolvedHead = head;
+        // The advertised resume cursor for the snapshot/caught-up frames:
+        // `head`, read above BEFORE any `await` and after the live
+        // subscription was armed. It is deliberately never re-read after the
+        // snapshot is built (#2456 D1): an event appended while
+        // `listSessionReadModel` is awaited may be missing from the snapshot,
+        // yet a re-read head would already cover its sequence, so the client's
+        // cursor would drop the buffered live frame and the event would be
+        // lost. With `head`, every such event is newer than the cursor and is
+        // delivered from `pending`; an event the snapshot DID already reflect
+        // is re-applied, which the stream's consumers already tolerate at the
+        // replay/snapshot boundary (resumeCursor.ts) — the snapshot carries
+        // no transcript, and child-work deltas fold idempotently.
+        const resolvedHead = head;
 
         if (plan.decision === 'replay') {
           const replayBudget = orchestrationService.readEventStreamReplayPlan(
@@ -4161,7 +4170,7 @@ export function createOrchestrationRoutes(
           if (!replayBudget.fitsBudget) {
             const sessions =
               await orchestrationService.listSessionReadModel(authority);
-            resolvedHead = orchestrationService.readEventStreamHead();
+            // #2456 D1: `resolvedHead` stays `head` — see its declaration.
             await writeAuthorized({
               event: 'orchestration:snapshot',
               data: JSON.stringify({ sessions }),
@@ -4202,14 +4211,13 @@ export function createOrchestrationRoutes(
         } else {
           const sessions =
             await orchestrationService.listSessionReadModel(authority);
-          // LOW (review): `head` was read before the `await` above — another
-          // await-yielding-tick's worth of appends could have landed by now.
-          // Re-reading here costs one more (cheap, indexed MAX) query and
-          // makes the advertised cursor exact rather than merely safe: a
-          // stale-but-safe cursor still works correctly (anything newer is
-          // buffered and delivered live, see below), but an exact one gives a
-          // reconnecting client a tighter future resume point.
-          resolvedHead = orchestrationService.readEventStreamHead();
+          // #2456 D1: the head is NOT re-read here. An earlier review
+          // ("LOW") re-read it to make the cursor "exact", but an exact
+          // cursor is unsafe: events appended during the `await` above can
+          // be absent from `sessions` while their sequence is ≤ the re-read
+          // head, so the client drops their buffered live frames and loses
+          // them. `head` (read before the await) is stale-but-safe: anything
+          // newer is delivered live from `pending`.
           await writeAuthorized({
             event: 'orchestration:snapshot',
             data: JSON.stringify({ sessions }),

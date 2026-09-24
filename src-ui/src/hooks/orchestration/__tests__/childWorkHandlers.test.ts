@@ -335,6 +335,96 @@ describe('child-work client path (legacy Claude tuples → contract reducer)', (
     ]);
   });
 
+  describe("D2: a rebound chat does not keep a former session's children", () => {
+    const former = `${threadId}:session:x`;
+    const current = `${threadId}:session:y`;
+    const reportFrom = (reporter: string, active: unknown[]) =>
+      handleExtensionNotificationEvent({
+        eventId: `reg-${reporter}-${active.length}`,
+        provider: 'claude',
+        threadId: reporter,
+        createdAt: '2026-09-23T00:02:00.000Z',
+        method: 'extension.notification',
+        namespace: 'claude-code',
+        type: 'task/registry',
+        payload: { active },
+      });
+
+    beforeEach(() => {
+      // The root session (the chat key itself) has a genuinely running
+      // backgrounded child alongside the continuation — R1 must keep it.
+      tuple('task/registry', {
+        active: [
+          { taskId: 'root-bg', description: 'Root', backgrounded: true },
+        ],
+      });
+      activeChatsStore.updateChat(threadId, { currentSessionId: former });
+      reportFrom(former, [{ taskId: 'x-task', description: 'Former' }]);
+      expect(chat()?.backgroundTasks?.map((task) => task.taskId)).toEqual([
+        'root-bg',
+        'x-task',
+      ]);
+      // A reconnect rebinds the chat to a newer session: the former one no
+      // longer resolves to this chat.
+      activeChatsStore.updateChat(threadId, { currentSessionId: current });
+      expect(activeChatsStore.getChatKeyForExecutionSession(former)).toBe(
+        undefined,
+      );
+    });
+
+    test("the former session's empty snapshot view clears its child through the recorded chat", async () => {
+      const { applyOrchestrationSnapshot } = await import(
+        '../snapshotHandlers'
+      );
+      applyOrchestrationSnapshot({
+        sessions: [
+          { provider: 'claude', threadId, status: 'ready' },
+          {
+            provider: 'claude',
+            threadId: former,
+            status: 'ready',
+            hasActiveTurn: false,
+            childWork: {
+              children: {
+                observability: 'reported',
+                running: [],
+                observedAt: '2026-09-23T00:03:00.000Z',
+              },
+            },
+          },
+        ],
+      });
+      expect(chat()?.backgroundTasks?.map((task) => task.taskId)).toEqual([
+        'root-bg',
+      ]);
+    });
+
+    test("the former session's exit clears its child even though it no longer has a chat", async () => {
+      const { handleOrchestrationEvent } = await import('../eventHandlers');
+      handleOrchestrationEvent('http://api', {
+        provider: 'claude',
+        threadId: former,
+        createdAt: '2026-09-23T00:03:00.000Z',
+        method: 'session.exited',
+      } as never);
+      expect(chat()?.backgroundTasks?.map((task) => task.taskId)).toEqual([
+        'root-bg',
+      ]);
+    });
+
+    test('a full snapshot that no longer lists the former session drops its child', async () => {
+      const { applyOrchestrationSnapshot } = await import(
+        '../snapshotHandlers'
+      );
+      applyOrchestrationSnapshot({
+        sessions: [{ provider: 'claude', threadId, status: 'ready' }],
+      });
+      expect(chat()?.backgroundTasks?.map((task) => task.taskId)).toEqual([
+        'root-bg',
+      ]);
+    });
+  });
+
   test('R5: closing the chat forgets every reporter that fed it', () => {
     tuple('task/registry', {
       active: [{ taskId: 'a', description: 'Orphan', backgrounded: true }],
