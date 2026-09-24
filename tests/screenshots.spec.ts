@@ -184,11 +184,16 @@ async function assertGalleryConnectionChrome(page: Page): Promise<void> {
     timeout: 10_000,
   });
   await expect(chip).toHaveClass(/app-toolbar__conn--compact/);
-  const named = `Manage Stations — Connected · ${GALLERY_CONNECTION_NAME}`;
+  // Since #2426 the healthy compact chip shows a short visible Station label
+  // (`Station · <name>`), and the accessible name carries that visible text
+  // after the state (WCAG 2.5.3).
+  const visible = `Station · ${GALLERY_CONNECTION_NAME}`;
+  const named = `Manage Stations — Connected · ${visible}`;
   await expect(chip).toHaveAttribute('aria-label', named);
   await expect(chip).toHaveAttribute('title', named);
-  // Collapsed means collapsed: neither text span renders, which is the width
-  // this change reclaims.
+  await expect(chip.locator('.app-toolbar__conn-label')).toHaveText(visible);
+  // Compact still means the separate state and name spans do not render; the
+  // single short label replaces them.
   await expect(chip.locator('.app-toolbar__conn-state')).toHaveCount(0);
   await expect(chip.locator('.app-toolbar__conn-name')).toHaveCount(0);
   // The gallery is a browser E2E instance, never a supervised desktop
