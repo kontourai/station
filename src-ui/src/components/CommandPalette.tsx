@@ -19,7 +19,10 @@ import {
   useSyncExternalStore,
 } from 'react';
 import { APP_DESTINATION_REGISTRY } from '../app-shell/destination-registry';
-import { useApiBase } from '../contexts/ApiBaseContext';
+import {
+  useApiBase,
+  useHostRequestAuthorityScope,
+} from '../contexts/ApiBaseContext';
 import { activeChatsStore } from '../contexts/active-chats-store';
 import {
   evaluateShortcutWhen,
@@ -295,6 +298,12 @@ export function CommandPalette() {
     data: InstalledPluginCommandSource[];
   };
   const { apiBase } = useApiBase();
+  // Captured once per render for the plugin command effect coordinator
+  // (station#1418/#1419 review round 2, HIGH): a settlement retried after a
+  // Station switch must authenticate for the SAME Station its admission was
+  // captured under, or fail fast — never go out silently unauthenticated
+  // against whichever Station is active by the time it finally retries.
+  const pluginCommandEffectRequestScope = useHostRequestAuthorityScope();
   // SHELL-19: the palette used to advertise "Switch to session 1" … "Switch to
   // session 9" as nine static commands whatever the truth was — there was one
   // session, and eight of those rows ran a handler that returns without doing
@@ -389,6 +398,7 @@ export function CommandPalette() {
           ({ getPluginCommandEffectCoordinator }) => {
             getPluginCommandEffectCoordinator().runCommand({
               apiBase,
+              requestScope: pluginCommandEffectRequestScope,
               pluginId: pluginName,
               commandId: contribution.id,
               installationGeneration,
@@ -452,6 +462,7 @@ export function CommandPalette() {
         ({ getPluginCommandEffectCoordinator }) => {
           getPluginCommandEffectCoordinator().runCommand({
             apiBase,
+            requestScope: pluginCommandEffectRequestScope,
             pluginId: pluginName,
             commandId: contribution.id,
             installationGeneration,
@@ -468,6 +479,7 @@ export function CommandPalette() {
     },
     [
       apiBase,
+      pluginCommandEffectRequestScope,
       activeChatId,
       selectedProject,
       pluginGenerationByName,

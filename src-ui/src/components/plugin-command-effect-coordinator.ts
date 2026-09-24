@@ -65,6 +65,21 @@ const DOCUMENT_ID_STORAGE_KEY = 'station.pluginCommandEffects.documentId';
  * so a cancel with no effectId is sent for it.
  */
 export const PLUGIN_COMMAND_EFFECT_ADMISSION_TIMEOUT_MS = 20_000;
+/**
+ * Bounds `retainedSettlements` (station#1418/#1419 review round 2, HIGH). A
+ * retained record survives a Station/authority switch under its OLD
+ * identity, and that identity can never authenticate again once a different
+ * Station is active — the ambient credential resolver has nothing else to
+ * offer it. Without a bound this map would grow by one on every subsequent
+ * switch and live for the tab's lifetime. Dropping a record here does not
+ * erase the effect: the server's strict-withdrawal contract keeps it
+ * outstanding until an operator resolves it, exactly like a document that
+ * never comes back — this only stops THIS document from retrying forever.
+ */
+export const PLUGIN_COMMAND_EFFECT_RETAINED_SETTLEMENT_MAX = 16;
+/** See {@link PLUGIN_COMMAND_EFFECT_RETAINED_SETTLEMENT_MAX}. */
+export const PLUGIN_COMMAND_EFFECT_RETAINED_SETTLEMENT_MAX_AGE_MS =
+  10 * 60 * 1000;
 
 /** A settlement outcome that means the item is fully resolved and can be dropped. */
 const TERMINAL_STATUSES = new Set([
@@ -82,6 +97,19 @@ export type PluginCommandEffectAdmitOutcome =
   | { kind: 'network-error' };
 
 /**
+ * Mirrors `@kontourai/station-sdk/client`'s `ApiRequestScope` (`apiBase`,
+ * `authorityKey`) structurally, without an SDK import — this module is
+ * transport-agnostic and exercised against a fake transport in tests.
+ * Production wiring (`CommandPalette.tsx`) supplies the live value from
+ * `useHostRequestAuthorityScope()`, captured once when a command is issued
+ * (station#1418/#1419 review round 2, HIGH).
+ */
+export interface PluginCommandEffectRequestScope {
+  apiBase: string;
+  authorityKey: string;
+}
+
+/**
  * Transport seam. Production dispatches real HTTP
  * (`plugin-command-effect-transport.ts`); tests script exact orderings of
  * admission responses, invalidations and acks against a fake or a real Hono
@@ -94,11 +122,17 @@ export interface PluginCommandEffectTransport {
     request: PluginCommandEffectAdmissionRequest,
     signal: AbortSignal,
   ): Promise<PluginCommandEffectAdmitOutcome>;
-  /** `null` means the request never reached or returned from the server. */
+  /**
+   * `null` means the request never reached or returned from the server —
+   * including a `requestScope` authority mismatch the SDK transport turns
+   * into a fail-fast rejection before it ever dispatches (station#1418/#1419
+   * review round 2, HIGH): a settle for a record admitted under a Station
+   * that is no longer the active one must never be sent unauthenticated.
+   */
   settle(
     apiBase: string,
     request: PluginCommandEffectSettlementRequest,
-    options: { keepalive: boolean },
+    options: { keepalive: boolean; requestScope?: PluginCommandEffectRequestScope },
   ): Promise<readonly PluginCommandEffectSettlementResult[] | null>;
 }
 
@@ -122,6 +156,16 @@ export interface PluginCommandEffectWindowLike {
 
 export interface PluginCommandEffectRunInput {
   apiBase: string;
+  /**
+   * The host authority this admission is issued under, captured once at
+   * admission time. Carried on the record so a later settle — possibly long
+   * after a Station/authority switch, via `retainedSettlements` — either
+   * authenticates for the SAME Station it was admitted against, or fails
+   * fast and observably (never silently unauthenticated) once the ambient
+   * credential has moved on (station#1418/#1419 review round 2, HIGH).
+   * Omitted only by tests that do not exercise cross-Station retry.
+   */
+  requestScope?: PluginCommandEffectRequestScope;
   pluginId: string;
   commandId: string;
   installationGeneration: string;
@@ -158,6 +202,19 @@ interface RequestRecord {
   apiBase: string;
   documentId: string;
   documentKey: string;
+  /** Captured at creation; see {@link PluginCommandEffectRunInput.requestScope}. */
+  requestScope?: PluginCommandEffectRequestScope;
+  /** `now()` at creation. Bounds how long a decided-but-unacked record may live in `retainedSettlements`. */
+  createdAt: number;
+  /**
+   * This record's OWN same-origin-cookie-auth eligibility, captured at
+   * creation — never the coordinator's CURRENT (possibly since-changed)
+   * value. A retained record must keep using the transport mode it was
+   * admitted under; the live `cookieAuthEligible` flag describes whatever
+   * identity is active NOW, which after a switch is a different Station
+   * (station#1418/#1419 review round 2, HIGH).
+   */
+  keepaliveEligible: boolean;
   effectId?: string;
   outcome?: PluginCommandEffectOutcome;
   cancelled: boolean;
@@ -289,6 +346,61 @@ export function createPluginCommandEffectCoordinator(
     retainedSettlements.delete(requestId);
   }
 
+  /**
+   * Drops a retained record that has exceeded a bound rather than left to
+   * retry forever. This does not erase the effect — the server keeps it
+   * outstanding until an operator resolves it — it only stops THIS document
+   * from retrying an identity that can never authenticate again
+   * (station#1418/#1419 review round 2, HIGH).
+   */
+  function dropRetainedRecord(
+    requestId: string,
+    record: RequestRecord,
+    reason: string,
+  ): void {
+    retainedSettlements.delete(requestId);
+    try {
+      console.warn(
+        `[plugin-command-effect] dropping retained settlement for effect ${
+          record.effectId ?? `(unconfirmed, request ${requestId})`
+        }: ${reason}. The server keeps this effect outstanding until an operator resolves it.`,
+      );
+    } catch {
+      // A host without a usable console must not turn this into a failure.
+    }
+  }
+
+  /**
+   * Bounds `retainedSettlements` by count and age
+   * ({@link PLUGIN_COMMAND_EFFECT_RETAINED_SETTLEMENT_MAX},
+   * {@link PLUGIN_COMMAND_EFFECT_RETAINED_SETTLEMENT_MAX_AGE_MS}). Called on
+   * every flush (age can pass with no switch at all) and after every
+   * authority reset (a switch is what grows this map).
+   */
+  function pruneRetainedSettlements(): void {
+    const nowMs = now();
+    for (const [requestId, record] of [...retainedSettlements]) {
+      if (nowMs - record.createdAt > PLUGIN_COMMAND_EFFECT_RETAINED_SETTLEMENT_MAX_AGE_MS) {
+        dropRetainedRecord(requestId, record, 'exceeded the retention age bound');
+      }
+    }
+    if (retainedSettlements.size > PLUGIN_COMMAND_EFFECT_RETAINED_SETTLEMENT_MAX) {
+      const oldestFirst = [...retainedSettlements].sort(
+        (a, b) => a[1].createdAt - b[1].createdAt,
+      );
+      const excess =
+        oldestFirst.length - PLUGIN_COMMAND_EFFECT_RETAINED_SETTLEMENT_MAX;
+      for (let index = 0; index < excess; index += 1) {
+        const [requestId, record] = oldestFirst[index];
+        dropRetainedRecord(
+          requestId,
+          record,
+          'exceeded the retained-settlement count bound',
+        );
+      }
+    }
+  }
+
   /** Groups pending records by the exact identity they were admitted under. */
   function pendingGroups(): Map<string, RequestRecord[]> {
     const groups = new Map<string, RequestRecord[]>();
@@ -306,12 +418,37 @@ export function createPluginCommandEffectCoordinator(
     return groups;
   }
 
+  /**
+   * Schedules the next flush at the EARLIEST `nextAttemptAt` across every
+   * still-pending decided record in both maps — never a fixed delay
+   * (station#1418/#1419 review round 2, HIGH: a fixed `BACKOFF_START_MS`
+   * reschedule only coincidentally matches the first backoff step; once a
+   * record's own exponential backoff exceeds it, `pendingGroups()` excludes
+   * that record from every future round while nothing re-arms a timer for
+   * it, and it silently stops retrying forever). A pending decided record
+   * must never be left without a scheduled wake-up.
+   */
+  function scheduleNextWake(): void {
+    let nextWakeAt: number | undefined;
+    for (const record of [
+      ...requests.values(),
+      ...retainedSettlements.values(),
+    ]) {
+      if (record.outcome === undefined) continue;
+      if (nextWakeAt === undefined || record.nextAttemptAt < nextWakeAt) {
+        nextWakeAt = record.nextAttemptAt;
+      }
+    }
+    if (nextWakeAt !== undefined) {
+      scheduleFlush(Math.max(0, nextWakeAt - now()));
+    }
+  }
+
   async function flush(options: { keepalive: boolean }): Promise<void> {
+    pruneRetainedSettlements();
     const groups = pendingGroups();
-    let hasMore = false;
     for (const group of groups.values()) {
       const batch = group.slice(0, MAX_SETTLEMENT_BATCH);
-      if (group.length > MAX_SETTLEMENT_BATCH) hasMore = true;
       const first = batch[0];
       if (!first) continue;
       const request: PluginCommandEffectSettlementRequest = {
@@ -325,7 +462,13 @@ export function createPluginCommandEffectCoordinator(
       };
       let results: readonly PluginCommandEffectSettlementResult[] | null;
       try {
-        results = await deps.transport.settle(first.apiBase, request, options);
+        results = await deps.transport.settle(first.apiBase, request, {
+          // This record's OWN captured eligibility, not the coordinator's
+          // current one (station#1418/#1419 review round 2, HIGH) — see
+          // `RequestRecord.keepaliveEligible`.
+          keepalive: options.keepalive && first.keepaliveEligible,
+          ...(first.requestScope ? { requestScope: first.requestScope } : {}),
+        });
       } catch {
         results = null;
       }
@@ -334,7 +477,6 @@ export function createPluginCommandEffectCoordinator(
           record.attempts += 1;
           record.nextAttemptAt = now() + backoffFor(record.attempts);
         }
-        hasMore = true;
         continue;
       }
       const byRequestId = new Map(
@@ -349,10 +491,9 @@ export function createPluginCommandEffectCoordinator(
         // `cancel-refused`, or the server did not answer this item: retry.
         record.attempts += 1;
         record.nextAttemptAt = now() + backoffFor(record.attempts);
-        hasMore = true;
       }
     }
-    if (hasMore) scheduleFlush(BACKOFF_START_MS);
+    scheduleNextWake();
   }
 
   function onPageHide() {
@@ -429,6 +570,9 @@ export function createPluginCommandEffectCoordinator(
       apiBase: input.apiBase,
       documentId,
       documentKey,
+      requestScope: input.requestScope,
+      createdAt: now(),
+      keepaliveEligible: cookieAuthEligible,
       cancelled: false,
       attempts: 0,
       nextAttemptAt: 0,
@@ -564,6 +708,10 @@ export function createPluginCommandEffectCoordinator(
       requests.delete(requestId);
       retainedSettlements.set(requestId, record);
     }
+    // A switch is exactly what grows `retainedSettlements`; enforce the
+    // count bound right after adding to it (station#1418/#1419 review round
+    // 2, HIGH). `flush()` above also prunes by age on every call.
+    pruneRetainedSettlements();
     documentId = randomId();
     deps.storage.setItem(DOCUMENT_ID_STORAGE_KEY, documentId);
     documentKey = randomId();

@@ -18,6 +18,7 @@ import type {
   PluginCommandEffectSettlementRequest,
   PluginCommandEffectSettlementResult,
 } from '@kontourai/station-contracts/plugin-command-effect';
+import type { ApiRequestScope } from './http.js';
 import { mutateJson } from './http.js';
 
 export type PluginCommandEffectAdmitOutcome =
@@ -101,11 +102,25 @@ export async function admitPluginCommandEffect(
  * attempt) is what actually closes the loop for desktop and remote-paired
  * connections; a `pagehide` that cannot complete in time may leave the
  * effect outstanding for the operator to resolve.
+ *
+ * `options.requestScope` (kontourai/station#1418, #1419 review round 2,
+ * HIGH) is the host authority THIS settlement's admission was captured
+ * under. On the non-keepalive path it is handed to `mutateJson`, which binds
+ * the call to that exact authority and fails BEFORE dispatch
+ * (`StationRequestAuthorityError`, caught below and turned into `null`, the
+ * same as any other unreachable settle) if the ambient credential resolver
+ * has since moved on to a different Station. Without it, `mutateJson` would
+ * resolve whatever credential is CURRENTLY active and — since that
+ * credential's origin will not match `apiBase` once the Station has
+ * switched — silently attach no `Authorization` header at all, sending this
+ * settlement unauthenticated to a Station it can never succeed against. The
+ * keepalive path is unaffected: it bypasses the SDK transport (and this
+ * scoping) entirely, by design (see above).
  */
 export async function settlePluginCommandEffects(
   apiBase: string,
   request: PluginCommandEffectSettlementRequest,
-  options: { keepalive?: boolean } = {},
+  options: { keepalive?: boolean; requestScope?: ApiRequestScope } = {},
 ): Promise<readonly PluginCommandEffectSettlementResult[] | null> {
   const url = `${apiBase}/api/plugins/command-effects/settlements`;
   let response: Response;
@@ -119,7 +134,12 @@ export async function settlePluginCommandEffects(
         body: JSON.stringify(request),
       });
     } else {
-      response = await mutateJson(url, 'POST', {}, request);
+      response = await mutateJson(
+        url,
+        'POST',
+        options.requestScope ? { requestScope: options.requestScope } : {},
+        request,
+      );
     }
   } catch {
     return null;
