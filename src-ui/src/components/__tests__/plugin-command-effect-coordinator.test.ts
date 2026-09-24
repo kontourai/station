@@ -478,9 +478,7 @@ describe('plugin command effect coordinator', () => {
     expect(secondAdmitCalls[0].request.documentId).toBe(
       admitCalls[0].request.documentId,
     );
-    expect(secondAdmitCalls[0].request.documentKey).not.toBe(
-      oldSettlementKey,
-    );
+    expect(secondAdmitCalls[0].request.documentKey).not.toBe(oldSettlementKey);
     second.dispose();
   });
 

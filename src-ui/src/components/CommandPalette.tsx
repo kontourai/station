@@ -327,18 +327,23 @@ export function CommandPalette() {
   // several open chats — only the one navigationStore itself calls active.
   const activeChatId = useMemo(() => {
     if (!isDockOpen) return null;
-    return (
+    const resolved =
       (activeChat
         ? activeChatsStore.getChatKeyForExecutionSession(activeChat)
         : undefined) ??
       (activeConversation
         ? activeChatsStore.getChatKeyForExecutionSession(activeConversation)
         : undefined) ??
-      null
-    );
-    // `openChats` is not read directly, but its identity changes whenever
-    // `activeChatsStore` does, which is exactly when a stale resolution here
-    // (e.g. a chat's conversationId just got assigned) needs recomputing.
+      null;
+    // Read `openChats` (rather than only listing it as a dependency): it
+    // recomputes this whenever `activeChatsStore` changes — exactly when a
+    // stale resolution here (e.g. a chat's conversationId just got assigned)
+    // needs recomputing — and it never claims a chat still registered under
+    // a stale key is "focused" once it is actually gone from the open list.
+    if (resolved && !openChats.some((chat) => chat.sessionId === resolved)) {
+      return null;
+    }
+    return resolved;
   }, [isDockOpen, activeChat, activeConversation, openChats]);
   const pluginPaletteCommands = useMemo(
     () =>
@@ -415,7 +420,9 @@ export function CommandPalette() {
                 // predicate `navigate()` itself uses, so a guard that would
                 // never actually run (same pathname, no guard registered)
                 // never blocks this command either.
-                if (navigationStore.wouldNavigationGuardBlock(destination.route)) {
+                if (
+                  navigationStore.wouldNavigationGuardBlock(destination.route)
+                ) {
                   notify(
                     'Unsaved changes are blocking navigation. This command was cancelled.',
                   );
