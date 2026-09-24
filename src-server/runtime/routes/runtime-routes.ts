@@ -137,7 +137,6 @@ import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { parseStationTaskBasisCollection } from '@kontourai/station-contracts/task-basis';
 import {
   INTERNAL_SESSION_READ_SCOPE,
-  isSessionReadAuthority,
   sessionReadAuthorityFromRequest,
 } from '@kontourai/station-contracts/tenancy';
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
@@ -479,6 +478,7 @@ import { ProjectResourceResolver } from '../../services/projects/project-resourc
 import type { ProjectService } from '../../services/projects/project-service.js';
 import { resolveProjectWorkspacePath } from '../../services/projects/project-workspace-path.js';
 import type { ProposedChangeService } from '../../services/projects/proposed-change-service.js';
+import { sessionWorkspaceDirectoryFor } from '../../services/projects/session-workspace-directory.js';
 import { createTaskBasisAppReadModule } from '../../services/projects/task-basis-app-read-module.js';
 import { createTaskBasisRuntimeComposition } from '../../services/projects/task-basis-runtime-composition.js';
 import type { TaskDispatcher } from '../../services/projects/task-dispatcher.js';
@@ -631,6 +631,33 @@ export function pullRequestThreadForProject<
   return sessions.find(
     (candidate) =>
       candidate.threadId === threadId && candidate.projectSlug === projectSlug,
+  );
+}
+
+/**
+ * The session a pull-request request names by `?thread=`, for a caller allowed
+ * to read it: its worktree names a branch and a remote, which are that
+ * session's to disclose. `'refused'` when the caller may not read it; the
+ * project filter then keeps another project's session from rebinding the
+ * checkout (`pullRequestThreadForProject`). Authority is checked before any
+ * session is listed.
+ */
+export async function pullRequestSessionForReader<
+  T extends { threadId: string; projectSlug?: string },
+>(
+  deps: {
+    canRead: (threadId: string) => boolean;
+    listSessions: () => Promise<T[]>;
+  },
+  threadId: string | undefined,
+  projectSlug: string,
+): Promise<T | undefined | 'refused'> {
+  if (!threadId) return undefined;
+  if (!deps.canRead(threadId)) return 'refused';
+  return pullRequestThreadForProject(
+    await deps.listSessions(),
+    threadId,
+    projectSlug,
   );
 }
 
@@ -997,6 +1024,14 @@ export function isProjectMemberDraftLease(method: string, path: string) {
     /^\/api\/projects\/[^/]+\/plugin-draft\/lease$/.test(path)
   );
 }
+
+/**
+ * Candidate threads an attachment read may judge, matching the event store's
+ * per-query bound. The read-predicate calls are therefore bounded at this;
+ * the number of store queries is up to one per readable owner, a count that
+ * comes from the caller and never from the reference.
+ */
+const ATTACHMENT_CANDIDATE_THREADS_PER_REQUEST = 4;
 
 export function configureRuntimeRoutes(
   context: ConfigureRuntimeRoutesContext,
@@ -2054,6 +2089,12 @@ export function configureRuntimeRoutes(
   context.app.use('/api/search/*', bindConversationReadAuthority);
   context.app.use('/api/tasks', bindConversationReadAuthority);
   context.app.use('/api/tasks/*', bindConversationReadAuthority);
+  // Attachment bytes authorize through the thread that carried them, so they
+  // must resolve the same principal that owns that thread. The OS alias never
+  // matches a principal-owned Session, and every stored attachment 404'd.
+  // GET only: the route has one leaf, and `use` would register every method
+  // with the route-coverage guard.
+  context.app.get('/api/attachments/:ref', bindConversationReadAuthority);
   context.app.route(
     '/agents',
     createAgentRoutes(
@@ -4108,6 +4149,33 @@ export function configureRuntimeRoutes(
         layoutCatalog,
         kitObservabilityRegistry,
         terminalService: context.terminalService,
+        sessionWorkspaceDirectory: (routeContext, projectSlug, thread) =>
+          sessionWorkspaceDirectoryFor(
+            {
+              canRead: (id) =>
+                context.orchestrationService.canUserReadSession(
+                  id,
+                  readAuthorityForRequest(routeContext.req.raw),
+                ),
+              listSessions: () =>
+                context.orchestrationService.listSessions(
+                  INTERNAL_SESSION_READ_SCOPE,
+                ),
+              projectDirectory: async (slug) => {
+                try {
+                  const configured =
+                    context.projectService.getProject(slug).workingDirectory;
+                  return configured
+                    ? resolve(expandTilde(configured))
+                    : undefined;
+                } catch {
+                  return undefined;
+                }
+              },
+            },
+            projectSlug,
+            thread,
+          ),
         // station#3778: the SAME service instance the Board's availability
         // route answers from, so the Pane catalogue, the nav entry and the
         // route guard cannot drift into three answers.
@@ -4343,7 +4411,7 @@ export function configureRuntimeRoutes(
     '/api/pull-requests',
     createPullRequestRoutes(
       () => listProviders('pullRequest').map((entry) => entry.provider),
-      async (routeContext) => {
+      async (routeContext, request) => {
         const projectSlug = routeContext.req.query('project');
         if (!projectSlug)
           return { available: false, reason: 'A recorded project is required' };
@@ -4353,16 +4421,24 @@ export function configureRuntimeRoutes(
         } catch {
           return { available: false, reason: 'Project is unavailable' };
         }
-        const threadId = routeContext.req.query('thread');
-        const session = threadId
-          ? pullRequestThreadForProject(
-              await context.orchestrationService.listSessions(
+        const threaded = await pullRequestSessionForReader(
+          {
+            canRead: (id) =>
+              context.orchestrationService.canUserReadSession(
+                id,
+                readAuthorityForRequest(routeContext.req.raw),
+              ),
+            listSessions: () =>
+              context.orchestrationService.listSessions(
                 INTERNAL_SESSION_READ_SCOPE,
               ),
-              threadId,
-              projectSlug,
-            )
-          : undefined;
+          },
+          routeContext.req.query('thread'),
+          projectSlug,
+        );
+        if (threaded === 'refused')
+          return { available: false, reason: 'Session is unavailable' };
+        const session = threaded;
         return pullRequestContextResolver.resolve({
           // EXPAND — 111 lines above this file's own comment warning about
           // exactly this. Raw, it reaches `git remote -v` with a `~/…` cwd
@@ -4373,6 +4449,10 @@ export function configureRuntimeRoutes(
             : project.workingDirectory,
           workspaceIsolation: session?.workspaceIsolation,
           requestedWorkingDirectory: routeContext.req.query('workingDirectory'),
+          requireBranchState: request.requireBranchState,
+          ...(request.repository?.owner && request.repository.name
+            ? { repository: request.repository }
+            : {}),
         });
       },
       {
@@ -5068,16 +5148,32 @@ export function configureRuntimeRoutes(
       readAttachment: (ref) =>
         runtimeContext.orchestrationEventStore.readAttachmentBlob(ref),
       threadsForAttachment: (ref, request) => {
-        const authority = readAuthorityForRequest(request);
-        return runtimeContext.orchestrationEventStore.listAttachmentCandidateThreads(
-          ref,
-          isSessionReadAuthority(authority) ? authority.userId : undefined,
+        // One bounded, owner-narrowed query per owner the caller could read
+        // (their own, shared personal-account owners, and the legacy alias
+        // where the home-possession bridge admits it). The owner list comes
+        // from the caller, never from the reference, so a digest bound only
+        // to other people's threads costs the same as an unbound one.
+        // Ownerless rows come back with the first owner's query and count
+        // toward the bound; under an ownerless `deny` policy four of them
+        // could crowd out a later owner's readable thread.
+        const owners = context.orchestrationService.attachmentCandidateOwnerIds(
+          conversationReadAuthorityForRequest(request),
         );
+        const threads = new Set<string>();
+        for (const owner of owners) {
+          for (const threadId of runtimeContext.orchestrationEventStore.listAttachmentCandidateThreads(
+            ref,
+            owner,
+          ))
+            threads.add(threadId);
+          if (threads.size >= ATTACHMENT_CANDIDATE_THREADS_PER_REQUEST) break;
+        }
+        return [...threads].slice(0, ATTACHMENT_CANDIDATE_THREADS_PER_REQUEST);
       },
       canReadSession: (threadId, request) =>
         context.orchestrationService.canUserReadSession(
           threadId,
-          readAuthorityForRequest(request),
+          conversationReadAuthorityForRequest(request),
         ),
     }),
   );

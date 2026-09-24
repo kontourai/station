@@ -1532,7 +1532,31 @@ export class OrchestrationService {
    * #2456: process-local child work (engine subagents), served on session
    * summaries beside `turnProgress` so the reconnect snapshot carries it.
    */
-  private readonly childWork = new ChildWorkProjection();
+  /**
+   * #2457: a child's running → terminal fold is the background-task settle
+   * the `sessionBackgroundTasks` metric counts, once per child, for every
+   * engine that reports child work. Its `status` label is the child-work
+   * terminal (`completed`/`failed`/`cancelled`/`unresolved`/
+   * `stopped-unconfirmed`), no longer the legacy tuple's tool status.
+   */
+  private readonly childWork = new ChildWorkProjection({
+    onChildSettled: (item, provider) => {
+      sessionBackgroundTasks.add(1, { provider, status: item.status });
+      // Provider lifecycle observations are aggregate only: they carry no
+      // request/tenant authority and cannot make an internal Station API
+      // call. Keep that classification explicit rather than inventing a
+      // tenant from the event's thread.
+      tenantExecutionContextOutcomes.add(
+        1,
+        tenantExecutionContextAttributes({
+          operation: 'background',
+          source: 'aggregate',
+          outcome: 'skipped',
+          reason: 'aggregate_safe',
+        }),
+      );
+    },
+  });
   /** #2456: the one reader every session-summary emission path hands over. */
   private readonly readChildWork = (
     threadId: string,
@@ -2679,8 +2703,10 @@ export class OrchestrationService {
   }
 
   /**
-   * station#1877: stop ONE provider-reported subagent, leaving the turn and
-   * its siblings running.
+   * station#1877: stop ONE provider-reported subagent, targeted rather than
+   * a blanket turn interrupt. #2486: an engine with no softer path (Codex)
+   * may end its own active turn as part of this — never any OTHER sibling —
+   * see `stopProviderTask` on `ProviderAdapterShape`.
    *
    * Deliberately does NOT fall back to `interruptTurn` when the adapter has
    * no task-scoped stop: a turn interrupt ends every other running subagent
@@ -4607,6 +4633,25 @@ export class OrchestrationService {
       stationId,
       request,
     );
+  }
+
+  /**
+   * The owners whose threads `authority` could read, for narrowing an
+   * attachment's candidate threads before {@link canUserReadSession} judges
+   * each one. The same owner set transcript search binds, so the two reads
+   * cannot disagree about whose conversations are in scope. Not an
+   * authorization: `canUserReadSession` stays the final check.
+   */
+  attachmentCandidateOwnerIds(authority: SessionReadAuthority): string[] {
+    this.initialize();
+    const constraint = this.sessionAuthz.transcriptOwnerConstraint(authority);
+    return [
+      ...new Set([
+        constraint.ownerUserId,
+        ...(constraint.ownerUserIds ?? []),
+        ...(constraint.legacyOwnerUserId ? [constraint.legacyOwnerUserId] : []),
+      ]),
+    ];
   }
 
   canUserReadSession(threadId: string, authority: SessionReadScope): boolean {
@@ -8548,26 +8593,6 @@ export class OrchestrationService {
         namespace: event.namespace,
         kind: event.type,
       });
-      if (event.type === 'task/settled') {
-        const status = (event.payload as { status?: unknown } | null)?.status;
-        sessionBackgroundTasks.add(1, {
-          provider: event.provider,
-          status: typeof status === 'string' ? status : 'unknown',
-        });
-        // Provider lifecycle notifications are aggregate observations only:
-        // they carry no request/tenant authority and cannot make an internal
-        // Station API call. Keep that classification explicit rather than
-        // inventing a tenant from the event's thread.
-        tenantExecutionContextOutcomes.add(
-          1,
-          tenantExecutionContextAttributes({
-            operation: 'background',
-            source: 'aggregate',
-            outcome: 'skipped',
-            reason: 'aggregate_safe',
-          }),
-        );
-      }
     }
     // #2456: child work (engine subagents) folds here, beside turnProgress,
     // so session summaries — and the reconnect snapshot built from them —

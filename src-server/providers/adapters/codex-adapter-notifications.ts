@@ -24,7 +24,10 @@ import {
   mapTurnFinishReason,
   needsHostImageRead,
 } from './codex-adapter-events.js';
-import type { CodexSessionRecord } from './codex-adapter-types.js';
+import {
+  type CodexSessionRecord,
+  markCodexTurnTerminal,
+} from './codex-adapter-types.js';
 import { UNRESOLVED_TOOL_OUTPUT } from './unresolved-tool-output.js';
 
 /**
@@ -325,7 +328,7 @@ export function handleCodexNotification(
       // branch) — mark it before either publish path so a concurrent
       // `stopSession`/process-exit synthesis (`publishOrphanedTurnFailure`)
       // never double-publishes for this turn.
-      record.terminalPublishedForTurnId = turnId;
+      markCodexTurnTerminal(record, turnId);
       record.session = {
         ...record.session,
         status: 'ready',
@@ -417,7 +420,7 @@ export function handleCodexNotification(
       // `blockedReason` and erase the real cause this notification just
       // reported.
       if (errorTurnId && !willRetry) {
-        record.terminalPublishedForTurnId = errorTurnId;
+        markCodexTurnTerminal(record, errorTurnId);
       }
       publish({
         eventId: crypto.randomUUID(),

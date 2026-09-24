@@ -144,6 +144,20 @@ export interface ProviderAdapterMetadata {
    * contents. The picker is the adapter's live catalog.
    */
   knownModels?: ReadonlyArray<{ id: string; name: string }>;
+  /**
+   * #2482: the adapter declares that every entry its `listModelCatalog` /
+   * `listModels` returns has `originalId === id` — its catalog names each
+   * model by the selector the engine is launched with, so there is no alias
+   * to rewrite. Connected-CLI selector validation (`model-launch-planning`)
+   * reads the catalog only to rewrite an alias, and passes an unlisted
+   * selector through to the engine anyway (archive#977); for an adapter
+   * declaring this it therefore skips the catalog read, which for Claude
+   * Code is a whole CLI spawn before every start. Absent means the catalog
+   * may rewrite, and validation keeps reading it. Declare it only where the
+   * catalog's own construction sets `originalId` from `id`, and pin that
+   * with a test against the adapter's real catalog.
+   */
+  modelCatalogIdentityMapped?: boolean;
 }
 
 export interface ProviderAdapterModelCatalog {
@@ -256,14 +270,22 @@ export interface ProviderAdapterShape {
   /** Present only when the adapter has a real additive-input channel for a running turn. */
   steerTurn?(threadId: string, input: string, turnId: string): Promise<void>;
   /**
-   * Stop ONE provider-reported subagent without ending the turn or its
-   * siblings.
+   * Stop ONE provider-reported subagent, targeted rather than a blanket
+   * turn interrupt.
    *
    * Present only where the engine exposes a task-scoped stop. Absent is the
    * honest answer for an engine whose only stop is turn-scoped: the caller
    * must not fall back to interrupting the turn, because that ends every
    * other running subagent too — the precise outcome this seam exists to
-   * avoid.
+   * avoid for an engine that CAN leave the turn running.
+   *
+   * #2486: an engine with no softer path (Codex — no client method unblocks
+   * a parent whose turn is waiting on the child any other way) may still end
+   * the reporting session's own active turn as part of this call, though
+   * never any OTHER sibling. The matrix's `subagentControl.stop.
+   * endsParentTurn` cell says which is true for a given engine; a client
+   * reads that flag rather than assuming every engine's stop behaves the
+   * same way.
    */
   stopProviderTask?(
     threadId: string,

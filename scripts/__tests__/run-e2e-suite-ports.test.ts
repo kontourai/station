@@ -21,6 +21,7 @@ import {
   canReclaimE2ELease,
   classifyStartFailure,
   cleanupE2ERun,
+  daemonIsLive,
   discoverE2EDaemon,
   E2E_SUITE_PORTS,
   e2eProviderConfigEnv,
@@ -576,6 +577,88 @@ describe('E2E daemon lease settlement', () => {
 
   test('permits reclamation only after both server and UI exact identities settle', () => {
     expect(canReclaimE2ELease(lease, () => null)).toBe(true);
+  });
+
+  test('a legacy lstart-shaped lease is checked through the lstart lens, not read as dead on Linux (#2332 item 3)', () => {
+    // A lease written by a pre-#2325 runner recorded an lstart-shaped
+    // processStart. `processIdentityFn` here models the CURRENT (post-#2325)
+    // Linux probe: it always reports the /proc birth token for a live pid,
+    // which can never equal that legacy string through a plain comparison.
+    // Before the fix, `daemonIsLive` never re-probed and read this as dead —
+    // letting the output sweep reclaim a live daemon's dist-*-e2e-* outputs
+    // mid-upgrade. The `platform: 'darwin'` re-probe is the lstart-only lens
+    // the legacy lease was actually written with.
+    const legacyLease = {
+      outputDirs: ['dist-server-e2e-fixture', 'dist-ui-e2e-fixture'],
+      daemon: {
+        server: { pid: 41, processStart: 'Mon Aug 17 07:25:00 2026', pgid: 41 },
+        ui: { pid: 42, processStart: 'Mon Aug 17 07:26:00 2026', pgid: 42 },
+      },
+    };
+    const processIdentityFn = vi.fn(
+      (pid: number, _runPs?: unknown, options?: { platform?: string }) => {
+        if (options?.platform === 'darwin') {
+          // The legacy lens: the same live process, observed the way the
+          // OLD runner observed it, matches the recorded lease exactly.
+          return pid === 41
+            ? { pid, processStart: 'Mon Aug 17 07:25:00 2026', pgid: 41 }
+            : { pid, processStart: 'Mon Aug 17 07:26:00 2026', pgid: 42 };
+        }
+        // The current default lens: the same live process, reported through
+        // the post-#2325 /proc birth token.
+        return pid === 41
+          ? { pid, processStart: 'linux:boot-id:100', pgid: 41 }
+          : { pid, processStart: 'linux:boot-id:200', pgid: 42 };
+      },
+    );
+    expect(
+      daemonIsLive(legacyLease.daemon, processIdentityFn, {
+        platform: 'linux',
+      }),
+    ).toBe(true);
+    expect(
+      canReclaimE2ELease(legacyLease, processIdentityFn, {
+        platform: 'linux',
+      }),
+    ).toBe(false);
+  });
+
+  test('a legacy lstart-shaped lease whose process group differs is refused, never treated as live (#2332 item 3, guarding the migration)', () => {
+    // The migration path must still be an IDENTITY check, not a blanket
+    // amnesty for any legacy-shaped record: if the lstart token happens to
+    // match but the process group differs (a reused pid under the same
+    // second), the legacy re-probe must not paper over that.
+    const legacyLease = {
+      outputDirs: ['dist-server-e2e-fixture'],
+      daemon: {
+        server: { pid: 41, processStart: 'Mon Aug 17 07:25:00 2026', pgid: 41 },
+        ui: { pid: 42, processStart: 'Mon Aug 17 07:26:00 2026', pgid: 42 },
+      },
+    };
+    const processIdentityFn = vi.fn(
+      (pid: number, _runPs?: unknown, options?: { platform?: string }) => {
+        if (options?.platform === 'darwin') {
+          // Same lstart token, but a DIFFERENT process group — a reused pid,
+          // not the recorded daemon.
+          return pid === 41
+            ? { pid, processStart: 'Mon Aug 17 07:25:00 2026', pgid: 999 }
+            : { pid, processStart: 'Mon Aug 17 07:26:00 2026', pgid: 999 };
+        }
+        return pid === 41
+          ? { pid, processStart: 'linux:boot-id:999', pgid: 999 }
+          : { pid, processStart: 'linux:boot-id:998', pgid: 999 };
+      },
+    );
+    expect(
+      daemonIsLive(legacyLease.daemon, processIdentityFn, {
+        platform: 'linux',
+      }),
+    ).toBe(false);
+    expect(
+      canReclaimE2ELease(legacyLease, processIdentityFn, {
+        platform: 'linux',
+      }),
+    ).toBe(true);
   });
 
   test('a pre-daemon starting lease is never auto-reclaimed after its runner exits', () => {
