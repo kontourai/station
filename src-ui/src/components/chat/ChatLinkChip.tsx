@@ -25,7 +25,7 @@ export type Forge = 'github' | 'gitlab';
  * self-hosted forge may be either (or neither), and showing a brand the
  * host has not proven would be a label nothing derives.
  */
-export function forgeForHost(host: string): Forge | null {
+function forgeForHost(host: string): Forge | null {
   const canonical = host.toLowerCase().replace(/\.$/, '');
   if (canonical === 'github.com' || canonical === 'www.github.com')
     return 'github';
@@ -34,7 +34,7 @@ export function forgeForHost(host: string): Forge | null {
   return null;
 }
 
-export function ForgeMark({ forge }: { forge: Forge }) {
+function ForgeMark({ forge }: { forge: Forge }) {
   return (
     <svg
       aria-hidden="true"
@@ -84,7 +84,7 @@ function basename(path: string): string {
  * form its forge writes it: `owner/repo#12` for an issue, `owner/repo@abc1234`
  * for a commit, `owner/repo` for the repository. Null for anything else.
  */
-export function forgeUrlLabel(url: string): string | null {
+function forgeUrlLabel(url: string): string | null {
   let parsed: URL;
   try {
     parsed = new URL(url);

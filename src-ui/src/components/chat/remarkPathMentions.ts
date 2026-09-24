@@ -72,7 +72,7 @@ export function findPathMentions(
   return found;
 }
 
-export function isWholePathMention(value: string): boolean {
+function isWholePathMention(value: string): boolean {
   return WHOLE_PATH_MENTION.test(value) && findPathMentions(value).length === 1;
 }
 

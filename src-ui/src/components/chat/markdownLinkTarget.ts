@@ -129,7 +129,7 @@ function relativeToRoot(
  * inside the conversation's checkout. Shared by explicit markdown links and
  * by path mentions in prose, so both spell a position the same way.
  */
-export function classifyPathReference(
+function classifyPathReference(
   value: string,
   options: MarkdownLinkClassifyOptions = {},
 ): Extract<MarkdownLinkTarget, { kind: 'path' }> | null {
