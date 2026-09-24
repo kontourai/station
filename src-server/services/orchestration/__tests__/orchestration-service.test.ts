@@ -2430,6 +2430,113 @@ describe('OrchestrationService', () => {
     }
   });
 
+  // #2540 review B2: an exit that arrives after the park stopped waiting for
+  // it still belongs to the parked engine until something restarts it — it
+  // must not close the dormant row. Once the engine restarts, its own exits
+  // are projected as usual.
+  test('a parked engine exit that arrives late is still absorbed, and a restarted engine exits normally', async () => {
+    const parkService = new OrchestrationService({
+      adapterRegistry: createRegistry([claude]),
+      eventBus,
+      eventStore,
+      flowRunService,
+      listProjects: () => configuredProjects,
+      workflowSidecarService,
+      logger: { debug: vi.fn(), warn: vi.fn() },
+      idleSessionParkAfterMs: 60_000,
+      idleSessionSweepMs: 3_600_000,
+      idleSessionParkExitWaitMs: 20,
+    });
+    const threadId = 'late-exit-conversation';
+    const exit = (eventId: string) =>
+      claude.events.push({
+        eventId,
+        provider: 'claude',
+        threadId,
+        sessionId: threadId,
+        method: 'session.exited',
+        reason: 'stopped',
+        createdAt: new Date().toISOString(),
+      } as CanonicalRuntimeEvent);
+    // Stops without publishing its exit inside the park's wait.
+    claude.stopSession.mockImplementation(async (stopped) => {
+      claude.sessions.delete(stopped);
+    });
+    claude.startSession.mockImplementation(async (input) => {
+      const session = {
+        provider: 'claude' as const,
+        threadId: input.threadId,
+        status: 'ready' as const,
+        resumeCursor: { claudeSessionId: `native-${input.threadId}` },
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      claude.sessions.set(input.threadId, session);
+      return session;
+    });
+    try {
+      const started = await parkService.sessionCommands.execute(
+        {
+          type: 'start-session',
+          input: {
+            threadId,
+            provider: 'claude',
+            metadata: { userId: 'owner-user' },
+          },
+        },
+        { userId: 'owner-user' },
+      );
+      if (started.status !== 'accepted') throw new Error(started.message);
+      for (const [method, extra] of [
+        [
+          'session.configured',
+          { sessionId: threadId, metadata: { userId: 'owner-user' } },
+        ],
+        ['turn.started', { turnId: 'turn-one', prompt: 'first' }],
+        ['turn.completed', { turnId: 'turn-one', finishReason: 'stop' }],
+      ] as const) {
+        claude.events.push({
+          eventId: `${threadId}-${method}`,
+          provider: 'claude',
+          threadId,
+          method,
+          ...extra,
+          createdAt: new Date().toISOString(),
+        } as CanonicalRuntimeEvent);
+      }
+      await vi.waitFor(async () =>
+        expect(
+          (await parkService.readSession(threadId))?.session.lifecycleState,
+        ).toBe('idle'),
+      );
+      await expect(
+        parkService.sweepIdleSessions(Date.now() + 120_000),
+      ).resolves.toEqual([threadId]);
+
+      // The exit arrives only now, after the park stopped waiting.
+      exit('late-exit');
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      const exits = () =>
+        eventStore
+          .listEvents(threadId)
+          .filter((event) => event.payload.method === 'session.exited');
+      expect(exits()).toHaveLength(0);
+      expect(
+        (await parkService.readSession(threadId))?.session.status,
+      ).not.toBe('closed');
+
+      // The next turn restarts the engine; ITS exit is an ordinary exit.
+      await parkService.dispatchWithReceipt(
+        { type: 'sendTurn', input: { threadId, input: 'again' } },
+        { userId: 'owner-user' },
+      );
+      exit('restarted-engine-exit');
+      await vi.waitFor(() => expect(exits()).toHaveLength(1));
+    } finally {
+      await parkService.shutdown();
+    }
+  });
+
   // #2540: a turn's outcome never ends its session. Stopping a turn, or a turn
   // failing, with the engine still live continues in the SAME session — the
   // old successor spawned a second engine on the same native thread (Codex:

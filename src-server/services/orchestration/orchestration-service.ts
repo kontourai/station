@@ -731,6 +731,11 @@ interface OrchestrationServiceOptions {
   idleSessionParkAfterMs?: number;
   /** How often idle sessions are checked. Default {@link IDLE_SESSION_SWEEP_MS}. */
   idleSessionSweepMs?: number;
+  /**
+   * How long a park holds the session's lifecycle lock waiting for the
+   * stopped engine's exit. Default {@link PARKED_EXIT_WAIT_MS}.
+   */
+  idleSessionParkExitWaitMs?: number;
   /** Real connection Adapter composed by StationRuntime; never a recovery protocol. */
   credentialProfileRecoveryAdapter?: CredentialProfileRecoveryAdapter;
   /** Hosted deployments fail closed for direct/internal starts without a server binding. */
@@ -6554,6 +6559,8 @@ export class OrchestrationService {
                   throw new Error(
                     `No provider session found for thread: ${turnInput.threadId}`,
                   );
+                // The restart took real time; honour an abort sent meanwhile.
+                throwIfAborted(turnInput.signal);
                 result = await startTurn();
               }
             } catch (error) {
@@ -7882,9 +7889,14 @@ export class OrchestrationService {
         );
         // #2540: the exit of an engine this service parked is absorbed — see
         // `parkingThreads`. The session stays dormant and restarts in place.
+        // A parked engine's exit is absorbed while the park waits for it, and
+        // also if it arrives later but before anything restarted the engine
+        // (`parkedThreads` clears on restart, so a new engine's exits are its
+        // own and are never swallowed).
         if (
           normalized.method === 'session.exited' &&
-          this.parkingThreads.delete(normalized.threadId)
+          (this.parkingThreads.delete(normalized.threadId) ||
+            this.parkedThreads.has(normalized.threadId))
         ) {
           this.sessionAdapters.delete(normalized.threadId);
           this.parkedExitWaiters.get(normalized.threadId)?.();
@@ -8979,7 +8991,10 @@ export class OrchestrationService {
           await Promise.race([
             exited,
             new Promise<void>((resolve) => {
-              timer = setTimeout(resolve, PARKED_EXIT_WAIT_MS);
+              timer = setTimeout(
+                resolve,
+                this.options.idleSessionParkExitWaitMs ?? PARKED_EXIT_WAIT_MS,
+              );
             }),
           ]);
           if (timer) clearTimeout(timer);
