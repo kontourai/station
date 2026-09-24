@@ -128,6 +128,7 @@ async function startBroker() {
     if (!address || typeof address === 'string')
       throw new Error('broker fixture listener unavailable');
     const brokerOrigin = `http://127.0.0.1:${address.port}`;
+    const connectorStatuses: string[] = [];
     const trustOwner = {
       current: () => custody.readDescriptor(),
       isCurrent: (value: typeof trust) =>
@@ -155,6 +156,8 @@ async function startBroker() {
         pollMs: 1_000,
         maxPeerLifetimeMs: 60_000,
         maxPeers: 1,
+        observeStatus: (status) =>
+          connectorStatuses.push(JSON.stringify(status)),
       },
       {
         signal: new AbortController().signal,
@@ -171,9 +174,11 @@ async function startBroker() {
     return {
       brokerOrigin,
       trust,
+      custody,
       scope,
       service,
       credentials,
+      connectorStatuses,
       stop: cleanup,
     };
   } catch (error) {
@@ -274,7 +279,7 @@ async function main() {
     assert.ok(inviteInput);
     await driver.typeElement(inviteInput, JSON.stringify(invitation));
     const discover = await driver.findElement(
-      'section[aria-label="Public install proof metadata"] > button:last-of-type',
+      'section[aria-label="Public install proof metadata"] > button:nth-of-type(2)',
     );
     assert.ok(discover);
     await driver.clickElement(discover);
@@ -357,11 +362,149 @@ async function main() {
       join(outputDir, 'native-relay-approved.png'),
       await driver.screenshot(),
     );
+    const rotatedTrust = await broker.custody.rotate(broker.trust);
+    const rotatedKeyId = await stationConnectionSigningKeyId(rotatedTrust);
+    const rotatedCode =
+      await stationConnectionKeyConfirmationCode(rotatedTrust);
+    const reviewRotation = await driver.findElement(
+      '.relay-route-key-approval > button',
+    );
+    assert.ok(reviewRotation);
+    await driver.clickElement(reviewRotation);
+    await driver.waitUntil(
+      async () =>
+        Boolean(
+          await driver.findElement(
+            'section[aria-label="Public install proof metadata"]',
+          ),
+        ),
+      {
+        timeout: 15_000,
+        timeoutMsg: 'explicit key rotation review did not open',
+      },
+    );
+    const rotatedInvitation = broker.service.issueNativeInvitation({
+      scope: broker.scope,
+      routingCredential: broker.credentials.routing,
+      brokerOrigin: broker.brokerOrigin,
+      surface: {
+        kind: 'station-native',
+        appIdentifier: surface.App,
+        channel: surface.Channel as 'dev',
+        clientInstanceId,
+        keyThumbprint: surface['Key thumbprint'],
+      },
+      stationSigningKeyId: rotatedKeyId,
+      stationSigningGeneration: rotatedTrust.generation,
+    });
+    const rotatedInviteInput = await driver.findElement(
+      'section[aria-label="Public install proof metadata"] textarea',
+    );
+    assert.ok(rotatedInviteInput);
+    await driver.typeElement(
+      rotatedInviteInput,
+      JSON.stringify(rotatedInvitation),
+    );
+    const discoverRotation = await driver.findElement(
+      'section[aria-label="Public install proof metadata"] > button:nth-of-type(2)',
+    );
+    assert.ok(discoverRotation);
+    await driver.clickElement(discoverRotation);
+    try {
+      await driver.waitUntil(
+        async () =>
+          Boolean(
+            await driver.findElement(
+              'section[aria-label="Candidate from native verification"]',
+            ),
+          ),
+        {
+          timeout: 30_000,
+          timeoutMsg: 'rotated candidate did not reach shell',
+        },
+      );
+    } catch (error) {
+      const uiAlerts = await driver.execute(() =>
+        Array.from(
+          document.querySelectorAll('.relay-route-key-approval [role="alert"]'),
+        ).map((item) => item.textContent?.trim() ?? ''),
+      );
+      const uiText = await driver.execute(
+        () =>
+          document
+            .querySelector('.relay-route-key-approval')
+            ?.textContent?.slice(-650) ?? '',
+      );
+      console.error('rotation diagnostic:', {
+        uiAlerts,
+        uiText,
+        connectorStatus: broker.connectorStatuses.at(-1),
+        pendingOffers: broker.service.nativeKeyCandidateOffers(
+          broker.scope,
+          broker.credentials.connector,
+        ).length,
+      });
+      throw error;
+    }
+    await driver.waitUntil(
+      async () =>
+        Boolean(
+          await driver.execute(
+            (oldKeyId) =>
+              document
+                .querySelector('.relay-route-key-approval__durable')
+                ?.textContent?.includes(oldKeyId),
+            operatorKeyId,
+          ),
+        ),
+      {
+        timeout: 15_000,
+        timeoutMsg: 'current approved key disappeared during rotation review',
+      },
+    );
+    const rotationCodeInput = await driver.findElement(
+      'section[aria-label="Candidate from native verification"] input[id$="-code"]',
+    );
+    const rotationKeyInput = await driver.findElement(
+      'section[aria-label="Candidate from native verification"] input[id$="-key-id"]',
+    );
+    const rotationAttestation = await driver.findElement(
+      '.relay-route-key-approval__attestation input',
+    );
+    assert.ok(rotationCodeInput && rotationKeyInput && rotationAttestation);
+    await driver.typeElement(
+      rotationCodeInput,
+      formatStationConnectionKeyConfirmationCode(rotatedCode).toLowerCase(),
+    );
+    await driver.typeElement(rotationKeyInput, rotatedKeyId);
+    await driver.clickElement(rotationAttestation);
+    const approveRotation = await driver.findElement(
+      'section[aria-label="Candidate from native verification"] > button:first-of-type',
+    );
+    assert.ok(approveRotation);
+    await driver.clickElement(approveRotation);
+    await driver.waitUntil(
+      async () =>
+        Boolean(
+          await driver.execute(
+            (expectedKeyId) =>
+              document
+                .querySelector('.relay-route-key-approval__durable')
+                ?.textContent?.includes(expectedKeyId),
+            rotatedKeyId,
+          ),
+        ),
+      { timeout: 30_000, timeoutMsg: 'confirmed key rotation did not persist' },
+    );
+    writeFileSync(
+      join(outputDir, 'native-relay-rotated.png'),
+      await driver.screenshot(),
+    );
     const revokeInput = await driver.findElement(
       '.relay-route-key-approval__revoke input',
     );
     assert.ok(revokeInput);
-    await driver.typeElement(revokeInput, operatorKeyId);
+    await driver.typeElement(revokeInput, rotatedKeyId);
     const revoke = await driver.findElement(
       '.relay-route-key-approval__revoke button',
     );
@@ -386,6 +529,20 @@ async function main() {
       0,
       'revocation tombstone missing',
     );
+    const revokedRevision = await driver.execute(() =>
+      Array.from(
+        document.querySelectorAll(
+          '.relay-route-key-approval__durable dl > div',
+        ),
+      )
+        .find(
+          (entry) =>
+            entry.querySelector('dt')?.textContent === 'Trust revision',
+        )
+        ?.querySelector('dd')
+        ?.textContent?.trim(),
+    );
+    assert.equal(revokedRevision, '3');
     writeFileSync(
       join(outputDir, 'native-relay-revoked.png'),
       await driver.screenshot(),
@@ -398,7 +555,7 @@ async function main() {
     );
     assert.equal(routeState.trim(), 'Not connected');
     console.log(
-      `native relay candidate approval: verified, approved, revoked with real Keychain; Station ${broker.trust.stationId}; source ${process.env.STATION_TAURI_E2E_SOURCE_SHA ?? 'unrecorded'}`,
+      `native relay candidate approval: verified, approved, rotated, revoked with real Keychain; Station ${broker.trust.stationId}; source ${process.env.STATION_TAURI_E2E_SOURCE_SHA ?? 'unrecorded'}`,
     );
   } finally {
     for (const [label, close] of [
