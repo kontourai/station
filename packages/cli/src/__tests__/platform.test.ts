@@ -99,6 +99,9 @@ describe('inspectProcessFingerprint (station#3049)', () => {
 });
 
 describe('inspectProcessFingerprint on Linux (WSL2 lstart drift)', () => {
+  // `ps` without a command column: the fallback this block exercises. Each
+  // call injects it, so no case depends on what the host's own `ps` prints.
+  const noPsCommand = vi.fn(() => '\n');
   const readCmdline = (command: string) =>
     vi.fn((path: string) => {
       if (path !== '/proc/41/cmdline') throw new Error(`unexpected: ${path}`);
@@ -114,6 +117,7 @@ describe('inspectProcessFingerprint on Linux (WSL2 lstart drift)', () => {
     const readFile = readCmdline('/usr/bin/node\u0000dist-server/main.js');
     const first = inspectProcessFingerprint(41, {
       platform: 'linux',
+      exec: noPsCommand as never,
       birth,
       readFile: readFile as never,
     });
@@ -125,7 +129,7 @@ describe('inspectProcessFingerprint on Linux (WSL2 lstart drift)', () => {
     expect(readFile).toHaveBeenCalledWith('/proc/41/cmdline', 'utf8');
   });
 
-  it('reads the command from /proc/<pid>/cmdline, not `ps` (#2332 item 2)', () => {
+  it('falls back to /proc/<pid>/cmdline when `ps` prints no command (#2332 item 2)', () => {
     // Some embedded/busybox `ps` builds have no `command=` column and print
     // an empty line for it, which previously made this probe return null
     // for a LIVE process. Reading /proc directly has no `ps` dependency on
@@ -133,6 +137,7 @@ describe('inspectProcessFingerprint on Linux (WSL2 lstart drift)', () => {
     const readFile = readCmdline('/usr/bin/node\u0000--flag');
     const result = inspectProcessFingerprint(41, {
       platform: 'linux',
+      exec: noPsCommand as never,
       birth: () => 'linux:boot-id:1',
       readFile: readFile as never,
     });
@@ -148,6 +153,7 @@ describe('inspectProcessFingerprint on Linux (WSL2 lstart drift)', () => {
     expect(
       inspectProcessFingerprint(41, {
         platform: 'linux',
+        exec: noPsCommand as never,
         birth: () => 'linux:boot-id:1',
         readFile: readFile as never,
       }),
@@ -159,6 +165,7 @@ describe('inspectProcessFingerprint on Linux (WSL2 lstart drift)', () => {
     expect(
       inspectProcessFingerprint(41, {
         platform: 'linux',
+        exec: noPsCommand as never,
         readFile: readCmdline('/usr/bin/node') as never,
         birth: () => births.shift() ?? null,
       }),
@@ -169,10 +176,32 @@ describe('inspectProcessFingerprint on Linux (WSL2 lstart drift)', () => {
     expect(
       inspectProcessFingerprint(41, {
         platform: 'linux',
+        exec: noPsCommand as never,
         readFile: readCmdline('/usr/bin/node') as never,
         birth: () => null,
       }),
     ).toBeNull();
+  });
+  it('takes the command from `ps` when it prints one, so digests match records from earlier CLIs', () => {
+    const readFile = vi.fn(() => {
+      throw new Error('/proc must not be read when ps answered');
+    });
+    const exec = vi.fn(() => '/usr/bin/node dist-server/main.js\n');
+    const fromPs = inspectProcessFingerprint(41, {
+      platform: 'linux',
+      exec: exec as never,
+      birth: () => 'linux:boot-id:1',
+      readFile: readFile as never,
+    });
+    const fromProc = inspectProcessFingerprint(41, {
+      platform: 'linux',
+      exec: noPsCommand as never,
+      birth: () => 'linux:boot-id:1',
+      readFile: readCmdline('/usr/bin/node\u0000dist-server/main.js') as never,
+    });
+    expect(readFile).not.toHaveBeenCalled();
+    // Same argv through either source gives the same digest.
+    expect(fromPs?.commandDigest).toBe(fromProc?.commandDigest);
   });
 });
 

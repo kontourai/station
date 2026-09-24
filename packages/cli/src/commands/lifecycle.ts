@@ -1841,7 +1841,7 @@ function stopRecord(
       [record.uiPid, record.uiFingerprint, 'ui'],
     ] as const;
     let anyAlive = false;
-    let unverifiableLabel: string | undefined;
+    let unverifiable: { label: string; pid: number } | undefined;
     for (const [pid, expected, label] of identities) {
       if (!pid) continue;
       // Liveness is decided by `isProcessAlive` (signal-0 + a zombie check),
@@ -1857,7 +1857,14 @@ function stopRecord(
         // Alive, but its identity could not be confirmed. Fail safe: do not
         // claim absence and do not sign off on a match either — keep the
         // record and refuse the stop instead of guessing.
-        unverifiableLabel = label;
+        //
+        // Accepted residual: a recorded pid now reused by an UNRELATED
+        // process with an unreadable identity also lands here. The old code
+        // forgot the record in that case, which was right for reuse and
+        // wrong for a live Station; this refuses both and names the way out
+        // (check the pid, then remove the state file), since only the
+        // operator can tell them apart.
+        unverifiable = { label, pid };
         continue;
       }
       if (!expected || !fingerprintMatchesRecorded(actual, expected)) {
@@ -1895,10 +1902,15 @@ function stopRecord(
       );
       return;
     }
-    if (unverifiableLabel) {
+    if (unverifiable) {
       appendStopResult('failed');
       throw new Error(
-        `Refusing to stop Station instance ${record.instanceId}: the ${unverifiableLabel} process is running but its identity could not be verified (unreadable /proc, unsupported ps output, or a missing boot id). The recorded state was kept; investigate the process manually.`,
+        [
+          `Refusing to stop Station instance ${record.instanceId}: its ${unverifiable.label} PID ${unverifiable.pid} is running, but its identity could not be verified (unreadable /proc, unsupported ps output, or a missing boot id), so it was not signalled and the recorded state was kept.`,
+          `Check what PID ${unverifiable.pid} is (for example \`ps -p ${unverifiable.pid} -o command=\`).`,
+          `If it is this Station, stop it with your OS tools and run \`station stop\` again.`,
+          `If it is an unrelated process that reused the PID, do not signal it; remove ${record.statePath} to forget this instance.`,
+        ].join(' '),
       );
     }
   }

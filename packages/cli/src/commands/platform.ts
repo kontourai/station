@@ -73,10 +73,26 @@ export function inspectProcessFingerprint(
   return inspectLstartProcessFingerprint(pid, dependencies);
 }
 
+function readPsCommand(exec: typeof execFileSync, pid: number): string {
+  try {
+    return String(
+      exec('ps', ['-o', 'command=', '-p', String(pid)], {
+        encoding: 'utf8',
+        env: { ...process.env, LC_ALL: 'C', TZ: 'UTC' },
+        stdio: ['ignore', 'pipe', 'ignore'],
+        windowsHide: true,
+      }),
+    ).trim();
+  } catch {
+    return '';
+  }
+}
+
 function inspectLinuxProcessFingerprint(
   pid: number,
   dependencies: InspectFingerprintDependencies,
 ): ProcessFingerprint | null {
+  const exec = dependencies.exec ?? execFileSync;
   const readFile = dependencies.readFile ?? readFileSync;
   const birth =
     dependencies.birth ??
@@ -86,17 +102,20 @@ function inspectLinuxProcessFingerprint(
   if (!before) return null;
   let command: string;
   try {
-    // /proc/<pid>/cmdline is NUL-separated argv with a trailing NUL, and
-    // reading it needs no external binary: a `ps` that lacks a
-    // `command=` column (busybox, some embedded images) previously made
-    // this probe return null for a live process, which stopRecord's caller
-    // then read as "already absent" (#2332 item 2). Reading `/proc`
-    // directly removes that dependency entirely on Linux.
-    const raw = readFile(`/proc/${pid}/cmdline`, 'utf8');
-    command = raw
-      .split('\u0000')
-      .filter((segment) => segment.length > 0)
-      .join(' ');
+    // `ps` stays the primary source so the digest matches records written by
+    // earlier CLIs: a digest computed another way would read as a different
+    // process after an upgrade and block `station stop` with a fingerprint
+    // mismatch. `/proc/<pid>/cmdline` (NUL-separated argv) is the fallback
+    // for a `ps` that fails or prints nothing -- busybox and some embedded
+    // images lack the `command=` column -- which previously made this probe
+    // return null for a live process (#2332 item 2).
+    command = readPsCommand(exec, pid);
+    if (!command) {
+      command = readFile(`/proc/${pid}/cmdline`, 'utf8')
+        .split('\u0000')
+        .filter((segment) => segment.length > 0)
+        .join(' ');
+    }
   } catch {
     return null;
   }

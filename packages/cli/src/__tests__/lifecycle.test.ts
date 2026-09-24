@@ -1073,9 +1073,17 @@ describe('lifecycle instance state', () => {
       },
     });
     try {
-      expect(() => lifecycle.stop({ instanceName: 'unverifiable' })).toThrow(
-        'identity could not be verified',
-      );
+      let refusal = '';
+      try {
+        lifecycle.stop({ instanceName: 'unverifiable' });
+      } catch (error) {
+        refusal = String((error as Error).message);
+      }
+      expect(refusal).toContain('identity could not be verified');
+      // There is no --force, so the refusal itself must name the way out:
+      // the pid to check and the state file to remove if it was reused.
+      expect(refusal).toMatch(/PID \d+ is running/);
+      expect(refusal).toContain(`remove ${statePath}`);
       expect(killProcessTree).not.toHaveBeenCalled();
       expect(existsSync(statePath)).toBe(true);
       expect(readLifecycleEvents(journal).at(-1)).toMatchObject({
