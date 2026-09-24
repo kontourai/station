@@ -16,6 +16,8 @@ import {
   classifyChangedPaths,
   classifyDesktopRustChangedPaths,
   classifyDesktopRustGitRange,
+  classifyGalleryChangedPaths,
+  classifyGalleryGitRange,
   classifyGitRange,
   classifyIosChangedPaths,
   classifyIosGitRange,
@@ -64,6 +66,18 @@ const desktopRustRelevanceShell = parse(
   ),
 ).jobs['windows-pr-portable'].steps.find(
   (step: { id?: string }) => step.id === 'rust_relevance',
+).run;
+
+const galleryRelevanceShell = parse(
+  readFileSync(
+    resolve(
+      import.meta.dirname,
+      '../../.github/workflows/gallery-pr-check.yml',
+    ),
+    'utf8',
+  ),
+).jobs.classify.steps.find(
+  (step: { id?: string }) => step.id === 'relevance',
 ).run;
 
 function runIosRelevanceShell(
@@ -740,4 +754,194 @@ describe('package test exemptions match what the package builds exclude', () => 
       ).toBe(true);
     },
   );
+});
+
+describe('gallery relevance for the PR gallery check (#2428)', () => {
+  test.each([
+    'src-ui/src/components/plugins/PluginsPage.tsx',
+    'src-ui/src/index.css',
+    'src-server/routes/plugins.ts',
+    'packages/contracts/src/plugin.ts',
+    'packages/sdk/src/client/index.ts',
+    'src-shared/format.ts',
+    'examples/plugins/demo/plugin.json',
+    'package.json',
+    'pnpm-lock.yaml',
+    'patches/some-npm-package.patch',
+    'vite.config.ts',
+    'playwright.config.ts',
+    'tests/screenshots.spec.ts',
+    'tests/helpers/screenshot-capture-sequence.ts',
+    'tests/screenshots.baseline.json',
+    'tests/screenshots.baseline/plugins.png',
+    'scripts/run-e2e-suite.mjs',
+    'scripts/screenshot-diff.mjs',
+    'src-desktop/tauri.conf.json',
+    '.github/workflows/gallery-pr-check.yml',
+    '.github/workflows/nightly-gallery.yml',
+    'station',
+    '.nvmrc',
+    // Unknown territory runs the capture: the scope is an exclusion list.
+    'a-new-top-level-dir/thing.ts',
+  ])('captures for %s', (changedPath) => {
+    expect(classifyGalleryChangedPaths([changedPath]).relevant).toBe(true);
+  });
+
+  test.each([
+    'docs/guides/testing.md',
+    '.changeset/quiet-owls.md',
+    'README.md',
+    'CONTRIBUTING.md',
+    'src-ui/AGENTS.md',
+    'src-server/CLAUDE.md',
+    '.github/workflows/build-ios.yml',
+    '.github/CODEOWNERS',
+    '.githooks/pre-push',
+    '.veritas/GOVERNANCE.md',
+    'src-desktop/src/lib.rs',
+    'src-desktop/Cargo.lock',
+    'src-desktop/tauri.windows.conf.json',
+    'src-ui/src/components/__tests__/PluginsPage.test.tsx',
+    'src-ui/src/lib/format.test.ts',
+    'src-server/routes/plugins.test.ts',
+    'scripts/__tests__/screenshot-diff.test.ts',
+    'tests/some-journey.spec.ts',
+  ])('skips the capture for %s', (changedPath) => {
+    expect(classifyGalleryChangedPaths([changedPath]).relevant).toBe(false);
+  });
+
+  test('one gallery input makes a mixed change relevant', () => {
+    expect(
+      classifyGalleryChangedPaths([
+        'docs/guides/testing.md',
+        'src-desktop/src/tray.rs',
+        'src-ui/src/App.tsx',
+      ]).relevant,
+    ).toBe(true);
+    expect(
+      classifyGalleryChangedPaths([
+        'docs/guides/testing.md',
+        'src-desktop/src/tray.rs',
+      ]).relevant,
+    ).toBe(false);
+  });
+
+  // src-desktop/ is excluded on the premise that the web build the capture
+  // drives reads nothing from it except what vite.config.ts imports. Derive
+  // that set from the config instead of trusting the classifier's comment, so
+  // a new import from the desktop tree cannot silently skip the capture.
+  test('covers every file vite.config.ts imports from src-desktop', () => {
+    const config = readFileSync(join(repoRoot, 'vite.config.ts'), 'utf8');
+    const imported = [
+      ...config.matchAll(/from\s+['"]\.\/(src-desktop\/[^'"]+)['"]/g),
+    ].map((match) => match[1]);
+    expect(imported).toEqual(['src-desktop/tauri.conf.json']);
+    for (const path of imported) {
+      expect(existsSync(join(repoRoot, path))).toBe(true);
+      expect(
+        classifyGalleryChangedPaths([path]).relevant,
+        `${path} is read by the web build`,
+      ).toBe(true);
+    }
+  });
+
+  test('runs the workflow step against a base-controlled classifier and fails closed', () => {
+    const root = mkdtempSync(join(tmpdir(), 'station-gallery-change-range-'));
+    try {
+      git(root, ['init', '--initial-branch=main']);
+      git(root, ['config', 'user.email', 'fixture@example.test']);
+      git(root, ['config', 'user.name', 'Fixture']);
+      // A base whose classifier predates the gallery scope exits 2 on the
+      // unknown scope. That is this very PR's situation, so it must capture.
+      const legacyBase = commitFile(
+        root,
+        'scripts/classify-ci-change.mjs',
+        `console.error('Unknown CI classification scope'); process.exitCode = 2;\n`,
+        'legacy classifier',
+      );
+      git(root, ['checkout', '-b', 'docs-candidate']);
+      const docsHead = commitFile(
+        root,
+        'docs/candidate.md',
+        '# docs\n',
+        'candidate docs',
+      );
+      expect(
+        runIosRelevanceShell(
+          root,
+          'pull_request_target',
+          legacyBase,
+          docsHead,
+          galleryRelevanceShell,
+        ),
+      ).toBe('relevant=true');
+
+      git(root, ['checkout', 'main']);
+      const currentBase = commitFile(
+        root,
+        'scripts/classify-ci-change.mjs',
+        readFileSync(
+          resolve(import.meta.dirname, '../classify-ci-change.mjs'),
+          'utf8',
+        ),
+        'current classifier',
+      );
+      git(root, ['checkout', '-b', 'docs-only', currentBase]);
+      const docsOnly = commitFile(
+        root,
+        'docs/only.md',
+        '# docs\n',
+        'docs only',
+      );
+      expect(
+        runIosRelevanceShell(
+          root,
+          'pull_request_target',
+          currentBase,
+          docsOnly,
+          galleryRelevanceShell,
+        ),
+      ).toBe('relevant=false');
+
+      const uiToo = commitFile(
+        root,
+        'src-ui/src/App.tsx',
+        'export {};\n',
+        'UI',
+      );
+      expect(
+        runIosRelevanceShell(
+          root,
+          'pull_request_target',
+          currentBase,
+          uiToo,
+          galleryRelevanceShell,
+        ),
+      ).toBe('relevant=true');
+
+      // An unresolvable base cannot supply a classifier: capture anyway.
+      expect(
+        runIosRelevanceShell(
+          root,
+          'pull_request_target',
+          'a'.repeat(40),
+          docsOnly,
+          galleryRelevanceShell,
+        ),
+      ).toBe('relevant=true');
+      expect(
+        classifyGalleryGitRange({
+          before: 'a'.repeat(40),
+          after: docsOnly,
+          mode: 'candidate',
+          cwd: root,
+        }),
+      ).toMatchObject({
+        relevant: true,
+        classification: 'classifier-error-fail-closed',
+      });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
 });

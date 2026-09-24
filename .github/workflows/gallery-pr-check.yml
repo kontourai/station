@@ -1,0 +1,220 @@
+name: Gallery PR check
+
+# The exact-pixel gallery gate, run on the pull request that moves a screen
+# rather than on the next nightly (#2428). Until this existed the gate ran only
+# in nightly-gallery.yml, so every merged PR that intentionally changed a
+# gallery screen turned the following nightly red and someone re-baselined
+# after the fact (run 35863080741: `54 compared, 1 changed: plugins`, from
+# #2375's "New plugin" button).
+#
+# Same renderer as the nightly, deliberately: the comparator hashes a decoded
+# RGBA buffer with no threshold, so a baseline means something only against the
+# digest-pinned container that produced it. The capture job below repeats the
+# nightly's container, options, env and setup steps, and
+# ci-workflow-contract.test.ts holds the two in lockstep. Read the nightly's
+# comments for why each of those steps exists; they are not repeated here.
+#
+# Trust model: the same one as build-ios.yml and windows-pr-verification.yml.
+# The workflow is read from the protected base through pull_request_target,
+# the candidate's code runs only on an ephemeral GitHub-hosted runner, the
+# token is `contents: read`, checkout persists no credentials, and no secret
+# is referenced (scripts/actionlint-gate.mjs enforces all of that for every
+# base-controlled PR workflow). Forks get the same proof. The relevance
+# classifier is taken from the BASE commit, so a candidate cannot rewrite the
+# rule that decides whether its own screens are photographed, and every
+# failure of it answers relevant=true.
+#
+# It checks out the PR head, not a merge with main: the code and the baseline
+# it is compared against come from the same tree, so a PR that has not
+# touched a screen matches its own copy of the baseline even when main has
+# since re-baselined that screen. Combinations of PRs are the nightly's job.
+on:
+  pull_request_target:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gallery-pr-check-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  classify:
+    name: Classify gallery inputs
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    outputs:
+      relevant: ${{ steps.relevance.outputs.relevant }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+          repository: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name || github.repository }}
+          ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
+      - id: relevance
+        name: Classify gallery inputs
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          fail_closed() {
+            echo "::warning::gallery change classification failed closed: $1"
+            echo "relevant=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          }
+
+          classifier="$RUNNER_TEMP/classify-ci-change.mjs"
+          git show "$BASE_SHA:scripts/classify-ci-change.mjs" > "$classifier" || \
+            fail_closed "base-controlled classifier unavailable"
+          output="$RUNNER_TEMP/gallery-change-classification"
+          node "$classifier" --scope gallery --mode candidate \
+            --before "$BASE_SHA" --after "$HEAD_SHA" > "$output" || \
+            fail_closed "classifier execution failed"
+          classification=$(tr -d '\r' < "$output")
+          case "$classification" in
+            relevant=true|relevant=false)
+              printf '%s\n' "$classification" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              fail_closed "classifier returned malformed output"
+              ;;
+          esac
+
+  gallery-diff:
+    name: Gallery exact-pixel diff
+    needs: classify
+    if: needs.classify.outputs.relevant == 'true'
+    runs-on: ubuntu-22.04
+    container:
+      image: mcr.microsoft.com/playwright:v1.62.1-noble@sha256:dcc5531e97840b9b5e794f2814476b21571c5124a3fca2267d73041f56e7580e
+      options: --ipc=host --init
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    env:
+      PLAYWRIGHT_BROWSERS_PATH: /ms-playwright
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          repository: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name || github.repository }}
+          ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+
+      - name: Setup pinned pnpm
+        uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2.1.0
+        with: { install: false }
+
+      - name: Install the native build toolchain node-pty needs
+        run: |
+          set -euo pipefail
+          apt-get update
+          apt-get install -y --no-install-recommends build-essential
+
+      - name: Trust the workspace checkout inside the container
+        run: |
+          set -euo pipefail
+          git config --global --add safe.directory "${GITHUB_WORKSPACE}"
+          git rev-parse --show-toplevel
+
+      - name: Install dependencies
+        run: |
+          set -euo pipefail
+          npm run dependencies:ci 2>&1 | tee "${RUNNER_TEMP}/dependencies-ci.log"
+
+      - name: Record the pinned renderer identity and refuse a degraded capture
+        run: |
+          set -euo pipefail
+          npx playwright --version
+          echo "browsers path: ${PLAYWRIGHT_BROWSERS_PATH}"
+          ls -1 "${PLAYWRIGHT_BROWSERS_PATH}"
+          echo "fontconfig families: $(fc-list --format '%{family[0]}\n' | sort -u | wc -l)"
+          fc-list --format '%{family[0]}\n' | sort -u
+          echo "--- terminal readiness ---"
+          if node -e 'require("node-pty"); console.log("node-pty: loadable")'; then
+            echo "terminal capability: available"
+          else
+            echo "::error::node-pty is not loadable, so this capture would photograph an app without interactive terminal panes. Fix the toolchain/prebuild in .github/workflows/nightly-gallery.yml rather than re-baselining against a degraded render."
+            exit 1
+          fi
+          echo "--- dependency-lifecycle degradation ---"
+          if grep -F '[dependency-lifecycle] DEGRADED' "${RUNNER_TEMP}/dependencies-ci.log"; then
+            echo "::error::dependency-lifecycle reported a DEGRADED capability above. A gallery capture must photograph a fully-capable build; refusing rather than baselining the degradation."
+            exit 1
+          fi
+          echo "no degraded capability reported"
+
+      # Capture and diff are separate steps so a failure names which half
+      # failed: a capture that did not complete is not a pixel change, and
+      # re-baselining over it would bake in a broken render.
+      - id: capture
+        name: Capture screenshot bucket
+        run: npm run test:e2e:screenshot
+
+      - id: diff
+        name: Enforce exact baseline
+        run: npm run screenshot:diff
+
+      - name: Upload gallery and pixel diffs
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        # Storage trouble is infrastructure; the diff step above is the verdict.
+        continue-on-error: true
+        with:
+          name: gallery-pr-${{ github.run_id }}-${{ github.run_attempt }}
+          path: gallery/
+          if-no-files-found: ignore
+          retention-days: 14
+
+      # The artifact's root is the gallery directory itself (capture.json plus
+      # one PNG per screen), which is exactly what `screenshot-diff.mjs
+      # baseline --gallery=<dir>` reads. A baseline refreshed this way comes
+      # from this container, never a local renderer, and the re-run this check
+      # makes on the pushed commit proves it: a baseline from any other
+      # renderer fails the same exact diff.
+      - name: Explain how to refresh the baseline
+        if: failure() && steps.diff.outcome == 'failure'
+        env:
+          RUN_ID: ${{ github.run_id }}
+          ARTIFACT: gallery-pr-${{ github.run_id }}-${{ github.run_attempt }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          message="$(cat <<EOF
+          ### Gallery baseline differs from this PR's render
+
+          The table in the **Enforce exact baseline** step names each screen that
+          changed, and the \`${ARTIFACT}\` artifact holds the new captures plus a
+          red-pixel diff for each one under \`diffs/\`. Review those images first.
+
+          **If the change is intentional**, refresh the baseline from THIS run's
+          artifact (never from a local renderer) and commit it on its own:
+
+          \`\`\`bash
+          gh run download ${RUN_ID} --repo ${REPOSITORY} --name ${ARTIFACT} --dir /tmp/station-gallery-${RUN_ID}
+          npm run screenshot:baseline -- --gallery=/tmp/station-gallery-${RUN_ID}
+          git add tests/screenshots.baseline.json tests/screenshots.baseline/
+          git commit -m "test(gallery): re-baseline <screens> from gallery run ${RUN_ID}"
+          rm -rf /tmp/station-gallery-${RUN_ID}
+          \`\`\`
+
+          **If it is not intentional**, the diff is a regression: fix the code,
+          not the baseline.
+          EOF
+          )"
+          echo "::error title=Gallery baseline differs::Screens changed. Download artifact ${ARTIFACT} and run 'npm run screenshot:baseline -- --gallery=<dir>' if the change is intentional; see the job summary."
+          printf '%s\n' "$message" >> "$GITHUB_STEP_SUMMARY"
+          printf '%s\n' "$message"
+
+      - name: Explain a capture that did not complete
+        if: failure() && steps.capture.outcome == 'failure'
+        run: |
+          echo "::error title=Gallery capture failed::The screenshot capture did not complete, so nothing was compared. This is not a pixel change: do NOT re-baseline from this run. Read the Capture screenshot bucket step, and check whether the nightly gallery on main is red for the same reason."
