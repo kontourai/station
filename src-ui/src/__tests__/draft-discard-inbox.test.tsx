@@ -29,6 +29,7 @@ import { ChatDockInboxPanel } from '../components/chat-dock/ChatDockInboxPanel';
 import { MobileTaskSwitcher } from '../components/chat-dock/MobileTaskSwitcher';
 import { DISCARD_DRAFT_FAILED } from '../components/drafts/DiscardDraftButton';
 import type { ChatUIState } from '../contexts/active-chats-state';
+import { activeChatsStore } from '../contexts/active-chats-store';
 import { deviceSettingsStore } from '../lib/device-settings-store';
 import {
   buildActiveChatTaskItems,
@@ -217,6 +218,39 @@ describe('#2312 discarding Drafts from the inbox', () => {
       type: 'discardDraft',
       threadId: FRESH.threadId,
     });
+  });
+
+  // Verifier L6: the server deletes the whole conversation, so every local
+  // chat bound to it closes — not just the first one found.
+  it('closes every local chat bound to the discarded conversation', async () => {
+    dispatch.mockResolvedValue(accepted(FRESH.threadId));
+    activeChatsStore.initChat('tab-by-conversation');
+    activeChatsStore.updateChat('tab-by-conversation', {
+      conversationId: FRESH.threadId,
+    });
+    activeChatsStore.initChat('tab-by-session');
+    activeChatsStore.updateChat('tab-by-session', {
+      currentSessionId: FRESH.threadId,
+    });
+    activeChatsStore.initChat('unrelated-tab');
+    const rows = items([FRESH]);
+    renderPanel(rows);
+
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: `Discard draft ${titleOf(rows, FRESH.threadId)}`,
+      }),
+    );
+
+    await waitFor(() =>
+      expect(
+        activeChatsStore.getChatKeyForExecutionSession(FRESH.threadId),
+      ).toBeUndefined(),
+    );
+    expect(
+      activeChatsStore.getChatKeyForExecutionSession('unrelated-tab'),
+    ).toBe('unrelated-tab');
+    activeChatsStore.removeChat('unrelated-tab');
   });
 
   it('a refused discard says so, keeps the tab, and still re-reads the list', async () => {

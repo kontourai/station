@@ -515,8 +515,11 @@ export function SessionsView({
   const olderDraftThreadIds =
     lanes.find((lane) => lane.id === 'drafts')?.olderDraftThreadIds ??
     new Set<string>();
+  // A Drafts-lane presentation is never a run, so its one member is the
+  // folded conversation's representative — the lane is newest-first, so the
+  // conversation's NEWEST Session. Old means the whole conversation is old.
   const isOlderDraft = (members: readonly OrchestrationSessionSummary[]) =>
-    members.every((member) => olderDraftThreadIds.has(member.threadId));
+    olderDraftThreadIds.has(members[0].threadId);
   const laneItems = SESSION_LANE_ORDER.flatMap((laneId) => {
     const lanePresentations = presentationRows
       .filter((row) => row.laneId === laneId)
@@ -628,6 +631,14 @@ export function SessionsView({
                     threadId={s.threadId}
                     title={sessionTitle(s)}
                     className="session-discard-draft"
+                    closeSessionIds={sessions
+                      .filter(
+                        (other) =>
+                          (other.conversationId ?? other.threadId) ===
+                          (s.conversationId ?? s.threadId),
+                      )
+                      .map((other) => other.threadId)
+                      .concat(s.conversationId ? [s.conversationId] : [])}
                   />
                 )}
                 {showEvidence && (

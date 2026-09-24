@@ -16,7 +16,10 @@ import './DiscardDraftButton.css';
  * `mutate(…, { onSuccess })` callback does not fire once its component has
  * unmounted — the host's focus move and tab teardown would silently not run.
  */
-function useDiscardDraft(onDiscarded?: (action: HTMLButtonElement) => void) {
+function useDiscardDraft(
+  onDiscarded: ((action: HTMLButtonElement) => void) | undefined,
+  closeSessionIds: readonly string[],
+) {
   const queryClient = useQueryClient();
   const refetchSessions = () =>
     Promise.all([
@@ -43,8 +46,16 @@ function useDiscardDraft(onDiscarded?: (action: HTMLButtonElement) => void) {
       // from it would silently start a new one. The dock hosts close it with
       // their own bookkeeping in `onDiscarded`; this catches the rest (Home,
       // Sessions) and is a no-op once a host already closed it.
-      const openChat = activeChatsStore.getChatKeyForExecutionSession(threadId);
-      if (openChat) activeChatsStore.removeChat(openChat);
+      // Verifier L6: every Session of the discarded conversation, and every
+      // chat bound to any of them — not only the first match.
+      for (const sessionId of new Set([threadId, ...closeSessionIds])) {
+        for (
+          let key = activeChatsStore.getChatKeyForExecutionSession(sessionId);
+          key !== undefined;
+          key = activeChatsStore.getChatKeyForExecutionSession(sessionId)
+        )
+          activeChatsStore.removeChat(key);
+      }
       return refetchSessions();
     },
     onError: () => refetchSessions(),
@@ -64,18 +75,25 @@ export function DiscardDraftButton({
   threadId,
   title,
   className,
+  closeSessionIds = [],
   onDiscarded,
 }: {
   threadId: string;
   title: string;
   className: string;
   /**
+   * The row's other identities — its conversation id and every Session
+   * folded into it. The server deletes the whole conversation, so a tab
+   * bound to any of them is closed.
+   */
+  closeSessionIds?: readonly string[];
+  /**
    * After the server confirmed the discard. `action` is the pressed button,
    * still attached, for hosts that move focus before the row disappears.
    */
   onDiscarded?: (action: HTMLButtonElement) => void;
 }) {
-  const discard = useDiscardDraft(onDiscarded);
+  const discard = useDiscardDraft(onDiscarded, closeSessionIds);
   return (
     <>
       <button

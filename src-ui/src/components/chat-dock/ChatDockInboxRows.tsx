@@ -3,6 +3,7 @@ import { relativeTime } from '../../utils/relativeTime';
 import type { SessionIconAgent } from '../../utils/sessionDisplay';
 import {
   draftDiscardThreadId,
+  draftSessionIds,
   olderDraftsLabel,
   splitDraftsByAge,
 } from '../../views/home/draft-lane';
@@ -446,6 +447,7 @@ export function InboxRow({
               threadId={discardThreadId}
               title={item.title}
               className="chat-dock-inbox__row-action"
+              closeSessionIds={draftSessionIds(item)}
               onDiscarded={(action) => onDraftDiscarded(item, action)}
             />
           )}

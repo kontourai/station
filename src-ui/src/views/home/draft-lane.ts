@@ -8,9 +8,10 @@ import type { HomeWorkItem } from './home-view-model';
 const DRAFT_AGE_OUT_MS = 24 * 60 * 60 * 1000;
 
 /**
- * Splits a Drafts group by the recency each row already carries (`updatedAt`,
- * epoch ms — the session summary's recency). A row with no recency (`<= 0`)
- * stays in the recent part: an unknown age is not evidence of an old one.
+ * Splits a Drafts group by each row's `updatedAt` (epoch ms). For a Draft
+ * row that is its creation time (`buildSessionWorkItem`): a Draft's other
+ * clocks move without anyone touching it. A row with no time (`<= 0`) stays
+ * in the recent part: an unknown age is not evidence of an old one.
  */
 export function splitDraftsByAge<T extends { updatedAt: number }>(
   drafts: readonly T[],
@@ -29,6 +30,19 @@ export function splitDraftsByAge<T extends { updatedAt: number }>(
 /** "1 older draft" / "3 older drafts". */
 export function olderDraftsLabel(count: number): string {
   return `${count} older ${count === 1 ? 'draft' : 'drafts'}`;
+}
+
+/**
+ * Every identity a Draft row's local tab may be bound to: the conversation
+ * and each Session folded into the row.
+ */
+export function draftSessionIds(
+  item: Pick<HomeWorkItem, 'conversationId' | 'orchestrationThreadIds'>,
+): string[] {
+  return [
+    ...(item.conversationId ? [item.conversationId] : []),
+    ...(item.orchestrationThreadIds ?? []),
+  ];
 }
 
 /**

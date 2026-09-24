@@ -1,6 +1,9 @@
 import { relativeTimeAgo } from '../../utils/relativeTime';
 import type { SessionIconAgent } from '../../utils/sessionDisplay';
-import { draftDiscardThreadId } from '../../views/home/draft-lane';
+import {
+  draftDiscardThreadId,
+  draftSessionIds,
+} from '../../views/home/draft-lane';
 import type { HomeLaneItem } from '../../views/home/home-lane-model';
 import { homeRowIconAgent } from '../../views/home/home-row-icon';
 import { DiscardDraftButton } from '../drafts/DiscardDraftButton';
@@ -159,6 +162,7 @@ export function renderHomeWorkRow({
                 threadId={discardThreadId}
                 title={task.title}
                 className="home-view__row-action"
+                closeSessionIds={draftSessionIds(task)}
               />
             )}
           </div>
