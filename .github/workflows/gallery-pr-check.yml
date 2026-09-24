@@ -177,9 +177,10 @@ jobs:
       # The artifact's root is the gallery directory itself (capture.json plus
       # one PNG per screen), which is exactly what `screenshot-diff.mjs
       # baseline --gallery=<dir>` reads. A baseline refreshed this way comes
-      # from this container, never a local renderer, and the re-run this check
-      # makes on the pushed commit proves it: a baseline from any other
-      # renderer fails the same exact diff.
+      # from this container, never a local renderer. The re-run this check
+      # makes on the pushed commit catches a baseline from any other renderer,
+      # for a PR that does not also change the capture or diff scripts; the
+      # nightly on main, running trusted code, is the authoritative check.
       - name: Explain how to refresh the baseline
         if: failure() && steps.diff.outcome == 'failure'
         env:

@@ -632,8 +632,12 @@ whole product through `./station start`, not just `src-ui/`. When the diff
 fails, the job summary prints the exact refresh commands: download the run's
 `gallery-pr-<run>-<attempt>` artifact, then
 `npm run screenshot:baseline -- --gallery=<download dir>`, and commit the
-baseline on its own. The check's re-run on that commit is what proves the
-committed baseline came from the pinned renderer. A capture that did not
+baseline on its own. The check's re-run on that commit catches a baseline
+from any other renderer, as long as the PR does not also change the capture or
+diff scripts; the nightly on main, running trusted code, remains the
+authoritative check. The baseline writer refuses a capture whose screen name is
+not a slug or whose file resolves outside the gallery directory, because for a
+fork PR the artifact is produced by the fork's code. A capture that did not
 complete is reported separately and must not be re-baselined. The check
 compares the PR head against its own baseline, so combinations of PRs are
 still only caught nightly.

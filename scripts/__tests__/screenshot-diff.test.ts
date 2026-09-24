@@ -241,6 +241,39 @@ describe('runBaseline and runDiff (in-process)', () => {
     });
   });
 
+  it('refuses a capture whose name or file would reach outside the gallery or baseline', () => {
+    // A gallery can be a downloaded CI artifact produced by a fork's code, so
+    // capture.json is untrusted input to the baseline writer.
+    dir = mkdtempSync(join(tmpdir(), 'screenshot-diff-'));
+    const galleryDir = join(dir, 'gallery');
+    mkdirSync(galleryDir);
+    writeCapture(galleryDir, [{ name: 'a', ok: true }], null);
+    const capturePath = join(galleryDir, 'capture.json');
+    const capture = JSON.parse(readFileSync(capturePath, 'utf8'));
+    const baselinePath = join(dir, 'baseline', 'baseline.json');
+    const attempt = (screen: Record<string, unknown>) => {
+      writeFileSync(
+        capturePath,
+        JSON.stringify({
+          ...capture,
+          screens: [{ ...capture.screens[0], ...screen }],
+        }),
+      );
+      return () =>
+        runBaseline(
+          { gallery: galleryDir, baseline: baselinePath, allowPartial: false },
+          { log: () => {} },
+        );
+    };
+    expect(attempt({ name: '../../escaped' })).toThrow(/screen name/);
+    expect(existsSync(join(dir, 'escaped.png'))).toBe(false);
+    expect(attempt({ file: '../outside.png' })).toThrow(/outside the gallery/);
+    expect(attempt({ file: '/etc/hosts' })).toThrow(/outside the gallery/);
+    // The fixture itself is accepted, so the refusals above are about the
+    // hostile fields, not the harness.
+    expect(attempt({})().updated).toBe(1);
+  });
+
   it('refuses a partial-selection capture without --allow-partial', () => {
     dir = mkdtempSync(join(tmpdir(), 'screenshot-diff-'));
     writeCapture(dir, [{ name: 'a', ok: true }], ['a']);
