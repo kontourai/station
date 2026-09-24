@@ -1531,6 +1531,147 @@ describe.runIf(process.platform !== 'win32')(
         rmSync(root, { recursive: true, force: true });
       }
     });
+    test('redeeming a later native invite purges revoked and expired offer tombstones before grants', async () => {
+      const root = mkdtempSync(
+        join(tmpdir(), 'station-broker-native-fk-purge-'),
+      );
+      const path = join(root, 'broker.sqlite');
+      let now = 1_000;
+      const service = new SelfHostedBrokerService(path, () => now);
+      try {
+        const issued = service.provision(scope, 48 * 60 * 60_000);
+        const [clientA, clientB, clientC] = await Promise.all([
+          createNativeClient(),
+          createNativeClient(),
+          createNativeClient(),
+        ]);
+        const clients = [clientA, clientB, clientC].map((client, index) => ({
+          ...client,
+          surface: {
+            ...client.surface,
+            clientInstanceId: [
+              '11111111-1111-4111-8111-111111111111',
+              '22222222-2222-4222-8222-222222222222',
+              '33333333-3333-4333-8333-333333333333',
+            ][index]!,
+          },
+        }));
+        const invite = (
+          client: (typeof clients)[number],
+          grantTtlMs?: number,
+        ) =>
+          service.issueNativeInvitation({
+            scope,
+            routingCredential: issued.routing,
+            brokerOrigin: 'https://broker.example',
+            surface: client.surface,
+            stationSigningKeyId: 'K'.repeat(43),
+            stationSigningGeneration: 1,
+            ...(grantTtlMs === undefined ? {} : { grantTtlMs }),
+          });
+
+        const inviteA = invite(clients[0]!);
+        const grantA = await service.redeemNativeInvitation(
+          inviteA,
+          await createNativeProof(inviteA, clients[0]!),
+        );
+        service.openNativeConnection(
+          nativeScope,
+          grantA.credential,
+          clients[0]!.surface,
+          {
+            version: 'station-broker-native-connection-open/v2',
+            nonce: 'nonce-native-revoked-tombstone',
+            offerSdp: 'revoked-native-offer',
+          },
+        );
+        service.revokeNativeClientGrant(
+          scope,
+          issued.routing,
+          grantA.credential.id,
+        );
+        const revokedTombstone = new DatabaseSync(path, { readOnly: true });
+        expect(
+          (
+            revokedTombstone
+              .prepare(
+                'SELECT count(*) n FROM broker_native_connections WHERE grant_id=?',
+              )
+              .get(grantA.credential.id) as { n: number }
+          ).n,
+        ).toBe(1);
+        revokedTombstone.close();
+
+        const inviteB = invite(clients[1]!, 100);
+        const grantB = await service.redeemNativeInvitation(
+          inviteB,
+          await createNativeProof(inviteB, clients[1]!),
+        );
+        const afterRevokedPurge = new DatabaseSync(path, { readOnly: true });
+        expect(
+          (
+            afterRevokedPurge
+              .prepare(
+                'SELECT count(*) n FROM broker_native_connections WHERE grant_id=?',
+              )
+              .get(grantA.credential.id) as { n: number }
+          ).n,
+        ).toBe(0);
+        expect(
+          (
+            afterRevokedPurge
+              .prepare(
+                'SELECT count(*) n FROM broker_native_client_grants WHERE grant_id=?',
+              )
+              .get(grantA.credential.id) as { n: number }
+          ).n,
+        ).toBe(0);
+        afterRevokedPurge.close();
+
+        service.openNativeConnection(
+          nativeScope,
+          grantB.credential,
+          clients[1]!.surface,
+          {
+            version: 'station-broker-native-connection-open/v2',
+            nonce: 'nonce-native-expired-tombstone',
+            offerSdp: 'expired-native-offer',
+          },
+        );
+        now = grantB.expiresAt + 1;
+        const inviteC = invite(clients[2]!);
+        await service.redeemNativeInvitation(
+          inviteC,
+          await createNativeProof(inviteC, clients[2]!),
+        );
+        const afterExpiredPurge = new DatabaseSync(path, { readOnly: true });
+        expect(
+          (
+            afterExpiredPurge
+              .prepare(
+                'SELECT count(*) n FROM broker_native_connections WHERE grant_id=?',
+              )
+              .get(grantB.credential.id) as { n: number }
+          ).n,
+        ).toBe(0);
+        expect(
+          (
+            afterExpiredPurge
+              .prepare(
+                'SELECT count(*) n FROM broker_native_client_grants WHERE grant_id=?',
+              )
+              .get(grantB.credential.id) as { n: number }
+          ).n,
+        ).toBe(0);
+        afterExpiredPurge.close();
+        expect(
+          service.nativeOffers(scope, issued.connector, clients[1]!.surface),
+        ).toEqual([]);
+      } finally {
+        service.close();
+        rmSync(root, { recursive: true, force: true });
+      }
+    });
     test('native redeem endpoint requires a signed v2 invite and forbids downgrade', async () => {
       const root = mkdtempSync(join(tmpdir(), 'station-broker-native-route-'));
       const path = join(root, 'broker.sqlite');
