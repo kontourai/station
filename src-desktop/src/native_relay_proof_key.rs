@@ -157,6 +157,7 @@ pub(crate) enum ProofKeyError {
     Store,
     Signing,
     InvalidChallenge,
+    BrokerTransport,
 }
 
 trait SecretBackend: Send + Sync {
@@ -275,6 +276,17 @@ impl NativeRelayProofKeyVault {
         self.inner.sign_es256_p1363(owner, challenge)
     }
 
+    pub(crate) fn sign_key_candidate_es256_p1363(
+        &self,
+        owner: &NativeProofKeyOwner,
+        challenge: &NativeBrokerKeyCandidateChallenge,
+    ) -> ProofResult<Vec<u8>> {
+        if owner != &challenge.owner {
+            return Err(ProofKeyError::InvalidChallenge);
+        }
+        self.inner.sign_es256_p1363(owner, &challenge.proof)
+    }
+
     pub(crate) fn sign_native_request_es256_p1363(
         &self,
         owner: &NativeProofKeyOwner,
@@ -317,6 +329,17 @@ impl MemoryNativeRelayProofKeyVault {
         challenge: &NativeBrokerRedemptionChallenge,
     ) -> ProofResult<Vec<u8>> {
         self.inner.sign_es256_p1363(owner, challenge)
+    }
+
+    pub(crate) fn sign_key_candidate_es256_p1363(
+        &self,
+        owner: &NativeProofKeyOwner,
+        challenge: &NativeBrokerKeyCandidateChallenge,
+    ) -> ProofResult<Vec<u8>> {
+        if owner != &challenge.owner {
+            return Err(ProofKeyError::InvalidChallenge);
+        }
+        self.inner.sign_es256_p1363(owner, &challenge.proof)
     }
 
     pub(crate) fn sign_native_request_es256_p1363(
@@ -604,10 +627,28 @@ impl NativeBrokerRedemptionChallenge {
         invitation: NativeBrokerRedemptionInvitation,
         nonce: &str,
     ) -> ProofResult<Self> {
-        validate_invitation(owner, public_key, &invitation, nonce)?;
+        Self::for_domain(
+            owner,
+            public_key,
+            &invitation,
+            nonce,
+            "redeem-native-route-invitation",
+            NATIVE_REDEMPTION_TYP,
+        )
+    }
+
+    fn for_domain(
+        owner: &NativeProofKeyOwner,
+        public_key: &NativeProofKeyPublicMetadata,
+        invitation: &NativeBrokerRedemptionInvitation,
+        nonce: &str,
+        purpose: &'static str,
+        typ: &'static str,
+    ) -> ProofResult<Self> {
+        validate_invitation(owner, public_key, invitation, nonce)?;
         let payload = NativeRedemptionPayload {
             aud: "station-self-hosted-broker",
-            purpose: "redeem-native-route-invitation",
+            purpose,
             version: "station-broker-native-route-invitation/v2",
             broker_origin: &invitation.broker_origin,
             scope: NativeRedemptionScope {
@@ -630,11 +671,8 @@ impl NativeBrokerRedemptionChallenge {
             nonce,
         };
         let payload = serde_json::to_vec(&payload).map_err(|_| ProofKeyError::InvalidChallenge)?;
-        let header = serde_json::to_vec(&NativeRedemptionProtectedHeader {
-            alg: "ES256",
-            typ: NATIVE_REDEMPTION_TYP,
-        })
-        .map_err(|_| ProofKeyError::InvalidChallenge)?;
+        let header = serde_json::to_vec(&NativeRedemptionProtectedHeader { alg: "ES256", typ })
+            .map_err(|_| ProofKeyError::InvalidChallenge)?;
         let signing_input = format!(
             "{}.{}",
             URL_SAFE_NO_PAD.encode(header),
@@ -645,6 +683,208 @@ impl NativeBrokerRedemptionChallenge {
             key_thumbprint: public_key.thumbprint.clone(),
             nonce: nonce.to_owned(),
         })
+    }
+}
+
+/// Pre-grant courier actions cannot redeem invitations or authorize work.
+#[derive(Clone, Copy)]
+pub(crate) enum NativeBrokerKeyCandidateAction {
+    Request,
+    Read,
+}
+
+impl NativeBrokerKeyCandidateAction {
+    fn purpose(self) -> &'static str {
+        match self {
+            Self::Request => "request-native-key-candidate",
+            Self::Read => "read-native-key-candidate",
+        }
+    }
+    fn path(self) -> &'static str {
+        match self {
+            Self::Request => "/broker/v1/native/key-candidates/request",
+            Self::Read => "/broker/v1/native/key-candidates/read",
+        }
+    }
+    fn version(self) -> &'static str {
+        match self {
+            Self::Request => "station-broker-native-key-candidate-request/v1",
+            Self::Read => "station-broker-native-key-candidate-read/v1",
+        }
+    }
+}
+
+/// Sealed, host-owned challenge. Retain its nonce for the paired read action;
+/// the caller must verify returned candidate bytes against that same nonce.
+pub(crate) struct NativeBrokerKeyCandidateChallenge {
+    owner: NativeProofKeyOwner,
+    public_key: NativeProofKeyPublicMetadata,
+    invitation: NativeBrokerRedemptionInvitation,
+    action: NativeBrokerKeyCandidateAction,
+    proof: NativeBrokerRedemptionChallenge,
+}
+
+impl NativeBrokerKeyCandidateChallenge {
+    pub(crate) fn from_invitation(
+        owner: &NativeProofKeyOwner,
+        public_key: &NativeProofKeyPublicMetadata,
+        invitation: NativeBrokerRedemptionInvitation,
+        nonce: &str,
+        action: NativeBrokerKeyCandidateAction,
+    ) -> ProofResult<Self> {
+        // The courier contract requires a canonical 32-byte base64url nonce.
+        let decoded = URL_SAFE_NO_PAD
+            .decode(nonce)
+            .map_err(|_| ProofKeyError::InvalidChallenge)?;
+        if decoded.len() != 32 || URL_SAFE_NO_PAD.encode(&decoded) != nonce {
+            return Err(ProofKeyError::InvalidChallenge);
+        }
+        let proof = NativeBrokerRedemptionChallenge::for_domain(
+            owner,
+            public_key,
+            &invitation,
+            nonce,
+            action.purpose(),
+            "station-broker-native-key-candidate+jws",
+        )?;
+        Ok(Self {
+            owner: owner.clone(),
+            public_key: public_key.clone(),
+            invitation,
+            action,
+            proof,
+        })
+    }
+
+    pub(crate) fn nonce(&self) -> &str {
+        self.proof.nonce()
+    }
+
+    pub(crate) fn compact_jws(&self, signature: &[u8]) -> ProofResult<String> {
+        self.proof.compact_jws(signature)
+    }
+
+    fn request_body(&self, signature: &[u8]) -> ProofResult<Zeroizing<Vec<u8>>> {
+        #[derive(Serialize)]
+        #[serde(rename_all = "camelCase")]
+        struct Invitation<'a> {
+            version: &'static str,
+            broker_origin: &'a str,
+            scope: NativeRedemptionScope<'a>,
+            station_signing_key_id: &'a str,
+            station_signing_generation: u64,
+            surface: NativeRedemptionSurface<'a>,
+            invitation_id: &'a str,
+            invitation_secret: &'a str,
+            expires_at: u64,
+        }
+        #[derive(Serialize)]
+        #[serde(rename_all = "camelCase")]
+        struct Proof<'a> {
+            public_key: &'a P256PublicJwk,
+            nonce: &'a str,
+            jws: &'a str,
+        }
+        #[derive(Serialize)]
+        struct Body<'a> {
+            version: &'static str,
+            invitation: Invitation<'a>,
+            proof: Proof<'a>,
+        }
+        let invitation = &self.invitation;
+        let jws = self.compact_jws(signature)?;
+        let body = Body {
+            version: self.action.version(),
+            invitation: Invitation {
+                version: "station-broker-native-route-invitation/v2",
+                broker_origin: &invitation.broker_origin,
+                scope: NativeRedemptionScope {
+                    station_id: &invitation.station_id,
+                    enrollment_id: &invitation.enrollment_id,
+                    routing_generation: invitation.routing_generation,
+                },
+                station_signing_key_id: &invitation.station_signing_key_id,
+                station_signing_generation: invitation.station_signing_generation,
+                surface: NativeRedemptionSurface {
+                    kind: "station-native",
+                    app_identifier: self.owner.app_identifier(),
+                    channel: self.owner.channel_label(),
+                    client_instance_id: self.owner.client_instance_id(),
+                    key_thumbprint: &self.public_key.thumbprint,
+                },
+                invitation_id: &invitation.invitation_id,
+                invitation_secret: &invitation.invitation_secret,
+                expires_at: invitation.expires_at,
+            },
+            proof: Proof {
+                public_key: self.public_key.jwk(),
+                nonce: self.nonce(),
+                jws: &jws,
+            },
+        };
+        serde_json::to_vec(&body)
+            .map(Zeroizing::new)
+            .map_err(|_| ProofKeyError::InvalidChallenge)
+    }
+}
+
+/// Bounded untrusted courier bytes. An HTTP success is not Station trust.
+pub(crate) struct NativeKeyCandidateResponse {
+    pub(crate) status: u16,
+    pub(crate) body: Zeroizing<Vec<u8>>,
+}
+
+pub(crate) struct NativeKeyCandidateTransport {
+    timeout: std::time::Duration,
+}
+
+impl NativeKeyCandidateTransport {
+    pub(crate) fn new() -> Self {
+        Self {
+            timeout: std::time::Duration::from_secs(10),
+        }
+    }
+
+    /// No generic URL, bearer, grant, renderer input or caller-selected headers.
+    pub(crate) fn send(
+        &self,
+        challenge: &NativeBrokerKeyCandidateChallenge,
+        signature: &[u8],
+    ) -> ProofResult<NativeKeyCandidateResponse> {
+        use std::io::Read as _;
+        const LIMIT: usize = 64 * 1024;
+        let body = challenge.request_body(signature)?;
+        if body.len() > LIMIT {
+            return Err(ProofKeyError::InvalidChallenge);
+        }
+        let url = format!(
+            "{}{}",
+            challenge.invitation.broker_origin,
+            challenge.action.path()
+        );
+        let agent: ureq::Agent = ureq::Agent::config_builder()
+            .max_redirects(0)
+            .timeout_global(Some(self.timeout))
+            .http_status_as_error(false)
+            .build()
+            .into();
+        let mut response = agent
+            .post(&url)
+            .header("Content-Type", "application/json")
+            .send(body.as_slice())
+            .map_err(|_| ProofKeyError::BrokerTransport)?;
+        let status = response.status().as_u16();
+        let mut body = Zeroizing::new(Vec::new());
+        response
+            .body_mut()
+            .as_reader()
+            .take((LIMIT + 1) as u64)
+            .read_to_end(&mut body)
+            .map_err(|_| ProofKeyError::BrokerTransport)?;
+        if body.len() > LIMIT {
+            return Err(ProofKeyError::BrokerTransport);
+        }
+        Ok(NativeKeyCandidateResponse { status, body })
     }
 }
 
@@ -1488,6 +1728,244 @@ mod tests {
             "{\"aud\":\"station-self-hosted-broker\",\"purpose\":\"redeem-native-route-invitation\",\"version\":\"station-broker-native-route-invitation/v2\",\"brokerOrigin\":\"https://broker.example\",\"scope\":{\"stationId\":\"station-12345678\",\"enrollmentId\":\"enroll-12345678\",\"routingGeneration\":9},\"stationSigningKeyId\":\"KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK\",\"stationSigningGeneration\":4,\"surface\":{\"kind\":\"station-native\",\"appIdentifier\":\"io.kontourai.station\",\"channel\":\"nightly\",\"clientInstanceId\":\"7c6f49aa-6925-4bb2-b7c4-22bb6e264105\",\"keyThumbprint\":\"TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT\"},\"invitationId\":\"invite-12345678\",\"invitationSecretDigest\":\"cwNHKhO8UqbEmG63NB3wWnIRQaHNpk7z6r78WuCtcPs\",\"expiresAt\":1700000000123,\"nonce\":\"NNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNN\"}"
         );
         assert!(!challenge.signing_input.contains(&"A".repeat(43)));
+    }
+
+    #[test]
+    fn key_candidate_signing_is_action_separated_and_owner_bound() {
+        let vault = MemoryNativeRelayProofKeyVault::new();
+        let owner = make_owner(
+            NativeProofKeyChannel::Stable,
+            "11111111-1111-4111-8111-111111111111",
+        );
+        let public = vault.create(&owner).unwrap();
+        let nonce = URL_SAFE_NO_PAD.encode([7_u8; 32]);
+        let redemption = NativeBrokerRedemptionChallenge::from_invitation_with_nonce(
+            &owner,
+            &public,
+            invitation(&"A".repeat(43)),
+            &nonce,
+        )
+        .unwrap();
+        for action in [
+            NativeBrokerKeyCandidateAction::Request,
+            NativeBrokerKeyCandidateAction::Read,
+        ] {
+            let challenge = NativeBrokerKeyCandidateChallenge::from_invitation(
+                &owner,
+                &public,
+                invitation(&"A".repeat(43)),
+                &nonce,
+                action,
+            )
+            .unwrap();
+            let signature = vault
+                .sign_key_candidate_es256_p1363(&owner, &challenge)
+                .unwrap();
+            let mut point = vec![4];
+            point.extend(URL_SAFE_NO_PAD.decode(&public.jwk.x).unwrap());
+            point.extend(URL_SAFE_NO_PAD.decode(&public.jwk.y).unwrap());
+            let verifier =
+                signature::UnparsedPublicKey::new(&signature::ECDSA_P256_SHA256_FIXED, point);
+            verifier
+                .verify(challenge.proof.signing_input.as_bytes(), &signature)
+                .unwrap();
+            assert!(verifier
+                .verify(redemption.signing_input.as_bytes(), &signature)
+                .is_err());
+            let (header, payload) = challenge.proof.signing_input.split_once('.').unwrap();
+            assert_eq!(
+                URL_SAFE_NO_PAD.decode(header).unwrap(),
+                br#"{"alg":"ES256","typ":"station-broker-native-key-candidate+jws"}"#
+            );
+            let decoded = String::from_utf8(URL_SAFE_NO_PAD.decode(payload).unwrap()).unwrap();
+            // Redemption already has a byte-exact cross-language payload test.
+            // Only purpose differs; order, digest and invitation binding do not.
+            let base = String::from_utf8(
+                URL_SAFE_NO_PAD
+                    .decode(redemption.signing_input.split_once('.').unwrap().1)
+                    .unwrap(),
+            )
+            .unwrap();
+            assert_eq!(
+                decoded,
+                base.replace("redeem-native-route-invitation", action.purpose())
+            );
+            assert!(!decoded.contains(&"A".repeat(43)));
+            let request: serde_json::Value =
+                serde_json::from_slice(&challenge.request_body(&signature).unwrap()).unwrap();
+            assert_eq!(request["version"], action.version());
+            assert_eq!(request["proof"]["nonce"], nonce);
+            assert_eq!(request["invitation"]["invitationSecret"], "A".repeat(43));
+            assert_eq!(
+                request["proof"]["jws"],
+                challenge.compact_jws(&signature).unwrap()
+            );
+            let other = make_owner(
+                NativeProofKeyChannel::Stable,
+                "22222222-2222-4222-8222-222222222222",
+            );
+            assert_eq!(
+                vault
+                    .sign_key_candidate_es256_p1363(&other, &challenge)
+                    .unwrap_err(),
+                ProofKeyError::InvalidChallenge
+            );
+        }
+        assert!(NativeBrokerKeyCandidateChallenge::from_invitation(
+            &owner,
+            &public,
+            invitation(&"A".repeat(43)),
+            &"N".repeat(43),
+            NativeBrokerKeyCandidateAction::Read,
+        )
+        .is_err());
+        let mut invalid = invitation(&"A".repeat(43));
+        invalid.broker_origin = "https://broker.example/attacker".into();
+        assert!(NativeBrokerKeyCandidateChallenge::from_invitation(
+            &owner,
+            &public,
+            invalid,
+            &nonce,
+            NativeBrokerKeyCandidateAction::Request,
+        )
+        .is_err());
+    }
+
+    fn candidate_http_server(
+        response: Vec<u8>,
+        delay: std::time::Duration,
+    ) -> (String, std::thread::JoinHandle<Vec<u8>>) {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let origin = format!("http://{}", listener.local_addr().unwrap());
+        let thread = std::thread::spawn(move || {
+            let (mut socket, _) = listener.accept().unwrap();
+            socket
+                .set_read_timeout(Some(std::time::Duration::from_secs(3)))
+                .unwrap();
+            let mut request = Vec::new();
+            let mut buf = [0_u8; 4096];
+            loop {
+                let read = socket.read(&mut buf).unwrap();
+                assert!(read > 0);
+                request.extend_from_slice(&buf[..read]);
+                if let Some(end) = request.windows(4).position(|value| value == b"\r\n\r\n") {
+                    let headers = String::from_utf8_lossy(&request[..end]).to_lowercase();
+                    let length: usize = headers
+                        .lines()
+                        .find_map(|line| line.strip_prefix("content-length: "))
+                        .unwrap()
+                        .parse()
+                        .unwrap();
+                    if request.len() >= end + 4 + length {
+                        break;
+                    }
+                }
+            }
+            std::thread::sleep(delay);
+            let _ = socket.write_all(&response);
+            request
+        });
+        (origin, thread)
+    }
+
+    #[test]
+    fn key_candidate_transport_uses_only_fixed_pregrant_paths_without_credentials() {
+        let vault = MemoryNativeRelayProofKeyVault::new();
+        let owner = make_owner(
+            NativeProofKeyChannel::Stable,
+            "11111111-1111-4111-8111-111111111111",
+        );
+        let public = vault.create(&owner).unwrap();
+        for (action, status) in [
+            (NativeBrokerKeyCandidateAction::Request, 200),
+            (NativeBrokerKeyCandidateAction::Read, 401),
+        ] {
+            let (origin, server) = candidate_http_server(
+                format!(
+                    "HTTP/1.1 {status} Test\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{{}}"
+                )
+                .into_bytes(),
+                std::time::Duration::ZERO,
+            );
+            let mut input = invitation(&"A".repeat(43));
+            input.broker_origin = origin;
+            let challenge = NativeBrokerKeyCandidateChallenge::from_invitation(
+                &owner,
+                &public,
+                input,
+                &URL_SAFE_NO_PAD.encode([7_u8; 32]),
+                action,
+            )
+            .unwrap();
+            let signature = vault
+                .sign_key_candidate_es256_p1363(&owner, &challenge)
+                .unwrap();
+            let response = NativeKeyCandidateTransport::new()
+                .send(&challenge, &signature)
+                .unwrap();
+            assert_eq!(response.status, status);
+            assert_eq!(response.body.as_slice(), b"{}");
+            let raw = server.join().unwrap();
+            let end = raw
+                .windows(4)
+                .position(|value| value == b"\r\n\r\n")
+                .unwrap();
+            let headers = String::from_utf8_lossy(&raw[..end]).to_lowercase();
+            assert!(headers.starts_with(&format!("post {} http/1.1", action.path())));
+            assert!(!headers.contains("authorization:"));
+            assert!(!headers.contains("cookie:"));
+            let body: serde_json::Value = serde_json::from_slice(&raw[end + 4..]).unwrap();
+            assert_eq!(body["version"], action.version());
+            assert_eq!(body["proof"]["nonce"], challenge.nonce());
+        }
+    }
+
+    #[test]
+    fn key_candidate_transport_refuses_redirects_oversize_and_timeout() {
+        let vault = MemoryNativeRelayProofKeyVault::new();
+        let owner = make_owner(
+            NativeProofKeyChannel::Stable,
+            "11111111-1111-4111-8111-111111111111",
+        );
+        let public = vault.create(&owner).unwrap();
+        let redirect_sink = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        redirect_sink.set_nonblocking(true).unwrap();
+        let redirect = format!("HTTP/1.1 302 Found\r\nLocation: http://{}/secret\r\nContent-Length: 0\r\nConnection: close\r\n\r\n", redirect_sink.local_addr().unwrap()).into_bytes();
+        let mut oversized =
+            b"HTTP/1.1 200 OK\r\nContent-Length: 65537\r\nConnection: close\r\n\r\n".to_vec();
+        oversized.extend(vec![b'x'; 65537]);
+        for (bytes, delay, redirect_case) in [
+            (redirect, std::time::Duration::ZERO, true),
+            (oversized, std::time::Duration::ZERO, false),
+            (vec![], std::time::Duration::from_millis(150), false),
+        ] {
+            let (origin, server) = candidate_http_server(bytes, delay);
+            let mut input = invitation(&"A".repeat(43));
+            input.broker_origin = origin;
+            let challenge = NativeBrokerKeyCandidateChallenge::from_invitation(
+                &owner,
+                &public,
+                input,
+                &URL_SAFE_NO_PAD.encode([7_u8; 32]),
+                NativeBrokerKeyCandidateAction::Request,
+            )
+            .unwrap();
+            let signature = vault
+                .sign_key_candidate_es256_p1363(&owner, &challenge)
+                .unwrap();
+            let transport = NativeKeyCandidateTransport {
+                timeout: std::time::Duration::from_millis(50),
+            };
+            let response = transport.send(&challenge, &signature);
+            if redirect_case {
+                assert_eq!(response.unwrap().status, 302);
+            } else {
+                assert!(matches!(response, Err(ProofKeyError::BrokerTransport)));
+            }
+            server.join().unwrap();
+            assert!(redirect_sink.accept().is_err());
+        }
     }
 
     #[test]
