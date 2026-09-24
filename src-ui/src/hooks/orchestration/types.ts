@@ -18,6 +18,8 @@ export type OrchestrationEvent = CanonicalRuntimeEvent extends infer Event
   : never;
 
 export type OrchestrationSnapshotPayload = {
+  /** Durable database identity; absent on older Station servers. */
+  epoch?: string;
   sessions: Array<{
     provider: EngineId;
     threadId: string;

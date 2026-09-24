@@ -6074,6 +6074,29 @@ describe('Orchestration Routes', () => {
       expect(payload).toContain('event: orchestration:snapshot');
     });
 
+    test('a cursor from a different store epoch snapshots even when its number is valid', async () => {
+      persistEvent('epoch-event', 'epoch-thread', 1);
+      const service = makeResumeTestService(eventStore, {
+        readEventStreamEpoch: () => 'current-epoch',
+      });
+      const app = createOrchestrationRoutes(service as any, {
+        getUserId: () => ROUTE_TEST_USER_ID,
+        eventBus: new EventBus(),
+        logger: { debug: vi.fn() },
+      });
+      const response = await app.request('/events', {
+        headers: {
+          'Last-Event-ID': '1',
+          'X-Station-Stream-Epoch': 'previous-epoch',
+        },
+      });
+      const payload = await readStreamUntil(response.body!, (text) =>
+        text.includes('event: orchestration:caughtUp'),
+      );
+      expect(payload).toContain('event: orchestration:snapshot');
+      expect(payload).toContain('"epoch":"current-epoch"');
+    });
+
     /**
      * #2456 D1: the snapshot's advertised cursor must be older than any event
      * appended while the snapshot was being built. The client drops every

@@ -969,11 +969,18 @@ export function resolveStreamResumePlan(
   cursor: number | undefined,
   head: number,
   threadMissedCount?: number,
+  epochMismatch = false,
 ): {
   decision: 'replay' | 'snapshot';
-  reason: 'no_cursor' | 'invalid_cursor' | 'gap_exceeded' | 'within_threshold';
+  reason:
+    | 'no_cursor'
+    | 'invalid_cursor'
+    | 'gap_exceeded'
+    | 'within_threshold'
+    | 'epoch_mismatch';
   gap?: number;
 } {
+  if (epochMismatch) return { decision: 'snapshot', reason: 'epoch_mismatch' };
   if (cursor === undefined)
     return { decision: 'snapshot', reason: 'no_cursor' };
   if (cursor > head) return { decision: 'snapshot', reason: 'invalid_cursor' };
@@ -4202,6 +4209,8 @@ export function createOrchestrationRoutes(
         });
 
         const head = orchestrationService.readEventStreamHead();
+        const epoch = orchestrationService.readEventStreamEpoch?.();
+        const clientEpoch = c.req.header('X-Station-Stream-Epoch');
         // Thread-scoped gap fix (review finding, post-merge HIGH): for a
         // `threadId`-scoped connection, decide using this thread's own missed
         // count, not the cross-thread `head - cursor` gap — huge traffic on
@@ -4230,6 +4239,9 @@ export function createOrchestrationRoutes(
           cursor,
           head,
           threadReplayCandidateCount,
+          epoch !== undefined &&
+            clientEpoch !== undefined &&
+            clientEpoch !== epoch,
         );
         orchestrationStreamResumeDecisions.add(1, {
           decision: plan.decision,
@@ -4286,7 +4298,7 @@ export function createOrchestrationRoutes(
             // #2456 D1: `resolvedHead` stays `head` — see its declaration.
             await writeAuthorized({
               event: 'orchestration:snapshot',
-              data: JSON.stringify({ sessions }),
+              data: JSON.stringify({ sessions, ...(epoch ? { epoch } : {}) }),
               id: String(resolvedHead),
             });
           } else {
@@ -4333,7 +4345,7 @@ export function createOrchestrationRoutes(
           // newer is delivered live from `pending`.
           await writeAuthorized({
             event: 'orchestration:snapshot',
-            data: JSON.stringify({ sessions }),
+            data: JSON.stringify({ sessions, ...(epoch ? { epoch } : {}) }),
             id: String(resolvedHead),
           });
         }
@@ -4343,7 +4355,7 @@ export function createOrchestrationRoutes(
         // be reordered relative to what came before or after it.
         await writeAuthorized({
           event: ORCHESTRATION_STREAM_CAUGHT_UP_EVENT,
-          data: '{}',
+          data: JSON.stringify(epoch ? { epoch } : {}),
           id: String(resolvedHead),
         });
         caughtUp = true;

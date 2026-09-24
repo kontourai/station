@@ -41,6 +41,10 @@ CREATE TABLE IF NOT EXISTS orchestration_stream_identity (
   singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
   high_water INTEGER NOT NULL CHECK (high_water >= 0)
 );
+CREATE TABLE IF NOT EXISTS orchestration_stream_epoch (
+  singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+  epoch TEXT NOT NULL
+);
 
 -- Explicit native declarations are a private, bounded descriptor projection.
 -- They never widen the generic event payload/transcript contract.

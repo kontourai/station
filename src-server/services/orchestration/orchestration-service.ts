@@ -4444,6 +4444,11 @@ export class OrchestrationService {
     return this.sessionEventReads.readEventStreamHead();
   }
 
+  readEventStreamEpoch(): string | undefined {
+    this.initialize();
+    return this.sessionEventReads.readEventStreamEpoch();
+  }
+
   readEventGlobalSequence(eventId: string): number | undefined {
     return this.sessionEventReads.readEventGlobalSequence(eventId);
   }

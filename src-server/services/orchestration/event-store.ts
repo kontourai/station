@@ -2004,6 +2004,11 @@ export class EventStore {
          SELECT 1, COALESCE(MAX(global_sequence), 0) FROM orchestration_events`,
         )
         .run();
+      this.db
+        .prepare(
+          'INSERT OR IGNORE INTO orchestration_stream_epoch(singleton, epoch) VALUES (1, ?)',
+        )
+        .run(randomUUID());
       ensureOrchestrationAdoptionColumns(this.db);
       this.ensureConversationHistoryProjectSlugColumn();
       // Repair the bounded pre-existing history projection before the full
@@ -7768,6 +7773,16 @@ export class EventStore {
       )
       .get() as { head: number };
     return row.head;
+  }
+
+  /** Durable identity of this database, independent of its numeric cursor. */
+  streamEpoch(): string {
+    const row = this.db
+      .prepare(
+        'SELECT epoch FROM orchestration_stream_epoch WHERE singleton = 1',
+      )
+      .get() as { epoch: string };
+    return row.epoch;
   }
 
   /**

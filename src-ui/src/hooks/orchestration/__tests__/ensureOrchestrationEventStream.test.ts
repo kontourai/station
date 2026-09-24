@@ -14,6 +14,7 @@ vi.mock('../eventHandlers', () => ({
 }));
 
 const mocks = vi.hoisted(() => ({
+  clearConversationActivity: vi.fn(),
   capturedOnMessage: undefined as
     | ((raw: { event: string; data: string; id?: string }) => void)
     | undefined,
@@ -22,6 +23,11 @@ const mocks = vi.hoisted(() => ({
 }));
 vi.mock('@kontourai/station-sdk', () => ({
   fetchSSE: mocks.fetchSSE,
+}));
+vi.mock('../../../contexts/active-chats-store', () => ({
+  activeChatsStore: {
+    clearConversationActivity: mocks.clearConversationActivity,
+  },
 }));
 
 import { ensureOrchestrationEventStream } from '../ensureOrchestrationEventStream';
@@ -98,6 +104,48 @@ describe('ensureOrchestrationEventStream reconnect-fallback snapshot gating (sta
       { sessions: [] },
       { apiBase: 'http://api-1225-b', isReconnectFallback: true },
     );
+  });
+
+  test('an epoch change clears stale activity and admits new low sequence events', () => {
+    mocks.clearConversationActivity.mockClear();
+    const apiBase = 'http://api-epoch-change';
+    ensureOrchestrationEventStream(apiBase);
+    capturedOnMessage()({
+      event: 'orchestration:snapshot',
+      data: JSON.stringify({ sessions: [], epoch: 'old-epoch' }),
+      id: '100',
+    });
+    capturedOnMessage()({
+      event: 'orchestration:snapshot',
+      data: JSON.stringify({ sessions: [], epoch: 'new-epoch' }),
+      id: '1',
+    });
+    capturedOnMessage()({
+      event: 'orchestration:event',
+      data: JSON.stringify({
+        event: { method: 'turn.started', threadId: 'x' },
+      }),
+      id: '2',
+    });
+    expect(mocks.clearConversationActivity).toHaveBeenCalledOnce();
+    expect(handleOrchestrationEvent).toHaveBeenCalledOnce();
+  });
+
+  test('a replacement stream echoes the known store epoch', async () => {
+    const apiBase = 'http://api-epoch-echo';
+    ensureOrchestrationEventStream(apiBase);
+    capturedOnMessage()({
+      event: 'orchestration:snapshot',
+      data: JSON.stringify({ sessions: [], epoch: 'known-epoch' }),
+      id: '7',
+    });
+    await Promise.resolve();
+    ensureOrchestrationEventStream(apiBase);
+    expect(mocks.fetchSSE).toHaveBeenCalledTimes(2);
+    expect(mocks.fetchSSE.mock.calls[1]?.[1]).toMatchObject({
+      initialLastEventId: '7',
+      headers: { 'X-Station-Stream-Epoch': 'known-epoch' },
+    });
   });
 
   test('station#2301: the orchestration stream sets a stall deadline of 2.5 server keepalives', () => {

@@ -483,6 +483,20 @@ describe('EventStore', () => {
     ).toMatchObject([{ payload: { eventId: 'second' } }]);
   });
 
+  test('a store epoch survives restart and differs for a new database', () => {
+    const path = join(dir, 'orchestration.sqlite');
+    const epoch = store.streamEpoch();
+    store.close();
+    store = new EventStore(path);
+    expect(store.streamEpoch()).toBe(epoch);
+    const other = new EventStore(join(dir, 'other.sqlite'));
+    try {
+      expect(other.streamEpoch()).not.toBe(epoch);
+    } finally {
+      other.close();
+    }
+  });
+
   test('newest chat history exposes a complete answer ahead of 9014 progress events and pages backward without losing events', () => {
     const threadId = 'noisy-cold-chat';
     const turnId = 'first-turn';

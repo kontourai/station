@@ -4,6 +4,7 @@ import {
 } from '@kontourai/station-contracts/runtime-events';
 import { type FetchSseConnection, fetchSSE } from '@kontourai/station-sdk';
 import type { QueryClient } from '@tanstack/react-query';
+import { activeChatsStore } from '../../contexts/active-chats-store';
 import { CLIENT_DOCUMENT_SESSION_ID } from '../clientDocumentSession';
 import {
   handleOrchestrationEvent,
@@ -108,6 +109,7 @@ let hiddenSince: number | undefined;
 const basesWithSnapshot = new Set<string>();
 /** Last sequence this document applied, retained when a transport is replaced. */
 const appliedCursors = new Map<string, string>();
+const streamEpochs = new Map<string, string>();
 
 function reensureRequestedStreams(): void {
   if (
@@ -350,7 +352,12 @@ export function ensureOrchestrationEventStream(
     initialLastEventId,
     // station#2301: lets the server's stream open/close lines say WHICH
     // document connected — see `clientDocumentSession.ts`.
-    headers: { 'X-Station-Client-Session': CLIENT_DOCUMENT_SESSION_ID },
+    headers: {
+      'X-Station-Client-Session': CLIENT_DOCUMENT_SESSION_ID,
+      ...(streamEpochs.has(apiBase)
+        ? { 'X-Station-Stream-Epoch': streamEpochs.get(apiBase)! }
+        : {}),
+    },
     // archive#1848: a ceiling equal to the initial delay is not a backoff
     // ladder — it is a fixed 2s poll that never decays, so a server that is
     // down, restarting, or refusing keeps receiving ~30 requests/minute from
@@ -381,10 +388,15 @@ export function ensureOrchestrationEventStream(
         settleSemanticDeliveryBuffer(apiBase);
         // A snapshot always replaces local state — adopt its cursor
         // unconditionally rather than gating it through `admit`.
+        const payload = JSON.parse(raw.data) as OrchestrationSnapshotPayload;
+        const previousEpoch = streamEpochs.get(apiBase);
+        if (payload.epoch && previousEpoch && payload.epoch !== previousEpoch) {
+          activeChatsStore.clearConversationActivity();
+        }
+        if (payload.epoch) streamEpochs.set(apiBase, payload.epoch);
         cursor.adopt(raw.id);
         if (parseStreamSequence(raw.id) !== undefined)
           appliedCursors.set(apiBase, raw.id!);
-        const payload = JSON.parse(raw.data) as OrchestrationSnapshotPayload;
         recordReplaySnapshot(apiBase, payload, hasReceivedSnapshot);
         applyOrchestrationSnapshot(payload, {
           apiBase,
