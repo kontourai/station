@@ -362,6 +362,40 @@ describe('plugin command effect coordinator', () => {
     });
   });
 
+  test('apply() throwing settles `aborted` instead of leaving the record in-flight forever', async () => {
+    const { transport, admitCalls, settleCalls } = scriptedTransport();
+    const coordinator = createPluginCommandEffectCoordinator({
+      transport,
+      storage: fakeStorage(),
+      windowLike: fakeWindow(),
+    });
+    const notify = vi.fn();
+    // A misbehaving apply implementation throws mid-effect. The residual is
+    // documented on `PluginCommandEffectRunInput.apply`: this settles
+    // `aborted` (never left forever in-flight, never an unhandled rejection).
+    coordinator.runCommand(
+      baseInput({
+        notify,
+        apply: () => {
+          throw new Error('apply blew up mid-effect');
+        },
+      }),
+    );
+    await vi.waitFor(() => expect(admitCalls).toHaveLength(1));
+    admitCalls[0].resolve({
+      kind: 'admitted',
+      receipt: receiptFor(admitCalls[0]),
+    });
+    await vi.waitFor(() => expect(settleCalls).toHaveLength(1));
+    expect(settleCalls[0].request.items[0]).toMatchObject({
+      outcome: 'aborted',
+    });
+    settleCalls[0].resolve([
+      { requestId: admitCalls[0].request.requestId, status: 'settled' },
+    ]);
+    await vi.waitFor(() => expect(coordinator._debug.inFlightCount).toBe(0));
+  });
+
   test('a mismatched receipt is aborted without calling apply, but still settled with its effectId', async () => {
     const { transport, admitCalls, settleCalls } = scriptedTransport();
     const coordinator = createPluginCommandEffectCoordinator({
@@ -406,9 +440,9 @@ describe('plugin command effect coordinator', () => {
     second.dispose();
   });
 
-  test('a reload cannot settle an effect the earlier document admitted (leaves it outstanding)', async () => {
+  test('a reload mints a distinct documentKey, so a settlement the old incarnation dispatches cannot be mistaken for the new one (station#1418/#1419 review, LOW: the prior version of this test only checked a fresh coordinator'\''s idle in-flight count, which is zero regardless of whether identity is shared)', async () => {
     const storage = fakeStorage();
-    const { transport, admitCalls } = scriptedTransport();
+    const { transport, admitCalls, settleCalls } = scriptedTransport();
     const first = createPluginCommandEffectCoordinator({
       transport,
       storage,
@@ -416,18 +450,37 @@ describe('plugin command effect coordinator', () => {
     });
     first.runCommand(baseInput());
     await vi.waitFor(() => expect(admitCalls).toHaveLength(1));
-    // The tab is torn down (reload) before the admission's receipt is ever
-    // delivered to this incarnation of the document.
+    admitCalls[0].resolve({
+      kind: 'admitted',
+      receipt: receiptFor(admitCalls[0]),
+    });
+    // Drive an actual settlement dispatch through the transport seam before
+    // tearing this incarnation down (its ack never got a response).
+    await vi.waitFor(() => expect(settleCalls).toHaveLength(1));
+    const oldSettlementKey = settleCalls[0].request.documentKey;
     first.dispose();
+
+    // A reload: a brand new module instance, same persisted storage (same
+    // documentId survives), a fresh in-memory documentKey (never persisted).
+    const { transport: secondTransport, admitCalls: secondAdmitCalls } =
+      scriptedTransport();
     const second = createPluginCommandEffectCoordinator({
-      transport: scriptedTransport().transport,
+      transport: secondTransport,
       storage,
       windowLike: fakeWindow(),
     });
-    // The second incarnation never issued this request and has no record of
-    // it: it cannot settle it. The effect stays outstanding server-side,
-    // exactly like a document that never came back.
-    expect(second._debug.inFlightCount).toBe(0);
+    second.runCommand(baseInput());
+    await vi.waitFor(() => expect(secondAdmitCalls).toHaveLength(1));
+    // The document is the same one (persisted id), but this incarnation's own
+    // dispatched admission proves it cannot forge — or be mistaken for — the
+    // earlier incarnation's settlement key. This is the property that would
+    // fail if the key were shared/reused across incarnations.
+    expect(secondAdmitCalls[0].request.documentId).toBe(
+      admitCalls[0].request.documentId,
+    );
+    expect(secondAdmitCalls[0].request.documentKey).not.toBe(
+      oldSettlementKey,
+    );
     second.dispose();
   });
 
@@ -495,6 +548,56 @@ describe('plugin command effect coordinator', () => {
     });
     await vi.advanceTimersByTimeAsync(0);
     expect(apply).not.toHaveBeenCalled();
+  });
+
+  test('a DECIDED record survives an authority reset and keeps retrying under its own old identity until it settles', async () => {
+    const { transport, admitCalls, settleCalls } = scriptedTransport();
+    const storage = fakeStorage();
+    const coordinator = createPluginCommandEffectCoordinator({
+      transport,
+      storage,
+      windowLike: fakeWindow(),
+    });
+    const apply = vi.fn(() => true);
+    coordinator.runCommand(baseInput({ apply }));
+    await vi.waitFor(() => expect(admitCalls).toHaveLength(1));
+    admitCalls[0].resolve({
+      kind: 'admitted',
+      receipt: receiptFor(admitCalls[0]),
+    });
+    // The effect is DECIDED (applied) but not yet settled: let the
+    // synchronous receipt-processing step finish (it schedules an immediate
+    // flush) before the reset interrupts it.
+    await flushMicrotasks();
+    const oldDocumentKey = coordinator._debug.documentKey;
+
+    // Station/authority switch. The old identity's flush (fired by
+    // `resetForAuthorityChange` itself) is in flight; let it fail (dropped
+    // ack), simulating the switch outrunning the network.
+    coordinator.resetForAuthorityChange();
+    await vi.waitFor(() => expect(settleCalls).toHaveLength(1));
+    expect(coordinator._debug.documentKey).not.toBe(oldDocumentKey);
+    // The decided record does not count against the NEW identity's bounded
+    // in-flight admission capacity.
+    expect(coordinator._debug.inFlightCount).toBe(0);
+    // It is not lost: it is retained, still carrying its OLD identity —
+    // mismatched from the coordinator's now-live one — never the new one.
+    expect(coordinator._debug.retainedSettlementCount).toBe(1);
+    expect(settleCalls[0].request.documentKey).toBe(oldDocumentKey);
+    expect(settleCalls[0].request.documentKey).not.toBe(
+      coordinator._debug.documentKey,
+    );
+    settleCalls[0].resolve(null); // dropped ack: must retry, not vanish.
+
+    await vi.advanceTimersByTimeAsync(30_000);
+    await vi.waitFor(() => expect(settleCalls).toHaveLength(2));
+    expect(settleCalls[1].request.documentKey).toBe(oldDocumentKey);
+    settleCalls[1].resolve([
+      { requestId: admitCalls[0].request.requestId, status: 'settled' },
+    ]);
+    await vi.waitFor(() =>
+      expect(coordinator._debug.retainedSettlementCount).toBe(0),
+    );
   });
 
   test('cancelRequest marks a request cancelled before its receipt arrives, settling `aborted`', async () => {
