@@ -3,6 +3,7 @@ import { Button } from '../../components/Button';
 import { Empty, ErrorState, SkeletonBlock } from '../../components/state';
 import type { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { useScopedMemberProjectSharedTasksQuery } from '../../contexts/ProjectsContext';
+import { MemberProjectHeader } from './ProjectPageHeader';
 
 type RequestScope = ReturnType<typeof useHostRequestAuthorityScope>;
 
@@ -21,19 +22,11 @@ export function MemberProjectPage({
   return (
     <div className="project-page">
       <div className="project-page__inner">
-        <header className="project-page__header">
-          <div>
-            <p>Shared Project</p>
-            <h1>{project.name}</h1>
-            {project.description && <p>{project.description}</p>}
-          </div>
-          <Button
-            onClick={() => void sharedWork.refetch()}
-            disabled={!requestScope.isCurrent() || sharedWork.isFetching}
-          >
-            Refresh shared work
-          </Button>
-        </header>
+        <MemberProjectHeader
+          project={project}
+          onRefresh={() => void sharedWork.refetch()}
+          refreshDisabled={!requestScope.isCurrent() || sharedWork.isFetching}
+        />
         <section aria-labelledby="member-project-shared-work-title">
           <h2 id="member-project-shared-work-title">Shared work</h2>
           {sharedWork.isPending ? (
