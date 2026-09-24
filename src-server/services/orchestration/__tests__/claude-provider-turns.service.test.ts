@@ -1,6 +1,7 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { INTERNAL_SESSION_READ_SCOPE } from '@kontourai/station-contracts/tenancy';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
@@ -41,9 +42,11 @@ import {
   type ClaudeProviderTurnFixtureLine,
   loadClaudeProviderTurnFixture,
 } from '../../../providers/__tests__/claude-provider-turns-fixtures.js';
+import { loadClaudeTaskCapture } from '../../../providers/__tests__/claude-task-captures.js';
 import type { ProviderAdapterShape } from '../../../providers/adapter-shape.js';
 import { ClaudeAdapter } from '../../../providers/adapters/claude-adapter.js';
 import type { IProviderAdapterRegistry } from '../../../providers/provider-interfaces.js';
+import { createOrchestrationRoutes } from '../../../routes/orchestration/orchestration.js';
 import { EventBus } from '../event-bus.js';
 import { EventStore } from '../event-store.js';
 import { OrchestrationService } from '../orchestration-service.js';
@@ -356,5 +359,198 @@ describe('#2324 review H1: provider-triggered turns through OrchestrationService
     expect(u2Events[0]).toMatchObject({ prompt: 'U2' });
     expect(u2Events[1]).toMatchObject({ reason: 'engine-ended-before-start' });
     expect(possibleEffect).toEqual({ kind: 'available', active: false });
+  });
+});
+
+/**
+ * #2457: the Claude adapter's child work, from live captures, THROUGH
+ * `OrchestrationService` (and, for the stop, its HTTP route): the session
+ * summary carries the running child mid-stream and not after, the persisted
+ * log holds `child-work.updated` and no pre-contract task tuple, and a stop
+ * reaches `Query.stopTask` and settles the child from the engine's own
+ * `stopped` notification.
+ */
+describe('#2457: Claude child work through OrchestrationService', () => {
+  let directory: string;
+  let eventStore: EventStore;
+
+  beforeEach(() => {
+    directory = mkdtempSync(join(tmpdir(), 'claude-child-work-service-'));
+    eventStore = new EventStore(join(directory, 'orchestration.sqlite'));
+    mockFindCliBinaryAsync.mockResolvedValue(null);
+    mockRunCliCommand.mockResolvedValue(null);
+  });
+
+  afterEach(() => {
+    eventStore.close();
+    rmSync(directory, { recursive: true, force: true });
+    mockQuery.mockReset();
+  });
+
+  async function startService() {
+    const query = Object.assign(controlledQuery(), {
+      stopTask: vi.fn<(taskId: string) => Promise<void>>(),
+    });
+    mockQuery.mockReturnValue(query);
+    const adapter = new ClaudeAdapter();
+    const eventBus = new EventBus();
+    const service = new OrchestrationService({
+      adapterRegistry: registry(adapter),
+      eventBus,
+      eventStore,
+      logger: { debug: vi.fn(), warn: vi.fn() },
+    });
+    const threadId = `service-${crypto.randomUUID()}`;
+    await service.dispatch({
+      type: 'startSession',
+      input: { threadId, provider: 'claude' },
+    });
+    const routes = createOrchestrationRoutes(service, {
+      eventBus,
+      logger: { debug: vi.fn() },
+      getUserId: () => 'user-1',
+    });
+    const children = async () =>
+      (await service.readSession(threadId, INTERNAL_SESSION_READ_SCOPE))
+        ?.session.childWork?.children;
+    const persisted = () =>
+      eventStore.listEvents(threadId).map((row) => row.payload);
+    const pushMessage = async (message: SDKMessage) => {
+      const next = JSON.parse(JSON.stringify(message)) as Record<
+        string,
+        unknown
+      >;
+      if (next.subtype === 'init') next.cwd = directory;
+      query.push(next);
+      await settle();
+    };
+    return {
+      query,
+      service,
+      threadId,
+      routes,
+      children,
+      persisted,
+      pushMessage,
+    };
+  }
+
+  function legacyTuples(events: CanonicalRuntimeEvent[]) {
+    return events.filter(
+      (event) =>
+        event.method === 'extension.notification' &&
+        (event.type === 'task/registry' || event.type === 'task/settled'),
+    );
+  }
+
+  test('background-agent: the summary lists the child while it runs and not after; no legacy tuple is persisted', async () => {
+    const { service, threadId, children, persisted, pushMessage, query } =
+      await startService();
+    const lines = loadClaudeTaskCapture('background-agent');
+    const [childId] = lines.flatMap((line) =>
+      line.message?.type === 'system' &&
+      line.message.subtype === 'task_started' &&
+      (line.message as { task_type?: string }).task_type === 'local_agent'
+        ? [line.message.task_id]
+        : [],
+    );
+    let listedMidStream = false;
+    for (const line of lines) {
+      if (line.probe?.startsWith('PUSH ')) {
+        await service.dispatch({
+          type: 'sendTurn',
+          input: { threadId, input: line.probe.slice('PUSH '.length) },
+        });
+        await settle();
+        continue;
+      }
+      if (line.probe === 'CLOSE INPUT') {
+        query.end();
+        await settle();
+        break;
+      }
+      if (!line.message) continue;
+      await pushMessage(line.message);
+      const view = await children();
+      if (
+        view?.observability === 'reported' &&
+        view.running.some(
+          (item) => item.childId === childId && item.status === 'running',
+        )
+      ) {
+        listedMidStream = true;
+      }
+    }
+    expect(listedMidStream).toBe(true);
+    expect(await children()).toMatchObject({
+      observability: 'reported',
+      running: [],
+    });
+    const events = persisted();
+    expect(legacyTuples(events)).toEqual([]);
+    const settles = events.flatMap((event) =>
+      event.method === 'child-work.updated' &&
+      event.delta.kind === 'settle' &&
+      event.delta.childId === childId
+        ? [event.delta.status]
+        : [],
+    );
+    expect(settles).toEqual(['completed', 'completed']);
+  });
+
+  test('stop-task: POST …/provider-tasks/:taskId/stop reaches Query.stopTask and the engine’s stopped settle cancels the child', async () => {
+    const { query, threadId, routes, children, persisted, pushMessage } =
+      await startService();
+    const lines = loadClaudeTaskCapture('stop-task');
+    const stopAt = lines.findIndex((line) =>
+      line.probe?.startsWith('STOP_TASK '),
+    );
+    const childId = lines[stopAt].probe!.slice('STOP_TASK '.length);
+    // The engine's answer to the stop, exactly as captured.
+    query.stopTask.mockImplementation(async (taskId) => {
+      for (const line of lines.slice(stopAt + 1)) {
+        const message = line.message as { task_id?: string } | undefined;
+        if (message?.task_id === taskId) query.push(line.message);
+      }
+    });
+    for (const line of lines.slice(0, stopAt)) {
+      if (line.message) await pushMessage(line.message);
+    }
+    expect(await children()).toMatchObject({
+      running: [
+        expect.objectContaining({
+          childId,
+          controls: { stop: 'provider-task-stop' },
+        }),
+      ],
+    });
+
+    const stop = () =>
+      routes.request(`/sessions/${threadId}/provider-tasks/${childId}/stop`, {
+        method: 'POST',
+      });
+    const response = await stop();
+    expect(await response.json()).toEqual({
+      success: true,
+      data: { outcome: 'stopped', taskId: childId },
+    });
+    expect(query.stopTask).toHaveBeenCalledWith(childId);
+    await settle();
+
+    expect(await children()).toMatchObject({ running: [] });
+    const settled = persisted().flatMap((event) =>
+      event.method === 'child-work.updated' &&
+      event.delta.kind === 'settle' &&
+      event.delta.childId === childId
+        ? [event.delta.status]
+        : [],
+    );
+    expect(settled).toEqual(['cancelled', 'cancelled']);
+    // Settled: a second stop is the documented race, not an error.
+    expect(await (await stop()).json()).toEqual({
+      success: true,
+      data: { outcome: 'no-active-task', taskId: childId },
+    });
+    expect(query.stopTask).toHaveBeenCalledTimes(1);
   });
 });

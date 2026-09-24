@@ -7134,20 +7134,36 @@ describe('OrchestrationService', () => {
     }
   });
 
-  test('classifies provider lifecycle background notifications as aggregate-safe without tenant authority', () => {
-    (
-      service as unknown as {
-        projectAndPublishEvent(event: CanonicalRuntimeEvent): boolean;
-      }
-    ).projectAndPublishEvent({
-      eventId: 'background-aggregate-safe',
-      provider: 'claude',
-      threadId: 'thread-not-authority',
-      createdAt: new Date().toISOString(),
-      method: 'extension.notification',
-      namespace: 'provider',
-      type: 'task/settled',
-      payload: { status: 'completed' },
+  test('classifies a settling engine child as aggregate-safe without tenant authority', () => {
+    // Counters are module-level mocks shared across this file.
+    (tenantExecutionContextOutcomes.add as any).mockClear();
+    const publishChildWork = (eventId: string, delta: unknown) =>
+      (
+        service as unknown as {
+          projectAndPublishEvent(event: CanonicalRuntimeEvent): boolean;
+        }
+      ).projectAndPublishEvent({
+        eventId,
+        provider: 'claude',
+        threadId: 'thread-not-authority',
+        createdAt: new Date().toISOString(),
+        method: 'child-work.updated',
+        delta,
+      } as CanonicalRuntimeEvent);
+    const key = {
+      producer: 'engine-subagent',
+      reporterThreadId: 'thread-not-authority',
+    };
+    publishChildWork('background-listed', {
+      kind: 'snapshot',
+      ...key,
+      running: [{ ...key, childId: 'task-1', status: 'running' }],
+    });
+    publishChildWork('background-aggregate-safe', {
+      kind: 'settle',
+      ...key,
+      childId: 'task-1',
+      status: 'completed',
     });
 
     expect(tenantExecutionContextOutcomes.add).toHaveBeenCalledWith(1, {
@@ -7158,7 +7174,8 @@ describe('OrchestrationService', () => {
     });
   });
 
-  test('#2456: snapshot rows carry the live Claude subagent set folded from its legacy task tuples', async () => {
+  test('#2457: snapshot rows carry the live Claude subagent set folded from its child-work deltas', async () => {
+    (sessionBackgroundTasks.add as any).mockClear();
     const threadId = 'child-work-snapshot';
     const createdAt = '2026-09-23T09:00:00.000Z';
     eventStore.upsertSession({
@@ -7183,17 +7200,27 @@ describe('OrchestrationService', () => {
           projectAndPublishEvent(event: CanonicalRuntimeEvent): boolean;
         }
       ).projectAndPublishEvent(event);
+    const key = {
+      producer: 'engine-subagent' as const,
+      reporterThreadId: threadId,
+    };
     publish({
       eventId: 'registry-1',
       provider: 'claude',
       threadId,
       createdAt: '2026-09-23T09:00:01.000Z',
-      method: 'extension.notification',
-      namespace: 'claude-code',
-      type: 'task/registry',
-      payload: {
-        active: [
-          { taskId: 'task-1', description: 'Research', backgrounded: true },
+      method: 'child-work.updated',
+      delta: {
+        kind: 'snapshot',
+        ...key,
+        running: [
+          {
+            ...key,
+            childId: 'task-1',
+            status: 'running',
+            title: 'Research',
+            backgrounded: true,
+          },
         ],
       },
     });
@@ -7236,21 +7263,38 @@ describe('OrchestrationService', () => {
       provider: 'claude',
       threadId,
       createdAt: '2026-09-23T09:00:02.000Z',
-      method: 'extension.notification',
-      namespace: 'claude-code',
-      type: 'task/settled',
-      payload: { taskId: 'task-1', status: 'success' },
+      method: 'child-work.updated',
+      delta: { kind: 'settle', ...key, childId: 'task-1', status: 'completed' },
     });
     expect((await row())?.childWork?.children).toMatchObject({
       observability: 'reported',
       running: [],
     });
-    // The metric still counts the legacy tuple exactly as before (#2456
-    // scope: unchanged until the adapter moves onto the contract, #2457).
+    // #2457: the metric counts the child's running → terminal fold, labelled
+    // with its child-work status.
     expect(sessionBackgroundTasks.add).toHaveBeenCalledWith(1, {
       provider: 'claude',
-      status: 'success',
+      status: 'completed',
     });
+    // The station#1892 enrichment is not a second settle.
+    const settlesBefore = (sessionBackgroundTasks.add as any).mock.calls.length;
+    publish({
+      eventId: 'settled-2',
+      provider: 'claude',
+      threadId,
+      createdAt: '2026-09-23T09:00:03.000Z',
+      method: 'child-work.updated',
+      delta: {
+        kind: 'settle',
+        ...key,
+        childId: 'task-1',
+        status: 'completed',
+        result: { summary: 'done' },
+      },
+    });
+    expect((sessionBackgroundTasks.add as any).mock.calls.length).toBe(
+      settlesBefore,
+    );
   });
 
   test('fails closed for hosted starts without a server-owned tenant context', async () => {
