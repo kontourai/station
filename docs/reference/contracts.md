@@ -57,6 +57,10 @@ Use `@kontourai/station-contracts/*` when you need stable API/domain shapes shar
 | `@kontourai/station-contracts/unified-search` | Owner-qualified typed search results, provider pages, source states, open intents, and fresh owner-resolved open targets |
 | `@kontourai/station-contracts/workspace-pane-host-contribution` | Package-level Pane-host actions and explicit owner-relative/default Agent selection |
 
+`OrchestrationSessionSummary.openRequestIds` is present when the server reads
+its durable request state. An empty array means no requests remain open;
+absence means that server did not report this projection.
+
 ## Import examples
 
 ```ts

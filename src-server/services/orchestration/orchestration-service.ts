@@ -3545,6 +3545,8 @@ export class OrchestrationService {
     const eventCountByThread =
       eventStore?.countEventsByThreads(readableThreadIds) ??
       new Map<string, number>();
+    const openRequestIdsByThread =
+      eventStore?.listOpenRequestIdsByThreads(readableThreadIds);
     // #1536 B4: batched beside the two reads above, never per row — a
     // continuation child's own events begin at the SECOND prompt, so without
     // the conversation's own first prompted turn every surface that titles a
@@ -3603,6 +3605,9 @@ export class OrchestrationService {
           ...(conversationDraftFacts ? { conversationDraftFacts } : {}),
           turnProgress: this.turnProgress.read(threadId),
           readChildWork: this.readChildWork,
+          ...(openRequestIdsByThread
+            ? { openRequestIds: openRequestIdsByThread.get(threadId) ?? [] }
+            : {}),
           ...(conversationActivity ? { conversationActivity } : {}),
           ...(conversationFirstPromptedTurn
             ? { conversationFirstPromptedTurn }

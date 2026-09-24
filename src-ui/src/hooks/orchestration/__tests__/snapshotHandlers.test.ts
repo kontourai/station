@@ -1,6 +1,17 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const rehydrateChatSession = vi.fn().mockResolvedValue(undefined);
+const dismissToast = vi.fn((_id: string) => {});
+const showToast = vi.fn(
+  (_message: string, _sessionId?: string, _duration?: number) => 'new-toast',
+);
+vi.mock('../../../contexts/ToastContext', () => ({
+  toastStore: {
+    dismiss: (id: string) => dismissToast(id),
+    show: (message: string, sessionId?: string, duration?: number) =>
+      showToast(message, sessionId, duration),
+  },
+}));
 vi.mock('../rehydrateChatSession', () => ({
   rehydrateChatSession: (...args: unknown[]) => rehydrateChatSession(...args),
 }));
@@ -34,6 +45,8 @@ describe('applyOrchestrationSnapshot reconnect-fallback refetch (station#1225)',
   beforeEach(() => {
     rehydrateChatSession.mockClear();
     updateChat.mockClear();
+    dismissToast.mockClear();
+    showToast.mockClear();
     chats = {
       'thread-1': {
         provider: 'claude',
@@ -42,6 +55,31 @@ describe('applyOrchestrationSnapshot reconnect-fallback refetch (station#1225)',
         orchestrationSessionStarted: true,
       },
     };
+  });
+
+  test('replaces open approvals and stale toasts from an authoritative snapshot', () => {
+    chats['thread-1'].pendingApprovals = ['stale-request'];
+    chats['thread-1'].approvalToasts = new Map([
+      ['stale-request', 'stale-toast'],
+    ]);
+    applyOrchestrationSnapshot(
+      {
+        sessions: [
+          {
+            provider: 'claude',
+            threadId: 'thread-1',
+            status: 'ready',
+            hasActiveTurn: false,
+            openRequestIds: ['new-request'],
+          },
+        ],
+      },
+      { apiBase: 'http://api', isReconnectFallback: true },
+    );
+    expect(chats['thread-1'].pendingApprovals).toEqual(['new-request']);
+    expect(chats['thread-1'].orchestrationStatus).toBe('idle');
+    expect(dismissToast).toHaveBeenCalledWith('stale-toast');
+    expect(showToast).toHaveBeenCalledOnce();
   });
 
   test('an ordinary (non-reconnect) snapshot never triggers a messages refetch', () => {

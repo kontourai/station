@@ -472,6 +472,8 @@ export function buildOrchestrationSessionSummary(options: {
   turnProgress?: TurnProgressObservation;
   /** #2309: the conversation activity projection's read for this thread. */
   conversationActivity?: ConversationTurnActivity;
+  /** Current unresolved requests; present even when the set is empty. */
+  openRequestIds?: readonly string[];
   /**
    * #2456: the child-work projection's process-local read, handed over like
    * `turnProgress` — never reconstructed from events. A READER rather than a
@@ -626,6 +628,9 @@ export function buildOrchestrationSessionSummary(options: {
     ...(options.turnProgress ? { turnProgress: options.turnProgress } : {}),
     ...(options.conversationActivity
       ? { conversationActivity: options.conversationActivity }
+      : {}),
+    ...(options.openRequestIds
+      ? { openRequestIds: [...options.openRequestIds] }
       : {}),
     ...(delegation ? { delegation } : {}),
     ...(inputOrigin ? { inputOrigin } : {}),

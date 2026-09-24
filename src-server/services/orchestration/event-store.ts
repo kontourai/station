@@ -5120,6 +5120,28 @@ export class EventStore {
     ).map((row: any) => this.mapEventRow(row));
   }
 
+  /** Current open request ids for one authorized snapshot's session set. */
+  listOpenRequestIdsByThreads(
+    threadIds: readonly string[],
+  ): Map<string, string[]> {
+    const result = new Map(
+      threadIds.map((threadId) => [threadId, [] as string[]]),
+    );
+    for (let offset = 0; offset < threadIds.length; offset += 500) {
+      const batch = threadIds.slice(offset, offset + 500);
+      const placeholders = batch.map(() => '?').join(',');
+      const rows = this.db
+        .prepare(
+          `SELECT thread_id, request_id FROM orchestration_request_state
+           WHERE thread_id IN (${placeholders}) AND method = 'request.opened'
+           ORDER BY thread_id, sequence`,
+        )
+        .all(...batch) as Array<{ thread_id: string; request_id: string }>;
+      for (const row of rows) result.get(row.thread_id)?.push(row.request_id);
+    }
+    return result;
+  }
+
   /**
    * Bounded authoritative facts for the session fold. This is intentionally
    * not a recent tail: a Flow or policy binding written before tens of

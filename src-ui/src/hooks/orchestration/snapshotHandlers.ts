@@ -3,6 +3,7 @@ import type { ChatUIState } from '../../contexts/active-chats-store';
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import { backgroundTasksStore } from '../../contexts/background-tasks-store';
 import { childWorkGlobalStore } from '../../contexts/child-work-global-store';
+import { toastStore } from '../../contexts/ToastContext';
 import { newerConversationActivity } from '../../utils/conversation-activity';
 import {
   acknowledgesModelRequest,
@@ -10,6 +11,7 @@ import {
   replaceModelControlOptions,
 } from '../../utils/modelCapabilities';
 import { reconcileChildWorkSnapshot } from './childWorkHandlers';
+import { drainQueuedMessageOnTurnCompleted } from './queueDrain';
 import { rehydrateChatSession } from './rehydrateChatSession';
 import { isReplayThread } from './replay/replay-registry';
 import type { OrchestrationSnapshotPayload } from './types';
@@ -28,6 +30,8 @@ type SnapshotChatState = Pick<
   | 'orchestrationTurnOpen'
   | 'currentSessionId'
   | 'conversationId'
+  | 'pendingApprovals'
+  | 'approvalToasts'
 >;
 
 /** Fold-absent (legacy) payloads count as open — only an explicit false demotes. */
@@ -187,6 +191,8 @@ type SelectedSnapshotRow = {
   row: SnapshotSession;
   /** The chat's record (newest across its rows), when any row carries one. */
   record: ConversationRecord | undefined;
+  openRequestIds: string[] | undefined;
+  lastTurnEndMethod?: 'turn.completed' | 'turn.aborted' | 'runtime.error';
 };
 
 function selectSnapshotRows(
@@ -222,6 +228,22 @@ function selectSnapshotRows(
 
   const selected = new Map<string, SelectedSnapshotRow>();
   for (const [key, candidates] of candidatesByChat) {
+    const lastTurnEndMethod = candidates
+      .filter(
+        (row) =>
+          row.lastEventMethod === 'turn.completed' ||
+          row.lastEventMethod === 'turn.aborted' ||
+          row.lastEventMethod === 'runtime.error',
+      )
+      .sort((left, right) =>
+        (left.lastEventAt ?? '').localeCompare(right.lastEventAt ?? ''),
+      )
+      .at(-1)?.lastEventMethod as SelectedSnapshotRow['lastTurnEndMethod'];
+    const openRequestIds = candidates.every(
+      (row) => row.openRequestIds !== undefined,
+    )
+      ? [...new Set(candidates.flatMap((row) => row.openRequestIds ?? []))]
+      : undefined;
     const latest = (rows: SnapshotSession[]) =>
       rows.reduce((best, row) =>
         snapshotRowRecency(row) >= snapshotRowRecency(best) ? row : best,
@@ -250,6 +272,8 @@ function selectSnapshotRows(
           candidates.find((row) => row.threadId === key) ??
           latest(candidates),
         record,
+        openRequestIds,
+        lastTurnEndMethod,
       });
       continue;
     }
@@ -263,6 +287,8 @@ function selectSnapshotRows(
           : (candidates.find((row) => row.threadId === key) ??
             latest(candidates)),
       record: undefined,
+      openRequestIds,
+      lastTurnEndMethod,
     });
   }
   return selected;
@@ -275,7 +301,7 @@ function planSnapshot(
   const selected = selectSnapshotRows(payload, chats);
 
   const sessionUpdates = [...selected].map(
-    ([chatKey, { row: session, record }]) => {
+    ([chatKey, { row: session, record, openRequestIds }]) => {
       const chat = chats[chatKey];
       // #2303: live events for the running child route through
       // `getChatForExecutionSession`, which matches `currentSessionId`; a
@@ -365,9 +391,11 @@ function planSnapshot(
           // re-strand the streaming shell after a reconnect — the exact
           // symptom archive#1005 fixed on the live-event path.
           orchestrationStatus:
-            session.status === 'running' && !rowTurnIsOpen(session, record)
+            (session.status === 'running' || session.status === 'ready') &&
+            !rowTurnIsOpen(session, record)
               ? 'idle'
               : session.status,
+          ...(openRequestIds ? { pendingApprovals: openRequestIds } : {}),
           // Reseed the client turn fold only from an EXPLICIT server
           // verdict (archive#1076) — a reconnect during an in-turn approval must
           // let the next live 'running' state-change re-engage. A legacy
@@ -413,6 +441,14 @@ function planSnapshot(
       .filter(([, { row, record }]) => rowTurnIsOpen(row, record))
       .map(([chatKey]) => chatKey),
   );
+  const queueDrainChatKeys = new Set(
+    [...selected]
+      .filter(
+        ([, { record, lastTurnEndMethod }]) =>
+          record && !record.openTurn && lastTurnEndMethod !== 'turn.aborted',
+      )
+      .map(([chatKey]) => chatKey),
+  );
 
   return {
     plan: {
@@ -420,6 +456,7 @@ function planSnapshot(
       exitedThreadIds,
     } satisfies OrchestrationSnapshotSyncPlan,
     openTurnChatKeys,
+    queueDrainChatKeys,
   };
 }
 
@@ -481,7 +518,10 @@ export function applyOrchestrationSnapshot(
       replayId ? id === replayId : !isReplayThread(id),
     ),
   );
-  const { plan, openTurnChatKeys } = planSnapshot(payload, snapshot);
+  const { plan, openTurnChatKeys, queueDrainChatKeys } = planSnapshot(
+    payload,
+    snapshot,
+  );
   const isReconnectFallback = options?.isReconnectFallback === true;
   // #2309: every row carries its conversation's activity. Feed the store
   // first, keyed by conversation, so liveness is the server's record for
@@ -495,12 +535,32 @@ export function applyOrchestrationSnapshot(
   }
 
   for (const { threadId, updates } of plan.sessionUpdates) {
+    let approvalToasts: Map<string, string> | undefined;
+    if (updates.pendingApprovals) {
+      const openIds = new Set(updates.pendingApprovals);
+      approvalToasts = new Map(snapshot[threadId]?.approvalToasts ?? []);
+      for (const [requestId, toastId] of approvalToasts) {
+        if (openIds.has(requestId)) continue;
+        toastStore.dismiss(toastId);
+        approvalToasts.delete(requestId);
+      }
+      for (const requestId of openIds) {
+        if (approvalToasts.has(requestId)) continue;
+        const toastId = toastStore.show(
+          `Approval waiting for request ${requestId}`,
+          threadId,
+          0,
+        );
+        approvalToasts.set(requestId, toastId);
+      }
+    }
     // One write per thread. Each `updateChat` copies the whole chat map and
     // broadcasts to every listener, and this loop runs on the reconnect hot
     // path (archive#3350/archive#3351), so the catch-up fields ride the status sync
     // rather than following it with a second write.
     activeChatsStore.updateChat(threadId, {
       ...updates,
+      ...(approvalToasts ? { approvalToasts } : {}),
       ...(isReconnectFallback
         ? reconnectCatchUpUpdates(
             snapshot[threadId],
@@ -532,6 +592,13 @@ export function applyOrchestrationSnapshot(
     // no partition rather than a guessed one.
     if (options?.apiBase)
       childWorkGlobalStore.reconcileSnapshot(options.apiBase, payload.sessions);
+  }
+
+  if (!replayId && options?.apiBase) {
+    for (const chatKey of queueDrainChatKeys) {
+      if (activeChatsStore.getSnapshot()[chatKey]?.queuedMessages?.length)
+        drainQueuedMessageOnTurnCompleted(options.apiBase, chatKey);
+    }
   }
 
   if (!isReconnectFallback || !options || replayId) return;

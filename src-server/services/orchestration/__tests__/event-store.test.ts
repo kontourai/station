@@ -497,6 +497,34 @@ describe('EventStore', () => {
     }
   });
 
+  test('batches the current open request ids for snapshot session rows', () => {
+    const request = (
+      eventId: string,
+      threadId: string,
+      method: 'request.opened' | 'request.resolved',
+    ) =>
+      ({
+        eventId,
+        provider: 'claude' as const,
+        threadId,
+        createdAt: '2026-09-24T00:00:00.000Z',
+        method,
+        requestId: 'request-1',
+        ...(method === 'request.opened'
+          ? { requestType: 'approval', title: 'Allow Read' }
+          : { resolution: 'accepted' }),
+      }) as CanonicalRuntimeEvent;
+    store.appendEvent(request('opened-a', 'thread-a', 'request.opened'));
+    store.appendEvent(request('opened-b', 'thread-b', 'request.opened'));
+    store.appendEvent(request('resolved-b', 'thread-b', 'request.resolved'));
+    expect(store.listOpenRequestIdsByThreads(['thread-a', 'thread-b'])).toEqual(
+      new Map([
+        ['thread-a', ['request-1']],
+        ['thread-b', []],
+      ]),
+    );
+  });
+
   test('newest chat history exposes a complete answer ahead of 9014 progress events and pages backward without losing events', () => {
     const threadId = 'noisy-cold-chat';
     const turnId = 'first-turn';
