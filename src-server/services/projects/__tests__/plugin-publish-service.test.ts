@@ -220,8 +220,10 @@ beforeEach(() => {
   writePlugin();
   mkdirSync(outside);
   writeFileSync(join(outside, 'a.ts'), `${SECRET}\n`);
-  git(root, ['init', '--quiet', '--bare', bare]);
-  git(root, ['init', '--quiet', '--bare', attacker]);
+  // `main` explicitly: a host with no `init.defaultBranch` (a CI runner) would
+  // leave the bare HEAD on `master`, and a clone of it would start unborn.
+  git(root, ['init', '--quiet', '--bare', '--initial-branch=main', bare]);
+  git(root, ['init', '--quiet', '--bare', '--initial-branch=main', attacker]);
   const globalConfig = join(root, 'gitconfig');
   writeFileSync(
     globalConfig,
