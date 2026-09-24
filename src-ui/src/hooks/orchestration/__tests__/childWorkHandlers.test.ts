@@ -1,9 +1,10 @@
 /**
- * #2456: the client's child-work path. Until #2457 the Claude adapter still
- * reports through `claude-code` `task/registry` / `task/settled`, so these
- * drive the LIVE path end to end: the real extension handler → the contract
- * translator → the reducer → the derived `ChatUIState.backgroundTasks` and the
- * settle announcement.
+ * #2456: the client's child-work path. Since #2457 the Claude adapter emits
+ * `child-work.updated`; the `claude-code` `task/registry` / `task/settled`
+ * tuples these tests feed are the REPLAY path for pre-#2457 history, driven
+ * end to end: the real extension handler → the contract translator → the
+ * reducer → the derived `ChatUIState.backgroundTasks` and the settle
+ * announcement.
  */
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
@@ -539,6 +540,103 @@ describe('child-work client path (legacy Claude tuples → contract reducer)', (
     });
     expect(chat()?.backgroundTasks?.map((task) => task.description)).toEqual([
       'Upserted',
+    ]);
+  });
+
+  test('#2457: a real result drained after the session exited is still announced, and brings no running card back', async () => {
+    const { handleOrchestrationEvent } = await import('../eventHandlers');
+    const live = 'exec-live';
+    activeChatsStore.updateChat(threadId, { currentSessionId: live });
+    const key = {
+      producer: 'engine-subagent' as const,
+      reporterThreadId: live,
+    };
+    handlers.handleChildWorkUpdatedEvent({
+      provider: 'claude',
+      threadId: live,
+      createdAt: '2026-09-23T00:00:00.000Z',
+      method: 'child-work.updated',
+      delta: {
+        kind: 'snapshot',
+        ...key,
+        running: [
+          {
+            ...key,
+            childId: 'late',
+            status: 'running',
+            backgrounded: true,
+            title: 'Late one',
+          },
+        ],
+      },
+    });
+    handleOrchestrationEvent('http://api', {
+      provider: 'claude',
+      threadId: live,
+      createdAt: '2026-09-23T00:00:01.000Z',
+      method: 'session.exited',
+    } as never);
+    expect(chat()?.backgroundTasks ?? []).toEqual([]);
+    // The adapter drains the engine's real outcome after the exit.
+    handlers.handleChildWorkUpdatedEvent({
+      provider: 'claude',
+      threadId: live,
+      createdAt: '2026-09-23T00:00:02.000Z',
+      method: 'child-work.updated',
+      delta: {
+        kind: 'settle',
+        ...key,
+        childId: 'late',
+        status: 'completed',
+        result: { summary: 'Found it' },
+        identity: { backgrounded: true, title: 'Late one' },
+      },
+    });
+    expect(announcements()).toEqual([
+      'Background task finished — Late one\n\nFound it',
+    ]);
+    expect(chat()?.backgroundTasks ?? []).toEqual([]);
+  });
+
+  test('#2457: a live progress upsert reaches the chat task, so the sheet can show it', () => {
+    const item = {
+      producer: 'engine-subagent' as const,
+      reporterThreadId: threadId,
+      childId: 'task-p',
+      status: 'running' as const,
+      title: 'Run four sleeps',
+      controls: { stop: 'provider-task-stop' as const },
+    };
+    handlers.handleChildWorkUpdatedEvent({
+      provider: 'claude',
+      threadId,
+      createdAt: '2026-09-23T00:00:00.000Z',
+      method: 'child-work.updated',
+      delta: {
+        kind: 'snapshot',
+        producer: 'engine-subagent',
+        reporterThreadId: threadId,
+        running: [item],
+      },
+    });
+    expect(chat()?.backgroundTasks?.[0]?.progress).toBeUndefined();
+    handlers.handleChildWorkUpdatedEvent({
+      provider: 'claude',
+      threadId,
+      createdAt: '2026-09-23T00:00:01.000Z',
+      method: 'child-work.updated',
+      delta: {
+        kind: 'upsert',
+        item: { ...item, progress: 'Executing second sleep interval.' },
+      },
+    });
+    expect(chat()?.backgroundTasks).toEqual([
+      expect.objectContaining({
+        taskId: 'task-p',
+        description: 'Run four sleeps',
+        progress: 'Executing second sleep interval.',
+        stop: 'provider-task-stop',
+      }),
     ]);
   });
 });

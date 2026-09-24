@@ -144,6 +144,20 @@ export interface ProviderAdapterMetadata {
    * contents. The picker is the adapter's live catalog.
    */
   knownModels?: ReadonlyArray<{ id: string; name: string }>;
+  /**
+   * #2482: the adapter declares that every entry its `listModelCatalog` /
+   * `listModels` returns has `originalId === id` — its catalog names each
+   * model by the selector the engine is launched with, so there is no alias
+   * to rewrite. Connected-CLI selector validation (`model-launch-planning`)
+   * reads the catalog only to rewrite an alias, and passes an unlisted
+   * selector through to the engine anyway (archive#977); for an adapter
+   * declaring this it therefore skips the catalog read, which for Claude
+   * Code is a whole CLI spawn before every start. Absent means the catalog
+   * may rewrite, and validation keeps reading it. Declare it only where the
+   * catalog's own construction sets `originalId` from `id`, and pin that
+   * with a test against the adapter's real catalog.
+   */
+  modelCatalogIdentityMapped?: boolean;
 }
 
 export interface ProviderAdapterModelCatalog {

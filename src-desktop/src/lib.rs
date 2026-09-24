@@ -7058,37 +7058,86 @@ fn open_local_browser_preview(app: AppHandle, url: String) -> Result<(), String>
     })
 }
 
-/// Opens only the closed GitHub work-item locator admitted by the MCP host.
-/// The WebView never receives generic opener authority.
-#[tauri::command]
-fn open_external_link(app: AppHandle, url: String) -> Result<(), String> {
-    let parsed = url::Url::parse(&url).map_err(|_| "invalid external URL".to_string())?;
-    let segments: Vec<_> = parsed
-        .path_segments()
-        .map(|segments| segments.collect())
-        .unwrap_or_default();
+/// Longest link the app will hand to the operating system. A real web link is
+/// far shorter; the bound keeps a pathological string out of the OS handler.
+const EXTERNAL_LINK_MAX_LENGTH: usize = 8 * 1024;
+
+/// The web links Station hands to the operating system (#2480, owner decision
+/// 2026-09-24): any `https:` link with a host and no credentials — IP and
+/// loopback hosts included, as "any https link" says. Plain `http:`, custom
+/// schemes (`file:`, `javascript:`, app deep links) and links carrying a
+/// username or password are refused with an error; showing that refusal is the
+/// caller's job.
+///
+/// This command does not check for a user gesture. Only Station's own local
+/// origin can invoke it (Tauri ACL-checks app commands from any other origin,
+/// and none has a capability), and its UI callers run on link clicks. The MCP
+/// app frame's `onopenlink` also reaches it, but MCP frames are not rendered on
+/// native (`nativeIframeBlocked`), and that path keeps its own narrow allowlist.
+fn admitted_external_link(url: &str) -> Result<url::Url, String> {
+    let parsed = url::Url::parse(url).map_err(|_| "invalid external URL".to_string())?;
+    // Measured after parsing: normalisation percent-encodes, and the string
+    // the OS receives is the serialised one.
+    if parsed.as_str().len() > EXTERNAL_LINK_MAX_LENGTH {
+        return Err("Station refused an overlong external link".to_string());
+    }
     if parsed.scheme() != "https"
-        || parsed.host_str() != Some("github.com")
-        || parsed.port().is_some()
+        || parsed.host_str().is_none_or(str::is_empty)
         || !parsed.username().is_empty()
         || parsed.password().is_some()
-        || parsed.query().is_some()
-        || parsed.fragment().is_some()
-        || segments.len() != 4
-        || segments[0].is_empty()
-        || segments[1].is_empty()
-        || segments[2] != "issues"
-        || segments[3]
-            .parse::<u64>()
-            .ok()
-            .filter(|number| *number > 0)
-            .is_none()
     {
-        return Err("Station refused an unrecognized external work-item URL".to_string());
+        return Err("Station opens only https links without credentials".to_string());
     }
+    Ok(parsed)
+}
+
+/// Opens a user-clicked `https:` link in the operating system's handler — the
+/// default browser, or the app that claims the link (on a phone, a GitHub link
+/// opens the GitHub app). The WebView still holds no opener authority of its
+/// own: every URL passes `admitted_external_link` here, in Rust.
+#[tauri::command]
+fn open_external_link(app: AppHandle, url: String) -> Result<(), String> {
+    let admitted = admitted_external_link(&url)?;
     app.opener()
-        .open_url(url, None::<&str>)
+        .open_url(admitted.as_str(), None::<&str>)
         .map_err(|error| error.to_string())
+}
+
+#[cfg(test)]
+mod external_link_tests {
+    use super::admitted_external_link;
+
+    #[test]
+    fn admits_https_links_of_any_host_and_shape() {
+        for url in [
+            "https://github.com/kontourai/station/pull/2531",
+            "https://github.com/kontourai/station/issues/2480",
+            "https://gitlab.com/group/sub/project/-/merge_requests/7?view=1#note",
+            "https://docs.example.test/guide?x=1#section",
+        ] {
+            assert!(admitted_external_link(url).is_ok(), "{url}");
+        }
+    }
+
+    #[test]
+    fn refuses_other_schemes_credentials_and_overlong_links() {
+        let overlong = format!("https://example.test/{}", "a".repeat(9000));
+        // Under the bound as typed, over it once each byte is percent-encoded.
+        let encodes_long = format!("https://example.test/{}x", "<".repeat(3000));
+        for url in [
+            "http://example.test/",
+            "file:///etc/passwd",
+            "javascript:alert(1)",
+            "station://pair?code=1",
+            "https://user:secret@example.test/",
+            "https://token@github.com/o/r",
+            "not a url",
+            overlong.as_str(),
+            encodes_long.as_str(),
+        ] {
+            assert!(admitted_external_link(url).is_err(), "{url}");
+        }
+    }
 }
 
 /// Discover and select exactly one reachable local preview target. The native
