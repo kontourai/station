@@ -302,18 +302,43 @@ fn with_vault_lock<T>(operation: impl FnOnce() -> Result<T, String>) -> Result<T
 /// Commands always acquire `profiles.json.lock` before the in-process vault
 /// lock, matching the profile writer's lock order. This keeps profile
 /// validation, vault mutation, and a concurrent profile replace serialized.
+///
+/// `operation` receives whatever `acquire_profile_lock` produced instead of
+/// resolving its own view of the profile store: on mobile,
+/// `station_profiles_path` takes `profiles.json.lock` on every call, the
+/// lock is not reentrant, and a record owned by our own live pid is never
+/// reclaimable. A callback that re-resolved the store from inside
+/// `operation` (as `owner_for_route` used to, via
+/// `read_station_profile_contents`) could therefore never succeed while this
+/// lock was held — it waited out the full mobile bound and failed busy on
+/// every call (station#2542).
 fn with_profile_and_vault<P, T>(
     acquire_profile_lock: impl FnOnce() -> Result<P, String>,
-    operation: impl FnOnce() -> Result<T, String>,
+    operation: impl FnOnce(&P) -> Result<T, String>,
 ) -> Result<T, String> {
-    let _profile_lock = acquire_profile_lock()?;
-    with_vault_lock(operation)
+    let profile_lock = acquire_profile_lock()?;
+    with_vault_lock(|| operation(&profile_lock))
 }
 
-fn profile_lock_for_app(app: &AppHandle) -> Result<super::StationProfileLock, String> {
+/// The profile lock held for the duration of a relay grant operation,
+/// carrying the one read of the profile store taken while that lock is
+/// held. Callers must consume `contents` rather than re-resolving the store
+/// (which would re-take the same lock on mobile — station#2542).
+struct LockedProfileStore {
+    _lock: super::StationProfileLock,
+    contents: String,
+}
+
+fn locked_profile_store_for_app(app: &AppHandle) -> Result<LockedProfileStore, String> {
     let path = super::station_profiles_path(app)?;
     super::validate_station_profile_store(&path)?;
-    super::lock_station_profiles_for_app(app, &path)
+    let lock = super::lock_station_profiles_for_app(app, &path)?;
+    let contents = super::read_station_profile_store(&path)
+        .map_err(|error| format!("read saved Station metadata for credential access: {error}"))?;
+    Ok(LockedProfileStore {
+        _lock: lock,
+        contents,
+    })
 }
 
 fn index_account(channel: &str) -> Result<String, String> {
@@ -490,9 +515,9 @@ pub(crate) async fn relay_client_grant_store(
 ) -> Result<RelayGrantMetadata, String> {
     run_vault_command(move || {
         with_profile_and_vault(
-            || profile_lock_for_app(&app),
-            || {
-                let owner = owner_for_profile(&app, &profile_name, &grant)?;
+            || locked_profile_store_for_app(&app),
+            |locked| {
+                let owner = owner_for_profile(&app, &locked.contents, &profile_name, &grant)?;
                 store_grant(&mut OsKeyring, owner, grant, unix_time_ms()?)
             },
         )
@@ -508,9 +533,9 @@ pub(crate) async fn relay_client_grant_revoke(
 ) -> Result<(), String> {
     run_vault_command(move || {
         with_profile_and_vault(
-            || profile_lock_for_app(&app),
-            || {
-                let owner = owner_for_route(&app, &profile_name, &route)?;
+            || locked_profile_store_for_app(&app),
+            |locked| {
+                let owner = owner_for_route(&app, &locked.contents, &profile_name, &route)?;
                 revoke_grant(&mut OsKeyring, &RelayGrantBinding { route, owner })
             },
         )
@@ -526,9 +551,9 @@ pub(crate) async fn relay_client_grant_metadata(
 ) -> Result<Option<RelayGrantMetadata>, String> {
     run_vault_command(move || {
         with_profile_and_vault(
-            || profile_lock_for_app(&app),
-            || {
-                let owner = owner_for_route(&app, &profile_name, &route)?;
+            || locked_profile_store_for_app(&app),
+            |locked| {
+                let owner = owner_for_route(&app, &locked.contents, &profile_name, &route)?;
                 read_metadata(
                     &mut OsKeyring,
                     &RelayGrantBinding { route, owner },
@@ -552,15 +577,21 @@ async fn run_vault_command<T: Send + 'static>(
 
 fn owner_for_profile(
     app: &AppHandle,
+    contents: &str,
     profile_name: &str,
     grant: &RelayClientGrant,
 ) -> Result<RelayGrantOwner, String> {
     let route = route_for(grant);
-    owner_for_route(app, profile_name, &route)
+    owner_for_route(app, contents, profile_name, &route)
 }
 
+/// `contents` must be the profile store already read while the caller's
+/// `profiles.json.lock` is held (see `with_profile_and_vault`). This never
+/// resolves the store itself: on mobile that would re-take the same lock
+/// and self-deadlock (station#2542).
 fn owner_for_route(
     app: &AppHandle,
+    contents: &str,
     profile_name: &str,
     route: &RelayGrantRouteKey,
 ) -> Result<RelayGrantOwner, String> {
@@ -568,8 +599,7 @@ fn owner_for_route(
     if profile_name.is_empty() || profile_name.len() > 128 {
         return Err("invalid saved Station name".to_string());
     }
-    let contents = super::read_station_profile_contents(app)?;
-    let store = super::parse_station_profile_store(&contents)?;
+    let store = super::parse_station_profile_store(contents)?;
     let profile = store
         .profiles
         .iter()
@@ -974,7 +1004,7 @@ mod tests {
                     attempting_tx.send(()).unwrap();
                     super::super::lock_station_profiles(&store_path)
                 },
-                || {
+                |_profile_lock| {
                     let contents = std::fs::read_to_string(&store_path)
                         .map_err(|error| format!("read profiles for grant store: {error}"))?;
                     let parsed = super::super::parse_station_profile_store(&contents)?;
@@ -1018,5 +1048,61 @@ mod tests {
         )
         .unwrap();
         assert!(final_store.profiles.is_empty());
+    }
+
+    /// station#2542: `with_profile_and_vault` holds `profiles.json.lock` for
+    /// the whole `operation` closure. On mobile, `station_profiles_path`
+    /// re-takes that same lock on every call — `lock_station_profiles_legacy`
+    /// is exactly the primitive it uses — and the lock is not reentrant: a
+    /// record owned by our own live pid is never reclaimable. A callback
+    /// that re-resolved the store from inside `operation` (as
+    /// `owner_for_route` used to, via `read_station_profile_contents`) could
+    /// never succeed while this lock was held; it waited out the full
+    /// mobile bound and failed busy on every call. Reproduce the reentry
+    /// with the identical lock-record shape mobile uses (a short wait
+    /// stands in for the mobile bound so the test stays fast and does not
+    /// require a mobile target or an `AppHandle`), then prove the fixed
+    /// shape — read the store once and thread it through `operation` —
+    /// completes under the same held lock.
+    #[test]
+    fn operation_cannot_relock_the_profile_store_it_already_holds() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("profiles.json");
+        std::fs::write(&path, super::super::EMPTY_STATION_PROFILE_STORE).unwrap();
+
+        let acquire = |path: &std::path::Path| {
+            super::super::lock_station_profiles_with_record_within(
+                path,
+                &super::super::legacy_profile_lock_record_bytes,
+                &|_| Ok(None),
+                std::time::Duration::from_millis(200),
+                std::time::Duration::from_millis(250),
+            )
+        };
+
+        // The bug: operation ignores the lock it was handed and tries to
+        // take the same file lock again — exactly what the old
+        // `owner_for_route` did on mobile via `read_station_profile_contents`
+        // -> `station_profiles_path`.
+        let reentrant = with_profile_and_vault(
+            || acquire(&path),
+            |_outer_lock| acquire(&path).map(|_inner_lock| ()),
+        );
+        let error =
+            reentrant.expect_err("a held profile lock cannot be reacquired on the same thread");
+        assert!(error.contains("busy"), "{error}");
+
+        // The fix: operation consumes the store already read while the lock
+        // was held and never resolves it again.
+        let fixed = with_profile_and_vault(
+            || {
+                let lock = acquire(&path)?;
+                let contents = std::fs::read_to_string(&path)
+                    .map_err(|error| format!("read profiles for test: {error}"))?;
+                Ok::<_, String>((lock, contents))
+            },
+            |(_lock, contents)| super::super::parse_station_profile_store(contents).map(|_| ()),
+        );
+        assert!(fixed.is_ok(), "{:?}", fixed.err());
     }
 }
