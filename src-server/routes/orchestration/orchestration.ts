@@ -3842,12 +3842,13 @@ export function createOrchestrationRoutes(
       // single fail-closed resolution point (archive#4075 stage 2).
       // Station #90 lane D (R1): a start or adoption this request causes
       // carries the same agent owner attribution as the dispatch routes.
-      // #2493: no command here starts a session (`startSession` is not in
-      // `orchestrationCommandSchema`), so the grant is not carried.
+      // #2493: of these commands only `adoptSession` starts a session (the
+      // adopted child), so the request's grant is carried for it alone.
       const {
         principal,
         userId: actorUserId,
         ownerAttribution,
+        fullAccessGrant,
       } = resolveDispatchActor(deps, c);
       const readAuthority = sessionReadAuthorityFromRequest(
         actorUserId,
@@ -3906,6 +3907,9 @@ export function createOrchestrationRoutes(
         const result = await orchestrationService.dispatchWithReceipt(command, {
           userId: actorUserId,
           ...(ownerAttribution ? { ownerAttribution } : {}),
+          ...(command.type === 'adoptSession' && fullAccessGrant
+            ? { fullAccessGrant }
+            : {}),
           ...(command.type === 'respondToRequest' &&
           command.expectedRequestEventId !== undefined
             ? {

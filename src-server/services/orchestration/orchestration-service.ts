@@ -5697,6 +5697,9 @@ export class OrchestrationService {
             context?.tenantExecutionContext,
             command.idempotencyKey,
             effectiveOwnerAttribution(context ?? {}),
+            // #2493: the adopted child's stamp records the adopting
+            // request's grant, like every other start.
+            isFullAccessGrant(context?.fullAccessGrant) ? 'host' : 'workspace',
           );
         case 'sendTurn': {
           // Monitor envelopes register here, at the one execution choke
