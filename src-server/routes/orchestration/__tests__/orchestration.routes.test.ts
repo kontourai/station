@@ -5903,6 +5903,40 @@ describe('Orchestration Routes', () => {
       );
     });
 
+    test('replayed events omit a present-tense conversation binding and refresh side effects at caught-up', async () => {
+      persistEvent('binding-old', 'thread-1', 1);
+      persistEvent('binding-missed', 'thread-1', 2);
+      const service = makeResumeTestService(eventStore, {
+        conversationStreamBinding: () => ({
+          conversationId: 'root',
+          currentSessionId: 'newer-child',
+          activity: { conversationId: 'root', asOfSequence: 99 },
+        }),
+        listSessionReadModel: vi
+          .fn()
+          .mockResolvedValue([{ threadId: 'thread-1' }]),
+      });
+      const app = createOrchestrationRoutes(service as any, {
+        getUserId: () => ROUTE_TEST_USER_ID,
+        eventBus: new EventBus(),
+        logger: { debug: vi.fn() },
+      });
+      const response = await app.request('/events', {
+        headers: { 'Last-Event-ID': '1' },
+      });
+      const wire = await readStreamUntil(response.body!, (text) =>
+        text.includes('event: orchestration:caughtUp'),
+      );
+      const replayData = wire
+        .split('\n')
+        .find(
+          (line) =>
+            line.startsWith('data: ') && line.includes('binding-missed'),
+        );
+      expect(JSON.parse(replayData!.slice(6)).conversation).toBeUndefined();
+      expect(wire).toContain('"sessions":[{"threadId":"thread-1"}]');
+    });
+
     test('AC2/R2: a cursor further behind than the gap threshold falls back to a fresh snapshot with a new resume cursor', async () => {
       for (
         let index = 0;

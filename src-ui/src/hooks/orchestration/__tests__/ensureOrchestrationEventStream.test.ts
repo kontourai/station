@@ -148,6 +148,45 @@ describe('ensureOrchestrationEventStream reconnect-fallback snapshot gating (sta
     });
   });
 
+  test('a replay caught-up frame reconciles present-tense session state once', () => {
+    applyOrchestrationSnapshot.mockClear();
+    const apiBase = 'http://api-replay-side-effects';
+    ensureOrchestrationEventStream(apiBase);
+    capturedOnMessage()({
+      event: 'orchestration:snapshot',
+      data: JSON.stringify({ sessions: [] }),
+      id: '1',
+    });
+    capturedOnMessage()({
+      event: 'orchestration:caughtUp',
+      data: JSON.stringify({
+        sessions: [
+          {
+            provider: 'claude',
+            threadId: 'child',
+            status: 'ready',
+            openRequestIds: ['waiting'],
+          },
+        ],
+      }),
+      id: '2',
+    });
+    expect(applyOrchestrationSnapshot).toHaveBeenCalledTimes(2);
+    expect(applyOrchestrationSnapshot).toHaveBeenLastCalledWith(
+      {
+        sessions: [
+          {
+            provider: 'claude',
+            threadId: 'child',
+            status: 'ready',
+            openRequestIds: ['waiting'],
+          },
+        ],
+      },
+      { apiBase, isReconnectFallback: true },
+    );
+  });
+
   test('station#2301: the orchestration stream sets a stall deadline of 2.5 server keepalives', () => {
     ensureOrchestrationEventStream('http://api-2301-stall');
     const options = mocks.fetchSSE.mock.calls.at(-1)?.[1] as {

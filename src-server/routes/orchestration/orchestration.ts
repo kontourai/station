@@ -962,8 +962,8 @@ export function parseResumeCursor(
  * thread. The caller computes `threadMissedCount` via a bounded
  * (`LIMIT threshold + 1`) thread-scoped query so this stays cheap even when
  * the true count is large. Omitted (global, no-`threadId`, stream): the
- * cheap `head - cursor` arithmetic is exact, since `global_sequence` has no
- * gaps.
+ * cheap `head - cursor` arithmetic is a safe upper bound. Physical Draft
+ * deletion can leave gaps, in which case it may choose a snapshot early.
  */
 export function resolveStreamResumePlan(
   cursor: number | undefined,
@@ -4280,6 +4280,11 @@ export function createOrchestrationRoutes(
         // replay/snapshot boundary (resumeCursor.ts) — the snapshot carries
         // no transcript, and child-work deltas fold idempotently.
         const resolvedHead = head;
+        let replaySessions:
+          | Awaited<
+              ReturnType<typeof orchestrationService.listSessionReadModel>
+            >
+          | undefined;
 
         if (plan.decision === 'replay') {
           const replayBudget = orchestrationService.readEventStreamReplayPlan(
@@ -4313,9 +4318,6 @@ export function createOrchestrationRoutes(
             for (const persisted of replayed) {
               const data = JSON.stringify({
                 event: persisted.payload,
-                conversation: orchestrationService.conversationStreamBinding(
-                  persisted.payload,
-                ),
                 ...orchestrationService.replayTurnProvenanceSidecar(
                   persisted.payload,
                 ),
@@ -4332,6 +4334,11 @@ export function createOrchestrationRoutes(
                 id: String(persisted.globalSequence),
               });
             }
+            // The replay carries historical events only. A binding computed
+            // now would attach today's child and activity to an old frame.
+            // Reconcile present-tense side effects once, after the replay.
+            replaySessions =
+              await orchestrationService.listSessionReadModel(authority);
           }
         } else {
           const sessions =
@@ -4355,7 +4362,10 @@ export function createOrchestrationRoutes(
         // be reordered relative to what came before or after it.
         await writeAuthorized({
           event: ORCHESTRATION_STREAM_CAUGHT_UP_EVENT,
-          data: JSON.stringify(epoch ? { epoch } : {}),
+          data: JSON.stringify({
+            ...(epoch ? { epoch } : {}),
+            ...(replaySessions ? { sessions: replaySessions } : {}),
+          }),
           id: String(resolvedHead),
         });
         caughtUp = true;

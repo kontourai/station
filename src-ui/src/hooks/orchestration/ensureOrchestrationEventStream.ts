@@ -376,6 +376,18 @@ export function ensureOrchestrationEventStream(
         receiving = true;
       }
       if (raw.event === ORCHESTRATION_STREAM_CAUGHT_UP_EVENT) {
+        const caughtUp = JSON.parse(
+          raw.data,
+        ) as Partial<OrchestrationSnapshotPayload>;
+        if (caughtUp.sessions) {
+          applyOrchestrationSnapshot(caughtUp as OrchestrationSnapshotPayload, {
+            apiBase,
+            isReconnectFallback: hasReceivedSnapshot,
+            queryClient: currentStreamQueryClient(apiBase),
+          });
+          hasReceivedSnapshot = true;
+          basesWithSnapshot.add(apiBase);
+        }
         if (parseStreamSequence(raw.id) !== undefined) {
           cursor.adopt(raw.id);
           appliedCursors.set(apiBase, raw.id!);
