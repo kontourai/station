@@ -152,7 +152,7 @@ describe('path mentions in a rendered chat message', () => {
   test('text inside links and fenced code is never scanned', () => {
     existing.add('src/app.ts');
     renderInConversation(
-      '[docs](https://example.test/src/app.ts)\n\n```\nsrc/app.ts\n```',
+      '[see src/app.ts](https://example.test/x)\n\n```\nsrc/app.ts\n```',
     );
     expect(screen.getAllByRole('link')).toHaveLength(1);
     expect(existenceAsks).toEqual([]);
