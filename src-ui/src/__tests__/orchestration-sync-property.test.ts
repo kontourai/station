@@ -762,13 +762,25 @@ test('seeded clients converge through live, replay, and snapshot reconnects', as
       //
       // What DOES get checked here, independent of A: whether B's own
       // stitched read shows the deltas published so far for the STILL-OPEN
-      // turn. `orchestrationHistoryRevision` only bumps on a turn boundary,
-      // so B's bounded REST window alone stays stale until this turn
-      // actually ends — mid-turn, only F4's live-buffer stitching can make
-      // a just-reconnected B's transcript show it at all. Checked here,
-      // not only post-terminal, or this exact regression (a persisted
-      // window read alone always eventually catches up once the turn ends,
-      // masking a defeated stitch) would never go red.
+      // turn. This is deliberately checked mid-turn, not only post-terminal
+      // — by the time a turn has a terminal event, its own REST window read
+      // alone (no stitching at all) already carries everything, so a
+      // post-terminal-only check cannot tell a working stitch from a
+      // disabled one.
+      //
+      // Caveat, found while trying to fault-inject this: it is NOT proven
+      // to isolate F4's live-buffer stitching specifically. A defeated
+      // stitch (`stitchedEvents` forced to `window.events` only) still left
+      // this green, because station#2309's debounced "turnless" refetch
+      // (`streamHandlers.ts`'s `scheduleTurnlessRefetch`,
+      // `TURNLESS_REFETCH_DEBOUNCE_MS`) independently bumps
+      // `orchestrationHistoryRevision` and re-fetches the window within
+      // this check's own settle-loop patience window, masking the
+      // regression the same way the post-terminal check does. Left in
+      // because it is still a real, useful convergence check (and the
+      // closest oracle to F4 this pass produced) — but the F4 fault
+      // injection this PR's rules asked for did NOT go red in either form,
+      // and that gap is disclosed rather than papered over.
       if (method !== 'remount') {
         const bMidTurnMessages = await b.settleTranscript();
         assertDeltaTextRenderedOnce(
