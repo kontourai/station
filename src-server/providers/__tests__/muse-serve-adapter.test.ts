@@ -263,6 +263,83 @@ describe('#2452 muse serve: approval mode', () => {
     });
   });
 
+  test('session/start itself carries the mode, before the host can default it', async () => {
+    const h = harness();
+    const started = h.adapter.startSession({
+      provider: 'muse',
+      threadId: THREAD,
+      modelOptions: { approvalMode: 'ask' },
+    });
+    const host = await firstHost(h, () => started);
+    const init = await host.nextRequest('initialize', new Set());
+    host.writeFrame({
+      jsonrpc: '2.0',
+      id: init.id,
+      result: (
+        loadMuseServeCapture('workflow-child-approve')[2].msg as {
+          result: unknown;
+        }
+      ).result,
+    });
+    const start = await host.nextRequest('session/start', new Set());
+    expect(start.params?.approvalMode).toBe('promptUnmatched');
+    host.writeFrame({
+      jsonrpc: '2.0',
+      id: start.id,
+      result: {
+        session: {
+          sessionId: 'muse-session',
+          approvalMode: { mode: 'promptUnmatched', source: 'startup' },
+        },
+        viewCursor: '',
+      },
+    });
+    await started;
+  });
+
+  test('a host that applied a different mode than asked is not used: the session falls back, and says so', async () => {
+    const h = harness();
+    const started = h.adapter.startSession({
+      provider: 'muse',
+      threadId: THREAD,
+      modelOptions: { approvalMode: 'ask' },
+    });
+    const host = await firstHost(h, () => started);
+    const init = await host.nextRequest('initialize', new Set());
+    host.writeFrame({
+      jsonrpc: '2.0',
+      id: init.id,
+      result: (
+        loadMuseServeCapture('workflow-child-approve')[2].msg as {
+          result: unknown;
+        }
+      ).result,
+    });
+    const start = await host.nextRequest('session/start', new Set());
+    host.writeFrame({
+      jsonrpc: '2.0',
+      id: start.id,
+      result: {
+        session: {
+          sessionId: 'muse-session',
+          approvalMode: { mode: 'allowAll', source: 'startup' },
+        },
+        viewCursor: '',
+      },
+    });
+    await started;
+    await settle();
+    expect(of(h.events, 'session.configured')[0].metadata).toMatchObject({
+      museTransport: 'exec',
+      approvalMode: 'auto',
+    });
+    expect(
+      of(h.events, 'runtime.warning').find(
+        (event) => event.code === MUSE_SERVE_UNAVAILABLE_CODE,
+      )?.details,
+    ).toMatchObject({ reason: expect.stringContaining('allowAll') });
+  });
+
   test("with no posture the session still names a mode: muse's own onRequest", async () => {
     const h = harness();
     const driven = await run(h, 'workflow-child-approve', { decide: 'accept' });
