@@ -16,14 +16,24 @@ import {
 import { join } from 'node:path';
 import type {
   ApprovedStationConnectionTrust,
+  StationConnectionKeyCandidateClaimsV1,
+  StationConnectionKeyCandidateV1,
   StationConnectionProofBinding,
 } from '@kontourai/station-contracts/connection-proof';
-import { ConnectionProofError } from '@kontourai/station-shared/connection-proof';
+import { STATION_CONNECTION_KEY_CANDIDATE_TYPE } from '@kontourai/station-contracts/connection-proof';
+import {
+  ConnectionProofError,
+  copyStationConnectionKeyCandidateClaims,
+  serializeStationConnectionKeyCandidateClaims,
+  stationConnectionSigningKeyId,
+  verifyStationConnectionKeyCandidate,
+} from '@kontourai/station-shared/connection-proof';
 import {
   assertExistingSecurityDirectory,
   readEnvironmentSecurityRecord,
 } from '@kontourai/station-shared/environment-security-record';
 import { mutateJsonFileWithGuardedRead } from '@kontourai/station-shared/json-file-storage';
+import { CompactSign } from 'jose';
 import { createStationConnectionProofIssuer } from './connection-proof-issuer.js';
 
 interface PrivateRecord {
@@ -172,6 +182,61 @@ export class ConnectionSigningKeyStore {
 
   readDescriptor(): ApprovedStationConnectionTrust | null {
     return this.#load()?.descriptor ?? null;
+  }
+
+  /** Narrow candidate-payload signing; private key material never leaves custody. */
+  async signConnectionKeyCandidate(
+    value: StationConnectionKeyCandidateClaimsV1,
+  ): Promise<StationConnectionKeyCandidateV1> {
+    const claims = copyStationConnectionKeyCandidateClaims(value);
+    const snapshot = this.#load();
+    if (!snapshot)
+      throw new ConnectionSigningKeyStoreError('key_store_missing');
+    const expectedKeyId = await stationConnectionSigningKeyId(
+      snapshot.descriptor,
+    );
+    if (
+      claims.candidate.stationId !== snapshot.descriptor.stationId ||
+      claims.candidate.enrollmentId !== snapshot.descriptor.enrollmentId ||
+      claims.candidate.generation !== snapshot.descriptor.generation ||
+      claims.candidate.signingKey.x !== snapshot.descriptor.signingKey.x ||
+      claims.candidate.signingKey.y !== snapshot.descriptor.signingKey.y ||
+      claims.keyId !== expectedKeyId
+    )
+      throw new ConnectionSigningKeyStoreError('key_generation_conflict');
+    const compactJws = await new CompactSign(
+      serializeStationConnectionKeyCandidateClaims(claims),
+    )
+      .setProtectedHeader({
+        alg: 'ES256',
+        typ: STATION_CONNECTION_KEY_CANDIDATE_TYPE,
+      })
+      .sign(snapshot.privateKey);
+    try {
+      await verifyStationConnectionKeyCandidate(compactJws, {
+        brokerOrigin: claims.brokerOrigin,
+        stationId: claims.candidate.stationId,
+        enrollmentId: claims.candidate.enrollmentId,
+        challenge: claims.challenge,
+        clientInstanceId: claims.clientInstanceId,
+        clientKeyThumbprint: claims.clientKeyThumbprint,
+        now: Math.floor(Date.now() / 1000),
+      });
+    } catch {
+      throw new ConnectionSigningKeyStoreError('key_generation_conflict');
+    }
+    const current = this.#load();
+    if (
+      !current ||
+      current.record.enrollmentId !== snapshot.record.enrollmentId ||
+      current.record.generation !== snapshot.record.generation ||
+      current.record.privateKeyPem !== snapshot.record.privateKeyPem
+    )
+      throw new ConnectionSigningKeyStoreError('key_generation_conflict');
+    return {
+      version: claims.version,
+      compactJws,
+    };
   }
 
   #newRecord(
