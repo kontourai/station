@@ -36,7 +36,7 @@ import {
 } from './agent-activity-card.js';
 import type { PushSigningKey } from './push-signing-key-store.js';
 
-export const DEFAULT_PUSH_GATEWAY_URL = 'https://push.kontourai.io';
+const DEFAULT_PUSH_GATEWAY_URL = 'https://push.kontourai.io';
 const SEND_PATH = '/v1/fcm/send';
 const COALESCE_WINDOW_MS = 1_000;
 const REQUEST_TIMEOUT_MS = 10_000;
@@ -188,6 +188,22 @@ function classify(status: number): SendOutcome {
   return 'rejected';
 }
 
+/**
+ * When a session entered the phase it was just observed in. The latest event
+ * is what moved it there; fall back to the observation time when that time is
+ * missing, in the future, or older than the phase already known.
+ */
+function phaseEntryTime(
+  lastEventAt: string | undefined,
+  previousEnteredAt: number | undefined,
+  at: number,
+): number {
+  const eventAt = lastEventAt ? Date.parse(lastEventAt) : Number.NaN;
+  if (!Number.isFinite(eventAt) || eventAt > at) return at;
+  if (previousEnteredAt !== undefined && eventAt < previousEnteredAt) return at;
+  return eventAt;
+}
+
 const defaultSleep = (ms: number) =>
   new Promise<void>((resolve) => {
     setTimeout(resolve, ms).unref?.();
@@ -240,19 +256,10 @@ export function wireAgentActivityPublisher(
       if (!phase) continue;
       seen.add(row.sessionId);
       const previous = snapshots.get(row.sessionId);
-      const eventAt = row.lastEventAt ? Date.parse(row.lastEventAt) : NaN;
-      let enteredAt = previous?.enteredAt ?? at;
-      if (!previous || previous.phase !== phase) {
-        // The latest event is what moved the session into this phase; fall
-        // back to the observation time when it is missing, from the future,
-        // or older than the phase we already knew.
-        enteredAt =
-          Number.isFinite(eventAt) &&
-          eventAt <= at &&
-          (!previous || eventAt >= previous.enteredAt)
-            ? eventAt
-            : at;
-      }
+      const enteredAt =
+        previous?.phase === phase
+          ? previous.enteredAt
+          : phaseEntryTime(row.lastEventAt, previous?.enteredAt, at);
       snapshots.set(row.sessionId, {
         sessionId: row.sessionId,
         title: row.title ?? '',

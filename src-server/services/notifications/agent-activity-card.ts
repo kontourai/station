@@ -42,9 +42,9 @@ const STATUS_MAX = 40;
 const ALERT_TITLE_MAX = 120;
 const ALERT_BODY_MAX = 240;
 /** Finished sessions stay on the card this long. */
-export const FINISHED_WINDOW_MS = 15 * 60 * 1000;
+const FINISHED_WINDOW_MS = 15 * 60 * 1000;
 /** A finish alerts only this soon after it happened. */
-export const FINISH_ALERT_WINDOW_MS = 2 * 60 * 1000;
+const FINISH_ALERT_WINDOW_MS = 2 * 60 * 1000;
 const RUNNING_EXPIRY_MS = 2 * 60 * 60 * 1000;
 /**
  * The gateway refuses data over 3800 bytes and then adds `station_key`

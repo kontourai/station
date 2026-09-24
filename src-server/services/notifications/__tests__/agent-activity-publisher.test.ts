@@ -16,6 +16,7 @@ import { verifyStationRequest } from '../../../../deploy/push-gateway/src/statio
 import { EventBus } from '../../orchestration/event-bus.js';
 import { buildOrchestrationSessionSummary } from '../../orchestration/orchestration-session-state.js';
 import { DevicePairingService } from '../../ssh/device-pairing-service.js';
+import { agentActivityAlertId } from '../agent-activity-card.js';
 import {
   type AgentActivitySessionRow,
   agentActivityRowFromSummary,
@@ -550,6 +551,43 @@ describe('agent-activity publisher', () => {
     expect(h.warn).toHaveBeenCalledWith('agent-activity: card flush failed', {
       error: 'read model down',
     });
+    await h.publisher.stop();
+  });
+
+  test('a phase keeps its entry time while the session stays in it, so its alert is not re-raised', async () => {
+    const h = await harness();
+    await h.pairAndRegister();
+    h.rows.push(summaryRow('s1', 'approval', iso(START - 2000)));
+    h.emit('request.opened');
+    await h.settle();
+    const firstAlert = h.delivered[0]?.data.alert_id;
+    expect(firstAlert).toBe(
+      agentActivityAlertId({
+        stationId: ENVIRONMENT_ID,
+        sessionId: 's1',
+        phase: 'waiting_for_approval',
+        enteredAt: START - 2000,
+      }),
+    );
+
+    // Later events on the same waiting session do not move its entry time.
+    h.advance(5000);
+    h.rows.splice(0, 1, summaryRow('s1', 'approval', iso(START + 4000)));
+    h.emit('session.configured');
+    await h.settle();
+    expect(h.delivered).toHaveLength(1);
+
+    h.rows.splice(0, 1, summaryRow('s1', 'input', iso(START + 4500)));
+    h.emit('request.opened');
+    await h.settle();
+    expect(h.delivered[1]?.data.alert_id).toBe(
+      agentActivityAlertId({
+        stationId: ENVIRONMENT_ID,
+        sessionId: 's1',
+        phase: 'waiting_for_input',
+        enteredAt: START + 4500,
+      }),
+    );
     await h.publisher.stop();
   });
 
