@@ -4,6 +4,7 @@ import {
 } from '@kontourai/station-shared/mcp';
 import { cancelSharedDeviceCodeLogins } from '../../services/connections/device-code-login.js';
 import { awaitSettlementWithin } from '../../utils/bounded-async.js';
+import { stopLiveGitProcessGroups } from '../../utils/git-exec.js';
 import {
   type OptionalNetworkShutdownTask,
   shutdownOptionalNetworkWork,
@@ -223,6 +224,13 @@ export async function shutdownRuntimeServices({
     sshEnvironmentService?.shutdown(),
   );
   await attempt('monitoringEmitter.flush', () => monitoringEmitter?.flush());
+  // #2363: git, gh and glab run detached in their own process groups (so a
+  // deadline can stop what they started); without this they would outlive
+  // Station. After every service that runs git has stopped.
+  await attempt('git process groups', () => {
+    const stopped = stopLiveGitProcessGroups();
+    if (stopped > 0) logger.info('Stopped git process groups', { stopped });
+  });
   if (configLoader) {
     await attempt('configLoader.dispose', () => configLoader.dispose());
   } else {

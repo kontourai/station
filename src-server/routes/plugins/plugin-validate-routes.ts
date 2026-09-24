@@ -45,17 +45,7 @@
  * For an author, a pane that silently never appears is the defect, so it is
  * an error here.
  */
-import {
-  closeSync,
-  constants,
-  existsSync,
-  fstatSync,
-  lstatSync,
-  openSync,
-  readSync,
-  realpathSync,
-  statSync,
-} from 'node:fs';
+import { existsSync, realpathSync, statSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import type {
   ConflictInfo,
@@ -69,6 +59,10 @@ import {
 import type { Hono } from 'hono';
 import { isContextSafetyError } from '../../services/orchestration/context-safety.js';
 import { scanPluginPromptFileSafety } from '../../services/plugins/plugin-command-skill-source.js';
+import {
+  PLUGIN_MANIFEST_MAX_BYTES,
+  readPluginManifestBytesBounded,
+} from '../../services/plugins/plugin-manifest-bounded-read.js';
 import {
   PluginManifestValidationError,
   parsePluginManifestDocumentWithFormat,
@@ -97,8 +91,8 @@ import {
 
 export type { PluginValidateResult } from '../../services/plugins/plugin-validate-source.js';
 
-/** Far above any real manifest; low enough that a hostile file cannot stall the route. */
-export const PLUGIN_VALIDATE_MANIFEST_MAX_BYTES = 1024 * 1024;
+/** The shared manifest byte cap (#2342), under the name validate's tests import. */
+export const PLUGIN_VALIDATE_MANIFEST_MAX_BYTES = PLUGIN_MANIFEST_MAX_BYTES;
 
 interface PluginValidateRouteDeps {
   agentsDir: string;
@@ -118,85 +112,27 @@ export function registerPluginValidateRoutes(
   });
 }
 
-type ManifestRead =
-  | { ok: true; raw: string }
-  | { ok: false; diagnostic: PluginValidateDiagnostic };
-
 /**
- * Reads `plugin.json` only if it is a regular file, never following a
- * symlink, and never more than the cap. A symlink could point at any file
- * this user can read (and the loader would echo its fields back); a FIFO
- * would block the read forever; a device could stream without end.
+ * Reads `plugin.json` through the bounded reader `/preview` and `/install`
+ * also use (#2342), and maps a refusal to a diagnostic.
  */
-function readManifestBounded(dir: string): ManifestRead {
-  const path = join(dir, 'plugin.json');
-  const refuse = (code: string, message: string): ManifestRead => ({
-    ok: false,
-    diagnostic: { level: 'error', code, component: 'plugin.json', message },
-  });
-  let info: ReturnType<typeof lstatSync>;
-  try {
-    info = lstatSync(path);
-  } catch {
-    return refuse(
-      'manifest-missing',
-      'Not a valid plugin: plugin.json not found in the folder.',
-    );
-  }
-  if (info.isSymbolicLink()) {
-    return refuse(
-      'manifest-not-regular-file',
-      'plugin.json is a symlink. Station reads the manifest from the plugin folder itself; replace the link with the file.',
-    );
-  }
-  if (!info.isFile()) {
-    return refuse(
-      'manifest-not-regular-file',
-      'plugin.json is not a regular file.',
-    );
-  }
-  if (info.size > PLUGIN_VALIDATE_MANIFEST_MAX_BYTES) {
-    return refuse(
-      'manifest-too-large',
-      `plugin.json is larger than ${PLUGIN_VALIDATE_MANIFEST_MAX_BYTES} bytes.`,
-    );
-  }
-  // Read through the descriptor and re-check what was opened, so a swap
-  // between lstat and open cannot turn this into a read of something else,
-  // and cap the read itself rather than trusting the size. The open itself
-  // is non-blocking and refuses a symlink: a synchronous open of a FIFO
-  // blocks the whole server thread, which no timeout above this can undo.
-  // (Both flags are POSIX; on Windows they are absent and read as 0.)
-  const fd = openSync(
-    path,
-    constants.O_RDONLY |
-      (constants.O_NONBLOCK ?? 0) |
-      (constants.O_NOFOLLOW ?? 0),
-  );
-  try {
-    if (!fstatSync(fd).isFile()) {
-      return refuse(
-        'manifest-not-regular-file',
-        'plugin.json is not a regular file.',
-      );
-    }
-    const buffer = Buffer.alloc(PLUGIN_VALIDATE_MANIFEST_MAX_BYTES + 1);
-    let length = 0;
-    for (;;) {
-      const read = readSync(fd, buffer, length, buffer.length - length, null);
-      if (read === 0) break;
-      length += read;
-      if (length > PLUGIN_VALIDATE_MANIFEST_MAX_BYTES) {
-        return refuse(
-          'manifest-too-large',
-          `plugin.json is larger than ${PLUGIN_VALIDATE_MANIFEST_MAX_BYTES} bytes.`,
-        );
-      }
-    }
-    return { ok: true, raw: buffer.subarray(0, length).toString('utf8') };
-  } finally {
-    closeSync(fd);
-  }
+function readManifestBounded(
+  dir: string,
+):
+  | { ok: true; raw: string }
+  | { ok: false; diagnostic: PluginValidateDiagnostic } {
+  const read = readPluginManifestBytesBounded(join(dir, 'plugin.json'));
+  return read.ok
+    ? read
+    : {
+        ok: false,
+        diagnostic: {
+          level: 'error',
+          code: read.code,
+          component: 'plugin.json',
+          message: read.message,
+        },
+      };
 }
 
 export async function validatePluginSource(

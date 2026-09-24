@@ -11,6 +11,9 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 const checkoutMutate = vi.fn();
 const commitMutate = vi.fn();
 const pushMutate = vi.fn();
+// What the toolbar handed the commit/push hooks (#2363: the Project, then
+// the active repository inside it).
+const mutationArgs = { commit: [] as unknown[], push: [] as unknown[] };
 
 interface RepoLike {
   root: string;
@@ -76,16 +79,14 @@ vi.mock('../hooks/useGitActions', () => ({
     isPending: false,
     error: null,
   }),
-  useGitCommitMutation: () => ({
-    mutate: commitMutate,
-    isPending: false,
-    error: null,
-  }),
-  useGitPushMutation: () => ({
-    mutate: pushMutate,
-    isPending: false,
-    error: null,
-  }),
+  useGitCommitMutation: (...args: unknown[]) => {
+    mutationArgs.commit = args;
+    return { mutate: commitMutate, isPending: false, error: null };
+  },
+  useGitPushMutation: (...args: unknown[]) => {
+    mutationArgs.push = args;
+    return { mutate: pushMutate, isPending: false, error: null };
+  },
 }));
 
 import { BranchToolbar } from '../components/coding-layout/BranchToolbar';
@@ -153,12 +154,12 @@ afterEach(() => {
 
 describe('BranchToolbar', () => {
   test('shows the current branch from git status', () => {
-    render(<BranchToolbar workingDir="/repo" />);
+    render(<BranchToolbar projectSlug="acme" workingDir="/repo" />);
     expect(screen.getByText('main')).toBeTruthy();
   });
 
   test('renders branches in the switcher menu', () => {
-    render(<BranchToolbar workingDir="/repo" />);
+    render(<BranchToolbar projectSlug="acme" workingDir="/repo" />);
     fireEvent.click(screen.getByRole('button', { name: /Switch branch/ }));
     expect(screen.getByRole('menu', { name: 'Branches' })).toBeTruthy();
     expect(
@@ -167,14 +168,20 @@ describe('BranchToolbar', () => {
   });
 
   test('selecting a branch fires checkout', () => {
-    render(<BranchToolbar workingDir="/repo" />);
+    render(<BranchToolbar projectSlug="acme" workingDir="/repo" />);
     fireEvent.click(screen.getByRole('button', { name: /Switch branch/ }));
     fireEvent.click(screen.getByRole('menuitemradio', { name: /feature\/x/ }));
     expect(checkoutMutate).toHaveBeenCalledWith({ branch: 'feature/x' });
   });
 
+  test('commit and push are bound to the Project and the active repository (#2363)', () => {
+    render(<BranchToolbar projectSlug="acme" workingDir="/repo" />);
+    expect(mutationArgs.commit).toEqual(['acme', '/repo']);
+    expect(mutationArgs.push).toEqual(['acme', '/repo']);
+  });
+
   test('Commit fires commit with the message', () => {
-    render(<BranchToolbar workingDir="/repo" />);
+    render(<BranchToolbar projectSlug="acme" workingDir="/repo" />);
     const input = screen.getByLabelText('Commit message');
     fireEvent.change(input, { target: { value: 'wip: changes' } });
     fireEvent.click(screen.getByRole('button', { name: 'Commit changes' }));
@@ -185,7 +192,7 @@ describe('BranchToolbar', () => {
   });
 
   test('IME Enter does not commit, then plain Enter commits', () => {
-    render(<BranchToolbar workingDir="/repo" />);
+    render(<BranchToolbar projectSlug="acme" workingDir="/repo" />);
     const input = screen.getByLabelText('Commit message');
     fireEvent.change(input, { target: { value: 'IME commit message' } });
     fireEvent.keyDown(input, {
@@ -204,7 +211,7 @@ describe('BranchToolbar', () => {
 
   test('Commit is disabled when the tree is clean', () => {
     state.statusByRoot = { '/repo': makeStatus('main', false) };
-    render(<BranchToolbar workingDir="/repo" />);
+    render(<BranchToolbar projectSlug="acme" workingDir="/repo" />);
     const button = screen.getByRole('button', {
       name: 'Commit changes',
     }) as HTMLButtonElement;
@@ -224,7 +231,7 @@ describe('BranchToolbar', () => {
     // `dirtyCount === 0` left all 14 tests green.
     state.statusByRoot = { '/repo': makeStatus('main', false) };
     state.status = { isLoading: true, isError: false, error: null };
-    render(<BranchToolbar workingDir="/repo" />);
+    render(<BranchToolbar projectSlug="acme" workingDir="/repo" />);
     const input = screen.getByLabelText('Commit message') as HTMLInputElement;
     expect(input.placeholder).not.toMatch(/clean/i);
     expect(input.disabled).toBe(false);
@@ -251,7 +258,7 @@ describe('BranchToolbar', () => {
       isError: true,
       error: new Error('status failed'),
     };
-    render(<BranchToolbar workingDir="/repo" />);
+    render(<BranchToolbar projectSlug="acme" workingDir="/repo" />);
     const input = screen.getByLabelText('Commit message') as HTMLInputElement;
     expect(input.placeholder).not.toMatch(/clean/i);
     expect(input.disabled).toBe(false);
@@ -264,7 +271,7 @@ describe('BranchToolbar', () => {
   });
 
   test('Push fires push', () => {
-    render(<BranchToolbar workingDir="/repo" />);
+    render(<BranchToolbar projectSlug="acme" workingDir="/repo" />);
     fireEvent.click(screen.getByRole('button', { name: /Push/ }));
     expect(pushMutate).toHaveBeenCalledWith({ setUpstream: true });
   });
@@ -280,7 +287,7 @@ describe('BranchToolbar', () => {
       state.statusByRoot = {
         '/repo': { ...makeStatus('main'), remote: 'absent' },
       };
-      render(<BranchToolbar workingDir="/repo" />);
+      render(<BranchToolbar projectSlug="acme" workingDir="/repo" />);
 
       const push = screen.getByRole('button', {
         name: 'Push unavailable — no remote configured',
@@ -299,7 +306,7 @@ describe('BranchToolbar', () => {
         state.statusByRoot = {
           '/repo': { ...makeStatus('main'), ...(remote ? { remote } : {}) },
         };
-        render(<BranchToolbar workingDir="/repo" />);
+        render(<BranchToolbar projectSlug="acme" workingDir="/repo" />);
 
         const push = screen.getByRole('button', {
           name: /^Push/,
@@ -314,7 +321,7 @@ describe('BranchToolbar', () => {
   // ── Multi-repo awareness ────────────────────────────────────────────────
 
   test('single repo renders a static repo label, no switcher dropdown', () => {
-    render(<BranchToolbar workingDir="/repo" />);
+    render(<BranchToolbar projectSlug="acme" workingDir="/repo" />);
     // The repo label text is present...
     expect(screen.getByText('repo')).toBeTruthy();
     //.but there is no "Switch repository" combobox.
@@ -329,7 +336,7 @@ describe('BranchToolbar', () => {
       '/workspace/repo-a': makeStatus('main'),
       '/workspace/repo-b': makeStatus('develop'),
     };
-    render(<BranchToolbar workingDir="/workspace" />);
+    render(<BranchToolbar projectSlug="acme" workingDir="/workspace" />);
 
     const trigger = screen.getByRole('button', {
       name: /Switch repository/,
@@ -352,7 +359,7 @@ describe('BranchToolbar', () => {
       '/workspace/repo-a': makeStatus('main'),
       '/workspace/repo-b': makeStatus('develop'),
     };
-    render(<BranchToolbar workingDir="/workspace" />);
+    render(<BranchToolbar projectSlug="acme" workingDir="/workspace" />);
 
     // Default (no active file, not workspaceIsRepo) → first repo, repo-a.
     expect(state.statusPath).toBe('/workspace/repo-a');
@@ -378,6 +385,7 @@ describe('BranchToolbar', () => {
     };
     const { rerender } = render(
       <BranchToolbar
+        projectSlug="acme"
         workingDir="/workspace"
         activeFile="/workspace/repo-a/src/index.ts"
       />,
@@ -387,6 +395,7 @@ describe('BranchToolbar', () => {
     // Changing the active file to a path under repo-b switches the active repo.
     rerender(
       <BranchToolbar
+        projectSlug="acme"
         workingDir="/workspace"
         activeFile="/workspace/repo-b/lib/util.ts"
       />,
@@ -400,7 +409,7 @@ describe('BranchToolbar', () => {
       isLoading: false,
       error: null,
     };
-    render(<BranchToolbar workingDir="/empty" />);
+    render(<BranchToolbar projectSlug="acme" workingDir="/empty" />);
     expect(screen.getByText(/No git repository in this folder/)).toBeTruthy();
     // No branch switcher in the empty state.
     expect(screen.queryByRole('button', { name: /Switch branch/ })).toBeNull();

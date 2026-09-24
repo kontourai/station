@@ -9,10 +9,14 @@ import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import type { ToolDef } from '@kontourai/station-contracts/tool';
 import { createStationTempDirSync } from '@kontourai/station-shared/temp-dir';
 import { scanInstalledPluginInventory } from '../../services/plugins/installed-plugin-inventory.js';
-import { readPluginManifestFileSync } from '../../services/plugins/plugin-manifest-loader.js';
+import {
+  copyPluginTree,
+  PLUGIN_TREE_COPY,
+} from '../../services/plugins/plugin-content-integrity.js';
+import { readUntrustedPluginManifestSyncWithFormat } from '../../services/plugins/plugin-manifest-bounded-read.js';
 import { assertPluginIdentityAvailable } from '../../services/plugins/reserved-plugin-identities.js';
 import { errorMessage } from '../../utils/error-message.js';
-import { execGitSync } from '../../utils/git-exec.js';
+import { execGitSync, isLocalGitSource } from '../../utils/git-exec.js';
 import type { Logger } from '../../utils/logger.js';
 import type { InstallResult, RegistryItem } from '../provider-contracts.js';
 import type {
@@ -256,23 +260,37 @@ export class JsonManifestRegistryProvider
     writeRegistryInstallAliases(this.projectHomeDir, aliases);
   }
 
-  private materializeSource(source: string): string {
+  private async materializeSource(source: string): Promise<string> {
     const resolvedSource = this.resolveManifestSource(source);
     const tempDir = createStationTempDirSync('registry-plugin');
 
     try {
       if (isGitSource(resolvedSource)) {
         const [url, branch] = resolvedSource.split('#');
+        // #2363: Station's git allows only https and ssh. Refused here, by
+        // name, rather than as a transport error deep inside git: code
+        // fetched over plain http can be altered in transit.
+        if (/^http:\/\//i.test(url)) {
+          throw new Error(
+            `Plugin source ${url} uses plain http://. Use an https:// address: code installed over http can be tampered with in transit.`,
+          );
+        }
         const cloneArgs = ['clone', '--depth', '1'];
         if (branch) cloneArgs.push('--branch', branch);
         cloneArgs.push(url, tempDir);
 
-        execGitSync(cloneArgs, { timeout: 30000 });
+        // A registry may name a local git path; git clones one over its
+        // `file` transport, allowed for exactly that case (#2363).
+        execGitSync(cloneArgs, {
+          timeout: 30000,
+          hardening: { allowFileProtocol: isLocalGitSource(url) },
+        });
       } else {
         if (!existsSync(resolvedSource)) {
           throw new Error(`Source not found: ${resolvedSource}`);
         }
-        cpSync(resolvedSource, tempDir, { recursive: true });
+        // Async: `cpSync` aborts the process on an unreadable directory.
+        await copyPluginTree(resolvedSource, tempDir);
       }
     } catch (error) {
       rmSync(tempDir, { recursive: true, force: true });
@@ -372,13 +390,18 @@ export class JsonManifestRegistryProvider
       }
 
       const pluginsDir = this.getPluginsDir();
-      const stagedSourceDir = this.materializeSource(plugin.source);
+      const stagedSourceDir = await this.materializeSource(plugin.source);
       try {
         const sourceManifestPath = join(stagedSourceDir, 'plugin.json');
         if (!existsSync(sourceManifestPath)) {
           throw new Error(`Plugin '${id}' source is missing plugin.json`);
         }
-        const sourceManifest = readPluginManifestFileSync(sourceManifestPath);
+        // The staged registry source is untrusted: bounded read, no symlink
+        // following (#2342 review).
+        const sourceManifest =
+          readUntrustedPluginManifestSyncWithFormat(
+            sourceManifestPath,
+          ).manifest;
         const pluginName = sourceManifest.name;
         assertSafeRegistrySegment(pluginName, 'Registry plugin manifest name');
         // This provider writes `<plugins>/<pluginName>` itself (below) rather
@@ -433,7 +456,9 @@ export class JsonManifestRegistryProvider
 
         rmSync(targetDir, { recursive: true, force: true });
         mkdirSync(pluginsDir, { recursive: true });
-        cpSync(stagedSourceDir, targetDir, { recursive: true });
+        // Verbatim: the staged tree is deleted next, so a relative link
+        // rewritten to an absolute staged path would dangle (#2342 review).
+        cpSync(stagedSourceDir, targetDir, PLUGIN_TREE_COPY);
         rmSync(stagedSourceDir, { recursive: true, force: true });
         const installedAlias = {
           pluginName,

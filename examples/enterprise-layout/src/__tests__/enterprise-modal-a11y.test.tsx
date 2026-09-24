@@ -8,15 +8,8 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import * as React from 'react';
+import { useState } from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
-
-const { useState } = React;
-
-// The enterprise example predates the root Vitest JSX-runtime convention and
-// intentionally has no TypeScript project. Keep this compatibility local to
-// the focused regression instead of declaring the entire example type-safe.
-Object.assign(globalThis, { React });
 
 // `useSendToChat` returns the send function itself (packages/sdk
 // src/hooks/operations.ts), not an object holding it. The mock mirrors that
@@ -56,14 +49,15 @@ vi.mock('../data/notes-hooks', () => ({
   useFilteredNotes: () => ({
     data: [
       {
+        docId: 'doc-alpha',
         path: 'notes/alpha.md',
-        name: 'alpha.md',
+        title: 'Alpha',
         frontmatter: { title: 'Alpha', territory: 'West', type: 'brief' },
       },
     ],
     isLoading: false,
   }),
-  useNoteContent: () => ({ data: null }),
+  useNoteContent: () => ({ data: undefined }),
   useSaveNote: () => idleMutation,
   useUpdateNote: () => idleMutation,
   useDeleteNote: () => idleMutation,

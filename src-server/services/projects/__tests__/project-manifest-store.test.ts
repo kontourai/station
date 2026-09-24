@@ -501,7 +501,12 @@ describe('ProjectManifestStore — backfill derivation (§5)', () => {
     const mirror = tempDir('station-ppi-mirror-');
     execGitSync(['init', '-q', '--bare'], { cwd: mirror });
     const parent = tempDir('station-ppi-clone-parent-');
-    execGitSync(['clone', '-q', mirror, 'work'], { cwd: parent });
+    // A local-path clone is git's `file` transport, which Station's git
+    // refuses unless a caller opts in (#2363); this fixture is that caller.
+    execGitSync(['clone', '-q', mirror, 'work'], {
+      cwd: parent,
+      hardening: { allowFileProtocol: true },
+    });
     const checkout = join(parent, 'work');
     const project = await saveProject(adapter, {
       slug: 'acme',

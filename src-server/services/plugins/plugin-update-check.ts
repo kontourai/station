@@ -78,6 +78,10 @@ export async function checkPluginUpdates(options: {
         await execGit(['fetch', '--quiet'], {
           cwd: dir,
           timeout: 10000,
+          // An installed plugin's directory is Station-owned, and its origin
+          // is the source the operator installed from, which may be a local
+          // git path (#2363).
+          hardening: { allowFileProtocol: true },
         });
         const { stdout: behind } = await execGit(
           ['rev-list', '--count', 'HEAD..@{u}'],
