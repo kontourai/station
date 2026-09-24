@@ -13,6 +13,7 @@ vi.mock('pdfjs-dist', () => ({
 vi.mock('pdfjs-dist/build/pdf.worker.min.mjs?worker', () => ({
   default: class {
     terminate() {}
+    addEventListener() {}
   },
 }));
 

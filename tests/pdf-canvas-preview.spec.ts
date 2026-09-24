@@ -304,3 +304,20 @@ test('names a password-protected PDF instead of calling it unreadable', async ({
   });
   await expect(dialog.getByRole('link', { name: 'Download' })).toBeVisible();
 });
+
+test('reports a PDF worker that never starts instead of loading forever', async ({
+  page,
+}) => {
+  await mount(page);
+  // Registered after mount's catch-all, so it answers the worker first.
+  await page.route(`${ORIGIN}/assets/pdf.worker*`, (route) =>
+    route.fulfill({ status: 404, body: '' }),
+  );
+
+  await page.getByRole('button', { name: 'Open PDF', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Preview' });
+  await expect(dialog.getByText('Preview unavailable')).toBeVisible({
+    timeout: 20_000,
+  });
+  await expect(dialog.getByRole('link', { name: 'Download' })).toBeVisible();
+});

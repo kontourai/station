@@ -15,7 +15,10 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 const pdfjs = vi.hoisted(() => ({
   getDocument: vi.fn(),
   createWorker: vi.fn(),
-  workerPorts: [] as { terminate: ReturnType<typeof vi.fn> }[],
+  workerPorts: [] as {
+    terminate: ReturnType<typeof vi.fn>;
+    fail: () => void;
+  }[],
 }));
 
 vi.mock('pdfjs-dist', () => ({
@@ -26,8 +29,16 @@ vi.mock('pdfjs-dist', () => ({
 vi.mock('pdfjs-dist/build/pdf.worker.min.mjs?worker', () => ({
   default: class {
     terminate = vi.fn();
+    private errorListeners: (() => void)[] = [];
     constructor() {
       pdfjs.workerPorts.push(this);
+    }
+    addEventListener(type: string, listener: () => void) {
+      if (type === 'error') this.errorListeners.push(listener);
+    }
+    /** What a Worker does when its script is refused or throws on load. */
+    fail() {
+      for (const listener of this.errorListeners) listener();
     }
   },
 }));
@@ -213,6 +224,19 @@ describe('PdfCanvasViewer', () => {
       ),
     ).toBeTruthy();
     expect(screen.queryByRole('img')).toBeNull();
+  });
+
+  test('says so when the PDF worker never starts, instead of loading forever', async () => {
+    // pdf.js itself never settles when the worker it was handed is dead.
+    pdfjs.getDocument.mockReturnValue(fakeTask(new Promise(() => undefined)));
+
+    render(<PdfCanvasViewer blob={pdfBlob()} />);
+    await waitFor(() => expect(pdfjs.workerPorts).toHaveLength(1));
+    expect(screen.getByLabelText('Loading PDF preview')).toBeTruthy();
+
+    act(() => pdfjs.workerPorts[0].fail());
+
+    expect(await screen.findByText('Preview unavailable')).toBeTruthy();
   });
 
   test('names a password-protected PDF as such rather than as broken', async () => {

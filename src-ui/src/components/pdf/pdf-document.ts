@@ -27,6 +27,17 @@ export interface OpenedPdf {
  */
 export function openPdf(data: Uint8Array): OpenedPdf {
   const port = new PdfjsWorker({ name: 'station-pdf' });
+  // pdf.js waits forever for a worker it was handed that never starts (a
+  // refused script, a crash on load), which would leave the preview loading
+  // with no end. A worker error before the document opens fails it instead.
+  const workerFailed = new Promise<never>((_, reject) => {
+    port.addEventListener(
+      'error',
+      () => reject(new Error('The PDF worker failed to start')),
+      { once: true },
+    );
+  });
+  workerFailed.catch(() => undefined);
   const worker = PDFWorker.create({ port });
   const task = getDocument({
     data,
@@ -39,7 +50,7 @@ export function openPdf(data: Uint8Array): OpenedPdf {
   });
   let destroyed = false;
   return {
-    promise: task.promise,
+    promise: Promise.race([task.promise, workerFailed]),
     destroy: () => {
       if (destroyed) return;
       destroyed = true;

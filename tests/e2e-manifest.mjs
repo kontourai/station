@@ -635,7 +635,7 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale:
-      'Real preview dialog and pdf.js canvas viewer built by Vite in memory exactly as the app builds them (bundled module worker, emitted font/decoder side-files) and served from memory through browser-local page routes under the desktop/mobile CSP with the UI server MIME map and nosniff, with the engine reporting no PDF viewer as Android WebView does. Verifies non-blank page pixels including text, lazy drawing of off-screen pages, the bundled Symbol font load, fit-width zoom, and the unreadable and password-protected states. No live Station instance or shared output writes.',
+      'Real preview dialog and pdf.js canvas viewer built by Vite in memory exactly as the app builds them (bundled module worker, emitted font/decoder side-files) and served from memory through browser-local page routes under the desktop/mobile CSP with the UI server MIME map and nosniff, with the engine reporting no PDF viewer as Android WebView does. Verifies non-blank page pixels including text, lazy drawing of off-screen pages, the bundled Symbol font load, fit-width zoom, and the unreadable, password-protected and dead-worker states. No live Station instance or shared output writes.',
     exceptions: [],
   },
   {
