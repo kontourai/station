@@ -5,6 +5,7 @@
   "compatibility_date": "2026-09-01",
   // Served only on the Kontour domain; the workers.dev address stays off.
   "workers_dev": false,
+  "preview_urls": false,
   "routes": [{ "pattern": "push.kontourai.io", "custom_domain": true }],
   "vars": {
     // Every origin the gateway is reachable at. A Station token names one.
