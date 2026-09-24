@@ -25,18 +25,12 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 export interface DeviceToolsTarget {
   /**
-   * The device host (#1973). The tools run THIS Station's `xcrun`/`adb`, so
-   * only `local` is served; an SSH device host's device is refused
-   * (`unsupported`) by the server, and the drawer never asks.
+   * The device host (#1973): `local`, or an SSH device host whose own tools
+   * and hub the server uses (#2442).
    */
   hostId: string;
   platform: MobileDevicePlatform;
   deviceId: string;
-}
-
-/** Whether the Tools drawer can act on this device's host (#1973). */
-export function deviceToolsSupported(target: DeviceToolsTarget): boolean {
-  return target.hostId === 'local';
 }
 
 const KNOWN_FAILURES: readonly DeviceToolsFailure[] = [
@@ -52,6 +46,10 @@ const KNOWN_FAILURES: readonly DeviceToolsFailure[] = [
   'tool-failed',
   'tool-timeout',
   'hub-unavailable',
+  'unknown-host',
+  'device-host-busy',
+  'device-host-unavailable',
+  'device-host-not-enabled',
 ];
 
 class DeviceToolsRequestError extends Error {
@@ -328,7 +326,15 @@ export function describeDeviceToolsFailure(error: unknown): string {
     case 'unsupported':
       return 'This device cannot do that.';
     case 'tool-unavailable':
-      return 'The device tools (Xcode’s simctl or Android’s adb) are not installed on the Station host.';
+      return 'The device tools (Xcode’s simctl or Android’s adb) are not installed on the device’s host.';
+    case 'device-host-busy':
+      return 'The device’s host is busy. Try again in a moment.';
+    case 'device-host-unavailable':
+      return 'The device’s host could not be reached over SSH.';
+    case 'device-host-not-enabled':
+      return 'Devices are not enabled on the device’s host. The Station operator can enable them in Settings.';
+    case 'unknown-host':
+      return 'This device’s host is no longer set up on this Station.';
     case 'tool-timeout':
       return 'The device did not answer in time. Try again.';
     case 'hub-unavailable':

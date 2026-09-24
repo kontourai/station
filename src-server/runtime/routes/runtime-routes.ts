@@ -62,6 +62,7 @@ import { createFfmpegDecoderProvider } from '../../services/devices/h264-jpeg-de
 import { DeviceHostRegistry } from '../../services/devices/hosts/device-host-registry.js';
 import { RemoteDeviceHostServices } from '../../services/devices/hosts/device-host-services.js';
 import { DeviceHostStore } from '../../services/devices/hosts/device-host-store.js';
+import { createSshDeviceHostActions } from '../../services/devices/hosts/ssh-device-tools.js';
 import { DeviceToolchainService } from '../../services/devices/toolchain/device-toolchain-service.js';
 import type { ApplicationSessionService } from '../../services/identity/application-session-service.js';
 import type { LoadedDeploymentAuthentication } from '../../services/identity/deployment-authentication-loader.js';
@@ -280,6 +281,7 @@ import { createRegistryRoutes } from '../../routes/plugins/registry.js';
 import { createCodingRoutes } from '../../routes/projects/coding.js';
 import { createFsRoutes } from '../../routes/projects/fs.js';
 import { createWorkflowRoutes } from '../../routes/projects/layouts.js';
+import { createPluginPublishRoutes } from '../../routes/projects/plugin-publish-routes.js';
 import { createPluginScaffoldRoutes } from '../../routes/projects/plugin-scaffold-routes.js';
 import {
   createProjectContributionRoutes,
@@ -2281,13 +2283,21 @@ export function configureRuntimeRoutes(
       (await deviceAccessImpl?.isOperator(request)) === true,
     hasStanding: async (request, purpose) =>
       (await deviceAccessImpl?.hasStanding(request, purpose)) === true,
-    mayAccessDevice: async (request, platform, deviceId, purpose, hostId) =>
+    mayAccessDevice: async (
+      request,
+      platform,
+      deviceId,
+      purpose,
+      hostId,
+      shareKeyMemo,
+    ) =>
       (await deviceAccessImpl?.mayAccessDevice(
         request,
         platform,
         deviceId,
         purpose,
         hostId,
+        shareKeyMemo,
       )) === true,
   });
   // Who a live-surface request's HUMAN caller is (bound in the block below):
@@ -2467,12 +2477,15 @@ export function configureRuntimeRoutes(
               surfaces: sessionSurfaces,
               access: deviceAccess,
               decoder: deviceDecoder,
-              // No host actions: they run `adb` on THIS machine, which is not
-              // where an SSH host's emulator is (Android rotation reports
-              // unsupported there).
+              // Android rotation runs `adb` ON THAT HOST, through its
+              // device-host program's allowlisted `tool` mode (#2442).
+              actions: createSshDeviceHostActions(hostRegistry, hostId),
               onError: onDeviceError,
             })
           : undefined,
+      // #2442: the Tools drawer for that host runs its vectors there, and
+      // reads that host's own hub (built from the endpoint resolved above).
+      toolsHost: hostRegistry,
     });
     if (liveSurfaceRegistry)
       deviceSessions = new DeviceSessionService({
@@ -2535,13 +2548,14 @@ export function configureRuntimeRoutes(
       createDeviceToolsRoutes({
         isRequestPrincipalCurrent,
         access: deviceAccess,
-        // THIS machine's xcrun/adb and hub: the local device host only
-        // (#1973). An SSH device host's device is refused `unsupported`.
+        // THIS machine's xcrun/adb and hub serve the local device host; an
+        // SSH device host has its own service (#2442), built per host.
         tools: new DeviceToolsService({
           hostId: LOCAL_DEVICE_HOST_ID,
           runner: createDeviceToolRunner(),
           hub: deviceHubEndpoint,
         }),
+        toolsFor: (hostId) => remoteDeviceHosts?.get(hostId)?.tools,
         ...(toolCaller ? { resolveHumanCaller: toolCaller } : {}),
         ...(toolSessions && toolSurfaces
           ? {
@@ -4184,6 +4198,17 @@ export function configureRuntimeRoutes(
     '/api/projects/:slug/plugin-scaffold',
     createPluginScaffoldRoutes(context.projectService, {
       requestPrincipalId: (c) => resolveOrchestrationRequestPrincipal(c).id,
+    }),
+  );
+  // #2374 (epic #2323 S6): publish a plugin Project to a git remote.
+  // Mounted under the Project read guard like its siblings; the routes
+  // themselves are operator-only, because the push uses this computer's git
+  // credentials.
+  context.app.route(
+    '/api/projects/:slug/plugin-publish',
+    createPluginPublishRoutes({
+      getWorkspacePath: resolveWorkspacePath,
+      visibility: { resolvePrincipal: resolveOrchestrationRequestPrincipal },
     }),
   );
   context.app.route(

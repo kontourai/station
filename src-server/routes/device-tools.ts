@@ -9,10 +9,13 @@ import {
   type MobileDevicePlatform,
 } from '@kontourai/station-contracts/mobile-device';
 import { type Context, Hono } from 'hono';
+import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { readBoundedRequestBody } from '../security/bounded-request-body.js';
 import type { DeviceAccess } from '../services/devices/device-access.js';
+import { DeviceHostBusyError } from '../services/devices/device-shares.js';
 import {
   type DeviceControlConflict,
+  DeviceToolsAdmissionError,
   DeviceToolsError,
   type DeviceToolsService,
   isDeviceAppId,
@@ -41,17 +44,28 @@ import {
  * authority (`pairing-route-scopes.ts`): the tree and the foreground app
  * disclose what is on the screen, like a frame.
  *
- * Device hosts (#1973): the path names the host like every device route. The
- * tools run THIS machine's `xcrun`/`adb` and read the local hub, so only
- * `local` is served; a device on an SSH device host is refused
- * `unsupported` (422) before any access check or tool (the service refuses
- * too). Running the tools on that host over ssh is a follow-up.
+ * Device hosts (#1973, #2442): the path names the host like every device
+ * route, and each host has its OWN service — `local` runs this machine's
+ * `xcrun`/`adb` and reads the local hub; an SSH device host runs the same
+ * allowlisted vectors ON THAT HOST (its device-host program's `tool` mode)
+ * and reads that host's forwarded hub. The access check (D12, keyed by
+ * host, platform and device) and the lease check are the same code for
+ * every host. A host this Station does not have is `unknown-host` (404),
+ * after the access check, like the device routes. A busy SSH device host is
+ * `device-host-busy` (503), never a refusal. Without `toolsFor` wired, a
+ * non-local host stays refused `unsupported` (422) before any access check.
  */
 
 export interface DeviceToolsRouteOptions {
   isRequestPrincipalCurrent: (request: Request) => boolean;
   access?: DeviceAccess;
+  /** The local device host's service. */
   tools?: DeviceToolsService;
+  /**
+   * An SSH device host's own service (#2442), or undefined for a host this
+   * Station does not have. Absent → such hosts are refused `unsupported`.
+   */
+  toolsFor?: (hostId: string) => DeviceToolsService | undefined;
   /**
    * The HUMAN caller and the client it acts from — the SAME resolver the
    * live-surface routes use, so "you hold control" means the same thing in
@@ -85,23 +99,26 @@ export interface HumanCaller {
 /** The whole action body, push payload included, is bounded. */
 export const DEVICE_TOOLS_ACTION_MAX_BODY_BYTES = 8 * 1024;
 
+const FAILURE_STATUS: Partial<
+  Record<DeviceToolsFailure, ContentfulStatusCode>
+> = {
+  'invalid-request': 400,
+  'invalid-target': 400,
+  'access-denied': 403,
+  'principal-unresolved': 403,
+  'unknown-host': 404,
+  'device-controlled-by-other': 409,
+  'device-host-not-enabled': 409,
+  'payload-too-large': 413,
+  unsupported: 422,
+  'tool-failed': 502,
+  'tool-timeout': 504,
+};
+
 function failure(c: Context, code: DeviceToolsFailure) {
-  const status =
-    code === 'invalid-request' || code === 'invalid-target'
-      ? 400
-      : code === 'access-denied' || code === 'principal-unresolved'
-        ? 403
-        : code === 'device-controlled-by-other'
-          ? 409
-          : code === 'payload-too-large'
-            ? 413
-            : code === 'unsupported'
-              ? 422
-              : code === 'tool-failed'
-                ? 502
-                : code === 'tool-timeout'
-                  ? 504
-                  : 503;
+  // Everything else (unavailable, tool-unavailable, hub-unavailable, the
+  // device host busy or unreachable) is 503.
+  const status = FAILURE_STATUS[code] ?? 503;
   return c.json({ success: false, code }, status);
 }
 
@@ -224,6 +241,15 @@ export function createDeviceToolsRoutes(options: DeviceToolsRouteOptions) {
       return await work();
     } catch (error) {
       if (error instanceof DeviceToolsError) return failure(c, error.code);
+      // Re-admission after a wait for the host refused (#2442 review M2):
+      // answered exactly as the first admission would have been.
+      if (error instanceof DeviceToolsAdmissionError)
+        return error.refusal.code === 'access-denied'
+          ? failure(c, 'access-denied')
+          : conflictResponse(c, error.refusal.heldBy);
+      // Transient (#1973 D2, #2442): 503, never a refusal.
+      if (error instanceof DeviceHostBusyError)
+        return failure(c, 'device-host-busy');
       throw error;
     }
   };
@@ -241,6 +267,7 @@ export function createDeviceToolsRoutes(options: DeviceToolsRouteOptions) {
           deviceId: string;
         };
         caller: HumanCaller;
+        service: DeviceToolsService;
       }
     | { ok: false; response: Response }
   > => {
@@ -255,26 +282,37 @@ export function createDeviceToolsRoutes(options: DeviceToolsRouteOptions) {
     const caller = options.resolveHumanCaller(c);
     if (!caller)
       return { ok: false, response: failure(c, 'principal-unresolved') };
-    // #1973: the tools run THIS machine's xcrun/adb and read the local hub.
-    // A device on an SSH device host is refused, typed, before any access
-    // check (which could itself reach that host) and before any tool: a
-    // tool aimed at a remote device must never run against a local device
-    // that shares its id.
-    if (target.hostId !== LOCAL_DEVICE_HOST_ID)
+    const local = target.hostId === LOCAL_DEVICE_HOST_ID;
+    // Without SSH device host services wired, a device on another host is
+    // refused, typed, before any access check (which could itself reach
+    // that host): a tool aimed at a remote device must never run against a
+    // local device that shares its id.
+    if (!local && !options.toolsFor)
       return { ok: false, response: failure(c, 'unsupported') };
-    if (
-      !(await access.mayAccessDevice(
+    // D12, per request and per device ON ITS HOST. For an Android emulator
+    // on an SSH device host this resolves the AVD there, which may find the
+    // host busy: that propagates as 503, never as a refusal.
+    let allowed: boolean;
+    try {
+      allowed = await access.mayAccessDevice(
         c.req.raw,
         target.platform,
         target.deviceId,
         purpose,
         target.hostId,
-      ))
-    )
-      return { ok: false, response: failure(c, 'access-denied') };
+      );
+    } catch (error) {
+      if (error instanceof DeviceHostBusyError)
+        return { ok: false, response: failure(c, 'device-host-busy') };
+      throw error;
+    }
+    if (!allowed) return { ok: false, response: failure(c, 'access-denied') };
     if (!stillCurrent(c))
       return { ok: false, response: failure(c, 'access-denied') };
-    return { ok: true, target, caller };
+    // Each host has its own service: its own runner and its own hub.
+    const service = local ? tools : options.toolsFor?.(target.hostId);
+    if (!service) return { ok: false, response: failure(c, 'unknown-host') };
+    return { ok: true, target, caller, service };
   };
 
   app.get('/hosts/:hostId/devices/:platform/:deviceId/tools', async (c) => {
@@ -282,7 +320,7 @@ export function createDeviceToolsRoutes(options: DeviceToolsRouteOptions) {
     const admitted = await admit(c, 'view');
     if (!admitted.ok) return admitted.response;
     return run(c, async () =>
-      publish(c, await tools!.snapshot(admitted.target)),
+      publish(c, await admitted.service.snapshot(admitted.target)),
     );
   });
 
@@ -296,7 +334,7 @@ export function createDeviceToolsRoutes(options: DeviceToolsRouteOptions) {
       const admitted = await admit(c, 'view');
       if (!admitted.ok) return admitted.response;
       return run(c, async () =>
-        publish(c, await tools!.permissions(admitted.target, appId)),
+        publish(c, await admitted.service.permissions(admitted.target, appId)),
       );
     },
   );
@@ -309,7 +347,7 @@ export function createDeviceToolsRoutes(options: DeviceToolsRouteOptions) {
       const admitted = await admit(c, 'view');
       if (!admitted.ok) return admitted.response;
       return run(c, async () =>
-        publish(c, await tools!.accessibility(admitted.target)),
+        publish(c, await admitted.service.accessibility(admitted.target)),
       );
     },
   );
@@ -347,8 +385,43 @@ export function createDeviceToolsRoutes(options: DeviceToolsRouteOptions) {
         admitted.target.hostId,
       );
       if (conflict !== 'none') return conflictResponse(c, conflict);
+      const controlConflict = options.controlConflict;
+      // An SSH device host may make the action wait for a slot (up to
+      // ~20 s). Once it can run, and before its first command, the same
+      // two decisions are made again for the same caller and device: D12
+      // drive access, then the lease (#2442 review M2). Once per action —
+      // a permission group is still one decision.
+      const readmit = async () => {
+        if (!stillCurrent(c))
+          throw new DeviceToolsAdmissionError({ code: 'access-denied' });
+        const allowed = await access!.mayAccessDevice(
+          c.req.raw,
+          platform,
+          deviceId,
+          'drive',
+          admitted.target.hostId,
+        );
+        if (!allowed)
+          throw new DeviceToolsAdmissionError({ code: 'access-denied' });
+        const now = controlConflict(
+          admitted.caller,
+          platform,
+          deviceId,
+          admitted.target.hostId,
+        );
+        if (now !== 'none')
+          throw new DeviceToolsAdmissionError({
+            code: 'device-controlled-by-other',
+            heldBy: now,
+          });
+      };
       return run(c, async () =>
-        publish(c, await tools!.act(admitted.target, action)),
+        publish(
+          c,
+          await admitted.service.act(admitted.target, action, {
+            beforeRun: readmit,
+          }),
+        ),
       );
     },
   );

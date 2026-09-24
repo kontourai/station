@@ -10,6 +10,13 @@ export interface AsyncEventStreamOptions {
   signal?: AbortSignal;
 }
 
+/**
+ * Default capacity of an {@link AsyncEventQueue}. Exceeding it clears the
+ * buffer and rejects the iterator, so any producer that can push a burst
+ * synchronously must keep that burst below this.
+ */
+export const ASYNC_EVENT_QUEUE_DEFAULT_CAPACITY = 4096;
+
 /** Bounded event queue with iterator-scoped cancellation and explicit close. */
 export class AsyncEventQueue<T> implements AsyncIterable<T> {
   private readonly items: T[] = [];
@@ -19,7 +26,7 @@ export class AsyncEventQueue<T> implements AsyncIterable<T> {
   private generation = 0;
   private lastOverflowError: Error | null = null;
 
-  constructor(private readonly maxItems = 4096) {
+  constructor(private readonly maxItems = ASYNC_EVENT_QUEUE_DEFAULT_CAPACITY) {
     if (!Number.isInteger(maxItems) || maxItems < 1) {
       throw new Error('AsyncEventQueue maxItems must be a positive integer.');
     }

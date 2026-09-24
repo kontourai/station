@@ -20,7 +20,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 import { CheckpointRefStore } from '../checkpoint-ref-store.js';
 
@@ -564,26 +564,73 @@ describe('CheckpointRefStore git timeout (fix round M2)', () => {
     const filterScript = join(dir, 'slow-clean.sh');
     writeFileSync(filterScript, '#!/bin/sh\nsleep 30\nexec cat\n');
     execFileSync('chmod', ['+x', filterScript]);
-    git(dir, 'config', 'filter.slow.clean', `sh ${filterScript}`);
-    git(dir, 'config', 'filter.slow.smudge', 'cat');
-    git(dir, 'config', 'filter.slow.required', 'true');
+    // The OPERATOR's own filter (global config, as git-lfs installs itself):
+    // a repository-defined one is refused before `add` runs (#2410).
+    const globalConfig = join(dir, '..', `${basename(dir)}.gitconfig`);
+    scratchDirs.push(globalConfig);
+    writeFileSync(
+      globalConfig,
+      `[filter "slow"]\n\tclean = sh ${filterScript}\n\tsmudge = cat\n\trequired = true\n`,
+    );
     // Untracked on purpose: setup must not run the clean filter — only the
     // capture's `git add -A` reaches it.
     writeFileSync(join(dir, 'slow.bin'), 'payload\n');
     writeFileSync(join(dir, '.gitattributes'), '*.bin filter=slow\n');
 
+    const previousGlobal = process.env.GIT_CONFIG_GLOBAL;
+    process.env.GIT_CONFIG_GLOBAL = globalConfig;
     const started = Date.now();
-    const result = await new CheckpointRefStore({ gitTimeoutMs: 500 }).capture({
-      repoDir: dir,
-      threadId: 't',
-      checkpointId: 'c',
-      kind: 'baseline',
-      turnId: 'turn-1',
-    });
+    let result: Awaited<ReturnType<CheckpointRefStore['capture']>>;
+    try {
+      result = await new CheckpointRefStore({ gitTimeoutMs: 500 }).capture({
+        repoDir: dir,
+        threadId: 't',
+        checkpointId: 'c',
+        kind: 'baseline',
+        turnId: 'turn-1',
+      });
+    } finally {
+      if (previousGlobal === undefined) delete process.env.GIT_CONFIG_GLOBAL;
+      else process.env.GIT_CONFIG_GLOBAL = previousGlobal;
+    }
     // Bounded: the timeout fired, not the sleep.
     expect(Date.now() - started).toBeLessThan(10_000);
     expect(result).toMatchObject({ status: 'degraded', reason: 'git_timeout' });
     if (result.status !== 'degraded') return;
     expect(result.reason).toBe('git_timeout');
+  });
+});
+
+describe('CheckpointRefStore repository-defined programs (#2410)', () => {
+  it('refuses to capture in a repository whose own config defines a clean filter, and runs nothing', async () => {
+    const dir = newRepo();
+    const marker = join(dir, '..', `${basename(dir)}.clean-filter-ran`);
+    scratchDirs.push(marker);
+    git(dir, 'config', 'filter.marker.clean', `sh -c 'touch "${marker}"; cat'`);
+    git(dir, 'config', 'filter.marker.smudge', 'cat');
+    // Untracked, so only a capture's `git add -A` would reach the filter.
+    writeFileSync(join(dir, '.gitattributes'), '*.txt filter=marker\n');
+    writeFileSync(join(dir, 'planted.txt'), 'payload\n');
+
+    const result = await new CheckpointRefStore().capture({
+      repoDir: dir,
+      threadId: 'thread-refused',
+      checkpointId: 'cp-refused',
+      kind: 'baseline',
+      turnId: 'turn-1',
+    });
+
+    expect(result).toEqual({
+      status: 'degraded',
+      reason: 'repository_config_refused',
+      detail:
+        'repository config sets filter.marker.clean, filter.marker.smudge',
+    });
+    expect(existsSync(marker)).toBe(false);
+    // Nothing was written into the repository either.
+    expect(
+      git(dir, 'for-each-ref', '--format=%(refname)').includes('STATION'),
+    ).toBe(false);
+    expect(existsSync(join(dir, '.git', 'STATION_CHECKPOINTS'))).toBe(false);
   });
 });

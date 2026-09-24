@@ -228,6 +228,7 @@ export {
   STOP_REQUEST_BUDGET_MS,
   type StopProviderTaskInput,
   sendOrchestrationTurn,
+  setOrchestrationApprovalMode,
   steerOrchestrationTurn,
   stopOrchestrationProviderTask,
   streamConversationTurn,

@@ -1,5 +1,8 @@
 import crypto from 'node:crypto';
-import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import {
+  type CanonicalRuntimeEvent,
+  PROVIDER_TURN_TRIGGER,
+} from '@kontourai/station-contracts/runtime-events';
 import { TURN_INTERRUPTED_MESSAGE } from '@kontourai/station-shared/runtime-event-projection';
 // Same directory depth as the service, so this specifier resolves to the id
 // `interrupted-turn-recovery.test.ts` already `vi.mock`s. A module at a
@@ -8,6 +11,7 @@ import { TURN_INTERRUPTED_MESSAGE } from '@kontourai/station-shared/runtime-even
 import { resolveConversationTranscriptSource } from '../../runtime/conversation/conversation-transcript-source.js';
 import { errorMessage } from '../../utils/error-message.js';
 import type { EventStore } from './event-store.js';
+import { isProviderTurnBoundary } from './session-turn-boundary.js';
 
 /** Narrow structural logger: this module warns, never debugs. */
 type InterruptedTurnRecoveryLogger = {
@@ -18,11 +22,11 @@ interface InterruptedTurnRecoveryDeps {
   /**
    * Called, not captured: the store is optional on the service options and a
    * swap after construction must be honoured. The handle crosses here
-   * deliberately — the four operations this module needs
-   * (`takeInterruptedTurnBoundaries`, `latestEventByMethod`, `hasEventId`,
-   * `resolveInterruptedTurnBoundary`) are one transactional unit over the
-   * boundary table and event log, and fanning them into four unrelated
-   * arrows would hide that. No Map crosses (T13).
+   * deliberately — the five operations this module needs
+   * (`takeInterruptedTurnBoundaries`, `latestEventByMethod`,
+   * `listEventsForTurn`, `hasEventId`, `resolveInterruptedTurnBoundary`) are
+   * one transactional unit over the boundary table and event log, and
+   * fanning them into five unrelated arrows would hide that. No Map crosses (T13).
    */
   eventStore: () => EventStore | undefined;
   /**
@@ -262,10 +266,35 @@ export class InterruptedTurnRecovery {
           record.threadId,
           'turn.started',
         );
+        // #2324: a turn the engine opened on its own records its row just
+        // BEFORE its `turn.started` is persisted. If that start is not the
+        // thread's latest turn start, the process died before it landed (or
+        // the thread moved on): there is no turn to close or banner.
+        const providerTurn = isProviderTurnBoundary(record);
+        // #2324 review L4: a send the engine accepted but never started (it
+        // was queued behind a turn the engine opened itself when the process
+        // died) has no `turn.started` of its own — the start is published
+        // only when the engine starts it. A newer start on the thread is then
+        // not "the thread moved on past it": that send still needs its
+        // terminal and banner, or it vanishes without a trace. Disclosed:
+        // if a NEWER turn is genuinely running by the time this runs (the
+        // same window the moved-on check above exists for), that send's
+        // banner still lands and forces needs_input over it — accepted
+        // because the alternative loses the user's message silently, and
+        // consume runs once, at boot, before live traffic normally arrives.
+        const ownTurnStarted =
+          record.providerTurnId !== undefined &&
+          eventStore
+            .listEventsForTurn(record.threadId, record.providerTurnId, 64)
+            .some((event) => event.payload.method === 'turn.started');
         if (
-          latestTurnStarted?.turnId !== undefined &&
-          latestTurnStarted.turnId !== record.providerTurnId &&
-          latestTurnStarted.createdAt > record.createdAt
+          (providerTurn &&
+            latestTurnStarted?.turnId !== record.providerTurnId) ||
+          (!providerTurn &&
+            (record.providerTurnId === undefined || ownTurnStarted) &&
+            latestTurnStarted?.turnId !== undefined &&
+            latestTurnStarted.turnId !== record.providerTurnId &&
+            latestTurnStarted.createdAt > record.createdAt)
         ) {
           this.deps.logger.warn(
             'Interrupted-turn boundary is stale; the thread moved on — resolving without recovery events',
@@ -360,6 +389,11 @@ export class InterruptedTurnRecovery {
               // guarantees below), while every turn fold still settles the
               // dead turn on it.
               recoveryTerminal: true as const,
+              // #2324: the abort carries the trigger its turn's start did,
+              // so every consumer reads it as that provider turn's end.
+              ...(providerTurn
+                ? { metadata: { trigger: PROVIDER_TURN_TRIGGER } }
+                : {}),
             });
             if (!published) {
               // M4 parity with the banner below: a declined publish must

@@ -22,12 +22,21 @@ export type DeviceToolsUnreadableReason =
   | 'unsupported'
   /** The tool answered but did not report this value. */
   | 'not-reported'
-  /** `xcrun` or `adb` is not installed on the Station host. */
+  /** `xcrun` or `adb` is not installed on the device's host. */
   | 'tool-unavailable'
   | 'tool-failed'
   | 'tool-timeout'
   /** The device hub did not answer (accessibility, iOS foreground app). */
-  | 'hub-unavailable';
+  | 'hub-unavailable'
+  /**
+   * SSH device hosts (#2442): the host is running as many tools as it may
+   * at once; transient, try again.
+   */
+  | 'device-host-busy'
+  /** ssh could not reach the SSH device host. */
+  | 'device-host-unavailable'
+  /** The operator has not enabled the hub on that SSH device host. */
+  | 'device-host-not-enabled';
 
 export type DeviceReadBack<T> =
   | { state: 'read'; value: T }
@@ -90,7 +99,8 @@ export interface DeviceToolsCapabilities {
 
 /** Everything the drawer shows, read back from one device. */
 export interface DeviceToolsSnapshot {
-  hostId: 'local';
+  /** The device host the values were read on (`local` or an SSH host). */
+  hostId: string;
   platform: MobileDevicePlatform;
   deviceId: string;
   readAt: string;
@@ -206,4 +216,10 @@ export type DeviceToolsFailure =
   | 'tool-unavailable'
   | 'tool-failed'
   | 'tool-timeout'
-  | 'hub-unavailable';
+  | 'hub-unavailable'
+  /** The path names an SSH device host this Station does not have. */
+  | 'unknown-host'
+  /** SSH device hosts (#2442): transient, retry (503). */
+  | 'device-host-busy'
+  | 'device-host-unavailable'
+  | 'device-host-not-enabled';

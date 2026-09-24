@@ -1,7 +1,15 @@
+import type { GitReadLocation } from '@kontourai/station-sdk';
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { relativeTime } from '../../utils/relativeTime';
 import type { SessionIconAgent } from '../../utils/sessionDisplay';
+import {
+  draftDiscardThreadId,
+  draftSessionIds,
+  olderDraftsLabel,
+  splitDraftsByAge,
+} from '../../views/home/draft-lane';
 import type { HomeWorkItem } from '../../views/home/home-view-model';
+import { DiscardDraftButton } from '../drafts/DiscardDraftButton';
 import {
   hasLifecycleChip,
   LifecycleStatusChip,
@@ -271,6 +279,13 @@ interface InboxRowProps {
   /** Absent hides the close action (a host with no tab teardown path). */
   onCloseChat?: (sessionId: string, action: HTMLButtonElement) => void;
   /**
+   * #2312: present offers "Discard draft" on rows the server calls a Draft —
+   * open chat or not, which is what makes an orchestration-only Draft
+   * dismissable at all. The discard itself is the server command; this runs
+   * after it succeeded, for the host's focus move and tab teardown.
+   */
+  onDraftDiscarded?: (item: HomeWorkItem, action: HTMLButtonElement) => void;
+  /**
    * The live agent catalog, for the row's leading agent icon. Absent (or
    * empty) renders no icons and no icon column — the compact sidebar host
    * (`SidebarOpenChats`) keeps today's layout byte-for-byte.
@@ -281,14 +296,15 @@ interface InboxRowProps {
    */
   agents?: readonly SessionIconAgent[];
   /**
-   * The row's local session working directory, resolved by the host from its
-   * session records for the row's `orchestrationThreadId`. Absent (chat-only
-   * rows, hosts without session data, remote rows) renders no git section in
-   * the hover card — never a guess. Deliberately NOT a `HomeWorkItem` field:
-   * that type is the workspace-home projection surface, and widening it
-   * invalidates every existing grant.
+   * The row's local session working directory and its Project (#2412: git
+   * reads name the Project), resolved by the host from its session records
+   * for the row's `orchestrationThreadId`. Absent (chat-only rows, unbound
+   * chats, hosts without session data, remote rows) renders no git section
+   * in the hover card — never a guess. Deliberately NOT a `HomeWorkItem`
+   * field: that type is the workspace-home projection surface, and widening
+   * it invalidates every existing grant.
    */
-  cwd?: string;
+  gitLocation?: GitReadLocation;
 }
 
 export function InboxRow({
@@ -300,10 +316,12 @@ export function InboxRow({
   onActivate,
   onSnoozeWake,
   onCloseChat,
+  onDraftDiscarded,
   agents,
-  cwd,
+  gitLocation,
 }: InboxRowProps) {
   const iconAgent = inboxRowIconAgent(item, agents);
+  const discardThreadId = onDraftDiscarded ? draftDiscardThreadId(item) : null;
   const hover = useInboxRowHoverCard();
   const hoverCardId = useId();
   // The icon COLUMN is reserved for the whole list, not per row: a host that
@@ -402,7 +420,9 @@ export function InboxRow({
           )}
         </span>
       </button>
-      {(onSnoozeWake || (onCloseChat && isOpenChat && item.chatSessionId)) && (
+      {(onSnoozeWake ||
+        discardThreadId ||
+        (onCloseChat && isOpenChat && item.chatSessionId)) && (
         <div className="chat-dock-inbox__row-actions">
           {onSnoozeWake && (
             <SnoozeActions
@@ -424,6 +444,15 @@ export function InboxRow({
               <span aria-hidden="true">×</span>
             </button>
           )}
+          {discardThreadId && onDraftDiscarded && (
+            <DiscardDraftButton
+              threadId={discardThreadId}
+              title={item.title}
+              className="chat-dock-inbox__row-action"
+              closeSessionIds={draftSessionIds(item)}
+              onDiscarded={(action) => onDraftDiscarded(item, action)}
+            />
+          )}
         </div>
       )}
       {hover.anchor && (
@@ -433,7 +462,7 @@ export function InboxRow({
           componentProps={{
             item,
             now,
-            cwd,
+            gitLocation,
             anchor: hover.anchor,
             onClose: hover.close,
             id: hoverCardId,
@@ -466,16 +495,17 @@ export interface InboxGroupListProps {
   onActivate: (item: HomeWorkItem) => void;
   onSnoozeWake: InboxRowProps['onSnoozeWake'];
   onCloseChat?: InboxRowProps['onCloseChat'];
+  onDraftDiscarded?: InboxRowProps['onDraftDiscarded'];
   /** Live agent catalog for the rows' leading icons — see `InboxRowProps`. */
   agents?: InboxRowProps['agents'];
   /**
-   * Local session working directories by thread id — the host's session
-   * records, passed once. Rows resolve their own `cwd` from their
+   * Local session git locations by thread id — the host's session
+   * records, passed once. Rows resolve their own `gitLocation` from their
    * `orchestrationThreadId`; a row that resolves nothing gets no git
-   * section (see `InboxRowProps.cwd`). Must be referentially stable across
-   * renders for the same reason `agents` is.
+   * section (see `InboxRowProps.gitLocation`). Must be referentially stable
+   * across renders for the same reason `agents` is.
    */
-  cwdByThreadId?: ReadonlyMap<string, string>;
+  gitLocationByThreadId?: ReadonlyMap<string, GitReadLocation>;
 }
 
 export function InboxGroupList({
@@ -489,9 +519,58 @@ export function InboxGroupList({
   onActivate,
   onSnoozeWake,
   onCloseChat,
+  onDraftDiscarded,
   agents,
-  cwdByThreadId,
+  gitLocationByThreadId,
 }: InboxGroupListProps) {
+  const [olderDraftsOpen, setOlderDraftsOpen] = useState(false);
+  const renderRow = (group: MobileActivityGroup, item: HomeWorkItem) => (
+    <InboxRow
+      key={item.id}
+      item={item}
+      isCurrent={
+        item.chatSessionId === activeChatSessionId ||
+        item.orchestrationThreadId === activeChatSessionId
+      }
+      isSnoozed={group.id === 'snoozed'}
+      isOpenChat={Boolean(
+        item.chatSessionId && openChatIds.has(item.chatSessionId),
+      )}
+      now={now}
+      onActivate={onActivate}
+      onSnoozeWake={onSnoozeWake}
+      onCloseChat={onCloseChat}
+      onDraftDiscarded={onDraftDiscarded}
+      agents={agents}
+      gitLocation={
+        gitLocationByThreadId?.get(
+          item.orchestrationThreadId ?? item.chatSessionId ?? '',
+        ) ?? undefined
+      }
+    />
+  );
+  // #2312: Drafts untouched for a day fold under one disclosure. Nothing is
+  // deleted; the rows are a click away and still discardable.
+  const renderDraftRows = (group: MobileActivityGroup) => {
+    const { recent, older } = splitDraftsByAge(group.items, now);
+    return (
+      <>
+        {recent.map((item) => renderRow(group, item))}
+        {older.length > 0 && (
+          <button
+            type="button"
+            className="chat-dock-inbox__section-toggle chat-dock-inbox__older-drafts"
+            aria-expanded={olderDraftsOpen}
+            onClick={() => setOlderDraftsOpen((open) => !open)}
+          >
+            <span aria-hidden="true">{olderDraftsOpen ? '−' : '+'}</span>
+            {olderDraftsLabel(older.length)}
+          </button>
+        )}
+        {olderDraftsOpen && older.map((item) => renderRow(group, item))}
+      </>
+    );
+  };
   return (
     <>
       {groups.map((group) => {
@@ -540,30 +619,9 @@ export function InboxGroupList({
             )}
 
             {isExpanded &&
-              group.items.map((item) => (
-                <InboxRow
-                  key={item.id}
-                  item={item}
-                  isCurrent={
-                    item.chatSessionId === activeChatSessionId ||
-                    item.orchestrationThreadId === activeChatSessionId
-                  }
-                  isSnoozed={group.id === 'snoozed'}
-                  isOpenChat={Boolean(
-                    item.chatSessionId && openChatIds.has(item.chatSessionId),
-                  )}
-                  now={now}
-                  onActivate={onActivate}
-                  onSnoozeWake={onSnoozeWake}
-                  onCloseChat={onCloseChat}
-                  agents={agents}
-                  cwd={
-                    cwdByThreadId?.get(
-                      item.orchestrationThreadId ?? item.chatSessionId ?? '',
-                    ) ?? undefined
-                  }
-                />
-              ))}
+              (group.id === 'drafts'
+                ? renderDraftRows(group)
+                : group.items.map((item) => renderRow(group, item)))}
           </section>
         );
       })}

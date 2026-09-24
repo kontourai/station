@@ -1,7 +1,13 @@
+import { generateKeyPairSync } from 'node:crypto';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ApprovedStationConnectionTrust } from '@kontourai/station-contracts/connection-proof';
+import type {
+  SelfHostedBrokerNativeClientSurfaceV2,
+  SelfHostedBrokerNativeConnectionOfferV2,
+} from '@kontourai/station-contracts/self-hosted-broker';
+import { stationConnectionSigningKeyId } from '@kontourai/station-shared/connection-proof';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { createSelfHostedBrokerRoutes } from '../../../routes/connections/self-hosted-broker.js';
@@ -30,11 +36,65 @@ const descriptor: ApprovedStationConnectionTrust = {
   generation: 7,
   signingKey: { kty: 'EC', crv: 'P-256', x: 'x'.repeat(43), y: 'y'.repeat(43) },
 };
-function fixture(now: () => number = () => 1_000) {
+const nativeSurface: SelfHostedBrokerNativeClientSurfaceV2 = {
+  kind: 'station-native',
+  appIdentifier: 'io.kontourai.station',
+  channel: 'dev',
+  clientInstanceId: '7c6f49aa-6925-4bb2-b7c4-22bb6e264105',
+  keyThumbprint: 'T'.repeat(43),
+};
+const nativeTrustScope = {
+  ...scope,
+  stationId: '11111111-1111-4111-8111-111111111111',
+  enrollmentId: '22222222-2222-4222-8222-222222222222',
+};
+async function nativeTrustFixture(selectedScope = nativeTrustScope) {
+  const pair = generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
+  const exported = pair.publicKey.export({ format: 'jwk' });
+  const trust: ApprovedStationConnectionTrust = {
+    stationId: selectedScope.stationId,
+    enrollmentId: selectedScope.enrollmentId,
+    generation: 7,
+    signingKey: {
+      kty: 'EC',
+      crv: 'P-256',
+      x: exported.x as string,
+      y: exported.y as string,
+    },
+  };
+  return {
+    trust,
+    stationSigningKeyId: await stationConnectionSigningKeyId(trust),
+  };
+}
+function nativeOffer(
+  trust: ApprovedStationConnectionTrust,
+  stationSigningKeyId: string,
+  overrides: Partial<SelfHostedBrokerNativeConnectionOfferV2> = {},
+  selectedScope = nativeTrustScope,
+): SelfHostedBrokerNativeConnectionOfferV2 {
+  return {
+    version: 'station-broker-native-connection-offer/v2',
+    scope: {
+      stationId: selectedScope.stationId,
+      enrollmentId: selectedScope.enrollmentId,
+      routingGeneration: selectedScope.routingGeneration,
+    },
+    surface: nativeSurface,
+    stationSigningKeyId,
+    stationSigningGeneration: trust.generation,
+    clientId: nativeSurface.clientInstanceId,
+    nonce: 'nonce-native123',
+    offerSdp: 'native-offer',
+    expiresAt: 2_000,
+    ...overrides,
+  };
+}
+function fixture(now: () => number = () => 1_000, selectedScope = scope) {
   const root = mkdtempSync(join(tmpdir(), 'station-broker-connector-'));
   roots.add(root);
   const service = new SelfHostedBrokerService(join(root, 'broker.sqlite'), now);
-  const credentials = service.provision(scope, 600_000);
+  const credentials = service.provision(selectedScope, 600_000);
   const app = new Hono();
   app.route('/broker/v1', createSelfHostedBrokerRoutes(service));
   const request: typeof fetch = async (input, init) =>
@@ -626,6 +686,170 @@ describe.runIf(process.platform !== 'win32')(
         );
         releasePoll();
         await expect(poll).resolves.toEqual({ observed: 1, answered: 1 });
+      } finally {
+        f.service.close();
+      }
+    });
+    test('legacy poll never requests or forwards native offers without the explicit native lane', async () => {
+      const f = fixture();
+      try {
+        const client = new SelfHostedBrokerClient(
+          'https://broker.example',
+          scope,
+          f.credentials.connector,
+          f.request,
+          () => 1_000,
+        );
+        const nativeOfferSpy = vi
+          .spyOn(client, 'nativeOffers')
+          .mockResolvedValue([]);
+        const v1Answer = vi.fn(async () => {
+          throw new Error('unexpected v1 offer');
+        });
+        const connector = new SelfHostedBrokerConnector(
+          scope,
+          client,
+          { current: () => descriptor, isCurrent: () => true },
+          v1Answer,
+        );
+        const signal = new AbortController().signal;
+        await connector.register(signal);
+        expect(await connector.poll(signal)).toEqual({
+          observed: 0,
+          answered: 0,
+        });
+        expect(nativeOfferSpy).not.toHaveBeenCalled();
+        expect(v1Answer).not.toHaveBeenCalled();
+        await expect(connector.pollNative(signal)).rejects.toThrow(
+          'broker_connector_native_offer_opt_in_required',
+        );
+      } finally {
+        f.service.close();
+      }
+    });
+    test('native lane requires explicit surface and exact current Station key before callback', async () => {
+      const f = fixture(() => 1_000, nativeTrustScope);
+      try {
+        const native = await nativeTrustFixture(nativeTrustScope);
+        const client = new SelfHostedBrokerClient(
+          'https://broker.example',
+          nativeTrustScope,
+          f.credentials.connector,
+          f.request,
+          () => 1_000,
+        );
+        const badKey = nativeOffer(
+          native.trust,
+          'X'.repeat(43),
+          {},
+          nativeTrustScope,
+        );
+        const badGeneration = nativeOffer(
+          native.trust,
+          native.stationSigningKeyId,
+          { stationSigningGeneration: native.trust.generation + 1 },
+          nativeTrustScope,
+        );
+        const nativeOffers = vi
+          .spyOn(client, 'nativeOffers')
+          .mockResolvedValueOnce([badKey])
+          .mockResolvedValueOnce([badGeneration]);
+        const nativeAnswer = vi.fn(async () => ({
+          answerSdp: 'answer',
+          stationProof: 'proof',
+          dispose: async () => {},
+        }));
+        const connector = new SelfHostedBrokerConnector(
+          nativeTrustScope,
+          client,
+          { current: () => native.trust, isCurrent: () => true },
+          async () => {
+            throw new Error('native offer reached v1 callback');
+          },
+          { surface: nativeSurface, answer: nativeAnswer },
+        );
+        const signal = new AbortController().signal;
+        await connector.register(signal);
+        await expect(connector.pollNative(signal)).rejects.toThrow(
+          'broker_connector_native_station_binding_mismatch',
+        );
+        await expect(connector.pollNative(signal)).rejects.toThrow(
+          'broker_connector_native_station_binding_mismatch',
+        );
+        expect(nativeOffers).toHaveBeenCalledTimes(2);
+        expect(nativeAnswer).not.toHaveBeenCalled();
+      } finally {
+        f.service.close();
+      }
+    });
+    test('explicit native callback owns v2 offers and disposes if answer publication fails', async () => {
+      const f = fixture(() => 1_000, nativeTrustScope);
+      try {
+        const native = await nativeTrustFixture(nativeTrustScope);
+        const offer = nativeOffer(
+          native.trust,
+          native.stationSigningKeyId,
+          {},
+          nativeTrustScope,
+        );
+        const client = new SelfHostedBrokerClient(
+          'https://broker.example',
+          nativeTrustScope,
+          f.credentials.connector,
+          f.request,
+          () => 1_000,
+        );
+        const nativeOffers = vi
+          .spyOn(client, 'nativeOffers')
+          .mockResolvedValue([offer]);
+        const answerNative = vi
+          .spyOn(client, 'answerNative')
+          .mockRejectedValue(new Error('answer publication failed'));
+        const dispose = vi.fn(async () => {});
+        const nativeAnswer = vi.fn(async () => ({
+          answerSdp: 'native-answer',
+          stationProof: 'native-proof',
+          dispose,
+        }));
+        const v1Answer = vi.fn(async () => {
+          throw new Error('native offer reached v1 callback');
+        });
+        const connector = new SelfHostedBrokerConnector(
+          nativeTrustScope,
+          client,
+          { current: () => native.trust, isCurrent: () => true },
+          v1Answer,
+          { surface: nativeSurface, answer: nativeAnswer },
+        );
+        const signal = new AbortController().signal;
+        await connector.register(signal);
+        expect(await connector.poll(signal)).toEqual({
+          observed: 0,
+          answered: 0,
+        });
+        expect(nativeOffers).not.toHaveBeenCalled();
+        await expect(connector.pollNative(signal)).rejects.toThrow(
+          'answer publication failed',
+        );
+        expect(nativeAnswer).toHaveBeenCalledWith(
+          offer,
+          native.trust,
+          expect.any(AbortSignal),
+        );
+        expect(answerNative).toHaveBeenCalledWith(
+          {
+            surface: nativeSurface,
+            clientId: nativeSurface.clientInstanceId,
+            nonce: offer.nonce,
+            stationSigningKeyId: native.stationSigningKeyId,
+            stationSigningGeneration: native.trust.generation,
+            answerSdp: 'native-answer',
+            stationProof: 'native-proof',
+          },
+          expect.any(AbortSignal),
+        );
+        expect(dispose).toHaveBeenCalledTimes(1);
+        expect(v1Answer).not.toHaveBeenCalled();
       } finally {
         f.service.close();
       }

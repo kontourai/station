@@ -40,10 +40,45 @@
  *   killed outright is found by its recorded pid and command line and
  *   stopped at the next start.
  *
+ * - `tool` mode (#2442) runs one Device Tools argument vector for the
+ *   drawer, or the short fixed sequence of an Android rotation (`followedBy`), for
+ *   one run: `xcrun` or `adb`, spawned directly (no shell) with the
+ *   arguments as separate words, a push payload written to the tool's
+ *   stdin, ONE hard deadline for the whole run (SIGKILL; the run settles
+ *   without waiting for a descendant that still holds stdout) and an output
+ *   bound — the rules of Station's local runner (`runBoundedToolCapture`).
+ *   A sequence stops at its first failure and says how many vectors it
+ *   applied — or, with `keepGoing` (an Android permission group, run as
+ *   one run so it waits and is re-admitted once), goes on past a vector
+ *   the tool refuses and reports which (`failed`). With `cancelOnClose`, stdin closing (Station killed its ssh:
+ *   the caller was already told the run failed) kills the running tool and
+ *   starts nothing more.
+ *
+ *   Every vector is re-checked here against the allowlist built into this
+ *   program's source (`ssh-device-tool-allowlist.ts`), never against
+ *   anything in `p`, and one outside it runs nothing (`tool-refused`). That
+ *   is DEFENCE IN DEPTH against a Station bug, not a trust boundary: this
+ *   program itself arrives from Station on stdin with every call, so it can
+ *   never constrain a Station that is already compromised. Unlike the local
+ *   runner, `xcrun` is not tied to macOS here: on a host without it the
+ *   spawn fails and the answer is `tool-unavailable`.
+ *
  * Every parameter arrives as data in `p` (JSON), never through a shell.
  * Output is one JSON object per line on stdout; nothing else is printed
  * there.
  */
+import { SSH_DEVICE_TOOL_ALLOWLIST_JSON } from './ssh-device-tool-allowlist.js';
+
+/** Limits the host program enforces on a `tool` request (#2442). */
+export const REMOTE_TOOL_LIMITS = {
+  maxTimeoutMs: 60_000,
+  /** The largest output a Station read asks for (`dumpsys`, 8 MiB). */
+  maxBuffer: 8 * 1024 * 1024,
+  /** A push payload is at most 4 KB; this leaves room, never a document. */
+  maxStdinBytes: 8 * 1024,
+  /** Vectors after the first in one run (an Android rotation has two). */
+  maxFollowedBy: 3,
+} as const;
 
 /** What Station sends in `p`. */
 export type RemoteDeviceHostParams =
@@ -73,7 +108,27 @@ export type RemoteDeviceHostParams =
       entry: readonly string[];
       readyTimeoutMs: number;
     }
-  | { mode: 'avd'; serial: string };
+  | { mode: 'avd'; serial: string }
+  | {
+      mode: 'tool';
+      tool: 'xcrun' | 'adb';
+      args: readonly string[];
+      /** Written to the tool's stdin (a push payload); never argv. */
+      stdin?: string;
+      /** Further vectors run in order after `args`, in the same run. */
+      followedBy?: readonly (readonly string[])[];
+      /** One deadline for the whole run. */
+      timeoutMs: number;
+      maxBuffer: number;
+      /** stdin closing cancels the run (Station keeps it open meanwhile). */
+      cancelOnClose?: boolean;
+      /**
+       * Run every vector even when one exits non-zero, and report which did
+       * (`failed`): an Android permission group, where `pm` refuses a
+       * permission the app does not declare.
+       */
+      keepGoing?: boolean;
+    };
 
 /** The script, as a function expression the loader evaluates. */
 export const REMOTE_DEVICE_HOST_SCRIPT = String.raw`(function (require, rest, p) {
@@ -88,6 +143,9 @@ const fail = (failure, code) => { out({ event: 'error', failure }); process.exit
 const OWNER = /^[0-9a-f]{24}$/;
 const VERSION = /^[0-9]+\.[0-9]+\.[0-9]+$/;
 const DIGEST = /^[0-9a-f]{64}$/;
+// The Device Tools argument vectors this program may run (#2442), built into
+// its source by Station — never read from p.
+const TOOL_SHAPES = ${SSH_DEVICE_TOOL_ALLOWLIST_JSON};
 const root = path.join(os.homedir(), '.station-device-host');
 const versionDir = (version) => path.join(root, 'tools', 'expo-device-hub', version);
 // One directory per verified tree: tools/expo-device-hub/<version>/<digest>/.
@@ -172,6 +230,88 @@ if (p.mode === 'avd') {
   const lines = String(result.stdout || '').split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
   const avd = result.status === 0 && lines[1] === 'OK' && /^[A-Za-z0-9._-]{1,128}$/.test(lines[0] || '') ? lines[0] : null;
   out({ event: 'avd', avd });
+  return;
+}
+
+if (p.mode === 'tool') {
+  const followedBy = p.followedBy === undefined ? [] : p.followedBy;
+  if (!Number.isSafeInteger(p.timeoutMs) || p.timeoutMs < 1 || p.timeoutMs > ${REMOTE_TOOL_LIMITS.maxTimeoutMs} || !Number.isSafeInteger(p.maxBuffer) || p.maxBuffer < 1 || p.maxBuffer > ${REMOTE_TOOL_LIMITS.maxBuffer} || (p.stdin !== undefined && (typeof p.stdin !== 'string' || Buffer.byteLength(p.stdin, 'utf8') > ${REMOTE_TOOL_LIMITS.maxStdinBytes})) || !Array.isArray(followedBy) || followedBy.length > ${REMOTE_TOOL_LIMITS.maxFollowedBy} || (followedBy.length > 0 && p.stdin !== undefined) || (p.keepGoing !== undefined && typeof p.keepGoing !== 'boolean')) return fail('protocol');
+  // Written, flushed, then exit: a descendant the tool left holding its
+  // stdout must not keep this session open.
+  let answered = false;
+  const answer = (value) => { if (answered) return; answered = true; process.stdout.write(JSON.stringify(Object.assign({ event: 'tool' }, value)) + '\n', () => process.exit(0)); };
+  const allowed = (args) => typeof p.tool === 'string' && Object.prototype.hasOwnProperty.call(TOOL_SHAPES, p.tool) && Array.isArray(args) && TOOL_SHAPES[p.tool].some((shape) => shape.length === args.length && shape.every((part, index) => {
+    const arg = args[index];
+    if (typeof arg !== 'string' || arg.length > 512) return false;
+    return typeof part === 'string' ? arg === part : new RegExp('^(?:' + part.re + ')$').test(arg);
+  }));
+  const commands = [p.args].concat(followedBy);
+  // Every vector is checked before the first one runs.
+  if (!commands.every(allowed)) { answer({ ok: false, failure: 'tool-refused' }); return; }
+  const deadline = Date.now() + p.timeoutMs;
+  let child = null;
+  let cancelled = false;
+  if (p.cancelOnClose === true) {
+    const cancel = () => {
+      if (cancelled || answered) return;
+      cancelled = true;
+      if (child) { try { child.kill('SIGKILL'); } catch {} }
+      // Nobody is listening any more; say so for a log, then stop.
+      answer({ ok: false, failure: 'cancelled', applied: index - failedAt.length });
+    };
+    process.stdin.on('end', cancel);
+    process.stdin.on('close', cancel);
+    process.stdin.on('error', cancel);
+    process.stdin.resume();
+  }
+  let index = 0;
+  // keepGoing (an Android permission group): a vector the tool refused
+  // (non-zero exit) is noted and the run goes on; a timeout, a missing tool
+  // or a cancel still stops it.
+  const failedAt = [];
+  const runOne = () => {
+    if (cancelled || answered) return;
+    const left = deadline - Date.now();
+    if (left <= 0) { answer({ ok: false, failure: 'tool-timeout', applied: index - failedAt.length }); return; }
+    const args = commands[index];
+    const last = index === commands.length - 1;
+    try {
+      child = spawn(p.tool, args, { shell: false, windowsHide: true, stdio: [p.stdin === undefined ? 'ignore' : 'pipe', 'pipe', 'ignore'] });
+    } catch { answer({ ok: false, failure: 'tool-failed', applied: index - failedAt.length }); return; }
+    const current = child;
+    const chunks = [];
+    let size = 0;
+    let settled = false;
+    const settle = (ok, failure) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (!ok && !(p.keepGoing === true && failure === 'tool-failed')) { answer({ ok: false, failure, applied: index - failedAt.length }); return; }
+      if (!ok) failedAt.push(index);
+      index += 1;
+      if (!last) { runOne(); return; }
+      if (failedAt.length === commands.length) answer({ ok: false, failure: 'tool-failed', applied: 0 });
+      else answer(p.keepGoing === true ? { ok: true, stdout: Buffer.concat(chunks).toString('base64'), failed: failedAt } : { ok: true, stdout: Buffer.concat(chunks).toString('base64') });
+    };
+    const abort = (failure) => {
+      if (settled) return;
+      try { current.kill('SIGKILL'); } catch {}
+      if (current.stdout) current.stdout.destroy();
+      if (current.stdin) current.stdin.destroy();
+      settle(false, failure);
+    };
+    const timer = setTimeout(() => abort('tool-timeout'), left);
+    current.stdout.on('data', (chunk) => {
+      size += chunk.length;
+      if (size > p.maxBuffer) { abort('tool-failed'); return; }
+      chunks.push(chunk);
+    });
+    current.stdout.on('error', () => {});
+    current.on('error', (error) => settle(false, error && error.code === 'ENOENT' ? 'tool-unavailable' : 'tool-failed'));
+    current.on('close', (code) => settle(code === 0, 'tool-failed'));
+    if (p.stdin !== undefined) { current.stdin.on('error', () => {}); current.stdin.end(p.stdin); }
+  };
+  runOne();
   return;
 }
 

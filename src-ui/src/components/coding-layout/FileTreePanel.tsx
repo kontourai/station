@@ -6,7 +6,7 @@ import {
   useRenameCodingFileMutation,
 } from '@kontourai/station-sdk';
 import { previewProjectWorkspaceFile } from '@kontourai/station-sdk/workspace-file-preview';
-import { useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useApiBase } from '../../contexts/ApiBaseContext';
 import { copyToClipboard } from '../../lib/clipboard';
 import { useCodingFilesContext } from '../../providers/context/CodingFilesContextProvider';
@@ -156,15 +156,20 @@ export function FileTreePanel({
   onFileSelect: (intent: OpenFilePreviewIntent) => void;
 }) {
   const { apiBase } = useApiBase();
+  // #2412: file reads and edits name the Project they act in.
+  const location = useMemo(
+    () => ({ projectSlug, workingDir }),
+    [projectSlug, workingDir],
+  );
   const {
     data: tree = [],
     isLoading: loading,
     error: queryError,
-  } = useCodingFilesQuery(workingDir, apiBase);
+  } = useCodingFilesQuery(location, apiBase);
 
-  const createMut = useCreateCodingFileMutation(workingDir, apiBase);
-  const renameMut = useRenameCodingFileMutation(workingDir, apiBase);
-  const deleteMut = useDeleteCodingFileMutation(workingDir, apiBase);
+  const createMut = useCreateCodingFileMutation(location, apiBase);
+  const renameMut = useRenameCodingFileMutation(location, apiBase);
+  const deleteMut = useDeleteCodingFileMutation(location, apiBase);
 
   const {
     files: attachedFiles,

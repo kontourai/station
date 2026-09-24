@@ -20,6 +20,7 @@ import {
   CHAT_ATTACHMENT_MAX_TOTAL_BYTES,
   type PersistedChatAttachment,
   parseChatAttachmentDataUrl,
+  sniffChatImageMimeType,
   validateChatAttachments,
   validatePersistedChatAttachmentDescriptor,
 } from '@kontourai/station-contracts/chat-attachment';
@@ -40,7 +41,11 @@ import {
   SESSION_AGENT_ICON_METADATA_KEY,
 } from '@kontourai/station-contracts/provider';
 import type { RunSummary } from '@kontourai/station-contracts/runs';
-import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import {
+  type CanonicalRuntimeEvent,
+  isProviderTriggeredTurn,
+  PROVIDER_TURN_TRIGGER,
+} from '@kontourai/station-contracts/runtime-events';
 import {
   parseSessionWorkItemAssociation,
   type SessionWorkItemAssociation,
@@ -92,6 +97,7 @@ import {
   RevisionEvidenceModule,
 } from '../../domain/revision-bound-evidence.js';
 import { PROVIDER_PROVEN_FINISH_REASONS } from '../../providers/finish-reason-authority.js';
+import { appendToolOutputNote } from '../../providers/tool-output-projection.js';
 import type { NativeOutputTerminalAdmission } from '../../runtime/native-output-declaration.js';
 import {
   attachmentBytesStripped,
@@ -148,6 +154,7 @@ import {
 } from './adoption-ledger.js';
 import {
   AttachmentBlobStore,
+  attachmentBlobRefFor,
   isAttachmentBlobRef,
 } from './attachment-blob-store.js';
 import {
@@ -396,6 +403,8 @@ export type SessionInventoryEventDescriptor =
       method: 'turn.started';
       turnId: string;
       inputKind?: 'steer';
+      /** #2324: the engine opened this turn itself; no input was provided. */
+      trigger?: 'provider';
       attachments: readonly {
         name: string;
         mediaType: string;
@@ -523,7 +532,9 @@ type EventStoreIngressJson =
 /**
  * A deliberately tiny path state, not a general path matcher. The only
  * in-memory bytes EventStore may receive above its ordinary event ceiling are
- * the request attachment bytes at this exact canonical event path.
+ * attachment bytes at this exact canonical event path: a `turn.started`'s
+ * request attachments, or the images a `tool.completed` returned to the model.
+ * Both are replaced by blob references before anything persists.
  */
 type EventStoreIngressLocation =
   | 'ordinary'
@@ -531,6 +542,57 @@ type EventStoreIngressLocation =
   | 'canonical-attachments'
   | 'canonical-attachment'
   | 'canonical-attachment-data-url';
+
+/** How many live tool events' pending blob refs/charges are remembered. */
+const LIVE_TOOL_IMAGE_REF_MEMORY = 256;
+
+/** An event as it will persist, plus the tool-image ledger entry to settle. */
+type PersistedIngressForm = {
+  payload: CanonicalRuntimeEvent;
+  blobRefs: string[];
+  toolImageKey?: string;
+};
+
+/**
+ * Tell the reader of a tool's output which of its images were not kept, and
+ * why. An adapter marks a kept image `[image: <name>]` where its bytes were;
+ * that marker is rewritten in place, so the output never promises an image
+ * the transcript cannot show. Images no marker names get one summary line.
+ */
+function withToolImageNotes(
+  output: unknown,
+  notes: ReadonlyArray<{ name: string; reason: string }>,
+): unknown {
+  const unplaced = new Set(notes);
+  const rewrite = (value: unknown, depth: number): unknown => {
+    if (typeof value === 'string') {
+      let text = value;
+      for (const note of notes) {
+        const marker = `[image: ${note.name}]`;
+        if (!text.includes(marker)) continue;
+        text = text
+          .split(marker)
+          .join(`[image not shown: ${note.name} ${note.reason}]`);
+        unplaced.delete(note);
+      }
+      return text;
+    }
+    if (!value || typeof value !== 'object' || depth > 8) return value;
+    if (Array.isArray(value)) return value.map((v) => rewrite(v, depth + 1));
+    return Object.fromEntries(
+      Object.entries(value).map(([k, v]) => [k, rewrite(v, depth + 1)]),
+    );
+  };
+  const rewritten = rewrite(output, 0);
+  if (unplaced.size === 0) return rewritten;
+  const line = [...unplaced]
+    .map((note) => `[image not shown: ${note.name} ${note.reason}]`)
+    .join('\n');
+  // Every output shape the tool row renders gets the note (see
+  // appendToolOutputNote), including a plain object, which the row shows as
+  // its JSON.
+  return appendToolOutputNote(rewritten, line);
+}
 
 class EventStoreIngressError extends Error {
   constructor(reason: string) {
@@ -571,7 +633,7 @@ class BoundedEventStoreIngressProjector {
   ): EventStoreIngressJson {
     const location =
       options.allowCanonicalAttachmentDataUrls &&
-      this.isCanonicalTurnStartedEvent(value)
+      this.isCanonicalAttachmentBearingEvent(value)
         ? 'event-root'
         : 'ordinary';
     const projected = this.projectValue(value, 0, false, location);
@@ -635,14 +697,14 @@ class BoundedEventStoreIngressProjector {
    * receive the narrow attachment allowance without invoking a getter or
    * proxy-provided value read; the full traversal still validates everything.
    */
-  private isCanonicalTurnStartedEvent(value: unknown): boolean {
+  private isCanonicalAttachmentBearingEvent(value: unknown): boolean {
     if (!value || typeof value !== 'object') return false;
     const method = this.ownDescriptor(value, 'method');
     return (
       !!method &&
       method.enumerable === true &&
       'value' in method &&
-      method.value === 'turn.started'
+      (method.value === 'turn.started' || method.value === 'tool.completed')
     );
   }
 
@@ -1654,7 +1716,8 @@ export interface EventStoreCommitObserver {
 /** #2309: see {@link EventStore.readTurnActivitySeed}. */
 export interface TurnActivitySeed {
   head?: { globalSequence: number; createdAt: string };
-  openTurn?: { startedAt: string };
+  /** #2324: `trigger` is read from the turn's first `turn.started`. */
+  openTurn?: { startedAt: string; trigger?: 'provider' };
   tools: Array<{
     method: 'tool.started' | 'tool.completed';
     callId: string;
@@ -2300,6 +2363,7 @@ export class EventStore {
           `SELECT id, provider, turn_id, method, sequence,
              json_extract(payload, '$.turnId') AS event_turn_id,
              json_extract(payload, '$.inputKind') AS input_kind,
+             json_extract(payload, '$.metadata.trigger') AS turn_trigger,
              json_extract(payload, '$.toolCallId') AS tool_call_id,
              json_extract(payload, '$.toolName') AS tool_name,
              json_extract(payload, '$.status') AS status,
@@ -2364,6 +2428,9 @@ export class EventStore {
           turnId: (row.event_turn_id ?? row.turn_id) as string,
           ...(row.input_kind === 'steer'
             ? { inputKind: 'steer' as const }
+            : {}),
+          ...(row.turn_trigger === PROVIDER_TURN_TRIGGER
+            ? { trigger: PROVIDER_TURN_TRIGGER }
             : {}),
           attachments: JSON.parse((row.attachments as string) || '[]') as {
             name: string;
@@ -2676,18 +2743,19 @@ export class EventStore {
   }
 
   /**
-   * The persisted form of an event: identical, except that a `turn.started`'s
-   * attachment bytes are replaced by a content-addressed reference
-   * (archive#3374).
+   * The persisted form of an event: identical, except that attachment bytes
+   * are replaced by a content-addressed reference (archive#3374) — a
+   * `turn.started`'s request attachments, and the images a `tool.completed`
+   * returned to the model ({@link persistedToolImages}).
    *
-   * This projection is also used for the live event bus. A blob write failure
-   * therefore rejects the turn event before it can persist or reach SSE; raw
-   * attachment bytes are never an acceptable fallback projection.
+   * This projection is also used for the live event bus, so raw attachment
+   * bytes are never an acceptable fallback projection. A blob write failure
+   * rejects a `turn.started` before it can persist or reach SSE.
    */
-  private persistedForm(event: CanonicalRuntimeEvent): {
-    payload: CanonicalRuntimeEvent;
-    blobRefs: string[];
-  } {
+  private persistedForm(event: CanonicalRuntimeEvent): PersistedIngressForm {
+    if (event.method === 'tool.completed' && event.attachments?.length) {
+      return this.persistedToolImages(event);
+    }
     if (event.method !== 'turn.started' || !event.attachments?.length) {
       return { payload: event, blobRefs: [] };
     }
@@ -2729,15 +2797,261 @@ export class EventStore {
       },
     );
     if (stripped === 0) return { payload: event, blobRefs };
+    this.observeAttachmentBytesStripped(stripped, event.provider);
+    return { payload: { ...event, attachments }, blobRefs };
+  }
+
+  private observeAttachmentBytesStripped(bytes: number, provider: string) {
     try {
       // Guarded, and the reference is inside the try: a partial test double of
       // the metrics module makes the NAME throw on access, not the `.add`.
       // Telemetry observes persistence; it never decides it.
-      attachmentBytesStripped.add(stripped, { provider: event.provider });
+      attachmentBytesStripped.add(bytes, { provider });
     } catch {
       // Observation only.
     }
-    return { payload: { ...event, attachments }, blobRefs };
+  }
+
+  /**
+   * Per live tool event (thread + event id): the blob refs this ingress wrote
+   * and the quota its images will be charged, until the append that persists
+   * the event settles them.
+   *
+   * - `refs` let the append of the same projected event — which arrives
+   *   reference-only — bind what this store itself wrote.
+   * - `charges` are PLANNED, not written. Projection only reads the budget to
+   *   decide whether an image is kept; the charge is written by the append,
+   *   inside the same savepoint as the event row
+   *   ({@link chargeCommittedToolImages}). So a thrown append rolls it back, a
+   *   duplicate event id never reaches it, and a crash between projection and
+   *   append leaves nothing charged — no refund bookkeeping exists to lose.
+   *   Keyed by blob ref, so one (event, blob) pair is charged at most once.
+   *
+   * An entry that ages out only costs the image its preview and its charge
+   * (the append then finds nothing to bind or charge), never an unauthorized
+   * binding.
+   */
+  private readonly pendingToolImages = new Map<
+    string,
+    { threadId: string; refs: Set<string>; charges: Map<string, number> }
+  >();
+
+  private toolImageKey(event: CanonicalRuntimeEvent): string {
+    return `${event.threadId}\u0000${event.eventId}`;
+  }
+
+  private pendingToolImagesFor(event: CanonicalRuntimeEvent) {
+    const key = this.toolImageKey(event);
+    let pending = this.pendingToolImages.get(key);
+    if (!pending) {
+      pending = {
+        threadId: event.threadId,
+        refs: new Set(),
+        charges: new Map(),
+      };
+      this.pendingToolImages.set(key, pending);
+      while (this.pendingToolImages.size > LIVE_TOOL_IMAGE_REF_MEMORY) {
+        const oldest = this.pendingToolImages.keys().next().value;
+        if (oldest === undefined) break;
+        this.settleToolImageCharges(oldest);
+      }
+    }
+    return pending;
+  }
+
+  /**
+   * Forget a tool event's pending entry once its append has finished (either
+   * way): whatever was charged was charged inside the append's own savepoint.
+   */
+  private settleToolImageCharges(key: string | undefined) {
+    if (key !== undefined) this.pendingToolImages.delete(key);
+  }
+
+  /**
+   * Whether `encodedBytes` more would still fit the per-chat and per-Station
+   * attachment budget user uploads draw on. Read-only: projection decides with
+   * it, and the append writes the charge.
+   */
+  private toolImageCapacityAllows(
+    threadId: string,
+    encodedBytes: number,
+  ): boolean {
+    const row = this.db
+      .prepare(
+        `SELECT
+           COALESCE((SELECT encoded_bytes FROM orchestration_attachment_quota
+                      WHERE thread_id = ?), 0) AS thread_bytes,
+           (SELECT COALESCE(SUM(encoded_bytes), 0)
+              FROM orchestration_attachment_quota) AS store_bytes`,
+      )
+      .get(threadId) as { thread_bytes: number; store_bytes: number };
+    return (
+      Number(row.thread_bytes) + encodedBytes <=
+        CHAT_ATTACHMENT_MAX_SESSION_ENCODED_BYTES &&
+      Number(row.store_bytes) + encodedBytes <=
+        CHAT_ATTACHMENT_MAX_STORE_ENCODED_BYTES
+    );
+  }
+
+  /**
+   * Write the planned charges of the tool event being appended. Called only
+   * inside the append's savepoint, on the path that inserts the event row, so
+   * the charge commits and rolls back with the event.
+   *
+   * Unconditional by design: the keep-or-drop decision was made at projection
+   * from the same budget, and in this process projection and append run
+   * synchronously back to back (`orchestration-service.ts` `projectLiveEvent`
+   * then `appendEvent`), so nothing charges in between. A second process
+   * writing the same home between the two could overshoot by one event's
+   * images.
+   */
+  private chargeCommittedToolImages(key: string | undefined): void {
+    const pending =
+      key === undefined ? undefined : this.pendingToolImages.get(key);
+    if (!pending || pending.charges.size === 0) return;
+    const insert = this.db.prepare(
+      `INSERT INTO orchestration_attachment_quota (thread_id, encoded_bytes)
+       VALUES (?, ?)
+       ON CONFLICT(thread_id) DO UPDATE SET
+         encoded_bytes = encoded_bytes + excluded.encoded_bytes`,
+    );
+    for (const bytes of pending.charges.values()) {
+      insert.run(pending.threadId, bytes);
+    }
+  }
+
+  private isAttachmentBoundToThread(ref: string, threadId: string): boolean {
+    return (
+      this.db
+        .prepare(
+          `SELECT 1 FROM orchestration_attachment_refs
+            WHERE blob_ref = ? AND thread_id = ? LIMIT 1`,
+        )
+        .get(ref, threadId) !== undefined
+    );
+  }
+
+  /**
+   * The persisted form of the images a `tool.completed` returned.
+   *
+   * Only bytes that reach THIS ingress become a binding. A reference that
+   * arrives without bytes is bound only when this store wrote it while
+   * projecting the same live event, or when it is already bound to the same
+   * thread. Anything else — a replayed, imported, or relayed event naming a
+   * digest — would otherwise bind a blob that may belong to someone else's
+   * private thread to this one, and the attachment route would then serve it.
+   * Content addressing makes that digest computable by anyone holding the
+   * bytes, so possession of the reference proves nothing.
+   *
+   * An image is never allowed to lose the tool's only terminal (the row would
+   * run forever). When it cannot be kept — its bytes are not the type it
+   * declares, the chat's attachment budget is spent, the blob write failed, or
+   * a bare reference cannot be bound — the event keeps the descriptor WITHOUT
+   * bytes or reference (the "no preview" chip) and the output a reader sees
+   * says which image was not kept and why.
+   */
+  private persistedToolImages(
+    event: Extract<CanonicalRuntimeEvent, { method: 'tool.completed' }>,
+  ): PersistedIngressForm {
+    const attachments = event.attachments ?? [];
+    if (attachments.some((attachment) => attachment.dataUrl !== undefined)) {
+      const attachmentError = validateChatAttachments(
+        attachments as Parameters<typeof validateChatAttachments>[0],
+      );
+      if (attachmentError) throw new EventStoreIngressError(attachmentError);
+    }
+    const live = this.pendingToolImages.get(this.toolImageKey(event));
+    const blobRefs: string[] = [];
+    const notKept: Array<{ name: string; reason: string }> = [];
+    let stripped = 0;
+    let changed = false;
+    const persisted = attachments.map((attachment): PersistedChatAttachment => {
+      const { dataUrl, blobRef, ...descriptor } = attachment;
+      if (dataUrl === undefined) {
+        if (
+          isAttachmentBlobRef(blobRef) &&
+          (live?.refs.has(blobRef) ||
+            this.isAttachmentBoundToThread(blobRef, event.threadId))
+        ) {
+          blobRefs.push(blobRef);
+          return attachment;
+        }
+        if (blobRef !== undefined) {
+          changed = true;
+          notKept.push({
+            name: attachment.name,
+            reason: 'is not stored on this Station',
+          });
+        }
+        return descriptor;
+      }
+      changed = true;
+      stripped += dataUrl.length;
+      const parsed = parseChatAttachmentDataUrl(dataUrl);
+      if (!parsed)
+        throw new Error('Attachment projection rejected an invalid data URL.');
+      if (
+        sniffChatImageMimeType(
+          Buffer.from(parsed.base64.slice(0, 24), 'base64'),
+        ) !== attachment.mimeType
+      ) {
+        notKept.push({
+          name: attachment.name,
+          reason: `is not a valid ${attachment.mimeType} image`,
+        });
+        return descriptor;
+      }
+      const bytes = Buffer.from(parsed.base64, 'base64');
+      const ref = attachmentBlobRefFor(bytes);
+      const pending = this.pendingToolImagesFor(event);
+      // The digest is known before any write, so a spent budget writes
+      // nothing, and one (event, blob) pair is planned at most once. Images
+      // already planned for this event count against the budget too.
+      if (!pending.charges.has(ref)) {
+        let planned = 0;
+        for (const bytes of pending.charges.values()) planned += bytes;
+        if (
+          !this.toolImageCapacityAllows(
+            event.threadId,
+            planned + dataUrl.length,
+          )
+        ) {
+          notKept.push({
+            name: attachment.name,
+            reason:
+              "could not be stored: this chat's attachment storage is full",
+          });
+          return descriptor;
+        }
+        pending.charges.set(ref, dataUrl.length);
+      }
+      if (this.attachmentBlobs.writeBytes(bytes) !== ref) {
+        pending.charges.delete(ref);
+        notKept.push({ name: attachment.name, reason: 'could not be stored' });
+        return descriptor;
+      }
+      pending.refs.add(ref);
+      blobRefs.push(ref);
+      return { ...descriptor, blobRef: ref };
+    });
+    const key = this.toolImageKey(event);
+    const pending = this.pendingToolImages.get(key);
+    if (pending && pending.refs.size === 0 && pending.charges.size === 0)
+      this.pendingToolImages.delete(key);
+    if (!changed) return { payload: event, blobRefs, toolImageKey: key };
+    if (stripped > 0)
+      this.observeAttachmentBytesStripped(stripped, event.provider);
+    return {
+      payload: {
+        ...event,
+        attachments: persisted,
+        ...(notKept.length > 0
+          ? { output: withToolImageNotes(event.output, notKept) }
+          : {}),
+      },
+      blobRefs,
+      toolImageKey: key,
+    };
   }
 
   /**
@@ -2749,7 +3063,7 @@ export class EventStore {
   private prepareEventIngress(event: CanonicalRuntimeEvent): {
     event: CanonicalRuntimeEvent;
     requestId: ReturnType<typeof persistedRequestId>;
-    persisted: { payload: CanonicalRuntimeEvent; blobRefs: string[] };
+    persisted: PersistedIngressForm;
     serializedPayload: string;
   } {
     // station#2210: every deterministic ingress rejection names its subject.
@@ -2785,7 +3099,14 @@ export class EventStore {
     // Attachment projection can replace a very small inline data URL with a
     // longer digest reference, so measure its persisted shape independently.
     // It is now a plain projected value, not caller-controlled structure.
-    const persistedPayload = projectWithIdentity(persisted.payload);
+    let persistedPayload: EventStoreIngressJson;
+    try {
+      persistedPayload = projectWithIdentity(persisted.payload);
+    } catch (error) {
+      // Refused after its images were planned: the event will never persist.
+      this.settleToolImageCharges(persisted.toolImageKey);
+      throw error;
+    }
     return {
       event: projectedEvent,
       requestId: persistedRequestId(projectedEvent),
@@ -2957,7 +3278,20 @@ export class EventStore {
       );
     }
     const ingress = this.prepareEventIngress(event);
-    event = ingress.event;
+    // A tool image's quota charge is written inside this append's savepoint
+    // (`chargeCommittedToolImages`); afterwards the pending entry is dropped.
+    try {
+      return this.appendIngressedEvent(ingress, declaredOutputs);
+    } finally {
+      this.settleToolImageCharges(ingress.persisted.toolImageKey);
+    }
+  }
+
+  private appendIngressedEvent(
+    ingress: ReturnType<EventStore['prepareEventIngress']>,
+    declaredOutputs: readonly NativeOutputTerminalAdmission[],
+  ): number {
+    const event = ingress.event;
     const startedAt = performance.now();
     const { requestId, persisted, serializedPayload } = ingress;
     // Blob writes happen here, before the savepoint: they are filesystem work
@@ -3090,6 +3424,7 @@ export class EventStore {
         return Number(existing.sequence);
       }
       this.recordAttachmentRefs(event.threadId, persisted.blobRefs);
+      this.chargeCommittedToolImages(persisted.toolImageKey);
       this.projectConversationHistoryEvent(event);
       this.projectMessageSearchEvent(event);
       this.projectRequestState(event, requestId, nextSequence);
@@ -3698,7 +4033,17 @@ export class EventStore {
 
   appendEventIfAbsent(event: CanonicalRuntimeEvent): number | undefined {
     const ingress = this.prepareEventIngress(event);
-    event = ingress.event;
+    try {
+      return this.appendIngressedEventIfAbsent(ingress);
+    } finally {
+      this.settleToolImageCharges(ingress.persisted.toolImageKey);
+    }
+  }
+
+  private appendIngressedEventIfAbsent(
+    ingress: ReturnType<EventStore['prepareEventIngress']>,
+  ): number | undefined {
+    const event = ingress.event;
     const startedAt = performance.now();
     const { requestId, persisted, serializedPayload } = ingress;
     this.db.exec('SAVEPOINT append_event_if_absent_history');
@@ -3731,6 +4076,7 @@ export class EventStore {
       absent = result.changes === 0;
       if (!absent) {
         this.recordAttachmentRefs(event.threadId, persisted.blobRefs);
+        this.chargeCommittedToolImages(persisted.toolImageKey);
         this.projectConversationHistoryEvent(event);
         this.projectMessageSearchEvent(event);
         this.projectRequestState(event, requestId, nextSequence);
@@ -4251,6 +4597,9 @@ export class EventStore {
                        AND length(CAST(json_extract(payload, '$.inputKind') AS BLOB)) <= ?
                      THEN json_extract(payload, '$.inputKind') END AS input_kind,
                 CASE WHEN json_valid(payload) THEN json_type(payload, '$.attachments') END AS attachments_type,
+                CASE WHEN c.method = 'turn.started' AND json_valid(payload)
+                       AND json_extract(payload, '$.metadata.trigger') = ?
+                     THEN 1 ELSE 0 END AS provider_trigger,
                 a.key AS attachment_key,
                 CASE WHEN a.key IS NULL THEN NULL ELSE json_type(a.value) END AS attachment_type,
                 CASE WHEN a.key IS NULL THEN NULL ELSE json_extract(a.value, '$.kind') END AS attachment_kind,
@@ -4293,6 +4642,7 @@ export class EventStore {
         MAX_BASIS_OUTPUT_TEXT_BYTES,
         MAX_BASIS_PROMPT_BYTES,
         MAX_BASIS_INPUT_KIND_BYTES,
+        PROVIDER_TURN_TRIGGER,
         MAX_BASIS_ATTACHMENT_NAME_BYTES,
         MAX_BASIS_ATTACHMENT_MIME_BYTES,
         MAX_TOOL_RESULT_DESCRIPTOR_ID_BYTES,
@@ -4361,11 +4711,15 @@ export class EventStore {
             (row.input_kind_type !== 'text' || row.input_kind !== 'steer')
           )
             return { status: 'corrupt' };
-          event.input = {
-            kind: row.input_kind === 'steer' ? 'steer' : 'initial',
-            prompt: typeof row.prompt === 'string' ? row.prompt : '',
-            attachments: [],
-          };
+          // #2324: a turn the engine opened on its own has no input; its
+          // start must not read as an empty message the user sent.
+          if (row.provider_trigger !== 1) {
+            event.input = {
+              kind: row.input_kind === 'steer' ? 'steer' : 'initial',
+              prompt: typeof row.prompt === 'string' ? row.prompt : '',
+              attachments: [],
+            };
+          }
         }
         if (row.method === 'tool.completed') {
           if (
@@ -4553,6 +4907,48 @@ export class EventStore {
       )
       .get(threadId) as any;
     return row ? this.mapEventRow(row) : undefined;
+  }
+
+  /**
+   * #2436: the latest recorded approval-posture decision across `threadIds`
+   * (a conversation's sessions), ordered by the server's global sequence —
+   * the one order every client and the turn-start resolution agree on. One
+   * indexed lookup per thread (`thread_id, method, sequence`), then the
+   * newest by global sequence; a conversation has a handful of sessions.
+   */
+  latestApprovalModeDecision(
+    threadIds: readonly string[],
+  ):
+    | { threadId: string; approvalMode: unknown; globalSequence: number }
+    | undefined {
+    const statement = this.db.prepare(
+      `SELECT thread_id, json_extract(payload, '$.approvalMode') AS approval_mode, global_sequence
+       FROM orchestration_events
+       WHERE thread_id = ? AND method = 'session.approval-mode-set'
+       ORDER BY sequence DESC
+       LIMIT 1`,
+    );
+    let latest:
+      | { threadId: string; approvalMode: unknown; globalSequence: number }
+      | undefined;
+    for (const threadId of new Set(threadIds)) {
+      const row = statement.get(threadId) as
+        | {
+            thread_id: string;
+            approval_mode: unknown;
+            global_sequence: number;
+          }
+        | undefined;
+      if (!row) continue;
+      if (!latest || row.global_sequence > latest.globalSequence) {
+        latest = {
+          threadId: row.thread_id,
+          approvalMode: row.approval_mode,
+          globalSequence: row.global_sequence,
+        };
+      }
+    }
+    return latest;
   }
 
   latestEventForSessionState(
@@ -5553,13 +5949,14 @@ export class EventStore {
   ): Pick<TurnActivitySeed, 'openTurn' | 'tools' | 'toolsTruncated'> {
     const started = this.db
       .prepare(
-        `SELECT sequence, created_at
+        `SELECT sequence, created_at,
+                json_extract(payload, '$.metadata.trigger') AS turn_trigger
          FROM orchestration_events
          WHERE thread_id = ? AND turn_id = ? AND method = 'turn.started'
          ORDER BY sequence ASC LIMIT 1`,
       )
       .get(threadId, turnId) as
-      | { sequence: number; created_at: string }
+      | { sequence: number; created_at: string; turn_trigger: unknown }
       | undefined;
     if (!started) return { tools: [], toolsTruncated: false };
     const rows = this.db
@@ -5594,7 +5991,12 @@ export class EventStore {
       });
     }
     return {
-      openTurn: { startedAt: started.created_at },
+      openTurn: {
+        startedAt: started.created_at,
+        ...(started.turn_trigger === PROVIDER_TURN_TRIGGER
+          ? { trigger: PROVIDER_TURN_TRIGGER }
+          : {}),
+      },
       tools,
       toolsTruncated: rows.length > toolLimit,
     };
@@ -9564,6 +9966,54 @@ export class EventStore {
           return { kind: 'unavailable' };
         }
       },
+      recordAccepted: (record) => {
+        try {
+          this.db.exec('BEGIN IMMEDIATE');
+          const { rows } = this.db
+            .prepare(
+              `SELECT COUNT(*) AS rows FROM orchestration_turn_boundaries
+                WHERE thread_id = ?`,
+            )
+            .get(record.threadId) as { rows: number };
+          if (rows >= SESSION_TURN_ACCEPTED_CAPACITY) {
+            this.db.exec('ROLLBACK');
+            return { kind: 'busy' };
+          }
+          this.db
+            .prepare(
+              `INSERT INTO orchestration_turn_boundaries
+                (boundary_id, thread_id, state, provider_turn_id, owner_id,
+                 owner_pid, owner_birth, owner_identity_kind, created_at, updated_at, purpose)
+               VALUES (?, ?, 'accepted', ?, ?, ?, ?, ?, ?, ?, 'turn')`,
+            )
+            .run(
+              record.boundaryId,
+              record.threadId,
+              record.providerTurnId,
+              record.ownerId,
+              record.ownerPid,
+              record.ownerBirth ?? null,
+              record.ownerIdentityKind,
+              record.createdAt,
+              record.updatedAt,
+            );
+          this.db.exec('COMMIT');
+          return { kind: 'applied' };
+        } catch {
+          try {
+            this.db.exec('ROLLBACK');
+          } catch {
+            // The transaction may already have committed.
+          }
+          return exact({
+            boundaryId: record.boundaryId,
+            ownerId: record.ownerId,
+            state: 'accepted',
+          })
+            ? { kind: 'applied' }
+            : { kind: 'unavailable' };
+        }
+      },
       hasPossibleEffect: (threadId) => {
         this.reconcileSessionTurnTerminalsFromEvents(threadId);
         return Boolean(
@@ -10685,6 +11135,52 @@ export class EventStore {
     return recoveryTransition(result);
   }
 
+  /**
+   * #2312: every Session in `threadId`'s conversation lineage, `threadId`
+   * included, sorted. A thread with no lineage row is its own conversation.
+   */
+  conversationSessionIds(threadId: string): string[] {
+    const rows = this.db
+      .prepare(
+        `SELECT member.session_id AS session_id
+         FROM orchestration_conversation_sessions member
+         WHERE member.conversation_id = COALESCE(
+           (SELECT conversation_id FROM orchestration_conversation_sessions
+            WHERE session_id = ?),
+           ?)`,
+      )
+      .all(threadId, threadId) as Array<{ session_id: string }>;
+    return [
+      ...new Set([threadId, ...rows.map((row) => row.session_id)]),
+    ].sort();
+  }
+
+  /**
+   * #2312: retire the conversation-level rows naming Sessions a discard
+   * deleted — lineage, and any handoff or context-boundary record between
+   * them. `deleteThread` leaves these alone (its other callers own that
+   * decision); a discarded Draft conversation must not leave records behind
+   * that name Sessions which no longer exist.
+   */
+  deleteConversationLineageRows(sessionIds: readonly string[]): void {
+    const statements = [
+      'DELETE FROM orchestration_conversation_sessions WHERE session_id = ?',
+      `DELETE FROM orchestration_conversation_handoffs
+       WHERE session_id = ?1 OR predecessor_session_id = ?1`,
+      `DELETE FROM orchestration_conversation_context_boundaries
+       WHERE successor_session_id = ?1 OR predecessor_session_id = ?1`,
+    ].map((sql) => this.db.prepare(sql));
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      for (const sessionId of sessionIds)
+        for (const statement of statements) statement.run(sessionId);
+      this.db.exec('COMMIT');
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+  }
+
   /** Remove a deliberately ephemeral diagnostic session and all of its receipts. */
   deleteThread(threadId: string): void {
     // Captured before the deletes, resolved after the commit: deleting a file
@@ -10764,6 +11260,15 @@ export class EventStore {
         .run(threadId);
       this.db
         .prepare('DELETE FROM provider_session_state WHERE thread_id = ?')
+        .run(threadId);
+      // #2312 verifier H1: a possible-effect record for a thread that no
+      // longer exists would keep reporting an active turn and refuse every
+      // later start under the id. Lifecycle claims are left to their holder,
+      // which releases them itself (a discard deletes while holding one).
+      this.db
+        .prepare(
+          "DELETE FROM orchestration_turn_boundaries WHERE thread_id = ? AND state != 'lifecycle'",
+        )
         .run(threadId);
       this.db
         .prepare(
@@ -10943,9 +11448,16 @@ export class EventStore {
               .prepare(
                 `SELECT COUNT(*) AS count FROM orchestration_events
                  WHERE thread_id = ?
-                   AND method IN ('turn.started', 'turn.completed')`,
+                   AND method IN ('turn.started', 'turn.completed')
+                   AND NOT (
+                     method = 'turn.started'
+                     AND json_valid(payload)
+                     AND json_extract(payload, '$.metadata.trigger') IS ?
+                   )`,
               )
-              .get(session.thread_id) as { count: number }
+              .get(session.thread_id, PROVIDER_TURN_TRIGGER) as {
+              count: number;
+            }
           ).count;
           let ownerUserId: string | undefined;
           let agentSlug: string | undefined;
@@ -11102,9 +11614,13 @@ export class EventStore {
       (typeof metadata?.projectSlug === 'string'
         ? metadata.projectSlug
         : undefined);
+    // A start is the user's message and a completion the agent's reply. A
+    // turn the engine opened on its own (#2324) has a reply but no message
+    // of the user's, so its start is not counted.
     const messageCount =
       (existing?.message_count ?? 0) +
-      (event.method === 'turn.started' || event.method === 'turn.completed'
+      ((event.method === 'turn.started' && !isProviderTriggeredTurn(event)) ||
+      event.method === 'turn.completed'
         ? 1
         : 0);
     this.db

@@ -57,6 +57,7 @@ import {
   assertSafeLayoutPathSegment,
   type IStorageAdapter,
 } from '../../domain/storage-adapter.js';
+import { mayRunCommandsOnHost } from '../../security/coding-authority.js';
 import {
   grantedPairingScope,
   type PairingScopeContextStore,
@@ -638,6 +639,57 @@ export function createProjectRoutes(
     return 'The workspace new chats start in is a Station setting this project overrides, so changing it needs the same authority as changing it on the Station. No changes were saved.';
   }
 
+  /**
+   * #2412 review: a Project's working directory is what every coding route
+   * is confined to, so whoever may set it decides where the coding routes
+   * read, edit and run. Setting it (create) or changing it (update) is
+   * therefore reserved for the callers who may run commands on this
+   * computer anyway: the operator in person, or a device holding the
+   * operator's `coding:exec` grant (`mayRunCommandsOnHost`, the same
+   * derivation `POST /api/coding/exec` reads). An operate-tier device can
+   * still edit everything else about a Project, and an update that sends the
+   * directory it already has (a settings form saving the whole record) is not
+   * a change. A request no auth boundary saw is refused.
+   */
+  async function refuseUngrantedWorkingDirectoryWrite(
+    c: Context,
+    body: Record<string, unknown>,
+    existing: (() => Promise<{ workingDirectory?: string }>) | undefined,
+  ): Promise<Response | undefined> {
+    if (!Object.hasOwn(body, 'workingDirectory')) return undefined;
+    // Compared as STORED strings, never read from disk: the question is
+    // whether the record changes. A different spelling of the same folder
+    // (`~/x` for `/home/me/x`) counts as a change and is refused, which is
+    // the safe direction.
+    const requested =
+      typeof body.workingDirectory === 'string'
+        ? body.workingDirectory.trim()
+        : '';
+    if (existing) {
+      const current = (await existing()).workingDirectory?.trim() ?? '';
+      if (requested === current) return undefined;
+    } else if (!requested) {
+      return undefined;
+    }
+    if (
+      mayRunCommandsOnHost(
+        c.req.raw,
+        grantedPairingScope(c as unknown as PairingScopeContextStore),
+      )
+    )
+      return undefined;
+    projectOps.add(1, { op: 'working_directory_denied' });
+    return c.json(
+      {
+        success: false,
+        code: 'working-directory-not-granted',
+        error:
+          "Only this Station's operator, or a device the operator allowed to run commands, can choose a Project's folder. Nothing was saved.",
+      },
+      403,
+    );
+  }
+
   function integrityError(
     diagnostics: ReturnType<typeof validateProjectAgentScope>,
   ) {
@@ -768,6 +820,12 @@ export function createProjectRoutes(
       if (isolationRefusal) {
         return c.json({ success: false, error: isolationRefusal }, 403);
       }
+      const folderRefusal = await refuseUngrantedWorkingDirectoryWrite(
+        c,
+        body,
+        undefined,
+      );
+      if (folderRefusal) return folderRefusal;
       const project = await projectService.createProject(body);
       projectOps.add(1, { op: 'create' });
       return c.json({ success: true, data: project }, 201);
@@ -907,6 +965,12 @@ export function createProjectRoutes(
       if (isolationRefusal) {
         return c.json({ success: false, error: isolationRefusal }, 403);
       }
+      const folderRefusal = await refuseUngrantedWorkingDirectoryWrite(
+        c,
+        body,
+        async () => projectService.getProject(slug),
+      );
+      if (folderRefusal) return folderRefusal;
       const updated = await projectService.updateProject(slug, body);
       projectOps.add(1, { op: 'update' });
       return c.json({ success: true, data: updated });

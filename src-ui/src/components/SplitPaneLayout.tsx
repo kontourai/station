@@ -92,6 +92,11 @@ interface SplitPaneItem {
   group?: {
     id: string;
     label: string;
+    /**
+     * Start collapsed (#2312's older Drafts) rather than expanded. Selecting
+     * a member still reveals it.
+     */
+    collapsedByDefault?: boolean;
     /** Optional compact actions rendered beside the group toggle. */
     renderSummary?: (
       focusMember: (memberId: string) => void,
@@ -339,6 +344,22 @@ export function SplitPaneLayout({
   const [collapsedGroups, setCollapsedGroups] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
+  // A `collapsedByDefault` group is expanded only once the reader opens it;
+  // every other group is collapsed only once the reader closes it.
+  const [openedGroups, setOpenedGroups] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
+  const expandGroup = (groupId: string) => {
+    setCollapsedGroups((current) => {
+      if (!current.has(groupId)) return current;
+      const next = new Set(current);
+      next.delete(groupId);
+      return next;
+    });
+    setOpenedGroups((current) =>
+      current.has(groupId) ? current : new Set(current).add(groupId),
+    );
+  };
   const [pendingGroupMemberFocus, setPendingGroupMemberFocus] = useState<
     string | null
   >(null);
@@ -355,6 +376,11 @@ export function SplitPaneLayout({
       next.delete(selectedGroupId);
       return next;
     });
+    setOpenedGroups((current) =>
+      current.has(selectedGroupId)
+        ? current
+        : new Set(current).add(selectedGroupId),
+    );
   }, [items, selectedId]);
 
   useEffect(() => {
@@ -373,12 +399,7 @@ export function SplitPaneLayout({
   }, [pendingGroupMemberFocus]);
 
   const focusGroupMember = (groupId: string, memberId: string) => {
-    setCollapsedGroups((current) => {
-      if (!current.has(groupId)) return current;
-      const next = new Set(current);
-      next.delete(groupId);
-      return next;
-    });
+    expandGroup(groupId);
     setPendingGroupMemberFocus(memberId);
   };
   const storageKey = useMemo(
@@ -1049,7 +1070,9 @@ export function SplitPaneLayout({
                 const previousGroupId = items[i - 1]?.group?.id;
                 const groupStarts = group && group.id !== previousGroupId;
                 const groupExpanded = group
-                  ? !collapsedGroups.has(group.id)
+                  ? group.collapsedByDefault
+                    ? openedGroups.has(group.id)
+                    : !collapsedGroups.has(group.id)
                   : true;
                 const row = (
                   <button
@@ -1114,14 +1137,17 @@ export function SplitPaneLayout({
                           type="button"
                           className="split-pane__group-toggle"
                           aria-expanded={groupExpanded}
-                          onClick={() =>
-                            setCollapsedGroups((current) => {
+                          onClick={() => {
+                            const toggle = (current: ReadonlySet<string>) => {
                               const next = new Set(current);
                               if (next.has(group.id)) next.delete(group.id);
                               else next.add(group.id);
                               return next;
-                            })
-                          }
+                            };
+                            if (group.collapsedByDefault)
+                              setOpenedGroups(toggle);
+                            else setCollapsedGroups(toggle);
+                          }}
                         >
                           <span aria-hidden="true">
                             {groupExpanded ? '⌄' : '›'}

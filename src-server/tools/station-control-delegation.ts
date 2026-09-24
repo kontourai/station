@@ -22,6 +22,7 @@ import {
 } from '@kontourai/station-contracts/orchestration';
 import type { PrincipalRef } from '@kontourai/station-contracts/principal';
 import {
+  type ApprovalMode,
   type CapabilityDeliveryCapability,
   type CapabilityUndeliveredReason,
   type EngineId,
@@ -31,7 +32,11 @@ import {
   SESSION_VISIBILITY_METADATA_KEY,
   type SessionCapabilityDeliveryMetadata,
 } from '@kontourai/station-contracts/provider';
-import { isDeferredRetriableTurnError } from '@kontourai/station-contracts/runtime-events';
+import {
+  isDeferredRetriableTurnError,
+  isProviderTriggeredTurn,
+  PROVIDER_TURN_TRIGGER,
+} from '@kontourai/station-contracts/runtime-events';
 import {
   isSessionLifecycleState,
   isSessionLifecycleStateStopped,
@@ -71,6 +76,7 @@ import {
   matchVerifiedRemoteProjectPath,
   resolveExecutionTarget,
 } from '../services/execution-target/execution-target-resolver.js';
+import { approvalKnobSupported } from '../services/orchestration/approval-posture.js';
 import {
   DelegationAttemptCapacityError,
   DelegationAttemptClaimStore,
@@ -528,6 +534,12 @@ export interface DelegatedTaskEvent {
     | 'plan';
   createdAt?: string;
   turnId?: string;
+  /**
+   * #2324: `'provider'` on the start and terminal of a turn the engine
+   * opened on its own — a reply no caller asked for (for example after its
+   * background work finished). Absent on every turn a caller sent.
+   */
+  trigger?: 'provider';
   text?: string;
   truncated?: true;
   toolName?: string;
@@ -733,10 +745,11 @@ export function delegatedCapabilityDelivery(
  * the live watchdog observation (`turnProgress`) so a stale prior turn's
  * facts are never presented as current. Request/child/user metadata is
  * never a source. Adapters that declare no supervision omit this entirely.
- * A declaration with an idle window but no total budget (Muse's default:
- * no caller declares `turnTimeoutMs` today) is forwarded as exactly that —
- * `idleLimitMs` with no `deadlineAt`/`remainingMs`/`totalLimitMs` —
- * because the idle deadline is live and can still end the turn.
+ * Each bound is forwarded only when the adapter declared it: an idle window
+ * as `idleLimitMs`, a total budget as `deadlineAt`/`remainingMs`/
+ * `totalLimitMs`. A declaration with neither (Muse's default since #2269: no
+ * production caller declares `turnIdleTimeoutMs` or `turnTimeoutMs`) is
+ * forwarded as exactly that — the turn has no Station-imposed bound.
  */
 export interface DelegatedTurnSupervision {
   provider: string;
@@ -744,10 +757,10 @@ export interface DelegatedTurnSupervision {
   /** Milliseconds elapsed since turn start at read time (>= 0). */
   elapsedMs: number;
   /**
-   * Idle window: a full silence of verified activity (with no tool reported
-   * running) this long ends the turn.
+   * Idle window, only when one was declared: a full silence of verified
+   * activity (with no tool reported running) this long ends the turn.
    */
-  idleLimitMs: number;
+  idleLimitMs?: number;
   /**
    * Absolute wall-clock ceiling for the turn (ISO timestamp). Present only
    * with a declared total budget, together with `remainingMs` and
@@ -803,8 +816,10 @@ function optionalIsoTimestamp(value: unknown): string | undefined {
  * is Station-authored while event metadata from a non-owning adapter may
  * repeat caller input. Returns `undefined` when there is no usable
  * declaration (honest unknown) — including when the status event window no
- * longer contains the turn's start event after a long history. An idle-only
- * declaration (no total budget) is returned as idle-only.
+ * longer contains the turn's start event after a long history. Each bound
+ * is returned only when declared; a declaration with neither is returned
+ * with neither (no Station-imposed bound), and a bound that is present but
+ * malformed drops the whole declaration rather than being repaired.
  */
 export function delegatedTurnSupervision(
   session: Record<string, unknown>,
@@ -845,7 +860,7 @@ export function delegatedTurnSupervision(
   const idleLimitMs = optionalPositiveBoundedMs(supervision.idleLimitMs);
   const startedAt = optionalIsoTimestamp(supervision.startedAt);
   if (
-    idleLimitMs === undefined ||
+    (supervision.idleLimitMs !== undefined && idleLimitMs === undefined) ||
     startedAt === undefined ||
     typeof supervision.provider !== 'string' ||
     !supervision.provider
@@ -895,7 +910,7 @@ export function delegatedTurnSupervision(
     provider: supervision.provider,
     turnId: observedTurnId,
     elapsedMs: Math.max(0, nowMs - startedMs),
-    idleLimitMs,
+    ...(idleLimitMs === undefined ? {} : { idleLimitMs }),
     ...total,
     ...(lastProgressEventAt ? { lastProgressEventAt } : {}),
   };
@@ -3096,6 +3111,17 @@ function commonTaskEvent(
     ...(optionalString(event.turnId)
       ? { turnId: optionalString(event.turnId) }
       : {}),
+    // #2324: forwarded, never inferred from a turn id or a missing prompt.
+    ...(typeof event.method === 'string' &&
+    isProviderTriggeredTurn({
+      method: event.method,
+      metadata:
+        event.metadata && typeof event.metadata === 'object'
+          ? (event.metadata as Record<string, unknown>)
+          : undefined,
+    })
+      ? { trigger: PROVIDER_TURN_TRIGGER }
+      : {}),
   };
 }
 
@@ -5008,7 +5034,11 @@ export async function executeExecutionTargetMessage(
           : '/api/orchestration/chat',
       {
         ...remoteInput,
-        target: { ...pinnedTarget, environment: { kind: 'current' } },
+        target: {
+          ...pinnedTarget,
+          environment: { kind: 'current' },
+          ...remoteApprovalCarry(pinnedTarget.model, input.setApprovalMode),
+        },
       },
       'The selected Station could not execute the Agent message',
     );
@@ -5405,6 +5435,13 @@ export async function executeExecutionTargetMessage(
     },
     nativeMemoryOwnsTranscript:
       orchestrationService.supportsNativeMemoryContinuity?.() === true,
+    // #2436: a carried approval pick is recorded here, on this Station,
+    // before the send's session start and turn. An engine with no approval
+    // knob records nothing (the pick would be a request nothing honours).
+    recordApprovalMode: (_access: EnvironmentAccess, pick) =>
+      approvalKnobSupported(pick.provider)
+        ? orchestrationService.recordApprovalModeDecision(pick)
+        : undefined,
     sendTurn: async (_access: EnvironmentAccess, turnInput, context) => {
       const command = { type: 'sendTurn' as const, input: turnInput };
       const dispatchContext = dispatchContextForAuthority(
@@ -5491,6 +5528,28 @@ export type ContinueForegroundMessageInput = Omit<
   model?: ExecutionModelRequest;
 };
 
+/**
+ * #2436 HIGH-1: an approval pick sent to another Station travels twice. As
+ * `setApprovalMode`, a Station that speaks the command records it (and
+ * reports it back). On `model.options.approvalMode`, a Station that predates
+ * the command still applies it to the turn, as it always did; one that
+ * speaks it applies that channel only while nothing is recorded, so the
+ * duplicate is harmless there. An older Station's schema strips the unknown
+ * key, which is why the second channel is needed at all.
+ */
+function remoteApprovalCarry(
+  model: ExecutionModelRequest | undefined,
+  pick: ApprovalMode | undefined,
+): { model?: ExecutionModelRequest } {
+  if (!pick) return {};
+  return {
+    model: {
+      ...(model ?? {}),
+      options: { ...(model?.options ?? {}), approvalMode: pick },
+    },
+  };
+}
+
 /** Continue only through the Environment+Agent binding persisted at start. */
 /**
  * The workspace a resumed conversation runs in, rebuilt from its own session
@@ -5568,6 +5627,15 @@ export async function continueExecutionTargetMessage(
           : {}),
         ...(input.clientTurnId ? { clientTurnId: input.clientTurnId } : {}),
         ...(input.model ? { model: input.model } : {}),
+        ...remoteApprovalCarry(input.model, input.setApprovalMode),
+        ...(input.setApprovalMode
+          ? {
+              setApprovalMode: input.setApprovalMode,
+              ...(input.setApprovalModeBasedOn !== undefined
+                ? { setApprovalModeBasedOn: input.setApprovalModeBasedOn }
+                : {}),
+            }
+          : {}),
       },
       'Station could not continue the Agent conversation',
     );

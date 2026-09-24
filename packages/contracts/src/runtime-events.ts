@@ -2,7 +2,11 @@ import type { PersistedChatAttachment } from './chat-attachment.js';
 import type { ChildWorkDelta } from './child-work.js';
 import type { ClientOrigin } from './client-origin.js';
 import type { PrincipalRef } from './principal.js';
-import { type EngineId, PROVIDER_CODEX } from './provider.js';
+import {
+  type ApprovalMode,
+  type EngineId,
+  PROVIDER_CODEX,
+} from './provider.js';
 import type {
   SessionLifecycleState,
   SessionTransitionReason,
@@ -414,6 +418,8 @@ export interface TurnAbortedEvent extends CanonicalRuntimeEventBase {
    * label-vs-derivation defect in a new place.
    */
   recoveryTerminal?: true;
+  /** #2324: carries `trigger` for a provider-triggered turn's abort. */
+  metadata?: Record<string, unknown>;
 }
 
 /**
@@ -436,6 +442,24 @@ export interface SessionStopSettledEvent extends CanonicalRuntimeEventBase {
    * forward sets it.
    */
   initiatedBy?: 'user' | 'stall';
+}
+
+/**
+ * #2436: a user's approval-posture decision, recorded by Station (never by an
+ * engine) when it receives a `setApprovalMode` command or a send that carries
+ * one. Its global sequence orders it against every other decision; the latest
+ * one across the conversation is what the server applies at the next session
+ * start and turn start (`OrchestrationService.resolveApprovalMode`). It is a
+ * decision, not a report: what the engine actually applied is still reported
+ * on `session.configured` / `turn.started` metadata.
+ *
+ * `'connection-default'` records a Default pick. The server resolves it to a
+ * concrete posture at application time; the event does not claim one.
+ */
+export interface SessionApprovalModeSetEvent extends CanonicalRuntimeEventBase {
+  method: 'session.approval-mode-set';
+  sessionId: string;
+  approvalMode: ApprovalMode;
 }
 
 export interface ContentTextDeltaEvent extends CanonicalRuntimeEventBase {
@@ -603,6 +627,25 @@ export interface ToolCompletedEvent extends CanonicalRuntimeEventBase {
   /** See {@link ToolProgressEvent.outputReceipt}. */
   outputReceipt?: ToolOutputReceipt;
   /**
+   * Images the tool returned to the model — a `Read` of a PNG, an MCP
+   * screenshot, Codex's `imageView` — in the same shape a user's pasted
+   * attachment takes on `turn.started`.
+   *
+   * An adapter publishes them with inline `dataUrl` bytes; EventStore's
+   * ingress replaces those with a content-addressed `blobRef` and binds the
+   * blob to this thread before the event persists or reaches SSE, exactly as
+   * it does for `turn.started`. Every read therefore carries `blobRef`
+   * without `dataUrl`, and a client fetches the bytes from
+   * `GET /api/attachments/:ref`. An entry with neither is an image whose
+   * bytes could not be stored: it names what the tool returned and claims no
+   * preview.
+   *
+   * Only the chat image allowlist within the chat attachment limits is ever
+   * published here; an adapter says what it dropped in the tool's own output
+   * text instead (see `model-image-attachments.ts`).
+   */
+  attachments?: PersistedChatAttachment[];
+  /**
    * Set by, and only by, Station's pre-tool policy evaluator
    * (`pre-tool-policy.ts`'s `deny()` — the sole writer in the tree; both
    * engine adapters copy it verbatim and nothing infers it).
@@ -638,6 +681,11 @@ export interface RuntimeErrorEvent extends CanonicalRuntimeEventBase {
   code?: string;
   retriable?: boolean;
   details?: Record<string, unknown>;
+  /**
+   * #2324: carries `trigger` when this error ends a turn the engine opened
+   * on its own (see {@link PROVIDER_TURN_TRIGGER}).
+   */
+  metadata?: Record<string, unknown>;
 }
 
 /**
@@ -667,6 +715,36 @@ export function isDeferredRetriableTurnError(
     event.method === 'runtime.error' &&
     event.provider === PROVIDER_CODEX &&
     event.retriable === true
+  );
+}
+
+/**
+ * #2324: the `metadata.trigger` value an adapter stamps on the turn events of
+ * a turn the ENGINE opened — a reply it produced on its own (for example after
+ * background work finished) that no user or caller dispatched. Stamped on
+ * that turn's `turn.started` and on its terminal (`turn.completed`,
+ * `turn.aborted`, or the `runtime.error` a failed one ends with). Such a
+ * turn has no prompt of its own.
+ */
+export const PROVIDER_TURN_TRIGGER = 'provider';
+
+/**
+ * #2324: whether a turn event belongs to a turn the engine opened on its own
+ * (see {@link PROVIDER_TURN_TRIGGER}). The ONE derivation every consumer
+ * reads — recovery (never replay one), message counts, inventory, delegation,
+ * notifications — so "provider" is never inferred from a turn id's prefix or
+ * from a missing prompt.
+ */
+export function isProviderTriggeredTurn(event: {
+  method: string;
+  metadata?: Record<string, unknown>;
+}): boolean {
+  return (
+    (event.method === 'turn.started' ||
+      event.method === 'turn.completed' ||
+      event.method === 'turn.aborted' ||
+      event.method === 'runtime.error') &&
+    event.metadata?.trigger === PROVIDER_TURN_TRIGGER
   );
 }
 
@@ -1035,6 +1113,7 @@ export type CanonicalRuntimeEvent =
   | TurnCompletedEvent
   | TurnAbortedEvent
   | SessionStopSettledEvent
+  | SessionApprovalModeSetEvent
   | ContentTextDeltaEvent
   | ContentReasoningDeltaEvent
   | ToolStartedEvent

@@ -187,12 +187,18 @@ Returns actions for a specific chat session (stop, clear, etc.).
 
 Returns the current state of a specific chat session (loading, messages, etc.).
 
-#### `useSendToChat(agentSlug: string): (message: string) => void`
+#### `useSendToChat(agent: QualifiedPluginAgentId | AgentId): (message: string) => void`
 
-Convenience hook. Returns a function that creates a session, opens the dock, and sends a message — all in one call. Resolves short agent names via layout context.
+Convenience hook. Returns a function that creates a session, opens the dock, and sends a message — all in one call.
+
+Name an Agent your plugin contributes as `'<plugin>:<agent>'`. The hook derives
+the Agent's identity from it and sends only when the named plugin contributed
+that Agent; a reference naming another plugin is refused. A clean Agent id from
+`agentId()` in `@kontourai/station-contracts/agent-identity` also works. When
+no Agent matches, the function warns and sends nothing.
 
 ```tsx
-const sendToChat = useSendToChat('my-agent');
+const sendToChat = useSendToChat('my-plugin:assistant');
 sendToChat('Summarize this account');
 ```
 
@@ -200,9 +206,13 @@ sendToChat('Summarize this account');
 
 ### Navigation Hooks
 
-#### `useNavigation(): NavigationState & { setDockState, setActiveChat, selectedWorkspace, ... }`
+#### `useNavigation(): SDKNavigation`
 
-Returns the full navigation state and setters.
+Returns the navigation a plugin may read and drive: `pathname`,
+`selectedProject`, `selectedProjectLayout`, `selectedAgent`,
+`activeConversation`, `activeChat`, `activeTab`, `isDockOpen` and
+`isDockMaximized`, plus `navigate`, `setProject`, `setLayout`, `setLayoutTab`,
+`setConversation`, `setActiveChat` and `setDockState`.
 
 #### `useDockState(): { isOpen: boolean; setOpen: (v: boolean) => void; toggle: () => void }`
 
@@ -216,15 +226,15 @@ const { isOpen, toggle } = useDockState();
 
 ### Auth & Config Hooks
 
-#### `useAuth()`
+#### `useAuth(): SDKAuthState`
 
 Returns the current auth state.
 
 ```ts
 {
-  status: 'authenticated' | 'unauthenticated' | 'missing';
-  user: { id: string; name: string; email: string } | null;
-  expiresAt: number | null;
+  status: 'valid' | 'expiring' | 'expired' | 'missing' | 'not-configured' | 'loading';
+  user: { alias: string; name?: string; title?: string; email?: string; profileUrl?: string } | null;
+  expiresAt: Date | null;
   provider: string;
   renew: () => Promise<void>;
   isRenewing: boolean;
@@ -319,15 +329,16 @@ Returns models available for the current user/layout.
 
 ### Knowledge Hooks
 
-#### `useKnowledgeDocs(projectSlug: string, namespace?: string): KnowledgeDoc[]`
+#### `useKnowledgeDocs(projectSlug: string, namespace?: string)`
 
-Returns knowledge documents for a project, optionally filtered by namespace.
+Returns a query whose `data` is the project's `KnowledgeDocumentMeta[]`,
+optionally filtered by namespace.
 
-#### `useKnowledgeNamespaces(projectSlug: string): KnowledgeNamespace[]`
+#### `useKnowledgeNamespaces(projectSlug: string)`
 
-Returns knowledge namespaces for a project.
+Returns a query whose `data` is the project's `KnowledgeNamespaceConfig[]`.
 
-#### `useKnowledgeSearch(projectSlug: string, query: string, namespace?: string): SearchResult[]`
+#### `useKnowledgeSearch(projectSlug: string, query: string, namespace?: string)`
 
 Returns semantic search results from a project's knowledge base.
 
@@ -335,9 +346,24 @@ Returns semantic search results from a project's knowledge base.
 
 ### Notification Hooks
 
-#### `useToast()`
+#### `useToast(): SDKToast`
 
-Returns `{ showToast(message, type, duration?) }`. Types: `'info' | 'success' | 'warning' | 'error'`.
+Returns `{ showToast, dismissToast }`. `showToast` takes either spelling and
+returns the toast id:
+
+```tsx
+const { showToast } = useToast();
+showToast('Saved', 'success');
+showToast({
+  message: 'Saved',
+  type: 'success',
+  duration: 8000,
+  actions: [{ label: 'View', onClick: openNotes }],
+});
+```
+
+Types: `'info' | 'success' | 'warning' | 'error'`. The object form takes one
+`action`, several `actions`, or both.
 
 #### `useNotifications()`
 
@@ -692,7 +718,17 @@ Fetches knowledge namespaces for a project.
 
 ### `useKnowledgeDocContentQuery(projectSlug, docId, namespace?, config?)`
 
-Fetches the content of a specific knowledge document. Disabled when `docId` is null.
+Fetches the content of a specific knowledge document as a `string`. Disabled when `docId` is null.
+
+### `useKnowledgeTreeQuery(projectSlug, namespace, config?)`
+
+Fetches a namespace's directory tree as one root `KnowledgeTreeNode`; its
+`children` are the top-level entries.
+
+### `useKnowledgeFilteredQuery(projectSlug, namespace, filters, config?)`
+
+Fetches the namespace's `KnowledgeDocumentMeta[]` matching `filters`, such as
+`{ metadata: { status: 'draft' } }`.
 
 ### `useKnowledgeScanMutation(projectSlug)`
 
@@ -2335,6 +2371,8 @@ interface AgentSummary {
   guardrails?: AgentGuardrails;
   tools?: AgentTools;
   ui?: AgentUIConfig;
+  /** The installed plugin that contributed this Agent; absent for any other. */
+  plugin?: string;
 }
 
 interface Agent extends AgentSummary {}
@@ -2374,14 +2412,8 @@ interface Conversation {
   lastMessage?: string;
 }
 
-interface NavigationState {
-  currentView: string;
-  selectedLayout?: string;
-  selectedAgent?: string;
-  dockState: boolean;
-  dockHeight: number;
-  dockMaximized: boolean;
-}
+/** @deprecated Alias of `SDKNavigation`, what `useNavigation()` returns. */
+type NavigationState = SDKNavigation;
 
 interface InvokeOptions {
   conversationId?: string;

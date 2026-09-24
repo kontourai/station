@@ -15,6 +15,10 @@ import {
   WORKSPACE_CODING_TERMINAL_PANE_DESCRIPTOR,
 } from '@kontourai/station-contracts/workspace-coding-panels';
 import {
+  WORKSPACE_DEVICE_PANE_DESCRIPTOR,
+  WORKSPACE_DEVICE_PANE_INSTANCE,
+} from '@kontourai/station-contracts/workspace-device-pane';
+import {
   createWorkspacePlanPaneInstance,
   createWorkspaceReadinessPaneInstance,
   createWorkspaceTrustPaneInstance,
@@ -192,6 +196,10 @@ vi.mock('../../workspace-panes/useWorkspacePaneBoundIdentity', () => ({
 }));
 vi.mock('../../platform/native', () => ({
   nativePlatformPromise: new Promise(() => {}),
+}));
+const showSurfaceMock = vi.fn();
+vi.mock('../../contexts/useShowSurface', () => ({
+  useShowSurface: () => showSurfaceMock,
 }));
 vi.mock('../../workspace-panes/WorkspacePaneHost', () => ({
   WorkspacePaneHost: ({
@@ -1479,7 +1487,9 @@ describe('ProjectLayoutRenderer', () => {
    * modal, with a host whose `open` returns each refusal the controller can
    * produce, and assert the sentence the reader gets.
    */
-  function renderPickerHost() {
+  function renderPickerHost(
+    extraEntries: ReadonlyArray<Record<string, unknown>> = [],
+  ) {
     const coding = paneAdaptationFromLayoutTab(
       {
         id: 'coding',
@@ -1571,6 +1581,7 @@ describe('ProjectLayoutRenderer', () => {
           },
           descriptor: unrenderableDescriptor,
         },
+        ...extraEntries,
       ],
     });
     layoutQueryMock.mockReturnValue({ data: { type: 'coding', config: {} } });
@@ -1578,6 +1589,82 @@ describe('ProjectLayoutRenderer', () => {
     render(<ProjectLayoutRenderer projectSlug="demo" layoutSlug="coding" />);
     return hostMock.mock.lastCall?.[0];
   }
+
+  /**
+   * #2465: the Device pane is host-global and dock-only (its descriptor
+   * declares `supportedRegions: ['docked']` and no Project context). The
+   * catalog carries it because a dock region resolves it there, but a
+   * layout's picker places panes in the layout's own regions, where the
+   * host then refuses the Project-less occurrence as "belongs to a different
+   * Project". So the picker does not offer it.
+   */
+  test('does not offer the dock-only Device pane in a layout (#2465)', () => {
+    const hostProps = renderPickerHost([
+      {
+        instance: WORKSPACE_DEVICE_PANE_INSTANCE,
+        availability: {
+          state: 'available',
+          reason: { code: 'ready', source: 'resolver' },
+        },
+        descriptor: WORKSPACE_DEVICE_PANE_DESCRIPTOR,
+      },
+    ]);
+    act(() => {
+      hostProps.onOpenActionChange({ open: vi.fn(() => ({ ok: true })) });
+      hostProps.onOpenCatalog({ type: 'add', targetGroupId: 'root' });
+    });
+    const dialog = screen.getByRole('dialog', { name: 'Add workspace pane' });
+    expect(
+      within(dialog).getByRole('button', { name: 'Open File Preview' }),
+    ).toBeTruthy();
+    expect(within(dialog).queryByText('Device')).toBeNull();
+    expect(
+      within(dialog).queryByRole('button', { name: 'Open Device' }),
+    ).toBeNull();
+  });
+
+  /**
+   * #2465 follow-on: a layout that already holds the Device pane (from before
+   * the picker stopped offering it) says where it lives — not "belongs to a
+   * different Project" — keyed on the picker's own predicate, and offers to
+   * open it in the dock or remove it from the layout.
+   */
+  test('a Device pane already in a layout says it lives in the dock, and can be opened there or removed', () => {
+    const deviceEntry = {
+      instance: WORKSPACE_DEVICE_PANE_INSTANCE,
+      availability: {
+        state: 'available',
+        reason: { code: 'ready', source: 'resolver' },
+      },
+      descriptor: WORKSPACE_DEVICE_PANE_DESCRIPTOR,
+    };
+    const first = renderPickerHost([deviceEntry]);
+    const close = vi.fn(async () => {});
+    act(() => {
+      first.onOpenActionChange({ open: vi.fn(), close });
+      first.onDocumentChange({
+        instances: [
+          { instanceId: 'instance:other' },
+          WORKSPACE_DEVICE_PANE_INSTANCE,
+        ],
+      });
+    });
+    const hostProps = hostMock.mock.lastCall?.[0];
+    const slot = within(
+      render(<>{hostProps.renderPane(WORKSPACE_DEVICE_PANE_INSTANCE)}</>)
+        .container,
+    );
+    expect(slot.getByText('The Device pane lives in the dock')).toBeTruthy();
+    expect(
+      slot.queryByText('This pane belongs to a different Project.'),
+    ).toBeNull();
+    fireEvent.click(slot.getByRole('button', { name: 'Open in dock' }));
+    expect(showSurfaceMock).toHaveBeenCalledWith('device');
+    fireEvent.click(slot.getByRole('button', { name: 'Remove from layout' }));
+    expect(close).toHaveBeenCalledWith(
+      WORKSPACE_DEVICE_PANE_INSTANCE.instanceId,
+    );
+  });
 
   test.each([
     [

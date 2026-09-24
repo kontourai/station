@@ -241,7 +241,7 @@ describe('native row buttons use phrasing content', () => {
     const onSearch = vi
       .fn()
       .mockResolvedValue([
-        { id: 'r-1', name: 'Acme', website: 'acme.test', type: 'account' },
+        { id: 'r-1', name: 'Acme', website: 'acme.test', kind: 'account' },
       ]);
     const { container } = render(
       <SearchModal

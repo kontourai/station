@@ -34,8 +34,11 @@ export { sortByAccessFrequency };
 
 const WORKSPACE = 'enterprise';
 
-/** The active provider of one type, typed by ProviderTypeMap. */
-function provider<K extends ProviderType>(type: K): ProviderTypeMap[K] {
+/**
+ * The active provider of one type, typed by ProviderTypeMap. Read it per call:
+ * the workspace's configured provider can change after this module loads.
+ */
+export function provider<K extends ProviderType>(type: K): ProviderTypeMap[K] {
   return getProvider<ProviderTypeMap[K]>(WORKSPACE, type);
 }
 

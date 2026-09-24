@@ -21,7 +21,6 @@ export interface MeetingDetails extends CalendarEvent {
 
 export interface SFDCContext {
   accounts?: any[];
-  campaigns?: any[];
   opportunities?: any[];
   tasks?: any[];
   suggestedKeyword?: string;

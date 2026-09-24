@@ -8,7 +8,10 @@ import {
   dispatchHumanInput,
   LiveSurfaceRegistry,
 } from '../../live-surface/registry.js';
-import type { DeviceHostActions } from '../device-host-tools.js';
+import {
+  type DeviceHostActions,
+  DeviceToolError,
+} from '../device-host-tools.js';
 import type { DeviceHubAccessConnection } from '../device-hub-endpoint.js';
 import {
   type DeviceHubAccess,
@@ -738,6 +741,33 @@ describe('Android', () => {
     });
   });
 
+  test('a rotation the host timed out reaches the client as dispatch-failed, like any failed input (#2442 round 3, N2)', async () => {
+    // An SSH-host rotation whose slot wait outlives its deadline rejects
+    // with DeviceToolError('tool-timeout'), not the producer's own
+    // dispatch-timeout. The registry reports EVERY producer rejection as
+    // `dispatch-failed`, which the pane shows as "Your input could not be
+    // delivered." — the same copy either way.
+    const h = android({
+      actions: {
+        rotateAndroid: async () => {
+          throw new DeviceToolError('tool-timeout', 'the tool timed out');
+        },
+      },
+    });
+    await openInput(h);
+    const registry = new LiveSurfaceRegistry();
+    registry.register(h.producer, { authorize: () => true });
+    const entry = registry.get('device:android:test')!;
+    const result = await dispatchHumanInput(
+      entry,
+      { kind: 'human', principal: 'operator', device: 'd1' },
+      0,
+      [{ kind: 'rotate', orientation: 'landscape-left' }],
+    );
+    expect(result).toMatchObject({ ok: false, code: 'dispatch-failed' });
+    await registry.dispose();
+  });
+
   test('buttons and text use the serve-emu vocabulary; rotation runs the typed action', async () => {
     const rotateAndroid = vi.fn<DeviceHostActions['rotateAndroid']>(
       async () => {},
@@ -759,6 +789,12 @@ describe('Android', () => {
       'emulator-5554',
       'landscape-left',
       200,
+      // The dispatch deadline's signal, and the lease asked again once the
+      // host can run it (#2442 review M1).
+      expect.objectContaining({
+        signal: expect.any(AbortSignal),
+        beforeRun: expect.any(Function),
+      }),
     );
   });
 });

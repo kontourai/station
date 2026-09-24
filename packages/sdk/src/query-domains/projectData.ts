@@ -1,3 +1,8 @@
+import type {
+  KnowledgeDocumentMeta,
+  KnowledgeNamespaceConfig,
+  KnowledgeTreeNode,
+} from '@kontourai/station-contracts/knowledge';
 import {
   type QueryClient,
   useMutation,
@@ -51,19 +56,40 @@ export type GitStatusResult =
       repoRoot?: string;
     };
 
+/**
+ * Where a git read acts (#2412): the Project and the folder inside it. The
+ * server refuses a folder outside the named Project, so a read without both
+ * does not run.
+ */
+export interface GitReadLocation {
+  projectSlug: string;
+  /** The folder as the client names it; the server expands and confines it. */
+  workingDir: string;
+}
+
+function gitReadQuery(location: GitReadLocation): string {
+  return `projectSlug=${encodeURIComponent(location.projectSlug)}&path=${encodeURIComponent(location.workingDir)}`;
+}
+
+function isGitReadLocation(
+  location: GitReadLocation | null | undefined,
+): location is GitReadLocation {
+  return !!location?.projectSlug && !!location.workingDir;
+}
+
 export function useGitStatusQuery(
-  workingDirectory: string | null | undefined,
+  location: GitReadLocation | null | undefined,
   config?: QueryConfig<any>,
 ) {
   return useApiQuery<GitStatusResult | null>(
-    ['git-status', workingDirectory ?? ''],
+    ['git-status', location?.workingDir ?? ''],
     async () => {
-      if (!workingDirectory) {
+      if (!isGitReadLocation(location)) {
         return null;
       }
       const apiBase = await _getApiBase();
       const response = await authenticatedFetch(
-        `${apiBase}/api/coding/git/status?path=${encodeURIComponent(workingDirectory)}`,
+        `${apiBase}/api/coding/git/status?${gitReadQuery(location)}`,
       );
       const result = await response.json();
       if (!result.success) {
@@ -73,14 +99,14 @@ export function useGitStatusQuery(
     },
     {
       ...config,
-      enabled: !!workingDirectory && (config?.enabled ?? true),
+      enabled: isGitReadLocation(location) && (config?.enabled ?? true),
       staleTime: config?.staleTime ?? 10_000,
     },
   );
 }
 
 export function useGitLogQuery(
-  workingDirectory: string | null | undefined,
+  location: GitReadLocation | null | undefined,
   count = 5,
   config?: QueryConfig<any>,
 ) {
@@ -92,14 +118,14 @@ export function useGitLogQuery(
       message: string;
     }>
   >(
-    ['git-log', workingDirectory ?? '', count],
+    ['git-log', location?.workingDir ?? '', count],
     async () => {
-      if (!workingDirectory) {
+      if (!isGitReadLocation(location)) {
         return [];
       }
       const apiBase = await _getApiBase();
       const response = await authenticatedFetch(
-        `${apiBase}/api/coding/git/log?path=${encodeURIComponent(workingDirectory)}&count=${count}`,
+        `${apiBase}/api/coding/git/log?${gitReadQuery(location)}&count=${count}`,
       );
       const result = await response.json();
       if (!result.success) {
@@ -109,7 +135,7 @@ export function useGitLogQuery(
     },
     {
       ...config,
-      enabled: !!workingDirectory && (config?.enabled ?? true),
+      enabled: isGitReadLocation(location) && (config?.enabled ?? true),
       staleTime: config?.staleTime ?? 30_000,
     },
   );
@@ -117,7 +143,7 @@ export function useGitLogQuery(
 
 export function useKnowledgeNamespacesQuery(
   projectSlug: string,
-  config?: QueryConfig<any>,
+  config?: QueryConfig<KnowledgeNamespaceConfig[]>,
 ) {
   return useQuery({
     ...knowledgeQueries.namespaces(projectSlug),
@@ -129,7 +155,7 @@ export function useKnowledgeNamespacesQuery(
 export function useKnowledgeDocsQuery(
   projectSlug: string,
   namespace?: string,
-  config?: QueryConfig<any>,
+  config?: QueryConfig<KnowledgeDocumentMeta[]>,
 ) {
   return useQuery({
     ...knowledgeQueries.list(projectSlug, namespace),
@@ -289,7 +315,7 @@ export function useKnowledgeScanMutation(projectSlug: string) {
 export function useKnowledgeTreeQuery(
   projectSlug: string,
   namespace: string,
-  config?: QueryConfig<any>,
+  config?: QueryConfig<KnowledgeTreeNode>,
 ) {
   return useQuery({
     ...knowledgeQueries.tree(projectSlug, namespace),
@@ -302,7 +328,7 @@ export function useKnowledgeFilteredQuery(
   projectSlug: string,
   namespace: string,
   filters: Record<string, any>,
-  config?: QueryConfig<any>,
+  config?: QueryConfig<KnowledgeDocumentMeta[]>,
 ) {
   return useQuery({
     ...knowledgeQueries.filtered(projectSlug, namespace, filters),

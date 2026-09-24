@@ -353,8 +353,8 @@ function formatCreateSummary(handle: DelegatedTaskHandle): string {
  * #2269: renders the serving Station's forwarded supervision facts — the
  * effective absolute budget, remaining time, and idle window for the current
  * turn. No forwarded supervision renders nothing (honest unknown, never a
- * client-side invention); an idle-only supervision renders "Turn budget:
- * none declared for this turn" plus its idle limit.
+ * client-side invention); a bound the turn did not declare renders as "none
+ * declared for this turn".
  */
 function supervisionLines(
   supervision: DelegatedTaskSnapshot['supervision'],
@@ -369,13 +369,16 @@ function supervisionLines(
         `(${formatDurationMs(remainingMs)} remaining, ` +
         `deadline ${deadlineAt})`
       : 'Turn budget: none declared for this turn',
-    `Idle limit: ${formatDurationMs(supervision.idleLimitMs)} ` +
-      `with no verified protocol activity${
-        supervision.lastProgressEventAt
-          ? ` (watchdog last observed activity at ${supervision.lastProgressEventAt}; ` +
-            `no progress observed since — the turn may be working quietly)`
-          : ''
-      }`,
+    `${
+      supervision.idleLimitMs !== undefined
+        ? `Idle limit: ${formatDurationMs(supervision.idleLimitMs)} with no verified protocol activity`
+        : 'Idle limit: none declared for this turn'
+    }${
+      supervision.lastProgressEventAt
+        ? ` (watchdog last observed activity at ${supervision.lastProgressEventAt}; ` +
+          `no progress observed since — the turn may be working quietly)`
+        : ''
+    }`,
   ];
   return lines;
 }

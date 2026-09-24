@@ -337,6 +337,7 @@ describe('ChatInputArea', () => {
             input,
             onInputChange: setInput,
             workingDirectory: '/repo',
+            mentionProjectSlug: 'station',
             mentionRequestScope: {
               apiBase: 'http://station.test',
               authorityKey: 'owner',
@@ -395,6 +396,7 @@ describe('ChatInputArea', () => {
             onSend,
             onHistoryUp,
             workingDirectory: '/repo',
+            mentionProjectSlug: 'station',
             mentionRequestScope: {
               apiBase: 'http://station.test',
               authorityKey: 'owner',
@@ -434,6 +436,7 @@ describe('ChatInputArea', () => {
       input: '',
       onInputChange,
       workingDirectory: '/repo',
+      mentionProjectSlug: 'station',
       mentionRequestScope: {
         apiBase: 'http://station.test',
         authorityKey: 'owner',
@@ -476,6 +479,7 @@ describe('ChatInputArea', () => {
     renderChatInputArea({
       input: `Review ${mention}`,
       workingDirectory: '/repo/station',
+      mentionProjectSlug: 'station',
       mentionRequestScope: {
         apiBase: 'http://station.test',
         authorityKey: 'owner',
@@ -507,6 +511,7 @@ describe('ChatInputArea', () => {
     renderChatInputArea({
       input: `Review ${mention} next`,
       workingDirectory: '/repo/station',
+      mentionProjectSlug: 'station',
       mentionRequestScope: {
         apiBase: 'http://station.test',
         authorityKey: 'owner',
@@ -540,6 +545,7 @@ describe('ChatInputArea', () => {
       renderChatInputArea({
         input: `Review ${mention} next`,
         workingDirectory: '/repo/station',
+        mentionProjectSlug: 'station',
         mentionRequestScope: {
           apiBase: 'http://station.test',
           authorityKey: 'owner',

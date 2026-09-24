@@ -2630,3 +2630,94 @@ describe('#2316 retired and cancelled cards, and subagent requests', () => {
     }
   });
 });
+
+describe('projectRuntimeEventsToMessages — images a tool returned', () => {
+  const screenshot = {
+    kind: 'image' as const,
+    name: 'image-1.png',
+    mimeType: 'image/png' as const,
+    size: 68,
+    blobRef: `sha256-${'a'.repeat(64)}`,
+  };
+
+  it('places the image directly after its tool row and before later prose', () => {
+    const messages = projectRuntimeEventsToMessages([
+      ev({ method: 'turn.started', turnId: 'shot', prompt: 'screenshot it' }),
+      ev({
+        method: 'tool.started',
+        turnId: 'shot',
+        toolCallId: 'cap',
+        toolName: 'screenshot',
+        arguments: {},
+      }),
+      ev({
+        eventId: 'cap-done',
+        method: 'tool.completed',
+        turnId: 'shot',
+        toolCallId: 'cap',
+        toolName: 'screenshot',
+        status: 'success',
+        attachments: [screenshot],
+      } as never),
+      ev({
+        method: 'content.text-delta',
+        turnId: 'shot',
+        delta: 'Here it is.',
+      }),
+      ev({ method: 'turn.completed', turnId: 'shot' }),
+    ]);
+    const assistant = messages.find((m) => m.role === 'assistant')!;
+    expect(assistant.parts.map((part) => part.type)).toEqual([
+      'tool-invocation',
+      'file',
+      'text',
+    ]);
+    expect(assistant.parts[1]).toEqual({
+      type: 'file',
+      blobRef: screenshot.blobRef,
+      mediaType: 'image/png',
+      name: 'image-1.png',
+      toolCallId: 'cap',
+      sourceEventId: 'cap-done',
+    });
+  });
+
+  it("a late result's image lands on the earlier turn's row, once", () => {
+    const late = ev({
+      eventId: 'late-done',
+      method: 'tool.completed',
+      turnId: 'first',
+      toolCallId: 'bg',
+      toolName: 'screenshot',
+      status: 'success',
+      attachments: [screenshot],
+    } as never);
+    const messages = projectRuntimeEventsToMessages([
+      ev({ method: 'turn.started', turnId: 'first', prompt: 'go' }),
+      ev({
+        method: 'tool.started',
+        turnId: 'first',
+        toolCallId: 'bg',
+        toolName: 'screenshot',
+        arguments: {},
+      }),
+      ev({ method: 'turn.completed', turnId: 'first' }),
+      ev({ method: 'turn.started', turnId: 'second', prompt: 'next' }),
+      late,
+      // A replayed copy of the same terminal must not double the image.
+      late,
+      ev({ method: 'turn.completed', turnId: 'second' }),
+    ]);
+    const assistants = messages.filter((m) => m.role === 'assistant');
+    expect(assistants[0]!.parts.map((part) => part.type)).toEqual([
+      'tool-invocation',
+      'file',
+    ]);
+    expect(
+      assistants
+        .slice(1)
+        .flatMap((m) => m.parts)
+        .filter((p) => p.type === 'file'),
+    ).toEqual([]);
+  });
+});

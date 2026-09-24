@@ -19,13 +19,23 @@ import {
 import { configureRuntimeHttp } from '../../runtime/bootstrap/runtime-http.js';
 import { isRuntimeRequestPrincipalCurrent } from '../../security/runtime-request-security.js';
 import {
+  authorizeDeviceSurfaceAction,
+  type DeviceAccess,
+  deviceAccessFromShares,
+  failClosedDeviceAccess,
+} from '../../services/devices/device-access.js';
+import { DeviceHostBusyError } from '../../services/devices/device-shares.js';
+import {
   claimAgentControl,
   type LiveSurfaceAuthorizer,
   LiveSurfaceRegistry,
   releaseAgentControl,
 } from '../../services/live-surface/registry.js';
 import { EventBus } from '../../services/orchestration/event-bus.js';
-import { createLiveSurfaceRoutes } from '../live-surface.js';
+import {
+  createLiveSurfaceRoutes,
+  type LiveSurfaceRouteOptions,
+} from '../live-surface.js';
 
 const SURFACE = 'browser:session-1';
 const base = `/api/live-surfaces/${encodeURIComponent(SURFACE)}`;
@@ -35,6 +45,10 @@ function harness(
     register?: boolean;
     authorize?: LiveSurfaceAuthorizer;
     dispatchTimeoutMs?: number;
+    routes?: Pick<
+      LiveSurfaceRouteOptions,
+      'now' | 'viewRecheckWaitMs' | 'viewBusyGraceMs'
+    >;
   } = {},
 ) {
   const credentials = new Map([
@@ -107,6 +121,7 @@ function harness(
           : null;
       },
       principalRecheckMs: 0,
+      ...options.routes,
     }),
   );
   const request = (
@@ -630,5 +645,331 @@ describe('live surface routes through runtime authentication', () => {
         lease: { holder: { principal: 'human:local:second' } },
       },
     });
+  });
+});
+
+/**
+ * #2433 through the real device authorizer: `failClosedDeviceAccess` over
+ * an access whose share lookup is refused by a saturated SSH device host
+ * (`DeviceHostBusyError`), adapted by `authorizeDeviceSurfaceAction` and
+ * registered as the surface's authorizer. Busy is a retryable 503, never an
+ * "access denied"; a running stream keeps its last allow for a bounded
+ * while; every other failure still fails closed; busy grants nothing.
+ */
+describe('a busy device host is not an access refusal (#2433)', () => {
+  type Answer = 'allow' | 'deny' | 'busy' | 'throw';
+
+  function deviceAuthorizer(answer: () => Answer): LiveSurfaceAuthorizer {
+    const access: DeviceAccess = failClosedDeviceAccess({
+      isOperator: async () => false,
+      hasStanding: async () => true,
+      mayAccessDevice: async () => {
+        const next = answer();
+        if (next === 'busy') throw new DeviceHostBusyError();
+        if (next === 'throw') throw new Error('share store unreadable');
+        return next === 'allow';
+      },
+    });
+    const session = {
+      hostId: 'ssh-host-1',
+      platform: 'android' as const,
+      deviceId: 'emulator-5554',
+      isOpen: () => true,
+    };
+    return (principal, _surfaceId, action, context) =>
+      principal === 'human:local:operator' &&
+      authorizeDeviceSurfaceAction(access, session, action, context?.request);
+  }
+
+  test('input, lease claim and a new frames stream answer 503 surface-busy, and busy dispatches nothing', async () => {
+    const h = harness({ authorize: deviceAuthorizer(() => 'busy') });
+    const input = await h.request(
+      `${base}/input`,
+      'operator',
+      JSON.stringify({ epoch: 0, events: click(1, 1) }),
+    );
+    expect(input.status).toBe(503);
+    expect(input.headers.get('Retry-After')).toBe('1');
+    expect(await input.json()).toEqual({
+      success: false,
+      code: 'surface-busy',
+    });
+    expect(h.producer.dispatched).toEqual([]);
+    const claim = await h.request(
+      `${base}/lease`,
+      'operator',
+      JSON.stringify({ action: 'claim' }),
+    );
+    expect(claim.status).toBe(503);
+    expect(await claim.json()).toEqual({
+      success: false,
+      code: 'surface-busy',
+    });
+    expect(h.registry.get(SURFACE)!.lease.snapshot().holder).toBeNull();
+    const frames = await h.request(`${base}/frames`, 'operator');
+    expect(frames.status).toBe(503);
+    expect(await frames.json()).toEqual({
+      success: false,
+      code: 'surface-busy',
+    });
+    expect(h.registry.get(SURFACE)!.hub.viewerCount).toBe(0);
+  });
+
+  test('any other authorizer failure still fails closed as access-denied', async () => {
+    const h = harness({ authorize: deviceAuthorizer(() => 'throw') });
+    const input = await h.request(
+      `${base}/input`,
+      'operator',
+      JSON.stringify({ epoch: 0, events: click(1, 1) }),
+    );
+    expect(input.status).toBe(403);
+    expect(await input.json()).toEqual({
+      success: false,
+      code: 'access-denied',
+    });
+    expect(h.producer.dispatched).toEqual([]);
+  });
+
+  test('a busy re-check keeps a running stream on its last allow; a deny still ends it', async () => {
+    let answer: Answer = 'allow';
+    const h = harness({ authorize: deviceAuthorizer(() => answer) });
+    const records = recordReader(await h.request(`${base}/frames`, 'operator'));
+    expect((await records.next())?.kind).toBe('state');
+    await h.registry.get(SURFACE)!.hub.settled();
+    answer = 'busy';
+    h.producer.emit();
+    expect((await records.next())?.kind).toBe('frame');
+    await h.registry.get(SURFACE)!.hub.settled();
+    answer = 'deny';
+    h.producer.emit();
+    expect(await records.next()).toBeNull();
+  });
+
+  test('busy keeps an allow only for the grace window, then the stream ends', async () => {
+    let answer: Answer = 'allow';
+    let clock = 1_000;
+    const h = harness({
+      authorize: deviceAuthorizer(() => answer),
+      routes: { now: () => clock, viewBusyGraceMs: 30_000 },
+    });
+    const records = recordReader(await h.request(`${base}/frames`, 'operator'));
+    expect((await records.next())?.kind).toBe('state');
+    await h.registry.get(SURFACE)!.hub.settled();
+    answer = 'busy';
+    clock += 29_000;
+    h.producer.emit();
+    expect((await records.next())?.kind).toBe('frame');
+    await h.registry.get(SURFACE)!.hub.settled();
+    clock += 2_000;
+    h.producer.emit();
+    expect(await records.next()).toBeNull();
+  });
+
+  test('a re-check stuck in the host queue does not stall the stream, and its deny still lands', async () => {
+    let release!: (value: boolean) => void;
+    let calls = 0;
+    const h = harness({
+      authorize: (principal) => {
+        calls += 1;
+        if (calls === 1) return principal === 'human:local:operator';
+        return new Promise<boolean>((resolve) => {
+          release = resolve;
+        });
+      },
+      routes: { viewRecheckWaitMs: 20 },
+    });
+    const records = recordReader(await h.request(`${base}/frames`, 'operator'));
+    expect((await records.next())?.kind).toBe('state');
+    await h.registry.get(SURFACE)!.hub.settled();
+    h.producer.emit();
+    const started = Date.now();
+    expect((await records.next())?.kind).toBe('frame');
+    expect(Date.now() - started).toBeLessThan(2_000);
+    // The pending re-check answers deny: the stream ends without another frame.
+    const ended = records.next();
+    release(false);
+    expect(await ended).toBeNull();
+  });
+});
+
+/**
+ * #2433 review HIGH: the grace budget binds a re-check that has NOT answered
+ * too. Before, the cap ran only when a re-check settled, so a hung or slow
+ * authorizer let every pull deliver indefinitely (the reviewer's probe P1:
+ * five frames across fifty minutes with a 30 s grace). Applies to every
+ * registrant, the Browser pane's included.
+ */
+describe('a pending view re-check spends the same grace budget (#2433)', () => {
+  test('a re-check that never answers ends the stream once the last allow is older than the grace', async () => {
+    let calls = 0;
+    let clock = 1_000;
+    const h = harness({
+      authorize: (principal) => {
+        calls += 1;
+        if (calls === 1) return principal === 'human:local:operator';
+        return new Promise<boolean>(() => {});
+      },
+      routes: {
+        now: () => clock,
+        viewRecheckWaitMs: 20,
+        viewBusyGraceMs: 30_000,
+      },
+    });
+    const records = recordReader(await h.request(`${base}/frames`, 'operator'));
+    expect((await records.next())?.kind).toBe('state');
+    await h.registry.get(SURFACE)!.hub.settled();
+    clock += 10_000;
+    h.producer.emit();
+    expect((await records.next())?.kind).toBe('frame');
+    await h.registry.get(SURFACE)!.hub.settled();
+    clock += 21_000;
+    h.producer.emit();
+    expect(await records.next()).toBeNull();
+  });
+
+  test('a slow (over 1 s) Browser-style authorizer delivers nothing past the grace while it is pending', async () => {
+    let calls = 0;
+    let clock = 1_000;
+    const h = harness({
+      authorize: async (principal) => {
+        calls += 1;
+        if (calls > 1)
+          await new Promise((resolve) => setTimeout(resolve, 1_200));
+        return principal === 'human:local:operator';
+      },
+      routes: { now: () => clock, viewBusyGraceMs: 30_000 },
+    });
+    const records = recordReader(await h.request(`${base}/frames`, 'operator'));
+    expect((await records.next())?.kind).toBe('state');
+    await h.registry.get(SURFACE)!.hub.settled();
+    clock += 31_000;
+    h.producer.emit();
+    // The pull waits its 1 s for the re-check, which is still pending: past
+    // the grace, the frame is not delivered.
+    expect(await records.next()).toBeNull();
+  });
+
+  test('one view re-check is in flight at a time', async () => {
+    let calls = 0;
+    const h = harness({
+      authorize: (principal) => {
+        calls += 1;
+        if (calls === 1) return principal === 'human:local:operator';
+        return new Promise<boolean>(() => {});
+      },
+      routes: { viewRecheckWaitMs: 5 },
+    });
+    const records = recordReader(await h.request(`${base}/frames`, 'operator'));
+    expect((await records.next())?.kind).toBe('state');
+    for (let frame = 0; frame < 3; frame += 1) {
+      await h.registry.get(SURFACE)!.hub.settled();
+      h.producer.emit();
+      expect((await records.next())?.kind).toBe('frame');
+    }
+    // The open's check, then ONE re-check that never answered.
+    expect(calls).toBe(2);
+    await records.cancel();
+  });
+});
+
+/**
+ * #2433 review MEDIUM: a revoked share is seen at once even while the
+ * device host is busy. The device session remembers the share key (the AVD
+ * name) a check resolved; a re-check refuses from the share store alone
+ * when the caller no longer holds that key, before asking the host.
+ */
+describe('a revoked device share ends the stream while the host is busy (#2433)', () => {
+  test('revoking the share while the AVD lookup is busy ends the stream on the next pull', async () => {
+    const share = (deviceId: string) => ({
+      hostId: 'local',
+      platform: 'android' as const,
+      deviceId,
+      label: deviceId,
+      addedBy: 'operator',
+      addedAt: '2026-09-01T00:00:00.000Z',
+    });
+    let shares = [share('Pixel_8'), share('Other_AVD')];
+    let hostBusy = false;
+    let avdLookups = 0;
+    const access = deviceAccessFromShares({
+      authorizeOperator: async () => false,
+      resolveProject: (slug) =>
+        slug === 'demo' ? { id: 'project-demo' } : undefined,
+      authorizeProject: async () =>
+        ({
+          kind: 'project-admin',
+          principalId: 'admin-1',
+        }) as never,
+      shares: { list: () => shares },
+      resolveAndroidAvd: async () => {
+        avdLookups += 1;
+        if (hostBusy) throw new DeviceHostBusyError();
+        return 'Pixel_8';
+      },
+    });
+    const session = {
+      hostId: 'local',
+      platform: 'android' as const,
+      deviceId: 'emulator-5554',
+      isOpen: () => true,
+      shareKeyMemo: {},
+    };
+    const h = harness({
+      authorize: (_principal, _surfaceId, action, context) =>
+        authorizeDeviceSurfaceAction(access, session, action, context?.request),
+    });
+    const records = recordReader(
+      await h.request(`${base}/frames?projectSlug=demo`, 'operator'),
+    );
+    expect((await records.next())?.kind).toBe('state');
+    await h.registry.get(SURFACE)!.hub.settled();
+    hostBusy = true;
+    h.producer.emit();
+    // Busy alone keeps the stream (the share still stands).
+    expect((await records.next())?.kind).toBe('frame');
+    await h.registry.get(SURFACE)!.hub.settled();
+    shares = [share('Other_AVD')];
+    const lookupsBefore = avdLookups;
+    h.producer.emit();
+    expect(await records.next()).toBeNull();
+    // One fresh resolve was tried; the host answered busy, and with the
+    // remembered share gone that refuses.
+    expect(avdLookups).toBe(lookupsBefore + 1);
+  });
+
+  test('a stale remembered key does not refuse once the host answers with a key the caller holds', async () => {
+    const share = (deviceId: string) => ({
+      hostId: 'local',
+      platform: 'android' as const,
+      deviceId,
+      label: deviceId,
+      addedBy: 'operator',
+      addedAt: '2026-09-01T00:00:00.000Z',
+    });
+    const access = deviceAccessFromShares({
+      authorizeOperator: async () => false,
+      resolveProject: (slug) =>
+        slug === 'demo' ? { id: 'project-demo' } : undefined,
+      authorizeProject: async () =>
+        ({ kind: 'project-admin', principalId: 'admin-1' }) as never,
+      shares: { list: () => [share('New_AVD')] },
+      resolveAndroidAvd: async () => 'New_AVD',
+    });
+    // The emulator on this serial used to run Old_AVD, which is not shared.
+    const shareKeyMemo: { key?: string } = { key: 'Old_AVD' };
+    const request = new Request(
+      'http://station.test/api/live-surfaces/x/frames?projectSlug=demo',
+    );
+    expect(
+      await access.mayAccessDevice(
+        request,
+        'android',
+        'emulator-5554',
+        'view',
+        'local',
+        shareKeyMemo,
+      ),
+    ).toBe(true);
+    expect(shareKeyMemo.key).toBe('New_AVD');
   });
 });

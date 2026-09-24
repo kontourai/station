@@ -3364,12 +3364,21 @@ describe('AcpAdapter', () => {
     });
     await nextEvent(iterator, 'first turn.started');
 
-    await expect(
-      adapter.sendTurn({
+    // #2415: the refusal is a definitive pre-effect refusal, not a plain
+    // error orchestration would record as an indeterminate turn start.
+    const refusal = await adapter
+      .sendTurn({
         threadId: 'thread-single-owner',
         input: 'second',
-      }),
-    ).rejects.toThrow('already has an active turn');
+      })
+      .then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+    expect(refusal).toBeInstanceOf(SendTurnRefusedError);
+    expect((refusal as Error).message).toContain('already has an active turn');
+    // Nothing reached the engine for the refused send.
+    expect(processes[0].promptContents).toHaveLength(1);
 
     processes[0].resolvePrompt('end_turn');
     await expect(
@@ -3378,6 +3387,20 @@ describe('AcpAdapter', () => {
       method: 'turn.completed',
       turnId: first.turnId,
     });
+
+    // Once the active turn ends, the session accepts the next send.
+    const next = await adapter.sendTurn({
+      threadId: 'thread-single-owner',
+      input: 'third',
+    });
+    await expect(
+      nextEvent(iterator, 'next turn.started'),
+    ).resolves.toMatchObject({ method: 'turn.started', turnId: next.turnId });
+    expect(next.turnId).not.toBe(first.turnId);
+    expect(processes[0].promptContents).toHaveLength(2);
+    processes[0].resolvePrompt('end_turn');
+    await nextEvent(iterator, 'next turn.completed');
+    await adapter.stopAll();
   });
 });
 
