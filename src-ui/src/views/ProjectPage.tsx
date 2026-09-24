@@ -38,7 +38,6 @@ import {
   workspacePaneDirectRoute,
   workspacePaneRequiresLayoutIdentity,
 } from '../workspace-panes/workspacePaneDirectRoute';
-import { MemberProjectPage } from './project-page/MemberProjectPage';
 import { ProjectConversationsSection } from './project-page/ProjectConversationsSection';
 import { ProjectKnowledgeSection } from './project-page/ProjectKnowledgeSection';
 import {
@@ -58,6 +57,11 @@ import './ProjectPage.css';
 const loadProjectPluginStartGate = () =>
   import('./project-page/ProjectPluginStartGate').then((module) => ({
     default: module.ProjectPluginStartGate,
+  }));
+
+const loadMemberProjectPage = () =>
+  import('./project-page/MemberProjectPage').then((module) => ({
+    default: module.MemberProjectPage,
   }));
 
 export function ProjectPage({ slug }: { slug: string }) {
@@ -143,9 +147,13 @@ export function ProjectPage({ slug }: { slug: string }) {
 
   if (projectQuery.isMemberProject) {
     return (
-      <MemberProjectPage
-        project={projectQuery.data as MemberProjectView}
-        requestScope={requestScope}
+      <LazyBoundary
+        load={loadMemberProjectPage}
+        componentProps={{
+          project: projectQuery.data as MemberProjectView,
+          requestScope,
+        }}
+        pending={<SkeletonBlock count={2} label="Opening shared Project" />}
       />
     );
   }
