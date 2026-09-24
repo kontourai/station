@@ -128,7 +128,7 @@ const CHILD_WORK_CARD_STATE: Record<ChildWorkStatus, BackgroundTaskState> = {
  * which chat shows it, the card's start time on this client's clock basis,
  * and a title the caller already resolved.
  */
-export function backgroundTaskEntryFromChildWork(
+function backgroundTaskEntryFromChildWork(
   item: ChildWorkItem,
   placement: {
     chatThreadId: string;

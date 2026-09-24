@@ -1,6 +1,8 @@
+import type { MemberProjectView } from '@kontourai/station-contracts/project';
 import type { ConnectionConfig } from '@kontourai/station-contracts/tool';
 import type { WorkspacePaneAvailabilityAction } from '@kontourai/station-contracts/workspace-pane-availability';
 import {
+  StationHttpError,
   useApplyProjectLayoutMutation,
   useAvailableProjectLayoutsQuery,
   useEngineConnectionsQuery,
@@ -20,7 +22,10 @@ import { PageCallout, PageCalloutStack } from '../components/PageCallout';
 import { ErrorState, SkeletonBlock } from '../components/state';
 import { useAgents } from '../contexts/AgentsContext';
 import { useNavigation } from '../contexts/NavigationContext';
-import { useScopedProjectQuery } from '../contexts/ProjectsContext';
+import {
+  type ProjectConfig,
+  useScopedProjectPageViewQuery,
+} from '../contexts/ProjectsContext';
 import { useDegradedQueryState } from '../hooks/useDegradedQueryState';
 import { useGitLog, useGitStatus } from '../hooks/useGitStatus';
 import { trackRecentLayout } from '../hooks/useRecentLayouts';
@@ -33,6 +38,7 @@ import {
   workspacePaneDirectRoute,
   workspacePaneRequiresLayoutIdentity,
 } from '../workspace-panes/workspacePaneDirectRoute';
+import { MemberProjectPage } from './project-page/MemberProjectPage';
 import { ProjectConversationsSection } from './project-page/ProjectConversationsSection';
 import { ProjectKnowledgeSection } from './project-page/ProjectKnowledgeSection';
 import {
@@ -55,24 +61,112 @@ const loadProjectPluginStartGate = () =>
   }));
 
 export function ProjectPage({ slug }: { slug: string }) {
-  const { setLayout, setConversation, navigate, setDockState } =
-    useNavigation();
-
-  const {
-    data: project,
-    isLoading,
-    isError: isProjectError,
-    error: projectError,
-    refetch: refetchProject,
-  } = useScopedProjectQuery(slug);
+  const projectQuery = useScopedProjectPageViewQuery(slug);
   const [projectRetrySeq, bumpProjectRetry] = useReducer(
     (n: number) => n + 1,
     0,
   );
   const projectQueryState = useDegradedQueryState({
-    isPending: isLoading,
+    isPending: projectQuery.isPending,
     resetKey: projectRetrySeq,
   });
+  const requestScope = projectQuery.requestScope;
+
+  if (!requestScope?.isCurrent()) {
+    return (
+      <div className="project-page">
+        <div className="project-page__inner">
+          <ErrorState
+            title="Station connection unavailable"
+            description="Connect to a Station with current access to this Project."
+          />
+        </div>
+      </div>
+    );
+  }
+
+  if (projectQuery.isError) {
+    return (
+      <div className="project-page">
+        <div className="project-page__inner">
+          <ErrorState
+            title="Could not load project"
+            description={
+              projectQuery.error instanceof StationHttpError &&
+              [401, 403, 404].includes(projectQuery.error.status)
+                ? 'This Project is unavailable or your access has changed.'
+                : errorText(projectQuery.error)
+            }
+            action={
+              <button type="button" onClick={() => void projectQuery.refetch()}>
+                Retry
+              </button>
+            }
+          />
+        </div>
+      </div>
+    );
+  }
+
+  if (projectQuery.isPending || !projectQuery.data) {
+    if (projectQueryState === 'degraded') {
+      return (
+        <div className="project-page">
+          <div className="project-page__inner">
+            <ErrorState
+              title="Project is taking longer than expected"
+              description="This view hasn't loaded yet."
+              action={
+                <button
+                  type="button"
+                  onClick={() => {
+                    bumpProjectRetry();
+                    void projectQuery.refetch();
+                  }}
+                >
+                  Retry
+                </button>
+              }
+            />
+          </div>
+        </div>
+      );
+    }
+    return (
+      <div className="project-page">
+        <div className="project-page__inner">
+          <SkeletonBlock count={3} label="Loading project" />
+        </div>
+      </div>
+    );
+  }
+
+  if (projectQuery.isMemberProject) {
+    return (
+      <MemberProjectPage
+        project={projectQuery.data as MemberProjectView}
+        requestScope={requestScope}
+      />
+    );
+  }
+
+  return (
+    <ProjectOperatorPage
+      slug={slug}
+      project={projectQuery.data as ProjectConfig}
+    />
+  );
+}
+
+function ProjectOperatorPage({
+  slug,
+  project,
+}: {
+  slug: string;
+  project: ProjectConfig;
+}) {
+  const { setLayout, setConversation, navigate, setDockState } =
+    useNavigation();
   // #801: the page renders as soon as the *project* query settles, so a
   // layouts fetch still in flight used to reach the section as an empty array
   // and render the empty state for a project that has layouts.
@@ -217,57 +311,6 @@ export function ProjectPage({ slug }: { slug: string }) {
       return 'Opening the layout registry to review distribution.';
     }
     return 'This build can explain the requirement but cannot complete that step from the pane catalog.';
-  }
-
-  if (isProjectError && !project) {
-    return (
-      <div className="project-page">
-        <div className="project-page__inner">
-          <ErrorState
-            title="Could not load project"
-            description={errorText(projectError)}
-            action={
-              <button type="button" onClick={() => refetchProject()}>
-                Retry
-              </button>
-            }
-          />
-        </div>
-      </div>
-    );
-  }
-
-  if (isLoading || !project) {
-    if (projectQueryState === 'degraded') {
-      return (
-        <div className="project-page">
-          <div className="project-page__inner">
-            <ErrorState
-              title="Project is taking longer than expected"
-              description="This view hasn't loaded yet."
-              action={
-                <button
-                  type="button"
-                  onClick={() => {
-                    bumpProjectRetry();
-                    void refetchProject();
-                  }}
-                >
-                  Retry
-                </button>
-              }
-            />
-          </div>
-        </div>
-      );
-    }
-    return (
-      <div className="project-page">
-        <div className="project-page__inner">
-          <SkeletonBlock count={3} label="Loading project" />
-        </div>
-      </div>
-    );
   }
 
   return (

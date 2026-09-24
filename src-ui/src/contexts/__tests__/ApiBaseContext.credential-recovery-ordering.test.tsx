@@ -54,7 +54,8 @@ vi.mock('../../contexts/NavigationContext', () => ({
 vi.mock('../../components/PendingPairingReconciler', () => ({
   PendingPairingReconciler: () => null,
 }));
-vi.mock('../../lib/serverHealth', () => ({
+vi.mock('../../lib/serverHealth', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../lib/serverHealth')>()),
   checkServerHealth: vi.fn(),
   checkServerHealthDetailed: vi.fn(),
 }));

@@ -30,6 +30,7 @@ test.each([
   ),
   ['POST', '/api/projects/demo/file-preview', 200, []],
   ['POST', '/api/projects/demo/file-preview/download', 200, []],
+  ['POST', '/api/projects/demo/file-preview/exists', 200, []],
   ['POST', '/api/projects/demo/file-preview', 400, []],
   ['POST', '/api/projects/demo/knowledge/search', 200, []],
   ['POST', '/api/projects/demo/knowledge/ns/notes/search', 200, []],

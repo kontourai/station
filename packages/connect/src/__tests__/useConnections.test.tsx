@@ -8,7 +8,7 @@ import { act, renderHook } from '@testing-library/react';
 import React from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { ConnectionStore } from '../core/ConnectionStore';
-import type { StorageAdapter } from '../core/types';
+import type { SavedConnection, StorageAdapter } from '../core/types';
 import {
   ConnectionsProvider,
   useConnections,
@@ -221,7 +221,12 @@ describe('useConnections', () => {
     });
 
     const selection = result.current.setActiveConnection(idB!);
-    expect(prepareActiveConnection).toHaveBeenCalledWith(idB);
+    expect(prepareActiveConnection).toHaveBeenCalledWith(
+      idB,
+      expect.objectContaining({ id: idB }),
+      expect.any(Number),
+      expect.any(Function),
+    );
     expect(result.current.activeConnection?.id).not.toBe(idB);
 
     await act(async () => {
@@ -229,6 +234,234 @@ describe('useConnections', () => {
       await selection;
     });
     expect(result.current.activeConnection?.id).toBe(idB);
+  });
+
+  it('does not let an older TURN update cancel a newer selection still preparing', async () => {
+    const store = makeStore();
+    let releaseB: (() => void) | undefined;
+    const prepareActiveConnection = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          releaseB = resolve;
+        }),
+    );
+    const { result } = renderHook(() => useConnections(), {
+      wrapper: ({ children }) => (
+        <ConnectionsProvider
+          store={store}
+          defaultUrl="http://localhost:3141"
+          prepareActiveConnection={prepareActiveConnection}
+        >
+          {children}
+        </ConnectionsProvider>
+      ),
+    });
+    let idA = '';
+    let idB = '';
+    act(() => {
+      idA = result.current.addConnection('A', 'http://a:3141').id;
+      idB = result.current.addConnection('B', 'http://b:3141').id;
+    });
+    expect(result.current.activeConnection?.id).toBe(idA);
+    const turnWriteSelection = result.current.captureSelectionIntent();
+    let selectingB!: Promise<void>;
+    act(() => {
+      selectingB = result.current.setActiveConnection(idB);
+    });
+    expect(result.current.activeConnection?.id).toBe(idA);
+
+    let reconnected = true;
+    await act(async () => {
+      reconnected = await result.current.reconnectActiveIfSelectionCurrent(
+        idA,
+        turnWriteSelection,
+      );
+    });
+    expect(reconnected).toBe(false);
+    expect(prepareActiveConnection).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      releaseB?.();
+      await selectingB;
+    });
+    expect(result.current.activeConnection?.id).toBe(idB);
+  });
+
+  it('does not allow setApiBase or resetToDefault to select a broker route', () => {
+    const store = makeStore();
+    const { result } = renderHook(() => useConnections(), {
+      wrapper: wrapper(store),
+    });
+    act(() => {
+      result.current.addBrokerRoute({
+        name: 'Broker Station',
+        applicationOrigin: 'https://station.example.test',
+        brokerRoute: {
+          brokerOrigin: 'https://broker.example.test',
+          scope: {
+            stationId: 'station_00000001',
+            enrollmentId: 'enroll_00000001',
+            routingGeneration: 1,
+            browserOrigin: window.location.origin,
+          },
+        },
+      });
+    });
+    expect(result.current.activeConnection).toBeNull();
+    expect(() =>
+      act(() => result.current.setApiBase('https://station.example.test')),
+    ).toThrow(/prepared/);
+
+    act(() => result.current.resetToDefault());
+    expect(result.current.activeConnection?.brokerRoute).toBeUndefined();
+  });
+
+  it('only publishes the latest asynchronously prepared connection', async () => {
+    const store = makeStore();
+    const pending = new Map<string, { epoch: number; resolve(): void }>();
+    const retired: Array<{ id: string; epoch?: number }> = [];
+    const prepareActiveConnection = vi.fn(
+      (id: string, _connection: SavedConnection | undefined, epoch: number) =>
+        new Promise<void>((resolve) => pending.set(id, { epoch, resolve })),
+    );
+    const { result } = renderHook(() => useConnections(), {
+      wrapper: ({ children }) => (
+        <ConnectionsProvider
+          store={store}
+          defaultUrl="http://localhost:3141"
+          prepareActiveConnection={prepareActiveConnection}
+          retirePreparedConnection={(id, epoch) => retired.push({ id, epoch })}
+        >
+          {children}
+        </ConnectionsProvider>
+      ),
+    });
+
+    let firstId = '';
+    let secondId = '';
+    act(() => {
+      firstId = result.current.addBrokerRoute({
+        name: 'Broker A',
+        applicationOrigin: 'https://station-a.example.test',
+        brokerRoute: {
+          brokerOrigin: 'https://broker.example.test',
+          scope: {
+            stationId: 'station_00000001',
+            enrollmentId: 'enroll_00000001',
+            routingGeneration: 1,
+            browserOrigin: window.location.origin,
+          },
+        },
+      }).id;
+      secondId = result.current.addBrokerRoute({
+        name: 'Broker B',
+        applicationOrigin: 'https://station-b.example.test',
+        brokerRoute: {
+          brokerOrigin: 'https://broker.example.test',
+          scope: {
+            stationId: 'station_00000002',
+            enrollmentId: 'enroll_00000002',
+            routingGeneration: 1,
+            browserOrigin: window.location.origin,
+          },
+        },
+      }).id;
+    });
+
+    let first!: Promise<void>;
+    let second!: Promise<void>;
+    act(() => {
+      first = result.current.setActiveConnection(firstId);
+      second = result.current.setActiveConnection(secondId);
+    });
+    const firstPending = pending.get(firstId)!;
+    const secondPending = pending.get(secondId)!;
+    expect(firstPending.epoch).toBeLessThan(secondPending.epoch);
+
+    await act(async () => {
+      secondPending.resolve();
+      await second;
+    });
+    await act(async () => {
+      firstPending.resolve();
+      await first;
+    });
+
+    expect(result.current.activeConnection?.id).toBe(secondId);
+    expect(retired).toContainEqual({ id: firstId, epoch: firstPending.epoch });
+  });
+
+  it('lets a preparation owner preserve the active route after its subject changes', async () => {
+    const store = makeStore();
+    const pending = new Map<
+      string,
+      { epoch: number; current(): boolean; resolve(): void }
+    >();
+    const retired: Array<{ id: string; epoch?: number }> = [];
+    const prepareActiveConnection = vi.fn(
+      (
+        id: string,
+        _connection: SavedConnection | undefined,
+        epoch: number,
+        isSelectionCurrent: () => boolean,
+      ) =>
+        new Promise<void>((resolve) =>
+          pending.set(id, { epoch, current: isSelectionCurrent, resolve }),
+        ),
+    );
+    const { result } = renderHook(() => useConnections(), {
+      wrapper: ({ children }) => (
+        <ConnectionsProvider
+          store={store}
+          defaultUrl="http://localhost:3141"
+          prepareActiveConnection={prepareActiveConnection}
+          retirePreparedConnection={(id, epoch) => retired.push({ id, epoch })}
+        >
+          {children}
+        </ConnectionsProvider>
+      ),
+    });
+    let directId = '';
+    let routeId = '';
+    act(() => {
+      directId = result.current.addConnection(
+        'Direct A',
+        'https://station-a.example',
+      ).id;
+      routeId = result.current.addBrokerRoute({
+        name: 'Broker B',
+        applicationOrigin: 'https://station-b.example',
+        brokerRoute: {
+          brokerOrigin: 'https://broker.example.test',
+          scope: {
+            stationId: 'station_00000002',
+            enrollmentId: 'enroll_00000002',
+            routingGeneration: 1,
+            browserOrigin: window.location.origin,
+          },
+        },
+      }).id;
+    });
+    expect(result.current.activeConnection?.id).toBe(directId);
+
+    let selection!: Promise<void>;
+    act(() => {
+      selection = result.current.setActiveConnection(routeId);
+    });
+    const prep = pending.get(routeId)!;
+    expect(prep.current()).toBe(true);
+
+    act(() =>
+      result.current.updateConnection(directId, { name: 'Direct A renamed' }),
+    );
+    expect(prep.current()).toBe(false);
+    await act(async () => {
+      prep.resolve();
+      await selection;
+    });
+
+    expect(result.current.activeConnection?.id).toBe(directId);
+    expect(retired).toContainEqual({ id: routeId, epoch: prep.epoch });
   });
 
   it('setApiBase() upserts by URL', () => {

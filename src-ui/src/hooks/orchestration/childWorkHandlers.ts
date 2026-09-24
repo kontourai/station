@@ -5,7 +5,6 @@ import {
   type ChildWorkRegistryState,
   type ChildWorkSessionView,
   type ChildWorkTerminalStatus,
-  childWorkForReporter,
   childWorkKey,
   createEmptyChildWorkRegistry,
   forgetChildWorkReporter,
@@ -41,14 +40,10 @@ let registry: ChildWorkRegistryState = createEmptyChildWorkRegistry();
 const reporterChat = new Map<string, string>();
 
 /** Read-only view for tests and diagnostics. */
+// childWorkHandlers.test.ts reads it through a dynamic import (vi.resetModules isolation) that fallow cannot trace.
+// fallow-ignore-next-line unused-export
 export function childWorkRegistrySnapshot(): ChildWorkRegistryState {
   return registry;
-}
-
-/** Test-only: clears the registry between cases. */
-export function resetChildWorkRegistry(): void {
-  registry = createEmptyChildWorkRegistry();
-  reporterChat.clear();
 }
 
 let removalHooked = false;
@@ -76,19 +71,6 @@ function toChatBackgroundTask(item: ChildWorkItem): ChatBackgroundTask {
     // task-scoped stop must address.
     sessionThreadId: item.reporterThreadId,
   };
-}
-
-/** The legacy `ChatBackgroundTask` shape for ONE reporter's running subagents. */
-export function chatBackgroundTasksFromChildWork(
-  state: ChildWorkRegistryState,
-  reporterThreadId: string,
-): ChatBackgroundTask[] {
-  return childWorkForReporter(state, reporterThreadId)
-    .filter(
-      (item) =>
-        item.producer === 'engine-subagent' && item.status === 'running',
-    )
-    .map(toChatBackgroundTask);
 }
 
 /**
@@ -216,6 +198,8 @@ export function handleChildWorkUpdatedEvent(
  * snapshot delta, so a child that settled while this client was away stops
  * reading as running. Only chats this client tracks are fed.
  */
+// Also called by childWorkHandlers.test.ts through a dynamic import that fallow cannot trace.
+// fallow-ignore-next-line unused-export
 export function applySnapshotChildWork(
   threadId: string,
   view: ChildWorkSessionView | undefined,
@@ -243,6 +227,8 @@ export function applySnapshotChildWork(
  * session's children stay (R1) and this session's go. Safe to call more than
  * once, and for a session that never reported.
  */
+// Also called by childWorkHandlers.test.ts through a dynamic import that fallow cannot trace.
+// fallow-ignore-next-line unused-export
 export function forgetChildWorkForThread(threadId: string): void {
   const chatKey = reporterChat.get(threadId);
   if (chatKey === undefined) {

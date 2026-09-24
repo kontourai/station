@@ -1,3 +1,4 @@
+import { useConnections } from '@kontourai/station-connect';
 import {
   type ReactNode,
   useCallback,
@@ -8,12 +9,19 @@ import {
 } from 'react';
 import { useDegradedQueryState } from '../hooks/useDegradedQueryState';
 import {
+  browserRelayAccountScopeKey,
+  getBrowserRelayAccountScope,
+  subscribeBrowserRelayAccountScope,
+} from '../lib/browserRelayAccountScope';
+import { captureBrowserRelayRoute } from '../lib/browserRelayRouteBinding';
+import {
   getLocalUiSessionAttempt,
   recheckLocalUiSessionAfterPairing,
   resolveLocalUiSession,
   subscribeLocalUiSessionAttempt,
 } from '../lib/local-ui-bootstrap';
 import { LOCAL_UI_SESSION_ATTEMPT_LIMIT } from '../lib/local-ui-session-retry';
+import { probeServerConnection } from '../lib/serverHealth';
 import { primeNativeNotifications } from '../platform/native/notify';
 import { ElapsedWait } from './ElapsedWait';
 import { LazyBoundary } from './LazyBoundary';
@@ -66,6 +74,28 @@ export function LocalUiSessionGate({
   const [resolution, setResolution] = useState<
     Awaited<ReturnType<typeof resolveLocalUiSession>> | undefined
   >();
+  const { activeConnection } = useConnections();
+  const relayRoute = activeConnection?.brokerRoute;
+  const relayScopeKey =
+    relayRoute && activeConnection
+      ? browserRelayAccountScopeKey({
+          connectionId: activeConnection.id,
+          applicationOrigin: activeConnection.url,
+          route: relayRoute,
+          clientOrigin: window.location.origin,
+        })
+      : null;
+  const relayScope = useSyncExternalStore(
+    subscribeBrowserRelayAccountScope,
+    () => getBrowserRelayAccountScope(relayScopeKey),
+    () => null,
+  );
+  const [verifiedRelay, setVerifiedRelay] = useState<{
+    connectionId: string;
+    scopeKey: string;
+    authenticated: boolean;
+  } | null>(null);
+  const [relayOnboardingOpen, setRelayOnboardingOpen] = useState(false);
   const pairingRecheck = useRef<Promise<
     Awaited<ReturnType<typeof resolveLocalUiSession>>
   > | null>(null);
@@ -93,6 +123,82 @@ export function LocalUiSessionGate({
     };
   }, [apiBase]);
 
+  useEffect(() => {
+    if (
+      !activeConnection ||
+      !relayRoute ||
+      !relayScopeKey ||
+      relayScope?.state !== 'ready' ||
+      !relayScope.authorityKey
+    )
+      return;
+    const connection = activeConnection;
+    const scope = relayScope;
+    const controller = new AbortController();
+    let current = true;
+    void (async () => {
+      let authenticated = false;
+      try {
+        const result = await probeServerConnection(
+          connection.url,
+          undefined,
+          null,
+          controller.signal,
+          relayRoute,
+        );
+        authenticated =
+          typeof result === 'object' &&
+          result !== null &&
+          result.ok &&
+          typeof result.bootId === 'string' &&
+          result.bootId.length > 0;
+      } catch {
+        // Missing or rejected account/Device authority keeps the access
+        // screen visible. It is not evidence that the broker route is offline.
+      }
+      if (
+        current &&
+        !controller.signal.aborted &&
+        getBrowserRelayAccountScope(relayScopeKey) === scope &&
+        captureBrowserRelayRoute(
+          connection.id,
+          connection.url,
+          relayRoute,
+        )?.isCurrent()
+      )
+        setVerifiedRelay({
+          connectionId: connection.id,
+          scopeKey: scope.scopeKey,
+          authenticated,
+        });
+    })();
+    return () => {
+      current = false;
+      controller.abort();
+    };
+  }, [activeConnection, relayRoute, relayScopeKey, relayScope]);
+
+  const relayAuthenticated = Boolean(
+    activeConnection &&
+      relayRoute &&
+      relayScope?.state === 'ready' &&
+      relayScope.authorityKey &&
+      verifiedRelay?.connectionId === activeConnection.id &&
+      verifiedRelay.scopeKey === relayScope.scopeKey &&
+      verifiedRelay.authenticated &&
+      !relayOnboardingOpen &&
+      captureBrowserRelayRoute(
+        activeConnection.id,
+        activeConnection.url,
+        relayRoute,
+      )?.isCurrent(),
+  );
+  const effectiveResolution = relayRoute
+    ? relayAuthenticated
+      ? ({ kind: 'authenticated' } as const)
+      : ({ kind: 'access-required' } as const)
+    : resolution;
+
   const handleSessionEstablished = useCallback(() => {
     // A connection-manager success can be surfaced twice while its modal
     // completes. Keep the resulting authenticated identity check singular.
@@ -106,7 +212,7 @@ export function LocalUiSessionGate({
     void primeNativeNotifications();
   }, [apiBase]);
 
-  if (!resolution) {
+  if (!effectiveResolution) {
     // The ONE loading treatment that legitimately replaces the shell: nothing
     // else can render until this browser is known to have a device session
     // (SHELL-13 keeps full-screen loaders pre-shell only, and this is the
@@ -137,7 +243,7 @@ export function LocalUiSessionGate({
       </main>
     );
   }
-  if (resolution.kind === 'access-required') {
+  if (effectiveResolution.kind === 'access-required') {
     if (sampleOpen) {
       return (
         <section aria-label="Station sample workspace">
@@ -153,12 +259,15 @@ export function LocalUiSessionGate({
     }
     return (
       <section aria-label="Station access required">
-        {resolution.message && <p role="alert">{resolution.message}</p>}
+        {'message' in effectiveResolution && effectiveResolution.message && (
+          <p role="alert">{effectiveResolution.message}</p>
+        )}
         <LazyBoundary
           load={loadGuidedConnect}
           componentProps={{
             onSessionEstablished: handleSessionEstablished,
             onExploreSample: () => setSampleOpen(true),
+            onRelayOnboardingChange: setRelayOnboardingOpen,
           }}
           pending={
             <SkeletonBlock count={1} label="Opening connection options" />
@@ -167,7 +276,7 @@ export function LocalUiSessionGate({
       </section>
     );
   }
-  if (resolution.kind === 'host-unavailable') {
+  if (effectiveResolution.kind === 'host-unavailable') {
     return (
       // `local-ui-session-recovery` carries no styling: it is the hook the
       // first-run readiness wait identifies this screen by

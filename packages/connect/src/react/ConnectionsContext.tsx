@@ -60,6 +60,11 @@ interface ConnectionsContextType {
    */
   nativeShell: boolean;
   addConnection: (name: string, url: string) => SavedConnection;
+  addBrokerRoute: (input: {
+    name: string;
+    applicationOrigin: string;
+    brokerRoute: NonNullable<SavedConnection['brokerRoute']>;
+  }) => SavedConnection;
   removeConnection: (id: string) => void;
   updateConnection: (
     id: string,
@@ -114,6 +119,7 @@ interface ConnectionsContextType {
     at?: number,
     bootId?: string,
   ) => void;
+  recordBrokerRouteSuccess: (id: string, at?: number, bootId?: string) => void;
   /**
    * Everything a request must be judged against, read from the LIVE store in
    * ONE call at the moment the request is about to be issued: which connection
@@ -157,6 +163,13 @@ interface ConnectionsContextType {
    * available to the credential provider before callers start a health probe.
    */
   setActiveConnection: (id: string) => Promise<void>;
+  /** Capture the current selection intent before an unrelated async operation. */
+  captureSelectionIntent: () => number;
+  /** Reconnect only if no newer selection has started in the meantime. */
+  reconnectActiveIfSelectionCurrent: (
+    id: string,
+    selectionIntent: number,
+  ) => Promise<boolean>;
   /** Convenience: upsert a connection by URL and activate it */
   setApiBase: (url: string) => void;
   resetToDefault: () => void;
@@ -173,6 +186,8 @@ export interface RequestCredentialEvidence {
   credentialState: SavedConnection['credentialState'];
   credential: string | undefined;
   origin: string;
+  /** Secret-free route identity. The grant itself is held by host custody. */
+  brokerRoute?: NonNullable<SavedConnection['brokerRoute']>;
 }
 
 const ConnectionsContext = createContext<ConnectionsContextType | undefined>(
@@ -248,6 +263,7 @@ export function ConnectionsProvider({
   makeDefaultProfile,
   updateSharedProfile,
   prepareActiveConnection,
+  retirePreparedConnection,
   nativeShell,
 }: {
   children: React.ReactNode;
@@ -279,7 +295,16 @@ export function ConnectionsProvider({
    * It must not persist a CLI/shared default. The provider awaits it before
    * publishing the active connection to callers that may immediately probe.
    */
-  prepareActiveConnection?: (connectionId: string) => Promise<void>;
+  prepareActiveConnection?: (
+    connectionId: string,
+    connection: SavedConnection | undefined,
+    selectionEpoch: number,
+    isSelectionCurrent: () => boolean,
+  ) => Promise<void>;
+  retirePreparedConnection?: (
+    connectionId: string,
+    selectionEpoch?: number,
+  ) => void;
   /** Default URL for the initial connection when no persisted data exists */
   defaultUrl?: string;
   /**
@@ -315,6 +340,7 @@ export function ConnectionsProvider({
   }
 
   const resolvedStore = store;
+  const selectionEpoch = useRef(0);
   const activation = useRef({
     activeConnectionId: resolvedStore.getActive()?.id ?? null,
     instanceId: randomCorrelationId(),
@@ -362,15 +388,59 @@ export function ConnectionsProvider({
   const connections = useSyncExternalStore(subscribe, getAll);
   const activeConnection = useSyncExternalStore(subscribe, getActive);
 
-  const value = useMemo<ConnectionsContextType>(
-    () => ({
+  const value = useMemo<ConnectionsContextType>(() => {
+    const selectActiveConnection = async (
+      id: string,
+      expectedSelectionIntent?: number,
+    ): Promise<boolean> => {
+      // This check and the epoch advance are synchronous. A pending newer
+      // selection cannot be cancelled by an older async settings write.
+      if (
+        expectedSelectionIntent !== undefined &&
+        (selectionEpoch.current !== expectedSelectionIntent ||
+          resolvedStore.getActive()?.id !== id)
+      )
+        return false;
+      const epoch = ++selectionEpoch.current;
+      const beforeConnection = resolvedStore.getActive();
+      const before = beforeConnection?.id ?? null;
+      const target = resolvedStore
+        .getAll()
+        .find((connection) => connection.id === id);
+      const isSelectionCurrent = () =>
+        epoch === selectionEpoch.current &&
+        (resolvedStore.getActive()?.id ?? null) === before;
+      if (target?.brokerRoute && !prepareActiveConnection)
+        throw new Error(
+          'A broker route cannot be selected until its encrypted transport is prepared.',
+        );
+      await prepareActiveConnection?.(id, target, epoch, isSelectionCurrent);
+      if (!isSelectionCurrent()) {
+        retirePreparedConnection?.(id, epoch);
+        return false;
+      }
+      if (beforeConnection?.brokerRoute && beforeConnection.id !== id)
+        retirePreparedConnection?.(beforeConnection.id);
+      if (target?.brokerRoute) resolvedStore.setPreparedBrokerRouteActive(id);
+      else resolvedStore.setActive(id);
+      return true;
+    };
+    return {
       connections,
       activeConnection,
       apiBase: activeConnection?.url ?? defaultUrl,
       nativeShell: nativeShell ?? detectNativeShell(),
       addConnection: (name, url) => resolvedStore.add(name, url),
-      removeConnection: (id) => resolvedStore.remove(id),
-      updateConnection: (id, changes) => resolvedStore.update(id, changes),
+      addBrokerRoute: (input) => resolvedStore.addBrokerRoute(input),
+      removeConnection: (id) => {
+        selectionEpoch.current += 1;
+        retirePreparedConnection?.(id);
+        resolvedStore.remove(id);
+      },
+      updateConnection: (id, changes) => {
+        selectionEpoch.current += 1;
+        resolvedStore.update(id, changes);
+      },
       reconcileHandshake: (id, handshake) =>
         resolvedStore.reconcileHandshake(id, handshake),
       ...(commitVerifiedPairing
@@ -413,6 +483,8 @@ export function ConnectionsProvider({
       failEndpointCandidate: (id) => resolvedStore.failEndpointCandidate(id),
       recordEndpointSuccess: (id, url, at, bootId) =>
         resolvedStore.recordEndpointSuccess(id, url, at, bootId),
+      recordBrokerRouteSuccess: (id, at, bootId) =>
+        resolvedStore.recordBrokerRouteSuccess(id, at, bootId),
       captureCredentialEvidence: () => {
         const active = resolvedStore.getActive();
         if (!active) return null;
@@ -429,6 +501,9 @@ export function ConnectionsProvider({
           // so the address belongs to the same live snapshot as the credential
           // rather than to whatever React last rendered.
           origin: active.url ?? defaultUrl,
+          ...(active.brokerRoute
+            ? { brokerRoute: structuredClone(active.brokerRoute) }
+            : {}),
         };
       },
       isCredentialEvidenceCurrent: (evidence) => {
@@ -447,8 +522,10 @@ export function ConnectionsProvider({
         resolvedStore.recordAuthenticatedSuccess(id, url, generation, at),
       recordEndpointFailure: (id, reason, at, detail) =>
         resolvedStore.recordEndpointFailure(id, reason, at, detail),
-      selectEndpoint: (id, endpointId) =>
-        resolvedStore.selectEndpoint(id, endpointId),
+      selectEndpoint: (id, endpointId) => {
+        selectionEpoch.current += 1;
+        return resolvedStore.selectEndpoint(id, endpointId);
+      },
       credentialProvider: {
         getCredential: () => {
           const active = resolvedStore.getActive();
@@ -460,11 +537,29 @@ export function ConnectionsProvider({
           resolvedStore.getActive()?.authProtocolVersion ?? undefined,
       },
       setActiveConnection: async (id) => {
-        await prepareActiveConnection?.(id);
-        resolvedStore.setActive(id);
+        await selectActiveConnection(id);
       },
+      captureSelectionIntent: () => selectionEpoch.current,
+      reconnectActiveIfSelectionCurrent: (id, selectionIntent) =>
+        selectActiveConnection(id, selectionIntent),
       setApiBase: (url) => {
-        const existing = resolvedStore.getAll().find((c) => c.url === url);
+        selectionEpoch.current += 1;
+        const connections = resolvedStore.getAll();
+        const direct = connections.find(
+          (connection) => connection.url === url && !connection.brokerRoute,
+        );
+        if (
+          connections.some(
+            (connection) => connection.url === url && connection.brokerRoute,
+          ) &&
+          !direct
+        )
+          throw new Error(
+            'Select a broker route through Connections so its encrypted transport can be prepared.',
+          );
+        const active = resolvedStore.getActive();
+        if (active?.brokerRoute) retirePreparedConnection?.(active.id);
+        const existing = direct;
         if (existing) {
           resolvedStore.setActive(existing.id);
         } else {
@@ -479,9 +574,12 @@ export function ConnectionsProvider({
         }
       },
       resetToDefault: () => {
+        selectionEpoch.current += 1;
+        const active = resolvedStore.getActive();
+        if (active?.brokerRoute) retirePreparedConnection?.(active.id);
         const existing = resolvedStore
           .getAll()
-          .find((c) => c.url === defaultUrl);
+          .find((c) => c.url === defaultUrl && !c.brokerRoute);
         if (existing) {
           resolvedStore.setActive(existing.id);
         } else {
@@ -490,20 +588,20 @@ export function ConnectionsProvider({
         }
       },
       isCustom: (activeConnection?.url ?? defaultUrl) !== defaultUrl,
-    }),
-    [
-      connections,
-      activeConnection,
-      resolvedStore,
-      defaultUrl,
-      nativeShell,
-      commitVerifiedPairing,
-      makeDefaultProfile,
-      updateSharedProfile,
-      prepareActiveConnection,
-      advanceActivation,
-    ],
-  );
+    };
+  }, [
+    connections,
+    activeConnection,
+    resolvedStore,
+    defaultUrl,
+    nativeShell,
+    commitVerifiedPairing,
+    makeDefaultProfile,
+    updateSharedProfile,
+    prepareActiveConnection,
+    retirePreparedConnection,
+    advanceActivation,
+  ]);
 
   return (
     <ConnectionsContext.Provider value={value}>
