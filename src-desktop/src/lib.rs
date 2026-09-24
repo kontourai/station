@@ -4949,15 +4949,95 @@ fn station_profile_store_write_internal(
     expected_revision: u64,
     pairing_handle: Option<String>,
 ) -> Result<(), String> {
+    station_profile_store_write_with_host(
+        &AppProfileWriteHost(app),
+        authority,
+        pending,
+        contents,
+        expected_revision,
+        pairing_handle,
+    )
+}
+
+// Only host I/O varies in tests. The CAS, pending-handle transitions, cleanup,
+// and publication boundary below are the same function used by Tauri commands.
+trait ProfileWriteHost {
+    fn path(&self) -> Result<std::path::PathBuf, String>;
+    fn genesis(&self, root: &std::path::Path) -> Result<(), String>;
+    fn lock(&self, path: &std::path::Path) -> Result<StationProfileLock, String>;
+    fn invalidate_removed_routes(
+        &self,
+        current: &CredentialProfileStore,
+        next: &CredentialProfileStore,
+    ) -> Result<(), String>;
+    fn postpublication_trust(&self, path: &std::path::Path) -> Result<(), String>;
+    fn staged_path(&self, generated: std::path::PathBuf) -> std::path::PathBuf {
+        generated
+    }
+    fn notify(&self) {}
+}
+
+struct AppProfileWriteHost<'a>(&'a AppHandle);
+
+impl ProfileWriteHost for AppProfileWriteHost<'_> {
+    fn path(&self) -> Result<std::path::PathBuf, String> {
+        station_profiles_path(self.0)
+    }
+    fn genesis(&self, root: &std::path::Path) -> Result<(), String> {
+        #[cfg(not(mobile))]
+        {
+            ensure_station_profile_store_genesis(self.0, root)
+        }
+        #[cfg(mobile)]
+        {
+            let _ = root;
+            Ok(())
+        }
+    }
+    fn lock(&self, path: &std::path::Path) -> Result<StationProfileLock, String> {
+        lock_station_profiles_for_app(self.0, path)
+    }
+    fn invalidate_removed_routes(
+        &self,
+        current: &CredentialProfileStore,
+        next: &CredentialProfileStore,
+    ) -> Result<(), String> {
+        #[cfg(not(mobile))]
+        {
+            relay_grant_vault::invalidate_removed_routes(self.0, current, next)
+        }
+        #[cfg(mobile)]
+        {
+            let _ = (current, next);
+            Ok(())
+        }
+    }
+    fn postpublication_trust(&self, path: &std::path::Path) -> Result<(), String> {
+        crate::windows_path_trust::ensure(&[(crate::windows_path_trust::TrustKind::File, path)])
+    }
+    fn notify(&self) {
+        #[cfg(not(mobile))]
+        notify_startup_readiness_if_waiting(self.0);
+    }
+}
+
+fn station_profile_store_write_with_host(
+    host: &impl ProfileWriteHost,
+    authority: &NativeProfileAuthority,
+    pending: &NativePendingPairingCredentials,
+    contents: String,
+    expected_revision: u64,
+    pairing_handle: Option<String>,
+) -> Result<(), String> {
     if contents.len() > 1024 * 1024 {
         return Err("saved Station metadata is too large".to_string());
     }
     let next_store = parse_station_profile_store(&contents)?;
-    let path = station_profiles_path(app)?;
+    let path = host.path()?;
     #[cfg(not(mobile))]
     {
         let root = station_profile_store_root(&path)?;
-        ensure_station_profile_store_genesis(app, root)?;
+        host.genesis(root)?;
     }
     let parent = path
         .parent()
@@ -4975,7 +5055,7 @@ fn station_profile_store_write_internal(
             .map_err(|error| format!("secure saved Station directory: {error}"))?;
     }
     validate_station_profile_store(&path)?;
-    let _lock = lock_station_profiles_for_app(app, &path)?;
+    let _lock = host.lock(&path)?;
     // Serialize all pairing-handle phases across the durable CAS. This keeps a
     // handle one-use without ever consuming it before the write it authorizes.
     let mut pending_entries = if pairing_handle.is_some() {
@@ -5086,9 +5166,8 @@ fn station_profile_store_write_internal(
         // Post-transition prepublication errors must reach the rollback below.
         // Grant invalidation still precedes profile publication: a failed
         // later write must never revive a revoked grant.
-        #[cfg(not(mobile))]
-        relay_grant_vault::invalidate_removed_routes(app, &current_store, &next_store)?;
-        let staged = path.with_extension(format!(
+        host.invalidate_removed_routes(&current_store, &next_store)?;
+        let generated_staged = path.with_extension(format!(
             "{}.{}.tmp",
             std::process::id(),
             SystemTime::now()
@@ -5096,6 +5175,7 @@ fn station_profile_store_write_internal(
                 .map_err(|error| format!("clock for profile write: {error}"))?
                 .as_nanos()
         ));
+        let staged = host.staged_path(generated_staged);
         #[cfg(unix)]
         use std::os::unix::fs::OpenOptionsExt;
         let mut options = std::fs::OpenOptions::new();
@@ -5121,7 +5201,7 @@ fn station_profile_store_write_internal(
         drop(file);
         replace_station_profile_store(&staged, &path)?;
         published = true;
-        crate::windows_path_trust::ensure(&[(crate::windows_path_trust::TrustKind::File, &path)])?;
+        host.postpublication_trust(&path)?;
         Ok(())
     })();
     if let Some(temporary) = temporary.filter(|temporary| temporary.exists()) {
@@ -5166,12 +5246,11 @@ fn station_profile_store_write_internal(
             entry.phase = NativePairingPhase::AwaitingRequiresAuth;
         }
     }
-    #[cfg(not(mobile))]
     if write_result.is_ok() {
         // A cold first run may create or repair this channel's bundled
         // credential after the first readiness attempt. Wake the existing
         // bounded proof without coupling it to renderer hydration order.
-        notify_startup_readiness_if_waiting(app);
+        host.notify();
     }
     write_result
 }
@@ -10798,6 +10877,110 @@ If a stable instance is running, this launch will focus its window and exit.",
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(not(mobile))]
+    struct WriterTestHost {
+        path: std::path::PathBuf,
+        staged_path: Option<std::path::PathBuf>,
+        fail_invalidation: bool,
+        fail_postpublication_trust: bool,
+    }
+
+    #[cfg(not(mobile))]
+    impl ProfileWriteHost for WriterTestHost {
+        fn path(&self) -> Result<std::path::PathBuf, String> { Ok(self.path.clone()) }
+        fn genesis(&self, root: &std::path::Path) -> Result<(), String> {
+            assert!(station_profile_store_is_initialized(root)?);
+            Ok(())
+        }
+        fn lock(&self, path: &std::path::Path) -> Result<StationProfileLock, String> { lock_station_profiles(path) }
+        fn invalidate_removed_routes(&self, _: &CredentialProfileStore, _: &CredentialProfileStore) -> Result<(), String> {
+            if self.fail_invalidation { Err("injected relay grant invalidation failure".into()) } else { Ok(()) }
+        }
+        fn postpublication_trust(&self, path: &std::path::Path) -> Result<(), String> {
+            if self.fail_postpublication_trust { Err("injected postpublication trust failure".into()) }
+            else { crate::windows_path_trust::ensure(&[(crate::windows_path_trust::TrustKind::File, path)]) }
+        }
+        fn staged_path(&self, generated: std::path::PathBuf) -> std::path::PathBuf {
+            self.staged_path.clone().unwrap_or(generated)
+        }
+    }
+
+    #[cfg(not(mobile))]
+    fn writer_pairing_fixture() -> (
+        tempfile::TempDir,
+        std::path::PathBuf,
+        NativeProfileAuthority,
+        NativePendingPairingCredentials,
+        String,
+        String,
+        WriterTestHost,
+    ) {
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory.path();
+        ensure_station_profile_store_root(root).unwrap();
+        std::fs::create_dir(root.join("config")).unwrap();
+        write_profile_store_genesis_marker(root).unwrap();
+        let path = root.join("config/profiles.json");
+        write_empty_station_profile_store(&path).unwrap();
+        let reference = NativeCredentialReference {
+            kind: "station-bearer".into(),
+            id: "test-host-allocated".into(),
+        };
+        let handle = "test-pairing-handle".to_string();
+        let pending = NativePendingPairingCredentials::default();
+        pending.0.lock().unwrap().insert(handle.clone(), PendingPairingCredential {
+            credential: "secret-never-leaves-native-state".into(),
+            reference,
+            exact_origin: "https://one.example".into(),
+            environment_id: "environment-one".into(),
+            client_instance_id: "11111111-1111-4111-8111-111111111111".into(),
+            expires_at: SystemTime::now() + Duration::from_secs(120),
+            phase: NativePairingPhase::AwaitingRequiresAuth,
+        });
+        let contents = r#"{"schemaVersion":1,"revision":1,"defaultProfile":null,"projectProfiles":{},"profiles":[{"schemaVersion":1,"name":"pending","endpoint":"https://one.example","credentialRef":{"kind":"station-bearer","id":"test-host-allocated"},"environmentId":"environment-one","clientInstanceId":"11111111-1111-4111-8111-111111111111","setupSource":"paired","configurationState":"requires-auth","createdAt":1,"updatedAt":1}]}"#.to_string();
+        let host = WriterTestHost { path: path.clone(), staged_path: None, fail_invalidation: false, fail_postpublication_trust: false };
+        (directory, path, NativeProfileAuthority::default(), pending, handle, contents, host)
+    }
+
+    #[cfg(not(mobile))]
+    #[test]
+    fn profile_writer_rolls_back_prepublication_failure_and_retries_same_handle() {
+        let (_directory, path, authority, pending, handle, contents, mut host) = writer_pairing_fixture();
+        host.fail_invalidation = true;
+        let error = station_profile_store_write_with_host(&host, &authority, &pending, contents.clone(), 0, Some(handle.clone())).unwrap_err();
+        assert!(error.contains("injected relay grant invalidation failure"));
+        assert_eq!(parse_station_profile_store(&read_station_profile_store(&path).unwrap()).unwrap().revision, 0);
+        assert!(authority.0.lock().unwrap().transitioning.is_empty());
+        assert!(matches!(pending.0.lock().unwrap().get(&handle).unwrap().phase, NativePairingPhase::AwaitingRequiresAuth));
+        host.fail_invalidation = false;
+        station_profile_store_write_with_host(&host, &authority, &pending, contents, 0, Some(handle.clone())).unwrap();
+        assert_eq!(parse_station_profile_store(&read_station_profile_store(&path).unwrap()).unwrap().revision, 1);
+        assert!(matches!(pending.0.lock().unwrap().get(&handle).unwrap().phase, NativePairingPhase::RequiresAuthPersisted { .. }));
+    }
+
+    #[cfg(not(mobile))]
+    #[test]
+    fn profile_writer_does_not_roll_back_after_publication_or_delete_foreign_stage() {
+        let (_directory, path, authority, pending, handle, contents, mut host) = writer_pairing_fixture();
+        host.fail_postpublication_trust = true;
+        let error = station_profile_store_write_with_host(&host, &authority, &pending, contents.clone(), 0, Some(handle.clone())).unwrap_err();
+        assert!(error.contains("injected postpublication trust failure"));
+        assert_eq!(parse_station_profile_store(&read_station_profile_store(&path).unwrap()).unwrap().revision, 1);
+        assert!(!authority.0.lock().unwrap().transitioning.is_empty());
+        assert!(matches!(pending.0.lock().unwrap().get(&handle).unwrap().phase, NativePairingPhase::RequiresAuthPersisted { .. }));
+
+        // A second isolated writer hits create_new on a path already owned by
+        // another process. Its cleanup may remove only a stage it created.
+        let (_other_directory, other_path, other_authority, other_pending, other_handle, other_contents, mut other_host) = writer_pairing_fixture();
+        let staged = other_path.with_extension("foreign.tmp");
+        std::fs::write(&staged, "foreign writer's staged bytes").unwrap();
+        other_host.staged_path = Some(staged.clone());
+        assert!(station_profile_store_write_with_host(&other_host, &other_authority, &other_pending, other_contents, 0, Some(other_handle.clone())).unwrap_err().contains("create saved Station temp file"));
+        assert_eq!(std::fs::read_to_string(&staged).unwrap(), "foreign writer's staged bytes");
+        assert_eq!(parse_station_profile_store(&read_station_profile_store(&other_path).unwrap()).unwrap().revision, 0);
+        assert!(matches!(other_pending.0.lock().unwrap().get(&other_handle).unwrap().phase, NativePairingPhase::AwaitingRequiresAuth));
+    }
 
     #[test]
     #[cfg(not(mobile))]
