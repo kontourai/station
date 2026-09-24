@@ -80,8 +80,9 @@ export function fallowCommands(scope) {
 
 export async function runFallowAnalysis(root, command, outputFile, args = []) {
   // `fallow audit` leaves a full base checkout in its temp directory for every
-  // base commit; keep those inside Station's temp root, pruned (#2529).
-  const fallowRun = prepareFallowRun(root);
+  // base commit: give each run a private one under Station's temp root and
+  // remove it when the run ends (#2529).
+  const fallowRun = prepareFallowRun();
   const execution = executeOwnedCommand(
     process.execPath,
     [
