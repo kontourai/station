@@ -33,7 +33,7 @@ import './ChildWorkRow.css';
  */
 
 /** `m:ss`, or `h:mm:ss` past an hour. */
-export function formatElapsed(ms: number): string {
+function formatElapsed(ms: number): string {
   const totalSeconds = Math.max(0, Math.floor(ms / 1000));
   const hours = Math.floor(totalSeconds / 3600);
   const minutes = Math.floor((totalSeconds % 3600) / 60);
@@ -44,7 +44,7 @@ export function formatElapsed(ms: number): string {
     : `${minutes}:${pad(seconds)}`;
 }
 
-export const CHILD_WORK_STATUS_LABEL: Record<ChildWorkStatus, string> = {
+const CHILD_WORK_STATUS_LABEL: Record<ChildWorkStatus, string> = {
   running: 'Running',
   completed: 'Completed',
   failed: 'Failed',
@@ -56,7 +56,7 @@ export const CHILD_WORK_STATUS_LABEL: Record<ChildWorkStatus, string> = {
 };
 
 /** Only the members the engine reported; a reported 0 prints. */
-export function usageClauses(usage: ChildWorkUsage | undefined): string[] {
+function usageClauses(usage: ChildWorkUsage | undefined): string[] {
   if (!usage) return [];
   const clauses: string[] = [];
   if (usage.totalTokens !== undefined)
