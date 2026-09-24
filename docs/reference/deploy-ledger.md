@@ -28,6 +28,7 @@ This file decides nothing about how `station.kontourai.io` will read the ledger 
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-09-24T22:28:31Z | nightly-desktop | 0.1.11-nightly.2458.6 | `f18562c` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/36061294532) |
 | 2026-09-24T22:28:28Z | nightly-android | 0.1.11-nightly.2458.6 | `f18562c` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/36061294532) |
 | 2026-09-24T22:24:13Z | nightly-npm | 0.6.0-nightly.2458.36061294532 | `f18562c` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/36061294532) |
 | 2026-09-24T17:56:23Z | nightly-desktop | 0.1.11-nightly.2458.5 | `e390f5a` | native cohort final receipt partial | [run](https://github.com/kontourai/station/actions/runs/36031064921) |
@@ -143,6 +144,34 @@ This file decides nothing about how `station.kontourai.io` will read the ledger 
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-09-24T22:28:31Z · nightly-desktop · 0.1.11-nightly.2458.6
+
+- Ship SHA: `f18562c4fc01edf17abdeaec88ff150ae80edf3e`
+- Artifact built at: `2026-09-24T21:40:10.415Z` (not provider upload/record time)
+- Artifact: github-release:nightly-desktop (cohort-finalized)
+- Note: ios: TestFlight delivery success (run 36061294532)
+
+### Changelog
+
+Commits since `e390f5a` ([full sha](https://github.com/kontourai/station/commit/e390f5a83b50b2aa97e4287f43b4a5fc986697e8)):
+
+**Features**
+
+- [#2511](https://github.com/kontourai/station/pull/2511) feat(mobile): reopen last selected Station on launch
+- [#2533](https://github.com/kontourai/station/pull/2533) feat(claude): report subagents on the child-work contract (#2457)
+
+**Fixes**
+
+- [#2550](https://github.com/kontourai/station/pull/2550) fix(server): stored attachments load on every device
+- [#2554](https://github.com/kontourai/station/pull/2554) fix(ui): iOS and iPadOS draw attachment PDFs with pdf.js
+- [#2538](https://github.com/kontourai/station/pull/2538) fix(test): remove test temp dirs in hooks and ratchet raw mkdtemp calls
+- [#2551](https://github.com/kontourai/station/pull/2551) fix(cli,scripts): process identity follow-ups — fail-safe stop, lease upgrade window, missing tests
+- [#2546](https://github.com/kontourai/station/pull/2546) fix(claude): stop spawning a CLI to validate every Claude start's model (#2482)
+
+**Other**
+
+- [#2547](https://github.com/kontourai/station/pull/2547) test(e2e): name the Project on coding calls, as the #2471 confinement requires
 
 ## 2026-09-24T22:28:28Z · nightly-android · 0.1.11-nightly.2458.6
 
