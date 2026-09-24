@@ -531,6 +531,10 @@ describe('station#3352: a reconnect gap ends with the missed text on screen', ()
           }),
       );
       streamUntilTheDrop();
+      // This clock assertion exercises the pre-content phase. A remounted
+      // streaming row now correctly shows buffered text, which hides the
+      // generic Working label once answer text exists.
+      activeChatsStore.updateChat(THREAD, { streamingMessage: undefined });
       const view = render(<DockClock />);
       await waitFor(() => expect(fetchWindow).toHaveBeenCalledTimes(1));
 
@@ -616,6 +620,10 @@ describe('station#3352: a reconnect gap ends with the missed text on screen', ()
             }),
         );
         streamUntilTheDrop();
+        if (!statusLabel) {
+          // The generic Working clock is visible only before answer text.
+          activeChatsStore.updateChat(THREAD, { streamingMessage: undefined });
+        }
         const view = render(<DockClock statusLabel={statusLabel} />);
         await waitFor(() => expect(fetchWindow).toHaveBeenCalledTimes(1));
         vi.setSystemTime(t0 + 300_000);

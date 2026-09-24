@@ -21,17 +21,48 @@ function sameContentParts(
   );
 }
 
+function readStreamingContent(
+  sessionId: string,
+): Omit<StreamingState, 'contentRevision'> {
+  const message = activeChatsStore.getSnapshot()[sessionId]?.streamingMessage;
+  const content = message?.content || '';
+  const parts = message?.contentParts || [];
+  // Orchestration appends each text delta to both `content` and its tail
+  // part. Treat that tail as the streaming tip; providers that grow only
+  // `content` use the suffix after completed text parts (archive#3351).
+  const textInPartsLength = parts.reduce(
+    (length, part) =>
+      length + (part.type === 'text' ? (part.content?.length ?? 0) : 0),
+    0,
+  );
+  const tail = parts.at(-1);
+  const hasContentSuffix = content.length > textInPartsLength;
+  const hasActiveTailText =
+    !hasContentSuffix && tail?.type === 'text' && Boolean(tail.content);
+  return {
+    hasContent: content.length > 0 || parts.length > 0,
+    contentParts: hasActiveTailText ? parts.slice(0, -1) : parts,
+    streamingText: hasContentSuffix
+      ? content.slice(textInPartsLength)
+      : hasActiveTailText
+        ? tail.content || ''
+        : '',
+  };
+}
+
 /**
  * Hook that subscribes to streaming content.
  * Returns throttled streamingText for markdown rendering
  * and state for completed contentParts.
  */
 export function useStreamingContent(sessionId: string) {
-  const [state, setState] = useState<StreamingState>({
-    hasContent: false,
-    contentParts: [],
-    streamingText: '',
-    contentRevision: 0,
+  const [state, setState] = useState<StreamingState>(() => {
+    return {
+      // A remounted row must show the already-buffered answer immediately.
+      // The 80 ms throttle applies only to new deltas received while mounted.
+      ...readStreamingContent(sessionId),
+      contentRevision: 0,
+    };
   });
 
   // Throttle: track latest value and flush on interval
@@ -57,36 +88,14 @@ export function useStreamingContent(sessionId: string) {
   }, []);
 
   useEffect(() => {
-    const unsubscribe = activeChatsStore.subscribe(() => {
-      const chat = activeChatsStore.getSnapshot()[sessionId];
-      const streamingMessage = chat?.streamingMessage;
-      const content = streamingMessage?.content || '';
-      const contentParts = streamingMessage?.contentParts || [];
-
-      // Calculate text that's already in contentParts
-      let textInPartsLength = 0;
-      for (const part of contentParts) {
-        if (part.type === 'text')
-          textInPartsLength += part.content?.length ?? 0;
-      }
-
-      // Orchestration appends every text delta to BOTH `content` and the tail
-      // text part. Treat that active tail as the throttled tip rather than
-      // publishing its newly allocated part on every token (archive#3351).
-      // Providers that retain completed text parts while growing only
-      // `content` still use the suffix path.
-      const tail = contentParts.at(-1);
-      const hasContentSuffix = content.length > textInPartsLength;
-      const hasActiveTailText =
-        !hasContentSuffix && tail?.type === 'text' && Boolean(tail.content);
-      const completedContentParts = hasActiveTailText
-        ? contentParts.slice(0, -1)
-        : contentParts;
-      const currentStreamingText = hasContentSuffix
-        ? content.slice(textInPartsLength)
-        : hasActiveTailText
-          ? tail.content || ''
-          : '';
+    const onStoreChange = () => {
+      // Both the mount seed and live subscription use the same text/part
+      // split, including provider tails that grow only `content`.
+      const {
+        hasContent,
+        contentParts: completedContentParts,
+        streamingText: currentStreamingText,
+      } = readStreamingContent(sessionId);
       latestStreamingTextRef.current = currentStreamingText;
 
       // Schedule throttled flush for streaming text
@@ -101,7 +110,6 @@ export function useStreamingContent(sessionId: string) {
       }
 
       // Update contentParts and hasContent immediately (these change infrequently)
-      const hasContent = content.length > 0 || contentParts.length > 0;
       setState((prev) => {
         const nextContentParts = sameContentParts(
           prev.contentParts,
@@ -126,7 +134,10 @@ export function useStreamingContent(sessionId: string) {
         }
         return prev;
       });
-    });
+    };
+    const unsubscribe = activeChatsStore.subscribe(onStoreChange);
+    // Close the gap between the render-time seed and the subscription.
+    onStoreChange();
 
     return () => {
       unsubscribe();

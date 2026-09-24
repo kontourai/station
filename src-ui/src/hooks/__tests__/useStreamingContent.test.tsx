@@ -43,6 +43,28 @@ describe('useStreamingContent', () => {
     vi.useRealTimers();
   });
 
+  test('shows buffered text immediately when the streaming row remounts', () => {
+    const first = renderHook(() => useStreamingContent('session'));
+    act(() => {
+      store.publish({
+        session: {
+          streamingMessage: {
+            role: 'assistant',
+            content: 'Already streamed',
+            contentParts: [{ type: 'text', content: 'Already streamed' }],
+          },
+        },
+      });
+      vi.advanceTimersByTime(80);
+    });
+    expect(first.result.current.streamingText).toBe('Already streamed');
+    first.unmount();
+
+    const reopened = renderHook(() => useStreamingContent('session'));
+    expect(reopened.result.current.streamingText).toBe('Already streamed');
+    expect(reopened.result.current.hasContent).toBe(true);
+  });
+
   test('routes per-token orchestration tail parts through the 80ms text flush', () => {
     const hook = renderHook(() => useStreamingContent('session'));
 
