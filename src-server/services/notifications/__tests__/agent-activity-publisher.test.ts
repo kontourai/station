@@ -1141,6 +1141,63 @@ describe('agent-activity publisher', () => {
     await h.publisher.stop();
   });
 
+  test('a device whose reader cannot be resolved skips only that phone', async () => {
+    let first = '';
+    const h = await harness({
+      principalFor: (deviceId) => {
+        if (deviceId === first) throw new Error('corrupt device record');
+        return { principalId: 'principal-b', sessionIds: ['s1'] };
+      },
+    });
+    first = (await h.pairAndRegister('A')).deviceId;
+    await h.pairAndRegister('B', `fcm-token-${'b'.repeat(60)}`);
+    h.sessions.set('s1', sessionEvents('s1', 'running', START));
+    h.emit('turn.started');
+    await h.settle();
+    expect(h.delivered.map((d) => d.token)).toEqual([
+      `fcm-token-${'b'.repeat(60)}`,
+    ]);
+    await h.publisher.stop();
+  });
+
+  test('a failed read keeps a longer backoff and warns once per failure spell', async () => {
+    const failing = new Set<string>();
+    const h = await harness({
+      principalFor: () => ({ principalId: 'principal-a', sessionIds: ['s1'] }),
+      failingPrincipals: failing,
+      answers: [503, 503, 503, 503],
+    });
+    await h.pairAndRegister();
+    h.sessions.set('s1', sessionEvents('s1', 'running', START));
+    h.emit('turn.started');
+    await h.settle();
+    // Four failed sends: the next send may not happen for 5 s x 3^3 = 135 s.
+    await h.fireNextTimer();
+    await h.fireNextTimer();
+    await h.fireNextTimer();
+    const attempts = h.fetchImpl.mock.calls.length;
+    expect(attempts).toBe(4);
+    const backoffAt = Math.min(...h.liveTimers().map((t) => t.at));
+    failing.add('principal-a');
+    h.emit('turn.started');
+    await h.settle();
+    h.emit('turn.started');
+    await h.settle();
+    // The read recovers at the stalled-read retry (60 s), but the phone's own
+    // backoff still stands: no send before it.
+    failing.clear();
+    await h.fireNextTimer();
+    expect(h.fetchImpl.mock.calls.length).toBe(attempts);
+    while (h.liveTimers().some((t) => t.at <= backoffAt))
+      await h.fireNextTimer();
+    expect(h.fetchImpl.mock.calls.length).toBeGreaterThan(attempts);
+    const readWarnings = h.warn.mock.calls.filter(
+      (call) => call[0] === 'agent-activity: session read failed',
+    );
+    expect(readWarnings).toHaveLength(1);
+    await h.publisher.stop();
+  });
+
   test('a first flush that reads nothing is looked at again, with no device state yet', async () => {
     const h = await harness({
       principalFor: () => ({ principalId: 'principal-a', sessionIds: ['s1'] }),

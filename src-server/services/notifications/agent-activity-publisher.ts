@@ -711,9 +711,25 @@ export function wireAgentActivityPublisher(
     const cards = new Map<string, AgentActivityCard>();
     const principalOf = new Map<string, string>();
     const failedPrincipals = new Set<string>();
+    // Devices whose reader could not even be built: isolated like a failed
+    // read, so one bad device record never stalls every other phone.
+    const failedDevices = new Set<string>();
     for (const { deviceId, registration } of targets) {
       if (registration.stationKey !== key.thumbprint) continue;
-      const reader = options.sessionReaderFor(deviceId);
+      let reader: AgentActivitySessionReader | null;
+      try {
+        reader = options.sessionReaderFor(deviceId);
+      } catch (error) {
+        failedDevices.add(deviceId);
+        if (!warned.has(`reader:${deviceId}`)) {
+          warned.add(`reader:${deviceId}`);
+          logger.warn('agent-activity: could not resolve a device reader', {
+            error: errorMessage(error),
+          });
+        }
+        continue;
+      }
+      warned.delete(`reader:${deviceId}`);
       if (!reader) continue;
       principalOf.set(deviceId, reader.principalId);
       if (
@@ -727,11 +743,16 @@ export function wireAgentActivityPublisher(
       } catch (error) {
         // Isolated: only this principal's phones wait for the retry.
         failedPrincipals.add(reader.principalId);
-        logger.warn('agent-activity: session read failed', {
-          error: errorMessage(error),
-        });
+        // Once per failure spell, not on every retry.
+        if (!warned.has(`read:${reader.principalId}`)) {
+          warned.add(`read:${reader.principalId}`);
+          logger.warn('agent-activity: session read failed', {
+            error: errorMessage(error),
+          });
+        }
         continue;
       }
+      warned.delete(`read:${reader.principalId}`);
       let snapshots = snapshotsByPrincipal.get(reader.principalId);
       if (!snapshots) {
         snapshots = new Map();
@@ -774,11 +795,21 @@ export function wireAgentActivityPublisher(
         continue;
       }
       const principalId = principalOf.get(deviceId);
-      if (principalId !== undefined && failedPrincipals.has(principalId)) {
+      if (
+        failedDevices.has(deviceId) ||
+        (principalId !== undefined && failedPrincipals.has(principalId))
+      ) {
         // Its read failed: nothing about this phone is known this time. Try
-        // it again with the stalled-read retry, not at once.
+        // it again with the stalled-read retry, not at once — but never
+        // sooner than a longer backoff it already has, and never revive
+        // timed retries it has used up.
         const waiting = devices.get(deviceId);
-        if (waiting) waiting.retryAt = at + STALLED_FLUSH_RETRY_MS;
+        if (waiting && waiting.failures <= MAX_TIMED_RETRIES) {
+          waiting.retryAt = Math.max(
+            waiting.retryAt ?? 0,
+            at + STALLED_FLUSH_RETRY_MS,
+          );
+        }
         continue;
       }
       let card = principalId ? cards.get(principalId) : undefined;
