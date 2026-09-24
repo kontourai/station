@@ -132,7 +132,10 @@ export interface PluginCommandEffectTransport {
   settle(
     apiBase: string,
     request: PluginCommandEffectSettlementRequest,
-    options: { keepalive: boolean; requestScope?: PluginCommandEffectRequestScope },
+    options: {
+      keepalive: boolean;
+      requestScope?: PluginCommandEffectRequestScope;
+    },
   ): Promise<readonly PluginCommandEffectSettlementResult[] | null>;
 }
 
@@ -380,11 +383,20 @@ export function createPluginCommandEffectCoordinator(
   function pruneRetainedSettlements(): void {
     const nowMs = now();
     for (const [requestId, record] of [...retainedSettlements]) {
-      if (nowMs - record.createdAt > PLUGIN_COMMAND_EFFECT_RETAINED_SETTLEMENT_MAX_AGE_MS) {
-        dropRetainedRecord(requestId, record, 'exceeded the retention age bound');
+      if (
+        nowMs - record.createdAt >
+        PLUGIN_COMMAND_EFFECT_RETAINED_SETTLEMENT_MAX_AGE_MS
+      ) {
+        dropRetainedRecord(
+          requestId,
+          record,
+          'exceeded the retention age bound',
+        );
       }
     }
-    if (retainedSettlements.size > PLUGIN_COMMAND_EFFECT_RETAINED_SETTLEMENT_MAX) {
+    if (
+      retainedSettlements.size > PLUGIN_COMMAND_EFFECT_RETAINED_SETTLEMENT_MAX
+    ) {
       const oldestFirst = [...retainedSettlements].sort(
         (a, b) => a[1].createdAt - b[1].createdAt,
       );
