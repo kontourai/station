@@ -216,10 +216,19 @@ test('#2144 slice 6: the row states who ignores it and when it applies', () => {
     />,
   );
   // The conditions themselves, not a paraphrase. WHEN it applies is the
-  // row's checkable promise: since #2436 the server applies it at a session
-  // start and never to a running session.
-  expect(screen.getByText(/Applied when a session starts/)).toBeTruthy();
-  expect(screen.getByText(/never to one already running/)).toBeTruthy();
+  // row's checkable promise: since #2436 the server applies it at EVERY
+  // session start, unattended ones included (owner decision), and never to a
+  // running session. Full access here reaching webhooks, Discord, schedules
+  // and delegations must be said where the operator chooses it.
+  expect(
+    screen.getByText(/Applied when any session starts, including unattended/),
+  ).toBeTruthy();
+  expect(
+    screen.getByText(/webhooks, Discord, scheduled jobs, delegations/),
+  ).toBeTruthy();
+  expect(
+    screen.getByText(/Never applied to a session already running/),
+  ).toBeTruthy();
   // Who it does nothing for: Station's own engine (it keeps a knob-capable
   // connection id and renders no approval control) and every engine whose
   // adapter has no knob.

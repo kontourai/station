@@ -219,6 +219,13 @@ engine with an approval knob, and it resolves in this order:
    Agent's own (§4.9), then this Station's `AppConfig.defaultApprovalMode`.
    - The server resolves them, so the Station default no longer depends on
      the client that started the session.
+   - **Owner decision (2026-09-23): this applies to every session start.**
+     That includes `station chat`, delegations, inbound webhooks, Discord and
+     scheduled jobs, not only chats from the UI.
+   - Before this change only a UI chat sent the default. Choosing Full access
+     as the Station default now gives those unattended starters full access.
+     The settings row, `AppConfig.defaultApprovalMode` and the app schema say
+     so where the operator makes that choice.
    - A turn on a live session carries no default. A default is the posture a
      session starts in, and re-requesting it would let an edit of the setting
      reconfigure a running chat (#2144 slice 6).
@@ -393,13 +400,40 @@ A session spawned before this change has nothing recorded.
 - **Schema.** `schemas/agent.schema.json` admits `execution.approvalMode`.
   Before this change its closed `execution` object rejected the field, so a
   saved default made the Agent unloadable.
-- **Plugin-contributed Agents.** Their full-access default is not applied.
-  - A plugin is installed at the ordinary operate tier, so a `never` it ships
-    is full access that no one with the authority chose.
-  - Their stricter defaults (Ask, Auto) apply.
-  - A Workspace Pane action's admission captures the plugin Agent's
-    definition. The start consumes that captured value and never rereads the
-    store.
+- **Plugin-contributed Agents: provenance (owner decision).** Who set the
+  default decides whether full access is honoured.
+  - **The plugin's own value** lives in its `agent.json`. A `never` there is
+    never applied, because a plugin is installed at the ordinary operate
+    tier. Its stricter values (Ask, Auto) apply.
+  - **The operator's value** is honoured, `never` included. It is set
+    through the Agent editor or API by a caller who passed the full-access
+    gate (§4.8), and it is recorded outside the plugin's directory in
+    `<home>/agent-approval-overrides.json` as
+    `{ "<slug>": { "plugin", "approvalMode" } }`.
+  - **Why a separate Station-owned file** rather than a marker beside the
+    field: installs and updates copy the plugin's whole Agent directory. A
+    marker in that directory could be shipped (forged) by the plugin, and it
+    would be erased by the next update. The home root is written by no plugin
+    install or update. Only `AgentService.updateAgent` writes it, behind the
+    gated route.
+  - **Plugin update or reinstall.** The update replaces `agent.json` with the
+    new copy. The operator's entry is untouched and keeps winning, whatever
+    the new copy declares. It is not silently overwritten.
+  - **The entry is tied to the plugin it was set for.** It is honoured only
+    while that same plugin still owns the slug. A different plugin later
+    contributing the same slug does not inherit it. Uninstalling leaves the
+    entry, and reinstalling the same plugin restores it.
+  - **Only a change is a choice.** An unrelated save resends the value the
+    editor showed and records nothing, so plugin updates can still move the
+    default. Choosing "Use this Station's default" over a plugin's declared
+    value records an explicit "no default".
+  - **Writers never copy the effective value into the plugin's file.**
+    Readers see the effective value (`loadAgentConfig`,
+    `capturePluginAgentInvocation`, and the save response). Writers merge
+    onto the file as stored.
+  - **Workspace Pane actions.** Their admission captures the plugin Agent
+    with its effective default, and the start consumes that captured value
+    without rereading.
 - **A failed read fails the start.** If the Agent's execution config cannot be
   read, the start fails, exactly as the credential-profile pin read beside it
   does. An unreadable default is not the same as no default.
@@ -514,10 +548,9 @@ leaves the engine more permissive than that decision.
   `main`. Once anything is recorded, the recorded decision outranks it. A
   `never` there is subject to §4.8 like any other.
 - **Agent files edited on disk are not gated.** That is a same-user channel,
-  and it does not go through the Agent write routes.
-  - A plugin-contributed Agent's `never` default is not applied (§4.9).
-  - Neither is a `never` the operator saves on a plugin-owned Agent: the next
-    plugin update would re-copy the Agent anyway.
+  and it does not go through the Agent write routes. This covers
+  `agent-approval-overrides.json` too: whoever can write the Station home can
+  already do anything the operator can.
 - **The posture is not added to the session-summary snapshot.** A client that
   reconnects through a snapshot folds the posture from the next event or from
   its own result. The engine is correct either way, because the server applies

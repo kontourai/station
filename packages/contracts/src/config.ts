@@ -43,7 +43,13 @@ export interface AppConfig {
    * `resolveStationDefaultApprovalMode`), at a session START only, below the
    * conversation's recorded pick and the Agent's own default
    * (`AgentSpec.execution.approvalMode`); it is also what a Default pick
-   * returns to when the Agent names none. It is never re-applied to a running
+   * returns to when the Agent names none.
+   *
+   * It applies to EVERY session start, not only chats from the UI (owner
+   * decision, 2026-09-23): `station chat`, delegations, inbound webhooks,
+   * Discord and scheduled jobs start at it too when nothing above it is set.
+   * Choosing `'never'` here therefore gives those UNATTENDED starters full
+   * access, with no sandbox and no approval prompt. It is never re-applied to a running
    * session: re-requesting a default there would let an edit of this setting
    * reconfigure a live chat, and Claude refuses a mid-session escalation to
    * `'never'` on a session not spawned with its bypass flag. Only a chat's
