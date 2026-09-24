@@ -21,6 +21,7 @@ import { buildOrchestrationSessionSummary } from '../../orchestration/orchestrat
 import { DevicePairingService } from '../../ssh/device-pairing-service.js';
 import { agentActivityEntryId } from '../agent-activity-card.js';
 import {
+  type AgentActivitySessionRow,
   agentActivityRowFromSummary,
   agentActivityRowsWithEntries,
   resolvePushGatewayConfig,
@@ -298,6 +299,7 @@ async function harness(
     });
   const liveTimers = () => timers.filter((timer) => timer.live);
   return {
+    homeDir,
     pairing,
     keys,
     eventBus,
@@ -731,6 +733,289 @@ describe('agent-activity publisher', () => {
     await h.publisher.stop();
   });
 
+  test('a change that reverts inside the send interval leaves no retry timer spinning', async () => {
+    const h = await harness();
+    await h.pairAndRegister();
+    const events = sessionEvents('s1', 'running', START);
+    h.sessions.set('s1', events);
+    h.emit('turn.started');
+    await h.settle();
+    // An approval opens (held back by the 3 s interval)…
+    h.advance(1000);
+    events.push(openRequest('s1', 'req-A', 'approval', START + 1000));
+    h.emit('request.opened');
+    await h.settle();
+    // …and is answered before the interval ends: the card is back to what
+    // the phone already has.
+    h.advance(1000);
+    events.push(
+      ev('s1', START + 2000, {
+        method: 'request.resolved',
+        requestId: 'req-A',
+        status: 'approved',
+      }),
+    );
+    h.emit('request.resolved');
+    await h.settle();
+    const readsBefore = h.listSessions.mock.calls.length;
+    let fired = 0;
+    while (
+      h.liveTimers().some((timer) => timer.at <= START + 2 * 3_600_000) &&
+      fired < 100
+    ) {
+      await h.fireNextTimer();
+      fired += 1;
+    }
+    // Over two simulated hours: the deferred wake, then the one refresh of
+    // the live card — not a flush a second.
+    expect(fired).toBeLessThanOrEqual(3);
+    expect(h.listSessions.mock.calls.length - readsBefore).toBeLessThanOrEqual(
+      3,
+    );
+    await h.publisher.stop();
+  });
+
+  test('a finished card whose change reverts arms no timer at all', async () => {
+    const h = await harness();
+    await h.pairAndRegister();
+    h.sessions.set('s1', sessionEvents('s1', 'completed', START - 60_000));
+    h.emit('turn.completed');
+    await h.settle();
+    expect(h.delivered).toHaveLength(1);
+    h.advance(1000);
+    const briefly = sessionEvents('s2', 'running', START + 1000);
+    h.sessions.set('s2', briefly);
+    h.emit('turn.started', 's2');
+    await h.settle();
+    h.advance(1000);
+    h.sessions.delete('s2');
+    h.emit('turn.aborted', 's2');
+    await h.settle();
+    let fired = 0;
+    while (h.liveTimers().length > 0 && fired < 100) {
+      await h.fireNextTimer();
+      fired += 1;
+    }
+    expect(fired).toBeLessThanOrEqual(1);
+    expect(h.delivered).toHaveLength(1);
+    await h.publisher.stop();
+  });
+
+  test('a later failure is a new entry, not the earlier failure it follows', async () => {
+    const h = await harness();
+    await h.pairAndRegister();
+    const events = sessionEvents('s1', 'running', START);
+    events.push(
+      ev('s1', START, {
+        method: 'runtime.error',
+        turnId: 'turn-2',
+        message: 'first failure',
+      }),
+    );
+    h.sessions.set('s1', events);
+    h.emit('runtime.error');
+    await h.settle();
+    const firstAlert = h.delivered[0]?.card.alert_id;
+    expect(h.delivered[0]?.card.alert_title).toBe('Agent failed');
+
+    // An hour later a new turn runs and fails through a state change, with
+    // no runtime.error of its own.
+    h.advance(60 * 60_000);
+    events.push(
+      ev('s1', START + 60 * 60_000, {
+        method: 'turn.started',
+        turnId: 'turn-3',
+        prompt: 'try again',
+      }),
+      ev('s1', START + 60 * 60_000 + 500, {
+        method: 'session.state-changed',
+        from: 'running',
+        to: 'errored',
+      }),
+    );
+    h.emit('session.state-changed');
+    await h.settle();
+    const latest = h.delivered.at(-1)?.card;
+    expect(latest?.activity_line_0).toBe(
+      'Failed\tFix the flaky login test\tLogin App',
+    );
+    expect(latest?.alert_title).toBe('Agent failed');
+    expect(latest?.alert_id).not.toBe(firstAlert);
+    await h.publisher.stop();
+  });
+
+  test('an entry event older than the phase already observed is not trusted', async () => {
+    const h = await harness();
+    const { registration } = await h.pairAndRegister();
+    const cards: Array<Record<string, string>> = [];
+    let clock = START;
+    let rows: AgentActivitySessionRow[] = [];
+    const publisher = wireAgentActivityPublisher({
+      eventBus: new EventBus(),
+      devicePairing: h.pairing,
+      signingKey: h.keys,
+      listSessions: async () => rows,
+      gateway: GATEWAY,
+      logger: { warn: vi.fn() },
+      now: () => clock,
+      windowMs: 1,
+      setTimer: () => () => {},
+      fetchImpl: (async (_url: string, init: RequestInit) => {
+        const body = JSON.parse(String(Buffer.from(init.body as Buffer)));
+        cards.push(openCard(body.data.sealed, registration));
+        return new Response('{}', { status: 200 });
+      }) as unknown as typeof fetch,
+    });
+    const base = {
+      sessionId: 's1',
+      title: 'Fix the flaky login test',
+      project: 'Login App',
+      status: 'running' as const,
+      isLoaded: true,
+      hasActiveTurn: true,
+    };
+    rows = [
+      {
+        ...base,
+        lifecycleState: 'running',
+        entry: { key: 'turn:2', at: START },
+      },
+    ];
+    publisher.requestFlush();
+    await publisher.drain();
+    // The session fails; the only terminal event the log offers is from long
+    // before the run this publisher watched start.
+    clock = START + 60_000;
+    rows = [
+      {
+        ...base,
+        lifecycleState: 'failed',
+        entry: { key: 'event:old', at: START - 60 * 60_000 },
+      },
+    ];
+    publisher.requestFlush();
+    await publisher.drain();
+    expect(cards.at(-1)?.activity_line_0).toBe(
+      'Failed\tFix the flaky login test\tLogin App',
+    );
+    expect(cards.at(-1)?.alert_title).toBe('Agent failed');
+    await publisher.stop();
+    await h.publisher.stop();
+  });
+
+  test('a grouped alert is not raised again after a restart or a token rotation', async () => {
+    const h = await harness();
+    h.sessions.set('s1', sessionEvents('s1', 'approval', START));
+    h.sessions.set('s2', sessionEvents('s2', 'input', START - 10));
+    const { deviceId, registration } = await h.pairAndRegister();
+    h.publisher.requestFlush();
+    await h.settle();
+    expect(h.delivered[0]?.card.alert_title).toBe('2 agents need you');
+    await h.publisher.stop();
+
+    // Token rotation, then a fresh publisher (a restart) over the same home.
+    const rotated = h.pairing.setNativePush(
+      deviceId,
+      {
+        token: `fcm-token-${'r'.repeat(60)}`,
+        packageName: 'io.kontourai.station',
+        platform: 'android',
+      },
+      registration.stationKey,
+    );
+    expect(rotated.registrationId).toBe(registration.registrationId);
+    const cards: Array<Record<string, string>> = [];
+    // A new process: nothing in memory, only what is on disk.
+    const reopened = new DevicePairingService({
+      homeDir: h.homeDir,
+      environmentId: ENVIRONMENT_ID,
+    });
+    const restarted = wireAgentActivityPublisher({
+      eventBus: new EventBus(),
+      devicePairing: reopened,
+      signingKey: h.keys,
+      listSessions: h.listSessions,
+      gateway: GATEWAY,
+      logger: { warn: vi.fn() },
+      now: () => h.now() + 10_000,
+      windowMs: 1,
+      setTimer: () => () => {},
+      fetchImpl: (async (_url: string, init: RequestInit) => {
+        const body = JSON.parse(String(Buffer.from(init.body as Buffer)));
+        cards.push(openCard(body.data.sealed, rotated));
+        return new Response('{}', { status: 200 });
+      }) as unknown as typeof fetch,
+    });
+    restarted.requestFlush();
+    await restarted.drain();
+    expect(cards).toHaveLength(1);
+    expect(cards[0]?.alert_id).toBeUndefined();
+    await restarted.stop();
+  });
+
+  test('a failed session read still re-arms the timer, without spinning it', async () => {
+    const h = await harness();
+    await h.pairAndRegister();
+    h.sessions.set('s1', sessionEvents('s1', 'approval', START));
+    h.emit('request.opened');
+    await h.settle();
+    const refresh = h.liveTimers()[0];
+    expect(refresh?.at).toBe(START + 90 * 60_000);
+    h.listSessions.mockRejectedValueOnce(new Error('read model down'));
+    await h.fireNextTimer();
+    const rearmed = h.liveTimers();
+    expect(rearmed).toHaveLength(1);
+    expect(rearmed[0]?.at).toBeGreaterThanOrEqual(h.now() + 60_000);
+    await h.fireNextTimer();
+    expect(h.delivered).toHaveLength(2);
+    await h.publisher.stop();
+  });
+
+  test('a 401 is retried on the timer and does not use up the alert; a 422 is final', async () => {
+    const h = await harness({ answers: [401] });
+    await h.pairAndRegister();
+    h.sessions.set('s1', sessionEvents('s1', 'approval', START));
+    h.emit('request.opened');
+    await h.settle();
+    expect(h.delivered).toHaveLength(0);
+    await h.fireNextTimer();
+    expect(h.delivered).toHaveLength(1);
+    expect(h.delivered[0]?.card.alert_title).toBe('Approval needed');
+    await h.publisher.stop();
+
+    const final = await harness({ answers: [422] });
+    await final.pairAndRegister();
+    final.sessions.set('s1', sessionEvents('s1', 'running', START));
+    final.emit('turn.started');
+    await final.settle();
+    expect(final.fetchImpl).toHaveBeenCalledTimes(1);
+    expect(final.liveTimers()).toEqual([]);
+    await final.publisher.stop();
+  });
+
+  test('an unreadable registration store is not "nobody registered": delivery state survives it', async () => {
+    const h = await harness();
+    await h.pairAndRegister();
+    h.sessions.set('s1', sessionEvents('s1', 'running', START));
+    h.emit('turn.started');
+    await h.settle();
+    const list = vi
+      .spyOn(h.pairing, 'listNativePushRegistrations')
+      .mockImplementationOnce(() => {
+        throw new Error('store unreadable');
+      });
+    h.advance(5000);
+    h.publisher.requestFlush();
+    await h.settle();
+    list.mockRestore();
+    h.advance(5000);
+    h.publisher.requestFlush();
+    await h.settle();
+    // The same card is not re-sent just because one read failed.
+    expect(h.delivered).toHaveLength(1);
+    await h.publisher.stop();
+  });
+
   test('a phone that unregisters and registers again gets the card again', async () => {
     const h = await harness();
     const { deviceId, registration } = await h.pairAndRegister();
@@ -768,6 +1053,7 @@ describe('agent-activity publisher', () => {
           throw new Error('registry unreadable');
         },
         clearNativePush: () => {},
+        recordNativePushAlerts: () => {},
         environmentId: () => ENVIRONMENT_ID,
       },
       signingKey: h.keys,
@@ -816,6 +1102,7 @@ describe('agent-activity publisher', () => {
       devicePairing: {
         listNativePushRegistrations: () => [],
         clearNativePush: () => {},
+        recordNativePushAlerts: () => {},
         environmentId: () => ENVIRONMENT_ID,
       },
       signingKey: { read: () => null },

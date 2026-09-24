@@ -30,6 +30,10 @@ const RANDOM_ID_BYTES = 16;
 const PAYLOAD_KEY_BYTES = 32;
 const REGISTRATION_KEYS =
   'packageName,payloadKey,platform,registrationId,stationKey,token,updatedAt';
+const REGISTRATION_KEYS_WITH_ALERTED = `alerted,${REGISTRATION_KEYS}`;
+/** Alert ids remembered per registration; the phone itself keeps 64. */
+const ALERTED_MAX = 128;
+const ALERT_ID_PATTERN = /^[0-9a-f]{64}$/;
 const REGISTRATION_ID_PATTERN = /^[A-Za-z0-9_-]{22,64}$/;
 /** 32 bytes, base64url without padding. */
 const PAYLOAD_KEY_PATTERN = /^[A-Za-z0-9_-]{43}$/;
@@ -43,6 +47,12 @@ export interface NativePushRegistration extends NativePushRegistrationRequest {
   /** The push key thumbprint the phone was told to pin. */
   stationKey: string;
   updatedAt: number;
+  /**
+   * Alert entry ids this phone has already been sent, oldest first and
+   * bounded. Persisted so a restart, token rotation or a failed read cannot
+   * re-raise a grouped alert whose id the phone has never seen.
+   */
+  alerted?: string[];
 }
 
 /** The registration store is present but unreadable; nothing is guessed. */
@@ -78,7 +88,15 @@ function isValidRegistration(value: unknown): value is NativePushRegistration {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   const record = value as Record<string, unknown>;
   return (
-    Object.keys(record).sort().join(',') === REGISTRATION_KEYS &&
+    [REGISTRATION_KEYS, REGISTRATION_KEYS_WITH_ALERTED].includes(
+      Object.keys(record).sort().join(','),
+    ) &&
+    (record.alerted === undefined ||
+      (Array.isArray(record.alerted) &&
+        record.alerted.length <= ALERTED_MAX &&
+        record.alerted.every(
+          (id) => typeof id === 'string' && ALERT_ID_PATTERN.test(id),
+        ))) &&
     isValidNativePushRequest(record) &&
     typeof record.registrationId === 'string' &&
     REGISTRATION_ID_PATTERN.test(record.registrationId) &&
@@ -92,6 +110,24 @@ function isValidRegistration(value: unknown): value is NativePushRegistration {
   );
 }
 
+function clone(registration: NativePushRegistration): NativePushRegistration {
+  return {
+    ...registration,
+    ...(registration.alerted ? { alerted: [...registration.alerted] } : {}),
+  };
+}
+
+function cloneAll(
+  registrations: Map<string, NativePushRegistration>,
+): Map<string, NativePushRegistration> {
+  return new Map(
+    [...registrations].map(([deviceId, registration]) => [
+      deviceId,
+      clone(registration),
+    ]),
+  );
+}
+
 interface StoreFile {
   schemaVersion: 1;
   registrations: Record<string, NativePushRegistration>;
@@ -99,12 +135,18 @@ interface StoreFile {
 
 export class NativePushRegistrationStore {
   readonly #path: string;
+  /**
+   * The last good read or write. This process is the file's only writer, so
+   * the cache is replaced on every write here; a failed read is never cached.
+   */
+  #cache: Map<string, NativePushRegistration> | undefined;
 
   constructor(homeDir: string) {
     this.#path = join(homeDir, 'security', FILE_NAME);
   }
 
   #read(): Map<string, NativePushRegistration> {
+    if (this.#cache) return cloneAll(this.#cache);
     let value: unknown;
     try {
       value = readPrivateJsonFile(this.#path, MAX_FILE_BYTES, LABEL);
@@ -127,8 +169,9 @@ export class NativePushRegistrationStore {
     for (const [deviceId, registration] of Object.entries(file.registrations)) {
       if (!isValidRegistration(registration))
         throw new NativePushRegistrationStoreError();
-      result.set(deviceId, { ...registration });
+      result.set(deviceId, clone(registration));
     }
+    this.#cache = cloneAll(result);
     return result;
   }
 
@@ -137,7 +180,9 @@ export class NativePushRegistrationStore {
       schemaVersion: 1,
       registrations: Object.fromEntries(registrations),
     };
+    this.#cache = undefined;
     writePrivateJsonFileSync(this.#path, file, MAX_FILE_BYTES, LABEL);
+    this.#cache = cloneAll(registrations);
   }
 
   list(): Map<string, NativePushRegistration> {
@@ -170,12 +215,40 @@ export class NativePushRegistrationStore {
         randomBytes(PAYLOAD_KEY_BYTES).toString('base64url'),
       stationKey,
       updatedAt: now,
+      // The phone keeps its own alert history across token rotation, and so
+      // does this record; a new registration starts empty on both sides.
+      ...(existing?.alerted ? { alerted: [...existing.alerted] } : {}),
     };
     if (!isValidRegistration(registration))
       throw new NativePushRegistrationStoreError();
     registrations.set(deviceId, registration);
     this.#write(registrations);
-    return { ...registration };
+    return clone(registration);
+  }
+
+  /**
+   * Records alert ids delivered to a registration. Ignored when the device
+   * has since been re-registered under a different registrationId.
+   */
+  recordAlerted(
+    deviceId: string,
+    registrationId: string,
+    alertIds: readonly string[],
+  ): void {
+    if (alertIds.length === 0) return;
+    const registrations = this.#read();
+    const current = registrations.get(deviceId);
+    if (!current || current.registrationId !== registrationId) return;
+    const known = current.alerted ?? [];
+    const added = alertIds.filter(
+      (id) => ALERT_ID_PATTERN.test(id) && !known.includes(id),
+    );
+    if (added.length === 0) return;
+    registrations.set(deviceId, {
+      ...current,
+      alerted: [...known, ...added].slice(-ALERTED_MAX),
+    });
+    this.#write(registrations);
   }
 
   /**

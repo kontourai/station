@@ -2563,6 +2563,15 @@ export class DevicePairingService {
     return this.#nativePush.delete(deviceId, expectedToken);
   }
 
+  /** Remembers alerts a registration was sent (see the store). */
+  recordNativePushAlerts(
+    deviceId: string,
+    registrationId: string,
+    alertIds: readonly string[],
+  ): void {
+    this.#nativePush.recordAlerted(deviceId, registrationId, alertIds);
+  }
+
   /**
    * Fan-out source for the agent-activity publisher. Joined against the
    * registry on every read, so a registration whose device was revoked is
@@ -2949,7 +2958,11 @@ export class DevicePairingService {
     this.#pendingRegistryMigrationPersist =
       (parsed as { schemaVersion?: unknown }).schemaVersion !==
         REGISTRY_SCHEMA_VERSION ||
-      rawDevices.some((device) => device.scope === DEVICE_PAIRING_SCOPE);
+      rawDevices.some((device) => device.scope === DEVICE_PAIRING_SCOPE) ||
+      // The retired pre-release native push field: rewrite now, so the file
+      // an older Station may read next is clean without waiting for an
+      // unrelated write.
+      rawDevices.some((device) => Object.hasOwn(device, 'nativePush'));
     return registry;
   }
 
