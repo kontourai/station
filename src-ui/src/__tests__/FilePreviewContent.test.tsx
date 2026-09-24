@@ -3,6 +3,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
+  releaseAttachmentObjectUrl,
   resetAttachmentObjectUrls,
   storeAttachmentObjectUrl,
 } from '../components/chat/attachment-object-urls';
@@ -184,6 +185,44 @@ describe('FilePreviewContent', () => {
     ).toBe('blob:cached-pdf');
   });
 
+  test('refuses to frame a "PDF" whose URL is not bytes Station holds', () => {
+    render(
+      <FilePreviewContent
+        current={{
+          url: 'https://elsewhere.test/page',
+          mediaType: 'application/pdf',
+          name: 'report.pdf',
+        }}
+      />,
+    );
+
+    expect(screen.queryByTitle('report.pdf')).toBeNull();
+    expect(screen.getByText('Preview unavailable')).toBeTruthy();
+  });
+
+  test('keeps links in an attached markdown file from navigating Station', async () => {
+    render(
+      <FilePreviewContent
+        current={{
+          url: dataUrl(
+            'text/markdown',
+            '[repo file](src/app.ts) and [site](https://example.test/docs)',
+          ),
+          mediaType: 'text/markdown',
+          name: 'links.md',
+        }}
+      />,
+    );
+
+    // A relative link would resolve against Station's own origin; it is text.
+    const relative = await screen.findByText('repo file');
+    expect(relative.closest('a')).toBeNull();
+    const external = screen.getByRole('link', { name: 'site' });
+    expect(external.getAttribute('href')).toBe('https://example.test/docs');
+    expect(external.getAttribute('target')).toBe('_blank');
+    expect(external.getAttribute('rel')).toBe('noopener noreferrer');
+  });
+
   test('offers the download for a type it cannot render', () => {
     render(
       <FilePreviewContent
@@ -218,6 +257,49 @@ describe('PreviewProvider', () => {
       </button>
     );
   }
+
+  test('holds the shown bytes after the opening chip lets go, so eviction cannot revoke them', async () => {
+    const shown = 'blob:shown-text';
+    storeAttachmentObjectUrl(
+      'shown',
+      shown,
+      new Blob(['still here'], { type: 'text/plain' }),
+    );
+    function OpenShown() {
+      const { openPreview } = usePreview();
+      return (
+        <button
+          type="button"
+          onClick={() =>
+            openPreview({ url: shown, mediaType: 'text/plain', name: 's.txt' })
+          }
+        >
+          open
+        </button>
+      );
+    }
+    const { unmount } = render(
+      <PreviewProvider>
+        <OpenShown />
+      </PreviewProvider>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'open' }));
+    expect(await screen.findByText('still here')).toBeTruthy();
+
+    // The chip that opened it unmounts (transcript scrolled away) and a long
+    // transcript pushes the cache past its idle budget.
+    releaseAttachmentObjectUrl('shown');
+    for (let i = 0; i < 40; i += 1) {
+      storeAttachmentObjectUrl(`other-${i}`, `blob:other-${i}`);
+      releaseAttachmentObjectUrl(`other-${i}`);
+    }
+    expect(revokeObjectURL).not.toHaveBeenCalledWith(shown);
+
+    // Closing ends the dialog's hold; the next eviction may take it.
+    unmount();
+    storeAttachmentObjectUrl('one-more', 'blob:one-more');
+    expect(revokeObjectURL).toHaveBeenCalledWith(shown);
+  });
 
   test('opens the dialog for a non-image attachment', async () => {
     render(

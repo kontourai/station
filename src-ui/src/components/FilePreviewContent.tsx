@@ -1,7 +1,21 @@
 import { parseChatAttachmentDataUrl } from '@kontourai/station-contracts/chat-attachment';
-import { type ReactNode, useEffect, useState } from 'react';
+import {
+  type AnchorHTMLAttributes,
+  type MouseEvent,
+  type ReactNode,
+  useEffect,
+  useState,
+} from 'react';
+import type { Options } from 'react-markdown';
+import {
+  hostOwnsExternalLinks,
+  openNativeExternalLink,
+} from '../platform/openExternalLink';
 import { attachmentBlobForObjectUrl } from './chat/attachment-object-urls';
+import { markdownCodeComponents } from './chat/HighlightedCodeBlock';
 import { LazyMarkdown } from './chat/LazyMarkdown';
+import { MarkdownImage } from './chat/markdown-images';
+import { classifyMarkdownLink } from './chat/markdownLinkTarget';
 import type { PreviewItem } from './ImagePreviewContent';
 import { Empty, SkeletonBlock } from './state';
 
@@ -92,8 +106,15 @@ function usePdfFrameUrl(item: PreviewItem, enabled: boolean) {
   const [url, setUrl] = useState<string | undefined>(undefined);
   useEffect(() => {
     if (!enabled) return;
-    if (!item.url.startsWith('data:')) {
+    if (item.url.startsWith('blob:')) {
       setUrl(item.url);
+      return;
+    }
+    // Only bytes Station holds are framed: a blob URL it minted, or inline
+    // data re-minted below. A part URL pointing anywhere else would put an
+    // arbitrary page in an unsandboxed frame under a "PDF" label.
+    if (!item.url.startsWith('data:')) {
+      setUrl(undefined);
       return;
     }
     const blob = previewBlob(item);
@@ -121,6 +142,50 @@ function canRenderPdfInline(): boolean {
       .pdfViewerEnabled !== false
   );
 }
+
+/**
+ * A link inside an attached markdown file. The dialog has no conversation
+ * behind it, so repo paths and relative links have nowhere honest to go and
+ * render as text: followed, they would resolve against Station's own origin
+ * and replace the app. External links leave through the native host where
+ * there is one (a plain anchor navigates a Tauri webview away from Station).
+ */
+function PreviewMarkdownAnchor({
+  href,
+  children,
+  node: _node,
+  ...props
+}: AnchorHTMLAttributes<HTMLAnchorElement> & {
+  children?: ReactNode;
+  node?: unknown;
+}) {
+  const target = classifyMarkdownLink(href);
+  if (target?.kind !== 'external') return <span>{children}</span>;
+  const handleClick = (event: MouseEvent<HTMLAnchorElement>) => {
+    if (!hostOwnsExternalLinks()) return;
+    event.preventDefault();
+    void openNativeExternalLink(target.url);
+  };
+  return (
+    <a
+      {...props}
+      href={target.url}
+      target="_blank"
+      rel="noopener noreferrer"
+      onClick={handleClick}
+    >
+      {children}
+    </a>
+  );
+}
+
+// An explicit map REPLACES the renderer's default, so code highlighting and
+// images are carried over here (see MarkdownRenderer).
+const previewMarkdownComponents: NonNullable<Options['components']> = {
+  ...markdownCodeComponents,
+  a: PreviewMarkdownAnchor,
+  img: MarkdownImage,
+};
 
 function prettyJson(text: string): string {
   try {
@@ -176,7 +241,9 @@ export default function FilePreviewContent({
         <div className="file-preview__text">
           {kind === 'markdown' ? (
             <div className="file-preview__markdown">
-              <LazyMarkdown>{text.text}</LazyMarkdown>
+              <LazyMarkdown components={previewMarkdownComponents}>
+                {text.text}
+              </LazyMarkdown>
             </div>
           ) : (
             <pre className="file-preview__source">

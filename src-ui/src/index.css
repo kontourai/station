@@ -6883,6 +6883,8 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 }
 .markdown-image-button {
   display: inline-block;
+  min-width: 44px;
+  min-height: 44px;
   padding: 0;
   border: 0;
   background: none;

@@ -65,6 +65,22 @@ describe('markdown images', () => {
     }
   });
 
+  test('a linked image opens the preview without also following the link', async () => {
+    render(
+      <PreviewProvider>
+        <MarkdownRenderer>{`[![chart](${PNG})](https://example.test)`}</MarkdownRenderer>
+      </PreviewProvider>,
+    );
+
+    // fireEvent answers false when the default action (the anchor's
+    // navigation) was prevented.
+    const followed = fireEvent.click(
+      screen.getByRole('button', { name: 'Preview chart' }),
+    );
+    expect(followed).toBe(false);
+    expect(await screen.findByRole('dialog', { name: 'Preview' })).toBeTruthy();
+  });
+
   test('stays a plain image where no previewer is mounted', () => {
     render(<MarkdownRenderer>{`![chart](${PNG})`}</MarkdownRenderer>);
 

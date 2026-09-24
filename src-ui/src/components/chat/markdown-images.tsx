@@ -60,13 +60,18 @@ export function MarkdownImage({
       type="button"
       className="markdown-image-button"
       aria-label={`Preview ${name}`}
-      onClick={() =>
+      onClick={(event) => {
+        // A linked image (`[![alt](src)](href)`) sits inside an anchor; the
+        // preview is this click's whole action, not the preview plus a
+        // navigation.
+        event.preventDefault();
+        event.stopPropagation();
         preview.openPreview({
           url: source,
           mediaType: mediaTypeOf(source),
           name,
-        })
-      }
+        });
+      }}
     >
       {image}
     </button>

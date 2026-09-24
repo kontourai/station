@@ -97,6 +97,23 @@ export function peekAttachmentObjectUrl(ref: string): string | undefined {
 }
 
 /**
+ * Hold a cached object URL by the URL itself, for a consumer that has the URL
+ * but not the key — the preview dialog, which must keep the bytes alive after
+ * the chip that opened it unmounts (a scrolled or switched transcript), or
+ * eviction would revoke the file the user is looking at. Returns the release;
+ * a URL this cache does not own (a data: URL, a markdown image's http URL) is a
+ * no-op.
+ */
+export function retainAttachmentObjectUrl(objectUrl: string): () => void {
+  for (const [ref, entry] of entries) {
+    if (entry.objectUrl !== objectUrl) continue;
+    entry.holders += 1;
+    return () => releaseAttachmentObjectUrl(ref);
+  }
+  return () => {};
+}
+
+/**
  * The bytes a cached object URL was minted from, or `undefined` when the URL
  * is not (or no longer) one of ours.
  */
