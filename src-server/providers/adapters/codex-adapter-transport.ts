@@ -23,9 +23,10 @@ import {
   handleCodexNotification,
   settleUnresolvedCodexToolCalls,
 } from './codex-adapter-notifications.js';
-import type {
-  CodexProcessLike,
-  CodexSessionRecord,
+import {
+  type CodexProcessLike,
+  type CodexSessionRecord,
+  markCodexTurnTerminal,
 } from './codex-adapter-types.js';
 import { terminateCodexProcess } from './codex-process-termination.js';
 
@@ -1065,7 +1066,7 @@ export class CodexAdapterTransport {
     }
     const turnId = record.activeTurnId;
     record.activeTurnId = undefined;
-    record.terminalPublishedForTurnId = turnId;
+    markCodexTurnTerminal(record, turnId);
     this.publish({
       eventId: crypto.randomUUID(),
       provider: 'codex',
