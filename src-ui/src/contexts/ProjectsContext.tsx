@@ -1,12 +1,17 @@
 import type { EnvironmentRef } from '@kontourai/station-contracts/execution-target';
+import type { MemberProjectView } from '@kontourai/station-contracts/project';
 import type { ProjectMemberAction } from '@kontourai/station-contracts/project-membership';
+import type { ProjectSharedTaskSummary } from '@kontourai/station-contracts/project-shared-task';
 import type { WorkspaceIsolationMode } from '@kontourai/station-contracts/workspace-isolation';
 import {
+  getProjectView,
   type ProjectReadQueryConfig,
   useProjectQuery,
   useProjectsQuery,
 } from '@kontourai/station-sdk';
-import { type ReactNode } from 'react';
+import { listProjectSharedTasks } from '@kontourai/station-sdk/project-shared-tasks';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { type ReactNode, useEffect, useMemo } from 'react';
 import { useHostRequestAuthorityScope } from './ApiBaseContext';
 import { useAuthorityPersistence } from './AuthorityPersistenceContext';
 
@@ -63,6 +68,145 @@ export function useScopedProjectQuery(
     requireRequestScope: true,
     durableAuthorityId: namespace ?? undefined,
   });
+}
+
+export type ProjectPageView = ProjectConfig | MemberProjectView;
+
+function isMemberProjectView(
+  value: ProjectPageView,
+): value is MemberProjectView {
+  return (
+    'version' in value &&
+    value.version === 'station.member-project/v1' &&
+    value.kind === 'member-project'
+  );
+}
+
+/**
+ * Project page detail read that preserves the server's narrow member view.
+ * It is always bound to the render-captured host scope and a credentialed SDK
+ * transport; no ambient API-base or browser-cookie path is available here.
+ */
+export function useScopedProjectPageViewQuery(slug: string) {
+  const requestScope = useHostRequestAuthorityScope();
+  const queryClient = useQueryClient();
+  const scopeIsCurrent = Boolean(requestScope?.isCurrent());
+  const apiBase = requestScope?.apiBase ?? 'unavailable';
+  const authorityKey = requestScope?.authorityKey ?? 'unavailable';
+  const queryKey = useMemo(
+    () => ['project-page-view', apiBase, authorityKey, slug] as const,
+    [apiBase, authorityKey, slug],
+  );
+  const query = useQuery<ProjectPageView>({
+    queryKey,
+    queryFn: async ({ signal }) => {
+      const captured = requestScope;
+      if (!captured?.isCurrent())
+        throw new Error('The selected Station authority is unavailable.');
+      const value = (await getProjectView(captured.apiBase, slug, {
+        requestScope: captured,
+        requireCredential: true,
+        signal,
+        timeoutMs: 15_000,
+        maxResponseBytes: 64 * 1024,
+      })) as ProjectPageView;
+      if (!captured.isCurrent())
+        throw new Error('The selected Station authority changed.');
+      return value;
+    },
+    enabled: Boolean(slug && requestScope && scopeIsCurrent),
+    retry: false,
+    staleTime: 0,
+    refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
+    gcTime: 0,
+  });
+
+  useEffect(
+    () => () => {
+      void queryClient.cancelQueries({ queryKey, exact: true });
+      void queryClient.removeQueries({ queryKey, exact: true });
+    },
+    [queryClient, queryKey],
+  );
+  return {
+    ...query,
+    requestScope,
+    isMemberProject: query.data ? isMemberProjectView(query.data) : false,
+  };
+}
+
+/**
+ * Read the exact shared-work summaries published for a member Project. The
+ * authority scope is supplied by the page-detail capture and reused for both
+ * cache identity and SDK dispatch.
+ */
+export function useScopedMemberProjectSharedTasksQuery(
+  project: Pick<MemberProjectView, 'id' | 'slug'>,
+  requestScope: ReturnType<typeof useHostRequestAuthorityScope>,
+) {
+  const queryClient = useQueryClient();
+  const apiBase = requestScope?.apiBase ?? 'unavailable';
+  const authorityKey = requestScope?.authorityKey ?? 'unavailable';
+  const queryKey = useMemo(
+    () =>
+      [
+        'member-project-shared-work',
+        apiBase,
+        authorityKey,
+        project.id,
+        project.slug,
+      ] as const,
+    [apiBase, authorityKey, project.id, project.slug],
+  );
+  const scopeIsCurrent = Boolean(requestScope?.isCurrent());
+  const query = useQuery<ProjectSharedTaskSummary[]>({
+    queryKey,
+    queryFn: async ({ signal }) => {
+      const captured = requestScope;
+      if (!captured?.isCurrent())
+        throw new Error('The selected Station authority is unavailable.');
+      const values = await listProjectSharedTasks(
+        captured.apiBase,
+        project.slug,
+        {
+          requestScope: captured,
+          requireCredential: true,
+          signal,
+          timeoutMs: 15_000,
+          maxResponseBytes: 1024 * 1024,
+        },
+      );
+      if (!captured.isCurrent())
+        throw new Error('The selected Station authority changed.');
+      if (
+        values.some(
+          (value) =>
+            value.project.localProjectId !== project.id ||
+            value.project.localProjectSlug !== project.slug,
+        )
+      )
+        throw new Error('Shared work returned a different Project scope.');
+      return values;
+    },
+    enabled: Boolean(
+      project.id && project.slug && requestScope && scopeIsCurrent,
+    ),
+    retry: false,
+    staleTime: 0,
+    refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
+    gcTime: 0,
+  });
+
+  useEffect(
+    () => () => {
+      void queryClient.cancelQueries({ queryKey, exact: true });
+      void queryClient.removeQueries({ queryKey, exact: true });
+    },
+    [queryClient, queryKey],
+  );
+  return query;
 }
 
 export interface ProjectMetadata {
