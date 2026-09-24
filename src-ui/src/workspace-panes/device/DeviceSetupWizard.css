@@ -1,0 +1,131 @@
+/*
+ * Device setup (#1970). Rides the lazily loaded wizard chunk; the dialog
+ * chrome itself is `station-dialog__*` in index.css.
+ */
+
+.device-setup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3, 12px);
+}
+
+.device-setup__steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2, 8px);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.device-setup__step-label {
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-2, 8px);
+  font-size: 0.8125rem;
+  padding: var(--space-1, 4px) var(--space-2, 8px);
+}
+
+.device-setup__step-label--current {
+  border-color: var(--accent-primary);
+  font-weight: 600;
+}
+
+.device-setup__step {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+}
+
+.device-setup__step-title {
+  font-size: 1rem;
+  margin: 0;
+}
+
+.device-setup__choice {
+  align-items: flex-start;
+  display: flex;
+  gap: var(--space-3, 12px);
+  justify-content: space-between;
+}
+
+.device-setup__choice p {
+  margin: 0 0 var(--space-1, 4px);
+}
+
+/* The switch is small; its hit area keeps the 44px target floor. */
+.device-setup__toggle {
+  align-items: center;
+  display: inline-flex;
+  flex: 0 0 auto;
+  justify-content: center;
+  min-height: 44px;
+  min-width: 44px;
+}
+
+.device-setup__muted {
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+}
+
+.device-setup__status {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2, 8px);
+  font-size: 0.875rem;
+}
+
+.device-setup__status p {
+  margin: 0;
+}
+
+.device-setup__status--problem {
+  color: var(--status-error, var(--text-primary));
+}
+
+.device-setup__platforms {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.device-setup__platform {
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-2, 8px);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1, 4px);
+  padding: var(--space-2, 8px) var(--space-3, 12px);
+}
+
+.device-setup__platform--ready {
+  border-color: var(--success-border, var(--border-primary));
+}
+
+.device-setup .button,
+.device-setup__status .button {
+  min-height: 44px;
+}
+
+.device-setup__versions-panel {
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-2, 8px);
+  margin-top: var(--space-2, 8px);
+  overflow-x: auto;
+  padding: var(--space-2, 8px);
+}
+
+.device-setup__versions-table {
+  border-collapse: collapse;
+  font-size: 0.8125rem;
+  width: 100%;
+}
+
+.device-setup__versions-table th,
+.device-setup__versions-table td {
+  padding: var(--space-1, 4px) var(--space-2, 8px);
+  text-align: left;
+}

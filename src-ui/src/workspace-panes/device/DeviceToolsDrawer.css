@@ -1,0 +1,188 @@
+/*
+ * The Device pane's Tools drawer and accessibility overlay (#1971). Rides the
+ * drawer's lazy chunk. Layout between the stage and the drawer is decided
+ * by the pane (`device-pane__workspace`, measured width): below 560px the
+ * drawer overlays the stage; at 560px and above it docks as a 288px column.
+ */
+
+.device-tools {
+  background: var(--bg-primary);
+  border-left: 1px solid var(--border-primary);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.device-tools--docked {
+  flex: 0 0 288px;
+  width: 288px;
+}
+
+.device-tools--overlay {
+  bottom: 0;
+  box-shadow: var(--shadow-lg, 0 8px 24px rgb(0 0 0 / 0.35));
+  max-width: 288px;
+  position: absolute;
+  right: 0;
+  top: 0;
+  width: 100%;
+  z-index: 2;
+}
+
+.device-tools__header {
+  align-items: center;
+  border-bottom: 1px solid var(--border-primary);
+  display: flex;
+  flex: 0 0 auto;
+  gap: var(--space-2, 8px);
+  padding: var(--space-2, 8px);
+}
+
+.device-tools__title {
+  flex: 1 1 auto;
+  font-size: 0.875rem;
+  margin: 0;
+}
+
+.device-tools__header .button,
+.device-tools__actions .button {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+.device-tools__body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: var(--space-3, 12px);
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-2, 8px) var(--space-3, 12px) var(--space-4, 16px);
+}
+
+.device-tools__section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+}
+
+.device-tools__section-title {
+  font-size: 0.75rem;
+  letter-spacing: 0.02em;
+  margin: 0;
+  opacity: 0.75;
+  text-transform: uppercase;
+}
+
+.device-tools__row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.device-tools__label {
+  font-size: 0.75rem;
+  opacity: 0.75;
+}
+
+.device-tools__value {
+  font-size: 0.8125rem;
+  overflow-wrap: anywhere;
+}
+
+.device-tools__line,
+.device-tools__muted,
+.device-tools__notice,
+.device-tools__error {
+  font-size: 0.8125rem;
+  margin: 0;
+}
+
+.device-tools__muted {
+  opacity: 0.75;
+}
+
+.device-tools__error {
+  color: var(--accent-danger, var(--text-primary));
+}
+
+.device-tools__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2, 8px);
+}
+
+.device-tools__field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.device-tools__field input,
+.device-tools__field select,
+.device-tools__field textarea {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-md, 6px);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 0.8125rem;
+  min-height: 44px;
+  min-width: 0;
+  padding: var(--space-1, 4px) var(--space-2, 8px);
+}
+
+.device-tools__field textarea {
+  font-family: var(--font-mono, monospace);
+  resize: vertical;
+}
+
+.device-tools__coordinates {
+  display: grid;
+  gap: var(--space-2, 8px);
+  grid-template-columns: 1fr 1fr;
+}
+
+.device-tools__list {
+  font-size: 0.8125rem;
+  margin: 0;
+  padding-left: var(--space-4, 16px);
+}
+
+/* The overlay's frames: drawn over the device screen, never interactive. */
+.device-ax-overlay {
+  inset: 0;
+  position: absolute;
+}
+
+.device-ax-overlay__frame {
+  background: rgb(56 189 248 / 0.1);
+  border: 1px solid rgb(56 189 248 / 0.8);
+  position: absolute;
+}
+
+.device-ax-overlay__label {
+  background: rgb(14 165 233);
+  border-radius: 2px;
+  color: #fff;
+  font-size: 9px;
+  left: 0;
+  line-height: 14px;
+  max-width: 100%;
+  overflow: hidden;
+  padding: 0 4px;
+  position: absolute;
+  text-overflow: ellipsis;
+  top: -14px;
+  white-space: nowrap;
+}
+
+/* A named group of buttons, without fieldset chrome. */
+.device-tools__fieldset {
+  border: 0;
+  margin: 0;
+  min-width: 0;
+  padding: 0;
+}
