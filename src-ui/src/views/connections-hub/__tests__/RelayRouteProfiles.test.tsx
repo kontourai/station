@@ -11,6 +11,13 @@ const mocks = vi.hoisted(() => ({
   save: vi.fn(),
   read: vi.fn(),
   close: vi.fn(),
+  prepareKey: vi.fn(),
+  beginKey: vi.fn(),
+  cancelKey: vi.fn(),
+  pendingKey: vi.fn(),
+  approveKey: vi.fn(),
+  revokeKey: vi.fn(),
+  keyStatus: vi.fn(),
 }));
 
 vi.mock('../../../platform/PlatformProfileContext', () => ({
@@ -48,6 +55,18 @@ vi.mock('@kontourai/station-connect/connection-trust', () => ({
   },
 }));
 
+vi.mock('../../../platform/native/relayKeyApproval', () => ({
+  nativeRelayKeyApproval: {
+    prepare: mocks.prepareKey,
+    begin: mocks.beginKey,
+    cancel: mocks.cancelKey,
+    pending: mocks.pendingKey,
+    approve: mocks.approveKey,
+    revoke: mocks.revokeKey,
+    status: mocks.keyStatus,
+  },
+}));
+
 import { RelayRouteProfiles } from '../RelayRouteProfiles';
 
 const stationId = '11111111-1111-4111-8111-111111111111';
@@ -71,6 +90,25 @@ describe('RelayRouteProfiles', () => {
     mocks.save.mockReset();
     mocks.read.mockReset();
     mocks.close.mockReset();
+    mocks.prepareKey.mockReset();
+    mocks.beginKey.mockReset();
+    mocks.cancelKey.mockReset();
+    mocks.cancelKey.mockResolvedValue(undefined);
+    mocks.pendingKey.mockReset();
+    mocks.approveKey.mockReset();
+    mocks.revokeKey.mockReset();
+    mocks.keyStatus.mockReset();
+    mocks.keyStatus.mockResolvedValue({
+      status: 'untrusted',
+      trustRevision: 0,
+      profileName: 'Home Station',
+      brokerOrigin: 'https://broker.example',
+      stationId,
+      enrollmentId,
+      generation: null,
+      keyId: null,
+    });
+    mocks.pendingKey.mockResolvedValue(null);
     const profile = {
       schemaVersion: 1,
       name: 'Home Station',
@@ -108,7 +146,7 @@ describe('RelayRouteProfiles', () => {
     expect(screen.getByText('Saved broker routes')).toBeTruthy();
     expect(screen.getByText('Not connected')).toBeTruthy();
     await waitFor(() =>
-      expect(screen.getByText('Station trust approved')).toBeTruthy(),
+      expect(screen.getByText('Station key untrusted')).toBeTruthy(),
     );
     fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
     expect(
@@ -128,5 +166,156 @@ describe('RelayRouteProfiles', () => {
       ),
     );
     expect(screen.queryByText('Saved broker routes')).toBeNull();
+  });
+
+  test('requires native surface preparation, a pasted invitation, and separately entered operator values', async () => {
+    const candidate = {
+      pendingId: 'pending-1',
+      profileName: 'Home Station',
+      brokerOrigin: 'https://broker.example',
+      stationId,
+      enrollmentId,
+      generation: 7,
+      keyId: 'sha256:full-station-key-id',
+      confirmationCode: 'ABCD1234EFGH5678',
+      expiresAt: Date.now() + 60_000,
+      trustRevision: 0,
+      status: 'pending' as const,
+    };
+    const invitationJson = JSON.stringify({
+      version: 'station-broker-native-route-invitation/v2',
+      brokerOrigin: 'https://broker.example',
+      scope: { stationId, enrollmentId, routingGeneration: 7 },
+      stationSigningKeyId: 'sha256:station-key',
+      stationSigningGeneration: 4,
+      surface: {
+        kind: 'station-native',
+        appIdentifier: 'io.kontourai.station',
+        channel: 'stable',
+        clientInstanceId: 'install-1',
+        keyThumbprint: 'sha256:install-proof',
+      },
+      invitationId: 'invite-1',
+      invitationSecret: 'one-time-invitation-secret',
+      expiresAt: Date.now() + 60_000,
+    });
+    mocks.prepareKey.mockResolvedValue({
+      profileName: 'Home Station',
+      brokerOrigin: 'https://broker.example',
+      stationId,
+      enrollmentId,
+      appIdentifier: 'io.kontourai.station',
+      channel: 'stable',
+      clientInstanceId: 'install-1',
+      keyThumbprint: 'sha256:install-proof',
+      publicKey: { kty: 'EC', crv: 'P-256', x: 'x', y: 'y' },
+    });
+    mocks.beginKey.mockImplementation(
+      async (_profileName: string, invitation: string) => {
+        expect(invitation).toBe(invitationJson);
+        mocks.pendingKey.mockResolvedValue(candidate);
+        return candidate;
+      },
+    );
+    mocks.approveKey.mockImplementation(async () => {
+      mocks.pendingKey.mockResolvedValue(null);
+      const status = {
+        status: 'approved',
+        trustRevision: 1,
+        profileName: 'Home Station',
+        brokerOrigin: 'https://broker.example',
+        stationId,
+        enrollmentId,
+        generation: 7,
+        keyId: candidate.keyId,
+      };
+      mocks.keyStatus.mockResolvedValue(status);
+      return status;
+    });
+    mocks.revokeKey.mockImplementation(async () => {
+      const status = {
+        status: 'revoked',
+        trustRevision: 2,
+        profileName: 'Home Station',
+        brokerOrigin: 'https://broker.example',
+        stationId,
+        enrollmentId,
+        generation: 7,
+        keyId: candidate.keyId,
+      };
+      mocks.keyStatus.mockResolvedValue(status);
+      return status;
+    });
+
+    renderRoutes();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Prepare native Station identity' }),
+    );
+    await screen.findByText('sha256:install-proof');
+    expect(screen.getByText('io.kontourai.station')).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('One-time Station invitation'), {
+      target: { value: invitationJson },
+    });
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Discover Station key' }),
+    );
+    await screen.findByText('sha256:full-station-key-id');
+    expect(screen.getByText('ABCD1234EFGH5678')).toBeTruthy();
+    expect(
+      screen
+        .getByRole('button', { name: 'Approve Station key' })
+        .hasAttribute('disabled'),
+    ).toBe(true);
+
+    fireEvent.change(screen.getByLabelText('Operator comparison code'), {
+      target: { value: 'ABCD1234EFGH5678' },
+    });
+    fireEvent.change(
+      screen.getByLabelText('Full key ID confirmed by operator'),
+      {
+        target: { value: candidate.keyId },
+      },
+    );
+    fireEvent.click(
+      screen.getByLabelText(
+        /I got these values from the Station operator through a separate channel/,
+      ),
+    );
+    expect(
+      screen
+        .getByRole('button', { name: 'Approve Station key' })
+        .hasAttribute('disabled'),
+    ).toBe(false);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Approve Station key' }),
+    );
+    await waitFor(() =>
+      expect(mocks.approveKey).toHaveBeenCalledWith({
+        pendingId: 'pending-1',
+        confirmationCode: 'ABCD1234EFGH5678',
+        fullKeyId: candidate.keyId,
+      }),
+    );
+    await screen.findByText('Station key approved');
+    expect(screen.getByText(/Route remains disconnected/)).toBeTruthy();
+    fireEvent.change(
+      screen.getByLabelText(
+        'Type the current full key ID to confirm revocation',
+      ),
+      {
+        target: { value: candidate.keyId },
+      },
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Revoke Station key trust' }),
+    );
+    await waitFor(() =>
+      expect(mocks.revokeKey).toHaveBeenCalledWith({
+        profileName: 'Home Station',
+        expectedTrustRevision: 1,
+        fullKeyId: candidate.keyId,
+      }),
+    );
+    await screen.findByText('Station key trust revoked');
   });
 });

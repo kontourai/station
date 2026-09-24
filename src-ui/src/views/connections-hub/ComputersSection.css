@@ -176,3 +176,106 @@
   color: var(--text-primary);
   font-family: var(--font-mono);
 }
+
+.relay-route-key-approval {
+  display: grid;
+  gap: var(--space-3);
+  min-width: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-md);
+}
+
+.relay-route-key-approval h3,
+.relay-route-key-approval h4 {
+  margin: 0;
+  color: var(--text-primary);
+}
+
+.relay-route-key-approval__candidate,
+.relay-route-key-approval__surface,
+.relay-route-key-approval__durable,
+.relay-route-key-approval__prepare,
+.relay-route-key-approval__revoke {
+  display: grid;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.relay-route-key-approval__durable {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-sm);
+}
+
+.relay-route-key-approval__durable > strong {
+  color: var(--text-primary);
+}
+
+.relay-route-key-approval dl {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+}
+
+.relay-route-key-approval dl > div {
+  display: grid;
+  grid-template-columns: minmax(7rem, 0.35fr) minmax(0, 1fr);
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.relay-route-key-approval dt {
+  color: var(--text-tertiary);
+  font-size: var(--text-sm);
+}
+
+.relay-route-key-approval dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+}
+
+.relay-route-key-approval :is(input:not([type="checkbox"]), textarea) {
+  width: 100%;
+  min-height: 44px;
+  padding: var(--space-2);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  background: var(--bg-secondary);
+}
+
+.relay-route-key-approval__attestation {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  min-height: 44px;
+  padding-block: var(--space-2);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+}
+
+.relay-route-key-approval__attestation input {
+  flex: 0 0 20px;
+  width: 20px;
+  height: 20px;
+  min-height: 20px;
+  margin: 2px 0 0;
+}
+
+.relay-route-key-approval :is(button, input):focus-visible {
+  outline: 2px solid var(--focus-ring, var(--accent-primary));
+  outline-offset: 2px;
+}
+
+@media (max-width: 600px) {
+  .relay-route-key-approval dl > div {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+}
