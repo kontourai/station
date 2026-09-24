@@ -663,6 +663,106 @@ describe('EventStore', () => {
     );
   });
 
+  describe('#2324: a turn the engine opened on its own provided no input', () => {
+    const threadId = 'provider-turn-thread';
+    const at = '2026-09-23T00:00:00.000Z';
+    const base = { provider: 'claude' as const, threadId, createdAt: at };
+    const trigger = { trigger: 'provider' };
+    const seed = () => {
+      const events: CanonicalRuntimeEvent[] = [
+        {
+          ...base,
+          eventId: 'pt-session',
+          method: 'session.started',
+          sessionId: threadId,
+          metadata: { userId: 'owner-alpha', agentSlug: 'claude' },
+        },
+        {
+          ...base,
+          eventId: 'pt-user-start',
+          turnId: 'user-turn',
+          method: 'turn.started',
+          prompt: 'start the job',
+        },
+        {
+          ...base,
+          eventId: 'pt-user-done',
+          turnId: 'user-turn',
+          method: 'turn.completed',
+          outputText: 'started',
+        },
+        {
+          ...base,
+          eventId: 'pt-provider-start',
+          turnId: 'provider:p',
+          method: 'turn.started',
+          metadata: trigger,
+        },
+        {
+          ...base,
+          eventId: 'pt-provider-text',
+          turnId: 'provider:p',
+          itemId: 'pt-provider-item',
+          method: 'content.text-delta',
+          delta: 'finished',
+        },
+        {
+          ...base,
+          eventId: 'pt-provider-done',
+          turnId: 'provider:p',
+          method: 'turn.completed',
+          outputText: 'finished',
+          metadata: trigger,
+        },
+      ];
+      for (const event of events) store.appendEvent(event);
+    };
+
+    test('counts its reply but not its start as a message', () => {
+      seed();
+      expect(
+        store.listConversationHistoryPage({
+          ownerUserId: 'owner-alpha',
+          limit: 5,
+        }).records,
+      ).toEqual([expect.objectContaining({ threadId, messageCount: 3 })]);
+    });
+
+    test('lists no authored input for it in the Session inventory', () => {
+      seed();
+      const page = store.listSessionInventoryEvents(threadId);
+      const starts = page.events.filter(
+        (event) => event.method === 'turn.started',
+      );
+      expect(starts).toEqual([
+        expect.objectContaining({ id: 'pt-user-start' }),
+        expect.objectContaining({
+          id: 'pt-provider-start',
+          trigger: 'provider',
+        }),
+      ]);
+      expect(starts[0]).not.toHaveProperty('trigger');
+    });
+
+    test('its Basis window carries no input for its start', () => {
+      seed();
+      const result = store.listBasisEventsForTurn(threadId, 'provider:p');
+      expect(result.status).toBe('found');
+      if (result.status !== 'found') return;
+      const start = result.events.find(
+        (event) => event.eventId === 'pt-provider-start',
+      );
+      expect(start).toBeDefined();
+      expect(start).not.toHaveProperty('input');
+      // A caller's turn still carries its input.
+      const user = store.listBasisEventsForTurn(threadId, 'user-turn');
+      expect(
+        user.status === 'found' &&
+          user.events.find((event) => event.eventId === 'pt-user-start'),
+      ).toMatchObject({ input: { kind: 'initial', prompt: 'start the job' } });
+    });
+  });
+
   test('usage session ids are SQL-narrowed by owner and tenant, making other tenants indistinguishable from empty', () => {
     const add = (threadId: string, tenantId: string) => {
       store.upsertSession({
@@ -4907,6 +5007,104 @@ describe('EventStore', () => {
     });
   });
 
+  test('#2324 review J1: the history backfill counts a provider turn’s reply but not its start', () => {
+    store.close();
+    const databasePath = join(dir, 'pre-ownership-provider-history.sqlite');
+    const database = new DatabaseSync(databasePath);
+    database.exec(ORCHESTRATION_EVENT_STORE_MIGRATION);
+    database
+      .prepare(
+        `INSERT INTO provider_session_state
+          (thread_id, provider, status, tenant_execution_context, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        'thread-backfilled',
+        'claude',
+        'ready',
+        JSON.stringify({ tenantId: 'alpha', source: 'session' }),
+        '2026-08-08T11:00:00.000Z',
+        '2026-08-08T12:00:00.000Z',
+      );
+    const insertEvent = database.prepare(
+      `INSERT INTO orchestration_events
+        (id, provider, thread_id, method, payload, created_at, sequence, global_sequence)
+       VALUES (?, 'claude', 'thread-backfilled', ?, ?, ?, ?, ?)`,
+    );
+    insertEvent.run(
+      'backfilled-start',
+      'session.started',
+      JSON.stringify({
+        method: 'session.started',
+        metadata: { userId: 'owner-alpha', agentSlug: 'claude' },
+      }),
+      '2026-08-08T11:00:00.000Z',
+      1,
+      1,
+    );
+    insertEvent.run(
+      'backfilled-turn-start',
+      'turn.started',
+      JSON.stringify({
+        method: 'turn.started',
+        prompt: 'Accurate history title',
+      }),
+      '2026-08-08T11:01:00.000Z',
+      2,
+      2,
+    );
+    insertEvent.run(
+      'backfilled-turn-complete',
+      'turn.completed',
+      JSON.stringify({ method: 'turn.completed' }),
+      '2026-08-08T12:00:00.000Z',
+      3,
+      3,
+    );
+    insertEvent.run(
+      'backfilled-provider-start',
+      'turn.started',
+      JSON.stringify({
+        method: 'turn.started',
+        metadata: { trigger: 'provider' },
+      }),
+      '2026-08-08T12:00:01.000Z',
+      4,
+      4,
+    );
+    insertEvent.run(
+      'backfilled-provider-complete',
+      'turn.completed',
+      JSON.stringify({
+        method: 'turn.completed',
+        metadata: { trigger: 'provider' },
+      }),
+      '2026-08-08T12:00:02.000Z',
+      5,
+      5,
+    );
+    database.close();
+
+    store = new EventStore(databasePath);
+
+    expect(
+      store.listConversationHistoryPage({
+        ownerUserId: 'owner-alpha',
+        tenantId: 'alpha',
+        limit: 1,
+      }).records,
+    ).toEqual([
+      expect.objectContaining({
+        threadId: 'thread-backfilled',
+        title: 'Accurate history title',
+        messageCount: 3,
+      }),
+    ]);
+    expect(store.readConversationHistoryUpgrade()).toMatchObject({
+      status: 'complete',
+      quarantinedCount: 0,
+    });
+  });
   test('hosted history remains bounded when newer quarantined rows outnumber accepted rows', () => {
     const validAt = '2026-08-08T12:00:00.000Z';
     store.upsertSession({

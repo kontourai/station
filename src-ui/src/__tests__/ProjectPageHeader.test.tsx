@@ -10,6 +10,7 @@
  * action, and the settings button's accessible name (icon-only on mobile).
  */
 
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   cleanup,
   fireEvent,
@@ -177,5 +178,45 @@ describe('ProjectPageHeader working directory (station#3317)', () => {
     const settings = screen.getByRole('button', { name: 'Project settings' });
     fireEvent.click(settings);
     expect(props.navigateToSettings).toHaveBeenCalled();
+  });
+});
+
+describe('ProjectPageHeader folder refusal (#2412 review)', () => {
+  // The editor's path field asks the file browser for suggestions.
+  function renderEditing(
+    overrides: Partial<Parameters<typeof ProjectPageHeader>[0]> = {},
+  ) {
+    const props = {
+      apiBase: '',
+      project: { name: 'Station', workingDirectory: '/srv/station' },
+      gitStatus: null,
+      editingDir: true,
+      setEditingDir: vi.fn(),
+      dirDraft: '/elsewhere',
+      setDirDraft: vi.fn(),
+      updateWorkingDirectory: vi.fn(),
+      navigateToSettings: vi.fn(),
+      ...overrides,
+    };
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <ProjectPageHeader {...props} />
+      </QueryClientProvider>,
+    );
+  }
+
+  test('a refused folder change is shown under the editor, which stays open', () => {
+    renderEditing({
+      workingDirectoryError:
+        "Only this Station's operator, or a device the operator allowed to run commands, can choose a Project's folder. Nothing was saved.",
+    });
+    expect(screen.getByRole('alert').textContent).toContain(
+      "can choose a Project's folder",
+    );
+  });
+
+  test('no refusal, no alert', () => {
+    renderEditing();
+    expect(screen.queryByRole('alert')).toBeNull();
   });
 });

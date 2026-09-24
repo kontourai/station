@@ -47,6 +47,7 @@ import {
 } from './project-page/ProjectLayoutsSection';
 import { ProjectLiveWorkSection } from './project-page/ProjectLiveWorkSection';
 import { ProjectPageHeader } from './project-page/ProjectPageHeader';
+import { ProjectPluginPublishSection } from './project-page/ProjectPluginPublishSection';
 import { ProjectTasksSection } from './project-page/ProjectTasksSection';
 import { projectChatCta } from './project-page/projectChatCta';
 import type { AvailableLayout, ConversationRecord } from './project-page/types';
@@ -195,8 +196,8 @@ function ProjectOperatorPage({
       ),
     [agentConnections, agents, project?.agents, slug],
   );
-  const { data: gitStatus } = useGitStatus(project?.workingDirectory);
-  const { data: gitLog = [] } = useGitLog(project?.workingDirectory, 5);
+  const { data: gitStatus } = useGitStatus(slug, project?.workingDirectory);
+  const { data: gitLog = [] } = useGitLog(slug, project?.workingDirectory, 5);
   const {
     data: docs = [],
     isError: docsError,
@@ -320,10 +321,19 @@ function ProjectOperatorPage({
           project={project}
           gitStatus={gitStatus}
           editingDir={editingDir}
-          setEditingDir={setEditingDir}
+          setEditingDir={(editing: boolean) => {
+            // A refusal belongs to the attempt it answered, not the next one.
+            if (editing) updateProjectMutation.reset();
+            setEditingDir(editing);
+          }}
           dirDraft={dirDraft}
           setDirDraft={setDirDraft}
           updateWorkingDirectory={updateWorkingDirectory}
+          workingDirectoryError={
+            updateProjectMutation.error
+              ? errorText(updateProjectMutation.error)
+              : null
+          }
           navigateToSettings={() => navigate(`/projects/${slug}/edit`)}
         />
 
@@ -426,6 +436,8 @@ function ProjectOperatorPage({
             )}
           </div>
         )}
+
+        <ProjectPluginPublishSection slug={slug} />
 
         <section
           className="project-page__layouts"

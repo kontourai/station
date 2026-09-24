@@ -88,6 +88,11 @@ export const CI_FAST_STATIC_COMMANDS = Object.freeze([
     process.execPath,
     Object.freeze(['scripts/code-health-gate.mjs']),
   ]),
+  // Added test lines that wait on real time; a source read of the diff.
+  Object.freeze([
+    process.execPath,
+    Object.freeze(['scripts/test-realtime-wait-gate.mjs']),
+  ]),
   Object.freeze(['npm', Object.freeze(['run', 'channel-ports:check'])]),
   Object.freeze(['npm', Object.freeze(['run', 'gate:workflows'])]),
   Object.freeze(['npm', Object.freeze(['run', 'content:integrity'])]),

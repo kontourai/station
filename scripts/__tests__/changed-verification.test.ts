@@ -1127,7 +1127,7 @@ describe('changed verification selection', () => {
     // so the literal never appears inside a spawn call. That judgement stays
     // with the reviewer of the edge; the pin-only candidates were rejected by
     // hand and the docblock on SPAWNED_SCRIPT_EDGES records the rule.
-    expect(SPAWNED_SCRIPT_EDGES.length).toBe(11);
+    expect(SPAWNED_SCRIPT_EDGES.length).toBe(12);
     for (const edge of SPAWNED_SCRIPT_EDGES) {
       expect(existsSync(edge.pattern), edge.pattern).toBe(true);
       expect(edge.related, edge.pattern).toBe(true);

@@ -1,0 +1,79 @@
+{
+  "_comment": "Samples for test-realtime-wait-gate.test.ts. Kept in JSON because the gate scans added lines of test SOURCE files, and these lines are the shapes it flags.",
+  "flagged": [
+    [
+      "await new Promise((resolve) => setTimeout(resolve, 50));",
+      "promise-sleep"
+    ],
+    [
+      "await new Promise((resolve) => setTimeout(resolve, HOLD_MS * 3));",
+      "promise-sleep"
+    ],
+    ["await sleep(90); // three hold periods", "literal-sleep"],
+    [
+      "Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);",
+      "blocking-wait"
+    ],
+    ["await new Promise((r) => setTimeout(() => r(), 30));", "promise-sleep"],
+    ["await delay(1_000);", "literal-sleep"],
+    ["setTimeout(() => resolve(observed), 30)", "promise-sleep"],
+    ["setTimeout(() => { resolve(); }, 40)", "promise-sleep"],
+    ["await delay(projectsDelayMs);", "literal-sleep"]
+  ],
+  "unflagged": [
+    "await new Promise((resolve) => setTimeout(resolve, 0));",
+    "await sleep(0);",
+    "setTimeout(() => resolve('NOT_SETTLED_AFTER_ABORT'), 1_000),",
+    "await vi.waitFor(() => expect(order).toEqual(['a']));",
+    "await vi.advanceTimersByTimeAsync(5_000);",
+    "clock.sleep(10);",
+    "await waitFor(() => screen.getByText('x'));",
+    "setTimeout(() => resolve(TIMED_OUT), 500)",
+    "await wait(someCondition);"
+  ],
+  "waivedOnLine": "await sleep(50); // real-time: nothing may arrive within 50ms",
+  "bareWait": "await sleep(50);",
+  "waiverAbove": "// real-time: proves the listener stays quiet",
+  "bareMarker": "await sleep(50); // real-time:",
+  "diff": [
+    "diff --git a/src/a.ts b/src/a.ts",
+    "+++ b/src/a.ts",
+    "@@ -1,0 +1,1 @@",
+    "+await sleep(90);",
+    "diff --git a/src/__tests__/a.test.ts b/src/__tests__/a.test.ts",
+    "+++ b/src/__tests__/a.test.ts",
+    "@@ -10,2 +12,3 @@",
+    "-removed();",
+    "+await sleep(90);",
+    "+ok();",
+    "diff --git a/docs/x.md b/docs/x.md",
+    "+++ b/docs/x.md",
+    "@@ -1,0 +1,1 @@",
+    "+sleep(5)"
+  ],
+  "diffAdded": [
+    {
+      "file": "src/__tests__/a.test.ts",
+      "line": 12,
+      "text": "await sleep(90);"
+    },
+    {
+      "file": "src/__tests__/a.test.ts",
+      "line": 13,
+      "text": "ok();"
+    }
+  ],
+  "unwaivedTestFile": "import { test } from 'vitest';\n\ntest('x', async () => {\n  await new Promise((resolve) => setTimeout(resolve, 50));\n});\n",
+  "waivedTestFile": "test('x', async () => {\n  // real-time: proves nothing arrives within 50ms\n  await new Promise((resolve) => setTimeout(resolve, 50));\n});\n",
+  "sourceFileWithWait": "await sleep(90);\n",
+  "plusPlusDiff": [
+    "+++ b/src/__tests__/a.test.ts",
+    "@@ -0,0 +1,2 @@",
+    "+++ x;",
+    "+await sleep(66);"
+  ],
+  "quotedPath": "\"b/src/__tests__/\\303\\251 uni.test.ts\"",
+  "unicodeTestFile": "test('x', async () => {\n  await sleep(22);\n});\n",
+  "dirtyWaiver": "// real-time: only in the working tree",
+  "plusPlusAdded": ["++ x;", "await sleep(66);"]
+}

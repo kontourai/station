@@ -3,7 +3,11 @@ import type {
   OrchestrationConversationStreamBinding,
   TurnProgressObservation,
 } from '@kontourai/station-contracts/orchestration';
-import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import {
+  type CanonicalRuntimeEvent,
+  isProviderTriggeredTurn,
+  PROVIDER_TURN_TRIGGER,
+} from '@kontourai/station-contracts/runtime-events';
 import { orchestrationConversationActivityStuckChildTurns } from '../../telemetry/metrics.js';
 import type {
   EventStore,
@@ -64,7 +68,8 @@ type ActivityStore = Pick<
 >;
 
 interface ThreadActivity {
-  openTurn?: { turnId: string; startedAt: string };
+  /** #2324: `trigger` comes from the turn's first `turn.started`. */
+  openTurn?: { turnId: string; startedAt: string; trigger?: 'provider' };
   /** Insertion order is start order: the most recently started is last. */
   runningTools: Map<string, { name: string; startedAt: string }>;
   lastTool?: NonNullable<ConversationTurnActivity['lastTool']>;
@@ -267,8 +272,13 @@ export class ConversationTurnActivityProjection {
     }
     const activity: ConversationTurnActivity = { conversationId, asOfSequence };
     if (current?.openTurn) {
-      const { turnId, startedAt } = current.openTurn;
-      activity.openTurn = { turnId, threadId: currentThreadId, startedAt };
+      const { turnId, startedAt, trigger } = current.openTurn;
+      activity.openTurn = {
+        turnId,
+        threadId: currentThreadId,
+        startedAt,
+        ...(trigger ? { trigger } : {}),
+      };
       if (current.runningTools.size > 0) {
         activity.runningTools = [...current.runningTools].map(
           ([callId, tool]) => ({
@@ -399,6 +409,7 @@ export class ConversationTurnActivityProjection {
       state.openTurn = {
         turnId: openTurnId,
         startedAt: seed.openTurn.startedAt,
+        ...(seed.openTurn.trigger ? { trigger: seed.openTurn.trigger } : {}),
       };
       for (const tool of seed.tools) {
         if (tool.method === 'tool.started')
@@ -423,7 +434,13 @@ export class ConversationTurnActivityProjection {
           event.payload.turnId === openTurnId,
       );
       if (started) {
-        state.openTurn = { turnId: openTurnId, startedAt: started.createdAt };
+        state.openTurn = {
+          turnId: openTurnId,
+          startedAt: started.createdAt,
+          ...(isProviderTriggeredTurn(started.payload)
+            ? { trigger: PROVIDER_TURN_TRIGGER }
+            : {}),
+        };
       }
     }
     this.threads.set(threadId, state);
@@ -451,10 +468,18 @@ export class ConversationTurnActivityProjection {
       // no longer this turn's, and a call left open at close is dropped —
       // settling it is the adapter's report to make, not this fold's.
       state.runningTools.clear();
+      // The turn opens on its first `turn.started` (a steer never changes
+      // the open id), which is the event that carries its trigger.
       state.openTurn =
         next === undefined
           ? undefined
-          : { turnId: next, startedAt: event.createdAt };
+          : {
+              turnId: next,
+              startedAt: event.createdAt,
+              ...(isProviderTriggeredTurn(event)
+                ? { trigger: PROVIDER_TURN_TRIGGER }
+                : {}),
+            };
     }
     if (event.method === 'tool.started' && state.openTurn) {
       state.runningTools.delete(event.toolCallId);

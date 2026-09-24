@@ -593,6 +593,61 @@ describe('Orchestration Routes', () => {
     );
   });
 
+  test('POST /commands dispatches discardDraft as the caller, and answers a non-Draft refusal with its code (#2312)', async () => {
+    const receipt = {
+      commandId: 'discard-command',
+      threadId: 'thread-draft',
+      commandType: 'discardDraft' as const,
+      status: 'rejected' as const,
+      createdAt: '2026-09-23T00:00:00.000Z',
+    };
+    const dispatchWithReceipt = vi
+      .fn()
+      .mockResolvedValueOnce({
+        receipt: { ...receipt, status: 'accepted' },
+        result: undefined,
+      })
+      .mockRejectedValueOnce(
+        new OrchestrationCommandDispatchError(
+          'Only a Draft can be discarded, and this session is not one: thread-draft',
+          receipt,
+          undefined,
+          'persisted',
+          false,
+          'not_a_draft',
+        ),
+      );
+    const app = createOrchestrationRoutes({ dispatchWithReceipt } as any, {
+      eventBus: new EventBus(),
+      logger: { debug: vi.fn() },
+      getUserId: () => ROUTE_TEST_USER_ID,
+    });
+    const discard = () =>
+      app.request('/commands', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'discardDraft',
+          threadId: 'thread-draft',
+        }),
+      });
+
+    const accepted = await discard();
+    expect(accepted.status).toBe(200);
+    expect(dispatchWithReceipt).toHaveBeenCalledWith(
+      { type: 'discardDraft', threadId: 'thread-draft' },
+      expect.objectContaining({ userId: ROUTE_TEST_USER_ID }),
+    );
+
+    const refused = await discard();
+    expect(refused.status).toBe(400);
+    await expect(refused.json()).resolves.toMatchObject({
+      success: false,
+      code: 'not_a_draft',
+      receipt: { commandType: 'discardDraft', status: 'rejected' },
+    });
+  });
+
   test('POST /commands preserves unavailable receipt durability with accepted data', async () => {
     const dispatchWithReceipt = vi.fn().mockResolvedValue({
       receipt: {

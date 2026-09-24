@@ -2390,6 +2390,17 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'GET', path: '/api/auth/authority' },
     { method: 'POST', path: '/api/auth/terminal' },
     { method: 'GET', path: '/api/branding' },
+    // #2412 (owner decision 2026-09-23): the coding family stays at its
+    // family tiers, and the handlers narrow further. `POST /exec` runs a
+    // shell command as the operator, so a paired device ALSO needs the
+    // `coding:exec` token the operator grants it by promotion; the operator
+    // in person never does (`codingExecAllowed`, coding.ts). Every leaf
+    // below that takes a client path names a Project and is confined to its
+    // folder (or a registered worktree of its repository); commit and push
+    // are operator-only
+    // (#2363). A scope rule cannot express "operate AND coding:exec" —
+    // this table holds one required scope per rule — so the extra
+    // requirement lives in the handler.
     { method: 'POST', path: '/api/coding/exec' },
     { method: 'GET', path: '/api/coding/files' },
     { method: 'GET', path: '/api/coding/files/content' },
@@ -2915,6 +2926,18 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // account-bound device allowlist is unchanged and does not include it.
     // Its read twin answers only whether scaffolding is possible here
     // (eligible, or a reason code): no path, no file names. A family read.
+    // #2374 (epic #2323 S6). Publishes the plugin in the Project's own
+    // folder to a git remote: exports the folder's files as one commit and
+    // pushes it with this computer's git credentials. Family operate tier as
+    // a recorded decision: it is the same act as `POST /api/coding/git/push`,
+    // already at this tier, narrowed to one folder with the remote address
+    // and the published files checked. The real gate is inside the handler,
+    // which refuses every caller but the Station operator (`operatorOnly`),
+    // so a paired device at this tier that resolves to a collaborator is
+    // still refused. Its read twin (family read) reports the plugin and the
+    // file list for that act, and is operator-only for the same reason.
+    { method: 'GET', path: '/api/projects/:slug/plugin-publish' },
+    { method: 'POST', path: '/api/projects/:slug/plugin-publish' },
     { method: 'GET', path: '/api/projects/:slug/plugin-scaffold' },
     { method: 'POST', path: '/api/projects/:slug/plugin-scaffold' },
     { method: 'GET', path: '/api/projects/:slug/readiness' },
@@ -3222,7 +3245,8 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // ordinary mutate tier (`orchestration:operate`) is the SAME tier
     // already required for comparably consequential `standard`-preset
     // actions elsewhere (`POST /api/coding/exec` runs an arbitrary shell
-    // command; `POST /api/coding/git/push` pushes to a remote) — granting
+    // command, and since #2412 also needs a per-device `coding:exec`
+    // grant; `POST /api/coding/git/push` pushes to a remote) — granting
     // an already-installed, operator-approved plugin one more
     // non-trusted permission is not more sensitive than those. No
     // override; family-inherited is the considered call here.

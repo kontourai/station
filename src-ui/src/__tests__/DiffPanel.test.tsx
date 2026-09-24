@@ -167,13 +167,13 @@ afterEach(() => {
 
 describe('DiffPanel', () => {
   test('renders the panel header', () => {
-    render(<DiffPanel workingDir="/repo" />);
+    render(<DiffPanel workingDir="/repo" projectSlug="project" />);
     expect(screen.getByText('Git Diff')).toBeTruthy();
   });
 
   test('shows loading state', () => {
     diffQueryResult = { data: '', isLoading: true, error: null };
-    render(<DiffPanel workingDir="/repo" />);
+    render(<DiffPanel workingDir="/repo" projectSlug="project" />);
     expect(screen.getByLabelText('Loading diff')).toBeTruthy();
   });
 
@@ -183,12 +183,12 @@ describe('DiffPanel', () => {
       isLoading: false,
       error: { message: 'boom' },
     };
-    render(<DiffPanel workingDir="/repo" />);
+    render(<DiffPanel workingDir="/repo" projectSlug="project" />);
     expect(screen.getByText('boom')).toBeTruthy();
   });
 
   test('shows "No changes" for an empty patch', () => {
-    render(<DiffPanel workingDir="/repo" />);
+    render(<DiffPanel workingDir="/repo" projectSlug="project" />);
     expect(screen.getByText('No changes')).toBeTruthy();
   });
 
@@ -222,7 +222,7 @@ describe('DiffPanel', () => {
     const unsubscribe = subscribeInteractiveWorkspacePerformanceMarks((event) =>
       marks.push(event),
     );
-    render(<DiffPanel workingDir="/repo" />);
+    render(<DiffPanel workingDir="/repo" projectSlug="project" />);
     await waitFor(() =>
       expect(marks).toEqual(
         expect.arrayContaining([
@@ -340,7 +340,7 @@ describe('DiffPanel change counts (rendered, station#3104)', () => {
       isLoading: false,
       error: null,
     };
-    render(<DiffPanel workingDir="/repo" />);
+    render(<DiffPanel workingDir="/repo" projectSlug="project" />);
 
     // Panel-level total: 2 files, +3 additions, -2 deletions.
     expect(screen.getByText('2 files')).toBeTruthy();
@@ -373,7 +373,9 @@ describe('DiffPanel change counts — hunkless files (station#3170)', () => {
       isLoading: false,
       error: null,
     };
-    const { container } = render(<DiffPanel workingDir="/repo" />);
+    const { container } = render(
+      <DiffPanel workingDir="/repo" projectSlug="project" />,
+    );
     const stats = perFileStatText(container);
     expect(stats).toEqual(['renamed']);
     expect(stats.some((s) => s.includes('+0'))).toBe(false);
@@ -382,7 +384,9 @@ describe('DiffPanel change counts — hunkless files (station#3170)', () => {
 
   test('a binary file does not display +0 −0', () => {
     diffQueryResult = { data: BINARY_PATCH, isLoading: false, error: null };
-    const { container } = render(<DiffPanel workingDir="/repo" />);
+    const { container } = render(
+      <DiffPanel workingDir="/repo" projectSlug="project" />,
+    );
     const stats = perFileStatText(container);
     expect(stats).toEqual(['binary']);
     expect(stats.some((s) => s.includes('+0'))).toBe(false);
@@ -395,7 +399,7 @@ describe('DiffPanel change counts — hunkless files (station#3170)', () => {
       isLoading: false,
       error: null,
     };
-    render(<DiffPanel workingDir="/repo" />);
+    render(<DiffPanel workingDir="/repo" projectSlug="project" />);
     // foo.ts (has hunks) still shows its numeric stat...
     expect(screen.getAllByText('+1').length).toBeGreaterThan(0);
     expect(screen.getAllByText('−1').length).toBeGreaterThan(0);
@@ -411,7 +415,9 @@ describe('DiffPanel collapse/expand (station#3104)', () => {
       isLoading: false,
       error: null,
     };
-    const { rerender } = render(<DiffPanel workingDir="/repo" />);
+    const { rerender } = render(
+      <DiffPanel workingDir="/repo" projectSlug="project" />,
+    );
 
     // Per-file toggles are named after the file ("Collapse foo.ts"), distinct
     // from the "Collapse all files"/"Expand all files" toolbar buttons.
@@ -433,7 +439,7 @@ describe('DiffPanel collapse/expand (station#3104)', () => {
 
     // Re-render with the same props (no state reset) — per-file collapse
     // state must survive, not fall back to the size-based default.
-    rerender(<DiffPanel workingDir="/repo" />);
+    rerender(<DiffPanel workingDir="/repo" projectSlug="project" />);
     for (const toggle of screen.getAllByRole('button', {
       name: perFileToggleName,
     })) {
@@ -450,7 +456,7 @@ describe('DiffPanel collapse/expand (station#3104)', () => {
 
   test('toggling a single file collapse is keyboard-reachable and exposes aria-expanded', () => {
     diffQueryResult = { data: SAMPLE_PATCH, isLoading: false, error: null };
-    render(<DiffPanel workingDir="/repo" />);
+    render(<DiffPanel workingDir="/repo" projectSlug="project" />);
 
     const toggle = screen.getByRole('button', {
       name: 'Collapse foo.ts',
@@ -486,7 +492,7 @@ describe('DiffPanel collapse/expand (station#3104)', () => {
       isLoading: false,
       error: null,
     };
-    render(<DiffPanel workingDir="/repo" />);
+    render(<DiffPanel workingDir="/repo" projectSlug="project" />);
 
     const bigToggle = screen.getByRole('button', { name: 'Expand big.ts' });
     expect(bigToggle.getAttribute('aria-expanded')).toBe('false');

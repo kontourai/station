@@ -911,6 +911,38 @@ describe('Workspace Pane host invocation admission', () => {
     },
   );
 
+  // #2436: an Agent's default approval posture is part of the definition the
+  // admission captured. The start applies the captured value and never
+  // rereads the store (the store read throws here unless allowed). The
+  // captured Agent is the plugin's own, and a plugin-contributed full-access
+  // default is not applied: a plugin is installed at the operate tier, which
+  // is not the authority full access needs.
+  async function startWithAgentDefault(approvalMode: 'ask' | 'never') {
+    const withDefault: AgentSpec = {
+      ...spec,
+      execution: { ...spec.execution, approvalMode },
+    };
+    writeFileSync(
+      join(home, 'agents', slug, 'agent.json'),
+      JSON.stringify(withDefault),
+    );
+    writeFileSync(
+      join(pluginDir, 'agents', slug, 'agent.json'),
+      JSON.stringify(withDefault),
+    );
+    await (await prepare('literal')).run(dispatch);
+    expect(start).toHaveBeenCalledOnce();
+    return start.mock.calls[0]![0].modelOptions?.approvalMode;
+  }
+
+  test("the session starts in the captured Agent's default approval posture", async () => {
+    expect(await startWithAgentDefault('ask')).toBe('ask');
+  });
+
+  test("a plugin Agent's full-access default is not applied", async () => {
+    expect(await startWithAgentDefault('never')).toBeUndefined();
+  });
+
   test('observes immediate provider rejection while admission locks unwind', async () => {
     const failure = new Error('provider refused');
     const guarded = createWorkspacePaneHostAdmission({

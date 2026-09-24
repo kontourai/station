@@ -1,6 +1,7 @@
 import {
   callTool,
   invoke,
+  type ToastAction,
   useKnowledgeSaveMutation,
   useNotifications,
   useSendToChat,
@@ -23,15 +24,11 @@ import {
   setCache,
 } from './calendar-utils';
 import { ConfirmModal } from './components/ConfirmModal';
-import {
-  SearchModal,
-  type SearchResult,
-  type SearchType,
-} from './components/SearchModal';
+import { CrmSearchModal } from './components/CrmSearchModal';
+import type { SearchResult } from './components/SearchModal';
 import { AGENT_SLUG, CRM_BASE_URL } from './constants';
 import {
-  calendarProvider,
-  crmProvider,
+  provider,
   useCalendarEvents,
   useCreateEvent,
   useDeleteEvent,
@@ -68,31 +65,6 @@ function sanitizeMeetingBody(body: string): string {
   } finally {
     DOMPurify.removeHook('afterSanitizeAttributes', dropAttachmentImages);
   }
-}
-
-/** The CRM provider searches accounts and opportunities; it has no campaigns. */
-async function searchCRM(
-  query: string,
-  type: SearchType,
-): Promise<SearchResult[]> {
-  const condition = {
-    field: 'name',
-    operator: 'CONTAINS' as const,
-    value: query,
-  };
-  if (type === 'account') {
-    const accounts = await crmProvider.searchAccounts(condition);
-    return accounts.map((a) => ({
-      id: a.id,
-      name: a.name,
-      website: a.website,
-    }));
-  }
-  if (type === 'opportunity') {
-    const opportunities = await crmProvider.searchOpportunities(condition);
-    return opportunities.map((o) => ({ id: o.id, name: o.name }));
-  }
-  return [];
 }
 
 export function Calendar(_props: CalendarProps) {
@@ -177,7 +149,7 @@ export function Calendar(_props: CalendarProps) {
   const updateEvent = useUpdateEvent();
   const deleteEvent = useDeleteEvent();
   const [selectedSfdcItem, setSelectedSfdcItem] = useState<{
-    type: 'account' | 'opportunity' | 'campaign';
+    type: 'account' | 'opportunity';
     data: any;
   } | null>(null);
   const [activityFormData, setActivityFormData] = useState({
@@ -193,9 +165,6 @@ export function Calendar(_props: CalendarProps) {
   const [loadingOpportunities, setLoadingOpportunities] = useState(false);
   const [hideClosedOpportunities, setHideClosedOpportunities] = useState(true);
   const [showSearchModal, setShowSearchModal] = useState(false);
-  const [searchModalType, _setSearchModalType] = useState<
-    'account' | 'campaign' | 'opportunity'
-  >('account');
   const [accountFilter, setAccountFilter] = useState('');
   const [showActivityDetailModal, setShowActivityDetailModal] = useState(false);
   const [selectedActivity, setSelectedActivity] = useState<any>(null);
@@ -338,7 +307,7 @@ export function Calendar(_props: CalendarProps) {
         return;
       }
       try {
-        const evts = await calendarProvider.getEvents(today);
+        const evts = await provider('calendar').getEvents(today);
         const mapped = (evts as any[]).map((e) => ({
           meetingId: e.id,
           meetingChangeKey: e.changeKey || '',
@@ -381,7 +350,7 @@ export function Calendar(_props: CalendarProps) {
     }
     setLoadingDetails(true);
     try {
-      const vm = await calendarProvider.getMeetingDetails(
+      const vm = await provider('calendar').getMeetingDetails(
         meetingId,
         event.meetingChangeKey,
       );
@@ -551,7 +520,7 @@ export function Calendar(_props: CalendarProps) {
     _keyword: string,
   ) => {
     try {
-      const opps = await crmProvider.getAccountOpportunities(accountId);
+      const opps = await provider('crm').getAccountOpportunities(accountId);
       const opportunities = opps
         .map((opp: any) => ({
           id: opp.id,
@@ -580,37 +549,41 @@ export function Calendar(_props: CalendarProps) {
     }
   };
 
-  const handleSelectSearchResult = (item: any) => {
-    if (searchModalType === 'account') {
-      setSfdcContext((prev) => {
-        const exists = prev?.accounts?.some((a) => a.id === item.id);
-        if (exists) return prev;
-        return { ...prev, accounts: [...(prev?.accounts || []), item] };
-      });
-      const accountItem = { type: 'account' as const, data: item };
-      setSelectedSfdcItem(accountItem);
-      fetchTasksForItem(accountItem);
-      prefillActivityData(accountItem);
-      setLoadingOpportunities(true);
-      fetchOpportunitiesForAccount(item.id, '').finally(() =>
-        setLoadingOpportunities(false),
-      );
-    } else {
-      setSfdcContext((prev) => {
-        const exists = prev?.campaigns?.some((c) => c.id === item.id);
-        if (exists) return prev;
-        return { ...prev, campaigns: [...(prev?.campaigns || []), item] };
-      });
-      const campaignItem = { type: 'campaign' as const, data: item };
-      setSelectedSfdcItem(campaignItem);
-      fetchTasksForItem(campaignItem);
-      prefillActivityData(campaignItem);
-    }
+  const handleSelectSearchAccount = (item: SearchResult) => {
+    setSfdcContext((prev) => {
+      const exists = prev?.accounts?.some((a) => a.id === item.id);
+      if (exists) return prev;
+      return { ...prev, accounts: [...(prev?.accounts || []), item] };
+    });
+    const accountItem = { type: 'account' as const, data: item };
+    setSelectedSfdcItem(accountItem);
+    fetchTasksForItem(accountItem);
+    prefillActivityData(accountItem);
+    setLoadingOpportunities(true);
+    fetchOpportunitiesForAccount(item.id, '').finally(() =>
+      setLoadingOpportunities(false),
+    );
+    setShowSearchModal(false);
+  };
+
+  const handleSelectSearchOpportunity = (item: SearchResult) => {
+    setSfdcContext((prev) => {
+      const exists = prev?.opportunities?.some((o) => o.id === item.id);
+      if (exists) return prev;
+      return {
+        ...prev,
+        opportunities: [...(prev?.opportunities || []), item],
+      };
+    });
+    const opportunityItem = { type: 'opportunity' as const, data: item };
+    setSelectedSfdcItem(opportunityItem);
+    fetchTasksForItem(opportunityItem);
+    prefillActivityData(opportunityItem);
     setShowSearchModal(false);
   };
 
   const fetchTasksForItem = async (item: {
-    type: 'account' | 'opportunity' | 'campaign';
+    type: 'account' | 'opportunity';
     data: any;
   }) => {
     setLoadingTasks(true);
@@ -627,7 +600,7 @@ export function Calendar(_props: CalendarProps) {
         log('No user ID available for task fetch');
         return;
       }
-      const result = await crmProvider.getUserTasks(userId, filters);
+      const result = await provider('crm').getUserTasks(userId, filters);
       const mappedTasks = result.tasks.map((t: any) => ({
         id: t.id,
         subject: t.subject,
@@ -656,7 +629,7 @@ export function Calendar(_props: CalendarProps) {
   };
 
   const prefillActivityData = async (item: {
-    type: 'account' | 'opportunity' | 'campaign';
+    type: 'account' | 'opportunity';
     data: any;
   }) => {
     if (!selectedEvent || !meetingDetails) return;
@@ -1157,11 +1130,12 @@ export function Calendar(_props: CalendarProps) {
                                 let cached = getFromCache<MeetingDetails>(ck);
                                 if (!cached && event.meetingChangeKey) {
                                   try {
-                                    const vm =
-                                      await calendarProvider.getMeetingDetails(
-                                        event.meetingId,
-                                        event.meetingChangeKey,
-                                      );
+                                    const vm = await provider(
+                                      'calendar',
+                                    ).getMeetingDetails(
+                                      event.meetingId,
+                                      event.meetingChangeKey,
+                                    );
                                     cached = {
                                       meetingId: (vm as any).id,
                                       meetingChangeKey:
@@ -1451,11 +1425,12 @@ export function Calendar(_props: CalendarProps) {
                               let cached = getFromCache<MeetingDetails>(ck);
                               if (!cached && event.meetingChangeKey) {
                                 try {
-                                  const vm =
-                                    await calendarProvider.getMeetingDetails(
-                                      event.meetingId,
-                                      event.meetingChangeKey,
-                                    );
+                                  const vm = await provider(
+                                    'calendar',
+                                  ).getMeetingDetails(
+                                    event.meetingId,
+                                    event.meetingChangeKey,
+                                  );
                                   cached = {
                                     meetingId: (vm as any).id,
                                     meetingChangeKey:
@@ -2024,7 +1999,7 @@ export function Calendar(_props: CalendarProps) {
                                     },
                                   });
                                   const diskPath = (result as any)?.storagePath;
-                                  const actions: any[] = [
+                                  const actions: ToastAction[] = [
                                     {
                                       label: 'View',
                                       variant: 'primary',
@@ -2052,14 +2027,13 @@ export function Calendar(_props: CalendarProps) {
                                         );
                                       },
                                     });
-                                  showToast(
-                                    diskPath
+                                  showToast({
+                                    message: diskPath
                                       ? `Saved → ${diskPath}`
                                       : 'Notes saved to knowledge base',
-                                    undefined,
-                                    8000,
+                                    duration: 8000,
                                     actions,
-                                  );
+                                  });
                                   setSavedEventIds((prev) =>
                                     new Set(prev).add(selectedEventId!),
                                   );
@@ -2295,19 +2269,11 @@ export function Calendar(_props: CalendarProps) {
                 const items: Array<{
                   id: string;
                   name: string;
-                  type: 'Account' | 'Campaign' | 'Opportunity';
+                  type: 'Account' | 'Opportunity';
                   meta?: string;
                 }> = [];
                 (sfdcContext.accounts || []).forEach((acc: any) =>
                   items.push({ id: acc.id, name: acc.name, type: 'Account' }),
-                );
-                (sfdcContext.campaigns || []).forEach((camp: any) =>
-                  items.push({
-                    id: camp.id,
-                    name: camp.name,
-                    type: 'Campaign',
-                    meta: camp.type,
-                  }),
                 );
                 (sfdcContext.opportunities || []).forEach((opp: any) =>
                   items.push({
@@ -2331,7 +2297,7 @@ export function Calendar(_props: CalendarProps) {
                     onClick={async () => {
                       setAssigningActivity(true);
                       try {
-                        await crmProvider.updateTask(activityToAssign.id, {
+                        await provider('crm').updateTask(activityToAssign.id, {
                           relatedTo: {
                             type: item.type,
                             id: item.id,
@@ -2379,12 +2345,11 @@ export function Calendar(_props: CalendarProps) {
         </div>
       )}
 
-      <SearchModal
+      <CrmSearchModal
         isOpen={showSearchModal}
         onClose={() => setShowSearchModal(false)}
-        onSelect={handleSelectSearchResult}
-        type={searchModalType}
-        onSearch={searchCRM}
+        onSelectAccount={handleSelectSearchAccount}
+        onSelectOpportunity={handleSelectSearchOpportunity}
       />
 
       {/* Log Activity Modal */}
@@ -2458,8 +2423,8 @@ export function Calendar(_props: CalendarProps) {
                           setShowSearchModal(true);
                         }}
                         className="log-activity__search-btn"
-                        title="Search accounts or campaigns"
-                        aria-label="Search accounts or campaigns"
+                        title="Search accounts or opportunities"
+                        aria-label="Search accounts or opportunities"
                       >
                         <svg
                           aria-hidden="true"
@@ -2541,7 +2506,7 @@ export function Calendar(_props: CalendarProps) {
                         onClick={() => setShowSearchModal(true)}
                         className="log-activity__search-accounts-btn"
                       >
-                        Search Accounts/Campaigns
+                        Search Accounts/Opportunities
                       </button>
                     </div>
                   </div>
@@ -2653,42 +2618,6 @@ export function Calendar(_props: CalendarProps) {
                       )}
                     </div>
                   )}
-
-                {sfdcContext.campaigns && sfdcContext.campaigns.length > 0 && (
-                  <div className="log-activity__campaigns-section">
-                    <details open>
-                      <summary className="log-activity__section-summary">
-                        <span>▼</span> Campaigns ({sfdcContext.campaigns.length}
-                        )
-                      </summary>
-                      {sfdcContext.campaigns.map((campaign: any) => (
-                        <button
-                          type="button"
-                          key={campaign.id}
-                          onClick={() => {
-                            const item = {
-                              type: 'campaign' as const,
-                              data: campaign,
-                            };
-                            setSelectedSfdcItem(item);
-                            fetchTasksForItem(item);
-                            prefillActivityData(item);
-                          }}
-                          className={`log-activity__campaign-btn ${selectedSfdcItem?.type === 'campaign' && selectedSfdcItem.data.id === campaign.id ? 'log-activity__campaign-btn--selected' : 'log-activity__campaign-btn--default'}`}
-                        >
-                          <div className="log-activity__opp-name">
-                            {campaign.name}
-                          </div>
-                          {campaign.type && (
-                            <div className="log-activity__opp-stage">
-                              {campaign.type}
-                            </div>
-                          )}
-                        </button>
-                      ))}
-                    </details>
-                  </div>
-                )}
               </div>
 
               {/* Right: Activity Form */}
@@ -2697,7 +2626,7 @@ export function Calendar(_props: CalendarProps) {
                   <div className="log-activity__form-fields">
                     <div className="log-activity__context-card">
                       <a
-                        href={`${CRM_BASE_URL}/r/${selectedSfdcItem.type === 'account' ? 'Account' : selectedSfdcItem.type === 'campaign' ? 'Campaign' : 'Opportunity'}/${selectedSfdcItem.data.id}/view`}
+                        href={`${CRM_BASE_URL}/r/${selectedSfdcItem.type === 'account' ? 'Account' : 'Opportunity'}/${selectedSfdcItem.data.id}/view`}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="log-activity__context-sfdc"
@@ -2708,9 +2637,7 @@ export function Calendar(_props: CalendarProps) {
                       <div className="log-activity__context-type">
                         {selectedSfdcItem.type === 'account'
                           ? 'Account'
-                          : selectedSfdcItem.type === 'campaign'
-                            ? 'Campaign'
-                            : 'Opportunity'}
+                          : 'Opportunity'}
                       </div>
                       <div className="log-activity__context-name">
                         {selectedSfdcItem.data.name}
@@ -2722,12 +2649,6 @@ export function Calendar(_props: CalendarProps) {
                         selectedSfdcItem.data.stageName && (
                           <div className="log-activity__context-stage">
                             Stage: {selectedSfdcItem.data.stageName}
-                          </div>
-                        )}
-                      {selectedSfdcItem.type === 'campaign' &&
-                        selectedSfdcItem.data.type && (
-                          <div className="log-activity__context-stage">
-                            Type: {selectedSfdcItem.data.type}
                           </div>
                         )}
                     </div>
@@ -2928,7 +2849,7 @@ export function Calendar(_props: CalendarProps) {
                           if (!selectedSfdcItem) return;
                           setSubmittingActivity(true);
                           try {
-                            const task = await crmProvider.createTask({
+                            const task = await provider('crm').createTask({
                               subject: activityFormData.subject,
                               activityType: activityFormData.activityType,
                               dueDate: activityFormData.activityDate
@@ -3028,7 +2949,7 @@ export function Calendar(_props: CalendarProps) {
                                         setOppFilterText('');
                                       }}
                                       className="log-activity__task-assign-btn"
-                                      title="Assign to account, opportunity, or campaign"
+                                      title="Assign to account or opportunity"
                                     >
                                       Assign To...
                                     </button>
@@ -3050,10 +2971,9 @@ export function Calendar(_props: CalendarProps) {
                                       setShowActivityDetailModal(true);
                                       setLoadingActivityDetails(true);
                                       try {
-                                        const taskVM =
-                                          await crmProvider.getTaskDetails(
-                                            task.id,
-                                          );
+                                        const taskVM = await provider(
+                                          'crm',
+                                        ).getTaskDetails(task.id);
                                         setSelectedActivity({
                                           id: taskVM.id,
                                           subject: taskVM.subject,
@@ -3143,10 +3063,9 @@ export function Calendar(_props: CalendarProps) {
                                   else if (selectedSfdcItem.type === 'account')
                                     filters.accountId =
                                       selectedSfdcItem.data.id;
-                                  const result = await crmProvider.getUserTasks(
-                                    userId,
-                                    filters,
-                                  );
+                                  const result = await provider(
+                                    'crm',
+                                  ).getUserTasks(userId, filters);
                                   const mapped = result.tasks.map((t: any) => ({
                                     id: t.id,
                                     subject: t.subject,

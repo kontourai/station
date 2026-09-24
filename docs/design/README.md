@@ -31,6 +31,7 @@ category.
 - [agent-engine-unification.md](agent-engine-unification.md) — Design: Agent–engine unification
 - [ai-ui-bridge-expansion.md](ai-ui-bridge-expansion.md) — AI↔UI bridge expansion — scoping
 - [answer-share-permalinks.md](answer-share-permalinks.md) — Scoped answer share permalinks (station#1423)
+- [approval-posture-server-ordered.md](approval-posture-server-ordered.md) — Design: server-ordered approval posture
 - [browser-preview-host-spike.md](browser-preview-host-spike.md) — Browser-preview host spike (Station #1376)
 - [browser-preview-pane-mvp.md](browser-preview-pane-mvp.md) — Browser Preview Pane MVP (Station #1375)
 - [channel-home-authority.md](channel-home-authority.md) — Channel home authority and planned transfer

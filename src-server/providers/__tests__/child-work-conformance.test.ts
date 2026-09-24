@@ -39,6 +39,7 @@ import {
   type ClaudeMessageState,
   mapClaudeSdkMessage,
 } from '../adapters/claude-adapter-events.js';
+import { recordClaudeTurnDispatched } from '../adapters/claude-sdk-turns.js';
 import { MuseAdapter } from '../adapters/muse-adapter.js';
 import type { MuseProcessLike } from '../adapters/muse-adapter-types.js';
 import {
@@ -88,10 +89,11 @@ async function replayClaudeCapture(): Promise<CanonicalRuntimeEvent[]> {
       createdAt: '2026-09-23T00:00:00.000Z',
       updatedAt: '2026-09-23T00:00:00.000Z',
     },
-    activeTurnId: 'turn-1',
-    dispatchedTurnId: 'turn-1',
     lastSessionState: 'running',
   };
+  // #2324: turn identity lives in the SDK turn ledger; dispatching turn-1
+  // makes it the running turn, as the live adapter does.
+  recordClaudeTurnDispatched(record, 'turn-1');
   for (const line of CLAUDE_TASK_SUBAGENTS_FIXTURE) {
     mapClaudeSdkMessage({
       provider: 'claude',

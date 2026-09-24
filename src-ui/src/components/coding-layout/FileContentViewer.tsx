@@ -1,23 +1,16 @@
-import { useCodingFileContentQuery } from '@kontourai/station-sdk';
-import DOMPurify from 'dompurify';
-import { useMemo } from 'react';
-import { useApiBase } from '../../contexts/ApiBaseContext';
-import { useSyntaxHighlighter } from '../../contexts/SyntaxHighlighterContext';
-import { langFromFilePath } from '../../highlight/langFromFilePath';
 import { FilePreviewPane } from '../../workspace-panes/FilePreviewPane';
-import { CloseGlyph } from '../icons/Glyph';
-import { SkeletonBlock } from '../state';
+import { Empty } from '../state';
 
 export function FileContentViewer({
-  workingDir,
   filePath,
-  onClose,
   projectSlug,
 }: {
+  /** The caller's folder. The project-bound preview resolves the file
+   * against the Project's own folder, and nothing reads this. */
   workingDir: string;
   filePath: string;
   onClose: () => void;
-  /** Coding layouts use the project-bound preview tracer; direct callers retain their existing reader. */
+  /** The preview is project-bound; without a Project there is no reader. */
   projectSlug?: string;
 }) {
   if (projectSlug) {
@@ -35,131 +28,13 @@ export function FileContentViewer({
     );
   }
 
+  // #2412: every coding read names its Project, so there is no path-only
+  // reader for a caller without one.
   return (
-    <LegacyFileContentViewer
-      workingDir={workingDir}
-      filePath={filePath}
-      onClose={onClose}
+    <Empty
+      variant="compact"
+      label="Preview unavailable"
+      description={`Open ${filePath} from its Project to preview it.`}
     />
-  );
-}
-
-function LegacyFileContentViewer({
-  workingDir,
-  filePath,
-  onClose,
-}: {
-  workingDir: string;
-  filePath: string;
-  onClose: () => void;
-}) {
-  const { apiBase } = useApiBase();
-  const highlighter = useSyntaxHighlighter();
-  const {
-    data: content = '',
-    isLoading: loading,
-    error,
-  } = useCodingFileContentQuery(workingDir, filePath, apiBase);
-
-  const highlighted = useMemo(() => {
-    if (!content || !highlighter.ready) {
-      return null;
-    }
-    const language = langFromFilePath(filePath);
-    return highlighter.highlight(content, language);
-  }, [content, filePath, highlighter]);
-
-  const detectedLang = langFromFilePath(filePath);
-
-  return (
-    <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '6px 12px 4px',
-          flexShrink: 0,
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span
-            style={{
-              fontSize: '11px',
-              fontWeight: 600,
-              color: 'var(--text-muted)',
-              textTransform: 'uppercase',
-              letterSpacing: '0.05em',
-            }}
-          >
-            {filePath.split('/').pop()}
-          </span>
-          {detectedLang && (
-            <span
-              style={{
-                fontSize: '9px',
-                color: 'var(--text-muted)',
-                background: 'var(--bg-secondary)',
-                borderRadius: '3px',
-                padding: '1px 5px',
-              }}
-            >
-              {detectedLang}
-            </span>
-          )}
-        </div>
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="Close file preview"
-          style={{
-            background: 'transparent',
-            border: 'none',
-            color: 'var(--text-muted)',
-            cursor: 'pointer',
-            fontSize: '14px',
-          }}
-        >
-          <CloseGlyph />
-        </button>
-      </div>
-      <div style={{ flex: 1, overflowY: 'auto', padding: '4px 12px 12px' }}>
-        {loading ? (
-          <SkeletonBlock count={2} label="Loading file" />
-        ) : error ? (
-          <div
-            role="alert"
-            style={{
-              fontSize: '12px',
-              color: 'var(--error-text)',
-            }}
-          >
-            {error instanceof Error
-              ? error.message
-              : 'Unable to load file content'}
-          </div>
-        ) : highlighted ? (
-          <div
-            style={{ fontSize: '11px', lineHeight: '1.6' }}
-            dangerouslySetInnerHTML={{
-              __html: DOMPurify.sanitize(highlighted),
-            }}
-          />
-        ) : (
-          <pre
-            style={{
-              margin: 0,
-              fontFamily: 'monospace',
-              fontSize: '11px',
-              color: 'var(--text-secondary)',
-              whiteSpace: 'pre-wrap',
-              wordBreak: 'break-all',
-            }}
-          >
-            {content}
-          </pre>
-        )}
-      </div>
-    </div>
   );
 }

@@ -1,3 +1,4 @@
+import { isProviderTriggeredTurn } from '@kontourai/station-contracts/runtime-events';
 import type { SessionTapePlayer } from './player';
 
 export interface ConversationTimelineLandmark {
@@ -25,10 +26,13 @@ export function conversationTimelineLandmarks(
 ): readonly ConversationTimelineLandmark[] {
   const cached = landmarkCache.get(player.frames);
   if (cached) return cached;
+  // #2324: a turn the engine opened on its own is not a user turn; its
+  // frames stay inside the landmark of the exchange it followed.
   const starts = player.frames.flatMap((frame, frameIndex) =>
     frame.kind === 'runtime' &&
     frame.event.method === 'turn.started' &&
-    frame.event.inputKind !== 'steer'
+    frame.event.inputKind !== 'steer' &&
+    !isProviderTriggeredTurn(frame.event)
       ? [{ frameIndex, event: frame.event }]
       : [],
   );

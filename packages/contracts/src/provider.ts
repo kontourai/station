@@ -658,10 +658,10 @@ export const MUSE_TURN_IDLE_TIMEOUT_CODE = 'muse-turn-idle-timeout';
 export const MUSE_TURN_TOTAL_TIMEOUT_CODE = 'muse-turn-timeout';
 
 /**
- * #2300: `runtime.warning` code for a Muse child that Station's idle deadline
- * reaped AFTER its turn had already ended, while background work the turn
- * launched may still have been running in it (the turn closed that work's
- * rows as unresolved). Stopping the child ends that work, so the reap is
+ * #2300: `runtime.warning` code for a Muse child that Station's
+ * lingering-child reap stopped AFTER its turn had already ended, while
+ * background work the turn launched may still have been running in it (the
+ * turn closed that work's rows as unresolved). Stopping the child ends that work, so the reap is
  * announced rather than done silently. A warning, not an error: the turn's
  * own outcome was already published and is not changed by it.
  */
@@ -693,6 +693,15 @@ export const MUSE_HELD_TURN_UNFINISHED_CODE = 'muse-held-turn-unfinished';
  * (no code; stop the session to recover).
  */
 export const MUSE_TURN_SLOT_RELEASING_CODE = 'muse_turn_slot_releasing';
+
+/**
+ * #2324: refusal code for a send that arrived while the engine is running a
+ * turn it opened on its own (a provider-triggered turn, see
+ * `PROVIDER_TURN_TRIGGER`). Accepting it would fold the message into a reply
+ * the user did not ask for. Retryable: the same send succeeds once that turn
+ * closes, so clients keep it queued and send it then.
+ */
+export const PROVIDER_TURN_IN_PROGRESS_CODE = 'provider_turn_in_progress';
 
 /**
  * Whether Station owns an orchestration session or only follows it.

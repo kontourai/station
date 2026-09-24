@@ -969,7 +969,10 @@ function InspectionContent(
   if (props.selection?.kind === 'diff')
     return props.directory ? (
       <div className="task-workspace__diff">
-        <DiffPanel workingDir={props.directory} />
+        <DiffPanel
+          workingDir={props.directory}
+          projectSlug={props.projectSlug}
+        />
       </div>
     ) : (
       <UnavailableInspection />
