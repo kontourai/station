@@ -585,6 +585,23 @@ pub(crate) struct NativeBrokerRedemptionInvitation {
     pub(crate) expires_at: u64,
 }
 
+impl Clone for NativeBrokerRedemptionInvitation {
+    fn clone(&self) -> Self {
+        Self {
+            broker_origin: self.broker_origin.clone(),
+            station_id: self.station_id.clone(),
+            enrollment_id: self.enrollment_id.clone(),
+            routing_generation: self.routing_generation,
+            station_signing_key_id: self.station_signing_key_id.clone(),
+            station_signing_generation: self.station_signing_generation,
+            app_identifier: self.app_identifier.clone(),
+            invitation_id: self.invitation_id.clone(),
+            invitation_secret: Zeroizing::new(self.invitation_secret.to_string()),
+            expires_at: self.expires_at,
+        }
+    }
+}
+
 /// A constructed v2 broker-redemption JWS signing input. There is no
 /// renderer-facing or arbitrary-byte constructor.
 pub(crate) struct NativeBrokerRedemptionChallenge {
@@ -758,6 +775,23 @@ impl NativeBrokerKeyCandidateChallenge {
 
     pub(crate) fn nonce(&self) -> &str {
         self.proof.nonce()
+    }
+
+    pub(crate) fn expires_at(&self) -> u64 {
+        self.invitation.expires_at
+    }
+
+    /// Rebuild the same closed courier operation over the same invitation and
+    /// nonce. Request and read are separate signed purposes, but one attempt
+    /// must keep the challenge fixed across both operations.
+    pub(crate) fn with_action(&self, action: NativeBrokerKeyCandidateAction) -> ProofResult<Self> {
+        Self::from_invitation(
+            &self.owner,
+            &self.public_key,
+            self.invitation.clone(),
+            self.nonce(),
+            action,
+        )
     }
 
     pub(crate) fn compact_jws(&self, signature: &[u8]) -> ProofResult<String> {

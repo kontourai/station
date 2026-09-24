@@ -313,8 +313,14 @@ impl VerifiedStationKeyCandidate {
     pub(crate) fn confirmation_code(&self) -> &str {
         &self.claims.confirmation_code
     }
+    pub(crate) fn expires_at(&self) -> u64 {
+        self.claims.exp
+    }
     pub(crate) fn profile_owner_id(&self) -> &str {
         &self.profile_binding.profile_owner_id
+    }
+    pub(crate) fn profile_binding(&self) -> &TrustProfileBinding {
+        &self.profile_binding
     }
     pub(crate) fn profile_revision(&self) -> u64 {
         self.profile_revision
@@ -466,6 +472,17 @@ pub(crate) struct StationTrustMutationReceipt {
     pub(crate) key_id: String,
 }
 
+/// Secret-free durable state suitable for renderer display.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct StationTrustPublicState {
+    pub(crate) revision: u64,
+    pub(crate) status: Option<StationTrustStatus>,
+    pub(crate) station_id: String,
+    pub(crate) enrollment_id: Option<String>,
+    pub(crate) generation: Option<u64>,
+    pub(crate) key_id: Option<String>,
+}
+
 pub(crate) trait StationTrustBackend: Send {
     fn read(&mut self, account: &str) -> CandidateResult<Option<Zeroizing<String>>>;
     fn write(&mut self, account: &str, value: &str) -> CandidateResult<()>;
@@ -483,7 +500,7 @@ pub(crate) struct NativeStationTrustStore<
     clock: C,
 }
 
-struct OsStationTrustBackend;
+pub(crate) struct OsStationTrustBackend;
 
 impl StationTrustBackend for OsStationTrustBackend {
     fn read(&mut self, account: &str) -> CandidateResult<Option<Zeroizing<String>>> {
@@ -534,6 +551,60 @@ impl<B: StationTrustBackend> NativeStationTrustStore<B, TestStationTrustClock> {
 }
 
 impl<B: StationTrustBackend, C: StationTrustClock> NativeStationTrustStore<B, C> {
+    pub(crate) fn current_state<P: LockedTrustProfileProvider>(
+        &mut self,
+        provider: &P,
+        binding: &TrustProfileBinding,
+        profile_revision: u64,
+    ) -> CandidateResult<StationTrustPublicState> {
+        provider.with_current_profile(binding, profile_revision, |snapshot| {
+            if snapshot.binding != *binding || snapshot.revision != profile_revision {
+                return Err(CandidateError::ProfileStale);
+            }
+            let _guard = STATION_TRUST_OPERATION
+                .lock()
+                .map_err(|_| CandidateError::TrustStore)?;
+            let account = trust_account(binding)?;
+            let stored = self.read_record(&account, &binding.station_id)?;
+            let route_approved = stored.approved_bindings.contains(binding);
+            let trust_matches_route = stored
+                .trust
+                .as_ref()
+                .is_some_and(|trust| trust.enrollment_id == binding.enrollment_id);
+            let effective_status = stored
+                .status
+                .filter(|_| route_approved && trust_matches_route);
+            let public = if effective_status.is_some() {
+                stored
+                    .trust
+                    .as_ref()
+                    .map(|trust| {
+                        Ok((
+                            trust.enrollment_id.clone(),
+                            trust.generation,
+                            signing_key_id(&trust.signing_key)?,
+                        ))
+                    })
+                    .transpose()?
+            } else {
+                None
+            };
+            if effective_status.is_some() != public.is_some() {
+                return Err(CandidateError::TrustStore);
+            }
+            Ok(StationTrustPublicState {
+                revision: stored.revision,
+                status: effective_status,
+                station_id: binding.station_id.clone(),
+                enrollment_id: public
+                    .as_ref()
+                    .map(|(enrollment_id, _, _)| enrollment_id.clone()),
+                generation: public.as_ref().map(|(_, generation, _)| *generation),
+                key_id: public.map(|(_, _, key_id)| key_id),
+            })
+        })
+    }
+
     pub(crate) fn current_revision<P: LockedTrustProfileProvider>(
         &mut self,
         provider: &P,
@@ -631,7 +702,9 @@ impl<B: StationTrustBackend, C: StationTrustClock> NativeStationTrustStore<B, C>
                 return Err(CandidateError::ProfileStale);
             }
             let trust = stored.trust.as_ref().ok_or(CandidateError::TrustStore)?;
-            if signing_key_id(&trust.signing_key)? != operator_full_key_id {
+            if trust.enrollment_id != binding.enrollment_id
+                || signing_key_id(&trust.signing_key)? != operator_full_key_id
+            {
                 return Err(CandidateError::OperatorConfirmationMismatch);
             }
             stored.revision = stored

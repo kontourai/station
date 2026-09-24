@@ -23,6 +23,8 @@ mod native_relay_redemption;
 #[cfg(not(mobile))]
 mod native_station_key_custody;
 #[cfg(not(mobile))]
+mod native_relay_key_approval;
+#[cfg(not(mobile))]
 mod relay_grant_vault;
 mod pairing_deep_link_channels_generated;
 mod service_state;
@@ -4831,7 +4833,20 @@ fn lock_station_profiles_for_app(
 /// while holding the same interprocess lock used by profile writers. A broker
 /// offer or renderer-supplied route cannot supply this snapshot.
 #[cfg(not(mobile))]
-struct AppNativeTrustProfileProvider<'a>(&'a AppHandle);
+struct AppNativeTrustProfileProvider<'a> {
+    app: &'a AppHandle,
+}
+
+#[cfg(not(mobile))]
+impl<'a> AppNativeTrustProfileProvider<'a> {
+    pub(crate) fn enrollment(app: &'a AppHandle) -> Self {
+        Self { app }
+    }
+
+    pub(crate) fn existing_trust(app: &'a AppHandle) -> Self {
+        Self { app }
+    }
+}
 
 #[cfg(not(mobile))]
 impl native_station_key_custody::LockedTrustProfileProvider for AppNativeTrustProfileProvider<'_> {
@@ -4848,8 +4863,8 @@ impl native_station_key_custody::LockedTrustProfileProvider for AppNativeTrustPr
     {
         use native_station_key_custody::CandidateError;
 
-        let path = station_profiles_path(self.0).map_err(|_| CandidateError::ProfileStale)?;
-        let _lock = lock_station_profiles_for_app(self.0, &path)
+        let path = station_profiles_path(self.app).map_err(|_| CandidateError::ProfileStale)?;
+        let _lock = lock_station_profiles_for_app(self.app, &path)
             .map_err(|_| CandidateError::ProfileStale)?;
         let contents =
             read_station_profile_store(&path).map_err(|_| CandidateError::ProfileStale)?;
@@ -4859,8 +4874,8 @@ impl native_station_key_custody::LockedTrustProfileProvider for AppNativeTrustPr
             &store,
             expected_binding,
             expected_profile_revision,
-            &self.0.config().identifier,
-            native_app_channel(&self.0.config().identifier, cfg!(debug_assertions)),
+            &self.app.config().identifier,
+            native_app_channel(&self.app.config().identifier, cfg!(debug_assertions)),
         )?;
         operation(snapshot)
     }
@@ -10775,6 +10790,7 @@ If a stable instance is running, this launch will focus its window and exit.",
     #[cfg(not(mobile))]
     let builder = builder
         .manage(NativeStartupBootstrap::default())
+        .manage(native_relay_key_approval::NativeRelayKeyApprovalState::default())
         .manage(desktop_companion::DesktopCompanion::default())
         .menu(desktop_companion::desktop_menu)
         .on_menu_event(|app, event| {
@@ -10790,6 +10806,13 @@ If a stable instance is running, this launch will focus its window and exit.",
     #[cfg(not(mobile))]
     let builder = builder.invoke_handler(tauri::generate_handler![
         native_capability_report,
+        native_relay_key_approval::station_native_relay_key_approval_prepare,
+        native_relay_key_approval::station_native_relay_key_approval_begin,
+        native_relay_key_approval::station_native_relay_key_approval_pending,
+        native_relay_key_approval::station_native_relay_key_approval_cancel,
+        native_relay_key_approval::station_native_relay_key_approval_approve,
+        native_relay_key_approval::station_native_relay_key_approval_revoke,
+        native_relay_key_approval::station_native_relay_key_approval_status,
         relay_grant_vault::relay_client_grant_store,
         relay_grant_vault::relay_client_grant_revoke,
         relay_grant_vault::relay_client_grant_metadata,
