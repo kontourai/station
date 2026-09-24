@@ -1,5 +1,4 @@
 import {
-  type AgentSummary,
   type LayoutComponentProps,
   useAgents,
   useAuth,
@@ -31,7 +30,7 @@ function Welcome({ onShowChat }: LayoutComponentProps) {
             A discovered definition may still need a connected provider.
           </p>
           <ul className="demo-agent-list">
-            {agents.map((a: AgentSummary) => (
+            {agents.map((a) => (
               <li key={a.slug}>
                 {a.name} ({a.slug})
               </li>

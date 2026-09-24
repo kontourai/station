@@ -201,7 +201,7 @@ function ProjectReview({
 
 export function FieldworkReview(_props: LayoutComponentProps) {
   const { apiBase } = useApiBase();
-  const navigation = useNavigation() as { selectedProject?: string | null };
+  const navigation = useNavigation();
   const projectSlug = navigation.selectedProject ?? null;
   return projectSlug ? (
     <ProjectReview

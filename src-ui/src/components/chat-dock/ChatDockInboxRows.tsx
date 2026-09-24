@@ -1,3 +1,4 @@
+import type { GitReadLocation } from '@kontourai/station-sdk';
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { relativeTime } from '../../utils/relativeTime';
 import type { SessionIconAgent } from '../../utils/sessionDisplay';
@@ -295,14 +296,15 @@ interface InboxRowProps {
    */
   agents?: readonly SessionIconAgent[];
   /**
-   * The row's local session working directory, resolved by the host from its
-   * session records for the row's `orchestrationThreadId`. Absent (chat-only
-   * rows, hosts without session data, remote rows) renders no git section in
-   * the hover card — never a guess. Deliberately NOT a `HomeWorkItem` field:
-   * that type is the workspace-home projection surface, and widening it
-   * invalidates every existing grant.
+   * The row's local session working directory and its Project (#2412: git
+   * reads name the Project), resolved by the host from its session records
+   * for the row's `orchestrationThreadId`. Absent (chat-only rows, unbound
+   * chats, hosts without session data, remote rows) renders no git section
+   * in the hover card — never a guess. Deliberately NOT a `HomeWorkItem`
+   * field: that type is the workspace-home projection surface, and widening
+   * it invalidates every existing grant.
    */
-  cwd?: string;
+  gitLocation?: GitReadLocation;
 }
 
 export function InboxRow({
@@ -316,7 +318,7 @@ export function InboxRow({
   onCloseChat,
   onDraftDiscarded,
   agents,
-  cwd,
+  gitLocation,
 }: InboxRowProps) {
   const iconAgent = inboxRowIconAgent(item, agents);
   const discardThreadId = onDraftDiscarded ? draftDiscardThreadId(item) : null;
@@ -460,7 +462,7 @@ export function InboxRow({
           componentProps={{
             item,
             now,
-            cwd,
+            gitLocation,
             anchor: hover.anchor,
             onClose: hover.close,
             id: hoverCardId,
@@ -497,13 +499,13 @@ export interface InboxGroupListProps {
   /** Live agent catalog for the rows' leading icons — see `InboxRowProps`. */
   agents?: InboxRowProps['agents'];
   /**
-   * Local session working directories by thread id — the host's session
-   * records, passed once. Rows resolve their own `cwd` from their
+   * Local session git locations by thread id — the host's session
+   * records, passed once. Rows resolve their own `gitLocation` from their
    * `orchestrationThreadId`; a row that resolves nothing gets no git
-   * section (see `InboxRowProps.cwd`). Must be referentially stable across
-   * renders for the same reason `agents` is.
+   * section (see `InboxRowProps.gitLocation`). Must be referentially stable
+   * across renders for the same reason `agents` is.
    */
-  cwdByThreadId?: ReadonlyMap<string, string>;
+  gitLocationByThreadId?: ReadonlyMap<string, GitReadLocation>;
 }
 
 export function InboxGroupList({
@@ -519,7 +521,7 @@ export function InboxGroupList({
   onCloseChat,
   onDraftDiscarded,
   agents,
-  cwdByThreadId,
+  gitLocationByThreadId,
 }: InboxGroupListProps) {
   const [olderDraftsOpen, setOlderDraftsOpen] = useState(false);
   const renderRow = (group: MobileActivityGroup, item: HomeWorkItem) => (
@@ -540,8 +542,8 @@ export function InboxGroupList({
       onCloseChat={onCloseChat}
       onDraftDiscarded={onDraftDiscarded}
       agents={agents}
-      cwd={
-        cwdByThreadId?.get(
+      gitLocation={
+        gitLocationByThreadId?.get(
           item.orchestrationThreadId ?? item.chatSessionId ?? '',
         ) ?? undefined
       }

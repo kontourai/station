@@ -41,6 +41,10 @@ import {
   type PrincipalRef,
 } from '@kontourai/station-contracts/principal';
 import {
+  APPROVAL_MODES,
+  type ApprovalMode,
+} from '@kontourai/station-contracts/provider';
+import {
   ORCHESTRATION_STREAM_CAUGHT_UP_EVENT,
   SERVER_EVENTS,
 } from '@kontourai/station-contracts/runtime-events';
@@ -134,6 +138,10 @@ import { sessionCorrelationBindings } from '../../utils/logger-correlation.js';
 import { assertBoundedJsonResponse } from '../chat/bounded-response.js';
 import { errorMessage, getBody, param, validate } from '../schemas/schemas.js';
 import { sseKeepalive, streamSSE } from '../sse-response.js';
+import {
+  refuseUngrantedFullAccess,
+  requestedApprovalMode,
+} from './approval-authority.js';
 
 // These are intentional public projections. The typed code/outcome and, when
 // available, the receipt/session below give callers evidence to observe; a
@@ -150,6 +158,8 @@ const CHECKPOINT_RESTORE_REASONS = new Set([
   'checkpoint_missing',
   'checkpoint_pruned',
   'preview_invalid',
+  'repository_config_refused',
+  'repository_config_unreadable',
   'restore_verification_failed',
   'workspace_changed',
   'workspace_checkpoint_unsupported',
@@ -340,6 +350,21 @@ const stopSessionCommandSchema = z.object({
   threadId: z.string().min(1),
 });
 
+// #2436: a posture decision, recorded and ordered by the server; applied at
+// the next session start or turn start whatever path sends it.
+const approvalModeSchema = z.enum(
+  APPROVAL_MODES as unknown as [ApprovalMode, ...ApprovalMode[]],
+);
+const setApprovalModeCommandSchema = z.object({
+  type: z.literal('setApprovalMode'),
+  threadId: z.string().min(1).max(512),
+  approvalMode: approvalModeSchema,
+  // Compare-and-set: the latest decision's sequence the client had folded
+  // when the user picked (`null`: none). Required, so a client that forgets
+  // it is refused rather than recorded unconditionally.
+  basedOnSequence: z.number().int().nonnegative().nullable(),
+});
+
 // #2312: the server re-derives the Draft fact itself; the body names only
 // the session.
 const discardDraftCommandSchema = z.object({
@@ -371,6 +396,7 @@ export const orchestrationCommandSchema = z.discriminatedUnion('type', [
   steerTurnCommandSchema,
   respondToRequestCommandSchema,
   stopSessionCommandSchema,
+  setApprovalModeCommandSchema,
   discardDraftCommandSchema,
 ]);
 
@@ -517,6 +543,10 @@ export const foregroundMessageObjectSchema = z.object({
     .max(CHAT_ATTACHMENT_MAX_COUNT)
     .optional(),
   clientTurnId: z.string().min(1).max(200).optional(),
+  // #2436: a posture decision this send carries (a pick made before the chat
+  // had a session, or while offline). Recorded on receipt, before the turn.
+  setApprovalMode: approvalModeSchema.optional(),
+  setApprovalModeBasedOn: z.number().int().nonnegative().nullable().optional(),
 });
 
 const agentDelegationContextSchema = z.object({
@@ -562,12 +592,44 @@ function requireMessageOrAttachment(
   });
 }
 
+/**
+ * #2436: a carried approval pick must name its compare-and-set basis
+ * (`setApprovalModeBasedOn`, `null` when the client had seen no decision).
+ * Without one, a client bug would skip compare-and-set silently.
+ */
+function requireApprovalPickBasis(
+  value: { setApprovalMode?: unknown; setApprovalModeBasedOn?: unknown },
+  ctx: z.RefinementCtx,
+): void {
+  if (
+    value.setApprovalMode !== undefined &&
+    value.setApprovalModeBasedOn === undefined
+  )
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['setApprovalModeBasedOn'],
+      message:
+        'setApprovalModeBasedOn is required with setApprovalMode (null when no decision had been seen).',
+    });
+}
+
+function requireForegroundBody(
+  value: Parameters<typeof requireMessageOrAttachment>[0] & {
+    setApprovalMode?: unknown;
+    setApprovalModeBasedOn?: unknown;
+  },
+  ctx: z.RefinementCtx,
+): void {
+  requireApprovalPickBasis(value, ctx);
+  requireMessageOrAttachment(value, ctx);
+}
+
 const foregroundMessageSchema = foregroundMessageObjectSchema.superRefine(
-  requireMessageOrAttachment,
+  requireForegroundBody,
 );
 const delegatedForegroundMessageSchema = foregroundMessageObjectSchema
   .extend({ delegation: agentDelegationContextSchema })
-  .superRefine(requireMessageOrAttachment);
+  .superRefine(requireForegroundBody);
 
 // Exported (archive#2831) for the structural derivation pin in
 // __tests__/orchestration-chat-input-limits.test.ts: this continuation body
@@ -594,14 +656,16 @@ export const continueForegroundMessageSchema = foregroundMessageObjectSchema
       executionTargetSchema.shape.model,
     ),
   })
-  .superRefine(requireMessageOrAttachment);
+  .superRefine(requireForegroundBody);
 
-export const conversationHandoffSchema = foregroundMessageObjectSchema.extend({
-  // A handoff may target another Station; current-host staged references
-  // have no portable byte authority and must be refused at validation.
-  attachmentRefs: z.never().optional(),
-  idempotencyKey: z.string().min(1).max(200),
-});
+export const conversationHandoffSchema = foregroundMessageObjectSchema
+  .extend({
+    // A handoff may target another Station; current-host staged references
+    // have no portable byte authority and must be refused at validation.
+    attachmentRefs: z.never().optional(),
+    idempotencyKey: z.string().min(1).max(200),
+  })
+  .superRefine(requireApprovalPickBasis);
 
 const conversationContextBoundarySchema = z.object({
   policy: z.enum(['continue-from-history', 'empty-next-cold-start']),
@@ -723,6 +787,9 @@ interface ForegroundMessageRequest {
   }) => ChatAttachmentInput[];
   ambientContext?: string;
   clientTurnId?: string;
+  /** #2436: see `ForegroundMessageInput.setApprovalMode`. */
+  setApprovalMode?: ApprovalMode;
+  setApprovalModeBasedOn?: number | null;
   userId: string;
   /**
    * archive#4075 stage 2: the dispatching caller's resolved `PrincipalRef`,
@@ -745,6 +812,9 @@ interface ContinueForegroundMessageRequest {
   conversationId: string;
   environment?: EnvironmentRef;
   model?: ExecutionModelRequest;
+  /** #2436: see `ForegroundMessageInput.setApprovalMode`. */
+  setApprovalMode?: ApprovalMode;
+  setApprovalModeBasedOn?: number | null;
   message: string;
   attachments?: ChatAttachmentInput[];
   ambientContext?: string;
@@ -1548,6 +1618,13 @@ export function createOrchestrationRoutes(
         delegation?: z.infer<typeof agentDelegationContextSchema>;
         automaticBackground?: true;
       };
+      // #2436: full access needs the operator in person or a granted device,
+      // whether the send carries it as a pick or asks for it on the options.
+      const fullAccessRefused = refuseUngrantedFullAccess(c, [
+        body.setApprovalMode,
+        requestedApprovalMode(body.target.model?.options),
+      ]);
+      if (fullAccessRefused) return fullAccessRefused;
       const { principal, userId, ownerAttribution } = resolveDispatchActor(
         deps,
         c,
@@ -1750,6 +1827,11 @@ export function createOrchestrationRoutes(
       }
       try {
         const body = getBody(c);
+        const fullAccessRefused = refuseUngrantedFullAccess(c, [
+          (body as { setApprovalMode?: unknown }).setApprovalMode,
+          requestedApprovalMode(body.target.model?.options),
+        ]);
+        if (fullAccessRefused) return fullAccessRefused;
         const { principal, userId, ownerAttribution } = resolveDispatchActor(
           deps,
           c,
@@ -1934,6 +2016,11 @@ export function createOrchestrationRoutes(
       }
       try {
         const body = getBody(c);
+        const fullAccessRefused = refuseUngrantedFullAccess(c, [
+          body.setApprovalMode,
+          requestedApprovalMode(body.model?.options),
+        ]);
+        if (fullAccessRefused) return fullAccessRefused;
         const { principal, userId, ownerAttribution } = resolveDispatchActor(
           deps,
           c,
@@ -2037,6 +2124,13 @@ export function createOrchestrationRoutes(
     }
     try {
       const body = getBody(c);
+      const fullAccessRefused = refuseUngrantedFullAccess(c, [
+        requestedApprovalMode(
+          (body as { target?: { model?: { options?: unknown } } }).target?.model
+            ?.options,
+        ),
+      ]);
+      if (fullAccessRefused) return fullAccessRefused;
       const { principal, userId, ownerAttribution } = resolveDispatchActor(
         deps,
         c,
@@ -2403,6 +2497,12 @@ export function createOrchestrationRoutes(
         );
       }
       try {
+        const fullAccessRefused = refuseUngrantedFullAccess(c, [
+          requestedApprovalMode(
+            (getBody(c) as { modelOptions?: unknown }).modelOptions,
+          ),
+        ]);
+        if (fullAccessRefused) return fullAccessRefused;
         const { principal, userId, ownerAttribution } = resolveDispatchActor(
           deps,
           c,
@@ -3705,6 +3805,11 @@ export function createOrchestrationRoutes(
     }),
     async (c) => {
       const command = getBody(c);
+      // #2436: full access needs the operator in person or a granted device.
+      if (command.type === 'setApprovalMode') {
+        const refused = refuseUngrantedFullAccess(c, [command.approvalMode]);
+        if (refused) return refused;
+      }
       // Resolved once and reused for both the read authority below and the
       // dispatch context further down, rather than calling
       // `readAuthorityFor(c)` a second time — `resolveActorPrincipal` is the

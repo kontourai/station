@@ -1,6 +1,7 @@
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import type { ClientOrigin } from '@kontourai/station-contracts/client-origin';
 import { environmentId as toEnvironmentId } from '@kontourai/station-contracts/execution-target';
+import { APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE } from '@kontourai/station-contracts/orchestration';
 import {
   parseIndependentReviewRequest,
   REVIEW_EVIDENCE_OPERATOR_SURFACE,
@@ -1103,13 +1104,24 @@ export function registerOperationsTools(server: StationControlToolRegistry) {
           'Key-value pairs to update (e.g. { defaultModel: "claude-sonnet-4-20250514" })',
         ),
     },
-    async ({ updates }) =>
-      jsonToolResult(
+    async ({ updates }) => {
+      // #2436: the Station's default approval mode reaches every session
+      // start. An agent may not raise it to full access; the route refuses
+      // an agent-originated raise too, and this says so without the call.
+      if (updates.defaultApprovalMode === 'never')
+        return jsonToolResult({
+          success: false,
+          code: APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE,
+          error:
+            "An agent cannot set the Station's default approval mode to full access. The operator can, in Settings.",
+        });
+      return jsonToolResult(
         await api('/config/app', {
           method: 'PUT',
           body: JSON.stringify(updates),
         }),
-      ),
+      );
+    },
   );
 
   server.tool(

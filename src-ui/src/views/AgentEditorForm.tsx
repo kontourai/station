@@ -10,6 +10,7 @@ import { useEngineConnectionsQuery } from '@kontourai/station-sdk';
 import { useState } from 'react';
 import { runtimeCatalogVisibleModels } from '../utils/execution';
 import { AgentDelegationDenialCatalog } from './agent-editor/AgentDelegationDenialCatalog';
+import { AgentEditorApprovalDefault } from './agent-editor/AgentEditorApprovalDefault';
 import { AgentEditorBasicTab } from './agent-editor/AgentEditorBasicTab';
 import { AgentEditorCommandsTab } from './agent-editor/AgentEditorCommandsTab';
 import { AgentEditorCredentialProfile } from './agent-editor/AgentEditorCredentialProfile';
@@ -138,6 +139,11 @@ export function AgentEditorForm(props: AgentEditorFormProps) {
         {/* archive#3551: which ACCOUNT of the bound engine. Renders nothing
             for engines with no app-home channel — see its docblock. */}
         <AgentEditorCredentialProfile
+          form={form}
+          setForm={props.setForm}
+          locked={props.locked}
+        />
+        <AgentEditorApprovalDefault
           form={form}
           setForm={props.setForm}
           locked={props.locked}

@@ -22,6 +22,7 @@ import {
 } from '@kontourai/station-contracts/orchestration';
 import type { PrincipalRef } from '@kontourai/station-contracts/principal';
 import {
+  type ApprovalMode,
   type CapabilityDeliveryCapability,
   type CapabilityUndeliveredReason,
   type EngineId,
@@ -75,6 +76,7 @@ import {
   matchVerifiedRemoteProjectPath,
   resolveExecutionTarget,
 } from '../services/execution-target/execution-target-resolver.js';
+import { approvalKnobSupported } from '../services/orchestration/approval-posture.js';
 import {
   DelegationAttemptCapacityError,
   DelegationAttemptClaimStore,
@@ -5032,7 +5034,11 @@ export async function executeExecutionTargetMessage(
           : '/api/orchestration/chat',
       {
         ...remoteInput,
-        target: { ...pinnedTarget, environment: { kind: 'current' } },
+        target: {
+          ...pinnedTarget,
+          environment: { kind: 'current' },
+          ...remoteApprovalCarry(pinnedTarget.model, input.setApprovalMode),
+        },
       },
       'The selected Station could not execute the Agent message',
     );
@@ -5429,6 +5435,13 @@ export async function executeExecutionTargetMessage(
     },
     nativeMemoryOwnsTranscript:
       orchestrationService.supportsNativeMemoryContinuity?.() === true,
+    // #2436: a carried approval pick is recorded here, on this Station,
+    // before the send's session start and turn. An engine with no approval
+    // knob records nothing (the pick would be a request nothing honours).
+    recordApprovalMode: (_access: EnvironmentAccess, pick) =>
+      approvalKnobSupported(pick.provider)
+        ? orchestrationService.recordApprovalModeDecision(pick)
+        : undefined,
     sendTurn: async (_access: EnvironmentAccess, turnInput, context) => {
       const command = { type: 'sendTurn' as const, input: turnInput };
       const dispatchContext = dispatchContextForAuthority(
@@ -5515,6 +5528,28 @@ export type ContinueForegroundMessageInput = Omit<
   model?: ExecutionModelRequest;
 };
 
+/**
+ * #2436 HIGH-1: an approval pick sent to another Station travels twice. As
+ * `setApprovalMode`, a Station that speaks the command records it (and
+ * reports it back). On `model.options.approvalMode`, a Station that predates
+ * the command still applies it to the turn, as it always did; one that
+ * speaks it applies that channel only while nothing is recorded, so the
+ * duplicate is harmless there. An older Station's schema strips the unknown
+ * key, which is why the second channel is needed at all.
+ */
+function remoteApprovalCarry(
+  model: ExecutionModelRequest | undefined,
+  pick: ApprovalMode | undefined,
+): { model?: ExecutionModelRequest } {
+  if (!pick) return {};
+  return {
+    model: {
+      ...(model ?? {}),
+      options: { ...(model?.options ?? {}), approvalMode: pick },
+    },
+  };
+}
+
 /** Continue only through the Environment+Agent binding persisted at start. */
 /**
  * The workspace a resumed conversation runs in, rebuilt from its own session
@@ -5592,6 +5627,15 @@ export async function continueExecutionTargetMessage(
           : {}),
         ...(input.clientTurnId ? { clientTurnId: input.clientTurnId } : {}),
         ...(input.model ? { model: input.model } : {}),
+        ...remoteApprovalCarry(input.model, input.setApprovalMode),
+        ...(input.setApprovalMode
+          ? {
+              setApprovalMode: input.setApprovalMode,
+              ...(input.setApprovalModeBasedOn !== undefined
+                ? { setApprovalModeBasedOn: input.setApprovalModeBasedOn }
+                : {}),
+            }
+          : {}),
       },
       'Station could not continue the Agent conversation',
     );

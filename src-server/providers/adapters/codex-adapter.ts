@@ -2166,10 +2166,11 @@ export class CodexAdapter implements ProviderAdapterShape {
     const decodedAttachments = decodeChatAttachments(input.attachments);
     rejectFileAttachments('Codex', decodedAttachments);
     // Resolved fresh from this turn's modelOptions so a mode picked in the
-    // composer takes effect starting with the very next turn — Station
-    // resends the full session override bag on every turn (see
-    // useActiveChatSessionMessaging.ts), so an unset field here means "no
-    // override for this turn," not "clear the previous one."
+    // composer takes effect starting with the very next turn — the
+    // orchestration service applies the conversation's recorded posture on
+    // every turn (#2436, approval-posture.ts), including a Default pick
+    // resolved to a concrete pair (#2409), so an unset field here means "no
+    // posture recorded," not "clear the previous one."
     const approvalKnobs = resolveCodexExecutionKnobs(
       input.modelOptions,
       input.reviewIsolation,

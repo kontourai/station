@@ -855,6 +855,18 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
     reason: 'glossary copy ratchet scans all src-ui sources by path',
   },
   {
+    // #2401: the example-manifest field check reads every examples/*/plugin.json
+    // by path, so no import edge reaches it. Supplemental: it ADDS the check to
+    // an examples change without replacing that change's own selection, which
+    // today escalates as an unmapped path.
+    pattern: 'examples/**',
+    supplemental: true,
+    tests: [
+      'src-server/services/plugins/__tests__/example-manifest-fields.test.ts',
+    ],
+    reason: 'example manifests are read by path, outside the import graph',
+  },
+  {
     pattern: 'justfile',
     tests: [
       'scripts/__tests__/just-interface.test.ts',

@@ -29,13 +29,17 @@ test('binds the bounded search request to the captured authority and exact URL',
   vi.stubGlobal('fetch', fetch);
 
   await expect(
-    fetchCodingFileMentionCandidates('/repo one', 'a b', scope),
+    fetchCodingFileMentionCandidates(
+      { projectSlug: 'acme', workingDir: '/repo one' },
+      'a b',
+      scope,
+    ),
   ).resolves.toEqual({
     entries: [{ name: 'a.ts', path: 'src/a.ts', type: 'file' }],
     partial: false,
   });
   expect(String(fetch.mock.calls[0][0])).toBe(
-    'https://station.test/api/coding/files/search?path=%2Frepo%20one&query=a%20b&maxResults=201',
+    'https://station.test/api/coding/files/search?projectSlug=acme&path=%2Frepo%20one&query=a%20b&maxResults=201',
   );
 });
 
@@ -65,6 +69,10 @@ test('rejects a late response after the captured authority is revoked', async ()
   );
 
   await expect(
-    fetchCodingFileMentionCandidates('/repo', 'a', scope),
+    fetchCodingFileMentionCandidates(
+      { projectSlug: 'acme', workingDir: '/repo' },
+      'a',
+      scope,
+    ),
   ).rejects.toThrow();
 });

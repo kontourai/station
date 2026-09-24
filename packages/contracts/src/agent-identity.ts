@@ -61,6 +61,41 @@ export function agentId(value: string): AgentId {
   return value as AgentId;
 }
 
+/**
+ * `'<plugin>:<agent>'`: an Agent named together with the installed plugin that
+ * contributed it, as plugin authors write it (`'my-plugin:assistant'`). It is
+ * a reference, never an identity: the Agent's identity is the clean
+ * {@link AgentId} after the colon.
+ */
+export type QualifiedPluginAgentId = `${string}:${string}`;
+
+export interface PluginAgentReference {
+  /** The contributing plugin's name, as the agent catalog's `plugin` field. */
+  pluginId: string;
+  agentId: AgentId;
+}
+
+/**
+ * Splits a {@link QualifiedPluginAgentId} into the plugin it names and the
+ * clean Agent identity, or `undefined` when either half is not one.
+ *
+ * It splits at the LAST colon. The Agent half is a clean identity, which can
+ * never hold a colon, while a plugin name is only refused path separators; so
+ * the last colon is the only unambiguous boundary.
+ */
+export function parseQualifiedPluginAgentId(
+  value: string,
+): PluginAgentReference | undefined {
+  const boundary = value.lastIndexOf(':');
+  if (boundary <= 0) return undefined;
+  const pluginId = value.slice(0, boundary);
+  const agent = value.slice(boundary + 1);
+  if (pluginId.trim() !== pluginId) return undefined;
+  if (!CLEAN_ID_PATTERN.test(agent) || UUID_PATTERN.test(agent))
+    return undefined;
+  return { pluginId, agentId: agent as AgentId };
+}
+
 export function engineConnectionId(value: string): EngineConnectionId {
   assertCleanIdentity(value);
   return value as EngineConnectionId;

@@ -29,6 +29,9 @@ export async function dispatchTaskForTest(
   input: TaskDispatchInput,
 ): Promise<TaskDispatchResult> {
   return unwrapDispatch(
-    await composeTestTaskDispatcher(service).dispatch(taskId, input),
+    await composeTestTaskDispatcher(service).dispatch(taskId, {
+      ...input,
+      fullAccessGrant: null,
+    }),
   );
 }
