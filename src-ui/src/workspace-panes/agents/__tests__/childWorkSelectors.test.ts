@@ -190,6 +190,39 @@ describe('controls', () => {
     // A wired engine but a child with no stop seam of its own.
     expect(controlsFor(engineItem('r', 'c'), 'wired-engine')).toBe(undefined);
   });
+
+  test('#2486: a row says its engine stop ends the parent turn, from the matrix, never a copy true for every engine', () => {
+    // Real matrix cells, not the synthetic wired-engine/model-tool-engine
+    // mocks above: codex is genuinely wired with `endsParentTurn: true`
+    // since #2486; claude's cell is still `none`.
+    const view = selectGlobalChildWork(
+      input(
+        [{ threadId: 'exec-codex', provider: 'codex' }],
+        [
+          engineItem('exec-codex', 'c-codex', {
+            controls: { stop: 'provider-task-stop' },
+          }),
+        ],
+      ),
+    );
+    expect(view.running[0].stop).toBe('provider-task-stop');
+    expect(view.running[0].stopEndsParentTurn).toBe(true);
+
+    // The synthetic `wired-engine` mock never sets `endsParentTurn`, so a
+    // wired-but-task-scoped stop must not carry the flag.
+    const scopedView = selectGlobalChildWork(
+      input(
+        [{ threadId: 'exec-scoped', provider: 'wired-engine' }],
+        [
+          engineItem('exec-scoped', 'c-scoped', {
+            controls: { stop: 'provider-task-stop' },
+          }),
+        ],
+      ),
+    );
+    expect(scopedView.running[0].stop).toBe('provider-task-stop');
+    expect(scopedView.running[0].stopEndsParentTurn).toBeUndefined();
+  });
 });
 
 describe('nesting and time', () => {
