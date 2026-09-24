@@ -403,44 +403,52 @@ describe('server-ordered approval posture (#2436)', () => {
       expect(claude.lastTurnMode()).toBe('ask');
     });
 
-    test('a Default pick is ranked by what it resolves to', async () => {
-      // Resolves to the Station default Ask: stricter than never, recorded.
-      stationDefault = 'ask';
-      await start('t-default-ask');
-      await decide('t-default-ask', 'never', desktop);
-      expect(
-        await decide('t-default-ask', 'connection-default', phone, null),
-      ).toMatchObject({ recorded: true, approvalMode: 'connection-default' });
-      await turn('t-default-ask');
+    test('a Default pick is always held to its basis: a stale one is refused even if it resolves stricter now', async () => {
+      // The reviewer's sequence: the phone decides Ask; the desktop, having
+      // seen only its own Auto, picks Default while the Agent default is
+      // Ask; the operator later raises the Agent default to full access.
+      agentDefaults.builder = 'ask';
+      await start('t-default-stale', 'claude', undefined, 'builder');
+      const seen = await decide('t-default-stale', 'auto', desktop);
+      const phoneAsk = await decide('t-default-stale', 'ask', phone);
+      const stale = await decide(
+        't-default-stale',
+        'connection-default',
+        desktop,
+        seen.sequence,
+      );
+      expect(stale).toEqual({
+        threadId: 't-default-stale',
+        recorded: false,
+        approvalMode: 'ask',
+        sequence: phoneAsk.sequence,
+      });
+      agentDefaults.builder = 'never';
+      await turn('t-default-stale');
       expect(claude.lastTurnMode()).toBe('ask');
-
-      // Resolves to the Station default never: looser than Ask, held.
-      stationDefault = 'never';
-      await start('t-default-never');
-      await decide('t-default-never', 'ask', desktop);
+      // A Default made on the latest decision is recorded as ever.
       expect(
-        await decide('t-default-never', 'connection-default', phone, null),
-      ).toMatchObject({ recorded: false, approvalMode: 'ask' });
-      await turn('t-default-never');
-      expect(claude.lastTurnMode()).toBe('ask');
-    });
-
-    test("a Default that resolves to the engine's own configuration cannot be ranked, so it is held to its basis", async () => {
-      await start('t-default-engine');
-      await decide('t-default-engine', 'auto', desktop);
-      expect(
-        await decide('t-default-engine', 'connection-default', phone, null),
-      ).toMatchObject({ recorded: false, approvalMode: 'auto' });
-      // Ask outranks anything, the engine's own configuration included.
-      expect(
-        await decide('t-default-engine', 'ask', phone, null),
+        await decide(
+          't-default-stale',
+          'connection-default',
+          desktop,
+          phoneAsk.sequence,
+        ),
       ).toMatchObject({ recorded: true });
     });
 
-    test("a fresh device's Ask is recorded over a standing Default that cannot be ranked", async () => {
-      // Nothing configured and nothing applied: the standing Default leaves
-      // the engine on its own configuration, which cannot be ranked. Ask is
-      // at least as strict as any posture, so it is recorded all the same.
+    test('a fresh device with no basis cannot pick Default over any decision', async () => {
+      await start('t-default-fresh');
+      await decide('t-default-fresh', 'never', desktop);
+      expect(
+        await decide('t-default-fresh', 'connection-default', phone, null),
+      ).toMatchObject({ recorded: false, approvalMode: 'never' });
+    });
+
+    test("a fresh device's Ask is recorded over a standing Default; its Auto is held", async () => {
+      // A standing Default is ranked by nothing: what it resolves to can
+      // change. Ask is at least as strict as any posture, so it is recorded
+      // all the same.
       await start('t-default-standing');
       await decide('t-default-standing', 'connection-default', desktop);
       expect(
@@ -450,6 +458,17 @@ describe('server-ordered approval posture (#2436)', () => {
       expect(
         await decide('t-default-standing', 'auto', phone, null),
       ).toMatchObject({ recorded: false, approvalMode: 'ask' });
+    });
+
+    test('Auto is held over a standing Default even while that Default resolves to full access', async () => {
+      stationDefault = 'never';
+      await start('t-default-auto');
+      await decide('t-default-auto', 'connection-default', desktop);
+      // Auto is stricter than what the Default resolves to NOW, but the
+      // Default could be lowered later; a stale Auto stays held.
+      expect(await decide('t-default-auto', 'auto', phone, null)).toMatchObject(
+        { recorded: false, approvalMode: 'connection-default' },
+      );
     });
 
     test('the spawn window: a pick recorded before its session exists is the posture the session spawns in', async () => {

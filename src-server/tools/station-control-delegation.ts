@@ -5416,7 +5416,7 @@ export async function executeExecutionTargetMessage(
     // knob records nothing (the pick would be a request nothing honours).
     recordApprovalMode: async (_access: EnvironmentAccess, pick) =>
       approvalKnobSupported(pick.provider)
-        ? await orchestrationService.recordApprovalModeDecision(pick)
+        ? orchestrationService.recordApprovalModeDecision(pick)
         : undefined,
     sendTurn: async (_access: EnvironmentAccess, turnInput, context) => {
       const command = { type: 'sendTurn' as const, input: turnInput };

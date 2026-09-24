@@ -310,13 +310,15 @@ A session spawned before this change has nothing recorded.
   - A looser pick is recorded only if no newer decision exists for the
     conversation. Otherwise the server drops it and returns the standing
     decision.
-  - A Default pick, on either side of the comparison, is ranked by what it
-    resolves to now (§4.3), read before the synchronous check. A Default that
-    resolves to the engine's own configuration cannot be ranked, so it is
-    held to its basis, and only Ask outranks it (Ask is at least as strict
-    as any posture). The resolution uses the thread's recorded Agent; a pick
-    recorded before its session's first start is ranked by the Station
-    default alone, which can only hold a pick, never loosen one.
+  - **A Default is ranked by nothing, on either side.** What a Default
+    resolves to (§4.3) depends on the Agent and Station defaults, which can
+    be edited after the pick is recorded, so a ranking made at record time
+    can go stale: a stale Default recorded because it resolved to Ask would
+    resolve to full access once the Agent default was raised. So a Default
+    pick is always held to its basis, and a concrete pick over a standing
+    Default is too, except Ask, which is at least as strict as any posture.
+    The "stricter needs no basis" rule applies only to concrete Ask and
+    Auto (Auto over a concrete `auto` or `never`).
   - The client folds that decision, clears the queue, and adds a one-line
     note: "Your approval pick was not applied: another device had already set
     it to …".
@@ -543,8 +545,9 @@ The acceptance bar is the invariant.
   - M1;
   - a same-posture re-pick;
   - compare-and-set: G-off, a basis of `null`, the duplicate-carry race, the
-    spawn window, a fresh device's stricter pick recorded, and a Default
-    ranked by its resolution (including one that cannot be ranked);
+    spawn window, a fresh device's stricter pick recorded, a stale Default
+    refused though it resolved stricter when picked (the reviewer's
+    sequence), and Ask, but not Auto, recorded over a standing Default;
   - dormant respawn;
   - the credential-profile recovery replay (HIGH-2);
   - Codex, and refusal on an engine with no knob;

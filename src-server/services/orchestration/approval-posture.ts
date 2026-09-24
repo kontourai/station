@@ -57,27 +57,20 @@ const STRICTNESS: Readonly<Record<string, number>> = {
   never: 2,
 };
 
-function strictness(
-  mode: ApprovalMode,
-  defaultResolution: ApprovalMode | undefined,
-): number | undefined {
-  const resolved = mode === 'connection-default' ? defaultResolution : mode;
-  return resolved === undefined ? undefined : STRICTNESS[resolved];
-}
-
 /**
- * Whether `pick` is at least as strict as `standing`. Ask is at least as
- * strict as any posture, the engine's own configuration included (see
- * `resolveDefaultPick`). Otherwise both must be rankable.
+ * Whether `pick` is at least as strict as `standing` in a way that cannot
+ * change later. A Default (`connection-default`) is never ranked, on either
+ * side: what it resolves to depends on the Agent and Station defaults, which
+ * can be edited after the pick is recorded, so a ranking made at record time
+ * could go stale. Ask is at least as strict as any posture, a Default
+ * included; Auto only against a concrete `auto` or `never`.
  */
-function atLeastAsStrict(
-  pick: ApprovalMode,
-  standing: ApprovalMode,
-  defaultResolution: ApprovalMode | undefined,
-): boolean {
-  const picked = strictness(pick, defaultResolution);
-  if (picked === STRICTNESS.ask) return true;
-  const stands = strictness(standing, defaultResolution);
+function atLeastAsStrict(pick: ApprovalMode, standing: ApprovalMode): boolean {
+  if (pick === 'ask') return true;
+  if (pick === 'connection-default' || standing === 'connection-default')
+    return false;
+  const picked = STRICTNESS[pick];
+  const stands = STRICTNESS[standing];
   return picked !== undefined && stands !== undefined && picked <= stands;
 }
 
@@ -129,47 +122,28 @@ export class ApprovalPosture {
   }
 
   /**
-   * Compare-and-set (#2436 MEDIUM-1, narrowed by the orchestrator's decision
+   * Compare-and-set (#2436 MEDIUM-1, narrowed by the orchestrator's decisions
    * of 2026-09-23): the decision that stands against a pick made having seen
    * `basedOnSequence` (`null`: having seen none), or `undefined` when the pick
    * may be recorded.
    *
-   * Only a pick LOOSER than the standing decision is held to the basis. A
-   * pick at least as strict (ask < auto < never) is always recorded: it can
-   * never leave the engine more permissive than the decision it replaces, so
-   * a second device's Ask on a full-access session is never refused for not
-   * having seen that session's history. A Default pick, on either side, is
-   * ranked by what it resolves to (`defaultResolution`, from
-   * `defaultPickResolution`); a Default that resolves to the engine's own
-   * configuration cannot be ranked, so it is held to the basis, and only Ask
-   * outranks it.
+   * Only a pick that is not provably at least as strict as the standing
+   * decision is held to the basis (`atLeastAsStrict`). Ask is always
+   * recorded, so a second device's Ask on a full-access session is never
+   * refused for not having seen that session's history. A Default pick is
+   * always held to its basis: it is ranked by nothing, because what it
+   * resolves to can change after it is recorded.
    */
   supersedingDecision(
     threadId: string,
     pick: ApprovalMode,
     basedOnSequence: number | null,
-    defaultResolution: ApprovalMode | undefined,
   ): ApprovalPostureDecision | undefined {
     const standing = this.decision(threadId);
     if (!standing) return undefined;
     if (basedOnSequence !== null && standing.sequence <= basedOnSequence)
       return undefined;
-    return atLeastAsStrict(pick, standing.approvalMode, defaultResolution)
-      ? undefined
-      : standing;
-  }
-
-  /**
-   * What a Default pick on `threadId` resolves to now: the Agent's default,
-   * else this Station's, else `ask` on a thread Station set a posture on,
-   * else `undefined` (the engine's own configuration). Read before the
-   * compare-and-set step, which must stay synchronous.
-   */
-  defaultPickResolution(input: {
-    threadId: string;
-    agentSlug?: string;
-  }): Promise<ApprovalMode | undefined> {
-    return this.resolveDefaultPick(input);
+    return atLeastAsStrict(pick, standing.approvalMode) ? undefined : standing;
   }
 
   /**
