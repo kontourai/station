@@ -1,4 +1,7 @@
-import { MUSE_TURN_SLOT_RELEASING_CODE } from '@kontourai/station-contracts/provider';
+import {
+  MUSE_TURN_SLOT_RELEASING_CODE,
+  PROVIDER_TURN_IN_PROGRESS_CODE,
+} from '@kontourai/station-contracts/provider';
 import { SESSION_ENDED_REJECTION_CODE } from '@kontourai/station-contracts/session-lifecycle';
 import { contextRegistry } from '@kontourai/station-sdk';
 import { ChatHttpError } from '@kontourai/station-sdk/client';
@@ -49,6 +52,9 @@ const RETRYABLE_REJECTION_CODES: ReadonlySet<string> = new Set([
   // still exiting (past the adapter's short wait). The same send succeeds
   // once that process is gone.
   MUSE_TURN_SLOT_RELEASING_CODE,
+  // #2324: a send that arrived while the engine was running a turn it opened
+  // on its own. The same send succeeds once that turn ends.
+  PROVIDER_TURN_IN_PROGRESS_CODE,
 ]);
 
 /**

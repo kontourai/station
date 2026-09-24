@@ -224,6 +224,54 @@ describe('ConversationTurnActivityProjection (#2309)', () => {
     expect(freshProjection().readForThread(ROOT)).toEqual(activity);
   });
 
+  test('#2324: a turn the engine opened on its own reports its trigger — live, freshly seeded and primed; a steer keeps it; a caller turn has none', () => {
+    const started = append(ROOT, {
+      method: 'turn.started',
+      turnId: 'provider:p',
+      metadata: { trigger: 'provider' },
+    });
+    const expected = {
+      turnId: 'provider:p',
+      threadId: ROOT,
+      startedAt: started.createdAt,
+      trigger: 'provider',
+    };
+    expect(projection.readForThread(ROOT)?.openTurn).toEqual(expected);
+    // A steer on it adds a start with no trigger; the open turn keeps its own.
+    append(ROOT, {
+      method: 'turn.started',
+      turnId: 'provider:p',
+      prompt: 'also this',
+      inputKind: 'steer',
+    });
+    expect(projection.readForThread(ROOT)?.openTurn).toEqual(expected);
+    expect(freshProjection().readForThread(ROOT)?.openTurn).toEqual(expected);
+    const primed = freshProjection();
+    primed.primeThreads(store.listSessionProjectionEventsForThreads([ROOT]));
+    expect(primed.readForThread(ROOT)?.openTurn).toEqual(expected);
+
+    append(ROOT, {
+      method: 'turn.completed',
+      turnId: 'provider:p',
+      metadata: { trigger: 'provider' },
+    });
+    const user = append(ROOT, {
+      method: 'turn.started',
+      turnId: 'user-turn',
+      prompt: 'hi',
+    });
+    expect(projection.readForThread(ROOT)?.openTurn).toEqual({
+      turnId: 'user-turn',
+      threadId: ROOT,
+      startedAt: user.createdAt,
+    });
+    expect(freshProjection().readForThread(ROOT)?.openTurn).toEqual({
+      turnId: 'user-turn',
+      threadId: ROOT,
+      startedAt: user.createdAt,
+    });
+  });
+
   test('closes on a deferred-retriable runtime.error and on an interrupt abort, as hasActiveTurn does', () => {
     expect(projection.readForThread(ROOT)?.openTurn).toBeUndefined();
     append(ROOT, { method: 'turn.started', turnId: 'turn-r' });

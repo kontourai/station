@@ -567,6 +567,13 @@ export interface ConversationTurnActivity {
     threadId: string;
     /** `createdAt` of the turn's first `turn.started`; a steer keeps it. */
     startedAt: string;
+    /**
+     * #2324: `'provider'` when the engine opened this turn on its own (see
+     * `PROVIDER_TURN_TRIGGER`) — a reply no send asked for. Read from the
+     * turn's first `turn.started`, never inferred. A client must not treat
+     * it as the answer to a send it is still waiting on.
+     */
+    trigger?: 'provider';
   };
   /** `createdAt` of the newest committed event on any child. */
   lastActivityAt?: string;

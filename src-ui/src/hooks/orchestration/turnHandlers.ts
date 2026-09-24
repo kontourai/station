@@ -4,6 +4,7 @@ import {
   ENGINE_TURN_FAILED_CODE,
   isApprovalMode,
 } from '@kontourai/station-contracts/provider';
+import { isProviderTriggeredTurn } from '@kontourai/station-contracts/runtime-events';
 import {
   type ActiveChatsStore,
   activeChatsStore,
@@ -211,11 +212,18 @@ export function handleTurnStartedEvent(
         }
       : {}),
     // The dispatch this turn came from has started; the pre-start cancel
-    // window it named is over
-    pendingClientTurnId: undefined,
-    // #2309: a witnessed turn start closes the optimistic send window, even
-    // when the frame's as-of-delivery activity already shows the turn ended.
-    sendAwaitingTurnStart: undefined,
+    // window it named is over. #2324: a turn the engine opened on its own
+    // came from no dispatch — a send this client still has in flight keeps
+    // its pre-start window and its optimistic send window.
+    ...(isProviderTriggeredTurn(event)
+      ? {}
+      : {
+          pendingClientTurnId: undefined,
+          // #2309: a witnessed turn start closes the optimistic send window,
+          // even when the frame's as-of-delivery activity already shows the
+          // turn ended.
+          sendAwaitingTurnStart: undefined,
+        }),
     status: 'sending',
     orchestrationTurnOpen: true,
     // archive#1410: the identity of the turn whose text is about to be

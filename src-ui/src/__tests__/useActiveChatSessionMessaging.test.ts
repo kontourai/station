@@ -1388,6 +1388,81 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     ).toBe('partial answer');
   });
 
+  it('#2324 (D4): queues, never steers, while the engine runs a turn of its own', async () => {
+    activeChatsStore.updateChat(sessionId, {
+      status: 'sending',
+      orchestrationProvider: 'claude',
+      currentSessionId: 'exec-claude-1',
+      conversationId: 'conversation-p',
+      conversationActivity: {
+        conversationId: 'conversation-p',
+        asOfSequence: 7,
+        openTurn: {
+          turnId: 'provider:p',
+          threadId: 'exec-claude-1',
+          startedAt: '2026-09-23T00:00:00.000Z',
+          trigger: 'provider',
+        },
+      },
+    });
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+
+    await act(async () => {
+      await result.current(sessionId, 'claude', sessionId, 'after it');
+    });
+
+    expect(steerOrchestrationTurnMock).not.toHaveBeenCalled();
+    expect(sendExecutionMessageMock).not.toHaveBeenCalled();
+    expect(activeChatsStore.getSnapshot()[sessionId].queuedMessages).toEqual([
+      'after it',
+    ]);
+  });
+
+  it('#2324 (D4): a send refused because the engine began its own turn moves into the queue instead of failing', async () => {
+    sendExecutionMessageMock.mockRejectedValueOnce(
+      new CodedOrchestrationError(
+        400,
+        'The agent is replying on its own; your message will be sent when it finishes.',
+        'provider_turn_in_progress',
+      ),
+    );
+    // The server shows the provider turn open by the time the refusal lands,
+    // so the queue waits for its end rather than draining at once.
+    activeChatsStore.updateChat(sessionId, {
+      conversationId: 'conversation-q',
+    });
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+    const sent = act(async () => {
+      await result.current(sessionId, 'claude', sessionId, 'raced it');
+    });
+    activeChatsStore.updateChat(sessionId, {
+      conversationActivity: {
+        conversationId: 'conversation-q',
+        asOfSequence: 9,
+        openTurn: {
+          turnId: 'provider:q',
+          threadId: sessionId,
+          startedAt: '2026-09-23T00:00:00.000Z',
+          trigger: 'provider',
+        },
+      },
+    });
+    await sent;
+
+    const chat = activeChatsStore.getSnapshot()[sessionId];
+    expect(chat.queuedMessages).toEqual(['raced it']);
+    expect(chat.status).not.toBe('error');
+    expect(chat.error).toBeUndefined();
+    // Not left as a sent row, and not restored as a draft too.
+    expect(
+      chat.messages?.some(
+        (message) => message.role === 'user' && message.content === 'raced it',
+      ),
+    ).toBe(false);
+    expect(chat.input ?? '').toBe('');
+    expect(chat.ephemeralMessages ?? []).toEqual([]);
+  });
+
   it('queues on a steering engine when queueOnBusy is requested', async () => {
     activeChatsStore.updateChat(sessionId, {
       status: 'sending',

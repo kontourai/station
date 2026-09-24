@@ -1660,7 +1660,8 @@ export interface EventStoreCommitObserver {
 /** #2309: see {@link EventStore.readTurnActivitySeed}. */
 export interface TurnActivitySeed {
   head?: { globalSequence: number; createdAt: string };
-  openTurn?: { startedAt: string };
+  /** #2324: `trigger` is read from the turn's first `turn.started`. */
+  openTurn?: { startedAt: string; trigger?: 'provider' };
   tools: Array<{
     method: 'tool.started' | 'tool.completed';
     callId: string;
@@ -5571,13 +5572,14 @@ export class EventStore {
   ): Pick<TurnActivitySeed, 'openTurn' | 'tools' | 'toolsTruncated'> {
     const started = this.db
       .prepare(
-        `SELECT sequence, created_at
+        `SELECT sequence, created_at,
+                json_extract(payload, '$.metadata.trigger') AS turn_trigger
          FROM orchestration_events
          WHERE thread_id = ? AND turn_id = ? AND method = 'turn.started'
          ORDER BY sequence ASC LIMIT 1`,
       )
       .get(threadId, turnId) as
-      | { sequence: number; created_at: string }
+      | { sequence: number; created_at: string; turn_trigger: unknown }
       | undefined;
     if (!started) return { tools: [], toolsTruncated: false };
     const rows = this.db
@@ -5612,7 +5614,12 @@ export class EventStore {
       });
     }
     return {
-      openTurn: { startedAt: started.created_at },
+      openTurn: {
+        startedAt: started.created_at,
+        ...(started.turn_trigger === PROVIDER_TURN_TRIGGER
+          ? { trigger: PROVIDER_TURN_TRIGGER }
+          : {}),
+      },
       tools,
       toolsTruncated: rows.length > toolLimit,
     };
