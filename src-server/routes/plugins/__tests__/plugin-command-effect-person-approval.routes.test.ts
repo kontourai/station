@@ -23,17 +23,14 @@ import { afterEach, describe, expect, test } from 'vitest';
 import { readJson } from '../../../__test-utils__/read-json.js';
 import { configureRuntimeHttp } from '../../../runtime/bootstrap/runtime-http.js';
 import { getRuntimeAuthenticatedRequestPrincipal } from '../../../security/runtime-request-security.js';
-import {
-  LOCAL_OPERATOR_PRINCIPAL_ID,
-  PrincipalUnresolvedError,
-} from '../../../services/identity/principal-resolver.js';
+import { PrincipalUnresolvedError } from '../../../services/identity/principal-resolver.js';
 import {
   getInternalApiToken,
   INTERNAL_API_TOKEN_HEADER,
   INTERNAL_PROXY_CALLER_HEADER,
 } from '../../../utils/internal-api-token.js';
-import { createPluginRoutes } from '../plugins.js';
 import { PLUGIN_PERSON_APPROVAL_REQUIRED } from '../plugin-person-approval.js';
+import { createPluginRoutes } from '../plugins.js';
 import { TEST_OPERATOR_PRINCIPAL } from './plugin-visibility-test-support.js';
 
 const OPERATOR = 'operator-credential-for-command-effects';
@@ -74,7 +71,9 @@ function principalFor(request: Request) {
 const cleanup: string[] = [];
 afterEach(async () => {
   await Promise.all(
-    cleanup.splice(0, cleanup.length).map((dir) => rm(dir, { recursive: true, force: true })),
+    cleanup
+      .splice(0, cleanup.length)
+      .map((dir) => rm(dir, { recursive: true, force: true })),
   );
 });
 
@@ -170,7 +169,9 @@ describe('#1419: plugin command-effect routes refuse Station’s agent caller', 
       body,
     );
     expect(refused.status).toBe(403);
-    expect((await readJson(refused)).code).toBe(PLUGIN_PERSON_APPROVAL_REQUIRED);
+    expect((await readJson(refused)).code).toBe(
+      PLUGIN_PERSON_APPROVAL_REQUIRED,
+    );
 
     const reached = await request(
       'person',
@@ -193,7 +194,9 @@ describe('#1419: plugin command-effect routes refuse Station’s agent caller', 
       { disposition: 'accept-indeterminate' },
     );
     expect(refused.status).toBe(403);
-    expect((await readJson(refused)).code).toBe(PLUGIN_PERSON_APPROVAL_REQUIRED);
+    expect((await readJson(refused)).code).toBe(
+      PLUGIN_PERSON_APPROVAL_REQUIRED,
+    );
 
     const reached = await request(
       'person',
@@ -213,7 +216,9 @@ describe('#1419: plugin command-effect routes refuse Station’s agent caller', 
       '/api/plugins/command-effects/effects/missing/abandon',
     );
     expect(refused.status).toBe(403);
-    expect((await readJson(refused)).code).toBe(PLUGIN_PERSON_APPROVAL_REQUIRED);
+    expect((await readJson(refused)).code).toBe(
+      PLUGIN_PERSON_APPROVAL_REQUIRED,
+    );
 
     const reached = await request(
       'person',
