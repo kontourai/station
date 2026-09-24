@@ -87,6 +87,13 @@ export const SHELL_E2E_LANES = [
     name: 'device-pane',
     spec: 'tests/tauri-shell/device-pane.e2e.ts',
   },
+  {
+    // Explicit macOS/keyring lane: uses an isolated real Keychain account,
+    // loopback broker and Station signer, with exact owned cleanup.
+    name: 'native-relay-key-approval',
+    spec: 'tests/tauri-shell/native-relay-candidate-approval.e2e.ts',
+    manual: true,
+  },
 ];
 
 function main() {
@@ -125,7 +132,7 @@ function main() {
     ?.slice('--lane='.length);
   const lanes = requested
     ? SHELL_E2E_LANES.filter((lane) => lane.name === requested)
-    : SHELL_E2E_LANES;
+    : SHELL_E2E_LANES.filter((lane) => !lane.manual);
   if (lanes.length === 0) {
     throw new Error(
       `Unknown Tauri shell lane '${requested}'. Known lanes: ${SHELL_E2E_LANES.map((lane) => lane.name).join(', ')}.`,

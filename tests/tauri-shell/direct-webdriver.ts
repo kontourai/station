@@ -325,10 +325,14 @@ export class DirectWebDriver {
 
   /** W3C WebDriver keystrokes, so shell journeys use actual input events. */
   async typeElement(elementId: string, value: string) {
-    await this.request('POST', this.sessionPath(`/element/${elementId}/value`), {
-      text: value,
-      value: [...value],
-    });
+    await this.request(
+      'POST',
+      this.sessionPath(`/element/${elementId}/value`),
+      {
+        text: value,
+        value: [...value],
+      },
+    );
   }
 
   /** A base64 PNG of the WebView, so a claim about a render can be looked at. */
